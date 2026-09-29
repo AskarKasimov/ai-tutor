@@ -219,7 +219,7 @@ model = AutoModel.from_pretrained("ai-sage/GigaAM-Multilingual", revision="ctc",
 # HTTP API в Docker Compose
 
 Для коротких аудиофайлов (до 25 секунд) этот репозиторий содержит простой
-HTTP-сервис на базе оригинального Python API GigaAM. Он использует CPU и модель
+HTTP-сервис на базе оригинального Python API GigaAM. По умолчанию он использует CPU и модель
 `v3_e2e_rnnt`; при первом запуске веса скачиваются в том Docker и сохраняются
 между перезапусками.
 
@@ -233,9 +233,12 @@ curl -X POST http://localhost:8000/transcribe -F "file=@voice.ogg"
 
 Успешный ответ: `{"text":"...","model":"v3_e2e_rnnt"}`. Пустой, повреждённый
 или слишком длинный файл возвращает HTTP 422; файл больше 25 МиБ — HTTP 413.
-Документация API доступна по адресу `http://localhost:8000/docs`. Порт открыт
-только для локальных запросов. Из другого сервиса в том же Compose-проекте
+Документация API доступна по адресу `http://localhost:8000/docs`. Порт опубликован
+на всех сетевых интерфейсах. Из другого сервиса в том же Compose-проекте
 используйте `http://gigaam:8000/transcribe`.
+
+Для NVIDIA GPU на Linux-сервере используйте `docker-compose.gpu.yaml` из корня
+монорепозитория; команда запуска приведена в корневом README.
 
 Локальная проверка HTTP API:
 

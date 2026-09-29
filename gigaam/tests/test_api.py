@@ -1,9 +1,12 @@
 """HTTP contract tests that do not download model weights."""
 
 from dataclasses import dataclass
+import sys
+from types import ModuleType
 
 from fastapi.testclient import TestClient
 
+import api
 from api import create_app
 
 
@@ -48,3 +51,11 @@ def test_invalid_and_long_audio_are_rejected():
         long = client.post("/transcribe", files={"file": ("voice.wav", b"long")})
     assert invalid.status_code == 422
     assert long.status_code == 422
+
+
+def test_model_loader_uses_configured_device(monkeypatch):
+    fake_gigaam = ModuleType("gigaam")
+    fake_gigaam.load_model = lambda name, device: (name, device)
+    monkeypatch.setitem(sys.modules, "gigaam", fake_gigaam)
+    monkeypatch.setattr(api, "DEVICE", "cuda")
+    assert api.load_model() == (api.MODEL_NAME, "cuda")

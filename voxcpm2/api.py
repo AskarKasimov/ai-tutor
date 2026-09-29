@@ -9,6 +9,7 @@ from fastapi.responses import Response
 from pydantic import BaseModel, Field, field_validator
 
 MODEL_ID = os.getenv("MODEL_ID", "openbmb/VoxCPM2")
+DEVICE = os.getenv("DEVICE", "cpu")
 _model = None
 _model_lock = threading.Lock()
 
@@ -36,7 +37,7 @@ def _load_model():
         from voxcpm import VoxCPM
 
         _model = VoxCPM.from_pretrained(
-            MODEL_ID, load_denoiser=False, optimize=False, device="cpu"
+            MODEL_ID, load_denoiser=False, optimize=False, device=DEVICE
         )
     return _model
 
@@ -57,7 +58,7 @@ def _synthesize(request: SynthesisRequest) -> bytes:
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "model": MODEL_ID, "loaded": _model is not None}
+    return {"status": "ok", "model": MODEL_ID, "device": DEVICE, "loaded": _model is not None}
 
 
 @app.post("/synthesize", response_class=Response)

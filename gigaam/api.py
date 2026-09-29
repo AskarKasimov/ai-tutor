@@ -12,13 +12,14 @@ from fastapi import FastAPI, File, HTTPException, UploadFile
 
 
 MODEL_NAME = os.getenv("MODEL_NAME", "v3_e2e_rnnt")
+DEVICE = os.getenv("DEVICE", "cpu")
 MAX_UPLOAD_BYTES = 25 * 1024 * 1024
 
 
 def load_model():
     import gigaam
 
-    return gigaam.load_model(MODEL_NAME, device="cpu")
+    return gigaam.load_model(MODEL_NAME, device=DEVICE)
 
 
 def create_app(
@@ -35,7 +36,7 @@ def create_app(
 
     @app.get("/health")
     def health():
-        return {"status": "ok", "model": MODEL_NAME}
+        return {"status": "ok", "model": MODEL_NAME, "device": DEVICE}
 
     @app.post("/transcribe")
     def transcribe(file: UploadFile = File(...)):

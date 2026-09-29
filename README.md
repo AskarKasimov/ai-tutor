@@ -43,3 +43,18 @@ curl -X POST http://localhost:8001/synthesize \
 
 `VoxCPM2` — актуальная модель в линейке VoxCPM с поддержкой русского языка.
 Она выбрана ради качества и возможностей синтеза, а не скорости CPU-инференса.
+
+## Запуск на сервере с NVIDIA GPU
+
+На Linux x86_64 образы устанавливают PyTorch с CUDA 12.8. Для передачи GPU
+обоим контейнерам нужны драйвер NVIDIA и NVIDIA Container Toolkit на сервере.
+Запуск из корня монорепозитория:
+
+```bash
+docker compose -f docker-compose.yaml -f docker-compose.gpu.yaml up -d --build
+docker compose -f docker-compose.yaml -f docker-compose.gpu.yaml ps
+```
+
+GPU-файл включает `DEVICE=cuda` и доступ к видеокартам для обоих сервисов.
+Порты 8000 и 8001 опубликованы на всех сетевых интерфейсах сервера. На macOS
+обычный `docker compose up -d --build` сохраняет CPU-режим.

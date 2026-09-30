@@ -1,0 +1,1456 @@
+# Контракт для обсуждения и последующей реализации. См. docs/voice-trainer-scenarios.md.
+openapi: 3.1.0
+info:
+  title: Голосовой тренажёр — HTTP API
+  version: 0.1.0
+  description: Проект контракта v0. Диагностика покрывает все компоненты РПД одним заданием на компоненту. По вердикту
+    LLM назначается тренировка из двух заданий на проблемную компоненту. Преподаватель редактирует записи через
+    форму и публикует неизменяемую версию курса. Все даты — RFC 3339 в UTC. Все коллекции v0 возвращаются полностью;
+    при росте объёма потребуется отдельное решение о пагинации. Bearer-токен выдаётся системой авторизации вне этого
+    контракта; backend определяет студента и права преподавателя из токена.
+servers:
+  - url: /
+    description: Текущий сервер
+security:
+  - bearerAuth: []
+tags:
+  - name: Каталог
+  - name: Диагностика
+  - name: Тренировка
+  - name: Ответы
+  - name: Преподаватель
+paths:
+  /v1/courses:
+    get:
+      operationId: listPublishedCourses
+      tags:
+        - Каталог
+      summary: Список опубликованных курсов
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CourseList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /v1/courses/{courseId}:
+    parameters:
+      - name: courseId
+        in: path
+        required: true
+        schema:
+          $ref: '#/components/schemas/Id'
+    get:
+      operationId: getPublishedCourse
+      tags:
+        - Каталог
+      summary: Опубликованный курс и компоненты РПД
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublishedCourse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /v1/diagnostics:
+    get:
+      operationId: listMyDiagnostics
+      tags:
+        - Диагностика
+      summary: История диагностик текущего студента
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DiagnosticList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      operationId: startDiagnostic
+      tags:
+        - Диагностика
+      summary: Начать диагностику курса
+      description: Выбирает один случайный диагностический ОР на каждую компоненту РПД, затем одно случайное диагностическое
+        задание этого ОР. Используется последняя опубликованная версия курса. Выбор равновероятный сначала среди
+        подходящих ОР, затем среди заданий выбранного ОР. Повторный POST создаёт новую диагностику.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StartDiagnostic'
+      responses:
+        '201':
+          description: Прохождение создано, задания закреплены
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Diagnostic'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /v1/diagnostics/{diagnosticId}:
+    parameters:
+      - name: diagnosticId
+        in: path
+        required: true
+        schema:
+          $ref: '#/components/schemas/Id'
+    get:
+      operationId: getMyDiagnostic
+      tags:
+        - Диагностика
+      summary: Задания, состояние и итог диагностики
+      description: Доступно только владельцу прохождения. Фидбек и назначенная тренировка появляются после завершения
+        проверки всех ответов. Повторное чтение не изменяет набор заданий.
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Diagnostic'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /v1/trainings:
+    get:
+      operationId: listMyTrainings
+      tags:
+        - Тренировка
+      summary: Назначенные тренировки текущего студента
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TrainingList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /v1/trainings/{trainingId}:
+    parameters:
+      - name: trainingId
+        in: path
+        required: true
+        schema:
+          $ref: '#/components/schemas/Id'
+    get:
+      operationId: getMyTraining
+      tags:
+        - Тренировка
+      summary: Задания, состояние и итог тренировки
+      description: 'Создаётся системой после диагностики: два разных задания на каждую проблемную компоненту из
+        непосредственных дочерних ОР диагностического ОР. После проверки всех ответов возвращается итоговый фидбек.
+        Новая тренировка и повторная диагностика автоматически не назначаются.'
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Training'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /v1/assignments/{assignmentId}/answer:
+    parameters:
+      - name: assignmentId
+        in: path
+        required: true
+        schema:
+          $ref: '#/components/schemas/Id'
+    post:
+      operationId: submitVoiceAnswer
+      tags:
+        - Ответы
+      summary: Сдать голосовой ответ на выданное задание
+      description: Общая ручка для диагностики и тренировки. Одна запись относится к одному заданию. После технического
+        сбоя разрешена новая загрузка на то же задание. Пока ответ обрабатывается или уже оценён, новая загрузка
+        возвращает 409. Студент не подтверждает расшифровку. Сохранённый ответ можно прочитать после потери HTTP-ответа
+        на загрузку.
+      responses:
+        '202':
+          description: Запись принята, обработка начата
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Answer'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                audio:
+                  type: string
+                  format: binary
+                  description: Одна голосовая запись, до 25 МиБ. WAV, Ogg/Opus или WebM/Opus.
+              required:
+                - audio
+            encoding:
+              audio:
+                contentType: audio/wav, audio/ogg, audio/webm
+    get:
+      operationId: getMyVoiceAnswer
+      tags:
+        - Ответы
+      summary: Состояние обработки и оценка голосового ответа
+      description: Используется для опроса после загрузки. Возвращает 404, пока запись не принята. Расшифровка и
+        критерии преподавателя студенту не возвращаются. Оценка доступна после завершения всего прохождения; во
+        время прохождения ответ содержит только состояние обработки.
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Answer'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /v1/admin/courses:
+    get:
+      operationId: listManagedCourses
+      tags:
+        - Преподаватель
+      summary: Курсы, доступные преподавателю для редактирования
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ManagedCourseList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    post:
+      operationId: createCourse
+      tags:
+        - Преподаватель
+      summary: Создать черновик курса
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CourseInput'
+      responses:
+        '201':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ManagedCourse'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /v1/admin/courses/{courseId}:
+    parameters:
+      - name: courseId
+        in: path
+        required: true
+        schema:
+          $ref: '#/components/schemas/Id'
+    get:
+      operationId: getCourseDraft
+      tags:
+        - Преподаватель
+      summary: Черновик курса со всеми записями для формы
+      description: Компоненты, ОР и задания представлены плоскими массивами; дерево строится по parent_outcome_id.
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CourseDraft'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    patch:
+      operationId: updateCourse
+      tags:
+        - Преподаватель
+      summary: Изменить сведения о курсе
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CoursePatch'
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ManagedCourse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /v1/admin/courses/{courseId}/publish:
+    parameters:
+      - name: courseId
+        in: path
+        required: true
+        schema:
+          $ref: '#/components/schemas/Id'
+    post:
+      operationId: publishCourse
+      tags:
+        - Преподаватель
+      summary: Проверить и опубликовать черновик курса
+      description: Проверяет непустой набор компонент, корректность дерева внутри компоненты, наличие хотя бы одного
+        диагностического ОР с заданием на компоненту и не менее двух разных тренировочных заданий в непосредственных
+        дочерних ОР каждого диагностического ОР. Каждое задание должно иметь критерии и правило вердикта. Публикация
+        сохраняет неизменяемый снимок. Начатые прохождения остаются на прежней версии. Повторная публикация без
+        изменений возвращает текущую опубликованную версию.
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublishedCourse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /v1/admin/courses/{courseId}/components:
+    parameters:
+      - name: courseId
+        in: path
+        required: true
+        schema:
+          $ref: '#/components/schemas/Id'
+    post:
+      operationId: createComponent
+      tags:
+        - Преподаватель
+      summary: Добавить компоненту РПД
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ComponentInput'
+      responses:
+        '201':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Component'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /v1/admin/components/{componentId}:
+    parameters:
+      - name: componentId
+        in: path
+        required: true
+        schema:
+          $ref: '#/components/schemas/Id'
+    patch:
+      operationId: updateComponent
+      tags:
+        - Преподаватель
+      summary: Изменить компоненту РПД
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ComponentPatch'
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Component'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    delete:
+      operationId: deleteComponent
+      tags:
+        - Преподаватель
+      summary: Удалить компоненту из черновика
+      description: Удаление разрешено только после удаления всех ОР компоненты. Опубликованные снимки и результаты
+        студентов сохраняются.
+      responses:
+        '204':
+          description: Удалено
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /v1/admin/components/{componentId}/outcomes:
+    parameters:
+      - name: componentId
+        in: path
+        required: true
+        schema:
+          $ref: '#/components/schemas/Id'
+    post:
+      operationId: createOutcome
+      tags:
+        - Преподаватель
+      summary: Добавить ОР в дерево компоненты
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OutcomeInput'
+      responses:
+        '201':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Outcome'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /v1/admin/outcomes/{outcomeId}:
+    parameters:
+      - name: outcomeId
+        in: path
+        required: true
+        schema:
+          $ref: '#/components/schemas/Id'
+    patch:
+      operationId: updateOutcome
+      tags:
+        - Преподаватель
+      summary: Изменить ОР и его место в дереве
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OutcomePatch'
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Outcome'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+      description: parent_outcome_id=null делает ОР корневым. Родитель должен принадлежать той же компоненте. Циклы
+        запрещены; ошибка связи возвращает 422.
+    delete:
+      operationId: deleteOutcome
+      tags:
+        - Преподаватель
+      summary: Удалить ОР из черновика
+      description: ОР с дочерними ОР или заданиями удалить нельзя. Опубликованные версии и результаты студентов
+        сохраняются.
+      responses:
+        '204':
+          description: Удалено
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /v1/admin/outcomes/{outcomeId}/tasks:
+    parameters:
+      - name: outcomeId
+        in: path
+        required: true
+        schema:
+          $ref: '#/components/schemas/Id'
+    post:
+      operationId: createTask
+      tags:
+        - Преподаватель
+      summary: Добавить готовое задание и критерии
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TaskInput'
+      responses:
+        '201':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Task'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /v1/admin/tasks/{taskId}:
+    parameters:
+      - name: taskId
+        in: path
+        required: true
+        schema:
+          $ref: '#/components/schemas/Id'
+    patch:
+      operationId: updateTask
+      tags:
+        - Преподаватель
+      summary: Изменить задание или критерии
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TaskPatch'
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Task'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+      description: Переданный rubric полностью заменяет критерии и правило вердикта в черновике. Опубликованная
+        версия и критерии уже выданных заданий остаются прежними.
+    delete:
+      operationId: deleteTask
+      tags:
+        - Преподаватель
+      summary: Удалить задание из черновика
+      responses:
+        '204':
+          description: Удалено
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: Токен текущего пользователя. Формат токена не закрепляется этим контрактом.
+  schemas:
+    Id:
+      type: string
+      minLength: 1
+      maxLength: 128
+      description: Непрозрачный идентификатор. Клиент не разбирает его структуру.
+    Timestamp:
+      type: string
+      format: date-time
+    CourseInput:
+      type: object
+      additionalProperties: false
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 500
+        description:
+          type: string
+      required:
+        - title
+    CoursePatch:
+      type: object
+      additionalProperties: false
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 500
+        description:
+          type: string
+      minProperties: 1
+    ComponentInput:
+      type: object
+      additionalProperties: false
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 500
+        position:
+          type: integer
+          minimum: 0
+      required:
+        - title
+        - position
+    ComponentPatch:
+      type: object
+      additionalProperties: false
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 500
+        position:
+          type: integer
+          minimum: 0
+      minProperties: 1
+    Component:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+        course_id:
+          $ref: '#/components/schemas/Id'
+        title:
+          type: string
+          minLength: 1
+          maxLength: 500
+        position:
+          type: integer
+          minimum: 0
+      required:
+        - id
+        - course_id
+        - title
+        - position
+    OutcomeInput:
+      type: object
+      additionalProperties: false
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 500
+        description:
+          type: string
+        parent_outcome_id:
+          oneOf:
+            - $ref: '#/components/schemas/Id'
+            - type: 'null'
+        diagnostic_eligible:
+          type: boolean
+          default: false
+          description: Включить ОР в случайный диагностический пул преподавателя.
+      required:
+        - title
+        - parent_outcome_id
+    OutcomePatch:
+      type: object
+      additionalProperties: false
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 500
+        description:
+          type: string
+        parent_outcome_id:
+          oneOf:
+            - $ref: '#/components/schemas/Id'
+            - type: 'null'
+        diagnostic_eligible:
+          type: boolean
+          default: false
+          description: Включить ОР в случайный диагностический пул преподавателя.
+      minProperties: 1
+    Outcome:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+        component_id:
+          $ref: '#/components/schemas/Id'
+        title:
+          type: string
+          minLength: 1
+          maxLength: 500
+        description:
+          type: string
+        parent_outcome_id:
+          oneOf:
+            - $ref: '#/components/schemas/Id'
+            - type: 'null'
+        diagnostic_eligible:
+          type: boolean
+          default: false
+          description: Включить ОР в случайный диагностический пул преподавателя.
+      required:
+        - id
+        - component_id
+        - title
+        - parent_outcome_id
+        - diagnostic_eligible
+    Criterion:
+      type: object
+      additionalProperties: false
+      properties:
+        key:
+          type: string
+          minLength: 1
+          maxLength: 128
+          description: Уникальный внутри задания ключ критерия.
+        description:
+          type: string
+          minLength: 1
+      required:
+        - key
+        - description
+    Rubric:
+      type: object
+      additionalProperties: false
+      properties:
+        criteria:
+          type: array
+          items:
+            $ref: '#/components/schemas/Criterion'
+          minItems: 1
+        verdict_rule:
+          type: string
+          minLength: 1
+          description: 'Полные правила принятия решения LLM: когда ответ успешен, а когда есть трудности. В диагностике
+            трудности означают назначение тренировки.'
+      required:
+        - criteria
+        - verdict_rule
+      description: Ключи критериев должны быть уникальны. LLM обязана проверить каждый критерий и применить verdict_rule;
+        сервер проверяет структуру результата, но не переопределяет учебный вердикт.
+    TaskInput:
+      type: object
+      additionalProperties: false
+      properties:
+        prompt:
+          type: string
+          minLength: 1
+        usage:
+          type: string
+          enum:
+            - diagnostic
+            - training
+        rubric:
+          $ref: '#/components/schemas/Rubric'
+      required:
+        - prompt
+        - usage
+        - rubric
+      examples:
+        - prompt: Объясните, почему сложение дробей требует общего знаменателя.
+          usage: diagnostic
+          rubric:
+            criteria:
+              - key: common_unit
+                description: Студент объясняет необходимость сравнивать одинаковые доли целого.
+            verdict_rule: passed, если выполнен критерий common_unit; иначе needs_training. Оценивать смысл ответа,
+              а не точное совпадение формулировки.
+    TaskPatch:
+      type: object
+      additionalProperties: false
+      properties:
+        prompt:
+          type: string
+          minLength: 1
+        usage:
+          type: string
+          enum:
+            - diagnostic
+            - training
+        rubric:
+          $ref: '#/components/schemas/Rubric'
+      minProperties: 1
+    Task:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+        outcome_id:
+          $ref: '#/components/schemas/Id'
+        prompt:
+          type: string
+          minLength: 1
+        usage:
+          type: string
+          enum:
+            - diagnostic
+            - training
+        rubric:
+          $ref: '#/components/schemas/Rubric'
+      required:
+        - id
+        - outcome_id
+        - prompt
+        - usage
+        - rubric
+    PublishedCourse:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+        title:
+          type: string
+          minLength: 1
+          maxLength: 500
+        description:
+          type: string
+        revision:
+          type: integer
+          minimum: 1
+        components:
+          type: array
+          items:
+            $ref: '#/components/schemas/Component'
+          minItems: 1
+      required:
+        - id
+        - title
+        - revision
+        - components
+    ManagedCourse:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+        title:
+          type: string
+          minLength: 1
+          maxLength: 500
+        description:
+          type: string
+        draft_revision:
+          type: integer
+          minimum: 1
+        published_revision:
+          type:
+            - integer
+            - 'null'
+          minimum: 1
+        has_unpublished_changes:
+          type: boolean
+      required:
+        - id
+        - title
+        - draft_revision
+        - published_revision
+        - has_unpublished_changes
+      description: Новый курс имеет draft_revision=1 и published_revision=null. Первое изменение после публикации
+        открывает следующую черновую версию; дальнейшие правки относятся к ней. Опубликованный снимок меняется только
+        при publish. Все операции преподавателя работают с текущим черновиком.
+    CourseDraft:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+        title:
+          type: string
+          minLength: 1
+          maxLength: 500
+        description:
+          type: string
+        draft_revision:
+          type: integer
+          minimum: 1
+        published_revision:
+          type:
+            - integer
+            - 'null'
+          minimum: 1
+        has_unpublished_changes:
+          type: boolean
+        components:
+          type: array
+          items:
+            $ref: '#/components/schemas/Component'
+        outcomes:
+          type: array
+          items:
+            $ref: '#/components/schemas/Outcome'
+        tasks:
+          type: array
+          items:
+            $ref: '#/components/schemas/Task'
+      required:
+        - id
+        - title
+        - draft_revision
+        - published_revision
+        - has_unpublished_changes
+        - components
+        - outcomes
+        - tasks
+    StartDiagnostic:
+      type: object
+      additionalProperties: false
+      properties:
+        course_id:
+          $ref: '#/components/schemas/Id'
+      required:
+        - course_id
+      examples:
+        - course_id: course_math_1
+    Assignment:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+        component_id:
+          $ref: '#/components/schemas/Id'
+        outcome_id:
+          $ref: '#/components/schemas/Id'
+        task_id:
+          $ref: '#/components/schemas/Id'
+        prompt:
+          type: string
+          minLength: 1
+        position:
+          type: integer
+          minimum: 0
+        status:
+          type: string
+          enum:
+            - awaiting_submission
+            - processing
+            - evaluated
+            - processing_failed
+      required:
+        - id
+        - component_id
+        - outcome_id
+        - task_id
+        - prompt
+        - position
+        - status
+    CriterionResult:
+      type: object
+      additionalProperties: false
+      properties:
+        key:
+          type: string
+          minLength: 1
+        satisfied:
+          type: boolean
+        explanation:
+          type: string
+          minLength: 1
+      required:
+        - key
+        - satisfied
+        - explanation
+    Evaluation:
+      type: object
+      additionalProperties: false
+      properties:
+        verdict:
+          type: string
+          enum:
+            - passed
+            - needs_training
+          description: Вердикт LLM по правилу преподавателя. В тренировке needs_training обозначает оставшиеся трудности,
+            но не запускает новое прохождение.
+        criterion_results:
+          type: array
+          items:
+            $ref: '#/components/schemas/CriterionResult'
+          minItems: 1
+        feedback:
+          type: string
+          minLength: 1
+      required:
+        - verdict
+        - criterion_results
+        - feedback
+      examples:
+        - verdict: needs_training
+          criterion_results:
+            - key: common_unit
+              satisfied: false
+              explanation: В ответе не объяснено, почему доли должны иметь одинаковый размер.
+          feedback: Попробуйте сначала сравнить половины и четверти одного целого.
+    ProcessingFailure:
+      type: object
+      additionalProperties: false
+      properties:
+        code:
+          type: string
+          enum:
+            - INVALID_AUDIO
+            - TRANSCRIPTION_FAILED
+            - EVALUATION_FAILED
+        message:
+          type: string
+          minLength: 1
+      required:
+        - code
+        - message
+    Answer:
+      type: object
+      additionalProperties: false
+      properties:
+        assignment_id:
+          $ref: '#/components/schemas/Id'
+        status:
+          type: string
+          enum:
+            - processing
+            - evaluated
+            - processing_failed
+        submitted_at:
+          $ref: '#/components/schemas/Timestamp'
+        evaluation:
+          oneOf:
+            - $ref: '#/components/schemas/Evaluation'
+            - type: 'null'
+        failure:
+          oneOf:
+            - $ref: '#/components/schemas/ProcessingFailure'
+            - type: 'null'
+      required:
+        - assignment_id
+        - status
+        - submitted_at
+        - evaluation
+        - failure
+      description: 'processing: evaluation и failure равны null. processing_failed: failure заполнен, evaluation
+        null. evaluated: failure null; evaluation заполнен только после завершения всего прохождения. Поле transcript
+        отсутствует.'
+      allOf:
+        - if:
+            properties:
+              status:
+                const: processing
+          then:
+            properties:
+              evaluation:
+                type: 'null'
+              failure:
+                type: 'null'
+        - if:
+            properties:
+              status:
+                const: processing_failed
+          then:
+            properties:
+              evaluation:
+                type: 'null'
+              failure:
+                $ref: '#/components/schemas/ProcessingFailure'
+        - if:
+            properties:
+              status:
+                const: evaluated
+          then:
+            properties:
+              failure:
+                type: 'null'
+      examples:
+        - assignment_id: assignment_123
+          status: processing
+          submitted_at: '2026-09-30T10:00:00Z'
+          evaluation: null
+          failure: null
+    ComponentFeedback:
+      type: object
+      additionalProperties: false
+      properties:
+        component_id:
+          $ref: '#/components/schemas/Id'
+        verdict:
+          type: string
+          enum:
+            - passed
+            - needs_training
+        feedback:
+          type: string
+          minLength: 1
+      required:
+        - component_id
+        - verdict
+        - feedback
+    Feedback:
+      type: object
+      additionalProperties: false
+      properties:
+        summary:
+          type: string
+          minLength: 1
+        components:
+          type: array
+          items:
+            $ref: '#/components/schemas/ComponentFeedback'
+          minItems: 1
+      required:
+        - summary
+        - components
+    TrainingComponentFeedback:
+      type: object
+      additionalProperties: false
+      properties:
+        component_id:
+          $ref: '#/components/schemas/Id'
+        feedback:
+          type: string
+          minLength: 1
+      required:
+        - component_id
+        - feedback
+    TrainingFeedback:
+      type: object
+      additionalProperties: false
+      properties:
+        summary:
+          type: string
+          minLength: 1
+        components:
+          type: array
+          items:
+            $ref: '#/components/schemas/TrainingComponentFeedback'
+          minItems: 1
+      required:
+        - summary
+        - components
+    Diagnostic:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+        course_id:
+          $ref: '#/components/schemas/Id'
+        course_revision:
+          type: integer
+          minimum: 1
+        status:
+          type: string
+          enum:
+            - in_progress
+            - evaluating
+            - completed
+        assignments:
+          type: array
+          items:
+            $ref: '#/components/schemas/Assignment'
+          minItems: 1
+        feedback:
+          oneOf:
+            - $ref: '#/components/schemas/Feedback'
+            - type: 'null'
+        created_at:
+          $ref: '#/components/schemas/Timestamp'
+        completed_at:
+          type:
+            - string
+            - 'null'
+          format: date-time
+        training_id:
+          oneOf:
+            - $ref: '#/components/schemas/Id'
+            - type: 'null'
+      required:
+        - id
+        - course_id
+        - course_revision
+        - status
+        - assignments
+        - feedback
+        - created_at
+        - completed_at
+        - training_id
+      description: Ровно одно задание на компоненту. feedback и completed_at заполнены только в completed. training_id
+        заполнен в completed при наличии проблемных компонент; иначе null. Тренировка закрепляется до завершения
+        диагностики, поэтому completed возвращает согласованный итог.
+      allOf:
+        - if:
+            properties:
+              status:
+                const: completed
+          then:
+            properties:
+              feedback:
+                $ref: '#/components/schemas/Feedback'
+              completed_at:
+                $ref: '#/components/schemas/Timestamp'
+          else:
+            properties:
+              feedback:
+                type: 'null'
+              completed_at:
+                type: 'null'
+              training_id:
+                type: 'null'
+    Training:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+        course_id:
+          $ref: '#/components/schemas/Id'
+        course_revision:
+          type: integer
+          minimum: 1
+        status:
+          type: string
+          enum:
+            - in_progress
+            - evaluating
+            - completed
+        assignments:
+          type: array
+          items:
+            $ref: '#/components/schemas/Assignment'
+          minItems: 1
+        feedback:
+          oneOf:
+            - $ref: '#/components/schemas/TrainingFeedback'
+            - type: 'null'
+        created_at:
+          $ref: '#/components/schemas/Timestamp'
+        completed_at:
+          type:
+            - string
+            - 'null'
+          format: date-time
+        diagnostic_id:
+          $ref: '#/components/schemas/Id'
+      required:
+        - id
+        - course_id
+        - course_revision
+        - status
+        - assignments
+        - feedback
+        - created_at
+        - completed_at
+        - diagnostic_id
+      description: Ровно два разных задания на каждую проблемную компоненту исходной диагностики. feedback и completed_at
+        заполнены только в completed.
+      allOf:
+        - if:
+            properties:
+              status:
+                const: completed
+          then:
+            properties:
+              feedback:
+                $ref: '#/components/schemas/TrainingFeedback'
+              completed_at:
+                $ref: '#/components/schemas/Timestamp'
+          else:
+            properties:
+              feedback:
+                type: 'null'
+              completed_at:
+                type: 'null'
+    CourseList:
+      type: object
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/PublishedCourse'
+      required:
+        - items
+    ManagedCourseList:
+      type: object
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ManagedCourse'
+      required:
+        - items
+    DiagnosticList:
+      type: object
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Diagnostic'
+      required:
+        - items
+    TrainingList:
+      type: object
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Training'
+      required:
+        - items
+    Error:
+      type: object
+      additionalProperties: false
+      properties:
+        code:
+          type: string
+          minLength: 1
+        message:
+          type: string
+          minLength: 1
+        details:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            properties:
+              path:
+                type: string
+              code:
+                type: string
+              message:
+                type: string
+                minLength: 1
+            required:
+              - code
+              - message
+      required:
+        - code
+        - message
+      description: code — стабильный машинный код, message — пояснение, details — ошибки отдельных полей или конфигурации
+        курса. Учебный вердикт передаётся через Evaluation, а не HTTP-ошибку.
+      examples:
+        - code: RESOURCE_HAS_CHILDREN
+          message: Сначала удалите задания и дочерние ОР.
+  responses:
+    Unauthorized:
+      description: Токен отсутствует или недействителен.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Forbidden:
+      description: Нет прав преподавателя на этот курс.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: Объект не существует, не опубликован или недоступен текущему пользователю.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Conflict:
+      description: 'Конфликт состояния: ANSWER_PROCESSING, ANSWER_ALREADY_EVALUATED или RESOURCE_HAS_CHILDREN.'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    ValidationError:
+      description: Неверные поля запроса либо неполная конфигурация курса. details содержит конкретные нарушения.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    PayloadTooLarge:
+      description: 'AUDIO_TOO_LARGE: запись превышает 25 МиБ.'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    UnsupportedMediaType:
+      description: 'UNSUPPORTED_AUDIO_FORMAT: контейнер или кодек записи не поддерживается.'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Unavailable:
+      description: 'PROCESSING_UNAVAILABLE: запись не принята; можно повторить запрос позднее.'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'

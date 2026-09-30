@@ -5,7 +5,7 @@ info:
   version: 0.1.0
   description: Проект контракта v0. Диагностика покрывает все составляющие РПД одним заданием на составляющую. По вердикту
     LLM назначается тренировка из двух заданий на проблемную составляющую. Преподаватель редактирует записи через
-    форму и публикует неизменяемую версию курса. Все даты — RFC 3339 в UTC. Все коллекции v0 возвращаются полностью;
+    форму и публикует неизменяемую версию курса. Все даты — Unix timestamp в секундах с 1970-01-01T00:00:00Z. Все коллекции v0 возвращаются полностью;
     при росте объёма потребуется отдельное решение о пагинации. Bearer-токен выдаётся системой авторизации вне этого
     контракта; backend определяет студента и права преподавателя из токена.
 servers:
@@ -629,8 +629,12 @@ components:
       maxLength: 128
       description: Непрозрачный идентификатор. Клиент не разбирает его структуру.
     Timestamp:
-      type: string
-      format: date-time
+      type: integer
+      format: int64
+      minimum: 0
+      description: Unix timestamp в секундах с 1970-01-01T00:00:00Z. Миллисекунды не используются.
+      examples:
+        - 1790762400
     CourseInput:
       type: object
       additionalProperties: false
@@ -1135,7 +1139,7 @@ components:
       examples:
         - assignment_id: assignment_123
           status: processing
-          submitted_at: '2026-09-30T10:00:00Z'
+          submitted_at: 1790762400
           evaluation: null
           failure: null
     ConstituentFeedback:
@@ -1227,10 +1231,9 @@ components:
         created_at:
           $ref: '#/components/schemas/Timestamp'
         completed_at:
-          type:
-            - string
-            - 'null'
-          format: date-time
+          oneOf:
+            - $ref: '#/components/schemas/Timestamp'
+            - type: 'null'
         training_id:
           oneOf:
             - $ref: '#/components/schemas/Id'
@@ -1296,10 +1299,9 @@ components:
         created_at:
           $ref: '#/components/schemas/Timestamp'
         completed_at:
-          type:
-            - string
-            - 'null'
-          format: date-time
+          oneOf:
+            - $ref: '#/components/schemas/Timestamp'
+            - type: 'null'
         diagnostic_id:
           $ref: '#/components/schemas/Id'
       required:

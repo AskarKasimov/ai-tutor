@@ -3,23 +3,245 @@ openapi: 3.1.0
 info:
   title: Голосовой тренажёр — HTTP API
   version: 0.1.0
-  description: Проект контракта v0. Диагностика покрывает все составляющие РПД одним заданием на составляющую. По вердикту
-    LLM назначается тренировка из двух заданий на проблемную составляющую. Преподаватель редактирует записи через
-    форму и публикует неизменяемую версию курса. Все даты — Unix timestamp в секундах с 1970-01-01T00:00:00Z. Все коллекции v0 возвращаются полностью;
-    при росте объёма потребуется отдельное решение о пагинации. Bearer-токен выдаётся системой авторизации вне этого
-    контракта; backend определяет студента и права преподавателя из токена.
+  description: 'Проект контракта v0. Диагностика покрывает все составляющие РПД одним заданием на составляющую.
+    По вердикту LLM назначается тренировка из двух заданий на проблемную составляющую. Преподаватель редактирует
+    записи через форму и публикует неизменяемую версию курса. Все даты — Unix timestamp в секундах с 1970-01-01T00:00:00Z.
+    Все коллекции v0 возвращаются полностью; при росте объёма потребуется отдельное решение о пагинации. Auth входит
+    в контракт: самостоятельная регистрация по email и паролю создаёт student; admin (преподаватель) создаётся или
+    назначается вручную в базе. Все защищённые ручки используют access-токен в HttpOnly cookie. Токены выдаются
+    и обновляются через Set-Cookie; в JSON передаются только пользователь и сроки сессии. Роль и владелец прохождения
+    определяются сервером по текущему пользователю. Для всех POST/PATCH/DELETE обязателен Origin из точного списка
+    разрешённых frontend origins; отсутствующий или null Origin отклоняется с 403 CSRF_ORIGIN_DENIED. Frontend и
+    API в v0 работают по HTTPS на одном IP или через frontend proxy; cookies имеют Secure, Domain отсутствует; при разных origins CORS разрешает credentials только для явно указанных
+    origins.'
 servers:
   - url: /
     description: Текущий сервер
 security:
-  - bearerAuth: []
+  - accessCookie: []
 tags:
+  - name: Авторизация
+    description: Самостоятельная регистрация студентов, вход, сессии и текущий пользователь.
   - name: Каталог
   - name: Диагностика
   - name: Тренировка
   - name: Ответы
   - name: Преподаватель
 paths:
+  /v1/auth/register:
+    post:
+      operationId: register
+      tags:
+        - Авторизация
+      summary: Зарегистрироваться по email и паролю
+      description: Создаёт student и сразу возвращает сессию. admin создаётся или назначается вручную в базе. Регистрация,
+        вход и обмен токенами в v0 доступны по HTTPS с доверенным сертификатом, включая IP-адреса корпоративной сети. Устанавливает access- и refresh-cookies;
+        JSON содержит user и session со сроками, без значений токенов.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: Аккаунт и первая сессия созданы
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthSession'
+          headers:
+            Cache-Control:
+              description: Ответ не кэшируется.
+              schema:
+                type: string
+                const: no-store
+            Set-Cookie:
+              description: 'Два отдельных заголовка Set-Cookie, по одному на cookie; не объединять через запятую.
+                access_token: Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=<остаток срока токена в секундах>.
+                refresh_token: Path=/v1/auth; Secure; HttpOnly; SameSite=Lax; Max-Age=<остаток срока токена
+                в секундах>. Domain отсутствует. Значения непрозрачные; токены в JSON не передаются.'
+              schema:
+                type: string
+              example: access_token=example-access-token; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=900
+        '409':
+          $ref: '#/components/responses/EmailAlreadyRegistered'
+        '422':
+          $ref: '#/components/responses/AuthValidationError'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '403':
+          $ref: '#/components/responses/CsrfRejected'
+      parameters:
+        - $ref: '#/components/parameters/TrustedOrigin'
+  /v1/auth/login:
+    post:
+      operationId: login
+      tags:
+        - Авторизация
+      summary: Войти по email и паролю
+      description: Создаёт новую независимую сессию. Для неизвестного email и неверного пароля возвращается одинаковый
+        INVALID_CREDENTIALS. Роль определяется из текущей записи пользователя. Устанавливает access- и refresh-cookies;
+        JSON содержит user и session со сроками, без значений токенов.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Вход выполнен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthSession'
+          headers:
+            Cache-Control:
+              description: Ответ не кэшируется.
+              schema:
+                type: string
+                const: no-store
+            Set-Cookie:
+              description: 'Два отдельных заголовка Set-Cookie, по одному на cookie; не объединять через запятую.
+                access_token: Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=<остаток срока токена в секундах>.
+                refresh_token: Path=/v1/auth; Secure; HttpOnly; SameSite=Lax; Max-Age=<остаток срока токена
+                в секундах>. Domain отсутствует. Значения непрозрачные; токены в JSON не передаются.'
+              schema:
+                type: string
+              example: access_token=example-access-token; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=900
+        '401':
+          $ref: '#/components/responses/InvalidCredentials'
+        '422':
+          $ref: '#/components/responses/AuthValidationError'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '403':
+          $ref: '#/components/responses/CsrfRejected'
+      parameters:
+        - $ref: '#/components/parameters/TrustedOrigin'
+  /v1/auth/refresh:
+    post:
+      operationId: refreshTokens
+      tags:
+        - Авторизация
+      summary: Обновить токены текущей сессии
+      description: Без тела запроса. Refresh-токен поступает в HttpOnly cookie refresh_token. Успешное
+        обновление атомарно заменяет его и устанавливает новый access-токен двумя Set-Cookie. JSON содержит только
+        сроки. Исходный срок сессии не продлевается. Старый access-токен действует до своего срока или отзыва сессии.
+        Повторное использование старого refresh-токена отзывает всю сессию. Клиент выполняет обновления последовательно;
+        браузер сохраняет cookies. Потеря ответа и повтор со старой cookie могут потребовать нового входа. При INVALID_REFRESH_TOKEN
+        сервер удаляет обе cookies.
+      security:
+        - refreshCookie: []
+      responses:
+        '200':
+          description: Cookies обновлены; JSON содержит сроки текущей сессии.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionExpiry'
+          headers:
+            Cache-Control:
+              description: Ответ не кэшируется.
+              schema:
+                type: string
+                const: no-store
+            Set-Cookie:
+              description: 'Два отдельных заголовка Set-Cookie, по одному на cookie; не объединять через запятую.
+                access_token: Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=<остаток срока токена в секундах>.
+                refresh_token: Path=/v1/auth; Secure; HttpOnly; SameSite=Lax; Max-Age=<остаток срока токена
+                в секундах>. Domain отсутствует. Значения непрозрачные; токены в JSON не передаются.'
+              schema:
+                type: string
+              example: access_token=example-access-token; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=900
+        '401':
+          description: 'INVALID_REFRESH_TOKEN: cookie отсутствует, токен неизвестен, истёк, отозван или уже использован.
+            Обе cookies удаляются.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          headers:
+            Cache-Control:
+              description: Ответ не кэшируется.
+              schema:
+                type: string
+                const: no-store
+            Set-Cookie:
+              description: 'Два отдельных заголовка Set-Cookie, по одному на cookie; не объединять через запятую.
+                access_token: Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=0. refresh_token:
+                Path=/v1/auth; Secure; HttpOnly; SameSite=Lax; Max-Age=0. Domain отсутствует. Значения пустые; обе
+                cookies удаляются.'
+              schema:
+                type: string
+              example: access_token=; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=0
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '403':
+          $ref: '#/components/responses/CsrfRejected'
+      parameters:
+        - $ref: '#/components/parameters/TrustedOrigin'
+  /v1/auth/logout:
+    post:
+      operationId: logout
+      tags:
+        - Авторизация
+      summary: Завершить текущую сессию
+      description: Без тела запроса. Отзывает сессию по refresh-cookie, включая все её access- и refresh-токены,
+        и удаляет обе cookies через Set-Cookie с Max-Age=0 и исходными Path. Другие сессии сохраняются. Если refresh-cookie
+        отсутствует, неизвестна, истекла или уже отозвана, возвращает 204 и также удаляет cookies. Access-cookie
+        для выхода не требуется; проверка Origin обязательна.
+      security: []
+      responses:
+        '204':
+          description: Сессия завершена; токены этой сессии больше не действуют.
+          headers:
+            Cache-Control:
+              description: Ответ не кэшируется.
+              schema:
+                type: string
+                const: no-store
+            Set-Cookie:
+              description: 'Два отдельных заголовка Set-Cookie, по одному на cookie; не объединять через запятую.
+                access_token: Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=0. refresh_token:
+                Path=/v1/auth; Secure; HttpOnly; SameSite=Lax; Max-Age=0. Domain отсутствует. Значения пустые; обе
+                cookies удаляются.'
+              schema:
+                type: string
+              example: access_token=; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=0
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '403':
+          $ref: '#/components/responses/CsrfRejected'
+      parameters:
+        - $ref: '#/components/parameters/TrustedOrigin'
+        - $ref: '#/components/parameters/OptionalRefreshCookie'
+  /v1/auth/me:
+    get:
+      operationId: getCurrentUser
+      tags:
+        - Авторизация
+      summary: Получить текущего пользователя
+      description: Возвращает актуальные данные и роль из базы. Изменение роли через SQL применяется при следующем
+        запросе, без нового входа. Пароль и refresh-токен не возвращаются.
+      responses:
+        '200':
+          description: Текущий пользователь
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+          headers:
+            Cache-Control:
+              description: Ответ не кэшируется.
+              schema:
+                type: string
+                const: no-store
+        '401':
+          $ref: '#/components/responses/Unauthorized'
   /v1/courses:
     get:
       operationId: listPublishedCourses
@@ -100,6 +322,10 @@ paths:
           $ref: '#/components/responses/ValidationError'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/CsrfRejected'
+      parameters:
+        - $ref: '#/components/parameters/TrustedOrigin'
   /v1/diagnostics/{diagnosticId}:
     parameters:
       - name: diagnosticId
@@ -203,6 +429,8 @@ paths:
           $ref: '#/components/responses/Unavailable'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/CsrfRejected'
       requestBody:
         required: true
         content:
@@ -220,6 +448,8 @@ paths:
             encoding:
               audio:
                 contentType: audio/wav, audio/ogg, audio/webm
+      parameters:
+        - $ref: '#/components/parameters/TrustedOrigin'
     get:
       operationId: getMyVoiceAnswer
       tags:
@@ -244,7 +474,7 @@ paths:
       operationId: listManagedCourses
       tags:
         - Преподаватель
-      summary: Курсы, доступные преподавателю для редактирования
+      summary: Все курсы, доступные admin (преподавателю)
       responses:
         '200':
           description: Успешный ответ
@@ -256,6 +486,7 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+      description: 'Требуется роль admin (преподаватель); доступ распространяется на все курсы. '
     post:
       operationId: createCourse
       tags:
@@ -280,6 +511,9 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+      description: 'Требуется роль admin (преподаватель); доступ распространяется на все курсы. '
+      parameters:
+        - $ref: '#/components/parameters/TrustedOrigin'
   /v1/admin/courses/{courseId}:
     parameters:
       - name: courseId
@@ -292,7 +526,8 @@ paths:
       tags:
         - Преподаватель
       summary: Черновик курса со всеми записями для формы
-      description: Составляющие, ОР и задания представлены плоскими массивами; дерево строится по parent_outcome_id.
+      description: Требуется роль admin (преподаватель); доступ распространяется на все курсы. Составляющие, ОР
+        и задания представлены плоскими массивами; дерево строится по parent_outcome_id.
       responses:
         '200':
           description: Успешный ответ
@@ -332,6 +567,9 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+      description: 'Требуется роль admin (преподаватель); доступ распространяется на все курсы. '
+      parameters:
+        - $ref: '#/components/parameters/TrustedOrigin'
   /v1/admin/courses/{courseId}/publish:
     parameters:
       - name: courseId
@@ -344,11 +582,12 @@ paths:
       tags:
         - Преподаватель
       summary: Проверить и опубликовать черновик курса
-      description: Проверяет непустой набор составляющих, корректность дерева внутри составляющей, наличие хотя бы одного
-        диагностического ОР с заданием на составляющую и не менее двух разных тренировочных заданий в непосредственных
-        дочерних ОР каждого диагностического ОР. Каждое задание должно иметь критерии и правило вердикта. Публикация
-        сохраняет неизменяемый снимок. Начатые прохождения остаются на прежней версии. Повторная публикация без
-        изменений возвращает текущую опубликованную версию.
+      description: Требуется роль admin (преподаватель); доступ распространяется на все курсы. Проверяет непустой
+        набор составляющих, корректность дерева внутри составляющей, наличие хотя бы одного диагностического ОР
+        с заданием на составляющую и не менее двух разных тренировочных заданий в непосредственных дочерних ОР каждого
+        диагностического ОР. Каждое задание должно иметь критерии и правило вердикта. Публикация сохраняет неизменяемый
+        снимок. Начатые прохождения остаются на прежней версии. Повторная публикация без изменений возвращает текущую
+        опубликованную версию.
       responses:
         '200':
           description: Успешный ответ
@@ -364,6 +603,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+      parameters:
+        - $ref: '#/components/parameters/TrustedOrigin'
   /v1/admin/courses/{courseId}/constituents:
     parameters:
       - name: courseId
@@ -397,6 +638,9 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+      description: 'Требуется роль admin (преподаватель); доступ распространяется на все курсы. '
+      parameters:
+        - $ref: '#/components/parameters/TrustedOrigin'
   /v1/admin/constituents/{constituentId}:
     parameters:
       - name: constituentId
@@ -430,13 +674,16 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+      description: 'Требуется роль admin (преподаватель); доступ распространяется на все курсы. '
+      parameters:
+        - $ref: '#/components/parameters/TrustedOrigin'
     delete:
       operationId: deleteConstituent
       tags:
         - Преподаватель
       summary: Удалить составляющую из черновика
-      description: Удаление разрешено только после удаления всех ОР составляющей. Опубликованные снимки и результаты
-        студентов сохраняются.
+      description: Требуется роль admin (преподаватель); доступ распространяется на все курсы. Удаление разрешено
+        только после удаления всех ОР составляющей. Опубликованные снимки и результаты студентов сохраняются.
       responses:
         '204':
           description: Удалено
@@ -448,6 +695,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+      parameters:
+        - $ref: '#/components/parameters/TrustedOrigin'
   /v1/admin/constituents/{constituentId}/outcomes:
     parameters:
       - name: constituentId
@@ -481,6 +730,9 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+      description: 'Требуется роль admin (преподаватель); доступ распространяется на все курсы. '
+      parameters:
+        - $ref: '#/components/parameters/TrustedOrigin'
   /v1/admin/outcomes/{outcomeId}:
     parameters:
       - name: outcomeId
@@ -514,15 +766,18 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
-      description: parent_outcome_id=null делает ОР корневым. Родитель должен принадлежать той же составляющей. Циклы
-        запрещены; ошибка связи возвращает 422.
+      description: Требуется роль admin (преподаватель); доступ распространяется на все курсы. parent_outcome_id=null
+        делает ОР корневым. Родитель должен принадлежать той же составляющей. Циклы запрещены; ошибка связи возвращает
+        422.
+      parameters:
+        - $ref: '#/components/parameters/TrustedOrigin'
     delete:
       operationId: deleteOutcome
       tags:
         - Преподаватель
       summary: Удалить ОР из черновика
-      description: ОР с дочерними ОР или заданиями удалить нельзя. Опубликованные версии и результаты студентов
-        сохраняются.
+      description: Требуется роль admin (преподаватель); доступ распространяется на все курсы. ОР с дочерними ОР
+        или заданиями удалить нельзя. Опубликованные версии и результаты студентов сохраняются.
       responses:
         '204':
           description: Удалено
@@ -534,6 +789,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+      parameters:
+        - $ref: '#/components/parameters/TrustedOrigin'
   /v1/admin/outcomes/{outcomeId}/tasks:
     parameters:
       - name: outcomeId
@@ -567,6 +824,9 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+      description: 'Требуется роль admin (преподаватель); доступ распространяется на все курсы. '
+      parameters:
+        - $ref: '#/components/parameters/TrustedOrigin'
   /v1/admin/tasks/{taskId}:
     parameters:
       - name: taskId
@@ -600,8 +860,11 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
-      description: Переданный rubric полностью заменяет критерии и правило вердикта в черновике. Опубликованная
-        версия и критерии уже выданных заданий остаются прежними.
+      description: Требуется роль admin (преподаватель); доступ распространяется на все курсы. Переданный rubric
+        полностью заменяет критерии и правило вердикта в черновике. Опубликованная версия и критерии уже выданных
+        заданий остаются прежними.
+      parameters:
+        - $ref: '#/components/parameters/TrustedOrigin'
     delete:
       operationId: deleteTask
       tags:
@@ -616,12 +879,23 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+      description: 'Требуется роль admin (преподаватель); доступ распространяется на все курсы. '
+      parameters:
+        - $ref: '#/components/parameters/TrustedOrigin'
 components:
   securitySchemes:
-    bearerAuth:
-      type: http
-      scheme: bearer
-      description: Токен текущего пользователя. Формат токена не закрепляется этим контрактом.
+    accessCookie:
+      type: apiKey
+      in: cookie
+      name: access_token
+      description: HttpOnly; Secure; SameSite=Lax; Path=/; без Domain. Браузер сохраняет через Set-Cookie и отправляет
+        автоматически. Сервер проверяет активность сессии и роль в базе.
+    refreshCookie:
+      type: apiKey
+      in: cookie
+      name: refresh_token
+      description: HttpOnly; Secure; SameSite=Lax; Path=/v1/auth; без Domain. Одноразовый refresh-токен; заменяется
+        через Set-Cookie.
   schemas:
     Id:
       type: string
@@ -1407,15 +1681,136 @@ components:
       examples:
         - code: RESOURCE_HAS_CHILDREN
           message: Сначала удалите задания и дочерние ОР.
+    RegisterRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        email:
+          type: string
+          format: email
+          maxLength: 254
+          description: Email служит идентификатором входа. Сервер удаляет внешние пробелы и приводит значение к
+            нижнему регистру до проверки уникальности.
+        password:
+          type: string
+          format: password
+          writeOnly: true
+          minLength: 15
+          maxLength: 128
+          description: 15–128 символов. Разрешены пробелы и Unicode; пароль не обрезается и не приводится к другому
+            регистру. Сервер отклоняет распространённые и скомпрометированные пароли.
+        display_name:
+          type: string
+          minLength: 1
+          maxLength: 200
+      required:
+        - email
+        - password
+      description: Регистрация создаёт только student. Поле role недопустимо. Аккаунт сразу активен; сессия устанавливается
+        двумя HttpOnly cookies.
+      examples:
+        - email: student@example.edu
+          password: Example-passphrase-42
+          display_name: Иван
+    LoginRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        email:
+          type: string
+          format: email
+          maxLength: 254
+          description: Email служит идентификатором входа. Сервер удаляет внешние пробелы и приводит значение к
+            нижнему регистру до проверки уникальности.
+        password:
+          type: string
+          format: password
+          writeOnly: true
+          minLength: 1
+          maxLength: 128
+      required:
+        - email
+        - password
+    User:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+        email:
+          type: string
+          format: email
+          maxLength: 254
+          description: Email служит идентификатором входа. Сервер удаляет внешние пробелы и приводит значение к
+            нижнему регистру до проверки уникальности.
+        display_name:
+          type:
+            - string
+            - 'null'
+          minLength: 1
+          maxLength: 200
+        role:
+          type: string
+          enum:
+            - student
+            - admin
+          description: admin — преподаватель, имеет доступ ко всем курсам и редактированию каталога. Назначается
+            вручную через SQL.
+        created_at:
+          $ref: '#/components/schemas/Timestamp'
+      required:
+        - id
+        - email
+        - display_name
+        - role
+        - created_at
+    AuthSession:
+      type: object
+      additionalProperties: false
+      properties:
+        user:
+          $ref: '#/components/schemas/User'
+        session:
+          $ref: '#/components/schemas/SessionExpiry'
+      required:
+        - user
+        - session
+      examples:
+        - user:
+            id: user_123
+            email: student@example.edu
+            display_name: Иван
+            role: student
+            created_at: 1790762400
+          session:
+            access_expires_at: 1790763300
+            refresh_expires_at: 1793354400
+    SessionExpiry:
+      type: object
+      additionalProperties: false
+      properties:
+        access_expires_at:
+          $ref: '#/components/schemas/Timestamp'
+        refresh_expires_at:
+          $ref: '#/components/schemas/Timestamp'
+      required:
+        - access_expires_at
+        - refresh_expires_at
+      description: Сроки Unix timestamp в секундах; значения токенов находятся только в HttpOnly cookies. Access
+        до 15 минут; сессия 30 суток с входа или регистрации. Refresh не продлевает исходный срок сессии.
+      examples:
+        - access_expires_at: 1790763300
+          refresh_expires_at: 1793354400
   responses:
     Unauthorized:
-      description: Токен отсутствует или недействителен.
+      description: 'UNAUTHORIZED: access-токен отсутствует, недействителен, истёк или относится к отозванной сессии.'
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/Error'
     Forbidden:
-      description: Нет прав преподавателя на этот курс.
+      description: 'FORBIDDEN: требуется admin (преподаватель); либо CSRF_ORIGIN_DENIED: недопустимый Origin у изменяющего
+        запроса.'
       content:
         application/json:
           schema:
@@ -1456,3 +1851,66 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/Error'
+    EmailAlreadyRegistered:
+      description: 'EMAIL_ALREADY_REGISTERED: нормализованный email уже занят.'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    InvalidCredentials:
+      description: 'INVALID_CREDENTIALS: email или пароль неверен. Одинаковое сообщение независимо от причины.'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    InvalidRefreshToken:
+      description: 'INVALID_REFRESH_TOKEN: refresh-токен неизвестен, истёк, отозван или уже использован.'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    AuthValidationError:
+      description: 'VALIDATION_ERROR: некорректные поля; PASSWORD_TOO_WEAK: пароль не соответствует политике. details
+        указывает поля.'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    TooManyRequests:
+      description: 'RATE_LIMITED: превышена частота запросов.'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+      headers:
+        Retry-After:
+          description: Число секунд до следующей попытки.
+          schema:
+            type: integer
+            minimum: 1
+    CsrfRejected:
+      description: 'CSRF_ORIGIN_DENIED: Origin отсутствует, равен null или не входит в разрешённый список; операция
+        не выполняется.'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+  parameters:
+    TrustedOrigin:
+      name: Origin
+      in: header
+      required: true
+      description: Origin frontend, например https://10.10.0.20:5173. Браузер устанавливает автоматически. Сервер
+        проверяет точное совпадение схемы, хоста и порта с настроенным списком. Отсутствующий, null или чужой Origin
+        возвращает 403 CSRF_ORIGIN_DENIED до выполнения операции.
+      schema:
+        type: string
+        format: uri
+    OptionalRefreshCookie:
+      name: refresh_token
+      in: cookie
+      required: false
+      description: Браузер отправляет автоматически. При отсутствии cookie logout всё равно удаляет обе cookies
+        и возвращает 204.
+      schema:
+        type: string

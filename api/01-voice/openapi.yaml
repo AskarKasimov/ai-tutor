@@ -11,14 +11,14 @@ servers:
 security:
   - accessCookie: []
 tags:
-  - name: Авторизация
   - name: Голос
+  - name: Auth
 paths:
   /v1/auth/register:
     post:
       operationId: register
       tags:
-        - Авторизация
+        - Auth
       summary: Зарегистрироваться по email и паролю
       description: Создаёт student и сразу возвращает сессию. admin создаётся или назначается вручную в базе. Регистрация,
         вход и обмен токенами в v0 доступны по HTTPS с доверенным сертификатом, включая IP-адреса корпоративной
@@ -65,7 +65,7 @@ paths:
     post:
       operationId: login
       tags:
-        - Авторизация
+        - Auth
       summary: Войти по email и паролю
       description: Создаёт новую независимую сессию. Для неизвестного email и неверного пароля возвращается одинаковый
         INVALID_CREDENTIALS. Роль определяется из текущей записи пользователя. Устанавливает access- и refresh-cookies;
@@ -112,7 +112,7 @@ paths:
     post:
       operationId: refreshTokens
       tags:
-        - Авторизация
+        - Auth
       summary: Обновить токены текущей сессии
       description: Без тела запроса. Refresh-токен поступает в HttpOnly cookie refresh_token. Успешное обновление
         атомарно заменяет его и устанавливает новый access-токен двумя Set-Cookie. JSON содержит только сроки. Исходный
@@ -173,7 +173,7 @@ paths:
     post:
       operationId: logout
       tags:
-        - Авторизация
+        - Auth
       summary: Завершить текущую сессию
       description: Без тела запроса. Отзывает сессию по refresh-cookie, включая все её access- и refresh-токены,
         и удаляет обе cookies через Set-Cookie с Max-Age=0 и исходными Path. Другие сессии сохраняются. Если refresh-cookie
@@ -207,7 +207,7 @@ paths:
     get:
       operationId: getCurrentUser
       tags:
-        - Авторизация
+        - Auth
       summary: Получить текущего пользователя
       description: Возвращает актуальные данные и роль из базы. Изменение роли через SQL применяется при следующем
         запросе, без нового входа. Пароль и refresh-токен не возвращаются.

@@ -11,17 +11,16 @@ servers:
 security:
   - accessCookie: []
 tags:
-  - name: Авторизация
+  - name: Учебная база
+  - name: Грейдинг и фидбэк
   - name: Голос
-  - name: Каталог
-  - name: Ответы
-  - name: Преподаватель
+  - name: Auth
 paths:
   /v1/auth/register:
     post:
       operationId: register
       tags:
-        - Авторизация
+        - Auth
       summary: Зарегистрироваться по email и паролю
       description: Создаёт student и сразу возвращает сессию. admin создаётся или назначается вручную в базе. Регистрация,
         вход и обмен токенами в v0 доступны по HTTPS с доверенным сертификатом, включая IP-адреса корпоративной
@@ -68,7 +67,7 @@ paths:
     post:
       operationId: login
       tags:
-        - Авторизация
+        - Auth
       summary: Войти по email и паролю
       description: Создаёт новую независимую сессию. Для неизвестного email и неверного пароля возвращается одинаковый
         INVALID_CREDENTIALS. Роль определяется из текущей записи пользователя. Устанавливает access- и refresh-cookies;
@@ -115,7 +114,7 @@ paths:
     post:
       operationId: refreshTokens
       tags:
-        - Авторизация
+        - Auth
       summary: Обновить токены текущей сессии
       description: Без тела запроса. Refresh-токен поступает в HttpOnly cookie refresh_token. Успешное обновление
         атомарно заменяет его и устанавливает новый access-токен двумя Set-Cookie. JSON содержит только сроки. Исходный
@@ -176,7 +175,7 @@ paths:
     post:
       operationId: logout
       tags:
-        - Авторизация
+        - Auth
       summary: Завершить текущую сессию
       description: Без тела запроса. Отзывает сессию по refresh-cookie, включая все её access- и refresh-токены,
         и удаляет обе cookies через Set-Cookie с Max-Age=0 и исходными Path. Другие сессии сохраняются. Если refresh-cookie
@@ -210,7 +209,7 @@ paths:
     get:
       operationId: getCurrentUser
       tags:
-        - Авторизация
+        - Auth
       summary: Получить текущего пользователя
       description: Возвращает актуальные данные и роль из базы. Изменение роли через SQL применяется при следующем
         запросе, без нового входа. Пароль и refresh-токен не возвращаются.
@@ -340,7 +339,7 @@ paths:
     get:
       operationId: listPublishedCourses
       tags:
-        - Каталог
+        - Учебная база
       summary: Список опубликованных курсов
       responses:
         '200':
@@ -361,7 +360,7 @@ paths:
     get:
       operationId: getPublishedCourse
       tags:
-        - Каталог
+        - Учебная база
       summary: Опубликованный курс и составляющие РПД
       responses:
         '200':
@@ -378,7 +377,7 @@ paths:
     get:
       operationId: listManagedCourses
       tags:
-        - Преподаватель
+        - Учебная база
       summary: Все курсы, доступные admin (преподавателю)
       responses:
         '200':
@@ -395,7 +394,7 @@ paths:
     post:
       operationId: createCourse
       tags:
-        - Преподаватель
+        - Учебная база
       summary: Создать черновик курса
       requestBody:
         required: true
@@ -429,7 +428,7 @@ paths:
     get:
       operationId: getCourseDraft
       tags:
-        - Преподаватель
+        - Учебная база
       summary: Черновик курса со всеми записями для формы
       description: Требуется роль admin (преподаватель); доступ распространяется на все курсы. Составляющие, ОР
         и задания представлены плоскими массивами; дерево строится по parent_outcome_id.
@@ -449,7 +448,7 @@ paths:
     patch:
       operationId: updateCourse
       tags:
-        - Преподаватель
+        - Учебная база
       summary: Изменить сведения о курсе
       requestBody:
         required: true
@@ -485,7 +484,7 @@ paths:
     post:
       operationId: publishCourse
       tags:
-        - Преподаватель
+        - Учебная база
       summary: Проверить и опубликовать черновик курса
       description: Требуется admin. Проверяет составляющие РПД, дерево ОР, разметку заданий, положительный max_score
         и рубрики. ОР и тема — одна сущность. Каждый main содержит ровно два разных basic_outcome_ids, принадлежащих
@@ -518,7 +517,7 @@ paths:
     post:
       operationId: createConstituent
       tags:
-        - Преподаватель
+        - Учебная база
       summary: Добавить составляющую РПД
       requestBody:
         required: true
@@ -554,7 +553,7 @@ paths:
     patch:
       operationId: updateConstituent
       tags:
-        - Преподаватель
+        - Учебная база
       summary: Изменить составляющую РПД
       requestBody:
         required: true
@@ -583,7 +582,7 @@ paths:
     delete:
       operationId: deleteConstituent
       tags:
-        - Преподаватель
+        - Учебная база
       summary: Удалить составляющую из черновика
       description: Требуется роль admin (преподаватель); доступ распространяется на все курсы. Удаление разрешено
         только после удаления всех ОР составляющей. Опубликованные снимки и результаты студентов сохраняются.
@@ -610,7 +609,7 @@ paths:
     post:
       operationId: createOutcome
       tags:
-        - Преподаватель
+        - Учебная база
       summary: Добавить ОР в дерево составляющей
       requestBody:
         required: true
@@ -646,7 +645,7 @@ paths:
     patch:
       operationId: updateOutcome
       tags:
-        - Преподаватель
+        - Учебная база
       summary: Изменить ОР и его место в дереве
       requestBody:
         required: true
@@ -677,7 +676,7 @@ paths:
     delete:
       operationId: deleteOutcome
       tags:
-        - Преподаватель
+        - Учебная база
       summary: Удалить ОР из черновика
       description: Требуется роль admin (преподаватель); доступ распространяется на все курсы. ОР с дочерними ОР
         или заданиями удалить нельзя. Опубликованные версии и результаты студентов сохраняются.
@@ -704,7 +703,7 @@ paths:
     post:
       operationId: createTask
       tags:
-        - Преподаватель
+        - Учебная база
       summary: Добавить готовое задание и критерии
       requestBody:
         required: true
@@ -740,7 +739,7 @@ paths:
     patch:
       operationId: updateTask
       tags:
-        - Преподаватель
+        - Учебная база
       summary: Изменить задание или критерии
       requestBody:
         required: true
@@ -771,7 +770,7 @@ paths:
     delete:
       operationId: deleteTask
       tags:
-        - Преподаватель
+        - Учебная база
       summary: Удалить задание из черновика
       responses:
         '204':
@@ -795,7 +794,7 @@ paths:
     get:
       operationId: listCourseOutcomes
       tags:
-        - Каталог
+        - Учебная база
       summary: Образовательные результаты (темы) опубликованного курса
       description: Возвращает ОР курса с составляющими и связями дерева. Для диагностики выбираются ОР с diagnostic_eligible=true.
         Критерии и эталонные ответы не раскрываются.
@@ -820,7 +819,7 @@ paths:
     get:
       operationId: listOutcomeTasks
       tags:
-        - Каталог
+        - Учебная база
       summary: Готовые основные задания выбранного ОР (темы)
       description: Возвращает usage=main задания, принадлежащие выбранному ОР. У одного ОР может быть несколько
         заданий. Критерии и эталонный ответ студенту не раскрываются.
@@ -845,7 +844,7 @@ paths:
     post:
       operationId: evaluateSingleAnswer
       tags:
-        - Ответы
+        - Грейдинг и фидбэк
       summary: Оценить один голосовой ответ вне сессии
       description: Сохранённая расшифровка должна принадлежать студенту и ещё не быть использована для другого ответа;
         чужая или неизвестная — 404, уже использованная — 409. Проверка использует зафиксированную опубликованную
@@ -887,7 +886,7 @@ paths:
     get:
       operationId: getAnswer
       tags:
-        - Ответы
+        - Грейдинг и фидбэк
       summary: Получить текст, балл и объяснение оценки ответа
       description: ''
       responses:
@@ -911,7 +910,7 @@ paths:
     post:
       operationId: uploadMaterial
       tags:
-        - Преподаватель
+        - Учебная база
       summary: Загрузить РПД, карту компетенций или учебный материал
       description: Требуется admin (преподаватель). Файл сохраняется и индексируется для поиска фрагментов. Поддерживаются
         PDF, DOCX, TXT, CSV и XLSX; до 25 МиБ. Не заменяет поштучный ввод заданий и рубрик через форму.
@@ -965,7 +964,7 @@ paths:
     get:
       operationId: getMaterial
       tags:
-        - Преподаватель
+        - Учебная база
       summary: Проверить сохранение и индексирование материала
       description: 'Требуется admin (преподаватель). '
       responses:
@@ -984,7 +983,7 @@ paths:
     delete:
       operationId: deleteMaterial
       tags:
-        - Преподаватель
+        - Учебная база
       summary: Удалить материал из черновика
       description: 'Требуется admin (преподаватель). '
       responses:

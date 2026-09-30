@@ -3,8 +3,8 @@ openapi: 3.1.0
 info:
   title: Голосовой тренажёр — HTTP API
   version: 0.1.0
-  description: Проект контракта v0. Диагностика покрывает все компоненты РПД одним заданием на компоненту. По вердикту
-    LLM назначается тренировка из двух заданий на проблемную компоненту. Преподаватель редактирует записи через
+  description: Проект контракта v0. Диагностика покрывает все составляющие РПД одним заданием на составляющую. По вердикту
+    LLM назначается тренировка из двух заданий на проблемную составляющую. Преподаватель редактирует записи через
     форму и публикует неизменяемую версию курса. Все даты — RFC 3339 в UTC. Все коллекции v0 возвращаются полностью;
     при росте объёма потребуется отдельное решение о пагинации. Bearer-токен выдаётся системой авторизации вне этого
     контракта; backend определяет студента и права преподавателя из токена.
@@ -46,7 +46,7 @@ paths:
       operationId: getPublishedCourse
       tags:
         - Каталог
-      summary: Опубликованный курс и компоненты РПД
+      summary: Опубликованный курс и составляющие РПД
       responses:
         '200':
           description: Успешный ответ
@@ -78,7 +78,7 @@ paths:
       tags:
         - Диагностика
       summary: Начать диагностику курса
-      description: Выбирает один случайный диагностический ОР на каждую компоненту РПД, затем одно случайное диагностическое
+      description: Выбирает один случайный диагностический ОР на каждую составляющую РПД, затем одно случайное диагностическое
         задание этого ОР. Используется последняя опубликованная версия курса. Выбор равновероятный сначала среди
         подходящих ОР, затем среди заданий выбранного ОР. Повторный POST создаёт новую диагностику.
       requestBody:
@@ -152,7 +152,7 @@ paths:
       tags:
         - Тренировка
       summary: Задания, состояние и итог тренировки
-      description: 'Создаётся системой после диагностики: два разных задания на каждую проблемную компоненту из
+      description: 'Создаётся системой после диагностики: два разных задания на каждую проблемную составляющую из
         непосредственных дочерних ОР диагностического ОР. После проверки всех ответов возвращается итоговый фидбек.
         Новая тренировка и повторная диагностика автоматически не назначаются.'
       responses:
@@ -292,7 +292,7 @@ paths:
       tags:
         - Преподаватель
       summary: Черновик курса со всеми записями для формы
-      description: Компоненты, ОР и задания представлены плоскими массивами; дерево строится по parent_outcome_id.
+      description: Составляющие, ОР и задания представлены плоскими массивами; дерево строится по parent_outcome_id.
       responses:
         '200':
           description: Успешный ответ
@@ -344,8 +344,8 @@ paths:
       tags:
         - Преподаватель
       summary: Проверить и опубликовать черновик курса
-      description: Проверяет непустой набор компонент, корректность дерева внутри компоненты, наличие хотя бы одного
-        диагностического ОР с заданием на компоненту и не менее двух разных тренировочных заданий в непосредственных
+      description: Проверяет непустой набор составляющих, корректность дерева внутри составляющей, наличие хотя бы одного
+        диагностического ОР с заданием на составляющую и не менее двух разных тренировочных заданий в непосредственных
         дочерних ОР каждого диагностического ОР. Каждое задание должно иметь критерии и правило вердикта. Публикация
         сохраняет неизменяемый снимок. Начатые прохождения остаются на прежней версии. Повторная публикация без
         изменений возвращает текущую опубликованную версию.
@@ -364,7 +364,7 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
-  /v1/admin/courses/{courseId}/components:
+  /v1/admin/courses/{courseId}/constituents:
     parameters:
       - name: courseId
         in: path
@@ -372,23 +372,23 @@ paths:
         schema:
           $ref: '#/components/schemas/Id'
     post:
-      operationId: createComponent
+      operationId: createConstituent
       tags:
         - Преподаватель
-      summary: Добавить компоненту РПД
+      summary: Добавить составляющую РПД
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/ComponentInput'
+              $ref: '#/components/schemas/ConstituentInput'
       responses:
         '201':
           description: Успешный ответ
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Component'
+                $ref: '#/components/schemas/Constituent'
         '404':
           $ref: '#/components/responses/NotFound'
         '422':
@@ -397,31 +397,31 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
-  /v1/admin/components/{componentId}:
+  /v1/admin/constituents/{constituentId}:
     parameters:
-      - name: componentId
+      - name: constituentId
         in: path
         required: true
         schema:
           $ref: '#/components/schemas/Id'
     patch:
-      operationId: updateComponent
+      operationId: updateConstituent
       tags:
         - Преподаватель
-      summary: Изменить компоненту РПД
+      summary: Изменить составляющую РПД
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/ComponentPatch'
+              $ref: '#/components/schemas/ConstituentPatch'
       responses:
         '200':
           description: Успешный ответ
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Component'
+                $ref: '#/components/schemas/Constituent'
         '404':
           $ref: '#/components/responses/NotFound'
         '422':
@@ -431,11 +431,11 @@ paths:
         '403':
           $ref: '#/components/responses/Forbidden'
     delete:
-      operationId: deleteComponent
+      operationId: deleteConstituent
       tags:
         - Преподаватель
-      summary: Удалить компоненту из черновика
-      description: Удаление разрешено только после удаления всех ОР компоненты. Опубликованные снимки и результаты
+      summary: Удалить составляющую из черновика
+      description: Удаление разрешено только после удаления всех ОР составляющей. Опубликованные снимки и результаты
         студентов сохраняются.
       responses:
         '204':
@@ -448,9 +448,9 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
-  /v1/admin/components/{componentId}/outcomes:
+  /v1/admin/constituents/{constituentId}/outcomes:
     parameters:
-      - name: componentId
+      - name: constituentId
         in: path
         required: true
         schema:
@@ -459,7 +459,7 @@ paths:
       operationId: createOutcome
       tags:
         - Преподаватель
-      summary: Добавить ОР в дерево компоненты
+      summary: Добавить ОР в дерево составляющей
       requestBody:
         required: true
         content:
@@ -514,7 +514,7 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
-      description: parent_outcome_id=null делает ОР корневым. Родитель должен принадлежать той же компоненте. Циклы
+      description: parent_outcome_id=null делает ОР корневым. Родитель должен принадлежать той же составляющей. Циклы
         запрещены; ошибка связи возвращает 422.
     delete:
       operationId: deleteOutcome
@@ -654,7 +654,7 @@ components:
         description:
           type: string
       minProperties: 1
-    ComponentInput:
+    ConstituentInput:
       type: object
       additionalProperties: false
       properties:
@@ -668,7 +668,7 @@ components:
       required:
         - title
         - position
-    ComponentPatch:
+    ConstituentPatch:
       type: object
       additionalProperties: false
       properties:
@@ -680,7 +680,7 @@ components:
           type: integer
           minimum: 0
       minProperties: 1
-    Component:
+    Constituent:
       type: object
       additionalProperties: false
       properties:
@@ -746,7 +746,7 @@ components:
       properties:
         id:
           $ref: '#/components/schemas/Id'
-        component_id:
+        constituent_id:
           $ref: '#/components/schemas/Id'
         title:
           type: string
@@ -764,7 +764,7 @@ components:
           description: Включить ОР в случайный диагностический пул преподавателя.
       required:
         - id
-        - component_id
+        - constituent_id
         - title
         - parent_outcome_id
         - diagnostic_eligible
@@ -883,16 +883,16 @@ components:
         revision:
           type: integer
           minimum: 1
-        components:
+        constituents:
           type: array
           items:
-            $ref: '#/components/schemas/Component'
+            $ref: '#/components/schemas/Constituent'
           minItems: 1
       required:
         - id
         - title
         - revision
-        - components
+        - constituents
     ManagedCourse:
       type: object
       additionalProperties: false
@@ -946,10 +946,10 @@ components:
           minimum: 1
         has_unpublished_changes:
           type: boolean
-        components:
+        constituents:
           type: array
           items:
-            $ref: '#/components/schemas/Component'
+            $ref: '#/components/schemas/Constituent'
         outcomes:
           type: array
           items:
@@ -964,7 +964,7 @@ components:
         - draft_revision
         - published_revision
         - has_unpublished_changes
-        - components
+        - constituents
         - outcomes
         - tasks
     StartDiagnostic:
@@ -983,7 +983,7 @@ components:
       properties:
         id:
           $ref: '#/components/schemas/Id'
-        component_id:
+        constituent_id:
           $ref: '#/components/schemas/Id'
         outcome_id:
           $ref: '#/components/schemas/Id'
@@ -1004,7 +1004,7 @@ components:
             - processing_failed
       required:
         - id
-        - component_id
+        - constituent_id
         - outcome_id
         - task_id
         - prompt
@@ -1138,11 +1138,11 @@ components:
           submitted_at: '2026-09-30T10:00:00Z'
           evaluation: null
           failure: null
-    ComponentFeedback:
+    ConstituentFeedback:
       type: object
       additionalProperties: false
       properties:
-        component_id:
+        constituent_id:
           $ref: '#/components/schemas/Id'
         verdict:
           type: string
@@ -1153,7 +1153,7 @@ components:
           type: string
           minLength: 1
       required:
-        - component_id
+        - constituent_id
         - verdict
         - feedback
     Feedback:
@@ -1163,25 +1163,25 @@ components:
         summary:
           type: string
           minLength: 1
-        components:
+        constituents:
           type: array
           items:
-            $ref: '#/components/schemas/ComponentFeedback'
+            $ref: '#/components/schemas/ConstituentFeedback'
           minItems: 1
       required:
         - summary
-        - components
-    TrainingComponentFeedback:
+        - constituents
+    TrainingConstituentFeedback:
       type: object
       additionalProperties: false
       properties:
-        component_id:
+        constituent_id:
           $ref: '#/components/schemas/Id'
         feedback:
           type: string
           minLength: 1
       required:
-        - component_id
+        - constituent_id
         - feedback
     TrainingFeedback:
       type: object
@@ -1190,14 +1190,14 @@ components:
         summary:
           type: string
           minLength: 1
-        components:
+        constituents:
           type: array
           items:
-            $ref: '#/components/schemas/TrainingComponentFeedback'
+            $ref: '#/components/schemas/TrainingConstituentFeedback'
           minItems: 1
       required:
         - summary
-        - components
+        - constituents
     Diagnostic:
       type: object
       additionalProperties: false
@@ -1245,8 +1245,8 @@ components:
         - created_at
         - completed_at
         - training_id
-      description: Ровно одно задание на компоненту. feedback и completed_at заполнены только в completed. training_id
-        заполнен в completed при наличии проблемных компонент; иначе null. Тренировка закрепляется до завершения
+      description: Ровно одно задание на составляющую. feedback и completed_at заполнены только в completed. training_id
+        заполнен в completed при наличии проблемных составляющих; иначе null. Тренировка закрепляется до завершения
         диагностики, поэтому completed возвращает согласованный итог.
       allOf:
         - if:
@@ -1312,7 +1312,7 @@ components:
         - created_at
         - completed_at
         - diagnostic_id
-      description: Ровно два разных задания на каждую проблемную компоненту исходной диагностики. feedback и completed_at
+      description: Ровно два разных задания на каждую проблемную составляющую исходной диагностики. feedback и completed_at
         заполнены только в completed.
       allOf:
         - if:

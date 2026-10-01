@@ -1,68 +1,17 @@
 # ai-tutor
 
-Монорепозиторий сервисов для работы с речью.
+Голосовой AI-репетитор: диагностика и тренировка по готовым заданиям преподавателя.
 
-Согласованные сценарии диагностики и тренировки описаны в
-[`docs/voice-trainer-scenarios.md`](docs/voice-trainer-scenarios.md).
-HTTP-контракты для каждого этапа разработки находятся в
-[`api/README.md`](api/README.md). Каждый этап содержит самостоятельный накопительный
-`openapi.yaml`. Они описывают планируемый API; сервисы моделей
-ниже предоставляют свои отдельные ручки.
-Регистрация, вход, сессии и права описаны в [`docs/auth.md`](docs/auth.md).
+## Документация
 
-## GigaAM
+- [HTTP API по этапам разработки](api/README.md).
+- [Диагностика и тренировка](documents/voice-trainer-scenarios.md).
+- [Авторизация, сессии и права](documents/auth.md).
+- [Методика разработки заданий и оценивания](documents/AIAssistantGrading.md).
+- [Учебные термины](CONTEXT.md).
 
-Исходный код модели, HTTP API, Dockerfile и `uv.lock` находятся в
-[`gigaam`](gigaam/README_ru.md). Все команды `uv` для GigaAM
-запускайте из этого каталога.
+Контракты OpenAPI описывают планируемую систему; реализация общего API пока отсутствует.
 
-Запуск HTTP API из корня монорепозитория:
-
-```bash
-docker compose up -d --build gigaam
-```
-
-Проверка: `curl http://localhost:8000/health`.
-
-По умолчанию выбран `v3_e2e_rnnt`: он возвращает текст с пунктуацией и
-нормализацией, что удобно для диалога с учеником. Если важнее минимальная
-ошибка распознавания без оформления текста, в [оценке авторов](gigaam/evaluation.md)
-`v3_rnnt` показывает средний WER 8,3% против 11,2% у `v3_e2e_rnnt`.
-Модель меняется через `MODEL_NAME` в Compose. Исходный код GigaAM взят из
-[официального репозитория](https://github.com/salute-developers/GigaAM), коммит
-`7447938d791c4f3e643386ee22c33777004293a5`.
-
-## VoxCPM2
-
-Официальный исходный код [OpenBMB/VoxCPM](https://github.com/OpenBMB/VoxCPM)
-с HTTP API находится в [`voxcpm2`](voxcpm2/API.md). Используется исходный
-коммит `f772e498a45fbb5fb8e13fbf9b9c48be9fe33e69`.
-
-```bash
-docker compose up -d --build voxcpm2
-curl http://localhost:8001/health
-curl -X POST http://localhost:8001/synthesize \
-  -H 'Content-Type: application/json' \
-  -d '{"text":"Привет, мир!"}' --output speech.wav
-```
-
-Первый запрос скачает веса модели в Docker volume. В Docker Desktop на macOS
-сервис работает на CPU; синтез может быть медленным.
-
-`VoxCPM2` — актуальная модель в линейке VoxCPM с поддержкой русского языка.
-Она выбрана ради качества и возможностей синтеза, а не скорости CPU-инференса.
-
-## Запуск на сервере с NVIDIA GPU
-
-На Linux x86_64 образы устанавливают PyTorch с CUDA 12.8. Для передачи GPU
-обоим контейнерам нужны драйвер NVIDIA и NVIDIA Container Toolkit на сервере.
-Запуск из корня монорепозитория:
-
-```bash
-docker compose -f docker-compose.yaml -f docker-compose.gpu.yaml up -d --build
-docker compose -f docker-compose.yaml -f docker-compose.gpu.yaml ps
-```
-
-GPU-файл включает `DEVICE=cuda` и доступ к видеокартам для обоих сервисов.
-Порты 8000 и 8001 опубликованы на всех сетевых интерфейсах сервера. На macOS
-обычный `docker compose up -d --build` сохраняет CPU-режим.
+HTTP-обёртки распознавания и синтеза речи выделены в отдельный репозиторий
+[tts-stt](https://github.com/AskarKasimov/tts-stt), локально — `../tts-stt`.
+Модели разворачивает отдельная команда на выделенном сервере.

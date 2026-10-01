@@ -4,13 +4,15 @@ info:
   version: 0.1.0
   description: Самостоятельный накопительный контракт этапа до 2026-10-01. Все даты — Unix timestamp в секундах.
     HTTPS, HttpOnly Secure cookies и проверка Origin. Учебные данные и роли задаются преподавателем/admin; самостоятельная
-    регистрация создаёт student.
+    регистрация создаёт student. Учебная база v0 загружается только одним CSV-файлом карты компетенций; построчного
+    CRUD и извлечения данных с помощью LLM нет.
 servers:
   - url: /
     description: Текущий сервер
 security:
   - accessCookie: []
 tags:
+  - name: Учебная база
   - name: Голос
   - name: Auth
 paths:
@@ -226,6 +228,78 @@ paths:
                 const: no-store
         '401':
           $ref: '#/components/responses/Unauthorized'
+  /v1/admin/competency-map/import:
+    post:
+      operationId: importCompetencyMap
+      tags:
+        - Учебная база
+      summary: Заменить учебную базу картой компетенций из CSV
+      description: >-
+        Требуется роль admin. Принимает ровно один CSV-файл с картой компетенций, ОР, заданиями и критериями.
+        Сервер разбирает файл детерминированно, без LLM. Это экспорт таблицы, а не нормализованный обменный
+        формат: пустые ячейки объединённых в исходной таблице полей Ком, Сост и ОР наследуют последнее непустое
+        значение выше в своей колонке. Задания задаются справа парами колонок Задание N и Критерии N; одна строка
+        может содержать несколько таких пар для одного ОР. Критерии — непрозрачный текстовый промпт: API любой
+        версии не разбирает и не интерпретирует его, а при оценивании передаёт LLM как есть. При любой ошибке новая
+        карта не сохраняется, а действующая база остаётся без изменений.
+        Успех атомарно заменяет всю учебную базу. В v0 нет ручек просмотра, добавления, изменения или удаления
+        отдельных сущностей.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: >-
+                    CSV до 25 МиБ, экспортированный из Excel или Google Sheets: UTF-8 (BOM допускается), корректное
+                    экранирование полей двойными кавычками и запятая или точка с запятой как разделитель. Первая
+                    непустая строка должна быть строкой
+                    заголовков и содержать точные названия Ком, Сост и ОР. После неё допускается ровно одна
+                    служебная строка с пояснениями. Набор колонок слева от заданий может включать Тем N, Что должно
+                    войти в тест, Уровень ОР, Таксономия, Важность темы и Важность. Каждой непустой колонке
+                    Задание N должна соответствовать колонка Критерии N с тем же целым N; пары располагаются справа
+                    от карты в любом количестве. Полностью пустые пары игнорируются. Текст критериев не является
+                    JSON и сохраняется целиком, включая переводы строк.
+              required:
+                - file
+            encoding:
+              file:
+                contentType: text/csv
+      responses:
+        '200':
+          description: Учебная база целиком заменена разобранной версией CSV.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CompetencyMapImport'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          description: 'UNSUPPORTED_MEDIA_TYPE: поле file должно содержать CSV.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: >-
+            CSV_INVALID: недопустимы кодировка, CSV-структура, строка заголовков, служебные строки, колонка
+            Задание N без Критерии N (или наоборот), пустые обязательные поля либо значения, которые нельзя
+            унаследовать из строки выше. details содержит номер строки (path=row:<номер>) и имя колонки.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      parameters:
+        - $ref: '#/components/parameters/TrustedOrigin'
   /v1/voice/transcriptions:
     post:
       operationId: transcribeVoice
@@ -547,7 +621,55 @@ components:
         - id: transcription_1
           text: Дробь обозначает часть целого.
           created_at: 1790762403
+    CompetencyMapImport:
+      type: object
+      additionalProperties: false
+      properties:
+        revision:
+          type: integer
+          minimum: 1
+          description: Последовательный номер целиком заменённой версии учебной базы.
+        imported_at:
+          $ref: '#/components/schemas/Timestamp'
+        competency_count:
+          type: integer
+          minimum: 1
+        constituent_count:
+          type: integer
+          minimum: 1
+        outcome_count:
+          type: integer
+          minimum: 1
+        task_count:
+          type: integer
+          minimum: 1
+      required:
+        - revision
+        - imported_at
+        - competency_count
+        - constituent_count
+        - outcome_count
+        - task_count
+      description: >-
+        Итог импорта. Импортёр наследует значения Ком, Сост и ОР вниз по колонке, чтобы корректно обработать
+        пустые ячейки, появившиеся при выгрузке объединённых ячеек из Excel или Google Sheets. Каждая заполненная
+        пара Задание N и Критерии N создаёт одно задание привязанного ОР. Критерии N — одно непустое непрозрачное
+        текстовое поле: его содержание не разбирается, а при оценивании передаётся LLM как есть. Другие колонки карты
+        сохраняются как атрибуты компетенции, составляющей, ОР или темы согласно их заголовку.
+      examples:
+        - revision: 1
+          imported_at: 1790762400
+          competency_count: 1
+          constituent_count: 1
+          outcome_count: 6
+          task_count: 18
   responses:
+    Forbidden:
+      description: 'FORBIDDEN: операция доступна только пользователю с ролью admin.'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
     Unauthorized:
       description: 'UNAUTHORIZED: access-токен отсутствует, недействителен, истёк или относится к отозванной сессии.'
       content:

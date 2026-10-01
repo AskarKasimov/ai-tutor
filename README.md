@@ -74,9 +74,7 @@ tutor.example.com {
     @api path /api/v1 /api/v1/*
     handle @api {
         uri strip_prefix /api/v1
-        reverse_proxy api:8002 {
-            header_down Set-Cookie "Path=/auth" "Path=/api/v1/auth"
-        }
+        reverse_proxy api:8002
     }
     handle {
         reverse_proxy frontend:80

@@ -3,7 +3,7 @@
 Контракты запросов и ответов находятся в [API по этапам](../api/README.md). Авторизация включена в каждый контракт, начиная с этапа «Основа системы и голос». В v0 пользователь самостоятельно регистрируется по email и паролю, получает роль `student` и сразу входит в систему. Преподаватель имеет роль `admin`. Админов создают или назначают вручную через SQL; публичная регистрация не принимает поле `role`.
 
 Публичный префикс `/api/v1` задаёт Caddy: backend обрабатывает пути от `/`.
-Path refresh-cookie внутри backend — `/auth`; proxy переписывает его на `/api/v1/auth`.
+Обе cookies устанавливаются и удаляются с `Path=/`.
 
 ## Ручки
 
@@ -24,13 +24,13 @@ Access- и refresh-токены — непрозрачные строки в `Ht
 | Cookie | Атрибуты |
 | --- | --- |
 | `access_token` | `Path=/; Secure; HttpOnly; SameSite=Lax`, без `Domain`. |
-| `refresh_token` | `Path=/api/v1/auth; Secure; HttpOnly; SameSite=Lax`, без `Domain`. |
+| `refresh_token` | `Path=/; Secure; HttpOnly; SameSite=Lax`, без `Domain`. |
 
 `Max-Age` каждой cookie равен оставшемуся сроку соответствующего токена в секундах. Для первой сессии пример ответа содержит два отдельных заголовка:
 
 ```http
 Set-Cookie: access_token=<token>; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=900
-Set-Cookie: refresh_token=<token>; Path=/api/v1/auth; Secure; HttpOnly; SameSite=Lax; Max-Age=2592000
+Set-Cookie: refresh_token=<token>; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=2592000
 ```
 
 На последующих обновлениях остаток 30 суток уменьшается. Заголовки `Set-Cookie` не объединяются через запятую. Обе cookies имеют атрибут `Secure`.

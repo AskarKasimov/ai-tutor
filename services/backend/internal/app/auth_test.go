@@ -135,7 +135,7 @@ func TestAuthRegistrationCookiesNormalizationAndPersistence(t *testing.T) {
 			t.Fatalf("unsafe cookie: %s", c)
 		}
 	}
-	if access.Path != "/" || access.MaxAge != 900 || refresh.Path != "/auth" || refresh.MaxAge != 2592000 {
+	if access.Path != "/" || access.MaxAge != 900 || refresh.Path != "/" || refresh.MaxAge != 2592000 {
 		t.Fatal("wrong expiry/path")
 	}
 	w := f.request("GET", "/auth/me", "", access)

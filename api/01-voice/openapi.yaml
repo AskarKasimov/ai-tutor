@@ -48,7 +48,7 @@ paths:
             Set-Cookie:
               description: 'Два отдельных заголовка Set-Cookie, по одному на cookie; не объединять через запятую.
                 access_token: Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=<остаток срока токена в секундах>.
-                refresh_token: Path=/api/v1/auth; Secure; HttpOnly; SameSite=Lax; Max-Age=<остаток срока токена в секундах>.
+                refresh_token: Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=<остаток срока токена в секундах>.
                 Domain отсутствует. Значения непрозрачные; токены в JSON не передаются.'
               schema:
                 type: string
@@ -97,7 +97,7 @@ paths:
             Set-Cookie:
               description: 'Два отдельных заголовка Set-Cookie, по одному на cookie; не объединять через запятую.
                 access_token: Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=<остаток срока токена в секундах>.
-                refresh_token: Path=/api/v1/auth; Secure; HttpOnly; SameSite=Lax; Max-Age=<остаток срока токена в секундах>.
+                refresh_token: Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=<остаток срока токена в секундах>.
                 Domain отсутствует. Значения непрозрачные; токены в JSON не передаются.'
               schema:
                 type: string
@@ -138,7 +138,7 @@ paths:
             Set-Cookie:
               description: 'Два отдельных заголовка Set-Cookie, по одному на cookie; не объединять через запятую.
                 access_token: Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=<остаток срока токена в секундах>.
-                refresh_token: Path=/api/v1/auth; Secure; HttpOnly; SameSite=Lax; Max-Age=<остаток срока токена в секундах>.
+                refresh_token: Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=<остаток срока токена в секундах>.
                 Domain отсутствует. Значения непрозрачные; токены в JSON не передаются.'
               schema:
                 type: string
@@ -158,7 +158,7 @@ paths:
                 const: no-store
             Set-Cookie:
               description: 'Два отдельных заголовка Set-Cookie, по одному на cookie; не объединять через запятую.
-                access_token: Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=0. refresh_token: Path=/api/v1/auth; Secure;
+                access_token: Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=0. refresh_token: Path=/; Secure;
                 HttpOnly; SameSite=Lax; Max-Age=0. Domain отсутствует. Значения пустые; обе cookies удаляются.'
               schema:
                 type: string
@@ -187,7 +187,7 @@ paths:
                 const: no-store
             Set-Cookie:
               description: 'Два отдельных заголовка Set-Cookie, по одному на cookie; не объединять через запятую.
-                access_token: Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=0. refresh_token: Path=/api/v1/auth; Secure;
+                access_token: Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=0. refresh_token: Path=/; Secure;
                 HttpOnly; SameSite=Lax; Max-Age=0. Domain отсутствует. Значения пустые; обе cookies удаляются.'
               schema:
                 type: string
@@ -400,7 +400,7 @@ components:
       type: apiKey
       in: cookie
       name: refresh_token
-      description: HttpOnly; Secure; SameSite=Lax; Path=/api/v1/auth; без Domain. Одноразовый refresh-токен; заменяется
+      description: HttpOnly; Secure; SameSite=Lax; Path=/; без Domain. Одноразовый refresh-токен; заменяется
         через Set-Cookie.
   schemas:
     Id:

@@ -1,6 +1,26 @@
 :443 {
 	tls /certs/server.pem /certs/server-key.pem
 
+	@docs path /docs /docs/*
+	handle @docs {
+		@swagger_enabled expression {env.COMPOSE_PROFILES}.matches('(^|,)swagger(,|$)')
+		handle @swagger_enabled {
+			route {
+				@schema path /docs/backend.api.yaml
+				handle @schema {
+					rewrite * /backend.api.yaml
+					root * /openapi
+					header Cache-Control "no-store"
+					file_server
+				}
+				redir /docs /docs/ 308
+				uri strip_prefix /docs
+				reverse_proxy swagger:8080
+			}
+		}
+		respond 404
+	}
+
 	@api path /api/v1 /api/v1/*
 	handle @api {
 		@vscode_origin header_regexp Origin ^(vscode-webview://[a-zA-Z0-9-]+|https://[a-zA-Z0-9-]+\.vscode-cdn\.net)$

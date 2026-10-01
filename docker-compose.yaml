@@ -47,12 +47,24 @@ services:
       retries: 6
     restart: unless-stopped
 
+  swagger:
+    image: swaggerapi/swagger-ui:v5.32.0
+    profiles: [swagger]
+    environment:
+      URL: /docs/backend.api.yaml
+      VALIDATOR_URL: none
+      WITH_CREDENTIALS: "true"
+    restart: unless-stopped
+
   proxy:
     image: caddy:2-alpine
+    environment:
+      COMPOSE_PROFILES: ${COMPOSE_PROFILES:-}
     ports:
       - "${HTTPS_BIND:-127.0.0.1}:${HTTPS_PORT:-8443}:443"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./services/backend:/openapi:ro
       - ./certs:/certs:ro
       - caddy_data:/data
       - caddy_config:/config

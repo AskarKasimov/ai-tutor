@@ -72,6 +72,32 @@ CA Caddy больше не требуется. После первой уста�
 docker compose exec proxy caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile
 ```
 
+## Swagger UI для разработки
+
+Добавьте в `.env`:
+
+```dotenv
+COMPOSE_PROFILES=swagger
+```
+
+Затем выполните `docker compose up -d swagger proxy`. Swagger UI откроется на
+`https://localhost:8443/docs/` (или вашем `HTTPS_PORT`). Это отдельный контейнер;
+backend не раздаёт документацию. Такой способ включения использует
+[профили Docker Compose](https://docs.docker.com/compose/how-tos/profiles/).
+
+Выполните `POST /auth/login` через **Try it out**, затем защищённые запросы:
+браузер автоматически сохраняет и отправляет сессионные cookies. **Authorize**
+для этого не нужен. UI и API используют один HTTPS-адрес; настройки cookies
+остаются прежними.
+
+UI читает актуальный `services/backend/backend.api.yaml`: после генерации
+обновите страницу, перезапуск контейнеров не требуется.
+
+По умолчанию профиль выключен: Swagger не запускается, `/docs` и `/docs/*`
+возвращают 404. В production не задавайте `COMPOSE_PROFILES=swagger`.
+Чтобы выключить UI локально, удалите эту строку из `.env`, выполните
+`docker compose up -d proxy`, затем `docker compose stop swagger`.
+
 ## HTTPS в production
 
 Локальный Caddyfile загружает сертификаты mkcert из `certs/`. Для публичного домена

@@ -17,7 +17,7 @@ func TestMiddlewareDoesNotInterpretOrigin(t *testing.T) {
 					called = true
 					w.WriteHeader(http.StatusNoContent)
 				})
-				req := httptest.NewRequest(method, "/v1/auth/logout", nil)
+				req := httptest.NewRequest(method, "/auth/logout", nil)
 				if source != "" {
 					req.Header.Set("Origin", source)
 				}

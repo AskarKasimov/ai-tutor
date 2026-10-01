@@ -148,7 +148,7 @@ func (h *Handler) Me(w http.ResponseWriter, r *http.Request) {
 	httpx.JSON(w, 200, userDTO(u))
 }
 func setCookies(w http.ResponseWriter, t session.Tokens, now int64) {
-	for _, c := range []*http.Cookie{{Name: "access_token", Value: t.Access, Path: "/", MaxAge: int(t.Expiry.AccessExpiresAt - now)}, {Name: "refresh_token", Value: t.Refresh, Path: "/v1/auth", MaxAge: int(t.Expiry.RefreshExpiresAt - now)}} {
+	for _, c := range []*http.Cookie{{Name: "access_token", Value: t.Access, Path: "/", MaxAge: int(t.Expiry.AccessExpiresAt - now)}, {Name: "refresh_token", Value: t.Refresh, Path: "/auth", MaxAge: int(t.Expiry.RefreshExpiresAt - now)}} {
 		c.Secure = true
 		c.HttpOnly = true
 		c.SameSite = http.SameSiteLaxMode
@@ -156,7 +156,7 @@ func setCookies(w http.ResponseWriter, t session.Tokens, now int64) {
 	}
 }
 func clearCookies(w http.ResponseWriter) {
-	for _, c := range []*http.Cookie{{Name: "access_token", Path: "/", MaxAge: -1}, {Name: "refresh_token", Path: "/v1/auth", MaxAge: -1}} {
+	for _, c := range []*http.Cookie{{Name: "access_token", Path: "/", MaxAge: -1}, {Name: "refresh_token", Path: "/auth", MaxAge: -1}} {
 		c.Secure = true
 		c.HttpOnly = true
 		c.SameSite = http.SameSiteLaxMode

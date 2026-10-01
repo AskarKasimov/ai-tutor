@@ -7,8 +7,8 @@ info:
     регистрация создаёт student. Учебная база v0 загружается только одним CSV-файлом карты компетенций; построчного
     CRUD и извлечения данных с помощью LLM нет.
 servers:
-  - url: /
-    description: Текущий сервер
+  - url: /api/v1
+    description: Публичный API через HTTPS reverse proxy
 security:
   - accessCookie: []
 tags:
@@ -16,7 +16,7 @@ tags:
   - name: Голос
   - name: Auth
 paths:
-  /v1/auth/register:
+  /auth/register:
     post:
       operationId: register
       tags:
@@ -48,7 +48,7 @@ paths:
             Set-Cookie:
               description: 'Два отдельных заголовка Set-Cookie, по одному на cookie; не объединять через запятую.
                 access_token: Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=<остаток срока токена в секундах>.
-                refresh_token: Path=/v1/auth; Secure; HttpOnly; SameSite=Lax; Max-Age=<остаток срока токена в секундах>.
+                refresh_token: Path=/api/v1/auth; Secure; HttpOnly; SameSite=Lax; Max-Age=<остаток срока токена в секундах>.
                 Domain отсутствует. Значения непрозрачные; токены в JSON не передаются.'
               schema:
                 type: string
@@ -65,7 +65,7 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-  /v1/auth/login:
+  /auth/login:
     post:
       operationId: login
       tags:
@@ -97,7 +97,7 @@ paths:
             Set-Cookie:
               description: 'Два отдельных заголовка Set-Cookie, по одному на cookie; не объединять через запятую.
                 access_token: Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=<остаток срока токена в секундах>.
-                refresh_token: Path=/v1/auth; Secure; HttpOnly; SameSite=Lax; Max-Age=<остаток срока токена в секундах>.
+                refresh_token: Path=/api/v1/auth; Secure; HttpOnly; SameSite=Lax; Max-Age=<остаток срока токена в секундах>.
                 Domain отсутствует. Значения непрозрачные; токены в JSON не передаются.'
               schema:
                 type: string
@@ -108,7 +108,7 @@ paths:
           $ref: '#/components/responses/AuthValidationError'
         '429':
           $ref: '#/components/responses/TooManyRequests'
-  /v1/auth/refresh:
+  /auth/refresh:
     post:
       operationId: refreshTokens
       tags:
@@ -138,7 +138,7 @@ paths:
             Set-Cookie:
               description: 'Два отдельных заголовка Set-Cookie, по одному на cookie; не объединять через запятую.
                 access_token: Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=<остаток срока токена в секундах>.
-                refresh_token: Path=/v1/auth; Secure; HttpOnly; SameSite=Lax; Max-Age=<остаток срока токена в секундах>.
+                refresh_token: Path=/api/v1/auth; Secure; HttpOnly; SameSite=Lax; Max-Age=<остаток срока токена в секундах>.
                 Domain отсутствует. Значения непрозрачные; токены в JSON не передаются.'
               schema:
                 type: string
@@ -158,14 +158,14 @@ paths:
                 const: no-store
             Set-Cookie:
               description: 'Два отдельных заголовка Set-Cookie, по одному на cookie; не объединять через запятую.
-                access_token: Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=0. refresh_token: Path=/v1/auth; Secure;
+                access_token: Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=0. refresh_token: Path=/api/v1/auth; Secure;
                 HttpOnly; SameSite=Lax; Max-Age=0. Domain отсутствует. Значения пустые; обе cookies удаляются.'
               schema:
                 type: string
               example: access_token=; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=0
         '429':
           $ref: '#/components/responses/TooManyRequests'
-  /v1/auth/logout:
+  /auth/logout:
     post:
       operationId: logout
       tags:
@@ -187,7 +187,7 @@ paths:
                 const: no-store
             Set-Cookie:
               description: 'Два отдельных заголовка Set-Cookie, по одному на cookie; не объединять через запятую.
-                access_token: Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=0. refresh_token: Path=/v1/auth; Secure;
+                access_token: Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=0. refresh_token: Path=/api/v1/auth; Secure;
                 HttpOnly; SameSite=Lax; Max-Age=0. Domain отсутствует. Значения пустые; обе cookies удаляются.'
               schema:
                 type: string
@@ -196,7 +196,7 @@ paths:
           $ref: '#/components/responses/TooManyRequests'
       parameters:
         - $ref: '#/components/parameters/OptionalRefreshCookie'
-  /v1/auth/me:
+  /auth/me:
     get:
       operationId: getCurrentUser
       tags:
@@ -219,7 +219,7 @@ paths:
                 const: no-store
         '401':
           $ref: '#/components/responses/Unauthorized'
-  /v1/admin/competency-map/import:
+  /admin/competency-map/import:
     post:
       operationId: importCompetencyMap
       tags:
@@ -289,7 +289,7 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-  /v1/voice/transcriptions:
+  /voice/transcriptions:
     post:
       operationId: transcribeVoice
       tags:
@@ -347,7 +347,7 @@ paths:
                   description: WAV, Ogg/Opus или WebM/Opus, до 25 МиБ.
               required:
                 - audio
-  /v1/voice/syntheses:
+  /voice/syntheses:
     post:
       operationId: synthesizeQuestion
       tags:
@@ -400,7 +400,7 @@ components:
       type: apiKey
       in: cookie
       name: refresh_token
-      description: HttpOnly; Secure; SameSite=Lax; Path=/v1/auth; без Domain. Одноразовый refresh-токен; заменяется
+      description: HttpOnly; Secure; SameSite=Lax; Path=/api/v1/auth; без Domain. Одноразовый refresh-токен; заменяется
         через Set-Cookie.
   schemas:
     Id:

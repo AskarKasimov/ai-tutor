@@ -44,7 +44,7 @@ Frontend обращается только к этому backend. GigaAM и VoxC
 Подготовка `.env`, установка mkcert и команды для каждой ОС описаны
 [в README монорепозитория](../../README.md#локальный-запуск).
 
-API доступен по `https://localhost:8443`, проверка — `GET /health`.
+API доступен по `https://localhost:8443/api/v1`, проверка — `GET /health`.
 HTTP-порт `127.0.0.1:8002` нужен для внутренних проверок и reverse proxy;
 браузер использует HTTPS. Миграция применяется автоматически перед запуском API.
 PostgreSQL хранит данные в постоянном volume. Обычный `docker compose down` сохраняет его;
@@ -54,8 +54,10 @@ PostgreSQL хранит данные в постоянном volume. Обычн�
 или IP, доступные из контейнера backend. Адреса в `.env.example` служат примерами
 и требуют замены. Контейнеры моделей запускаются отдельно из `../../../tts-stt`.
 Для корпоративной сети сертификат должен содержать IP в SAN, а CA должен быть доверенным
-на клиентских машинах. Frontend и `/v1` публикуются через общий HTTPS reverse proxy;
-клиент обращается к API по относительным путям.
+на клиентских машинах. Frontend и `/api/v1` публикуются через общий HTTPS reverse proxy;
+клиент обращается к API по относительным путям. Caddy удаляет `/api/v1` перед
+проксированием к маршрутам от корня (`/auth/*`, `/voice/*`, `/admin/*`) и переписывает Path refresh-cookie
+с `/auth` на `/api/v1/auth`, включая удаление cookie при выходе.
 
 ## Запуск Go-процесса
 
@@ -105,25 +107,25 @@ ALTER TABLE users DROP COLUMN timezone;
 ## Пример запросов
 
 ```bash
-curl 'https://localhost:8443/v1/auth/register' \
+curl 'https://localhost:8443/api/v1/auth/register' \
   -H 'Content-Type: application/json' \
   -d '{"email":"student@example.edu","password":"My unique learning phrase 2026!","display_name":"Иван"}' \
   -c cookies.txt
 
-curl 'https://localhost:8443/v1/auth/me' -b cookies.txt
+curl 'https://localhost:8443/api/v1/auth/me' -b cookies.txt
 
-curl 'https://localhost:8443/v1/voice/transcriptions' \
+curl 'https://localhost:8443/api/v1/voice/transcriptions' \
   -b cookies.txt \
   -F 'audio=@answer.webm;type=audio/webm'
 
-curl 'https://localhost:8443/v1/voice/syntheses' \
+curl 'https://localhost:8443/api/v1/voice/syntheses' \
   -H 'Content-Type: application/json' \
   -b cookies.txt -d '{"text":"Что обозначает дробь?"}' --output question.wav
 
-curl 'https://localhost:8443/v1/auth/refresh' \
+curl 'https://localhost:8443/api/v1/auth/refresh' \
   -X POST -b cookies.txt -c cookies.txt
 
-curl 'https://localhost:8443/v1/auth/logout' \
+curl 'https://localhost:8443/api/v1/auth/logout' \
   -X POST -b cookies.txt -c cookies.txt
 ```
 
@@ -154,7 +156,7 @@ docker compose -f ../../docker-compose.yaml exec db psql -U ai_tutor -d ai_tutor
 Новый вход не нужен: роль применяется со следующего запроса. Затем импортируйте файл:
 
 ```bash
-curl 'https://localhost:8443/v1/admin/competency-map/import' \
+curl 'https://localhost:8443/api/v1/admin/competency-map/import' \
   -b teacher-cookies.txt \
   -F 'file=@../../api/01-voice/example-map.csv;type=text/csv'
 ```

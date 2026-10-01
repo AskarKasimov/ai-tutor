@@ -63,7 +63,7 @@ func TestVoiceTranscriptionPersistsOwnerAndUsesLongform(t *testing.T) {
 	}))
 	defer provider.Close()
 	f.app.cfg.STTURL = provider.URL + "/transcribe/longform"
-	w := upload(f, "/v1/voice/transcriptions", "audio", "voice.wav", "audio/wav", wav, access)
+	w := upload(f, "/voice/transcriptions", "audio", "voice.wav", "audio/wav", wav, access)
 	if w.Code != 200 {
 		t.Fatalf("STT: %d %s", w.Code, w.Body.String())
 	}
@@ -102,19 +102,19 @@ func TestVoiceSynthesisWAVAndUnicodeValidation(t *testing.T) {
 	}))
 	defer provider.Close()
 	f.app.cfg.TTSURL = provider.URL + "/synthesize"
-	w := f.request("POST", "/v1/voice/syntheses", `{"text":"`+strings.Repeat("я", 500)+`"}`, access)
+	w := f.request("POST", "/voice/syntheses", `{"text":"`+strings.Repeat("я", 500)+`"}`, access)
 	if w.Code != 200 || w.Header().Get("Content-Type") != "audio/wav" || !bytes.Equal(w.Body.Bytes(), wav) {
 		t.Fatalf("TTS: %d %s", w.Code, w.Body.String())
 	}
 	for _, body := range []string{`{"text":""}`, `{"text":"   "}`, `{"text":"` + strings.Repeat("я", 501) + `"}`, `{"text":"x","seed":1}`, `{"text":null}`} {
-		requireCode(t, f.request("POST", "/v1/voice/syntheses", body, access), 422, "VALIDATION_ERROR")
+		requireCode(t, f.request("POST", "/voice/syntheses", body, access), 422, "VALIDATION_ERROR")
 	}
 }
 
 func TestVoiceInputLimitsAndMultipart(t *testing.T) {
 	f := newFixture(t)
 	access, _, _ := f.register(t, "limits@example.edu")
-	const path = "/v1/voice/transcriptions"
+	const path = "/voice/transcriptions"
 	requireCode(t, upload(f, path, "audio", "voice.wav", "audio/wav", wavBytes(), nil), 401, "UNAUTHORIZED")
 	requireCode(t, upload(f, path, "audio", "voice.wav", "audio/wav", nil, access), 422, "INVALID_AUDIO")
 	requireCode(t, upload(f, path, "audio", "voice.mp3", "audio/mpeg", []byte("ID3"), access), 415, "UNSUPPORTED_AUDIO_FORMAT")
@@ -150,7 +150,7 @@ func TestVoiceProviderFailuresNeverPersist(t *testing.T) {
 			_, _ = io.WriteString(w, tc.body)
 		}))
 		f.app.cfg.STTURL = server.URL + "/transcribe/longform"
-		w := upload(f, "/v1/voice/transcriptions", "audio", "voice.wav", "audio/wav", wavBytes(), access)
+		w := upload(f, "/voice/transcriptions", "audio", "voice.wav", "audio/wav", wavBytes(), access)
 		requireCode(t, w, tc.want, tc.code)
 		if strings.Contains(w.Body.String(), "private model") {
 			t.Fatal("provider error leaked")
@@ -169,11 +169,11 @@ func TestVoiceProviderFailuresNeverPersist(t *testing.T) {
 	f.app.cfg.STTURL = server.URL + "/transcribe/longform"
 	f.app.cfg.TTSURL = server.URL + "/synthesize"
 	f.app.cfg.ProcessingTimeout = 20 * time.Millisecond
-	requireCode(t, upload(f, "/v1/voice/transcriptions", "audio", "voice.wav", "audio/wav", wavBytes(), access), 504, "PROCESSING_TIMEOUT")
-	requireCode(t, f.request("POST", "/v1/voice/syntheses", `{"text":"Вопрос"}`, access), 504, "PROCESSING_TIMEOUT")
+	requireCode(t, upload(f, "/voice/transcriptions", "audio", "voice.wav", "audio/wav", wavBytes(), access), 504, "PROCESSING_TIMEOUT")
+	requireCode(t, f.request("POST", "/voice/syntheses", `{"text":"Вопрос"}`, access), 504, "PROCESSING_TIMEOUT")
 	server.Close()
-	requireCode(t, upload(f, "/v1/voice/transcriptions", "audio", "voice.wav", "audio/wav", wavBytes(), access), 503, "PROCESSING_UNAVAILABLE")
-	requireCode(t, f.request("POST", "/v1/voice/syntheses", `{"text":"Вопрос"}`, access), 503, "PROCESSING_UNAVAILABLE")
+	requireCode(t, upload(f, "/voice/transcriptions", "audio", "voice.wav", "audio/wav", wavBytes(), access), 503, "PROCESSING_UNAVAILABLE")
+	requireCode(t, f.request("POST", "/voice/syntheses", `{"text":"Вопрос"}`, access), 503, "PROCESSING_UNAVAILABLE")
 }
 
 func TestVoiceRejectsInvalidTTSOutput(t *testing.T) {
@@ -200,7 +200,7 @@ func TestVoiceRejectsInvalidTTSOutput(t *testing.T) {
 			_, _ = w.Write(tc.body)
 		}))
 		f.app.cfg.TTSURL = server.URL + "/synthesize"
-		requireCode(t, f.request("POST", "/v1/voice/syntheses", `{"text":"Вопрос"}`, access), tc.want, tc.code)
+		requireCode(t, f.request("POST", "/voice/syntheses", `{"text":"Вопрос"}`, access), tc.want, tc.code)
 		server.Close()
 	}
 }

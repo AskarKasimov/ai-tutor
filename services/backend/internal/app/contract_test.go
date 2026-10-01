@@ -94,16 +94,16 @@ func TestOpenAPIResponses(t *testing.T) {
 			checked[path] = true
 		}
 	}
-	register := f.request("POST", "/v1/auth/register", `{"email":"contract@example.edu","password":"`+password+`"}`)
-	check("POST", "/v1/auth/register", register)
+	register := f.request("POST", "/auth/register", `{"email":"contract@example.edu","password":"`+password+`"}`)
+	check("POST", "/auth/register", register)
 	cookies := register.Result().Cookies()
 	if len(cookies) != 2 {
 		t.Fatal("missing cookies")
 	}
 	access, refresh := cookies[0], cookies[1]
-	check("GET", "/v1/auth/me", f.request("GET", "/v1/auth/me", "", access))
-	check("GET", "/v1/auth/me", f.request("GET", "/v1/auth/me", ""))
-	check("POST", "/v1/auth/login", f.request("POST", "/v1/auth/login", `{"email":"contract@example.edu","password":"`+password+`"}`))
+	check("GET", "/auth/me", f.request("GET", "/auth/me", "", access))
+	check("GET", "/auth/me", f.request("GET", "/auth/me", ""))
+	check("POST", "/auth/login", f.request("POST", "/auth/login", `{"email":"contract@example.edu","password":"`+password+`"}`))
 	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/synthesize" {
 			w.Header().Set("Content-Type", "audio/wav")
@@ -115,13 +115,13 @@ func TestOpenAPIResponses(t *testing.T) {
 	defer provider.Close()
 	f.app.cfg.STTURL = provider.URL + "/transcribe/longform"
 	f.app.cfg.TTSURL = provider.URL + "/synthesize"
-	check("POST", "/v1/voice/transcriptions", upload(f, "/v1/voice/transcriptions", "audio", "answer.wav", "audio/wav", wavBytes(), access))
-	check("POST", "/v1/voice/syntheses", f.request("POST", "/v1/voice/syntheses", `{"text":"Вопрос?"}`, access))
-	check("POST", "/v1/voice/syntheses", f.request("POST", "/v1/voice/syntheses", `{"text":""}`, access))
+	check("POST", "/voice/transcriptions", upload(f, "/voice/transcriptions", "audio", "answer.wav", "audio/wav", wavBytes(), access))
+	check("POST", "/voice/syntheses", f.request("POST", "/voice/syntheses", `{"text":"Вопрос?"}`, access))
+	check("POST", "/voice/syntheses", f.request("POST", "/voice/syntheses", `{"text":""}`, access))
 	admin := f.admin(t)
-	check("POST", "/v1/admin/competency-map/import", upload(f, "/v1/admin/competency-map/import", "file", "map.csv", "text/csv", []byte(mapCSV), admin))
-	check("POST", "/v1/auth/refresh", f.request("POST", "/v1/auth/refresh", "", refresh))
-	check("POST", "/v1/auth/logout", f.request("POST", "/v1/auth/logout", "", refresh))
+	check("POST", "/admin/competency-map/import", upload(f, "/admin/competency-map/import", "file", "map.csv", "text/csv", []byte(mapCSV), admin))
+	check("POST", "/auth/refresh", f.request("POST", "/auth/refresh", "", refresh))
+	check("POST", "/auth/logout", f.request("POST", "/auth/logout", "", refresh))
 	for path := range paths {
 		if !checked[path] {
 			t.Errorf("no verified successful response for %s", path)
@@ -152,7 +152,7 @@ func TestHTTPSCookieLifecycle(t *testing.T) {
 		}
 		return resp
 	}
-	response := send("POST", "/v1/auth/register", `{"email":"https@example.edu","password":"`+password+`"}`)
+	response := send("POST", "/auth/register", `{"email":"https@example.edu","password":"`+password+`"}`)
 	body, _ := io.ReadAll(response.Body)
 	response.Body.Close()
 	if response.StatusCode != 201 || bytes.Contains(body, []byte("access_token")) {
@@ -162,8 +162,8 @@ func TestHTTPSCookieLifecycle(t *testing.T) {
 		method, path string
 		status       int
 	}{
-		{"GET", "/v1/auth/me", 200}, {"POST", "/v1/auth/refresh", 200}, {"GET", "/v1/auth/me", 200},
-		{"POST", "/v1/auth/logout", 204}, {"GET", "/v1/auth/me", 401},
+		{"GET", "/auth/me", 200}, {"POST", "/auth/refresh", 200}, {"GET", "/auth/me", 200},
+		{"POST", "/auth/logout", 204}, {"GET", "/auth/me", 401},
 	} {
 		resp := send(step.method, step.path, "")
 		data, _ := io.ReadAll(resp.Body)

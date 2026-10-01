@@ -6,8 +6,8 @@ info:
     HTTPS и HttpOnly Secure cookies. Учебные данные и роли задаются преподавателем/admin; самостоятельная
     регистрация создаёт student.
 servers:
-  - url: /
-    description: Текущий сервер
+  - url: /api/v1
+    description: Публичный API через HTTPS reverse proxy
 security:
   - accessCookie: []
 tags:
@@ -16,7 +16,7 @@ tags:
   - name: Голос
   - name: Auth
 paths:
-  /v1/auth/register:
+  /auth/register:
     post:
       operationId: register
       tags:
@@ -48,7 +48,7 @@ paths:
             Set-Cookie:
               description: 'Два отдельных заголовка Set-Cookie, по одному на cookie; не объединять через запятую.
                 access_token: Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=<остаток срока токена в секундах>.
-                refresh_token: Path=/v1/auth; Secure; HttpOnly; SameSite=Lax; Max-Age=<остаток срока токена в секундах>.
+                refresh_token: Path=/api/v1/auth; Secure; HttpOnly; SameSite=Lax; Max-Age=<остаток срока токена в секундах>.
                 Domain отсутствует. Значения непрозрачные; токены в JSON не передаются.'
               schema:
                 type: string
@@ -59,7 +59,7 @@ paths:
           $ref: '#/components/responses/AuthValidationError'
         '429':
           $ref: '#/components/responses/TooManyRequests'
-  /v1/auth/login:
+  /auth/login:
     post:
       operationId: login
       tags:
@@ -91,7 +91,7 @@ paths:
             Set-Cookie:
               description: 'Два отдельных заголовка Set-Cookie, по одному на cookie; не объединять через запятую.
                 access_token: Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=<остаток срока токена в секундах>.
-                refresh_token: Path=/v1/auth; Secure; HttpOnly; SameSite=Lax; Max-Age=<остаток срока токена в секундах>.
+                refresh_token: Path=/api/v1/auth; Secure; HttpOnly; SameSite=Lax; Max-Age=<остаток срока токена в секундах>.
                 Domain отсутствует. Значения непрозрачные; токены в JSON не передаются.'
               schema:
                 type: string
@@ -102,7 +102,7 @@ paths:
           $ref: '#/components/responses/AuthValidationError'
         '429':
           $ref: '#/components/responses/TooManyRequests'
-  /v1/auth/refresh:
+  /auth/refresh:
     post:
       operationId: refreshTokens
       tags:
@@ -132,7 +132,7 @@ paths:
             Set-Cookie:
               description: 'Два отдельных заголовка Set-Cookie, по одному на cookie; не объединять через запятую.
                 access_token: Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=<остаток срока токена в секундах>.
-                refresh_token: Path=/v1/auth; Secure; HttpOnly; SameSite=Lax; Max-Age=<остаток срока токена в секундах>.
+                refresh_token: Path=/api/v1/auth; Secure; HttpOnly; SameSite=Lax; Max-Age=<остаток срока токена в секундах>.
                 Domain отсутствует. Значения непрозрачные; токены в JSON не передаются.'
               schema:
                 type: string
@@ -152,14 +152,14 @@ paths:
                 const: no-store
             Set-Cookie:
               description: 'Два отдельных заголовка Set-Cookie, по одному на cookie; не объединять через запятую.
-                access_token: Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=0. refresh_token: Path=/v1/auth; Secure;
+                access_token: Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=0. refresh_token: Path=/api/v1/auth; Secure;
                 HttpOnly; SameSite=Lax; Max-Age=0. Domain отсутствует. Значения пустые; обе cookies удаляются.'
               schema:
                 type: string
               example: access_token=; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=0
         '429':
           $ref: '#/components/responses/TooManyRequests'
-  /v1/auth/logout:
+  /auth/logout:
     post:
       operationId: logout
       tags:
@@ -181,7 +181,7 @@ paths:
                 const: no-store
             Set-Cookie:
               description: 'Два отдельных заголовка Set-Cookie, по одному на cookie; не объединять через запятую.
-                access_token: Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=0. refresh_token: Path=/v1/auth; Secure;
+                access_token: Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=0. refresh_token: Path=/api/v1/auth; Secure;
                 HttpOnly; SameSite=Lax; Max-Age=0. Domain отсутствует. Значения пустые; обе cookies удаляются.'
               schema:
                 type: string
@@ -190,7 +190,7 @@ paths:
           $ref: '#/components/responses/TooManyRequests'
       parameters:
         - $ref: '#/components/parameters/OptionalRefreshCookie'
-  /v1/auth/me:
+  /auth/me:
     get:
       operationId: getCurrentUser
       tags:
@@ -213,7 +213,7 @@ paths:
                 const: no-store
         '401':
           $ref: '#/components/responses/Unauthorized'
-  /v1/voice/transcriptions:
+  /voice/transcriptions:
     post:
       operationId: transcribeVoice
       tags:
@@ -271,7 +271,7 @@ paths:
                   description: WAV, Ogg/Opus или WebM/Opus, до 25 МиБ.
               required:
                 - audio
-  /v1/voice/syntheses:
+  /voice/syntheses:
     post:
       operationId: synthesizeQuestion
       tags:
@@ -312,7 +312,7 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/SynthesizeRequest'
-  /v1/courses:
+  /courses:
     get:
       operationId: listPublishedCourses
       tags:
@@ -327,7 +327,7 @@ paths:
                 $ref: '#/components/schemas/CourseList'
         '401':
           $ref: '#/components/responses/Unauthorized'
-  /v1/courses/{courseId}:
+  /courses/{courseId}:
     parameters:
       - name: courseId
         in: path
@@ -350,7 +350,7 @@ paths:
           $ref: '#/components/responses/NotFound'
         '401':
           $ref: '#/components/responses/Unauthorized'
-  /v1/admin/courses:
+  /admin/courses:
     get:
       operationId: listManagedCourses
       tags:
@@ -393,7 +393,7 @@ paths:
         '403':
           $ref: '#/components/responses/Forbidden'
       description: 'Требуется роль admin (преподаватель); доступ распространяется на все курсы. '
-  /v1/admin/courses/{courseId}:
+  /admin/courses/{courseId}:
     parameters:
       - name: courseId
         in: path
@@ -447,7 +447,7 @@ paths:
         '403':
           $ref: '#/components/responses/Forbidden'
       description: 'Требуется роль admin (преподаватель); доступ распространяется на все курсы. '
-  /v1/admin/courses/{courseId}/publish:
+  /admin/courses/{courseId}/publish:
     parameters:
       - name: courseId
         in: path
@@ -478,7 +478,7 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
-  /v1/admin/courses/{courseId}/constituents:
+  /admin/courses/{courseId}/constituents:
     parameters:
       - name: courseId
         in: path
@@ -512,7 +512,7 @@ paths:
         '403':
           $ref: '#/components/responses/Forbidden'
       description: 'Требуется роль admin (преподаватель); доступ распространяется на все курсы. '
-  /v1/admin/constituents/{constituentId}:
+  /admin/constituents/{constituentId}:
     parameters:
       - name: constituentId
         in: path
@@ -564,7 +564,7 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
-  /v1/admin/constituents/{constituentId}/outcomes:
+  /admin/constituents/{constituentId}/outcomes:
     parameters:
       - name: constituentId
         in: path
@@ -598,7 +598,7 @@ paths:
         '403':
           $ref: '#/components/responses/Forbidden'
       description: 'Требуется роль admin (преподаватель); доступ распространяется на все курсы. '
-  /v1/admin/outcomes/{outcomeId}:
+  /admin/outcomes/{outcomeId}:
     parameters:
       - name: outcomeId
         in: path
@@ -652,7 +652,7 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
-  /v1/admin/outcomes/{outcomeId}/tasks:
+  /admin/outcomes/{outcomeId}/tasks:
     parameters:
       - name: outcomeId
         in: path
@@ -686,7 +686,7 @@ paths:
         '403':
           $ref: '#/components/responses/Forbidden'
       description: 'Требуется роль admin (преподаватель); доступ распространяется на все курсы. '
-  /v1/admin/tasks/{taskId}:
+  /admin/tasks/{taskId}:
     parameters:
       - name: taskId
         in: path
@@ -737,7 +737,7 @@ paths:
         '403':
           $ref: '#/components/responses/Forbidden'
       description: 'Требуется роль admin (преподаватель); доступ распространяется на все курсы. '
-  /v1/courses/{courseId}/outcomes:
+  /courses/{courseId}/outcomes:
     parameters:
       - name: courseId
         in: path
@@ -762,7 +762,7 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '404':
           $ref: '#/components/responses/NotFound'
-  /v1/outcomes/{outcomeId}/tasks:
+  /outcomes/{outcomeId}/tasks:
     parameters:
       - name: outcomeId
         in: path
@@ -787,7 +787,7 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '404':
           $ref: '#/components/responses/NotFound'
-  /v1/tasks/{taskId}/answers:
+  /tasks/{taskId}/answers:
     parameters:
       - name: taskId
         in: path
@@ -825,7 +825,7 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/SubmitAnswer'
-  /v1/answers/{answerId}:
+  /answers/{answerId}:
     parameters:
       - name: answerId
         in: path
@@ -849,7 +849,7 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '404':
           $ref: '#/components/responses/NotFound'
-  /v1/admin/courses/{courseId}/materials:
+  /admin/courses/{courseId}/materials:
     parameters:
       - name: courseId
         in: path
@@ -901,7 +901,7 @@ paths:
               required:
                 - file
                 - kind
-  /v1/admin/materials/{materialId}:
+  /admin/materials/{materialId}:
     parameters:
       - name: materialId
         in: path
@@ -956,7 +956,7 @@ components:
       type: apiKey
       in: cookie
       name: refresh_token
-      description: HttpOnly; Secure; SameSite=Lax; Path=/v1/auth; без Domain. Одноразовый refresh-токен; заменяется
+      description: HttpOnly; Secure; SameSite=Lax; Path=/api/v1/auth; без Domain. Одноразовый refresh-токен; заменяется
         через Set-Cookie.
   schemas:
     Id:
@@ -1812,7 +1812,7 @@ components:
       required:
         - transcription_id
       description: Ссылка transcription_id на сохранённую расшифровку текущего студента, полученную синхронным POST
-        /v1/voice/transcriptions. Исходный текст берётся сервером; клиент не передаёт исправленную расшифровку.
+        /voice/transcriptions. Исходный текст берётся сервером; клиент не передаёт исправленную расшифровку.
     Evidence:
       type: object
       additionalProperties: false

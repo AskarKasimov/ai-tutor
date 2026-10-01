@@ -97,7 +97,7 @@ func (f *fixture) request(method, path, body string, cookies ...*http.Cookie) *h
 func (f *fixture) register(t *testing.T, email string) (*http.Cookie, *http.Cookie, string) {
 	t.Helper()
 	body, _ := json.Marshal(map[string]string{"email": email, "password": password, "display_name": "Иван"})
-	w := f.request("POST", "/v1/auth/register", string(body))
+	w := f.request("POST", "/auth/register", string(body))
 	if w.Code != 201 {
 		t.Fatalf("register: %d %s", w.Code, w.Body.String())
 	}
@@ -135,10 +135,10 @@ func TestAuthRegistrationCookiesNormalizationAndPersistence(t *testing.T) {
 			t.Fatalf("unsafe cookie: %s", c)
 		}
 	}
-	if access.Path != "/" || access.MaxAge != 900 || refresh.Path != "/v1/auth" || refresh.MaxAge != 2592000 {
+	if access.Path != "/" || access.MaxAge != 900 || refresh.Path != "/auth" || refresh.MaxAge != 2592000 {
 		t.Fatal("wrong expiry/path")
 	}
-	w := f.request("GET", "/v1/auth/me", "", access)
+	w := f.request("GET", "/auth/me", "", access)
 	if w.Code != 200 || !strings.Contains(w.Body.String(), `"email":"student@example.edu"`) || strings.Contains(w.Body.String(), "password") {
 		t.Fatalf("me: %d %s", w.Code, w.Body.String())
 	}
@@ -162,23 +162,23 @@ func TestAuthRegistrationCookiesNormalizationAndPersistence(t *testing.T) {
 	restarted.now = f.app.now
 	f.app = restarted
 	f.handler = restarted.Handler()
-	w = f.request("GET", "/v1/auth/me", "", access)
+	w = f.request("GET", "/auth/me", "", access)
 	if w.Code != 200 || !strings.Contains(w.Body.String(), `"role":"admin"`) {
 		t.Fatalf("role/persistence: %s", w.Body.String())
 	}
-	requireCode(t, f.request("POST", "/v1/auth/register", `{"email":"student@example.edu","password":"`+password+`"}`), 409, "EMAIL_ALREADY_REGISTERED")
+	requireCode(t, f.request("POST", "/auth/register", `{"email":"student@example.edu","password":"`+password+`"}`), 409, "EMAIL_ALREADY_REGISTERED")
 }
 
 func TestAuthLoginAndValidation(t *testing.T) {
 	f := newFixture(t)
 	f.register(t, "login@example.edu")
-	bad := f.request("POST", "/v1/auth/login", `{"email":"login@example.edu","password":"wrong"}`)
-	unknown := f.request("POST", "/v1/auth/login", `{"email":"unknown@example.edu","password":"wrong"}`)
+	bad := f.request("POST", "/auth/login", `{"email":"login@example.edu","password":"wrong"}`)
+	unknown := f.request("POST", "/auth/login", `{"email":"unknown@example.edu","password":"wrong"}`)
 	requireCode(t, bad, 401, "INVALID_CREDENTIALS")
 	if bad.Body.String() != unknown.Body.String() {
 		t.Fatal("credential enumeration")
 	}
-	good := f.request("POST", "/v1/auth/login", `{"email":" LOGIN@example.edu ","password":"`+password+`"}`)
+	good := f.request("POST", "/auth/login", `{"email":" LOGIN@example.edu ","password":"`+password+`"}`)
 	if good.Code != 200 || len(good.Result().Cookies()) != 2 {
 		t.Fatalf("login: %s", good.Body.String())
 	}
@@ -189,22 +189,22 @@ func TestAuthLoginAndValidation(t *testing.T) {
 		`{"email":"not-email","password":"` + password + `"}`,
 		`{"email":"x@example.edu","password":"` + password + `"} {}`,
 	} {
-		requireCode(t, f.request("POST", "/v1/auth/register", body), 422, "VALIDATION_ERROR")
+		requireCode(t, f.request("POST", "/auth/register", body), 422, "VALIDATION_ERROR")
 	}
 	for _, p := range []string{"short", strings.Repeat("a", 20), "passwordpassword", strings.Repeat("я", 129)} {
 		b, _ := json.Marshal(map[string]string{"email": "weak@example.edu", "password": p})
-		requireCode(t, f.request("POST", "/v1/auth/register", string(b)), 422, "PASSWORD_TOO_WEAK")
+		requireCode(t, f.request("POST", "/auth/register", string(b)), 422, "PASSWORD_TOO_WEAK")
 	}
-	requireCode(t, f.request("GET", "/v1/auth/me", ""), 401, "UNAUTHORIZED")
+	requireCode(t, f.request("GET", "/auth/me", ""), 401, "UNAUTHORIZED")
 }
 
 func TestAuthRefreshReplayRevokesOnlyOneSession(t *testing.T) {
 	f := newFixture(t)
 	access, refresh, _ := f.register(t, "refresh@example.edu")
-	login := f.request("POST", "/v1/auth/login", `{"email":"refresh@example.edu","password":"`+password+`"}`)
+	login := f.request("POST", "/auth/login", `{"email":"refresh@example.edu","password":"`+password+`"}`)
 	other := login.Result().Cookies()[0]
 	f.now = f.now.Add(time.Minute)
-	rotated := f.request("POST", "/v1/auth/refresh", "", refresh)
+	rotated := f.request("POST", "/auth/refresh", "", refresh)
 	if rotated.Code != 200 {
 		t.Fatalf("refresh: %s", rotated.Body.String())
 	}
@@ -212,19 +212,19 @@ func TestAuthRefreshReplayRevokesOnlyOneSession(t *testing.T) {
 	if next[1].Value == refresh.Value || next[1].MaxAge != 2591940 {
 		t.Fatal("refresh not rotated/fixed end lost")
 	}
-	if f.request("GET", "/v1/auth/me", "", access).Code != 200 {
+	if f.request("GET", "/auth/me", "", access).Code != 200 {
 		t.Fatal("old access invalidated too early")
 	}
-	replay := f.request("POST", "/v1/auth/refresh", "", refresh)
+	replay := f.request("POST", "/auth/refresh", "", refresh)
 	requireCode(t, replay, 401, "INVALID_REFRESH_TOKEN")
 	for _, c := range replay.Result().Cookies() {
 		if c.MaxAge != -1 || c.Value != "" {
 			t.Fatal("cookie not cleared")
 		}
 	}
-	requireCode(t, f.request("GET", "/v1/auth/me", "", access), 401, "UNAUTHORIZED")
-	requireCode(t, f.request("GET", "/v1/auth/me", "", next[0]), 401, "UNAUTHORIZED")
-	if f.request("GET", "/v1/auth/me", "", other).Code != 200 {
+	requireCode(t, f.request("GET", "/auth/me", "", access), 401, "UNAUTHORIZED")
+	requireCode(t, f.request("GET", "/auth/me", "", next[0]), 401, "UNAUTHORIZED")
+	if f.request("GET", "/auth/me", "", other).Code != 200 {
 		t.Fatal("other session revoked")
 	}
 }
@@ -232,21 +232,21 @@ func TestAuthRefreshReplayRevokesOnlyOneSession(t *testing.T) {
 func TestAuthLogoutAndExpiry(t *testing.T) {
 	f := newFixture(t)
 	access, refresh, _ := f.register(t, "logout@example.edu")
-	if f.request("POST", "/v1/auth/logout", "", refresh).Code != 204 {
+	if f.request("POST", "/auth/logout", "", refresh).Code != 204 {
 		t.Fatal("logout failed")
 	}
-	requireCode(t, f.request("GET", "/v1/auth/me", "", access), 401, "UNAUTHORIZED")
-	if f.request("POST", "/v1/auth/logout", "").Code != 204 {
+	requireCode(t, f.request("GET", "/auth/me", "", access), 401, "UNAUTHORIZED")
+	if f.request("POST", "/auth/logout", "").Code != 204 {
 		t.Fatal("logout not idempotent")
 	}
 	access, refresh, _ = f.register(t, "expiry@example.edu")
 	f.now = f.now.Add(900 * time.Second)
-	requireCode(t, f.request("GET", "/v1/auth/me", "", access), 401, "UNAUTHORIZED")
-	if f.request("POST", "/v1/auth/refresh", "", refresh).Code != 200 {
+	requireCode(t, f.request("GET", "/auth/me", "", access), 401, "UNAUTHORIZED")
+	if f.request("POST", "/auth/refresh", "", refresh).Code != 200 {
 		t.Fatal("valid refresh rejected")
 	}
 	f.now = f.now.Add(30 * 24 * time.Hour)
-	requireCode(t, f.request("POST", "/v1/auth/refresh", "", refresh), 401, "INVALID_REFRESH_TOKEN")
+	requireCode(t, f.request("POST", "/auth/refresh", "", refresh), 401, "INVALID_REFRESH_TOKEN")
 }
 
 func TestAuthConcurrentRefresh(t *testing.T) {
@@ -256,7 +256,7 @@ func TestAuthConcurrentRefresh(t *testing.T) {
 	codes := make(chan int, 2)
 	for range 2 {
 		wg.Add(1)
-		go func() { defer wg.Done(); codes <- f.request("POST", "/v1/auth/refresh", "", refresh).Code }()
+		go func() { defer wg.Done(); codes <- f.request("POST", "/auth/refresh", "", refresh).Code }()
 	}
 	wg.Wait()
 	close(codes)
@@ -267,16 +267,16 @@ func TestAuthConcurrentRefresh(t *testing.T) {
 	if counts[200] != 1 || counts[401] != 1 {
 		t.Fatalf("rotation race: %v", counts)
 	}
-	requireCode(t, f.request("GET", "/v1/auth/me", "", access), 401, "UNAUTHORIZED")
+	requireCode(t, f.request("GET", "/auth/me", "", access), 401, "UNAUTHORIZED")
 }
 
 func TestRateLimitPersistsAndResets(t *testing.T) {
 	f := newFixture(t)
 	f.app.cfg.AuthRateLimit = 2
 	for range 2 {
-		requireCode(t, f.request("POST", "/v1/auth/login", `{}`), 422, "VALIDATION_ERROR")
+		requireCode(t, f.request("POST", "/auth/login", `{}`), 422, "VALIDATION_ERROR")
 	}
-	w := f.request("POST", "/v1/auth/login", `{}`)
+	w := f.request("POST", "/auth/login", `{}`)
 	requireCode(t, w, 429, "RATE_LIMITED")
 	if w.Header().Get("Retry-After") == "" {
 		t.Fatal("missing Retry-After")
@@ -288,9 +288,9 @@ func TestRateLimitPersistsAndResets(t *testing.T) {
 	restarted.now = f.app.now
 	f.app = restarted
 	f.handler = restarted.Handler()
-	requireCode(t, f.request("POST", "/v1/auth/login", `{}`), 429, "RATE_LIMITED")
+	requireCode(t, f.request("POST", "/auth/login", `{}`), 429, "RATE_LIMITED")
 	f.now = f.now.Add(time.Minute)
-	requireCode(t, f.request("POST", "/v1/auth/login", `{}`), 422, "VALIDATION_ERROR")
+	requireCode(t, f.request("POST", "/auth/login", `{}`), 422, "VALIDATION_ERROR")
 }
 
 func TestAuthBreachCheckAndUnavailable(t *testing.T) {
@@ -300,9 +300,9 @@ func TestAuthBreachCheckAndUnavailable(t *testing.T) {
 	}))
 	defer server.Close()
 	f.app.cfg.PasswordCheckURL = server.URL + "/range/"
-	requireCode(t, f.request("POST", "/v1/auth/register", `{"email":"breached@example.edu","password":"`+password+`"}`), 422, "PASSWORD_TOO_WEAK")
+	requireCode(t, f.request("POST", "/auth/register", `{"email":"breached@example.edu","password":"`+password+`"}`), 422, "PASSWORD_TOO_WEAK")
 	server.Close()
-	requireCode(t, f.request("POST", "/v1/auth/register", `{"email":"breached@example.edu","password":"`+password+`"}`), 503, "PROCESSING_UNAVAILABLE")
+	requireCode(t, f.request("POST", "/auth/register", `{"email":"breached@example.edu","password":"`+password+`"}`), 503, "PROCESSING_UNAVAILABLE")
 	var count int
 	_ = f.pool.QueryRow(context.Background(), "SELECT count(*) FROM users").Scan(&count)
 	if count != 0 {

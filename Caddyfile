@@ -1,4 +1,19 @@
 :443 {
 	tls /certs/server.pem /certs/server-key.pem
-	reverse_proxy api:8002
+
+	@api path /api/v1 /api/v1/*
+	handle @api {
+		uri strip_prefix /api/v1
+		reverse_proxy api:8002 {
+			header_down Set-Cookie "Path=/auth" "Path=/api/v1/auth"
+		}
+	}
+
+	handle /health {
+		reverse_proxy api:8002
+	}
+
+	handle {
+		respond 404
+	}
 }

@@ -7,7 +7,7 @@ func (a *App) middleware(next http.Handler) http.Handler {
 		w.Header().Set("Cache-Control", "no-store")
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		limit := int64(32 * 1024)
-		if r.URL.Path == "/v1/voice/transcriptions" || r.URL.Path == "/v1/admin/competency-map/import" {
+		if r.URL.Path == "/voice/transcriptions" || r.URL.Path == "/admin/competency-map/import" {
 			limit = a.cfg.MaxUploadBytes + 64*1024
 		}
 		r.Body = http.MaxBytesReader(w, r.Body, limit)

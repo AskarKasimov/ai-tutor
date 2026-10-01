@@ -585,5 +585,7 @@ paths:
         - Голос
 openapi: 3.1.0
 servers:
+  - description: Локальный API через Caddy (Docker Compose)
+    url: https://localhost:8443/api/v1
   - description: HTTPS reverse proxy
     url: /api/v1

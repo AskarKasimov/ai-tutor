@@ -7,6 +7,8 @@ info:
     регистрация создаёт student. Учебная база v0 загружается только одним CSV-файлом карты компетенций; построчного
     CRUD и извлечения данных с помощью LLM нет.
 servers:
+  - url: https://localhost:8443/api/v1
+    description: Локальный API через Caddy (Docker Compose)
   - url: /api/v1
     description: Публичный API через HTTPS reverse proxy
 security:

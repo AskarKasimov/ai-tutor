@@ -20,6 +20,8 @@ import (
 // @title AI Tutor Backend API
 // @version 0.1.0
 // @description Реализованный HTTP API backend. Даты — Unix timestamp в секундах. Авторизация — HttpOnly Secure cookies.
+// @servers.url https://localhost:8443/api/v1
+// @servers.description Локальный API через Caddy (Docker Compose)
 // @servers.url /api/v1
 // @servers.description HTTPS reverse proxy
 // @securityDefinitions.apikey accessCookie

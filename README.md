@@ -64,6 +64,14 @@ cp .env.example .env
 в `certs/` исключены из Git. Caddy использует сертификат mkcert; установка локальной
 CA Caddy больше не требуется. После первой установки доверия перезапустите браузер.
 
+Локальный Caddy разрешает CORS для OpenAPI preview в webview VS Code
+(`vscode-webview://…` и `https://….vscode-cdn.net`) и отвечает на preflight `OPTIONS`.
+После изменения Caddyfile примените конфигурацию без пересборки backend:
+
+```bash
+docker compose exec proxy caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile
+```
+
 ## HTTPS в production
 
 Локальный Caddyfile загружает сертификаты mkcert из `certs/`. Для публичного домена

@@ -6,6 +6,8 @@ info:
     HTTPS и HttpOnly Secure cookies. Учебные данные и роли задаются преподавателем/admin; самостоятельная
     регистрация создаёт student.
 servers:
+  - url: https://localhost:8443/api/v1
+    description: Локальный API через Caddy (Docker Compose)
   - url: /api/v1
     description: Публичный API через HTTPS reverse proxy
 security:

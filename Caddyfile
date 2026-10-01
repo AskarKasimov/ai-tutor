@@ -3,6 +3,18 @@
 
 	@api path /api/v1 /api/v1/*
 	handle @api {
+		@vscode_origin header_regexp Origin ^(vscode-webview://[a-zA-Z0-9-]+|https://[a-zA-Z0-9-]+\.vscode-cdn\.net)$
+		route @vscode_origin {
+			header {
+				Access-Control-Allow-Origin "{http.request.header.Origin}"
+				Access-Control-Allow-Methods "GET, POST, OPTIONS"
+				Access-Control-Allow-Headers "Content-Type"
+				Access-Control-Allow-Credentials "true"
+				+Vary Origin
+			}
+			@preflight method OPTIONS
+			respond @preflight 204
+		}
 		uri strip_prefix /api/v1
 		reverse_proxy api:8002
 	}

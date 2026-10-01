@@ -1,13 +1,22 @@
+@font-face {
+  font-family: Inter;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/assets/voice-trainer/inter-regular.ttf') format('truetype');
+}
+@font-face {
+  font-family: Inter;
+  font-weight: 700;
+  font-display: swap;
+  src: url('/assets/voice-trainer/inter-bold.ttf') format('truetype');
+}
 :root {
-  --app-max-width: 768px;
+  --app-ink: #18372b;
+  --app-muted: #65776d;
+  --app-green: #087f50;
+  --app-error: #b44338;
 }
-
-body {
-  margin: 0;
-}
-
-html,
-body,
-#root {
-  min-height: 100%;
-}
+body { margin: 0; }
+html, body, #root { min-height: 100%; }
+.radix-themes { --default-font-family: Inter, sans-serif; --heading-font-family: Inter, sans-serif; }
+button:focus-visible, audio:focus-visible { outline: 3px solid var(--app-green); outline-offset: 4px; }

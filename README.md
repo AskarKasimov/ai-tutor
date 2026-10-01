@@ -72,6 +72,15 @@ CA Caddy больше не требуется. После первой уста�
 docker compose exec proxy caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile
 ```
 
+Настройки фронтенда также хранятся в этом корневом `.env`:
+`VITE_API_BASE_URL` — префикс API (по умолчанию `/api/v1`),
+`VITE_API_PROXY_TARGET` — адрес backend для Vite dev (по умолчанию
+`http://127.0.0.1:8002`). Vite читает этот файл при запуске из
+`services/frontend`; Compose передаёт префикс API в сборку фронтенда.
+После изменения префикса пересоберите frontend, после изменения dev proxy
+перезапустите Vite. Переменные с префиксом `VITE_` публичные;
+секреты backend должны оставаться без этого префикса.
+
 ## Swagger UI для разработки
 
 Добавьте в `.env`:

@@ -1,0 +1,589 @@
+components:
+  schemas:
+    app.HealthResponse:
+      properties:
+        status:
+          enum:
+            - ok
+          type: string
+      required:
+        - status
+      type: object
+      additionalProperties: false
+    authhttp.LoginRequest:
+      properties:
+        email:
+          format: email
+          maxLength: 254
+          type: string
+        password:
+          format: password
+          maxLength: 128
+          minLength: 1
+          type: string
+      required:
+        - email
+        - password
+      type: object
+      additionalProperties: false
+    authhttp.RegisterRequest:
+      properties:
+        display_name:
+          maxLength: 200
+          minLength: 1
+          type: string
+        email:
+          format: email
+          maxLength: 254
+          type: string
+        password:
+          format: password
+          maxLength: 128
+          minLength: 15
+          type: string
+      required:
+        - email
+        - password
+      type: object
+      additionalProperties: false
+    authhttp.authSession:
+      properties:
+        session:
+          $ref: '#/components/schemas/authhttp.wireExpiry'
+        user:
+          $ref: '#/components/schemas/authhttp.wireUser'
+      required:
+        - session
+        - user
+      type: object
+      additionalProperties: false
+    authhttp.wireExpiry:
+      properties:
+        access_expires_at:
+          type: integer
+        refresh_expires_at:
+          type: integer
+      required:
+        - access_expires_at
+        - refresh_expires_at
+      type: object
+      additionalProperties: false
+    authhttp.wireUser:
+      properties:
+        created_at:
+          type: integer
+        display_name:
+          type:
+            - string
+            - "null"
+        email:
+          type: string
+        id:
+          type: string
+        role:
+          $ref: '#/components/schemas/user.Role'
+      required:
+        - created_at
+        - display_name
+        - email
+        - id
+        - role
+      type: object
+      additionalProperties: false
+    competencyhttp.ImportResult:
+      properties:
+        competency_count:
+          type: integer
+        constituent_count:
+          type: integer
+        imported_at:
+          type: integer
+        outcome_count:
+          type: integer
+        revision:
+          type: integer
+        task_count:
+          type: integer
+      required:
+        - competency_count
+        - constituent_count
+        - imported_at
+        - outcome_count
+        - revision
+        - task_count
+      type: object
+      additionalProperties: false
+    fault.Detail:
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        path:
+          type: string
+      required:
+        - code
+        - message
+      type: object
+      additionalProperties: false
+    fault.Error:
+      properties:
+        code:
+          type: string
+        details:
+          items:
+            $ref: '#/components/schemas/fault.Detail'
+          type: array
+          uniqueItems: false
+        message:
+          type: string
+      required:
+        - code
+        - message
+      type: object
+      additionalProperties: false
+    user.Role:
+      enum:
+        - student
+        - admin
+      type: string
+      x-enum-varnames:
+        - Student
+        - Admin
+    voicehttp.SynthesizeRequest:
+      properties:
+        text:
+          maxLength: 500
+          minLength: 1
+          type: string
+      required:
+        - text
+      type: object
+      additionalProperties: false
+    voicehttp.Transcription:
+      properties:
+        created_at:
+          type: integer
+        id:
+          type: string
+        text:
+          type: string
+      required:
+        - created_at
+        - id
+        - text
+      type: object
+      additionalProperties: false
+  securitySchemes:
+    accessCookie:
+      in: cookie
+      name: access_token
+      type: apiKey
+    refreshCookie:
+      in: cookie
+      name: refresh_token
+      type: apiKey
+info:
+  description: Реализованный HTTP API backend. Даты — Unix timestamp в секундах. Авторизация — HttpOnly Secure cookies.
+  title: AI Tutor Backend API
+  version: 0.1.0
+paths:
+  /admin/competency-map/import:
+    post:
+      description: Доступно только admin. Импорт атомарно заменяет учебную базу.
+      operationId: importCompetencyMap
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              properties:
+                file:
+                  description: CSV карты компетенций, UTF-8, до 25 МиБ
+                  format: binary
+                  type: string
+              required:
+                - file
+              type: object
+              additionalProperties: false
+        description: CSV карты компетенций, UTF-8, до 25 МиБ
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/competencyhttp.ImportResult'
+          description: OK
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Forbidden
+        "413":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Request Entity Too Large
+        "415":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unsupported Media Type
+        "422":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unprocessable Entity
+        "503":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Service Unavailable
+      security:
+        - accessCookie: []
+      summary: Заменить учебную базу картой компетенций из CSV
+      tags:
+        - Учебная база
+  /auth/login:
+    post:
+      operationId: login
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/authhttp.LoginRequest'
+              summary: request
+              description: Тело запроса
+        description: Тело запроса
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/authhttp.authSession'
+          description: OK
+          headers:
+            Set-Cookie:
+              description: 'access_token и refresh_token: Path=/; Secure; HttpOnly; SameSite=Lax'
+              schema:
+                type: string
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unauthorized
+        "422":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unprocessable Entity
+        "429":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Too Many Requests
+      summary: Войти
+      tags:
+        - Auth
+  /auth/logout:
+    post:
+      description: Refresh cookie необязательна; без неё возвращается 204 и удаляются обе cookies.
+      operationId: logout
+      responses:
+        "204":
+          description: Сессия завершена
+          headers:
+            Set-Cookie:
+              description: 'access_token и refresh_token: Path=/; Secure; HttpOnly; SameSite=Lax'
+              schema:
+                type: string
+        "422":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unprocessable Entity
+        "429":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Too Many Requests
+      summary: Завершить сессию
+      tags:
+        - Auth
+  /auth/me:
+    get:
+      operationId: getCurrentUser
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/authhttp.wireUser'
+          description: OK
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unauthorized
+      security:
+        - accessCookie: []
+      summary: Получить текущего пользователя
+      tags:
+        - Auth
+  /auth/refresh:
+    post:
+      operationId: refreshTokens
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/authhttp.wireExpiry'
+          description: OK
+          headers:
+            Set-Cookie:
+              description: 'access_token и refresh_token: Path=/; Secure; HttpOnly; SameSite=Lax'
+              schema:
+                type: string
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unauthorized
+        "422":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unprocessable Entity
+        "429":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Too Many Requests
+      security:
+        - refreshCookie: []
+      summary: Обновить токены сессии
+      tags:
+        - Auth
+  /auth/register:
+    post:
+      operationId: register
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/authhttp.RegisterRequest'
+              summary: request
+              description: Тело запроса
+        description: Тело запроса
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/authhttp.authSession'
+          description: Created
+          headers:
+            Set-Cookie:
+              description: 'access_token и refresh_token: Path=/; Secure; HttpOnly; SameSite=Lax'
+              schema:
+                type: string
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Conflict
+        "422":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unprocessable Entity
+        "429":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Too Many Requests
+        "503":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Service Unavailable
+      summary: Зарегистрироваться
+      tags:
+        - Auth
+  /health:
+    get:
+      operationId: health
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/app.HealthResponse'
+          description: OK
+        "503":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Service Unavailable
+      summary: Проверить API и подключение к PostgreSQL
+      tags:
+        - Сервис
+  /voice/syntheses:
+    post:
+      operationId: synthesizeQuestion
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/voicehttp.SynthesizeRequest'
+              summary: request
+              description: Текст для озвучивания
+        description: Текст для озвучивания
+        required: true
+      responses:
+        "200":
+          content:
+            audio/wav:
+              schema:
+                type: string
+                format: binary
+          description: Готовое WAV аудио
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unauthorized
+        "422":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unprocessable Entity
+        "502":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Bad Gateway
+        "503":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Service Unavailable
+        "504":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Gateway Timeout
+      security:
+        - accessCookie: []
+      summary: Озвучить текст
+      tags:
+        - Голос
+  /voice/transcriptions:
+    post:
+      operationId: transcribeVoice
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              properties:
+                audio:
+                  description: WAV, Ogg/Opus или WebM/Opus, до 25 МиБ
+                  format: binary
+                  type: string
+              required:
+                - audio
+              type: object
+              additionalProperties: false
+        description: WAV, Ogg/Opus или WebM/Opus, до 25 МиБ
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/voicehttp.Transcription'
+          description: OK
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unauthorized
+        "413":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Request Entity Too Large
+        "415":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unsupported Media Type
+        "422":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unprocessable Entity
+        "502":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Bad Gateway
+        "503":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Service Unavailable
+        "504":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Gateway Timeout
+      security:
+        - accessCookie: []
+      summary: Распознать голосовую запись
+      tags:
+        - Голос
+openapi: 3.1.0
+servers:
+  - description: HTTPS reverse proxy
+    url: /api/v1

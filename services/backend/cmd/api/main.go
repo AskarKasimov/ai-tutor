@@ -17,6 +17,18 @@ import (
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/postgres"
 )
 
+// @title AI Tutor Backend API
+// @version 0.1.0
+// @description Реализованный HTTP API backend. Даты — Unix timestamp в секундах. Авторизация — HttpOnly Secure cookies.
+// @servers.url /api/v1
+// @servers.description HTTPS reverse proxy
+// @securityDefinitions.apikey accessCookie
+// @in cookie
+// @name access_token
+
+// @securityDefinitions.apikey refreshCookie
+// @in cookie
+// @name refresh_token
 func main() {
 	if err := run(); err != nil {
 		slog.Error("API stopped", "error", err)

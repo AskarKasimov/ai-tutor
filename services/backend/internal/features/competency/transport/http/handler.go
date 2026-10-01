@@ -27,6 +27,23 @@ func New(service *application.Service, maxUploadBytes int64) *Handler {
 	return &Handler{service: service, maxUploadBytes: maxUploadBytes}
 }
 
+// Import handles POST /admin/competency-map/import.
+// @Summary Заменить учебную базу картой компетенций из CSV
+// @Description Доступно только admin. Импорт атомарно заменяет учебную базу.
+// @ID importCompetencyMap
+// @Tags Учебная база
+// @Security accessCookie
+// @Accept mpfd
+// @Produce json
+// @Param file formData file true "CSV карты компетенций, UTF-8, до 25 МиБ"
+// @Success 200 {object} ImportResult
+// @Failure 401 {object} fault.Error
+// @Failure 403 {object} fault.Error
+// @Failure 413 {object} fault.Error
+// @Failure 415 {object} fault.Error
+// @Failure 422 {object} fault.Error
+// @Failure 503 {object} fault.Error
+// @Router /admin/competency-map/import [post]
 func (h *Handler) Import(w http.ResponseWriter, r *http.Request) {
 	actor, ok := httpx.Principal[user.User](r)
 	if !ok {

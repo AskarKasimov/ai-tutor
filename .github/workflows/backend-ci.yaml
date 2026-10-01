@@ -3,12 +3,10 @@ on:
   push:
     paths:
       - 'services/backend/**'
-      - 'api/**'
       - '.github/workflows/backend-ci.yaml'
   pull_request:
     paths:
       - 'services/backend/**'
-      - 'api/**'
       - '.github/workflows/backend-ci.yaml'
 permissions:
   contents: read
@@ -40,6 +38,11 @@ jobs:
           go-version-file: services/backend/go.mod
           cache: true
           cache-dependency-path: services/backend/go.sum
+      - name: Check generated OpenAPI
+        run: |
+          expected=$(sha256sum backend.api.yaml)
+          bash scripts/generate-openapi.sh
+          test "$expected" = "$(sha256sum backend.api.yaml)"
       - run: go test -race ./... -count=1
       - run: go vet ./...
       - run: go build -o bin/api ./cmd/api

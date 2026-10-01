@@ -23,7 +23,7 @@ import (
 // Validate actual handler responses using the checked-in OpenAPI 3.1 schemas.
 func TestOpenAPIResponses(t *testing.T) {
 	f := newFixture(t)
-	data, err := os.ReadFile("../../../../api/01-voice/openapi.yaml")
+	data, err := os.ReadFile("../../backend.api.yaml")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -122,6 +122,7 @@ func TestOpenAPIResponses(t *testing.T) {
 	check("POST", "/admin/competency-map/import", upload(f, "/admin/competency-map/import", "file", "map.csv", "text/csv", []byte(mapCSV), admin))
 	check("POST", "/auth/refresh", f.request("POST", "/auth/refresh", "", refresh))
 	check("POST", "/auth/logout", f.request("POST", "/auth/logout", "", refresh))
+	check("GET", "/health", f.request("GET", "/health", ""))
 	for path := range paths {
 		if !checked[path] {
 			t.Errorf("no verified successful response for %s", path)
@@ -175,7 +176,7 @@ func TestHTTPSCookieLifecycle(t *testing.T) {
 }
 
 func TestCSVExample(t *testing.T) {
-	b, err := os.ReadFile("../../../../api/01-voice/example-map.csv")
+	b, err := os.ReadFile("testdata/example-map.csv")
 	if err != nil {
 		t.Fatal(err)
 	}

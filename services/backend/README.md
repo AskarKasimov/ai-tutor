@@ -5,15 +5,29 @@
 
 ## Документация
 
-- [HTTP API по этапам разработки](../../api/README.md).
+- [OpenAPI реализованного backend](backend.api.yaml).
 - [Диагностика и тренировка](../../documents/voice-trainer-scenarios.md).
 - [Авторизация, сессии и права](../../documents/auth.md).
 - [Методика разработки заданий и оценивания](../../documents/AIAssistantGrading.md).
 - [Учебные термины](../../CONTEXT.md).
 - [Архитектура backend и правила зависимостей](../../documents/backend-architecture.md).
 
-Реализован общий backend **API v0** на Go и PostgreSQL по
-[`api/01-voice/openapi.yaml`](../../api/01-voice/openapi.yaml). Следующие этапы пока описаны только контрактами.
+Реализованный HTTP API описан в [`backend.api.yaml`](backend.api.yaml).
+
+### Генерация OpenAPI
+
+`backend.api.yaml` генерируется из Go-типов и аннотаций HTTP-обработчиков.
+Из `services/backend`:
+
+```bash
+bash scripts/generate-openapi.sh
+```
+
+В репозиторий коммитится актуальный `backend.api.yaml` вместе с изменениями кода.
+CI сохраняет SHA-256 файла, запускает генерацию и сравнивает хэши;
+несовпадение завершает проверку с ошибкой. Используются закреплённые в `go.mod`
+Go tools `swag` и `yq`; отдельная установка CLI не нужна.
+Генератор не читает этапные контракты из монорепозитория. YAML не встраивается в бинарник.
 
 HTTP-обёртки распознавания и синтеза речи выделены в отдельный репозиторий
 [tts-stt](https://github.com/AskarKasimov/tts-stt), локально — `../../../tts-stt`.
@@ -158,7 +172,7 @@ docker compose -f ../../docker-compose.yaml exec db psql -U ai_tutor -d ai_tutor
 ```bash
 curl 'https://localhost:8443/api/v1/admin/competency-map/import' \
   -b teacher-cookies.txt \
-  -F 'file=@../../api/01-voice/example-map.csv;type=text/csv'
+  -F 'file=@internal/app/testdata/example-map.csv;type=text/csv'
 ```
 
 CSV: UTF-8 с необязательным BOM, разделитель `,` или `;`, обязательные заголовки `Ком`, `Сост`, `ОР`,

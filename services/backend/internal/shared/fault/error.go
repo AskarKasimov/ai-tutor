@@ -18,7 +18,7 @@ const (
 )
 
 type Detail struct {
-	Path    string `json:"path,omitempty"`
+	Path    string `json:"path,omitempty" binding:"optional"`
 	Code    string `json:"code"`
 	Message string `json:"message"`
 }
@@ -27,7 +27,7 @@ type Error struct {
 	Kind       Kind     `json:"-"`
 	Code       string   `json:"code"`
 	Message    string   `json:"message"`
-	Details    []Detail `json:"details,omitempty"`
+	Details    []Detail `json:"details,omitempty" binding:"optional"`
 	RetryAfter int64    `json:"-"`
 }
 

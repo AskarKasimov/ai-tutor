@@ -24,7 +24,7 @@ func New(service *application.Service, now func() time.Time) *Handler { return &
 type wireUser struct {
 	ID          string    `json:"id"`
 	Email       string    `json:"email"`
-	DisplayName *string   `json:"display_name"`
+	DisplayName *string   `json:"display_name" extensions:"x-nullable"`
 	Role        user.Role `json:"role"`
 	CreatedAt   int64     `json:"created_at"`
 }
@@ -37,6 +37,17 @@ func userDTO(u user.User) wireUser {
 	return wireUser{u.ID, u.Email, u.DisplayName, u.Role, u.CreatedAt}
 }
 func expiryDTO(e session.Expiry) wireExpiry { return wireExpiry{e.AccessExpiresAt, e.RefreshExpiresAt} }
+
+type RegisterRequest struct {
+	Email       string          `json:"email" format:"email" maxLength:"254" binding:"required"`
+	Password    string          `json:"password" format:"password" minLength:"15" maxLength:"128" binding:"required"`
+	DisplayName json.RawMessage `json:"display_name,omitempty" binding:"optional" swaggertype:"string" minLength:"1" maxLength:"200"`
+}
+
+type LoginRequest struct {
+	Email    string `json:"email" format:"email" maxLength:"254" binding:"required"`
+	Password string `json:"password" format:"password" minLength:"1" maxLength:"128" binding:"required"`
+}
 
 type authSession struct {
 	User    wireUser   `json:"user"`
@@ -54,15 +65,26 @@ func (h *Handler) rate(w http.ResponseWriter, r *http.Request) bool {
 	}
 	return true
 }
+
+// Register handles POST /auth/register.
+// @Summary Зарегистрироваться
+// @ID register
+// @Tags Auth
+// @Produce json
+// @Accept json
+// @Param request body RegisterRequest true "Тело запроса"
+// @Success 201 {object} authSession
+// @Header 201 {string} Set-Cookie "access_token и refresh_token: Path=/; Secure; HttpOnly; SameSite=Lax"
+// @Failure 409 {object} fault.Error
+// @Failure 422 {object} fault.Error
+// @Failure 429 {object} fault.Error
+// @Failure 503 {object} fault.Error
+// @Router /auth/register [post]
 func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 	if !h.rate(w, r) {
 		return
 	}
-	var req struct {
-		Email       string          `json:"email"`
-		Password    string          `json:"password"`
-		DisplayName json.RawMessage `json:"display_name,omitempty"`
-	}
+	var req RegisterRequest
 	if err := httpx.DecodeJSON(r, &req); err != nil {
 		httpx.Error(w, err)
 		return
@@ -84,14 +106,25 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 	setCookies(w, result.Tokens, h.now().Unix())
 	httpx.JSON(w, 201, authSession{userDTO(result.User), expiryDTO(result.Tokens.Expiry)})
 }
+
+// Login handles POST /auth/login.
+// @Summary Войти
+// @ID login
+// @Tags Auth
+// @Produce json
+// @Accept json
+// @Param request body LoginRequest true "Тело запроса"
+// @Success 200 {object} authSession
+// @Header 200 {string} Set-Cookie "access_token и refresh_token: Path=/; Secure; HttpOnly; SameSite=Lax"
+// @Failure 401 {object} fault.Error
+// @Failure 422 {object} fault.Error
+// @Failure 429 {object} fault.Error
+// @Router /auth/login [post]
 func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	if !h.rate(w, r) {
 		return
 	}
-	var req struct {
-		Email    string `json:"email"`
-		Password string `json:"password"`
-	}
+	var req LoginRequest
 	if err := httpx.DecodeJSON(r, &req); err != nil {
 		httpx.Error(w, err)
 		return
@@ -104,6 +137,19 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	setCookies(w, result.Tokens, h.now().Unix())
 	httpx.JSON(w, 200, authSession{userDTO(result.User), expiryDTO(result.Tokens.Expiry)})
 }
+
+// Refresh handles POST /auth/refresh.
+// @Summary Обновить токены сессии
+// @ID refreshTokens
+// @Tags Auth
+// @Produce json
+// @Security refreshCookie
+// @Success 200 {object} wireExpiry
+// @Header 200 {string} Set-Cookie "access_token и refresh_token: Path=/; Secure; HttpOnly; SameSite=Lax"
+// @Failure 401 {object} fault.Error
+// @Failure 422 {object} fault.Error
+// @Failure 429 {object} fault.Error
+// @Router /auth/refresh [post]
 func (h *Handler) Refresh(w http.ResponseWriter, r *http.Request) {
 	if !h.rate(w, r) {
 		return
@@ -124,6 +170,18 @@ func (h *Handler) Refresh(w http.ResponseWriter, r *http.Request) {
 	setCookies(w, t, h.now().Unix())
 	httpx.JSON(w, 200, expiryDTO(t.Expiry))
 }
+
+// Logout handles POST /auth/logout.
+// @Summary Завершить сессию
+// @ID logout
+// @Tags Auth
+// @Produce json
+// @Description Refresh cookie необязательна; без неё возвращается 204 и удаляются обе cookies.
+// @Success 204 "Сессия завершена"
+// @Header 204 {string} Set-Cookie "access_token и refresh_token: Path=/; Secure; HttpOnly; SameSite=Lax"
+// @Failure 422 {object} fault.Error
+// @Failure 429 {object} fault.Error
+// @Router /auth/logout [post]
 func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
 	if !h.rate(w, r) {
 		return
@@ -139,6 +197,16 @@ func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
 	clearCookies(w)
 	w.WriteHeader(204)
 }
+
+// Me handles GET /auth/me.
+// @Summary Получить текущего пользователя
+// @ID getCurrentUser
+// @Tags Auth
+// @Produce json
+// @Security accessCookie
+// @Success 200 {object} wireUser
+// @Failure 401 {object} fault.Error
+// @Router /auth/me [get]
 func (h *Handler) Me(w http.ResponseWriter, r *http.Request) {
 	u, err := h.service.Me(r.Context(), httpx.Cookie(r, "access_token"))
 	if err != nil {

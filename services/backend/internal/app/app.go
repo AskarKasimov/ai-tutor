@@ -83,6 +83,18 @@ func protect(auth *authapp.Service, next http.Handler) http.Handler {
 	})
 }
 
+type HealthResponse struct {
+	Status string `json:"status" enums:"ok"`
+}
+
+// health handles GET /health.
+// @Summary Проверить API и подключение к PostgreSQL
+// @ID health
+// @Tags Сервис
+// @Produce json
+// @Success 200 {object} HealthResponse
+// @Failure 503 {object} fault.Error
+// @Router /health [get]
 func (a *App) health(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 	defer cancel()
@@ -90,5 +102,5 @@ func (a *App) health(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, err)
 		return
 	}
-	httpx.JSON(w, 200, map[string]string{"status": "ok"})
+	httpx.JSON(w, 200, HealthResponse{Status: "ok"})
 }

@@ -60,7 +60,7 @@ cp .env.example .env
 На Windows выполняйте скрипт в Git Bash; `mkcert` и `docker` должны быть доступны в его PATH.
 
 Приложение: `https://localhost:8443`. Caddy направляет `/api/v1` и `/api/v1/*`
-в backend, удаляя префикс `/api/v1`; остальные пути — во frontend. Проверка API: `GET /health`. Сертификаты и ключи
+в backend, удаляя префикс `/api/v1`; остальные пути — во frontend. Проверка API: `GET /api/v1/health`. Сертификаты и ключи
 в `certs/` исключены из Git. Caddy использует сертификат mkcert; установка локальной
 CA Caddy больше не требуется. После первой установки доверия перезапустите браузер.
 
@@ -77,9 +77,6 @@ tutor.example.com {
         reverse_proxy api:8002 {
             header_down Set-Cookie "Path=/auth" "Path=/api/v1/auth"
         }
-    }
-    handle /health {
-        reverse_proxy api:8002
     }
     handle {
         reverse_proxy frontend:80

@@ -87,4 +87,4 @@
 `servers.url: /api/v1` задаёт публичный префикс. Через Caddy клиент обращается
 к `/api/v1/*`. Proxy удаляет `/api/v1` перед передачей в backend и переписывает
 Path refresh-cookie с `/auth` на `/api/v1/auth`.
-Проверка доступности backend остаётся на `/health`.
+Публичная проверка доступности backend: `/api/v1/health`.

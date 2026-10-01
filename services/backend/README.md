@@ -44,7 +44,7 @@ Frontend обращается только к этому backend. GigaAM и VoxC
 Подготовка `.env`, установка mkcert и команды для каждой ОС описаны
 [в README монорепозитория](../../README.md#локальный-запуск).
 
-API доступен по `https://localhost:8443/api/v1`, проверка — `GET /health`.
+API доступен по `https://localhost:8443/api/v1`, проверка — `GET /api/v1/health`.
 HTTP-порт `127.0.0.1:8002` нужен для внутренних проверок и reverse proxy;
 браузер использует HTTPS. Миграция применяется автоматически перед запуском API.
 PostgreSQL хранит данные в постоянном volume. Обычный `docker compose down` сохраняет его;

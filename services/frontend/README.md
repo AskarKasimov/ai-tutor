@@ -58,5 +58,5 @@ docker run --rm -p 8080:80 ai-tutor-frontend
 выполните `./run.sh -d` из корня монорепозитория после настройки `.env`
 по корневому README. Приложение доступно на https://localhost:8443; Caddy
 направляет `/api/v1` и `/api/v1/*` в backend, удаляя префикс `/api/v1`.
-`/health` также обслуживает backend; остальные пути идут во frontend.
+Проверка backend доступна на `/api/v1/health`; остальные пути идут во frontend.
 Порт nginx доступен только внутри Docker-сети.

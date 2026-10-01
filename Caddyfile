@@ -1,5 +1,9 @@
 :443 {
 	tls /certs/server.pem /certs/server-key.pem
+	log {
+		output stdout
+		format console
+	}
 
 	@docs path /docs /docs/*
 	handle @docs {

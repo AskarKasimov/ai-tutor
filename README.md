@@ -72,6 +72,12 @@ CA Caddy больше не требуется. После первой уста�
 docker compose exec proxy caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile
 ```
 
+HTTP access-логи Caddy выводятся в stdout контейнера `proxy`: метод, адрес запроса,
+статус ответа и время обработки. Смотреть их можно через `docker compose logs -f proxy`.
+Access-логи nginx во frontend отключены, включая запросы healthcheck; ошибки nginx
+остаются в логах контейнера. После изменения `services/frontend/nginx.conf`
+пересоберите и пересоздайте frontend: `docker compose up -d --build frontend`.
+
 Настройки фронтенда также хранятся в этом корневом `.env`:
 `VITE_API_BASE_URL` — префикс API (по умолчанию `/api/v1`),
 `VITE_API_PROXY_TARGET` — адрес backend для Vite dev (по умолчанию

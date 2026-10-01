@@ -1,0 +1,13 @@
+:root {
+  --app-max-width: 768px;
+}
+
+body {
+  margin: 0;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}

@@ -7,16 +7,19 @@
 ```text
 services/
   backend/       Go + PostgreSQL: публичный API, авторизация, голос и компетенции
+  frontend/      React + TypeScript + Vite + Radix Themes: каркас приложения
 api/             общие OpenAPI-контракты по этапам разработки
 documents/       предметная область и архитектура
 Caddyfile        HTTPS reverse proxy
-docker-compose.yaml     локальный запуск backend, PostgreSQL и HTTPS proxy
+docker-compose.yaml     локальный запуск frontend, backend, PostgreSQL и HTTPS proxy
 ```
 
 Каждый сервис располагается в `services/<name>` и владеет своим кодом, зависимостями,
 Dockerfile и инструкциями.
 
 ## Документация
+
+- [Frontend: запуск, структура и проверки](services/frontend/README.md).
 
 - [Backend: возможности API v0, запуск, настройки и проверки](services/backend/README.md).
 - [HTTP API по этапам разработки](api/README.md).
@@ -56,9 +59,8 @@ cp .env.example .env
 Для запуска в фоне добавьте `-d`: `./run.sh -d`.
 На Windows выполняйте скрипт в Git Bash; `mkcert` и `docker` должны быть доступны в его PATH.
 
-API: `https://localhost:8443/api/v1`, проверка: `GET /health`.
-Caddy удаляет `/api/v1` перед передачей в backend и переписывает Path
-refresh-cookie с `/auth` на `/api/v1/auth`. Сертификаты и ключи
+Приложение: `https://localhost:8443`. Caddy направляет `/api/v1` и `/api/v1/*`
+в backend, удаляя префикс `/api/v1`; остальные пути — во frontend. Проверка API: `GET /health`. Сертификаты и ключи
 в `certs/` исключены из Git. Caddy использует сертификат mkcert; установка локальной
 CA Caddy больше не требуется. После первой установки доверия перезапустите браузер.
 
@@ -80,7 +82,7 @@ tutor.example.com {
         reverse_proxy api:8002
     }
     handle {
-        respond 404
+        reverse_proxy frontend:80
     }
 }
 ```

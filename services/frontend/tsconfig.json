@@ -1,0 +1,10 @@
+{
+  "compilerOptions": {
+    "strict": true,
+    "jsx": "react-jsx",
+    "moduleResolution": "Bundler",
+    "types": ["vite/client", "vitest/globals"],
+    "skipLibCheck": true
+  },
+  "include": ["src"]
+}

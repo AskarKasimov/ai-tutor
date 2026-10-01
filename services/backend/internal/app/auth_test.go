@@ -1,0 +1,311 @@
+package app
+
+import (
+	"context"
+	"crypto/rand"
+	"crypto/sha1"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"strings"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/postgres"
+)
+
+const password = "Надёжная фраза для теста 42!"
+
+type fixture struct {
+	app     *App
+	pool    *pgxpool.Pool
+	handler http.Handler
+	now     time.Time
+}
+
+func newFixture(t *testing.T) *fixture {
+	t.Helper()
+	dsn := os.Getenv("TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("TEST_DATABASE_URL is required for PostgreSQL integration tests")
+	}
+	ctx := context.Background()
+	admin, err := pgxpool.New(ctx, dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	suffix := make([]byte, 8)
+	if _, err := rand.Read(suffix); err != nil {
+		t.Fatal(err)
+	}
+	schema := "test_" + hex.EncodeToString(suffix)
+	if _, err := admin.Exec(ctx, "CREATE SCHEMA "+schema); err != nil {
+		t.Fatal(err)
+	}
+	pc, err := pgxpool.ParseConfig(dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pc.ConnConfig.RuntimeParams["search_path"] = schema
+	pool, err := pgxpool.NewWithConfig(ctx, pc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { pool.Close(); _, _ = admin.Exec(ctx, "DROP SCHEMA "+schema+" CASCADE"); admin.Close() })
+	if err := postgres.Migrate(ctx, pool); err != nil {
+		t.Fatal(err)
+	}
+	// The external breach service is the only auth dependency replaced here.
+	breach := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.HasPrefix(r.URL.Path, "/range/") || r.Header.Get("Add-Padding") != "true" {
+			t.Errorf("wrong breach request: %s", r.URL.Path)
+		}
+		fmt.Fprintln(w, strings.Repeat("0", 35)+":0")
+	}))
+	t.Cleanup(breach.Close)
+	cfg := DefaultConfig()
+	cfg.PasswordCheckURL = breach.URL + "/range/"
+	cfg.AuthRateLimit = 1000
+	cfg.LoginEmailRateLimit = 1000
+	a, err := New(cfg, pool)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f := &fixture{app: a, pool: pool, now: time.Unix(1790762400, 0)}
+	a.now = func() time.Time { return f.now }
+	f.handler = a.Handler()
+	return f
+}
+
+func (f *fixture) request(method, path, body string, cookies ...*http.Cookie) *httptest.ResponseRecorder {
+	req := httptest.NewRequest(method, "https://api.example"+path, strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	for _, c := range cookies {
+		req.AddCookie(c)
+	}
+	w := httptest.NewRecorder()
+	f.app.Handler().ServeHTTP(w, req)
+	return w
+}
+
+func (f *fixture) register(t *testing.T, email string) (*http.Cookie, *http.Cookie, string) {
+	t.Helper()
+	body, _ := json.Marshal(map[string]string{"email": email, "password": password, "display_name": "Иван"})
+	w := f.request("POST", "/v1/auth/register", string(body))
+	if w.Code != 201 {
+		t.Fatalf("register: %d %s", w.Code, w.Body.String())
+	}
+	cs := w.Result().Cookies()
+	if len(cs) != 2 {
+		t.Fatalf("cookies: %v", cs)
+	}
+	var result struct {
+		User struct {
+			ID string `json:"id"`
+		} `json:"user"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &result); err != nil {
+		t.Fatal(err)
+	}
+	return cs[0], cs[1], result.User.ID
+}
+
+func requireCode(t *testing.T, w *httptest.ResponseRecorder, status int, code string) {
+	t.Helper()
+	var result struct {
+		Code string `json:"code"`
+	}
+	_ = json.Unmarshal(w.Body.Bytes(), &result)
+	if w.Code != status || result.Code != code {
+		t.Fatalf("got %d %s; want %d %s", w.Code, w.Body.String(), status, code)
+	}
+}
+
+func TestAuthRegistrationCookiesNormalizationAndPersistence(t *testing.T) {
+	f := newFixture(t)
+	access, refresh, id := f.register(t, " Student@Example.edu ")
+	for _, c := range []*http.Cookie{access, refresh} {
+		if !c.Secure || !c.HttpOnly || c.SameSite != http.SameSiteLaxMode || c.Domain != "" {
+			t.Fatalf("unsafe cookie: %s", c)
+		}
+	}
+	if access.Path != "/" || access.MaxAge != 900 || refresh.Path != "/v1/auth" || refresh.MaxAge != 2592000 {
+		t.Fatal("wrong expiry/path")
+	}
+	w := f.request("GET", "/v1/auth/me", "", access)
+	if w.Code != 200 || !strings.Contains(w.Body.String(), `"email":"student@example.edu"`) || strings.Contains(w.Body.String(), "password") {
+		t.Fatalf("me: %d %s", w.Code, w.Body.String())
+	}
+	if w.Header().Get("Cache-Control") != "no-store" {
+		t.Fatal("missing no-store")
+	}
+	var hash string
+	if err := f.pool.QueryRow(context.Background(), "SELECT password_hash FROM users WHERE id=$1", id).Scan(&hash); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(hash, "$argon2id$") || strings.Contains(hash, password) {
+		t.Fatal("password not hashed")
+	}
+	if _, err := f.pool.Exec(context.Background(), "UPDATE users SET role='admin' WHERE id=$1", id); err != nil {
+		t.Fatal(err)
+	}
+	restarted, err := New(f.app.cfg, f.pool)
+	if err != nil {
+		t.Fatal(err)
+	}
+	restarted.now = f.app.now
+	f.app = restarted
+	f.handler = restarted.Handler()
+	w = f.request("GET", "/v1/auth/me", "", access)
+	if w.Code != 200 || !strings.Contains(w.Body.String(), `"role":"admin"`) {
+		t.Fatalf("role/persistence: %s", w.Body.String())
+	}
+	requireCode(t, f.request("POST", "/v1/auth/register", `{"email":"student@example.edu","password":"`+password+`"}`), 409, "EMAIL_ALREADY_REGISTERED")
+}
+
+func TestAuthLoginAndValidation(t *testing.T) {
+	f := newFixture(t)
+	f.register(t, "login@example.edu")
+	bad := f.request("POST", "/v1/auth/login", `{"email":"login@example.edu","password":"wrong"}`)
+	unknown := f.request("POST", "/v1/auth/login", `{"email":"unknown@example.edu","password":"wrong"}`)
+	requireCode(t, bad, 401, "INVALID_CREDENTIALS")
+	if bad.Body.String() != unknown.Body.String() {
+		t.Fatal("credential enumeration")
+	}
+	good := f.request("POST", "/v1/auth/login", `{"email":" LOGIN@example.edu ","password":"`+password+`"}`)
+	if good.Code != 200 || len(good.Result().Cookies()) != 2 {
+		t.Fatalf("login: %s", good.Body.String())
+	}
+	for _, body := range []string{
+		`{"email":"x@example.edu","password":"` + password + `","role":"admin"}`,
+		`{"email":"x@example.edu","password":"` + password + `","display_name":null}`,
+		`{"email":"x@example.edu","password":"` + password + `","display_name":"bad\u0000name"}`,
+		`{"email":"not-email","password":"` + password + `"}`,
+		`{"email":"x@example.edu","password":"` + password + `"} {}`,
+	} {
+		requireCode(t, f.request("POST", "/v1/auth/register", body), 422, "VALIDATION_ERROR")
+	}
+	for _, p := range []string{"short", strings.Repeat("a", 20), "passwordpassword", strings.Repeat("я", 129)} {
+		b, _ := json.Marshal(map[string]string{"email": "weak@example.edu", "password": p})
+		requireCode(t, f.request("POST", "/v1/auth/register", string(b)), 422, "PASSWORD_TOO_WEAK")
+	}
+	requireCode(t, f.request("GET", "/v1/auth/me", ""), 401, "UNAUTHORIZED")
+}
+
+func TestAuthRefreshReplayRevokesOnlyOneSession(t *testing.T) {
+	f := newFixture(t)
+	access, refresh, _ := f.register(t, "refresh@example.edu")
+	login := f.request("POST", "/v1/auth/login", `{"email":"refresh@example.edu","password":"`+password+`"}`)
+	other := login.Result().Cookies()[0]
+	f.now = f.now.Add(time.Minute)
+	rotated := f.request("POST", "/v1/auth/refresh", "", refresh)
+	if rotated.Code != 200 {
+		t.Fatalf("refresh: %s", rotated.Body.String())
+	}
+	next := rotated.Result().Cookies()
+	if next[1].Value == refresh.Value || next[1].MaxAge != 2591940 {
+		t.Fatal("refresh not rotated/fixed end lost")
+	}
+	if f.request("GET", "/v1/auth/me", "", access).Code != 200 {
+		t.Fatal("old access invalidated too early")
+	}
+	replay := f.request("POST", "/v1/auth/refresh", "", refresh)
+	requireCode(t, replay, 401, "INVALID_REFRESH_TOKEN")
+	for _, c := range replay.Result().Cookies() {
+		if c.MaxAge != -1 || c.Value != "" {
+			t.Fatal("cookie not cleared")
+		}
+	}
+	requireCode(t, f.request("GET", "/v1/auth/me", "", access), 401, "UNAUTHORIZED")
+	requireCode(t, f.request("GET", "/v1/auth/me", "", next[0]), 401, "UNAUTHORIZED")
+	if f.request("GET", "/v1/auth/me", "", other).Code != 200 {
+		t.Fatal("other session revoked")
+	}
+}
+
+func TestAuthLogoutAndExpiry(t *testing.T) {
+	f := newFixture(t)
+	access, refresh, _ := f.register(t, "logout@example.edu")
+	if f.request("POST", "/v1/auth/logout", "", refresh).Code != 204 {
+		t.Fatal("logout failed")
+	}
+	requireCode(t, f.request("GET", "/v1/auth/me", "", access), 401, "UNAUTHORIZED")
+	if f.request("POST", "/v1/auth/logout", "").Code != 204 {
+		t.Fatal("logout not idempotent")
+	}
+	access, refresh, _ = f.register(t, "expiry@example.edu")
+	f.now = f.now.Add(900 * time.Second)
+	requireCode(t, f.request("GET", "/v1/auth/me", "", access), 401, "UNAUTHORIZED")
+	if f.request("POST", "/v1/auth/refresh", "", refresh).Code != 200 {
+		t.Fatal("valid refresh rejected")
+	}
+	f.now = f.now.Add(30 * 24 * time.Hour)
+	requireCode(t, f.request("POST", "/v1/auth/refresh", "", refresh), 401, "INVALID_REFRESH_TOKEN")
+}
+
+func TestAuthConcurrentRefresh(t *testing.T) {
+	f := newFixture(t)
+	access, refresh, _ := f.register(t, "concurrent@example.edu")
+	var wg sync.WaitGroup
+	codes := make(chan int, 2)
+	for range 2 {
+		wg.Add(1)
+		go func() { defer wg.Done(); codes <- f.request("POST", "/v1/auth/refresh", "", refresh).Code }()
+	}
+	wg.Wait()
+	close(codes)
+	counts := map[int]int{}
+	for code := range codes {
+		counts[code]++
+	}
+	if counts[200] != 1 || counts[401] != 1 {
+		t.Fatalf("rotation race: %v", counts)
+	}
+	requireCode(t, f.request("GET", "/v1/auth/me", "", access), 401, "UNAUTHORIZED")
+}
+
+func TestRateLimitPersistsAndResets(t *testing.T) {
+	f := newFixture(t)
+	f.app.cfg.AuthRateLimit = 2
+	for range 2 {
+		requireCode(t, f.request("POST", "/v1/auth/login", `{}`), 422, "VALIDATION_ERROR")
+	}
+	w := f.request("POST", "/v1/auth/login", `{}`)
+	requireCode(t, w, 429, "RATE_LIMITED")
+	if w.Header().Get("Retry-After") == "" {
+		t.Fatal("missing Retry-After")
+	}
+	restarted, err := New(f.app.cfg, f.pool)
+	if err != nil {
+		t.Fatal(err)
+	}
+	restarted.now = f.app.now
+	f.app = restarted
+	f.handler = restarted.Handler()
+	requireCode(t, f.request("POST", "/v1/auth/login", `{}`), 429, "RATE_LIMITED")
+	f.now = f.now.Add(time.Minute)
+	requireCode(t, f.request("POST", "/v1/auth/login", `{}`), 422, "VALIDATION_ERROR")
+}
+
+func TestAuthBreachCheckAndUnavailable(t *testing.T) {
+	f := newFixture(t)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintf(w, "%s:12\r\n", fmt.Sprintf("%X", sha1.Sum([]byte(password)))[5:])
+	}))
+	defer server.Close()
+	f.app.cfg.PasswordCheckURL = server.URL + "/range/"
+	requireCode(t, f.request("POST", "/v1/auth/register", `{"email":"breached@example.edu","password":"`+password+`"}`), 422, "PASSWORD_TOO_WEAK")
+	server.Close()
+	requireCode(t, f.request("POST", "/v1/auth/register", `{"email":"breached@example.edu","password":"`+password+`"}`), 503, "PROCESSING_UNAVAILABLE")
+	var count int
+	_ = f.pool.QueryRow(context.Background(), "SELECT count(*) FROM users").Scan(&count)
+	if count != 0 {
+		t.Fatal("registered despite failed screening")
+	}
+}

@@ -3,7 +3,7 @@ info:
   title: Голосовой тренажёр — основа системы и голос
   version: 0.1.0
   description: Самостоятельный накопительный контракт этапа до 2026-10-01. Все даты — Unix timestamp в секундах.
-    HTTPS, HttpOnly Secure cookies и проверка Origin. Учебные данные и роли задаются преподавателем/admin; самостоятельная
+    HTTPS и HttpOnly Secure cookies. Учебные данные и роли задаются преподавателем/admin; самостоятельная
     регистрация создаёт student. Учебная база v0 загружается только одним CSV-файлом карты компетенций; построчного
     CRUD и извлечения данных с помощью LLM нет.
 servers:
@@ -59,10 +59,12 @@ paths:
           $ref: '#/components/responses/AuthValidationError'
         '429':
           $ref: '#/components/responses/TooManyRequests'
-        '403':
-          $ref: '#/components/responses/CsrfRejected'
-      parameters:
-        - $ref: '#/components/parameters/TrustedOrigin'
+        '503':
+          description: 'PROCESSING_UNAVAILABLE: проверка пароля по базе известных утечек недоступна; аккаунт не создан.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /v1/auth/login:
     post:
       operationId: login
@@ -106,10 +108,6 @@ paths:
           $ref: '#/components/responses/AuthValidationError'
         '429':
           $ref: '#/components/responses/TooManyRequests'
-        '403':
-          $ref: '#/components/responses/CsrfRejected'
-      parameters:
-        - $ref: '#/components/parameters/TrustedOrigin'
   /v1/auth/refresh:
     post:
       operationId: refreshTokens
@@ -167,10 +165,6 @@ paths:
               example: access_token=; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=0
         '429':
           $ref: '#/components/responses/TooManyRequests'
-        '403':
-          $ref: '#/components/responses/CsrfRejected'
-      parameters:
-        - $ref: '#/components/parameters/TrustedOrigin'
   /v1/auth/logout:
     post:
       operationId: logout
@@ -180,7 +174,7 @@ paths:
       description: Без тела запроса. Отзывает сессию по refresh-cookie, включая все её access- и refresh-токены,
         и удаляет обе cookies через Set-Cookie с Max-Age=0 и исходными Path. Другие сессии сохраняются. Если refresh-cookie
         отсутствует, неизвестна, истекла или уже отозвана, возвращает 204 и также удаляет cookies. Access-cookie
-        для выхода не требуется; проверка Origin обязательна.
+        для выхода не требуется.
       security: []
       responses:
         '204':
@@ -200,10 +194,7 @@ paths:
               example: access_token=; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=0
         '429':
           $ref: '#/components/responses/TooManyRequests'
-        '403':
-          $ref: '#/components/responses/CsrfRejected'
       parameters:
-        - $ref: '#/components/parameters/TrustedOrigin'
         - $ref: '#/components/parameters/OptionalRefreshCookie'
   /v1/auth/me:
     get:
@@ -298,8 +289,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-      parameters:
-        - $ref: '#/components/parameters/TrustedOrigin'
   /v1/voice/transcriptions:
     post:
       operationId: transcribeVoice
@@ -318,8 +307,6 @@ paths:
           $ref: '#/components/responses/UnsupportedMediaType'
         '503':
           $ref: '#/components/responses/Unavailable'
-        '403':
-          $ref: '#/components/responses/CsrfRejected'
         '422':
           description: 'VALIDATION_ERROR: неверные поля; INVALID_AUDIO: запись пуста или повреждена; NO_SPEECH_DETECTED:
             речь не распознана. Можно повторить запись.'
@@ -360,8 +347,6 @@ paths:
                   description: WAV, Ogg/Opus или WebM/Opus, до 25 МиБ.
               required:
                 - audio
-      parameters:
-        - $ref: '#/components/parameters/TrustedOrigin'
   /v1/voice/syntheses:
     post:
       operationId: synthesizeQuestion
@@ -374,8 +359,6 @@ paths:
       responses:
         '401':
           $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/CsrfRejected'
         '422':
           $ref: '#/components/responses/ValidationError'
         '503':
@@ -405,8 +388,6 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/SynthesizeRequest'
-      parameters:
-        - $ref: '#/components/parameters/TrustedOrigin'
 components:
   securitySchemes:
     accessCookie:
@@ -745,24 +726,7 @@ components:
           schema:
             type: integer
             minimum: 1
-    CsrfRejected:
-      description: 'CSRF_ORIGIN_DENIED: Origin отсутствует, равен null или не входит в разрешённый список; операция
-        не выполняется.'
-      content:
-        application/json:
-          schema:
-            $ref: '#/components/schemas/Error'
   parameters:
-    TrustedOrigin:
-      name: Origin
-      in: header
-      required: true
-      description: Origin frontend, например https://10.10.0.20:5173. Браузер устанавливает автоматически. Сервер
-        проверяет точное совпадение схемы, хоста и порта с настроенным списком. Отсутствующий, null или чужой Origin
-        возвращает 403 CSRF_ORIGIN_DENIED до выполнения операции.
-      schema:
-        type: string
-        format: uri
     OptionalRefreshCookie:
       name: refresh_token
       in: cookie

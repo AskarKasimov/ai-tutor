@@ -3,3 +3,11 @@ __pycache__/
 .pytest_cache/
 .venv/
 *.egg-info/
+.env
+certs/
+bin/
+/api-server
+coverage*
+cookies.txt
+*-cookies.txt
+docs/superpowers/

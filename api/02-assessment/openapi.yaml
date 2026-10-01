@@ -3,7 +3,7 @@ info:
   title: Голосовой тренажёр — учебная база и оценивание
   version: 0.2.0
   description: Самостоятельный накопительный контракт этапа до 2026-10-07. Все даты — Unix timestamp в секундах.
-    HTTPS, HttpOnly Secure cookies и проверка Origin. Учебные данные и роли задаются преподавателем/admin; самостоятельная
+    HTTPS и HttpOnly Secure cookies. Учебные данные и роли задаются преподавателем/admin; самостоятельная
     регистрация создаёт student.
 servers:
   - url: /
@@ -59,10 +59,6 @@ paths:
           $ref: '#/components/responses/AuthValidationError'
         '429':
           $ref: '#/components/responses/TooManyRequests'
-        '403':
-          $ref: '#/components/responses/CsrfRejected'
-      parameters:
-        - $ref: '#/components/parameters/TrustedOrigin'
   /v1/auth/login:
     post:
       operationId: login
@@ -106,10 +102,6 @@ paths:
           $ref: '#/components/responses/AuthValidationError'
         '429':
           $ref: '#/components/responses/TooManyRequests'
-        '403':
-          $ref: '#/components/responses/CsrfRejected'
-      parameters:
-        - $ref: '#/components/parameters/TrustedOrigin'
   /v1/auth/refresh:
     post:
       operationId: refreshTokens
@@ -167,10 +159,6 @@ paths:
               example: access_token=; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=0
         '429':
           $ref: '#/components/responses/TooManyRequests'
-        '403':
-          $ref: '#/components/responses/CsrfRejected'
-      parameters:
-        - $ref: '#/components/parameters/TrustedOrigin'
   /v1/auth/logout:
     post:
       operationId: logout
@@ -180,7 +168,7 @@ paths:
       description: Без тела запроса. Отзывает сессию по refresh-cookie, включая все её access- и refresh-токены,
         и удаляет обе cookies через Set-Cookie с Max-Age=0 и исходными Path. Другие сессии сохраняются. Если refresh-cookie
         отсутствует, неизвестна, истекла или уже отозвана, возвращает 204 и также удаляет cookies. Access-cookie
-        для выхода не требуется; проверка Origin обязательна.
+        для выхода не требуется.
       security: []
       responses:
         '204':
@@ -200,10 +188,7 @@ paths:
               example: access_token=; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=0
         '429':
           $ref: '#/components/responses/TooManyRequests'
-        '403':
-          $ref: '#/components/responses/CsrfRejected'
       parameters:
-        - $ref: '#/components/parameters/TrustedOrigin'
         - $ref: '#/components/parameters/OptionalRefreshCookie'
   /v1/auth/me:
     get:
@@ -246,8 +231,6 @@ paths:
           $ref: '#/components/responses/UnsupportedMediaType'
         '503':
           $ref: '#/components/responses/Unavailable'
-        '403':
-          $ref: '#/components/responses/CsrfRejected'
         '422':
           description: 'VALIDATION_ERROR: неверные поля; INVALID_AUDIO: запись пуста или повреждена; NO_SPEECH_DETECTED:
             речь не распознана. Можно повторить запись.'
@@ -288,8 +271,6 @@ paths:
                   description: WAV, Ogg/Opus или WebM/Opus, до 25 МиБ.
               required:
                 - audio
-      parameters:
-        - $ref: '#/components/parameters/TrustedOrigin'
   /v1/voice/syntheses:
     post:
       operationId: synthesizeQuestion
@@ -302,8 +283,6 @@ paths:
       responses:
         '401':
           $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/CsrfRejected'
         '422':
           $ref: '#/components/responses/ValidationError'
         '503':
@@ -333,8 +312,6 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/SynthesizeRequest'
-      parameters:
-        - $ref: '#/components/parameters/TrustedOrigin'
   /v1/courses:
     get:
       operationId: listPublishedCourses
@@ -416,8 +393,6 @@ paths:
         '403':
           $ref: '#/components/responses/Forbidden'
       description: 'Требуется роль admin (преподаватель); доступ распространяется на все курсы. '
-      parameters:
-        - $ref: '#/components/parameters/TrustedOrigin'
   /v1/admin/courses/{courseId}:
     parameters:
       - name: courseId
@@ -472,8 +447,6 @@ paths:
         '403':
           $ref: '#/components/responses/Forbidden'
       description: 'Требуется роль admin (преподаватель); доступ распространяется на все курсы. '
-      parameters:
-        - $ref: '#/components/parameters/TrustedOrigin'
   /v1/admin/courses/{courseId}/publish:
     parameters:
       - name: courseId
@@ -505,8 +478,6 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
-      parameters:
-        - $ref: '#/components/parameters/TrustedOrigin'
   /v1/admin/courses/{courseId}/constituents:
     parameters:
       - name: courseId
@@ -541,8 +512,6 @@ paths:
         '403':
           $ref: '#/components/responses/Forbidden'
       description: 'Требуется роль admin (преподаватель); доступ распространяется на все курсы. '
-      parameters:
-        - $ref: '#/components/parameters/TrustedOrigin'
   /v1/admin/constituents/{constituentId}:
     parameters:
       - name: constituentId
@@ -577,8 +546,6 @@ paths:
         '403':
           $ref: '#/components/responses/Forbidden'
       description: 'Требуется роль admin (преподаватель); доступ распространяется на все курсы. '
-      parameters:
-        - $ref: '#/components/parameters/TrustedOrigin'
     delete:
       operationId: deleteConstituent
       tags:
@@ -597,8 +564,6 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
-      parameters:
-        - $ref: '#/components/parameters/TrustedOrigin'
   /v1/admin/constituents/{constituentId}/outcomes:
     parameters:
       - name: constituentId
@@ -633,8 +598,6 @@ paths:
         '403':
           $ref: '#/components/responses/Forbidden'
       description: 'Требуется роль admin (преподаватель); доступ распространяется на все курсы. '
-      parameters:
-        - $ref: '#/components/parameters/TrustedOrigin'
   /v1/admin/outcomes/{outcomeId}:
     parameters:
       - name: outcomeId
@@ -671,8 +634,6 @@ paths:
       description: Требуется роль admin (преподаватель); доступ распространяется на все курсы. parent_outcome_id=null
         делает ОР корневым. Родитель должен принадлежать той же составляющей. Циклы запрещены; ошибка связи возвращает
         422.
-      parameters:
-        - $ref: '#/components/parameters/TrustedOrigin'
     delete:
       operationId: deleteOutcome
       tags:
@@ -691,8 +652,6 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
-      parameters:
-        - $ref: '#/components/parameters/TrustedOrigin'
   /v1/admin/outcomes/{outcomeId}/tasks:
     parameters:
       - name: outcomeId
@@ -727,8 +686,6 @@ paths:
         '403':
           $ref: '#/components/responses/Forbidden'
       description: 'Требуется роль admin (преподаватель); доступ распространяется на все курсы. '
-      parameters:
-        - $ref: '#/components/parameters/TrustedOrigin'
   /v1/admin/tasks/{taskId}:
     parameters:
       - name: taskId
@@ -765,8 +722,6 @@ paths:
       description: Требуется роль admin (преподаватель); доступ распространяется на все курсы. Переданный rubric
         полностью заменяет критерии и правило вердикта в черновике. Опубликованная версия и критерии уже выданных
         заданий остаются прежними.
-      parameters:
-        - $ref: '#/components/parameters/TrustedOrigin'
     delete:
       operationId: deleteTask
       tags:
@@ -782,8 +737,6 @@ paths:
         '403':
           $ref: '#/components/responses/Forbidden'
       description: 'Требуется роль admin (преподаватель); доступ распространяется на все курсы. '
-      parameters:
-        - $ref: '#/components/parameters/TrustedOrigin'
   /v1/courses/{courseId}/outcomes:
     parameters:
       - name: courseId
@@ -860,8 +813,6 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '404':
           $ref: '#/components/responses/NotFound'
-        '403':
-          $ref: '#/components/responses/CsrfRejected'
         '422':
           $ref: '#/components/responses/ValidationError'
         '409':
@@ -874,8 +825,6 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/SubmitAnswer'
-      parameters:
-        - $ref: '#/components/parameters/TrustedOrigin'
   /v1/answers/{answerId}:
     parameters:
       - name: answerId
@@ -952,8 +901,6 @@ paths:
               required:
                 - file
                 - kind
-      parameters:
-        - $ref: '#/components/parameters/TrustedOrigin'
   /v1/admin/materials/{materialId}:
     parameters:
       - name: materialId
@@ -997,8 +944,6 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '422':
           $ref: '#/components/responses/ValidationError'
-      parameters:
-        - $ref: '#/components/parameters/TrustedOrigin'
 components:
   securitySchemes:
     accessCookie:
@@ -1935,8 +1880,7 @@ components:
           schema:
             $ref: '#/components/schemas/Error'
     Forbidden:
-      description: 'FORBIDDEN: требуется admin (преподаватель); либо CSRF_ORIGIN_DENIED: недопустимый Origin у изменяющего
-        запроса.'
+      description: 'FORBIDDEN: требуется admin (преподаватель).'
       content:
         application/json:
           schema:
@@ -2010,24 +1954,7 @@ components:
           schema:
             type: integer
             minimum: 1
-    CsrfRejected:
-      description: 'CSRF_ORIGIN_DENIED: Origin отсутствует, равен null или не входит в разрешённый список; операция
-        не выполняется.'
-      content:
-        application/json:
-          schema:
-            $ref: '#/components/schemas/Error'
   parameters:
-    TrustedOrigin:
-      name: Origin
-      in: header
-      required: true
-      description: Origin frontend, например https://10.10.0.20:5173. Браузер устанавливает автоматически. Сервер
-        проверяет точное совпадение схемы, хоста и порта с настроенным списком. Отсутствующий, null или чужой Origin
-        возвращает 403 CSRF_ORIGIN_DENIED до выполнения операции.
-      schema:
-        type: string
-        format: uri
     OptionalRefreshCookie:
       name: refresh_token
       in: cookie

@@ -76,6 +76,32 @@ TLS в `DATABASE_URL`. Go-процесс слушает HTTP за HTTPS reverse 
 активным запросам до 15 секунд. Корпоративный reverse proxy должен ограничивать размер
 запроса с учётом multipart overhead и иметь timeout не меньше `PROCESSING_TIMEOUT`.
 
+## Миграции БД
+
+Миграции выполняет Goose; SQL-файлы из `internal/shared/postgres/migrations`
+встроены в бинарник. Они применяются при старте API или отдельно командой
+`go run ./cmd/api migrate`. История хранится в `goose_db_version`.
+PostgreSQL advisory lock сериализует запуск нескольких процессов API.
+
+Для следующего изменения добавьте файл с новой последовательной версией,
+например `internal/shared/postgres/migrations/00002_add_user_timezone.sql`:
+
+```sql
+-- +goose Up
+ALTER TABLE users ADD COLUMN timezone text;
+
+-- +goose Down
+ALTER TABLE users DROP COLUMN timezone;
+```
+
+Применённые миграции не редактируйте. Каждый файл по умолчанию выполняется
+в отдельной транзакции; ошибка откатывает этот файл, и следующий запуск повторяет
+его. Для SQL, которому запрещена транзакция (например, `CREATE INDEX CONCURRENTLY`),
+добавьте `-- +goose NO TRANSACTION` и обеспечьте безопасный повторный запуск.
+Начальная миграция содержит только `Up`; автоматического удаления всех данных нет.
+Команда приложения применяет только `Up`; пример `Down` предназначен для явного
+отката через Goose CLI.
+
 ## Пример запросов
 
 ```bash

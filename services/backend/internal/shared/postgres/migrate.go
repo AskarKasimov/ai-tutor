@@ -2,39 +2,46 @@ package postgres
 
 import (
 	"context"
-	_ "embed"
+	"embed"
 	"fmt"
+	"io/fs"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/jackc/pgx/v5/stdlib"
+	"github.com/pressly/goose/v3"
+	"github.com/pressly/goose/v3/lock"
 )
 
-//go:embed schema.sql
-var schemaSQL string
+//go:embed migrations/*.sql
+var migrations embed.FS
 
-// Migrate serializes initial schema creation, including across API processes.
+// Migrate applies embedded SQL migrations, serialized across API processes.
 func Migrate(ctx context.Context, pool *pgxpool.Pool) error {
-	tx, err := pool.Begin(ctx)
+	files, err := fs.Sub(migrations, "migrations")
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback(ctx)
-	if _, err = tx.Exec(ctx, "SELECT pg_advisory_xact_lock(1790762400)"); err != nil {
+	return migrate(ctx, pool, files)
+}
+
+func migrate(ctx context.Context, pool *pgxpool.Pool, files fs.FS) error {
+	// Use dedicated connections so session locks never leak into the API pool.
+	// Copying its pgx config preserves search_path, TLS and connection settings.
+	db := stdlib.OpenDB(*pool.Config().ConnConfig)
+	defer db.Close()
+	locker, err := lock.NewPostgresSessionLocker()
+	if err != nil {
 		return err
 	}
-	if _, err = tx.Exec(ctx, "CREATE TABLE IF NOT EXISTS schema_migrations(version integer PRIMARY KEY)"); err != nil {
-		return err
+	provider, err := goose.NewProvider(goose.DialectPostgres, db, files,
+		goose.WithSessionLocker(locker),
+		goose.WithDisableGlobalRegistry(true),
+	)
+	if err != nil {
+		return fmt.Errorf("initialize migrations: %w", err)
 	}
-	var applied bool
-	if err = tx.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM schema_migrations WHERE version=1)").Scan(&applied); err != nil {
-		return err
+	if _, err := provider.Up(ctx); err != nil {
+		return fmt.Errorf("apply migrations: %w", err)
 	}
-	if !applied {
-		if _, err = tx.Exec(ctx, schemaSQL); err != nil {
-			return fmt.Errorf("migration 1: %w", err)
-		}
-		if _, err = tx.Exec(ctx, "INSERT INTO schema_migrations(version) VALUES(1)"); err != nil {
-			return err
-		}
-	}
-	return tx.Commit(ctx)
+	return nil
 }

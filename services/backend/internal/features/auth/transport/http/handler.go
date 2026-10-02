@@ -101,7 +101,6 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 // @Header 200 {string} Set-Cookie "access_token и refresh_token: Path=/; Secure; HttpOnly; SameSite=Lax"
 // @Failure 401 {object} fault.Error
 // @Failure 422 {object} fault.Error
-// @Failure 429 {object} fault.Error
 // @Router /auth/login [post]
 func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	var req LoginRequest

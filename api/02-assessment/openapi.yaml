@@ -59,8 +59,6 @@ paths:
           $ref: '#/components/responses/EmailAlreadyRegistered'
         '422':
           $ref: '#/components/responses/AuthValidationError'
-        '429':
-          $ref: '#/components/responses/TooManyRequests'
   /auth/login:
     post:
       operationId: login
@@ -102,8 +100,6 @@ paths:
           $ref: '#/components/responses/InvalidCredentials'
         '422':
           $ref: '#/components/responses/AuthValidationError'
-        '429':
-          $ref: '#/components/responses/TooManyRequests'
   /auth/refresh:
     post:
       operationId: refreshTokens
@@ -159,8 +155,6 @@ paths:
               schema:
                 type: string
               example: access_token=; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=0
-        '429':
-          $ref: '#/components/responses/TooManyRequests'
   /auth/logout:
     post:
       operationId: logout
@@ -188,8 +182,6 @@ paths:
               schema:
                 type: string
               example: access_token=; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=0
-        '429':
-          $ref: '#/components/responses/TooManyRequests'
       parameters:
         - $ref: '#/components/parameters/OptionalRefreshCookie'
   /auth/me:
@@ -1944,18 +1936,6 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/Error'
-    TooManyRequests:
-      description: 'RATE_LIMITED: превышена частота запросов.'
-      content:
-        application/json:
-          schema:
-            $ref: '#/components/schemas/Error'
-      headers:
-        Retry-After:
-          description: Число секунд до следующей попытки.
-          schema:
-            type: integer
-            minimum: 1
   parameters:
     OptionalRefreshCookie:
       name: refresh_token

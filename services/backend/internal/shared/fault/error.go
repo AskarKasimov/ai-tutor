@@ -13,7 +13,6 @@ const (
 	Unavailable
 	Upstream
 	Timeout
-	RateLimited
 	NotFound
 )
 
@@ -24,11 +23,10 @@ type Detail struct {
 }
 
 type Error struct {
-	Kind       Kind     `json:"-"`
-	Code       string   `json:"code"`
-	Message    string   `json:"message"`
-	Details    []Detail `json:"details,omitempty" binding:"optional"`
-	RetryAfter int64    `json:"-"`
+	Kind    Kind     `json:"-"`
+	Code    string   `json:"code"`
+	Message string   `json:"message"`
+	Details []Detail `json:"details,omitempty" binding:"optional"`
 }
 
 func (e *Error) Error() string { return e.Code }

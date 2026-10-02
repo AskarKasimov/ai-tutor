@@ -11,9 +11,6 @@ type PasswordHasher interface {
 	Hash(context.Context, string) (string, error)
 	Verify(context.Context, string, string) (bool, error)
 }
-type BreachChecker interface {
-	Compromised(context.Context, string) (bool, error)
-}
 type Transaction interface {
 	InsertUser(context.Context, user.User, string) error
 	InsertSession(context.Context, session.Session) error
@@ -28,5 +25,4 @@ type Repository interface {
 	FindCredentials(context.Context, string) (user.User, string, error)
 	FindAccess(context.Context, []byte) (session.AccessState, user.User, bool, error)
 	RevokeByRefresh(context.Context, []byte, int64) error
-	RateCounter(ctx context.Context, key string, now, windowSeconds int64) (int, int64, error)
 }

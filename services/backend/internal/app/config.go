@@ -2,74 +2,117 @@ package app
 
 import (
 	"fmt"
+	"net"
 	"net/url"
 	"os"
+	"strconv"
+	"strings"
 	"time"
 )
 
 type Config struct {
-	ListenAddress        string
-	DatabaseURL          string
-	STTURL               string
-	TTSURL               string
-	AssessmentBaseURL    string
-	AssessmentModel      string
-	PasswordCheckURL     string
-	ProcessingTimeout    time.Duration
-	AssessmentTimeout    time.Duration
-	PasswordCheckTimeout time.Duration
-	LoginEmailRateLimit  int
-	MaxUploadBytes       int64
-}
-
-func DefaultConfig() Config {
-	return Config{
-		ListenAddress: ":8002",
-		STTURL:        "http://localhost:8000/transcribe", TTSURL: "http://localhost:8001/synthesize",
-		AssessmentBaseURL: "http://10.100.10.105:30245/v1", AssessmentModel: "gpt-oss-120b",
-		PasswordCheckURL:  "https://api.pwnedpasswords.com/range/",
-		ProcessingTimeout: 120 * time.Second, AssessmentTimeout: 90 * time.Second, PasswordCheckTimeout: 5 * time.Second,
-		LoginEmailRateLimit: 10, MaxUploadBytes: 25 * 1024 * 1024,
-	}
+	ListenAddress     string
+	DatabaseURL       string
+	STTURL            string
+	TTSURL            string
+	AssessmentBaseURL string
+	AssessmentModel   string
+	ProcessingTimeout time.Duration
+	AssessmentTimeout time.Duration
+	MaxUploadBytes    int64
 }
 
 func ConfigFromEnv() (Config, error) {
-	c := DefaultConfig()
-	c.DatabaseURL = os.Getenv("DATABASE_URL")
-	if c.DatabaseURL == "" {
-		return c, fmt.Errorf("DATABASE_URL is required")
+	var c Config
+	settings := []struct {
+		key string
+		dst *string
+	}{
+		{"LISTEN_ADDRESS", &c.ListenAddress},
+		{"DATABASE_URL", &c.DatabaseURL},
+		{"STT_URL", &c.STTURL},
+		{"TTS_URL", &c.TTSURL},
+		{"ASSESSMENT_BASE_URL", &c.AssessmentBaseURL},
+		{"ASSESSMENT_MODEL", &c.AssessmentModel},
 	}
-	for key, dst := range map[string]*string{"LISTEN_ADDRESS": &c.ListenAddress, "STT_URL": &c.STTURL, "TTS_URL": &c.TTSURL, "ASSESSMENT_BASE_URL": &c.AssessmentBaseURL, "ASSESSMENT_MODEL": &c.AssessmentModel, "PASSWORD_CHECK_URL": &c.PasswordCheckURL} {
-		if value := os.Getenv(key); value != "" {
-			*dst = value
-		}
-	}
-	if value := os.Getenv("PROCESSING_TIMEOUT"); value != "" {
-		d, err := time.ParseDuration(value)
+	for _, setting := range settings {
+		value, err := requiredEnv(setting.key)
 		if err != nil {
-			return c, fmt.Errorf("PROCESSING_TIMEOUT: %w", err)
+			return c, err
 		}
-		c.ProcessingTimeout = d
+		*setting.dst = value
 	}
-	if value := os.Getenv("ASSESSMENT_TIMEOUT"); value != "" {
-		d, err := time.ParseDuration(value)
+	durations := []struct {
+		key string
+		dst *time.Duration
+	}{
+		{"PROCESSING_TIMEOUT", &c.ProcessingTimeout},
+		{"ASSESSMENT_TIMEOUT", &c.AssessmentTimeout},
+	}
+	for _, setting := range durations {
+		value, err := requiredEnv(setting.key)
 		if err != nil {
-			return c, fmt.Errorf("ASSESSMENT_TIMEOUT: %w", err)
+			return c, err
 		}
-		c.AssessmentTimeout = d
+		duration, err := time.ParseDuration(value)
+		if err != nil {
+			return c, fmt.Errorf("%s: %w", setting.key, err)
+		}
+		*setting.dst = duration
+	}
+	value, err := requiredEnv("MAX_UPLOAD_BYTES")
+	if err != nil {
+		return c, err
+	}
+	c.MaxUploadBytes, err = strconv.ParseInt(value, 10, 64)
+	if err != nil {
+		return c, fmt.Errorf("MAX_UPLOAD_BYTES: %w", err)
 	}
 	return c, c.validate()
 }
 
+func requiredEnv(key string) (string, error) {
+	value := strings.TrimSpace(os.Getenv(key))
+	if value == "" {
+		return "", fmt.Errorf("%s is required", key)
+	}
+	return value, nil
+}
+
 func (c Config) validate() error {
-	for name, value := range map[string]string{"STT_URL": c.STTURL, "TTS_URL": c.TTSURL, "ASSESSMENT_BASE_URL": c.AssessmentBaseURL, "PASSWORD_CHECK_URL": c.PasswordCheckURL} {
-		u, err := url.Parse(value)
+	_, port, err := net.SplitHostPort(c.ListenAddress)
+	portNumber, portErr := strconv.Atoi(port)
+	if err != nil || portErr != nil || portNumber < 1 || portNumber > 65535 {
+		return fmt.Errorf("LISTEN_ADDRESS must be a host:port address with a port from 1 to 65535")
+	}
+	if strings.TrimSpace(c.DatabaseURL) == "" {
+		return fmt.Errorf("DATABASE_URL is required")
+	}
+	for _, setting := range []struct{ key, value string }{
+		{"STT_URL", c.STTURL}, {"TTS_URL", c.TTSURL},
+		{"ASSESSMENT_BASE_URL", c.AssessmentBaseURL},
+	} {
+		u, err := url.Parse(setting.value)
 		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.User != nil || u.Fragment != "" {
-			return fmt.Errorf("%s must be an absolute HTTP(S) URL without credentials", name)
+			return fmt.Errorf("%s must be an absolute HTTP(S) URL without credentials", setting.key)
 		}
 	}
-	if c.ProcessingTimeout <= 0 || c.AssessmentTimeout <= 0 || c.PasswordCheckTimeout <= 0 || c.AssessmentModel == "" || c.LoginEmailRateLimit < 1 || c.MaxUploadBytes < 1 || c.MaxUploadBytes > 25*1024*1024 {
-		return fmt.Errorf("timeouts, rate limits and upload limit must be positive; uploads cannot exceed 25 MiB")
+	if strings.TrimSpace(c.AssessmentModel) == "" {
+		return fmt.Errorf("ASSESSMENT_MODEL is required")
+	}
+	for _, setting := range []struct {
+		key   string
+		value time.Duration
+	}{
+		{"PROCESSING_TIMEOUT", c.ProcessingTimeout},
+		{"ASSESSMENT_TIMEOUT", c.AssessmentTimeout},
+	} {
+		if setting.value <= 0 {
+			return fmt.Errorf("%s must be positive", setting.key)
+		}
+	}
+	if c.MaxUploadBytes < 1 || c.MaxUploadBytes > 25*1024*1024 {
+		return fmt.Errorf("MAX_UPLOAD_BYTES must be positive and cannot exceed 25 MiB")
 	}
 	return nil
 }

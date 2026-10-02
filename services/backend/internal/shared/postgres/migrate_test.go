@@ -76,6 +76,10 @@ func TestMigrateFreshAndRepeat(t *testing.T) {
 	if err := pool.QueryRow(ctx, "SELECT revision FROM competency_map_state").Scan(&revision); err != nil || revision != 0 {
 		t.Fatalf("initial state: revision=%d, err=%v", revision, err)
 	}
+	var exists bool
+	if err := pool.QueryRow(ctx, "SELECT to_regclass('auth_rate_limits') IS NOT NULL").Scan(&exists); err != nil || exists {
+		t.Fatalf("initial schema includes counters: exists=%v, err=%v", exists, err)
+	}
 }
 
 func TestMigrateConcurrent(t *testing.T) {

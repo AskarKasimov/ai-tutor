@@ -3,10 +3,9 @@ package app
 import (
 	"context"
 	"crypto/rand"
-	"crypto/sha1"
 	"encoding/hex"
 	"encoding/json"
-	"fmt"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -61,17 +60,7 @@ func newFixture(t *testing.T) *fixture {
 	if err := postgres.Migrate(ctx, pool); err != nil {
 		t.Fatal(err)
 	}
-	// The external breach service is the only auth dependency replaced here.
-	breach := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !strings.HasPrefix(r.URL.Path, "/range/") || r.Header.Get("Add-Padding") != "true" {
-			t.Errorf("wrong breach request: %s", r.URL.Path)
-		}
-		fmt.Fprintln(w, strings.Repeat("0", 35)+":0")
-	}))
-	t.Cleanup(breach.Close)
-	cfg := DefaultConfig()
-	cfg.PasswordCheckURL = breach.URL + "/range/"
-	cfg.LoginEmailRateLimit = 1000
+	cfg := testConfig()
 	a, err := New(cfg, pool)
 	if err != nil {
 		t.Fatal(err)
@@ -269,43 +258,35 @@ func TestAuthConcurrentRefresh(t *testing.T) {
 	requireCode(t, f.request("GET", "/auth/me", "", access), 401, "UNAUTHORIZED")
 }
 
-func TestLoginEmailRateLimitPersistsAndResets(t *testing.T) {
+func TestRepeatedLoginFailuresDoNotBlockAuthentication(t *testing.T) {
 	f := newFixture(t)
-	f.app.cfg.LoginEmailRateLimit = 2
-	for range 2 {
-		requireCode(t, f.request("POST", "/auth/login", `{"email":"rate@example.edu","password":"wrong"}`), 401, "INVALID_CREDENTIALS")
+	for range 12 {
+		w := f.request("POST", "/auth/login", `{"email":"login@example.edu","password":"wrong"}`)
+		requireCode(t, w, 401, "INVALID_CREDENTIALS")
+		if w.Header().Get("Retry-After") != "" {
+			t.Fatal("unexpected retry delay")
+		}
 	}
-	w := f.request("POST", "/auth/login", `{"email":"rate@example.edu","password":"wrong"}`)
-	requireCode(t, w, 429, "RATE_LIMITED")
-	if w.Header().Get("Retry-After") == "" {
-		t.Fatal("missing Retry-After")
+	var exists bool
+	if err := f.pool.QueryRow(context.Background(), "SELECT to_regclass('auth_rate_limits') IS NOT NULL").Scan(&exists); err != nil || exists {
+		t.Fatalf("obsolete counter table: exists=%v, err=%v", exists, err)
 	}
-	restarted, err := New(f.app.cfg, f.pool)
-	if err != nil {
-		t.Fatal(err)
-	}
-	restarted.now = f.app.now
-	f.app = restarted
-	f.handler = restarted.Handler()
-	requireCode(t, f.request("POST", "/auth/login", `{"email":"rate@example.edu","password":"wrong"}`), 429, "RATE_LIMITED")
-	f.now = f.now.Add(time.Minute)
-	requireCode(t, f.request("POST", "/auth/login", `{"email":"rate@example.edu","password":"wrong"}`), 401, "INVALID_CREDENTIALS")
 }
 
-func TestAuthBreachCheckAndUnavailable(t *testing.T) {
+type noNetworkTransport struct{ t *testing.T }
+
+func (transport noNetworkTransport) RoundTrip(*http.Request) (*http.Response, error) {
+	transport.t.Error("registration made an outgoing HTTP request")
+	return nil, errors.New("network disabled")
+}
+
+func TestRegistrationHasNoExternalPasswordDependency(t *testing.T) {
 	f := newFixture(t)
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintf(w, "%s:12\r\n", fmt.Sprintf("%X", sha1.Sum([]byte(password)))[5:])
-	}))
-	defer server.Close()
-	f.app.cfg.PasswordCheckURL = server.URL + "/range/"
-	requireCode(t, f.request("POST", "/auth/register", `{"email":"breached@example.edu","password":"`+password+`"}`), 422, "PASSWORD_TOO_WEAK")
-	server.Close()
-	requireCode(t, f.request("POST", "/auth/register", `{"email":"breached@example.edu","password":"`+password+`"}`), 503, "PROCESSING_UNAVAILABLE")
-	var count int
-	_ = f.pool.QueryRow(context.Background(), "SELECT count(*) FROM users").Scan(&count)
-	if count != 0 {
-		t.Fatal("registered despite failed screening")
+	f.app.client.Transport = noNetworkTransport{t}
+	access, _, _ := f.register(t, "student@example.edu")
+	w := f.request("GET", "/auth/me", "", access)
+	if w.Code != 200 {
+		t.Fatalf("session: %d %s", w.Code, w.Body.String())
 	}
 }
 

@@ -44,7 +44,7 @@ HTTP-обёртки распознавания и синтеза речи выд
 - Импорт одного CSV карты компетенций с атомарной заменой учебной базы; доступен только admin.
 
 Frontend обращается только к этому backend. GigaAM и VoxCPM2 остаются внутренними HTTP API;
-их адреса и параметры моделей не передаются браузеру. Для STT по умолчанию используется
+их адреса и параметры моделей не передаются браузеру. Пример `STT_URL` использует
 `/transcribe`, который выбирает обычное распознавание до 25 секунд и longform
 для более длинных записей: серверная команда должна установить long-form
 зависимости GigaAM и настроить VAD-веса для длинных записей. Записи длиннее
@@ -73,11 +73,13 @@ HTTP-порт `127.0.0.1:8002` нужен для внутренних прове
 PostgreSQL хранит данные в постоянном volume. Обычный `docker compose down` сохраняет его;
 `down -v` удаляет данные.
 
-В `.env` обязательно укажите `STT_URL` и `TTS_URL` серверов моделей: DNS-имена
+Все настройки backend обязательны: без них API останавливается при запуске.
+Скопируйте полный набор из `.env.example`; скрытых значений по умолчанию нет.
+В `STT_URL` и `TTS_URL` укажите адреса серверов моделей: DNS-имена
 или IP, доступные из контейнера backend. Адреса в `.env.example` служат примерами
 и требуют замены. Контейнеры моделей запускаются отдельно из `../../../tts-stt`.
-`ASSESSMENT_BASE_URL` по умолчанию указывает на `http://10.100.10.105:30245/v1`,
-`ASSESSMENT_MODEL` — `gpt-oss-120b`, `ASSESSMENT_TIMEOUT` — `90s`.
+`ASSESSMENT_BASE_URL`, `ASSESSMENT_MODEL` и `ASSESSMENT_TIMEOUT` также
+задаются явно в окружении; укажите доступный адрес, имя модели и таймаут.
 Для корпоративной сети сертификат должен содержать IP в SAN, а CA должен быть доверенным
 на клиентских машинах. Frontend и `/api/v1` публикуются через общий HTTPS reverse proxy;
 клиент обращается к API по относительным путям. Caddy удаляет `/api/v1` перед
@@ -90,16 +92,22 @@ PostgreSQL хранит данные в постоянном volume. Обычн�
 Требуются Go 1.26 и PostgreSQL. Приложение не загружает веса моделей и не требует Python.
 
 ```bash
+export LISTEN_ADDRESS=':8002'
 export DATABASE_URL='postgres://ai_tutor:YOUR_PASSWORD@localhost:5432/ai_tutor?sslmode=disable'
 export STT_URL='http://localhost:8000/transcribe'
 export TTS_URL='http://localhost:8001/synthesize'
+export ASSESSMENT_BASE_URL='http://localhost:30245/v1'
+export ASSESSMENT_MODEL='gpt-oss-120b'
+export PROCESSING_TIMEOUT='120s'
+export ASSESSMENT_TIMEOUT='90s'
+export MAX_UPLOAD_BYTES='26214400'
 go run ./cmd/api migrate
 go run ./cmd/api
 ```
 
 `sslmode=disable` подходит для локальной/закрытой сети Compose. Для удалённой БД настройте
-TLS в `DATABASE_URL`. Go-процесс слушает HTTP за HTTPS reverse proxy. `LISTEN_ADDRESS`
-по умолчанию `:8002`; `PROCESSING_TIMEOUT` — `120s`. Завершение по SIGTERM/SIGINT даёт
+TLS в `DATABASE_URL`. Go-процесс слушает HTTP за HTTPS reverse proxy.
+`LISTEN_ADDRESS` и `PROCESSING_TIMEOUT` задаются явно. Завершение по SIGTERM/SIGINT даёт
 активным запросам до 15 секунд. Корпоративный reverse proxy должен ограничивать размер
 запроса с учётом multipart overhead и иметь timeout не меньше `PROCESSING_TIMEOUT`.
 
@@ -160,12 +168,8 @@ curl 'https://localhost:8443/api/v1/auth/logout' \
 
 Cookies содержат секреты: не коммитьте `cookies.txt`. JSON не содержит значений токенов.
 Пароли хешируются Argon2id (64 МиБ, 3 прохода, 2 потока); токены — SHA-256.
-Исходный пароль сохраняет пробелы и Unicode. Помимо локального отсева слабых паролей,
-регистрация проверяет утечки через [HIBP Pwned Passwords](https://haveibeenpwned.com/API/v3#PwnedPasswords).
-Наружу отправляется только пятисимвольный префикс SHA-1 с padding; пароль и полный хеш
-не передаются. Нужен исходящий HTTPS к `api.pwnedpasswords.com`.
-Если проверка недоступна, регистрация возвращает `503 PROCESSING_UNAVAILABLE` и не создаёт аккаунт.
-Вход и существующие сессии от этого сервиса не зависят.
+Исходный пароль сохраняет пробелы и Unicode. Регистрация выполняет только
+локальную валидацию пароля и сохраняет его хеш в PostgreSQL.
 
 Вход ограничен 10 попытками в минуту на нормализованный email.
 Счётчики хранятся в PostgreSQL и переживают перезапуск.
@@ -204,7 +208,7 @@ CSV: UTF-8 с необязательным BOM, разделитель `,` ил�
 ## Проверки
 
 Интеграционные тесты используют настоящий PostgreSQL и отдельную случайную schema на каждый тест.
-Модели и HIBP заменяются тестовыми HTTP-серверами; сетевой доступ и веса не нужны.
+Модели заменяются тестовыми HTTP-серверами; сетевой доступ и веса не нужны.
 
 ```bash
 export TEST_DATABASE_URL='postgres://ai_tutor:YOUR_PASSWORD@localhost:5432/ai_tutor?sslmode=disable'

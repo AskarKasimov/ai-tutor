@@ -16,7 +16,6 @@ import (
 	assessmenthttp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/assessment/transport/http"
 	authapp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/auth/application"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/features/auth/infrastructure/argon2"
-	"github.com/AskarKasimov/ai-tutor/services/backend/internal/features/auth/infrastructure/hibp"
 	authpg "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/auth/infrastructure/postgres"
 	authhttp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/auth/transport/http"
 	competencyapp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/competency/application"
@@ -52,7 +51,7 @@ func New(cfg Config, pool *pgxpool.Pool) (*App, error) {
 }
 
 func (a *App) Handler() http.Handler {
-	auth := authapp.New(authpg.New(a.pool), a.hasher, hibp.New(a.client, a.cfg.PasswordCheckURL, a.cfg.PasswordCheckTimeout), a.now, authapp.Options{LoginEmailRateLimit: a.cfg.LoginEmailRateLimit})
+	auth := authapp.New(authpg.New(a.pool), a.hasher, a.now)
 	authHandlers := authhttp.New(auth, a.now)
 	models := modelapi.New(a.client, a.cfg.STTURL, a.cfg.TTSURL, a.cfg.ProcessingTimeout)
 	voice := voiceapp.New(voicepg.New(a.pool), models, models, a.now)

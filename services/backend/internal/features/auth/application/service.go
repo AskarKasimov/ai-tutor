@@ -2,7 +2,6 @@ package application
 
 import (
 	"context"
-	"encoding/hex"
 	"net/mail"
 	"strings"
 	"time"
@@ -14,7 +13,6 @@ import (
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/security"
 )
 
-type Options struct{ LoginEmailRateLimit int }
 type RegisterInput struct {
 	Email, Password string
 	DisplayName     *string
@@ -24,15 +22,13 @@ type AuthResult struct {
 	Tokens session.Tokens
 }
 type Service struct {
-	repo    Repository
-	hasher  PasswordHasher
-	checker BreachChecker
-	now     func() time.Time
-	opts    Options
+	repo   Repository
+	hasher PasswordHasher
+	now    func() time.Time
 }
 
-func New(repo Repository, hasher PasswordHasher, checker BreachChecker, now func() time.Time, opts Options) *Service {
-	return &Service{repo, hasher, checker, now, opts}
+func New(repo Repository, hasher PasswordHasher, now func() time.Time) *Service {
+	return &Service{repo, hasher, now}
 }
 func normalizeEmail(email string) (string, error) {
 	email = strings.ToLower(strings.TrimSpace(email))
@@ -47,7 +43,7 @@ func weakPassword(message string) *fault.Error {
 	e.Details = []fault.Detail{{Path: "password", Code: "PASSWORD_TOO_WEAK", Message: message}}
 	return e
 }
-func (s *Service) checkPassword(ctx context.Context, password string) error {
+func checkPassword(password string) error {
 	count := utf8.RuneCountInString(password)
 	if count < 15 || count > 128 {
 		return weakPassword("Пароль должен содержать 15–128 символов.")
@@ -65,13 +61,7 @@ func (s *Service) checkPassword(ctx context.Context, password string) error {
 	if repeated || strings.TrimSpace(p) == "" || p == "passwordpassword" || p == "123456789012345" || p == "qwertyuiopasdfgh" {
 		return weakPassword("Выберите менее распространённый пароль.")
 	}
-	breached, err := s.checker.Compromised(ctx, password)
-	if err != nil {
-		return err
-	}
-	if breached {
-		return weakPassword("Этот пароль встречается в известных утечках.")
-	}
+
 	return nil
 }
 func (s *Service) Register(ctx context.Context, in RegisterInput) (AuthResult, error) {
@@ -86,7 +76,7 @@ func (s *Service) Register(ctx context.Context, in RegisterInput) (AuthResult, e
 			return out, fault.Validation("display_name", "Имя должно содержать 1–200 символов.")
 		}
 	}
-	if err = s.checkPassword(ctx, in.Password); err != nil {
+	if err = checkPassword(in.Password); err != nil {
 		return out, err
 	}
 	hash, err := s.hasher.Hash(ctx, in.Password)
@@ -117,9 +107,6 @@ func (s *Service) Login(ctx context.Context, email, password string) (AuthResult
 	}
 	if n := utf8.RuneCountInString(password); n < 1 || n > 128 {
 		return out, fault.Validation("password", "Пароль должен содержать 1–128 символов.")
-	}
-	if err = s.rate(ctx, "login-email:"+email, s.opts.LoginEmailRateLimit); err != nil {
-		return out, err
 	}
 	u, hash, err := s.repo.FindCredentials(ctx, email)
 	if err != nil {
@@ -233,17 +220,4 @@ func (s *Service) Me(ctx context.Context, token string) (user.User, error) {
 		return unauthorized()
 	}
 	return u, nil
-}
-func (s *Service) rate(ctx context.Context, key string, limit int) error {
-	now := s.now().Unix()
-	attempts, end, err := s.repo.RateCounter(ctx, hex.EncodeToString(security.Hash(key)), now, 60)
-	if err != nil {
-		return err
-	}
-	if attempts > limit {
-		e := fault.New(fault.RateLimited, "RATE_LIMITED", "Слишком много запросов; повторите позже.")
-		e.RetryAfter = max(1, end-now)
-		return e
-	}
-	return nil
 }

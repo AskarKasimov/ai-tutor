@@ -217,22 +217,3 @@ func TestCSVExample(t *testing.T) {
 		t.Fatalf("bad example: %+v", m)
 	}
 }
-
-func TestConfigRejectsBadSettings(t *testing.T) {
-	for _, key := range []string{"DATABASE_URL", "STT_URL", "TTS_URL", "PASSWORD_CHECK_URL", "PROCESSING_TIMEOUT", "LISTEN_ADDRESS"} {
-		t.Setenv(key, "")
-	}
-	if _, err := ConfigFromEnv(); err == nil {
-		t.Fatal("missing database accepted")
-	}
-	t.Setenv("DATABASE_URL", "postgres://example/db")
-	t.Setenv("PROCESSING_TIMEOUT", "bad")
-	if _, err := ConfigFromEnv(); err == nil {
-		t.Fatal("bad duration accepted")
-	}
-	t.Setenv("PROCESSING_TIMEOUT", "1s")
-	t.Setenv("PROCESSING_TIMEOUT", "0s")
-	if _, err := ConfigFromEnv(); err == nil {
-		t.Fatal("zero timeout accepted")
-	}
-}

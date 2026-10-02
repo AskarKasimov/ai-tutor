@@ -38,13 +38,6 @@ CREATE TABLE
 CREATE INDEX IF NOT EXISTS refresh_tokens_session ON refresh_tokens (session_id);
 
 CREATE TABLE
-    IF NOT EXISTS auth_rate_limits (
-        key text PRIMARY KEY,
-        expires_at bigint NOT NULL,
-        attempts integer NOT NULL
-    );
-
-CREATE TABLE
     IF NOT EXISTS transcriptions (
         id text PRIMARY KEY,
         user_id text NOT NULL REFERENCES users (id) ON DELETE CASCADE,

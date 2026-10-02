@@ -109,7 +109,7 @@ func TestOpenAPIResponses(t *testing.T) {
 		case "/synthesize":
 			w.Header().Set("Content-Type", "audio/wav")
 			_, _ = w.Write(wavBytes())
-		case "/transcribe/longform":
+		case "/transcribe":
 			httpx.JSON(w, 200, map[string]any{"text": "Ответ.", "model": "v3", "segments": []any{}})
 		case "/chat/completions":
 			httpx.JSON(w, 200, map[string]any{"choices": []any{map[string]any{
@@ -122,7 +122,7 @@ func TestOpenAPIResponses(t *testing.T) {
 		}
 	}))
 	defer provider.Close()
-	f.app.cfg.STTURL = provider.URL + "/transcribe/longform"
+	f.app.cfg.STTURL = provider.URL + "/transcribe"
 	f.app.cfg.TTSURL = provider.URL + "/synthesize"
 	f.app.cfg.AssessmentBaseURL = provider.URL
 	transcription := upload(f, "/voice/transcriptions", "audio", "answer.wav", "audio/wav", wavBytes(), access)

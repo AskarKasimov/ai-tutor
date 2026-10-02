@@ -35,7 +35,7 @@ func TestVoiceTranscriptionPersistsOwnerAndUsesLongform(t *testing.T) {
 	access, _, id := f.register(t, "voice@example.edu")
 	wav := wavBytes()
 	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/transcribe/longform" || r.Method != "POST" {
+		if r.URL.Path != "/transcribe" || r.Method != "POST" {
 			t.Errorf("wrong STT path: %s", r.URL.Path)
 			w.WriteHeader(500)
 			return
@@ -62,7 +62,7 @@ func TestVoiceTranscriptionPersistsOwnerAndUsesLongform(t *testing.T) {
 		httpx.JSON(w, 200, map[string]any{"text": "Ответ ученика.", "model": "v3_e2e_rnnt", "segments": []any{}})
 	}))
 	defer provider.Close()
-	f.app.cfg.STTURL = provider.URL + "/transcribe/longform"
+	f.app.cfg.STTURL = provider.URL + "/transcribe"
 	w := upload(f, "/voice/transcriptions", "audio", "voice.wav", "audio/wav", wav, access)
 	if w.Code != 200 {
 		t.Fatalf("STT: %d %s", w.Code, w.Body.String())
@@ -149,7 +149,7 @@ func TestVoiceProviderFailuresNeverPersist(t *testing.T) {
 			w.WriteHeader(tc.status)
 			_, _ = io.WriteString(w, tc.body)
 		}))
-		f.app.cfg.STTURL = server.URL + "/transcribe/longform"
+		f.app.cfg.STTURL = server.URL + "/transcribe"
 		w := upload(f, "/voice/transcriptions", "audio", "voice.wav", "audio/wav", wavBytes(), access)
 		requireCode(t, w, tc.want, tc.code)
 		if strings.Contains(w.Body.String(), "private model") {
@@ -166,7 +166,7 @@ func TestVoiceProviderFailuresNeverPersist(t *testing.T) {
 		_, _ = io.Copy(io.Discard, r.Body)
 		<-r.Context().Done()
 	}))
-	f.app.cfg.STTURL = server.URL + "/transcribe/longform"
+	f.app.cfg.STTURL = server.URL + "/transcribe"
 	f.app.cfg.TTSURL = server.URL + "/synthesize"
 	f.app.cfg.ProcessingTimeout = 20 * time.Millisecond
 	requireCode(t, upload(f, "/voice/transcriptions", "audio", "voice.wav", "audio/wav", wavBytes(), access), 504, "PROCESSING_TIMEOUT")

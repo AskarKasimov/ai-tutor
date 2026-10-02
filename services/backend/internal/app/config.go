@@ -25,7 +25,7 @@ type Config struct {
 func DefaultConfig() Config {
 	return Config{
 		ListenAddress: ":8002",
-		STTURL:        "http://localhost:8000/transcribe/longform", TTSURL: "http://localhost:8001/synthesize",
+		STTURL:        "http://localhost:8000/transcribe", TTSURL: "http://localhost:8001/synthesize",
 		AssessmentBaseURL: "http://10.100.10.105:30245/v1", AssessmentModel: "gpt-oss-120b",
 		PasswordCheckURL:  "https://api.pwnedpasswords.com/range/",
 		ProcessingTimeout: 120 * time.Second, AssessmentTimeout: 90 * time.Second, PasswordCheckTimeout: 5 * time.Second,

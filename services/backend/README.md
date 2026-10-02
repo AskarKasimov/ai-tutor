@@ -45,8 +45,10 @@ HTTP-обёртки распознавания и синтеза речи выд
 
 Frontend обращается только к этому backend. GigaAM и VoxCPM2 остаются внутренними HTTP API;
 их адреса и параметры моделей не передаются браузеру. Для STT по умолчанию используется
-`/transcribe/longform`: серверная команда должна установить long-form зависимости GigaAM
-и настроить VAD-веса. Записи длиннее 25 секунд не ограничиваются публичным API.
+`/transcribe`, который выбирает обычное распознавание до 25 секунд и longform
+для более длинных записей: серверная команда должна установить long-form
+зависимости GigaAM и настроить VAD-веса для длинных записей. Записи длиннее
+25 секунд не ограничиваются публичным API.
 Оценивание принимает произвольный текст задания, варианты (необязательно), голосовую инструкцию,
 эталон (необязательно) и `transcription_id`. Backend берёт текст ответа из PostgreSQL по владельцу,
 передаёт его модели и проверяет структуру результата. Это прототипный синхронный маршрут,
@@ -89,7 +91,7 @@ PostgreSQL хранит данные в постоянном volume. Обычн�
 
 ```bash
 export DATABASE_URL='postgres://ai_tutor:YOUR_PASSWORD@localhost:5432/ai_tutor?sslmode=disable'
-export STT_URL='http://localhost:8000/transcribe/longform'
+export STT_URL='http://localhost:8000/transcribe'
 export TTS_URL='http://localhost:8001/synthesize'
 go run ./cmd/api migrate
 go run ./cmd/api

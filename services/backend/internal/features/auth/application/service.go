@@ -14,7 +14,7 @@ import (
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/security"
 )
 
-type Options struct{ AuthRateLimit, LoginEmailRateLimit int }
+type Options struct{ LoginEmailRateLimit int }
 type RegisterInput struct {
 	Email, Password string
 	DisplayName     *string
@@ -246,7 +246,4 @@ func (s *Service) rate(ctx context.Context, key string, limit int) error {
 		return e
 	}
 	return nil
-}
-func (s *Service) RateIP(ctx context.Context, ip string) error {
-	return s.rate(ctx, "ip:"+ip, s.opts.AuthRateLimit)
 }

@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"net/url"
 	"os"
-	"strconv"
 	"time"
 )
 
@@ -19,7 +18,6 @@ type Config struct {
 	ProcessingTimeout    time.Duration
 	AssessmentTimeout    time.Duration
 	PasswordCheckTimeout time.Duration
-	AuthRateLimit        int
 	LoginEmailRateLimit  int
 	MaxUploadBytes       int64
 }
@@ -31,7 +29,7 @@ func DefaultConfig() Config {
 		AssessmentBaseURL: "http://10.100.10.105:30245/v1", AssessmentModel: "gpt-oss-120b",
 		PasswordCheckURL:  "https://api.pwnedpasswords.com/range/",
 		ProcessingTimeout: 120 * time.Second, AssessmentTimeout: 90 * time.Second, PasswordCheckTimeout: 5 * time.Second,
-		AuthRateLimit: 30, LoginEmailRateLimit: 10, MaxUploadBytes: 25 * 1024 * 1024,
+		LoginEmailRateLimit: 10, MaxUploadBytes: 25 * 1024 * 1024,
 	}
 }
 
@@ -60,13 +58,6 @@ func ConfigFromEnv() (Config, error) {
 		}
 		c.AssessmentTimeout = d
 	}
-	if value := os.Getenv("AUTH_RATE_LIMIT"); value != "" {
-		n, err := strconv.Atoi(value)
-		if err != nil {
-			return c, fmt.Errorf("AUTH_RATE_LIMIT must be an integer")
-		}
-		c.AuthRateLimit = n
-	}
 	return c, c.validate()
 }
 
@@ -77,7 +68,7 @@ func (c Config) validate() error {
 			return fmt.Errorf("%s must be an absolute HTTP(S) URL without credentials", name)
 		}
 	}
-	if c.ProcessingTimeout <= 0 || c.AssessmentTimeout <= 0 || c.PasswordCheckTimeout <= 0 || c.AssessmentModel == "" || c.AuthRateLimit < 1 || c.LoginEmailRateLimit < 1 || c.MaxUploadBytes < 1 || c.MaxUploadBytes > 25*1024*1024 {
+	if c.ProcessingTimeout <= 0 || c.AssessmentTimeout <= 0 || c.PasswordCheckTimeout <= 0 || c.AssessmentModel == "" || c.LoginEmailRateLimit < 1 || c.MaxUploadBytes < 1 || c.MaxUploadBytes > 25*1024*1024 {
 		return fmt.Errorf("timeouts, rate limits and upload limit must be positive; uploads cannot exceed 25 MiB")
 	}
 	return nil

@@ -219,7 +219,7 @@ func TestCSVExample(t *testing.T) {
 }
 
 func TestConfigRejectsBadSettings(t *testing.T) {
-	for _, key := range []string{"DATABASE_URL", "STT_URL", "TTS_URL", "PASSWORD_CHECK_URL", "PROCESSING_TIMEOUT", "AUTH_RATE_LIMIT", "LISTEN_ADDRESS"} {
+	for _, key := range []string{"DATABASE_URL", "STT_URL", "TTS_URL", "PASSWORD_CHECK_URL", "PROCESSING_TIMEOUT", "LISTEN_ADDRESS"} {
 		t.Setenv(key, "")
 	}
 	if _, err := ConfigFromEnv(); err == nil {
@@ -231,8 +231,8 @@ func TestConfigRejectsBadSettings(t *testing.T) {
 		t.Fatal("bad duration accepted")
 	}
 	t.Setenv("PROCESSING_TIMEOUT", "1s")
-	t.Setenv("AUTH_RATE_LIMIT", "0")
+	t.Setenv("PROCESSING_TIMEOUT", "0s")
 	if _, err := ConfigFromEnv(); err == nil {
-		t.Fatal("unlimited auth accepted")
+		t.Fatal("zero timeout accepted")
 	}
 }

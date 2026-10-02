@@ -155,7 +155,7 @@ func fixture() (*Service, *memoryRepo, *checker, *time.Time) {
 	now := time.Unix(1000, 0)
 	m := newMemory()
 	c := &checker{}
-	s := New(m, &hasher{}, c, func() time.Time { return now }, Options{100, 100})
+	s := New(m, &hasher{}, c, func() time.Time { return now }, Options{LoginEmailRateLimit: 100})
 	return s, m, c, &now
 }
 
@@ -283,14 +283,13 @@ func TestExpiryBoundariesAndLogout(t *testing.T) {
 		t.Fatal(err)
 	}
 }
-func TestRateWindowAndUnknownUserVerification(t *testing.T) {
+func TestLoginEmailRateWindowAndUnknownUserVerification(t *testing.T) {
 	s, _, _, now := fixture()
 	ctx := context.Background()
-	s.opts.AuthRateLimit = 1
-	if err := s.RateIP(ctx, "1.2.3.4"); err != nil {
-		t.Fatal(err)
-	}
-	err := s.RateIP(ctx, "1.2.3.4")
+	s.opts.LoginEmailRateLimit = 1
+	_, err := s.Login(ctx, "rate@example.edu", "wrong")
+	code(t, err, "INVALID_CREDENTIALS")
+	_, err = s.Login(ctx, "rate@example.edu", "wrong")
 	code(t, err, "RATE_LIMITED")
 	var e *fault.Error
 	errors.As(err, &e)
@@ -298,9 +297,8 @@ func TestRateWindowAndUnknownUserVerification(t *testing.T) {
 		t.Fatal(e.RetryAfter)
 	}
 	*now = now.Add(time.Minute)
-	if err = s.RateIP(ctx, "1.2.3.4"); err != nil {
-		t.Fatal(err)
-	}
+	_, err = s.Login(ctx, "rate@example.edu", "wrong")
+	code(t, err, "INVALID_CREDENTIALS")
 	h := &hasher{verified: "sentinel"}
 	s.hasher = h
 	_, err = s.Login(ctx, "unknown@example.edu", "wrong")

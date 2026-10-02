@@ -3,7 +3,6 @@ package authhttp
 import (
 	"encoding/json"
 	"errors"
-	"net"
 	"net/http"
 	"time"
 
@@ -54,18 +53,6 @@ type authSession struct {
 	Session wireExpiry `json:"session"`
 }
 
-func (h *Handler) rate(w http.ResponseWriter, r *http.Request) bool {
-	ip, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		ip = r.RemoteAddr
-	}
-	if err = h.service.RateIP(r.Context(), ip); err != nil {
-		httpx.Error(w, err)
-		return false
-	}
-	return true
-}
-
 // Register handles POST /auth/register.
 // @Summary Зарегистрироваться
 // @ID register
@@ -77,13 +64,9 @@ func (h *Handler) rate(w http.ResponseWriter, r *http.Request) bool {
 // @Header 201 {string} Set-Cookie "access_token и refresh_token: Path=/; Secure; HttpOnly; SameSite=Lax"
 // @Failure 409 {object} fault.Error
 // @Failure 422 {object} fault.Error
-// @Failure 429 {object} fault.Error
 // @Failure 503 {object} fault.Error
 // @Router /auth/register [post]
 func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
-	if !h.rate(w, r) {
-		return
-	}
 	var req RegisterRequest
 	if err := httpx.DecodeJSON(r, &req); err != nil {
 		httpx.Error(w, err)
@@ -121,9 +104,6 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 // @Failure 429 {object} fault.Error
 // @Router /auth/login [post]
 func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
-	if !h.rate(w, r) {
-		return
-	}
 	var req LoginRequest
 	if err := httpx.DecodeJSON(r, &req); err != nil {
 		httpx.Error(w, err)
@@ -148,12 +128,8 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 // @Header 200 {string} Set-Cookie "access_token и refresh_token: Path=/; Secure; HttpOnly; SameSite=Lax"
 // @Failure 401 {object} fault.Error
 // @Failure 422 {object} fault.Error
-// @Failure 429 {object} fault.Error
 // @Router /auth/refresh [post]
 func (h *Handler) Refresh(w http.ResponseWriter, r *http.Request) {
-	if !h.rate(w, r) {
-		return
-	}
 	if err := httpx.NoBody(r); err != nil {
 		httpx.Error(w, err)
 		return
@@ -180,12 +156,8 @@ func (h *Handler) Refresh(w http.ResponseWriter, r *http.Request) {
 // @Success 204 "Сессия завершена"
 // @Header 204 {string} Set-Cookie "access_token и refresh_token: Path=/; Secure; HttpOnly; SameSite=Lax"
 // @Failure 422 {object} fault.Error
-// @Failure 429 {object} fault.Error
 // @Router /auth/logout [post]
 func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
-	if !h.rate(w, r) {
-		return
-	}
 	if err := httpx.NoBody(r); err != nil {
 		httpx.Error(w, err)
 		return

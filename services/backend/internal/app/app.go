@@ -52,7 +52,7 @@ func New(cfg Config, pool *pgxpool.Pool) (*App, error) {
 }
 
 func (a *App) Handler() http.Handler {
-	auth := authapp.New(authpg.New(a.pool), a.hasher, hibp.New(a.client, a.cfg.PasswordCheckURL, a.cfg.PasswordCheckTimeout), a.now, authapp.Options{AuthRateLimit: a.cfg.AuthRateLimit, LoginEmailRateLimit: a.cfg.LoginEmailRateLimit})
+	auth := authapp.New(authpg.New(a.pool), a.hasher, hibp.New(a.client, a.cfg.PasswordCheckURL, a.cfg.PasswordCheckTimeout), a.now, authapp.Options{LoginEmailRateLimit: a.cfg.LoginEmailRateLimit})
 	authHandlers := authhttp.New(auth, a.now)
 	models := modelapi.New(a.client, a.cfg.STTURL, a.cfg.TTSURL, a.cfg.ProcessingTimeout)
 	voice := voiceapp.New(voicepg.New(a.pool), models, models, a.now)

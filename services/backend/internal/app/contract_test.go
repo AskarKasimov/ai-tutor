@@ -105,17 +105,46 @@ func TestOpenAPIResponses(t *testing.T) {
 	check("GET", "/auth/me", f.request("GET", "/auth/me", ""))
 	check("POST", "/auth/login", f.request("POST", "/auth/login", `{"email":"contract@example.edu","password":"`+password+`"}`))
 	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/synthesize" {
+		switch r.URL.Path {
+		case "/synthesize":
 			w.Header().Set("Content-Type", "audio/wav")
 			_, _ = w.Write(wavBytes())
-		} else {
+		case "/transcribe/longform":
 			httpx.JSON(w, 200, map[string]any{"text": "Ответ.", "model": "v3", "segments": []any{}})
+		case "/chat/completions":
+			httpx.JSON(w, 200, map[string]any{"choices": []any{map[string]any{
+				"message":       map[string]any{"content": `{"score":2,"feedback":["Верно.","Ответ полный.","Закрепите тему."]}`},
+				"finish_reason": "stop",
+			}}})
+		default:
+			t.Errorf("unexpected provider path: %s", r.URL.Path)
+			http.NotFound(w, r)
 		}
 	}))
 	defer provider.Close()
 	f.app.cfg.STTURL = provider.URL + "/transcribe/longform"
 	f.app.cfg.TTSURL = provider.URL + "/synthesize"
-	check("POST", "/voice/transcriptions", upload(f, "/voice/transcriptions", "audio", "answer.wav", "audio/wav", wavBytes(), access))
+	f.app.cfg.AssessmentBaseURL = provider.URL
+	transcription := upload(f, "/voice/transcriptions", "audio", "answer.wav", "audio/wav", wavBytes(), access)
+	check("POST", "/voice/transcriptions", transcription)
+	var saved struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(transcription.Body.Bytes(), &saved); err != nil {
+		t.Fatal(err)
+	}
+	if transcription.Code != http.StatusOK || saved.ID == "" {
+		t.Fatalf("transcription: %d %s", transcription.Code, transcription.Body.String())
+	}
+	evaluateBody, err := json.Marshal(map[string]string{
+		"transcription_id":  saved.ID,
+		"question":          "Вопрос?",
+		"voice_instruction": "Ответьте на вопрос.",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	check("POST", "/assessments/evaluate", f.request("POST", "/assessments/evaluate", string(evaluateBody), access))
 	check("POST", "/voice/syntheses", f.request("POST", "/voice/syntheses", `{"text":"Вопрос?"}`, access))
 	check("POST", "/voice/syntheses", f.request("POST", "/voice/syntheses", `{"text":""}`, access))
 	admin := f.admin(t)

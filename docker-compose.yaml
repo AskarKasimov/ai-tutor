@@ -27,7 +27,6 @@ services:
       ASSESSMENT_MODEL: ${ASSESSMENT_MODEL:?Set ASSESSMENT_MODEL in .env}
       ASSESSMENT_TIMEOUT: ${ASSESSMENT_TIMEOUT:?Set ASSESSMENT_TIMEOUT in .env}
       PROCESSING_TIMEOUT: ${PROCESSING_TIMEOUT:?Set PROCESSING_TIMEOUT in .env}
-      AUTH_RATE_LIMIT: ${AUTH_RATE_LIMIT:?Set AUTH_RATE_LIMIT in .env}
     depends_on:
       db:
         condition: service_healthy

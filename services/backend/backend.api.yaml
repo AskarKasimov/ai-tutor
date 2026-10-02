@@ -422,12 +422,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/fault.Error'
           description: Unprocessable Entity
-        "429":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Too Many Requests
       summary: Завершить сессию
       tags:
         - Auth
@@ -479,12 +473,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/fault.Error'
           description: Unprocessable Entity
-        "429":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Too Many Requests
       security:
         - refreshCookie: []
       summary: Обновить токены сессии
@@ -526,12 +514,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/fault.Error'
           description: Unprocessable Entity
-        "429":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Too Many Requests
         "503":
           content:
             application/json:

@@ -71,7 +71,6 @@ func newFixture(t *testing.T) *fixture {
 	t.Cleanup(breach.Close)
 	cfg := DefaultConfig()
 	cfg.PasswordCheckURL = breach.URL + "/range/"
-	cfg.AuthRateLimit = 1000
 	cfg.LoginEmailRateLimit = 1000
 	a, err := New(cfg, pool)
 	if err != nil {
@@ -270,13 +269,13 @@ func TestAuthConcurrentRefresh(t *testing.T) {
 	requireCode(t, f.request("GET", "/auth/me", "", access), 401, "UNAUTHORIZED")
 }
 
-func TestRateLimitPersistsAndResets(t *testing.T) {
+func TestLoginEmailRateLimitPersistsAndResets(t *testing.T) {
 	f := newFixture(t)
-	f.app.cfg.AuthRateLimit = 2
+	f.app.cfg.LoginEmailRateLimit = 2
 	for range 2 {
-		requireCode(t, f.request("POST", "/auth/login", `{}`), 422, "VALIDATION_ERROR")
+		requireCode(t, f.request("POST", "/auth/login", `{"email":"rate@example.edu","password":"wrong"}`), 401, "INVALID_CREDENTIALS")
 	}
-	w := f.request("POST", "/auth/login", `{}`)
+	w := f.request("POST", "/auth/login", `{"email":"rate@example.edu","password":"wrong"}`)
 	requireCode(t, w, 429, "RATE_LIMITED")
 	if w.Header().Get("Retry-After") == "" {
 		t.Fatal("missing Retry-After")
@@ -288,9 +287,9 @@ func TestRateLimitPersistsAndResets(t *testing.T) {
 	restarted.now = f.app.now
 	f.app = restarted
 	f.handler = restarted.Handler()
-	requireCode(t, f.request("POST", "/auth/login", `{}`), 429, "RATE_LIMITED")
+	requireCode(t, f.request("POST", "/auth/login", `{"email":"rate@example.edu","password":"wrong"}`), 429, "RATE_LIMITED")
 	f.now = f.now.Add(time.Minute)
-	requireCode(t, f.request("POST", "/auth/login", `{}`), 422, "VALIDATION_ERROR")
+	requireCode(t, f.request("POST", "/auth/login", `{"email":"rate@example.edu","password":"wrong"}`), 401, "INVALID_CREDENTIALS")
 }
 
 func TestAuthBreachCheckAndUnavailable(t *testing.T) {
@@ -307,5 +306,17 @@ func TestAuthBreachCheckAndUnavailable(t *testing.T) {
 	_ = f.pool.QueryRow(context.Background(), "SELECT count(*) FROM users").Scan(&count)
 	if count != 0 {
 		t.Fatal("registered despite failed screening")
+	}
+}
+
+func TestAuthPostRequestsHaveNoSharedIPLimit(t *testing.T) {
+	f := newFixture(t)
+	for range 35 {
+		requireCode(t, f.request("POST", "/auth/register", `{}`), 422, "VALIDATION_ERROR")
+		requireCode(t, f.request("POST", "/auth/login", `{}`), 422, "VALIDATION_ERROR")
+		requireCode(t, f.request("POST", "/auth/refresh", ""), 401, "INVALID_REFRESH_TOKEN")
+		if w := f.request("POST", "/auth/logout", ""); w.Code != 204 {
+			t.Fatalf("logout: %d", w.Code)
+		}
 	}
 }

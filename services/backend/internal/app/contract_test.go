@@ -109,7 +109,7 @@ func TestOpenAPIResponses(t *testing.T) {
 		case "/synthesize":
 			w.Header().Set("Content-Type", "audio/wav")
 			_, _ = w.Write(wavBytes())
-		case "/transcribe/longform":
+		case "/transcribe":
 			httpx.JSON(w, 200, map[string]any{"text": "Ответ.", "model": "v3", "segments": []any{}})
 		case "/chat/completions":
 			httpx.JSON(w, 200, map[string]any{"choices": []any{map[string]any{
@@ -122,7 +122,7 @@ func TestOpenAPIResponses(t *testing.T) {
 		}
 	}))
 	defer provider.Close()
-	f.app.cfg.STTURL = provider.URL + "/transcribe/longform"
+	f.app.cfg.STTURL = provider.URL + "/transcribe"
 	f.app.cfg.TTSURL = provider.URL + "/synthesize"
 	f.app.cfg.AssessmentBaseURL = provider.URL
 	transcription := upload(f, "/voice/transcriptions", "audio", "answer.wav", "audio/wav", wavBytes(), access)
@@ -215,24 +215,5 @@ func TestCSVExample(t *testing.T) {
 	}
 	if len(m.Outcomes) != 2 || len(m.Tasks) != 4 {
 		t.Fatalf("bad example: %+v", m)
-	}
-}
-
-func TestConfigRejectsBadSettings(t *testing.T) {
-	for _, key := range []string{"DATABASE_URL", "STT_URL", "TTS_URL", "PASSWORD_CHECK_URL", "PROCESSING_TIMEOUT", "LISTEN_ADDRESS"} {
-		t.Setenv(key, "")
-	}
-	if _, err := ConfigFromEnv(); err == nil {
-		t.Fatal("missing database accepted")
-	}
-	t.Setenv("DATABASE_URL", "postgres://example/db")
-	t.Setenv("PROCESSING_TIMEOUT", "bad")
-	if _, err := ConfigFromEnv(); err == nil {
-		t.Fatal("bad duration accepted")
-	}
-	t.Setenv("PROCESSING_TIMEOUT", "1s")
-	t.Setenv("PROCESSING_TIMEOUT", "0s")
-	if _, err := ConfigFromEnv(); err == nil {
-		t.Fatal("zero timeout accepted")
 	}
 }

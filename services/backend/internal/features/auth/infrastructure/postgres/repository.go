@@ -95,9 +95,3 @@ func (r *Repository) RevokeByRefresh(ctx context.Context, hash []byte, now int64
 	_, err := r.pool.Exec(ctx, `UPDATE auth_sessions SET revoked_at=COALESCE(revoked_at,$2) WHERE id=(SELECT session_id FROM refresh_tokens WHERE token_hash=$1)`, hash, now)
 	return err
 }
-func (r *Repository) RateCounter(ctx context.Context, key string, now, windowSeconds int64) (int, int64, error) {
-	var attempts int
-	var end int64
-	err := r.pool.QueryRow(ctx, `INSERT INTO auth_rate_limits(key,expires_at,attempts) VALUES($1,$2,1) ON CONFLICT(key) DO UPDATE SET attempts=CASE WHEN auth_rate_limits.expires_at<=$3 THEN 1 ELSE auth_rate_limits.attempts+1 END, expires_at=CASE WHEN auth_rate_limits.expires_at<=$3 THEN $2 ELSE auth_rate_limits.expires_at END RETURNING attempts,expires_at`, key, now+windowSeconds, now).Scan(&attempts, &end)
-	return attempts, end, err
-}

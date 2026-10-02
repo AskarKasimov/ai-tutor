@@ -11,7 +11,7 @@ for dependency in mkcert docker; do
     fi
 done
 if [ ! -f .env ]; then
-    printf '%s\n' 'Create .env from .env.example and set POSTGRES_PASSWORD, STT_URL and TTS_URL.' >&2
+    printf '%s\n' 'Create .env from .env.example and set DB_PASSWORD, BACKEND_STT_URL and BACKEND_TTS_URL.' >&2
     exit 1
 fi
 docker compose version >/dev/null

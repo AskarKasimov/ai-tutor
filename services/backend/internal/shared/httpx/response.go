@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"log/slog"
 	"net/http"
 
@@ -43,13 +42,8 @@ func Error(w http.ResponseWriter, err error) {
 		status = 502
 	case fault.Timeout:
 		status = 504
-	case fault.RateLimited:
-		status = 429
 	case fault.NotFound:
 		status = 404
-	}
-	if e.RetryAfter > 0 {
-		w.Header().Set("Retry-After", fmt.Sprint(e.RetryAfter))
 	}
 	JSON(w, status, e)
 }

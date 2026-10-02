@@ -24,22 +24,17 @@ type accessEntry struct {
 	id  string
 	end int64
 }
-type counter struct {
-	n   int
-	end int64
-}
 type memoryRepo struct {
 	users     map[string]credentials
 	sessions  map[string]session.Session
 	refresh   map[string]refreshEntry
 	access    map[string]accessEntry
-	counters  map[string]counter
 	commits   int
 	commitErr error
 }
 
 func newMemory() *memoryRepo {
-	return &memoryRepo{users: map[string]credentials{}, sessions: map[string]session.Session{}, refresh: map[string]refreshEntry{}, access: map[string]accessEntry{}, counters: map[string]counter{}}
+	return &memoryRepo{users: map[string]credentials{}, sessions: map[string]session.Session{}, refresh: map[string]refreshEntry{}, access: map[string]accessEntry{}}
 }
 func cloneMap[K comparable, V any](in map[K]V) map[K]V {
 	out := make(map[K]V)
@@ -123,15 +118,6 @@ func (m *memoryRepo) RevokeByRefresh(ctx context.Context, hash []byte, now int64
 	}
 	return m.RevokeSession(ctx, v.id, now)
 }
-func (m *memoryRepo) RateCounter(_ context.Context, key string, now, windowSeconds int64) (int, int64, error) {
-	c := m.counters[key]
-	if c.end <= now {
-		c = counter{0, now + windowSeconds}
-	}
-	c.n++
-	m.counters[key] = c
-	return c.n, c.end, nil
-}
 
 type hasher struct{ verified string }
 
@@ -141,22 +127,11 @@ func (h *hasher) Verify(_ context.Context, hash, p string) (bool, error) {
 	return hash != "" && hash == "hash:"+p, nil
 }
 
-type checker struct {
-	calls    int
-	breached bool
-	err      error
-}
-
-func (c *checker) Compromised(_ context.Context, _ string) (bool, error) {
-	c.calls++
-	return c.breached, c.err
-}
-func fixture() (*Service, *memoryRepo, *checker, *time.Time) {
+func fixture() (*Service, *memoryRepo, *time.Time) {
 	now := time.Unix(1000, 0)
 	m := newMemory()
-	c := &checker{}
-	s := New(m, &hasher{}, c, func() time.Time { return now }, Options{LoginEmailRateLimit: 100})
-	return s, m, c, &now
+	s := New(m, &hasher{}, func() time.Time { return now })
+	return s, m, &now
 }
 
 const phrase = "Надёжная фраза для теста 42!"
@@ -177,13 +152,13 @@ func code(t *testing.T, err error, want string) {
 	}
 }
 func TestRegistrationPolicyAndNormalization(t *testing.T) {
-	s, m, c, _ := fixture()
+	s, m, _ := fixture()
 	ctx := context.Background()
 	for _, p := range []string{"short", strings.Repeat("a", 20), "passwordpassword", strings.Repeat("я", 129)} {
 		_, err := s.Register(ctx, RegisterInput{Email: "x@example.edu", Password: p})
 		code(t, err, "PASSWORD_TOO_WEAK")
 	}
-	if c.calls != 0 || len(m.users) != 0 {
+	if len(m.users) != 0 {
 		t.Fatal("weak passwords reached dependencies")
 	}
 	out := register(t, s, " Student@Example.edu ")
@@ -196,21 +171,9 @@ func TestRegistrationPolicyAndNormalization(t *testing.T) {
 		t.Fatal("duplicate registration created session")
 	}
 }
-func TestBreachFailureLeavesNoAccount(t *testing.T) {
-	s, m, c, _ := fixture()
-	c.breached = true
-	_, err := s.Register(context.Background(), RegisterInput{Email: "x@example.edu", Password: phrase})
-	code(t, err, "PASSWORD_TOO_WEAK")
-	c.breached = false
-	c.err = fault.New(fault.Unavailable, "PROCESSING_UNAVAILABLE", "")
-	_, err = s.Register(context.Background(), RegisterInput{Email: "x@example.edu", Password: phrase})
-	code(t, err, "PROCESSING_UNAVAILABLE")
-	if len(m.users) != 0 {
-		t.Fatal("account created after screening failed")
-	}
-}
+
 func TestRefreshFixedEndOldAccessAndCommittedReplay(t *testing.T) {
-	s, m, _, now := fixture()
+	s, m, now := fixture()
 	ctx := context.Background()
 	first := register(t, s, "a@example.edu")
 	other, err := s.Login(ctx, "a@example.edu", phrase)
@@ -243,7 +206,7 @@ func TestRefreshFixedEndOldAccessAndCommittedReplay(t *testing.T) {
 	}
 }
 func TestReplayCommitFailureReturned(t *testing.T) {
-	s, m, _, _ := fixture()
+	s, m, _ := fixture()
 	out := register(t, s, "a@example.edu")
 	ctx := context.Background()
 	if _, err := s.Refresh(ctx, out.Tokens.Refresh); err != nil {
@@ -259,7 +222,7 @@ func TestReplayCommitFailureReturned(t *testing.T) {
 	}
 }
 func TestExpiryBoundariesAndLogout(t *testing.T) {
-	s, _, _, now := fixture()
+	s, _, now := fixture()
 	ctx := context.Background()
 	out := register(t, s, "a@example.edu")
 	*now = now.Add(900 * time.Second)
@@ -283,25 +246,20 @@ func TestExpiryBoundariesAndLogout(t *testing.T) {
 		t.Fatal(err)
 	}
 }
-func TestLoginEmailRateWindowAndUnknownUserVerification(t *testing.T) {
-	s, _, _, now := fixture()
+func TestLoginAttemptsDoNotBlockLaterAuthentication(t *testing.T) {
+	s, _, _ := fixture()
 	ctx := context.Background()
-	s.opts.LoginEmailRateLimit = 1
-	_, err := s.Login(ctx, "rate@example.edu", "wrong")
-	code(t, err, "INVALID_CREDENTIALS")
-	_, err = s.Login(ctx, "rate@example.edu", "wrong")
-	code(t, err, "RATE_LIMITED")
-	var e *fault.Error
-	errors.As(err, &e)
-	if e.RetryAfter != 60 {
-		t.Fatal(e.RetryAfter)
+	register(t, s, "login@example.edu")
+	for range 120 {
+		_, err := s.Login(ctx, "login@example.edu", "wrong")
+		code(t, err, "INVALID_CREDENTIALS")
 	}
-	*now = now.Add(time.Minute)
-	_, err = s.Login(ctx, "rate@example.edu", "wrong")
-	code(t, err, "INVALID_CREDENTIALS")
+	if _, err := s.Login(ctx, "login@example.edu", phrase); err != nil {
+		t.Fatal(err)
+	}
 	h := &hasher{verified: "sentinel"}
 	s.hasher = h
-	_, err = s.Login(ctx, "unknown@example.edu", "wrong")
+	_, err := s.Login(ctx, "unknown@example.edu", "wrong")
 	code(t, err, "INVALID_CREDENTIALS")
 	if h.verified != "" {
 		t.Fatal("unknown user skipped verifier")

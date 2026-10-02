@@ -8,7 +8,7 @@ import (
 )
 
 func TestMiddlewareDoesNotInterpretOrigin(t *testing.T) {
-	a := &App{cfg: DefaultConfig()}
+	a := &App{cfg: testConfig()}
 	for _, method := range []string{"GET", "POST", "PATCH", "DELETE", "OPTIONS"} {
 		for _, source := range []string{"", "null", "https://frontend.example", "https://another.example"} {
 			t.Run(method+"/"+source, func(t *testing.T) {

@@ -1,13 +1,6 @@
 name: Backend CI
 on:
-  push:
-    paths:
-      - 'services/backend/**'
-      - '.github/workflows/backend-ci.yaml'
-  pull_request:
-    paths:
-      - 'services/backend/**'
-      - '.github/workflows/backend-ci.yaml'
+  workflow_call:
 permissions:
   contents: read
 jobs:

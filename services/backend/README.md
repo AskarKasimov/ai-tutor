@@ -44,7 +44,7 @@ HTTP-обёртки распознавания и синтеза речи выд
 - Импорт одного CSV карты компетенций с атомарной заменой учебной базы; доступен только admin.
 
 Frontend обращается только к этому backend. GigaAM и VoxCPM2 остаются внутренними HTTP API;
-их адреса и параметры моделей не передаются браузеру. Пример `STT_URL` использует
+их адреса и параметры моделей не передаются браузеру. Пример `BACKEND_STT_URL` использует
 `/transcribe`, который выбирает обычное распознавание до 25 секунд и longform
 для более длинных записей: серверная команда должна установить long-form
 зависимости GigaAM и настроить VAD-веса для длинных записей. Записи длиннее
@@ -75,10 +75,10 @@ PostgreSQL хранит данные в постоянном volume. Обычн�
 
 Все настройки backend обязательны: без них API останавливается при запуске.
 Скопируйте полный набор из `.env.example`; скрытых значений по умолчанию нет.
-В `STT_URL` и `TTS_URL` укажите адреса серверов моделей: DNS-имена
+В `BACKEND_STT_URL` и `BACKEND_TTS_URL` укажите адреса серверов моделей: DNS-имена
 или IP, доступные из контейнера backend. Адреса в `.env.example` служат примерами
 и требуют замены. Контейнеры моделей запускаются отдельно из `../../../tts-stt`.
-`ASSESSMENT_BASE_URL`, `ASSESSMENT_MODEL` и `ASSESSMENT_TIMEOUT` также
+`BACKEND_ASSESSMENT_BASE_URL`, `BACKEND_ASSESSMENT_MODEL` и `BACKEND_ASSESSMENT_TIMEOUT` также
 задаются явно в окружении; укажите доступный адрес, имя модели и таймаут.
 Для корпоративной сети сертификат должен содержать IP в SAN, а CA должен быть доверенным
 на клиентских машинах. Frontend и `/api/v1` публикуются через общий HTTPS reverse proxy;
@@ -92,24 +92,24 @@ PostgreSQL хранит данные в постоянном volume. Обычн�
 Требуются Go 1.26 и PostgreSQL. Приложение не загружает веса моделей и не требует Python.
 
 ```bash
-export LISTEN_ADDRESS=':8002'
-export DATABASE_URL='postgres://ai_tutor:YOUR_PASSWORD@localhost:5432/ai_tutor?sslmode=disable'
-export STT_URL='http://localhost:8000/transcribe'
-export TTS_URL='http://localhost:8001/synthesize'
-export ASSESSMENT_BASE_URL='http://localhost:30245/v1'
-export ASSESSMENT_MODEL='gpt-oss-120b'
-export PROCESSING_TIMEOUT='120s'
-export ASSESSMENT_TIMEOUT='90s'
-export MAX_UPLOAD_BYTES='26214400'
+export BACKEND_LISTEN_ADDRESS=':8002'
+export BACKEND_DATABASE_URL='postgres://ai_tutor:YOUR_PASSWORD@localhost:5432/ai_tutor?sslmode=disable'
+export BACKEND_STT_URL='http://localhost:8000/transcribe'
+export BACKEND_TTS_URL='http://localhost:8001/synthesize'
+export BACKEND_ASSESSMENT_BASE_URL='http://localhost:30245/v1'
+export BACKEND_ASSESSMENT_MODEL='gpt-oss-120b'
+export BACKEND_VOICE_TIMEOUT='120s'
+export BACKEND_ASSESSMENT_TIMEOUT='90s'
+export BACKEND_MAX_UPLOAD_BYTES='26214400'
 go run ./cmd/api migrate
 go run ./cmd/api
 ```
 
 `sslmode=disable` подходит для локальной/закрытой сети Compose. Для удалённой БД настройте
-TLS в `DATABASE_URL`. Go-процесс слушает HTTP за HTTPS reverse proxy.
-`LISTEN_ADDRESS` и `PROCESSING_TIMEOUT` задаются явно. Завершение по SIGTERM/SIGINT даёт
+TLS в `BACKEND_DATABASE_URL`. Go-процесс слушает HTTP за HTTPS reverse proxy.
+`BACKEND_LISTEN_ADDRESS` и `BACKEND_VOICE_TIMEOUT` задаются явно. Завершение по SIGTERM/SIGINT даёт
 активным запросам до 15 секунд. Корпоративный reverse proxy должен ограничивать размер
-запроса с учётом multipart overhead и иметь timeout не меньше `PROCESSING_TIMEOUT`.
+запроса с учётом multipart overhead и иметь timeout не меньше `BACKEND_VOICE_TIMEOUT`.
 
 ## Миграции БД
 

@@ -9,15 +9,15 @@ import (
 func configuredEnv(t *testing.T) map[string]string {
 	t.Helper()
 	values := map[string]string{
-		"LISTEN_ADDRESS":      ":8002",
-		"DATABASE_URL":        "postgres://example/db",
-		"STT_URL":             "http://stt.test/transcribe",
-		"TTS_URL":             "http://tts.test/synthesize",
-		"ASSESSMENT_BASE_URL": "http://assessment.test/v1",
-		"ASSESSMENT_MODEL":    "test-model",
-		"PROCESSING_TIMEOUT":  "120s",
-		"ASSESSMENT_TIMEOUT":  "90s",
-		"MAX_UPLOAD_BYTES":    "26214400",
+		"BACKEND_LISTEN_ADDRESS":      ":8002",
+		"BACKEND_DATABASE_URL":        "postgres://example/db",
+		"BACKEND_STT_URL":             "http://stt.test/transcribe",
+		"BACKEND_TTS_URL":             "http://tts.test/synthesize",
+		"BACKEND_ASSESSMENT_BASE_URL": "http://assessment.test/v1",
+		"BACKEND_ASSESSMENT_MODEL":    "test-model",
+		"BACKEND_VOICE_TIMEOUT":       "120s",
+		"BACKEND_ASSESSMENT_TIMEOUT":  "90s",
+		"BACKEND_MAX_UPLOAD_BYTES":    "26214400",
 	}
 	for key, value := range values {
 		t.Setenv(key, value)
@@ -41,7 +41,7 @@ func TestConfigRequiresEverySetting(t *testing.T) {
 
 func TestConfigLoadsExplicitSettings(t *testing.T) {
 	configuredEnv(t)
-	t.Setenv("MAX_UPLOAD_BYTES", "1024")
+	t.Setenv("BACKEND_MAX_UPLOAD_BYTES", "1024")
 	cfg, err := ConfigFromEnv()
 	if err != nil {
 		t.Fatal(err)
@@ -53,13 +53,13 @@ func TestConfigLoadsExplicitSettings(t *testing.T) {
 
 func TestConfigRejectsInvalidSettings(t *testing.T) {
 	cases := map[string][]string{
-		"LISTEN_ADDRESS":      {"bad", ":bad", ":70000"},
-		"STT_URL":             {"relative", "ftp://stt.test", "http://user:password@stt.test"},
-		"TTS_URL":             {"http://tts.test/#fragment"},
-		"ASSESSMENT_BASE_URL": {"relative"},
-		"PROCESSING_TIMEOUT":  {"bad", "0s", "-1s"},
-		"ASSESSMENT_TIMEOUT":  {"bad", "0s"},
-		"MAX_UPLOAD_BYTES":    {"bad", "0", "-1", "26214401"},
+		"BACKEND_LISTEN_ADDRESS":      {"bad", ":bad", ":70000"},
+		"BACKEND_STT_URL":             {"relative", "ftp://stt.test", "http://user:password@stt.test"},
+		"BACKEND_TTS_URL":             {"http://tts.test/#fragment"},
+		"BACKEND_ASSESSMENT_BASE_URL": {"relative"},
+		"BACKEND_VOICE_TIMEOUT":       {"bad", "0s", "-1s"},
+		"BACKEND_ASSESSMENT_TIMEOUT":  {"bad", "0s"},
+		"BACKEND_MAX_UPLOAD_BYTES":    {"bad", "0", "-1", "26214401"},
 	}
 	for key, values := range cases {
 		for _, value := range values {

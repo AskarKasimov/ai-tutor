@@ -2,6 +2,7 @@ package app
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -105,6 +106,15 @@ func TestOpenAPIResponses(t *testing.T) {
 	check("GET", "/auth/me", f.request("GET", "/auth/me", ""))
 	check("POST", "/auth/login", f.request("POST", "/auth/login", `{"email":"contract@example.edu","password":"`+password+`"}`))
 	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/chat/completions" {
+			body, _ := io.ReadAll(r.Body)
+			content := `{"tasks":[{"question":"Новый вопрос?","criteria":"Критерий","voice_instruction":"Ответьте."}]}`
+			if strings.Contains(string(body), "student_answer") {
+				content = `{"score":2,"feedback":["Верно.","Два класса.","Закрепите тему."]}`
+			}
+			httpx.JSON(w, 200, map[string]any{"choices": []any{map[string]any{"message": map[string]any{"content": content}, "finish_reason": "stop"}}})
+			return
+		}
 		if r.URL.Path == "/synthesize" {
 			w.Header().Set("Content-Type", "audio/wav")
 			_, _ = w.Write(wavBytes())
@@ -115,11 +125,22 @@ func TestOpenAPIResponses(t *testing.T) {
 	defer provider.Close()
 	f.app.cfg.STTURL = provider.URL + "/transcribe/longform"
 	f.app.cfg.TTSURL = provider.URL + "/synthesize"
+	f.app.cfg.AssessmentBaseURL = provider.URL
 	check("POST", "/voice/transcriptions", upload(f, "/voice/transcriptions", "audio", "answer.wav", "audio/wav", wavBytes(), access))
 	check("POST", "/voice/syntheses", f.request("POST", "/voice/syntheses", `{"text":"Вопрос?"}`, access))
 	check("POST", "/voice/syntheses", f.request("POST", "/voice/syntheses", `{"text":""}`, access))
 	admin := f.admin(t)
 	check("POST", "/admin/competency-map/import", upload(f, "/admin/competency-map/import", "file", "map.csv", "text/csv", []byte(mapCSV), admin))
+	var contractOutcome string
+	_ = f.pool.QueryRow(context.Background(), "SELECT id FROM outcomes WHERE name='ОР1'").Scan(&contractOutcome)
+	check("GET", "/outcomes", f.request("GET", "/outcomes", "", access))
+	check("POST", "/outcomes/{outcomeId}/training-tasks", f.request("POST", "/outcomes/"+contractOutcome+"/training-tasks", `{"count":1}`, access))
+	evaluateSource := upload(f, "/voice/transcriptions", "audio", "evaluate.wav", "audio/wav", wavBytes(), access)
+	var evaluateTranscription struct {
+		ID string `json:"id"`
+	}
+	_ = json.Unmarshal(evaluateSource.Body.Bytes(), &evaluateTranscription)
+	check("POST", "/assessments/evaluate", f.request("POST", "/assessments/evaluate", `{"transcription_id":"`+evaluateTranscription.ID+`","question":"Вопрос?","voice_instruction":"Назовите тип"}`, access))
 	check("POST", "/auth/refresh", f.request("POST", "/auth/refresh", "", refresh))
 	check("POST", "/auth/logout", f.request("POST", "/auth/logout", "", refresh))
 	check("GET", "/health", f.request("GET", "/health", ""))

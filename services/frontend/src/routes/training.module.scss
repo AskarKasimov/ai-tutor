@@ -1,0 +1,102 @@
+.page {
+  min-height: 100dvh;
+  color: var(--app-ink);
+  background: url('/assets/voice-trainer/layer-0.svg') center / cover no-repeat;
+}
+.header {
+  height: 88px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 0 max(32px, calc((100vw - 1440px) / 2 + 48px));
+  background: url('/assets/voice-trainer/layer-6.svg') center / cover no-repeat;
+  box-sizing: border-box;
+}
+.header img { flex-shrink: 0; }
+.brand { min-width: 0; flex: 1; font-size: 20px; font-weight: 700; letter-spacing: -.35px; }
+.back { color: var(--app-green); font-size: 15px; font-weight: 700; text-decoration: none; white-space: nowrap; flex-shrink: 0; &:hover { filter: brightness(.9); } }
+.workspace {
+  max-width: 1440px;
+  margin: auto;
+  padding: 44px 72px 40px;
+  box-sizing: border-box;
+  display: grid;
+  grid-template-columns: minmax(0, 460fr) minmax(0, 828fr);
+  column-gap: 68px;
+  align-items: start;
+}
+.setup { display: flex; flex-direction: column; gap: 16px; }
+.heading { font-family: inherit; font-size: 27px; line-height: 33px; font-weight: 700; letter-spacing: -.5px; margin: 0; }
+.intro { color: var(--app-muted); font-size: 16px; line-height: 27px; margin: 0; }
+.status { display: flex; align-items: center; gap: 10px; color: var(--app-muted); font-size: 15px; margin: 0; }
+.statusError { display: flex; flex-direction: column; gap: 12px; align-items: flex-start; color: var(--app-error); }
+.field { display: flex; flex-direction: column; gap: 8px; font-size: 14px; font-weight: 700; color: var(--app-muted); }
+.field select {
+  height: 48px; padding: 0 14px; border-radius: 12px; border: 1px solid #d6e2da; background: #fff;
+  font: inherit; color: var(--app-ink); cursor: pointer;
+  &:disabled { opacity: .6; cursor: default; }
+}
+.generate {
+  margin-top: 8px; height: 52px; border-radius: 13px; cursor: pointer; color: white; font-size: 16px; font-weight: 700;
+  justify-content: flex-start; background: url('/assets/voice-trainer/layer-7.svg') center / 100% 100% no-repeat;
+  &:disabled { cursor: wait; filter: grayscale(.5); opacity: .7; }
+}
+.error { color: var(--app-error); font-size: 14px; line-height: 22px; margin: 0; }
+.practice {
+  background: url('/assets/voice-trainer/layer-3.svg') center / 100% 100% no-repeat;
+  border-radius: 24px; padding: 26px 32px 32px; box-sizing: border-box; min-height: 570px;
+  display: flex; flex-direction: column;
+}
+.practiceHeader { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; margin-bottom: 14px; }
+.progress { font-size: 12px; font-weight: 700; color: var(--app-muted); margin: 0; }
+.outcome { font-size: 12px; color: var(--app-muted); margin: 0; }
+.question { font-family: inherit; font-size: 25px; line-height: 32px; font-weight: 700; letter-spacing: -.4px; margin: 0 0 18px; }
+.instructionRow { display: flex; align-items: center; gap: 14px; margin-bottom: 22px; }
+.repeat {
+  background: url('/assets/voice-trainer/layer-5.svg') center / cover no-repeat;
+  color: var(--app-green); font-size: 15px; font-weight: 700; height: 46px; padding: 0 18px; border-radius: 14px;
+  justify-content: flex-start; cursor: pointer; flex-shrink: 0;
+  &:disabled { opacity: .5; cursor: default; }
+}
+.options { margin-bottom: 22px; }
+.optionsTitle { font-family: inherit; font-size: 16px; font-weight: 700; margin: 0 0 12px; }
+.optionList { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px 20px; }
+.option { min-height: 42px; display: flex; align-items: center; padding: 8px 14px; box-sizing: border-box; border-radius: 10px; background: #f4f7f5; font-size: 15px; line-height: 19px; }
+.answer { flex: 1; min-height: 180px; margin-bottom: 22px; padding: 20px 26px; box-sizing: border-box; border-radius: 18px; background: #f4f7f5; }
+.answerTitle { font-family: inherit; font-size: 20px; font-weight: 700; letter-spacing: -.35px; margin: 0 0 20px; }
+.instructions { font-size: 16px; line-height: 28px; color: var(--app-muted); white-space: pre-line; margin: 0; }
+.transcript { margin: 0; font-size: 18px; line-height: 32px; white-space: pre-line; }
+.answerError { background: #fff2ef; }
+.errorIcon { color: var(--app-error); margin-top: 24px; }
+.processingIndicator { margin-top: 24px; display: flex; align-items: center; gap: 12px; font-size: 14px; color: var(--app-green); }
+.result { display: flex; gap: 24px; align-items: flex-start; margin-bottom: 22px; }
+.score { min-width: 108px; min-height: 78px; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 0 18px; border-radius: 16px; background: #e8f5ee; color: var(--app-green); font-size: 22px; font-weight: 700; }
+.scorePartial { background: #fdf3e0; color: #a5720a; }
+.scoreIncorrect { background: #fdecea; color: var(--app-error); }
+.feedback { flex: 1; }
+.feedbackTitle { font-family: inherit; font-size: 18px; font-weight: 700; margin: 0 0 10px; }
+.feedbackLine { color: var(--app-muted); font-size: 15px; line-height: 24px; margin: 0 0 8px; }
+.practiceFooter { min-height: 52px; display: flex; align-items: center; justify-content: flex-end; gap: 16px; margin-top: auto; }
+.record, .next {
+  height: 52px; min-width: 220px; padding: 0 22px; border-radius: 13px; cursor: pointer; color: white; font-size: 16px; font-weight: 700;
+  justify-content: flex-start; background: url('/assets/voice-trainer/layer-7.svg') center / 100% 100% no-repeat;
+  &:disabled { cursor: wait; filter: grayscale(.6); opacity: .65; }
+}
+.done { color: var(--app-muted); font-size: 14px; display: flex; align-items: center; gap: 8px; svg { color: var(--app-green); } }
+.spinner { animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spinner { animation: none; } }
+@media (max-width: 1199px) {
+  .workspace { padding: 36px 40px 24px; column-gap: 36px; grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr); }
+  .practice { padding: 24px; }
+}
+@media (max-width: 767px) {
+  .header { height: 72px; padding: 0 24px; gap: 12px; }
+  .brand { font-size: 17px; }
+  .workspace { display: flex; flex-direction: column; padding: 28px 20px 24px; gap: 28px; }
+  .question { font-size: 22px; line-height: 29px; }
+  .optionList { grid-template-columns: 1fr; }
+  .result { flex-direction: column; }
+  .record, .next { min-width: 0; width: 100%; justify-content: center; }
+  .practiceFooter { align-items: stretch; }
+}

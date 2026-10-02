@@ -1,5 +1,5 @@
 import { Button, Heading, Text } from '@radix-ui/themes'
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, Link } from '@tanstack/react-router'
 import { ArrowRight, Check, CircleAlert, LoaderCircle, Mic, RotateCcw, Square, Volume2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
@@ -29,6 +29,7 @@ function TrainerPrototype() {
       <header className={styles.header}>
         <img src="/assets/voice-trainer/layer-1.svg" alt="" width="36" height="36" />
         <Text className={styles.brand}>{t('trainer.title')}</Text>
+        <Link to="/training" className={styles.generatorLink}>{t('training.open')}</Link>
         <AuthModal />
       </header>
       <main className={styles.workspace}>

@@ -217,3 +217,22 @@ go build -o bin/api ./cmd/api
 Без `TEST_DATABASE_URL` интеграционные тесты явно пропускаются; parser/config unit tests выполняются.
 CI всегда поднимает PostgreSQL. `/health` проверяет API и БД; доступность моделей проверяется
 при голосовом запросе и отражается кодами `502`, `503`, `504`.
+
+## Генерация тренировочных заданий (расширение вне MVP)
+
+Помимо готовых заданий, доступна генерация тренировочных заданий по теме (ОР) из карты
+компетенций. Обе ручки требуют действующую сессию:
+
+```bash
+curl 'https://localhost:8443/api/v1/outcomes' -b cookies.txt
+
+curl 'https://localhost:8443/api/v1/outcomes/outcome-from-map/training-tasks' \
+  -H 'Content-Type: application/json' -b cookies.txt \
+  -d '{"count":3}'
+```
+
+`GET /outcomes` возвращает темы с числом заданий. `POST /outcomes/{outcomeId}/training-tasks`
+берёт задания выбранного ОР как образцы, вызывает ту же модель, что и прототипная оценка
+(`ASSESSMENT_BASE_URL`/`ASSESSMENT_MODEL`/`ASSESSMENT_TIMEOUT`), и возвращает новые задания
+(`question`, `criteria`, `voice_instruction`, `options`). Результат не сохраняется. Если у темы
+нет заданий, возвращается `404 OUTCOME_TASKS_EMPTY`. Подробно: [генерация тренировочных заданий](../../documents/task-generation.md).

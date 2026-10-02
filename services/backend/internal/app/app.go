@@ -23,6 +23,10 @@ import (
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/features/competency/infrastructure/csvparser"
 	competencypg "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/competency/infrastructure/postgres"
 	competencyhttp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/competency/transport/http"
+	taskgenapp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/taskgen/application"
+	taskgenmodel "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/taskgen/infrastructure/modelapi"
+	taskgenpg "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/taskgen/infrastructure/postgres"
+	taskgenhttp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/taskgen/transport/http"
 	voiceapp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/voice/application"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/features/voice/infrastructure/modelapi"
 	voicepg "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/voice/infrastructure/postgres"
@@ -61,6 +65,8 @@ func (a *App) Handler() http.Handler {
 	competencyHandlers := competencyhttp.New(competency, a.cfg.MaxUploadBytes)
 	assessment := assessmentapp.New(assessmentpg.New(a.pool), assessmentmodel.New(a.client, a.cfg.AssessmentBaseURL, a.cfg.AssessmentModel, a.cfg.AssessmentTimeout))
 	assessmentHandlers := assessmenthttp.New(assessment)
+	taskgen := taskgenapp.New(taskgenpg.New(a.pool), taskgenmodel.New(a.client, a.cfg.AssessmentBaseURL, a.cfg.AssessmentModel, a.cfg.AssessmentTimeout))
+	taskgenHandlers := taskgenhttp.New(taskgen)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /auth/register", authHandlers.Register)
@@ -72,6 +78,8 @@ func (a *App) Handler() http.Handler {
 	mux.Handle("POST /voice/transcriptions", protect(auth, http.HandlerFunc(voiceHandlers.Transcribe)))
 	mux.Handle("POST /voice/syntheses", protect(auth, http.HandlerFunc(voiceHandlers.Synthesize)))
 	mux.Handle("POST /assessments/evaluate", protect(auth, http.HandlerFunc(assessmentHandlers.Evaluate)))
+	mux.Handle("GET /outcomes", protect(auth, http.HandlerFunc(taskgenHandlers.ListOutcomes)))
+	mux.Handle("POST /outcomes/{outcomeId}/training-tasks", protect(auth, http.HandlerFunc(taskgenHandlers.GenerateTrainingTasks)))
 	mux.HandleFunc("GET /health", a.health)
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, fault.New(fault.NotFound, "NOT_FOUND", "Ресурс не найден."))

@@ -179,6 +179,83 @@ components:
         - message
       type: object
       additionalProperties: false
+    taskgenhttp.GenerateRequest:
+      properties:
+        count:
+          maximum: 5
+          minimum: 1
+          type: integer
+      type: object
+      additionalProperties: false
+    taskgenhttp.GenerateResponse:
+      properties:
+        outcome_id:
+          type: string
+        outcome_name:
+          type: string
+        tasks:
+          items:
+            $ref: '#/components/schemas/taskgenhttp.Task'
+          type: array
+          uniqueItems: false
+      required:
+        - outcome_id
+        - outcome_name
+        - tasks
+      type: object
+      additionalProperties: false
+    taskgenhttp.Outcome:
+      properties:
+        competency_name:
+          type: string
+        constituent_name:
+          type: string
+        id:
+          type: string
+        name:
+          type: string
+        task_count:
+          minimum: 0
+          type: integer
+      required:
+        - competency_name
+        - constituent_name
+        - id
+        - name
+        - task_count
+      type: object
+      additionalProperties: false
+    taskgenhttp.OutcomeList:
+      properties:
+        outcomes:
+          items:
+            $ref: '#/components/schemas/taskgenhttp.Outcome'
+          type: array
+          uniqueItems: false
+      required:
+        - outcomes
+      type: object
+      additionalProperties: false
+    taskgenhttp.Task:
+      properties:
+        criteria:
+          type: string
+        options:
+          items:
+            type: string
+          type: array
+          uniqueItems: false
+        question:
+          type: string
+        voice_instruction:
+          type: string
+      required:
+        - criteria
+        - options
+        - question
+        - voice_instruction
+      type: object
+      additionalProperties: false
     user.Role:
       enum:
         - student
@@ -560,6 +637,108 @@ paths:
       summary: Проверить API и подключение к PostgreSQL
       tags:
         - Сервис
+  /outcomes:
+    get:
+      description: Возвращает опубликованные в текущей карте темы с числом готовых заданий. Доступно авторизованному пользователю.
+      operationId: listTrainingOutcomes
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/taskgenhttp.OutcomeList'
+          description: OK
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unauthorized
+        "503":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Service Unavailable
+      security:
+        - accessCookie: []
+      summary: Темы (ОР) карты компетенций для тренировки
+      tags:
+        - Генерация заданий
+  /outcomes/{outcomeId}/training-tasks:
+    post:
+      description: Доступно авторизованному пользователю. Берёт задания выбранного ОР как образец и просит LLM построить новые аналогичные задания. Результат не сохраняется.
+      operationId: generateTrainingTasks
+      parameters:
+        - description: Идентификатор темы (ОР)
+          in: path
+          name: outcomeId
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/taskgenhttp.GenerateRequest'
+              summary: request
+              description: Число заданий
+        description: Число заданий
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/taskgenhttp.GenerateResponse'
+          description: OK
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unauthorized
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Not Found
+        "413":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Request Entity Too Large
+        "422":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unprocessable Entity
+        "502":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Bad Gateway
+        "503":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Service Unavailable
+        "504":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Gateway Timeout
+      security:
+        - accessCookie: []
+      summary: Сгенерировать тренировочные задания по аналогии с заданиями темы
+      tags:
+        - Генерация заданий
   /voice/syntheses:
     post:
       operationId: synthesizeQuestion

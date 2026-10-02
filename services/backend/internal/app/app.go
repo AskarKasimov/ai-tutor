@@ -10,6 +10,10 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	assessmentapp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/assessment/application"
+	assessmentmodel "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/assessment/infrastructure/modelapi"
+	assessmentpg "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/assessment/infrastructure/postgres"
+	assessmenthttp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/assessment/transport/http"
 	authapp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/auth/application"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/features/auth/infrastructure/argon2"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/features/auth/infrastructure/hibp"
@@ -55,6 +59,8 @@ func (a *App) Handler() http.Handler {
 	voiceHandlers := voicehttp.New(voice, a.cfg.MaxUploadBytes)
 	competency := competencyapp.New(competencypg.New(a.pool), &csvparser.Parser{}, a.now)
 	competencyHandlers := competencyhttp.New(competency, a.cfg.MaxUploadBytes)
+	assessment := assessmentapp.New(assessmentpg.New(a.pool), assessmentmodel.New(a.client, a.cfg.AssessmentBaseURL, a.cfg.AssessmentModel, a.cfg.AssessmentTimeout))
+	assessmentHandlers := assessmenthttp.New(assessment)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /auth/register", authHandlers.Register)
@@ -65,6 +71,7 @@ func (a *App) Handler() http.Handler {
 	mux.Handle("POST /admin/competency-map/import", protect(auth, http.HandlerFunc(competencyHandlers.Import)))
 	mux.Handle("POST /voice/transcriptions", protect(auth, http.HandlerFunc(voiceHandlers.Transcribe)))
 	mux.Handle("POST /voice/syntheses", protect(auth, http.HandlerFunc(voiceHandlers.Synthesize)))
+	mux.Handle("POST /assessments/evaluate", protect(auth, http.HandlerFunc(assessmentHandlers.Evaluate)))
 	mux.HandleFunc("GET /health", a.health)
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, fault.New(fault.NotFound, "NOT_FOUND", "Ресурс не найден."))

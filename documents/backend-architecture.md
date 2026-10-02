@@ -1,6 +1,6 @@
 # Архитектура backend
 
-Backend организован по функциональным срезам: `auth`, `voice`, `competency`.
+Backend организован по функциональным срезам: `auth`, `voice`, `competency`, `assessment`.
 Каждый срез содержит сценарии приложения, интерфейсы зависимостей и внешние адаптеры.
 Слои `app`, `features`, `entities`, `shared` применяют принципы FSD к Go backend.
 Официальная [методология FSD](https://github.com/feature-sliced/documentation/blob/main/src/content/docs/docs/get-started/overview.mdx)
@@ -36,6 +36,11 @@ internal/
         csvparser/                 формат CSV и преобразование в доменную карту
         postgres/                  атомарная замена карты и номер revision
       transport/http/              загрузка CSV и публичный итог импорта
+    assessment/
+      application/                 проверка задания и оценки, порты расшифровки и модели
+      infrastructure/postgres/     чтение расшифровки по владельцу
+      infrastructure/modelapi/     вызов локальной LLM и разбор JSON-ответа
+      transport/http/              синхронная прототипная ручка оценки
   entities/
     user/                          пользователь и роли
     session/                       сессия авторизации, состояния токенов и сроки
@@ -97,6 +102,10 @@ PostgreSQL adapter выполняет замену карты одной тра�
 HTTP-ручки, миграция и контракт API v0 сохраняют прежнее поведение.
 
 ## Проверка границ
+
+Прототипный `assessment` читает сохранённую расшифровку текущего студента, вызывает
+OpenAI-совместимый локальный endpoint и возвращает проверенный балл с тремя строками
+обратной связи. Оценка пока не сохраняется и не использует опубликованные рубрики.
 
 `services/backend/internal/app/architecture_test.go` анализирует реальные Go imports и запрещает
 зависимости между features, SQL-операции в composition root, инфраструктурные

@@ -14,17 +14,17 @@ function requestSignal(signal: AbortSignal) {
   return AbortSignal.any([signal, AbortSignal.timeout(120_000)])
 }
 
-export async function transcribeRecording(blob: Blob, signal: AbortSignal): Promise<string> {
+export async function transcribeRecording(blob: Blob, signal: AbortSignal): Promise<{ id: string; text: string }> {
   const extension = blob.type.includes('ogg') ? 'ogg' : blob.type.includes('wav') ? 'wav' : blob.type.includes('mp4') ? 'm4a' : 'webm'
   const form = new FormData()
   form.append('audio', blob, `answer.${extension}`)
   const response = await fetch(`${apiBase}/voice/transcriptions`, { method: 'POST', credentials: 'include', body: form, signal: requestSignal(signal) })
   if (!response.ok) throw new VoiceApiError('Transcription', response.status)
   const data: unknown = await response.json()
-  if (!data || typeof data !== 'object' || !('text' in data) || typeof data.text !== 'string' || !data.text.trim()) {
+  if (!data || typeof data !== 'object' || !('id' in data) || typeof data.id !== 'string' || !data.id || !('text' in data) || typeof data.text !== 'string' || !data.text.trim()) {
     throw new Error('Transcription is empty')
   }
-  return data.text.trim()
+  return { id: data.id, text: data.text.trim() }
 }
 
 export async function synthesizeQuestion(text: string, signal: AbortSignal): Promise<Blob> {

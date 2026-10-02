@@ -23,6 +23,9 @@ services:
       DATABASE_URL: postgres://ai_tutor:${POSTGRES_PASSWORD}@db:5432/ai_tutor?sslmode=disable
       STT_URL: ${STT_URL:?Set STT_URL in .env}
       TTS_URL: ${TTS_URL:?Set TTS_URL in .env}
+      ASSESSMENT_BASE_URL: ${ASSESSMENT_BASE_URL:-http://10.100.10.105:30245/v1}
+      ASSESSMENT_MODEL: ${ASSESSMENT_MODEL:-gpt-oss-120b}
+      ASSESSMENT_TIMEOUT: ${ASSESSMENT_TIMEOUT:-90s}
       PROCESSING_TIMEOUT: ${PROCESSING_TIMEOUT:-120s}
       AUTH_RATE_LIMIT: ${AUTH_RATE_LIMIT:-30}
     depends_on:

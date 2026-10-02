@@ -3,7 +3,10 @@ import { createMemoryHistory, createRouter, RouterProvider } from '@tanstack/rea
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 
 import { createQueryClient } from '../app/providers'
+import * as assessment from '../data/assessment-api'
+import * as voiceApi from '../data/voice-api'
 import { i18n } from '../i18n/i18n'
+import * as audio from '../platform/prototype-audio'
 import { routeTree } from '../routeTree.gen'
 
 function renderHome() {
@@ -20,14 +23,34 @@ beforeEach(() => {
 })
 
 afterEach(async () => {
+  vi.restoreAllMocks()
   vi.unstubAllGlobals()
   await i18n.changeLanguage('ru')
   i18n.removeResourceBundle('test', 'translation')
 })
 
-it('shows the single fixed question and microphone control', async () => {
+it('shows the model score and feedback for a recorded answer', async () => {
+  vi.spyOn(audio, 'startRecording').mockResolvedValue({ dispose: vi.fn(), stop: vi.fn().mockResolvedValue(new Blob(['audio'], { type: 'audio/webm' })) })
+  vi.spyOn(audio, 'createAudioUrl').mockReturnValue({ url: 'blob:recording', dispose: vi.fn() })
+  vi.spyOn(voiceApi, 'transcribeRecording').mockResolvedValue({ id: 'tr-1', text: 'Классификация, потому что два класса.' })
+  vi.spyOn(assessment, 'evaluateAnswer').mockResolvedValue({ score: 2, feedback: ['Ответ верный.', 'Вы назвали классификацию и объяснили два класса.', 'Закрепите различие с регрессией.'] })
   renderHome()
-  expect(await screen.findByRole('heading', { level: 1 })).toHaveTextContent('Чем среднее арифметическое отличается от медианы?')
+  fireEvent.click(await screen.findByRole('button', { name: 'Начать запись' }))
+  fireEvent.click(await screen.findByRole('button', { name: 'Завершить запись' }))
+  expect(await screen.findByText('2 / 2')).toBeVisible()
+  expect(screen.getByText('Классификация, потому что два класса.')).toBeVisible()
+  expect(screen.getByText('Вы назвали классификацию и объяснили два класса.')).toBeVisible()
+})
+
+it('shows the question, answer options and microphone control', async () => {
+  renderHome()
+  expect(await screen.findByRole('heading', { level: 1 })).toHaveTextContent('Банк по данным клиента прогнозирует: «вернёт кредит в срок» или «не вернёт».')
+  expect(screen.getByRole('heading', { name: 'Варианты ответа' })).toBeVisible()
+  expect(screen.getByText('Классификация')).toBeVisible()
+  expect(screen.getByText('Регрессия')).toBeVisible()
+  expect(screen.getByText('Кластеризация')).toBeVisible()
+  expect(screen.getByText('Ранжирование')).toBeVisible()
+  expect(screen.getByRole('button', { name: 'Прослушать инструкцию' })).toBeEnabled()
   expect(screen.getByRole('button', { name: 'Начать запись' })).toBeEnabled()
   expect(screen.queryByText('Следующее задание')).not.toBeInTheDocument()
 })

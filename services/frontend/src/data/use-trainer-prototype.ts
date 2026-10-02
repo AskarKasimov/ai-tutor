@@ -1,21 +1,26 @@
 import { useEffect, useRef, useState } from 'react'
 import { createAudioUrl, playQuestion, startRecording } from '../platform/prototype-audio'
+import type { Assessment, AssessmentTask } from '../shared/domain'
+import { AssessmentApiError, evaluateAnswer } from './assessment-api'
 import { synthesizeQuestion, transcribeRecording, VoiceApiError } from './voice-api'
 import type { Recording } from '../platform/prototype-audio'
 
-type Stage = 'ready' | 'permission' | 'recording' | 'processing' | 'result' | 'error'
+type Stage = 'ready' | 'permission' | 'recording' | 'processing' | 'grading' | 'result' | 'error'
 
-export function useTrainerPrototype(question: string) {
+export function useTrainerPrototype(task: AssessmentTask) {
   const [stage, setStage] = useState<Stage>('ready')
   const [seconds, setSeconds] = useState(0)
   const [error, setError] = useState('')
   const [speaking, setSpeaking] = useState(false)
   const [speechError, setSpeechError] = useState('')
   const [transcript, setTranscript] = useState('')
+  const [assessment, setAssessment] = useState<Assessment | null>(null)
   const [example, setExample] = useState(false)
   const [loadingSpeech, setLoadingSpeech] = useState(false)
   const speechRequest = useRef<AbortController | null>(null)
   const transcriptionRequest = useRef<AbortController | null>(null)
+  const assessmentRequest = useRef<AbortController | null>(null)
+  const transcriptionId = useRef<string | null>(null)
   const [audioUrl, setAudioUrl] = useState<string>()
   const recording = useRef<Recording | null>(null)
   const cancelSpeech = useRef<(() => void) | null>(null)
@@ -30,6 +35,7 @@ export function useTrainerPrototype(question: string) {
     recording.current?.dispose()
     speechRequest.current?.abort()
     transcriptionRequest.current?.abort()
+    assessmentRequest.current?.abort()
     cancelSpeech.current?.()
     savedAudio.current?.dispose()
     if (processingTimer.current) clearTimeout(processingTimer.current)
@@ -57,7 +63,7 @@ export function useTrainerPrototype(question: string) {
     setSpeechError('')
     setLoadingSpeech(true)
     try {
-      const blob = await synthesizeQuestion(question, request.signal)
+      const blob = await synthesizeQuestion(task.voiceInstruction, request.signal)
       if (request.signal.aborted) return
       const dispose = await playQuestion(blob, () => setSpeaking(false), () => {
         setSpeaking(false)
@@ -81,6 +87,8 @@ export function useTrainerPrototype(question: string) {
     stopSpeaking()
     setError('')
     setTranscript('')
+    setAssessment(null)
+    transcriptionId.current = null
     setExample(false)
     setStage('permission')
     try {
@@ -110,6 +118,20 @@ export function useTrainerPrototype(question: string) {
     }, 1300)
   }
 
+  async function grade(id: string, current: number) {
+    const request = new AbortController()
+    assessmentRequest.current = request
+    setStage('grading')
+    try {
+      const result = await evaluateAnswer(id, task, request.signal)
+      if (generation.current !== current) return
+      setAssessment(result)
+      setStage('result')
+    } finally {
+      if (assessmentRequest.current === request) assessmentRequest.current = null
+    }
+  }
+
   async function stop() {
     if (busy.current || !recording.current) return
     busy.current = true
@@ -125,14 +147,32 @@ export function useTrainerPrototype(question: string) {
       setAudioUrl(savedAudio.current.url)
       const request = new AbortController()
       transcriptionRequest.current = request
-      const text = await transcribeRecording(blob, request.signal)
+      const transcription = await transcribeRecording(blob, request.signal)
       if (generation.current !== current) return
-      setTranscript(text)
+      transcriptionRequest.current = null
+      transcriptionId.current = transcription.id
+      setTranscript(transcription.text)
       setExample(false)
-      setStage('result')
+      await grade(transcription.id, current)
     } catch (error) {
       if (generation.current !== current) return
-      setError(error instanceof VoiceApiError && error.status === 401 ? 'unauthorized' : transcriptionRequest.current ? 'transcription' : 'capture')
+      setError((error instanceof VoiceApiError || error instanceof AssessmentApiError) && error.status === 401 ? 'unauthorized' : transcriptionId.current ? 'assessment' : transcriptionRequest.current ? 'transcription' : 'capture')
+      setStage('error')
+    } finally {
+      if (generation.current === current) busy.current = false
+    }
+  }
+
+  async function retryAssessment() {
+    if (busy.current || !transcriptionId.current) return
+    busy.current = true
+    const current = generation.current
+    setError('')
+    try {
+      await grade(transcriptionId.current, current)
+    } catch (error) {
+      if (generation.current !== current) return
+      setError(error instanceof AssessmentApiError && error.status === 401 ? 'unauthorized' : 'assessment')
       setStage('error')
     } finally {
       if (generation.current === current) busy.current = false
@@ -143,6 +183,9 @@ export function useTrainerPrototype(question: string) {
     generation.current++
     transcriptionRequest.current?.abort()
     transcriptionRequest.current = null
+    assessmentRequest.current?.abort()
+    assessmentRequest.current = null
+    transcriptionId.current = null
     stopSpeaking()
     recording.current?.dispose()
     recording.current = null
@@ -150,6 +193,7 @@ export function useTrainerPrototype(question: string) {
     savedAudio.current = null
     setAudioUrl(undefined)
     setTranscript('')
+    setAssessment(null)
     setExample(false)
     setError('')
     setSpeechError('')
@@ -159,5 +203,5 @@ export function useTrainerPrototype(question: string) {
     if (processingTimer.current) clearTimeout(processingTimer.current)
   }
 
-  return { stage, seconds, error, speaking, loadingSpeech, speechError, audioUrl, transcript, example, speak, start, stop, showExample, reset }
+  return { stage, seconds, error, speaking, loadingSpeech, speechError, audioUrl, transcript, assessment, example, speak, start, stop, retryAssessment, showExample, reset }
 }

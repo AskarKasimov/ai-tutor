@@ -10,6 +10,43 @@ components:
         - status
       type: object
       additionalProperties: false
+    assessmenthttp.EvaluateRequest:
+      properties:
+        correct_answer:
+          type: string
+        options:
+          items:
+            type: string
+          type: array
+          uniqueItems: false
+        question:
+          type: string
+        transcription_id:
+          type: string
+        voice_instruction:
+          type: string
+      required:
+        - question
+        - transcription_id
+        - voice_instruction
+      type: object
+      additionalProperties: false
+    assessmenthttp.EvaluateResponse:
+      properties:
+        feedback:
+          items:
+            type: string
+          type: array
+          uniqueItems: false
+        score:
+          maximum: 2
+          minimum: 0
+          type: integer
+      required:
+        - feedback
+        - score
+      type: object
+      additionalProperties: false
     authhttp.LoginRequest:
       properties:
         email:
@@ -255,6 +292,73 @@ paths:
       summary: Заменить учебную базу картой компетенций из CSV
       tags:
         - Учебная база
+  /assessments/evaluate:
+    post:
+      description: Принимает произвольное задание и ID принадлежащей студенту расшифровки. Оценка не сохраняется.
+      operationId: evaluateAnswer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/assessmenthttp.EvaluateRequest'
+              summary: request
+              description: Задание и расшифровка
+        description: Задание и расшифровка
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/assessmenthttp.EvaluateResponse'
+          description: OK
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unauthorized
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Not Found
+        "413":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Request Entity Too Large
+        "422":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unprocessable Entity
+        "502":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Bad Gateway
+        "503":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Service Unavailable
+        "504":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Gateway Timeout
+      security:
+        - accessCookie: []
+      summary: Оценить сохранённый голосовой ответ
+      tags:
+        - Грейдинг и фидбэк
   /auth/login:
     post:
       operationId: login

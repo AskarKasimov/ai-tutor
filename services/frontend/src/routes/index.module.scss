@@ -15,8 +15,8 @@
   background: white; border-right: 1px solid var(--app-border);
   min-width: 0; padding: 30px 32px; box-sizing: border-box;
 }
-.brand { display: flex; align-items: flex-start; gap: 12px; font-size: 18px; font-weight: 700; line-height: 21px; padding-top: 7px; }
-.brandIcon { position: relative; flex: 0 0 36px; height: 36px; margin-top: -7px; img { display: block; } }
+.brand { display: flex; align-items: center; gap: 12px; font-size: 18px; font-weight: 700; line-height: 21px; }
+.brandIcon { display: flex; align-items: center; justify-content: center; flex: 0 0 36px; height: 36px; border-radius: 11px; color: white; background: linear-gradient(135deg, var(--app-success), var(--app-accent)); }
 .courseHeading { margin-top: 44px; h2 { font-size: 22px; line-height: 28px; margin: 16px 0 0; letter-spacing: -.3px; } }
 .eyebrow { font-family: inherit; margin: 0; color: var(--app-muted); font-size: 12px; font-weight: 700; line-height: 15px; text-transform: uppercase; }
 .progress { margin-top: 32px; font-size: 14px; color: var(--app-muted); p { margin: 0 0 14px; } }
@@ -35,12 +35,12 @@
   background: #eaf1ff; position: relative; &::before { content: ''; position: absolute; left: 0; top: 0; width: 4px; height: 100%; border-radius: 2px; background: var(--app-accent); };
   color: var(--app-accent-strong); font-weight: 700; .assignmentNumber { color: var(--app-accent); }
 }
-.completedMark { flex: 0 0 20px; height: 20px; margin-left: auto; color: var(--app-success); background: #e8f7f1; border-radius: 50%; font-size: 13px; font-weight: 700; text-align: center; line-height: 20px; }
+.completedMark { display: flex; align-items: center; justify-content: center; flex: 0 0 20px; height: 20px; margin-left: auto; color: var(--app-success); background: #e8f7f1; border-radius: 50%; }
 .content { min-width: 0; }
 .header { height: 92px; box-sizing: border-box; display: flex; align-items: center; gap: 24px; padding: 0 48px;
   background: white; border-bottom: 1px solid var(--app-border);
 }
-.breadcrumb { display: flex; align-items: center; flex-wrap: wrap; font-size: 15px; line-height: 20px; > span:first-child { color: var(--app-muted); } > span:nth-child(2) { color: var(--app-faint); margin: 0 14px 0 3px; } }
+.breadcrumb { display: flex; align-items: center; flex-wrap: wrap; font-size: 15px; line-height: 20px; > span:first-child { color: var(--app-muted); } > span:nth-child(2) { display: inline-flex; align-items: center; color: var(--app-faint); margin: 0 14px 0 3px; } }
 .workspace { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) 342px; gap: 32px; padding: 38px 48px 48px; align-items: start; }
 .question { min-width: 0; }
 .questionToolbar { min-height: 38px; display: flex; align-items: flex-start; justify-content: space-between; }
@@ -56,16 +56,15 @@
 .repeatControl { position: absolute; right: 422px; top: 37px; max-width: 221px; }
 .repeat { height: 39px; width: 221px; padding: 0 20px; border-radius: 22px; font-size: 14px; font-weight: 700; color: var(--app-accent); cursor: pointer;
   background: white; box-shadow: inset 0 0 0 1px var(--app-border); &:disabled { opacity: .5; cursor: default; } }
-.repeatSymbol { font-size: 25px; line-height: 1; margin-right: 3px; }
 .answerPanel { min-width: 0; min-height: 688px; padding: 32px; box-sizing: border-box; border-radius: 22px; display: flex; flex-direction: column;
   background: white; box-shadow: inset 0 0 0 1px var(--app-border); }
-.waveform { position: relative; width: 278px; height: 132px; max-width: 100%; margin-top: 37px; margin-bottom: 38px; background: #eff5ff; border-radius: 18px; }
-.waveBars { position: absolute; top: 44px; left: 12px; display: flex; gap: 9px; align-items: center; height: 82px; span { display: block; flex-shrink: 0; width: 5px; border-radius: 3px; background: #a9c3fc; &:nth-child(3n + 1) { background: #6c99f2; } } }
+.waveform { display: flex; align-items: center; justify-content: center; align-self: center; width: 278px; height: 132px; max-width: 100%; margin-top: 37px; margin-bottom: 38px; background: #eff5ff; border-radius: 18px; }
+.waveBars { display: flex; justify-content: space-between; align-items: center; width: 100%; height: 82px; padding: 0 12px; box-sizing: border-box; span { display: block; flex-shrink: 0; width: 5px; height: 4px; border-radius: 3px; background: #a9c3fc; &:nth-child(3n + 1) { background: #6c99f2; } } }
 .waveformActive .waveBars span { animation: wave .8s ease-in-out infinite alternate; &:nth-child(3n) { animation-delay: -.2s; } &:nth-child(4n) { animation-delay: -.5s; } }
 .answerTitle { font-family: inherit; margin: 0; font-size: 23px; line-height: 28px; font-weight: 700; letter-spacing: -.3px; }
 .instructions { margin: 14px 0 0; font-size: 15px; line-height: 23px; color: var(--app-muted); white-space: pre-line; }
 .transcript { font-size: 16px; line-height: 26px; margin: 16px 0 0; overflow-wrap: anywhere; }
-.microphone { display: block; width: 122px; height: 122px; margin: 40px auto 59px; flex-shrink: 0; }
+.microphone { display: flex; align-items: center; justify-content: center; box-sizing: border-box; width: 122px; height: 122px; margin: 40px auto 59px; flex-shrink: 0; border: 16px solid var(--app-soft); border-radius: 50%; background: var(--app-accent); color: white; }
 .primary { min-height: 56px; height: auto; padding: 12px 18px; width: 100%; border-radius: 14px; font-family: inherit; font-size: 16px; line-height: 22px; font-weight: 700; color: white;
   background: linear-gradient(90deg, #2867e1, #387fed); cursor: pointer; &:hover { filter: brightness(1.04); } &:disabled { cursor: wait; opacity: .6; } }
 .microphoneStatus { margin: 16px 0 0; text-align: center; font-size: 13px; line-height: 20px; color: var(--app-muted); }
@@ -100,7 +99,6 @@
   .header { padding: 0 28px; gap: 16px; }
   .workspace { padding: 32px 28px; gap: 24px; grid-template-columns: minmax(0, 1fr) 310px; }
   .answerPanel { padding: 24px; }
-  .waveBars { gap: 8px; left: 8px; }
   .repeatControl { top: 31px; right: 362px; }
   .repeat { width: 180px; font-size: 12px; padding: 0 10px; }
   .questionTitle { font-size: 26px; line-height: 35px; }
@@ -129,7 +127,6 @@
   .questionTitle { max-width: none; margin-top: 18px; font-size: 26px; line-height: 35px; white-space: normal; }
   .answerPanel { padding: 28px; min-height: 0; }
   .waveform { align-self: center; margin-top: 28px; margin-bottom: 28px; }
-  .waveBars { gap: 9px; left: 12px; }
   .microphone { margin: 28px auto; }
   .processingIndicator, .recordingTimer { margin: 28px 0; }
   .answerTitle { font-size: 22px; }
@@ -148,5 +145,4 @@
   .answerPanel { padding: 24px; }
   .summaryScore { flex-direction: column; align-items: flex-start; gap: 6px; }
 }
-@media (max-width: 360px) { .waveBars { gap: 6px; } }
 @media (prefers-reduced-motion: reduce) { .waveBars span, .spinner { animation: none; } .progressFill { transition: none; } }

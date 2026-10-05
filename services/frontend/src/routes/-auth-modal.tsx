@@ -54,7 +54,7 @@ export function AuthModal() {
             aria-describedby={mode === 'register' ? 'password-help' : undefined} /></label>
           {mode === 'register' && <p id="password-help" className={styles.hint}>{t('auth.passwordHelp')}</p>}
           {authenticate.isError && <p role="alert" className={styles.error}>{authenticate.error.message}</p>}
-          <button className={styles.submit} type="submit">{pending && <LoaderCircle size={18} className={styles.spinner} />}{t(checkingSession ? 'auth.checkingSession' : pending ? 'auth.pending' : mode === 'register' ? 'auth.create' : 'auth.login')}</button>
+          <button className={styles.submit} type="submit">{pending && <LoaderCircle size={18} className={styles.spinner} aria-hidden="true" />}{t(checkingSession ? 'auth.checkingSession' : pending ? 'auth.pending' : mode === 'register' ? 'auth.create' : 'auth.login')}</button>
         </fieldset>
       </form>
     </Modal>

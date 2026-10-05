@@ -1,5 +1,5 @@
 import { Button, Heading, Text } from '@radix-ui/themes'
-import { CircleAlert, LoaderCircle, Square } from 'lucide-react'
+import { CircleAlert, LoaderCircle, Mic, RotateCcw, Square } from 'lucide-react'
 import { useEffect, useRef } from 'react'
 import type { PropsWithChildren } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -11,11 +11,11 @@ import styles from './index.module.scss'
 const barHeights = [18, 30, 45, 26, 61, 82, 53, 30, 68, 42, 25, 52, 72, 33, 48, 27, 59, 38, 20]
 
 function VoiceIllustration({ recording }: { recording: boolean }) {
-  return <div className={`${styles.waveform} ${recording ? styles.waveformActive : ''}`} aria-hidden="true"><div className={styles.waveBars}>{barHeights.map((height, i) => <span key={i} style={{ height }} />)}</div></div>
+  return <div className={`${styles.waveform} ${recording ? styles.waveformActive : ''}`} aria-hidden="true"><div className={styles.waveBars}>{barHeights.map((height, i) => <span key={i} style={recording ? { height } : undefined} />)}</div></div>
 }
 
 function MicrophoneIllustration() {
-  return <img className={styles.microphone} src="/assets/voice-trainer/microphone.svg" alt="" />
+  return <div className={styles.microphone} aria-hidden="true"><Mic size={40} /></div>
 }
 
 export function TrainerAnswer({ task, setBusy, onSave, saving, saveError }: {
@@ -50,7 +50,7 @@ export function TrainerAnswer({ task, setBusy, onSave, saving, saveError }: {
   return <>
     <div className={styles.repeatControl}>
       <Button variant="soft" className={styles.repeat} onClick={voice.speak} disabled={busy} title={isMockApi() ? t('mockApi.speechHint') : undefined}>
-        {voice.loadingSpeech ? <LoaderCircle size={18} className={styles.spinner} /> : voice.speaking ? <Square size={16} /> : <span className={styles.repeatSymbol} aria-hidden="true">↻</span>}
+        {voice.loadingSpeech ? <LoaderCircle size={18} className={styles.spinner} aria-hidden="true" /> : voice.speaking ? <Square size={16} aria-hidden="true" /> : <RotateCcw size={18} aria-hidden="true" />}
         {t(voice.loadingSpeech ? 'trainer.cancelSpeech' : voice.speaking ? 'trainer.stopSpeech' : 'session.repeatQuestion')}
       </Button>
       {voice.speechError && <Text role="alert" as="p" className={styles.speechError}>{t(`trainer.${voice.speechError}`)}</Text>}
@@ -63,7 +63,7 @@ export function TrainerAnswer({ task, setBusy, onSave, saving, saveError }: {
         {voice.transcript ? <Text as="p" className={styles.transcript}>{voice.transcript}</Text> : <Text as="p" className={styles.instructions}>{t(`trainer.${helpKey}`)}</Text>}
         {error && voice.transcript && <Text as="p" className={styles.speechError}>{t(`trainer.${voice.error}Help`)}</Text>}
       </div>
-      {recording ? <div className={styles.recordingTimer}><span />{seconds}</div> : processing || waiting || saving ? <div className={styles.processingIndicator}><LoaderCircle size={32} className={styles.spinner} /></div> : error ? <div className={styles.processingIndicator}><CircleAlert size={32} /></div> : <MicrophoneIllustration />}
+      {recording ? <div className={styles.recordingTimer}><span />{seconds}</div> : processing || waiting || saving ? <div className={styles.processingIndicator}><LoaderCircle size={32} className={styles.spinner} aria-hidden="true" /></div> : error ? <div className={styles.processingIndicator}><CircleAlert size={32} aria-hidden="true" /></div> : <MicrophoneIllustration />}
       {stage === 'result' ? <div className={styles.saveState}><Text role={saveError ? 'alert' : 'status'}>{t(saveError ? 'session.saveError' : 'session.saving')}</Text>{saveError && <Button className={styles.primary} onClick={() => void save().catch(() => {})}>{t('session.retrySave')}</Button>}</div> : <Button className={styles.primary} disabled={processing || waiting} onClick={recording ? voice.stop : error && voice.transcript ? voice.retryAssessment : voice.start}>{t(`trainer.${recording ? 'stopRecording' : stage === 'grading' ? 'grading' : processing ? 'busy' : waiting ? 'allow' : error && voice.transcript ? 'retryAssessment' : error ? 'retry' : 'start'}`)}</Button>}
       <Text as="p" className={styles.microphoneStatus}>{t(recording ? 'session.recordingStatus' : error ? 'session.errorStatus' : processing ? 'session.processingStatus' : waiting ? 'trainer.allow' : 'session.microphoneReady')}</Text>
     </aside>

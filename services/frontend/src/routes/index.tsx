@@ -1,5 +1,6 @@
 import { Button, Heading, Text } from '@radix-ui/themes'
 import { createFileRoute } from '@tanstack/react-router'
+import { Check, GraduationCap, Slash } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '../data/use-auth'
@@ -23,7 +24,7 @@ function Trainer() {
     <div className={`${styles.prototype} ${mock ? styles.mockLayout : ''}`}>
     <aside className={styles.navigation}>
       <div className={styles.brand}>
-        <span className={styles.brandIcon} aria-hidden="true"><img src="/assets/voice-trainer/logo.svg" alt="" /></span>
+        <span className={styles.brandIcon} aria-hidden="true"><GraduationCap size={24} /></span>
         <Text>{t('trainer.title')}</Text>
       </div>
       <div className={styles.courseHeading}><Text as="p" className={styles.eyebrow}>{t('session.session')}</Text><Heading as="h2">{t('session.course')}</Heading></div>
@@ -31,7 +32,7 @@ function Trainer() {
     </aside>
     <div className={styles.content}>
       <header className={styles.header}>
-        <div className={styles.breadcrumb}><Text>{t('session.practice')}</Text><span aria-hidden="true">/</span><Text weight="bold">{t('session.course')}</Text></div>
+        <div className={styles.breadcrumb}><Text>{t('session.practice')}</Text><span aria-hidden="true"><Slash size={14} /></span><Text weight="bold">{t('session.course')}</Text></div>
         <AuthModal />
       </header>
       {user && training.query.isPending ? <main className={styles.notice} aria-live="polite"><Text>{t('session.loading')}</Text></main> : user && training.query.isError ? <main className={styles.notice}><Text role="alert">{t('session.loadError')}</Text><Button onClick={() => void training.query.refetch()}>{t('trainer.retry')}</Button></main> : training.query.data ? training.query.data.tasks.length ? <SessionScreen key={training.query.data.id} session={training.query.data} training={training} /> : <main className={styles.notice}><Text>{t('session.empty')}</Text></main> : <main className={styles.notice}><Text>{t('auth.checkingSession')}</Text></main>}
@@ -72,7 +73,7 @@ function SessionScreen({ session, training }: { session: TrainerSession; trainin
         return <button key={task.assignmentId} className={`${styles.assignment} ${active ? styles.assignmentActive : ''} ${completed ? styles.assignmentCompleted : ''}`} aria-current={active ? 'step' : undefined}
           disabled={blocked || (!completed && task.assignmentId !== current)} onClick={() => select(task.assignmentId)}>
           <span className={styles.assignmentNumber}>{String(position + 1).padStart(2, '0')}</span><span>{t('session.assignment', { number: position + 1 })}</span>
-          {completed && <span className={styles.completedMark} aria-hidden="true">✓</span>}
+          {completed && <span className={styles.completedMark} aria-hidden="true"><Check size={14} /></span>}
         </button>
       })}
     </nav>

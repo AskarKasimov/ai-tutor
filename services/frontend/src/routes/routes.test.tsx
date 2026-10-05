@@ -9,6 +9,8 @@ import { i18n } from '../i18n/i18n'
 import * as audio from '../platform/prototype-audio'
 import { routeTree } from '../routeTree.gen'
 
+vi.mock('../platform/live-waveform', () => ({ createVoiceWaveform: () => ({ setStream: () => {}, dispose: () => {} }) }))
+
 function renderHome() {
   const router = createRouter({
     context: { queryClient: createQueryClient() },
@@ -30,7 +32,7 @@ afterEach(async () => {
 })
 
 it('shows the model score and feedback for a recorded answer', async () => {
-  vi.spyOn(audio, 'startRecording').mockResolvedValue({ dispose: vi.fn(), stop: vi.fn().mockResolvedValue(new Blob(['audio'], { type: 'audio/webm' })) })
+  vi.spyOn(audio, 'startRecording').mockResolvedValue({ stream: {} as MediaStream, dispose: vi.fn(), stop: vi.fn().mockResolvedValue(new Blob(['audio'], { type: 'audio/webm' })) })
   vi.spyOn(audio, 'createAudioUrl').mockReturnValue({ url: 'blob:recording', dispose: vi.fn() })
   vi.spyOn(voiceApi, 'transcribeRecording').mockResolvedValue({ id: 'tr-1', text: 'Классификация, потому что два класса.' })
   vi.spyOn(assessment, 'evaluateAnswer').mockResolvedValue({ score: 2, feedback: ['Ответ верный.', 'Вы назвали классификацию и объяснили два класса.', 'Закрепите различие с регрессией.'] })
@@ -78,7 +80,7 @@ it('shows the dev ribbon when the API mode is not real', async () => {
 })
 
 it('runs seven distinct assignments, reviews an earlier answer and restarts with an empty session', async () => {
-  vi.spyOn(audio, 'startRecording').mockImplementation(async () => ({ dispose: vi.fn(), stop: vi.fn().mockResolvedValue(new Blob(['audio'])) }))
+  vi.spyOn(audio, 'startRecording').mockImplementation(async () => ({ stream: {} as MediaStream, dispose: vi.fn(), stop: vi.fn().mockResolvedValue(new Blob(['audio'])) }))
   vi.spyOn(audio, 'createAudioUrl').mockReturnValue({ url: 'blob:recording', dispose: vi.fn() })
   vi.spyOn(voiceApi, 'transcribeRecording').mockResolvedValue({ id: 'tr-1', text: 'Классификация, потому что два класса.' })
   const evaluate = vi.spyOn(assessment, 'evaluateAnswer').mockResolvedValue({ score: 1, feedback: ['Частично.', 'Причина.', 'Совет.'] })
@@ -110,7 +112,7 @@ it('runs seven distinct assignments, reviews an earlier answer and restarts with
 })
 
 it('does not advance after a grading error and retries the same transcript', async () => {
-  vi.spyOn(audio, 'startRecording').mockResolvedValue({ dispose: vi.fn(), stop: vi.fn().mockResolvedValue(new Blob(['audio'])) })
+  vi.spyOn(audio, 'startRecording').mockResolvedValue({ stream: {} as MediaStream, dispose: vi.fn(), stop: vi.fn().mockResolvedValue(new Blob(['audio'])) })
   vi.spyOn(audio, 'createAudioUrl').mockReturnValue({ url: 'blob:recording', dispose: vi.fn() })
   const transcribe = vi.spyOn(voiceApi, 'transcribeRecording').mockResolvedValue({ id: 'tr-1', text: 'Мой ответ' })
   vi.spyOn(assessment, 'evaluateAnswer').mockRejectedValueOnce(new Error('offline')).mockResolvedValueOnce({ score: 2, feedback: ['Верно.', 'Причина.', 'Совет.'] })

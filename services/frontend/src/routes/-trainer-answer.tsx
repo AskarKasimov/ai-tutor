@@ -1,17 +1,41 @@
 import { Button, Heading, Text } from '@radix-ui/themes'
 import { CircleAlert, LoaderCircle, Mic, RotateCcw, Square } from 'lucide-react'
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { PropsWithChildren } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useTrainerPrototype } from '../data/use-trainer-prototype'
 import { isMockApi } from '../data/api-fetch'
 import type { SessionAnswer, SessionTask } from '../shared/domain'
+import { createVoiceWaveform } from '../platform/live-waveform'
 import styles from './index.module.scss'
 
-const barHeights = [18, 30, 45, 26, 61, 82, 53, 30, 68, 42, 25, 52, 72, 33, 48, 27, 59, 38, 20]
+function QuietWaveform() {
+  return <div className={styles.waveBars} />
+}
 
-function VoiceIllustration({ recording }: { recording: boolean }) {
-  return <div className={`${styles.waveform} ${recording ? styles.waveformActive : ''}`} aria-hidden="true"><div className={styles.waveBars}>{barHeights.map((height, i) => <span key={i} style={recording ? { height } : undefined} />)}</div></div>
+function LiveWaveform({ stream }: { stream?: MediaStream }) {
+  const container = useRef<HTMLDivElement>(null)
+  const waveform = useRef<ReturnType<typeof createVoiceWaveform> | null>(null)
+  const [unavailable, setUnavailable] = useState(false)
+  useEffect(() => {
+    if (!container.current) return
+    try { waveform.current = createVoiceWaveform(container.current) }
+    catch { setUnavailable(true) }
+    return () => { waveform.current?.dispose(); waveform.current = null }
+  }, [])
+  useEffect(() => {
+    try { waveform.current?.setStream(stream) }
+    catch {
+      waveform.current?.dispose()
+      waveform.current = null
+      setUnavailable(true)
+    }
+  }, [stream])
+  return unavailable ? <QuietWaveform /> : <div ref={container} className={styles.liveWaveform} />
+}
+
+function VoiceIllustration({ stream }: { stream?: MediaStream }) {
+  return <div className={styles.waveform} aria-hidden="true"><LiveWaveform stream={stream} /></div>
 }
 
 function MicrophoneIllustration() {
@@ -57,7 +81,7 @@ export function TrainerAnswer({ task, setBusy, onSave, saving, saveError }: {
     </div>
     <aside className={`${styles.answerPanel} ${error ? styles.answerError : ''}`} aria-label={t('trainer.answerArea')}>
       <Text as="p" className={styles.eyebrow}>{t('trainer.yourAnswer')}</Text>
-      <VoiceIllustration recording={recording} />
+      <VoiceIllustration stream={voice.recordingStream} />
       <div aria-live="polite" aria-atomic="true" role={error ? 'alert' : undefined}>
         <Heading as="h2" className={styles.answerTitle}>{t(`trainer.${titleKey}`, { time: seconds })}</Heading>
         {voice.transcript ? <Text as="p" className={styles.transcript}>{voice.transcript}</Text> : <Text as="p" className={styles.instructions}>{t(`trainer.${helpKey}`)}</Text>}

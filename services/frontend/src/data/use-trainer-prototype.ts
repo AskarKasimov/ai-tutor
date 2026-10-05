@@ -23,6 +23,7 @@ export function useTrainerPrototype(task: AssessmentTask, speechText = task.voic
   const transcriptionId = useRef<string | null>(null)
   const [audioUrl, setAudioUrl] = useState<string>()
   const [audioBlob, setAudioBlob] = useState<Blob>()
+  const [recordingStream, setRecordingStream] = useState<MediaStream>()
   const recording = useRef<Recording | null>(null)
   const cancelSpeech = useRef<(() => void) | null>(null)
   const savedAudio = useRef<ReturnType<typeof createAudioUrl> | null>(null)
@@ -97,6 +98,7 @@ export function useTrainerPrototype(task: AssessmentTask, speechText = task.voic
       const capture = await startRecording()
       if (generation.current !== current) { capture.dispose(); return }
       recording.current = capture
+      setRecordingStream(capture.stream)
       startedAt.current = Date.now()
       setSeconds(0)
       setStage('recording')
@@ -138,6 +140,7 @@ export function useTrainerPrototype(task: AssessmentTask, speechText = task.voic
     if (busy.current || !recording.current) return
     busy.current = true
     setStage('processing')
+    setRecordingStream(undefined)
     const current = generation.current
     try {
       const blob = await recording.current.stop()
@@ -192,6 +195,7 @@ export function useTrainerPrototype(task: AssessmentTask, speechText = task.voic
     stopSpeaking()
     recording.current?.dispose()
     recording.current = null
+    setRecordingStream(undefined)
     savedAudio.current?.dispose()
     savedAudio.current = null
     setAudioUrl(undefined)
@@ -207,5 +211,5 @@ export function useTrainerPrototype(task: AssessmentTask, speechText = task.voic
     if (processingTimer.current) clearTimeout(processingTimer.current)
   }
 
-  return { stage, seconds, error, speaking, loadingSpeech, speechError, audioUrl, audioBlob, transcript, assessment, example, speak, start, stop, retryAssessment, showExample, reset }
+  return { stage, seconds, error, speaking, loadingSpeech, speechError, audioUrl, audioBlob, recordingStream, transcript, assessment, example, speak, start, stop, retryAssessment, showExample, reset }
 }

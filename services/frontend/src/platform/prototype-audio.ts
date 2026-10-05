@@ -1,5 +1,5 @@
 // Browser adapters for the disposable voice trainer prototype.
-export type Recording = { stop: () => Promise<Blob>; dispose: () => void }
+export type Recording = { stream: MediaStream; stop: () => Promise<Blob>; dispose: () => void }
 
 export async function startRecording(): Promise<Recording> {
   if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
@@ -13,6 +13,7 @@ export async function startRecording(): Promise<Recording> {
     recorder.start()
     const release = () => stream.getTracks().forEach((track) => track.stop())
     return {
+      stream,
       stop: () => new Promise((resolve, reject) => {
         recorder.onstop = () => { release(); resolve(new Blob(chunks, { type: recorder.mimeType })) }
         recorder.onerror = () => { release(); reject(new Error('recording')) }

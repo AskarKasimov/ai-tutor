@@ -59,8 +59,8 @@
 .answerPanel { min-width: 0; min-height: 688px; padding: 32px; box-sizing: border-box; border-radius: 22px; display: flex; flex-direction: column;
   background: white; box-shadow: inset 0 0 0 1px var(--app-border); }
 .waveform { display: flex; align-items: center; justify-content: center; align-self: center; width: 278px; height: 132px; max-width: 100%; margin-top: 37px; margin-bottom: 38px; background: #eff5ff; border-radius: 18px; }
-.waveBars { display: flex; justify-content: space-between; align-items: center; width: 100%; height: 82px; padding: 0 12px; box-sizing: border-box; span { display: block; flex-shrink: 0; width: 5px; height: 4px; border-radius: 3px; background: #a9c3fc; &:nth-child(3n + 1) { background: #6c99f2; } } }
-.waveformActive .waveBars span { animation: wave .8s ease-in-out infinite alternate; &:nth-child(3n) { animation-delay: -.2s; } &:nth-child(4n) { animation-delay: -.5s; } }
+.waveBars { display: flex; align-items: center; width: 100%; height: 82px; padding: 0 12px; box-sizing: border-box; &::before { content: ''; width: 100%; height: 4px; background: repeating-linear-gradient(90deg, #6c99f2 0 5px, transparent 5px 9px); } }
+.liveWaveform { width: 100%; height: 82px; padding: 0 12px; box-sizing: border-box; }
 .answerTitle { font-family: inherit; margin: 0; font-size: 23px; line-height: 28px; font-weight: 700; letter-spacing: -.3px; }
 .instructions { margin: 14px 0 0; font-size: 15px; line-height: 23px; color: var(--app-muted); white-space: pre-line; }
 .transcript { font-size: 16px; line-height: 26px; margin: 16px 0 0; overflow-wrap: anywhere; }
@@ -91,7 +91,6 @@
 .summaryQuestion { flex: 1; }
 .summaryAnswerScore { flex-shrink: 0; font-weight: 700; }
 @keyframes spin { to { transform: rotate(360deg); } }
-@keyframes wave { to { transform: scaleY(.35); opacity: .55; } }
 @media (max-width: 1199px) {
   .prototype { grid-template-columns: 208px minmax(0, 1fr); }
   .navigation { padding-left: 24px; padding-right: 24px; }
@@ -145,4 +144,4 @@
   .answerPanel { padding: 24px; }
   .summaryScore { flex-direction: column; align-items: flex-start; gap: 6px; }
 }
-@media (prefers-reduced-motion: reduce) { .waveBars span, .spinner { animation: none; } .progressFill { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .spinner { animation: none; } .progressFill { transition: none; } }

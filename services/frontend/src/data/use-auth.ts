@@ -1,3 +1,4 @@
+import { apiFetch } from './api-fetch'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 
@@ -14,7 +15,7 @@ export function useAuth() {
     retry: false,
     staleTime: 60_000,
     queryFn: async ({ signal }) => {
-      const response = await fetch(`${apiBase}/auth/me`, { credentials: 'include', signal: AbortSignal.any([signal, AbortSignal.timeout(30_000)]) })
+      const response = await apiFetch(`${apiBase}/auth/me`, { credentials: 'include', signal: AbortSignal.any([signal, AbortSignal.timeout(30_000)]) })
       if (response.status === 401) return null
       if (!response.ok) throw new Error(t('auth.networkError'))
       return response.json()
@@ -25,7 +26,7 @@ export function useAuth() {
     mutationFn: async ({ mode, ...body }: AuthInput): Promise<User> => {
       let response: Response
       try {
-        response = await fetch(`${apiBase}/auth/${mode}`, {
+        response = await apiFetch(`${apiBase}/auth/${mode}`, {
           method: 'POST', credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body), signal: AbortSignal.timeout(30_000),
@@ -43,7 +44,7 @@ export function useAuth() {
   })
   const logout = useMutation({
     mutationFn: async () => {
-      const response = await fetch(`${apiBase}/auth/logout`, { method: 'POST', credentials: 'include', signal: AbortSignal.timeout(30_000) })
+      const response = await apiFetch(`${apiBase}/auth/logout`, { method: 'POST', credentials: 'include', signal: AbortSignal.timeout(30_000) })
       if (!response.ok) throw new Error(t('auth.networkError'))
     },
     onSuccess: () => cache.setQueryData(key, null),

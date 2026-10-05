@@ -71,6 +71,27 @@ it('shows API failure instead of a demonstration result', async () => {
   expect(result.current.transcript).toBe('')
 })
 
+it('cancels an unfinished transcription on leaving and never grades its late response', async () => {
+  let complete!: (value: { id: string; text: string }) => void
+  let signal!: AbortSignal
+  vi.spyOn(audio, 'startRecording').mockResolvedValue({ dispose: vi.fn(), stop: vi.fn().mockResolvedValue(new Blob(['audio'])) })
+  vi.spyOn(audio, 'createAudioUrl').mockReturnValue({ url: 'blob:recording', dispose: vi.fn() })
+  vi.spyOn(api, 'transcribeRecording').mockImplementation((_blob, incomingSignal) => {
+    signal = incomingSignal
+    return new Promise((resolve) => { complete = resolve })
+  })
+  const evaluate = vi.spyOn(assessment, 'evaluateAnswer')
+  const { result, unmount } = renderHook(() => useTrainerPrototype(task))
+  await act(async () => { await result.current.start() })
+  let stopping!: Promise<void>
+  act(() => { stopping = result.current.stop() })
+  await waitFor(() => expect(signal).toBeDefined())
+  unmount()
+  expect(signal.aborted).toBe(true)
+  await act(async () => { complete({ id: 'late', text: 'Поздний ответ' }); await stopping })
+  expect(evaluate).not.toHaveBeenCalled()
+})
+
 it('keeps the transcription and retries grading without recording again', async () => {
   const capture = vi.spyOn(audio, 'startRecording').mockResolvedValue({ dispose: vi.fn(), stop: vi.fn().mockResolvedValue(new Blob(['audio'])) })
   vi.spyOn(audio, 'createAudioUrl').mockReturnValue({ url: 'blob:recording', dispose: vi.fn() })
@@ -99,6 +120,23 @@ it('uses synthesized API audio and cancels playback on reset', async () => {
   act(() => result.current.reset())
   expect(dispose).toHaveBeenCalledTimes(1)
   expect(result.current.speaking).toBe(false)
+})
+
+it('speaks the selected question and exposes its recording for session playback', async () => {
+  const blob = new Blob(['answer'], { type: 'audio/webm' })
+  const synthesize = vi.spyOn(api, 'synthesizeQuestion').mockResolvedValue(new Blob(['wav']))
+  vi.spyOn(audio, 'playQuestion').mockResolvedValue(vi.fn())
+  vi.spyOn(audio, 'startRecording').mockResolvedValue({ dispose: vi.fn(), stop: vi.fn().mockResolvedValue(blob) })
+  vi.spyOn(audio, 'createAudioUrl').mockReturnValue({ url: 'blob:recording', dispose: vi.fn() })
+  vi.spyOn(api, 'transcribeRecording').mockResolvedValue({ id: 'tr-2', text: 'Регрессия' })
+  vi.spyOn(assessment, 'evaluateAnswer').mockResolvedValue({ score: 2, feedback: ['Верно', 'Причина', 'Совет'] })
+  const { result } = renderHook(() => useTrainerPrototype(task, 'Цена квартиры? Регрессия.'))
+  await act(async () => { await result.current.speak() })
+  expect(synthesize.mock.calls[0][0]).toBe('Цена квартиры? Регрессия.')
+  await act(async () => { await result.current.start(); await result.current.stop() })
+  expect(result.current.audioBlob).toBe(blob)
+  act(() => result.current.reset())
+  expect(result.current.audioBlob).toBeUndefined()
 })
 
 it('shows a session error when the backend rejects transcription or speech with 401', async () => {

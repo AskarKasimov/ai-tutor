@@ -1,8 +1,11 @@
 import '@testing-library/jest-dom/vitest'
 import { cleanup } from '@testing-library/react'
-import { afterEach } from 'vitest'
+import { afterEach, beforeEach, vi } from 'vitest'
 
 afterEach(cleanup)
+// Contract/UI tests deliberately exercise the real adapter, irrespective of
+// the developer's local demo env. Mock-mode tests override this per test.
+beforeEach(() => vi.stubEnv('VITE_API_MODE', 'real'))
 
 Object.defineProperty(window, 'matchMedia', {
   configurable: true,

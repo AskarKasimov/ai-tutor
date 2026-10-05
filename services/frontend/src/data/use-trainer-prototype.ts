@@ -7,7 +7,7 @@ import type { Recording } from '../platform/prototype-audio'
 
 type Stage = 'ready' | 'permission' | 'recording' | 'processing' | 'grading' | 'result' | 'error'
 
-export function useTrainerPrototype(task: AssessmentTask) {
+export function useTrainerPrototype(task: AssessmentTask, speechText = task.voiceInstruction) {
   const [stage, setStage] = useState<Stage>('ready')
   const [seconds, setSeconds] = useState(0)
   const [error, setError] = useState('')
@@ -22,6 +22,7 @@ export function useTrainerPrototype(task: AssessmentTask) {
   const assessmentRequest = useRef<AbortController | null>(null)
   const transcriptionId = useRef<string | null>(null)
   const [audioUrl, setAudioUrl] = useState<string>()
+  const [audioBlob, setAudioBlob] = useState<Blob>()
   const recording = useRef<Recording | null>(null)
   const cancelSpeech = useRef<(() => void) | null>(null)
   const savedAudio = useRef<ReturnType<typeof createAudioUrl> | null>(null)
@@ -63,7 +64,7 @@ export function useTrainerPrototype(task: AssessmentTask) {
     setSpeechError('')
     setLoadingSpeech(true)
     try {
-      const blob = await synthesizeQuestion(task.voiceInstruction, request.signal)
+      const blob = await synthesizeQuestion(speechText, request.signal)
       if (request.signal.aborted) return
       const dispose = await playQuestion(blob, () => setSpeaking(false), () => {
         setSpeaking(false)
@@ -88,6 +89,7 @@ export function useTrainerPrototype(task: AssessmentTask) {
     setError('')
     setTranscript('')
     setAssessment(null)
+    setAudioBlob(undefined)
     transcriptionId.current = null
     setExample(false)
     setStage('permission')
@@ -145,6 +147,7 @@ export function useTrainerPrototype(task: AssessmentTask) {
       savedAudio.current?.dispose()
       savedAudio.current = createAudioUrl(blob)
       setAudioUrl(savedAudio.current.url)
+      setAudioBlob(blob)
       const request = new AbortController()
       transcriptionRequest.current = request
       const transcription = await transcribeRecording(blob, request.signal)
@@ -192,6 +195,7 @@ export function useTrainerPrototype(task: AssessmentTask) {
     savedAudio.current?.dispose()
     savedAudio.current = null
     setAudioUrl(undefined)
+    setAudioBlob(undefined)
     setTranscript('')
     setAssessment(null)
     setExample(false)
@@ -203,5 +207,5 @@ export function useTrainerPrototype(task: AssessmentTask) {
     if (processingTimer.current) clearTimeout(processingTimer.current)
   }
 
-  return { stage, seconds, error, speaking, loadingSpeech, speechError, audioUrl, transcript, assessment, example, speak, start, stop, retryAssessment, showExample, reset }
+  return { stage, seconds, error, speaking, loadingSpeech, speechError, audioUrl, audioBlob, transcript, assessment, example, speak, start, stop, retryAssessment, showExample, reset }
 }

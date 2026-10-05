@@ -6,7 +6,11 @@ COPY cmd ./cmd
 COPY internal ./internal
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /api ./cmd/api
 
-FROM gcr.io/distroless/static-debian12:nonroot
+FROM alpine:3.24
+RUN apk add --no-cache ca-certificates tzdata \
+    && addgroup -S -g 65532 nonroot \
+    && adduser -S -D -H -u 65532 -G nonroot nonroot
 COPY --from=build /api /api
+USER nonroot:nonroot
 EXPOSE 8002
 ENTRYPOINT ["/api"]

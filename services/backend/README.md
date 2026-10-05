@@ -56,30 +56,63 @@ Frontend обращается только к этому backend. GigaAM и VoxC
 
 ## Запуск через Docker Compose
 
-Требуются Docker Compose и mkcert. Из `services/backend`:
+Для серверного запуска нужны Docker Compose, настроенный корневой `.env`
+и TLS-сертификаты для имени сервера в `certs/`. Из `services/backend`:
 
 ```bash
-../../run.sh
+../../prod.sh
 ```
 
-На Windows выполняйте `run.sh` в Git Bash. Скрипт сначала устанавливает
-доверие к CA mkcert и выпускает сертификаты, затем запускает Compose с пересборкой.
-Подготовка `.env`, установка mkcert и команды для каждой ОС описаны
-[в README монорепозитория](../../README.md#локальный-запуск).
+Скрипт проверяет конфигурацию, затем по очереди
+запускает локальные Compose PostgreSQL, backend, frontend и Caddy,
+дожидаясь готовности каждого проекта. На Windows используйте Git Bash.
+Подготовка сервера и отдельный dev-запуск описаны
+[в README монорепозитория](../../README.md#8-запуск-и-окружение).
 
-API доступен по `https://localhost:8443/api/v1`, проверка — `GET /api/v1/health`.
+API доступен по HTTPS-адресу сервера с префиксом `/api/v1`,
+проверка — `GET /api/v1/health`.
 HTTP-порт `127.0.0.1:8002` нужен для внутренних проверок и reverse proxy;
 браузер использует HTTPS. Миграция применяется автоматически перед запуском API.
 PostgreSQL хранит данные в постоянном volume. Обычный `docker compose down` сохраняет его;
 `down -v` удаляет данные.
 
-Все настройки backend обязательны: без них API останавливается при запуске.
+`BACKEND_API_MODE` обязателен и принимает только `mock` или `real`.
+В `mock` распознавание возвращает фиксированный демонстрационный текст, синтез —
+короткий WAV-сигнал вместо чтения вопроса, оценивание — 2/2 с тремя строками
+явно демонстрационного фидбэка. Запросов к STT/TTS/LLM нет. Авторизация,
+проверка входных данных, права доступа и PostgreSQL работают как обычно;
+расшифровка сохраняется за настоящим пользователем.
+
+В `real` используются действующие модели. Только в этом режиме обязательны
+`BACKEND_STT_URL`, `BACKEND_TTS_URL`, `BACKEND_ASSESSMENT_BASE_URL` и
+`BACKEND_ASSESSMENT_MODEL`; в `mock` они игнорируются и могут отсутствовать.
+Остальные настройки backend обязательны в обоих режимах.
 Скопируйте полный набор из `.env.example`; скрытых значений по умолчанию нет.
-В `BACKEND_STT_URL` и `BACKEND_TTS_URL` укажите адреса серверов моделей: DNS-имена
+Для `real` в `BACKEND_STT_URL` и `BACKEND_TTS_URL` укажите адреса серверов моделей: DNS-имена
 или IP, доступные из контейнера backend. Адреса в `.env.example` служат примерами
 и требуют замены. Контейнеры моделей запускаются отдельно из `../../../tts-stt`.
-`BACKEND_ASSESSMENT_BASE_URL`, `BACKEND_ASSESSMENT_MODEL` и `BACKEND_ASSESSMENT_TIMEOUT` также
-задаются явно в окружении; укажите доступный адрес, имя модели и таймаут.
+Для `real` также задайте `BACKEND_ASSESSMENT_BASE_URL` и `BACKEND_ASSESSMENT_MODEL`:
+укажите доступный адрес и имя модели.
+Таймауты задаются в обоих режимах. После изменения `BACKEND_API_MODE`
+пересоздайте API: `docker compose up -d --build api` из корня репозитория.
+
+Backend имеет собственный `docker-compose.yaml`. Для отдельной пересборки
+из этой папки: `docker compose --env-file ../../.env up -d --build`.
+Нужны уже работающая PostgreSQL и внешняя сеть `ai-tutor_default`.
+`BACKEND_DATABASE_URL` переопределяет адрес БД;
+по умолчанию используется `db:5432` и пароль `DB_PASSWORD`.
+Правила отдельного запуска и сохранения volumes — в корневом README.
+
+Для проверки моков backend задайте `VITE_API_MODE=real` и пересоберите frontend:
+при `VITE_API_MODE=mock` браузер возвращает свои локальные ответы и не вызывает API.
+Контейнер Swagger находится в этом Compose. `COMPOSE_PROFILES=swagger`
+в `.env` включает его вместе с backend, пустое значение отключает.
+Спецификация `backend.api.yaml` смонтирована в контейнер read-only;
+Swagger отдаёт UI и YAML под `/docs/`. После генерации схемы пересоздайте
+контейнер `swagger`: образ копирует YAML при запуске. Caddy должен запускаться с тем же
+значением `COMPOSE_PROFILES`. При выключении ранее запущенного Swagger
+из этой папки выполните `docker compose --env-file ../../.env --profile swagger rm -sf swagger`,
+затем пересоздайте Caddy с обновлённым `.env`.
 Для корпоративной сети сертификат должен содержать IP в SAN, а CA должен быть доверенным
 на клиентских машинах. Frontend и `/api/v1` публикуются через общий HTTPS reverse proxy;
 клиент обращается к API по относительным путям. Caddy удаляет `/api/v1` перед
@@ -92,6 +125,7 @@ PostgreSQL хранит данные в постоянном volume. Обычн�
 Требуются Go 1.26 и PostgreSQL. Приложение не загружает веса моделей и не требует Python.
 
 ```bash
+export BACKEND_API_MODE='real'
 export BACKEND_LISTEN_ADDRESS=':8002'
 export BACKEND_DATABASE_URL='postgres://ai_tutor:YOUR_PASSWORD@localhost:5432/ai_tutor?sslmode=disable'
 export BACKEND_STT_URL='http://localhost:8000/transcribe'

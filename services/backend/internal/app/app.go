@@ -11,6 +11,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	assessmentapp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/assessment/application"
+	assessmentmock "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/assessment/infrastructure/mock"
 	assessmentmodel "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/assessment/infrastructure/modelapi"
 	assessmentpg "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/assessment/infrastructure/postgres"
 	assessmenthttp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/assessment/transport/http"
@@ -23,6 +24,7 @@ import (
 	competencypg "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/competency/infrastructure/postgres"
 	competencyhttp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/competency/transport/http"
 	voiceapp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/voice/application"
+	voicemock "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/voice/infrastructure/mock"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/features/voice/infrastructure/modelapi"
 	voicepg "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/voice/infrastructure/postgres"
 	voicehttp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/voice/transport/http"
@@ -53,12 +55,22 @@ func New(cfg Config, pool *pgxpool.Pool) (*App, error) {
 func (a *App) Handler() http.Handler {
 	auth := authapp.New(authpg.New(a.pool), a.hasher, a.now)
 	authHandlers := authhttp.New(auth, a.now)
-	models := modelapi.New(a.client, a.cfg.STTURL, a.cfg.TTSURL, a.cfg.ProcessingTimeout)
-	voice := voiceapp.New(voicepg.New(a.pool), models, models, a.now)
+	var recognizer voiceapp.Recognizer
+	var synthesizer voiceapp.Synthesizer
+	var grader assessmentapp.Grader
+	if a.cfg.APIMode == "mock" {
+		recognizer, synthesizer = voicemock.Client{}, voicemock.Client{}
+		grader = assessmentmock.Grader{}
+	} else {
+		models := modelapi.New(a.client, a.cfg.STTURL, a.cfg.TTSURL, a.cfg.ProcessingTimeout)
+		recognizer, synthesizer = models, models
+		grader = assessmentmodel.New(a.client, a.cfg.AssessmentBaseURL, a.cfg.AssessmentModel, a.cfg.AssessmentTimeout)
+	}
+	voice := voiceapp.New(voicepg.New(a.pool), recognizer, synthesizer, a.now)
 	voiceHandlers := voicehttp.New(voice, a.cfg.MaxUploadBytes)
 	competency := competencyapp.New(competencypg.New(a.pool), &csvparser.Parser{}, a.now)
 	competencyHandlers := competencyhttp.New(competency, a.cfg.MaxUploadBytes)
-	assessment := assessmentapp.New(assessmentpg.New(a.pool), assessmentmodel.New(a.client, a.cfg.AssessmentBaseURL, a.cfg.AssessmentModel, a.cfg.AssessmentTimeout))
+	assessment := assessmentapp.New(assessmentpg.New(a.pool), grader)
 	assessmentHandlers := assessmenthttp.New(assessment)
 
 	mux := http.NewServeMux()

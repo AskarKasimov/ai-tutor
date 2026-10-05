@@ -9,18 +9,8 @@
 	handle @docs {
 		@swagger_enabled expression {env.COMPOSE_PROFILES}.matches('(^|,)swagger(,|$)')
 		handle @swagger_enabled {
-			route {
-				@schema path /docs/backend.api.yaml
-				handle @schema {
-					rewrite * /backend.api.yaml
-					root * /openapi
-					header Cache-Control "no-store"
-					file_server
-				}
-				redir /docs /docs/ 308
-				uri strip_prefix /docs
-				reverse_proxy swagger:8080
-			}
+			redir /docs /docs/ 308
+			reverse_proxy swagger:8080
 		}
 		respond 404
 	}

@@ -1,87 +1,45 @@
+# Common dev stack; service definitions live beside their owners.
 services:
   db:
-    image: postgres:18-alpine
-    environment:
-      POSTGRES_DB: ai_tutor
-      POSTGRES_USER: ai_tutor
-      POSTGRES_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
-    ports:
-      - "127.0.0.1:${DB_PORT:?Set DB_PORT in .env}:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ai_tutor -d ai_tutor"]
-      interval: 5s
-      timeout: 3s
-      retries: 12
-    restart: unless-stopped
+    extends:
+      file: ./services/postgresql/docker-compose.yaml
+      service: db
 
   api:
-    build:
-      context: ./services/backend
-    environment:
-      BACKEND_DATABASE_URL: postgres://ai_tutor:${DB_PASSWORD}@db:5432/ai_tutor?sslmode=disable
-      BACKEND_STT_URL: ${BACKEND_STT_URL:?Set BACKEND_STT_URL in .env}
-      BACKEND_TTS_URL: ${BACKEND_TTS_URL:?Set BACKEND_TTS_URL in .env}
-      BACKEND_ASSESSMENT_BASE_URL: ${BACKEND_ASSESSMENT_BASE_URL:?Set BACKEND_ASSESSMENT_BASE_URL in .env}
-      BACKEND_ASSESSMENT_MODEL: ${BACKEND_ASSESSMENT_MODEL:?Set BACKEND_ASSESSMENT_MODEL in .env}
-      BACKEND_ASSESSMENT_TIMEOUT: ${BACKEND_ASSESSMENT_TIMEOUT:?Set BACKEND_ASSESSMENT_TIMEOUT in .env}
-      BACKEND_VOICE_TIMEOUT: ${BACKEND_VOICE_TIMEOUT:?Set BACKEND_VOICE_TIMEOUT in .env}
-      BACKEND_LISTEN_ADDRESS: ${BACKEND_LISTEN_ADDRESS:?Set BACKEND_LISTEN_ADDRESS in .env}
-      BACKEND_MAX_UPLOAD_BYTES: ${BACKEND_MAX_UPLOAD_BYTES:?Set BACKEND_MAX_UPLOAD_BYTES in .env}
+    extends:
+      file: ./services/backend/docker-compose.yaml
+      service: api
     depends_on:
       db:
         condition: service_healthy
-    ports:
-      - "127.0.0.1:8002:8002"
-    healthcheck:
-      test: ["CMD", "/api", "healthcheck"]
-      interval: 10s
-      timeout: 5s
-      retries: 6
-    restart: unless-stopped
+  swagger:
+    extends:
+      file: ./services/backend/docker-compose.yaml
+      service: swagger
 
   frontend:
-    build:
-      context: ./services/frontend
-      args:
-        VITE_API_BASE_URL: ${VITE_API_BASE_URL:?Set VITE_API_BASE_URL in .env}
-        VITE_API_MODE: ${VITE_API_MODE:-mock}
-    healthcheck:
-      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/"]
-      interval: 10s
-      timeout: 5s
-      retries: 6
-    restart: unless-stopped
-
-  swagger:
-    image: swaggerapi/swagger-ui:v5.32.0
-    profiles: [swagger]
-    environment:
-      URL: /docs/backend.api.yaml
-      VALIDATOR_URL: none
-      WITH_CREDENTIALS: "true"
-    restart: unless-stopped
+    extends:
+      file: ./services/frontend/docker-compose.yaml
+      service: frontend
 
   proxy:
-    image: caddy:2-alpine
-    environment:
-      COMPOSE_PROFILES: ${COMPOSE_PROFILES:-}
-    ports:
-      - "${PROXY_HTTPS_BIND:?Set PROXY_HTTPS_BIND in .env}:${PROXY_HTTPS_PORT:?Set PROXY_HTTPS_PORT in .env}:443"
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - ./services/backend:/openapi:ro
-      - ./certs:/certs:ro
-      - caddy_data:/data
-      - caddy_config:/config
+    extends:
+      file: ./services/caddy/docker-compose.yaml
+      service: proxy
     depends_on:
       api:
         condition: service_healthy
       frontend:
         condition: service_healthy
-    restart: unless-stopped
+
+networks:
+  default:
+    name: ai-tutor_default
+
 volumes:
   postgres_data:
+    name: ai-tutor_postgres_data
   caddy_data:
+    name: ai-tutor_caddy_data
   caddy_config:
+    name: ai-tutor_caddy_config

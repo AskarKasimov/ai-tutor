@@ -11,6 +11,7 @@ import (
 )
 
 type Config struct {
+	APIMode           string
 	ListenAddress     string
 	DatabaseURL       string
 	STTURL            string
@@ -24,16 +25,29 @@ type Config struct {
 
 func ConfigFromEnv() (Config, error) {
 	var c Config
-	settings := []struct {
+	mode, err := requiredEnv("BACKEND_API_MODE")
+	if err != nil {
+		return c, err
+	}
+	c.APIMode = mode
+	if err := validateAPIMode(mode); err != nil {
+		return c, err
+	}
+	type stringSetting struct {
 		key string
 		dst *string
-	}{
+	}
+	settings := []stringSetting{
 		{"BACKEND_LISTEN_ADDRESS", &c.ListenAddress},
 		{"BACKEND_DATABASE_URL", &c.DatabaseURL},
-		{"BACKEND_STT_URL", &c.STTURL},
-		{"BACKEND_TTS_URL", &c.TTSURL},
-		{"BACKEND_ASSESSMENT_BASE_URL", &c.AssessmentBaseURL},
-		{"BACKEND_ASSESSMENT_MODEL", &c.AssessmentModel},
+	}
+	if c.APIMode == "real" {
+		settings = append(settings,
+			stringSetting{"BACKEND_STT_URL", &c.STTURL},
+			stringSetting{"BACKEND_TTS_URL", &c.TTSURL},
+			stringSetting{"BACKEND_ASSESSMENT_BASE_URL", &c.AssessmentBaseURL},
+			stringSetting{"BACKEND_ASSESSMENT_MODEL", &c.AssessmentModel},
+		)
 	}
 	for _, setting := range settings {
 		value, err := requiredEnv(setting.key)
@@ -80,6 +94,9 @@ func requiredEnv(key string) (string, error) {
 }
 
 func (c Config) validate() error {
+	if err := validateAPIMode(c.APIMode); err != nil {
+		return err
+	}
 	_, port, err := net.SplitHostPort(c.ListenAddress)
 	portNumber, portErr := strconv.Atoi(port)
 	if err != nil || portErr != nil || portNumber < 1 || portNumber > 65535 {
@@ -88,17 +105,19 @@ func (c Config) validate() error {
 	if strings.TrimSpace(c.DatabaseURL) == "" {
 		return fmt.Errorf("BACKEND_DATABASE_URL is required")
 	}
-	for _, setting := range []struct{ key, value string }{
-		{"BACKEND_STT_URL", c.STTURL}, {"BACKEND_TTS_URL", c.TTSURL},
-		{"BACKEND_ASSESSMENT_BASE_URL", c.AssessmentBaseURL},
-	} {
-		u, err := url.Parse(setting.value)
-		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.User != nil || u.Fragment != "" {
-			return fmt.Errorf("%s must be an absolute HTTP(S) URL without credentials", setting.key)
+	if c.APIMode == "real" {
+		for _, setting := range []struct{ key, value string }{
+			{"BACKEND_STT_URL", c.STTURL}, {"BACKEND_TTS_URL", c.TTSURL},
+			{"BACKEND_ASSESSMENT_BASE_URL", c.AssessmentBaseURL},
+		} {
+			u, err := url.Parse(setting.value)
+			if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.User != nil || u.Fragment != "" {
+				return fmt.Errorf("%s must be an absolute HTTP(S) URL without credentials", setting.key)
+			}
 		}
-	}
-	if strings.TrimSpace(c.AssessmentModel) == "" {
-		return fmt.Errorf("BACKEND_ASSESSMENT_MODEL is required")
+		if strings.TrimSpace(c.AssessmentModel) == "" {
+			return fmt.Errorf("BACKEND_ASSESSMENT_MODEL is required")
+		}
 	}
 	for _, setting := range []struct {
 		key   string
@@ -113,6 +132,13 @@ func (c Config) validate() error {
 	}
 	if c.MaxUploadBytes < 1 || c.MaxUploadBytes > 25*1024*1024 {
 		return fmt.Errorf("BACKEND_MAX_UPLOAD_BYTES must be positive and cannot exceed 25 MiB")
+	}
+	return nil
+}
+
+func validateAPIMode(mode string) error {
+	if mode != "mock" && mode != "real" {
+		return fmt.Errorf("BACKEND_API_MODE must be mock or real")
 	}
 	return nil
 }

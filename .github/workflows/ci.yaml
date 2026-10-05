@@ -36,8 +36,8 @@ jobs:
             *) echo "Unsupported event: $GITHUB_EVENT_NAME" >&2; exit 1 ;;
           esac
 
-          if [[ "$GITHUB_EVENT_NAME" == push && "$BASE_SHA" == 0000000000000000000000000000000000000000 ]]; then
-            # A new branch has no previous commit: check both services.
+          if [[ "$GITHUB_EVENT_NAME" == push ]] && ! git cat-file -e "$BASE_SHA^{commit}" 2>/dev/null; then
+            # New branches and force pushes may have no available base: check both services.
             backend=true
             frontend=true
           else

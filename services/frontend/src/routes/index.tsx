@@ -59,6 +59,7 @@ function SessionScreen({ session, training }: { session: TrainerSession; trainin
   const [reviewing, setReviewing] = useState(false)
   const selected = session.tasks.find((task) => task.assignmentId === selection) ?? session.tasks[0]
   const answer = session.answers.find((item) => item.assignmentId === selection)
+  const audioUrl = training.audioUrl(selection)
   const index = session.tasks.indexOf(selected)
   const blocked = busy || training.save.isPending || training.restart.isPending
   const current = session.currentAssignmentId
@@ -87,8 +88,13 @@ function SessionScreen({ session, training }: { session: TrainerSession; trainin
           <Heading as="h2" id="answer-options-title" className={styles.eyebrow}>{t('trainer.optionsTitle')}</Heading>
           <ol className={styles.optionList}>{selected.optionKeys.map((key, position) => <li key={key} className={styles.option}><span className={styles.optionLetter} aria-hidden="true">{'ABCD'[position]}</span><Text>{t(key)}</Text></li>)}</ol>
         </section>
+        {answer && <section aria-labelledby="saved-answer-title" className={styles.savedAnswer}>
+          <Heading as="h2" id="saved-answer-title" className={styles.eyebrow}>{t('trainer.yourAnswer')}</Heading>
+          <Text as="p" className={styles.transcript}>{answer.transcript}</Text>
+          {audioUrl && <div className={styles.audio}><Text as="p">{t('trainer.listenRecording')}</Text><audio controls src={audioUrl} aria-label={t('trainer.listenRecording')} /></div>}
+        </section>}
       </section>
-      {answer ? <SavedAnswer answer={answer} audioUrl={training.audioUrl(selection)}>
+      {answer ? <SavedAnswer answer={answer}>
         <Button className={styles.primary} onClick={advance}>{t(current && reviewing ? 'session.returnCurrent' : current ? 'session.next' : 'session.viewSummary')}</Button>
       </SavedAnswer> : <TrainerAnswer key={`${session.id}/${selection}`} task={selected} setBusy={setBusy} saving={training.save.isPending} saveError={training.save.isError}
         onSave={(result, audioBlob) => training.save.mutateAsync({ sessionId: session.id, answer: result, audioBlob }).then(() => undefined)} />}

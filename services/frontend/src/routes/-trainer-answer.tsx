@@ -94,14 +94,11 @@ export function TrainerAnswer({ task, setBusy, onSave, saving, saveError }: {
   </>
 }
 
-export function SavedAnswer({ answer, audioUrl, children }: PropsWithChildren<{ answer: SessionAnswer; audioUrl?: string }>) {
+export function SavedAnswer({ answer, children }: PropsWithChildren<{ answer: SessionAnswer }>) {
   const { t } = useTranslation()
   return <aside className={styles.answerPanel} aria-label={t('trainer.answerArea')}>
     <Text as="p" className={styles.eyebrow}>{t('session.result')}</Text>
     <div className={`${styles.score} ${answer.assessment.score === 0 ? styles.scoreIncorrect : answer.assessment.score === 1 ? styles.scorePartial : ''}`}><Text>{answer.assessment.score} / 2</Text><Text className={styles.verdict}>{t(`session.verdict.${answer.assessment.score}`)}</Text></div>
-    <Heading as="h2" className={styles.answerTitle}>{t('trainer.yourAnswer')}</Heading>
-    <Text as="p" className={styles.transcript}>{answer.transcript}</Text>
-    {audioUrl && <div className={styles.audio}><Text as="p">{t('trainer.listenRecording')}</Text><audio controls src={audioUrl} aria-label={t('trainer.listenRecording')} /></div>}
     <Heading as="h2" className={styles.feedbackTitle}>{t('trainer.feedback')}</Heading>
     {answer.assessment.feedback.map((line, i) => <Text as="p" className={styles.feedbackLine} key={i}>{line}</Text>)}
     <div className={styles.resultActions}>{children}</div>

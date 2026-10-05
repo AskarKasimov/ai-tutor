@@ -41,6 +41,9 @@ it('shows the model score and feedback for a recorded answer', async () => {
   fireEvent.click(await screen.findByRole('button', { name: 'Завершить запись' }))
   expect(await screen.findByText('2 / 2')).toBeVisible()
   expect(screen.getByText('Классификация, потому что два класса.')).toBeVisible()
+  const savedAnswer = screen.getByRole('region', { name: 'Ваш ответ' })
+  expect(savedAnswer).toContainElement(screen.getByText('Классификация, потому что два класса.'))
+  expect(screen.getByRole('complementary', { name: 'Голосовой ответ на задание' })).not.toContainElement(savedAnswer)
   expect(screen.getByText('Вы назвали классификацию и объяснили два класса.')).toBeVisible()
 })
 

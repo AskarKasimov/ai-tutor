@@ -11,7 +11,7 @@ export function createQueryClient() {
 
 export function AppProviders({ children, queryClient }: PropsWithChildren<{ queryClient: QueryClient }>) {
   return (
-    <Theme className={styles.root} accentColor="green" appearance="light">
+    <Theme className={styles.root} accentColor="blue" appearance="light">
       <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
     </Theme>
   )

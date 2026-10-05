@@ -7,7 +7,7 @@ import type { Recording } from '../platform/prototype-audio'
 
 type Stage = 'ready' | 'permission' | 'recording' | 'processing' | 'grading' | 'result' | 'error'
 
-export function useTrainerPrototype(task: AssessmentTask) {
+export function useTrainerPrototype(task: AssessmentTask, speechText = task.voiceInstruction) {
   const [stage, setStage] = useState<Stage>('ready')
   const [seconds, setSeconds] = useState(0)
   const [error, setError] = useState('')
@@ -22,6 +22,8 @@ export function useTrainerPrototype(task: AssessmentTask) {
   const assessmentRequest = useRef<AbortController | null>(null)
   const transcriptionId = useRef<string | null>(null)
   const [audioUrl, setAudioUrl] = useState<string>()
+  const [audioBlob, setAudioBlob] = useState<Blob>()
+  const [recordingStream, setRecordingStream] = useState<MediaStream>()
   const recording = useRef<Recording | null>(null)
   const cancelSpeech = useRef<(() => void) | null>(null)
   const savedAudio = useRef<ReturnType<typeof createAudioUrl> | null>(null)
@@ -63,7 +65,7 @@ export function useTrainerPrototype(task: AssessmentTask) {
     setSpeechError('')
     setLoadingSpeech(true)
     try {
-      const blob = await synthesizeQuestion(task.voiceInstruction, request.signal)
+      const blob = await synthesizeQuestion(speechText, request.signal)
       if (request.signal.aborted) return
       const dispose = await playQuestion(blob, () => setSpeaking(false), () => {
         setSpeaking(false)
@@ -88,6 +90,7 @@ export function useTrainerPrototype(task: AssessmentTask) {
     setError('')
     setTranscript('')
     setAssessment(null)
+    setAudioBlob(undefined)
     transcriptionId.current = null
     setExample(false)
     setStage('permission')
@@ -95,6 +98,7 @@ export function useTrainerPrototype(task: AssessmentTask) {
       const capture = await startRecording()
       if (generation.current !== current) { capture.dispose(); return }
       recording.current = capture
+      setRecordingStream(capture.stream)
       startedAt.current = Date.now()
       setSeconds(0)
       setStage('recording')
@@ -136,6 +140,7 @@ export function useTrainerPrototype(task: AssessmentTask) {
     if (busy.current || !recording.current) return
     busy.current = true
     setStage('processing')
+    setRecordingStream(undefined)
     const current = generation.current
     try {
       const blob = await recording.current.stop()
@@ -145,6 +150,7 @@ export function useTrainerPrototype(task: AssessmentTask) {
       savedAudio.current?.dispose()
       savedAudio.current = createAudioUrl(blob)
       setAudioUrl(savedAudio.current.url)
+      setAudioBlob(blob)
       const request = new AbortController()
       transcriptionRequest.current = request
       const transcription = await transcribeRecording(blob, request.signal)
@@ -189,9 +195,11 @@ export function useTrainerPrototype(task: AssessmentTask) {
     stopSpeaking()
     recording.current?.dispose()
     recording.current = null
+    setRecordingStream(undefined)
     savedAudio.current?.dispose()
     savedAudio.current = null
     setAudioUrl(undefined)
+    setAudioBlob(undefined)
     setTranscript('')
     setAssessment(null)
     setExample(false)
@@ -203,5 +211,5 @@ export function useTrainerPrototype(task: AssessmentTask) {
     if (processingTimer.current) clearTimeout(processingTimer.current)
   }
 
-  return { stage, seconds, error, speaking, loadingSpeech, speechError, audioUrl, transcript, assessment, example, speak, start, stop, retryAssessment, showExample, reset }
+  return { stage, seconds, error, speaking, loadingSpeech, speechError, audioUrl, audioBlob, recordingStream, transcript, assessment, example, speak, start, stop, retryAssessment, showExample, reset }
 }

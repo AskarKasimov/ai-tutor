@@ -11,12 +11,21 @@
   src: url('/assets/voice-trainer/inter-bold.ttf') format('truetype');
 }
 :root {
-  --app-ink: #18372b;
-  --app-muted: #65776d;
-  --app-green: #087f50;
+  --app-ink: #172a38;
+  --app-muted: #738394;
+  --app-faint: #a0adba;
+  --app-accent: #326fe8;
+  --app-accent-strong: #2159c6;
+  --app-soft: #eaf0ff;
+  --app-border: #dee7f1;
+  --app-success: #0ea777;
+  --app-success-soft: #e8f6f0;
+  --app-warning: #956210;
+  --app-warning-soft: #fff4df;
   --app-error: #b44338;
+  --app-error-soft: #fff0ed;
 }
 body { margin: 0; }
 html, body, #root { min-height: 100%; }
 .radix-themes { --default-font-family: Inter, sans-serif; --heading-font-family: Inter, sans-serif; }
-button:focus-visible, audio:focus-visible { outline: 3px solid var(--app-green); outline-offset: 4px; }
+button:focus-visible, audio:focus-visible { outline: 3px solid var(--app-accent); outline-offset: 4px; }

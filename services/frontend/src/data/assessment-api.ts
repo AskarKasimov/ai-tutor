@@ -1,3 +1,4 @@
+import { apiFetch } from './api-fetch'
 import type { Assessment, AssessmentTask } from '../shared/domain'
 
 const apiBase = (import.meta.env.VITE_API_BASE_URL || '/api/v1').replace(/\/$/, '')
@@ -13,7 +14,7 @@ export class AssessmentApiError extends Error {
 }
 
 export async function evaluateAnswer(transcriptionId: string, task: AssessmentTask, signal: AbortSignal): Promise<Assessment> {
-  const response = await fetch(`${apiBase}/assessments/evaluate`, {
+  const response = await apiFetch(`${apiBase}/assessments/evaluate`, {
     method: 'POST',
     credentials: 'include',
     headers: { 'Content-Type': 'application/json' },

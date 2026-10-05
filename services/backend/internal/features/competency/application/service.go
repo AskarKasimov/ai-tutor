@@ -42,8 +42,9 @@ func (s *Service) Import(ctx context.Context, actor user.User, data []byte, medi
 		return competencymap.ImportResult{}, err
 	}
 	media = strings.TrimSpace(strings.Split(media, ";")[0])
-	if media != "text/csv" && media != "application/csv" && media != "application/vnd.ms-excel" {
-		return competencymap.ImportResult{}, fault.New(fault.Unsupported, "UNSUPPORTED_MEDIA_TYPE", "Ожидается CSV-файл.")
+	if media != "text/csv" && media != "application/csv" && media != "application/vnd.ms-excel" &&
+		media != "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" {
+		return competencymap.ImportResult{}, fault.New(fault.Unsupported, "UNSUPPORTED_MEDIA_TYPE", "Ожидается файл CSV или XLSX.")
 	}
 	parsed, err := s.parser.Parse(data)
 	if err != nil {

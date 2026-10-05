@@ -26,8 +26,8 @@ func TestCSVInheritanceAndOpaqueCriteria(t *testing.T) {
 	if m.Tasks[2].OutcomeKey != m.Tasks[0].OutcomeKey {
 		t.Fatal("merged cells not inherited")
 	}
-	if m.Outcomes[0].Attributes[0]["Тем 1"] != "Тема" {
-		t.Fatal("attributes lost")
+	if m.SourceRows[0].Cells[3] != "Тема" {
+		t.Fatal("original source cell was not preserved")
 	}
 }
 
@@ -99,10 +99,9 @@ func TestCSVInheritanceIsIndependentAcrossColumns(t *testing.T) {
 	if len(parsed.Competencies) != 2 || len(parsed.Constituents) != 2 || len(parsed.Outcomes) != 2 || parsed.Constituents[1].Name != "С1" || parsed.Outcomes[1].Name != "О1" {
 		t.Fatalf("independent inheritance: %+v", parsed)
 	}
-	attrs := parsed.Outcomes[0].Attributes[0]
-	for _, column := range []string{"Что должно войти в тест", "Таксономия", "Важность темы", "Важность"} {
-		if attrs[column] == "" {
-			t.Fatalf("missing metadata %s", column)
+	for _, cell := range []string{"мета", "уровень", "тема", "вес"} {
+		if !strings.Contains(strings.Join(parsed.SourceRows[0].Cells, ","), cell) {
+			t.Fatalf("missing original cell %s", cell)
 		}
 	}
 }

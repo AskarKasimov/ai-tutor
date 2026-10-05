@@ -161,10 +161,9 @@ Caddy удаляет публичный префикс `/api/v1` перед пе
 сертификаты и не устанавливает локальный CA.
 
 ```bash
-cp .env.example .env
-# Настройте пароль БД, адреса моделей и публичный HTTPS bind/port.
-# Для реальных API: BACKEND_API_MODE=real и VITE_API_MODE=real.
-# Для доступа к серверу: PROXY_HTTPS_BIND=0.0.0.0, PROXY_HTTPS_PORT=443.
+cp .env.prod.example .env
+# Замените пароль БД и адреса моделей.
+# Шаблон включает реальные API, HTTPS на 0.0.0.0:443 и выключает Swagger.
 # Подготовьте certs/server.pem и certs/server-key.pem для имени сервера.
 # Один раз создайте сеть вручную, если её ещё нет:
 docker network create ai-tutor_default
@@ -186,6 +185,7 @@ PostgreSQL → backend (и Swagger по env) → frontend → Caddy. Кажды�
 [mkcert](https://github.com/FiloSottile/mkcert). После настройки `.env`:
 
 ```bash
+cp .env.example .env
 ./dev.sh -d
 ```
 
@@ -306,7 +306,7 @@ npm run build
 
 CI поднимает PostgreSQL; без `TEST_DATABASE_URL` интеграционные backend-тесты пропускаются. Тесты с моками моделей проверяют контракт, но не реальную доступность GPU-сервисов. Для проверки интеграции отдельно прогоняйте короткий и длинный голосовой ответ в браузере и сверяйте сетевой статус; проверка `/health` не заменяет это.
 
-Общий workflow `.github/workflows/ci.yaml` запускается на каждом PR и push в ветку. Job `detect-changes` на Bash определяет изменённые сервисы и выдаёт флаги `backend`/`frontend`. Отдельные jobs напрямую вызывают reusable backend/frontend workflows и выполняются параллельно, когда выбраны оба сервиса. Для PR учитываются все изменения относительно merge base; для push — изменения между предыдущим и новым коммитами. Изменения `.github/**`, `api/**`, `docker-compose*.yaml`, `services/postgresql/**`, `services/caddy/**`, `prod.sh`, `dev.sh` и `.env.example` запускают оба сервиса; новая ветка также проверяется целиком. При изменениях только документации сервисные jobs пропускаются. Отдельный job `compose` на каждом запуске проверяет общий dev-стек со Swagger и без него, а также четыре локальных Compose; он также проверяет синтаксис `prod.sh` и `dev.sh`. Его результат входит в обязательный `ci-passed`.
+Общий workflow `.github/workflows/ci.yaml` запускается на каждом PR и push в ветку. Job `detect-changes` на Bash определяет изменённые сервисы и выдаёт флаги `backend`/`frontend`. Отдельные jobs напрямую вызывают reusable backend/frontend workflows и выполняются параллельно, когда выбраны оба сервиса. Для PR учитываются все изменения относительно merge base; для push — изменения между предыдущим и новым коммитами. Изменения `.github/**`, `api/**`, `docker-compose*.yaml`, `services/postgresql/**`, `services/caddy/**`, `prod.sh`, `dev.sh` и `.env*.example` запускают оба сервиса; новая ветка также проверяется целиком. При изменениях только документации сервисные jobs пропускаются. Отдельный job `compose` на каждом запуске проверяет общий dev-стек со Swagger и без него, а также четыре локальных Compose; он также проверяет синтаксис `prod.sh` и `dev.sh`. Его результат входит в обязательный `ci-passed`.
 
 Итоговая проверка `CI passed` проходит, только если определение сервисов успешно и все выбранные пайплайны завершились успешно, либо список сервисов пуст. Для защиты `master` создайте активный Ruleset в GitHub Settings → Rules → Rulesets: выберите ветку `master`, включите **Require a pull request before merging** и **Require status checks to pass**, добавьте **CI passed** как обязательную проверку и оставьте Bypass list пустым. Проверка появится в списке после первого запуска нового workflow. Старые отдельные backend/frontend checks не нужно оставлять обязательными: теперь они запускаются выборочно. Само изменение workflow не включает защиту ветки в GitHub.
 

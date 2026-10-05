@@ -49,7 +49,7 @@ jobs:
               case "$path" in
                 services/backend/*) backend=true ;;
                 services/frontend/*) frontend=true ;;
-                .github/*|api/*|docker-compose*.yaml|services/postgresql/*|services/caddy/*|prod.sh|dev.sh|.env.example)
+                .github/*|api/*|docker-compose*.yaml|services/postgresql/*|services/caddy/*|prod.sh|dev.sh|.env.example|.env.prod.example)
                   backend=true
                   frontend=true
                   ;;
@@ -72,8 +72,10 @@ jobs:
           sh -n dev.sh
           docker compose --env-file .env.example config --quiet
           COMPOSE_PROFILES= docker compose --env-file .env.example config --quiet
-          for file in services/postgresql/docker-compose.yaml services/backend/docker-compose.yaml services/frontend/docker-compose.yaml services/caddy/docker-compose.yaml; do
-            docker compose --env-file .env.example -f "$file" config --quiet
+          for env_file in .env.example .env.prod.example; do
+            for file in services/postgresql/docker-compose.yaml services/backend/docker-compose.yaml services/frontend/docker-compose.yaml services/caddy/docker-compose.yaml; do
+              docker compose --env-file "$env_file" -f "$file" config --quiet
+            done
           done
 
   backend:

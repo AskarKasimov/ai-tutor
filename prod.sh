@@ -10,7 +10,7 @@ if ! command -v docker >/dev/null 2>&1; then
 fi
 if [ ! -f .env ]; then
     printf '%s\n' \
-        '.env is missing. Copy the complete template: cp .env.example .env' \
+        '.env is missing. Copy the complete template: cp .env.prod.example .env' \
         'Review all settings in .env before starting; see README.md for requirements.' >&2
     exit 1
 fi

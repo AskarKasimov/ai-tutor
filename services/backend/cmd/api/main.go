@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -15,6 +14,7 @@ import (
 
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/app"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/postgres"
+	"go.uber.org/zap"
 )
 
 // @title AI Tutor Backend API
@@ -32,12 +32,19 @@ import (
 // @in cookie
 // @name refresh_token
 func main() {
-	if err := run(); err != nil {
-		slog.Error("API stopped", "error", err)
+	logger, err := zap.NewProduction()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "initialize logger:", err)
 		os.Exit(1)
 	}
+	if err := run(logger); err != nil {
+		logger.Error("API stopped", zap.Error(err))
+		_ = logger.Sync()
+		os.Exit(1)
+	}
+	_ = logger.Sync()
 }
-func run() error {
+func run(logger *zap.Logger) error {
 	if len(os.Args) > 1 && os.Args[1] == "healthcheck" {
 		c := &http.Client{Timeout: 3 * time.Second}
 		resp, err := c.Get("http://127.0.0.1:8002/health")
@@ -71,16 +78,19 @@ func run() error {
 		return err
 	}
 	if len(os.Args) > 1 {
-		slog.Info("database migrations applied")
+		logger.Info("database migrations applied")
 		return nil
 	}
-	a, err := app.New(cfg, pool)
+	a, err := app.New(cfg, pool, logger)
 	if err != nil {
 		return err
 	}
 	server := &http.Server{Addr: cfg.ListenAddress, Handler: a.Handler(), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 30 * time.Second, WriteTimeout: cfg.ProcessingTimeout + 30*time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 32 * 1024}
 	stopped := make(chan error, 1)
-	go func() { slog.Info("API listening", "address", cfg.ListenAddress); stopped <- server.ListenAndServe() }()
+	go func() {
+		logger.Info("API listening", zap.String("address", cfg.ListenAddress))
+		stopped <- server.ListenAndServe()
+	}()
 	select {
 	case err = <-stopped:
 		if errors.Is(err, http.ErrServerClosed) {

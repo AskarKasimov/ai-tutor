@@ -47,20 +47,20 @@ func New(service *application.Service) *Handler { return &Handler{service: servi
 func (h *Handler) Evaluate(w http.ResponseWriter, r *http.Request) {
 	u, ok := httpx.Principal[user.User](r)
 	if !ok {
-		httpx.Error(w, fault.New(fault.Unauthorized, "UNAUTHORIZED", "Требуется действующая сессия."))
+		httpx.Error(r.Context(), w, fault.New(fault.Unauthorized, "UNAUTHORIZED", "Требуется действующая сессия."))
 		return
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, 32*1024)
 	var req EvaluateRequest
 	if err := httpx.DecodeJSON(r, &req); err != nil {
-		httpx.Error(w, err)
+		httpx.Error(r.Context(), w, err)
 		return
 	}
 	result, err := h.service.Evaluate(r.Context(), u.ID, req.TranscriptionID, application.Task{
 		Question: req.Question, Options: req.Options, VoiceInstruction: req.VoiceInstruction, CorrectAnswer: req.CorrectAnswer,
 	})
 	if err != nil {
-		httpx.Error(w, err)
+		httpx.Error(r.Context(), w, err)
 		return
 	}
 	httpx.JSON(w, http.StatusOK, EvaluateResponse{Score: result.Score, Feedback: result.Feedback})

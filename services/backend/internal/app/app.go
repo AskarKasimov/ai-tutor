@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"go.uber.org/zap"
 
 	assessmentapp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/assessment/application"
 	assessmentmock "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/assessment/infrastructure/mock"
@@ -23,6 +24,14 @@ import (
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/features/competency/infrastructure/csvparser"
 	competencypg "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/competency/infrastructure/postgres"
 	competencyhttp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/competency/transport/http"
+	taskbankapp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/taskbank/application"
+	taskbankpg "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/taskbank/infrastructure/postgres"
+	taskbankhttp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/taskbank/transport/http"
+	taskgenapp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/taskgen/application"
+	taskgenmock "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/taskgen/infrastructure/mock"
+	taskgenmodel "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/taskgen/infrastructure/modelapi"
+	taskgenpg "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/taskgen/infrastructure/postgres"
+	taskgenhttp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/taskgen/transport/http"
 	voiceapp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/voice/application"
 	voicemock "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/voice/infrastructure/mock"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/features/voice/infrastructure/modelapi"
@@ -38,16 +47,20 @@ type App struct {
 	client *http.Client
 	now    func() time.Time
 	hasher *argon2.Hasher
+	logger *zap.Logger
 }
 
-func New(cfg Config, pool *pgxpool.Pool) (*App, error) {
+func New(cfg Config, pool *pgxpool.Pool, logger *zap.Logger) (*App, error) {
 	if err := cfg.validate(); err != nil {
 		return nil, err
 	}
 	if pool == nil {
 		return nil, fmt.Errorf("PostgreSQL pool is required")
 	}
-	return &App{cfg: cfg, pool: pool, now: time.Now, hasher: argon2.New(), client: &http.Client{
+	if logger == nil {
+		logger = zap.NewNop()
+	}
+	return &App{cfg: cfg, pool: pool, now: time.Now, hasher: argon2.New(), logger: logger, client: &http.Client{
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 	}}, nil
 }
@@ -58,13 +71,17 @@ func (a *App) Handler() http.Handler {
 	var recognizer voiceapp.Recognizer
 	var synthesizer voiceapp.Synthesizer
 	var grader assessmentapp.Grader
+	var taskGenerator taskgenapp.Generator
+	modelName := a.cfg.AssessmentModel
 	if a.cfg.APIMode == "mock" {
 		recognizer, synthesizer = voicemock.Client{}, voicemock.Client{}
 		grader = assessmentmock.Grader{}
+		taskGenerator, modelName = taskgenmock.Generator{}, "mock"
 	} else {
 		models := modelapi.New(a.client, a.cfg.STTURL, a.cfg.TTSURL, a.cfg.ProcessingTimeout)
 		recognizer, synthesizer = models, models
 		grader = assessmentmodel.New(a.client, a.cfg.AssessmentBaseURL, a.cfg.AssessmentModel, a.cfg.AssessmentTimeout)
+		taskGenerator = taskgenmodel.New(a.client, a.cfg.AssessmentBaseURL, a.cfg.AssessmentModel, a.cfg.AssessmentTimeout)
 	}
 	voice := voiceapp.New(voicepg.New(a.pool), recognizer, synthesizer, a.now)
 	voiceHandlers := voicehttp.New(voice, a.cfg.MaxUploadBytes)
@@ -72,6 +89,12 @@ func (a *App) Handler() http.Handler {
 	competencyHandlers := competencyhttp.New(competency, a.cfg.MaxUploadBytes)
 	assessment := assessmentapp.New(assessmentpg.New(a.pool), grader)
 	assessmentHandlers := assessmenthttp.New(assessment)
+	taskbankHandlers := taskbankhttp.New(taskbankapp.New(taskbankpg.New(a.pool)))
+	taskgenRepository := taskgenpg.New(a.pool)
+	taskgenHandlers := taskgenhttp.New(
+		taskgenapp.New(taskgenRepository, taskGenerator, modelName, func() int64 { return a.now().Unix() }),
+		taskgenapp.NewMaterialService(taskgenRepository, func() int64 { return a.now().Unix() }),
+	)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /auth/register", authHandlers.Register)
@@ -83,18 +106,22 @@ func (a *App) Handler() http.Handler {
 	mux.Handle("POST /voice/transcriptions", protect(auth, http.HandlerFunc(voiceHandlers.Transcribe)))
 	mux.Handle("POST /voice/syntheses", protect(auth, http.HandlerFunc(voiceHandlers.Synthesize)))
 	mux.Handle("POST /assessments/evaluate", protect(auth, http.HandlerFunc(assessmentHandlers.Evaluate)))
+	mux.Handle("GET /tasks", protect(auth, http.HandlerFunc(taskbankHandlers.Search)))
+	mux.Handle("GET /tasks/{id}", protect(auth, http.HandlerFunc(taskbankHandlers.Profile)))
+	mux.Handle("POST /tasks/generate", protect(auth, http.HandlerFunc(taskgenHandlers.Generate)))
+	mux.Handle("POST /admin/materials", protect(auth, http.HandlerFunc(taskgenHandlers.ImportMaterial)))
 	mux.HandleFunc("GET /health", a.health)
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		httpx.Error(w, fault.New(fault.NotFound, "NOT_FOUND", "Ресурс не найден."))
+		httpx.Error(r.Context(), w, fault.New(fault.NotFound, "NOT_FOUND", "Ресурс не найден."))
 	})
-	return a.middleware(mux)
+	return httpx.RequestLogger(a.logger, a.middleware(mux))
 }
 
 func protect(auth *authapp.Service, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		principal, err := auth.Me(r.Context(), httpx.Cookie(r, "access_token"))
 		if err != nil {
-			httpx.Error(w, err)
+			httpx.Error(r.Context(), w, err)
 			return
 		}
 		next.ServeHTTP(w, httpx.WithPrincipal(r, principal))
@@ -117,7 +144,7 @@ func (a *App) health(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 	defer cancel()
 	if err := a.pool.Ping(ctx); err != nil {
-		httpx.Error(w, err)
+		httpx.Error(r.Context(), w, err)
 		return
 	}
 	httpx.JSON(w, 200, HealthResponse{Status: "ok"})

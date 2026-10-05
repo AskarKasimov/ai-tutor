@@ -159,7 +159,7 @@ Caddy удаляет публичный префикс `/api/v1` перед пе
 
 ```bash
 cp .env.example .env
-# Заполните DB_PASSWORD, BACKEND_STT_URL и BACKEND_TTS_URL в .env.
+# Заполните DB_PASSWORD; для BACKEND_API_MODE=real также настройте модели.
 ./run.sh -d
 ```
 
@@ -168,17 +168,24 @@ cp .env.example .env
 | Настройка | Значение |
 | --- | --- |
 | `DB_PASSWORD` | Пароль локального PostgreSQL; обязателен. |
-| `BACKEND_STT_URL`, `BACKEND_TTS_URL` | Полные внутренние URL моделей; обязательны. Локальные значения могут отличаться от `.env.example`. |
+| `BACKEND_API_MODE` | Обязателен: `mock` — локальные STT/TTS/оценивание, `real` — действующие модели. Авторизация и PostgreSQL настоящие в обоих режимах. |
+| `BACKEND_STT_URL`, `BACKEND_TTS_URL` | Полные внутренние URL моделей; обязательны только при `BACKEND_API_MODE=real`. Локальные значения могут отличаться от `.env.example`. |
 | `BACKEND_LISTEN_ADDRESS` | Адрес HTTP-сервера backend; обязателен, в Compose используйте `:8002`. |
-| `BACKEND_ASSESSMENT_BASE_URL`, `BACKEND_ASSESSMENT_MODEL` | Адрес и имя модели оценивания; обязательны. |
+| `BACKEND_ASSESSMENT_BASE_URL`, `BACKEND_ASSESSMENT_MODEL` | Адрес и имя модели оценивания; обязательны только при `BACKEND_API_MODE=real`. |
 | `BACKEND_VOICE_TIMEOUT`, `BACKEND_ASSESSMENT_TIMEOUT` | Таймауты голоса и оценивания; все обязательны. |
 | `BACKEND_MAX_UPLOAD_BYTES` | Максимальный размер файла в байтах; обязателен, не больше 26214400 (25 МиБ). |
 | `VITE_API_BASE_URL` | Публичный префикс frontend, по умолчанию `/api/v1`; значение встраивается в сборку. |
+| `VITE_API_MODE` | `mock` — локальные ответы в браузере, `real` — запросы к backend. Для проверки моков backend используйте `real`. |
 | `VITE_API_PROXY_TARGET` | Backend для локального Vite dev, по умолчанию `http://127.0.0.1:8002`. |
 | `PROXY_HTTPS_BIND`, `PROXY_HTTPS_PORT` | Привязка Caddy и локальный HTTPS-порт, по умолчанию `127.0.0.1:8443`. |
 | `COMPOSE_PROFILES=swagger` | Включает Swagger UI на `/docs/` для локальной разработки. |
 
 Подробнее: [backend README](services/backend/README.md), [frontend README](services/frontend/README.md), [auth](documents/auth.md). Swagger читает **текущий** `services/backend/backend.api.yaml`; после генерации схемы страницу достаточно обновить. Войти через `POST /auth/login` в Try it out, затем cookies отправляются браузером автоматически. В production профиль Swagger должен быть выключен.
+
+`BACKEND_API_MODE=mock` возвращает фиксированную демонстрационную расшифровку,
+короткий WAV-сигнал и оценку 2/2 с демонстрационным фидбэком. После переключения
+режима пересоздайте API: `docker compose up -d --build api`.
+Swagger переключается через `COMPOSE_PROFILES` независимо от режима backend.
 
 ### Полезные команды
 

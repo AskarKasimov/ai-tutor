@@ -73,13 +73,28 @@ HTTP-порт `127.0.0.1:8002` нужен для внутренних прове
 PostgreSQL хранит данные в постоянном volume. Обычный `docker compose down` сохраняет его;
 `down -v` удаляет данные.
 
-Все настройки backend обязательны: без них API останавливается при запуске.
+`BACKEND_API_MODE` обязателен и принимает только `mock` или `real`.
+В `mock` распознавание возвращает фиксированный демонстрационный текст, синтез —
+короткий WAV-сигнал вместо чтения вопроса, оценивание — 2/2 с тремя строками
+явно демонстрационного фидбэка. Запросов к STT/TTS/LLM нет. Авторизация,
+проверка входных данных, права доступа и PostgreSQL работают как обычно;
+расшифровка сохраняется за настоящим пользователем.
+
+В `real` используются действующие модели. Только в этом режиме обязательны
+`BACKEND_STT_URL`, `BACKEND_TTS_URL`, `BACKEND_ASSESSMENT_BASE_URL` и
+`BACKEND_ASSESSMENT_MODEL`; в `mock` они игнорируются и могут отсутствовать.
+Остальные настройки backend обязательны в обоих режимах.
 Скопируйте полный набор из `.env.example`; скрытых значений по умолчанию нет.
-В `BACKEND_STT_URL` и `BACKEND_TTS_URL` укажите адреса серверов моделей: DNS-имена
+Для `real` в `BACKEND_STT_URL` и `BACKEND_TTS_URL` укажите адреса серверов моделей: DNS-имена
 или IP, доступные из контейнера backend. Адреса в `.env.example` служат примерами
 и требуют замены. Контейнеры моделей запускаются отдельно из `../../../tts-stt`.
-`BACKEND_ASSESSMENT_BASE_URL`, `BACKEND_ASSESSMENT_MODEL` и `BACKEND_ASSESSMENT_TIMEOUT` также
-задаются явно в окружении; укажите доступный адрес, имя модели и таймаут.
+Для `real` также задайте `BACKEND_ASSESSMENT_BASE_URL` и `BACKEND_ASSESSMENT_MODEL`:
+укажите доступный адрес и имя модели.
+Таймауты задаются в обоих режимах. После изменения `BACKEND_API_MODE`
+пересоздайте API: `docker compose up -d --build api` из корня репозитория.
+Для проверки моков backend задайте `VITE_API_MODE=real` и пересоберите frontend:
+при `VITE_API_MODE=mock` браузер возвращает свои локальные ответы и не вызывает API.
+Swagger управляется независимо через существующий `COMPOSE_PROFILES=swagger`.
 Для корпоративной сети сертификат должен содержать IP в SAN, а CA должен быть доверенным
 на клиентских машинах. Frontend и `/api/v1` публикуются через общий HTTPS reverse proxy;
 клиент обращается к API по относительным путям. Caddy удаляет `/api/v1` перед
@@ -92,6 +107,7 @@ PostgreSQL хранит данные в постоянном volume. Обычн�
 Требуются Go 1.26 и PostgreSQL. Приложение не загружает веса моделей и не требует Python.
 
 ```bash
+export BACKEND_API_MODE='real'
 export BACKEND_LISTEN_ADDRESS=':8002'
 export BACKEND_DATABASE_URL='postgres://ai_tutor:YOUR_PASSWORD@localhost:5432/ai_tutor?sslmode=disable'
 export BACKEND_STT_URL='http://localhost:8000/transcribe'

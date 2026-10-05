@@ -49,7 +49,7 @@ jobs:
               case "$path" in
                 services/backend/*) backend=true ;;
                 services/frontend/*) frontend=true ;;
-                .github/*|api/*|docker-compose.yaml|Caddyfile|run.sh|.env.example)
+                .github/*|api/*|docker-compose*.yaml|services/postgresql/*|services/caddy/*|prod.sh|dev.sh|.env.example)
                   backend=true
                   frontend=true
                   ;;
@@ -59,6 +59,22 @@ jobs:
 
           printf 'backend=%s\nfrontend=%s\n' "$backend" "$frontend" >> "$GITHUB_OUTPUT"
           echo "Selected services: backend=$backend frontend=$frontend"
+
+  compose:
+    name: Compose configuration
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate dev stack and standalone services
+        run: |
+          set -euo pipefail
+          sh -n prod.sh
+          sh -n dev.sh
+          docker compose --env-file .env.example config --quiet
+          COMPOSE_PROFILES= docker compose --env-file .env.example config --quiet
+          for file in services/postgresql/docker-compose.yaml services/backend/docker-compose.yaml services/frontend/docker-compose.yaml services/caddy/docker-compose.yaml; do
+            docker compose --env-file .env.example -f "$file" config --quiet
+          done
 
   backend:
     name: Backend CI
@@ -74,12 +90,13 @@ jobs:
 
   ci-passed:
     name: CI passed
-    needs: [detect-changes, backend, frontend]
+    needs: [detect-changes, compose, backend, frontend]
     if: ${{ always() }}
     runs-on: ubuntu-latest
     steps:
       - name: Verify required CI results
         env:
+          COMPOSE_RESULT: ${{ needs.compose.result }}
           DETECTION_RESULT: ${{ needs.detect-changes.result }}
           BACKEND_SELECTED: ${{ needs.detect-changes.outputs.backend }}
           BACKEND_RESULT: ${{ needs.backend.result }}
@@ -103,6 +120,11 @@ jobs:
                 ;;
             esac
           }
+
+          if [[ "$COMPOSE_RESULT" != success ]]; then
+            echo "Compose validation did not succeed: $COMPOSE_RESULT" >&2
+            exit 1
+          fi
 
           check_service backend "$BACKEND_SELECTED" "$BACKEND_RESULT"
           check_service frontend "$FRONTEND_SELECTED" "$FRONTEND_RESULT"

@@ -1,0 +1,40 @@
+services:
+  api:
+    build:
+      context: .
+    environment:
+      BACKEND_API_MODE: ${BACKEND_API_MODE:?Set BACKEND_API_MODE in .env}
+      BACKEND_DATABASE_URL: ${BACKEND_DATABASE_URL:-postgres://ai_tutor:${DB_PASSWORD:-}@db:5432/ai_tutor?sslmode=disable}
+      BACKEND_STT_URL: ${BACKEND_STT_URL:-}
+      BACKEND_TTS_URL: ${BACKEND_TTS_URL:-}
+      BACKEND_ASSESSMENT_BASE_URL: ${BACKEND_ASSESSMENT_BASE_URL:-}
+      BACKEND_ASSESSMENT_MODEL: ${BACKEND_ASSESSMENT_MODEL:-}
+      BACKEND_ASSESSMENT_TIMEOUT: ${BACKEND_ASSESSMENT_TIMEOUT:?Set BACKEND_ASSESSMENT_TIMEOUT in .env}
+      BACKEND_VOICE_TIMEOUT: ${BACKEND_VOICE_TIMEOUT:?Set BACKEND_VOICE_TIMEOUT in .env}
+      BACKEND_LISTEN_ADDRESS: ${BACKEND_LISTEN_ADDRESS:?Set BACKEND_LISTEN_ADDRESS in .env}
+      BACKEND_MAX_UPLOAD_BYTES: ${BACKEND_MAX_UPLOAD_BYTES:?Set BACKEND_MAX_UPLOAD_BYTES in .env}
+    ports:
+      - "127.0.0.1:8002:8002"
+    healthcheck:
+      test: ["CMD", "/api", "healthcheck"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+    restart: unless-stopped
+
+  swagger:
+    image: swaggerapi/swagger-ui:v5.32.0
+    profiles: [swagger]
+    environment:
+      SWAGGER_JSON: /spec/backend.api.yaml
+      BASE_URL: /docs
+      VALIDATOR_URL: none
+      WITH_CREDENTIALS: "true"
+    volumes:
+      - ./backend.api.yaml:/spec/backend.api.yaml:ro
+    restart: unless-stopped
+
+networks:
+  default:
+    external: true
+    name: ai-tutor_default

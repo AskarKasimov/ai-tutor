@@ -155,15 +155,48 @@ Caddy удаляет публичный префикс `/api/v1` перед пе
 
 ## 8. Запуск и окружение
 
-Требуются Docker с Compose и [mkcert](https://github.com/FiloSottile/mkcert). Установите mkcert из пакета ОС либо с [официальной страницы](https://github.com/FiloSottile/mkcert/releases). На macOS доступны `brew install mkcert`, на Windows — `choco install mkcert` или `scoop install mkcert`; Firefox может потребовать NSS (`libnss3-tools` на Debian/Ubuntu).
+Для серверного запуска нужны Docker с Compose и готовый TLS-сертификат
+для имени сервера. Положите сертификат и ключ в `certs/server.pem` и
+`certs/server-key.pem` (PEM, сертификат с цепочкой). Скрипт не выпускает
+сертификаты и не устанавливает локальный CA.
 
 ```bash
 cp .env.example .env
-# Заполните DB_PASSWORD; для BACKEND_API_MODE=real также настройте модели.
-./run.sh -d
+# Настройте пароль БД, адреса моделей и публичный HTTPS bind/port.
+# Для реальных API: BACKEND_API_MODE=real и VITE_API_MODE=real.
+# Для доступа к серверу: PROXY_HTTPS_BIND=0.0.0.0, PROXY_HTTPS_PORT=443.
+# Подготовьте certs/server.pem и certs/server-key.pem для имени сервера.
+# Один раз создайте сеть вручную, если её ещё нет:
+docker network create ai-tutor_default
+./prod.sh
 ```
 
-`run.sh` проверяет конфигурацию, устанавливает доверие mkcert, создаёт сертификат для `localhost`, `127.0.0.1`, `::1` в игнорируемом Git каталоге `certs/` и запускает `docker compose up --build`. На Windows используйте Git Bash. Не коммитьте `.env`, сертификаты и cookies. Адреса STT/TTS должны быть доступны **из контейнера backend**. Приложение открывается на [https://localhost:8443](https://localhost:8443); API — `/api/v1`; проверка — `GET /api/v1/health`. Микрофон и `Secure` cookies требуют доверенного HTTPS либо подходящего локального secure context. Не обходите предупреждение о сертификате: установите доверие и перезапустите браузер.
+`prod.sh` проверяет все локальные Compose, затем запускает отдельные проекты:
+PostgreSQL → backend (и Swagger по env) → frontend → Caddy. Каждый шаг
+использует `up --build --wait`: запуск выполняется в фоне, следующий шаг
+начинается после готовности предыдущего. При ошибке скрипт останавливается.
+Настройки читаются из корневого `.env`; режимы API не переопределяются.
+Дополнительные параметры `up` передаются каждому проекту, например
+`./prod.sh --wait-timeout 180`. На Windows используйте Git Bash.
+Не коммитьте `.env`, сертификаты и cookies. Адреса моделей должны быть доступны
+из контейнера backend. API — `/api/v1`, проверка — `/api/v1/health` на HTTPS
+адресе сервера. Микрофон и `Secure` cookies требуют доверенного HTTPS.
+
+Для локального dev-стека нужны Docker с Compose и
+[mkcert](https://github.com/FiloSottile/mkcert). После настройки `.env`:
+
+```bash
+./dev.sh -d
+```
+
+`dev.sh` проверяет корневой Compose, устанавливает доверие к CA mkcert,
+выпускает localhost-сертификаты в `certs/` и запускает единый корневой
+`docker-compose.yaml` с пересборкой. Корневой Compose сам создаёт dev-сеть
+перед запуском контейнеров. Оба скрипта сохраняют режимы API и Swagger из `.env`.
+
+При `PROXY_HTTPS_BIND=127.0.0.1` и `PROXY_HTTPS_PORT=8443` приложение доступно
+на [https://localhost:8443](https://localhost:8443). Общий dev-стек и серверные
+проекты не запускайте одновременно на одном хосте.
 
 | Настройка | Значение |
 | --- | --- |
@@ -178,16 +211,71 @@ cp .env.example .env
 | `VITE_API_MODE` | `mock` — локальные ответы в браузере, `real` — запросы к backend. Для проверки моков backend используйте `real`. |
 | `VITE_API_PROXY_TARGET` | Backend для локального Vite dev, по умолчанию `http://127.0.0.1:8002`. |
 | `PROXY_HTTPS_BIND`, `PROXY_HTTPS_PORT` | Привязка Caddy и локальный HTTPS-порт, по умолчанию `127.0.0.1:8443`. |
-| `COMPOSE_PROFILES=swagger` | Включает Swagger UI на `/docs/` для локальной разработки. |
 
-Подробнее: [backend README](services/backend/README.md), [frontend README](services/frontend/README.md), [auth](documents/auth.md). Swagger читает **текущий** `services/backend/backend.api.yaml`; после генерации схемы страницу достаточно обновить. Войти через `POST /auth/login` в Try it out, затем cookies отправляются браузером автоматически. В production профиль Swagger должен быть выключен.
+Подробнее: [backend README](services/backend/README.md), [frontend README](services/frontend/README.md), [auth](documents/auth.md). Swagger читает **текущий** `services/backend/backend.api.yaml`; после генерации схемы пересоздайте контейнер `swagger` (`docker compose up -d --force-recreate swagger`) и обновите страницу. Войти через `POST /auth/login` в Try it out, затем cookies отправляются браузером автоматически. Контейнер Swagger описан в Compose backend и подключён корневым dev-стеком через `extends`. `COMPOSE_PROFILES=swagger` включает его, пустое значение отключает. YAML смонтирован в Swagger, и UI сам отдаёт спецификацию.
 
 `BACKEND_API_MODE=mock` возвращает фиксированную демонстрационную расшифровку,
 короткий WAV-сигнал и оценку 2/2 с демонстрационным фидбэком. После переключения
 режима пересоздайте API: `docker compose up -d --build api`.
-Swagger переключается через `COMPOSE_PROFILES` независимо от режима backend.
+Swagger управляется через `COMPOSE_PROFILES` независимо от режима backend. При отключении `/docs` и `/docs/*` возвращают 404.
 
 ### Полезные команды
+
+Чтобы включить Swagger, задайте в `.env` `COMPOSE_PROFILES=swagger` и выполните
+`docker compose up -d swagger proxy`. Чтобы отключить, задайте
+`COMPOSE_PROFILES=` и выполните:
+
+```bash
+docker compose --profile swagger rm -sf swagger
+docker compose up -d proxy
+```
+
+Смена профиля не удаляет ранее запущенный контейнер автоматически.
+При раздельном запуске удалите Swagger через Compose backend, а Caddy
+пересоздайте через его Compose с тем же обновлённым `.env`.
+
+### Compose по сервисам
+
+Корневой `docker-compose.yaml` берёт определения сервисов через `extends`
+из четырёх папок: `services/backend/`, `services/frontend/`, `services/postgresql/`
+и `services/caddy/`. В нём же объявлены общая dev-сеть, volumes и ожидание здоровых
+зависимостей. Swagger принадлежит backend и включается через env.
+Конфигурация прокси находится в `services/caddy/Caddyfile`.
+`prod.sh` использует локальные Compose для сервера. `dev.sh`, корневые команды
+и явный `-f docker-compose.yaml` запускают общий dev-стек.
+
+Для пересборки сервиса уже запущенного общего dev-стека используйте
+`docker compose up -d --build --no-deps api` или аналогично `frontend`.
+
+Отдельные Compose запускаются как отдельные проекты. Они подключаются к
+существующей внешней сети `ai-tutor_default`. Пример отдельного запуска из корня репозитория:
+
+```bash
+# Один раз создать сеть, если её ещё нет.
+docker network create ai-tutor_default
+
+docker compose --env-file .env -f services/postgresql/docker-compose.yaml up -d
+# Дождаться healthy у db перед первым запуском backend.
+docker compose --env-file .env -f services/postgresql/docker-compose.yaml ps
+docker compose --env-file .env -f services/backend/docker-compose.yaml up -d --build
+docker compose --env-file .env -f services/frontend/docker-compose.yaml up -d --build
+# Сертификаты certs/server.pem и certs/server-key.pem должны уже существовать.
+docker compose --env-file .env -f services/caddy/docker-compose.yaml up -d
+```
+
+Из папки любого сервиса передавайте `--env-file ../../.env`. Межпроектного `depends_on` нет:
+зависимости должны быть доступны до запуска сервиса. Для внешней БД задайте
+`BACKEND_DATABASE_URL`; иначе backend использует `db:5432` и `DB_PASSWORD`.
+Для Swagger UI на `/docs/` включите `COMPOSE_PROFILES=swagger` при запуске
+backend и Caddy. UI и YAML отдаёт контейнер `swagger:8080`; Caddy только проксирует.
+На отдельных хостах адреса upstream в `services/caddy/Caddyfile` нужно настроить явно.
+
+Выбирайте один способ запуска на хосте: общий dev-стек либо отдельные проекты.
+Не запускайте оба одновременно: они используют одинаковые порты, DNS-имена
+и данные. При переходе остановите прежние контейнеры без `-v`.
+Имена volumes сохранены: `ai-tutor_postgres_data`, `ai-tutor_caddy_data`,
+`ai-tutor_caddy_config`. Имена сети и volumes фиксированы в Compose-файлах.
+Данные и сертификаты остаются вне пересборки backend/frontend.
 
 ```bash
 docker compose ps
@@ -218,7 +306,7 @@ npm run build
 
 CI поднимает PostgreSQL; без `TEST_DATABASE_URL` интеграционные backend-тесты пропускаются. Тесты с моками моделей проверяют контракт, но не реальную доступность GPU-сервисов. Для проверки интеграции отдельно прогоняйте короткий и длинный голосовой ответ в браузере и сверяйте сетевой статус; проверка `/health` не заменяет это.
 
-Общий workflow `.github/workflows/ci.yaml` запускается на каждом PR и push в ветку. Job `detect-changes` на Bash определяет изменённые сервисы и выдаёт флаги `backend`/`frontend`. Отдельные jobs напрямую вызывают reusable backend/frontend workflows и выполняются параллельно, когда выбраны оба сервиса. Для PR учитываются все изменения относительно merge base; для push — изменения между предыдущим и новым коммитами. Изменения `.github/**`, `api/**`, `docker-compose.yaml`, `Caddyfile`, `run.sh` и `.env.example` запускают оба сервиса; новая ветка также проверяется целиком. При изменениях только документации сервисные jobs пропускаются.
+Общий workflow `.github/workflows/ci.yaml` запускается на каждом PR и push в ветку. Job `detect-changes` на Bash определяет изменённые сервисы и выдаёт флаги `backend`/`frontend`. Отдельные jobs напрямую вызывают reusable backend/frontend workflows и выполняются параллельно, когда выбраны оба сервиса. Для PR учитываются все изменения относительно merge base; для push — изменения между предыдущим и новым коммитами. Изменения `.github/**`, `api/**`, `docker-compose*.yaml`, `services/postgresql/**`, `services/caddy/**`, `prod.sh`, `dev.sh` и `.env.example` запускают оба сервиса; новая ветка также проверяется целиком. При изменениях только документации сервисные jobs пропускаются. Отдельный job `compose` на каждом запуске проверяет общий dev-стек со Swagger и без него, а также четыре локальных Compose; он также проверяет синтаксис `prod.sh` и `dev.sh`. Его результат входит в обязательный `ci-passed`.
 
 Итоговая проверка `CI passed` проходит, только если определение сервисов успешно и все выбранные пайплайны завершились успешно, либо список сервисов пуст. Для защиты `master` создайте активный Ruleset в GitHub Settings → Rules → Rulesets: выберите ветку `master`, включите **Require a pull request before merging** и **Require status checks to pass**, добавьте **CI passed** как обязательную проверку и оставьте Bypass list пустым. Проверка появится в списке после первого запуска нового workflow. Старые отдельные backend/frontend checks не нужно оставлять обязательными: теперь они запускаются выборочно. Само изменение workflow не включает защиту ветки в GitHub.
 

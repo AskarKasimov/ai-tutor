@@ -1,0 +1,24 @@
+services:
+  proxy:
+    image: caddy:2-alpine
+    environment:
+      COMPOSE_PROFILES: ${COMPOSE_PROFILES:-}
+    ports:
+      - "${PROXY_HTTPS_BIND:?Set PROXY_HTTPS_BIND in .env}:${PROXY_HTTPS_PORT:?Set PROXY_HTTPS_PORT in .env}:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ../../certs:/certs:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    restart: unless-stopped
+
+volumes:
+  caddy_data:
+    name: ai-tutor_caddy_data
+  caddy_config:
+    name: ai-tutor_caddy_config
+
+networks:
+  default:
+    external: true
+    name: ai-tutor_default

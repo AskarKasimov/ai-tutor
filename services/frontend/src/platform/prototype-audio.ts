@@ -5,9 +5,13 @@ export async function startRecording(): Promise<Recording> {
   if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
     throw new Error('unavailable')
   }
+  // Match the STT contract; browser defaults may use an unsupported codec.
+  const mimeType = ['audio/webm;codecs=opus', 'audio/ogg;codecs=opus']
+    .find((type) => MediaRecorder.isTypeSupported(type))
+  if (!mimeType) throw new Error('unavailable')
   const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
   try {
-    const recorder = new MediaRecorder(stream)
+    const recorder = new MediaRecorder(stream, { mimeType })
     const chunks: Blob[] = []
     recorder.ondataavailable = (event) => { if (event.data.size) chunks.push(event.data) }
     recorder.start()

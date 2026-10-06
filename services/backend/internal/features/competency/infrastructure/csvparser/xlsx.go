@@ -84,6 +84,22 @@ func worksheetRows(workbook *excelize.File, sheet string) ([][]string, error) {
 			rows[i] = append(rows[i], make([]string, lastColumn-len(rows[i]))...)
 		}
 		for j := range rows[i] {
+			cell, err := excelize.CoordinatesToCellName(j+1, i+1)
+			if err != nil {
+				return nil, err
+			}
+			kind, err := workbook.GetCellType(sheet, cell)
+			if err != nil {
+				return nil, err
+			}
+			if kind == excelize.CellTypeBool {
+				switch rows[i][j] {
+				case "1":
+					rows[i][j] = "TRUE"
+				case "0":
+					rows[i][j] = "FALSE"
+				}
+			}
 			rows[i][j] = strings.ReplaceAll(rows[i][j], "\n", xlsxLineBreak)
 			rows[i][j] = strings.ReplaceAll(rows[i][j], "\r", xlsxLineBreak)
 		}

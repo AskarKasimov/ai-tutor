@@ -95,3 +95,14 @@ func TestSearchUsesDefaultAndPassesBoundaryLimits(t *testing.T) {
 }
 
 func stringPointer(value string) *string { return &value }
+
+func TestSearchRejectsInvalidImportanceRanges(t *testing.T) {
+	for _, query := range []string{"importance_min=0", "importance_max=6", "importance_min=no", "importance_min=4&importance_max=2"} {
+		repository := &recordingRepository{}
+		response := httptest.NewRecorder()
+		New(application.New(repository)).Search(response, httptest.NewRequest("GET", "/tasks?"+query, nil))
+		if response.Code != 422 || repository.calls != 0 {
+			t.Fatalf("%s: %d %s", query, response.Code, response.Body.String())
+		}
+	}
+}

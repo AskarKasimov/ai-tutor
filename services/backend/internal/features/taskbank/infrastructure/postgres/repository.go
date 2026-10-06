@@ -28,7 +28,7 @@ func (r *Repository) Search(ctx context.Context, filter application.SearchFilter
 	rows, err := r.queries.SearchTaskProfiles(ctx, db.SearchTaskProfilesParams{
 		OutcomeID: filter.OutcomeID, CompetencyID: filter.CompetencyID, ConstituentID: filter.ConstituentID,
 		TaxonomyCode: filter.TaxonomyCode, AldLevelCode: filter.ALDLevelCode, TopicLevelCode: filter.TopicLevelCode,
-		Importance: int16(filter.Importance), IncludeInTest: includeInTest, Origin: filter.Origin,
+		Importance: int16(filter.Importance), ImportanceMin: int16(filter.ImportanceMin), ImportanceMax: int16(filter.ImportanceMax), IncludeInTest: includeInTest, Origin: filter.Origin,
 		SectionCode: filter.SectionCode, CurriculumCompetencyCode: filter.CurriculumCompetencyCode, TaskLimit: filter.Limit,
 	})
 	if err != nil {

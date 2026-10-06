@@ -103,3 +103,34 @@ func TestXLSXRejectsMultipleMapSheets(t *testing.T) {
 		t.Fatalf("multiple map sheets should be rejected, got %v", err)
 	}
 }
+
+func TestXLSXNativeBooleanValues(t *testing.T) {
+	for _, value := range []bool{true, false} {
+		workbook := excelize.NewFile()
+		sheet := workbook.GetSheetName(0)
+		headers := []string{"Компетенция", "Составляющая", "Образовательный результат", "Уровень темы", "Что должно войти в тест", "Таксономия", "Уровень ALDs", "Важность", "Раздел РПД · компетенции РПД", "ОС", "Задание1"}
+		row := []any{"К", "С", "О", "Базовый", value, "Знание", "Базовый", 3, "", "", ""}
+		for i, header := range headers {
+			cell, _ := excelize.CoordinatesToCellName(i+1, 1)
+			if err := workbook.SetCellValue(sheet, cell, header); err != nil {
+				t.Fatal(err)
+			}
+			cell, _ = excelize.CoordinatesToCellName(i+1, 2)
+			if err := workbook.SetCellValue(sheet, cell, row[i]); err != nil {
+				t.Fatal(err)
+			}
+		}
+		buffer, err := workbook.WriteToBuffer()
+		if err != nil {
+			t.Fatal(err)
+		}
+		workbook.Close()
+		parsed, err := Parse(buffer.Bytes())
+		if err != nil {
+			t.Fatalf("boolean %v: %v", value, err)
+		}
+		if len(parsed.Outcomes) != 1 || parsed.Outcomes[0].IncludeInTest == nil || *parsed.Outcomes[0].IncludeInTest != value {
+			t.Fatalf("boolean %v: %#v", value, parsed.Outcomes)
+		}
+	}
+}

@@ -53,7 +53,7 @@ cp .env.example .env
 Для сервера: скопировать `.env.prod.example` в `.env`, задать пароль/адреса моделей, подготовить `certs/server.pem` и `certs/server-key.pem`, создать сеть `ai-tutor_default`, затем `./prod.sh`. Dev-стек и серверные Compose на одном хосте одновременно не запускаются.
 
 - `VITE_API_MODE=mock` — браузер использует локальные моки; только точное `real` включает HTTP к backend. Учебная сессия пока моковая в обоих режимах.
-- `BACKEND_API_MODE=mock` — backend подменяет STT/TTS/LLM; авторизация и БД настоящие. `real` использует модели по `BACKEND_STT_URL`, `BACKEND_TTS_URL`, `BACKEND_ASSESSMENT_BASE_URL`, `BACKEND_ASSESSMENT_MODEL`.
+- `BACKEND_API_MODE=mock` — backend подменяет STT/TTS/LLM; авторизация и БД настоящие. `real` использует модели по `BACKEND_STT_URL`, `BACKEND_TTS_URL`, `BACKEND_ASSESSMENT_BASE_URL`, `BACKEND_ASSESSMENT_MODEL`; генератор — по отдельным `BACKEND_TASKGEN_BASE_URL`, `BACKEND_TASKGEN_MODEL`, `BACKEND_TASKGEN_TIMEOUT`.
 - Backend-настройки и таймауты берутся из полного шаблона `.env`; адреса моделей обязательны в `real`. Frontend env встраивается при сборке. Секреты остаются на backend.
 - STT принимает multipart `audio` (WAV/Ogg/WebM, до 25 МиБ), возвращает готовый текст; TTS принимает JSON `text` до 500 символов и возвращает WAV. Для речи длиннее 25 секунд удалённому GigaAM нужны longform-зависимости/VAD. Публичный API не ограничивает длительность.
 - Применённые SQL-миграции дополняются следующей версией. `docker compose down` сохраняет БД; `down -v` удаляет volume.

@@ -72,7 +72,7 @@ func (a *App) Handler() http.Handler {
 	var synthesizer voiceapp.Synthesizer
 	var grader assessmentapp.Grader
 	var taskGenerator taskgenapp.Generator
-	modelName := a.cfg.AssessmentModel
+	modelName := a.cfg.TaskgenModel
 	if a.cfg.APIMode == "mock" {
 		recognizer, synthesizer = voicemock.Client{}, voicemock.Client{}
 		grader = assessmentmock.Grader{}
@@ -81,7 +81,7 @@ func (a *App) Handler() http.Handler {
 		models := modelapi.New(a.client, a.cfg.STTURL, a.cfg.TTSURL, a.cfg.ProcessingTimeout)
 		recognizer, synthesizer = models, models
 		grader = assessmentmodel.New(a.client, a.cfg.AssessmentBaseURL, a.cfg.AssessmentModel, a.cfg.AssessmentTimeout)
-		taskGenerator = taskgenmodel.New(a.client, a.cfg.AssessmentBaseURL, a.cfg.AssessmentModel, a.cfg.AssessmentTimeout)
+		taskGenerator = taskgenmodel.New(a.client, a.cfg.TaskgenBaseURL, a.cfg.TaskgenModel, a.cfg.TaskgenTimeout)
 	}
 	voice := voiceapp.New(voicepg.New(a.pool), recognizer, synthesizer, a.now)
 	voiceHandlers := voicehttp.New(voice, a.cfg.MaxUploadBytes)

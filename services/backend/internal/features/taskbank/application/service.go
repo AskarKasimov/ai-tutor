@@ -8,6 +8,7 @@ type SearchFilter struct {
 	OutcomeID, CompetencyID, ConstituentID        string
 	TaxonomyCode, ALDLevelCode, TopicLevelCode    string
 	Origin, SectionCode, CurriculumCompetencyCode string
+	ImportanceMin, ImportanceMax                  int32
 	Importance, Limit                             int32
 	IncludeInTest                                 *bool
 }

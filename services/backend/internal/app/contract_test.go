@@ -144,6 +144,7 @@ func TestOpenAPIResponses(t *testing.T) {
 	f.app.cfg.STTURL = provider.URL + "/transcribe"
 	f.app.cfg.TTSURL = provider.URL + "/synthesize"
 	f.app.cfg.AssessmentBaseURL = provider.URL
+	f.app.cfg.TaskgenBaseURL = provider.URL
 	transcription := upload(f, "/voice/transcriptions", "audio", "answer.wav", "audio/wav", wavBytes(), access)
 	check("POST", "/voice/transcriptions", transcription)
 	var saved struct {

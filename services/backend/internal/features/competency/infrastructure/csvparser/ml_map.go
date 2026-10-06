@@ -285,8 +285,26 @@ type outcomeProperties struct {
 }
 
 func parseOutcomeProperties(row []string, columns map[string]int, line int) (outcomeProperties, error) {
+	properties, err := parsePresentOutcomeProperties(row, columns, line)
+	if err != nil {
+		return properties, err
+	}
+	if properties.includeInTest == nil || properties.taxonomyCode == "" || properties.aldLevelCode == "" || properties.importance == nil {
+		return properties, csvError(line, "Карта", "Для образовательного результата нужны включение в тест, таксономия, ALDs и важность.")
+	}
+	return properties, nil
+}
+
+// Paired maps may contain only some profile columns. Never read an absent column as column zero.
+func parsePresentOutcomeProperties(row []string, columns map[string]int, line int) (outcomeProperties, error) {
 	var properties outcomeProperties
-	if value := strings.TrimSpace(row[columns["Что должно войти в тест"]]); value != "" {
+	cell := func(name string) string {
+		if index, ok := columns[name]; ok {
+			return strings.TrimSpace(row[index])
+		}
+		return ""
+	}
+	if value := cell("Что должно войти в тест"); value != "" {
 		var parsed bool
 		switch strings.ToUpper(value) {
 		case "TRUE":
@@ -298,56 +316,61 @@ func parseOutcomeProperties(row []string, columns map[string]int, line int) (out
 		}
 		properties.includeInTest = &parsed
 	}
-	if value := strings.TrimSpace(row[columns["Таксономия"]]); value != "" {
+	if value := cell("Таксономия"); value != "" {
 		code, ok := taxonomyCode(value)
 		if !ok {
 			return properties, csvError(line, "Таксономия", "Неизвестный уровень таксономии.")
 		}
 		properties.taxonomyCode = code
 	}
-	if value := strings.TrimSpace(row[columns["Уровень ALDs"]]); value != "" {
+	if value := cell("Уровень ALDs"); value != "" {
 		code, ok := levelCode(value)
 		if !ok {
 			return properties, csvError(line, "Уровень ALDs", "Неизвестный уровень ALDs.")
 		}
 		properties.aldLevelCode = code
 	}
-	if value := strings.TrimSpace(row[columns["Важность"]]); value != "" {
+	if value := cell("Важность"); value != "" {
 		parsed, err := strconv.Atoi(value)
 		if err != nil || parsed < 1 || parsed > 5 {
 			return properties, csvError(line, "Важность", "Ожидается целое число от 1 до 5.")
 		}
 		properties.importance = &parsed
 	}
-	if value := strings.TrimSpace(row[columns["ОС"]]); value != "" {
+	if value := cell("ОС"); value != "" {
 		properties.educationalContent = &value
-	}
-	if properties.includeInTest == nil || properties.taxonomyCode == "" || properties.aldLevelCode == "" || properties.importance == nil {
-		return properties, csvError(line, "Карта", "Для образовательного результата нужны включение в тест, таксономия, ALDs и важность.")
 	}
 	return properties, nil
 }
 
 func mergeOutcomeProperties(target *competencymap.Outcome, incoming outcomeProperties, line int) error {
-	if target.IncludeInTest != nil && *target.IncludeInTest != *incoming.includeInTest {
+	if target.IncludeInTest != nil && incoming.includeInTest != nil && *target.IncludeInTest != *incoming.includeInTest {
 		return csvError(line, "Что должно войти в тест", "Для образовательного результата указаны разные значения.")
 	}
-	if target.TaxonomyCode != "" && target.TaxonomyCode != incoming.taxonomyCode {
+	if target.TaxonomyCode != "" && incoming.taxonomyCode != "" && target.TaxonomyCode != incoming.taxonomyCode {
 		return csvError(line, "Таксономия", "Для образовательного результата указаны разные значения.")
 	}
-	if target.ALDLevelCode != "" && target.ALDLevelCode != incoming.aldLevelCode {
+	if target.ALDLevelCode != "" && incoming.aldLevelCode != "" && target.ALDLevelCode != incoming.aldLevelCode {
 		return csvError(line, "Уровень ALDs", "Для образовательного результата указаны разные значения.")
 	}
-	if target.Importance != nil && *target.Importance != *incoming.importance {
+	if target.Importance != nil && incoming.importance != nil && *target.Importance != *incoming.importance {
 		return csvError(line, "Важность", "Для образовательного результата указаны разные значения.")
 	}
 	if target.EducationalContent != nil && incoming.educationalContent != nil && *target.EducationalContent != *incoming.educationalContent {
 		return csvError(line, "ОС", "Для образовательного результата указаны разные значения.")
 	}
-	target.IncludeInTest = incoming.includeInTest
-	target.TaxonomyCode = incoming.taxonomyCode
-	target.ALDLevelCode = incoming.aldLevelCode
-	target.Importance = incoming.importance
+	if incoming.includeInTest != nil {
+		target.IncludeInTest = incoming.includeInTest
+	}
+	if incoming.taxonomyCode != "" {
+		target.TaxonomyCode = incoming.taxonomyCode
+	}
+	if incoming.aldLevelCode != "" {
+		target.ALDLevelCode = incoming.aldLevelCode
+	}
+	if incoming.importance != nil {
+		target.Importance = incoming.importance
+	}
 	if incoming.educationalContent != nil {
 		target.EducationalContent = incoming.educationalContent
 	}

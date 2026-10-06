@@ -853,9 +853,19 @@ paths:
           name: topic_level
           schema:
             type: string
-        - description: Важность 1–5
+        - description: Точная важность 1–5
           in: query
           name: importance
+          schema:
+            type: integer
+        - description: Минимальная важность 1–5 (включительно)
+          in: query
+          name: importance_min
+          schema:
+            type: integer
+        - description: Максимальная важность 1–5 (включительно)
+          in: query
+          name: importance_max
           schema:
             type: integer
         - description: Фильтр включения в тест

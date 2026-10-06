@@ -134,6 +134,8 @@ WHERE (sqlc.arg(outcome_id)::text = '' OR outcome.id = sqlc.arg(outcome_id)::tex
   AND (sqlc.arg(ald_level_code)::text = '' OR ald.code = sqlc.arg(ald_level_code)::text)
   AND (sqlc.arg(topic_level_code)::text = '' OR topic.code = sqlc.arg(topic_level_code)::text)
   AND (sqlc.arg(importance)::smallint = 0 OR outcome.importance = sqlc.arg(importance)::smallint)
+  AND (sqlc.arg(importance_min)::smallint = 0 OR outcome.importance >= sqlc.arg(importance_min)::smallint)
+  AND (sqlc.arg(importance_max)::smallint = 0 OR outcome.importance <= sqlc.arg(importance_max)::smallint)
   AND (sqlc.arg(include_in_test)::integer < 0 OR outcome.include_in_test = (sqlc.arg(include_in_test)::integer = 1))
   AND (sqlc.arg(origin)::text = '' OR task.origin = sqlc.arg(origin)::text)
   AND ((sqlc.arg(section_code)::text = '' AND sqlc.arg(curriculum_competency_code)::text = '') OR EXISTS (

@@ -16,6 +16,9 @@ func configuredEnv(t *testing.T) map[string]string {
 		"BACKEND_TTS_URL":             "http://tts.test/synthesize",
 		"BACKEND_ASSESSMENT_BASE_URL": "http://assessment.test/v1",
 		"BACKEND_ASSESSMENT_MODEL":    "test-model",
+		"BACKEND_TASKGEN_BASE_URL":    "http://generation.test/v1",
+		"BACKEND_TASKGEN_MODEL":       "generation-model",
+		"BACKEND_TASKGEN_TIMEOUT":     "45s",
 		"BACKEND_VOICE_TIMEOUT":       "120s",
 		"BACKEND_ASSESSMENT_TIMEOUT":  "90s",
 		"BACKEND_MAX_UPLOAD_BYTES":    "26214400",
@@ -47,7 +50,7 @@ func TestConfigLoadsExplicitSettings(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.STTURL != "http://stt.test/transcribe" || cfg.AssessmentModel != "test-model" || cfg.MaxUploadBytes != 1024 {
+	if cfg.STTURL != "http://stt.test/transcribe" || cfg.AssessmentModel != "test-model" || cfg.MaxUploadBytes != 1024 || cfg.TaskgenBaseURL != "http://generation.test/v1" || cfg.TaskgenModel != "generation-model" || cfg.TaskgenTimeout != 45*time.Second {
 		t.Fatalf("settings were replaced or ignored: %+v", cfg)
 	}
 }
@@ -59,6 +62,8 @@ func TestConfigRejectsInvalidSettings(t *testing.T) {
 		"BACKEND_STT_URL":             {"relative", "ftp://stt.test", "http://user:password@stt.test"},
 		"BACKEND_TTS_URL":             {"http://tts.test/#fragment"},
 		"BACKEND_ASSESSMENT_BASE_URL": {"relative"},
+		"BACKEND_TASKGEN_BASE_URL":    {"relative", "ftp://generation.test", "http://user:pass@generation.test", "http://generation.test/#fragment"},
+		"BACKEND_TASKGEN_TIMEOUT":     {"bad", "0s", "-1s"},
 		"BACKEND_VOICE_TIMEOUT":       {"bad", "0s", "-1s"},
 		"BACKEND_ASSESSMENT_TIMEOUT":  {"bad", "0s"},
 		"BACKEND_MAX_UPLOAD_BYTES":    {"bad", "0", "-1", "26214401"},
@@ -79,7 +84,7 @@ func TestConfigRejectsInvalidSettings(t *testing.T) {
 func TestMockConfigDoesNotRequireModelSettings(t *testing.T) {
 	configuredEnv(t)
 	t.Setenv("BACKEND_API_MODE", "mock")
-	for _, key := range []string{"BACKEND_STT_URL", "BACKEND_TTS_URL", "BACKEND_ASSESSMENT_BASE_URL", "BACKEND_ASSESSMENT_MODEL"} {
+	for _, key := range []string{"BACKEND_STT_URL", "BACKEND_TTS_URL", "BACKEND_ASSESSMENT_BASE_URL", "BACKEND_ASSESSMENT_MODEL", "BACKEND_TASKGEN_BASE_URL", "BACKEND_TASKGEN_MODEL", "BACKEND_TASKGEN_TIMEOUT"} {
 		t.Setenv(key, "")
 	}
 	if _, err := ConfigFromEnv(); err != nil {
@@ -102,6 +107,7 @@ func testConfig() Config {
 		ListenAddress: ":8002", DatabaseURL: "postgres://example/db",
 		STTURL: "http://stt.test/transcribe", TTSURL: "http://tts.test/synthesize",
 		AssessmentBaseURL: "http://assessment.test/v1", AssessmentModel: "test-model",
+		TaskgenBaseURL: "http://generation.test/v1", TaskgenModel: "generation-model", TaskgenTimeout: 45 * time.Second,
 		ProcessingTimeout: 120 * time.Second, AssessmentTimeout: 90 * time.Second,
 		MaxUploadBytes: 25 * 1024 * 1024,
 	}

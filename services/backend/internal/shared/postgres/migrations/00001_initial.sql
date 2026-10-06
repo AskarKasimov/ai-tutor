@@ -125,9 +125,8 @@ CREATE TABLE outcomes (
     ald_level_id text REFERENCES ald_levels(id),
     importance smallint CHECK (importance BETWEEN 1 AND 5),
     educational_content text,
-    UNIQUE(constituent_id, name),
-    CHECK (include_in_test IS NULL OR
-        (taxonomy_id IS NOT NULL AND ald_level_id IS NOT NULL AND importance IS NOT NULL))
+    UNIQUE(constituent_id, name)
+    -- ML completeness is checked by its parser; paired profiles may be partial.
 );
 CREATE INDEX outcomes_by_constituent ON outcomes(constituent_id);
 CREATE INDEX outcomes_by_profile ON outcomes(include_in_test, taxonomy_id, ald_level_id, importance);

@@ -1002,19 +1002,21 @@ WHERE ($1::text = '' OR outcome.id = $1::text)
   AND ($5::text = '' OR ald.code = $5::text)
   AND ($6::text = '' OR topic.code = $6::text)
   AND ($7::smallint = 0 OR outcome.importance = $7::smallint)
-  AND ($8::integer < 0 OR outcome.include_in_test = ($8::integer = 1))
-  AND ($9::text = '' OR task.origin = $9::text)
-  AND (($10::text = '' AND $11::text = '') OR EXISTS (
+  AND ($8::smallint = 0 OR outcome.importance >= $8::smallint)
+  AND ($9::smallint = 0 OR outcome.importance <= $9::smallint)
+  AND ($10::integer < 0 OR outcome.include_in_test = ($10::integer = 1))
+  AND ($11::text = '' OR task.origin = $11::text)
+  AND (($12::text = '' AND $13::text = '') OR EXISTS (
       SELECT 1 FROM constituent_sections AS link
       JOIN curriculum_sections AS section ON section.id = link.section_id
       LEFT JOIN constituent_section_competencies AS mapped ON mapped.constituent_section_id = link.id
       LEFT JOIN curriculum_competencies AS curriculum ON curriculum.id = mapped.curriculum_competency_id
       WHERE link.constituent_id = constituent.id
-        AND ($10::text = '' OR section.code = $10::text)
-        AND ($11::text = '' OR curriculum.code = $11::text)
+        AND ($12::text = '' OR section.code = $12::text)
+        AND ($13::text = '' OR curriculum.code = $13::text)
   ))
 ORDER BY task.created_at, task.id
-LIMIT $12::integer
+LIMIT $14::integer
 `
 
 type SearchTaskProfilesParams struct {
@@ -1025,6 +1027,8 @@ type SearchTaskProfilesParams struct {
 	AldLevelCode             string
 	TopicLevelCode           string
 	Importance               int16
+	ImportanceMin            int16
+	ImportanceMax            int16
 	IncludeInTest            int32
 	Origin                   string
 	SectionCode              string
@@ -1058,6 +1062,8 @@ func (q *Queries) SearchTaskProfiles(ctx context.Context, arg SearchTaskProfiles
 		arg.AldLevelCode,
 		arg.TopicLevelCode,
 		arg.Importance,
+		arg.ImportanceMin,
+		arg.ImportanceMax,
 		arg.IncludeInTest,
 		arg.Origin,
 		arg.SectionCode,

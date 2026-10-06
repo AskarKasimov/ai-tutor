@@ -162,7 +162,7 @@ func Parse(data []byte) (competencymap.Map, error) {
 			return result, csvError(headerLine, h, "Ожидается название с положительным целым номером.")
 		}
 	}
-	allowed := map[string]bool{"Ком": true, "Сост": true, "ОР": true, "Что должно войти в тест": true, "Уровень ОР": true, "Таксономия": true, "Важность темы": true, "Важность": true}
+	allowed := map[string]bool{"Ком": true, "Сост": true, "ОР": true, "Что должно войти в тест": true, "Уровень ОР": true, "Таксономия": true, "Важность темы": true, "Важность": true, "Уровень ALDs": true, "ОС": true}
 	for i, h := range headers {
 		if taskColumn.MatchString(h) {
 			continue
@@ -253,6 +253,30 @@ func Parse(data []byte) (competencymap.Map, error) {
 			oSeen[oKey] = index
 			result.Outcomes = append(result.Outcomes, competencymap.Outcome{Key: oKey, ConstituentKey: sKey, Name: inherited["ОР"]})
 		}
+		propertyColumns := columns
+		if column, ok := columns["Важность"]; ok {
+			switch strings.ToLower(strings.TrimSpace(row[column])) {
+			case "высокая", "средняя", "низкая":
+				// Legacy labels have no defined mapping to the numerical 1–5 scale.
+				// Retain them in the linked source, reporting rather than inventing a value.
+				propertyColumns = make(map[string]int, len(columns))
+				for name, index := range columns {
+					propertyColumns[name] = index
+				}
+				delete(propertyColumns, "Важность")
+				result.Warnings = append(result.Warnings, competencymap.ImportWarning{
+					Row: line, ColumnIndex: column + 1, Column: "Важность", Code: "LEGACY_IMPORTANCE_UNPARSED",
+				})
+			}
+		}
+		properties, err := parsePresentOutcomeProperties(row, propertyColumns, line)
+		if err != nil {
+			return result, err
+		}
+		if err := mergeOutcomeProperties(&result.Outcomes[index], properties, line); err != nil {
+			return result, err
+		}
+		result.Outcomes[index].SourceRowIndexes = append(result.Outcomes[index].SourceRowIndexes, sourceIndex)
 		// Preserve source column order, even when N is not sequential.
 		for i, h := range headers {
 			match := taskColumn.FindStringSubmatch(h)

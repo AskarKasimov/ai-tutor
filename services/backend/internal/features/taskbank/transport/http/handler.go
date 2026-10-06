@@ -25,7 +25,9 @@ func New(service *application.Service) *Handler { return &Handler{service: servi
 // @Param taxonomy query string false "Код таксономии"
 // @Param ald_level query string false "Код уровня ALDs"
 // @Param topic_level query string false "Код уровня темы"
-// @Param importance query int false "Важность 1–5"
+// @Param importance query int false "Точная важность 1–5"
+// @Param importance_min query int false "Минимальная важность 1–5 (включительно)"
+// @Param importance_max query int false "Максимальная важность 1–5 (включительно)"
 // @Param include_in_test query bool false "Фильтр включения в тест"
 // @Param section query string false "Код раздела РПД"
 // @Param curriculum_competency query string false "Код компетенции РПД"
@@ -50,6 +52,25 @@ func (h *Handler) Search(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		filter.Importance = int32(value)
+	}
+	for _, bound := range []struct {
+		name string
+		dst  *int32
+	}{
+		{"importance_min", &filter.ImportanceMin}, {"importance_max", &filter.ImportanceMax},
+	} {
+		if raw := query.Get(bound.name); raw != "" {
+			value, err := strconv.ParseInt(raw, 10, 32)
+			if err != nil || value < 1 || value > 5 {
+				httpx.Error(r.Context(), w, fault.Validation(bound.name, "Важность должна быть от 1 до 5."))
+				return
+			}
+			*bound.dst = int32(value)
+		}
+	}
+	if filter.ImportanceMin > 0 && filter.ImportanceMax > 0 && filter.ImportanceMin > filter.ImportanceMax {
+		httpx.Error(r.Context(), w, fault.Validation("importance_min", "Минимальная важность не должна превышать максимальную."))
+		return
 	}
 	if raw := query.Get("include_in_test"); raw != "" {
 		value, err := strconv.ParseBool(raw)

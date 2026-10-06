@@ -10,16 +10,15 @@ import (
 )
 
 type EvaluateRequest struct {
-	TranscriptionID  string   `json:"transcription_id" binding:"required"`
-	Question         string   `json:"question" binding:"required"`
-	Options          []string `json:"options,omitempty" binding:"optional"`
-	VoiceInstruction string   `json:"voice_instruction" binding:"required"`
-	CorrectAnswer    string   `json:"correct_answer,omitempty" binding:"optional"`
+	TranscriptionID string `json:"transcription_id" binding:"required"`
+	TaskID          string `json:"task_id" binding:"required"`
 }
 
 type EvaluateResponse struct {
-	Score    int      `json:"score" minimum:"0" maximum:"2"`
-	Feedback []string `json:"feedback" minItems:"3" maxItems:"3"`
+	Score            int                           `json:"score" minimum:"0" maximum:"2"`
+	Verdict          string                        `json:"verdict" enums:"correct,partial,incorrect"`
+	CriterionResults []application.CriterionResult `json:"criterion_results"`
+	Feedback         []string                      `json:"feedback" minItems:"3" maxItems:"3"`
 }
 
 type Handler struct{ service *application.Service }
@@ -28,7 +27,7 @@ func New(service *application.Service) *Handler { return &Handler{service: servi
 
 // Evaluate handles POST /assessments/evaluate.
 // @Summary Оценить сохранённый голосовой ответ
-// @Description Принимает произвольное задание и ID принадлежащей студенту расшифровки. Оценка не сохраняется.
+// @Description Принимает ID задания и ID принадлежащей студенту расшифровки. Контекст задания берётся сервером.
 // @ID evaluateAnswer
 // @Tags Грейдинг и фидбэк
 // @Security accessCookie
@@ -56,12 +55,15 @@ func (h *Handler) Evaluate(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(r.Context(), w, err)
 		return
 	}
-	result, err := h.service.Evaluate(r.Context(), u.ID, req.TranscriptionID, application.Task{
-		Question: req.Question, Options: req.Options, VoiceInstruction: req.VoiceInstruction, CorrectAnswer: req.CorrectAnswer,
-	})
+	result, err := h.service.Evaluate(r.Context(), u.ID, req.TranscriptionID, req.TaskID)
 	if err != nil {
 		httpx.Error(r.Context(), w, err)
 		return
 	}
-	httpx.JSON(w, http.StatusOK, EvaluateResponse{Score: result.Score, Feedback: result.Feedback})
+	httpx.JSON(w, http.StatusOK, EvaluateResponse{
+		Score:            result.Score,
+		Verdict:          result.Verdict,
+		CriterionResults: result.CriterionResults,
+		Feedback:         result.Feedback,
+	})
 }

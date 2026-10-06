@@ -13,6 +13,7 @@ import (
 	"go.uber.org/zap"
 
 	assessmentapp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/assessment/application"
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/features/assessment/infrastructure/gradingcatalog"
 	assessmentmock "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/assessment/infrastructure/mock"
 	assessmentmodel "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/assessment/infrastructure/modelapi"
 	assessmentpg "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/assessment/infrastructure/postgres"
@@ -53,6 +54,7 @@ type App struct {
 	hasher            *argon2.Hasher
 	logger            *zap.Logger
 	variantRepository variantgenapp.Repository
+	gradingContexts   assessmentapp.ContextProvider
 }
 
 func New(cfg Config, pool *pgxpool.Pool, logger *zap.Logger) (*App, error) {
@@ -65,9 +67,22 @@ func New(cfg Config, pool *pgxpool.Pool, logger *zap.Logger) (*App, error) {
 	if logger == nil {
 		logger = zap.NewNop()
 	}
-	return &App{cfg: cfg, pool: pool, now: time.Now, hasher: argon2.New(), logger: logger, variantRepository: variantgenpg.New(pool), client: &http.Client{
-		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
-	}}, nil
+	contexts, err := gradingcatalog.New()
+	if err != nil {
+		return nil, fmt.Errorf("load grading catalog: %w", err)
+	}
+	return &App{
+		cfg:               cfg,
+		pool:              pool,
+		now:               time.Now,
+		hasher:            argon2.New(),
+		logger:            logger,
+		variantRepository: variantgenpg.New(pool),
+		gradingContexts:   contexts,
+		client: &http.Client{
+			CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+		},
+	}, nil
 }
 
 func (a *App) Handler() http.Handler {
@@ -92,7 +107,7 @@ func (a *App) Handler() http.Handler {
 	voiceHandlers := voicehttp.New(voice, a.cfg.MaxUploadBytes)
 	competency := competencyapp.New(competencypg.New(a.pool), &csvparser.Parser{}, a.now)
 	competencyHandlers := competencyhttp.New(competency, a.cfg.MaxUploadBytes)
-	assessment := assessmentapp.New(assessmentpg.New(a.pool), grader)
+	assessment := assessmentapp.New(assessmentpg.New(a.pool), a.gradingContexts, grader)
 	assessmentHandlers := assessmenthttp.New(assessment)
 	taskbankHandlers := taskbankhttp.New(taskbankapp.New(taskbankpg.New(a.pool)))
 	taskgenRepository := taskgenpg.New(a.pool)

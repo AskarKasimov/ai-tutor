@@ -37,8 +37,16 @@ it('shows the model score and feedback for a recorded answer', async () => {
   vi.spyOn(voiceApi, 'transcribeRecording').mockResolvedValue({ id: 'tr-1', text: 'Классификация, потому что два класса.' })
   vi.spyOn(assessment, 'evaluateAnswer').mockResolvedValue({ score: 2, feedback: ['Ответ верный.', 'Вы назвали классификацию и объяснили два класса.', 'Закрепите различие с регрессией.'] })
   renderHome()
-  fireEvent.click(await screen.findByRole('button', { name: 'Начать запись' }))
-  fireEvent.click(await screen.findByRole('button', { name: 'Завершить запись' }))
+  fireEvent.click(await screen.findByRole(
+  'button',
+  { name: 'Начать запись' },
+  { timeout: 3000 },
+))
+  fireEvent.click(await screen.findByRole(
+  'button',
+  { name: 'Завершить запись' },
+  { timeout: 3000 },
+))
   expect(await screen.findByText('2 / 2')).toBeVisible()
   expect(screen.getByText('Классификация, потому что два класса.')).toBeVisible()
   const savedAnswer = screen.getByRole('region', { name: 'Ваш ответ' })

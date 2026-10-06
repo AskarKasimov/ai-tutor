@@ -18,38 +18,93 @@ func (s *transcriptionStub) TextByOwner(_ context.Context, owner, id string) (st
 	return s.text, nil
 }
 
-type graderStub struct {
-	task   Task
-	answer string
-	result Evaluation
+type contextStub struct {
+	taskID string
+	result GradingContext
+	err    error
 }
 
-func (s *graderStub) Grade(_ context.Context, task Task, answer string) (Evaluation, error) {
-	s.task, s.answer = task, answer
+func (s *contextStub) ContextForTask(_ context.Context, taskID string) (GradingContext, error) {
+	s.taskID = taskID
+	return s.result, s.err
+}
+
+type graderStub struct {
+	gradingContext GradingContext
+	answer         string
+	result         Evaluation
+}
+
+func (s *graderStub) Grade(_ context.Context, gradingContext GradingContext, answer string) (Evaluation, error) {
+	s.gradingContext, s.answer = gradingContext, answer
 	return s.result, nil
 }
 
-func TestEvaluateUsesOwnedTranscriptionAndTask(t *testing.T) {
+func validContext() GradingContext {
+	return GradingContext{
+		TaskID: "ml_001", Question: "Что прогнозирует банк?", ReferenceAnswer: "Классификация",
+		Criteria: []Criterion{
+			{Key: "task_type", Description: "Назван тип задачи"},
+			{Key: "justification", Description: "Есть объяснение"},
+		},
+		MaterialContext: MaterialContext{Knowledge: "K", Skills: "S"},
+	}
+}
+
+func validEvaluation() Evaluation {
+	return Evaluation{
+		Score:   2,
+		Verdict: "correct",
+		CriterionResults: []CriterionResult{
+			{Key: "task_type", Satisfied: true, Explanation: "Названа классификация."},
+			{Key: "justification", Satisfied: true, Explanation: "Указаны два класса."},
+		},
+		Feedback: []string{"Верно.", "Оба критерия выполнены.", "Закрепите тему."},
+	}
+}
+
+func TestEvaluateUsesOwnedTranscriptionAndStructuredCatalogContext(t *testing.T) {
 	repo := &transcriptionStub{text: "классификация, потому что два класса"}
-	grader := &graderStub{result: Evaluation{Score: 2, Feedback: []string{"Верно.", "Два класса.", "Закрепите тему."}}}
-	task := Task{Question: "Что прогнозирует банк?", Options: []string{"Классификация", "Регрессия"}, VoiceInstruction: "Назовите тип и объясните.", CorrectAnswer: "Классификация"}
-	got, err := New(repo, grader).Evaluate(context.Background(), "student-1", "tr-1", task)
-	if err != nil || got.Score != 2 || repo.owner != "student-1" || repo.id != "tr-1" || grader.answer != repo.text || grader.task.CorrectAnswer != task.CorrectAnswer {
+	contexts := &contextStub{result: validContext()}
+	grader := &graderStub{result: validEvaluation()}
+	got, err := New(repo, contexts, grader).Evaluate(context.Background(), "student-1", "tr-1", "ml_001")
+	if err != nil || got.Score != 2 || got.Verdict != "correct" || len(got.CriterionResults) != 2 || repo.owner != "student-1" || repo.id != "tr-1" || grader.answer != repo.text {
 		t.Fatalf("unexpected evaluation: %#v, %v", got, err)
 	}
 }
 
-func TestEvaluateRejectsInvalidTaskAndModelOutput(t *testing.T) {
+func TestEvaluateRejectsInconsistentStructuredModelOutput(t *testing.T) {
 	repo := &transcriptionStub{text: "ответ"}
-	grader := &graderStub{result: Evaluation{Score: 3, Feedback: []string{"line 1", "line 2", "line 3"}}}
-	service := New(repo, grader)
-	_, err := service.Evaluate(context.Background(), "student-1", "tr-1", Task{Question: "", VoiceInstruction: "Инструкция"})
+	contexts := &contextStub{result: validContext()}
+	bad := validEvaluation()
+	bad.Score = 1
+	bad.Verdict = "partial"
+	grader := &graderStub{result: bad}
+	_, err := New(repo, contexts, grader).Evaluate(context.Background(), "student-1", "tr-1", "ml_001")
 	var f *fault.Error
-	if !errors.As(err, &f) || f.Kind != fault.Invalid || repo.id != "" {
-		t.Fatalf("expected input validation before database access, got %v", err)
+	if !errors.As(err, &f) || f.Kind != fault.Upstream || f.Code != "INVALID_MODEL_RESPONSE" {
+		t.Fatalf("expected invalid model response, got %v", err)
 	}
-	_, err = service.Evaluate(context.Background(), "student-1", "tr-1", Task{Question: "Вопрос", VoiceInstruction: "Инструкция"})
-	if !errors.As(err, &f) || f.Kind != fault.Upstream {
-		t.Fatalf("expected invalid model score to fail, got %v", err)
+}
+
+func TestEvaluateRejectsWrongCriterionKey(t *testing.T) {
+	repo := &transcriptionStub{text: "ответ"}
+	contexts := &contextStub{result: validContext()}
+	bad := validEvaluation()
+	bad.CriterionResults[1].Key = "invented"
+	_, err := New(repo, contexts, &graderStub{result: bad}).Evaluate(context.Background(), "student-1", "tr-1", "ml_001")
+	var f *fault.Error
+	if !errors.As(err, &f) || f.Code != "INVALID_MODEL_RESPONSE" {
+		t.Fatalf("expected invalid model response, got %v", err)
+	}
+}
+
+func TestEvaluateStopsWhenCatalogContextIsMissing(t *testing.T) {
+	repo := &transcriptionStub{text: "ответ"}
+	contexts := &contextStub{err: fault.New(fault.NotFound, "GRADING_CONTEXT_NOT_FOUND", "Контекст не найден.")}
+	grader := &graderStub{}
+	_, err := New(repo, contexts, grader).Evaluate(context.Background(), "student-1", "tr-1", "missing")
+	if err == nil || repo.id != "" || grader.answer != "" {
+		t.Fatalf("expected lookup failure before transcription/model access, got %v", err)
 	}
 }

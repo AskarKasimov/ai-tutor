@@ -1,3 +1,4 @@
+
 import { i18n } from '../i18n/i18n'
 import { createDemoAudio } from '../platform/mock-audio'
 
@@ -59,7 +60,15 @@ export async function mockApiFetch(url: string, options: RequestInit = {}): Prom
   }
   if (method === 'POST' && path.endsWith('/assessments/evaluate')) {
     if (typeof body.transcription_id !== 'string' || !transcriptions.has(body.transcription_id)) return error(404, 'NOT_FOUND', 'notFound')
-    return json({ score: 2, feedback: ['feedback1', 'feedback2', 'feedback3'].map((key) => i18n.t(`mockApi.${key}`)) })
+    if (typeof body.task_id !== 'string' || !body.task_id.trim()) return error(422, 'VALIDATION_ERROR', 'invalid')
+    return json({
+      score: 2,
+      verdict: 'correct',
+      criterion_results: [
+        { key: 'demo', satisfied: true, explanation: 'Демонстрационный критерий выполнен.' },
+      ],
+      feedback: ['feedback1', 'feedback2', 'feedback3'].map((key) => i18n.t(`mockApi.${key}`)),
+    })
   }
   return error(404, 'NOT_FOUND', 'notFound')
 }

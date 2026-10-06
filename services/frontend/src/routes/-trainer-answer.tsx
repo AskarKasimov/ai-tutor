@@ -48,7 +48,7 @@ export function TrainerAnswer({ task, setBusy, onSave, saving, saveError }: {
   saving: boolean; saveError: boolean
 }) {
   const { t } = useTranslation()
-  const assessmentTask = { question: t(task.questionKey), options: task.optionKeys.map((key) => t(key)), voiceInstruction: t(task.instructionKey) }
+  const assessmentTask = { taskId: task.taskId, question: t(task.questionKey), options: task.optionKeys.map((key) => t(key)), voiceInstruction: t(task.instructionKey) }
   const voice = useTrainerPrototype(assessmentTask, [assessmentTask.question, ...assessmentTask.options].join(' '))
   const stage = voice.stage
   const recording = stage === 'recording'

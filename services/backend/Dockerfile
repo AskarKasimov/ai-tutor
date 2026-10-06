@@ -1,3 +1,11 @@
+FROM golang:1.26-alpine AS dev
+WORKDIR /src
+RUN go install github.com/air-verse/air@v1.67.4
+COPY go.mod go.sum ./
+RUN go mod download
+COPY .air.toml ./
+CMD ["air", "-c", ".air.toml"]
+
 FROM golang:1.26-alpine AS build
 WORKDIR /src
 COPY go.mod go.sum ./

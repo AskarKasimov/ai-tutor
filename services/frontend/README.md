@@ -168,3 +168,15 @@ docker compose --env-file ../../.env up -d --build
 Локальный Compose подключается к внешней сети `ai-tutor_default`; nginx доступен Caddy как `frontend:80`.
 Настройки `VITE_*` применяются при сборке. Для общего dev-стека продолжайте
 использовать корневой Compose; не запускайте оба варианта одновременно.
+
+
+## Live reload в Docker
+
+Корневой `./dev.sh -d` использует Dockerfile target `dev`: Vite слушает порт 80
+внутри контейнера, а Caddy проксирует HTTPS и HMR WebSocket. Исходники смонтированы
+из `services/frontend/`, `node_modules` находится в отдельном Docker volume.
+Polling включён только в контейнерном dev-стеке через `DEV_POLLING=true`.
+Настройки `VITE_*` передаются как env; изменение `.env` требует пересоздания контейнера.
+При изменении npm-зависимостей выполните `docker compose restart frontend` из корня:
+при старте контейнер выполняет `npm ci`.
+Локальный Compose этого сервиса использует production-сборку с nginx.

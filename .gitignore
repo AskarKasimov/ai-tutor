@@ -11,3 +11,4 @@ coverage*
 cookies.txt
 *-cookies.txt
 docs/superpowers/
+services/backend/.air/

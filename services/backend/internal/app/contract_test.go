@@ -21,10 +21,52 @@ import (
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/httpx"
 )
 
-// Validate actual handler responses using the checked-in OpenAPI 3.1 schemas.
+// Compile the complete contract, including planned schemas, without a database.
+func TestOpenAPIContractSchemas(t *testing.T) {
+	data, err := os.ReadFile("../../../../api/openapi.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var spec map[string]any
+	if err := yaml.Unmarshal(data, &spec); err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := json.Marshal(spec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc any
+	if err := json.Unmarshal(encoded, &doc); err != nil {
+		t.Fatal(err)
+	}
+	const resource = "https://tutor.example/openapi.json"
+	compiler := jsonschema.NewCompiler()
+	compiler.AssertFormat()
+	if err := compiler.AddResource(resource, doc); err != nil {
+		t.Fatal(err)
+	}
+	for name := range spec["components"].(map[string]any)["schemas"].(map[string]any) {
+		if _, err := compiler.Compile(resource + "#/components/schemas/" + name); err != nil {
+			t.Errorf("invalid schema %s: %v", name, err)
+		}
+	}
+	for path, node := range spec["paths"].(map[string]any) {
+		for method, value := range node.(map[string]any) {
+			if !strings.Contains(" get post put patch delete head options ", " "+method+" ") {
+				continue
+			}
+			status := value.(map[string]any)["x-implementation"]
+			if status != "implemented" && status != "planned" {
+				t.Errorf("%s %s requires explicit implementation status", method, path)
+			}
+		}
+	}
+}
+
+// Validate actual handler responses using only implemented contract operations.
 func TestOpenAPIResponses(t *testing.T) {
 	f := newFixture(t)
-	data, err := os.ReadFile("../../backend.api.yaml")
+	data, err := os.ReadFile("../../../../api/openapi.yaml")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -208,8 +250,14 @@ func TestOpenAPIResponses(t *testing.T) {
 	check("POST", "/auth/refresh", f.request("POST", "/auth/refresh", "", refresh))
 	check("POST", "/auth/logout", f.request("POST", "/auth/logout", "", refresh))
 	check("GET", "/health", f.request("GET", "/health", ""))
-	for path := range paths {
-		if !checked[path] {
+	for path, node := range paths {
+		implemented := false
+		for _, value := range node.(map[string]any) {
+			if operation, ok := value.(map[string]any); ok && operation["x-implementation"] == "implemented" {
+				implemented = true
+			}
+		}
+		if implemented && !checked[path] {
 			t.Errorf("no verified successful response for %s", path)
 		}
 	}

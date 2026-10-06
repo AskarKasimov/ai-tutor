@@ -14,5 +14,10 @@ go run github.com/mikefarah/yq/v4@v4.54.1 -P -o=yaml '
   (.. | select(has("x-nullable") and .["x-nullable"] == true)) |= (.type = [.type, "null"] | del(.["x-nullable"])) |
   (.. | select(has("properties") and .type == "object")).additionalProperties = false |
   (.. | select(has("content") and .content.["audio/wav"].schema.["$ref"] == "#/components/schemas/fault.Error")).content |= {"application/json": .["audio/wav"]}
-' "$openapi_tmp/swagger.json" > "$openapi_tmp/backend.api.yaml"
-mv "$openapi_tmp/backend.api.yaml" backend.api.yaml
+' "$openapi_tmp/swagger.json" > "$openapi_tmp/implemented.yaml"
+
+# The single contract also contains planned operations. Refresh implemented
+# operations already in that contract; retain the reviewed design and omit
+# routes deliberately excluded from the target API.
+go run ./scripts/merge-openapi.go ../../api/openapi.yaml "$openapi_tmp/implemented.yaml" "$openapi_tmp/openapi.yaml"
+mv "$openapi_tmp/openapi.yaml" ../../api/openapi.yaml

@@ -29,12 +29,12 @@ services:
     image: swaggerapi/swagger-ui:v5.32.0
     profiles: [swagger]
     environment:
-      SWAGGER_JSON: /spec/backend.api.yaml
+      SWAGGER_JSON: /spec/openapi.yaml
       BASE_URL: /docs
       VALIDATOR_URL: none
       WITH_CREDENTIALS: "true"
     volumes:
-      - ./backend.api.yaml:/spec/backend.api.yaml:ro
+      - ../../api/openapi.yaml:/spec/openapi.yaml:ro
     restart: unless-stopped
 
 networks:

@@ -2,6 +2,7 @@ package app
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -75,7 +76,12 @@ func TestOpenAPIResponses(t *testing.T) {
 			return
 		}
 		schemaNode := content["application/json"].(map[string]any)["schema"].(map[string]any)
-		ref := schemaNode["$ref"].(string)
+		ref, ok := schemaNode["$ref"].(string)
+		if !ok {
+			escape := strings.NewReplacer("~", "~0", "/", "~1")
+			ref = "#/paths/" + escape.Replace(path) + "/" + strings.ToLower(method) +
+				"/responses/" + fmt.Sprint(w.Code) + "/content/application~1json/schema"
+		}
 		schema, err := compiler.Compile(resource + ref)
 		if err != nil {
 			t.Fatal(err)
@@ -112,8 +118,21 @@ func TestOpenAPIResponses(t *testing.T) {
 		case "/transcribe":
 			httpx.JSON(w, 200, map[string]any{"text": "Ответ.", "model": "v3", "segments": []any{}})
 		case "/chat/completions":
+			var request struct {
+				Messages []struct {
+					Role    string `json:"role"`
+					Content string `json:"content"`
+				} `json:"messages"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+				t.Fatal(err)
+			}
+			content := `{"score":2,"feedback":["Верно.","Ответ полный.","Закрепите тему."]}`
+			if len(request.Messages) > 0 && strings.Contains(request.Messages[0].Content, "Ты создаёшь одно учебное задание") {
+				content = `{"question":"Новое задание","options":[],"voice_instruction":"Ответьте.","reference_answer":"Ответ","criteria":""}`
+			}
 			httpx.JSON(w, 200, map[string]any{"choices": []any{map[string]any{
-				"message":       map[string]any{"content": `{"score":2,"feedback":["Верно.","Ответ полный.","Закрепите тему."]}`},
+				"message":       map[string]any{"content": content},
 				"finish_reason": "stop",
 			}}})
 		default:
@@ -125,6 +144,7 @@ func TestOpenAPIResponses(t *testing.T) {
 	f.app.cfg.STTURL = provider.URL + "/transcribe"
 	f.app.cfg.TTSURL = provider.URL + "/synthesize"
 	f.app.cfg.AssessmentBaseURL = provider.URL
+	f.app.cfg.TaskgenBaseURL = provider.URL
 	transcription := upload(f, "/voice/transcriptions", "audio", "answer.wav", "audio/wav", wavBytes(), access)
 	check("POST", "/voice/transcriptions", transcription)
 	var saved struct {
@@ -149,6 +169,42 @@ func TestOpenAPIResponses(t *testing.T) {
 	check("POST", "/voice/syntheses", f.request("POST", "/voice/syntheses", `{"text":""}`, access))
 	admin := f.admin(t)
 	check("POST", "/admin/competency-map/import", upload(f, "/admin/competency-map/import", "file", "map.csv", "text/csv", []byte(mapCSV), admin))
+	var outcomeID, taskID string
+	if err := f.pool.QueryRow(context.Background(), `SELECT outcome.id, task.id FROM outcomes outcome JOIN tasks task ON task.outcome_id=outcome.id ORDER BY task.id LIMIT 1`).Scan(&outcomeID, &taskID); err != nil {
+		t.Fatal(err)
+	}
+	check("GET", "/tasks", f.request("GET", "/tasks", "", access))
+	check("GET", "/competency-map", f.request("GET", "/competency-map", "", access))
+	check("GET", "/tasks", f.request("GET", "/tasks?importance=6", "", access))
+	check("GET", "/tasks/{id}", f.request("GET", "/tasks/"+taskID, "", access))
+	requestBody, _ := json.Marshal(map[string]string{"outcome_id": outcomeID})
+	check("POST", "/tasks/generate", f.request("POST", "/tasks/generate", string(requestBody), access))
+	check("POST", "/tasks/generate", f.request("POST", "/tasks/generate", strings.Repeat(" ", 40*1024), access))
+	generateRequest := httptest.NewRequest("POST", "https://api.example/tasks/generate", bytes.NewReader(requestBody))
+	generateRequest.Header.Set("Content-Type", "application/json")
+	generateRequest.Header.Set("Idempotency-Key", "contract-generation-1")
+	generateRequest.AddCookie(access)
+	generate := httptest.NewRecorder()
+	f.app.Handler().ServeHTTP(generate, generateRequest)
+	check("POST", "/tasks/generate", generate)
+	unavailable := httptest.NewServer(http.NotFoundHandler())
+	unavailable.Close()
+	f.app.cfg.TaskgenBaseURL = unavailable.URL
+	unavailableRequest := httptest.NewRequest("POST", "/tasks/generate", bytes.NewReader(requestBody))
+	unavailableRequest.Header.Set("Content-Type", "application/json")
+	unavailableRequest.Header.Set("Idempotency-Key", "contract-generation-unavailable")
+	unavailableRequest.AddCookie(access)
+	unavailableResponse := httptest.NewRecorder()
+	f.app.Handler().ServeHTTP(unavailableResponse, unavailableRequest)
+	if unavailableResponse.Code != 503 {
+		t.Fatalf("unavailable generator: %d %s", unavailableResponse.Code, unavailableResponse.Body.String())
+	}
+	check("POST", "/tasks/generate", unavailableResponse)
+	materialBody, _ := json.Marshal(map[string]any{"name": "Материал контракта", "content": "Текст материала для поиска", "outcome_ids": []string{outcomeID}})
+	check("POST", "/admin/materials", f.request("POST", "/admin/materials", string(materialBody), admin))
+	check("POST", "/admin/materials", f.request("POST", "/admin/materials", "{"))
+	check("POST", "/admin/materials", f.request("POST", "/admin/materials", "{", access))
+	check("POST", "/admin/materials", f.request("POST", "/admin/materials", strings.Repeat(" ", 1400000), admin))
 	check("POST", "/auth/refresh", f.request("POST", "/auth/refresh", "", refresh))
 	check("POST", "/auth/logout", f.request("POST", "/auth/logout", "", refresh))
 	check("GET", "/health", f.request("GET", "/health", ""))

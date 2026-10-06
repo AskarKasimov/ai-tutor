@@ -26,8 +26,8 @@ func TestCSVInheritanceAndOpaqueCriteria(t *testing.T) {
 	if m.Tasks[2].OutcomeKey != m.Tasks[0].OutcomeKey {
 		t.Fatal("merged cells not inherited")
 	}
-	if m.Outcomes[0].Attributes[0]["Тем 1"] != "Тема" {
-		t.Fatal("attributes lost")
+	if m.SourceRows[0].Cells[3] != "Тема" {
+		t.Fatal("original source cell was not preserved")
 	}
 }
 
@@ -91,7 +91,7 @@ func TestCSVInvalidRows(t *testing.T) {
 }
 
 func TestCSVInheritanceIsIndependentAcrossColumns(t *testing.T) {
-	data := "Ком,Сост,ОР,Что должно войти в тест,Таксономия,Важность темы,Важность,Задание 3,Критерии 3\nК1,С1,О1,мета,уровень,тема,вес,В1,К1\nК2,,,,,,,В2,К2\n"
+	data := "Ком,Сост,ОР,Что должно войти в тест,Таксономия,Важность темы,Важность,Задание 3,Критерии 3\nК1,С1,О1,TRUE,Знание,тема,3,В1,К1\nК2,,,,,,,В2,К2\n"
 	parsed, err := Parse([]byte(data))
 	if err != nil {
 		t.Fatal(err)
@@ -99,10 +99,9 @@ func TestCSVInheritanceIsIndependentAcrossColumns(t *testing.T) {
 	if len(parsed.Competencies) != 2 || len(parsed.Constituents) != 2 || len(parsed.Outcomes) != 2 || parsed.Constituents[1].Name != "С1" || parsed.Outcomes[1].Name != "О1" {
 		t.Fatalf("independent inheritance: %+v", parsed)
 	}
-	attrs := parsed.Outcomes[0].Attributes[0]
-	for _, column := range []string{"Что должно войти в тест", "Таксономия", "Важность темы", "Важность"} {
-		if attrs[column] == "" {
-			t.Fatalf("missing metadata %s", column)
+	for _, cell := range []string{"TRUE", "Знание", "тема", "3"} {
+		if !strings.Contains(strings.Join(parsed.SourceRows[0].Cells, ","), cell) {
+			t.Fatalf("missing original cell %s", cell)
 		}
 	}
 }
@@ -117,5 +116,42 @@ func TestCSVPhysicalRowsIncludeBlankAndMultilineRecords(t *testing.T) {
 	parsed, err := Parse([]byte("\nКом,Сост,ОР,Задание 1,Критерии 1\n\nК,С,О,В,К\n"))
 	if err != nil || len(parsed.Tasks) != 1 || parsed.Tasks[0].Row != 4 {
 		t.Fatalf("task source row: %+v %v", parsed, err)
+	}
+}
+
+func TestPairedCSVNormalizesPresentProperties(t *testing.T) {
+	parsed, err := Parse([]byte("Ком,Сост,ОР,Что должно войти в тест,Уровень ALDs,Таксономия,Важность,Задание 1,Критерии 1\nК,С,О,TRUE,Базовый,Знание,3,В,К\n,,,TRUE,Базовый,Знание,3,В2,К2\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	o := parsed.Outcomes[0]
+	if o.IncludeInTest == nil || !*o.IncludeInTest || o.TaxonomyCode != "knowledge" || o.ALDLevelCode != "basic" || o.Importance == nil || *o.Importance != 3 {
+		t.Fatalf("properties lost: %#v", o)
+	}
+}
+func TestPairedCSVLinksEveryOutcomeRow(t *testing.T) {
+	parsed, err := Parse([]byte("Ком,Сост,ОР,Задание 1,Критерии 1\nК,С,О,В,К\n,,,В2,К2\n,,Без задания,,\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(parsed.Outcomes[0].SourceRowIndexes) != 2 || len(parsed.Outcomes[1].SourceRowIndexes) != 1 || parsed.Outcomes[1].SourceRowIndexes[0] != 3 {
+		t.Fatalf("source links lost: %#v", parsed.Outcomes)
+	}
+}
+func TestPairedCSVRejectsInvalidOrConflictingProperties(t *testing.T) {
+	for _, rows := range []string{"К,С,О,9,В,К\n", "К,С,О,3,В,К\n,,,4,В2,К2\n"} {
+		if _, err := Parse([]byte("Ком,Сост,ОР,Важность,Задание 1,Критерии 1\n" + rows)); err == nil {
+			t.Fatalf("invalid properties accepted: %s", rows)
+		}
+	}
+}
+
+func TestPairedCSVKeepsLegacyImportanceWithWarning(t *testing.T) {
+	parsed, err := Parse([]byte("Ком,Сост,ОР,Важность,Задание 1,Критерии 1\nК,С,О,Высокая,В,К\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if parsed.Outcomes[0].Importance != nil || parsed.SourceRows[0].Cells[3] != "Высокая" || len(parsed.Warnings) != 1 || parsed.Warnings[0].Code != "LEGACY_IMPORTANCE_UNPARSED" {
+		t.Fatalf("legacy importance: %#v", parsed)
 	}
 }

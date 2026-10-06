@@ -48,17 +48,17 @@ func New(service *application.Service, maxUploadBytes int64) *Handler {
 func (h *Handler) Transcribe(w http.ResponseWriter, r *http.Request) {
 	u, ok := httpx.Principal[user.User](r)
 	if !ok {
-		httpx.Error(w, fault.New(fault.Unauthorized, "UNAUTHORIZED", "Требуется действующая сессия."))
+		httpx.Error(r.Context(), w, fault.New(fault.Unauthorized, "UNAUTHORIZED", "Требуется действующая сессия."))
 		return
 	}
 	data, media, err := httpx.Upload(r, "audio", h.maxUploadBytes)
 	if err != nil {
-		httpx.Error(w, err)
+		httpx.Error(r.Context(), w, err)
 		return
 	}
 	tr, err := h.service.Transcribe(r.Context(), u.ID, data, media)
 	if err != nil {
-		httpx.Error(w, err)
+		httpx.Error(r.Context(), w, err)
 		return
 	}
 	httpx.JSON(w, http.StatusOK, Transcription{ID: tr.ID, Text: tr.Text, CreatedAt: tr.CreatedAt})
@@ -81,17 +81,17 @@ func (h *Handler) Transcribe(w http.ResponseWriter, r *http.Request) {
 // @Router /voice/syntheses [post]
 func (h *Handler) Synthesize(w http.ResponseWriter, r *http.Request) {
 	if _, ok := httpx.Principal[user.User](r); !ok {
-		httpx.Error(w, fault.New(fault.Unauthorized, "UNAUTHORIZED", "Требуется действующая сессия."))
+		httpx.Error(r.Context(), w, fault.New(fault.Unauthorized, "UNAUTHORIZED", "Требуется действующая сессия."))
 		return
 	}
 	var req SynthesizeRequest
 	if err := httpx.DecodeJSON(r, &req); err != nil {
-		httpx.Error(w, err)
+		httpx.Error(r.Context(), w, err)
 		return
 	}
 	data, err := h.service.Synthesize(r.Context(), req.Text)
 	if err != nil {
-		httpx.Error(w, err)
+		httpx.Error(r.Context(), w, err)
 		return
 	}
 	w.Header().Set("Content-Type", "audio/wav")

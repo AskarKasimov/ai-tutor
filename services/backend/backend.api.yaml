@@ -127,6 +127,68 @@ components:
         - role
       type: object
       additionalProperties: false
+    competencyhttp.Competency:
+      properties:
+        constituents:
+          items:
+            $ref: '#/components/schemas/competencyhttp.Constituent'
+          type: array
+          uniqueItems: false
+        id:
+          type: string
+        name:
+          type: string
+      required:
+        - constituents
+        - id
+        - name
+      type: object
+      additionalProperties: false
+    competencyhttp.Constituent:
+      properties:
+        curriculum_sections:
+          items:
+            $ref: '#/components/schemas/competencyhttp.CurriculumSection'
+          type: array
+          uniqueItems: false
+        id:
+          type: string
+        name:
+          type: string
+        outcomes:
+          items:
+            $ref: '#/components/schemas/competencyhttp.Outcome'
+          type: array
+          uniqueItems: false
+        topic_level_code:
+          type:
+            - string
+            - "null"
+      required:
+        - curriculum_sections
+        - id
+        - name
+        - outcomes
+        - topic_level_code
+      type: object
+      additionalProperties: false
+    competencyhttp.CurriculumSection:
+      properties:
+        code:
+          type: string
+        curriculum_competencies:
+          items:
+            type: string
+          type: array
+          uniqueItems: false
+        title:
+          type: string
+      required:
+        - code
+        - curriculum_competencies
+        - title
+      type: object
+      additionalProperties: false
     competencyhttp.ImportResult:
       properties:
         competency_count:
@@ -141,6 +203,13 @@ components:
           type: integer
         task_count:
           type: integer
+        unparsed_task_cell_count:
+          type: integer
+        warnings:
+          items:
+            $ref: '#/components/schemas/competencyhttp.ImportWarning'
+          type: array
+          uniqueItems: false
       required:
         - competency_count
         - constituent_count
@@ -148,6 +217,111 @@ components:
         - outcome_count
         - revision
         - task_count
+        - unparsed_task_cell_count
+        - warnings
+      type: object
+      additionalProperties: false
+    competencyhttp.ImportWarning:
+      properties:
+        code:
+          type: string
+        column:
+          type: string
+        column_index:
+          type: integer
+        row:
+          type: integer
+      required:
+        - code
+        - column
+        - column_index
+        - row
+      type: object
+      additionalProperties: false
+    competencyhttp.MapSnapshot:
+      properties:
+        competencies:
+          items:
+            $ref: '#/components/schemas/competencyhttp.Competency'
+          type: array
+          uniqueItems: false
+        imported_at:
+          type:
+            - integer
+            - "null"
+        revision:
+          type: integer
+      required:
+        - competencies
+        - imported_at
+        - revision
+      type: object
+      additionalProperties: false
+    competencyhttp.Outcome:
+      properties:
+        ald_level_code:
+          type:
+            - string
+            - "null"
+        educational_content:
+          type:
+            - string
+            - "null"
+        id:
+          type: string
+        importance:
+          type:
+            - integer
+            - "null"
+        include_in_test:
+          type:
+            - boolean
+            - "null"
+        name:
+          type: string
+        tasks:
+          items:
+            $ref: '#/components/schemas/competencyhttp.Task'
+          type: array
+          uniqueItems: false
+        taxonomy_code:
+          type:
+            - string
+            - "null"
+      required:
+        - ald_level_code
+        - educational_content
+        - id
+        - importance
+        - include_in_test
+        - name
+        - tasks
+        - taxonomy_code
+      type: object
+      additionalProperties: false
+    competencyhttp.Task:
+      properties:
+        id:
+          type: string
+        options:
+          items:
+            type: string
+          type: array
+          uniqueItems: false
+        origin:
+          type: string
+        question:
+          type: string
+        voice_instruction:
+          type:
+            - string
+            - "null"
+      required:
+        - id
+        - options
+        - origin
+        - question
+        - voice_instruction
       type: object
       additionalProperties: false
     fault.Detail:
@@ -177,6 +351,219 @@ components:
       required:
         - code
         - message
+      type: object
+      additionalProperties: false
+    taskbankhttp.CurriculumSection:
+      properties:
+        code:
+          type: string
+        curriculum_competencies:
+          items:
+            type: string
+          type: array
+          uniqueItems: false
+        title:
+          type: string
+      required:
+        - code
+        - curriculum_competencies
+        - title
+      type: object
+      additionalProperties: false
+    taskbankhttp.TaskProfile:
+      properties:
+        ald_level_code:
+          type:
+            - string
+            - "null"
+        competency_id:
+          type: string
+        competency_name:
+          type: string
+        constituent_id:
+          type: string
+        constituent_name:
+          type: string
+        curriculum_sections:
+          items:
+            $ref: '#/components/schemas/taskbankhttp.CurriculumSection'
+          type: array
+          uniqueItems: false
+        educational_content:
+          type:
+            - string
+            - "null"
+        id:
+          type: string
+        importance:
+          type:
+            - integer
+            - "null"
+        include_in_test:
+          type:
+            - boolean
+            - "null"
+        options:
+          items:
+            type: string
+          type: array
+          uniqueItems: false
+        origin:
+          type: string
+        outcome_id:
+          type: string
+        outcome_name:
+          type: string
+        question:
+          type: string
+        taxonomy_code:
+          type:
+            - string
+            - "null"
+        topic_level_code:
+          type:
+            - string
+            - "null"
+        voice_instruction:
+          type:
+            - string
+            - "null"
+      required:
+        - ald_level_code
+        - competency_id
+        - competency_name
+        - constituent_id
+        - constituent_name
+        - curriculum_sections
+        - educational_content
+        - id
+        - importance
+        - include_in_test
+        - options
+        - origin
+        - outcome_id
+        - outcome_name
+        - question
+        - taxonomy_code
+        - topic_level_code
+        - voice_instruction
+      type: object
+      additionalProperties: false
+    taskbankhttp.TaskSummary:
+      properties:
+        ald_level_code:
+          type:
+            - string
+            - "null"
+        competency_name:
+          type: string
+        constituent_name:
+          type: string
+        id:
+          type: string
+        importance:
+          type:
+            - integer
+            - "null"
+        include_in_test:
+          type:
+            - boolean
+            - "null"
+        options:
+          items:
+            type: string
+          type: array
+          uniqueItems: false
+        origin:
+          type: string
+        outcome_id:
+          type: string
+        outcome_name:
+          type: string
+        question:
+          type: string
+        taxonomy_code:
+          type:
+            - string
+            - "null"
+        topic_level_code:
+          type:
+            - string
+            - "null"
+        voice_instruction:
+          type:
+            - string
+            - "null"
+      required:
+        - ald_level_code
+        - competency_name
+        - constituent_name
+        - id
+        - importance
+        - include_in_test
+        - options
+        - origin
+        - outcome_id
+        - outcome_name
+        - question
+        - taxonomy_code
+        - topic_level_code
+        - voice_instruction
+      type: object
+      additionalProperties: false
+    taskgenhttp.GenerateRequest:
+      properties:
+        outcome_id:
+          maxLength: 128
+          minLength: 1
+          type: string
+      required:
+        - outcome_id
+      type: object
+      additionalProperties: false
+    taskgenhttp.GeneratedTask:
+      properties:
+        id:
+          type: string
+        options:
+          items:
+            type: string
+          type: array
+          uniqueItems: false
+        origin:
+          type: string
+        outcome_id:
+          type: string
+        question:
+          type: string
+        voice_instruction:
+          type:
+            - string
+            - "null"
+      required:
+        - id
+        - options
+        - origin
+        - outcome_id
+        - question
+        - voice_instruction
+      type: object
+      additionalProperties: false
+    taskgenhttp.ImportMaterialRequest:
+      properties:
+        content:
+          type: string
+        name:
+          type: string
+        outcome_ids:
+          items:
+            type: string
+          type: array
+          uniqueItems: false
+      required:
+        - content
+        - name
+        - outcome_ids
       type: object
       additionalProperties: false
     user.Role:
@@ -235,14 +622,14 @@ paths:
             schema:
               properties:
                 file:
-                  description: CSV карты компетенций, UTF-8, до 25 МиБ
+                  description: Карта компетенций CSV или XLSX, до 25 МиБ
                   format: binary
                   type: string
               required:
                 - file
               type: object
               additionalProperties: false
-        description: CSV карты компетенций, UTF-8, до 25 МиБ
+        description: Карта компетенций CSV или XLSX, до 25 МиБ
         required: true
       responses:
         "200":
@@ -289,7 +676,63 @@ paths:
           description: Service Unavailable
       security:
         - accessCookie: []
-      summary: Заменить учебную базу картой компетенций из CSV
+      summary: Заменить учебную базу картой компетенций
+      tags:
+        - Учебная база
+  /admin/materials:
+    post:
+      operationId: importMaterial
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/taskgenhttp.ImportMaterialRequest'
+              summary: request
+              description: Текст и связи материала
+        description: Текст и связи материала
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                additionalProperties:
+                  type: string
+                type: object
+          description: Created
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Forbidden
+        "413":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Request Entity Too Large
+        "422":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unprocessable Entity
+        "503":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Service Unavailable
+      security:
+        - accessCookie: []
+      summary: Загрузить учебный материал в контекст RAG
       tags:
         - Учебная база
   /assessments/evaluate:
@@ -517,6 +960,34 @@ paths:
       summary: Зарегистрироваться
       tags:
         - Auth
+  /competency-map:
+    get:
+      description: Ревизия, время импорта и дерево компетенций, составляющих, ОР и заданий. Доступно авторизованным пользователям. Эталоны и критерии не возвращаются.
+      operationId: readCompetencyMap
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/competencyhttp.MapSnapshot'
+          description: OK
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unauthorized
+        "503":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Service Unavailable
+      security:
+        - accessCookie: []
+      summary: Прочитать текущую карту компетенций целиком
+      tags:
+        - Учебная база
   /health:
     get:
       operationId: health
@@ -536,6 +1007,225 @@ paths:
       summary: Проверить API и подключение к PostgreSQL
       tags:
         - Сервис
+  /tasks:
+    get:
+      operationId: searchTasks
+      parameters:
+        - description: ID образовательного результата
+          in: query
+          name: outcome_id
+          schema:
+            type: string
+        - description: ID компетенции
+          in: query
+          name: competency_id
+          schema:
+            type: string
+        - description: ID составляющей
+          in: query
+          name: constituent_id
+          schema:
+            type: string
+        - description: Код таксономии
+          in: query
+          name: taxonomy
+          schema:
+            type: string
+        - description: Код уровня ALDs
+          in: query
+          name: ald_level
+          schema:
+            type: string
+        - description: Код уровня темы
+          in: query
+          name: topic_level
+          schema:
+            type: string
+        - description: Точная важность 1–5
+          in: query
+          name: importance
+          schema:
+            type: integer
+        - description: Минимальная важность 1–5 (включительно)
+          in: query
+          name: importance_min
+          schema:
+            type: integer
+        - description: Максимальная важность 1–5 (включительно)
+          in: query
+          name: importance_max
+          schema:
+            type: integer
+        - description: Фильтр включения в тест
+          in: query
+          name: include_in_test
+          schema:
+            type: boolean
+        - description: Код раздела РПД
+          in: query
+          name: section
+          schema:
+            type: string
+        - description: Код компетенции РПД
+          in: query
+          name: curriculum_competency
+          schema:
+            type: string
+        - description: authored или ai_generated
+          in: query
+          name: origin
+          schema:
+            type: string
+        - description: Максимум 100
+          in: query
+          name: limit
+          schema:
+            type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: '#/components/schemas/taskbankhttp.TaskSummary'
+                type: array
+          description: OK
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unauthorized
+        "422":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unprocessable Entity
+        "503":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Service Unavailable
+      security:
+        - accessCookie: []
+      summary: Найти задания по свойствам карты
+      tags:
+        - Банк заданий
+  /tasks/generate:
+    post:
+      operationId: generateTask
+      parameters:
+        - description: Ключ повтора запроса
+          in: header
+          name: Idempotency-Key
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/taskgenhttp.GenerateRequest'
+              summary: request
+              description: Образовательный результат
+        description: Образовательный результат
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/taskgenhttp.GeneratedTask'
+          description: Created
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unauthorized
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Not Found
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Conflict
+        "413":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Request Entity Too Large
+        "422":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unprocessable Entity
+        "502":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Bad Gateway
+        "503":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Service Unavailable
+      security:
+        - accessCookie: []
+      summary: Сгенерировать аналог задания
+      tags:
+        - Банк заданий
+  /tasks/{id}:
+    get:
+      operationId: getTaskProfile
+      parameters:
+        - description: ID задания
+          in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/taskbankhttp.TaskProfile'
+          description: OK
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unauthorized
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Not Found
+        "503":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Service Unavailable
+      security:
+        - accessCookie: []
+      summary: Получить профиль задания
+      tags:
+        - Банк заданий
   /voice/syntheses:
     post:
       operationId: synthesizeQuestion

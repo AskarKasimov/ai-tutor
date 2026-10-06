@@ -18,9 +18,18 @@ type Config struct {
 	TTSURL            string
 	AssessmentBaseURL string
 	AssessmentModel   string
+	TaskgenBaseURL    string
+	TaskgenModel      string
+	TaskgenTimeout    time.Duration
 	ProcessingTimeout time.Duration
 	AssessmentTimeout time.Duration
 	MaxUploadBytes    int64
+}
+
+// HTTPWriteTimeout allows the slowest model call to finish, with time for
+// request handling, persistence and writing the response.
+func (c Config) HTTPWriteTimeout() time.Duration {
+	return max(c.ProcessingTimeout, c.AssessmentTimeout, c.TaskgenTimeout) + 30*time.Second
 }
 
 func ConfigFromEnv() (Config, error) {
@@ -47,6 +56,8 @@ func ConfigFromEnv() (Config, error) {
 			stringSetting{"BACKEND_TTS_URL", &c.TTSURL},
 			stringSetting{"BACKEND_ASSESSMENT_BASE_URL", &c.AssessmentBaseURL},
 			stringSetting{"BACKEND_ASSESSMENT_MODEL", &c.AssessmentModel},
+			stringSetting{"BACKEND_TASKGEN_BASE_URL", &c.TaskgenBaseURL},
+			stringSetting{"BACKEND_TASKGEN_MODEL", &c.TaskgenModel},
 		)
 	}
 	for _, setting := range settings {
@@ -62,6 +73,12 @@ func ConfigFromEnv() (Config, error) {
 	}{
 		{"BACKEND_VOICE_TIMEOUT", &c.ProcessingTimeout},
 		{"BACKEND_ASSESSMENT_TIMEOUT", &c.AssessmentTimeout},
+	}
+	if c.APIMode == "real" {
+		durations = append(durations, struct {
+			key string
+			dst *time.Duration
+		}{"BACKEND_TASKGEN_TIMEOUT", &c.TaskgenTimeout})
 	}
 	for _, setting := range durations {
 		value, err := requiredEnv(setting.key)
@@ -109,11 +126,18 @@ func (c Config) validate() error {
 		for _, setting := range []struct{ key, value string }{
 			{"BACKEND_STT_URL", c.STTURL}, {"BACKEND_TTS_URL", c.TTSURL},
 			{"BACKEND_ASSESSMENT_BASE_URL", c.AssessmentBaseURL},
+			{"BACKEND_TASKGEN_BASE_URL", c.TaskgenBaseURL},
 		} {
 			u, err := url.Parse(setting.value)
 			if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.User != nil || u.Fragment != "" {
 				return fmt.Errorf("%s must be an absolute HTTP(S) URL without credentials", setting.key)
 			}
+		}
+		if strings.TrimSpace(c.TaskgenModel) == "" {
+			return fmt.Errorf("BACKEND_TASKGEN_MODEL is required")
+		}
+		if c.TaskgenTimeout <= 0 {
+			return fmt.Errorf("BACKEND_TASKGEN_TIMEOUT must be positive")
 		}
 		if strings.TrimSpace(c.AssessmentModel) == "" {
 			return fmt.Errorf("BACKEND_ASSESSMENT_MODEL is required")

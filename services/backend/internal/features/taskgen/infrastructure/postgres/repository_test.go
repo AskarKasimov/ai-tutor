@@ -1,0 +1,196 @@
+package postgres
+
+import (
+	"context"
+	"crypto/rand"
+	"encoding/hex"
+	"encoding/json"
+	"os"
+	"reflect"
+	"testing"
+
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/competencymap"
+	competencypostgres "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/competency/infrastructure/postgres"
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/features/taskgen/application"
+	sharedpostgres "github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/postgres"
+	db "github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/postgres/sqlcgen"
+	"github.com/jackc/pgx/v5/pgxpool"
+)
+
+func setupTaskgenRepository(t *testing.T) (*Repository, *competencypostgres.Repository, *pgxpool.Pool, context.Context, string) {
+	t.Helper()
+	dsn := os.Getenv("TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("TEST_DATABASE_URL is required for PostgreSQL repository integration tests")
+	}
+	ctx := context.Background()
+	admin, err := pgxpool.New(ctx, dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	suffix := make([]byte, 8)
+	if _, err := rand.Read(suffix); err != nil {
+		t.Fatal(err)
+	}
+	schema := "taskgen_test_" + hex.EncodeToString(suffix)
+	if _, err := admin.Exec(ctx, "CREATE SCHEMA "+schema); err != nil {
+		t.Fatal(err)
+	}
+	config, err := pgxpool.ParseConfig(dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	config.ConnConfig.RuntimeParams["search_path"] = schema
+	pool, err := pgxpool.NewWithConfig(ctx, config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := sharedpostgres.Migrate(ctx, pool); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO users(id,email,password_hash,created_at) VALUES ('taskgen-test-user','taskgen-test@example.test','hash',1)`); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		pool.Close()
+		_, _ = admin.Exec(ctx, "DROP SCHEMA "+schema+" CASCADE")
+		admin.Close()
+	})
+	return New(pool), competencypostgres.New(pool), pool, ctx, "taskgen-test-user"
+}
+
+func taskgenMap(name string) competencymap.Map {
+	return competencymap.Map{
+		SourceFormat: "paired", SourceHeaders: []string{"Компетенция", "Составляющая", "Образовательный результат"},
+		Competencies: []competencymap.Competency{{Key: "c", Name: "Компетенция " + name}},
+		Constituents: []competencymap.Constituent{{Key: "s", CompetencyKey: "c", Name: "Составляющая " + name,
+			Sections: []competencymap.CurriculumSection{{Code: "Р.1", Title: "Введение", CompetencyCodes: []string{"ОПК-1"}}}}},
+		Outcomes: []competencymap.Outcome{{Key: "o", ConstituentKey: "s", Name: "ОР " + name}},
+	}
+}
+
+func TestPersistGeneratedTaskAndReimportMaterial(t *testing.T) {
+	repository, maps, pool, ctx, userID := setupTaskgenRepository(t)
+	if _, err := maps.Replace(ctx, userID, taskgenMap("один"), 10); err != nil {
+		t.Fatal(err)
+	}
+	var outcomeID string
+	if err := pool.QueryRow(ctx, `SELECT id FROM outcomes WHERE name='ОР один'`).Scan(&outcomeID); err != nil {
+		t.Fatal(err)
+	}
+	if err := repository.ImportMaterial(ctx, "notes", []string{outcomeID}, []string{"Материал по теме ОР один"}, 12); err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := repository.Context(ctx, outcomeID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(snapshot.Materials) != 1 {
+		t.Fatalf("retrieved material context = %#v", snapshot.Materials)
+	}
+	sections := snapshot.Outcome.CurriculumSections
+	if len(sections) != 1 || len(sections[0].CurriculumCompetencies) != 1 || sections[0].CurriculumCompetencies[0] != "ОПК-1" {
+		t.Fatalf("retrieved curriculum context = %#v", sections)
+	}
+	if err := repository.ImportMaterial(ctx, "notes", []string{outcomeID}, []string{"Обновлённый материал по теме ОР один"}, 13); err != nil {
+		t.Fatalf("reimport same material name: %v", err)
+	}
+	task, err := repository.Persist(ctx, snapshot, "request-1", userID, "test-model", application.Draft{
+		Question: "Вопрос", Options: []string{}, VoiceInstruction: "Объясните ответ", ReferenceAnswer: "Эталон",
+	}, 14)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if task.Origin != "ai_generated" || task.ID == "" {
+		t.Fatalf("generated task = %#v", task)
+	}
+	var curriculumCode string
+	if err := pool.QueryRow(ctx, `SELECT requested_profile->'outcome'->'CurriculumSections'->0->'curriculum_competencies'->>0 FROM generation_runs`).Scan(&curriculumCode); err != nil || curriculumCode != "ОПК-1" {
+		t.Fatalf("stored curriculum profile = %q, err=%v", curriculumCode, err)
+	}
+	var count int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM material_chunks WHERE material_name='notes'`).Scan(&count); err != nil || count != 2 {
+		t.Fatalf("material chunk count=%d err=%v, want immutable original and replacement", count, err)
+	}
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM generation_run_chunks`).Scan(&count); err != nil || count != 1 {
+		t.Fatalf("generation context chunk count=%d err=%v", count, err)
+	}
+}
+
+func TestTaskAndGenerationCurriculumProfilesRemainConsistent(t *testing.T) {
+	repository, maps, pool, ctx, userID := setupTaskgenRepository(t)
+	data := competencymap.Map{
+		SourceFormat: "paired", SourceHeaders: []string{"Ком", "Сост", "ОР"},
+		Competencies: []competencymap.Competency{{Key: "c", Name: "Компетенция"}},
+		Constituents: []competencymap.Constituent{
+			{Key: "s1", CompetencyKey: "c", Name: "Составляющая 1", Sections: []competencymap.CurriculumSection{
+				{Code: "Р.2", Title: "Практика", CompetencyCodes: []string{}},
+				{Code: "Р.1", Title: "Введение", CompetencyCodes: []string{"ПК-2", "ОПК-1"}},
+			}},
+			{Key: "s2", CompetencyKey: "c", Name: "Составляющая 2", Sections: []competencymap.CurriculumSection{
+				{Code: "Р.1", Title: "Введение", CompetencyCodes: []string{"ОПК-3"}},
+			}},
+			{Key: "s3", CompetencyKey: "c", Name: "Составляющая 3"},
+		},
+		Outcomes: []competencymap.Outcome{
+			{Key: "o1", ConstituentKey: "s1", Name: "ОР 1"},
+			{Key: "o2", ConstituentKey: "s2", Name: "ОР 2"},
+			{Key: "o3", ConstituentKey: "s3", Name: "ОР 3"},
+		},
+	}
+	if _, err := maps.Replace(ctx, userID, data, 10); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name string
+		want []application.CurriculumSection
+	}{
+		{"ОР 1", []application.CurriculumSection{
+			{Code: "Р.1", Title: "Введение", CurriculumCompetencies: []string{"ОПК-1", "ПК-2"}},
+			{Code: "Р.2", Title: "Практика", CurriculumCompetencies: []string{}},
+		}},
+		{"ОР 2", []application.CurriculumSection{
+			{Code: "Р.1", Title: "Введение", CurriculumCompetencies: []string{"ОПК-3"}},
+		}},
+		{"ОР 3", []application.CurriculumSection{}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var outcomeID string
+			if err := pool.QueryRow(ctx, "SELECT id FROM outcomes WHERE name=$1", tc.name).Scan(&outcomeID); err != nil {
+				t.Fatal(err)
+			}
+			snapshot, err := repository.Context(ctx, outcomeID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(snapshot.Outcome.CurriculumSections, tc.want) {
+				t.Fatalf("generation profile: got=%#v want=%#v", snapshot.Outcome.CurriculumSections, tc.want)
+			}
+			task, err := repository.Persist(ctx, snapshot, "profile-test", userID, "model", application.Draft{
+				Question: "Вопрос", Options: []string{}, VoiceInstruction: "Ответьте", ReferenceAnswer: "Ответ",
+			}, 11)
+			if err != nil {
+				t.Fatal(err)
+			}
+			profile, err := db.New(pool).GetTaskProfile(ctx, task.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var sections []struct {
+				Code         string   `json:"code"`
+				Title        string   `json:"title"`
+				Competencies []string `json:"curriculum_competencies"`
+			}
+			if err := json.Unmarshal([]byte(profile.CurriculumSections), &sections); err != nil {
+				t.Fatal(err)
+			}
+			got := make([]application.CurriculumSection, len(sections))
+			for i, section := range sections {
+				got[i] = application.CurriculumSection{Code: section.Code, Title: section.Title, CurriculumCompetencies: section.Competencies}
+			}
+			if !reflect.DeepEqual(got, tc.want) {
+				t.Fatalf("catalog profile: got=%#v want=%#v", got, tc.want)
+			}
+		})
+	}
+}

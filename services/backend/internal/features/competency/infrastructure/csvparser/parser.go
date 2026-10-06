@@ -20,8 +20,9 @@ type Parser struct{}
 
 func (*Parser) Parse(data []byte) (competencymap.Map, error) { return Parse(data) }
 
-var taskColumn = regexp.MustCompile(`^(Задание|Критерии) ([1-9][0-9]*)$`)
+var taskColumn = regexp.MustCompile(`^(Задание|Критерии) ?([1-9][0-9]*)$`)
 var topicColumn = regexp.MustCompile(`^Тем [1-9][0-9]*$`)
+var optionNumber = regexp.MustCompile(`^[1-9][0-9]*\s*[—–-]\s*`)
 
 func csvError(row int, column, message string) *fault.Error {
 	e := fault.New(fault.Invalid, "CSV_INVALID", "Карта компетенций содержит ошибку.")
@@ -37,6 +38,9 @@ func blankRow(row []string) bool {
 	return true
 }
 func mapKey(parts ...string) string { b, _ := json.Marshal(parts); return string(b) }
+func sourceRow(row []string, line, index int) competencymap.SourceRow {
+	return competencymap.SourceRow{Index: index, Line: line, Cells: append([]string(nil), row...)}
+}
 func explanationRow(row []string, columns map[string]int) bool {
 	// Explain-only row has labels rather than actual competency identifiers.
 	kom := strings.ToLower(strings.TrimSpace(row[columns["Ком"]]))
@@ -66,6 +70,13 @@ func explanationRow(row []string, columns map[string]int) bool {
 }
 
 func Parse(data []byte) (competencymap.Map, error) {
+	if bytes.HasPrefix(data, []byte("PK\x03\x04")) {
+		return parseXLSX(data)
+	}
+	return parseCSV(data, func(cell string) string { return strings.ReplaceAll(cell, "\x00", "\r") })
+}
+
+func parseCSV(data []byte, restoreCell func(string) string) (competencymap.Map, error) {
 	var result competencymap.Map
 	if !utf8.Valid(data) || bytes.IndexByte(data, 0) >= 0 {
 		return result, csvError(1, "CSV", "Ожидается UTF-8 без NUL.")
@@ -89,6 +100,7 @@ func Parse(data []byte) (competencymap.Map, error) {
 	var reader *csv.Reader
 	var headers []string
 	var headerLine int
+	format := ""
 	for _, sep := range []rune{',', ';'} {
 		candidate := csv.NewReader(strings.NewReader(text))
 		candidate.Comma = sep
@@ -97,6 +109,9 @@ func Parse(data []byte) (competencymap.Map, error) {
 			row, err := candidate.Read()
 			if err != nil {
 				break
+			}
+			for i := range row {
+				row[i] = restoreCell(row[i])
 			}
 			if blankRow(row) {
 				continue
@@ -109,6 +124,12 @@ func Parse(data []byte) (competencymap.Map, error) {
 				reader = candidate
 				headers = row
 				headerLine, _ = candidate.FieldPos(0)
+				format = "paired"
+			} else if found["Компетенция"] && found["Составляющая"] && found["Образовательный результат"] {
+				reader = candidate
+				headers = row
+				headerLine, _ = candidate.FieldPos(0)
+				format = "ml-map"
 			}
 			break
 		}
@@ -117,8 +138,13 @@ func Parse(data []byte) (competencymap.Map, error) {
 		}
 	}
 	if reader == nil {
-		return result, csvError(1, "CSV", "Первая непустая строка должна содержать заголовки Ком, Сост и ОР.")
+		return result, csvError(1, "CSV", "Первая непустая строка должна содержать Ком/Сост/ОР или Компетенция/Составляющая/Образовательный результат.")
 	}
+	if format == "ml-map" {
+		return parseMLMap(reader, headers, headerLine, restoreCell)
+	}
+	result.SourceFormat = format
+	result.SourceHeaders = append([]string(nil), headers...)
 	columns := map[string]int{}
 	questions := map[int]int{}
 	criteria := map[int]int{}
@@ -135,15 +161,21 @@ func Parse(data []byte) (competencymap.Map, error) {
 			}
 			firstTask = min(firstTask, i)
 			if match[1] == "Задание" {
+				if _, exists := questions[n]; exists {
+					return result, csvError(headerLine, h, "Повторная колонка задания с тем же номером.")
+				}
 				questions[n] = i
 			} else {
+				if _, exists := criteria[n]; exists {
+					return result, csvError(headerLine, h, "Повторная колонка критериев с тем же номером.")
+				}
 				criteria[n] = i
 			}
 		} else if strings.HasPrefix(h, "Задание") || strings.HasPrefix(h, "Критерии") {
 			return result, csvError(headerLine, h, "Ожидается название с положительным целым номером.")
 		}
 	}
-	allowed := map[string]bool{"Ком": true, "Сост": true, "ОР": true, "Что должно войти в тест": true, "Уровень ОР": true, "Таксономия": true, "Важность темы": true, "Важность": true}
+	allowed := map[string]bool{"Ком": true, "Сост": true, "ОР": true, "Что должно войти в тест": true, "Уровень ОР": true, "Таксономия": true, "Важность темы": true, "Важность": true, "Уровень ALDs": true, "ОС": true}
 	for i, h := range headers {
 		if taskColumn.MatchString(h) {
 			continue
@@ -186,15 +218,17 @@ func Parse(data []byte) (competencymap.Map, error) {
 			}
 			return result, csvError(line, "CSV", "Некорректное экранирование или структура строки.")
 		}
+		line, _ := reader.FieldPos(0)
+		for i := range row {
+			row[i] = restoreCell(row[i])
+		}
+		sourceIndex := len(result.SourceRows) + 1
+		result.SourceRows = append(result.SourceRows, sourceRow(row, line, sourceIndex))
 		if blankRow(row) {
 			continue
 		}
-		line, _ := reader.FieldPos(0)
 		if len(row) != len(headers) {
 			return result, csvError(line, "CSV", "Число полей не совпадает с заголовками.")
-		}
-		for i := range row {
-			row[i] = strings.ReplaceAll(row[i], "\x00", "\r")
 		}
 		if explanationRow(row, columns) {
 			if !firstData {
@@ -229,17 +263,32 @@ func Parse(data []byte) (competencymap.Map, error) {
 		if !exists {
 			index = len(result.Outcomes)
 			oSeen[oKey] = index
-			result.Outcomes = append(result.Outcomes, competencymap.Outcome{Key: oKey, ConstituentKey: sKey, Name: inherited["ОР"], Attributes: []map[string]string{}})
+			result.Outcomes = append(result.Outcomes, competencymap.Outcome{Key: oKey, ConstituentKey: sKey, Name: inherited["ОР"]})
 		}
-		attrs := map[string]string{}
-		for i, h := range headers[:firstTask] {
-			if h != "Ком" && h != "Сост" && h != "ОР" && strings.TrimSpace(row[i]) != "" {
-				attrs[h] = row[i]
+		propertyColumns := columns
+		if column, ok := columns["Важность"]; ok {
+			switch strings.ToLower(strings.TrimSpace(row[column])) {
+			case "высокая", "средняя", "низкая":
+				// Legacy labels have no defined mapping to the numerical 1–5 scale.
+				// Retain them in the linked source, reporting rather than inventing a value.
+				propertyColumns = make(map[string]int, len(columns))
+				for name, index := range columns {
+					propertyColumns[name] = index
+				}
+				delete(propertyColumns, "Важность")
+				result.Warnings = append(result.Warnings, competencymap.ImportWarning{
+					Row: line, ColumnIndex: column + 1, Column: "Важность", Code: "LEGACY_IMPORTANCE_UNPARSED",
+				})
 			}
 		}
-		if len(attrs) > 0 {
-			result.Outcomes[index].Attributes = append(result.Outcomes[index].Attributes, attrs)
+		properties, err := parsePresentOutcomeProperties(row, propertyColumns, line)
+		if err != nil {
+			return result, err
 		}
+		if err := mergeOutcomeProperties(&result.Outcomes[index], properties, line); err != nil {
+			return result, err
+		}
+		result.Outcomes[index].SourceRowIndexes = append(result.Outcomes[index].SourceRowIndexes, sourceIndex)
 		// Preserve source column order, even when N is not sequential.
 		for i, h := range headers {
 			match := taskColumn.FindStringSubmatch(h)
@@ -259,7 +308,7 @@ func Parse(data []byte) (competencymap.Map, error) {
 			if cEmpty {
 				return result, csvError(line, headers[ci], "Задание заполнено без критериев.")
 			}
-			result.Tasks = append(result.Tasks, competencymap.Task{OutcomeKey: oKey, Question: q, Criteria: c, Column: h, Row: line})
+			result.Tasks = append(result.Tasks, competencymap.Task{OutcomeKey: oKey, Question: q, Criteria: c, Column: h, Row: line, SourceRowIndex: sourceIndex, SourceColumnIndex: i + 1})
 		}
 	}
 	if len(result.Tasks) == 0 {

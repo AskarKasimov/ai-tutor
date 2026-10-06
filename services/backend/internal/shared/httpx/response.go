@@ -4,10 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"log/slog"
 	"net/http"
 
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/fault"
+	"go.uber.org/zap"
 )
 
 func JSON(w http.ResponseWriter, status int, value any) {
@@ -16,11 +16,15 @@ func JSON(w http.ResponseWriter, status int, value any) {
 	_ = json.NewEncoder(w).Encode(value)
 }
 
-func Error(w http.ResponseWriter, err error) {
+func Error(ctx context.Context, w http.ResponseWriter, err error) {
 	var e *fault.Error
+	var internalErr error
 	if !errors.As(err, &e) {
-		slog.Error("request failed", "error", err)
+		internalErr = err
 		e = fault.New(fault.Unavailable, "PROCESSING_UNAVAILABLE", "Обработчик временно недоступен.")
+	}
+	if !recordFailure(ctx, e.Code, internalErr) && internalErr != nil {
+		LoggerFromContext(ctx).Error("request failed", zap.Error(internalErr))
 	}
 	status := http.StatusInternalServerError
 	switch e.Kind {

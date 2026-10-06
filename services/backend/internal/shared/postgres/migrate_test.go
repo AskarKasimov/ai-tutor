@@ -161,3 +161,38 @@ func TestMigrateWaitsForLockAndCanRetryAfterCancellation(t *testing.T) {
 	}
 	assertGooseVersion(t, pool)
 }
+
+func TestInitialSchemaAllowsPartialOutcomeProfiles(t *testing.T) {
+	pool := migrationPool(t)
+	ctx := context.Background()
+	initial, err := fs.ReadFile(migrations, "migrations/00001_initial.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := migrate(ctx, pool, fstest.MapFS{"00001_initial.sql": {Data: initial}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO users(id,email,password_hash,created_at) VALUES ('keep-user','keep@example.test','hash',1);
+ INSERT INTO competency_map_imports(revision,imported_at,imported_by,competency_count,constituent_count,outcome_count,task_count,source_format,source_headers) VALUES (1,1,'keep-user',1,1,1,0,'paired','[]');
+ INSERT INTO competencies(id,name,revision) VALUES ('keep-c','К',1);
+ INSERT INTO constituents(id,competency_id,name) VALUES ('keep-s','keep-c','С');
+ INSERT INTO outcomes(id,constituent_id,name,importance) VALUES ('keep-o','keep-s','О',3);`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, "UPDATE outcomes SET include_in_test=true WHERE id='keep-o'"); err != nil {
+		t.Fatalf("initial schema rejected partial profile: %v", err)
+	}
+	var included bool
+	var importance int
+	if err := pool.QueryRow(ctx, "SELECT include_in_test,importance FROM outcomes WHERE id='keep-o'").Scan(&included, &importance); err != nil || !included || importance != 3 {
+		t.Fatalf("existing profile changed: %v %d %v", included, importance, err)
+	}
+	var curriculum string
+	if err := pool.QueryRow(ctx, "SELECT curriculum_sections FROM constituent_curriculum_profiles WHERE constituent_id='keep-s'").Scan(&curriculum); err != nil || curriculum != "[]" {
+		t.Fatalf("initial curriculum profile: profile=%q error=%v", curriculum, err)
+	}
+	var count int
+	if err := pool.QueryRow(ctx, "SELECT count(*) FROM users WHERE id='keep-user'").Scan(&count); err != nil || count != 1 {
+		t.Fatalf("user lost: %d %v", count, err)
+	}
+}

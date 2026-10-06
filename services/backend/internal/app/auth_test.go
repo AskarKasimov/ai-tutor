@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"go.uber.org/zap"
 
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/postgres"
 )
@@ -61,7 +62,7 @@ func newFixture(t *testing.T) *fixture {
 		t.Fatal(err)
 	}
 	cfg := testConfig()
-	a, err := New(cfg, pool)
+	a, err := New(cfg, pool, zap.NewNop())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -143,7 +144,7 @@ func TestAuthRegistrationCookiesNormalizationAndPersistence(t *testing.T) {
 	if _, err := f.pool.Exec(context.Background(), "UPDATE users SET role='admin' WHERE id=$1", id); err != nil {
 		t.Fatal(err)
 	}
-	restarted, err := New(f.app.cfg, f.pool)
+	restarted, err := New(f.app.cfg, f.pool, zap.NewNop())
 	if err != nil {
 		t.Fatal(err)
 	}

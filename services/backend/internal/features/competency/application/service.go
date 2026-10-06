@@ -1,4 +1,4 @@
-// Package application implements competency-map import policy.
+// Package application implements competency-map import and read policy.
 package application
 
 import (
@@ -13,6 +13,7 @@ import (
 
 type Repository interface {
 	Replace(ctx context.Context, actorID string, parsed competencymap.Map, importedAt int64) (competencymap.ImportResult, error)
+	Read(ctx context.Context) (competencymap.Snapshot, error)
 }
 
 type Parser interface {
@@ -29,6 +30,10 @@ func New(repo Repository, parser Parser, now func() time.Time) *Service {
 	return &Service{repo: repo, parser: parser, now: now}
 }
 
+func (s *Service) Read(ctx context.Context) (competencymap.Snapshot, error) {
+	return s.repo.Read(ctx)
+}
+
 // Authorize allows transports to check import access before reading uploads.
 func (s *Service) Authorize(actor user.User) error {
 	if actor.Role != user.Admin {
@@ -42,8 +47,9 @@ func (s *Service) Import(ctx context.Context, actor user.User, data []byte, medi
 		return competencymap.ImportResult{}, err
 	}
 	media = strings.TrimSpace(strings.Split(media, ";")[0])
-	if media != "text/csv" && media != "application/csv" && media != "application/vnd.ms-excel" {
-		return competencymap.ImportResult{}, fault.New(fault.Unsupported, "UNSUPPORTED_MEDIA_TYPE", "Ожидается CSV-файл.")
+	if media != "text/csv" && media != "application/csv" && media != "application/vnd.ms-excel" &&
+		media != "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" {
+		return competencymap.ImportResult{}, fault.New(fault.Unsupported, "UNSUPPORTED_MEDIA_TYPE", "Ожидается файл CSV или XLSX.")
 	}
 	parsed, err := s.parser.Parse(data)
 	if err != nil {

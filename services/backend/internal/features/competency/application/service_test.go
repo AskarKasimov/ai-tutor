@@ -21,6 +21,10 @@ type memoryRepository struct {
 	err        error
 }
 
+func (r *memoryRepository) Read(context.Context) (competencymap.Snapshot, error) {
+	return competencymap.Snapshot{}, r.err
+}
+
 func (r *memoryRepository) Replace(_ context.Context, actorID string, parsed competencymap.Map, importedAt int64) (competencymap.ImportResult, error) {
 	r.calls++
 	r.actorID = actorID
@@ -69,7 +73,7 @@ func TestImportPropagatesMapActorAndClock(t *testing.T) {
 	service := New(repo, parser, func() time.Time { return time.Unix(123, 0) })
 	data := []byte("source CSV")
 	got, err := service.Import(context.Background(), user.User{ID: "admin-1", Role: user.Admin}, data, "text/csv; charset=utf-8")
-	if err != nil || got != result || repo.calls != 1 || repo.actorID != "admin-1" || repo.importedAt != 123 || !reflect.DeepEqual(repo.parsed, parsed) || !reflect.DeepEqual(parser.data, data) {
+	if err != nil || !reflect.DeepEqual(got, result) || repo.calls != 1 || repo.actorID != "admin-1" || repo.importedAt != 123 || !reflect.DeepEqual(repo.parsed, parsed) || !reflect.DeepEqual(parser.data, data) {
 		t.Fatalf("import: result=%+v error=%v repository=%+v parser=%+v", got, err, repo, parser)
 	}
 }

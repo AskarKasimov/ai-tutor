@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/features/taskgen/application"
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/features/taskgen/infrastructure/profilejson"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/fault"
 )
 
@@ -33,7 +34,12 @@ func New(client *http.Client, baseURL, model string, timeout time.Duration) *Cli
 }
 
 func (c *Client) Generate(ctx context.Context, input application.Context) (application.Draft, error) {
-	data, err := json.Marshal(input)
+	data, err := json.Marshal(struct {
+		Revision  int64
+		Outcome   profilejson.Outcome
+		Examples  []application.Example
+		Materials []application.MaterialChunk
+	}{input.Revision, profilejson.FromOutcome(input.Outcome), input.Examples, input.Materials})
 	if err != nil {
 		return application.Draft{}, err
 	}
@@ -93,7 +99,13 @@ func (c *Client) Generate(ctx context.Context, input application.Context) (appli
 	if err := json.Unmarshal(content, &completion); err != nil || len(completion.Choices) != 1 {
 		return application.Draft{}, fault.New(fault.Upstream, "TASK_GENERATION_FAILED", "Сервис генерации вернул некорректный ответ.")
 	}
-	var draft application.Draft
+	var draft struct {
+		Question         string   `json:"question"`
+		Options          []string `json:"options"`
+		VoiceInstruction string   `json:"voice_instruction"`
+		ReferenceAnswer  string   `json:"reference_answer"`
+		Criteria         string   `json:"criteria"`
+	}
 	decoder := json.NewDecoder(strings.NewReader(completion.Choices[0].Message.Content))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&draft); err != nil {
@@ -103,5 +115,5 @@ func (c *Client) Generate(ctx context.Context, input application.Context) (appli
 	if err := decoder.Decode(&trailing); err != io.EOF {
 		return application.Draft{}, fault.New(fault.Upstream, "TASK_GENERATION_FAILED", "Модель вернула некорректный формат задания.")
 	}
-	return draft, nil
+	return application.Draft{Question: draft.Question, Options: draft.Options, VoiceInstruction: draft.VoiceInstruction, ReferenceAnswer: draft.ReferenceAnswer, Criteria: draft.Criteria}, nil
 }

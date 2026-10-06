@@ -63,12 +63,17 @@ func (r *Repository) Profile(ctx context.Context, taskID string) (application.Ta
 	if err != nil {
 		return application.TaskProfile{}, err
 	}
-	var sections []application.CurriculumSection
-	if err := json.Unmarshal([]byte(row.CurriculumSections), &sections); err != nil {
+	var storedSections []struct {
+		Code                   string   `json:"code"`
+		Title                  string   `json:"title"`
+		CurriculumCompetencies []string `json:"curriculum_competencies"`
+	}
+	if err := json.Unmarshal([]byte(row.CurriculumSections), &storedSections); err != nil {
 		return application.TaskProfile{}, err
 	}
-	if sections == nil {
-		sections = []application.CurriculumSection{}
+	sections := make([]application.CurriculumSection, len(storedSections))
+	for i, section := range storedSections {
+		sections[i] = application.CurriculumSection{Code: section.Code, Title: section.Title, CurriculumCompetencies: section.CurriculumCompetencies}
 	}
 	return application.TaskProfile{
 		ID: row.TaskID, Question: row.Question, Origin: row.Origin, Options: options,

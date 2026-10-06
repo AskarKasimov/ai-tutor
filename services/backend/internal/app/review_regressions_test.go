@@ -149,3 +149,25 @@ func TestPairedImportPersistsPartialProfileAndSourceLinks(t *testing.T) {
 		t.Fatalf("profile: %s", response.Body.String())
 	}
 }
+
+func TestConflictingCurriculumTitleReturnsValidationAndPreservesMap(t *testing.T) {
+	f := newFixture(t)
+	admin := f.admin(t)
+	response := upload(f, "/admin/competency-map/import", "file", "map.csv", "text/csv", []byte("Ком,Сост,ОР,Задание 1,Критерии 1\nК,С,О,Прежний вопрос,К\n"), admin)
+	if response.Code != 200 {
+		t.Fatal(response.Body.String())
+	}
+	data := "Компетенция;Составляющая;Образовательный результат;Уровень темы;Что должно войти в тест;Таксономия;Уровень ALDs;Важность;Раздел РПД · компетенции РПД;ОС;Задание1\nК;С1;О1;Базовый;TRUE;Знание;Базовый;3;Р.1 Введение;;\n;С2;О2;Базовый;TRUE;Знание;Базовый;3;Р.1 Другая тема;;\n"
+	response = upload(f, "/admin/competency-map/import", "file", "map.csv", "text/csv", []byte(data), admin)
+	var failure struct {
+		Code    string                           `json:"code"`
+		Details []struct{ Path, Message string } `json:"details"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &failure); err != nil || response.Code != 422 || failure.Code != "CSV_INVALID" || len(failure.Details) != 1 || failure.Details[0].Path != "row:3" || !strings.Contains(failure.Details[0].Message, "Раздел РПД") {
+		t.Fatalf("conflict must identify cell: %d %s", response.Code, response.Body.String())
+	}
+	var question string
+	if err := f.pool.QueryRow(context.Background(), "SELECT question FROM tasks").Scan(&question); err != nil || question != "Прежний вопрос" {
+		t.Fatalf("old map changed: %q, err=%v", question, err)
+	}
+}

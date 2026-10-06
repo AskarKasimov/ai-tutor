@@ -41,8 +41,9 @@ func TestGenerateSendsOpenAIJSONModeRequestAndDecodesDraft(t *testing.T) {
 
 	client := New(server.Client(), server.URL+"/v1/", "qwen-test", time.Second)
 	input := application.Context{
-		Revision:  12,
-		Outcome:   application.Outcome{ID: "outcome-1", Name: "Выбор модели", CompetencyName: "Анализ данных"},
+		Revision: 12,
+		Outcome: application.Outcome{ID: "outcome-1", Name: "Выбор модели", CompetencyName: "Анализ данных",
+			CurriculumSections: []application.CurriculumSection{{Code: "Р.1", Title: "Введение", CurriculumCompetencies: []string{"ОПК-1"}}}},
 		Examples:  []application.Example{{ID: "task-1", Question: "Пример вопроса", Options: []string{"A", "B"}}},
 		Materials: []application.MaterialChunk{{ID: "chunk-1", Name: "Конспект", Content: "Материал темы"}},
 	}
@@ -62,6 +63,22 @@ func TestGenerateSendsOpenAIJSONModeRequestAndDecodesDraft(t *testing.T) {
 	}
 	if sent.Revision != input.Revision || sent.Outcome.ID != input.Outcome.ID || len(sent.Examples) != 1 || len(sent.Materials) != 1 {
 		t.Fatalf("request omitted generation context: %#v", sent)
+	}
+	var wireContext struct {
+		Outcome struct {
+			CurriculumSections []struct {
+				Code         string   `json:"code"`
+				Title        string   `json:"title"`
+				Competencies []string `json:"curriculum_competencies"`
+			}
+		}
+	}
+	if err := json.Unmarshal([]byte(request.Messages[1].Content), &wireContext); err != nil {
+		t.Fatal(err)
+	}
+	sections := wireContext.Outcome.CurriculumSections
+	if len(sections) != 1 || sections[0].Code != "Р.1" || sections[0].Title != "Введение" || len(sections[0].Competencies) != 1 || sections[0].Competencies[0] != "ОПК-1" {
+		t.Fatalf("request lost curriculum profile: %s", request.Messages[1].Content)
 	}
 	if draft.Question != "Почему?" || draft.VoiceInstruction != "Объясните выбор" || draft.ReferenceAnswer != "Потому что" || draft.Criteria != "" || draft.Options == nil {
 		t.Fatalf("decoded draft = %#v", draft)

@@ -13,7 +13,10 @@ import (
 
 const maxWorksheetRows = 10000
 const maxWorksheetColumns = 100
-const xlsxLineBreak = "\ue000"
+
+// Escape cell line breaks before the CSV bridge so worksheet row numbers stay physical.
+var escapeXLSXCell = strings.NewReplacer("\\", "\\\\", "\r", "\\r", "\n", "\\n")
+var restoreXLSXCell = strings.NewReplacer("\\\\", "\\", "\\r", "\r", "\\n", "\n")
 
 func parseXLSX(data []byte) (competencymap.Map, error) {
 	workbook, err := excelize.OpenReader(bytes.NewReader(data), excelize.Options{
@@ -61,7 +64,7 @@ func parseXLSX(data []byte) (competencymap.Map, error) {
 	if err := writer.Error(); err != nil {
 		return competencymap.Map{}, err
 	}
-	return Parse(encoded.Bytes())
+	return parseCSV(encoded.Bytes(), restoreXLSXCell.Replace)
 }
 
 func worksheetRows(workbook *excelize.File, sheet string) ([][]string, error) {
@@ -100,8 +103,7 @@ func worksheetRows(workbook *excelize.File, sheet string) ([][]string, error) {
 					rows[i][j] = "FALSE"
 				}
 			}
-			rows[i][j] = strings.ReplaceAll(rows[i][j], "\n", xlsxLineBreak)
-			rows[i][j] = strings.ReplaceAll(rows[i][j], "\r", xlsxLineBreak)
+			rows[i][j] = escapeXLSXCell.Replace(rows[i][j])
 		}
 	}
 	return rows, nil

@@ -46,7 +46,7 @@ func TestSearchParsesAllSupportedQueryFilters(t *testing.T) {
 	if repository.filter.OutcomeID != "o1" || repository.filter.CompetencyID != "c1" || repository.filter.ConstituentID != "s1" || repository.filter.TaxonomyCode != "analysis" || repository.filter.ALDLevelCode != "advanced" || repository.filter.TopicLevelCode != "intermediate" || repository.filter.Importance != 5 || repository.filter.IncludeInTest == nil || *repository.filter.IncludeInTest || repository.filter.Origin != "ai_generated" || repository.filter.SectionCode != "R.6" || repository.filter.CurriculumCompetencyCode != "ОПК-8" || repository.filter.Limit != 75 {
 		t.Fatalf("parsed search filters = %#v", repository.filter)
 	}
-	var responseItems []application.TaskSummary
+	var responseItems []TaskSummary
 	if err := json.Unmarshal(response.Body.Bytes(), &responseItems); err != nil {
 		t.Fatal(err)
 	}

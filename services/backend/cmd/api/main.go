@@ -85,7 +85,7 @@ func run(logger *zap.Logger) error {
 	if err != nil {
 		return err
 	}
-	server := &http.Server{Addr: cfg.ListenAddress, Handler: a.Handler(), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 30 * time.Second, WriteTimeout: cfg.ProcessingTimeout + 30*time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 32 * 1024}
+	server := &http.Server{Addr: cfg.ListenAddress, Handler: a.Handler(), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 30 * time.Second, WriteTimeout: cfg.HTTPWriteTimeout(), IdleTimeout: 60 * time.Second, MaxHeaderBytes: 32 * 1024}
 	stopped := make(chan error, 1)
 	go func() {
 		logger.Info("API listening", zap.String("address", cfg.ListenAddress))

@@ -26,6 +26,12 @@ type Config struct {
 	MaxUploadBytes    int64
 }
 
+// HTTPWriteTimeout allows the slowest model call to finish, with time for
+// request handling, persistence and writing the response.
+func (c Config) HTTPWriteTimeout() time.Duration {
+	return max(c.ProcessingTimeout, c.AssessmentTimeout, c.TaskgenTimeout) + 30*time.Second
+}
+
 func ConfigFromEnv() (Config, error) {
 	var c Config
 	mode, err := requiredEnv("BACKEND_API_MODE")

@@ -48,6 +48,7 @@ internal/
       application/                 генерация, проверка и импорт материалов
       infrastructure/postgres/     атомарное сохранение генераций/RAG-связей
       infrastructure/modelapi/     OpenAI-совместимая генерация задач
+      infrastructure/profilejson/  JSON-профиль модели и снимков генерации
       transport/http/              генерация задач и админский импорт материалов
   entities/
     user/                          пользователь и роли

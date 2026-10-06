@@ -11,6 +11,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/features/taskgen/application"
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/features/taskgen/infrastructure/profilejson"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/fault"
 	db "github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/postgres/sqlcgen"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/security"
@@ -49,12 +50,11 @@ func (r *Repository) Context(ctx context.Context, outcomeID string) (application
 		TopicLevelCode: profile.TopicLevelCode, Importance: profile.Importance,
 		EducationalContent: profile.EducationalContent,
 	}
-	if err := json.Unmarshal([]byte(profile.CurriculumSections), &outcome.CurriculumSections); err != nil {
+	var sections []profilejson.CurriculumSection
+	if err := json.Unmarshal([]byte(profile.CurriculumSections), &sections); err != nil {
 		return application.Context{}, err
 	}
-	if outcome.CurriculumSections == nil {
-		outcome.CurriculumSections = []application.CurriculumSection{}
-	}
+	outcome.CurriculumSections = profilejson.ToSections(sections)
 	context := application.Context{Revision: profile.Revision, Outcome: outcome, Examples: []application.Example{}, Materials: []application.MaterialChunk{}}
 	examples, err := r.queries.ListGenerationExamples(ctx, db.ListGenerationExamplesParams{OutcomeID: outcomeID, Limit: 6})
 	if err != nil {
@@ -107,9 +107,9 @@ func (r *Repository) Persist(ctx context.Context, snapshot application.Context, 
 		return application.Task{}, getErr
 	}
 	requestedProfile, err := json.Marshal(struct {
-		Outcome     application.Outcome `json:"outcome"`
+		Outcome     profilejson.Outcome `json:"outcome"`
 		RequestedBy string              `json:"requested_by"`
-	}{snapshot.Outcome, requestedBy})
+	}{profilejson.FromOutcome(snapshot.Outcome), requestedBy})
 	if err != nil {
 		return application.Task{}, err
 	}

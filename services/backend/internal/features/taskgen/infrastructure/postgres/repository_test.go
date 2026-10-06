@@ -60,8 +60,9 @@ func taskgenMap(name string) competencymap.Map {
 	return competencymap.Map{
 		SourceFormat: "paired", SourceHeaders: []string{"Компетенция", "Составляющая", "Образовательный результат"},
 		Competencies: []competencymap.Competency{{Key: "c", Name: "Компетенция " + name}},
-		Constituents: []competencymap.Constituent{{Key: "s", CompetencyKey: "c", Name: "Составляющая " + name}},
-		Outcomes:     []competencymap.Outcome{{Key: "o", ConstituentKey: "s", Name: "ОР " + name}},
+		Constituents: []competencymap.Constituent{{Key: "s", CompetencyKey: "c", Name: "Составляющая " + name,
+			Sections: []competencymap.CurriculumSection{{Code: "Р.1", Title: "Введение", CompetencyCodes: []string{"ОПК-1"}}}}},
+		Outcomes: []competencymap.Outcome{{Key: "o", ConstituentKey: "s", Name: "ОР " + name}},
 	}
 }
 
@@ -84,6 +85,10 @@ func TestPersistGeneratedTaskAndReimportMaterial(t *testing.T) {
 	if len(snapshot.Materials) != 1 {
 		t.Fatalf("retrieved material context = %#v", snapshot.Materials)
 	}
+	sections := snapshot.Outcome.CurriculumSections
+	if len(sections) != 1 || len(sections[0].CurriculumCompetencies) != 1 || sections[0].CurriculumCompetencies[0] != "ОПК-1" {
+		t.Fatalf("retrieved curriculum context = %#v", sections)
+	}
 	if err := repository.ImportMaterial(ctx, "notes", []string{outcomeID}, []string{"Обновлённый материал по теме ОР один"}, 13); err != nil {
 		t.Fatalf("reimport same material name: %v", err)
 	}
@@ -95,6 +100,10 @@ func TestPersistGeneratedTaskAndReimportMaterial(t *testing.T) {
 	}
 	if task.Origin != "ai_generated" || task.ID == "" {
 		t.Fatalf("generated task = %#v", task)
+	}
+	var curriculumCode string
+	if err := pool.QueryRow(ctx, `SELECT requested_profile->'outcome'->'CurriculumSections'->0->'curriculum_competencies'->>0 FROM generation_runs`).Scan(&curriculumCode); err != nil || curriculumCode != "ОПК-1" {
+		t.Fatalf("stored curriculum profile = %q, err=%v", curriculumCode, err)
 	}
 	var count int
 	if err := pool.QueryRow(ctx, `SELECT count(*) FROM material_chunks WHERE material_name='notes'`).Scan(&count); err != nil || count != 2 {

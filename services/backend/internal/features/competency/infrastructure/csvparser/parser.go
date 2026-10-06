@@ -70,10 +70,14 @@ func explanationRow(row []string, columns map[string]int) bool {
 }
 
 func Parse(data []byte) (competencymap.Map, error) {
-	var result competencymap.Map
 	if bytes.HasPrefix(data, []byte("PK\x03\x04")) {
 		return parseXLSX(data)
 	}
+	return parseCSV(data, func(cell string) string { return strings.ReplaceAll(cell, "\x00", "\r") })
+}
+
+func parseCSV(data []byte, restoreCell func(string) string) (competencymap.Map, error) {
+	var result competencymap.Map
 	if !utf8.Valid(data) || bytes.IndexByte(data, 0) >= 0 {
 		return result, csvError(1, "CSV", "Ожидается UTF-8 без NUL.")
 	}
@@ -106,6 +110,9 @@ func Parse(data []byte) (competencymap.Map, error) {
 			if err != nil {
 				break
 			}
+			for i := range row {
+				row[i] = restoreCell(row[i])
+			}
 			if blankRow(row) {
 				continue
 			}
@@ -134,7 +141,7 @@ func Parse(data []byte) (competencymap.Map, error) {
 		return result, csvError(1, "CSV", "Первая непустая строка должна содержать Ком/Сост/ОР или Компетенция/Составляющая/Образовательный результат.")
 	}
 	if format == "ml-map" {
-		return parseMLMap(reader, headers, headerLine)
+		return parseMLMap(reader, headers, headerLine, restoreCell)
 	}
 	result.SourceFormat = format
 	result.SourceHeaders = append([]string(nil), headers...)
@@ -154,8 +161,14 @@ func Parse(data []byte) (competencymap.Map, error) {
 			}
 			firstTask = min(firstTask, i)
 			if match[1] == "Задание" {
+				if _, exists := questions[n]; exists {
+					return result, csvError(headerLine, h, "Повторная колонка задания с тем же номером.")
+				}
 				questions[n] = i
 			} else {
+				if _, exists := criteria[n]; exists {
+					return result, csvError(headerLine, h, "Повторная колонка критериев с тем же номером.")
+				}
 				criteria[n] = i
 			}
 		} else if strings.HasPrefix(h, "Задание") || strings.HasPrefix(h, "Критерии") {
@@ -207,8 +220,7 @@ func Parse(data []byte) (competencymap.Map, error) {
 		}
 		line, _ := reader.FieldPos(0)
 		for i := range row {
-			row[i] = strings.ReplaceAll(row[i], "\x00", "\r")
-			row[i] = strings.ReplaceAll(row[i], xlsxLineBreak, "\n")
+			row[i] = restoreCell(row[i])
 		}
 		sourceIndex := len(result.SourceRows) + 1
 		result.SourceRows = append(result.SourceRows, sourceRow(row, line, sourceIndex))

@@ -18,7 +18,7 @@ var rpdCompetency = regexp.MustCompile(`(?:ОПК|ПК)-[0-9]+`)
 // parseMLMap accepts the original "Введение в ML" spreadsheet export. Its
 // task columns contain both complete assignments and fragments of assignments.
 // Every source cell is archived; only self-contained assignments become tasks.
-func parseMLMap(reader *csv.Reader, headers []string, headerLine int) (competencymap.Map, error) {
+func parseMLMap(reader *csv.Reader, headers []string, headerLine int, restoreCell func(string) string) (competencymap.Map, error) {
 	result := competencymap.Map{SourceFormat: "ml-map", SourceHeaders: append([]string(nil), headers...)}
 	columns := make(map[string]int, len(headers))
 	taskColumns := []int{}
@@ -58,6 +58,7 @@ func parseMLMap(reader *csv.Reader, headers []string, headerLine int) (competenc
 	seenConstituents := map[string]bool{}
 	constituentIndexes := map[string]int{}
 	seenOutcomes := map[string]int{}
+	sectionTitles := map[string]string{}
 	competency, constituent := "", ""
 	topicLevel := ""
 	firstData := true
@@ -71,8 +72,7 @@ func parseMLMap(reader *csv.Reader, headers []string, headerLine int) (competenc
 		}
 		line, _ := reader.FieldPos(0)
 		for i := range row {
-			row[i] = strings.ReplaceAll(row[i], "\x00", "\r")
-			row[i] = strings.ReplaceAll(row[i], xlsxLineBreak, "\n")
+			row[i] = restoreCell(row[i])
 		}
 		sourceIndex := len(result.SourceRows) + 1
 		result.SourceRows = append(result.SourceRows, sourceRow(row, line, sourceIndex))
@@ -150,6 +150,10 @@ func parseMLMap(reader *csv.Reader, headers []string, headerLine int) (competenc
 			if !ok {
 				return result, csvError(line, "Раздел РПД · компетенции РПД", "Ожидается раздел РПД и список компетенций через точку с запятой.")
 			}
+			if title, exists := sectionTitles[section.Code]; exists && title != section.Title {
+				return result, csvError(line, "Раздел РПД · компетенции РПД", "Для одного кода раздела указаны разные названия.")
+			}
+			sectionTitles[section.Code] = section.Title
 			if !mergeCurriculumSection(&result.Constituents[constituentIndex], section) {
 				return result, csvError(line, "Раздел РПД · компетенции РПД", "Для одной составляющей раздел указан с разными наборами компетенций.")
 			}

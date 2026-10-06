@@ -21,9 +21,9 @@ type Outcome struct {
 }
 
 type CurriculumSection struct {
-	Code                   string   `json:"code"`
-	Title                  string   `json:"title"`
-	CurriculumCompetencies []string `json:"curriculum_competencies"`
+	Code                   string
+	Title                  string
+	CurriculumCompetencies []string
 }
 
 type Example struct {
@@ -44,11 +44,11 @@ type Context struct {
 }
 
 type Draft struct {
-	Question         string   `json:"question"`
-	Options          []string `json:"options"`
-	VoiceInstruction string   `json:"voice_instruction"`
-	ReferenceAnswer  string   `json:"reference_answer"`
-	Criteria         string   `json:"criteria"`
+	Question         string
+	Options          []string
+	VoiceInstruction string
+	ReferenceAnswer  string
+	Criteria         string
 }
 
 type Generator interface {

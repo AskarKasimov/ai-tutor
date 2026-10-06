@@ -33,7 +33,7 @@ func New(service *application.Service) *Handler { return &Handler{service: servi
 // @Param curriculum_competency query string false "Код компетенции РПД"
 // @Param origin query string false "authored или ai_generated"
 // @Param limit query int false "Максимум 100"
-// @Success 200 {array} application.TaskSummary
+// @Success 200 {array} TaskSummary
 // @Failure 401 {object} fault.Error
 // @Router /tasks [get]
 func (h *Handler) Search(w http.ResponseWriter, r *http.Request) {
@@ -93,7 +93,11 @@ func (h *Handler) Search(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(r.Context(), w, err)
 		return
 	}
-	httpx.JSON(w, http.StatusOK, result)
+	items := make([]TaskSummary, len(result))
+	for i, task := range result {
+		items[i] = taskSummaryDTO(task)
+	}
+	httpx.JSON(w, http.StatusOK, items)
 }
 
 // Profile returns task and competency mapping without its grading secrets.
@@ -103,7 +107,7 @@ func (h *Handler) Search(w http.ResponseWriter, r *http.Request) {
 // @Security accessCookie
 // @Produce json
 // @Param id path string true "ID задания"
-// @Success 200 {object} application.TaskProfile
+// @Success 200 {object} TaskProfile
 // @Failure 401 {object} fault.Error
 // @Failure 404 {object} fault.Error
 // @Router /tasks/{id} [get]
@@ -113,5 +117,5 @@ func (h *Handler) Profile(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(r.Context(), w, err)
 		return
 	}
-	httpx.JSON(w, http.StatusOK, profile)
+	httpx.JSON(w, http.StatusOK, taskProfileDTO(profile))
 }

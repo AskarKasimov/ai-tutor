@@ -10,147 +10,6 @@ components:
         - status
       type: object
       additionalProperties: false
-    application.TaskProfile:
-      properties:
-        ald_level_code:
-          type:
-            - string
-            - "null"
-        competency_id:
-          type: string
-        competency_name:
-          type: string
-        constituent_id:
-          type: string
-        constituent_name:
-          type: string
-        curriculum_sections:
-          items:
-            $ref: '#/components/schemas/internal_features_taskbank_application.CurriculumSection'
-          type: array
-          uniqueItems: false
-        educational_content:
-          type:
-            - string
-            - "null"
-        id:
-          type: string
-        importance:
-          type:
-            - integer
-            - "null"
-        include_in_test:
-          type:
-            - boolean
-            - "null"
-        options:
-          items:
-            type: string
-          type: array
-          uniqueItems: false
-        origin:
-          type: string
-        outcome_id:
-          type: string
-        outcome_name:
-          type: string
-        question:
-          type: string
-        taxonomy_code:
-          type:
-            - string
-            - "null"
-        topic_level_code:
-          type:
-            - string
-            - "null"
-        voice_instruction:
-          type:
-            - string
-            - "null"
-      required:
-        - ald_level_code
-        - competency_id
-        - competency_name
-        - constituent_id
-        - constituent_name
-        - curriculum_sections
-        - educational_content
-        - id
-        - importance
-        - include_in_test
-        - options
-        - origin
-        - outcome_id
-        - outcome_name
-        - question
-        - taxonomy_code
-        - topic_level_code
-        - voice_instruction
-      type: object
-      additionalProperties: false
-    application.TaskSummary:
-      properties:
-        ald_level_code:
-          type:
-            - string
-            - "null"
-        competency_name:
-          type: string
-        constituent_name:
-          type: string
-        id:
-          type: string
-        importance:
-          type:
-            - integer
-            - "null"
-        include_in_test:
-          type:
-            - boolean
-            - "null"
-        options:
-          items:
-            type: string
-          type: array
-          uniqueItems: false
-        origin:
-          type: string
-        outcome_id:
-          type: string
-        outcome_name:
-          type: string
-        question:
-          type: string
-        taxonomy_code:
-          type:
-            - string
-            - "null"
-        topic_level_code:
-          type:
-            - string
-            - "null"
-        voice_instruction:
-          type:
-            - string
-            - "null"
-      required:
-        - ald_level_code
-        - competency_name
-        - constituent_name
-        - id
-        - importance
-        - include_in_test
-        - options
-        - origin
-        - outcome_id
-        - outcome_name
-        - question
-        - taxonomy_code
-        - topic_level_code
-        - voice_instruction
-      type: object
-      additionalProperties: false
     assessmenthttp.EvaluateRequest:
       properties:
         correct_answer:
@@ -346,7 +205,7 @@ components:
         - message
       type: object
       additionalProperties: false
-    internal_features_taskbank_application.CurriculumSection:
+    taskbankhttp.CurriculumSection:
       properties:
         code:
           type: string
@@ -361,6 +220,147 @@ components:
         - code
         - curriculum_competencies
         - title
+      type: object
+      additionalProperties: false
+    taskbankhttp.TaskProfile:
+      properties:
+        ald_level_code:
+          type:
+            - string
+            - "null"
+        competency_id:
+          type: string
+        competency_name:
+          type: string
+        constituent_id:
+          type: string
+        constituent_name:
+          type: string
+        curriculum_sections:
+          items:
+            $ref: '#/components/schemas/taskbankhttp.CurriculumSection'
+          type: array
+          uniqueItems: false
+        educational_content:
+          type:
+            - string
+            - "null"
+        id:
+          type: string
+        importance:
+          type:
+            - integer
+            - "null"
+        include_in_test:
+          type:
+            - boolean
+            - "null"
+        options:
+          items:
+            type: string
+          type: array
+          uniqueItems: false
+        origin:
+          type: string
+        outcome_id:
+          type: string
+        outcome_name:
+          type: string
+        question:
+          type: string
+        taxonomy_code:
+          type:
+            - string
+            - "null"
+        topic_level_code:
+          type:
+            - string
+            - "null"
+        voice_instruction:
+          type:
+            - string
+            - "null"
+      required:
+        - ald_level_code
+        - competency_id
+        - competency_name
+        - constituent_id
+        - constituent_name
+        - curriculum_sections
+        - educational_content
+        - id
+        - importance
+        - include_in_test
+        - options
+        - origin
+        - outcome_id
+        - outcome_name
+        - question
+        - taxonomy_code
+        - topic_level_code
+        - voice_instruction
+      type: object
+      additionalProperties: false
+    taskbankhttp.TaskSummary:
+      properties:
+        ald_level_code:
+          type:
+            - string
+            - "null"
+        competency_name:
+          type: string
+        constituent_name:
+          type: string
+        id:
+          type: string
+        importance:
+          type:
+            - integer
+            - "null"
+        include_in_test:
+          type:
+            - boolean
+            - "null"
+        options:
+          items:
+            type: string
+          type: array
+          uniqueItems: false
+        origin:
+          type: string
+        outcome_id:
+          type: string
+        outcome_name:
+          type: string
+        question:
+          type: string
+        taxonomy_code:
+          type:
+            - string
+            - "null"
+        topic_level_code:
+          type:
+            - string
+            - "null"
+        voice_instruction:
+          type:
+            - string
+            - "null"
+      required:
+        - ald_level_code
+        - competency_name
+        - constituent_name
+        - id
+        - importance
+        - include_in_test
+        - options
+        - origin
+        - outcome_id
+        - outcome_name
+        - question
+        - taxonomy_code
+        - topic_level_code
+        - voice_instruction
       type: object
       additionalProperties: false
     taskgenhttp.GenerateRequest:
@@ -899,7 +899,7 @@ paths:
             application/json:
               schema:
                 items:
-                  $ref: '#/components/schemas/application.TaskSummary'
+                  $ref: '#/components/schemas/taskbankhttp.TaskSummary'
                 type: array
           description: OK
         "401":
@@ -983,7 +983,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/application.TaskProfile'
+                $ref: '#/components/schemas/taskbankhttp.TaskProfile'
           description: OK
         "401":
           content:

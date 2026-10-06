@@ -11,4 +11,5 @@ coverage*
 cookies.txt
 *-cookies.txt
 docs/superpowers/
+/services/backend/internal/features/variantgen/PLANS.md
 services/backend/.air/

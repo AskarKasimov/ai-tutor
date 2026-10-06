@@ -35,6 +35,8 @@ func New(service *application.Service) *Handler { return &Handler{service: servi
 // @Param limit query int false "Максимум 100"
 // @Success 200 {array} TaskSummary
 // @Failure 401 {object} fault.Error
+// @Failure 422 {object} fault.Error
+// @Failure 503 {object} fault.Error
 // @Router /tasks [get]
 func (h *Handler) Search(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query()
@@ -110,6 +112,7 @@ func (h *Handler) Search(w http.ResponseWriter, r *http.Request) {
 // @Success 200 {object} TaskProfile
 // @Failure 401 {object} fault.Error
 // @Failure 404 {object} fault.Error
+// @Failure 503 {object} fault.Error
 // @Router /tasks/{id} [get]
 func (h *Handler) Profile(w http.ResponseWriter, r *http.Request) {
 	profile, err := h.service.Profile(r.Context(), r.PathValue("id"))

@@ -564,12 +564,24 @@ paths:
               schema:
                 $ref: '#/components/schemas/fault.Error'
           description: Forbidden
+        "413":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Request Entity Too Large
         "422":
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/fault.Error'
           description: Unprocessable Entity
+        "503":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Service Unavailable
       security:
         - accessCookie: []
       summary: Загрузить учебный материал в контекст RAG
@@ -908,6 +920,18 @@ paths:
               schema:
                 $ref: '#/components/schemas/fault.Error'
           description: Unauthorized
+        "422":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unprocessable Entity
+        "503":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Service Unavailable
       security:
         - accessCookie: []
       summary: Найти задания по свойствам карты
@@ -957,12 +981,30 @@ paths:
               schema:
                 $ref: '#/components/schemas/fault.Error'
           description: Conflict
+        "413":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Request Entity Too Large
+        "422":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unprocessable Entity
         "502":
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/fault.Error'
           description: Bad Gateway
+        "503":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Service Unavailable
       security:
         - accessCookie: []
       summary: Сгенерировать аналог задания
@@ -997,6 +1039,12 @@ paths:
               schema:
                 $ref: '#/components/schemas/fault.Error'
           description: Not Found
+        "503":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Service Unavailable
       security:
         - accessCookie: []
       summary: Получить профиль задания

@@ -3,7 +3,7 @@ package application
 import (
 	"context"
 	"strings"
-	"unicode/utf8"
+	"unicode"
 
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/fault"
 )
@@ -28,10 +28,10 @@ func NewMaterialService(repository MaterialRepository, now func() int64) *Materi
 }
 
 func (s *MaterialService) Import(ctx context.Context, input MaterialInput) error {
-	if strings.TrimSpace(input.Name) == "" || utf8.RuneCountInString(input.Name) > 200 {
+	if !validText(input.Name, 200) {
 		return fault.Validation("name", "Название материала должно содержать 1–200 символов.")
 	}
-	if strings.TrimSpace(input.Content) == "" || !utf8.ValidString(input.Content) || utf8.RuneCountInString(input.Content) > 100000 {
+	if !validText(input.Content, 100000) {
 		return fault.Validation("content", "Текст материала должен содержать до 100 000 символов.")
 	}
 	if len(input.OutcomeIDs) == 0 || len(input.OutcomeIDs) > 100 {
@@ -41,7 +41,7 @@ func (s *MaterialService) Import(ctx context.Context, input MaterialInput) error
 	outcomeIDs := make([]string, 0, len(input.OutcomeIDs))
 	for _, id := range input.OutcomeIDs {
 		id = strings.TrimSpace(id)
-		if id == "" || len(id) > 128 {
+		if !validText(id, 128) || len(id) > 128 {
 			return fault.Validation("outcome_ids", "Идентификатор образовательного результата некорректен.")
 		}
 		if _, exists := seen[id]; exists {
@@ -54,21 +54,34 @@ func (s *MaterialService) Import(ctx context.Context, input MaterialInput) error
 }
 
 func splitChunks(text string, maxRunes int) []string {
-	words := strings.Fields(text)
+	runes := []rune(text)
 	chunks := []string{}
-	for _, word := range words {
-		wordRunes := []rune(word)
-		for len(wordRunes) > maxRunes {
-			chunks = append(chunks, string(wordRunes[:maxRunes]))
-			wordRunes = wordRunes[maxRunes:]
+	leadingWhitespace := ""
+	for start := 0; start < len(runes); {
+		end := min(start+maxRunes, len(runes))
+		if end < len(runes) {
+			// Prefer a word boundary, keeping the separator in its original position.
+			for i := end; i > start; i-- {
+				if unicode.IsSpace(runes[i-1]) {
+					end = i
+					break
+				}
+			}
 		}
-		fragment := string(wordRunes)
-		if len(chunks) == 0 || len([]rune(chunks[len(chunks)-1]))+1+len(wordRunes) > maxRunes {
-			chunks = append(chunks, fragment)
-		} else {
-			last := len(chunks) - 1
-			chunks[last] += " " + fragment
+		chunk := string(runes[start:end])
+		start = end
+		if strings.TrimSpace(chunk) == "" {
+			// Keep whitespace with adjacent content instead of persisting an empty chunk.
+			// Long whitespace runs can make that chunk exceed the target size.
+			if len(chunks) == 0 {
+				leadingWhitespace += chunk
+			} else {
+				chunks[len(chunks)-1] += chunk
+			}
+			continue
 		}
+		chunks = append(chunks, leadingWhitespace+chunk)
+		leadingWhitespace = ""
 	}
 	return chunks
 }

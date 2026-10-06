@@ -72,6 +72,11 @@ type Constituent struct {
 	TopicLevelID *string
 }
 
+type ConstituentCurriculumProfile struct {
+	ConstituentID      string
+	CurriculumSections string
+}
+
 type ConstituentSection struct {
 	ID            string
 	Revision      int64

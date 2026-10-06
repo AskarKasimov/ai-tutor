@@ -44,7 +44,10 @@ type GeneratedTask struct {
 // @Failure 401 {object} fault.Error
 // @Failure 404 {object} fault.Error
 // @Failure 409 {object} fault.Error
+// @Failure 413 {object} fault.Error
+// @Failure 422 {object} fault.Error
 // @Failure 502 {object} fault.Error
+// @Failure 503 {object} fault.Error
 // @Router /tasks/generate [post]
 func (h *Handlers) Generate(w http.ResponseWriter, r *http.Request) {
 	principal, ok := httpx.Principal[user.User](r)
@@ -90,7 +93,9 @@ type ImportMaterialRequest struct {
 // @Success 201 {object} map[string]string
 // @Failure 401 {object} fault.Error
 // @Failure 403 {object} fault.Error
+// @Failure 413 {object} fault.Error
 // @Failure 422 {object} fault.Error
+// @Failure 503 {object} fault.Error
 // @Router /admin/materials [post]
 func (h *Handlers) ImportMaterial(w http.ResponseWriter, r *http.Request) {
 	principal, ok := httpx.Principal[user.User](r)

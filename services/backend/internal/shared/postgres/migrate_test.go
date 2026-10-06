@@ -187,6 +187,10 @@ func TestInitialSchemaAllowsPartialOutcomeProfiles(t *testing.T) {
 	if err := pool.QueryRow(ctx, "SELECT include_in_test,importance FROM outcomes WHERE id='keep-o'").Scan(&included, &importance); err != nil || !included || importance != 3 {
 		t.Fatalf("existing profile changed: %v %d %v", included, importance, err)
 	}
+	var curriculum string
+	if err := pool.QueryRow(ctx, "SELECT curriculum_sections FROM constituent_curriculum_profiles WHERE constituent_id='keep-s'").Scan(&curriculum); err != nil || curriculum != "[]" {
+		t.Fatalf("initial curriculum profile: profile=%q error=%v", curriculum, err)
+	}
 	var count int
 	if err := pool.QueryRow(ctx, "SELECT count(*) FROM users WHERE id='keep-user'").Scan(&count); err != nil || count != 1 {
 		t.Fatalf("user lost: %d %v", count, err)

@@ -295,3 +295,22 @@ CREATE TABLE assignment_responses (
     created_at bigint NOT NULL
 );
 CREATE INDEX assignment_responses_by_assignment ON assignment_responses(assignment_id, created_at);
+
+CREATE VIEW constituent_curriculum_profiles AS
+SELECT constituent.id AS constituent_id,
+    COALESCE((
+        SELECT jsonb_agg(jsonb_build_object(
+            'code', section.code,
+            'title', section.title,
+            'curriculum_competencies', COALESCE((
+                SELECT jsonb_agg(curriculum.code ORDER BY curriculum.code)
+                FROM constituent_section_competencies AS mapped
+                JOIN curriculum_competencies AS curriculum ON curriculum.id = mapped.curriculum_competency_id
+                WHERE mapped.constituent_section_id = link.id
+            ), '[]'::jsonb)
+        ) ORDER BY section.code)
+        FROM constituent_sections AS link
+        JOIN curriculum_sections AS section ON section.id = link.section_id
+        WHERE link.constituent_id = constituent.id
+    ), '[]'::jsonb)::text AS curriculum_sections
+FROM constituents AS constituent;

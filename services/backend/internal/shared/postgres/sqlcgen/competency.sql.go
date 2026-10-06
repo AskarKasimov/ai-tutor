@@ -167,23 +167,11 @@ SELECT state.revision, outcome.id, outcome.name, outcome.include_in_test, taxono
        ald.code AS ald_level_code, outcome.importance, outcome.educational_content,
        constituent.name AS constituent_name, topic.code AS topic_level_code,
        competency.name AS competency_name,
-       COALESCE((
-           SELECT jsonb_agg(jsonb_build_object(
-               'code', section.code, 'title', section.title,
-               'curriculum_competencies', COALESCE((
-                   SELECT jsonb_agg(curriculum.code ORDER BY curriculum.code)
-                   FROM constituent_section_competencies AS mapped
-                   JOIN curriculum_competencies AS curriculum ON curriculum.id = mapped.curriculum_competency_id
-                   WHERE mapped.constituent_section_id = link.id
-               ), '[]'::jsonb)
-           ) ORDER BY section.code)
-           FROM constituent_sections AS link
-           JOIN curriculum_sections AS section ON section.id = link.section_id
-           WHERE link.constituent_id = constituent.id
-       ), '[]'::jsonb)::text AS curriculum_sections
+       COALESCE(curriculum_profile.curriculum_sections, '[]')::text AS curriculum_sections
 FROM outcomes AS outcome
 JOIN competency_map_state AS state ON state.singleton = true
 JOIN constituents AS constituent ON constituent.id = outcome.constituent_id
+JOIN constituent_curriculum_profiles AS curriculum_profile ON curriculum_profile.constituent_id = constituent.id
 JOIN competencies AS competency ON competency.id = constituent.competency_id
 LEFT JOIN taxonomies AS taxonomy ON taxonomy.id = outcome.taxonomy_id
 LEFT JOIN ald_levels AS ald ON ald.id = outcome.ald_level_id
@@ -264,24 +252,11 @@ SELECT
     constituent.id AS constituent_id, constituent.name AS constituent_name,
     topic.code AS topic_level_code,
     competency.id AS competency_id, competency.name AS competency_name,
-    COALESCE((
-        SELECT jsonb_agg(jsonb_build_object(
-            'code', section.code,
-            'title', section.title,
-            'curriculum_competencies', COALESCE((
-                SELECT jsonb_agg(curriculum.code ORDER BY curriculum.code)
-                FROM constituent_section_competencies AS mapped
-                JOIN curriculum_competencies AS curriculum ON curriculum.id = mapped.curriculum_competency_id
-                WHERE mapped.constituent_section_id = link.id
-            ), '[]'::jsonb)
-        ) ORDER BY section.code)
-        FROM constituent_sections AS link
-        JOIN curriculum_sections AS section ON section.id = link.section_id
-        WHERE link.constituent_id = constituent.id
-    ), '[]'::jsonb)::text AS curriculum_sections
+    COALESCE(curriculum_profile.curriculum_sections, '[]')::text AS curriculum_sections
 FROM tasks AS task
 JOIN outcomes AS outcome ON outcome.id = task.outcome_id
 JOIN constituents AS constituent ON constituent.id = outcome.constituent_id
+JOIN constituent_curriculum_profiles AS curriculum_profile ON curriculum_profile.constituent_id = constituent.id
 JOIN competencies AS competency ON competency.id = constituent.competency_id
 LEFT JOIN taxonomies AS taxonomy ON taxonomy.id = outcome.taxonomy_id
 LEFT JOIN ald_levels AS ald ON ald.id = outcome.ald_level_id

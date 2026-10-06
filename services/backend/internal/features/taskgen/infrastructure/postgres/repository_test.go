@@ -4,13 +4,16 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"os"
+	"reflect"
 	"testing"
 
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/competencymap"
 	competencypostgres "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/competency/infrastructure/postgres"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/features/taskgen/application"
 	sharedpostgres "github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/postgres"
+	db "github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/postgres/sqlcgen"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -111,5 +114,83 @@ func TestPersistGeneratedTaskAndReimportMaterial(t *testing.T) {
 	}
 	if err := pool.QueryRow(ctx, `SELECT count(*) FROM generation_run_chunks`).Scan(&count); err != nil || count != 1 {
 		t.Fatalf("generation context chunk count=%d err=%v", count, err)
+	}
+}
+
+func TestTaskAndGenerationCurriculumProfilesRemainConsistent(t *testing.T) {
+	repository, maps, pool, ctx, userID := setupTaskgenRepository(t)
+	data := competencymap.Map{
+		SourceFormat: "paired", SourceHeaders: []string{"Ком", "Сост", "ОР"},
+		Competencies: []competencymap.Competency{{Key: "c", Name: "Компетенция"}},
+		Constituents: []competencymap.Constituent{
+			{Key: "s1", CompetencyKey: "c", Name: "Составляющая 1", Sections: []competencymap.CurriculumSection{
+				{Code: "Р.2", Title: "Практика", CompetencyCodes: []string{}},
+				{Code: "Р.1", Title: "Введение", CompetencyCodes: []string{"ПК-2", "ОПК-1"}},
+			}},
+			{Key: "s2", CompetencyKey: "c", Name: "Составляющая 2", Sections: []competencymap.CurriculumSection{
+				{Code: "Р.1", Title: "Введение", CompetencyCodes: []string{"ОПК-3"}},
+			}},
+			{Key: "s3", CompetencyKey: "c", Name: "Составляющая 3"},
+		},
+		Outcomes: []competencymap.Outcome{
+			{Key: "o1", ConstituentKey: "s1", Name: "ОР 1"},
+			{Key: "o2", ConstituentKey: "s2", Name: "ОР 2"},
+			{Key: "o3", ConstituentKey: "s3", Name: "ОР 3"},
+		},
+	}
+	if _, err := maps.Replace(ctx, userID, data, 10); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name string
+		want []application.CurriculumSection
+	}{
+		{"ОР 1", []application.CurriculumSection{
+			{Code: "Р.1", Title: "Введение", CurriculumCompetencies: []string{"ОПК-1", "ПК-2"}},
+			{Code: "Р.2", Title: "Практика", CurriculumCompetencies: []string{}},
+		}},
+		{"ОР 2", []application.CurriculumSection{
+			{Code: "Р.1", Title: "Введение", CurriculumCompetencies: []string{"ОПК-3"}},
+		}},
+		{"ОР 3", []application.CurriculumSection{}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var outcomeID string
+			if err := pool.QueryRow(ctx, "SELECT id FROM outcomes WHERE name=$1", tc.name).Scan(&outcomeID); err != nil {
+				t.Fatal(err)
+			}
+			snapshot, err := repository.Context(ctx, outcomeID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(snapshot.Outcome.CurriculumSections, tc.want) {
+				t.Fatalf("generation profile: got=%#v want=%#v", snapshot.Outcome.CurriculumSections, tc.want)
+			}
+			task, err := repository.Persist(ctx, snapshot, "profile-test", userID, "model", application.Draft{
+				Question: "Вопрос", Options: []string{}, VoiceInstruction: "Ответьте", ReferenceAnswer: "Ответ",
+			}, 11)
+			if err != nil {
+				t.Fatal(err)
+			}
+			profile, err := db.New(pool).GetTaskProfile(ctx, task.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var sections []struct {
+				Code         string   `json:"code"`
+				Title        string   `json:"title"`
+				Competencies []string `json:"curriculum_competencies"`
+			}
+			if err := json.Unmarshal([]byte(profile.CurriculumSections), &sections); err != nil {
+				t.Fatal(err)
+			}
+			got := make([]application.CurriculumSection, len(sections))
+			for i, section := range sections {
+				got[i] = application.CurriculumSection{Code: section.Code, Title: section.Title, CurriculumCompetencies: section.Competencies}
+			}
+			if !reflect.DeepEqual(got, tc.want) {
+				t.Fatalf("catalog profile: got=%#v want=%#v", got, tc.want)
+			}
+		})
 	}
 }

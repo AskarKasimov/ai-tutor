@@ -171,3 +171,73 @@ func TestConflictingCurriculumTitleReturnsValidationAndPreservesMap(t *testing.T
 		t.Fatalf("old map changed: %q, err=%v", question, err)
 	}
 }
+
+func TestMaterialHTTPRejectsNULBeforePersistence(t *testing.T) {
+	f := newFixture(t)
+	admin := f.admin(t)
+	response := upload(f, "/admin/competency-map/import", "file", "map.csv", "text/csv", []byte("Ком,Сост,ОР,Задание 1,Критерии 1\nК,С,О,В,К\n"), admin)
+	if response.Code != 200 {
+		t.Fatal(response.Body.String())
+	}
+	var outcomeID string
+	if err := f.pool.QueryRow(context.Background(), "SELECT id FROM outcomes").Scan(&outcomeID); err != nil {
+		t.Fatal(err)
+	}
+	for _, field := range []string{"name", "content", "outcome_ids"} {
+		t.Run(field, func(t *testing.T) {
+			input := map[string]any{"name": "notes", "content": "Текст", "outcome_ids": []string{outcomeID}}
+			if field == "outcome_ids" {
+				input[field] = []string{outcomeID + "\x00"}
+			} else {
+				input[field] = "Текст\x00"
+			}
+			body, err := json.Marshal(input)
+			if err != nil {
+				t.Fatal(err)
+			}
+			response := f.request("POST", "/admin/materials", string(body), admin)
+			var failure struct {
+				Code    string `json:"code"`
+				Details []struct {
+					Path string `json:"path"`
+				} `json:"details"`
+			}
+			if err := json.Unmarshal(response.Body.Bytes(), &failure); err != nil || response.Code != 422 || failure.Code != "VALIDATION_ERROR" || len(failure.Details) != 1 || failure.Details[0].Path != field {
+				t.Fatalf("invalid %s: %d %s", field, response.Code, response.Body.String())
+			}
+		})
+	}
+	var count int
+	if err := f.pool.QueryRow(context.Background(), "SELECT count(*) FROM material_chunks").Scan(&count); err != nil || count != 0 {
+		t.Fatalf("invalid material persisted: count=%d error=%v", count, err)
+	}
+}
+
+func TestMaterialHTTPPreservesCodeFormatting(t *testing.T) {
+	f := newFixture(t)
+	admin := f.admin(t)
+	response := upload(f, "/admin/competency-map/import", "file", "map.csv", "text/csv", []byte("Ком,Сост,ОР,Задание 1,Критерии 1\nК,С,О,В,К\n"), admin)
+	if response.Code != 200 {
+		t.Fatal(response.Body.String())
+	}
+	var outcomeID string
+	if err := f.pool.QueryRow(context.Background(), "SELECT id FROM outcomes").Scan(&outcomeID); err != nil {
+		t.Fatal(err)
+	}
+	content := "Пример Python:\r\n\r\nif x > 0:\n    print(x)\nelse:\n\tprint(-x)\n"
+	body, err := json.Marshal(map[string]any{"name": "Python", "content": content, "outcome_ids": []string{outcomeID}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	response = f.request("POST", "/admin/materials", string(body), admin)
+	if response.Code != 201 {
+		t.Fatalf("material import: %d %s", response.Code, response.Body.String())
+	}
+	var stored string
+	if err := f.pool.QueryRow(context.Background(), "SELECT content FROM material_chunks WHERE material_name='Python'").Scan(&stored); err != nil {
+		t.Fatal(err)
+	}
+	if stored != content {
+		t.Fatalf("formatting lost: stored=%q want=%q", stored, content)
+	}
+}

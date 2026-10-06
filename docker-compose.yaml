@@ -9,6 +9,16 @@ services:
     extends:
       file: ./services/backend/docker-compose.yaml
       service: api
+    build:
+      target: dev
+    volumes:
+      - ./services/backend:/src
+      - backend_go_modules:/go/pkg/mod
+      - backend_go_build:/root/.cache/go-build
+      - backend_dev_bin:/src/.air
+    healthcheck:
+      test: ["CMD", "/src/.air/api", "healthcheck"]
+      start_period: 60s
     depends_on:
       db:
         condition: service_healthy
@@ -21,6 +31,16 @@ services:
     extends:
       file: ./services/frontend/docker-compose.yaml
       service: frontend
+    build:
+      target: dev
+    environment:
+      VITE_API_BASE_URL: ${VITE_API_BASE_URL:?Set VITE_API_BASE_URL in .env}
+      VITE_API_MODE: ${VITE_API_MODE:-mock}
+      VITE_API_PROXY_TARGET: http://api:8002
+      DEV_POLLING: "true"
+    volumes:
+      - ./services/frontend:/app
+      - frontend_node_modules:/app/node_modules
 
   proxy:
     extends:
@@ -43,3 +63,7 @@ volumes:
     name: ai-tutor_caddy_data
   caddy_config:
     name: ai-tutor_caddy_config
+  backend_go_modules:
+  backend_go_build:
+  backend_dev_bin:
+  frontend_node_modules:

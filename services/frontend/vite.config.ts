@@ -9,6 +9,10 @@ export default defineConfig(({ mode }) => {
   return {
     envDir,
     server: {
+      watch: {
+        usePolling: process.env.DEV_POLLING === 'true',
+        interval: 300,
+      },
       proxy: {
         '/api/v1': {
           target: env.VITE_API_PROXY_TARGET || 'http://127.0.0.1:8002',

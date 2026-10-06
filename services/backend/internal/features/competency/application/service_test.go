@@ -21,6 +21,10 @@ type memoryRepository struct {
 	err        error
 }
 
+func (r *memoryRepository) Read(context.Context) (competencymap.Snapshot, error) {
+	return competencymap.Snapshot{}, r.err
+}
+
 func (r *memoryRepository) Replace(_ context.Context, actorID string, parsed competencymap.Map, importedAt int64) (competencymap.ImportResult, error) {
 	r.calls++
 	r.actorID = actorID

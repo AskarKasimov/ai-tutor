@@ -5,6 +5,7 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/user"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/fault"
 )
 
@@ -27,7 +28,10 @@ func NewMaterialService(repository MaterialRepository, now func() int64) *Materi
 	return &MaterialService{repository: repository, now: now}
 }
 
-func (s *MaterialService) Import(ctx context.Context, input MaterialInput) error {
+func (s *MaterialService) Import(ctx context.Context, actor user.User, input MaterialInput) error {
+	if err := s.Authorize(actor); err != nil {
+		return err
+	}
 	if !validText(input.Name, 200) {
 		return fault.Validation("name", "Название материала должно содержать 1–200 символов.")
 	}
@@ -51,6 +55,14 @@ func (s *MaterialService) Import(ctx context.Context, input MaterialInput) error
 		outcomeIDs = append(outcomeIDs, id)
 	}
 	return s.repository.ImportMaterial(ctx, strings.TrimSpace(input.Name), outcomeIDs, splitChunks(input.Content, 1200), s.now())
+}
+
+// Authorize allows transports to reject unauthorized uploads before reading them.
+func (s *MaterialService) Authorize(actor user.User) error {
+	if actor.Role != user.Admin {
+		return fault.New(fault.Forbidden, "FORBIDDEN", "Операция доступна только admin.")
+	}
+	return nil
 }
 
 func splitChunks(text string, maxRunes int) []string {

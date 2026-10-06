@@ -99,8 +99,12 @@ type ImportMaterialRequest struct {
 // @Router /admin/materials [post]
 func (h *Handlers) ImportMaterial(w http.ResponseWriter, r *http.Request) {
 	principal, ok := httpx.Principal[user.User](r)
-	if !ok || principal.Role != user.Admin {
-		httpx.Error(r.Context(), w, fault.New(fault.Forbidden, "FORBIDDEN", "Недостаточно прав."))
+	if !ok {
+		httpx.Error(r.Context(), w, fault.New(fault.Unauthorized, "UNAUTHORIZED", "Требуется действующая сессия."))
+		return
+	}
+	if err := h.materials.Authorize(principal); err != nil {
+		httpx.Error(r.Context(), w, err)
 		return
 	}
 	var request ImportMaterialRequest
@@ -108,7 +112,7 @@ func (h *Handlers) ImportMaterial(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(r.Context(), w, err)
 		return
 	}
-	if err := h.materials.Import(r.Context(), application.MaterialInput{Name: request.Name, Content: request.Content, OutcomeIDs: request.OutcomeIDs}); err != nil {
+	if err := h.materials.Import(r.Context(), principal, application.MaterialInput{Name: request.Name, Content: request.Content, OutcomeIDs: request.OutcomeIDs}); err != nil {
 		httpx.Error(r.Context(), w, err)
 		return
 	}

@@ -32,7 +32,7 @@ import (
 // @in cookie
 // @name refresh_token
 func main() {
-	logger, err := zap.NewProduction()
+	logger, err := loggerConfig().Build()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "initialize logger:", err)
 		os.Exit(1)
@@ -44,6 +44,13 @@ func main() {
 	}
 	_ = logger.Sync()
 }
+func loggerConfig() zap.Config {
+	cfg := zap.NewProductionConfig()
+	// Access logs must retain one entry per request, including bursts of errors.
+	cfg.Sampling = nil
+	return cfg
+}
+
 func run(logger *zap.Logger) error {
 	if len(os.Args) > 1 && os.Args[1] == "healthcheck" {
 		c := &http.Client{Timeout: 3 * time.Second}

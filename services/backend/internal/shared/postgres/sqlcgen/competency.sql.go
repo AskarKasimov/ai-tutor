@@ -878,6 +878,95 @@ func (q *Queries) LockCompetencyMapRevision(ctx context.Context) (int64, error) 
 	return revision, err
 }
 
+const readCurrentCompetencyMap = `-- name: ReadCurrentCompetencyMap :many
+SELECT state.revision, import.imported_at,
+       competency.id AS competency_id, competency.name AS competency_name,
+       constituent.id AS constituent_id, constituent.name AS constituent_name,
+       topic.code AS topic_level_code,
+       COALESCE(curriculum_profile.curriculum_sections, '[]')::text AS curriculum_sections,
+       outcome.id AS outcome_id, outcome.name AS outcome_name,
+       outcome.include_in_test, taxonomy.code AS taxonomy_code,
+       ald.code AS ald_level_code, outcome.importance, outcome.educational_content,
+       task.id AS task_id, task.question, task.options, task.voice_instruction, task.origin
+FROM competency_map_state AS state
+LEFT JOIN competency_map_imports AS import ON import.revision = state.revision
+LEFT JOIN competencies AS competency ON competency.revision = state.revision
+LEFT JOIN constituents AS constituent ON constituent.competency_id = competency.id
+LEFT JOIN topic_levels AS topic ON topic.id = constituent.topic_level_id
+LEFT JOIN constituent_curriculum_profiles AS curriculum_profile ON curriculum_profile.constituent_id = constituent.id
+LEFT JOIN outcomes AS outcome ON outcome.constituent_id = constituent.id
+LEFT JOIN taxonomies AS taxonomy ON taxonomy.id = outcome.taxonomy_id
+LEFT JOIN ald_levels AS ald ON ald.id = outcome.ald_level_id
+LEFT JOIN tasks AS task ON task.outcome_id = outcome.id
+WHERE state.singleton = true
+ORDER BY competency.name, competency.id, constituent.name, constituent.id,
+         outcome.name, outcome.id, task.created_at, task.id
+`
+
+type ReadCurrentCompetencyMapRow struct {
+	Revision           int64
+	ImportedAt         *int64
+	CompetencyID       *string
+	CompetencyName     *string
+	ConstituentID      *string
+	ConstituentName    *string
+	TopicLevelCode     *string
+	CurriculumSections string
+	OutcomeID          *string
+	OutcomeName        *string
+	IncludeInTest      *bool
+	TaxonomyCode       *string
+	AldLevelCode       *string
+	Importance         *int16
+	EducationalContent *string
+	TaskID             *string
+	Question           *string
+	Options            []byte
+	VoiceInstruction   *string
+	Origin             *string
+}
+
+func (q *Queries) ReadCurrentCompetencyMap(ctx context.Context) ([]ReadCurrentCompetencyMapRow, error) {
+	rows, err := q.db.Query(ctx, readCurrentCompetencyMap)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ReadCurrentCompetencyMapRow{}
+	for rows.Next() {
+		var i ReadCurrentCompetencyMapRow
+		if err := rows.Scan(
+			&i.Revision,
+			&i.ImportedAt,
+			&i.CompetencyID,
+			&i.CompetencyName,
+			&i.ConstituentID,
+			&i.ConstituentName,
+			&i.TopicLevelCode,
+			&i.CurriculumSections,
+			&i.OutcomeID,
+			&i.OutcomeName,
+			&i.IncludeInTest,
+			&i.TaxonomyCode,
+			&i.AldLevelCode,
+			&i.Importance,
+			&i.EducationalContent,
+			&i.TaskID,
+			&i.Question,
+			&i.Options,
+			&i.VoiceInstruction,
+			&i.Origin,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const saveAssignmentResponse = `-- name: SaveAssignmentResponse :exec
 INSERT INTO assignment_responses(id, assignment_id, transcription_id, answer_text, score, feedback, created_at)
 VALUES ($1, $2, $3, $4, $5, $6, $7)

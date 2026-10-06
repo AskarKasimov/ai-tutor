@@ -80,6 +80,30 @@ FROM tasks AS task WHERE task.id = $1;
 SELECT id, question, options, voice_instruction, origin
 FROM tasks WHERE outcome_id = $1 ORDER BY created_at, id;
 
+-- name: ReadCurrentCompetencyMap :many
+SELECT state.revision, import.imported_at,
+       competency.id AS competency_id, competency.name AS competency_name,
+       constituent.id AS constituent_id, constituent.name AS constituent_name,
+       topic.code AS topic_level_code,
+       COALESCE(curriculum_profile.curriculum_sections, '[]')::text AS curriculum_sections,
+       outcome.id AS outcome_id, outcome.name AS outcome_name,
+       outcome.include_in_test, taxonomy.code AS taxonomy_code,
+       ald.code AS ald_level_code, outcome.importance, outcome.educational_content,
+       task.id AS task_id, task.question, task.options, task.voice_instruction, task.origin
+FROM competency_map_state AS state
+LEFT JOIN competency_map_imports AS import ON import.revision = state.revision
+LEFT JOIN competencies AS competency ON competency.revision = state.revision
+LEFT JOIN constituents AS constituent ON constituent.competency_id = competency.id
+LEFT JOIN topic_levels AS topic ON topic.id = constituent.topic_level_id
+LEFT JOIN constituent_curriculum_profiles AS curriculum_profile ON curriculum_profile.constituent_id = constituent.id
+LEFT JOIN outcomes AS outcome ON outcome.constituent_id = constituent.id
+LEFT JOIN taxonomies AS taxonomy ON taxonomy.id = outcome.taxonomy_id
+LEFT JOIN ald_levels AS ald ON ald.id = outcome.ald_level_id
+LEFT JOIN tasks AS task ON task.outcome_id = outcome.id
+WHERE state.singleton = true
+ORDER BY competency.name, competency.id, constituent.name, constituent.id,
+         outcome.name, outcome.id, task.created_at, task.id;
+
 -- name: GetTaskProfile :one
 SELECT
     task.id AS task_id, task.question, task.options, task.voice_instruction,

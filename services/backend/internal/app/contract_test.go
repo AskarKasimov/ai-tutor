@@ -174,6 +174,7 @@ func TestOpenAPIResponses(t *testing.T) {
 		t.Fatal(err)
 	}
 	check("GET", "/tasks", f.request("GET", "/tasks", "", access))
+	check("GET", "/competency-map", f.request("GET", "/competency-map", "", access))
 	check("GET", "/tasks", f.request("GET", "/tasks?importance=6", "", access))
 	check("GET", "/tasks/{id}", f.request("GET", "/tasks/"+taskID, "", access))
 	requestBody, _ := json.Marshal(map[string]string{"outcome_id": outcomeID})
@@ -201,6 +202,8 @@ func TestOpenAPIResponses(t *testing.T) {
 	check("POST", "/tasks/generate", unavailableResponse)
 	materialBody, _ := json.Marshal(map[string]any{"name": "Материал контракта", "content": "Текст материала для поиска", "outcome_ids": []string{outcomeID}})
 	check("POST", "/admin/materials", f.request("POST", "/admin/materials", string(materialBody), admin))
+	check("POST", "/admin/materials", f.request("POST", "/admin/materials", "{"))
+	check("POST", "/admin/materials", f.request("POST", "/admin/materials", "{", access))
 	check("POST", "/admin/materials", f.request("POST", "/admin/materials", strings.Repeat(" ", 1400000), admin))
 	check("POST", "/auth/refresh", f.request("POST", "/auth/refresh", "", refresh))
 	check("POST", "/auth/logout", f.request("POST", "/auth/logout", "", refresh))

@@ -1,4 +1,4 @@
-// Package application implements competency-map import policy.
+// Package application implements competency-map import and read policy.
 package application
 
 import (
@@ -13,6 +13,7 @@ import (
 
 type Repository interface {
 	Replace(ctx context.Context, actorID string, parsed competencymap.Map, importedAt int64) (competencymap.ImportResult, error)
+	Read(ctx context.Context) (competencymap.Snapshot, error)
 }
 
 type Parser interface {
@@ -27,6 +28,10 @@ type Service struct {
 
 func New(repo Repository, parser Parser, now func() time.Time) *Service {
 	return &Service{repo: repo, parser: parser, now: now}
+}
+
+func (s *Service) Read(ctx context.Context) (competencymap.Snapshot, error) {
+	return s.repo.Read(ctx)
 }
 
 // Authorize allows transports to check import access before reading uploads.

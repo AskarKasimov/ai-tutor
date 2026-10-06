@@ -127,6 +127,68 @@ components:
         - role
       type: object
       additionalProperties: false
+    competencyhttp.Competency:
+      properties:
+        constituents:
+          items:
+            $ref: '#/components/schemas/competencyhttp.Constituent'
+          type: array
+          uniqueItems: false
+        id:
+          type: string
+        name:
+          type: string
+      required:
+        - constituents
+        - id
+        - name
+      type: object
+      additionalProperties: false
+    competencyhttp.Constituent:
+      properties:
+        curriculum_sections:
+          items:
+            $ref: '#/components/schemas/competencyhttp.CurriculumSection'
+          type: array
+          uniqueItems: false
+        id:
+          type: string
+        name:
+          type: string
+        outcomes:
+          items:
+            $ref: '#/components/schemas/competencyhttp.Outcome'
+          type: array
+          uniqueItems: false
+        topic_level_code:
+          type:
+            - string
+            - "null"
+      required:
+        - curriculum_sections
+        - id
+        - name
+        - outcomes
+        - topic_level_code
+      type: object
+      additionalProperties: false
+    competencyhttp.CurriculumSection:
+      properties:
+        code:
+          type: string
+        curriculum_competencies:
+          items:
+            type: string
+          type: array
+          uniqueItems: false
+        title:
+          type: string
+      required:
+        - code
+        - curriculum_competencies
+        - title
+      type: object
+      additionalProperties: false
     competencyhttp.ImportResult:
       properties:
         competency_count:
@@ -174,6 +236,92 @@ components:
         - column
         - column_index
         - row
+      type: object
+      additionalProperties: false
+    competencyhttp.MapSnapshot:
+      properties:
+        competencies:
+          items:
+            $ref: '#/components/schemas/competencyhttp.Competency'
+          type: array
+          uniqueItems: false
+        imported_at:
+          type:
+            - integer
+            - "null"
+        revision:
+          type: integer
+      required:
+        - competencies
+        - imported_at
+        - revision
+      type: object
+      additionalProperties: false
+    competencyhttp.Outcome:
+      properties:
+        ald_level_code:
+          type:
+            - string
+            - "null"
+        educational_content:
+          type:
+            - string
+            - "null"
+        id:
+          type: string
+        importance:
+          type:
+            - integer
+            - "null"
+        include_in_test:
+          type:
+            - boolean
+            - "null"
+        name:
+          type: string
+        tasks:
+          items:
+            $ref: '#/components/schemas/competencyhttp.Task'
+          type: array
+          uniqueItems: false
+        taxonomy_code:
+          type:
+            - string
+            - "null"
+      required:
+        - ald_level_code
+        - educational_content
+        - id
+        - importance
+        - include_in_test
+        - name
+        - tasks
+        - taxonomy_code
+      type: object
+      additionalProperties: false
+    competencyhttp.Task:
+      properties:
+        id:
+          type: string
+        options:
+          items:
+            type: string
+          type: array
+          uniqueItems: false
+        origin:
+          type: string
+        question:
+          type: string
+        voice_instruction:
+          type:
+            - string
+            - "null"
+      required:
+        - id
+        - options
+        - origin
+        - question
+        - voice_instruction
       type: object
       additionalProperties: false
     fault.Detail:
@@ -812,6 +960,34 @@ paths:
       summary: Зарегистрироваться
       tags:
         - Auth
+  /competency-map:
+    get:
+      description: Ревизия, время импорта и дерево компетенций, составляющих, ОР и заданий. Доступно авторизованным пользователям. Эталоны и критерии не возвращаются.
+      operationId: readCompetencyMap
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/competencyhttp.MapSnapshot'
+          description: OK
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unauthorized
+        "503":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Service Unavailable
+      security:
+        - accessCookie: []
+      summary: Прочитать текущую карту компетенций целиком
+      tags:
+        - Учебная база
   /health:
     get:
       operationId: health

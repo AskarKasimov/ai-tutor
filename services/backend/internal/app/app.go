@@ -107,6 +107,7 @@ func (a *App) Handler() http.Handler {
 	mux.Handle("POST /voice/syntheses", protect(auth, http.HandlerFunc(voiceHandlers.Synthesize)))
 	mux.Handle("POST /assessments/evaluate", protect(auth, http.HandlerFunc(assessmentHandlers.Evaluate)))
 	mux.Handle("GET /tasks", protect(auth, http.HandlerFunc(taskbankHandlers.Search)))
+	mux.Handle("GET /competency-map", protect(auth, http.HandlerFunc(competencyHandlers.Read)))
 	mux.Handle("GET /tasks/{id}", protect(auth, http.HandlerFunc(taskbankHandlers.Profile)))
 	mux.Handle("POST /tasks/generate", protect(auth, http.HandlerFunc(taskgenHandlers.Generate)))
 	mux.Handle("POST /admin/materials", protect(auth, http.HandlerFunc(taskgenHandlers.ImportMaterial)))

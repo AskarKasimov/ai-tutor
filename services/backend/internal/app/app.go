@@ -104,7 +104,7 @@ func (a *App) Handler() http.Handler {
 		grader = assessmentmock.Grader{}
 		taskGenerator, modelName = taskgenmock.Generator{}, "mock"
 	} else {
-		models := modelapi.New(a.client, a.cfg.STTURL, a.cfg.TTSURL, a.cfg.ProcessingTimeout)
+		models := modelapi.New(a.client, a.cfg.STTURL, a.cfg.TTSURL, a.cfg.VoiceTimeout)
 		recognizer, synthesizer = models, models
 		grader = assessmentmodel.New(a.client, a.cfg.AssessmentBaseURL, a.cfg.AssessmentModel, a.cfg.AssessmentTimeout)
 		taskGenerator = taskgenmodel.New(a.client, a.cfg.TaskgenBaseURL, a.cfg.TaskgenModel, a.cfg.TaskgenTimeout)

@@ -21,15 +21,15 @@ type Config struct {
 	TaskgenBaseURL    string
 	TaskgenModel      string
 	TaskgenTimeout    time.Duration
-	ProcessingTimeout time.Duration
+	VoiceTimeout      time.Duration
 	AssessmentTimeout time.Duration
 	MaxUploadBytes    int64
 }
 
-// HTTPWriteTimeout allows the slowest model call to finish, with time for
-// request handling, persistence and writing the response.
+// HTTPWriteTimeout allows sequential STT and grading, or task generation, to
+// finish with time for request handling, persistence and writing the response.
 func (c Config) HTTPWriteTimeout() time.Duration {
-	return max(c.ProcessingTimeout, c.AssessmentTimeout, c.TaskgenTimeout) + 30*time.Second
+	return max(c.VoiceTimeout+c.AssessmentTimeout, c.TaskgenTimeout) + 30*time.Second
 }
 
 func ConfigFromEnv() (Config, error) {
@@ -71,7 +71,7 @@ func ConfigFromEnv() (Config, error) {
 		key string
 		dst *time.Duration
 	}{
-		{"BACKEND_VOICE_TIMEOUT", &c.ProcessingTimeout},
+		{"BACKEND_VOICE_TIMEOUT", &c.VoiceTimeout},
 		{"BACKEND_ASSESSMENT_TIMEOUT", &c.AssessmentTimeout},
 	}
 	if c.APIMode == "real" {
@@ -147,7 +147,7 @@ func (c Config) validate() error {
 		key   string
 		value time.Duration
 	}{
-		{"BACKEND_VOICE_TIMEOUT", c.ProcessingTimeout},
+		{"BACKEND_VOICE_TIMEOUT", c.VoiceTimeout},
 		{"BACKEND_ASSESSMENT_TIMEOUT", c.AssessmentTimeout},
 	} {
 		if setting.value <= 0 {

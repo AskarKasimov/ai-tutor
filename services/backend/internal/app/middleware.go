@@ -1,6 +1,9 @@
 package app
 
-import "net/http"
+import (
+	"net/http"
+	"strings"
+)
 
 func (a *App) middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -12,7 +15,8 @@ func (a *App) middleware(next http.Handler) http.Handler {
 			// Leave room for the name, outcome IDs and JSON structure.
 			limit = 1280 * 1024
 		}
-		if r.URL.Path == "/voice/transcriptions" || r.URL.Path == "/admin/competency-map/import" {
+		if r.URL.Path == "/voice/transcriptions" || r.URL.Path == "/admin/competency-map/import" ||
+			(strings.HasPrefix(r.URL.Path, "/diagnostic-sessions/") && strings.HasSuffix(r.URL.Path, "/answers")) {
 			limit = a.cfg.MaxUploadBytes + 64*1024
 		}
 		r.Body = http.MaxBytesReader(w, r.Body, limit)

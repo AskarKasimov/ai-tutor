@@ -193,6 +193,9 @@ func TestMainPerfectSkipsBasicsAndIdempotencySurvivesCompletion(t *testing.T) {
 		t.Fatalf("start replay = (%+v, %v, %v), variant reads=%d", replayed, reused, err, variants.calls)
 	}
 	progress := service.answer(t, started, "answer-1")
+	if progress.Text != "ответ" {
+		t.Fatalf("answer response lost transcription: %+v", progress)
+	}
 	if progress.Current == nil || progress.Current.ID != "variant-task-1-0" || progress.Skipped != 2 || progress.Completed != 1 {
 		t.Fatalf("main=2 did not skip the basics: %+v", progress)
 	}
@@ -208,6 +211,9 @@ func TestMainPerfectSkipsBasicsAndIdempotencySurvivesCompletion(t *testing.T) {
 		t.Fatalf("session did not complete: %+v", completed)
 	}
 	replay := service.answer(t, progress, "answer-2")
+	if replay.Text != completed.Text || replay.Text != "ответ" {
+		t.Fatalf("idempotent replay lost transcription: %+v", replay)
+	}
 	if replay.Status != diagnostic.StatusCompleted || grader.calls != 2 || voice.transcribes != 2 {
 		t.Fatalf("accepted retry performed work twice: grader=%d STT=%d", grader.calls, voice.transcribes)
 	}

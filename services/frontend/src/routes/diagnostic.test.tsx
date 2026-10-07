@@ -128,6 +128,7 @@ function server(answerStatus = 200, totalTasks = 3) {
         current: undefined,
         completed_tasks: 1,
         skipped_tasks: totalTasks - 1,
+        text: 'Настоящая расшифровка',
         score: 2,
         grader_score: 2,
         grader_max_score: 2,
@@ -186,13 +187,21 @@ it('runs real diagnostic audio, obeys skipped basics and displays the server tot
     'Настоящий вопрос из банка',
   )
   expect(screen.getByText('Первый вариант')).toBeVisible()
-  expect(screen.getByText('Назовите модель и объясните решение.')).toBeVisible()
+  expect(screen.getByRole('heading', { name: 'Расшифровка' })).toBeVisible()
+  expect(
+    screen.getByText('Здесь появится расшифровка вашего ответа.'),
+  ).toBeVisible()
+  expect(screen.queryByText('Голосовая инструкция')).not.toBeInTheDocument()
   expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuemax', '3')
   fireEvent.click(screen.getByRole('button', { name: 'Начать запись' }))
   fireEvent.click(
     await screen.findByRole('button', { name: 'Завершить запись' }),
   )
   expect(await screen.findByText('Серверное объяснение.')).toBeVisible()
+  expect(screen.getByText('Настоящая расшифровка')).toBeVisible()
+  expect(
+    screen.queryByText('Здесь появится расшифровка вашего ответа.'),
+  ).not.toBeInTheDocument()
   fireEvent.click(
     await screen.findByRole('button', { name: 'Посмотреть итог' }),
   )

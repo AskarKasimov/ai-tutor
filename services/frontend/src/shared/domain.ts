@@ -78,6 +78,7 @@ export type DiagnosticTask = {
   voice_instruction: string
 }
 export type DiagnosticProgress = {
+  text?: string
   session_id: string
   status: 'active' | 'completed'
   completed_tasks: number

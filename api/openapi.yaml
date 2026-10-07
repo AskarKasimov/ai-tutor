@@ -482,6 +482,9 @@ components:
             - active
             - completed
           type: string
+        text:
+          minLength: 1
+          type: string
         total_tasks:
           minimum: 1
           type: integer

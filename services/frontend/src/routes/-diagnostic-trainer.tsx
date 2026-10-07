@@ -198,7 +198,7 @@ function DiagnosticFlow({
   }
   return (
     <main className={styles.workspace}>
-      <Question task={task} />
+      <Question task={task} transcript={response?.text} />
       {response ? (
         <aside
           className={styles.answerPanel}
@@ -391,7 +391,13 @@ function DiagnosticFlow({
     </main>
   )
 }
-function Question({ task }: { task: DiagnosticTask }) {
+function Question({
+  task,
+  transcript,
+}: {
+  task: DiagnosticTask
+  transcript?: string
+}) {
   const { t } = useTranslation()
   return (
     <section className={styles.question}>
@@ -435,17 +441,13 @@ function Question({ task }: { task: DiagnosticTask }) {
       )}
       <section
         className={styles.savedAnswer}
-        aria-labelledby="voice-instruction-title"
+        aria-labelledby="transcript-title"
       >
-        <Heading
-          as="h2"
-          id="voice-instruction-title"
-          className={styles.eyebrow}
-        >
-          {t('diagnostic.instruction')}
+        <Heading as="h2" id="transcript-title" className={styles.eyebrow}>
+          {t('diagnostic.transcript')}
         </Heading>
         <Text as="p" className={styles.transcript}>
-          {task.voice_instruction}
+          {transcript ?? t('diagnostic.transcriptPending')}
         </Text>
       </section>
     </section>

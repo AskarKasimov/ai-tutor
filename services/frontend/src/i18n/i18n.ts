@@ -192,7 +192,8 @@ void i18n.init({
         diagnostic: {
           title: 'Диагностика',
           answerHelp: 'Следуйте голосовой инструкции задания.',
-          instruction: 'Голосовая инструкция',
+          transcript: 'Расшифровка',
+          transcriptPending: 'Здесь появится расшифровка вашего ответа.',
           main: 'Основное задание',
           basic: 'Базовое задание',
           progress:

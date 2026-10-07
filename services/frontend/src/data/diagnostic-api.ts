@@ -39,6 +39,7 @@ const progressSchema: z.ZodType<DiagnosticProgress> = z
     skipped_tasks: count,
     total_tasks: count.min(1),
     current: task.optional(),
+    text: id.optional(),
     score: score.optional(),
     grader_score: score.optional(),
     grader_max_score: count.min(1).max(2).optional(),

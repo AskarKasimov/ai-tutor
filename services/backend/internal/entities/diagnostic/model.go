@@ -139,6 +139,7 @@ type Reservation struct {
 }
 
 type Progress struct {
+	Text             string
 	SessionID        string
 	Status           string
 	Completed        int

@@ -19,7 +19,7 @@ type Voice interface {
 }
 
 type Grader interface {
-	Evaluate(context.Context, string, string, string, string) (assessment.Evaluation, error)
+	EvaluateVariant(context.Context, string, string, string, string) (assessment.Evaluation, error)
 }
 
 type Store interface {
@@ -27,7 +27,7 @@ type Store interface {
 	Create(context.Context, string, string, string, diagnostic.Session) (diagnostic.Session, bool, error)
 	Get(context.Context, string, string) (diagnostic.Session, error)
 	Reserve(context.Context, string, string, string, string, string, string) (*diagnostic.AcceptedRequest, *diagnostic.Reservation, error)
-	Accept(context.Context, string, string, string, string, string, diagnostic.Answer, diagnostic.Transition, int) (diagnostic.Progress, error)
+	Accept(context.Context, string, string, string, string, string, diagnostic.Answer, diagnostic.Transition) (diagnostic.Progress, error)
 	Fail(context.Context, string, string, string, string, string) error
 }
 

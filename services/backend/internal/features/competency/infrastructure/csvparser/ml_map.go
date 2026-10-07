@@ -55,7 +55,6 @@ func parseMLMap(reader *csv.Reader, headers []string, headerLine int, restoreCel
 		return result, csvError(headerLine, "Задание 1", "Нужна хотя бы одна колонка заданий.")
 	}
 	seenCompetencies := map[string]bool{}
-	seenConstituents := map[string]bool{}
 	constituentIndexes := map[string]int{}
 	seenOutcomes := map[string]int{}
 	sectionTitles := map[string]string{}
@@ -134,17 +133,17 @@ func parseMLMap(reader *csv.Reader, headers []string, headerLine int, restoreCel
 			result.Competencies = append(result.Competencies, competencymap.Competency{Key: cKey, Name: competency})
 			seenCompetencies[cKey] = true
 		}
-		if !seenConstituents[sKey] {
+		constituentIndex, constituentExists := constituentIndexes[sKey]
+		if !constituentExists {
 			if topicLevel == "" {
 				return result, csvError(line, "Уровень темы", "Для новой составляющей не задан уровень.")
 			}
-			constituentIndexes[sKey] = len(result.Constituents)
+			constituentIndex = len(result.Constituents)
+			constituentIndexes[sKey] = constituentIndex
 			result.Constituents = append(result.Constituents, competencymap.Constituent{Key: sKey, CompetencyKey: cKey, Name: constituent, TopicLevelCode: topicLevel})
-			seenConstituents[sKey] = true
-		} else if topicLevel != "" && result.Constituents[constituentIndexes[sKey]].TopicLevelCode != topicLevel {
+		} else if topicLevel != "" && result.Constituents[constituentIndex].TopicLevelCode != topicLevel {
 			return result, csvError(line, "Уровень темы", "Внутри составляющей указаны разные уровни.")
 		}
-		constituentIndex := constituentIndexes[sKey]
 		if rawSection := strings.TrimSpace(row[columns["Раздел РПД · компетенции РПД"]]); rawSection != "" {
 			section, ok := parseCurriculumSection(rawSection)
 			if !ok {
@@ -179,8 +178,6 @@ func parseMLMap(reader *csv.Reader, headers []string, headerLine int, restoreCel
 				task.Row = line
 				task.SourceRowIndex = sourceIndex
 				task.SourceColumnIndex = i + 1
-				task.ReferenceAnswer = task.Criteria
-				task.Criteria = ""
 				result.Tasks = append(result.Tasks, task)
 			} else if strings.TrimSpace(row[i]) != "" {
 				result.UnparsedTaskCells++
@@ -441,7 +438,7 @@ func parseMLTask(raw string) (competencymap.Task, bool) {
 	voice = strings.TrimSuffix(voice, ".")
 	voice = strings.TrimPrefix(strings.TrimSuffix(voice, "»"), "«")
 	task.Question = screen
-	task.Criteria = correct
+	task.ReferenceAnswer = correct
 	task.VoiceInstruction = voice
 	return task, true
 }

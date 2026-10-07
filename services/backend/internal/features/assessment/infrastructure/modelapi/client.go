@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/assessment"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/features/assessment/application"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/fault"
 )
@@ -58,7 +59,7 @@ func invalidModelResponse(message string) error {
 	return fault.New(fault.Upstream, "INVALID_MODEL_RESPONSE", message)
 }
 
-func (c *Client) Grade(ctx context.Context, gradingContext application.GradingContext, answer string) (application.Evaluation, error) {
+func (c *Client) Grade(ctx context.Context, gradingContext application.GradingContext, answer string) (assessment.Evaluation, error) {
 	role := gradingContext.Role
 	if role == "" {
 		role = "main"
@@ -87,7 +88,7 @@ func (c *Client) Grade(ctx context.Context, gradingContext application.GradingCo
 		MaterialContext: gradingContext.MaterialContext, StudentAnswer: answer,
 	})
 	if err != nil {
-		return application.Evaluation{}, err
+		return assessment.Evaluation{}, err
 	}
 	requestBody, err := json.Marshal(struct {
 		Model    string `json:"model"`
@@ -113,33 +114,33 @@ func (c *Client) Grade(ctx context.Context, gradingContext application.GradingCo
 		ReasoningEffort: "medium", Temperature: 0, MaxTokens: 1536,
 	})
 	if err != nil {
-		return application.Evaluation{}, err
+		return assessment.Evaluation{}, err
 	}
 	ctx, cancel := context.WithTimeout(ctx, c.timeout)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.url, bytes.NewReader(requestBody))
 	if err != nil {
-		return application.Evaluation{}, err
+		return assessment.Evaluation{}, err
 	}
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := c.client.Do(req)
 	if err != nil {
-		return application.Evaluation{}, providerError(err)
+		return assessment.Evaluation{}, providerError(err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		switch resp.StatusCode {
 		case http.StatusTooManyRequests, http.StatusServiceUnavailable:
-			return application.Evaluation{}, fault.New(fault.Unavailable, "MODEL_UNAVAILABLE", "Сервис оценивания временно недоступен.")
+			return assessment.Evaluation{}, fault.New(fault.Unavailable, "MODEL_UNAVAILABLE", "Сервис оценивания временно недоступен.")
 		case http.StatusRequestTimeout, http.StatusGatewayTimeout:
-			return application.Evaluation{}, fault.New(fault.Timeout, "MODEL_TIMEOUT", "Превышено время ожидания оценки.")
+			return assessment.Evaluation{}, fault.New(fault.Timeout, "MODEL_TIMEOUT", "Превышено время ожидания оценки.")
 		default:
-			return application.Evaluation{}, fault.New(fault.Upstream, "MODEL_UPSTREAM_ERROR", "Сервис оценивания не принял запрос.")
+			return assessment.Evaluation{}, fault.New(fault.Upstream, "MODEL_UPSTREAM_ERROR", "Сервис оценивания не принял запрос.")
 		}
 	}
 	content, err := io.ReadAll(io.LimitReader(resp.Body, 64*1024+1))
 	if err != nil {
-		return application.Evaluation{}, providerError(err)
+		return assessment.Evaluation{}, providerError(err)
 	}
 	var completion struct {
 		Choices []struct {
@@ -150,20 +151,20 @@ func (c *Client) Grade(ctx context.Context, gradingContext application.GradingCo
 		} `json:"choices"`
 	}
 	if len(content) > 64*1024 || json.Unmarshal(content, &completion) != nil || len(completion.Choices) != 1 || completion.Choices[0].Message.Content == nil || completion.Choices[0].FinishReason != "stop" {
-		return application.Evaluation{}, invalidModelResponse("Модель вернула неполный ответ.")
+		return assessment.Evaluation{}, invalidModelResponse("Модель вернула неполный ответ.")
 	}
 	var result struct {
-		Score            *int                          `json:"score"`
-		Verdict          *string                       `json:"verdict"`
-		CriterionResults []application.CriterionResult `json:"criterion_results"`
-		Feedback         []string                      `json:"feedback"`
+		Score            *int                         `json:"score"`
+		Verdict          *string                      `json:"verdict"`
+		CriterionResults []assessment.CriterionResult `json:"criterion_results"`
+		Feedback         []string                     `json:"feedback"`
 	}
 	decoder := json.NewDecoder(strings.NewReader(*completion.Choices[0].Message.Content))
 	decoder.DisallowUnknownFields()
 	if decoder.Decode(&result) != nil || decoder.Decode(new(any)) != io.EOF || result.Score == nil || result.Verdict == nil {
-		return application.Evaluation{}, invalidModelResponse("Модель вернула некорректный JSON.")
+		return assessment.Evaluation{}, invalidModelResponse("Модель вернула некорректный JSON.")
 	}
-	return application.Evaluation{
+	return assessment.Evaluation{
 		Score:            *result.Score,
 		Verdict:          *result.Verdict,
 		CriterionResults: result.CriterionResults,

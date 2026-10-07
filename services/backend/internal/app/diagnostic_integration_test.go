@@ -2,6 +2,7 @@ package app
 
 import (
 	"bytes"
+	"encoding/binary"
 	"encoding/json"
 	"mime/multipart"
 	"net/http"
@@ -130,7 +131,11 @@ func diagnosticAnswerBody(t *testing.T, taskID string) (*bytes.Buffer, string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := file.Write(wavBytes()); err != nil {
+	// Exercise the multipart upload limit, rather than only the 32 KiB JSON limit.
+	audio := append(wavBytes(), make([]byte, 64*1024)...)
+	binary.LittleEndian.PutUint32(audio[4:8], uint32(len(audio)-8))
+	binary.LittleEndian.PutUint32(audio[40:44], uint32(len(audio)-44))
+	if _, err := file.Write(audio); err != nil {
 		t.Fatal(err)
 	}
 	if err := writer.Close(); err != nil {

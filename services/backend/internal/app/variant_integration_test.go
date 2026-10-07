@@ -73,9 +73,6 @@ func TestVariantCreateReadIdempotencyOwnershipAndHistoricalReader(t *testing.T) 
 	if first.Code != http.StatusCreated || responses[1].Code != http.StatusCreated {
 		t.Fatalf("concurrent create statuses: %d %s; %d %s", first.Code, first.Body.String(), responses[1].Code, responses[1].Body.String())
 	}
-	if first.Code != http.StatusCreated {
-		t.Fatalf("create: %d %s", first.Code, first.Body.String())
-	}
 	var created struct {
 		ID           string `json:"id"`
 		Competencies []struct {

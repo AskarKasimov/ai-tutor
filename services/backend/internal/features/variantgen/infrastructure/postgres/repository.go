@@ -2,9 +2,7 @@ package postgres
 
 import (
 	"context"
-	"crypto/rand"
 	"encoding/json"
-	"math/big"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -13,7 +11,6 @@ import (
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/features/variantgen/application"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/fault"
 	db "github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/postgres/sqlcgen"
-	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/security"
 )
 
 type Repository struct {
@@ -24,23 +21,6 @@ type Repository struct {
 var _ variant.TaskReader = (*Repository)(nil)
 
 func New(pool *pgxpool.Pool) *Repository { return &Repository{pool: pool, queries: db.New(pool)} }
-
-type Chooser struct{}
-
-func (Chooser) Choose(count int) (int, error) {
-	if count <= 1 {
-		return 0, nil
-	}
-	n, err := rand.Int(rand.Reader, big.NewInt(int64(count)))
-	if err != nil {
-		return 0, err
-	}
-	return int(n.Int64()), nil
-}
-
-type IDs struct{}
-
-func (IDs) New(prefix string) (string, error) { return security.ID(prefix) }
 
 func (r *Repository) Create(ctx context.Context, ownerID, key string, build application.BuildFunc) (variant.Variant, error) {
 	tx, err := r.pool.Begin(ctx)

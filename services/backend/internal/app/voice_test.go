@@ -168,7 +168,7 @@ func TestVoiceProviderFailuresNeverPersist(t *testing.T) {
 	}))
 	f.app.cfg.STTURL = server.URL + "/transcribe"
 	f.app.cfg.TTSURL = server.URL + "/synthesize"
-	f.app.cfg.ProcessingTimeout = 20 * time.Millisecond
+	f.app.cfg.VoiceTimeout = 20 * time.Millisecond
 	requireCode(t, upload(f, "/voice/transcriptions", "audio", "voice.wav", "audio/wav", wavBytes(), access), 504, "PROCESSING_TIMEOUT")
 	requireCode(t, f.request("POST", "/voice/syntheses", `{"text":"Вопрос"}`, access), 504, "PROCESSING_TIMEOUT")
 	server.Close()

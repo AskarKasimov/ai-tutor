@@ -28,7 +28,7 @@ type Service struct {
 }
 
 func New(repo Repository, hasher PasswordHasher, now func() time.Time) *Service {
-	return &Service{repo, hasher, now}
+	return &Service{repo: repo, hasher: hasher, now: now}
 }
 func normalizeEmail(email string) (string, error) {
 	email = strings.ToLower(strings.TrimSpace(email))

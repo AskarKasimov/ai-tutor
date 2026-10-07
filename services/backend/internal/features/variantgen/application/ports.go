@@ -28,7 +28,3 @@ type TaskChooser interface {
 type IDGenerator interface {
 	New(prefix string) (string, error)
 }
-
-type Clock interface {
-	Unix() int64
-}

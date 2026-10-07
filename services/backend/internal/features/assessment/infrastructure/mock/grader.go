@@ -4,24 +4,25 @@ package mock
 import (
 	"context"
 
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/assessment"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/features/assessment/application"
 )
 
 type Grader struct{}
 
-func (Grader) Grade(ctx context.Context, gradingContext application.GradingContext, _ string) (application.Evaluation, error) {
+func (Grader) Grade(ctx context.Context, gradingContext application.GradingContext, _ string) (assessment.Evaluation, error) {
 	if err := ctx.Err(); err != nil {
-		return application.Evaluation{}, err
+		return assessment.Evaluation{}, err
 	}
-	results := make([]application.CriterionResult, len(gradingContext.Criteria))
+	results := make([]assessment.CriterionResult, len(gradingContext.Criteria))
 	for i, criterion := range gradingContext.Criteria {
-		results[i] = application.CriterionResult{Key: criterion.Key, Satisfied: true, Explanation: "Демонстрационный результат критерия."}
+		results[i] = assessment.CriterionResult{Key: criterion.Key, Satisfied: true, Explanation: "Демонстрационный результат критерия."}
 	}
 	score := gradingContext.MaxScore
 	if score != 1 {
 		score = 2
 	}
-	return application.Evaluation{
+	return assessment.Evaluation{
 		Score:            score,
 		Verdict:          "correct",
 		CriterionResults: results,

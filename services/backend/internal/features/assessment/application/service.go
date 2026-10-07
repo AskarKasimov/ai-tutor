@@ -5,24 +5,17 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/assessment"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/variant"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/fault"
 )
-
-type Evaluation struct {
-	Score            int               `json:"score"`
-	MaxScore         int               `json:"max_score"`
-	Verdict          string            `json:"verdict"`
-	CriterionResults []CriterionResult `json:"criterion_results"`
-	Feedback         []string          `json:"feedback"`
-}
 
 type Transcriptions interface {
 	TextByOwner(context.Context, string, string) (string, error)
 }
 
 type Grader interface {
-	Grade(context.Context, GradingContext, string) (Evaluation, error)
+	Grade(context.Context, GradingContext, string) (assessment.Evaluation, error)
 }
 
 type Service struct {
@@ -75,7 +68,7 @@ func expectedVerdict(score, maxScore int) string {
 	}
 }
 
-func validateEvaluation(result Evaluation, gradingContext GradingContext) error {
+func validateEvaluation(result assessment.Evaluation, gradingContext GradingContext) error {
 	maxScore := gradingMaxScore(gradingContext)
 	if result.Score < 0 || result.Score > maxScore || result.Verdict != expectedVerdict(result.Score, maxScore) {
 		return fault.New(fault.Upstream, "INVALID_MODEL_RESPONSE", "Модель вернула некорректную оценку.")
@@ -123,9 +116,9 @@ func validateEvaluation(result Evaluation, gradingContext GradingContext) error 
 	return nil
 }
 
-func (s *Service) evaluateWithContext(ctx context.Context, ownerID, transcriptionID string, gradingContext GradingContext) (Evaluation, error) {
+func (s *Service) evaluateWithContext(ctx context.Context, ownerID, transcriptionID string, gradingContext GradingContext) (assessment.Evaluation, error) {
 	if !validText(transcriptionID, 128) {
-		return Evaluation{}, fault.Validation("transcription_id", "Укажите сохранённую расшифровку.")
+		return assessment.Evaluation{}, fault.Validation("transcription_id", "Укажите сохранённую расшифровку.")
 	}
 	if gradingContext.MaxScore == 0 {
 		gradingContext.MaxScore = 2
@@ -136,55 +129,55 @@ func (s *Service) evaluateWithContext(ctx context.Context, ownerID, transcriptio
 
 	answer, err := s.transcriptions.TextByOwner(ctx, ownerID, transcriptionID)
 	if err != nil {
-		return Evaluation{}, err
+		return assessment.Evaluation{}, err
 	}
 	if !validText(answer, 20000) {
-		return Evaluation{}, fault.New(fault.Invalid, "INVALID_TRANSCRIPTION", "Расшифровка слишком длинная или повреждена.")
+		return assessment.Evaluation{}, fault.New(fault.Invalid, "INVALID_TRANSCRIPTION", "Расшифровка слишком длинная или повреждена.")
 	}
 	result, err := s.grader.Grade(ctx, gradingContext, answer)
 	if err != nil {
-		return Evaluation{}, err
+		return assessment.Evaluation{}, err
 	}
 	if err := validateEvaluation(result, gradingContext); err != nil {
-		return Evaluation{}, err
+		return assessment.Evaluation{}, err
 	}
 	result.MaxScore = gradingMaxScore(gradingContext)
 	return result, nil
 }
 
 // Evaluate keeps the fixed prototype task_id flow working until the frontend switches to saved variants.
-func (s *Service) Evaluate(ctx context.Context, ownerID, transcriptionID, taskID string) (Evaluation, error) {
+func (s *Service) Evaluate(ctx context.Context, ownerID, transcriptionID, taskID string) (assessment.Evaluation, error) {
 	if !validText(taskID, 128) {
-		return Evaluation{}, fault.Validation("task_id", "Укажите идентификатор задания.")
+		return assessment.Evaluation{}, fault.Validation("task_id", "Укажите идентификатор задания.")
 	}
 	if s.contexts == nil {
-		return Evaluation{}, fault.New(fault.Unavailable, "GRADING_CONTEXT_UNAVAILABLE", "Контекст оценивания временно недоступен.")
+		return assessment.Evaluation{}, fault.New(fault.Unavailable, "GRADING_CONTEXT_UNAVAILABLE", "Контекст оценивания временно недоступен.")
 	}
 	gradingContext, err := s.contexts.ContextForTask(ctx, taskID)
 	if err != nil {
-		return Evaluation{}, err
+		return assessment.Evaluation{}, err
 	}
 	return s.evaluateWithContext(ctx, ownerID, transcriptionID, gradingContext)
 }
 
-func (s *Service) EvaluateVariant(ctx context.Context, ownerID, transcriptionID, variantID, variantTaskID string) (Evaluation, error) {
+func (s *Service) EvaluateVariant(ctx context.Context, ownerID, transcriptionID, variantID, variantTaskID string) (assessment.Evaluation, error) {
 	if !validText(variantID, 128) {
-		return Evaluation{}, fault.Validation("variant_id", "Укажите идентификатор варианта.")
+		return assessment.Evaluation{}, fault.Validation("variant_id", "Укажите идентификатор варианта.")
 	}
 	if !validText(variantTaskID, 128) {
-		return Evaluation{}, fault.Validation("variant_task_id", "Укажите идентификатор позиции задания варианта.")
+		return assessment.Evaluation{}, fault.Validation("variant_task_id", "Укажите идентификатор позиции задания варианта.")
 	}
 	if s.variantTasks == nil {
-		return Evaluation{}, fault.New(fault.Unavailable, "VARIANT_GRADING_UNAVAILABLE", "Оценивание заданий варианта временно недоступно.")
+		return assessment.Evaluation{}, fault.New(fault.Unavailable, "VARIANT_GRADING_UNAVAILABLE", "Оценивание заданий варианта временно недоступно.")
 	}
 
 	item, err := s.variantTasks.TaskForGrading(ctx, ownerID, variantID, variantTaskID)
 	if err != nil {
-		return Evaluation{}, err
+		return assessment.Evaluation{}, err
 	}
 	gradingContext, err := GradingContextFromVariantTask(item)
 	if err != nil {
-		return Evaluation{}, err
+		return assessment.Evaluation{}, err
 	}
 	return s.evaluateWithContext(ctx, ownerID, transcriptionID, gradingContext)
 }

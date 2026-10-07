@@ -17,6 +17,7 @@ planned — проект. `/tasks/generate` и `/admin/materials` сохраня
 сохраняется для прототипного frontend. Диагностическая сессия вызывает тот же assessment
 application по `variant_id`, `variant_task_id` и `transcription_id`, без HTTP-вызова
 собственного backend. В mock и real режимах используются соответствующие assessment graders.
+Assessment напрямую реализует порт сессии; оба модуля используют результат из `entities/assessment`.
 
 Сессии доступны через `POST /diagnostic-sessions`, `GET /diagnostic-sessions/{id}`,
 `GET /diagnostic-sessions/{id}/current/audio`, `POST /diagnostic-sessions/{id}/answers`
@@ -75,6 +76,9 @@ BACKEND_API_MODE=mock подменяет модели, auth/БД настоящ�
 BACKEND_STT_URL, BACKEND_TTS_URL, BACKEND_ASSESSMENT_* и BACKEND_TASKGEN_* из
 корневого шаблона: taskgen сохраняется отдельным действующим модулем. Таймауты, адрес
 прослушивания и лимит загрузки обязательны. После изменения env пересоздайте API.
+HTTP write timeout учитывает последовательные STT и грейдинг: максимум суммы их
+таймаутов и таймаута taskgen, плюс 30 секунд для обработки и записи ответа.
+Аудиоответ диагностики имеет тот же лимит загрузки, что `/voice/transcriptions`.
 VITE_API_MODE=real нужен для проверки backend из frontend; иначе браузер использует свои моки.
 
 COMPOSE_PROFILES=swagger включает Swagger под /docs/. После обновления YAML
@@ -142,6 +146,8 @@ XLSX — один лист карты. Текущий ML формат сохра
 
 GET /competency-map читает активную карту одним запросом; GET /tasks фильтрует
 задания; GET /tasks/{id} возвращает профиль. Эталоны/критерии студенту не выдаются.
+Фильтры `/tasks` и пагинация `/variants` отклоняют неизвестные, повторные, пустые
+и некорректно закодированные query-параметры с 422.
 `POST /variants` создаёт снимок, `GET /variants` возвращает cursor-страницы истории,
 `GET /variants/{id}` — весь план main/basic, а `GET /variants/{id}/tasks/{task_id}` —
 отдельную позицию. Все ручки требуют авторизацию и ограничивают чтение владельцем.

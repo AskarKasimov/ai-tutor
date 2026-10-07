@@ -38,12 +38,6 @@ func TestXLSXMapPreservesBlankRowsAndParsesSourceCoordinates(t *testing.T) {
 			}
 		}
 	}
-	if err := workbook.SetCellValue(sheet, "A1", "Заметки"); err != nil {
-		t.Fatal(err)
-	}
-	if err := workbook.SetCellValue(sheet, "A2", ""); err != nil {
-		t.Fatal(err)
-	}
 	if err := workbook.SetCellValue(sheet, "A2", ""); err != nil {
 		t.Fatal(err)
 	}

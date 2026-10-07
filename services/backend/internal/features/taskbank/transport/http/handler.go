@@ -15,6 +15,7 @@ func New(service *application.Service) *Handler { return &Handler{service: servi
 
 // Search filters student-visible tasks using their competency profile.
 // @Summary Найти задания по свойствам карты
+// @Description Query-параметры должны быть известными, непустыми и передаваться однократно. Некорректное кодирование и недопустимые значения возвращают 422.
 // @ID searchTasks
 // @Tags Банк заданий
 // @Security accessCookie
@@ -39,7 +40,12 @@ func New(service *application.Service) *Handler { return &Handler{service: servi
 // @Failure 503 {object} fault.Error
 // @Router /tasks [get]
 func (h *Handler) Search(w http.ResponseWriter, r *http.Request) {
-	query := r.URL.Query()
+	query, err := httpx.ParseQuery(r, "outcome_id", "competency_id", "constituent_id", "taxonomy", "ald_level", "topic_level",
+		"importance", "importance_min", "importance_max", "include_in_test", "section", "curriculum_competency", "origin", "limit")
+	if err != nil {
+		httpx.Error(r.Context(), w, err)
+		return
+	}
 	filter := application.SearchFilter{
 		OutcomeID: query.Get("outcome_id"), CompetencyID: query.Get("competency_id"),
 		ConstituentID: query.Get("constituent_id"), TaxonomyCode: query.Get("taxonomy"),

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/assessment"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/fault"
 )
 
@@ -32,10 +33,10 @@ func (s *contextStub) ContextForTask(_ context.Context, taskID string) (GradingC
 type graderStub struct {
 	gradingContext GradingContext
 	answer         string
-	result         Evaluation
+	result         assessment.Evaluation
 }
 
-func (s *graderStub) Grade(_ context.Context, gradingContext GradingContext, answer string) (Evaluation, error) {
+func (s *graderStub) Grade(_ context.Context, gradingContext GradingContext, answer string) (assessment.Evaluation, error) {
 	s.gradingContext, s.answer = gradingContext, answer
 	return s.result, nil
 }
@@ -51,11 +52,11 @@ func validContext() GradingContext {
 	}
 }
 
-func validEvaluation() Evaluation {
-	return Evaluation{
+func validEvaluation() assessment.Evaluation {
+	return assessment.Evaluation{
 		Score:   2,
 		Verdict: "correct",
-		CriterionResults: []CriterionResult{
+		CriterionResults: []assessment.CriterionResult{
 			{Key: "task_type", Satisfied: true, Explanation: "Названа классификация."},
 			{Key: "justification", Satisfied: true, Explanation: "Указаны два класса."},
 		},

@@ -43,7 +43,7 @@ func (s *Service) Start(ctx context.Context, ownerID, variantID, key string) (di
 	if existing, found, err := s.store.FindStart(ctx, ownerID, key, requestDigest); err != nil {
 		return diagnostic.Progress{}, false, err
 	} else if found {
-		return progress(existing), true, nil
+		return existing.Progress(), true, nil
 	}
 	value, err := s.variants.Get(ctx, ownerID, variantID)
 	if err != nil {
@@ -70,7 +70,7 @@ func (s *Service) Start(ctx context.Context, ownerID, variantID, key string) (di
 	if err != nil {
 		return diagnostic.Progress{}, false, err
 	}
-	return progress(stored), reused, nil
+	return stored.Progress(), reused, nil
 }
 
 func (s *Service) Read(ctx context.Context, ownerID, sessionID string) (diagnostic.Progress, error) {
@@ -81,7 +81,7 @@ func (s *Service) Read(ctx context.Context, ownerID, sessionID string) (diagnost
 	if err != nil {
 		return diagnostic.Progress{}, err
 	}
-	return progress(value), nil
+	return value.Progress(), nil
 }
 
 func (s *Service) CurrentAudio(ctx context.Context, ownerID, sessionID string) ([]byte, error) {
@@ -95,7 +95,7 @@ func (s *Service) CurrentAudio(ctx context.Context, ownerID, sessionID string) (
 	if value.Status != diagnostic.StatusActive {
 		return nil, fault.New(fault.Conflict, "DIAGNOSTIC_SESSION_COMPLETED", "Диагностическая сессия уже завершена.")
 	}
-	task := currentTask(value)
+	task := value.Current()
 	if task == nil || strings.TrimSpace(task.VoiceInstruction) == "" {
 		return nil, fault.New(fault.Upstream, "DIAGNOSTIC_INSTRUCTION_MISSING", "У текущего задания нет голосовой инструкции.")
 	}
@@ -135,31 +135,29 @@ func (s *Service) Answer(ctx context.Context, ownerID, sessionID, taskID, key st
 	if accepted != nil {
 		return accepted.Response, nil
 	}
-	current := currentTask(value)
+	transcriptionID, text := reservation.TranscriptionID, reservation.TranscriptionText
+	defer func() {
+		_ = s.store.Fail(context.WithoutCancel(ctx), ownerID, sessionID, token, transcriptionID, text)
+	}()
+	current := value.Current()
 	if current == nil || current.ID != taskID {
-		_ = s.store.Fail(context.Background(), ownerID, sessionID, token, "", "")
 		return diagnostic.Progress{}, fault.New(fault.Conflict, "DIAGNOSTIC_TASK_NOT_CURRENT", "Укажите текущее задание сессии.")
 	}
-	transcriptionID, text := reservation.TranscriptionID, reservation.TranscriptionText
 	if transcriptionID == "" {
 		transcription, transcribeErr := s.voice.Transcribe(ctx, ownerID, data, media)
 		if transcribeErr != nil {
-			_ = s.store.Fail(context.Background(), ownerID, sessionID, token, "", "")
 			return diagnostic.Progress{}, transcribeErr
 		}
 		if !validTranscription(transcription, ownerID) {
-			_ = s.store.Fail(context.Background(), ownerID, sessionID, token, "", "")
 			return diagnostic.Progress{}, fault.New(fault.Upstream, "TRANSCRIPTION_INVALID_RESPONSE", "Сервис распознавания вернул некорректную расшифровку.")
 		}
 		transcriptionID, text = transcription.ID, transcription.Text
 	}
-	evaluation, err := s.grader.Evaluate(ctx, ownerID, transcriptionID, value.Variant.ID, current.ID)
+	evaluation, err := s.grader.EvaluateVariant(ctx, ownerID, transcriptionID, value.Variant.ID, current.ID)
 	if err != nil {
-		_ = s.store.Fail(context.Background(), ownerID, sessionID, token, transcriptionID, text)
 		return diagnostic.Progress{}, err
 	}
 	if err = validateEvaluation(evaluation, current.Role); err != nil {
-		_ = s.store.Fail(context.Background(), ownerID, sessionID, token, transcriptionID, text)
 		return diagnostic.Progress{}, err
 	}
 	score := evaluation.Score
@@ -177,13 +175,7 @@ func (s *Service) Answer(ctx context.Context, ownerID, sessionID, taskID, key st
 		CreatedAt: s.now().Unix(),
 	}
 	transition := nextTransition(value, answer)
-	result, err := s.store.Accept(ctx, ownerID, sessionID, token, key, fingerprint, answer, transition,
-		value.Variant.IncludedCompetencyCount*3)
-	if err != nil {
-		_ = s.store.Fail(context.Background(), ownerID, sessionID, token, transcriptionID, text)
-		return diagnostic.Progress{}, err
-	}
-	return result, nil
+	return s.store.Accept(ctx, ownerID, sessionID, token, key, fingerprint, answer, transition)
 }
 
 func (s *Service) Result(ctx context.Context, ownerID, sessionID string) (diagnostic.Result, error) {
@@ -244,15 +236,6 @@ func validateEvaluation(value assessment.Evaluation, role string) error {
 	return nil
 }
 
-func progress(value diagnostic.Session) diagnostic.Progress {
-	result := diagnostic.Progress{SessionID: value.ID, Status: value.Status,
-		Completed: len(value.Answers), Skipped: len(value.SkippedBasics), Total: value.Variant.IncludedCompetencyCount * 3}
-	if task := currentTask(value); task != nil {
-		result.Current = task
-	}
-	return result
-}
-
 func nextTransition(value diagnostic.Session, answer diagnostic.Answer) diagnostic.Transition {
 	transition := diagnostic.Transition{
 		CurrentCompetency: value.CurrentCompetency,
@@ -274,18 +257,6 @@ func nextTransition(value diagnostic.Session, answer diagnostic.Answer) diagnost
 		transition.Status = diagnostic.StatusCompleted
 	}
 	return transition
-}
-
-func currentTask(value diagnostic.Session) *diagnostic.TaskSnapshot {
-	if value.CurrentCompetency >= len(value.Variant.Competencies) {
-		return nil
-	}
-	competency := value.Variant.Competencies[value.CurrentCompetency]
-	if value.CurrentTask >= len(competency.Tasks) {
-		return nil
-	}
-	task := competency.Tasks[value.CurrentTask]
-	return &task
 }
 
 func snapshotVariant(value variant.Variant) (diagnostic.VariantSnapshot, error) {

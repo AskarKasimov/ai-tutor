@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/assessment"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/user"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/features/assessment/application"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/httpx"
@@ -36,11 +37,11 @@ func (s *contextStub) ContextForTask(_ context.Context, taskID string) (applicat
 
 type graderStub struct{}
 
-func (graderStub) Grade(_ context.Context, _ application.GradingContext, _ string) (application.Evaluation, error) {
-	return application.Evaluation{
+func (graderStub) Grade(_ context.Context, _ application.GradingContext, _ string) (assessment.Evaluation, error) {
+	return assessment.Evaluation{
 		Score:   2,
 		Verdict: "correct",
-		CriterionResults: []application.CriterionResult{
+		CriterionResults: []assessment.CriterionResult{
 			{Key: "task_type", Satisfied: true, Explanation: "Названа классификация."},
 			{Key: "justification", Satisfied: true, Explanation: "Указаны два класса."},
 		},

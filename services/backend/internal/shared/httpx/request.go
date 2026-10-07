@@ -1,11 +1,14 @@
 package httpx
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"io"
 	"mime"
 	"net/http"
+	"net/url"
+	"slices"
 	"strings"
 	"unicode/utf8"
 
@@ -23,7 +26,7 @@ func DecodeJSON(r *http.Request, dst any) error {
 	if !utf8.Valid(body) {
 		return fault.Validation("body", "Ожидается UTF-8.")
 	}
-	d := json.NewDecoder(strings.NewReader(string(body)))
+	d := json.NewDecoder(bytes.NewReader(body))
 	d.DisallowUnknownFields()
 	if err = d.Decode(dst); err != nil {
 		return fault.Validation("body", "Некорректный JSON или лишние поля.")
@@ -32,6 +35,22 @@ func DecodeJSON(r *http.Request, dst any) error {
 		return fault.Validation("body", "Ожидается ровно один объект JSON.")
 	}
 	return nil
+}
+
+func ParseQuery(r *http.Request, allowed ...string) (url.Values, error) {
+	query, err := url.ParseQuery(r.URL.RawQuery)
+	if err != nil {
+		return nil, fault.Validation("query", "Некорректные параметры запроса.")
+	}
+	for key, values := range query {
+		if !slices.Contains(allowed, key) {
+			return nil, fault.Validation(key, "Неизвестный параметр.")
+		}
+		if len(values) != 1 || values[0] == "" || !utf8.ValidString(values[0]) || strings.ContainsRune(values[0], 0) {
+			return nil, fault.Validation(key, "Укажите ровно одно непустое значение параметра.")
+		}
+	}
+	return query, nil
 }
 
 func BodyError(err error) error {

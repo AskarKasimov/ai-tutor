@@ -18,7 +18,9 @@ type Handler struct {
 	now     func() time.Time
 }
 
-func New(service *application.Service, now func() time.Time) *Handler { return &Handler{service, now} }
+func New(service *application.Service, now func() time.Time) *Handler {
+	return &Handler{service: service, now: now}
+}
 
 type wireUser struct {
 	ID          string    `json:"id"`

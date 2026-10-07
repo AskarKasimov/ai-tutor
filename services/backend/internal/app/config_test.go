@@ -108,7 +108,7 @@ func testConfig() Config {
 		STTURL: "http://stt.test/transcribe", TTSURL: "http://tts.test/synthesize",
 		AssessmentBaseURL: "http://assessment.test/v1", AssessmentModel: "test-model",
 		TaskgenBaseURL: "http://generation.test/v1", TaskgenModel: "generation-model", TaskgenTimeout: 45 * time.Second,
-		ProcessingTimeout: 120 * time.Second, AssessmentTimeout: 90 * time.Second,
+		VoiceTimeout: 120 * time.Second, AssessmentTimeout: 90 * time.Second,
 		MaxUploadBytes: 25 * 1024 * 1024,
 	}
 }

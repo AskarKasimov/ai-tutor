@@ -77,11 +77,6 @@ SELECT vt.id, vt.role, vt.task_snapshot, vt.profile_snapshot
 FROM variant_tasks vt JOIN variants v ON v.id = vt.variant_id
 WHERE v.user_id = $1 AND v.id = $2 AND vt.id = $3;
 
--- name: ReadVariantTaskForGrading :one
-SELECT vt.task_snapshot, vt.profile_snapshot
-FROM variant_tasks vt JOIN variants v ON v.id = vt.variant_id
-WHERE v.user_id = $1 AND v.id = $2 AND vt.id = $3;
-
 -- name: ListVariantsByOwner :many
 SELECT id, map_revision, algorithm_version, included_competency_count,
        skipped_competencies, created_at

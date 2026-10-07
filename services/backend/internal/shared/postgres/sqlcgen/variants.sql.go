@@ -312,30 +312,6 @@ func (q *Queries) ReadVariantTaskByOwner(ctx context.Context, arg ReadVariantTas
 	return i, err
 }
 
-const readVariantTaskForGrading = `-- name: ReadVariantTaskForGrading :one
-SELECT vt.task_snapshot, vt.profile_snapshot
-FROM variant_tasks vt JOIN variants v ON v.id = vt.variant_id
-WHERE v.user_id = $1 AND v.id = $2 AND vt.id = $3
-`
-
-type ReadVariantTaskForGradingParams struct {
-	UserID string
-	ID     string
-	ID_2   string
-}
-
-type ReadVariantTaskForGradingRow struct {
-	TaskSnapshot    []byte
-	ProfileSnapshot []byte
-}
-
-func (q *Queries) ReadVariantTaskForGrading(ctx context.Context, arg ReadVariantTaskForGradingParams) (ReadVariantTaskForGradingRow, error) {
-	row := q.db.QueryRow(ctx, readVariantTaskForGrading, arg.UserID, arg.ID, arg.ID_2)
-	var i ReadVariantTaskForGradingRow
-	err := row.Scan(&i.TaskSnapshot, &i.ProfileSnapshot)
-	return i, err
-}
-
 const readVariantTasks = `-- name: ReadVariantTasks :many
 SELECT id, competency_position, slot, role, source_task_id_snapshot, task_snapshot, profile_snapshot
 FROM variant_tasks WHERE variant_id = $1 ORDER BY competency_position, slot

@@ -72,14 +72,6 @@ VALUES ($1, $2, $3);
 -- name: UpdateCompetencyMapRevision :exec
 UPDATE competency_map_state SET revision = $1 WHERE singleton = true;
 
--- name: GetTaskForStudent :one
-SELECT task.id, task.outcome_id, task.question, task.options, task.voice_instruction, task.origin
-FROM tasks AS task WHERE task.id = $1;
-
--- name: ListStudentTasksByOutcome :many
-SELECT id, question, options, voice_instruction, origin
-FROM tasks WHERE outcome_id = $1 ORDER BY created_at, id;
-
 -- name: ReadCurrentCompetencyMap :many
 SELECT state.revision, import.imported_at,
        competency.id AS competency_id, competency.name AS competency_name,
@@ -161,13 +153,6 @@ WHERE (sqlc.arg(outcome_id)::text = '' OR outcome.id = sqlc.arg(outcome_id)::tex
 ORDER BY task.created_at, task.id
 LIMIT sqlc.arg(task_limit)::integer;
 
--- name: ListAnalogueTasks :many
-SELECT id, question, options, voice_instruction, origin, reference_answer, criteria
-FROM tasks
-WHERE outcome_id = $1 AND id <> $2 AND NOT (id = ANY(COALESCE($3::text[], '{}'::text[])))
-ORDER BY created_at, id
-LIMIT $4;
-
 -- name: InsertGenerationRun :execrows
 INSERT INTO generation_runs(id, outcome_id, map_revision, model, prompt_version, request_key, requested_profile, created_at)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
@@ -190,9 +175,6 @@ INSERT INTO generation_run_chunks(generation_run_id, chunk_id) VALUES ($1, $2);
 INSERT INTO tasks(id, outcome_id, question, options, voice_instruction, reference_answer, criteria,
                   origin, generation_run_id, created_at)
 VALUES ($1, $2, $3, $4, $5, $6, $7, 'ai_generated', $8, $9);
-
--- name: GetCurrentMapRevision :one
-SELECT revision FROM competency_map_state WHERE singleton = true;
 
 -- name: GetOutcomeForGeneration :one
 SELECT state.revision, outcome.id, outcome.name, outcome.include_in_test, taxonomy.code AS taxonomy_code,
@@ -240,15 +222,3 @@ WHERE link.outcome_id = $1
   AND chunk.search_vector @@ to_tsquery('russian', replace(plainto_tsquery('russian', $2)::text, ' & ', ' | '))
 ORDER BY relevance DESC, chunk.id
 LIMIT $3;
-
--- name: CreateLearningSession :exec
-INSERT INTO learning_sessions(id, user_id, map_revision, map_snapshot, status, created_at)
-VALUES ($1, $2, $3, $4, 'active', $5);
-
--- name: AssignTaskSnapshot :exec
-INSERT INTO task_assignments(id, session_id, task_id, sequence, role, task_snapshot, profile_snapshot, created_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8);
-
--- name: SaveAssignmentResponse :exec
-INSERT INTO assignment_responses(id, assignment_id, transcription_id, answer_text, score, feedback, created_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7);

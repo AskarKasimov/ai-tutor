@@ -9,36 +9,6 @@ import (
 	"context"
 )
 
-const assignTaskSnapshot = `-- name: AssignTaskSnapshot :exec
-INSERT INTO task_assignments(id, session_id, task_id, sequence, role, task_snapshot, profile_snapshot, created_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-`
-
-type AssignTaskSnapshotParams struct {
-	ID              string
-	SessionID       string
-	TaskID          *string
-	Sequence        int32
-	Role            string
-	TaskSnapshot    []byte
-	ProfileSnapshot []byte
-	CreatedAt       int64
-}
-
-func (q *Queries) AssignTaskSnapshot(ctx context.Context, arg AssignTaskSnapshotParams) error {
-	_, err := q.db.Exec(ctx, assignTaskSnapshot,
-		arg.ID,
-		arg.SessionID,
-		arg.TaskID,
-		arg.Sequence,
-		arg.Role,
-		arg.TaskSnapshot,
-		arg.ProfileSnapshot,
-		arg.CreatedAt,
-	)
-	return err
-}
-
 const countExistingOutcomes = `-- name: CountExistingOutcomes :one
 SELECT count(*)::integer FROM outcomes WHERE id = ANY($1::text[])
 `
@@ -48,30 +18,6 @@ func (q *Queries) CountExistingOutcomes(ctx context.Context, dollar_1 []string) 
 	var column_1 int32
 	err := row.Scan(&column_1)
 	return column_1, err
-}
-
-const createLearningSession = `-- name: CreateLearningSession :exec
-INSERT INTO learning_sessions(id, user_id, map_revision, map_snapshot, status, created_at)
-VALUES ($1, $2, $3, $4, 'active', $5)
-`
-
-type CreateLearningSessionParams struct {
-	ID          string
-	UserID      string
-	MapRevision int64
-	MapSnapshot []byte
-	CreatedAt   int64
-}
-
-func (q *Queries) CreateLearningSession(ctx context.Context, arg CreateLearningSessionParams) error {
-	_, err := q.db.Exec(ctx, createLearningSession,
-		arg.ID,
-		arg.UserID,
-		arg.MapRevision,
-		arg.MapSnapshot,
-		arg.CreatedAt,
-	)
-	return err
 }
 
 const deleteCompetencies = `-- name: DeleteCompetencies :exec
@@ -109,17 +55,6 @@ WHERE chunk_id IN (SELECT id FROM material_chunks WHERE material_name = $1)
 func (q *Queries) DeleteMaterialLinksByName(ctx context.Context, materialName string) error {
 	_, err := q.db.Exec(ctx, deleteMaterialLinksByName, materialName)
 	return err
-}
-
-const getCurrentMapRevision = `-- name: GetCurrentMapRevision :one
-SELECT revision FROM competency_map_state WHERE singleton = true
-`
-
-func (q *Queries) GetCurrentMapRevision(ctx context.Context) (int64, error) {
-	row := q.db.QueryRow(ctx, getCurrentMapRevision)
-	var revision int64
-	err := row.Scan(&revision)
-	return revision, err
 }
 
 const getGeneratedTaskByKey = `-- name: GetGeneratedTaskByKey :one
@@ -210,34 +145,6 @@ func (q *Queries) GetOutcomeForGeneration(ctx context.Context, id string) (GetOu
 		&i.TopicLevelCode,
 		&i.CompetencyName,
 		&i.CurriculumSections,
-	)
-	return i, err
-}
-
-const getTaskForStudent = `-- name: GetTaskForStudent :one
-SELECT task.id, task.outcome_id, task.question, task.options, task.voice_instruction, task.origin
-FROM tasks AS task WHERE task.id = $1
-`
-
-type GetTaskForStudentRow struct {
-	ID               string
-	OutcomeID        string
-	Question         string
-	Options          []byte
-	VoiceInstruction *string
-	Origin           string
-}
-
-func (q *Queries) GetTaskForStudent(ctx context.Context, id string) (GetTaskForStudentRow, error) {
-	row := q.db.QueryRow(ctx, getTaskForStudent, id)
-	var i GetTaskForStudentRow
-	err := row.Scan(
-		&i.ID,
-		&i.OutcomeID,
-		&i.Question,
-		&i.Options,
-		&i.VoiceInstruction,
-		&i.Origin,
 	)
 	return i, err
 }
@@ -721,64 +628,6 @@ func (q *Queries) LinkMaterialChunkToOutcome(ctx context.Context, arg LinkMateri
 	return err
 }
 
-const listAnalogueTasks = `-- name: ListAnalogueTasks :many
-SELECT id, question, options, voice_instruction, origin, reference_answer, criteria
-FROM tasks
-WHERE outcome_id = $1 AND id <> $2 AND NOT (id = ANY(COALESCE($3::text[], '{}'::text[])))
-ORDER BY created_at, id
-LIMIT $4
-`
-
-type ListAnalogueTasksParams struct {
-	OutcomeID string
-	ID        string
-	Column3   []string
-	Limit     int32
-}
-
-type ListAnalogueTasksRow struct {
-	ID               string
-	Question         string
-	Options          []byte
-	VoiceInstruction *string
-	Origin           string
-	ReferenceAnswer  *string
-	Criteria         *string
-}
-
-func (q *Queries) ListAnalogueTasks(ctx context.Context, arg ListAnalogueTasksParams) ([]ListAnalogueTasksRow, error) {
-	rows, err := q.db.Query(ctx, listAnalogueTasks,
-		arg.OutcomeID,
-		arg.ID,
-		arg.Column3,
-		arg.Limit,
-	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []ListAnalogueTasksRow{}
-	for rows.Next() {
-		var i ListAnalogueTasksRow
-		if err := rows.Scan(
-			&i.ID,
-			&i.Question,
-			&i.Options,
-			&i.VoiceInstruction,
-			&i.Origin,
-			&i.ReferenceAnswer,
-			&i.Criteria,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
 const listGenerationExamples = `-- name: ListGenerationExamples :many
 SELECT task.id, task.question, task.options, task.voice_instruction, task.reference_answer, task.criteria
 FROM tasks AS task
@@ -817,45 +666,6 @@ func (q *Queries) ListGenerationExamples(ctx context.Context, arg ListGeneration
 			&i.VoiceInstruction,
 			&i.ReferenceAnswer,
 			&i.Criteria,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const listStudentTasksByOutcome = `-- name: ListStudentTasksByOutcome :many
-SELECT id, question, options, voice_instruction, origin
-FROM tasks WHERE outcome_id = $1 ORDER BY created_at, id
-`
-
-type ListStudentTasksByOutcomeRow struct {
-	ID               string
-	Question         string
-	Options          []byte
-	VoiceInstruction *string
-	Origin           string
-}
-
-func (q *Queries) ListStudentTasksByOutcome(ctx context.Context, outcomeID string) ([]ListStudentTasksByOutcomeRow, error) {
-	rows, err := q.db.Query(ctx, listStudentTasksByOutcome, outcomeID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []ListStudentTasksByOutcomeRow{}
-	for rows.Next() {
-		var i ListStudentTasksByOutcomeRow
-		if err := rows.Scan(
-			&i.ID,
-			&i.Question,
-			&i.Options,
-			&i.VoiceInstruction,
-			&i.Origin,
 		); err != nil {
 			return nil, err
 		}
@@ -965,34 +775,6 @@ func (q *Queries) ReadCurrentCompetencyMap(ctx context.Context) ([]ReadCurrentCo
 		return nil, err
 	}
 	return items, nil
-}
-
-const saveAssignmentResponse = `-- name: SaveAssignmentResponse :exec
-INSERT INTO assignment_responses(id, assignment_id, transcription_id, answer_text, score, feedback, created_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7)
-`
-
-type SaveAssignmentResponseParams struct {
-	ID              string
-	AssignmentID    string
-	TranscriptionID *string
-	AnswerText      string
-	Score           *int16
-	Feedback        []byte
-	CreatedAt       int64
-}
-
-func (q *Queries) SaveAssignmentResponse(ctx context.Context, arg SaveAssignmentResponseParams) error {
-	_, err := q.db.Exec(ctx, saveAssignmentResponse,
-		arg.ID,
-		arg.AssignmentID,
-		arg.TranscriptionID,
-		arg.AnswerText,
-		arg.Score,
-		arg.Feedback,
-		arg.CreatedAt,
-	)
-	return err
 }
 
 const searchMaterialChunks = `-- name: SearchMaterialChunks :many

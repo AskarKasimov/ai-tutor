@@ -14,7 +14,7 @@ Backend проходит сохранённый вариант, выдаёт з�
 | --- | --- | --- |
 | Создать вариант | `POST /variants`, обязательный `Idempotency-Key` | Сохранённый план main/basic, успешный повтор возвращает тот же вариант. |
 | Прочитать вариант и позицию | `GET /variants/{id}`, `GET /variants/{id}/tasks/{task_id}` | Доступ владельца; публичные DTO скрывают эталоны, criteria и ОС. |
-| Получить полный снимок | Domain port `variant.TaskReader`, реализованный variantgen application и PostgreSQL adapter | Используется сессией при запуске; читает связанный снимок владельца вместе с ролью и свойствами задания. SQL выполняется через сгенерированные sqlc методы. |
+| Получить полный снимок задания | Domain port `variant.TaskReader`, реализованный PostgreSQL adapter variantgen | Используется assessment при оценивании; читает снимок владельца вместе с ролью и свойствами задания. Сессия загружает полный вариант через порт VariantReader. SQL выполняется через сгенерированные sqlc методы. |
 | STT | `POST /voice/transcriptions`, multipart `audio` | WAV/Ogg/WebM до 25 МиБ; ID и текст расшифровки, сохранённой за владельцем. |
 | TTS | `POST /voice/syntheses`, JSON `text` | До 500 символов, ответ WAV. Для диагностики озвучивается `voice_instruction`. |
 | Оценивание позиции варианта | `POST /assessments/evaluate` | Принимает `transcription_id`, `variant_id`, `variant_task_id`; возвращает `score`, `max_score`, `verdict`, критерии и feedback. Legacy `task_id` путь поддержан для текущего frontend prototype. |
@@ -56,16 +56,16 @@ Backend проходит сохранённый вариант, выдаёт з�
 
 ## Слои и зависимости
 
-- `entities/diagnostic`: состояние сессии, предъявленная позиция, попытка и результат диагностики.
-- `entities/assessment`: доменные типы результата с verdict/criterion_results, соответствующие контракту PR. Существующие типы assessment переводятся адаптером без обязательного рефакторинга грейдера.
+- `entities/diagnostic`: состояние сессии, текущая позиция, счётчики прогресса, попытка и результат диагностики.
+- `entities/assessment`: общие для assessment и сессии доменные типы результата с verdict/criterion_results, соответствующие контракту PR.
 - `features/diagnostic/application`: запуск, чтение, обработка ответа, проверка role-specific оценки, переходы и агрегация. Порты чтения варианта, STT/TTS, грейдинга, хранилища состояния, ID и времени.
 - `features/diagnostic/infrastructure`: хранилище в памяти. Voice и grader adapters подаются через composition root.
 - `features/diagnostic/transport/http`: авторизация, multipart/JSON, DTO, ошибки и аннотации OpenAPI.
 - `app`: composition root для всех зависимостей. Application сессии не импортирует application других features и не делает HTTP-запросы к собственным обработчикам.
 
-При запуске сессии прочитать вариант с проверкой владельца и зафиксировать его порядок/позиции в состоянии. Роль main/basic и связанные свойства берутся из этой доверенной структуры и исторических снимков; публичные DTO эталон/criteria/ОС не раскрывают. Текущий грейдер получает свой контекст по task_id; переход на контекст снимка выполняется при дальнейшей интеграции его provider.
+При запуске сессии вариант читается с проверкой владельца, его порядок и позиции фиксируются в состоянии. Роль main/basic и связанные свойства берутся из исторических снимков; публичные DTO эталон/criteria/ОС не раскрывают. Assessment строит контекст грейдера из сохранённой позиции варианта.
 
-Application-порт грейдинга принимает owner ID, transcription ID, variant ID и variant task ID и возвращает structured evaluation, включая `max_score`. Composition root адаптирует `assessment.Service.EvaluateVariant` к этому порту. HTTP-вызов собственного обработчика не выполняется. Assessment читает сохранённый снимок и вызывает соответствующий mock или real grader.
+Application-порт грейдинга принимает owner ID, transcription ID, variant ID и variant task ID и возвращает structured evaluation, включая `max_score`. `assessment.Service.EvaluateVariant` напрямую реализует этот порт. HTTP-вызов собственного обработчика не выполняется. Assessment читает сохранённый снимок и вызывает соответствующий mock или real grader.
 
 ## Реализованные операции сессии
 

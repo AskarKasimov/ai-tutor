@@ -193,7 +193,7 @@ func (s *Service) Result(ctx context.Context, ownerID, sessionID string) (diagno
 		SessionID: value.ID, Status: value.Status, VariantID: value.VariantID,
 		MapRevision: value.Variant.MapRevision, IncludedCompetencyCount: value.Variant.IncludedCompetencyCount,
 		SkippedCompetencies: append([]diagnostic.SkippedCompetency{}, value.Variant.SkippedCompetencies...), CompletedTasks: len(value.Answers),
-		TotalTasks: value.Variant.IncludedCompetencyCount * 3, MaximumScore: value.Variant.IncludedCompetencyCount * 2,
+		TotalTasks: value.Variant.TaskCount(), MaximumScore: value.Variant.IncludedCompetencyCount * 2,
 		Answers: append([]diagnostic.Answer(nil), value.Answers...), UntestedBasics: append([]diagnostic.TaskSnapshot{}, value.SkippedBasics...),
 	}
 	for _, answer := range value.Answers {
@@ -273,8 +273,8 @@ func snapshotVariant(value variant.Variant) (diagnostic.VariantSnapshot, error) 
 		snapshot.SkippedCompetencies = append(snapshot.SkippedCompetencies, diagnostic.SkippedCompetency{ID: skipped.CompetencyID, Name: skipped.CompetencyName, Code: skipped.Code})
 	}
 	for _, selection := range value.Competencies {
-		if !validID(selection.Competency.ID) || strings.TrimSpace(selection.Competency.Name) == "" || len(selection.Tasks) != 3 {
-			return diagnostic.VariantSnapshot{}, fault.New(fault.Invalid, "VARIANT_INVALID", "Компетенция варианта должна содержать три позиции.")
+		if !validID(selection.Competency.ID) || strings.TrimSpace(selection.Competency.Name) == "" || len(selection.Tasks) < 1 || len(selection.Tasks) > 3 {
+			return diagnostic.VariantSnapshot{}, fault.New(fault.Invalid, "VARIANT_INVALID", "Компетенция варианта должна содержать основной и до двух базовых заданий.")
 		}
 		competency := diagnostic.Competency{ID: selection.Competency.ID, Name: selection.Competency.Name, Position: selection.Position, Tasks: make([]diagnostic.TaskSnapshot, 0, 3)}
 		for i, item := range selection.Tasks {

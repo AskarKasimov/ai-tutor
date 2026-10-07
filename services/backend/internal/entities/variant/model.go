@@ -14,6 +14,7 @@ type Variant struct {
 	MapRevision             int64
 	AlgorithmVersion        string
 	IncludedCompetencyCount int
+	TaskCount               int
 	SkippedCompetencies     []SkippedCompetency
 	CreatedAt               int64
 	Competencies            []CompetencySelection

@@ -303,3 +303,60 @@ func TestConcurrentAnswerIsRejectedWithoutHoldingLockAcrossGrader(t *testing.T) 
 		t.Fatalf("first request failed: %v", err)
 	}
 }
+
+func TestVariableSizeCompetenciesAdvanceAndCountActualTasks(t *testing.T) {
+	for _, perfect := range []bool{false, true} {
+		t.Run(fmt.Sprintf("perfect=%v", perfect), func(t *testing.T) {
+			results := []gradeResult{grade(0), grade(1), gradeBasic(1), grade(0), gradeBasic(0), gradeBasic(1)}
+			if perfect {
+				results = []gradeResult{grade(2), grade(2), grade(2)}
+			}
+			service, _, _, variants := newTestService(results...)
+			value := testVariant()
+			third := testVariant().Competencies[0]
+			third.Competency.ID = "comp-2"
+			third.Position = 3
+			for i := range third.Tasks {
+				third.Tasks[i].ID = fmt.Sprintf("variant-task-2-%d", i)
+				third.Tasks[i].Task.Competency = third.Competency
+			}
+			value.Competencies[0].Tasks = value.Competencies[0].Tasks[:1]
+			value.Competencies[1].Tasks = value.Competencies[1].Tasks[:2]
+			value.Competencies = append(value.Competencies, third)
+			value.IncludedCompetencyCount = 3
+			variants.value = value
+			progress := service.start(t)
+			if progress.Total != 6 {
+				t.Fatalf("initial total = %d", progress.Total)
+			}
+			wantIDs := []string{"variant-task-0-0", "variant-task-1-0", "variant-task-1-1", "variant-task-2-0", "variant-task-2-1", "variant-task-2-2"}
+			if perfect {
+				wantIDs = []string{"variant-task-0-0", "variant-task-1-0", "variant-task-2-0"}
+			}
+			for i, want := range wantIDs {
+				if progress.Current == nil || progress.Current.ID != want {
+					t.Fatalf("step %d: %+v", i, progress)
+				}
+				restored, err := service.Read(context.Background(), "owner-1", progress.SessionID)
+				if err != nil || restored.Total != 6 || restored.Current.ID != want {
+					t.Fatalf("restore: %+v / %v", restored, err)
+				}
+				progress = service.answer(t, progress, fmt.Sprintf("answer-%d", i))
+			}
+			if progress.Status != diagnostic.StatusCompleted || progress.Completed+progress.Skipped != 6 {
+				t.Fatalf("final: %+v", progress)
+			}
+			result, err := service.Result(context.Background(), "owner-1", progress.SessionID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			wantScore, wantSkipped := 1, 0
+			if perfect {
+				wantScore, wantSkipped = 6, 3
+			}
+			if result.TotalTasks != 6 || result.MaximumScore != 6 || result.DiagnosticScore != wantScore || len(result.UntestedBasics) != wantSkipped {
+				t.Fatalf("result: %+v", result)
+			}
+		})
+	}
+}

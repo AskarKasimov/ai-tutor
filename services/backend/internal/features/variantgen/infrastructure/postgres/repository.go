@@ -156,6 +156,7 @@ func (r *Repository) Get(ctx context.Context, ownerID, id string) (variant.Varia
 	if err != nil {
 		return variant.Variant{}, err
 	}
+	result.TaskCount = len(rows)
 	for _, row := range rows {
 		task, err := mergeSnapshots(row.TaskSnapshot, row.ProfileSnapshot)
 		if err != nil {
@@ -208,7 +209,7 @@ func (r *Repository) List(ctx context.Context, ownerID string, limit int, cursor
 	}
 	items := make([]variant.Variant, 0, len(rows))
 	for _, row := range rows {
-		item := variant.Variant{ID: row.ID, OwnerID: ownerID, MapRevision: row.MapRevision, AlgorithmVersion: row.AlgorithmVersion, IncludedCompetencyCount: int(row.IncludedCompetencyCount), CreatedAt: row.CreatedAt, Competencies: []variant.CompetencySelection{}}
+		item := variant.Variant{ID: row.ID, OwnerID: ownerID, MapRevision: row.MapRevision, AlgorithmVersion: row.AlgorithmVersion, IncludedCompetencyCount: int(row.IncludedCompetencyCount), TaskCount: int(row.TaskCount), CreatedAt: row.CreatedAt, Competencies: []variant.CompetencySelection{}}
 		if err := json.Unmarshal(row.SkippedCompetencies, &item.SkippedCompetencies); err != nil {
 			return nil, nil, err
 		}

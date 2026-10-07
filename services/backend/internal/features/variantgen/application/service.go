@@ -14,7 +14,7 @@ import (
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/fault"
 )
 
-const AlgorithmVersion = "competency-map-v1"
+const AlgorithmVersion = "competency-map-v2"
 
 var bloomRanks = map[string]int{"knowledge": 1, "understanding": 2, "application": 3, "analysis": 4}
 
@@ -116,8 +116,8 @@ func (s *Service) build(ownerID string, revision int64, candidates []variant.Can
 			}
 			return outcomes[i].outcome.ID < outcomes[j].outcome.ID
 		})
-		if len(outcomes) < 3 {
-			result.SkippedCompetencies = append(result.SkippedCompetencies, variant.SkippedCompetency{CompetencyID: comp.profile.ID, CompetencyName: comp.profile.Name, Code: "INSUFFICIENT_DISTINCT_OUTCOMES", EligibleOutcomes: len(outcomes)})
+		if len(outcomes) == 0 {
+			result.SkippedCompetencies = append(result.SkippedCompetencies, variant.SkippedCompetency{CompetencyID: comp.profile.ID, CompetencyName: comp.profile.Name, Code: "NO_READY_OUTCOMES", EligibleOutcomes: len(outcomes)})
 			continue
 		}
 		main := outcomes[0]
@@ -147,11 +147,10 @@ func (s *Service) build(ownerID string, revision int64, candidates []variant.Can
 			}
 			return basics[i].outcome.ID < basics[j].outcome.ID
 		})
-		if len(basics) < 2 {
-			result.SkippedCompetencies = append(result.SkippedCompetencies, variant.SkippedCompetency{CompetencyID: comp.profile.ID, CompetencyName: comp.profile.Name, Code: "INSUFFICIENT_LOWER_BLOOM_OUTCOMES", EligibleOutcomes: len(outcomes), LowerBloomOutcomes: len(basics), MainBloomRank: main.rank})
-			continue
+		if len(basics) > 2 {
+			basics = basics[:2]
 		}
-		picks := []*taskPool{main, basics[0], basics[1]}
+		picks := append([]*taskPool{main}, basics...)
 		selection := variant.CompetencySelection{Position: len(result.Competencies) + 1, Competency: comp.profile, Tasks: make([]variant.VariantTask, 0, 3)}
 		for i, pick := range picks {
 			idx := 0
@@ -176,6 +175,7 @@ func (s *Service) build(ownerID string, revision int64, candidates []variant.Can
 			selection.Tasks = append(selection.Tasks, variant.VariantTask{ID: taskID, Role: role, Task: pick.tasks[idx]})
 		}
 		result.Competencies = append(result.Competencies, selection)
+		result.TaskCount += len(selection.Tasks)
 	}
 	result.IncludedCompetencyCount = len(result.Competencies)
 	if result.IncludedCompetencyCount == 0 {

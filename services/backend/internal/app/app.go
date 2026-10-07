@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/variant"
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/assessment"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"go.uber.org/zap"
 
@@ -26,6 +26,9 @@ import (
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/features/competency/infrastructure/csvparser"
 	competencypg "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/competency/infrastructure/postgres"
 	competencyhttp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/competency/transport/http"
+	diagnosticapp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/diagnostic/application"
+	diagnosticmemory "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/diagnostic/infrastructure/memory"
+	diagnostichttp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/diagnostic/transport/http"
 	taskbankapp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/taskbank/application"
 	taskbankpg "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/taskbank/infrastructure/postgres"
 	taskbankhttp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/taskbank/transport/http"
@@ -55,6 +58,7 @@ type App struct {
 	logger            *zap.Logger
 	variantRepository variantgenapp.Repository
 	gradingContexts   assessmentapp.ContextProvider
+	diagnosticStore   *diagnosticmemory.Store
 }
 
 func New(cfg Config, pool *pgxpool.Pool, logger *zap.Logger) (*App, error) {
@@ -79,6 +83,7 @@ func New(cfg Config, pool *pgxpool.Pool, logger *zap.Logger) (*App, error) {
 		logger:            logger,
 		variantRepository: variantgenpg.New(pool),
 		gradingContexts:   contexts,
+		diagnosticStore:   diagnosticmemory.New(),
 		client: &http.Client{
 			CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 		},
@@ -91,16 +96,19 @@ func (a *App) Handler() http.Handler {
 	var recognizer voiceapp.Recognizer
 	var synthesizer voiceapp.Synthesizer
 	var grader assessmentapp.Grader
+	var diagnosticGrader diagnosticapp.Grader
 	var taskGenerator taskgenapp.Generator
 	modelName := a.cfg.TaskgenModel
 	if a.cfg.APIMode == "mock" {
 		recognizer, synthesizer = voicemock.Client{}, voicemock.Client{}
 		grader = assessmentmock.Grader{}
+		diagnosticGrader = diagnosticDemoGrader{}
 		taskGenerator, modelName = taskgenmock.Generator{}, "mock"
 	} else {
 		models := modelapi.New(a.client, a.cfg.STTURL, a.cfg.TTSURL, a.cfg.ProcessingTimeout)
 		recognizer, synthesizer = models, models
 		grader = assessmentmodel.New(a.client, a.cfg.AssessmentBaseURL, a.cfg.AssessmentModel, a.cfg.AssessmentTimeout)
+		diagnosticGrader = diagnosticGraderUnavailable{}
 		taskGenerator = taskgenmodel.New(a.client, a.cfg.TaskgenBaseURL, a.cfg.TaskgenModel, a.cfg.TaskgenTimeout)
 	}
 	voice := voiceapp.New(voicepg.New(a.pool), recognizer, synthesizer, a.now)
@@ -116,6 +124,8 @@ func (a *App) Handler() http.Handler {
 		taskgenapp.NewMaterialService(taskgenRepository, func() int64 { return a.now().Unix() }),
 	)
 	variantgenHandlers := variantgenhttp.New(variantgenapp.New(a.variantRepository, variantgenpg.Chooser{}, variantgenpg.IDs{}, a.now))
+	diagnosticService := diagnosticapp.New(a.diagnosticStore, a.variantRepository, voice, diagnosticGrader, variantgenpg.IDs{}, a.now)
+	diagnosticHandlers := diagnostichttp.New(diagnosticService, a.cfg.MaxUploadBytes)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /auth/register", authHandlers.Register)
@@ -127,6 +137,11 @@ func (a *App) Handler() http.Handler {
 	mux.Handle("POST /voice/transcriptions", protect(auth, http.HandlerFunc(voiceHandlers.Transcribe)))
 	mux.Handle("POST /voice/syntheses", protect(auth, http.HandlerFunc(voiceHandlers.Synthesize)))
 	mux.Handle("POST /assessments/evaluate", protect(auth, http.HandlerFunc(assessmentHandlers.Evaluate)))
+	mux.Handle("POST /diagnostic-sessions", protect(auth, http.HandlerFunc(diagnosticHandlers.Start)))
+	mux.Handle("GET /diagnostic-sessions/{id}", protect(auth, http.HandlerFunc(diagnosticHandlers.Read)))
+	mux.Handle("GET /diagnostic-sessions/{id}/current/audio", protect(auth, http.HandlerFunc(diagnosticHandlers.CurrentAudio)))
+	mux.Handle("POST /diagnostic-sessions/{id}/answers", protect(auth, http.HandlerFunc(diagnosticHandlers.Answer)))
+	mux.Handle("GET /diagnostic-sessions/{id}/result", protect(auth, http.HandlerFunc(diagnosticHandlers.Result)))
 	mux.Handle("GET /tasks", protect(auth, http.HandlerFunc(taskbankHandlers.Search)))
 	mux.Handle("GET /competency-map", protect(auth, http.HandlerFunc(competencyHandlers.Read)))
 	mux.Handle("GET /tasks/{id}", protect(auth, http.HandlerFunc(taskbankHandlers.Profile)))
@@ -143,8 +158,24 @@ func (a *App) Handler() http.Handler {
 	return httpx.RequestLogger(a.logger, a.middleware(mux))
 }
 
-// VariantTaskReader exposes owner-scoped historical task snapshots to grading services.
-func (a *App) VariantTaskReader() variant.TaskReader { return a.variantRepository }
+type diagnosticDemoGrader struct{}
+
+func (diagnosticDemoGrader) Evaluate(ctx context.Context, _, _, _ string) (assessment.Evaluation, error) {
+	if err := ctx.Err(); err != nil {
+		return assessment.Evaluation{}, err
+	}
+	return assessment.Evaluation{
+		Score: 2, Verdict: "correct",
+		CriterionResults: []assessment.CriterionResult{{Key: "demo", Satisfied: true, Explanation: "Демонстрационный результат."}},
+		Feedback:         []string{"Демонстрационная оценка: 2 из 2.", "Ответ не проверялся моделью.", "Демонстрационный результат не отражает уровень знаний."},
+	}, nil
+}
+
+type diagnosticGraderUnavailable struct{}
+
+func (diagnosticGraderUnavailable) Evaluate(context.Context, string, string, string) (assessment.Evaluation, error) {
+	return assessment.Evaluation{}, fault.New(fault.Unavailable, "ASSESSMENT_CONTEXT_UNAVAILABLE", "Контракт грейдера для заданий варианта ещё не подключён.")
+}
 
 func protect(auth *authapp.Service, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

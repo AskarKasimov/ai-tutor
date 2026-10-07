@@ -229,6 +229,36 @@ func TestOpenAPIResponses(t *testing.T) {
 	if err := json.Unmarshal(variantCreate.Body.Bytes(), &createdVariant); err != nil || len(createdVariant.Competencies) != 1 {
 		t.Fatalf("contract variant response: %s (%v)", variantCreate.Body.String(), err)
 	}
+	f.app.cfg.APIMode = "mock"
+	diagnosticStartBody, _ := json.Marshal(map[string]string{"variant_id": createdVariant.ID})
+	diagnosticStartRequest := httptest.NewRequest(http.MethodPost, "https://api.example/diagnostic-sessions", bytes.NewReader(diagnosticStartBody))
+	diagnosticStartRequest.Header.Set("Content-Type", "application/json")
+	diagnosticStartRequest.Header.Set("Idempotency-Key", "contract-diagnostic-1")
+	diagnosticStartRequest.AddCookie(access)
+	diagnosticStart := httptest.NewRecorder()
+	f.app.Handler().ServeHTTP(diagnosticStart, diagnosticStartRequest)
+	check("POST", "/diagnostic-sessions", diagnosticStart)
+	var diagnosticProgress struct {
+		SessionID string `json:"session_id"`
+		Current   struct {
+			ID string `json:"variant_task_id"`
+		} `json:"current"`
+	}
+	if err := json.Unmarshal(diagnosticStart.Body.Bytes(), &diagnosticProgress); err != nil || diagnosticProgress.SessionID == "" || diagnosticProgress.Current.ID == "" {
+		t.Fatalf("diagnostic start response: %s (%v)", diagnosticStart.Body.String(), err)
+	}
+	check("GET", "/diagnostic-sessions/{id}", f.request("GET", "/diagnostic-sessions/"+diagnosticProgress.SessionID, "", access))
+	check("GET", "/diagnostic-sessions/{id}/current/audio", f.request("GET", "/diagnostic-sessions/"+diagnosticProgress.SessionID+"/current/audio", "", access))
+	diagnosticAnswer, diagnosticContentType := diagnosticAnswerBody(t, diagnosticProgress.Current.ID)
+	diagnosticAnswerRequest := httptest.NewRequest(http.MethodPost, "https://api.example/diagnostic-sessions/"+diagnosticProgress.SessionID+"/answers", diagnosticAnswer)
+	diagnosticAnswerRequest.Header.Set("Content-Type", diagnosticContentType)
+	diagnosticAnswerRequest.Header.Set("Idempotency-Key", "contract-diagnostic-answer-1")
+	diagnosticAnswerRequest.AddCookie(access)
+	diagnosticAnswerResponse := httptest.NewRecorder()
+	f.app.Handler().ServeHTTP(diagnosticAnswerResponse, diagnosticAnswerRequest)
+	check("POST", "/diagnostic-sessions/{id}/answers", diagnosticAnswerResponse)
+	check("GET", "/diagnostic-sessions/{id}/result", f.request("GET", "/diagnostic-sessions/"+diagnosticProgress.SessionID+"/result", "", access))
+	f.app.cfg.APIMode = "real"
 	check("GET", "/variants", f.request("GET", "/variants", "", access))
 	check("GET", "/variants/{id}", f.request("GET", "/variants/"+createdVariant.ID, "", access))
 	check("GET", "/variants/{id}/tasks/{task_id}", f.request("GET", "/variants/"+createdVariant.ID+"/tasks/"+createdVariant.Competencies[0].Main.ID, "", access))

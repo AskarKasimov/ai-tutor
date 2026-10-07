@@ -5,7 +5,7 @@ import "context"
 
 // TaskReader exposes private task data to server-side grading after checking ownership.
 type TaskReader interface {
-	TaskForGrading(ctx context.Context, ownerID, variantID, variantTaskID string) (TaskProfile, error)
+	TaskForGrading(ctx context.Context, ownerID, variantID, variantTaskID string) (VariantTask, error)
 }
 
 type Variant struct {

@@ -241,7 +241,7 @@ func (s *Service) Get(ctx context.Context, ownerID, id string) (variant.Variant,
 func (s *Service) Task(ctx context.Context, ownerID, variantID, taskID string) (variant.VariantTask, error) {
 	return s.repo.Task(ctx, ownerID, variantID, taskID)
 }
-func (s *Service) TaskForGrading(ctx context.Context, ownerID, variantID, taskID string) (variant.TaskProfile, error) {
+func (s *Service) TaskForGrading(ctx context.Context, ownerID, variantID, taskID string) (variant.VariantTask, error) {
 	return s.repo.TaskForGrading(ctx, ownerID, variantID, taskID)
 }
 func (s *Service) List(ctx context.Context, ownerID string, limit int, cursor string) ([]variant.Variant, string, error) {

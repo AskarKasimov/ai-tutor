@@ -77,7 +77,6 @@ func TestOpenAPIResponses(t *testing.T) {
 	compiler := jsonschema.NewCompiler()
 	compiler.AssertFormat()
 	const resource = "https://tutor.example/openapi.json"
-	// Normalize YAML number types into JSON types understood by the validator.
 	encoded, err := json.Marshal(spec)
 	if err != nil {
 		t.Fatal(err)
@@ -169,7 +168,7 @@ func TestOpenAPIResponses(t *testing.T) {
 			if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 				t.Fatal(err)
 			}
-			content := `{"score":2,"feedback":["Верно.","Ответ полный.","Закрепите тему."]}`
+			content := `{"score":2,"verdict":"correct","criterion_results":[{"key":"task_type","satisfied":true,"explanation":"Тип задачи назван правильно."},{"key":"justification","satisfied":true,"explanation":"Выбор объяснён через два дискретных класса."}],"feedback":["Верно.","Оба критерия выполнены.","Закрепите тему."]}`
 			if len(request.Messages) > 0 && strings.Contains(request.Messages[0].Content, "Ты создаёшь одно учебное задание") {
 				content = `{"question":"Новое задание","options":[],"voice_instruction":"Ответьте.","reference_answer":"Ответ","criteria":""}`
 			}
@@ -199,9 +198,8 @@ func TestOpenAPIResponses(t *testing.T) {
 		t.Fatalf("transcription: %d %s", transcription.Code, transcription.Body.String())
 	}
 	evaluateBody, err := json.Marshal(map[string]string{
-		"transcription_id":  saved.ID,
-		"question":          "Вопрос?",
-		"voice_instruction": "Ответьте на вопрос.",
+		"transcription_id": saved.ID,
+		"task_id":          "ml_001",
 	})
 	if err != nil {
 		t.Fatal(err)

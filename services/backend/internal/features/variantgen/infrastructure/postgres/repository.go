@@ -209,15 +209,8 @@ func (r *Repository) Task(ctx context.Context, ownerID, variantID, taskID string
 	return variant.VariantTask{ID: row.ID, Role: row.Role, Task: task}, nil
 }
 
-func (r *Repository) TaskForGrading(ctx context.Context, ownerID, variantID, taskID string) (variant.TaskProfile, error) {
-	row, err := r.queries.ReadVariantTaskForGrading(ctx, db.ReadVariantTaskForGradingParams{UserID: ownerID, ID: variantID, ID_2: taskID})
-	if err == pgx.ErrNoRows {
-		return variant.TaskProfile{}, variantNotFound()
-	}
-	if err != nil {
-		return variant.TaskProfile{}, err
-	}
-	return mergeSnapshots(row.TaskSnapshot, row.ProfileSnapshot)
+func (r *Repository) TaskForGrading(ctx context.Context, ownerID, variantID, taskID string) (variant.VariantTask, error) {
+	return r.Task(ctx, ownerID, variantID, taskID)
 }
 
 func (r *Repository) List(ctx context.Context, ownerID string, limit int, cursor *application.Cursor) ([]variant.Variant, *application.Cursor, error) {

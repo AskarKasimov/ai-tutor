@@ -59,7 +59,6 @@ func TestMockModeUsesLocalModelsWithRealAuthAndStorage(t *testing.T) {
 	if w.Code != 200 || w.Header().Get("Content-Type") != "audio/wav" || !audio.ValidWAV(w.Body.Bytes()) {
 		t.Fatalf("mock TTS must return playable WAV: %d", w.Code)
 	}
-	// The demo cue must contain sound, rather than only a WAV header or silence.
 	var audible bool
 	for pos := 44; pos+2 <= w.Body.Len(); pos += 2 {
 		if binary.LittleEndian.Uint16(w.Body.Bytes()[pos:pos+2]) != 0 {
@@ -71,7 +70,8 @@ func TestMockModeUsesLocalModelsWithRealAuthAndStorage(t *testing.T) {
 		t.Fatal("demo WAV contains no audible cue")
 	}
 	body, _ := json.Marshal(map[string]string{
-		"transcription_id": tr.ID, "question": "Что такое классификация?", "voice_instruction": "Объясните ответ.",
+		"transcription_id": tr.ID,
+		"task_id":          "ml_001",
 	})
 	w = f.request("POST", "/assessments/evaluate", string(body), access)
 	if w.Code != 200 {
@@ -81,7 +81,7 @@ func TestMockModeUsesLocalModelsWithRealAuthAndStorage(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &result); err != nil {
 		t.Fatal(err)
 	}
-	if result.Score != 2 || len(result.Feedback) != 3 || !strings.Contains(strings.Join(result.Feedback, " "), "Демонстрацион") {
+	if result.Score != 2 || result.Verdict != "correct" || len(result.CriterionResults) == 0 || len(result.Feedback) != 3 || !strings.Contains(strings.Join(result.Feedback, " "), "Демонстрацион") {
 		t.Fatalf("invalid demo assessment: %+v", result)
 	}
 	otherAccess, _, _ := f.register(t, "other-mock@example.edu")

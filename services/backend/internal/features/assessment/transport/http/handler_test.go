@@ -20,16 +20,39 @@ func (s *transcriptionStub) TextByOwner(_ context.Context, owner, _ string) (str
 	return "Классификация, потому что два класса", nil
 }
 
-type graderStub struct{}
+type contextStub struct{ taskID string }
 
-func (graderStub) Grade(_ context.Context, _ application.Task, _ string) (application.Evaluation, error) {
-	return application.Evaluation{Score: 2, Feedback: []string{"Верно.", "Два класса.", "Закрепите тему."}}, nil
+func (s *contextStub) ContextForTask(_ context.Context, taskID string) (application.GradingContext, error) {
+	s.taskID = taskID
+	return application.GradingContext{
+		TaskID: taskID, Question: "Вопрос", ReferenceAnswer: "Классификация",
+		Criteria: []application.Criterion{
+			{Key: "task_type", Description: "Назван тип задачи"},
+			{Key: "justification", Description: "Есть объяснение"},
+		},
+		MaterialContext: application.MaterialContext{Knowledge: "K", Skills: "S"},
+	}, nil
 }
 
-func TestEvaluateRequiresAuthAndReturnsGrade(t *testing.T) {
+type graderStub struct{}
+
+func (graderStub) Grade(_ context.Context, _ application.GradingContext, _ string) (application.Evaluation, error) {
+	return application.Evaluation{
+		Score:   2,
+		Verdict: "correct",
+		CriterionResults: []application.CriterionResult{
+			{Key: "task_type", Satisfied: true, Explanation: "Названа классификация."},
+			{Key: "justification", Satisfied: true, Explanation: "Указаны два класса."},
+		},
+		Feedback: []string{"Верно.", "Оба критерия выполнены.", "Закрепите тему."},
+	}, nil
+}
+
+func TestEvaluateRequiresAuthAndReturnsStructuredGrade(t *testing.T) {
 	repo := &transcriptionStub{}
-	handler := New(application.New(repo, graderStub{}))
-	requestBody := `{"transcription_id":"tr-1","question":"Что прогнозирует банк?","options":["Классификация","Регрессия"],"voice_instruction":"Назовите тип","correct_answer":"Классификация"}`
+	contexts := &contextStub{}
+	handler := New(application.New(repo, contexts, nil, graderStub{}))
+	requestBody := `{"transcription_id":"tr-1","task_id":"ml_001"}`
 	unauthorized := httptest.NewRecorder()
 	handler.Evaluate(unauthorized, httptest.NewRequest(http.MethodPost, "/assessments/evaluate", strings.NewReader(requestBody)))
 	if unauthorized.Code != http.StatusUnauthorized || repo.owner != "" {
@@ -44,7 +67,7 @@ func TestEvaluateRequiresAuthAndReturnsGrade(t *testing.T) {
 	if err := json.Unmarshal(response.Body.Bytes(), &result); err != nil {
 		t.Fatal(err)
 	}
-	if response.Code != http.StatusOK || repo.owner != "student-1" || result.Score != 2 || len(result.Feedback) != 3 {
-		t.Fatalf("response=%d %s, owner=%q", response.Code, response.Body.String(), repo.owner)
+	if response.Code != http.StatusOK || repo.owner != "student-1" || contexts.taskID != "ml_001" || result.Score != 2 || result.Verdict != "correct" || len(result.CriterionResults) != 2 || len(result.Feedback) != 3 {
+		t.Fatalf("response=%d %s, owner=%q, task=%q", response.Code, response.Body.String(), repo.owner, contexts.taskID)
 	}
 }

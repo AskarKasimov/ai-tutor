@@ -9,7 +9,7 @@ import { useTrainerPrototype } from './use-trainer-prototype'
 
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals() })
 
-const task: AssessmentTask = { question: 'question', options: ['A', 'B'], voiceInstruction: 'instruction', correctAnswer: 'A' }
+const task: AssessmentTask = { taskId: 'ml_001', question: 'question', options: ['A', 'B'], voiceInstruction: 'instruction' }
 
 it('starts one capture for repeated clicks and releases it when leaving', async () => {
   const dispose = vi.fn()

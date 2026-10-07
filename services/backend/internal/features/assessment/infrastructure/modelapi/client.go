@@ -23,10 +23,9 @@ const systemPrompt = `Ты выполняешь формирующее оцен�
 
 Проверь каждый критерий ровно один раз и верни criterion_results в том же порядке и с теми же key. Для каждого критерия укажи satisfied и короткое проверяемое explanation.
 
-Оценка определяется результатами критериев:
-- 2 / correct: выполнены все критерии;
-- 1 / partial: выполнена хотя бы часть, но не все критерии;
-- 0 / incorrect: не выполнен ни один критерий, ответ неверен или не по теме.
+Оценка определяется доверенными role и max_score и результатами критериев:
+- для main с max_score=2: 2/correct — выполнены все критерии; 1/partial — выполнена часть, но не все; 0/incorrect — не выполнен ни один;
+- для basic с max_score=1: 1/correct — выполнены все критерии; 0/incorrect — хотя бы один критерий не выполнен.
 
 Верни только JSON-объект строго такого вида:
 {"score":0,"verdict":"incorrect","criterion_results":[{"key":"criterion_key","satisfied":false,"explanation":"Короткое объяснение"}],"feedback":["Итог по ответу.","Конкретная причина по критериям.","Что исправить или закрепить."]}
@@ -60,7 +59,18 @@ func invalidModelResponse(message string) error {
 }
 
 func (c *Client) Grade(ctx context.Context, gradingContext application.GradingContext, answer string) (application.Evaluation, error) {
+	role := gradingContext.Role
+	if role == "" {
+		role = "main"
+	}
+	maxScore := gradingContext.MaxScore
+	if maxScore == 0 {
+		maxScore = 2
+	}
+
 	data, err := json.Marshal(struct {
+		Role             string                      `json:"role"`
+		MaxScore         int                         `json:"max_score"`
 		Question         string                      `json:"question"`
 		Options          []string                    `json:"options,omitempty"`
 		VoiceInstruction string                      `json:"voice_instruction"`
@@ -70,6 +80,7 @@ func (c *Client) Grade(ctx context.Context, gradingContext application.GradingCo
 		MaterialContext  application.MaterialContext `json:"material_context"`
 		StudentAnswer    string                      `json:"student_answer"`
 	}{
+		Role: role, MaxScore: maxScore,
 		Question: gradingContext.Question, Options: gradingContext.Options,
 		VoiceInstruction: gradingContext.VoiceInstruction, ReferenceAnswer: gradingContext.ReferenceAnswer,
 		Outcome: gradingContext.Outcome, Criteria: gradingContext.Criteria,

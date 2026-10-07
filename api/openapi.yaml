@@ -10,42 +10,67 @@ components:
       required:
         - status
       type: object
+    application.CriterionResult:
+      additionalProperties: false
+      properties:
+        explanation:
+          type: string
+        key:
+          type: string
+        satisfied:
+          type: boolean
+      required:
+        - explanation
+        - key
+        - satisfied
+      type: object
     assessmenthttp.EvaluateRequest:
       additionalProperties: false
       properties:
-        correct_answer:
-          type: string
-        options:
-          items:
-            type: string
-          type: array
-          uniqueItems: false
-        question:
-          type: string
         transcription_id:
           type: string
-        voice_instruction:
+        variant_id:
+          type: string
+        variant_task_id:
           type: string
       required:
-        - question
         - transcription_id
-        - voice_instruction
+        - variant_id
+        - variant_task_id
       type: object
     assessmenthttp.EvaluateResponse:
       additionalProperties: false
       properties:
+        criterion_results:
+          items:
+            $ref: '#/components/schemas/application.CriterionResult'
+          type: array
+          uniqueItems: false
         feedback:
           items:
             type: string
           type: array
           uniqueItems: false
+        max_score:
+          maximum: 2
+          minimum: 1
+          type: integer
         score:
           maximum: 2
           minimum: 0
           type: integer
+        verdict:
+          enum:
+            - correct
+            - partial
+            - incorrect
+          type: string
       required:
+        - criterion_results
         - feedback
+        - max_score
         - score
+        - verdict
       type: object
     authhttp.LoginRequest:
       additionalProperties: false
@@ -982,16 +1007,16 @@ paths:
       x-implementation: implemented
   /assessments/evaluate:
     post:
-      description: Принимает произвольное задание и ID принадлежащей студенту расшифровки. Оценка не сохраняется.
+      description: Принимает ID расшифровки, сохранённого варианта и позиции задания. Сервер проверяет владельца, берёт исторический снимок задания и роль main/basic. Оценка не сохраняется.
       operationId: evaluateAnswer
       requestBody:
         content:
           application/json:
             schema:
               $ref: '#/components/schemas/assessmenthttp.EvaluateRequest'
-              description: Задание и расшифровка
+              description: Расшифровка и позиция сохранённого варианта
               summary: request
-        description: Задание и расшифровка
+        description: Расшифровка и позиция сохранённого варианта
         required: true
       responses:
         "200":

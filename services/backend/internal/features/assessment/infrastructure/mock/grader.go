@@ -17,12 +17,16 @@ func (Grader) Grade(ctx context.Context, gradingContext application.GradingConte
 	for i, criterion := range gradingContext.Criteria {
 		results[i] = application.CriterionResult{Key: criterion.Key, Satisfied: true, Explanation: "Демонстрационный результат критерия."}
 	}
+	score := gradingContext.MaxScore
+	if score != 1 {
+		score = 2
+	}
 	return application.Evaluation{
-		Score:            2,
+		Score:            score,
 		Verdict:          "correct",
 		CriterionResults: results,
 		Feedback: []string{
-			"Демонстрационная оценка: 2 из 2.",
+			"Демонстрационная оценка.",
 			"Ответ не проверялся моделью; это фиксированный пример фидбэка.",
 			"Демонстрационный результат не отражает уровень знаний.",
 		},

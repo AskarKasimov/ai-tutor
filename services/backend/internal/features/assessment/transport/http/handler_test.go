@@ -51,7 +51,7 @@ func (graderStub) Grade(_ context.Context, _ application.GradingContext, _ strin
 func TestEvaluateRequiresAuthAndReturnsStructuredGrade(t *testing.T) {
 	repo := &transcriptionStub{}
 	contexts := &contextStub{}
-	handler := New(application.New(repo, contexts, graderStub{}))
+	handler := New(application.New(repo, contexts, nil, graderStub{}))
 	requestBody := `{"transcription_id":"tr-1","task_id":"ml_001"}`
 	unauthorized := httptest.NewRecorder()
 	handler.Evaluate(unauthorized, httptest.NewRequest(http.MethodPost, "/assessments/evaluate", strings.NewReader(requestBody)))

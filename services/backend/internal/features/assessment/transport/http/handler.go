@@ -2,6 +2,7 @@ package assessmenthttp
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/user"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/features/assessment/application"
@@ -11,11 +12,20 @@ import (
 
 type EvaluateRequest struct {
 	TranscriptionID string `json:"transcription_id" binding:"required"`
-	TaskID          string `json:"task_id" binding:"required"`
+	VariantID       string `json:"variant_id" binding:"required"`
+	VariantTaskID   string `json:"variant_task_id" binding:"required"`
+}
+
+type evaluateRequestWire struct {
+	TranscriptionID string `json:"transcription_id"`
+	VariantID       string `json:"variant_id"`
+	VariantTaskID   string `json:"variant_task_id"`
+	TaskID          string `json:"task_id"`
 }
 
 type EvaluateResponse struct {
 	Score            int                           `json:"score" minimum:"0" maximum:"2"`
+	MaxScore         int                           `json:"max_score" minimum:"1" maximum:"2"`
 	Verdict          string                        `json:"verdict" enums:"correct,partial,incorrect"`
 	CriterionResults []application.CriterionResult `json:"criterion_results"`
 	Feedback         []string                      `json:"feedback" minItems:"3" maxItems:"3"`
@@ -27,13 +37,13 @@ func New(service *application.Service) *Handler { return &Handler{service: servi
 
 // Evaluate handles POST /assessments/evaluate.
 // @Summary Оценить сохранённый голосовой ответ
-// @Description Принимает ID задания и ID принадлежащей студенту расшифровки. Контекст задания берётся сервером.
+// @Description Принимает ID расшифровки, сохранённого варианта и позиции задания. Сервер проверяет владельца, берёт исторический снимок задания и роль main/basic. Оценка не сохраняется.
 // @ID evaluateAnswer
 // @Tags Грейдинг и фидбэк
 // @Security accessCookie
 // @Accept json
 // @Produce json
-// @Param request body EvaluateRequest true "Задание и расшифровка"
+// @Param request body EvaluateRequest true "Расшифровка и позиция сохранённого варианта"
 // @Success 200 {object} EvaluateResponse
 // @Failure 401 {object} fault.Error
 // @Failure 404 {object} fault.Error
@@ -50,18 +60,39 @@ func (h *Handler) Evaluate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, 32*1024)
-	var req EvaluateRequest
+	var req evaluateRequestWire
 	if err := httpx.DecodeJSON(r, &req); err != nil {
 		httpx.Error(r.Context(), w, err)
 		return
 	}
-	result, err := h.service.Evaluate(r.Context(), u.ID, req.TranscriptionID, req.TaskID)
+
+	variantID := strings.TrimSpace(req.VariantID)
+	variantTaskID := strings.TrimSpace(req.VariantTaskID)
+	taskID := strings.TrimSpace(req.TaskID)
+
+	var result application.Evaluation
+	var err error
+	switch {
+	case variantID != "" || variantTaskID != "":
+		if variantID == "" || variantTaskID == "" || taskID != "" {
+			httpx.Error(r.Context(), w, fault.Validation("variant_id", "Передайте variant_id и variant_task_id без task_id."))
+			return
+		}
+		result, err = h.service.EvaluateVariant(r.Context(), u.ID, req.TranscriptionID, variantID, variantTaskID)
+	case taskID != "":
+		// Temporary compatibility path for the current fixed frontend prototype.
+		result, err = h.service.Evaluate(r.Context(), u.ID, req.TranscriptionID, taskID)
+	default:
+		httpx.Error(r.Context(), w, fault.Validation("variant_id", "Укажите variant_id и variant_task_id."))
+		return
+	}
 	if err != nil {
 		httpx.Error(r.Context(), w, err)
 		return
 	}
 	httpx.JSON(w, http.StatusOK, EvaluateResponse{
 		Score:            result.Score,
+		MaxScore:         result.MaxScore,
 		Verdict:          result.Verdict,
 		CriterionResults: result.CriterionResults,
 		Feedback:         result.Feedback,

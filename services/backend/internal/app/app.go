@@ -107,7 +107,7 @@ func (a *App) Handler() http.Handler {
 	voiceHandlers := voicehttp.New(voice, a.cfg.MaxUploadBytes)
 	competency := competencyapp.New(competencypg.New(a.pool), &csvparser.Parser{}, a.now)
 	competencyHandlers := competencyhttp.New(competency, a.cfg.MaxUploadBytes)
-	assessment := assessmentapp.New(assessmentpg.New(a.pool), a.gradingContexts, grader)
+	assessment := assessmentapp.New(assessmentpg.New(a.pool), a.gradingContexts, a.variantRepository, grader)
 	assessmentHandlers := assessmenthttp.New(assessment)
 	taskbankHandlers := taskbankhttp.New(taskbankapp.New(taskbankpg.New(a.pool)))
 	taskgenRepository := taskgenpg.New(a.pool)

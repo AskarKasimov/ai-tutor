@@ -177,10 +177,14 @@ func TestVariantCreateReadIdempotencyOwnershipAndHistoricalReader(t *testing.T) 
 	if w := upload(f, importPath, "file", "replacement.csv", "text/csv", variantMapCSV(t), admin); w.Code != http.StatusOK {
 		t.Fatalf("replacement import: %d %s", w.Code, w.Body.String())
 	}
-	profile, err := variantgenpg.New(f.pool).TaskForGrading(context.Background(), ownerID, created.ID, mainTaskID)
+	gradingTask, err := variantgenpg.New(f.pool).TaskForGrading(context.Background(), ownerID, created.ID, mainTaskID)
 	if err != nil {
 		t.Fatal(err)
 	}
+	if gradingTask.ID != mainTaskID || gradingTask.Role != "main" {
+		t.Fatalf("historical grading position incomplete: %+v", gradingTask)
+	}
+	profile := gradingTask.Task
 	answers := map[string]string{
 		"Знает параметры данных":       "строка таблицы",
 		"Понимает целевую переменную":  "целевую переменную",

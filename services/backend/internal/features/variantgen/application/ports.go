@@ -18,7 +18,7 @@ type Repository interface {
 	Get(context.Context, string, string) (variant.Variant, error)
 	List(context.Context, string, int, *Cursor) ([]variant.Variant, *Cursor, error)
 	Task(context.Context, string, string, string) (variant.VariantTask, error)
-	TaskForGrading(context.Context, string, string, string) (variant.TaskProfile, error)
+	TaskForGrading(context.Context, string, string, string) (variant.VariantTask, error)
 }
 
 type TaskChooser interface {

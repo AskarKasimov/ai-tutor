@@ -67,7 +67,7 @@ func TestEvaluateUsesOwnedTranscriptionAndStructuredCatalogContext(t *testing.T)
 	repo := &transcriptionStub{text: "классификация, потому что два класса"}
 	contexts := &contextStub{result: validContext()}
 	grader := &graderStub{result: validEvaluation()}
-	got, err := New(repo, contexts, grader).Evaluate(context.Background(), "student-1", "tr-1", "ml_001")
+	got, err := New(repo, contexts, nil, grader).Evaluate(context.Background(), "student-1", "tr-1", "ml_001")
 	if err != nil || got.Score != 2 || got.Verdict != "correct" || len(got.CriterionResults) != 2 || repo.owner != "student-1" || repo.id != "tr-1" || grader.answer != repo.text {
 		t.Fatalf("unexpected evaluation: %#v, %v", got, err)
 	}
@@ -80,7 +80,7 @@ func TestEvaluateRejectsInconsistentStructuredModelOutput(t *testing.T) {
 	bad.Score = 1
 	bad.Verdict = "partial"
 	grader := &graderStub{result: bad}
-	_, err := New(repo, contexts, grader).Evaluate(context.Background(), "student-1", "tr-1", "ml_001")
+	_, err := New(repo, contexts, nil, grader).Evaluate(context.Background(), "student-1", "tr-1", "ml_001")
 	var f *fault.Error
 	if !errors.As(err, &f) || f.Kind != fault.Upstream || f.Code != "INVALID_MODEL_RESPONSE" {
 		t.Fatalf("expected invalid model response, got %v", err)
@@ -92,7 +92,7 @@ func TestEvaluateRejectsWrongCriterionKey(t *testing.T) {
 	contexts := &contextStub{result: validContext()}
 	bad := validEvaluation()
 	bad.CriterionResults[1].Key = "invented"
-	_, err := New(repo, contexts, &graderStub{result: bad}).Evaluate(context.Background(), "student-1", "tr-1", "ml_001")
+	_, err := New(repo, contexts, nil, &graderStub{result: bad}).Evaluate(context.Background(), "student-1", "tr-1", "ml_001")
 	var f *fault.Error
 	if !errors.As(err, &f) || f.Code != "INVALID_MODEL_RESPONSE" {
 		t.Fatalf("expected invalid model response, got %v", err)
@@ -103,7 +103,7 @@ func TestEvaluateStopsWhenCatalogContextIsMissing(t *testing.T) {
 	repo := &transcriptionStub{text: "ответ"}
 	contexts := &contextStub{err: fault.New(fault.NotFound, "GRADING_CONTEXT_NOT_FOUND", "Контекст не найден.")}
 	grader := &graderStub{}
-	_, err := New(repo, contexts, grader).Evaluate(context.Background(), "student-1", "tr-1", "missing")
+	_, err := New(repo, contexts, nil, grader).Evaluate(context.Background(), "student-1", "tr-1", "missing")
 	if err == nil || repo.id != "" || grader.answer != "" {
 		t.Fatalf("expected lookup failure before transcription/model access, got %v", err)
 	}

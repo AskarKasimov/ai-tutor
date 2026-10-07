@@ -1,0 +1,284 @@
+package application
+
+import (
+	"context"
+	"encoding/binary"
+	"errors"
+	"fmt"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/assessment"
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/diagnostic"
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/transcription"
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/variant"
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/features/diagnostic/infrastructure/memory"
+)
+
+type variantStub struct {
+	value variant.Variant
+	calls int
+}
+
+func (s *variantStub) Get(context.Context, string, string) (variant.Variant, error) {
+	s.calls++
+	return s.value, nil
+}
+
+type voiceStub struct {
+	mu            sync.Mutex
+	transcribes   int
+	transcription transcription.Transcription
+}
+
+func (s *voiceStub) Transcribe(_ context.Context, ownerID string, _ []byte, _ string) (transcription.Transcription, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.transcribes++
+	value := s.transcription
+	value.OwnerID = ownerID
+	return value, nil
+}
+
+func (s *voiceStub) Synthesize(context.Context, string) ([]byte, error) { return []byte("wav"), nil }
+
+type graderStub struct {
+	mu           sync.Mutex
+	results      []gradeResult
+	calls        int
+	started      chan struct{}
+	continueCall chan struct{}
+}
+
+type gradeResult struct {
+	evaluation assessment.Evaluation
+	err        error
+}
+
+func (s *graderStub) Evaluate(ctx context.Context, _, transcriptionID, taskID string) (assessment.Evaluation, error) {
+	s.mu.Lock()
+	s.calls++
+	if transcriptionID == "" || taskID == "" {
+		s.mu.Unlock()
+		return assessment.Evaluation{}, errors.New("grader IDs are empty")
+	}
+	index := min(s.calls-1, len(s.results)-1)
+	result := s.results[index]
+	started, continueCall := s.started, s.continueCall
+	s.mu.Unlock()
+	if started != nil {
+		select {
+		case started <- struct{}{}:
+		default:
+		}
+	}
+	if continueCall != nil {
+		select {
+		case <-continueCall:
+		case <-ctx.Done():
+			return assessment.Evaluation{}, ctx.Err()
+		}
+	}
+	return result.evaluation, result.err
+}
+
+type idStub struct{ next int }
+
+func (s *idStub) New(prefix string) (string, error) {
+	s.next++
+	return fmt.Sprintf("%s-%d", prefix, s.next), nil
+}
+
+func newTestService(results ...gradeResult) (*Service, *voiceStub, *graderStub, *variantStub) {
+	voice := &voiceStub{transcription: transcription.Transcription{ID: "transcription-1", Text: "ответ"}}
+	grader := &graderStub{results: results}
+	variants := &variantStub{value: testVariant()}
+	return New(memory.New(), variants, voice, grader, &idStub{}, func() time.Time { return time.Unix(10, 0) }), voice, grader, variants
+}
+
+func testVariant() variant.Variant {
+	value := variant.Variant{ID: "variant-1", OwnerID: "owner-1", MapRevision: 7, AlgorithmVersion: "v1", IncludedCompetencyCount: 2}
+	for competency := 0; competency < 2; competency++ {
+		selection := variant.CompetencySelection{Position: competency + 1, Competency: variant.CompetencyProfile{ID: fmt.Sprintf("comp-%d", competency), Name: "Компетенция"}}
+		for task := 0; task < 3; task++ {
+			instruction := "Назовите ответ и объясните"
+			selection.Tasks = append(selection.Tasks, variant.VariantTask{
+				ID: fmt.Sprintf("variant-task-%d-%d", competency, task), Role: []string{"main", "basic", "basic"}[task],
+				Task: variant.TaskProfile{ID: fmt.Sprintf("task-%d-%d", competency, task), Question: "Вопрос", Options: []string{"Ответ A", "Ответ B"}, VoiceInstruction: &instruction, ReferenceAnswer: ptr("Ответ A"), Criteria: ptr("criterion"),
+					Competency:  variant.CompetencyProfile{ID: fmt.Sprintf("comp-%d", competency), Name: "Компетенция"},
+					Constituent: variant.ConstituentProfile{ID: fmt.Sprintf("constituent-%d", competency), Name: "Составляющая"},
+					Outcome:     variant.OutcomeProfile{ID: fmt.Sprintf("outcome-%d-%d", competency, task), Name: "ОР", TaxonomyCode: ptr("analysis"), Importance: ptr(int16(3)), IncludeInTest: ptr(true), EducationalContent: ptr("ОС")}},
+			})
+		}
+		value.Competencies = append(value.Competencies, selection)
+	}
+	return value
+}
+
+func ptr[T any](value T) *T { return &value }
+
+func grade(score int) gradeResult {
+	verdict := "incorrect"
+	if score == 1 {
+		verdict = "partial"
+	} else if score == 2 {
+		verdict = "correct"
+	}
+	return gradeResult{evaluation: assessment.Evaluation{Score: score, Verdict: verdict,
+		CriterionResults: []assessment.CriterionResult{{Key: "c1", Satisfied: score == 2, Explanation: "Объяснение"}},
+		Feedback:         []string{"Статус", "Причина", "Совет"}}}
+}
+
+func (s *Service) start(t *testing.T) diagnostic.Progress {
+	t.Helper()
+	progress, _, err := s.Start(context.Background(), "owner-1", "variant-1", "start-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return progress
+}
+
+func (s *Service) answer(t *testing.T, progress diagnostic.Progress, key string) diagnostic.Progress {
+	t.Helper()
+	if progress.Current == nil {
+		t.Fatal("session has no current task")
+	}
+	result, err := s.Answer(context.Background(), "owner-1", progress.SessionID, progress.Current.ID, key, testAudio(0), "audio/wav")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return result
+}
+
+func testAudio(sample byte) []byte {
+	data := make([]byte, 46)
+	copy(data[0:4], "RIFF")
+	binary.LittleEndian.PutUint32(data[4:8], uint32(len(data)-8))
+	copy(data[8:12], "WAVE")
+	copy(data[12:16], "fmt ")
+	binary.LittleEndian.PutUint32(data[16:20], 16)
+	binary.LittleEndian.PutUint16(data[20:22], 1)
+	binary.LittleEndian.PutUint16(data[22:24], 1)
+	binary.LittleEndian.PutUint32(data[24:28], 8000)
+	binary.LittleEndian.PutUint32(data[28:32], 16000)
+	binary.LittleEndian.PutUint16(data[32:34], 2)
+	binary.LittleEndian.PutUint16(data[34:36], 16)
+	copy(data[36:40], "data")
+	binary.LittleEndian.PutUint32(data[40:44], 2)
+	data[44] = sample
+	return data
+}
+
+func TestMainPerfectSkipsBasicsAndIdempotencySurvivesCompletion(t *testing.T) {
+	service, voice, grader, variants := newTestService(grade(2), grade(2))
+	started := service.start(t)
+	replayed, reused, err := service.Start(context.Background(), "owner-1", "variant-1", "start-1")
+	if err != nil || !reused || replayed.SessionID != started.SessionID || variants.calls != 1 {
+		t.Fatalf("start replay = (%+v, %v, %v), variant reads=%d", replayed, reused, err, variants.calls)
+	}
+	progress := service.answer(t, started, "answer-1")
+	if progress.Current == nil || progress.Current.ID != "variant-task-1-0" || progress.Skipped != 2 || progress.Completed != 1 {
+		t.Fatalf("main=2 did not skip the basics: %+v", progress)
+	}
+	read, err := service.Read(context.Background(), "owner-1", started.SessionID)
+	if err != nil || read.Skipped != progress.Skipped {
+		t.Fatalf("GET progress skipped count = %d, answer response = %d, err=%v", read.Skipped, progress.Skipped, err)
+	}
+	completed := service.answer(t, progress, "answer-2")
+	if completed.Status != diagnostic.StatusCompleted || completed.Current != nil {
+		t.Fatalf("session did not complete: %+v", completed)
+	}
+	replay := service.answer(t, progress, "answer-2")
+	if replay.Status != diagnostic.StatusCompleted || grader.calls != 2 || voice.transcribes != 2 {
+		t.Fatalf("accepted retry performed work twice: grader=%d STT=%d", grader.calls, voice.transcribes)
+	}
+	result, err := service.Result(context.Background(), "owner-1", completed.SessionID)
+	if err != nil || result.DiagnosticScore != 4 || result.MaximumScore != 4 || len(result.UntestedBasics) != 4 {
+		t.Fatalf("unexpected completed result %+v, err=%v", result, err)
+	}
+}
+
+func TestCanceledGradingReleasesReservationAndRetryReusesTranscription(t *testing.T) {
+	service, voice, grader, _ := newTestService(grade(2))
+	started := service.start(t)
+	grader.started = make(chan struct{}, 1)
+	grader.continueCall = make(chan struct{})
+	ctx, cancel := context.WithCancel(context.Background())
+	finished := make(chan error, 1)
+	go func() {
+		_, err := service.Answer(ctx, "owner-1", started.SessionID, started.Current.ID, "answer-1", testAudio(0), "audio/wav")
+		finished <- err
+	}()
+	<-grader.started
+	cancel()
+	if err := <-finished; !errors.Is(err, context.Canceled) {
+		t.Fatalf("canceled answer error = %v, want context canceled", err)
+	}
+	grader.continueCall = nil
+	progress, err := service.Answer(context.Background(), "owner-1", started.SessionID, started.Current.ID, "answer-1", testAudio(0), "audio/wav")
+	if err != nil || progress.Current == nil || progress.Current.ID != "variant-task-1-0" || progress.Skipped != 2 {
+		t.Fatalf("retry after cancellation = (%+v, %v)", progress, err)
+	}
+	if voice.transcribes != 1 || grader.calls != 2 {
+		t.Fatalf("retry work counts: STT=%d grader=%d, want 1 and 2", voice.transcribes, grader.calls)
+	}
+}
+
+func TestBasicScoresAreNormalizedAndOnlyMainContributesToDiagnostic(t *testing.T) {
+	service, _, _, _ := newTestService(grade(1), grade(0), grade(2), grade(2))
+	progress := service.start(t)
+	progress = service.answer(t, progress, "main")
+	progress = service.answer(t, progress, "basic-zero")
+	if progress.Score == nil || *progress.Score != 0 || progress.GraderScore == nil || *progress.GraderScore != 0 || progress.Current.Role != "basic" {
+		t.Fatalf("basic score 0 was not retained: %+v", progress)
+	}
+	progress = service.answer(t, progress, "basic-two")
+	if progress.Score == nil || *progress.Score != 1 || progress.GraderScore == nil || *progress.GraderScore != 2 || progress.Current.ID != "variant-task-1-0" {
+		t.Fatalf("basic score 2 was not normalized: %+v", progress)
+	}
+	progress = service.answer(t, progress, "next-main")
+	result, err := service.Result(context.Background(), "owner-1", progress.SessionID)
+	if err != nil || result.DiagnosticScore != 3 || result.MaximumScore != 4 {
+		t.Fatalf("basic scores affected diagnostic sum: %+v, err=%v", result, err)
+	}
+	if result.Answers[2].GraderScore != 2 || result.Answers[2].Score != 1 || result.Answers[2].Verdict != "correct" {
+		t.Fatalf("source grader result was not preserved: %+v", result.Answers[2])
+	}
+}
+
+func TestGraderFailureRetriesStoredTranscriptionWithoutRegradingAcceptedAnswer(t *testing.T) {
+	service, voice, grader, _ := newTestService(gradeResult{err: errors.New("model unavailable")}, grade(2), grade(0))
+	progress := service.start(t)
+	taskID := progress.Current.ID
+	if _, err := service.Answer(context.Background(), "owner-1", progress.SessionID, taskID, "same-key", testAudio(0), "audio/wav"); err == nil {
+		t.Fatal("first grader call should fail")
+	}
+	progress, err := service.Answer(context.Background(), "owner-1", progress.SessionID, taskID, "same-key", testAudio(0), "audio/wav")
+	if err != nil || progress.Score == nil || *progress.Score != 2 || voice.transcribes != 1 || grader.calls != 2 {
+		t.Fatalf("retry did not reuse transcription: progress=%+v STT=%d grader=%d err=%v", progress, voice.transcribes, grader.calls, err)
+	}
+	if _, err = service.Answer(context.Background(), "owner-1", progress.SessionID, taskID, "same-key", testAudio(1), "audio/wav"); err == nil {
+		t.Fatal("reusing key with different audio should fail")
+	}
+}
+
+func TestConcurrentAnswerIsRejectedWithoutHoldingLockAcrossGrader(t *testing.T) {
+	grader := &graderStub{results: []gradeResult{grade(1)}, started: make(chan struct{}, 1), continueCall: make(chan struct{})}
+	voice := &voiceStub{transcription: transcription.Transcription{ID: "transcription-1", Text: "ответ"}}
+	service := New(memory.New(), &variantStub{value: testVariant()}, voice, grader, &idStub{}, nil)
+	progress := service.start(t)
+	firstDone := make(chan error, 1)
+	go func() {
+		_, err := service.Answer(context.Background(), "owner-1", progress.SessionID, progress.Current.ID, "first", testAudio(0), "audio/wav")
+		firstDone <- err
+	}()
+	<-grader.started
+	if _, err := service.Answer(context.Background(), "owner-1", progress.SessionID, progress.Current.ID, "second", testAudio(1), "audio/wav"); err == nil {
+		t.Fatal("overlapping answer was accepted")
+	}
+	close(grader.continueCall)
+	if err := <-firstDone; err != nil {
+		t.Fatalf("first request failed: %v", err)
+	}
+}

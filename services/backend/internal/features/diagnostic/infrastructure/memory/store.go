@@ -1,0 +1,253 @@
+// Package memory stores diagnostic sessions for the lifetime of this API process.
+package memory
+
+import (
+	"context"
+	"sync"
+
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/diagnostic"
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/fault"
+)
+
+type Store struct {
+	mu       sync.RWMutex
+	sessions map[string]diagnostic.Session
+	starts   map[string]string
+}
+
+const maxSessions = 10000
+
+func New() *Store {
+	return &Store{sessions: make(map[string]diagnostic.Session), starts: make(map[string]string)}
+}
+
+func (s *Store) FindStart(ctx context.Context, ownerID, key, digest string) (diagnostic.Session, bool, error) {
+	if err := ctx.Err(); err != nil {
+		return diagnostic.Session{}, false, err
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if err := ctx.Err(); err != nil {
+		return diagnostic.Session{}, false, err
+	}
+	id, ok := s.starts[ownerID+"\x00"+key]
+	if !ok {
+		return diagnostic.Session{}, false, nil
+	}
+	value := s.sessions[id]
+	if value.StartRequestDigest != digest {
+		return diagnostic.Session{}, false, fault.New(fault.Conflict, "IDEMPOTENCY_KEY_REUSED", "Ключ запуска уже использован с другими параметрами.")
+	}
+	return clone(value), true, nil
+}
+
+func (s *Store) Create(ctx context.Context, ownerID, key, digest string, value diagnostic.Session) (diagnostic.Session, bool, error) {
+	if err := ctx.Err(); err != nil {
+		return diagnostic.Session{}, false, err
+	}
+	index := ownerID + "\x00" + key
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return diagnostic.Session{}, false, err
+	}
+	if id, ok := s.starts[index]; ok {
+		previous := s.sessions[id]
+		if previous.StartRequestDigest != digest {
+			return diagnostic.Session{}, false, fault.New(fault.Conflict, "IDEMPOTENCY_KEY_REUSED", "Ключ запуска уже использован с другими параметрами.")
+		}
+		return clone(previous), true, nil
+	}
+	if len(s.sessions) >= maxSessions {
+		return diagnostic.Session{}, false, fault.New(fault.Unavailable, "DIAGNOSTIC_CAPACITY_REACHED", "Хранилище диагностических сессий временно заполнено.")
+	}
+	s.starts[index] = value.ID
+	s.sessions[value.ID] = clone(value)
+	return clone(value), false, nil
+}
+
+func (s *Store) Get(ctx context.Context, ownerID, id string) (diagnostic.Session, error) {
+	if err := ctx.Err(); err != nil {
+		return diagnostic.Session{}, err
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if err := ctx.Err(); err != nil {
+		return diagnostic.Session{}, err
+	}
+	value, ok := s.sessions[id]
+	if !ok || value.OwnerID != ownerID {
+		return diagnostic.Session{}, fault.New(fault.NotFound, "DIAGNOSTIC_SESSION_NOT_FOUND", "Диагностическая сессия не найдена.")
+	}
+	return clone(value), nil
+}
+
+func (s *Store) Reserve(ctx context.Context, ownerID, id, key, digest, taskID, token string) (*diagnostic.AcceptedRequest, *diagnostic.Reservation, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, nil, err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return nil, nil, err
+	}
+	value, ok := s.sessions[id]
+	if !ok || value.OwnerID != ownerID {
+		return nil, nil, fault.New(fault.NotFound, "DIAGNOSTIC_SESSION_NOT_FOUND", "Диагностическая сессия не найдена.")
+	}
+	if previous, ok := value.AcceptedRequests[key]; ok {
+		if previous.Fingerprint != digest {
+			return nil, nil, fault.New(fault.Conflict, "IDEMPOTENCY_KEY_REUSED", "Ключ ответа уже использован с другими данными.")
+		}
+		copy := previous
+		return &copy, nil, nil
+	}
+	if value.Status != diagnostic.StatusActive {
+		return nil, nil, fault.New(fault.Conflict, "DIAGNOSTIC_SESSION_COMPLETED", "Диагностическая сессия уже завершена.")
+	}
+	current := currentTask(value)
+	if current == nil || current.ID != taskID {
+		return nil, nil, fault.New(fault.Conflict, "DIAGNOSTIC_TASK_NOT_CURRENT", "Укажите текущее задание сессии.")
+	}
+	if value.InFlight != nil {
+		pending := value.InFlight
+		if pending.Token != "" {
+			return nil, nil, fault.New(fault.Conflict, "DIAGNOSTIC_ANSWER_IN_PROGRESS", "Ответ для текущего задания уже обрабатывается.")
+		}
+		if pending.Key != key || pending.Fingerprint != digest || pending.VariantTaskID != taskID {
+			return nil, nil, fault.New(fault.Conflict, "DIAGNOSTIC_ANSWER_RETRY_MISMATCH", "Для повтора используйте исходный ключ и аудио.")
+		}
+		pending.Token = token
+		s.sessions[id] = value
+		copy := *pending
+		return nil, &copy, nil
+	}
+	value.InFlight = &diagnostic.Reservation{Key: key, Fingerprint: digest, VariantTaskID: taskID, Token: token}
+	s.sessions[id] = value
+	copy := *value.InFlight
+	return nil, &copy, nil
+}
+
+func (s *Store) Accept(ctx context.Context, ownerID, id, token, key, digest string, answer diagnostic.Answer, transition diagnostic.Transition, total int) (diagnostic.Progress, error) {
+	if err := ctx.Err(); err != nil {
+		return diagnostic.Progress{}, err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return diagnostic.Progress{}, err
+	}
+	value, ok := s.sessions[id]
+	if !ok || value.OwnerID != ownerID {
+		return diagnostic.Progress{}, fault.New(fault.NotFound, "DIAGNOSTIC_SESSION_NOT_FOUND", "Диагностическая сессия не найдена.")
+	}
+	if value.InFlight == nil || value.InFlight.Token != token || value.InFlight.VariantTaskID != answer.VariantTaskID {
+		return diagnostic.Progress{}, fault.New(fault.Conflict, "DIAGNOSTIC_ANSWER_STALE", "Обработка ответа устарела.")
+	}
+	value.Answers = append(value.Answers, answer)
+	value.CurrentCompetency = transition.CurrentCompetency
+	value.CurrentTask = transition.CurrentTask
+	value.Status = transition.Status
+	value.SkippedBasics = append(value.SkippedBasics, transition.SkippedBasics...)
+	value.InFlight = nil
+	progress := makeProgress(value, total)
+	score, graderScore, verdict := answer.Score, answer.GraderScore, answer.Verdict
+	progress.Score, progress.GraderScore, progress.Verdict = &score, &graderScore, verdict
+	progress.CriterionResults = append([]diagnostic.CriterionResult(nil), answer.CriterionResults...)
+	progress.Feedback = append([]string(nil), answer.Feedback...)
+	value.AcceptedRequests[key] = diagnostic.AcceptedRequest{Fingerprint: digest, Answer: answer, Response: progress}
+	s.sessions[id] = value
+	return progress, nil
+}
+
+func (s *Store) Fail(_ context.Context, ownerID, id, token, transcriptionID, transcriptionText string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	value, ok := s.sessions[id]
+	if !ok || value.OwnerID != ownerID {
+		return fault.New(fault.NotFound, "DIAGNOSTIC_SESSION_NOT_FOUND", "Диагностическая сессия не найдена.")
+	}
+	if value.InFlight == nil || value.InFlight.Token != token {
+		return nil
+	}
+	if transcriptionID != "" {
+		value.InFlight.TranscriptionID = transcriptionID
+		value.InFlight.TranscriptionText = transcriptionText
+	}
+	if transcriptionID != "" {
+		value.InFlight.Token = ""
+	} else {
+		value.InFlight = nil
+	}
+	s.sessions[id] = value
+	return nil
+}
+
+func currentTask(value diagnostic.Session) *diagnostic.TaskSnapshot {
+	if value.CurrentCompetency >= len(value.Variant.Competencies) {
+		return nil
+	}
+	competency := value.Variant.Competencies[value.CurrentCompetency]
+	if value.CurrentTask >= len(competency.Tasks) {
+		return nil
+	}
+	task := competency.Tasks[value.CurrentTask]
+	return &task
+}
+
+func makeProgress(value diagnostic.Session, total int) diagnostic.Progress {
+	result := diagnostic.Progress{SessionID: value.ID, Status: value.Status, Completed: len(value.Answers), Skipped: len(value.SkippedBasics), Total: total}
+	if current := currentTask(value); current != nil {
+		result.Current = current
+	}
+	return result
+}
+
+func clone(value diagnostic.Session) diagnostic.Session {
+	value.Variant.SkippedCompetencies = append([]diagnostic.SkippedCompetency{}, value.Variant.SkippedCompetencies...)
+	value.Variant.Competencies = append([]diagnostic.Competency(nil), value.Variant.Competencies...)
+	for i := range value.Variant.Competencies {
+		value.Variant.Competencies[i].Tasks = append([]diagnostic.TaskSnapshot(nil), value.Variant.Competencies[i].Tasks...)
+		for j := range value.Variant.Competencies[i].Tasks {
+			value.Variant.Competencies[i].Tasks[j].Options = append([]string{}, value.Variant.Competencies[i].Tasks[j].Options...)
+		}
+	}
+	value.Answers = append([]diagnostic.Answer(nil), value.Answers...)
+	for i := range value.Answers {
+		value.Answers[i] = cloneAnswer(value.Answers[i])
+	}
+	copyRequests := make(map[string]diagnostic.AcceptedRequest, len(value.AcceptedRequests))
+	for key, item := range value.AcceptedRequests {
+		item.Answer = cloneAnswer(item.Answer)
+		item.Response = cloneProgress(item.Response)
+		copyRequests[key] = item
+	}
+	value.AcceptedRequests = copyRequests
+	value.SkippedBasics = append([]diagnostic.TaskSnapshot(nil), value.SkippedBasics...)
+	for i := range value.SkippedBasics {
+		value.SkippedBasics[i].Options = append([]string{}, value.SkippedBasics[i].Options...)
+	}
+	if value.InFlight != nil {
+		reservation := *value.InFlight
+		value.InFlight = &reservation
+	}
+	return value
+}
+
+func cloneAnswer(answer diagnostic.Answer) diagnostic.Answer {
+	answer.Task.Options = append([]string{}, answer.Task.Options...)
+	answer.CriterionResults = append([]diagnostic.CriterionResult(nil), answer.CriterionResults...)
+	answer.Feedback = append([]string(nil), answer.Feedback...)
+	return answer
+}
+
+func cloneProgress(value diagnostic.Progress) diagnostic.Progress {
+	if value.Current != nil {
+		current := *value.Current
+		current.Options = append([]string{}, value.Current.Options...)
+		value.Current = &current
+	}
+	value.CriterionResults = append([]diagnostic.CriterionResult(nil), value.CriterionResults...)
+	value.Feedback = append([]string(nil), value.Feedback...)
+	return value
+}

@@ -121,3 +121,30 @@ func TestGradeMapsGatewayTimeoutStatus(t *testing.T) {
 		t.Fatalf("expected MODEL_TIMEOUT, got %v", err)
 	}
 }
+
+func TestGradeRejectsMissingSatisfied(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"{\"score\":0,\"verdict\":\"incorrect\",\"criterion_results\":[{\"key\":\"task_type\",\"explanation\":\"Тип не назван.\"},{\"key\":\"justification\",\"satisfied\":false,\"explanation\":\"Объяснения нет.\"}],\"feedback\":[\"Ответ неверен.\",\"Не выполнены критерии.\",\"Назовите тип и объясните выбор.\"]}"},"finish_reason":"stop"}]}`))
+	}))
+	defer server.Close()
+
+	_, err := New(server.Client(), server.URL+"/v1", "gpt-oss-120b", time.Second).Grade(context.Background(), testContext(), "ответ")
+	var f *fault.Error
+	if !errors.As(err, &f) || f.Code != "INVALID_MODEL_RESPONSE" {
+		t.Fatalf("expected INVALID_MODEL_RESPONSE, got %v", err)
+	}
+}
+
+func TestGradeRejectsNullSatisfied(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"{\"score\":0,\"verdict\":\"incorrect\",\"criterion_results\":[{\"key\":\"task_type\",\"satisfied\":null,\"explanation\":\"Тип не назван.\"},{\"key\":\"justification\",\"satisfied\":false,\"explanation\":\"Объяснения нет.\"}],\"feedback\":[\"Ответ неверен.\",\"Не выполнены критерии.\",\"Назовите тип и объясните выбор.\"]}"},"finish_reason":"stop"}]}`))
+	}))
+	defer server.Close()
+
+	_, err := New(server.Client(), server.URL+"/v1", "gpt-oss-120b", time.Second).Grade(context.Background(), testContext(), "ответ")
+	var f *fault.Error
+	if !errors.As(err, &f) || f.Code != "INVALID_MODEL_RESPONSE" {
+		t.Fatalf("expected INVALID_MODEL_RESPONSE, got %v", err)
+	}
+}
+

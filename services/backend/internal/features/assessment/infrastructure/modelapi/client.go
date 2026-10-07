@@ -155,11 +155,16 @@ func (c *Client) Grade(ctx context.Context, gradingContext application.GradingCo
 	if len(content) > 64*1024 || json.Unmarshal(content, &completion) != nil || len(completion.Choices) != 1 || completion.Choices[0].Message.Content == nil || completion.Choices[0].FinishReason != "stop" {
 		return assessment.Evaluation{}, invalidModelResponse("Модель вернула неполный ответ.")
 	}
+	type criterionResultDTO struct {
+		Key         string `json:"key"`
+		Satisfied   *bool  `json:"satisfied"`
+		Explanation string `json:"explanation"`
+	}
 	var result struct {
-		Score            *int                         `json:"score"`
-		Verdict          *string                      `json:"verdict"`
-		CriterionResults []assessment.CriterionResult `json:"criterion_results"`
-		Feedback         []string                     `json:"feedback"`
+		Score            *int                 `json:"score"`
+		Verdict          *string              `json:"verdict"`
+		CriterionResults []criterionResultDTO `json:"criterion_results"`
+		Feedback         []string             `json:"feedback"`
 	}
 	decoder := json.NewDecoder(strings.NewReader(*completion.Choices[0].Message.Content))
 	decoder.DisallowUnknownFields()
@@ -175,10 +180,18 @@ func (c *Client) Grade(ctx context.Context, gradingContext application.GradingCo
 		verdict = "incorrect"
 	}
 
-	for i := range result.CriterionResults {
-		result.CriterionResults[i].Explanation = strings.ReplaceAll(result.CriterionResults[i].Explanation, "\r\n", " ")
-		result.CriterionResults[i].Explanation = strings.ReplaceAll(result.CriterionResults[i].Explanation, "\n", " ")
-		result.CriterionResults[i].Explanation = strings.TrimSpace(result.CriterionResults[i].Explanation)
+	criterionResults := make([]assessment.CriterionResult, len(result.CriterionResults))
+	for i, item := range result.CriterionResults {
+		if item.Satisfied == nil {
+			return assessment.Evaluation{}, invalidModelResponse("Модель не указала satisfied для одного из критериев.")
+		}
+		explanation := strings.ReplaceAll(item.Explanation, "\r\n", " ")
+		explanation = strings.ReplaceAll(explanation, "\n", " ")
+		criterionResults[i] = assessment.CriterionResult{
+			Key:         item.Key,
+			Satisfied:   *item.Satisfied,
+			Explanation: strings.TrimSpace(explanation),
+		}
 	}
 
 	feedback := make([]string, len(result.Feedback))
@@ -191,7 +204,7 @@ func (c *Client) Grade(ctx context.Context, gradingContext application.GradingCo
 	return assessment.Evaluation{
 		Score:            *result.Score,
 		Verdict:          verdict,
-		CriterionResults: result.CriterionResults,
+		CriterionResults: criterionResults,
 		Feedback:         feedback,
 	}, nil
 }

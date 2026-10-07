@@ -19,12 +19,6 @@ type Criterion struct {
 	Description string `json:"description"`
 }
 
-type CriterionResult struct {
-	Key         string `json:"key"`
-	Satisfied   bool   `json:"satisfied"`
-	Explanation string `json:"explanation"`
-}
-
 type MaterialContext struct {
 	Knowledge string `json:"knowledge"`
 	Skills    string `json:"skills"`

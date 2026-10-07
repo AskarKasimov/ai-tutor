@@ -91,11 +91,11 @@ func (s *Service) Generate(ctx context.Context, outcomeID, requestKey, requested
 	} else if !isNotFound(err) {
 		return Task{}, err
 	}
-	context, err := s.repository.Context(ctx, outcomeID)
+	snapshot, err := s.repository.Context(ctx, outcomeID)
 	if err != nil {
 		return Task{}, err
 	}
-	draft, err := s.generator.Generate(ctx, context)
+	draft, err := s.generator.Generate(ctx, snapshot)
 	if err != nil {
 		return Task{}, err
 	}
@@ -113,7 +113,7 @@ func (s *Service) Generate(ctx context.Context, outcomeID, requestKey, requested
 	if draft.Options == nil {
 		draft.Options = []string{}
 	}
-	return s.repository.Persist(ctx, context, requestKey, requestedBy, s.model, draft, s.now())
+	return s.repository.Persist(ctx, snapshot, requestKey, requestedBy, s.model, draft, s.now())
 }
 
 func isNotFound(err error) bool {

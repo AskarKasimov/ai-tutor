@@ -55,7 +55,7 @@ func (r *Repository) Context(ctx context.Context, outcomeID string) (application
 		return application.Context{}, err
 	}
 	outcome.CurriculumSections = profilejson.ToSections(sections)
-	context := application.Context{Revision: profile.Revision, Outcome: outcome, Examples: []application.Example{}, Materials: []application.MaterialChunk{}}
+	snapshot := application.Context{Revision: profile.Revision, Outcome: outcome, Examples: []application.Example{}, Materials: []application.MaterialChunk{}}
 	examples, err := r.queries.ListGenerationExamples(ctx, db.ListGenerationExamplesParams{OutcomeID: outcomeID, Limit: 6})
 	if err != nil {
 		return application.Context{}, err
@@ -65,7 +65,7 @@ func (r *Repository) Context(ctx context.Context, outcomeID string) (application
 		if err := json.Unmarshal(example.Options, &options); err != nil {
 			return application.Context{}, err
 		}
-		context.Examples = append(context.Examples, application.Example{
+		snapshot.Examples = append(snapshot.Examples, application.Example{
 			ID: example.ID, Question: example.Question, Options: options,
 			VoiceInstruction: example.VoiceInstruction, ReferenceAnswer: example.ReferenceAnswer, Criteria: example.Criteria,
 		})
@@ -79,9 +79,9 @@ func (r *Repository) Context(ctx context.Context, outcomeID string) (application
 		return application.Context{}, err
 	}
 	for _, chunk := range chunks {
-		context.Materials = append(context.Materials, application.MaterialChunk{ID: chunk.ID, Name: chunk.MaterialName, Content: chunk.Content})
+		snapshot.Materials = append(snapshot.Materials, application.MaterialChunk{ID: chunk.ID, Name: chunk.MaterialName, Content: chunk.Content})
 	}
-	return context, nil
+	return snapshot, nil
 }
 
 func (r *Repository) Persist(ctx context.Context, snapshot application.Context, requestKey, requestedBy, model string, draft application.Draft, createdAt int64) (application.Task, error) {

@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/assessment"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"go.uber.org/zap"
 
@@ -39,6 +38,7 @@ import (
 	taskgenhttp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/taskgen/transport/http"
 	variantgenapp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/variantgen/application"
 	variantgenpg "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/variantgen/infrastructure/postgres"
+	variantgenrandom "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/variantgen/infrastructure/random"
 	variantgenhttp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/variantgen/transport/http"
 	voiceapp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/voice/application"
 	voicemock "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/voice/infrastructure/mock"
@@ -47,6 +47,7 @@ import (
 	voicehttp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/voice/transport/http"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/fault"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/httpx"
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/security"
 )
 
 type App struct {
@@ -120,9 +121,8 @@ func (a *App) Handler() http.Handler {
 		taskgenapp.New(taskgenRepository, taskGenerator, modelName, func() int64 { return a.now().Unix() }),
 		taskgenapp.NewMaterialService(taskgenRepository, func() int64 { return a.now().Unix() }),
 	)
-	variantgenHandlers := variantgenhttp.New(variantgenapp.New(a.variantRepository, variantgenpg.Chooser{}, variantgenpg.IDs{}, a.now))
-	diagnosticGrader := diagnosticAssessmentGrader{service: assessmentService}
-	diagnosticService := diagnosticapp.New(a.diagnosticStore, a.variantRepository, voice, diagnosticGrader, variantgenpg.IDs{}, a.now)
+	variantgenHandlers := variantgenhttp.New(variantgenapp.New(a.variantRepository, variantgenrandom.Chooser{}, security.IDGenerator{}, a.now))
+	diagnosticService := diagnosticapp.New(a.diagnosticStore, a.variantRepository, voice, assessmentService, security.IDGenerator{}, a.now)
 	diagnosticHandlers := diagnostichttp.New(diagnosticService, a.cfg.MaxUploadBytes)
 
 	mux := http.NewServeMux()
@@ -154,29 +154,6 @@ func (a *App) Handler() http.Handler {
 		httpx.Error(r.Context(), w, fault.New(fault.NotFound, "NOT_FOUND", "Ресурс не найден."))
 	})
 	return httpx.RequestLogger(a.logger, a.middleware(mux))
-}
-
-type diagnosticAssessor interface {
-	EvaluateVariant(context.Context, string, string, string, string) (assessmentapp.Evaluation, error)
-}
-
-type diagnosticAssessmentGrader struct {
-	service diagnosticAssessor
-}
-
-func (g diagnosticAssessmentGrader) Evaluate(ctx context.Context, ownerID, transcriptionID, variantID, variantTaskID string) (assessment.Evaluation, error) {
-	result, err := g.service.EvaluateVariant(ctx, ownerID, transcriptionID, variantID, variantTaskID)
-	if err != nil {
-		return assessment.Evaluation{}, err
-	}
-	criteria := make([]assessment.CriterionResult, len(result.CriterionResults))
-	for i, item := range result.CriterionResults {
-		criteria[i] = assessment.CriterionResult{Key: item.Key, Satisfied: item.Satisfied, Explanation: item.Explanation}
-	}
-	return assessment.Evaluation{
-		Score: result.Score, MaxScore: result.MaxScore, Verdict: result.Verdict,
-		CriterionResults: criteria, Feedback: append([]string(nil), result.Feedback...),
-	}, nil
 }
 
 func protect(auth *authapp.Service, next http.Handler) http.Handler {

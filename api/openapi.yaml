@@ -10,7 +10,7 @@ components:
       required:
         - status
       type: object
-    application.CriterionResult:
+    assessment.CriterionResult:
       additionalProperties: false
       properties:
         explanation:
@@ -51,7 +51,7 @@ components:
       properties:
         criterion_results:
           items:
-            $ref: '#/components/schemas/application.CriterionResult'
+            $ref: '#/components/schemas/assessment.CriterionResult'
           type: array
           uniqueItems: false
         feedback:

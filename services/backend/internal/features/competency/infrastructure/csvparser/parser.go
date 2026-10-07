@@ -43,10 +43,10 @@ func sourceRow(row []string, line, index int) competencymap.SourceRow {
 }
 func explanationRow(row []string, columns map[string]int) bool {
 	// Explain-only row has labels rather than actual competency identifiers.
-	kom := strings.ToLower(strings.TrimSpace(row[columns["Ком"]]))
-	sost := strings.ToLower(strings.TrimSpace(row[columns["Сост"]]))
+	competency := strings.ToLower(strings.TrimSpace(row[columns["Ком"]]))
+	constituent := strings.ToLower(strings.TrimSpace(row[columns["Сост"]]))
 	outcome := strings.ToLower(strings.TrimSpace(row[columns["ОР"]]))
-	if kom != "компетенция" || (sost != "составляющая" && sost != "составляющая рпд") || outcome != "образовательный результат" {
+	if competency != "компетенция" || (constituent != "составляющая" && constituent != "составляющая рпд") || outcome != "образовательный результат" {
 		return false
 	}
 	for h, i := range columns {

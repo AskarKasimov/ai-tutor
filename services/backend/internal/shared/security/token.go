@@ -6,6 +6,10 @@ import (
 	"encoding/base64"
 )
 
+type IDGenerator struct{}
+
+func (IDGenerator) New(prefix string) (string, error) { return ID(prefix) }
+
 func Token() (string, error) {
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {

@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/assessment"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/user"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/features/assessment/application"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/fault"
@@ -18,11 +19,11 @@ type EvaluateRequest struct {
 }
 
 type EvaluateResponse struct {
-	Score            int                           `json:"score" minimum:"0" maximum:"2"`
-	MaxScore         int                           `json:"max_score" minimum:"1" maximum:"2"`
-	Verdict          string                        `json:"verdict" enums:"correct,partial,incorrect"`
-	CriterionResults []application.CriterionResult `json:"criterion_results"`
-	Feedback         []string                      `json:"feedback" minItems:"3" maxItems:"3"`
+	Score            int                          `json:"score" minimum:"0" maximum:"2"`
+	MaxScore         int                          `json:"max_score" minimum:"1" maximum:"2"`
+	Verdict          string                       `json:"verdict" enums:"correct,partial,incorrect"`
+	CriterionResults []assessment.CriterionResult `json:"criterion_results"`
+	Feedback         []string                     `json:"feedback" minItems:"3" maxItems:"3"`
 }
 
 type Handler struct{ service *application.Service }
@@ -64,7 +65,7 @@ func (h *Handler) Evaluate(w http.ResponseWriter, r *http.Request) {
 	variantTaskID := optionalText(req.VariantTaskID)
 	taskID := optionalText(req.TaskID)
 
-	var result application.Evaluation
+	var result assessment.Evaluation
 	var err error
 	switch {
 	case variantID != "" || variantTaskID != "":

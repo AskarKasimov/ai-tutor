@@ -19,7 +19,7 @@ type Voice interface {
 }
 
 type Grader interface {
-	Evaluate(context.Context, string, string, string, string) (assessment.Evaluation, error)
+	EvaluateVariant(context.Context, string, string, string, string) (assessment.Evaluation, error)
 }
 
 type Store interface {

@@ -59,14 +59,28 @@ func TestGradeSendsCriteriaMaterialsAndParsesStructuredResult(t *testing.T) {
 }
 
 func TestGradeRejectsMalformedStructuredResult(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"{\"score\":2,\"feedback\":[]}"},"finish_reason":"stop"}]}`))
-	}))
-	defer server.Close()
-	_, err := New(server.Client(), server.URL+"/v1", "gpt-oss-120b", time.Second).Grade(context.Background(), testContext(), "ответ")
-	var f *fault.Error
-	if !errors.As(err, &f) || f.Code != "INVALID_MODEL_RESPONSE" {
-		t.Fatalf("expected INVALID_MODEL_RESPONSE, got %v", err)
+	for _, tc := range []struct {
+		name    string
+		content string
+	}{
+		{"missing verdict", `{"score":2,"feedback":[]}`},
+		{"missing satisfied", `{"score":2,"verdict":"correct","criterion_results":[{"key":"task_type","explanation":"Верно"}],"feedback":["Верно"]}`},
+		{"null satisfied", `{"score":2,"verdict":"correct","criterion_results":[{"key":"task_type","satisfied":null,"explanation":"Верно"}],"feedback":["Верно"]}`},
+		{"missing explanation", `{"score":2,"verdict":"correct","criterion_results":[{"key":"task_type","satisfied":true}],"feedback":["Верно"]}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				_ = json.NewEncoder(w).Encode(map[string]any{"choices": []any{map[string]any{
+					"message": map[string]string{"content": tc.content}, "finish_reason": "stop",
+				}}})
+			}))
+			defer server.Close()
+			_, err := New(server.Client(), server.URL+"/v1", "gpt-oss-120b", time.Second).Grade(context.Background(), testContext(), "ответ")
+			var f *fault.Error
+			if !errors.As(err, &f) || f.Code != "INVALID_MODEL_RESPONSE" {
+				t.Fatalf("expected INVALID_MODEL_RESPONSE, got %v", err)
+			}
+		})
 	}
 }
 

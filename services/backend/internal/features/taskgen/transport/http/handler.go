@@ -9,13 +9,13 @@ import (
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/httpx"
 )
 
-type Handlers struct {
+type Handler struct {
 	service   *application.Service
 	materials *application.MaterialService
 }
 
-func New(service *application.Service, materials *application.MaterialService) *Handlers {
-	return &Handlers{service: service, materials: materials}
+func New(service *application.Service, materials *application.MaterialService) *Handler {
+	return &Handler{service: service, materials: materials}
 }
 
 type GenerateRequest struct {
@@ -49,7 +49,7 @@ type GeneratedTask struct {
 // @Failure 502 {object} fault.Error
 // @Failure 503 {object} fault.Error
 // @Router /tasks/generate [post]
-func (h *Handlers) Generate(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) Generate(w http.ResponseWriter, r *http.Request) {
 	principal, ok := httpx.Principal[user.User](r)
 	if !ok {
 		httpx.Error(r.Context(), w, fault.New(fault.Unauthorized, "UNAUTHORIZED", "Требуется действующая сессия."))
@@ -97,7 +97,7 @@ type ImportMaterialRequest struct {
 // @Failure 422 {object} fault.Error
 // @Failure 503 {object} fault.Error
 // @Router /admin/materials [post]
-func (h *Handlers) ImportMaterial(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) ImportMaterial(w http.ResponseWriter, r *http.Request) {
 	principal, ok := httpx.Principal[user.User](r)
 	if !ok {
 		httpx.Error(r.Context(), w, fault.New(fault.Unauthorized, "UNAUTHORIZED", "Требуется действующая сессия."))

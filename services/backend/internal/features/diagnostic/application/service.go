@@ -153,7 +153,7 @@ func (s *Service) Answer(ctx context.Context, ownerID, sessionID, taskID, key st
 		}
 		transcriptionID, text = transcription.ID, transcription.Text
 	}
-	evaluation, err := s.grader.Evaluate(ctx, ownerID, transcriptionID, value.Variant.ID, current.ID)
+	evaluation, err := s.grader.EvaluateVariant(ctx, ownerID, transcriptionID, value.Variant.ID, current.ID)
 	if err != nil {
 		_ = s.store.Fail(context.Background(), ownerID, sessionID, token, transcriptionID, text)
 		return diagnostic.Progress{}, err

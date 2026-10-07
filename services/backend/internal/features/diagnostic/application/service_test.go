@@ -60,7 +60,7 @@ type gradeResult struct {
 	err        error
 }
 
-func (s *graderStub) Evaluate(ctx context.Context, ownerID, transcriptionID, variantID, variantTaskID string) (assessment.Evaluation, error) {
+func (s *graderStub) EvaluateVariant(ctx context.Context, ownerID, transcriptionID, variantID, variantTaskID string) (assessment.Evaluation, error) {
 	s.mu.Lock()
 	s.calls++
 	s.ownerID, s.transcriptionID, s.variantID, s.variantTaskID = ownerID, transcriptionID, variantID, variantTaskID

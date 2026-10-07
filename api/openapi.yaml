@@ -27,16 +27,24 @@ components:
     assessmenthttp.EvaluateRequest:
       additionalProperties: false
       properties:
+        task_id:
+          maxLength: 128
+          minLength: 1
+          type: string
         transcription_id:
+          maxLength: 128
+          minLength: 1
           type: string
         variant_id:
+          maxLength: 128
+          minLength: 1
           type: string
         variant_task_id:
+          maxLength: 128
+          minLength: 1
           type: string
       required:
         - transcription_id
-        - variant_id
-        - variant_task_id
       type: object
     assessmenthttp.EvaluateResponse:
       additionalProperties: false
@@ -366,6 +374,10 @@ components:
             type: string
           type: array
           uniqueItems: false
+        grader_max_score:
+          maximum: 2
+          minimum: 1
+          type: integer
         grader_score:
           maximum: 2
           minimum: 0
@@ -402,6 +414,7 @@ components:
         - created_at
         - criterion_results
         - feedback
+        - grader_max_score
         - grader_score
         - outcome_id
         - role
@@ -445,6 +458,10 @@ components:
             type: string
           type: array
           uniqueItems: false
+        grader_max_score:
+          maximum: 2
+          minimum: 1
+          type: integer
         grader_score:
           maximum: 2
           minimum: 0
@@ -1275,7 +1292,7 @@ paths:
       x-implementation: implemented
   /assessments/evaluate:
     post:
-      description: Принимает ID расшифровки, сохранённого варианта и позиции задания. Сервер проверяет владельца, берёт исторический снимок задания и роль main/basic. Оценка не сохраняется.
+      description: Принимает ID расшифровки и либо variant_id вместе с variant_task_id, либо legacy task_id из grading catalog. В variant-пути сервер проверяет владельца, берёт исторический снимок задания и роль main/basic. Assessment не сохраняет результат.
       operationId: evaluateAnswer
       requestBody:
         content:
@@ -1645,7 +1662,7 @@ paths:
       x-implementation: implemented
   /diagnostic-sessions/{id}/answers:
     post:
-      description: Выполняет STT и сохраняет результат оценки в памяти процесса. В real-режиме грейдер должен иметь контекст задания из варианта; пока его нет, возвращается техническая ошибка без score и перехода.
+      description: Выполняет STT, затем вызывает assessment application с variant_id, variant_task_id и transcription_id. Грейдер читает доверенный снимок и роль; ошибка оценки не меняет позицию.
       parameters:
         - description: ID сессии
           in: path

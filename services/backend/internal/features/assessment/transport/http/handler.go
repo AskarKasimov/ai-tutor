@@ -11,16 +11,10 @@ import (
 )
 
 type EvaluateRequest struct {
-	TranscriptionID string `json:"transcription_id" binding:"required"`
-	VariantID       string `json:"variant_id" binding:"required"`
-	VariantTaskID   string `json:"variant_task_id" binding:"required"`
-}
-
-type evaluateRequestWire struct {
-	TranscriptionID string `json:"transcription_id"`
-	VariantID       string `json:"variant_id"`
-	VariantTaskID   string `json:"variant_task_id"`
-	TaskID          string `json:"task_id"`
+	TranscriptionID string  `json:"transcription_id" minLength:"1" maxLength:"128" binding:"required"`
+	VariantID       *string `json:"variant_id,omitempty" minLength:"1" maxLength:"128" binding:"optional"`
+	VariantTaskID   *string `json:"variant_task_id,omitempty" minLength:"1" maxLength:"128" binding:"optional"`
+	TaskID          *string `json:"task_id,omitempty" minLength:"1" maxLength:"128" binding:"optional"`
 }
 
 type EvaluateResponse struct {
@@ -37,7 +31,7 @@ func New(service *application.Service) *Handler { return &Handler{service: servi
 
 // Evaluate handles POST /assessments/evaluate.
 // @Summary Оценить сохранённый голосовой ответ
-// @Description Принимает ID расшифровки, сохранённого варианта и позиции задания. Сервер проверяет владельца, берёт исторический снимок задания и роль main/basic. Оценка не сохраняется.
+// @Description Принимает ID расшифровки и либо variant_id вместе с variant_task_id, либо legacy task_id из grading catalog. В variant-пути сервер проверяет владельца, берёт исторический снимок задания и роль main/basic. Assessment не сохраняет результат.
 // @ID evaluateAnswer
 // @Tags Грейдинг и фидбэк
 // @Security accessCookie
@@ -60,15 +54,15 @@ func (h *Handler) Evaluate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, 32*1024)
-	var req evaluateRequestWire
+	var req EvaluateRequest
 	if err := httpx.DecodeJSON(r, &req); err != nil {
 		httpx.Error(r.Context(), w, err)
 		return
 	}
 
-	variantID := strings.TrimSpace(req.VariantID)
-	variantTaskID := strings.TrimSpace(req.VariantTaskID)
-	taskID := strings.TrimSpace(req.TaskID)
+	variantID := optionalText(req.VariantID)
+	variantTaskID := optionalText(req.VariantTaskID)
+	taskID := optionalText(req.TaskID)
 
 	var result application.Evaluation
 	var err error
@@ -97,4 +91,11 @@ func (h *Handler) Evaluate(w http.ResponseWriter, r *http.Request) {
 		CriterionResults: result.CriterionResults,
 		Feedback:         result.Feedback,
 	})
+}
+
+func optionalText(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return strings.TrimSpace(*value)
 }

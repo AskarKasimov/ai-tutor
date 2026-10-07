@@ -44,11 +44,15 @@ func (s *voiceStub) Transcribe(_ context.Context, ownerID string, _ []byte, _ st
 func (s *voiceStub) Synthesize(context.Context, string) ([]byte, error) { return []byte("wav"), nil }
 
 type graderStub struct {
-	mu           sync.Mutex
-	results      []gradeResult
-	calls        int
-	started      chan struct{}
-	continueCall chan struct{}
+	mu              sync.Mutex
+	results         []gradeResult
+	calls           int
+	ownerID         string
+	transcriptionID string
+	variantID       string
+	variantTaskID   string
+	started         chan struct{}
+	continueCall    chan struct{}
 }
 
 type gradeResult struct {
@@ -56,10 +60,11 @@ type gradeResult struct {
 	err        error
 }
 
-func (s *graderStub) Evaluate(ctx context.Context, _, transcriptionID, taskID string) (assessment.Evaluation, error) {
+func (s *graderStub) Evaluate(ctx context.Context, ownerID, transcriptionID, variantID, variantTaskID string) (assessment.Evaluation, error) {
 	s.mu.Lock()
 	s.calls++
-	if transcriptionID == "" || taskID == "" {
+	s.ownerID, s.transcriptionID, s.variantID, s.variantTaskID = ownerID, transcriptionID, variantID, variantTaskID
+	if ownerID == "" || transcriptionID == "" || variantID == "" || variantTaskID == "" {
 		s.mu.Unlock()
 		return assessment.Evaluation{}, errors.New("grader IDs are empty")
 	}
@@ -125,8 +130,18 @@ func grade(score int) gradeResult {
 	} else if score == 2 {
 		verdict = "correct"
 	}
-	return gradeResult{evaluation: assessment.Evaluation{Score: score, Verdict: verdict,
+	return gradeResult{evaluation: assessment.Evaluation{Score: score, MaxScore: 2, Verdict: verdict,
 		CriterionResults: []assessment.CriterionResult{{Key: "c1", Satisfied: score == 2, Explanation: "Объяснение"}},
+		Feedback:         []string{"Статус", "Причина", "Совет"}}}
+}
+
+func gradeBasic(score int) gradeResult {
+	verdict := "incorrect"
+	if score == 1 {
+		verdict = "correct"
+	}
+	return gradeResult{evaluation: assessment.Evaluation{Score: score, MaxScore: 1, Verdict: verdict,
+		CriterionResults: []assessment.CriterionResult{{Key: "c1", Satisfied: score == 1, Explanation: "Объяснение"}},
 		Feedback:         []string{"Статус", "Причина", "Совет"}}}
 }
 
@@ -181,6 +196,9 @@ func TestMainPerfectSkipsBasicsAndIdempotencySurvivesCompletion(t *testing.T) {
 	if progress.Current == nil || progress.Current.ID != "variant-task-1-0" || progress.Skipped != 2 || progress.Completed != 1 {
 		t.Fatalf("main=2 did not skip the basics: %+v", progress)
 	}
+	if grader.variantID != "variant-1" || grader.variantTaskID != "variant-task-0-0" || grader.transcriptionID != "transcription-1" {
+		t.Fatalf("grader received wrong variant identity: variant=%q variant_task=%q transcription=%q", grader.variantID, grader.variantTaskID, grader.transcriptionID)
+	}
 	read, err := service.Read(context.Background(), "owner-1", started.SessionID)
 	if err != nil || read.Skipped != progress.Skipped {
 		t.Fatalf("GET progress skipped count = %d, answer response = %d, err=%v", read.Skipped, progress.Skipped, err)
@@ -225,24 +243,27 @@ func TestCanceledGradingReleasesReservationAndRetryReusesTranscription(t *testin
 	}
 }
 
-func TestBasicScoresAreNormalizedAndOnlyMainContributesToDiagnostic(t *testing.T) {
-	service, _, _, _ := newTestService(grade(1), grade(0), grade(2), grade(2))
+func TestRoleSpecificScoresAndOnlyMainContributesToDiagnostic(t *testing.T) {
+	service, _, _, _ := newTestService(grade(1), gradeBasic(0), gradeBasic(1), grade(2))
 	progress := service.start(t)
 	progress = service.answer(t, progress, "main")
 	progress = service.answer(t, progress, "basic-zero")
 	if progress.Score == nil || *progress.Score != 0 || progress.GraderScore == nil || *progress.GraderScore != 0 || progress.Current.Role != "basic" {
 		t.Fatalf("basic score 0 was not retained: %+v", progress)
 	}
-	progress = service.answer(t, progress, "basic-two")
-	if progress.Score == nil || *progress.Score != 1 || progress.GraderScore == nil || *progress.GraderScore != 2 || progress.Current.ID != "variant-task-1-0" {
-		t.Fatalf("basic score 2 was not normalized: %+v", progress)
+	progress = service.answer(t, progress, "basic-one")
+	if progress.Score == nil || *progress.Score != 1 || progress.GraderScore == nil || *progress.GraderScore != 1 || progress.Current.ID != "variant-task-1-0" {
+		t.Fatalf("basic score 1 was not preserved: %+v", progress)
+	}
+	if progress.GraderMaxScore == nil || *progress.GraderMaxScore != 1 {
+		t.Fatalf("basic grader max score = %v, want 1", progress.GraderMaxScore)
 	}
 	progress = service.answer(t, progress, "next-main")
 	result, err := service.Result(context.Background(), "owner-1", progress.SessionID)
 	if err != nil || result.DiagnosticScore != 3 || result.MaximumScore != 4 {
 		t.Fatalf("basic scores affected diagnostic sum: %+v, err=%v", result, err)
 	}
-	if result.Answers[2].GraderScore != 2 || result.Answers[2].Score != 1 || result.Answers[2].Verdict != "correct" {
+	if result.Answers[2].GraderScore != 1 || result.Answers[2].GraderMaxScore != 1 || result.Answers[2].Score != 1 || result.Answers[2].Verdict != "correct" {
 		t.Fatalf("source grader result was not preserved: %+v", result.Answers[2])
 	}
 }

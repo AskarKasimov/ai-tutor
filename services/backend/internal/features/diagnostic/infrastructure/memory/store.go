@@ -151,8 +151,8 @@ func (s *Store) Accept(ctx context.Context, ownerID, id, token, key, digest stri
 	value.SkippedBasics = append(value.SkippedBasics, transition.SkippedBasics...)
 	value.InFlight = nil
 	progress := makeProgress(value, total)
-	score, graderScore, verdict := answer.Score, answer.GraderScore, answer.Verdict
-	progress.Score, progress.GraderScore, progress.Verdict = &score, &graderScore, verdict
+	score, graderScore, graderMaxScore, verdict := answer.Score, answer.GraderScore, answer.GraderMaxScore, answer.Verdict
+	progress.Score, progress.GraderScore, progress.GraderMaxScore, progress.Verdict = &score, &graderScore, &graderMaxScore, verdict
 	progress.CriterionResults = append([]diagnostic.CriterionResult(nil), answer.CriterionResults...)
 	progress.Feedback = append([]string(nil), answer.Feedback...)
 	value.AcceptedRequests[key] = diagnostic.AcceptedRequest{Fingerprint: digest, Answer: answer, Response: progress}
@@ -249,5 +249,17 @@ func cloneProgress(value diagnostic.Progress) diagnostic.Progress {
 	}
 	value.CriterionResults = append([]diagnostic.CriterionResult(nil), value.CriterionResults...)
 	value.Feedback = append([]string(nil), value.Feedback...)
+	if value.Score != nil {
+		currentScore := *value.Score
+		value.Score = &currentScore
+	}
+	if value.GraderScore != nil {
+		graderScore := *value.GraderScore
+		value.GraderScore = &graderScore
+	}
+	if value.GraderMaxScore != nil {
+		maxScore := *value.GraderMaxScore
+		value.GraderMaxScore = &maxScore
+	}
 	return value
 }

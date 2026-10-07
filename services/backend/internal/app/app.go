@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/variant"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"go.uber.org/zap"
 
@@ -32,6 +33,9 @@ import (
 	taskgenmodel "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/taskgen/infrastructure/modelapi"
 	taskgenpg "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/taskgen/infrastructure/postgres"
 	taskgenhttp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/taskgen/transport/http"
+	variantgenapp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/variantgen/application"
+	variantgenpg "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/variantgen/infrastructure/postgres"
+	variantgenhttp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/variantgen/transport/http"
 	voiceapp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/voice/application"
 	voicemock "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/voice/infrastructure/mock"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/features/voice/infrastructure/modelapi"
@@ -42,12 +46,13 @@ import (
 )
 
 type App struct {
-	cfg    Config
-	pool   *pgxpool.Pool
-	client *http.Client
-	now    func() time.Time
-	hasher *argon2.Hasher
-	logger *zap.Logger
+	cfg               Config
+	pool              *pgxpool.Pool
+	client            *http.Client
+	now               func() time.Time
+	hasher            *argon2.Hasher
+	logger            *zap.Logger
+	variantRepository variantgenapp.Repository
 }
 
 func New(cfg Config, pool *pgxpool.Pool, logger *zap.Logger) (*App, error) {
@@ -60,7 +65,7 @@ func New(cfg Config, pool *pgxpool.Pool, logger *zap.Logger) (*App, error) {
 	if logger == nil {
 		logger = zap.NewNop()
 	}
-	return &App{cfg: cfg, pool: pool, now: time.Now, hasher: argon2.New(), logger: logger, client: &http.Client{
+	return &App{cfg: cfg, pool: pool, now: time.Now, hasher: argon2.New(), logger: logger, variantRepository: variantgenpg.New(pool), client: &http.Client{
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 	}}, nil
 }
@@ -95,6 +100,7 @@ func (a *App) Handler() http.Handler {
 		taskgenapp.New(taskgenRepository, taskGenerator, modelName, func() int64 { return a.now().Unix() }),
 		taskgenapp.NewMaterialService(taskgenRepository, func() int64 { return a.now().Unix() }),
 	)
+	variantgenHandlers := variantgenhttp.New(variantgenapp.New(a.variantRepository, variantgenpg.Chooser{}, variantgenpg.IDs{}, a.now))
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /auth/register", authHandlers.Register)
@@ -111,12 +117,19 @@ func (a *App) Handler() http.Handler {
 	mux.Handle("GET /tasks/{id}", protect(auth, http.HandlerFunc(taskbankHandlers.Profile)))
 	mux.Handle("POST /tasks/generate", protect(auth, http.HandlerFunc(taskgenHandlers.Generate)))
 	mux.Handle("POST /admin/materials", protect(auth, http.HandlerFunc(taskgenHandlers.ImportMaterial)))
+	mux.Handle("POST /variants", protect(auth, http.HandlerFunc(variantgenHandlers.Create)))
+	mux.Handle("GET /variants", protect(auth, http.HandlerFunc(variantgenHandlers.List)))
+	mux.Handle("GET /variants/{id}", protect(auth, http.HandlerFunc(variantgenHandlers.Read)))
+	mux.Handle("GET /variants/{id}/tasks/{task_id}", protect(auth, http.HandlerFunc(variantgenHandlers.ReadTask)))
 	mux.HandleFunc("GET /health", a.health)
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(r.Context(), w, fault.New(fault.NotFound, "NOT_FOUND", "Ресурс не найден."))
 	})
 	return httpx.RequestLogger(a.logger, a.middleware(mux))
 }
+
+// VariantTaskReader exposes owner-scoped historical task snapshots to grading services.
+func (a *App) VariantTaskReader() variant.TaskReader { return a.variantRepository }
 
 func protect(auth *authapp.Service, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

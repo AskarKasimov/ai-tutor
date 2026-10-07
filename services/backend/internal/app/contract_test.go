@@ -211,6 +211,29 @@ func TestOpenAPIResponses(t *testing.T) {
 	check("POST", "/voice/syntheses", f.request("POST", "/voice/syntheses", `{"text":""}`, access))
 	admin := f.admin(t)
 	check("POST", "/admin/competency-map/import", upload(f, "/admin/competency-map/import", "file", "map.csv", "text/csv", []byte(mapCSV), admin))
+	if variantImport := upload(f, "/admin/competency-map/import", "file", "variant.csv", "text/csv", variantMapCSV(t), admin); variantImport.Code != http.StatusOK {
+		t.Fatalf("variant map import: %d %s", variantImport.Code, variantImport.Body.String())
+	}
+	variantCreateRequest := httptest.NewRequest(http.MethodPost, "https://api.example/variants", strings.NewReader(""))
+	variantCreateRequest.Header.Set("Idempotency-Key", "contract-variant-1")
+	variantCreateRequest.AddCookie(access)
+	variantCreate := httptest.NewRecorder()
+	f.app.Handler().ServeHTTP(variantCreate, variantCreateRequest)
+	check("POST", "/variants", variantCreate)
+	var createdVariant struct {
+		ID           string `json:"id"`
+		Competencies []struct {
+			Main struct {
+				ID string `json:"id"`
+			} `json:"main"`
+		} `json:"competencies"`
+	}
+	if err := json.Unmarshal(variantCreate.Body.Bytes(), &createdVariant); err != nil || len(createdVariant.Competencies) != 1 {
+		t.Fatalf("contract variant response: %s (%v)", variantCreate.Body.String(), err)
+	}
+	check("GET", "/variants", f.request("GET", "/variants", "", access))
+	check("GET", "/variants/{id}", f.request("GET", "/variants/"+createdVariant.ID, "", access))
+	check("GET", "/variants/{id}/tasks/{task_id}", f.request("GET", "/variants/"+createdVariant.ID+"/tasks/"+createdVariant.Competencies[0].Main.ID, "", access))
 	var outcomeID, taskID string
 	if err := f.pool.QueryRow(context.Background(), `SELECT outcome.id, task.id FROM outcomes outcome JOIN tasks task ON task.outcome_id=outcome.id ORDER BY task.id LIMIT 1`).Scan(&outcomeID, &taskID); err != nil {
 		t.Fatal(err)

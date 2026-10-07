@@ -136,7 +136,7 @@ func (h *Handler) CurrentAudio(w http.ResponseWriter, r *http.Request) {
 
 // Answer transcribes and grades the audio for the current task.
 // @Summary Отправить голосовой ответ
-// @Description Выполняет STT и сохраняет результат оценки в памяти процесса. В real-режиме грейдер должен иметь контекст задания из варианта; пока его нет, возвращается техническая ошибка без score и перехода.
+// @Description Выполняет STT, затем вызывает assessment application с variant_id, variant_task_id и transcription_id. Грейдер читает доверенный снимок и роль; ошибка оценки не меняет позицию.
 // @Tags Диагностика
 // @Security accessCookie
 // @Accept mpfd

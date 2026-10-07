@@ -16,6 +16,7 @@ type CriterionResult struct {
 
 type Evaluation struct {
 	Score            int               `json:"score"`
+	MaxScore         int               `json:"max_score"`
 	Verdict          string            `json:"verdict"`
 	CriterionResults []CriterionResult `json:"criterion_results"`
 	Feedback         []string          `json:"feedback"`
@@ -25,6 +26,7 @@ type Evaluation struct {
 func (e *Evaluation) UnmarshalJSON(data []byte) error {
 	var wire struct {
 		Score            *int               `json:"score"`
+		MaxScore         *int               `json:"max_score"`
 		Verdict          *string            `json:"verdict"`
 		CriterionResults *[]CriterionResult `json:"criterion_results"`
 		Feedback         *[]string          `json:"feedback"`
@@ -32,11 +34,11 @@ func (e *Evaluation) UnmarshalJSON(data []byte) error {
 	if err := decodeStrict(data, &wire); err != nil {
 		return err
 	}
-	if wire.Score == nil || wire.Verdict == nil || wire.CriterionResults == nil || wire.Feedback == nil {
+	if wire.Score == nil || wire.MaxScore == nil || wire.Verdict == nil || wire.CriterionResults == nil || wire.Feedback == nil {
 		return errors.New("assessment response is missing required fields")
 	}
 	*e = Evaluation{
-		Score: *wire.Score, Verdict: *wire.Verdict,
+		Score: *wire.Score, MaxScore: *wire.MaxScore, Verdict: *wire.Verdict,
 		CriterionResults: *wire.CriterionResults, Feedback: *wire.Feedback,
 	}
 	return nil

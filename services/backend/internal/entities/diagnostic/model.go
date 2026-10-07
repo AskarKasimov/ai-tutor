@@ -69,6 +69,7 @@ type Answer struct {
 	TranscriptionID  string
 	Text             string
 	GraderScore      int
+	GraderMaxScore   int
 	Score            int
 	Verdict          string
 	CriterionResults []CriterionResult
@@ -119,6 +120,7 @@ type Progress struct {
 	Current          *TaskSnapshot
 	Score            *int
 	GraderScore      *int
+	GraderMaxScore   *int
 	Verdict          string
 	CriterionResults []CriterionResult
 	Feedback         []string

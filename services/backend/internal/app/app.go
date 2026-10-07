@@ -96,27 +96,24 @@ func (a *App) Handler() http.Handler {
 	var recognizer voiceapp.Recognizer
 	var synthesizer voiceapp.Synthesizer
 	var grader assessmentapp.Grader
-	var diagnosticGrader diagnosticapp.Grader
 	var taskGenerator taskgenapp.Generator
 	modelName := a.cfg.TaskgenModel
 	if a.cfg.APIMode == "mock" {
 		recognizer, synthesizer = voicemock.Client{}, voicemock.Client{}
 		grader = assessmentmock.Grader{}
-		diagnosticGrader = diagnosticDemoGrader{}
 		taskGenerator, modelName = taskgenmock.Generator{}, "mock"
 	} else {
 		models := modelapi.New(a.client, a.cfg.STTURL, a.cfg.TTSURL, a.cfg.ProcessingTimeout)
 		recognizer, synthesizer = models, models
 		grader = assessmentmodel.New(a.client, a.cfg.AssessmentBaseURL, a.cfg.AssessmentModel, a.cfg.AssessmentTimeout)
-		diagnosticGrader = diagnosticGraderUnavailable{}
 		taskGenerator = taskgenmodel.New(a.client, a.cfg.TaskgenBaseURL, a.cfg.TaskgenModel, a.cfg.TaskgenTimeout)
 	}
 	voice := voiceapp.New(voicepg.New(a.pool), recognizer, synthesizer, a.now)
 	voiceHandlers := voicehttp.New(voice, a.cfg.MaxUploadBytes)
 	competency := competencyapp.New(competencypg.New(a.pool), &csvparser.Parser{}, a.now)
 	competencyHandlers := competencyhttp.New(competency, a.cfg.MaxUploadBytes)
-	assessment := assessmentapp.New(assessmentpg.New(a.pool), a.gradingContexts, a.variantRepository, grader)
-	assessmentHandlers := assessmenthttp.New(assessment)
+	assessmentService := assessmentapp.New(assessmentpg.New(a.pool), a.gradingContexts, a.variantRepository, grader)
+	assessmentHandlers := assessmenthttp.New(assessmentService)
 	taskbankHandlers := taskbankhttp.New(taskbankapp.New(taskbankpg.New(a.pool)))
 	taskgenRepository := taskgenpg.New(a.pool)
 	taskgenHandlers := taskgenhttp.New(
@@ -124,6 +121,7 @@ func (a *App) Handler() http.Handler {
 		taskgenapp.NewMaterialService(taskgenRepository, func() int64 { return a.now().Unix() }),
 	)
 	variantgenHandlers := variantgenhttp.New(variantgenapp.New(a.variantRepository, variantgenpg.Chooser{}, variantgenpg.IDs{}, a.now))
+	diagnosticGrader := diagnosticAssessmentGrader{service: assessmentService}
 	diagnosticService := diagnosticapp.New(a.diagnosticStore, a.variantRepository, voice, diagnosticGrader, variantgenpg.IDs{}, a.now)
 	diagnosticHandlers := diagnostichttp.New(diagnosticService, a.cfg.MaxUploadBytes)
 
@@ -158,23 +156,27 @@ func (a *App) Handler() http.Handler {
 	return httpx.RequestLogger(a.logger, a.middleware(mux))
 }
 
-type diagnosticDemoGrader struct{}
-
-func (diagnosticDemoGrader) Evaluate(ctx context.Context, _, _, _ string) (assessment.Evaluation, error) {
-	if err := ctx.Err(); err != nil {
-		return assessment.Evaluation{}, err
-	}
-	return assessment.Evaluation{
-		Score: 2, Verdict: "correct",
-		CriterionResults: []assessment.CriterionResult{{Key: "demo", Satisfied: true, Explanation: "Демонстрационный результат."}},
-		Feedback:         []string{"Демонстрационная оценка: 2 из 2.", "Ответ не проверялся моделью.", "Демонстрационный результат не отражает уровень знаний."},
-	}, nil
+type diagnosticAssessor interface {
+	EvaluateVariant(context.Context, string, string, string, string) (assessmentapp.Evaluation, error)
 }
 
-type diagnosticGraderUnavailable struct{}
+type diagnosticAssessmentGrader struct {
+	service diagnosticAssessor
+}
 
-func (diagnosticGraderUnavailable) Evaluate(context.Context, string, string, string) (assessment.Evaluation, error) {
-	return assessment.Evaluation{}, fault.New(fault.Unavailable, "ASSESSMENT_CONTEXT_UNAVAILABLE", "Контракт грейдера для заданий варианта ещё не подключён.")
+func (g diagnosticAssessmentGrader) Evaluate(ctx context.Context, ownerID, transcriptionID, variantID, variantTaskID string) (assessment.Evaluation, error) {
+	result, err := g.service.EvaluateVariant(ctx, ownerID, transcriptionID, variantID, variantTaskID)
+	if err != nil {
+		return assessment.Evaluation{}, err
+	}
+	criteria := make([]assessment.CriterionResult, len(result.CriterionResults))
+	for i, item := range result.CriterionResults {
+		criteria[i] = assessment.CriterionResult{Key: item.Key, Satisfied: item.Satisfied, Explanation: item.Explanation}
+	}
+	return assessment.Evaluation{
+		Score: result.Score, MaxScore: result.MaxScore, Verdict: result.Verdict,
+		CriterionResults: criteria, Feedback: append([]string(nil), result.Feedback...),
+	}, nil
 }
 
 func protect(auth *authapp.Service, next http.Handler) http.Handler {

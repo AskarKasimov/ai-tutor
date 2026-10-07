@@ -153,22 +153,16 @@ func (s *Service) Answer(ctx context.Context, ownerID, sessionID, taskID, key st
 		}
 		transcriptionID, text = transcription.ID, transcription.Text
 	}
-	evaluation, err := s.grader.Evaluate(ctx, ownerID, transcriptionID, current.SourceTaskID)
+	evaluation, err := s.grader.Evaluate(ctx, ownerID, transcriptionID, value.Variant.ID, current.ID)
 	if err != nil {
 		_ = s.store.Fail(context.Background(), ownerID, sessionID, token, transcriptionID, text)
 		return diagnostic.Progress{}, err
 	}
-	if err = validateEvaluation(evaluation); err != nil {
+	if err = validateEvaluation(evaluation, current.Role); err != nil {
 		_ = s.store.Fail(context.Background(), ownerID, sessionID, token, transcriptionID, text)
 		return diagnostic.Progress{}, err
 	}
 	score := evaluation.Score
-	if current.Role == "basic" {
-		score = 0
-		if evaluation.Score == 2 {
-			score = 1
-		}
-	}
 	criteria := make([]diagnostic.CriterionResult, 0, len(evaluation.CriterionResults))
 	for _, item := range evaluation.CriterionResults {
 		criteria = append(criteria, diagnostic.CriterionResult{Key: item.Key, Satisfied: item.Satisfied, Explanation: item.Explanation})
@@ -177,7 +171,7 @@ func (s *Service) Answer(ctx context.Context, ownerID, sessionID, taskID, key st
 		VariantTaskID: current.ID, SourceTaskID: current.SourceTaskID,
 		CompetencyID: current.CompetencyID, OutcomeID: current.OutcomeID, Role: current.Role,
 		Task:            *current,
-		TranscriptionID: transcriptionID, Text: text, GraderScore: evaluation.Score,
+		TranscriptionID: transcriptionID, Text: text, GraderScore: evaluation.Score, GraderMaxScore: evaluation.MaxScore,
 		Score: score, Verdict: evaluation.Verdict,
 		CriterionResults: criteria, Feedback: evaluation.Feedback,
 		CreatedAt: s.now().Unix(),
@@ -218,15 +212,21 @@ func (s *Service) Result(ctx context.Context, ownerID, sessionID string) (diagno
 	return result, nil
 }
 
-func validateEvaluation(value assessment.Evaluation) error {
-	if value.Score < 0 || value.Score > 2 {
-		return fault.New(fault.Upstream, "ASSESSMENT_INVALID_RESPONSE", "Грейдер вернул оценку вне диапазона 0–2.")
+func validateEvaluation(value assessment.Evaluation, role string) error {
+	maxScore := 2
+	if role == "basic" {
+		maxScore = 1
+	} else if role != "main" {
+		return fault.New(fault.Upstream, "ASSESSMENT_INVALID_RESPONSE", "Задание содержит неизвестную роль.")
+	}
+	if value.MaxScore != maxScore || value.Score < 0 || value.Score > maxScore {
+		return fault.New(fault.Upstream, "ASSESSMENT_INVALID_RESPONSE", "Грейдер вернул оценку вне диапазона роли задания.")
 	}
 	want := "incorrect"
-	if value.Score == 1 {
-		want = "partial"
-	} else if value.Score == 2 {
+	if value.Score == maxScore {
 		want = "correct"
+	} else if maxScore == 2 && value.Score == 1 {
+		want = "partial"
 	}
 	if value.Verdict != want || len(value.CriterionResults) == 0 || len(value.Feedback) != 3 {
 		return fault.New(fault.Upstream, "ASSESSMENT_INVALID_RESPONSE", "Грейдер вернул некорректную структуру оценки.")

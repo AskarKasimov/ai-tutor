@@ -32,6 +32,7 @@ type ProgressResponse struct {
 	Current          *TaskResponse             `json:"current,omitempty" binding:"optional"`
 	Score            *int                      `json:"score,omitempty" minimum:"0" maximum:"2" binding:"optional"`
 	GraderScore      *int                      `json:"grader_score,omitempty" minimum:"0" maximum:"2" binding:"optional"`
+	GraderMaxScore   *int                      `json:"grader_max_score,omitempty" minimum:"1" maximum:"2" binding:"optional"`
 	Verdict          string                    `json:"verdict,omitempty" enums:"correct,partial,incorrect" binding:"optional"`
 	CriterionResults []CriterionResultResponse `json:"criterion_results,omitempty" binding:"optional"`
 	Feedback         []string                  `json:"feedback,omitempty" minItems:"3" maxItems:"3" binding:"optional"`
@@ -47,6 +48,7 @@ type AnswerResponse struct {
 	TranscriptionID  string                    `json:"transcription_id"`
 	Text             string                    `json:"text"`
 	GraderScore      int                       `json:"grader_score" minimum:"0" maximum:"2"`
+	GraderMaxScore   int                       `json:"grader_max_score" minimum:"1" maximum:"2"`
 	Score            int                       `json:"score" minimum:"0" maximum:"2"`
 	Verdict          string                    `json:"verdict" enums:"correct,partial,incorrect"`
 	CriterionResults []CriterionResultResponse `json:"criterion_results" minItems:"1"`
@@ -79,7 +81,7 @@ func progressResponse(value diagnostic.Progress) ProgressResponse {
 	result := ProgressResponse{
 		SessionID: value.SessionID, Status: value.Status, Completed: value.Completed,
 		Skipped: value.Skipped, Total: value.Total, Score: value.Score,
-		GraderScore: value.GraderScore, Verdict: value.Verdict,
+		GraderScore: value.GraderScore, GraderMaxScore: value.GraderMaxScore, Verdict: value.Verdict,
 		CriterionResults: criterionResults(value.CriterionResults),
 		Feedback:         append([]string(nil), value.Feedback...),
 	}
@@ -109,7 +111,7 @@ func resultResponse(value diagnostic.Result) ResultResponse {
 			CompetencyID: answer.CompetencyID, OutcomeID: answer.OutcomeID,
 			Role: answer.Role, Task: taskResponse(answer.Task),
 			TranscriptionID: answer.TranscriptionID, Text: answer.Text,
-			GraderScore: answer.GraderScore, Score: answer.Score, Verdict: answer.Verdict,
+			GraderScore: answer.GraderScore, GraderMaxScore: answer.GraderMaxScore, Score: answer.Score, Verdict: answer.Verdict,
 			CriterionResults: criterionResults(answer.CriterionResults),
 			Feedback:         append([]string(nil), answer.Feedback...), CreatedAt: answer.CreatedAt,
 		})

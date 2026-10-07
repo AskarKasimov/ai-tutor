@@ -1,15 +1,22 @@
 import { apiFetch } from './api-fetch'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
+import type { User } from '../shared/domain'
 
 const apiBase = (import.meta.env.VITE_API_BASE_URL || '/api/v1').replace(/\/$/, '')
-type User = { id: string; email: string; display_name: string | null }
 export type AuthInput = { mode: 'login' | 'register'; email: string; password: string; display_name?: string }
 
 export function useAuth() {
   const { t } = useTranslation()
   const cache = useQueryClient()
   const key = ['auth', 'me']
+  async function setSession(user: User | null) {
+    // Data and authorization errors from the previous session must not survive a new login.
+    const sessionQueries = { predicate: (query: { queryKey: readonly unknown[] }) => query.queryKey[0] !== 'auth' }
+    await cache.cancelQueries(sessionQueries)
+    cache.removeQueries(sessionQueries)
+    cache.setQueryData(key, user)
+  }
   const current = useQuery<User | null>({
     queryKey: key,
     retry: false,
@@ -40,14 +47,14 @@ export function useAuth() {
       if (!data?.user?.email) throw new Error(t('auth.networkError'))
       return data.user
     },
-    onSuccess: (user) => cache.setQueryData(key, user),
+    onSuccess: setSession,
   })
   const logout = useMutation({
     mutationFn: async () => {
       const response = await apiFetch(`${apiBase}/auth/logout`, { method: 'POST', credentials: 'include', signal: AbortSignal.timeout(30_000) })
       if (!response.ok) throw new Error(t('auth.networkError'))
     },
-    onSuccess: () => cache.setQueryData(key, null),
+    onSuccess: () => setSession(null),
   })
-  return { user: current.data, checkingSession: current.isPending, authenticate, logout }
+  return { user: current.data, checkingSession: current.isPending, sessionError: current.error, retrySession: current.refetch, authenticate, logout }
 }

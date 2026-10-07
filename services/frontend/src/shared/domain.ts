@@ -43,3 +43,18 @@ export type TrainerSession = {
   answers: SessionAnswer[]
   currentAssignmentId: string | null
 }
+export type User = { id: string; email: string; display_name: string | null; role: 'student' | 'admin' }
+
+export type CompetencyMapSummary = {
+  revision: number
+  importedAt: number | null
+  competencyCount: number
+  constituentCount: number
+  outcomeCount: number
+  taskCount: number
+}
+
+export type CompetencyMapImport = CompetencyMapSummary & {
+  unparsedTaskCellCount: number
+  warnings: { row: number; columnIndex: number; column: string; code: string }[]
+}

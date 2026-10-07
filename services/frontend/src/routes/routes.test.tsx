@@ -160,12 +160,12 @@ function mockAuth(response: { ok: boolean; status?: number; body: unknown }) {
   return fetchMock
 }
 
-it('logs in through the modal and updates the header', async () => {
+it('logs in through the separate screen and updates the header', async () => {
   const fetchMock = mockAuth({ ok: true, body: { user: { id: '1', email: 'student@example.com', display_name: 'Студент' } } })
   renderHome()
-  await screen.findByRole('dialog', { name: 'Вход в AI Tutor' })
+  await screen.findByRole('heading', { name: 'Вход в AI Tutor' })
   await waitFor(() => expect(screen.getByRole('button', { name: 'Войти' })).toBeEnabled())
-  expect(screen.getByRole('dialog', { name: 'Вход в AI Tutor' })).toBeVisible()
+  expect(screen.getByRole('heading', { name: 'Вход в AI Tutor' })).toBeVisible()
   expect(screen.getByLabelText('Email')).toBeRequired()
   expect(screen.getByLabelText('Пароль')).toBeRequired()
   fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'student@example.com' } })
@@ -181,7 +181,7 @@ it('logs in through the modal and updates the header', async () => {
 it('registers with backend password rules and an optional name', async () => {
   const fetchMock = mockAuth({ ok: true, body: { user: { id: '2', email: 'new@example.com', display_name: 'Новый' } } })
   renderHome()
-  await screen.findByRole('dialog', { name: 'Вход в AI Tutor' })
+  await screen.findByRole('heading', { name: 'Вход в AI Tutor' })
   await waitFor(() => expect(screen.getByRole('button', { name: 'Войти' })).toBeEnabled())
   fireEvent.click(screen.getByRole('button', { name: 'Регистрация' }))
   expect(screen.getByLabelText('Пароль')).toHaveAttribute('minlength', '15')
@@ -194,25 +194,25 @@ it('registers with backend password rules and an optional name', async () => {
   expect(JSON.parse(init.body)).toEqual({ email: 'new@example.com', password: 'long-password-123', display_name: 'Новый' })
 })
 
-it('keeps the modal open on failed login, Escape and overlay clicks', async () => {
+it('keeps the login screen visible after failed login, Escape and background clicks', async () => {
   mockAuth({ ok: false, status: 401, body: { message: 'Неверный email или пароль.' } })
   renderHome()
-  await screen.findByRole('dialog', { name: 'Вход в AI Tutor' })
+  await screen.findByRole('heading', { name: 'Вход в AI Tutor' })
   await waitFor(() => expect(screen.getByRole('button', { name: 'Войти' })).toBeEnabled())
   fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'bad@example.com' } })
   fireEvent.change(screen.getByLabelText('Пароль'), { target: { value: 'bad' } })
   fireEvent.submit(screen.getByRole('button', { name: 'Войти' }).closest('form')!)
   expect(await screen.findByRole('alert')).toHaveTextContent('Неверный email или пароль.')
   expect(screen.queryByRole('button', { name: 'Закрыть' })).not.toBeInTheDocument()
-  const dialog = screen.getByRole('dialog')
+  const dialog = screen.getByRole('region', { name: 'Вход в AI Tutor' })
   fireEvent.keyDown(dialog, { key: 'Escape', code: 'Escape', keyCode: 27 })
   fireEvent.mouseDown(dialog.parentElement!)
   fireEvent.mouseUp(dialog.parentElement!)
   fireEvent.click(dialog.parentElement!)
-  expect(screen.getByRole('dialog')).toBeVisible()
+  expect(screen.getByRole('heading', { name: 'Вход в AI Tutor' })).toBeVisible()
 })
 
-it('opens the mandatory modal again after logout', async () => {
+it('returns to the separate login screen after logout', async () => {
   const fetchMock = vi.fn().mockImplementation(async (_url, init) => init?.method === 'POST'
     ? { ok: true, status: 204 }
     : { ok: true, json: async () => ({ id: '1', email: 'student@example.com', display_name: 'Студент' }) })
@@ -221,5 +221,5 @@ it('opens the mandatory modal again after logout', async () => {
   expect(await screen.findByText('Студент')).toBeVisible()
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   fireEvent.click(screen.getByRole('button', { name: 'Выйти' }))
-  expect(await screen.findByRole('dialog', { name: 'Вход в AI Tutor' })).toBeVisible()
+  expect(await screen.findByRole('heading', { name: 'Вход в AI Tutor' })).toBeVisible()
 })

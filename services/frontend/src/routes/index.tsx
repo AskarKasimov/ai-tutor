@@ -7,7 +7,7 @@ import { useAuth } from '../data/use-auth'
 import { isMockApi } from '../data/api-fetch'
 import { useTrainerSession } from '../data/use-trainer-session'
 import type { TrainerSession } from '../shared/domain'
-import { AuthModal } from './-auth-modal'
+import { AccountMenu } from './-account-menu'
 import { TrainerAnswer, SavedAnswer } from './-trainer-answer'
 import { SessionSummary } from './-session-summary'
 import styles from './index.module.scss'
@@ -20,7 +20,6 @@ function Trainer() {
   const training = useTrainerSession(user?.id)
   const mock = isMockApi()
   return <div data-trainer-app>
-    {mock && <div className={styles.devBanner} role="note" aria-label={t('mockApi.mode')}><Text className={styles.devBannerLabel}>{t('mockApi.mode')}</Text></div>}
     <div className={`${styles.prototype} ${mock ? styles.mockLayout : ''}`}>
     <aside className={styles.navigation}>
       <div className={styles.brand}>
@@ -33,7 +32,7 @@ function Trainer() {
     <div className={styles.content}>
       <header className={styles.header}>
         <div className={styles.breadcrumb}><Text>{t('session.practice')}</Text><span aria-hidden="true"><Slash size={14} /></span><Text weight="bold">{t('session.course')}</Text></div>
-        <AuthModal />
+        <AccountMenu />
       </header>
       {user && training.query.isPending ? <main className={styles.notice} aria-live="polite"><Text>{t('session.loading')}</Text></main> : user && training.query.isError ? <main className={styles.notice}><Text role="alert">{t('session.loadError')}</Text><Button onClick={() => void training.query.refetch()}>{t('trainer.retry')}</Button></main> : training.query.data ? training.query.data.tasks.length ? <SessionScreen key={training.query.data.id} session={training.query.data} training={training} /> : <main className={styles.notice}><Text>{t('session.empty')}</Text></main> : <main className={styles.notice}><Text>{t('auth.checkingSession')}</Text></main>}
     </div>

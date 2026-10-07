@@ -20,6 +20,14 @@ function renderHome() {
   return render(<RouterProvider router={router} />)
 }
 
+function renderDemoHome() {
+  vi.stubEnv('VITE_API_MODE', 'mock')
+  const queryClient = createQueryClient()
+  queryClient.setQueryData(['auth', 'me'], { id: 'demo-test', email: 'student@example.com', display_name: 'Демо-студент', role: 'student' })
+  const router = createRouter({ context: { queryClient }, history: createMemoryHistory({ initialEntries: ['/'] }), routeTree })
+  return render(<RouterProvider router={router} />)
+}
+
 beforeEach(() => {
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({ id: 'existing', email: 'existing@example.com', display_name: 'Пользователь' }) }))
 })
@@ -36,7 +44,7 @@ it('shows the model score and feedback for a recorded answer', async () => {
   vi.spyOn(audio, 'createAudioUrl').mockReturnValue({ url: 'blob:recording', dispose: vi.fn() })
   vi.spyOn(voiceApi, 'transcribeRecording').mockResolvedValue({ id: 'tr-1', text: 'Классификация, потому что два класса.' })
   vi.spyOn(assessment, 'evaluateAnswer').mockResolvedValue({ score: 2, feedback: ['Ответ верный.', 'Вы назвали классификацию и объяснили два класса.', 'Закрепите различие с регрессией.'] })
-  renderHome()
+  renderDemoHome()
   fireEvent.click(await screen.findByRole(
   'button',
   { name: 'Начать запись' },
@@ -56,7 +64,7 @@ it('shows the model score and feedback for a recorded answer', async () => {
 })
 
 it('shows the question, answer options and microphone control', async () => {
-  renderHome()
+  renderDemoHome()
   expect(await screen.findByRole('heading', { level: 1 })).toHaveTextContent('Банк по данным клиента прогнозирует: «вернёт кредит в срок» или «не вернёт».')
   expect(screen.getByRole('heading', { name: 'Варианты ответа' })).toBeVisible()
   expect(screen.getByText('Классификация')).toBeVisible()
@@ -66,7 +74,7 @@ it('shows the question, answer options and microphone control', async () => {
   expect(screen.getByRole('button', { name: 'Повторить вопрос' })).toBeEnabled()
   expect(screen.getByRole('button', { name: 'Начать запись' })).toBeEnabled()
   expect(screen.queryByText('Следующее задание')).not.toBeInTheDocument()
-  expect(screen.queryByRole('note', { name: 'dev-режим' })).not.toBeInTheDocument()
+  expect(screen.getByRole('note', { name: 'dev-режим' })).toBeVisible()
 })
 
 it('shows the dev ribbon when the API mode is not real', async () => {
@@ -95,7 +103,7 @@ it('runs seven distinct assignments, reviews an earlier answer and restarts with
   vi.spyOn(audio, 'createAudioUrl').mockReturnValue({ url: 'blob:recording', dispose: vi.fn() })
   vi.spyOn(voiceApi, 'transcribeRecording').mockResolvedValue({ id: 'tr-1', text: 'Классификация, потому что два класса.' })
   const evaluate = vi.spyOn(assessment, 'evaluateAnswer').mockResolvedValue({ score: 1, feedback: ['Частично.', 'Причина.', 'Совет.'] })
-  renderHome()
+  renderDemoHome()
   await screen.findByRole('button', { name: 'Начать запись' })
   expect(screen.getByRole('button', { name: /Задание 2/ })).toBeDisabled()
   for (let index = 0; index < 7; index++) {
@@ -127,7 +135,7 @@ it('does not advance after a grading error and retries the same transcript', asy
   vi.spyOn(audio, 'createAudioUrl').mockReturnValue({ url: 'blob:recording', dispose: vi.fn() })
   const transcribe = vi.spyOn(voiceApi, 'transcribeRecording').mockResolvedValue({ id: 'tr-1', text: 'Мой ответ' })
   vi.spyOn(assessment, 'evaluateAnswer').mockRejectedValueOnce(new Error('offline')).mockResolvedValueOnce({ score: 2, feedback: ['Верно.', 'Причина.', 'Совет.'] })
-  renderHome()
+  renderDemoHome()
   fireEvent.click(await screen.findByRole('button', { name: 'Начать запись' }))
   fireEvent.click(await screen.findByRole('button', { name: 'Завершить запись' }))
   fireEvent.click(await screen.findByRole('button', { name: 'Повторить оценку' }))
@@ -137,7 +145,7 @@ it('does not advance after a grading error and retries the same transcript', asy
 })
 
 it('keeps the question visible when microphone is unavailable', async () => {
-  renderHome()
+  renderDemoHome()
   fireEvent.click(await screen.findByRole('button', { name: 'Начать запись' }))
   expect(await screen.findByRole('alert')).toHaveTextContent('Микрофон недоступен')
   expect(screen.getByRole('heading', { level: 1 })).toBeVisible()
@@ -147,7 +155,7 @@ it('keeps the question visible when microphone is unavailable', async () => {
 it('renders the question through i18n', async () => {
   i18n.addResourceBundle('test', 'translation', { trainer: { question: 'A translated question' } })
   await i18n.changeLanguage('test')
-  renderHome()
+  renderDemoHome()
   expect(await screen.findByRole('heading', { level: 1, name: 'A translated question' })).toBeVisible()
 })
 

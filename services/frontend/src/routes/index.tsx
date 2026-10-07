@@ -7,6 +7,7 @@ import { useAuth } from '../data/use-auth'
 import { isMockApi } from '../data/api-fetch'
 import { useTrainerSession } from '../data/use-trainer-session'
 import type { TrainerSession } from '../shared/domain'
+import { DiagnosticTrainer } from './-diagnostic-trainer'
 import { AccountMenu } from './-account-menu'
 import { TrainerAnswer, SavedAnswer } from './-trainer-answer'
 import { SessionSummary } from './-session-summary'
@@ -15,6 +16,10 @@ import styles from './index.module.scss'
 export const Route = createFileRoute('/')({ component: Trainer })
 
 function Trainer() {
+  return isMockApi() ? <DemoTrainer /> : <DiagnosticTrainer />
+}
+
+function DemoTrainer() {
   const { t } = useTranslation()
   const { user } = useAuth()
   const training = useTrainerSession(user?.id)

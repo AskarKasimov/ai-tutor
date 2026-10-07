@@ -34,7 +34,7 @@ function LiveWaveform({ stream }: { stream?: MediaStream }) {
   return unavailable ? <QuietWaveform /> : <div ref={container} className={styles.liveWaveform} />
 }
 
-function VoiceIllustration({ stream }: { stream?: MediaStream }) {
+export function VoiceIllustration({ stream }: { stream?: MediaStream }) {
   return <div className={styles.waveform} aria-hidden="true"><LiveWaveform stream={stream} /></div>
 }
 

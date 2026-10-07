@@ -4,7 +4,11 @@ import type { SessionAnswer, TrainerSession } from '../shared/domain'
 // use-diagnostic-session; demo answers never enter the diagnostic API.
 export interface TrainerSessionSource {
   getSession(userId: string): Promise<TrainerSession>
-  saveAnswer(userId: string, sessionId: string, answer: SessionAnswer): Promise<TrainerSession>
+  saveAnswer(
+    userId: string,
+    sessionId: string,
+    answer: SessionAnswer,
+  ): Promise<TrainerSession>
   restart(userId: string): Promise<TrainerSession>
   clear(userId: string): void
 }

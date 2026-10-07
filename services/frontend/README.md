@@ -19,6 +19,23 @@ npm run dev
 
 ## Диагностика с настоящими заданиями
 
+Сетевые операции принадлежат data hooks TanStack Query: auth и карту читают queries;
+импорт карты, создание варианта/сессии, отправка ответа, STT, TTS и оценка выполняются
+mutations. `apiFetch` остаётся транспортом, но вызывается только из API-модулей,
+подключённых как `queryFn` или `mutationFn`. POST-команды не выполняются в `queryFn`.
+Владельцы операций: `useCurrentUserQuery` / `useAuthenticateMutation` / `useLogoutMutation`;
+`useCompetencyMapQuery` / `useImportCompetencyMapMutation`; `useDiagnosticSession`
+(start, progress и submit) / `useDiagnosticResultQuery`; `useDiagnosticAudioQuery`;
+`useTranscriptionMutation` / `useSynthesisMutation` / `useAssessmentMutation`;
+mock-сессия тренажёра принадлежит `useTrainerSession`.
+Queries передают свой `AbortSignal`; владелец mutation передаёт сигнал явно и
+отменяет его до сброса UI-состояния. `mutation.reset()` не отменяет HTTP-запрос.
+Ключи включают пользователя и идентификатор сессии/задания, а lifecycle guard
+использует epoch авторизации, чтобы поздний ответ прежней сессии не изменил новую.
+Мутации автоматически не повторяются; ручной повтор диагностики и ответа сохраняет
+те же idempotency keys и данные запроса. Микрофон, MediaRecorder, локальные таймеры,
+blob URL и playback остаются под управлением браузерных hooks.
+
 В `real` frontend создаёт вариант по текущей карте (`POST /api/v1/variants`),
 затем начинает диагностику (`POST /api/v1/diagnostic-sessions`). Вопрос, варианты,
 роль main/basic и голосовая инструкция приходят с backend. Длинные вопросы
@@ -181,7 +198,12 @@ Regular/Bold и их лицензия. Фоны, рамки, кнопки, пр�
 
 ## Проверки
 
+Для форматирования исходников и конфигурации используйте `npm run format`.
+Prettier использует одинарные кавычки и не добавляет точки с запятой в TS/JS.
+Сгенерированный `src/routeTree.gen.ts`, lock-файл и статические ассеты исключены.
+
 ```bash
+npm run format:check
 npm run lint
 npm run typecheck
 npm test -- --run
@@ -218,7 +240,6 @@ docker compose --env-file ../../.env up -d --build
 Локальный Compose подключается к внешней сети `ai-tutor_default`; nginx доступен Caddy как `frontend:80`.
 Настройки `VITE_*` применяются при сборке. Для общего dev-стека продолжайте
 использовать корневой Compose; не запускайте оба варианта одновременно.
-
 
 ## Live reload в Docker
 

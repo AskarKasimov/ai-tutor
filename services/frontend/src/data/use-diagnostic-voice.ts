@@ -1,25 +1,52 @@
 import { useEffect, useRef, useState } from 'react'
-import { createAudioUrl, playQuestion, startRecording } from '../platform/prototype-audio'
+import {
+  createAudioUrl,
+  playQuestion,
+  startRecording,
+} from '../platform/prototype-audio'
 import type { Recording } from '../platform/prototype-audio'
 import type { DiagnosticProgress, DiagnosticTask } from '../shared/domain'
-import { createSubmission, diagnosticAudio } from './diagnostic-api'
+import { createSubmission } from './diagnostic-api'
 import type { DiagnosticSubmission } from './diagnostic-api'
+import { useDiagnosticAudioQuery } from './use-voice-operations'
+import { useQueryClient } from '@tanstack/react-query'
+import { queryKeys } from './query-keys'
 
-type Stage = 'ready' | 'permission' | 'recording' | 'processing' | 'error' | 'result'
-export function useDiagnosticVoice(sessionId: string, task: DiagnosticTask | undefined,
-  submit: (submission: DiagnosticSubmission, signal: AbortSignal) => Promise<DiagnosticProgress>,
-  onError: (error: unknown) => void) {
+type Stage =
+  'ready' | 'permission' | 'recording' | 'processing' | 'error' | 'result'
+export function useDiagnosticVoice(
+  userId: string,
+  sessionId: string,
+  task: DiagnosticTask | undefined,
+  submit: (
+    submission: DiagnosticSubmission,
+    signal: AbortSignal,
+  ) => Promise<DiagnosticProgress>,
+  onError: (error: unknown) => void,
+) {
   const [stage, setStage] = useState<Stage>('ready')
   const [error, setError] = useState<unknown>()
   const [captureError, setCaptureError] = useState('')
   const [seconds, setSeconds] = useState(0)
   const [stream, setStream] = useState<MediaStream>()
   const [audioUrl, setAudioUrl] = useState<string>()
-  const [accepted, setAccepted] = useState<{ task: DiagnosticTask; progress: DiagnosticProgress }>()
+  const [accepted, setAccepted] = useState<{
+    task: DiagnosticTask
+    progress: DiagnosticProgress
+  }>()
   const [speech, setSpeech] = useState<'idle' | 'loading' | 'playing'>('idle')
   const [speechError, setSpeechError] = useState(false)
+  const cache = useQueryClient()
+  const audioQuery = useDiagnosticAudioQuery(
+    userId,
+    sessionId,
+    task?.variant_task_id,
+  )
   const recording = useRef<Recording | null>(null)
-  const pending = useRef<{ input: DiagnosticSubmission; task: DiagnosticTask } | null>(null)
+  const pending = useRef<{
+    input: DiagnosticSubmission
+    task: DiagnosticTask
+  } | null>(null)
   const audio = useRef<ReturnType<typeof createAudioUrl> | null>(null)
   const answerRequest = useRef<AbortController | null>(null)
   const speechRequest = useRef<AbortController | null>(null)
@@ -28,34 +55,61 @@ export function useDiagnosticVoice(sessionId: string, task: DiagnosticTask | und
   const locked = useRef(false)
   const started = useRef(0)
 
-  useEffect(() => () => {
-    generation.current++
-    answerRequest.current?.abort()
-    speechRequest.current?.abort()
-    recording.current?.dispose()
-    player.current?.()
-    audio.current?.dispose()
-  }, [])
+  useEffect(
+    () => () => {
+      generation.current++
+      answerRequest.current?.abort()
+      speechRequest.current?.abort()
+      recording.current?.dispose()
+      player.current?.()
+      audio.current?.dispose()
+    },
+    [],
+  )
   useEffect(() => {
     if (stage !== 'recording') return
-    const timer = setInterval(() => setSeconds(Math.floor((Date.now() - started.current) / 1000)), 250)
+    const timer = setInterval(
+      () => setSeconds(Math.floor((Date.now() - started.current) / 1000)),
+      250,
+    )
     return () => clearInterval(timer)
   }, [stage])
   function stopSpeech() {
     speechRequest.current?.abort()
     speechRequest.current = null
+    void cache.cancelQueries({
+      queryKey: queryKeys.diagnosticAudio(
+        userId,
+        sessionId,
+        task?.variant_task_id,
+      ),
+      exact: true,
+    })
+    cache.removeQueries({
+      queryKey: queryKeys.diagnosticAudio(
+        userId,
+        sessionId,
+        task?.variant_task_id,
+      ),
+      exact: true,
+    })
     player.current?.()
     player.current = null
     setSpeech('idle')
   }
   async function speak() {
-    if (speechRequest.current) { stopSpeech(); return }
+    if (speechRequest.current) {
+      stopSpeech()
+      return
+    }
     const request = new AbortController()
     speechRequest.current = request
     setSpeechError(false)
     setSpeech('loading')
     try {
-      const blob = await diagnosticAudio(sessionId, request.signal)
+      const response = await audioQuery.refetch({ throwOnError: true })
+      const blob = response.data
+      if (!blob) throw new Error('Diagnostic audio is empty')
       if (request.signal.aborted) return
       let finished = false
       const finish = () => {
@@ -65,13 +119,49 @@ export function useDiagnosticVoice(sessionId: string, task: DiagnosticTask | und
         player.current = null
         setSpeech('idle')
       }
-      const dispose = await playQuestion(blob, finish, () => { finish(); if (!request.signal.aborted) setSpeechError(true) })
-      if (request.signal.aborted) { dispose(); return }
-      if (!finished) { player.current = dispose; setSpeech('playing') }
+      const dispose = await playQuestion(blob, finish, () => {
+        finish()
+        if (!request.signal.aborted) setSpeechError(true)
+      })
+      if (request.signal.aborted) {
+        dispose()
+        return
+      }
+      if (!finished) {
+        player.current = dispose
+        setSpeech('playing')
+      }
     } catch (error) {
-      if (!request.signal.aborted) { speechRequest.current = null; onError(error); setSpeechError(true); setSpeech('idle') }
+      if (!request.signal.aborted) {
+        speechRequest.current = null
+        onError(error)
+        setSpeechError(true)
+        setSpeech('idle')
+      }
     }
   }
+  useEffect(() => {
+    return () => {
+      speechRequest.current?.abort()
+      void cache.cancelQueries({
+        queryKey: queryKeys.diagnosticAudio(
+          userId,
+          sessionId,
+          task?.variant_task_id,
+        ),
+        exact: true,
+      })
+      cache.removeQueries({
+        queryKey: queryKeys.diagnosticAudio(
+          userId,
+          sessionId,
+          task?.variant_task_id,
+        ),
+        exact: true,
+      })
+      player.current?.()
+    }
+  }, [cache, userId, sessionId, task?.variant_task_id])
   async function start() {
     if (locked.current || !task) return
     locked.current = true
@@ -82,7 +172,10 @@ export function useDiagnosticVoice(sessionId: string, task: DiagnosticTask | und
     setStage('permission')
     try {
       const capture = await startRecording()
-      if (current !== generation.current) { capture.dispose(); return }
+      if (current !== generation.current) {
+        capture.dispose()
+        return
+      }
       audio.current?.dispose()
       audio.current = null
       setAudioUrl(undefined)
@@ -94,9 +187,15 @@ export function useDiagnosticVoice(sessionId: string, task: DiagnosticTask | und
       setStage('recording')
     } catch (error) {
       if (current !== generation.current) return
-      setCaptureError(error instanceof Error && error.name === 'NotAllowedError' ? 'denied' : 'unavailable')
+      setCaptureError(
+        error instanceof Error && error.name === 'NotAllowedError'
+          ? 'denied'
+          : 'unavailable',
+      )
       setStage('error')
-    } finally { if (current === generation.current) locked.current = false }
+    } finally {
+      if (current === generation.current) locked.current = false
+    }
   }
   async function send(current: number) {
     if (!pending.current) return
@@ -116,7 +215,9 @@ export function useDiagnosticVoice(sessionId: string, task: DiagnosticTask | und
       onError(error)
       setError(error)
       setStage('error')
-    } finally { if (answerRequest.current === request) answerRequest.current = null }
+    } finally {
+      if (answerRequest.current === request) answerRequest.current = null
+    }
   }
   async function stop() {
     if (locked.current || !recording.current || !task) return
@@ -132,18 +233,32 @@ export function useDiagnosticVoice(sessionId: string, task: DiagnosticTask | und
       if (!blob.size) throw new Error('empty')
       audio.current = createAudioUrl(blob)
       setAudioUrl(audio.current.url)
-      pending.current = { input: createSubmission(sessionId, capturedTask.variant_task_id, blob, capturedTask.role), task: capturedTask }
+      pending.current = {
+        input: createSubmission(
+          sessionId,
+          capturedTask.variant_task_id,
+          blob,
+          capturedTask.role,
+        ),
+        task: capturedTask,
+      }
       await send(current)
     } catch {
       if (current !== generation.current) return
       setCaptureError('capture')
       setStage('error')
-    } finally { if (current === generation.current) locked.current = false }
+    } finally {
+      if (current === generation.current) locked.current = false
+    }
   }
   async function retry() {
     if (locked.current || !pending.current) return
     locked.current = true
-    try { await send(generation.current) } finally { locked.current = false }
+    try {
+      await send(generation.current)
+    } finally {
+      locked.current = false
+    }
   }
   function reset() {
     generation.current++
@@ -163,5 +278,22 @@ export function useDiagnosticVoice(sessionId: string, task: DiagnosticTask | und
     setSpeechError(false)
     setStage('ready')
   }
-  return { stage, error, captureError, seconds, stream, audioUrl, accepted, speech, speechError, hasPending: !!pending.current, pendingTaskId: pending.current?.input.taskId, start, stop, retry, speak, reset }
+  return {
+    stage,
+    error,
+    captureError,
+    seconds,
+    stream,
+    audioUrl,
+    accepted,
+    speech,
+    speechError,
+    hasPending: !!pending.current,
+    pendingTaskId: pending.current?.input.taskId,
+    start,
+    stop,
+    retry,
+    speak,
+    reset,
+  }
 }

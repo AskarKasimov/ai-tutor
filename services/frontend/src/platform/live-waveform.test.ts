@@ -4,7 +4,9 @@ import RecordPlugin from 'wavesurfer.js/dist/plugins/record.esm.js'
 import { createVoiceWaveform } from './live-waveform'
 
 vi.mock('wavesurfer.js', () => ({ default: { create: vi.fn() } }))
-vi.mock('wavesurfer.js/dist/plugins/record.esm.js', () => ({ default: { create: vi.fn() } }))
+vi.mock('wavesurfer.js/dist/plugins/record.esm.js', () => ({
+  default: { create: vi.fn() },
+}))
 afterEach(() => vi.resetAllMocks())
 
 function setup() {
@@ -14,8 +16,14 @@ function setup() {
   const pluginDestroy = vi.fn()
   const renderMicStream = vi.fn().mockReturnValue({ onDestroy })
   const plugin = { renderMicStream, destroy: pluginDestroy }
-  vi.mocked(RecordPlugin.create).mockReturnValue(plugin as unknown as RecordPlugin)
-  vi.mocked(WaveSurfer.create).mockReturnValue({ load, registerPlugin: () => plugin, destroy } as unknown as WaveSurfer)
+  vi.mocked(RecordPlugin.create).mockReturnValue(
+    plugin as unknown as RecordPlugin,
+  )
+  vi.mocked(WaveSurfer.create).mockReturnValue({
+    load,
+    registerPlugin: () => plugin,
+    destroy,
+  } as unknown as WaveSurfer)
   return { load, destroy, onDestroy, pluginDestroy, renderMicStream }
 }
 
@@ -48,9 +56,13 @@ it('renders a silent signal without starting microphone monitoring', () => {
 
 it('releases visualization resources when microphone monitoring fails', () => {
   const { destroy, renderMicStream, pluginDestroy } = setup()
-  renderMicStream.mockImplementation(() => { throw new Error('audio context unavailable') })
+  renderMicStream.mockImplementation(() => {
+    throw new Error('audio context unavailable')
+  })
   const waveform = createVoiceWaveform(document.createElement('div'))
-  expect(() => waveform.setStream({} as MediaStream)).toThrow('audio context unavailable')
+  expect(() => waveform.setStream({} as MediaStream)).toThrow(
+    'audio context unavailable',
+  )
   expect(pluginDestroy).toHaveBeenCalledTimes(1)
   waveform.dispose()
   expect(destroy).toHaveBeenCalledTimes(1)

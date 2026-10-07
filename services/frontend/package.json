@@ -9,7 +9,9 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "test": "vitest",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "format": "prettier . --write",
+    "format:check": "prettier . --check"
   },
   "dependencies": {
     "@radix-ui/themes": "^3.3.0",
@@ -35,6 +37,7 @@
     "@vitejs/plugin-react": "^6.1.1",
     "eslint": "^10.10.0",
     "jsdom": "^29.1.1",
+    "prettier": "3.9.9",
     "sass": "^1.104.1",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.70.0",

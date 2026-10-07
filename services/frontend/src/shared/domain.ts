@@ -1,4 +1,3 @@
-
 export type AssessmentTask = {
   taskId: string
   question: string
@@ -43,7 +42,12 @@ export type TrainerSession = {
   answers: SessionAnswer[]
   currentAssignmentId: string | null
 }
-export type User = { id: string; email: string; display_name: string | null; role: 'student' | 'admin' }
+export type User = {
+  id: string
+  email: string
+  display_name: string | null
+  role: 'student' | 'admin'
+}
 
 export type CompetencyMapSummary = {
   revision: number
@@ -110,7 +114,11 @@ export type DiagnosticResult = {
   variant_id: string
   map_revision: number
   included_competency_count: number
-  skipped_competencies: { competency_id: string; competency_name: string; code: string }[]
+  skipped_competencies: {
+    competency_id: string
+    competency_name: string
+    code: string
+  }[]
   completed_tasks: number
   total_tasks: number
   diagnostic_score: number

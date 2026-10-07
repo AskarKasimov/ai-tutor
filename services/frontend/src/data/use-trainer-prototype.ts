@@ -1,13 +1,36 @@
 import { useEffect, useRef, useState } from 'react'
-import { createAudioUrl, playQuestion, startRecording } from '../platform/prototype-audio'
+import {
+  createAudioUrl,
+  playQuestion,
+  startRecording,
+} from '../platform/prototype-audio'
 import type { Assessment, AssessmentTask } from '../shared/domain'
-import { AssessmentApiError, evaluateAnswer } from './assessment-api'
-import { synthesizeQuestion, transcribeRecording, VoiceApiError } from './voice-api'
+import { AssessmentApiError } from './assessment-api'
+import { VoiceApiError } from './voice-api'
+import {
+  useAssessmentMutation,
+  useSynthesisMutation,
+  useTranscriptionMutation,
+} from './use-voice-operations'
 import type { Recording } from '../platform/prototype-audio'
 
-type Stage = 'ready' | 'permission' | 'recording' | 'processing' | 'grading' | 'result' | 'error'
+type Stage =
+  | 'ready'
+  | 'permission'
+  | 'recording'
+  | 'processing'
+  | 'grading'
+  | 'result'
+  | 'error'
 
-export function useTrainerPrototype(task: AssessmentTask, speechText = task.voiceInstruction) {
+export function useTrainerPrototype(
+  task: AssessmentTask,
+  speechText = task.voiceInstruction,
+  userId = 'test',
+) {
+  const transcriptionMutation = useTranscriptionMutation(userId)
+  const synthesisMutation = useSynthesisMutation(userId)
+  const assessmentMutation = useAssessmentMutation(userId)
   const [stage, setStage] = useState<Stage>('ready')
   const [seconds, setSeconds] = useState(0)
   const [error, setError] = useState('')
@@ -32,20 +55,29 @@ export function useTrainerPrototype(task: AssessmentTask, speechText = task.voic
   const generation = useRef(0)
   const startedAt = useRef(0)
 
-  useEffect(() => () => {
-    generation.current++
-    recording.current?.dispose()
-    speechRequest.current?.abort()
-    transcriptionRequest.current?.abort()
-    assessmentRequest.current?.abort()
-    cancelSpeech.current?.()
-    savedAudio.current?.dispose()
-    if (processingTimer.current) clearTimeout(processingTimer.current)
-  }, [])
+  useEffect(
+    () => () => {
+      generation.current++
+      recording.current?.dispose()
+      speechRequest.current?.abort()
+      transcriptionRequest.current?.abort()
+      assessmentRequest.current?.abort()
+      transcriptionMutation.reset()
+      synthesisMutation.reset()
+      assessmentMutation.reset()
+      cancelSpeech.current?.()
+      savedAudio.current?.dispose()
+      if (processingTimer.current) clearTimeout(processingTimer.current)
+    },
+    [],
+  )
 
   useEffect(() => {
     if (stage !== 'recording') return
-    const timer = setInterval(() => setSeconds(Math.floor((Date.now() - startedAt.current) / 1000)), 250)
+    const timer = setInterval(
+      () => setSeconds(Math.floor((Date.now() - startedAt.current) / 1000)),
+      250,
+    )
     return () => clearInterval(timer)
   }, [stage])
 
@@ -59,23 +91,41 @@ export function useTrainerPrototype(task: AssessmentTask, speechText = task.voic
   }
 
   async function speak() {
-    if (speaking || loadingSpeech) { stopSpeaking(); return }
+    if (speaking || loadingSpeech) {
+      stopSpeaking()
+      return
+    }
     const request = new AbortController()
     speechRequest.current = request
     setSpeechError('')
     setLoadingSpeech(true)
     try {
-      const blob = await synthesizeQuestion(speechText, request.signal)
-      if (request.signal.aborted) return
-      const dispose = await playQuestion(blob, () => setSpeaking(false), () => {
-        setSpeaking(false)
-        setSpeechError('speechError')
+      const blob = await synthesisMutation.mutateAsync({
+        text: speechText,
+        signal: request.signal,
       })
-      if (request.signal.aborted) { dispose(); return }
+      if (request.signal.aborted) return
+      const dispose = await playQuestion(
+        blob,
+        () => setSpeaking(false),
+        () => {
+          setSpeaking(false)
+          setSpeechError('speechError')
+        },
+      )
+      if (request.signal.aborted) {
+        dispose()
+        return
+      }
       cancelSpeech.current = dispose
       setSpeaking(true)
     } catch (error) {
-      if (!request.signal.aborted) setSpeechError(error instanceof VoiceApiError && error.status === 401 ? 'speechUnauthorized' : 'speechError')
+      if (!request.signal.aborted)
+        setSpeechError(
+          error instanceof VoiceApiError && error.status === 401
+            ? 'speechUnauthorized'
+            : 'speechError',
+        )
     } finally {
       if (speechRequest.current === request) setLoadingSpeech(false)
     }
@@ -96,7 +146,10 @@ export function useTrainerPrototype(task: AssessmentTask, speechText = task.voic
     setStage('permission')
     try {
       const capture = await startRecording()
-      if (generation.current !== current) { capture.dispose(); return }
+      if (generation.current !== current) {
+        capture.dispose()
+        return
+      }
       recording.current = capture
       setRecordingStream(capture.stream)
       startedAt.current = Date.now()
@@ -104,7 +157,11 @@ export function useTrainerPrototype(task: AssessmentTask, speechText = task.voic
       setStage('recording')
     } catch (error) {
       if (generation.current !== current) return
-      setError(error instanceof Error && error.name === 'NotAllowedError' ? 'denied' : 'unavailable')
+      setError(
+        error instanceof Error && error.name === 'NotAllowedError'
+          ? 'denied'
+          : 'unavailable',
+      )
       setStage('error')
     } finally {
       if (generation.current === current) busy.current = false
@@ -127,12 +184,17 @@ export function useTrainerPrototype(task: AssessmentTask, speechText = task.voic
     assessmentRequest.current = request
     setStage('grading')
     try {
-      const result = await evaluateAnswer(id, task, request.signal)
+      const result = await assessmentMutation.mutateAsync({
+        transcriptionId: id,
+        task,
+        signal: request.signal,
+      })
       if (generation.current !== current) return
       setAssessment(result)
       setStage('result')
     } finally {
-      if (assessmentRequest.current === request) assessmentRequest.current = null
+      if (assessmentRequest.current === request)
+        assessmentRequest.current = null
     }
   }
 
@@ -153,7 +215,10 @@ export function useTrainerPrototype(task: AssessmentTask, speechText = task.voic
       setAudioBlob(blob)
       const request = new AbortController()
       transcriptionRequest.current = request
-      const transcription = await transcribeRecording(blob, request.signal)
+      const transcription = await transcriptionMutation.mutateAsync({
+        blob,
+        signal: request.signal,
+      })
       if (generation.current !== current) return
       transcriptionRequest.current = null
       transcriptionId.current = transcription.id
@@ -162,7 +227,17 @@ export function useTrainerPrototype(task: AssessmentTask, speechText = task.voic
       await grade(transcription.id, current)
     } catch (error) {
       if (generation.current !== current) return
-      setError((error instanceof VoiceApiError || error instanceof AssessmentApiError) && error.status === 401 ? 'unauthorized' : transcriptionId.current ? 'assessment' : transcriptionRequest.current ? 'transcription' : 'capture')
+      setError(
+        (error instanceof VoiceApiError ||
+          error instanceof AssessmentApiError) &&
+          error.status === 401
+          ? 'unauthorized'
+          : transcriptionId.current
+            ? 'assessment'
+            : transcriptionRequest.current
+              ? 'transcription'
+              : 'capture',
+      )
       setStage('error')
     } finally {
       if (generation.current === current) busy.current = false
@@ -178,7 +253,11 @@ export function useTrainerPrototype(task: AssessmentTask, speechText = task.voic
       await grade(transcriptionId.current, current)
     } catch (error) {
       if (generation.current !== current) return
-      setError(error instanceof AssessmentApiError && error.status === 401 ? 'unauthorized' : 'assessment')
+      setError(
+        error instanceof AssessmentApiError && error.status === 401
+          ? 'unauthorized'
+          : 'assessment',
+      )
       setStage('error')
     } finally {
       if (generation.current === current) busy.current = false
@@ -191,6 +270,9 @@ export function useTrainerPrototype(task: AssessmentTask, speechText = task.voic
     transcriptionRequest.current = null
     assessmentRequest.current?.abort()
     assessmentRequest.current = null
+    transcriptionMutation.reset()
+    synthesisMutation.reset()
+    assessmentMutation.reset()
     transcriptionId.current = null
     stopSpeaking()
     recording.current?.dispose()
@@ -211,5 +293,24 @@ export function useTrainerPrototype(task: AssessmentTask, speechText = task.voic
     if (processingTimer.current) clearTimeout(processingTimer.current)
   }
 
-  return { stage, seconds, error, speaking, loadingSpeech, speechError, audioUrl, audioBlob, recordingStream, transcript, assessment, example, speak, start, stop, retryAssessment, showExample, reset }
+  return {
+    stage,
+    seconds,
+    error,
+    speaking,
+    loadingSpeech,
+    speechError,
+    audioUrl,
+    audioBlob,
+    recordingStream,
+    transcript,
+    assessment,
+    example,
+    speak,
+    start,
+    stop,
+    retryAssessment,
+    showExample,
+    reset,
+  }
 }

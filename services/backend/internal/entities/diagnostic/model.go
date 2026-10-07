@@ -21,6 +21,25 @@ type Session struct {
 	InFlight           *Reservation
 }
 
+func (s Session) Current() *TaskSnapshot {
+	if s.Status != StatusActive || s.CurrentCompetency < 0 || s.CurrentCompetency >= len(s.Variant.Competencies) {
+		return nil
+	}
+	competency := s.Variant.Competencies[s.CurrentCompetency]
+	if s.CurrentTask < 0 || s.CurrentTask >= len(competency.Tasks) {
+		return nil
+	}
+	task := competency.Tasks[s.CurrentTask]
+	return &task
+}
+
+func (s Session) Progress() Progress {
+	return Progress{
+		SessionID: s.ID, Status: s.Status, Current: s.Current(),
+		Completed: len(s.Answers), Skipped: len(s.SkippedBasics), Total: s.Variant.IncludedCompetencyCount * 3,
+	}
+}
+
 type VariantSnapshot struct {
 	ID                      string
 	MapRevision             int64
@@ -91,7 +110,6 @@ type SkippedCompetency struct {
 
 type AcceptedRequest struct {
 	Fingerprint string
-	Answer      Answer
 	Response    Progress
 }
 

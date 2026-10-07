@@ -99,13 +99,13 @@ func (s *Store) Reserve(ctx context.Context, ownerID, id, key, digest, taskID, t
 		if previous.Fingerprint != digest {
 			return nil, nil, fault.New(fault.Conflict, "IDEMPOTENCY_KEY_REUSED", "Ключ ответа уже использован с другими данными.")
 		}
-		copy := previous
-		return &copy, nil, nil
+		previous.Response = cloneProgress(previous.Response)
+		return &previous, nil, nil
 	}
 	if value.Status != diagnostic.StatusActive {
 		return nil, nil, fault.New(fault.Conflict, "DIAGNOSTIC_SESSION_COMPLETED", "Диагностическая сессия уже завершена.")
 	}
-	current := currentTask(value)
+	current := value.Current()
 	if current == nil || current.ID != taskID {
 		return nil, nil, fault.New(fault.Conflict, "DIAGNOSTIC_TASK_NOT_CURRENT", "Укажите текущее задание сессии.")
 	}
@@ -128,7 +128,7 @@ func (s *Store) Reserve(ctx context.Context, ownerID, id, key, digest, taskID, t
 	return nil, &copy, nil
 }
 
-func (s *Store) Accept(ctx context.Context, ownerID, id, token, key, digest string, answer diagnostic.Answer, transition diagnostic.Transition, total int) (diagnostic.Progress, error) {
+func (s *Store) Accept(ctx context.Context, ownerID, id, token, key, digest string, answer diagnostic.Answer, transition diagnostic.Transition) (diagnostic.Progress, error) {
 	if err := ctx.Err(); err != nil {
 		return diagnostic.Progress{}, err
 	}
@@ -144,20 +144,21 @@ func (s *Store) Accept(ctx context.Context, ownerID, id, token, key, digest stri
 	if value.InFlight == nil || value.InFlight.Token != token || value.InFlight.VariantTaskID != answer.VariantTaskID {
 		return diagnostic.Progress{}, fault.New(fault.Conflict, "DIAGNOSTIC_ANSWER_STALE", "Обработка ответа устарела.")
 	}
+	answer = cloneAnswer(answer)
 	value.Answers = append(value.Answers, answer)
 	value.CurrentCompetency = transition.CurrentCompetency
 	value.CurrentTask = transition.CurrentTask
 	value.Status = transition.Status
-	value.SkippedBasics = append(value.SkippedBasics, transition.SkippedBasics...)
+	value.SkippedBasics = append(value.SkippedBasics, cloneTasks(transition.SkippedBasics)...)
 	value.InFlight = nil
-	progress := makeProgress(value, total)
+	progress := value.Progress()
 	score, graderScore, graderMaxScore, verdict := answer.Score, answer.GraderScore, answer.GraderMaxScore, answer.Verdict
 	progress.Score, progress.GraderScore, progress.GraderMaxScore, progress.Verdict = &score, &graderScore, &graderMaxScore, verdict
 	progress.CriterionResults = append([]diagnostic.CriterionResult(nil), answer.CriterionResults...)
 	progress.Feedback = append([]string(nil), answer.Feedback...)
-	value.AcceptedRequests[key] = diagnostic.AcceptedRequest{Fingerprint: digest, Answer: answer, Response: progress}
+	value.AcceptedRequests[key] = diagnostic.AcceptedRequest{Fingerprint: digest, Response: progress}
 	s.sessions[id] = value
-	return progress, nil
+	return cloneProgress(progress), nil
 }
 
 func (s *Store) Fail(_ context.Context, ownerID, id, token, transcriptionID, transcriptionText string) error {
@@ -173,8 +174,6 @@ func (s *Store) Fail(_ context.Context, ownerID, id, token, transcriptionID, tra
 	if transcriptionID != "" {
 		value.InFlight.TranscriptionID = transcriptionID
 		value.InFlight.TranscriptionText = transcriptionText
-	}
-	if transcriptionID != "" {
 		value.InFlight.Token = ""
 	} else {
 		value.InFlight = nil
@@ -183,34 +182,11 @@ func (s *Store) Fail(_ context.Context, ownerID, id, token, transcriptionID, tra
 	return nil
 }
 
-func currentTask(value diagnostic.Session) *diagnostic.TaskSnapshot {
-	if value.CurrentCompetency >= len(value.Variant.Competencies) {
-		return nil
-	}
-	competency := value.Variant.Competencies[value.CurrentCompetency]
-	if value.CurrentTask >= len(competency.Tasks) {
-		return nil
-	}
-	task := competency.Tasks[value.CurrentTask]
-	return &task
-}
-
-func makeProgress(value diagnostic.Session, total int) diagnostic.Progress {
-	result := diagnostic.Progress{SessionID: value.ID, Status: value.Status, Completed: len(value.Answers), Skipped: len(value.SkippedBasics), Total: total}
-	if current := currentTask(value); current != nil {
-		result.Current = current
-	}
-	return result
-}
-
 func clone(value diagnostic.Session) diagnostic.Session {
 	value.Variant.SkippedCompetencies = append([]diagnostic.SkippedCompetency{}, value.Variant.SkippedCompetencies...)
 	value.Variant.Competencies = append([]diagnostic.Competency(nil), value.Variant.Competencies...)
 	for i := range value.Variant.Competencies {
-		value.Variant.Competencies[i].Tasks = append([]diagnostic.TaskSnapshot(nil), value.Variant.Competencies[i].Tasks...)
-		for j := range value.Variant.Competencies[i].Tasks {
-			value.Variant.Competencies[i].Tasks[j].Options = append([]string{}, value.Variant.Competencies[i].Tasks[j].Options...)
-		}
+		value.Variant.Competencies[i].Tasks = cloneTasks(value.Variant.Competencies[i].Tasks)
 	}
 	value.Answers = append([]diagnostic.Answer(nil), value.Answers...)
 	for i := range value.Answers {
@@ -218,20 +194,24 @@ func clone(value diagnostic.Session) diagnostic.Session {
 	}
 	copyRequests := make(map[string]diagnostic.AcceptedRequest, len(value.AcceptedRequests))
 	for key, item := range value.AcceptedRequests {
-		item.Answer = cloneAnswer(item.Answer)
 		item.Response = cloneProgress(item.Response)
 		copyRequests[key] = item
 	}
 	value.AcceptedRequests = copyRequests
-	value.SkippedBasics = append([]diagnostic.TaskSnapshot(nil), value.SkippedBasics...)
-	for i := range value.SkippedBasics {
-		value.SkippedBasics[i].Options = append([]string{}, value.SkippedBasics[i].Options...)
-	}
+	value.SkippedBasics = cloneTasks(value.SkippedBasics)
 	if value.InFlight != nil {
 		reservation := *value.InFlight
 		value.InFlight = &reservation
 	}
 	return value
+}
+
+func cloneTasks(tasks []diagnostic.TaskSnapshot) []diagnostic.TaskSnapshot {
+	result := append([]diagnostic.TaskSnapshot(nil), tasks...)
+	for i := range result {
+		result[i].Options = append([]string{}, result[i].Options...)
+	}
+	return result
 }
 
 func cloneAnswer(answer diagnostic.Answer) diagnostic.Answer {

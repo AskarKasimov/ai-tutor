@@ -324,6 +324,274 @@ components:
         - question
         - voice_instruction
       type: object
+    diagnostichttp.AnswerResponse:
+      additionalProperties: false
+      properties:
+        competency_id:
+          type: string
+        created_at:
+          type: integer
+        criterion_results:
+          items:
+            $ref: '#/components/schemas/diagnostichttp.CriterionResultResponse'
+          type: array
+          uniqueItems: false
+        feedback:
+          items:
+            type: string
+          type: array
+          uniqueItems: false
+        grader_score:
+          maximum: 2
+          minimum: 0
+          type: integer
+        outcome_id:
+          type: string
+        role:
+          enum:
+            - main
+            - basic
+          type: string
+        score:
+          maximum: 2
+          minimum: 0
+          type: integer
+        source_task_id:
+          type: string
+        task:
+          $ref: '#/components/schemas/diagnostichttp.TaskResponse'
+        text:
+          type: string
+        transcription_id:
+          type: string
+        variant_task_id:
+          type: string
+        verdict:
+          enum:
+            - correct
+            - partial
+            - incorrect
+          type: string
+      required:
+        - competency_id
+        - created_at
+        - criterion_results
+        - feedback
+        - grader_score
+        - outcome_id
+        - role
+        - score
+        - source_task_id
+        - task
+        - text
+        - transcription_id
+        - variant_task_id
+        - verdict
+      type: object
+    diagnostichttp.CriterionResultResponse:
+      additionalProperties: false
+      properties:
+        explanation:
+          type: string
+        key:
+          type: string
+        satisfied:
+          type: boolean
+      required:
+        - explanation
+        - key
+        - satisfied
+      type: object
+    diagnostichttp.ProgressResponse:
+      additionalProperties: false
+      properties:
+        completed_tasks:
+          minimum: 0
+          type: integer
+        criterion_results:
+          items:
+            $ref: '#/components/schemas/diagnostichttp.CriterionResultResponse'
+          type: array
+          uniqueItems: false
+        current:
+          $ref: '#/components/schemas/diagnostichttp.TaskResponse'
+        feedback:
+          items:
+            type: string
+          type: array
+          uniqueItems: false
+        grader_score:
+          maximum: 2
+          minimum: 0
+          type: integer
+        score:
+          maximum: 2
+          minimum: 0
+          type: integer
+        session_id:
+          maxLength: 128
+          minLength: 1
+          type: string
+        skipped_tasks:
+          minimum: 0
+          type: integer
+        status:
+          enum:
+            - active
+            - completed
+          type: string
+        total_tasks:
+          minimum: 1
+          type: integer
+        verdict:
+          enum:
+            - correct
+            - partial
+            - incorrect
+          type: string
+      required:
+        - completed_tasks
+        - session_id
+        - skipped_tasks
+        - status
+        - total_tasks
+      type: object
+    diagnostichttp.ResultResponse:
+      additionalProperties: false
+      properties:
+        answers:
+          items:
+            $ref: '#/components/schemas/diagnostichttp.AnswerResponse'
+          type: array
+          uniqueItems: false
+        completed_tasks:
+          type: integer
+        diagnostic_score:
+          type: integer
+        included_competency_count:
+          type: integer
+        map_revision:
+          type: integer
+        maximum_score:
+          type: integer
+        session_id:
+          type: string
+        skipped_competencies:
+          items:
+            $ref: '#/components/schemas/diagnostichttp.SkippedCompetencyResponse'
+          type: array
+          uniqueItems: false
+        status:
+          enum:
+            - completed
+          type: string
+        total_tasks:
+          type: integer
+        untested_basics:
+          items:
+            $ref: '#/components/schemas/diagnostichttp.TaskResponse'
+          type: array
+          uniqueItems: false
+        variant_id:
+          type: string
+      required:
+        - answers
+        - completed_tasks
+        - diagnostic_score
+        - included_competency_count
+        - map_revision
+        - maximum_score
+        - session_id
+        - skipped_competencies
+        - status
+        - total_tasks
+        - untested_basics
+        - variant_id
+      type: object
+    diagnostichttp.SkippedCompetencyResponse:
+      additionalProperties: false
+      properties:
+        code:
+          type: string
+        competency_id:
+          type: string
+        competency_name:
+          type: string
+      required:
+        - code
+        - competency_id
+        - competency_name
+      type: object
+    diagnostichttp.StartRequest:
+      additionalProperties: false
+      properties:
+        variant_id:
+          maxLength: 128
+          minLength: 1
+          type: string
+      required:
+        - variant_id
+      type: object
+    diagnostichttp.TaskResponse:
+      additionalProperties: false
+      properties:
+        competency_id:
+          maxLength: 128
+          minLength: 1
+          type: string
+        competency_name:
+          type: string
+        constituent_id:
+          maxLength: 128
+          minLength: 1
+          type: string
+        constituent_name:
+          type: string
+        options:
+          items:
+            type: string
+          type: array
+          uniqueItems: false
+        outcome_id:
+          maxLength: 128
+          minLength: 1
+          type: string
+        outcome_name:
+          type: string
+        question:
+          minLength: 1
+          type: string
+        role:
+          enum:
+            - main
+            - basic
+          type: string
+        source_task_id:
+          maxLength: 128
+          minLength: 1
+          type: string
+        variant_task_id:
+          maxLength: 128
+          minLength: 1
+          type: string
+        voice_instruction:
+          maxLength: 500
+          minLength: 1
+          type: string
+      required:
+        - competency_id
+        - competency_name
+        - constituent_id
+        - constituent_name
+        - options
+        - outcome_id
+        - outcome_name
+        - question
+        - role
+        - source_task_id
+        - variant_task_id
+        - voice_instruction
+      type: object
     fault.Detail:
       additionalProperties: false
       properties:
@@ -1239,6 +1507,335 @@ paths:
       summary: Прочитать текущую карту компетенций целиком
       tags:
         - Учебная база
+      x-implementation: implemented
+  /diagnostic-sessions:
+    post:
+      description: Сохраняет в памяти снимок порядка варианта. Повтор с тем же ключом возвращает ту же сессию.
+      parameters:
+        - description: Ключ повтора запроса
+          in: header
+          name: Idempotency-Key
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/diagnostichttp.StartRequest'
+              description: Вариант для прохождения
+              summary: request
+        description: Вариант для прохождения
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/diagnostichttp.ProgressResponse'
+          description: OK
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/diagnostichttp.ProgressResponse'
+          description: Created
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unauthorized
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Not Found
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Conflict
+        "422":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unprocessable Entity
+        "503":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Service Unavailable
+      security:
+        - accessCookie: []
+      summary: Начать диагностическую сессию
+      tags:
+        - Диагностика
+      x-implementation: implemented
+  /diagnostic-sessions/{id}:
+    get:
+      parameters:
+        - description: ID сессии
+          in: path
+          name: id
+          required: true
+          schema:
+            maxLength: 128
+            minLength: 1
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/diagnostichttp.ProgressResponse'
+          description: OK
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unauthorized
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Not Found
+        "422":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unprocessable Entity
+      security:
+        - accessCookie: []
+      summary: Прочитать состояние диагностики
+      tags:
+        - Диагностика
+      x-implementation: implemented
+  /diagnostic-sessions/{id}/answers:
+    post:
+      description: Выполняет STT и сохраняет результат оценки в памяти процесса. В real-режиме грейдер должен иметь контекст задания из варианта; пока его нет, возвращается техническая ошибка без score и перехода.
+      parameters:
+        - description: ID сессии
+          in: path
+          name: id
+          required: true
+          schema:
+            maxLength: 128
+            minLength: 1
+            type: string
+        - description: Ключ повтора запроса
+          in: header
+          name: Idempotency-Key
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              additionalProperties: false
+              properties:
+                audio:
+                  description: WAV, Ogg/Opus или WebM/Opus, до 25 МиБ
+                  format: binary
+                  type: string
+                variant_task_id:
+                  description: ID текущей позиции варианта
+                  type: string
+              required:
+                - audio
+                - variant_task_id
+              type: object
+        description: WAV, Ogg/Opus или WebM/Opus, до 25 МиБ
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/diagnostichttp.ProgressResponse'
+          description: OK
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unauthorized
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Not Found
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Conflict
+        "413":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Request Entity Too Large
+        "415":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unsupported Media Type
+        "422":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unprocessable Entity
+        "502":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Bad Gateway
+        "503":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Service Unavailable
+        "504":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Gateway Timeout
+      security:
+        - accessCookie: []
+      summary: Отправить голосовой ответ
+      tags:
+        - Диагностика
+      x-implementation: implemented
+  /diagnostic-sessions/{id}/current/audio:
+    get:
+      parameters:
+        - description: ID сессии
+          in: path
+          name: id
+          required: true
+          schema:
+            maxLength: 128
+            minLength: 1
+            type: string
+      responses:
+        "200":
+          content:
+            audio/wav:
+              schema:
+                format: binary
+                type: string
+          description: WAV с голосовой инструкцией
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unauthorized
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Not Found
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Conflict
+        "422":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unprocessable Entity
+        "502":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Bad Gateway
+        "503":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Service Unavailable
+        "504":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Gateway Timeout
+      security:
+        - accessCookie: []
+      summary: Озвучить инструкцию текущего задания
+      tags:
+        - Диагностика
+      x-implementation: implemented
+  /diagnostic-sessions/{id}/result:
+    get:
+      parameters:
+        - description: ID сессии
+          in: path
+          name: id
+          required: true
+          schema:
+            maxLength: 128
+            minLength: 1
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/diagnostichttp.ResultResponse'
+          description: OK
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unauthorized
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Not Found
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Conflict
+        "422":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unprocessable Entity
+      security:
+        - accessCookie: []
+      summary: Прочитать результат диагностики
+      tags:
+        - Диагностика
       x-implementation: implemented
   /health:
     get:

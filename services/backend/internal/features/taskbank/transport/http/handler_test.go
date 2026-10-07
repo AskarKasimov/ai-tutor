@@ -61,6 +61,7 @@ func TestSearchParsesAllSupportedQueryFilters(t *testing.T) {
 func TestSearchRejectsInvalidTypedQueryFiltersBeforeRepositoryCall(t *testing.T) {
 	for _, query := range []string{
 		"include_in_test=no", "importance=0", "importance=6", "importance=invalid", "limit=0", "limit=101", "limit=abc",
+		"limit=", "limit=1&limit=2", "origin=authored&origin=ai_generated", "unknown=value", "%zz", "outcome_id=%ff", "outcome_id=%00",
 	} {
 		t.Run(query, func(t *testing.T) {
 			repository := &recordingRepository{}

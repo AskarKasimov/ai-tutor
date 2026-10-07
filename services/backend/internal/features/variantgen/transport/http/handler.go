@@ -52,7 +52,7 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 
 // List reads the authenticated user's saved variants.
 // @Summary Прочитать свои сохранённые варианты
-// @Description Возвращает только метаданные вариантов владельца с cursor-пагинацией по времени создания и ID.
+// @Description Возвращает только метаданные вариантов владельца с cursor-пагинацией по времени создания и ID. Query-параметры должны быть известными, непустыми и передаваться однократно. Некорректное кодирование и недопустимые значения возвращают 422.
 // @Tags Варианты
 // @Security accessCookie
 // @Param limit query int false "Размер страницы, 1–100" default(20) minimum(1) maximum(100)
@@ -68,12 +68,10 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(r.Context(), w, fault.New(fault.Unauthorized, "UNAUTHORIZED", "Требуется авторизация."))
 		return
 	}
-	query := r.URL.Query()
-	for key := range query {
-		if key != "limit" && key != "cursor" {
-			httpx.Error(r.Context(), w, fault.Validation(key, "Неизвестный параметр."))
-			return
-		}
+	query, err := httpx.ParseQuery(r, "limit", "cursor")
+	if err != nil {
+		httpx.Error(r.Context(), w, err)
+		return
 	}
 	limit := 20
 	if raw := query.Get("limit"); raw != "" {

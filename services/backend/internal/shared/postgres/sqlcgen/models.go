@@ -235,3 +235,26 @@ type User struct {
 	Role         string
 	CreatedAt    int64
 }
+
+type Variant struct {
+	ID                      string
+	UserID                  string
+	CreateRequestKey        string
+	MapRevision             int64
+	AlgorithmVersion        string
+	IncludedCompetencyCount int32
+	SkippedCompetencies     []byte
+	CreatedAt               int64
+}
+
+type VariantTask struct {
+	ID                   string
+	VariantID            string
+	LiveTaskID           *string
+	SourceTaskIDSnapshot string
+	CompetencyPosition   int32
+	Slot                 int16
+	Role                 string
+	TaskSnapshot         []byte
+	ProfileSnapshot      []byte
+}

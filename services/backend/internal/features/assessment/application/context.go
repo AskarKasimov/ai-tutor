@@ -17,6 +17,7 @@ type OutcomeContext struct {
 type Criterion struct {
 	Key         string `json:"key"`
 	Description string `json:"description"`
+	Mandatory   bool   `json:"mandatory"`
 }
 
 type MaterialContext struct {
@@ -93,6 +94,7 @@ func GradingContextFromVariantTask(item variant.VariantTask) (GradingContext, er
 			{
 				Key:         "instruction_following",
 				Description: "Ответ выполняет голосовую инструкцию: " + voiceInstruction,
+				Mandatory:   true,
 			},
 		},
 		MaterialContext: MaterialContext{

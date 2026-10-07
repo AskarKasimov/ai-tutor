@@ -45,7 +45,7 @@ func validContext() GradingContext {
 	return GradingContext{
 		TaskID: "ml_001", Question: "Что прогнозирует банк?", ReferenceAnswer: "Классификация",
 		Criteria: []Criterion{
-			{Key: "task_type", Description: "Назван тип задачи"},
+			{Key: "task_type", Description: "Назван тип задачи", Mandatory: true},
 			{Key: "justification", Description: "Есть объяснение"},
 		},
 		MaterialContext: MaterialContext{Knowledge: "K", Skills: "S"},
@@ -97,6 +97,47 @@ func TestEvaluateRejectsWrongCriterionKey(t *testing.T) {
 	var f *fault.Error
 	if !errors.As(err, &f) || f.Code != "INVALID_MODEL_RESPONSE" {
 		t.Fatalf("expected invalid model response, got %v", err)
+	}
+}
+
+func TestEvaluateMandatoryCriterionFailureForcesZero(t *testing.T) {
+	repo := &transcriptionStub{text: "Потому что целевая переменная принимает один из двух классов."}
+	contexts := &contextStub{result: validContext()}
+	result := validEvaluation()
+	result.Score = 0
+	result.Verdict = "incorrect"
+	result.CriterionResults[0] = CriterionResult{
+		Key:         "task_type",
+		Satisfied:   false,
+		Explanation: "Тип задачи словами не назван.",
+	}
+	result.CriterionResults[1] = CriterionResult{
+		Key:         "justification",
+		Satisfied:   true,
+		Explanation: "Верно указаны два дискретных класса.",
+	}
+
+	got, err := New(repo, contexts, nil, &graderStub{result: result}).
+		Evaluate(context.Background(), "student-1", "tr-1", "ml_001")
+	if err != nil || got.Score != 0 || got.Verdict != "incorrect" {
+		t.Fatalf("expected mandatory criterion failure to produce 0/incorrect, got %#v, %v", got, err)
+	}
+}
+
+func TestEvaluateRejectsPartialWhenMandatoryCriterionFailed(t *testing.T) {
+	repo := &transcriptionStub{text: "Потому что целевая переменная принимает один из двух классов."}
+	contexts := &contextStub{result: validContext()}
+	result := validEvaluation()
+	result.Score = 1
+	result.Verdict = "partial"
+	result.CriterionResults[0].Satisfied = false
+	result.CriterionResults[0].Explanation = "Тип задачи словами не назван."
+
+	_, err := New(repo, contexts, nil, &graderStub{result: result}).
+		Evaluate(context.Background(), "student-1", "tr-1", "ml_001")
+	var f *fault.Error
+	if !errors.As(err, &f) || f.Code != "INVALID_MODEL_RESPONSE" {
+		t.Fatalf("expected INVALID_MODEL_RESPONSE, got %v", err)
 	}
 }
 

@@ -23,7 +23,7 @@ func testContext() application.GradingContext {
 		ReferenceAnswer:  "Классификация: два класса.",
 		Outcome:          application.OutcomeContext{Title: "Определяет тип задачи", Taxonomy: "Понимание", Level: "базовый"},
 		Criteria: []application.Criterion{
-			{Key: "task_type", Description: "Правильно назван тип задачи."},
+			{Key: "task_type", Description: "Правильно назван тип задачи.", Mandatory: true},
 			{Key: "justification", Description: "Выбор объяснён через два класса."},
 		},
 		MaterialContext: application.MaterialContext{Knowledge: "Классификация выбирает класс из конечного набора.", Skills: "Определять тип целевой переменной."},
@@ -51,10 +51,13 @@ func TestGradeSendsCriteriaMaterialsAndParsesStructuredResult(t *testing.T) {
 		t.Fatalf("unexpected model result: %#v, %v", result, err)
 	}
 	content := request.Messages[1].Content
-	for _, required := range []string{`"student_answer":"классификация, потому что два класса"`, `"criteria":[`, `"material_context":`, `"reference_answer":"Классификация: два класса."`} {
+	for _, required := range []string{`"student_answer":"классификация, потому что два класса"`, `"criteria":[`, `"mandatory":true`, `"material_context":`, `"reference_answer":"Классификация: два класса."`} {
 		if !strings.Contains(content, required) {
 			t.Fatalf("model request omitted %s: %s", required, content)
 		}
+	}
+	if !strings.Contains(request.Messages[0].Content, "mandatory=true") {
+		t.Fatalf("system prompt omitted mandatory criterion rule: %s", request.Messages[0].Content)
 	}
 }
 
@@ -147,4 +150,3 @@ func TestGradeRejectsNullSatisfied(t *testing.T) {
 		t.Fatalf("expected INVALID_MODEL_RESPONSE, got %v", err)
 	}
 }
-

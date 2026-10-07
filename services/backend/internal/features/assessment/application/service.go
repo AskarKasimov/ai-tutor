@@ -78,6 +78,7 @@ func validateEvaluation(result assessment.Evaluation, gradingContext GradingCont
 	}
 
 	satisfied := 0
+	mandatoryFailed := false
 	for i, criterion := range gradingContext.Criteria {
 		item := result.CriterionResults[i]
 		if item.Key != criterion.Key || !validText(item.Explanation, 400) || strings.ContainsAny(item.Explanation, "\r\n") {
@@ -86,18 +87,23 @@ func validateEvaluation(result assessment.Evaluation, gradingContext GradingCont
 		if item.Satisfied {
 			satisfied++
 		}
+		if criterion.Mandatory && !item.Satisfied {
+			mandatoryFailed = true
+		}
 		result.CriterionResults[i].Explanation = strings.TrimSpace(item.Explanation)
 	}
 
 	expectedScore := 0
-	if maxScore == 1 {
-		if satisfied == len(gradingContext.Criteria) {
+	if !mandatoryFailed {
+		if maxScore == 1 {
+			if satisfied == len(gradingContext.Criteria) {
+				expectedScore = 1
+			}
+		} else if satisfied == len(gradingContext.Criteria) {
+			expectedScore = 2
+		} else if satisfied > 0 {
 			expectedScore = 1
 		}
-	} else if satisfied == len(gradingContext.Criteria) {
-		expectedScore = 2
-	} else if satisfied > 0 {
-		expectedScore = 1
 	}
 	if result.Score != expectedScore {
 		return fault.New(fault.Upstream, "INVALID_MODEL_RESPONSE", "Оценка модели не согласуется с результатами по критериям.")

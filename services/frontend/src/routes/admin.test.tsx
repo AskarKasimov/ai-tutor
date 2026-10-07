@@ -84,6 +84,8 @@ function backend(
 ) {
   let active: typeof emptyMap | typeof importedMap = emptyMap
   const fetch = vi.fn(async (url: string, init?: RequestInit) => {
+    if (url.endsWith('/auth/refresh'))
+      return new Response(null, { status: 401 })
     if (url.endsWith('/auth/me'))
       return new Response(
         JSON.stringify(options.user === undefined ? admin : options.user),
@@ -137,12 +139,15 @@ it('does not mount the lesson while the current session is being checked', async
   let finish!: (response: Response) => void
   vi.stubGlobal(
     'fetch',
-    vi.fn(
-      () =>
-        new Promise<Response>((resolve) => {
-          finish = resolve
-        }),
-    ),
+    vi
+      .fn()
+      .mockResolvedValue(new Response('{}', { status: 401 }))
+      .mockImplementationOnce(
+        () =>
+          new Promise<Response>((resolve) => {
+            finish = resolve
+          }),
+      ),
   )
   renderApp()
   expect(await screen.findByRole('status')).toHaveTextContent(
@@ -161,6 +166,8 @@ it('routes an admin straight from the login form to the import screen', async ()
   vi.stubGlobal(
     'fetch',
     vi.fn(async (url: string) => {
+      if (url.endsWith('/auth/refresh'))
+        return new Response(null, { status: 401 })
       if (url.endsWith('/auth/me'))
         return new Response(JSON.stringify(admin), {
           status: authenticated ? 200 : 401,
@@ -337,7 +344,35 @@ it('does not expose the upload form to guests opening the admin URL directly', a
   expect(
     screen.queryByLabelText('Файл карты компетенций'),
   ).not.toBeInTheDocument()
-  expect(fetch.mock.calls.every(([url]) => url.endsWith('/auth/me'))).toBe(true)
+  expect(
+    fetch.mock.calls.every(([url]) => /\/auth\/(me|refresh)$/.test(url)),
+  ).toBe(true)
+})
+
+it('restores the admin screen after reload with an expired access cookie', async () => {
+  let valid = false
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url: string) => {
+      if (url.endsWith('/auth/refresh')) {
+        valid = true
+        return Response.json({})
+      }
+      if (url.endsWith('/auth/me'))
+        return valid
+          ? Response.json(admin)
+          : new Response(null, { status: 401 })
+      if (url.endsWith('/competency-map')) return Response.json(emptyMap)
+      throw new Error(`Unexpected request: ${url}`)
+    }),
+  )
+  renderApp('/admin/competency-map')
+  expect(
+    await screen.findByRole('heading', { name: 'Карта компетенций' }),
+  ).toBeVisible()
+  expect(
+    screen.queryByRole('heading', { name: 'Вход в AI Tutor' }),
+  ).not.toBeInTheDocument()
 })
 
 it('blocks a second upload and changing the file while import is pending', async () => {

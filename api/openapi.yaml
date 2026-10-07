@@ -666,6 +666,147 @@ components:
         - code
         - message
       type: object
+    http.ConfirmedGapResponse:
+      additionalProperties: false
+      properties:
+        advice:
+          type: string
+        competency_id:
+          type: string
+        competency_name:
+          type: string
+        failed_criteria:
+          items:
+            type: string
+          type: array
+          uniqueItems: false
+        importance:
+          type: integer
+        outcome_id:
+          type: string
+        outcome_name:
+          type: string
+        taxonomy_code:
+          type: string
+      required:
+        - advice
+        - competency_id
+        - competency_name
+        - failed_criteria
+        - importance
+        - outcome_id
+        - outcome_name
+        - taxonomy_code
+      type: object
+    http.OverallFeedbackResponse:
+      additionalProperties: false
+      properties:
+        confirmed_gaps:
+          items:
+            $ref: '#/components/schemas/http.ConfirmedGapResponse'
+          type: array
+          uniqueItems: false
+        diagnostic_score:
+          minimum: 0
+          type: integer
+        generated_at:
+          type: integer
+        maximum_score:
+          minimum: 0
+          type: integer
+        partial_competencies:
+          items:
+            $ref: '#/components/schemas/http.PartialCompetencyResponse'
+          type: array
+          uniqueItems: false
+        score_percentage:
+          maximum: 100
+          minimum: 0
+          type: integer
+        session_id:
+          type: string
+        strengths:
+          items:
+            type: string
+          type: array
+          uniqueItems: false
+        summary:
+          type: string
+        training_recommendations:
+          items:
+            $ref: '#/components/schemas/http.TrainingRecommendationResponse'
+          type: array
+          uniqueItems: false
+        unverified_competencies:
+          items:
+            $ref: '#/components/schemas/http.UnverifiedCompetencyResponse'
+          type: array
+          uniqueItems: false
+      required:
+        - confirmed_gaps
+        - diagnostic_score
+        - generated_at
+        - maximum_score
+        - partial_competencies
+        - score_percentage
+        - session_id
+        - strengths
+        - summary
+        - training_recommendations
+        - unverified_competencies
+      type: object
+    http.PartialCompetencyResponse:
+      additionalProperties: false
+      properties:
+        competency_id:
+          type: string
+        competency_name:
+          type: string
+        details:
+          type: string
+      required:
+        - competency_id
+        - competency_name
+        - details
+      type: object
+    http.TrainingRecommendationResponse:
+      additionalProperties: false
+      properties:
+        competency_id:
+          type: string
+        competency_name:
+          type: string
+        outcome_id:
+          type: string
+        outcome_name:
+          type: string
+        priority:
+          minimum: 1
+          type: integer
+        rationale:
+          type: string
+      required:
+        - competency_id
+        - competency_name
+        - outcome_id
+        - outcome_name
+        - priority
+        - rationale
+      type: object
+    http.UnverifiedCompetencyResponse:
+      additionalProperties: false
+      properties:
+        code:
+          type: string
+        competency_id:
+          type: string
+        competency_name:
+          type: string
+      required:
+        - code
+        - competency_id
+        - competency_name
+      type: object
     taskbankhttp.CurriculumSection:
       additionalProperties: false
       properties:
@@ -1832,6 +1973,53 @@ paths:
       security:
         - accessCookie: []
       summary: Озвучить инструкцию текущего задания
+      tags:
+        - Диагностика
+      x-implementation: implemented
+  /diagnostic-sessions/{id}/feedback:
+    get:
+      description: Детерминированно агрегирует результаты сессии (освоенные темы, частичные знания, подтверждённые пробелы) и формирует педагогическое резюме.
+      parameters:
+        - description: ID сессии
+          in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/http.OverallFeedbackResponse'
+          description: OK
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unauthorized
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Not Found
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Conflict
+        "503":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Service Unavailable
+      security:
+        - accessCookie: []
+      summary: Получить итоговый педагогический фидбэк по диагностической сессии
       tags:
         - Диагностика
       x-implementation: implemented

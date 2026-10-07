@@ -599,10 +599,428 @@
 }
 .summaryQuestion {
   flex: 1;
+  min-width: 0;
 }
 .summaryAnswerScore {
   flex-shrink: 0;
   font-weight: 700;
+  white-space: nowrap;
+}
+.overallFeedbackSection {
+  background: white;
+  border: 1px solid var(--app-border);
+  border-radius: 20px;
+  padding: 24px 28px;
+  margin-bottom: 28px;
+}
+.feedbackHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+.feedbackHeaderTitle {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--app-accent-strong);
+  h2 {
+    font-size: 20px;
+    font-weight: 700;
+    margin: 0;
+  }
+}
+.sparkleIcon {
+  color: var(--app-accent);
+}
+.feedbackModeToggle {
+  display: inline-flex;
+  background: var(--app-soft, #f1f5f9);
+  border: 1px solid var(--app-border, #e2e8f0);
+  border-radius: 9999px;
+  padding: 3px;
+  gap: 4px;
+}
+.modeButton {
+  border: none;
+  background: transparent;
+  padding: 6px 14px;
+  border-radius: 9999px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--app-muted, #64748b);
+  transition: all 0.15s ease;
+  font-family: inherit;
+  &:hover {
+    color: var(--app-ink, #0f172a);
+  }
+}
+.modeButtonActive {
+  background: white;
+  color: var(--app-ink, #0f172a);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+.feedbackLoading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--app-muted);
+  font-size: 15px;
+  padding: 16px 0;
+}
+.feedbackContent {
+  display: grid;
+  gap: 20px;
+}
+.feedbackSummaryText {
+  background: var(--app-soft);
+  padding: 16px 20px;
+  border-radius: 12px;
+  line-height: 24px;
+  font-size: 15px;
+  color: var(--app-ink);
+}
+.feedbackParagraph {
+  margin: 0 0 10px 0;
+  &:last-child {
+    margin-bottom: 0;
+  }
+}
+.feedbackGroup {
+  display: grid;
+  gap: 8px;
+}
+.feedbackGroupTitle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+  font-weight: 600;
+}
+.iconSuccess {
+  color: #16a34a;
+}
+.iconGap {
+  color: #dc2626;
+}
+.iconRec {
+  color: var(--app-accent);
+}
+.iconPartial {
+  color: #d97706;
+}
+.feedbackList {
+  list-style: disc;
+  padding-left: 24px;
+  margin: 0;
+  display: grid;
+  gap: 10px;
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--app-ink);
+}
+.feedbackItem {
+  white-space: pre-line;
+}
+.gapCardsList {
+  display: grid;
+  gap: 12px;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.gapCardItem {
+  background: white;
+  border: 1px solid var(--app-border);
+  border-left: 4px solid #dc2626;
+  border-radius: 8px;
+  padding: 12px 16px;
+  display: grid;
+  gap: 8px;
+}
+.gapTitle {
+  font-size: 15px;
+  color: var(--app-ink);
+}
+.gapMistakeRow {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 14px;
+}
+.gapLabel {
+  font-weight: 600;
+  color: var(--app-muted);
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.gapValue {
+  color: var(--app-ink);
+  line-height: 20px;
+}
+.gapRepeatBlock {
+  display: grid;
+  gap: 4px;
+  margin-top: 4px;
+}
+.gapSubtopicsList {
+  list-style: none;
+  padding-left: 0;
+  margin: 6px 0 0 0;
+  display: grid;
+  gap: 4px;
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--app-ink);
+  li {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    &::before {
+      content: '—';
+      color: var(--app-muted);
+      flex-shrink: 0;
+    }
+  }
+}
+.expressContainer {
+  display: grid;
+  gap: 20px;
+}
+.statBadges {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.statBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 9999px;
+  font-size: 13px;
+  font-weight: 600;
+  border: 1px solid transparent;
+}
+.statBadgeSuccess {
+  background: #f0fdf4;
+  border-color: #bbf7d0;
+  color: #15803d;
+}
+.statBadgePartial {
+  background: #fffbeb;
+  border-color: #fde68a;
+  color: #b45309;
+}
+.statBadgeGap {
+  background: #fef2f2;
+  border-color: #fecaca;
+  color: #b91c1c;
+}
+.expressSection {
+  display: grid;
+  gap: 12px;
+}
+.expressSectionTitle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+}
+.expressGapsGrid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+}
+.expressGapCard {
+  background: white;
+  border: 1px solid var(--app-border);
+  border-top: 3px solid #dc2626;
+  border-radius: 10px;
+  padding: 14px 16px;
+  display: grid;
+  gap: 8px;
+}
+.expressPartialCard {
+  border-top-color: #d97706;
+}
+.expressGapCardHeader {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.expressGapBadge {
+  background: #fef2f2;
+  color: #dc2626;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 6px;
+  border: 1px solid #fecaca;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.expressPartialBadge {
+  background: #fffbeb;
+  color: #b45309;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 6px;
+  border: 1px solid #fde68a;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.expressGapTopic {
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--app-ink);
+}
+.expressSubtopics {
+  display: grid;
+  gap: 4px;
+  font-size: 13px;
+}
+.expressSubtopicsLabel {
+  color: var(--app-muted);
+  font-weight: 600;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.expressSubtopicsInline {
+  font-size: 13px;
+  color: var(--app-ink);
+  line-height: 19px;
+}
+.expressSubtopicsList {
+  list-style: none;
+  padding-left: 0;
+  margin: 0;
+  display: grid;
+  gap: 3px;
+  color: var(--app-ink);
+  line-height: 18px;
+  li {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    &::before {
+      content: '—';
+      color: var(--app-muted);
+      flex-shrink: 0;
+    }
+  }
+}
+.expressGapExplanation {
+  font-size: 13px;
+  color: var(--app-muted);
+  line-height: 18px;
+}
+.expressPartialNote {
+  display: grid;
+  gap: 3px;
+  font-size: 13px;
+  color: var(--app-ink);
+  line-height: 19px;
+}
+.expressSuccessNotice {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  border-radius: 10px;
+  padding: 14px 18px;
+}
+.expressSuccessTitle {
+  font-weight: 700;
+  font-size: 14px;
+  color: #15803d;
+}
+.expressSuccessSub {
+  font-size: 13px;
+  color: #166534;
+}
+.expressStepsList {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 10px;
+}
+.expressStepItem {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  background: white;
+  border: 1px solid var(--app-border);
+  border-radius: 10px;
+  padding: 12px 16px;
+}
+.expressStepNumber {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--app-accent, #3b82f6);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+.expressStepContent {
+  display: grid;
+  gap: 2px;
+}
+.expressStepTitle {
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--app-ink);
+}
+.expressStepNote {
+  font-size: 13px;
+  color: var(--app-muted);
+  line-height: 18px;
+}
+.expressFooter {
+  padding-top: 6px;
+}
+.switchDetailedButton {
+  border: 1px dashed var(--app-border);
+  background: var(--app-soft);
+  color: var(--app-accent-strong, #1e40af);
+  font-size: 13px;
+  font-weight: 600;
+  padding: 10px 16px;
+  border-radius: 8px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: inherit;
+  transition: background 0.15s ease;
+  &:hover {
+    background: white;
+    border-color: var(--app-accent);
+  }
+}
+.emptyNote {
+  color: var(--app-muted);
+  font-size: 14px;
+  font-style: italic;
+  padding: 2px 0;
 }
 @keyframes spin {
   to {

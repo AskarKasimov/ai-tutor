@@ -115,6 +115,20 @@ func TestDiagnosticSessionAPIProgressOwnershipAndSnapshotPrivacy(t *testing.T) {
 	if err := json.Unmarshal(result.Body.Bytes(), &resultBody); err != nil || resultBody.DiagnosticScore != 2 || resultBody.MaximumScore != 2 || len(resultBody.Answers) != 1 || resultBody.Answers[0].GraderMaxScore != 2 || len(resultBody.UntestedBasics) != 2 {
 		t.Fatalf("invalid result data: %s, %v", result.Body.String(), err)
 	}
+	feedbackResp := f.request(http.MethodGet, "/diagnostic-sessions/"+completed.SessionID+"/feedback", "", access)
+	if feedbackResp.Code != http.StatusOK {
+		t.Fatalf("feedback: %d %s", feedbackResp.Code, feedbackResp.Body.String())
+	}
+	var fbBody struct {
+		SessionID       string   `json:"session_id"`
+		DiagnosticScore int      `json:"diagnostic_score"`
+		MaximumScore    int      `json:"maximum_score"`
+		Summary         string   `json:"summary"`
+		Strengths       []string `json:"strengths"`
+	}
+	if err := json.Unmarshal(feedbackResp.Body.Bytes(), &fbBody); err != nil || fbBody.SessionID != completed.SessionID || fbBody.Summary == "" || len(fbBody.Strengths) != 1 {
+		t.Fatalf("invalid feedback data: %s, %v", feedbackResp.Body.String(), err)
+	}
 }
 
 func diagnosticAnswerBody(t *testing.T, taskID string) (*bytes.Buffer, string) {

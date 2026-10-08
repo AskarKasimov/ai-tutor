@@ -16,7 +16,9 @@ import (
 
 func testContext() application.GradingContext {
 	return application.GradingContext{
-		TaskID:           "ml_001",
+		TaskID:           "variant-task-1",
+		Role:             "main",
+		MaxScore:         2,
 		Question:         "Вопрос",
 		Options:          []string{"Классификация"},
 		VoiceInstruction: "Назовите тип",
@@ -30,7 +32,7 @@ func testContext() application.GradingContext {
 	}
 }
 
-func TestGradeSendsCriteriaMaterialsAndParsesStructuredResult(t *testing.T) {
+func TestGradeSendsTrustedScaleCriteriaMaterialsAndParsesStructuredResult(t *testing.T) {
 	var request struct {
 		Model    string `json:"model"`
 		Messages []struct {
@@ -51,13 +53,27 @@ func TestGradeSendsCriteriaMaterialsAndParsesStructuredResult(t *testing.T) {
 		t.Fatalf("unexpected model result: %#v, %v", result, err)
 	}
 	content := request.Messages[1].Content
-	for _, required := range []string{`"student_answer":"классификация, потому что два класса"`, `"criteria":[`, `"mandatory":true`, `"material_context":`, `"reference_answer":"Классификация: два класса."`} {
+	for _, required := range []string{`"role":"main"`, `"max_score":2`, `"student_answer":"классификация, потому что два класса"`, `"criteria":[`, `"mandatory":true`, `"material_context":`, `"reference_answer":"Классификация: два класса."`} {
 		if !strings.Contains(content, required) {
 			t.Fatalf("model request omitted %s: %s", required, content)
 		}
 	}
 	if !strings.Contains(request.Messages[0].Content, "mandatory=true") {
 		t.Fatalf("system prompt omitted mandatory criterion rule: %s", request.Messages[0].Content)
+	}
+}
+
+func TestGradeRejectsInvalidTrustedScale(t *testing.T) {
+	gradingContext := testContext()
+	gradingContext.Role = "basic"
+	gradingContext.MaxScore = 2
+
+	_, err := New(http.DefaultClient, "http://127.0.0.1:1/v1", "gpt-oss-120b", time.Second).
+		Grade(context.Background(), gradingContext, "ответ")
+
+	var f *fault.Error
+	if !errors.As(err, &f) || f.Code != "INVALID_GRADING_CONTEXT" {
+		t.Fatalf("expected INVALID_GRADING_CONTEXT, got %v", err)
 	}
 }
 

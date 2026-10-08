@@ -63,14 +63,15 @@ func invalidModelResponse(message string) error {
 	return fault.New(fault.Upstream, "INVALID_MODEL_RESPONSE", message)
 }
 
+func invalidGradingContext() error {
+	return fault.New(fault.Invalid, "INVALID_GRADING_CONTEXT", "Контекст оценивания содержит некорректную роль или шкалу.")
+}
+
 func (c *Client) Grade(ctx context.Context, gradingContext application.GradingContext, answer string) (assessment.Evaluation, error) {
 	role := gradingContext.Role
-	if role == "" {
-		role = "main"
-	}
 	maxScore := gradingContext.MaxScore
-	if maxScore == 0 {
-		maxScore = 2
+	if !((role == "main" && maxScore == 2) || (role == "basic" && maxScore == 1)) {
+		return assessment.Evaluation{}, invalidGradingContext()
 	}
 
 	data, err := json.Marshal(struct {

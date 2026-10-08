@@ -36,11 +36,19 @@ func validText(value string, max int) bool {
 	return strings.TrimSpace(value) != "" && utf8.ValidString(value) && !strings.ContainsRune(value, 0) && utf8.RuneCountInString(value) <= max
 }
 
-func gradingMaxScore(gradingContext GradingContext) int {
-	if gradingContext.MaxScore == 1 {
-		return 1
+func gradingMaxScore(gradingContext GradingContext) (int, error) {
+	switch {
+	case gradingContext.Role == "main" && gradingContext.MaxScore == 2:
+		return 2, nil
+	case gradingContext.Role == "basic" && gradingContext.MaxScore == 1:
+		return 1, nil
+	default:
+		return 0, fault.New(
+			fault.Invalid,
+			"INVALID_GRADING_CONTEXT",
+			"Контекст оценивания содержит некорректную роль или шкалу.",
+		)
 	}
-	return 2
 }
 
 func expectedVerdict(score, maxScore int) string {
@@ -67,7 +75,10 @@ func expectedVerdict(score, maxScore int) string {
 }
 
 func validateEvaluation(result assessment.Evaluation, gradingContext GradingContext) error {
-	maxScore := gradingMaxScore(gradingContext)
+	maxScore, err := gradingMaxScore(gradingContext)
+	if err != nil {
+		return err
+	}
 	if result.Score < 0 || result.Score > maxScore || result.Verdict != expectedVerdict(result.Score, maxScore) {
 		return fault.New(fault.Upstream, "INVALID_MODEL_RESPONSE", "Модель вернула некорректную оценку.")
 	}
@@ -124,6 +135,10 @@ func (s *Service) evaluateWithContext(ctx context.Context, ownerID, transcriptio
 	if !validText(transcriptionID, 128) {
 		return assessment.Evaluation{}, fault.Validation("transcription_id", "Укажите сохранённую расшифровку.")
 	}
+	maxScore, err := gradingMaxScore(gradingContext)
+	if err != nil {
+		return assessment.Evaluation{}, err
+	}
 
 	answer, err := s.transcriptions.TextByOwner(ctx, ownerID, transcriptionID)
 	if err != nil {
@@ -139,7 +154,7 @@ func (s *Service) evaluateWithContext(ctx context.Context, ownerID, transcriptio
 	if err := validateEvaluation(result, gradingContext); err != nil {
 		return assessment.Evaluation{}, err
 	}
-	result.MaxScore = gradingMaxScore(gradingContext)
+	result.MaxScore = maxScore
 	return result, nil
 }
 

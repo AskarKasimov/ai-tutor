@@ -90,6 +90,35 @@ func TestEvaluateVariantUsesOwnedHistoricalSnapshot(t *testing.T) {
 	}
 }
 
+func TestEvaluateVariantBasicUsesOnePointScale(t *testing.T) {
+	result := validEvaluation()
+	result.Score = 1
+	result.Verdict = "correct"
+
+	got, err := New(
+		&transcriptionStub{text: "классификация, потому что два класса"},
+		&variantTaskStub{result: validVariantTask("basic")},
+		&graderStub{result: result},
+	).EvaluateVariant(context.Background(), "student-1", "tr-1", "variant-1", "variant-task-1")
+
+	if err != nil || got.Score != 1 || got.MaxScore != 1 || got.Verdict != "correct" {
+		t.Fatalf("expected basic 1/1 correct, got %#v, %v", got, err)
+	}
+}
+
+func TestEvaluateVariantRejectsTwoPointsForBasic(t *testing.T) {
+	_, err := New(
+		&transcriptionStub{text: "классификация, потому что два класса"},
+		&variantTaskStub{result: validVariantTask("basic")},
+		&graderStub{result: validEvaluation()},
+	).EvaluateVariant(context.Background(), "student-1", "tr-1", "variant-1", "variant-task-1")
+
+	var f *fault.Error
+	if !errors.As(err, &f) || f.Code != "INVALID_MODEL_RESPONSE" {
+		t.Fatalf("expected INVALID_MODEL_RESPONSE for basic score 2, got %v", err)
+	}
+}
+
 func TestEvaluateVariantWorksWithoutCriteriaOrEducationalContent(t *testing.T) {
 	item := validVariantTask("main")
 	item.Task.Criteria = nil

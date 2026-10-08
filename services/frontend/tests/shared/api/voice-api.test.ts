@@ -34,9 +34,12 @@ it('fetches stored WAV from an internal API path with cookie credentials', async
       new Response(wav, { headers: { 'Content-Type': 'audio/wav' } }),
     )
   vi.stubGlobal('fetch', fetchMock)
-  await expect(
-    fetchStoredAudio('/task-audio/audio-1/file', new AbortController().signal),
-  ).resolves.toBeInstanceOf(Blob)
+  const audio = await fetchStoredAudio(
+    '/task-audio/audio-1/file',
+    new AbortController().signal,
+  )
+  expect(audio.type).toBe('audio/wav')
+  expect(await audio.arrayBuffer()).toEqual(wav)
   expect(fetchMock.mock.calls[0][0]).toBe('/api/v1/task-audio/audio-1/file')
   expect(fetchMock.mock.calls[0][1].credentials).toBe('include')
   await expect(
@@ -87,17 +90,21 @@ it('rejects a structurally broken WAV even when the response MIME is audio/wav',
 })
 
 it('accepts a valid WAVE_FORMAT_EXTENSIBLE PCM file like the backend validator', async () => {
+  const wav = await validExtensibleWavBlob().arrayBuffer()
   vi.stubGlobal(
     'fetch',
     vi.fn().mockResolvedValue(
-      new Response(await validExtensibleWavBlob().arrayBuffer(), {
+      new Response(wav, {
         headers: { 'Content-Type': 'audio/wav' },
       }),
     ),
   )
-  await expect(
-    fetchStoredAudio('/task-audio/audio-1/file', new AbortController().signal),
-  ).resolves.toBeInstanceOf(Blob)
+  const audio = await fetchStoredAudio(
+    '/task-audio/audio-1/file',
+    new AbortController().signal,
+  )
+  expect(audio.type).toBe('audio/wav')
+  expect(await audio.arrayBuffer()).toEqual(wav)
 })
 
 it('preserves HTTP status and API code for stored-audio failures', async () => {

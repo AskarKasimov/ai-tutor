@@ -126,8 +126,10 @@ it('cancels instruction generation when recording starts and never plays its lat
   })
   await act(async () => {
     resolveSpeech(
-      new Response(validWavBlob(), {
-        headers: { 'Content-Type': 'audio/wav' },
+      Response.json({
+        variant_task_id: task.variant_task_id,
+        status: 'ready',
+        audio_url: '/task-audio/audio-1/file',
       }),
     )
     await speaking

@@ -1,0 +1,10 @@
+.screen {
+  box-sizing: border-box;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: var(--app-soft);
+  color: var(--app-ink);
+}

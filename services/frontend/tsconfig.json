@@ -3,8 +3,9 @@
     "strict": true,
     "jsx": "react-jsx",
     "moduleResolution": "Bundler",
+    "paths": { "@/*": ["./src/*"] },
     "types": ["vite/client", "vitest/globals"],
     "skipLibCheck": true
   },
-  "include": ["src"]
+  "include": ["src", "tests"]
 }

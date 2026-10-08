@@ -2,9 +2,9 @@ import '@radix-ui/themes/styles.css'
 import { createRouter, RouterProvider } from '@tanstack/react-router'
 import { createRoot } from 'react-dom/client'
 
-import { createQueryClient } from './app/providers'
-import './app/global.scss'
-import { routeTree } from './routeTree.gen'
+import { createQueryClient } from '@/bootstrap/providers'
+import '@/bootstrap/global.scss'
+import { routeTree } from '@/routeTree.gen'
 
 export const router = createRouter({
   context: { queryClient: createQueryClient() },

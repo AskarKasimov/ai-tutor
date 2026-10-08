@@ -7,6 +7,7 @@ export default defineConfig(({ mode }) => {
   const envDir = resolve(import.meta.dirname, '../..')
   const env = loadEnv(mode, envDir, 'VITE_')
   return {
+    resolve: { alias: { '@': resolve(import.meta.dirname, 'src') } },
     envDir,
     server: {
       watch: {

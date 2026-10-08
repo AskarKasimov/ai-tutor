@@ -1,0 +1,60 @@
+import { createContext, useContext } from 'react'
+import type { PropsWithChildren } from 'react'
+import type {
+  DiagnosticProgress,
+  DiagnosticResult,
+  DiagnosticSubmission,
+  DiagnosticTask,
+  DiagnosticSessionIdentity,
+} from '@/entities/diagnostic-session'
+export type DiagnosticDependencies = {
+  apiBase: string
+  createDiagnosticIdentity(): DiagnosticSessionIdentity
+  diagnosticStorage: {
+    load(userId: string, apiBase: string): DiagnosticSessionIdentity | undefined
+    save(
+      userId: string,
+      apiBase: string,
+      identity: DiagnosticSessionIdentity,
+    ): void
+  }
+  diagnostic: {
+    createVariant(key: string, signal: AbortSignal): Promise<{ id: string }>
+    startDiagnostic(
+      variantId: string,
+      key: string,
+      signal: AbortSignal,
+    ): Promise<DiagnosticProgress>
+    readDiagnostic(
+      sessionId: string,
+      signal: AbortSignal,
+    ): Promise<DiagnosticProgress>
+    readDiagnosticResult(
+      sessionId: string,
+      signal: AbortSignal,
+    ): Promise<DiagnosticResult>
+    submitDiagnostic(
+      input: DiagnosticSubmission,
+      signal: AbortSignal,
+    ): Promise<DiagnosticProgress>
+    createSubmission(
+      sessionId: string,
+      taskId: string,
+      blob: Blob,
+      role: DiagnosticTask['role'],
+    ): DiagnosticSubmission
+    diagnosticAudio(sessionId: string, signal: AbortSignal): Promise<Blob>
+  }
+}
+const Context = createContext<DiagnosticDependencies | null>(null)
+export function DiagnosticDependenciesProvider({
+  value,
+  children,
+}: PropsWithChildren<{ value: DiagnosticDependencies }>) {
+  return <Context.Provider value={value}>{children}</Context.Provider>
+}
+export function useDiagnosticDependencies() {
+  const value = useContext(Context)
+  if (!value) throw new Error('Diagnostic dependencies provider is missing')
+  return value
+}

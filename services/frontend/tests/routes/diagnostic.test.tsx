@@ -7,6 +7,7 @@ import {
 import { beforeEach, afterEach, expect, it, vi } from 'vitest'
 import { createQueryClient } from '@/bootstrap/providers'
 import * as audio from '@/shared/lib'
+import { validWavBlob } from '../support/audio'
 import { routeTree } from '@/routeTree.gen'
 
 vi.mock('@/shared/lib', async (importOriginal) => ({
@@ -121,7 +122,9 @@ function server(answerStatus = 200, totalTasks = 3) {
         audio_url: '/task-audio/audio-main/file',
       })
     if (url.endsWith('/task-audio/audio-main/file'))
-      return new Response('wav', { headers: { 'Content-Type': 'audio/wav' } })
+      return new Response(await validWavBlob().arrayBuffer(), {
+        headers: { 'Content-Type': 'audio/wav' },
+      })
     if (url.endsWith('/answers')) {
       if (answerStatus !== 200) {
         answerStatus = 200

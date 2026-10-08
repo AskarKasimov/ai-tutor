@@ -122,6 +122,75 @@ func (q *Queries) ClaimTaskAudio(ctx context.Context, arg ClaimTaskAudioParams) 
 	return i, err
 }
 
+const claimTaskAudioForRepair = `-- name: ClaimTaskAudioForRepair :one
+WITH candidate AS MATERIALIZED (
+    SELECT asset.id, asset.bucket AS previous_bucket
+    FROM audio_assets asset
+    WHERE asset.id = $1
+      AND asset.status = 'ready'
+      AND EXISTS (
+      SELECT 1
+      FROM tasks task
+      JOIN outcomes outcome ON outcome.id = task.outcome_id
+      JOIN constituents constituent ON constituent.id = outcome.constituent_id
+      JOIN competencies competency ON competency.id = constituent.competency_id
+      JOIN competency_map_state state ON state.singleton = true AND state.revision = competency.revision
+      WHERE task.audio_asset_id = asset.id
+      )
+    FOR UPDATE
+), claimed AS (
+    UPDATE audio_assets asset
+    SET status = 'processing',
+        attempts = 1,
+        bucket = NULL,
+        storage_uri = NULL,
+        audio_url = NULL,
+        claim_token = $2,
+        lease_until = now() + $3::double precision * interval '1 second',
+        updated_at = now()
+    FROM candidate
+    WHERE asset.id = candidate.id AND asset.status = 'ready'
+    RETURNING asset.id, asset.instruction, asset.object_key, asset.bucket, asset.storage_uri,
+              asset.audio_url, asset.status, asset.attempts, candidate.previous_bucket
+)
+SELECT id, instruction, object_key, bucket, storage_uri, audio_url, status, attempts, previous_bucket FROM claimed
+`
+
+type ClaimTaskAudioForRepairParams struct {
+	ID           string
+	ClaimToken   *string
+	LeaseSeconds float64
+}
+
+type ClaimTaskAudioForRepairRow struct {
+	ID             string
+	Instruction    string
+	ObjectKey      string
+	Bucket         *string
+	StorageUri     *string
+	AudioUrl       *string
+	Status         string
+	Attempts       int32
+	PreviousBucket *string
+}
+
+func (q *Queries) ClaimTaskAudioForRepair(ctx context.Context, arg ClaimTaskAudioForRepairParams) (ClaimTaskAudioForRepairRow, error) {
+	row := q.db.QueryRow(ctx, claimTaskAudioForRepair, arg.ID, arg.ClaimToken, arg.LeaseSeconds)
+	var i ClaimTaskAudioForRepairRow
+	err := row.Scan(
+		&i.ID,
+		&i.Instruction,
+		&i.ObjectKey,
+		&i.Bucket,
+		&i.StorageUri,
+		&i.AudioUrl,
+		&i.Status,
+		&i.Attempts,
+		&i.PreviousBucket,
+	)
+	return i, err
+}
+
 const completeTaskAudio = `-- name: CompleteTaskAudio :execrows
 UPDATE audio_assets
 SET status = 'ready', bucket = $3, storage_uri = $4, audio_url = $5,

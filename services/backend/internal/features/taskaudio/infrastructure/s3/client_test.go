@@ -3,11 +3,14 @@ package s3
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/features/taskaudio/application"
 )
 
 func TestS3PutStatAndOpenUseBucketKeyAndAssetMetadata(t *testing.T) {
@@ -81,6 +84,47 @@ func TestS3StatDistinguishesMissingFromStorageErrors(t *testing.T) {
 				}
 			} else if err == nil || found {
 				t.Fatalf("status %d treated as missing: found %v err %v", status, found, err)
+			}
+		})
+	}
+}
+
+func TestS3StatIdentifiesDeletedBucketSeparatelyFromMissingObject(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = io.WriteString(w, `<Error><Code>NoSuchBucket</Code><Message>missing</Message></Error>`)
+	}))
+	defer server.Close()
+	storage, err := New(Config{Endpoint: server.URL, Region: "us-east-1", Bucket: "task-audio", AccessKey: "key", SecretKey: "secret", PathStyle: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, found, err := storage.Stat(context.Background(), "legacy-audio", "missing.wav")
+	if found || err != nil {
+		t.Fatalf("missing object stat = found %v err %v", found, err)
+	}
+	exists, err := storage.BucketExists(context.Background(), "legacy-audio")
+	if exists || err != nil {
+		t.Fatalf("deleted bucket check = exists %v err %v", exists, err)
+	}
+}
+
+func TestS3OpenDistinguishesMissingObjectFromStorageFailure(t *testing.T) {
+	for _, status := range []int{http.StatusNotFound, http.StatusForbidden, http.StatusInternalServerError} {
+		t.Run(http.StatusText(status), func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(status) }))
+			defer server.Close()
+			storage, err := New(Config{Endpoint: server.URL, Region: "us-east-1", Bucket: "task-audio", AccessKey: "key", SecretKey: "secret", PathStyle: true})
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, _, err = storage.Open(context.Background(), "task-audio", "missing.wav")
+			if status == http.StatusNotFound {
+				if !errors.Is(err, application.ErrObjectNotFound) {
+					t.Fatalf("404 Open error = %v", err)
+				}
+			} else if err == nil || errors.Is(err, application.ErrObjectNotFound) {
+				t.Fatalf("status %d treated as missing: %v", status, err)
 			}
 		})
 	}

@@ -1,5 +1,6 @@
 import { afterEach, expect, it, vi } from 'vitest'
 import { fetchStoredAudio, transcribeRecording } from '@/shared/api'
+import { validExtensibleWavBlob, validWavBlob } from '../../support/audio'
 
 afterEach(() => vi.unstubAllGlobals())
 
@@ -26,7 +27,7 @@ it('uploads recording as multipart file and reads actual transcription', async (
 })
 
 it('fetches stored WAV from an internal API path with cookie credentials', async () => {
-  const wav = new Blob(['wav'], { type: 'audio/wav' })
+  const wav = await validWavBlob().arrayBuffer()
   const fetchMock = vi
     .fn()
     .mockResolvedValue(
@@ -57,7 +58,7 @@ it('fetches stored WAV from an internal API path with cookie credentials', async
   )
   await expect(
     fetchStoredAudio('/task-audio/audio-1/file', new AbortController().signal),
-  ).rejects.toThrow('content type')
+  ).rejects.toMatchObject({ kind: 'invalid' })
   vi.stubGlobal(
     'fetch',
     vi
@@ -68,7 +69,77 @@ it('fetches stored WAV from an internal API path with cookie credentials', async
   )
   await expect(
     fetchStoredAudio('/task-audio/audio-1/file', new AbortController().signal),
-  ).rejects.toThrow('empty')
+  ).rejects.toMatchObject({ kind: 'invalid' })
+})
+
+it('rejects a structurally broken WAV even when the response MIME is audio/wav', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn().mockResolvedValue(
+      new Response('not a RIFF file', {
+        headers: { 'Content-Type': 'audio/wav' },
+      }),
+    ),
+  )
+  await expect(
+    fetchStoredAudio('/task-audio/audio-1/file', new AbortController().signal),
+  ).rejects.toMatchObject({ kind: 'invalid' })
+})
+
+it('accepts a valid WAVE_FORMAT_EXTENSIBLE PCM file like the backend validator', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn().mockResolvedValue(
+      new Response(await validExtensibleWavBlob().arrayBuffer(), {
+        headers: { 'Content-Type': 'audio/wav' },
+      }),
+    ),
+  )
+  await expect(
+    fetchStoredAudio('/task-audio/audio-1/file', new AbortController().signal),
+  ).resolves.toBeInstanceOf(Blob)
+})
+
+it('preserves HTTP status and API code for stored-audio failures', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi
+      .fn()
+      .mockResolvedValue(
+        Response.json({ code: 'AUDIO_STORAGE_UNAVAILABLE' }, { status: 503 }),
+      ),
+  )
+  await expect(
+    fetchStoredAudio('/task-audio/audio-1/file', new AbortController().signal),
+  ).rejects.toMatchObject({
+    kind: 'http',
+    status: 503,
+    code: 'AUDIO_STORAGE_UNAVAILABLE',
+  })
+})
+
+it('classifies a truncated stored-audio response as a repairable network failure', async () => {
+  const response = new Response(new Uint8Array([1, 2, 3]), {
+    headers: { 'Content-Type': 'audio/wav' },
+  })
+  vi.spyOn(response, 'blob').mockRejectedValue(new TypeError('truncated body'))
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response))
+  await expect(
+    fetchStoredAudio('/task-audio/audio-1/file', new AbortController().signal),
+  ).rejects.toMatchObject({ kind: 'network' })
+})
+
+it('preserves an aborted body read instead of classifying it for repair', async () => {
+  const response = new Response(new Uint8Array([1, 2, 3]), {
+    headers: { 'Content-Type': 'audio/wav' },
+  })
+  vi.spyOn(response, 'blob').mockRejectedValue(
+    new DOMException('stopped', 'AbortError'),
+  )
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response))
+  await expect(
+    fetchStoredAudio('/task-audio/audio-1/file', new AbortController().signal),
+  ).rejects.toMatchObject({ name: 'AbortError' })
 })
 
 it('rejects service failures and empty transcriptions instead of supplying a mock', async () => {

@@ -45,6 +45,24 @@ func (r *Repository) Claim(ctx context.Context, token string, lease time.Duratio
 	return application.Claim{Asset: assetFromRow(row.ID, row.Instruction, row.ObjectKey, row.Bucket, row.StorageUri, row.AudioUrl, row.Status, row.Attempts), Token: token}, true, nil
 }
 
+func (r *Repository) ClaimRepair(ctx context.Context, assetID, token string, lease time.Duration) (application.Claim, bool, error) {
+	if assetID == "" || token == "" || lease <= 0 {
+		return application.Claim{}, false, errors.New("asset id, claim token and positive lease are required")
+	}
+	row, err := r.q.ClaimTaskAudioForRepair(ctx, db.ClaimTaskAudioForRepairParams{
+		ID: assetID, ClaimToken: &token, LeaseSeconds: lease.Seconds(),
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return application.Claim{}, false, nil
+	}
+	if err != nil {
+		return application.Claim{}, false, fmt.Errorf("claim task audio for repair: %w", err)
+	}
+	asset := assetFromRow(row.ID, row.Instruction, row.ObjectKey, row.Bucket, row.StorageUri, row.AudioUrl, row.Status, row.Attempts)
+	asset.Bucket = row.PreviousBucket
+	return application.Claim{Asset: asset, Token: token}, true, nil
+}
+
 func (r *Repository) IsCurrent(ctx context.Context, claim application.Claim) (bool, error) {
 	return r.q.IsCurrentTaskAudio(ctx, db.IsCurrentTaskAudioParams{ID: claim.Asset.ID, ClaimToken: &claim.Token})
 }

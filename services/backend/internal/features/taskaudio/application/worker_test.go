@@ -63,6 +63,19 @@ func (q *fakeQueue) Claim(_ context.Context, token string, _ time.Duration) (Cla
 	asset.Status = audioasset.Processing
 	return Claim{Asset: asset, Token: token}, true, nil
 }
+func (q *fakeQueue) ClaimRepair(_ context.Context, assetID, token string, _ time.Duration) (Claim, bool, error) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	for i, asset := range q.assets {
+		if asset.ID == assetID && asset.Status == audioasset.Ready {
+			q.assets = append(q.assets[:i], q.assets[i+1:]...)
+			asset.Attempts++
+			asset.Status = audioasset.Processing
+			return Claim{Asset: asset, Token: token}, true, nil
+		}
+	}
+	return Claim{}, false, nil
+}
 func (q *fakeQueue) Complete(_ context.Context, claim Claim, bucket, uri, url string) (bool, error) {
 	q.mu.Lock()
 	q.completed = append(q.completed, claim)

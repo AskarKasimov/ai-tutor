@@ -105,6 +105,86 @@ func TestClaimIsExclusiveAndStaleClaimCannotComplete(t *testing.T) {
 	}
 }
 
+func TestClaimRepairSerializesReadyAssetsAndClearsReadyReferences(t *testing.T) {
+	repository, pool, ctx := setupAudioRepository(t)
+	seedCurrentTaskAudio(t, pool, ctx, "asset-repair", "task-repair")
+	initial, ok, err := repository.Claim(ctx, "token-initial", time.Minute)
+	if err != nil || !ok {
+		t.Fatalf("initial claim: ok=%v err=%v", ok, err)
+	}
+	if completed, err := repository.Complete(ctx, initial, "legacy-bucket", "s3://legacy-bucket/key", "/task-audio/asset-repair/file"); err != nil || !completed {
+		t.Fatalf("initial complete: completed=%v err=%v", completed, err)
+	}
+	repair, ok, err := repository.ClaimRepair(ctx, "asset-repair", "token-repair", time.Minute)
+	if err != nil || !ok || repair.Token != "token-repair" {
+		t.Fatalf("repair claim: claim=%+v ok=%v err=%v", repair, ok, err)
+	}
+	if repair.Asset.Bucket == nil || *repair.Asset.Bucket != "legacy-bucket" {
+		t.Fatalf("repair claim lost previous bucket: %v", repair.Asset.Bucket)
+	}
+	var status string
+	var audioURL, bucket *string
+	if err := pool.QueryRow(ctx, `SELECT status,audio_url,bucket FROM audio_assets WHERE id='asset-repair'`).Scan(&status, &audioURL, &bucket); err != nil {
+		t.Fatal(err)
+	}
+	if status != "processing" || audioURL != nil || bucket != nil {
+		t.Fatalf("processing asset retains ready references: status=%s URL=%v bucket=%v", status, audioURL, bucket)
+	}
+	if _, ok, err := repository.ClaimRepair(ctx, "asset-repair", "second-repair", time.Minute); err != nil || ok {
+		t.Fatalf("concurrent repair claim: ok=%v err=%v", ok, err)
+	}
+	if completed, err := repository.Complete(ctx, repair, "new-bucket", "s3://new-bucket/key", "/task-audio/asset-repair/file"); err != nil || !completed {
+		t.Fatalf("repair complete: completed=%v err=%v", completed, err)
+	}
+	asset, err := repository.Get(ctx, "asset-repair")
+	if err != nil || asset.Status != "ready" || asset.Bucket == nil || *asset.Bucket != "new-bucket" {
+		t.Fatalf("repaired asset=%+v err=%v", asset, err)
+	}
+}
+
+func TestClaimRepairRejectsPendingAndStaleSnapshotOnlyAssets(t *testing.T) {
+	repository, pool, ctx := setupAudioRepository(t)
+	seedCurrentTaskAudio(t, pool, ctx, "asset-pending-repair", "task-pending-repair")
+	if _, ok, err := repository.ClaimRepair(ctx, "asset-pending-repair", "token-pending", time.Minute); err != nil || ok {
+		t.Fatalf("pending asset repair claim: ok=%v err=%v", ok, err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE audio_assets SET status='ready',bucket='bucket',storage_uri='s3://bucket/key',audio_url='/task-audio/asset-pending-repair/file' WHERE id='asset-pending-repair'`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE competency_map_state SET revision=2 WHERE singleton=true`); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok, err := repository.ClaimRepair(ctx, "asset-pending-repair", "token-stale", time.Minute); err != nil || ok {
+		t.Fatalf("stale asset repair claim: ok=%v err=%v", ok, err)
+	}
+}
+
+func TestClaimRepairResetsOldAttemptsSoExpiredRepairRecovers(t *testing.T) {
+	repository, pool, ctx := setupAudioRepository(t)
+	seedCurrentTaskAudio(t, pool, ctx, "asset-repair-expired", "task-repair-expired")
+	initial, ok, err := repository.Claim(ctx, "token-initial-expired", time.Minute)
+	if err != nil || !ok {
+		t.Fatalf("initial claim: ok=%v err=%v", ok, err)
+	}
+	if completed, err := repository.Complete(ctx, initial, "bucket", "s3://bucket/key", "/task-audio/asset-repair-expired/file"); err != nil || !completed {
+		t.Fatalf("initial complete: completed=%v err=%v", completed, err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE audio_assets SET attempts=5 WHERE id='asset-repair-expired'`); err != nil {
+		t.Fatal(err)
+	}
+	repair, ok, err := repository.ClaimRepair(ctx, "asset-repair-expired", "token-repair-expired", time.Minute)
+	if err != nil || !ok || repair.Asset.Attempts != 1 {
+		t.Fatalf("repair claim attempts=%d ok=%v err=%v", repair.Asset.Attempts, ok, err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE audio_assets SET lease_until=now()-interval '1 second' WHERE id='asset-repair-expired'`); err != nil {
+		t.Fatal(err)
+	}
+	recovered, ok, err := repository.Claim(ctx, "token-recovered-repair", time.Minute)
+	if err != nil || !ok || recovered.Asset.Status != "processing" || recovered.Asset.Attempts != 2 {
+		t.Fatalf("expired repair did not recover: asset=%+v ok=%v err=%v", recovered.Asset, ok, err)
+	}
+}
+
 func TestClaimRejectsStaleTaskAndExpiryCancelsIt(t *testing.T) {
 	repository, pool, ctx := setupAudioRepository(t)
 	seedCurrentTaskAudio(t, pool, ctx, "asset-stale", "task-stale")

@@ -49,6 +49,11 @@ export type DiagnosticDependencies = {
       taskId: string,
       signal: AbortSignal,
     ): Promise<DiagnosticAudioMetadata>
+    regenerateDiagnosticAudio(
+      sessionId: string,
+      taskId: string,
+      signal: AbortSignal,
+    ): Promise<DiagnosticAudioMetadata>
     fetchDiagnosticAudioFile(
       audioUrl: string,
       signal: AbortSignal,

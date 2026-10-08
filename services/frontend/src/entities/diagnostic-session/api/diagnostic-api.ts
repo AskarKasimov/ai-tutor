@@ -246,6 +246,26 @@ export async function readDiagnosticAudio(
     throw new DiagnosticApiError(0, 'INVALID_RESPONSE')
   return metadata
 }
+export async function regenerateDiagnosticAudio(
+  sessionId: string,
+  taskId: string,
+  signal: AbortSignal,
+): Promise<DiagnosticAudioMetadata> {
+  const response = await request(
+    `/diagnostic-sessions/${encodeURIComponent(sessionId)}/current/audio/regenerate`,
+    signal,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ variant_task_id: taskId }),
+    },
+    300_000,
+  )
+  const metadata = await parse(response, diagnosticAudioSchema)
+  if (metadata.variant_task_id !== taskId || metadata.status !== 'ready')
+    throw new DiagnosticApiError(0, 'INVALID_RESPONSE')
+  return metadata
+}
 export async function fetchDiagnosticAudioFile(
   audioUrl: string,
   signal: AbortSignal,

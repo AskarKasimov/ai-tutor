@@ -14,6 +14,7 @@ type Claim struct {
 
 type Queue interface {
 	Claim(ctx context.Context, token string, lease time.Duration) (Claim, bool, error)
+	ClaimRepair(ctx context.Context, assetID, token string, lease time.Duration) (Claim, bool, error)
 	IsCurrent(ctx context.Context, claim Claim) (bool, error)
 	Cancel(ctx context.Context, claim Claim) (bool, error)
 	Complete(ctx context.Context, claim Claim, bucket, storageURI, audioURL string) (bool, error)

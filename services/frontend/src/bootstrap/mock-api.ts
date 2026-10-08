@@ -150,6 +150,23 @@ export async function mockApiFetch(
       audio_url: `/task-audio/${audioId}/file`,
     })
   }
+  if (
+    method === 'POST' &&
+    /\/diagnostic-sessions\/[^/]+\/current\/audio\/regenerate$/.test(path)
+  ) {
+    const taskId = body.variant_task_id
+    if (typeof taskId !== 'string' || !taskId)
+      return error(422, 'VALIDATION_ERROR', 'invalid')
+    let hash = 2166136261
+    for (const char of taskId)
+      hash = Math.imul(hash ^ char.charCodeAt(0), 16777619)
+    const audioId = `demo_${(hash >>> 0).toString(16)}`
+    return json({
+      variant_task_id: taskId,
+      status: 'ready',
+      audio_url: `/task-audio/${audioId}/file`,
+    })
+  }
   if (method === 'GET' && /\/task-audio\/[A-Za-z0-9_-]+\/file$/.test(path)) {
     return new Response(createDemoAudio(), {
       headers: { 'Content-Type': 'audio/wav' },

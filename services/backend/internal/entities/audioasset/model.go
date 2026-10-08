@@ -9,6 +9,13 @@ import (
 )
 
 var ErrNotFound = errors.New("audio asset not found")
+var ErrNotRepairable = errors.New("audio asset cannot be repaired in its current state")
+var ErrStorageUnavailable = errors.New("audio storage unavailable")
+var ErrGenerationFailed = errors.New("audio regeneration failed")
+
+type Regenerator interface {
+	Regenerate(context.Context, string) (Asset, error)
+}
 
 type MetadataReader interface {
 	Metadata(context.Context, string) (Asset, error)

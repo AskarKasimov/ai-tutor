@@ -5,6 +5,13 @@ export type Recording = {
   dispose: () => void
 }
 
+export class AudioPlaybackError extends Error {
+  constructor(readonly kind: 'decode' | 'source') {
+    super(`Audio ${kind} failed`)
+    this.name = 'AudioPlaybackError'
+  }
+}
+
 export async function startRecording(): Promise<Recording> {
   if (
     !navigator.mediaDevices?.getUserMedia ||
@@ -55,7 +62,7 @@ export async function startRecording(): Promise<Recording> {
 export async function playQuestion(
   blob: Blob,
   onEnd: () => void,
-  onError: () => void,
+  onError: (error: AudioPlaybackError) => void,
 ) {
   const source = createAudioUrl(blob)
   const player = new Audio(source.url)
@@ -71,14 +78,21 @@ export async function playQuestion(
     onEnd()
   }
   player.onerror = () => {
+    const code = player.error?.code
     dispose()
-    onError()
+    onError(
+      new AudioPlaybackError(
+        code === MediaError.MEDIA_ERR_DECODE ? 'decode' : 'source',
+      ),
+    )
   }
   try {
     await player.play()
     return dispose
   } catch (error) {
     dispose()
+    if (error instanceof DOMException && error.name === 'NotSupportedError')
+      throw new AudioPlaybackError('source')
     throw error
   }
 }

@@ -3,6 +3,7 @@ import {
   createSubmission,
   DiagnosticApiError,
   readDiagnosticAudio,
+  regenerateDiagnosticAudio,
   readDiagnostic,
   submitDiagnostic,
 } from '@/entities/diagnostic-session'
@@ -26,6 +27,28 @@ afterEach(() => {
   vi.useRealTimers()
   vi.restoreAllMocks()
   vi.unstubAllGlobals()
+})
+
+it('regenerates only the expected task and returns ready metadata', async () => {
+  const response = {
+    variant_task_id: 't1',
+    status: 'ready',
+    audio_url: '/task-audio/audio-1/file',
+  }
+  const fetchMock = vi.fn().mockResolvedValue(Response.json(response))
+  vi.stubGlobal('fetch', fetchMock)
+  await expect(
+    regenerateDiagnosticAudio('s1', 't1', new AbortController().signal),
+  ).resolves.toEqual(response)
+  expect(fetchMock.mock.calls[0][0]).toBe(
+    '/api/v1/diagnostic-sessions/s1/current/audio/regenerate',
+  )
+  expect(fetchMock.mock.calls[0][1].method).toBe('POST')
+  expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({
+    variant_task_id: 't1',
+  })
+  expect(fetchMock.mock.calls[0][1].credentials).toBe('include')
+  expect(fetchMock.mock.calls[0][1].signal.aborted).toBe(false)
 })
 
 it('reads task audio metadata with the expected task ID and accepts only ready URLs', async () => {

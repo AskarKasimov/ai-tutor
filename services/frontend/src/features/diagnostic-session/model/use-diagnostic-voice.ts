@@ -1,5 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
-import { createAudioUrl, playQuestion, startRecording } from '@/shared/lib'
+import {
+  AudioPlaybackError,
+  createAudioUrl,
+  playQuestion,
+  startRecording,
+} from '@/shared/lib'
+import { StoredAudioError } from '@/shared/api'
 import type { Recording } from '@/shared/lib'
 import type {
   DiagnosticProgress,
@@ -9,7 +15,7 @@ import { DiagnosticApiError } from '@/entities/diagnostic-session'
 import type { DiagnosticSubmission } from '@/entities/diagnostic-session'
 import { useDiagnosticDependencies } from './dependencies-context'
 import { useDiagnosticAudioQuery } from './use-voice-operations'
-import { useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { diagnosticSessionQueryKeys } from './query-keys'
 
 type Stage =
@@ -45,6 +51,13 @@ export function useDiagnosticVoice(
     sessionId,
     task?.variant_task_id,
   )
+  const repair = useMutation({
+    mutationKey: ['diagnostic-audio-regenerate', userId, sessionId],
+    retry: false,
+    gcTime: 0,
+    mutationFn: ({ taskId, signal }: { taskId: string; signal: AbortSignal }) =>
+      diagnostic.regenerateDiagnosticAudio(sessionId, taskId, signal),
+  })
   const recording = useRef<Recording | null>(null)
   const pending = useRef<{
     input: DiagnosticSubmission
@@ -54,6 +67,7 @@ export function useDiagnosticVoice(
   const answerRequest = useRef<AbortController | null>(null)
   const speechRequest = useRef<AbortController | null>(null)
   const player = useRef<(() => void) | null>(null)
+  const playerGeneration = useRef(0)
   const generation = useRef(0)
   const locked = useRef(false)
   const started = useRef(0)
@@ -131,85 +145,215 @@ export function useDiagnosticVoice(
     setPendingHint(false)
     setCancelledHint(false)
     setSpeech('loading')
-    try {
-      const metadataResult = await audioQuery.refetch({ throwOnError: true })
-      const metadata = metadataResult.data
-      if (
-        request.signal.aborted ||
-        generation.current !== currentGeneration ||
-        currentContext.current.taskId !== taskId ||
-        currentContext.current.sessionId !== sessionId ||
-        currentContext.current.userId !== userId
+    let repairAttempted = false
+    let repairPromise: Promise<void> | null = null
+    const stillCurrent = () =>
+      !request.signal.aborted &&
+      generation.current === currentGeneration &&
+      currentContext.current.taskId === taskId &&
+      currentContext.current.sessionId === sessionId &&
+      currentContext.current.userId === userId
+    const audioKey = (audioUrl: string) =>
+      diagnosticSessionQueryKeys.storedTaskAudio(
+        userId,
+        sessionId,
+        taskId,
+        audioUrl,
       )
-        return
-      if (!metadata) throw new Error('Diagnostic audio metadata is empty')
-      if (metadata.status === 'pending' || metadata.status === 'processing') {
+    const canRepair = (error: unknown) =>
+      error instanceof StoredAudioError &&
+      (error.kind === 'invalid' ||
+        error.kind === 'network' ||
+        error.status === 404 ||
+        error.status >= 500)
+    let metadata:
+      Awaited<ReturnType<typeof diagnostic.readDiagnosticAudio>> | undefined
+    let repairBadMetadata = false
+    try {
+      try {
+        const metadataResult = await audioQuery.refetch({ throwOnError: true })
+        metadata = metadataResult.data
+      } catch (error) {
+        repairBadMetadata =
+          error instanceof DiagnosticApiError &&
+          ((error.status === 503 &&
+            error.code === 'AUDIO_STORAGE_UNAVAILABLE') ||
+            (error.status === 0 && error.code === 'INVALID_RESPONSE'))
+        if (!repairBadMetadata) throw error
+      }
+      if (!stillCurrent()) return
+      if (!repairBadMetadata && !metadata)
+        throw new Error('Diagnostic audio metadata is empty')
+      if (
+        metadata &&
+        (metadata.status === 'pending' || metadata.status === 'processing')
+      ) {
         speechRequest.current = null
         setSpeech('idle')
         setPendingHint(true)
         return
       }
-      if (metadata.status === 'cancelled') {
+      if (metadata?.status === 'cancelled') {
         speechRequest.current = null
         setSpeech('idle')
         setCancelledHint(true)
         return
       }
-      if (metadata.status !== 'ready' || !metadata.audio_url) {
+      if (
+        !repairBadMetadata &&
+        (metadata?.status !== 'ready' || !metadata.audio_url)
+      ) {
         speechRequest.current = null
         setSpeech('idle')
         setSpeechError(true)
         return
       }
-      const blob = await cache.fetchQuery({
-        queryKey: diagnosticSessionQueryKeys.storedTaskAudio(
-          userId,
-          sessionId,
+      const fetchBlob = (url: string) =>
+        cache.fetchQuery({
+          queryKey: audioKey(url),
+          queryFn: ({ signal }) =>
+            diagnostic.fetchDiagnosticAudioFile(url, signal),
+          staleTime: Infinity,
+        })
+      const playBlob = async (
+        blob: Blob,
+        url: string,
+        isRepairReplay = false,
+      ): Promise<void> => {
+        if (!stillCurrent()) return
+        const thisPlayer = ++playerGeneration.current
+        let finished = false
+        const finish = () => {
+          finished = true
+          if (!stillCurrent() || thisPlayer !== playerGeneration.current) return
+          speechRequest.current = null
+          player.current = null
+          setSpeech('idle')
+        }
+        const recover = (reason: unknown) => {
+          if (
+            !(reason instanceof AudioPlaybackError) ||
+            (reason.kind !== 'decode' && reason.kind !== 'source') ||
+            !stillCurrent()
+          )
+            return Promise.resolve()
+          if (repairPromise) return repairPromise
+          if (isRepairReplay || repairAttempted) {
+            const error = new Error(
+              'Stored audio is still unreadable after repair',
+            )
+            onError(error)
+            setSpeechError(true)
+            setSpeech('idle')
+            speechRequest.current = null
+            return Promise.resolve()
+          }
+          repairAttempted = true
+          setSpeech('loading')
+          repairPromise = (async () => {
+            cache.removeQueries({ queryKey: audioKey(url), exact: true })
+            const repaired = await repair.mutateAsync({
+              taskId,
+              signal: request.signal,
+            })
+            if (!stillCurrent()) return
+            if (repaired.status !== 'ready' || !repaired.audio_url)
+              throw new Error('Audio repair did not return ready metadata')
+            const repairedURL = repaired.audio_url
+            cache.removeQueries({
+              queryKey: audioKey(repairedURL),
+              exact: true,
+            })
+            const repairedBlob = await fetchBlob(repairedURL)
+            if (!stillCurrent()) return
+            await playBlob(repairedBlob, repairedURL, true)
+          })()
+          const currentRepair = repairPromise
+          void currentRepair.then(
+            () => {
+              if (repairPromise === currentRepair) repairPromise = null
+            },
+            (error: unknown) => {
+              if (repairPromise === currentRepair) repairPromise = null
+              if (!stillCurrent()) return
+              onError(error)
+              setSpeechError(true)
+              setSpeech('idle')
+              speechRequest.current = null
+            },
+          )
+          return repairPromise
+        }
+        try {
+          const dispose = await playQuestion(blob, finish, (error) => {
+            if (thisPlayer !== playerGeneration.current || !stillCurrent())
+              return
+            finished = true
+            player.current = null
+            void recover(error)
+          })
+          if (!stillCurrent() || thisPlayer !== playerGeneration.current) {
+            dispose()
+            return
+          }
+          if (!finished) {
+            player.current = dispose
+            setSpeech('playing')
+          }
+        } catch (error) {
+          if (thisPlayer !== playerGeneration.current || !stillCurrent()) return
+          if (
+            error instanceof DOMException &&
+            error.name === 'NotAllowedError'
+          ) {
+            finish()
+            throw error
+          }
+          if (error instanceof AudioPlaybackError) {
+            await recover(error)
+            return
+          }
+          throw error
+        }
+      }
+      if (repairBadMetadata) {
+        repairAttempted = true
+        const repaired = await repair.mutateAsync({
           taskId,
-          metadata.audio_url,
-        ),
-        queryFn: ({ signal }) =>
-          diagnostic.fetchDiagnosticAudioFile(metadata.audio_url!, signal),
-        staleTime: Infinity,
-      })
-      if (
-        request.signal.aborted ||
-        generation.current !== currentGeneration ||
-        currentContext.current.taskId !== taskId ||
-        currentContext.current.sessionId !== sessionId ||
-        currentContext.current.userId !== userId
-      )
-        return
-      if (!blob) throw new Error('Stored audio is empty')
-      let finished = false
-      const finish = () => {
-        finished = true
-        if (
-          request.signal.aborted ||
-          generation.current !== currentGeneration ||
-          currentContext.current.taskId !== taskId
-        )
-          return
-        speechRequest.current = null
-        player.current = null
-        setSpeech('idle')
-      }
-      const dispose = await playQuestion(blob, finish, () => {
-        finish()
-        if (!request.signal.aborted) setSpeechError(true)
-      })
-      if (
-        request.signal.aborted ||
-        generation.current !== currentGeneration ||
-        currentContext.current.taskId !== taskId
-      ) {
-        dispose()
+          signal: request.signal,
+        })
+        if (!stillCurrent()) return
+        if (repaired.status !== 'ready' || !repaired.audio_url)
+          throw new Error('Audio repair did not return ready metadata')
+        const repairedBlob = await fetchBlob(repaired.audio_url)
+        if (!stillCurrent()) return
+        await playBlob(repairedBlob, repaired.audio_url, true)
         return
       }
-      if (!finished) {
-        player.current = dispose
-        setSpeech('playing')
+      let blob: Blob
+      try {
+        blob = await fetchBlob(metadata!.audio_url!)
+      } catch (error) {
+        if (!canRepair(error) || repairAttempted) throw error
+        repairAttempted = true
+        cache.removeQueries({
+          queryKey: audioKey(metadata!.audio_url!),
+          exact: true,
+        })
+        const repaired = await repair.mutateAsync({
+          taskId,
+          signal: request.signal,
+        })
+        if (!stillCurrent()) return
+        if (repaired.status !== 'ready' || !repaired.audio_url)
+          throw new Error('Audio repair did not return ready metadata')
+        blob = await fetchBlob(repaired.audio_url)
+        if (!stillCurrent()) return
+        await playBlob(blob, repaired.audio_url, true)
+        return
       }
+      if (!stillCurrent()) return
+      await playBlob(blob, metadata!.audio_url!)
     } catch (error) {
       if (!request.signal.aborted) {
         speechRequest.current = null

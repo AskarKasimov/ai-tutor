@@ -16,6 +16,19 @@ type audioReaderStub struct {
 	calls int
 }
 
+type audioRegeneratorStub struct {
+	asset audioasset.Asset
+	err   error
+	id    string
+	calls int
+}
+
+func (r *audioRegeneratorStub) Regenerate(_ context.Context, id string) (audioasset.Asset, error) {
+	r.calls++
+	r.id = id
+	return r.asset, r.err
+}
+
 func (r *audioReaderStub) Metadata(_ context.Context, id string) (audioasset.Asset, error) {
 	r.calls++
 	if r.err != nil {
@@ -109,5 +122,38 @@ func TestCurrentAudioPreservesCompletedSessionConflict(t *testing.T) {
 	var appErr *fault.Error
 	if !errors.As(err, &appErr) || appErr.Code != "DIAGNOSTIC_SESSION_COMPLETED" {
 		t.Fatalf("completed session audio error = %v", err)
+	}
+}
+
+func TestRegenerateCurrentAudioChecksSessionPositionAndReturnsReadyMetadata(t *testing.T) {
+	service, _, _, variants := newTestService()
+	assetID, audioURL := "audio-1", "/task-audio/audio-1/file"
+	variants.value.Competencies[0].Tasks[0].Task.AudioAssetID = &assetID
+	regenerator := &audioRegeneratorStub{asset: audioasset.Asset{ID: assetID, Status: audioasset.Ready, AudioURL: &audioURL}}
+	service.WithAudioRegenerator(regenerator)
+	progress := service.start(t)
+	got, err := service.RegenerateCurrentAudio(context.Background(), "owner-1", progress.SessionID, progress.Current.ID)
+	if err != nil || got.Status != audioasset.Ready || got.AudioURL == nil || *got.AudioURL != audioURL || got.VariantTaskID != progress.Current.ID {
+		t.Fatalf("regenerated metadata=%#v err=%v", got, err)
+	}
+	if regenerator.calls != 1 || regenerator.id != assetID {
+		t.Fatalf("regenerator calls=%d asset=%q", regenerator.calls, regenerator.id)
+	}
+}
+
+func TestRegenerateCurrentAudioRejectsWrongTaskAndForeignSessionBeforeRepair(t *testing.T) {
+	service, _, _, variants := newTestService()
+	assetID := "audio-1"
+	variants.value.Competencies[0].Tasks[0].Task.AudioAssetID = &assetID
+	regenerator := &audioRegeneratorStub{}
+	service.WithAudioRegenerator(regenerator)
+	progress := service.start(t)
+	for _, tc := range []struct{ owner, task string }{{"owner-1", "stale-task"}, {"owner-2", progress.Current.ID}} {
+		if _, err := service.RegenerateCurrentAudio(context.Background(), tc.owner, progress.SessionID, tc.task); err == nil {
+			t.Fatalf("accepted owner=%s task=%s", tc.owner, tc.task)
+		}
+	}
+	if regenerator.calls != 0 {
+		t.Fatalf("invalid request called regenerator %d times", regenerator.calls)
 	}
 }

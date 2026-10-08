@@ -93,12 +93,31 @@ func (c *Client) EnsureBucket(ctx context.Context) error {
 func (c *Client) Stat(ctx context.Context, bucket, key string) (application.ObjectInfo, bool, error) {
 	output, err := c.client.HeadObject(ctx, &s3.HeadObjectInput{Bucket: aws.String(bucket), Key: aws.String(key)})
 	if err != nil {
+		if isHeadObjectBucketMissing(err) {
+			return application.ObjectInfo{}, false, fmt.Errorf("head S3 object: %w", application.ErrBucketNotFound)
+		}
 		if isObjectMissing(err) {
 			return application.ObjectInfo{}, false, nil
 		}
 		return application.ObjectInfo{}, false, fmt.Errorf("head S3 object: %w", err)
 	}
 	return objectInfo(output.ContentLength, output.ContentType, output.Metadata), true, nil
+}
+
+func (c *Client) BucketExists(ctx context.Context, bucket string) (bool, error) {
+	_, err := c.client.HeadBucket(ctx, &s3.HeadBucketInput{Bucket: aws.String(bucket)})
+	if err == nil {
+		return true, nil
+	}
+	if isBucketMissing(err) {
+		return false, nil
+	}
+	return false, fmt.Errorf("check S3 bucket %q: %w", bucket, err)
+}
+
+func isHeadObjectBucketMissing(err error) bool {
+	var apiError smithy.APIError
+	return errors.As(err, &apiError) && apiError.ErrorCode() == "NoSuchBucket"
 }
 
 func (c *Client) Put(ctx context.Context, bucket, key, assetID string, data []byte) error {
@@ -116,6 +135,12 @@ func (c *Client) Put(ctx context.Context, bucket, key, assetID string, data []by
 func (c *Client) Open(ctx context.Context, bucket, key string) (io.ReadCloser, application.ObjectInfo, error) {
 	output, err := c.client.GetObject(ctx, &s3.GetObjectInput{Bucket: aws.String(bucket), Key: aws.String(key)})
 	if err != nil {
+		if isHeadObjectBucketMissing(err) {
+			return nil, application.ObjectInfo{}, fmt.Errorf("get S3 object: %w", application.ErrBucketNotFound)
+		}
+		if isObjectMissing(err) {
+			return nil, application.ObjectInfo{}, fmt.Errorf("get S3 object: %w", application.ErrObjectNotFound)
+		}
 		return nil, application.ObjectInfo{}, fmt.Errorf("get S3 object: %w", err)
 	}
 	return output.Body, objectInfo(output.ContentLength, output.ContentType, output.Metadata), nil

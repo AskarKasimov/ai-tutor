@@ -66,6 +66,7 @@ export function createAppDependencies(): AppDependencies {
       submitDiagnostic: diagnostic.submitDiagnostic,
       createSubmission: diagnostic.createSubmission,
       readDiagnosticAudio: diagnostic.readDiagnosticAudio,
+      regenerateDiagnosticAudio: diagnostic.regenerateDiagnosticAudio,
       fetchDiagnosticAudioFile: diagnostic.fetchDiagnosticAudioFile,
     },
     voice: {

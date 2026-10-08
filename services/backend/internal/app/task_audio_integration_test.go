@@ -215,6 +215,95 @@ func TestTaskAudioIsSynthesizedOnceAndServedFromStorage(t *testing.T) {
 	}
 }
 
+func TestRegenerateCurrentAudioRepairsMissingObjectSynchronously(t *testing.T) {
+	f := newFixture(t)
+	var synthCalls atomic.Int32
+	tts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		synthCalls.Add(1)
+		var request map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil || request["text"] != "Назовите ответ" {
+			t.Errorf("repair used unexpected TTS text: %v err=%v", request, err)
+		}
+		w.Header().Set("Content-Type", "audio/wav")
+		_, _ = w.Write(wavBytes())
+	}))
+	defer tts.Close()
+	cfg := f.app.cfg
+	cfg.TTSURL = tts.URL
+	a, err := New(cfg, f.pool, zap.NewNop())
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.now = f.app.now
+	f.app, f.handler = a, a.Handler()
+
+	access, _, _ := f.register(t, "audio-repair@example.edu")
+	assets := importCurrentTaskAudios(t, f, "repair-map.csv", variantMapCSV(t))
+	if len(assets) == 0 {
+		t.Fatal("import created no tasks")
+	}
+	variantRequest := httptest.NewRequest(http.MethodPost, "https://api.example/variants", strings.NewReader(""))
+	variantRequest.Header.Set("Idempotency-Key", "audio-repair-variant")
+	variantRequest.AddCookie(access)
+	variantResponse := httptest.NewRecorder()
+	f.handler.ServeHTTP(variantResponse, variantRequest)
+	if variantResponse.Code != http.StatusCreated {
+		t.Fatalf("create variant: %d %s", variantResponse.Code, variantResponse.Body.String())
+	}
+	var v struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(variantResponse.Body.Bytes(), &v); err != nil || v.ID == "" {
+		t.Fatalf("variant response: %s %v", variantResponse.Body.String(), err)
+	}
+	startBody, _ := json.Marshal(diagnostichttp.StartRequest{VariantID: v.ID})
+	startRequest := httptest.NewRequest(http.MethodPost, "https://api.example/diagnostic-sessions", bytes.NewReader(startBody))
+	startRequest.Header.Set("Content-Type", "application/json")
+	startRequest.Header.Set("Idempotency-Key", "audio-repair-session")
+	startRequest.AddCookie(access)
+	start := httptest.NewRecorder()
+	f.handler.ServeHTTP(start, startRequest)
+	if start.Code != http.StatusCreated {
+		t.Fatalf("start: %d %s", start.Code, start.Body.String())
+	}
+	var progress struct {
+		SessionID string `json:"session_id"`
+		Current   struct {
+			ID string `json:"variant_task_id"`
+		} `json:"current"`
+	}
+	if err := json.Unmarshal(start.Body.Bytes(), &progress); err != nil {
+		t.Fatal(err)
+	}
+	var audioID string
+	if err := f.pool.QueryRow(context.Background(), `SELECT audio_asset_id FROM variant_tasks WHERE id=$1`, progress.Current.ID).Scan(&audioID); err != nil || audioID == "" {
+		t.Fatalf("current task audio id=%q err=%v", audioID, err)
+	}
+	var asset taskAudioTestAsset
+	for _, candidate := range assets {
+		if candidate.id == audioID {
+			asset = candidate
+			break
+		}
+	}
+	if asset.id == "" {
+		t.Fatalf("current audio %q was not imported", audioID)
+	}
+	keepOnlyQueuedAudio(t, f, assets, asset.id)
+	if _, err := f.pool.Exec(context.Background(), `UPDATE audio_assets SET status='ready',bucket=$2,storage_uri=$3,audio_url=$4 WHERE id=$1`, asset.id, cfg.S3Bucket, "s3://"+cfg.S3Bucket+"/"+asset.key, "/task-audio/"+asset.id+"/file"); err != nil {
+		t.Fatal(err)
+	}
+	body, _ := json.Marshal(diagnostichttp.AudioRegenerationRequest{VariantTaskID: progress.Current.ID})
+	response := f.request(http.MethodPost, "/diagnostic-sessions/"+progress.SessionID+"/current/audio/regenerate", string(body), access)
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"status":"ready"`) || synthCalls.Load() != 1 {
+		t.Fatalf("repair response=%d %s TTS calls=%d", response.Code, response.Body.String(), synthCalls.Load())
+	}
+	file := f.request(http.MethodGet, "/task-audio/"+asset.id+"/file", "", access)
+	if file.Code != http.StatusOK || !strings.HasPrefix(file.Body.String(), "RIFF") || synthCalls.Load() != 1 {
+		t.Fatalf("file after repair=%d bytes=%d TTS calls=%d", file.Code, file.Body.Len(), synthCalls.Load())
+	}
+}
+
 func TestTaskAudioWorkerRecoversUploadedObjectAndRetriesHeadFailure(t *testing.T) {
 	f := newFixture(t)
 	assets := importCurrentTaskAudios(t, f, "recovery-map.csv", variantMapCSV(t))

@@ -447,6 +447,14 @@ components:
         - status
         - variant_task_id
       type: object
+    diagnostichttp.AudioRegenerationRequest:
+      additionalProperties: false
+      properties:
+        variant_task_id:
+          type: string
+      required:
+        - variant_task_id
+      type: object
     diagnostichttp.CriterionResultResponse:
       additionalProperties: false
       properties:
@@ -1987,6 +1995,70 @@ paths:
       security:
         - accessCookie: []
       summary: Прочитать состояние озвучки текущего задания
+      tags:
+        - Диагностика
+      x-implementation: implemented
+  /diagnostic-sessions/{id}/current/audio/regenerate:
+    post:
+      description: Проверяет сохранённый объект и при необходимости синхронно восстанавливает только сохранённую инструкцию задания.
+      parameters:
+        - description: ID сессии
+          in: path
+          name: id
+          required: true
+          schema:
+            maxLength: 128
+            minLength: 1
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/diagnostichttp.AudioRegenerationRequest'
+              description: Текущее задание
+              summary: request
+        description: Текущее задание
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/diagnostichttp.AudioMetadataResponse'
+          description: OK
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unauthorized
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Not Found
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Conflict
+        "422":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unprocessable Entity
+        "503":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Service Unavailable
+      security:
+        - accessCookie: []
+      summary: Восстановить озвучку текущего задания
       tags:
         - Диагностика
       x-implementation: implemented

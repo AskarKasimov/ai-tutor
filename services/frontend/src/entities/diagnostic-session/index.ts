@@ -14,6 +14,7 @@ export {
   createVariant,
   fetchDiagnosticAudioFile,
   readDiagnosticAudio,
+  regenerateDiagnosticAudio,
   readDiagnostic,
   readDiagnosticResult,
   startDiagnostic,

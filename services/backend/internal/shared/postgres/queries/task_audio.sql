@@ -96,6 +96,39 @@ WHERE asset.id = candidate.id
 RETURNING asset.id, asset.instruction, asset.object_key, asset.bucket, asset.storage_uri,
           asset.audio_url, asset.status, asset.attempts;
 
+-- name: ClaimTaskAudioForRepair :one
+WITH candidate AS MATERIALIZED (
+    SELECT asset.id, asset.bucket AS previous_bucket
+    FROM audio_assets asset
+    WHERE asset.id = sqlc.arg(id)
+      AND asset.status = 'ready'
+      AND EXISTS (
+      SELECT 1
+      FROM tasks task
+      JOIN outcomes outcome ON outcome.id = task.outcome_id
+      JOIN constituents constituent ON constituent.id = outcome.constituent_id
+      JOIN competencies competency ON competency.id = constituent.competency_id
+      JOIN competency_map_state state ON state.singleton = true AND state.revision = competency.revision
+      WHERE task.audio_asset_id = asset.id
+      )
+    FOR UPDATE
+), claimed AS (
+    UPDATE audio_assets asset
+    SET status = 'processing',
+        attempts = 1,
+        bucket = NULL,
+        storage_uri = NULL,
+        audio_url = NULL,
+        claim_token = sqlc.arg(claim_token),
+        lease_until = now() + sqlc.arg(lease_seconds)::double precision * interval '1 second',
+        updated_at = now()
+    FROM candidate
+    WHERE asset.id = candidate.id AND asset.status = 'ready'
+    RETURNING asset.id, asset.instruction, asset.object_key, asset.bucket, asset.storage_uri,
+              asset.audio_url, asset.status, asset.attempts, candidate.previous_bucket
+)
+SELECT * FROM claimed;
+
 -- name: IsCurrentTaskAudio :one
 SELECT EXISTS (
     SELECT 1

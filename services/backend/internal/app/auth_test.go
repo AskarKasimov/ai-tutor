@@ -88,6 +88,10 @@ func newFixtureWithConfig(t *testing.T, cfg Config) *fixture {
 		f.s3Mu.Unlock()
 		switch r.Method {
 		case http.MethodHead:
+			if r.URL.Path == "/task-audio-test" {
+				w.WriteHeader(http.StatusOK)
+				return
+			}
 			if headStatus != 0 {
 				w.WriteHeader(headStatus)
 				return

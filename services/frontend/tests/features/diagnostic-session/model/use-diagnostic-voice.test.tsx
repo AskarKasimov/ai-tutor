@@ -6,6 +6,8 @@ import * as audio from '@/shared/lib'
 import type { Recording } from '@/shared/lib'
 import type { DiagnosticTask } from '@/entities/diagnostic-session'
 import { useDiagnosticVoice } from '@/features/diagnostic-session'
+import { validWavBlob } from '../../../support/audio'
+import { AudioPlaybackError } from '@/shared/lib'
 
 const task: DiagnosticTask = {
   variant_task_id: 't1',
@@ -124,7 +126,9 @@ it('cancels instruction generation when recording starts and never plays its lat
   })
   await act(async () => {
     resolveSpeech(
-      new Response('wav', { headers: { 'Content-Type': 'audio/wav' } }),
+      new Response(validWavBlob(), {
+        headers: { 'Content-Type': 'audio/wav' },
+      }),
     )
     await speaking
   })
@@ -136,7 +140,7 @@ it('cancels instruction generation when recording starts and never plays its lat
 it('ends instruction playback without holding a stale player after it finishes', async () => {
   vi.stubGlobal(
     'fetch',
-    vi.fn((url: string) =>
+    vi.fn(async (url: string) =>
       Promise.resolve(
         url.includes('/current/audio')
           ? Response.json({
@@ -144,7 +148,9 @@ it('ends instruction playback without holding a stale player after it finishes',
               status: 'ready',
               audio_url: '/task-audio/audio-1/file',
             })
-          : new Response('wav', { headers: { 'Content-Type': 'audio/wav' } }),
+          : new Response(await validWavBlob().arrayBuffer(), {
+              headers: { 'Content-Type': 'audio/wav' },
+            }),
       ),
     ),
   )
@@ -173,7 +179,7 @@ it('reads metadata and the saved file without posting text for TTS', async () =>
   const urls: string[] = []
   vi.stubGlobal(
     'fetch',
-    vi.fn((url: string) => {
+    vi.fn(async (url: string) => {
       urls.push(url)
       if (url.includes('/current/audio'))
         return Promise.resolve(
@@ -183,9 +189,9 @@ it('reads metadata and the saved file without posting text for TTS', async () =>
             audio_url: '/task-audio/audio-1/file',
           }),
         )
-      return Promise.resolve(
-        new Response('saved wav', { headers: { 'Content-Type': 'audio/wav' } }),
-      )
+      return new Response(await validWavBlob().arrayBuffer(), {
+        headers: { 'Content-Type': 'audio/wav' },
+      })
     }),
   )
   const play = vi.spyOn(audio, 'playQuestion').mockResolvedValue(vi.fn())
@@ -203,11 +209,281 @@ it('reads metadata and the saved file without posting text for TTS', async () =>
   expect(play).toHaveBeenCalledTimes(1)
 })
 
+it('repairs a missing stored object once and plays the downloaded replacement', async () => {
+  const urls: string[] = []
+  let fileReads = 0
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url: string) => {
+      urls.push(url)
+      if (url.includes('/current/audio/regenerate'))
+        return Response.json({
+          variant_task_id: 't1',
+          status: 'ready',
+          audio_url: '/task-audio/audio-1/file',
+        })
+      if (url.includes('/current/audio?'))
+        return Response.json({
+          variant_task_id: 't1',
+          status: 'ready',
+          audio_url: '/task-audio/audio-1/file',
+        })
+      if (url.includes('/task-audio/')) {
+        fileReads++
+        if (fileReads === 1)
+          return Response.json({ code: 'AUDIO_NOT_FOUND' }, { status: 404 })
+        return new Response(await validWavBlob().arrayBuffer(), {
+          headers: { 'Content-Type': 'audio/wav' },
+        })
+      }
+      throw new Error(`Unexpected request ${url}`)
+    }),
+  )
+  const play = vi.spyOn(audio, 'playQuestion').mockResolvedValue(vi.fn())
+  const view = renderDiagnosticVoice(() =>
+    useDiagnosticVoice('u1', 's1', task, vi.fn(), vi.fn()),
+  )
+  await act(async () => {
+    await view.result.current.speak()
+  })
+  expect(urls.filter((url) => url.includes('/regenerate'))).toHaveLength(1)
+  expect(fileReads).toBe(2)
+  expect(play).toHaveBeenCalledTimes(1)
+  expect(view.result.current.speechError).toBe(false)
+})
+
+it('repairs once when the stored audio response body is truncated', async () => {
+  let fileReads = 0
+  let repairs = 0
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url: string) => {
+      if (url.includes('/current/audio/regenerate')) {
+        repairs++
+        return Response.json({
+          variant_task_id: 't1',
+          status: 'ready',
+          audio_url: '/task-audio/audio-1/file',
+        })
+      }
+      if (url.includes('/current/audio?'))
+        return Response.json({
+          variant_task_id: 't1',
+          status: 'ready',
+          audio_url: '/task-audio/audio-1/file',
+        })
+      if (url.includes('/task-audio/')) {
+        fileReads++
+        if (fileReads === 1) {
+          const response = new Response(new Uint8Array([1, 2, 3]), {
+            headers: { 'Content-Type': 'audio/wav' },
+          })
+          vi.spyOn(response, 'blob').mockRejectedValue(
+            new TypeError('truncated body'),
+          )
+          return response
+        }
+        return new Response(await validWavBlob().arrayBuffer(), {
+          headers: { 'Content-Type': 'audio/wav' },
+        })
+      }
+      throw new Error(`Unexpected request ${url}`)
+    }),
+  )
+  const play = vi.spyOn(audio, 'playQuestion').mockResolvedValue(() => {})
+  const view = renderDiagnosticVoice(() =>
+    useDiagnosticVoice('u1', 's1', task, vi.fn(), vi.fn()),
+  )
+  await act(async () => {
+    await view.result.current.speak()
+  })
+  expect(repairs).toBe(1)
+  expect(fileReads).toBe(2)
+  expect(play).toHaveBeenCalledTimes(1)
+})
+
+it('coalesces media decode errors into one repair and does not loop on a second bad file', async () => {
+  let regenerations = 0
+  const fetch = vi.fn(async (url: string) => {
+    if (url.includes('/current/audio/regenerate')) {
+      regenerations++
+      return Response.json({
+        variant_task_id: 't1',
+        status: 'ready',
+        audio_url: '/task-audio/audio-1/file',
+      })
+    }
+    if (url.includes('/current/audio?'))
+      return Response.json({
+        variant_task_id: 't1',
+        status: 'ready',
+        audio_url: '/task-audio/audio-1/file',
+      })
+    if (url.includes('/task-audio/'))
+      return new Response(await validWavBlob().arrayBuffer(), {
+        headers: { 'Content-Type': 'audio/wav' },
+      })
+    throw new Error(`Unexpected request ${url}`)
+  })
+  vi.stubGlobal('fetch', fetch)
+  let mediaError!: (error: AudioPlaybackError) => void
+  const play = vi
+    .spyOn(audio, 'playQuestion')
+    .mockImplementation(async (_blob, _onEnd, onError) => {
+      mediaError = onError
+      return () => {}
+    })
+  const view = renderDiagnosticVoice(() =>
+    useDiagnosticVoice('u1', 's1', task, vi.fn(), vi.fn()),
+  )
+  await act(async () => {
+    await view.result.current.speak()
+  })
+  await act(async () => {
+    mediaError(new AudioPlaybackError('decode'))
+  })
+  await waitFor(() => expect(regenerations).toBe(1))
+  await waitFor(() => expect(play).toHaveBeenCalledTimes(2))
+  await act(async () => {
+    mediaError(new AudioPlaybackError('decode'))
+  })
+  expect(regenerations).toBe(1)
+  expect(view.result.current.speechError).toBe(true)
+})
+
+it('does not repair when browser playback is blocked by autoplay policy', async () => {
+  const fetch = vi.fn(async (url: string) => {
+    if (url.includes('/current/audio?'))
+      return Response.json({
+        variant_task_id: 't1',
+        status: 'ready',
+        audio_url: '/task-audio/audio-1/file',
+      })
+    if (url.includes('/task-audio/'))
+      return new Response(await validWavBlob().arrayBuffer(), {
+        headers: { 'Content-Type': 'audio/wav' },
+      })
+    throw new Error(`Unexpected request ${url}`)
+  })
+  vi.stubGlobal('fetch', fetch)
+  vi.spyOn(audio, 'playQuestion').mockRejectedValue(
+    new DOMException('blocked', 'NotAllowedError'),
+  )
+  const view = renderDiagnosticVoice(() =>
+    useDiagnosticVoice('u1', 's1', task, vi.fn(), vi.fn()),
+  )
+  await act(async () => {
+    await view.result.current.speak()
+  })
+  expect(
+    fetch.mock.calls.some(([url]) => String(url).includes('/regenerate')),
+  ).toBe(false)
+})
+
+it('attempts repair only once when the replacement download is still invalid', async () => {
+  let regenerations = 0
+  const fetch = vi.fn(async (url: string) => {
+    if (url.includes('/current/audio/regenerate')) {
+      regenerations++
+      return Response.json({
+        variant_task_id: 't1',
+        status: 'ready',
+        audio_url: '/task-audio/audio-1/file',
+      })
+    }
+    if (url.includes('/current/audio?'))
+      return Response.json({
+        variant_task_id: 't1',
+        status: 'ready',
+        audio_url: '/task-audio/audio-1/file',
+      })
+    if (url.includes('/task-audio/'))
+      return new Response('broken again', {
+        headers: { 'Content-Type': 'audio/wav' },
+      })
+    throw new Error(`Unexpected request ${url}`)
+  })
+  vi.stubGlobal('fetch', fetch)
+  const play = vi.spyOn(audio, 'playQuestion').mockResolvedValue(() => {})
+  const view = renderDiagnosticVoice(() =>
+    useDiagnosticVoice('u1', 's1', task, vi.fn(), vi.fn()),
+  )
+  await act(async () => {
+    await view.result.current.speak()
+  })
+  expect(regenerations).toBe(1)
+  expect(
+    fetch.mock.calls.filter(([url]) => String(url).includes('/task-audio/')),
+  ).toHaveLength(2)
+  expect(play).not.toHaveBeenCalled()
+  expect(view.result.current.speechError).toBe(true)
+})
+
+it('repairs a metadata storage error caused by a stale or malformed audio link', async () => {
+  const urls: string[] = []
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url: string, init?: RequestInit) => {
+      urls.push(url)
+      if (url.includes('/current/audio/regenerate'))
+        return Response.json({
+          variant_task_id: 't1',
+          status: 'ready',
+          audio_url: '/task-audio/audio-1/file',
+        })
+      if (url.includes('/current/audio?'))
+        return Response.json(
+          { code: 'AUDIO_STORAGE_UNAVAILABLE' },
+          { status: 503 },
+        )
+      if (url.includes('/task-audio/'))
+        return new Response(await validWavBlob().arrayBuffer(), {
+          headers: { 'Content-Type': 'audio/wav' },
+        })
+      throw new Error(`Unexpected request ${init?.method} ${url}`)
+    }),
+  )
+  const play = vi.spyOn(audio, 'playQuestion').mockResolvedValue(() => {})
+  const view = renderDiagnosticVoice(() =>
+    useDiagnosticVoice('u1', 's1', task, vi.fn(), vi.fn()),
+  )
+  await act(async () => {
+    await view.result.current.speak()
+  })
+  expect(urls.filter((url) => url.includes('/regenerate'))).toHaveLength(1)
+  expect(play).toHaveBeenCalledTimes(1)
+})
+
+it('does not repair a stored-audio authorization failure', async () => {
+  const fetch = vi.fn(async (url: string) => {
+    if (url.includes('/current/audio?'))
+      return Response.json({
+        variant_task_id: 't1',
+        status: 'ready',
+        audio_url: '/task-audio/audio-1/file',
+      })
+    if (url.includes('/task-audio/'))
+      return Response.json({ code: 'FORBIDDEN' }, { status: 403 })
+    throw new Error(`Unexpected request ${url}`)
+  })
+  vi.stubGlobal('fetch', fetch)
+  const view = renderDiagnosticVoice(() =>
+    useDiagnosticVoice('u1', 's1', task, vi.fn(), vi.fn()),
+  )
+  await act(async () => {
+    await view.result.current.speak()
+  })
+  expect(
+    fetch.mock.calls.some(([url]) => String(url).includes('/regenerate')),
+  ).toBe(false)
+  expect(view.result.current.speechError).toBe(true)
+})
+
 it('shows a pending hint and plays only after a later ready read', async () => {
   let reads = 0
   vi.stubGlobal(
     'fetch',
-    vi.fn((url: string) => {
+    vi.fn(async (url: string) => {
       if (url.includes('/current/audio')) {
         reads++
         return Promise.resolve(
@@ -222,9 +498,9 @@ it('shows a pending hint and plays only after a later ready read', async () => {
           ),
         )
       }
-      return Promise.resolve(
-        new Response('wav', { headers: { 'Content-Type': 'audio/wav' } }),
-      )
+      return new Response(await validWavBlob().arrayBuffer(), {
+        headers: { 'Content-Type': 'audio/wav' },
+      })
     }),
   )
   const play = vi.spyOn(audio, 'playQuestion').mockResolvedValue(vi.fn())
@@ -303,7 +579,9 @@ it('aborts the saved file request if the current task changes before playback', 
   await waitFor(() => expect(fileSignal.aborted).toBe(true))
   await act(async () => {
     resolveFile(
-      new Response('late wav', { headers: { 'Content-Type': 'audio/wav' } }),
+      new Response(await validWavBlob().arrayBuffer(), {
+        headers: { 'Content-Type': 'audio/wav' },
+      }),
     )
     await speaking
   })

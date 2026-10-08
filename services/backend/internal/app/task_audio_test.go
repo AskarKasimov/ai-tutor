@@ -4,6 +4,8 @@ import (
 	"context"
 	"sync/atomic"
 	"testing"
+
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/audioasset"
 )
 
 type countingAudioWorker struct{ runs atomic.Int32 }
@@ -11,6 +13,9 @@ type countingAudioWorker struct{ runs atomic.Int32 }
 func (w *countingAudioWorker) Run(context.Context) error { w.runs.Add(1); return nil }
 func (w *countingAudioWorker) ProcessOne(context.Context) (bool, error) {
 	return false, nil
+}
+func (w *countingAudioWorker) Regenerate(context.Context, string) (audioasset.Asset, error) {
+	return audioasset.Asset{}, audioasset.ErrNotRepairable
 }
 
 func TestHandlerDoesNotStartAudioWorker(t *testing.T) {

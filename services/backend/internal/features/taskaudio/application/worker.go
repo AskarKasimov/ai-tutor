@@ -2,13 +2,16 @@ package application
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io"
 	"mime"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/audio"
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/audioasset"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/security"
 )
 
@@ -25,10 +28,11 @@ type Worker struct {
 	store  Storage
 	synth  Synthesizer
 	config WorkerConfig
+	slots  chan struct{}
 }
 
 func NewWorker(queue Queue, store Storage, synth Synthesizer, config WorkerConfig) *Worker {
-	return &Worker{queue: queue, store: store, synth: synth, config: config}
+	return &Worker{queue: queue, store: store, synth: synth, config: config, slots: make(chan struct{}, max(1, config.Concurrency))}
 }
 
 func RetryDelay(attempt int) time.Duration {
@@ -42,6 +46,10 @@ func (w *Worker) ProcessOne(ctx context.Context) (bool, error) {
 	if err := w.validate(); err != nil {
 		return false, err
 	}
+	if err := w.acquire(ctx); err != nil {
+		return false, err
+	}
+	defer w.release()
 	token, err := security.ID("audio-claim")
 	if err != nil {
 		return false, fmt.Errorf("create task audio claim token: %w", err)
@@ -56,6 +64,182 @@ func (w *Worker) ProcessOne(ctx context.Context) (bool, error) {
 	}
 	return true, nil
 }
+
+// Regenerate synchronously repairs one ready asset while sharing the worker's
+// concurrency bound. Only an atomically claimed, current-map asset can run.
+func (w *Worker) Regenerate(ctx context.Context, assetID string) (audioasset.Asset, error) {
+	if err := w.validate(); err != nil {
+		return audioasset.Asset{}, err
+	}
+	if assetID == "" {
+		return audioasset.Asset{}, audioasset.ErrNotRepairable
+	}
+	budget := w.config.VoiceTimeout + 5*w.config.S3Timeout + 30*time.Second
+	operationCtx, cancelOperation := context.WithTimeout(ctx, budget)
+	defer cancelOperation()
+	if err := w.acquire(operationCtx); err != nil {
+		return audioasset.Asset{}, err
+	}
+	defer w.release()
+	if err := operationCtx.Err(); err != nil {
+		return audioasset.Asset{}, err
+	}
+	token, err := security.ID("audio-repair")
+	if err != nil {
+		return audioasset.Asset{}, fmt.Errorf("create task audio repair token: %w", err)
+	}
+	lease := budget
+	claim, ok, err := w.queue.ClaimRepair(operationCtx, assetID, token, lease)
+	if err != nil {
+		return audioasset.Asset{}, fmt.Errorf("claim task audio for repair: %w", err)
+	}
+	if !ok {
+		return audioasset.Asset{}, audioasset.ErrNotRepairable
+	}
+	bucket, err := w.processRepairClaim(operationCtx, claim)
+	if err != nil {
+		return audioasset.Asset{}, err
+	}
+	uri := "s3://" + bucket + "/" + claim.Asset.ObjectKey
+	url := "/task-audio/" + claim.Asset.ID + "/file"
+	claim.Asset.Bucket, claim.Asset.StorageURI, claim.Asset.AudioURL = &bucket, &uri, &url
+	claim.Asset.Status = audioasset.Ready
+	return claim.Asset, nil
+}
+
+func (w *Worker) processRepairClaim(ctx context.Context, claim Claim) (string, error) {
+	readBucket := w.config.Bucket
+	if claim.Asset.Bucket != nil && *claim.Asset.Bucket != "" {
+		readBucket = *claim.Asset.Bucket
+	}
+	if readBucket == w.config.Bucket {
+		if err := w.ensureRepairBucket(ctx, claim); err != nil {
+			return "", err
+		}
+	}
+	statCtx, cancel := context.WithTimeout(ctx, w.config.S3Timeout)
+	info, found, err := w.store.Stat(statCtx, readBucket, claim.Asset.ObjectKey)
+	cancel()
+	if err != nil {
+		if readBucket == w.config.Bucket || !errors.Is(err, ErrBucketNotFound) {
+			return "", w.repairFailure(ctx, claim, "storage_head_failed", audioasset.ErrStorageUnavailable, err)
+		}
+		found = false
+	}
+	if !found && readBucket != w.config.Bucket {
+		if checker, ok := w.store.(BucketChecker); ok {
+			checkCtx, cancel := context.WithTimeout(ctx, w.config.S3Timeout)
+			exists, checkErr := checker.BucketExists(checkCtx, readBucket)
+			cancel()
+			if checkErr != nil {
+				return "", w.repairFailure(ctx, claim, "storage_bucket_check_failed", audioasset.ErrStorageUnavailable, checkErr)
+			}
+			if !exists {
+				readBucket = ""
+			}
+		}
+	}
+	if found && validObject(info, claim.Asset.ID) {
+		openCtx, cancel := context.WithTimeout(ctx, w.config.S3Timeout)
+		body, getInfo, openErr := w.store.Open(openCtx, readBucket, claim.Asset.ObjectKey)
+		if openErr != nil && !errors.Is(openErr, ErrObjectNotFound) && !errors.Is(openErr, ErrBucketNotFound) {
+			cancel()
+			return "", w.repairFailure(ctx, claim, "storage_get_failed", audioasset.ErrStorageUnavailable, openErr)
+		}
+		if body != nil {
+			data, readErr := io.ReadAll(io.LimitReader(body, maxAudioObjectBytes+1))
+			closeErr := body.Close()
+			cancel()
+			if readErr != nil || closeErr != nil {
+				cause := errors.Join(readErr, closeErr)
+				return "", w.repairFailure(ctx, claim, "storage_read_failed", audioasset.ErrStorageUnavailable, cause)
+			}
+			if validObject(getInfo, claim.Asset.ID) && int64(len(data)) == getInfo.Size && audio.ValidWAV(data) {
+				return readBucket, w.completeRepair(ctx, claim, readBucket)
+			}
+		} else {
+			cancel()
+		}
+		if errors.Is(openErr, ErrBucketNotFound) {
+			found = false
+		}
+	}
+	current, err := w.queue.IsCurrent(ctx, claim)
+	if err != nil {
+		return "", w.repairFailure(ctx, claim, "task_current_check_failed", audioasset.ErrStorageUnavailable, err)
+	}
+	if !current {
+		_, cancelErr := w.queue.Cancel(ctx, claim)
+		if cancelErr != nil {
+			return "", fmt.Errorf("cancel stale task audio repair: %w", cancelErr)
+		}
+		return "", audioasset.ErrNotRepairable
+	}
+	if readBucket != w.config.Bucket {
+		if err := w.ensureRepairBucket(ctx, claim); err != nil {
+			return "", err
+		}
+	}
+	voiceCtx, cancel := context.WithTimeout(ctx, w.config.VoiceTimeout)
+	data, err := w.synth.Synthesize(voiceCtx, claim.Asset.Instruction)
+	cancel()
+	if err != nil {
+		return "", w.repairFailure(ctx, claim, "synthesis_failed", audioasset.ErrGenerationFailed, err)
+	}
+	if len(data) == 0 || len(data) > maxAudioObjectBytes || !audio.ValidWAV(data) {
+		return "", w.repairFailure(ctx, claim, "invalid_wav", audioasset.ErrGenerationFailed, errors.New("synthesizer returned invalid WAV"))
+	}
+	putCtx, cancel := context.WithTimeout(ctx, w.config.S3Timeout)
+	err = w.store.Put(putCtx, w.config.Bucket, claim.Asset.ObjectKey, claim.Asset.ID, data)
+	cancel()
+	if err != nil {
+		return "", w.repairFailure(ctx, claim, "storage_put_failed", audioasset.ErrStorageUnavailable, err)
+	}
+	return w.config.Bucket, w.completeRepair(ctx, claim, w.config.Bucket)
+}
+
+func (w *Worker) ensureRepairBucket(ctx context.Context, claim Claim) error {
+	ensureCtx, cancel := context.WithTimeout(ctx, w.config.S3Timeout)
+	err := w.store.EnsureBucket(ensureCtx)
+	cancel()
+	if err != nil {
+		return w.repairFailure(ctx, claim, "storage_bucket_failed", audioasset.ErrStorageUnavailable, err)
+	}
+	return nil
+}
+
+func (w *Worker) completeRepair(ctx context.Context, claim Claim, bucket string) error {
+	uri := "s3://" + bucket + "/" + claim.Asset.ObjectKey
+	url := "/task-audio/" + claim.Asset.ID + "/file"
+	ok, err := w.queue.Complete(ctx, claim, bucket, uri, url)
+	if err != nil {
+		return fmt.Errorf("complete task audio repair: %w", err)
+	}
+	if !ok {
+		return audioasset.ErrNotRepairable
+	}
+	return nil
+}
+
+func (w *Worker) repairFailure(ctx context.Context, claim Claim, code string, kind, cause error) error {
+	if ctx.Err() == nil {
+		if _, err := w.queue.Fail(ctx, claim, code, RetryDelay(claim.Asset.Attempts)); err != nil {
+			return fmt.Errorf("record task audio repair failure (%s): %w", code, err)
+		}
+	}
+	return fmt.Errorf("%w: %v", kind, cause)
+}
+
+func (w *Worker) acquire(ctx context.Context) error {
+	select {
+	case w.slots <- struct{}{}:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+func (w *Worker) release() { <-w.slots }
 
 func (w *Worker) processClaim(ctx context.Context, claim Claim) error {
 	statCtx, cancel := context.WithTimeout(ctx, w.config.S3Timeout)

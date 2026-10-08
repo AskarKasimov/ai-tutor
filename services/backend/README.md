@@ -21,6 +21,7 @@ Assessment напрямую реализует порт сессии; оба м�
 
 Сессии доступны через `POST /diagnostic-sessions`, `GET /diagnostic-sessions/{id}`,
 `GET /diagnostic-sessions/{id}/current/audio?variant_task_id=...`,
+`POST /diagnostic-sessions/{id}/current/audio/regenerate`,
 `GET /task-audio/{id}/file`, `POST /diagnostic-sessions/{id}/answers`
 и `GET /diagnostic-sessions/{id}/result`. Ответы проходят STT и, при доступном
 грейдере, сохраняют score/max_score/verdict/criterion_results/feedback от assessment.
@@ -48,6 +49,12 @@ healthcheck его не запускают. Он ограничен `BACKEND_AUD
 `BACKEND_S3_CREATE_BUCKET=false`. Браузер обращается к
 `GET /diagnostic-sessions/{id}/current/audio?variant_task_id=...` за статусом, затем
 к authenticated `GET /task-audio/{id}/file` только для готовой озвучки.
+Если сохранённый WAV отсутствует или повреждён, клиент может один раз вызвать
+`POST /diagnostic-sessions/{id}/current/audio/regenerate` с текущим
+`variant_task_id`. Сервер проверяет сохранённый объект и возвращает его без TTS,
+если файл исправен; иначе синхронно восстанавливает WAV из сохранённой инструкции,
+только пока задание принадлежит активной ревизии карты. Вызов требует cookie-auth
+и ограничен общим лимитом TTS worker; `401`/`403` и ошибки S3 не приводят к синтезу.
 
 Для безопасной диагностики очереди можно прочитать только метаданные, не текст
 инструкции:

@@ -12,10 +12,9 @@ import (
 )
 
 type EvaluateRequest struct {
-	TranscriptionID string  `json:"transcription_id" minLength:"1" maxLength:"128" binding:"required"`
-	VariantID       *string `json:"variant_id,omitempty" minLength:"1" maxLength:"128" binding:"optional"`
-	VariantTaskID   *string `json:"variant_task_id,omitempty" minLength:"1" maxLength:"128" binding:"optional"`
-	TaskID          *string `json:"task_id,omitempty" minLength:"1" maxLength:"128" binding:"optional"`
+	TranscriptionID string `json:"transcription_id" minLength:"1" maxLength:"128" binding:"required"`
+	VariantID       string `json:"variant_id" minLength:"1" maxLength:"128" binding:"required"`
+	VariantTaskID   string `json:"variant_task_id" minLength:"1" maxLength:"128" binding:"required"`
 }
 
 type EvaluateResponse struct {
@@ -54,6 +53,7 @@ func (h *Handler) Evaluate(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(r.Context(), w, fault.New(fault.Unauthorized, "UNAUTHORIZED", "Требуется действующая сессия."))
 		return
 	}
+
 	r.Body = http.MaxBytesReader(w, r.Body, 32*1024)
 	var req EvaluateRequest
 	if err := httpx.DecodeJSON(r, &req); err != nil {
@@ -61,30 +61,19 @@ func (h *Handler) Evaluate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	variantID := optionalText(req.VariantID)
-	variantTaskID := optionalText(req.VariantTaskID)
-	taskID := optionalText(req.TaskID)
-
-	var result assessment.Evaluation
-	var err error
-	switch {
-	case variantID != "" || variantTaskID != "":
-		if variantID == "" || variantTaskID == "" || taskID != "" {
-			httpx.Error(r.Context(), w, fault.Validation("variant_id", "Передайте variant_id и variant_task_id без task_id."))
-			return
-		}
-		result, err = h.service.EvaluateVariant(r.Context(), u.ID, req.TranscriptionID, variantID, variantTaskID)
-	case taskID != "":
-		// Temporary compatibility path for the current fixed frontend prototype.
-		result, err = h.service.Evaluate(r.Context(), u.ID, req.TranscriptionID, taskID)
-	default:
+	variantID := strings.TrimSpace(req.VariantID)
+	variantTaskID := strings.TrimSpace(req.VariantTaskID)
+	if variantID == "" || variantTaskID == "" {
 		httpx.Error(r.Context(), w, fault.Validation("variant_id", "Укажите variant_id и variant_task_id."))
 		return
 	}
+
+	result, err := h.service.EvaluateVariant(r.Context(), u.ID, req.TranscriptionID, variantID, variantTaskID)
 	if err != nil {
 		httpx.Error(r.Context(), w, err)
 		return
 	}
+
 	httpx.JSON(w, http.StatusOK, EvaluateResponse{
 		Score:            result.Score,
 		MaxScore:         result.MaxScore,

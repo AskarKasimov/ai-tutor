@@ -1,7 +1,6 @@
 package application
 
 import (
-	"context"
 	"strings"
 
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/variant"
@@ -36,10 +35,6 @@ type GradingContext struct {
 	Outcome          OutcomeContext  `json:"outcome"`
 	Criteria         []Criterion     `json:"criteria"`
 	MaterialContext  MaterialContext `json:"material_context"`
-}
-
-type ContextProvider interface {
-	ContextForTask(context.Context, string) (GradingContext, error)
 }
 
 func GradingContextFromVariantTask(item variant.VariantTask) (GradingContext, error) {

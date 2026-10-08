@@ -20,15 +20,13 @@ type Grader interface {
 
 type Service struct {
 	transcriptions Transcriptions
-	contexts       ContextProvider
 	variantTasks   variant.TaskReader
 	grader         Grader
 }
 
-func New(transcriptions Transcriptions, contexts ContextProvider, variantTasks variant.TaskReader, grader Grader) *Service {
+func New(transcriptions Transcriptions, variantTasks variant.TaskReader, grader Grader) *Service {
 	return &Service{
 		transcriptions: transcriptions,
-		contexts:       contexts,
 		variantTasks:   variantTasks,
 		grader:         grader,
 	}
@@ -126,12 +124,6 @@ func (s *Service) evaluateWithContext(ctx context.Context, ownerID, transcriptio
 	if !validText(transcriptionID, 128) {
 		return assessment.Evaluation{}, fault.Validation("transcription_id", "Укажите сохранённую расшифровку.")
 	}
-	if gradingContext.MaxScore == 0 {
-		gradingContext.MaxScore = 2
-	}
-	if gradingContext.Role == "" {
-		gradingContext.Role = "main"
-	}
 
 	answer, err := s.transcriptions.TextByOwner(ctx, ownerID, transcriptionID)
 	if err != nil {
@@ -149,21 +141,6 @@ func (s *Service) evaluateWithContext(ctx context.Context, ownerID, transcriptio
 	}
 	result.MaxScore = gradingMaxScore(gradingContext)
 	return result, nil
-}
-
-// Evaluate keeps the fixed prototype task_id flow working until the frontend switches to saved variants.
-func (s *Service) Evaluate(ctx context.Context, ownerID, transcriptionID, taskID string) (assessment.Evaluation, error) {
-	if !validText(taskID, 128) {
-		return assessment.Evaluation{}, fault.Validation("task_id", "Укажите идентификатор задания.")
-	}
-	if s.contexts == nil {
-		return assessment.Evaluation{}, fault.New(fault.Unavailable, "GRADING_CONTEXT_UNAVAILABLE", "Контекст оценивания временно недоступен.")
-	}
-	gradingContext, err := s.contexts.ContextForTask(ctx, taskID)
-	if err != nil {
-		return assessment.Evaluation{}, err
-	}
-	return s.evaluateWithContext(ctx, ownerID, transcriptionID, gradingContext)
 }
 
 func (s *Service) EvaluateVariant(ctx context.Context, ownerID, transcriptionID, variantID, variantTaskID string) (assessment.Evaluation, error) {

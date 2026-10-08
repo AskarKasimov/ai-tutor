@@ -1,5 +1,6 @@
 import { i18n } from '../i18n/i18n'
 import { createDemoAudio } from '../platform/mock-audio'
+import type { OverallFeedbackItemInput } from '../data/assessment-api'
 
 type DemoUser = {
   id: string
@@ -158,6 +159,65 @@ export async function mockApiFetch(
       feedback: ['feedback1', 'feedback2', 'feedback3'].map((key) =>
         i18n.t(`mockApi.${key}`),
       ),
+    })
+  }
+  if (method === 'POST' && path.endsWith('/assessments/overall-feedback')) {
+    const rawAnswers = (
+      Array.isArray(body.answers) ? body.answers : []
+    ) as OverallFeedbackItemInput[]
+    const totalScore = rawAnswers.reduce(
+      (sum: number, a) => sum + (typeof a?.score === 'number' ? a.score : 0),
+      0,
+    )
+    const totalMax =
+      rawAnswers.reduce(
+        (sum: number, a) =>
+          sum + (typeof a?.max_score === 'number' ? a.max_score : 2),
+        0,
+      ) || 14
+    const pct = Math.round((totalScore * 100) / totalMax)
+    const topicOf = (a: OverallFeedbackItemInput) =>
+      a.topic || a.question || 'Тема'
+    return json({
+      score: totalScore,
+      max_score: totalMax,
+      score_percentage: pct,
+      summary:
+        pct >= 80
+          ? `Отличный результат! Вы набрали ${totalScore} из ${totalMax} баллов (${pct}%). Продемонстрировано уверенное понимание всех тем среза.`
+          : `Хороший результат: ${totalScore} из ${totalMax} баллов (${pct}%). Рекомендуется закрепить темы с неполным баллом.`,
+      strengths: rawAnswers
+        .filter((a) => a.score === a.max_score)
+        .map(
+          (a) =>
+            `Тема «${topicOf(a)}»: уверенный ответ (${a.score}/${a.max_score})`,
+        ),
+      gaps: rawAnswers
+        .filter((a) => a.score === 0)
+        .map(
+          (a) =>
+            `Тема «${topicOf(a)}»: выявлен пробел (0/${a.max_score || 2}). Пояснение: ${Array.isArray(a.feedback) ? a.feedback.join('; ') : 'неверный выбор'}`,
+        ),
+      partials: rawAnswers
+        .filter((a) => a.score > 0 && a.score < a.max_score)
+        .map(
+          (a) =>
+            `Тема «${topicOf(a)}»: частичное понимание (${a.score}/${a.max_score})`,
+        ),
+      recommendations: [
+        ...rawAnswers
+          .filter((a) => a.score === 0)
+          .map(
+            (a) =>
+              `Повторить тему «${topicOf(a)}» и разобрать критерии решения.`,
+          ),
+        ...rawAnswers
+          .filter((a) => a.score > 0 && a.score < a.max_score)
+          .map(
+            (a) => `Закрепить практическое применение в теме «${topicOf(a)}».`,
+          ),
+      ],
+      generated_at: Math.floor(Date.now() / 1000),
     })
   }
   return error(404, 'NOT_FOUND', 'notFound')

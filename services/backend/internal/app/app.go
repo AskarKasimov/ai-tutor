@@ -28,6 +28,12 @@ import (
 	diagnosticapp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/diagnostic/application"
 	diagnosticmemory "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/diagnostic/infrastructure/memory"
 	diagnostichttp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/diagnostic/transport/http"
+	diagnosticfeedbackapp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/diagnosticfeedback/application"
+	diagnosticfeedbackmemory "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/diagnosticfeedback/infrastructure/memory"
+	diagnosticfeedbackmock "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/diagnosticfeedback/infrastructure/mock"
+	diagnosticfeedbackmodel "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/diagnosticfeedback/infrastructure/modelapi"
+	diagnosticfeedbackpg "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/diagnosticfeedback/infrastructure/postgres"
+	diagnosticfeedbackhttp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/diagnosticfeedback/transport/http"
 	taskbankapp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/taskbank/application"
 	taskbankpg "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/taskbank/infrastructure/postgres"
 	taskbankhttp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/taskbank/transport/http"
@@ -97,16 +103,19 @@ func (a *App) Handler() http.Handler {
 	var recognizer voiceapp.Recognizer
 	var synthesizer voiceapp.Synthesizer
 	var grader assessmentapp.Grader
+	var feedbackSynthesizer diagnosticfeedbackapp.FeedbackSynthesizer
 	var taskGenerator taskgenapp.Generator
 	modelName := a.cfg.TaskgenModel
 	if a.cfg.APIMode == "mock" {
 		recognizer, synthesizer = voicemock.Client{}, voicemock.Client{}
 		grader = assessmentmock.Grader{}
+		feedbackSynthesizer = diagnosticfeedbackmock.New()
 		taskGenerator, modelName = taskgenmock.Generator{}, "mock"
 	} else {
 		models := modelapi.New(a.client, a.cfg.STTURL, a.cfg.TTSURL, a.cfg.VoiceTimeout)
 		recognizer, synthesizer = models, models
 		grader = assessmentmodel.New(a.client, a.cfg.AssessmentBaseURL, a.cfg.AssessmentModel, a.cfg.AssessmentTimeout)
+		feedbackSynthesizer = diagnosticfeedbackmodel.New(a.client, a.cfg.AssessmentBaseURL, a.cfg.AssessmentModel, a.cfg.AssessmentTimeout)
 		taskGenerator = taskgenmodel.New(a.client, a.cfg.TaskgenBaseURL, a.cfg.TaskgenModel, a.cfg.TaskgenTimeout)
 	}
 	voice := voiceapp.New(voicepg.New(a.pool), recognizer, synthesizer, a.now)
@@ -124,6 +133,9 @@ func (a *App) Handler() http.Handler {
 	variantgenHandlers := variantgenhttp.New(variantgenapp.New(a.variantRepository, variantgenrandom.Chooser{}, security.IDGenerator{}, a.now))
 	diagnosticService := diagnosticapp.New(a.diagnosticStore, a.variantRepository, voice, assessmentService, security.IDGenerator{}, a.now)
 	diagnosticHandlers := diagnostichttp.New(diagnosticService, a.cfg.MaxUploadBytes)
+	feedbackService := diagnosticfeedbackapp.New(diagnosticService, feedbackSynthesizer, diagnosticfeedbackmemory.New(), a.now).
+		WithTaskFinder(diagnosticfeedbackpg.NewTaskFinder(a.pool))
+	feedbackHandlers := diagnosticfeedbackhttp.New(feedbackService)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /auth/register", authHandlers.Register)
@@ -135,11 +147,13 @@ func (a *App) Handler() http.Handler {
 	mux.Handle("POST /voice/transcriptions", protect(auth, http.HandlerFunc(voiceHandlers.Transcribe)))
 	mux.Handle("POST /voice/syntheses", protect(auth, http.HandlerFunc(voiceHandlers.Synthesize)))
 	mux.Handle("POST /assessments/evaluate", protect(auth, http.HandlerFunc(assessmentHandlers.Evaluate)))
+	mux.Handle("POST /assessments/overall-feedback", protect(auth, http.HandlerFunc(feedbackHandlers.SynthesizeAnswersFeedback)))
 	mux.Handle("POST /diagnostic-sessions", protect(auth, http.HandlerFunc(diagnosticHandlers.Start)))
 	mux.Handle("GET /diagnostic-sessions/{id}", protect(auth, http.HandlerFunc(diagnosticHandlers.Read)))
 	mux.Handle("GET /diagnostic-sessions/{id}/current/audio", protect(auth, http.HandlerFunc(diagnosticHandlers.CurrentAudio)))
 	mux.Handle("POST /diagnostic-sessions/{id}/answers", protect(auth, http.HandlerFunc(diagnosticHandlers.Answer)))
 	mux.Handle("GET /diagnostic-sessions/{id}/result", protect(auth, http.HandlerFunc(diagnosticHandlers.Result)))
+	mux.Handle("GET /diagnostic-sessions/{id}/feedback", protect(auth, http.HandlerFunc(feedbackHandlers.GetFeedback)))
 	mux.Handle("GET /tasks", protect(auth, http.HandlerFunc(taskbankHandlers.Search)))
 	mux.Handle("GET /competency-map", protect(auth, http.HandlerFunc(competencyHandlers.Read)))
 	mux.Handle("GET /tasks/{id}", protect(auth, http.HandlerFunc(taskbankHandlers.Profile)))

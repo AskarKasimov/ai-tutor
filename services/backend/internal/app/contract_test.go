@@ -258,6 +258,7 @@ func TestOpenAPIResponses(t *testing.T) {
 	f.app.Handler().ServeHTTP(diagnosticAnswerResponse, diagnosticAnswerRequest)
 	check("POST", "/diagnostic-sessions/{id}/answers", diagnosticAnswerResponse)
 	check("GET", "/diagnostic-sessions/{id}/result", f.request("GET", "/diagnostic-sessions/"+diagnosticProgress.SessionID+"/result", "", access))
+	check("GET", "/diagnostic-sessions/{id}/feedback", f.request("GET", "/diagnostic-sessions/"+diagnosticProgress.SessionID+"/feedback", "", access))
 	f.app.cfg.APIMode = "real"
 	check("GET", "/variants", f.request("GET", "/variants", "", access))
 	check("GET", "/variants/{id}", f.request("GET", "/variants/"+createdVariant.ID, "", access))

@@ -1,5 +1,5 @@
 import { createMockTrainerSessionSource } from '@/bootstrap/demo-trainer-session-source'
-import { mockApiFetch } from '@/bootstrap/mock-api'
+import { mockApiFetch, evaluateDemoAnswer } from '@/bootstrap/mock-api'
 import { configureMockApiHandler } from '@/shared/api'
 import * as auth from '@/entities/user'
 import * as competencyMap from '@/entities/competency-map'
@@ -71,7 +71,7 @@ export function createAppDependencies(): AppDependencies {
       synthesizeQuestion: voice.synthesizeQuestion,
     },
     assessment: {
-      evaluateAnswer: assessment.evaluateAnswer,
+      evaluateDemoAnswer,
       fetchOverallFeedback: assessment.fetchOverallFeedback,
     },
   }

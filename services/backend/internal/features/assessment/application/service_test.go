@@ -5,7 +5,6 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/assessment"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/variant"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/fault"
 )
@@ -34,10 +33,10 @@ func (s *variantTaskStub) TaskForGrading(_ context.Context, ownerID, variantID, 
 type graderStub struct {
 	gradingContext GradingContext
 	answer         string
-	result         assessment.Evaluation
+	result         Evaluation
 }
 
-func (s *graderStub) Grade(_ context.Context, gradingContext GradingContext, answer string) (assessment.Evaluation, error) {
+func (s *graderStub) Grade(_ context.Context, gradingContext GradingContext, answer string) (Evaluation, error) {
 	s.gradingContext, s.answer = gradingContext, answer
 	return s.result, nil
 }
@@ -59,11 +58,11 @@ func validVariantTask(role string) variant.VariantTask {
 	}
 }
 
-func validEvaluation() assessment.Evaluation {
-	return assessment.Evaluation{
+func validEvaluation() Evaluation {
+	return Evaluation{
 		Score:   2,
 		Verdict: "correct",
-		CriterionResults: []assessment.CriterionResult{
+		CriterionResults: []CriterionResult{
 			{Key: "answer_correctness", Satisfied: true, Explanation: "Ответ соответствует эталону."},
 			{Key: "instruction_following", Satisfied: true, Explanation: "Тип назван и выбор объяснён."},
 		},
@@ -116,6 +115,29 @@ func TestEvaluateVariantRejectsTwoPointsForBasic(t *testing.T) {
 	var f *fault.Error
 	if !errors.As(err, &f) || f.Code != "INVALID_MODEL_RESPONSE" {
 		t.Fatalf("expected INVALID_MODEL_RESPONSE for basic score 2, got %v", err)
+	}
+}
+
+func TestEvaluateVariantRejectsInconsistentModelOutput(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		mutate func(*Evaluation)
+	}{
+		{"out of range score", func(e *Evaluation) { e.Score = 3 }},
+		{"inconsistent verdict", func(e *Evaluation) { e.Verdict = "partial" }},
+		{"wrong criterion key", func(e *Evaluation) { e.CriterionResults[0].Key = "other" }},
+		{"missing criterion", func(e *Evaluation) { e.CriterionResults = e.CriterionResults[:1] }},
+		{"missing feedback", func(e *Evaluation) { e.Feedback = e.Feedback[:2] }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			result := validEvaluation()
+			tc.mutate(&result)
+			_, err := New(&transcriptionStub{text: "ответ"}, &variantTaskStub{result: validVariantTask("main")}, &graderStub{result: result}).EvaluateVariant(context.Background(), "student-1", "tr-1", "variant-1", "variant-task-1")
+			var f *fault.Error
+			if !errors.As(err, &f) || f.Code != "INVALID_MODEL_RESPONSE" {
+				t.Fatalf("expected INVALID_MODEL_RESPONSE, got %v", err)
+			}
+		})
 	}
 }
 

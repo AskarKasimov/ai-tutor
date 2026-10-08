@@ -1,14 +1,98 @@
 import { afterEach, expect, it, vi } from 'vitest'
 
 import { evaluateAnswer } from '@/entities/assessment'
+import { evaluateDemoAnswer } from '@/bootstrap/mock-api'
 
 afterEach(() => vi.unstubAllGlobals())
 
-it('sends task id and transcription id and preserves structured grading result', async () => {
+const savedTask = {
+  variantId: 'saved-variant-1',
+  variantTaskId: 'saved-position-1',
+  question: 'Вопрос',
+  options: [],
+  voiceInstruction: 'Ответьте',
+}
+const validResult = {
+  score: 1,
+  max_score: 1,
+  verdict: 'correct',
+  criterion_results: [
+    { key: 'instruction_following', satisfied: true, explanation: 'Верно.' },
+  ],
+  feedback: ['Верно.', 'Причина.', 'Совет.'],
+}
+
+it('preserves the basic scale without clamping', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn().mockResolvedValue({ ok: true, json: async () => validResult }),
+  )
+  const grade = await evaluateAnswer(
+    'tr-1',
+    savedTask,
+    new AbortController().signal,
+  )
+  expect(grade).toMatchObject({ score: 1, maxScore: 1, verdict: 'correct' })
+})
+
+it.each([
+  { ...validResult, score: 2 },
+  { ...validResult, max_score: undefined },
+  { ...validResult, verdict: 'partial' },
+  {
+    ...validResult,
+    criterion_results: [
+      { key: 'instruction_following', explanation: 'Верно.' },
+    ],
+  },
+  {
+    ...validResult,
+    criterion_results: [
+      { key: 'instruction_following', satisfied: null, explanation: 'Верно.' },
+    ],
+  },
+  { ...validResult, feedback: ['Одна строка.'] },
+])('rejects incomplete or inconsistent grading result %#', async (result) => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn().mockResolvedValue({ ok: true, json: async () => result }),
+  )
+  await expect(
+    evaluateAnswer('tr-1', savedTask, new AbortController().signal),
+  ).rejects.toThrow('Invalid assessment response')
+})
+
+it('does not send an assessment without saved IDs or demo grading in real mode', async () => {
+  const fetchMock = vi.fn()
+  vi.stubGlobal('fetch', fetchMock)
+  await expect(
+    evaluateAnswer(
+      'tr-1',
+      { ...savedTask, variantId: '' },
+      new AbortController().signal,
+    ),
+  ).rejects.toThrow('Saved variant')
+  await expect(
+    evaluateDemoAnswer(
+      'tr-1',
+      {
+        taskId: 'demo-task',
+        question: 'Вопрос',
+        options: [],
+        voiceInstruction: 'Ответьте',
+      },
+      new AbortController().signal,
+    ),
+  ).rejects.toThrow('mock mode')
+  expect(fetchMock).not.toHaveBeenCalled()
+})
+
+it('sends saved variant IDs and transcription id and preserves structured grading result', async () => {
   const fetchMock = vi.fn().mockResolvedValue({
     ok: true,
     json: async () => ({
       score: 2,
+      max_score: 2,
       verdict: 'correct',
       criterion_results: [
         {
@@ -28,7 +112,8 @@ it('sends task id and transcription id and preserves structured grading result',
   vi.stubGlobal('fetch', fetchMock)
 
   const task = {
-    taskId: 'ml_001',
+    variantId: 'saved-variant-1',
+    variantTaskId: 'saved-position-1',
     question: 'Вопрос',
     options: ['Классификация', 'Регрессия'],
     voiceInstruction: 'Назовите тип',
@@ -36,6 +121,7 @@ it('sends task id and transcription id and preserves structured grading result',
   const grade = await evaluateAnswer('tr-1', task, new AbortController().signal)
 
   expect(grade.score).toBe(2)
+  expect(grade.maxScore).toBe(2)
   expect(grade.verdict).toBe('correct')
   expect(grade.criterionResults).toHaveLength(2)
 
@@ -44,7 +130,8 @@ it('sends task id and transcription id and preserves structured grading result',
   expect(init.credentials).toBe('include')
   expect(JSON.parse(init.body)).toEqual({
     transcription_id: 'tr-1',
-    task_id: 'ml_001',
+    variant_id: 'saved-variant-1',
+    variant_task_id: 'saved-position-1',
   })
 })
 
@@ -55,6 +142,7 @@ it('rejects malformed structured grading response', async () => {
       ok: true,
       json: async () => ({
         score: 2,
+        max_score: 2,
         verdict: 'correct',
         criterion_results: [],
         feedback: ['Верно.', 'Причина.', 'Совет.'],
@@ -66,7 +154,8 @@ it('rejects malformed structured grading response', async () => {
     evaluateAnswer(
       'tr-1',
       {
-        taskId: 'ml_001',
+        variantId: 'saved-variant-1',
+        variantTaskId: 'saved-position-1',
         question: 'Вопрос',
         options: [],
         voiceInstruction: 'Ответьте',

@@ -184,27 +184,6 @@ type SessionFeedbackReport struct {
 	Items           []AnswerFeedbackItem `json:"items"`
 }
 
-var knownTaskTopics = map[string]string{
-	"ml_001": "Классификация (типы задач ML)",
-	"ml_002": "Регрессия (типы задач ML)",
-	"ml_003": "Ранжирование (типы задач ML)",
-	"ml_004": "Утечка целевой переменной (Data Leakage)",
-	"ml_005": "Утечка целевой переменной (Data Leakage)",
-	"ml_006": "Утечка целевой переменной (Data Leakage)",
-	"ml_007": "Аналитическое решение МНК и вырожденность матрицы",
-	"ml_008": "Интерпретация коэффициентов линейной модели",
-	"ml_009": "Интерпретация коэффициентов линейной модели",
-	"ml_010": "Интерпретация коэффициентов линейной модели",
-	"ml_011": "Градиентный спуск для линейной регрессии на NumPy",
-	"ml_012": "Вычисление ошибки в градиентном спуске",
-	"ml_013": "L1 и L2 регуляризация весов",
-	"ml_014": "Кластеризация (типы задач ML)",
-	"ml_015": "Ранжирование (типы задач ML)",
-	"ml_016": "Диагностика переобучения (Overfitting / Underfitting)",
-	"ml_017": "Схема валидации данных (Train / Val / Test)",
-	"ml_018": "Метрики качества при дисбалансе классов (Precision / Recall / F1)",
-}
-
 var topicCurriculum = map[string][]string{
 	"Кластеризация (типы задач ML)": {
 		"Обучение без учителя: выявление скрытых структур в данных без известных меток",
@@ -309,9 +288,6 @@ func resolveTopicSubtopics(topic string) []string {
 func resolveTopicName(it AnswerFeedbackItem) string {
 	if t := strings.TrimSpace(it.Topic); t != "" {
 		return t
-	}
-	if name, ok := knownTaskTopics[strings.TrimSpace(it.TaskID)]; ok {
-		return name
 	}
 	q := strings.TrimSpace(it.Question)
 	runes := []rune(q)

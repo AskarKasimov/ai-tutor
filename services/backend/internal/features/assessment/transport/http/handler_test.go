@@ -8,7 +8,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/assessment"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/user"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/variant"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/features/assessment/application"
@@ -46,11 +45,30 @@ func (s *variantTaskStub) TaskForGrading(_ context.Context, ownerID, variantID, 
 
 type graderStub struct{}
 
-func (graderStub) Grade(_ context.Context, _ application.GradingContext, _ string) (assessment.Evaluation, error) {
-	return assessment.Evaluation{
+func TestEvaluateRejectsLegacyTaskIDAndFrontendRole(t *testing.T) {
+	for _, body := range []string{
+		`{"transcription_id":"tr-1","task_id":"old-task"}`,
+		`{"transcription_id":"tr-1","variant_id":"variant-1","variant_task_id":"variant-task-1","role":"basic"}`,
+	} {
+		transcriptions := &transcriptionStub{}
+		tasks := &variantTaskStub{}
+		handler := New(application.New(transcriptions, tasks, graderStub{}))
+		request := httptest.NewRequest(http.MethodPost, "/assessments/evaluate", strings.NewReader(body))
+		request.Header.Set("Content-Type", "application/json")
+		request = httpx.WithPrincipal(request, user.User{ID: "student-1", Role: user.Student})
+		response := httptest.NewRecorder()
+		handler.Evaluate(response, request)
+		if response.Code != http.StatusUnprocessableEntity || tasks.ownerID != "" || transcriptions.owner != "" {
+			t.Fatalf("unexpected rejected request: %d %s", response.Code, response.Body.String())
+		}
+	}
+}
+
+func (graderStub) Grade(_ context.Context, _ application.GradingContext, _ string) (application.Evaluation, error) {
+	return application.Evaluation{
 		Score:   2,
 		Verdict: "correct",
-		CriterionResults: []assessment.CriterionResult{
+		CriterionResults: []application.CriterionResult{
 			{Key: "answer_correctness", Satisfied: true, Explanation: "Ответ соответствует эталону."},
 			{Key: "instruction_following", Satisfied: true, Explanation: "Инструкция выполнена."},
 		},

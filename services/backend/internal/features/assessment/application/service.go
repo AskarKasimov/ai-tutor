@@ -10,12 +10,16 @@ import (
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/fault"
 )
 
+type Evaluation = assessment.Evaluation
+
+type CriterionResult = assessment.CriterionResult
+
 type Transcriptions interface {
 	TextByOwner(context.Context, string, string) (string, error)
 }
 
 type Grader interface {
-	Grade(context.Context, GradingContext, string) (assessment.Evaluation, error)
+	Grade(context.Context, GradingContext, string) (Evaluation, error)
 }
 
 type Service struct {
@@ -74,7 +78,7 @@ func expectedVerdict(score, maxScore int) string {
 	}
 }
 
-func validateEvaluation(result assessment.Evaluation, gradingContext GradingContext) error {
+func validateEvaluation(result Evaluation, gradingContext GradingContext) error {
 	maxScore, err := gradingMaxScore(gradingContext)
 	if err != nil {
 		return err
@@ -131,51 +135,51 @@ func validateEvaluation(result assessment.Evaluation, gradingContext GradingCont
 	return nil
 }
 
-func (s *Service) evaluateWithContext(ctx context.Context, ownerID, transcriptionID string, gradingContext GradingContext) (assessment.Evaluation, error) {
+func (s *Service) evaluateWithContext(ctx context.Context, ownerID, transcriptionID string, gradingContext GradingContext) (Evaluation, error) {
 	if !validText(transcriptionID, 128) {
-		return assessment.Evaluation{}, fault.Validation("transcription_id", "Укажите сохранённую расшифровку.")
+		return Evaluation{}, fault.Validation("transcription_id", "Укажите сохранённую расшифровку.")
 	}
 	maxScore, err := gradingMaxScore(gradingContext)
 	if err != nil {
-		return assessment.Evaluation{}, err
+		return Evaluation{}, err
 	}
 
 	answer, err := s.transcriptions.TextByOwner(ctx, ownerID, transcriptionID)
 	if err != nil {
-		return assessment.Evaluation{}, err
+		return Evaluation{}, err
 	}
 	if !validText(answer, 20000) {
-		return assessment.Evaluation{}, fault.New(fault.Invalid, "INVALID_TRANSCRIPTION", "Расшифровка слишком длинная или повреждена.")
+		return Evaluation{}, fault.New(fault.Invalid, "INVALID_TRANSCRIPTION", "Расшифровка слишком длинная или повреждена.")
 	}
 	result, err := s.grader.Grade(ctx, gradingContext, answer)
 	if err != nil {
-		return assessment.Evaluation{}, err
+		return Evaluation{}, err
 	}
 	if err := validateEvaluation(result, gradingContext); err != nil {
-		return assessment.Evaluation{}, err
+		return Evaluation{}, err
 	}
 	result.MaxScore = maxScore
 	return result, nil
 }
 
-func (s *Service) EvaluateVariant(ctx context.Context, ownerID, transcriptionID, variantID, variantTaskID string) (assessment.Evaluation, error) {
+func (s *Service) EvaluateVariant(ctx context.Context, ownerID, transcriptionID, variantID, variantTaskID string) (Evaluation, error) {
 	if !validText(variantID, 128) {
-		return assessment.Evaluation{}, fault.Validation("variant_id", "Укажите идентификатор варианта.")
+		return Evaluation{}, fault.Validation("variant_id", "Укажите идентификатор варианта.")
 	}
 	if !validText(variantTaskID, 128) {
-		return assessment.Evaluation{}, fault.Validation("variant_task_id", "Укажите идентификатор позиции задания варианта.")
+		return Evaluation{}, fault.Validation("variant_task_id", "Укажите идентификатор позиции задания варианта.")
 	}
 	if s.variantTasks == nil {
-		return assessment.Evaluation{}, fault.New(fault.Unavailable, "VARIANT_GRADING_UNAVAILABLE", "Оценивание заданий варианта временно недоступно.")
+		return Evaluation{}, fault.New(fault.Unavailable, "VARIANT_GRADING_UNAVAILABLE", "Оценивание заданий варианта временно недоступно.")
 	}
 
 	item, err := s.variantTasks.TaskForGrading(ctx, ownerID, variantID, variantTaskID)
 	if err != nil {
-		return assessment.Evaluation{}, err
+		return Evaluation{}, err
 	}
 	gradingContext, err := GradingContextFromVariantTask(item)
 	if err != nil {
-		return assessment.Evaluation{}, err
+		return Evaluation{}, err
 	}
 	return s.evaluateWithContext(ctx, ownerID, transcriptionID, gradingContext)
 }

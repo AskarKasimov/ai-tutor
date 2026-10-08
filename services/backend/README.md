@@ -5,7 +5,7 @@ Go API и PostgreSQL. Команды выполняются из `services/backe
 ## Реализовано и запланировано
 
 Реализованы auth, синхронные STT/TTS, импорт текущей карты CSV/XLSX, карта/каталог,
-assessment по снимкам вариантов и совместимый legacy task_id путь, LLM-генерация задач, импорт материалов с FTS и
+assessment по снимкам вариантов, LLM-генерация задач, импорт материалов с FTS и
 variantgen (сборка, снимки, список и чтение вариантов) и HTTP API диагностических
 сессий. Состояние сессий и принятые ответы хранятся в памяти процесса; store принимает
 до 10 000 сессий за время жизни процесса, затем возвращает 503 до перезапуска. Перезапуск
@@ -13,8 +13,7 @@ backend завершает доступ к сессиям. Итоговый фи
 
 Единый контракт — [api/openapi.yaml](../../api/openapi.yaml): implemented — работает,
 planned — проект. `/tasks/generate` и `/admin/materials` сохраняются как API отдельного taskgen.
-`/assessments/evaluate` принимает позицию сохранённого варианта; прежний `task_id` flow
-сохраняется для прототипного frontend. Диагностическая сессия вызывает тот же assessment
+`/assessments/evaluate` принимает позицию сохранённого варианта. Диагностическая сессия вызывает тот же assessment
 application по `variant_id`, `variant_task_id` и `transcription_id`, без HTTP-вызова
 собственного backend. В mock и real режимах используются соответствующие assessment graders.
 Assessment напрямую реализует порт сессии; оба модуля используют результат из `entities/assessment`.

@@ -4,7 +4,6 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/assessment"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/user"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/features/assessment/application"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/fault"
@@ -18,11 +17,11 @@ type EvaluateRequest struct {
 }
 
 type EvaluateResponse struct {
-	Score            int                          `json:"score" minimum:"0" maximum:"2"`
-	MaxScore         int                          `json:"max_score" minimum:"1" maximum:"2"`
-	Verdict          string                       `json:"verdict" enums:"correct,partial,incorrect"`
-	CriterionResults []assessment.CriterionResult `json:"criterion_results"`
-	Feedback         []string                     `json:"feedback" minItems:"3" maxItems:"3"`
+	Score            int                           `json:"score" minimum:"0" maximum:"2"`
+	MaxScore         int                           `json:"max_score" minimum:"1" maximum:"2"`
+	Verdict          string                        `json:"verdict" enums:"correct,partial,incorrect"`
+	CriterionResults []application.CriterionResult `json:"criterion_results"`
+	Feedback         []string                      `json:"feedback" minItems:"3" maxItems:"3"`
 }
 
 type Handler struct{ service *application.Service }
@@ -31,7 +30,7 @@ func New(service *application.Service) *Handler { return &Handler{service: servi
 
 // Evaluate handles POST /assessments/evaluate.
 // @Summary Оценить сохранённый голосовой ответ
-// @Description Принимает ID расшифровки и либо variant_id вместе с variant_task_id, либо legacy task_id из grading catalog. В variant-пути сервер проверяет владельца, берёт исторический снимок задания и роль main/basic. Assessment не сохраняет результат.
+// @Description Принимает ID расшифровки, сохранённого варианта и позиции задания. Сервер проверяет владельца, берёт исторический снимок задания и роль main/basic. Оценка не сохраняется.
 // @ID evaluateAnswer
 // @Tags Грейдинг и фидбэк
 // @Security accessCookie
@@ -81,11 +80,4 @@ func (h *Handler) Evaluate(w http.ResponseWriter, r *http.Request) {
 		CriterionResults: result.CriterionResults,
 		Feedback:         result.Feedback,
 	})
-}
-
-func optionalText(value *string) string {
-	if value == nil {
-		return ""
-	}
-	return strings.TrimSpace(*value)
 }

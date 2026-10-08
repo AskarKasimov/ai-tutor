@@ -4,7 +4,7 @@
 
 ## Контракт assessment
 
-`POST /assessments/evaluate` принимает `transcription_id`, `variant_id` и `variant_task_id`; ответ содержит `score`, `max_score`, `verdict`, `criterion_results` и три строки `feedback`. Шкала задаётся ролью снимка: main 0…2, basic 0…1. Результат проверяется, но сам assessment-модуль его не сохраняет. Старый запрос с `task_id` поддерживается для прототипного frontend через встроенный grading catalog.
+`POST /assessments/evaluate` принимает `transcription_id`, `variant_id` и `variant_task_id`; ответ содержит `score`, `max_score`, `verdict`, `criterion_results` и три строки `feedback`. Шкала задаётся ролью снимка: main 0…2, basic 0…1. Результат проверяется, но сам assessment-модуль его не сохраняет.
 
 2 — полностью верный ответ и требуемое объяснение; 1 — частичное понимание с ошибкой или пробелом; 0 — неверный ответ или отсутствие понимания. Если голосовая инструкция требует назвать вариант и объяснить выбор, prompt требует назвать вариант словами; одного номера недостаточно. Feedback содержит вердикт, причину и совет. Сбой модели возвращается ошибкой API.
 

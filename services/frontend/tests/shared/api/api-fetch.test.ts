@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { apiFetch, configureMockApiHandler, isMockApi } from '@/shared/api'
-import { mockApiFetch } from '@/bootstrap/mock-api'
+import { mockApiFetch, evaluateDemoAnswer } from '@/bootstrap/mock-api'
 
 beforeEach(() => configureMockApiHandler(mockApiFetch))
 afterEach(() => {
@@ -272,25 +272,22 @@ it('runs every backend interaction in mock mode without making network requests'
   const wav = await (await post('voice/syntheses', { text: 'Вопрос' })).blob()
   expect(wav.type).toBe('audio/wav')
   expect(wav.size).toBeGreaterThan(44)
-  const grade = await (
-    await post('assessments/evaluate', {
-      transcription_id: transcription.id,
-      task_id: 'ml_001',
-    })
-  ).json()
+  const task = {
+    taskId: 'demo-task',
+    question: 'Вопрос',
+    options: [],
+    voiceInstruction: 'Ответьте',
+  }
+  const grade = await evaluateDemoAnswer(
+    transcription.id,
+    task,
+    new AbortController().signal,
+  )
   expect(grade.score).toBe(2)
   expect(grade.feedback).toHaveLength(3)
-  expect(
-    (
-      await apiFetch('/api/v1/assessments/evaluate', {
-        method: 'POST',
-        body: JSON.stringify({
-          transcription_id: 'missing',
-          task_id: 'ml_001',
-        }),
-      })
-    ).status,
-  ).toBe(404)
+  await expect(
+    evaluateDemoAnswer('missing', task, new AbortController().signal),
+  ).rejects.toMatchObject({ status: 404 })
   expect((await post('auth/logout', {})).status).toBe(204)
   expect((await apiFetch('/api/v1/auth/me')).status).toBe(401)
   expect((await post('voice/syntheses', { text: 'Вопрос' })).status).toBe(401)

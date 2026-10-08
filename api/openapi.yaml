@@ -10,7 +10,7 @@ components:
       required:
         - status
       type: object
-    assessment.CriterionResult:
+    application.CriterionResult:
       additionalProperties: false
       properties:
         explanation:
@@ -27,10 +27,6 @@ components:
     assessmenthttp.EvaluateRequest:
       additionalProperties: false
       properties:
-        task_id:
-          maxLength: 128
-          minLength: 1
-          type: string
         transcription_id:
           maxLength: 128
           minLength: 1
@@ -45,13 +41,15 @@ components:
           type: string
       required:
         - transcription_id
+        - variant_id
+        - variant_task_id
       type: object
     assessmenthttp.EvaluateResponse:
       additionalProperties: false
       properties:
         criterion_results:
           items:
-            $ref: '#/components/schemas/assessment.CriterionResult'
+            $ref: '#/components/schemas/application.CriterionResult'
           type: array
           uniqueItems: false
         feedback:
@@ -1437,7 +1435,7 @@ paths:
       x-implementation: implemented
   /assessments/evaluate:
     post:
-      description: Принимает ID расшифровки и либо variant_id вместе с variant_task_id, либо legacy task_id из grading catalog. В variant-пути сервер проверяет владельца, берёт исторический снимок задания и роль main/basic. Assessment не сохраняет результат.
+      description: Принимает ID расшифровки, сохранённого варианта и позиции задания. Сервер проверяет владельца, берёт исторический снимок задания и роль main/basic. Оценка не сохраняется.
       operationId: evaluateAnswer
       requestBody:
         content:

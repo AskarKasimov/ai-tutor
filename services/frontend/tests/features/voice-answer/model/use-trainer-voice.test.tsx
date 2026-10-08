@@ -2,8 +2,8 @@ import { act, renderHook, waitFor } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest'
 
 import * as audio from '@/shared/lib'
-import type { AssessmentTask } from '@/entities/assessment'
-import * as assessment from '@/entities/assessment'
+import type { DemoAssessmentTask } from '@/entities/assessment'
+import * as assessment from '@/bootstrap/mock-api'
 import * as api from '@/shared/api'
 import { useTrainerVoice } from '@/features/voice-answer/model/use-trainer-voice'
 import { createQueryClient } from '@/bootstrap/providers'
@@ -20,7 +20,7 @@ function renderVoiceHook(callback: () => ReturnType<typeof useTrainerVoice>) {
   return renderHook(callback, { wrapper })
 }
 
-const task: AssessmentTask = {
+const task: DemoAssessmentTask = {
   taskId: 'ml_001',
   question: 'question',
   options: ['A', 'B'],
@@ -48,7 +48,7 @@ it('finishes recording, retains audio for playback and revokes it on reset', asy
     text: 'Ответ из API',
   })
   const evaluate = vi
-    .spyOn(assessment, 'evaluateAnswer')
+    .spyOn(assessment, 'evaluateDemoAnswer')
     .mockResolvedValue({ score: 2, feedback: ['Верно.', 'Причина.', 'Совет.'] })
   const stop = vi
     .fn()
@@ -152,7 +152,7 @@ it('cancels an unfinished transcription on leaving and never grades its late res
       })
     },
   )
-  const evaluate = vi.spyOn(assessment, 'evaluateAnswer')
+  const evaluate = vi.spyOn(assessment, 'evaluateDemoAnswer')
   const { result, unmount } = renderVoiceHook(() => useTrainerVoice(task))
   await act(async () => {
     await result.current.start()
@@ -186,7 +186,7 @@ it('keeps the transcription and retries grading without recording again', async 
     text: 'Мой ответ',
   })
   const evaluate = vi
-    .spyOn(assessment, 'evaluateAnswer')
+    .spyOn(assessment, 'evaluateDemoAnswer')
     .mockRejectedValueOnce(new Error('offline'))
     .mockResolvedValueOnce({
       score: 1,
@@ -245,7 +245,7 @@ it('speaks the selected question and exposes its recording for session playback'
     id: 'tr-2',
     text: 'Регрессия',
   })
-  vi.spyOn(assessment, 'evaluateAnswer').mockResolvedValue({
+  vi.spyOn(assessment, 'evaluateDemoAnswer').mockResolvedValue({
     score: 2,
     feedback: ['Верно', 'Причина', 'Совет'],
   })

@@ -2,7 +2,7 @@ import { createContext, useContext } from 'react'
 import type { PropsWithChildren } from 'react'
 import type {
   Assessment,
-  AssessmentTask,
+  DemoAssessmentTask,
   OverallFeedbackData,
   OverallFeedbackItemInput,
 } from '@/entities/assessment'
@@ -15,9 +15,9 @@ export type VoiceAnswerDependencies = {
     synthesizeQuestion(text: string, signal: AbortSignal): Promise<Blob>
   }
   assessment: {
-    evaluateAnswer(
+    evaluateDemoAnswer(
       transcriptionId: string,
-      task: AssessmentTask,
+      task: DemoAssessmentTask,
       signal: AbortSignal,
     ): Promise<Assessment>
     fetchOverallFeedback(

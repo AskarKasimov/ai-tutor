@@ -151,7 +151,7 @@ func (q *Queries) GetOutcomeForGeneration(ctx context.Context, id string) (GetOu
 
 const getTaskProfile = `-- name: GetTaskProfile :one
 SELECT
-    task.id AS task_id, task.question, task.options, task.voice_instruction,
+    task.id AS task_id, task.question, task.options, task.voice_instruction, task.audio_asset_id,
     task.reference_answer, task.criteria, task.origin, task.created_at,
     outcome.id AS outcome_id, outcome.name AS outcome_name,
     outcome.include_in_test, taxonomy.code AS taxonomy_code,
@@ -176,6 +176,7 @@ type GetTaskProfileRow struct {
 	Question           string
 	Options            []byte
 	VoiceInstruction   *string
+	AudioAssetID       *string
 	ReferenceAnswer    *string
 	Criteria           *string
 	Origin             string
@@ -203,6 +204,7 @@ func (q *Queries) GetTaskProfile(ctx context.Context, id string) (GetTaskProfile
 		&i.Question,
 		&i.Options,
 		&i.VoiceInstruction,
+		&i.AudioAssetID,
 		&i.ReferenceAnswer,
 		&i.Criteria,
 		&i.Origin,

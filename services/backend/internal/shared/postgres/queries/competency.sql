@@ -98,7 +98,7 @@ ORDER BY competency.name, competency.id, constituent.name, constituent.id,
 
 -- name: GetTaskProfile :one
 SELECT
-    task.id AS task_id, task.question, task.options, task.voice_instruction,
+    task.id AS task_id, task.question, task.options, task.voice_instruction, task.audio_asset_id,
     task.reference_answer, task.criteria, task.origin, task.created_at,
     outcome.id AS outcome_id, outcome.name AS outcome_name,
     outcome.include_in_test, taxonomy.code AS taxonomy_code,

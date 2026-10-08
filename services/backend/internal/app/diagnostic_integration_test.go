@@ -77,12 +77,68 @@ func TestDiagnosticSessionAPIProgressOwnershipAndSnapshotPrivacy(t *testing.T) {
 	if foreign := f.request(http.MethodGet, "/diagnostic-sessions/"+progress.SessionID, "", other); foreign.Code != http.StatusNotFound {
 		t.Fatalf("foreign session read: %d %s", foreign.Code, foreign.Body.String())
 	}
+	foreignAudio := f.request(http.MethodGet, "/diagnostic-sessions/"+progress.SessionID+"/current/audio?variant_task_id="+progress.Current.ID, "", other)
+	requireCode(t, foreignAudio, http.StatusNotFound, "DIAGNOSTIC_SESSION_NOT_FOUND")
 	if before := f.request(http.MethodGet, "/diagnostic-sessions/"+progress.SessionID+"/result", "", access); before.Code != http.StatusConflict {
 		t.Fatalf("active result: %d %s", before.Code, before.Body.String())
 	}
-	audioResponse := f.request(http.MethodGet, "/diagnostic-sessions/"+progress.SessionID+"/current/audio", "", access)
-	if audioResponse.Code != http.StatusOK || audioResponse.Header().Get("Content-Type") != "audio/wav" {
+	audioResponse := f.request(http.MethodGet, "/diagnostic-sessions/"+progress.SessionID+"/current/audio?variant_task_id="+progress.Current.ID, "", access)
+	var audioMetadata struct {
+		VariantTaskID string  `json:"variant_task_id"`
+		Status        string  `json:"status"`
+		AudioURL      *string `json:"audio_url"`
+	}
+	if err := json.Unmarshal(audioResponse.Body.Bytes(), &audioMetadata); audioResponse.Code != http.StatusOK || audioResponse.Header().Get("Content-Type") != "application/json; charset=utf-8" || err != nil || audioMetadata.VariantTaskID != progress.Current.ID || audioMetadata.Status != "pending" || audioMetadata.AudioURL != nil {
 		t.Fatalf("current instruction audio: %d %s", audioResponse.Code, audioResponse.Body.String())
+	}
+	staleAudio := f.request(http.MethodGet, "/diagnostic-sessions/"+progress.SessionID+"/current/audio?variant_task_id=stale-task", "", access)
+	requireCode(t, staleAudio, http.StatusConflict, "DIAGNOSTIC_TASK_CHANGED")
+	var audioID string
+	if err := f.pool.QueryRow(t.Context(), "SELECT audio_asset_id FROM variant_tasks WHERE id=$1", progress.Current.ID).Scan(&audioID); err != nil || audioID == "" {
+		t.Fatalf("variant task audio link: id=%q err=%v", audioID, err)
+	}
+	if _, err := f.pool.Exec(t.Context(), "UPDATE audio_assets SET status='ready', bucket='persisted-bucket', storage_uri='s3://persisted-bucket/task-audio/v1/'||id||'.wav', audio_url='/task-audio/'||id||'/file' WHERE id=$1", audioID); err != nil {
+		t.Fatal(err)
+	}
+	f.s3Mu.Lock()
+	f.s3AssetID = audioID
+	f.s3Mu.Unlock()
+	readyMetadata := f.request(http.MethodGet, "/diagnostic-sessions/"+progress.SessionID+"/current/audio?variant_task_id="+progress.Current.ID, "", access)
+	if readyMetadata.Code != http.StatusOK || !strings.Contains(readyMetadata.Body.String(), `"status":"ready"`) || !strings.Contains(readyMetadata.Body.String(), `"audio_url":"/task-audio/`+audioID+`/file"`) {
+		t.Fatalf("ready metadata: %d %s", readyMetadata.Code, readyMetadata.Body.String())
+	}
+	for range 10 {
+		fileResponse := f.request(http.MethodGet, "/task-audio/"+audioID+"/file", "", access)
+		if fileResponse.Code != http.StatusOK || fileResponse.Header().Get("Content-Type") != "audio/wav" || fileResponse.Header().Get("Cache-Control") != "private, no-store" || !bytes.Equal(fileResponse.Body.Bytes(), wavBytes()) {
+			t.Fatalf("saved audio file: %d headers=%v body=%q", fileResponse.Code, fileResponse.Header(), fileResponse.Body.String())
+		}
+	}
+	f.s3Mu.Lock()
+	paths := append([]string(nil), f.s3Paths...)
+	f.s3Mu.Unlock()
+	if len(paths) != 10 {
+		t.Fatalf("S3 requests=%d, wanted ten saved-file reads", len(paths))
+	}
+	for _, path := range paths {
+		if !strings.HasPrefix(path, "/persisted-bucket/task-audio/v1/") {
+			t.Fatalf("S3 requested path %q; wanted persisted bucket/key", path)
+		}
+	}
+	if foreignFile := f.request(http.MethodGet, "/task-audio/"+audioID+"/file", "", other); foreignFile.Code != http.StatusOK {
+		t.Fatalf("published task audio access: %d %s", foreignFile.Code, foreignFile.Body.String())
+	}
+	archivedAssetID := "snapshot-only-audio"
+	if _, err := f.pool.Exec(t.Context(), "INSERT INTO audio_assets(id,instruction,object_key) VALUES ($1,'Archived instruction',$2)", archivedAssetID, "task-audio/v1/"+archivedAssetID+".wav"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.pool.Exec(t.Context(), "UPDATE variant_tasks SET audio_asset_id=$2 WHERE id=$1", progress.Current.ID, archivedAssetID); err != nil {
+		t.Fatal(err)
+	}
+	if ownPending := f.request(http.MethodGet, "/task-audio/"+archivedAssetID+"/file", "", access); ownPending.Code != http.StatusConflict {
+		t.Fatalf("owner could not reach archived snapshot asset: %d %s", ownPending.Code, ownPending.Body.String())
+	}
+	if foreignArchived := f.request(http.MethodGet, "/task-audio/"+archivedAssetID+"/file", "", other); foreignArchived.Code != http.StatusNotFound {
+		t.Fatalf("foreign archived audio: %d %s", foreignArchived.Code, foreignArchived.Body.String())
 	}
 	answerBody, contentType := diagnosticAnswerBody(t, progress.Current.ID)
 	answerRequest := httptest.NewRequest(http.MethodPost, "https://api.example/diagnostic-sessions/"+progress.SessionID+"/answers", bytes.NewReader(answerBody.Bytes()))

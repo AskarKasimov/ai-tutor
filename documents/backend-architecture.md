@@ -1,6 +1,6 @@
 # Архитектура backend
 
-Дата: 7 октября 2026. Код находится в `services/backend`, Go-модуль — `github.com/AskarKasimov/ai-tutor/services/backend`.
+Дата: 8 октября 2026. Код находится в `services/backend`, Go-модуль — `github.com/AskarKasimov/ai-tutor/services/backend`.
 
 ## Реализованные части
 
@@ -15,9 +15,10 @@
 | `features/assessment` | Контекстное оценивание по сохранённой позиции варианта; результат не сохраняется самим assessment. |
 | `features/taskgen` | Генерация новых заданий, сохранение контекста, импорт материалов. |
 | `features/variantgen` | Отбор ОР и аналогов, сохранение снимков, список и чтение вариантов. |
-| `features/diagnostic` | Память сессии, переходы main/basic, STT/TTS и API ответов/результата. |
+| `features/diagnostic` | Память сессии, переходы main/basic, STT и API ответов/результата/метаданных сохранённой озвучки. |
+| `features/taskaudio` | Durable PostgreSQL очередь, worker с ограниченной concurrency, S3 storage и авторизованная выдача сохранённых WAV. |
 | `entities` | Пользователь, auth-сессия, карта, аудио, расшифровка, вариант и снимки профилей. |
-| `shared` | Fault, security, HTTP helpers, миграции/SQLC. |
+| `shared` | Fault, security, HTTP helpers, миграции/SQLC и транзакционный enqueue helper с primitive inputs. |
 
 Каждый feature содержит `application`, `infrastructure`, `transport/http`. Application определяет сценарии и порты; инфраструктура реализует порты; HTTP переводит запросы/ответы. `app` связывает зависимости. Сценарии и entities не импортируют HTTP, pgx или собственные адаптеры. Features не импортируют сценарии друг друга; общие доменные типы находятся в entities.
 
@@ -30,6 +31,16 @@ SQL находится в `shared/postgres/queries`; PostgreSQL-адаптеры
 Карта: компетенция → составляющая → ОР → задания. Источник — текущий ML CSV/XLSX; старый парный формат поддержан кодом. ОС 1:1 с ОР. Задания хранят отдельные вопрос, варианты, инструкцию и эталон. Импорт выдаёт новую ревизию и ID и заменяет активную карту одной транзакцией.
 
 Состояние диагностических сессий и принятые ответы хранятся в памяти процесса; таблицы учебных сессий/выдач/ответов не подключены. Отдельные variants/variant_tasks со снимками добавлены миграцией 00002. `entities/session` относится к авторизации. Диагностические handlers и контракт описаны в [backend README](../services/backend/README.md) и [OpenAPI](../api/openapi.yaml); решения и ограничения — [PLAN.md](../PLAN.md).
+
+`00003_task_audio.sql` добавляет `audio_assets` и ссылки на активные задачи и
+снимки вариантов. Импорт только ставит задания в очередь; worker запускается явным
+app lifecycle после миграций, использует существующий TTS client, валидирует WAV и
+сохраняет его в приватный S3 bucket. Очередь ограничивает параллельность, lease
+восстанавливается после истечения; после пяти попыток asset получает failed.
+HTTP чтение никогда не вызывает TTS: diagnostic metadata показывает статус и
+внутренний `/task-audio/{id}/file` URL, а file handler читает объект по bucket/key,
+сохранённым с asset. `/health` проверяет API/БД, но не TTS или S3. При смене S3
+endpoint объекты нужно скопировать отдельно до изменения сохранённых bucket/key.
 
 ## Variantgen
 

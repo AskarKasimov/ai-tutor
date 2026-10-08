@@ -424,6 +424,37 @@ components:
         - variant_task_id
         - verdict
       type: object
+    diagnostichttp.AudioMetadataResponse:
+      additionalProperties: false
+      properties:
+        audio_url:
+          type:
+            - string
+            - "null"
+        status:
+          enum:
+            - missing
+            - pending
+            - processing
+            - ready
+            - failed
+            - cancelled
+          type: string
+        variant_task_id:
+          type: string
+      required:
+        - audio_url
+        - status
+        - variant_task_id
+      type: object
+    diagnostichttp.AudioRegenerationRequest:
+      additionalProperties: false
+      properties:
+        variant_task_id:
+          type: string
+      required:
+        - variant_task_id
+      type: object
     diagnostichttp.CriterionResultResponse:
       additionalProperties: false
       properties:
@@ -1918,14 +1949,19 @@ paths:
             maxLength: 128
             minLength: 1
             type: string
+        - description: ID текущего задания
+          in: query
+          name: variant_task_id
+          required: true
+          schema:
+            type: string
       responses:
         "200":
           content:
-            audio/wav:
+            application/json:
               schema:
-                format: binary
-                type: string
-          description: WAV с голосовой инструкцией
+                $ref: '#/components/schemas/diagnostichttp.AudioMetadataResponse'
+          description: OK
         "401":
           content:
             application/json:
@@ -1950,27 +1986,79 @@ paths:
               schema:
                 $ref: '#/components/schemas/fault.Error'
           description: Unprocessable Entity
-        "502":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Bad Gateway
         "503":
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/fault.Error'
           description: Service Unavailable
-        "504":
+      security:
+        - accessCookie: []
+      summary: Прочитать состояние озвучки текущего задания
+      tags:
+        - Диагностика
+      x-implementation: implemented
+  /diagnostic-sessions/{id}/current/audio/regenerate:
+    post:
+      description: Проверяет сохранённый объект и при необходимости синхронно восстанавливает только сохранённую инструкцию задания.
+      parameters:
+        - description: ID сессии
+          in: path
+          name: id
+          required: true
+          schema:
+            maxLength: 128
+            minLength: 1
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/diagnostichttp.AudioRegenerationRequest'
+              description: Текущее задание
+              summary: request
+        description: Текущее задание
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/diagnostichttp.AudioMetadataResponse'
+          description: OK
+        "401":
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/fault.Error'
-          description: Gateway Timeout
+          description: Unauthorized
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Not Found
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Conflict
+        "422":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unprocessable Entity
+        "503":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Service Unavailable
       security:
         - accessCookie: []
-      summary: Озвучить инструкцию текущего задания
+      summary: Восстановить озвучку текущего задания
       tags:
         - Диагностика
       x-implementation: implemented
@@ -2088,6 +2176,61 @@ paths:
       summary: Проверить API и подключение к PostgreSQL
       tags:
         - Сервис
+      x-implementation: implemented
+  /task-audio/{id}/file:
+    get:
+      parameters:
+        - description: ID аудиозаписи задания
+          in: path
+          name: id
+          required: true
+          schema:
+            maxLength: 256
+            minLength: 1
+            type: string
+      responses:
+        "200":
+          content:
+            audio/wav:
+              schema:
+                format: binary
+                type: string
+          description: Сохранённая WAV-озвучка
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unauthorized
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Not Found
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Conflict
+        "422":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unprocessable Entity
+        "503":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Service Unavailable
+      security:
+        - accessCookie: []
+      summary: Получить сохранённую озвучку задания
+      tags:
+        - Задания
       x-implementation: implemented
   /tasks:
     get:

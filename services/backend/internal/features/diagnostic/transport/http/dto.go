@@ -2,6 +2,16 @@ package diagnostichttp
 
 import "github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/diagnostic"
 
+type AudioMetadataResponse struct {
+	VariantTaskID string  `json:"variant_task_id"`
+	Status        string  `json:"status" enums:"missing,pending,processing,ready,failed,cancelled"`
+	AudioURL      *string `json:"audio_url" extensions:"x-nullable"`
+}
+
+type AudioRegenerationRequest struct {
+	VariantTaskID string `json:"variant_task_id" binding:"required"`
+}
+
 type CriterionResultResponse struct {
 	Key         string `json:"key" binding:"required"`
 	Satisfied   bool   `json:"satisfied" binding:"required"`

@@ -15,7 +15,6 @@ type VariantReader interface {
 
 type Voice interface {
 	Transcribe(context.Context, string, []byte, string) (transcription.Transcription, error)
-	Synthesize(context.Context, string) ([]byte, error)
 }
 
 type Grader interface {

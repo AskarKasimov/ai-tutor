@@ -58,7 +58,8 @@ export async function mockApiFetch(
   url: string,
   options: RequestInit = {},
 ): Promise<Response> {
-  const path = new URL(url, 'http://mock.local').pathname
+  const requestUrl = new URL(url, 'http://mock.local')
+  const path = requestUrl.pathname
   const method = options.method ?? 'GET'
   await pause(
     path.endsWith('/voice/transcriptions') ? 600 : 100,
@@ -133,9 +134,40 @@ export async function mockApiFetch(
     transcriptions.set(id, text)
     return json({ id, text, created_at: Math.floor(Date.now() / 1000) })
   }
-  if (method === 'POST' && path.endsWith('/voice/syntheses')) {
-    if (typeof body.text !== 'string' || !body.text.trim())
+  if (
+    method === 'GET' &&
+    /\/diagnostic-sessions\/[^/]+\/current\/audio$/.test(path)
+  ) {
+    const taskId = requestUrl.searchParams.get('variant_task_id')
+    if (!taskId) return error(422, 'VALIDATION_ERROR', 'invalid')
+    let hash = 2166136261
+    for (const char of taskId)
+      hash = Math.imul(hash ^ char.charCodeAt(0), 16777619)
+    const audioId = `demo_${(hash >>> 0).toString(16)}`
+    return json({
+      variant_task_id: taskId,
+      status: 'ready',
+      audio_url: `/task-audio/${audioId}/file`,
+    })
+  }
+  if (
+    method === 'POST' &&
+    /\/diagnostic-sessions\/[^/]+\/current\/audio\/regenerate$/.test(path)
+  ) {
+    const taskId = body.variant_task_id
+    if (typeof taskId !== 'string' || !taskId)
       return error(422, 'VALIDATION_ERROR', 'invalid')
+    let hash = 2166136261
+    for (const char of taskId)
+      hash = Math.imul(hash ^ char.charCodeAt(0), 16777619)
+    const audioId = `demo_${(hash >>> 0).toString(16)}`
+    return json({
+      variant_task_id: taskId,
+      status: 'ready',
+      audio_url: `/task-audio/${audioId}/file`,
+    })
+  }
+  if (method === 'GET' && /\/task-audio\/[A-Za-z0-9_-]+\/file$/.test(path)) {
     return new Response(createDemoAudio(), {
       headers: { 'Content-Type': 'audio/wav' },
     })

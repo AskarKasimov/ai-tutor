@@ -29,6 +29,7 @@ func (s *variantStub) Get(context.Context, string, string) (variant.Variant, err
 type voiceStub struct {
 	mu            sync.Mutex
 	transcribes   int
+	syntheses     int
 	transcription transcription.Transcription
 }
 
@@ -40,8 +41,6 @@ func (s *voiceStub) Transcribe(_ context.Context, ownerID string, _ []byte, _ st
 	value.OwnerID = ownerID
 	return value, nil
 }
-
-func (s *voiceStub) Synthesize(context.Context, string) ([]byte, error) { return []byte("wav"), nil }
 
 type graderStub struct {
 	mu              sync.Mutex

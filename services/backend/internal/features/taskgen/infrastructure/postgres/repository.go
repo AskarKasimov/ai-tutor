@@ -10,9 +10,11 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/audioasset"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/features/taskgen/application"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/features/taskgen/infrastructure/profilejson"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/fault"
+	pgshared "github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/postgres"
 	db "github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/postgres/sqlcgen"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/security"
 )
@@ -160,6 +162,12 @@ func (r *Repository) Persist(ctx context.Context, snapshot application.Context, 
 		Criteria: optional(criteria), GenerationRunID: &runID, CreatedAt: createdAt,
 	}); err != nil {
 		return application.Task{}, err
+	}
+	if audioasset.CanSynthesize(voice) {
+		assetID := audioasset.IDForTask(taskID)
+		if _, err := pgshared.EnqueueTaskAudio(ctx, queries, taskID, assetID, audioasset.ObjectKey(assetID), voice); err != nil {
+			return application.Task{}, err
+		}
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return application.Task{}, err

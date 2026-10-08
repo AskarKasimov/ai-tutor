@@ -78,6 +78,7 @@ type TaskSnapshot struct {
 	Question           string
 	Options            []string
 	VoiceInstruction   string
+	AudioAssetID       *string
 	ReferenceAnswer    string
 	Criteria           string
 	TaxonomyCode       string

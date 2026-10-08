@@ -4,6 +4,10 @@
 
 package db
 
+import (
+	"github.com/jackc/pgx/v5/pgtype"
+)
+
 type AccessToken struct {
 	TokenHash []byte
 	SessionID string
@@ -24,6 +28,23 @@ type AssignmentResponse struct {
 	Score           *int16
 	Feedback        []byte
 	CreatedAt       int64
+}
+
+type AudioAsset struct {
+	ID            string
+	Instruction   string
+	ObjectKey     string
+	Status        string
+	Bucket        *string
+	StorageUri    *string
+	AudioUrl      *string
+	Attempts      int32
+	NextAttemptAt pgtype.Timestamptz
+	LeaseUntil    pgtype.Timestamptz
+	ClaimToken    *string
+	LastErrorCode *string
+	CreatedAt     pgtype.Timestamptz
+	UpdatedAt     pgtype.Timestamptz
 }
 
 type AuthSession struct {
@@ -195,6 +216,7 @@ type Task struct {
 	SourceRowIndex    *int32
 	SourceColumnIndex *int32
 	CreatedAt         int64
+	AudioAssetID      *string
 }
 
 type TaskAssignment struct {
@@ -257,4 +279,5 @@ type VariantTask struct {
 	Role                 string
 	TaskSnapshot         []byte
 	ProfileSnapshot      []byte
+	AudioAssetID         *string
 }

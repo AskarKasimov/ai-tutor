@@ -18,17 +18,24 @@ import (
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/fault"
 )
 
+type TTSOptions struct {
+	Seed               int64   `json:"seed"`
+	CFGValue           float64 `json:"cfg_value"`
+	InferenceTimesteps int     `json:"inference_timesteps"`
+}
+
 type Client struct {
 	client         *http.Client
 	sttURL, ttsURL string
 	timeout        time.Duration
+	ttsOptions     TTSOptions
 }
 
-func New(client *http.Client, sttURL, ttsURL string, timeout time.Duration) *Client {
+func New(client *http.Client, sttURL, ttsURL string, timeout time.Duration, ttsOptions TTSOptions) *Client {
 	if client == nil {
 		client = http.DefaultClient
 	}
-	return &Client{client: client, sttURL: sttURL, ttsURL: ttsURL, timeout: timeout}
+	return &Client{client: client, sttURL: sttURL, ttsURL: ttsURL, timeout: timeout, ttsOptions: ttsOptions}
 }
 
 func providerError(err error) error {
@@ -102,7 +109,8 @@ func (c *Client) Recognize(ctx context.Context, data []byte, media string) (stri
 func (c *Client) Synthesize(ctx context.Context, text string) ([]byte, error) {
 	body, err := json.Marshal(struct {
 		Text string `json:"text"`
-	}{Text: text})
+		TTSOptions
+	}{Text: text, TTSOptions: c.ttsOptions})
 	if err != nil {
 		return nil, err
 	}

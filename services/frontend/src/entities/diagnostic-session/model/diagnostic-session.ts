@@ -31,6 +31,13 @@ export type DiagnosticProgress = {
   feedback?: string[]
 }
 
+export type DiagnosticAudioMetadata = {
+  variant_task_id: string
+  status:
+    'missing' | 'pending' | 'processing' | 'ready' | 'failed' | 'cancelled'
+  audio_url: string | null
+}
+
 export type DiagnosticAnswer = {
   variant_task_id: string
   source_task_id: string

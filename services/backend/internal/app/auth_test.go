@@ -6,9 +6,11 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -23,13 +25,28 @@ import (
 const password = "Надёжная фраза для теста 42!"
 
 type fixture struct {
-	app     *App
-	pool    *pgxpool.Pool
-	handler http.Handler
-	now     time.Time
+	app          *App
+	pool         *pgxpool.Pool
+	handler      http.Handler
+	now          time.Time
+	s3           *httptest.Server
+	s3Mu         sync.Mutex
+	s3Paths      []string
+	s3AssetID    string
+	s3Objects    map[string]fixtureS3Object
+	s3HeadStatus int
+}
+
+type fixtureS3Object struct {
+	data    []byte
+	assetID string
 }
 
 func newFixture(t *testing.T) *fixture {
+	return newFixtureWithConfig(t, testConfig())
+}
+
+func newFixtureWithConfig(t *testing.T, cfg Config) *fixture {
 	t.Helper()
 	dsn := os.Getenv("TEST_DATABASE_URL")
 	if dsn == "" {
@@ -61,12 +78,65 @@ func newFixture(t *testing.T) *fixture {
 	if err := postgres.Migrate(ctx, pool); err != nil {
 		t.Fatal(err)
 	}
-	cfg := testConfig()
+	f := &fixture{pool: pool, now: time.Unix(1790762400, 0), s3Objects: make(map[string]fixtureS3Object)}
+	f.s3 = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		f.s3Mu.Lock()
+		f.s3Paths = append(f.s3Paths, r.URL.Path)
+		assetID := f.s3AssetID
+		headStatus := f.s3HeadStatus
+		object, exists := f.s3Objects[strings.TrimPrefix(r.URL.Path, "/task-audio-test/")]
+		f.s3Mu.Unlock()
+		switch r.Method {
+		case http.MethodHead:
+			if r.URL.Path == "/task-audio-test" {
+				w.WriteHeader(http.StatusOK)
+				return
+			}
+			if headStatus != 0 {
+				w.WriteHeader(headStatus)
+				return
+			}
+			if !exists {
+				w.WriteHeader(http.StatusNotFound)
+				return
+			}
+			w.Header().Set("Content-Length", strconv.Itoa(len(object.data)))
+			w.Header().Set("Content-Type", "audio/wav")
+			w.Header().Set("x-amz-meta-audio-asset-id", object.assetID)
+		case http.MethodPut:
+			data, err := io.ReadAll(r.Body)
+			if err != nil {
+				w.WriteHeader(http.StatusBadRequest)
+				return
+			}
+			key := strings.TrimPrefix(r.URL.Path, "/task-audio-test/")
+			f.s3Mu.Lock()
+			f.s3Objects[key] = fixtureS3Object{data: data, assetID: r.Header.Get("x-amz-meta-audio-asset-id")}
+			f.s3Mu.Unlock()
+			w.WriteHeader(http.StatusOK)
+		case http.MethodGet:
+			if !exists {
+				w.Header().Set("Content-Type", "audio/wav")
+				w.Header().Set("x-amz-meta-audio-asset-id", assetID)
+				_, _ = w.Write(wavBytes())
+				return
+			}
+			w.Header().Set("Content-Type", "audio/wav")
+			w.Header().Set("x-amz-meta-audio-asset-id", object.assetID)
+			w.Header().Set("Content-Length", strconv.Itoa(len(object.data)))
+			_, _ = w.Write(object.data)
+		default:
+			w.WriteHeader(http.StatusMethodNotAllowed)
+		}
+	}))
+	t.Cleanup(f.s3.Close)
+	cfg.S3Endpoint = f.s3.URL
+	cfg.S3CreateBucket = false
 	a, err := New(cfg, pool, zap.NewNop())
 	if err != nil {
 		t.Fatal(err)
 	}
-	f := &fixture{app: a, pool: pool, now: time.Unix(1790762400, 0)}
+	f.app = a
 	a.now = func() time.Time { return f.now }
 	f.handler = a.Handler()
 	return f

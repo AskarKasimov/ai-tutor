@@ -84,8 +84,9 @@ func (r *Repository) Create(ctx context.Context, ownerID, key string, build appl
 			liveID := task.Task.ID
 			if err = q.InsertVariantTask(ctx, db.InsertVariantTaskParams{
 				ID: task.ID, VariantID: createdID, LiveTaskID: &liveID,
-				SourceTaskIDSnapshot: task.Task.ID, CompetencyPosition: int32(selection.Position),
-				Slot: int16(slot), Role: task.Role, TaskSnapshot: taskJSON, ProfileSnapshot: profileJSON,
+				SourceTaskIDSnapshot: task.Task.ID, AudioAssetID: task.Task.AudioAssetID,
+				CompetencyPosition: int32(selection.Position), Slot: int16(slot), Role: task.Role,
+				TaskSnapshot: taskJSON, ProfileSnapshot: profileJSON,
 			}); err != nil {
 				return variant.Variant{}, err
 			}
@@ -125,7 +126,7 @@ func splitSnapshots(task variant.TaskProfile) ([]byte, []byte, error) {
 	return taskJSON, profileJSON, err
 }
 
-func mergeSnapshots(taskJSON, profileJSON []byte) (variant.TaskProfile, error) {
+func mergeSnapshots(taskJSON, profileJSON []byte, audioAssetID *string) (variant.TaskProfile, error) {
 	var task taskSnapshot
 	var profile profileSnapshot
 	if err := json.Unmarshal(taskJSON, &task); err != nil {
@@ -137,7 +138,7 @@ func mergeSnapshots(taskJSON, profileJSON []byte) (variant.TaskProfile, error) {
 	if task.Options == nil {
 		task.Options = []string{}
 	}
-	return variant.TaskProfile{ID: task.ID, Question: task.Question, Options: task.Options, VoiceInstruction: task.VoiceInstruction, ReferenceAnswer: task.ReferenceAnswer, Criteria: task.Criteria, Origin: task.Origin, CreatedAt: task.CreatedAt, SourceRowIndex: task.SourceRowIndex, SourceColumnIndex: task.SourceColumnIndex, Competency: profile.Competency, Constituent: profile.Constituent, Outcome: profile.Outcome}, nil
+	return variant.TaskProfile{ID: task.ID, Question: task.Question, Options: task.Options, VoiceInstruction: task.VoiceInstruction, AudioAssetID: audioAssetID, ReferenceAnswer: task.ReferenceAnswer, Criteria: task.Criteria, Origin: task.Origin, CreatedAt: task.CreatedAt, SourceRowIndex: task.SourceRowIndex, SourceColumnIndex: task.SourceColumnIndex, Competency: profile.Competency, Constituent: profile.Constituent, Outcome: profile.Outcome}, nil
 }
 
 func (r *Repository) Get(ctx context.Context, ownerID, id string) (variant.Variant, error) {
@@ -158,7 +159,7 @@ func (r *Repository) Get(ctx context.Context, ownerID, id string) (variant.Varia
 	}
 	result.TaskCount = len(rows)
 	for _, row := range rows {
-		task, err := mergeSnapshots(row.TaskSnapshot, row.ProfileSnapshot)
+		task, err := mergeSnapshots(row.TaskSnapshot, row.ProfileSnapshot, row.AudioAssetID)
 		if err != nil {
 			return variant.Variant{}, err
 		}
@@ -183,7 +184,7 @@ func (r *Repository) Task(ctx context.Context, ownerID, variantID, taskID string
 	if err != nil {
 		return variant.VariantTask{}, err
 	}
-	task, err := mergeSnapshots(row.TaskSnapshot, row.ProfileSnapshot)
+	task, err := mergeSnapshots(row.TaskSnapshot, row.ProfileSnapshot, row.AudioAssetID)
 	if err != nil {
 		return variant.VariantTask{}, err
 	}

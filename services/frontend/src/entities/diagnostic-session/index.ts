@@ -1,5 +1,6 @@
 export type {
   DiagnosticAnswer,
+  DiagnosticAudioMetadata,
   DiagnosticProgress,
   DiagnosticResult,
   DiagnosticTask,
@@ -11,7 +12,9 @@ export { DiagnosticApiError } from './model/diagnostic-error'
 export {
   createSubmission,
   createVariant,
-  diagnosticAudio,
+  fetchDiagnosticAudioFile,
+  readDiagnosticAudio,
+  regenerateDiagnosticAudio,
   readDiagnostic,
   readDiagnosticResult,
   startDiagnostic,

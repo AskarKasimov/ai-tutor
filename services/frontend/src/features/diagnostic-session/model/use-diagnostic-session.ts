@@ -267,6 +267,7 @@ export function useDiagnosticSession(userId: string) {
         queryKey: diagnosticSessionQueryKeys.diagnosticResults(userId),
       })
       cache.removeQueries({ queryKey: ['diagnostic-audio', userId] })
+      cache.removeQueries({ queryKey: ['stored-task-audio', userId] })
     },
     onError: (error, _input, token) => {
       if (token) handleError(error, token)

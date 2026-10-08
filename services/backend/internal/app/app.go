@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/audioasset"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"go.uber.org/zap"
 
@@ -33,6 +34,10 @@ import (
 	diagnosticfeedbackmodel "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/diagnosticfeedback/infrastructure/modelapi"
 	diagnosticfeedbackpg "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/diagnosticfeedback/infrastructure/postgres"
 	diagnosticfeedbackhttp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/diagnosticfeedback/transport/http"
+	taskaudioapp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/taskaudio/application"
+	taskaudiopg "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/taskaudio/infrastructure/postgres"
+	taskaudios3 "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/taskaudio/infrastructure/s3"
+	taskaudiohttp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/taskaudio/transport/http"
 	taskbankapp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/taskbank/application"
 	taskbankpg "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/taskbank/infrastructure/postgres"
 	taskbankhttp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/taskbank/transport/http"
@@ -64,6 +69,12 @@ type App struct {
 	logger            *zap.Logger
 	variantRepository variantgenapp.Repository
 	diagnosticStore   *diagnosticmemory.Store
+	audioWorker       interface {
+		Run(context.Context) error
+		ProcessOne(context.Context) (bool, error)
+		Regenerate(context.Context, string) (audioasset.Asset, error)
+	}
+	audioStorage taskaudioapp.Storage
 }
 
 func New(cfg Config, pool *pgxpool.Pool, logger *zap.Logger) (*App, error) {
@@ -76,7 +87,7 @@ func New(cfg Config, pool *pgxpool.Pool, logger *zap.Logger) (*App, error) {
 	if logger == nil {
 		logger = zap.NewNop()
 	}
-	return &App{
+	a := &App{
 		cfg:               cfg,
 		pool:              pool,
 		now:               time.Now,
@@ -87,7 +98,27 @@ func New(cfg Config, pool *pgxpool.Pool, logger *zap.Logger) (*App, error) {
 		client: &http.Client{
 			CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 		},
-	}, nil
+	}
+	storage, err := taskaudios3.New(taskaudios3.Config{
+		Endpoint: cfg.S3Endpoint, Region: cfg.S3Region, Bucket: cfg.S3Bucket,
+		AccessKey: cfg.S3AccessKey, SecretKey: cfg.S3SecretKey,
+		PathStyle: cfg.S3PathStyle, CreateBucket: cfg.S3CreateBucket, Timeout: cfg.S3Timeout,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("configure task audio storage: %w", err)
+	}
+	var synth taskaudioapp.Synthesizer
+	if cfg.APIMode == "mock" {
+		synth = voicemock.Client{}
+	} else {
+		synth = modelapi.New(a.client, cfg.STTURL, cfg.TTSURL, cfg.VoiceTimeout, modelapi.TTSOptions{Seed: cfg.TTSSeed, CFGValue: cfg.TTSCFGValue, InferenceTimesteps: cfg.TTSInferenceTimesteps})
+	}
+	a.audioWorker = taskaudioapp.NewWorker(taskaudiopg.New(pool), storage, synth, taskaudioapp.WorkerConfig{
+		Concurrency: cfg.AudioWorkers, PollInterval: cfg.AudioPollInterval, VoiceTimeout: cfg.VoiceTimeout,
+		S3Timeout: cfg.S3Timeout, Bucket: cfg.S3Bucket,
+	})
+	a.audioStorage = storage
+	return a, nil
 }
 
 func (a *App) Handler() http.Handler {
@@ -105,7 +136,7 @@ func (a *App) Handler() http.Handler {
 		feedbackSynthesizer = diagnosticfeedbackmock.New()
 		taskGenerator, modelName = taskgenmock.Generator{}, "mock"
 	} else {
-		models := modelapi.New(a.client, a.cfg.STTURL, a.cfg.TTSURL, a.cfg.VoiceTimeout)
+		models := modelapi.New(a.client, a.cfg.STTURL, a.cfg.TTSURL, a.cfg.VoiceTimeout, modelapi.TTSOptions{Seed: a.cfg.TTSSeed, CFGValue: a.cfg.TTSCFGValue, InferenceTimesteps: a.cfg.TTSInferenceTimesteps})
 		recognizer, synthesizer = models, models
 		grader = assessmentmodel.New(a.client, a.cfg.AssessmentBaseURL, a.cfg.AssessmentModel, a.cfg.AssessmentTimeout)
 		feedbackSynthesizer = diagnosticfeedbackmodel.New(a.client, a.cfg.AssessmentBaseURL, a.cfg.AssessmentModel, a.cfg.AssessmentTimeout)
@@ -124,7 +155,9 @@ func (a *App) Handler() http.Handler {
 		taskgenapp.NewMaterialService(taskgenRepository, func() int64 { return a.now().Unix() }),
 	)
 	variantgenHandlers := variantgenhttp.New(variantgenapp.New(a.variantRepository, variantgenrandom.Chooser{}, security.IDGenerator{}, a.now))
-	diagnosticService := diagnosticapp.New(a.diagnosticStore, a.variantRepository, voice, assessmentService, security.IDGenerator{}, a.now)
+	taskAudioService := taskaudioapp.NewService(taskaudiopg.New(a.pool), a.audioStorage)
+	taskAudioHandlers := taskaudiohttp.New(taskAudioService)
+	diagnosticService := diagnosticapp.New(a.diagnosticStore, a.variantRepository, voice, assessmentService, security.IDGenerator{}, a.now).WithAudioReader(taskAudioService).WithAudioRegenerator(a.audioWorker)
 	diagnosticHandlers := diagnostichttp.New(diagnosticService, a.cfg.MaxUploadBytes)
 	feedbackService := diagnosticfeedbackapp.New(diagnosticService, feedbackSynthesizer, diagnosticfeedbackmemory.New(), a.now).
 		WithTaskFinder(diagnosticfeedbackpg.NewTaskFinder(a.pool))
@@ -144,6 +177,8 @@ func (a *App) Handler() http.Handler {
 	mux.Handle("POST /diagnostic-sessions", protect(auth, http.HandlerFunc(diagnosticHandlers.Start)))
 	mux.Handle("GET /diagnostic-sessions/{id}", protect(auth, http.HandlerFunc(diagnosticHandlers.Read)))
 	mux.Handle("GET /diagnostic-sessions/{id}/current/audio", protect(auth, http.HandlerFunc(diagnosticHandlers.CurrentAudio)))
+	mux.Handle("POST /diagnostic-sessions/{id}/current/audio/regenerate", protect(auth, http.HandlerFunc(diagnosticHandlers.RegenerateCurrentAudio)))
+	mux.Handle("GET /task-audio/{id}/file", protect(auth, http.HandlerFunc(taskAudioHandlers.File)))
 	mux.Handle("POST /diagnostic-sessions/{id}/answers", protect(auth, http.HandlerFunc(diagnosticHandlers.Answer)))
 	mux.Handle("GET /diagnostic-sessions/{id}/result", protect(auth, http.HandlerFunc(diagnosticHandlers.Result)))
 	mux.Handle("GET /diagnostic-sessions/{id}/feedback", protect(auth, http.HandlerFunc(feedbackHandlers.GetFeedback)))

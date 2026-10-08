@@ -87,7 +87,7 @@ func importMap(name string) competencymap.Map {
 	}
 }
 
-func TestReplacePersistsTypedMapAndReplacesAllMapData(t *testing.T) {
+func TestImportAudioPersistsTypedMapAndReplacesAllMapData(t *testing.T) {
 	repository, ctx, userID := setupImportRepository(t)
 	pool := repository.pool
 	if _, err := pool.Exec(ctx, `INSERT INTO transcriptions(id,user_id,text,created_at) VALUES ('transcription-keep',$1,'сохранить',1)`, userID); err != nil {
@@ -102,6 +102,17 @@ func TestReplacePersistsTypedMapAndReplacesAllMapData(t *testing.T) {
 		t.Fatalf("first import result = %#v", first)
 	}
 	assertImportedProfile(t, ctx, pool, "ОР один", "Вопрос один", 2)
+	var assetID, instruction, status string
+	var taskAssetID *string
+	if err := pool.QueryRow(ctx, `SELECT id,instruction,status FROM audio_assets`).Scan(&assetID, &instruction, &status); err != nil {
+		t.Fatal(err)
+	}
+	if err := pool.QueryRow(ctx, `SELECT audio_asset_id FROM tasks`).Scan(&taskAssetID); err != nil {
+		t.Fatal(err)
+	}
+	if assetID != "taskaudio_"+mustTaskID(t, pool, ctx) || taskAssetID == nil || *taskAssetID != assetID || instruction != "Объясните выбор" || status != "pending" {
+		t.Fatalf("imported audio asset/link = id:%q task:%v instruction:%q status:%q", assetID, taskAssetID, instruction, status)
+	}
 
 	second, err := repository.Replace(ctx, userID, importMap("два"), 20)
 	if err != nil {
@@ -133,7 +144,7 @@ func TestReplacePersistsTypedMapAndReplacesAllMapData(t *testing.T) {
 	}
 }
 
-func TestReplaceRollsBackInvalidMapWithoutLosingActiveMap(t *testing.T) {
+func TestImportAudioRollsBackInvalidMapWithoutLosingActiveMap(t *testing.T) {
 	repository, ctx, userID := setupImportRepository(t)
 	if _, err := repository.Replace(ctx, userID, importMap("сохранённая"), 10); err != nil {
 		t.Fatal(err)
@@ -151,8 +162,12 @@ func TestReplaceRollsBackInvalidMapWithoutLosingActiveMap(t *testing.T) {
 	if err := repository.pool.QueryRow(ctx, `SELECT outcome.name, task.question FROM outcomes outcome JOIN tasks task ON task.outcome_id=outcome.id`).Scan(&outcomeName, &question); err != nil {
 		t.Fatal(err)
 	}
-	if revision != 1 || outcomeName != "ОР сохранённая" || question != "Вопрос сохранённая" {
-		t.Fatalf("failed replacement changed active data: revision=%d outcome=%q task=%q", revision, outcomeName, question)
+	var assets int
+	if err := repository.pool.QueryRow(ctx, `SELECT count(*) FROM audio_assets`).Scan(&assets); err != nil {
+		t.Fatal(err)
+	}
+	if revision != 1 || outcomeName != "ОР сохранённая" || question != "Вопрос сохранённая" || assets != 1 {
+		t.Fatalf("failed replacement changed active data/assets: revision=%d outcome=%q task=%q assets=%d", revision, outcomeName, question, assets)
 	}
 }
 
@@ -173,6 +188,15 @@ VALUES ('partial-coordinate-task',$1,'invalid',NULL,2,'Задание1','authore
 	if err == nil {
 		t.Fatal("task with only source_revision and source_column_index was accepted")
 	}
+}
+
+func mustTaskID(t *testing.T, pool *pgxpool.Pool, ctx context.Context) string {
+	t.Helper()
+	var id string
+	if err := pool.QueryRow(ctx, `SELECT id FROM tasks`).Scan(&id); err != nil {
+		t.Fatal(err)
+	}
+	return id
 }
 
 func assertImportedProfile(t *testing.T, ctx context.Context, pool *pgxpool.Pool, outcomeName, question string, rowLine int) {

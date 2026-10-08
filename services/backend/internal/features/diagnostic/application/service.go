@@ -4,12 +4,14 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"strings"
 	"time"
 	"unicode/utf8"
 
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/assessment"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/audio"
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/audioasset"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/diagnostic"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/transcription"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/variant"
@@ -17,12 +19,24 @@ import (
 )
 
 type Service struct {
-	store    Store
-	variants VariantReader
-	voice    Voice
-	grader   Grader
-	ids      IDGenerator
-	now      func() time.Time
+	store       Store
+	variants    VariantReader
+	voice       Voice
+	audio       audioasset.MetadataReader
+	regenerator audioasset.Regenerator
+	grader      Grader
+	ids         IDGenerator
+	now         func() time.Time
+}
+
+func (s *Service) WithAudioReader(reader audioasset.MetadataReader) *Service {
+	s.audio = reader
+	return s
+}
+
+func (s *Service) WithAudioRegenerator(regenerator audioasset.Regenerator) *Service {
+	s.regenerator = regenerator
+	return s
 }
 
 func New(store Store, variants VariantReader, voice Voice, grader Grader, ids IDGenerator, now func() time.Time) *Service {
@@ -84,22 +98,90 @@ func (s *Service) Read(ctx context.Context, ownerID, sessionID string) (diagnost
 	return value.Progress(), nil
 }
 
-func (s *Service) CurrentAudio(ctx context.Context, ownerID, sessionID string) ([]byte, error) {
+func (s *Service) CurrentAudio(ctx context.Context, ownerID, sessionID, expectedTaskID string) (audioasset.Metadata, error) {
 	if !validID(sessionID) {
-		return nil, fault.Validation("id", "Укажите корректный ID диагностической сессии.")
+		return audioasset.Metadata{}, fault.Validation("id", "Укажите корректный ID диагностической сессии.")
+	}
+	if !validID(expectedTaskID) {
+		return audioasset.Metadata{}, fault.Validation("variant_task_id", "Укажите корректный ID задания.")
 	}
 	value, err := s.store.Get(ctx, ownerID, sessionID)
 	if err != nil {
-		return nil, err
+		return audioasset.Metadata{}, err
 	}
 	if value.Status != diagnostic.StatusActive {
-		return nil, fault.New(fault.Conflict, "DIAGNOSTIC_SESSION_COMPLETED", "Диагностическая сессия уже завершена.")
+		return audioasset.Metadata{}, fault.New(fault.Conflict, "DIAGNOSTIC_SESSION_COMPLETED", "Диагностическая сессия уже завершена.")
 	}
 	task := value.Current()
-	if task == nil || strings.TrimSpace(task.VoiceInstruction) == "" {
-		return nil, fault.New(fault.Upstream, "DIAGNOSTIC_INSTRUCTION_MISSING", "У текущего задания нет голосовой инструкции.")
+	if task == nil || task.ID != expectedTaskID {
+		return audioasset.Metadata{}, fault.New(fault.Conflict, "DIAGNOSTIC_TASK_CHANGED", "Текущее задание изменилось.")
 	}
-	return s.voice.Synthesize(ctx, task.VoiceInstruction)
+	metadata := audioasset.Metadata{VariantTaskID: task.ID, Status: audioasset.Missing}
+	if task.AudioAssetID == nil || *task.AudioAssetID == "" {
+		return metadata, nil
+	}
+	if s.audio == nil {
+		return audioasset.Metadata{}, fault.New(fault.Unavailable, "AUDIO_STORAGE_UNAVAILABLE", "Аудиозапись временно недоступна.")
+	}
+	asset, err := s.audio.Metadata(ctx, *task.AudioAssetID)
+	if errors.Is(err, audioasset.ErrNotFound) {
+		return metadata, nil
+	}
+	if err != nil {
+		return audioasset.Metadata{}, fault.New(fault.Unavailable, "AUDIO_STORAGE_UNAVAILABLE", "Аудиозапись временно недоступна.")
+	}
+	metadata.Status = asset.Status
+	if asset.Status == audioasset.Ready {
+		wantURL := "/task-audio/" + asset.ID + "/file"
+		if asset.AudioURL == nil || *asset.AudioURL != wantURL {
+			return audioasset.Metadata{}, fault.New(fault.Unavailable, "AUDIO_STORAGE_UNAVAILABLE", "Аудиозапись временно недоступна.")
+		}
+		metadata.AudioURL = asset.AudioURL
+	}
+	return metadata, nil
+}
+
+func (s *Service) RegenerateCurrentAudio(ctx context.Context, ownerID, sessionID, expectedTaskID string) (audioasset.Metadata, error) {
+	if !validID(sessionID) {
+		return audioasset.Metadata{}, fault.Validation("id", "Укажите корректный ID диагностической сессии.")
+	}
+	if !validID(expectedTaskID) {
+		return audioasset.Metadata{}, fault.Validation("variant_task_id", "Укажите корректный ID задания.")
+	}
+	value, err := s.store.Get(ctx, ownerID, sessionID)
+	if err != nil {
+		return audioasset.Metadata{}, err
+	}
+	if value.Status != diagnostic.StatusActive {
+		return audioasset.Metadata{}, fault.New(fault.Conflict, "DIAGNOSTIC_SESSION_COMPLETED", "Диагностическая сессия уже завершена.")
+	}
+	task := value.Current()
+	if task == nil || task.ID != expectedTaskID {
+		return audioasset.Metadata{}, fault.New(fault.Conflict, "DIAGNOSTIC_TASK_CHANGED", "Текущее задание изменилось.")
+	}
+	if task.AudioAssetID == nil || *task.AudioAssetID == "" {
+		return audioasset.Metadata{}, fault.New(fault.Conflict, "AUDIO_NOT_REPAIRABLE", "Для задания нет сохранённой озвучки.")
+	}
+	if s.regenerator == nil {
+		return audioasset.Metadata{}, fault.New(fault.Unavailable, "AUDIO_STORAGE_UNAVAILABLE", "Аудиозапись временно недоступна.")
+	}
+	asset, err := s.regenerator.Regenerate(ctx, *task.AudioAssetID)
+	if err != nil {
+		switch {
+		case errors.Is(err, audioasset.ErrNotRepairable):
+			return audioasset.Metadata{}, fault.New(fault.Conflict, "AUDIO_NOT_REPAIRABLE", "Аудиозапись сейчас нельзя восстановить.")
+		case errors.Is(err, audioasset.ErrStorageUnavailable):
+			return audioasset.Metadata{}, fault.New(fault.Unavailable, "AUDIO_STORAGE_UNAVAILABLE", "Хранилище аудио временно недоступно.")
+		case errors.Is(err, audioasset.ErrGenerationFailed):
+			return audioasset.Metadata{}, fault.New(fault.Unavailable, "AUDIO_GENERATION_FAILED", "Не удалось восстановить аудиозапись.")
+		default:
+			return audioasset.Metadata{}, fault.New(fault.Unavailable, "AUDIO_STORAGE_UNAVAILABLE", "Аудиозапись временно недоступна.")
+		}
+	}
+	if asset.Status != audioasset.Ready || asset.AudioURL == nil || *asset.AudioURL != "/task-audio/"+asset.ID+"/file" {
+		return audioasset.Metadata{}, fault.New(fault.Unavailable, "AUDIO_STORAGE_UNAVAILABLE", "Аудиозапись временно недоступна.")
+	}
+	return audioasset.Metadata{VariantTaskID: task.ID, Status: asset.Status, AudioURL: asset.AudioURL}, nil
 }
 
 func (s *Service) Answer(ctx context.Context, ownerID, sessionID, taskID, key string, data []byte, media string) (diagnostic.Progress, error) {
@@ -331,7 +413,7 @@ func snapshotVariant(value variant.Variant) (diagnostic.VariantSnapshot, error) 
 				ConstituentID: item.Task.Constituent.ID, ConstituentName: item.Task.Constituent.Name,
 				OutcomeID: item.Task.Outcome.ID, OutcomeName: item.Task.Outcome.Name,
 				Question: item.Task.Question, Options: options,
-				VoiceInstruction: voiceInstruction, ReferenceAnswer: reference, Criteria: criteria,
+				VoiceInstruction: voiceInstruction, AudioAssetID: item.Task.AudioAssetID, ReferenceAnswer: reference, Criteria: criteria,
 				TaxonomyCode: taxonomy, ALDLevelCode: level, Importance: importance,
 				IncludeInTest: included, EducationalContent: content,
 			})

@@ -68,6 +68,7 @@ type TaskProfile struct {
 	Question          string             `json:"question"`
 	Options           []string           `json:"options"`
 	VoiceInstruction  *string            `json:"voice_instruction"`
+	AudioAssetID      *string            `json:"audio_asset_id"`
 	ReferenceAnswer   *string            `json:"reference_answer"`
 	Criteria          *string            `json:"criteria"`
 	Origin            string             `json:"origin"`

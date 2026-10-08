@@ -208,18 +208,22 @@ it('keeps the transcription and retries grading without recording again', async 
   expect(evaluate).toHaveBeenCalledTimes(2)
 })
 
-it('uses synthesized API audio and cancels playback on reset', async () => {
+it('plays local demo audio without posting instruction text for TTS', async () => {
   const dispose = vi.fn()
-  const synthesize = vi
-    .spyOn(api, 'synthesizeQuestion')
-    .mockResolvedValue(new Blob(['wav']))
+  const fetchMock = vi
+    .fn()
+    .mockResolvedValue(
+      new Response('wav', { headers: { 'Content-Type': 'audio/wav' } }),
+    )
+  vi.stubGlobal('fetch', fetchMock)
   const play = vi.spyOn(audio, 'playQuestion').mockResolvedValue(dispose)
   const { result } = renderVoiceHook(() => useTrainerVoice(task))
   await act(async () => {
     await result.current.speak()
   })
-  expect(synthesize.mock.calls[0][0]).toBe('instruction')
+  expect(fetchMock).not.toHaveBeenCalled()
   expect(play).toHaveBeenCalledTimes(1)
+  expect(play.mock.calls[0][0]).toBeInstanceOf(Blob)
   expect(result.current.speaking).toBe(true)
   act(() => result.current.reset())
   expect(dispose).toHaveBeenCalledTimes(1)
@@ -228,9 +232,12 @@ it('uses synthesized API audio and cancels playback on reset', async () => {
 
 it('speaks the selected question and exposes its recording for session playback', async () => {
   const blob = new Blob(['answer'], { type: 'audio/webm' })
-  const synthesize = vi
-    .spyOn(api, 'synthesizeQuestion')
-    .mockResolvedValue(new Blob(['wav']))
+  const fetchMock = vi
+    .fn()
+    .mockResolvedValue(
+      new Response('wav', { headers: { 'Content-Type': 'audio/wav' } }),
+    )
+  vi.stubGlobal('fetch', fetchMock)
   vi.spyOn(audio, 'playQuestion').mockResolvedValue(vi.fn())
   vi.spyOn(audio, 'startRecording').mockResolvedValue({
     stream: {} as MediaStream,
@@ -249,13 +256,11 @@ it('speaks the selected question and exposes its recording for session playback'
     score: 2,
     feedback: ['Верно', 'Причина', 'Совет'],
   })
-  const { result } = renderVoiceHook(() =>
-    useTrainerVoice(task, 'Цена квартиры? Регрессия.'),
-  )
+  const { result } = renderVoiceHook(() => useTrainerVoice(task))
   await act(async () => {
     await result.current.speak()
   })
-  expect(synthesize.mock.calls[0][0]).toBe('Цена квартиры? Регрессия.')
+  expect(fetchMock).not.toHaveBeenCalled()
   await act(async () => {
     await result.current.start()
     await result.current.stop()
@@ -265,7 +270,7 @@ it('speaks the selected question and exposes its recording for session playback'
   expect(result.current.audioBlob).toBeUndefined()
 })
 
-it('shows a session error when the backend rejects transcription or speech with 401', async () => {
+it('shows a session error when the backend rejects transcription with 401', async () => {
   vi.spyOn(audio, 'startRecording').mockResolvedValue({
     stream: {} as MediaStream,
     dispose: vi.fn(),
@@ -278,14 +283,7 @@ it('shows a session error when the backend rejects transcription or speech with 
   vi.spyOn(api, 'transcribeRecording').mockRejectedValue(
     new api.VoiceApiError('Transcription', 401),
   )
-  vi.spyOn(api, 'synthesizeQuestion').mockRejectedValue(
-    new api.VoiceApiError('Synthesis', 401),
-  )
   const { result } = renderVoiceHook(() => useTrainerVoice(task))
-  await act(async () => {
-    await result.current.speak()
-  })
-  expect(result.current.speechError).toBe('speechUnauthorized')
   await act(async () => {
     await result.current.start()
     await result.current.stop()

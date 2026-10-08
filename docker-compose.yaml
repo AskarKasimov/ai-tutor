@@ -5,6 +5,11 @@ services:
       file: ./services/postgresql/docker-compose.yaml
       service: db
 
+  s3:
+    extends:
+      file: ./services/s3/docker-compose.yaml
+      service: s3
+
   api:
     extends:
       file: ./services/backend/docker-compose.yaml
@@ -59,6 +64,8 @@ networks:
 volumes:
   postgres_data:
     name: ai-tutor_postgres_data
+  task_audio_data:
+    name: ai-tutor_task_audio_data
   caddy_data:
     name: ai-tutor_caddy_data
   caddy_config:

@@ -2,6 +2,7 @@ package app
 
 import (
 	"fmt"
+	"math"
 	"net"
 	"net/url"
 	"os"
@@ -11,29 +12,32 @@ import (
 )
 
 type Config struct {
-	APIMode           string
-	ListenAddress     string
-	DatabaseURL       string
-	STTURL            string
-	TTSURL            string
-	AssessmentBaseURL string
-	AssessmentModel   string
-	TaskgenBaseURL    string
-	TaskgenModel      string
-	TaskgenTimeout    time.Duration
-	VoiceTimeout      time.Duration
-	AssessmentTimeout time.Duration
-	MaxUploadBytes    int64
-	S3Endpoint        string
-	S3Region          string
-	S3Bucket          string
-	S3AccessKey       string
-	S3SecretKey       string
-	S3PathStyle       bool
-	S3Timeout         time.Duration
-	S3CreateBucket    bool
-	AudioWorkers      int
-	AudioPollInterval time.Duration
+	APIMode               string
+	ListenAddress         string
+	DatabaseURL           string
+	STTURL                string
+	TTSURL                string
+	TTSSeed               int64
+	TTSCFGValue           float64
+	TTSInferenceTimesteps int
+	AssessmentBaseURL     string
+	AssessmentModel       string
+	TaskgenBaseURL        string
+	TaskgenModel          string
+	TaskgenTimeout        time.Duration
+	VoiceTimeout          time.Duration
+	AssessmentTimeout     time.Duration
+	MaxUploadBytes        int64
+	S3Endpoint            string
+	S3Region              string
+	S3Bucket              string
+	S3AccessKey           string
+	S3SecretKey           string
+	S3PathStyle           bool
+	S3Timeout             time.Duration
+	S3CreateBucket        bool
+	AudioWorkers          int
+	AudioPollInterval     time.Duration
 }
 
 // HTTPWriteTimeout allows sequential STT and grading, or task generation, to
@@ -77,6 +81,33 @@ func ConfigFromEnv() (Config, error) {
 		}
 		*setting.dst = value
 	}
+	if c.APIMode == "real" {
+		value, err := requiredEnv("BACKEND_TTS_SEED")
+		if err != nil {
+			return c, err
+		}
+		c.TTSSeed, err = strconv.ParseInt(value, 10, 64)
+		if err != nil {
+			return c, fmt.Errorf("BACKEND_TTS_SEED: %w", err)
+		}
+		value, err = requiredEnv("BACKEND_TTS_CFG_VALUE")
+		if err != nil {
+			return c, err
+		}
+		c.TTSCFGValue, err = strconv.ParseFloat(value, 64)
+		if err != nil {
+			return c, fmt.Errorf("BACKEND_TTS_CFG_VALUE: %w", err)
+		}
+		value, err = requiredEnv("BACKEND_TTS_INFERENCE_TIMESTEPS")
+		if err != nil {
+			return c, err
+		}
+		c.TTSInferenceTimesteps, err = strconv.Atoi(value)
+		if err != nil {
+			return c, fmt.Errorf("BACKEND_TTS_INFERENCE_TIMESTEPS: %w", err)
+		}
+	}
+
 	durations := []struct {
 		key string
 		dst *time.Duration
@@ -211,6 +242,12 @@ func (c Config) validate() error {
 			if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.User != nil || u.Fragment != "" {
 				return fmt.Errorf("%s must be an absolute HTTP(S) URL without credentials", setting.key)
 			}
+		}
+		if math.IsNaN(c.TTSCFGValue) || math.IsInf(c.TTSCFGValue, 0) || c.TTSCFGValue < 0 || c.TTSCFGValue > 5 {
+			return fmt.Errorf("BACKEND_TTS_CFG_VALUE must be a finite number from 0 to 5")
+		}
+		if c.TTSInferenceTimesteps < 1 || c.TTSInferenceTimesteps > 50 {
+			return fmt.Errorf("BACKEND_TTS_INFERENCE_TIMESTEPS must be from 1 to 50")
 		}
 		if strings.TrimSpace(c.TaskgenModel) == "" {
 			return fmt.Errorf("BACKEND_TASKGEN_MODEL is required")

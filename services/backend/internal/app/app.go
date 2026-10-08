@@ -109,7 +109,7 @@ func New(cfg Config, pool *pgxpool.Pool, logger *zap.Logger) (*App, error) {
 	if cfg.APIMode == "mock" {
 		synth = voicemock.Client{}
 	} else {
-		synth = modelapi.New(a.client, cfg.STTURL, cfg.TTSURL, cfg.VoiceTimeout)
+		synth = modelapi.New(a.client, cfg.STTURL, cfg.TTSURL, cfg.VoiceTimeout, modelapi.TTSOptions{Seed: cfg.TTSSeed, CFGValue: cfg.TTSCFGValue, InferenceTimesteps: cfg.TTSInferenceTimesteps})
 	}
 	a.audioWorker = taskaudioapp.NewWorker(taskaudiopg.New(pool), storage, synth, taskaudioapp.WorkerConfig{
 		Concurrency: cfg.AudioWorkers, PollInterval: cfg.AudioPollInterval, VoiceTimeout: cfg.VoiceTimeout,
@@ -134,7 +134,7 @@ func (a *App) Handler() http.Handler {
 		feedbackSynthesizer = diagnosticfeedbackmock.New()
 		taskGenerator, modelName = taskgenmock.Generator{}, "mock"
 	} else {
-		models := modelapi.New(a.client, a.cfg.STTURL, a.cfg.TTSURL, a.cfg.VoiceTimeout)
+		models := modelapi.New(a.client, a.cfg.STTURL, a.cfg.TTSURL, a.cfg.VoiceTimeout, modelapi.TTSOptions{Seed: a.cfg.TTSSeed, CFGValue: a.cfg.TTSCFGValue, InferenceTimesteps: a.cfg.TTSInferenceTimesteps})
 		recognizer, synthesizer = models, models
 		grader = assessmentmodel.New(a.client, a.cfg.AssessmentBaseURL, a.cfg.AssessmentModel, a.cfg.AssessmentTimeout)
 		feedbackSynthesizer = diagnosticfeedbackmodel.New(a.client, a.cfg.AssessmentBaseURL, a.cfg.AssessmentModel, a.cfg.AssessmentTimeout)

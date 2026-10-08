@@ -104,9 +104,12 @@ docker compose --env-file ../../.env up -d --build
 Публичный префикс /api/v1 удаляется proxy. Secure cookies требуют HTTPS.
 
 BACKEND_API_MODE=mock подменяет модели, auth/БД/S3 настоящие. В real нужны все
-BACKEND_STT_URL, BACKEND_TTS_URL, BACKEND_ASSESSMENT_* и BACKEND_TASKGEN_* из
+BACKEND_STT_URL, BACKEND_TTS_* (URL и параметры голоса), BACKEND_ASSESSMENT_* и BACKEND_TASKGEN_* из
 корневого шаблона: taskgen сохраняется отдельным действующим модулем. Таймауты, адрес
 прослушивания и лимит загрузки обязательны. После изменения env пересоздайте API.
+Все запросы VoxCPM, включая фоновую озвучку заданий, передают `BACKEND_TTS_SEED`,
+`BACKEND_TTS_CFG_VALUE` (0–5) и `BACKEND_TTS_INFERENCE_TIMESTEPS` (1–50).
+Шаблоны env задают соответственно 17, 2 и 50. Уже сохранённые WAV в S3 сохраняют прежнее звучание.
 HTTP write timeout учитывает последовательные STT и грейдинг: максимум суммы их
 таймаутов и таймаута taskgen, плюс 30 секунд для обработки и записи ответа.
 Аудиоответ диагностики имеет тот же лимит загрузки, что `/voice/transcriptions`.

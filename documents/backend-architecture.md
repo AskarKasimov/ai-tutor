@@ -12,7 +12,7 @@
 | `features/voice` | STT/TTS, проверка входа, сохранение расшифровки владельца. |
 | `features/competency` | CSV/XLSX парсер, атомарная замена карты, чтение дерева. |
 | `features/taskbank` | SQL-каталог и профиль задания без эталона. |
-| `features/assessment` | Контекстное оценивание по позиции варианта и совместимый grading catalog для legacy task_id; результат не сохраняется самим assessment. |
+| `features/assessment` | Контекстное оценивание по сохранённой позиции варианта; результат не сохраняется самим assessment. |
 | `features/taskgen` | Генерация новых заданий, сохранение контекста, импорт материалов. |
 | `features/variantgen` | Отбор ОР и аналогов, сохранение снимков, список и чтение вариантов. |
 | `features/diagnostic` | Память сессии, переходы main/basic, STT/TTS и API ответов/результата. |
@@ -53,4 +53,4 @@ Frontend вызывает общий HTTPS API `/api/v1`; Caddy удаляет �
 
 Клиенту выдаются только публичные поля задания; эталон и критерии остаются в доверенном снимке. Session вызывает `assessment.Service.EvaluateVariant` с owner, transcription, variant и variant task IDs. Assessment загружает снимок по владельцу, применяет max_score по роли (main 2, basic 1) и проверяет structured evaluation. Сессия сохраняет возвращённую шкалу без повторного преобразования. Основной с оценкой 2 пропускает basic. Результат доступен по завершении и не генерирует общий текст обратной связи.
 
-Mock/real assessment используют соответствующие graders; `assessment.Service` напрямую реализует порт грейдинга сессии и возвращает общий тип `entities/assessment.Evaluation`. Legacy `task_id` поток использует встроенный grading catalog. Store ограничивает число сессий одним процессом до 10 000; заполнение возвращает 503.
+Mock/real assessment используют соответствующие graders; `assessment.Service` напрямую реализует порт грейдинга сессии и возвращает общий тип `entities/assessment.Evaluation`. Store ограничивает число сессий одним процессом до 10 000; заполнение возвращает 503.

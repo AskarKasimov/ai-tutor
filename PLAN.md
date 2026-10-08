@@ -17,7 +17,7 @@ Backend проходит сохранённый вариант, выдаёт з�
 | Получить полный снимок задания | Domain port `variant.TaskReader`, реализованный PostgreSQL adapter variantgen | Используется assessment при оценивании; читает снимок владельца вместе с ролью и свойствами задания. Сессия загружает полный вариант через порт VariantReader. SQL выполняется через сгенерированные sqlc методы. |
 | STT | `POST /voice/transcriptions`, multipart `audio` | WAV/Ogg/WebM до 25 МиБ; ID и текст расшифровки, сохранённой за владельцем. |
 | TTS | `POST /voice/syntheses`, JSON `text` | До 500 символов, ответ WAV. Для диагностики озвучивается `voice_instruction`. |
-| Оценивание позиции варианта | `POST /assessments/evaluate` | Принимает `transcription_id`, `variant_id`, `variant_task_id`; возвращает `score`, `max_score`, `verdict`, критерии и feedback. Legacy `task_id` путь поддержан для текущего frontend prototype. |
+| Оценивание позиции варианта | `POST /assessments/evaluate` | Принимает `transcription_id`, `variant_id`, `variant_task_id`; возвращает `score`, `max_score`, `verdict`, критерии и feedback. |
 
 Все перечисленные HTTP-операции подключены и требуют авторизации. Доступность внешних моделей этой проверкой не подтверждается.
 
@@ -37,7 +37,7 @@ Backend проходит сохранённый вариант, выдаёт з�
 
 ### Интеграция assessment
 
-- Для variant grading используются снимки `variant_tasks`, не статический catalog. Встроенный catalog остаётся источником контекста legacy `task_id` API.
+- Для variant grading используются снимки `variant_tasks`, не статический catalog.
 - Исторические профили, эталоны, criteria и ОС читаются из снимка варианта после переимпорта. Публичные ответы сессии скрывают эталон и criteria.
 - Валидация structured result, обязательных `satisfied`, соответствия критериев и score/max_score выполняется assessment application; диагностическая сессия повторно проверяет диапазон роли перед изменением состояния.
 

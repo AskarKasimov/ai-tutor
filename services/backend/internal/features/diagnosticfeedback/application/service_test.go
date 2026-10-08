@@ -249,7 +249,7 @@ func TestFeedbackServiceCachingAndErrorHandling(t *testing.T) {
 func TestAnalyzeAnswersFormatting(t *testing.T) {
 	items := []AnswerFeedbackItem{
 		{
-			TaskID:     "ml_014",
+			TaskID:     "snapshot-task-014",
 			Topic:      "Кластеризация (типы задач ML)",
 			Question:   "Магазин хочет разделить покупателей...",
 			Transcript: "Регрессия, потому что...",
@@ -262,7 +262,7 @@ func TestAnalyzeAnswersFormatting(t *testing.T) {
 			},
 		},
 		{
-			TaskID:     "ml_016",
+			TaskID:     "snapshot-task-016",
 			Topic:      "Диагностика переобучения (Overfitting / Underfitting)",
 			Question:   "Модель почти без ошибок отвечает...",
 			Transcript: "Недообучение",
@@ -275,7 +275,7 @@ func TestAnalyzeAnswersFormatting(t *testing.T) {
 			},
 		},
 		{
-			TaskID:     "ml_001",
+			TaskID:     "snapshot-task-001",
 			Topic:      "Классификация (типы задач ML)",
 			Question:   "Банк прогнозирует вернет ли кредит...",
 			Transcript: "Классификация",
@@ -288,7 +288,7 @@ func TestAnalyzeAnswersFormatting(t *testing.T) {
 			},
 		},
 		{
-			TaskID:     "ml_002",
+			TaskID:     "snapshot-task-002",
 			Topic:      "Регрессия (типы задач ML)",
 			Question:   "Оценка стоимости квартиры...",
 			Transcript: "Регрессия",

@@ -1,6 +1,6 @@
 import { useMutation } from '@tanstack/react-query'
 import { useVoiceAnswerDependencies } from './dependencies-context'
-import type { AssessmentTask } from '@/entities/assessment'
+import type { DemoAssessmentTask } from '@/entities/assessment'
 import { voiceAnswerQueryKeys } from './query-keys'
 
 export function useTranscriptionMutation(userId: string) {
@@ -23,7 +23,7 @@ export function useSynthesisMutation(userId: string) {
     gcTime: 0,
   })
 }
-export function useAssessmentMutation(userId: string) {
+export function useDemoAssessmentMutation(userId: string) {
   const { assessment } = useVoiceAnswerDependencies()
   return useMutation({
     mutationKey: voiceAnswerQueryKeys.evaluate(userId),
@@ -33,9 +33,9 @@ export function useAssessmentMutation(userId: string) {
       signal,
     }: {
       transcriptionId: string
-      task: AssessmentTask
+      task: DemoAssessmentTask
       signal: AbortSignal
-    }) => assessment.evaluateAnswer(transcriptionId, task, signal),
+    }) => assessment.evaluateDemoAnswer(transcriptionId, task, signal),
     retry: false,
     gcTime: 0,
   })

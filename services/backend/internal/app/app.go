@@ -12,7 +12,6 @@ import (
 	"go.uber.org/zap"
 
 	assessmentapp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/assessment/application"
-	"github.com/AskarKasimov/ai-tutor/services/backend/internal/features/assessment/infrastructure/gradingcatalog"
 	assessmentmock "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/assessment/infrastructure/mock"
 	assessmentmodel "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/assessment/infrastructure/modelapi"
 	assessmentpg "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/assessment/infrastructure/postgres"
@@ -64,7 +63,6 @@ type App struct {
 	hasher            *argon2.Hasher
 	logger            *zap.Logger
 	variantRepository variantgenapp.Repository
-	gradingContexts   assessmentapp.ContextProvider
 	diagnosticStore   *diagnosticmemory.Store
 }
 
@@ -78,10 +76,6 @@ func New(cfg Config, pool *pgxpool.Pool, logger *zap.Logger) (*App, error) {
 	if logger == nil {
 		logger = zap.NewNop()
 	}
-	contexts, err := gradingcatalog.New()
-	if err != nil {
-		return nil, fmt.Errorf("load grading catalog: %w", err)
-	}
 	return &App{
 		cfg:               cfg,
 		pool:              pool,
@@ -89,7 +83,6 @@ func New(cfg Config, pool *pgxpool.Pool, logger *zap.Logger) (*App, error) {
 		hasher:            argon2.New(),
 		logger:            logger,
 		variantRepository: variantgenpg.New(pool),
-		gradingContexts:   contexts,
 		diagnosticStore:   diagnosticmemory.New(),
 		client: &http.Client{
 			CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
@@ -122,7 +115,7 @@ func (a *App) Handler() http.Handler {
 	voiceHandlers := voicehttp.New(voice, a.cfg.MaxUploadBytes)
 	competency := competencyapp.New(competencypg.New(a.pool), &csvparser.Parser{}, a.now)
 	competencyHandlers := competencyhttp.New(competency, a.cfg.MaxUploadBytes)
-	assessmentService := assessmentapp.New(assessmentpg.New(a.pool), a.gradingContexts, a.variantRepository, grader)
+	assessmentService := assessmentapp.New(assessmentpg.New(a.pool), a.variantRepository, grader)
 	assessmentHandlers := assessmenthttp.New(assessmentService)
 	taskbankHandlers := taskbankhttp.New(taskbankapp.New(taskbankpg.New(a.pool)))
 	taskgenRepository := taskgenpg.New(a.pool)

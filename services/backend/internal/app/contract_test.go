@@ -168,7 +168,7 @@ func TestOpenAPIResponses(t *testing.T) {
 			if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 				t.Fatal(err)
 			}
-			content := `{"score":2,"verdict":"correct","criterion_results":[{"key":"task_type","satisfied":true,"explanation":"Тип задачи назван правильно."},{"key":"justification","satisfied":true,"explanation":"Выбор объяснён через два дискретных класса."}],"feedback":["Верно.","Оба критерия выполнены.","Закрепите тему."]}`
+			content := `{"score":2,"verdict":"correct","criterion_results":[{"key":"answer_correctness","satisfied":true,"explanation":"Тип задачи назван правильно."},{"key":"instruction_following","satisfied":true,"explanation":"Выбор объяснён через два дискретных класса."}],"feedback":["Верно.","Оба критерия выполнены.","Закрепите тему."]}`
 			if len(request.Messages) > 0 && strings.Contains(request.Messages[0].Content, "Ты создаёшь одно учебное задание") {
 				content = `{"question":"Новое задание","options":[],"voice_instruction":"Ответьте.","reference_answer":"Ответ","criteria":""}`
 			}
@@ -197,14 +197,6 @@ func TestOpenAPIResponses(t *testing.T) {
 	if transcription.Code != http.StatusOK || saved.ID == "" {
 		t.Fatalf("transcription: %d %s", transcription.Code, transcription.Body.String())
 	}
-	evaluateBody, err := json.Marshal(map[string]string{
-		"transcription_id": saved.ID,
-		"task_id":          "ml_001",
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	check("POST", "/assessments/evaluate", f.request("POST", "/assessments/evaluate", string(evaluateBody), access))
 	check("POST", "/voice/syntheses", f.request("POST", "/voice/syntheses", `{"text":"Вопрос?"}`, access))
 	check("POST", "/voice/syntheses", f.request("POST", "/voice/syntheses", `{"text":""}`, access))
 	admin := f.admin(t)
@@ -229,6 +221,19 @@ func TestOpenAPIResponses(t *testing.T) {
 	if err := json.Unmarshal(variantCreate.Body.Bytes(), &createdVariant); err != nil || len(createdVariant.Competencies) != 1 {
 		t.Fatalf("contract variant response: %s (%v)", variantCreate.Body.String(), err)
 	}
+	evaluateBody, err := json.Marshal(map[string]string{
+		"transcription_id": saved.ID,
+		"variant_id":       createdVariant.ID,
+		"variant_task_id":  createdVariant.Competencies[0].Main.ID,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	evaluation := f.request("POST", "/assessments/evaluate", string(evaluateBody), access)
+	if evaluation.Code != http.StatusOK {
+		t.Fatalf("assessment: %d %s", evaluation.Code, evaluation.Body.String())
+	}
+	check("POST", "/assessments/evaluate", evaluation)
 	f.app.cfg.APIMode = "mock"
 	diagnosticStartBody, _ := json.Marshal(map[string]string{"variant_id": createdVariant.ID})
 	diagnosticStartRequest := httptest.NewRequest(http.MethodPost, "https://api.example/diagnostic-sessions", bytes.NewReader(diagnosticStartBody))

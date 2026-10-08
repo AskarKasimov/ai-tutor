@@ -1,7 +1,6 @@
 package application
 
 import (
-	"context"
 	"strings"
 
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/variant"
@@ -17,6 +16,7 @@ type OutcomeContext struct {
 type Criterion struct {
 	Key         string `json:"key"`
 	Description string `json:"description"`
+	Mandatory   bool   `json:"mandatory"`
 }
 
 type MaterialContext struct {
@@ -35,10 +35,6 @@ type GradingContext struct {
 	Outcome          OutcomeContext  `json:"outcome"`
 	Criteria         []Criterion     `json:"criteria"`
 	MaterialContext  MaterialContext `json:"material_context"`
-}
-
-type ContextProvider interface {
-	ContextForTask(context.Context, string) (GradingContext, error)
 }
 
 func GradingContextFromVariantTask(item variant.VariantTask) (GradingContext, error) {
@@ -93,6 +89,7 @@ func GradingContextFromVariantTask(item variant.VariantTask) (GradingContext, er
 			{
 				Key:         "instruction_following",
 				Description: "Ответ выполняет голосовую инструкцию: " + voiceInstruction,
+				Mandatory:   true,
 			},
 		},
 		MaterialContext: MaterialContext{

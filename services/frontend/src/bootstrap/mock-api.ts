@@ -1,6 +1,12 @@
 import { i18n } from '@/shared/i18n'
 import { createDemoAudio } from '@/shared/lib'
-import type { OverallFeedbackItemInput } from '@/entities/assessment'
+import { AssessmentApiError } from '@/entities/assessment'
+import type {
+  Assessment,
+  DemoAssessmentTask,
+  OverallFeedbackItemInput,
+} from '@/entities/assessment'
+import { isMockApi } from '@/shared/api'
 
 type DemoUser = {
   id: string
@@ -55,11 +61,7 @@ export async function mockApiFetch(
   const path = new URL(url, 'http://mock.local').pathname
   const method = options.method ?? 'GET'
   await pause(
-    path.endsWith('/voice/transcriptions')
-      ? 600
-      : path.endsWith('/assessments/evaluate')
-        ? 700
-        : 100,
+    path.endsWith('/voice/transcriptions') ? 600 : 100,
     options.signal,
   )
   let body: Record<string, unknown> = {}
@@ -138,29 +140,6 @@ export async function mockApiFetch(
       headers: { 'Content-Type': 'audio/wav' },
     })
   }
-  if (method === 'POST' && path.endsWith('/assessments/evaluate')) {
-    if (
-      typeof body.transcription_id !== 'string' ||
-      !transcriptions.has(body.transcription_id)
-    )
-      return error(404, 'NOT_FOUND', 'notFound')
-    if (typeof body.task_id !== 'string' || !body.task_id.trim())
-      return error(422, 'VALIDATION_ERROR', 'invalid')
-    return json({
-      score: 2,
-      verdict: 'correct',
-      criterion_results: [
-        {
-          key: 'demo',
-          satisfied: true,
-          explanation: 'Демонстрационный критерий выполнен.',
-        },
-      ],
-      feedback: ['feedback1', 'feedback2', 'feedback3'].map((key) =>
-        i18n.t(`mockApi.${key}`),
-      ),
-    })
-  }
   if (method === 'POST' && path.endsWith('/assessments/overall-feedback')) {
     const rawAnswers = (
       Array.isArray(body.answers) ? body.answers : []
@@ -221,4 +200,38 @@ export async function mockApiFetch(
     })
   }
   return error(404, 'NOT_FOUND', 'notFound')
+}
+
+// Local demo grading never calls the saved-variant assessment endpoint.
+export async function demoAssessment(
+  transcriptionId: string,
+  signal: AbortSignal,
+): Promise<Assessment> {
+  await pause(700, signal)
+  if (!user) throw new AssessmentApiError(401)
+  if (!transcriptions.has(transcriptionId)) throw new AssessmentApiError(404)
+  return {
+    score: 2,
+    maxScore: 2,
+    verdict: 'correct',
+    criterionResults: [
+      {
+        key: 'demo',
+        satisfied: true,
+        explanation: i18n.t('mockApi.feedback2'),
+      },
+    ],
+    feedback: ['feedback1', 'feedback2', 'feedback3'].map((key) =>
+      i18n.t(`mockApi.${key}`),
+    ) as [string, string, string],
+  }
+}
+
+export async function evaluateDemoAnswer(
+  transcriptionId: string,
+  _task: DemoAssessmentTask,
+  signal: AbortSignal,
+): Promise<Assessment> {
+  if (!isMockApi()) throw new Error('Demo assessment requires mock mode')
+  return demoAssessment(transcriptionId, signal)
 }

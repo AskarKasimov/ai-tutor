@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { createAudioUrl, playQuestion, startRecording } from '@/shared/lib'
-import type { Assessment, AssessmentTask } from '@/entities/assessment'
+import type { Assessment, DemoAssessmentTask } from '@/entities/assessment'
 import { AssessmentApiError } from '@/entities/assessment'
 import { VoiceApiError } from '@/shared/api'
 import {
-  useAssessmentMutation,
+  useDemoAssessmentMutation,
   useSynthesisMutation,
   useTranscriptionMutation,
 } from './use-voice-operations'
@@ -20,13 +20,13 @@ type Stage =
   | 'error'
 
 export function useTrainerVoice(
-  task: AssessmentTask,
+  task: DemoAssessmentTask,
   speechText = task.voiceInstruction,
   userId = 'test',
 ) {
   const transcriptionMutation = useTranscriptionMutation(userId)
   const synthesisMutation = useSynthesisMutation(userId)
-  const assessmentMutation = useAssessmentMutation(userId)
+  const assessmentMutation = useDemoAssessmentMutation(userId)
   const [stage, setStage] = useState<Stage>('ready')
   const [seconds, setSeconds] = useState(0)
   const [error, setError] = useState('')

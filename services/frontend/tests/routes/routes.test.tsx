@@ -7,7 +7,7 @@ import {
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 
 import { createQueryClient } from '@/bootstrap/providers'
-import * as assessment from '@/entities/assessment'
+import * as assessment from '@/bootstrap/mock-api'
 import * as voiceApi from '@/shared/api'
 import { i18n } from '@/shared/i18n'
 import * as audio from '@/shared/lib'
@@ -81,7 +81,7 @@ it('shows the model score and feedback for a recorded answer', async () => {
     id: 'tr-1',
     text: 'Классификация, потому что два класса.',
   })
-  vi.spyOn(assessment, 'evaluateAnswer').mockResolvedValue({
+  vi.spyOn(assessment, 'evaluateDemoAnswer').mockResolvedValue({
     score: 2,
     feedback: [
       'Ответ верный.',
@@ -183,10 +183,12 @@ it('runs seven distinct assignments, reviews an earlier answer and restarts with
     id: 'tr-1',
     text: 'Классификация, потому что два класса.',
   })
-  const evaluate = vi.spyOn(assessment, 'evaluateAnswer').mockResolvedValue({
-    score: 1,
-    feedback: ['Частично.', 'Причина.', 'Совет.'],
-  })
+  const evaluate = vi
+    .spyOn(assessment, 'evaluateDemoAnswer')
+    .mockResolvedValue({
+      score: 1,
+      feedback: ['Частично.', 'Причина.', 'Совет.'],
+    })
   renderDemoHome()
   await screen.findByRole('button', { name: 'Начать запись' })
   expect(screen.getByRole('button', { name: /Задание 2/ })).toBeDisabled()
@@ -243,7 +245,7 @@ it('does not advance after a grading error and retries the same transcript', asy
   const transcribe = vi
     .spyOn(voiceApi, 'transcribeRecording')
     .mockResolvedValue({ id: 'tr-1', text: 'Мой ответ' })
-  vi.spyOn(assessment, 'evaluateAnswer')
+  vi.spyOn(assessment, 'evaluateDemoAnswer')
     .mockRejectedValueOnce(new Error('offline'))
     .mockResolvedValueOnce({
       score: 2,

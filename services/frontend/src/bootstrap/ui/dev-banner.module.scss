@@ -1,0 +1,23 @@
+.devBanner {
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: repeating-linear-gradient(
+    -45deg,
+    #f4ca26 0 10px,
+    #302b19 10px 20px
+  );
+}
+.devBannerLabel {
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  padding: 0 22px;
+  background: #ffe16a;
+  color: #302b19;
+  font-size: 11px;
+  line-height: 24px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}

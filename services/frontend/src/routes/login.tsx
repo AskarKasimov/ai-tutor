@@ -1,13 +1,4 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { AuthForm } from './-auth-form'
-import styles from './auth-modal.module.scss'
+import { LoginScreen } from '@/pages/login'
 
-export const Route = createFileRoute('/login')({ component: Login })
-
-function Login() {
-  return (
-    <main className={styles.screen}>
-      <AuthForm />
-    </main>
-  )
-}
+export const Route = createFileRoute('/login')({ component: LoginScreen })

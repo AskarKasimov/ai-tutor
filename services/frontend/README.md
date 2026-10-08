@@ -75,17 +75,17 @@ ID варианта/сессии и ключи создания сохраняю
 frontend предлагает начать новую диагностику. HTTP 401 возвращает на экран входа.
 
 Контракты — в [едином OpenAPI](../../api/openapi.yaml), правила отбора —
-в [алгоритме](../../documents/Алгоритм_составления_варианта.md).
-HTTP-клиент и query/mutation hooks находятся в `src/data/diagnostic-api.ts`,
-`src/data/use-diagnostic-session.ts`, управление записью и озвучиванием —
-в `src/data/use-diagnostic-voice.ts`, браузерное хранилище — в `src/platform/`.
+в [алгоритме](../../documents/Алгоритм_составления_варианта.md). HTTP transport
+находится в `src/shared/api/`, endpoints — у owning entities/features, hooks и
+сценарии — в соответствующих slice `model/`. Bootstrap подключает real/demo
+источники и per-slice providers.
 Тренировка по пробелам и итоговый текст рекомендаций остаются отдельными задачами.
 
 ## Локальное демо
 
 В mock-режиме сохраняется прежний сценарий с семью заданиями и итогом из 14 баллов.
-`src/mocks/trainer-session-source.ts` реализует локальный контракт
-`src/data/trainer-session-source.ts`; hook — `src/data/use-trainer-session.ts`.
+`src/bootstrap/demo-trainer-session-source.ts` реализует контракт entity
+`trainer-session`; feature `trainer-session` подключает его через provider.
 После ответа можно просмотреть прежнее задание и прослушать запись. Набор, ответы
 и аудио живут в памяти вкладки; перезагрузка, выход и новый проход очищают результаты.
 Кнопка «Повторить вопрос» в демо озвучивает вопрос и варианты локальным WAV-сигналом.
@@ -182,19 +182,20 @@ Regular/Bold и их лицензия. Фоны, рамки, кнопки, пр�
 
 ## Структура
 
-- `src/app/` — запуск, провайдеры Radix/Query и глобальные стили.
-- `src/routes/` — файловые маршруты и их SCSS Modules.
-- `src/i18n/` — локализация; пользовательский текст хранится в переводах.
-- `src/shared/` — место для общих компонентов, типов и утилит.
-- `src/data/` — место для контрактов данных и query/mutation hooks.
-- `src/mocks/` — место для тестовых источников данных и фикстур.
-- `src/platform/` — место для адаптеров браузерных API.
-- `src/test/` — настройка Testing Library и jsdom.
+- `src/bootstrap/` — app-layer alias и composition root: entrypoint, providers, real/demo DI и router shell. Имя `bootstrap` выбрано вместо стандартного `app`; `src/app/` и `src/application/` не создаются.
+- `src/routes/` — тонкий технический реестр TanStack Router с неизменными URL; `src/routeTree.gen.ts` генерируется автоматически.
+- `src/pages/trainer/`, `src/pages/login/`, `src/pages/competency-map/` — уникальные экраны и их композиция. Trainer page содержит demo/real и diagnostic UI без импорта другого page slice.
+- `src/features/` — сценарии `auth`, `diagnostic-session`, `trainer-session`, `voice-answer` и `import-competency-map`, включая локальные hooks, порты и UI действий.
+- `src/entities/` — модели и API владельцев `user`, `diagnostic-session`, `trainer-session`, `assessment` и `competency-map`.
+- `src/shared/api/` — HTTP transport и auth refresh; `src/shared/lib/` — браузерные audio/waveform adapters; `src/shared/i18n/` — локализация.
+- Слои импортируют только вниз; slices одного слоя изолированы. Межслайсовые импорты используют `index.ts`; внутренние импорты slice относительные. Для взаимных entity типов разрешены только минимальные `@x/<consumer>` APIs.
+- Чистые сценарии находятся в `model`/`lib` owning slice. `bootstrap` собирает per-slice providers и real/demo реализации; предметные контракты не агрегируются в `shared`.
+- `tests/` — отдельная иерархия тестов, зеркальная относительно `src/`: например, `src/features/auth/model/use-auth.ts` проверяется в `tests/features/auth/model/use-auth.test.tsx`.
+- `tests/setup.ts` настраивает тестовую среду; `tests/support/query-wrapper.tsx` предоставляет общий wrapper для React Query тестов. Тесты и вспомогательные тестовые модули не размещаются в `src/`.
 
-`src/routeTree.gen.ts` генерируется плагином Router при запуске Vite/Vitest
-или сборке. После добавления маршрутов сначала запустите `npm run dev`
-либо `npm run build`, затем typecheck. Сгенерированный файл хранится в Git.
-Правила разработки находятся в [AGENTS.md](AGENTS.md).
+`src/routeTree.gen.ts` генерируется плагином Router при запуске Vite/Vitest или
+сборке. После добавления маршрутов сначала запустите npm run dev либо npm run build,
+затем typecheck. Правила разработки находятся в AGENTS.md.
 
 ## Проверки
 

@@ -24,6 +24,7 @@ type TaskResponse struct {
 }
 
 type ProgressResponse struct {
+	Text             string                    `json:"text,omitempty" minLength:"1" binding:"optional"`
 	SessionID        string                    `json:"session_id" minLength:"1" maxLength:"128" binding:"required"`
 	Status           string                    `json:"status" enums:"active,completed" binding:"required"`
 	Completed        int                       `json:"completed_tasks" minimum:"0" binding:"required"`
@@ -79,6 +80,7 @@ type ResultResponse struct {
 
 func progressResponse(value diagnostic.Progress) ProgressResponse {
 	result := ProgressResponse{
+		Text:      value.Text,
 		SessionID: value.SessionID, Status: value.Status, Completed: value.Completed,
 		Skipped: value.Skipped, Total: value.Total, Score: value.Score,
 		GraderScore: value.GraderScore, GraderMaxScore: value.GraderMaxScore, Verdict: value.Verdict,

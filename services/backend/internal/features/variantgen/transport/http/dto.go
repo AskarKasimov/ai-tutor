@@ -8,7 +8,7 @@ type SkippedCompetency struct {
 	CompetencyID           string `json:"competency_id" minLength:"1" maxLength:"128" binding:"required"`
 	CompetencyName         string `json:"competency_name"`
 	EligibleOutcomeCount   int    `json:"eligible_outcome_count" minimum:"0" maximum:"101"`
-	Code                   string `json:"code" enums:"INSUFFICIENT_DISTINCT_OUTCOMES,INSUFFICIENT_LOWER_BLOOM_OUTCOMES"`
+	Code                   string `json:"code" enums:"NO_READY_OUTCOMES,INSUFFICIENT_DISTINCT_OUTCOMES,INSUFFICIENT_LOWER_BLOOM_OUTCOMES"`
 	Message                string `json:"message"`
 	LowerBloomOutcomeCount int    `json:"lower_bloom_outcome_count,omitempty" minimum:"0" maximum:"101" binding:"optional"`
 	MainBloomRank          int    `json:"main_bloom_rank,omitempty" minimum:"1" maximum:"4" binding:"optional"`
@@ -36,7 +36,7 @@ type CompetencyBlock struct {
 	CompetencyName string        `json:"competency_name"`
 	Position       int           `json:"position" minimum:"1"`
 	Main           VariantTask   `json:"main"`
-	Basic          []VariantTask `json:"basic" minItems:"2" maxItems:"2"`
+	Basic          []VariantTask `json:"basic" minItems:"0" maxItems:"2"`
 }
 type Variant struct {
 	ID                      string              `json:"id" minLength:"1" maxLength:"128"`
@@ -44,7 +44,7 @@ type Variant struct {
 	AlgorithmVersion        string              `json:"algorithm_version" minLength:"1" maxLength:"128"`
 	IncludedCompetencyCount int                 `json:"included_competency_count" minimum:"1"`
 	SkippedCompetencyCount  int                 `json:"skipped_competency_count" minimum:"0"`
-	TaskCount               int                 `json:"task_count" minimum:"3"`
+	TaskCount               int                 `json:"task_count" minimum:"1"`
 	CreatedAt               int64               `json:"created_at" minimum:"0"`
 	Competencies            []CompetencyBlock   `json:"competencies" minItems:"1"`
 	SkippedCompetencies     []SkippedCompetency `json:"skipped_competencies"`
@@ -55,7 +55,7 @@ type VariantSummary struct {
 	AlgorithmVersion        string `json:"algorithm_version" minLength:"1" maxLength:"128"`
 	IncludedCompetencyCount int    `json:"included_competency_count" minimum:"1"`
 	SkippedCompetencyCount  int    `json:"skipped_competency_count" minimum:"0"`
-	TaskCount               int    `json:"task_count" minimum:"3"`
+	TaskCount               int    `json:"task_count" minimum:"1"`
 	CreatedAt               int64  `json:"created_at" minimum:"0"`
 }
 type VariantList struct {
@@ -75,11 +75,14 @@ func taskDTO(task variant.VariantTask) VariantTask {
 func variantDTO(value variant.Variant) Variant {
 	blocks := make([]CompetencyBlock, 0, len(value.Competencies))
 	for _, selection := range value.Competencies {
-		if len(selection.Tasks) != 3 {
+		if len(selection.Tasks) < 1 || len(selection.Tasks) > 3 {
 			continue
 		}
 		block := CompetencyBlock{CompetencyID: selection.Competency.ID, CompetencyName: selection.Competency.Name,
-			Position: selection.Position, Main: taskDTO(selection.Tasks[0]), Basic: []VariantTask{taskDTO(selection.Tasks[1]), taskDTO(selection.Tasks[2])}}
+			Position: selection.Position, Main: taskDTO(selection.Tasks[0]), Basic: make([]VariantTask, 0, len(selection.Tasks)-1)}
+		for _, basic := range selection.Tasks[1:] {
+			block.Basic = append(block.Basic, taskDTO(basic))
+		}
 		blocks = append(blocks, block)
 	}
 	skipped := make([]SkippedCompetency, 0, len(value.SkippedCompetencies))
@@ -90,13 +93,13 @@ func variantDTO(value variant.Variant) Variant {
 	}
 	return Variant{ID: value.ID, MapRevision: value.MapRevision, AlgorithmVersion: value.AlgorithmVersion,
 		IncludedCompetencyCount: value.IncludedCompetencyCount, SkippedCompetencyCount: len(skipped),
-		TaskCount: value.IncludedCompetencyCount * 3, CreatedAt: value.CreatedAt, Competencies: blocks, SkippedCompetencies: skipped}
+		TaskCount: value.TaskCount, CreatedAt: value.CreatedAt, Competencies: blocks, SkippedCompetencies: skipped}
 }
 
 func summaryDTO(value variant.Variant) VariantSummary {
 	return VariantSummary{ID: value.ID, MapRevision: value.MapRevision, AlgorithmVersion: value.AlgorithmVersion,
 		IncludedCompetencyCount: value.IncludedCompetencyCount, SkippedCompetencyCount: len(value.SkippedCompetencies),
-		TaskCount: value.IncludedCompetencyCount * 3, CreatedAt: value.CreatedAt}
+		TaskCount: value.TaskCount, CreatedAt: value.CreatedAt}
 }
 
 func listDTO(items []variant.Variant, cursor string) VariantList {
@@ -111,6 +114,9 @@ func listDTO(items []variant.Variant, cursor string) VariantList {
 }
 
 func skipMessage(item variant.SkippedCompetency) string {
+	if item.Code == "NO_READY_OUTCOMES" {
+		return "Нет готовых TRUE-ОР с допустимыми таксономией и важностью."
+	}
 	if item.Code == "INSUFFICIENT_LOWER_BLOOM_OUTCOMES" {
 		return "Недостаточно разных готовых TRUE-ОР с рангом Блума ниже основного."
 	}

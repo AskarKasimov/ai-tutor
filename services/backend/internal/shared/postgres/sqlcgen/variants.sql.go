@@ -95,7 +95,8 @@ func (q *Queries) InsertVariantTask(ctx context.Context, arg InsertVariantTaskPa
 
 const listVariantsByOwner = `-- name: ListVariantsByOwner :many
 SELECT id, map_revision, algorithm_version, included_competency_count,
-       skipped_competencies, created_at
+       skipped_competencies, created_at,
+       (SELECT count(*) FROM variant_tasks vt WHERE vt.variant_id = variants.id) AS task_count
 FROM variants
 WHERE user_id = $1
   AND ($2::bigint IS NULL
@@ -118,6 +119,7 @@ type ListVariantsByOwnerRow struct {
 	IncludedCompetencyCount int32
 	SkippedCompetencies     []byte
 	CreatedAt               int64
+	TaskCount               int64
 }
 
 func (q *Queries) ListVariantsByOwner(ctx context.Context, arg ListVariantsByOwnerParams) ([]ListVariantsByOwnerRow, error) {
@@ -141,6 +143,7 @@ func (q *Queries) ListVariantsByOwner(ctx context.Context, arg ListVariantsByOwn
 			&i.IncludedCompetencyCount,
 			&i.SkippedCompetencies,
 			&i.CreatedAt,
+			&i.TaskCount,
 		); err != nil {
 			return nil, err
 		}

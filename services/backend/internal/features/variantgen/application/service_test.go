@@ -66,40 +66,67 @@ func TestBuildUsesPriorityAndStrictlyLowerBasics(t *testing.T) {
 	}
 }
 
-func TestBuildSkipsCompetencyWithoutTwoLowerBloomOutcomes(t *testing.T) {
-	service := New(nil, &fixedChooser{}, &fixedIDs{}, time.Now)
-	got, err := service.build("owner", 1, []variant.CandidateOutcome{
-		candidate("c1", "Comp", "o1", "One", "application", 5, 1, "t1", 1),
-		candidate("c1", "Comp", "o2", "Two", "application", 4, 2, "t2", 2),
-		candidate("c1", "Comp", "o3", "Three", "application", 3, 3, "t3", 3),
-	})
-	if err == nil || len(got.Competencies) != 0 {
-		t.Fatalf("expected skipped competency, got %+v / %v", got, err)
-	}
-	fault, ok := err.(*fault.Error)
-	if !ok || len(fault.Details) != 1 || fault.Details[0].Code != "INSUFFICIENT_LOWER_BLOOM_OUTCOMES" {
-		t.Fatalf("unexpected failure: %#v", err)
+func TestBuildIncludesMainWithAvailableLowerBloomOutcomes(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		candidates []variant.CandidateOutcome
+		want       []string
+	}{
+		{"only main", []variant.CandidateOutcome{candidate("c1", "Comp", "main", "Main", "application", 5, 1, "t1", 1)}, []string{"main"}},
+		{"one basic and analogs", []variant.CandidateOutcome{
+			candidate("c1", "Comp", "main", "Main", "analysis", 5, 1, "t1", 1),
+			candidate("c1", "Comp", "main", "Main", "analysis", 5, 1, "t1b", 1),
+			candidate("c1", "Comp", "low", "Low", "understanding", 2, 2, "t2", 2)}, []string{"main", "low"}},
+		{"no lower Bloom", []variant.CandidateOutcome{
+			candidate("c1", "Comp", "main", "Main", "application", 5, 1, "t1", 1),
+			candidate("c1", "Comp", "same", "Same", "application", 4, 2, "t2", 2),
+			candidate("c1", "Comp", "higher", "Higher", "analysis", 1, 3, "t3", 3)}, []string{"main"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			service := New(nil, &fixedChooser{}, &fixedIDs{}, time.Now)
+			got, err := service.build("owner", 1, tc.candidates)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(got.Competencies) != 1 || len(got.SkippedCompetencies) != 0 {
+				t.Fatalf("unexpected blocks: %+v", got)
+			}
+			tasks := got.Competencies[0].Tasks
+			if len(tasks) != len(tc.want) {
+				t.Fatalf("tasks: %+v", tasks)
+			}
+			for i, want := range tc.want {
+				if tasks[i].Task.Outcome.ID != want {
+					t.Fatalf("task %d: %+v", i, tasks[i])
+				}
+			}
+		})
 	}
 }
 
-func TestBuildCountsDistinctOutcomesAndRandomizesOnlyWithinOutcome(t *testing.T) {
-	chooser := &fixedChooser{}
-	service := New(nil, chooser, &fixedIDs{}, time.Now)
-	candidates := []variant.CandidateOutcome{
-		candidate("c1", "Comp", "o1", "One", "analysis", 5, 1, "t1", 1),
-		candidate("c1", "Comp", "o1", "One", "analysis", 5, 1, "t1b", 1),
-		candidate("c1", "Comp", "o2", "Two", "understanding", 2, 2, "t2", 2),
+func TestBuildSkipsOnlyCompetenciesWithoutReadyEnabledOutcomes(t *testing.T) {
+	valid := candidate("included", "Included", "ready", "Ready", "knowledge", 1, 1, "t1", 1)
+	disabled := candidate("disabled", "Disabled", "off", "Off", "analysis", 5, 2, "t2", 2)
+	disabled.Profile.Outcome.IncludeInTest = new(bool)
+	incomplete := candidate("incomplete", "Incomplete", "missing", "Missing", "analysis", 5, 3, "t3", 3)
+	incomplete.Profile.ReferenceAnswer = nil
+	service := New(nil, &fixedChooser{}, &fixedIDs{}, time.Now)
+	got, err := service.build("owner", 1, []variant.CandidateOutcome{valid, disabled, incomplete})
+	if err != nil {
+		t.Fatal(err)
 	}
-	_, err := service.build("owner", 1, candidates)
-	if err == nil {
-		t.Fatal("two distinct outcomes unexpectedly included")
+	if len(got.Competencies) != 1 || len(got.SkippedCompetencies) != 2 {
+		t.Fatalf("unexpected variant: %+v", got)
 	}
-	fault, ok := err.(*fault.Error)
-	if !ok || len(fault.Details) != 1 || fault.Details[0].Code != "INSUFFICIENT_DISTINCT_OUTCOMES" {
-		t.Fatalf("unexpected failure: %#v", err)
+	for _, skipped := range got.SkippedCompetencies {
+		if skipped.Code != "NO_READY_OUTCOMES" || skipped.EligibleOutcomes != 0 {
+			t.Fatalf("unexpected skip: %+v", skipped)
+		}
 	}
-	if chooser.calls != 0 {
-		t.Fatalf("chooser called before competency passed filter: %d", chooser.calls)
+	_, err = service.build("owner", 1, []variant.CandidateOutcome{disabled, incomplete})
+	failure, ok := err.(*fault.Error)
+	if !ok || failure.Code != "NO_ELIGIBLE_COMPETENCIES" {
+		t.Fatalf("unexpected failure: %v", err)
 	}
 }
 

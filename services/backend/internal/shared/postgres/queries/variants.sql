@@ -79,7 +79,8 @@ WHERE v.user_id = $1 AND v.id = $2 AND vt.id = $3;
 
 -- name: ListVariantsByOwner :many
 SELECT id, map_revision, algorithm_version, included_competency_count,
-       skipped_competencies, created_at
+       skipped_competencies, created_at,
+       (SELECT count(*) FROM variant_tasks vt WHERE vt.variant_id = variants.id) AS task_count
 FROM variants
 WHERE user_id = $1
   AND (sqlc.narg(cursor_created_at)::bigint IS NULL

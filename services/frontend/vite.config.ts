@@ -18,7 +18,7 @@ export default defineConfig(({ mode }) => {
           target: env.VITE_API_PROXY_TARGET || 'http://127.0.0.1:8002',
           changeOrigin: true,
           rewrite: (path) => path.replace(/^\/api\/v1/, ''),
-          proxyTimeout: 120_000,
+          proxyTimeout: 240_000,
         },
       },
     },

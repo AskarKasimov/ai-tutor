@@ -1,60 +1,108 @@
-import { apiFetch } from './api-fetch'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
+import { authenticate, logout, readCurrentUser } from './auth-api'
+import type { AuthInput } from './auth-api'
+import {
+  adoptCurrentUser,
+  captureSession,
+  isCurrentSession,
+  registerSessionRequest,
+  replaceSession,
+} from './session-lifecycle'
+import { queryKeys } from './query-keys'
 import type { User } from '../shared/domain'
 
-const apiBase = (import.meta.env.VITE_API_BASE_URL || '/api/v1').replace(/\/$/, '')
-export type AuthInput = { mode: 'login' | 'register'; email: string; password: string; display_name?: string }
+export type { AuthInput } from './auth-api'
 
-export function useAuth() {
-  const { t } = useTranslation()
+export function useCurrentUserQuery() {
   const cache = useQueryClient()
-  const key = ['auth', 'me']
-  async function setSession(user: User | null) {
-    // Data and authorization errors from the previous session must not survive a new login.
-    const sessionQueries = { predicate: (query: { queryKey: readonly unknown[] }) => query.queryKey[0] !== 'auth' }
-    await cache.cancelQueries(sessionQueries)
-    cache.removeQueries(sessionQueries)
-    cache.setQueryData(key, user)
-  }
-  const current = useQuery<User | null>({
-    queryKey: key,
+  // QueryClient-local auth epoch guards shared auth data without changing its public key.
+  // eslint-disable-next-line @tanstack/query/exhaustive-deps
+  return useQuery<User | null, Error>({
+    queryKey: queryKeys.auth,
     retry: false,
     staleTime: 60_000,
     queryFn: async ({ signal }) => {
-      const response = await apiFetch(`${apiBase}/auth/me`, { credentials: 'include', signal: AbortSignal.any([signal, AbortSignal.timeout(30_000)]) })
-      if (response.status === 401) return null
-      if (!response.ok) throw new Error(t('auth.networkError'))
-      return response.json()
-    },
-  })
-  const authenticate = useMutation({
-    onMutate: () => cache.cancelQueries({ queryKey: key }),
-    mutationFn: async ({ mode, ...body }: AuthInput): Promise<User> => {
-      let response: Response
+      const token = captureSession(cache)
+      const controller = new AbortController()
+      const unregister = registerSessionRequest(cache, token, controller)
       try {
-        response = await apiFetch(`${apiBase}/auth/${mode}`, {
-          method: 'POST', credentials: 'include',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body), signal: AbortSignal.timeout(30_000),
-        })
-      } catch { throw new Error(t('auth.networkError')) }
-      const data = await response.json().catch(() => null)
-      if (!response.ok) {
-        const message = data?.details?.map((detail: { message: string }) => detail.message).join(' ') || data?.message
-        throw new Error(typeof message === 'string' ? message : t('auth.networkError'))
+        const user = await readCurrentUser(
+          AbortSignal.any([signal, controller.signal]),
+        )
+        if (!isCurrentSession(cache, token))
+          return cache.getQueryData(queryKeys.auth) ?? null
+        if (!(await adoptCurrentUser(cache, user, token)))
+          return cache.getQueryData(queryKeys.auth) ?? null
+        return user
+      } finally {
+        unregister()
       }
-      if (!data?.user?.email) throw new Error(t('auth.networkError'))
-      return data.user
     },
-    onSuccess: setSession,
   })
-  const logout = useMutation({
+}
+
+export function useAuthenticateMutation() {
+  const cache = useQueryClient()
+  return useMutation({
+    mutationKey: queryKeys.authenticate,
+    gcTime: 0,
+    onMutate: async () => {
+      const token = captureSession(cache)
+      await cache.cancelQueries({ queryKey: queryKeys.auth })
+      return token
+    },
+    mutationFn: async (input: AuthInput) => {
+      const controller = new AbortController()
+      const token = captureSession(cache)
+      const unregister = registerSessionRequest(cache, token, controller)
+      try {
+        return await authenticate(input, controller.signal)
+      } finally {
+        unregister()
+      }
+    },
+    onSuccess: async (user, _input, token) => {
+      if (isCurrentSession(cache, token)) await replaceSession(cache, user)
+    },
+    retry: false,
+  })
+}
+
+export function useLogoutMutation() {
+  const cache = useQueryClient()
+  return useMutation({
+    mutationKey: queryKeys.logout,
+    gcTime: 0,
+    onMutate: () => captureSession(cache),
     mutationFn: async () => {
-      const response = await apiFetch(`${apiBase}/auth/logout`, { method: 'POST', credentials: 'include', signal: AbortSignal.timeout(30_000) })
-      if (!response.ok) throw new Error(t('auth.networkError'))
+      const token = captureSession(cache)
+      const controller = new AbortController()
+      const unregister = registerSessionRequest(cache, token, controller)
+      try {
+        await logout(controller.signal)
+      } finally {
+        unregister()
+      }
     },
-    onSuccess: () => setSession(null),
+    onSuccess: async (_result, _input, token) => {
+      if (isCurrentSession(cache, token)) await replaceSession(cache, null)
+    },
+    retry: false,
   })
-  return { user: current.data, checkingSession: current.isPending, sessionError: current.error, retrySession: current.refetch, authenticate, logout }
+}
+
+export function useAuth() {
+  const { t } = useTranslation()
+  const current = useCurrentUserQuery()
+  const authenticateMutation = useAuthenticateMutation()
+  const logoutMutation = useLogoutMutation()
+  return {
+    user: current.data,
+    checkingSession: current.isPending,
+    sessionError: current.error ? new Error(t('auth.networkError')) : null,
+    retrySession: current.refetch,
+    authenticate: authenticateMutation,
+    logout: logoutMutation,
+  }
 }

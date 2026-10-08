@@ -36,7 +36,7 @@ func (s Session) Current() *TaskSnapshot {
 func (s Session) Progress() Progress {
 	return Progress{
 		SessionID: s.ID, Status: s.Status, Current: s.Current(),
-		Completed: len(s.Answers), Skipped: len(s.SkippedBasics), Total: s.Variant.IncludedCompetencyCount * 3,
+		Completed: len(s.Answers), Skipped: len(s.SkippedBasics), Total: s.Variant.TaskCount(),
 	}
 }
 
@@ -47,6 +47,15 @@ type VariantSnapshot struct {
 	IncludedCompetencyCount int
 	SkippedCompetencies     []SkippedCompetency
 	Competencies            []Competency
+}
+
+// TaskCount includes only positions present in the saved variant.
+func (v VariantSnapshot) TaskCount() int {
+	total := 0
+	for _, competency := range v.Competencies {
+		total += len(competency.Tasks)
+	}
+	return total
 }
 
 type Competency struct {
@@ -130,6 +139,7 @@ type Reservation struct {
 }
 
 type Progress struct {
+	Text             string
 	SessionID        string
 	Status           string
 	Completed        int

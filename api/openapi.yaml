@@ -482,6 +482,9 @@ components:
             - active
             - completed
           type: string
+        text:
+          minLength: 1
+          type: string
         total_tasks:
           minimum: 1
           type: integer
@@ -915,6 +918,7 @@ components:
       properties:
         code:
           enum:
+            - NO_READY_OUTCOMES
             - INSUFFICIENT_DISTINCT_OUTCOMES
             - INSUFFICIENT_LOWER_BLOOM_OUTCOMES
           type: string
@@ -979,7 +983,7 @@ components:
           minimum: 0
           type: integer
         task_count:
-          minimum: 3
+          minimum: 1
           type: integer
       required:
         - algorithm_version
@@ -1032,7 +1036,7 @@ components:
           minimum: 0
           type: integer
         task_count:
-          minimum: 3
+          minimum: 1
           type: integer
       required:
         - algorithm_version
@@ -2171,7 +2175,7 @@ paths:
         - Варианты
       x-implementation: implemented
     post:
-      description: Вариант собирается по всей карте без тела запроса. Первичный фильтр — три разных готовых TRUE-ОР; для включения также требуются два базовых ОР с рангом Блума ниже основного. Неуспешные компетенции возвращаются с причиной. Повтор успешного запроса с тем же ключом возвращает сохранённый вариант.
+      description: Вариант собирается по всей карте без тела запроса. Для включения достаточно одного готового TRUE-ОР. Выбираются основной и до двух базовых ОР с рангом Блума ниже основного. Неуспешные компетенции возвращаются с причиной. Повтор успешного запроса с тем же ключом возвращает сохранённый вариант.
       parameters:
         - description: Ключ повтора успешного запроса
           in: header

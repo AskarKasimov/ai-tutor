@@ -25,7 +25,20 @@
   --app-error: #b44338;
   --app-error-soft: #fff0ed;
 }
-body { margin: 0; }
-html, body, #root { min-height: 100%; }
-.radix-themes { --default-font-family: Inter, sans-serif; --heading-font-family: Inter, sans-serif; }
-button:focus-visible, audio:focus-visible { outline: 3px solid var(--app-accent); outline-offset: 4px; }
+body {
+  margin: 0;
+}
+html,
+body,
+#root {
+  min-height: 100%;
+}
+.radix-themes {
+  --default-font-family: Inter, sans-serif;
+  --heading-font-family: Inter, sans-serif;
+}
+button:focus-visible,
+audio:focus-visible {
+  outline: 3px solid var(--app-accent);
+  outline-offset: 4px;
+}

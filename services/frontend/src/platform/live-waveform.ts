@@ -30,21 +30,33 @@ export function createVoiceWaveform(container: HTMLElement) {
       stopMonitor?.()
       stopMonitor = undefined
       activeStream = undefined
-      if (!stream) { showSilence(); return }
-      const plugin = waveform.registerPlugin(RecordPlugin.create({
-        scrollingWaveform: true,
-        scrollingWaveformWindow: 3,
-        renderRecordedAudio: false,
-      }))
+      if (!stream) {
+        showSilence()
+        return
+      }
+      const plugin = waveform.registerPlugin(
+        RecordPlugin.create({
+          scrollingWaveform: true,
+          scrollingWaveformWindow: 3,
+          renderRecordedAudio: false,
+        }),
+      )
       try {
         const monitor = plugin.renderMicStream(stream)
-        stopMonitor = () => { monitor.onDestroy(); plugin.destroy() }
+        stopMonitor = () => {
+          monitor.onDestroy()
+          plugin.destroy()
+        }
         activeStream = stream
       } catch (error) {
         plugin.destroy()
         throw error
       }
     },
-    dispose() { stopMonitor?.(); stopMonitor = undefined; waveform.destroy() },
+    dispose() {
+      stopMonitor?.()
+      stopMonitor = undefined
+      waveform.destroy()
+    },
   }
 }

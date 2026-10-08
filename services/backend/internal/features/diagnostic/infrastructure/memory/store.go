@@ -152,6 +152,7 @@ func (s *Store) Accept(ctx context.Context, ownerID, id, token, key, digest stri
 	value.SkippedBasics = append(value.SkippedBasics, cloneTasks(transition.SkippedBasics)...)
 	value.InFlight = nil
 	progress := value.Progress()
+	progress.Text = answer.Text
 	score, graderScore, graderMaxScore, verdict := answer.Score, answer.GraderScore, answer.GraderMaxScore, answer.Verdict
 	progress.Score, progress.GraderScore, progress.GraderMaxScore, progress.Verdict = &score, &graderScore, &graderMaxScore, verdict
 	progress.CriterionResults = append([]diagnostic.CriterionResult(nil), answer.CriterionResults...)

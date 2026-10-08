@@ -6,10 +6,15 @@ import '../i18n/i18n'
 import styles from './providers.module.scss'
 
 export function createQueryClient() {
-  return new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  return new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  })
 }
 
-export function AppProviders({ children, queryClient }: PropsWithChildren<{ queryClient: QueryClient }>) {
+export function AppProviders({
+  children,
+  queryClient,
+}: PropsWithChildren<{ queryClient: QueryClient }>) {
   return (
     <Theme className={styles.root} accentColor="blue" appearance="light">
       <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>

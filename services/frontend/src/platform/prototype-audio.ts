@@ -1,28 +1,45 @@
 // Browser adapters for the disposable voice trainer prototype.
-export type Recording = { stream: MediaStream; stop: () => Promise<Blob>; dispose: () => void }
+export type Recording = {
+  stream: MediaStream
+  stop: () => Promise<Blob>
+  dispose: () => void
+}
 
 export async function startRecording(): Promise<Recording> {
-  if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
+  if (
+    !navigator.mediaDevices?.getUserMedia ||
+    typeof MediaRecorder === 'undefined'
+  ) {
     throw new Error('unavailable')
   }
   // Match the STT contract; browser defaults may use an unsupported codec.
-  const mimeType = ['audio/webm;codecs=opus', 'audio/ogg;codecs=opus']
-    .find((type) => MediaRecorder.isTypeSupported(type))
+  const mimeType = ['audio/webm;codecs=opus', 'audio/ogg;codecs=opus'].find(
+    (type) => MediaRecorder.isTypeSupported(type),
+  )
   if (!mimeType) throw new Error('unavailable')
   const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
   try {
     const recorder = new MediaRecorder(stream, { mimeType })
     const chunks: Blob[] = []
-    recorder.ondataavailable = (event) => { if (event.data.size) chunks.push(event.data) }
+    recorder.ondataavailable = (event) => {
+      if (event.data.size) chunks.push(event.data)
+    }
     recorder.start()
     const release = () => stream.getTracks().forEach((track) => track.stop())
     return {
       stream,
-      stop: () => new Promise((resolve, reject) => {
-        recorder.onstop = () => { release(); resolve(new Blob(chunks, { type: recorder.mimeType })) }
-        recorder.onerror = () => { release(); reject(new Error('recording')) }
-        recorder.stop()
-      }),
+      stop: () =>
+        new Promise((resolve, reject) => {
+          recorder.onstop = () => {
+            release()
+            resolve(new Blob(chunks, { type: recorder.mimeType }))
+          }
+          recorder.onerror = () => {
+            release()
+            reject(new Error('recording'))
+          }
+          recorder.stop()
+        }),
       dispose: () => {
         recorder.onstop = release
         if (recorder.state !== 'inactive') recorder.stop()
@@ -35,7 +52,11 @@ export async function startRecording(): Promise<Recording> {
   }
 }
 
-export async function playQuestion(blob: Blob, onEnd: () => void, onError: () => void) {
+export async function playQuestion(
+  blob: Blob,
+  onEnd: () => void,
+  onError: () => void,
+) {
   const source = createAudioUrl(blob)
   const player = new Audio(source.url)
   const dispose = () => {
@@ -45,8 +66,14 @@ export async function playQuestion(blob: Blob, onEnd: () => void, onError: () =>
     player.removeAttribute('src')
     source.dispose()
   }
-  player.onended = () => { dispose(); onEnd() }
-  player.onerror = () => { dispose(); onError() }
+  player.onended = () => {
+    dispose()
+    onEnd()
+  }
+  player.onerror = () => {
+    dispose()
+    onError()
+  }
   try {
     await player.play()
     return dispose

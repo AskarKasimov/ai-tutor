@@ -1,0 +1,6 @@
+node_modules/
+dist/
+coverage/
+src/routeTree.gen.ts
+package-lock.json
+public/assets/

@@ -5,5 +5,9 @@ import styles from './auth-modal.module.scss'
 export const Route = createFileRoute('/login')({ component: Login })
 
 function Login() {
-  return <main className={styles.screen}><AuthForm /></main>
+  return (
+    <main className={styles.screen}>
+      <AuthForm />
+    </main>
+  )
 }

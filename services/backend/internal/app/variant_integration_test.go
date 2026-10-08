@@ -236,3 +236,78 @@ $$;`)
 		t.Fatalf("failed variant creation left %d parent rows", count)
 	}
 }
+
+func TestVariableSizeVariantsPersistReadAndListActualTaskCount(t *testing.T) {
+	f := newFixture(t)
+	access, _, _ := f.register(t, "variable-variant@example.edu")
+	admin := f.admin(t)
+	rows, err := csv.NewReader(bytes.NewReader(variantMapCSV(t))).ReadAll()
+	if err != nil {
+		t.Fatal(err)
+	}
+	mixed := [][]string{rows[0]}
+	for size := 1; size <= 3; size++ {
+		for i := 4 - size; i < 4; i++ {
+			row := append([]string(nil), rows[i]...)
+			if i == 4-size {
+				row[1], row[2], row[3] = fmt.Sprintf("Компетенция %d", size), "базовый", "Модель"
+			}
+			mixed = append(mixed, row)
+		}
+	}
+	var content bytes.Buffer
+	writer := csv.NewWriter(&content)
+	if err := writer.WriteAll(mixed); err != nil {
+		t.Fatal(err)
+	}
+	if w := upload(f, "/admin/competency-map/import", "file", "map.csv", "text/csv", content.Bytes(), admin); w.Code != http.StatusOK {
+		t.Fatalf("import: %s", w.Body.String())
+	}
+	req := httptest.NewRequest(http.MethodPost, "https://api.example/variants", nil)
+	req.Header.Set("Idempotency-Key", "variable-variant")
+	req.AddCookie(access)
+	response := httptest.NewRecorder()
+	f.app.Handler().ServeHTTP(response, req)
+	if response.Code != http.StatusCreated {
+		t.Fatalf("create: %d %s", response.Code, response.Body.String())
+	}
+	var value struct {
+		ID           string `json:"id"`
+		TaskCount    int    `json:"task_count"`
+		Competencies []struct {
+			Basic []json.RawMessage `json:"basic"`
+		} `json:"competencies"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &value); err != nil {
+		t.Fatal(err)
+	}
+	if value.TaskCount != 6 || len(value.Competencies) != 3 {
+		t.Fatalf("variant: %s", response.Body.String())
+	}
+	for i, block := range value.Competencies {
+		if block.Basic == nil || len(block.Basic) != i {
+			t.Fatalf("block %d: %s", i, response.Body.String())
+		}
+	}
+	read := f.request(http.MethodGet, "/variants/"+value.ID, "", access)
+	if read.Code != http.StatusOK {
+		t.Fatalf("read: %s", read.Body.String())
+	}
+	if err := json.Unmarshal(read.Body.Bytes(), &value); err != nil || value.TaskCount != 6 || len(value.Competencies) != 3 {
+		t.Fatalf("saved variant: %s / %v", read.Body.String(), err)
+	}
+	for i, block := range value.Competencies {
+		if block.Basic == nil || len(block.Basic) != i {
+			t.Fatalf("saved block %d: %s", i, read.Body.String())
+		}
+	}
+	list := f.request(http.MethodGet, "/variants", "", access)
+	var page struct {
+		Items []struct {
+			TaskCount int `json:"task_count"`
+		} `json:"items"`
+	}
+	if list.Code != http.StatusOK || json.Unmarshal(list.Body.Bytes(), &page) != nil || len(page.Items) != 1 || page.Items[0].TaskCount != 6 {
+		t.Fatalf("history: %s", list.Body.String())
+	}
+}

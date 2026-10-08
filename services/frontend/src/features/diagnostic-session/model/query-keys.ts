@@ -9,6 +9,12 @@ export const diagnosticSessionQueryKeys = {
     sessionId: string,
     taskId: string | undefined,
   ) => ['diagnostic-audio', userId, sessionId, taskId] as const,
+  storedTaskAudio: (
+    userId: string,
+    sessionId: string,
+    taskId: string | undefined,
+    audioUrl: string | null | undefined,
+  ) => ['stored-task-audio', userId, sessionId, taskId, audioUrl] as const,
   startDiagnostic: (userId: string) => ['diagnostic', 'start', userId] as const,
   submitDiagnostic: (userId: string, sessionId: string) =>
     ['diagnostic', 'submit', userId, sessionId] as const,

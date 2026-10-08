@@ -99,20 +99,19 @@ func (h *Handler) Read(w http.ResponseWriter, r *http.Request) {
 	httpx.JSON(w, http.StatusOK, progressResponse(result))
 }
 
-// CurrentAudio synthesizes the current task instruction without advancing the session.
-// @Summary Озвучить инструкцию текущего задания
+// CurrentAudio returns saved audio metadata for the current task without advancing the session.
+// @Summary Прочитать состояние озвучки текущего задания
 // @Tags Диагностика
 // @Security accessCookie
-// @Produce audio/wav
+// @Produce json
 // @Param id path string true "ID сессии" minlength(1) maxlength(128)
-// @Success 200 {file} file "WAV с голосовой инструкцией"
+// @Param variant_task_id query string true "ID текущего задания"
+// @Success 200 {object} AudioMetadataResponse
 // @Failure 401 {object} fault.Error
 // @Failure 404 {object} fault.Error
 // @Failure 409 {object} fault.Error
 // @Failure 422 {object} fault.Error
-// @Failure 502 {object} fault.Error
 // @Failure 503 {object} fault.Error
-// @Failure 504 {object} fault.Error
 // @Router /diagnostic-sessions/{id}/current/audio [get]
 func (h *Handler) CurrentAudio(w http.ResponseWriter, r *http.Request) {
 	principal, ok := httpx.Principal[user.User](r)
@@ -120,18 +119,18 @@ func (h *Handler) CurrentAudio(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(r.Context(), w, fault.New(fault.Unauthorized, "UNAUTHORIZED", "Требуется действующая сессия."))
 		return
 	}
-	if err := noQuery(r); err != nil {
-		httpx.Error(r.Context(), w, err)
+	query := r.URL.Query()
+	values, hasTaskID := query["variant_task_id"]
+	if len(query) != 1 || !hasTaskID || len(values) != 1 || strings.TrimSpace(values[0]) == "" {
+		httpx.Error(r.Context(), w, fault.Validation("variant_task_id", "Укажите ID текущего задания."))
 		return
 	}
-	data, err := h.service.CurrentAudio(r.Context(), principal.ID, r.PathValue("id"))
+	metadata, err := h.service.CurrentAudio(r.Context(), principal.ID, r.PathValue("id"), values[0])
 	if err != nil {
 		httpx.Error(r.Context(), w, err)
 		return
 	}
-	w.Header().Set("Content-Type", "audio/wav")
-	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write(data)
+	httpx.JSON(w, http.StatusOK, AudioMetadataResponse{VariantTaskID: metadata.VariantTaskID, Status: string(metadata.Status), AudioURL: metadata.AudioURL})
 }
 
 // Answer transcribes and grades the audio for the current task.

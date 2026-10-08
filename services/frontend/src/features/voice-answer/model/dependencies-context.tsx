@@ -12,7 +12,7 @@ export type VoiceAnswerDependencies = {
       blob: Blob,
       signal: AbortSignal,
     ): Promise<{ id: string; text: string }>
-    synthesizeQuestion(text: string, signal: AbortSignal): Promise<Blob>
+    createDemoAudio(): Blob
   }
   assessment: {
     evaluateDemoAnswer(

@@ -1,7 +1,6 @@
 export { useTrainerVoice } from './model/use-trainer-voice'
 export {
   useTranscriptionMutation,
-  useSynthesisMutation,
   useDemoAssessmentMutation,
 } from './model/use-voice-operations'
 export { useOverallFeedbackMutation } from './model/use-overall-feedback'

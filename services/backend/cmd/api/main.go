@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -93,20 +92,6 @@ func run(logger *zap.Logger) error {
 		return err
 	}
 	server := &http.Server{Addr: cfg.ListenAddress, Handler: a.Handler(), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 30 * time.Second, WriteTimeout: cfg.HTTPWriteTimeout(), IdleTimeout: 60 * time.Second, MaxHeaderBytes: 32 * 1024}
-	stopped := make(chan error, 1)
-	go func() {
-		logger.Info("API listening", zap.String("address", cfg.ListenAddress))
-		stopped <- server.ListenAndServe()
-	}()
-	select {
-	case err = <-stopped:
-		if errors.Is(err, http.ErrServerClosed) {
-			return nil
-		}
-		return err
-	case <-ctx.Done():
-		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 15*time.Second)
-		defer shutdownCancel()
-		return server.Shutdown(shutdownCtx)
-	}
+	logger.Info("API listening", zap.String("address", cfg.ListenAddress))
+	return serveWithAudioWorker(ctx, server, a.RunAudioWorker)
 }

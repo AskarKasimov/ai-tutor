@@ -61,9 +61,9 @@ func (q *Queries) InsertVariant(ctx context.Context, arg InsertVariantParams) (s
 }
 
 const insertVariantTask = `-- name: InsertVariantTask :exec
-INSERT INTO variant_tasks(id, variant_id, live_task_id, source_task_id_snapshot,
+INSERT INTO variant_tasks(id, variant_id, live_task_id, source_task_id_snapshot, audio_asset_id,
                           competency_position, slot, role, task_snapshot, profile_snapshot)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 `
 
 type InsertVariantTaskParams struct {
@@ -71,6 +71,7 @@ type InsertVariantTaskParams struct {
 	VariantID            string
 	LiveTaskID           *string
 	SourceTaskIDSnapshot string
+	AudioAssetID         *string
 	CompetencyPosition   int32
 	Slot                 int16
 	Role                 string
@@ -84,6 +85,7 @@ func (q *Queries) InsertVariantTask(ctx context.Context, arg InsertVariantTaskPa
 		arg.VariantID,
 		arg.LiveTaskID,
 		arg.SourceTaskIDSnapshot,
+		arg.AudioAssetID,
 		arg.CompetencyPosition,
 		arg.Slot,
 		arg.Role,
@@ -177,7 +179,8 @@ SELECT state.revision,
        task.id AS task_id,
        jsonb_build_object(
            'id', task.id, 'question', task.question, 'options', task.options,
-           'voice_instruction', task.voice_instruction, 'reference_answer', task.reference_answer,
+           'voice_instruction', task.voice_instruction, 'audio_asset_id', task.audio_asset_id,
+           'reference_answer', task.reference_answer,
            'criteria', task.criteria, 'origin', task.origin, 'created_at', task.created_at,
            'source_row_index', task.source_row_index, 'source_column_index', task.source_column_index,
            'competency', jsonb_build_object('id', competency.id, 'name', competency.name),
@@ -285,7 +288,7 @@ func (q *Queries) ReadVariantHeaderByOwner(ctx context.Context, arg ReadVariantH
 }
 
 const readVariantTaskByOwner = `-- name: ReadVariantTaskByOwner :one
-SELECT vt.id, vt.role, vt.task_snapshot, vt.profile_snapshot
+SELECT vt.id, vt.role, vt.audio_asset_id, vt.task_snapshot, vt.profile_snapshot
 FROM variant_tasks vt JOIN variants v ON v.id = vt.variant_id
 WHERE v.user_id = $1 AND v.id = $2 AND vt.id = $3
 `
@@ -299,6 +302,7 @@ type ReadVariantTaskByOwnerParams struct {
 type ReadVariantTaskByOwnerRow struct {
 	ID              string
 	Role            string
+	AudioAssetID    *string
 	TaskSnapshot    []byte
 	ProfileSnapshot []byte
 }
@@ -309,6 +313,7 @@ func (q *Queries) ReadVariantTaskByOwner(ctx context.Context, arg ReadVariantTas
 	err := row.Scan(
 		&i.ID,
 		&i.Role,
+		&i.AudioAssetID,
 		&i.TaskSnapshot,
 		&i.ProfileSnapshot,
 	)
@@ -316,7 +321,7 @@ func (q *Queries) ReadVariantTaskByOwner(ctx context.Context, arg ReadVariantTas
 }
 
 const readVariantTasks = `-- name: ReadVariantTasks :many
-SELECT id, competency_position, slot, role, source_task_id_snapshot, task_snapshot, profile_snapshot
+SELECT id, competency_position, slot, role, source_task_id_snapshot, audio_asset_id, task_snapshot, profile_snapshot
 FROM variant_tasks WHERE variant_id = $1 ORDER BY competency_position, slot
 `
 
@@ -326,6 +331,7 @@ type ReadVariantTasksRow struct {
 	Slot                 int16
 	Role                 string
 	SourceTaskIDSnapshot string
+	AudioAssetID         *string
 	TaskSnapshot         []byte
 	ProfileSnapshot      []byte
 }
@@ -345,6 +351,7 @@ func (q *Queries) ReadVariantTasks(ctx context.Context, variantID string) ([]Rea
 			&i.Slot,
 			&i.Role,
 			&i.SourceTaskIDSnapshot,
+			&i.AudioAssetID,
 			&i.TaskSnapshot,
 			&i.ProfileSnapshot,
 		); err != nil {

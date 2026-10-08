@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from 'vitest'
-import { synthesizeQuestion, transcribeRecording } from '@/shared/api'
+import { fetchStoredAudio, transcribeRecording } from '@/shared/api'
 
 afterEach(() => vi.unstubAllGlobals())
 
@@ -25,20 +25,50 @@ it('uploads recording as multipart file and reads actual transcription', async (
   expect(init.signal.aborted).toBe(false)
 })
 
-it('posts text as JSON and returns generated audio', async () => {
+it('fetches stored WAV from an internal API path with cookie credentials', async () => {
   const wav = new Blob(['wav'], { type: 'audio/wav' })
   const fetchMock = vi
     .fn()
-    .mockResolvedValue({ ok: true, blob: async () => wav })
+    .mockResolvedValue(
+      new Response(wav, { headers: { 'Content-Type': 'audio/wav' } }),
+    )
   vi.stubGlobal('fetch', fetchMock)
-  expect(await synthesizeQuestion('Вопрос', new AbortController().signal)).toBe(
-    wav,
-  )
-  expect(fetchMock.mock.calls[0][0]).toBe('/api/v1/voice/syntheses')
+  await expect(
+    fetchStoredAudio('/task-audio/audio-1/file', new AbortController().signal),
+  ).resolves.toBeInstanceOf(Blob)
+  expect(fetchMock.mock.calls[0][0]).toBe('/api/v1/task-audio/audio-1/file')
   expect(fetchMock.mock.calls[0][1].credentials).toBe('include')
-  expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({
-    text: 'Вопрос',
-  })
+  await expect(
+    fetchStoredAudio(
+      'https://evil.example/audio.wav',
+      new AbortController().signal,
+    ),
+  ).rejects.toThrow()
+  await expect(
+    fetchStoredAudio('/task-audio/audio-1/other', new AbortController().signal),
+  ).rejects.toThrow()
+  vi.stubGlobal(
+    'fetch',
+    vi
+      .fn()
+      .mockResolvedValue(
+        new Response('not wav', { headers: { 'Content-Type': 'text/plain' } }),
+      ),
+  )
+  await expect(
+    fetchStoredAudio('/task-audio/audio-1/file', new AbortController().signal),
+  ).rejects.toThrow('content type')
+  vi.stubGlobal(
+    'fetch',
+    vi
+      .fn()
+      .mockResolvedValue(
+        new Response('', { headers: { 'Content-Type': 'audio/wav' } }),
+      ),
+  )
+  await expect(
+    fetchStoredAudio('/task-audio/audio-1/file', new AbortController().signal),
+  ).rejects.toThrow('empty')
 })
 
 it('rejects service failures and empty transcriptions instead of supplying a mock', async () => {
@@ -86,8 +116,5 @@ it('preserves unauthorized status for a useful session error', async () => {
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 401 }))
   await expect(
     transcribeRecording(new Blob(['a']), new AbortController().signal),
-  ).rejects.toMatchObject({ status: 401 })
-  await expect(
-    synthesizeQuestion('Вопрос', new AbortController().signal),
   ).rejects.toMatchObject({ status: 401 })
 })

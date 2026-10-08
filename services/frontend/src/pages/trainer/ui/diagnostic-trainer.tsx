@@ -267,6 +267,16 @@ function DiagnosticFlow({
                 {t('trainer.speechError')}
               </Text>
             )}
+            {voice.pendingHint && (
+              <Text as="p" role="status" className={styles.speechError}>
+                {t('trainer.audioPreparing')}
+              </Text>
+            )}
+            {voice.cancelledHint && (
+              <Text as="p" role="status" className={styles.speechError}>
+                {t('trainer.audioCancelled')}
+              </Text>
+            )}
           </div>
           <aside
             className={`${styles.answerPanel} ${failed ? styles.answerError : ''}`}

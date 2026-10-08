@@ -13,16 +13,6 @@ export function useTranscriptionMutation(userId: string) {
     gcTime: 0,
   })
 }
-export function useSynthesisMutation(userId: string) {
-  const { voice } = useVoiceAnswerDependencies()
-  return useMutation({
-    mutationKey: voiceAnswerQueryKeys.synthesize(userId),
-    mutationFn: ({ text, signal }: { text: string; signal: AbortSignal }) =>
-      voice.synthesizeQuestion(text, signal),
-    retry: false,
-    gcTime: 0,
-  })
-}
 export function useDemoAssessmentMutation(userId: string) {
   const { assessment } = useVoiceAnswerDependencies()
   return useMutation({

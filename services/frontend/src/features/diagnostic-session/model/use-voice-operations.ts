@@ -14,7 +14,10 @@ export function useDiagnosticAudioQuery(
       sessionId,
       taskId,
     ),
-    queryFn: ({ signal }) => diagnostic.diagnosticAudio(sessionId, signal),
+    queryFn: ({ signal }) =>
+      taskId
+        ? diagnostic.readDiagnosticAudio(sessionId, taskId, signal)
+        : Promise.reject(new Error('Current task is missing')),
     enabled: false,
     retry: false,
     staleTime: 0,

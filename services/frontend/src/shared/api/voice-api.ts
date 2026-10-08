@@ -53,19 +53,27 @@ export async function transcribeRecording(
   return { id: data.id, text: data.text.trim() }
 }
 
-export async function synthesizeQuestion(
-  text: string,
+export async function fetchStoredAudio(
+  audioUrl: string,
   signal: AbortSignal,
 ): Promise<Blob> {
-  const response = await apiFetch(`${apiBase}/voice/syntheses`, {
-    method: 'POST',
+  if (!/^\/task-audio\/[A-Za-z0-9_-]{1,256}\/file$/.test(audioUrl))
+    throw new Error('Stored audio URL is invalid')
+  const response = await apiFetch(`${apiBase}${audioUrl}`, {
     credentials: 'include',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ text }),
     signal: requestSignal(signal),
   })
-  if (!response.ok) throw new VoiceApiError('Synthesis', response.status)
+  if (!response.ok) throw new VoiceApiError('Stored audio', response.status)
+  if (
+    response.headers
+      .get('Content-Type')
+      ?.split(';', 1)[0]
+      .trim()
+      .toLowerCase() !== 'audio/wav'
+  )
+    throw new Error('Stored audio has an invalid content type')
   const audio = await response.blob()
-  if (!audio.size) throw new Error('Synthesis audio is empty')
+  if (!audio.size) throw new Error('Stored audio is empty')
+  signal.throwIfAborted()
   return audio
 }

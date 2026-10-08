@@ -5,8 +5,9 @@ Go API и PostgreSQL. Команды выполняются из `services/backe
 ## Реализовано и запланировано
 
 Реализованы auth, синхронные STT/TTS, импорт текущей карты CSV/XLSX, карта/каталог,
-assessment по снимкам вариантов, LLM-генерация задач, импорт материалов с FTS и
-variantgen (сборка, снимки, список и чтение вариантов) и HTTP API диагностических
+assessment по снимкам вариантов, LLM-генерация задач, импорт материалов с FTS,
+variantgen (сборка, снимки, список и чтение вариантов), постоянная очередь аудио в
+PostgreSQL с фоновым TTS/S3 worker и HTTP API диагностических
 сессий. Состояние сессий и принятые ответы хранятся в памяти процесса; store принимает
 до 10 000 сессий за время жизни процесса, затем возвращает 503 до перезапуска. Перезапуск
 backend завершает доступ к сессиям. Итоговый фидбэк и тренировка не реализованы.
@@ -19,7 +20,8 @@ application по `variant_id`, `variant_task_id` и `transcription_id`, без H
 Assessment напрямую реализует порт сессии; оба модуля используют результат из `entities/assessment`.
 
 Сессии доступны через `POST /diagnostic-sessions`, `GET /diagnostic-sessions/{id}`,
-`GET /diagnostic-sessions/{id}/current/audio`, `POST /diagnostic-sessions/{id}/answers`
+`GET /diagnostic-sessions/{id}/current/audio?variant_task_id=...`,
+`GET /task-audio/{id}/file`, `POST /diagnostic-sessions/{id}/answers`
 и `GET /diagnostic-sessions/{id}/result`. Ответы проходят STT и, при доступном
 грейдере, сохраняют score/max_score/verdict/criterion_results/feedback от assessment.
 Шкала уже ограничена ролью задания и сессией не преобразуется. Повтор ключа идемпотентен; параллельный ответ
@@ -27,6 +29,34 @@ Assessment напрямую реализует порт сессии; оба м�
 2 для main и 1 для basic; сессия сохраняет эту оценку без повторного преобразования.
 Результат доступен только после завершения.
 Контракт — единый [OpenAPI](../../api/openapi.yaml).
+
+### Сохранённая озвучка заданий
+
+Импорт карты и taskgen в той же транзакции создают audio asset и ставят его в
+`pending`. Worker стартует только из `cmd/api` после миграций; `Handler()` и
+healthcheck его не запускают. Он ограничен `BACKEND_AUDIO_WORKERS`, проверяет S3
+объект перед TTS, сохраняет WAV и завершает запись со стабильным file URL. Пять
+неудачных попыток дают `failed`; после рестарта истёкшая lease актуального задания
+восстанавливается. Claim и проверка перед TTS требуют связь с активной ревизией
+карты; при замене карты устаревшие pending/processing assets переходят в
+терминальный `cancelled`. Уже готовые assets доступны историческим снимкам. S3 outage не блокирует импорт, текстовые задания или
+ответы. `/health` проверяет только API и PostgreSQL.
+
+По умолчанию локальный Compose запускает RustFS. Настройки `BACKEND_S3_*` и
+`BACKEND_AUDIO_*` описаны в корневых `.env.example` и `.env.prod.example`;
+внешний endpoint должен указывать на существующую закрытую корзину, с
+`BACKEND_S3_CREATE_BUCKET=false`. Браузер обращается к
+`GET /diagnostic-sessions/{id}/current/audio?variant_task_id=...` за статусом, затем
+к authenticated `GET /task-audio/{id}/file` только для готовой озвучки.
+
+Для безопасной диагностики очереди можно прочитать только метаданные, не текст
+инструкции:
+
+```sql
+SELECT id, status, attempts, last_error_code, bucket, storage_uri, updated_at
+FROM audio_assets
+ORDER BY created_at, id;
+```
 
 Правила variantgen — [алгоритм](../../documents/Алгоритм_составления_варианта.md).
 Преподаватель не размечает базовые связи и не загружает дополнительные документы.
@@ -73,7 +103,7 @@ docker compose --env-file ../../.env up -d --build
 подключение; по умолчанию db:5432 и DB_PASSWORD. API слушает :8002 за Caddy HTTPS.
 Публичный префикс /api/v1 удаляется proxy. Secure cookies требуют HTTPS.
 
-BACKEND_API_MODE=mock подменяет модели, auth/БД настоящие. В real нужны все
+BACKEND_API_MODE=mock подменяет модели, auth/БД/S3 настоящие. В real нужны все
 BACKEND_STT_URL, BACKEND_TTS_URL, BACKEND_ASSESSMENT_* и BACKEND_TASKGEN_* из
 корневого шаблона: taskgen сохраняется отдельным действующим модулем. Таймауты, адрес
 прослушивания и лимит загрузки обязательны. После изменения env пересоздайте API.
@@ -113,8 +143,9 @@ polling позволяет подхватывать изменения чере�
 ## БД и импорт
 
 Goose применяет встроенные SQL-миграции при старте или migrate; запуск сериализован
-advisory lock. Базовая схема находится в 00001_initial.sql; таблицы вариантов добавлены
-миграцией 00002_variants.sql. Существующий volume обновляется без удаления пользователей,
+advisory lock. Базовая схема находится в 00001_initial.sql; варианты добавлены
+миграцией 00002_variants.sql, а `audio_assets`, очередь и links — миграцией
+00003_task_audio.sql. Существующий volume обновляется без удаления пользователей,
 расшифровок или активной карты.
 
 Admin назначается после регистрации:

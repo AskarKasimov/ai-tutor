@@ -15,7 +15,8 @@ SELECT state.revision,
        task.id AS task_id,
        jsonb_build_object(
            'id', task.id, 'question', task.question, 'options', task.options,
-           'voice_instruction', task.voice_instruction, 'reference_answer', task.reference_answer,
+           'voice_instruction', task.voice_instruction, 'audio_asset_id', task.audio_asset_id,
+           'reference_answer', task.reference_answer,
            'criteria', task.criteria, 'origin', task.origin, 'created_at', task.created_at,
            'source_row_index', task.source_row_index, 'source_column_index', task.source_column_index,
            'competency', jsonb_build_object('id', competency.id, 'name', competency.name),
@@ -59,9 +60,9 @@ ON CONFLICT (user_id, create_request_key) DO NOTHING
 RETURNING id;
 
 -- name: InsertVariantTask :exec
-INSERT INTO variant_tasks(id, variant_id, live_task_id, source_task_id_snapshot,
+INSERT INTO variant_tasks(id, variant_id, live_task_id, source_task_id_snapshot, audio_asset_id,
                           competency_position, slot, role, task_snapshot, profile_snapshot)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9);
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10);
 
 -- name: ReadVariantHeaderByOwner :one
 SELECT id, user_id, map_revision, algorithm_version, included_competency_count,
@@ -69,11 +70,11 @@ SELECT id, user_id, map_revision, algorithm_version, included_competency_count,
 FROM variants WHERE id = $1 AND user_id = $2;
 
 -- name: ReadVariantTasks :many
-SELECT id, competency_position, slot, role, source_task_id_snapshot, task_snapshot, profile_snapshot
+SELECT id, competency_position, slot, role, source_task_id_snapshot, audio_asset_id, task_snapshot, profile_snapshot
 FROM variant_tasks WHERE variant_id = $1 ORDER BY competency_position, slot;
 
 -- name: ReadVariantTaskByOwner :one
-SELECT vt.id, vt.role, vt.task_snapshot, vt.profile_snapshot
+SELECT vt.id, vt.role, vt.audio_asset_id, vt.task_snapshot, vt.profile_snapshot
 FROM variant_tasks vt JOIN variants v ON v.id = vt.variant_id
 WHERE v.user_id = $1 AND v.id = $2 AND vt.id = $3;
 

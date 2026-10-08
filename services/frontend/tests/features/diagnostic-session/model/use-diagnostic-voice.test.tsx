@@ -136,11 +136,17 @@ it('cancels instruction generation when recording starts and never plays its lat
 it('ends instruction playback without holding a stale player after it finishes', async () => {
   vi.stubGlobal(
     'fetch',
-    vi
-      .fn()
-      .mockResolvedValue(
-        new Response('wav', { headers: { 'Content-Type': 'audio/wav' } }),
+    vi.fn((url: string) =>
+      Promise.resolve(
+        url.includes('/current/audio')
+          ? Response.json({
+              variant_task_id: 't1',
+              status: 'ready',
+              audio_url: '/task-audio/audio-1/file',
+            })
+          : new Response('wav', { headers: { 'Content-Type': 'audio/wav' } }),
       ),
+    ),
   )
   let ended!: () => void
   const dispose = vi.fn()
@@ -161,6 +167,147 @@ it('ends instruction playback without holding a stale player after it finishes',
   view.unmount()
   // playQuestion disposes its own URL/player on ended; the hook must drop its handle.
   expect(dispose).not.toHaveBeenCalled()
+})
+
+it('reads metadata and the saved file without posting text for TTS', async () => {
+  const urls: string[] = []
+  vi.stubGlobal(
+    'fetch',
+    vi.fn((url: string) => {
+      urls.push(url)
+      if (url.includes('/current/audio'))
+        return Promise.resolve(
+          Response.json({
+            variant_task_id: 't1',
+            status: 'ready',
+            audio_url: '/task-audio/audio-1/file',
+          }),
+        )
+      return Promise.resolve(
+        new Response('saved wav', { headers: { 'Content-Type': 'audio/wav' } }),
+      )
+    }),
+  )
+  const play = vi.spyOn(audio, 'playQuestion').mockResolvedValue(vi.fn())
+  const view = renderDiagnosticVoice(() =>
+    useDiagnosticVoice('u1', 's1', task, vi.fn(), vi.fn()),
+  )
+  await act(async () => {
+    await view.result.current.speak()
+  })
+  expect(urls).toEqual([
+    '/api/v1/diagnostic-sessions/s1/current/audio?variant_task_id=t1',
+    '/api/v1/task-audio/audio-1/file',
+  ])
+  expect(urls.some((url) => url.includes('/voice/syntheses'))).toBe(false)
+  expect(play).toHaveBeenCalledTimes(1)
+})
+
+it('shows a pending hint and plays only after a later ready read', async () => {
+  let reads = 0
+  vi.stubGlobal(
+    'fetch',
+    vi.fn((url: string) => {
+      if (url.includes('/current/audio')) {
+        reads++
+        return Promise.resolve(
+          Response.json(
+            reads === 1
+              ? { variant_task_id: 't1', status: 'pending', audio_url: null }
+              : {
+                  variant_task_id: 't1',
+                  status: 'ready',
+                  audio_url: '/task-audio/audio-1/file',
+                },
+          ),
+        )
+      }
+      return Promise.resolve(
+        new Response('wav', { headers: { 'Content-Type': 'audio/wav' } }),
+      )
+    }),
+  )
+  const play = vi.spyOn(audio, 'playQuestion').mockResolvedValue(vi.fn())
+  const view = renderDiagnosticVoice(() =>
+    useDiagnosticVoice('u1', 's1', task, vi.fn(), vi.fn()),
+  )
+  await act(async () => {
+    await view.result.current.speak()
+  })
+  expect(view.result.current.pendingHint).toBe(true)
+  expect(view.result.current.speechError).toBe(false)
+  expect(play).not.toHaveBeenCalled()
+  await act(async () => {
+    await view.result.current.speak()
+  })
+  expect(view.result.current.pendingHint).toBe(false)
+  expect(play).toHaveBeenCalledTimes(1)
+})
+
+it('shows a clear hint when the task audio was cancelled after a map replacement', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn().mockResolvedValue(
+      Response.json({
+        variant_task_id: 't1',
+        status: 'cancelled',
+        audio_url: null,
+      }),
+    ),
+  )
+  const play = vi.spyOn(audio, 'playQuestion').mockResolvedValue(vi.fn())
+  const view = renderDiagnosticVoice(() =>
+    useDiagnosticVoice('u1', 's1', task, vi.fn(), vi.fn()),
+  )
+  await act(async () => {
+    await view.result.current.speak()
+  })
+  expect(view.result.current.cancelledHint).toBe(true)
+  expect(view.result.current.speechError).toBe(false)
+  expect(view.result.current.pendingHint).toBe(false)
+  expect(play).not.toHaveBeenCalled()
+})
+
+it('aborts the saved file request if the current task changes before playback', async () => {
+  let resolveFile!: (response: Response) => void
+  let fileSignal!: AbortSignal
+  vi.stubGlobal(
+    'fetch',
+    vi.fn((url: string, init: RequestInit) => {
+      if (url.includes('/current/audio'))
+        return Promise.resolve(
+          Response.json({
+            variant_task_id: 't1',
+            status: 'ready',
+            audio_url: '/task-audio/audio-1/file',
+          }),
+        )
+      fileSignal = init.signal!
+      return new Promise<Response>((resolve) => {
+        resolveFile = resolve
+      })
+    }),
+  )
+  const play = vi.spyOn(audio, 'playQuestion').mockResolvedValue(vi.fn())
+  let currentTask: DiagnosticTask = task
+  const view = renderDiagnosticVoice(() =>
+    useDiagnosticVoice('u1', 's1', currentTask, vi.fn(), vi.fn()),
+  )
+  let speaking!: Promise<void>
+  act(() => {
+    speaking = view.result.current.speak()
+  })
+  await waitFor(() => expect(fileSignal).toBeDefined())
+  currentTask = { ...task, variant_task_id: 't2' }
+  view.rerender()
+  await waitFor(() => expect(fileSignal.aborted).toBe(true))
+  await act(async () => {
+    resolveFile(
+      new Response('late wav', { headers: { 'Content-Type': 'audio/wav' } }),
+    )
+    await speaking
+  })
+  expect(play).not.toHaveBeenCalled()
 })
 
 it('cancels a rapidly repeated instruction click instead of launching concurrent playback', async () => {

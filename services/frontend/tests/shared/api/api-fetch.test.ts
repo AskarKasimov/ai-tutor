@@ -269,7 +269,17 @@ it('runs every backend interaction in mock mode without making network requests'
   ).json()
   expect(transcription.id).toBeTruthy()
   expect(transcription.text).toContain('Демонстрационный')
-  const wav = await (await post('voice/syntheses', { text: 'Вопрос' })).blob()
+  const metadata = await (
+    await apiFetch(
+      '/api/v1/diagnostic-sessions/s1/current/audio?variant_task_id=t1',
+    )
+  ).json()
+  expect(metadata).toMatchObject({
+    variant_task_id: 't1',
+    status: 'ready',
+    audio_url: expect.stringMatching(/^\/task-audio\/demo_[a-f0-9]+\/file$/),
+  })
+  const wav = await (await apiFetch(`/api/v1${metadata.audio_url}`)).blob()
   expect(wav.type).toBe('audio/wav')
   expect(wav.size).toBeGreaterThan(44)
   const task = {
@@ -290,7 +300,9 @@ it('runs every backend interaction in mock mode without making network requests'
   ).rejects.toMatchObject({ status: 404 })
   expect((await post('auth/logout', {})).status).toBe(204)
   expect((await apiFetch('/api/v1/auth/me')).status).toBe(401)
-  expect((await post('voice/syntheses', { text: 'Вопрос' })).status).toBe(401)
+  expect((await post('voice/transcriptions', { text: 'Вопрос' })).status).toBe(
+    401,
+  )
   expect(
     (
       await post('auth/login', {
@@ -328,13 +340,11 @@ it.each([undefined, '', 'mock', 'mok', 'dev', 'REAL', ' real', 'real '])(
   },
 )
 
-it('cancels mock processing without producing a result or fetching', async () => {
+it('cancels mock saved-audio reads without fetching', async () => {
   vi.stubEnv('VITE_API_MODE', 'mock')
   vi.stubGlobal('fetch', vi.fn())
   const controller = new AbortController()
-  const pending = apiFetch('/api/v1/voice/syntheses', {
-    method: 'POST',
-    body: JSON.stringify({ text: 'Вопрос' }),
+  const pending = apiFetch('/api/v1/task-audio/demo_file/file', {
     signal: controller.signal,
   })
   controller.abort()

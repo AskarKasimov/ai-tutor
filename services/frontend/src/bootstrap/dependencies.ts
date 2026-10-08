@@ -5,6 +5,7 @@ import * as auth from '@/entities/user'
 import * as competencyMap from '@/entities/competency-map'
 import * as diagnostic from '@/entities/diagnostic-session'
 import * as voice from '@/shared/api'
+import { createDemoAudio as createDemoAudioBytes } from '@/shared/lib'
 import * as assessment from '@/entities/assessment'
 import type { AuthDependencies } from '@/features/auth'
 import type { CompetencyMapDependencies } from '@/features/import-competency-map'
@@ -64,11 +65,13 @@ export function createAppDependencies(): AppDependencies {
       readDiagnosticResult: diagnostic.readDiagnosticResult,
       submitDiagnostic: diagnostic.submitDiagnostic,
       createSubmission: diagnostic.createSubmission,
-      diagnosticAudio: diagnostic.diagnosticAudio,
+      readDiagnosticAudio: diagnostic.readDiagnosticAudio,
+      fetchDiagnosticAudioFile: diagnostic.fetchDiagnosticAudioFile,
     },
     voice: {
       transcribeRecording: voice.transcribeRecording,
-      synthesizeQuestion: voice.synthesizeQuestion,
+      createDemoAudio: () =>
+        new Blob([createDemoAudioBytes()], { type: 'audio/wav' }),
     },
     assessment: {
       evaluateDemoAnswer,

@@ -2,6 +2,7 @@ import { afterEach, expect, it, vi } from 'vitest'
 import {
   createSubmission,
   DiagnosticApiError,
+  readDiagnosticAudio,
   readDiagnostic,
   submitDiagnostic,
 } from '@/entities/diagnostic-session'
@@ -25,6 +26,63 @@ afterEach(() => {
   vi.useRealTimers()
   vi.restoreAllMocks()
   vi.unstubAllGlobals()
+})
+
+it('reads task audio metadata with the expected task ID and accepts only ready URLs', async () => {
+  const response = {
+    variant_task_id: 't1',
+    status: 'ready',
+    audio_url: '/task-audio/audio-1/file',
+  }
+  const fetchMock = vi.fn().mockResolvedValue(Response.json(response))
+  vi.stubGlobal('fetch', fetchMock)
+  await expect(
+    readDiagnosticAudio('s1', 't1', new AbortController().signal),
+  ).resolves.toEqual(response)
+  expect(fetchMock.mock.calls[0][0]).toBe(
+    '/api/v1/diagnostic-sessions/s1/current/audio?variant_task_id=t1',
+  )
+  expect(fetchMock.mock.calls[0][1].method).toBeUndefined()
+
+  vi.stubGlobal(
+    'fetch',
+    vi
+      .fn()
+      .mockResolvedValue(
+        Response.json({ ...response, variant_task_id: 'stale-task' }),
+      ),
+  )
+  await expect(
+    readDiagnosticAudio('s1', 't1', new AbortController().signal),
+  ).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
+  vi.stubGlobal(
+    'fetch',
+    vi.fn().mockResolvedValue(
+      Response.json({
+        ...response,
+        audio_url: 'https://evil.example/audio.wav',
+      }),
+    ),
+  )
+  await expect(
+    readDiagnosticAudio('s1', 't1', new AbortController().signal),
+  ).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
+})
+
+it('accepts cancelled task-audio metadata without a file URL', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn().mockResolvedValue(
+      Response.json({
+        variant_task_id: 't1',
+        status: 'cancelled',
+        audio_url: null,
+      }),
+    ),
+  )
+  await expect(
+    readDiagnosticAudio('s1', 't1', new AbortController().signal),
+  ).resolves.toMatchObject({ status: 'cancelled', audio_url: null })
 })
 
 it('allows an answer to finish after sequential transcription and grading exceed two minutes', async () => {

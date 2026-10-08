@@ -1,6 +1,8 @@
 import { z } from 'zod'
 import { apiFetch } from '@/shared/api'
+import { fetchStoredAudio } from '@/shared/api'
 import type {
+  DiagnosticAudioMetadata,
   DiagnosticProgress,
   DiagnosticResult,
   DiagnosticTask,
@@ -53,6 +55,25 @@ const progressSchema: z.ZodType<DiagnosticProgress> = z
       (p.status === 'active'
         ? !!p.current && p.completed_tasks + p.skipped_tasks < p.total_tasks
         : !p.current && p.completed_tasks + p.skipped_tasks === p.total_tasks),
+  )
+const diagnosticAudioSchema: z.ZodType<DiagnosticAudioMetadata> = z
+  .object({
+    variant_task_id: id,
+    status: z.enum([
+      'missing',
+      'pending',
+      'processing',
+      'ready',
+      'failed',
+      'cancelled',
+    ]),
+    audio_url: z.string().nullable(),
+  })
+  .refine((value) =>
+    value.status === 'ready'
+      ? !!value.audio_url &&
+        /^\/task-audio\/[A-Za-z0-9_-]{1,256}\/file$/.test(value.audio_url)
+      : value.audio_url === null,
   )
 const answerSchema = z
   .object({
@@ -211,18 +232,25 @@ export async function submitDiagnostic(
     throw new DiagnosticApiError(0, 'INVALID_RESPONSE')
   return progress
 }
-export async function diagnosticAudio(sessionId: string, signal: AbortSignal) {
+export async function readDiagnosticAudio(
+  sessionId: string,
+  taskId: string,
+  signal: AbortSignal,
+): Promise<DiagnosticAudioMetadata> {
   const response = await request(
-    `/diagnostic-sessions/${encodeURIComponent(sessionId)}/current/audio`,
+    `/diagnostic-sessions/${encodeURIComponent(sessionId)}/current/audio?variant_task_id=${encodeURIComponent(taskId)}`,
     signal,
   )
-  const blob = await response.blob()
-  if (
-    !blob.size ||
-    !response.headers.get('Content-Type')?.includes('audio/wav')
-  )
+  const metadata = await parse(response, diagnosticAudioSchema)
+  if (metadata.variant_task_id !== taskId)
     throw new DiagnosticApiError(0, 'INVALID_RESPONSE')
-  return blob
+  return metadata
+}
+export async function fetchDiagnosticAudioFile(
+  audioUrl: string,
+  signal: AbortSignal,
+) {
+  return fetchStoredAudio(audioUrl, signal)
 }
 export async function readDiagnosticResult(
   sessionId: string,

@@ -20,13 +20,13 @@ npm run dev
 ## Диагностика с настоящими заданиями
 
 Сетевые операции принадлежат data hooks TanStack Query: auth и карту читают queries;
-импорт карты, создание варианта/сессии, отправка ответа, STT, TTS и оценка выполняются
+импорт карты, создание варианта/сессии, отправка ответа, STT и оценка выполняются
 mutations. `apiFetch` остаётся транспортом, но вызывается только из API-модулей,
 подключённых как `queryFn` или `mutationFn`. POST-команды не выполняются в `queryFn`.
 Владельцы операций: `useCurrentUserQuery` / `useAuthenticateMutation` / `useLogoutMutation`;
 `useCompetencyMapQuery` / `useImportCompetencyMapMutation`; `useDiagnosticSession`
-(start, progress и submit) / `useDiagnosticResultQuery`; `useDiagnosticAudioQuery`;
-`useTranscriptionMutation` / `useSynthesisMutation` / `useAssessmentMutation`;
+(start, progress и submit) / `useDiagnosticResultQuery` / `useDiagnosticAudioQuery`;
+`useTranscriptionMutation` / `useAssessmentMutation`;
 mock-сессия тренажёра принадлежит `useTrainerSession`.
 Queries передают свой `AbortSignal`; владелец mutation передаёт сигнал явно и
 отменяет его до сброса UI-состояния. `mutation.reset()` не отменяет HTTP-запрос.
@@ -44,8 +44,11 @@ blob URL и playback остаются под управлением браузе
 как исходный текст задания. Неподходящая или пустая
 карта показывает отдельную ошибку с повтором запроса, без подстановки демозаданий.
 
-Кнопка «Прослушать инструкцию» получает WAV через
-`GET /api/v1/diagnostic-sessions/{id}/current/audio`. Запись отправляется целиком
+Кнопка «Прослушать инструкцию» сначала читает JSON-статус через
+`GET /api/v1/diagnostic-sessions/{id}/current/audio?variant_task_id={taskId}`.
+При `ready` браузер получает сохранённый WAV по `audio_url` через
+`GET /api/v1/task-audio/{id}/file`; при `pending` показывает подсказку и не запускает
+TTS. Демо тренажёра использует локальный WAV-сигнал. Запись отправляется целиком
 как multipart `audio` + `variant_task_id` в
 `POST /api/v1/diagnostic-sessions/{id}/answers`. Backend выполняет STT и оценку
 по сохранённому снимку; браузер не отправляет свою оценку, эталон или текст задания.

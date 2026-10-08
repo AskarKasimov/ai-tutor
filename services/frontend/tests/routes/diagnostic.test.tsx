@@ -112,7 +112,15 @@ function server(answerStatus = 200, totalTasks = 3) {
       return Response.json({ id: 'variant-real' }, { status: 201 })
     if (url.endsWith('/diagnostic-sessions') && init?.method === 'POST')
       return Response.json(sessionProgress, { status: 201 })
-    if (url.endsWith('/current/audio'))
+    if (url.includes('/current/audio?'))
+      return Response.json({
+        variant_task_id: new URL(url, 'http://test').searchParams.get(
+          'variant_task_id',
+        ),
+        status: 'ready',
+        audio_url: '/task-audio/audio-main/file',
+      })
+    if (url.endsWith('/task-audio/audio-main/file'))
       return new Response('wav', { headers: { 'Content-Type': 'audio/wav' } })
     if (url.endsWith('/answers')) {
       if (answerStatus !== 200) {
@@ -277,7 +285,14 @@ it('plays the server instruction through the diagnostic audio endpoint', async (
   await waitFor(() => expect(audio.playQuestion).toHaveBeenCalled())
   expect(
     requests.mock.calls.some(([url]) =>
-      url.endsWith('/diagnostic-sessions/session-real/current/audio'),
+      url.endsWith(
+        '/diagnostic-sessions/session-real/current/audio?variant_task_id=v-main',
+      ),
+    ),
+  ).toBe(true)
+  expect(
+    requests.mock.calls.some(([url]) =>
+      url.endsWith('/task-audio/audio-main/file'),
     ),
   ).toBe(true)
 })

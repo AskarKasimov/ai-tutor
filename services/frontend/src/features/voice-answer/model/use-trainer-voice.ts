@@ -5,9 +5,9 @@ import { AssessmentApiError } from '@/entities/assessment'
 import { VoiceApiError } from '@/shared/api'
 import {
   useDemoAssessmentMutation,
-  useSynthesisMutation,
   useTranscriptionMutation,
 } from './use-voice-operations'
+import { useVoiceAnswerDependencies } from './dependencies-context'
 import type { Recording } from '@/shared/lib'
 
 type Stage =
@@ -19,13 +19,9 @@ type Stage =
   | 'result'
   | 'error'
 
-export function useTrainerVoice(
-  task: DemoAssessmentTask,
-  speechText = task.voiceInstruction,
-  userId = 'test',
-) {
+export function useTrainerVoice(task: DemoAssessmentTask, userId = 'test') {
   const transcriptionMutation = useTranscriptionMutation(userId)
-  const synthesisMutation = useSynthesisMutation(userId)
+  const { voice } = useVoiceAnswerDependencies()
   const assessmentMutation = useDemoAssessmentMutation(userId)
   const [stage, setStage] = useState<Stage>('ready')
   const [seconds, setSeconds] = useState(0)
@@ -59,7 +55,6 @@ export function useTrainerVoice(
       transcriptionRequest.current?.abort()
       assessmentRequest.current?.abort()
       transcriptionMutation.reset()
-      synthesisMutation.reset()
       assessmentMutation.reset()
       cancelSpeech.current?.()
       savedAudio.current?.dispose()
@@ -96,10 +91,7 @@ export function useTrainerVoice(
     setSpeechError('')
     setLoadingSpeech(true)
     try {
-      const blob = await synthesisMutation.mutateAsync({
-        text: speechText,
-        signal: request.signal,
-      })
+      const blob = voice.createDemoAudio()
       if (request.signal.aborted) return
       const dispose = await playQuestion(
         blob,
@@ -115,13 +107,8 @@ export function useTrainerVoice(
       }
       cancelSpeech.current = dispose
       setSpeaking(true)
-    } catch (error) {
-      if (!request.signal.aborted)
-        setSpeechError(
-          error instanceof VoiceApiError && error.status === 401
-            ? 'speechUnauthorized'
-            : 'speechError',
-        )
+    } catch {
+      if (!request.signal.aborted) setSpeechError('speechError')
     } finally {
       if (speechRequest.current === request) setLoadingSpeech(false)
     }
@@ -267,7 +254,6 @@ export function useTrainerVoice(
     assessmentRequest.current?.abort()
     assessmentRequest.current = null
     transcriptionMutation.reset()
-    synthesisMutation.reset()
     assessmentMutation.reset()
     transcriptionId.current = null
     stopSpeaking()

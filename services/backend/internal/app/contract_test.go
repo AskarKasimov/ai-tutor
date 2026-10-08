@@ -221,6 +221,17 @@ func TestOpenAPIResponses(t *testing.T) {
 	if err := json.Unmarshal(variantCreate.Body.Bytes(), &createdVariant); err != nil || len(createdVariant.Competencies) != 1 {
 		t.Fatalf("contract variant response: %s (%v)", variantCreate.Body.String(), err)
 	}
+	var contractAudioID string
+	if err := f.pool.QueryRow(t.Context(), "SELECT audio_asset_id FROM variant_tasks WHERE id=$1", createdVariant.Competencies[0].Main.ID).Scan(&contractAudioID); err != nil || contractAudioID == "" {
+		t.Fatalf("contract task audio link: %q (%v)", contractAudioID, err)
+	}
+	if _, err := f.pool.Exec(t.Context(), "UPDATE audio_assets SET status='ready', bucket='contract-bucket', storage_uri='s3://contract-bucket/'||object_key, audio_url='/task-audio/'||id||'/file' WHERE id=$1", contractAudioID); err != nil {
+		t.Fatal(err)
+	}
+	f.s3Mu.Lock()
+	f.s3AssetID = contractAudioID
+	f.s3Mu.Unlock()
+	check("GET", "/task-audio/{id}/file", f.request("GET", "/task-audio/"+contractAudioID+"/file", "", access))
 	evaluateBody, err := json.Marshal(map[string]string{
 		"transcription_id": saved.ID,
 		"variant_id":       createdVariant.ID,
@@ -253,7 +264,8 @@ func TestOpenAPIResponses(t *testing.T) {
 		t.Fatalf("diagnostic start response: %s (%v)", diagnosticStart.Body.String(), err)
 	}
 	check("GET", "/diagnostic-sessions/{id}", f.request("GET", "/diagnostic-sessions/"+diagnosticProgress.SessionID, "", access))
-	check("GET", "/diagnostic-sessions/{id}/current/audio", f.request("GET", "/diagnostic-sessions/"+diagnosticProgress.SessionID+"/current/audio", "", access))
+	check("GET", "/diagnostic-sessions/{id}/current/audio", f.request("GET", "/diagnostic-sessions/"+diagnosticProgress.SessionID+"/current/audio?variant_task_id="+diagnosticProgress.Current.ID, "", access))
+	check("GET", "/task-audio/{id}/file", f.request("GET", "/task-audio/unknown/file", "", access))
 	diagnosticAnswer, diagnosticContentType := diagnosticAnswerBody(t, diagnosticProgress.Current.ID)
 	diagnosticAnswerRequest := httptest.NewRequest(http.MethodPost, "https://api.example/diagnostic-sessions/"+diagnosticProgress.SessionID+"/answers", diagnosticAnswer)
 	diagnosticAnswerRequest.Header.Set("Content-Type", diagnosticContentType)

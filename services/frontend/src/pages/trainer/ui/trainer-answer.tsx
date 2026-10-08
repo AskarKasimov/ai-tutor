@@ -84,11 +84,7 @@ export function TrainerAnswer({
     options: task.optionKeys.map((key) => t(key)),
     voiceInstruction: t(task.instructionKey),
   }
-  const voice = useTrainerVoice(
-    assessmentTask,
-    [assessmentTask.question, ...assessmentTask.options].join(' '),
-    userId,
-  )
+  const voice = useTrainerVoice(assessmentTask, userId)
   const stage = voice.stage
   const recording = stage === 'recording'
   const waiting = stage === 'permission'

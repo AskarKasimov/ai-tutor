@@ -5,6 +5,7 @@ import type {
   DiagnosticProgress,
   DiagnosticTask,
 } from '@/entities/diagnostic-session'
+import { DiagnosticApiError } from '@/entities/diagnostic-session'
 import type { DiagnosticSubmission } from '@/entities/diagnostic-session'
 import { useDiagnosticDependencies } from './dependencies-context'
 import { useDiagnosticAudioQuery } from './use-voice-operations'
@@ -36,6 +37,8 @@ export function useDiagnosticVoice(
   }>()
   const [speech, setSpeech] = useState<'idle' | 'loading' | 'playing'>('idle')
   const [speechError, setSpeechError] = useState(false)
+  const [pendingHint, setPendingHint] = useState(false)
+  const [cancelledHint, setCancelledHint] = useState(false)
   const cache = useQueryClient()
   const audioQuery = useDiagnosticAudioQuery(
     userId,
@@ -54,6 +57,12 @@ export function useDiagnosticVoice(
   const generation = useRef(0)
   const locked = useRef(false)
   const started = useRef(0)
+  const currentContext = useRef({
+    userId,
+    sessionId,
+    taskId: task?.variant_task_id,
+  })
+  currentContext.current = { userId, sessionId, taskId: task?.variant_task_id }
 
   useEffect(
     () => () => {
@@ -93,9 +102,17 @@ export function useDiagnosticVoice(
       ),
       exact: true,
     })
+    void cache.cancelQueries({
+      queryKey: ['stored-task-audio', userId, sessionId, task?.variant_task_id],
+    })
+    cache.removeQueries({
+      queryKey: ['stored-task-audio', userId, sessionId, task?.variant_task_id],
+    })
     player.current?.()
     player.current = null
     setSpeech('idle')
+    setPendingHint(false)
+    setCancelledHint(false)
   }
   async function speak() {
     if (speechRequest.current) {
@@ -104,17 +121,75 @@ export function useDiagnosticVoice(
     }
     const request = new AbortController()
     speechRequest.current = request
+    const currentGeneration = generation.current
+    const taskId = task?.variant_task_id
+    if (!taskId) {
+      speechRequest.current = null
+      return
+    }
     setSpeechError(false)
+    setPendingHint(false)
+    setCancelledHint(false)
     setSpeech('loading')
     try {
-      const response = await audioQuery.refetch({ throwOnError: true })
-      const blob = response.data
-      if (!blob) throw new Error('Diagnostic audio is empty')
-      if (request.signal.aborted) return
+      const metadataResult = await audioQuery.refetch({ throwOnError: true })
+      const metadata = metadataResult.data
+      if (
+        request.signal.aborted ||
+        generation.current !== currentGeneration ||
+        currentContext.current.taskId !== taskId ||
+        currentContext.current.sessionId !== sessionId ||
+        currentContext.current.userId !== userId
+      )
+        return
+      if (!metadata) throw new Error('Diagnostic audio metadata is empty')
+      if (metadata.status === 'pending' || metadata.status === 'processing') {
+        speechRequest.current = null
+        setSpeech('idle')
+        setPendingHint(true)
+        return
+      }
+      if (metadata.status === 'cancelled') {
+        speechRequest.current = null
+        setSpeech('idle')
+        setCancelledHint(true)
+        return
+      }
+      if (metadata.status !== 'ready' || !metadata.audio_url) {
+        speechRequest.current = null
+        setSpeech('idle')
+        setSpeechError(true)
+        return
+      }
+      const blob = await cache.fetchQuery({
+        queryKey: diagnosticSessionQueryKeys.storedTaskAudio(
+          userId,
+          sessionId,
+          taskId,
+          metadata.audio_url,
+        ),
+        queryFn: ({ signal }) =>
+          diagnostic.fetchDiagnosticAudioFile(metadata.audio_url!, signal),
+        staleTime: Infinity,
+      })
+      if (
+        request.signal.aborted ||
+        generation.current !== currentGeneration ||
+        currentContext.current.taskId !== taskId ||
+        currentContext.current.sessionId !== sessionId ||
+        currentContext.current.userId !== userId
+      )
+        return
+      if (!blob) throw new Error('Stored audio is empty')
       let finished = false
       const finish = () => {
         finished = true
-        if (request.signal.aborted) return
+        if (
+          request.signal.aborted ||
+          generation.current !== currentGeneration ||
+          currentContext.current.taskId !== taskId
+        )
+          return
         speechRequest.current = null
         player.current = null
         setSpeech('idle')
@@ -123,7 +198,11 @@ export function useDiagnosticVoice(
         finish()
         if (!request.signal.aborted) setSpeechError(true)
       })
-      if (request.signal.aborted) {
+      if (
+        request.signal.aborted ||
+        generation.current !== currentGeneration ||
+        currentContext.current.taskId !== taskId
+      ) {
         dispose()
         return
       }
@@ -134,8 +213,10 @@ export function useDiagnosticVoice(
     } catch (error) {
       if (!request.signal.aborted) {
         speechRequest.current = null
-        onError(error)
-        setSpeechError(true)
+        if (!(error instanceof DiagnosticApiError && error.status === 409)) {
+          onError(error)
+          setSpeechError(true)
+        }
         setSpeech('idle')
       }
     }
@@ -143,6 +224,7 @@ export function useDiagnosticVoice(
   useEffect(() => {
     return () => {
       speechRequest.current?.abort()
+      generation.current++
       void cache.cancelQueries({
         queryKey: diagnosticSessionQueryKeys.diagnosticAudio(
           userId,
@@ -158,6 +240,22 @@ export function useDiagnosticVoice(
           task?.variant_task_id,
         ),
         exact: true,
+      })
+      void cache.cancelQueries({
+        queryKey: [
+          'stored-task-audio',
+          userId,
+          sessionId,
+          task?.variant_task_id,
+        ],
+      })
+      cache.removeQueries({
+        queryKey: [
+          'stored-task-audio',
+          userId,
+          sessionId,
+          task?.variant_task_id,
+        ],
       })
       player.current?.()
     }
@@ -276,6 +374,8 @@ export function useDiagnosticVoice(
     setError(undefined)
     setCaptureError('')
     setSpeechError(false)
+    setPendingHint(false)
+    setCancelledHint(false)
     setStage('ready')
   }
   return {
@@ -288,6 +388,8 @@ export function useDiagnosticVoice(
     accepted,
     speech,
     speechError,
+    pendingHint,
+    cancelledHint,
     hasPending: !!pending.current,
     pendingTaskId: pending.current?.input.taskId,
     start,

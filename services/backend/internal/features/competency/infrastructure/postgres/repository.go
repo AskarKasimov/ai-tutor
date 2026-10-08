@@ -7,7 +7,9 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/audioasset"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/competencymap"
+	pgshared "github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/postgres"
 	db "github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/postgres/sqlcgen"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/security"
 )
@@ -236,10 +238,19 @@ func (r *Repository) Replace(ctx context.Context, actorID string, parsed compete
 		}); err != nil {
 			return competencymap.ImportResult{}, err
 		}
+		if audioasset.CanSynthesize(task.VoiceInstruction) {
+			assetID := audioasset.IDForTask(id)
+			if _, err = pgshared.EnqueueTaskAudio(ctx, queries, id, assetID, audioasset.ObjectKey(assetID), task.VoiceInstruction); err != nil {
+				return competencymap.ImportResult{}, err
+			}
+		}
 	}
 
 	if err = queries.UpdateCompetencyMapRevision(ctx, result.Revision); err != nil {
 		return competencymap.ImportResult{}, err
+	}
+	if _, err = queries.CancelStalePendingTaskAudio(ctx); err != nil {
+		return competencymap.ImportResult{}, fmt.Errorf("cancel stale task audio after map replacement: %w", err)
 	}
 	if err = tx.Commit(ctx); err != nil {
 		return competencymap.ImportResult{}, err

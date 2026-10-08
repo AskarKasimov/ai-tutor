@@ -21,7 +21,12 @@ compose() {
     docker compose --env-file .env -f "services/$compose_service/docker-compose.yaml" "$@"
 }
 
-services_order='postgresql backend frontend caddy'
+s3_local_enabled=$(sed -n 's/^S3_LOCAL_ENABLED=//p' .env | tail -n 1)
+: "${s3_local_enabled:=true}"
+services_order='postgresql s3 backend frontend caddy'
+if [ "$s3_local_enabled" = false ]; then
+    services_order='postgresql backend frontend caddy'
+fi
 # Validate every project before changing the server.
 for service in $services_order; do
     compose "$service" config --quiet

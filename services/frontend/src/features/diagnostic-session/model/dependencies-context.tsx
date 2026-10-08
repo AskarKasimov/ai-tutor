@@ -2,6 +2,7 @@ import { createContext, useContext } from 'react'
 import type { PropsWithChildren } from 'react'
 import type {
   DiagnosticProgress,
+  DiagnosticAudioMetadata,
   DiagnosticResult,
   DiagnosticSubmission,
   DiagnosticTask,
@@ -43,7 +44,15 @@ export type DiagnosticDependencies = {
       blob: Blob,
       role: DiagnosticTask['role'],
     ): DiagnosticSubmission
-    diagnosticAudio(sessionId: string, signal: AbortSignal): Promise<Blob>
+    readDiagnosticAudio(
+      sessionId: string,
+      taskId: string,
+      signal: AbortSignal,
+    ): Promise<DiagnosticAudioMetadata>
+    fetchDiagnosticAudioFile(
+      audioUrl: string,
+      signal: AbortSignal,
+    ): Promise<Blob>
   }
 }
 const Context = createContext<DiagnosticDependencies | null>(null)

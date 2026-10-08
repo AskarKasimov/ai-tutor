@@ -113,7 +113,7 @@ func TestMigratePendingRollbackAndRetry(t *testing.T) {
 	}
 	files := fstest.MapFS{
 		"00001_initial.sql": {Data: initial},
-		"00003_test.sql":    {Data: []byte("-- +goose Up\nCREATE TABLE migration_probe(id integer);\nSELECT * FROM nonexistent_migration_table;\n")},
+		"00004_test.sql":    {Data: []byte("-- +goose Up\nCREATE TABLE migration_probe(id integer);\nSELECT * FROM nonexistent_migration_table;\n")},
 	}
 	if err := migrate(ctx, pool, files); err == nil {
 		t.Fatal("invalid migration succeeded")
@@ -123,16 +123,16 @@ func TestMigratePendingRollbackAndRetry(t *testing.T) {
 		t.Fatalf("failed migration was not rolled back: exists=%v, err=%v", exists, err)
 	}
 	var count int
-	if err := pool.QueryRow(ctx, "SELECT count(*) FROM goose_db_version WHERE version_id=3").Scan(&count); err != nil || count != 0 {
+	if err := pool.QueryRow(ctx, "SELECT count(*) FROM goose_db_version WHERE version_id=4").Scan(&count); err != nil || count != 0 {
 		t.Fatalf("failed migration recorded: count=%d, err=%v", count, err)
 	}
-	files["00003_test.sql"].Data = []byte("-- +goose Up\nCREATE TABLE migration_probe(id integer);\n")
+	files["00004_test.sql"].Data = []byte("-- +goose Up\nCREATE TABLE migration_probe(id integer);\n")
 	for range 2 {
 		if err := migrate(ctx, pool, files); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if err := pool.QueryRow(ctx, "SELECT count(*) FROM goose_db_version WHERE version_id=3 AND is_applied").Scan(&count); err != nil || count != 1 {
+	if err := pool.QueryRow(ctx, "SELECT count(*) FROM goose_db_version WHERE version_id=4 AND is_applied").Scan(&count); err != nil || count != 1 {
 		t.Fatalf("pending migration applied: count=%d, err=%v", count, err)
 	}
 }
@@ -194,5 +194,113 @@ func TestInitialSchemaAllowsPartialOutcomeProfiles(t *testing.T) {
 	var count int
 	if err := pool.QueryRow(ctx, "SELECT count(*) FROM users WHERE id='keep-user'").Scan(&count); err != nil || count != 1 {
 		t.Fatalf("user lost: %d %v", count, err)
+	}
+}
+
+func legacyMigrationFiles(t *testing.T) fs.FS {
+	t.Helper()
+	initial, err := fs.ReadFile(migrations, "migrations/00001_initial.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	variants, err := fs.ReadFile(migrations, "migrations/00002_variants.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return fstest.MapFS{
+		"00001_initial.sql":  {Data: initial},
+		"00002_variants.sql": {Data: variants},
+	}
+}
+
+func seedLegacyAudioRows(t *testing.T, pool *pgxpool.Pool, conflicting bool) {
+	t.Helper()
+	ctx := context.Background()
+	_, err := pool.Exec(ctx, `
+INSERT INTO users(id,email,password_hash,created_at) VALUES ('audio-user','audio@example.test','hash',1);
+INSERT INTO competency_map_imports(revision,imported_at,imported_by,competency_count,constituent_count,outcome_count,task_count,source_format,source_headers)
+VALUES (1,1,'audio-user',1,1,1,1,'paired','[]');
+INSERT INTO competencies(id,name,revision) VALUES ('audio-c','Компетенция',1);
+INSERT INTO constituents(id,competency_id,name) VALUES ('audio-s','audio-c','Составляющая');
+INSERT INTO outcomes(id,constituent_id,name) VALUES ('audio-o','audio-s','Результат');
+INSERT INTO tasks(id,outcome_id,question,voice_instruction,created_at)
+VALUES ('task-current','audio-o','Вопрос','Прочитайте текущее задание',1);
+INSERT INTO variants(id,user_id,create_request_key,map_revision,algorithm_version,included_competency_count,skipped_competencies,created_at)
+VALUES ('audio-v','audio-user','audio-request',1,'test',1,'[]',1);
+INSERT INTO variant_tasks(id,variant_id,live_task_id,source_task_id_snapshot,competency_position,slot,role,task_snapshot,profile_snapshot)
+VALUES
+ ('audio-vt-current','audio-v','task-current','task-current',1,0,'main',
+  '{"id":"task-current","voice_instruction":"Прочитайте текущее задание"}','{}'),
+ ('audio-vt-old','audio-v',NULL,'task-old',1,1,'basic',
+  '{"id":"task-old","voice_instruction":"Прочитайте сохранённое задание"}','{}');`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE competency_map_state SET revision=1 WHERE singleton=true`); err != nil {
+		t.Fatal(err)
+	}
+	if conflicting {
+		if _, err := pool.Exec(ctx, `INSERT INTO variants(id,user_id,create_request_key,map_revision,algorithm_version,included_competency_count,skipped_competencies,created_at) VALUES ('audio-v2','audio-user','audio-request-2',1,'test',1,'[]',2)`); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := pool.Exec(ctx, `INSERT INTO variant_tasks(id,variant_id,source_task_id_snapshot,competency_position,slot,role,task_snapshot,profile_snapshot)
+VALUES ('audio-vt-conflict','audio-v2','task-current',2,0,'main','{"id":"task-current","voice_instruction":"Другая инструкция"}','{}')`); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func TestTaskAudioMigrationBackfillsLiveAndSnapshotOnlyTasks(t *testing.T) {
+	pool := migrationPool(t)
+	ctx := context.Background()
+	if err := migrate(ctx, pool, legacyMigrationFiles(t)); err != nil {
+		t.Fatal(err)
+	}
+	seedLegacyAudioRows(t, pool, false)
+	files := legacyMigrationFiles(t).(fstest.MapFS)
+	audioSQL, err := fs.ReadFile(migrations, "migrations/00003_task_audio.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	files["00003_task_audio.sql"] = &fstest.MapFile{Data: audioSQL}
+	if err := migrate(ctx, pool, files); err != nil {
+		t.Fatal(err)
+	}
+	for id, wantStatus := range map[string]string{"taskaudio_task-current": "pending", "taskaudio_task-old": "cancelled"} {
+		var status string
+		var instruction string
+		var audioURL *string
+		if err := pool.QueryRow(ctx, `SELECT status,instruction,audio_url FROM audio_assets WHERE id=$1`, id).Scan(&status, &instruction, &audioURL); err != nil {
+			t.Fatal(err)
+		}
+		if status != wantStatus || audioURL != nil {
+			t.Fatalf("backfilled asset %s: status=%s want=%s url=%v", id, status, wantStatus, audioURL)
+		}
+	}
+	var taskAsset, snapshotAsset *string
+	if err := pool.QueryRow(ctx, `SELECT audio_asset_id FROM tasks WHERE id='task-current'`).Scan(&taskAsset); err != nil {
+		t.Fatal(err)
+	}
+	if err := pool.QueryRow(ctx, `SELECT audio_asset_id FROM variant_tasks WHERE id='audio-vt-old'`).Scan(&snapshotAsset); err != nil {
+		t.Fatal(err)
+	}
+	if taskAsset == nil || *taskAsset != "taskaudio_task-current" || snapshotAsset == nil || *snapshotAsset != "taskaudio_task-old" {
+		t.Fatalf("backfilled links: task=%v snapshot=%v", taskAsset, snapshotAsset)
+	}
+}
+
+func TestTaskAudioMigrationRejectsConflictingInstructions(t *testing.T) {
+	pool := migrationPool(t)
+	ctx := context.Background()
+	if err := migrate(ctx, pool, legacyMigrationFiles(t)); err != nil {
+		t.Fatal(err)
+	}
+	seedLegacyAudioRows(t, pool, true)
+	if err := Migrate(ctx, pool); err == nil {
+		t.Fatal("migration accepted conflicting instructions for a source task")
+	}
+	var exists bool
+	if err := pool.QueryRow(ctx, "SELECT to_regclass('audio_assets') IS NOT NULL").Scan(&exists); err != nil || exists {
+		t.Fatalf("failed migration was not rolled back: exists=%v err=%v", exists, err)
 	}
 }

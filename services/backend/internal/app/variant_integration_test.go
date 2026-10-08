@@ -182,6 +182,13 @@ func TestVariantCreateReadIdempotencyOwnershipAndHistoricalReader(t *testing.T) 
 		t.Fatalf("historical grading position incomplete: %+v", gradingTask)
 	}
 	profile := gradingTask.Task
+	if profile.AudioAssetID == nil || *profile.AudioAssetID != "taskaudio_"+profile.ID {
+		t.Fatalf("historical task audio asset link missing: %#v", profile.AudioAssetID)
+	}
+	var savedAudioID *string
+	if err := f.pool.QueryRow(context.Background(), `SELECT audio_asset_id FROM variant_tasks WHERE id=$1`, mainTaskID).Scan(&savedAudioID); err != nil || savedAudioID == nil || *savedAudioID != *profile.AudioAssetID {
+		t.Fatalf("variant task did not retain audio link: id=%v err=%v", savedAudioID, err)
+	}
 	answers := map[string]string{
 		"Знает параметры данных":       "строка таблицы",
 		"Понимает целевую переменную":  "целевую переменную",

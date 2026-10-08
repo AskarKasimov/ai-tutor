@@ -69,7 +69,7 @@ func taskgenMap(name string) competencymap.Map {
 	}
 }
 
-func TestPersistGeneratedTaskAndReimportMaterial(t *testing.T) {
+func TestAudioPersistGeneratedTaskAndReimportMaterial(t *testing.T) {
 	repository, maps, pool, ctx, userID := setupTaskgenRepository(t)
 	if _, err := maps.Replace(ctx, userID, taskgenMap("один"), 10); err != nil {
 		t.Fatal(err)
@@ -103,6 +103,27 @@ func TestPersistGeneratedTaskAndReimportMaterial(t *testing.T) {
 	}
 	if task.Origin != "ai_generated" || task.ID == "" {
 		t.Fatalf("generated task = %#v", task)
+	}
+	var assetID, instruction, status string
+	var taskAssetID *string
+	if err := pool.QueryRow(ctx, `SELECT id,instruction,status FROM audio_assets`).Scan(&assetID, &instruction, &status); err != nil {
+		t.Fatal(err)
+	}
+	if err := pool.QueryRow(ctx, `SELECT audio_asset_id FROM tasks WHERE id=$1`, task.ID).Scan(&taskAssetID); err != nil {
+		t.Fatal(err)
+	}
+	if assetID != "taskaudio_"+task.ID || taskAssetID == nil || *taskAssetID != assetID || instruction != "Объясните ответ" || status != "pending" {
+		t.Fatalf("generated audio asset/link = id:%q task:%v instruction:%q status:%q", assetID, taskAssetID, instruction, status)
+	}
+	replay, err := repository.Persist(ctx, snapshot, "request-1", userID, "test-model", application.Draft{
+		Question: "Вопрос", Options: []string{}, VoiceInstruction: "Объясните ответ", ReferenceAnswer: "Эталон",
+	}, 15)
+	if err != nil || replay.ID != task.ID {
+		t.Fatalf("idempotent task replay=%#v err=%v", replay, err)
+	}
+	var assetCount int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM audio_assets WHERE id=$1`, assetID).Scan(&assetCount); err != nil || assetCount != 1 {
+		t.Fatalf("idempotent task replay created %d audio assets: %v", assetCount, err)
 	}
 	var curriculumCode string
 	if err := pool.QueryRow(ctx, `SELECT requested_profile->'outcome'->'CurriculumSections'->0->'curriculum_competencies'->>0 FROM generation_runs`).Scan(&curriculumCode); err != nil || curriculumCode != "ОПК-1" {
@@ -192,5 +213,43 @@ func TestTaskAndGenerationCurriculumProfilesRemainConsistent(t *testing.T) {
 				t.Fatalf("catalog profile: got=%#v want=%#v", got, tc.want)
 			}
 		})
+	}
+}
+
+func TestAudioPersistRejectsChangedMapWithoutAddingGeneratedAudio(t *testing.T) {
+	repository, maps, pool, ctx, userID := setupTaskgenRepository(t)
+	if _, err := maps.Replace(ctx, userID, taskgenMap("до"), 10); err != nil {
+		t.Fatal(err)
+	}
+	var outcomeID string
+	if err := pool.QueryRow(ctx, `SELECT id FROM outcomes WHERE name='ОР до'`).Scan(&outcomeID); err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := repository.Context(ctx, outcomeID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := maps.Replace(ctx, userID, taskgenMap("после"), 12); err != nil {
+		t.Fatal(err)
+	}
+	var before int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM audio_assets`).Scan(&before); err != nil {
+		t.Fatal(err)
+	}
+	_, err = repository.Persist(ctx, snapshot, "stale-request", userID, "test-model", application.Draft{
+		Question: "Сгенерированный вопрос", Options: []string{}, VoiceInstruction: "Скажите ответ", ReferenceAnswer: "Ответ",
+	}, 13)
+	if err == nil {
+		t.Fatal("persist accepted a stale competency map")
+	}
+	var after, generated int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM audio_assets`).Scan(&after); err != nil {
+		t.Fatal(err)
+	}
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM tasks WHERE origin='ai_generated'`).Scan(&generated); err != nil {
+		t.Fatal(err)
+	}
+	if after != before || generated != 0 {
+		t.Fatalf("stale persist added generated data: assets %d->%d tasks=%d", before, after, generated)
 	}
 }

@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { useAuth } from '../model/use-auth'
 import { useAuthDependencies } from '../model/dependencies-context'
 import styles from './auth-modal.module.scss'
-import type { FormEvent } from 'react'
+import type { SubmitEvent } from 'react'
 
 export function AuthForm() {
   const { mode: apiMode } = useAuthDependencies()
@@ -18,7 +18,7 @@ export function AuthForm() {
   const emptyDemoLogin =
     apiMode === 'demo' && mode === 'login' && email === '' && password === ''
 
-  async function submit(event: FormEvent<HTMLFormElement>) {
+  async function submit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault()
     if (pending) return
     try {

@@ -112,27 +112,32 @@ export interface OverallFeedbackData {
 
 export async function fetchOverallFeedback(
   answers: OverallFeedbackItemInput[],
-  signal?: AbortSignal
+  signal?: AbortSignal,
 ): Promise<OverallFeedbackData> {
   const response = await apiFetch(`${apiBase}/assessments/overall-feedback`, {
     method: 'POST',
     credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ answers }),
-    signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(60_000)]) : AbortSignal.timeout(60_000),
+    signal: signal
+      ? AbortSignal.any([signal, AbortSignal.timeout(60_000)])
+      : AbortSignal.timeout(60_000),
   })
   if (!response.ok) throw new AssessmentApiError(response.status)
 
-  const data = await response.json() as OverallFeedbackData
+  const data = (await response.json()) as OverallFeedbackData
   return {
     score: typeof data.score === 'number' ? data.score : 0,
     max_score: typeof data.max_score === 'number' ? data.max_score : 14,
-    score_percentage: typeof data.score_percentage === 'number' ? data.score_percentage : 0,
+    score_percentage:
+      typeof data.score_percentage === 'number' ? data.score_percentage : 0,
     summary: typeof data.summary === 'string' ? data.summary : '',
     strengths: Array.isArray(data.strengths) ? data.strengths : [],
     gaps: Array.isArray(data.gaps) ? data.gaps : [],
     partials: Array.isArray(data.partials) ? data.partials : [],
-    recommendations: Array.isArray(data.recommendations) ? data.recommendations : [],
+    recommendations: Array.isArray(data.recommendations)
+      ? data.recommendations
+      : [],
     generated_at: data.generated_at,
   }
 }

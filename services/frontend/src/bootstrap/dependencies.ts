@@ -14,6 +14,8 @@ import type { DiagnosticDependencies } from '@/features/diagnostic-session'
 import type { TrainerSessionDependencies } from '@/features/trainer-session'
 import type { SubjectSelectionDependencies } from '@/features/subject-selection'
 import type { VoiceAnswerDependencies } from '@/features/voice-answer'
+import type { TrainingDependencies } from '@/features/training'
+import * as training from '@/entities/training'
 import { createDiagnosticIdentity } from '@/features/diagnostic-session'
 import { mockDiagnosticStorage } from './mock-diagnostic-storage'
 import {
@@ -33,6 +35,7 @@ export type AppDependencies = {
   trainerSessionSource: TrainerSessionDependencies['trainerSessionSource']
   voice: VoiceAnswerDependencies['voice']
   assessment: VoiceAnswerDependencies['assessment']
+  training: TrainingDependencies['training']
 }
 
 const apiBase = (import.meta.env.VITE_API_BASE_URL || '/api/v1').replace(
@@ -87,6 +90,17 @@ export function createAppDependencies(): AppDependencies {
     assessment: {
       evaluateDemoAnswer,
       fetchOverallFeedback: assessment.fetchOverallFeedback,
+    },
+    training: {
+      readTrainingPreview: training.readTrainingPreview,
+      startTraining: training.startTraining,
+      findTrainingForDiagnostic: training.findTrainingForDiagnostic,
+      readTrainingSession: training.readTrainingSession,
+      createTrainingSubmission: training.createTrainingSubmission,
+      submitTraining: training.submitTraining,
+      readTrainingHistory: training.readTrainingHistory,
+      readTrainingAudio: training.readTrainingAudio,
+      fetchTrainingAudioFile: training.fetchTrainingAudioFile,
     },
   }
 }

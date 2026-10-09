@@ -8,6 +8,7 @@ import { DiagnosticDependenciesProvider } from '@/features/diagnostic-session'
 import { TrainerSessionDependenciesProvider } from '@/features/trainer-session'
 import { VoiceAnswerDependenciesProvider } from '@/features/voice-answer'
 import { SubjectSelectionDependenciesProvider } from '@/features/subject-selection'
+import { TrainingDependenciesProvider } from '@/features/training'
 import { createAppDependencies } from './dependencies'
 import type { AppDependencies } from './dependencies'
 import '@/shared/i18n'
@@ -62,15 +63,19 @@ export function AppProviders({
                     assessment: services.assessment,
                   }}
                 >
-                  <Theme
-                    className={styles.root}
-                    accentColor="blue"
-                    appearance="light"
+                  <TrainingDependenciesProvider
+                    value={{ training: services.training }}
                   >
-                    <QueryClientProvider client={queryClient}>
-                      {children}
-                    </QueryClientProvider>
-                  </Theme>
+                    <Theme
+                      className={styles.root}
+                      accentColor="blue"
+                      appearance="light"
+                    >
+                      <QueryClientProvider client={queryClient}>
+                        {children}
+                      </QueryClientProvider>
+                    </Theme>
+                  </TrainingDependenciesProvider>
                 </VoiceAnswerDependenciesProvider>
               </TrainerSessionDependenciesProvider>
             </DiagnosticDependenciesProvider>

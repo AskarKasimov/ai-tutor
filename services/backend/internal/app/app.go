@@ -182,6 +182,7 @@ func (a *App) Handler() http.Handler {
 	mux.Handle("POST /assessments/overall-feedback", protect(auth, http.HandlerFunc(feedbackHandlers.SynthesizeAnswersFeedback)))
 	mux.Handle("POST /diagnostic-sessions", protect(auth, http.HandlerFunc(diagnosticHandlers.Start)))
 	mux.Handle("GET /diagnostic-sessions/{id}", protect(auth, http.HandlerFunc(diagnosticHandlers.Read)))
+	mux.Handle("GET /subjects/{subject_id}/learning-state", protect(auth, http.HandlerFunc(diagnosticHandlers.LearningState)))
 	mux.Handle("GET /diagnostic-sessions/{id}/current/audio", protect(auth, http.HandlerFunc(diagnosticHandlers.CurrentAudio)))
 	mux.Handle("POST /diagnostic-sessions/{id}/current/audio/regenerate", protect(auth, http.HandlerFunc(diagnosticHandlers.RegenerateCurrentAudio)))
 	mux.Handle("GET /task-audio/{id}/file", protect(auth, http.HandlerFunc(taskAudioHandlers.File)))

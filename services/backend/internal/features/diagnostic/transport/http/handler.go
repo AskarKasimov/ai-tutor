@@ -16,6 +16,15 @@ type StartRequest struct {
 	VariantID string `json:"variant_id" minLength:"1" maxLength:"128" binding:"required"`
 }
 
+type LearningStateResponse struct {
+	SubjectID           string `json:"subject_id"`
+	SubjectName         string `json:"subject_name"`
+	DiagnosticSessionID string `json:"diagnostic_session_id,omitempty"`
+	DiagnosticStatus    string `json:"diagnostic_status"`
+	Completed           bool   `json:"diagnostic_completed"`
+	TrainingAvailable   bool   `json:"training_available"`
+}
+
 type Handler struct {
 	service        *application.Service
 	maxUploadBytes int64
@@ -68,6 +77,40 @@ func (h *Handler) Start(w http.ResponseWriter, r *http.Request) {
 		status = http.StatusOK
 	}
 	httpx.JSON(w, status, progressResponse(result))
+}
+
+// LearningState returns the latest completed diagnostic for a subject.
+// @Summary Состояние обучения по предмету
+// @Tags Диагностика
+// @Security accessCookie
+// @Produce json
+// @Param subject_id path string true "ID предмета"
+// @Success 200 {object} LearningStateResponse
+// @Router /subjects/{subject_id}/learning-state [get]
+func (h *Handler) LearningState(w http.ResponseWriter, r *http.Request) {
+	principal, ok := httpx.Principal[user.User](r)
+	if !ok {
+		httpx.Error(r.Context(), w, fault.New(fault.Unauthorized, "UNAUTHORIZED", "Требуется действующая сессия."))
+		return
+	}
+	if err := noQuery(r); err != nil {
+		httpx.Error(r.Context(), w, err)
+		return
+	}
+	session, found, err := h.service.LatestCompleted(r.Context(), principal.ID, r.PathValue("subject_id"))
+	if err != nil {
+		httpx.Error(r.Context(), w, err)
+		return
+	}
+	response := LearningStateResponse{SubjectID: r.PathValue("subject_id"), DiagnosticStatus: "not_started", TrainingAvailable: false}
+	if found {
+		response.SubjectName = session.Variant.SubjectNameSnapshot
+		response.DiagnosticSessionID = session.ID
+		response.DiagnosticStatus = session.Status
+		response.Completed = true
+		response.TrainingAvailable = true
+	}
+	httpx.JSON(w, http.StatusOK, response)
 }
 
 // Read returns status and the current public task.

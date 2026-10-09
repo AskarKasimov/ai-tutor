@@ -82,6 +82,23 @@ func (s *Store) Get(ctx context.Context, ownerID, id string) (diagnostic.Session
 	return clone(value), nil
 }
 
+func (s *Store) LatestCompleted(ctx context.Context, ownerID, subjectID string) (diagnostic.Session, bool, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	var found diagnostic.Session
+	for _, value := range s.sessions {
+		if value.OwnerID == ownerID && value.Status == diagnostic.StatusCompleted && value.Variant.SubjectID == subjectID {
+			if found.ID == "" || value.ID > found.ID {
+				found = value
+			}
+		}
+	}
+	if found.ID == "" {
+		return diagnostic.Session{}, false, nil
+	}
+	return clone(found), true, nil
+}
+
 func (s *Store) Reserve(ctx context.Context, ownerID, id, key, digest, taskID, token string) (*diagnostic.AcceptedRequest, *diagnostic.Reservation, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, nil, err

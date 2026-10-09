@@ -77,6 +77,19 @@ func (s *Store) Get(ctx context.Context, ownerID, id string) (diagnostic.Session
 	return decodeSession(data)
 }
 
+func (s *Store) LatestCompleted(ctx context.Context, ownerID, subjectID string) (diagnostic.Session, bool, error) {
+	var data []byte
+	err := s.pool.QueryRow(ctx, `SELECT session_data FROM diagnostic_sessions WHERE owner_id=$1 AND subject_id=$2 AND status='completed' ORDER BY completed_at DESC NULLS LAST, id DESC LIMIT 1`, ownerID, subjectID).Scan(&data)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return diagnostic.Session{}, false, nil
+	}
+	if err != nil {
+		return diagnostic.Session{}, false, err
+	}
+	value, err := decodeSession(data)
+	return value, err == nil, err
+}
+
 func (s *Store) Reserve(ctx context.Context, ownerID, id, key, digest, taskID, token string) (*diagnostic.AcceptedRequest, *diagnostic.Reservation, error) {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {

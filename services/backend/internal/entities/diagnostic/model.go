@@ -42,6 +42,8 @@ func (s Session) Progress() Progress {
 
 type VariantSnapshot struct {
 	ID                      string
+	SubjectID               string
+	SubjectNameSnapshot     string
 	MapRevision             int64
 	AlgorithmVersion        string
 	IncludedCompetencyCount int

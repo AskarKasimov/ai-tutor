@@ -11,9 +11,9 @@ import {
   useTrainingEntryQuery,
   useStartTrainingMutation,
 } from '@/features/training'
-import { AccountMenu } from '@/features/auth'
 import { TrainingSession } from './training-session'
-import styles from './training.module.scss'
+import { TrainerShell } from './trainer-shared'
+import styles from './trainer-layout.module.scss'
 
 function TargetList({
   targets,
@@ -79,61 +79,60 @@ export function TrainingPreview({
     entry.error.status === 404
   )
     return (
-      <main className={styles.page}>
-        <Text role="alert">{t('training.sessionMissing')}</Text>
-        <Button onClick={onBack}>{t('home.back')}</Button>
-      </main>
+      <TrainerShell title={t('training.title')} subject={subjectName}>
+        <main className={styles.preview}>
+          <Heading as="h1">{t('training.title')}</Heading>
+          <Text role="alert">{t('training.sessionMissing')}</Text>
+          <Button onClick={onBack}>{t('home.back')}</Button>
+        </main>
+      </TrainerShell>
     )
   return (
-    <main className={styles.page}>
-      <header className={styles.header}>
-        <div>
-          <Text>{subjectName}</Text>
-          <Heading as="h1">{t('training.title')}</Heading>
-        </div>
-        <AccountMenu />
-      </header>
-      <Button variant="soft" onClick={onBack}>
-        {t('home.back')}
-      </Button>
-      {entry.isPending ? (
-        <Text role="status">{t('training.previewLoading')}</Text>
-      ) : entry.isError ? (
-        <Card>
-          <Text role="alert">
-            {entry.error instanceof TrainingApiError &&
-            entry.error.status === 401
-              ? t('trainer.unauthorized')
-              : t('training.previewError')}
-          </Text>
-          <Button onClick={() => void entry.refetch()}>
-            {t('trainer.retry')}
-          </Button>
-        </Card>
-      ) : entry.data?.kind === 'existing' ? (
-        <Card>
-          <Heading as="h2">{t('training.existingTitle')}</Heading>
-          <TargetList
-            targets={entry.data.progress.targets}
-            empty={t('training.noTargets')}
+    <TrainerShell title={t('training.title')} subject={subjectName}>
+      <main className={styles.preview}>
+        <Heading as="h1">{t('training.title')}</Heading>
+        <Button variant="soft" onClick={onBack}>
+          {t('home.back')}
+        </Button>
+        {entry.isPending ? (
+          <Text role="status">{t('training.previewLoading')}</Text>
+        ) : entry.isError ? (
+          <Card>
+            <Text role="alert">
+              {entry.error instanceof TrainingApiError &&
+              entry.error.status === 401
+                ? t('trainer.unauthorized')
+                : t('training.previewError')}
+            </Text>
+            <Button onClick={() => void entry.refetch()}>
+              {t('trainer.retry')}
+            </Button>
+          </Card>
+        ) : entry.data?.kind === 'existing' ? (
+          <Card>
+            <Heading as="h2">{t('training.existingTitle')}</Heading>
+            <TargetList
+              targets={entry.data.progress.targets}
+              empty={t('training.noTargets')}
+            />
+            <Button
+              onClick={() => {
+                if (entry.data?.kind === 'existing')
+                  setProgress(entry.data.progress)
+              }}
+            >
+              {t('training.continue')}
+            </Button>
+          </Card>
+        ) : preview ? (
+          <PreviewContent
+            preview={preview}
+            start={start}
+            onStarted={setProgress}
           />
-          <Button
-            onClick={() => {
-              if (entry.data?.kind === 'existing')
-                setProgress(entry.data.progress)
-            }}
-          >
-            {t('training.continue')}
-          </Button>
-        </Card>
-      ) : preview ? (
-        <PreviewContent
-          preview={preview}
-          start={start}
-          onStarted={setProgress}
-        />
-      ) : null}
-    </main>
+        ) : null}
+      </main>
+    </TrainerShell>
   )
 }
 function PreviewContent({

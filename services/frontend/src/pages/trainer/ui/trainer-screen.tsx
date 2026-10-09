@@ -13,8 +13,11 @@ import { SessionSummary } from '@/pages/trainer/ui/session-summary'
 import styles from '@/pages/trainer/ui/trainer-layout.module.scss'
 
 export function TrainerScreen() {
-  const { mode } = useAuthDependencies()
-  return mode === 'demo' ? <DemoTrainer /> : <DiagnosticTrainer />
+  return import.meta.env.VITE_API_MODE === 'legacy-demo' ? (
+    <DemoTrainer />
+  ) : (
+    <DiagnosticTrainer />
+  )
 }
 
 function DemoTrainer() {

@@ -4,6 +4,7 @@ import type {
   DiagnosticProgress,
   DiagnosticAudioMetadata,
   DiagnosticResult,
+  DiagnosticOverallFeedback,
   DiagnosticSubmission,
   DiagnosticTask,
   DiagnosticSessionIdentity,
@@ -34,6 +35,10 @@ export type DiagnosticDependencies = {
       sessionId: string,
       signal: AbortSignal,
     ): Promise<DiagnosticResult>
+    readDiagnosticFeedback(
+      sessionId: string,
+      signal: AbortSignal,
+    ): Promise<DiagnosticOverallFeedback>
     submitDiagnostic(
       input: DiagnosticSubmission,
       signal: AbortSignal,

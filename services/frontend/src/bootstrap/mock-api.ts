@@ -7,6 +7,11 @@ import type {
   OverallFeedbackItemInput,
 } from '@/entities/assessment'
 import { isMockApi } from '@/shared/api'
+import {
+  mockDiagnosticResponse,
+  resetMockDiagnostic,
+} from './mock-diagnostic-api'
+import { mockDiagnosticStorage } from './mock-diagnostic-storage'
 
 type DemoUser = {
   id: string
@@ -99,6 +104,8 @@ export async function mockApiFetch(
       return error(401, 'UNAUTHORIZED', 'invalidCredentials')
     user = { ...demoAccount }
     transcriptions.clear()
+    resetMockDiagnostic()
+    mockDiagnosticStorage.clear()
     const now = Math.floor(Date.now() / 1000)
     return json(
       {
@@ -114,6 +121,8 @@ export async function mockApiFetch(
   if (method === 'POST' && path.endsWith('/auth/logout')) {
     user = null
     transcriptions.clear()
+    resetMockDiagnostic()
+    mockDiagnosticStorage.clear()
     return new Response(null, { status: 204 })
   }
   if (!user) return error(401, 'UNAUTHORIZED', 'unauthorized')
@@ -134,6 +143,8 @@ export async function mockApiFetch(
     transcriptions.set(id, text)
     return json({ id, text, created_at: Math.floor(Date.now() / 1000) })
   }
+  const diagnosticResponse = mockDiagnosticResponse(path, method, body, options)
+  if (diagnosticResponse) return diagnosticResponse
   if (
     method === 'GET' &&
     /\/diagnostic-sessions\/[^/]+\/current\/audio$/.test(path)

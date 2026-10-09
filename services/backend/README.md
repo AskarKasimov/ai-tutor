@@ -110,7 +110,9 @@ docker compose --env-file ../../.env up -d --build
 подключение; по умолчанию db:5432 и DB_PASSWORD. API слушает :8002 за Caddy HTTPS.
 Публичный префикс /api/v1 удаляется proxy. Secure cookies требуют HTTPS.
 
-BACKEND_API_MODE=mock подменяет модели, auth/БД/S3 настоящие. В real нужны все
+BACKEND_API_MODE=mock подменяет модели; handlers и адаптеры хранилищ те же, что в real.
+БД и S3 при этом остаются настоящими и используют обычные volumes.
+В real нужны все
 BACKEND_STT_URL, BACKEND_TTS_* (URL и параметры голоса), BACKEND_ASSESSMENT_* и BACKEND_TASKGEN_* из
 корневого шаблона: taskgen сохраняется отдельным действующим модулем. Таймауты, адрес
 прослушивания и лимит загрузки обязательны. После изменения env пересоздайте API.

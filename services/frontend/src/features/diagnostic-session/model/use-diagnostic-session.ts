@@ -318,3 +318,14 @@ export function useDiagnosticResultQuery(userId: string, sessionId: string) {
     staleTime: Infinity,
   })
 }
+
+export function useDiagnosticFeedbackQuery(userId: string, sessionId: string) {
+  const dependencies = useDiagnosticDependencies()
+  return useQuery({
+    queryKey: diagnosticSessionQueryKeys.diagnosticFeedback(userId, sessionId),
+    queryFn: ({ signal }) =>
+      dependencies.diagnostic.readDiagnosticFeedback(sessionId, signal),
+    retry: false,
+    staleTime: Infinity,
+  })
+}

@@ -5,6 +5,7 @@ import {
   readDiagnosticAudio,
   regenerateDiagnosticAudio,
   readDiagnostic,
+  readDiagnosticFeedback,
   submitDiagnostic,
 } from '@/entities/diagnostic-session'
 
@@ -27,6 +28,33 @@ afterEach(() => {
   vi.useRealTimers()
   vi.restoreAllMocks()
   vi.unstubAllGlobals()
+})
+
+it('accepts an empty strengths list serialized as null by the backend', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn().mockResolvedValue(
+      Response.json({
+        session_id: 'session-1',
+        diagnostic_score: 0,
+        maximum_score: 4,
+        score_percentage: 0,
+        summary: 'Повторите базовые темы.',
+        strengths: null,
+        confirmed_gaps: [],
+        partial_competencies: [],
+        unverified_competencies: [],
+        training_recommendations: [],
+        generated_at: 1791538582,
+      }),
+    ),
+  )
+  await expect(
+    readDiagnosticFeedback('session-1', new AbortController().signal),
+  ).resolves.toMatchObject({
+    strengths: [],
+    summary: 'Повторите базовые темы.',
+  })
 })
 
 it('regenerates only the expected task and returns ready metadata', async () => {

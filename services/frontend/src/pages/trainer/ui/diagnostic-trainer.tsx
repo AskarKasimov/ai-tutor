@@ -13,6 +13,7 @@ import { useAuth } from '@/features/auth'
 import { DiagnosticApiError } from '@/entities/diagnostic-session'
 import {
   useDiagnosticResultQuery,
+  useDiagnosticFeedbackQuery,
   useDiagnosticSession,
 } from '@/features/diagnostic-session'
 import { useDiagnosticVoice } from '@/features/diagnostic-session'
@@ -586,6 +587,7 @@ function DiagnosticSummary({
         </Text>
         <Text>{t('diagnostic.totalScore')}</Text>
       </div>
+      <DiagnosticOverallFeedback userId={userId} sessionId={sessionId} />
       <Heading as="h2">{t('diagnostic.history')}</Heading>
       <ol className={diagnosticStyles.answers}>
         {value.answers.map((answer) => (
@@ -641,5 +643,107 @@ function DiagnosticSummary({
         {t(training.restart.isPending ? 'session.loading' : 'session.restart')}
       </Button>
     </main>
+  )
+}
+
+function DiagnosticOverallFeedback({
+  userId,
+  sessionId,
+}: {
+  userId: string
+  sessionId: string
+}) {
+  const { t } = useTranslation()
+  const feedback = useDiagnosticFeedbackQuery(userId, sessionId)
+  const value = feedback.data
+  return (
+    <section
+      className={diagnosticStyles.overallFeedback}
+      aria-label={t('diagnostic.overallFeedback')}
+    >
+      <Heading as="h2">{t('diagnostic.overallFeedback')}</Heading>
+      {feedback.isPending ? (
+        <Text as="p" role="status">
+          {t('diagnostic.feedbackLoading')}
+        </Text>
+      ) : feedback.isError ? (
+        <div>
+          <Text as="p" role="alert">
+            {t('diagnostic.feedbackError')}
+          </Text>
+          <Button
+            onClick={() => void feedback.refetch()}
+            disabled={feedback.isFetching}
+          >
+            {t('diagnostic.feedbackRetry')}
+          </Button>
+        </div>
+      ) : value ? (
+        <>
+          <Text as="p" className={diagnosticStyles.overallSummary}>
+            {value.summary}
+          </Text>
+          {value.strengths.length > 0 && (
+            <div>
+              <Heading as="h3">{t('diagnostic.strengths')}</Heading>
+              <ul>
+                {value.strengths.map((item, index) => (
+                  <li key={index}>{item}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {value.partial_competencies.length > 0 && (
+            <div>
+              <Heading as="h3">{t('diagnostic.partialCompetencies')}</Heading>
+              <ul>
+                {value.partial_competencies.map((item) => (
+                  <li key={item.competency_id}>
+                    {item.competency_name}: {item.details}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {value.confirmed_gaps.length > 0 && (
+            <div>
+              <Heading as="h3">{t('diagnostic.confirmedGaps')}</Heading>
+              <ul>
+                {value.confirmed_gaps.map((item) => (
+                  <li key={item.outcome_id}>
+                    {item.competency_name} — {item.outcome_name}: {item.advice}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {value.training_recommendations.length > 0 && (
+            <div>
+              <Heading as="h3">{t('diagnostic.recommendations')}</Heading>
+              <ol>
+                {value.training_recommendations.map((item) => (
+                  <li key={item.outcome_id}>
+                    {item.competency_name} — {item.outcome_name}:{' '}
+                    {item.rationale}
+                  </li>
+                ))}
+              </ol>
+            </div>
+          )}
+          {value.unverified_competencies.length > 0 && (
+            <div>
+              <Heading as="h3">
+                {t('diagnostic.unverifiedCompetencies')}
+              </Heading>
+              <ul>
+                {value.unverified_competencies.map((item) => (
+                  <li key={item.competency_id}>{item.competency_name}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </>
+      ) : null}
+    </section>
   )
 }

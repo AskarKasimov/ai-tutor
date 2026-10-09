@@ -4,6 +4,8 @@ export const diagnosticSessionQueryKeys = {
   diagnosticResults: (userId: string) => ['diagnostic-result', userId] as const,
   diagnosticResult: (userId: string, sessionId: string) =>
     ['diagnostic-result', userId, sessionId] as const,
+  diagnosticFeedback: (userId: string, sessionId: string) =>
+    ['diagnostic-feedback', userId, sessionId] as const,
   diagnosticAudio: (
     userId: string,
     sessionId: string,

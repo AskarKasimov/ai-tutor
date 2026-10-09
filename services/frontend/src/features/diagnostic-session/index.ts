@@ -1,6 +1,7 @@
 export {
   useDiagnosticSession,
   useDiagnosticResultQuery,
+  useDiagnosticFeedbackQuery,
 } from './model/use-diagnostic-session'
 export { useDiagnosticVoice } from './model/use-diagnostic-voice'
 export {

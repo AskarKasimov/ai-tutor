@@ -98,7 +98,12 @@ function home() {
   })
   return render(<RouterProvider router={router} />)
 }
-function server(answerStatus = 200, totalTasks = 3) {
+function server(
+  answerStatus = 200,
+  totalTasks = 3,
+  feedbackStatus = 200,
+  strengths: string[] | null = ['Вы уверенно различаете модели.'],
+) {
   const sessionProgress = { ...progress, total_tasks: totalTasks }
   let answered = false
   const requests = vi.fn(async (url: string, init?: RequestInit) => {
@@ -155,6 +160,34 @@ function server(answerStatus = 200, totalTasks = 3) {
         total_tasks: totalTasks,
         untested_basics: resultBody.untested_basics.slice(0, totalTasks - 1),
       })
+    if (url.endsWith('/feedback')) {
+      if (feedbackStatus !== 200) {
+        feedbackStatus = 200
+        return Response.json({ code: 'FEEDBACK_FAILED' }, { status: 503 })
+      }
+      return Response.json({
+        session_id: 'session-real',
+        diagnostic_score: 2,
+        maximum_score: 2,
+        score_percentage: 100,
+        summary: 'Итоговое педагогическое резюме.',
+        strengths,
+        confirmed_gaps: [],
+        partial_competencies: [],
+        unverified_competencies: [],
+        training_recommendations: [
+          {
+            competency_id: 'c1',
+            competency_name: 'Модели',
+            outcome_id: 'o1',
+            outcome_name: 'Различать модели',
+            priority: 1,
+            rationale: 'Закрепите выбор модели на новых примерах.',
+          },
+        ],
+        generated_at: 1791200000,
+      })
+    }
     if (url.endsWith('/diagnostic-sessions/session-real'))
       return Response.json(
         answered
@@ -224,6 +257,13 @@ it('runs real diagnostic audio, obeys skipped basics and displays the server tot
     screen.getByText('Диагностический балл').parentElement,
   ).toHaveTextContent('2 / 2')
   expect(screen.getByText('Настоящая расшифровка')).toBeVisible()
+  expect(
+    await screen.findByText('Итоговое педагогическое резюме.'),
+  ).toBeVisible()
+  expect(screen.getByText('Вы уверенно различаете модели.')).toBeVisible()
+  expect(
+    screen.getByText(/Закрепите выбор модели на новых примерах/),
+  ).toBeVisible()
   expect(screen.getByText('Базовый вопрос из банка')).toBeVisible()
   expect(screen.getByText(/Не проверено/)).toBeVisible()
   const [url, init] = requests.mock.calls.find(([url]) =>
@@ -240,6 +280,49 @@ it('runs real diagnostic audio, obeys skipped basics and displays the server tot
       /voice\/transcriptions|assessments\/evaluate/.test(url),
     ),
   ).toBe(false)
+})
+it('keeps the diagnostic result visible and retries failed overall feedback', async () => {
+  const requests = server(200, 3, 503)
+  home()
+  fireEvent.click(await screen.findByRole('button', { name: 'Начать запись' }))
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Завершить запись' }),
+  )
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Посмотреть итог' }),
+  )
+  expect(
+    await screen.findByText('Не удалось загрузить общий фидбэк.'),
+  ).toBeVisible()
+  expect(
+    screen.getByText('Диагностический балл').parentElement,
+  ).toHaveTextContent('2 / 2')
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Повторить загрузку фидбэка' }),
+  )
+  expect(
+    await screen.findByText('Итоговое педагогическое резюме.'),
+  ).toBeVisible()
+  expect(
+    requests.mock.calls.filter(([url]) => url.endsWith('/feedback')),
+  ).toHaveLength(2)
+})
+it('shows overall feedback when the backend sends null strengths', async () => {
+  server(200, 3, 200, null)
+  home()
+  fireEvent.click(await screen.findByRole('button', { name: 'Начать запись' }))
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Завершить запись' }),
+  )
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Посмотреть итог' }),
+  )
+  expect(
+    await screen.findByText('Итоговое педагогическое резюме.'),
+  ).toBeVisible()
+  expect(
+    screen.queryByText('Не удалось загрузить общий фидбэк.'),
+  ).not.toBeInTheDocument()
 })
 it('keeps the audio and idempotency key on a failed submission and retries without recording again', async () => {
   const requests = server(502)

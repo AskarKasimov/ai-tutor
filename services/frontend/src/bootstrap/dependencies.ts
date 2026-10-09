@@ -13,6 +13,7 @@ import type { DiagnosticDependencies } from '@/features/diagnostic-session'
 import type { TrainerSessionDependencies } from '@/features/trainer-session'
 import type { VoiceAnswerDependencies } from '@/features/voice-answer'
 import { createDiagnosticIdentity } from '@/features/diagnostic-session'
+import { mockDiagnosticStorage } from './mock-diagnostic-storage'
 import {
   loadDiagnosticIdentity,
   saveDiagnosticIdentity,
@@ -43,10 +44,10 @@ export function createAppDependencies(): AppDependencies {
     mode,
     apiBase,
     createDiagnosticIdentity,
-    diagnosticStorage: {
-      load: loadDiagnosticIdentity,
-      save: saveDiagnosticIdentity,
-    },
+    diagnosticStorage:
+      mode === 'demo'
+        ? mockDiagnosticStorage
+        : { load: loadDiagnosticIdentity, save: saveDiagnosticIdentity },
     trainerSessionSource:
       mode === 'demo' ? createMockTrainerSessionSource() : undefined,
     auth: {
@@ -63,6 +64,7 @@ export function createAppDependencies(): AppDependencies {
       startDiagnostic: diagnostic.startDiagnostic,
       readDiagnostic: diagnostic.readDiagnostic,
       readDiagnosticResult: diagnostic.readDiagnosticResult,
+      readDiagnosticFeedback: diagnostic.readDiagnosticFeedback,
       submitDiagnostic: diagnostic.submitDiagnostic,
       createSubmission: diagnostic.createSubmission,
       readDiagnosticAudio: diagnostic.readDiagnosticAudio,

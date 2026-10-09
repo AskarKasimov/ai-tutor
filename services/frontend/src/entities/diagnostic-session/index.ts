@@ -3,6 +3,7 @@ export type {
   DiagnosticAudioMetadata,
   DiagnosticProgress,
   DiagnosticResult,
+  DiagnosticOverallFeedback,
   DiagnosticTask,
 } from './model/diagnostic-session'
 export type { DiagnosticSessionIdentity } from './model/session-identity'
@@ -17,6 +18,7 @@ export {
   regenerateDiagnosticAudio,
   readDiagnostic,
   readDiagnosticResult,
+  readDiagnosticFeedback,
   startDiagnostic,
   submitDiagnostic,
 } from './api/diagnostic-api'

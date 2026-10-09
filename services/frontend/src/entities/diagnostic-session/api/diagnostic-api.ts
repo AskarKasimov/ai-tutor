@@ -5,6 +5,7 @@ import type {
   DiagnosticAudioMetadata,
   DiagnosticProgress,
   DiagnosticResult,
+  DiagnosticOverallFeedback,
   DiagnosticTask,
 } from '@/entities/diagnostic-session'
 
@@ -123,6 +124,54 @@ const resultSchema: z.ZodType<DiagnosticResult> = z
       r.completed_tasks === r.answers.length &&
       r.completed_tasks + r.untested_basics.length === r.total_tasks,
   )
+const overallFeedbackSchema: z.ZodType<DiagnosticOverallFeedback> = z.object({
+  session_id: id,
+  diagnostic_score: count,
+  maximum_score: count,
+  score_percentage: count.max(100),
+  summary: id,
+  strengths: z
+    .array(id)
+    .nullable()
+    .transform((value) => value ?? []),
+  confirmed_gaps: z.array(
+    z.object({
+      competency_id: id,
+      competency_name: id,
+      outcome_id: id,
+      outcome_name: id,
+      taxonomy_code: id,
+      importance: z.number().int(),
+      failed_criteria: z.array(id),
+      advice: id,
+    }),
+  ),
+  partial_competencies: z.array(
+    z.object({
+      competency_id: id,
+      competency_name: id,
+      details: id,
+    }),
+  ),
+  unverified_competencies: z.array(
+    z.object({
+      competency_id: id,
+      competency_name: id,
+      code: id,
+    }),
+  ),
+  training_recommendations: z.array(
+    z.object({
+      competency_id: id,
+      competency_name: id,
+      outcome_id: id,
+      outcome_name: id,
+      priority: count.min(1),
+      rationale: id,
+    }),
+  ),
+  generated_at: count,
+})
 
 import { DiagnosticApiError } from '../model/diagnostic-error'
 export { DiagnosticApiError } from '../model/diagnostic-error'
@@ -286,4 +335,20 @@ export async function readDiagnosticResult(
   if (result.session_id !== sessionId)
     throw new DiagnosticApiError(0, 'INVALID_RESPONSE')
   return result
+}
+
+export async function readDiagnosticFeedback(
+  sessionId: string,
+  signal: AbortSignal,
+) {
+  const feedback = await parse(
+    await request(
+      `/diagnostic-sessions/${encodeURIComponent(sessionId)}/feedback`,
+      signal,
+    ),
+    overallFeedbackSchema,
+  )
+  if (feedback.session_id !== sessionId)
+    throw new DiagnosticApiError(0, 'INVALID_RESPONSE')
+  return feedback
 }

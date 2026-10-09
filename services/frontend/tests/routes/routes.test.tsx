@@ -28,7 +28,7 @@ function renderHome() {
 }
 
 function renderDemoHome() {
-  vi.stubEnv('VITE_API_MODE', 'mock')
+  vi.stubEnv('VITE_API_MODE', 'legacy-demo')
   const queryClient = createQueryClient()
   queryClient.setQueryData(['auth', 'me'], {
     id: 'demo-test',

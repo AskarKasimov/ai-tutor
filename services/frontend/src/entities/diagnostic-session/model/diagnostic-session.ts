@@ -74,3 +74,41 @@ export type DiagnosticResult = {
   answers: DiagnosticAnswer[]
   untested_basics: DiagnosticTask[]
 }
+
+export type DiagnosticOverallFeedback = {
+  session_id: string
+  diagnostic_score: number
+  maximum_score: number
+  score_percentage: number
+  summary: string
+  strengths: string[]
+  confirmed_gaps: {
+    competency_id: string
+    competency_name: string
+    outcome_id: string
+    outcome_name: string
+    taxonomy_code: string
+    importance: number
+    failed_criteria: string[]
+    advice: string
+  }[]
+  partial_competencies: {
+    competency_id: string
+    competency_name: string
+    details: string
+  }[]
+  unverified_competencies: {
+    competency_id: string
+    competency_name: string
+    code: string
+  }[]
+  training_recommendations: {
+    competency_id: string
+    competency_name: string
+    outcome_id: string
+    outcome_name: string
+    priority: number
+    rationale: string
+  }[]
+  generated_at: number
+}

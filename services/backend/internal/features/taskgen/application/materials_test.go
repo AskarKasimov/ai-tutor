@@ -12,13 +12,13 @@ import (
 )
 
 type materialRepository struct {
-	name             string
+	subjectID, name  string
 	outcomes, chunks []string
 	createdAt        int64
 }
 
-func (r *materialRepository) ImportMaterial(_ context.Context, name string, outcomes, chunks []string, createdAt int64) error {
-	r.name, r.outcomes, r.chunks, r.createdAt = name, outcomes, chunks, createdAt
+func (r *materialRepository) ImportMaterial(_ context.Context, subjectID, name string, outcomes, chunks []string, createdAt int64) error {
+	r.subjectID, r.name, r.outcomes, r.chunks, r.createdAt = subjectID, name, outcomes, chunks, createdAt
 	return nil
 }
 
@@ -38,7 +38,7 @@ func TestMaterialImportPersistsValidAdminInput(t *testing.T) {
 	repository := &materialRepository{}
 	service := NewMaterialService(repository, func() int64 { return 42 })
 	err := service.Import(context.Background(), user.User{Role: user.Admin}, MaterialInput{
-		Name: " Notes ", Content: "if x:\n    print(x)\n", OutcomeIDs: []string{" o1 ", "o1"},
+		SubjectID: "subject:intro-to-ml", Name: " Notes ", Content: "if x:\n    print(x)\n", OutcomeIDs: []string{" o1 ", "o1"},
 	})
 	if err != nil || repository.name != "Notes" || len(repository.outcomes) != 1 || repository.outcomes[0] != "o1" || strings.Join(repository.chunks, "") != "if x:\n    print(x)\n" || repository.createdAt != 42 {
 		t.Fatalf("admin import: error=%v repository=%#v", err, repository)

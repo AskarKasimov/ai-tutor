@@ -10,13 +10,14 @@ import (
 )
 
 type MaterialInput struct {
+	SubjectID  string
 	Name       string
 	Content    string
 	OutcomeIDs []string
 }
 
 type MaterialRepository interface {
-	ImportMaterial(context.Context, string, []string, []string, int64) error
+	ImportMaterial(context.Context, string, string, []string, []string, int64) error
 }
 
 type MaterialService struct {
@@ -34,6 +35,9 @@ func (s *MaterialService) Import(ctx context.Context, actor user.User, input Mat
 	}
 	if !validText(input.Name, 200) {
 		return fault.Validation("name", "Название материала должно содержать 1–200 символов.")
+	}
+	if !validText(input.SubjectID, 128) {
+		return fault.Validation("subject_id", "Укажите предмет материала.")
 	}
 	if !validText(input.Content, 100000) {
 		return fault.Validation("content", "Текст материала должен содержать до 100 000 символов.")
@@ -54,7 +58,7 @@ func (s *MaterialService) Import(ctx context.Context, actor user.User, input Mat
 		seen[id] = struct{}{}
 		outcomeIDs = append(outcomeIDs, id)
 	}
-	return s.repository.ImportMaterial(ctx, strings.TrimSpace(input.Name), outcomeIDs, splitChunks(input.Content, 1200), s.now())
+	return s.repository.ImportMaterial(ctx, input.SubjectID, strings.TrimSpace(input.Name), outcomeIDs, splitChunks(input.Content, 1200), s.now())
 }
 
 // Authorize allows transports to reject unauthorized uploads before reading them.

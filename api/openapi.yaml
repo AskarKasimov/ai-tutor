@@ -1025,6 +1025,10 @@ components:
           maxLength: 128
           minLength: 1
           type: string
+        subject_id:
+          maxLength: 128
+          minLength: 1
+          type: string
       required:
         - outcome_id
       type: object
@@ -1068,6 +1072,8 @@ components:
             type: string
           type: array
           uniqueItems: false
+        subject_id:
+          type: string
       required:
         - content
         - name
@@ -1461,6 +1467,7 @@ paths:
       x-implementation: implemented
   /admin/materials:
     post:
+      description: subject_id задаёт предмет; пропуск временно ограничивает импорт предметом «Введение в ML» для совместимости старого клиента.
       operationId: importMaterial
       requestBody:
         content:
@@ -2498,6 +2505,11 @@ paths:
           name: outcome_id
           schema:
             type: string
+        - description: ID предмета; пропуск временно означает Введение в ML для старого клиента
+          in: query
+          name: subject_id
+          schema:
+            type: string
         - description: ID компетенции
           in: query
           name: competency_id
@@ -2606,6 +2618,11 @@ paths:
           required: true
           schema:
             type: string
+        - description: ID предмета; пропуск временно означает Введение в ML для старого клиента
+          in: query
+          name: subject_id
+          schema:
+            type: string
       responses:
         "200":
           content:
@@ -2639,6 +2656,7 @@ paths:
       x-implementation: implemented
   /tasks/generate:
     post:
+      description: subject_id задаёт предмет; пропуск временно ограничивает запрос предметом «Введение в ML» для совместимости старого клиента.
       operationId: generateTask
       parameters:
         - description: Ключ повтора запроса

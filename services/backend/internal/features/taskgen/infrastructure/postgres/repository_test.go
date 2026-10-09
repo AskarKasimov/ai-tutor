@@ -11,6 +11,8 @@ import (
 
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/competencymap"
 	competencypostgres "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/competency/infrastructure/postgres"
+	taskbankapp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/taskbank/application"
+	taskbankpostgres "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/taskbank/infrastructure/postgres"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/features/taskgen/application"
 	sharedpostgres "github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/postgres"
 	db "github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/postgres/sqlcgen"
@@ -78,10 +80,10 @@ func TestAudioPersistGeneratedTaskAndReimportMaterial(t *testing.T) {
 	if err := pool.QueryRow(ctx, `SELECT id FROM outcomes WHERE name='ОР один'`).Scan(&outcomeID); err != nil {
 		t.Fatal(err)
 	}
-	if err := repository.ImportMaterial(ctx, "notes", []string{outcomeID}, []string{"Материал по теме ОР один"}, 12); err != nil {
+	if err := repository.ImportMaterial(ctx, "subject:intro-to-ml", "notes", []string{outcomeID}, []string{"Материал по теме ОР один"}, 12); err != nil {
 		t.Fatal(err)
 	}
-	snapshot, err := repository.Context(ctx, outcomeID)
+	snapshot, err := repository.Context(ctx, "subject:intro-to-ml", outcomeID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -92,7 +94,7 @@ func TestAudioPersistGeneratedTaskAndReimportMaterial(t *testing.T) {
 	if len(sections) != 1 || len(sections[0].CurriculumCompetencies) != 1 || sections[0].CurriculumCompetencies[0] != "ОПК-1" {
 		t.Fatalf("retrieved curriculum context = %#v", sections)
 	}
-	if err := repository.ImportMaterial(ctx, "notes", []string{outcomeID}, []string{"Обновлённый материал по теме ОР один"}, 13); err != nil {
+	if err := repository.ImportMaterial(ctx, "subject:intro-to-ml", "notes", []string{outcomeID}, []string{"Обновлённый материал по теме ОР один"}, 13); err != nil {
 		t.Fatalf("reimport same material name: %v", err)
 	}
 	task, err := repository.Persist(ctx, snapshot, "request-1", userID, "test-model", application.Draft{
@@ -180,7 +182,7 @@ func TestTaskAndGenerationCurriculumProfilesRemainConsistent(t *testing.T) {
 			if err := pool.QueryRow(ctx, "SELECT id FROM outcomes WHERE name=$1", tc.name).Scan(&outcomeID); err != nil {
 				t.Fatal(err)
 			}
-			snapshot, err := repository.Context(ctx, outcomeID)
+			snapshot, err := repository.Context(ctx, "subject:intro-to-ml", outcomeID)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -193,7 +195,7 @@ func TestTaskAndGenerationCurriculumProfilesRemainConsistent(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			profile, err := db.New(pool).GetTaskProfile(ctx, task.ID)
+			profile, err := db.New(pool).GetTaskProfile(ctx, db.GetTaskProfileParams{SubjectID: "subject:intro-to-ml", TaskID: task.ID})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -216,6 +218,85 @@ func TestTaskAndGenerationCurriculumProfilesRemainConsistent(t *testing.T) {
 	}
 }
 
+func TestSubjectMaterialsWithSameNameAndGenerationContextStayIsolated(t *testing.T) {
+	repository, maps, pool, ctx, userID := setupTaskgenRepository(t)
+	if _, err := maps.Replace(ctx, "subject:intro-to-ml", userID, taskgenMap("A"), 10); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO subjects(id,name,created_at) VALUES ('subject:b','Subject B',1)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := maps.Replace(ctx, "subject:b", userID, taskgenMap("B"), 11); err != nil {
+		t.Fatal(err)
+	}
+	var outcomeA, outcomeB string
+	if err := pool.QueryRow(ctx, `SELECT id FROM outcomes WHERE name='ОР A'`).Scan(&outcomeA); err != nil {
+		t.Fatal(err)
+	}
+	if err := pool.QueryRow(ctx, `SELECT id FROM outcomes WHERE name='ОР B'`).Scan(&outcomeB); err != nil {
+		t.Fatal(err)
+	}
+	var taskA, taskB string
+	if err := pool.QueryRow(ctx, `SELECT id FROM tasks WHERE outcome_id=$1 LIMIT 1`, outcomeA).Scan(&taskA); err == nil {
+		t.Fatal("test map unexpectedly contains authored task")
+	}
+	for _, item := range []struct{ outcome, task string }{{outcomeA, "task-a"}, {outcomeB, "task-b"}} {
+		if _, err := pool.Exec(ctx, `INSERT INTO tasks(id,outcome_id,question,options,created_at) VALUES ($1,$2,$3,'[]',1)`, item.task, item.outcome, item.task+" question"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	taskA, taskB = "task-a", "task-b"
+	tasks := taskbankpostgres.New(pool)
+	for _, tc := range []struct{ subject, want string }{{"subject:intro-to-ml", taskA}, {"subject:b", taskB}} {
+		items, err := tasks.Search(ctx, taskbankapp.SearchFilter{SubjectID: tc.subject, Limit: 10})
+		if err != nil || len(items) != 1 || items[0].ID != tc.want {
+			t.Fatalf("task search subject %s = %#v, err=%v", tc.subject, items, err)
+		}
+	}
+	if _, err := tasks.Profile(ctx, "subject:b", taskA); err == nil {
+		t.Fatal("task profile accepted task from another subject")
+	}
+	if err := repository.ImportMaterial(ctx, "subject:intro-to-ml", "shared-name", []string{outcomeA}, []string{"Альфа уникальный материал для ОР A"}, 12); err != nil {
+		t.Fatal(err)
+	}
+	if err := repository.ImportMaterial(ctx, "subject:b", "shared-name", []string{outcomeB}, []string{"Бета материал предмета B"}, 13); err != nil {
+		t.Fatal(err)
+	}
+	snapshotA, err := repository.Context(ctx, "subject:intro-to-ml", outcomeA)
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshotB, err := repository.Context(ctx, "subject:b", outcomeB)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(snapshotA.Materials) != 1 || snapshotA.Materials[0].Content != "Альфа уникальный материал для ОР A" {
+		t.Fatalf("subject A context contains foreign material: %#v", snapshotA.Materials)
+	}
+	if len(snapshotB.Materials) != 1 || snapshotB.Materials[0].Content != "Бета материал предмета B" {
+		t.Fatalf("subject B context contains foreign material: %#v", snapshotB.Materials)
+	}
+	if err := repository.ImportMaterial(ctx, "subject:intro-to-ml", "shared-name", []string{outcomeA}, []string{"Новое альфа содержание"}, 14); err != nil {
+		t.Fatal(err)
+	}
+	var linksB, chunksB int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM material_chunk_outcomes link JOIN material_chunks chunk ON chunk.id=link.chunk_id WHERE chunk.subject_id='subject:b' AND chunk.material_name='shared-name' AND link.outcome_id=$1`, outcomeB).Scan(&linksB); err != nil {
+		t.Fatal(err)
+	}
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM material_chunks WHERE subject_id='subject:b' AND material_name='shared-name'`).Scan(&chunksB); err != nil {
+		t.Fatal(err)
+	}
+	if linksB != 1 || chunksB != 1 {
+		t.Fatalf("reimport A damaged B material: links=%d chunks=%d", linksB, chunksB)
+	}
+	if _, err := repository.Context(ctx, "subject:intro-to-ml", outcomeB); err == nil {
+		t.Fatal("generation context accepted another subject's outcome")
+	}
+	if err := repository.ImportMaterial(ctx, "subject:intro-to-ml", "invalid-link", []string{outcomeB}, []string{"чужая связь"}, 15); err == nil {
+		t.Fatal("material import accepted another subject's outcome")
+	}
+}
+
 func TestAudioPersistRejectsChangedMapWithoutAddingGeneratedAudio(t *testing.T) {
 	repository, maps, pool, ctx, userID := setupTaskgenRepository(t)
 	if _, err := maps.Replace(ctx, "subject:intro-to-ml", userID, taskgenMap("до"), 10); err != nil {
@@ -225,7 +306,7 @@ func TestAudioPersistRejectsChangedMapWithoutAddingGeneratedAudio(t *testing.T) 
 	if err := pool.QueryRow(ctx, `SELECT id FROM outcomes WHERE name='ОР до'`).Scan(&outcomeID); err != nil {
 		t.Fatal(err)
 	}
-	snapshot, err := repository.Context(ctx, outcomeID)
+	snapshot, err := repository.Context(ctx, "subject:intro-to-ml", outcomeID)
 	if err != nil {
 		t.Fatal(err)
 	}

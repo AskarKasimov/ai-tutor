@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 )
@@ -218,6 +219,33 @@ WHERE competency.revision=$1 ORDER BY task.id LIMIT 1`, revisionB).Scan(&taskID,
 	if audioID == "" {
 		t.Fatal("B task has no pending audio asset")
 	}
+	// Taskbank and material requests are scoped to the active subject selected by the client.
+	wrongProfile := f.request(http.MethodGet, "/tasks/"+taskID+"?subject_id="+url.QueryEscape(mlID), "", admin)
+	if wrongProfile.Code != http.StatusNotFound {
+		t.Fatalf("cross-subject task profile status %d: %s", wrongProfile.Code, wrongProfile.Body.String())
+	}
+	student, _, _ := f.register(t, "task-material-student@example.edu")
+	requireCode(t, f.request(http.MethodPost, "/admin/materials", fmt.Sprintf(`{"subject_id":%q,"name":"shared","content":"Чужой материал","outcome_ids":[%q]}`, secondSubject.ID, outcomeID), student), http.StatusForbidden, "FORBIDDEN")
+	importMaterial := func(subjectID, outcomeID, content string) *httptest.ResponseRecorder {
+		return f.request(http.MethodPost, "/admin/materials", fmt.Sprintf(`{"subject_id":%q,"name":"shared","content":%q,"outcome_ids":[%q]}`, subjectID, content, outcomeID), admin)
+	}
+	var outcomeA string
+	if err := f.pool.QueryRow(context.Background(), `SELECT outcome.id FROM competencies competency JOIN constituents constituent ON constituent.competency_id=competency.id JOIN outcomes outcome ON outcome.constituent_id=constituent.id WHERE competency.revision=$1 ORDER BY outcome.id LIMIT 1`, revisionA).Scan(&outcomeA); err != nil {
+		t.Fatal(err)
+	}
+	if response := importMaterial(mlID, outcomeA, "Материал A контекст"); response.Code != http.StatusCreated {
+		t.Fatalf("import A material: %d %s", response.Code, response.Body.String())
+	}
+	if response := importMaterial(secondSubject.ID, outcomeID, "Материал B контекст"); response.Code != http.StatusCreated {
+		t.Fatalf("import B material: %d %s", response.Code, response.Body.String())
+	}
+	if response := importMaterial(mlID, outcomeA, "Обновлённый материал A"); response.Code != http.StatusCreated {
+		t.Fatalf("reimport A material: %d %s", response.Code, response.Body.String())
+	}
+	var bMaterialLinks int
+	if err := f.pool.QueryRow(context.Background(), `SELECT count(*) FROM material_chunk_outcomes link JOIN material_chunks chunk ON chunk.id=link.chunk_id WHERE chunk.subject_id=$1 AND chunk.material_name='shared' AND link.outcome_id=$2`, secondSubject.ID, outcomeID).Scan(&bMaterialLinks); err != nil || bMaterialLinks != 1 {
+		t.Fatalf("A material replacement damaged B links: count=%d err=%v", bMaterialLinks, err)
+	}
 	var ownerID string
 	if err := f.pool.QueryRow(context.Background(), `SELECT id FROM users WHERE email='admin@example.edu'`).Scan(&ownerID); err != nil {
 		t.Fatal(err)
@@ -230,7 +258,7 @@ VALUES ('variant-b-snapshot',$1,'b-snapshot',$2,'test',1,'[]',1,$3,'Вторая
 VALUES ('variant-b-task','variant-b-snapshot',$1,$1,$2,1,0,'main','{"question":"Исторический B snapshot"}','{}')`, taskID, audioID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := f.pool.Exec(context.Background(), `INSERT INTO material_chunks(id,material_name,ordinal,content,created_at) VALUES ('material-b','B source',1,'Содержание предмета B',1)`); err != nil {
+	if _, err := f.pool.Exec(context.Background(), `INSERT INTO material_chunks(id,subject_id,material_name,ordinal,content,created_at) VALUES ('material-b',$1,'B source',1,'Содержание предмета B',1)`, secondSubject.ID); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := f.pool.Exec(context.Background(), `INSERT INTO material_chunk_outcomes(chunk_id,outcome_id) VALUES ('material-b',$1)`, outcomeID); err != nil {

@@ -163,6 +163,7 @@ type MaterialChunk struct {
 	Content      string
 	CreatedAt    int64
 	SearchVector interface{}
+	SubjectID    string
 }
 
 type MaterialChunkOutcome struct {

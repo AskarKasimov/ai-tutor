@@ -9,12 +9,21 @@ import (
 	"context"
 )
 
-const countExistingOutcomes = `-- name: CountExistingOutcomes :one
-SELECT count(*)::integer FROM outcomes WHERE id = ANY($1::text[])
+const countExistingOutcomesForSubject = `-- name: CountExistingOutcomesForSubject :one
+SELECT count(*)::integer FROM outcomes outcome
+JOIN constituents constituent ON constituent.id = outcome.constituent_id
+JOIN competencies competency ON competency.id = constituent.competency_id
+JOIN subjects subject ON subject.id = $1::text AND subject.active_revision = competency.revision
+WHERE outcome.id = ANY($2::text[])
 `
 
-func (q *Queries) CountExistingOutcomes(ctx context.Context, dollar_1 []string) (int32, error) {
-	row := q.db.QueryRow(ctx, countExistingOutcomes, dollar_1)
+type CountExistingOutcomesForSubjectParams struct {
+	SubjectID  string
+	OutcomeIds []string
+}
+
+func (q *Queries) CountExistingOutcomesForSubject(ctx context.Context, arg CountExistingOutcomesForSubjectParams) (int32, error) {
+	row := q.db.QueryRow(ctx, countExistingOutcomesForSubject, arg.SubjectID, arg.OutcomeIds)
 	var column_1 int32
 	err := row.Scan(&column_1)
 	return column_1, err
@@ -29,13 +38,18 @@ func (q *Queries) DeleteCompetencyMapImportsForSubject(ctx context.Context, subj
 	return err
 }
 
-const deleteMaterialLinksByName = `-- name: DeleteMaterialLinksByName :exec
+const deleteMaterialLinksBySubjectAndName = `-- name: DeleteMaterialLinksBySubjectAndName :exec
 DELETE FROM material_chunk_outcomes
-WHERE chunk_id IN (SELECT id FROM material_chunks WHERE material_name = $1)
+WHERE chunk_id IN (SELECT id FROM material_chunks WHERE subject_id = $1 AND material_name = $2)
 `
 
-func (q *Queries) DeleteMaterialLinksByName(ctx context.Context, materialName string) error {
-	_, err := q.db.Exec(ctx, deleteMaterialLinksByName, materialName)
+type DeleteMaterialLinksBySubjectAndNameParams struct {
+	SubjectID    string
+	MaterialName string
+}
+
+func (q *Queries) DeleteMaterialLinksBySubjectAndName(ctx context.Context, arg DeleteMaterialLinksBySubjectAndNameParams) error {
+	_, err := q.db.Exec(ctx, deleteMaterialLinksBySubjectAndName, arg.SubjectID, arg.MaterialName)
 	return err
 }
 
@@ -44,10 +58,15 @@ SELECT task.id, task.outcome_id, task.question, task.options, task.voice_instruc
        task.reference_answer, task.criteria, task.origin
 FROM generation_runs AS run
 JOIN tasks AS task ON task.generation_run_id = run.id
-WHERE run.outcome_id = $1 AND run.request_key = $2
+JOIN outcomes AS outcome ON outcome.id = run.outcome_id
+JOIN constituents AS constituent ON constituent.id = outcome.constituent_id
+JOIN competencies AS competency ON competency.id = constituent.competency_id
+JOIN subjects AS subject ON subject.id = $1::text AND subject.active_revision = competency.revision
+WHERE run.outcome_id = $2::text AND run.request_key = $3::text
 `
 
 type GetGeneratedTaskByKeyParams struct {
+	SubjectID  string
 	OutcomeID  string
 	RequestKey string
 }
@@ -64,7 +83,7 @@ type GetGeneratedTaskByKeyRow struct {
 }
 
 func (q *Queries) GetGeneratedTaskByKey(ctx context.Context, arg GetGeneratedTaskByKeyParams) (GetGeneratedTaskByKeyRow, error) {
-	row := q.db.QueryRow(ctx, getGeneratedTaskByKey, arg.OutcomeID, arg.RequestKey)
+	row := q.db.QueryRow(ctx, getGeneratedTaskByKey, arg.SubjectID, arg.OutcomeID, arg.RequestKey)
 	var i GetGeneratedTaskByKeyRow
 	err := row.Scan(
 		&i.ID,
@@ -80,21 +99,26 @@ func (q *Queries) GetGeneratedTaskByKey(ctx context.Context, arg GetGeneratedTas
 }
 
 const getOutcomeForGeneration = `-- name: GetOutcomeForGeneration :one
-SELECT state.revision, outcome.id, outcome.name, outcome.include_in_test, taxonomy.code AS taxonomy_code,
+SELECT subject.active_revision::bigint AS revision, outcome.id, outcome.name, outcome.include_in_test, taxonomy.code AS taxonomy_code,
        ald.code AS ald_level_code, outcome.importance, outcome.educational_content,
        constituent.name AS constituent_name, topic.code AS topic_level_code,
        competency.name AS competency_name,
        COALESCE(curriculum_profile.curriculum_sections, '[]')::text AS curriculum_sections
 FROM outcomes AS outcome
-JOIN competency_map_state AS state ON state.singleton = true
 JOIN constituents AS constituent ON constituent.id = outcome.constituent_id
 JOIN constituent_curriculum_profiles AS curriculum_profile ON curriculum_profile.constituent_id = constituent.id
 JOIN competencies AS competency ON competency.id = constituent.competency_id
+JOIN subjects AS subject ON subject.id = $1::text AND subject.active_revision = competency.revision
 LEFT JOIN taxonomies AS taxonomy ON taxonomy.id = outcome.taxonomy_id
 LEFT JOIN ald_levels AS ald ON ald.id = outcome.ald_level_id
 LEFT JOIN topic_levels AS topic ON topic.id = constituent.topic_level_id
-WHERE outcome.id = $1
+WHERE outcome.id = $2::text
 `
+
+type GetOutcomeForGenerationParams struct {
+	SubjectID string
+	OutcomeID string
+}
 
 type GetOutcomeForGenerationRow struct {
 	Revision           int64
@@ -111,8 +135,8 @@ type GetOutcomeForGenerationRow struct {
 	CurriculumSections string
 }
 
-func (q *Queries) GetOutcomeForGeneration(ctx context.Context, id string) (GetOutcomeForGenerationRow, error) {
-	row := q.db.QueryRow(ctx, getOutcomeForGeneration, id)
+func (q *Queries) GetOutcomeForGeneration(ctx context.Context, arg GetOutcomeForGenerationParams) (GetOutcomeForGenerationRow, error) {
+	row := q.db.QueryRow(ctx, getOutcomeForGeneration, arg.SubjectID, arg.OutcomeID)
 	var i GetOutcomeForGenerationRow
 	err := row.Scan(
 		&i.Revision,
@@ -147,11 +171,17 @@ JOIN outcomes AS outcome ON outcome.id = task.outcome_id
 JOIN constituents AS constituent ON constituent.id = outcome.constituent_id
 JOIN constituent_curriculum_profiles AS curriculum_profile ON curriculum_profile.constituent_id = constituent.id
 JOIN competencies AS competency ON competency.id = constituent.competency_id
+JOIN subjects AS subject ON subject.id = $1::text AND subject.active_revision = competency.revision
 LEFT JOIN taxonomies AS taxonomy ON taxonomy.id = outcome.taxonomy_id
 LEFT JOIN ald_levels AS ald ON ald.id = outcome.ald_level_id
 LEFT JOIN topic_levels AS topic ON topic.id = constituent.topic_level_id
-WHERE task.id = $1
+WHERE task.id = $2::text
 `
+
+type GetTaskProfileParams struct {
+	SubjectID string
+	TaskID    string
+}
 
 type GetTaskProfileRow struct {
 	TaskID             string
@@ -178,8 +208,8 @@ type GetTaskProfileRow struct {
 	CurriculumSections string
 }
 
-func (q *Queries) GetTaskProfile(ctx context.Context, id string) (GetTaskProfileRow, error) {
-	row := q.db.QueryRow(ctx, getTaskProfile, id)
+func (q *Queries) GetTaskProfile(ctx context.Context, arg GetTaskProfileParams) (GetTaskProfileRow, error) {
+	row := q.db.QueryRow(ctx, getTaskProfile, arg.SubjectID, arg.TaskID)
 	var i GetTaskProfileRow
 	err := row.Scan(
 		&i.TaskID,
@@ -475,12 +505,13 @@ func (q *Queries) InsertGenerationRunExample(ctx context.Context, arg InsertGene
 }
 
 const insertMaterialChunk = `-- name: InsertMaterialChunk :exec
-INSERT INTO material_chunks(id, material_name, ordinal, content, created_at)
-VALUES ($1, $2, $3, $4, $5)
+INSERT INTO material_chunks(id, subject_id, material_name, ordinal, content, created_at)
+VALUES ($1, $2, $3, $4, $5, $6)
 `
 
 type InsertMaterialChunkParams struct {
 	ID           string
+	SubjectID    string
 	MaterialName string
 	Ordinal      int32
 	Content      string
@@ -490,6 +521,7 @@ type InsertMaterialChunkParams struct {
 func (q *Queries) InsertMaterialChunk(ctx context.Context, arg InsertMaterialChunkParams) error {
 	_, err := q.db.Exec(ctx, insertMaterialChunk,
 		arg.ID,
+		arg.SubjectID,
 		arg.MaterialName,
 		arg.Ordinal,
 		arg.Content,
@@ -684,6 +716,17 @@ func (q *Queries) LockSubjectForImport(ctx context.Context, id string) (string, 
 	return id, err
 }
 
+const lockSubjectForTaskgen = `-- name: LockSubjectForTaskgen :one
+SELECT active_revision FROM subjects WHERE id = $1 FOR SHARE
+`
+
+func (q *Queries) LockSubjectForTaskgen(ctx context.Context, id string) (*int64, error) {
+	row := q.db.QueryRow(ctx, lockSubjectForTaskgen, id)
+	var active_revision *int64
+	err := row.Scan(&active_revision)
+	return active_revision, err
+}
+
 const readSubjectCompetencyMap = `-- name: ReadSubjectCompetencyMap :many
 SELECT COALESCE(subject.active_revision, 0)::bigint AS revision, import.imported_at,
        competency.id AS competency_id, competency.name AS competency_name,
@@ -775,19 +818,20 @@ func (q *Queries) ReadSubjectCompetencyMap(ctx context.Context, id string) ([]Re
 
 const searchMaterialChunks = `-- name: SearchMaterialChunks :many
 SELECT chunk.id, chunk.material_name, chunk.ordinal, chunk.content,
-       ts_rank_cd(chunk.search_vector, to_tsquery('russian', replace(plainto_tsquery('russian', $2)::text, ' & ', ' | '))) AS relevance
+       ts_rank_cd(chunk.search_vector, to_tsquery('russian', replace(plainto_tsquery('russian', $1::text)::text, ' & ', ' | '))) AS relevance
 FROM material_chunks AS chunk
 JOIN material_chunk_outcomes AS link ON link.chunk_id = chunk.id
-WHERE link.outcome_id = $1
-  AND chunk.search_vector @@ to_tsquery('russian', replace(plainto_tsquery('russian', $2)::text, ' & ', ' | '))
+WHERE link.outcome_id = $2::text AND chunk.subject_id = $3::text
+  AND chunk.search_vector @@ to_tsquery('russian', replace(plainto_tsquery('russian', $1::text)::text, ' & ', ' | '))
 ORDER BY relevance DESC, chunk.id
-LIMIT $3
+LIMIT $4::integer
 `
 
 type SearchMaterialChunksParams struct {
-	OutcomeID      string
-	PlaintoTsquery string
-	Limit          int32
+	SearchQuery string
+	OutcomeID   string
+	SubjectID   string
+	ChunkLimit  int32
 }
 
 type SearchMaterialChunksRow struct {
@@ -799,7 +843,12 @@ type SearchMaterialChunksRow struct {
 }
 
 func (q *Queries) SearchMaterialChunks(ctx context.Context, arg SearchMaterialChunksParams) ([]SearchMaterialChunksRow, error) {
-	rows, err := q.db.Query(ctx, searchMaterialChunks, arg.OutcomeID, arg.PlaintoTsquery, arg.Limit)
+	rows, err := q.db.Query(ctx, searchMaterialChunks,
+		arg.SearchQuery,
+		arg.OutcomeID,
+		arg.SubjectID,
+		arg.ChunkLimit,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -834,34 +883,36 @@ FROM tasks AS task
 JOIN outcomes AS outcome ON outcome.id = task.outcome_id
 JOIN constituents AS constituent ON constituent.id = outcome.constituent_id
 JOIN competencies AS competency ON competency.id = constituent.competency_id
+JOIN subjects AS subject ON subject.id = $1::text AND subject.active_revision = competency.revision
 LEFT JOIN taxonomies AS taxonomy ON taxonomy.id = outcome.taxonomy_id
 LEFT JOIN ald_levels AS ald ON ald.id = outcome.ald_level_id
 LEFT JOIN topic_levels AS topic ON topic.id = constituent.topic_level_id
-WHERE ($1::text = '' OR outcome.id = $1::text)
-  AND ($2::text = '' OR competency.id = $2::text)
-  AND ($3::text = '' OR constituent.id = $3::text)
-  AND ($4::text = '' OR taxonomy.code = $4::text)
-  AND ($5::text = '' OR ald.code = $5::text)
-  AND ($6::text = '' OR topic.code = $6::text)
-  AND ($7::smallint = 0 OR outcome.importance = $7::smallint)
-  AND ($8::smallint = 0 OR outcome.importance >= $8::smallint)
-  AND ($9::smallint = 0 OR outcome.importance <= $9::smallint)
-  AND ($10::integer < 0 OR outcome.include_in_test = ($10::integer = 1))
-  AND ($11::text = '' OR task.origin = $11::text)
-  AND (($12::text = '' AND $13::text = '') OR EXISTS (
+WHERE ($2::text = '' OR outcome.id = $2::text)
+  AND ($3::text = '' OR competency.id = $3::text)
+  AND ($4::text = '' OR constituent.id = $4::text)
+  AND ($5::text = '' OR taxonomy.code = $5::text)
+  AND ($6::text = '' OR ald.code = $6::text)
+  AND ($7::text = '' OR topic.code = $7::text)
+  AND ($8::smallint = 0 OR outcome.importance = $8::smallint)
+  AND ($9::smallint = 0 OR outcome.importance >= $9::smallint)
+  AND ($10::smallint = 0 OR outcome.importance <= $10::smallint)
+  AND ($11::integer < 0 OR outcome.include_in_test = ($11::integer = 1))
+  AND ($12::text = '' OR task.origin = $12::text)
+  AND (($13::text = '' AND $14::text = '') OR EXISTS (
       SELECT 1 FROM constituent_sections AS link
       JOIN curriculum_sections AS section ON section.id = link.section_id
       LEFT JOIN constituent_section_competencies AS mapped ON mapped.constituent_section_id = link.id
       LEFT JOIN curriculum_competencies AS curriculum ON curriculum.id = mapped.curriculum_competency_id
       WHERE link.constituent_id = constituent.id
-        AND ($12::text = '' OR section.code = $12::text)
-        AND ($13::text = '' OR curriculum.code = $13::text)
+        AND ($13::text = '' OR section.code = $13::text)
+        AND ($14::text = '' OR curriculum.code = $14::text)
   ))
 ORDER BY task.created_at, task.id
-LIMIT $14::integer
+LIMIT $15::integer
 `
 
 type SearchTaskProfilesParams struct {
+	SubjectID                string
 	OutcomeID                string
 	CompetencyID             string
 	ConstituentID            string
@@ -897,6 +948,7 @@ type SearchTaskProfilesRow struct {
 
 func (q *Queries) SearchTaskProfiles(ctx context.Context, arg SearchTaskProfilesParams) ([]SearchTaskProfilesRow, error) {
 	rows, err := q.db.Query(ctx, searchTaskProfiles,
+		arg.SubjectID,
 		arg.OutcomeID,
 		arg.CompetencyID,
 		arg.ConstituentID,

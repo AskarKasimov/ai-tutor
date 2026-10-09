@@ -4,6 +4,9 @@ SELECT id FROM subjects WHERE id = $1 FOR UPDATE;
 -- name: LockCompetencyMapRevision :one
 SELECT revision FROM competency_map_state WHERE singleton = true FOR UPDATE;
 
+-- name: LockSubjectForTaskgen :one
+SELECT active_revision FROM subjects WHERE id = $1 FOR SHARE;
+
 -- name: DeleteCompetencyMapImportsForSubject :exec
 DELETE FROM competency_map_imports WHERE subject_id = $1;
 
@@ -112,10 +115,11 @@ JOIN outcomes AS outcome ON outcome.id = task.outcome_id
 JOIN constituents AS constituent ON constituent.id = outcome.constituent_id
 JOIN constituent_curriculum_profiles AS curriculum_profile ON curriculum_profile.constituent_id = constituent.id
 JOIN competencies AS competency ON competency.id = constituent.competency_id
+JOIN subjects AS subject ON subject.id = sqlc.arg(subject_id)::text AND subject.active_revision = competency.revision
 LEFT JOIN taxonomies AS taxonomy ON taxonomy.id = outcome.taxonomy_id
 LEFT JOIN ald_levels AS ald ON ald.id = outcome.ald_level_id
 LEFT JOIN topic_levels AS topic ON topic.id = constituent.topic_level_id
-WHERE task.id = $1;
+WHERE task.id = sqlc.arg(task_id)::text;
 
 -- name: SearchTaskProfiles :many
 SELECT task.id, task.question, task.options, task.voice_instruction,
@@ -127,6 +131,7 @@ FROM tasks AS task
 JOIN outcomes AS outcome ON outcome.id = task.outcome_id
 JOIN constituents AS constituent ON constituent.id = outcome.constituent_id
 JOIN competencies AS competency ON competency.id = constituent.competency_id
+JOIN subjects AS subject ON subject.id = sqlc.arg(subject_id)::text AND subject.active_revision = competency.revision
 LEFT JOIN taxonomies AS taxonomy ON taxonomy.id = outcome.taxonomy_id
 LEFT JOIN ald_levels AS ald ON ald.id = outcome.ald_level_id
 LEFT JOIN topic_levels AS topic ON topic.id = constituent.topic_level_id
@@ -163,7 +168,11 @@ SELECT task.id, task.outcome_id, task.question, task.options, task.voice_instruc
        task.reference_answer, task.criteria, task.origin
 FROM generation_runs AS run
 JOIN tasks AS task ON task.generation_run_id = run.id
-WHERE run.outcome_id = $1 AND run.request_key = $2;
+JOIN outcomes AS outcome ON outcome.id = run.outcome_id
+JOIN constituents AS constituent ON constituent.id = outcome.constituent_id
+JOIN competencies AS competency ON competency.id = constituent.competency_id
+JOIN subjects AS subject ON subject.id = sqlc.arg(subject_id)::text AND subject.active_revision = competency.revision
+WHERE run.outcome_id = sqlc.arg(outcome_id)::text AND run.request_key = sqlc.arg(request_key)::text;
 
 -- name: InsertGenerationRunExample :exec
 INSERT INTO generation_run_examples(generation_run_id, task_id) VALUES ($1, $2);
@@ -177,20 +186,20 @@ INSERT INTO tasks(id, outcome_id, question, options, voice_instruction, referenc
 VALUES ($1, $2, $3, $4, $5, $6, $7, 'ai_generated', $8, $9);
 
 -- name: GetOutcomeForGeneration :one
-SELECT state.revision, outcome.id, outcome.name, outcome.include_in_test, taxonomy.code AS taxonomy_code,
+SELECT subject.active_revision::bigint AS revision, outcome.id, outcome.name, outcome.include_in_test, taxonomy.code AS taxonomy_code,
        ald.code AS ald_level_code, outcome.importance, outcome.educational_content,
        constituent.name AS constituent_name, topic.code AS topic_level_code,
        competency.name AS competency_name,
        COALESCE(curriculum_profile.curriculum_sections, '[]')::text AS curriculum_sections
 FROM outcomes AS outcome
-JOIN competency_map_state AS state ON state.singleton = true
 JOIN constituents AS constituent ON constituent.id = outcome.constituent_id
 JOIN constituent_curriculum_profiles AS curriculum_profile ON curriculum_profile.constituent_id = constituent.id
 JOIN competencies AS competency ON competency.id = constituent.competency_id
+JOIN subjects AS subject ON subject.id = sqlc.arg(subject_id)::text AND subject.active_revision = competency.revision
 LEFT JOIN taxonomies AS taxonomy ON taxonomy.id = outcome.taxonomy_id
 LEFT JOIN ald_levels AS ald ON ald.id = outcome.ald_level_id
 LEFT JOIN topic_levels AS topic ON topic.id = constituent.topic_level_id
-WHERE outcome.id = $1;
+WHERE outcome.id = sqlc.arg(outcome_id)::text;
 
 -- name: ListGenerationExamples :many
 SELECT task.id, task.question, task.options, task.voice_instruction, task.reference_answer, task.criteria
@@ -200,25 +209,29 @@ ORDER BY CASE WHEN task.origin = 'authored' THEN 0 ELSE 1 END, task.created_at D
 LIMIT $2;
 
 -- name: InsertMaterialChunk :exec
-INSERT INTO material_chunks(id, material_name, ordinal, content, created_at)
-VALUES ($1, $2, $3, $4, $5);
+INSERT INTO material_chunks(id, subject_id, material_name, ordinal, content, created_at)
+VALUES ($1, $2, $3, $4, $5, $6);
 
--- name: DeleteMaterialLinksByName :exec
+-- name: DeleteMaterialLinksBySubjectAndName :exec
 DELETE FROM material_chunk_outcomes
-WHERE chunk_id IN (SELECT id FROM material_chunks WHERE material_name = $1);
+WHERE chunk_id IN (SELECT id FROM material_chunks WHERE subject_id = $1 AND material_name = $2);
 
 -- name: LinkMaterialChunkToOutcome :exec
 INSERT INTO material_chunk_outcomes(chunk_id, outcome_id) VALUES ($1, $2);
 
--- name: CountExistingOutcomes :one
-SELECT count(*)::integer FROM outcomes WHERE id = ANY($1::text[]);
+-- name: CountExistingOutcomesForSubject :one
+SELECT count(*)::integer FROM outcomes outcome
+JOIN constituents constituent ON constituent.id = outcome.constituent_id
+JOIN competencies competency ON competency.id = constituent.competency_id
+JOIN subjects subject ON subject.id = sqlc.arg(subject_id)::text AND subject.active_revision = competency.revision
+WHERE outcome.id = ANY(sqlc.arg(outcome_ids)::text[]);
 
 -- name: SearchMaterialChunks :many
 SELECT chunk.id, chunk.material_name, chunk.ordinal, chunk.content,
-       ts_rank_cd(chunk.search_vector, to_tsquery('russian', replace(plainto_tsquery('russian', $2)::text, ' & ', ' | '))) AS relevance
+       ts_rank_cd(chunk.search_vector, to_tsquery('russian', replace(plainto_tsquery('russian', sqlc.arg(search_query)::text)::text, ' & ', ' | '))) AS relevance
 FROM material_chunks AS chunk
 JOIN material_chunk_outcomes AS link ON link.chunk_id = chunk.id
-WHERE link.outcome_id = $1
-  AND chunk.search_vector @@ to_tsquery('russian', replace(plainto_tsquery('russian', $2)::text, ' & ', ' | '))
+WHERE link.outcome_id = sqlc.arg(outcome_id)::text AND chunk.subject_id = sqlc.arg(subject_id)::text
+  AND chunk.search_vector @@ to_tsquery('russian', replace(plainto_tsquery('russian', sqlc.arg(search_query)::text)::text, ' & ', ' | '))
 ORDER BY relevance DESC, chunk.id
-LIMIT $3;
+LIMIT sqlc.arg(chunk_limit)::integer;

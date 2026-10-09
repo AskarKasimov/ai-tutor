@@ -26,7 +26,7 @@ func (r *recordingRepository) Search(_ context.Context, filter application.Searc
 	}}, nil
 }
 
-func (r *recordingRepository) Profile(context.Context, string) (application.TaskProfile, error) {
+func (r *recordingRepository) Profile(context.Context, string, string) (application.TaskProfile, error) {
 	return application.TaskProfile{}, nil
 }
 
@@ -34,7 +34,7 @@ func TestSearchParsesAllSupportedQueryFilters(t *testing.T) {
 	repository := &recordingRepository{}
 	handler := New(application.New(repository))
 	request := httptest.NewRequest(http.MethodGet,
-		"/tasks?outcome_id=o1&competency_id=c1&constituent_id=s1&taxonomy=analysis&ald_level=advanced&topic_level=intermediate&importance=5&include_in_test=false&origin=ai_generated&section=R.6&curriculum_competency=ОПК-8&limit=75", nil)
+		"/tasks?subject_id=subject%3Ab&outcome_id=o1&competency_id=c1&constituent_id=s1&taxonomy=analysis&ald_level=advanced&topic_level=intermediate&importance=5&include_in_test=false&origin=ai_generated&section=R.6&curriculum_competency=ОПК-8&limit=75", nil)
 	response := httptest.NewRecorder()
 	handler.Search(response, request)
 	if response.Code != http.StatusOK {
@@ -43,7 +43,7 @@ func TestSearchParsesAllSupportedQueryFilters(t *testing.T) {
 	if repository.calls != 1 {
 		t.Fatalf("search calls=%d", repository.calls)
 	}
-	if repository.filter.OutcomeID != "o1" || repository.filter.CompetencyID != "c1" || repository.filter.ConstituentID != "s1" || repository.filter.TaxonomyCode != "analysis" || repository.filter.ALDLevelCode != "advanced" || repository.filter.TopicLevelCode != "intermediate" || repository.filter.Importance != 5 || repository.filter.IncludeInTest == nil || *repository.filter.IncludeInTest || repository.filter.Origin != "ai_generated" || repository.filter.SectionCode != "R.6" || repository.filter.CurriculumCompetencyCode != "ОПК-8" || repository.filter.Limit != 75 {
+	if repository.filter.SubjectID != "subject:b" || repository.filter.OutcomeID != "o1" || repository.filter.CompetencyID != "c1" || repository.filter.ConstituentID != "s1" || repository.filter.TaxonomyCode != "analysis" || repository.filter.ALDLevelCode != "advanced" || repository.filter.TopicLevelCode != "intermediate" || repository.filter.Importance != 5 || repository.filter.IncludeInTest == nil || *repository.filter.IncludeInTest || repository.filter.Origin != "ai_generated" || repository.filter.SectionCode != "R.6" || repository.filter.CurriculumCompetencyCode != "ОПК-8" || repository.filter.Limit != 75 {
 		t.Fatalf("parsed search filters = %#v", repository.filter)
 	}
 	var responseItems []TaskSummary

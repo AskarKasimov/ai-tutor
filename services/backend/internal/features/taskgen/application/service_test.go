@@ -22,7 +22,7 @@ type testRepository struct {
 	}
 }
 
-func (r *testRepository) GetByKey(_ context.Context, outcomeID, key string) (Task, error) {
+func (r *testRepository) GetByKey(_ context.Context, subjectID, outcomeID, key string) (Task, error) {
 	r.getCalls++
 	if r.getErr != nil {
 		return Task{}, r.getErr
@@ -33,7 +33,7 @@ func (r *testRepository) GetByKey(_ context.Context, outcomeID, key string) (Tas
 	return Task{}, fault.New(fault.NotFound, "TASK_NOT_FOUND", "not found")
 }
 
-func (r *testRepository) Context(context.Context, string) (Context, error) {
+func (r *testRepository) Context(context.Context, string, string) (Context, error) {
 	r.contextCalls++
 	return r.context, nil
 }
@@ -68,11 +68,11 @@ func TestGeneratePersistsOnceAndReusesTaskForIdempotencyKey(t *testing.T) {
 	generator := &testGenerator{draft: Draft{Question: "Вопрос", VoiceInstruction: "Объясните", ReferenceAnswer: "Ответ"}}
 	service := New(repository, generator, "test-model", func() int64 { return 42 })
 
-	first, err := service.Generate(context.Background(), "outcome-1", "request-1", "student-1")
+	first, err := service.Generate(context.Background(), "subject:intro-to-ml", "outcome-1", "request-1", "student-1")
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := service.Generate(context.Background(), "outcome-1", "request-1", "student-1")
+	second, err := service.Generate(context.Background(), "subject:intro-to-ml", "outcome-1", "request-1", "student-1")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -97,7 +97,7 @@ func TestGenerateRejectsInvalidInputBeforeRepositoryAccess(t *testing.T) {
 	for _, tc := range []struct{ outcome, key, user string }{
 		{"", "key", "user"}, {"outcome", "\x00", "user"}, {"outcome", "key", "  "},
 	} {
-		if _, err := service.Generate(context.Background(), tc.outcome, tc.key, tc.user); err == nil {
+		if _, err := service.Generate(context.Background(), "subject:intro-to-ml", tc.outcome, tc.key, tc.user); err == nil {
 			t.Errorf("invalid input was accepted: %#v", tc)
 		}
 	}
@@ -111,7 +111,7 @@ func TestGenerateStopsOnUnexpectedIdempotencyLookupError(t *testing.T) {
 	repository := &testRepository{getErr: lookupErr}
 	generator := &testGenerator{}
 	service := New(repository, generator, "model", func() int64 { return 0 })
-	if _, err := service.Generate(context.Background(), "outcome-1", "key", "user"); !errors.Is(err, lookupErr) {
+	if _, err := service.Generate(context.Background(), "subject:intro-to-ml", "outcome-1", "key", "user"); !errors.Is(err, lookupErr) {
 		t.Fatalf("lookup error = %v, want wrapped database error", err)
 	}
 	if repository.contextCalls != 0 || generator.calls != 0 || repository.persistCalls != 0 {
@@ -123,7 +123,7 @@ func TestGenerateDoesNotPersistInvalidModelDraft(t *testing.T) {
 	repository := &testRepository{context: Context{Outcome: Outcome{ID: "outcome-1"}}}
 	generator := &testGenerator{draft: Draft{Question: "Вопрос", VoiceInstruction: "Инструкция", ReferenceAnswer: "Ответ", Options: []string{" "}}}
 	service := New(repository, generator, "model", func() int64 { return 1 })
-	if _, err := service.Generate(context.Background(), "outcome-1", "key", "user"); err == nil {
+	if _, err := service.Generate(context.Background(), "subject:intro-to-ml", "outcome-1", "key", "user"); err == nil {
 		t.Fatal("draft with a blank answer option was accepted")
 	}
 	if repository.persistCalls != 0 {

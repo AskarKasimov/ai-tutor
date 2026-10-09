@@ -75,6 +75,9 @@ fetchTrainingAudioFile(audioUrl: string, signal: AbortSignal): Promise<Blob>
 class TrainingApiError extends Error { status: number; code: string }
 ```
 
+Также экспортировать типы `SubjectApi` и `TrainingApi` как объекты перечисленных функций для dependency providers следующих задач. Не привязывать interfaces к bootstrap.
+Entity subject также экспортирует `subjectQueryKeys.subjects(userId)`, `learningState(userId,subjectId)`, `createSubject(userId)` из `model/query-keys.ts`: они нужны и subject-selection, и import-map без peer-feature imports.
+
 - [ ] Написать тесты реального fetch boundary: encoded IDs, cookie auth, POST JSON/plan_revision, multipart ровно audio/exercise_id, повтор submission использует тот же ключ; malformed success, wrong session/exercise ID, nullable исходный балл, 409 code.
 - [ ] `npm test -- --run tests/entities/subject/subject-api.test.ts tests/entities/training/training-api.test.ts` → сначала RED.
 - [ ] Реализовать Zod schemas и функции, по образцу diagnostic API. 30s GET, 120s start, 240s answer; `apiFetch`, AbortSignal.any, `fetchStoredAudio`. Audio URL только `/task-audio/<id>/file`. Не выдавать private snapshot. Отправлять `{}` для focused POST и `{plan_revision}` для free. Проверять returned IDs, score/max_score=2, режим/status/counters, verdict/feedback.
@@ -89,6 +92,7 @@ class TrainingApiError extends Error { status: number; code: string }
 - [ ] RED: через реальные entity API + configured mock transport проверить до диагностики gate, явное создание варианта с subject_id, completed learning-state, preview без записи, free_practice, один start на диагностику, новый exercise_id/round после ответа, повтор ключа и конфликт иного аудио, курсор истории. Фикстуры focused preview с обоими типами проверяются отдельным API test; backend classification не дублировать в сложный mock rule engine.
 - [ ] `npm test -- --run tests/bootstrap/mock-learning.test.ts` → RED.
 - [ ] Дополнить existing mock diagnostic state: subject ID у варианта/сессии, start/answer ключи, данные для learning-state. `mock-training-api` хранит только mock сессии/accepted attempts, отдаёт контракты Task 1, 404/409 при неизвестной/незавершённой диагностике. Формировать демонстрационную оценку и transcript, new exercise каждый round; audio использует существующий createDemoAudio. Админские subject create/map routes можно поддержать, но не менять mock auth role student.
+- [ ] На промежуточном Task2 прежний diagnostic клиент ещё не отправляет subject_id. Сохранить эту совместимость только для existing mock request до Task3; явный неверный subject_id уже отклоняется. В Task3 убрать совместимость одновременно со сменой всех diagnostic ports/callers и тестов. Итоговый UI/API не выбирает предмет по умолчанию.
 - [ ] Tests → GREEN; typecheck/full tests; commit `feat(frontend): mock subject learning and training APIs`.
 
 ## Task 3: Главная с выбором предмета и явной диагностикой
@@ -96,6 +100,7 @@ class TrainingApiError extends Error { status: number; code: string }
 **Files:** новые `src/features/subject-selection/{index.ts,model/dependencies-context.tsx,model/query-keys.ts,model/use-subjects.ts}`, `src/pages/trainer/ui/learning-home.tsx`, `learning-home.module.scss`; изменить `trainer-screen.tsx`, `diagnostic-trainer.tsx`, diagnostic identity/storage/start/use-session, `entities/diagnostic-session/api/diagnostic-api.ts`, bootstrap dependencies/providers/mock-storage, i18n. Тесты `tests/routes/subjects.test.tsx`, existing diagnostic/mock routes и tests/features/diagnostic-session.
 
 **Consumes:** Task1 subjects, Task2 mock. **Produces:** главный экран; props `DiagnosticTrainer({subjectId, subjectName, onBack, initialSessionId?})`; subject-selection provider `{subjects:{listSubjects,createSubject,readLearningState}}`, экспорт hooks `useSubjectsQuery(userId)`, `useLearningStateQuery(userId,subjectId)`, `useCreateSubjectMutation(userId)`. Keys включают userId/subjectId. Bootstrap AppDependencies добавляет `subjects`, заполняет и providers и test fixtures.
+Subject-selection queries используют entity `subjectQueryKeys`, чтобы import-map в Task6 мог инвалидировать ресурс без импорта соседней feature.
 
 Diagnostic signatures одновременно обновляются у всех callers/ports/tests:
 ```ts
@@ -103,6 +108,7 @@ createVariant(subjectId: string, key: string, signal: AbortSignal): Promise<{id:
 createDiagnosticIdentity(subjectId: string): DiagnosticSessionIdentity
 // DiagnosticSessionIdentity добавляет обязательный subjectId
 // storage load/save ключ: apiBase + userId + subjectId; забытые старые записи без subjectId игнорируются
+// load(userId, apiBase, subjectId), save(userId, apiBase, subjectId, identity)
 useDiagnosticSession(userId: string, subjectId: string, initialSessionId?: string)
 ```
 

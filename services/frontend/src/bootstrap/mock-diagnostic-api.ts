@@ -122,7 +122,8 @@ export function mockDiagnosticResponse(
   )
   if (!match) return undefined
   const session = sessions.get(match[1])
-  if (!session) return json({ code: 'NOT_FOUND' }, 404)
+  if (!session || session.userId !== userId)
+    return json({ code: 'NOT_FOUND' }, 404)
   const operation = match[2]
   if (!operation && method === 'GET') return json(progress(session))
   if (operation === 'answers' && method === 'POST') {

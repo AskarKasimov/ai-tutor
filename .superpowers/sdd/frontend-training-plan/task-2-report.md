@@ -23,3 +23,11 @@ Training supports completed-diagnostic gating, focused preview targets for confi
 - `npm run build` — passed.
 
 The focused test was added after the initial mock implementation, so a pre-implementation RED run was not captured. An initial test attempt used the suite's default real API mode and failed at transport setup; after explicitly enabling mock mode, the focused test passed.
+
+## Follow-up ownership and replay fix
+
+Diagnostic session endpoints now enforce the creating mock user's ownership, and diagnostic current-audio routes require an owned session. Training answer replays compare the exercise ID and audio filename, MIME type, and bytes, so a newly constructed equivalent FormData succeeds while changed audio under the same key returns 409.
+
+- `npm test -- --run tests/bootstrap/mock-learning.test.ts` — passed, 6 tests, including cross-user diagnostic access and reconstructed replay payloads.
+- `npm run typecheck` — passed.
+- `git diff --check` — passed.

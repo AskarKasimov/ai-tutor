@@ -193,7 +193,7 @@ export async function mockApiFetch(
     options,
   )
   if (diagnosticResponse) return diagnosticResponse
-  const trainingResponse = mockTrainingResponse(
+  const trainingResponse = await mockTrainingResponse(
     mockUser.id,
     path,
     method,
@@ -207,6 +207,14 @@ export async function mockApiFetch(
     method === 'GET' &&
     /\/diagnostic-sessions\/[^/]+\/current\/audio$/.test(path)
   ) {
+    const sessionId = path.match(
+      /\/diagnostic-sessions\/([^/]+)\/current\/audio$/,
+    )?.[1]
+    if (
+      !sessionId ||
+      !readMockDiagnostic(mockUser.id, decodeURIComponent(sessionId))
+    )
+      return error(404, 'NOT_FOUND', 'notFound')
     const taskId = requestUrl.searchParams.get('variant_task_id')
     if (!taskId) return error(422, 'VALIDATION_ERROR', 'invalid')
     let hash = 2166136261
@@ -223,6 +231,14 @@ export async function mockApiFetch(
     method === 'POST' &&
     /\/diagnostic-sessions\/[^/]+\/current\/audio\/regenerate$/.test(path)
   ) {
+    const sessionId = path.match(
+      /\/diagnostic-sessions\/([^/]+)\/current\/audio\/regenerate$/,
+    )?.[1]
+    if (
+      !sessionId ||
+      !readMockDiagnostic(mockUser.id, decodeURIComponent(sessionId))
+    )
+      return error(404, 'NOT_FOUND', 'notFound')
     const taskId = body.variant_task_id
     if (typeof taskId !== 'string' || !taskId)
       return error(422, 'VALIDATION_ERROR', 'invalid')

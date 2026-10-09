@@ -24,6 +24,7 @@ import {
 } from '@/entities/subject'
 import { apiFetch, configureMockApiHandler } from '@/shared/api'
 import { mockApiFetch } from '@/bootstrap/mock-api'
+import { mockDiagnosticResponse } from '@/bootstrap/mock-diagnostic-api'
 
 const signal = () => new AbortController().signal
 
@@ -194,6 +195,16 @@ it('gates training until diagnostic completion, previews both focused categories
   await expect(submitTraining(submission, signal())).resolves.toMatchObject({
     answer: accepted.answer,
   })
+  const reconstructed = { ...submission, body: new FormData() }
+  reconstructed.body.append(
+    'audio',
+    new Blob(['same audio'], { type: 'audio/webm' }),
+    'answer.webm',
+  )
+  reconstructed.body.append('exercise_id', submission.exerciseId)
+  await expect(submitTraining(reconstructed, signal())).resolves.toMatchObject({
+    answer: accepted.answer,
+  })
   const conflicting = { ...submission, body: new FormData() }
   conflicting.body.append('audio', new Blob(['different audio']), 'answer.webm')
   conflicting.body.append('exercise_id', submission.exerciseId)
@@ -225,6 +236,28 @@ it('gates training until diagnostic completion, previews both focused categories
   )
   expect(secondPage.items).toHaveLength(1)
   expect(secondPage.items[0].sequence).toBe(2)
+})
+
+it('keeps diagnostic sessions private to their creating mock user', async () => {
+  const diagnosticId = await completeDiagnostic()
+  const otherUser = 'other-mock-user'
+  const sessionPath = `/api/v1/diagnostic-sessions/${diagnosticId}`
+  const requests: Array<[string, string, RequestInit]> = [
+    [sessionPath, 'GET', {}],
+    [`${sessionPath}/answers`, 'POST', { body: new FormData() }],
+    [`${sessionPath}/result`, 'GET', {}],
+    [`${sessionPath}/feedback`, 'GET', {}],
+  ]
+  for (const [path, method, options] of requests) {
+    const response = mockDiagnosticResponse(
+      otherUser,
+      path,
+      method,
+      {},
+      options,
+    )
+    expect(response?.status).toBe(404)
+  }
 })
 
 it('starts free practice from the completed diagnostic plan revision', async () => {

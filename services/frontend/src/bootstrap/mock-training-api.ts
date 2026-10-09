@@ -56,7 +56,16 @@ type TrainingSession = {
   targets: TrainingTarget[]
   answers: TrainingAttempt[]
   exercise: TrainingExercise
-  accepted: Map<string, { result: TrainingProgress; form: FormData }>
+  accepted: Map<
+    string,
+    {
+      result: TrainingProgress
+      exerciseId: string
+      audioBytes: Uint8Array
+      audioType: string
+      audioName: string
+    }
+  >
 }
 const sessions = new Map<string, TrainingSession>()
 const sessionByDiagnostic = new Map<string, string>()
@@ -132,7 +141,7 @@ function audioPath(exerciseId: string) {
   return `/task-audio/demo_${(hash >>> 0).toString(16)}/file`
 }
 
-export function mockTrainingResponse(
+export async function mockTrainingResponse(
   userId: string,
   path: string,
   method: string,
@@ -140,7 +149,7 @@ export function mockTrainingResponse(
   options: RequestInit,
   search: string,
   diagnostic: (id: string) => DiagnosticProgress | undefined,
-): Response | undefined {
+): Promise<Response | undefined> {
   const previewMatch = path.match(
     /^\/api\/v1\/diagnostic-sessions\/([^/]+)\/training\/preview$/,
   )
@@ -218,9 +227,14 @@ export function mockTrainingResponse(
       !audio.size
     )
       return failed('INVALID_ANSWER', 422)
+    const audioBytes = new Uint8Array(await audio.arrayBuffer())
     const replay = session.accepted.get(key)
     if (replay)
-      return replay.form === form
+      return replay.exerciseId === exerciseId &&
+        replay.audioType === audio.type &&
+        replay.audioName === (audio instanceof File ? audio.name : '') &&
+        replay.audioBytes.length === audioBytes.length &&
+        replay.audioBytes.every((byte, index) => byte === audioBytes[index])
         ? json(replay.result)
         : failed('IDEMPOTENCY_KEY_REUSED', 409)
     if (exerciseId !== session.exercise.exercise_id)
@@ -258,7 +272,13 @@ export function mockTrainingResponse(
       session.targets[session.answers.length % session.targets.length],
     )
     const result = current(session)
-    session.accepted.set(key, { result, form: form! })
+    session.accepted.set(key, {
+      result,
+      exerciseId,
+      audioBytes,
+      audioType: audio.type,
+      audioName: audio instanceof File ? audio.name : '',
+    })
     return json(result)
   }
   if (operation === 'history' && method === 'GET') {

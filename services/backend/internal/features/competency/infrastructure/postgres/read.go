@@ -5,13 +5,17 @@ import (
 	"encoding/json"
 
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/competencymap"
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/fault"
 )
 
-func (r *Repository) Read(ctx context.Context) (competencymap.Snapshot, error) {
+func (r *Repository) Read(ctx context.Context, subjectID string) (competencymap.Snapshot, error) {
 	// One SQL statement observes one revision and its entire graph, even during import.
-	rows, err := r.queries.ReadCurrentCompetencyMap(ctx)
+	rows, err := r.queries.ReadSubjectCompetencyMap(ctx, subjectID)
 	if err != nil {
 		return competencymap.Snapshot{}, err
+	}
+	if len(rows) == 0 {
+		return competencymap.Snapshot{}, fault.New(fault.NotFound, "SUBJECT_NOT_FOUND", "Предмет не найден.")
 	}
 	result := competencymap.Snapshot{Competencies: []competencymap.CompetencyNode{}}
 	if len(rows) > 0 {

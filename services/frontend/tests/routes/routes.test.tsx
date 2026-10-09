@@ -28,7 +28,7 @@ function renderHome() {
 }
 
 function renderDemoHome() {
-  vi.stubEnv('VITE_API_MODE', 'mock')
+  vi.stubEnv('VITE_API_MODE', 'legacy-demo')
   const queryClient = createQueryClient()
   queryClient.setQueryData(['auth', 'me'], {
     id: 'demo-test',
@@ -163,8 +163,12 @@ it('shows the dev ribbon when the API mode is not real', async () => {
   expect(screen.getByLabelText('Email')).not.toBeRequired()
   expect(screen.getByLabelText('Пароль')).not.toBeRequired()
   fireEvent.click(screen.getByRole('button', { name: 'Войти' }))
+  fireEvent.click(await screen.findByRole('combobox', { name: 'Предмет' }))
+  fireEvent.click(
+    await screen.findByRole('option', { name: 'Демонстрационный предмет A' }),
+  )
   expect(
-    await screen.findByRole('button', { name: 'Начать запись' }),
+    await screen.findByRole('button', { name: 'Начать диагностику' }),
   ).toBeEnabled()
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
 })

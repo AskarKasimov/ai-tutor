@@ -17,13 +17,16 @@ func New(service *application.Service) *Handler { return &Handler{service: servi
 
 // Create creates and stores a variant from the active competency map.
 // @Summary Собрать и сохранить вариант
-// @Description Вариант собирается по всей карте без тела запроса. Для включения достаточно одного готового TRUE-ОР. Выбираются основной и до двух базовых ОР с рангом Блума ниже основного. Неуспешные компетенции возвращаются с причиной. Повтор успешного запроса с тем же ключом возвращает сохранённый вариант.
+// @Description Вариант строится по активной карте указанного предмета. Для включения достаточно одного готового TRUE-ОР. Выбираются основной и до двух базовых ОР с рангом Блума ниже основного. Неуспешные компетенции возвращаются с причиной. Повтор ключа для другого предмета возвращает конфликт.
 // @Tags Варианты
 // @Security accessCookie
+// @Accept json
+// @Param request body CreateRequest true "Предмет варианта"
 // @Param Idempotency-Key header string true "Ключ повтора успешного запроса" minlength(1) maxlength(128)
 // @Success 201 {object} Variant
 // @Failure 401 {object} fault.Error
 // @Failure 409 {object} fault.Error
+// @Failure 404 {object} fault.Error
 // @Failure 422 {object} fault.Error
 // @Failure 503 {object} fault.Error
 // @Router /variants [post]
@@ -33,8 +36,13 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(r.Context(), w, fault.New(fault.Unauthorized, "UNAUTHORIZED", "Требуется авторизация."))
 		return
 	}
-	if err := httpx.NoBody(r); err != nil {
+	var request CreateRequest
+	if err := httpx.DecodeJSON(r, &request); err != nil {
 		httpx.Error(r.Context(), w, err)
+		return
+	}
+	if request.SubjectID == "" || strings.TrimSpace(request.SubjectID) != request.SubjectID {
+		httpx.Error(r.Context(), w, fault.Validation("subject_id", "Укажите ID предмета."))
 		return
 	}
 	key := r.Header.Get("Idempotency-Key")
@@ -42,7 +50,7 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(r.Context(), w, fault.Validation("Idempotency-Key", "Заголовок Idempotency-Key обязателен."))
 		return
 	}
-	value, err := h.service.Create(r.Context(), principal.ID, key)
+	value, err := h.service.Create(r.Context(), principal.ID, request.SubjectID, key)
 	if err != nil {
 		httpx.Error(r.Context(), w, err)
 		return
@@ -57,9 +65,11 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 // @Security accessCookie
 // @Param limit query int false "Размер страницы, 1–100" default(20) minimum(1) maximum(100)
 // @Param cursor query string false "Курсор страницы"
+// @Param subject_id query string true "ID предмета"
 // @Success 200 {object} VariantList
 // @Failure 401 {object} fault.Error
 // @Failure 422 {object} fault.Error
+// @Failure 404 {object} fault.Error
 // @Failure 503 {object} fault.Error
 // @Router /variants [get]
 func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
@@ -68,9 +78,14 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(r.Context(), w, fault.New(fault.Unauthorized, "UNAUTHORIZED", "Требуется авторизация."))
 		return
 	}
-	query, err := httpx.ParseQuery(r, "limit", "cursor")
+	query, err := httpx.ParseQuery(r, "limit", "cursor", "subject_id")
 	if err != nil {
 		httpx.Error(r.Context(), w, err)
+		return
+	}
+	subjectID := query.Get("subject_id")
+	if subjectID == "" {
+		httpx.Error(r.Context(), w, fault.Validation("subject_id", "Укажите ID предмета."))
 		return
 	}
 	limit := 20
@@ -82,7 +97,7 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 		}
 		limit = parsed
 	}
-	items, cursor, err := h.service.List(r.Context(), principal.ID, limit, query.Get("cursor"))
+	items, cursor, err := h.service.List(r.Context(), principal.ID, subjectID, limit, query.Get("cursor"))
 	if err != nil {
 		httpx.Error(r.Context(), w, err)
 		return

@@ -90,18 +90,46 @@ const resultBody = {
   ],
   untested_basics: [basic, basic2],
 }
-function home() {
+async function home() {
+  const continuing = !!sessionStorage.getItem('ai-tutor:learning-home')
   const router = createRouter({
     context: { queryClient: createQueryClient() },
     history: createMemoryHistory({ initialEntries: ['/'] }),
     routeTree,
   })
-  return render(<RouterProvider router={router} />)
+  const view = render(<RouterProvider router={router} />)
+  if (!continuing) {
+    fireEvent.click(await screen.findByRole('combobox', { name: 'Предмет' }))
+    fireEvent.click(
+      await screen.findByRole('option', { name: 'Предмет теста' }),
+    )
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Начать диагностику' }),
+    )
+  }
+  return view
 }
-function server(answerStatus = 200, totalTasks = 3) {
+function server(
+  answerStatus = 200,
+  totalTasks = 3,
+  feedbackStatus = 200,
+  strengths: string[] | null = ['Вы уверенно различаете модели.'],
+) {
   const sessionProgress = { ...progress, total_tasks: totalTasks }
   let answered = false
   const requests = vi.fn(async (url: string, init?: RequestInit) => {
+    if (url.endsWith('/subjects'))
+      return Response.json([
+        { id: 'subject:test', name: 'Предмет теста', ready: true },
+      ])
+    if (url.endsWith('/subjects/subject%3Atest/learning-state'))
+      return Response.json({
+        subject_id: 'subject:test',
+        subject_name: 'Предмет теста',
+        diagnostic_status: 'not_started',
+        diagnostic_completed: false,
+        training_available: false,
+      })
     if (url.endsWith('/auth/me'))
       return Response.json({
         id: 'student-real',
@@ -155,6 +183,34 @@ function server(answerStatus = 200, totalTasks = 3) {
         total_tasks: totalTasks,
         untested_basics: resultBody.untested_basics.slice(0, totalTasks - 1),
       })
+    if (url.endsWith('/feedback')) {
+      if (feedbackStatus !== 200) {
+        feedbackStatus = 200
+        return Response.json({ code: 'FEEDBACK_FAILED' }, { status: 503 })
+      }
+      return Response.json({
+        session_id: 'session-real',
+        diagnostic_score: 2,
+        maximum_score: 2,
+        score_percentage: 100,
+        summary: 'Итоговое педагогическое резюме.',
+        strengths,
+        confirmed_gaps: [],
+        partial_competencies: [],
+        unverified_competencies: [],
+        training_recommendations: [
+          {
+            competency_id: 'c1',
+            competency_name: 'Модели',
+            outcome_id: 'o1',
+            outcome_name: 'Различать модели',
+            priority: 1,
+            rationale: 'Закрепите выбор модели на новых примерах.',
+          },
+        ],
+        generated_at: 1791200000,
+      })
+    }
     if (url.endsWith('/diagnostic-sessions/session-real'))
       return Response.json(
         answered
@@ -194,7 +250,7 @@ afterEach(() => {
 })
 it('runs real diagnostic audio, obeys skipped basics and displays the server total and transcript', async () => {
   const requests = server()
-  home()
+  await home()
   expect(await screen.findByRole('heading', { level: 1 })).toHaveTextContent(
     'Настоящий вопрос из банка',
   )
@@ -224,6 +280,13 @@ it('runs real diagnostic audio, obeys skipped basics and displays the server tot
     screen.getByText('Диагностический балл').parentElement,
   ).toHaveTextContent('2 / 2')
   expect(screen.getByText('Настоящая расшифровка')).toBeVisible()
+  expect(
+    await screen.findByText('Итоговое педагогическое резюме.'),
+  ).toBeVisible()
+  expect(screen.getByText('Вы уверенно различаете модели.')).toBeVisible()
+  expect(
+    screen.getByText(/Закрепите выбор модели на новых примерах/),
+  ).toBeVisible()
   expect(screen.getByText('Базовый вопрос из банка')).toBeVisible()
   expect(screen.getByText(/Не проверено/)).toBeVisible()
   const [url, init] = requests.mock.calls.find(([url]) =>
@@ -241,9 +304,52 @@ it('runs real diagnostic audio, obeys skipped basics and displays the server tot
     ),
   ).toBe(false)
 })
+it('keeps the diagnostic result visible and retries failed overall feedback', async () => {
+  const requests = server(200, 3, 503)
+  await home()
+  fireEvent.click(await screen.findByRole('button', { name: 'Начать запись' }))
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Завершить запись' }),
+  )
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Посмотреть итог' }),
+  )
+  expect(
+    await screen.findByText('Не удалось загрузить общий фидбэк.'),
+  ).toBeVisible()
+  expect(
+    screen.getByText('Диагностический балл').parentElement,
+  ).toHaveTextContent('2 / 2')
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Повторить загрузку фидбэка' }),
+  )
+  expect(
+    await screen.findByText('Итоговое педагогическое резюме.'),
+  ).toBeVisible()
+  expect(
+    requests.mock.calls.filter(([url]) => url.endsWith('/feedback')),
+  ).toHaveLength(2)
+})
+it('shows overall feedback when the backend sends null strengths', async () => {
+  server(200, 3, 200, null)
+  await home()
+  fireEvent.click(await screen.findByRole('button', { name: 'Начать запись' }))
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Завершить запись' }),
+  )
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Посмотреть итог' }),
+  )
+  expect(
+    await screen.findByText('Итоговое педагогическое резюме.'),
+  ).toBeVisible()
+  expect(
+    screen.queryByText('Не удалось загрузить общий фидбэк.'),
+  ).not.toBeInTheDocument()
+})
 it('keeps the audio and idempotency key on a failed submission and retries without recording again', async () => {
   const requests = server(502)
-  home()
+  await home()
   fireEvent.click(await screen.findByRole('button', { name: 'Начать запись' }))
   fireEvent.click(
     await screen.findByRole('button', { name: 'Завершить запись' }),
@@ -262,10 +368,10 @@ it('keeps the audio and idempotency key on a failed submission and retries witho
 })
 it('restores the existing session on remount without creating another variant', async () => {
   const requests = server()
-  const first = home()
+  const first = await home()
   await screen.findByRole('heading', { name: 'Настоящий вопрос из банка' })
   first.unmount()
-  home()
+  await home()
   await screen.findByRole('heading', { name: 'Настоящий вопрос из банка' })
   expect(
     requests.mock.calls.filter(
@@ -281,7 +387,7 @@ it('restores the existing session on remount without creating another variant', 
 it('plays the server instruction through the diagnostic audio endpoint', async () => {
   const requests = server()
   vi.spyOn(audio, 'playQuestion').mockResolvedValue(vi.fn())
-  home()
+  await home()
   fireEvent.click(
     await screen.findByRole('button', { name: 'Прослушать инструкцию' }),
   )
@@ -302,7 +408,7 @@ it('plays the server instruction through the diagnostic audio endpoint', async (
 
 it('allows starting a fresh diagnostic after the backend has lost the stored session', async () => {
   const requests = server()
-  const first = home()
+  const first = await home()
   await screen.findByRole('heading', { name: 'Настоящий вопрос из банка' })
   first.unmount()
   vi.stubGlobal(
@@ -316,7 +422,7 @@ it('allows starting a fresh diagnostic after the backend has lost the stored ses
         : requests(url, init),
     ),
   )
-  home()
+  await home()
   expect(await screen.findByRole('alert')).toHaveTextContent(
     'Сессия больше недоступна',
   )
@@ -378,7 +484,7 @@ it('uses backend basic tasks with a 0/1 scale and excludes them from the diagnos
       return requests(url, init)
     }),
   )
-  home()
+  await home()
   for (let index = 0; index < 3; index++) {
     fireEvent.click(
       await screen.findByRole('button', { name: 'Начать запись' }),
@@ -426,7 +532,7 @@ it('explains when no competency in the map is eligible instead of displaying moc
         : requests(url, init),
     ),
   )
-  home()
+  await home()
   expect(await screen.findByRole('alert')).toHaveTextContent('карта')
   expect(
     screen.queryByRole('button', { name: 'Начать запись' }),
@@ -444,7 +550,7 @@ it('returns to login if diagnostic submission loses authorization', async () => 
         : requests(url, init),
     ),
   )
-  home()
+  await home()
   fireEvent.click(await screen.findByRole('button', { name: 'Начать запись' }))
   fireEvent.click(
     await screen.findByRole('button', { name: 'Завершить запись' }),
@@ -475,7 +581,7 @@ it('retries variant and session creation with the same keys after lost responses
       return requests(url, init)
     }),
   )
-  home()
+  await home()
   await screen.findByRole('alert')
   fireEvent.click(screen.getByRole('button', { name: 'Попробовать снова' }))
   await waitFor(() => expect(sessionKeys).toHaveLength(1))
@@ -508,7 +614,7 @@ it('retains the original audio/key when the backend reports that an answer is st
       return requests(url, init)
     }),
   )
-  home()
+  await home()
   fireEvent.click(await screen.findByRole('button', { name: 'Начать запись' }))
   fireEvent.click(
     await screen.findByRole('button', { name: 'Завершить запись' }),
@@ -533,7 +639,7 @@ it('offers a new diagnostic if the completed result disappears after a backend r
         : requests(url, init),
     ),
   )
-  home()
+  await home()
   fireEvent.click(await screen.findByRole('button', { name: 'Начать запись' }))
   fireEvent.click(
     await screen.findByRole('button', { name: 'Завершить запись' }),
@@ -554,7 +660,7 @@ it.each([1, 2])(
   'finishes a competency with %i available tasks without inventing missing basics',
   async (totalTasks) => {
     server(200, totalTasks)
-    home()
+    await home()
     expect(await screen.findByRole('heading', { level: 1 })).toHaveTextContent(
       'Настоящий вопрос из банка',
     )

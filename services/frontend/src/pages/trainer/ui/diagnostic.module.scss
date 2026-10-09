@@ -26,6 +26,29 @@
   }
 }
 
+.overallFeedback {
+  margin: var(--space-6) 0;
+  padding: var(--space-5);
+  background: var(--color-panel-solid);
+  border: 1px solid var(--gray-5);
+  border-radius: var(--radius-4);
+  h2 {
+    margin: 0 0 var(--space-4);
+  }
+  h3 {
+    margin: var(--space-5) 0 var(--space-2);
+    font-size: var(--font-size-4);
+  }
+  li {
+    margin-bottom: var(--space-2);
+  }
+}
+
+.overallSummary {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .longQuestion {
   margin: var(--space-4) 0 var(--space-5);
   font-family: inherit;

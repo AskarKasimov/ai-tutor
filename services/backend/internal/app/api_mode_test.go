@@ -74,11 +74,12 @@ func TestMockModeUsesLocalModelsWithRealAuthAndStorage(t *testing.T) {
 	}
 
 	admin := f.admin(t)
-	if w := upload(f, "/admin/competency-map/import", "file", "map.csv", "text/csv", variantMapCSV(t), admin); w.Code != http.StatusOK {
+	if w := upload(f, "/admin/subjects/subject:test/competency-map/import", "file", "map.csv", "text/csv", variantMapCSV(t), admin); w.Code != http.StatusOK {
 		t.Fatalf("import competency map: %d %s", w.Code, w.Body.String())
 	}
 
-	req := httptest.NewRequest(http.MethodPost, "https://api.example/variants", strings.NewReader(""))
+	req := httptest.NewRequest(http.MethodPost, "https://api.example/variants", strings.NewReader(`{"subject_id":"subject:test"}`))
+	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Idempotency-Key", "mock-assessment-variant")
 	req.AddCookie(access)
 	w = httptest.NewRecorder()

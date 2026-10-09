@@ -1,11 +1,15 @@
--- name: LockCompetencyMapRevisionForVariant :one
-SELECT revision FROM competency_map_state WHERE singleton = true FOR SHARE;
+-- name: LockSubjectForVariant :one
+SELECT id, name, COALESCE(active_revision, 0)::bigint AS active_revision
+FROM subjects WHERE id = $1 FOR SHARE;
 
 -- name: FindVariantByRequestKey :one
-SELECT id FROM variants WHERE user_id = $1 AND create_request_key = $2;
+SELECT id, subject_id FROM variants WHERE user_id = $1 AND create_request_key = $2;
+
+-- name: FindSubjectForVariantList :one
+SELECT id FROM subjects WHERE id = $1;
 
 -- name: ReadVariantCandidates :many
-SELECT state.revision,
+SELECT sqlc.arg(revision)::bigint AS revision,
        COALESCE((SELECT min(osr.source_row_index) FROM outcomes co
                  LEFT JOIN outcome_source_rows osr ON osr.outcome_id = co.id
                  WHERE co.constituent_id IN (
@@ -38,15 +42,14 @@ SELECT state.revision,
                'importance', outcome.importance, 'educational_content', outcome.educational_content
            )
        ) AS profile_json
-FROM competency_map_state state
-JOIN competencies competency ON competency.revision = state.revision
+FROM competencies competency
 LEFT JOIN constituents constituent ON constituent.competency_id = competency.id
 LEFT JOIN topic_levels topic ON topic.id = constituent.topic_level_id
 LEFT JOIN outcomes outcome ON outcome.constituent_id = constituent.id
 LEFT JOIN taxonomies taxonomy ON taxonomy.id = outcome.taxonomy_id
 LEFT JOIN ald_levels ald ON ald.id = outcome.ald_level_id
 LEFT JOIN tasks task ON task.outcome_id = outcome.id
-WHERE state.singleton = true
+WHERE competency.revision = sqlc.arg(revision)::bigint
 ORDER BY competency_source_order, competency.name, competency.id,
          outcome_source_order, outcome.name, outcome.id,
          CASE WHEN task.source_row_index IS NULL THEN 1 ELSE 0 END,
@@ -54,8 +57,8 @@ ORDER BY competency_source_order, competency.name, competency.id,
 
 -- name: InsertVariant :one
 INSERT INTO variants(id, user_id, create_request_key, map_revision, algorithm_version,
-                     included_competency_count, skipped_competencies, created_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                     included_competency_count, skipped_competencies, created_at, subject_id, subject_name_snapshot)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 ON CONFLICT (user_id, create_request_key) DO NOTHING
 RETURNING id;
 
@@ -66,7 +69,7 @@ VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10);
 
 -- name: ReadVariantHeaderByOwner :one
 SELECT id, user_id, map_revision, algorithm_version, included_competency_count,
-       skipped_competencies, created_at
+       skipped_competencies, created_at, subject_id, subject_name_snapshot
 FROM variants WHERE id = $1 AND user_id = $2;
 
 -- name: ReadVariantTasks :many
@@ -80,10 +83,10 @@ WHERE v.user_id = $1 AND v.id = $2 AND vt.id = $3;
 
 -- name: ListVariantsByOwner :many
 SELECT id, map_revision, algorithm_version, included_competency_count,
-       skipped_competencies, created_at,
+       skipped_competencies, created_at, subject_id, subject_name_snapshot,
        (SELECT count(*) FROM variant_tasks vt WHERE vt.variant_id = variants.id) AS task_count
 FROM variants
-WHERE user_id = $1
+WHERE user_id = $1 AND subject_id = $2
   AND (sqlc.narg(cursor_created_at)::bigint IS NULL
        OR (created_at, id) < (sqlc.narg(cursor_created_at)::bigint, sqlc.narg(cursor_id)::text))
 ORDER BY created_at DESC, id DESC

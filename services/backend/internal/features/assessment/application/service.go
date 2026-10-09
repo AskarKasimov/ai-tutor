@@ -42,7 +42,7 @@ func validText(value string, max int) bool {
 
 func gradingMaxScore(gradingContext GradingContext) (int, error) {
 	switch {
-	case gradingContext.Role == "main" && gradingContext.MaxScore == 2:
+	case (gradingContext.Role == "main" || gradingContext.Role == "training") && gradingContext.MaxScore == 2:
 		return 2, nil
 	case gradingContext.Role == "basic" && gradingContext.MaxScore == 1:
 		return 1, nil
@@ -177,6 +177,15 @@ func (s *Service) EvaluateVariant(ctx context.Context, ownerID, transcriptionID,
 	if err != nil {
 		return Evaluation{}, err
 	}
+	gradingContext, err := GradingContextFromVariantTask(item)
+	if err != nil {
+		return Evaluation{}, err
+	}
+	return s.evaluateWithContext(ctx, ownerID, transcriptionID, gradingContext)
+}
+
+// EvaluateTrusted evaluates a server-owned snapshot; HTTP clients cannot supply it.
+func (s *Service) EvaluateTrusted(ctx context.Context, ownerID, transcriptionID string, item variant.VariantTask) (Evaluation, error) {
 	gradingContext, err := GradingContextFromVariantTask(item)
 	if err != nil {
 		return Evaluation{}, err

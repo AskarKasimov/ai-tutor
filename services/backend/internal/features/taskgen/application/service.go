@@ -37,6 +37,7 @@ type MaterialChunk struct {
 }
 
 type Context struct {
+	SubjectID string
 	Revision  int64
 	Outcome   Outcome
 	Examples  []Example
@@ -56,8 +57,8 @@ type Generator interface {
 }
 
 type Repository interface {
-	GetByKey(context.Context, string, string) (Task, error)
-	Context(context.Context, string) (Context, error)
+	GetByKey(context.Context, string, string, string) (Task, error)
+	Context(context.Context, string, string) (Context, error)
 	Persist(context.Context, Context, string, string, string, Draft, int64) (Task, error)
 }
 
@@ -82,16 +83,19 @@ func validText(value string, max int) bool {
 	return utf8.ValidString(value) && strings.TrimSpace(value) != "" && !strings.ContainsRune(value, 0) && utf8.RuneCountInString(value) <= max
 }
 
-func (s *Service) Generate(ctx context.Context, outcomeID, requestKey, requestedBy string) (Task, error) {
+func (s *Service) Generate(ctx context.Context, subjectID, outcomeID, requestKey, requestedBy string) (Task, error) {
+	if !validText(subjectID, 128) {
+		return Task{}, fault.Validation("subject_id", "Укажите предмет.")
+	}
 	if !validText(outcomeID, 128) || !validText(requestKey, 128) || !validText(requestedBy, 128) {
 		return Task{}, fault.Validation("idempotency_key", "Укажите ключ идемпотентности и идентификатор ОР.")
 	}
-	if task, err := s.repository.GetByKey(ctx, outcomeID, requestKey); err == nil {
+	if task, err := s.repository.GetByKey(ctx, subjectID, outcomeID, requestKey); err == nil {
 		return task, nil
 	} else if !isNotFound(err) {
 		return Task{}, err
 	}
-	snapshot, err := s.repository.Context(ctx, outcomeID)
+	snapshot, err := s.repository.Context(ctx, subjectID, outcomeID)
 	if err != nil {
 		return Task{}, err
 	}

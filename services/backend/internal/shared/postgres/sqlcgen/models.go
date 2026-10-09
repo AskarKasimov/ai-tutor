@@ -72,6 +72,7 @@ type CompetencyMapImport struct {
 	SourceFormat          string
 	SourceHeaders         []byte
 	UnparsedTaskCellCount int32
+	SubjectID             string
 }
 
 type CompetencyMapSourceRow struct {
@@ -124,6 +125,42 @@ type CurriculumSection struct {
 	Title    string
 }
 
+type DiagnosticAnswer struct {
+	SessionID      string
+	AnswerOrder    int32
+	IdempotencyKey string
+	RequestDigest  string
+	VariantTaskID  string
+	AnswerData     []byte
+	ProgressData   []byte
+	CreatedAt      pgtype.Timestamptz
+}
+
+type DiagnosticSession struct {
+	ID                    string
+	OwnerID               string
+	VariantID             string
+	SubjectID             string
+	SubjectNameSnapshot   string
+	MapRevision           int64
+	Status                string
+	CurrentCompetency     int32
+	CurrentTask           int32
+	StartRequestKey       string
+	StartRequestDigest    string
+	SessionData           []byte
+	InFlightKey           *string
+	InFlightFingerprint   *string
+	InFlightVariantTaskID *string
+	InFlightToken         *string
+	LeaseUntil            pgtype.Timestamptz
+	TranscriptionID       *string
+	TranscriptionText     *string
+	CreatedAt             pgtype.Timestamptz
+	UpdatedAt             pgtype.Timestamptz
+	CompletedAt           pgtype.Timestamptz
+}
+
 type GenerationRun struct {
 	ID               string
 	OutcomeID        string
@@ -157,6 +194,7 @@ type LearningSession struct {
 
 type MaterialChunk struct {
 	ID           string
+	SubjectID    string
 	MaterialName string
 	Ordinal      int32
 	Content      string
@@ -198,6 +236,13 @@ type RefreshToken struct {
 	TokenHash []byte
 	SessionID string
 	UsedAt    *int64
+}
+
+type Subject struct {
+	ID             string
+	Name           string
+	ActiveRevision *int64
+	CreatedAt      int64
 }
 
 type Task struct {
@@ -242,6 +287,49 @@ type TopicLevel struct {
 	Label string
 }
 
+type TrainingAttempt struct {
+	SessionID    string
+	Sequence     int64
+	RequestKey   string
+	Fingerprint  string
+	ExerciseID   string
+	AttemptData  []byte
+	ResponseData []byte
+}
+
+type TrainingExercise struct {
+	ID           string
+	SessionID    string
+	Round        int64
+	TargetIndex  int32
+	ExerciseData []byte
+	AudioAssetID *string
+}
+
+type TrainingSession struct {
+	ID              string
+	OwnerID         string
+	DiagnosticID    string
+	SubjectID       string
+	StateData       []byte
+	ReservationData []byte
+	LeaseUntil      pgtype.Timestamptz
+	CreatedAt       pgtype.Timestamptz
+}
+
+type TrainingStartRequest struct {
+	OwnerID      string
+	RequestKey   string
+	DiagnosticID string
+	SessionID    string
+}
+
+type TrainingTarget struct {
+	SessionID  string
+	Position   int32
+	TargetData []byte
+}
+
 type Transcription struct {
 	ID        string
 	UserID    string
@@ -267,6 +355,8 @@ type Variant struct {
 	IncludedCompetencyCount int32
 	SkippedCompetencies     []byte
 	CreatedAt               int64
+	SubjectID               string
+	SubjectNameSnapshot     string
 }
 
 type VariantTask struct {

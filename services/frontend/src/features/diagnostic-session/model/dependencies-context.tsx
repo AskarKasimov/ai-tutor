@@ -4,23 +4,45 @@ import type {
   DiagnosticProgress,
   DiagnosticAudioMetadata,
   DiagnosticResult,
+  DiagnosticOverallFeedback,
   DiagnosticSubmission,
   DiagnosticTask,
   DiagnosticSessionIdentity,
 } from '@/entities/diagnostic-session'
 export type DiagnosticDependencies = {
   apiBase: string
-  createDiagnosticIdentity(): DiagnosticSessionIdentity
+  createDiagnosticIdentity(subjectId: string): DiagnosticSessionIdentity
   diagnosticStorage: {
-    load(userId: string, apiBase: string): DiagnosticSessionIdentity | undefined
+    load(
+      userId: string,
+      apiBase: string,
+      subjectId: string,
+    ): DiagnosticSessionIdentity | undefined
     save(
       userId: string,
       apiBase: string,
+      subjectId: string,
       identity: DiagnosticSessionIdentity,
     ): void
+    loadPending(
+      userId: string,
+      apiBase: string,
+      subjectId: string,
+    ): DiagnosticSessionIdentity | undefined
+    savePending(
+      userId: string,
+      apiBase: string,
+      subjectId: string,
+      identity: DiagnosticSessionIdentity,
+    ): void
+    clearPending(userId: string, apiBase: string, subjectId: string): void
   }
   diagnostic: {
-    createVariant(key: string, signal: AbortSignal): Promise<{ id: string }>
+    createVariant(
+      subjectId: string,
+      key: string,
+      signal: AbortSignal,
+    ): Promise<{ id: string }>
     startDiagnostic(
       variantId: string,
       key: string,
@@ -34,6 +56,10 @@ export type DiagnosticDependencies = {
       sessionId: string,
       signal: AbortSignal,
     ): Promise<DiagnosticResult>
+    readDiagnosticFeedback(
+      sessionId: string,
+      signal: AbortSignal,
+    ): Promise<DiagnosticOverallFeedback>
     submitDiagnostic(
       input: DiagnosticSubmission,
       signal: AbortSignal,

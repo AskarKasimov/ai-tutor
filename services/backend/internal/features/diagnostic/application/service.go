@@ -98,6 +98,13 @@ func (s *Service) Read(ctx context.Context, ownerID, sessionID string) (diagnost
 	return value.Progress(), nil
 }
 
+func (s *Service) LatestCompleted(ctx context.Context, ownerID, subjectID string) (diagnostic.Session, bool, error) {
+	return s.store.LatestCompleted(ctx, ownerID, subjectID)
+}
+func (s *Service) LearningState(ctx context.Context, ownerID, subjectID string) (diagnostic.LearningState, error) {
+	return s.store.LearningState(ctx, ownerID, subjectID)
+}
+
 func (s *Service) CurrentAudio(ctx context.Context, ownerID, sessionID, expectedTaskID string) (audioasset.Metadata, error) {
 	if !validID(sessionID) {
 		return audioasset.Metadata{}, fault.Validation("id", "Укажите корректный ID диагностической сессии.")
@@ -286,6 +293,10 @@ func (s *Service) Result(ctx context.Context, ownerID, sessionID string) (diagno
 	return result, nil
 }
 
+func (s *Service) ResultForTraining(ctx context.Context, ownerID, sessionID string) (diagnostic.Result, error) {
+	return s.Result(ctx, ownerID, sessionID)
+}
+
 func validateEvaluation(value assessment.Evaluation, role string) error {
 	maxScore := 2
 	if role == "basic" {
@@ -346,7 +357,7 @@ func snapshotVariant(value variant.Variant) (diagnostic.VariantSnapshot, error) 
 		return diagnostic.VariantSnapshot{}, fault.New(fault.Invalid, "VARIANT_INVALID", "Вариант не содержит заданий для диагностики.")
 	}
 	snapshot := diagnostic.VariantSnapshot{
-		ID: value.ID, MapRevision: value.MapRevision, AlgorithmVersion: value.AlgorithmVersion,
+		ID: value.ID, SubjectID: value.SubjectID, SubjectNameSnapshot: value.SubjectNameSnapshot, MapRevision: value.MapRevision, AlgorithmVersion: value.AlgorithmVersion,
 		IncludedCompetencyCount: value.IncludedCompetencyCount,
 		SkippedCompetencies:     make([]diagnostic.SkippedCompetency, 0, len(value.SkippedCompetencies)),
 		Competencies:            make([]diagnostic.Competency, 0, len(value.Competencies)),

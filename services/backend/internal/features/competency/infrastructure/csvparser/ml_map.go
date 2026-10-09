@@ -15,7 +15,7 @@ import (
 var rpdSection = regexp.MustCompile(`^Р\s*\.\s*(\d+(?:\.\d+)*)\s*(.*)$`)
 var rpdCompetency = regexp.MustCompile(`(?:ОПК|ПК)-[0-9]+`)
 
-// parseMLMap accepts the original "Введение в ML" spreadsheet export. Its
+// parseMLMap accepts the ML spreadsheet export. Its
 // task columns contain both complete assignments and fragments of assignments.
 // Every source cell is archived; only self-contained assignments become tasks.
 func parseMLMap(reader *csv.Reader, headers []string, headerLine int, restoreCell func(string) string) (competencymap.Map, error) {

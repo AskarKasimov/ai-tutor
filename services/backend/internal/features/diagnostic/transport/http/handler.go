@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/diagnostic"
+
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/user"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/features/diagnostic/application"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/fault"
@@ -15,6 +17,7 @@ import (
 type StartRequest struct {
 	VariantID string `json:"variant_id" minLength:"1" maxLength:"128" binding:"required"`
 }
+type LearningStateResponse = diagnostic.LearningState
 
 type Handler struct {
 	service        *application.Service
@@ -25,9 +28,9 @@ func New(service *application.Service, maxUploadBytes int64) *Handler {
 	return &Handler{service: service, maxUploadBytes: maxUploadBytes}
 }
 
-// Start creates an in-memory diagnostic session for an owned variant.
+// Start creates a persistent diagnostic session for an owned variant.
 // @Summary Начать диагностическую сессию
-// @Description Сохраняет в памяти снимок порядка варианта. Повтор с тем же ключом возвращает ту же сессию.
+// @Description Сохраняет в PostgreSQL снимок порядка варианта. Повтор с тем же ключом возвращает ту же сессию.
 // @Tags Диагностика
 // @Security accessCookie
 // @Accept json
@@ -68,6 +71,34 @@ func (h *Handler) Start(w http.ResponseWriter, r *http.Request) {
 		status = http.StatusOK
 	}
 	httpx.JSON(w, status, progressResponse(result))
+}
+
+// LearningState returns the latest completed diagnostic for a subject.
+// @Summary Состояние обучения по предмету
+// @Tags Диагностика
+// @Security accessCookie
+// @Produce json
+// @Param subject_id path string true "ID предмета"
+// @Success 200 {object} LearningStateResponse
+// @Failure 401 {object} fault.Error
+// @Failure 404 {object} fault.Error
+// @Router /subjects/{subject_id}/learning-state [get]
+func (h *Handler) LearningState(w http.ResponseWriter, r *http.Request) {
+	principal, ok := httpx.Principal[user.User](r)
+	if !ok {
+		httpx.Error(r.Context(), w, fault.New(fault.Unauthorized, "UNAUTHORIZED", "Требуется действующая сессия."))
+		return
+	}
+	if err := noQuery(r); err != nil {
+		httpx.Error(r.Context(), w, err)
+		return
+	}
+	state, err := h.service.LearningState(r.Context(), principal.ID, r.PathValue("subject_id"))
+	if err != nil {
+		httpx.Error(r.Context(), w, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, state)
 }
 
 // Read returns status and the current public task.

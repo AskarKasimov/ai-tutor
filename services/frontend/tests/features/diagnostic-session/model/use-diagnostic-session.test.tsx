@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createQueryClient } from '@/bootstrap/providers'
 import { createQueryWrapper } from '../../../support/query-wrapper'
 import {
+  loadPendingDiagnosticIdentity,
   saveDiagnosticIdentity,
   loadDiagnosticIdentity,
 } from '@/features/diagnostic-session/model/diagnostic-session-storage'
@@ -30,7 +31,8 @@ const next: DiagnosticProgress = { ...completed, session_id: 'new' }
 async function mount() {
   const client = createQueryClient()
   await replaceSession(client, user)
-  saveDiagnosticIdentity(user.id, api.diagnosticApiBase, {
+  saveDiagnosticIdentity(user.id, api.diagnosticApiBase, 'subject:test', {
+    subjectId: 'subject:test',
     variantKey: 'original-v',
     startKey: 'original-s',
     variantId: 'original',
@@ -38,7 +40,10 @@ async function mount() {
   })
   vi.spyOn(api, 'readDiagnostic').mockResolvedValue(completed)
   const wrapper = createQueryWrapper(client)
-  const view = renderHook(() => useDiagnosticSession(user.id), { wrapper })
+  const view = renderHook(
+    () => useDiagnosticSession(user.id, 'subject:test', 'old'),
+    { wrapper },
+  )
   await waitFor(() => expect(view.result.current.query.data).toEqual(completed))
   return { ...view, client }
 }
@@ -46,6 +51,45 @@ beforeEach(() => sessionStorage.clear())
 afterEach(() => vi.restoreAllMocks())
 
 describe('diagnostic recovery and auth isolation', () => {
+  it('does not load or persist the previous session while an explicit new diagnostic starts', async () => {
+    const read = vi.spyOn(api, 'readDiagnostic').mockResolvedValue(completed)
+    const createVariant = vi
+      .spyOn(api, 'createVariant')
+      .mockRejectedValueOnce(new Error('offline'))
+      .mockResolvedValue({ id: 'fresh-variant' })
+    vi.spyOn(api, 'startDiagnostic').mockResolvedValue(next)
+    const client = createQueryClient()
+    await replaceSession(client, user)
+    saveDiagnosticIdentity(user.id, api.diagnosticApiBase, 'subject:test', {
+      subjectId: 'subject:test',
+      variantKey: 'old-v',
+      startKey: 'old-s',
+      variantId: 'old',
+      sessionId: 'old',
+    })
+    const view = renderHook(
+      () => useDiagnosticSession(user.id, 'subject:test', undefined, true),
+      { wrapper: createQueryWrapper(client) },
+    )
+    expect(read).not.toHaveBeenCalled()
+    expect(view.result.current.query.data).toBeUndefined()
+    await act(async () => {
+      await view.result.current.restart.mutateAsync().catch(() => undefined)
+    })
+    expect(createVariant).toHaveBeenCalledOnce()
+    expect(
+      loadDiagnosticIdentity(user.id, api.diagnosticApiBase, 'subject:test'),
+    ).toMatchObject({ sessionId: 'old', startKey: 'old-s' })
+    await waitFor(() => expect(view.result.current.query.isError).toBe(true))
+    expect(view.result.current.query.error?.message).toBe('offline')
+    await act(async () => {
+      await view.result.current.restart.mutateAsync()
+    })
+    expect(createVariant.mock.calls[0][1]).toBe(createVariant.mock.calls[1][1])
+    expect(
+      loadDiagnosticIdentity(user.id, api.diagnosticApiBase, 'subject:test'),
+    ).toMatchObject({ sessionId: 'new', variantId: 'fresh-variant' })
+  })
   it('keeps the completed result visible after a failed restart', async () => {
     vi.spyOn(api, 'createVariant').mockRejectedValue(new Error('Lost response'))
     const view = await mount()
@@ -68,10 +112,12 @@ describe('diagnostic recovery and auth isolation', () => {
     await act(async () => {
       await view.result.current.restart.mutateAsync().catch(() => undefined)
     })
-    const failedIdentity = loadDiagnosticIdentity(
+    const failedIdentity = loadPendingDiagnosticIdentity(
       user.id,
       api.diagnosticApiBase,
+      'subject:test',
     )
+    expect(failedIdentity).toMatchObject({ variantId: 'new-variant' })
     await act(async () => {
       await view.result.current.restart.mutateAsync()
     })

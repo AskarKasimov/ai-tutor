@@ -6,8 +6,12 @@ import type {
 } from '@/entities/competency-map'
 export type CompetencyMapDependencies = {
   competencyMap: {
-    read(signal: AbortSignal): Promise<CompetencyMapSummary>
-    import(file: File, signal: AbortSignal): Promise<CompetencyMapImport>
+    read(subjectId: string, signal: AbortSignal): Promise<CompetencyMapSummary>
+    import(
+      subjectId: string,
+      file: File,
+      signal: AbortSignal,
+    ): Promise<CompetencyMapImport>
   }
 }
 const Context = createContext<CompetencyMapDependencies | null>(null)

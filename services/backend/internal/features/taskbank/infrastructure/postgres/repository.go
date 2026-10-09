@@ -26,6 +26,7 @@ func (r *Repository) Search(ctx context.Context, filter application.SearchFilter
 		}
 	}
 	rows, err := r.queries.SearchTaskProfiles(ctx, db.SearchTaskProfilesParams{
+		SubjectID: filter.SubjectID,
 		OutcomeID: filter.OutcomeID, CompetencyID: filter.CompetencyID, ConstituentID: filter.ConstituentID,
 		TaxonomyCode: filter.TaxonomyCode, AldLevelCode: filter.ALDLevelCode, TopicLevelCode: filter.TopicLevelCode,
 		Importance: int16(filter.Importance), ImportanceMin: int16(filter.ImportanceMin), ImportanceMax: int16(filter.ImportanceMax), IncludeInTest: includeInTest, Origin: filter.Origin,
@@ -51,8 +52,8 @@ func (r *Repository) Search(ctx context.Context, filter application.SearchFilter
 	return items, nil
 }
 
-func (r *Repository) Profile(ctx context.Context, taskID string) (application.TaskProfile, error) {
-	row, err := r.queries.GetTaskProfile(ctx, taskID)
+func (r *Repository) Profile(ctx context.Context, subjectID, taskID string) (application.TaskProfile, error) {
+	row, err := r.queries.GetTaskProfile(ctx, db.GetTaskProfileParams{SubjectID: subjectID, TaskID: taskID})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return application.TaskProfile{}, fault.New(fault.NotFound, "TASK_NOT_FOUND", "Задание не найдено.")
 	}

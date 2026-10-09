@@ -24,11 +24,12 @@ func TestAssessmentEndpointOwnershipHistoricalSnapshotAndStrictResults(t *testin
 		}
 	}
 	admin := f.admin(t)
-	if w := upload(f, "/admin/competency-map/import", "file", "map.csv", "text/csv", variantMapCSV(t), admin); w.Code != 200 {
+	if w := upload(f, "/admin/subjects/subject:test/competency-map/import", "file", "map.csv", "text/csv", variantMapCSV(t), admin); w.Code != 200 {
 		t.Fatalf("import: %d %s", w.Code, w.Body.String())
 	}
 	create := func(key string) (string, string, string) {
-		req := httptest.NewRequest(http.MethodPost, "https://api.example/variants", nil)
+		req := httptest.NewRequest(http.MethodPost, "https://api.example/variants", strings.NewReader(`{"subject_id":"subject:test"}`))
+		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("Idempotency-Key", key)
 		req.AddCookie(access)
 		w := httptest.NewRecorder()
@@ -57,7 +58,7 @@ func TestAssessmentEndpointOwnershipHistoricalSnapshotAndStrictResults(t *testin
 		t.Fatal(err)
 	}
 	replacement := strings.ReplaceAll(string(variantMapCSV(t)), "сумма признаков с весами", "НОВЫЙ ЭТАЛОН")
-	if w := upload(f, "/admin/competency-map/import", "file", "replacement.csv", "text/csv", []byte(replacement), admin); w.Code != 200 {
+	if w := upload(f, "/admin/subjects/subject:test/competency-map/import", "file", "replacement.csv", "text/csv", []byte(replacement), admin); w.Code != 200 {
 		t.Fatalf("reimport: %d %s", w.Code, w.Body.String())
 	}
 	var mode atomic.Value

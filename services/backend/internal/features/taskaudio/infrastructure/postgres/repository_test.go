@@ -4,10 +4,14 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"fmt"
 	"os"
 	"testing"
 	"time"
 
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/competencymap"
+	competencypostgres "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/competency/infrastructure/postgres"
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/features/taskaudio/application"
 	sharedpostgres "github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/postgres"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -43,6 +47,9 @@ func setupAudioRepository(t *testing.T) (*Repository, *pgxpool.Pool, context.Con
 	if err := sharedpostgres.Migrate(ctx, pool); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := pool.Exec(ctx, `INSERT INTO subjects(id,name,created_at) VALUES ('subject:test','Тестовый предмет',1)`); err != nil {
+		t.Fatal(err)
+	}
 	t.Cleanup(func() {
 		pool.Close()
 		_, _ = admin.Exec(ctx, "DROP SCHEMA "+schema+" CASCADE")
@@ -58,13 +65,13 @@ func seedCurrentTaskAudio(t *testing.T, pool *pgxpool.Pool, ctx context.Context,
 		args  []any
 	}{
 		{"INSERT INTO users(id,email,password_hash,created_at) VALUES ('audio-owner','audio-owner@example.test','test',1)", nil},
-		{"INSERT INTO competency_map_imports(revision,imported_at,imported_by,competency_count,constituent_count,outcome_count,task_count,source_format,source_headers) VALUES (1,1,'audio-owner',1,1,1,1,'paired','[]')", nil},
+		{"INSERT INTO competency_map_imports(revision,subject_id,imported_at,imported_by,competency_count,constituent_count,outcome_count,task_count,source_format,source_headers) VALUES (1,'subject:test',1,'audio-owner',1,1,1,1,'paired','[]')", nil},
 		{"INSERT INTO competencies(id,name,revision) VALUES ('audio-competency','Audio',1)", nil},
 		{"INSERT INTO constituents(id,competency_id,name) VALUES ('audio-constituent','audio-competency','Audio')", nil},
 		{"INSERT INTO outcomes(id,constituent_id,name) VALUES ('audio-outcome','audio-constituent','Audio')", nil},
 		{"INSERT INTO audio_assets(id,instruction,object_key) VALUES ($1,'Speak answer',$2)", []any{assetID, "task-audio/v1/" + assetID + ".wav"}},
 		{"INSERT INTO tasks(id,outcome_id,question,voice_instruction,created_at,audio_asset_id) VALUES ($1,'audio-outcome','Question','Speak answer',1,$2)", []any{taskID, assetID}},
-		{"UPDATE competency_map_state SET revision=1 WHERE singleton=true", nil},
+		{"UPDATE subjects SET active_revision=1 WHERE id='subject:test'", nil},
 	}
 	for _, statement := range statements {
 		if _, err := pool.Exec(ctx, statement.query, statement.args...); err != nil {
@@ -142,6 +149,21 @@ func TestClaimRepairSerializesReadyAssetsAndClearsReadyReferences(t *testing.T) 
 	}
 }
 
+func TestClaimRepairRetriesFailedCurrentAsset(t *testing.T) {
+	repository, pool, ctx := setupAudioRepository(t)
+	seedCurrentTaskAudio(t, pool, ctx, "asset-failed-repair", "task-failed-repair")
+	if _, err := pool.Exec(ctx, `UPDATE audio_assets SET status='failed', attempts=5, last_error_code='synthesis_failed' WHERE id='asset-failed-repair'`); err != nil {
+		t.Fatal(err)
+	}
+	claim, ok, err := repository.ClaimRepair(ctx, "asset-failed-repair", "token-failed-repair", time.Minute)
+	if err != nil || !ok || claim.Asset.Attempts != 1 {
+		t.Fatalf("failed asset repair claim: claim=%+v ok=%v err=%v", claim, ok, err)
+	}
+	if _, ok, err := repository.ClaimRepair(ctx, "asset-failed-repair", "second-repair", time.Minute); err != nil || ok {
+		t.Fatalf("concurrent failed asset repair claim: ok=%v err=%v", ok, err)
+	}
+}
+
 func TestClaimRepairRejectsPendingAndStaleSnapshotOnlyAssets(t *testing.T) {
 	repository, pool, ctx := setupAudioRepository(t)
 	seedCurrentTaskAudio(t, pool, ctx, "asset-pending-repair", "task-pending-repair")
@@ -151,7 +173,7 @@ func TestClaimRepairRejectsPendingAndStaleSnapshotOnlyAssets(t *testing.T) {
 	if _, err := pool.Exec(ctx, `UPDATE audio_assets SET status='ready',bucket='bucket',storage_uri='s3://bucket/key',audio_url='/task-audio/asset-pending-repair/file' WHERE id='asset-pending-repair'`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := pool.Exec(ctx, `UPDATE competency_map_state SET revision=2 WHERE singleton=true`); err != nil {
+	if _, err := pool.Exec(ctx, `UPDATE subjects SET active_revision=NULL WHERE id='subject:test'`); err != nil {
 		t.Fatal(err)
 	}
 	if _, ok, err := repository.ClaimRepair(ctx, "asset-pending-repair", "token-stale", time.Minute); err != nil || ok {
@@ -192,7 +214,7 @@ func TestClaimRejectsStaleTaskAndExpiryCancelsIt(t *testing.T) {
 	if err != nil || !ok {
 		t.Fatalf("initial claim: ok=%v err=%v", ok, err)
 	}
-	if _, err := pool.Exec(ctx, `UPDATE competency_map_state SET revision=2 WHERE singleton=true`); err != nil {
+	if _, err := pool.Exec(ctx, `UPDATE subjects SET active_revision=NULL WHERE id='subject:test'`); err != nil {
 		t.Fatal(err)
 	}
 	if current, err := repository.IsCurrent(ctx, claim); err != nil || current {
@@ -220,7 +242,7 @@ func TestFailureAfterReplacementCancelsInsteadOfRequeueing(t *testing.T) {
 	if err != nil || !ok {
 		t.Fatalf("initial claim: ok=%v err=%v", ok, err)
 	}
-	if _, err := pool.Exec(ctx, `UPDATE competency_map_state SET revision=2 WHERE singleton=true`); err != nil {
+	if _, err := pool.Exec(ctx, `UPDATE subjects SET active_revision=NULL WHERE id='subject:test'`); err != nil {
 		t.Fatal(err)
 	}
 	if failed, err := repository.Fail(ctx, claim, "synthesis_failed", time.Second); err != nil || !failed {
@@ -255,4 +277,142 @@ func TestExpiredLeaseOnCurrentTaskIsRecoverableNotCancelled(t *testing.T) {
 	if err != nil || !ok || reclaimed.Token != "token-reclaimed" {
 		t.Fatalf("current task was not recoverable: claim=%+v ok=%v err=%v", reclaimed, ok, err)
 	}
+}
+
+func TestAudioQueueUsesEachSubjectsActiveRevisionAcrossImportAndRepair(t *testing.T) {
+	repository, pool, ctx := setupAudioRepository(t)
+	const ownerID = "audio-owner"
+	if _, err := pool.Exec(ctx, `INSERT INTO users(id,email,password_hash,created_at,role) VALUES ($1,'audio-owner@example.test','hash',1,'admin')`, ownerID); err != nil {
+		t.Fatal(err)
+	}
+	maps := competencypostgres.New(pool)
+	if _, err := maps.Replace(ctx, "subject:test", ownerID, audioMap("A", 2), 1); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO subjects(id,name,created_at) VALUES ('subject:b','Subject B',1)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := maps.Replace(ctx, "subject:b", ownerID, audioMap("B", 1), 2); err != nil {
+		t.Fatal(err)
+	}
+	assets := map[string][]string{}
+	taskByAsset := map[string]string{}
+	rows, err := pool.Query(ctx, `SELECT subject.id, task.id, task.audio_asset_id
+FROM tasks task JOIN outcomes outcome ON outcome.id=task.outcome_id
+JOIN constituents constituent ON constituent.id=outcome.constituent_id
+JOIN competencies competency ON competency.id=constituent.competency_id
+JOIN subjects subject ON subject.active_revision=competency.revision
+ORDER BY subject.id, task.id`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for rows.Next() {
+		var subjectID, taskID string
+		var assetID *string
+		if err := rows.Scan(&subjectID, &taskID, &assetID); err != nil {
+			rows.Close()
+			t.Fatal(err)
+		}
+		if assetID == nil {
+			rows.Close()
+			t.Fatalf("task %s has no pending audio asset", taskID)
+		}
+		assets[subjectID] = append(assets[subjectID], *assetID)
+		taskByAsset[*assetID] = taskID
+	}
+	rows.Close()
+	if len(assets["subject:test"]) != 2 || len(assets["subject:b"]) != 1 {
+		t.Fatalf("active task assets by subject = %#v", assets)
+	}
+	claimed := make(map[string][]application.Claim)
+	for range 3 {
+		claim, ok, err := repository.Claim(ctx, "subject-claim", time.Minute)
+		if err != nil || !ok {
+			t.Fatalf("claim across active subjects: ok=%v err=%v", ok, err)
+		}
+		var subjectID string
+		if err := pool.QueryRow(ctx, `SELECT subject.id FROM tasks task JOIN outcomes outcome ON outcome.id=task.outcome_id JOIN constituents constituent ON constituent.id=outcome.constituent_id JOIN competencies competency ON competency.id=constituent.competency_id JOIN subjects subject ON subject.active_revision=competency.revision WHERE task.audio_asset_id=$1`, claim.Asset.ID).Scan(&subjectID); err != nil {
+			t.Fatal(err)
+		}
+		claimed[subjectID] = append(claimed[subjectID], claim)
+	}
+	if len(claimed["subject:test"]) != 2 || len(claimed["subject:b"]) != 1 {
+		t.Fatalf("claimed audio by active subject = %#v", claimed)
+	}
+	claimAProcessing, claimAPending, claimB := claimed["subject:test"][0], claimed["subject:test"][1], claimed["subject:b"][0]
+	if _, err := pool.Exec(ctx, `UPDATE audio_assets SET status='processing',claim_token=$2,lease_until=now()+interval '1 hour' WHERE id=$1`, claimAProcessing.Asset.ID, claimAProcessing.Token); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE audio_assets SET status='pending',claim_token=NULL,lease_until=NULL WHERE id=$1`, claimAPending.Asset.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE audio_assets SET status='processing',claim_token=$2,lease_until=now()-interval '1 second' WHERE id=$1`, claimB.Asset.ID, claimB.Token); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO variants(id,user_id,create_request_key,map_revision,algorithm_version,included_competency_count,skipped_competencies,created_at,subject_id,subject_name_snapshot) SELECT 'historical-audio','audio-owner','historical-audio',active_revision,'test',1,'[]',1,id,name FROM subjects WHERE id=$1`, "subject:test"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO variant_tasks(id,variant_id,live_task_id,source_task_id_snapshot,audio_asset_id,competency_position,slot,role,task_snapshot,profile_snapshot) VALUES ('historical-audio-task','historical-audio',$1,$1,$2,1,0,'main','{"question":"Old A task"}','{}')`, taskByAsset[claimAProcessing.Asset.ID], claimAProcessing.Asset.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := maps.Replace(ctx, "subject:test", ownerID, audioMap("A replacement", 1), 3); err != nil {
+		t.Fatal(err)
+	}
+	var staleAStatus, bStatus string
+	if err := pool.QueryRow(ctx, `SELECT status FROM audio_assets WHERE id=$1`, claimAPending.Asset.ID).Scan(&staleAStatus); err != nil {
+		t.Fatal(err)
+	}
+	if err := pool.QueryRow(ctx, `SELECT status FROM audio_assets WHERE id=$1`, claimB.Asset.ID).Scan(&bStatus); err != nil {
+		t.Fatal(err)
+	}
+	if staleAStatus != "cancelled" || bStatus != "processing" {
+		t.Fatalf("import A statuses: old A pending=%q, B expired processing=%q", staleAStatus, bStatus)
+	}
+	if current, err := repository.IsCurrent(ctx, claimAProcessing); err != nil || current {
+		t.Fatalf("processing A asset stayed current: current=%v err=%v", current, err)
+	}
+	if cancelled, err := repository.Cancel(ctx, claimAProcessing); err != nil || !cancelled {
+		t.Fatalf("stale processing A asset cancel: cancelled=%v err=%v", cancelled, err)
+	}
+	// Ignore newly imported A work so the next claim proves expired B work is recovered.
+	if _, err := pool.Exec(ctx, `UPDATE audio_assets asset SET status='cancelled' FROM tasks task WHERE task.audio_asset_id=asset.id AND task.id IN (SELECT task.id FROM tasks task JOIN outcomes outcome ON outcome.id=task.outcome_id JOIN constituents constituent ON constituent.id=outcome.constituent_id JOIN competencies competency ON competency.id=constituent.competency_id JOIN subjects subject ON subject.id=$1 AND subject.active_revision=competency.revision)`, "subject:test"); err != nil {
+		t.Fatal(err)
+	}
+	recoveredB, ok, err := repository.Claim(ctx, "recovered-b", time.Minute)
+	if err != nil || !ok || recoveredB.Asset.ID != claimB.Asset.ID {
+		t.Fatalf("expired B asset recovery: claim=%+v ok=%v err=%v", recoveredB, ok, err)
+	}
+	if completed, err := repository.Complete(ctx, recoveredB, "bucket", "s3://bucket/b.wav", "/task-audio/b/file"); err != nil || !completed {
+		t.Fatalf("complete recovered B asset: completed=%v err=%v", completed, err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE audio_assets SET status='ready',bucket='old-bucket',storage_uri='s3://old-bucket/a.wav',audio_url='/task-audio/a/file' WHERE id=$1`, claimAProcessing.Asset.ID); err != nil {
+		t.Fatal(err)
+	}
+	repairB, ok, err := repository.ClaimRepair(ctx, claimB.Asset.ID, "repair-b", time.Minute)
+	if err != nil || !ok {
+		t.Fatalf("B asset was not repairable after A import: ok=%v err=%v", ok, err)
+	}
+	if _, ok, err := repository.ClaimRepair(ctx, claimAProcessing.Asset.ID, "repair-stale-a", time.Minute); err != nil || ok {
+		t.Fatalf("stale A asset remained repairable: ok=%v err=%v", ok, err)
+	}
+	if accessible, err := repository.GetAccessible(ctx, ownerID, claimAProcessing.Asset.ID); err != nil || accessible.ID != claimAProcessing.Asset.ID {
+		t.Fatalf("historical variant audio access after A reimport: asset=%+v err=%v", accessible, err)
+	}
+	if completed, err := repository.Complete(ctx, repairB, "bucket", "s3://bucket/b-repaired.wav", "/task-audio/b/repaired"); err != nil || !completed {
+		t.Fatalf("complete B repair: completed=%v err=%v", completed, err)
+	}
+}
+
+func audioMap(name string, taskCount int) competencymap.Map {
+	data := competencymap.Map{
+		SourceFormat: "paired", SourceHeaders: []string{"Competency", "Constituent", "Outcome"},
+		Competencies: []competencymap.Competency{{Key: "c", Name: "Competency " + name}},
+		Constituents: []competencymap.Constituent{{Key: "s", CompetencyKey: "c", Name: "Constituent " + name}},
+		Outcomes:     []competencymap.Outcome{{Key: "o", ConstituentKey: "s", Name: "Outcome " + name}},
+		SourceRows:   []competencymap.SourceRow{{Index: 1, Line: 2, Cells: []string{"Competency " + name, "Constituent " + name, "Outcome " + name}}},
+	}
+	for index := range taskCount {
+		data.Tasks = append(data.Tasks, competencymap.Task{OutcomeKey: "o", Question: fmt.Sprintf("Question %s %d", name, index+1), VoiceInstruction: "Speak answer", ReferenceAnswer: "Answer", Options: []string{"A", "B"}, Column: "Outcome", Row: 2, SourceRowIndex: 1, SourceColumnIndex: 3})
+	}
+	return data
 }

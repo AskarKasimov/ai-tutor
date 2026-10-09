@@ -5,7 +5,11 @@ import type { SessionToken } from '@/entities/user'
 export type StartDiagnosticSessionDependencies = {
   apiBase: string
   api: {
-    createVariant(key: string, signal: AbortSignal): Promise<{ id: string }>
+    createVariant(
+      subjectId: string,
+      key: string,
+      signal: AbortSignal,
+    ): Promise<{ id: string }>
     startDiagnostic(
       variantId: string,
       key: string,
@@ -18,10 +22,15 @@ export type StartDiagnosticSessionDependencies = {
     register(token: SessionToken, controller: AbortController): () => void
   }
   storage: {
-    load(userId: string, apiBase: string): DiagnosticSessionIdentity | undefined
+    load(
+      userId: string,
+      apiBase: string,
+      subjectId: string,
+    ): DiagnosticSessionIdentity | undefined
     save(
       userId: string,
       apiBase: string,
+      subjectId: string,
       identity: DiagnosticSessionIdentity,
     ): void
   }
@@ -44,16 +53,26 @@ export async function startDiagnosticSession(
   }
   try {
     checkSession()
-    const saved = dependencies.storage.load(userId, dependencies.apiBase)
+    const saved = dependencies.storage.load(
+      userId,
+      dependencies.apiBase,
+      identity.subjectId,
+    )
     let current = saved?.startKey === identity.startKey ? saved : identity
     if (!current.variantId) {
       const variant = await dependencies.api.createVariant(
+        current.subjectId,
         current.variantKey,
         combined,
       )
       checkSession()
       current = { ...current, variantId: variant.id }
-      dependencies.storage.save(userId, dependencies.apiBase, current)
+      dependencies.storage.save(
+        userId,
+        dependencies.apiBase,
+        current.subjectId,
+        current,
+      )
     }
     const progress = await dependencies.api.startDiagnostic(
       current.variantId!,
@@ -62,7 +81,12 @@ export async function startDiagnosticSession(
     )
     checkSession()
     current = { ...current, sessionId: progress.session_id }
-    dependencies.storage.save(userId, dependencies.apiBase, current)
+    dependencies.storage.save(
+      userId,
+      dependencies.apiBase,
+      current.subjectId,
+      current,
+    )
     return { progress, identity: current, token }
   } finally {
     unregister()

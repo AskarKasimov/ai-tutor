@@ -6,15 +6,18 @@ import { useAuth } from '@/features/auth'
 import { useAuthDependencies } from '@/features/auth'
 import { useTrainerSession } from '@/features/trainer-session'
 import type { TrainerSession } from '@/entities/trainer-session'
-import { DiagnosticTrainer } from '@/pages/trainer/ui/diagnostic-trainer'
+import { LearningHome } from './learning-home'
 import { AccountMenu } from '@/features/auth'
 import { TrainerAnswer, SavedAnswer } from '@/pages/trainer/ui/trainer-answer'
 import { SessionSummary } from '@/pages/trainer/ui/session-summary'
 import styles from '@/pages/trainer/ui/trainer-layout.module.scss'
 
 export function TrainerScreen() {
-  const { mode } = useAuthDependencies()
-  return mode === 'demo' ? <DemoTrainer /> : <DiagnosticTrainer />
+  return import.meta.env.VITE_API_MODE === 'legacy-demo' ? (
+    <DemoTrainer />
+  ) : (
+    <LearningHome />
+  )
 }
 
 function DemoTrainer() {

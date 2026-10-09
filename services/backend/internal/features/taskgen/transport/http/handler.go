@@ -19,6 +19,7 @@ func New(service *application.Service, materials *application.MaterialService) *
 }
 
 type GenerateRequest struct {
+	SubjectID string `json:"subject_id" minLength:"1" maxLength:"128" binding:"required"`
 	OutcomeID string `json:"outcome_id" minLength:"1" maxLength:"128" binding:"required"`
 }
 
@@ -65,7 +66,7 @@ func (h *Handler) Generate(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(r.Context(), w, fault.Validation("Idempotency-Key", "Укажите ключ идемпотентности."))
 		return
 	}
-	task, err := h.service.Generate(r.Context(), request.OutcomeID, key, principal.ID)
+	task, err := h.service.Generate(r.Context(), request.SubjectID, request.OutcomeID, key, principal.ID)
 	if err != nil {
 		httpx.Error(r.Context(), w, err)
 		return
@@ -77,6 +78,7 @@ func (h *Handler) Generate(w http.ResponseWriter, r *http.Request) {
 }
 
 type ImportMaterialRequest struct {
+	SubjectID  string   `json:"subject_id" minLength:"1" maxLength:"128" binding:"required"`
 	Name       string   `json:"name"`
 	Content    string   `json:"content"`
 	OutcomeIDs []string `json:"outcome_ids"`
@@ -112,7 +114,7 @@ func (h *Handler) ImportMaterial(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(r.Context(), w, err)
 		return
 	}
-	if err := h.materials.Import(r.Context(), principal, application.MaterialInput{Name: request.Name, Content: request.Content, OutcomeIDs: request.OutcomeIDs}); err != nil {
+	if err := h.materials.Import(r.Context(), principal, application.MaterialInput{SubjectID: request.SubjectID, Name: request.Name, Content: request.Content, OutcomeIDs: request.OutcomeIDs}); err != nil {
 		httpx.Error(r.Context(), w, err)
 		return
 	}

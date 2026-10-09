@@ -16,7 +16,7 @@ func (r *fakeRepository) Search(_ context.Context, filter SearchFilter) ([]TaskS
 	return r.searchResult, nil
 }
 
-func (r *fakeRepository) Profile(context.Context, string) (TaskProfile, error) {
+func (r *fakeRepository) Profile(context.Context, string, string) (TaskProfile, error) {
 	return TaskProfile{}, nil
 }
 

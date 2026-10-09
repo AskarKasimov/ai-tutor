@@ -7,6 +7,20 @@ import type {
   OverallFeedbackItemInput,
 } from '@/entities/assessment'
 import { isMockApi } from '@/shared/api'
+import {
+  mockDiagnosticResponse,
+  mockDiagnosticForSubject,
+  mockDiagnosticSubject,
+  readMockDiagnostic,
+  resetMockDiagnostic,
+} from './mock-diagnostic-api'
+import {
+  mockTrainingAudio,
+  mockTrainingResponse,
+  resetMockTraining,
+} from './mock-training-api'
+import { mockDiagnosticStorage } from './mock-diagnostic-storage'
+import { findMockSubject, mockSubjectCatalog } from './mock-subject-catalog'
 
 type DemoUser = {
   id: string
@@ -99,6 +113,9 @@ export async function mockApiFetch(
       return error(401, 'UNAUTHORIZED', 'invalidCredentials')
     user = { ...demoAccount }
     transcriptions.clear()
+    resetMockDiagnostic()
+    resetMockTraining()
+    mockDiagnosticStorage.clear()
     const now = Math.floor(Date.now() / 1000)
     return json(
       {
@@ -114,9 +131,13 @@ export async function mockApiFetch(
   if (method === 'POST' && path.endsWith('/auth/logout')) {
     user = null
     transcriptions.clear()
+    resetMockDiagnostic()
+    resetMockTraining()
+    mockDiagnosticStorage.clear()
     return new Response(null, { status: 204 })
   }
   if (!user) return error(401, 'UNAUTHORIZED', 'unauthorized')
+  const mockUser = user
   if (method === 'POST' && path.endsWith('/auth/refresh')) {
     const now = Math.floor(Date.now() / 1000)
     return json({
@@ -134,10 +155,75 @@ export async function mockApiFetch(
     transcriptions.set(id, text)
     return json({ id, text, created_at: Math.floor(Date.now() / 1000) })
   }
+  if (method === 'GET' && path.endsWith('/subjects'))
+    return json(mockSubjectCatalog)
+  const mapMatch = path.match(/\/subjects\/([^/]+)\/competency-map$/)
+  if (method === 'GET' && mapMatch) {
+    if (!findMockSubject(decodeURIComponent(mapMatch[1])))
+      return error(404, 'SUBJECT_NOT_FOUND', 'notFound')
+    return json({ revision: 0, imported_at: null, competencies: [] })
+  }
+  if (
+    method === 'POST' &&
+    /\/admin\/subjects\/[^/]+\/competency-map\/import$/.test(path)
+  )
+    return error(403, 'FORBIDDEN', 'forbidden')
+  if (method === 'POST' && path.endsWith('/admin/subjects'))
+    return error(403, 'FORBIDDEN', 'forbidden')
+  const learningStateMatch = path.match(/\/subjects\/([^/]+)\/learning-state$/)
+  if (learningStateMatch && method === 'GET') {
+    const subjectId = decodeURIComponent(learningStateMatch[1])
+    const subject = findMockSubject(subjectId)
+    if (!subject) return error(404, 'SUBJECT_NOT_FOUND', 'notFound')
+    const known = mockDiagnosticForSubject(mockUser.id, subjectId)
+    const completedDiagnostic = known.completed?.session_id
+    return json({
+      subject_id: subjectId,
+      subject_name: subject.name,
+      diagnostic_status: known.active
+        ? 'active'
+        : known.completed
+          ? 'completed'
+          : 'not_started',
+      diagnostic_completed: !!completedDiagnostic,
+      training_available: !!completedDiagnostic,
+      ...(completedDiagnostic
+        ? { diagnostic_session_id: completedDiagnostic }
+        : {}),
+      ...(known.active ? { active_session_id: known.active.session_id } : {}),
+    })
+  }
+  const diagnosticResponse = mockDiagnosticResponse(
+    mockUser.id,
+    path,
+    method,
+    body,
+    options,
+  )
+  if (diagnosticResponse) return diagnosticResponse
+  const trainingResponse = await mockTrainingResponse(
+    mockUser.id,
+    path,
+    method,
+    body,
+    options,
+    requestUrl.search.slice(1),
+    (id) => readMockDiagnostic(mockUser.id, id),
+    (id) => mockDiagnosticSubject(mockUser.id, id),
+  )
+  if (trainingResponse) return trainingResponse
   if (
     method === 'GET' &&
     /\/diagnostic-sessions\/[^/]+\/current\/audio$/.test(path)
   ) {
+    const sessionId = path.match(
+      /\/diagnostic-sessions\/([^/]+)\/current\/audio$/,
+    )?.[1]
+    if (
+      !sessionId ||
+      !readMockDiagnostic(mockUser.id, decodeURIComponent(sessionId))
+    )
+      return error(404, 'NOT_FOUND', 'notFound')
     const taskId = requestUrl.searchParams.get('variant_task_id')
     if (!taskId) return error(422, 'VALIDATION_ERROR', 'invalid')
     let hash = 2166136261
@@ -154,6 +240,14 @@ export async function mockApiFetch(
     method === 'POST' &&
     /\/diagnostic-sessions\/[^/]+\/current\/audio\/regenerate$/.test(path)
   ) {
+    const sessionId = path.match(
+      /\/diagnostic-sessions\/([^/]+)\/current\/audio\/regenerate$/,
+    )?.[1]
+    if (
+      !sessionId ||
+      !readMockDiagnostic(mockUser.id, decodeURIComponent(sessionId))
+    )
+      return error(404, 'NOT_FOUND', 'notFound')
     const taskId = body.variant_task_id
     if (typeof taskId !== 'string' || !taskId)
       return error(422, 'VALIDATION_ERROR', 'invalid')
@@ -168,6 +262,7 @@ export async function mockApiFetch(
     })
   }
   if (method === 'GET' && /\/task-audio\/[A-Za-z0-9_-]+\/file$/.test(path)) {
+    if (path.includes('/demo_')) return mockTrainingAudio()
     return new Response(createDemoAudio(), {
       headers: { 'Content-Type': 'audio/wav' },
     })

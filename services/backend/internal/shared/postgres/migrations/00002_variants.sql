@@ -8,6 +8,8 @@ CREATE TABLE variants (
     included_competency_count integer NOT NULL CHECK (included_competency_count > 0),
     skipped_competencies jsonb NOT NULL CHECK (jsonb_typeof(skipped_competencies) = 'array'),
     created_at bigint NOT NULL CHECK (created_at >= 0),
+    subject_id text NOT NULL REFERENCES subjects(id),
+    subject_name_snapshot text NOT NULL,
     UNIQUE(user_id, create_request_key)
 );
 CREATE INDEX variants_by_owner_history ON variants(user_id, created_at DESC, id DESC);

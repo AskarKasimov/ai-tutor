@@ -26,8 +26,8 @@ type Repository struct {
 
 func New(pool *pgxpool.Pool) *Repository { return &Repository{pool: pool, queries: db.New(pool)} }
 
-func (r *Repository) GetByKey(ctx context.Context, outcomeID, requestKey string) (application.Task, error) {
-	row, err := r.queries.GetGeneratedTaskByKey(ctx, db.GetGeneratedTaskByKeyParams{OutcomeID: outcomeID, RequestKey: requestKey})
+func (r *Repository) GetByKey(ctx context.Context, subjectID, outcomeID, requestKey string) (application.Task, error) {
+	row, err := r.queries.GetGeneratedTaskByKey(ctx, db.GetGeneratedTaskByKeyParams{SubjectID: subjectID, OutcomeID: outcomeID, RequestKey: requestKey})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return application.Task{}, fault.New(fault.NotFound, "GENERATED_TASK_NOT_FOUND", "Сгенерированное задание не найдено.")
 	}
@@ -37,8 +37,8 @@ func (r *Repository) GetByKey(ctx context.Context, outcomeID, requestKey string)
 	return taskFromRow(row.ID, row.OutcomeID, row.Question, row.Options, row.VoiceInstruction, row.ReferenceAnswer, row.Criteria, row.Origin)
 }
 
-func (r *Repository) Context(ctx context.Context, outcomeID string) (application.Context, error) {
-	profile, err := r.queries.GetOutcomeForGeneration(ctx, outcomeID)
+func (r *Repository) Context(ctx context.Context, subjectID, outcomeID string) (application.Context, error) {
+	profile, err := r.queries.GetOutcomeForGeneration(ctx, db.GetOutcomeForGenerationParams{SubjectID: subjectID, OutcomeID: outcomeID})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return application.Context{}, fault.New(fault.NotFound, "OUTCOME_NOT_FOUND", "Образовательный результат не найден.")
 	}
@@ -57,7 +57,7 @@ func (r *Repository) Context(ctx context.Context, outcomeID string) (application
 		return application.Context{}, err
 	}
 	outcome.CurriculumSections = profilejson.ToSections(sections)
-	snapshot := application.Context{Revision: profile.Revision, Outcome: outcome, Examples: []application.Example{}, Materials: []application.MaterialChunk{}}
+	snapshot := application.Context{SubjectID: subjectID, Revision: profile.Revision, Outcome: outcome, Examples: []application.Example{}, Materials: []application.MaterialChunk{}}
 	examples, err := r.queries.ListGenerationExamples(ctx, db.ListGenerationExamplesParams{OutcomeID: outcomeID, Limit: 6})
 	if err != nil {
 		return application.Context{}, err
@@ -76,7 +76,7 @@ func (r *Repository) Context(ctx context.Context, outcomeID string) (application
 	if outcome.EducationalContent != nil {
 		query += " " + *outcome.EducationalContent
 	}
-	chunks, err := r.queries.SearchMaterialChunks(ctx, db.SearchMaterialChunksParams{OutcomeID: outcomeID, PlaintoTsquery: query, Limit: 5})
+	chunks, err := r.queries.SearchMaterialChunks(ctx, db.SearchMaterialChunksParams{OutcomeID: outcomeID, SubjectID: subjectID, SearchQuery: query, ChunkLimit: 5})
 	if err != nil {
 		return application.Context{}, err
 	}
@@ -93,14 +93,14 @@ func (r *Repository) Persist(ctx context.Context, snapshot application.Context, 
 	}
 	defer tx.Rollback(ctx)
 	queries := r.queries.WithTx(tx)
-	revision, err := queries.LockCompetencyMapRevision(ctx)
+	revision, err := queries.LockSubjectForTaskgen(ctx, snapshot.SubjectID)
 	if err != nil {
 		return application.Task{}, err
 	}
-	if revision != snapshot.Revision {
+	if revision == nil || *revision != snapshot.Revision {
 		return application.Task{}, fault.New(fault.Conflict, "COMPETENCY_MAP_CHANGED", "Карта компетенций изменилась во время генерации. Повторите запрос.")
 	}
-	if existing, getErr := queries.GetGeneratedTaskByKey(ctx, db.GetGeneratedTaskByKeyParams{OutcomeID: snapshot.Outcome.ID, RequestKey: requestKey}); getErr == nil {
+	if existing, getErr := queries.GetGeneratedTaskByKey(ctx, db.GetGeneratedTaskByKeyParams{SubjectID: snapshot.SubjectID, OutcomeID: snapshot.Outcome.ID, RequestKey: requestKey}); getErr == nil {
 		if err := tx.Commit(ctx); err != nil {
 			return application.Task{}, err
 		}
@@ -128,7 +128,7 @@ func (r *Repository) Persist(ctx context.Context, snapshot application.Context, 
 		return application.Task{}, err
 	}
 	if runRows == 0 {
-		existing, err := queries.GetGeneratedTaskByKey(ctx, db.GetGeneratedTaskByKeyParams{OutcomeID: snapshot.Outcome.ID, RequestKey: requestKey})
+		existing, err := queries.GetGeneratedTaskByKey(ctx, db.GetGeneratedTaskByKeyParams{SubjectID: snapshot.SubjectID, OutcomeID: snapshot.Outcome.ID, RequestKey: requestKey})
 		if err != nil {
 			return application.Task{}, err
 		}
@@ -176,17 +176,20 @@ func (r *Repository) Persist(ctx context.Context, snapshot application.Context, 
 		Options: draft.Options, VoiceInstruction: &voice, ReferenceAnswer: &answer, Criteria: optional(criteria), Origin: "ai_generated"}, nil
 }
 
-func (r *Repository) ImportMaterial(ctx context.Context, name string, outcomeIDs, chunks []string, createdAt int64) error {
+func (r *Repository) ImportMaterial(ctx context.Context, subjectID, name string, outcomeIDs, chunks []string, createdAt int64) error {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback(ctx)
 	queries := r.queries.WithTx(tx)
-	if _, err := queries.LockCompetencyMapRevision(ctx); err != nil {
+	if _, err := queries.LockSubjectForTaskgen(ctx, subjectID); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return fault.New(fault.NotFound, "SUBJECT_NOT_FOUND", "Предмет не найден.")
+		}
 		return err
 	}
-	count, err := queries.CountExistingOutcomes(ctx, outcomeIDs)
+	count, err := queries.CountExistingOutcomesForSubject(ctx, db.CountExistingOutcomesForSubjectParams{SubjectID: subjectID, OutcomeIds: outcomeIDs})
 	if err != nil {
 		return err
 	}
@@ -194,7 +197,7 @@ func (r *Repository) ImportMaterial(ctx context.Context, name string, outcomeIDs
 		return fault.Validation("outcome_ids", "Один или несколько образовательных результатов не найдены.")
 	}
 	// Keep old chunks immutable: a generation may already hold their IDs in its snapshot.
-	if err := queries.DeleteMaterialLinksByName(ctx, name); err != nil {
+	if err := queries.DeleteMaterialLinksBySubjectAndName(ctx, db.DeleteMaterialLinksBySubjectAndNameParams{SubjectID: subjectID, MaterialName: name}); err != nil {
 		return err
 	}
 	for index, content := range chunks {
@@ -202,7 +205,7 @@ func (r *Repository) ImportMaterial(ctx context.Context, name string, outcomeIDs
 		if err != nil {
 			return err
 		}
-		if err := queries.InsertMaterialChunk(ctx, db.InsertMaterialChunkParams{ID: id, MaterialName: name, Ordinal: int32(index + 1), Content: content, CreatedAt: createdAt}); err != nil {
+		if err := queries.InsertMaterialChunk(ctx, db.InsertMaterialChunkParams{ID: id, SubjectID: subjectID, MaterialName: name, Ordinal: int32(index + 1), Content: content, CreatedAt: createdAt}); err != nil {
 			var pgErr *pgconn.PgError
 			if errors.As(err, &pgErr) && pgErr.Code == "23505" {
 				return fault.New(fault.Conflict, "MATERIAL_ALREADY_IMPORTED", "Материал с таким названием уже загружен.")

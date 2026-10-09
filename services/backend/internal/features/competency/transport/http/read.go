@@ -52,19 +52,25 @@ type Task struct {
 	VoiceInstruction *string  `json:"voice_instruction" extensions:"x-nullable"`
 }
 
-// Read returns the complete current map, including outcomes without tasks.
-// @Summary Прочитать текущую карту компетенций целиком
-// @Description Ревизия, время импорта и дерево компетенций, составляющих, ОР и заданий. Доступно авторизованным пользователям. Эталоны и критерии не возвращаются.
-// @ID readCompetencyMap
+// ReadSubject returns the current map for one subject.
+// @Summary Прочитать карту предмета
+// @Description Ревизия, время импорта и дерево компетенций предмета. Эталоны и критерии не возвращаются.
+// @ID readSubjectCompetencyMap
 // @Tags Учебная база
 // @Security accessCookie
 // @Produce json
+// @Param subject_id path string true "ID предмета"
 // @Success 200 {object} MapSnapshot
 // @Failure 401 {object} fault.Error
+// @Failure 404 {object} fault.Error
 // @Failure 503 {object} fault.Error
-// @Router /competency-map [get]
-func (h *Handler) Read(w http.ResponseWriter, r *http.Request) {
-	snapshot, err := h.service.Read(r.Context())
+// @Router /subjects/{subject_id}/competency-map [get]
+func (h *Handler) ReadSubject(w http.ResponseWriter, r *http.Request) {
+	h.readSubject(w, r, r.PathValue("subject_id"))
+}
+
+func (h *Handler) readSubject(w http.ResponseWriter, r *http.Request, subjectID string) {
+	snapshot, err := h.service.ReadSubject(r.Context(), subjectID)
 	if err != nil {
 		httpx.Error(r.Context(), w, err)
 		return

@@ -17,6 +17,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/audio"
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/training"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/features/competency/infrastructure/csvparser"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/httpx"
 )
@@ -200,11 +201,16 @@ func TestOpenAPIResponses(t *testing.T) {
 	check("POST", "/voice/syntheses", f.request("POST", "/voice/syntheses", `{"text":"Вопрос?"}`, access))
 	check("POST", "/voice/syntheses", f.request("POST", "/voice/syntheses", `{"text":""}`, access))
 	admin := f.admin(t)
-	check("POST", "/admin/competency-map/import", upload(f, "/admin/competency-map/import", "file", "map.csv", "text/csv", []byte(mapCSV), admin))
-	if variantImport := upload(f, "/admin/competency-map/import", "file", "variant.csv", "text/csv", variantMapCSV(t), admin); variantImport.Code != http.StatusOK {
+	check("POST", "/admin/subjects", f.request("POST", "/admin/subjects", `{"name":"Предмет контракта"}`, admin))
+	check("GET", "/subjects", f.request("GET", "/subjects", "", admin))
+	check("POST", "/admin/subjects/{subject_id}/competency-map/import", upload(f, "/admin/subjects/subject:test/competency-map/import", "file", "map.csv", "text/csv", []byte(mapCSV), admin))
+	if variantImport := upload(f, "/admin/subjects/subject:test/competency-map/import", "file", "variant.csv", "text/csv", variantMapCSV(t), admin); variantImport.Code != http.StatusOK {
 		t.Fatalf("variant map import: %d %s", variantImport.Code, variantImport.Body.String())
 	}
-	variantCreateRequest := httptest.NewRequest(http.MethodPost, "https://api.example/variants", strings.NewReader(""))
+	check("POST", "/admin/subjects/{subject_id}/competency-map/import", upload(f, "/admin/subjects/subject:test/competency-map/import", "file", "subject.csv", "text/csv", variantMapCSV(t), admin))
+	check("GET", "/subjects/{subject_id}/competency-map", f.request("GET", "/subjects/subject:test/competency-map", "", access))
+	variantCreateRequest := httptest.NewRequest(http.MethodPost, "https://api.example/variants", strings.NewReader(`{"subject_id":"subject:test"}`))
+	variantCreateRequest.Header.Set("Content-Type", "application/json")
 	variantCreateRequest.Header.Set("Idempotency-Key", "contract-variant-1")
 	variantCreateRequest.AddCookie(access)
 	variantCreate := httptest.NewRecorder()
@@ -296,19 +302,44 @@ func TestOpenAPIResponses(t *testing.T) {
 	check("POST", "/diagnostic-sessions/{id}/answers", diagnosticAnswerResponse)
 	check("GET", "/diagnostic-sessions/{id}/result", f.request("GET", "/diagnostic-sessions/"+diagnosticProgress.SessionID+"/result", "", access))
 	check("GET", "/diagnostic-sessions/{id}/feedback", f.request("GET", "/diagnostic-sessions/"+diagnosticProgress.SessionID+"/feedback", "", access))
+	check("GET", "/subjects/{subject_id}/learning-state", f.request("GET", "/subjects/subject:test/learning-state", "", access))
+	preview := f.request("GET", "/diagnostic-sessions/"+diagnosticProgress.SessionID+"/training/preview", "", access)
+	check("GET", "/diagnostic-sessions/{id}/training/preview", preview)
+	var trainingPreview training.Preview
+	if err = json.Unmarshal(preview.Body.Bytes(), &trainingPreview); err != nil {
+		t.Fatal(err)
+	}
+	f.handler = f.app.Handler()
+	trainingStart := trainingJSON(f, access, "/diagnostic-sessions/"+diagnosticProgress.SessionID+"/training", "contract-training", fmt.Sprintf(`{"plan_revision":%d}`, trainingPreview.PlanRevision))
+	check("POST", "/diagnostic-sessions/{id}/training", trainingStart)
+	var trainingProgress training.Progress
+	if err = json.Unmarshal(trainingStart.Body.Bytes(), &trainingProgress); err != nil {
+		t.Fatal(err)
+	}
+	check("GET", "/diagnostic-sessions/{id}/training", f.request("GET", "/diagnostic-sessions/"+diagnosticProgress.SessionID+"/training", "", access))
+	check("GET", "/training-sessions/{id}", f.request("GET", "/training-sessions/"+trainingProgress.ID, "", access))
+	check("GET", "/training-sessions/{id}/current/audio", f.request("GET", "/training-sessions/"+trainingProgress.ID+"/current/audio?exercise_id="+trainingProgress.Current.ID, "", access))
+	trainingBody, trainingContentType := diagnosticAnswerBody(t, trainingProgress.Current.ID)
+	trainingRequest := httptest.NewRequest("POST", "/training-sessions/"+trainingProgress.ID+"/answers", strings.NewReader(strings.ReplaceAll(trainingBody.String(), "variant_task_id", "exercise_id")))
+	trainingRequest.AddCookie(access)
+	trainingRequest.Header.Set("Content-Type", trainingContentType)
+	trainingRequest.Header.Set("Idempotency-Key", "contract-training-answer")
+	trainingAnswer := httptest.NewRecorder()
+	f.app.Handler().ServeHTTP(trainingAnswer, trainingRequest)
+	check("POST", "/training-sessions/{id}/answers", trainingAnswer)
+	check("GET", "/training-sessions/{id}/history", f.request("GET", "/training-sessions/"+trainingProgress.ID+"/history?limit=1", "", access))
 	f.app.cfg.APIMode = "real"
-	check("GET", "/variants", f.request("GET", "/variants", "", access))
+	check("GET", "/variants", f.request("GET", "/variants?subject_id=subject%3Atest", "", access))
 	check("GET", "/variants/{id}", f.request("GET", "/variants/"+createdVariant.ID, "", access))
 	check("GET", "/variants/{id}/tasks/{task_id}", f.request("GET", "/variants/"+createdVariant.ID+"/tasks/"+createdVariant.Competencies[0].Main.ID, "", access))
 	var outcomeID, taskID string
 	if err := f.pool.QueryRow(context.Background(), `SELECT outcome.id, task.id FROM outcomes outcome JOIN tasks task ON task.outcome_id=outcome.id ORDER BY task.id LIMIT 1`).Scan(&outcomeID, &taskID); err != nil {
 		t.Fatal(err)
 	}
-	check("GET", "/tasks", f.request("GET", "/tasks", "", access))
-	check("GET", "/competency-map", f.request("GET", "/competency-map", "", access))
-	check("GET", "/tasks", f.request("GET", "/tasks?importance=6", "", access))
-	check("GET", "/tasks/{id}", f.request("GET", "/tasks/"+taskID, "", access))
-	requestBody, _ := json.Marshal(map[string]string{"outcome_id": outcomeID})
+	check("GET", "/tasks", f.request("GET", "/tasks?subject_id=subject%3Atest", "", access))
+	check("GET", "/tasks", f.request("GET", "/tasks?subject_id=subject%3Atest&importance=6", "", access))
+	check("GET", "/tasks/{id}", f.request("GET", "/tasks/"+taskID+"?subject_id=subject%3Atest", "", access))
+	requestBody, _ := json.Marshal(map[string]string{"subject_id": "subject:test", "outcome_id": outcomeID})
 	check("POST", "/tasks/generate", f.request("POST", "/tasks/generate", string(requestBody), access))
 	check("POST", "/tasks/generate", f.request("POST", "/tasks/generate", strings.Repeat(" ", 40*1024), access))
 	generateRequest := httptest.NewRequest("POST", "https://api.example/tasks/generate", bytes.NewReader(requestBody))
@@ -331,7 +362,7 @@ func TestOpenAPIResponses(t *testing.T) {
 		t.Fatalf("unavailable generator: %d %s", unavailableResponse.Code, unavailableResponse.Body.String())
 	}
 	check("POST", "/tasks/generate", unavailableResponse)
-	materialBody, _ := json.Marshal(map[string]any{"name": "Материал контракта", "content": "Текст материала для поиска", "outcome_ids": []string{outcomeID}})
+	materialBody, _ := json.Marshal(map[string]any{"subject_id": "subject:test", "name": "Материал контракта", "content": "Текст материала для поиска", "outcome_ids": []string{outcomeID}})
 	check("POST", "/admin/materials", f.request("POST", "/admin/materials", string(materialBody), admin))
 	check("POST", "/admin/materials", f.request("POST", "/admin/materials", "{"))
 	check("POST", "/admin/materials", f.request("POST", "/admin/materials", "{", access))

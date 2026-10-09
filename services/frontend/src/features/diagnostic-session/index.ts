@@ -1,6 +1,7 @@
 export {
   useDiagnosticSession,
   useDiagnosticResultQuery,
+  useDiagnosticFeedbackQuery,
 } from './model/use-diagnostic-session'
 export { useDiagnosticVoice } from './model/use-diagnostic-voice'
 export {
@@ -13,4 +14,5 @@ export { createDiagnosticIdentity } from './model/diagnostic-identity'
 export {
   loadDiagnosticIdentity,
   saveDiagnosticIdentity,
+  diagnosticSessionStorage,
 } from './model/diagnostic-session-storage'

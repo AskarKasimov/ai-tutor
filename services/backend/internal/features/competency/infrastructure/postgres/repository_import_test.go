@@ -8,6 +8,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/competencymap"
 	sharedpostgres "github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/postgres"
@@ -43,6 +44,9 @@ func setupImportRepository(t *testing.T) (*Repository, context.Context, string) 
 		t.Fatal(err)
 	}
 	if err := sharedpostgres.Migrate(ctx, pool); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO subjects(id,name,created_at) VALUES ('subject:test','Тестовый предмет',1)`); err != nil {
 		t.Fatal(err)
 	}
 	userID := "import-test-user"
@@ -94,7 +98,7 @@ func TestImportAudioPersistsTypedMapAndReplacesAllMapData(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	first, err := repository.Replace(ctx, userID, importMap("один"), 10)
+	first, err := repository.Replace(ctx, "subject:test", userID, importMap("один"), 10)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -114,7 +118,7 @@ func TestImportAudioPersistsTypedMapAndReplacesAllMapData(t *testing.T) {
 		t.Fatalf("imported audio asset/link = id:%q task:%v instruction:%q status:%q", assetID, taskAssetID, instruction, status)
 	}
 
-	second, err := repository.Replace(ctx, userID, importMap("два"), 20)
+	second, err := repository.Replace(ctx, "subject:test", userID, importMap("два"), 20)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -144,14 +148,146 @@ func TestImportAudioPersistsTypedMapAndReplacesAllMapData(t *testing.T) {
 	}
 }
 
+func TestReplaceAllowsDeletingImportReferencedBySubjectActiveRevision(t *testing.T) {
+	repository, ctx, userID := setupImportRepository(t)
+	first, err := repository.Replace(ctx, "subject:test", userID, importMap("до миграции"), 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repository.pool.Exec(ctx, `UPDATE subjects SET active_revision=$1 WHERE id='subject:test'`, first.Revision); err != nil {
+		t.Fatal(err)
+	}
+
+	second, err := repository.Replace(ctx, "subject:test", userID, importMap("после миграции"), 20)
+	if err != nil {
+		t.Fatalf("replace failed while active_revision referenced old import: %v", err)
+	}
+	if second.Revision != first.Revision+1 {
+		t.Fatalf("replacement revision=%d, want %d", second.Revision, first.Revision+1)
+	}
+	var outcome string
+	if err := repository.pool.QueryRow(ctx, `SELECT name FROM outcomes`).Scan(&outcome); err != nil || outcome != "ОР после миграции" {
+		t.Fatalf("active outcome=%q err=%v", outcome, err)
+	}
+	var activeRevision *int64
+	if err := repository.pool.QueryRow(ctx, `SELECT active_revision FROM subjects WHERE id='subject:test'`).Scan(&activeRevision); err != nil || activeRevision == nil || *activeRevision != second.Revision {
+		t.Fatalf("active_revision=%v, want replacement revision %d (err=%v)", activeRevision, second.Revision, err)
+	}
+}
+
+func TestSubjectReplacementRollbackRestoresSelectedAndOtherMaps(t *testing.T) {
+	repository, ctx, userID := setupImportRepository(t)
+	pool := repository.pool
+	firstA, err := repository.Replace(ctx, "subject:test", userID, importMap("A-сохранена"), 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const subjectB = "subject:rollback-b"
+	if _, err := pool.Exec(ctx, `INSERT INTO subjects(id,name,created_at) VALUES ($1,'Предмет B',2)`, subjectB); err != nil {
+		t.Fatal(err)
+	}
+	firstB, err := repository.Replace(ctx, subjectB, userID, importMap("B-сохранён"), 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	invalid := importMap("A-ошибка")
+	invalid.Tasks[0].SourceColumnIndex = len(invalid.SourceHeaders) + 1
+	if _, err := repository.Replace(ctx, "subject:test", userID, invalid, 30); err == nil {
+		t.Fatal("invalid A replacement unexpectedly succeeded")
+	}
+	var activeA, activeB, globalRevision int64
+	for id, target := range map[string]*int64{"subject:test": &activeA, subjectB: &activeB} {
+		if err := pool.QueryRow(ctx, `SELECT active_revision FROM subjects WHERE id=$1`, id).Scan(target); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := pool.QueryRow(ctx, `SELECT revision FROM competency_map_state WHERE singleton=true`).Scan(&globalRevision); err != nil {
+		t.Fatal(err)
+	}
+	if activeA != firstA.Revision || activeB != firstB.Revision || globalRevision != firstB.Revision {
+		t.Fatalf("rollback revisions: A=%d B=%d global=%d, want %d %d %d", activeA, activeB, globalRevision, firstA.Revision, firstB.Revision, firstB.Revision)
+	}
+	var imports, outcomeA, outcomeB, cancelledA int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM competency_map_imports`).Scan(&imports); err != nil {
+		t.Fatal(err)
+	}
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM outcomes WHERE name='ОР A-сохранена'`).Scan(&outcomeA); err != nil {
+		t.Fatal(err)
+	}
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM outcomes WHERE name='ОР B-сохранён'`).Scan(&outcomeB); err != nil {
+		t.Fatal(err)
+	}
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM audio_assets WHERE status='cancelled'`).Scan(&cancelledA); err != nil {
+		t.Fatal(err)
+	}
+	if imports != 2 || outcomeA != 1 || outcomeB != 1 || cancelledA != 0 {
+		t.Fatalf("rollback changed data: imports=%d A=%d B=%d cancelled=%d", imports, outcomeA, outcomeB, cancelledA)
+	}
+}
+
+func TestConcurrentSubjectImportsAllocateUniqueGlobalRevisions(t *testing.T) {
+	repository, ctx, userID := setupImportRepository(t)
+	const subjectB = "subject:concurrent-b"
+	if _, err := repository.pool.Exec(ctx, `INSERT INTO subjects(id,name,created_at) VALUES ($1,'Предмет B',2)`, subjectB); err != nil {
+		t.Fatal(err)
+	}
+	type result struct {
+		subjectID string
+		imported  competencymap.ImportResult
+		err       error
+	}
+	start := make(chan struct{})
+	results := make(chan result, 2)
+	importCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	for _, id := range []string{"subject:test", subjectB} {
+		go func(subjectID string) {
+			<-start
+			imported, err := repository.Replace(importCtx, subjectID, userID, importMap(subjectID), 10)
+			results <- result{subjectID: subjectID, imported: imported, err: err}
+		}(id)
+	}
+	close(start)
+	completed := make(map[string]competencymap.ImportResult, 2)
+	for range 2 {
+		select {
+		case got := <-results:
+			if got.err != nil {
+				t.Fatalf("import %s: %v", got.subjectID, got.err)
+			}
+			completed[got.subjectID] = got.imported
+		case <-importCtx.Done():
+			t.Fatalf("parallel imports did not finish before deadline: %v", importCtx.Err())
+		}
+	}
+	first, second := completed["subject:test"], completed[subjectB]
+	if (first.Revision != 1 || second.Revision != 2) && (first.Revision != 2 || second.Revision != 1) {
+		t.Fatalf("parallel imports received non-monotonic revisions: ML=%d B=%d", first.Revision, second.Revision)
+	}
+	var globalRevision int64
+	if err := repository.pool.QueryRow(ctx, `SELECT revision FROM competency_map_state WHERE singleton=true`).Scan(&globalRevision); err != nil || globalRevision != 2 {
+		t.Fatalf("global revision=%d, want 2 (err=%v)", globalRevision, err)
+	}
+	var activeA, activeB int64
+	if err := repository.pool.QueryRow(ctx, `SELECT active_revision FROM subjects WHERE id=$1`, "subject:test").Scan(&activeA); err != nil {
+		t.Fatal(err)
+	}
+	if err := repository.pool.QueryRow(ctx, `SELECT active_revision FROM subjects WHERE id=$1`, subjectB).Scan(&activeB); err != nil {
+		t.Fatal(err)
+	}
+	if activeA != first.Revision || activeB != second.Revision {
+		t.Fatalf("subject active revisions ML=%d/%d B=%d/%d", activeA, first.Revision, activeB, second.Revision)
+	}
+}
+
 func TestImportAudioRollsBackInvalidMapWithoutLosingActiveMap(t *testing.T) {
 	repository, ctx, userID := setupImportRepository(t)
-	if _, err := repository.Replace(ctx, userID, importMap("сохранённая"), 10); err != nil {
+	if _, err := repository.Replace(ctx, "subject:test", userID, importMap("сохранённая"), 10); err != nil {
 		t.Fatal(err)
 	}
 	invalid := importMap("повреждённая")
 	invalid.Outcomes[0].ConstituentKey = "missing-constituent"
-	if _, err := repository.Replace(ctx, userID, invalid, 20); err == nil {
+	if _, err := repository.Replace(ctx, "subject:test", userID, invalid, 20); err == nil {
 		t.Fatal("map with a missing constituent was imported")
 	}
 	var revision int64
@@ -173,7 +309,7 @@ func TestImportAudioRollsBackInvalidMapWithoutLosingActiveMap(t *testing.T) {
 
 func TestTaskSourceCoordinatesCannotBePartiallyNull(t *testing.T) {
 	repository, ctx, userID := setupImportRepository(t)
-	if _, err := repository.Replace(ctx, userID, importMap("координаты"), 10); err != nil {
+	if _, err := repository.Replace(ctx, "subject:test", userID, importMap("координаты"), 10); err != nil {
 		t.Fatal(err)
 	}
 	var outcomeID string

@@ -12,8 +12,8 @@ import (
 )
 
 type Repository interface {
-	Replace(ctx context.Context, actorID string, parsed competencymap.Map, importedAt int64) (competencymap.ImportResult, error)
-	Read(ctx context.Context) (competencymap.Snapshot, error)
+	Replace(ctx context.Context, subjectID, actorID string, parsed competencymap.Map, importedAt int64) (competencymap.ImportResult, error)
+	Read(ctx context.Context, subjectID string) (competencymap.Snapshot, error)
 }
 
 type Parser interface {
@@ -30,8 +30,8 @@ func New(repo Repository, parser Parser, now func() time.Time) *Service {
 	return &Service{repo: repo, parser: parser, now: now}
 }
 
-func (s *Service) Read(ctx context.Context) (competencymap.Snapshot, error) {
-	return s.repo.Read(ctx)
+func (s *Service) ReadSubject(ctx context.Context, subjectID string) (competencymap.Snapshot, error) {
+	return s.repo.Read(ctx, subjectID)
 }
 
 // Authorize allows transports to check import access before reading uploads.
@@ -42,7 +42,7 @@ func (s *Service) Authorize(actor user.User) error {
 	return nil
 }
 
-func (s *Service) Import(ctx context.Context, actor user.User, data []byte, media string) (competencymap.ImportResult, error) {
+func (s *Service) ImportForSubject(ctx context.Context, actor user.User, subjectID string, data []byte, media string) (competencymap.ImportResult, error) {
 	if err := s.Authorize(actor); err != nil {
 		return competencymap.ImportResult{}, err
 	}
@@ -55,5 +55,5 @@ func (s *Service) Import(ctx context.Context, actor user.User, data []byte, medi
 	if err != nil {
 		return competencymap.ImportResult{}, err
 	}
-	return s.repo.Replace(ctx, actor.ID, parsed, s.now().Unix())
+	return s.repo.Replace(ctx, subjectID, actor.ID, parsed, s.now().Unix())
 }

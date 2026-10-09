@@ -6,7 +6,7 @@ import (
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/variant"
 )
 
-type BuildFunc func(revision int64, candidates []variant.CandidateOutcome) (variant.Variant, error)
+type BuildFunc func(subjectID, subjectName string, revision int64, candidates []variant.CandidateOutcome) (variant.Variant, error)
 
 type Cursor struct {
 	CreatedAt int64
@@ -14,9 +14,9 @@ type Cursor struct {
 }
 
 type Repository interface {
-	Create(context.Context, string, string, BuildFunc) (variant.Variant, error)
+	Create(context.Context, string, string, string, BuildFunc) (variant.Variant, error)
 	Get(context.Context, string, string) (variant.Variant, error)
-	List(context.Context, string, int, *Cursor) ([]variant.Variant, *Cursor, error)
+	List(context.Context, string, string, int, *Cursor) ([]variant.Variant, *Cursor, error)
 	Task(context.Context, string, string, string) (variant.VariantTask, error)
 	TaskForGrading(context.Context, string, string, string) (variant.VariantTask, error)
 }

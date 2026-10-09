@@ -99,7 +99,7 @@ func feedbackResponse(fb diagnostic.OverallFeedback) OverallFeedbackResponse {
 		MaximumScore:            fb.MaximumScore,
 		ScorePercentage:         fb.ScorePercentage,
 		Summary:                 fb.Summary,
-		Strengths:               append([]string(nil), fb.Strengths...),
+		Strengths:               append([]string{}, fb.Strengths...),
 		ConfirmedGaps:           gaps,
 		PartialCompetencies:     partials,
 		UnverifiedCompetencies:  unverified,

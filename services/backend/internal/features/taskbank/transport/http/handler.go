@@ -3,6 +3,7 @@ package taskbankhttp
 import (
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/features/taskbank/application"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/fault"
@@ -21,6 +22,7 @@ func New(service *application.Service) *Handler { return &Handler{service: servi
 // @Security accessCookie
 // @Produce json
 // @Param outcome_id query string false "ID образовательного результата"
+// @Param subject_id query string true "ID предмета"
 // @Param competency_id query string false "ID компетенции"
 // @Param constituent_id query string false "ID составляющей"
 // @Param taxonomy query string false "Код таксономии"
@@ -40,13 +42,19 @@ func New(service *application.Service) *Handler { return &Handler{service: servi
 // @Failure 503 {object} fault.Error
 // @Router /tasks [get]
 func (h *Handler) Search(w http.ResponseWriter, r *http.Request) {
-	query, err := httpx.ParseQuery(r, "outcome_id", "competency_id", "constituent_id", "taxonomy", "ald_level", "topic_level",
+	query, err := httpx.ParseQuery(r, "subject_id", "outcome_id", "competency_id", "constituent_id", "taxonomy", "ald_level", "topic_level",
 		"importance", "importance_min", "importance_max", "include_in_test", "section", "curriculum_competency", "origin", "limit")
 	if err != nil {
 		httpx.Error(r.Context(), w, err)
 		return
 	}
+	subjectID := query.Get("subject_id")
+	if strings.TrimSpace(subjectID) == "" {
+		httpx.Error(r.Context(), w, fault.Validation("subject_id", "Укажите предмет."))
+		return
+	}
 	filter := application.SearchFilter{
+		SubjectID: subjectID,
 		OutcomeID: query.Get("outcome_id"), CompetencyID: query.Get("competency_id"),
 		ConstituentID: query.Get("constituent_id"), TaxonomyCode: query.Get("taxonomy"),
 		ALDLevelCode: query.Get("ald_level"), TopicLevelCode: query.Get("topic_level"),
@@ -115,13 +123,25 @@ func (h *Handler) Search(w http.ResponseWriter, r *http.Request) {
 // @Security accessCookie
 // @Produce json
 // @Param id path string true "ID задания"
+// @Param subject_id query string true "ID предмета"
 // @Success 200 {object} TaskProfile
 // @Failure 401 {object} fault.Error
+// @Failure 422 {object} fault.Error
 // @Failure 404 {object} fault.Error
 // @Failure 503 {object} fault.Error
 // @Router /tasks/{id} [get]
 func (h *Handler) Profile(w http.ResponseWriter, r *http.Request) {
-	profile, err := h.service.Profile(r.Context(), r.PathValue("id"))
+	query, err := httpx.ParseQuery(r, "subject_id")
+	if err != nil {
+		httpx.Error(r.Context(), w, err)
+		return
+	}
+	subjectID := query.Get("subject_id")
+	if strings.TrimSpace(subjectID) == "" {
+		httpx.Error(r.Context(), w, fault.Validation("subject_id", "Укажите предмет."))
+		return
+	}
+	profile, err := h.service.Profile(r.Context(), subjectID, r.PathValue("id"))
 	if err != nil {
 		httpx.Error(r.Context(), w, err)
 		return

@@ -13,6 +13,9 @@ func TestEnqueueTaskAudioRejectsInstructionCollisionWithoutChangingAsset(t *test
 	if err := Migrate(ctx, pool); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := pool.Exec(ctx, `INSERT INTO subjects(id,name,created_at) VALUES ('subject:test','Тестовый предмет',1)`); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := pool.Exec(ctx, `INSERT INTO audio_assets(id,instruction,object_key) VALUES ('collision','Старая инструкция','task-audio/v1/collision.wav')`); err != nil {
 		t.Fatal(err)
 	}

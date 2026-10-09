@@ -12,7 +12,7 @@ import (
 func TestMaterialHTTPAcceptsMaximumContentAndRejectsOversize(t *testing.T) {
 	f := newFixture(t)
 	admin := f.admin(t)
-	response := upload(f, "/admin/competency-map/import", "file", "map.csv", "text/csv", []byte("Ком,Сост,ОР,Задание 1,Критерии 1\nК,С,О,В,К\n"), admin)
+	response := upload(f, "/admin/subjects/subject:test/competency-map/import", "file", "map.csv", "text/csv", []byte("Ком,Сост,ОР,Задание 1,Критерии 1\nК,С,О,В,К\n"), admin)
 	if response.Code != 200 {
 		t.Fatal(response.Body.String())
 	}
@@ -20,7 +20,7 @@ func TestMaterialHTTPAcceptsMaximumContentAndRejectsOversize(t *testing.T) {
 	if err := f.pool.QueryRow(context.Background(), "SELECT id FROM outcomes").Scan(&id); err != nil {
 		t.Fatal(err)
 	}
-	body, _ := json.Marshal(map[string]any{"name": "notes", "content": strings.Repeat("я", 100000), "outcome_ids": []string{id}})
+	body, _ := json.Marshal(map[string]any{"subject_id": "subject:test", "name": "notes", "content": strings.Repeat("я", 100000), "outcome_ids": []string{id}})
 	response = f.request("POST", "/admin/materials", string(body), admin)
 	if response.Code != 201 {
 		t.Fatalf("valid material: %d %s", response.Code, response.Body.String())
@@ -35,13 +35,13 @@ func TestMaterialHTTPAcceptsMaximumContentAndRejectsOversize(t *testing.T) {
 	if response.Code != 201 {
 		t.Fatalf("escaped material: %d %s", response.Code, response.Body.String())
 	}
-	emojiBody, _ := json.Marshal(map[string]any{"name": "emoji", "content": strings.Repeat("😀", 100000), "outcome_ids": []string{id}})
+	emojiBody, _ := json.Marshal(map[string]any{"subject_id": "subject:test", "name": "emoji", "content": strings.Repeat("😀", 100000), "outcome_ids": []string{id}})
 	escapedEmoji := strings.ReplaceAll(string(emojiBody), "😀", `\ud83d\ude00`)
 	response = f.request("POST", "/admin/materials", escapedEmoji, admin)
 	if response.Code != 201 {
 		t.Fatalf("surrogate-pair material: %d %s", response.Code, response.Body.String())
 	}
-	excessiveContent, _ := json.Marshal(map[string]any{"name": "oversize", "content": strings.Repeat("я", 100001), "outcome_ids": []string{id}})
+	excessiveContent, _ := json.Marshal(map[string]any{"subject_id": "subject:test", "name": "oversize", "content": strings.Repeat("я", 100001), "outcome_ids": []string{id}})
 	response = f.request("POST", "/admin/materials", string(excessiveContent), admin)
 	if response.Code != 422 {
 		t.Fatalf("excessive content: %d %s", response.Code, response.Body.String())
@@ -55,7 +55,7 @@ func TestTaskSearchImportanceRange(t *testing.T) {
 	f := newFixture(t)
 	admin := f.admin(t)
 	csv := "Ком,Сост,ОР,Важность,Задание 1,Критерии 1\nК,С,О1,1,Низкий,К\n,,О3,3,Средний,К\n,,О5,5,Высокий,К\n,,Нет важности,,Неизвестный,К\n"
-	response := upload(f, "/admin/competency-map/import", "file", "map.csv", "text/csv", []byte(csv), admin)
+	response := upload(f, "/admin/subjects/subject:test/competency-map/import", "file", "map.csv", "text/csv", []byte(csv), admin)
 	if response.Code != 200 {
 		t.Fatal(response.Body.String())
 	}
@@ -63,7 +63,7 @@ func TestTaskSearchImportanceRange(t *testing.T) {
 		query string
 		count int
 	}{{"importance_min=2&importance_max=4", 1}, {"importance_min=3", 2}, {"importance_max=1", 1}, {"importance=3", 1}, {"importance=3&importance_min=4", 0}, {"", 4}} {
-		response = f.request("GET", "/tasks?"+tc.query, "", admin)
+		response = f.request("GET", "/tasks?subject_id=subject%3Atest&"+tc.query, "", admin)
 		var tasks []struct {
 			Question string `json:"question"`
 		}
@@ -97,7 +97,7 @@ func TestGenerationUsesIndependentModelConfiguration(t *testing.T) {
 	}
 	f.app.cfg = cfg
 	admin := f.admin(t)
-	response := upload(f, "/admin/competency-map/import", "file", "map.csv", "text/csv", []byte("Ком,Сост,ОР,Задание 1,Критерии 1\nК,С,О,В,К\n"), admin)
+	response := upload(f, "/admin/subjects/subject:test/competency-map/import", "file", "map.csv", "text/csv", []byte("Ком,Сост,ОР,Задание 1,Критерии 1\nК,С,О,В,К\n"), admin)
 	if response.Code != 200 {
 		t.Fatal(response.Body.String())
 	}
@@ -105,7 +105,7 @@ func TestGenerationUsesIndependentModelConfiguration(t *testing.T) {
 	if err := f.pool.QueryRow(context.Background(), "SELECT id FROM outcomes").Scan(&id); err != nil {
 		t.Fatal(err)
 	}
-	body, _ := json.Marshal(map[string]string{"outcome_id": id})
+	body, _ := json.Marshal(map[string]string{"subject_id": "subject:test", "outcome_id": id})
 	r := httptest.NewRequest("POST", "/tasks/generate", strings.NewReader(string(body)))
 	r.Header.Set("Content-Type", "application/json")
 	r.Header.Set("Idempotency-Key", "independent-model")
@@ -125,7 +125,7 @@ func TestPairedImportPersistsPartialProfileAndSourceLinks(t *testing.T) {
 	f := newFixture(t)
 	admin := f.admin(t)
 	csv := "Ком,Сост,ОР,Что должно войти в тест,Таксономия,Важность,Задание 1,Критерии 1\nК,С,О,TRUE,Знание,3,В,К\n,,,,,,В2,К2\n,,Без задания,FALSE,,,,\n"
-	response := upload(f, "/admin/competency-map/import", "file", "map.csv", "text/csv", []byte(csv), admin)
+	response := upload(f, "/admin/subjects/subject:test/competency-map/import", "file", "map.csv", "text/csv", []byte(csv), admin)
 	if response.Code != 200 {
 		t.Fatalf("partial profile: %d %s", response.Code, response.Body.String())
 	}
@@ -133,14 +133,14 @@ func TestPairedImportPersistsPartialProfileAndSourceLinks(t *testing.T) {
 	if err := f.pool.QueryRow(context.Background(), "SELECT count(*) FROM outcome_source_rows").Scan(&count); err != nil || count != 3 {
 		t.Fatalf("source links=%d err=%v", count, err)
 	}
-	response = f.request("GET", "/tasks?importance=3&include_in_test=true&taxonomy=knowledge", "", admin)
+	response = f.request("GET", "/tasks?subject_id=subject%3Atest&importance=3&include_in_test=true&taxonomy=knowledge", "", admin)
 	var tasks []struct {
 		ID string `json:"id"`
 	}
 	if err := json.Unmarshal(response.Body.Bytes(), &tasks); err != nil || len(tasks) != 2 {
 		t.Fatalf("filtered profile: %d %s", response.Code, response.Body.String())
 	}
-	response = f.request("GET", "/tasks/"+tasks[0].ID, "", admin)
+	response = f.request("GET", "/tasks/"+tasks[0].ID+"?subject_id=subject%3Atest", "", admin)
 	var profile struct {
 		Importance *int    `json:"importance"`
 		ALD        *string `json:"ald_level_code"`
@@ -153,12 +153,12 @@ func TestPairedImportPersistsPartialProfileAndSourceLinks(t *testing.T) {
 func TestConflictingCurriculumTitleReturnsValidationAndPreservesMap(t *testing.T) {
 	f := newFixture(t)
 	admin := f.admin(t)
-	response := upload(f, "/admin/competency-map/import", "file", "map.csv", "text/csv", []byte("Ком,Сост,ОР,Задание 1,Критерии 1\nК,С,О,Прежний вопрос,К\n"), admin)
+	response := upload(f, "/admin/subjects/subject:test/competency-map/import", "file", "map.csv", "text/csv", []byte("Ком,Сост,ОР,Задание 1,Критерии 1\nК,С,О,Прежний вопрос,К\n"), admin)
 	if response.Code != 200 {
 		t.Fatal(response.Body.String())
 	}
 	data := "Компетенция;Составляющая;Образовательный результат;Уровень темы;Что должно войти в тест;Таксономия;Уровень ALDs;Важность;Раздел РПД · компетенции РПД;ОС;Задание1\nК;С1;О1;Базовый;TRUE;Знание;Базовый;3;Р.1 Введение;;\n;С2;О2;Базовый;TRUE;Знание;Базовый;3;Р.1 Другая тема;;\n"
-	response = upload(f, "/admin/competency-map/import", "file", "map.csv", "text/csv", []byte(data), admin)
+	response = upload(f, "/admin/subjects/subject:test/competency-map/import", "file", "map.csv", "text/csv", []byte(data), admin)
 	var failure struct {
 		Code    string                           `json:"code"`
 		Details []struct{ Path, Message string } `json:"details"`
@@ -175,7 +175,7 @@ func TestConflictingCurriculumTitleReturnsValidationAndPreservesMap(t *testing.T
 func TestMaterialHTTPRejectsNULBeforePersistence(t *testing.T) {
 	f := newFixture(t)
 	admin := f.admin(t)
-	response := upload(f, "/admin/competency-map/import", "file", "map.csv", "text/csv", []byte("Ком,Сост,ОР,Задание 1,Критерии 1\nК,С,О,В,К\n"), admin)
+	response := upload(f, "/admin/subjects/subject:test/competency-map/import", "file", "map.csv", "text/csv", []byte("Ком,Сост,ОР,Задание 1,Критерии 1\nК,С,О,В,К\n"), admin)
 	if response.Code != 200 {
 		t.Fatal(response.Body.String())
 	}
@@ -185,7 +185,7 @@ func TestMaterialHTTPRejectsNULBeforePersistence(t *testing.T) {
 	}
 	for _, field := range []string{"name", "content", "outcome_ids"} {
 		t.Run(field, func(t *testing.T) {
-			input := map[string]any{"name": "notes", "content": "Текст", "outcome_ids": []string{outcomeID}}
+			input := map[string]any{"subject_id": "subject:test", "name": "notes", "content": "Текст", "outcome_ids": []string{outcomeID}}
 			if field == "outcome_ids" {
 				input[field] = []string{outcomeID + "\x00"}
 			} else {
@@ -216,7 +216,7 @@ func TestMaterialHTTPRejectsNULBeforePersistence(t *testing.T) {
 func TestMaterialHTTPPreservesCodeFormatting(t *testing.T) {
 	f := newFixture(t)
 	admin := f.admin(t)
-	response := upload(f, "/admin/competency-map/import", "file", "map.csv", "text/csv", []byte("Ком,Сост,ОР,Задание 1,Критерии 1\nК,С,О,В,К\n"), admin)
+	response := upload(f, "/admin/subjects/subject:test/competency-map/import", "file", "map.csv", "text/csv", []byte("Ком,Сост,ОР,Задание 1,Критерии 1\nК,С,О,В,К\n"), admin)
 	if response.Code != 200 {
 		t.Fatal(response.Body.String())
 	}
@@ -225,7 +225,7 @@ func TestMaterialHTTPPreservesCodeFormatting(t *testing.T) {
 		t.Fatal(err)
 	}
 	content := "Пример Python:\r\n\r\nif x > 0:\n    print(x)\nelse:\n\tprint(-x)\n"
-	body, err := json.Marshal(map[string]any{"name": "Python", "content": content, "outcome_ids": []string{outcomeID}})
+	body, err := json.Marshal(map[string]any{"subject_id": "subject:test", "name": "Python", "content": content, "outcome_ids": []string{outcomeID}})
 	if err != nil {
 		t.Fatal(err)
 	}

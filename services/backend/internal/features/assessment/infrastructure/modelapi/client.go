@@ -26,7 +26,7 @@ const systemPrompt = `Ты выполняешь формирующее оцен�
 Если у критерия mandatory=true, он обязательный. Если хотя бы один обязательный критерий не выполнен, итоговая оценка должна быть 0/incorrect независимо от остальных критериев.
 
 Оценка определяется доверенными role и max_score и результатами критериев:
-- для main с max_score=2: 2/correct — выполнены все критерии; 1/partial — выполнена часть, но не все; 0/incorrect — не выполнен ни один;
+- для main или training с max_score=2: 2/correct — выполнены все критерии; 1/partial — выполнена часть, но не все; 0/incorrect — не выполнен ни один;
 - для basic с max_score=1: 1/correct — выполнены все критерии; 0/incorrect — хотя бы один критерий не выполнен.
 
 Верни только JSON-объект строго такого вида:
@@ -67,7 +67,7 @@ func invalidGradingContext() error {
 func (c *Client) Grade(ctx context.Context, gradingContext application.GradingContext, answer string) (application.Evaluation, error) {
 	role := gradingContext.Role
 	maxScore := gradingContext.MaxScore
-	if !((role == "main" && maxScore == 2) || (role == "basic" && maxScore == 1)) {
+	if !(((role == "main" || role == "training") && maxScore == 2) || (role == "basic" && maxScore == 1)) {
 		return application.Evaluation{}, invalidGradingContext()
 	}
 

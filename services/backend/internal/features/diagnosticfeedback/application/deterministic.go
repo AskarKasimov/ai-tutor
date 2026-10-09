@@ -51,6 +51,10 @@ func AnalyzeResult(result diagnostic.Result) DeterministicReport {
 		main   *diagnostic.Answer
 		basics []diagnostic.Answer
 	}
+	classified := map[string]string{}
+	for _, target := range diagnostic.TrainingTargets(result.Answers) {
+		classified[target.Answer.CompetencyID+"\x00"+target.Answer.Task.OutcomeID] = target.Kind
+	}
 
 	groups := make(map[string]*compAnswers)
 	compOrder := make([]string, 0)
@@ -86,7 +90,7 @@ func AnalyzeResult(result diagnostic.Result) DeterministicReport {
 
 		hasBasicZero := false
 		for _, b := range grp.basics {
-			if b.Score == 0 {
+			if classified[b.CompetencyID+"\x00"+b.Task.OutcomeID] == "confirmed_gap" {
 				hasBasicZero = true
 				failedCriteria := make([]string, 0)
 				for _, cr := range b.CriterionResults {
@@ -113,7 +117,7 @@ func AnalyzeResult(result diagnostic.Result) DeterministicReport {
 			}
 		}
 
-		if !hasBasicZero {
+		if !hasBasicZero && classified[mainAns.CompetencyID+"\x00"+mainAns.Task.OutcomeID] == "partial_competency" {
 			detail := fmt.Sprintf("Базовые понятия темы «%s» усвоены, но требуется закрепление на более высоком уровне (%s).",
 				compName, mainAns.Task.TaxonomyCode)
 			if len(mainAns.Feedback) >= 2 && strings.TrimSpace(mainAns.Feedback[1]) != "" {

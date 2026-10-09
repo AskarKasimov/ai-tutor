@@ -64,6 +64,10 @@ const imported = {
     },
   ],
 }
+const subjects = [
+  { id: 'subject-a', name: 'Машинное обучение', ready: true },
+  { id: 'subject-b', name: 'Статистика', ready: false },
+]
 
 function renderApp(path = '/') {
   const router = createRouter({
@@ -83,6 +87,7 @@ function backend(
   } = {},
 ) {
   let active: typeof emptyMap | typeof importedMap = emptyMap
+  const activeSubjects = [...subjects]
   const fetch = vi.fn(async (url: string, init?: RequestInit) => {
     if (url.endsWith('/auth/refresh'))
       return new Response(null, { status: 401 })
@@ -91,9 +96,33 @@ function backend(
         JSON.stringify(options.user === undefined ? admin : options.user),
         { status: options.user === null ? 401 : 200 },
       )
-    if (url.endsWith('/competency-map') && !init?.method)
+    if (url.endsWith('/subjects') && !init?.method)
+      return new Response(JSON.stringify(activeSubjects))
+    if (url.endsWith('/admin/subjects') && init?.method === 'POST') {
+      const subject = { id: 'subject-c', name: 'Новый', ready: false }
+      activeSubjects.push(subject)
+      return new Response(JSON.stringify(subject))
+    }
+    if (url.endsWith('/subjects/subject-a/learning-state'))
+      return new Response(
+        JSON.stringify({
+          subject_id: 'subject-a',
+          subject_name: 'Машинное обучение',
+          diagnostic_status: 'not_started',
+          diagnostic_completed: false,
+          training_available: false,
+        }),
+      )
+    if (
+      url.includes('/subjects/') &&
+      url.endsWith('/competency-map') &&
+      !init?.method
+    )
       return new Response(JSON.stringify(active))
-    if (url.endsWith('/admin/competency-map/import')) {
+    if (
+      url.includes('/admin/subjects/') &&
+      url.endsWith('/competency-map/import')
+    ) {
       if (!options.status || options.status === 200) active = importedMap
       return new Response(JSON.stringify(options.result ?? imported), {
         status: options.status ?? 200,
@@ -131,6 +160,12 @@ it.each(['/', '/login'])(
       screen.queryByRole('button', { name: 'Начать запись' }),
     ).not.toBeInTheDocument()
     expect(await screen.findByText('Карта ещё не загружена.')).toBeVisible()
+    expect(screen.getByRole('combobox', { name: 'Предмет' })).toHaveValue(
+      'subject-a',
+    )
+    expect(
+      screen.getByRole('option', { name: 'Статистика' }),
+    ).toBeInTheDocument()
     expect(createLesson).not.toHaveBeenCalled()
   },
 )
@@ -159,6 +194,71 @@ it('does not mount the lesson while the current session is being checked', async
     await screen.findByRole('heading', { name: 'Вход в AI Tutor', level: 1 }),
   ).toBeVisible()
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+})
+
+it('creates a trimmed subject and selects its empty map', async () => {
+  const fetch = backend()
+  renderApp('/admin/competency-map')
+  const field = await screen.findByLabelText('Название предмета')
+  fireEvent.change(field, { target: { value: '  Новый  ' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Создать предмет' }))
+  await waitFor(() =>
+    expect(screen.getByRole('combobox', { name: 'Предмет' })).toHaveValue(
+      'subject-c',
+    ),
+  )
+  expect(await screen.findByText('Карта ещё не загружена.')).toBeVisible()
+  const [, init] = fetch.mock.calls.find(
+    ([url, request]) =>
+      url.endsWith('/admin/subjects') && request?.method === 'POST',
+  )!
+  expect(JSON.parse(init?.body as string)).toEqual({ name: 'Новый' })
+  expect(
+    fetch.mock.calls.some(([url]) =>
+      url.endsWith('/subjects/subject-c/competency-map'),
+    ),
+  ).toBe(true)
+})
+
+it('keeps a late import result with its captured subject after switching selection', async () => {
+  let finish!: (response: Response) => void
+  const fetch = vi.fn(async (url: string, init?: RequestInit) => {
+    if (url.endsWith('/auth/refresh'))
+      return new Response(null, { status: 401 })
+    if (url.endsWith('/auth/me')) return Response.json(admin)
+    if (url.endsWith('/subjects')) return Response.json(subjects)
+    if (
+      url.endsWith('/subjects/subject-a/competency-map') ||
+      url.endsWith('/subjects/subject-b/competency-map')
+    )
+      return Response.json(emptyMap)
+    if (url.endsWith('/competency-map/import'))
+      return new Promise<Response>((resolve) => {
+        finish = resolve
+      })
+    throw new Error(`Unexpected request: ${url} ${init?.method ?? 'GET'}`)
+  })
+  vi.stubGlobal('fetch', fetch)
+  renderApp('/admin/competency-map')
+  const select = await screen.findByRole('combobox', { name: 'Предмет' })
+  await screen.findByText('Карта ещё не загружена.')
+  fireEvent.change(await screen.findByLabelText('Файл карты компетенций'), {
+    target: { files: [new File(['map'], 'map.csv')] },
+  })
+  fireEvent.click(screen.getByRole('button', { name: 'Загрузить карту' }))
+  fireEvent.click(
+    within(await screen.findByRole('alertdialog')).getByRole('button', {
+      name: 'Заменить и загрузить',
+    }),
+  )
+  await waitFor(() => expect(finish).toBeDefined())
+  fireEvent.change(select, { target: { value: 'subject-b' } })
+  await waitFor(() => expect(select).toHaveValue('subject-b'))
+  await act(async () => finish(Response.json(imported)))
+  expect(screen.queryByText('Карта загружена.')).not.toBeInTheDocument()
+  expect(screen.getByRole('combobox', { name: 'Предмет' })).toHaveValue(
+    'subject-b',
+  )
 })
 
 it('routes an admin straight from the login form to the import screen', async () => {
@@ -227,9 +327,7 @@ it.each(['csv', 'xlsx'])(
     fireEvent.click(
       within(dialog).getByRole('button', { name: 'Заменить и загрузить' }),
     )
-    expect(await screen.findByRole('status')).toHaveTextContent(
-      'Карта загружена',
-    )
+    expect(await screen.findByText('Карта загружена.')).toBeVisible()
     expect(screen.getByText('Задание 2')).toBeVisible()
     expect(screen.getByText('8')).toBeVisible()
     expect(
@@ -243,6 +341,12 @@ it.each(['csv', 'xlsx'])(
       ).toHaveTextContent('Версия 2'),
     )
     const [, init] = fetch.mock.calls.find(([url]) => url.endsWith('/import'))!
+    const [importUrl] = fetch.mock.calls.find(([url]) =>
+      url.endsWith('/import'),
+    )!
+    expect(importUrl).toBe(
+      '/api/v1/admin/subjects/subject-a/competency-map/import',
+    )
     expect(init?.credentials).toBe('include')
     expect(init?.headers).toBeUndefined()
     const file = (init?.body as FormData).get('file') as File
@@ -362,7 +466,8 @@ it('restores the admin screen after reload with an expired access cookie', async
         return valid
           ? Response.json(admin)
           : new Response(null, { status: 401 })
-      if (url.endsWith('/competency-map')) return Response.json(emptyMap)
+      if (url.endsWith('/subjects/subject-a/competency-map'))
+        return Response.json(emptyMap)
       throw new Error(`Unexpected request: ${url}`)
     }),
   )
@@ -466,7 +571,7 @@ it('can log in again after an expired map refresh without reusing the cached 401
   const router = renderApp()
   await screen.findByText('Карта ещё не загружена.')
   fetch.mockImplementation(async (url: string) =>
-    url.endsWith('/competency-map')
+    url.endsWith('/subjects/subject-a/competency-map')
       ? new Response(JSON.stringify({ message: 'Сессия завершилась.' }), {
           status: 401,
         })

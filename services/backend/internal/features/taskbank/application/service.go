@@ -5,6 +5,7 @@ import (
 )
 
 type SearchFilter struct {
+	SubjectID                                     string
 	OutcomeID, CompetencyID, ConstituentID        string
 	TaxonomyCode, ALDLevelCode, TopicLevelCode    string
 	Origin, SectionCode, CurriculumCompetencyCode string
@@ -59,7 +60,7 @@ type TaskProfile struct {
 
 type Repository interface {
 	Search(context.Context, SearchFilter) ([]TaskSummary, error)
-	Profile(context.Context, string) (TaskProfile, error)
+	Profile(context.Context, string, string) (TaskProfile, error)
 }
 
 type Service struct{ repo Repository }
@@ -73,6 +74,6 @@ func (s *Service) Search(ctx context.Context, filter SearchFilter) ([]TaskSummar
 	return s.repo.Search(ctx, filter)
 }
 
-func (s *Service) Profile(ctx context.Context, taskID string) (TaskProfile, error) {
-	return s.repo.Profile(ctx, taskID)
+func (s *Service) Profile(ctx context.Context, subjectID, taskID string) (TaskProfile, error) {
+	return s.repo.Profile(ctx, subjectID, taskID)
 }

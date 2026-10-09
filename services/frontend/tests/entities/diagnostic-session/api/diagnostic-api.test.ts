@@ -5,7 +5,9 @@ import {
   readDiagnosticAudio,
   regenerateDiagnosticAudio,
   readDiagnostic,
+  readDiagnosticFeedback,
   submitDiagnostic,
+  createVariant,
 } from '@/entities/diagnostic-session'
 
 const accepted = {
@@ -27,6 +29,52 @@ afterEach(() => {
   vi.useRealTimers()
   vi.restoreAllMocks()
   vi.unstubAllGlobals()
+})
+
+it('creates a variant for the explicitly selected subject', async () => {
+  const fetchMock = vi
+    .fn()
+    .mockResolvedValue(Response.json({ id: 'variant-1' }, { status: 201 }))
+  vi.stubGlobal('fetch', fetchMock)
+  await expect(
+    createVariant('subject:ml', 'key-1', new AbortController().signal),
+  ).resolves.toEqual({ id: 'variant-1' })
+  expect(fetchMock.mock.calls[0][0]).toBe('/api/v1/variants')
+  expect(fetchMock.mock.calls[0][1].method).toBe('POST')
+  expect(fetchMock.mock.calls[0][1].headers).toMatchObject({
+    'Idempotency-Key': 'key-1',
+    'Content-Type': 'application/json',
+  })
+  expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({
+    subject_id: 'subject:ml',
+  })
+})
+
+it('accepts an empty strengths list serialized as null by the backend', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn().mockResolvedValue(
+      Response.json({
+        session_id: 'session-1',
+        diagnostic_score: 0,
+        maximum_score: 4,
+        score_percentage: 0,
+        summary: 'Повторите базовые темы.',
+        strengths: null,
+        confirmed_gaps: [],
+        partial_competencies: [],
+        unverified_competencies: [],
+        training_recommendations: [],
+        generated_at: 1791538582,
+      }),
+    ),
+  )
+  await expect(
+    readDiagnosticFeedback('session-1', new AbortController().signal),
+  ).resolves.toMatchObject({
+    strengths: [],
+    summary: 'Повторите базовые темы.',
+  })
 })
 
 it('regenerates only the expected task and returns ready metadata', async () => {

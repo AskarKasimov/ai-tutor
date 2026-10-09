@@ -199,6 +199,7 @@ export function useDiagnosticVoice(
         setCancelledHint(true)
         return
       }
+      if (metadata?.status === 'failed') repairBadMetadata = true
       if (
         !repairBadMetadata &&
         (metadata?.status !== 'ready' || !metadata.audio_url)

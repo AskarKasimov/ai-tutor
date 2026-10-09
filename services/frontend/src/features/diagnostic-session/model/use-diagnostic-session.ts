@@ -17,8 +17,6 @@ import {
   replaceSession,
 } from '@/entities/user'
 import type { SessionToken } from '@/entities/user'
-import { acquireDiagnosticBootstrap } from './diagnostic-bootstrap'
-
 async function startOperation(
   cache: QueryClient,
   userId: string,
@@ -35,19 +33,59 @@ async function startOperation(
       register: (token, controller) =>
         registerSessionRequest(cache, token, controller),
     },
-    storage: dependencies.diagnosticStorage,
+    storage: {
+      load: (storedUserId, apiBase, storedSubjectId) =>
+        dependencies.diagnosticStorage.loadPending(
+          storedUserId,
+          apiBase,
+          storedSubjectId,
+        ) ??
+        dependencies.diagnosticStorage.load(
+          storedUserId,
+          apiBase,
+          storedSubjectId,
+        ),
+      save: dependencies.diagnosticStorage.savePending,
+    },
   })
 }
 
-export function useDiagnosticSession(userId: string) {
+export function useDiagnosticSession(
+  userId: string,
+  subjectId: string,
+  initialSessionId?: string,
+  startNew = false,
+) {
   const dependencies = useDiagnosticDependencies()
   const cache = useQueryClient()
-  const [identity, setIdentity] = useState(
-    () =>
-      dependencies.diagnosticStorage.load(userId, dependencies.apiBase) ??
-      dependencies.createDiagnosticIdentity(),
+  const [identity, setIdentity] = useState(() =>
+    startNew
+      ? (dependencies.diagnosticStorage.loadPending(
+          userId,
+          dependencies.apiBase,
+          subjectId,
+        ) ?? dependencies.createDiagnosticIdentity(subjectId))
+      : initialSessionId
+        ? {
+            ...(dependencies.diagnosticStorage.load(
+              userId,
+              dependencies.apiBase,
+              subjectId,
+            ) ?? dependencies.createDiagnosticIdentity(subjectId)),
+            sessionId: initialSessionId,
+          }
+        : (dependencies.diagnosticStorage.load(
+            userId,
+            dependencies.apiBase,
+            subjectId,
+          ) ??
+          dependencies.diagnosticStorage.loadPending(
+            userId,
+            dependencies.apiBase,
+            subjectId,
+          ) ??
+          dependencies.createDiagnosticIdentity(subjectId)),
   )
-  const [bootstrapError, setBootstrapError] = useState<Error | null>(null)
   const [sessionToken] = useState(() => captureSession(cache))
   const startController = useRef<AbortController | null>(null)
   const pendingRestart = useRef<DiagnosticSessionIdentity | null>(null)
@@ -69,85 +107,15 @@ export function useDiagnosticSession(userId: string) {
     },
     [cache, sessionToken, userId],
   )
-  const start = useMutation({
-    mutationKey: diagnosticSessionQueryKeys.startDiagnostic(userId),
-    retry: false,
-    gcTime: 0,
-    onMutate: () => captureSession(cache),
-    mutationFn: ({
-      identity: submittedIdentity,
-      signal,
-    }: {
-      identity: DiagnosticSessionIdentity
-      signal: AbortSignal
-    }) =>
-      startOperation(cache, userId, submittedIdentity, signal, dependencies),
-    onSuccess: ({ progress, identity: next, token }) => {
-      if (!isCurrentSession(cache, token)) return
-      setIdentity(next)
-      setBootstrapError(null)
-      cache.setQueryData(
-        diagnosticSessionQueryKeys.diagnosticProgress(userId, next.sessionId),
-        progress,
-      )
-    },
-    onError: (error, _input, token) => {
-      if (token) handleError(error, token)
-    },
-  })
   useEffect(() => {
-    if (!identity.sessionId)
+    if (identity.sessionId)
       dependencies.diagnosticStorage.save(
         userId,
         dependencies.apiBase,
+        subjectId,
         identity,
       )
-  }, [identity, userId])
-  useEffect(() => {
-    if (identity.sessionId) return
-    const token = captureSession(cache)
-    let active = true
-    const acquired = acquireDiagnosticBootstrap(
-      cache,
-      token,
-      identity,
-      (signal, savedIdentity) =>
-        start
-          .mutateAsync({ identity: savedIdentity, signal })
-          .then((result) => result.progress),
-    )
-    void acquired.promise
-      .then((progress) => {
-        if (!active || !isCurrentSession(cache, token)) return
-        const next = dependencies.diagnosticStorage.load(
-          userId,
-          dependencies.apiBase,
-        )
-        if (next?.sessionId) setIdentity(next)
-        cache.setQueryData(
-          diagnosticSessionQueryKeys.diagnosticProgress(
-            userId,
-            next?.sessionId,
-          ),
-          progress,
-        )
-        setBootstrapError(null)
-      })
-      .catch((error: unknown) => {
-        if (!active || !isCurrentSession(cache, token)) return
-        if (!(error instanceof DOMException && error.name === 'AbortError'))
-          setBootstrapError(
-            error instanceof Error
-              ? error
-              : new Error('Diagnostic start failed'),
-          )
-        handleError(error, token)
-      })
-    return () => {
-      active = false
-      acquired.release()
-    }
-  }, [cache, handleError, identity, start.mutateAsync, userId])
+  }, [dependencies, identity, subjectId, userId])
   // The epoch belongs to QueryClient; the public resource identity is user/session.
   // eslint-disable-next-line @tanstack/query/exhaustive-deps
   const progressQuery = useQuery({
@@ -225,15 +193,29 @@ export function useDiagnosticSession(userId: string) {
     gcTime: 0,
     onMutate: () => captureSession(cache),
     mutationFn: async () => {
-      const next =
-        pendingRestart.current ?? dependencies.createDiagnosticIdentity()
-      pendingRestart.current = next
-      const saved = dependencies.diagnosticStorage.load(
+      const savedPending = dependencies.diagnosticStorage.loadPending(
         userId,
         dependencies.apiBase,
+        subjectId,
       )
-      if (saved?.startKey !== next.startKey)
-        dependencies.diagnosticStorage.save(userId, dependencies.apiBase, next)
+      const next =
+        (pendingRestart.current &&
+        savedPending?.startKey === pendingRestart.current.startKey
+          ? { ...pendingRestart.current, ...savedPending }
+          : pendingRestart.current) ??
+        savedPending ??
+        (!initialSessionId &&
+        !identity.sessionId &&
+        identity.subjectId === subjectId
+          ? identity
+          : dependencies.createDiagnosticIdentity(subjectId))
+      pendingRestart.current = next
+      dependencies.diagnosticStorage.savePending(
+        userId,
+        dependencies.apiBase,
+        subjectId,
+        next,
+      )
       const controller = new AbortController()
       startController.current?.abort()
       startController.current = controller
@@ -249,8 +231,18 @@ export function useDiagnosticSession(userId: string) {
     onSuccess: ({ progress, identity: next, previousSessionId, token }) => {
       if (!isCurrentSession(cache, token)) return
       pendingRestart.current = null
+      dependencies.diagnosticStorage.save(
+        userId,
+        dependencies.apiBase,
+        subjectId,
+        next,
+      )
+      dependencies.diagnosticStorage.clearPending(
+        userId,
+        dependencies.apiBase,
+        subjectId,
+      )
       setIdentity(next)
-      setBootstrapError(null)
       cache.setQueryData(
         diagnosticSessionQueryKeys.diagnosticProgress(userId, next.sessionId),
         progress,
@@ -273,10 +265,8 @@ export function useDiagnosticSession(userId: string) {
       if (token) handleError(error, token)
     },
   })
-  const data = progressQuery.data ?? start.data?.progress
-  const loadError = identity.sessionId
-    ? progressQuery.error
-    : (start.error ?? bootstrapError)
+  const data = progressQuery.data
+  const loadError = identity.sessionId ? progressQuery.error : restart.error
   const query = {
     data,
     error: loadError,
@@ -284,22 +274,14 @@ export function useDiagnosticSession(userId: string) {
     isPending: identity.sessionId
       ? progressQuery.isPending
       : !data && !loadError,
-    isFetching: progressQuery.isFetching || start.isPending,
+    isFetching: progressQuery.isFetching || restart.isPending,
     refetch: async () => {
       if (identity.sessionId) {
         const result = await progressQuery.refetch()
         return { data: result.data, error: result.error }
       }
-      const controller = new AbortController()
-      startController.current?.abort()
-      startController.current = controller
       try {
-        const result = await start.mutateAsync({
-          identity:
-            dependencies.diagnosticStorage.load(userId, dependencies.apiBase) ??
-            identity,
-          signal: controller.signal,
-        })
+        const result = await restart.mutateAsync()
         return { data: result.progress, error: null }
       } catch (error) {
         return { data: undefined, error: error as Error }
@@ -314,6 +296,17 @@ export function useDiagnosticResultQuery(userId: string, sessionId: string) {
     queryKey: diagnosticSessionQueryKeys.diagnosticResult(userId, sessionId),
     queryFn: ({ signal }) =>
       dependencies.diagnostic.readDiagnosticResult(sessionId, signal),
+    retry: false,
+    staleTime: Infinity,
+  })
+}
+
+export function useDiagnosticFeedbackQuery(userId: string, sessionId: string) {
+  const dependencies = useDiagnosticDependencies()
+  return useQuery({
+    queryKey: diagnosticSessionQueryKeys.diagnosticFeedback(userId, sessionId),
+    queryFn: ({ signal }) =>
+      dependencies.diagnostic.readDiagnosticFeedback(sessionId, signal),
     retry: false,
     staleTime: Infinity,
   })

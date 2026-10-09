@@ -11,6 +11,8 @@ type TaskReader interface {
 type Variant struct {
 	ID                      string
 	OwnerID                 string
+	SubjectID               string
+	SubjectNameSnapshot     string
 	MapRevision             int64
 	AlgorithmVersion        string
 	IncludedCompetencyCount int

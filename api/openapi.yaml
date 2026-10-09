@@ -2097,6 +2097,37 @@ paths:
       tags:
         - Auth
       x-implementation: implemented
+  /auth/teacher:
+    post:
+      operationId: loginTeacher
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/authhttp.authSession'
+          description: OK
+          headers:
+            Set-Cookie:
+              description: 'access_token и refresh_token: Path=/; Secure; HttpOnly; SameSite=Lax'
+              schema:
+                type: string
+        "422":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unprocessable Entity
+        "503":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Service Unavailable
+      summary: Войти как учитель без пароля
+      tags:
+        - Auth
+      x-implementation: implemented
   /diagnostic-sessions:
     post:
       description: Сохраняет в PostgreSQL снимок порядка варианта. Повтор с тем же ключом возвращает ту же сессию.

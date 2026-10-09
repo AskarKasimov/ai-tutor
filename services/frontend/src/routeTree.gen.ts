@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as LoginRouteImport } from './routes/login'
+import { Route as WelcomeRouteImport } from './routes/welcome'
 import { Route as AdminCompetencyMapRouteImport } from './routes/admin.competency-map'
 
 const IndexRoute = IndexRouteImport.update({
@@ -23,6 +24,11 @@ const LoginRoute = LoginRouteImport.update({
   path: '/login',
   getParentRoute: () => rootRouteImport,
 } as any)
+const WelcomeRoute = WelcomeRouteImport.update({
+  id: '/welcome',
+  path: '/welcome',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AdminCompetencyMapRoute = AdminCompetencyMapRouteImport.update({
   id: '/admin/competency-map',
   path: '/admin/competency-map',
@@ -32,30 +38,34 @@ const AdminCompetencyMapRoute = AdminCompetencyMapRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
+  '/welcome': typeof WelcomeRoute
   '/admin/competency-map': typeof AdminCompetencyMapRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
+  '/welcome': typeof WelcomeRoute
   '/admin/competency-map': typeof AdminCompetencyMapRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
+  '/welcome': typeof WelcomeRoute
   '/admin/competency-map': typeof AdminCompetencyMapRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/login' | '/admin/competency-map'
+  fullPaths: '/' | '/login' | '/welcome' | '/admin/competency-map'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/login' | '/admin/competency-map'
-  id: '__root__' | '/' | '/login' | '/admin/competency-map'
+  to: '/' | '/login' | '/welcome' | '/admin/competency-map'
+  id: '__root__' | '/' | '/login' | '/welcome' | '/admin/competency-map'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   LoginRoute: typeof LoginRoute
+  WelcomeRoute: typeof WelcomeRoute
   AdminCompetencyMapRoute: typeof AdminCompetencyMapRoute
 }
 
@@ -75,6 +85,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LoginRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/welcome': {
+      id: '/welcome'
+      path: '/welcome'
+      fullPath: '/welcome'
+      preLoaderRoute: typeof WelcomeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/admin/competency-map': {
       id: '/admin/competency-map'
       path: '/admin/competency-map'
@@ -88,6 +105,7 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   LoginRoute: LoginRoute,
+  WelcomeRoute: WelcomeRoute,
   AdminCompetencyMapRoute: AdminCompetencyMapRoute,
 }
 export const routeTree = rootRouteImport

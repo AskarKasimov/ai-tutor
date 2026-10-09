@@ -119,6 +119,30 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	httpx.JSON(w, 200, authSession{userDTO(result.User), expiryDTO(result.Tokens.Expiry)})
 }
 
+// LoginTeacher handles passwordless access to the shared teacher account.
+// @Summary Войти как учитель без пароля
+// @ID loginTeacher
+// @Tags Auth
+// @Produce json
+// @Success 200 {object} authSession
+// @Header 200 {string} Set-Cookie "access_token и refresh_token: Path=/; Secure; HttpOnly; SameSite=Lax"
+// @Failure 422 {object} fault.Error
+// @Failure 503 {object} fault.Error
+// @Router /auth/teacher [post]
+func (h *Handler) LoginTeacher(w http.ResponseWriter, r *http.Request) {
+	if err := httpx.NoBody(r); err != nil {
+		httpx.Error(r.Context(), w, err)
+		return
+	}
+	result, err := h.service.LoginTeacher(r.Context())
+	if err != nil {
+		httpx.Error(r.Context(), w, err)
+		return
+	}
+	setCookies(w, result.Tokens, h.now().Unix())
+	httpx.JSON(w, 200, authSession{userDTO(result.User), expiryDTO(result.Tokens.Expiry)})
+}
+
 // Refresh handles POST /auth/refresh.
 // @Summary Обновить токены сессии
 // @ID refreshTokens

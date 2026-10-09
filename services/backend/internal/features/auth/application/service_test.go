@@ -66,6 +66,16 @@ func (m *memoryRepo) InsertUser(_ context.Context, u user.User, hash string) err
 	m.users[u.Email] = credentials{u, hash}
 	return nil
 }
+
+func (m *memoryRepo) EnsureTeacher(_ context.Context, now int64) (user.User, error) {
+	if existing, ok := m.users[TeacherEmail]; ok {
+		return existing.u, nil
+	}
+	name := "Учитель"
+	u := user.User{ID: "user:shared-teacher", Email: TeacherEmail, DisplayName: &name, Role: user.Admin, CreatedAt: now}
+	m.users[TeacherEmail] = credentials{u, "!"}
+	return u, nil
+}
 func (m *memoryRepo) InsertSession(_ context.Context, s session.Session) error {
 	m.sessions[s.ID] = s
 	return nil

@@ -152,6 +152,7 @@ func TestOpenAPIResponses(t *testing.T) {
 	check("GET", "/auth/me", f.request("GET", "/auth/me", "", access))
 	check("GET", "/auth/me", f.request("GET", "/auth/me", ""))
 	check("POST", "/auth/login", f.request("POST", "/auth/login", `{"email":"contract@example.edu","password":"`+password+`"}`))
+	check("POST", "/auth/teacher", f.request("POST", "/auth/teacher", ""))
 	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/synthesize":

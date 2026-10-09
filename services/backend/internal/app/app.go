@@ -176,6 +176,7 @@ func (a *App) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /auth/register", authHandlers.Register)
 	mux.HandleFunc("POST /auth/login", authHandlers.Login)
+	mux.HandleFunc("POST /auth/teacher", authHandlers.LoginTeacher)
 	mux.HandleFunc("POST /auth/refresh", authHandlers.Refresh)
 	mux.HandleFunc("POST /auth/logout", authHandlers.Logout)
 	mux.HandleFunc("GET /auth/me", authHandlers.Me)

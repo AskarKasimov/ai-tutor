@@ -2,6 +2,12 @@
 INSERT INTO users(id, email, display_name, password_hash, created_at)
 VALUES ($1, $2, $3, $4, $5);
 
+-- name: EnsureTeacher :one
+INSERT INTO users(id, email, display_name, password_hash, role, created_at)
+VALUES ('user:shared-teacher', 'shared-teacher@ai-tutor.invalid', 'Учитель', '!', 'admin', $1)
+ON CONFLICT (id) DO UPDATE SET role = 'admin'
+RETURNING id, email, display_name, role, created_at;
+
 -- name: InsertAuthSession :exec
 INSERT INTO auth_sessions(id, user_id, expires_at) VALUES ($1, $2, $3);
 

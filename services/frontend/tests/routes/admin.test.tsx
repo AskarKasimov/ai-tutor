@@ -191,7 +191,10 @@ it('does not mount the lesson while the current session is being checked', async
   expect(screen.queryByText('Машинное обучение')).not.toBeInTheDocument()
   await act(async () => finish(new Response('{}', { status: 401 })))
   expect(
-    await screen.findByRole('heading', { name: 'Вход в AI Tutor', level: 1 }),
+    await screen.findByRole('heading', {
+      name: 'Как вы хотите войти?',
+      level: 1,
+    }),
   ).toBeVisible()
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
 })
@@ -280,6 +283,9 @@ it('routes an admin straight from the login form to the import screen', async ()
     }),
   )
   renderApp()
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Войти как ученик' }),
+  )
   await screen.findByRole('heading', { name: 'Вход в AI Tutor' })
   expect(screen.queryByText('Машинное обучение')).not.toBeInTheDocument()
   fireEvent.change(screen.getByLabelText('Email'), {
@@ -432,7 +438,7 @@ it('returns to the separate login screen after logout', async () => {
   fetch.mockImplementation(async () => new Response(null, { status: 204 }))
   fireEvent.click(screen.getByRole('button', { name: 'Выйти' }))
   expect(
-    await screen.findByRole('heading', { name: 'Вход в AI Tutor' }),
+    await screen.findByRole('heading', { name: 'Как вы хотите войти?' }),
   ).toBeVisible()
   expect(
     screen.queryByLabelText('Файл карты компетенций'),
@@ -443,7 +449,7 @@ it('does not expose the upload form to guests opening the admin URL directly', a
   const fetch = backend({ user: null })
   renderApp('/admin/competency-map')
   expect(
-    await screen.findByRole('heading', { name: 'Вход в AI Tutor' }),
+    await screen.findByRole('heading', { name: 'Как вы хотите войти?' }),
   ).toBeVisible()
   expect(
     screen.queryByLabelText('Файл карты компетенций'),
@@ -476,7 +482,7 @@ it('restores the admin screen after reload with an expired access cookie', async
     await screen.findByRole('heading', { name: 'Карта компетенций' }),
   ).toBeVisible()
   expect(
-    screen.queryByRole('heading', { name: 'Вход в AI Tutor' }),
+    screen.queryByRole('heading', { name: 'Как вы хотите войти?' }),
   ).not.toBeInTheDocument()
 })
 
@@ -522,7 +528,7 @@ it('returns to login when the backend rejects an import with an expired session'
     }),
   )
   expect(
-    await screen.findByRole('heading', { name: 'Вход в AI Tutor' }),
+    await screen.findByRole('heading', { name: 'Как вы хотите войти?' }),
   ).toBeVisible()
   expect(
     screen.queryByLabelText('Файл карты компетенций'),
@@ -582,6 +588,9 @@ it('can log in again after an expired map refresh without reusing the cached 401
       queryKey: ['competency-map'],
     })
   })
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Войти как ученик' }),
+  )
   await screen.findByRole('heading', { name: 'Вход в AI Tutor' })
   let finish!: (response: Response) => void
   fetch.mockImplementation(async (url: string) =>
@@ -604,6 +613,6 @@ it('can log in again after an expired map refresh without reusing the cached 401
     await screen.findByRole('heading', { name: 'Карта компетенций' }),
   ).toBeVisible()
   expect(
-    screen.queryByRole('heading', { name: 'Вход в AI Tutor' }),
+    screen.queryByRole('heading', { name: 'Как вы хотите войти?' }),
   ).not.toBeInTheDocument()
 })

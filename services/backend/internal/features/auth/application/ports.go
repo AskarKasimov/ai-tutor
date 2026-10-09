@@ -12,6 +12,7 @@ type PasswordHasher interface {
 	Verify(context.Context, string, string) (bool, error)
 }
 type Transaction interface {
+	EnsureTeacher(context.Context, int64) (user.User, error)
 	InsertUser(context.Context, user.User, string) error
 	InsertSession(context.Context, session.Session) error
 	InsertAccess(context.Context, []byte, string, int64) error

@@ -298,6 +298,20 @@ func (q *Queries) SaveTrainingReservation(ctx context.Context, arg SaveTrainingR
 	return err
 }
 
+const resetTrainingReservation = `-- name: ResetTrainingReservation :exec
+UPDATE training_sessions SET reservation_data=NULL,lease_until=NULL WHERE owner_id=$1 AND id=$2
+`
+
+type ResetTrainingReservationParams struct {
+	OwnerID string
+	ID      string
+}
+
+func (q *Queries) ResetTrainingReservation(ctx context.Context, arg ResetTrainingReservationParams) error {
+	_, err := q.db.Exec(ctx, resetTrainingReservation, arg.OwnerID, arg.ID)
+	return err
+}
+
 const saveTrainingState = `-- name: SaveTrainingState :exec
 UPDATE training_sessions SET state_data=$3,reservation_data=NULL,lease_until=NULL WHERE owner_id=$1 AND id=$2
 `

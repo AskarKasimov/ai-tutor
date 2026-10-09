@@ -19,6 +19,9 @@ INSERT INTO training_targets(session_id,position,target_data) VALUES($1,$2,$3);
 INSERT INTO training_exercises(id,session_id,round,target_index,exercise_data,audio_asset_id) VALUES($1,$2,$3,$4,$5,$6);
 -- name: SaveTrainingReservation :exec
 UPDATE training_sessions SET reservation_data=$3,lease_until=CASE WHEN sqlc.arg(leased)::boolean THEN now()+interval '5 minutes' ELSE NULL END WHERE owner_id=$1 AND id=$2;
+
+-- name: ResetTrainingReservation :exec
+UPDATE training_sessions SET reservation_data=NULL,lease_until=NULL WHERE owner_id=$1 AND id=$2;
 -- name: SaveTrainingState :exec
 UPDATE training_sessions SET state_data=$3,reservation_data=NULL,lease_until=NULL WHERE owner_id=$1 AND id=$2;
 -- name: FindTrainingAnswer :one

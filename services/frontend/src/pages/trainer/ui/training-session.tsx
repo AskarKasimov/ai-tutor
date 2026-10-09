@@ -103,6 +103,9 @@ export function TrainingSession({
     voice.error instanceof TrainingApiError &&
     voice.error.status === 409 &&
     voice.error.code === 'TRAINING_EXERCISE_NOT_CURRENT'
+  const resetReservation =
+    voice.error instanceof TrainingApiError &&
+    voice.error.code === 'TRAINING_ANSWER_RETRY_MISMATCH'
   const statusKey =
     voice.stage === 'permission'
       ? 'trainer.allow'
@@ -205,6 +208,10 @@ export function TrainingSession({
               {refreshCurrent ? (
                 <Button onClick={() => void resource.query.refetch()}>
                   {t('training.refresh')}
+                </Button>
+              ) : resetReservation ? (
+                <Button onClick={() => void voice.reset()}>
+                  {t('training.resetSubmit')}
                 </Button>
               ) : voice.hasPending ? (
                 <Button onClick={() => void voice.retry()}>

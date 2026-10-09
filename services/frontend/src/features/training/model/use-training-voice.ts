@@ -9,6 +9,7 @@ import {
   replaceSession,
   userQueryKeys,
 } from '@/entities/user'
+import { StoredAudioError } from '@/shared/api'
 import { createAudioUrl, playQuestion, startRecording } from '@/shared/lib'
 import type { Recording } from '@/shared/lib'
 import { useTrainingDependencies } from './dependencies-context'
@@ -373,10 +374,27 @@ export function useTrainingVoice(
         return
       }
       if (metadata.status !== 'ready' || !metadata.audio_url) return
-      const blob = await training.fetchTrainingAudioFile(
-        metadata.audio_url,
-        signal,
-      )
+      let blob: Blob
+      try {
+        blob = await training.fetchTrainingAudioFile(metadata.audio_url, signal)
+      } catch (failure) {
+        const repairable =
+          failure instanceof StoredAudioError &&
+          (failure.kind === 'invalid' ||
+            failure.kind === 'network' ||
+            failure.status === 404 ||
+            failure.status >= 500)
+        if (!repairable) throw failure
+        setAudioStatus('loading')
+        const repaired = await training.regenerateTrainingAudio(
+          progress.session_id,
+          exerciseId,
+          signal,
+        )
+        if (!isCurrent() || repaired.status !== 'ready' || !repaired.audio_url)
+          return
+        blob = await training.fetchTrainingAudioFile(repaired.audio_url, signal)
+      }
       if (!isCurrent()) return
       const dispose = await playQuestion(
         blob,
@@ -445,6 +463,22 @@ export function useTrainingVoice(
     setStage('ready')
   }, [disposeAnswer, stopSpeech])
 
+  const reset = useCallback(async () => {
+    if (locked.current) return
+    const controller = new AbortController()
+    locked.current = true
+    try {
+      await training.resetTrainingAnswer(progress.session_id, controller.signal)
+      pending.current = null
+      setError(undefined)
+      setCaptureError('')
+      disposeAnswer()
+      setStage('ready')
+    } finally {
+      locked.current = false
+    }
+  }, [disposeAnswer, progress.session_id, training])
+
   return {
     stage,
     error,
@@ -463,5 +497,6 @@ export function useTrainingVoice(
     retry,
     speak,
     next,
+    reset,
   }
 }

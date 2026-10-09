@@ -359,6 +359,28 @@ func (r *Repository) Fail(ctx context.Context, owner, id string, reserved traini
 	}
 	return tx.Commit(ctx)
 }
+func (r *Repository) ResetReservation(ctx context.Context, owner, id string) error {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	q := r.q.WithTx(tx)
+	row, err := q.LockTrainingSession(ctx, db.LockTrainingSessionParams{OwnerID: owner, ID: id})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return notFound()
+	}
+	if err != nil {
+		return err
+	}
+	if row.Leased {
+		return conflict("TRAINING_ANSWER_IN_PROGRESS", "Ответ ещё обрабатывается.")
+	}
+	if err = q.ResetTrainingReservation(ctx, db.ResetTrainingReservationParams{OwnerID: owner, ID: id}); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
 func (r *Repository) History(ctx context.Context, owner, id string, before int64, limit int) ([]training.Attempt, error) {
 	if _, err := r.Get(ctx, owner, id); err != nil {
 		return nil, err

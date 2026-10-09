@@ -496,3 +496,28 @@ func TestTrainingReservationLeaseConcurrencyAndRetryTranscription(t *testing.T) 
 		t.Fatalf("replay %+v %v", replay, err)
 	}
 }
+
+func TestTrainingReservationCanBeResetAfterFailedGrading(t *testing.T) {
+	f, access, _, owner, d := trainingFixture(t, 1)
+	created := trainingJSON(f, access, "/diagnostic-sessions/"+d.ID+"/training", "start", `{}`)
+	var p training.Progress
+	if err := json.Unmarshal(created.Body.Bytes(), &p); err != nil {
+		t.Fatal(err)
+	}
+	repo := trainingpg.New(f.pool)
+	_, reserved, _, err := repo.Reserve(t.Context(), owner, p.ID, "failed-answer", "digest", p.Current.ID, "token")
+	if err != nil || reserved == nil {
+		t.Fatalf("reserve: %v", err)
+	}
+	reserved.TranscriptionID = "saved-transcription"
+	reserved.Text = "stored text"
+	if err := repo.Fail(t.Context(), owner, p.ID, *reserved); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.ResetReservation(t.Context(), owner, p.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, next, _, err := repo.Reserve(t.Context(), owner, p.ID, "new-answer", "new-digest", p.Current.ID, "new-token"); err != nil || next == nil {
+		t.Fatalf("new reservation after reset: %+v %v", next, err)
+	}
+}

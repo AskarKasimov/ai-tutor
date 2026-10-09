@@ -211,8 +211,7 @@ export function LearningHome() {
                           ? t('home.diagnosticActive')
                           : t('home.diagnosticNeeded')}
                     </Text>
-                    {learning.data.diagnostic_status === 'active' &&
-                    learning.data.active_session_id ? (
+                    {learning.data.active_session_id ? (
                       <Button
                         onClick={() =>
                           openDiagnostic(

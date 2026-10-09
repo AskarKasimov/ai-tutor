@@ -199,6 +199,7 @@ func (a *App) Handler() http.Handler {
 	mux.Handle("GET /diagnostic-sessions/{id}/training", protect(auth, http.HandlerFunc(trainingHandlers.ByDiagnostic)))
 	mux.Handle("GET /training-sessions/{id}", protect(auth, http.HandlerFunc(trainingHandlers.Get)))
 	mux.Handle("POST /training-sessions/{id}/answers", protect(auth, http.HandlerFunc(trainingHandlers.Answer)))
+	mux.Handle("POST /training-sessions/{id}/answers/reset", protect(auth, http.HandlerFunc(trainingHandlers.ResetAnswer)))
 	mux.Handle("GET /training-sessions/{id}/history", protect(auth, http.HandlerFunc(trainingHandlers.History)))
 	mux.Handle("GET /training-sessions/{id}/current/audio", protect(auth, http.HandlerFunc(trainingHandlers.Audio)))
 	mux.Handle("POST /training-sessions/{id}/current/audio/regenerate", protect(auth, http.HandlerFunc(trainingHandlers.RegenerateAudio)))

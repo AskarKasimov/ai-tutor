@@ -41,6 +41,7 @@ type Repository interface {
 	Reserve(context.Context, string, string, string, string, string, string) (*training.Progress, *training.Reservation, training.Session, error)
 	Accept(context.Context, string, training.Reservation, training.Session, training.Attempt) (training.Progress, error)
 	Fail(context.Context, string, string, training.Reservation) error
+	ResetReservation(context.Context, string, string) error
 	History(context.Context, string, string, int64, int) ([]training.Attempt, error)
 }
 type Service struct {
@@ -272,6 +273,10 @@ func (s *Service) Answer(ctx context.Context, owner, id, exerciseID, key string,
 }
 func (s *Service) History(ctx context.Context, owner, id string, before int64, limit int) ([]training.Attempt, error) {
 	return s.repo.History(ctx, owner, id, before, limit)
+}
+
+func (s *Service) ResetReservation(ctx context.Context, owner, id string) error {
+	return s.repo.ResetReservation(ctx, owner, id)
 }
 func (s *Service) CurrentAudio(ctx context.Context, owner, id, exerciseID string) (audioasset.Metadata, error) {
 	state, err := s.repo.Get(ctx, owner, id)

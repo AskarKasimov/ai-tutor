@@ -285,6 +285,19 @@ export async function submitTraining(
   return progress
 }
 
+export async function resetTrainingAnswer(
+  sessionId: string,
+  signal: AbortSignal,
+) {
+  const response = await request(
+    `/training-sessions/${encodeURIComponent(sessionId)}/answers/reset`,
+    signal,
+    { method: 'POST' },
+  )
+  if (!response.ok)
+    throw new TrainingApiError(response.status, 'RESET_ANSWER_FAILED')
+}
+
 export async function readTrainingHistory(
   sessionId: string,
   cursor: string | undefined,
@@ -354,6 +367,7 @@ export type TrainingApi = {
   readTrainingSession: typeof readTrainingSession
   createTrainingSubmission: typeof createTrainingSubmission
   submitTraining: typeof submitTraining
+  resetTrainingAnswer: typeof resetTrainingAnswer
   readTrainingHistory: typeof readTrainingHistory
   readTrainingAudio: typeof readTrainingAudio
   fetchTrainingAudioFile: typeof fetchTrainingAudioFile

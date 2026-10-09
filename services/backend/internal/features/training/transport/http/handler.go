@@ -222,6 +222,28 @@ func (h *Handler) Answer(w http.ResponseWriter, r *http.Request) {
 	httpx.JSON(w, 200, v)
 }
 
+// ResetAnswer clears a failed, non-active answer reservation so a new recording can be submitted.
+// @Summary Сбросить неудачную отправку ответа
+// @Tags Тренировка
+// @Security accessCookie
+// @Param id path string true "ID тренировки"
+// @Success 204
+// @Failure 401 {object} fault.Error
+// @Failure 404 {object} fault.Error
+// @Failure 409 {object} fault.Error
+// @Router /training-sessions/{id}/answers/reset [post]
+func (h *Handler) ResetAnswer(w http.ResponseWriter, r *http.Request) {
+	id, ok := owner(w, r)
+	if !ok || !noQuery(w, r) {
+		return
+	}
+	if err := h.service.ResetReservation(r.Context(), id, r.PathValue("id")); err != nil {
+		httpx.Error(r.Context(), w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // History reads a bounded page of accepted answers.
 // @Summary История ответов тренировки
 // @Tags Тренировка

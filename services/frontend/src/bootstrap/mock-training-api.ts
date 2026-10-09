@@ -159,7 +159,7 @@ export async function mockTrainingResponse(
     /^\/api\/v1\/diagnostic-sessions\/([^/]+)\/training$/,
   )
   const sessionMatch = path.match(
-    /^\/api\/v1\/training-sessions\/([^/]+)(?:\/(answers|history|current\/audio))?$/,
+    /^\/api\/v1\/training-sessions\/([^/]+)(?:\/(answers(?:\/reset)?|history|current\/audio))?$/,
   )
   if (previewMatch) {
     const id = decodeURIComponent(previewMatch[1])
@@ -287,6 +287,8 @@ export async function mockTrainingResponse(
     })
     return json(result)
   }
+  if (operation === 'answers/reset' && method === 'POST')
+    return new Response(null, { status: 204 })
   if (operation === 'history' && method === 'GET') {
     const query = new URLSearchParams(search)
     const limit = Math.max(1, Math.min(100, Number(query.get('limit')) || 20))

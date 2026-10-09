@@ -93,6 +93,7 @@ export function createAppDependencies(): AppDependencies {
       readTrainingSession: training.readTrainingSession,
       createTrainingSubmission: training.createTrainingSubmission,
       submitTraining: training.submitTraining,
+      resetTrainingAnswer: training.resetTrainingAnswer,
       readTrainingHistory: training.readTrainingHistory,
       readTrainingAudio: training.readTrainingAudio,
       fetchTrainingAudioFile: training.fetchTrainingAudioFile,

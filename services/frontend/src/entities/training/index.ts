@@ -17,6 +17,7 @@ export {
   findTrainingForDiagnostic,
   readTrainingAudio,
   regenerateTrainingAudio,
+  resetTrainingAnswer,
   readTrainingHistory,
   readTrainingPreview,
   readTrainingSession,

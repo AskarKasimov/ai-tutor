@@ -24,7 +24,7 @@ func TestAssessmentEndpointOwnershipHistoricalSnapshotAndStrictResults(t *testin
 		}
 	}
 	admin := f.admin(t)
-	if w := upload(f, "/admin/competency-map/import", "file", "map.csv", "text/csv", variantMapCSV(t), admin); w.Code != 200 {
+	if w := upload(f, "/admin/subjects/subject:intro-to-ml/competency-map/import", "file", "map.csv", "text/csv", variantMapCSV(t), admin); w.Code != 200 {
 		t.Fatalf("import: %d %s", w.Code, w.Body.String())
 	}
 	create := func(key string) (string, string, string) {
@@ -58,7 +58,7 @@ func TestAssessmentEndpointOwnershipHistoricalSnapshotAndStrictResults(t *testin
 		t.Fatal(err)
 	}
 	replacement := strings.ReplaceAll(string(variantMapCSV(t)), "сумма признаков с весами", "НОВЫЙ ЭТАЛОН")
-	if w := upload(f, "/admin/competency-map/import", "file", "replacement.csv", "text/csv", []byte(replacement), admin); w.Code != 200 {
+	if w := upload(f, "/admin/subjects/subject:intro-to-ml/competency-map/import", "file", "replacement.csv", "text/csv", []byte(replacement), admin); w.Code != 200 {
 		t.Fatalf("reimport: %d %s", w.Code, w.Body.String())
 	}
 	var mode atomic.Value

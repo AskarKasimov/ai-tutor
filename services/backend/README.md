@@ -207,15 +207,16 @@ variantgen: активная ревизия, TRUE-ОР с поддерживае
 Затем загрузите текущую карту ML:
 
 ```bash
-curl 'https://localhost:8443/api/v1/admin/competency-map/import' \
+curl 'https://localhost:8443/api/v1/admin/subjects/subject:intro-to-ml/competency-map/import' \
   -b teacher-cookies.txt -F 'file=@map.xlsx'
 ```
 
 Предметная версия импорта — `POST /admin/subjects/{subject_id}/competency-map/import`;
 чтение карты — `GET /subjects/{subject_id}/competency-map`. Импорт изменяет только
 выбранный предмет, а глобальный номер ревизии увеличивается при каждом импорте.
-Устаревшие `/admin/competency-map/import` и `/competency-map` пока остаются для
-текущего клиента и явно работают с предметом `subject:intro-to-ml`.
+Глобальные ML aliases `/admin/competency-map/import` и `/competency-map` удалены.
+Клиенты обязаны передавать выбранный `subject_id`; удаление маршрутов не меняет
+схему БД, активные карты или исторические снимки.
 
 CSV — UTF-8, разделитель запятая или точка с запятой, необязательный BOM.
 XLSX — один лист карты. Текущий ML формат сохраняет колонки компетенции, уровня темы,
@@ -231,7 +232,7 @@ XLSX — один лист карты. Текущий ML формат сохра
 Текущий CSV даёт 13 компетенций, 17 составляющих, 101 ОР, 18 TRUE, 13 полных
 заданий и 41 неполную ячейку. Для варианта отдельно подсчитываются готовые TRUE-ОР каждой компетенции.
 
-GET /competency-map читает активную ML карту одним запросом; GET /tasks фильтрует
+GET /subjects/{subject_id}/competency-map читает выбранную карту; GET /tasks фильтрует
 задания выбранного предмета через `subject_id`, а GET /tasks/{id} принимает тот же
 параметр и возвращает профиль только из активной карты. Пропущенный `subject_id`
 временно означает ML для старого frontend. Эталоны/критерии студенту не выдаются.

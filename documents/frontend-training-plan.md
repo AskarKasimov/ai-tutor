@@ -169,12 +169,12 @@ useImportCompetencyMapMutation(userId: string, subjectId: string)
 
 **Consumes:** Tasks1–6; **Produces:** complete F1, updated plans and documented UI real/mock behavior.
 
-- [ ] Verify no new frontend caller uses global `/competency-map` or empty-body `POST /variants`; no real path reaches legacy-demo.
-- [ ] Remove obsolete global competency-map HTTP aliases as agreed in multi-subject spec, migrate affected backend test URLs explicitly to `subject:intro-to-ml`, regenerate OpenAPI. Preserve schema/data/history. This is scoped route cleanup, not migration/table removal. Run affected backend tests with disposable PostgreSQL, then go test ./..., go vet, build.
-- [ ] Run frontend gates exactly: `npm run format:check`, `npm run lint`, `npm run typecheck`, `npm test -- --run`, `npm run build`. Resolve errors, no disables.
-- [ ] Preview UI through available browser tools on local Vite: keyboard subject selection, mode buttons, preview, microphone denied/text/audio states, narrow viewport, light/dark styles. If browser tool access unavailable, record limitation and rely on route tests/build; do not claim visual verification.
-- [ ] Update root/frontend README, `documents/voice-trainer-scenarios.md`, mark F1 complete in both backend plans. Document data durability difference: real PostgreSQL; mock browser demo resets on new login. LLM analogous exercises remain future provider; don't promise fresh question content.
-- [ ] Commit `docs(frontend): document subject diagnostic and training flows`; final fresh review across frontend range and scoped contract changes. Fix correctness findings and rerun covering tests/full gates.
+- [x] Verify no new frontend caller uses global `/competency-map` or empty-body `POST /variants`; no real path reaches legacy-demo.
+- [x] Remove obsolete global competency-map HTTP aliases as agreed in multi-subject spec, migrate affected backend test URLs explicitly to `subject:intro-to-ml`, regenerate OpenAPI. Preserve schema/data/history. This is scoped route cleanup, not migration/table removal. Run affected backend tests with disposable PostgreSQL, then go test ./..., go vet, build.
+- [x] Run frontend gates exactly: `npm run format:check`, `npm run lint`, `npm run typecheck`, `npm test -- --run`, `npm run build`. Resolve errors, no disables.
+- [x] Controller browser evidence: mock login → keyboard subject selection → disabled training gate → explicit diagnostic start → selected subject and demo question shown. Recording, microphone-denied/text/audio states, narrow viewport, and light/dark styles were not verified; viewport override reported a 3878px DOM width instead of 390px. Route/hook tests and build cover those flows; no visual claims for the unverified states.
+- [x] Update root/frontend README, `documents/voice-trainer-scenarios.md`, mark F1 complete in both backend plans. Document data durability difference: real PostgreSQL; mock browser demo resets on new login. LLM analogous exercises remain future provider; don't promise fresh question content.
+- [x] Commit `docs(frontend): document subject diagnostic and training flows`. Final fresh review across the frontend range and scoped contract changes is handed to the controller after this commit; any review findings require focused fixes and reruns.
 
 ## Execution Notes
 

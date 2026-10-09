@@ -61,6 +61,11 @@ func TestSubjectCatalogPermissionsAndEmptySubjects(t *testing.T) {
 
 func TestSubjectMapRoutesRequireAuthenticationAndAdminImport(t *testing.T) {
 	f := newFixture(t)
+	for _, path := range []string{"/competency-map", "/admin/competency-map/import"} {
+		if response := f.request(http.MethodGet, path, ""); response.Code != http.StatusNotFound {
+			t.Fatalf("legacy route %s status %d: %s", path, response.Code, response.Body.String())
+		}
+	}
 	student, _, _ := f.register(t, "subject-map-student@example.edu")
 	admin := f.admin(t)
 	const path = "/admin/subjects/subject:intro-to-ml/competency-map/import"
@@ -79,7 +84,7 @@ func TestSubjectCatalogShowsOnlyVariantgenReadySubjectsToStudents(t *testing.T) 
 	f := newFixture(t)
 	student, _, _ := f.register(t, "subject-ready-student@example.edu")
 	admin := f.admin(t)
-	if w := upload(f, "/admin/competency-map/import", "file", "map.csv", "text/csv", variantMapCSV(t), admin); w.Code != http.StatusOK {
+	if w := upload(f, "/admin/subjects/subject:intro-to-ml/competency-map/import", "file", "map.csv", "text/csv", variantMapCSV(t), admin); w.Code != http.StatusOK {
 		t.Fatalf("import ML map: %d %s", w.Code, w.Body.String())
 	}
 	if _, err := f.pool.Exec(context.Background(), `UPDATE subjects SET active_revision=(SELECT revision FROM competency_map_state WHERE singleton=true) WHERE id='subject:intro-to-ml'`); err != nil {

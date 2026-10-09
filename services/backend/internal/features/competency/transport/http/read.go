@@ -4,7 +4,6 @@ import (
 	"net/http"
 
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/competencymap"
-	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/subject"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/httpx"
 )
 
@@ -51,21 +50,6 @@ type Task struct {
 	Origin           string   `json:"origin"`
 	Options          []string `json:"options"`
 	VoiceInstruction *string  `json:"voice_instruction" extensions:"x-nullable"`
-}
-
-// Read returns the complete current map, including outcomes without tasks.
-// @Summary Прочитать текущую карту компетенций целиком
-// @Description Совместимый маршрут читает карту предмета «Введение в ML». Ревизия, время импорта и дерево компетенций, составляющих, ОР и заданий. Доступно авторизованным пользователям. Эталоны и критерии не возвращаются.
-// @ID readCompetencyMap
-// @Tags Учебная база
-// @Security accessCookie
-// @Produce json
-// @Success 200 {object} MapSnapshot
-// @Failure 401 {object} fault.Error
-// @Failure 503 {object} fault.Error
-// @Router /competency-map [get]
-func (h *Handler) Read(w http.ResponseWriter, r *http.Request) {
-	h.readSubject(w, r, subject.IntroToMLID)
 }
 
 // ReadSubject returns the current map for one subject.

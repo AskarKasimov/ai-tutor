@@ -12,7 +12,7 @@ import (
 func TestMaterialHTTPAcceptsMaximumContentAndRejectsOversize(t *testing.T) {
 	f := newFixture(t)
 	admin := f.admin(t)
-	response := upload(f, "/admin/competency-map/import", "file", "map.csv", "text/csv", []byte("Ком,Сост,ОР,Задание 1,Критерии 1\nК,С,О,В,К\n"), admin)
+	response := upload(f, "/admin/subjects/subject:intro-to-ml/competency-map/import", "file", "map.csv", "text/csv", []byte("Ком,Сост,ОР,Задание 1,Критерии 1\nК,С,О,В,К\n"), admin)
 	if response.Code != 200 {
 		t.Fatal(response.Body.String())
 	}
@@ -55,7 +55,7 @@ func TestTaskSearchImportanceRange(t *testing.T) {
 	f := newFixture(t)
 	admin := f.admin(t)
 	csv := "Ком,Сост,ОР,Важность,Задание 1,Критерии 1\nК,С,О1,1,Низкий,К\n,,О3,3,Средний,К\n,,О5,5,Высокий,К\n,,Нет важности,,Неизвестный,К\n"
-	response := upload(f, "/admin/competency-map/import", "file", "map.csv", "text/csv", []byte(csv), admin)
+	response := upload(f, "/admin/subjects/subject:intro-to-ml/competency-map/import", "file", "map.csv", "text/csv", []byte(csv), admin)
 	if response.Code != 200 {
 		t.Fatal(response.Body.String())
 	}
@@ -97,7 +97,7 @@ func TestGenerationUsesIndependentModelConfiguration(t *testing.T) {
 	}
 	f.app.cfg = cfg
 	admin := f.admin(t)
-	response := upload(f, "/admin/competency-map/import", "file", "map.csv", "text/csv", []byte("Ком,Сост,ОР,Задание 1,Критерии 1\nК,С,О,В,К\n"), admin)
+	response := upload(f, "/admin/subjects/subject:intro-to-ml/competency-map/import", "file", "map.csv", "text/csv", []byte("Ком,Сост,ОР,Задание 1,Критерии 1\nК,С,О,В,К\n"), admin)
 	if response.Code != 200 {
 		t.Fatal(response.Body.String())
 	}
@@ -125,7 +125,7 @@ func TestPairedImportPersistsPartialProfileAndSourceLinks(t *testing.T) {
 	f := newFixture(t)
 	admin := f.admin(t)
 	csv := "Ком,Сост,ОР,Что должно войти в тест,Таксономия,Важность,Задание 1,Критерии 1\nК,С,О,TRUE,Знание,3,В,К\n,,,,,,В2,К2\n,,Без задания,FALSE,,,,\n"
-	response := upload(f, "/admin/competency-map/import", "file", "map.csv", "text/csv", []byte(csv), admin)
+	response := upload(f, "/admin/subjects/subject:intro-to-ml/competency-map/import", "file", "map.csv", "text/csv", []byte(csv), admin)
 	if response.Code != 200 {
 		t.Fatalf("partial profile: %d %s", response.Code, response.Body.String())
 	}
@@ -153,12 +153,12 @@ func TestPairedImportPersistsPartialProfileAndSourceLinks(t *testing.T) {
 func TestConflictingCurriculumTitleReturnsValidationAndPreservesMap(t *testing.T) {
 	f := newFixture(t)
 	admin := f.admin(t)
-	response := upload(f, "/admin/competency-map/import", "file", "map.csv", "text/csv", []byte("Ком,Сост,ОР,Задание 1,Критерии 1\nК,С,О,Прежний вопрос,К\n"), admin)
+	response := upload(f, "/admin/subjects/subject:intro-to-ml/competency-map/import", "file", "map.csv", "text/csv", []byte("Ком,Сост,ОР,Задание 1,Критерии 1\nК,С,О,Прежний вопрос,К\n"), admin)
 	if response.Code != 200 {
 		t.Fatal(response.Body.String())
 	}
 	data := "Компетенция;Составляющая;Образовательный результат;Уровень темы;Что должно войти в тест;Таксономия;Уровень ALDs;Важность;Раздел РПД · компетенции РПД;ОС;Задание1\nК;С1;О1;Базовый;TRUE;Знание;Базовый;3;Р.1 Введение;;\n;С2;О2;Базовый;TRUE;Знание;Базовый;3;Р.1 Другая тема;;\n"
-	response = upload(f, "/admin/competency-map/import", "file", "map.csv", "text/csv", []byte(data), admin)
+	response = upload(f, "/admin/subjects/subject:intro-to-ml/competency-map/import", "file", "map.csv", "text/csv", []byte(data), admin)
 	var failure struct {
 		Code    string                           `json:"code"`
 		Details []struct{ Path, Message string } `json:"details"`
@@ -175,7 +175,7 @@ func TestConflictingCurriculumTitleReturnsValidationAndPreservesMap(t *testing.T
 func TestMaterialHTTPRejectsNULBeforePersistence(t *testing.T) {
 	f := newFixture(t)
 	admin := f.admin(t)
-	response := upload(f, "/admin/competency-map/import", "file", "map.csv", "text/csv", []byte("Ком,Сост,ОР,Задание 1,Критерии 1\nК,С,О,В,К\n"), admin)
+	response := upload(f, "/admin/subjects/subject:intro-to-ml/competency-map/import", "file", "map.csv", "text/csv", []byte("Ком,Сост,ОР,Задание 1,Критерии 1\nК,С,О,В,К\n"), admin)
 	if response.Code != 200 {
 		t.Fatal(response.Body.String())
 	}
@@ -216,7 +216,7 @@ func TestMaterialHTTPRejectsNULBeforePersistence(t *testing.T) {
 func TestMaterialHTTPPreservesCodeFormatting(t *testing.T) {
 	f := newFixture(t)
 	admin := f.admin(t)
-	response := upload(f, "/admin/competency-map/import", "file", "map.csv", "text/csv", []byte("Ком,Сост,ОР,Задание 1,Критерии 1\nК,С,О,В,К\n"), admin)
+	response := upload(f, "/admin/subjects/subject:intro-to-ml/competency-map/import", "file", "map.csv", "text/csv", []byte("Ком,Сост,ОР,Задание 1,Критерии 1\nК,С,О,В,К\n"), admin)
 	if response.Code != 200 {
 		t.Fatal(response.Body.String())
 	}

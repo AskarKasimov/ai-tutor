@@ -29,13 +29,14 @@ func TestImportChecksAuthorizationBeforeReadingBody(t *testing.T) {
 		{"student", true, http.StatusForbidden, "FORBIDDEN"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			request := httptest.NewRequest(http.MethodPost, "/admin/competency-map/import", nil)
+			request := httptest.NewRequest(http.MethodPost, "/admin/subjects/subject:intro-to-ml/competency-map/import", nil)
+			request.SetPathValue("subject_id", "subject:intro-to-ml")
 			request.Body = unreadableBody{}
 			if tc.authenticated {
 				request = httpx.WithPrincipal(request, user.User{ID: "student", Role: user.Student})
 			}
 			response := httptest.NewRecorder()
-			handler.Import(response, request)
+			handler.ImportSubject(response, request)
 			var failure struct {
 				Code string `json:"code"`
 			}

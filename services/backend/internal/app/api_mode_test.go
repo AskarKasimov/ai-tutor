@@ -74,7 +74,7 @@ func TestMockModeUsesLocalModelsWithRealAuthAndStorage(t *testing.T) {
 	}
 
 	admin := f.admin(t)
-	if w := upload(f, "/admin/competency-map/import", "file", "map.csv", "text/csv", variantMapCSV(t), admin); w.Code != http.StatusOK {
+	if w := upload(f, "/admin/subjects/subject:intro-to-ml/competency-map/import", "file", "map.csv", "text/csv", variantMapCSV(t), admin); w.Code != http.StatusOK {
 		t.Fatalf("import competency map: %d %s", w.Code, w.Body.String())
 	}
 

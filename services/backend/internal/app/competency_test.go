@@ -50,7 +50,7 @@ func (f *fixture) admin(t *testing.T) *http.Cookie {
 func TestImportAtomicReplacementAndPermissions(t *testing.T) {
 	f := newFixture(t)
 	student, _, _ := f.register(t, "student@example.edu")
-	const path = "/admin/competency-map/import"
+	const path = "/admin/subjects/subject:intro-to-ml/competency-map/import"
 	requireCode(t, upload(f, path, "file", "map.csv", "text/csv", []byte(mapCSV), nil), 401, "UNAUTHORIZED")
 	requireCode(t, upload(f, path, "file", "map.csv", "text/csv", []byte(mapCSV), student), 403, "FORBIDDEN")
 	admin := f.admin(t)
@@ -102,7 +102,7 @@ func TestImportConcurrentRevisions(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			w := upload(f, "/admin/competency-map/import", "file", "map.csv", "text/csv", []byte(mapCSV), admin)
+			w := upload(f, "/admin/subjects/subject:intro-to-ml/competency-map/import", "file", "map.csv", "text/csv", []byte(mapCSV), admin)
 			var result competencyhttp.ImportResult
 			_ = json.Unmarshal(w.Body.Bytes(), &result)
 			revisions <- result.Revision

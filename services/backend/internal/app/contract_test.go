@@ -203,8 +203,8 @@ func TestOpenAPIResponses(t *testing.T) {
 	admin := f.admin(t)
 	check("POST", "/admin/subjects", f.request("POST", "/admin/subjects", `{"name":"Предмет контракта"}`, admin))
 	check("GET", "/subjects", f.request("GET", "/subjects", "", admin))
-	check("POST", "/admin/competency-map/import", upload(f, "/admin/competency-map/import", "file", "map.csv", "text/csv", []byte(mapCSV), admin))
-	if variantImport := upload(f, "/admin/competency-map/import", "file", "variant.csv", "text/csv", variantMapCSV(t), admin); variantImport.Code != http.StatusOK {
+	check("POST", "/admin/subjects/{subject_id}/competency-map/import", upload(f, "/admin/subjects/subject:intro-to-ml/competency-map/import", "file", "map.csv", "text/csv", []byte(mapCSV), admin))
+	if variantImport := upload(f, "/admin/subjects/subject:intro-to-ml/competency-map/import", "file", "variant.csv", "text/csv", variantMapCSV(t), admin); variantImport.Code != http.StatusOK {
 		t.Fatalf("variant map import: %d %s", variantImport.Code, variantImport.Body.String())
 	}
 	check("POST", "/admin/subjects/{subject_id}/competency-map/import", upload(f, "/admin/subjects/subject:intro-to-ml/competency-map/import", "file", "subject.csv", "text/csv", variantMapCSV(t), admin))
@@ -337,7 +337,6 @@ func TestOpenAPIResponses(t *testing.T) {
 		t.Fatal(err)
 	}
 	check("GET", "/tasks", f.request("GET", "/tasks", "", access))
-	check("GET", "/competency-map", f.request("GET", "/competency-map", "", access))
 	check("GET", "/tasks", f.request("GET", "/tasks?importance=6", "", access))
 	check("GET", "/tasks/{id}", f.request("GET", "/tasks/"+taskID, "", access))
 	requestBody, _ := json.Marshal(map[string]string{"outcome_id": outcomeID})

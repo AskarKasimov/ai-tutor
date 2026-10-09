@@ -44,7 +44,7 @@ func TestVariantCreateReadIdempotencyOwnershipAndHistoricalReader(t *testing.T) 
 	f := newFixture(t)
 	access, _, ownerID := f.register(t, "variant-owner@example.edu")
 	admin := f.admin(t)
-	const importPath = "/admin/competency-map/import"
+	const importPath = "/admin/subjects/subject:intro-to-ml/competency-map/import"
 	if w := upload(f, importPath, "file", "map.csv", "text/csv", variantMapCSV(t), admin); w.Code != http.StatusOK {
 		t.Fatalf("import: %d %s", w.Code, w.Body.String())
 	}
@@ -302,7 +302,7 @@ func TestVariantSnapshotLockBlocksConcurrentSubjectImport(t *testing.T) {
 	f := newFixture(t)
 	_, _, ownerID := f.register(t, "variant-lock-owner@example.edu")
 	admin := f.admin(t)
-	if response := upload(f, "/admin/competency-map/import", "file", "a.csv", "text/csv", variantMapCSV(t), admin); response.Code != http.StatusOK {
+	if response := upload(f, "/admin/subjects/subject:intro-to-ml/competency-map/import", "file", "a.csv", "text/csv", variantMapCSV(t), admin); response.Code != http.StatusOK {
 		t.Fatalf("import A: %d %s", response.Code, response.Body.String())
 	}
 	var revisionBefore int64
@@ -362,7 +362,7 @@ func TestVariantCreationRollsBackWhenSnapshotInsertFails(t *testing.T) {
 	f := newFixture(t)
 	access, _, ownerID := f.register(t, "variant-rollback@example.edu")
 	admin := f.admin(t)
-	if w := upload(f, "/admin/competency-map/import", "file", "map.csv", "text/csv", variantMapCSV(t), admin); w.Code != http.StatusOK {
+	if w := upload(f, "/admin/subjects/subject:intro-to-ml/competency-map/import", "file", "map.csv", "text/csv", variantMapCSV(t), admin); w.Code != http.StatusOK {
 		t.Fatalf("import: %d %s", w.Code, w.Body.String())
 	}
 	_, err := f.pool.Exec(context.Background(), `
@@ -421,7 +421,7 @@ func TestVariableSizeVariantsPersistReadAndListActualTaskCount(t *testing.T) {
 	if err := writer.WriteAll(mixed); err != nil {
 		t.Fatal(err)
 	}
-	if w := upload(f, "/admin/competency-map/import", "file", "map.csv", "text/csv", content.Bytes(), admin); w.Code != http.StatusOK {
+	if w := upload(f, "/admin/subjects/subject:intro-to-ml/competency-map/import", "file", "map.csv", "text/csv", content.Bytes(), admin); w.Code != http.StatusOK {
 		t.Fatalf("import: %s", w.Body.String())
 	}
 	req := httptest.NewRequest(http.MethodPost, "https://api.example/variants", strings.NewReader(`{"subject_id":"subject:intro-to-ml"}`))

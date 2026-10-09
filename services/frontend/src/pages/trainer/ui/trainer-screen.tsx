@@ -1,5 +1,5 @@
 import { Button, Heading, Text } from '@radix-ui/themes'
-import { Check, GraduationCap, Slash } from 'lucide-react'
+import { Check, GraduationCap } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/features/auth'
@@ -50,13 +50,15 @@ function DemoTrainer() {
         </aside>
         <div className={styles.content}>
           <header className={styles.header}>
-            <div className={styles.breadcrumb}>
-              <Text>{t('session.practice')}</Text>
-              <span aria-hidden="true">
-                <Slash size={14} />
+            <p className={styles.pageContext}>
+              <span className={styles.pageContextLabel}>
+                {t('session.practice')}
               </span>
-              <Text weight="bold">{t('session.course')}</Text>
-            </div>
+              <span className={styles.pageContextDot} aria-hidden="true" />
+              <span className={styles.pageContextTitle}>
+                {t('session.course')}
+              </span>
+            </p>
             <AccountMenu />
           </header>
           {user && training.query.isPending ? (

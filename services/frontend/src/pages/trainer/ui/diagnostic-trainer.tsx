@@ -4,7 +4,6 @@ import {
   LoaderCircle,
   Mic,
   RotateCcw,
-  Slash,
   Square,
 } from 'lucide-react'
 import { useEffect, useRef } from 'react'
@@ -164,13 +163,13 @@ function StudentDiagnostic({
       </aside>
       <div className={styles.content}>
         <header className={styles.header}>
-          <div className={styles.breadcrumb}>
-            <Text>{t('diagnostic.title')}</Text>
-            <span aria-hidden="true">
-              <Slash size={14} />
+          <p className={styles.pageContext}>
+            <span className={styles.pageContextLabel}>
+              {t('diagnostic.title')}
             </span>
-            <Text weight="bold">{subjectName}</Text>
-          </div>
+            <span className={styles.pageContextDot} aria-hidden="true" />
+            <span className={styles.pageContextTitle}>{subjectName}</span>
+          </p>
           <AccountMenu />
         </header>
         <Button variant="soft" onClick={onBack}>

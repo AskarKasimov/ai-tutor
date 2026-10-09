@@ -369,6 +369,46 @@ it('does not fetch instruction audio while accepted feedback is displayed', asyn
   expect(view.result.current.accepted?.exercise.exercise_id).toBe('e1')
   expect(readAudio).not.toHaveBeenCalled()
 })
+it('retries failed exercise audio after the TTS service recovers', async () => {
+  const deps = createAppDependencies()
+  vi.spyOn(deps.training, 'readTrainingAudio').mockResolvedValue({
+    exercise_id: 'e1',
+    status: 'failed',
+    audio_url: null,
+  })
+  const repair = vi
+    .spyOn(deps.training, 'regenerateTrainingAudio')
+    .mockRejectedValueOnce(new Error('TTS unavailable'))
+    .mockResolvedValueOnce({
+      exercise_id: 'e1',
+      status: 'ready',
+      audio_url: '/task-audio/audio-1/file',
+    })
+  const blob = new Blob(['wav'], { type: 'audio/wav' })
+  const fetchAudio = vi
+    .spyOn(deps.training, 'fetchTrainingAudioFile')
+    .mockResolvedValue(blob)
+  const play = vi.spyOn(audio, 'playQuestion').mockResolvedValue(vi.fn())
+  const view = renderHook(
+    () => useTrainingVoice('u1', progress, vi.fn(), vi.fn()),
+    { wrapper: createQueryWrapper(createQueryClient(), deps) },
+  )
+  await act(async () => {
+    await view.result.current.speak()
+  })
+  expect(view.result.current.speechError).toBe(true)
+  await act(async () => {
+    await view.result.current.speak()
+  })
+  expect(repair).toHaveBeenCalledTimes(2)
+  expect(fetchAudio).toHaveBeenCalledTimes(1)
+  expect(play).toHaveBeenCalledWith(
+    blob,
+    expect.any(Function),
+    expect.any(Function),
+  )
+  expect(view.result.current.speechError).toBe(false)
+})
 it('ignores late instruction audio metadata after the exercise changes', async () => {
   const deps = createAppDependencies()
   let resolve!: (

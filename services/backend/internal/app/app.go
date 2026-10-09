@@ -167,7 +167,7 @@ func (a *App) Handler() http.Handler {
 	taskAudioHandlers := taskaudiohttp.New(taskAudioService)
 	diagnosticService := diagnosticapp.New(a.diagnosticStore, a.variantRepository, voice, assessmentService, security.IDGenerator{}, a.now).WithAudioReader(taskAudioService).WithAudioRegenerator(a.audioWorker)
 	diagnosticHandlers := diagnostichttp.New(diagnosticService, a.cfg.MaxUploadBytes)
-	trainingService := trainingapp.New(trainingpg.New(a.pool), a.diagnosticStore, voice, trainingGrader{assessmentService}, trainingsnapshot.Provider{}, security.IDGenerator{}, a.now).WithAudio(taskAudioService)
+	trainingService := trainingapp.New(trainingpg.New(a.pool), a.diagnosticStore, voice, trainingGrader{assessmentService}, trainingsnapshot.Provider{}, security.IDGenerator{}, a.now).WithAudio(taskAudioService).WithAudioRegenerator(a.audioWorker)
 	trainingHandlers := traininghttp.New(trainingService, a.cfg.MaxUploadBytes)
 	feedbackService := diagnosticfeedbackapp.New(diagnosticService, feedbackSynthesizer, diagnosticfeedbackmemory.New(), a.now).
 		WithTaskFinder(diagnosticfeedbackpg.NewTaskFinder(a.pool))
@@ -201,6 +201,7 @@ func (a *App) Handler() http.Handler {
 	mux.Handle("POST /training-sessions/{id}/answers", protect(auth, http.HandlerFunc(trainingHandlers.Answer)))
 	mux.Handle("GET /training-sessions/{id}/history", protect(auth, http.HandlerFunc(trainingHandlers.History)))
 	mux.Handle("GET /training-sessions/{id}/current/audio", protect(auth, http.HandlerFunc(trainingHandlers.Audio)))
+	mux.Handle("POST /training-sessions/{id}/current/audio/regenerate", protect(auth, http.HandlerFunc(trainingHandlers.RegenerateAudio)))
 	mux.Handle("GET /tasks", protect(auth, http.HandlerFunc(taskbankHandlers.Search)))
 	mux.Handle("GET /subjects/{subject_id}/competency-map", protect(auth, http.HandlerFunc(competencyHandlers.ReadSubject)))
 	mux.Handle("GET /subjects", protect(auth, http.HandlerFunc(subjectHandlers.List)))

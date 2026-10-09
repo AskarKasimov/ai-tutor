@@ -75,7 +75,8 @@ healthcheck его не запускают. Он ограничен `BACKEND_AUD
 `BACKEND_S3_CREATE_BUCKET=false`. Браузер обращается к
 `GET /diagnostic-sessions/{id}/current/audio?variant_task_id=...` за статусом, затем
 к authenticated `GET /task-audio/{id}/file` только для готовой озвучки.
-Если сохранённый WAV отсутствует или повреждён, клиент может один раз вызвать
+Если сохранённый WAV отсутствует или повреждён либо генерация завершилась статусом
+`failed`, клиент может по действию пользователя вызвать
 `POST /diagnostic-sessions/{id}/current/audio/regenerate` с текущим
 `variant_task_id`. Сервер проверяет сохранённый объект и возвращает его без TTS,
 если файл исправен; иначе синхронно восстанавливает WAV из сохранённой инструкции,

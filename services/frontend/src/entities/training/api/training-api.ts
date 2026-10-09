@@ -328,6 +328,25 @@ export async function fetchTrainingAudioFile(
   return fetchStoredAudio(audioUrl, signal)
 }
 
+export async function regenerateTrainingAudio(
+  sessionId: string,
+  exerciseId: string,
+  signal: AbortSignal,
+) {
+  const audio = await parse(
+    await request(
+      `/training-sessions/${encodeURIComponent(sessionId)}/current/audio/regenerate?exercise_id=${encodeURIComponent(exerciseId)}`,
+      signal,
+      { method: 'POST' },
+    ),
+    audioSchema,
+    signal,
+  )
+  if (audio.exercise_id !== exerciseId)
+    throw new TrainingApiError(0, 'INVALID_RESPONSE')
+  return audio
+}
+
 export type TrainingApi = {
   readTrainingPreview: typeof readTrainingPreview
   startTraining: typeof startTraining
@@ -338,4 +357,5 @@ export type TrainingApi = {
   readTrainingHistory: typeof readTrainingHistory
   readTrainingAudio: typeof readTrainingAudio
   fetchTrainingAudioFile: typeof fetchTrainingAudioFile
+  regenerateTrainingAudio: typeof regenerateTrainingAudio
 }

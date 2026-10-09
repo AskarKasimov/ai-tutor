@@ -314,3 +314,35 @@ func (h *Handler) Audio(w http.ResponseWriter, r *http.Request) {
 	}
 	httpx.JSON(w, 200, AudioResponse{ExerciseID: exercise, Status: string(m.Status), AudioURL: m.AudioURL})
 }
+
+// RegenerateAudio retries generation for the current exercise.
+// @Summary Повторить озвучку текущего упражнения
+// @Tags Тренировка
+// @Security accessCookie
+// @Produce json
+// @Param id path string true "ID тренировки"
+// @Param exercise_id query string true "Текущее упражнение"
+// @Success 200 {object} AudioResponse
+// @Router /training-sessions/{id}/current/audio/regenerate [post]
+func (h *Handler) RegenerateAudio(w http.ResponseWriter, r *http.Request) {
+	id, ok := owner(w, r)
+	if !ok {
+		return
+	}
+	q, err := httpx.ParseQuery(r, "exercise_id")
+	if err != nil {
+		httpx.Error(r.Context(), w, err)
+		return
+	}
+	exercise := q.Get("exercise_id")
+	if exercise == "" {
+		httpx.Error(r.Context(), w, fault.Validation("exercise_id", "Укажите текущее упражнение."))
+		return
+	}
+	m, err := h.service.RegenerateCurrentAudio(r.Context(), id, r.PathValue("id"), exercise)
+	if err != nil {
+		httpx.Error(r.Context(), w, err)
+		return
+	}
+	httpx.JSON(w, 200, AudioResponse{ExerciseID: exercise, Status: string(m.Status), AudioURL: m.AudioURL})
+}

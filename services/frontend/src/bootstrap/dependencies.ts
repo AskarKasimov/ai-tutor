@@ -96,6 +96,7 @@ export function createAppDependencies(): AppDependencies {
       readTrainingHistory: training.readTrainingHistory,
       readTrainingAudio: training.readTrainingAudio,
       fetchTrainingAudioFile: training.fetchTrainingAudioFile,
+      regenerateTrainingAudio: training.regenerateTrainingAudio,
     },
   }
 }

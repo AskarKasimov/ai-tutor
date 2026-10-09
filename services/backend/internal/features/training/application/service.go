@@ -52,12 +52,17 @@ type Service struct {
 	ids         IDs
 	now         func() time.Time
 	audio       audioasset.MetadataReader
+	regenerator audioasset.Regenerator
 }
 
 func New(repo Repository, diagnostics Diagnostics, voice Voice, grader Grader, provider ExerciseProvider, ids IDs, now func() time.Time) *Service {
 	return &Service{repo: repo, diagnostics: diagnostics, voice: voice, grader: grader, provider: provider, ids: ids, now: now}
 }
 func (s *Service) WithAudio(reader audioasset.MetadataReader) *Service { s.audio = reader; return s }
+func (s *Service) WithAudioRegenerator(regenerator audioasset.Regenerator) *Service {
+	s.regenerator = regenerator
+	return s
+}
 func ValidKey(key string) error {
 	if key == "" || len(key) > 128 || strings.TrimSpace(key) != key || strings.IndexFunc(key, unicode.IsControl) >= 0 {
 		return fault.Validation("Idempotency-Key", "Укажите ключ длиной от 1 до 128 символов.")
@@ -298,4 +303,25 @@ func (s *Service) CurrentAudio(ctx context.Context, owner, id, exerciseID string
 		m.AudioURL = asset.AudioURL
 	}
 	return m, nil
+}
+
+func (s *Service) RegenerateCurrentAudio(ctx context.Context, owner, id, exerciseID string) (audioasset.Metadata, error) {
+	state, err := s.repo.Get(ctx, owner, id)
+	if err != nil {
+		return audioasset.Metadata{}, err
+	}
+	if state.Current.ID != exerciseID {
+		return audioasset.Metadata{}, fault.New(fault.Conflict, "TRAINING_EXERCISE_NOT_CURRENT", "Упражнение изменилось.")
+	}
+	if state.Current.Task.AudioAssetID == nil || *state.Current.Task.AudioAssetID == "" || s.regenerator == nil {
+		return audioasset.Metadata{}, fault.New(fault.Conflict, "AUDIO_NOT_REPAIRABLE", "Озвучку сейчас нельзя восстановить.")
+	}
+	asset, err := s.regenerator.Regenerate(ctx, *state.Current.Task.AudioAssetID)
+	if err != nil {
+		return audioasset.Metadata{}, fault.New(fault.Unavailable, "AUDIO_STORAGE_UNAVAILABLE", "Озвучка временно недоступна.")
+	}
+	if asset.Status != audioasset.Ready || asset.AudioURL == nil {
+		return audioasset.Metadata{}, fault.New(fault.Unavailable, "AUDIO_STORAGE_UNAVAILABLE", "Озвучка временно недоступна.")
+	}
+	return audioasset.Metadata{Status: asset.Status, AudioURL: asset.AudioURL}, nil
 }

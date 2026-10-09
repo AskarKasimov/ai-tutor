@@ -127,7 +127,7 @@ WITH candidate AS MATERIALIZED (
     SELECT asset.id, asset.bucket AS previous_bucket
     FROM audio_assets asset
     WHERE asset.id = $1
-      AND asset.status = 'ready'
+      AND asset.status IN ('ready', 'failed')
       AND EXISTS (
       SELECT 1
       FROM tasks task
@@ -149,7 +149,7 @@ WITH candidate AS MATERIALIZED (
         lease_until = now() + $3::double precision * interval '1 second',
         updated_at = now()
     FROM candidate
-    WHERE asset.id = candidate.id AND asset.status = 'ready'
+    WHERE asset.id = candidate.id AND asset.status IN ('ready', 'failed')
     RETURNING asset.id, asset.instruction, asset.object_key, asset.bucket, asset.storage_uri,
               asset.audio_url, asset.status, asset.attempts, candidate.previous_bucket
 )

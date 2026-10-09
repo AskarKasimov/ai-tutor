@@ -16,6 +16,7 @@ export {
   fetchTrainingAudioFile,
   findTrainingForDiagnostic,
   readTrainingAudio,
+  regenerateTrainingAudio,
   readTrainingHistory,
   readTrainingPreview,
   readTrainingSession,

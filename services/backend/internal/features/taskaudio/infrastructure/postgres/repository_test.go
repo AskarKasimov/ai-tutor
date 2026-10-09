@@ -149,6 +149,21 @@ func TestClaimRepairSerializesReadyAssetsAndClearsReadyReferences(t *testing.T) 
 	}
 }
 
+func TestClaimRepairRetriesFailedCurrentAsset(t *testing.T) {
+	repository, pool, ctx := setupAudioRepository(t)
+	seedCurrentTaskAudio(t, pool, ctx, "asset-failed-repair", "task-failed-repair")
+	if _, err := pool.Exec(ctx, `UPDATE audio_assets SET status='failed', attempts=5, last_error_code='synthesis_failed' WHERE id='asset-failed-repair'`); err != nil {
+		t.Fatal(err)
+	}
+	claim, ok, err := repository.ClaimRepair(ctx, "asset-failed-repair", "token-failed-repair", time.Minute)
+	if err != nil || !ok || claim.Asset.Attempts != 1 {
+		t.Fatalf("failed asset repair claim: claim=%+v ok=%v err=%v", claim, ok, err)
+	}
+	if _, ok, err := repository.ClaimRepair(ctx, "asset-failed-repair", "second-repair", time.Minute); err != nil || ok {
+		t.Fatalf("concurrent failed asset repair claim: ok=%v err=%v", ok, err)
+	}
+}
+
 func TestClaimRepairRejectsPendingAndStaleSnapshotOnlyAssets(t *testing.T) {
 	repository, pool, ctx := setupAudioRepository(t)
 	seedCurrentTaskAudio(t, pool, ctx, "asset-pending-repair", "task-pending-repair")

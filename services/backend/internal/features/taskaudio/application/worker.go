@@ -65,7 +65,7 @@ func (w *Worker) ProcessOne(ctx context.Context) (bool, error) {
 	return true, nil
 }
 
-// Regenerate synchronously repairs one ready asset while sharing the worker's
+// Regenerate synchronously repairs one ready or failed asset while sharing the worker's
 // concurrency bound. Only an atomically claimed, current-map asset can run.
 func (w *Worker) Regenerate(ctx context.Context, assetID string) (audioasset.Asset, error) {
 	if err := w.validate(); err != nil {

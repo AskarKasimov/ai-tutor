@@ -343,6 +343,35 @@ export function useTrainingVoice(
       )
       if (!isCurrent()) return
       setAudioStatus(metadata.status)
+      if (metadata.status === 'failed') {
+        setAudioStatus('loading')
+        const repaired = await training.regenerateTrainingAudio(
+          progress.session_id,
+          exerciseId,
+          signal,
+        )
+        if (!isCurrent()) return
+        if (repaired.status !== 'ready' || !repaired.audio_url) return
+        const blob = await training.fetchTrainingAudioFile(
+          repaired.audio_url,
+          signal,
+        )
+        if (!isCurrent()) return
+        const dispose = await playQuestion(
+          blob,
+          () => setSpeaking(false),
+          () => setSpeechError(true),
+        )
+        if (!isCurrent()) {
+          dispose()
+          return
+        }
+        player.current = dispose
+        setAudioStatus('ready')
+        setSpeechError(false)
+        setSpeaking(true)
+        return
+      }
       if (metadata.status !== 'ready' || !metadata.audio_url) return
       const blob = await training.fetchTrainingAudioFile(
         metadata.audio_url,

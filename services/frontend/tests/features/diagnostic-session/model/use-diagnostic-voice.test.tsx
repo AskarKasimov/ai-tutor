@@ -456,6 +456,48 @@ it('repairs a metadata storage error caused by a stale or malformed audio link',
   expect(play).toHaveBeenCalledTimes(1)
 })
 
+it('retries failed instruction generation after the TTS service recovers', async () => {
+  let repairs = 0
+  const fetch = vi.fn(async (url: string) => {
+    if (url.includes('/current/audio/regenerate')) {
+      repairs++
+      return repairs === 1
+        ? Response.json({ code: 'AUDIO_GENERATION_FAILED' }, { status: 503 })
+        : Response.json({
+            variant_task_id: 't1',
+            status: 'ready',
+            audio_url: '/task-audio/audio-1/file',
+          })
+    }
+    if (url.includes('/current/audio?'))
+      return Response.json({
+        variant_task_id: 't1',
+        status: 'failed',
+        audio_url: null,
+      })
+    if (url.includes('/task-audio/'))
+      return new Response(await validWavBlob().arrayBuffer(), {
+        headers: { 'Content-Type': 'audio/wav' },
+      })
+    throw new Error(`Unexpected request ${url}`)
+  })
+  vi.stubGlobal('fetch', fetch)
+  const play = vi.spyOn(audio, 'playQuestion').mockResolvedValue(vi.fn())
+  const view = renderDiagnosticVoice(() =>
+    useDiagnosticVoice('u1', 's1', task, vi.fn(), vi.fn()),
+  )
+  await act(async () => {
+    await view.result.current.speak()
+  })
+  expect(view.result.current.speechError).toBe(true)
+  await act(async () => {
+    await view.result.current.speak()
+  })
+  expect(repairs).toBe(2)
+  expect(play).toHaveBeenCalledTimes(1)
+  expect(view.result.current.speechError).toBe(false)
+})
+
 it('does not repair a stored-audio authorization failure', async () => {
   const fetch = vi.fn(async (url: string) => {
     if (url.includes('/current/audio?'))

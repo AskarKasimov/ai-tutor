@@ -20,7 +20,7 @@ WHERE audio_assets.id = $1 AND status = 'processing' AND claim_token = $2
       JOIN outcomes outcome ON outcome.id = task.outcome_id
       JOIN constituents constituent ON constituent.id = outcome.constituent_id
       JOIN competencies competency ON competency.id = constituent.competency_id
-      JOIN competency_map_state state ON state.singleton = true AND state.revision = competency.revision
+      JOIN subjects subject ON subject.active_revision = competency.revision
       WHERE task.audio_asset_id = audio_assets.id
   )
 `
@@ -71,7 +71,7 @@ WITH candidate AS (
           JOIN outcomes outcome ON outcome.id = task.outcome_id
           JOIN constituents constituent ON constituent.id = outcome.constituent_id
           JOIN competencies competency ON competency.id = constituent.competency_id
-          JOIN competency_map_state state ON state.singleton = true AND state.revision = competency.revision
+          JOIN subjects subject ON subject.active_revision = competency.revision
           WHERE task.audio_asset_id = audio_assets.id
       )
     ORDER BY created_at, id
@@ -134,7 +134,7 @@ WITH candidate AS MATERIALIZED (
       JOIN outcomes outcome ON outcome.id = task.outcome_id
       JOIN constituents constituent ON constituent.id = outcome.constituent_id
       JOIN competencies competency ON competency.id = constituent.competency_id
-      JOIN competency_map_state state ON state.singleton = true AND state.revision = competency.revision
+      JOIN subjects subject ON subject.active_revision = competency.revision
       WHERE task.audio_asset_id = asset.id
       )
     FOR UPDATE
@@ -246,7 +246,7 @@ SET status = CASE
             JOIN outcomes outcome ON outcome.id = task.outcome_id
             JOIN constituents constituent ON constituent.id = outcome.constituent_id
             JOIN competencies competency ON competency.id = constituent.competency_id
-            JOIN competency_map_state state ON state.singleton = true AND state.revision = competency.revision
+            JOIN subjects subject ON subject.active_revision = competency.revision
             WHERE task.audio_asset_id = audio_assets.id
         ) THEN 'cancelled'
         WHEN attempts >= 5 THEN 'failed'
@@ -259,7 +259,7 @@ SET status = CASE
             JOIN outcomes outcome ON outcome.id = task.outcome_id
             JOIN constituents constituent ON constituent.id = outcome.constituent_id
             JOIN competencies competency ON competency.id = constituent.competency_id
-            JOIN competency_map_state state ON state.singleton = true AND state.revision = competency.revision
+            JOIN subjects subject ON subject.active_revision = competency.revision
             WHERE task.audio_asset_id = audio_assets.id
         ) THEN next_attempt_at
         ELSE now() + $1::double precision * interval '1 second'
@@ -272,7 +272,7 @@ SET status = CASE
             JOIN outcomes outcome ON outcome.id = task.outcome_id
             JOIN constituents constituent ON constituent.id = outcome.constituent_id
             JOIN competencies competency ON competency.id = constituent.competency_id
-            JOIN competency_map_state state ON state.singleton = true AND state.revision = competency.revision
+            JOIN subjects subject ON subject.active_revision = competency.revision
             WHERE task.audio_asset_id = audio_assets.id
         ) THEN 'task_no_longer_current'
         ELSE $2
@@ -407,7 +407,7 @@ SELECT EXISTS (
     JOIN outcomes outcome ON outcome.id = task.outcome_id
     JOIN constituents constituent ON constituent.id = outcome.constituent_id
     JOIN competencies competency ON competency.id = constituent.competency_id
-    JOIN competency_map_state state ON state.singleton = true AND state.revision = competency.revision
+    JOIN subjects subject ON subject.active_revision = competency.revision
     WHERE asset.id = $1
       AND asset.status = 'processing'
       AND asset.claim_token = $2
@@ -453,7 +453,7 @@ SET status = CASE
             JOIN outcomes outcome ON outcome.id = task.outcome_id
             JOIN constituents constituent ON constituent.id = outcome.constituent_id
             JOIN competencies competency ON competency.id = constituent.competency_id
-            JOIN competency_map_state state ON state.singleton = true AND state.revision = competency.revision
+            JOIN subjects subject ON subject.active_revision = competency.revision
             WHERE task.audio_asset_id = audio_assets.id
         ) THEN 'cancelled'
         WHEN attempts >= 5 THEN 'failed'
@@ -469,7 +469,7 @@ SET status = CASE
             JOIN outcomes outcome ON outcome.id = task.outcome_id
             JOIN constituents constituent ON constituent.id = outcome.constituent_id
             JOIN competencies competency ON competency.id = constituent.competency_id
-            JOIN competency_map_state state ON state.singleton = true AND state.revision = competency.revision
+            JOIN subjects subject ON subject.active_revision = competency.revision
             WHERE task.audio_asset_id = audio_assets.id
         ) THEN 'task_no_longer_current'
         WHEN attempts >= 5 THEN 'attempts_exhausted'

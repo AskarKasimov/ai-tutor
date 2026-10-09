@@ -26,7 +26,7 @@ import (
 	competencypg "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/competency/infrastructure/postgres"
 	competencyhttp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/competency/transport/http"
 	diagnosticapp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/diagnostic/application"
-	diagnosticmemory "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/diagnostic/infrastructure/memory"
+	diagnosticpg "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/diagnostic/infrastructure/postgres"
 	diagnostichttp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/diagnostic/transport/http"
 	diagnosticfeedbackapp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/diagnosticfeedback/application"
 	diagnosticfeedbackmemory "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/diagnosticfeedback/infrastructure/memory"
@@ -71,7 +71,7 @@ type App struct {
 	hasher            *argon2.Hasher
 	logger            *zap.Logger
 	variantRepository variantgenapp.Repository
-	diagnosticStore   *diagnosticmemory.Store
+	diagnosticStore   diagnosticapp.Store
 	audioWorker       interface {
 		Run(context.Context) error
 		ProcessOne(context.Context) (bool, error)
@@ -97,7 +97,7 @@ func New(cfg Config, pool *pgxpool.Pool, logger *zap.Logger) (*App, error) {
 		hasher:            argon2.New(),
 		logger:            logger,
 		variantRepository: variantgenpg.New(pool),
-		diagnosticStore:   diagnosticmemory.New(),
+		diagnosticStore:   diagnosticpg.New(pool),
 		client: &http.Client{
 			CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 		},

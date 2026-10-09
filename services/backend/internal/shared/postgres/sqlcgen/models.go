@@ -125,6 +125,42 @@ type CurriculumSection struct {
 	Title    string
 }
 
+type DiagnosticAnswer struct {
+	SessionID      string
+	AnswerOrder    int32
+	IdempotencyKey string
+	RequestDigest  string
+	VariantTaskID  string
+	AnswerData     []byte
+	ProgressData   []byte
+	CreatedAt      pgtype.Timestamptz
+}
+
+type DiagnosticSession struct {
+	ID                    string
+	OwnerID               string
+	VariantID             string
+	SubjectID             string
+	SubjectNameSnapshot   string
+	MapRevision           int64
+	Status                string
+	CurrentCompetency     int32
+	CurrentTask           int32
+	StartRequestKey       string
+	StartRequestDigest    string
+	SessionData           []byte
+	InFlightKey           *string
+	InFlightFingerprint   *string
+	InFlightVariantTaskID *string
+	InFlightToken         *string
+	LeaseUntil            pgtype.Timestamptz
+	TranscriptionID       *string
+	TranscriptionText     *string
+	CreatedAt             pgtype.Timestamptz
+	UpdatedAt             pgtype.Timestamptz
+	CompletedAt           pgtype.Timestamptz
+}
+
 type GenerationRun struct {
 	ID               string
 	OutcomeID        string

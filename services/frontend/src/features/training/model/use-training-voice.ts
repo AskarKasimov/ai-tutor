@@ -68,6 +68,7 @@ export function useTrainingVoice(
   const player = useRef<(() => void) | null>(null)
   const generation = useRef(0)
   const locked = useRef(false)
+  const lockToken = useRef(0)
   const started = useRef(0)
   const exercise = progress.current
   const exerciseId = exercise.exercise_id
@@ -134,6 +135,8 @@ export function useTrainingVoice(
     setStream(undefined)
     pending.current = null
     generation.current++
+    lockToken.current++
+    locked.current = false
     answerRequest.current?.abort()
     recording.current?.dispose()
     recording.current = null
@@ -144,6 +147,8 @@ export function useTrainingVoice(
   useEffect(() => {
     if (auth === undefined || auth?.id === userId) return
     generation.current++
+    lockToken.current++
+    locked.current = false
     answerRequest.current?.abort()
     speechRequest.current?.abort()
     recording.current?.dispose()
@@ -162,6 +167,8 @@ export function useTrainingVoice(
     if (pending.current?.exercise.exercise_id !== exerciseId)
       pending.current = null
     generation.current++
+    lockToken.current++
+    locked.current = false
     answerRequest.current?.abort()
     recording.current?.dispose()
     recording.current = null
@@ -176,7 +183,9 @@ export function useTrainingVoice(
   }, [exerciseId, disposeAnswer, stopSpeech])
 
   const start = useCallback(async () => {
-    if (locked.current || accepted || pending.current) return
+    if (locked.current || accepted || acceptedRef.current || pending.current)
+      return
+    const operation = ++lockToken.current
     locked.current = true
     const current = ++generation.current
     stopSpeech()
@@ -207,7 +216,7 @@ export function useTrainingVoice(
       )
       setStage('error')
     } finally {
-      if (current === generation.current) locked.current = false
+      if (operation === lockToken.current) locked.current = false
     }
   }, [accepted, exerciseId, stopSpeech])
 
@@ -253,6 +262,7 @@ export function useTrainingVoice(
 
   const stop = useCallback(async () => {
     if (locked.current || !recording.current || accepted) return
+    const operation = ++lockToken.current
     locked.current = true
     const current = generation.current
     const capturedExercise = exercise
@@ -290,21 +300,23 @@ export function useTrainingVoice(
       setError(failure)
       setStage('error')
     } finally {
-      if (current === generation.current) locked.current = false
+      if (operation === lockToken.current) locked.current = false
     }
   }, [accepted, exercise, progress.session_id, send, training])
 
   const retry = useCallback(async () => {
     if (locked.current || !pending.current) return
+    const operation = ++lockToken.current
     locked.current = true
     try {
       await send(generation.current)
     } finally {
-      locked.current = false
+      if (operation === lockToken.current) locked.current = false
     }
   }, [send])
 
   const speak = useCallback(async () => {
+    if (acceptedRef.current) return
     if (speechRequest.current) {
       stopSpeech()
       return
@@ -389,6 +401,8 @@ export function useTrainingVoice(
 
   const next = useCallback(() => {
     generation.current++
+    lockToken.current++
+    locked.current = false
     answerRequest.current?.abort()
     recording.current?.dispose()
     recording.current = null

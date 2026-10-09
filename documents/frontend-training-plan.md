@@ -78,10 +78,10 @@ class TrainingApiError extends Error { status: number; code: string }
 Также экспортировать типы `SubjectApi` и `TrainingApi` как объекты перечисленных функций для dependency providers следующих задач. Не привязывать interfaces к bootstrap.
 Entity subject также экспортирует `subjectQueryKeys.subjects(userId)`, `learningState(userId,subjectId)`, `createSubject(userId)` из `model/query-keys.ts`: они нужны и subject-selection, и import-map без peer-feature imports.
 
-- [ ] Написать тесты реального fetch boundary: encoded IDs, cookie auth, POST JSON/plan_revision, multipart ровно audio/exercise_id, повтор submission использует тот же ключ; malformed success, wrong session/exercise ID, nullable исходный балл, 409 code.
-- [ ] `npm test -- --run tests/entities/subject/subject-api.test.ts tests/entities/training/training-api.test.ts` → сначала RED.
-- [ ] Реализовать Zod schemas и функции, по образцу diagnostic API. 30s GET, 120s start, 240s answer; `apiFetch`, AbortSignal.any, `fetchStoredAudio`. Audio URL только `/task-audio/<id>/file`. Не выдавать private snapshot. Отправлять `{}` для focused POST и `{plan_revision}` для free. Проверять returned IDs, score/max_score=2, режим/status/counters, verdict/feedback.
-- [ ] Те же тесты → GREEN; `npm run typecheck`, `npm test -- --run`; форматировать только затронутые файлы; commit `feat(frontend): add subject and training API contracts`.
+- [x] Написать тесты реального fetch boundary: encoded IDs, cookie auth, POST JSON/plan_revision, multipart ровно audio/exercise_id, повтор submission использует тот же ключ; malformed success, wrong session/exercise ID, nullable исходный балл, 409 code.
+- [x] `npm test -- --run tests/entities/subject/subject-api.test.ts tests/entities/training/training-api.test.ts` → сначала RED.
+- [x] Реализовать Zod schemas и функции, по образцу diagnostic API. 30s GET, 120s start, 240s answer; `apiFetch`, AbortSignal.any, `fetchStoredAudio`. Audio URL только `/task-audio/<id>/file`. Не выдавать private snapshot. Отправлять `{}` для focused POST и `{plan_revision}` для free. Проверять returned IDs, score/max_score=2, режим/status/counters, verdict/feedback.
+- [x] Те же тесты → GREEN; `npm run typecheck`, `npm test -- --run`; форматировать только затронутые файлы; commit `feat(frontend): add subject and training API contracts`.
 
 ## Task 2: Mock HTTP для предметов и бесконечной тренировки
 
@@ -89,11 +89,11 @@ Entity subject также экспортирует `subjectQueryKeys.subjects(us
 
 **Consumes:** Task 1 wire types. **Produces:** те же /subjects, learning-state и training маршруты в `mockApiFetch`; subject id `subject:intro-to-ml`, название «Введение в ML». Разделить API state по текущему userId, передаваемому из mock-api; logout/login очищает mutable mock state.
 
-- [ ] RED: через реальные entity API + configured mock transport проверить до диагностики gate, явное создание варианта с subject_id, completed learning-state, preview без записи, free_practice, один start на диагностику, новый exercise_id/round после ответа, повтор ключа и конфликт иного аудио, курсор истории. Фикстуры focused preview с обоими типами проверяются отдельным API test; backend classification не дублировать в сложный mock rule engine.
-- [ ] `npm test -- --run tests/bootstrap/mock-learning.test.ts` → RED.
-- [ ] Дополнить existing mock diagnostic state: subject ID у варианта/сессии, start/answer ключи, данные для learning-state. `mock-training-api` хранит только mock сессии/accepted attempts, отдаёт контракты Task 1, 404/409 при неизвестной/незавершённой диагностике. Формировать демонстрационную оценку и transcript, new exercise каждый round; audio использует существующий createDemoAudio. Админские subject create/map routes можно поддержать, но не менять mock auth role student.
-- [ ] На промежуточном Task2 прежний diagnostic клиент ещё не отправляет subject_id. Сохранить эту совместимость только для existing mock request до Task3; явный неверный subject_id уже отклоняется. В Task3 убрать совместимость одновременно со сменой всех diagnostic ports/callers и тестов. Итоговый UI/API не выбирает предмет по умолчанию.
-- [ ] Tests → GREEN; typecheck/full tests; commit `feat(frontend): mock subject learning and training APIs`.
+- [x] RED: через реальные entity API + configured mock transport проверить до диагностики gate, явное создание варианта с subject_id, completed learning-state, preview без записи, free_practice, один start на диагностику, новый exercise_id/round после ответа, повтор ключа и конфликт иного аудио, курсор истории. Фикстуры focused preview с обоими типами проверяются отдельным API test; backend classification не дублировать в сложный mock rule engine.
+- [x] `npm test -- --run tests/bootstrap/mock-learning.test.ts` → RED.
+- [x] Дополнить existing mock diagnostic state: subject ID у варианта/сессии, start/answer ключи, данные для learning-state. `mock-training-api` хранит только mock сессии/accepted attempts, отдаёт контракты Task 1, 404/409 при неизвестной/незавершённой диагностике. Формировать демонстрационную оценку и transcript, new exercise каждый round; audio использует существующий createDemoAudio. Админские subject create/map routes можно поддержать, но не менять mock auth role student.
+- [x] На промежуточном Task2 прежний diagnostic клиент ещё не отправляет subject_id. Сохранить эту совместимость только для existing mock request до Task3; явный неверный subject_id уже отклоняется. В Task3 убрать совместимость одновременно со сменой всех diagnostic ports/callers и тестов. Итоговый UI/API не выбирает предмет по умолчанию.
+- [x] Tests → GREEN; typecheck/full tests; commit `feat(frontend): mock subject learning and training APIs`.
 
 ## Task 3: Главная с выбором предмета и явной диагностикой
 
@@ -112,12 +112,12 @@ createDiagnosticIdentity(subjectId: string): DiagnosticSessionIdentity
 useDiagnosticSession(userId: string, subjectId: string, initialSessionId?: string)
 ```
 
-- [ ] RED: root после auth показывает предметы и не вызывает POST; выбор предмета грузит только learning-state. Кнопка диагностики вызывает createVariant с выбранным ID; StrictMode/doubleclick один start. Без completed тренировка заблокирована и есть понятное «Сначала пройдите диагностику». Ошибка/пустой каталог, неизвестный subject, retry. Logout/new user и старые sessionStorage записи не запускают чужую сессию.
-- [ ] Запустить `npm test -- --run tests/routes/subjects.test.tsx` → RED.
-- [ ] Главная — Radix select/cards + два режима и состояние learning-state. Не монтировать DiagnosticTrainer до explicit start/continue. Кнопка «Продолжить диагностику» берёт active_session_id и выполняет GET; «Новая диагностика» на итоговом экране возвращает к выбору, не вызывает POST. Subject name приходит из каталога/снимка, hardcoded session.course заменяется props.
-- [ ] Устойчивые ключи создания сохранять перед первым POST; retry загрузки использует их. Для refresh сохранять page intent в sessionStorage с apiBase/userId/subjectId/sessionId; восстанавливать только existing ID и выбранный предмет, никогда автоматически создавать сессию. Возврат к выбору очищает page intent, сохраняет diagnostic identity для осмысленного continue. Auth epoch guards и отмена запросов как existing hooks.
-- [ ] Временно кнопка доступной тренировки может открывать entry placeholder с локализованной loading подписью; Task5 его заменяет. Не выдавать демонстрационную тренировку за real.
-- [ ] Обновить старые тесты: перед первым вопросом явно выбрать subject и нажать start; сохранить проверки голоса/result/privacy. tests → GREEN; typecheck/full tests; commit `feat(frontend): select subjects and explicitly start diagnostics`.
+- [x] RED: root после auth показывает предметы и не вызывает POST; выбор предмета грузит только learning-state. Кнопка диагностики вызывает createVariant с выбранным ID; StrictMode/doubleclick один start. Без completed тренировка заблокирована и есть понятное «Сначала пройдите диагностику». Ошибка/пустой каталог, неизвестный subject, retry. Logout/new user и старые sessionStorage записи не запускают чужую сессию.
+- [x] Запустить `npm test -- --run tests/routes/subjects.test.tsx` → RED.
+- [x] Главная — Radix select/cards + два режима и состояние learning-state. Не монтировать DiagnosticTrainer до explicit start/continue. Кнопка «Продолжить диагностику» берёт active_session_id и выполняет GET; «Новая диагностика» на итоговом экране возвращает к выбору, не вызывает POST. Subject name приходит из каталога/снимка, hardcoded session.course заменяется props.
+- [x] Устойчивые ключи создания сохранять перед первым POST; retry загрузки использует их. Для refresh сохранять page intent в sessionStorage с apiBase/userId/subjectId/sessionId; восстанавливать только existing ID и выбранный предмет, никогда автоматически создавать сессию. Возврат к выбору очищает page intent, сохраняет diagnostic identity для осмысленного continue. Auth epoch guards и отмена запросов как existing hooks.
+- [x] Временно кнопка доступной тренировки может открывать entry placeholder с локализованной loading подписью; Task5 его заменяет. Не выдавать демонстрационную тренировку за real.
+- [x] Обновить старые тесты: перед первым вопросом явно выбрать subject и нажать start; сохранить проверки голоса/result/privacy. tests → GREEN; typecheck/full tests; commit `feat(frontend): select subjects and explicitly start diagnostics`.
 
 ## Task 4: Training dependencies, queries и голосовой lifecycle
 
@@ -127,11 +127,11 @@ useDiagnosticSession(userId: string, subjectId: string, initialSessionId?: strin
 
 Entry query сначала GET existing training: 404 означает отсутствие и только тогда GET preview; найденная сессия показывает свои frozen targets после переимпорта. Возвращает discriminated union `{kind:'existing';progress}` | `{kind:'preview';preview}`.
 
-- [ ] RED: accepted response updates correct cache; start key survives failed HTTP retry; stale returns user to new preview; entry existing does not POST or use current-map topics; wrong auth epoch ignored. Voice test: permission→recording→processing→result; retry keeps submission; feedback stays bound to captured exercise until Next; changing task/unmount cleans resources, late result ignored.
-- [ ] Run focused tests → RED.
-- [ ] Query/mutation implementations use injected API, user/session keys and existing captureSession/registerSessionRequest/isCurrentSession patterns. History useInfiniteQuery with next_cursor. Register every write with auth token; 401 replaces auth only for current epoch.
-- [ ] Voice hook uses shared `startRecording`, `createAudioUrl`, `playQuestion` and waveform in UI; не импортировать feature diagnostic-session. Media refs and generation counter отменяют поздние callbacks. Current audio statuses render hints, no TTS retry/regenerate endpoint invented. Source metadata ready fetch WAV через existing shared fetchStoredAudio. Unavailable audio не блокирует запись. Browser permission/empty audio/limit/error has retry path. Pending answer survives technical retry within screen with same FormData/key.
-- [ ] Commit after focused/typecheck/full tests: `feat(frontend): manage persistent training and voice answers`.
+- [x] RED: accepted response updates correct cache; start key survives failed HTTP retry; stale returns user to new preview; entry existing does not POST or use current-map topics; wrong auth epoch ignored. Voice test: permission→recording→processing→result; retry keeps submission; feedback stays bound to captured exercise until Next; changing task/unmount cleans resources, late result ignored.
+- [x] Run focused tests → RED.
+- [x] Query/mutation implementations use injected API, user/session keys and existing captureSession/registerSessionRequest/isCurrentSession patterns. History useInfiniteQuery with next_cursor. Register every write with auth token; 401 replaces auth only for current epoch.
+- [x] Voice hook uses shared `startRecording`, `createAudioUrl`, `playQuestion` and waveform in UI; не импортировать feature diagnostic-session. Media refs and generation counter отменяют поздние callbacks. Current audio statuses render hints, no TTS retry/regenerate endpoint invented. Source metadata ready fetch WAV через existing shared fetchStoredAudio. Unavailable audio не блокирует запись. Browser permission/empty audio/limit/error has retry path. Pending answer survives technical retry within screen with same FormData/key.
+- [x] Commit after focused/typecheck/full tests: `feat(frontend): manage persistent training and voice answers`.
 
 ## Task 5: Preview, бесконечная тренировка и история на главной
 
@@ -139,12 +139,12 @@ Entry query сначала GET existing training: 404 означает отсу�
 
 **Consumes:** Task3 home, Task4 hooks. **Produces:** полный root сценарий в real и mock.
 
-- [ ] RED: absent/incomplete diagnostic gate; focused preview с обеими точными категориями и исходными баллами; free preview с null score не показывает 0; preview GET не вызывает start. Existing session показывает frozen targets + Continue. Explicit button POST revision/key. 409 stale refetch topics and requires another click. no_practice_tasks disables start; network error keeps user choice.
-- [ ] Focused tests → RED.
-- [ ] Preview shows subject, topics, categories and explicit «Начать тренировку»/«Продолжить тренировку». Home passes latest completed diagnostic_session_id. Return from diagnostic invalidates learning-state before gate. UI does not infer mastery or calculate gaps itself.
-- [ ] Session shows subject, current outcome/question/options/voice_instruction, round/count, recorder/waveform/listen, 0/1/2 feedback/transcript, explicit Next, goal latest score, paginated history with «Показать ещё». Нет finite progress percentage or completion. Cancel recording before Back/switch, preserve session intent for refresh; reload GET current session and history. Back returns subject/action selector; session remains backend active.
-- [ ] Error actions: 401 auth; 404 clear current view and offer subject selector; 409 wrong exercise refetch current; in-progress/retry mismatch preserve original submission with explanatory text. Respect voice hook generation to prevent another goal receiving old recording/result. Audio play requires click; missing/pending/failed/cancelled shows status with text fallback.
-- [ ] tests → GREEN; run full frontend gates; commit `feat(frontend): show training preview progression and history`.
+- [x] RED: absent/incomplete diagnostic gate; focused preview с обеими точными категориями и исходными баллами; free preview с null score не показывает 0; preview GET не вызывает start. Existing session показывает frozen targets + Continue. Explicit button POST revision/key. 409 stale refetch topics and requires another click. no_practice_tasks disables start; network error keeps user choice.
+- [x] Focused tests → RED.
+- [x] Preview shows subject, topics, categories and explicit «Начать тренировку»/«Продолжить тренировку». Home passes latest completed diagnostic_session_id. Return from diagnostic invalidates learning-state before gate. UI does not infer mastery or calculate gaps itself.
+- [x] Session shows subject, current outcome/question/options/voice_instruction, round/count, recorder/waveform/listen, 0/1/2 feedback/transcript, explicit Next, goal latest score, paginated history with «Показать ещё». Нет finite progress percentage or completion. Cancel recording before Back/switch, preserve session intent for refresh; reload GET current session and history. Back returns subject/action selector; session remains backend active.
+- [x] Error actions: 401 auth; 404 clear current view and offer subject selector; 409 wrong exercise refetch current; in-progress/retry mismatch preserve original submission with explanatory text. Respect voice hook generation to prevent another goal receiving old recording/result. Audio play requires click; missing/pending/failed/cancelled shows status with text fallback.
+- [x] tests → GREEN; run full frontend gates; commit `feat(frontend): show training preview progression and history`.
 
 ## Task 6: Админские предметы и предметный импорт
 
@@ -158,10 +158,19 @@ useCompetencyMapQuery(userId: string, subjectId: string)
 useImportCompetencyMapMutation(userId: string, subjectId: string)
 ```
 
-- [ ] RED: explicit subject select, create validates name/errors, empty new map state, imported ID in encoded URL, A summary never replaces B after switch, import request tied to captured subject. Admin auth/401/403 tests preserved.
-- [ ] Focused tests → RED.
-- [ ] Subject create/list selection on existing admin screen, preserve CSV/XLSX picker and warnings. All API paths `/subjects/{id}/competency-map` and `/admin/subjects/{id}/competency-map/import`. Keys include subject ID. Successful/uncertain import invalidates selected map, subject readiness and learning-state; late success must not display under another subject.
-- [ ] tests → GREEN; full gates; commit `feat(frontend): administer subject maps and imports`.
+- [x] RED: explicit subject select, create validates name/errors, empty new map state, imported ID in encoded URL, A summary never replaces B after switch, import request tied to captured subject. Admin auth/401/403 tests preserved.
+- [x] Focused tests → RED.
+- [x] Subject create/list selection on existing admin screen, preserve CSV/XLSX picker and warnings. All API paths `/subjects/{id}/competency-map` and `/admin/subjects/{id}/competency-map/import`. Keys include subject ID. Successful/uncertain import invalidates selected map, subject readiness and learning-state; late success must not display under another subject.
+- [x] tests → GREEN; full gates; commit `feat(frontend): administer subject maps and imports`.
+
+## Final review fixwave — 4 confirmed P2 findings
+
+- [x] New diagnostic creation keeps pending idempotency identity separate from the last successful session identity; exposes new-start errors, retains stable variant/start keys across retries and refresh, and stores the new session identity only after success.
+- [x] Voice generation invalidation releases the operation lock; old permission/submit completions cannot unlock or update a newer exercise operation.
+- [x] Instruction playback is disabled and guarded while accepted feedback is displayed, so audio cannot be requested for the next exercise while the previous one is shown.
+- [x] Demo training session displays a localized notice that transcript and grading are predetermined and do not assess the learner.
+- [x] Added behavioral regressions; focused suite 32/32 and all five frontend gates pass (34 files, 208 tests). See `.superpowers/sdd/frontend-training-plan/final-fix-report.md`.
+- [x] No browser visual checks were run for this fixwave; no new visual verification claims.
 
 ## Task 7: Контрактная интеграция, визуальная проверка и документация
 

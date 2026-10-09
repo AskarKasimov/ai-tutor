@@ -3,6 +3,7 @@ import { Mic, Square, Volume2 } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { TrainingApiError, type TrainingProgress } from '@/entities/training'
+import { isMockApi } from '@/shared/api'
 import { useTrainingSession, useTrainingVoice } from '@/features/training'
 import { AccountMenu } from '@/features/auth'
 import { VoiceIllustration } from './trainer-answer'
@@ -130,6 +131,7 @@ export function TrainingSession({
       >
         {t('home.back')}
       </Button>
+      {isMockApi() && <Text role="note">{t('training.demoNotice')}</Text>}
       <section className={styles.columns}>
         <Card className={styles.question}>
           <Text>
@@ -146,7 +148,10 @@ export function TrainingSession({
             ))}
           </ol>
           <Text as="p">{exercise.voice_instruction}</Text>
-          <Button onClick={() => void voice.speak()}>
+          <Button
+            onClick={() => void voice.speak()}
+            disabled={!!accepted || voice.stage === 'permission'}
+          >
             <Volume2 size={16} /> {t('trainer.playInstruction')}
           </Button>
           {voice.audioStatus !== 'idle' && voice.audioStatus !== 'ready' && (

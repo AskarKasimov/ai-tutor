@@ -242,6 +242,133 @@ it('ignores a submit result that arrives after the exercise changes', async () =
   expect(view.result.current.accepted).toBeUndefined()
   expect(view.result.current.stage).toBe('ready')
 })
+it('unlocks a new exercise when a prior submit resolves late', async () => {
+  const deps = createAppDependencies()
+  vi.spyOn(audio, 'startRecording').mockResolvedValue({
+    stream: {} as MediaStream,
+    dispose: vi.fn(),
+    stop: vi.fn().mockResolvedValue(new Blob(['voice'])),
+  })
+  vi.spyOn(deps.training, 'createTrainingSubmission').mockReturnValue({
+    sessionId: 's1',
+    exerciseId: 'e1',
+    key: 'key',
+    body: new FormData(),
+  })
+  let resolve!: (value: TrainingProgress) => void
+  const submit = vi.fn(
+    () =>
+      new Promise<TrainingProgress>((done) => {
+        resolve = done
+      }),
+  )
+  const view = renderHook(
+    ({ current }) => useTrainingVoice('u1', current, submit, vi.fn()),
+    {
+      wrapper: createQueryWrapper(createQueryClient(), deps),
+      initialProps: { current: progress },
+    },
+  )
+  await act(async () => {
+    await view.result.current.start()
+  })
+  let stop!: Promise<void>
+  act(() => {
+    stop = view.result.current.stop()
+  })
+  await waitFor(() => expect(submit).toHaveBeenCalledOnce())
+  view.rerender({
+    current: {
+      ...progress,
+      current: { ...progress.current, exercise_id: 'e2' },
+    },
+  })
+  await act(async () => {
+    resolve(progress)
+    await stop
+  })
+  await act(async () => {
+    await view.result.current.start()
+  })
+  expect(view.result.current.stage).toBe('recording')
+})
+it('releases the operation lock when microphone permission resolves after exercise change', async () => {
+  let grant!: (recording: audio.Recording) => void
+  const lateDispose = vi.fn()
+  vi.spyOn(audio, 'startRecording')
+    .mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          grant = resolve
+        }),
+    )
+    .mockResolvedValue({
+      stream: {} as MediaStream,
+      dispose: vi.fn(),
+      stop: vi.fn(),
+    })
+  const view = renderHook(
+    ({ current }) => useTrainingVoice('u1', current, vi.fn(), vi.fn()),
+    {
+      wrapper: createQueryWrapper(createQueryClient()),
+      initialProps: { current: progress },
+    },
+  )
+  let firstStart!: Promise<void>
+  act(() => {
+    firstStart = view.result.current.start()
+  })
+  view.rerender({
+    current: {
+      ...progress,
+      current: { ...progress.current, exercise_id: 'e2' },
+    },
+  })
+  await act(async () => {
+    await view.result.current.start()
+  })
+  expect(view.result.current.stage).toBe('recording')
+  await act(async () => {
+    grant({ stream: {} as MediaStream, dispose: lateDispose, stop: vi.fn() })
+    await firstStart
+  })
+  expect(lateDispose).toHaveBeenCalledOnce()
+  expect(view.result.current.stage).toBe('recording')
+})
+it('does not fetch instruction audio while accepted feedback is displayed', async () => {
+  const deps = createAppDependencies()
+  vi.spyOn(audio, 'startRecording').mockResolvedValue({
+    stream: {} as MediaStream,
+    dispose: vi.fn(),
+    stop: vi.fn().mockResolvedValue(new Blob(['voice'])),
+  })
+  vi.spyOn(deps.training, 'createTrainingSubmission').mockReturnValue({
+    sessionId: 's1',
+    exerciseId: 'e1',
+    key: 'key',
+    body: new FormData(),
+  })
+  const readAudio = vi.spyOn(deps.training, 'readTrainingAudio')
+  const submit = vi.fn().mockResolvedValue({
+    ...progress,
+    current: { ...progress.current, exercise_id: 'e2' },
+  })
+  const view = renderHook(
+    () => useTrainingVoice('u1', progress, submit, vi.fn()),
+    {
+      wrapper: createQueryWrapper(createQueryClient(), deps),
+    },
+  )
+  await act(async () => {
+    await view.result.current.start()
+    await view.result.current.stop()
+  })
+  await act(async () => {
+    await view.result.current.speak()
+  })
+  expect(view.result.current.accepted?.exercise.exercise_id).toBe('e1')
+  expect(readAudio).not.toHaveBeenCalled()
+})
 it('ignores late instruction audio metadata after the exercise changes', async () => {
   const deps = createAppDependencies()
   let resolve!: (

@@ -82,7 +82,12 @@ function StudentDiagnostic({
   startNew: boolean
 }) {
   const { t } = useTranslation()
-  const training = useDiagnosticSession(userId, subjectId, initialSessionId)
+  const training = useDiagnosticSession(
+    userId,
+    subjectId,
+    initialSessionId,
+    startNew,
+  )
   const started = useRef(false)
   useEffect(() => {
     if (startNew && !started.current) {

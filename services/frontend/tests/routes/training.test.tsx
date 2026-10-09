@@ -70,6 +70,7 @@ it('loads a focused preview before starting and explicitly starts the frozen pla
       name: 'Различать классификацию и регрессию',
     }),
   ).toBeVisible()
+  expect(screen.getByText(/Демонстрационный режим/)).toBeVisible()
   expect(screen.getByText(/Раунд 1/)).toBeVisible()
   fireEvent.click(await screen.findByRole('button', { name: 'Начать запись' }))
   fireEvent.click(

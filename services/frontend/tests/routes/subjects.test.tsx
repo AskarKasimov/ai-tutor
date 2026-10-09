@@ -168,6 +168,97 @@ it('returns to subject selection after refresh during a pending start and reuses
   expect(variantRequests[1].key).toBe(variantRequests[0].key)
 })
 
+it('starts with a fresh variant after demo state resets between variant and session creation', async () => {
+  const requests: Array<{ method: string; path: string }> = []
+  const original = mockApi.mockApiFetch
+  let interruptSessionStart = true
+  vi.spyOn(mockApi, 'mockApiFetch').mockImplementation(
+    async (url, init = {}) => {
+      const path = new URL(url, 'http://local').pathname
+      const method = init.method ?? 'GET'
+      if (
+        method === 'POST' &&
+        path.endsWith('/diagnostic-sessions') &&
+        interruptSessionStart
+      ) {
+        interruptSessionStart = false
+        requests.push({ method, path })
+        return Response.json({ code: 'TEMPORARY_FAILURE' }, { status: 500 })
+      }
+      if (
+        method === 'POST' &&
+        (path.endsWith('/auth/logout') || path.endsWith('/auth/login'))
+      ) {
+        const response = await original(url, init)
+        requests.push({ method, path })
+        return response
+      }
+      requests.push({ method, path })
+      return original(url, init)
+    },
+  )
+
+  const firstRouter = createRouter({
+    context: { queryClient: createQueryClient() },
+    history: createMemoryHistory({ initialEntries: ['/'] }),
+    routeTree,
+  })
+  const first = render(<RouterProvider router={firstRouter} />)
+  await chooseSubject()
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Начать диагностику' }),
+  )
+  expect(await screen.findByRole('alert')).toBeVisible()
+  expect(
+    requests.filter((r) => r.method === 'POST' && r.path.endsWith('/variants')),
+  ).toHaveLength(1)
+  expect(
+    requests.filter(
+      (r) => r.method === 'POST' && r.path.endsWith('/diagnostic-sessions'),
+    ),
+  ).toHaveLength(1)
+
+  first.unmount()
+  await original('/api/v1/auth/logout', { method: 'POST' })
+  await original('/api/v1/auth/login', {
+    method: 'POST',
+    body: JSON.stringify({ email: '', password: '' }),
+  })
+  const refreshedRouter = createRouter({
+    context: { queryClient: createQueryClient() },
+    history: createMemoryHistory({ initialEntries: ['/'] }),
+    routeTree,
+  })
+  render(<RouterProvider router={refreshedRouter} />)
+  await chooseSubject()
+  await new Promise((resolve) => setTimeout(resolve, 120))
+  expect(
+    requests.filter((r) => r.method === 'POST' && r.path.endsWith('/variants')),
+  ).toHaveLength(1)
+  expect(
+    requests.filter(
+      (r) => r.method === 'POST' && r.path.endsWith('/diagnostic-sessions'),
+    ),
+  ).toHaveLength(1)
+
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Начать диагностику' }),
+  )
+  expect(
+    await screen.findByRole('heading', {
+      name: 'Демонстрационный вопрос о классификации',
+    }),
+  ).toBeVisible()
+  expect(
+    requests.filter((r) => r.method === 'POST' && r.path.endsWith('/variants')),
+  ).toHaveLength(2)
+  expect(
+    requests.filter(
+      (r) => r.method === 'POST' && r.path.endsWith('/diagnostic-sessions'),
+    ),
+  ).toHaveLength(2)
+})
+
 async function chooseSubject() {
   fireEvent.click(await screen.findByRole('combobox', { name: 'Предмет' }))
   fireEvent.click(await screen.findByRole('option', { name: 'Введение в ML' }))

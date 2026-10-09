@@ -17,12 +17,6 @@ import {
   replaceSession,
 } from '@/entities/user'
 import type { SessionToken } from '@/entities/user'
-import {
-  clearPendingDiagnosticIdentity,
-  loadPendingDiagnosticIdentity,
-  savePendingDiagnosticIdentity,
-} from './diagnostic-session-storage'
-
 async function startOperation(
   cache: QueryClient,
   userId: string,
@@ -41,13 +35,17 @@ async function startOperation(
     },
     storage: {
       load: (storedUserId, apiBase, storedSubjectId) =>
-        loadPendingDiagnosticIdentity(storedUserId, apiBase, storedSubjectId) ??
+        dependencies.diagnosticStorage.loadPending(
+          storedUserId,
+          apiBase,
+          storedSubjectId,
+        ) ??
         dependencies.diagnosticStorage.load(
           storedUserId,
           apiBase,
           storedSubjectId,
         ),
-      save: savePendingDiagnosticIdentity,
+      save: dependencies.diagnosticStorage.savePending,
     },
   })
 }
@@ -62,7 +60,7 @@ export function useDiagnosticSession(
   const cache = useQueryClient()
   const [identity, setIdentity] = useState(() =>
     startNew
-      ? (loadPendingDiagnosticIdentity(
+      ? (dependencies.diagnosticStorage.loadPending(
           userId,
           dependencies.apiBase,
           subjectId,
@@ -81,7 +79,7 @@ export function useDiagnosticSession(
             dependencies.apiBase,
             subjectId,
           ) ??
-          loadPendingDiagnosticIdentity(
+          dependencies.diagnosticStorage.loadPending(
             userId,
             dependencies.apiBase,
             subjectId,
@@ -195,7 +193,7 @@ export function useDiagnosticSession(
     gcTime: 0,
     onMutate: () => captureSession(cache),
     mutationFn: async () => {
-      const savedPending = loadPendingDiagnosticIdentity(
+      const savedPending = dependencies.diagnosticStorage.loadPending(
         userId,
         dependencies.apiBase,
         subjectId,
@@ -212,7 +210,7 @@ export function useDiagnosticSession(
           ? identity
           : dependencies.createDiagnosticIdentity(subjectId))
       pendingRestart.current = next
-      savePendingDiagnosticIdentity(
+      dependencies.diagnosticStorage.savePending(
         userId,
         dependencies.apiBase,
         subjectId,
@@ -239,7 +237,11 @@ export function useDiagnosticSession(
         subjectId,
         next,
       )
-      clearPendingDiagnosticIdentity(userId, dependencies.apiBase, subjectId)
+      dependencies.diagnosticStorage.clearPending(
+        userId,
+        dependencies.apiBase,
+        subjectId,
+      )
       setIdentity(next)
       cache.setQueryData(
         diagnosticSessionQueryKeys.diagnosticProgress(userId, next.sessionId),

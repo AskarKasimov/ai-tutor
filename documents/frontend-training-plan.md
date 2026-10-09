@@ -169,7 +169,7 @@ useImportCompetencyMapMutation(userId: string, subjectId: string)
 - [x] Voice generation invalidation releases the operation lock; old permission/submit completions cannot unlock or update a newer exercise operation.
 - [x] Instruction playback is disabled and guarded while accepted feedback is displayed, so audio cannot be requested for the next exercise while the previous one is shown.
 - [x] Demo training session displays a localized notice that transcript and grading are predetermined and do not assess the learner.
-- [x] Added behavioral regressions; focused suite 32/32 and all five frontend gates pass (34 files, 208 tests). See `.superpowers/sdd/frontend-training-plan/final-fix-report.md`.
+- [x] Added behavioral regressions for all four findings and the demo reset edge case. Commit `7d69de5` contains the first fixwave; this follow-up commit fixes demo reset handling. Regression coverage includes `tests/features/diagnostic-session/model/use-diagnostic-session.test.tsx`, `tests/routes/subjects.test.tsx`, and `tests/features/training/use-training-voice.test.tsx`; all five frontend gates pass (`npm test -- --run`: 34 files, 209 tests).
 - [x] No browser visual checks were run for this fixwave; no new visual verification claims.
 
 ## Task 7: Контрактная интеграция, визуальная проверка и документация

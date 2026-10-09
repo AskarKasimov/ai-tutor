@@ -24,6 +24,18 @@ export type DiagnosticDependencies = {
       subjectId: string,
       identity: DiagnosticSessionIdentity,
     ): void
+    loadPending(
+      userId: string,
+      apiBase: string,
+      subjectId: string,
+    ): DiagnosticSessionIdentity | undefined
+    savePending(
+      userId: string,
+      apiBase: string,
+      subjectId: string,
+      identity: DiagnosticSessionIdentity,
+    ): void
+    clearPending(userId: string, apiBase: string, subjectId: string): void
   }
   diagnostic: {
     createVariant(

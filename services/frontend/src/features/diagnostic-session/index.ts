@@ -14,4 +14,5 @@ export { createDiagnosticIdentity } from './model/diagnostic-identity'
 export {
   loadDiagnosticIdentity,
   saveDiagnosticIdentity,
+  diagnosticSessionStorage,
 } from './model/diagnostic-session-storage'

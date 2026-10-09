@@ -99,3 +99,11 @@ export function clearPendingDiagnosticIdentity(
     /* Storage may be unavailable. */
   }
 }
+
+export const diagnosticSessionStorage = {
+  load: loadDiagnosticIdentity,
+  save: saveDiagnosticIdentity,
+  loadPending: loadPendingDiagnosticIdentity,
+  savePending: savePendingDiagnosticIdentity,
+  clearPending: clearPendingDiagnosticIdentity,
+}

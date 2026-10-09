@@ -18,10 +18,7 @@ import type { TrainingDependencies } from '@/features/training'
 import * as training from '@/entities/training'
 import { createDiagnosticIdentity } from '@/features/diagnostic-session'
 import { mockDiagnosticStorage } from './mock-diagnostic-storage'
-import {
-  loadDiagnosticIdentity,
-  saveDiagnosticIdentity,
-} from '@/features/diagnostic-session'
+import { diagnosticSessionStorage } from '@/features/diagnostic-session'
 
 export type AppDependencies = {
   mode: AuthDependencies['mode']
@@ -51,9 +48,7 @@ export function createAppDependencies(): AppDependencies {
     apiBase,
     createDiagnosticIdentity,
     diagnosticStorage:
-      mode === 'demo'
-        ? mockDiagnosticStorage
-        : { load: loadDiagnosticIdentity, save: saveDiagnosticIdentity },
+      mode === 'demo' ? mockDiagnosticStorage : diagnosticSessionStorage,
     trainerSessionSource:
       mode === 'demo' ? createMockTrainerSessionSource() : undefined,
     auth: {

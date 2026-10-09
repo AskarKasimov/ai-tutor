@@ -72,6 +72,7 @@ type CompetencyMapImport struct {
 	SourceFormat          string
 	SourceHeaders         []byte
 	UnparsedTaskCellCount int32
+	SubjectID             string
 }
 
 type CompetencyMapSourceRow struct {
@@ -200,6 +201,13 @@ type RefreshToken struct {
 	UsedAt    *int64
 }
 
+type Subject struct {
+	ID             string
+	Name           string
+	ActiveRevision *int64
+	CreatedAt      int64
+}
+
 type Task struct {
 	ID                string
 	OutcomeID         string
@@ -267,6 +275,8 @@ type Variant struct {
 	IncludedCompetencyCount int32
 	SkippedCompetencies     []byte
 	CreatedAt               int64
+	SubjectID               string
+	SubjectNameSnapshot     string
 }
 
 type VariantTask struct {

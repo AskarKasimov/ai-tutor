@@ -836,6 +836,30 @@ components:
         - competency_id
         - competency_name
       type: object
+    subject.Subject:
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        ready:
+          type: boolean
+      required:
+        - id
+        - name
+        - ready
+      type: object
+    subjecthttp.CreateRequest:
+      additionalProperties: false
+      properties:
+        name:
+          maxLength: 200
+          minLength: 1
+          type: string
+      required:
+        - name
+      type: object
     taskbankhttp.CurriculumSection:
       additionalProperties: false
       properties:
@@ -1463,6 +1487,56 @@ paths:
       summary: Загрузить учебный материал в контекст RAG
       tags:
         - Учебная база
+      x-implementation: implemented
+  /admin/subjects:
+    post:
+      description: Создать предмет без карты компетенций. Доступно только admin.
+      operationId: createSubject
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/subjecthttp.CreateRequest'
+              description: Название предмета
+              summary: request
+        description: Название предмета
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/subject.Subject'
+          description: Created
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Forbidden
+        "422":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unprocessable Entity
+        "503":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Service Unavailable
+      security:
+        - accessCookie: []
+      summary: Создать предмет
+      tags:
+        - Предметы
       x-implementation: implemented
   /assessments/evaluate:
     post:
@@ -2176,6 +2250,37 @@ paths:
       summary: Проверить API и подключение к PostgreSQL
       tags:
         - Сервис
+      x-implementation: implemented
+  /subjects:
+    get:
+      description: Студентам возвращаются только предметы, для которых variantgen может собрать вариант. Admin видит все предметы и признак готовности.
+      operationId: listSubjects
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: '#/components/schemas/subject.Subject'
+                type: array
+          description: OK
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unauthorized
+        "503":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Service Unavailable
+      security:
+        - accessCookie: []
+      summary: Прочитать каталог предметов
+      tags:
+        - Предметы
       x-implementation: implemented
   /task-audio/{id}/file:
     get:

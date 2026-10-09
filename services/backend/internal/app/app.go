@@ -34,6 +34,9 @@ import (
 	diagnosticfeedbackmodel "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/diagnosticfeedback/infrastructure/modelapi"
 	diagnosticfeedbackpg "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/diagnosticfeedback/infrastructure/postgres"
 	diagnosticfeedbackhttp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/diagnosticfeedback/transport/http"
+	subjectapp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/subject/application"
+	subjectpg "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/subject/infrastructure/postgres"
+	subjecthttp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/subject/transport/http"
 	taskaudioapp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/taskaudio/application"
 	taskaudiopg "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/taskaudio/infrastructure/postgres"
 	taskaudios3 "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/taskaudio/infrastructure/s3"
@@ -146,6 +149,7 @@ func (a *App) Handler() http.Handler {
 	voiceHandlers := voicehttp.New(voice, a.cfg.MaxUploadBytes)
 	competency := competencyapp.New(competencypg.New(a.pool), &csvparser.Parser{}, a.now)
 	competencyHandlers := competencyhttp.New(competency, a.cfg.MaxUploadBytes)
+	subjectHandlers := subjecthttp.New(subjectapp.New(subjectpg.New(a.pool), security.IDGenerator{}, a.now))
 	assessmentService := assessmentapp.New(assessmentpg.New(a.pool), a.variantRepository, grader)
 	assessmentHandlers := assessmenthttp.New(assessmentService)
 	taskbankHandlers := taskbankhttp.New(taskbankapp.New(taskbankpg.New(a.pool)))
@@ -170,6 +174,7 @@ func (a *App) Handler() http.Handler {
 	mux.HandleFunc("POST /auth/logout", authHandlers.Logout)
 	mux.HandleFunc("GET /auth/me", authHandlers.Me)
 	mux.Handle("POST /admin/competency-map/import", protect(auth, http.HandlerFunc(competencyHandlers.Import)))
+	mux.Handle("POST /admin/subjects", protect(auth, http.HandlerFunc(subjectHandlers.Create)))
 	mux.Handle("POST /voice/transcriptions", protect(auth, http.HandlerFunc(voiceHandlers.Transcribe)))
 	mux.Handle("POST /voice/syntheses", protect(auth, http.HandlerFunc(voiceHandlers.Synthesize)))
 	mux.Handle("POST /assessments/evaluate", protect(auth, http.HandlerFunc(assessmentHandlers.Evaluate)))
@@ -184,6 +189,7 @@ func (a *App) Handler() http.Handler {
 	mux.Handle("GET /diagnostic-sessions/{id}/feedback", protect(auth, http.HandlerFunc(feedbackHandlers.GetFeedback)))
 	mux.Handle("GET /tasks", protect(auth, http.HandlerFunc(taskbankHandlers.Search)))
 	mux.Handle("GET /competency-map", protect(auth, http.HandlerFunc(competencyHandlers.Read)))
+	mux.Handle("GET /subjects", protect(auth, http.HandlerFunc(subjectHandlers.List)))
 	mux.Handle("GET /tasks/{id}", protect(auth, http.HandlerFunc(taskbankHandlers.Profile)))
 	mux.Handle("POST /tasks/generate", protect(auth, http.HandlerFunc(taskgenHandlers.Generate)))
 	mux.Handle("POST /admin/materials", protect(auth, http.HandlerFunc(taskgenHandlers.ImportMaterial)))

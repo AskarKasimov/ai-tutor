@@ -200,6 +200,8 @@ func TestOpenAPIResponses(t *testing.T) {
 	check("POST", "/voice/syntheses", f.request("POST", "/voice/syntheses", `{"text":"Вопрос?"}`, access))
 	check("POST", "/voice/syntheses", f.request("POST", "/voice/syntheses", `{"text":""}`, access))
 	admin := f.admin(t)
+	check("POST", "/admin/subjects", f.request("POST", "/admin/subjects", `{"name":"Предмет контракта"}`, admin))
+	check("GET", "/subjects", f.request("GET", "/subjects", "", admin))
 	check("POST", "/admin/competency-map/import", upload(f, "/admin/competency-map/import", "file", "map.csv", "text/csv", []byte(mapCSV), admin))
 	if variantImport := upload(f, "/admin/competency-map/import", "file", "variant.csv", "text/csv", variantMapCSV(t), admin); variantImport.Code != http.StatusOK {
 		t.Fatalf("variant map import: %d %s", variantImport.Code, variantImport.Body.String())

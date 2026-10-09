@@ -98,6 +98,18 @@ func (s *Store) LatestCompleted(ctx context.Context, ownerID, subjectID string) 
 	}
 	return clone(found), true, nil
 }
+func (s *Store) LearningState(ctx context.Context, ownerID, subjectID string) (diagnostic.LearningState, error) {
+	v, found, err := s.LatestCompleted(ctx, ownerID, subjectID)
+	state := diagnostic.LearningState{SubjectID: subjectID, DiagnosticStatus: "not_started"}
+	if found {
+		state.SubjectName = v.Variant.SubjectNameSnapshot
+		state.DiagnosticSessionID = v.ID
+		state.DiagnosticCompleted = true
+		state.TrainingAvailable = true
+		state.DiagnosticStatus = "completed"
+	}
+	return state, err
+}
 
 func (s *Store) Reserve(ctx context.Context, ownerID, id, key, digest, taskID, token string) (*diagnostic.AcceptedRequest, *diagnostic.Reservation, error) {
 	if err := ctx.Err(); err != nil {

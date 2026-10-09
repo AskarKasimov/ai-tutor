@@ -97,3 +97,125 @@ func (q *Queries) GetDiagnosticSession(ctx context.Context, arg GetDiagnosticSes
 	err := row.Scan(&session_data)
 	return session_data, err
 }
+
+const insertDiagnosticAnswer = `-- name: InsertDiagnosticAnswer :exec
+INSERT INTO diagnostic_answers(session_id,answer_order,idempotency_key,request_digest,variant_task_id,answer_data,progress_data) VALUES($1,$2,$3,$4,$5,$6,$7)
+`
+
+type InsertDiagnosticAnswerParams struct {
+	SessionID      string
+	AnswerOrder    int32
+	IdempotencyKey string
+	RequestDigest  string
+	VariantTaskID  string
+	AnswerData     []byte
+	ProgressData   []byte
+}
+
+func (q *Queries) InsertDiagnosticAnswer(ctx context.Context, arg InsertDiagnosticAnswerParams) error {
+	_, err := q.db.Exec(ctx, insertDiagnosticAnswer,
+		arg.SessionID,
+		arg.AnswerOrder,
+		arg.IdempotencyKey,
+		arg.RequestDigest,
+		arg.VariantTaskID,
+		arg.AnswerData,
+		arg.ProgressData,
+	)
+	return err
+}
+
+const latestCompletedDiagnostic = `-- name: LatestCompletedDiagnostic :one
+SELECT session_data FROM diagnostic_sessions WHERE owner_id=$1 AND subject_id=$2 AND status='completed' ORDER BY completed_at DESC NULLS LAST,id DESC LIMIT 1
+`
+
+type LatestCompletedDiagnosticParams struct {
+	OwnerID   string
+	SubjectID string
+}
+
+func (q *Queries) LatestCompletedDiagnostic(ctx context.Context, arg LatestCompletedDiagnosticParams) ([]byte, error) {
+	row := q.db.QueryRow(ctx, latestCompletedDiagnostic, arg.OwnerID, arg.SubjectID)
+	var session_data []byte
+	err := row.Scan(&session_data)
+	return session_data, err
+}
+
+const lockDiagnosticSession = `-- name: LockDiagnosticSession :one
+SELECT session_data,COALESCE(lease_until>now(),false)::boolean AS leased FROM diagnostic_sessions WHERE owner_id=$1 AND id=$2 FOR UPDATE
+`
+
+type LockDiagnosticSessionParams struct {
+	OwnerID string
+	ID      string
+}
+
+type LockDiagnosticSessionRow struct {
+	SessionData []byte
+	Leased      bool
+}
+
+func (q *Queries) LockDiagnosticSession(ctx context.Context, arg LockDiagnosticSessionParams) (LockDiagnosticSessionRow, error) {
+	row := q.db.QueryRow(ctx, lockDiagnosticSession, arg.OwnerID, arg.ID)
+	var i LockDiagnosticSessionRow
+	err := row.Scan(&i.SessionData, &i.Leased)
+	return i, err
+}
+
+const readSubjectLearningState = `-- name: ReadSubjectLearningState :one
+SELECT subject.id,subject.name,
+ COALESCE((SELECT id FROM diagnostic_sessions d WHERE d.owner_id=$1::text AND d.subject_id=subject.id AND d.status='completed' ORDER BY d.completed_at DESC NULLS LAST,d.id DESC LIMIT 1),'')::text AS completed_id,
+ COALESCE((SELECT id FROM diagnostic_sessions d WHERE d.owner_id=$1::text AND d.subject_id=subject.id AND d.status='active' ORDER BY d.created_at DESC,d.id DESC LIMIT 1),'')::text AS active_id
+FROM subjects subject WHERE subject.id=$2::text
+`
+
+type ReadSubjectLearningStateParams struct {
+	OwnerID   string
+	SubjectID string
+}
+
+type ReadSubjectLearningStateRow struct {
+	ID          string
+	Name        string
+	CompletedID string
+	ActiveID    string
+}
+
+func (q *Queries) ReadSubjectLearningState(ctx context.Context, arg ReadSubjectLearningStateParams) (ReadSubjectLearningStateRow, error) {
+	row := q.db.QueryRow(ctx, readSubjectLearningState, arg.OwnerID, arg.SubjectID)
+	var i ReadSubjectLearningStateRow
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.CompletedID,
+		&i.ActiveID,
+	)
+	return i, err
+}
+
+const saveDiagnosticSession = `-- name: SaveDiagnosticSession :exec
+UPDATE diagnostic_sessions SET session_data=$2,status=$3,current_competency=$4,current_task=$5,
+updated_at=now(),lease_until=CASE WHEN $6::boolean THEN now()+interval '5 minutes' ELSE NULL END,
+completed_at=CASE WHEN $3='completed' THEN COALESCE(completed_at,now()) ELSE completed_at END WHERE id=$1
+`
+
+type SaveDiagnosticSessionParams struct {
+	ID                string
+	SessionData       []byte
+	Status            string
+	CurrentCompetency int32
+	CurrentTask       int32
+	Leased            bool
+}
+
+func (q *Queries) SaveDiagnosticSession(ctx context.Context, arg SaveDiagnosticSessionParams) error {
+	_, err := q.db.Exec(ctx, saveDiagnosticSession,
+		arg.ID,
+		arg.SessionData,
+		arg.Status,
+		arg.CurrentCompetency,
+		arg.CurrentTask,
+		arg.Leased,
+	)
+	return err
+}

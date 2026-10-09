@@ -69,6 +69,30 @@ func validEvaluation() Evaluation {
 		Feedback: []string{"Верно.", "Оба критерия выполнены.", "Закрепите тему."},
 	}
 }
+func TestTrustedTrainingSnapshotUsesTwoPointScale(t *testing.T) {
+	for _, score := range []int{0, 1, 2} {
+		t.Run(string(rune('0'+score)), func(t *testing.T) {
+			result := validEvaluation()
+			if score == 0 {
+				result.Score = 0
+				result.Verdict = "incorrect"
+				result.CriterionResults[0].Satisfied = false
+				result.CriterionResults[1].Satisfied = false
+			}
+			if score == 1 {
+				result.Score = 1
+				result.Verdict = "partial"
+				result.CriterionResults[0].Satisfied = false
+			}
+			grader := &graderStub{result: result}
+			service := New(&transcriptionStub{text: "Ответ"}, nil, grader)
+			got, err := service.EvaluateTrusted(context.Background(), "owner", "transcription", validVariantTask("training"))
+			if err != nil || got.Score != score || got.MaxScore != 2 || grader.gradingContext.Role != "training" {
+				t.Fatalf("score %d: %+v %v", score, got, err)
+			}
+		})
+	}
+}
 
 func TestEvaluateVariantUsesOwnedHistoricalSnapshot(t *testing.T) {
 	transcriptions := &transcriptionStub{text: "классификация, потому что два класса"}

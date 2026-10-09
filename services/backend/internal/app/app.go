@@ -49,6 +49,10 @@ import (
 	taskgenmodel "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/taskgen/infrastructure/modelapi"
 	taskgenpg "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/taskgen/infrastructure/postgres"
 	taskgenhttp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/taskgen/transport/http"
+	trainingapp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/training/application"
+	trainingpg "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/training/infrastructure/postgres"
+	trainingsnapshot "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/training/infrastructure/snapshot"
+	traininghttp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/training/transport/http"
 	variantgenapp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/variantgen/application"
 	variantgenpg "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/variantgen/infrastructure/postgres"
 	variantgenrandom "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/variantgen/infrastructure/random"
@@ -163,6 +167,8 @@ func (a *App) Handler() http.Handler {
 	taskAudioHandlers := taskaudiohttp.New(taskAudioService)
 	diagnosticService := diagnosticapp.New(a.diagnosticStore, a.variantRepository, voice, assessmentService, security.IDGenerator{}, a.now).WithAudioReader(taskAudioService).WithAudioRegenerator(a.audioWorker)
 	diagnosticHandlers := diagnostichttp.New(diagnosticService, a.cfg.MaxUploadBytes)
+	trainingService := trainingapp.New(trainingpg.New(a.pool), a.diagnosticStore, voice, trainingGrader{assessmentService}, trainingsnapshot.Provider{}, security.IDGenerator{}, a.now).WithAudio(taskAudioService)
+	trainingHandlers := traininghttp.New(trainingService, a.cfg.MaxUploadBytes)
 	feedbackService := diagnosticfeedbackapp.New(diagnosticService, feedbackSynthesizer, diagnosticfeedbackmemory.New(), a.now).
 		WithTaskFinder(diagnosticfeedbackpg.NewTaskFinder(a.pool))
 	feedbackHandlers := diagnosticfeedbackhttp.New(feedbackService)
@@ -189,7 +195,13 @@ func (a *App) Handler() http.Handler {
 	mux.Handle("POST /diagnostic-sessions/{id}/answers", protect(auth, http.HandlerFunc(diagnosticHandlers.Answer)))
 	mux.Handle("GET /diagnostic-sessions/{id}/result", protect(auth, http.HandlerFunc(diagnosticHandlers.Result)))
 	mux.Handle("GET /diagnostic-sessions/{id}/feedback", protect(auth, http.HandlerFunc(feedbackHandlers.GetFeedback)))
-	mux.Handle("GET /diagnostic-sessions/{id}/training/preview", protect(auth, http.HandlerFunc(diagnosticHandlers.TrainingPreview)))
+	mux.Handle("GET /diagnostic-sessions/{id}/training/preview", protect(auth, http.HandlerFunc(trainingHandlers.Preview)))
+	mux.Handle("POST /diagnostic-sessions/{id}/training", protect(auth, http.HandlerFunc(trainingHandlers.Start)))
+	mux.Handle("GET /diagnostic-sessions/{id}/training", protect(auth, http.HandlerFunc(trainingHandlers.ByDiagnostic)))
+	mux.Handle("GET /training-sessions/{id}", protect(auth, http.HandlerFunc(trainingHandlers.Get)))
+	mux.Handle("POST /training-sessions/{id}/answers", protect(auth, http.HandlerFunc(trainingHandlers.Answer)))
+	mux.Handle("GET /training-sessions/{id}/history", protect(auth, http.HandlerFunc(trainingHandlers.History)))
+	mux.Handle("GET /training-sessions/{id}/current/audio", protect(auth, http.HandlerFunc(trainingHandlers.Audio)))
 	mux.Handle("GET /tasks", protect(auth, http.HandlerFunc(taskbankHandlers.Search)))
 	mux.Handle("GET /competency-map", protect(auth, http.HandlerFunc(competencyHandlers.Read)))
 	mux.Handle("GET /subjects/{subject_id}/competency-map", protect(auth, http.HandlerFunc(competencyHandlers.ReadSubject)))

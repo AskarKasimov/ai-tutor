@@ -10,7 +10,6 @@ import (
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/fault"
 	db "github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/postgres/sqlcgen"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -78,8 +77,7 @@ func (s *Store) Get(ctx context.Context, ownerID, id string) (diagnostic.Session
 }
 
 func (s *Store) LatestCompleted(ctx context.Context, ownerID, subjectID string) (diagnostic.Session, bool, error) {
-	var data []byte
-	err := s.pool.QueryRow(ctx, `SELECT session_data FROM diagnostic_sessions WHERE owner_id=$1 AND subject_id=$2 AND status='completed' ORDER BY completed_at DESC NULLS LAST, id DESC LIMIT 1`, ownerID, subjectID).Scan(&data)
+	data, err := s.q.LatestCompletedDiagnostic(ctx, db.LatestCompletedDiagnosticParams{OwnerID: ownerID, SubjectID: subjectID})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return diagnostic.Session{}, false, nil
 	}
@@ -89,6 +87,22 @@ func (s *Store) LatestCompleted(ctx context.Context, ownerID, subjectID string) 
 	value, err := decodeSession(data)
 	return value, err == nil, err
 }
+func (s *Store) LearningState(ctx context.Context, ownerID, subjectID string) (diagnostic.LearningState, error) {
+	row, err := s.q.ReadSubjectLearningState(ctx, db.ReadSubjectLearningStateParams{OwnerID: ownerID, SubjectID: subjectID})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return diagnostic.LearningState{}, fault.New(fault.NotFound, "SUBJECT_NOT_FOUND", "Предмет не найден.")
+	}
+	if err != nil {
+		return diagnostic.LearningState{}, err
+	}
+	state := diagnostic.LearningState{SubjectID: row.ID, SubjectName: row.Name, DiagnosticSessionID: row.CompletedID, ActiveSessionID: row.ActiveID, DiagnosticStatus: "not_started", DiagnosticCompleted: row.CompletedID != "", TrainingAvailable: row.CompletedID != ""}
+	if row.CompletedID != "" {
+		state.DiagnosticStatus = "completed"
+	} else if row.ActiveID != "" {
+		state.DiagnosticStatus = "active"
+	}
+	return state, nil
+}
 
 func (s *Store) Reserve(ctx context.Context, ownerID, id, key, digest, taskID, token string) (*diagnostic.AcceptedRequest, *diagnostic.Reservation, error) {
 	tx, err := s.pool.Begin(ctx)
@@ -96,13 +110,14 @@ func (s *Store) Reserve(ctx context.Context, ownerID, id, key, digest, taskID, t
 		return nil, nil, err
 	}
 	defer tx.Rollback(ctx)
-	var data []byte
-	if err = tx.QueryRow(ctx, `SELECT session_data FROM diagnostic_sessions WHERE owner_id=$1 AND id=$2 FOR UPDATE`, ownerID, id).Scan(&data); errors.Is(err, pgx.ErrNoRows) {
+	q := s.q.WithTx(tx)
+	row, err := q.LockDiagnosticSession(ctx, db.LockDiagnosticSessionParams{OwnerID: ownerID, ID: id})
+	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil, sessionNotFound()
 	} else if err != nil {
 		return nil, nil, err
 	}
-	value, err := decodeSession(data)
+	value, err := decodeSession(row.SessionData)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -124,7 +139,7 @@ func (s *Store) Reserve(ctx context.Context, ownerID, id, key, digest, taskID, t
 	}
 	if value.InFlight != nil {
 		p := value.InFlight
-		if p.Token != "" {
+		if p.Token != "" && row.Leased {
 			return nil, nil, fault.New(fault.Conflict, "DIAGNOSTIC_ANSWER_IN_PROGRESS", "Ответ для текущего задания уже обрабатывается.")
 		}
 		if p.Key != key || p.Fingerprint != digest || p.VariantTaskID != taskID {
@@ -134,7 +149,7 @@ func (s *Store) Reserve(ctx context.Context, ownerID, id, key, digest, taskID, t
 	} else {
 		value.InFlight = &diagnostic.Reservation{Key: key, Fingerprint: digest, VariantTaskID: taskID, Token: token}
 	}
-	if err = saveLocked(ctx, tx, value); err != nil {
+	if err = saveLocked(ctx, q, value); err != nil {
 		return nil, nil, err
 	}
 	if err = tx.Commit(ctx); err != nil {
@@ -150,17 +165,18 @@ func (s *Store) Accept(ctx context.Context, ownerID, id, token, key, digest stri
 		return diagnostic.Progress{}, err
 	}
 	defer tx.Rollback(ctx)
-	var data []byte
-	if err = tx.QueryRow(ctx, `SELECT session_data FROM diagnostic_sessions WHERE owner_id=$1 AND id=$2 FOR UPDATE`, ownerID, id).Scan(&data); errors.Is(err, pgx.ErrNoRows) {
+	q := s.q.WithTx(tx)
+	row, err := q.LockDiagnosticSession(ctx, db.LockDiagnosticSessionParams{OwnerID: ownerID, ID: id})
+	if errors.Is(err, pgx.ErrNoRows) {
 		return diagnostic.Progress{}, sessionNotFound()
 	} else if err != nil {
 		return diagnostic.Progress{}, err
 	}
-	value, err := decodeSession(data)
+	value, err := decodeSession(row.SessionData)
 	if err != nil {
 		return diagnostic.Progress{}, err
 	}
-	if value.InFlight == nil || value.InFlight.Token != token || value.InFlight.VariantTaskID != answer.VariantTaskID {
+	if !row.Leased || value.InFlight == nil || value.InFlight.Token != token || value.InFlight.Key != key || value.InFlight.Fingerprint != digest || value.InFlight.VariantTaskID != answer.VariantTaskID {
 		return diagnostic.Progress{}, fault.New(fault.Conflict, "DIAGNOSTIC_ANSWER_STALE", "Обработка ответа устарела.")
 	}
 	value.Answers = append(value.Answers, answer)
@@ -182,13 +198,19 @@ func (s *Store) Accept(ctx context.Context, ownerID, id, token, key, digest stri
 		value.AcceptedRequests = map[string]diagnostic.AcceptedRequest{}
 	}
 	value.AcceptedRequests[key] = diagnostic.AcceptedRequest{Fingerprint: digest, Response: progress}
-	if err = saveLocked(ctx, tx, value); err != nil {
+	if err = saveLocked(ctx, q, value); err != nil {
 		return diagnostic.Progress{}, err
 	}
-	raw, _ := json.Marshal(answer)
-	pr, _ := json.Marshal(progress)
+	raw, err := json.Marshal(answer)
+	if err != nil {
+		return diagnostic.Progress{}, err
+	}
+	pr, err := json.Marshal(progress)
+	if err != nil {
+		return diagnostic.Progress{}, err
+	}
 	order := len(value.Answers)
-	if _, err = tx.Exec(ctx, `INSERT INTO diagnostic_answers(session_id,answer_order,idempotency_key,request_digest,variant_task_id,answer_data,progress_data) VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT DO NOTHING`, id, order, key, digest, answer.VariantTaskID, raw, pr); err != nil {
+	if err = q.InsertDiagnosticAnswer(ctx, db.InsertDiagnosticAnswerParams{SessionID: id, AnswerOrder: int32(order), IdempotencyKey: key, RequestDigest: digest, VariantTaskID: answer.VariantTaskID, AnswerData: raw, ProgressData: pr}); err != nil {
 		return diagnostic.Progress{}, err
 	}
 	if err = tx.Commit(ctx); err != nil {
@@ -203,13 +225,14 @@ func (s *Store) Fail(ctx context.Context, ownerID, id, token, transcriptionID, t
 		return err
 	}
 	defer tx.Rollback(ctx)
-	var data []byte
-	if err = tx.QueryRow(ctx, `SELECT session_data FROM diagnostic_sessions WHERE owner_id=$1 AND id=$2 FOR UPDATE`, ownerID, id).Scan(&data); errors.Is(err, pgx.ErrNoRows) {
+	q := s.q.WithTx(tx)
+	row, err := q.LockDiagnosticSession(ctx, db.LockDiagnosticSessionParams{OwnerID: ownerID, ID: id})
+	if errors.Is(err, pgx.ErrNoRows) {
 		return sessionNotFound()
 	} else if err != nil {
 		return err
 	}
-	value, err := decodeSession(data)
+	value, err := decodeSession(row.SessionData)
 	if err != nil {
 		return err
 	}
@@ -223,22 +246,19 @@ func (s *Store) Fail(ctx context.Context, ownerID, id, token, transcriptionID, t
 	} else {
 		value.InFlight = nil
 	}
-	if err = saveLocked(ctx, tx, value); err != nil {
+	if err = saveLocked(ctx, q, value); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)
 }
 
-type txer interface {
-	Exec(context.Context, string, ...any) (pgconn.CommandTag, error)
-}
-
-func saveLocked(ctx context.Context, tx txer, value diagnostic.Session) error {
+func saveLocked(ctx context.Context, q *db.Queries, value diagnostic.Session) error {
 	raw, err := json.Marshal(value)
 	if err != nil {
 		return err
 	}
-	_, err = tx.Exec(ctx, `UPDATE diagnostic_sessions SET session_data=$2,status=$3,current_competency=$4,current_task=$5,updated_at=now(),completed_at=CASE WHEN $3='completed' THEN COALESCE(completed_at,now()) ELSE completed_at END WHERE id=$1`, value.ID, raw, value.Status, value.CurrentCompetency, value.CurrentTask)
+	leased := value.InFlight != nil && value.InFlight.Token != ""
+	err = q.SaveDiagnosticSession(ctx, db.SaveDiagnosticSessionParams{ID: value.ID, SessionData: raw, Status: value.Status, CurrentCompetency: int32(value.CurrentCompetency), CurrentTask: int32(value.CurrentTask), Leased: leased})
 	return err
 }
 

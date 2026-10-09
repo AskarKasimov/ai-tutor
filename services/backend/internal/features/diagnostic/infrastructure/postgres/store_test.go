@@ -5,8 +5,10 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"os"
 	"reflect"
+	"sync"
 	"testing"
 
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/diagnostic"
@@ -118,7 +120,7 @@ func TestStoreStartPersistsIdempotencyAndOwnerAcrossRepositoryInstances(t *testi
 		t.Fatalf("other owner read diagnostic: %v", err)
 	}
 	otherOwner := diagnostic.Session{ID: "diagnostic-b", OwnerID: "diag-owner-b", VariantID: "variant-b", Status: diagnostic.StatusActive,
-		Variant: diagnostic.VariantSnapshot{ID: "variant-b", AlgorithmVersion: "test", IncludedCompetencyCount: 1},
+		Variant:          diagnostic.VariantSnapshot{ID: "variant-b", AlgorithmVersion: "test", IncludedCompetencyCount: 1},
 		AcceptedRequests: map[string]diagnostic.AcceptedRequest{}, StartRequestDigest: "owner-b-digest"}
 	ownerBSession, reused, err := restarted.Create(ctx, otherOwner.OwnerID, "start-key", otherOwner.StartRequestDigest, otherOwner)
 	if err != nil || reused || ownerBSession.ID != otherOwner.ID {
@@ -129,4 +131,72 @@ func TestStoreStartPersistsIdempotencyAndOwnerAcrossRepositoryInstances(t *testi
 func isKind(err error, kind fault.Kind) bool {
 	var failure *fault.Error
 	return errors.As(err, &failure) && failure.Kind == kind
+}
+
+func TestExpiredReservationCanRetryAfterRestartAndRejectsOldToken(t *testing.T) {
+	pool, ctx := setupStore(t)
+	s := New(pool)
+	v := diagnostic.Session{ID: "lease-session", OwnerID: "diag-owner-a", VariantID: "variant-a", Status: diagnostic.StatusActive, AcceptedRequests: map[string]diagnostic.AcceptedRequest{}, Variant: diagnostic.VariantSnapshot{Competencies: []diagnostic.Competency{{Tasks: []diagnostic.TaskSnapshot{{ID: "task", Role: "main"}}}}}}
+	if _, _, err := s.Create(ctx, v.OwnerID, "lease-start", "digest", v); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := s.Reserve(ctx, v.OwnerID, v.ID, "answer", "audio", "task", "old-token"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE diagnostic_sessions SET lease_until=now()-interval '1 second' WHERE id=$1`, v.ID); err != nil {
+		t.Fatal(err)
+	}
+	_, reserved, err := New(pool).Reserve(ctx, v.OwnerID, v.ID, "answer", "audio", "task", "new-token")
+	if err != nil || reserved == nil || reserved.Token != "new-token" {
+		t.Fatalf("expired retry: %+v %v", reserved, err)
+	}
+	answer := diagnostic.Answer{VariantTaskID: "task", Score: 2, GraderScore: 2, GraderMaxScore: 2, Verdict: "correct"}
+	transition := diagnostic.Transition{Status: diagnostic.StatusCompleted, CurrentCompetency: 1}
+	if _, err := s.Accept(ctx, v.OwnerID, v.ID, "old-token", "answer", "audio", answer, transition); !isKind(err, fault.Conflict) {
+		t.Fatalf("old token accepted: %v", err)
+	}
+	if _, err := s.Accept(ctx, v.OwnerID, v.ID, "new-token", "answer", "audio", answer, transition); err != nil {
+		t.Fatal(err)
+	}
+	replay, _, err := New(pool).Reserve(ctx, v.OwnerID, v.ID, "answer", "audio", "task", "again")
+	if err != nil || replay == nil || replay.Response.Score == nil || *replay.Response.Score != 2 {
+		t.Fatalf("replay: %+v %v", replay, err)
+	}
+}
+
+func TestDiagnosticStoreReservesOnlyOneConcurrentAnswer(t *testing.T) {
+	pool, ctx := setupStore(t)
+	store := New(pool)
+	value := diagnostic.Session{ID: "concurrent", OwnerID: "diag-owner-a", VariantID: "variant-a", Status: diagnostic.StatusActive, AcceptedRequests: map[string]diagnostic.AcceptedRequest{}, Variant: diagnostic.VariantSnapshot{Competencies: []diagnostic.Competency{{Tasks: []diagnostic.TaskSnapshot{{ID: "task", Role: "main"}}}}}}
+	if _, _, err := store.Create(ctx, value.OwnerID, "start-concurrent", "start", value); err != nil {
+		t.Fatal(err)
+	}
+	gate := make(chan struct{})
+	results := make(chan error, 2)
+	var wait sync.WaitGroup
+	for i := 0; i < 2; i++ {
+		wait.Add(1)
+		go func(i int) {
+			defer wait.Done()
+			<-gate
+			_, _, err := New(pool).Reserve(ctx, value.OwnerID, value.ID, "answer", "digest", "task", fmt.Sprintf("token-%d", i))
+			results <- err
+		}(i)
+	}
+	close(gate)
+	wait.Wait()
+	close(results)
+	accepted, conflicts := 0, 0
+	for err := range results {
+		if err == nil {
+			accepted++
+		} else if isKind(err, fault.Conflict) {
+			conflicts++
+		} else {
+			t.Fatal(err)
+		}
+	}
+	if accepted != 1 || conflicts != 1 {
+		t.Fatalf("accepted=%d conflicts=%d", accepted, conflicts)
+	}
 }

@@ -52,7 +52,7 @@ func GradingContextFromVariantTask(item variant.VariantTask) (GradingContext, er
 
 	maxScore := 2
 	switch item.Role {
-	case "main":
+	case "main", "training":
 	case "basic":
 		maxScore = 1
 	default:

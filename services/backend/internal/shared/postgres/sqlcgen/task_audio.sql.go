@@ -312,6 +312,12 @@ WHERE asset.id = $2 AND (
         JOIN variants variant ON variant.id = variant_task.variant_id
         WHERE variant.user_id = $1 AND variant_task.audio_asset_id = asset.id
     )
+    OR EXISTS (
+        SELECT 1 FROM training_exercises exercise
+        JOIN training_sessions session ON session.id=exercise.session_id
+        WHERE session.owner_id=$1 AND exercise.audio_asset_id=asset.id
+          AND session.state_data->'Current'->>'ID'=exercise.id
+    )
 )
 `
 

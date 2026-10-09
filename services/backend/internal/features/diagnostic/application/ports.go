@@ -29,6 +29,7 @@ type Store interface {
 	Accept(context.Context, string, string, string, string, string, diagnostic.Answer, diagnostic.Transition) (diagnostic.Progress, error)
 	Fail(context.Context, string, string, string, string, string) error
 	LatestCompleted(context.Context, string, string) (diagnostic.Session, bool, error)
+	LearningState(context.Context, string, string) (diagnostic.LearningState, error)
 }
 
 type IDGenerator interface {

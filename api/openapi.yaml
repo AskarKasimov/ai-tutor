@@ -469,6 +469,30 @@ components:
         - key
         - satisfied
       type: object
+    diagnostichttp.LearningStateResponse:
+      additionalProperties: false
+      properties:
+        active_session_id:
+          type: string
+        diagnostic_completed:
+          type: boolean
+        diagnostic_session_id:
+          type: string
+        diagnostic_status:
+          type: string
+        subject_id:
+          type: string
+        subject_name:
+          type: string
+        training_available:
+          type: boolean
+      required:
+        - diagnostic_completed
+        - diagnostic_status
+        - subject_id
+        - subject_name
+        - training_available
+      type: object
     diagnostichttp.ProgressResponse:
       additionalProperties: false
       properties:
@@ -1078,6 +1102,259 @@ components:
         - content
         - name
         - outcome_ids
+      type: object
+    training.Attempt:
+      additionalProperties: false
+      properties:
+        created_at:
+          type: integer
+        criterion_results:
+          items:
+            $ref: '#/components/schemas/training.CriterionResult'
+          type: array
+          uniqueItems: false
+        exercise_id:
+          type: string
+        feedback:
+          items:
+            type: string
+          type: array
+          uniqueItems: false
+        max_score:
+          type: integer
+        round:
+          type: integer
+        score:
+          type: integer
+        sequence:
+          type: integer
+        target_index:
+          type: integer
+        text:
+          type: string
+        transcription_id:
+          type: string
+        verdict:
+          type: string
+      required:
+        - created_at
+        - criterion_results
+        - exercise_id
+        - feedback
+        - max_score
+        - round
+        - score
+        - sequence
+        - target_index
+        - text
+        - transcription_id
+        - verdict
+      type: object
+    training.CriterionResult:
+      additionalProperties: false
+      properties:
+        explanation:
+          type: string
+        key:
+          type: string
+        satisfied:
+          type: boolean
+      required:
+        - explanation
+        - key
+        - satisfied
+      type: object
+    training.ExerciseView:
+      additionalProperties: false
+      properties:
+        exercise_id:
+          type: string
+        options:
+          items:
+            type: string
+          type: array
+          uniqueItems: false
+        outcome_id:
+          type: string
+        outcome_name:
+          type: string
+        question:
+          type: string
+        voice_instruction:
+          type: string
+      required:
+        - exercise_id
+        - options
+        - outcome_id
+        - outcome_name
+        - question
+        - voice_instruction
+      type: object
+    training.Preview:
+      additionalProperties: false
+      properties:
+        confirmed_gaps:
+          items:
+            $ref: '#/components/schemas/training.TargetView'
+          type: array
+          uniqueItems: false
+        diagnostic_score:
+          type: integer
+        diagnostic_session_id:
+          type: string
+        maximum_score:
+          type: integer
+        mode:
+          type: string
+        partial_competencies:
+          items:
+            $ref: '#/components/schemas/training.TargetView'
+          type: array
+          uniqueItems: false
+        plan_revision:
+          type: integer
+        status:
+          type: string
+        subject_id:
+          type: string
+        subject_name:
+          type: string
+        topics:
+          items:
+            $ref: '#/components/schemas/training.TargetView'
+          type: array
+          uniqueItems: false
+      required:
+        - confirmed_gaps
+        - diagnostic_score
+        - diagnostic_session_id
+        - maximum_score
+        - mode
+        - partial_competencies
+        - plan_revision
+        - status
+        - subject_id
+        - subject_name
+        - topics
+      type: object
+    training.Progress:
+      additionalProperties: false
+      properties:
+        answer:
+          $ref: '#/components/schemas/training.Attempt'
+        answer_count:
+          type: integer
+        current:
+          $ref: '#/components/schemas/training.ExerciseView'
+        diagnostic_session_id:
+          type: string
+        mode:
+          type: string
+        round:
+          type: integer
+        session_id:
+          type: string
+        status:
+          type: string
+        subject_id:
+          type: string
+        subject_name:
+          type: string
+        targets:
+          items:
+            $ref: '#/components/schemas/training.TargetView'
+          type: array
+          uniqueItems: false
+      required:
+        - answer_count
+        - current
+        - diagnostic_session_id
+        - mode
+        - round
+        - session_id
+        - status
+        - subject_id
+        - subject_name
+        - targets
+      type: object
+    training.TargetView:
+      additionalProperties: false
+      properties:
+        competency_id:
+          type: string
+        competency_name:
+          type: string
+        kind:
+          type: string
+        label:
+          type: string
+        last_score:
+          type:
+            - integer
+            - "null"
+        original_max_score:
+          type:
+            - integer
+            - "null"
+        original_score:
+          type:
+            - integer
+            - "null"
+        outcome_id:
+          type: string
+        outcome_name:
+          type: string
+      required:
+        - competency_id
+        - competency_name
+        - kind
+        - label
+        - last_score
+        - original_max_score
+        - original_score
+        - outcome_id
+        - outcome_name
+      type: object
+    traininghttp.AudioResponse:
+      additionalProperties: false
+      properties:
+        audio_url:
+          type:
+            - string
+            - "null"
+        exercise_id:
+          type: string
+        status:
+          type: string
+      required:
+        - audio_url
+        - exercise_id
+        - status
+      type: object
+    traininghttp.HistoryResponse:
+      additionalProperties: false
+      properties:
+        items:
+          items:
+            $ref: '#/components/schemas/training.Attempt'
+          type: array
+          uniqueItems: false
+        next_cursor:
+          type: string
+        targets:
+          items:
+            $ref: '#/components/schemas/training.TargetView'
+          type: array
+          uniqueItems: false
+      required:
+        - items
+        - targets
+      type: object
+    traininghttp.StartRequest:
+      additionalProperties: false
+      properties:
+        plan_revision:
+          type: integer
       type: object
     user.Role:
       enum:
@@ -1916,7 +2193,7 @@ paths:
       x-implementation: implemented
   /diagnostic-sessions:
     post:
-      description: Сохраняет в памяти снимок порядка варианта. Повтор с тем же ключом возвращает ту же сессию.
+      description: Сохраняет в PostgreSQL снимок порядка варианта. Повтор с тем же ключом возвращает ту же сессию.
       parameters:
         - description: Ключ повтора запроса
           in: header
@@ -2347,6 +2624,152 @@ paths:
       tags:
         - Диагностика
       x-implementation: implemented
+  /diagnostic-sessions/{id}/training:
+    get:
+      parameters:
+        - description: ID диагностики
+          in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/training.Progress'
+          description: OK
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unauthorized
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Not Found
+      security:
+        - accessCookie: []
+      summary: Тренировка по диагностике
+      tags:
+        - Тренировка
+      x-implementation: implemented
+    post:
+      parameters:
+        - description: ID диагностики
+          in: path
+          name: id
+          required: true
+          schema:
+            type: string
+        - description: Ключ запуска
+          in: header
+          name: Idempotency-Key
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/traininghttp.StartRequest'
+              description: Ревизия preview для свободной тренировки
+              summary: request
+        description: Ревизия preview для свободной тренировки
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/training.Progress'
+          description: OK
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/training.Progress'
+          description: Created
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unauthorized
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Not Found
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Conflict
+        "422":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unprocessable Entity
+      security:
+        - accessCookie: []
+      summary: Начать тренировку
+      tags:
+        - Тренировка
+      x-implementation: implemented
+  /diagnostic-sessions/{id}/training/preview:
+    get:
+      parameters:
+        - description: ID диагностики
+          in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/training.Preview'
+          description: OK
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unauthorized
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Not Found
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Conflict
+        "422":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unprocessable Entity
+      security:
+        - accessCookie: []
+      summary: Темы предстоящей тренировки
+      tags:
+        - Тренировка
+      x-implementation: implemented
   /health:
     get:
       operationId: health
@@ -2439,6 +2862,40 @@ paths:
       summary: Прочитать карту предмета
       tags:
         - Учебная база
+      x-implementation: implemented
+  /subjects/{subject_id}/learning-state:
+    get:
+      parameters:
+        - description: ID предмета
+          in: path
+          name: subject_id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/diagnostichttp.LearningStateResponse'
+          description: OK
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unauthorized
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Not Found
+      security:
+        - accessCookie: []
+      summary: Состояние обучения по предмету
+      tags:
+        - Диагностика
       x-implementation: implemented
   /task-audio/{id}/file:
     get:
@@ -2728,6 +3185,246 @@ paths:
       summary: Сгенерировать аналог задания
       tags:
         - Банк заданий
+      x-implementation: implemented
+  /training-sessions/{id}:
+    get:
+      parameters:
+        - description: ID тренировки
+          in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/training.Progress'
+          description: OK
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unauthorized
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Not Found
+      security:
+        - accessCookie: []
+      summary: Текущее упражнение и прогресс
+      tags:
+        - Тренировка
+      x-implementation: implemented
+  /training-sessions/{id}/answers:
+    post:
+      parameters:
+        - description: ID тренировки
+          in: path
+          name: id
+          required: true
+          schema:
+            type: string
+        - description: Ключ ответа
+          in: header
+          name: Idempotency-Key
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              additionalProperties: false
+              properties:
+                audio:
+                  description: Голосовой ответ
+                  format: binary
+                  type: string
+                exercise_id:
+                  description: Текущее упражнение
+                  type: string
+              required:
+                - exercise_id
+                - audio
+              type: object
+        description: Текущее упражнение
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/training.Progress'
+          description: OK
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unauthorized
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Not Found
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Conflict
+        "413":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Request Entity Too Large
+        "415":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unsupported Media Type
+        "422":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unprocessable Entity
+        "502":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Bad Gateway
+        "503":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Service Unavailable
+        "504":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Gateway Timeout
+      security:
+        - accessCookie: []
+      summary: Ответить на упражнение
+      tags:
+        - Тренировка
+      x-implementation: implemented
+  /training-sessions/{id}/current/audio:
+    get:
+      parameters:
+        - description: ID тренировки
+          in: path
+          name: id
+          required: true
+          schema:
+            type: string
+        - description: Текущее упражнение
+          in: query
+          name: exercise_id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/traininghttp.AudioResponse'
+          description: OK
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unauthorized
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Not Found
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Conflict
+        "422":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unprocessable Entity
+      security:
+        - accessCookie: []
+      summary: Озвучка текущего упражнения
+      tags:
+        - Тренировка
+      x-implementation: implemented
+  /training-sessions/{id}/history:
+    get:
+      parameters:
+        - description: ID тренировки
+          in: path
+          name: id
+          required: true
+          schema:
+            type: string
+        - description: Размер страницы
+          in: query
+          name: limit
+          schema:
+            default: 20
+            maximum: 100
+            minimum: 1
+            type: integer
+        - description: Курсор
+          in: query
+          name: cursor
+          schema:
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/traininghttp.HistoryResponse'
+          description: OK
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unauthorized
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Not Found
+        "422":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unprocessable Entity
+      security:
+        - accessCookie: []
+      summary: История ответов тренировки
+      tags:
+        - Тренировка
       x-implementation: implemented
   /variants:
     get:

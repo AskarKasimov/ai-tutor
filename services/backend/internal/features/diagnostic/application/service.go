@@ -101,6 +101,9 @@ func (s *Service) Read(ctx context.Context, ownerID, sessionID string) (diagnost
 func (s *Service) LatestCompleted(ctx context.Context, ownerID, subjectID string) (diagnostic.Session, bool, error) {
 	return s.store.LatestCompleted(ctx, ownerID, subjectID)
 }
+func (s *Service) LearningState(ctx context.Context, ownerID, subjectID string) (diagnostic.LearningState, error) {
+	return s.store.LearningState(ctx, ownerID, subjectID)
+}
 
 func (s *Service) CurrentAudio(ctx context.Context, ownerID, sessionID, expectedTaskID string) (audioasset.Metadata, error) {
 	if !validID(sessionID) {

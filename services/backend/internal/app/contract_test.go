@@ -17,6 +17,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/audio"
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/training"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/features/competency/infrastructure/csvparser"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/httpx"
 )
@@ -301,6 +302,32 @@ func TestOpenAPIResponses(t *testing.T) {
 	check("POST", "/diagnostic-sessions/{id}/answers", diagnosticAnswerResponse)
 	check("GET", "/diagnostic-sessions/{id}/result", f.request("GET", "/diagnostic-sessions/"+diagnosticProgress.SessionID+"/result", "", access))
 	check("GET", "/diagnostic-sessions/{id}/feedback", f.request("GET", "/diagnostic-sessions/"+diagnosticProgress.SessionID+"/feedback", "", access))
+	check("GET", "/subjects/{subject_id}/learning-state", f.request("GET", "/subjects/subject:intro-to-ml/learning-state", "", access))
+	preview := f.request("GET", "/diagnostic-sessions/"+diagnosticProgress.SessionID+"/training/preview", "", access)
+	check("GET", "/diagnostic-sessions/{id}/training/preview", preview)
+	var trainingPreview training.Preview
+	if err = json.Unmarshal(preview.Body.Bytes(), &trainingPreview); err != nil {
+		t.Fatal(err)
+	}
+	f.handler = f.app.Handler()
+	trainingStart := trainingJSON(f, access, "/diagnostic-sessions/"+diagnosticProgress.SessionID+"/training", "contract-training", fmt.Sprintf(`{"plan_revision":%d}`, trainingPreview.PlanRevision))
+	check("POST", "/diagnostic-sessions/{id}/training", trainingStart)
+	var trainingProgress training.Progress
+	if err = json.Unmarshal(trainingStart.Body.Bytes(), &trainingProgress); err != nil {
+		t.Fatal(err)
+	}
+	check("GET", "/diagnostic-sessions/{id}/training", f.request("GET", "/diagnostic-sessions/"+diagnosticProgress.SessionID+"/training", "", access))
+	check("GET", "/training-sessions/{id}", f.request("GET", "/training-sessions/"+trainingProgress.ID, "", access))
+	check("GET", "/training-sessions/{id}/current/audio", f.request("GET", "/training-sessions/"+trainingProgress.ID+"/current/audio?exercise_id="+trainingProgress.Current.ID, "", access))
+	trainingBody, trainingContentType := diagnosticAnswerBody(t, trainingProgress.Current.ID)
+	trainingRequest := httptest.NewRequest("POST", "/training-sessions/"+trainingProgress.ID+"/answers", strings.NewReader(strings.ReplaceAll(trainingBody.String(), "variant_task_id", "exercise_id")))
+	trainingRequest.AddCookie(access)
+	trainingRequest.Header.Set("Content-Type", trainingContentType)
+	trainingRequest.Header.Set("Idempotency-Key", "contract-training-answer")
+	trainingAnswer := httptest.NewRecorder()
+	f.app.Handler().ServeHTTP(trainingAnswer, trainingRequest)
+	check("POST", "/training-sessions/{id}/answers", trainingAnswer)
+	check("GET", "/training-sessions/{id}/history", f.request("GET", "/training-sessions/"+trainingProgress.ID+"/history?limit=1", "", access))
 	f.app.cfg.APIMode = "real"
 	check("GET", "/variants", f.request("GET", "/variants?subject_id=subject%3Aintro-to-ml", "", access))
 	check("GET", "/variants/{id}", f.request("GET", "/variants/"+createdVariant.ID, "", access))

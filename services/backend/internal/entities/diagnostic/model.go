@@ -1,6 +1,16 @@
 // Package diagnostic contains process-local diagnostic session state.
 package diagnostic
 
+type LearningState struct {
+	SubjectID           string `json:"subject_id"`
+	SubjectName         string `json:"subject_name"`
+	DiagnosticSessionID string `json:"diagnostic_session_id,omitempty" binding:"optional"`
+	ActiveSessionID     string `json:"active_session_id,omitempty" binding:"optional"`
+	DiagnosticStatus    string `json:"diagnostic_status"`
+	DiagnosticCompleted bool   `json:"diagnostic_completed"`
+	TrainingAvailable   bool   `json:"training_available"`
+}
+
 const (
 	StatusActive    = "active"
 	StatusCompleted = "completed"

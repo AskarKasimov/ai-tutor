@@ -287,6 +287,49 @@ type TopicLevel struct {
 	Label string
 }
 
+type TrainingAttempt struct {
+	SessionID    string
+	Sequence     int64
+	RequestKey   string
+	Fingerprint  string
+	ExerciseID   string
+	AttemptData  []byte
+	ResponseData []byte
+}
+
+type TrainingExercise struct {
+	ID           string
+	SessionID    string
+	Round        int64
+	TargetIndex  int32
+	ExerciseData []byte
+	AudioAssetID *string
+}
+
+type TrainingSession struct {
+	ID              string
+	OwnerID         string
+	DiagnosticID    string
+	SubjectID       string
+	StateData       []byte
+	ReservationData []byte
+	LeaseUntil      pgtype.Timestamptz
+	CreatedAt       pgtype.Timestamptz
+}
+
+type TrainingStartRequest struct {
+	OwnerID      string
+	RequestKey   string
+	DiagnosticID string
+	SessionID    string
+}
+
+type TrainingTarget struct {
+	SessionID  string
+	Position   int32
+	TargetData []byte
+}
+
 type Transcription struct {
 	ID        string
 	UserID    string

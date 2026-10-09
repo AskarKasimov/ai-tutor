@@ -282,9 +282,7 @@ it('keeps the question visible when microphone is unavailable', async () => {
     'Микрофон недоступен',
   )
   expect(screen.getByRole('heading', { level: 1 })).toBeVisible()
-  expect(
-    screen.getByRole('button', { name: 'Попробовать снова' }),
-  ).toBeEnabled()
+  expect(screen.getByRole('button', { name: 'Записать заново' })).toBeEnabled()
 })
 
 it('renders the question through i18n', async () => {

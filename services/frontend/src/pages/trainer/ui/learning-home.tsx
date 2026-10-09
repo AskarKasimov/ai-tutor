@@ -24,14 +24,20 @@ const apiBase = (import.meta.env.VITE_API_BASE_URL || '/api/v1').replace(
 )
 function readIntent(userId: string): Intent | null {
   try {
-    const value = JSON.parse(
-      sessionStorage.getItem('ai-tutor:learning-home') ?? 'null',
-    ) as Intent | null
-    return value?.userId === userId &&
+    const raw = sessionStorage.getItem('ai-tutor:learning-home')
+    const value = JSON.parse(raw ?? 'null') as Intent | null
+    const valid =
+      value?.userId === userId &&
       value.apiBase === apiBase &&
       value.mode === 'diagnostic'
-      ? value
-      : null
+    if (!value || !valid) return null
+    if (!value.sessionId) {
+      // A pending create is not a resumable session. Require a new explicit
+      // start click, while diagnostic identity storage retains its idempotency keys.
+      sessionStorage.removeItem('ai-tutor:learning-home')
+      return null
+    }
+    return value
   } catch {
     return null
   }

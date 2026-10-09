@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { StrictMode } from 'react'
 import {
   createMemoryHistory,
   createRouter,
@@ -47,7 +48,11 @@ it('loads subjects without creating a variant, then starts only the chosen subje
     history: createMemoryHistory({ initialEntries: ['/'] }),
     routeTree,
   })
-  const view = render(<RouterProvider router={router} />)
+  const view = render(
+    <StrictMode>
+      <RouterProvider router={router} />
+    </StrictMode>,
+  )
   expect(await screen.findByRole('combobox', { name: 'Предмет' })).toBeVisible()
   expect(requests.some((r) => r.includes('/learning-state'))).toBe(false)
   fireEvent.click(screen.getByRole('combobox', { name: 'Предмет' }))
@@ -92,3 +97,78 @@ it('loads subjects without creating a variant, then starts only the chosen subje
   ).toHaveLength(1)
   expect(api).toHaveBeenCalled()
 })
+
+it('returns to subject selection after refresh during a pending start and reuses its key only after a new click', async () => {
+  const requests: Array<{ method: string; path: string; key?: string }> = []
+  let deferFirstVariant = true
+  const original = mockApi.mockApiFetch
+  vi.spyOn(mockApi, 'mockApiFetch').mockImplementation(
+    async (url, init = {}) => {
+      const path = new URL(url, 'http://local').pathname
+      const method = init.method ?? 'GET'
+      const key = new Headers(init.headers).get('Idempotency-Key') ?? undefined
+      if (
+        path.endsWith('/variants') &&
+        method === 'POST' &&
+        deferFirstVariant
+      ) {
+        deferFirstVariant = false
+        requests.push({ method, path, key })
+        return new Promise<Response>((_resolve, reject) => {
+          init.signal?.addEventListener(
+            'abort',
+            () => reject(new DOMException('Aborted', 'AbortError')),
+            { once: true },
+          )
+        })
+      }
+      requests.push({ method, path, key })
+      return original(url, init)
+    },
+  )
+
+  const firstRouter = createRouter({
+    context: { queryClient: createQueryClient() },
+    history: createMemoryHistory({ initialEntries: ['/'] }),
+    routeTree,
+  })
+  const first = render(<RouterProvider router={firstRouter} />)
+  await chooseSubject()
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Начать диагностику' }),
+  )
+  await waitFor(() =>
+    expect(requests.filter((r) => r.path.endsWith('/variants'))).toHaveLength(
+      1,
+    ),
+  )
+
+  first.unmount()
+  const refreshedRouter = createRouter({
+    context: { queryClient: createQueryClient() },
+    history: createMemoryHistory({ initialEntries: ['/'] }),
+    routeTree,
+  })
+  render(<RouterProvider router={refreshedRouter} />)
+  expect(await screen.findByRole('combobox', { name: 'Предмет' })).toBeVisible()
+  await new Promise((resolve) => setTimeout(resolve, 150))
+  expect(requests.filter((r) => r.path.endsWith('/variants'))).toHaveLength(1)
+
+  await chooseSubject()
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Начать диагностику' }),
+  )
+  expect(
+    await screen.findByRole('heading', {
+      name: 'Демонстрационный вопрос о классификации',
+    }),
+  ).toBeVisible()
+  const variantRequests = requests.filter((r) => r.path.endsWith('/variants'))
+  expect(variantRequests).toHaveLength(2)
+  expect(variantRequests[1].key).toBe(variantRequests[0].key)
+})
+
+async function chooseSubject() {
+  fireEvent.click(await screen.findByRole('combobox', { name: 'Предмет' }))
+  fireEvent.click(await screen.findByRole('option', { name: 'Введение в ML' }))
+}

@@ -45,14 +45,29 @@ async function request(
   return response
 }
 
-async function parse<T>(response: Response, schema: z.ZodType<T>): Promise<T> {
-  const parsed = schema.safeParse(await response.json())
+async function parse<T>(
+  response: Response,
+  schema: z.ZodType<T>,
+  signal: AbortSignal,
+): Promise<T> {
+  let body: unknown
+  try {
+    body = await response.json()
+  } catch {
+    signal.throwIfAborted()
+    throw new SubjectApiError(0, 'INVALID_RESPONSE')
+  }
+  const parsed = schema.safeParse(body)
   if (!parsed.success) throw new SubjectApiError(0, 'INVALID_RESPONSE')
   return parsed.data
 }
 
 export async function listSubjects(signal: AbortSignal): Promise<Subject[]> {
-  return parse(await request('/subjects', signal), z.array(subjectSchema))
+  return parse(
+    await request('/subjects', signal),
+    z.array(subjectSchema),
+    signal,
+  )
 }
 
 export async function createSubject(
@@ -66,6 +81,7 @@ export async function createSubject(
       body: JSON.stringify({ name }),
     }),
     subjectSchema,
+    signal,
   )
 }
 
@@ -79,6 +95,7 @@ export async function readLearningState(
       signal,
     ),
     learningStateSchema,
+    signal,
   )
   if (state.subject_id !== subjectId)
     throw new SubjectApiError(0, 'INVALID_RESPONSE')

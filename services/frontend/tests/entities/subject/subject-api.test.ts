@@ -3,9 +3,36 @@ import {
   createSubject,
   listSubjects,
   readLearningState,
+  SubjectApiError,
 } from '@/entities/subject'
 
 afterEach(() => vi.unstubAllGlobals())
+
+it('maps invalid JSON success bodies to INVALID_RESPONSE', async () => {
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('not json')))
+  await expect(
+    listSubjects(new AbortController().signal),
+  ).rejects.toBeInstanceOf(SubjectApiError)
+  await expect(
+    listSubjects(new AbortController().signal),
+  ).rejects.toMatchObject({
+    status: 0,
+    code: 'INVALID_RESPONSE',
+  })
+})
+
+it('preserves cancellation when the response body read is aborted', async () => {
+  const controller = new AbortController()
+  const response = new Response('ignored')
+  vi.spyOn(response, 'json').mockImplementation(async () => {
+    controller.abort()
+    throw new SyntaxError('body read interrupted')
+  })
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response))
+  await expect(listSubjects(controller.signal)).rejects.toMatchObject({
+    name: 'AbortError',
+  })
+})
 
 it('lists subjects with cookie credentials and rejects malformed success bodies', async () => {
   const fetchMock = vi

@@ -139,8 +139,19 @@ async function request(
   return response
 }
 
-async function parse<T>(response: Response, schema: z.ZodType<T>): Promise<T> {
-  const parsed = schema.safeParse(await response.json())
+async function parse<T>(
+  response: Response,
+  schema: z.ZodType<T>,
+  signal: AbortSignal,
+): Promise<T> {
+  let body: unknown
+  try {
+    body = await response.json()
+  } catch {
+    signal.throwIfAborted()
+    throw new TrainingApiError(0, 'INVALID_RESPONSE')
+  }
+  const parsed = schema.safeParse(body)
   if (!parsed.success) throw new TrainingApiError(0, 'INVALID_RESPONSE')
   return parsed.data
 }
@@ -155,6 +166,7 @@ export async function readTrainingPreview(
       signal,
     ),
     previewSchema,
+    signal,
   )
   if (preview.diagnostic_session_id !== diagnosticId)
     throw new TrainingApiError(0, 'INVALID_RESPONSE')
@@ -181,6 +193,7 @@ export async function startTraining(
       120_000,
     ),
     progressSchema,
+    signal,
   )
   if (
     progress.diagnostic_session_id !== diagnosticId ||
@@ -201,6 +214,7 @@ export async function findTrainingForDiagnostic(
       signal,
     ),
     progressSchema,
+    signal,
   )
   if (progress.diagnostic_session_id !== diagnosticId)
     throw new TrainingApiError(0, 'INVALID_RESPONSE')
@@ -217,6 +231,7 @@ export async function readTrainingSession(
       signal,
     ),
     progressSchema,
+    signal,
   )
   if (progress.session_id !== sessionId)
     throw new TrainingApiError(0, 'INVALID_RESPONSE')
@@ -255,6 +270,7 @@ export async function submitTraining(
       240_000,
     ),
     progressSchema,
+    signal,
   )
   if (
     progress.session_id !== input.sessionId ||
@@ -283,6 +299,7 @@ export async function readTrainingHistory(
       signal,
     ),
     historySchema,
+    signal,
   )
 }
 
@@ -297,6 +314,7 @@ export async function readTrainingAudio(
       signal,
     ),
     audioSchema,
+    signal,
   )
   if (audio.exercise_id !== exerciseId)
     throw new TrainingApiError(0, 'INVALID_RESPONSE')

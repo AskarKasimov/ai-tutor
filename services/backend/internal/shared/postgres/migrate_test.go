@@ -82,6 +82,80 @@ func TestMigrateFreshAndRepeat(t *testing.T) {
 	}
 }
 
+func TestSubjectsMigrationBackfillsCurrentMapAndVariants(t *testing.T) {
+	pool := migrationPool(t)
+	ctx := context.Background()
+	files := legacySubjectMigrationFiles(t)
+	if err := migrate(ctx, pool, files); err != nil {
+		t.Fatal(err)
+	}
+	_, err := pool.Exec(ctx, `
+INSERT INTO users(id,email,password_hash,created_at) VALUES ('subject-user','subject@example.test','hash',1);
+INSERT INTO competency_map_imports(revision,imported_at,imported_by,competency_count,constituent_count,outcome_count,task_count,source_format,source_headers)
+VALUES (7,1,'subject-user',1,1,1,1,'paired','[]');
+INSERT INTO competencies(id,name,revision) VALUES ('subject-c','Компетенция ML',7);
+INSERT INTO variants(id,user_id,create_request_key,map_revision,algorithm_version,included_competency_count,skipped_competencies,created_at)
+VALUES ('subject-v','subject-user','subject-request',7,'test',1,'[]',1);
+INSERT INTO variant_tasks(id,variant_id,source_task_id_snapshot,competency_position,slot,role,task_snapshot,profile_snapshot)
+VALUES ('subject-vt','subject-v','historical-task',1,0,'main','{"question":"Снимок"}','{}');
+UPDATE competency_map_state SET revision=7 WHERE singleton=true;`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Migrate(ctx, pool); err != nil {
+		t.Fatal(err)
+	}
+	const mlID = "subject:intro-to-ml"
+	var subjectName string
+	var activeRevision *int64
+	if err := pool.QueryRow(ctx, `SELECT name, active_revision FROM subjects WHERE id=$1`, mlID).Scan(&subjectName, &activeRevision); err != nil {
+		t.Fatal(err)
+	}
+	if subjectName != "Введение в ML" || activeRevision == nil || *activeRevision != 7 {
+		t.Fatalf("ML subject backfill: name=%q active_revision=%v", subjectName, activeRevision)
+	}
+	var importSubject string
+	if err := pool.QueryRow(ctx, `SELECT subject_id FROM competency_map_imports WHERE revision=7`).Scan(&importSubject); err != nil || importSubject != mlID {
+		t.Fatalf("import subject=%q err=%v", importSubject, err)
+	}
+	var variantSubject, variantName, taskSnapshot string
+	if err := pool.QueryRow(ctx, `SELECT subject_id, subject_name_snapshot, task_snapshot->>'question' FROM variants v JOIN variant_tasks vt ON vt.variant_id=v.id WHERE v.id='subject-v'`).Scan(&variantSubject, &variantName, &taskSnapshot); err != nil {
+		t.Fatal(err)
+	}
+	if variantSubject != mlID || variantName != "Введение в ML" || taskSnapshot != "Снимок" {
+		t.Fatalf("variant backfill: subject=%q name=%q task snapshot=%q", variantSubject, variantName, taskSnapshot)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO subjects(id,name,created_at) VALUES ('subject:second','Второй предмет',2)`); err != nil {
+		t.Fatalf("insert second subject: %v", err)
+	}
+	var subjects int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM subjects WHERE id IN ($1,'subject:second')`, mlID).Scan(&subjects); err != nil || subjects != 2 {
+		t.Fatalf("subjects=%d err=%v", subjects, err)
+	}
+	var mlRevisionAfterInsert *int64
+	var mlNameAfterInsert string
+	if err := pool.QueryRow(ctx, `SELECT name, active_revision FROM subjects WHERE id=$1`, mlID).Scan(&mlNameAfterInsert, &mlRevisionAfterInsert); err != nil || mlNameAfterInsert != "Введение в ML" || mlRevisionAfterInsert == nil || *mlRevisionAfterInsert != 7 {
+		t.Fatalf("ML subject changed after adding second subject: name=%q revision=%v err=%v", mlNameAfterInsert, mlRevisionAfterInsert, err)
+	}
+	var globalRevision int64
+	if err := pool.QueryRow(ctx, `SELECT revision FROM competency_map_state WHERE singleton=true`).Scan(&globalRevision); err != nil || globalRevision != 7 {
+		t.Fatalf("global revision=%d err=%v", globalRevision, err)
+	}
+}
+
+func legacySubjectMigrationFiles(t *testing.T) fs.FS {
+	t.Helper()
+	files := fstest.MapFS{}
+	for _, name := range []string{"00001_initial.sql", "00002_variants.sql", "00003_task_audio.sql"} {
+		data, err := fs.ReadFile(migrations, "migrations/"+name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		files[name] = &fstest.MapFile{Data: data}
+	}
+	return files
+}
+
 func TestMigrateConcurrent(t *testing.T) {
 	pool := migrationPool(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
@@ -113,7 +187,7 @@ func TestMigratePendingRollbackAndRetry(t *testing.T) {
 	}
 	files := fstest.MapFS{
 		"00001_initial.sql": {Data: initial},
-		"00004_test.sql":    {Data: []byte("-- +goose Up\nCREATE TABLE migration_probe(id integer);\nSELECT * FROM nonexistent_migration_table;\n")},
+		"00005_test.sql":    {Data: []byte("-- +goose Up\nCREATE TABLE migration_probe(id integer);\nSELECT * FROM nonexistent_migration_table;\n")},
 	}
 	if err := migrate(ctx, pool, files); err == nil {
 		t.Fatal("invalid migration succeeded")
@@ -123,16 +197,16 @@ func TestMigratePendingRollbackAndRetry(t *testing.T) {
 		t.Fatalf("failed migration was not rolled back: exists=%v, err=%v", exists, err)
 	}
 	var count int
-	if err := pool.QueryRow(ctx, "SELECT count(*) FROM goose_db_version WHERE version_id=4").Scan(&count); err != nil || count != 0 {
+	if err := pool.QueryRow(ctx, "SELECT count(*) FROM goose_db_version WHERE version_id=5").Scan(&count); err != nil || count != 0 {
 		t.Fatalf("failed migration recorded: count=%d, err=%v", count, err)
 	}
-	files["00004_test.sql"].Data = []byte("-- +goose Up\nCREATE TABLE migration_probe(id integer);\n")
+	files["00005_test.sql"].Data = []byte("-- +goose Up\nCREATE TABLE migration_probe(id integer);\n")
 	for range 2 {
 		if err := migrate(ctx, pool, files); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if err := pool.QueryRow(ctx, "SELECT count(*) FROM goose_db_version WHERE version_id=4 AND is_applied").Scan(&count); err != nil || count != 1 {
+	if err := pool.QueryRow(ctx, "SELECT count(*) FROM goose_db_version WHERE version_id=5 AND is_applied").Scan(&count); err != nil || count != 1 {
 		t.Fatalf("pending migration applied: count=%d, err=%v", count, err)
 	}
 }

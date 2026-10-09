@@ -133,7 +133,9 @@ export async function fetchStoredAudio(
   }
   if (!audio.size || !valid) throw new StoredAudioError('invalid')
   fetchSignal.throwIfAborted()
-  return audio
+  // Response.blob() may come from a different fetch realm (notably Node's
+  // undici in tests). Re-wrap it so callers receive the app's Blob class.
+  return new Blob([audio], { type: audio.type || 'audio/wav' })
 }
 
 async function validWav(blob: Blob): Promise<boolean> {

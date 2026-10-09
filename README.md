@@ -83,6 +83,8 @@ cp .env.example .env
 ./dev.sh -d
 ```
 
+На Windows вместо `dev.sh` используйте `.\up.ps1` из PowerShell: скрипт запускает Docker Desktop, при отсутствии создаёт `.env` из `.env.example` в режиме real со случайными секретами, выпускает сертификаты, поднимает стек, ждёт health и открывает приложение. `.\up.ps1 -Logs` показывает логи, `.\up.ps1 -Down` останавливает стек с сохранением данных. Если PowerShell блокирует скрипты, один раз выполните `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`.
+
 Локально нужны Docker Compose и mkcert. Приложение: https://localhost:8443, публичный API: `/api/v1`, health: `/api/v1/health`. Swagger доступен на `/docs/` при `COMPOSE_PROFILES=swagger`.
 
 Для сервера: `.env.prod.example` → `.env`, готовые `certs/server.pem`/`server-key.pem`, сеть `ai-tutor_default`, затем `./prod.sh`. Dev-стек и серверные Compose используют общие имена сети и volumes; одновременно их не запускают.

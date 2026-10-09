@@ -358,7 +358,7 @@ it('keeps the audio and idempotency key on a failed submission and retries witho
   expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(
     'Настоящий вопрос из банка',
   )
-  fireEvent.click(screen.getByRole('button', { name: 'Повторить отправку' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Отправить снова' }))
   expect(await screen.findByText('Серверное объяснение.')).toBeVisible()
   const calls = requests.mock.calls.filter(([url]) => url.endsWith('/answers'))
   expect(calls).toHaveLength(2)
@@ -620,10 +620,47 @@ it('retains the original audio/key when the backend reports that an answer is st
     await screen.findByRole('button', { name: 'Завершить запись' }),
   )
   await screen.findByRole('alert')
-  fireEvent.click(screen.getByRole('button', { name: 'Повторить отправку' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Отправить снова' }))
   expect(await screen.findByText('Серверное объяснение.')).toBeVisible()
   expect(submissions[0].headers).toEqual(submissions[1].headers)
   expect(submissions[0].body).toBe(submissions[1].body)
+})
+
+it('offers only a new recording when speech was not recognized', async () => {
+  const requests = server()
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url: string, init?: RequestInit) =>
+      url.endsWith('/answers')
+        ? Response.json(
+            {
+              code: 'NO_SPEECH_DETECTED',
+              message: 'Речь не распознана; повторите запись.',
+            },
+            { status: 422 },
+          )
+        : requests(url, init),
+    ),
+  )
+  await home()
+  fireEvent.click(await screen.findByRole('button', { name: 'Начать запись' }))
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Завершить запись' }),
+  )
+  expect(await screen.findByRole('alert')).toHaveTextContent(
+    'Речь не распознана',
+  )
+  expect(
+    screen.queryByRole('button', { name: 'Отправить снова' }),
+  ).not.toBeInTheDocument()
+  expect(screen.queryByText('Попробуйте ещё раз')).not.toBeInTheDocument()
+  expect(
+    screen.getAllByRole('button', { name: 'Записать заново' }),
+  ).toHaveLength(1)
+  fireEvent.click(screen.getByRole('button', { name: 'Записать заново' }))
+  expect(
+    await screen.findByRole('button', { name: 'Завершить запись' }),
+  ).toBeVisible()
 })
 
 it('offers a new diagnostic if the completed result disappears after a backend restart', async () => {

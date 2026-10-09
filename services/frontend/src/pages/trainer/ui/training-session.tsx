@@ -1,5 +1,5 @@
-import { Button, Card, Heading, Text } from '@radix-ui/themes'
-import { Mic, Square, Volume2 } from 'lucide-react'
+import { Button, Card, Flex, Heading, Text } from '@radix-ui/themes'
+import { CircleAlert, Mic, RotateCcw, Square, Volume2 } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { TrainingApiError, type TrainingProgress } from '@/entities/training'
@@ -14,6 +14,10 @@ function errorCode(error: unknown) {
   if (!(error instanceof TrainingApiError)) return 'training.submitError'
   if (error.status === 401) return 'trainer.unauthorized'
   if (error.status === 404) return 'training.sessionMissing'
+  if (error.status === 413) return 'diagnostic.recordingLimit'
+  if (error.code === 'NO_SPEECH_DETECTED') return 'diagnostic.noSpeech'
+  if (error.status === 415 || error.status === 422)
+    return 'diagnostic.invalidAudio'
   if (error.status === 409) {
     if (error.code === 'TRAINING_ANSWER_IN_PROGRESS')
       return 'training.answerInProgress'
@@ -106,6 +110,15 @@ export function TrainingSession({
   const resetReservation =
     voice.error instanceof TrainingApiError &&
     voice.error.code === 'TRAINING_ANSWER_RETRY_MISMATCH'
+  const apiError = voice.error instanceof TrainingApiError ? voice.error : null
+  // The same audio cannot succeed again after the server rejected it.
+  const rerecord = !!apiError && [413, 415, 422].includes(apiError.status)
+  const canAlsoRerecord =
+    voice.hasPending && !rerecord && (!apiError || apiError.status >= 500)
+  const recordAgain = () => {
+    voice.next()
+    void voice.start()
+  }
   const statusKey =
     voice.stage === 'permission'
       ? 'trainer.allow'
@@ -113,9 +126,7 @@ export function TrainingSession({
         ? 'trainer.recording'
         : voice.stage === 'processing'
           ? 'trainer.processing'
-          : voice.stage === 'error'
-            ? 'trainer.errorStatus'
-            : 'training.ready'
+          : 'training.ready'
   return (
     <main className={styles.page}>
       <header className={styles.header}>
@@ -165,16 +176,18 @@ export function TrainingSession({
           {voice.speechError && (
             <Text role="status">{t('trainer.speechError')}</Text>
           )}
-          {voice.stage !== 'ready' && voice.stage !== 'result' && (
-            <Text role="status">
-              {t(
-                statusKey,
-                voice.stage === 'recording'
-                  ? { time: voice.seconds }
-                  : undefined,
-              )}
-            </Text>
-          )}
+          {voice.stage !== 'ready' &&
+            voice.stage !== 'result' &&
+            voice.stage !== 'error' && (
+              <Text role="status">
+                {t(
+                  statusKey,
+                  voice.stage === 'recording'
+                    ? { time: voice.seconds }
+                    : undefined,
+                )}
+              </Text>
+            )}
           <div className={styles.voice}>
             <VoiceIllustration stream={voice.stream} />
             {voice.stage === 'recording' ? (
@@ -202,7 +215,8 @@ export function TrainingSession({
           </div>
           {error && (
             <Card>
-              <Text role="alert">
+              <Text as="p" role="alert" className={styles.errorMessage}>
+                <CircleAlert size={16} aria-hidden="true" />
                 {t(voice.error ? errorCode(voice.error) : captureErrorKey)}
               </Text>
               {refreshCurrent ? (
@@ -213,13 +227,22 @@ export function TrainingSession({
                 <Button onClick={() => void voice.reset()}>
                   {t('training.resetSubmit')}
                 </Button>
-              ) : voice.hasPending ? (
-                <Button onClick={() => void voice.retry()}>
-                  {t('training.retrySubmit')}
-                </Button>
+              ) : voice.hasPending && !rerecord ? (
+                <Flex gap="4" align="center" wrap="wrap">
+                  <Button onClick={() => void voice.retry()}>
+                    <RotateCcw size={16} aria-hidden="true" />
+                    {t('training.retrySubmit')}
+                  </Button>
+                  {canAlsoRerecord && (
+                    <Button variant="ghost" color="gray" onClick={recordAgain}>
+                      {t('diagnostic.recordAgain')}
+                    </Button>
+                  )}
+                </Flex>
               ) : (
-                <Button onClick={() => void voice.start()}>
-                  {t('trainer.retry')}
+                <Button onClick={recordAgain}>
+                  <Mic size={16} aria-hidden="true" />
+                  {t('diagnostic.recordAgain')}
                 </Button>
               )}
             </Card>

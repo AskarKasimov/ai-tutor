@@ -84,10 +84,11 @@ function backend(
     user?: typeof admin | null
     result?: unknown
     status?: number
+    subjects?: typeof subjects
   } = {},
 ) {
   let active: typeof emptyMap | typeof importedMap = emptyMap
-  const activeSubjects = [...subjects]
+  const activeSubjects = [...(options.subjects ?? subjects)]
   const fetch = vi.fn(async (url: string, init?: RequestInit) => {
     if (url.endsWith('/auth/refresh'))
       return new Response(null, { status: 401 })
@@ -160,12 +161,13 @@ it.each(['/', '/login'])(
       screen.queryByRole('button', { name: 'Начать запись' }),
     ).not.toBeInTheDocument()
     expect(await screen.findByText('Карта ещё не загружена.')).toBeVisible()
-    expect(screen.getByRole('combobox', { name: 'Предмет' })).toHaveValue(
-      'subject-a',
-    )
     expect(
-      screen.getByRole('option', { name: 'Статистика' }),
-    ).toBeInTheDocument()
+      screen.getByRole('heading', { name: 'Машинное обучение', level: 2 }),
+    ).toBeVisible()
+    expect(screen.queryByText('Статистика')).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('combobox', { name: 'Предмет' }),
+    ).not.toBeInTheDocument()
     expect(createLesson).not.toHaveBeenCalled()
   },
 )
@@ -199,18 +201,21 @@ it('does not mount the lesson while the current session is being checked', async
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
 })
 
-it('creates a trimmed subject and selects its empty map', async () => {
-  const fetch = backend()
+it('creates a trimmed subject with its map in one step, then switches to editing', async () => {
+  const fetch = backend({ subjects: [] })
   renderApp('/admin/competency-map')
   const field = await screen.findByLabelText('Название предмета')
+  const submit = screen.getByRole('button', { name: 'Подтвердить' })
   fireEvent.change(field, { target: { value: '  Новый  ' } })
-  fireEvent.click(screen.getByRole('button', { name: 'Создать предмет' }))
-  await waitFor(() =>
-    expect(screen.getByRole('combobox', { name: 'Предмет' })).toHaveValue(
-      'subject-c',
-    ),
-  )
-  expect(await screen.findByText('Карта ещё не загружена.')).toBeVisible()
+  expect(submit).toBeDisabled()
+  fireEvent.change(screen.getByLabelText('Файл карты компетенций'), {
+    target: { files: [new File(['map'], 'map.csv')] },
+  })
+  expect(screen.getByText('map.csv')).toBeVisible()
+  fireEvent.click(submit)
+  expect(await screen.findByText('Предупреждения импорта')).toBeVisible()
+  expect(screen.getByRole('heading', { name: 'Новый', level: 2 })).toBeVisible()
+  expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
   const [, init] = fetch.mock.calls.find(
     ([url, request]) =>
       url.endsWith('/admin/subjects') && request?.method === 'POST',
@@ -218,50 +223,48 @@ it('creates a trimmed subject and selects its empty map', async () => {
   expect(JSON.parse(init?.body as string)).toEqual({ name: 'Новый' })
   expect(
     fetch.mock.calls.some(([url]) =>
-      url.endsWith('/subjects/subject-c/competency-map'),
+      url.endsWith('/admin/subjects/subject-c/competency-map/import'),
     ),
   ).toBe(true)
+  expect(
+    screen.getByRole('button', { name: 'Подтвердить изменения' }),
+  ).toBeDisabled()
 })
 
-it('keeps a late import result with its captured subject after switching selection', async () => {
-  let finish!: (response: Response) => void
-  const fetch = vi.fn(async (url: string, init?: RequestInit) => {
-    if (url.endsWith('/auth/refresh'))
-      return new Response(null, { status: 401 })
-    if (url.endsWith('/auth/me')) return Response.json(admin)
-    if (url.endsWith('/subjects')) return Response.json(subjects)
-    if (
-      url.endsWith('/subjects/subject-a/competency-map') ||
-      url.endsWith('/subjects/subject-b/competency-map')
-    )
-      return Response.json(emptyMap)
-    if (url.endsWith('/competency-map/import'))
-      return new Promise<Response>((resolve) => {
-        finish = resolve
-      })
-    throw new Error(`Unexpected request: ${url} ${init?.method ?? 'GET'}`)
+it('switches to editing with the error when the first map import fails', async () => {
+  backend({
+    subjects: [],
+    status: 422,
+    result: {
+      code: 'CSV_INVALID',
+      message: 'Некорректная карта.',
+      details: [
+        {
+          path: 'row:3',
+          code: 'CSV_INVALID',
+          message: 'Важность: ожидается число.',
+        },
+      ],
+    },
   })
-  vi.stubGlobal('fetch', fetch)
   renderApp('/admin/competency-map')
-  const select = await screen.findByRole('combobox', { name: 'Предмет' })
-  await screen.findByText('Карта ещё не загружена.')
-  fireEvent.change(await screen.findByLabelText('Файл карты компетенций'), {
+  fireEvent.change(await screen.findByLabelText('Название предмета'), {
+    target: { value: 'Новый' },
+  })
+  fireEvent.change(screen.getByLabelText('Файл карты компетенций'), {
     target: { files: [new File(['map'], 'map.csv')] },
   })
-  fireEvent.click(screen.getByRole('button', { name: 'Загрузить карту' }))
-  fireEvent.click(
-    within(await screen.findByRole('alertdialog')).getByRole('button', {
-      name: 'Заменить и загрузить',
-    }),
+  fireEvent.click(screen.getByRole('button', { name: 'Подтвердить' }))
+  expect(await screen.findByRole('alert')).toHaveTextContent(
+    'Строка 3: Важность: ожидается число.',
   )
-  await waitFor(() => expect(finish).toBeDefined())
-  fireEvent.change(select, { target: { value: 'subject-b' } })
-  await waitFor(() => expect(select).toHaveValue('subject-b'))
-  await act(async () => finish(Response.json(imported)))
-  expect(screen.queryByText('Карта загружена.')).not.toBeInTheDocument()
-  expect(screen.getByRole('combobox', { name: 'Предмет' })).toHaveValue(
-    'subject-b',
-  )
+  expect(
+    screen.getByRole('region', { name: 'Обновить карту компетенций' }),
+  ).toBeVisible()
+  expect(
+    screen.getByRole('button', { name: 'Подтвердить изменения' }),
+  ).toBeEnabled()
+  expect(screen.queryByLabelText('Название предмета')).not.toBeInTheDocument()
 })
 
 it('routes an admin straight from the login form to the import screen', async () => {
@@ -324,16 +327,20 @@ it.each(['csv', 'xlsx'])(
     fireEvent.change(input, {
       target: { files: [new File(['map'], `map.${extension}`, { type: '' })] },
     })
-    fireEvent.click(screen.getByRole('button', { name: 'Загрузить карту' }))
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Подтвердить изменения' }),
+    )
     const dialog = await screen.findByRole('alertdialog')
-    expect(dialog).toHaveTextContent('текущую карту и банк заданий')
+    expect(dialog).toHaveTextContent(
+      'Текущая карта и задания предмета будут заменены',
+    )
     expect(fetch.mock.calls.some(([url]) => url.endsWith('/import'))).toBe(
       false,
     )
     fireEvent.click(
-      within(dialog).getByRole('button', { name: 'Заменить и загрузить' }),
+      within(dialog).getByRole('button', { name: 'Перезаписать' }),
     )
-    expect(await screen.findByText('Карта загружена.')).toBeVisible()
+    expect(await screen.findByText('Предупреждения импорта')).toBeVisible()
     expect(screen.getByText('Задание 2')).toBeVisible()
     expect(screen.getByText('8')).toBeVisible()
     expect(
@@ -343,8 +350,8 @@ it.each(['csv', 'xlsx'])(
     ).toBeVisible()
     await waitFor(() =>
       expect(
-        screen.getByRole('region', { name: 'Текущая карта' }),
-      ).toHaveTextContent('Версия 2'),
+        screen.getByRole('region', { name: 'Машинное обучение' }),
+      ).toHaveTextContent(/Версия карты\s*2/),
     )
     const [, init] = fetch.mock.calls.find(([url]) => url.endsWith('/import'))!
     const [importUrl] = fetch.mock.calls.find(([url]) =>
@@ -365,20 +372,73 @@ it.each(['csv', 'xlsx'])(
   },
 )
 
+it('shows no import block after a clean import', async () => {
+  backend({
+    result: { ...imported, unparsed_task_cell_count: 0, warnings: [] },
+  })
+  renderApp()
+  fireEvent.change(await screen.findByLabelText('Файл карты компетенций'), {
+    target: { files: [new File(['map'], 'map.csv')] },
+  })
+  fireEvent.click(screen.getByRole('button', { name: 'Подтвердить изменения' }))
+  fireEvent.click(
+    within(await screen.findByRole('alertdialog')).getByRole('button', {
+      name: 'Перезаписать',
+    }),
+  )
+  await waitFor(() =>
+    expect(
+      screen.getByRole('region', { name: 'Машинное обучение' }),
+    ).toHaveTextContent(/Версия карты\s*2/),
+  )
+  expect(screen.queryByText('Предупреждения импорта')).not.toBeInTheDocument()
+  expect(
+    within(screen.getByRole('region', { name: 'Машинное обучение' })).getByRole(
+      'status',
+    ),
+  ).toHaveTextContent('Карта компетенций успешно загружена')
+})
+
 it('cancels replacement without sending an import request', async () => {
   const fetch = backend()
   renderApp()
   fireEvent.change(await screen.findByLabelText('Файл карты компетенций'), {
     target: { files: [new File(['map'], 'map.csv')] },
   })
-  fireEvent.click(screen.getByRole('button', { name: 'Загрузить карту' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Подтвердить изменения' }))
   fireEvent.click(
     within(await screen.findByRole('alertdialog')).getByRole('button', {
       name: 'Отмена',
     }),
   )
   expect(fetch.mock.calls.some(([url]) => url.endsWith('/import'))).toBe(false)
-  expect(screen.getByRole('button', { name: 'Загрузить карту' })).toBeEnabled()
+  expect(
+    screen.getByRole('button', { name: 'Подтвердить изменения' }),
+  ).toBeEnabled()
+})
+
+it('discards a chosen replacement file with the cancel button', async () => {
+  const fetch = backend()
+  renderApp()
+  expect(
+    await screen.findByRole('heading', { name: 'Машинное обучение' }),
+  ).toBeVisible()
+  expect(
+    screen.queryByRole('button', { name: 'Отменить' }),
+  ).not.toBeInTheDocument()
+  fireEvent.change(screen.getByLabelText('Файл карты компетенций'), {
+    target: { files: [new File(['map'], 'map.csv')] },
+  })
+  expect(screen.getByText('map.csv')).toBeVisible()
+  fireEvent.click(screen.getByRole('button', { name: 'Отменить' }))
+  expect(screen.queryByText('map.csv')).not.toBeInTheDocument()
+  expect(
+    screen.getByRole('button', { name: 'Подтвердить изменения' }),
+  ).toBeDisabled()
+  expect(
+    screen.queryByRole('button', { name: 'Отменить' }),
+  ).not.toBeInTheDocument()
+  expect(fetch.mock.calls.some(([url]) => url.endsWith('/import'))).toBe(false)
 })
 
 it('rejects unsupported and oversized files before sending them', async () => {
@@ -389,7 +449,9 @@ it('rejects unsupported and oversized files before sending them', async () => {
   expect(await screen.findByRole('alert')).toHaveTextContent(
     'Выберите файл CSV или XLSX',
   )
-  expect(screen.getByRole('button', { name: 'Загрузить карту' })).toBeDisabled()
+  expect(
+    screen.getByRole('button', { name: 'Подтвердить изменения' }),
+  ).toBeDisabled()
   const large = new File(['map'], 'map.csv')
   Object.defineProperty(large, 'size', { value: 25 * 1024 * 1024 + 1 })
   fireEvent.change(input, { target: { files: [large] } })
@@ -416,17 +478,19 @@ it('shows parser details and keeps the file available for retry after a failed i
   fireEvent.change(await screen.findByLabelText('Файл карты компетенций'), {
     target: { files: [new File(['map'], 'map.csv')] },
   })
-  fireEvent.click(screen.getByRole('button', { name: 'Загрузить карту' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Подтвердить изменения' }))
   fireEvent.click(
     within(await screen.findByRole('alertdialog')).getByRole('button', {
-      name: 'Заменить и загрузить',
+      name: 'Перезаписать',
     }),
   )
   expect(await screen.findByRole('alert')).toHaveTextContent(
     'Строка 7: Важность: ожидается число.',
   )
-  expect(screen.getByRole('button', { name: 'Загрузить карту' })).toBeEnabled()
-  expect(screen.queryByText('Карта загружена')).not.toBeInTheDocument()
+  expect(
+    screen.getByRole('button', { name: 'Подтвердить изменения' }),
+  ).toBeEnabled()
+  expect(screen.queryByText('Предупреждения импорта')).not.toBeInTheDocument()
   expect(screen.getByText('Карта ещё не загружена.')).toBeVisible()
 })
 
@@ -499,17 +563,19 @@ it('blocks a second upload and changing the file while import is pending', async
       : new Response(JSON.stringify(emptyMap)),
   )
   fireEvent.change(input, { target: { files: [new File(['map'], 'map.csv')] } })
-  fireEvent.click(screen.getByRole('button', { name: 'Загрузить карту' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Подтвердить изменения' }))
   fireEvent.click(
     within(await screen.findByRole('alertdialog')).getByRole('button', {
-      name: 'Заменить и загрузить',
+      name: 'Перезаписать',
     }),
   )
   expect(await screen.findByText('Загружаем и проверяем карту…')).toBeVisible()
   expect(input).toBeDisabled()
-  expect(screen.getByRole('button', { name: 'Загрузить карту' })).toBeDisabled()
+  expect(
+    screen.getByRole('button', { name: 'Подтвердить изменения' }),
+  ).toBeDisabled()
   await act(async () => finish(new Response(JSON.stringify(imported))))
-  expect(await screen.findByText('Карта загружена.')).toBeVisible()
+  expect(await screen.findByText('Предупреждения импорта')).toBeVisible()
 })
 
 it('returns to login when the backend rejects an import with an expired session', async () => {
@@ -521,10 +587,10 @@ it('returns to login when the backend rejects an import with an expired session'
   fireEvent.change(await screen.findByLabelText('Файл карты компетенций'), {
     target: { files: [new File(['map'], 'map.csv')] },
   })
-  fireEvent.click(screen.getByRole('button', { name: 'Загрузить карту' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Подтвердить изменения' }))
   fireEvent.click(
     within(await screen.findByRole('alertdialog')).getByRole('button', {
-      name: 'Заменить и загрузить',
+      name: 'Перезаписать',
     }),
   )
   expect(
@@ -541,20 +607,20 @@ it('does not claim success for an unreadable import result', async () => {
   fireEvent.change(await screen.findByLabelText('Файл карты компетенций'), {
     target: { files: [new File(['map'], 'map.csv')] },
   })
-  fireEvent.click(screen.getByRole('button', { name: 'Загрузить карту' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Подтвердить изменения' }))
   fireEvent.click(
     within(await screen.findByRole('alertdialog')).getByRole('button', {
-      name: 'Заменить и загрузить',
+      name: 'Перезаписать',
     }),
   )
   expect(await screen.findByRole('alert')).toHaveTextContent(
     'Проверьте текущую карту перед повторной загрузкой',
   )
-  expect(screen.queryByText('Карта загружена.')).not.toBeInTheDocument()
+  expect(screen.queryByText('Предупреждения импорта')).not.toBeInTheDocument()
   await waitFor(() =>
     expect(
-      screen.getByRole('region', { name: 'Текущая карта' }),
-    ).toHaveTextContent('Версия 2'),
+      screen.getByRole('region', { name: 'Машинное обучение' }),
+    ).toHaveTextContent(/Версия карты\s*2/),
   )
 })
 

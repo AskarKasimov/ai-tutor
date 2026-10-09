@@ -270,23 +270,23 @@ export function TrainerAnswer({
             }
           >
             {t(
-              `trainer.${recording ? 'stopRecording' : stage === 'grading' ? 'grading' : processing ? 'busy' : waiting ? 'allow' : error && voice.transcript ? 'retryAssessment' : error ? 'retry' : 'start'}`,
+              `trainer.${recording ? 'stopRecording' : stage === 'grading' ? 'grading' : processing ? 'busy' : waiting ? 'allow' : error && voice.transcript ? 'retryAssessment' : error ? 'recordAgain' : 'start'}`,
             )}
           </Button>
         )}
-        <Text as="p" className={styles.microphoneStatus}>
-          {t(
-            recording
-              ? 'session.recordingStatus'
-              : error
-                ? 'session.errorStatus'
+        {!error && (
+          <Text as="p" className={styles.microphoneStatus}>
+            {t(
+              recording
+                ? 'session.recordingStatus'
                 : processing
                   ? 'session.processingStatus'
                   : waiting
                     ? 'trainer.allow'
                     : 'session.microphoneReady',
-          )}
-        </Text>
+            )}
+          </Text>
+        )}
       </aside>
     </>
   )

@@ -1,10 +1,10 @@
 import { Button, Heading, Text } from '@radix-ui/themes'
 import {
+  CircleAlert,
   GraduationCap,
   LoaderCircle,
   Mic,
   RotateCcw,
-  Slash,
   Square,
 } from 'lucide-react'
 import { useEffect, useRef } from 'react'
@@ -35,6 +35,7 @@ function errorKey(error: unknown, fallback: string) {
   if (error.status === 404) return 'diagnostic.expired'
   if (error.status === 409) return 'diagnostic.conflict'
   if (error.status === 413) return 'diagnostic.recordingLimit'
+  if (error.code === 'NO_SPEECH_DETECTED') return 'diagnostic.noSpeech'
   if (error.status === 415 || error.status === 422)
     return 'diagnostic.invalidAudio'
   if (error.code === 'INVALID_RESPONSE') return 'diagnostic.invalidResponse'
@@ -164,13 +165,13 @@ function StudentDiagnostic({
       </aside>
       <div className={styles.content}>
         <header className={styles.header}>
-          <div className={styles.breadcrumb}>
-            <Text>{t('diagnostic.title')}</Text>
-            <span aria-hidden="true">
-              <Slash size={14} />
+          <p className={styles.pageContext}>
+            <span className={styles.pageContextLabel}>
+              {t('diagnostic.title')}
             </span>
-            <Text weight="bold">{subjectName}</Text>
-          </div>
+            <span className={styles.pageContextDot} aria-hidden="true" />
+            <span className={styles.pageContextTitle}>{subjectName}</span>
+          </p>
           <AccountMenu />
         </header>
         <Button variant="soft" onClick={onBack}>
@@ -264,6 +265,21 @@ function DiagnosticFlow({
   const waiting = voice.stage === 'permission'
   const blocked = recording || processing || waiting
   const failed = voice.stage === 'error'
+  const apiError =
+    failed && voice.error instanceof DiagnosticApiError ? voice.error : null
+  const needsRefresh =
+    !!apiError &&
+    ((apiError.status === 409 &&
+      apiError.code !== 'DIAGNOSTIC_ANSWER_IN_PROGRESS') ||
+      apiError.status === 404)
+  // The same audio cannot succeed again after the server rejected it.
+  const rerecord = !!apiError && [413, 415, 422].includes(apiError.status)
+  // Technical failures release the reservation, so a fresh take is safe too.
+  const canAlsoRerecord =
+    failed &&
+    voice.hasPending &&
+    !rerecord &&
+    (!apiError || apiError.status >= 500)
   const seconds = `${Math.floor(voice.seconds / 60)
     .toString()
     .padStart(2, '0')}:${(voice.seconds % 60).toString().padStart(2, '0')}`
@@ -376,23 +392,25 @@ function DiagnosticFlow({
                 { time: seconds },
               )}
             </Heading>
-            <Text as="p" className={styles.instructions}>
-              {t(
-                recording
-                  ? 'trainer.recordingHelp'
-                  : processing
-                    ? 'trainer.processingHelp'
-                    : waiting
-                      ? 'trainer.permissionHelp'
-                      : 'diagnostic.answerHelp',
-              )}
-            </Text>
-            {failed && (
-              <Text as="p" role="alert" className={styles.speechError}>
+            {failed ? (
+              <Text as="p" role="alert" className={styles.answerMessage}>
+                <CircleAlert size={16} aria-hidden="true" />
                 {t(
                   voice.captureError
                     ? `trainer.${voice.captureError}`
                     : errorKey(voice.error, 'diagnostic.submitError'),
+                )}
+              </Text>
+            ) : (
+              <Text as="p" className={styles.instructions}>
+                {t(
+                  recording
+                    ? 'trainer.recordingHelp'
+                    : processing
+                      ? 'trainer.processingHelp'
+                      : waiting
+                        ? 'trainer.permissionHelp'
+                        : 'diagnostic.answerHelp',
                 )}
               </Text>
             )}
@@ -414,20 +432,7 @@ function DiagnosticFlow({
                 <Mic size={40} />
               </div>
             )}
-            {voice.audioUrl && failed && (
-              <div className={styles.audio}>
-                <audio
-                  controls
-                  src={voice.audioUrl}
-                  aria-label={t('trainer.listenRecording')}
-                />
-              </div>
-            )}
-            {failed &&
-            voice.error instanceof DiagnosticApiError &&
-            ((voice.error.status === 409 &&
-              voice.error.code !== 'DIAGNOSTIC_ANSWER_IN_PROGRESS') ||
-              voice.error.status === 404) ? (
+            {needsRefresh ? (
               <Button className={styles.primary} onClick={() => void refresh()}>
                 {t('diagnostic.refresh')}
               </Button>
@@ -438,11 +443,17 @@ function DiagnosticFlow({
                 onClick={() =>
                   void (recording
                     ? voice.stop()
-                    : voice.hasPending
+                    : voice.hasPending && !rerecord
                       ? voice.retry()
                       : voice.start())
                 }
               >
+                {failed &&
+                  (voice.hasPending && !rerecord ? (
+                    <RotateCcw size={18} aria-hidden="true" />
+                  ) : (
+                    <Mic size={18} aria-hidden="true" />
+                  ))}
                 {t(
                   recording
                     ? 'trainer.stopRecording'
@@ -450,32 +461,50 @@ function DiagnosticFlow({
                       ? 'trainer.busy'
                       : waiting
                         ? 'trainer.allow'
-                        : voice.hasPending
+                        : voice.hasPending && !rerecord
                           ? 'diagnostic.retrySubmit'
-                          : 'trainer.start',
+                          : failed
+                            ? 'diagnostic.recordAgain'
+                            : 'trainer.start',
                 )}
               </Button>
             )}
-            {failed &&
-              voice.error instanceof DiagnosticApiError &&
-              [413, 415, 422].includes(voice.error.status) && (
-                <Button variant="soft" onClick={voice.reset}>
-                  {t('diagnostic.recordAgain')}
-                </Button>
-              )}
-            <Text as="p" className={styles.microphoneStatus} aria-live="polite">
-              {t(
-                recording
-                  ? 'session.recordingStatus'
-                  : failed
-                    ? 'session.errorStatus'
+            {canAlsoRerecord && (
+              <Button
+                variant="ghost"
+                color="gray"
+                className={styles.secondaryAction}
+                onClick={() => void voice.start()}
+              >
+                {t('diagnostic.recordAgain')}
+              </Button>
+            )}
+            {voice.audioUrl && failed && (
+              <div className={styles.audio}>
+                <audio
+                  controls
+                  src={voice.audioUrl}
+                  aria-label={t('trainer.listenRecording')}
+                />
+              </div>
+            )}
+            {!failed && (
+              <Text
+                as="p"
+                className={styles.microphoneStatus}
+                aria-live="polite"
+              >
+                {t(
+                  recording
+                    ? 'session.recordingStatus'
                     : processing
                       ? 'session.processingStatus'
                       : waiting
                         ? 'trainer.allow'
                         : 'session.microphoneReady',
-              )}
-            </Text>
+                )}
+              </Text>
+            )}
           </aside>
         </>
       )}

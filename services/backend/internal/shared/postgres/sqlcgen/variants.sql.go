@@ -9,8 +9,18 @@ import (
 	"context"
 )
 
+const findSubjectForVariantList = `-- name: FindSubjectForVariantList :one
+SELECT id FROM subjects WHERE id = $1
+`
+
+func (q *Queries) FindSubjectForVariantList(ctx context.Context, id string) (string, error) {
+	row := q.db.QueryRow(ctx, findSubjectForVariantList, id)
+	err := row.Scan(&id)
+	return id, err
+}
+
 const findVariantByRequestKey = `-- name: FindVariantByRequestKey :one
-SELECT id FROM variants WHERE user_id = $1 AND create_request_key = $2
+SELECT id, subject_id FROM variants WHERE user_id = $1 AND create_request_key = $2
 `
 
 type FindVariantByRequestKeyParams struct {
@@ -18,17 +28,22 @@ type FindVariantByRequestKeyParams struct {
 	CreateRequestKey string
 }
 
-func (q *Queries) FindVariantByRequestKey(ctx context.Context, arg FindVariantByRequestKeyParams) (string, error) {
+type FindVariantByRequestKeyRow struct {
+	ID        string
+	SubjectID string
+}
+
+func (q *Queries) FindVariantByRequestKey(ctx context.Context, arg FindVariantByRequestKeyParams) (FindVariantByRequestKeyRow, error) {
 	row := q.db.QueryRow(ctx, findVariantByRequestKey, arg.UserID, arg.CreateRequestKey)
-	var id string
-	err := row.Scan(&id)
-	return id, err
+	var i FindVariantByRequestKeyRow
+	err := row.Scan(&i.ID, &i.SubjectID)
+	return i, err
 }
 
 const insertVariant = `-- name: InsertVariant :one
 INSERT INTO variants(id, user_id, create_request_key, map_revision, algorithm_version,
-                     included_competency_count, skipped_competencies, created_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                     included_competency_count, skipped_competencies, created_at, subject_id, subject_name_snapshot)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 ON CONFLICT (user_id, create_request_key) DO NOTHING
 RETURNING id
 `
@@ -42,6 +57,8 @@ type InsertVariantParams struct {
 	IncludedCompetencyCount int32
 	SkippedCompetencies     []byte
 	CreatedAt               int64
+	SubjectID               string
+	SubjectNameSnapshot     string
 }
 
 func (q *Queries) InsertVariant(ctx context.Context, arg InsertVariantParams) (string, error) {
@@ -54,6 +71,8 @@ func (q *Queries) InsertVariant(ctx context.Context, arg InsertVariantParams) (s
 		arg.IncludedCompetencyCount,
 		arg.SkippedCompetencies,
 		arg.CreatedAt,
+		arg.SubjectID,
+		arg.SubjectNameSnapshot,
 	)
 	var id string
 	err := row.Scan(&id)
@@ -97,18 +116,19 @@ func (q *Queries) InsertVariantTask(ctx context.Context, arg InsertVariantTaskPa
 
 const listVariantsByOwner = `-- name: ListVariantsByOwner :many
 SELECT id, map_revision, algorithm_version, included_competency_count,
-       skipped_competencies, created_at,
+       skipped_competencies, created_at, subject_id, subject_name_snapshot,
        (SELECT count(*) FROM variant_tasks vt WHERE vt.variant_id = variants.id) AS task_count
 FROM variants
-WHERE user_id = $1
-  AND ($2::bigint IS NULL
-       OR (created_at, id) < ($2::bigint, $3::text))
+WHERE user_id = $1 AND subject_id = $2
+  AND ($3::bigint IS NULL
+       OR (created_at, id) < ($3::bigint, $4::text))
 ORDER BY created_at DESC, id DESC
-LIMIT $4::integer
+LIMIT $5::integer
 `
 
 type ListVariantsByOwnerParams struct {
 	UserID          string
+	SubjectID       string
 	CursorCreatedAt *int64
 	CursorID        *string
 	PageSize        int32
@@ -121,12 +141,15 @@ type ListVariantsByOwnerRow struct {
 	IncludedCompetencyCount int32
 	SkippedCompetencies     []byte
 	CreatedAt               int64
+	SubjectID               string
+	SubjectNameSnapshot     string
 	TaskCount               int64
 }
 
 func (q *Queries) ListVariantsByOwner(ctx context.Context, arg ListVariantsByOwnerParams) ([]ListVariantsByOwnerRow, error) {
 	rows, err := q.db.Query(ctx, listVariantsByOwner,
 		arg.UserID,
+		arg.SubjectID,
 		arg.CursorCreatedAt,
 		arg.CursorID,
 		arg.PageSize,
@@ -145,6 +168,8 @@ func (q *Queries) ListVariantsByOwner(ctx context.Context, arg ListVariantsByOwn
 			&i.IncludedCompetencyCount,
 			&i.SkippedCompetencies,
 			&i.CreatedAt,
+			&i.SubjectID,
+			&i.SubjectNameSnapshot,
 			&i.TaskCount,
 		); err != nil {
 			return nil, err
@@ -157,19 +182,26 @@ func (q *Queries) ListVariantsByOwner(ctx context.Context, arg ListVariantsByOwn
 	return items, nil
 }
 
-const lockCompetencyMapRevisionForVariant = `-- name: LockCompetencyMapRevisionForVariant :one
-SELECT revision FROM competency_map_state WHERE singleton = true FOR SHARE
+const lockSubjectForVariant = `-- name: LockSubjectForVariant :one
+SELECT id, name, COALESCE(active_revision, 0)::bigint AS active_revision
+FROM subjects WHERE id = $1 FOR SHARE
 `
 
-func (q *Queries) LockCompetencyMapRevisionForVariant(ctx context.Context) (int64, error) {
-	row := q.db.QueryRow(ctx, lockCompetencyMapRevisionForVariant)
-	var revision int64
-	err := row.Scan(&revision)
-	return revision, err
+type LockSubjectForVariantRow struct {
+	ID             string
+	Name           string
+	ActiveRevision int64
+}
+
+func (q *Queries) LockSubjectForVariant(ctx context.Context, id string) (LockSubjectForVariantRow, error) {
+	row := q.db.QueryRow(ctx, lockSubjectForVariant, id)
+	var i LockSubjectForVariantRow
+	err := row.Scan(&i.ID, &i.Name, &i.ActiveRevision)
+	return i, err
 }
 
 const readVariantCandidates = `-- name: ReadVariantCandidates :many
-SELECT state.revision,
+SELECT $1::bigint AS revision,
        COALESCE((SELECT min(osr.source_row_index) FROM outcomes co
                  LEFT JOIN outcome_source_rows osr ON osr.outcome_id = co.id
                  WHERE co.constituent_id IN (
@@ -202,15 +234,14 @@ SELECT state.revision,
                'importance', outcome.importance, 'educational_content', outcome.educational_content
            )
        ) AS profile_json
-FROM competency_map_state state
-JOIN competencies competency ON competency.revision = state.revision
+FROM competencies competency
 LEFT JOIN constituents constituent ON constituent.competency_id = competency.id
 LEFT JOIN topic_levels topic ON topic.id = constituent.topic_level_id
 LEFT JOIN outcomes outcome ON outcome.constituent_id = constituent.id
 LEFT JOIN taxonomies taxonomy ON taxonomy.id = outcome.taxonomy_id
 LEFT JOIN ald_levels ald ON ald.id = outcome.ald_level_id
 LEFT JOIN tasks task ON task.outcome_id = outcome.id
-WHERE state.singleton = true
+WHERE competency.revision = $1::bigint
 ORDER BY competency_source_order, competency.name, competency.id,
          outcome_source_order, outcome.name, outcome.id,
          CASE WHEN task.source_row_index IS NULL THEN 1 ELSE 0 END,
@@ -225,8 +256,8 @@ type ReadVariantCandidatesRow struct {
 	ProfileJson           []byte
 }
 
-func (q *Queries) ReadVariantCandidates(ctx context.Context) ([]ReadVariantCandidatesRow, error) {
-	rows, err := q.db.Query(ctx, readVariantCandidates)
+func (q *Queries) ReadVariantCandidates(ctx context.Context, revision int64) ([]ReadVariantCandidatesRow, error) {
+	rows, err := q.db.Query(ctx, readVariantCandidates, revision)
 	if err != nil {
 		return nil, err
 	}
@@ -253,7 +284,7 @@ func (q *Queries) ReadVariantCandidates(ctx context.Context) ([]ReadVariantCandi
 
 const readVariantHeaderByOwner = `-- name: ReadVariantHeaderByOwner :one
 SELECT id, user_id, map_revision, algorithm_version, included_competency_count,
-       skipped_competencies, created_at
+       skipped_competencies, created_at, subject_id, subject_name_snapshot
 FROM variants WHERE id = $1 AND user_id = $2
 `
 
@@ -270,6 +301,8 @@ type ReadVariantHeaderByOwnerRow struct {
 	IncludedCompetencyCount int32
 	SkippedCompetencies     []byte
 	CreatedAt               int64
+	SubjectID               string
+	SubjectNameSnapshot     string
 }
 
 func (q *Queries) ReadVariantHeaderByOwner(ctx context.Context, arg ReadVariantHeaderByOwnerParams) (ReadVariantHeaderByOwnerRow, error) {
@@ -283,6 +316,8 @@ func (q *Queries) ReadVariantHeaderByOwner(ctx context.Context, arg ReadVariantH
 		&i.IncludedCompetencyCount,
 		&i.SkippedCompetencies,
 		&i.CreatedAt,
+		&i.SubjectID,
+		&i.SubjectNameSnapshot,
 	)
 	return i, err
 }

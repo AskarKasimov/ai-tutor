@@ -1107,6 +1107,16 @@ components:
         - main
         - position
       type: object
+    variantgenhttp.CreateRequest:
+      additionalProperties: false
+      properties:
+        subject_id:
+          maxLength: 128
+          minLength: 1
+          type: string
+      required:
+        - subject_id
+      type: object
     variantgenhttp.SkippedCompetency:
       additionalProperties: false
       properties:
@@ -1176,6 +1186,13 @@ components:
         skipped_competency_count:
           minimum: 0
           type: integer
+        subject_id:
+          maxLength: 128
+          minLength: 1
+          type: string
+        subject_name_snapshot:
+          minLength: 1
+          type: string
         task_count:
           minimum: 1
           type: integer
@@ -1188,6 +1205,8 @@ components:
         - map_revision
         - skipped_competencies
         - skipped_competency_count
+        - subject_id
+        - subject_name_snapshot
         - task_count
       type: object
     variantgenhttp.VariantList:
@@ -1229,6 +1248,13 @@ components:
         skipped_competency_count:
           minimum: 0
           type: integer
+        subject_id:
+          maxLength: 128
+          minLength: 1
+          type: string
+        subject_name_snapshot:
+          minLength: 1
+          type: string
         task_count:
           minimum: 1
           type: integer
@@ -1239,6 +1265,8 @@ components:
         - included_competency_count
         - map_revision
         - skipped_competency_count
+        - subject_id
+        - subject_name_snapshot
         - task_count
       type: object
     variantgenhttp.VariantTask:
@@ -2700,6 +2728,12 @@ paths:
           name: cursor
           schema:
             type: string
+        - description: ID предмета
+          in: query
+          name: subject_id
+          required: true
+          schema:
+            type: string
       responses:
         "200":
           content:
@@ -2713,6 +2747,12 @@ paths:
               schema:
                 $ref: '#/components/schemas/fault.Error'
           description: Unauthorized
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Not Found
         "422":
           content:
             application/json:
@@ -2732,7 +2772,7 @@ paths:
         - Варианты
       x-implementation: implemented
     post:
-      description: Вариант собирается по всей карте без тела запроса. Для включения достаточно одного готового TRUE-ОР. Выбираются основной и до двух базовых ОР с рангом Блума ниже основного. Неуспешные компетенции возвращаются с причиной. Повтор успешного запроса с тем же ключом возвращает сохранённый вариант.
+      description: Вариант строится по активной карте указанного предмета. Для включения достаточно одного готового TRUE-ОР. Выбираются основной и до двух базовых ОР с рангом Блума ниже основного. Неуспешные компетенции возвращаются с причиной. Повтор ключа для другого предмета возвращает конфликт.
       parameters:
         - description: Ключ повтора успешного запроса
           in: header
@@ -2742,6 +2782,15 @@ paths:
             maxLength: 128
             minLength: 1
             type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/variantgenhttp.CreateRequest'
+              description: Предмет варианта
+              summary: request
+        description: Предмет варианта
+        required: true
       responses:
         "201":
           content:
@@ -2755,6 +2804,12 @@ paths:
               schema:
                 $ref: '#/components/schemas/fault.Error'
           description: Unauthorized
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Not Found
         "409":
           content:
             application/json:

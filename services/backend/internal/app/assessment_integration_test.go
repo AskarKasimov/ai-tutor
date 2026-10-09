@@ -28,7 +28,8 @@ func TestAssessmentEndpointOwnershipHistoricalSnapshotAndStrictResults(t *testin
 		t.Fatalf("import: %d %s", w.Code, w.Body.String())
 	}
 	create := func(key string) (string, string, string) {
-		req := httptest.NewRequest(http.MethodPost, "https://api.example/variants", nil)
+		req := httptest.NewRequest(http.MethodPost, "https://api.example/variants", strings.NewReader(`{"subject_id":"subject:intro-to-ml"}`))
+		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("Idempotency-Key", key)
 		req.AddCookie(access)
 		w := httptest.NewRecorder()

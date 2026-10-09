@@ -78,7 +78,8 @@ func TestMockModeUsesLocalModelsWithRealAuthAndStorage(t *testing.T) {
 		t.Fatalf("import competency map: %d %s", w.Code, w.Body.String())
 	}
 
-	req := httptest.NewRequest(http.MethodPost, "https://api.example/variants", strings.NewReader(""))
+	req := httptest.NewRequest(http.MethodPost, "https://api.example/variants", strings.NewReader(`{"subject_id":"subject:intro-to-ml"}`))
+	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Idempotency-Key", "mock-assessment-variant")
 	req.AddCookie(access)
 	w = httptest.NewRecorder()

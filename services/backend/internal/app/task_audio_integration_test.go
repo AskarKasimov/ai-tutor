@@ -103,7 +103,8 @@ func TestTaskAudioIsSynthesizedOnceAndServedFromStorage(t *testing.T) {
 	if w := upload(f, "/admin/competency-map/import", "file", "map.csv", "text/csv", variantMapCSV(t), admin); w.Code != http.StatusOK {
 		t.Fatalf("import: %d %s", w.Code, w.Body.String())
 	}
-	variantRequest := httptest.NewRequest(http.MethodPost, "https://api.example/variants", strings.NewReader(""))
+	variantRequest := httptest.NewRequest(http.MethodPost, "https://api.example/variants", strings.NewReader(`{"subject_id":"subject:intro-to-ml"}`))
+	variantRequest.Header.Set("Content-Type", "application/json")
 	variantRequest.Header.Set("Idempotency-Key", "task-audio-variant-1")
 	variantRequest.AddCookie(access)
 	variantResponse := httptest.NewRecorder()
@@ -242,7 +243,8 @@ func TestRegenerateCurrentAudioRepairsMissingObjectSynchronously(t *testing.T) {
 	if len(assets) == 0 {
 		t.Fatal("import created no tasks")
 	}
-	variantRequest := httptest.NewRequest(http.MethodPost, "https://api.example/variants", strings.NewReader(""))
+	variantRequest := httptest.NewRequest(http.MethodPost, "https://api.example/variants", strings.NewReader(`{"subject_id":"subject:intro-to-ml"}`))
+	variantRequest.Header.Set("Content-Type", "application/json")
 	variantRequest.Header.Set("Idempotency-Key", "audio-repair-variant")
 	variantRequest.AddCookie(access)
 	variantResponse := httptest.NewRecorder()
@@ -371,7 +373,8 @@ func TestTaskAudioReplacementCancelsSnapshotOnlyAndExpiredAssets(t *testing.T) {
 	if w := upload(f, "/admin/competency-map/import", "file", "map-a.csv", "text/csv", variantMapCSV(t), admin); w.Code != http.StatusOK {
 		t.Fatalf("import A: %d %s", w.Code, w.Body.String())
 	}
-	variantRequest := httptest.NewRequest(http.MethodPost, "https://api.example/variants", strings.NewReader(""))
+	variantRequest := httptest.NewRequest(http.MethodPost, "https://api.example/variants", strings.NewReader(`{"subject_id":"subject:intro-to-ml"}`))
+	variantRequest.Header.Set("Content-Type", "application/json")
 	variantRequest.Header.Set("Idempotency-Key", "task-audio-replacement-variant")
 	variantRequest.AddCookie(access)
 	variantResponse := httptest.NewRecorder()

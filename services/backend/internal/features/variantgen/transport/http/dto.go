@@ -4,6 +4,10 @@ import (
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/variant"
 )
 
+type CreateRequest struct {
+	SubjectID string `json:"subject_id" minLength:"1" maxLength:"128" binding:"required"`
+}
+
 type SkippedCompetency struct {
 	CompetencyID           string `json:"competency_id" minLength:"1" maxLength:"128" binding:"required"`
 	CompetencyName         string `json:"competency_name"`
@@ -40,6 +44,8 @@ type CompetencyBlock struct {
 }
 type Variant struct {
 	ID                      string              `json:"id" minLength:"1" maxLength:"128"`
+	SubjectID               string              `json:"subject_id" minLength:"1" maxLength:"128"`
+	SubjectNameSnapshot     string              `json:"subject_name_snapshot" minLength:"1"`
 	MapRevision             int64               `json:"map_revision" minimum:"1"`
 	AlgorithmVersion        string              `json:"algorithm_version" minLength:"1" maxLength:"128"`
 	IncludedCompetencyCount int                 `json:"included_competency_count" minimum:"1"`
@@ -51,6 +57,8 @@ type Variant struct {
 }
 type VariantSummary struct {
 	ID                      string `json:"id" minLength:"1" maxLength:"128"`
+	SubjectID               string `json:"subject_id" minLength:"1" maxLength:"128"`
+	SubjectNameSnapshot     string `json:"subject_name_snapshot" minLength:"1"`
 	MapRevision             int64  `json:"map_revision" minimum:"1"`
 	AlgorithmVersion        string `json:"algorithm_version" minLength:"1" maxLength:"128"`
 	IncludedCompetencyCount int    `json:"included_competency_count" minimum:"1"`
@@ -91,13 +99,13 @@ func variantDTO(value variant.Variant) Variant {
 			EligibleOutcomeCount: item.EligibleOutcomes, Code: item.Code, Message: skipMessage(item),
 			LowerBloomOutcomeCount: item.LowerBloomOutcomes, MainBloomRank: item.MainBloomRank})
 	}
-	return Variant{ID: value.ID, MapRevision: value.MapRevision, AlgorithmVersion: value.AlgorithmVersion,
+	return Variant{ID: value.ID, SubjectID: value.SubjectID, SubjectNameSnapshot: value.SubjectNameSnapshot, MapRevision: value.MapRevision, AlgorithmVersion: value.AlgorithmVersion,
 		IncludedCompetencyCount: value.IncludedCompetencyCount, SkippedCompetencyCount: len(skipped),
 		TaskCount: value.TaskCount, CreatedAt: value.CreatedAt, Competencies: blocks, SkippedCompetencies: skipped}
 }
 
 func summaryDTO(value variant.Variant) VariantSummary {
-	return VariantSummary{ID: value.ID, MapRevision: value.MapRevision, AlgorithmVersion: value.AlgorithmVersion,
+	return VariantSummary{ID: value.ID, SubjectID: value.SubjectID, SubjectNameSnapshot: value.SubjectNameSnapshot, MapRevision: value.MapRevision, AlgorithmVersion: value.AlgorithmVersion,
 		IncludedCompetencyCount: value.IncludedCompetencyCount, SkippedCompetencyCount: len(value.SkippedCompetencies),
 		TaskCount: value.TaskCount, CreatedAt: value.CreatedAt}
 }

@@ -125,6 +125,15 @@ UPDATE competency_map_state SET revision=7 WHERE singleton=true;`)
 	if variantSubject != mlID || variantName != "Введение в ML" || taskSnapshot != "Снимок" {
 		t.Fatalf("variant backfill: subject=%q name=%q task snapshot=%q", variantSubject, variantName, taskSnapshot)
 	}
+	var subjectIDDefault, subjectNameDefault *string
+	if err := pool.QueryRow(ctx, `SELECT
+  (SELECT column_default FROM information_schema.columns WHERE table_schema=current_schema() AND table_name='variants' AND column_name='subject_id'),
+  (SELECT column_default FROM information_schema.columns WHERE table_schema=current_schema() AND table_name='variants' AND column_name='subject_name_snapshot')`).Scan(&subjectIDDefault, &subjectNameDefault); err != nil {
+		t.Fatal(err)
+	}
+	if subjectIDDefault != nil || subjectNameDefault != nil {
+		t.Fatalf("variant subject defaults remain: subject_id=%v subject_name_snapshot=%v", subjectIDDefault, subjectNameDefault)
+	}
 	if _, err := pool.Exec(ctx, `INSERT INTO subjects(id,name,created_at) VALUES ('subject:second','Второй предмет',2)`); err != nil {
 		t.Fatalf("insert second subject: %v", err)
 	}
@@ -187,7 +196,7 @@ func TestMigratePendingRollbackAndRetry(t *testing.T) {
 	}
 	files := fstest.MapFS{
 		"00001_initial.sql": {Data: initial},
-		"00006_test.sql":    {Data: []byte("-- +goose Up\nCREATE TABLE migration_probe(id integer);\nSELECT * FROM nonexistent_migration_table;\n")},
+		"00007_test.sql":    {Data: []byte("-- +goose Up\nCREATE TABLE migration_probe(id integer);\nSELECT * FROM nonexistent_migration_table;\n")},
 	}
 	if err := migrate(ctx, pool, files); err == nil {
 		t.Fatal("invalid migration succeeded")
@@ -197,16 +206,16 @@ func TestMigratePendingRollbackAndRetry(t *testing.T) {
 		t.Fatalf("failed migration was not rolled back: exists=%v, err=%v", exists, err)
 	}
 	var count int
-	if err := pool.QueryRow(ctx, "SELECT count(*) FROM goose_db_version WHERE version_id=6").Scan(&count); err != nil || count != 0 {
+	if err := pool.QueryRow(ctx, "SELECT count(*) FROM goose_db_version WHERE version_id=7").Scan(&count); err != nil || count != 0 {
 		t.Fatalf("failed migration recorded: count=%d, err=%v", count, err)
 	}
-	files["00006_test.sql"].Data = []byte("-- +goose Up\nCREATE TABLE migration_probe(id integer);\n")
+	files["00007_test.sql"].Data = []byte("-- +goose Up\nCREATE TABLE migration_probe(id integer);\n")
 	for range 2 {
 		if err := migrate(ctx, pool, files); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if err := pool.QueryRow(ctx, "SELECT count(*) FROM goose_db_version WHERE version_id=6 AND is_applied").Scan(&count); err != nil || count != 1 {
+	if err := pool.QueryRow(ctx, "SELECT count(*) FROM goose_db_version WHERE version_id=7 AND is_applied").Scan(&count); err != nil || count != 1 {
 		t.Fatalf("pending migration applied: count=%d, err=%v", count, err)
 	}
 }

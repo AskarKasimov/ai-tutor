@@ -40,16 +40,19 @@ func New(repo Repository, chooser TaskChooser, ids IDGenerator, now func() time.
 	return &Service{repo: repo, chooser: chooser, ids: ids, now: now}
 }
 
-func (s *Service) Create(ctx context.Context, ownerID, key string) (variant.Variant, error) {
+func (s *Service) Create(ctx context.Context, ownerID, subjectID, key string) (variant.Variant, error) {
 	if strings.TrimSpace(key) == "" || len(key) > 128 || strings.TrimSpace(key) != key || strings.IndexFunc(key, unicode.IsControl) >= 0 {
 		return variant.Variant{}, fault.Validation("Idempotency-Key", "Укажите ключ длиной от 1 до 128 символов без пробелов по краям и управляющих символов.")
 	}
-	return s.repo.Create(ctx, ownerID, key, func(revision int64, candidates []variant.CandidateOutcome) (variant.Variant, error) {
-		return s.build(ownerID, revision, candidates)
+	if strings.TrimSpace(subjectID) == "" {
+		return variant.Variant{}, fault.Validation("subject_id", "Укажите предмет.")
+	}
+	return s.repo.Create(ctx, ownerID, subjectID, key, func(id, name string, revision int64, candidates []variant.CandidateOutcome) (variant.Variant, error) {
+		return s.build(ownerID, id, name, revision, candidates)
 	})
 }
 
-func (s *Service) build(ownerID string, revision int64, candidates []variant.CandidateOutcome) (variant.Variant, error) {
+func (s *Service) build(ownerID, subjectID, subjectName string, revision int64, candidates []variant.CandidateOutcome) (variant.Variant, error) {
 	if len(candidates) == 0 {
 		return variant.Variant{}, noEligible([]variant.SkippedCompetency{{Code: "EMPTY_MAP"}})
 	}
@@ -100,7 +103,7 @@ func (s *Service) build(ownerID string, revision int64, candidates []variant.Can
 		}
 		return ordered[i].profile.ID < ordered[j].profile.ID
 	})
-	result := variant.Variant{OwnerID: ownerID, MapRevision: revision, AlgorithmVersion: AlgorithmVersion,
+	result := variant.Variant{OwnerID: ownerID, SubjectID: subjectID, SubjectNameSnapshot: subjectName, MapRevision: revision, AlgorithmVersion: AlgorithmVersion,
 		SkippedCompetencies: []variant.SkippedCompetency{}, Competencies: []variant.CompetencySelection{}, CreatedAt: s.now().Unix()}
 	for _, comp := range ordered {
 		outcomes := make([]*taskPool, 0, len(comp.outcomes))
@@ -241,7 +244,7 @@ func (s *Service) Get(ctx context.Context, ownerID, id string) (variant.Variant,
 func (s *Service) Task(ctx context.Context, ownerID, variantID, taskID string) (variant.VariantTask, error) {
 	return s.repo.Task(ctx, ownerID, variantID, taskID)
 }
-func (s *Service) List(ctx context.Context, ownerID string, limit int, cursor string) ([]variant.Variant, string, error) {
+func (s *Service) List(ctx context.Context, ownerID, subjectID string, limit int, cursor string) ([]variant.Variant, string, error) {
 	if limit < 1 {
 		limit = 20
 	}
@@ -252,7 +255,10 @@ func (s *Service) List(ctx context.Context, ownerID string, limit int, cursor st
 	if err != nil {
 		return nil, "", err
 	}
-	items, next, err := s.repo.List(ctx, ownerID, limit, decoded)
+	if strings.TrimSpace(subjectID) == "" {
+		return nil, "", fault.Validation("subject_id", "Укажите предмет.")
+	}
+	items, next, err := s.repo.List(ctx, ownerID, subjectID, limit, decoded)
 	if err != nil {
 		return nil, "", err
 	}

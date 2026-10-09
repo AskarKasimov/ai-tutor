@@ -39,11 +39,11 @@ func TestBuildUsesPriorityAndStrictlyLowerBasics(t *testing.T) {
 		candidate("c1", "Comp", "main", "Main", "application", 5, 30, "main-task-2", 3),
 		candidate("c1", "Comp", "tie", "Tie", "analysis", 4, 40, "tie-task", 4),
 	}
-	got, err := service.build("owner", 7, candidates)
+	got, err := service.build("owner", "subject:test", "Тест", 7, candidates)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.MapRevision != 7 || got.IncludedCompetencyCount != 1 || got.CreatedAt != 100 {
+	if got.MapRevision != 7 || got.SubjectID != "subject:test" || got.SubjectNameSnapshot != "Тест" || got.IncludedCompetencyCount != 1 || got.CreatedAt != 100 {
 		t.Fatalf("variant metadata: %+v", got)
 	}
 	selection := got.Competencies[0]
@@ -84,7 +84,7 @@ func TestBuildIncludesMainWithAvailableLowerBloomOutcomes(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			service := New(nil, &fixedChooser{}, &fixedIDs{}, time.Now)
-			got, err := service.build("owner", 1, tc.candidates)
+			got, err := service.build("owner", "subject:test", "Тест", 1, tc.candidates)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -111,7 +111,7 @@ func TestBuildSkipsOnlyCompetenciesWithoutReadyEnabledOutcomes(t *testing.T) {
 	incomplete := candidate("incomplete", "Incomplete", "missing", "Missing", "analysis", 5, 3, "t3", 3)
 	incomplete.Profile.ReferenceAnswer = nil
 	service := New(nil, &fixedChooser{}, &fixedIDs{}, time.Now)
-	got, err := service.build("owner", 1, []variant.CandidateOutcome{valid, disabled, incomplete})
+	got, err := service.build("owner", "subject:test", "Тест", 1, []variant.CandidateOutcome{valid, disabled, incomplete})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -123,7 +123,7 @@ func TestBuildSkipsOnlyCompetenciesWithoutReadyEnabledOutcomes(t *testing.T) {
 			t.Fatalf("unexpected skip: %+v", skipped)
 		}
 	}
-	_, err = service.build("owner", 1, []variant.CandidateOutcome{disabled, incomplete})
+	_, err = service.build("owner", "subject:test", "Тест", 1, []variant.CandidateOutcome{disabled, incomplete})
 	failure, ok := err.(*fault.Error)
 	if !ok || failure.Code != "NO_ELIGIBLE_COMPETENCIES" {
 		t.Fatalf("unexpected failure: %v", err)

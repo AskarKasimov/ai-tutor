@@ -208,7 +208,8 @@ func TestOpenAPIResponses(t *testing.T) {
 	}
 	check("POST", "/admin/subjects/{subject_id}/competency-map/import", upload(f, "/admin/subjects/subject:intro-to-ml/competency-map/import", "file", "subject.csv", "text/csv", variantMapCSV(t), admin))
 	check("GET", "/subjects/{subject_id}/competency-map", f.request("GET", "/subjects/subject:intro-to-ml/competency-map", "", access))
-	variantCreateRequest := httptest.NewRequest(http.MethodPost, "https://api.example/variants", strings.NewReader(""))
+	variantCreateRequest := httptest.NewRequest(http.MethodPost, "https://api.example/variants", strings.NewReader(`{"subject_id":"subject:intro-to-ml"}`))
+	variantCreateRequest.Header.Set("Content-Type", "application/json")
 	variantCreateRequest.Header.Set("Idempotency-Key", "contract-variant-1")
 	variantCreateRequest.AddCookie(access)
 	variantCreate := httptest.NewRecorder()
@@ -301,7 +302,7 @@ func TestOpenAPIResponses(t *testing.T) {
 	check("GET", "/diagnostic-sessions/{id}/result", f.request("GET", "/diagnostic-sessions/"+diagnosticProgress.SessionID+"/result", "", access))
 	check("GET", "/diagnostic-sessions/{id}/feedback", f.request("GET", "/diagnostic-sessions/"+diagnosticProgress.SessionID+"/feedback", "", access))
 	f.app.cfg.APIMode = "real"
-	check("GET", "/variants", f.request("GET", "/variants", "", access))
+	check("GET", "/variants", f.request("GET", "/variants?subject_id=subject%3Aintro-to-ml", "", access))
 	check("GET", "/variants/{id}", f.request("GET", "/variants/"+createdVariant.ID, "", access))
 	check("GET", "/variants/{id}/tasks/{task_id}", f.request("GET", "/variants/"+createdVariant.ID+"/tasks/"+createdVariant.Competencies[0].Main.ID, "", access))
 	var outcomeID, taskID string

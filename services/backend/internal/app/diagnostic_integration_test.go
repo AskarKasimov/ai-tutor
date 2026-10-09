@@ -23,7 +23,8 @@ func TestDiagnosticSessionAPIProgressOwnershipAndSnapshotPrivacy(t *testing.T) {
 	if w := upload(f, "/admin/competency-map/import", "file", "map.csv", "text/csv", variantMapCSV(t), admin); w.Code != http.StatusOK {
 		t.Fatalf("import: %d %s", w.Code, w.Body.String())
 	}
-	variantRequest := httptest.NewRequest(http.MethodPost, "https://api.example/variants", strings.NewReader(""))
+	variantRequest := httptest.NewRequest(http.MethodPost, "https://api.example/variants", strings.NewReader(`{"subject_id":"subject:intro-to-ml"}`))
+	variantRequest.Header.Set("Content-Type", "application/json")
 	variantRequest.Header.Set("Idempotency-Key", "diagnostic-variant-1")
 	variantRequest.AddCookie(access)
 	variantResponse := httptest.NewRecorder()

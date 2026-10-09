@@ -22,24 +22,31 @@ var _ variant.TaskReader = (*Repository)(nil)
 
 func New(pool *pgxpool.Pool) *Repository { return &Repository{pool: pool, queries: db.New(pool)} }
 
-func (r *Repository) Create(ctx context.Context, ownerID, key string, build application.BuildFunc) (variant.Variant, error) {
+func (r *Repository) Create(ctx context.Context, ownerID, subjectID, key string, build application.BuildFunc) (variant.Variant, error) {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
 		return variant.Variant{}, err
 	}
 	defer tx.Rollback(ctx)
 	q := db.New(tx)
-	if id, err := q.FindVariantByRequestKey(ctx, db.FindVariantByRequestKeyParams{UserID: ownerID, CreateRequestKey: key}); err == nil {
-		_ = tx.Rollback(ctx)
-		return r.Get(ctx, ownerID, id)
-	} else if err != pgx.ErrNoRows {
-		return variant.Variant{}, err
+	subjectInfo, err := q.LockSubjectForVariant(ctx, subjectID)
+	if err == pgx.ErrNoRows {
+		return variant.Variant{}, fault.New(fault.NotFound, "SUBJECT_NOT_FOUND", "Предмет не найден.")
 	}
-	revision, err := q.LockCompetencyMapRevisionForVariant(ctx)
 	if err != nil {
 		return variant.Variant{}, err
 	}
-	rows, err := q.ReadVariantCandidates(ctx)
+	if existing, err := q.FindVariantByRequestKey(ctx, db.FindVariantByRequestKeyParams{UserID: ownerID, CreateRequestKey: key}); err == nil {
+		_ = tx.Rollback(ctx)
+		if existing.SubjectID != subjectID {
+			return variant.Variant{}, idempotencySubjectConflict()
+		}
+		return r.Get(ctx, ownerID, existing.ID)
+	} else if err != pgx.ErrNoRows {
+		return variant.Variant{}, err
+	}
+	revision := subjectInfo.ActiveRevision
+	rows, err := q.ReadVariantCandidates(ctx, revision)
 	if err != nil {
 		return variant.Variant{}, err
 	}
@@ -51,7 +58,7 @@ func (r *Repository) Create(ctx context.Context, ownerID, key string, build appl
 		}
 		candidates = append(candidates, variant.CandidateOutcome{Profile: profile, CompetencySourceOrder: row.CompetencySourceOrder, SourceOrder: row.OutcomeSourceOrder, HasTask: row.TaskID != nil})
 	}
-	result, err := build(revision, candidates)
+	result, err := build(subjectInfo.ID, subjectInfo.Name, revision, candidates)
 	if err != nil {
 		return variant.Variant{}, err
 	}
@@ -62,15 +69,19 @@ func (r *Repository) Create(ctx context.Context, ownerID, key string, build appl
 	createdID, err := q.InsertVariant(ctx, db.InsertVariantParams{
 		ID: result.ID, UserID: ownerID, CreateRequestKey: key, MapRevision: result.MapRevision,
 		AlgorithmVersion: result.AlgorithmVersion, IncludedCompetencyCount: int32(result.IncludedCompetencyCount),
-		SkippedCompetencies: skipped, CreatedAt: result.CreatedAt,
+		SkippedCompetencies: skipped, CreatedAt: result.CreatedAt, SubjectID: subjectInfo.ID,
+		SubjectNameSnapshot: subjectInfo.Name,
 	})
 	if err == pgx.ErrNoRows {
 		_ = tx.Rollback(ctx)
-		id, readErr := r.queries.FindVariantByRequestKey(ctx, db.FindVariantByRequestKeyParams{UserID: ownerID, CreateRequestKey: key})
+		existing, readErr := r.queries.FindVariantByRequestKey(ctx, db.FindVariantByRequestKeyParams{UserID: ownerID, CreateRequestKey: key})
 		if readErr != nil {
 			return variant.Variant{}, readErr
 		}
-		return r.Get(ctx, ownerID, id)
+		if existing.SubjectID != subjectID {
+			return variant.Variant{}, idempotencySubjectConflict()
+		}
+		return r.Get(ctx, ownerID, existing.ID)
 	}
 	if err != nil {
 		return variant.Variant{}, err
@@ -95,7 +106,7 @@ func (r *Repository) Create(ctx context.Context, ownerID, key string, build appl
 	if err := tx.Commit(ctx); err != nil {
 		return variant.Variant{}, err
 	}
-	result.ID, result.OwnerID = createdID, ownerID
+	result.ID, result.OwnerID, result.SubjectID, result.SubjectNameSnapshot = createdID, ownerID, subjectInfo.ID, subjectInfo.Name
 	return result, nil
 }
 
@@ -149,7 +160,9 @@ func (r *Repository) Get(ctx context.Context, ownerID, id string) (variant.Varia
 	if err != nil {
 		return variant.Variant{}, err
 	}
-	result := variant.Variant{ID: header.ID, OwnerID: header.UserID, MapRevision: header.MapRevision, AlgorithmVersion: header.AlgorithmVersion, IncludedCompetencyCount: int(header.IncludedCompetencyCount), CreatedAt: header.CreatedAt, Competencies: []variant.CompetencySelection{}}
+	result := variant.Variant{ID: header.ID, OwnerID: header.UserID, SubjectID: header.SubjectID, SubjectNameSnapshot: header.SubjectNameSnapshot,
+		MapRevision: header.MapRevision, AlgorithmVersion: header.AlgorithmVersion, IncludedCompetencyCount: int(header.IncludedCompetencyCount),
+		CreatedAt: header.CreatedAt, Competencies: []variant.CompetencySelection{}}
 	if err := json.Unmarshal(header.SkippedCompetencies, &result.SkippedCompetencies); err != nil {
 		return variant.Variant{}, err
 	}
@@ -195,8 +208,13 @@ func (r *Repository) TaskForGrading(ctx context.Context, ownerID, variantID, tas
 	return r.Task(ctx, ownerID, variantID, taskID)
 }
 
-func (r *Repository) List(ctx context.Context, ownerID string, limit int, cursor *application.Cursor) ([]variant.Variant, *application.Cursor, error) {
-	params := db.ListVariantsByOwnerParams{UserID: ownerID, PageSize: int32(limit + 1)}
+func (r *Repository) List(ctx context.Context, ownerID, subjectID string, limit int, cursor *application.Cursor) ([]variant.Variant, *application.Cursor, error) {
+	if _, err := r.queries.FindSubjectForVariantList(ctx, subjectID); err == pgx.ErrNoRows {
+		return nil, nil, fault.New(fault.NotFound, "SUBJECT_NOT_FOUND", "Предмет не найден.")
+	} else if err != nil {
+		return nil, nil, err
+	}
+	params := db.ListVariantsByOwnerParams{UserID: ownerID, SubjectID: subjectID, PageSize: int32(limit + 1)}
 	if cursor != nil {
 		params.CursorCreatedAt, params.CursorID = &cursor.CreatedAt, &cursor.ID
 	}
@@ -210,7 +228,9 @@ func (r *Repository) List(ctx context.Context, ownerID string, limit int, cursor
 	}
 	items := make([]variant.Variant, 0, len(rows))
 	for _, row := range rows {
-		item := variant.Variant{ID: row.ID, OwnerID: ownerID, MapRevision: row.MapRevision, AlgorithmVersion: row.AlgorithmVersion, IncludedCompetencyCount: int(row.IncludedCompetencyCount), TaskCount: int(row.TaskCount), CreatedAt: row.CreatedAt, Competencies: []variant.CompetencySelection{}}
+		item := variant.Variant{ID: row.ID, OwnerID: ownerID, SubjectID: row.SubjectID, SubjectNameSnapshot: row.SubjectNameSnapshot,
+			MapRevision: row.MapRevision, AlgorithmVersion: row.AlgorithmVersion, IncludedCompetencyCount: int(row.IncludedCompetencyCount),
+			TaskCount: int(row.TaskCount), CreatedAt: row.CreatedAt, Competencies: []variant.CompetencySelection{}}
 		if err := json.Unmarshal(row.SkippedCompetencies, &item.SkippedCompetencies); err != nil {
 			return nil, nil, err
 		}
@@ -225,4 +245,8 @@ func (r *Repository) List(ctx context.Context, ownerID string, limit int, cursor
 
 func variantNotFound() *fault.Error {
 	return fault.New(fault.NotFound, "VARIANT_NOT_FOUND", "Вариант или задание не найдено.")
+}
+
+func idempotencySubjectConflict() *fault.Error {
+	return fault.New(fault.Conflict, "IDEMPOTENCY_KEY_SUBJECT_CONFLICT", "Ключ повтора уже использован для другого предмета.")
 }

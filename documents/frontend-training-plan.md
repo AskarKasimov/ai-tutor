@@ -1,5 +1,7 @@
 # Frontend предметов, диагностики и тренировки — план для Luna
 
+Статус: реализовано и проверено 9 октября 2026. Финальное ревью: Ready — Yes после исправлений `7d69de5` и `0507b7a`. Независимая проверка на `0507b7a`: format, lint, typecheck, build и 209 тестов в 34 файлах прошли. Backend route cleanup проверен с отдельной PostgreSQL 18: `go test ./...`, `go vet ./...`, `go build ./cmd/api` прошли.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development to implement this plan task-by-task. Steps use checkbox syntax for tracking.
 
 **Goal:** Подключить весь готовый backend к одному real/mock интерфейсу: предмет → диагностика или тренировка → голосовое прохождение.
@@ -169,7 +171,7 @@ useImportCompetencyMapMutation(userId: string, subjectId: string)
 - [x] Voice generation invalidation releases the operation lock; old permission/submit completions cannot unlock or update a newer exercise operation.
 - [x] Instruction playback is disabled and guarded while accepted feedback is displayed, so audio cannot be requested for the next exercise while the previous one is shown.
 - [x] Demo training session displays a localized notice that transcript and grading are predetermined and do not assess the learner.
-- [x] Added behavioral regressions for all four findings and the demo reset edge case. Commit `7d69de5` contains the first fixwave; this follow-up commit fixes demo reset handling. Regression coverage includes `tests/features/diagnostic-session/model/use-diagnostic-session.test.tsx`, `tests/routes/subjects.test.tsx`, and `tests/features/training/use-training-voice.test.tsx`; all five frontend gates pass (`npm test -- --run`: 34 files, 209 tests).
+- [x] Added behavioral regressions for all four findings and the demo reset edge case. Commit `7d69de5` contains the first fixwave; `0507b7a` fixes demo reset handling. Regression coverage includes `tests/features/diagnostic-session/model/use-diagnostic-session.test.tsx`, `tests/routes/subjects.test.tsx`, and `tests/features/training/use-training-voice.test.tsx`; all five frontend gates pass (`npm test -- --run`: 34 files, 209 tests).
 - [x] No browser visual checks were run for this fixwave; no new visual verification claims.
 
 ## Task 7: Контрактная интеграция, визуальная проверка и документация
@@ -183,7 +185,7 @@ useImportCompetencyMapMutation(userId: string, subjectId: string)
 - [x] Run frontend gates exactly: `npm run format:check`, `npm run lint`, `npm run typecheck`, `npm test -- --run`, `npm run build`. Resolve errors, no disables.
 - [x] Controller browser evidence: mock login → keyboard subject selection → disabled training gate → explicit diagnostic start → selected subject and demo question shown. Recording, microphone-denied/text/audio states, narrow viewport, and light/dark styles were not verified; viewport override reported a 3878px DOM width instead of 390px. Route/hook tests and build cover those flows; no visual claims for the unverified states.
 - [x] Update root/frontend README, `documents/voice-trainer-scenarios.md`, mark F1 complete in both backend plans. Document data durability difference: real PostgreSQL; mock browser demo resets on new login. LLM analogous exercises remain future provider; don't promise fresh question content.
-- [x] Commit `docs(frontend): document subject diagnostic and training flows`. Final fresh review across the frontend range and scoped contract changes is handed to the controller after this commit; any review findings require focused fixes and reruns.
+- [x] Commit `docs(frontend): document subject diagnostic and training flows`. Final fresh review across the frontend range and scoped contract changes completed; four findings and the follow-up pending-storage regression were fixed and re-reviewed. No open correctness findings. Minor remaining coverage gap: the removed legacy import alias is tested with GET rather than its former POST method; its route registration and OpenAPI operation are absent. Existing jsdom media notices remain in passing tests.
 
 ## Execution Notes
 

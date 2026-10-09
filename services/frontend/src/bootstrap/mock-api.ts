@@ -9,8 +9,16 @@ import type {
 import { isMockApi } from '@/shared/api'
 import {
   mockDiagnosticResponse,
+  mockDiagnosticForSubject,
+  readMockDiagnostic,
   resetMockDiagnostic,
 } from './mock-diagnostic-api'
+import {
+  mockTrainingAudio,
+  mockTrainingResponse,
+  mockTrainingSessionForDiagnostic,
+  resetMockTraining,
+} from './mock-training-api'
 import { mockDiagnosticStorage } from './mock-diagnostic-storage'
 
 type DemoUser = {
@@ -105,6 +113,7 @@ export async function mockApiFetch(
     user = { ...demoAccount }
     transcriptions.clear()
     resetMockDiagnostic()
+    resetMockTraining()
     mockDiagnosticStorage.clear()
     const now = Math.floor(Date.now() / 1000)
     return json(
@@ -122,10 +131,12 @@ export async function mockApiFetch(
     user = null
     transcriptions.clear()
     resetMockDiagnostic()
+    resetMockTraining()
     mockDiagnosticStorage.clear()
     return new Response(null, { status: 204 })
   }
   if (!user) return error(401, 'UNAUTHORIZED', 'unauthorized')
+  const mockUser = user
   if (method === 'POST' && path.endsWith('/auth/refresh')) {
     const now = Math.floor(Date.now() / 1000)
     return json({
@@ -143,8 +154,55 @@ export async function mockApiFetch(
     transcriptions.set(id, text)
     return json({ id, text, created_at: Math.floor(Date.now() / 1000) })
   }
-  const diagnosticResponse = mockDiagnosticResponse(path, method, body, options)
+  if (method === 'GET' && path.endsWith('/subjects'))
+    return json([
+      { id: 'subject:intro-to-ml', name: 'Введение в ML', ready: true },
+    ])
+  const learningStateMatch = path.match(/\/subjects\/([^/]+)\/learning-state$/)
+  if (learningStateMatch && method === 'GET') {
+    const subjectId = decodeURIComponent(learningStateMatch[1])
+    if (subjectId !== 'subject:intro-to-ml')
+      return error(404, 'SUBJECT_NOT_FOUND', 'notFound')
+    const known = mockDiagnosticForSubject(mockUser.id, subjectId)
+    const completedDiagnostic =
+      known?.status === 'completed' ? known.session_id : undefined
+    return json({
+      subject_id: subjectId,
+      subject_name: 'Введение в ML',
+      diagnostic_status: known?.status ?? 'not_started',
+      diagnostic_completed: !!completedDiagnostic,
+      training_available: !!completedDiagnostic,
+      ...(completedDiagnostic
+        ? { diagnostic_session_id: completedDiagnostic }
+        : {}),
+      ...(completedDiagnostic
+        ? {
+            active_session_id: mockTrainingSessionForDiagnostic(
+              mockUser.id,
+              completedDiagnostic,
+            ),
+          }
+        : {}),
+    })
+  }
+  const diagnosticResponse = mockDiagnosticResponse(
+    mockUser.id,
+    path,
+    method,
+    body,
+    options,
+  )
   if (diagnosticResponse) return diagnosticResponse
+  const trainingResponse = mockTrainingResponse(
+    mockUser.id,
+    path,
+    method,
+    body,
+    options,
+    requestUrl.search.slice(1),
+    (id) => readMockDiagnostic(mockUser.id, id),
+  )
+  if (trainingResponse) return trainingResponse
   if (
     method === 'GET' &&
     /\/diagnostic-sessions\/[^/]+\/current\/audio$/.test(path)
@@ -179,6 +237,7 @@ export async function mockApiFetch(
     })
   }
   if (method === 'GET' && /\/task-audio\/[A-Za-z0-9_-]+\/file$/.test(path)) {
+    if (path.includes('/demo_')) return mockTrainingAudio()
     return new Response(createDemoAudio(), {
       headers: { 'Content-Type': 'audio/wav' },
     })

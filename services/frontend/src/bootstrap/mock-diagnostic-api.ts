@@ -22,12 +22,17 @@ const task: DiagnosticTask = {
 type Session = {
   id: string
   variantId: string
+  subjectId: string
+  userId: string
   answer?: DiagnosticAnswer
   accepted?: DiagnosticProgress
   answerKey?: string
 }
 
-const variants = new Map<string, string>()
+const variants = new Map<
+  string,
+  { id: string; userId: string; subjectId: string }
+>()
 const sessions = new Map<string, Session>()
 const starts = new Map<string, string>()
 
@@ -61,6 +66,7 @@ function progress(session: Session): DiagnosticProgress {
 }
 
 export function mockDiagnosticResponse(
+  userId: string,
   path: string,
   method: string,
   body: Record<string, unknown>,
@@ -69,27 +75,46 @@ export function mockDiagnosticResponse(
   if (path.endsWith('/variants') && method === 'POST') {
     const key =
       new Headers(options.headers).get('Idempotency-Key') ?? crypto.randomUUID()
-    let id = variants.get(key)
-    if (!id) {
-      id = crypto.randomUUID()
-      variants.set(key, id)
+    const subjectId = body.subject_id
+    if (subjectId !== undefined && subjectId !== 'subject:intro-to-ml')
+      return json({ code: 'SUBJECT_NOT_FOUND' }, 404)
+    const identity = `${userId}:${key}`
+    let variant = variants.get(identity)
+    if (!variant) {
+      variant = {
+        id: crypto.randomUUID(),
+        userId,
+        subjectId:
+          typeof subjectId === 'string' ? subjectId : 'subject:intro-to-ml',
+      }
+      variants.set(identity, variant)
     }
-    return json({ id }, 201)
+    return json({ id: variant.id }, 201)
   }
   if (path.endsWith('/diagnostic-sessions') && method === 'POST') {
     const variantId = body.variant_id
     if (
       typeof variantId !== 'string' ||
-      ![...variants.values()].includes(variantId)
+      ![...variants.values()].some(
+        (variant) => variant.id === variantId && variant.userId === userId,
+      )
     )
       return json({ code: 'VARIANT_NOT_FOUND' }, 404)
     const key =
       new Headers(options.headers).get('Idempotency-Key') ?? crypto.randomUUID()
-    const existing = starts.get(key)
+    const existing = starts.get(`${userId}:${key}`)
     if (existing) return json(progress(sessions.get(existing)!))
-    const session: Session = { id: crypto.randomUUID(), variantId }
+    const variant = [...variants.values()].find(
+      (item) => item.id === variantId,
+    )!
+    const session: Session = {
+      id: crypto.randomUUID(),
+      variantId,
+      subjectId: variant.subjectId,
+      userId,
+    }
     sessions.set(session.id, session)
-    starts.set(key, session.id)
+    starts.set(`${userId}:${key}`, session.id)
     return json(progress(session), 201)
   }
   const match = path.match(
@@ -190,4 +215,21 @@ export function mockDiagnosticResponse(
     })
   }
   return undefined
+}
+
+export function readMockDiagnostic(
+  userId: string,
+  id: string,
+): DiagnosticProgress | undefined {
+  const session = sessions.get(id)
+  return session?.userId === userId ? progress(session) : undefined
+}
+
+export function mockDiagnosticForSubject(userId: string, subjectId: string) {
+  const matching = [...sessions.values()].filter(
+    (item) => item.userId === userId && item.subjectId === subjectId,
+  )
+  const session =
+    [...matching].reverse().find((item) => item.answer) ?? matching.at(-1)
+  return session ? progress(session) : undefined
 }

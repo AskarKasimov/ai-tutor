@@ -157,6 +157,19 @@ export async function mockApiFetch(
     return json([
       { id: 'subject:intro-to-ml', name: 'Введение в ML', ready: true },
     ])
+  const mapMatch = path.match(/\/subjects\/([^/]+)\/competency-map$/)
+  if (method === 'GET' && mapMatch) {
+    if (decodeURIComponent(mapMatch[1]) !== 'subject:intro-to-ml')
+      return error(404, 'SUBJECT_NOT_FOUND', 'notFound')
+    return json({ revision: 0, imported_at: null, competencies: [] })
+  }
+  if (
+    method === 'POST' &&
+    /\/admin\/subjects\/[^/]+\/competency-map\/import$/.test(path)
+  )
+    return error(403, 'FORBIDDEN', 'forbidden')
+  if (method === 'POST' && path.endsWith('/admin/subjects'))
+    return error(403, 'FORBIDDEN', 'forbidden')
   const learningStateMatch = path.match(/\/subjects\/([^/]+)\/learning-state$/)
   if (learningStateMatch && method === 'GET') {
     const subjectId = decodeURIComponent(learningStateMatch[1])

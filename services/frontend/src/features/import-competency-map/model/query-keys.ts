@@ -1,5 +1,6 @@
 export const competencyMapQueryKeys = {
-  competencyMap: (userId: string) => ['competency-map', userId] as const,
-  importCompetencyMap: (userId: string) =>
-    ['competency-map', 'import', userId] as const,
+  competencyMap: (userId: string, subjectId: string) =>
+    ['competency-map', userId, subjectId] as const,
+  importCompetencyMap: (userId: string, subjectId: string) =>
+    ['competency-map', 'import', userId, subjectId] as const,
 }

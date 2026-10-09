@@ -7,6 +7,7 @@ import {
   Heading,
   Table,
   Text,
+  TextField,
 } from '@radix-ui/themes'
 import { useNavigate } from '@tanstack/react-router'
 import {
@@ -15,7 +16,7 @@ import {
   ShieldCheck,
   Upload,
 } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { CompetencyMapApiError } from '@/entities/competency-map'
 import { useAuth } from '@/features/auth'
@@ -25,6 +26,11 @@ import {
 } from '@/features/import-competency-map'
 import type { CompetencyMapSummary } from '@/entities/competency-map'
 import { AccountMenu } from '@/features/auth'
+import {
+  useCreateSubjectMutation,
+  useSubjectsQuery,
+} from '@/features/subject-selection'
+import type { Subject } from '@/entities/subject'
 import styles from '@/pages/competency-map/ui/competency-map.module.scss'
 
 export function CompetencyMapAdminScreen() {
@@ -48,10 +54,25 @@ export function CompetencyMapAdminScreen() {
 
 function CompetencyMapAdmin({ userId }: { userId: string }) {
   const { t, i18n } = useTranslation()
-  const query = useCompetencyMapQuery(userId)
-  const upload = useImportCompetencyMapMutation(userId)
+  const subjects = useSubjectsQuery(userId)
+  const create = useCreateSubjectMutation(userId)
+  const [subjectId, setSubjectId] = useState('')
+  const [subjectName, setSubjectName] = useState('')
+  const query = useCompetencyMapQuery(userId, subjectId)
+  const upload = useImportCompetencyMapMutation(userId, subjectId)
   const [file, setFile] = useState<File | null>(null)
   const [fileError, setFileError] = useState<string | null>(null)
+  const selectedSubject = subjects.data?.find(
+    (subject) => subject.id === subjectId,
+  )
+
+  useEffect(() => {
+    if (
+      subjects.data &&
+      !subjects.data.some((subject) => subject.id === subjectId)
+    )
+      setSubjectId(subjects.data[0]?.id ?? '')
+  }, [subjects.data, subjectId])
 
   function selectFile(selected: File | undefined) {
     upload.reset()
@@ -97,25 +118,98 @@ function CompetencyMapAdmin({ userId }: { userId: string }) {
           <Heading as="h2" size="4" id="current-map-title">
             {t('competencyMap.current')}
           </Heading>
-          {query.isPending ? (
+          {subjects.isPending ? (
             <Text as="p" role="status">
-              {t('competencyMap.loading')}
+              {t('competencyMap.subjectsLoading')}
             </Text>
-          ) : query.isError ? (
+          ) : subjects.isError ? (
             <div>
               <Text as="p" role="alert">
-                {t('competencyMap.loadError')}
+                {t('competencyMap.subjectsError')}
               </Text>
-              <Button variant="soft" onClick={() => void query.refetch()}>
+              <Button variant="soft" onClick={() => void subjects.refetch()}>
                 {t('trainer.retry')}
               </Button>
             </div>
-          ) : query.data.importedAt === null ? (
-            <Text as="p" color="gray">
-              {t('competencyMap.empty')}
-            </Text>
           ) : (
-            <MapSummary summary={query.data} />
+            <>
+              <label htmlFor="map-subject">{t('competencyMap.subject')}</label>
+              <select
+                id="map-subject"
+                value={subjectId}
+                onChange={(event) => {
+                  setSubjectId(event.target.value)
+                  upload.reset()
+                  setFile(null)
+                  setFileError(null)
+                }}
+              >
+                {subjects.data?.map((subject: Subject) => (
+                  <option key={subject.id} value={subject.id}>
+                    {subject.name}
+                  </option>
+                ))}
+              </select>
+            </>
+          )}
+          {subjects.data?.length === 0 && (
+            <Text as="p">{t('competencyMap.noSubjects')}</Text>
+          )}
+          {subjects.data?.length ? (
+            query.isPending ? (
+              <Text as="p" role="status">
+                {t('competencyMap.loading')}
+              </Text>
+            ) : query.isError ? (
+              <div>
+                <Text as="p" role="alert">
+                  {t('competencyMap.loadError')}
+                </Text>
+                <Button variant="soft" onClick={() => void query.refetch()}>
+                  {t('trainer.retry')}
+                </Button>
+              </div>
+            ) : query.data.importedAt === null ? (
+              <Text as="p" color="gray">
+                {t('competencyMap.empty')}
+              </Text>
+            ) : (
+              <MapSummary summary={query.data} />
+            )
+          ) : null}
+        </section>
+        <section className={styles.card} aria-labelledby="create-subject-title">
+          <Heading as="h2" size="4" id="create-subject-title">
+            {t('competencyMap.createSubject')}
+          </Heading>
+          <Flex gap="2" align="end" wrap="wrap">
+            <label>
+              {t('competencyMap.subjectName')}
+              <TextField.Root
+                value={subjectName}
+                onChange={(event) => setSubjectName(event.target.value)}
+              />
+            </label>
+            <Button
+              disabled={!subjectName.trim() || create.isPending}
+              onClick={() => {
+                const name = subjectName.trim()
+                if (name)
+                  create.mutate(name, {
+                    onSuccess: (subject) => {
+                      setSubjectName('')
+                      setSubjectId(subject.id)
+                    },
+                  })
+              }}
+            >
+              {t('competencyMap.createSubjectButton')}
+            </Button>
+          </Flex>
+          {create.isError && (
+            <Text role="alert" color="red">
+              {t('competencyMap.createSubjectError')}
+            </Text>
           )}
         </section>
         <section className={styles.card} aria-labelledby="upload-map-title">
@@ -139,7 +233,7 @@ function CompetencyMapAdmin({ userId }: { userId: string }) {
               id="map-file"
               type="file"
               accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-              disabled={upload.isPending}
+              disabled={!selectedSubject || upload.isPending}
               onChange={(event) => selectFile(event.target.files?.[0])}
             />
             {file && (
@@ -190,7 +284,10 @@ function CompetencyMapAdmin({ userId }: { userId: string }) {
           )}
           <AlertDialog.Root>
             <AlertDialog.Trigger>
-              <Button size="3" disabled={!file || upload.isPending}>
+              <Button
+                size="3"
+                disabled={!selectedSubject || !file || upload.isPending}
+              >
                 <Upload size={18} aria-hidden="true" />
                 {t('competencyMap.upload')}
               </Button>
@@ -211,7 +308,8 @@ function CompetencyMapAdmin({ userId }: { userId: string }) {
                 <AlertDialog.Action>
                   <Button
                     onClick={() => {
-                      if (file && !upload.isPending) upload.mutate(file)
+                      if (file && selectedSubject && !upload.isPending)
+                        upload.mutate({ file, subjectId })
                     }}
                   >
                     {t('competencyMap.confirm')}
@@ -221,7 +319,7 @@ function CompetencyMapAdmin({ userId }: { userId: string }) {
             </AlertDialog.Content>
           </AlertDialog.Root>
         </section>
-        {upload.data && (
+        {upload.data && upload.variables?.subjectId === subjectId && (
           <section
             className={styles.card}
             aria-labelledby="import-result-title"

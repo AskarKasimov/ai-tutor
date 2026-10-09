@@ -75,12 +75,16 @@ async function readResponse(response: Response): Promise<unknown> {
 }
 
 export async function readCompetencyMap(
+  subjectId: string,
   signal: AbortSignal,
 ): Promise<CompetencyMapSummary> {
-  const response = await apiFetch(`${apiBase}/competency-map`, {
-    credentials: 'include',
-    signal: AbortSignal.any([signal, AbortSignal.timeout(30_000)]),
-  })
+  const response = await apiFetch(
+    `${apiBase}/subjects/${encodeURIComponent(subjectId)}/competency-map`,
+    {
+      credentials: 'include',
+      signal: AbortSignal.any([signal, AbortSignal.timeout(30_000)]),
+    },
+  )
   const parsed = mapSchema.safeParse(await readResponse(response))
   if (!parsed.success) throw new Error(i18n.t('competencyMap.invalidResponse'))
   const map = parsed.data
@@ -97,6 +101,7 @@ export async function readCompetencyMap(
 }
 
 export async function importCompetencyMap(
+  subjectId: string,
   file: File,
   signal?: AbortSignal,
 ): Promise<CompetencyMapImport> {
@@ -107,12 +112,15 @@ export async function importCompetencyMap(
   const body = new FormData()
   body.append('file', new Blob([file], { type: mediaType }), file.name)
   const timeout = AbortSignal.timeout(120_000)
-  const response = await apiFetch(`${apiBase}/admin/competency-map/import`, {
-    method: 'POST',
-    credentials: 'include',
-    body,
-    signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
-  })
+  const response = await apiFetch(
+    `${apiBase}/admin/subjects/${encodeURIComponent(subjectId)}/competency-map/import`,
+    {
+      method: 'POST',
+      credentials: 'include',
+      body,
+      signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
+    },
+  )
   const parsed = importSchema.safeParse(await readResponse(response))
   if (!parsed.success) throw new Error(i18n.t('competencyMap.unknownResult'))
   const result = parsed.data

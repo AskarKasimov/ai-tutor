@@ -144,6 +144,33 @@ func TestImportAudioPersistsTypedMapAndReplacesAllMapData(t *testing.T) {
 	}
 }
 
+func TestReplaceAllowsDeletingImportReferencedBySubjectActiveRevision(t *testing.T) {
+	repository, ctx, userID := setupImportRepository(t)
+	first, err := repository.Replace(ctx, userID, importMap("до миграции"), 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repository.pool.Exec(ctx, `UPDATE subjects SET active_revision=$1 WHERE id='subject:intro-to-ml'`, first.Revision); err != nil {
+		t.Fatal(err)
+	}
+
+	second, err := repository.Replace(ctx, userID, importMap("после миграции"), 20)
+	if err != nil {
+		t.Fatalf("replace failed while active_revision referenced old import: %v", err)
+	}
+	if second.Revision != first.Revision+1 {
+		t.Fatalf("replacement revision=%d, want %d", second.Revision, first.Revision+1)
+	}
+	var outcome string
+	if err := repository.pool.QueryRow(ctx, `SELECT name FROM outcomes`).Scan(&outcome); err != nil || outcome != "ОР после миграции" {
+		t.Fatalf("active outcome=%q err=%v", outcome, err)
+	}
+	var activeRevision *int64
+	if err := repository.pool.QueryRow(ctx, `SELECT active_revision FROM subjects WHERE id='subject:intro-to-ml'`).Scan(&activeRevision); err != nil || activeRevision != nil {
+		t.Fatalf("deleted import revision should clear active_revision until subject-aware import: revision=%v err=%v", activeRevision, err)
+	}
+}
+
 func TestImportAudioRollsBackInvalidMapWithoutLosingActiveMap(t *testing.T) {
 	repository, ctx, userID := setupImportRepository(t)
 	if _, err := repository.Replace(ctx, userID, importMap("сохранённая"), 10); err != nil {

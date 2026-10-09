@@ -22,7 +22,7 @@ ALTER TABLE competency_map_imports
 
 ALTER TABLE subjects
     ADD CONSTRAINT subjects_active_revision_fkey
-        FOREIGN KEY (active_revision) REFERENCES competency_map_imports(revision);
+        FOREIGN KEY (active_revision) REFERENCES competency_map_imports(revision) ON DELETE SET NULL;
 
 ALTER TABLE variants
     ADD COLUMN subject_id text NOT NULL DEFAULT 'subject:intro-to-ml'

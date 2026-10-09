@@ -12,6 +12,13 @@ void i18n.init({
     ru: {
       translation: {
         auth: {
+          chooseRole: 'Как вы хотите войти?',
+          roleSubtitle: 'Выберите роль, чтобы продолжить работу в AI Tutor.',
+          teacherLogin: 'Войти как учитель',
+          studentLogin: 'Войти как ученик',
+          studentBanner: 'Вход как ученик',
+          backToRoles: 'Назад',
+          teacherEntering: 'Входим…',
           login: 'Войти',
           loginTab: 'Вход',
           register: 'Регистрация',

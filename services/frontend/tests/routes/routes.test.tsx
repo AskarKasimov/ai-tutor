@@ -18,10 +18,10 @@ vi.mock('@/shared/lib', async (importOriginal) => ({
   createVoiceWaveform: () => ({ setStream: () => {}, dispose: () => {} }),
 }))
 
-function renderHome() {
+function renderHome(path = '/') {
   const router = createRouter({
     context: { queryClient: createQueryClient() },
-    history: createMemoryHistory({ initialEntries: ['/'] }),
+    history: createMemoryHistory({ initialEntries: [path] }),
     routeTree,
   })
   return render(<RouterProvider router={router} />)
@@ -140,6 +140,9 @@ it('shows the dev ribbon when the API mode is not real', async () => {
   vi.stubEnv('VITE_API_MODE', 'preview')
   renderHome()
   expect(await screen.findByText('dev-режим')).toBeVisible()
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Войти как ученик' }),
+  )
   expect(await screen.findByRole('button', { name: 'Войти' })).toBeEnabled()
   expect(
     screen.queryByRole('button', { name: 'Начать запись' }),
@@ -319,7 +322,7 @@ it('logs in through the separate screen and updates the header', async () => {
       user: { id: '1', email: 'student@example.com', display_name: 'Студент' },
     },
   })
-  renderHome()
+  renderHome('/login')
   await screen.findByRole('heading', { name: 'Вход в AI Tutor' })
   await waitFor(() =>
     expect(screen.getByRole('button', { name: 'Войти' })).toBeEnabled(),
@@ -355,7 +358,7 @@ it('registers with backend password rules and an optional name', async () => {
       user: { id: '2', email: 'new@example.com', display_name: 'Новый' },
     },
   })
-  renderHome()
+  renderHome('/login')
   await screen.findByRole('heading', { name: 'Вход в AI Tutor' })
   await waitFor(() =>
     expect(screen.getByRole('button', { name: 'Войти' })).toBeEnabled(),
@@ -391,7 +394,7 @@ it('keeps the login screen visible after failed login, Escape and background cli
     status: 401,
     body: { message: 'Неверный email или пароль.' },
   })
-  renderHome()
+  renderHome('/login')
   await screen.findByRole('heading', { name: 'Вход в AI Tutor' })
   await waitFor(() =>
     expect(screen.getByRole('button', { name: 'Войти' })).toBeEnabled(),
@@ -438,6 +441,6 @@ it('returns to the separate login screen after logout', async () => {
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   fireEvent.click(screen.getByRole('button', { name: 'Выйти' }))
   expect(
-    await screen.findByRole('heading', { name: 'Вход в AI Tutor' }),
+    await screen.findByRole('heading', { name: 'Как вы хотите войти?' }),
   ).toBeVisible()
 })

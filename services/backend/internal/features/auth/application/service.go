@@ -17,6 +17,26 @@ type RegisterInput struct {
 	Email, Password string
 	DisplayName     *string
 }
+
+const TeacherEmail = "shared-teacher@ai-tutor.invalid"
+
+// LoginTeacher creates a normal cookie session for the shared teacher account.
+// Passwordless teacher access is an explicit product policy in every API mode.
+func (s *Service) LoginTeacher(ctx context.Context) (AuthResult, error) {
+	var out AuthResult
+	now := s.now().Unix()
+	err := s.repo.Transaction(ctx, func(tx Transaction) error {
+		var err error
+		out.User, err = tx.EnsureTeacher(ctx, now)
+		if err != nil {
+			return err
+		}
+		out.Tokens, err = s.newSession(ctx, tx, out.User.ID, now)
+		return err
+	})
+	return out, err
+}
+
 type AuthResult struct {
 	User   user.User
 	Tokens session.Tokens
@@ -70,6 +90,9 @@ func (s *Service) Register(ctx context.Context, in RegisterInput) (AuthResult, e
 	if err != nil {
 		return out, err
 	}
+	if email == TeacherEmail {
+		return out, fault.Validation("email", "Этот адрес зарезервирован для общего аккаунта учителя.")
+	}
 	if in.DisplayName != nil {
 		n := *in.DisplayName
 		if utf8.RuneCountInString(n) < 1 || utf8.RuneCountInString(n) > 200 || strings.TrimSpace(n) == "" || strings.IndexByte(n, 0) >= 0 {
@@ -104,6 +127,9 @@ func (s *Service) Login(ctx context.Context, email, password string) (AuthResult
 	email, err := normalizeEmail(email)
 	if err != nil {
 		return out, err
+	}
+	if email == TeacherEmail {
+		return out, fault.New(fault.Unauthorized, "INVALID_CREDENTIALS", "Email или пароль неверен.")
 	}
 	if n := utf8.RuneCountInString(password); n < 1 || n > 128 {
 		return out, fault.Validation("password", "Пароль должен содержать 1–128 символов.")

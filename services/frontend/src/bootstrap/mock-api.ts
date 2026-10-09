@@ -21,12 +21,13 @@ import {
 } from './mock-training-api'
 import { mockDiagnosticStorage } from './mock-diagnostic-storage'
 import { findMockSubject, mockSubjectCatalog } from './mock-subject-catalog'
+import { mockTeacherResponse } from './mock-teacher-api'
 
 type DemoUser = {
   id: string
   email: string
   display_name: string
-  role: 'student'
+  role: 'student' | 'admin'
   created_at: number
 }
 const demoAccount: DemoUser = {
@@ -37,6 +38,13 @@ const demoAccount: DemoUser = {
   created_at: 1791158400,
 }
 const demoPassword = 'demo-student-2026'
+const teacherAccount: DemoUser = {
+  id: 'user:shared-teacher',
+  email: 'shared-teacher@ai-tutor.invalid',
+  display_name: 'Учитель',
+  role: 'admin',
+  created_at: 1791158400,
+}
 let user: DemoUser | null = null
 const transcriptions = new Map<string, string>()
 
@@ -91,6 +99,19 @@ export async function mockApiFetch(
   }
   if (method === 'GET' && path.endsWith('/auth/me'))
     return user ? json(user) : error(401, 'UNAUTHORIZED', 'unauthorized')
+  if (method === 'POST' && path.endsWith('/auth/teacher')) {
+    if (options.body != null && options.body !== '')
+      return error(422, 'VALIDATION_ERROR', 'invalid')
+    user = { ...teacherAccount }
+    const now = Math.floor(Date.now() / 1000)
+    return json({
+      user,
+      session: {
+        access_expires_at: now + 900,
+        refresh_expires_at: now + 2592000,
+      },
+    })
+  }
   if (method === 'POST' && /\/auth\/(login|register)$/.test(path)) {
     const emptyDemoLogin =
       path.endsWith('/login') && body.email === '' && body.password === ''
@@ -156,20 +177,25 @@ export async function mockApiFetch(
     return json({ id, text, created_at: Math.floor(Date.now() / 1000) })
   }
   if (method === 'GET' && path.endsWith('/subjects'))
-    return json(mockSubjectCatalog)
+    return json(
+      user.role === 'admin'
+        ? mockSubjectCatalog
+        : mockSubjectCatalog.filter((item) => item.ready),
+    )
+  const teacherResponse = mockTeacherResponse(
+    user.role,
+    path,
+    method,
+    body,
+    options,
+  )
+  if (teacherResponse) return teacherResponse
   const mapMatch = path.match(/\/subjects\/([^/]+)\/competency-map$/)
   if (method === 'GET' && mapMatch) {
     if (!findMockSubject(decodeURIComponent(mapMatch[1])))
       return error(404, 'SUBJECT_NOT_FOUND', 'notFound')
     return json({ revision: 0, imported_at: null, competencies: [] })
   }
-  if (
-    method === 'POST' &&
-    /\/admin\/subjects\/[^/]+\/competency-map\/import$/.test(path)
-  )
-    return error(403, 'FORBIDDEN', 'forbidden')
-  if (method === 'POST' && path.endsWith('/admin/subjects'))
-    return error(403, 'FORBIDDEN', 'forbidden')
   const learningStateMatch = path.match(/\/subjects\/([^/]+)\/learning-state$/)
   if (learningStateMatch && method === 'GET') {
     const subjectId = decodeURIComponent(learningStateMatch[1])

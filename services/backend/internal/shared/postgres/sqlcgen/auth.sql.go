@@ -9,6 +9,34 @@ import (
 	"context"
 )
 
+const ensureTeacher = `-- name: EnsureTeacher :one
+INSERT INTO users(id, email, display_name, password_hash, role, created_at)
+VALUES ('user:shared-teacher', 'shared-teacher@ai-tutor.invalid', 'Учитель', '!', 'admin', $1)
+ON CONFLICT (id) DO UPDATE SET role = 'admin'
+RETURNING id, email, display_name, role, created_at
+`
+
+type EnsureTeacherRow struct {
+	ID          string
+	Email       string
+	DisplayName *string
+	Role        string
+	CreatedAt   int64
+}
+
+func (q *Queries) EnsureTeacher(ctx context.Context, createdAt int64) (EnsureTeacherRow, error) {
+	row := q.db.QueryRow(ctx, ensureTeacher, createdAt)
+	var i EnsureTeacherRow
+	err := row.Scan(
+		&i.ID,
+		&i.Email,
+		&i.DisplayName,
+		&i.Role,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const getAuthContextByAccessToken = `-- name: GetAuthContextByAccessToken :one
 SELECT s.id AS session_id, s.user_id, s.expires_at AS session_expires_at, s.revoked_at,
        t.expires_at AS token_expires_at, u.id AS account_id, u.email, u.display_name, u.role, u.created_at

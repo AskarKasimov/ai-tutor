@@ -1,0 +1,21 @@
+.screen {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-5);
+  background: var(--app-soft);
+  color: var(--app-ink);
+}
+
+.card {
+  width: min(100%, 460px);
+  padding: var(--space-5);
+}
+
+.actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin-top: var(--space-5);
+}

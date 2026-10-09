@@ -26,6 +26,11 @@ func New(pool *pgxpool.Pool) *Repository {
 
 type transaction struct{ queries *db.Queries }
 
+func (t *transaction) EnsureTeacher(ctx context.Context, now int64) (user.User, error) {
+	row, err := t.queries.EnsureTeacher(ctx, now)
+	return user.User{ID: row.ID, Email: row.Email, DisplayName: row.DisplayName, Role: user.Role(row.Role), CreatedAt: row.CreatedAt}, err
+}
+
 func (r *Repository) Transaction(ctx context.Context, fn func(application.Transaction) error) error {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {

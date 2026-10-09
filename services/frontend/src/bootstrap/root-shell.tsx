@@ -47,17 +47,21 @@ function SessionGate() {
       </main>
     )
   if (!user)
-    return path === '/login' ? (
+    return path === '/login' || path === '/welcome' ? (
       renderedPath === path ? (
         <Outlet />
       ) : (
         loading
       )
     ) : (
-      <Navigate to="/login" replace />
+      <Navigate to="/welcome" replace />
     )
   const home = user.role === 'admin' ? '/admin/competency-map' : '/'
-  if (path === '/login' || (path === '/' && user.role === 'admin'))
+  if (
+    path === '/login' ||
+    path === '/welcome' ||
+    (path === '/' && user.role === 'admin')
+  )
     return <Navigate to={home} replace />
   if (renderedPath !== path) return loading
   return <Outlet />

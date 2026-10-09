@@ -556,7 +556,7 @@ it('returns to login if diagnostic submission loses authorization', async () => 
     await screen.findByRole('button', { name: 'Завершить запись' }),
   )
   expect(
-    await screen.findByRole('heading', { name: 'Вход в AI Tutor' }),
+    await screen.findByRole('heading', { name: 'Как вы хотите войти?' }),
   ).toBeVisible()
   expect(
     screen.queryByText('Настоящий вопрос из банка'),

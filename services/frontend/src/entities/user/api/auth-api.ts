@@ -45,7 +45,7 @@ export async function authenticate(
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
+      ...(mode === 'teacher' ? {} : { body: JSON.stringify(body) }),
       signal: AbortSignal.any([signal, AbortSignal.timeout(30_000)]),
     })
   } catch {

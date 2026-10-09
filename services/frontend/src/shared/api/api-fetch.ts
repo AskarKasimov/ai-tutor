@@ -49,7 +49,7 @@ export async function apiFetch(
   if (
     response.status !== 401 ||
     !url.startsWith(`${apiBase}/`) ||
-    /\/auth\/(login|register|logout|refresh)(?:\?|$)/.test(url)
+    /\/auth\/(login|register|teacher|logout|refresh)(?:\?|$)/.test(url)
   )
     return response
   options?.signal?.throwIfAborted()

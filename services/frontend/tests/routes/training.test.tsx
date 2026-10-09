@@ -38,10 +38,6 @@ it('loads a focused preview before starting and explicitly starts the frozen pla
     routeTree,
   })
   render(<RouterProvider router={router} />)
-  fireEvent.click(await screen.findByRole('combobox', { name: 'Предмет' }))
-  fireEvent.click(
-    await screen.findByRole('option', { name: 'Демонстрационный предмет A' }),
-  )
   fireEvent.click(
     await screen.findByRole('button', { name: 'Начать диагностику' }),
   )
@@ -52,9 +48,7 @@ it('loads a focused preview before starting and explicitly starts the frozen pla
   fireEvent.click(
     await screen.findByRole('button', { name: 'Посмотреть итог' }),
   )
-  fireEvent.click(
-    await screen.findByRole('button', { name: 'К выбору предмета' }),
-  )
+  fireEvent.click(await screen.findByRole('button', { name: 'На главную' }))
   fireEvent.click(
     await screen.findByRole('button', { name: 'Открыть тренировку' }),
   )

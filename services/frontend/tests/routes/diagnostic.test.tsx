@@ -99,10 +99,6 @@ async function home() {
   })
   const view = render(<RouterProvider router={router} />)
   if (!continuing) {
-    fireEvent.click(await screen.findByRole('combobox', { name: 'Предмет' }))
-    fireEvent.click(
-      await screen.findByRole('option', { name: 'Предмет теста' }),
-    )
     fireEvent.click(
       await screen.findByRole('button', { name: 'Начать диагностику' }),
     )

@@ -1,4 +1,5 @@
-import { Button, Card, Heading, Select, Text } from '@radix-ui/themes'
+import { Button, Card, Heading, Text } from '@radix-ui/themes'
+import { ArrowRight, Dumbbell, GraduationCap, Lock, Target } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
@@ -52,7 +53,6 @@ export function LearningHome() {
   const queryClient = useQueryClient()
   const userId = user?.id ?? ''
   const subjectsQuery = useSubjectsQuery(userId)
-  const [selectedId, setSelectedId] = useState('')
   const [trainingRequested, setTrainingRequested] = useState(() => {
     const saved = userId ? readIntent(userId) : null
     return saved?.mode === 'training'
@@ -61,20 +61,12 @@ export function LearningHome() {
     userId ? readIntent(userId) : null,
   )
   const subjects = subjectsQuery.data ?? []
+  // Students study the single subject the teacher manages: the first one.
   const selected =
-    subjects.find((subject) => subject.id === selectedId) ??
-    subjects.find((subject) => subject.id === intent?.subjectId)
+    subjects.find((subject) => subject.id === intent?.subjectId) ?? subjects[0]
   const learning = useLearningStateQuery(userId, selected?.id ?? '')
 
-  useEffect(() => setTrainingRequested(false), [selectedId])
-
   useEffect(() => {
-    if (
-      intent?.subjectId &&
-      subjects.some((s) => s.id === intent.subjectId) &&
-      !selectedId
-    )
-      setSelectedId(intent.subjectId)
     if (
       intent &&
       !subjectsQuery.isPending &&
@@ -84,7 +76,7 @@ export function LearningHome() {
       sessionStorage.removeItem('ai-tutor:learning-home')
       setIntent(null)
     }
-  }, [intent, selectedId, subjects, subjectsQuery.isPending])
+  }, [intent, subjects, subjectsQuery.isPending])
 
   function openDiagnostic(
     subject: Subject,
@@ -149,127 +141,144 @@ export function LearningHome() {
       />
     )
 
+  const data = learning.data
+  const trainingOpen =
+    !!data?.training_available && !!data.diagnostic_session_id
   return (
-    <main className={styles.page}>
+    <div className={styles.page}>
       <header className={styles.header}>
-        <div>
-          <Text>{t('trainer.title')}</Text>
-          <Heading as="h1">{t('home.title')}</Heading>
+        <div className={styles.brand}>
+          <span className={styles.brandIcon} aria-hidden="true">
+            <GraduationCap size={22} />
+          </span>
+          <Text weight="bold">{t('trainer.title')}</Text>
         </div>
         <AccountMenu />
       </header>
-      {subjectsQuery.isPending ? (
-        <Text role="status">{t('home.loading')}</Text>
-      ) : subjectsQuery.isError ? (
-        <Card>
-          <Text role="alert">{t('home.loadError')}</Text>
-          <Button onClick={() => void subjectsQuery.refetch()}>
-            {t('trainer.retry')}
-          </Button>
-        </Card>
-      ) : subjects.length === 0 ? (
-        <Card>
-          <Text>{t('home.empty')}</Text>
-        </Card>
-      ) : (
-        <>
-          <label className={styles.selector}>
-            <Text>{t('home.subject')}</Text>
-            <Select.Root
-              value={selected?.id ?? ''}
-              onValueChange={setSelectedId}
-            >
-              <Select.Trigger aria-label={t('home.subject')} />
-              <Select.Content>
-                {subjects.map((subject) => (
-                  <Select.Item key={subject.id} value={subject.id}>
-                    {subject.name}
-                  </Select.Item>
-                ))}
-              </Select.Content>
-            </Select.Root>
-          </label>
-          {selected && (
-            <section className={styles.actions}>
-              {learning.isPending ? (
-                <Text role="status">{t('home.learningLoading')}</Text>
-              ) : learning.isError ? (
-                <Card>
-                  <Text role="alert">{t('home.learningError')}</Text>
-                  <Button onClick={() => void learning.refetch()}>
-                    {t('trainer.retry')}
-                  </Button>
-                </Card>
-              ) : learning.data ? (
-                <>
-                  <Card>
-                    <Heading as="h2">{t('home.diagnostic')}</Heading>
-                    <Text>
-                      {learning.data.diagnostic_completed
-                        ? t('home.diagnosticComplete')
-                        : learning.data.diagnostic_status === 'active'
-                          ? t('home.diagnosticActive')
-                          : t('home.diagnosticNeeded')}
-                    </Text>
-                    {learning.data.active_session_id ? (
-                      <Button
-                        onClick={() =>
-                          openDiagnostic(
+      <main className={styles.content}>
+        {subjectsQuery.isPending ? (
+          <Text role="status">{t('home.loading')}</Text>
+        ) : subjectsQuery.isError ? (
+          <Card className={styles.notice}>
+            <Text role="alert">{t('home.loadError')}</Text>
+            <Button onClick={() => void subjectsQuery.refetch()}>
+              {t('trainer.retry')}
+            </Button>
+          </Card>
+        ) : !selected ? (
+          <Card className={styles.notice}>
+            <Text>{t('home.empty')}</Text>
+          </Card>
+        ) : (
+          <>
+            <div className={styles.intro}>
+              <Text as="p" className={styles.eyebrow}>
+                {t('home.subject')}
+              </Text>
+              <Heading as="h1" size="8">
+                {selected.name}
+              </Heading>
+              <Text as="p" size="3" color="gray">
+                {t('home.intro')}
+              </Text>
+            </div>
+            {learning.isPending ? (
+              <Text role="status">{t('home.learningLoading')}</Text>
+            ) : learning.isError ? (
+              <Card className={styles.notice}>
+                <Text role="alert">{t('home.learningError')}</Text>
+                <Button onClick={() => void learning.refetch()}>
+                  {t('trainer.retry')}
+                </Button>
+              </Card>
+            ) : data ? (
+              <section className={styles.tiles}>
+                <article className={styles.tile} data-tone="diagnostic">
+                  <span className={styles.tileIcon} aria-hidden="true">
+                    <Target size={28} />
+                  </span>
+                  <Heading as="h2" size="6">
+                    {t('home.diagnostic')}
+                  </Heading>
+                  <Text as="p" color="gray">
+                    {t('home.diagnosticDescription')}
+                  </Text>
+                  <Text as="p" className={styles.status}>
+                    {data.diagnostic_completed
+                      ? t('home.diagnosticComplete')
+                      : data.diagnostic_status === 'active'
+                        ? t('home.diagnosticActive')
+                        : t('home.diagnosticNeeded')}
+                  </Text>
+                  <Button
+                    size="3"
+                    className={styles.tileAction}
+                    onClick={() =>
+                      data.active_session_id
+                        ? openDiagnostic(
                             selected,
-                            learning.data.active_session_id,
+                            data.active_session_id,
                             false,
                           )
-                        }
-                      >
-                        {t('home.continueDiagnostic')}
-                      </Button>
-                    ) : (
-                      <Button
-                        onClick={() =>
-                          openDiagnostic(selected, undefined, true)
-                        }
-                      >
-                        {t('home.startDiagnostic')}
-                      </Button>
+                        : openDiagnostic(selected, undefined, true)
+                    }
+                  >
+                    {t(
+                      data.active_session_id
+                        ? 'home.continueDiagnostic'
+                        : 'home.startDiagnostic',
                     )}
-                  </Card>
-                  <Card>
-                    <Heading as="h2">
-                      {learning.data.diagnostic_completed
-                        ? t('home.training')
-                        : t('home.trainingLocked')}
-                    </Heading>
-                    <Text>
-                      {learning.data.training_available
-                        ? t(
-                            trainingRequested
-                              ? 'home.trainingLoading'
-                              : 'home.trainingReady',
-                          )
-                        : t('home.diagnosticRequired')}
-                    </Text>
-                    <Button
-                      disabled={
-                        !learning.data.training_available ||
-                        !learning.data.diagnostic_session_id
-                      }
-                      onClick={openTraining}
-                    >
-                      {t(
-                        trainingRequested
-                          ? 'home.trainingLoading'
-                          : learning.data.training_available
-                            ? 'home.openTraining'
-                            : 'home.trainingLocked',
-                      )}
-                    </Button>
-                  </Card>
-                </>
-              ) : null}
-            </section>
-          )}
-        </>
-      )}
-    </main>
+                    <ArrowRight size={18} aria-hidden="true" />
+                  </Button>
+                </article>
+                <article
+                  className={styles.tile}
+                  data-tone="training"
+                  data-locked={!trainingOpen || undefined}
+                >
+                  <span className={styles.tileIcon} aria-hidden="true">
+                    {trainingOpen ? <Dumbbell size={28} /> : <Lock size={26} />}
+                  </span>
+                  <Heading as="h2" size="6">
+                    {t('home.training')}
+                  </Heading>
+                  <Text as="p" color="gray">
+                    {t('home.trainingDescription')}
+                  </Text>
+                  <Text as="p" className={styles.status}>
+                    {data.training_available
+                      ? t(
+                          trainingRequested
+                            ? 'home.trainingLoading'
+                            : 'home.trainingReady',
+                        )
+                      : t('home.diagnosticRequired')}
+                  </Text>
+                  <Button
+                    size="3"
+                    className={styles.tileAction}
+                    variant={trainingOpen ? 'solid' : 'soft'}
+                    color={trainingOpen ? undefined : 'gray'}
+                    disabled={!trainingOpen}
+                    onClick={openTraining}
+                  >
+                    {t(
+                      trainingRequested
+                        ? 'home.trainingLoading'
+                        : data.training_available
+                          ? 'home.openTraining'
+                          : 'home.trainingLocked',
+                    )}
+                    {trainingOpen && (
+                      <ArrowRight size={18} aria-hidden="true" />
+                    )}
+                  </Button>
+                </article>
+              </section>
+            ) : null}
+          </>
+        )}
+      </main>
+    </div>
   )
 }

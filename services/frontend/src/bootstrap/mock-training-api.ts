@@ -8,8 +8,6 @@ import type {
   TrainingTarget,
 } from '@/entities/training'
 
-const subjectId = 'subject:intro-to-ml'
-const subjectName = 'Введение в ML'
 const targets: TrainingTarget[] = [
   {
     kind: 'confirmed_gap',
@@ -51,6 +49,8 @@ const exerciseFor = (
 type TrainingSession = {
   userId: string
   diagnosticId: string
+  subjectId: string
+  subjectName: string
   id: string
   mode: 'focused' | 'free_practice'
   targets: TrainingTarget[]
@@ -100,8 +100,8 @@ function current(session: TrainingSession): TrainingProgress {
   return {
     session_id: session.id,
     diagnostic_session_id: session.diagnosticId,
-    subject_id: subjectId,
-    subject_name: subjectName,
+    subject_id: session.subjectId,
+    subject_name: session.subjectName,
     mode: session.mode,
     status: 'active',
     round: session.answers.length + 1,
@@ -118,12 +118,13 @@ function current(session: TrainingSession): TrainingProgress {
 }
 function preview(
   diagnosticId: string,
+  subject: { id: string; name: string },
   mode: 'focused' | 'free_practice',
 ): TrainingPreview {
   return {
     diagnostic_session_id: diagnosticId,
-    subject_id: subjectId,
-    subject_name: subjectName,
+    subject_id: subject.id,
+    subject_name: subject.name,
     mode,
     plan_revision: 1,
     diagnostic_score: 2,
@@ -149,6 +150,7 @@ export async function mockTrainingResponse(
   options: RequestInit,
   search: string,
   diagnostic: (id: string) => DiagnosticProgress | undefined,
+  diagnosticSubject: (id: string) => { id: string; name: string } | undefined,
 ): Promise<Response | undefined> {
   const previewMatch = path.match(
     /^\/api\/v1\/diagnostic-sessions\/([^/]+)\/training\/preview$/,
@@ -162,14 +164,16 @@ export async function mockTrainingResponse(
   if (previewMatch) {
     const id = decodeURIComponent(previewMatch[1])
     const progress = diagnostic(id)
-    if (!progress || progress.status !== 'completed')
+    const subject = diagnosticSubject(id)
+    if (!progress || progress.status !== 'completed' || !subject)
       return failed('DIAGNOSTIC_NOT_COMPLETED', 404)
-    return json(preview(id, 'focused'))
+    return json(preview(id, subject, 'focused'))
   }
   if (diagnosticTrainingMatch) {
     const diagnosticId = decodeURIComponent(diagnosticTrainingMatch[1])
     const progress = diagnostic(diagnosticId)
-    if (!progress || progress.status !== 'completed')
+    const subject = diagnosticSubject(diagnosticId)
+    if (!progress || progress.status !== 'completed' || !subject)
       return failed('DIAGNOSTIC_NOT_COMPLETED', 404)
     if (method === 'GET') {
       const existing = sessionByDiagnostic.get(`${userId}:${diagnosticId}`)
@@ -193,6 +197,8 @@ export async function mockTrainingResponse(
       const session: TrainingSession = {
         userId,
         diagnosticId,
+        subjectId: subject.id,
+        subjectName: subject.name,
         id: crypto.randomUUID(),
         mode,
         targets:

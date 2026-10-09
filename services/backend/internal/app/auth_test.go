@@ -78,6 +78,9 @@ func newFixtureWithConfig(t *testing.T, cfg Config) *fixture {
 	if err := postgres.Migrate(ctx, pool); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := pool.Exec(ctx, `INSERT INTO subjects(id,name,created_at) VALUES ('subject:test','Тестовый предмет',1)`); err != nil {
+		t.Fatal(err)
+	}
 	f := &fixture{pool: pool, now: time.Unix(1790762400, 0), s3Objects: make(map[string]fixtureS3Object)}
 	f.s3 = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		f.s3Mu.Lock()

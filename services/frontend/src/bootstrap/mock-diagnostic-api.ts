@@ -3,6 +3,7 @@ import type {
   DiagnosticProgress,
   DiagnosticTask,
 } from '@/entities/diagnostic-session'
+import { findMockSubject } from './mock-subject-catalog'
 
 const task: DiagnosticTask = {
   variant_task_id: 'demo-main',
@@ -76,7 +77,7 @@ export function mockDiagnosticResponse(
     const key =
       new Headers(options.headers).get('Idempotency-Key') ?? crypto.randomUUID()
     const subjectId = body.subject_id
-    if (typeof subjectId !== 'string' || subjectId !== 'subject:intro-to-ml')
+    if (typeof subjectId !== 'string' || !findMockSubject(subjectId))
       return json({ code: 'SUBJECT_NOT_FOUND' }, 404)
     const identity = `${userId}:${key}`
     let variant = variants.get(identity)
@@ -223,6 +224,12 @@ export function readMockDiagnostic(
 ): DiagnosticProgress | undefined {
   const session = sessions.get(id)
   return session?.userId === userId ? progress(session) : undefined
+}
+
+export function mockDiagnosticSubject(userId: string, id: string) {
+  const session = sessions.get(id)
+  if (!session || session.userId !== userId) return undefined
+  return findMockSubject(session.subjectId)
 }
 
 export function mockDiagnosticForSubject(userId: string, subjectId: string) {

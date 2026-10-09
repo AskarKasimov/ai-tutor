@@ -89,7 +89,7 @@ Entity subject также экспортирует `subjectQueryKeys.subjects(us
 
 **Files:** `src/bootstrap/mock-api.ts`, `mock-diagnostic-api.ts`; новые `mock-subject-api.ts`, `mock-training-api.ts` при необходимости; `tests/bootstrap/mock-learning.test.ts`. Не менять UI/hook lifecycle.
 
-**Consumes:** Task 1 wire types. **Produces:** те же /subjects, learning-state и training маршруты в `mockApiFetch`; subject id `subject:intro-to-ml`, название «Введение в ML». Разделить API state по текущему userId, передаваемому из mock-api; logout/login очищает mutable mock state.
+**Consumes:** Task 1 wire types. **Produces:** те же /subjects, learning-state и training маршруты в `mockApiFetch`; явный каталог демопредметов; ID и название берутся из выбранного предмета. Разделить API state по текущему userId, передаваемому из mock-api; logout/login очищает mutable mock state.
 
 - [x] RED: через реальные entity API + configured mock transport проверить до диагностики gate, явное создание варианта с subject_id, completed learning-state, preview без записи, free_practice, один start на диагностику, новый exercise_id/round после ответа, повтор ключа и конфликт иного аудио, курсор истории. Фикстуры focused preview с обоими типами проверяются отдельным API test; backend classification не дублировать в сложный mock rule engine.
 - [x] `npm test -- --run tests/bootstrap/mock-learning.test.ts` → RED.
@@ -181,7 +181,7 @@ useImportCompetencyMapMutation(userId: string, subjectId: string)
 **Consumes:** Tasks1–6; **Produces:** complete F1, updated plans and documented UI real/mock behavior.
 
 - [x] Verify no new frontend caller uses global `/competency-map` or empty-body `POST /variants`; no real path reaches legacy-demo.
-- [x] Remove obsolete global competency-map HTTP aliases as agreed in multi-subject spec, migrate affected backend test URLs explicitly to `subject:intro-to-ml`, regenerate OpenAPI. Preserve schema/data/history. This is scoped route cleanup, not migration/table removal. Run affected backend tests with disposable PostgreSQL, then go test ./..., go vet, build.
+- [x] Remove obsolete global competency-map HTTP aliases as agreed in multi-subject spec, migrate affected backend test URLs explicitly to a created test subject, regenerate OpenAPI. Preserve schema/data/history. This is scoped route cleanup, not migration/table removal. Run affected backend tests with disposable PostgreSQL, then go test ./..., go vet, build.
 - [x] Run frontend gates exactly: `npm run format:check`, `npm run lint`, `npm run typecheck`, `npm test -- --run`, `npm run build`. Resolve errors, no disables.
 - [x] Controller browser evidence: mock login → keyboard subject selection → disabled training gate → explicit diagnostic start → selected subject and demo question shown. Recording, microphone-denied/text/audio states, narrow viewport, and light/dark styles were not verified; viewport override reported a 3878px DOM width instead of 390px. Route/hook tests and build cover those flows; no visual claims for the unverified states.
 - [x] Update root/frontend README, `documents/voice-trainer-scenarios.md`, mark F1 complete in both backend plans. Document data durability difference: real PostgreSQL; mock browser demo resets on new login. LLM analogous exercises remain future provider; don't promise fresh question content.

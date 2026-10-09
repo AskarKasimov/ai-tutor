@@ -39,7 +39,9 @@ it('loads a focused preview before starting and explicitly starts the frozen pla
   })
   render(<RouterProvider router={router} />)
   fireEvent.click(await screen.findByRole('combobox', { name: 'Предмет' }))
-  fireEvent.click(await screen.findByRole('option', { name: 'Введение в ML' }))
+  fireEvent.click(
+    await screen.findByRole('option', { name: 'Демонстрационный предмет A' }),
+  )
   fireEvent.click(
     await screen.findByRole('button', { name: 'Начать диагностику' }),
   )

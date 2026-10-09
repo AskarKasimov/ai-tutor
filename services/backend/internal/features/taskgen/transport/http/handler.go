@@ -3,7 +3,6 @@ package taskgenhttp
 import (
 	"net/http"
 
-	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/subject"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/user"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/features/taskgen/application"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/fault"
@@ -20,7 +19,7 @@ func New(service *application.Service, materials *application.MaterialService) *
 }
 
 type GenerateRequest struct {
-	SubjectID string `json:"subject_id,omitempty" minLength:"1" maxLength:"128" binding:"optional"`
+	SubjectID string `json:"subject_id" minLength:"1" maxLength:"128" binding:"required"`
 	OutcomeID string `json:"outcome_id" minLength:"1" maxLength:"128" binding:"required"`
 }
 
@@ -41,7 +40,6 @@ type GeneratedTask struct {
 // @Accept json
 // @Produce json
 // @Param Idempotency-Key header string true "Ключ повтора запроса"
-// @Description subject_id задаёт предмет; пропуск временно ограничивает запрос предметом «Введение в ML» для совместимости старого клиента.
 // @Param request body GenerateRequest true "Образовательный результат"
 // @Success 201 {object} GeneratedTask
 // @Failure 401 {object} fault.Error
@@ -68,9 +66,6 @@ func (h *Handler) Generate(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(r.Context(), w, fault.Validation("Idempotency-Key", "Укажите ключ идемпотентности."))
 		return
 	}
-	if request.SubjectID == "" {
-		request.SubjectID = subject.IntroToMLID
-	}
 	task, err := h.service.Generate(r.Context(), request.SubjectID, request.OutcomeID, key, principal.ID)
 	if err != nil {
 		httpx.Error(r.Context(), w, err)
@@ -83,7 +78,7 @@ func (h *Handler) Generate(w http.ResponseWriter, r *http.Request) {
 }
 
 type ImportMaterialRequest struct {
-	SubjectID  string   `json:"subject_id,omitempty" binding:"optional"`
+	SubjectID  string   `json:"subject_id" minLength:"1" maxLength:"128" binding:"required"`
 	Name       string   `json:"name"`
 	Content    string   `json:"content"`
 	OutcomeIDs []string `json:"outcome_ids"`
@@ -97,7 +92,6 @@ type ImportMaterialRequest struct {
 // @Accept json
 // @Produce json
 // @Param request body ImportMaterialRequest true "Текст и связи материала"
-// @Description subject_id задаёт предмет; пропуск временно ограничивает импорт предметом «Введение в ML» для совместимости старого клиента.
 // @Success 201 {object} map[string]string
 // @Failure 401 {object} fault.Error
 // @Failure 403 {object} fault.Error
@@ -119,9 +113,6 @@ func (h *Handler) ImportMaterial(w http.ResponseWriter, r *http.Request) {
 	if err := httpx.DecodeJSON(r, &request); err != nil {
 		httpx.Error(r.Context(), w, err)
 		return
-	}
-	if request.SubjectID == "" {
-		request.SubjectID = subject.IntroToMLID
 	}
 	if err := h.materials.Import(r.Context(), principal, application.MaterialInput{SubjectID: request.SubjectID, Name: request.Name, Content: request.Content, OutcomeIDs: request.OutcomeIDs}); err != nil {
 		httpx.Error(r.Context(), w, err)

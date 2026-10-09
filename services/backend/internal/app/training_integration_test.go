@@ -28,7 +28,7 @@ func TestTrainingPersistsCyclesAndReplaysAnswers(t *testing.T) {
 	f.handler = f.app.Handler()
 	access, _, owner := f.register(t, "training@example.edu")
 	admin := f.admin(t)
-	if w := upload(f, "/admin/subjects/subject:intro-to-ml/competency-map/import", "file", "map.csv", "text/csv", variantMapCSV(t), admin); w.Code != 200 {
+	if w := upload(f, "/admin/subjects/subject:test/competency-map/import", "file", "map.csv", "text/csv", variantMapCSV(t), admin); w.Code != 200 {
 		t.Fatal(w.Body.String())
 	}
 	post := func(path, key, body string) *httptest.ResponseRecorder {
@@ -40,7 +40,7 @@ func TestTrainingPersistsCyclesAndReplaysAnswers(t *testing.T) {
 		f.handler.ServeHTTP(w, r)
 		return w
 	}
-	v := post("/variants", "variant", `{"subject_id":"subject:intro-to-ml"}`)
+	v := post("/variants", "variant", `{"subject_id":"subject:test"}`)
 	var header struct {
 		ID string `json:"id"`
 	}
@@ -171,7 +171,7 @@ func TestConcurrentStartReplaysExistingTrainingBeforeStalePreview(t *testing.T) 
 		close(blocked.release)
 		t.Fatal(err)
 	}
-	if w := upload(f, "/admin/subjects/subject:intro-to-ml/competency-map/import", "file", "map.csv", "text/csv", variantMapCSV(t), admin); w.Code != 200 {
+	if w := upload(f, "/admin/subjects/subject:test/competency-map/import", "file", "map.csv", "text/csv", variantMapCSV(t), admin); w.Code != 200 {
 		close(blocked.release)
 		t.Fatal(w.Body.String())
 	}
@@ -201,7 +201,7 @@ func TestFreePracticeRotatesAllSavedTasksOfOneOutcome(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if w := upload(f, "/admin/subjects/subject:intro-to-ml/competency-map/import", "file", "map.csv", "text/csv", variantMapCSV(t), admin); w.Code != 200 {
+	if w := upload(f, "/admin/subjects/subject:test/competency-map/import", "file", "map.csv", "text/csv", variantMapCSV(t), admin); w.Code != 200 {
 		t.Fatal(w.Body.String())
 	}
 	for i := 0; i < len(progress.Targets); i++ {
@@ -282,7 +282,7 @@ func TestTrainingHistoryPaginationAndSnapshotAudioAfterReimport(t *testing.T) {
 	if _, err = f.pool.Exec(t.Context(), `UPDATE audio_assets SET status='ready',bucket='task-audio-test',storage_uri='s3://task-audio-test/'||object_key,audio_url='/task-audio/'||id||'/file' WHERE id=$1`, asset); err != nil {
 		t.Fatal(err)
 	}
-	if w := upload(f, "/admin/subjects/subject:intro-to-ml/competency-map/import", "file", "map.csv", "text/csv", variantMapCSV(t), admin); w.Code != 200 {
+	if w := upload(f, "/admin/subjects/subject:test/competency-map/import", "file", "map.csv", "text/csv", variantMapCSV(t), admin); w.Code != 200 {
 		t.Fatal(w.Body.String())
 	}
 	before := f.request("GET", "/training-sessions/"+p.ID, "", access)
@@ -347,13 +347,13 @@ func trainingFixture(t *testing.T, score int) (*fixture, *http.Cookie, *http.Coo
 	f.handler = f.app.Handler()
 	access, _, owner := f.register(t, "source@example.edu")
 	admin := f.admin(t)
-	if w := upload(f, "/admin/subjects/subject:intro-to-ml/competency-map/import", "file", "map.csv", "text/csv", variantMapCSV(t), admin); w.Code != 200 {
+	if w := upload(f, "/admin/subjects/subject:test/competency-map/import", "file", "map.csv", "text/csv", variantMapCSV(t), admin); w.Code != 200 {
 		t.Fatal(w.Body.String())
 	}
 	post := func(path, key, body string) *httptest.ResponseRecorder {
 		return trainingJSON(f, access, path, key, body)
 	}
-	v := post("/variants", "source-variant", `{"subject_id":"subject:intro-to-ml"}`)
+	v := post("/variants", "source-variant", `{"subject_id":"subject:test"}`)
 	var vh struct {
 		ID string `json:"id"`
 	}
@@ -411,7 +411,7 @@ func TestFreePracticeIncludesFalseAndStalePreviewDoesNotWrite(t *testing.T) {
 		t.Fatalf("preview wrote: %d %v", count, err)
 	}
 	old := p.PlanRevision
-	if w := upload(f, "/admin/subjects/subject:intro-to-ml/competency-map/import", "file", "map.csv", "text/csv", variantMapCSV(t), admin); w.Code != 200 {
+	if w := upload(f, "/admin/subjects/subject:test/competency-map/import", "file", "map.csv", "text/csv", variantMapCSV(t), admin); w.Code != 200 {
 		t.Fatal(w.Body.String())
 	}
 	rejected := trainingJSON(f, access, "/diagnostic-sessions/"+d.ID+"/training", "free-start", fmt.Sprintf(`{"plan_revision":%d}`, old))
@@ -425,7 +425,7 @@ func TestFreePracticeIncludesFalseAndStalePreviewDoesNotWrite(t *testing.T) {
 	if created.Code != 201 {
 		t.Fatalf("free start %d %s", created.Code, created.Body.String())
 	}
-	if w := upload(f, "/admin/subjects/subject:intro-to-ml/competency-map/import", "file", "map.csv", "text/csv", variantMapCSV(t), admin); w.Code != 200 {
+	if w := upload(f, "/admin/subjects/subject:test/competency-map/import", "file", "map.csv", "text/csv", variantMapCSV(t), admin); w.Code != 200 {
 		t.Fatal(w.Body.String())
 	}
 	replay := trainingJSON(f, access, "/diagnostic-sessions/"+d.ID+"/training", "free-start", fmt.Sprintf(`{"plan_revision":%d}`, old))

@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/competencymap"
-	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/subject"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/user"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/fault"
 )
@@ -31,10 +30,6 @@ func New(repo Repository, parser Parser, now func() time.Time) *Service {
 	return &Service{repo: repo, parser: parser, now: now}
 }
 
-func (s *Service) Read(ctx context.Context) (competencymap.Snapshot, error) {
-	return s.ReadSubject(ctx, subject.IntroToMLID)
-}
-
 func (s *Service) ReadSubject(ctx context.Context, subjectID string) (competencymap.Snapshot, error) {
 	return s.repo.Read(ctx, subjectID)
 }
@@ -45,10 +40,6 @@ func (s *Service) Authorize(actor user.User) error {
 		return fault.New(fault.Forbidden, "FORBIDDEN", "Операция доступна только admin.")
 	}
 	return nil
-}
-
-func (s *Service) Import(ctx context.Context, actor user.User, data []byte, media string) (competencymap.ImportResult, error) {
-	return s.ImportForSubject(ctx, actor, subject.IntroToMLID, data, media)
 }
 
 func (s *Service) ImportForSubject(ctx context.Context, actor user.User, subjectID string, data []byte, media string) (competencymap.ImportResult, error) {

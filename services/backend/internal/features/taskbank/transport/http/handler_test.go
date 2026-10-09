@@ -60,7 +60,7 @@ func TestSearchParsesAllSupportedQueryFilters(t *testing.T) {
 
 func TestSearchRejectsInvalidTypedQueryFiltersBeforeRepositoryCall(t *testing.T) {
 	for _, query := range []string{
-		"include_in_test=no", "importance=0", "importance=6", "importance=invalid", "limit=0", "limit=101", "limit=abc",
+		"subject_id=subject%3Atest&include_in_test=no", "subject_id=subject%3Atest&importance=0", "subject_id=subject%3Atest&importance=6", "subject_id=subject%3Atest&importance=invalid", "subject_id=subject%3Atest&limit=0", "subject_id=subject%3Atest&limit=101", "subject_id=subject%3Atest&limit=abc",
 		"limit=", "limit=1&limit=2", "origin=authored&origin=ai_generated", "unknown=value", "%zz", "outcome_id=%ff", "outcome_id=%00",
 	} {
 		t.Run(query, func(t *testing.T) {
@@ -81,7 +81,7 @@ func TestSearchUsesDefaultAndPassesBoundaryLimits(t *testing.T) {
 	for _, tc := range []struct {
 		input    string
 		expected int32
-	}{{"", 50}, {"limit=1", 1}, {"limit=100", 100}} {
+	}{{"subject_id=subject%3Atest", 50}, {"subject_id=subject%3Atest&limit=1", 1}, {"subject_id=subject%3Atest&limit=100", 100}} {
 		request := httptest.NewRequest(http.MethodGet, "/tasks?"+tc.input, nil)
 		response := httptest.NewRecorder()
 		handler.Search(response, request)
@@ -95,10 +95,32 @@ func TestSearchUsesDefaultAndPassesBoundaryLimits(t *testing.T) {
 	}
 }
 
+func TestSearchRequiresNonblankSubjectID(t *testing.T) {
+	for _, query := range []string{"", "subject_id=%20%20"} {
+		repository := &recordingRepository{}
+		response := httptest.NewRecorder()
+		New(application.New(repository)).Search(response, httptest.NewRequest(http.MethodGet, "/tasks?"+query, nil))
+		if response.Code != http.StatusUnprocessableEntity || repository.calls != 0 {
+			t.Fatalf("query %q: status=%d calls=%d body=%s", query, response.Code, repository.calls, response.Body.String())
+		}
+	}
+}
+
+func TestProfileRequiresNonblankSubjectID(t *testing.T) {
+	for _, query := range []string{"", "?subject_id=%20%20"} {
+		repository := &recordingRepository{}
+		response := httptest.NewRecorder()
+		New(application.New(repository)).Profile(response, httptest.NewRequest(http.MethodGet, "/tasks/task-1"+query, nil))
+		if response.Code != http.StatusUnprocessableEntity {
+			t.Fatalf("query %q: status=%d body=%s", query, response.Code, response.Body.String())
+		}
+	}
+}
+
 func stringPointer(value string) *string { return &value }
 
 func TestSearchRejectsInvalidImportanceRanges(t *testing.T) {
-	for _, query := range []string{"importance_min=0", "importance_max=6", "importance_min=no", "importance_min=4&importance_max=2"} {
+	for _, query := range []string{"subject_id=subject%3Atest&importance_min=0", "subject_id=subject%3Atest&importance_max=6", "subject_id=subject%3Atest&importance_min=no", "subject_id=subject%3Atest&importance_min=4&importance_max=2"} {
 		repository := &recordingRepository{}
 		response := httptest.NewRecorder()
 		New(application.New(repository)).Search(response, httptest.NewRequest("GET", "/tasks?"+query, nil))

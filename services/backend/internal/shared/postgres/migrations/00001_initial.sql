@@ -44,6 +44,13 @@ CREATE TABLE competency_map_state (
 );
 INSERT INTO competency_map_state(singleton, revision) VALUES (true, 0);
 
+CREATE TABLE subjects (
+    id text PRIMARY KEY,
+    name text NOT NULL CHECK (length(btrim(name)) > 0),
+    active_revision bigint,
+    created_at bigint NOT NULL CHECK (created_at >= 0)
+);
+
 CREATE TABLE competency_map_imports (
     revision bigint PRIMARY KEY,
     singleton boolean NOT NULL DEFAULT true CHECK (singleton),
@@ -56,8 +63,11 @@ CREATE TABLE competency_map_imports (
     source_format text NOT NULL CHECK (source_format IN ('paired', 'ml-map')),
     source_headers jsonb NOT NULL CHECK (jsonb_typeof(source_headers) = 'array'),
     unparsed_task_cell_count integer NOT NULL DEFAULT 0 CHECK (unparsed_task_cell_count >= 0),
-    UNIQUE(singleton)
+    subject_id text NOT NULL REFERENCES subjects(id),
+    UNIQUE(subject_id)
 );
+ALTER TABLE subjects ADD CONSTRAINT subjects_active_revision_fkey
+    FOREIGN KEY (active_revision) REFERENCES competency_map_imports(revision) ON DELETE SET NULL;
 
 CREATE TABLE competency_map_source_rows (
     revision bigint NOT NULL REFERENCES competency_map_imports(revision) ON DELETE CASCADE,
@@ -223,6 +233,7 @@ CREATE TABLE outcome_source_rows (
 
 CREATE TABLE material_chunks (
     id text PRIMARY KEY,
+    subject_id text NOT NULL REFERENCES subjects(id) ON DELETE CASCADE,
     material_name text NOT NULL,
     ordinal integer NOT NULL CHECK (ordinal > 0),
     content text NOT NULL CHECK (length(btrim(content)) > 0),
@@ -230,6 +241,7 @@ CREATE TABLE material_chunks (
     search_vector tsvector GENERATED ALWAYS AS (to_tsvector('russian', content)) STORED
 );
 CREATE INDEX material_chunks_search ON material_chunks USING gin(search_vector);
+CREATE INDEX material_chunks_subject_name ON material_chunks(subject_id, material_name);
 
 CREATE TABLE material_chunk_outcomes (
     chunk_id text NOT NULL REFERENCES material_chunks(id) ON DELETE CASCADE,
@@ -314,3 +326,14 @@ SELECT constituent.id AS constituent_id,
         WHERE link.constituent_id = constituent.id
     ), '[]'::jsonb)::text AS curriculum_sections
 FROM constituents AS constituent;
+
+-- +goose Down
+DROP VIEW IF EXISTS constituent_curriculum_profiles;
+DROP TABLE IF EXISTS assignment_responses, task_assignments, learning_sessions,
+    material_embeddings, generation_run_chunks, generation_run_examples,
+    material_chunk_outcomes, material_chunks, outcome_source_rows, tasks,
+    generation_runs, constituent_section_competencies, constituent_sections,
+    curriculum_competencies, curriculum_sections, outcomes, constituents,
+    competencies, competency_map_source_rows, competency_map_imports,
+    competency_map_state, subjects, topic_levels, ald_levels, taxonomies,
+    transcriptions, refresh_tokens, access_tokens, auth_sessions, users CASCADE;

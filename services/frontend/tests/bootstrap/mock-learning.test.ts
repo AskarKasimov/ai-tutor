@@ -43,7 +43,7 @@ afterEach(async () => {
   vi.unstubAllGlobals()
 })
 
-async function completeDiagnostic(subjectId = 'subject:intro-to-ml') {
+async function completeDiagnostic(subjectId = 'subject:demo-a') {
   const response = await apiFetch('/api/v1/variants', {
     method: 'POST',
     headers: {
@@ -74,10 +74,11 @@ async function completeDiagnostic(subjectId = 'subject:intro-to-ml') {
 
 it('exposes the demo subject, learning state, and rejects unknown subjects', async () => {
   await expect(listSubjects(signal())).resolves.toEqual([
-    { id: 'subject:intro-to-ml', name: 'Введение в ML', ready: true },
+    { id: 'subject:demo-a', name: 'Демонстрационный предмет A', ready: true },
+    { id: 'subject:demo-b', name: 'Демонстрационный предмет B', ready: true },
   ])
   await expect(
-    readLearningState('subject:intro-to-ml', signal()),
+    readLearningState('subject:demo-a', signal()),
   ).resolves.toMatchObject({
     diagnostic_status: 'not_started',
     diagnostic_completed: false,
@@ -105,14 +106,14 @@ it('requires a known subject when creating a diagnostic variant', async () => {
     createVariant('subject:unknown', 'legacy-variant', signal()),
   ).rejects.toMatchObject({ status: 404 })
   const legacy = await createVariant(
-    'subject:intro-to-ml',
+    'subject:demo-a',
     'legacy-variant',
     signal(),
   )
   expect(legacy.id).toBeTruthy()
   const diagnosticId = await completeDiagnostic()
   await expect(
-    readLearningState('subject:intro-to-ml', signal()),
+    readLearningState('subject:demo-a', signal()),
   ).resolves.toMatchObject({
     diagnostic_status: 'completed',
     diagnostic_completed: true,
@@ -120,13 +121,13 @@ it('requires a known subject when creating a diagnostic variant', async () => {
     diagnostic_session_id: diagnosticId,
   })
   const nextVariant = await createVariant(
-    'subject:intro-to-ml',
+    'subject:demo-a',
     'later-variant',
     signal(),
   )
   const active = await startDiagnostic(nextVariant.id, 'later-start', signal())
   await expect(
-    readLearningState('subject:intro-to-ml', signal()),
+    readLearningState('subject:demo-a', signal()),
   ).resolves.toMatchObject({
     diagnostic_status: 'active',
     diagnostic_completed: true,
@@ -143,7 +144,7 @@ it('gates training until diagnostic completion, previews both focused categories
       'Content-Type': 'application/json',
       'Idempotency-Key': 'unfinished-variant',
     },
-    body: JSON.stringify({ subject_id: 'subject:intro-to-ml' }),
+    body: JSON.stringify({ subject_id: 'subject:demo-a' }),
   })
   const variant = (await response.json()) as { id: string }
   const unfinished = await startDiagnostic(
@@ -163,11 +164,40 @@ it('gates training until diagnostic completion, previews both focused categories
   expect(preview).toMatchObject({
     mode: 'focused',
     status: 'ready',
-    subject_id: 'subject:intro-to-ml',
+    subject_id: 'subject:demo-a',
   })
   expect(preview.confirmed_gaps).toHaveLength(1)
   expect(preview.partial_competencies).toHaveLength(1)
   expect(preview.confirmed_gaps[0].original_score).toBe(0)
+
+  const otherDiagnosticId = await completeDiagnostic('subject:demo-b')
+  await expect(
+    readLearningState('subject:demo-a', signal()),
+  ).resolves.toMatchObject({ diagnostic_session_id: diagnosticId })
+  await expect(
+    readLearningState('subject:demo-b', signal()),
+  ).resolves.toMatchObject({
+    diagnostic_session_id: otherDiagnosticId,
+    diagnostic_completed: true,
+  })
+  await expect(
+    readTrainingPreview(otherDiagnosticId, signal()),
+  ).resolves.toMatchObject({
+    subject_id: 'subject:demo-b',
+    subject_name: 'Демонстрационный предмет B',
+  })
+  const otherTraining = await startTraining(
+    otherDiagnosticId,
+    'other-training-start',
+    undefined,
+    signal(),
+  )
+  await expect(
+    readTrainingSession(otherTraining.session_id, signal()),
+  ).resolves.toMatchObject({
+    subject_id: 'subject:demo-b',
+    subject_name: 'Демонстрационный предмет B',
+  })
 
   const started = await startTraining(
     diagnosticId,
@@ -187,7 +217,11 @@ it('gates training until diagnostic completion, previews both focused categories
   ).resolves.toMatchObject({ session_id: started.session_id })
   await expect(
     readTrainingSession(started.session_id, signal()),
-  ).resolves.toMatchObject({ answer_count: 0 })
+  ).resolves.toMatchObject({
+    answer_count: 0,
+    subject_id: 'subject:demo-a',
+    subject_name: 'Демонстрационный предмет A',
+  })
   const audio = await readTrainingAudio(
     started.session_id,
     started.current.exercise_id,
@@ -309,7 +343,7 @@ it('clears all learning state at logout and login', async () => {
     body: JSON.stringify({ email: '', password: '' }),
   })
   await expect(
-    readLearningState('subject:intro-to-ml', signal()),
+    readLearningState('subject:demo-a', signal()),
   ).resolves.toMatchObject({
     diagnostic_status: 'not_started',
     diagnostic_completed: false,

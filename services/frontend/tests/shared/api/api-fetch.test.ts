@@ -27,10 +27,10 @@ it('recovers concurrent protected requests with one refresh', async () => {
   )
   const results = await Promise.all([
     apiFetch('/api/v1/auth/me'),
-    apiFetch('/api/v1/subjects/subject%3Aintro-to-ml/competency-map'),
+    apiFetch('/api/v1/subjects/subject%3Ademo-a/competency-map'),
     apiFetch('/api/v1/variants', {
       method: 'POST',
-      body: JSON.stringify({ subject_id: 'subject:intro-to-ml' }),
+      body: JSON.stringify({ subject_id: 'subject:demo-a' }),
     }),
   ])
   expect(results.map((response) => response.status)).toEqual([200, 200, 200])
@@ -52,8 +52,7 @@ it('rechecks access before rotating after another tab has refreshed', async () =
     }),
   )
   expect(
-    (await apiFetch('/api/v1/subjects/subject%3Aintro-to-ml/competency-map'))
-      .status,
+    (await apiFetch('/api/v1/subjects/subject%3Ademo-a/competency-map')).status,
   ).toBe(200)
   expect(rotations).toBe(0)
 })
@@ -124,10 +123,10 @@ it('preserves the body and credentials of a protected POST on retry', async () =
   const response = await apiFetch('/api/v1/variants', {
     method: 'POST',
     credentials: 'include',
-    body: JSON.stringify({ subject_id: 'subject:intro-to-ml' }),
+    body: JSON.stringify({ subject_id: 'subject:demo-a' }),
   })
   expect(await response.json()).toEqual({
-    received: '{"subject_id":"subject:intro-to-ml"}',
+    received: '{"subject_id":"subject:demo-a"}',
     credentials: 'include',
   })
 })
@@ -154,10 +153,9 @@ it('does not replay a cancelled request while another caller finishes recovery',
     }),
   )
   const controller = new AbortController()
-  const cancelled = apiFetch(
-    '/api/v1/variants?subject_id=subject%3Aintro-to-ml',
-    { signal: controller.signal },
-  )
+  const cancelled = apiFetch('/api/v1/variants?subject_id=subject%3Ademo-a', {
+    signal: controller.signal,
+  })
   const rejection = expect(cancelled).rejects.toMatchObject({
     name: 'AbortError',
   })
@@ -220,8 +218,7 @@ it('retries a protected request only once even if renewed access is rejected', a
     }),
   )
   expect(
-    (await apiFetch('/api/v1/variants?subject_id=subject%3Aintro-to-ml'))
-      .status,
+    (await apiFetch('/api/v1/variants?subject_id=subject%3Ademo-a')).status,
   ).toBe(401)
   expect(rotations).toBe(1)
 })
@@ -282,7 +279,7 @@ it('runs every backend interaction in mock mode without making network requests'
   expect(transcription.id).toBeTruthy()
   expect(transcription.text).toContain('Демонстрационный')
   const variant = await (
-    await post('variants', { subject_id: 'subject:intro-to-ml' })
+    await post('variants', { subject_id: 'subject:demo-a' })
   ).json()
   const diagnostic = await (
     await post('diagnostic-sessions', { variant_id: variant.id })

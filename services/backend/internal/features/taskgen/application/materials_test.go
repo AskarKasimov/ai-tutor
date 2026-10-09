@@ -38,7 +38,7 @@ func TestMaterialImportPersistsValidAdminInput(t *testing.T) {
 	repository := &materialRepository{}
 	service := NewMaterialService(repository, func() int64 { return 42 })
 	err := service.Import(context.Background(), user.User{Role: user.Admin}, MaterialInput{
-		SubjectID: "subject:intro-to-ml", Name: " Notes ", Content: "if x:\n    print(x)\n", OutcomeIDs: []string{" o1 ", "o1"},
+		SubjectID: "subject:test", Name: " Notes ", Content: "if x:\n    print(x)\n", OutcomeIDs: []string{" o1 ", "o1"},
 	})
 	if err != nil || repository.name != "Notes" || len(repository.outcomes) != 1 || repository.outcomes[0] != "o1" || strings.Join(repository.chunks, "") != "if x:\n    print(x)\n" || repository.createdAt != 42 {
 		t.Fatalf("admin import: error=%v repository=%#v", err, repository)

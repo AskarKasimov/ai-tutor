@@ -34,7 +34,7 @@ func importCurrentTaskAudios(t *testing.T, f *fixture, filename string, data []b
 	} else {
 		cookie = admin[0]
 	}
-	if w := upload(f, "/admin/subjects/subject:intro-to-ml/competency-map/import", "file", filename, "text/csv", data, cookie); w.Code != http.StatusOK {
+	if w := upload(f, "/admin/subjects/subject:test/competency-map/import", "file", filename, "text/csv", data, cookie); w.Code != http.StatusOK {
 		t.Fatalf("import map for task audio: %d %s", w.Code, w.Body.String())
 	}
 	rows, err := f.pool.Query(context.Background(), `
@@ -100,10 +100,10 @@ func TestTaskAudioIsSynthesizedOnceAndServedFromStorage(t *testing.T) {
 
 	access, _, _ := f.register(t, "task-audio-once@example.edu")
 	admin := f.admin(t)
-	if w := upload(f, "/admin/subjects/subject:intro-to-ml/competency-map/import", "file", "map.csv", "text/csv", variantMapCSV(t), admin); w.Code != http.StatusOK {
+	if w := upload(f, "/admin/subjects/subject:test/competency-map/import", "file", "map.csv", "text/csv", variantMapCSV(t), admin); w.Code != http.StatusOK {
 		t.Fatalf("import: %d %s", w.Code, w.Body.String())
 	}
-	variantRequest := httptest.NewRequest(http.MethodPost, "https://api.example/variants", strings.NewReader(`{"subject_id":"subject:intro-to-ml"}`))
+	variantRequest := httptest.NewRequest(http.MethodPost, "https://api.example/variants", strings.NewReader(`{"subject_id":"subject:test"}`))
 	variantRequest.Header.Set("Content-Type", "application/json")
 	variantRequest.Header.Set("Idempotency-Key", "task-audio-variant-1")
 	variantRequest.AddCookie(access)
@@ -179,7 +179,7 @@ func TestTaskAudioIsSynthesizedOnceAndServedFromStorage(t *testing.T) {
 	if got := synthCalls.Load(); got != 1 {
 		t.Fatalf("HTTP reads synthesized again: TTS calls=%d", got)
 	}
-	if w := upload(f, "/admin/subjects/subject:intro-to-ml/competency-map/import", "file", "replacement.csv", "text/csv", variantMapCSV(t), admin); w.Code != http.StatusOK {
+	if w := upload(f, "/admin/subjects/subject:test/competency-map/import", "file", "replacement.csv", "text/csv", variantMapCSV(t), admin); w.Code != http.StatusOK {
 		t.Fatalf("reimport: %d %s", w.Code, w.Body.String())
 	}
 	var liveTaskID *string
@@ -243,7 +243,7 @@ func TestRegenerateCurrentAudioRepairsMissingObjectSynchronously(t *testing.T) {
 	if len(assets) == 0 {
 		t.Fatal("import created no tasks")
 	}
-	variantRequest := httptest.NewRequest(http.MethodPost, "https://api.example/variants", strings.NewReader(`{"subject_id":"subject:intro-to-ml"}`))
+	variantRequest := httptest.NewRequest(http.MethodPost, "https://api.example/variants", strings.NewReader(`{"subject_id":"subject:test"}`))
 	variantRequest.Header.Set("Content-Type", "application/json")
 	variantRequest.Header.Set("Idempotency-Key", "audio-repair-variant")
 	variantRequest.AddCookie(access)
@@ -370,10 +370,10 @@ func TestTaskAudioReplacementCancelsSnapshotOnlyAndExpiredAssets(t *testing.T) {
 	f := newFixture(t)
 	access, _, _ := f.register(t, "task-audio-replacement@example.edu")
 	admin := f.admin(t)
-	if w := upload(f, "/admin/subjects/subject:intro-to-ml/competency-map/import", "file", "map-a.csv", "text/csv", variantMapCSV(t), admin); w.Code != http.StatusOK {
+	if w := upload(f, "/admin/subjects/subject:test/competency-map/import", "file", "map-a.csv", "text/csv", variantMapCSV(t), admin); w.Code != http.StatusOK {
 		t.Fatalf("import A: %d %s", w.Code, w.Body.String())
 	}
-	variantRequest := httptest.NewRequest(http.MethodPost, "https://api.example/variants", strings.NewReader(`{"subject_id":"subject:intro-to-ml"}`))
+	variantRequest := httptest.NewRequest(http.MethodPost, "https://api.example/variants", strings.NewReader(`{"subject_id":"subject:test"}`))
 	variantRequest.Header.Set("Content-Type", "application/json")
 	variantRequest.Header.Set("Idempotency-Key", "task-audio-replacement-variant")
 	variantRequest.AddCookie(access)
@@ -406,7 +406,7 @@ func TestTaskAudioReplacementCancelsSnapshotOnlyAndExpiredAssets(t *testing.T) {
 		t.Fatal(err)
 	}
 	mapB := bytes.ReplaceAll(variantMapCSV(t), []byte("Назовите ответ."), []byte("Новая инструкция B."))
-	if w := upload(f, "/admin/subjects/subject:intro-to-ml/competency-map/import", "file", "map-b.csv", "text/csv", mapB, admin); w.Code != http.StatusOK {
+	if w := upload(f, "/admin/subjects/subject:test/competency-map/import", "file", "map-b.csv", "text/csv", mapB, admin); w.Code != http.StatusOK {
 		t.Fatalf("replace with B: %d %s", w.Code, w.Body.String())
 	}
 	for _, id := range oldAssetIDs[1:] {
@@ -607,7 +607,7 @@ func TestTaskAudioLargeQueueBoundsClaimsAndDoesNotBlockImport(t *testing.T) {
 	}
 	importDone := make(chan *httptest.ResponseRecorder, 1)
 	go func() {
-		importDone <- upload(f, "/admin/subjects/subject:intro-to-ml/competency-map/import", "file", "new-map.csv", "text/csv", variantMapCSV(t), admin)
+		importDone <- upload(f, "/admin/subjects/subject:test/competency-map/import", "file", "new-map.csv", "text/csv", variantMapCSV(t), admin)
 	}()
 	select {
 	case response := <-importDone:

@@ -48,7 +48,9 @@ it('completes local diagnostic and displays its overall feedback', async () => {
   })
   render(<RouterProvider router={router} />)
   fireEvent.click(await screen.findByRole('combobox', { name: 'Предмет' }))
-  fireEvent.click(await screen.findByRole('option', { name: 'Введение в ML' }))
+  fireEvent.click(
+    await screen.findByRole('option', { name: 'Демонстрационный предмет A' }),
+  )
   fireEvent.click(
     await screen.findByRole('button', { name: 'Начать диагностику' }),
   )

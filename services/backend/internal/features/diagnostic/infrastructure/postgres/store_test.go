@@ -49,13 +49,14 @@ func setupStore(t *testing.T) (*pgxpool.Pool, context.Context) {
 		t.Fatal(err)
 	}
 	if _, err := pool.Exec(ctx, `
+INSERT INTO subjects(id,name,created_at) VALUES ('subject:test','Тестовый предмет',1);
 INSERT INTO users(id,email,password_hash,created_at) VALUES
  ('diag-owner-a','diag-a@example.test','hash',1),
  ('diag-owner-b','diag-b@example.test','hash',1);
 INSERT INTO variants(id,user_id,create_request_key,map_revision,algorithm_version,included_competency_count,skipped_competencies,created_at,subject_id,subject_name_snapshot)
 VALUES
- ('variant-a','diag-owner-a','variant-key-a',0,'test',1,'[]',1,'subject:intro-to-ml','Введение в ML'),
- ('variant-b','diag-owner-b','variant-key-b',0,'test',1,'[]',1,'subject:intro-to-ml','Введение в ML');`); err != nil {
+ ('variant-a','diag-owner-a','variant-key-a',0,'test',1,'[]',1,'subject:test','Тестовый предмет'),
+ ('variant-b','diag-owner-b','variant-key-b',0,'test',1,'[]',1,'subject:test','Тестовый предмет');`); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
@@ -92,7 +93,7 @@ func TestStoreStartPersistsIdempotencyAndOwnerAcrossRepositoryInstances(t *testi
 	if err := pool.QueryRow(ctx, `SELECT subject_id,subject_name_snapshot,map_revision FROM diagnostic_sessions WHERE id=$1`, want.ID).Scan(&subjectID, &subjectName, &revision); err != nil {
 		t.Fatal(err)
 	}
-	if subjectID != "subject:intro-to-ml" || subjectName != "Введение в ML" || revision != want.Variant.MapRevision {
+	if subjectID != "subject:test" || subjectName != "Тестовый предмет" || revision != want.Variant.MapRevision {
 		t.Fatalf("session subject snapshot=%q/%q revision=%d", subjectID, subjectName, revision)
 	}
 

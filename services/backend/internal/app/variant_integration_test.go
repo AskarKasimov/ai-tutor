@@ -44,12 +44,12 @@ func TestVariantCreateReadIdempotencyOwnershipAndHistoricalReader(t *testing.T) 
 	f := newFixture(t)
 	access, _, ownerID := f.register(t, "variant-owner@example.edu")
 	admin := f.admin(t)
-	const importPath = "/admin/subjects/subject:intro-to-ml/competency-map/import"
+	const importPath = "/admin/subjects/subject:test/competency-map/import"
 	if w := upload(f, importPath, "file", "map.csv", "text/csv", variantMapCSV(t), admin); w.Code != http.StatusOK {
 		t.Fatalf("import: %d %s", w.Code, w.Body.String())
 	}
 	create := func(key string) *httptest.ResponseRecorder {
-		req := httptest.NewRequest(http.MethodPost, "https://api.example/variants", strings.NewReader(`{"subject_id":"subject:intro-to-ml"}`))
+		req := httptest.NewRequest(http.MethodPost, "https://api.example/variants", strings.NewReader(`{"subject_id":"subject:test"}`))
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("Idempotency-Key", key)
 		req.AddCookie(access)
@@ -136,7 +136,7 @@ func TestVariantCreateReadIdempotencyOwnershipAndHistoricalReader(t *testing.T) 
 	if w := f.request(http.MethodGet, "/variants/"+created.ID+"/tasks/"+foreignVariantTaskID, "", access); w.Code != http.StatusNotFound {
 		t.Fatalf("task from another owned variant status %d", w.Code)
 	}
-	page1 := f.request(http.MethodGet, "/variants?subject_id=subject%3Aintro-to-ml&limit=1", "", access)
+	page1 := f.request(http.MethodGet, "/variants?subject_id=subject%3Atest&limit=1", "", access)
 	if page1.Code != http.StatusOK {
 		t.Fatalf("list first page: %d %s", page1.Code, page1.Body.String())
 	}
@@ -151,7 +151,7 @@ func TestVariantCreateReadIdempotencyOwnershipAndHistoricalReader(t *testing.T) 
 	}
 	firstPageID := page.Items[0].ID
 	cursor := page.NextCursor
-	page2 := f.request(http.MethodGet, "/variants?subject_id=subject%3Aintro-to-ml&limit=1&cursor="+url.QueryEscape(cursor), "", access)
+	page2 := f.request(http.MethodGet, "/variants?subject_id=subject%3Atest&limit=1&cursor="+url.QueryEscape(cursor), "", access)
 	if page2.Code != http.StatusOK {
 		t.Fatalf("list second page: %d %s", page2.Code, page2.Body.String())
 	}
@@ -222,7 +222,7 @@ func TestVariantsAreScopedBySubjectAndRetainSubjectSnapshot(t *testing.T) {
 	if err := json.Unmarshal(createdSubject.Body.Bytes(), &subjectB); err != nil || subjectB.ID == "" {
 		t.Fatalf("created subject B: %s (%v)", createdSubject.Body.String(), err)
 	}
-	const subjectA = "subject:intro-to-ml"
+	const subjectA = "subject:test"
 	mapA := variantMapCSV(t)
 	mapB := []byte(strings.ReplaceAll(string(mapA), "Применяет линейную регрессию", "Применяет закон Ома"))
 	if response := upload(f, "/admin/subjects/"+subjectA+"/competency-map/import", "file", "a.csv", "text/csv", mapA, admin); response.Code != http.StatusOK {
@@ -278,7 +278,7 @@ func TestVariantsAreScopedBySubjectAndRetainSubjectSnapshot(t *testing.T) {
 		t.Fatalf("reimport A: %d %s", response.Code, response.Body.String())
 	}
 	oldVariant := f.request(http.MethodGet, "/variants/"+createdA.ID, "", access)
-	if oldVariant.Code != http.StatusOK || !strings.Contains(oldVariant.Body.String(), "Применяет линейную регрессию") || !strings.Contains(oldVariant.Body.String(), "subject:intro-to-ml") || !strings.Contains(oldVariant.Body.String(), "Введение в ML") {
+	if oldVariant.Code != http.StatusOK || !strings.Contains(oldVariant.Body.String(), "Применяет линейную регрессию") || !strings.Contains(oldVariant.Body.String(), "subject:test") || !strings.Contains(oldVariant.Body.String(), "Тестовый предмет") {
 		t.Fatalf("historical variant lost its subject/map snapshot: %d %s", oldVariant.Code, oldVariant.Body.String())
 	}
 	if missing := f.request(http.MethodGet, "/variants", "", access); missing.Code != http.StatusUnprocessableEntity {
@@ -302,17 +302,17 @@ func TestVariantSnapshotLockBlocksConcurrentSubjectImport(t *testing.T) {
 	f := newFixture(t)
 	_, _, ownerID := f.register(t, "variant-lock-owner@example.edu")
 	admin := f.admin(t)
-	if response := upload(f, "/admin/subjects/subject:intro-to-ml/competency-map/import", "file", "a.csv", "text/csv", variantMapCSV(t), admin); response.Code != http.StatusOK {
+	if response := upload(f, "/admin/subjects/subject:test/competency-map/import", "file", "a.csv", "text/csv", variantMapCSV(t), admin); response.Code != http.StatusOK {
 		t.Fatalf("import A: %d %s", response.Code, response.Body.String())
 	}
 	var revisionBefore int64
-	if err := f.pool.QueryRow(context.Background(), `SELECT active_revision FROM subjects WHERE id='subject:intro-to-ml'`).Scan(&revisionBefore); err != nil {
+	if err := f.pool.QueryRow(context.Background(), `SELECT active_revision FROM subjects WHERE id='subject:test'`).Scan(&revisionBefore); err != nil {
 		t.Fatal(err)
 	}
 	buildStarted, continueBuild := make(chan struct{}), make(chan struct{})
 	created := make(chan error, 1)
 	go func() {
-		_, err := variantgenpg.New(f.pool).Create(context.Background(), ownerID, "subject:intro-to-ml", "variant-lock-test",
+		_, err := variantgenpg.New(f.pool).Create(context.Background(), ownerID, "subject:test", "variant-lock-test",
 			func(subjectID, subjectName string, revision int64, candidates []variant.CandidateOutcome) (variant.Variant, error) {
 				close(buildStarted)
 				<-continueBuild
@@ -326,7 +326,7 @@ func TestVariantSnapshotLockBlocksConcurrentSubjectImport(t *testing.T) {
 	importStarted, importDone := make(chan struct{}), make(chan *httptest.ResponseRecorder, 1)
 	go func() {
 		close(importStarted)
-		importDone <- upload(f, "/admin/subjects/subject:intro-to-ml/competency-map/import", "file", "a2.csv", "text/csv", variantMapCSV(t), admin)
+		importDone <- upload(f, "/admin/subjects/subject:test/competency-map/import", "file", "a2.csv", "text/csv", variantMapCSV(t), admin)
 	}()
 	<-importStarted
 	select {
@@ -350,7 +350,7 @@ func TestVariantSnapshotLockBlocksConcurrentSubjectImport(t *testing.T) {
 	if err := f.pool.QueryRow(context.Background(), `SELECT map_revision FROM variants WHERE id='variant-lock-test'`).Scan(&savedRevision); err != nil {
 		t.Fatal(err)
 	}
-	if err := f.pool.QueryRow(context.Background(), `SELECT active_revision FROM subjects WHERE id='subject:intro-to-ml'`).Scan(&activeRevision); err != nil {
+	if err := f.pool.QueryRow(context.Background(), `SELECT active_revision FROM subjects WHERE id='subject:test'`).Scan(&activeRevision); err != nil {
 		t.Fatal(err)
 	}
 	if savedRevision != revisionBefore || activeRevision <= savedRevision {
@@ -362,7 +362,7 @@ func TestVariantCreationRollsBackWhenSnapshotInsertFails(t *testing.T) {
 	f := newFixture(t)
 	access, _, ownerID := f.register(t, "variant-rollback@example.edu")
 	admin := f.admin(t)
-	if w := upload(f, "/admin/subjects/subject:intro-to-ml/competency-map/import", "file", "map.csv", "text/csv", variantMapCSV(t), admin); w.Code != http.StatusOK {
+	if w := upload(f, "/admin/subjects/subject:test/competency-map/import", "file", "map.csv", "text/csv", variantMapCSV(t), admin); w.Code != http.StatusOK {
 		t.Fatalf("import: %d %s", w.Code, w.Body.String())
 	}
 	_, err := f.pool.Exec(context.Background(), `
@@ -380,7 +380,7 @@ $$;`)
 		_, _ = f.pool.Exec(context.Background(), `DROP TRIGGER IF EXISTS fail_variant_task_insert ON variant_tasks`)
 		_, _ = f.pool.Exec(context.Background(), `DROP FUNCTION IF EXISTS fail_variant_task_insert()`)
 	})
-	req := httptest.NewRequest(http.MethodPost, "https://api.example/variants", strings.NewReader(`{"subject_id":"subject:intro-to-ml"}`))
+	req := httptest.NewRequest(http.MethodPost, "https://api.example/variants", strings.NewReader(`{"subject_id":"subject:test"}`))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Idempotency-Key", "variant-rollback-request")
 	req.AddCookie(access)
@@ -421,10 +421,10 @@ func TestVariableSizeVariantsPersistReadAndListActualTaskCount(t *testing.T) {
 	if err := writer.WriteAll(mixed); err != nil {
 		t.Fatal(err)
 	}
-	if w := upload(f, "/admin/subjects/subject:intro-to-ml/competency-map/import", "file", "map.csv", "text/csv", content.Bytes(), admin); w.Code != http.StatusOK {
+	if w := upload(f, "/admin/subjects/subject:test/competency-map/import", "file", "map.csv", "text/csv", content.Bytes(), admin); w.Code != http.StatusOK {
 		t.Fatalf("import: %s", w.Body.String())
 	}
-	req := httptest.NewRequest(http.MethodPost, "https://api.example/variants", strings.NewReader(`{"subject_id":"subject:intro-to-ml"}`))
+	req := httptest.NewRequest(http.MethodPost, "https://api.example/variants", strings.NewReader(`{"subject_id":"subject:test"}`))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Idempotency-Key", "variable-variant")
 	req.AddCookie(access)
@@ -463,7 +463,7 @@ func TestVariableSizeVariantsPersistReadAndListActualTaskCount(t *testing.T) {
 			t.Fatalf("saved block %d: %s", i, read.Body.String())
 		}
 	}
-	list := f.request(http.MethodGet, "/variants?subject_id=subject%3Aintro-to-ml", "", access)
+	list := f.request(http.MethodGet, "/variants?subject_id=subject%3Atest", "", access)
 	var page struct {
 		Items []struct {
 			TaskCount int `json:"task_count"`

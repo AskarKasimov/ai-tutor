@@ -40,7 +40,7 @@ type mapReadResponse struct {
 
 func readMap(t *testing.T, f *fixture, cookie *http.Cookie) mapReadResponse {
 	t.Helper()
-	response := f.request("GET", "/subjects/subject:intro-to-ml/competency-map", "", cookie)
+	response := f.request("GET", "/subjects/subject:test/competency-map", "", cookie)
 	var result mapReadResponse
 	if err := json.Unmarshal(response.Body.Bytes(), &result); err != nil || response.Code != 200 {
 		t.Fatalf("read map: %d %s", response.Code, response.Body.String())
@@ -56,7 +56,7 @@ func TestReadCompetencyMapIncludesEntireHierarchyAndTasklessOutcomes(t *testing.
 	f.app.cfg.APIMode = "mock"
 	admin := f.admin(t)
 	student, _, _ := f.register(t, "map-reader@example.test")
-	requireCode(t, f.request("GET", "/subjects/subject:intro-to-ml/competency-map", ""), 401, "UNAUTHORIZED")
+	requireCode(t, f.request("GET", "/subjects/subject:test/competency-map", ""), 401, "UNAUTHORIZED")
 	requireCode(t, f.request("GET", "/outcomes", "", student), 404, "NOT_FOUND")
 	empty := readMap(t, f, student)
 	if empty.Revision != 0 || empty.ImportedAt != nil || empty.Competencies == nil || len(empty.Competencies) != 0 {
@@ -68,7 +68,7 @@ func TestReadCompetencyMapIncludesEntireHierarchyAndTasklessOutcomes(t *testing.
 		fmt.Fprintf(&csv, ",,О%d,FALSE,Анализ,5,,,,\n", i)
 	}
 	csv.WriteString("К2,С1,О0,,,,,,Другой вопрос,Другой критерий\n")
-	response := upload(f, "/admin/subjects/subject:intro-to-ml/competency-map/import", "file", "map.csv", "text/csv", []byte(csv.String()), admin)
+	response := upload(f, "/admin/subjects/subject:test/competency-map/import", "file", "map.csv", "text/csv", []byte(csv.String()), admin)
 	if response.Code != 200 {
 		t.Fatal(response.Body.String())
 	}
@@ -105,7 +105,7 @@ func TestReadCompetencyMapIncludesEntireHierarchyAndTasklessOutcomes(t *testing.
 			tasklessID = outcome.ID
 		}
 	}
-	body, _ := json.Marshal(map[string]string{"outcome_id": tasklessID})
+	body, _ := json.Marshal(map[string]string{"subject_id": "subject:test", "outcome_id": tasklessID})
 	request := httptest.NewRequest("POST", "/tasks/generate", strings.NewReader(string(body)))
 	request.Header.Set("Content-Type", "application/json")
 	request.Header.Set("Idempotency-Key", "map-taskless-outcome")
@@ -131,7 +131,7 @@ func TestReadCompetencyMapPreservesMLPropertiesAndReplacesRevision(t *testing.T)
 	f := newFixture(t)
 	admin := f.admin(t)
 	csv := "Компетенция;Составляющая;Образовательный результат;Уровень темы;Что должно войти в тест;Таксономия;Уровень ALDs;Важность;Раздел РПД · компетенции РПД;ОС;Задание1\nК;С;О;Продвинутый;FALSE;Анализ;Средний;4;\"Р.1 Введение\nОПК-2;ПК-2\";Учебный контекст;\"Экран: Вопрос. Варианты: 1 — A; 2 — B. Голосовая инструкция: Ответьте. Ответ: A\"\n"
-	response := upload(f, "/admin/subjects/subject:intro-to-ml/competency-map/import", "file", "map.csv", "text/csv", []byte(csv), admin)
+	response := upload(f, "/admin/subjects/subject:test/competency-map/import", "file", "map.csv", "text/csv", []byte(csv), admin)
 	if response.Code != 200 {
 		t.Fatal(response.Body.String())
 	}
@@ -142,7 +142,7 @@ func TestReadCompetencyMapPreservesMLPropertiesAndReplacesRevision(t *testing.T)
 		t.Fatalf("ML profile: %#v / %#v", constituent, outcome)
 	}
 	oldID := outcome.ID
-	response = upload(f, "/admin/subjects/subject:intro-to-ml/competency-map/import", "file", "map.csv", "text/csv", []byte("Ком,Сост,ОР,Задание 1,Критерии 1\nНовая,С,О,Новый вопрос,К\n"), admin)
+	response = upload(f, "/admin/subjects/subject:test/competency-map/import", "file", "map.csv", "text/csv", []byte("Ком,Сост,ОР,Задание 1,Критерии 1\nНовая,С,О,Новый вопрос,К\n"), admin)
 	if response.Code != 200 {
 		t.Fatal(response.Body.String())
 	}

@@ -56,7 +56,9 @@ it('loads subjects without creating a variant, then starts only the chosen subje
   expect(await screen.findByRole('combobox', { name: 'Предмет' })).toBeVisible()
   expect(requests.some((r) => r.includes('/learning-state'))).toBe(false)
   fireEvent.click(screen.getByRole('combobox', { name: 'Предмет' }))
-  fireEvent.click(await screen.findByRole('option', { name: 'Введение в ML' }))
+  fireEvent.click(
+    await screen.findByRole('option', { name: 'Демонстрационный предмет A' }),
+  )
   expect(
     await screen.findByRole('button', { name: 'Начать диагностику' }),
   ).toBeEnabled()
@@ -261,5 +263,7 @@ it('starts with a fresh variant after demo state resets between variant and sess
 
 async function chooseSubject() {
   fireEvent.click(await screen.findByRole('combobox', { name: 'Предмет' }))
-  fireEvent.click(await screen.findByRole('option', { name: 'Введение в ML' }))
+  fireEvent.click(
+    await screen.findByRole('option', { name: 'Демонстрационный предмет A' }),
+  )
 }

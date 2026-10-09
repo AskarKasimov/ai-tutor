@@ -194,12 +194,12 @@ type LearningSession struct {
 
 type MaterialChunk struct {
 	ID           string
+	SubjectID    string
 	MaterialName string
 	Ordinal      int32
 	Content      string
 	CreatedAt    int64
 	SearchVector interface{}
-	SubjectID    string
 }
 
 type MaterialChunkOutcome struct {

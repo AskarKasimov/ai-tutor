@@ -20,10 +20,10 @@ func TestDiagnosticSessionAPIProgressOwnershipAndSnapshotPrivacy(t *testing.T) {
 	f.handler = f.app.Handler()
 	access, _, _ := f.register(t, "diagnostic@example.edu")
 	admin := f.admin(t)
-	if w := upload(f, "/admin/subjects/subject:intro-to-ml/competency-map/import", "file", "map.csv", "text/csv", variantMapCSV(t), admin); w.Code != http.StatusOK {
+	if w := upload(f, "/admin/subjects/subject:test/competency-map/import", "file", "map.csv", "text/csv", variantMapCSV(t), admin); w.Code != http.StatusOK {
 		t.Fatalf("import: %d %s", w.Code, w.Body.String())
 	}
-	variantRequest := httptest.NewRequest(http.MethodPost, "https://api.example/variants", strings.NewReader(`{"subject_id":"subject:intro-to-ml"}`))
+	variantRequest := httptest.NewRequest(http.MethodPost, "https://api.example/variants", strings.NewReader(`{"subject_id":"subject:test"}`))
 	variantRequest.Header.Set("Content-Type", "application/json")
 	variantRequest.Header.Set("Idempotency-Key", "diagnostic-variant-1")
 	variantRequest.AddCookie(access)

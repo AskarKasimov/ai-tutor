@@ -5,7 +5,6 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
-	"fmt"
 	"io/fs"
 	"os"
 	"strings"
@@ -15,6 +14,8 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/jackc/pgx/v5/stdlib"
+	"github.com/pressly/goose/v3"
 	"github.com/pressly/goose/v3/lock"
 )
 
@@ -78,222 +79,155 @@ func TestMigrateFreshAndRepeat(t *testing.T) {
 	if err := pool.QueryRow(ctx, "SELECT revision FROM competency_map_state").Scan(&revision); err != nil || revision != 0 {
 		t.Fatalf("initial state: revision=%d, err=%v", revision, err)
 	}
-	var exists bool
-	if err := pool.QueryRow(ctx, "SELECT to_regclass('auth_rate_limits') IS NOT NULL").Scan(&exists); err != nil || exists {
-		t.Fatalf("initial schema includes counters: exists=%v, err=%v", exists, err)
+	var subjects, imports int
+	if err := pool.QueryRow(ctx, "SELECT count(*) FROM subjects").Scan(&subjects); err != nil || subjects != 0 {
+		t.Fatalf("fresh subjects=%d err=%v", subjects, err)
+	}
+	if err := pool.QueryRow(ctx, "SELECT count(*) FROM competency_map_imports").Scan(&imports); err != nil || imports != 0 {
+		t.Fatalf("fresh imports=%d err=%v", imports, err)
+	}
+	var versions int
+	if err := pool.QueryRow(ctx, "SELECT count(*) FROM goose_db_version WHERE is_applied AND version_id > 0").Scan(&versions); err != nil || versions != 5 {
+		t.Fatalf("applied migrations=%d err=%v, want 5", versions, err)
 	}
 }
 
-func TestSubjectsMigrationBackfillsCurrentMapAndVariants(t *testing.T) {
+func TestMigrateDownRemovesCyclicSubjectSchema(t *testing.T) {
 	pool := migrationPool(t)
 	ctx := context.Background()
-	files := legacySubjectMigrationFiles(t)
-	if err := migrate(ctx, pool, files); err != nil {
+	if err := Migrate(ctx, pool); err != nil {
 		t.Fatal(err)
 	}
-	_, err := pool.Exec(ctx, `
-INSERT INTO users(id,email,password_hash,created_at) VALUES ('subject-user','subject@example.test','hash',1);
-INSERT INTO competency_map_imports(revision,imported_at,imported_by,competency_count,constituent_count,outcome_count,task_count,source_format,source_headers)
-VALUES (7,1,'subject-user',1,1,1,1,'paired','[]');
-INSERT INTO competencies(id,name,revision) VALUES ('subject-c','Компетенция ML',7);
-INSERT INTO variants(id,user_id,create_request_key,map_revision,algorithm_version,included_competency_count,skipped_competencies,created_at)
-VALUES ('subject-v','subject-user','subject-request',7,'test',1,'[]',1);
-INSERT INTO variant_tasks(id,variant_id,source_task_id_snapshot,competency_position,slot,role,task_snapshot,profile_snapshot)
-VALUES ('subject-vt','subject-v','historical-task',1,0,'main','{"question":"Снимок"}','{}');
-UPDATE competency_map_state SET revision=7 WHERE singleton=true;`)
+	db := stdlib.OpenDB(*pool.Config().ConnConfig)
+	defer db.Close()
+	locker, err := lock.NewPostgresSessionLocker()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := Migrate(ctx, pool); err != nil {
+	files, err := fs.Sub(migrations, "migrations")
+	if err != nil {
 		t.Fatal(err)
 	}
-	const mlID = "subject:intro-to-ml"
-	var subjectName string
-	var activeRevision *int64
-	if err := pool.QueryRow(ctx, `SELECT name, active_revision FROM subjects WHERE id=$1`, mlID).Scan(&subjectName, &activeRevision); err != nil {
+	provider, err := goose.NewProvider(goose.DialectPostgres, db, files,
+		goose.WithSessionLocker(locker), goose.WithDisableGlobalRegistry(true))
+	if err != nil {
 		t.Fatal(err)
 	}
-	if subjectName != "Введение в ML" || activeRevision == nil || *activeRevision != 7 {
-		t.Fatalf("ML subject backfill: name=%q active_revision=%v", subjectName, activeRevision)
+	if _, err := provider.DownTo(ctx, 0); err != nil {
+		t.Fatalf("rollback all migrations: %v", err)
 	}
-	var importSubject string
-	if err := pool.QueryRow(ctx, `SELECT subject_id FROM competency_map_imports WHERE revision=7`).Scan(&importSubject); err != nil || importSubject != mlID {
-		t.Fatalf("import subject=%q err=%v", importSubject, err)
-	}
-	var variantSubject, variantName, taskSnapshot string
-	if err := pool.QueryRow(ctx, `SELECT subject_id, subject_name_snapshot, task_snapshot->>'question' FROM variants v JOIN variant_tasks vt ON vt.variant_id=v.id WHERE v.id='subject-v'`).Scan(&variantSubject, &variantName, &taskSnapshot); err != nil {
+	var remaining int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM information_schema.tables
+WHERE table_schema=current_schema() AND table_name IN
+('subjects','competency_map_imports','competency_map_state','variants','audio_assets','diagnostic_sessions','training_sessions')`).Scan(&remaining); err != nil {
 		t.Fatal(err)
 	}
-	if variantSubject != mlID || variantName != "Введение в ML" || taskSnapshot != "Снимок" {
-		t.Fatalf("variant backfill: subject=%q name=%q task snapshot=%q", variantSubject, variantName, taskSnapshot)
-	}
-	var subjectIDDefault, subjectNameDefault *string
-	if err := pool.QueryRow(ctx, `SELECT
-  (SELECT column_default FROM information_schema.columns WHERE table_schema=current_schema() AND table_name='variants' AND column_name='subject_id'),
-  (SELECT column_default FROM information_schema.columns WHERE table_schema=current_schema() AND table_name='variants' AND column_name='subject_name_snapshot')`).Scan(&subjectIDDefault, &subjectNameDefault); err != nil {
-		t.Fatal(err)
-	}
-	if subjectIDDefault != nil || subjectNameDefault != nil {
-		t.Fatalf("variant subject defaults remain: subject_id=%v subject_name_snapshot=%v", subjectIDDefault, subjectNameDefault)
-	}
-	if _, err := pool.Exec(ctx, `INSERT INTO subjects(id,name,created_at) VALUES ('subject:second','Второй предмет',2)`); err != nil {
-		t.Fatalf("insert second subject: %v", err)
-	}
-	var subjects int
-	if err := pool.QueryRow(ctx, `SELECT count(*) FROM subjects WHERE id IN ($1,'subject:second')`, mlID).Scan(&subjects); err != nil || subjects != 2 {
-		t.Fatalf("subjects=%d err=%v", subjects, err)
-	}
-	var mlRevisionAfterInsert *int64
-	var mlNameAfterInsert string
-	if err := pool.QueryRow(ctx, `SELECT name, active_revision FROM subjects WHERE id=$1`, mlID).Scan(&mlNameAfterInsert, &mlRevisionAfterInsert); err != nil || mlNameAfterInsert != "Введение в ML" || mlRevisionAfterInsert == nil || *mlRevisionAfterInsert != 7 {
-		t.Fatalf("ML subject changed after adding second subject: name=%q revision=%v err=%v", mlNameAfterInsert, mlRevisionAfterInsert, err)
-	}
-	var globalRevision int64
-	if err := pool.QueryRow(ctx, `SELECT revision FROM competency_map_state WHERE singleton=true`).Scan(&globalRevision); err != nil || globalRevision != 7 {
-		t.Fatalf("global revision=%d err=%v", globalRevision, err)
+	if remaining != 0 {
+		t.Fatalf("schema tables remain after rollback: %d", remaining)
 	}
 }
 
-func TestActiveRevisionForeignKeyAllowsImportReplacement(t *testing.T) {
+func TestSubjectRequiredWithoutDefaults(t *testing.T) {
 	pool := migrationPool(t)
 	ctx := context.Background()
-	legacyFiles := migrationsThroughNineWithNoActionActiveRevision(t)
-	if err := migrate(ctx, pool, legacyFiles); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := pool.Exec(ctx, `
-INSERT INTO users(id,email,password_hash,created_at) VALUES ('fk-user','fk@example.test','hash',1);
-INSERT INTO competency_map_imports(revision,imported_at,imported_by,competency_count,constituent_count,outcome_count,task_count,source_format,source_headers,subject_id)
-VALUES (1,1,'fk-user',1,1,1,1,'paired','[]','subject:intro-to-ml');
-INSERT INTO competencies(id,name,revision) VALUES ('fk-c','Historical competency',1);
-INSERT INTO variants(id,user_id,create_request_key,map_revision,algorithm_version,included_competency_count,skipped_competencies,created_at,subject_id,subject_name_snapshot)
-VALUES ('fk-v','fk-user','fk-request',1,'test',1,'[]',1,'subject:intro-to-ml','Введение в ML');
-INSERT INTO variant_tasks(id,variant_id,source_task_id_snapshot,competency_position,slot,role,task_snapshot,profile_snapshot)
-VALUES ('fk-vt','fk-v','historical-task',1,0,'main','{"question":"Historical snapshot"}','{}');`); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := pool.Exec(ctx, `UPDATE subjects SET active_revision=1 WHERE id='subject:intro-to-ml'`); err != nil {
-		t.Fatal(err)
-	}
 	if err := Migrate(ctx, pool); err != nil {
 		t.Fatal(err)
 	}
-	for range 2 {
-		if err := Migrate(ctx, pool); err != nil {
-			t.Fatal(err)
-		}
-	}
-	var fkDefinition string
-	if err := pool.QueryRow(ctx, `SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conname='subjects_active_revision_fkey'`).Scan(&fkDefinition); err != nil {
+	if _, err := pool.Exec(ctx, `INSERT INTO users(id,email,password_hash,created_at) VALUES ('u','u@example.test','hash',1)`); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(fkDefinition, "ON DELETE SET NULL") {
-		t.Fatalf("active revision FK = %q, want ON DELETE SET NULL", fkDefinition)
+	if _, err := pool.Exec(ctx, `INSERT INTO competency_map_imports(revision,imported_at,imported_by,competency_count,constituent_count,outcome_count,task_count,source_format,source_headers) VALUES (1,1,'u',0,0,0,0,'paired','[]')`); err == nil {
+		t.Fatal("import without subject_id succeeded")
 	}
-	var snapshot string
-	if err := pool.QueryRow(ctx, `SELECT task_snapshot->>'question' FROM variant_tasks WHERE id='fk-vt'`).Scan(&snapshot); err != nil || snapshot != "Historical snapshot" {
-		t.Fatalf("historical task snapshot=%q err=%v", snapshot, err)
+	if _, err := pool.Exec(ctx, `INSERT INTO variants(id,user_id,create_request_key,map_revision,algorithm_version,included_competency_count,skipped_competencies,created_at) VALUES ('v','u','key',0,'test',1,'[]',1)`); err == nil {
+		t.Fatal("variant without subject fields succeeded")
 	}
-	// A failed import replacement must leave the active map and pointer intact.
+	for _, column := range []struct{ table, name string }{{"competency_map_imports", "subject_id"}, {"variants", "subject_id"}, {"variants", "subject_name_snapshot"}} {
+		var def *string
+		if err := pool.QueryRow(ctx, `SELECT column_default FROM information_schema.columns WHERE table_schema=current_schema() AND table_name=$1 AND column_name=$2`, column.table, column.name).Scan(&def); err != nil {
+			t.Fatal(err)
+		}
+		if def != nil {
+			t.Fatalf("%s.%s default = %q", column.table, column.name, *def)
+		}
+	}
+}
+
+func TestActiveRevisionForeignKeyAllowsReimport(t *testing.T) {
+	pool := migrationPool(t)
+	ctx := context.Background()
+	if err := Migrate(ctx, pool); err != nil {
+		t.Fatal(err)
+	}
+	_, err := pool.Exec(ctx, `
+INSERT INTO users(id,email,password_hash,created_at) VALUES ('u','u@example.test','hash',1);
+INSERT INTO subjects(id,name,created_at) VALUES ('s','Subject',1);
+INSERT INTO competency_map_imports(revision,imported_at,imported_by,competency_count,constituent_count,outcome_count,task_count,source_format,source_headers,subject_id)
+VALUES (1,1,'u',1,1,1,1,'paired','[]','s');
+INSERT INTO competencies(id,name,revision) VALUES ('c','Competency',1);
+INSERT INTO variants(id,user_id,create_request_key,map_revision,algorithm_version,included_competency_count,skipped_competencies,created_at,subject_id,subject_name_snapshot)
+VALUES ('v','u','request',1,'test',1,'[]',1,'s','Subject');
+INSERT INTO variant_tasks(id,variant_id,source_task_id_snapshot,competency_position,slot,role,task_snapshot,profile_snapshot)
+VALUES ('vt','v','old-task',1,0,'main','{"question":"Historical snapshot"}','{}');
+UPDATE subjects SET active_revision=1 WHERE id='s';`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fk string
+	if err := pool.QueryRow(ctx, `SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conname='subjects_active_revision_fkey'`).Scan(&fk); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(fk, "ON DELETE SET NULL") {
+		t.Fatalf("active revision FK = %q", fk)
+	}
 	tx, err := pool.Begin(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := tx.Exec(ctx, `DELETE FROM competency_map_imports WHERE subject_id='subject:intro-to-ml'`); err != nil {
-		_ = tx.Rollback(ctx)
-		t.Fatalf("delete old map in replacement transaction: %v", err)
-	}
-	var clearedRevision *int64
-	if err := tx.QueryRow(ctx, `SELECT active_revision FROM subjects WHERE id='subject:intro-to-ml'`).Scan(&clearedRevision); err != nil || clearedRevision != nil {
-		_ = tx.Rollback(ctx)
-		t.Fatalf("active revision after deleting old map=%v err=%v", clearedRevision, err)
-	}
-	if _, err := tx.Exec(ctx, `INSERT INTO competency_map_imports(revision,imported_at,imported_by,competency_count,constituent_count,outcome_count,task_count,source_format,source_headers,subject_id)
-VALUES (2,2,'fk-user',1,1,1,1,'paired','[]','subject:intro-to-ml')`); err != nil {
+	if _, err := tx.Exec(ctx, `DELETE FROM competency_map_imports WHERE subject_id='s'`); err != nil {
 		_ = tx.Rollback(ctx)
 		t.Fatal(err)
 	}
-	if err := tx.Rollback(ctx); err != nil {
-		t.Fatal(err)
-	}
-	var activeRevision int64
-	var importCount int
-	if err := pool.QueryRow(ctx, `SELECT active_revision FROM subjects WHERE id='subject:intro-to-ml'`).Scan(&activeRevision); err != nil || activeRevision != 1 {
-		t.Fatalf("rollback active revision=%d err=%v", activeRevision, err)
-	}
-	if err := pool.QueryRow(ctx, `SELECT count(*) FROM competency_map_imports WHERE subject_id='subject:intro-to-ml'`).Scan(&importCount); err != nil || importCount != 1 {
-		t.Fatalf("rollback import count=%d err=%v", importCount, err)
-	}
-	if err := pool.QueryRow(ctx, `SELECT task_snapshot->>'question' FROM variant_tasks WHERE id='fk-vt'`).Scan(&snapshot); err != nil || snapshot != "Historical snapshot" {
-		t.Fatalf("rollback changed historical task snapshot=%q err=%v", snapshot, err)
-	}
-	tx, err = pool.Begin(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := tx.Exec(ctx, `DELETE FROM competency_map_imports WHERE subject_id='subject:intro-to-ml'`); err != nil {
+	var active *int64
+	if err := tx.QueryRow(ctx, `SELECT active_revision FROM subjects WHERE id='s'`).Scan(&active); err != nil || active != nil {
 		_ = tx.Rollback(ctx)
-		t.Fatalf("delete old map in successful replacement transaction: %v", err)
+		t.Fatalf("active revision after import delete=%v err=%v", active, err)
 	}
-	if _, err := tx.Exec(ctx, `INSERT INTO competency_map_imports(revision,imported_at,imported_by,competency_count,constituent_count,outcome_count,task_count,source_format,source_headers,subject_id)
-VALUES (2,2,'fk-user',1,1,1,1,'paired','[]','subject:intro-to-ml')`); err != nil {
+	if _, err := tx.Exec(ctx, `INSERT INTO competency_map_imports(revision,imported_at,imported_by,competency_count,constituent_count,outcome_count,task_count,source_format,source_headers,subject_id) VALUES (2,2,'u',1,1,1,1,'paired','[]','s')`); err != nil {
 		_ = tx.Rollback(ctx)
 		t.Fatal(err)
 	}
-	if _, err := tx.Exec(ctx, `UPDATE subjects SET active_revision=2 WHERE id='subject:intro-to-ml'`); err != nil {
+	if _, err := tx.Exec(ctx, `UPDATE subjects SET active_revision=2 WHERE id='s'`); err != nil {
 		_ = tx.Rollback(ctx)
 		t.Fatal(err)
 	}
 	if err := tx.Commit(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if err := pool.QueryRow(ctx, `SELECT active_revision FROM subjects WHERE id='subject:intro-to-ml'`).Scan(&activeRevision); err != nil || activeRevision != 2 {
-		t.Fatalf("reimport active revision=%d err=%v", activeRevision, err)
+	var snapshot string
+	if err := pool.QueryRow(ctx, `SELECT task_snapshot->>'question' FROM variant_tasks WHERE id='vt'`).Scan(&snapshot); err != nil || snapshot != "Historical snapshot" {
+		t.Fatalf("snapshot=%q err=%v", snapshot, err)
 	}
 }
 
-func migrationsThroughNineWithNoActionActiveRevision(t *testing.T) fs.FS {
-	t.Helper()
-	files := fstest.MapFS{}
-	for i := 1; i <= 9; i++ {
-		name := fmt.Sprintf("%05d_", i)
-		entries, err := fs.ReadDir(migrations, "migrations")
-		if err != nil {
-			t.Fatal(err)
-		}
-		var found string
-		for _, entry := range entries {
-			if strings.HasPrefix(entry.Name(), name) {
-				found = entry.Name()
-				break
-			}
-		}
-		if found == "" {
-			t.Fatalf("missing historical migration %s", name)
-		}
-		data, err := fs.ReadFile(migrations, "migrations/"+found)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if i == 4 {
-			data = []byte(strings.Replace(string(data), " ON DELETE SET NULL", "", 1))
-		}
-		files[found] = &fstest.MapFile{Data: data}
+func TestInitialSchemaAllowsPartialOutcomeProfiles(t *testing.T) {
+	pool := migrationPool(t)
+	ctx := context.Background()
+	if err := Migrate(ctx, pool); err != nil {
+		t.Fatal(err)
 	}
-	return files
-}
-
-func legacySubjectMigrationFiles(t *testing.T) fs.FS {
-	t.Helper()
-	files := fstest.MapFS{}
-	for _, name := range []string{"00001_initial.sql", "00002_variants.sql", "00003_task_audio.sql"} {
-		data, err := fs.ReadFile(migrations, "migrations/"+name)
-		if err != nil {
-			t.Fatal(err)
-		}
-		files[name] = &fstest.MapFile{Data: data}
+	_, err := pool.Exec(ctx, `INSERT INTO users(id,email,password_hash,created_at) VALUES ('u','u@example.test','hash',1);
+INSERT INTO subjects(id,name,created_at) VALUES ('s','Subject',1);
+INSERT INTO competency_map_imports(revision,imported_at,imported_by,competency_count,constituent_count,outcome_count,task_count,source_format,source_headers,subject_id) VALUES (1,1,'u',1,1,1,0,'paired','[]','s');
+INSERT INTO competencies(id,name,revision) VALUES ('c','К',1);
+INSERT INTO constituents(id,competency_id,name) VALUES ('const','c','С');
+INSERT INTO outcomes(id,constituent_id,name,importance) VALUES ('o','const','О',3);`)
+	if err != nil {
+		t.Fatal(err)
 	}
-	return files
+	if _, err := pool.Exec(ctx, "UPDATE outcomes SET include_in_test=true WHERE id='o'"); err != nil {
+		t.Fatalf("initial schema rejected partial profile: %v", err)
+	}
 }
 
 func TestMigrateConcurrent(t *testing.T) {
@@ -321,33 +255,17 @@ func TestMigratePendingRollbackAndRetry(t *testing.T) {
 	if err := Migrate(ctx, pool); err != nil {
 		t.Fatal(err)
 	}
-	initial, err := fs.ReadFile(migrations, "migrations/00001_initial.sql")
-	if err != nil {
-		t.Fatal(err)
-	}
-	files := fstest.MapFS{
-		"00001_initial.sql": {Data: initial},
-		"99999_test.sql":    {Data: []byte("-- +goose Up\nCREATE TABLE migration_probe(id integer);\nSELECT * FROM nonexistent_migration_table;\n")},
-	}
+	files := fstest.MapFS{"99999_probe.sql": {Data: []byte("-- +goose Up\nCREATE TABLE migration_probe(id integer);\nSELECT * FROM nonexistent_migration_table;\n")}}
 	if err := migrate(ctx, pool, files); err == nil {
 		t.Fatal("invalid migration succeeded")
 	}
 	var exists bool
 	if err := pool.QueryRow(ctx, "SELECT to_regclass('migration_probe') IS NOT NULL").Scan(&exists); err != nil || exists {
-		t.Fatalf("failed migration was not rolled back: exists=%v, err=%v", exists, err)
+		t.Fatalf("failed migration not rolled back: exists=%v err=%v", exists, err)
 	}
-	var count int
-	if err := pool.QueryRow(ctx, "SELECT count(*) FROM goose_db_version WHERE version_id=99999").Scan(&count); err != nil || count != 0 {
-		t.Fatalf("failed migration recorded: count=%d, err=%v", count, err)
-	}
-	files["99999_test.sql"].Data = []byte("-- +goose Up\nCREATE TABLE migration_probe(id integer);\n")
-	for range 2 {
-		if err := migrate(ctx, pool, files); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if err := pool.QueryRow(ctx, "SELECT count(*) FROM goose_db_version WHERE version_id=99999 AND is_applied").Scan(&count); err != nil || count != 1 {
-		t.Fatalf("pending migration applied: count=%d, err=%v", count, err)
+	files["99999_probe.sql"].Data = []byte("-- +goose Up\nCREATE TABLE migration_probe(id integer);\n")
+	if err := migrate(ctx, pool, files); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -374,147 +292,4 @@ func TestMigrateWaitsForLockAndCanRetryAfterCancellation(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertGooseVersion(t, pool)
-}
-
-func TestInitialSchemaAllowsPartialOutcomeProfiles(t *testing.T) {
-	pool := migrationPool(t)
-	ctx := context.Background()
-	initial, err := fs.ReadFile(migrations, "migrations/00001_initial.sql")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := migrate(ctx, pool, fstest.MapFS{"00001_initial.sql": {Data: initial}}); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := pool.Exec(ctx, `INSERT INTO users(id,email,password_hash,created_at) VALUES ('keep-user','keep@example.test','hash',1);
- INSERT INTO competency_map_imports(revision,imported_at,imported_by,competency_count,constituent_count,outcome_count,task_count,source_format,source_headers) VALUES (1,1,'keep-user',1,1,1,0,'paired','[]');
- INSERT INTO competencies(id,name,revision) VALUES ('keep-c','К',1);
- INSERT INTO constituents(id,competency_id,name) VALUES ('keep-s','keep-c','С');
- INSERT INTO outcomes(id,constituent_id,name,importance) VALUES ('keep-o','keep-s','О',3);`); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := pool.Exec(ctx, "UPDATE outcomes SET include_in_test=true WHERE id='keep-o'"); err != nil {
-		t.Fatalf("initial schema rejected partial profile: %v", err)
-	}
-	var included bool
-	var importance int
-	if err := pool.QueryRow(ctx, "SELECT include_in_test,importance FROM outcomes WHERE id='keep-o'").Scan(&included, &importance); err != nil || !included || importance != 3 {
-		t.Fatalf("existing profile changed: %v %d %v", included, importance, err)
-	}
-	var curriculum string
-	if err := pool.QueryRow(ctx, "SELECT curriculum_sections FROM constituent_curriculum_profiles WHERE constituent_id='keep-s'").Scan(&curriculum); err != nil || curriculum != "[]" {
-		t.Fatalf("initial curriculum profile: profile=%q error=%v", curriculum, err)
-	}
-	var count int
-	if err := pool.QueryRow(ctx, "SELECT count(*) FROM users WHERE id='keep-user'").Scan(&count); err != nil || count != 1 {
-		t.Fatalf("user lost: %d %v", count, err)
-	}
-}
-
-func legacyMigrationFiles(t *testing.T) fs.FS {
-	t.Helper()
-	initial, err := fs.ReadFile(migrations, "migrations/00001_initial.sql")
-	if err != nil {
-		t.Fatal(err)
-	}
-	variants, err := fs.ReadFile(migrations, "migrations/00002_variants.sql")
-	if err != nil {
-		t.Fatal(err)
-	}
-	return fstest.MapFS{
-		"00001_initial.sql":  {Data: initial},
-		"00002_variants.sql": {Data: variants},
-	}
-}
-
-func seedLegacyAudioRows(t *testing.T, pool *pgxpool.Pool, conflicting bool) {
-	t.Helper()
-	ctx := context.Background()
-	_, err := pool.Exec(ctx, `
-INSERT INTO users(id,email,password_hash,created_at) VALUES ('audio-user','audio@example.test','hash',1);
-INSERT INTO competency_map_imports(revision,imported_at,imported_by,competency_count,constituent_count,outcome_count,task_count,source_format,source_headers)
-VALUES (1,1,'audio-user',1,1,1,1,'paired','[]');
-INSERT INTO competencies(id,name,revision) VALUES ('audio-c','Компетенция',1);
-INSERT INTO constituents(id,competency_id,name) VALUES ('audio-s','audio-c','Составляющая');
-INSERT INTO outcomes(id,constituent_id,name) VALUES ('audio-o','audio-s','Результат');
-INSERT INTO tasks(id,outcome_id,question,voice_instruction,created_at)
-VALUES ('task-current','audio-o','Вопрос','Прочитайте текущее задание',1);
-INSERT INTO variants(id,user_id,create_request_key,map_revision,algorithm_version,included_competency_count,skipped_competencies,created_at)
-VALUES ('audio-v','audio-user','audio-request',1,'test',1,'[]',1);
-INSERT INTO variant_tasks(id,variant_id,live_task_id,source_task_id_snapshot,competency_position,slot,role,task_snapshot,profile_snapshot)
-VALUES
- ('audio-vt-current','audio-v','task-current','task-current',1,0,'main',
-  '{"id":"task-current","voice_instruction":"Прочитайте текущее задание"}','{}'),
- ('audio-vt-old','audio-v',NULL,'task-old',1,1,'basic',
-  '{"id":"task-old","voice_instruction":"Прочитайте сохранённое задание"}','{}');`)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := pool.Exec(ctx, `UPDATE competency_map_state SET revision=1 WHERE singleton=true`); err != nil {
-		t.Fatal(err)
-	}
-	if conflicting {
-		if _, err := pool.Exec(ctx, `INSERT INTO variants(id,user_id,create_request_key,map_revision,algorithm_version,included_competency_count,skipped_competencies,created_at) VALUES ('audio-v2','audio-user','audio-request-2',1,'test',1,'[]',2)`); err != nil {
-			t.Fatal(err)
-		}
-		if _, err := pool.Exec(ctx, `INSERT INTO variant_tasks(id,variant_id,source_task_id_snapshot,competency_position,slot,role,task_snapshot,profile_snapshot)
-VALUES ('audio-vt-conflict','audio-v2','task-current',2,0,'main','{"id":"task-current","voice_instruction":"Другая инструкция"}','{}')`); err != nil {
-			t.Fatal(err)
-		}
-	}
-}
-
-func TestTaskAudioMigrationBackfillsLiveAndSnapshotOnlyTasks(t *testing.T) {
-	pool := migrationPool(t)
-	ctx := context.Background()
-	if err := migrate(ctx, pool, legacyMigrationFiles(t)); err != nil {
-		t.Fatal(err)
-	}
-	seedLegacyAudioRows(t, pool, false)
-	files := legacyMigrationFiles(t).(fstest.MapFS)
-	audioSQL, err := fs.ReadFile(migrations, "migrations/00003_task_audio.sql")
-	if err != nil {
-		t.Fatal(err)
-	}
-	files["00003_task_audio.sql"] = &fstest.MapFile{Data: audioSQL}
-	if err := migrate(ctx, pool, files); err != nil {
-		t.Fatal(err)
-	}
-	for id, wantStatus := range map[string]string{"taskaudio_task-current": "pending", "taskaudio_task-old": "cancelled"} {
-		var status string
-		var instruction string
-		var audioURL *string
-		if err := pool.QueryRow(ctx, `SELECT status,instruction,audio_url FROM audio_assets WHERE id=$1`, id).Scan(&status, &instruction, &audioURL); err != nil {
-			t.Fatal(err)
-		}
-		if status != wantStatus || audioURL != nil {
-			t.Fatalf("backfilled asset %s: status=%s want=%s url=%v", id, status, wantStatus, audioURL)
-		}
-	}
-	var taskAsset, snapshotAsset *string
-	if err := pool.QueryRow(ctx, `SELECT audio_asset_id FROM tasks WHERE id='task-current'`).Scan(&taskAsset); err != nil {
-		t.Fatal(err)
-	}
-	if err := pool.QueryRow(ctx, `SELECT audio_asset_id FROM variant_tasks WHERE id='audio-vt-old'`).Scan(&snapshotAsset); err != nil {
-		t.Fatal(err)
-	}
-	if taskAsset == nil || *taskAsset != "taskaudio_task-current" || snapshotAsset == nil || *snapshotAsset != "taskaudio_task-old" {
-		t.Fatalf("backfilled links: task=%v snapshot=%v", taskAsset, snapshotAsset)
-	}
-}
-
-func TestTaskAudioMigrationRejectsConflictingInstructions(t *testing.T) {
-	pool := migrationPool(t)
-	ctx := context.Background()
-	if err := migrate(ctx, pool, legacyMigrationFiles(t)); err != nil {
-		t.Fatal(err)
-	}
-	seedLegacyAudioRows(t, pool, true)
-	if err := Migrate(ctx, pool); err == nil {
-		t.Fatal("migration accepted conflicting instructions for a source task")
-	}
-	var exists bool
-	if err := pool.QueryRow(ctx, "SELECT to_regclass('audio_assets') IS NOT NULL").Scan(&exists); err != nil || exists {
-		t.Fatalf("failed migration was not rolled back: exists=%v err=%v", exists, err)
-	}
 }

@@ -29,8 +29,8 @@ func TestImportChecksAuthorizationBeforeReadingBody(t *testing.T) {
 		{"student", true, http.StatusForbidden, "FORBIDDEN"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			request := httptest.NewRequest(http.MethodPost, "/admin/subjects/subject:intro-to-ml/competency-map/import", nil)
-			request.SetPathValue("subject_id", "subject:intro-to-ml")
+			request := httptest.NewRequest(http.MethodPost, "/admin/subjects/subject:test/competency-map/import", nil)
+			request.SetPathValue("subject_id", "subject:test")
 			request.Body = unreadableBody{}
 			if tc.authenticated {
 				request = httpx.WithPrincipal(request, user.User{ID: "student", Role: user.Student})

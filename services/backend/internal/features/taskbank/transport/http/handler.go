@@ -3,8 +3,8 @@ package taskbankhttp
 import (
 	"net/http"
 	"strconv"
+	"strings"
 
-	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/subject"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/features/taskbank/application"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/fault"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/httpx"
@@ -22,7 +22,7 @@ func New(service *application.Service) *Handler { return &Handler{service: servi
 // @Security accessCookie
 // @Produce json
 // @Param outcome_id query string false "ID образовательного результата"
-// @Param subject_id query string false "ID предмета; пропуск временно означает Введение в ML для старого клиента"
+// @Param subject_id query string true "ID предмета"
 // @Param competency_id query string false "ID компетенции"
 // @Param constituent_id query string false "ID составляющей"
 // @Param taxonomy query string false "Код таксономии"
@@ -49,8 +49,9 @@ func (h *Handler) Search(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	subjectID := query.Get("subject_id")
-	if subjectID == "" {
-		subjectID = subject.IntroToMLID
+	if strings.TrimSpace(subjectID) == "" {
+		httpx.Error(r.Context(), w, fault.Validation("subject_id", "Укажите предмет."))
+		return
 	}
 	filter := application.SearchFilter{
 		SubjectID: subjectID,
@@ -122,9 +123,10 @@ func (h *Handler) Search(w http.ResponseWriter, r *http.Request) {
 // @Security accessCookie
 // @Produce json
 // @Param id path string true "ID задания"
-// @Param subject_id query string false "ID предмета; пропуск временно означает Введение в ML для старого клиента"
+// @Param subject_id query string true "ID предмета"
 // @Success 200 {object} TaskProfile
 // @Failure 401 {object} fault.Error
+// @Failure 422 {object} fault.Error
 // @Failure 404 {object} fault.Error
 // @Failure 503 {object} fault.Error
 // @Router /tasks/{id} [get]
@@ -135,8 +137,9 @@ func (h *Handler) Profile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	subjectID := query.Get("subject_id")
-	if subjectID == "" {
-		subjectID = subject.IntroToMLID
+	if strings.TrimSpace(subjectID) == "" {
+		httpx.Error(r.Context(), w, fault.Validation("subject_id", "Укажите предмет."))
+		return
 	}
 	profile, err := h.service.Profile(r.Context(), subjectID, r.PathValue("id"))
 	if err != nil {

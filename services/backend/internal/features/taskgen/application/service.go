@@ -84,7 +84,10 @@ func validText(value string, max int) bool {
 }
 
 func (s *Service) Generate(ctx context.Context, subjectID, outcomeID, requestKey, requestedBy string) (Task, error) {
-	if !validText(subjectID, 128) || !validText(outcomeID, 128) || !validText(requestKey, 128) || !validText(requestedBy, 128) {
+	if !validText(subjectID, 128) {
+		return Task{}, fault.Validation("subject_id", "Укажите предмет.")
+	}
+	if !validText(outcomeID, 128) || !validText(requestKey, 128) || !validText(requestedBy, 128) {
 		return Task{}, fault.Validation("idempotency_key", "Укажите ключ идемпотентности и идентификатор ОР.")
 	}
 	if task, err := s.repository.GetByKey(ctx, subjectID, outcomeID, requestKey); err == nil {

@@ -203,13 +203,13 @@ func TestOpenAPIResponses(t *testing.T) {
 	admin := f.admin(t)
 	check("POST", "/admin/subjects", f.request("POST", "/admin/subjects", `{"name":"Предмет контракта"}`, admin))
 	check("GET", "/subjects", f.request("GET", "/subjects", "", admin))
-	check("POST", "/admin/subjects/{subject_id}/competency-map/import", upload(f, "/admin/subjects/subject:intro-to-ml/competency-map/import", "file", "map.csv", "text/csv", []byte(mapCSV), admin))
-	if variantImport := upload(f, "/admin/subjects/subject:intro-to-ml/competency-map/import", "file", "variant.csv", "text/csv", variantMapCSV(t), admin); variantImport.Code != http.StatusOK {
+	check("POST", "/admin/subjects/{subject_id}/competency-map/import", upload(f, "/admin/subjects/subject:test/competency-map/import", "file", "map.csv", "text/csv", []byte(mapCSV), admin))
+	if variantImport := upload(f, "/admin/subjects/subject:test/competency-map/import", "file", "variant.csv", "text/csv", variantMapCSV(t), admin); variantImport.Code != http.StatusOK {
 		t.Fatalf("variant map import: %d %s", variantImport.Code, variantImport.Body.String())
 	}
-	check("POST", "/admin/subjects/{subject_id}/competency-map/import", upload(f, "/admin/subjects/subject:intro-to-ml/competency-map/import", "file", "subject.csv", "text/csv", variantMapCSV(t), admin))
-	check("GET", "/subjects/{subject_id}/competency-map", f.request("GET", "/subjects/subject:intro-to-ml/competency-map", "", access))
-	variantCreateRequest := httptest.NewRequest(http.MethodPost, "https://api.example/variants", strings.NewReader(`{"subject_id":"subject:intro-to-ml"}`))
+	check("POST", "/admin/subjects/{subject_id}/competency-map/import", upload(f, "/admin/subjects/subject:test/competency-map/import", "file", "subject.csv", "text/csv", variantMapCSV(t), admin))
+	check("GET", "/subjects/{subject_id}/competency-map", f.request("GET", "/subjects/subject:test/competency-map", "", access))
+	variantCreateRequest := httptest.NewRequest(http.MethodPost, "https://api.example/variants", strings.NewReader(`{"subject_id":"subject:test"}`))
 	variantCreateRequest.Header.Set("Content-Type", "application/json")
 	variantCreateRequest.Header.Set("Idempotency-Key", "contract-variant-1")
 	variantCreateRequest.AddCookie(access)
@@ -302,7 +302,7 @@ func TestOpenAPIResponses(t *testing.T) {
 	check("POST", "/diagnostic-sessions/{id}/answers", diagnosticAnswerResponse)
 	check("GET", "/diagnostic-sessions/{id}/result", f.request("GET", "/diagnostic-sessions/"+diagnosticProgress.SessionID+"/result", "", access))
 	check("GET", "/diagnostic-sessions/{id}/feedback", f.request("GET", "/diagnostic-sessions/"+diagnosticProgress.SessionID+"/feedback", "", access))
-	check("GET", "/subjects/{subject_id}/learning-state", f.request("GET", "/subjects/subject:intro-to-ml/learning-state", "", access))
+	check("GET", "/subjects/{subject_id}/learning-state", f.request("GET", "/subjects/subject:test/learning-state", "", access))
 	preview := f.request("GET", "/diagnostic-sessions/"+diagnosticProgress.SessionID+"/training/preview", "", access)
 	check("GET", "/diagnostic-sessions/{id}/training/preview", preview)
 	var trainingPreview training.Preview
@@ -329,17 +329,17 @@ func TestOpenAPIResponses(t *testing.T) {
 	check("POST", "/training-sessions/{id}/answers", trainingAnswer)
 	check("GET", "/training-sessions/{id}/history", f.request("GET", "/training-sessions/"+trainingProgress.ID+"/history?limit=1", "", access))
 	f.app.cfg.APIMode = "real"
-	check("GET", "/variants", f.request("GET", "/variants?subject_id=subject%3Aintro-to-ml", "", access))
+	check("GET", "/variants", f.request("GET", "/variants?subject_id=subject%3Atest", "", access))
 	check("GET", "/variants/{id}", f.request("GET", "/variants/"+createdVariant.ID, "", access))
 	check("GET", "/variants/{id}/tasks/{task_id}", f.request("GET", "/variants/"+createdVariant.ID+"/tasks/"+createdVariant.Competencies[0].Main.ID, "", access))
 	var outcomeID, taskID string
 	if err := f.pool.QueryRow(context.Background(), `SELECT outcome.id, task.id FROM outcomes outcome JOIN tasks task ON task.outcome_id=outcome.id ORDER BY task.id LIMIT 1`).Scan(&outcomeID, &taskID); err != nil {
 		t.Fatal(err)
 	}
-	check("GET", "/tasks", f.request("GET", "/tasks", "", access))
-	check("GET", "/tasks", f.request("GET", "/tasks?importance=6", "", access))
-	check("GET", "/tasks/{id}", f.request("GET", "/tasks/"+taskID, "", access))
-	requestBody, _ := json.Marshal(map[string]string{"outcome_id": outcomeID})
+	check("GET", "/tasks", f.request("GET", "/tasks?subject_id=subject%3Atest", "", access))
+	check("GET", "/tasks", f.request("GET", "/tasks?subject_id=subject%3Atest&importance=6", "", access))
+	check("GET", "/tasks/{id}", f.request("GET", "/tasks/"+taskID+"?subject_id=subject%3Atest", "", access))
+	requestBody, _ := json.Marshal(map[string]string{"subject_id": "subject:test", "outcome_id": outcomeID})
 	check("POST", "/tasks/generate", f.request("POST", "/tasks/generate", string(requestBody), access))
 	check("POST", "/tasks/generate", f.request("POST", "/tasks/generate", strings.Repeat(" ", 40*1024), access))
 	generateRequest := httptest.NewRequest("POST", "https://api.example/tasks/generate", bytes.NewReader(requestBody))
@@ -362,7 +362,7 @@ func TestOpenAPIResponses(t *testing.T) {
 		t.Fatalf("unavailable generator: %d %s", unavailableResponse.Code, unavailableResponse.Body.String())
 	}
 	check("POST", "/tasks/generate", unavailableResponse)
-	materialBody, _ := json.Marshal(map[string]any{"name": "Материал контракта", "content": "Текст материала для поиска", "outcome_ids": []string{outcomeID}})
+	materialBody, _ := json.Marshal(map[string]any{"subject_id": "subject:test", "name": "Материал контракта", "content": "Текст материала для поиска", "outcome_ids": []string{outcomeID}})
 	check("POST", "/admin/materials", f.request("POST", "/admin/materials", string(materialBody), admin))
 	check("POST", "/admin/materials", f.request("POST", "/admin/materials", "{"))
 	check("POST", "/admin/materials", f.request("POST", "/admin/materials", "{", access))

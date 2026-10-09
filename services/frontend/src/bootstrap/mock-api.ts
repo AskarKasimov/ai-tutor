@@ -10,6 +10,7 @@ import { isMockApi } from '@/shared/api'
 import {
   mockDiagnosticResponse,
   mockDiagnosticForSubject,
+  mockDiagnosticSubject,
   readMockDiagnostic,
   resetMockDiagnostic,
 } from './mock-diagnostic-api'
@@ -19,6 +20,7 @@ import {
   resetMockTraining,
 } from './mock-training-api'
 import { mockDiagnosticStorage } from './mock-diagnostic-storage'
+import { findMockSubject, mockSubjectCatalog } from './mock-subject-catalog'
 
 type DemoUser = {
   id: string
@@ -154,12 +156,10 @@ export async function mockApiFetch(
     return json({ id, text, created_at: Math.floor(Date.now() / 1000) })
   }
   if (method === 'GET' && path.endsWith('/subjects'))
-    return json([
-      { id: 'subject:intro-to-ml', name: 'Введение в ML', ready: true },
-    ])
+    return json(mockSubjectCatalog)
   const mapMatch = path.match(/\/subjects\/([^/]+)\/competency-map$/)
   if (method === 'GET' && mapMatch) {
-    if (decodeURIComponent(mapMatch[1]) !== 'subject:intro-to-ml')
+    if (!findMockSubject(decodeURIComponent(mapMatch[1])))
       return error(404, 'SUBJECT_NOT_FOUND', 'notFound')
     return json({ revision: 0, imported_at: null, competencies: [] })
   }
@@ -173,13 +173,13 @@ export async function mockApiFetch(
   const learningStateMatch = path.match(/\/subjects\/([^/]+)\/learning-state$/)
   if (learningStateMatch && method === 'GET') {
     const subjectId = decodeURIComponent(learningStateMatch[1])
-    if (subjectId !== 'subject:intro-to-ml')
-      return error(404, 'SUBJECT_NOT_FOUND', 'notFound')
+    const subject = findMockSubject(subjectId)
+    if (!subject) return error(404, 'SUBJECT_NOT_FOUND', 'notFound')
     const known = mockDiagnosticForSubject(mockUser.id, subjectId)
     const completedDiagnostic = known.completed?.session_id
     return json({
       subject_id: subjectId,
-      subject_name: 'Введение в ML',
+      subject_name: subject.name,
       diagnostic_status: known.active
         ? 'active'
         : known.completed
@@ -209,6 +209,7 @@ export async function mockApiFetch(
     options,
     requestUrl.search.slice(1),
     (id) => readMockDiagnostic(mockUser.id, id),
+    (id) => mockDiagnosticSubject(mockUser.id, id),
   )
   if (trainingResponse) return trainingResponse
   if (

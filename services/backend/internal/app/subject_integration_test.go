@@ -13,6 +13,9 @@ import (
 
 func TestSubjectCatalogPermissionsAndEmptySubjects(t *testing.T) {
 	f := newFixture(t)
+	if _, err := f.pool.Exec(context.Background(), `DELETE FROM subjects WHERE id='subject:test'`); err != nil {
+		t.Fatal(err)
+	}
 	student, _, _ := f.register(t, "subject-student@example.edu")
 	admin := f.admin(t)
 
@@ -54,8 +57,8 @@ func TestSubjectCatalogPermissionsAndEmptySubjects(t *testing.T) {
 	if adminCatalog.Code != http.StatusOK || json.Unmarshal(adminCatalog.Body.Bytes(), &items) != nil {
 		t.Fatalf("admin catalog: %d %s", adminCatalog.Code, adminCatalog.Body.String())
 	}
-	if len(items) != 2 || items[0].Ready || items[1].Ready {
-		t.Fatalf("admin should see both empty subjects: %+v", items)
+	if len(items) != 1 || items[0].Ready {
+		t.Fatalf("admin should see the created empty subject: %+v", items)
 	}
 }
 
@@ -68,14 +71,14 @@ func TestSubjectMapRoutesRequireAuthenticationAndAdminImport(t *testing.T) {
 	}
 	student, _, _ := f.register(t, "subject-map-student@example.edu")
 	admin := f.admin(t)
-	const path = "/admin/subjects/subject:intro-to-ml/competency-map/import"
+	const path = "/admin/subjects/subject:test/competency-map/import"
 	requireCode(t, upload(f, path, "file", "map.csv", "text/csv", variantMapCSV(t), nil), http.StatusUnauthorized, "UNAUTHORIZED")
 	requireCode(t, upload(f, path, "file", "map.csv", "text/csv", variantMapCSV(t), student), http.StatusForbidden, "FORBIDDEN")
 	if response := upload(f, path, "file", "map.csv", "text/csv", variantMapCSV(t), admin); response.Code != http.StatusOK {
 		t.Fatalf("admin subject import: %d %s", response.Code, response.Body.String())
 	}
-	requireCode(t, f.request(http.MethodGet, "/subjects/subject:intro-to-ml/competency-map", ""), http.StatusUnauthorized, "UNAUTHORIZED")
-	if response := f.request(http.MethodGet, "/subjects/subject:intro-to-ml/competency-map", "", student); response.Code != http.StatusOK {
+	requireCode(t, f.request(http.MethodGet, "/subjects/subject:test/competency-map", ""), http.StatusUnauthorized, "UNAUTHORIZED")
+	if response := f.request(http.MethodGet, "/subjects/subject:test/competency-map", "", student); response.Code != http.StatusOK {
 		t.Fatalf("student subject read: %d %s", response.Code, response.Body.String())
 	}
 }
@@ -84,10 +87,10 @@ func TestSubjectCatalogShowsOnlyVariantgenReadySubjectsToStudents(t *testing.T) 
 	f := newFixture(t)
 	student, _, _ := f.register(t, "subject-ready-student@example.edu")
 	admin := f.admin(t)
-	if w := upload(f, "/admin/subjects/subject:intro-to-ml/competency-map/import", "file", "map.csv", "text/csv", variantMapCSV(t), admin); w.Code != http.StatusOK {
+	if w := upload(f, "/admin/subjects/subject:test/competency-map/import", "file", "map.csv", "text/csv", variantMapCSV(t), admin); w.Code != http.StatusOK {
 		t.Fatalf("import ML map: %d %s", w.Code, w.Body.String())
 	}
-	if _, err := f.pool.Exec(context.Background(), `UPDATE subjects SET active_revision=(SELECT revision FROM competency_map_state WHERE singleton=true) WHERE id='subject:intro-to-ml'`); err != nil {
+	if _, err := f.pool.Exec(context.Background(), `UPDATE subjects SET active_revision=(SELECT revision FROM competency_map_state WHERE singleton=true) WHERE id='subject:test'`); err != nil {
 		t.Fatal(err)
 	}
 	created := f.request(http.MethodPost, "/admin/subjects", `{"name":"Пока без карты"}`, admin)
@@ -104,7 +107,7 @@ func TestSubjectCatalogShowsOnlyVariantgenReadySubjectsToStudents(t *testing.T) 
 	if studentCatalog.Code != http.StatusOK || json.Unmarshal(studentCatalog.Body.Bytes(), &studentItems) != nil {
 		t.Fatalf("student catalog: %d %s", studentCatalog.Code, studentCatalog.Body.String())
 	}
-	if len(studentItems) != 1 || studentItems[0].ID != "subject:intro-to-ml" || studentItems[0].Name != "Введение в ML" || !studentItems[0].Ready {
+	if len(studentItems) != 1 || studentItems[0].ID != "subject:test" || studentItems[0].Name != "Тестовый предмет" || !studentItems[0].Ready {
 		t.Fatalf("student catalog should contain only ready ML: %+v", studentItems)
 	}
 
@@ -164,7 +167,7 @@ func TestSubjectCatalogShowsOnlyVariantgenReadySubjectsToStudents(t *testing.T) 
 func TestSubjectImportsReplaceOnlySelectedMapAndKeepSnapshots(t *testing.T) {
 	f := newFixture(t)
 	admin := f.admin(t)
-	const mlID = "subject:intro-to-ml"
+	const mlID = "subject:test"
 	created := f.request(http.MethodPost, "/admin/subjects", `{"name":"Вторая дисциплина"}`, admin)
 	if created.Code != http.StatusCreated {
 		t.Fatalf("create second subject: %d %s", created.Code, created.Body.String())

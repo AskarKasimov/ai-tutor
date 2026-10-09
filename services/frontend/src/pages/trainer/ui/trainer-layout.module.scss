@@ -263,6 +263,58 @@
   overflow-wrap: anywhere;
   white-space: pre-line;
 }
+.longQuestion {
+  margin: var(--space-4) 0 var(--space-5);
+  font-family: inherit;
+  font-size: var(--font-size-4);
+  font-weight: 400;
+  line-height: 1.65;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.trainingInstruction {
+  margin-top: 24px;
+  color: var(--app-muted);
+  line-height: 1.5;
+}
+.trainingDetails {
+  padding: 0 48px 48px;
+  display: grid;
+  gap: 24px;
+}
+.trainingDetails > section {
+  padding: 24px;
+  border: 1px solid var(--app-border);
+  border-radius: 18px;
+  background: white;
+}
+.trainingDetails h2 {
+  margin: 0 0 16px;
+}
+.trainingDetails li {
+  margin-bottom: 12px;
+}
+.preview {
+  max-width: 960px;
+  padding: 42px 48px;
+  display: grid;
+  gap: 20px;
+}
+.preview h1 {
+  margin: 0;
+}
+.preview > button {
+  justify-self: start;
+}
+.history {
+  display: grid;
+  gap: var(--space-3);
+}
+.history li {
+  padding: var(--space-3);
+  border: 1px solid var(--app-border);
+  border-radius: var(--radius-3);
+}
 .options .eyebrow {
   margin-bottom: 11px;
 }

@@ -2,7 +2,7 @@ import { Button, Card, Heading, Text } from '@radix-ui/themes'
 import { useTranslation } from 'react-i18next'
 import type { TrainingAttempt, TrainingProgress } from '@/entities/training'
 import { useTrainingHistoryQuery } from '@/features/training'
-import styles from './training.module.scss'
+import styles from './trainer-layout.module.scss'
 
 export function TrainingHistory({
   userId,

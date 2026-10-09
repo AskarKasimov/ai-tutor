@@ -1,12 +1,5 @@
 import { Button, Heading, Text } from '@radix-ui/themes'
-import {
-  CircleAlert,
-  GraduationCap,
-  LoaderCircle,
-  Mic,
-  RotateCcw,
-  Square,
-} from 'lucide-react'
+import { LoaderCircle, Mic, RotateCcw, Square } from 'lucide-react'
 import { useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/features/auth'
@@ -21,8 +14,13 @@ import type {
   DiagnosticProgress,
   DiagnosticTask,
 } from '@/entities/diagnostic-session'
-import { AccountMenu } from '@/features/auth'
-import { VoiceIllustration } from '@/pages/trainer/ui/trainer-answer'
+import {
+  TrainerAnswerPanel,
+  TrainerCapturePanel,
+  TrainerQuestion,
+  TrainerScore,
+  TrainerShell,
+} from './trainer-shared'
 import styles from '@/pages/trainer/ui/trainer-layout.module.scss'
 import diagnosticStyles from '@/pages/trainer/ui/diagnostic.module.scss'
 
@@ -122,107 +120,70 @@ function StudentDiagnostic({
     }
   }, [progress, subjectId, userId])
   return (
-    <div data-trainer-app className={styles.trainerLayout}>
-      <aside className={styles.navigation}>
-        <div className={styles.brand}>
-          <span className={styles.brandIcon} aria-hidden="true">
-            <GraduationCap size={24} />
-          </span>
-          <Text>{t('trainer.title')}</Text>
-        </div>
-        <div className={styles.courseHeading}>
-          <Text as="p" className={styles.eyebrow}>
-            {t('diagnostic.title')}
-          </Text>
-          <Heading as="h2">{subjectName}</Heading>
-        </div>
-        {progress && (
-          <div className={styles.progress}>
-            <Text as="p" aria-live="polite">
-              {t('diagnostic.progress', {
+    <TrainerShell
+      title={t('diagnostic.title')}
+      subject={subjectName}
+      progress={
+        progress
+          ? {
+              label: t('diagnostic.progress', {
                 completed: progress.completed_tasks,
                 skipped: progress.skipped_tasks,
                 total: progress.total_tasks,
-              })}
-            </Text>
-            <div
-              className={styles.progressTrack}
-              role="progressbar"
-              aria-label={t('session.progressLabel')}
-              aria-valuemin={0}
-              aria-valuemax={progress.total_tasks}
-              aria-valuenow={progress.completed_tasks + progress.skipped_tasks}
-            >
-              <span
-                className={styles.progressFill}
-                style={{
-                  width: `${((progress.completed_tasks + progress.skipped_tasks) / progress.total_tasks) * 100}%`,
-                }}
-              />
-            </div>
-          </div>
-        )}
-      </aside>
-      <div className={styles.content}>
-        <header className={styles.header}>
-          <p className={styles.pageContext}>
-            <span className={styles.pageContextLabel}>
-              {t('diagnostic.title')}
-            </span>
-            <span className={styles.pageContextDot} aria-hidden="true" />
-            <span className={styles.pageContextTitle}>{subjectName}</span>
-          </p>
-          <AccountMenu />
-        </header>
-        <Button variant="soft" onClick={onBack}>
-          {t('home.back')}
-        </Button>
-        {training.query.isPending ||
-        (startNew && training.restart.isPending) ? (
-          <main className={styles.notice}>
-            <Text role="status">{t('session.loading')}</Text>
-          </main>
-        ) : training.query.isError ? (
-          <main className={styles.notice}>
-            <Text role="alert">
-              {t(
-                errorKey(
-                  training.query.error,
-                  training.query.error instanceof DiagnosticApiError &&
-                    training.query.error.status === 422
-                    ? 'diagnostic.unavailable'
-                    : 'session.loadError',
-                ),
-              )}
-            </Text>
-            {training.query.error instanceof DiagnosticApiError &&
-            training.query.error.status === 404 ? (
-              <Button
-                disabled={training.restart.isPending}
-                onClick={() => training.restart.mutate()}
-              >
-                {t('session.restart')}
-              </Button>
-            ) : (
-              <Button
-                disabled={training.query.isFetching}
-                onClick={() => void training.query.refetch()}
-              >
-                {t('trainer.retry')}
-              </Button>
+              }),
+              current: progress.completed_tasks + progress.skipped_tasks,
+              total: progress.total_tasks,
+            }
+          : undefined
+      }
+    >
+      <Button variant="soft" onClick={onBack}>
+        {t('home.back')}
+      </Button>
+      {training.query.isPending || (startNew && training.restart.isPending) ? (
+        <main className={styles.notice}>
+          <Text role="status">{t('session.loading')}</Text>
+        </main>
+      ) : training.query.isError ? (
+        <main className={styles.notice}>
+          <Text role="alert">
+            {t(
+              errorKey(
+                training.query.error,
+                training.query.error instanceof DiagnosticApiError &&
+                  training.query.error.status === 422
+                  ? 'diagnostic.unavailable'
+                  : 'session.loadError',
+              ),
             )}
-          </main>
-        ) : progress ? (
-          <DiagnosticFlow
-            key={progress.session_id}
-            userId={userId}
-            onBack={onBack}
-            training={training}
-            progress={progress}
-          />
-        ) : null}
-      </div>
-    </div>
+          </Text>
+          {training.query.error instanceof DiagnosticApiError &&
+          training.query.error.status === 404 ? (
+            <Button
+              disabled={training.restart.isPending}
+              onClick={() => training.restart.mutate()}
+            >
+              {t('session.restart')}
+            </Button>
+          ) : (
+            <Button
+              disabled={training.query.isFetching}
+              onClick={() => void training.query.refetch()}
+            >
+              {t('trainer.retry')}
+            </Button>
+          )}
+        </main>
+      ) : progress ? (
+        <DiagnosticFlow
+          key={progress.session_id}
+          userId={userId}
+          onBack={onBack}
+          training={training}
+          progress={progress}
+        />
+      ) : null}
+    </TrainerShell>
   )
 }
 function DiagnosticFlow({
@@ -272,9 +233,8 @@ function DiagnosticFlow({
     ((apiError.status === 409 &&
       apiError.code !== 'DIAGNOSTIC_ANSWER_IN_PROGRESS') ||
       apiError.status === 404)
-  // The same audio cannot succeed again after the server rejected it.
+  // Rejected audio needs a fresh recording; technical failures also allow one.
   const rerecord = !!apiError && [413, 415, 422].includes(apiError.status)
-  // Technical failures release the reservation, so a fresh take is safe too.
   const canAlsoRerecord =
     failed &&
     voice.hasPending &&
@@ -297,10 +257,7 @@ function DiagnosticFlow({
     <main className={styles.workspace}>
       <Question task={task} transcript={response?.text} />
       {response ? (
-        <aside
-          className={styles.answerPanel}
-          aria-label={t('trainer.answerArea')}
-        >
+        <TrainerAnswerPanel>
           <Feedback
             score={response.score!}
             maxScore={response.grader_max_score!}
@@ -327,7 +284,7 @@ function DiagnosticFlow({
               )}
             </Button>
           </div>
-        </aside>
+        </TrainerAnswerPanel>
       ) : (
         <>
           <div className={styles.repeatControl}>
@@ -372,66 +329,22 @@ function DiagnosticFlow({
               </Text>
             )}
           </div>
-          <aside
-            className={`${styles.answerPanel} ${failed ? styles.answerError : ''}`}
-            aria-label={t('trainer.answerArea')}
+          <TrainerCapturePanel
+            stage={voice.stage === 'result' ? 'ready' : voice.stage}
+            seconds={seconds}
+            stream={voice.stream}
+            readyHelp="diagnostic.answerHelp"
+            errorMessage={
+              failed
+                ? t(
+                    voice.captureError
+                      ? `trainer.${voice.captureError}`
+                      : errorKey(voice.error, 'diagnostic.submitError'),
+                  )
+                : undefined
+            }
+            audioUrl={voice.audioUrl}
           >
-            <Text as="p" className={styles.eyebrow}>
-              {t('trainer.yourAnswer')}
-            </Text>
-            <VoiceIllustration stream={voice.stream} />
-            <Heading as="h2" className={styles.answerTitle}>
-              {t(
-                recording
-                  ? 'trainer.recording'
-                  : processing
-                    ? 'trainer.processing'
-                    : waiting
-                      ? 'trainer.permission'
-                      : 'trainer.answer',
-                { time: seconds },
-              )}
-            </Heading>
-            {failed ? (
-              <Text as="p" role="alert" className={styles.answerMessage}>
-                <CircleAlert size={16} aria-hidden="true" />
-                {t(
-                  voice.captureError
-                    ? `trainer.${voice.captureError}`
-                    : errorKey(voice.error, 'diagnostic.submitError'),
-                )}
-              </Text>
-            ) : (
-              <Text as="p" className={styles.instructions}>
-                {t(
-                  recording
-                    ? 'trainer.recordingHelp'
-                    : processing
-                      ? 'trainer.processingHelp'
-                      : waiting
-                        ? 'trainer.permissionHelp'
-                        : 'diagnostic.answerHelp',
-                )}
-              </Text>
-            )}
-            {recording ? (
-              <div className={styles.recordingTimer}>
-                <span />
-                {seconds}
-              </div>
-            ) : blocked ? (
-              <div className={styles.processingIndicator}>
-                <LoaderCircle
-                  size={32}
-                  className={styles.spinner}
-                  aria-hidden="true"
-                />
-              </div>
-            ) : (
-              <div className={styles.microphone} aria-hidden="true">
-                <Mic size={40} />
-              </div>
-            )}
             {needsRefresh ? (
               <Button className={styles.primary} onClick={() => void refresh()}>
                 {t('diagnostic.refresh')}
@@ -479,33 +392,7 @@ function DiagnosticFlow({
                 {t('diagnostic.recordAgain')}
               </Button>
             )}
-            {voice.audioUrl && failed && (
-              <div className={styles.audio}>
-                <audio
-                  controls
-                  src={voice.audioUrl}
-                  aria-label={t('trainer.listenRecording')}
-                />
-              </div>
-            )}
-            {!failed && (
-              <Text
-                as="p"
-                className={styles.microphoneStatus}
-                aria-live="polite"
-              >
-                {t(
-                  recording
-                    ? 'session.recordingStatus'
-                    : processing
-                      ? 'session.processingStatus'
-                      : waiting
-                        ? 'trainer.allow'
-                        : 'session.microphoneReady',
-                )}
-              </Text>
-            )}
-          </aside>
+          </TrainerCapturePanel>
         </>
       )}
     </main>
@@ -520,45 +407,12 @@ function Question({
 }) {
   const { t } = useTranslation()
   return (
-    <section className={styles.question}>
-      <div className={styles.questionToolbar}>
-        <Text className={styles.questionBadge}>
-          {t(`diagnostic.${task.role}`)}
-        </Text>
-      </div>
-      <Text as="p" className={styles.eyebrow}>
-        {task.competency_name}
-      </Text>
-      <Heading
-        as="h1"
-        className={
-          task.question.length > 300
-            ? diagnosticStyles.longQuestion
-            : styles.questionTitle
-        }
-      >
-        {task.question}
-      </Heading>
-      {task.options.length > 0 && (
-        <section
-          aria-labelledby="answer-options-title"
-          className={styles.options}
-        >
-          <Heading as="h2" id="answer-options-title" className={styles.eyebrow}>
-            {t('trainer.optionsTitle')}
-          </Heading>
-          <ol className={styles.optionList}>
-            {task.options.map((option, index) => (
-              <li key={index} className={styles.option}>
-                <span className={styles.optionLetter} aria-hidden="true">
-                  {index + 1}
-                </span>
-                <Text>{option}</Text>
-              </li>
-            ))}
-          </ol>
-        </section>
-      )}
+    <TrainerQuestion
+      badge={t(`diagnostic.${task.role}`)}
+      eyebrow={task.competency_name}
+      question={task.question}
+      options={task.options}
+    >
       <section
         className={styles.savedAnswer}
         aria-labelledby="transcript-title"
@@ -570,7 +424,7 @@ function Question({
           {transcript ?? t('diagnostic.transcriptPending')}
         </Text>
       </section>
-    </section>
+    </TrainerQuestion>
   )
 }
 function Feedback({
@@ -594,16 +448,11 @@ function Feedback({
       <Text as="p" className={styles.eyebrow}>
         {t('session.result')}
       </Text>
-      <div
-        className={`${styles.score} ${score === 0 ? styles.scoreIncorrect : score < maxScore ? styles.scorePartial : ''}`}
-      >
-        <Text>
-          {score} / {maxScore}
-        </Text>
-        <Text className={styles.verdict}>
-          {t(`diagnostic.verdict.${verdict}`)}
-        </Text>
-      </div>
+      <TrainerScore
+        score={score}
+        maxScore={maxScore}
+        verdict={t(`diagnostic.verdict.${verdict}`)}
+      />
       <Heading as={heading} className={styles.feedbackTitle}>
         {t('trainer.feedback')}
       </Heading>

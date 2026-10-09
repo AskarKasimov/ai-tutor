@@ -7,6 +7,7 @@ import { CompetencyMapDependenciesProvider } from '@/features/import-competency-
 import { DiagnosticDependenciesProvider } from '@/features/diagnostic-session'
 import { TrainerSessionDependenciesProvider } from '@/features/trainer-session'
 import { VoiceAnswerDependenciesProvider } from '@/features/voice-answer'
+import { SubjectSelectionDependenciesProvider } from '@/features/subject-selection'
 import { createAppDependencies } from './dependencies'
 import type { AppDependencies } from './dependencies'
 import '@/shared/i18n'
@@ -41,35 +42,39 @@ export function AppProviders({
         <CompetencyMapDependenciesProvider
           value={{ competencyMap: services.competencyMap }}
         >
-          <DiagnosticDependenciesProvider
-            value={{
-              apiBase: services.apiBase,
-              createDiagnosticIdentity: services.createDiagnosticIdentity,
-              diagnosticStorage: services.diagnosticStorage,
-              diagnostic: services.diagnostic,
-            }}
+          <SubjectSelectionDependenciesProvider
+            value={{ subjects: services.subjects }}
           >
-            <TrainerSessionDependenciesProvider
-              value={{ trainerSessionSource: services.trainerSessionSource }}
+            <DiagnosticDependenciesProvider
+              value={{
+                apiBase: services.apiBase,
+                createDiagnosticIdentity: services.createDiagnosticIdentity,
+                diagnosticStorage: services.diagnosticStorage,
+                diagnostic: services.diagnostic,
+              }}
             >
-              <VoiceAnswerDependenciesProvider
-                value={{
-                  voice: services.voice,
-                  assessment: services.assessment,
-                }}
+              <TrainerSessionDependenciesProvider
+                value={{ trainerSessionSource: services.trainerSessionSource }}
               >
-                <Theme
-                  className={styles.root}
-                  accentColor="blue"
-                  appearance="light"
+                <VoiceAnswerDependenciesProvider
+                  value={{
+                    voice: services.voice,
+                    assessment: services.assessment,
+                  }}
                 >
-                  <QueryClientProvider client={queryClient}>
-                    {children}
-                  </QueryClientProvider>
-                </Theme>
-              </VoiceAnswerDependenciesProvider>
-            </TrainerSessionDependenciesProvider>
-          </DiagnosticDependenciesProvider>
+                  <Theme
+                    className={styles.root}
+                    accentColor="blue"
+                    appearance="light"
+                  >
+                    <QueryClientProvider client={queryClient}>
+                      {children}
+                    </QueryClientProvider>
+                  </Theme>
+                </VoiceAnswerDependenciesProvider>
+              </TrainerSessionDependenciesProvider>
+            </DiagnosticDependenciesProvider>
+          </SubjectSelectionDependenciesProvider>
         </CompetencyMapDependenciesProvider>
       </AuthDependenciesProvider>
     </BootstrapMode.Provider>

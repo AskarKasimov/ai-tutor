@@ -11,17 +11,26 @@ import type {
 } from '@/entities/diagnostic-session'
 export type DiagnosticDependencies = {
   apiBase: string
-  createDiagnosticIdentity(): DiagnosticSessionIdentity
+  createDiagnosticIdentity(subjectId: string): DiagnosticSessionIdentity
   diagnosticStorage: {
-    load(userId: string, apiBase: string): DiagnosticSessionIdentity | undefined
+    load(
+      userId: string,
+      apiBase: string,
+      subjectId: string,
+    ): DiagnosticSessionIdentity | undefined
     save(
       userId: string,
       apiBase: string,
+      subjectId: string,
       identity: DiagnosticSessionIdentity,
     ): void
   }
   diagnostic: {
-    createVariant(key: string, signal: AbortSignal): Promise<{ id: string }>
+    createVariant(
+      subjectId: string,
+      key: string,
+      signal: AbortSignal,
+    ): Promise<{ id: string }>
     startDiagnostic(
       variantId: string,
       key: string,

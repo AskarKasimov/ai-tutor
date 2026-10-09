@@ -1,0 +1,22 @@
+.page {
+  min-height: 100vh;
+  padding: var(--space-6);
+  background: var(--gray-2);
+}
+.header {
+  max-width: 70rem;
+  margin: 0 auto var(--space-6);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.selector,
+.actions {
+  max-width: 70rem;
+  margin: 0 auto var(--space-5);
+  display: grid;
+  gap: var(--space-3);
+}
+.actions {
+  grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr));
+}

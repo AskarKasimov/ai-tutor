@@ -3,6 +3,7 @@ import { mockApiFetch, evaluateDemoAnswer } from '@/bootstrap/mock-api'
 import { configureMockApiHandler } from '@/shared/api'
 import * as auth from '@/entities/user'
 import * as competencyMap from '@/entities/competency-map'
+import * as subjects from '@/entities/subject'
 import * as diagnostic from '@/entities/diagnostic-session'
 import * as voice from '@/shared/api'
 import { createDemoAudio as createDemoAudioBytes } from '@/shared/lib'
@@ -11,6 +12,7 @@ import type { AuthDependencies } from '@/features/auth'
 import type { CompetencyMapDependencies } from '@/features/import-competency-map'
 import type { DiagnosticDependencies } from '@/features/diagnostic-session'
 import type { TrainerSessionDependencies } from '@/features/trainer-session'
+import type { SubjectSelectionDependencies } from '@/features/subject-selection'
 import type { VoiceAnswerDependencies } from '@/features/voice-answer'
 import { createDiagnosticIdentity } from '@/features/diagnostic-session'
 import { mockDiagnosticStorage } from './mock-diagnostic-storage'
@@ -23,6 +25,7 @@ export type AppDependencies = {
   mode: AuthDependencies['mode']
   auth: AuthDependencies['auth']
   competencyMap: CompetencyMapDependencies['competencyMap']
+  subjects: SubjectSelectionDependencies['subjects']
   apiBase: DiagnosticDependencies['apiBase']
   createDiagnosticIdentity: DiagnosticDependencies['createDiagnosticIdentity']
   diagnosticStorage: DiagnosticDependencies['diagnosticStorage']
@@ -58,6 +61,11 @@ export function createAppDependencies(): AppDependencies {
     competencyMap: {
       read: competencyMap.readCompetencyMap,
       import: competencyMap.importCompetencyMap,
+    },
+    subjects: {
+      listSubjects: subjects.listSubjects,
+      createSubject: subjects.createSubject,
+      readLearningState: subjects.readLearningState,
     },
     diagnostic: {
       createVariant: diagnostic.createVariant,

@@ -16,7 +16,6 @@ import {
 import {
   mockTrainingAudio,
   mockTrainingResponse,
-  mockTrainingSessionForDiagnostic,
   resetMockTraining,
 } from './mock-training-api'
 import { mockDiagnosticStorage } from './mock-diagnostic-storage'
@@ -164,25 +163,21 @@ export async function mockApiFetch(
     if (subjectId !== 'subject:intro-to-ml')
       return error(404, 'SUBJECT_NOT_FOUND', 'notFound')
     const known = mockDiagnosticForSubject(mockUser.id, subjectId)
-    const completedDiagnostic =
-      known?.status === 'completed' ? known.session_id : undefined
+    const completedDiagnostic = known.completed?.session_id
     return json({
       subject_id: subjectId,
       subject_name: 'Введение в ML',
-      diagnostic_status: known?.status ?? 'not_started',
+      diagnostic_status: known.active
+        ? 'active'
+        : known.completed
+          ? 'completed'
+          : 'not_started',
       diagnostic_completed: !!completedDiagnostic,
       training_available: !!completedDiagnostic,
       ...(completedDiagnostic
         ? { diagnostic_session_id: completedDiagnostic }
         : {}),
-      ...(completedDiagnostic
-        ? {
-            active_session_id: mockTrainingSessionForDiagnostic(
-              mockUser.id,
-              completedDiagnostic,
-            ),
-          }
-        : {}),
+      ...(known.active ? { active_session_id: known.active.session_id } : {}),
     })
   }
   const diagnosticResponse = mockDiagnosticResponse(

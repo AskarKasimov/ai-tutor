@@ -163,8 +163,10 @@ it('shows the dev ribbon when the API mode is not real', async () => {
   expect(screen.getByLabelText('Email')).not.toBeRequired()
   expect(screen.getByLabelText('Пароль')).not.toBeRequired()
   fireEvent.click(screen.getByRole('button', { name: 'Войти' }))
+  fireEvent.click(await screen.findByRole('combobox', { name: 'Предмет' }))
+  fireEvent.click(await screen.findByRole('option', { name: 'Введение в ML' }))
   expect(
-    await screen.findByRole('button', { name: 'Начать запись' }),
+    await screen.findByRole('button', { name: 'Начать диагностику' }),
   ).toBeEnabled()
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
 })

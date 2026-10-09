@@ -7,7 +7,7 @@ import {
   Slash,
   Square,
 } from 'lucide-react'
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/features/auth'
 import { DiagnosticApiError } from '@/entities/diagnostic-session'
@@ -40,14 +40,81 @@ function errorKey(error: unknown, fallback: string) {
   if (error.code === 'INVALID_RESPONSE') return 'diagnostic.invalidResponse'
   return fallback
 }
-export function DiagnosticTrainer() {
+export function DiagnosticTrainer({
+  subjectId,
+  subjectName,
+  onBack,
+  initialSessionId,
+  startNew = false,
+}: {
+  subjectId: string
+  subjectName: string
+  onBack: () => void
+  initialSessionId?: string
+  startNew?: boolean
+}) {
   const { user } = useAuth()
-  return user ? <StudentDiagnostic key={user.id} userId={user.id} /> : null
+  return user ? (
+    <StudentDiagnostic
+      key={`${user.id}:${subjectId}`}
+      userId={user.id}
+      subjectId={subjectId}
+      subjectName={subjectName}
+      onBack={onBack}
+      initialSessionId={initialSessionId}
+      startNew={startNew}
+    />
+  ) : null
 }
-function StudentDiagnostic({ userId }: { userId: string }) {
+function StudentDiagnostic({
+  userId,
+  subjectId,
+  subjectName,
+  onBack,
+  initialSessionId,
+  startNew,
+}: {
+  userId: string
+  subjectId: string
+  subjectName: string
+  onBack: () => void
+  initialSessionId?: string
+  startNew: boolean
+}) {
   const { t } = useTranslation()
-  const training = useDiagnosticSession(userId)
+  const training = useDiagnosticSession(userId, subjectId, initialSessionId)
+  const started = useRef(false)
+  useEffect(() => {
+    if (startNew && !started.current) {
+      started.current = true
+      training.restart.mutate()
+    }
+  }, [startNew, training.restart])
   const progress = training.query.data
+  useEffect(() => {
+    if (!progress) return
+    try {
+      const raw = sessionStorage.getItem('ai-tutor:learning-home')
+      if (!raw) return
+      const intent = JSON.parse(raw) as {
+        userId?: string
+        subjectId?: string
+        sessionId?: string
+      }
+      if (
+        intent.userId === userId &&
+        intent.subjectId === subjectId &&
+        !intent.sessionId
+      ) {
+        sessionStorage.setItem(
+          'ai-tutor:learning-home',
+          JSON.stringify({ ...intent, sessionId: progress.session_id }),
+        )
+      }
+    } catch {
+      /* A broken page intent must not affect the diagnostic session. */
+    }
+  }, [progress, subjectId, userId])
   return (
     <div data-trainer-app className={styles.trainerLayout}>
       <aside className={styles.navigation}>
@@ -61,7 +128,7 @@ function StudentDiagnostic({ userId }: { userId: string }) {
           <Text as="p" className={styles.eyebrow}>
             {t('diagnostic.title')}
           </Text>
-          <Heading as="h2">{t('session.course')}</Heading>
+          <Heading as="h2">{subjectName}</Heading>
         </div>
         {progress && (
           <div className={styles.progress}>
@@ -97,11 +164,15 @@ function StudentDiagnostic({ userId }: { userId: string }) {
             <span aria-hidden="true">
               <Slash size={14} />
             </span>
-            <Text weight="bold">{t('session.course')}</Text>
+            <Text weight="bold">{subjectName}</Text>
           </div>
           <AccountMenu />
         </header>
-        {training.query.isPending ? (
+        <Button variant="soft" onClick={onBack}>
+          {t('home.back')}
+        </Button>
+        {training.query.isPending ||
+        (startNew && training.restart.isPending) ? (
           <main className={styles.notice}>
             <Text role="status">{t('session.loading')}</Text>
           </main>
@@ -134,14 +205,12 @@ function StudentDiagnostic({ userId }: { userId: string }) {
                 {t('trainer.retry')}
               </Button>
             )}
-            {training.restart.isError && (
-              <Text role="alert">{t('session.loadError')}</Text>
-            )}
           </main>
         ) : progress ? (
           <DiagnosticFlow
             key={progress.session_id}
             userId={userId}
+            onBack={onBack}
             training={training}
             progress={progress}
           />
@@ -152,10 +221,12 @@ function StudentDiagnostic({ userId }: { userId: string }) {
 }
 function DiagnosticFlow({
   userId,
+  onBack,
   training,
   progress,
 }: {
   userId: string
+  onBack: () => void
   training: ReturnType<typeof useDiagnosticSession>
   progress: DiagnosticProgress
 }) {
@@ -174,6 +245,7 @@ function DiagnosticFlow({
         userId={userId}
         sessionId={progress.session_id}
         training={training}
+        onBack={onBack}
       />
     )
   if (!task)
@@ -523,10 +595,12 @@ function DiagnosticSummary({
   userId,
   sessionId,
   training,
+  onBack,
 }: {
   userId: string
   sessionId: string
   training: ReturnType<typeof useDiagnosticSession>
+  onBack: () => void
 }) {
   const { t } = useTranslation()
   const result = useDiagnosticResultQuery(userId, sessionId)
@@ -635,12 +709,8 @@ function DiagnosticSummary({
           {t('session.loadError')}
         </Text>
       )}
-      <Button
-        className={styles.primary}
-        disabled={training.restart.isPending}
-        onClick={() => training.restart.mutate()}
-      >
-        {t(training.restart.isPending ? 'session.loading' : 'session.restart')}
+      <Button className={styles.primary} onClick={onBack}>
+        {t('home.newDiagnostic')}
       </Button>
     </main>
   )

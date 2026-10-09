@@ -203,11 +203,16 @@ async function parse<T>(response: Response, schema: z.ZodType<T>): Promise<T> {
   if (!value.success) throw new DiagnosticApiError(0, 'INVALID_RESPONSE')
   return value.data
 }
-export async function createVariant(key: string, signal: AbortSignal) {
+export async function createVariant(
+  subjectId: string,
+  key: string,
+  signal: AbortSignal,
+) {
   return parse(
     await request('/variants', signal, {
       method: 'POST',
-      headers: { 'Idempotency-Key': key },
+      headers: { 'Idempotency-Key': key, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ subject_id: subjectId }),
     }),
     z.object({ id }),
   )

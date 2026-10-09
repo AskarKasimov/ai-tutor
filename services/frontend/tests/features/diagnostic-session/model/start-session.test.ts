@@ -12,6 +12,7 @@ const progress: DiagnosticProgress = {
 }
 const token = { userId: 'user-1', epoch: 3 }
 const identity: DiagnosticSessionIdentity = {
+  subjectId: 'subject:a',
   variantKey: 'variant-key',
   startKey: 'start-key',
 }
@@ -48,7 +49,7 @@ it('resumes a saved variant and persists the returned session identity', async (
     identity: { ...saved, sessionId: 'session-1' },
     token,
   })
-  expect(save).toHaveBeenCalledWith('user-1', '/api/v1', {
+  expect(save).toHaveBeenCalledWith('user-1', '/api/v1', identity.subjectId, {
     ...saved,
     sessionId: 'session-1',
   })
@@ -86,7 +87,7 @@ it('does not write the session ID when the session changes during start', async 
 
   await expect(request).rejects.toMatchObject({ name: 'AbortError' })
   expect(save).toHaveBeenCalledTimes(1)
-  expect(save).toHaveBeenCalledWith('user-1', '/api/v1', {
+  expect(save).toHaveBeenCalledWith('user-1', '/api/v1', identity.subjectId, {
     ...identity,
     variantId: 'variant-1',
   })
@@ -103,7 +104,7 @@ it('combines caller cancellation and ignores a late variant response', async () 
   const request = startDiagnosticSession('user-1', identity, caller.signal, {
     apiBase: '/api/v1',
     api: {
-      createVariant: (_key, signal) => {
+      createVariant: (_subject, _key, signal) => {
         operationSignal = signal
         return variant
       },

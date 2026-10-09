@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { acquireDiagnosticBootstrap } from '@/features/diagnostic-session/model/diagnostic-bootstrap'
 
-const identity = { variantKey: 'v', startKey: 's' }
+const identity = { subjectId: 'subject:a', variantKey: 'v', startKey: 's' }
 const progress = {
   session_id: 'session',
   status: 'active' as const,

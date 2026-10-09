@@ -100,8 +100,15 @@ it('exposes the demo subject, learning state, and rejects unknown subjects', asy
   expect(rejected.status).toBe(404)
 })
 
-it('allows old variant creation while explicit known subject creation enters learning state', async () => {
-  const legacy = await createVariant('legacy-variant', signal())
+it('requires a known subject when creating a diagnostic variant', async () => {
+  await expect(
+    createVariant('subject:unknown', 'legacy-variant', signal()),
+  ).rejects.toMatchObject({ status: 404 })
+  const legacy = await createVariant(
+    'subject:intro-to-ml',
+    'legacy-variant',
+    signal(),
+  )
   expect(legacy.id).toBeTruthy()
   const diagnosticId = await completeDiagnostic()
   await expect(
@@ -111,6 +118,21 @@ it('allows old variant creation while explicit known subject creation enters lea
     diagnostic_completed: true,
     training_available: true,
     diagnostic_session_id: diagnosticId,
+  })
+  const nextVariant = await createVariant(
+    'subject:intro-to-ml',
+    'later-variant',
+    signal(),
+  )
+  const active = await startDiagnostic(nextVariant.id, 'later-start', signal())
+  await expect(
+    readLearningState('subject:intro-to-ml', signal()),
+  ).resolves.toMatchObject({
+    diagnostic_status: 'active',
+    diagnostic_completed: true,
+    training_available: true,
+    diagnostic_session_id: diagnosticId,
+    active_session_id: active.session_id,
   })
 })
 

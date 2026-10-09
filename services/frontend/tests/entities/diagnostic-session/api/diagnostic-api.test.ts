@@ -7,6 +7,7 @@ import {
   readDiagnostic,
   readDiagnosticFeedback,
   submitDiagnostic,
+  createVariant,
 } from '@/entities/diagnostic-session'
 
 const accepted = {
@@ -28,6 +29,25 @@ afterEach(() => {
   vi.useRealTimers()
   vi.restoreAllMocks()
   vi.unstubAllGlobals()
+})
+
+it('creates a variant for the explicitly selected subject', async () => {
+  const fetchMock = vi
+    .fn()
+    .mockResolvedValue(Response.json({ id: 'variant-1' }, { status: 201 }))
+  vi.stubGlobal('fetch', fetchMock)
+  await expect(
+    createVariant('subject:ml', 'key-1', new AbortController().signal),
+  ).resolves.toEqual({ id: 'variant-1' })
+  expect(fetchMock.mock.calls[0][0]).toBe('/api/v1/variants')
+  expect(fetchMock.mock.calls[0][1].method).toBe('POST')
+  expect(fetchMock.mock.calls[0][1].headers).toMatchObject({
+    'Idempotency-Key': 'key-1',
+    'Content-Type': 'application/json',
+  })
+  expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({
+    subject_id: 'subject:ml',
+  })
 })
 
 it('accepts an empty strengths list serialized as null by the backend', async () => {

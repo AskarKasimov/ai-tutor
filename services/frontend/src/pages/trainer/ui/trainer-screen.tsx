@@ -6,7 +6,7 @@ import { useAuth } from '@/features/auth'
 import { useAuthDependencies } from '@/features/auth'
 import { useTrainerSession } from '@/features/trainer-session'
 import type { TrainerSession } from '@/entities/trainer-session'
-import { DiagnosticTrainer } from '@/pages/trainer/ui/diagnostic-trainer'
+import { LearningHome } from './learning-home'
 import { AccountMenu } from '@/features/auth'
 import { TrainerAnswer, SavedAnswer } from '@/pages/trainer/ui/trainer-answer'
 import { SessionSummary } from '@/pages/trainer/ui/session-summary'
@@ -16,7 +16,7 @@ export function TrainerScreen() {
   return import.meta.env.VITE_API_MODE === 'legacy-demo' ? (
     <DemoTrainer />
   ) : (
-    <DiagnosticTrainer />
+    <LearningHome />
   )
 }
 

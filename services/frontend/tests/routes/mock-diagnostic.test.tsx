@@ -47,6 +47,11 @@ it('completes local diagnostic and displays its overall feedback', async () => {
     routeTree,
   })
   render(<RouterProvider router={router} />)
+  fireEvent.click(await screen.findByRole('combobox', { name: 'Предмет' }))
+  fireEvent.click(await screen.findByRole('option', { name: 'Введение в ML' }))
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Начать диагностику' }),
+  )
   expect(
     await screen.findByRole('heading', {
       name: 'Демонстрационный вопрос о классификации',

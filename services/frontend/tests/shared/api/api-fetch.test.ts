@@ -269,13 +269,19 @@ it('runs every backend interaction in mock mode without making network requests'
   ).json()
   expect(transcription.id).toBeTruthy()
   expect(transcription.text).toContain('Демонстрационный')
+  const variant = await (
+    await post('variants', { subject_id: 'subject:intro-to-ml' })
+  ).json()
+  const diagnostic = await (
+    await post('diagnostic-sessions', { variant_id: variant.id })
+  ).json()
   const metadata = await (
     await apiFetch(
-      '/api/v1/diagnostic-sessions/s1/current/audio?variant_task_id=t1',
+      `/api/v1/diagnostic-sessions/${diagnostic.session_id}/current/audio?variant_task_id=demo-main`,
     )
   ).json()
   expect(metadata).toMatchObject({
-    variant_task_id: 't1',
+    variant_task_id: 'demo-main',
     status: 'ready',
     audio_url: expect.stringMatching(/^\/task-audio\/demo_[a-f0-9]+\/file$/),
   })

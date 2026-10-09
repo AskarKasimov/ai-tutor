@@ -30,7 +30,8 @@ const next: DiagnosticProgress = { ...completed, session_id: 'new' }
 async function mount() {
   const client = createQueryClient()
   await replaceSession(client, user)
-  saveDiagnosticIdentity(user.id, api.diagnosticApiBase, {
+  saveDiagnosticIdentity(user.id, api.diagnosticApiBase, 'subject:test', {
+    subjectId: 'subject:test',
     variantKey: 'original-v',
     startKey: 'original-s',
     variantId: 'original',
@@ -38,7 +39,10 @@ async function mount() {
   })
   vi.spyOn(api, 'readDiagnostic').mockResolvedValue(completed)
   const wrapper = createQueryWrapper(client)
-  const view = renderHook(() => useDiagnosticSession(user.id), { wrapper })
+  const view = renderHook(
+    () => useDiagnosticSession(user.id, 'subject:test', 'old'),
+    { wrapper },
+  )
   await waitFor(() => expect(view.result.current.query.data).toEqual(completed))
   return { ...view, client }
 }
@@ -71,6 +75,7 @@ describe('diagnostic recovery and auth isolation', () => {
     const failedIdentity = loadDiagnosticIdentity(
       user.id,
       api.diagnosticApiBase,
+      'subject:test',
     )
     await act(async () => {
       await view.result.current.restart.mutateAsync()

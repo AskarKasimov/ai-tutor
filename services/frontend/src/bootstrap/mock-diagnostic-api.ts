@@ -76,7 +76,7 @@ export function mockDiagnosticResponse(
     const key =
       new Headers(options.headers).get('Idempotency-Key') ?? crypto.randomUUID()
     const subjectId = body.subject_id
-    if (subjectId !== undefined && subjectId !== 'subject:intro-to-ml')
+    if (typeof subjectId !== 'string' || subjectId !== 'subject:intro-to-ml')
       return json({ code: 'SUBJECT_NOT_FOUND' }, 404)
     const identity = `${userId}:${key}`
     let variant = variants.get(identity)
@@ -84,8 +84,7 @@ export function mockDiagnosticResponse(
       variant = {
         id: crypto.randomUUID(),
         userId,
-        subjectId:
-          typeof subjectId === 'string' ? subjectId : 'subject:intro-to-ml',
+        subjectId,
       }
       variants.set(identity, variant)
     }
@@ -230,7 +229,10 @@ export function mockDiagnosticForSubject(userId: string, subjectId: string) {
   const matching = [...sessions.values()].filter(
     (item) => item.userId === userId && item.subjectId === subjectId,
   )
-  const session =
-    [...matching].reverse().find((item) => item.answer) ?? matching.at(-1)
-  return session ? progress(session) : undefined
+  const completed = [...matching].reverse().find((item) => item.answer)
+  const active = [...matching].reverse().find((item) => !item.answer)
+  return {
+    completed: completed ? progress(completed) : undefined,
+    active: active ? progress(active) : undefined,
+  }
 }

@@ -1,4 +1,4 @@
-import { act, renderHook } from '@testing-library/react'
+import { act, renderHook, waitFor } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest'
 import { createQueryClient } from '@/bootstrap/providers'
 import { createQueryWrapper } from '../../support/query-wrapper'
@@ -108,5 +108,175 @@ it('disposes a microphone granted after unmount', async () => {
     grant({ stream: {} as MediaStream, dispose, stop: vi.fn() })
     await start
   })
-  expect(dispose).toHaveBeenCalledOnce()
+  expect(dispose).toHaveBeenCalled()
+})
+it('moves through permission, recording, processing, and accepted result', async () => {
+  const deps = createAppDependencies()
+  vi.spyOn(audio, 'startRecording').mockResolvedValue({
+    stream: {} as MediaStream,
+    dispose: vi.fn(),
+    stop: vi.fn().mockResolvedValue(new Blob(['voice'])),
+  })
+  vi.spyOn(deps.training, 'createTrainingSubmission').mockReturnValue({
+    sessionId: 's1',
+    exerciseId: 'e1',
+    key: 'key',
+    body: new FormData(),
+  })
+  const submit = vi.fn().mockResolvedValue({
+    ...progress,
+    answer: {
+      sequence: 1,
+      exercise_id: 'e1',
+      round: 1,
+      target_index: 0,
+      transcription_id: 't1',
+      text: 'answer',
+      score: 1,
+      max_score: 2,
+      verdict: 'partial' as const,
+      criterion_results: [],
+      feedback: [],
+      created_at: 1,
+    },
+  })
+  const view = renderHook(
+    () => useTrainingVoice('u1', progress, submit, vi.fn()),
+    {
+      wrapper: createQueryWrapper(createQueryClient(), deps),
+    },
+  )
+  let start!: Promise<void>
+  act(() => {
+    start = view.result.current.start()
+  })
+  expect(view.result.current.stage).toBe('permission')
+  await act(async () => {
+    await start
+  })
+  expect(view.result.current.stage).toBe('recording')
+  let stop!: Promise<void>
+  act(() => {
+    stop = view.result.current.stop()
+  })
+  expect(view.result.current.stage).toBe('processing')
+  await act(async () => {
+    await stop
+  })
+  expect(view.result.current.stage).toBe('result')
+  expect(view.result.current.accepted?.exercise.exercise_id).toBe('e1')
+})
+it('disposes an active capture when the exercise changes', async () => {
+  const dispose = vi.fn()
+  vi.spyOn(audio, 'startRecording').mockResolvedValue({
+    stream: {} as MediaStream,
+    dispose,
+    stop: vi.fn(),
+  })
+  const view = renderHook(
+    ({ current }) => useTrainingVoice('u1', current, vi.fn(), vi.fn()),
+    {
+      wrapper: createQueryWrapper(createQueryClient()),
+      initialProps: { current: progress },
+    },
+  )
+  await act(async () => {
+    await view.result.current.start()
+  })
+  expect(view.result.current.stage).toBe('recording')
+  view.rerender({
+    current: {
+      ...progress,
+      current: { ...progress.current, exercise_id: 'e2' },
+    },
+  })
+  expect(dispose).toHaveBeenCalled()
+  expect(view.result.current.stage).toBe('ready')
+})
+it('ignores a submit result that arrives after the exercise changes', async () => {
+  const deps = createAppDependencies()
+  vi.spyOn(audio, 'startRecording').mockResolvedValue({
+    stream: {} as MediaStream,
+    dispose: vi.fn(),
+    stop: vi.fn().mockResolvedValue(new Blob(['voice'])),
+  })
+  vi.spyOn(deps.training, 'createTrainingSubmission').mockReturnValue({
+    sessionId: 's1',
+    exerciseId: 'e1',
+    key: 'key',
+    body: new FormData(),
+  })
+  let resolve!: (value: TrainingProgress) => void
+  const submit = vi.fn(
+    () =>
+      new Promise<TrainingProgress>((done) => {
+        resolve = done
+      }),
+  )
+  const view = renderHook(
+    ({ current }) => useTrainingVoice('u1', current, submit, vi.fn()),
+    {
+      wrapper: createQueryWrapper(createQueryClient(), deps),
+      initialProps: { current: progress },
+    },
+  )
+  await act(async () => {
+    await view.result.current.start()
+  })
+  let stop!: Promise<void>
+  act(() => {
+    stop = view.result.current.stop()
+  })
+  expect(view.result.current.stage).toBe('processing')
+  await waitFor(() => expect(submit).toHaveBeenCalledOnce())
+  view.rerender({
+    current: {
+      ...progress,
+      current: { ...progress.current, exercise_id: 'e2' },
+    },
+  })
+  await act(async () => {
+    resolve(progress)
+    await stop
+  })
+  expect(view.result.current.accepted).toBeUndefined()
+  expect(view.result.current.stage).toBe('ready')
+})
+it('ignores late instruction audio metadata after the exercise changes', async () => {
+  const deps = createAppDependencies()
+  let resolve!: (
+    value: Awaited<ReturnType<typeof deps.training.readTrainingAudio>>,
+  ) => void
+  const readAudio = vi
+    .spyOn(deps.training, 'readTrainingAudio')
+    .mockImplementation(
+      () =>
+        new Promise((done) => {
+          resolve = done
+        }),
+    )
+  const fetchAudio = vi.spyOn(deps.training, 'fetchTrainingAudioFile')
+  const view = renderHook(
+    ({ current }) => useTrainingVoice('u1', current, vi.fn(), vi.fn()),
+    {
+      wrapper: createQueryWrapper(createQueryClient(), deps),
+      initialProps: { current: progress },
+    },
+  )
+  let speak!: Promise<void>
+  act(() => {
+    speak = view.result.current.speak()
+  })
+  expect(readAudio).toHaveBeenCalledOnce()
+  view.rerender({
+    current: {
+      ...progress,
+      current: { ...progress.current, exercise_id: 'e2' },
+    },
+  })
+  await act(async () => {
+    resolve({ exercise_id: 'e1', status: 'ready', audio_url: '/audio' })
+    await speak
+  })
+  expect(fetchAudio).not.toHaveBeenCalled()
 })

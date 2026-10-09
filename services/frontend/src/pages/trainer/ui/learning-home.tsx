@@ -1,12 +1,14 @@
 import { Button, Card, Heading, Select, Text } from '@radix-ui/themes'
 import { useEffect, useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/features/auth'
 import {
   useLearningStateQuery,
   useSubjectsQuery,
 } from '@/features/subject-selection'
-import type { Subject } from '@/entities/subject'
+import { subjectQueryKeys, type Subject } from '@/entities/subject'
+import { TrainingPreview } from './training-preview'
 import { DiagnosticTrainer } from './diagnostic-trainer'
 import { AccountMenu } from '@/features/auth'
 import styles from './learning-home.module.scss'
@@ -16,7 +18,8 @@ type Intent = {
   userId: string
   subjectId: string
   sessionId: string
-  mode: 'diagnostic'
+  mode: 'diagnostic' | 'training'
+  diagnosticId?: string
 }
 const apiBase = (import.meta.env.VITE_API_BASE_URL || '/api/v1').replace(
   /\/$/,
@@ -29,9 +32,9 @@ function readIntent(userId: string): Intent | null {
     const valid =
       value?.userId === userId &&
       value.apiBase === apiBase &&
-      value.mode === 'diagnostic'
+      (value.mode === 'diagnostic' || value.mode === 'training')
     if (!value || !valid) return null
-    if (!value.sessionId) {
+    if (value.mode === 'diagnostic' && !value.sessionId) {
       // A pending create is not a resumable session. Require a new explicit
       // start click, while diagnostic identity storage retains its idempotency keys.
       sessionStorage.removeItem('ai-tutor:learning-home')
@@ -46,10 +49,14 @@ function readIntent(userId: string): Intent | null {
 export function LearningHome() {
   const { t } = useTranslation()
   const { user } = useAuth()
+  const queryClient = useQueryClient()
   const userId = user?.id ?? ''
   const subjectsQuery = useSubjectsQuery(userId)
   const [selectedId, setSelectedId] = useState('')
-  const [trainingRequested, setTrainingRequested] = useState(false)
+  const [trainingRequested, setTrainingRequested] = useState(() => {
+    const saved = userId ? readIntent(userId) : null
+    return saved?.mode === 'training'
+  })
   const [intent, setIntent] = useState<Intent | null>(() =>
     userId ? readIntent(userId) : null,
   )
@@ -99,8 +106,39 @@ export function LearningHome() {
   function back() {
     sessionStorage.removeItem('ai-tutor:learning-home')
     setIntent(null)
+    setTrainingRequested(false)
+    if (selected)
+      void queryClient.invalidateQueries({
+        queryKey: subjectQueryKeys.learningState(userId, selected.id),
+      })
   }
-  if (intent && selected)
+  function openTraining() {
+    if (!selected || !learning.data?.diagnostic_session_id) return
+    const next: Intent = {
+      apiBase,
+      userId,
+      subjectId: selected.id,
+      sessionId: '',
+      mode: 'training',
+      diagnosticId: learning.data.diagnostic_session_id,
+    }
+    sessionStorage.setItem('ai-tutor:learning-home', JSON.stringify(next))
+    setIntent(next)
+    setTrainingRequested(true)
+  }
+  if (intent?.mode === 'training' && selected && userId)
+    return (
+      <TrainingPreview
+        key={intent.diagnosticId}
+        userId={userId}
+        diagnosticId={
+          intent.diagnosticId ?? learning.data?.diagnostic_session_id ?? ''
+        }
+        subjectName={selected.name}
+        onBack={back}
+      />
+    )
+  if (intent?.mode === 'diagnostic' && selected)
     return (
       <DiagnosticTrainer
         subjectId={selected.id}
@@ -212,13 +250,18 @@ export function LearningHome() {
                         : t('home.diagnosticRequired')}
                     </Text>
                     <Button
-                      disabled={!learning.data.training_available}
-                      onClick={() => setTrainingRequested(true)}
+                      disabled={
+                        !learning.data.training_available ||
+                        !learning.data.diagnostic_session_id
+                      }
+                      onClick={openTraining}
                     >
                       {t(
-                        learning.data.training_available
-                          ? 'home.openTraining'
-                          : 'home.trainingLocked',
+                        trainingRequested
+                          ? 'home.trainingLoading'
+                          : learning.data.training_available
+                            ? 'home.openTraining'
+                            : 'home.trainingLocked',
                       )}
                     </Button>
                   </Card>

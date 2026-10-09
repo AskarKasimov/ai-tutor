@@ -5,8 +5,10 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
+	"strings"
 	"sync"
 	"testing"
 	"testing/fstest"
@@ -150,6 +152,135 @@ UPDATE competency_map_state SET revision=7 WHERE singleton=true;`)
 	if err := pool.QueryRow(ctx, `SELECT revision FROM competency_map_state WHERE singleton=true`).Scan(&globalRevision); err != nil || globalRevision != 7 {
 		t.Fatalf("global revision=%d err=%v", globalRevision, err)
 	}
+}
+
+func TestActiveRevisionForeignKeyAllowsImportReplacement(t *testing.T) {
+	pool := migrationPool(t)
+	ctx := context.Background()
+	legacyFiles := migrationsThroughNineWithNoActionActiveRevision(t)
+	if err := migrate(ctx, pool, legacyFiles); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `
+INSERT INTO users(id,email,password_hash,created_at) VALUES ('fk-user','fk@example.test','hash',1);
+INSERT INTO competency_map_imports(revision,imported_at,imported_by,competency_count,constituent_count,outcome_count,task_count,source_format,source_headers,subject_id)
+VALUES (1,1,'fk-user',1,1,1,1,'paired','[]','subject:intro-to-ml');
+INSERT INTO competencies(id,name,revision) VALUES ('fk-c','Historical competency',1);
+INSERT INTO variants(id,user_id,create_request_key,map_revision,algorithm_version,included_competency_count,skipped_competencies,created_at,subject_id,subject_name_snapshot)
+VALUES ('fk-v','fk-user','fk-request',1,'test',1,'[]',1,'subject:intro-to-ml','Введение в ML');
+INSERT INTO variant_tasks(id,variant_id,source_task_id_snapshot,competency_position,slot,role,task_snapshot,profile_snapshot)
+VALUES ('fk-vt','fk-v','historical-task',1,0,'main','{"question":"Historical snapshot"}','{}');`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE subjects SET active_revision=1 WHERE id='subject:intro-to-ml'`); err != nil {
+		t.Fatal(err)
+	}
+	if err := Migrate(ctx, pool); err != nil {
+		t.Fatal(err)
+	}
+	for range 2 {
+		if err := Migrate(ctx, pool); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var fkDefinition string
+	if err := pool.QueryRow(ctx, `SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conname='subjects_active_revision_fkey'`).Scan(&fkDefinition); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(fkDefinition, "ON DELETE SET NULL") {
+		t.Fatalf("active revision FK = %q, want ON DELETE SET NULL", fkDefinition)
+	}
+	var snapshot string
+	if err := pool.QueryRow(ctx, `SELECT task_snapshot->>'question' FROM variant_tasks WHERE id='fk-vt'`).Scan(&snapshot); err != nil || snapshot != "Historical snapshot" {
+		t.Fatalf("historical task snapshot=%q err=%v", snapshot, err)
+	}
+	// A failed import replacement must leave the active map and pointer intact.
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM competency_map_imports WHERE subject_id='subject:intro-to-ml'`); err != nil {
+		_ = tx.Rollback(ctx)
+		t.Fatalf("delete old map in replacement transaction: %v", err)
+	}
+	var clearedRevision *int64
+	if err := tx.QueryRow(ctx, `SELECT active_revision FROM subjects WHERE id='subject:intro-to-ml'`).Scan(&clearedRevision); err != nil || clearedRevision != nil {
+		_ = tx.Rollback(ctx)
+		t.Fatalf("active revision after deleting old map=%v err=%v", clearedRevision, err)
+	}
+	if _, err := tx.Exec(ctx, `INSERT INTO competency_map_imports(revision,imported_at,imported_by,competency_count,constituent_count,outcome_count,task_count,source_format,source_headers,subject_id)
+VALUES (2,2,'fk-user',1,1,1,1,'paired','[]','subject:intro-to-ml')`); err != nil {
+		_ = tx.Rollback(ctx)
+		t.Fatal(err)
+	}
+	if err := tx.Rollback(ctx); err != nil {
+		t.Fatal(err)
+	}
+	var activeRevision int64
+	var importCount int
+	if err := pool.QueryRow(ctx, `SELECT active_revision FROM subjects WHERE id='subject:intro-to-ml'`).Scan(&activeRevision); err != nil || activeRevision != 1 {
+		t.Fatalf("rollback active revision=%d err=%v", activeRevision, err)
+	}
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM competency_map_imports WHERE subject_id='subject:intro-to-ml'`).Scan(&importCount); err != nil || importCount != 1 {
+		t.Fatalf("rollback import count=%d err=%v", importCount, err)
+	}
+	if err := pool.QueryRow(ctx, `SELECT task_snapshot->>'question' FROM variant_tasks WHERE id='fk-vt'`).Scan(&snapshot); err != nil || snapshot != "Historical snapshot" {
+		t.Fatalf("rollback changed historical task snapshot=%q err=%v", snapshot, err)
+	}
+	tx, err = pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM competency_map_imports WHERE subject_id='subject:intro-to-ml'`); err != nil {
+		_ = tx.Rollback(ctx)
+		t.Fatalf("delete old map in successful replacement transaction: %v", err)
+	}
+	if _, err := tx.Exec(ctx, `INSERT INTO competency_map_imports(revision,imported_at,imported_by,competency_count,constituent_count,outcome_count,task_count,source_format,source_headers,subject_id)
+VALUES (2,2,'fk-user',1,1,1,1,'paired','[]','subject:intro-to-ml')`); err != nil {
+		_ = tx.Rollback(ctx)
+		t.Fatal(err)
+	}
+	if _, err := tx.Exec(ctx, `UPDATE subjects SET active_revision=2 WHERE id='subject:intro-to-ml'`); err != nil {
+		_ = tx.Rollback(ctx)
+		t.Fatal(err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := pool.QueryRow(ctx, `SELECT active_revision FROM subjects WHERE id='subject:intro-to-ml'`).Scan(&activeRevision); err != nil || activeRevision != 2 {
+		t.Fatalf("reimport active revision=%d err=%v", activeRevision, err)
+	}
+}
+
+func migrationsThroughNineWithNoActionActiveRevision(t *testing.T) fs.FS {
+	t.Helper()
+	files := fstest.MapFS{}
+	for i := 1; i <= 9; i++ {
+		name := fmt.Sprintf("%05d_", i)
+		entries, err := fs.ReadDir(migrations, "migrations")
+		if err != nil {
+			t.Fatal(err)
+		}
+		var found string
+		for _, entry := range entries {
+			if strings.HasPrefix(entry.Name(), name) {
+				found = entry.Name()
+				break
+			}
+		}
+		if found == "" {
+			t.Fatalf("missing historical migration %s", name)
+		}
+		data, err := fs.ReadFile(migrations, "migrations/"+found)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if i == 4 {
+			data = []byte(strings.Replace(string(data), " ON DELETE SET NULL", "", 1))
+		}
+		files[found] = &fstest.MapFile{Data: data}
+	}
+	return files
 }
 
 func legacySubjectMigrationFiles(t *testing.T) fs.FS {

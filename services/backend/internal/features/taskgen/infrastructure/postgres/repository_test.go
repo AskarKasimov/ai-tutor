@@ -71,7 +71,7 @@ func taskgenMap(name string) competencymap.Map {
 
 func TestAudioPersistGeneratedTaskAndReimportMaterial(t *testing.T) {
 	repository, maps, pool, ctx, userID := setupTaskgenRepository(t)
-	if _, err := maps.Replace(ctx, userID, taskgenMap("один"), 10); err != nil {
+	if _, err := maps.Replace(ctx, "subject:intro-to-ml", userID, taskgenMap("один"), 10); err != nil {
 		t.Fatal(err)
 	}
 	var outcomeID string
@@ -159,7 +159,7 @@ func TestTaskAndGenerationCurriculumProfilesRemainConsistent(t *testing.T) {
 			{Key: "o3", ConstituentKey: "s3", Name: "ОР 3"},
 		},
 	}
-	if _, err := maps.Replace(ctx, userID, data, 10); err != nil {
+	if _, err := maps.Replace(ctx, "subject:intro-to-ml", userID, data, 10); err != nil {
 		t.Fatal(err)
 	}
 	for _, tc := range []struct {
@@ -218,7 +218,7 @@ func TestTaskAndGenerationCurriculumProfilesRemainConsistent(t *testing.T) {
 
 func TestAudioPersistRejectsChangedMapWithoutAddingGeneratedAudio(t *testing.T) {
 	repository, maps, pool, ctx, userID := setupTaskgenRepository(t)
-	if _, err := maps.Replace(ctx, userID, taskgenMap("до"), 10); err != nil {
+	if _, err := maps.Replace(ctx, "subject:intro-to-ml", userID, taskgenMap("до"), 10); err != nil {
 		t.Fatal(err)
 	}
 	var outcomeID string
@@ -229,7 +229,7 @@ func TestAudioPersistRejectsChangedMapWithoutAddingGeneratedAudio(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := maps.Replace(ctx, userID, taskgenMap("после"), 12); err != nil {
+	if _, err := maps.Replace(ctx, "subject:intro-to-ml", userID, taskgenMap("после"), 12); err != nil {
 		t.Fatal(err)
 	}
 	var before int

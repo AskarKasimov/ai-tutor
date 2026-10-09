@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/competencymap"
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/subject"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/user"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/features/competency/application"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/fault"
@@ -39,7 +40,7 @@ func New(service *application.Service, maxUploadBytes int64) *Handler {
 
 // Import handles POST /admin/competency-map/import.
 // @Summary Заменить учебную базу картой компетенций
-// @Description Доступно только admin. Импорт атомарно заменяет учебную базу.
+// @Description Доступно только admin. Совместимый маршрут атомарно заменяет карту предмета «Введение в ML».
 // @ID importCompetencyMap
 // @Tags Учебная база
 // @Security accessCookie
@@ -55,6 +56,33 @@ func New(service *application.Service, maxUploadBytes int64) *Handler {
 // @Failure 503 {object} fault.Error
 // @Router /admin/competency-map/import [post]
 func (h *Handler) Import(w http.ResponseWriter, r *http.Request) {
+	h.importForSubject(w, r, subject.IntroToMLID)
+}
+
+// ImportSubject handles POST /admin/subjects/{subject_id}/competency-map/import.
+// @Summary Заменить карту предмета
+// @Description Доступно только admin. Импорт атомарно заменяет карту указанного предмета.
+// @ID importSubjectCompetencyMap
+// @Tags Учебная база
+// @Security accessCookie
+// @Accept mpfd
+// @Produce json
+// @Param subject_id path string true "ID предмета"
+// @Param file formData file true "Карта компетенций CSV или XLSX, до 25 МиБ"
+// @Success 200 {object} ImportResult
+// @Failure 401 {object} fault.Error
+// @Failure 403 {object} fault.Error
+// @Failure 404 {object} fault.Error
+// @Failure 413 {object} fault.Error
+// @Failure 415 {object} fault.Error
+// @Failure 422 {object} fault.Error
+// @Failure 503 {object} fault.Error
+// @Router /admin/subjects/{subject_id}/competency-map/import [post]
+func (h *Handler) ImportSubject(w http.ResponseWriter, r *http.Request) {
+	h.importForSubject(w, r, r.PathValue("subject_id"))
+}
+
+func (h *Handler) importForSubject(w http.ResponseWriter, r *http.Request, subjectID string) {
 	actor, ok := httpx.Principal[user.User](r)
 	if !ok {
 		httpx.Error(r.Context(), w, fault.New(fault.Unauthorized, "UNAUTHORIZED", "Требуется действующая сессия."))
@@ -69,7 +97,7 @@ func (h *Handler) Import(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(r.Context(), w, err)
 		return
 	}
-	result, err := h.service.Import(r.Context(), actor, data, media)
+	result, err := h.service.ImportForSubject(r.Context(), actor, subjectID, data, media)
 	if err != nil {
 		httpx.Error(r.Context(), w, err)
 		return

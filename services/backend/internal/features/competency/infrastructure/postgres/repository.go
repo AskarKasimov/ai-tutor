@@ -5,10 +5,12 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/audioasset"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/competencymap"
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/fault"
 	pgshared "github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/postgres"
 	db "github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/postgres/sqlcgen"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/security"
@@ -23,7 +25,7 @@ func New(pool *pgxpool.Pool) *Repository {
 	return &Repository{pool: pool, queries: db.New(pool)}
 }
 
-func (r *Repository) Replace(ctx context.Context, actorID string, parsed competencymap.Map, importedAt int64) (competencymap.ImportResult, error) {
+func (r *Repository) Replace(ctx context.Context, subjectID, actorID string, parsed competencymap.Map, importedAt int64) (competencymap.ImportResult, error) {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
 		return competencymap.ImportResult{}, err
@@ -31,6 +33,11 @@ func (r *Repository) Replace(ctx context.Context, actorID string, parsed compete
 	defer tx.Rollback(ctx)
 	queries := r.queries.WithTx(tx)
 
+	if _, err = queries.LockSubjectForImport(ctx, subjectID); err == pgx.ErrNoRows {
+		return competencymap.ImportResult{}, fault.New(fault.NotFound, "SUBJECT_NOT_FOUND", "Предмет не найден.")
+	} else if err != nil {
+		return competencymap.ImportResult{}, err
+	}
 	previousRevision, err := queries.LockCompetencyMapRevision(ctx)
 	if err != nil {
 		return competencymap.ImportResult{}, err
@@ -42,13 +49,10 @@ func (r *Repository) Replace(ctx context.Context, actorID string, parsed compete
 		UnparsedTaskCells: parsed.UnparsedTaskCells, Warnings: parsed.Warnings,
 	}
 
-	if err = queries.DeleteCompetencies(ctx); err != nil {
-		return competencymap.ImportResult{}, err
+	if _, err = queries.CancelPendingTaskAudioForSubject(ctx, subjectID); err != nil {
+		return competencymap.ImportResult{}, fmt.Errorf("cancel task audio before subject map replacement: %w", err)
 	}
-	if err = queries.DeleteCompetencyMapSourceRows(ctx); err != nil {
-		return competencymap.ImportResult{}, err
-	}
-	if err = queries.DeleteCompetencyMapImports(ctx); err != nil {
+	if err = queries.DeleteCompetencyMapImportsForSubject(ctx, subjectID); err != nil {
 		return competencymap.ImportResult{}, err
 	}
 
@@ -57,7 +61,7 @@ func (r *Repository) Replace(ctx context.Context, actorID string, parsed compete
 		return competencymap.ImportResult{}, err
 	}
 	if err = queries.InsertCompetencyMapImport(ctx, db.InsertCompetencyMapImportParams{
-		Revision: result.Revision, ImportedAt: result.ImportedAt, ImportedBy: actorID,
+		Revision: result.Revision, SubjectID: subjectID, ImportedAt: result.ImportedAt, ImportedBy: actorID,
 		CompetencyCount: int32(result.CompetencyCount), ConstituentCount: int32(result.ConstituentCount),
 		OutcomeCount: int32(result.OutcomeCount), TaskCount: int32(result.TaskCount),
 		SourceFormat: parsed.SourceFormat, SourceHeaders: headers,
@@ -249,8 +253,8 @@ func (r *Repository) Replace(ctx context.Context, actorID string, parsed compete
 	if err = queries.UpdateCompetencyMapRevision(ctx, result.Revision); err != nil {
 		return competencymap.ImportResult{}, err
 	}
-	if _, err = queries.CancelStalePendingTaskAudio(ctx); err != nil {
-		return competencymap.ImportResult{}, fmt.Errorf("cancel stale task audio after map replacement: %w", err)
+	if err = queries.UpdateSubjectActiveRevision(ctx, db.UpdateSubjectActiveRevisionParams{ID: subjectID, ActiveRevision: &result.Revision}); err != nil {
+		return competencymap.ImportResult{}, err
 	}
 	if err = tx.Commit(ctx); err != nil {
 		return competencymap.ImportResult{}, err

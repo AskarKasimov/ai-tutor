@@ -54,18 +54,18 @@ SET status = CASE
     updated_at = now()
 WHERE status = 'processing' AND lease_until <= now();
 
--- name: CancelStalePendingTaskAudio :execrows
+-- name: CancelPendingTaskAudioForSubject :execrows
 UPDATE audio_assets asset
 SET status = 'cancelled', last_error_code = 'task_no_longer_current', updated_at = now()
 WHERE asset.status = 'pending'
-  AND NOT EXISTS (
+  AND EXISTS (
       SELECT 1
       FROM tasks task
       JOIN outcomes outcome ON outcome.id = task.outcome_id
       JOIN constituents constituent ON constituent.id = outcome.constituent_id
       JOIN competencies competency ON competency.id = constituent.competency_id
-      JOIN competency_map_state state ON state.singleton = true AND state.revision = competency.revision
-      WHERE task.audio_asset_id = asset.id
+      JOIN subjects subject ON subject.active_revision = competency.revision
+      WHERE task.audio_asset_id = asset.id AND subject.id = $1
   );
 
 -- name: ClaimTaskAudio :one

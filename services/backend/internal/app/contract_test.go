@@ -206,6 +206,8 @@ func TestOpenAPIResponses(t *testing.T) {
 	if variantImport := upload(f, "/admin/competency-map/import", "file", "variant.csv", "text/csv", variantMapCSV(t), admin); variantImport.Code != http.StatusOK {
 		t.Fatalf("variant map import: %d %s", variantImport.Code, variantImport.Body.String())
 	}
+	check("POST", "/admin/subjects/{subject_id}/competency-map/import", upload(f, "/admin/subjects/subject:intro-to-ml/competency-map/import", "file", "subject.csv", "text/csv", variantMapCSV(t), admin))
+	check("GET", "/subjects/{subject_id}/competency-map", f.request("GET", "/subjects/subject:intro-to-ml/competency-map", "", access))
 	variantCreateRequest := httptest.NewRequest(http.MethodPost, "https://api.example/variants", strings.NewReader(""))
 	variantCreateRequest.Header.Set("Idempotency-Key", "contract-variant-1")
 	variantCreateRequest.AddCookie(access)

@@ -187,7 +187,7 @@ func TestMigratePendingRollbackAndRetry(t *testing.T) {
 	}
 	files := fstest.MapFS{
 		"00001_initial.sql": {Data: initial},
-		"00005_test.sql":    {Data: []byte("-- +goose Up\nCREATE TABLE migration_probe(id integer);\nSELECT * FROM nonexistent_migration_table;\n")},
+		"00006_test.sql":    {Data: []byte("-- +goose Up\nCREATE TABLE migration_probe(id integer);\nSELECT * FROM nonexistent_migration_table;\n")},
 	}
 	if err := migrate(ctx, pool, files); err == nil {
 		t.Fatal("invalid migration succeeded")
@@ -197,16 +197,16 @@ func TestMigratePendingRollbackAndRetry(t *testing.T) {
 		t.Fatalf("failed migration was not rolled back: exists=%v, err=%v", exists, err)
 	}
 	var count int
-	if err := pool.QueryRow(ctx, "SELECT count(*) FROM goose_db_version WHERE version_id=5").Scan(&count); err != nil || count != 0 {
+	if err := pool.QueryRow(ctx, "SELECT count(*) FROM goose_db_version WHERE version_id=6").Scan(&count); err != nil || count != 0 {
 		t.Fatalf("failed migration recorded: count=%d, err=%v", count, err)
 	}
-	files["00005_test.sql"].Data = []byte("-- +goose Up\nCREATE TABLE migration_probe(id integer);\n")
+	files["00006_test.sql"].Data = []byte("-- +goose Up\nCREATE TABLE migration_probe(id integer);\n")
 	for range 2 {
 		if err := migrate(ctx, pool, files); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if err := pool.QueryRow(ctx, "SELECT count(*) FROM goose_db_version WHERE version_id=5 AND is_applied").Scan(&count); err != nil || count != 1 {
+	if err := pool.QueryRow(ctx, "SELECT count(*) FROM goose_db_version WHERE version_id=6 AND is_applied").Scan(&count); err != nil || count != 1 {
 		t.Fatalf("pending migration applied: count=%d, err=%v", count, err)
 	}
 }

@@ -58,7 +58,7 @@ func seedCurrentTaskAudio(t *testing.T, pool *pgxpool.Pool, ctx context.Context,
 		args  []any
 	}{
 		{"INSERT INTO users(id,email,password_hash,created_at) VALUES ('audio-owner','audio-owner@example.test','test',1)", nil},
-		{"INSERT INTO competency_map_imports(revision,imported_at,imported_by,competency_count,constituent_count,outcome_count,task_count,source_format,source_headers) VALUES (1,1,'audio-owner',1,1,1,1,'paired','[]')", nil},
+		{"INSERT INTO competency_map_imports(revision,subject_id,imported_at,imported_by,competency_count,constituent_count,outcome_count,task_count,source_format,source_headers) VALUES (1,'subject:intro-to-ml',1,'audio-owner',1,1,1,1,'paired','[]')", nil},
 		{"INSERT INTO competencies(id,name,revision) VALUES ('audio-competency','Audio',1)", nil},
 		{"INSERT INTO constituents(id,competency_id,name) VALUES ('audio-constituent','audio-competency','Audio')", nil},
 		{"INSERT INTO outcomes(id,constituent_id,name) VALUES ('audio-outcome','audio-constituent','Audio')", nil},

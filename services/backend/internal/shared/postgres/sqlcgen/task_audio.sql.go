@@ -38,23 +38,23 @@ func (q *Queries) CancelClaimedTaskAudio(ctx context.Context, arg CancelClaimedT
 	return result.RowsAffected(), nil
 }
 
-const cancelStalePendingTaskAudio = `-- name: CancelStalePendingTaskAudio :execrows
+const cancelPendingTaskAudioForSubject = `-- name: CancelPendingTaskAudioForSubject :execrows
 UPDATE audio_assets asset
 SET status = 'cancelled', last_error_code = 'task_no_longer_current', updated_at = now()
 WHERE asset.status = 'pending'
-  AND NOT EXISTS (
+  AND EXISTS (
       SELECT 1
       FROM tasks task
       JOIN outcomes outcome ON outcome.id = task.outcome_id
       JOIN constituents constituent ON constituent.id = outcome.constituent_id
       JOIN competencies competency ON competency.id = constituent.competency_id
-      JOIN competency_map_state state ON state.singleton = true AND state.revision = competency.revision
-      WHERE task.audio_asset_id = asset.id
+      JOIN subjects subject ON subject.active_revision = competency.revision
+      WHERE task.audio_asset_id = asset.id AND subject.id = $1
   )
 `
 
-func (q *Queries) CancelStalePendingTaskAudio(ctx context.Context) (int64, error) {
-	result, err := q.db.Exec(ctx, cancelStalePendingTaskAudio)
+func (q *Queries) CancelPendingTaskAudioForSubject(ctx context.Context, id string) (int64, error) {
+	result, err := q.db.Exec(ctx, cancelPendingTaskAudioForSubject, id)
 	if err != nil {
 		return 0, err
 	}

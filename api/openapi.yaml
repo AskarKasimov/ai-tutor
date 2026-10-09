@@ -1365,7 +1365,7 @@ openapi: 3.1.0
 paths:
   /admin/competency-map/import:
     post:
-      description: Доступно только admin. Импорт атомарно заменяет учебную базу.
+      description: Доступно только admin. Совместимый маршрут атомарно заменяет карту предмета «Введение в ML».
       operationId: importCompetencyMap
       requestBody:
         content:
@@ -1537,6 +1537,87 @@ paths:
       summary: Создать предмет
       tags:
         - Предметы
+      x-implementation: implemented
+  /admin/subjects/{subject_id}/competency-map/import:
+    post:
+      description: Доступно только admin. Импорт атомарно заменяет карту указанного предмета.
+      operationId: importSubjectCompetencyMap
+      parameters:
+        - description: ID предмета
+          in: path
+          name: subject_id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              additionalProperties: false
+              properties:
+                file:
+                  description: Карта компетенций CSV или XLSX, до 25 МиБ
+                  format: binary
+                  type: string
+              required:
+                - file
+              type: object
+        description: Карта компетенций CSV или XLSX, до 25 МиБ
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/competencyhttp.ImportResult'
+          description: OK
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Forbidden
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Not Found
+        "413":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Request Entity Too Large
+        "415":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unsupported Media Type
+        "422":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unprocessable Entity
+        "503":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Service Unavailable
+      security:
+        - accessCookie: []
+      summary: Заменить карту предмета
+      tags:
+        - Учебная база
       x-implementation: implemented
   /assessments/evaluate:
     post:
@@ -1771,7 +1852,7 @@ paths:
       x-implementation: implemented
   /competency-map:
     get:
-      description: Ревизия, время импорта и дерево компетенций, составляющих, ОР и заданий. Доступно авторизованным пользователям. Эталоны и критерии не возвращаются.
+      description: Совместимый маршрут читает карту предмета «Введение в ML». Ревизия, время импорта и дерево компетенций, составляющих, ОР и заданий. Доступно авторизованным пользователям. Эталоны и критерии не возвращаются.
       operationId: readCompetencyMap
       responses:
         "200":
@@ -2281,6 +2362,48 @@ paths:
       summary: Прочитать каталог предметов
       tags:
         - Предметы
+      x-implementation: implemented
+  /subjects/{subject_id}/competency-map:
+    get:
+      description: Ревизия, время импорта и дерево компетенций предмета. Эталоны и критерии не возвращаются.
+      operationId: readSubjectCompetencyMap
+      parameters:
+        - description: ID предмета
+          in: path
+          name: subject_id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/competencyhttp.MapSnapshot'
+          description: OK
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unauthorized
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Not Found
+        "503":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Service Unavailable
+      security:
+        - accessCookie: []
+      summary: Прочитать карту предмета
+      tags:
+        - Учебная база
       x-implementation: implemented
   /task-audio/{id}/file:
     get:

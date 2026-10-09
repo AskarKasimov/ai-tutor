@@ -20,30 +20,12 @@ func (q *Queries) CountExistingOutcomes(ctx context.Context, dollar_1 []string) 
 	return column_1, err
 }
 
-const deleteCompetencies = `-- name: DeleteCompetencies :exec
-DELETE FROM competencies
+const deleteCompetencyMapImportsForSubject = `-- name: DeleteCompetencyMapImportsForSubject :exec
+DELETE FROM competency_map_imports WHERE subject_id = $1
 `
 
-func (q *Queries) DeleteCompetencies(ctx context.Context) error {
-	_, err := q.db.Exec(ctx, deleteCompetencies)
-	return err
-}
-
-const deleteCompetencyMapImports = `-- name: DeleteCompetencyMapImports :exec
-DELETE FROM competency_map_imports
-`
-
-func (q *Queries) DeleteCompetencyMapImports(ctx context.Context) error {
-	_, err := q.db.Exec(ctx, deleteCompetencyMapImports)
-	return err
-}
-
-const deleteCompetencyMapSourceRows = `-- name: DeleteCompetencyMapSourceRows :exec
-DELETE FROM competency_map_source_rows
-`
-
-func (q *Queries) DeleteCompetencyMapSourceRows(ctx context.Context) error {
-	_, err := q.db.Exec(ctx, deleteCompetencyMapSourceRows)
+func (q *Queries) DeleteCompetencyMapImportsForSubject(ctx context.Context, subjectID string) error {
+	_, err := q.db.Exec(ctx, deleteCompetencyMapImportsForSubject, subjectID)
 	return err
 }
 
@@ -243,13 +225,14 @@ func (q *Queries) InsertCompetency(ctx context.Context, arg InsertCompetencyPara
 
 const insertCompetencyMapImport = `-- name: InsertCompetencyMapImport :exec
 INSERT INTO competency_map_imports(
-    revision, imported_at, imported_by, competency_count, constituent_count,
+    revision, subject_id, imported_at, imported_by, competency_count, constituent_count,
     outcome_count, task_count, source_format, source_headers, unparsed_task_cell_count
-) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 `
 
 type InsertCompetencyMapImportParams struct {
 	Revision              int64
+	SubjectID             string
 	ImportedAt            int64
 	ImportedBy            string
 	CompetencyCount       int32
@@ -264,6 +247,7 @@ type InsertCompetencyMapImportParams struct {
 func (q *Queries) InsertCompetencyMapImport(ctx context.Context, arg InsertCompetencyMapImportParams) error {
 	_, err := q.db.Exec(ctx, insertCompetencyMapImport,
 		arg.Revision,
+		arg.SubjectID,
 		arg.ImportedAt,
 		arg.ImportedBy,
 		arg.CompetencyCount,
@@ -690,8 +674,18 @@ func (q *Queries) LockCompetencyMapRevision(ctx context.Context) (int64, error) 
 	return revision, err
 }
 
-const readCurrentCompetencyMap = `-- name: ReadCurrentCompetencyMap :many
-SELECT state.revision, import.imported_at,
+const lockSubjectForImport = `-- name: LockSubjectForImport :one
+SELECT id FROM subjects WHERE id = $1 FOR UPDATE
+`
+
+func (q *Queries) LockSubjectForImport(ctx context.Context, id string) (string, error) {
+	row := q.db.QueryRow(ctx, lockSubjectForImport, id)
+	err := row.Scan(&id)
+	return id, err
+}
+
+const readSubjectCompetencyMap = `-- name: ReadSubjectCompetencyMap :many
+SELECT COALESCE(subject.active_revision, 0)::bigint AS revision, import.imported_at,
        competency.id AS competency_id, competency.name AS competency_name,
        constituent.id AS constituent_id, constituent.name AS constituent_name,
        topic.code AS topic_level_code,
@@ -700,9 +694,9 @@ SELECT state.revision, import.imported_at,
        outcome.include_in_test, taxonomy.code AS taxonomy_code,
        ald.code AS ald_level_code, outcome.importance, outcome.educational_content,
        task.id AS task_id, task.question, task.options, task.voice_instruction, task.origin
-FROM competency_map_state AS state
-LEFT JOIN competency_map_imports AS import ON import.revision = state.revision
-LEFT JOIN competencies AS competency ON competency.revision = state.revision
+FROM subjects AS subject
+LEFT JOIN competency_map_imports AS import ON import.revision = subject.active_revision
+LEFT JOIN competencies AS competency ON competency.revision = subject.active_revision
 LEFT JOIN constituents AS constituent ON constituent.competency_id = competency.id
 LEFT JOIN topic_levels AS topic ON topic.id = constituent.topic_level_id
 LEFT JOIN constituent_curriculum_profiles AS curriculum_profile ON curriculum_profile.constituent_id = constituent.id
@@ -710,12 +704,12 @@ LEFT JOIN outcomes AS outcome ON outcome.constituent_id = constituent.id
 LEFT JOIN taxonomies AS taxonomy ON taxonomy.id = outcome.taxonomy_id
 LEFT JOIN ald_levels AS ald ON ald.id = outcome.ald_level_id
 LEFT JOIN tasks AS task ON task.outcome_id = outcome.id
-WHERE state.singleton = true
+WHERE subject.id = $1
 ORDER BY competency.name, competency.id, constituent.name, constituent.id,
          outcome.name, outcome.id, task.created_at, task.id
 `
 
-type ReadCurrentCompetencyMapRow struct {
+type ReadSubjectCompetencyMapRow struct {
 	Revision           int64
 	ImportedAt         *int64
 	CompetencyID       *string
@@ -738,15 +732,15 @@ type ReadCurrentCompetencyMapRow struct {
 	Origin             *string
 }
 
-func (q *Queries) ReadCurrentCompetencyMap(ctx context.Context) ([]ReadCurrentCompetencyMapRow, error) {
-	rows, err := q.db.Query(ctx, readCurrentCompetencyMap)
+func (q *Queries) ReadSubjectCompetencyMap(ctx context.Context, id string) ([]ReadSubjectCompetencyMapRow, error) {
+	rows, err := q.db.Query(ctx, readSubjectCompetencyMap, id)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []ReadCurrentCompetencyMapRow{}
+	items := []ReadSubjectCompetencyMapRow{}
 	for rows.Next() {
-		var i ReadCurrentCompetencyMapRow
+		var i ReadSubjectCompetencyMapRow
 		if err := rows.Scan(
 			&i.Revision,
 			&i.ImportedAt,
@@ -957,5 +951,19 @@ UPDATE competency_map_state SET revision = $1 WHERE singleton = true
 
 func (q *Queries) UpdateCompetencyMapRevision(ctx context.Context, revision int64) error {
 	_, err := q.db.Exec(ctx, updateCompetencyMapRevision, revision)
+	return err
+}
+
+const updateSubjectActiveRevision = `-- name: UpdateSubjectActiveRevision :exec
+UPDATE subjects SET active_revision = $2 WHERE id = $1
+`
+
+type UpdateSubjectActiveRevisionParams struct {
+	ID             string
+	ActiveRevision *int64
+}
+
+func (q *Queries) UpdateSubjectActiveRevision(ctx context.Context, arg UpdateSubjectActiveRevisionParams) error {
+	_, err := q.db.Exec(ctx, updateSubjectActiveRevision, arg.ID, arg.ActiveRevision)
 	return err
 }

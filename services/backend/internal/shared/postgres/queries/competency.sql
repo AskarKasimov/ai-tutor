@@ -1,20 +1,20 @@
+-- name: LockSubjectForImport :one
+SELECT id FROM subjects WHERE id = $1 FOR UPDATE;
+
 -- name: LockCompetencyMapRevision :one
 SELECT revision FROM competency_map_state WHERE singleton = true FOR UPDATE;
 
--- name: DeleteCompetencies :exec
-DELETE FROM competencies;
-
--- name: DeleteCompetencyMapSourceRows :exec
-DELETE FROM competency_map_source_rows;
-
--- name: DeleteCompetencyMapImports :exec
-DELETE FROM competency_map_imports;
+-- name: DeleteCompetencyMapImportsForSubject :exec
+DELETE FROM competency_map_imports WHERE subject_id = $1;
 
 -- name: InsertCompetencyMapImport :exec
 INSERT INTO competency_map_imports(
-    revision, imported_at, imported_by, competency_count, constituent_count,
+    revision, subject_id, imported_at, imported_by, competency_count, constituent_count,
     outcome_count, task_count, source_format, source_headers, unparsed_task_cell_count
-) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10);
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11);
+
+-- name: UpdateSubjectActiveRevision :exec
+UPDATE subjects SET active_revision = $2 WHERE id = $1;
 
 -- name: InsertCompetency :exec
 INSERT INTO competencies(id, name, revision) VALUES ($1, $2, $3);
@@ -72,8 +72,8 @@ VALUES ($1, $2, $3);
 -- name: UpdateCompetencyMapRevision :exec
 UPDATE competency_map_state SET revision = $1 WHERE singleton = true;
 
--- name: ReadCurrentCompetencyMap :many
-SELECT state.revision, import.imported_at,
+-- name: ReadSubjectCompetencyMap :many
+SELECT COALESCE(subject.active_revision, 0)::bigint AS revision, import.imported_at,
        competency.id AS competency_id, competency.name AS competency_name,
        constituent.id AS constituent_id, constituent.name AS constituent_name,
        topic.code AS topic_level_code,
@@ -82,9 +82,9 @@ SELECT state.revision, import.imported_at,
        outcome.include_in_test, taxonomy.code AS taxonomy_code,
        ald.code AS ald_level_code, outcome.importance, outcome.educational_content,
        task.id AS task_id, task.question, task.options, task.voice_instruction, task.origin
-FROM competency_map_state AS state
-LEFT JOIN competency_map_imports AS import ON import.revision = state.revision
-LEFT JOIN competencies AS competency ON competency.revision = state.revision
+FROM subjects AS subject
+LEFT JOIN competency_map_imports AS import ON import.revision = subject.active_revision
+LEFT JOIN competencies AS competency ON competency.revision = subject.active_revision
 LEFT JOIN constituents AS constituent ON constituent.competency_id = competency.id
 LEFT JOIN topic_levels AS topic ON topic.id = constituent.topic_level_id
 LEFT JOIN constituent_curriculum_profiles AS curriculum_profile ON curriculum_profile.constituent_id = constituent.id
@@ -92,7 +92,7 @@ LEFT JOIN outcomes AS outcome ON outcome.constituent_id = constituent.id
 LEFT JOIN taxonomies AS taxonomy ON taxonomy.id = outcome.taxonomy_id
 LEFT JOIN ald_levels AS ald ON ald.id = outcome.ald_level_id
 LEFT JOIN tasks AS task ON task.outcome_id = outcome.id
-WHERE state.singleton = true
+WHERE subject.id = $1
 ORDER BY competency.name, competency.id, constituent.name, constituent.id,
          outcome.name, outcome.id, task.created_at, task.id;
 

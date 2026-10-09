@@ -189,6 +189,7 @@ func (a *App) Handler() http.Handler {
 	mux.Handle("POST /diagnostic-sessions/{id}/answers", protect(auth, http.HandlerFunc(diagnosticHandlers.Answer)))
 	mux.Handle("GET /diagnostic-sessions/{id}/result", protect(auth, http.HandlerFunc(diagnosticHandlers.Result)))
 	mux.Handle("GET /diagnostic-sessions/{id}/feedback", protect(auth, http.HandlerFunc(feedbackHandlers.GetFeedback)))
+	mux.Handle("GET /diagnostic-sessions/{id}/training/preview", protect(auth, http.HandlerFunc(diagnosticHandlers.TrainingPreview)))
 	mux.Handle("GET /tasks", protect(auth, http.HandlerFunc(taskbankHandlers.Search)))
 	mux.Handle("GET /competency-map", protect(auth, http.HandlerFunc(competencyHandlers.Read)))
 	mux.Handle("GET /subjects/{subject_id}/competency-map", protect(auth, http.HandlerFunc(competencyHandlers.ReadSubject)))

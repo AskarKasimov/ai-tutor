@@ -290,6 +290,10 @@ func (s *Service) Result(ctx context.Context, ownerID, sessionID string) (diagno
 	return result, nil
 }
 
+func (s *Service) ResultForTraining(ctx context.Context, ownerID, sessionID string) (diagnostic.Result, error) {
+	return s.Result(ctx, ownerID, sessionID)
+}
+
 func validateEvaluation(value assessment.Evaluation, role string) error {
 	maxScore := 2
 	if role == "basic" {

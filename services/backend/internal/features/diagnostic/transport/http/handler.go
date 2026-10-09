@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/diagnostic"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/user"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/features/diagnostic/application"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/fault"
@@ -23,6 +24,15 @@ type LearningStateResponse struct {
 	DiagnosticStatus    string `json:"diagnostic_status"`
 	Completed           bool   `json:"diagnostic_completed"`
 	TrainingAvailable   bool   `json:"training_available"`
+}
+
+type TrainingPreviewResponse struct {
+	SessionID           string `json:"diagnostic_session_id"`
+	Mode                string `json:"mode"`
+	DiagnosticScore     int    `json:"diagnostic_score"`
+	MaximumScore        int    `json:"maximum_score"`
+	ConfirmedGaps       []any  `json:"confirmed_gaps"`
+	PartialCompetencies []any  `json:"partial_competencies"`
 }
 
 type Handler struct {
@@ -111,6 +121,76 @@ func (h *Handler) LearningState(w http.ResponseWriter, r *http.Request) {
 		response.TrainingAvailable = true
 	}
 	httpx.JSON(w, http.StatusOK, response)
+}
+
+// TrainingPreview calculates the immutable training topics from a completed diagnostic.
+// @Summary Предпросмотр тренировки
+// @Tags Тренировка
+// @Security accessCookie
+// @Produce json
+// @Param id path string true "ID диагностической сессии"
+// @Success 200 {object} TrainingPreviewResponse
+// @Failure 409 {object} fault.Error
+// @Router /diagnostic-sessions/{id}/training/preview [get]
+func (h *Handler) TrainingPreview(w http.ResponseWriter, r *http.Request) {
+	principal, ok := httpx.Principal[user.User](r)
+	if !ok {
+		httpx.Error(r.Context(), w, fault.New(fault.Unauthorized, "UNAUTHORIZED", "Требуется действующая сессия."))
+		return
+	}
+	if err := noQuery(r); err != nil {
+		httpx.Error(r.Context(), w, err)
+		return
+	}
+	result, err := h.service.ResultForTraining(r.Context(), principal.ID, r.PathValue("id"))
+	if err != nil {
+		httpx.Error(r.Context(), w, err)
+		return
+	}
+	mode := "focused"
+	if result.MaximumScore > 0 && result.DiagnosticScore == result.MaximumScore {
+		mode = "free_practice"
+	}
+	confirmed, partials := trainingTopics(result)
+	httpx.JSON(w, http.StatusOK, TrainingPreviewResponse{SessionID: result.SessionID, Mode: mode, DiagnosticScore: result.DiagnosticScore, MaximumScore: result.MaximumScore, ConfirmedGaps: confirmed, PartialCompetencies: partials})
+}
+
+func trainingTopics(result diagnostic.Result) ([]any, []any) {
+	type group struct {
+		main   *diagnostic.Answer
+		basics []diagnostic.Answer
+	}
+	groups := map[string]*group{}
+	for i := range result.Answers {
+		a := result.Answers[i]
+		g := groups[a.CompetencyID]
+		if g == nil {
+			g = &group{}
+			groups[a.CompetencyID] = g
+		}
+		if a.Role == "main" {
+			g.main = &a
+		} else if a.Role == "basic" {
+			g.basics = append(g.basics, a)
+		}
+	}
+	confirmed, partials := []any{}, []any{}
+	for id, g := range groups {
+		if g.main == nil || g.main.Score == 2 {
+			continue
+		}
+		zero := false
+		for _, b := range g.basics {
+			if b.Score == 0 {
+				zero = true
+				confirmed = append(confirmed, map[string]any{"competency_id": id, "competency_name": b.Task.CompetencyName, "outcome_id": b.OutcomeID, "outcome_name": b.Task.OutcomeName, "taxonomy_code": b.Task.TaxonomyCode, "importance": b.Task.Importance})
+			}
+		}
+		if !zero {
+			partials = append(partials, map[string]any{"competency_id": id, "competency_name": g.main.Task.CompetencyName, "details": "Базовые понятия усвоены, требуется закрепление на более высоком уровне."})
+		}
+	}
+	return confirmed, partials
 }
 
 // Read returns status and the current public task.

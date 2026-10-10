@@ -501,6 +501,9 @@ components:
       properties:
         answer_skipped:
           type: boolean
+        competency_count:
+          minimum: 1
+          type: integer
         completed_tasks:
           minimum: 0
           type: integer
@@ -511,6 +514,13 @@ components:
           uniqueItems: false
         current:
           $ref: '#/components/schemas/diagnostichttp.TaskResponse'
+        current_competency:
+          minimum: 1
+          type: integer
+        current_step:
+          maximum: 2
+          minimum: 0
+          type: integer
         feedback:
           items:
             type: string

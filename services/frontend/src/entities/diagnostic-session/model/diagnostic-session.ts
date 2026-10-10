@@ -23,6 +23,10 @@ export type DiagnosticProgress = {
   completed_tasks: number
   skipped_tasks: number
   total_tasks: number
+  // Topics are fixed; questions vary with answers (main plus 0–2 basics).
+  competency_count?: number
+  current_competency?: number
+  current_step?: number
   current?: DiagnosticTask
   score?: number
   grader_score?: number

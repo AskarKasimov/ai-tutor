@@ -394,6 +394,27 @@ void i18n.init({
           skipQuestion: 'Пропустить вопрос',
           skipError: 'Не удалось пропустить вопрос. Попробуйте ещё раз.',
           navigatorLabel: 'Вопросы диагностики',
+          topicCrumb: 'Тема {{number}} из {{count}}',
+          topicBasicCrumb: 'Тема {{number}} из {{count}} · уточняющий вопрос',
+          topicNavigator: {
+            correct: 'Тема {{number}}: верно',
+            partial: 'Тема {{number}}: частично верно',
+            incorrect: 'Тема {{number}}: неверно',
+            skipped: 'Тема {{number}}: пропущена',
+            current: 'Тема {{number}}: текущая',
+            locked: 'Тема {{number}}: ещё впереди',
+            done: 'Тема {{number}}: пройдена',
+          },
+          basicNavigator: {
+            correct: 'Тема {{number}}, уточняющий вопрос {{basic}}: верно',
+            partial:
+              'Тема {{number}}, уточняющий вопрос {{basic}}: частично верно',
+            incorrect: 'Тема {{number}}, уточняющий вопрос {{basic}}: неверно',
+            skipped: 'Тема {{number}}, уточняющий вопрос {{basic}}: пропущен',
+            current: 'Тема {{number}}, уточняющий вопрос {{basic}}: текущий',
+            locked: 'Тема {{number}}, уточняющий вопрос {{basic}}: впереди',
+            done: 'Тема {{number}}, уточняющий вопрос {{basic}}: пройден',
+          },
           scrollBack: 'Предыдущие вопросы',
           scrollForward: 'Следующие вопросы',
           navigator: {

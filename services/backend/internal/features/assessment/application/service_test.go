@@ -3,6 +3,7 @@ package application
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/variant"
@@ -225,6 +226,38 @@ func TestEvaluateVariantRejectsPartialWhenMandatoryCriterionFailed(t *testing.T)
 	var f *fault.Error
 	if !errors.As(err, &f) || f.Code != "INVALID_MODEL_RESPONSE" {
 		t.Fatalf("expected INVALID_MODEL_RESPONSE, got %v", err)
+	}
+}
+
+func TestEvaluateVariantFeedbackTotalLength(t *testing.T) {
+	tests := []struct {
+		name        string
+		feedback    []string
+		wantInvalid bool
+	}{
+		{name: "brief feedback", feedback: []string{"Названы два класса.", "Но тип задачи не указан.", "Добавьте слово «классификация»."}},
+		{name: "exactly 180 runes with separators", feedback: []string{strings.Repeat("а", 174), "б.", "в."}},
+		{name: "more than 180 runes", feedback: []string{strings.Repeat("а", 175), "б.", "в."}, wantInvalid: true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			result := validEvaluation()
+			result.Feedback = tc.feedback
+			_, err := New(
+				&transcriptionStub{text: "классификация, потому что два класса"},
+				&variantTaskStub{result: validVariantTask("main")},
+				&graderStub{result: result},
+			).EvaluateVariant(context.Background(), "student-1", "tr-1", "variant-1", "variant-task-1")
+			if !tc.wantInvalid && err != nil {
+				t.Fatalf("expected valid feedback, got %v", err)
+			}
+			if tc.wantInvalid {
+				var f *fault.Error
+				if !errors.As(err, &f) || f.Code != "INVALID_MODEL_RESPONSE" {
+					t.Fatalf("expected INVALID_MODEL_RESPONSE, got %v", err)
+				}
+			}
+		})
 	}
 }
 

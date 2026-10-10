@@ -125,12 +125,20 @@ func validateEvaluation(result Evaluation, gradingContext GradingContext) error 
 	if len(result.Feedback) != 3 {
 		return fault.New(fault.Upstream, "INVALID_MODEL_RESPONSE", "Модель вернула некорректный фидбэк.")
 	}
+	feedbackLength := 0
 	for i, line := range result.Feedback {
 		line = strings.TrimSpace(line)
-		if !validText(line, 240) || strings.ContainsAny(line, "\r\n") {
+		if !validText(line, 180) || strings.ContainsAny(line, "\r\n") {
 			return fault.New(fault.Upstream, "INVALID_MODEL_RESPONSE", "Модель вернула некорректный фидбэк.")
 		}
+		feedbackLength += utf8.RuneCountInString(line)
+		if i > 0 {
+			feedbackLength++ // Space between sentences in the UI.
+		}
 		result.Feedback[i] = line
+	}
+	if feedbackLength > 180 {
+		return fault.New(fault.Upstream, "INVALID_MODEL_RESPONSE", "Модель вернула слишком длинный фидбэк.")
 	}
 	return nil
 }

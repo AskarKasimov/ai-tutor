@@ -264,7 +264,9 @@ it('runs real diagnostic audio, obeys skipped basics and displays the server tot
   fireEvent.click(
     await screen.findByRole('button', { name: 'Завершить запись' }),
   )
-  expect(await screen.findByText('Серверное объяснение.')).toBeVisible()
+  expect(await screen.findByText(feedback.join(' '))).toBeVisible()
+  expect(screen.queryByText('Модель названа.')).not.toBeInTheDocument()
+  expect(screen.queryByText(/Критерий (не )?выполнен/)).not.toBeInTheDocument()
   // The main answer scored 2/2 and both basics were skipped by the server.
   expect(screen.getByLabelText('Вопрос 1: верно')).toBeVisible()
   expect(screen.getByLabelText('Вопрос 2: пройден')).toBeVisible()
@@ -283,6 +285,8 @@ it('runs real diagnostic audio, obeys skipped basics and displays the server tot
     screen.getByText('Диагностический балл').parentElement,
   ).toHaveTextContent('2 / 2')
   expect(screen.getByText('Настоящая расшифровка')).toBeVisible()
+  expect(screen.getByText(feedback.join(' '))).toBeVisible()
+  expect(screen.queryByText('Модель названа.')).not.toBeInTheDocument()
   expect(
     await screen.findByText('Итоговое педагогическое резюме.'),
   ).toBeVisible()
@@ -368,7 +372,7 @@ it('keeps the audio and idempotency key on a failed submission and retries witho
     'Настоящий вопрос из банка',
   )
   fireEvent.click(screen.getByRole('button', { name: 'Отправить снова' }))
-  expect(await screen.findByText('Серверное объяснение.')).toBeVisible()
+  expect(await screen.findByText(/Серверное объяснение\./)).toBeVisible()
   const calls = requests.mock.calls.filter(([url]) => url.endsWith('/answers'))
   expect(calls).toHaveLength(2)
   expect(calls[0][1]?.headers).toEqual(calls[1][1]?.headers)
@@ -480,7 +484,7 @@ it('skips a question by sending the spoken skip phrase as the answer', async () 
   fireEvent.click(
     await screen.findByRole('button', { name: 'Пропустить вопрос' }),
   )
-  expect(await screen.findByText('Серверное объяснение.')).toBeVisible()
+  expect(await screen.findByText(feedback.join(' '))).toBeVisible()
   expect(audio.startRecording).not.toHaveBeenCalled()
   const [, init] = requests.mock.calls.find(([url]) =>
     url.endsWith('/answers'),
@@ -742,7 +746,7 @@ it('retains the original audio/key when the backend reports that an answer is st
   )
   await screen.findByRole('alert')
   fireEvent.click(screen.getByRole('button', { name: 'Отправить снова' }))
-  expect(await screen.findByText('Серверное объяснение.')).toBeVisible()
+  expect(await screen.findByText(/Серверное объяснение\./)).toBeVisible()
   expect(submissions[0].headers).toEqual(submissions[1].headers)
   expect(submissions[0].body).toBe(submissions[1].body)
 })

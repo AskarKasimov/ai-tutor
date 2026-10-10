@@ -294,15 +294,9 @@ export function TrainingSession({
                   })}
                 </Heading>
                 <Text as="p">{accepted?.exercise.question}</Text>
-                {result.feedback.map((line, i) => (
-                  <Text
-                    as="p"
-                    key={`${i}-${line}`}
-                    className={styles.feedbackLine}
-                  >
-                    {line}
-                  </Text>
-                ))}
+                <Text as="p" className={styles.feedbackLine}>
+                  {result.feedback.join(' ')}
+                </Text>
                 {voice.answerUrl && (
                   <div className={styles.audio}>
                     <audio

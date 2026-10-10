@@ -63,8 +63,10 @@ func TestGradeSendsTrustedScaleCriteriaMaterialsAndParsesStructuredResult(t *tes
 			t.Fatalf("model request omitted %s: %s", required, content)
 		}
 	}
-	if !strings.Contains(request.Messages[0].Content, "mandatory=true") {
-		t.Fatalf("system prompt omitted mandatory criterion rule: %s", request.Messages[0].Content)
+	if !strings.Contains(request.Messages[0].Content, "mandatory=true") ||
+		!strings.Contains(request.Messages[0].Content, "один связный мини-отзыв") ||
+		!strings.Contains(request.Messages[0].Content, "180 символов") {
+		t.Fatalf("system prompt omitted grading or concise feedback rule: %s", request.Messages[0].Content)
 	}
 }
 

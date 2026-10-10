@@ -313,11 +313,9 @@ export function SavedAnswer({
       <Heading as="h2" className={styles.feedbackTitle}>
         {t('trainer.feedback')}
       </Heading>
-      {answer.assessment.feedback.map((line, i) => (
-        <Text as="p" className={styles.feedbackLine} key={i}>
-          {line}
-        </Text>
-      ))}
+      <Text as="p" className={styles.feedbackLine}>
+        {answer.assessment.feedback.join(' ')}
+      </Text>
       <div className={styles.resultActions}>{children}</div>
     </aside>
   )

@@ -87,7 +87,19 @@ WITH candidate AS (
           JOIN subjects subject ON subject.active_revision = competency.revision
           WHERE task.audio_asset_id = audio_assets.id
       )
-    ORDER BY created_at, id
+    -- Students hear audio first where they wait for it: current training
+    -- exercises, then started variants in question order, then the rest.
+    ORDER BY
+        EXISTS (
+            SELECT 1 FROM training_exercises exercise
+            WHERE exercise.audio_asset_id = audio_assets.id
+        ) DESC,
+        (
+            SELECT min(variant_task.competency_position * 3 + variant_task.slot)
+            FROM variant_tasks variant_task
+            WHERE variant_task.audio_asset_id = audio_assets.id
+        ) ASC NULLS LAST,
+        created_at, id
     FOR UPDATE SKIP LOCKED
     LIMIT 1
 )

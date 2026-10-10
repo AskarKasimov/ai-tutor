@@ -3,6 +3,7 @@ import {
   AudioPlaybackError,
   createAudioUrl,
   playQuestion,
+  speakInstruction,
   startRecording,
 } from '@/shared/lib'
 import { StoredAudioError } from '@/shared/api'
@@ -158,6 +159,25 @@ export function useDiagnosticVoice(
       currentContext.current.taskId === taskId &&
       currentContext.current.sessionId === sessionId &&
       currentContext.current.userId === userId
+    // When stored audio is not ready or unplayable, the browser voice reads
+    // the instruction so a task never stays silent.
+    const instruction = task?.voice_instruction ?? ''
+    const startFallback = () => {
+      if (!stillCurrent()) return false
+      const stop = speakInstruction(instruction, () => {
+        if (!stillCurrent() || player.current !== stop) return
+        speechRequest.current = null
+        player.current = null
+        setSpeech('idle')
+      })
+      if (!stop) return false
+      player.current = stop
+      setSpeechError(false)
+      setPendingHint(false)
+      setCancelledHint(false)
+      setSpeech('playing')
+      return true
+    }
     const audioKey = (audioUrl: string) =>
       diagnosticSessionQueryKeys.storedTaskAudio(
         userId,
@@ -193,12 +213,14 @@ export function useDiagnosticVoice(
         metadata &&
         (metadata.status === 'pending' || metadata.status === 'processing')
       ) {
+        if (startFallback()) return
         speechRequest.current = null
         setSpeech('idle')
         setPendingHint(true)
         return
       }
       if (metadata?.status === 'cancelled') {
+        if (startFallback()) return
         speechRequest.current = null
         setSpeech('idle')
         setCancelledHint(true)
@@ -209,6 +231,7 @@ export function useDiagnosticVoice(
         !repairBadMetadata &&
         (metadata?.status !== 'ready' || !metadata.audio_url)
       ) {
+        if (startFallback()) return
         speechRequest.current = null
         setSpeech('idle')
         setSpeechError(true)
@@ -249,6 +272,7 @@ export function useDiagnosticVoice(
               'Stored audio is still unreadable after repair',
             )
             onError(error)
+            if (startFallback()) return Promise.resolve()
             setSpeechError(true)
             setSpeech('idle')
             speechRequest.current = null
@@ -283,6 +307,7 @@ export function useDiagnosticVoice(
               if (repairPromise === currentRepair) repairPromise = null
               if (!stillCurrent()) return
               onError(error)
+              if (startFallback()) return
               setSpeechError(true)
               setSpeech('idle')
               speechRequest.current = null
@@ -362,16 +387,19 @@ export function useDiagnosticVoice(
       await playBlob(blob, metadata!.audio_url!)
     } catch (error) {
       if (!request.signal.aborted) {
-        speechRequest.current = null
         const blocked =
           error instanceof DOMException && error.name === 'NotAllowedError'
+        if (!(error instanceof DiagnosticApiError && error.status === 409))
+          if (!blocked) onError(error)
+        // Blocked autoplay keeps the manual button; other failures fall back.
+        if (!(auto && blocked) && startFallback()) return
+        speechRequest.current = null
         if (
           !(error instanceof DiagnosticApiError && error.status === 409) &&
-          !(auto && blocked)
-        ) {
-          onError(error)
-          if (!auto) setSpeechError(true)
-        }
+          !(auto && blocked) &&
+          !auto
+        )
+          setSpeechError(true)
         setSpeech('idle')
       }
     }
@@ -504,6 +532,33 @@ export function useDiagnosticVoice(
       if (current === generation.current) locked.current = false
     }
   }
+  // Sends prepared audio, such as the spoken skip phrase, as the answer.
+  async function submitAudio(blob: Blob) {
+    if (locked.current || recording.current || !task) return
+    locked.current = true
+    const current = generation.current
+    const capturedTask = task
+    stopSpeech()
+    setError(undefined)
+    setCaptureError('')
+    try {
+      audio.current?.dispose()
+      audio.current = null
+      setAudioUrl(undefined)
+      pending.current = {
+        input: diagnostic.createSubmission(
+          sessionId,
+          capturedTask.variant_task_id,
+          blob,
+          capturedTask.role,
+        ),
+        task: capturedTask,
+      }
+      await send(current)
+    } finally {
+      if (current === generation.current) locked.current = false
+    }
+  }
   async function retry() {
     if (locked.current || !pending.current) return
     locked.current = true
@@ -550,6 +605,7 @@ export function useDiagnosticVoice(
     start,
     stop,
     retry,
+    submitAudio,
     speak,
     reset,
   }

@@ -251,17 +251,24 @@ it('runs real diagnostic audio, obeys skipped basics and displays the server tot
     'Настоящий вопрос из банка',
   )
   expect(screen.getByText('Первый вариант')).toBeVisible()
-  expect(screen.getByRole('heading', { name: 'Расшифровка' })).toBeVisible()
+  expect(screen.getByRole('heading', { name: 'Ваш ответ' })).toBeVisible()
   expect(
     screen.getByText('Здесь появится расшифровка вашего ответа.'),
   ).toBeVisible()
   expect(screen.queryByText('Голосовая инструкция')).not.toBeInTheDocument()
   expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuemax', '3')
+  expect(screen.getByLabelText('Вопрос 1: текущий')).toBeVisible()
+  expect(screen.getByLabelText('Вопрос 2: ещё недоступен')).toBeVisible()
+  expect(screen.getByText('Вопрос 1', { selector: 'strong' })).toBeVisible()
   fireEvent.click(screen.getByRole('button', { name: 'Начать запись' }))
   fireEvent.click(
     await screen.findByRole('button', { name: 'Завершить запись' }),
   )
   expect(await screen.findByText('Серверное объяснение.')).toBeVisible()
+  // The main answer scored 2/2 and both basics were skipped by the server.
+  expect(screen.getByLabelText('Вопрос 1: верно')).toBeVisible()
+  expect(screen.getByLabelText('Вопрос 2: пройден')).toBeVisible()
+  expect(screen.getByLabelText('Вопрос 3: пройден')).toBeVisible()
   expect(screen.getByText('Настоящая расшифровка')).toBeVisible()
   expect(
     screen.queryByText('Здесь появится расшифровка вашего ответа.'),
@@ -403,6 +410,106 @@ it('plays the stored server instruction automatically when a task opens', async 
       url.endsWith('/task-audio/audio-main/file'),
     ),
   ).toBe(true)
+})
+
+it('reads the instruction with the browser voice while stored audio is being prepared', async () => {
+  const requests = server()
+  const spoken: string[] = []
+  const speak = vi.fn((utterance: { text: string }) =>
+    spoken.push(utterance.text),
+  )
+  vi.stubGlobal(
+    'SpeechSynthesisUtterance',
+    class {
+      lang = ''
+      voice = null
+      onend: (() => void) | null = null
+      onerror: (() => void) | null = null
+      constructor(readonly text: string) {}
+    },
+  )
+  vi.stubGlobal('speechSynthesis', {
+    speak,
+    cancel: vi.fn(),
+    getVoices: () => [],
+  })
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url: string, init?: RequestInit) =>
+      url.includes('/current/audio?')
+        ? Response.json({ variant_task_id: 'v-main', status: 'pending' })
+        : requests(url, init),
+    ),
+  )
+  vi.spyOn(audio, 'playQuestion')
+  await home()
+  await waitFor(() =>
+    expect(spoken).toEqual(['Назовите модель и объясните решение.']),
+  )
+  expect(audio.playQuestion).not.toHaveBeenCalled()
+  expect(screen.queryByText(/Аудио готовится/)).not.toBeInTheDocument()
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+})
+
+it('keeps navigator colors after a page reload', async () => {
+  server()
+  const first = await home()
+  fireEvent.click(await screen.findByRole('button', { name: 'Начать запись' }))
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Завершить запись' }),
+  )
+  expect(await screen.findByLabelText('Вопрос 1: верно')).toBeVisible()
+  first.unmount()
+  await home()
+  expect(await screen.findByLabelText('Вопрос 1: верно')).toBeVisible()
+})
+
+it('skips a question by sending the spoken skip phrase as the answer', async () => {
+  const requests = server()
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url: string, init?: RequestInit) =>
+      url.endsWith('/audio/skip-answer.wav')
+        ? new Response(await validWavBlob().arrayBuffer(), {
+            headers: { 'Content-Type': 'audio/wav' },
+          })
+        : requests(url, init),
+    ),
+  )
+  await home()
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Пропустить вопрос' }),
+  )
+  expect(await screen.findByText('Серверное объяснение.')).toBeVisible()
+  expect(audio.startRecording).not.toHaveBeenCalled()
+  const [, init] = requests.mock.calls.find(([url]) =>
+    url.endsWith('/answers'),
+  )!
+  const body = init?.body as FormData
+  expect(body.get('variant_task_id')).toBe('v-main')
+  expect((body.get('audio') as File).size).toBeGreaterThan(44)
+})
+
+it('shows the crossed-out microphone when recording cannot start', async () => {
+  server()
+  vi.mocked(audio.startRecording).mockRejectedValueOnce(
+    new DOMException('Denied', 'NotAllowedError'),
+  )
+  await home()
+  fireEvent.click(await screen.findByRole('button', { name: 'Начать запись' }))
+  expect(
+    await screen.findByRole('heading', { name: 'Не удалось начать запись' }),
+  ).toBeVisible()
+  expect(
+    screen.getByText('Проверьте доступ к микрофону и попробуйте ещё раз.'),
+  ).toBeVisible()
+  fireEvent.click(screen.getByRole('button', { name: 'Попробовать снова' }))
+  expect(
+    await screen.findByRole('button', { name: 'Завершить запись' }),
+  ).toBeVisible()
+  expect(
+    screen.getByRole('button', { name: 'Пропустить вопрос' }),
+  ).toBeVisible()
 })
 
 it('keeps the manual button without an error when the browser blocks autoplay', async () => {

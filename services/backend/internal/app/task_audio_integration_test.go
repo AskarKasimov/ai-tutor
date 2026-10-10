@@ -707,3 +707,47 @@ func TestTaskAudioReimportCopiesReadyAudioInsteadOfSynthesis(t *testing.T) {
 		t.Fatalf("changed instruction: tts=%d last=%q unready=%d", ttsCalls.Load(), text, unready())
 	}
 }
+
+func TestTaskAudioQueueSynthesizesStartedVariantFirst(t *testing.T) {
+	f := newFixture(t)
+	access, _, _ := f.register(t, "task-audio-priority@example.edu")
+	admin := f.admin(t)
+	if w := upload(f, "/admin/subjects/subject:test/competency-map/import", "file", "map.csv", "text/csv", variantMapCSV(t), admin); w.Code != http.StatusOK {
+		t.Fatalf("import: %d %s", w.Code, w.Body.String())
+	}
+	request := httptest.NewRequest(http.MethodPost, "https://api.example/variants", strings.NewReader(`{"subject_id":"subject:test"}`))
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Idempotency-Key", "task-audio-priority-variant")
+	request.AddCookie(access)
+	response := httptest.NewRecorder()
+	f.handler.ServeHTTP(response, request)
+	var variant struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &variant); response.Code != http.StatusCreated || err != nil {
+		t.Fatalf("create variant: %d %s err=%v", response.Code, response.Body.String(), err)
+	}
+	ctx := context.Background()
+	var first string
+	if err := f.pool.QueryRow(ctx, `SELECT audio_asset_id FROM variant_tasks WHERE variant_id=$1 AND audio_asset_id IS NOT NULL ORDER BY competency_position, slot LIMIT 1`, variant.ID).Scan(&first); err != nil {
+		t.Fatal(err)
+	}
+	// Without priority this asset would be claimed last.
+	if _, err := f.pool.Exec(ctx, `UPDATE audio_assets SET created_at = now() + interval '1 hour' WHERE id=$1`, first); err != nil {
+		t.Fatal(err)
+	}
+	cfg := f.app.cfg
+	cfg.APIMode = "mock"
+	a, err := New(cfg, f.pool, zap.NewNop())
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.app = a
+	if processed, err := f.app.audioWorker.ProcessOne(ctx); err != nil || !processed {
+		t.Fatalf("ProcessOne: processed=%v err=%v", processed, err)
+	}
+	var status string
+	if err := f.pool.QueryRow(ctx, "SELECT status FROM audio_assets WHERE id=$1", first).Scan(&status); err != nil || status != "ready" {
+		t.Fatalf("first question audio was not synthesized first: status=%q err=%v", status, err)
+	}
+}

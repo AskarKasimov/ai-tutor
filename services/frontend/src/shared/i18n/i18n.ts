@@ -119,6 +119,8 @@ void i18n.init({
           },
           voiceInstruction: 'Назовите тип задачи и кратко объясните выбор.',
           playInstruction: 'Прослушать инструкцию',
+          micFailedTitle: 'Не удалось начать запись',
+          micFailedHelp: 'Проверьте доступ к микрофону и попробуйте ещё раз.',
           stopSpeech: 'Остановить',
           answerArea: 'Голосовой ответ на задание',
           answer: 'Ответьте голосом',
@@ -220,6 +222,7 @@ void i18n.init({
           retakeDiagnostic: 'Пройти заново',
         },
         training: {
+          answersNavigator: 'Ответы тренировки',
           title: 'Тренировка без ограничения по раундам',
           demoNotice:
             'Демонстрационный режим: расшифровка и оценка ответов заданы заранее и не проверяют ваши знания.',
@@ -364,6 +367,20 @@ void i18n.init({
           progress: 'Задание {{count}} из {{total}}',
           progressLabel: 'Выполненные задания',
           questionNumber: 'Вопрос {{number}}',
+          answerByVoice: 'Ответьте голосом',
+          skipQuestion: 'Пропустить вопрос',
+          skipError: 'Не удалось пропустить вопрос. Попробуйте ещё раз.',
+          navigatorLabel: 'Вопросы диагностики',
+          scrollBack: 'Предыдущие вопросы',
+          scrollForward: 'Следующие вопросы',
+          navigator: {
+            correct: 'Вопрос {{number}}: верно',
+            partial: 'Вопрос {{number}}: частично верно',
+            incorrect: 'Вопрос {{number}}: неверно',
+            current: 'Вопрос {{number}}: текущий',
+            locked: 'Вопрос {{number}}: ещё недоступен',
+            done: 'Вопрос {{number}}: пройден',
+          },
           repeatQuestion: 'Повторить вопрос',
           voiceInstruction:
             'Назовите вариант ответа и кратко объясните свой выбор.',

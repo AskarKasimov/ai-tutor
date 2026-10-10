@@ -1,6 +1,6 @@
 import { Button, Heading, Text } from '@radix-ui/themes'
-import { ArrowRight, LoaderCircle, Mic, RotateCcw, Square } from 'lucide-react'
-import { useEffect, useRef } from 'react'
+import { ArrowRight, Mic, RotateCcw, Square } from 'lucide-react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/features/auth'
 import { DiagnosticApiError } from '@/entities/diagnostic-session'
@@ -15,12 +15,26 @@ import type {
   DiagnosticTask,
 } from '@/entities/diagnostic-session'
 import {
+  ListenButton,
+  QuestionNavigator,
   TrainerAnswerPanel,
   TrainerCapturePanel,
   TrainerQuestion,
   TrainerScore,
   TrainerShell,
+  TrainerTranscript,
+  TrainerWorkspace,
+  sessionStyles,
 } from './trainer-shared'
+import type { NavigatorItem } from './trainer-shared'
+import {
+  initialTrack,
+  readTrack,
+  recordDiagnosticAnswer,
+  writeTrack,
+} from '../model/question-track'
+import type { QuestionTrack } from '../model/question-track'
+import { loadSkipAnswer } from '../api/skip-answer'
 import styles from '@/pages/trainer/ui/trainer-layout.module.scss'
 import diagnosticStyles from '@/pages/trainer/ui/diagnostic.module.scss'
 
@@ -124,27 +138,34 @@ function StudentDiagnostic({
       /* A broken page intent must not affect the diagnostic session. */
     }
   }, [progress, subjectId, userId])
+  const track = useDiagnosticTrack(progress)
+  const done = progress ? progress.completed_tasks + progress.skipped_tasks : 0
+  const shownNumber =
+    track.shown !== null
+      ? track.shown + 1
+      : progress?.status === 'active'
+        ? done + 1
+        : undefined
   return (
     <TrainerShell
       title={t('diagnostic.title')}
       subject={subjectName}
-      progress={
-        progress
-          ? {
-              label: t('diagnostic.progress', {
-                completed: progress.completed_tasks,
-                skipped: progress.skipped_tasks,
-                total: progress.total_tasks,
-              }),
-              current: progress.completed_tasks + progress.skipped_tasks,
-              total: progress.total_tasks,
-            }
+      crumb={
+        shownNumber !== undefined
+          ? t('session.questionNumber', { number: shownNumber })
           : undefined
       }
+      onBack={onBack}
+      navigator={
+        progress ? (
+          <QuestionNavigator
+            label={t('session.navigatorLabel')}
+            items={track.items}
+            progress={{ current: done, total: progress.total_tasks }}
+          />
+        ) : undefined
+      }
     >
-      <Button variant="soft" onClick={onBack}>
-        {t('home.back')}
-      </Button>
       {training.query.isPending || (startNew && training.restart.isPending) ? (
         <main className={styles.notice}>
           <Text role="status">{t('session.loading')}</Text>
@@ -184,6 +205,8 @@ function StudentDiagnostic({
           key={progress.session_id}
           userId={userId}
           onTraining={onTraining}
+          onAnswered={track.record}
+          onShown={track.setShown}
           training={training}
           progress={progress}
         />
@@ -191,14 +214,69 @@ function StudentDiagnostic({
     </TrainerShell>
   )
 }
+// Navigator states for the fixed diagnostic order: answered positions keep
+// the colors recorded in this browser, the next position is current.
+function useDiagnosticTrack(progress?: DiagnosticProgress) {
+  const sessionId = progress?.session_id
+  const done = progress ? progress.completed_tasks + progress.skipped_tasks : 0
+  const [track, setTrack] = useState<QuestionTrack | null>(null)
+  const [shown, setShown] = useState<number | null>(null)
+  const current = useRef<{ id?: string; track: QuestionTrack | null }>({
+    track: null,
+  })
+  if (sessionId && current.current.id !== sessionId)
+    current.current = {
+      id: sessionId,
+      track:
+        readTrack(sessionId) ??
+        initialTrack(done, progress?.skipped_tasks ?? 0),
+    }
+  const handled = useRef<unknown>(null)
+  const record = useCallback((response: DiagnosticProgress) => {
+    const id = current.current.id
+    const base = current.current.track
+    if (!id || !base || handled.current === response) return
+    handled.current = response
+    const next = recordDiagnosticAnswer(base, response)
+    current.current = { id, track: next.track }
+    writeTrack(id, next.track)
+    setTrack(next.track)
+    setShown(next.index)
+  }, [])
+  const states = (track ?? current.current.track)?.states ?? []
+  const items: NavigatorItem[] = progress
+    ? Array.from({ length: progress.total_tasks }, (_, index) => {
+        const state = states[index]
+        return {
+          number: index + 1,
+          state:
+            index < done
+              ? state === 'correct' ||
+                state === 'partial' ||
+                state === 'incorrect'
+                ? state
+                : 'done'
+              : index === done && progress.status === 'active'
+                ? 'current'
+                : 'locked',
+        }
+      })
+    : []
+  return { items, record, shown, setShown }
+}
+
 function DiagnosticFlow({
   userId,
   onTraining,
+  onAnswered,
+  onShown,
   training,
   progress,
 }: {
   userId: string
   onTraining: (diagnosticId: string) => void
+  onAnswered: (response: DiagnosticProgress) => void
+  onShown: (index: number | null) => void
   training: ReturnType<typeof useDiagnosticSession>
   progress: DiagnosticProgress
 }) {
@@ -219,6 +297,20 @@ function DiagnosticFlow({
     if (openTaskId) void voice.speak({ auto: true })
     // voice is recreated on every render; autoplay runs once per opened task.
   }, [openTaskId])
+  const accepted = voice.accepted
+  useEffect(() => {
+    if (accepted) onAnswered(accepted.progress)
+    else onShown(null)
+  }, [accepted, onAnswered, onShown])
+  const [skipFailed, setSkipFailed] = useState(false)
+  async function skip() {
+    setSkipFailed(false)
+    try {
+      await voice.submitAudio(await loadSkipAnswer())
+    } catch {
+      setSkipFailed(true)
+    }
+  }
   if (progress.status === 'completed' && !voice.accepted)
     return (
       <DiagnosticSummary
@@ -266,8 +358,16 @@ function DiagnosticFlow({
     )
       voice.reset()
   }
+  const micError =
+    failed &&
+    (voice.captureError === 'denied' || voice.captureError === 'unavailable')
+      ? {
+          title: t('trainer.micFailedTitle'),
+          help: t('trainer.micFailedHelp'),
+        }
+      : undefined
   return (
-    <main className={styles.workspace}>
+    <TrainerWorkspace>
       <Question task={task} transcript={response?.text} />
       {response ? (
         <TrainerAnswerPanel>
@@ -288,8 +388,8 @@ function DiagnosticFlow({
               />
             </div>
           )}
-          <div className={styles.resultActions}>
-            <Button className={styles.primary} onClick={voice.reset}>
+          <div className={sessionStyles.actions}>
+            <Button className={sessionStyles.primary} onClick={voice.reset}>
               {t(
                 progress.status === 'completed'
                   ? 'session.viewSummary'
@@ -299,116 +399,109 @@ function DiagnosticFlow({
           </div>
         </TrainerAnswerPanel>
       ) : (
-        <>
-          <div className={styles.repeatControl}>
-            <Button
-              className={styles.repeat}
-              variant="soft"
-              disabled={blocked}
-              onClick={() => void voice.speak()}
-            >
-              {voice.speech === 'loading' ? (
-                <LoaderCircle
-                  size={18}
-                  className={styles.spinner}
-                  aria-hidden="true"
-                />
-              ) : voice.speech === 'playing' ? (
-                <Square size={16} aria-hidden="true" />
-              ) : (
-                <RotateCcw size={18} aria-hidden="true" />
+        <TrainerCapturePanel
+          stage={voice.stage === 'result' ? 'ready' : voice.stage}
+          seconds={seconds}
+          stream={voice.stream}
+          speech={
+            <>
+              <ListenButton
+                state={voice.speech}
+                disabled={blocked}
+                onClick={() => void voice.speak()}
+              />
+              {voice.speechError && (
+                <Text as="p" role="alert" className={sessionStyles.hint}>
+                  {t('trainer.speechError')}
+                </Text>
               )}
-              {t(
-                voice.speech === 'loading'
-                  ? 'trainer.cancelSpeech'
-                  : voice.speech === 'playing'
-                    ? 'trainer.stopSpeech'
-                    : 'trainer.playInstruction',
+              {voice.pendingHint && (
+                <Text as="p" role="status" className={sessionStyles.hint}>
+                  {t('trainer.audioPreparing')}
+                </Text>
               )}
-            </Button>
-            {voice.speechError && (
-              <Text as="p" role="alert" className={styles.speechError}>
-                {t('trainer.speechError')}
-              </Text>
-            )}
-            {voice.pendingHint && (
-              <Text as="p" role="status" className={styles.speechError}>
-                {t('trainer.audioPreparing')}
-              </Text>
-            )}
-            {voice.cancelledHint && (
-              <Text as="p" role="status" className={styles.speechError}>
-                {t('trainer.audioCancelled')}
-              </Text>
-            )}
-          </div>
-          <TrainerCapturePanel
-            stage={voice.stage === 'result' ? 'ready' : voice.stage}
-            seconds={seconds}
-            stream={voice.stream}
-            readyHelp="diagnostic.answerHelp"
-            errorMessage={
-              failed
+              {voice.cancelledHint && (
+                <Text as="p" role="status" className={sessionStyles.hint}>
+                  {t('trainer.audioCancelled')}
+                </Text>
+              )}
+            </>
+          }
+          errorMessage={
+            skipFailed
+              ? t('session.skipError')
+              : failed
                 ? t(
                     voice.captureError
                       ? `trainer.${voice.captureError}`
                       : errorKey(voice.error, 'diagnostic.submitError'),
                   )
                 : undefined
-            }
-            audioUrl={voice.audioUrl}
-          >
-            {needsRefresh ? (
-              <Button className={styles.primary} onClick={() => void refresh()}>
-                {t('diagnostic.refresh')}
-              </Button>
-            ) : (
-              <Button
-                className={styles.primary}
-                disabled={processing || waiting}
-                onClick={() =>
-                  void (recording
-                    ? voice.stop()
-                    : voice.hasPending && !rerecord
-                      ? voice.retry()
-                      : voice.start())
-                }
-              >
-                {failed &&
-                  (voice.hasPending && !rerecord ? (
-                    <RotateCcw size={18} aria-hidden="true" />
-                  ) : (
-                    <Mic size={18} aria-hidden="true" />
-                  ))}
-                {t(
-                  recording
-                    ? 'trainer.stopRecording'
-                    : processing
-                      ? 'trainer.busy'
-                      : waiting
-                        ? 'trainer.allow'
-                        : voice.hasPending && !rerecord
-                          ? 'diagnostic.retrySubmit'
+          }
+          micError={micError}
+          audioUrl={voice.audioUrl}
+          onSkip={() => void skip()}
+          skipDisabled={blocked}
+        >
+          {needsRefresh ? (
+            <Button
+              className={sessionStyles.primary}
+              onClick={() => void refresh()}
+            >
+              {t('diagnostic.refresh')}
+            </Button>
+          ) : (
+            <Button
+              className={recording ? sessionStyles.stop : sessionStyles.primary}
+              variant={recording ? 'soft' : 'solid'}
+              disabled={processing || waiting}
+              onClick={() =>
+                void (recording
+                  ? voice.stop()
+                  : voice.hasPending && !rerecord
+                    ? voice.retry()
+                    : voice.start())
+              }
+            >
+              {recording && (
+                <Square size={14} fill="currentColor" aria-hidden="true" />
+              )}
+              {failed &&
+                (voice.hasPending && !rerecord ? (
+                  <RotateCcw size={18} aria-hidden="true" />
+                ) : (
+                  <Mic size={18} aria-hidden="true" />
+                ))}
+              {t(
+                recording
+                  ? 'trainer.stopRecording'
+                  : processing
+                    ? 'trainer.busy'
+                    : waiting
+                      ? 'trainer.allow'
+                      : voice.hasPending && !rerecord
+                        ? 'diagnostic.retrySubmit'
+                        : micError
+                          ? 'trainer.retry'
                           : failed
                             ? 'diagnostic.recordAgain'
                             : 'trainer.start',
-                )}
-              </Button>
-            )}
-            {canAlsoRerecord && (
-              <Button
-                variant="ghost"
-                color="gray"
-                className={styles.secondaryAction}
-                onClick={() => void voice.start()}
-              >
-                {t('diagnostic.recordAgain')}
-              </Button>
-            )}
-          </TrainerCapturePanel>
-        </>
+              )}
+            </Button>
+          )}
+          {canAlsoRerecord && (
+            <Button
+              variant="ghost"
+              color="gray"
+              className={sessionStyles.secondary}
+              onClick={() => void voice.start()}
+            >
+              {t('diagnostic.recordAgain')}
+            </Button>
+          )}
+        </TrainerCapturePanel>
       )}
-    </main>
+    </TrainerWorkspace>
   )
 }
 function Question({
@@ -426,17 +519,7 @@ function Question({
       question={task.question}
       options={task.options}
     >
-      <section
-        className={styles.savedAnswer}
-        aria-labelledby="transcript-title"
-      >
-        <Heading as="h2" id="transcript-title" className={styles.eyebrow}>
-          {t('diagnostic.transcript')}
-        </Heading>
-        <Text as="p" className={styles.transcript}>
-          {transcript ?? t('diagnostic.transcriptPending')}
-        </Text>
-      </section>
+      <TrainerTranscript id="transcript-title" text={transcript} />
     </TrainerQuestion>
   )
 }

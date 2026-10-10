@@ -33,14 +33,22 @@ import {
   TrainerWorkspace,
   sessionStyles,
 } from './trainer-shared'
-import type { NavigatorItem } from './trainer-shared'
+import type { NavigatorItem, NavigatorState } from './trainer-shared'
 import {
   initialTrack,
+  readTopicTrack,
   readTrack,
   recordDiagnosticAnswer,
+  recordTopicAnswer,
+  scoreState,
+  writeTopicTrack,
   writeTrack,
 } from '../model/question-track'
-import type { QuestionTrack } from '../model/question-track'
+import type {
+  QuestionTrack,
+  TopicTrack,
+  TrackState,
+} from '../model/question-track'
 import styles from '@/pages/trainer/ui/trainer-layout.module.scss'
 import diagnosticStyles from '@/pages/trainer/ui/diagnostic.module.scss'
 
@@ -145,29 +153,32 @@ function StudentDiagnostic({
     }
   }, [progress, subjectId, userId])
   const track = useDiagnosticTrack(progress)
-  const done = progress ? progress.completed_tasks + progress.skipped_tasks : 0
-  const shownNumber =
-    track.shown !== null
-      ? track.shown + 1
-      : progress?.status === 'active'
-        ? done + 1
+  const crumb =
+    track.kind === 'topic'
+      ? track.crumb &&
+        t(
+          track.crumb.basic ? 'session.topicBasicCrumb' : 'session.topicCrumb',
+          {
+            number: track.crumb.topic,
+            count: track.crumb.count,
+          },
+        )
+      : track.question !== undefined
+        ? t('session.questionNumber', { number: track.question })
         : undefined
   return (
     <TrainerShell
       title={t('diagnostic.title')}
       subject={subjectName}
-      crumb={
-        shownNumber !== undefined
-          ? t('session.questionNumber', { number: shownNumber })
-          : undefined
-      }
+      crumb={crumb}
       onBack={onBack}
       navigator={
         progress ? (
           <QuestionNavigator
             label={t('session.navigatorLabel')}
             items={track.items}
-            progress={{ current: done, total: progress.total_tasks }}
+            progress={track.progress}
+            kind={track.kind}
           />
         ) : undefined
       }
@@ -212,7 +223,7 @@ function StudentDiagnostic({
           userId={userId}
           onTraining={onTraining}
           onAnswered={track.record}
-          onShown={track.setShown}
+          onShown={track.clearShown}
           training={training}
           progress={progress}
         />
@@ -222,54 +233,141 @@ function StudentDiagnostic({
 }
 // Navigator states for the fixed diagnostic order: answered positions keep
 // the colors recorded in this browser, the next position is current.
+type TopicPosition = { topic: number; step: number }
+
+function trackState(state: TrackState | undefined): NavigatorState {
+  return state === 'correct' ||
+    state === 'partial' ||
+    state === 'incorrect' ||
+    state === 'skipped'
+    ? state
+    : 'done'
+}
+
+// Navigator states. With competency_count the navigator shows topics: their
+// number is fixed, while clarifying (basic) questions appear only when asked.
+// Older sessions without it keep the per-question view.
 function useDiagnosticTrack(progress?: DiagnosticProgress) {
   const sessionId = progress?.session_id
   const done = progress ? progress.completed_tasks + progress.skipped_tasks : 0
-  const [track, setTrack] = useState<QuestionTrack | null>(null)
-  const [shown, setShown] = useState<number | null>(null)
-  const current = useRef<{ id?: string; track: QuestionTrack | null }>({
-    track: null,
-  })
+  const [, rerender] = useState(0)
+  const [shown, setShownIndex] = useState<number | null>(null)
+  const [shownTopic, setShownTopic] = useState<TopicPosition | null>(null)
+  const current = useRef<{
+    id?: string
+    track: QuestionTrack | null
+    topics: TopicTrack
+  }>({ track: null, topics: {} })
   if (sessionId && current.current.id !== sessionId)
     current.current = {
       id: sessionId,
       track:
         readTrack(sessionId) ??
         initialTrack(done, progress?.skipped_tasks ?? 0),
+      topics: readTopicTrack(sessionId),
     }
+  // Remember where each shown task sits, so its answer lands in its topic.
+  const positions = useRef(new Map<string, TopicPosition>())
+  if (progress?.current && progress.current_competency)
+    positions.current.set(progress.current.variant_task_id, {
+      topic: progress.current_competency,
+      step: progress.current_step ?? 0,
+    })
   const handled = useRef<unknown>(null)
-  const record = useCallback((response: DiagnosticProgress) => {
+  const record = useCallback((taskId: string, response: DiagnosticProgress) => {
     const id = current.current.id
     const base = current.current.track
     if (!id || !base || handled.current === response) return
     handled.current = response
     const next = recordDiagnosticAnswer(base, response)
-    current.current = { id, track: next.track }
+    let topics = current.current.topics
+    const position = positions.current.get(taskId)
+    if (position) {
+      topics = recordTopicAnswer(
+        topics,
+        position.topic,
+        position.step,
+        response.answer_skipped
+          ? 'skipped'
+          : scoreState(response.score ?? 0, response.grader_max_score ?? 1),
+      )
+      writeTopicTrack(id, topics)
+    }
+    current.current = { id, track: next.track, topics }
     writeTrack(id, next.track)
-    setTrack(next.track)
-    setShown(next.index)
+    setShownIndex(next.index)
+    setShownTopic(position ?? null)
+    rerender((value) => value + 1)
   }, [])
-  const states = (track ?? current.current.track)?.states ?? []
+  const clearShown = useCallback(() => {
+    setShownIndex(null)
+    setShownTopic(null)
+  }, [])
+  const count = progress?.competency_count
+  if (progress && count) {
+    const active = progress.status === 'active'
+    const topic = active ? (progress.current_competency ?? 1) : count + 1
+    const step = active ? (progress.current_step ?? 0) : 0
+    const items: NavigatorItem[] = Array.from({ length: count }, (_, i) => {
+      const number = i + 1
+      const states = current.current.topics[number] ?? []
+      const basics: NavigatorState[] = []
+      for (const basic of [1, 2]) {
+        if (states[basic]) basics.push(trackState(states[basic]))
+        else if (number === topic && basic === step) basics.push('current')
+      }
+      return {
+        number,
+        state: states[0]
+          ? trackState(states[0])
+          : number < topic || (number === topic && step > 0)
+            ? 'done'
+            : number === topic
+              ? 'current'
+              : 'locked',
+        basics,
+      }
+    })
+    const position = shownTopic ?? (active ? { topic, step } : null)
+    return {
+      kind: 'topic' as const,
+      items,
+      record,
+      clearShown,
+      progress: { current: Math.min(topic - 1, count), total: count },
+      crumb: position
+        ? { topic: position.topic, count, basic: position.step > 0 }
+        : undefined,
+    }
+  }
+  const states = current.current.track?.states ?? []
   const items: NavigatorItem[] = progress
-    ? Array.from({ length: progress.total_tasks }, (_, index) => {
-        const state = states[index]
-        return {
-          number: index + 1,
-          state:
-            index < done
-              ? state === 'correct' ||
-                state === 'partial' ||
-                state === 'incorrect' ||
-                state === 'skipped'
-                ? state
-                : 'done'
-              : index === done && progress.status === 'active'
-                ? 'current'
-                : 'locked',
-        }
-      })
+    ? Array.from({ length: progress.total_tasks }, (_, index) => ({
+        number: index + 1,
+        state:
+          index < done
+            ? trackState(states[index])
+            : index === done && progress.status === 'active'
+              ? 'current'
+              : 'locked',
+      }))
     : []
-  return { items, record, shown, setShown }
+  const number =
+    shown !== null
+      ? shown + 1
+      : progress?.status === 'active'
+        ? done + 1
+        : undefined
+  return {
+    kind: 'question' as const,
+    items,
+    record,
+    clearShown,
+    progress: progress
+      ? { current: done, total: progress.total_tasks }
+      : undefined,
+    question: number,
+  }
 }
 
 function DiagnosticFlow({
@@ -282,8 +380,8 @@ function DiagnosticFlow({
 }: {
   userId: string
   onTraining: (diagnosticId: string) => void
-  onAnswered: (response: DiagnosticProgress) => void
-  onShown: (index: number | null) => void
+  onAnswered: (taskId: string, response: DiagnosticProgress) => void
+  onShown: () => void
   training: ReturnType<typeof useDiagnosticSession>
   progress: DiagnosticProgress
 }) {
@@ -306,8 +404,8 @@ function DiagnosticFlow({
   }, [openTaskId])
   const accepted = voice.accepted
   useEffect(() => {
-    if (accepted) onAnswered(accepted.progress)
-    else onShown(null)
+    if (accepted) onAnswered(accepted.task.variant_task_id, accepted.progress)
+    else onShown()
   }, [accepted, onAnswered, onShown])
   const [skipFailed, setSkipFailed] = useState(false)
   async function skip() {

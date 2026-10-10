@@ -532,6 +532,59 @@ it('reads the instruction with the browser voice while stored audio is being pre
   expect(screen.queryByRole('alert')).not.toBeInTheDocument()
 })
 
+it('shows progress by topic and adds clarifying questions only when asked', async () => {
+  const requests = server()
+  const start = {
+    ...progress,
+    total_tasks: 6,
+    competency_count: 2,
+    current_competency: 1,
+    current_step: 0,
+  }
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url: string, init?: RequestInit) => {
+      if (url.endsWith('/diagnostic-sessions') && init?.method === 'POST')
+        return Response.json(start, { status: 201 })
+      if (url.endsWith('/answers'))
+        return Response.json({
+          ...start,
+          current: basic,
+          completed_tasks: 1,
+          current_step: 1,
+          text: 'Неуверенный ответ',
+          score: 0,
+          grader_score: 0,
+          grader_max_score: 2,
+          verdict: 'incorrect',
+          criterion_results: criteria,
+          feedback,
+        })
+      return requests(url, init)
+    }),
+  )
+  await home()
+  expect(await screen.findByLabelText('Тема 1: текущая')).toBeVisible()
+  expect(screen.getByLabelText('Тема 2: ещё впереди')).toBeVisible()
+  expect(screen.getByText('Тема 1 из 2', { selector: 'strong' })).toBeVisible()
+  // The total number of questions is unknown, so no clarifying slots yet.
+  expect(screen.queryByLabelText(/уточняющий вопрос/)).not.toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: 'Начать запись' }))
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Завершить запись' }),
+  )
+  expect(await screen.findByLabelText('Тема 1: неверно')).toBeVisible()
+  expect(
+    screen.getByLabelText('Тема 1, уточняющий вопрос 1: текущий'),
+  ).toBeVisible()
+  fireEvent.click(screen.getByRole('button', { name: 'Следующее задание' }))
+  expect(
+    await screen.findByText('Тема 1 из 2 · уточняющий вопрос', {
+      selector: 'strong',
+    }),
+  ).toBeVisible()
+})
+
 it('keeps navigator colors after a page reload', async () => {
   server()
   const first = await home()

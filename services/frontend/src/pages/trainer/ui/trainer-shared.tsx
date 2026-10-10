@@ -28,7 +28,13 @@ export type NavigatorState =
   | 'locked'
   | 'done'
 
-export type NavigatorItem = { number: number; state: NavigatorState }
+// In topic mode `number` is the topic and `basics` lists the clarifying
+// questions that were actually asked (they appear only when needed).
+export type NavigatorItem = {
+  number: number
+  state: NavigatorState
+  basics?: NavigatorState[]
+}
 
 export function TrainerShell({
   title,
@@ -121,10 +127,12 @@ export function QuestionNavigator({
   label,
   items,
   progress,
+  kind = 'question',
 }: {
   label: string
   items: NavigatorItem[]
   progress?: { current: number; total: number }
+  kind?: 'question' | 'topic'
 }) {
   const { t } = useTranslation()
   const list = useRef<HTMLOListElement>(null)
@@ -172,16 +180,34 @@ export function QuestionNavigator({
       </button>
       <ol ref={list} className={styles.navList} onScroll={measure}>
         {items.map((item) => (
-          <li
-            key={item.number}
-            className={styles.navItem}
-            data-state={item.state}
-            aria-current={item.state === 'current' ? 'step' : undefined}
-            aria-label={t(`session.navigator.${item.state}`, {
-              number: item.number,
-            })}
-          >
-            {item.number}
+          <li key={item.number} className={styles.navGroup}>
+            <span
+              className={styles.navItem}
+              data-state={item.state}
+              aria-current={item.state === 'current' ? 'step' : undefined}
+              aria-label={t(
+                `session.${kind === 'topic' ? 'topicNavigator' : 'navigator'}.${item.state}`,
+                { number: item.number },
+              )}
+            >
+              {item.number}
+            </span>
+            {item.basics && item.basics.length > 0 && (
+              <span className={styles.navBasics}>
+                {item.basics.map((state, index) => (
+                  <span
+                    key={index}
+                    className={styles.navBasic}
+                    data-state={state}
+                    aria-current={state === 'current' ? 'step' : undefined}
+                    aria-label={t(`session.basicNavigator.${state}`, {
+                      number: item.number,
+                      basic: index + 1,
+                    })}
+                  />
+                ))}
+              </span>
+            )}
           </li>
         ))}
       </ol>

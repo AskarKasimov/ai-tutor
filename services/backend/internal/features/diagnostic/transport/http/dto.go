@@ -34,20 +34,23 @@ type TaskResponse struct {
 }
 
 type ProgressResponse struct {
-	AnswerSkipped    bool                      `json:"answer_skipped,omitempty" binding:"optional"`
-	Text             string                    `json:"text,omitempty" minLength:"1" binding:"optional"`
-	SessionID        string                    `json:"session_id" minLength:"1" maxLength:"128" binding:"required"`
-	Status           string                    `json:"status" enums:"active,completed" binding:"required"`
-	Completed        int                       `json:"completed_tasks" minimum:"0" binding:"required"`
-	Skipped          int                       `json:"skipped_tasks" minimum:"0" binding:"required"`
-	Total            int                       `json:"total_tasks" minimum:"1" binding:"required"`
-	Current          *TaskResponse             `json:"current,omitempty" binding:"optional"`
-	Score            *int                      `json:"score,omitempty" minimum:"0" maximum:"2" binding:"optional"`
-	GraderScore      *int                      `json:"grader_score,omitempty" minimum:"0" maximum:"2" binding:"optional"`
-	GraderMaxScore   *int                      `json:"grader_max_score,omitempty" minimum:"1" maximum:"2" binding:"optional"`
-	Verdict          string                    `json:"verdict,omitempty" enums:"correct,partial,incorrect" binding:"optional"`
-	CriterionResults []CriterionResultResponse `json:"criterion_results,omitempty" binding:"optional"`
-	Feedback         []string                  `json:"feedback,omitempty" minItems:"3" maxItems:"3" binding:"optional"`
+	AnswerSkipped     bool                      `json:"answer_skipped,omitempty" binding:"optional"`
+	Text              string                    `json:"text,omitempty" minLength:"1" binding:"optional"`
+	SessionID         string                    `json:"session_id" minLength:"1" maxLength:"128" binding:"required"`
+	Status            string                    `json:"status" enums:"active,completed" binding:"required"`
+	Completed         int                       `json:"completed_tasks" minimum:"0" binding:"required"`
+	Skipped           int                       `json:"skipped_tasks" minimum:"0" binding:"required"`
+	Total             int                       `json:"total_tasks" minimum:"1" binding:"required"`
+	CompetencyCount   int                       `json:"competency_count,omitempty" minimum:"1" binding:"optional"`
+	CurrentCompetency int                       `json:"current_competency,omitempty" minimum:"1" binding:"optional"`
+	CurrentStep       int                       `json:"current_step,omitempty" minimum:"0" maximum:"2" binding:"optional"`
+	Current           *TaskResponse             `json:"current,omitempty" binding:"optional"`
+	Score             *int                      `json:"score,omitempty" minimum:"0" maximum:"2" binding:"optional"`
+	GraderScore       *int                      `json:"grader_score,omitempty" minimum:"0" maximum:"2" binding:"optional"`
+	GraderMaxScore    *int                      `json:"grader_max_score,omitempty" minimum:"1" maximum:"2" binding:"optional"`
+	Verdict           string                    `json:"verdict,omitempty" enums:"correct,partial,incorrect" binding:"optional"`
+	CriterionResults  []CriterionResultResponse `json:"criterion_results,omitempty" binding:"optional"`
+	Feedback          []string                  `json:"feedback,omitempty" minItems:"3" maxItems:"3" binding:"optional"`
 }
 
 type AnswerResponse struct {
@@ -96,6 +99,7 @@ func progressResponse(value diagnostic.Progress) ProgressResponse {
 		Text:          value.Text,
 		SessionID:     value.SessionID, Status: value.Status, Completed: value.Completed,
 		Skipped: value.Skipped, Total: value.Total, Score: value.Score,
+		CompetencyCount: value.CompetencyCount, CurrentCompetency: value.CurrentCompetency, CurrentStep: value.CurrentStep,
 		GraderScore: value.GraderScore, GraderMaxScore: value.GraderMaxScore, Verdict: value.Verdict,
 		CriterionResults: criterionResults(value.CriterionResults),
 		Feedback:         append([]string(nil), value.Feedback...),

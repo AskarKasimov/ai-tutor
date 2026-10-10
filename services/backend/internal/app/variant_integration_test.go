@@ -398,7 +398,9 @@ $$;`)
 	}
 }
 
-func TestVariableSizeVariantsPersistReadAndListActualTaskCount(t *testing.T) {
+// Only competencies with a main and two basics enter a variant; the others
+// are listed as skipped and the saved task count follows the kept positions.
+func TestVariantKeepsOnlyCompleteCompetenciesAndPersistsTaskCount(t *testing.T) {
 	f := newFixture(t)
 	access, _, _ := f.register(t, "variable-variant@example.edu")
 	admin := f.admin(t)
@@ -439,29 +441,27 @@ func TestVariableSizeVariantsPersistReadAndListActualTaskCount(t *testing.T) {
 		Competencies []struct {
 			Basic []json.RawMessage `json:"basic"`
 		} `json:"competencies"`
+		Skipped []struct {
+			Code string `json:"code"`
+		} `json:"skipped_competencies"`
 	}
 	if err := json.Unmarshal(response.Body.Bytes(), &value); err != nil {
 		t.Fatal(err)
 	}
-	if value.TaskCount != 6 || len(value.Competencies) != 3 {
+	if value.TaskCount != 3 || len(value.Competencies) != 1 || len(value.Competencies[0].Basic) != 2 || len(value.Skipped) != 2 {
 		t.Fatalf("variant: %s", response.Body.String())
 	}
-	for i, block := range value.Competencies {
-		if block.Basic == nil || len(block.Basic) != i {
-			t.Fatalf("block %d: %s", i, response.Body.String())
+	for _, skipped := range value.Skipped {
+		if skipped.Code != "INSUFFICIENT_DISTINCT_OUTCOMES" {
+			t.Fatalf("skip code: %s", response.Body.String())
 		}
 	}
 	read := f.request(http.MethodGet, "/variants/"+value.ID, "", access)
 	if read.Code != http.StatusOK {
 		t.Fatalf("read: %s", read.Body.String())
 	}
-	if err := json.Unmarshal(read.Body.Bytes(), &value); err != nil || value.TaskCount != 6 || len(value.Competencies) != 3 {
+	if err := json.Unmarshal(read.Body.Bytes(), &value); err != nil || value.TaskCount != 3 || len(value.Competencies) != 1 || len(value.Competencies[0].Basic) != 2 {
 		t.Fatalf("saved variant: %s / %v", read.Body.String(), err)
-	}
-	for i, block := range value.Competencies {
-		if block.Basic == nil || len(block.Basic) != i {
-			t.Fatalf("saved block %d: %s", i, read.Body.String())
-		}
 	}
 	list := f.request(http.MethodGet, "/variants?subject_id=subject%3Atest", "", access)
 	var page struct {
@@ -469,7 +469,7 @@ func TestVariableSizeVariantsPersistReadAndListActualTaskCount(t *testing.T) {
 			TaskCount int `json:"task_count"`
 		} `json:"items"`
 	}
-	if list.Code != http.StatusOK || json.Unmarshal(list.Body.Bytes(), &page) != nil || len(page.Items) != 1 || page.Items[0].TaskCount != 6 {
+	if list.Code != http.StatusOK || json.Unmarshal(list.Body.Bytes(), &page) != nil || len(page.Items) != 1 || page.Items[0].TaskCount != 3 {
 		t.Fatalf("history: %s", list.Body.String())
 	}
 }

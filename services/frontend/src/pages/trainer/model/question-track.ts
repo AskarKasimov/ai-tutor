@@ -84,3 +84,41 @@ export function recordTrainingAnswer(
 export function initialTrack(done: number, skipped: number): QuestionTrack {
   return { states: padded([], done), skipped }
 }
+
+// Competency (topic) progress: the number of topics is fixed while basics
+// appear only when asked, so states are kept per topic and step
+// (0 — main, 1–2 — basics).
+export type TopicTrack = Record<number, TrackState[]>
+
+const topicKey = (sessionId: string) => `ai-tutor:topic-track:${sessionId}`
+
+export function readTopicTrack(sessionId: string): TopicTrack {
+  try {
+    const value = JSON.parse(
+      sessionStorage.getItem(topicKey(sessionId)) ?? '{}',
+    ) as TopicTrack
+    return value && typeof value === 'object' ? value : {}
+  } catch {
+    return {}
+  }
+}
+
+export function writeTopicTrack(sessionId: string, track: TopicTrack) {
+  try {
+    sessionStorage.setItem(topicKey(sessionId), JSON.stringify(track))
+  } catch {
+    /* The navigator falls back to neutral colors without storage. */
+  }
+}
+
+export function recordTopicAnswer(
+  track: TopicTrack,
+  topic: number,
+  step: number,
+  state: TrackState,
+): TopicTrack {
+  const steps = [...(track[topic] ?? [])]
+  while (steps.length < step) steps.push('unknown')
+  steps[step] = state
+  return { ...track, [topic]: steps }
+}

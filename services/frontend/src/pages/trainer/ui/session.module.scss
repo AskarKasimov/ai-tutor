@@ -216,20 +216,40 @@
     display: none;
   }
 }
+.navGroup {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+// Clarifying (basic) questions of a topic: small squares under its number.
+.navBasics {
+  display: flex;
+  gap: 4px;
+}
+.navBasic {
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+}
 .navItem {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1;
+}
+.navItem,
+.navBasic {
   flex: none;
   box-sizing: border-box;
   display: grid;
   place-items: center;
-  width: 32px;
-  height: 32px;
-  border-radius: 8px;
   border: 1px solid var(--session-neutral);
   background: var(--session-neutral-fill);
   color: var(--session-neutral-text);
-  font-size: 16px;
-  font-weight: 700;
-  line-height: 1;
   &[data-state='current'] {
     background: white;
   }

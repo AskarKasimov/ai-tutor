@@ -10,12 +10,16 @@ export function speakInstruction(
     typeof window === 'undefined' ? undefined : window.speechSynthesis
   if (!synth || typeof SpeechSynthesisUtterance === 'undefined' || !text.trim())
     return null
+  const voices = synth.getVoices()
+  const voice = voices.find((candidate) =>
+    candidate.lang.toLowerCase().startsWith('ru'),
+  )
+  // Without a Russian voice the browser reads Russian with a foreign voice or
+  // stays silent, so the stored-audio hint is the honest fallback.
+  if (voices.length > 0 && !voice) return null
   synth.cancel()
   const utterance = new SpeechSynthesisUtterance(text)
   utterance.lang = 'ru-RU'
-  const voice = synth
-    .getVoices()
-    .find((candidate) => candidate.lang.toLowerCase().startsWith('ru'))
   if (voice) utterance.voice = voice
   let done = false
   const finish = () => {

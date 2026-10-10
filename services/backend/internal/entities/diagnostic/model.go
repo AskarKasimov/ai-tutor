@@ -44,10 +44,18 @@ func (s Session) Current() *TaskSnapshot {
 }
 
 func (s Session) Progress() Progress {
-	return Progress{
+	progress := Progress{
 		SessionID: s.ID, Status: s.Status, Current: s.Current(),
 		Completed: len(s.Answers), Skipped: len(s.SkippedBasics), Total: s.Variant.TaskCount(),
+		CompetencyCount: len(s.Variant.Competencies),
 	}
+	// The number of questions depends on answers, the number of competencies
+	// does not, so clients show progress by competency.
+	if progress.Current != nil {
+		progress.CurrentCompetency = s.CurrentCompetency + 1
+		progress.CurrentStep = s.CurrentTask
+	}
+	return progress
 }
 
 type VariantSnapshot struct {
@@ -153,20 +161,25 @@ type Reservation struct {
 }
 
 type Progress struct {
-	AnswerSkipped    bool
-	Text             string
-	SessionID        string
-	Status           string
-	Completed        int
-	Skipped          int
-	Total            int
-	Current          *TaskSnapshot
-	Score            *int
-	GraderScore      *int
-	GraderMaxScore   *int
-	Verdict          string
-	CriterionResults []CriterionResult
-	Feedback         []string
+	AnswerSkipped bool
+	Text          string
+	SessionID     string
+	Status        string
+	Completed     int
+	Skipped       int
+	Total         int
+	// CompetencyCount is fixed for the session; CurrentCompetency is 1-based
+	// and CurrentStep is 0 for the main task, 1–2 for basics.
+	CompetencyCount   int
+	CurrentCompetency int
+	CurrentStep       int
+	Current           *TaskSnapshot
+	Score             *int
+	GraderScore       *int
+	GraderMaxScore    *int
+	Verdict           string
+	CriterionResults  []CriterionResult
+	Feedback          []string
 }
 
 type Result struct {

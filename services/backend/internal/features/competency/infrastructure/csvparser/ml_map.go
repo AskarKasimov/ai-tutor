@@ -4,6 +4,7 @@ import (
 	"encoding/csv"
 	"errors"
 	"io"
+	"math"
 	"regexp"
 	"sort"
 	"strconv"
@@ -181,7 +182,7 @@ func parseMLMap(reader *csv.Reader, headers []string, headerLine int, restoreCel
 				result.Tasks = append(result.Tasks, task)
 			} else if strings.TrimSpace(row[i]) != "" {
 				result.UnparsedTaskCells++
-				result.Warnings = append(result.Warnings, competencymap.ImportWarning{Row: line, ColumnIndex: i + 1, Column: headers[i], Code: "TASK_CELL_FRAGMENT"})
+				result.Warnings = append(result.Warnings, competencymap.ImportWarning{Row: line, ColumnIndex: i + 1, Column: headers[i], Code: taskFragmentCode(row[i])})
 			}
 		}
 	}
@@ -332,8 +333,8 @@ func parsePresentOutcomeProperties(row []string, columns map[string]int, line in
 		properties.aldLevelCode = code
 	}
 	if value := cell("Важность"); value != "" {
-		parsed, err := strconv.Atoi(value)
-		if err != nil || parsed < 1 || parsed > 5 {
+		parsed, ok := importanceValue(value)
+		if !ok {
 			return properties, csvError(line, "Важность", "Ожидается целое число от 1 до 5.")
 		}
 		properties.importance = &parsed
@@ -342,6 +343,19 @@ func parsePresentOutcomeProperties(row []string, columns map[string]int, line in
 		properties.educationalContent = &value
 	}
 	return properties, nil
+}
+
+// importanceValue accepts whole numbers 1–5, including spreadsheet numerics
+// written with a fractional zero such as "4.0" or "4,0".
+func importanceValue(value string) (int, bool) {
+	if parsed, err := strconv.Atoi(value); err == nil {
+		return parsed, parsed >= 1 && parsed <= 5
+	}
+	number, err := strconv.ParseFloat(strings.Replace(value, ",", ".", 1), 64)
+	if err != nil || number != math.Trunc(number) || number < 1 || number > 5 {
+		return 0, false
+	}
+	return int(number), true
 }
 
 func mergeOutcomeProperties(target *competencymap.Outcome, incoming outcomeProperties, line int) error {
@@ -399,6 +413,28 @@ func mlExplanationRow(row []string, columns map[string]int, taskColumns []int) b
 		}
 	}
 	return true
+}
+
+// taskFragmentCode names what an unusable task cell lacks, so the teacher can
+// fix the source: a complete task holds "Экран:", "Голосовая инструкция:" and
+// "Ответ:" in one cell.
+func taskFragmentCode(raw string) string {
+	text := strings.TrimSpace(raw)
+	if !strings.HasPrefix(text, "Экран:") {
+		return "TASK_MISSING_SCREEN"
+	}
+	instructionAt := strings.Index(text, "Голосовая инструкция:")
+	answerAt := strings.LastIndex(text, "Ответ:")
+	switch {
+	case instructionAt < 0 && answerAt < 0:
+		return "TASK_MISSING_VOICE_AND_ANSWER"
+	case instructionAt < 0:
+		return "TASK_MISSING_VOICE"
+	case answerAt < instructionAt:
+		return "TASK_MISSING_ANSWER"
+	default:
+		return "TASK_EMPTY_PART"
+	}
 }
 
 func parseMLTask(raw string) (competencymap.Task, bool) {

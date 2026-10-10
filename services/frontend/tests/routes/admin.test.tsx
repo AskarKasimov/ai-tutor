@@ -55,13 +55,25 @@ const imported = {
   constituent_count: 1,
   outcome_count: 1,
   task_count: 2,
-  unparsed_task_cell_count: 1,
+  unparsed_task_cell_count: 3,
   warnings: [
     {
       row: 8,
       column_index: 12,
       column: 'Задание 2',
-      code: 'TASK_CELL_FRAGMENT',
+      code: 'TASK_MISSING_SCREEN',
+    },
+    {
+      row: 8,
+      column_index: 11,
+      column: 'Задание 1',
+      code: 'TASK_MISSING_VOICE_AND_ANSWER',
+    },
+    {
+      row: 8,
+      column_index: 13,
+      column: 'Задание 3',
+      code: 'TASK_MISSING_SCREEN',
     },
   ],
 }
@@ -228,8 +240,8 @@ it('creates a trimmed subject with its map in one step, then switches to editing
     ),
   ).toBe(true)
   expect(
-    screen.getByRole('button', { name: 'Подтвердить изменения' }),
-  ).toBeDisabled()
+    screen.queryByRole('button', { name: 'Подтвердить изменения' }),
+  ).not.toBeInTheDocument()
 })
 
 it('switches to editing with the error when the first map import fails', async () => {
@@ -263,8 +275,8 @@ it('switches to editing with the error when the first map import fails', async (
     screen.getByRole('region', { name: 'Обновить карту компетенций' }),
   ).toBeVisible()
   expect(
-    screen.getByRole('button', { name: 'Подтвердить изменения' }),
-  ).toBeEnabled()
+    screen.queryByRole('button', { name: 'Подтвердить изменения' }),
+  ).not.toBeInTheDocument()
   expect(screen.queryByLabelText('Название предмета')).not.toBeInTheDocument()
 })
 
@@ -342,13 +354,14 @@ it.each(['csv', 'xlsx'])(
       within(dialog).getByRole('button', { name: 'Перезаписать' }),
     )
     expect(await screen.findByText('Предупреждения импорта')).toBeVisible()
-    expect(screen.getByText('Задание 2')).toBeVisible()
-    expect(screen.getByText('8')).toBeVisible()
-    expect(
-      screen.getByText(
-        'Неполное задание: сохранено в источнике, но не включено в банк.',
-      ),
-    ).toBeVisible()
+    // Fragments of one spreadsheet row read as a single entry.
+    const rows = screen.getAllByRole('row')
+    expect(rows).toHaveLength(2)
+    expect(rows[1]).toHaveTextContent(
+      '8Задание 1: задание обрезано: нет «Голосовая инструкция:» и «Ответ:».' +
+        'Задание 2, Задание 3: обрывок без «Экран:» — скорее всего, продолжение задания из соседней ячейки.',
+    )
+    expect(screen.getByText(/строк: 1/)).toBeVisible()
     await waitFor(() =>
       expect(
         screen.getByRole('region', { name: 'Машинное обучение' }),
@@ -434,8 +447,8 @@ it('discards a chosen replacement file with the cancel button', async () => {
   fireEvent.click(screen.getByRole('button', { name: 'Отменить' }))
   expect(screen.queryByText('map.csv')).not.toBeInTheDocument()
   expect(
-    screen.getByRole('button', { name: 'Подтвердить изменения' }),
-  ).toBeDisabled()
+    screen.queryByRole('button', { name: 'Подтвердить изменения' }),
+  ).not.toBeInTheDocument()
   expect(
     screen.queryByRole('button', { name: 'Отменить' }),
   ).not.toBeInTheDocument()
@@ -451,8 +464,8 @@ it('rejects unsupported and oversized files before sending them', async () => {
     'Выберите файл CSV или XLSX',
   )
   expect(
-    screen.getByRole('button', { name: 'Подтвердить изменения' }),
-  ).toBeDisabled()
+    screen.queryByRole('button', { name: 'Подтвердить изменения' }),
+  ).not.toBeInTheDocument()
   const large = new File(['map'], 'map.csv')
   Object.defineProperty(large, 'size', { value: 25 * 1024 * 1024 + 1 })
   fireEvent.change(input, { target: { files: [large] } })
@@ -460,7 +473,7 @@ it('rejects unsupported and oversized files before sending them', async () => {
   expect(fetch.mock.calls.some(([url]) => url.endsWith('/import'))).toBe(false)
 })
 
-it('shows parser details and keeps the file available for retry after a failed import', async () => {
+it('shows parser details and drops the rejected file without confirm actions', async () => {
   backend({
     status: 422,
     result: {
@@ -489,10 +502,45 @@ it('shows parser details and keeps the file available for retry after a failed i
     'Строка 7: Важность: ожидается число.',
   )
   expect(
+    screen.queryByRole('button', { name: 'Подтвердить изменения' }),
+  ).not.toBeInTheDocument()
+  expect(
+    screen.queryByRole('button', { name: 'Отменить' }),
+  ).not.toBeInTheDocument()
+  // A new file clears the rejection and brings the actions back.
+  fireEvent.change(screen.getByLabelText('Файл карты компетенций'), {
+    target: { files: [new File(['fixed'], 'fixed.csv')] },
+  })
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  expect(
     screen.getByRole('button', { name: 'Подтвердить изменения' }),
   ).toBeEnabled()
   expect(screen.queryByText('Предупреждения импорта')).not.toBeInTheDocument()
   expect(screen.getByText('Карта ещё не загружена.')).toBeVisible()
+})
+
+it('keeps the file for a retry after a technical import failure', async () => {
+  backend({
+    status: 502,
+    result: { code: 'UPSTREAM', message: 'Сервер временно недоступен.' },
+  })
+  renderApp()
+  fireEvent.change(await screen.findByLabelText('Файл карты компетенций'), {
+    target: { files: [new File(['map'], 'map.csv')] },
+  })
+  fireEvent.click(screen.getByRole('button', { name: 'Подтвердить изменения' }))
+  fireEvent.click(
+    within(await screen.findByRole('alertdialog')).getByRole('button', {
+      name: 'Перезаписать',
+    }),
+  )
+  expect(await screen.findByRole('alert')).toHaveTextContent(
+    'Сервер временно недоступен.',
+  )
+  expect(screen.getByText('map.csv')).toBeVisible()
+  expect(
+    screen.getByRole('button', { name: 'Подтвердить изменения' }),
+  ).toBeEnabled()
 })
 
 it('returns to the separate login screen after logout', async () => {

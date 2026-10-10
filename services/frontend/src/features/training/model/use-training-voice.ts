@@ -10,7 +10,12 @@ import {
   userQueryKeys,
 } from '@/entities/user'
 import { StoredAudioError } from '@/shared/api'
-import { createAudioUrl, playQuestion, startRecording } from '@/shared/lib'
+import {
+  createAudioUrl,
+  playQuestion,
+  speakInstruction,
+  startRecording,
+} from '@/shared/lib'
 import type { Recording } from '@/shared/lib'
 import { useTrainingDependencies } from './dependencies-context'
 import { trainingQueryKeys } from './query-keys'
@@ -342,6 +347,22 @@ export function useTrainingVoice(
         current === generation.current &&
         context.current.exerciseId === exerciseId &&
         isCurrentSession(cache, token)
+      // When stored audio is not ready or unplayable, the browser voice reads
+      // the instruction so an exercise never stays silent.
+      const startFallback = () => {
+        if (!isCurrent()) return false
+        const stop = speakInstruction(exercise.voice_instruction, () => {
+          if (player.current !== stop) return
+          setSpeaking(false)
+          player.current = null
+        })
+        if (!stop) return false
+        player.current = stop
+        setAudioStatus('ready')
+        setSpeechError(false)
+        setSpeaking(true)
+        return true
+      }
       try {
         const metadata = await training.readTrainingAudio(
           progress.session_id,
@@ -358,7 +379,10 @@ export function useTrainingVoice(
             signal,
           )
           if (!isCurrent()) return
-          if (repaired.status !== 'ready' || !repaired.audio_url) return
+          if (repaired.status !== 'ready' || !repaired.audio_url) {
+            startFallback()
+            return
+          }
           const blob = await training.fetchTrainingAudioFile(
             repaired.audio_url,
             signal,
@@ -367,7 +391,9 @@ export function useTrainingVoice(
           const dispose = await playQuestion(
             blob,
             () => setSpeaking(false),
-            () => setSpeechError(true),
+            () => {
+              if (!startFallback()) setSpeechError(true)
+            },
           )
           if (!isCurrent()) {
             dispose()
@@ -379,7 +405,10 @@ export function useTrainingVoice(
           setSpeaking(true)
           return
         }
-        if (metadata.status !== 'ready' || !metadata.audio_url) return
+        if (metadata.status !== 'ready' || !metadata.audio_url) {
+          startFallback()
+          return
+        }
         let blob: Blob
         try {
           blob = await training.fetchTrainingAudioFile(
@@ -400,12 +429,11 @@ export function useTrainingVoice(
             exerciseId,
             signal,
           )
-          if (
-            !isCurrent() ||
-            repaired.status !== 'ready' ||
-            !repaired.audio_url
-          )
+          if (!isCurrent()) return
+          if (repaired.status !== 'ready' || !repaired.audio_url) {
+            startFallback()
             return
+          }
           blob = await training.fetchTrainingAudioFile(
             repaired.audio_url,
             signal,
@@ -423,8 +451,8 @@ export function useTrainingVoice(
           () => {
             if (isCurrent()) {
               setSpeaking(false)
-              setSpeechError(true)
               player.current = null
+              if (!startFallback()) setSpeechError(true)
             }
           },
         )
@@ -447,13 +475,15 @@ export function useTrainingVoice(
           const blocked =
             failure instanceof DOMException &&
             failure.name === 'NotAllowedError'
-          if (auto) {
-            if (!blocked) onError(failure)
-            setAudioStatus('idle')
-          } else {
-            onError(failure)
-            setSpeechError(true)
-            setAudioStatus('failed')
+          if (!blocked) onError(failure)
+          // Blocked autoplay keeps the manual button; other failures fall back.
+          if (auto && blocked) setAudioStatus('idle')
+          else if (!startFallback()) {
+            if (auto) setAudioStatus('idle')
+            else {
+              setSpeechError(true)
+              setAudioStatus('failed')
+            }
           }
         }
       } finally {
@@ -463,6 +493,7 @@ export function useTrainingVoice(
     },
     [
       cache,
+      exercise.voice_instruction,
       exerciseId,
       onError,
       progress.session_id,

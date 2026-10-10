@@ -405,6 +405,45 @@ it('plays the stored server instruction automatically when a task opens', async 
   ).toBe(true)
 })
 
+it('reads the instruction with the browser voice while stored audio is being prepared', async () => {
+  const requests = server()
+  const spoken: string[] = []
+  const speak = vi.fn((utterance: { text: string }) =>
+    spoken.push(utterance.text),
+  )
+  vi.stubGlobal(
+    'SpeechSynthesisUtterance',
+    class {
+      lang = ''
+      voice = null
+      onend: (() => void) | null = null
+      onerror: (() => void) | null = null
+      constructor(readonly text: string) {}
+    },
+  )
+  vi.stubGlobal('speechSynthesis', {
+    speak,
+    cancel: vi.fn(),
+    getVoices: () => [],
+  })
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url: string, init?: RequestInit) =>
+      url.includes('/current/audio?')
+        ? Response.json({ variant_task_id: 'v-main', status: 'pending' })
+        : requests(url, init),
+    ),
+  )
+  vi.spyOn(audio, 'playQuestion')
+  await home()
+  await waitFor(() =>
+    expect(spoken).toEqual(['Назовите модель и объясните решение.']),
+  )
+  expect(audio.playQuestion).not.toHaveBeenCalled()
+  expect(screen.queryByText(/Аудио готовится/)).not.toBeInTheDocument()
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+})
+
 it('keeps the manual button without an error when the browser blocks autoplay', async () => {
   server()
   vi.spyOn(audio, 'playQuestion')

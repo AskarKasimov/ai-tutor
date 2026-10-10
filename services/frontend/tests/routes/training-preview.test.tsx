@@ -227,7 +227,7 @@ it('clears a missing session and returns to the subject selector', async () => {
   expect(
     await screen.findByText('Текущая тренировка больше недоступна.'),
   ).toBeVisible()
-  fireEvent.click(screen.getByRole('button', { name: 'К выбору предмета' }))
+  fireEvent.click(screen.getByRole('button', { name: 'На главную' }))
   expect(await screen.findByText('Выбор предмета')).toBeVisible()
   expect(onBack).toHaveBeenCalledOnce()
 })
@@ -280,7 +280,7 @@ it('disposes an active recording when Back returns to the selector', async () =>
   expect(
     await screen.findByRole('button', { name: /Завершить запись/ }),
   ).toBeVisible()
-  fireEvent.click(screen.getByRole('button', { name: 'К выбору предмета' }))
+  fireEvent.click(screen.getByRole('button', { name: 'На главную' }))
   expect(await screen.findByText('Выбор предмета')).toBeVisible()
   expect(dispose).toHaveBeenCalled()
 })

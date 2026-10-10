@@ -421,10 +421,15 @@ function MapSummary({ summary }: { summary: CompetencyMapSummary }) {
           </span>
           <dt>{t('competencyMap.stats.importedAt')}</dt>
           <dd>
-            {new Date(summary.importedAt * 1000).toLocaleString(i18n.language, {
-              dateStyle: 'medium',
-              timeStyle: 'short',
-            })}
+            {/* Date and time without the locale's separating comma. */}
+            {new Date(summary.importedAt * 1000).toLocaleDateString(
+              i18n.language,
+              { dateStyle: 'medium' },
+            )}{' '}
+            {new Date(summary.importedAt * 1000).toLocaleTimeString(
+              i18n.language,
+              { timeStyle: 'short' },
+            )}
           </dd>
         </div>
       )}

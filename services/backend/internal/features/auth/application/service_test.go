@@ -148,7 +148,7 @@ const phrase = "Надёжная фраза для теста 42!"
 
 func register(t *testing.T, s *Service, email string) AuthResult {
 	t.Helper()
-	out, err := s.Register(context.Background(), RegisterInput{Email: email, Password: phrase})
+	out, err := s.Register(context.Background(), RegisterInput{Email: email, Password: phrase, DisplayName: ptr("Иван")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -165,7 +165,7 @@ func TestRegistrationPolicyAndNormalization(t *testing.T) {
 	s, m, _ := fixture()
 	ctx := context.Background()
 	for _, p := range []string{"short", strings.Repeat("a", 20), "passwordpassword", strings.Repeat("я", 129)} {
-		_, err := s.Register(ctx, RegisterInput{Email: "x@example.edu", Password: p})
+		_, err := s.Register(ctx, RegisterInput{Email: "x@example.edu", Password: p, DisplayName: ptr("Иван")})
 		code(t, err, "PASSWORD_TOO_WEAK")
 	}
 	if len(m.users) != 0 {
@@ -175,7 +175,7 @@ func TestRegistrationPolicyAndNormalization(t *testing.T) {
 	if out.User.Email != "student@example.edu" || out.User.Role != user.Student || out.Tokens.Expiry.AccessExpiresAt != 1900 || out.Tokens.Expiry.RefreshExpiresAt != 2593000 {
 		t.Fatalf("registration: %+v", out)
 	}
-	_, err := s.Register(ctx, RegisterInput{Email: "student@example.edu", Password: phrase})
+	_, err := s.Register(ctx, RegisterInput{Email: "student@example.edu", Password: phrase, DisplayName: ptr("Иван")})
 	code(t, err, "EMAIL_ALREADY_REGISTERED")
 	if len(m.sessions) != 1 {
 		t.Fatal("duplicate registration created session")
@@ -275,3 +275,5 @@ func TestLoginAttemptsDoNotBlockLaterAuthentication(t *testing.T) {
 		t.Fatal("unknown user skipped verifier")
 	}
 }
+
+func ptr(s string) *string { return &s }

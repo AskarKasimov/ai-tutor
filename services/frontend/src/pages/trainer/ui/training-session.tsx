@@ -69,6 +69,12 @@ export function TrainingSession({
   )
   const accepted = voice.accepted
   const exercise = accepted?.exercise ?? progress.current
+  const openExerciseId = accepted ? undefined : progress.current.exercise_id
+  // Read the stored voice instruction aloud whenever a new exercise opens.
+  useEffect(() => {
+    if (openExerciseId) void voice.speak({ auto: true })
+    // voice is recreated on every render; autoplay runs once per exercise.
+  }, [openExerciseId])
   const result = accepted?.progress.answer
   const error = voice.error ?? voice.captureError
   const captureErrorKey =

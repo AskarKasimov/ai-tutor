@@ -8,6 +8,7 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { createQueryClient } from '@/bootstrap/providers'
 import { mockApiFetch } from '@/bootstrap/mock-api'
 import { routeTree } from '@/routeTree.gen'
+import { logOut } from '../support/account-menu'
 
 afterEach(() => {
   vi.restoreAllMocks()
@@ -41,7 +42,17 @@ it('opens student login with a banner and returns to role selection on logout', 
   expect(screen.getByText('Вход как ученик')).toBeVisible()
   fireEvent.click(screen.getByRole('button', { name: 'Вход' }))
   fireEvent.click(screen.getByRole('button', { name: 'Войти' }))
-  fireEvent.click(await screen.findByRole('button', { name: 'Выйти' }))
+  expect(
+    await screen.findByRole('button', { name: /Меню профиля/ }),
+  ).toBeVisible()
+  // Logout stays hidden until the profile menu is opened.
+  expect(
+    screen.queryByRole('button', { name: 'Выйти' }),
+  ).not.toBeInTheDocument()
+  expect(
+    screen.queryByRole('menuitem', { name: 'Выйти' }),
+  ).not.toBeInTheDocument()
+  await logOut()
   expect(
     await screen.findByRole('button', { name: 'Войти как учитель' }),
   ).toBeVisible()
@@ -75,7 +86,7 @@ it.each(['real', 'mock', 'preview'])(
       expect(call[1]?.body).toBeUndefined()
       expect(call[1]?.credentials).toBe('include')
     } else expect(fetch).not.toHaveBeenCalled()
-    fireEvent.click(screen.getByRole('button', { name: 'Выйти' }))
+    await logOut()
     expect(
       await screen.findByRole('button', { name: 'Войти как учитель' }),
     ).toBeVisible()

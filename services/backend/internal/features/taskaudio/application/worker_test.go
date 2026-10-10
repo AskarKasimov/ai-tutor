@@ -1,6 +1,7 @@
 package application
 
 import (
+	"bytes"
 	"context"
 	"encoding/binary"
 	"errors"
@@ -24,6 +25,7 @@ type fakeQueue struct {
 		delay time.Duration
 	}
 	cancelled   []Claim
+	ready       map[string]audioasset.Asset
 	current     bool
 	completeOK  bool
 	completeErr error
@@ -38,6 +40,15 @@ func newFakeQueue(count int) *fakeQueue {
 		assets[i] = audioasset.Asset{ID: id, Instruction: "Скажите ответ", ObjectKey: "task-audio/v1/" + id + ".wav", Status: audioasset.Pending}
 	}
 	return &fakeQueue{assets: assets, completeOK: true, current: true, completeCh: make(chan struct{}, count), failedCh: make(chan struct{}, count)}
+}
+func (q *fakeQueue) FindReady(_ context.Context, instruction, excludeID string) (audioasset.Asset, bool, error) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	asset, ok := q.ready[instruction]
+	if !ok || asset.ID == excludeID {
+		return audioasset.Asset{}, false, nil
+	}
+	return asset, true, nil
 }
 func (q *fakeQueue) IsCurrent(context.Context, Claim) (bool, error) {
 	q.mu.Lock()
@@ -391,5 +402,53 @@ func TestProcessOneDoesNotTurnLostCompleteTokenIntoFailure(t *testing.T) {
 	}
 	if len(queue.failed) != 0 || len(queue.completed) != 1 {
 		t.Fatalf("stale completion outcomes failed=%d complete=%d", len(queue.failed), len(queue.completed))
+	}
+}
+
+type readyStorage struct {
+	*fakeStorage
+	data    []byte
+	info    ObjectInfo
+	openErr error
+}
+
+func (s *readyStorage) Open(context.Context, string, string) (io.ReadCloser, ObjectInfo, error) {
+	if s.openErr != nil {
+		return nil, ObjectInfo{}, s.openErr
+	}
+	return io.NopCloser(bytes.NewReader(s.data)), s.info, nil
+}
+
+func TestProcessOneCopiesReadyRecordingOfSameInstruction(t *testing.T) {
+	bucket := "task-audio"
+	wav := testWAV()
+	for _, tc := range []struct {
+		name      string
+		openErr   error
+		wantSynth int
+	}{
+		{name: "copies without TTS", wantSynth: 0},
+		{name: "falls back to TTS when the copy fails", openErr: errors.New("s3 down"), wantSynth: 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			queue := newFakeQueue(1)
+			queue.ready = map[string]audioasset.Asset{"Скажите ответ": {
+				ID: "ready-1", Instruction: "Скажите ответ", ObjectKey: "task-audio/v1/ready-1.wav",
+				Bucket: &bucket, Status: audioasset.Ready,
+			}}
+			storage := &readyStorage{fakeStorage: &fakeStorage{}, data: wav, openErr: tc.openErr,
+				info: ObjectInfo{Size: int64(len(wav)), ContentType: "audio/wav", AssetID: "ready-1"}}
+			synth := &fakeSynth{data: testWAV()}
+			worker := NewWorker(queue, storage, synth, WorkerConfig{Concurrency: 1, PollInterval: time.Millisecond, VoiceTimeout: time.Second, S3Timeout: time.Second, Bucket: bucket})
+			if processed, err := worker.ProcessOne(context.Background()); err != nil || !processed {
+				t.Fatalf("ProcessOne: processed=%v err=%v", processed, err)
+			}
+			if synth.calls != tc.wantSynth || storage.putCount != 1 || !bytes.Equal(storage.putData, wav) || len(queue.completed) != 1 {
+				t.Fatalf("synth=%d put=%d same=%v completed=%d", synth.calls, storage.putCount, bytes.Equal(storage.putData, wav), len(queue.completed))
+			}
+			if queue.completed[0].Asset.ID != "asset-00" {
+				t.Fatalf("copy completed the wrong asset: %q", queue.completed[0].Asset.ID)
+			}
+		})
 	}
 }

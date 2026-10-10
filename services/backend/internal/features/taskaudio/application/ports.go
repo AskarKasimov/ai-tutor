@@ -19,6 +19,8 @@ type Queue interface {
 	Cancel(ctx context.Context, claim Claim) (bool, error)
 	Complete(ctx context.Context, claim Claim, bucket, storageURI, audioURL string) (bool, error)
 	Fail(ctx context.Context, claim Claim, code string, delay time.Duration) (bool, error)
+	// FindReady returns another ready asset with the same instruction, if any.
+	FindReady(ctx context.Context, instruction, excludeID string) (audioasset.Asset, bool, error)
 }
 
 type AssetReader interface {

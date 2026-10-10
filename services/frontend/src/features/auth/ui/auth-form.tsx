@@ -26,9 +26,7 @@ export function AuthForm() {
         mode,
         email: email.trim(),
         password,
-        ...(mode === 'register' && name.trim()
-          ? { display_name: name.trim() }
-          : {}),
+        ...(mode === 'register' ? { display_name: name.trim() } : {}),
       })
       setPassword('')
     } catch {
@@ -64,9 +62,11 @@ export function AuthForm() {
             <label>
               {t('auth.name')}
               <input
-                autoComplete="nickname"
+                autoComplete="name"
                 value={name}
                 onChange={(event) => setName(event.target.value)}
+                required
+                pattern=".*\S.*"
                 maxLength={200}
               />
             </label>

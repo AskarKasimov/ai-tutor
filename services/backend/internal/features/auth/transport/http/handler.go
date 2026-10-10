@@ -42,7 +42,7 @@ func expiryDTO(e session.Expiry) wireExpiry { return wireExpiry{e.AccessExpiresA
 type RegisterRequest struct {
 	Email       string          `json:"email" format:"email" maxLength:"254" binding:"required"`
 	Password    string          `json:"password" format:"password" minLength:"15" maxLength:"128" binding:"required"`
-	DisplayName json.RawMessage `json:"display_name,omitempty" binding:"optional" swaggertype:"string" minLength:"1" maxLength:"200"`
+	DisplayName json.RawMessage `json:"display_name" binding:"required" swaggertype:"string" minLength:"1" maxLength:"200"`
 }
 
 type LoginRequest struct {
@@ -74,15 +74,12 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(r.Context(), w, err)
 		return
 	}
-	var name *string
-	if req.DisplayName != nil {
-		var n string
-		if string(req.DisplayName) == "null" || json.Unmarshal(req.DisplayName, &n) != nil {
-			httpx.Error(r.Context(), w, fault.Validation("display_name", "Имя должно содержать 1–200 символов."))
-			return
-		}
-		name = &n
+	var n string
+	if req.DisplayName == nil || string(req.DisplayName) == "null" || json.Unmarshal(req.DisplayName, &n) != nil {
+		httpx.Error(r.Context(), w, fault.Validation("display_name", "Укажите имя: 1–200 символов."))
+		return
 	}
+	name := &n
 	result, err := h.service.Register(r.Context(), application.RegisterInput{Email: req.Email, Password: req.Password, DisplayName: name})
 	if err != nil {
 		httpx.Error(r.Context(), w, err)

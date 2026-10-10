@@ -214,6 +214,14 @@ SET status = CASE
     updated_at = now()
 WHERE audio_assets.id = sqlc.arg(id) AND status = 'processing' AND claim_token = sqlc.arg(claim_token);
 
+-- name: FindReadyTaskAudioByInstruction :one
+-- A ready recording of the same instruction can be copied instead of synthesized.
+SELECT id, instruction, object_key, bucket, storage_uri, audio_url, status, attempts
+FROM audio_assets
+WHERE instruction = $1 AND id <> $2 AND status = 'ready'
+ORDER BY updated_at DESC, id
+LIMIT 1;
+
 -- name: InsertTaskAudioAsset :one
 INSERT INTO audio_assets(id, instruction, object_key)
 VALUES ($1, $2, $3)

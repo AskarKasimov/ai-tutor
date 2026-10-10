@@ -301,6 +301,47 @@ func (q *Queries) FailTaskAudio(ctx context.Context, arg FailTaskAudioParams) (i
 	return result.RowsAffected(), nil
 }
 
+const findReadyTaskAudioByInstruction = `-- name: FindReadyTaskAudioByInstruction :one
+SELECT id, instruction, object_key, bucket, storage_uri, audio_url, status, attempts
+FROM audio_assets
+WHERE instruction = $1 AND id <> $2 AND status = 'ready'
+ORDER BY updated_at DESC, id
+LIMIT 1
+`
+
+type FindReadyTaskAudioByInstructionParams struct {
+	Instruction string
+	ID          string
+}
+
+type FindReadyTaskAudioByInstructionRow struct {
+	ID          string
+	Instruction string
+	ObjectKey   string
+	Bucket      *string
+	StorageUri  *string
+	AudioUrl    *string
+	Status      string
+	Attempts    int32
+}
+
+// A ready recording of the same instruction can be copied instead of synthesized.
+func (q *Queries) FindReadyTaskAudioByInstruction(ctx context.Context, arg FindReadyTaskAudioByInstructionParams) (FindReadyTaskAudioByInstructionRow, error) {
+	row := q.db.QueryRow(ctx, findReadyTaskAudioByInstruction, arg.Instruction, arg.ID)
+	var i FindReadyTaskAudioByInstructionRow
+	err := row.Scan(
+		&i.ID,
+		&i.Instruction,
+		&i.ObjectKey,
+		&i.Bucket,
+		&i.StorageUri,
+		&i.AudioUrl,
+		&i.Status,
+		&i.Attempts,
+	)
+	return i, err
+}
+
 const getAccessibleTaskAudio = `-- name: GetAccessibleTaskAudio :one
 SELECT asset.id, asset.instruction, asset.object_key, asset.bucket, asset.storage_uri,
        asset.audio_url, asset.status, asset.attempts

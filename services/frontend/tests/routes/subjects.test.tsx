@@ -53,12 +53,24 @@ it('loads subjects without creating a variant, then starts only the chosen subje
       <RouterProvider router={router} />
     </StrictMode>,
   )
-  expect(await screen.findByRole('combobox', { name: 'Предмет' })).toBeVisible()
-  expect(requests.some((r) => r.includes('/learning-state'))).toBe(false)
-  fireEvent.click(screen.getByRole('combobox', { name: 'Предмет' }))
-  fireEvent.click(
-    await screen.findByRole('option', { name: 'Демонстрационный предмет A' }),
-  )
+  expect(
+    await screen.findByRole('heading', {
+      name: 'Демонстрационный предмет A',
+      level: 2,
+    }),
+  ).toBeVisible()
+  expect(
+    screen.queryByRole('combobox', { name: 'Предмет' }),
+  ).not.toBeInTheDocument()
+  expect(screen.getByRole('heading', { name: 'Курсы', level: 1 })).toBeVisible()
+  expect(
+    screen.getByRole('article', { name: 'Демонстрационный предмет A' }),
+  ).toBeVisible()
+  expect(
+    await screen.findByRole('button', { name: 'Откроется после диагностики' }),
+  ).toBeDisabled()
+  // The hint stays only on the locked training tile, not on the diagnostic one.
+  expect(screen.getAllByText('Сначала пройдите диагностику.')).toHaveLength(1)
   expect(
     await screen.findByRole('button', { name: 'Начать диагностику' }),
   ).toBeEnabled()
@@ -135,7 +147,6 @@ it('returns to subject selection after refresh during a pending start and reuses
     routeTree,
   })
   const first = render(<RouterProvider router={firstRouter} />)
-  await chooseSubject()
   fireEvent.click(
     await screen.findByRole('button', { name: 'Начать диагностику' }),
   )
@@ -152,11 +163,15 @@ it('returns to subject selection after refresh during a pending start and reuses
     routeTree,
   })
   render(<RouterProvider router={refreshedRouter} />)
-  expect(await screen.findByRole('combobox', { name: 'Предмет' })).toBeVisible()
+  expect(
+    await screen.findByRole('heading', {
+      name: 'Демонстрационный предмет A',
+      level: 2,
+    }),
+  ).toBeVisible()
   await new Promise((resolve) => setTimeout(resolve, 150))
   expect(requests.filter((r) => r.path.endsWith('/variants'))).toHaveLength(1)
 
-  await chooseSubject()
   fireEvent.click(
     await screen.findByRole('button', { name: 'Начать диагностику' }),
   )
@@ -206,7 +221,6 @@ it('starts with a fresh variant after demo state resets between variant and sess
     routeTree,
   })
   const first = render(<RouterProvider router={firstRouter} />)
-  await chooseSubject()
   fireEvent.click(
     await screen.findByRole('button', { name: 'Начать диагностику' }),
   )
@@ -232,7 +246,6 @@ it('starts with a fresh variant after demo state resets between variant and sess
     routeTree,
   })
   render(<RouterProvider router={refreshedRouter} />)
-  await chooseSubject()
   await new Promise((resolve) => setTimeout(resolve, 120))
   expect(
     requests.filter((r) => r.method === 'POST' && r.path.endsWith('/variants')),
@@ -260,10 +273,3 @@ it('starts with a fresh variant after demo state resets between variant and sess
     ),
   ).toHaveLength(2)
 })
-
-async function chooseSubject() {
-  fireEvent.click(await screen.findByRole('combobox', { name: 'Предмет' }))
-  fireEvent.click(
-    await screen.findByRole('option', { name: 'Демонстрационный предмет A' }),
-  )
-}

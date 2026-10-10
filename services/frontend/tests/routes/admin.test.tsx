@@ -15,6 +15,7 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { createQueryClient } from '@/bootstrap/providers'
 import { routeTree } from '@/routeTree.gen'
 import * as trainerSource from '@/bootstrap/demo-trainer-session-source'
+import { logOut } from '../support/account-menu'
 
 const admin = {
   id: 'admin-1',
@@ -500,7 +501,7 @@ it('returns to the separate login screen after logout', async () => {
   renderApp()
   await screen.findByRole('heading', { name: 'Карта компетенций' })
   fetch.mockImplementation(async () => new Response(null, { status: 204 }))
-  fireEvent.click(screen.getByRole('button', { name: 'Выйти' }))
+  await logOut()
   expect(
     await screen.findByRole('heading', { name: 'Как вы хотите войти?' }),
   ).toBeVisible()

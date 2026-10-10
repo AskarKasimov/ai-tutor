@@ -316,52 +316,117 @@ export function useTrainingVoice(
     }
   }, [send])
 
-  const speak = useCallback(async () => {
-    if (acceptedRef.current) return
-    if (speechRequest.current) {
-      stopSpeech()
-      return
-    }
-    const current = generation.current
-    const controller = new AbortController()
-    speechRequest.current = controller
-    setSpeechError(false)
-    setAudioStatus('loading')
-    const token = captureSession(cache)
-    const request = new AbortController()
-    const unregister = registerSessionRequest(cache, token, request)
-    const signal = AbortSignal.any([controller.signal, request.signal])
-    const isCurrent = () =>
-      !signal.aborted &&
-      current === generation.current &&
-      context.current.exerciseId === exerciseId &&
-      isCurrentSession(cache, token)
-    try {
-      const metadata = await training.readTrainingAudio(
-        progress.session_id,
-        exerciseId,
-        signal,
-      )
-      if (!isCurrent()) return
-      setAudioStatus(metadata.status)
-      if (metadata.status === 'failed') {
-        setAudioStatus('loading')
-        const repaired = await training.regenerateTrainingAudio(
+  // auto: played on exercise open; never stops current playback and stays
+  // silent when the browser blocks autoplay, leaving the manual button.
+  const speak = useCallback(
+    async ({ auto = false }: { auto?: boolean } = {}) => {
+      if (acceptedRef.current) return
+      if (speechRequest.current) {
+        if (auto && !speechRequest.current.signal.aborted) return
+        if (!auto) {
+          stopSpeech()
+          return
+        }
+      }
+      const current = generation.current
+      const controller = new AbortController()
+      speechRequest.current = controller
+      setSpeechError(false)
+      setAudioStatus('loading')
+      const token = captureSession(cache)
+      const request = new AbortController()
+      const unregister = registerSessionRequest(cache, token, request)
+      const signal = AbortSignal.any([controller.signal, request.signal])
+      const isCurrent = () =>
+        !signal.aborted &&
+        current === generation.current &&
+        context.current.exerciseId === exerciseId &&
+        isCurrentSession(cache, token)
+      try {
+        const metadata = await training.readTrainingAudio(
           progress.session_id,
           exerciseId,
           signal,
         )
         if (!isCurrent()) return
-        if (repaired.status !== 'ready' || !repaired.audio_url) return
-        const blob = await training.fetchTrainingAudioFile(
-          repaired.audio_url,
-          signal,
-        )
+        setAudioStatus(metadata.status)
+        if (metadata.status === 'failed') {
+          setAudioStatus('loading')
+          const repaired = await training.regenerateTrainingAudio(
+            progress.session_id,
+            exerciseId,
+            signal,
+          )
+          if (!isCurrent()) return
+          if (repaired.status !== 'ready' || !repaired.audio_url) return
+          const blob = await training.fetchTrainingAudioFile(
+            repaired.audio_url,
+            signal,
+          )
+          if (!isCurrent()) return
+          const dispose = await playQuestion(
+            blob,
+            () => setSpeaking(false),
+            () => setSpeechError(true),
+          )
+          if (!isCurrent()) {
+            dispose()
+            return
+          }
+          player.current = dispose
+          setAudioStatus('ready')
+          setSpeechError(false)
+          setSpeaking(true)
+          return
+        }
+        if (metadata.status !== 'ready' || !metadata.audio_url) return
+        let blob: Blob
+        try {
+          blob = await training.fetchTrainingAudioFile(
+            metadata.audio_url,
+            signal,
+          )
+        } catch (failure) {
+          const repairable =
+            failure instanceof StoredAudioError &&
+            (failure.kind === 'invalid' ||
+              failure.kind === 'network' ||
+              failure.status === 404 ||
+              failure.status >= 500)
+          if (!repairable) throw failure
+          setAudioStatus('loading')
+          const repaired = await training.regenerateTrainingAudio(
+            progress.session_id,
+            exerciseId,
+            signal,
+          )
+          if (
+            !isCurrent() ||
+            repaired.status !== 'ready' ||
+            !repaired.audio_url
+          )
+            return
+          blob = await training.fetchTrainingAudioFile(
+            repaired.audio_url,
+            signal,
+          )
+        }
         if (!isCurrent()) return
         const dispose = await playQuestion(
           blob,
-          () => setSpeaking(false),
-          () => setSpeechError(true),
+          () => {
+            if (isCurrent()) {
+              setSpeaking(false)
+              player.current = null
+            }
+          },
+          () => {
+            if (isCurrent()) {
+              setSpeaking(false)
+              setSpeechError(true)
+              player.current = null
+            }
+          },
         )
         if (!isCurrent()) {
           dispose()
@@ -369,82 +434,43 @@ export function useTrainingVoice(
         }
         player.current = dispose
         setAudioStatus('ready')
-        setSpeechError(false)
         setSpeaking(true)
-        return
-      }
-      if (metadata.status !== 'ready' || !metadata.audio_url) return
-      let blob: Blob
-      try {
-        blob = await training.fetchTrainingAudioFile(metadata.audio_url, signal)
       } catch (failure) {
-        const repairable =
-          failure instanceof StoredAudioError &&
-          (failure.kind === 'invalid' ||
-            failure.kind === 'network' ||
-            failure.status === 404 ||
-            failure.status >= 500)
-        if (!repairable) throw failure
-        setAudioStatus('loading')
-        const repaired = await training.regenerateTrainingAudio(
-          progress.session_id,
-          exerciseId,
-          signal,
-        )
-        if (!isCurrent() || repaired.status !== 'ready' || !repaired.audio_url)
-          return
-        blob = await training.fetchTrainingAudioFile(repaired.audio_url, signal)
-      }
-      if (!isCurrent()) return
-      const dispose = await playQuestion(
-        blob,
-        () => {
-          if (isCurrent()) {
-            setSpeaking(false)
-            player.current = null
-          }
-        },
-        () => {
-          if (isCurrent()) {
-            setSpeaking(false)
+        if (isCurrent()) {
+          if (
+            failure instanceof TrainingApiError &&
+            failure.status === 401 &&
+            cache.getQueryData<{ id: string } | null>(userQueryKeys.auth)
+              ?.id === userId
+          )
+            void replaceSession(cache, null)
+          const blocked =
+            failure instanceof DOMException &&
+            failure.name === 'NotAllowedError'
+          if (auto) {
+            if (!blocked) onError(failure)
+            setAudioStatus('idle')
+          } else {
+            onError(failure)
             setSpeechError(true)
-            player.current = null
+            setAudioStatus('failed')
           }
-        },
-      )
-      if (!isCurrent()) {
-        dispose()
-        return
+        }
+      } finally {
+        unregister()
+        if (speechRequest.current === controller) speechRequest.current = null
       }
-      player.current = dispose
-      setAudioStatus('ready')
-      setSpeaking(true)
-    } catch (failure) {
-      if (isCurrent()) {
-        if (
-          failure instanceof TrainingApiError &&
-          failure.status === 401 &&
-          cache.getQueryData<{ id: string } | null>(userQueryKeys.auth)?.id ===
-            userId
-        )
-          void replaceSession(cache, null)
-        onError(failure)
-        setSpeechError(true)
-        setAudioStatus('failed')
-      }
-    } finally {
-      unregister()
-      if (speechRequest.current === controller) speechRequest.current = null
-    }
-  }, [
-    cache,
-    exerciseId,
-    onError,
-    progress.session_id,
-    stopSpeech,
-    training,
-    userId,
-  ])
+    },
+    [
+      cache,
+      exerciseId,
+      onError,
+      progress.session_id,
+      stopSpeech,
+      training,
+      userId,
+    ],
+  )
 
   const next = useCallback(() => {
     generation.current++

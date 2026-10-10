@@ -12,6 +12,7 @@ import * as voiceApi from '@/shared/api'
 import { i18n } from '@/shared/i18n'
 import * as audio from '@/shared/lib'
 import { routeTree } from '@/routeTree.gen'
+import { logOut } from '../support/account-menu'
 
 vi.mock('@/shared/lib', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/shared/lib')>()),
@@ -166,10 +167,6 @@ it('shows the dev ribbon when the API mode is not real', async () => {
   expect(screen.getByLabelText('Email')).not.toBeRequired()
   expect(screen.getByLabelText('Пароль')).not.toBeRequired()
   fireEvent.click(screen.getByRole('button', { name: 'Войти' }))
-  fireEvent.click(await screen.findByRole('combobox', { name: 'Предмет' }))
-  fireEvent.click(
-    await screen.findByRole('option', { name: 'Демонстрационный предмет A' }),
-  )
   expect(
     await screen.findByRole('button', { name: 'Начать диагностику' }),
   ).toBeEnabled()
@@ -349,7 +346,7 @@ it('logs in through the separate screen and updates the header', async () => {
   })
 })
 
-it('registers with backend password rules and an optional name', async () => {
+it('registers with backend password rules and a required name', async () => {
   const fetchMock = mockAuth({
     ok: true,
     body: {
@@ -363,13 +360,14 @@ it('registers with backend password rules and an optional name', async () => {
   )
   fireEvent.click(screen.getByRole('button', { name: 'Регистрация' }))
   expect(screen.getByLabelText('Пароль')).toHaveAttribute('minlength', '15')
+  expect(screen.getByLabelText('Имя')).toBeRequired()
   fireEvent.change(screen.getByLabelText('Email'), {
     target: { value: 'new@example.com' },
   })
   fireEvent.change(screen.getByLabelText('Пароль'), {
     target: { value: 'long-password-123' },
   })
-  fireEvent.change(screen.getByLabelText('Имя (необязательно)'), {
+  fireEvent.change(screen.getByLabelText('Имя'), {
     target: { value: 'Новый' },
   })
   fireEvent.submit(
@@ -437,7 +435,7 @@ it('returns to the separate login screen after logout', async () => {
   renderHome()
   expect(await screen.findByText('Студент')).toBeVisible()
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
-  fireEvent.click(screen.getByRole('button', { name: 'Выйти' }))
+  await logOut()
   expect(
     await screen.findByRole('heading', { name: 'Как вы хотите войти?' }),
   ).toBeVisible()

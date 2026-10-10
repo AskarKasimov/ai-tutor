@@ -128,10 +128,15 @@ export function useDiagnosticVoice(
     setPendingHint(false)
     setCancelledHint(false)
   }
-  async function speak() {
+  // auto: played on task open; never stops current playback and stays silent
+  // when the browser blocks autoplay, leaving the manual button.
+  async function speak({ auto = false }: { auto?: boolean } = {}) {
     if (speechRequest.current) {
-      stopSpeech()
-      return
+      if (auto && !speechRequest.current.signal.aborted) return
+      if (!auto) {
+        stopSpeech()
+        return
+      }
     }
     const request = new AbortController()
     speechRequest.current = request
@@ -358,9 +363,14 @@ export function useDiagnosticVoice(
     } catch (error) {
       if (!request.signal.aborted) {
         speechRequest.current = null
-        if (!(error instanceof DiagnosticApiError && error.status === 409)) {
+        const blocked =
+          error instanceof DOMException && error.name === 'NotAllowedError'
+        if (
+          !(error instanceof DiagnosticApiError && error.status === 409) &&
+          !(auto && blocked)
+        ) {
           onError(error)
-          setSpeechError(true)
+          if (!auto) setSpeechError(true)
         }
         setSpeech('idle')
       }

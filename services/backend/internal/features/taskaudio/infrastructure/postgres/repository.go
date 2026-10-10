@@ -63,6 +63,17 @@ func (r *Repository) ClaimRepair(ctx context.Context, assetID, token string, lea
 	return application.Claim{Asset: asset, Token: token}, true, nil
 }
 
+func (r *Repository) FindReady(ctx context.Context, instruction, excludeID string) (audioasset.Asset, bool, error) {
+	row, err := r.q.FindReadyTaskAudioByInstruction(ctx, db.FindReadyTaskAudioByInstructionParams{Instruction: instruction, ID: excludeID})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return audioasset.Asset{}, false, nil
+	}
+	if err != nil {
+		return audioasset.Asset{}, false, fmt.Errorf("find ready task audio: %w", err)
+	}
+	return assetFromRow(row.ID, row.Instruction, row.ObjectKey, row.Bucket, row.StorageUri, row.AudioUrl, row.Status, row.Attempts), true, nil
+}
+
 func (r *Repository) IsCurrent(ctx context.Context, claim application.Claim) (bool, error) {
 	return r.q.IsCurrentTaskAudio(ctx, db.IsCurrentTaskAudioParams{ID: claim.Asset.ID, ClaimToken: &claim.Token})
 }

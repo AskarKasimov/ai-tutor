@@ -47,10 +47,6 @@ it('completes local diagnostic and displays its overall feedback', async () => {
     routeTree,
   })
   render(<RouterProvider router={router} />)
-  fireEvent.click(await screen.findByRole('combobox', { name: 'Предмет' }))
-  fireEvent.click(
-    await screen.findByRole('option', { name: 'Демонстрационный предмет A' }),
-  )
   fireEvent.click(
     await screen.findByRole('button', { name: 'Начать диагностику' }),
   )
@@ -75,4 +71,12 @@ it('completes local diagnostic and displays its overall feedback', async () => {
   expect(
     screen.getByText('Диагностический балл').parentElement,
   ).toHaveTextContent('2 / 2')
+  // The summary leads straight to training as the next stage.
+  fireEvent.click(screen.getByRole('button', { name: 'Перейти к тренировке' }))
+  expect(
+    (await screen.findAllByRole('heading', { name: /Тренировка/ })).length,
+  ).toBeGreaterThan(0)
+  expect(
+    screen.queryByRole('heading', { name: 'Общий фидбэк' }),
+  ).not.toBeInTheDocument()
 })

@@ -93,11 +93,12 @@ func (s *Service) Register(ctx context.Context, in RegisterInput) (AuthResult, e
 	if email == TeacherEmail {
 		return out, fault.Validation("email", "Этот адрес зарезервирован для общего аккаунта учителя.")
 	}
-	if in.DisplayName != nil {
-		n := *in.DisplayName
-		if utf8.RuneCountInString(n) < 1 || utf8.RuneCountInString(n) > 200 || strings.TrimSpace(n) == "" || strings.IndexByte(n, 0) >= 0 {
-			return out, fault.Validation("display_name", "Имя должно содержать 1–200 символов.")
-		}
+	// Students are addressed by name in the interface, so it is required.
+	if in.DisplayName == nil {
+		return out, fault.Validation("display_name", "Укажите имя: 1–200 символов.")
+	}
+	if n := *in.DisplayName; utf8.RuneCountInString(n) < 1 || utf8.RuneCountInString(n) > 200 || strings.TrimSpace(n) == "" || strings.IndexByte(n, 0) >= 0 {
+		return out, fault.Validation("display_name", "Укажите имя: 1–200 символов.")
 	}
 	if err = checkPassword(in.Password); err != nil {
 		return out, err

@@ -631,3 +631,79 @@ func TestTaskAudioLargeQueueBoundsClaimsAndDoesNotBlockImport(t *testing.T) {
 		t.Fatalf("maximum concurrent TTS calls=%d, want 2", got)
 	}
 }
+
+func TestTaskAudioReimportCopiesReadyAudioInsteadOfSynthesis(t *testing.T) {
+	f := newFixture(t)
+	var ttsCalls atomic.Int32
+	var lastText atomic.Value
+	tts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Text string `json:"text"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		lastText.Store(body.Text)
+		ttsCalls.Add(1)
+		w.Header().Set("Content-Type", "audio/wav")
+		_, _ = w.Write(wavBytes())
+	}))
+	defer tts.Close()
+	cfg := f.app.cfg
+	cfg.TTSURL = tts.URL
+	a, err := New(cfg, f.pool, zap.NewNop())
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.now = f.app.now
+	f.app = a
+	f.handler = a.Handler()
+	admin := f.admin(t)
+	ctx := context.Background()
+	importMap := func(name string, data []byte) {
+		t.Helper()
+		if w := upload(f, "/admin/subjects/subject:test/competency-map/import", "file", name, "text/csv", data, admin); w.Code != http.StatusOK {
+			t.Fatalf("import %s: %d %s", name, w.Code, w.Body.String())
+		}
+	}
+	drain := func() {
+		t.Helper()
+		for range 200 {
+			processed, err := f.app.audioWorker.ProcessOne(ctx)
+			if err != nil {
+				t.Fatalf("worker: %v", err)
+			}
+			if !processed {
+				return
+			}
+		}
+		t.Fatal("audio queue did not drain")
+	}
+	unready := func() int {
+		t.Helper()
+		var n int
+		if err := f.pool.QueryRow(ctx, `SELECT count(*) FROM tasks task JOIN audio_assets asset ON asset.id = task.audio_asset_id WHERE asset.status <> 'ready'`).Scan(&n); err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
+
+	importMap("map-a.csv", variantMapCSV(t))
+	drain()
+	first := ttsCalls.Load()
+	if first == 0 || unready() != 0 {
+		t.Fatalf("first import: tts=%d unready=%d", first, unready())
+	}
+
+	importMap("map-a-again.csv", variantMapCSV(t))
+	drain()
+	if got := ttsCalls.Load(); got != first || unready() != 0 {
+		t.Fatalf("unchanged re-import re-synthesized: tts %d -> %d, unready=%d", first, got, unready())
+	}
+
+	changed := bytes.ReplaceAll(variantMapCSV(t), []byte("Назовите ответ."), []byte("Изменённая инструкция."))
+	importMap("map-b.csv", changed)
+	drain()
+	text, _ := lastText.Load().(string)
+	if ttsCalls.Load() == first || !strings.Contains(text, "Изменённая инструкция") || unready() != 0 {
+		t.Fatalf("changed instruction: tts=%d last=%q unready=%d", ttsCalls.Load(), text, unready())
+	}
+}

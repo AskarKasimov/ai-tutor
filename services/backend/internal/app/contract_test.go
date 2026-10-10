@@ -142,7 +142,7 @@ func TestOpenAPIResponses(t *testing.T) {
 			checked[path] = true
 		}
 	}
-	register := f.request("POST", "/auth/register", `{"email":"contract@example.edu","password":"`+password+`"}`)
+	register := f.request("POST", "/auth/register", `{"email":"contract@example.edu","password":"`+password+`","display_name":"Контракт"}`)
 	check("POST", "/auth/register", register)
 	cookies := register.Result().Cookies()
 	if len(cookies) != 2 {
@@ -407,7 +407,7 @@ func TestHTTPSCookieLifecycle(t *testing.T) {
 		}
 		return resp
 	}
-	response := send("POST", "/auth/register", `{"email":"https@example.edu","password":"`+password+`"}`)
+	response := send("POST", "/auth/register", `{"email":"https@example.edu","password":"`+password+`","display_name":"HTTPS"}`)
 	body, _ := io.ReadAll(response.Body)
 	response.Body.Close()
 	if response.StatusCode != 201 || bytes.Contains(body, []byte("access_token")) {

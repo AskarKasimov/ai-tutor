@@ -111,6 +111,7 @@ components:
           minLength: 15
           type: string
       required:
+        - display_name
         - email
         - password
       type: object

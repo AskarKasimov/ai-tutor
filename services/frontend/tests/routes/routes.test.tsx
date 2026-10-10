@@ -345,7 +345,7 @@ it('logs in through the separate screen and updates the header', async () => {
   })
 })
 
-it('registers with backend password rules and an optional name', async () => {
+it('registers with backend password rules and a required name', async () => {
   const fetchMock = mockAuth({
     ok: true,
     body: {
@@ -359,13 +359,14 @@ it('registers with backend password rules and an optional name', async () => {
   )
   fireEvent.click(screen.getByRole('button', { name: 'Регистрация' }))
   expect(screen.getByLabelText('Пароль')).toHaveAttribute('minlength', '15')
+  expect(screen.getByLabelText('Имя')).toBeRequired()
   fireEvent.change(screen.getByLabelText('Email'), {
     target: { value: 'new@example.com' },
   })
   fireEvent.change(screen.getByLabelText('Пароль'), {
     target: { value: 'long-password-123' },
   })
-  fireEvent.change(screen.getByLabelText('Имя (необязательно)'), {
+  fireEvent.change(screen.getByLabelText('Имя'), {
     target: { value: 'Новый' },
   })
   fireEvent.submit(

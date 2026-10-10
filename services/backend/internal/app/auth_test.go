@@ -228,7 +228,7 @@ func TestAuthRegistrationCookiesNormalizationAndPersistence(t *testing.T) {
 	if w.Code != 200 || !strings.Contains(w.Body.String(), `"role":"admin"`) {
 		t.Fatalf("role/persistence: %s", w.Body.String())
 	}
-	requireCode(t, f.request("POST", "/auth/register", `{"email":"student@example.edu","password":"`+password+`"}`), 409, "EMAIL_ALREADY_REGISTERED")
+	requireCode(t, f.request("POST", "/auth/register", `{"email":"student@example.edu","password":"`+password+`","display_name":"Студент"}`), 409, "EMAIL_ALREADY_REGISTERED")
 }
 
 func TestAuthLoginAndValidation(t *testing.T) {
@@ -247,14 +247,16 @@ func TestAuthLoginAndValidation(t *testing.T) {
 	for _, body := range []string{
 		`{"email":"x@example.edu","password":"` + password + `","role":"admin"}`,
 		`{"email":"x@example.edu","password":"` + password + `","display_name":null}`,
+		`{"email":"x@example.edu","password":"` + password + `"}`,
+		`{"email":"x@example.edu","password":"` + password + `","display_name":"   "}`,
 		`{"email":"x@example.edu","password":"` + password + `","display_name":"bad\u0000name"}`,
-		`{"email":"not-email","password":"` + password + `"}`,
+		`{"email":"not-email","password":"` + password + `","display_name":"Иван"}`,
 		`{"email":"x@example.edu","password":"` + password + `"} {}`,
 	} {
 		requireCode(t, f.request("POST", "/auth/register", body), 422, "VALIDATION_ERROR")
 	}
 	for _, p := range []string{"short", strings.Repeat("a", 20), "passwordpassword", strings.Repeat("я", 129)} {
-		b, _ := json.Marshal(map[string]string{"email": "weak@example.edu", "password": p})
+		b, _ := json.Marshal(map[string]string{"email": "weak@example.edu", "password": p, "display_name": "Иван"})
 		requireCode(t, f.request("POST", "/auth/register", string(b)), 422, "PASSWORD_TOO_WEAK")
 	}
 	requireCode(t, f.request("GET", "/auth/me", ""), 401, "UNAUTHORIZED")

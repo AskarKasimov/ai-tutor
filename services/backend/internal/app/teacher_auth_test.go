@@ -74,7 +74,7 @@ func TestTeacherLoginAcrossModesAndSessions(t *testing.T) {
 				t.Fatal("logout revoked another teacher session")
 			}
 			requireCode(t, f.request("POST", "/auth/teacher", `{}`), 422, "VALIDATION_ERROR")
-			requireCode(t, f.request("POST", "/auth/register", `{"email":"shared-teacher@ai-tutor.invalid","password":"`+password+`"}`), 422, "VALIDATION_ERROR")
+			requireCode(t, f.request("POST", "/auth/register", `{"email":"shared-teacher@ai-tutor.invalid","password":"`+password+`","display_name":"Учитель"}`), 422, "VALIDATION_ERROR")
 		})
 	}
 }

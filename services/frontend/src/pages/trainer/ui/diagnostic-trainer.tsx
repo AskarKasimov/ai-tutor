@@ -376,7 +376,6 @@ function DiagnosticFlow({
             maxScore={response.grader_max_score!}
             verdict={response.verdict!}
             feedback={response.feedback!}
-            criteria={response.criterion_results}
           />
           {voice.audioUrl && (
             <div className={styles.audio}>
@@ -528,14 +527,12 @@ function Feedback({
   maxScore,
   verdict,
   feedback,
-  criteria,
   heading = 'h2',
 }: {
   score: number
   maxScore: number
   verdict: string
   feedback: string[]
-  criteria?: DiagnosticProgress['criterion_results']
   heading?: 'h2' | 'h4'
 }) {
   const { t } = useTranslation()
@@ -552,21 +549,9 @@ function Feedback({
       <Heading as={heading} className={styles.feedbackTitle}>
         {t('trainer.feedback')}
       </Heading>
-      {feedback.map((line, index) => (
-        <Text as="p" key={index} className={styles.feedbackLine}>
-          {line}
-        </Text>
-      ))}
-      {criteria?.map((criterion) => (
-        <Text as="p" className={styles.feedbackLine} key={criterion.key}>
-          {t(
-            criterion.satisfied
-              ? 'diagnostic.criterionMet'
-              : 'diagnostic.criterionUnmet',
-          )}
-          : {criterion.explanation}
-        </Text>
-      ))}
+      <Text as="p" className={styles.feedbackLine}>
+        {feedback.join(' ')}
+      </Text>
     </>
   )
 }
@@ -658,7 +643,6 @@ function DiagnosticSummary({
               maxScore={answer.grader_max_score}
               verdict={answer.verdict}
               feedback={answer.feedback}
-              criteria={answer.criterion_results}
             />
           </li>
         ))}

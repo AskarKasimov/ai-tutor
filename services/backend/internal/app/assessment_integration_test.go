@@ -117,6 +117,9 @@ func TestAssessmentEndpointOwnershipHistoricalSnapshotAndStrictResults(t *testin
 			score = 2
 		}
 		feedback := []string{"Итог.", "Причина.", "Совет."}
+		if currentMode == "long feedback" {
+			feedback = []string{strings.Repeat("Подробное наблюдение. ", 20), "Причина.", "Совет."}
+		}
 		if currentMode == "short feedback" {
 			feedback = feedback[:2]
 		}
@@ -149,9 +152,9 @@ func TestAssessmentEndpointOwnershipHistoricalSnapshotAndStrictResults(t *testin
 	for _, tc := range []struct {
 		name, taskID string
 		score, max   int
-	}{{"main", mainID, 2, 2}, {"basic", basicID, 1, 1}, {"partial", mainID, 1, 2}, {"mandatory failed", mainID, 0, 2}} {
+	}{{"main", mainID, 2, 2}, {"basic", basicID, 1, 1}, {"partial", mainID, 1, 2}, {"mandatory failed", mainID, 0, 2}, {"long feedback", mainID, 2, 2}} {
 		t.Run(tc.name, func(t *testing.T) {
-			if tc.name == "mandatory failed" || tc.name == "partial" {
+			if tc.name == "mandatory failed" || tc.name == "partial" || tc.name == "long feedback" {
 				mode.Store(tc.name)
 			} else {
 				mode.Store("correct")
@@ -160,6 +163,9 @@ func TestAssessmentEndpointOwnershipHistoricalSnapshotAndStrictResults(t *testin
 			var result assessmenthttp.EvaluateResponse
 			if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &result) != nil || result.Score != tc.score || result.MaxScore != tc.max || len(result.Feedback) != 3 {
 				t.Fatalf("evaluation: %d %s", w.Code, w.Body.String())
+			}
+			if tc.name == "long feedback" && len([]rune(strings.Join(result.Feedback, " "))) > 228 {
+				t.Fatalf("HTTP response exceeds feedback cap: %s", w.Body.String())
 			}
 			grading := <-contexts
 			if grading.MaxScore != tc.max || grading.Role != map[bool]string{true: "main", false: "basic"}[tc.taskID == mainID] {

@@ -117,7 +117,7 @@ it('shows the model score and feedback for a recorded answer', async () => {
     screen.getByRole('complementary', { name: 'Голосовой ответ на задание' }),
   ).not.toContainElement(savedAnswer)
   expect(
-    screen.getByText('Вы назвали классификацию и объяснили два класса.'),
+    screen.getByText(/Вы назвали классификацию и объяснили два класса\./),
   ).toBeVisible()
 })
 

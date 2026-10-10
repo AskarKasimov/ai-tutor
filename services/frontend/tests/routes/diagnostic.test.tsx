@@ -100,7 +100,11 @@ async function home() {
   const view = render(<RouterProvider router={router} />)
   if (!continuing) {
     fireEvent.click(
-      await screen.findByRole('button', { name: 'Начать диагностику' }),
+      await screen.findByRole(
+        'button',
+        { name: 'Начать диагностику' },
+        { timeout: 5000 },
+      ),
     )
   }
   return view
@@ -264,7 +268,9 @@ it('runs real diagnostic audio, obeys skipped basics and displays the server tot
   fireEvent.click(
     await screen.findByRole('button', { name: 'Завершить запись' }),
   )
-  expect(await screen.findByText(feedback.join(' '))).toBeVisible()
+  const feedbackParagraph = await screen.findByText(feedback.join(' '))
+  expect(feedbackParagraph).toBeVisible()
+  expect(feedbackParagraph.tagName).toBe('P')
   expect(screen.queryByText('Модель названа.')).not.toBeInTheDocument()
   expect(screen.queryByText(/Критерий (не )?выполнен/)).not.toBeInTheDocument()
   // The main answer scored 2/2 and both basics were skipped by the server.

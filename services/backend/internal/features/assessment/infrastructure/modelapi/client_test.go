@@ -37,6 +37,7 @@ func TestGradeSendsTrustedScaleCriteriaMaterialsAndParsesStructuredResult(t *tes
 		Model           string `json:"model"`
 		Temperature     *int   `json:"temperature"`
 		ReasoningEffort string `json:"reasoning_effort"`
+		MaxTokens       int    `json:"max_tokens"`
 		Messages        []struct {
 			Role    string `json:"role"`
 			Content string `json:"content"`
@@ -54,7 +55,7 @@ func TestGradeSendsTrustedScaleCriteriaMaterialsAndParsesStructuredResult(t *tes
 	if err != nil || result.Score != 2 || result.Verdict != "correct" || len(result.CriterionResults) != 2 || len(result.Feedback) != 3 {
 		t.Fatalf("unexpected model result: %#v, %v", result, err)
 	}
-	if request.Model != "gpt-oss-120b" || request.Temperature == nil || *request.Temperature != 0 || request.ReasoningEffort != "medium" {
+	if request.Model != "gpt-oss-120b" || request.Temperature == nil || *request.Temperature != 0 || request.ReasoningEffort != "medium" || request.MaxTokens != 4096 {
 		t.Fatalf("unexpected model configuration: %+v", request)
 	}
 	content := request.Messages[1].Content
@@ -64,6 +65,8 @@ func TestGradeSendsTrustedScaleCriteriaMaterialsAndParsesStructuredResult(t *tes
 		}
 	}
 	if !strings.Contains(request.Messages[0].Content, "mandatory=true") ||
+		!strings.Contains(request.Messages[0].Content, "criterion_results — массив") ||
+		!strings.Contains(request.Messages[0].Content, "feedback — массив") ||
 		!strings.Contains(request.Messages[0].Content, "один связный мини-отзыв") ||
 		!strings.Contains(request.Messages[0].Content, "180 символов") {
 		t.Fatalf("system prompt omitted grading or concise feedback rule: %s", request.Messages[0].Content)

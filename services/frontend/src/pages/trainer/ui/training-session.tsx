@@ -293,7 +293,6 @@ export function TrainingSession({
                     max: result.max_score,
                   })}
                 </Heading>
-                <Text as="p">{accepted?.exercise.question}</Text>
                 <Text as="p" className={styles.feedbackLine}>
                   {result.feedback.join(' ')}
                 </Text>

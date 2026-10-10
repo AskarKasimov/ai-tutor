@@ -3,6 +3,7 @@ package application
 import (
 	"context"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/assessment"
@@ -78,6 +79,45 @@ func expectedVerdict(score, maxScore int) string {
 	}
 }
 
+func shortenFeedback(feedback []string) {
+	const maxRunes = 228
+	lengths := make([]int, len(feedback))
+	total := len(feedback) - 1 // Spaces joining the three sentences.
+	for i, line := range feedback {
+		lengths[i] = utf8.RuneCountInString(line)
+		total += lengths[i]
+	}
+	if total <= maxRunes {
+		return
+	}
+	for total > maxRunes {
+		longest := 0
+		for i := 1; i < len(lengths); i++ {
+			if lengths[i] > lengths[longest] {
+				longest = i
+			}
+		}
+		lengths[longest]--
+		total--
+	}
+	for i, line := range feedback {
+		if utf8.RuneCountInString(line) <= lengths[i] {
+			continue
+		}
+		runes := []rune(line)
+		prefix := string(runes[:lengths[i]-1]) // Reserve one rune for the ellipsis.
+		if cut := strings.LastIndexFunc(prefix, unicode.IsSpace); cut >= 0 &&
+			utf8.RuneCountInString(prefix[:cut]) >= lengths[i]/2 {
+			prefix = prefix[:cut]
+		}
+		cleaned := strings.TrimRight(prefix, " \t,;:.!?—–-")
+		if cleaned == "" {
+			cleaned = strings.TrimRight(prefix, " \t")
+		}
+		feedback[i] = cleaned + "…"
+	}
+}
+
 func validateEvaluation(result Evaluation, gradingContext GradingContext) error {
 	maxScore, err := gradingMaxScore(gradingContext)
 	if err != nil {
@@ -125,21 +165,14 @@ func validateEvaluation(result Evaluation, gradingContext GradingContext) error 
 	if len(result.Feedback) != 3 {
 		return fault.New(fault.Upstream, "INVALID_MODEL_RESPONSE", "Модель вернула некорректный фидбэк.")
 	}
-	feedbackLength := 0
 	for i, line := range result.Feedback {
 		line = strings.TrimSpace(line)
-		if !validText(line, 180) || strings.ContainsAny(line, "\r\n") {
+		if line == "" || !utf8.ValidString(line) || strings.ContainsAny(line, "\x00\r\n") {
 			return fault.New(fault.Upstream, "INVALID_MODEL_RESPONSE", "Модель вернула некорректный фидбэк.")
-		}
-		feedbackLength += utf8.RuneCountInString(line)
-		if i > 0 {
-			feedbackLength++ // Space between sentences in the UI.
 		}
 		result.Feedback[i] = line
 	}
-	if feedbackLength > 180 {
-		return fault.New(fault.Upstream, "INVALID_MODEL_RESPONSE", "Модель вернула слишком длинный фидбэк.")
-	}
+	shortenFeedback(result.Feedback)
 	return nil
 }
 

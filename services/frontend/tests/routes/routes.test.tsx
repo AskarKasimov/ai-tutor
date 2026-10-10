@@ -12,6 +12,7 @@ import * as voiceApi from '@/shared/api'
 import { i18n } from '@/shared/i18n'
 import * as audio from '@/shared/lib'
 import { routeTree } from '@/routeTree.gen'
+import { logOut } from '../support/account-menu'
 
 vi.mock('@/shared/lib', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/shared/lib')>()),
@@ -434,7 +435,7 @@ it('returns to the separate login screen after logout', async () => {
   renderHome()
   expect(await screen.findByText('Студент')).toBeVisible()
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
-  fireEvent.click(screen.getByRole('button', { name: 'Выйти' }))
+  await logOut()
   expect(
     await screen.findByRole('heading', { name: 'Как вы хотите войти?' }),
   ).toBeVisible()

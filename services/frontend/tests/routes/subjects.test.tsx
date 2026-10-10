@@ -56,15 +56,21 @@ it('loads subjects without creating a variant, then starts only the chosen subje
   expect(
     await screen.findByRole('heading', {
       name: 'Демонстрационный предмет A',
-      level: 1,
+      level: 2,
     }),
   ).toBeVisible()
   expect(
     screen.queryByRole('combobox', { name: 'Предмет' }),
   ).not.toBeInTheDocument()
+  expect(screen.getByRole('heading', { name: 'Курсы', level: 1 })).toBeVisible()
+  expect(
+    screen.getByRole('article', { name: 'Демонстрационный предмет A' }),
+  ).toBeVisible()
   expect(
     await screen.findByRole('button', { name: 'Откроется после диагностики' }),
   ).toBeDisabled()
+  // The hint stays only on the locked training tile, not on the diagnostic one.
+  expect(screen.getAllByText('Сначала пройдите диагностику.')).toHaveLength(1)
   expect(
     await screen.findByRole('button', { name: 'Начать диагностику' }),
   ).toBeEnabled()
@@ -160,7 +166,7 @@ it('returns to subject selection after refresh during a pending start and reuses
   expect(
     await screen.findByRole('heading', {
       name: 'Демонстрационный предмет A',
-      level: 1,
+      level: 2,
     }),
   ).toBeVisible()
   await new Promise((resolve) => setTimeout(resolve, 150))

@@ -1,75 +1,190 @@
-import { Heading, Text } from '@radix-ui/themes'
-import { CircleAlert, GraduationCap, LoaderCircle, Mic } from 'lucide-react'
+import { Button, Heading, IconButton, Text } from '@radix-ui/themes'
+import {
+  ArrowLeft,
+  ChevronDown,
+  ChevronUp,
+  CircleAlert,
+  GraduationCap,
+  LoaderCircle,
+  MicOff,
+  Play,
+  Square,
+} from 'lucide-react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { AccountMenu } from '@/features/auth'
-import { VoiceIllustration } from './trainer-answer'
-import styles from './trainer-layout.module.scss'
+import { LiveWaveform } from './trainer-answer'
+import styles from './session.module.scss'
+
+export const sessionStyles = styles
+
+export type NavigatorState =
+  'correct' | 'partial' | 'incorrect' | 'current' | 'locked' | 'done'
+
+export type NavigatorItem = { number: number; state: NavigatorState }
 
 export function TrainerShell({
   title,
   subject,
-  progress,
+  crumb,
+  onBack,
+  navigator,
   children,
 }: {
   title: string
   subject: string
-  progress?: { label: string; current?: number; total?: number }
+  crumb?: string
+  onBack?: () => void
+  navigator?: ReactNode
   children: ReactNode
 }) {
   const { t } = useTranslation()
   return (
-    <div data-trainer-app className={styles.trainerLayout}>
-      <aside className={styles.navigation}>
-        <div className={styles.brand}>
-          <span className={styles.brandIcon} aria-hidden="true">
-            <GraduationCap size={24} />
-          </span>
-          <Text>{t('trainer.title')}</Text>
-        </div>
-        <div className={styles.courseHeading}>
-          <Text as="p" className={styles.eyebrow}>
-            {title}
-          </Text>
-          <Heading as="h2">{subject}</Heading>
-        </div>
-        {progress && (
-          <div className={styles.progress}>
-            <Text as="p" aria-live="polite">
-              {progress.label}
-            </Text>
-            {progress.current !== undefined && progress.total !== undefined && (
-              <div
-                className={styles.progressTrack}
-                role="progressbar"
-                aria-label={t('session.progressLabel')}
-                aria-valuemin={0}
-                aria-valuemax={progress.total}
-                aria-valuenow={progress.current}
-              >
-                <span
-                  className={styles.progressFill}
-                  style={{
-                    width: `${progress.total ? (progress.current / progress.total) * 100 : 0}%`,
-                  }}
-                />
-              </div>
-            )}
-          </div>
-        )}
-      </aside>
-      <div className={styles.content}>
+    <div data-trainer-app className={styles.shell}>
+      <div className={styles.frame}>
         <header className={styles.header}>
-          <p className={styles.pageContext}>
-            <span className={styles.pageContextLabel}>{title}</span>
-            <span className={styles.pageContextDot} aria-hidden="true" />
-            <span className={styles.pageContextTitle}>{subject}</span>
+          <div className={styles.brand}>
+            {onBack && (
+              <IconButton
+                variant="ghost"
+                color="gray"
+                className={styles.back}
+                aria-label={t('home.back')}
+                onClick={onBack}
+              >
+                <ArrowLeft size={18} />
+              </IconButton>
+            )}
+            <span className={styles.logo} aria-hidden="true">
+              <GraduationCap size={18} />
+            </span>
+            <Text>{t('trainer.title')}</Text>
+          </div>
+          <p className={styles.crumbs}>
+            <span>{title}</span>
+            <span className={styles.crumbDivider} aria-hidden="true">
+              /
+            </span>
+            {crumb ? (
+              <>
+                <span>{subject}</span>
+                <span className={styles.crumbDivider} aria-hidden="true">
+                  /
+                </span>
+                <strong>{crumb}</strong>
+              </>
+            ) : (
+              <strong>{subject}</strong>
+            )}
           </p>
-          <AccountMenu />
+          <div className={styles.account}>
+            <AccountMenu />
+          </div>
         </header>
-        {children}
+        <div className={`${styles.body} ${navigator ? '' : styles.bodyWide}`}>
+          {navigator}
+          <div className={styles.stage}>{children}</div>
+        </div>
       </div>
     </div>
+  )
+}
+
+export function TrainerWorkspace({ children }: { children: ReactNode }) {
+  return <main className={styles.workspace}>{children}</main>
+}
+
+// Numbers of the session questions; arrows scroll the list, it is not
+// interactive because the diagnostic order is fixed.
+export function QuestionNavigator({
+  label,
+  items,
+  progress,
+}: {
+  label: string
+  items: NavigatorItem[]
+  progress?: { current: number; total: number }
+}) {
+  const { t } = useTranslation()
+  const list = useRef<HTMLOListElement>(null)
+  const [edges, setEdges] = useState({ start: true, end: true })
+  const measure = useCallback(() => {
+    const node = list.current
+    if (!node) return
+    const vertical = node.scrollHeight > node.clientHeight + 1
+    const scrolled = vertical ? node.scrollTop : node.scrollLeft
+    const extent = vertical
+      ? node.scrollHeight - node.clientHeight
+      : node.scrollWidth - node.clientWidth
+    setEdges({ start: scrolled <= 1, end: scrolled >= extent - 1 })
+  }, [])
+  const current = items.find((item) => item.state === 'current')?.number
+  useEffect(() => {
+    const node = list.current
+    node
+      ?.querySelector('[aria-current="step"]')
+      ?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' })
+    measure()
+  }, [current, items.length, measure])
+  useEffect(() => {
+    window.addEventListener('resize', measure)
+    return () => window.removeEventListener('resize', measure)
+  }, [measure])
+  const scroll = (direction: 1 | -1) => {
+    const node = list.current
+    if (!node) return
+    const vertical = node.scrollHeight > node.clientHeight + 1
+    node.scrollBy?.(
+      vertical ? { top: direction * 120 } : { left: direction * 120 },
+    )
+  }
+  return (
+    <nav className={styles.navigator} aria-label={label}>
+      <button
+        type="button"
+        className={styles.navArrow}
+        aria-label={t('session.scrollBack')}
+        disabled={edges.start}
+        onClick={() => scroll(-1)}
+      >
+        <ChevronUp size={20} aria-hidden="true" />
+      </button>
+      <ol ref={list} className={styles.navList} onScroll={measure}>
+        {items.map((item) => (
+          <li
+            key={item.number}
+            className={styles.navItem}
+            data-state={item.state}
+            aria-current={item.state === 'current' ? 'step' : undefined}
+            aria-label={t(`session.navigator.${item.state}`, {
+              number: item.number,
+            })}
+          >
+            {item.number}
+          </li>
+        ))}
+      </ol>
+      <button
+        type="button"
+        className={styles.navArrow}
+        aria-label={t('session.scrollForward')}
+        disabled={edges.end}
+        onClick={() => scroll(1)}
+      >
+        <ChevronDown size={20} aria-hidden="true" />
+      </button>
+      {progress && (
+        <div
+          className={styles.visuallyHidden}
+          role="progressbar"
+          aria-label={t('session.progressLabel')}
+          aria-valuemin={0}
+          aria-valuemax={progress.total}
+          aria-valuenow={progress.current}
+        />
+      )}
+    </nav>
   )
 }
 
@@ -91,18 +206,18 @@ export function TrainerQuestion({
   const { t } = useTranslation()
   return (
     <section className={styles.question}>
-      <div className={styles.questionToolbar}>
-        <Text className={styles.questionBadge}>{badge}</Text>
+      <div className={styles.eyebrowRow}>
+        <Text className={styles.badge}>{badge}</Text>
+        {eyebrowHeading ? (
+          <Heading as="h2" className={styles.eyebrow}>
+            {eyebrow}
+          </Heading>
+        ) : (
+          <Text as="p" className={styles.eyebrow}>
+            {eyebrow}
+          </Text>
+        )}
       </div>
-      {eyebrowHeading ? (
-        <Heading as="h2" className={styles.eyebrow}>
-          {eyebrow}
-        </Heading>
-      ) : (
-        <Text as="p" className={styles.eyebrow}>
-          {eyebrow}
-        </Text>
-      )}
       <Heading
         as="h1"
         className={`${styles.questionTitle} ${question.length > 300 ? styles.longQuestion : ''}`}
@@ -121,7 +236,7 @@ export function TrainerQuestion({
             {options.map((option, index) => (
               <li key={index} className={styles.option}>
                 <span className={styles.optionLetter} aria-hidden="true">
-                  {index + 1}
+                  {String.fromCharCode(65 + index)}
                 </span>
                 <Text>{option}</Text>
               </li>
@@ -134,19 +249,24 @@ export function TrainerQuestion({
   )
 }
 
-export function TrainerAnswerPanel({
-  error = false,
-  children,
-}: {
-  error?: boolean
-  children: ReactNode
-}) {
+export function TrainerTranscript({ id, text }: { id: string; text?: string }) {
   const { t } = useTranslation()
   return (
-    <aside
-      className={`${styles.answerPanel} ${error ? styles.answerError : ''}`}
-      aria-label={t('trainer.answerArea')}
-    >
+    <section className={styles.transcript} aria-labelledby={id}>
+      <Heading as="h2" id={id} className={styles.eyebrow}>
+        {t('trainer.yourAnswer')}
+      </Heading>
+      <Text as="p" className={styles.transcriptText}>
+        {text ?? t('diagnostic.transcriptPending')}
+      </Text>
+    </section>
+  )
+}
+
+export function TrainerAnswerPanel({ children }: { children: ReactNode }) {
+  const { t } = useTranslation()
+  return (
+    <aside className={styles.panel} aria-label={t('trainer.answerArea')}>
       {children}
     </aside>
   )
@@ -161,10 +281,10 @@ export function TrainerScore({
   maxScore: number
   verdict: string
 }) {
+  const tone =
+    score >= maxScore ? 'correct' : score === 0 ? 'incorrect' : 'partial'
   return (
-    <div
-      className={`${styles.score} ${score === 0 ? styles.scoreIncorrect : score < maxScore ? styles.scorePartial : ''}`}
-    >
+    <div className={styles.score} data-tone={tone}>
       <Text>
         {score} / {maxScore}
       </Text>
@@ -173,84 +293,115 @@ export function TrainerScore({
   )
 }
 
+export function ListenButton({
+  state,
+  disabled,
+  onClick,
+}: {
+  state: 'idle' | 'loading' | 'playing'
+  disabled?: boolean
+  onClick: () => void
+}) {
+  const { t } = useTranslation()
+  return (
+    <button
+      type="button"
+      className={styles.listen}
+      disabled={disabled}
+      onClick={onClick}
+    >
+      <span className={styles.listenIcon} aria-hidden="true">
+        {state === 'loading' ? (
+          <LoaderCircle size={16} className={styles.spinner} />
+        ) : state === 'playing' ? (
+          <Square size={12} fill="currentColor" />
+        ) : (
+          <Play size={14} fill="currentColor" />
+        )}
+      </span>
+      {t(
+        state === 'loading'
+          ? 'trainer.cancelSpeech'
+          : state === 'playing'
+            ? 'trainer.stopSpeech'
+            : 'trainer.playInstruction',
+      )}
+    </button>
+  )
+}
+
+// The voice panel: instruction playback, live waveform with a timer and the
+// answer actions; a failed microphone shows the crossed-out microphone state.
 export function TrainerCapturePanel({
   stage,
   seconds,
   stream,
-  readyHelp,
+  speech,
   errorMessage,
+  micError,
   audioUrl,
+  onSkip,
+  skipDisabled,
   children,
 }: {
   stage: 'ready' | 'permission' | 'recording' | 'processing' | 'error'
   seconds: string
   stream?: MediaStream
-  readyHelp: string
+  speech: ReactNode
   errorMessage?: string
+  micError?: { title: string; help: string }
   audioUrl?: string
+  onSkip?: () => void
+  skipDisabled?: boolean
   children: ReactNode
 }) {
   const { t } = useTranslation()
-  const recording = stage === 'recording'
-  const processing = stage === 'processing'
-  const waiting = stage === 'permission'
-  const failed = stage === 'error'
+  const busy = stage === 'processing' || stage === 'permission'
   return (
-    <TrainerAnswerPanel error={failed}>
-      <Text as="p" className={styles.eyebrow}>
-        {t('trainer.yourAnswer')}
-      </Text>
-      <VoiceIllustration stream={stream} />
-      <Heading as="h2" className={styles.answerTitle}>
-        {t(
-          recording
-            ? 'trainer.recording'
-            : processing
-              ? 'trainer.processing'
-              : waiting
-                ? 'trainer.permission'
-                : 'trainer.answer',
-          { time: seconds },
-        )}
+    <TrainerAnswerPanel>
+      <Heading as="h2" className={styles.panelTitle}>
+        {t('session.answerByVoice')}
       </Heading>
-      {errorMessage ? (
-        <Text as="p" role="alert" className={styles.answerMessage}>
+      <Text as="p" className={styles.panelHelp}>
+        {t('diagnostic.answerHelp')}
+      </Text>
+      {speech}
+      {micError ? (
+        <div className={styles.micError} role="alert">
+          <span className={styles.micErrorIcon} aria-hidden="true">
+            <MicOff size={44} />
+          </span>
+          <Heading as="h3">{micError.title}</Heading>
+          <Text as="p">{micError.help}</Text>
+        </div>
+      ) : (
+        <div className={styles.wave} aria-hidden={busy ? undefined : true}>
+          {busy ? (
+            <LoaderCircle size={40} className={styles.spinner} />
+          ) : (
+            <LiveWaveform stream={stream} />
+          )}
+          {busy ? (
+            <Text className={styles.waveStatus} role="status">
+              {t(
+                stage === 'permission'
+                  ? 'trainer.allow'
+                  : 'session.processingStatus',
+              )}
+            </Text>
+          ) : (
+            <Text className={styles.timer}>{seconds}</Text>
+          )}
+        </div>
+      )}
+      {errorMessage && !micError && (
+        <Text as="p" role="alert" className={styles.alert}>
           <CircleAlert size={16} aria-hidden="true" />
           {errorMessage}
         </Text>
-      ) : (
-        <Text as="p" className={styles.instructions}>
-          {t(
-            recording
-              ? 'trainer.recordingHelp'
-              : processing
-                ? 'trainer.processingHelp'
-                : waiting
-                  ? 'trainer.permissionHelp'
-                  : readyHelp,
-          )}
-        </Text>
       )}
-      {recording ? (
-        <div className={styles.recordingTimer}>
-          <span />
-          {seconds}
-        </div>
-      ) : processing || waiting ? (
-        <div className={styles.processingIndicator}>
-          <LoaderCircle
-            size={32}
-            className={styles.spinner}
-            aria-hidden="true"
-          />
-        </div>
-      ) : (
-        <div className={styles.microphone} aria-hidden="true">
-          <Mic size={40} />
-        </div>
-      )}
-      {children}
-      {audioUrl && failed && (
+      <div className={styles.actions}>{children}</div>
+      {audioUrl && stage === 'error' && (
         <div className={styles.audio}>
           <audio
             controls
@@ -259,18 +410,17 @@ export function TrainerCapturePanel({
           />
         </div>
       )}
-      {!failed && (
-        <Text as="p" className={styles.microphoneStatus} aria-live="polite">
-          {t(
-            recording
-              ? 'session.recordingStatus'
-              : processing
-                ? 'session.processingStatus'
-                : waiting
-                  ? 'trainer.allow'
-                  : 'session.microphoneReady',
-          )}
-        </Text>
+      <div className={styles.spacer} />
+      {onSkip && (
+        <Button
+          variant="outline"
+          color="gray"
+          className={styles.skip}
+          disabled={skipDisabled}
+          onClick={onSkip}
+        >
+          {t('session.skipQuestion')}
+        </Button>
       )}
     </TrainerAnswerPanel>
   )

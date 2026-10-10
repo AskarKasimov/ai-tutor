@@ -532,6 +532,33 @@ export function useDiagnosticVoice(
       if (current === generation.current) locked.current = false
     }
   }
+  // Sends prepared audio, such as the spoken skip phrase, as the answer.
+  async function submitAudio(blob: Blob) {
+    if (locked.current || recording.current || !task) return
+    locked.current = true
+    const current = generation.current
+    const capturedTask = task
+    stopSpeech()
+    setError(undefined)
+    setCaptureError('')
+    try {
+      audio.current?.dispose()
+      audio.current = null
+      setAudioUrl(undefined)
+      pending.current = {
+        input: diagnostic.createSubmission(
+          sessionId,
+          capturedTask.variant_task_id,
+          blob,
+          capturedTask.role,
+        ),
+        task: capturedTask,
+      }
+      await send(current)
+    } finally {
+      if (current === generation.current) locked.current = false
+    }
+  }
   async function retry() {
     if (locked.current || !pending.current) return
     locked.current = true
@@ -578,6 +605,7 @@ export function useDiagnosticVoice(
     start,
     stop,
     retry,
+    submitAudio,
     speak,
     reset,
   }

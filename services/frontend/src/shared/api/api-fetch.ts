@@ -37,6 +37,11 @@ function recoverSession(): Promise<Response> {
   return recovery!
 }
 
+// Same-origin static files bundled with the app, served in every API mode.
+export function fetchStaticAsset(path: string): Promise<Response> {
+  return fetch(`${import.meta.env.BASE_URL}${path.replace(/^\//, '')}`)
+}
+
 export async function apiFetch(
   url: string,
   options?: RequestInit,

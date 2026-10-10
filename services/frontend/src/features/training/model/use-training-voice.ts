@@ -310,6 +310,39 @@ export function useTrainingVoice(
     }
   }, [accepted, exercise, progress.session_id, send, training])
 
+  // Sends prepared audio, such as the spoken skip phrase, as the answer.
+  const submitAudio = useCallback(
+    async (blob: Blob) => {
+      if (
+        locked.current ||
+        recording.current ||
+        accepted ||
+        acceptedRef.current
+      )
+        return
+      const operation = ++lockToken.current
+      locked.current = true
+      const current = generation.current
+      stopSpeech()
+      setError(undefined)
+      setCaptureError('')
+      try {
+        pending.current = {
+          submission: training.createTrainingSubmission(
+            progress.session_id,
+            exercise.exercise_id,
+            blob,
+          ),
+          exercise,
+        }
+        await send(current)
+      } finally {
+        if (operation === lockToken.current) locked.current = false
+      }
+    },
+    [accepted, exercise, progress.session_id, send, stopSpeech, training],
+  )
+
   const retry = useCallback(async () => {
     if (locked.current || !pending.current) return
     const operation = ++lockToken.current
@@ -552,6 +585,7 @@ export function useTrainingVoice(
     start,
     stop,
     retry,
+    submitAudio,
     speak,
     next,
     reset,

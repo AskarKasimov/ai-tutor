@@ -1,4 +1,9 @@
-export { apiFetch, configureMockApiHandler, isMockApi } from './api-fetch'
+export {
+  apiFetch,
+  configureMockApiHandler,
+  fetchStaticAsset,
+  isMockApi,
+} from './api-fetch'
 export {
   VoiceApiError,
   StoredAudioError,

@@ -13,7 +13,7 @@ function QuietWaveform() {
   return <div className={styles.waveBars} />
 }
 
-function LiveWaveform({ stream }: { stream?: MediaStream }) {
+export function LiveWaveform({ stream }: { stream?: MediaStream }) {
   const container = useRef<HTMLDivElement>(null)
   const waveform = useRef<ReturnType<typeof createVoiceWaveform> | null>(null)
   const [unavailable, setUnavailable] = useState(false)

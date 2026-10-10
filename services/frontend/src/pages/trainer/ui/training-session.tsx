@@ -1,18 +1,32 @@
 import { Button, Flex, Heading, Text } from '@radix-ui/themes'
 import { Mic, RotateCcw, Square } from 'lucide-react'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { TrainingApiError, type TrainingProgress } from '@/entities/training'
 import { isMockApi } from '@/shared/api'
 import { useTrainingSession, useTrainingVoice } from '@/features/training'
 import { TrainingHistory } from './training-history'
 import {
+  ListenButton,
+  QuestionNavigator,
   TrainerAnswerPanel,
   TrainerCapturePanel,
   TrainerQuestion,
   TrainerScore,
   TrainerShell,
+  TrainerTranscript,
+  TrainerWorkspace,
+  sessionStyles,
 } from './trainer-shared'
+import type { NavigatorItem } from './trainer-shared'
+import {
+  initialTrack,
+  readTrack,
+  recordTrainingAnswer,
+  writeTrack,
+} from '../model/question-track'
+import type { QuestionTrack } from '../model/question-track'
+import { loadSkipAnswer } from '../api/skip-answer'
 import styles from './trainer-layout.module.scss'
 
 function errorCode(error: unknown) {
@@ -33,6 +47,52 @@ function errorCode(error: unknown) {
     return 'training.conflict'
   }
   return 'training.submitError'
+}
+
+// Training is endless: answered exercises keep the score colors recorded in
+// this browser and the open exercise is current.
+function useTrainingTrack(
+  progress: TrainingProgress,
+  result: TrainingProgress['answer'] | undefined,
+): NavigatorItem[] {
+  const id = progress.session_id
+  const store = useRef<{ id?: string; track: QuestionTrack }>({
+    track: initialTrack(0, 0),
+  })
+  if (store.current.id !== id)
+    store.current = {
+      id,
+      track: readTrack(id) ?? initialTrack(progress.answer_count, 0),
+    }
+  const [, rerender] = useState(0)
+  useEffect(() => {
+    if (!result) return
+    const next = recordTrainingAnswer(
+      store.current.track,
+      result.sequence,
+      result.score,
+      result.max_score,
+    )
+    store.current = { id, track: next }
+    writeTrack(id, next)
+    rerender((value) => value + 1)
+  }, [id, result])
+  const answered = Math.max(
+    progress.answer_count,
+    store.current.track.states.length,
+  )
+  const items: NavigatorItem[] = Array.from({ length: answered }, (_, i) => {
+    const state = store.current.track.states[i]
+    return {
+      number: i + 1,
+      state:
+        state === 'correct' || state === 'partial' || state === 'incorrect'
+          ? state
+          : 'done',
+    }
+  })
+  if (!result) items.push({ number: answered + 1, state: 'current' })
+  return items
 }
 
 export function TrainingSession({
@@ -111,18 +171,44 @@ export function TrainingSession({
     if (recording) voice.next()
     onBack()
   }
+  const track = useTrainingTrack(progress, result)
+  const [skipFailed, setSkipFailed] = useState(false)
+  async function skip() {
+    setSkipFailed(false)
+    try {
+      await voice.submitAudio(await loadSkipAnswer())
+    } catch {
+      setSkipFailed(true)
+    }
+  }
+  const unavailable =
+    missing || resource.query.isPending || resource.query.isError
+  const micError =
+    voice.captureError === 'denied' || voice.captureError === 'unavailable'
+      ? {
+          title: t('trainer.micFailedTitle'),
+          help: t('trainer.micFailedHelp'),
+        }
+      : undefined
   return (
     <TrainerShell
       title={t('training.title')}
       subject={progress.subject_name}
-      progress={{
-        label: t('training.roundCount', {
-          round: result?.round ?? progress.round,
-          count: result?.sequence ?? progress.answer_count + 1,
-        }),
-      }}
+      crumb={t('training.roundCount', {
+        round: result?.round ?? progress.round,
+        count: result?.sequence ?? progress.answer_count + 1,
+      })}
+      onBack={unavailable ? undefined : goBack}
+      navigator={
+        unavailable ? undefined : (
+          <QuestionNavigator
+            label={t('training.answersNavigator')}
+            items={track}
+          />
+        )
+      }
     >
-      {missing || resource.query.isPending || resource.query.isError ? (
+      {unavailable ? (
         <main className={styles.notice}>
           {missing ? (
             <>
@@ -149,11 +235,7 @@ export function TrainingSession({
         </main>
       ) : (
         <>
-          <Button variant="soft" onClick={goBack}>
-            {t('home.back')}
-          </Button>
-          {isMockApi() && <Text role="note">{t('training.demoNotice')}</Text>}
-          <main className={styles.workspace}>
+          <TrainerWorkspace>
             <TrainerQuestion
               badge={t('session.practice')}
               eyebrow={exercise.outcome_name}
@@ -161,24 +243,39 @@ export function TrainingSession({
               question={exercise.question}
               options={exercise.options}
             >
-              <Text as="p" className={styles.trainingInstruction}>
+              {isMockApi() && (
+                <Text as="p" role="note" className={sessionStyles.note}>
+                  {t('training.demoNotice')}
+                </Text>
+              )}
+              <Text as="p" className={sessionStyles.note}>
                 {exercise.voice_instruction}
               </Text>
-              <section
-                className={styles.savedAnswer}
-                aria-labelledby="training-transcript-title"
-              >
-                <Heading
-                  as="h2"
-                  id="training-transcript-title"
-                  className={styles.eyebrow}
-                >
-                  {t('diagnostic.transcript')}
-                </Heading>
-                <Text as="p" className={styles.transcript}>
-                  {result?.text ?? t('diagnostic.transcriptPending')}
-                </Text>
-              </section>
+              <TrainerTranscript
+                id="training-transcript-title"
+                text={result?.text}
+              />
+              <div className={sessionStyles.extra}>
+                <section>
+                  <Heading as="h2">{t('training.targets')}</Heading>
+                  <ul>
+                    {progress.targets.map((target, index) => (
+                      <li key={`${target.outcome_id}-${index}`}>
+                        <Text>{target.outcome_name}</Text>
+                        {target.last_score !== null && (
+                          <Text> · {target.last_score}</Text>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                  <Text>
+                    {t('training.latestScore', {
+                      score: progress.answer?.score ?? '—',
+                    })}
+                  </Text>
+                </section>
+                <TrainingHistory userId={userId} progress={progress} />
+              </div>
             </TrainerQuestion>
             {result ? (
               <TrainerAnswerPanel>
@@ -215,51 +312,63 @@ export function TrainingSession({
                     />
                   </div>
                 )}
-                <div className={styles.resultActions}>
-                  <Button className={styles.primary} onClick={voice.next}>
+                <div className={sessionStyles.actions}>
+                  <Button
+                    className={sessionStyles.primary}
+                    onClick={voice.next}
+                  >
                     {t('training.next')}
                   </Button>
                 </div>
               </TrainerAnswerPanel>
             ) : (
               <>
-                <div className={styles.repeatControl}>
-                  <Button
-                    className={styles.repeat}
-                    variant="soft"
-                    disabled={recording || processing || waiting}
-                    onClick={() => void voice.speak()}
-                  >
-                    <RotateCcw size={18} aria-hidden="true" />{' '}
-                    {t('trainer.playInstruction')}
-                  </Button>
-                  {voice.audioStatus !== 'idle' &&
-                    voice.audioStatus !== 'ready' && (
-                      <Text role="status" className={styles.speechError}>
-                        {t(`training.audio.${voice.audioStatus}`)}
-                      </Text>
-                    )}
-                  {voice.speechError && (
-                    <Text role="alert" className={styles.speechError}>
-                      {t('trainer.speechError')}
-                    </Text>
-                  )}
-                </div>
                 <TrainerCapturePanel
                   stage={voice.stage === 'result' ? 'ready' : voice.stage}
                   seconds={seconds}
                   stream={voice.stream}
-                  readyHelp="diagnostic.answerHelp"
-                  errorMessage={
-                    error
-                      ? t(
-                          voice.error
-                            ? errorCode(voice.error)
-                            : captureErrorKey,
-                        )
-                      : undefined
+                  speech={
+                    <>
+                      <ListenButton
+                        state={
+                          voice.speaking
+                            ? 'playing'
+                            : voice.audioStatus === 'loading'
+                              ? 'loading'
+                              : 'idle'
+                        }
+                        disabled={recording || processing || waiting}
+                        onClick={() => void voice.speak()}
+                      />
+                      {voice.audioStatus !== 'idle' &&
+                        voice.audioStatus !== 'ready' &&
+                        voice.audioStatus !== 'loading' && (
+                          <Text role="status" className={sessionStyles.hint}>
+                            {t(`training.audio.${voice.audioStatus}`)}
+                          </Text>
+                        )}
+                      {voice.speechError && (
+                        <Text role="alert" className={sessionStyles.hint}>
+                          {t('trainer.speechError')}
+                        </Text>
+                      )}
+                    </>
                   }
+                  errorMessage={
+                    skipFailed
+                      ? t('session.skipError')
+                      : error
+                        ? t(
+                            voice.error
+                              ? errorCode(voice.error)
+                              : captureErrorKey,
+                          )
+                        : undefined
+                  }
+                  micError={micError}
                   audioUrl={voice.answerUrl}
+                  onSkip={() => void skip()}
+                  skipDisabled={recording || processing || waiting}
                 >
                   {error && refreshCurrent ? (
                     <Button
@@ -295,19 +404,31 @@ export function TrainingSession({
                       )}
                     </Flex>
                   ) : error ? (
-                    <Button className={styles.primary} onClick={recordAgain}>
+                    <Button
+                      className={sessionStyles.primary}
+                      onClick={recordAgain}
+                    >
                       <Mic size={16} aria-hidden="true" />
-                      {t('diagnostic.recordAgain')}
+                      {t(micError ? 'trainer.retry' : 'diagnostic.recordAgain')}
                     </Button>
                   ) : (
                     <Button
-                      className={styles.primary}
+                      className={
+                        recording ? sessionStyles.stop : sessionStyles.primary
+                      }
+                      variant={recording ? 'soft' : 'solid'}
                       disabled={processing || waiting}
                       onClick={() =>
                         void (recording ? voice.stop() : voice.start())
                       }
                     >
-                      {recording && <Square size={16} aria-hidden="true" />}
+                      {recording && (
+                        <Square
+                          size={14}
+                          fill="currentColor"
+                          aria-hidden="true"
+                        />
+                      )}
                       {t(
                         recording
                           ? 'trainer.stopRecording'
@@ -315,34 +436,12 @@ export function TrainingSession({
                             ? 'trainer.allow'
                             : 'trainer.start',
                       )}
-                      {recording && ` · ${voice.seconds}s`}
                     </Button>
                   )}
                 </TrainerCapturePanel>
               </>
             )}
-          </main>
-          <div className={styles.trainingDetails}>
-            <section>
-              <Heading as="h2">{t('training.targets')}</Heading>
-              <ul>
-                {progress.targets.map((target, index) => (
-                  <li key={`${target.outcome_id}-${index}`}>
-                    <Text>{target.outcome_name}</Text>
-                    {target.last_score !== null && (
-                      <Text> · {target.last_score}</Text>
-                    )}
-                  </li>
-                ))}
-              </ul>
-              <Text>
-                {t('training.latestScore', {
-                  score: progress.answer?.score ?? '—',
-                })}
-              </Text>
-            </section>
-            <TrainingHistory userId={userId} progress={progress} />
-          </div>
+          </TrainerWorkspace>
         </>
       )}
     </TrainerShell>

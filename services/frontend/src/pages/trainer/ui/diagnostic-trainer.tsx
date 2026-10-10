@@ -515,7 +515,6 @@ function Question({
   return (
     <TrainerQuestion
       badge={t(`diagnostic.${task.role}`)}
-      eyebrow={task.competency_name}
       question={task.question}
       options={task.options}
     >

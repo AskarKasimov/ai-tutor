@@ -12,6 +12,7 @@ export { diagnosticApiBase } from './api/diagnostic-api'
 export { DiagnosticApiError } from './model/diagnostic-error'
 export {
   createSubmission,
+  createSkipSubmission,
   createVariant,
   fetchDiagnosticAudioFile,
   readDiagnosticAudio,

@@ -254,6 +254,50 @@ func (h *Handler) Answer(w http.ResponseWriter, r *http.Request) {
 	httpx.JSON(w, http.StatusOK, progressResponse(result))
 }
 
+type SkipRequest struct {
+	VariantTaskID string `json:"variant_task_id" minLength:"1" maxLength:"128" binding:"required"`
+}
+
+// Skip advances past the current task without speech recognition or grading.
+// @Summary Пропустить вопрос диагностики
+// @Tags Диагностика
+// @Security accessCookie
+// @Accept json
+// @Produce json
+// @Param id path string true "ID сессии"
+// @Param Idempotency-Key header string true "Ключ повтора запроса"
+// @Param request body SkipRequest true "Текущее задание"
+// @Success 200 {object} ProgressResponse
+// @Failure 401 {object} fault.Error
+// @Failure 404 {object} fault.Error
+// @Failure 409 {object} fault.Error
+// @Failure 422 {object} fault.Error
+// @Failure 503 {object} fault.Error
+// @Router /diagnostic-sessions/{id}/skip [post]
+func (h *Handler) Skip(w http.ResponseWriter, r *http.Request) {
+	principal, ok := httpx.Principal[user.User](r)
+	if !ok {
+		httpx.Error(r.Context(), w, fault.New(fault.Unauthorized, "UNAUTHORIZED", "Требуется действующая сессия."))
+		return
+	}
+	if err := noQuery(r); err != nil {
+		httpx.Error(r.Context(), w, err)
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, 32*1024)
+	var request SkipRequest
+	if err := httpx.DecodeJSON(r, &request); err != nil {
+		httpx.Error(r.Context(), w, err)
+		return
+	}
+	result, err := h.service.Skip(r.Context(), principal.ID, r.PathValue("id"), request.VariantTaskID, r.Header.Get("Idempotency-Key"))
+	if err != nil {
+		httpx.Error(r.Context(), w, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, progressResponse(result))
+}
+
 // Result returns the structured results of a completed session.
 // @Summary Прочитать результат диагностики
 // @Tags Диагностика

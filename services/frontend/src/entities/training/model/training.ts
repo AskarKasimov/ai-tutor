@@ -25,6 +25,7 @@ export type TrainingCriterionResult = {
   explanation: string
 }
 export type TrainingAttempt = {
+  skipped?: boolean
   sequence: number
   exercise_id: string
   round: number
@@ -85,4 +86,5 @@ export type TrainingSubmission = {
   exerciseId: string
   key: string
   body: FormData
+  skip?: boolean
 }

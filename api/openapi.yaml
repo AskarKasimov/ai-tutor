@@ -392,6 +392,8 @@ components:
           maximum: 2
           minimum: 0
           type: integer
+        skipped:
+          type: boolean
         source_task_id:
           type: string
         task:
@@ -497,6 +499,8 @@ components:
     diagnostichttp.ProgressResponse:
       additionalProperties: false
       properties:
+        answer_skipped:
+          type: boolean
         completed_tasks:
           minimum: 0
           type: integer
@@ -606,6 +610,16 @@ components:
         - total_tasks
         - untested_basics
         - variant_id
+      type: object
+    diagnostichttp.SkipRequest:
+      additionalProperties: false
+      properties:
+        variant_task_id:
+          maxLength: 128
+          minLength: 1
+          type: string
+      required:
+        - variant_task_id
       type: object
     diagnostichttp.SkippedCompetencyResponse:
       additionalProperties: false
@@ -1133,6 +1147,8 @@ components:
           type: integer
         sequence:
           type: integer
+        skipped:
+          type: boolean
         target_index:
           type: integer
         text:
@@ -1354,6 +1370,16 @@ components:
       required:
         - items
         - targets
+      type: object
+    traininghttp.SkipRequest:
+      additionalProperties: false
+      properties:
+        exercise_id:
+          maxLength: 128
+          minLength: 1
+          type: string
+      required:
+        - exercise_id
       type: object
     traininghttp.StartRequest:
       additionalProperties: false
@@ -2562,6 +2588,73 @@ paths:
       tags:
         - Диагностика
       x-implementation: implemented
+  /diagnostic-sessions/{id}/skip:
+    post:
+      parameters:
+        - description: ID сессии
+          in: path
+          name: id
+          required: true
+          schema:
+            type: string
+        - description: Ключ повтора запроса
+          in: header
+          name: Idempotency-Key
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/diagnostichttp.SkipRequest'
+              description: Текущее задание
+              summary: request
+        description: Текущее задание
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/diagnostichttp.ProgressResponse'
+          description: OK
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unauthorized
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Not Found
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Conflict
+        "422":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unprocessable Entity
+        "503":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Service Unavailable
+      security:
+        - accessCookie: []
+      summary: Пропустить вопрос диагностики
+      tags:
+        - Диагностика
+      x-implementation: implemented
   /diagnostic-sessions/{id}/training:
     get:
       parameters:
@@ -3368,6 +3461,73 @@ paths:
       security:
         - accessCookie: []
       summary: История ответов тренировки
+      tags:
+        - Тренировка
+      x-implementation: implemented
+  /training-sessions/{id}/skip:
+    post:
+      parameters:
+        - description: ID сессии
+          in: path
+          name: id
+          required: true
+          schema:
+            type: string
+        - description: Ключ повтора запроса
+          in: header
+          name: Idempotency-Key
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/traininghttp.SkipRequest'
+              description: Текущее упражнение
+              summary: request
+        description: Текущее упражнение
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/training.Progress'
+          description: OK
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unauthorized
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Not Found
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Conflict
+        "422":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unprocessable Entity
+        "503":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Service Unavailable
+      security:
+        - accessCookie: []
+      summary: Пропустить вопрос тренировки
       tags:
         - Тренировка
       x-implementation: implemented

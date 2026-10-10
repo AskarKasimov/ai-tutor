@@ -105,4 +105,11 @@ it('loads a focused preview before starting and explicitly starts the frozen pla
       'Какой тип задачи предсказывает числовое значение?',
     ),
   ).toBeVisible()
+  fireEvent.click(screen.getByRole('button', { name: 'Пропустить вопрос' }))
+  expect(
+    await screen.findByText(
+      'Вопрос пропущен. Ответ оценён в 0 баллов. Продолжите со следующим вопросом.',
+    ),
+  ).toBeVisible()
+  expect(audio.startRecording).toHaveBeenCalledTimes(2)
 })

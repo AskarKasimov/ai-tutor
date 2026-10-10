@@ -52,13 +52,18 @@ export function recordDiagnosticAnswer(
     skipped_tasks: number
     score?: number
     grader_max_score?: number
+    answer_skipped?: boolean
   },
 ): { track: QuestionTrack; index: number } {
   const done = response.completed_tasks + response.skipped_tasks
   const newlySkipped = Math.max(0, response.skipped_tasks - track.skipped)
   const index = Math.max(0, done - 1 - newlySkipped)
   const states = padded(track.states, index)
-  states.push(scoreState(response.score ?? 0, response.grader_max_score ?? 1))
+  states.push(
+    response.answer_skipped
+      ? 'skipped'
+      : scoreState(response.score ?? 0, response.grader_max_score ?? 1),
+  )
   for (let i = 0; i < newlySkipped; i++) states.push('skipped')
   return { track: { states, skipped: response.skipped_tasks }, index }
 }
@@ -69,9 +74,10 @@ export function recordTrainingAnswer(
   sequence: number,
   score: number,
   maxScore: number,
+  skipped = false,
 ): QuestionTrack {
   const states = padded(track.states, Math.max(track.states.length, sequence))
-  states[sequence - 1] = scoreState(score, maxScore)
+  states[sequence - 1] = skipped ? 'skipped' : scoreState(score, maxScore)
   return { states, skipped: 0 }
 }
 

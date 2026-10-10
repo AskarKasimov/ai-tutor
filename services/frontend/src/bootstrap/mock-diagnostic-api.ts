@@ -118,7 +118,7 @@ export function mockDiagnosticResponse(
     return json(progress(session), 201)
   }
   const match = path.match(
-    /\/diagnostic-sessions\/([^/]+)(?:\/(answers|result|feedback))?$/,
+    /\/diagnostic-sessions\/([^/]+)(?:\/(answers|skip|result|feedback))?$/,
   )
   if (!match) return undefined
   const session = sessions.get(match[1])
@@ -126,7 +126,7 @@ export function mockDiagnosticResponse(
     return json({ code: 'NOT_FOUND' }, 404)
   const operation = match[2]
   if (!operation && method === 'GET') return json(progress(session))
-  if (operation === 'answers' && method === 'POST') {
+  if ((operation === 'answers' || operation === 'skip') && method === 'POST') {
     const key = new Headers(options.headers).get('Idempotency-Key')
     if (session.accepted)
       return key === session.answerKey
@@ -135,12 +135,15 @@ export function mockDiagnosticResponse(
     const form = options.body
     const audio = form instanceof FormData ? form.get('audio') : null
     if (
-      !(form instanceof FormData) ||
-      form.get('variant_task_id') !== task.variant_task_id ||
-      !(audio instanceof Blob) ||
-      !audio.size
+      operation === 'skip'
+        ? body.variant_task_id !== task.variant_task_id
+        : !(form instanceof FormData) ||
+          form.get('variant_task_id') !== task.variant_task_id ||
+          !(audio instanceof Blob) ||
+          !audio.size
     )
       return json({ code: 'INVALID_AUDIO' }, 422)
+    const skipped = operation === 'skip'
     const now = Math.floor(Date.now() / 1000)
     session.answer = {
       variant_task_id: task.variant_task_id,
@@ -148,36 +151,54 @@ export function mockDiagnosticResponse(
       competency_id: task.competency_id,
       outcome_id: task.outcome_id,
       role: task.role,
+      skipped,
       task,
       transcription_id: crypto.randomUUID(),
-      text: 'Это классификация, потому что результат относится к одному из двух классов.',
-      grader_score: 2,
+      text: skipped
+        ? 'Я не знаю. Пропустить'
+        : 'Это классификация, потому что результат относится к одному из двух классов.',
+      grader_score: skipped ? 0 : 2,
       grader_max_score: 2,
-      score: 2,
-      verdict: 'correct',
-      criterion_results: [
-        {
-          key: 'choice',
-          satisfied: true,
-          explanation: 'Тип задачи назван верно.',
-        },
-      ],
-      feedback: [
-        'Ответ верный.',
-        'Вы правильно определили классификацию.',
-        'Закрепите отличие от регрессии.',
-      ],
+      score: skipped ? 0 : 2,
+      verdict: skipped ? 'incorrect' : 'correct',
+      criterion_results: skipped
+        ? [
+            {
+              key: 'skipped',
+              satisfied: false,
+              explanation: 'Вопрос пропущен.',
+            },
+          ]
+        : [
+            {
+              key: 'choice',
+              satisfied: true,
+              explanation: 'Тип задачи назван верно.',
+            },
+          ],
+      feedback: skipped
+        ? [
+            'Вопрос пропущен.',
+            'Ответ оценён в 0 баллов.',
+            'Продолжите со следующим вопросом.',
+          ]
+        : [
+            'Ответ верный.',
+            'Вы правильно определили классификацию.',
+            'Закрепите отличие от регрессии.',
+          ],
       created_at: now,
     }
     session.answerKey = key ?? undefined
     session.accepted = {
       ...progress(session),
       text: session.answer.text,
-      score: 2,
-      grader_score: 2,
+      score: session.answer.score,
+      grader_score: session.answer.grader_score,
       grader_max_score: 2,
-      verdict: 'correct',
+      verdict: session.answer.verdict,
       criterion_results: session.answer.criterion_results,
+      answer_skipped: skipped,
       feedback: session.answer.feedback,
     }
     return json(session.accepted)
@@ -193,7 +214,7 @@ export function mockDiagnosticResponse(
       skipped_competencies: [],
       completed_tasks: 1,
       total_tasks: 1,
-      diagnostic_score: 2,
+      diagnostic_score: session.answer.score,
       maximum_score: 2,
       answers: [session.answer],
       untested_basics: [],
@@ -203,13 +224,25 @@ export function mockDiagnosticResponse(
     if (!session.answer) return json({ code: 'SESSION_NOT_COMPLETED' }, 409)
     return json({
       session_id: session.id,
-      diagnostic_score: 2,
+      diagnostic_score: session.answer.score,
       maximum_score: 2,
-      score_percentage: 100,
-      summary: 'Диагностика показала уверенное понимание классификации.',
-      strengths: ['Вы уверенно различаете задачи классификации.'],
+      score_percentage: session.answer.score * 50,
+      summary: session.answer.skipped
+        ? 'Вопрос пропущен и оценён в 0 баллов.'
+        : 'Диагностика показала уверенное понимание классификации.',
+      strengths: session.answer.skipped
+        ? []
+        : ['Вы уверенно различаете задачи классификации.'],
       confirmed_gaps: [],
-      partial_competencies: [],
+      partial_competencies: session.answer.skipped
+        ? [
+            {
+              competency_id: task.competency_id,
+              competency_name: task.competency_name,
+              details: 'Ответ «Я не знаю. Пропустить» оценён в 0 баллов.',
+            },
+          ]
+        : [],
       unverified_competencies: [],
       training_recommendations: [],
       generated_at: Math.floor(Date.now() / 1000),

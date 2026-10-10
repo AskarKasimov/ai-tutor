@@ -81,7 +81,6 @@ func AnalyzeResult(result diagnostic.Result) DeterministicReport {
 		}
 		mainAns := grp.main
 		compName := mainAns.Task.CompetencyName
-
 		if mainAns.Score == 2 {
 			report.Strengths = append(report.Strengths,
 				fmt.Sprintf("Компетенция «%s»: высокий уровень владения (%s).", compName, mainAns.Task.OutcomeName))

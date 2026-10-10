@@ -16,6 +16,7 @@ export type DiagnosticTask = {
 }
 
 export type DiagnosticProgress = {
+  answer_skipped?: boolean
   text?: string
   session_id: string
   status: 'active' | 'completed'
@@ -39,6 +40,7 @@ export type DiagnosticAudioMetadata = {
 }
 
 export type DiagnosticAnswer = {
+  skipped?: boolean
   variant_task_id: string
   source_task_id: string
   competency_id: string

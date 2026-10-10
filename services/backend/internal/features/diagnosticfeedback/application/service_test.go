@@ -206,6 +206,17 @@ func TestAnalyzeResultDeterministicRules(t *testing.T) {
 	}
 }
 
+func TestAnalyzeResultTreatsUserSkippedAnswerAsZero(t *testing.T) {
+	result := diagnostic.Result{MaximumScore: 2, Answers: []diagnostic.Answer{
+		{CompetencyID: "c1", OutcomeID: "main", Role: "main", Score: 1, Task: diagnostic.TaskSnapshot{CompetencyName: "Тема", OutcomeID: "main"}},
+		{CompetencyID: "c1", OutcomeID: "basic", Role: "basic", Skipped: true, Task: diagnostic.TaskSnapshot{CompetencyName: "Тема", OutcomeID: "basic"}},
+	}}
+	report := AnalyzeResult(result)
+	if len(report.UnverifiedCompetencies) != 0 || len(report.PartialCompetencies) != 0 || len(report.ConfirmedGaps) != 1 || report.ConfirmedGaps[0].OutcomeID != "basic" {
+		t.Fatalf("skipped zero-score basic should be a confirmed gap: %+v", report)
+	}
+}
+
 func TestFeedbackServiceCachingAndErrorHandling(t *testing.T) {
 	reader := &mockReader{
 		result: diagnostic.Result{

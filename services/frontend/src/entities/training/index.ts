@@ -13,6 +13,7 @@ export { TrainingApiError } from './model/training-api-error'
 export type { TrainingApi } from './api/training-api'
 export {
   createTrainingSubmission,
+  createTrainingSkipSubmission,
   fetchTrainingAudioFile,
   findTrainingForDiagnostic,
   readTrainingAudio,

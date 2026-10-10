@@ -14,6 +14,47 @@ import (
 	diagnostichttp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/diagnostic/transport/http"
 )
 
+func TestDiagnosticSkipAdvancesWithoutAudio(t *testing.T) {
+	f := newFixture(t)
+	f.app.cfg.APIMode = "mock"
+	f.handler = f.app.Handler()
+	access, _, _ := f.register(t, "diagnostic-skip@example.edu")
+	admin := f.admin(t)
+	if w := upload(f, "/admin/subjects/subject:test/competency-map/import", "file", "map.csv", "text/csv", variantMapCSV(t), admin); w.Code != 200 {
+		t.Fatal(w.Body.String())
+	}
+	post := func(path, key, body string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest(http.MethodPost, path, strings.NewReader(body))
+		r.Header.Set("Content-Type", "application/json")
+		r.Header.Set("Idempotency-Key", key)
+		r.AddCookie(access)
+		w := httptest.NewRecorder()
+		f.handler.ServeHTTP(w, r)
+		return w
+	}
+	variant := post("/variants", "skip-variant", `{"subject_id":"subject:test"}`)
+	var created struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(variant.Body.Bytes(), &created); err != nil || created.ID == "" {
+		t.Fatalf("variant: %d %s", variant.Code, variant.Body.String())
+	}
+	started := post("/diagnostic-sessions", "skip-start", `{"variant_id":"`+created.ID+`"}`)
+	var progress diagnostichttp.ProgressResponse
+	if err := json.Unmarshal(started.Body.Bytes(), &progress); err != nil || progress.Current == nil {
+		t.Fatalf("start: %d %s", started.Code, started.Body.String())
+	}
+	request := `{"variant_task_id":"` + progress.Current.ID + `"}`
+	skipped := post("/diagnostic-sessions/"+progress.SessionID+"/skip", "skip-task", request)
+	if err := json.Unmarshal(skipped.Body.Bytes(), &progress); err != nil || skipped.Code != 200 || !progress.AnswerSkipped || progress.Score == nil || *progress.Score != 0 || progress.Current == nil {
+		t.Fatalf("skip: %d %s", skipped.Code, skipped.Body.String())
+	}
+	replay := post("/diagnostic-sessions/"+progress.SessionID+"/skip", "skip-task", request)
+	if replay.Code != 200 || replay.Body.String() != skipped.Body.String() {
+		t.Fatalf("skip replay: %d %s", replay.Code, replay.Body.String())
+	}
+}
+
 func TestDiagnosticSessionAPIProgressOwnershipAndSnapshotPrivacy(t *testing.T) {
 	f := newFixture(t)
 	f.app.cfg.APIMode = "mock"

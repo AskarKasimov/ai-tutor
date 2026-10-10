@@ -222,6 +222,32 @@ func TestMainPerfectSkipsBasicsAndIdempotencySurvivesCompletion(t *testing.T) {
 	}
 }
 
+func TestSkipAdvancesWithoutSpeechOrGrading(t *testing.T) {
+	service, voice, grader, _ := newTestService()
+	started := service.start(t)
+	progress, err := service.Skip(context.Background(), "owner-1", started.SessionID, started.Current.ID, "skip-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if progress.Current == nil || progress.Current.ID != "variant-task-0-1" || progress.Completed != 1 || progress.Score == nil || *progress.Score != 0 || progress.Text != "Я не знаю. Пропустить" {
+		t.Fatalf("skip did not advance with zero score: %+v", progress)
+	}
+	if voice.transcribes != 0 || grader.calls != 0 {
+		t.Fatalf("skip called speech or grader: transcribes=%d grades=%d", voice.transcribes, grader.calls)
+	}
+	replayed, err := service.Skip(context.Background(), "owner-1", started.SessionID, started.Current.ID, "skip-1")
+	if err != nil || replayed.Current == nil || replayed.Current.ID != progress.Current.ID {
+		t.Fatalf("skip replay = %+v, %v", replayed, err)
+	}
+	basic, err := service.Skip(context.Background(), "owner-1", started.SessionID, progress.Current.ID, "skip-2")
+	if err != nil || basic.GraderMaxScore == nil || *basic.GraderMaxScore != 1 || basic.Current == nil || basic.Current.ID != "variant-task-0-2" {
+		t.Fatalf("basic skip = %+v, %v", basic, err)
+	}
+	if voice.transcribes != 0 || grader.calls != 0 {
+		t.Fatalf("basic skip called speech or grader: transcribes=%d grades=%d", voice.transcribes, grader.calls)
+	}
+}
+
 func TestCanceledGradingReleasesReservationAndRetryReusesTranscription(t *testing.T) {
 	service, voice, grader, _ := newTestService(grade(2))
 	started := service.start(t)

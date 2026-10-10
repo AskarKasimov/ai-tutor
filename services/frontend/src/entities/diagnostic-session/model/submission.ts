@@ -6,4 +6,5 @@ export type DiagnosticSubmission = {
   role: DiagnosticTask['role']
   key: string
   body: FormData
+  skip?: boolean
 }

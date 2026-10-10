@@ -44,6 +44,7 @@ const criterionSchema = z.object({
 })
 const attemptSchema: z.ZodType<TrainingAttempt> = z
   .object({
+    skipped: z.boolean().optional(),
     sequence: count.min(1),
     exercise_id: id,
     round: count.min(1),
@@ -254,18 +255,35 @@ export function createTrainingSubmission(
   return { sessionId, exerciseId, key: crypto.randomUUID(), body }
 }
 
+export function createTrainingSkipSubmission(
+  sessionId: string,
+  exerciseId: string,
+): TrainingSubmission {
+  return {
+    sessionId,
+    exerciseId,
+    key: crypto.randomUUID(),
+    body: new FormData(),
+    skip: true,
+  }
+}
+
 export async function submitTraining(
   input: TrainingSubmission,
   signal: AbortSignal,
 ) {
   const progress = await parse(
     await request(
-      `/training-sessions/${encodeURIComponent(input.sessionId)}/answers`,
+      `/training-sessions/${encodeURIComponent(input.sessionId)}/${input.skip ? 'skip' : 'answers'}`,
       signal,
       {
         method: 'POST',
-        headers: { 'Idempotency-Key': input.key },
-        body: input.body,
+        headers: input.skip
+          ? { 'Idempotency-Key': input.key, 'Content-Type': 'application/json' }
+          : { 'Idempotency-Key': input.key },
+        body: input.skip
+          ? JSON.stringify({ exercise_id: input.exerciseId })
+          : input.body,
       },
       240_000,
     ),
@@ -366,6 +384,7 @@ export type TrainingApi = {
   findTrainingForDiagnostic: typeof findTrainingForDiagnostic
   readTrainingSession: typeof readTrainingSession
   createTrainingSubmission: typeof createTrainingSubmission
+  createTrainingSkipSubmission: typeof createTrainingSkipSubmission
   submitTraining: typeof submitTraining
   resetTrainingAnswer: typeof resetTrainingAnswer
   readTrainingHistory: typeof readTrainingHistory

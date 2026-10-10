@@ -222,6 +222,45 @@ func (h *Handler) Answer(w http.ResponseWriter, r *http.Request) {
 	httpx.JSON(w, 200, v)
 }
 
+type SkipRequest struct {
+	ExerciseID string `json:"exercise_id" minLength:"1" maxLength:"128" binding:"required"`
+}
+
+// Skip advances to the next exercise without speech recognition or grading.
+// @Summary Пропустить вопрос тренировки
+// @Tags Тренировка
+// @Security accessCookie
+// @Accept json
+// @Produce json
+// @Param id path string true "ID сессии"
+// @Param Idempotency-Key header string true "Ключ повтора запроса"
+// @Param request body SkipRequest true "Текущее упражнение"
+// @Success 200 {object} training.Progress
+// @Failure 401 {object} fault.Error
+// @Failure 404 {object} fault.Error
+// @Failure 409 {object} fault.Error
+// @Failure 422 {object} fault.Error
+// @Failure 503 {object} fault.Error
+// @Router /training-sessions/{id}/skip [post]
+func (h *Handler) Skip(w http.ResponseWriter, r *http.Request) {
+	id, ok := owner(w, r)
+	if !ok || !noQuery(w, r) {
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, 32*1024)
+	var request SkipRequest
+	if err := httpx.DecodeJSON(r, &request); err != nil {
+		httpx.Error(r.Context(), w, err)
+		return
+	}
+	v, err := h.service.Skip(r.Context(), id, r.PathValue("id"), request.ExerciseID, r.Header.Get("Idempotency-Key"))
+	if err != nil {
+		httpx.Error(r.Context(), w, err)
+		return
+	}
+	httpx.JSON(w, 200, v)
+}
+
 // ResetAnswer clears a failed, non-active answer reservation so a new recording can be submitted.
 // @Summary Сбросить неудачную отправку ответа
 // @Tags Тренировка

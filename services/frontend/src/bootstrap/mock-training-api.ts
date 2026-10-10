@@ -159,7 +159,7 @@ export async function mockTrainingResponse(
     /^\/api\/v1\/diagnostic-sessions\/([^/]+)\/training$/,
   )
   const sessionMatch = path.match(
-    /^\/api\/v1\/training-sessions\/([^/]+)(?:\/(answers(?:\/reset)?|history|current\/audio))?$/,
+    /^\/api\/v1\/training-sessions\/([^/]+)(?:\/(answers(?:\/reset)?|skip|history|current\/audio))?$/,
   )
   if (previewMatch) {
     const id = decodeURIComponent(previewMatch[1])
@@ -221,23 +221,26 @@ export async function mockTrainingResponse(
   if (!session || session.userId !== userId) return failed('NOT_FOUND', 404)
   const operation = sessionMatch[2]
   if (!operation && method === 'GET') return json(current(session))
-  if (operation === 'answers' && method === 'POST') {
+  if ((operation === 'answers' || operation === 'skip') && method === 'POST') {
     const form = options.body instanceof FormData ? options.body : undefined
-    const exerciseId = form?.get('exercise_id')
+    const exerciseId =
+      operation === 'skip' ? body.exercise_id : form?.get('exercise_id')
     const audio = form?.get('audio')
     const key = new Headers(options.headers).get('Idempotency-Key')
     if (
       typeof exerciseId !== 'string' ||
       !key ||
-      !(audio instanceof Blob) ||
-      !audio.size
+      (operation !== 'skip' && (!(audio instanceof Blob) || !audio.size))
     )
       return failed('INVALID_ANSWER', 422)
-    const audioBytes = new Uint8Array(await audio.arrayBuffer())
+    const skipped = operation === 'skip'
+    const audioBytes = skipped
+      ? new Uint8Array()
+      : new Uint8Array(await (audio as Blob).arrayBuffer())
     const replay = session.accepted.get(key)
     if (replay)
       return replay.exerciseId === exerciseId &&
-        replay.audioType === audio.type &&
+        replay.audioType === (skipped ? 'skip' : (audio as Blob).type) &&
         replay.audioName === (audio instanceof File ? audio.name : '') &&
         replay.audioBytes.length === audioBytes.length &&
         replay.audioBytes.every((byte, index) => byte === audioBytes[index])
@@ -249,27 +252,38 @@ export async function mockTrainingResponse(
     const round = session.answers.length + 1
     const now = Math.floor(Date.now() / 1000)
     const attempt: TrainingAttempt = {
+      skipped,
       sequence: session.answers.length + 1,
       exercise_id: exerciseId,
       round,
       target_index: index,
       transcription_id: crypto.randomUUID(),
-      text: 'Это классификация, потому что результат относится к одному из двух классов.',
-      score: 2,
+      text: skipped
+        ? 'Я не знаю. Пропустить'
+        : 'Это классификация, потому что результат относится к одному из двух классов.',
+      score: skipped ? 0 : 2,
       max_score: 2,
-      verdict: 'correct',
-      criterion_results: [
-        {
-          key: 'choice',
-          satisfied: true,
-          explanation: 'Тип задачи назван верно.',
-        },
-      ],
-      feedback: [
-        'Ответ верный.',
-        'Вы правильно определили тип задачи.',
-        'Продолжайте применять этот критерий.',
-      ],
+      verdict: skipped ? 'incorrect' : 'correct',
+      criterion_results: skipped
+        ? []
+        : [
+            {
+              key: 'choice',
+              satisfied: true,
+              explanation: 'Тип задачи назван верно.',
+            },
+          ],
+      feedback: skipped
+        ? [
+            'Вопрос пропущен.',
+            'Ответ оценён в 0 баллов.',
+            'Продолжите со следующим вопросом.',
+          ]
+        : [
+            'Ответ верный.',
+            'Вы правильно определили тип задачи.',
+            'Продолжайте применять этот критерий.',
+          ],
       created_at: now,
     }
     session.answers.push(attempt)
@@ -282,7 +296,7 @@ export async function mockTrainingResponse(
       result,
       exerciseId,
       audioBytes,
-      audioType: audio.type,
+      audioType: skipped ? 'skip' : (audio as Blob).type,
       audioName: audio instanceof File ? audio.name : '',
     })
     return json(result)

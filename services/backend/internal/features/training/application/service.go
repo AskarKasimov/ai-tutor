@@ -213,11 +213,24 @@ func (s *Service) ByDiagnostic(ctx context.Context, owner, id string) (training.
 	return v.Progress(), err
 }
 func (s *Service) Answer(ctx context.Context, owner, id, exerciseID, key string, data []byte, media string) (training.Progress, error) {
+	return s.answerRequest(ctx, owner, id, exerciseID, key, data, media, false)
+}
+
+func (s *Service) Skip(ctx context.Context, owner, id, exerciseID, key string) (training.Progress, error) {
+	return s.answerRequest(ctx, owner, id, exerciseID, key, nil, "", true)
+}
+
+func (s *Service) answerRequest(ctx context.Context, owner, id, exerciseID, key string, data []byte, media string, skip bool) (training.Progress, error) {
 	if err := ValidKey(key); err != nil {
 		return training.Progress{}, err
 	}
-	if err := audio.Check(data, media); err != nil {
-		return training.Progress{}, err
+	if !skip {
+		if err := audio.Check(data, media); err != nil {
+			return training.Progress{}, err
+		}
+	}
+	if skip {
+		media = "skip"
 	}
 	h := sha256.New()
 	h.Write([]byte(exerciseID + "\x00" + media + "\x00"))
@@ -235,7 +248,13 @@ func (s *Service) Answer(ctx context.Context, owner, id, exerciseID, key string,
 		return *replay, nil
 	}
 	defer func() { _ = s.repo.Fail(context.WithoutCancel(ctx), owner, id, *reserved) }()
-	if reserved.TranscriptionID == "" {
+	if skip {
+		reserved.TranscriptionID, err = s.ids.New("skip")
+		if err != nil {
+			return training.Progress{}, err
+		}
+		reserved.Text = "Я не знаю. Пропустить"
+	} else if reserved.TranscriptionID == "" {
 		tr, err := s.voice.Transcribe(ctx, owner, data, media)
 		if err != nil {
 			return training.Progress{}, err
@@ -246,14 +265,19 @@ func (s *Service) Answer(ctx context.Context, owner, id, exerciseID, key string,
 		reserved.TranscriptionID = tr.ID
 		reserved.Text = tr.Text
 	}
-	evaluation, err := s.grader.EvaluateTraining(ctx, owner, reserved.TranscriptionID, state.Current)
-	if err != nil {
-		return training.Progress{}, err
+	evaluation := assessment.Evaluation{}
+	if skip {
+		evaluation = assessment.Evaluation{Score: 0, MaxScore: 2, Verdict: "incorrect", Feedback: []string{"Вопрос пропущен.", "Ответ оценён в 0 баллов.", "Продолжите со следующим вопросом."}}
+	} else {
+		evaluation, err = s.grader.EvaluateTraining(ctx, owner, reserved.TranscriptionID, state.Current)
+		if err != nil {
+			return training.Progress{}, err
+		}
+		if evaluation.MaxScore != 2 || evaluation.Score < 0 || evaluation.Score > 2 {
+			return training.Progress{}, fault.New(fault.Upstream, "INVALID_MODEL_RESPONSE", "Некорректная оценка тренировки.")
+		}
 	}
-	if evaluation.MaxScore != 2 || evaluation.Score < 0 || evaluation.Score > 2 {
-		return training.Progress{}, fault.New(fault.Upstream, "INVALID_MODEL_RESPONSE", "Некорректная оценка тренировки.")
-	}
-	attempt := training.Attempt{Sequence: state.AnswerCount + 1, ExerciseID: state.Current.ID, Round: state.Round, TargetIndex: state.Current.TargetIndex, TranscriptionID: reserved.TranscriptionID, Text: reserved.Text, Score: evaluation.Score, MaxScore: 2, Verdict: evaluation.Verdict, Feedback: evaluation.Feedback, CreatedAt: s.now().Unix(), CriterionResults: []training.CriterionResult{}}
+	attempt := training.Attempt{Sequence: state.AnswerCount + 1, ExerciseID: state.Current.ID, Round: state.Round, TargetIndex: state.Current.TargetIndex, TranscriptionID: reserved.TranscriptionID, Text: reserved.Text, Score: evaluation.Score, MaxScore: 2, Verdict: evaluation.Verdict, Feedback: evaluation.Feedback, CreatedAt: s.now().Unix(), CriterionResults: []training.CriterionResult{}, Skipped: skip}
 	for _, c := range evaluation.CriterionResults {
 		attempt.CriterionResults = append(attempt.CriterionResults, training.CriterionResult{Key: c.Key, Satisfied: c.Satisfied, Explanation: c.Explanation})
 	}

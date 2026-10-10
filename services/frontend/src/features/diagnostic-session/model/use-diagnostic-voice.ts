@@ -559,6 +559,28 @@ export function useDiagnosticVoice(
       if (current === generation.current) locked.current = false
     }
   }
+  async function skip() {
+    if (locked.current || recording.current || !task) return
+    locked.current = true
+    const current = generation.current
+    const capturedTask = task
+    stopSpeech()
+    setError(undefined)
+    setCaptureError('')
+    try {
+      pending.current = {
+        input: diagnostic.createSkipSubmission(
+          sessionId,
+          capturedTask.variant_task_id,
+          capturedTask.role,
+        ),
+        task: capturedTask,
+      }
+      await send(current)
+    } finally {
+      if (current === generation.current) locked.current = false
+    }
+  }
   async function retry() {
     if (locked.current || !pending.current) return
     locked.current = true
@@ -606,6 +628,7 @@ export function useDiagnosticVoice(
     stop,
     retry,
     submitAudio,
+    skip,
     speak,
     reset,
   }

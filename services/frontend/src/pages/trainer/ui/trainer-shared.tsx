@@ -19,7 +19,13 @@ import styles from './session.module.scss'
 export const sessionStyles = styles
 
 export type NavigatorState =
-  'correct' | 'partial' | 'incorrect' | 'current' | 'locked' | 'done'
+  | 'correct'
+  | 'partial'
+  | 'incorrect'
+  | 'skipped'
+  | 'current'
+  | 'locked'
+  | 'done'
 
 export type NavigatorItem = { number: number; state: NavigatorState }
 
@@ -281,13 +287,20 @@ export function TrainerScore({
   score,
   maxScore,
   verdict,
+  skipped = false,
 }: {
   score: number
   maxScore: number
   verdict: string
+  skipped?: boolean
 }) {
-  const tone =
-    score >= maxScore ? 'correct' : score === 0 ? 'incorrect' : 'partial'
+  const tone = skipped
+    ? 'skipped'
+    : score >= maxScore
+      ? 'correct'
+      : score === 0
+        ? 'incorrect'
+        : 'partial'
   return (
     <div className={styles.score} data-tone={tone}>
       <Text>

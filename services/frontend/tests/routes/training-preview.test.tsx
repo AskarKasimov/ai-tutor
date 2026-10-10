@@ -210,10 +210,15 @@ it('refreshes stale preview and waits for a second explicit start click', async 
   expect(start).toHaveBeenCalledTimes(2)
 })
 
-it('shows frozen targets and continues an existing session without posting a new start', async () => {
+it('offers a resume card and continues an existing session without posting a new start', async () => {
   const { start } = setup({ existing: progress })
-  expect(await screen.findByText('Продолжить тренировку')).toBeVisible()
-  expect(screen.getByText(/Результат/)).toBeVisible()
+  expect(
+    await screen.findByRole('button', { name: 'Продолжить тренировку' }),
+  ).toBeVisible()
+  expect(
+    screen.getByRole('heading', { name: /Вы остановились на раунде/ }),
+  ).toBeVisible()
+  expect(screen.queryByText(/Исходный балл/)).not.toBeInTheDocument()
   fireEvent.click(screen.getByRole('button', { name: 'Продолжить тренировку' }))
   expect(await screen.findByText('Вопрос')).toBeVisible()
   expect(start).not.toHaveBeenCalled()

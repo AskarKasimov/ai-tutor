@@ -1,3 +1,4 @@
+import { ArrowRight, History, Sparkles } from 'lucide-react'
 import { Button, Card, Heading, Text } from '@radix-ui/themes'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -14,6 +15,7 @@ import {
 import { TrainingSession } from './training-session'
 import { TrainerShell } from './trainer-shared'
 import styles from './trainer-layout.module.scss'
+import previewStyles from './training-preview.module.scss'
 
 function TargetList({
   targets,
@@ -88,12 +90,13 @@ export function TrainingPreview({
       </TrainerShell>
     )
   return (
-    <TrainerShell title={t('training.title')} subject={subjectName}>
+    <TrainerShell
+      title={t('training.title')}
+      subject={subjectName}
+      onBack={onBack}
+    >
       <main className={styles.preview}>
-        <Heading as="h1">{t('training.title')}</Heading>
-        <Button variant="soft" onClick={onBack}>
-          {t('home.back')}
-        </Button>
+        <TrainingHero free={preview?.mode === 'free_practice'} />
         {entry.isPending ? (
           <Text role="status">{t('training.previewLoading')}</Text>
         ) : entry.isError ? (
@@ -109,21 +112,40 @@ export function TrainingPreview({
             </Button>
           </Card>
         ) : entry.data?.kind === 'existing' ? (
-          <Card>
-            <Heading as="h2">{t('training.existingTitle')}</Heading>
-            <TargetList
-              targets={entry.data.progress.targets}
-              empty={t('training.noTargets')}
-            />
+          // An unfinished training only needs a clear way back in.
+          <section
+            className={previewStyles.resume}
+            aria-labelledby="resume-title"
+          >
+            <span className={previewStyles.resumeIcon} aria-hidden="true">
+              <History size={24} />
+            </span>
+            <div className={previewStyles.resumeText}>
+              <Heading as="h2" id="resume-title" size="5">
+                {t('training.resumeTitle', {
+                  round: entry.data.progress.round,
+                })}
+              </Heading>
+              <Text as="p">
+                {entry.data.progress.answer_count > 0
+                  ? t('training.resumeHelp', {
+                      count: entry.data.progress.answer_count,
+                    })
+                  : t('training.resumeFirst')}
+              </Text>
+            </div>
             <Button
+              size="4"
+              className={previewStyles.resumeAction}
               onClick={() => {
                 if (entry.data?.kind === 'existing')
                   setProgress(entry.data.progress)
               }}
             >
               {t('training.continue')}
+              <ArrowRight size={20} aria-hidden="true" />
             </Button>
-          </Card>
+          </section>
         ) : preview ? (
           <PreviewContent
             preview={preview}
@@ -135,6 +157,23 @@ export function TrainingPreview({
     </TrainerShell>
   )
 }
+// Explains what the training is and why it pays off before the plan.
+function TrainingHero({ free }: { free: boolean }) {
+  const { t } = useTranslation()
+  return (
+    <header className={previewStyles.hero}>
+      <Heading as="h1">{t('training.title')}</Heading>
+      <Text as="p" className={previewStyles.lead}>
+        {t(free ? 'training.leadFree' : 'training.lead')}
+      </Text>
+      <Text as="p" className={previewStyles.motivation}>
+        <Sparkles size={20} aria-hidden="true" />
+        {t(free ? 'training.motivationFree' : 'training.motivation')}
+      </Text>
+    </header>
+  )
+}
+
 function PreviewContent({
   preview,
   start,

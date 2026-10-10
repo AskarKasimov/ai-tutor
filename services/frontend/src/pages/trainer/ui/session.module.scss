@@ -67,8 +67,24 @@
   background: linear-gradient(135deg, #18a89a, #3466e8);
   color: white;
 }
-.back {
-  flex: none;
+.brandLink {
+  justify-self: start;
+  padding: 4px 8px 4px 4px;
+  margin-left: -4px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  &:hover {
+    background: var(--app-soft);
+  }
+  &:focus-visible {
+    outline: 3px solid var(--app-accent);
+    outline-offset: 2px;
+  }
 }
 .crumbs {
   margin: 0;

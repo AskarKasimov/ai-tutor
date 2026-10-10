@@ -1,6 +1,5 @@
-import { Button, Heading, IconButton, Text } from '@radix-ui/themes'
+import { Button, Heading, Text } from '@radix-ui/themes'
 import {
-  ArrowLeft,
   ChevronDown,
   ChevronUp,
   CircleAlert,
@@ -44,23 +43,28 @@ export function TrainerShell({
     <div data-trainer-app className={styles.shell}>
       <div className={styles.frame}>
         <header className={styles.header}>
-          <div className={styles.brand}>
-            {onBack && (
-              <IconButton
-                variant="ghost"
-                color="gray"
-                className={styles.back}
-                aria-label={t('home.back')}
-                onClick={onBack}
-              >
-                <ArrowLeft size={18} />
-              </IconButton>
-            )}
-            <span className={styles.logo} aria-hidden="true">
-              <GraduationCap size={18} />
-            </span>
-            <Text>{t('trainer.title')}</Text>
-          </div>
+          {onBack ? (
+            // The product logo returns to the student home.
+            <button
+              type="button"
+              className={`${styles.brand} ${styles.brandLink}`}
+              aria-label={t('home.back')}
+              title={t('home.back')}
+              onClick={onBack}
+            >
+              <span className={styles.logo} aria-hidden="true">
+                <GraduationCap size={18} />
+              </span>
+              <Text>{t('trainer.title')}</Text>
+            </button>
+          ) : (
+            <div className={styles.brand}>
+              <span className={styles.logo} aria-hidden="true">
+                <GraduationCap size={18} />
+              </span>
+              <Text>{t('trainer.title')}</Text>
+            </div>
+          )}
           <p className={styles.crumbs}>
             <span>{title}</span>
             <span className={styles.crumbDivider} aria-hidden="true">
@@ -197,7 +201,7 @@ export function TrainerQuestion({
   children,
 }: {
   badge: string
-  eyebrow: string
+  eyebrow?: string
   eyebrowHeading?: boolean
   question: string
   options: string[]
@@ -208,15 +212,16 @@ export function TrainerQuestion({
     <section className={styles.question}>
       <div className={styles.eyebrowRow}>
         <Text className={styles.badge}>{badge}</Text>
-        {eyebrowHeading ? (
-          <Heading as="h2" className={styles.eyebrow}>
-            {eyebrow}
-          </Heading>
-        ) : (
-          <Text as="p" className={styles.eyebrow}>
-            {eyebrow}
-          </Text>
-        )}
+        {eyebrow &&
+          (eyebrowHeading ? (
+            <Heading as="h2" className={styles.eyebrow}>
+              {eyebrow}
+            </Heading>
+          ) : (
+            <Text as="p" className={styles.eyebrow}>
+              {eyebrow}
+            </Text>
+          ))}
       </div>
       <Heading
         as="h1"
@@ -389,9 +394,9 @@ export function TrainerCapturePanel({
                   : 'session.processingStatus',
               )}
             </Text>
-          ) : (
+          ) : stage === 'recording' ? (
             <Text className={styles.timer}>{seconds}</Text>
-          )}
+          ) : null}
         </div>
       )}
       {errorMessage && !micError && (

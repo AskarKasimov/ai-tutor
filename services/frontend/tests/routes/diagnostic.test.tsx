@@ -313,6 +313,14 @@ it('runs real diagnostic audio, obeys skipped basics and displays the server tot
   expect(
     screen.getByText('Диагностический балл').parentElement,
   ).toHaveTextContent('2 / 2')
+  expect(
+    screen.getByRole('button', { name: 'Перейти к тренировке' }),
+  ).toBeVisible()
+  // The task review is folded until the student opens it.
+  expect(screen.queryByText('Настоящая расшифровка')).not.toBeInTheDocument()
+  fireEvent.click(
+    await screen.findByRole('button', { name: /Разбор по заданиям/ }),
+  )
   expect(screen.getByText('Настоящая расшифровка')).toBeVisible()
   expect(screen.getByText(feedback.join(' '))).toBeVisible()
   expect(screen.queryByText('Модель названа.')).not.toBeInTheDocument()
@@ -372,6 +380,46 @@ it('keeps the diagnostic result visible and retries failed overall feedback', as
     requests.mock.calls.filter(([url]) => url.endsWith('/feedback')),
   ).toHaveLength(2)
 })
+it('shows the task review only together with the overall feedback', async () => {
+  const requests = server()
+  let finish!: () => void
+  const ready = new Promise<void>((resolve) => {
+    finish = resolve
+  })
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url: string, init?: RequestInit) => {
+      if (url.endsWith('/feedback')) await ready
+      return requests(url, init)
+    }),
+  )
+  await home()
+  fireEvent.click(await screen.findByRole('button', { name: 'Начать запись' }))
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Завершить запись' }),
+  )
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Посмотреть итог' }),
+  )
+  expect(
+    await screen.findByRole('heading', {
+      name: 'Готовим ваш персональный разбор',
+    }),
+  ).toBeVisible()
+  expect(screen.queryByText('Настоящая расшифровка')).not.toBeInTheDocument()
+  finish()
+  expect(
+    await screen.findByText('Итоговое педагогическое резюме.'),
+  ).toBeVisible()
+  fireEvent.click(
+    await screen.findByRole('button', { name: /Разбор по заданиям/ }),
+  )
+  expect(screen.getByText('Настоящая расшифровка')).toBeVisible()
+  expect(
+    screen.queryByRole('heading', { name: 'Готовим ваш персональный разбор' }),
+  ).not.toBeInTheDocument()
+})
+
 it('shows overall feedback when the backend sends null strengths', async () => {
   server(200, 3, 200, null)
   await home()
@@ -871,6 +919,9 @@ it.each([1, 2])(
     expect(
       screen.getByText('Диагностический балл').parentElement,
     ).toHaveTextContent('2 / 2')
+    fireEvent.click(
+      await screen.findByRole('button', { name: /Разбор по заданиям/ }),
+    )
     expect(screen.queryByText('Второй базовый вопрос')).not.toBeInTheDocument()
     if (totalTasks === 1)
       expect(

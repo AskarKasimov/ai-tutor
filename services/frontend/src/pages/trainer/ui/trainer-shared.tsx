@@ -1,6 +1,7 @@
 import { Button, Heading, Text } from '@radix-ui/themes'
 import {
   ChevronDown,
+  ChevronRight,
   ChevronUp,
   CircleAlert,
   GraduationCap,
@@ -71,23 +72,32 @@ export function TrainerShell({
               <Text>{t('trainer.title')}</Text>
             </div>
           )}
-          <p className={styles.crumbs}>
-            <span>{title}</span>
-            <span className={styles.crumbDivider} aria-hidden="true">
-              /
-            </span>
-            {crumb ? (
-              <>
-                <span>{subject}</span>
-                <span className={styles.crumbDivider} aria-hidden="true">
-                  /
-                </span>
-                <strong>{crumb}</strong>
-              </>
+          {/* The course leads home; the current step is a non-clickable pill. */}
+          <nav className={styles.crumbs} aria-label={title}>
+            {onBack ? (
+              <button
+                type="button"
+                className={styles.crumbLink}
+                onClick={onBack}
+              >
+                {subject}
+              </button>
             ) : (
-              <strong>{subject}</strong>
+              <span className={styles.crumbText}>{subject}</span>
             )}
-          </p>
+            {crumb && (
+              <>
+                <ChevronRight
+                  size={16}
+                  className={styles.crumbDivider}
+                  aria-hidden="true"
+                />
+                <strong className={styles.crumbCurrent} aria-current="page">
+                  {crumb}
+                </strong>
+              </>
+            )}
+          </nav>
           <div className={styles.account}>
             <AccountMenu />
           </div>

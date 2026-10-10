@@ -330,18 +330,20 @@
   }
 }
 
-// Answer score in the navigator colors.
+// Answer score in the navigator colors: the score on its own line and the
+// verdict below, so the narrow panel never wraps "0 / 2".
 .score {
-  display: flex;
-  align-items: baseline;
-  gap: 12px;
+  display: grid;
+  gap: 2px;
   padding: 14px 16px;
   border-radius: 14px;
   border: 1px solid var(--session-correct);
   background: rgb(64 161 19 / 0.12);
   color: #2c7a09;
   > :first-child {
-    font-size: 28px;
+    white-space: nowrap;
+    font-size: 30px;
+    line-height: 36px;
     font-weight: 800;
     font-variant-numeric: tabular-nums;
   }
@@ -357,6 +359,8 @@
   }
 }
 .verdict {
+  font-size: 15px;
+  line-height: 20px;
   font-weight: 700;
 }
 
@@ -370,6 +374,13 @@
   gap: 16px;
   p {
     margin: 0;
+  }
+  // Result headings sit in the panel's own 16px rhythm.
+  > h2:not(.panelTitle),
+  > h4 {
+    margin: 0;
+    font-size: 16px;
+    line-height: 22px;
   }
 }
 .panelTitle {

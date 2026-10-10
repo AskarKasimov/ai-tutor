@@ -373,6 +373,11 @@
     background: rgb(207 32 32 / 0.1);
     color: var(--session-incorrect);
   }
+  &[data-tone='skipped'] {
+    border-color: var(--session-neutral);
+    background: var(--session-neutral-fill);
+    color: var(--session-neutral-text);
+  }
 }
 .verdict {
   font-size: 15px;

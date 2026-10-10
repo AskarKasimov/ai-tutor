@@ -153,6 +153,29 @@ function server(
       return new Response(await validWavBlob().arrayBuffer(), {
         headers: { 'Content-Type': 'audio/wav' },
       })
+    if (url.endsWith('/skip')) {
+      answered = true
+      return Response.json({
+        ...sessionProgress,
+        status: 'active',
+        current: basic,
+        completed_tasks: 1,
+        answer_skipped: true,
+        text: 'Я не знаю. Пропустить',
+        score: 0,
+        grader_score: 0,
+        grader_max_score: 2,
+        verdict: 'incorrect',
+        criterion_results: [
+          { key: 'skipped', satisfied: false, explanation: 'Вопрос пропущен.' },
+        ],
+        feedback: [
+          'Вопрос пропущен.',
+          'Ответ оценён в 0 баллов.',
+          'Продолжите со следующим вопросом.',
+        ],
+      })
+    }
     if (url.endsWith('/answers')) {
       if (answerStatus !== 200) {
         answerStatus = 200
@@ -275,8 +298,8 @@ it('runs real diagnostic audio, obeys skipped basics and displays the server tot
   expect(screen.queryByText(/Критерий (не )?выполнен/)).not.toBeInTheDocument()
   // The main answer scored 2/2 and both basics were skipped by the server.
   expect(screen.getByLabelText('Вопрос 1: верно')).toBeVisible()
-  expect(screen.getByLabelText('Вопрос 2: пройден')).toBeVisible()
-  expect(screen.getByLabelText('Вопрос 3: пройден')).toBeVisible()
+  expect(screen.getByLabelText('Вопрос 2: пропущен')).toBeVisible()
+  expect(screen.getByLabelText('Вопрос 3: пропущен')).toBeVisible()
   expect(screen.getByText('Настоящая расшифровка')).toBeVisible()
   expect(
     screen.queryByText('Здесь появится расшифровка вашего ответа.'),
@@ -474,30 +497,29 @@ it('keeps navigator colors after a page reload', async () => {
   expect(await screen.findByLabelText('Вопрос 1: верно')).toBeVisible()
 })
 
-it('skips a question by sending the spoken skip phrase as the answer', async () => {
+it('skips a question without sending audio for transcription', async () => {
   const requests = server()
-  vi.stubGlobal(
-    'fetch',
-    vi.fn(async (url: string, init?: RequestInit) =>
-      url.endsWith('/audio/skip-answer.wav')
-        ? new Response(await validWavBlob().arrayBuffer(), {
-            headers: { 'Content-Type': 'audio/wav' },
-          })
-        : requests(url, init),
-    ),
-  )
   await home()
   fireEvent.click(
     await screen.findByRole('button', { name: 'Пропустить вопрос' }),
   )
-  expect(await screen.findByText(feedback.join(' '))).toBeVisible()
+  expect(
+    await screen.findByText(
+      'Вопрос пропущен. Ответ оценён в 0 баллов. Продолжите со следующим вопросом.',
+    ),
+  ).toBeVisible()
+  expect(screen.getByLabelText('Вопрос 1: пропущен')).toBeVisible()
   expect(audio.startRecording).not.toHaveBeenCalled()
-  const [, init] = requests.mock.calls.find(([url]) =>
-    url.endsWith('/answers'),
-  )!
-  const body = init?.body as FormData
-  expect(body.get('variant_task_id')).toBe('v-main')
-  expect((body.get('audio') as File).size).toBeGreaterThan(44)
+  const [, init] = requests.mock.calls.find(([url]) => url.endsWith('/skip'))!
+  expect(JSON.parse(init?.body as string)).toEqual({
+    variant_task_id: 'v-main',
+  })
+  expect(requests.mock.calls.some(([url]) => url.endsWith('/answers'))).toBe(
+    false,
+  )
+  expect(
+    requests.mock.calls.some(([url]) => url.endsWith('/audio/skip-answer.wav')),
+  ).toBe(false)
 })
 
 it('shows the crossed-out microphone when recording cannot start', async () => {

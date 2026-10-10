@@ -36,6 +36,7 @@ const task = z.object({
 })
 const progressSchema: z.ZodType<DiagnosticProgress> = z
   .object({
+    answer_skipped: z.boolean().optional(),
     session_id: id,
     status: z.enum(['active', 'completed']),
     completed_tasks: count,
@@ -78,6 +79,7 @@ const diagnosticAudioSchema: z.ZodType<DiagnosticAudioMetadata> = z
   )
 const answerSchema = z
   .object({
+    skipped: z.boolean().optional(),
     variant_task_id: id,
     source_task_id: id,
     competency_id: id,
@@ -258,18 +260,36 @@ export function createSubmission(
   body.append('variant_task_id', taskId)
   return { sessionId, taskId, role, key: crypto.randomUUID(), body }
 }
+export function createSkipSubmission(
+  sessionId: string,
+  taskId: string,
+  role: DiagnosticTask['role'],
+): DiagnosticSubmission {
+  return {
+    sessionId,
+    taskId,
+    role,
+    key: crypto.randomUUID(),
+    body: new FormData(),
+    skip: true,
+  }
+}
 export async function submitDiagnostic(
   input: DiagnosticSubmission,
   signal: AbortSignal,
 ) {
   const progress = await parse(
     await request(
-      `/diagnostic-sessions/${encodeURIComponent(input.sessionId)}/answers`,
+      `/diagnostic-sessions/${encodeURIComponent(input.sessionId)}/${input.skip ? 'skip' : 'answers'}`,
       signal,
       {
         method: 'POST',
-        headers: { 'Idempotency-Key': input.key },
-        body: input.body,
+        headers: input.skip
+          ? { 'Idempotency-Key': input.key, 'Content-Type': 'application/json' }
+          : { 'Idempotency-Key': input.key },
+        body: input.skip
+          ? JSON.stringify({ variant_task_id: input.taskId })
+          : input.body,
       },
       240_000,
     ),

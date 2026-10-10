@@ -187,6 +187,7 @@ func (s *Store) Accept(ctx context.Context, ownerID, id, token, key, digest stri
 	value.InFlight = nil
 	progress := value.Progress()
 	progress.Text = answer.Text
+	progress.AnswerSkipped = answer.Skipped
 	score, gs, gm := answer.Score, answer.GraderScore, answer.GraderMaxScore
 	progress.Score = &score
 	progress.GraderScore = &gs

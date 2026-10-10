@@ -34,6 +34,7 @@ type TaskResponse struct {
 }
 
 type ProgressResponse struct {
+	AnswerSkipped    bool                      `json:"answer_skipped,omitempty" binding:"optional"`
 	Text             string                    `json:"text,omitempty" minLength:"1" binding:"optional"`
 	SessionID        string                    `json:"session_id" minLength:"1" maxLength:"128" binding:"required"`
 	Status           string                    `json:"status" enums:"active,completed" binding:"required"`
@@ -50,6 +51,7 @@ type ProgressResponse struct {
 }
 
 type AnswerResponse struct {
+	Skipped          bool                      `json:"skipped,omitempty" binding:"optional"`
 	VariantTaskID    string                    `json:"variant_task_id"`
 	SourceTaskID     string                    `json:"source_task_id"`
 	CompetencyID     string                    `json:"competency_id"`
@@ -90,8 +92,9 @@ type ResultResponse struct {
 
 func progressResponse(value diagnostic.Progress) ProgressResponse {
 	result := ProgressResponse{
-		Text:      value.Text,
-		SessionID: value.SessionID, Status: value.Status, Completed: value.Completed,
+		AnswerSkipped: value.AnswerSkipped,
+		Text:          value.Text,
+		SessionID:     value.SessionID, Status: value.Status, Completed: value.Completed,
 		Skipped: value.Skipped, Total: value.Total, Score: value.Score,
 		GraderScore: value.GraderScore, GraderMaxScore: value.GraderMaxScore, Verdict: value.Verdict,
 		CriterionResults: criterionResults(value.CriterionResults),
@@ -119,6 +122,7 @@ func resultResponse(value diagnostic.Result) ResultResponse {
 	}
 	for _, answer := range value.Answers {
 		result.Answers = append(result.Answers, AnswerResponse{
+			Skipped:       answer.Skipped,
 			VariantTaskID: answer.VariantTaskID, SourceTaskID: answer.SourceTaskID,
 			CompetencyID: answer.CompetencyID, OutcomeID: answer.OutcomeID,
 			Role: answer.Role, Task: taskResponse(answer.Task),

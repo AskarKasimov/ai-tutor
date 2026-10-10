@@ -101,6 +101,7 @@ type TaskSnapshot struct {
 }
 
 type Answer struct {
+	Skipped          bool
 	VariantTaskID    string
 	SourceTaskID     string
 	CompetencyID     string
@@ -152,6 +153,7 @@ type Reservation struct {
 }
 
 type Progress struct {
+	AnswerSkipped    bool
 	Text             string
 	SessionID        string
 	Status           string

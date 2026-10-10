@@ -115,6 +115,14 @@ func TestTrainingPersistsCyclesAndReplaysAnswers(t *testing.T) {
 	if replay.Code != 200 || replay.Body.String() != accepted.Body.String() {
 		t.Fatalf("replay differs %d %s", replay.Code, replay.Body.String())
 	}
+	skip := post("/training-sessions/"+training.ID+"/skip", "skip-2", `{"exercise_id":"`+training.Current.ID+`"}`)
+	if skip.Code != 200 || !strings.Contains(skip.Body.String(), `"skipped":true`) {
+		t.Fatalf("skip %d %s", skip.Code, skip.Body.String())
+	}
+	skipReplay := post("/training-sessions/"+training.ID+"/skip", "skip-2", `{"exercise_id":"`+training.Current.ID+`"}`)
+	if skipReplay.Code != 200 || skipReplay.Body.String() != skip.Body.String() {
+		t.Fatalf("skip replay %d %s", skipReplay.Code, skipReplay.Body.String())
+	}
 	history := f.request("GET", "/training-sessions/"+training.ID+"/history?limit=1", "", access)
 	if history.Code != 200 || !strings.Contains(history.Body.String(), "exercise_id") {
 		t.Fatalf("history %d %s", history.Code, history.Body.String())

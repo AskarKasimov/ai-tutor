@@ -26,7 +26,6 @@ import {
   writeTrack,
 } from '../model/question-track'
 import type { QuestionTrack } from '../model/question-track'
-import { loadSkipAnswer } from '../api/skip-answer'
 import styles from './trainer-layout.module.scss'
 
 function errorCode(error: unknown) {
@@ -72,6 +71,7 @@ function useTrainingTrack(
       result.sequence,
       result.score,
       result.max_score,
+      result.skipped,
     )
     store.current = { id, track: next }
     writeTrack(id, next)
@@ -86,7 +86,10 @@ function useTrainingTrack(
     return {
       number: i + 1,
       state:
-        state === 'correct' || state === 'partial' || state === 'incorrect'
+        state === 'correct' ||
+        state === 'partial' ||
+        state === 'incorrect' ||
+        state === 'skipped'
           ? state
           : 'done',
     }
@@ -176,7 +179,7 @@ export function TrainingSession({
   async function skip() {
     setSkipFailed(false)
     try {
-      await voice.submitAudio(await loadSkipAnswer())
+      await voice.skip()
     } catch {
       setSkipFailed(true)
     }
@@ -285,7 +288,10 @@ export function TrainingSession({
                 <TrainerScore
                   score={result.score}
                   maxScore={result.max_score}
-                  verdict={t(`diagnostic.verdict.${result.verdict}`)}
+                  verdict={t(
+                    `diagnostic.verdict.${result.skipped ? 'skipped' : result.verdict}`,
+                  )}
+                  skipped={result.skipped}
                 />
                 <Heading as="h2" className={styles.feedbackTitle}>
                   {t('training.score', {

@@ -70,6 +70,11 @@ export type DiagnosticDependencies = {
       blob: Blob,
       role: DiagnosticTask['role'],
     ): DiagnosticSubmission
+    createSkipSubmission(
+      sessionId: string,
+      taskId: string,
+      role: DiagnosticTask['role'],
+    ): DiagnosticSubmission
     readDiagnosticAudio(
       sessionId: string,
       taskId: string,

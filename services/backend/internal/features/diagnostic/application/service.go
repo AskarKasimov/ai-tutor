@@ -192,6 +192,14 @@ func (s *Service) RegenerateCurrentAudio(ctx context.Context, ownerID, sessionID
 }
 
 func (s *Service) Answer(ctx context.Context, ownerID, sessionID, taskID, key string, data []byte, media string) (diagnostic.Progress, error) {
+	return s.answerRequest(ctx, ownerID, sessionID, taskID, key, data, media, false)
+}
+
+func (s *Service) Skip(ctx context.Context, ownerID, sessionID, taskID, key string) (diagnostic.Progress, error) {
+	return s.answerRequest(ctx, ownerID, sessionID, taskID, key, nil, "", true)
+}
+
+func (s *Service) answerRequest(ctx context.Context, ownerID, sessionID, taskID, key string, data []byte, media string, skip bool) (diagnostic.Progress, error) {
 	if err := validKey(key); err != nil {
 		return diagnostic.Progress{}, err
 	}
@@ -201,8 +209,10 @@ func (s *Service) Answer(ctx context.Context, ownerID, sessionID, taskID, key st
 	if !validID(taskID) {
 		return diagnostic.Progress{}, fault.Validation("variant_task_id", "Укажите ID текущей позиции варианта.")
 	}
-	if err := audio.Check(data, media); err != nil {
-		return diagnostic.Progress{}, err
+	if !skip {
+		if err := audio.Check(data, media); err != nil {
+			return diagnostic.Progress{}, err
+		}
 	}
 	value, err := s.store.Get(ctx, ownerID, sessionID)
 	if err != nil {
@@ -210,6 +220,9 @@ func (s *Service) Answer(ctx context.Context, ownerID, sessionID, taskID, key st
 	}
 	// Bind retries to the task and exact audio payload, independent of multipart boundaries.
 	h := sha256.New()
+	if skip {
+		media = "skip"
+	}
 	_, _ = h.Write([]byte(taskID + "\x00" + media + "\x00"))
 	_, _ = h.Write(data)
 	fingerprint := hex.EncodeToString(h.Sum(nil))
@@ -231,6 +244,27 @@ func (s *Service) Answer(ctx context.Context, ownerID, sessionID, taskID, key st
 	current := value.Current()
 	if current == nil || current.ID != taskID {
 		return diagnostic.Progress{}, fault.New(fault.Conflict, "DIAGNOSTIC_TASK_NOT_CURRENT", "Укажите текущее задание сессии.")
+	}
+	if skip {
+		id, err := s.ids.New("skip")
+		if err != nil {
+			return diagnostic.Progress{}, err
+		}
+		maxScore := 1
+		if current.Role == "main" {
+			maxScore = 2
+		}
+		answer := diagnostic.Answer{
+			Skipped:       true,
+			VariantTaskID: current.ID, SourceTaskID: current.SourceTaskID,
+			CompetencyID: current.CompetencyID, OutcomeID: current.OutcomeID, Role: current.Role,
+			Task: *current, TranscriptionID: id, Text: "Я не знаю. Пропустить",
+			GraderMaxScore: maxScore, Verdict: "incorrect",
+			CriterionResults: []diagnostic.CriterionResult{{Key: "skipped", Satisfied: false, Explanation: "Вопрос пропущен."}},
+			Feedback:         []string{"Вопрос пропущен.", "Ответ оценён в 0 баллов.", "Продолжите со следующим вопросом."},
+			CreatedAt:        s.now().Unix(),
+		}
+		return s.store.Accept(ctx, ownerID, sessionID, token, key, fingerprint, answer, nextTransition(value, answer))
 	}
 	if transcriptionID == "" {
 		transcription, transcribeErr := s.voice.Transcribe(ctx, ownerID, data, media)

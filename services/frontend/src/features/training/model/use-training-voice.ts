@@ -343,6 +343,29 @@ export function useTrainingVoice(
     [accepted, exercise, progress.session_id, send, stopSpeech, training],
   )
 
+  const skip = useCallback(async () => {
+    if (locked.current || recording.current || accepted || acceptedRef.current)
+      return
+    const operation = ++lockToken.current
+    locked.current = true
+    const current = generation.current
+    stopSpeech()
+    setError(undefined)
+    setCaptureError('')
+    try {
+      pending.current = {
+        submission: training.createTrainingSkipSubmission(
+          progress.session_id,
+          exercise.exercise_id,
+        ),
+        exercise,
+      }
+      await send(current)
+    } finally {
+      if (operation === lockToken.current) locked.current = false
+    }
+  }, [accepted, exercise, progress.session_id, send, stopSpeech, training])
+
   const retry = useCallback(async () => {
     if (locked.current || !pending.current) return
     const operation = ++lockToken.current
@@ -359,6 +382,10 @@ export function useTrainingVoice(
   const speak = useCallback(
     async ({ auto = false }: { auto?: boolean } = {}) => {
       if (acceptedRef.current) return
+      if (player.current) {
+        if (!auto) stopSpeech()
+        return
+      }
       if (speechRequest.current) {
         if (auto && !speechRequest.current.signal.aborted) return
         if (!auto) {
@@ -423,8 +450,13 @@ export function useTrainingVoice(
           if (!isCurrent()) return
           const dispose = await playQuestion(
             blob,
-            () => setSpeaking(false),
             () => {
+              player.current = null
+              setSpeaking(false)
+            },
+            () => {
+              player.current = null
+              setSpeaking(false)
               if (!startFallback()) setSpeechError(true)
             },
           )
@@ -586,6 +618,7 @@ export function useTrainingVoice(
     stop,
     retry,
     submitAudio,
+    skip,
     speak,
     next,
     reset,

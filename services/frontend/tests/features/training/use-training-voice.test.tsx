@@ -26,6 +26,33 @@ const progress: TrainingProgress = {
     voice_instruction: 'Say it',
   },
 }
+it('stops active instruction playback without starting it again', async () => {
+  const deps = createAppDependencies()
+  vi.spyOn(deps.training, 'readTrainingAudio').mockResolvedValue({
+    exercise_id: 'e1',
+    status: 'ready',
+    audio_url: '/task-audio/audio-1/file',
+  })
+  vi.spyOn(deps.training, 'fetchTrainingAudioFile').mockResolvedValue(
+    new Blob(['wav'], { type: 'audio/wav' }),
+  )
+  const dispose = vi.fn()
+  const play = vi.spyOn(audio, 'playQuestion').mockResolvedValue(dispose)
+  const view = renderHook(
+    () => useTrainingVoice('u1', progress, vi.fn(), vi.fn()),
+    { wrapper: createQueryWrapper(createQueryClient(), deps) },
+  )
+  await act(async () => {
+    await view.result.current.speak()
+  })
+  expect(view.result.current.speaking).toBe(true)
+  await act(async () => {
+    await view.result.current.speak()
+  })
+  expect(dispose).toHaveBeenCalledOnce()
+  expect(play).toHaveBeenCalledOnce()
+  expect(view.result.current.speaking).toBe(false)
+})
 it('retains submission on retry and clears feedback when the exercise changes', async () => {
   const deps = createAppDependencies()
   const input = {

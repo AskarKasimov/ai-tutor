@@ -68,6 +68,7 @@ type CriterionResult struct {
 	Explanation string `json:"explanation"`
 }
 type Attempt struct {
+	Skipped          bool              `json:"skipped,omitempty" binding:"optional"`
 	Sequence         int64             `json:"sequence"`
 	ExerciseID       string            `json:"exercise_id"`
 	Round            int64             `json:"round"`

@@ -34,7 +34,6 @@ import {
   writeTrack,
 } from '../model/question-track'
 import type { QuestionTrack } from '../model/question-track'
-import { loadSkipAnswer } from '../api/skip-answer'
 import styles from '@/pages/trainer/ui/trainer-layout.module.scss'
 import diagnosticStyles from '@/pages/trainer/ui/diagnostic.module.scss'
 
@@ -253,7 +252,8 @@ function useDiagnosticTrack(progress?: DiagnosticProgress) {
             index < done
               ? state === 'correct' ||
                 state === 'partial' ||
-                state === 'incorrect'
+                state === 'incorrect' ||
+                state === 'skipped'
                 ? state
                 : 'done'
               : index === done && progress.status === 'active'
@@ -306,7 +306,7 @@ function DiagnosticFlow({
   async function skip() {
     setSkipFailed(false)
     try {
-      await voice.submitAudio(await loadSkipAnswer())
+      await voice.skip()
     } catch {
       setSkipFailed(true)
     }
@@ -375,6 +375,7 @@ function DiagnosticFlow({
             score={response.score!}
             maxScore={response.grader_max_score!}
             verdict={response.verdict!}
+            skipped={response.answer_skipped}
             feedback={response.feedback!}
           />
           {voice.audioUrl && (
@@ -525,12 +526,14 @@ function Feedback({
   score,
   maxScore,
   verdict,
+  skipped,
   feedback,
   heading = 'h2',
 }: {
   score: number
   maxScore: number
   verdict: string
+  skipped?: boolean
   feedback: string[]
   heading?: 'h2' | 'h4'
 }) {
@@ -543,7 +546,8 @@ function Feedback({
       <TrainerScore
         score={score}
         maxScore={maxScore}
-        verdict={t(`diagnostic.verdict.${verdict}`)}
+        verdict={t(`diagnostic.verdict.${skipped ? 'skipped' : verdict}`)}
+        skipped={skipped}
       />
       <Heading as={heading} className={styles.feedbackTitle}>
         {t('trainer.feedback')}
@@ -641,6 +645,7 @@ function DiagnosticSummary({
               score={answer.score}
               maxScore={answer.grader_max_score}
               verdict={answer.verdict}
+              skipped={answer.skipped}
               feedback={answer.feedback}
             />
           </li>

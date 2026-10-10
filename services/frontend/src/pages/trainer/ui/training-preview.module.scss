@@ -1,0 +1,86 @@
+.hero {
+  display: grid;
+  gap: 12px;
+  max-width: 760px;
+  h1 {
+    margin: 0;
+    font-size: 32px;
+    line-height: 38px;
+    font-weight: 800;
+    letter-spacing: -0.01em;
+  }
+}
+.lead {
+  margin: 0;
+  color: var(--app-muted);
+  font-size: 16px;
+  line-height: 24px;
+}
+.motivation {
+  box-sizing: border-box;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px 20px;
+  border-radius: 18px;
+  background: var(--green-3);
+  color: var(--green-11);
+  font-size: 15px;
+  line-height: 22px;
+  font-weight: 600;
+  svg {
+    flex: none;
+  }
+}
+
+// Resume card for an unfinished training.
+.resume {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 16px;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 760px;
+  padding: 16px 20px;
+  border-radius: 18px;
+  border: 1px solid var(--app-border);
+  background: linear-gradient(
+    135deg,
+    var(--app-soft),
+    var(--color-panel-solid)
+  );
+}
+.resumeIcon {
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  background: var(--blue-3);
+  color: var(--blue-11);
+}
+.resumeText {
+  display: grid;
+  gap: 6px;
+  h2,
+  p {
+    margin: 0;
+  }
+  p {
+    color: var(--app-muted);
+    line-height: 22px;
+  }
+}
+.resumeAction {
+  font-weight: 700;
+}
+@media (max-width: 700px) {
+  .resume {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+  .resumeAction {
+    grid-column: 1 / -1;
+  }
+}

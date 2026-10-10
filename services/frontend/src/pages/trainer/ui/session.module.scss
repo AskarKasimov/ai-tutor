@@ -87,22 +87,52 @@
   }
 }
 .crumbs {
-  margin: 0;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   min-width: 0;
   white-space: nowrap;
   font-size: 15px;
+}
+.crumbLink,
+.crumbText,
+.crumbCurrent {
+  padding: 5px 12px;
+  border-radius: 999px;
+  font: inherit;
+  font-size: 15px;
+  line-height: 20px;
+}
+.crumbLink {
+  border: 0;
+  background: transparent;
   color: var(--app-muted);
-  cursor: default;
-  user-select: none;
-  strong {
-    color: var(--app-ink);
-    font-weight: 700;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease;
+  &:hover {
+    background: var(--app-soft);
+    color: var(--app-accent);
+  }
+  &:focus-visible {
+    outline: 3px solid var(--app-accent);
+    outline-offset: 2px;
   }
 }
+.crumbText {
+  color: var(--app-muted);
+  font-weight: 600;
+}
+.crumbCurrent {
+  background: var(--app-soft);
+  color: var(--app-accent);
+  font-weight: 700;
+  cursor: default;
+}
 .crumbDivider {
+  flex: none;
   color: var(--app-faint);
 }
 .account {
@@ -124,6 +154,7 @@
   // Previews, summaries and notices become scrollable cards.
   > main:not(.workspace) {
     flex: 1;
+    max-width: none;
     min-height: 0;
     overflow: auto;
     padding: 32px;

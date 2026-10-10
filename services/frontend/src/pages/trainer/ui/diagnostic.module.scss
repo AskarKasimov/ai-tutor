@@ -48,3 +48,133 @@
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+
+// Waiting for the overall feedback.
+.preparing {
+  margin: var(--space-6) 0;
+  padding: var(--space-6);
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--space-4) var(--space-5);
+  align-items: center;
+  border-radius: var(--radius-5);
+  border: 1px solid var(--app-border);
+  background: linear-gradient(
+    135deg,
+    var(--app-soft),
+    var(--color-panel-solid)
+  );
+}
+.preparingIcon {
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 16px;
+  background: var(--app-accent);
+  color: white;
+  animation: pulse 1.8s ease-in-out infinite;
+}
+.preparingText {
+  display: grid;
+  gap: var(--space-2);
+  h2,
+  p {
+    margin: 0;
+  }
+  p {
+    color: var(--app-muted);
+    line-height: 1.55;
+  }
+}
+.skeleton {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 10px;
+  span {
+    height: 12px;
+    border-radius: 999px;
+    background: linear-gradient(
+      90deg,
+      var(--gray-3) 25%,
+      var(--gray-5) 50%,
+      var(--gray-3) 75%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 1.6s linear infinite;
+  }
+  span:nth-child(2) {
+    width: 86%;
+  }
+  span:nth-child(3) {
+    width: 62%;
+  }
+}
+@keyframes pulse {
+  0%,
+  100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgb(50 111 232 / 0.35);
+  }
+  50% {
+    transform: scale(1.05);
+    box-shadow: 0 0 0 12px rgb(50 111 232 / 0);
+  }
+}
+@keyframes shimmer {
+  to {
+    background-position: -200% 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .preparingIcon,
+  .skeleton span {
+    animation: none;
+  }
+}
+
+// Training is the next step, so it sits beside the score.
+.toTraining {
+  margin-left: auto;
+  font-weight: 700;
+}
+.reviewToggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  margin: var(--space-2) 0 0;
+  padding: 16px 20px;
+  border: 1px solid var(--app-border);
+  border-radius: 16px;
+  background: var(--color-panel-solid);
+  color: var(--app-ink);
+  font: inherit;
+  font-size: 16px;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+  &:hover {
+    background: var(--app-soft);
+  }
+  &:focus-visible {
+    outline: 3px solid var(--app-accent);
+    outline-offset: 2px;
+  }
+  &[aria-expanded='true'] .reviewChevron {
+    transform: rotate(90deg);
+  }
+}
+.reviewChevron {
+  flex: none;
+  color: var(--app-muted);
+  transition: transform 0.15s ease;
+}
+.visuallyHidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}

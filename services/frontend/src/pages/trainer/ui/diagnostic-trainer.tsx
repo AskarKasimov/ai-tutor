@@ -1,5 +1,12 @@
 import { Button, Heading, Text } from '@radix-ui/themes'
-import { ArrowRight, Mic, RotateCcw, Square } from 'lucide-react'
+import {
+  ArrowRight,
+  ChevronRight,
+  Mic,
+  RotateCcw,
+  Sparkles,
+  Square,
+} from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/features/auth'
@@ -571,6 +578,10 @@ function DiagnosticSummary({
 }) {
   const { t } = useTranslation()
   const result = useDiagnosticResultQuery(userId, sessionId)
+  // The per-task review appears together with the overall feedback.
+  const overall = useDiagnosticFeedbackQuery(userId, sessionId)
+  // The task review is long; it stays folded so training is one click away.
+  const [reviewOpen, setReviewOpen] = useState(false)
   const { handleError } = training
   useEffect(() => {
     if (result.error) handleError(result.error)
@@ -627,72 +638,128 @@ function DiagnosticSummary({
           {value.diagnostic_score} / {value.maximum_score}
         </Text>
         <Text>{t('diagnostic.totalScore')}</Text>
+        <Button
+          size="3"
+          className={diagnosticStyles.toTraining}
+          onClick={() => onTraining(sessionId)}
+        >
+          {t('diagnostic.toTraining')}
+          <ArrowRight size={18} aria-hidden="true" />
+        </Button>
       </div>
-      <DiagnosticOverallFeedback userId={userId} sessionId={sessionId} />
-      <Heading as="h2">{t('diagnostic.history')}</Heading>
-      <ol className={diagnosticStyles.answers}>
-        {value.answers.map((answer) => (
-          <li key={answer.variant_task_id} className={diagnosticStyles.answer}>
-            <Heading as="h3">{answer.task.question}</Heading>
-            <Text as="p" className={styles.eyebrow}>
-              {answer.task.competency_name} · {t(`diagnostic.${answer.role}`)}
-            </Text>
-            <Text as="p" className={styles.transcript}>
-              {answer.text}
-            </Text>
-            <Feedback
-              heading="h4"
-              score={answer.score}
-              maxScore={answer.grader_max_score}
-              verdict={answer.verdict}
-              skipped={answer.skipped}
-              feedback={answer.feedback}
-            />
-          </li>
-        ))}
-      </ol>
-      {value.untested_basics.length > 0 && (
-        <section className={diagnosticStyles.untested}>
-          <Heading as="h2">{t('diagnostic.untested')}</Heading>
-          <ul>
-            {value.untested_basics.map((task) => (
-              <li key={task.variant_task_id}>{task.question}</li>
-            ))}
-          </ul>
-        </section>
+      {overall.isPending ? (
+        <FeedbackPreparing />
+      ) : (
+        <DiagnosticOverallFeedback feedback={overall} />
       )}
-      {value.skipped_competencies.length > 0 && (
-        <section className={diagnosticStyles.untested}>
-          <Heading as="h2">{t('diagnostic.skippedCompetencies')}</Heading>
-          <ul>
-            {value.skipped_competencies.map((item) => (
-              <li key={item.competency_id}>{item.competency_name}</li>
-            ))}
-          </ul>
-        </section>
+      {!overall.isPending && (
+        <>
+          <button
+            type="button"
+            className={diagnosticStyles.reviewToggle}
+            aria-expanded={reviewOpen}
+            aria-controls="task-review"
+            onClick={() => setReviewOpen((open) => !open)}
+          >
+            <ChevronRight
+              size={20}
+              className={diagnosticStyles.reviewChevron}
+              aria-hidden="true"
+            />
+            {t('diagnostic.reviewToggle', { count: value.answers.length })}
+          </button>
+          {reviewOpen && (
+            <div id="task-review">
+              <Heading as="h2" className={diagnosticStyles.visuallyHidden}>
+                {t('diagnostic.history')}
+              </Heading>
+              <ol className={diagnosticStyles.answers}>
+                {value.answers.map((answer) => (
+                  <li
+                    key={answer.variant_task_id}
+                    className={diagnosticStyles.answer}
+                  >
+                    <Heading as="h3">{answer.task.question}</Heading>
+                    <Text as="p" className={styles.eyebrow}>
+                      {answer.task.competency_name} ·{' '}
+                      {t(`diagnostic.${answer.role}`)}
+                    </Text>
+                    <Text as="p" className={styles.transcript}>
+                      {answer.text}
+                    </Text>
+                    <Feedback
+                      heading="h4"
+                      score={answer.score}
+                      maxScore={answer.grader_max_score}
+                      verdict={answer.verdict}
+                      skipped={answer.skipped}
+                      feedback={answer.feedback}
+                    />
+                  </li>
+                ))}
+              </ol>
+              {value.untested_basics.length > 0 && (
+                <section className={diagnosticStyles.untested}>
+                  <Heading as="h2">{t('diagnostic.untested')}</Heading>
+                  <ul>
+                    {value.untested_basics.map((task) => (
+                      <li key={task.variant_task_id}>{task.question}</li>
+                    ))}
+                  </ul>
+                </section>
+              )}
+              {value.skipped_competencies.length > 0 && (
+                <section className={diagnosticStyles.untested}>
+                  <Heading as="h2">
+                    {t('diagnostic.skippedCompetencies')}
+                  </Heading>
+                  <ul>
+                    {value.skipped_competencies.map((item) => (
+                      <li key={item.competency_id}>{item.competency_name}</li>
+                    ))}
+                  </ul>
+                </section>
+              )}
+            </div>
+          )}
+        </>
       )}
       {training.restart.isError && (
         <Text as="p" role="alert">
           {t('session.loadError')}
         </Text>
       )}
-      <Button className={styles.primary} onClick={() => onTraining(sessionId)}>
-        {t('diagnostic.toTraining')}
-        <ArrowRight size={18} aria-hidden="true" />
-      </Button>
     </main>
   )
 }
 
+// Shown while the model writes the overall feedback; the task review waits too.
+function FeedbackPreparing() {
+  const { t } = useTranslation()
+  return (
+    <section className={diagnosticStyles.preparing} role="status">
+      <span className={diagnosticStyles.preparingIcon} aria-hidden="true">
+        <Sparkles size={28} />
+      </span>
+      <div className={diagnosticStyles.preparingText}>
+        <Heading as="h2">{t('diagnostic.feedbackLoading')}</Heading>
+        <Text as="p">{t('diagnostic.feedbackLoadingHelp')}</Text>
+      </div>
+      <div className={diagnosticStyles.skeleton} aria-hidden="true">
+        <span />
+        <span />
+        <span />
+      </div>
+    </section>
+  )
+}
+
 function DiagnosticOverallFeedback({
-  userId,
-  sessionId,
+  feedback,
 }: {
-  userId: string
-  sessionId: string
+  feedback: ReturnType<typeof useDiagnosticFeedbackQuery>
 }) {
   const { t } = useTranslation()
-  const feedback = useDiagnosticFeedbackQuery(userId, sessionId)
   const value = feedback.data
   return (
     <section

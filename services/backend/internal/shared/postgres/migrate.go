@@ -29,7 +29,10 @@ func migrate(ctx context.Context, pool *pgxpool.Pool, files fs.FS) error {
 	// Copying its pgx config preserves search_path, TLS and connection settings.
 	db := stdlib.OpenDB(*pool.Config().ConnConfig)
 	defer db.Close()
-	locker, err := lock.NewPostgresSessionLocker()
+	// Probe frequently while other processes migrate. Goose defaults to a 5s
+	// interval, which can leave concurrent startup callers waiting through many
+	// migration rounds before they get a chance to acquire the advisory lock.
+	locker, err := lock.NewPostgresSessionLocker(lock.WithLockTimeout(1, 60))
 	if err != nil {
 		return err
 	}

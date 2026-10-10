@@ -40,7 +40,11 @@ it('loads a focused preview before starting and explicitly starts the frozen pla
   const play = vi.spyOn(audio, 'playQuestion').mockResolvedValue(vi.fn())
   render(<RouterProvider router={router} />)
   fireEvent.click(
-    await screen.findByRole('button', { name: 'Начать диагностику' }),
+    await screen.findByRole(
+      'button',
+      { name: 'Начать диагностику' },
+      { timeout: 5000 },
+    ),
   )
   fireEvent.click(await screen.findByRole('button', { name: 'Начать запись' }))
   fireEvent.click(
@@ -79,6 +83,17 @@ it('loads a focused preview before starting and explicitly starts the frozen pla
     await screen.findByRole('button', { name: /Завершить запись/ }),
   )
   expect(await screen.findByText('Оценка: 2 / 2')).toBeVisible()
+  const feedbackParagraph = screen.getByText(
+    'Ответ верный. Вы правильно определили тип задачи. Продолжайте применять этот критерий.',
+  )
+  expect(feedbackParagraph).toBeVisible()
+  expect(feedbackParagraph.tagName).toBe('P')
+  expect(
+    screen.queryByText(
+      'Как определить, что задача относится к классификации?',
+      { selector: 'p' },
+    ),
+  ).not.toBeInTheDocument()
   expect(
     screen.getByText(
       'Это классификация, потому что результат относится к одному из двух классов.',

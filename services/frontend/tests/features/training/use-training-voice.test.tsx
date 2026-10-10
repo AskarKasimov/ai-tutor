@@ -4,7 +4,7 @@ import { createQueryClient } from '@/bootstrap/providers'
 import { createQueryWrapper } from '../../support/query-wrapper'
 import { createAppDependencies } from '@/bootstrap/dependencies'
 import * as audio from '@/shared/lib'
-import type { TrainingProgress } from '@/entities/training'
+import { TrainingApiError, type TrainingProgress } from '@/entities/training'
 import { useTrainingVoice } from '@/features/training'
 afterEach(() => vi.restoreAllMocks())
 const progress: TrainingProgress = {
@@ -52,7 +52,7 @@ it('retains submission on retry and clears feedback when the exercise changes', 
     async (submission: typeof input, signal: AbortSignal) => {
       void submission
       void signal
-      if (++calls === 1) throw Error('offline')
+      if (++calls === 1) throw new TrainingApiError(502)
       return progress
     },
   )
@@ -68,6 +68,11 @@ it('retains submission on retry and clears feedback when the exercise changes', 
     await view.result.current.stop()
   })
   expect(view.result.current.stage).toBe('error')
+  // A new recording must not replace the original audio while a retry is pending.
+  await act(async () => {
+    await view.result.current.start()
+  })
+  expect(audio.startRecording).toHaveBeenCalledOnce()
   await act(async () => {
     await view.result.current.retry()
   })

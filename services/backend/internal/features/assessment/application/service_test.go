@@ -3,7 +3,10 @@ package application
 import (
 	"context"
 	"errors"
+	"reflect"
+	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/variant"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/fault"
@@ -225,6 +228,107 @@ func TestEvaluateVariantRejectsPartialWhenMandatoryCriterionFailed(t *testing.T)
 	var f *fault.Error
 	if !errors.As(err, &f) || f.Code != "INVALID_MODEL_RESPONSE" {
 		t.Fatalf("expected INVALID_MODEL_RESPONSE, got %v", err)
+	}
+}
+
+func TestEvaluateVariantFeedbackTotalLength(t *testing.T) {
+	tests := []struct {
+		name      string
+		feedback  []string
+		shortened bool
+	}{
+		{name: "brief feedback", feedback: []string{"Названы два класса.", "Но тип задачи не указан.", "Добавьте слово «классификация»."}},
+		{name: "exactly 180 runes", feedback: []string{strings.Repeat("а", 174), "б.", "в."}},
+		{name: "181 runes stays untouched", feedback: []string{strings.Repeat("а", 175), "б.", "в."}},
+		{name: "exactly 228 runes stays untouched", feedback: []string{strings.Repeat("а", 222), "б.", "в."}},
+		{name: "229 runes gets shortened", feedback: []string{strings.Repeat("а", 223), "б.", "в."}, shortened: true},
+		{name: "emoji unicode count", feedback: []string{strings.Repeat("🙂", 223), "б.", "в."}, shortened: true},
+		{name: "500 unicode runes", feedback: []string{strings.Repeat("я🙂", 247), "б.", "в."}, shortened: true},
+		{name: "single oversized sentence", feedback: []string{strings.Repeat("Ответ охватывает несколько деталей задания. ", 10), "Есть неточность.", "Уточните правило."}, shortened: true},
+		{name: "three oversized sentences", feedback: []string{strings.Repeat("Назван правильный механизм. ", 12), strings.Repeat("Причина оценки подробно разобрана. ", 12), strings.Repeat("Проверьте отдельные примеры. ", 12)}, shortened: true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			result := validEvaluation()
+			result.Feedback = append([]string(nil), tc.feedback...)
+			got, err := New(
+				&transcriptionStub{text: "классификация, потому что два класса"},
+				&variantTaskStub{result: validVariantTask("main")},
+				&graderStub{result: result},
+			).EvaluateVariant(context.Background(), "student-1", "tr-1", "variant-1", "variant-task-1")
+			if err != nil {
+				t.Fatalf("valid grading must not fail solely due to feedback length: %v", err)
+			}
+			if got.Score != result.Score || got.MaxScore != 2 || got.Verdict != result.Verdict || !reflect.DeepEqual(got.CriterionResults, result.CriterionResults) {
+				t.Fatalf("feedback shortening changed grading: %+v", got)
+			}
+			joined := strings.Join(got.Feedback, " ")
+			if len(got.Feedback) != 3 || utf8.RuneCountInString(joined) > 228 || !utf8.ValidString(joined) {
+				t.Fatalf("expected valid three-part feedback within 228 runes, got %q", joined)
+			}
+			for _, part := range got.Feedback {
+				if strings.TrimSpace(part) == "" {
+					t.Fatalf("feedback contains an empty part: %#v", got.Feedback)
+				}
+			}
+			original := strings.Join(tc.feedback, " ")
+			if tc.shortened && (joined == original || !strings.Contains(joined, "…")) {
+				t.Fatalf("expected shortened feedback, got %q", joined)
+			}
+			if !tc.shortened && joined != original {
+				t.Fatalf("feedback under the hard cap was modified: %q", joined)
+			}
+		})
+	}
+}
+
+func TestShortenFeedbackUsesWordBoundaries(t *testing.T) {
+	feedback := []string{strings.Repeat("Правильно названа классификация. ", 12), "Причина верна.", "Повторите определение."}
+	original := feedback[0]
+	shortenFeedback(feedback)
+	prefix := strings.TrimSuffix(feedback[0], "…")
+	if !strings.HasPrefix(original, prefix+" ") && !strings.HasPrefix(original, prefix+". ") {
+		t.Fatalf("feedback was cut inside a word: %q", feedback[0])
+	}
+}
+
+func TestEvaluateTrustedTrainingOversizedFeedback(t *testing.T) {
+	result := validEvaluation()
+	result.Feedback = []string{
+		strings.Repeat("Правильный пример приведён. ", 15),
+		strings.Repeat("Уточните формулировку. ", 15),
+		strings.Repeat("Сравните с эталоном. ", 15),
+	}
+	got, err := New(
+		&transcriptionStub{text: "Пример ответа"}, nil, &graderStub{result: result},
+	).EvaluateTrusted(context.Background(), "student-1", "tr-1", validVariantTask("training"))
+	if err != nil || got.Score != 2 || got.MaxScore != 2 {
+		t.Fatalf("training grade changed during feedback shortening: %+v %v", got, err)
+	}
+	if len(got.Feedback) != 3 || utf8.RuneCountInString(strings.Join(got.Feedback, " ")) > 228 {
+		t.Fatalf("training feedback exceeds 228 runes: %#v", got.Feedback)
+	}
+}
+
+func TestEvaluateVariantRejectsMalformedFeedback(t *testing.T) {
+	for _, feedback := range [][]string{
+		{"", "Причина.", "Совет."},
+		{"Наблюдение.\nСледующая строка.", "Причина.", "Совет."},
+		{"Наблюдение.\rПричина.", "Причина.", "Совет."},
+		{"Наблюдение.\x00Пробел", "Причина.", "Совет."},
+		{string([]byte{0xff}), "Причина.", "Совет."},
+	} {
+		result := validEvaluation()
+		result.Feedback = feedback
+		_, err := New(
+			&transcriptionStub{text: "классификация, потому что два класса"},
+			&variantTaskStub{result: validVariantTask("main")},
+			&graderStub{result: result},
+		).EvaluateVariant(context.Background(), "student-1", "tr-1", "variant-1", "variant-task-1")
+		var f *fault.Error
+		if !errors.As(err, &f) || f.Code != "INVALID_MODEL_RESPONSE" {
+			t.Fatalf("expected malformed feedback to be rejected, got %v", err)
+		}
 	}
 }
 

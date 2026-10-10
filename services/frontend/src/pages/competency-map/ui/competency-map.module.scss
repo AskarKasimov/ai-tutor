@@ -191,6 +191,12 @@
 .submit {
   justify-self: start;
 }
+.warningReason {
+  margin: 0;
+  & + & {
+    margin-top: 4px;
+  }
+}
 .tableScroll {
   overflow-x: auto;
 }

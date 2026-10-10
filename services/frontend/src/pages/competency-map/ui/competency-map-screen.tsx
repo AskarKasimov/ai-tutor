@@ -38,6 +38,7 @@ import {
   useSubjectsQuery,
 } from '@/features/subject-selection'
 import styles from '@/pages/competency-map/ui/competency-map.module.scss'
+import { groupWarnings } from '../model/import-warnings'
 
 export function CompetencyMapAdminScreen() {
   const { t } = useTranslation()
@@ -78,8 +79,21 @@ function CompetencyMapAdmin({ userId }: { userId: string }) {
   useEffect(() => {
     if (!queuedImport || !subjectId || !file) return
     setQueuedImport(false)
-    upload.mutate({ file, subjectId }, { onSuccess: () => setFile(null) })
+    upload.mutate({ file, subjectId }, settleFile)
   }, [queuedImport, subjectId, file, upload])
+
+  // A file the server rejected (format or size) is dropped, so there is
+  // nothing left to confirm; technical failures keep it for a retry.
+  const settleFile = {
+    onSuccess: () => setFile(null),
+    onError: (error: Error) => {
+      if (
+        error instanceof CompetencyMapApiError &&
+        [400, 413, 415, 422].includes(error.status)
+      )
+        setFile(null)
+    },
+  }
 
   function selectFile(selected: File | undefined) {
     upload.reset()
@@ -102,6 +116,7 @@ function CompetencyMapAdmin({ userId }: { userId: string }) {
   }
 
   const busy = create.isPending || upload.isPending || queuedImport
+  const warningGroups = groupWarnings(upload.data?.warnings ?? [])
   const error = upload.error
   return (
     <div className={styles.page}>
@@ -266,62 +281,61 @@ function CompetencyMapAdmin({ userId }: { userId: string }) {
                     )}
                 </div>
               )}
-              <div className={styles.actions}>
-                <AlertDialog.Root>
-                  <AlertDialog.Trigger>
+              {file && (
+                <div className={styles.actions}>
+                  <AlertDialog.Root>
+                    <AlertDialog.Trigger>
+                      <Button
+                        size="3"
+                        color="green"
+                        className={styles.submit}
+                        disabled={!file || busy}
+                      >
+                        <Check size={18} aria-hidden="true" />
+                        {t('competencyMap.submitEdit')}
+                      </Button>
+                    </AlertDialog.Trigger>
+                    <AlertDialog.Content maxWidth="440px">
+                      <AlertDialog.Title>
+                        {t('competencyMap.confirmTitle')}
+                      </AlertDialog.Title>
+                      <AlertDialog.Description>
+                        {t('competencyMap.confirmHelp')}
+                      </AlertDialog.Description>
+                      <Flex gap="3" mt="5" justify="end" wrap="wrap">
+                        <AlertDialog.Cancel>
+                          <Button variant="soft" color="gray">
+                            {t('competencyMap.cancel')}
+                          </Button>
+                        </AlertDialog.Cancel>
+                        <AlertDialog.Action>
+                          <Button
+                            color="red"
+                            onClick={() => {
+                              if (file && !busy)
+                                upload.mutate({ file, subjectId }, settleFile)
+                            }}
+                          >
+                            {t('competencyMap.confirm')}
+                          </Button>
+                        </AlertDialog.Action>
+                      </Flex>
+                    </AlertDialog.Content>
+                  </AlertDialog.Root>
+                  {file && !busy && (
                     <Button
                       size="3"
-                      color="green"
+                      color="red"
+                      variant="soft"
                       className={styles.submit}
-                      disabled={!file || busy}
+                      onClick={() => selectFile(undefined)}
                     >
-                      <Check size={18} aria-hidden="true" />
-                      {t('competencyMap.submitEdit')}
+                      <X size={18} aria-hidden="true" />
+                      {t('competencyMap.cancelEdit')}
                     </Button>
-                  </AlertDialog.Trigger>
-                  <AlertDialog.Content maxWidth="440px">
-                    <AlertDialog.Title>
-                      {t('competencyMap.confirmTitle')}
-                    </AlertDialog.Title>
-                    <AlertDialog.Description>
-                      {t('competencyMap.confirmHelp')}
-                    </AlertDialog.Description>
-                    <Flex gap="3" mt="5" justify="end" wrap="wrap">
-                      <AlertDialog.Cancel>
-                        <Button variant="soft" color="gray">
-                          {t('competencyMap.cancel')}
-                        </Button>
-                      </AlertDialog.Cancel>
-                      <AlertDialog.Action>
-                        <Button
-                          color="red"
-                          onClick={() => {
-                            if (file && !busy)
-                              upload.mutate(
-                                { file, subjectId },
-                                { onSuccess: () => setFile(null) },
-                              )
-                          }}
-                        >
-                          {t('competencyMap.confirm')}
-                        </Button>
-                      </AlertDialog.Action>
-                    </Flex>
-                  </AlertDialog.Content>
-                </AlertDialog.Root>
-                {file && !busy && (
-                  <Button
-                    size="3"
-                    color="red"
-                    variant="soft"
-                    className={styles.submit}
-                    onClick={() => selectFile(undefined)}
-                  >
-                    <X size={18} aria-hidden="true" />
-                    {t('competencyMap.cancelEdit')}
-                  </Button>
-                )}
-              </div>
+                  )}
+                </div>
+              )}
             </section>
           </>
         )}
@@ -340,52 +354,53 @@ function CompetencyMapAdmin({ userId }: { userId: string }) {
                 </Heading>
               </div>
               {upload.data.unparsedTaskCellCount > 0 && (
-                <Text as="p" color="amber" size="2">
+                <Text as="p" color="gray" size="2">
                   {t('competencyMap.unparsed', {
                     count: upload.data.unparsedTaskCellCount,
+                    rows: warningGroups.length,
                   })}
                 </Text>
               )}
-              {upload.data.warnings.length > 0 && (
-                <>
-                  <div className={styles.tableScroll}>
-                    <Table.Root variant="surface">
-                      <Table.Header>
-                        <Table.Row>
-                          <Table.ColumnHeaderCell>
-                            {t('competencyMap.row')}
-                          </Table.ColumnHeaderCell>
-                          <Table.ColumnHeaderCell>
-                            {t('competencyMap.column')}
-                          </Table.ColumnHeaderCell>
-                          <Table.ColumnHeaderCell>
-                            {t('competencyMap.reason')}
-                          </Table.ColumnHeaderCell>
+              {warningGroups.length > 0 && (
+                <div className={styles.tableScroll}>
+                  <Table.Root variant="surface">
+                    <Table.Header>
+                      <Table.Row>
+                        <Table.ColumnHeaderCell>
+                          {t('competencyMap.row')}
+                        </Table.ColumnHeaderCell>
+                        <Table.ColumnHeaderCell>
+                          {t('competencyMap.reason')}
+                        </Table.ColumnHeaderCell>
+                      </Table.Row>
+                    </Table.Header>
+                    <Table.Body>
+                      {warningGroups.map((group) => (
+                        <Table.Row key={group.row}>
+                          <Table.RowHeaderCell>{group.row}</Table.RowHeaderCell>
+                          <Table.Cell>
+                            {group.reasons.map((reason) => (
+                              <Text
+                                as="p"
+                                size="2"
+                                key={reason.code}
+                                className={styles.warningReason}
+                              >
+                                <strong>{reason.columns.join(', ')}:</strong>{' '}
+                                {t(`competencyMap.warning.${reason.code}`, {
+                                  defaultValue: t(
+                                    'competencyMap.warning.unknown',
+                                    { code: reason.code },
+                                  ),
+                                })}
+                              </Text>
+                            ))}
+                          </Table.Cell>
                         </Table.Row>
-                      </Table.Header>
-                      <Table.Body>
-                        {upload.data.warnings.map((warning, index) => (
-                          <Table.Row key={index}>
-                            <Table.RowHeaderCell>
-                              {warning.row}
-                            </Table.RowHeaderCell>
-                            <Table.Cell>{warning.column}</Table.Cell>
-                            <Table.Cell>
-                              {t(`competencyMap.warning.${warning.code}`, {
-                                defaultValue: t(
-                                  'competencyMap.warning.unknown',
-                                  {
-                                    code: warning.code,
-                                  },
-                                ),
-                              })}
-                            </Table.Cell>
-                          </Table.Row>
-                        ))}
-                      </Table.Body>
-                    </Table.Root>
-                  </div>
-                </>
+                      ))}
+                    </Table.Body>
+                  </Table.Root>
+                </div>
               )}
             </section>
           )}

@@ -66,52 +66,67 @@ func TestBuildUsesPriorityAndStrictlyLowerBasics(t *testing.T) {
 	}
 }
 
-func TestBuildIncludesMainWithAvailableLowerBloomOutcomes(t *testing.T) {
+func TestBuildRequiresTwoLowerBloomBasicsForEveryMain(t *testing.T) {
 	for _, tc := range []struct {
 		name       string
 		candidates []variant.CandidateOutcome
-		want       []string
+		code       string
 	}{
-		{"only main", []variant.CandidateOutcome{candidate("c1", "Comp", "main", "Main", "application", 5, 1, "t1", 1)}, []string{"main"}},
+		{"only main", []variant.CandidateOutcome{candidate("c1", "Comp", "main", "Main", "application", 5, 1, "t1", 1)}, "INSUFFICIENT_DISTINCT_OUTCOMES"},
 		{"one basic and analogs", []variant.CandidateOutcome{
 			candidate("c1", "Comp", "main", "Main", "analysis", 5, 1, "t1", 1),
 			candidate("c1", "Comp", "main", "Main", "analysis", 5, 1, "t1b", 1),
-			candidate("c1", "Comp", "low", "Low", "understanding", 2, 2, "t2", 2)}, []string{"main", "low"}},
-		{"no lower Bloom", []variant.CandidateOutcome{
+			candidate("c1", "Comp", "low", "Low", "understanding", 2, 2, "t2", 2)}, "INSUFFICIENT_DISTINCT_OUTCOMES"},
+		{"no two lower Bloom", []variant.CandidateOutcome{
 			candidate("c1", "Comp", "main", "Main", "application", 5, 1, "t1", 1),
 			candidate("c1", "Comp", "same", "Same", "application", 4, 2, "t2", 2),
-			candidate("c1", "Comp", "higher", "Higher", "analysis", 1, 3, "t3", 3)}, []string{"main"}},
+			candidate("c1", "Comp", "third", "Third", "application", 3, 3, "t3", 3)}, "INSUFFICIENT_LOWER_BLOOM_OUTCOMES"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			service := New(nil, &fixedChooser{}, &fixedIDs{}, time.Now)
-			got, err := service.build("owner", "subject:test", "Тест", 1, tc.candidates)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if len(got.Competencies) != 1 || len(got.SkippedCompetencies) != 0 {
-				t.Fatalf("unexpected blocks: %+v", got)
-			}
-			tasks := got.Competencies[0].Tasks
-			if len(tasks) != len(tc.want) {
-				t.Fatalf("tasks: %+v", tasks)
-			}
-			for i, want := range tc.want {
-				if tasks[i].Task.Outcome.ID != want {
-					t.Fatalf("task %d: %+v", i, tasks[i])
-				}
+			_, err := service.build("owner", "subject:test", "Тест", 1, tc.candidates)
+			failure, ok := err.(*fault.Error)
+			if !ok || failure.Code != "NO_ELIGIBLE_COMPETENCIES" || len(failure.Details) != 1 || failure.Details[0].Code != tc.code {
+				t.Fatalf("want competency skipped with %s, got %v", tc.code, err)
 			}
 		})
 	}
 }
 
+// The "Подготовка данных" case: an equally scored main without lower outcomes
+// must give way to the main that has two basics.
+func TestBuildPrefersMainThatHasTwoBasics(t *testing.T) {
+	service := New(nil, &fixedChooser{}, &fixedIDs{}, time.Now)
+	got, err := service.build("owner", "subject:test", "Тест", 1, []variant.CandidateOutcome{
+		candidate("c1", "Comp", "analysis", "Analysis", "analysis", 4, 1, "t1", 1),
+		candidate("c1", "Comp", "app-4", "App 4", "application", 4, 2, "t2", 2),
+		candidate("c1", "Comp", "app-5", "App 5", "application", 5, 3, "t3", 3),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tasks := got.Competencies[0].Tasks
+	want := []string{"analysis", "app-5", "app-4"}
+	if len(tasks) != 3 {
+		t.Fatalf("tasks: %+v", tasks)
+	}
+	for i, id := range want {
+		if tasks[i].Task.Outcome.ID != id {
+			t.Fatalf("task %d = %s, want %s", i, tasks[i].Task.Outcome.ID, id)
+		}
+	}
+}
+
 func TestBuildSkipsOnlyCompetenciesWithoutReadyEnabledOutcomes(t *testing.T) {
-	valid := candidate("included", "Included", "ready", "Ready", "knowledge", 1, 1, "t1", 1)
+	valid := candidate("included", "Included", "ready", "Ready", "application", 4, 1, "t1", 1)
+	validLowA := candidate("included", "Included", "low-a", "Low A", "knowledge", 3, 4, "t4", 4)
+	validLowB := candidate("included", "Included", "low-b", "Low B", "knowledge", 2, 5, "t5", 5)
 	disabled := candidate("disabled", "Disabled", "off", "Off", "analysis", 5, 2, "t2", 2)
 	disabled.Profile.Outcome.IncludeInTest = new(bool)
 	incomplete := candidate("incomplete", "Incomplete", "missing", "Missing", "analysis", 5, 3, "t3", 3)
 	incomplete.Profile.ReferenceAnswer = nil
 	service := New(nil, &fixedChooser{}, &fixedIDs{}, time.Now)
-	got, err := service.build("owner", "subject:test", "Тест", 1, []variant.CandidateOutcome{valid, disabled, incomplete})
+	got, err := service.build("owner", "subject:test", "Тест", 1, []variant.CandidateOutcome{valid, validLowA, validLowB, disabled, incomplete})
 	if err != nil {
 		t.Fatal(err)
 	}

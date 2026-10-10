@@ -14,7 +14,7 @@ import (
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/fault"
 )
 
-const AlgorithmVersion = "competency-map-v2"
+const AlgorithmVersion = "competency-map-v3"
 
 var bloomRanks = map[string]int{"knowledge": 1, "understanding": 2, "application": 3, "analysis": 4}
 
@@ -123,11 +123,27 @@ func (s *Service) build(ownerID, subjectID, subjectName string, revision int64, 
 			result.SkippedCompetencies = append(result.SkippedCompetencies, variant.SkippedCompetency{CompetencyID: comp.profile.ID, CompetencyName: comp.profile.Name, Code: "NO_READY_OUTCOMES", EligibleOutcomes: len(outcomes)})
 			continue
 		}
-		main := outcomes[0]
-		for _, outcome := range outcomes[1:] {
-			if harder(outcome, main) {
+		// A main always comes with two basics: only outcomes with at least two
+		// lower-ranked outcomes may be main, and the hardest of them is chosen.
+		var main *taskPool
+		for _, outcome := range outcomes {
+			lower := 0
+			for _, other := range outcomes {
+				if other.rank < outcome.rank {
+					lower++
+				}
+			}
+			if lower >= 2 && (main == nil || harder(outcome, main)) {
 				main = outcome
 			}
+		}
+		if main == nil {
+			code := "INSUFFICIENT_LOWER_BLOOM_OUTCOMES"
+			if len(outcomes) < 3 {
+				code = "INSUFFICIENT_DISTINCT_OUTCOMES"
+			}
+			result.SkippedCompetencies = append(result.SkippedCompetencies, variant.SkippedCompetency{CompetencyID: comp.profile.ID, CompetencyName: comp.profile.Name, Code: code, EligibleOutcomes: len(outcomes)})
+			continue
 		}
 		basics := make([]*taskPool, 0, len(outcomes)-1)
 		for _, outcome := range outcomes {

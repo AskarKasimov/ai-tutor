@@ -1,5 +1,5 @@
 import { Button, Heading, Text } from '@radix-ui/themes'
-import { LoaderCircle, Mic, RotateCcw, Square } from 'lucide-react'
+import { ArrowRight, LoaderCircle, Mic, RotateCcw, Square } from 'lucide-react'
 import { useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/features/auth'
@@ -43,12 +43,14 @@ export function DiagnosticTrainer({
   subjectId,
   subjectName,
   onBack,
+  onTraining,
   initialSessionId,
   startNew = false,
 }: {
   subjectId: string
   subjectName: string
   onBack: () => void
+  onTraining: (diagnosticId: string) => void
   initialSessionId?: string
   startNew?: boolean
 }) {
@@ -60,6 +62,7 @@ export function DiagnosticTrainer({
       subjectId={subjectId}
       subjectName={subjectName}
       onBack={onBack}
+      onTraining={onTraining}
       initialSessionId={initialSessionId}
       startNew={startNew}
     />
@@ -70,6 +73,7 @@ function StudentDiagnostic({
   subjectId,
   subjectName,
   onBack,
+  onTraining,
   initialSessionId,
   startNew,
 }: {
@@ -77,6 +81,7 @@ function StudentDiagnostic({
   subjectId: string
   subjectName: string
   onBack: () => void
+  onTraining: (diagnosticId: string) => void
   initialSessionId?: string
   startNew: boolean
 }) {
@@ -178,7 +183,7 @@ function StudentDiagnostic({
         <DiagnosticFlow
           key={progress.session_id}
           userId={userId}
-          onBack={onBack}
+          onTraining={onTraining}
           training={training}
           progress={progress}
         />
@@ -188,12 +193,12 @@ function StudentDiagnostic({
 }
 function DiagnosticFlow({
   userId,
-  onBack,
+  onTraining,
   training,
   progress,
 }: {
   userId: string
-  onBack: () => void
+  onTraining: (diagnosticId: string) => void
   training: ReturnType<typeof useDiagnosticSession>
   progress: DiagnosticProgress
 }) {
@@ -206,13 +211,21 @@ function DiagnosticFlow({
     training.handleError,
   )
   const task = voice.accepted?.task ?? progress.current
+  const openTaskId = voice.accepted
+    ? undefined
+    : progress.current?.variant_task_id
+  // Read the stored voice instruction aloud whenever a new task opens.
+  useEffect(() => {
+    if (openTaskId) void voice.speak({ auto: true })
+    // voice is recreated on every render; autoplay runs once per opened task.
+  }, [openTaskId])
   if (progress.status === 'completed' && !voice.accepted)
     return (
       <DiagnosticSummary
         userId={userId}
         sessionId={progress.session_id}
         training={training}
-        onBack={onBack}
+        onTraining={onTraining}
       />
     )
   if (!task)
@@ -478,12 +491,12 @@ function DiagnosticSummary({
   userId,
   sessionId,
   training,
-  onBack,
+  onTraining,
 }: {
   userId: string
   sessionId: string
   training: ReturnType<typeof useDiagnosticSession>
-  onBack: () => void
+  onTraining: (diagnosticId: string) => void
 }) {
   const { t } = useTranslation()
   const result = useDiagnosticResultQuery(userId, sessionId)
@@ -592,8 +605,9 @@ function DiagnosticSummary({
           {t('session.loadError')}
         </Text>
       )}
-      <Button className={styles.primary} onClick={onBack}>
-        {t('home.newDiagnostic')}
+      <Button className={styles.primary} onClick={() => onTraining(sessionId)}>
+        {t('diagnostic.toTraining')}
+        <ArrowRight size={18} aria-hidden="true" />
       </Button>
     </main>
   )

@@ -104,15 +104,17 @@ export function LearningHome() {
         queryKey: subjectQueryKeys.learningState(userId, selected.id),
       })
   }
-  function openTraining() {
-    if (!selected || !learning.data?.diagnostic_session_id) return
+  function openTraining(
+    diagnosticId = learning.data?.diagnostic_session_id ?? '',
+  ) {
+    if (!selected || !diagnosticId) return
     const next: Intent = {
       apiBase,
       userId,
       subjectId: selected.id,
       sessionId: '',
       mode: 'training',
-      diagnosticId: learning.data.diagnostic_session_id,
+      diagnosticId,
     }
     sessionStorage.setItem('ai-tutor:learning-home', JSON.stringify(next))
     setIntent(next)
@@ -136,6 +138,12 @@ export function LearningHome() {
         subjectId={selected.id}
         subjectName={selected.name}
         onBack={back}
+        onTraining={(diagnosticId) => {
+          void queryClient.invalidateQueries({
+            queryKey: subjectQueryKeys.learningState(userId, selected.id),
+          })
+          openTraining(diagnosticId)
+        }}
         initialSessionId={intent.sessionId || undefined}
         startNew={!intent.sessionId}
       />
@@ -231,7 +239,9 @@ export function LearningHome() {
                       {t(
                         data.active_session_id
                           ? 'home.continueDiagnostic'
-                          : 'home.startDiagnostic',
+                          : data.diagnostic_completed
+                            ? 'home.retakeDiagnostic'
+                            : 'home.startDiagnostic',
                       )}
                       <ArrowRight size={18} aria-hidden="true" />
                     </Button>
@@ -269,7 +279,7 @@ export function LearningHome() {
                       variant={trainingOpen ? 'solid' : 'soft'}
                       color={trainingOpen ? undefined : 'gray'}
                       disabled={!trainingOpen}
-                      onClick={openTraining}
+                      onClick={() => openTraining()}
                     >
                       {t(
                         trainingRequested

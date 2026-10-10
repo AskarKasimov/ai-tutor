@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import {
   createMemoryHistory,
   createRouter,
@@ -37,6 +37,7 @@ it('loads a focused preview before starting and explicitly starts the frozen pla
     history: createMemoryHistory({ initialEntries: ['/'] }),
     routeTree,
   })
+  const play = vi.spyOn(audio, 'playQuestion').mockResolvedValue(vi.fn())
   render(<RouterProvider router={router} />)
   fireEvent.click(
     await screen.findByRole('button', { name: 'Начать диагностику' }),
@@ -60,6 +61,7 @@ it('loads a focused preview before starting and explicitly starts the frozen pla
     screen.getByRole('heading', { name: 'Частичные пробелы в знаниях' }),
   ).toBeVisible()
   expect(screen.getByText('Диагностический балл: 2 / 2')).toBeVisible()
+  const playedBeforeTraining = play.mock.calls.length
   fireEvent.click(screen.getByRole('button', { name: 'Начать тренировку' }))
   expect(
     await screen.findByRole('heading', {
@@ -68,6 +70,10 @@ it('loads a focused preview before starting and explicitly starts the frozen pla
   ).toBeVisible()
   expect(screen.getByText(/Демонстрационный режим/)).toBeVisible()
   expect(screen.getByText(/Раунд 1/)).toBeVisible()
+  // The exercise instruction is read aloud without a click.
+  await waitFor(() =>
+    expect(play.mock.calls.length).toBeGreaterThan(playedBeforeTraining),
+  )
   fireEvent.click(await screen.findByRole('button', { name: 'Начать запись' }))
   fireEvent.click(
     await screen.findByRole('button', { name: /Завершить запись/ }),

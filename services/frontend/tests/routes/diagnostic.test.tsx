@@ -285,6 +285,12 @@ it('runs real diagnostic audio, obeys skipped basics and displays the server tot
   ).toBeVisible()
   expect(screen.getByText('Базовый вопрос из банка')).toBeVisible()
   expect(screen.getByText(/Не проверено/)).toBeVisible()
+  expect(
+    screen.getByRole('button', { name: 'Перейти к тренировке' }),
+  ).toBeEnabled()
+  expect(
+    screen.queryByRole('button', { name: 'Новая диагностика' }),
+  ).not.toBeInTheDocument()
   const [url, init] = requests.mock.calls.find(([url]) =>
     url.endsWith('/answers'),
   )!
@@ -380,14 +386,11 @@ it('restores the existing session on remount without creating another variant', 
     ),
   ).toBe(true)
 })
-it('plays the server instruction through the diagnostic audio endpoint', async () => {
+it('plays the stored server instruction automatically when a task opens', async () => {
   const requests = server()
   vi.spyOn(audio, 'playQuestion').mockResolvedValue(vi.fn())
   await home()
-  fireEvent.click(
-    await screen.findByRole('button', { name: 'Прослушать инструкцию' }),
-  )
-  await waitFor(() => expect(audio.playQuestion).toHaveBeenCalled())
+  await waitFor(() => expect(audio.playQuestion).toHaveBeenCalledTimes(1))
   expect(
     requests.mock.calls.some(([url]) =>
       url.endsWith(
@@ -400,6 +403,21 @@ it('plays the server instruction through the diagnostic audio endpoint', async (
       url.endsWith('/task-audio/audio-main/file'),
     ),
   ).toBe(true)
+})
+
+it('keeps the manual button without an error when the browser blocks autoplay', async () => {
+  server()
+  vi.spyOn(audio, 'playQuestion')
+    .mockRejectedValueOnce(new DOMException('Blocked', 'NotAllowedError'))
+    .mockResolvedValue(vi.fn())
+  await home()
+  await waitFor(() => expect(audio.playQuestion).toHaveBeenCalledTimes(1))
+  const replay = await screen.findByRole('button', {
+    name: 'Прослушать инструкцию',
+  })
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  fireEvent.click(replay)
+  await waitFor(() => expect(audio.playQuestion).toHaveBeenCalledTimes(2))
 })
 
 it('allows starting a fresh diagnostic after the backend has lost the stored session', async () => {

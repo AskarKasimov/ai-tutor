@@ -217,7 +217,7 @@ void i18n.init({
           openTraining: 'Открыть тренировку',
           trainingLoading: 'Загружаем тренировку…',
           back: 'На главную',
-          newDiagnostic: 'Новая диагностика',
+          retakeDiagnostic: 'Пройти заново',
         },
         training: {
           title: 'Тренировка без ограничения по раундам',
@@ -305,6 +305,7 @@ void i18n.init({
         },
         diagnostic: {
           title: 'Диагностика',
+          toTraining: 'Перейти к тренировке',
           answerHelp: 'Следуйте голосовой инструкции задания.',
           transcript: 'Расшифровка',
           transcriptPending: 'Здесь появится расшифровка вашего ответа.',

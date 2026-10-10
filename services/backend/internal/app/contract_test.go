@@ -329,6 +329,44 @@ func TestOpenAPIResponses(t *testing.T) {
 	f.app.Handler().ServeHTTP(trainingAnswer, trainingRequest)
 	check("POST", "/training-sessions/{id}/answers", trainingAnswer)
 	check("GET", "/training-sessions/{id}/history", f.request("GET", "/training-sessions/"+trainingProgress.ID+"/history?limit=1", "", access))
+	postJSON := func(path, key string, body []byte) *httptest.ResponseRecorder {
+		request := httptest.NewRequest(http.MethodPost, "https://api.example"+path, bytes.NewReader(body))
+		request.Header.Set("Content-Type", "application/json")
+		request.Header.Set("Idempotency-Key", key)
+		request.AddCookie(access)
+		response := httptest.NewRecorder()
+		f.app.Handler().ServeHTTP(response, request)
+		return response
+	}
+	var answeredTraining training.Progress
+	if err := json.Unmarshal(trainingAnswer.Body.Bytes(), &answeredTraining); err != nil || answeredTraining.Current.ID == "" {
+		t.Fatalf("training answer response: %s (%v)", trainingAnswer.Body.String(), err)
+	}
+	trainingSkipBody, _ := json.Marshal(map[string]string{"exercise_id": answeredTraining.Current.ID})
+	trainingSkip := postJSON("/training-sessions/"+trainingProgress.ID+"/skip", "contract-training-skip", trainingSkipBody)
+	if trainingSkip.Code != http.StatusOK {
+		t.Fatalf("training skip: %d %s", trainingSkip.Code, trainingSkip.Body.String())
+	}
+	check("POST", "/training-sessions/{id}/skip", trainingSkip)
+	diagnosticSkipStart := postJSON("/diagnostic-sessions", "contract-diagnostic-skip-start", diagnosticStartBody)
+	if diagnosticSkipStart.Code != http.StatusCreated {
+		t.Fatalf("diagnostic skip session: %d %s", diagnosticSkipStart.Code, diagnosticSkipStart.Body.String())
+	}
+	var diagnosticSkipProgress struct {
+		SessionID string `json:"session_id"`
+		Current   struct {
+			ID string `json:"variant_task_id"`
+		} `json:"current"`
+	}
+	if err := json.Unmarshal(diagnosticSkipStart.Body.Bytes(), &diagnosticSkipProgress); err != nil || diagnosticSkipProgress.SessionID == "" || diagnosticSkipProgress.Current.ID == "" {
+		t.Fatalf("diagnostic skip session response: %s (%v)", diagnosticSkipStart.Body.String(), err)
+	}
+	diagnosticSkipBody, _ := json.Marshal(map[string]string{"variant_task_id": diagnosticSkipProgress.Current.ID})
+	diagnosticSkip := postJSON("/diagnostic-sessions/"+diagnosticSkipProgress.SessionID+"/skip", "contract-diagnostic-skip", diagnosticSkipBody)
+	if diagnosticSkip.Code != http.StatusOK {
+		t.Fatalf("diagnostic skip: %d %s", diagnosticSkip.Code, diagnosticSkip.Body.String())
+	}
+	check("POST", "/diagnostic-sessions/{id}/skip", diagnosticSkip)
 	f.app.cfg.APIMode = "real"
 	check("GET", "/variants", f.request("GET", "/variants?subject_id=subject%3Atest", "", access))
 	check("GET", "/variants/{id}", f.request("GET", "/variants/"+createdVariant.ID, "", access))

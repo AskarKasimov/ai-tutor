@@ -265,17 +265,20 @@ func (w *Worker) processClaim(ctx context.Context, claim Claim) error {
 		return nil
 	}
 
-	voiceCtx, cancel := context.WithTimeout(ctx, w.config.VoiceTimeout)
-	data, err := w.synth.Synthesize(voiceCtx, claim.Asset.Instruction)
-	cancel()
-	if err != nil {
-		if isCancelled(ctx, err) {
-			return err
+	data, reused := w.copyReady(ctx, claim)
+	if !reused {
+		voiceCtx, cancel := context.WithTimeout(ctx, w.config.VoiceTimeout)
+		data, err = w.synth.Synthesize(voiceCtx, claim.Asset.Instruction)
+		cancel()
+		if err != nil {
+			if isCancelled(ctx, err) {
+				return err
+			}
+			return w.fail(ctx, claim, "synthesis_failed", err)
 		}
-		return w.fail(ctx, claim, "synthesis_failed", err)
-	}
-	if len(data) == 0 || len(data) > maxAudioObjectBytes || !audio.ValidWAV(data) {
-		return w.fail(ctx, claim, "invalid_wav", fmt.Errorf("synthesizer returned invalid WAV"))
+		if len(data) == 0 || len(data) > maxAudioObjectBytes || !audio.ValidWAV(data) {
+			return w.fail(ctx, claim, "invalid_wav", fmt.Errorf("synthesizer returned invalid WAV"))
+		}
 	}
 
 	putCtx, cancel := context.WithTimeout(ctx, w.config.S3Timeout)
@@ -288,6 +291,29 @@ func (w *Worker) processClaim(ctx context.Context, claim Claim) error {
 		return w.fail(ctx, claim, "storage_put_failed", err)
 	}
 	return w.complete(ctx, claim)
+}
+
+// copyReady reads a ready recording of the same instruction so a re-imported
+// map does not wait for TTS again. Every failure falls back to synthesis; the
+// copy is stored under the claimed asset's own key, keeping assets isolated.
+func (w *Worker) copyReady(ctx context.Context, claim Claim) ([]byte, bool) {
+	source, ok, err := w.queue.FindReady(ctx, claim.Asset.Instruction, claim.Asset.ID)
+	if err != nil || !ok || source.Bucket == nil || *source.Bucket == "" || source.ObjectKey == "" {
+		return nil, false
+	}
+	openCtx, cancel := context.WithTimeout(ctx, w.config.S3Timeout)
+	defer cancel()
+	body, info, err := w.store.Open(openCtx, *source.Bucket, source.ObjectKey)
+	if err != nil || body == nil {
+		return nil, false
+	}
+	data, readErr := io.ReadAll(io.LimitReader(body, maxAudioObjectBytes+1))
+	closeErr := body.Close()
+	if readErr != nil || closeErr != nil || !validObject(info, source.ID) ||
+		int64(len(data)) != info.Size || !audio.ValidWAV(data) {
+		return nil, false
+	}
+	return data, true
 }
 
 func validObject(info ObjectInfo, assetID string) bool {

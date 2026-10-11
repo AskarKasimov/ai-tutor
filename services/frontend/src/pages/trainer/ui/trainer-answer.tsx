@@ -13,14 +13,20 @@ function QuietWaveform() {
   return <div className={styles.waveBars} />
 }
 
-export function LiveWaveform({ stream }: { stream?: MediaStream }) {
+export function LiveWaveform({
+  stream,
+  height,
+}: {
+  stream?: MediaStream
+  height?: number
+}) {
   const container = useRef<HTMLDivElement>(null)
   const waveform = useRef<ReturnType<typeof createVoiceWaveform> | null>(null)
   const [unavailable, setUnavailable] = useState(false)
   useEffect(() => {
     if (!container.current) return
     try {
-      waveform.current = createVoiceWaveform(container.current)
+      waveform.current = createVoiceWaveform(container.current, height)
     } catch {
       setUnavailable(true)
     }
@@ -28,6 +34,7 @@ export function LiveWaveform({ stream }: { stream?: MediaStream }) {
       waveform.current?.dispose()
       waveform.current = null
     }
+    // The height is fixed for the lifetime of the waveform.
   }, [])
   useEffect(() => {
     try {

@@ -278,19 +278,47 @@ it('runs real diagnostic audio, obeys skipped basics and displays the server tot
     'Настоящий вопрос из банка',
   )
   expect(screen.getByText('Первый вариант')).toBeVisible()
+  // The instruction button sits in the task card, under the text and above
+  // the answer options.
+  const listen = screen.getByRole('button', {
+    name: /Прослушать инструкцию|Остановить|Отменить/,
+  })
+  const card = screen.getByRole('heading', { level: 1 }).closest('section')!
+  expect(card).toContainElement(listen)
+  expect(
+    listen.compareDocumentPosition(
+      screen.getByRole('heading', { name: 'Варианты ответа' }),
+    ) & Node.DOCUMENT_POSITION_FOLLOWING,
+  ).toBeTruthy()
   expect(screen.getByRole('heading', { name: 'Ваш ответ' })).toBeVisible()
   expect(
     screen.getByText('Здесь появится расшифровка вашего ответа.'),
   ).toBeVisible()
   expect(screen.queryByText('Голосовая инструкция')).not.toBeInTheDocument()
-  expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuemax', '3')
-  expect(screen.getByLabelText('Вопрос 1: текущий')).toBeVisible()
-  expect(screen.getByLabelText('Вопрос 2: ещё недоступен')).toBeVisible()
-  expect(screen.getByText('Вопрос 1', { selector: 'strong' })).toBeVisible()
-  fireEvent.click(screen.getByRole('button', { name: 'Начать запись' }))
-  fireEvent.click(
-    await screen.findByRole('button', { name: 'Завершить запись' }),
+  // Progress is a percent bar under the header instead of a question list.
+  expect(
+    screen.getByRole('progressbar', { name: 'Прогресс проверки' }),
+  ).toHaveAttribute('aria-valuenow', '0')
+  expect(screen.getByText('0%')).toBeVisible()
+  expect(
+    screen.queryByRole('navigation', { name: 'Вопросы диагностики' }),
+  ).not.toBeInTheDocument()
+  // The header names only the course, without the question or topic.
+  expect(document.querySelector('[aria-current="page"]')).toBeNull()
+  // The microphone circle is the record button; there is no separate one.
+  expect(
+    screen.getByText('Нажмите на микрофон, чтобы начать запись'),
+  ).toBeVisible()
+  expect(screen.getAllByRole('button', { name: 'Начать запись' })).toHaveLength(
+    1,
   )
+  fireEvent.click(screen.getByRole('button', { name: 'Начать запись' }))
+  const stop = await screen.findByRole('button', { name: 'Завершить запись' })
+  expect(screen.getByRole('timer')).toHaveTextContent('00:00')
+  expect(
+    screen.queryByText('Нажмите на микрофон, чтобы начать запись'),
+  ).not.toBeInTheDocument()
+  fireEvent.click(stop)
   // The answer is only confirmed: no score, verdict or feedback per task.
   expect(await screen.findByText('Ответ принят')).toBeVisible()
   expect(screen.queryByText(feedback.join(' '))).not.toBeInTheDocument()
@@ -299,9 +327,10 @@ it('runs real diagnostic audio, obeys skipped basics and displays the server tot
   expect(screen.queryByText('Модель названа.')).not.toBeInTheDocument()
   expect(screen.queryByText(/Критерий (не )?выполнен/)).not.toBeInTheDocument()
   // The main answer is done and both basics were skipped by the server.
-  expect(screen.getByLabelText('Вопрос 1: пройден')).toBeVisible()
-  expect(screen.getByLabelText('Вопрос 2: пропущен')).toBeVisible()
-  expect(screen.getByLabelText('Вопрос 3: пропущен')).toBeVisible()
+  expect(screen.getByRole('progressbar')).toHaveAttribute(
+    'aria-valuenow',
+    '100',
+  )
   expect(screen.getByText('Настоящая расшифровка')).toBeVisible()
   expect(
     screen.queryByText('Здесь появится расшифровка вашего ответа.'),
@@ -572,26 +601,24 @@ it('shows progress by topic and adds clarifying questions only when asked', asyn
     }),
   )
   await home()
-  expect(await screen.findByLabelText('Тема 1: текущая')).toBeVisible()
-  expect(screen.getByLabelText('Тема 2: ещё впереди')).toBeVisible()
-  expect(screen.getByText('Тема 1 из 2', { selector: 'strong' })).toBeVisible()
-  // The total number of questions is unknown, so no clarifying slots yet.
-  expect(screen.queryByLabelText(/уточняющий вопрос/)).not.toBeInTheDocument()
+  expect(await screen.findByRole('progressbar')).toHaveAttribute(
+    'aria-valuenow',
+    '0',
+  )
+  expect(screen.queryByText(/Тема 1 из 2/)).not.toBeInTheDocument()
   fireEvent.click(screen.getByRole('button', { name: 'Начать запись' }))
   fireEvent.click(
     await screen.findByRole('button', { name: 'Завершить запись' }),
   )
-  expect(await screen.findByLabelText('Тема 1: пройдена')).toBeVisible()
-  expect(screen.queryByLabelText('Тема 1: неверно')).not.toBeInTheDocument()
-  expect(
-    screen.getByLabelText('Тема 1, уточняющий вопрос 1: текущий'),
-  ).toBeVisible()
+  // A weak main opens two basics: it adds a third of its topic, 1/3 of 50%.
+  expect(await screen.findByText('Ответ принят')).toBeVisible()
+  expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '17')
+  expect(screen.getByText('17%')).toBeVisible()
   fireEvent.click(screen.getByRole('button', { name: 'Следующее задание' }))
-  expect(
-    await screen.findByText('Тема 1 из 2 · уточняющий вопрос', {
-      selector: 'strong',
-    }),
-  ).toBeVisible()
+  expect(await screen.findByRole('heading', { level: 1 })).toHaveTextContent(
+    basic.question,
+  )
+  expect(screen.queryByText(/уточняющий вопрос/)).not.toBeInTheDocument()
 })
 
 it('keeps answered positions after a page reload', async () => {
@@ -601,10 +628,17 @@ it('keeps answered positions after a page reload', async () => {
   fireEvent.click(
     await screen.findByRole('button', { name: 'Завершить запись' }),
   )
-  expect(await screen.findByLabelText('Вопрос 1: пройден')).toBeVisible()
+  expect(await screen.findByText('Ответ принят')).toBeVisible()
+  const percent = screen.getByRole('progressbar').getAttribute('aria-valuenow')
+  expect(percent).not.toBe('0')
   first.unmount()
   await home()
-  expect(await screen.findByLabelText('Вопрос 1: пройден')).toBeVisible()
+  await waitFor(() =>
+    expect(screen.getByRole('progressbar')).toHaveAttribute(
+      'aria-valuenow',
+      percent,
+    ),
+  )
 })
 
 it('skips a question without sending audio for transcription', async () => {
@@ -619,7 +653,10 @@ it('skips a question without sending audio for transcription', async () => {
       'Вопрос пропущен. Ответ оценён в 0 баллов. Продолжите со следующим вопросом.',
     ),
   ).not.toBeInTheDocument()
-  expect(screen.getByLabelText('Вопрос 1: пропущен')).toBeVisible()
+  expect(screen.getByRole('progressbar')).not.toHaveAttribute(
+    'aria-valuenow',
+    '0',
+  )
   expect(audio.startRecording).not.toHaveBeenCalled()
   const [, init] = requests.mock.calls.find(([url]) => url.endsWith('/skip'))!
   expect(JSON.parse(init?.body as string)).toEqual({
@@ -966,8 +1003,8 @@ it.each([1, 2])(
       'Настоящий вопрос из банка',
     )
     expect(screen.getByRole('progressbar')).toHaveAttribute(
-      'aria-valuemax',
-      String(totalTasks),
+      'aria-valuenow',
+      '0',
     )
     fireEvent.click(screen.getByRole('button', { name: 'Начать запись' }))
     fireEvent.click(

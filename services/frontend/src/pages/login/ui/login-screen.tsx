@@ -10,6 +10,10 @@ export function LoginScreen() {
   return (
     <main className={styles.screen}>
       <div className={styles.content}>
+        {/* The product promise greets the student before signing in. */}
+        <Text as="p" className={styles.slogan}>
+          {t('auth.slogan')}
+        </Text>
         <div className={styles.banner}>
           <Text>{t('auth.studentBanner')}</Text>
           <Button

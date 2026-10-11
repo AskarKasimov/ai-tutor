@@ -1,6 +1,14 @@
 import { Button, Card, Heading, Text } from '@radix-ui/themes'
-import { ArrowRight, GraduationCap, Mic } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import {
+  GraduationCap,
+  Mic,
+  RotateCcw,
+  Sparkles,
+  Target,
+  Zap,
+} from 'lucide-react'
+import { useEffect, useId, useState } from 'react'
+import type { ReactNode } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/features/auth'
@@ -200,10 +208,32 @@ export function LearningHome() {
                   {t('home.intro')}
                 </Text>
               </div>
-              <Text as="p" size="2" className={styles.voiceHint}>
-                <Mic size={16} aria-hidden="true" />
-                {t('home.voiceHint')}
-              </Text>
+              {/* Four coloured, numbered steps say what the student does: a voice
+                  check, its gaps, a personal plan and exam preparation. They
+                  are information, not controls. */}
+              <ol className={styles.steps} aria-label={t('home.stepsLabel')}>
+                {[
+                  { key: 'check', icon: <Mic size={20} /> },
+                  { key: 'gaps', icon: <Target size={20} /> },
+                  { key: 'plan', icon: <Sparkles size={20} /> },
+                  { key: 'exam', icon: <GraduationCap size={20} /> },
+                ].map((step, index) => (
+                  <li key={step.key} className={styles.step} data-step={index}>
+                    <span className={styles.stepNumber} aria-hidden="true">
+                      {String(index + 1).padStart(2, '0')}
+                    </span>
+                    <span className={styles.stepIcon} aria-hidden="true">
+                      {step.icon}
+                    </span>
+                    <Text as="p" className={styles.stepTitle}>
+                      {t(`home.steps.${step.key}.title`)}
+                    </Text>
+                    <Text as="p" className={styles.stepText}>
+                      {t(`home.steps.${step.key}.text`)}
+                    </Text>
+                  </li>
+                ))}
+              </ol>
               {learning.isPending ? (
                 <Text role="status">{t('home.learningLoading')}</Text>
               ) : learning.isError ? (
@@ -225,29 +255,33 @@ export function LearningHome() {
                     </Text>
                   )}
                   <div className={styles.actionRow}>
-                    <Button
-                      size="3"
-                      className={styles.primaryAction}
-                      onClick={resume}
-                    >
-                      {t(
+                    <CourseAction
+                      kind="primary"
+                      icon={<Zap size={22} fill="currentColor" />}
+                      title={t(
                         stage === 'start'
                           ? 'home.startLearning'
                           : 'home.continueLearning',
                       )}
-                      <ArrowRight size={18} aria-hidden="true" />
-                    </Button>
+                      hint={t(
+                        stage === 'start'
+                          ? 'home.startLearningHint'
+                          : stage === 'diagnostic'
+                            ? 'home.continueDiagnosticHint'
+                            : 'home.continueTrainingHint',
+                      )}
+                      onClick={resume}
+                    />
                     {stage === 'training' && (
-                      <Button
-                        size="3"
-                        variant="ghost"
-                        color="gray"
+                      <CourseAction
+                        kind="secondary"
+                        icon={<RotateCcw size={22} />}
+                        title={t('home.restart')}
+                        hint={t('home.restartHint')}
                         onClick={() =>
                           openDiagnostic(selected, undefined, true)
                         }
-                      >
-                        {t('home.restart')}
-                      </Button>
+                      />
                     )}
                   </div>
                 </div>
@@ -257,5 +291,43 @@ export function LearningHome() {
         )}
       </main>
     </div>
+  )
+}
+
+// A large course action: icon, title and a line explaining what happens. The
+// title is the accessible name; the explanation describes it.
+function CourseAction({
+  kind,
+  icon,
+  title,
+  hint,
+  onClick,
+}: {
+  kind: 'primary' | 'secondary'
+  icon: ReactNode
+  title: string
+  hint: string
+  onClick: () => void
+}) {
+  const hintId = useId()
+  return (
+    <button
+      type="button"
+      className={styles.courseAction}
+      data-kind={kind}
+      aria-label={title}
+      aria-describedby={hintId}
+      onClick={onClick}
+    >
+      <span className={styles.courseActionIcon} aria-hidden="true">
+        {icon}
+      </span>
+      <span className={styles.courseActionText}>
+        <span className={styles.courseActionTitle}>{title}</span>
+        <span id={hintId} className={styles.courseActionHint}>
+          {hint}
+        </span>
+      </span>
+    </button>
   )
 }

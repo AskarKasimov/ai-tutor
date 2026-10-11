@@ -1,5 +1,5 @@
 import { Button, Flex, Heading, Text } from '@radix-ui/themes'
-import { Mic, RotateCcw, Square } from 'lucide-react'
+import { Mic, RotateCcw } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { TrainingApiError, type TrainingProgress } from '@/entities/training'
@@ -237,6 +237,34 @@ export function TrainingSession({
               eyebrowHeading
               question={exercise.question}
               options={exercise.options}
+              instruction={
+                <>
+                  <ListenButton
+                    state={
+                      voice.speaking
+                        ? 'playing'
+                        : !result && voice.audioStatus === 'loading'
+                          ? 'loading'
+                          : 'idle'
+                    }
+                    disabled={!result && (recording || processing || waiting)}
+                    onClick={() => void voice.speak()}
+                  />
+                  {!result &&
+                    voice.audioStatus !== 'idle' &&
+                    voice.audioStatus !== 'ready' &&
+                    voice.audioStatus !== 'loading' && (
+                      <Text role="status" className={sessionStyles.hint}>
+                        {t(`training.audio.${voice.audioStatus}`)}
+                      </Text>
+                    )}
+                  {voice.speechError && (
+                    <Text role="alert" className={sessionStyles.hint}>
+                      {t('trainer.speechError')}
+                    </Text>
+                  )}
+                </>
+              }
             >
               {isMockApi() && (
                 <Text as="p" role="note" className={sessionStyles.note}>
@@ -268,13 +296,6 @@ export function TrainingSession({
               <TrainerCapturePanel
                 stage="ready"
                 seconds={seconds}
-                speech={
-                  <ListenButton
-                    state={voice.speaking ? 'playing' : 'idle'}
-                    onClick={() => void voice.speak()}
-                  />
-                }
-                audioUrl={voice.answerUrl}
                 answered={result.skipped ? 'skipped' : 'accepted'}
               >
                 <Button className={sessionStyles.primary} onClick={voice.next}>
@@ -287,33 +308,6 @@ export function TrainingSession({
                   stage={voice.stage === 'result' ? 'ready' : voice.stage}
                   seconds={seconds}
                   stream={voice.stream}
-                  speech={
-                    <>
-                      <ListenButton
-                        state={
-                          voice.speaking
-                            ? 'playing'
-                            : voice.audioStatus === 'loading'
-                              ? 'loading'
-                              : 'idle'
-                        }
-                        disabled={recording || processing || waiting}
-                        onClick={() => void voice.speak()}
-                      />
-                      {voice.audioStatus !== 'idle' &&
-                        voice.audioStatus !== 'ready' &&
-                        voice.audioStatus !== 'loading' && (
-                          <Text role="status" className={sessionStyles.hint}>
-                            {t(`training.audio.${voice.audioStatus}`)}
-                          </Text>
-                        )}
-                      {voice.speechError && (
-                        <Text role="alert" className={sessionStyles.hint}>
-                          {t('trainer.speechError')}
-                        </Text>
-                      )}
-                    </>
-                  }
                   errorMessage={
                     skipFailed
                       ? t('session.skipError')
@@ -326,7 +320,22 @@ export function TrainingSession({
                         : undefined
                   }
                   micError={micError}
-                  audioUrl={voice.answerUrl}
+                  onMic={
+                    // The circle only starts or stops a recording; recovery
+                    // actions keep their explicit buttons.
+                    processing ||
+                    waiting ||
+                    (error &&
+                      (refreshCurrent ||
+                        resetReservation ||
+                        (voice.hasPending && !rerecord)))
+                      ? undefined
+                      : recording
+                        ? () => void voice.stop()
+                        : error
+                          ? recordAgain
+                          : () => void voice.start()
+                  }
                   onSkip={() => void skip()}
                   skipDisabled={recording || processing || waiting}
                 >
@@ -371,33 +380,8 @@ export function TrainingSession({
                       <Mic size={16} aria-hidden="true" />
                       {t(micError ? 'trainer.retry' : 'diagnostic.recordAgain')}
                     </Button>
-                  ) : (
-                    <Button
-                      className={
-                        recording ? sessionStyles.stop : sessionStyles.primary
-                      }
-                      variant={recording ? 'soft' : 'solid'}
-                      disabled={processing || waiting}
-                      onClick={() =>
-                        void (recording ? voice.stop() : voice.start())
-                      }
-                    >
-                      {recording && (
-                        <Square
-                          size={14}
-                          fill="currentColor"
-                          aria-hidden="true"
-                        />
-                      )}
-                      {t(
-                        recording
-                          ? 'trainer.stopRecording'
-                          : waiting
-                            ? 'trainer.allow'
-                            : 'trainer.start',
-                      )}
-                    </Button>
-                  )}
+                  ) : // Recording starts and stops from the microphone circle.
+                  null}
                 </TrainerCapturePanel>
               </>
             )}

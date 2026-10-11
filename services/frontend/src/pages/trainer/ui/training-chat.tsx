@@ -1,5 +1,5 @@
 import { Button, Heading, Text } from '@radix-ui/themes'
-import { LoaderCircle, Mic, Send, Square } from 'lucide-react'
+import { LoaderCircle, Mic, Square } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { TrainingApiError } from '@/entities/training'
@@ -34,7 +34,6 @@ export function TrainingChat({
 }) {
   const { t, i18n } = useTranslation()
   const chat = useTrainingChat(userId, sessionId, exerciseId)
-  const [text, setText] = useState('')
   const [kind, setKind] = useState<'message' | 'check'>('message')
   const [voiceProcessing, setVoiceProcessing] = useState(false)
   const messagesEnd = useRef<HTMLDivElement | null>(null)
@@ -92,27 +91,6 @@ export function TrainingChat({
       })
     }
   }, [messages.length])
-
-  const sendText = async (operation: 'message' | 'check', value = text) => {
-    const submittedDraft = text
-    const input = value.trim()
-    if (!input || !page || busy || readOnly) return
-    setKind(operation)
-    try {
-      await chat.send.mutateAsync({
-        kind: operation,
-        source: 'text',
-        revision: page.revision,
-        text: input,
-      })
-      if (value === submittedDraft)
-        setText((current) => (current === submittedDraft ? '' : current))
-    } catch {
-      // Keep the draft available after a failed request.
-    }
-  }
-
-  const sendHint = () => void sendText('message', t('training.chatHintPrompt'))
 
   const startVoice = () => {
     if (!page || readOnly || busy) return
@@ -298,46 +276,6 @@ export function TrainingChat({
               <option value="check">{t('training.chatVoiceCheck')}</option>
             </select>
           </label>
-          <label
-            className={styles.srOnly}
-            htmlFor={`training-chat-input-${exerciseId}`}
-          >
-            {t('training.chatInput')}
-          </label>
-          <textarea
-            id={`training-chat-input-${exerciseId}`}
-            value={text}
-            rows={2}
-            placeholder={t('training.chatPlaceholder')}
-            onChange={(event) =>
-              setText(Array.from(event.target.value).slice(0, 4000).join(''))
-            }
-            disabled={recording || voice.requesting || !!pending}
-          />
-          <div className={styles.actions}>
-            <Button
-              variant="soft"
-              disabled={!text.trim() || busy || !!pending}
-              onClick={() => void sendText('message')}
-            >
-              <Send size={15} aria-hidden="true" />
-              {t('training.chatSend')}
-            </Button>
-            <Button
-              variant="soft"
-              disabled={!text.trim() || busy || !!pending}
-              onClick={() => void sendText('check')}
-            >
-              {t('training.chatCheck')}
-            </Button>
-            <Button
-              variant="soft"
-              disabled={busy || !!pending}
-              onClick={sendHint}
-            >
-              {t('training.chatHint')}
-            </Button>
-          </div>
           <div className={styles.voiceCapture}>
             <div className={styles.voiceVisualizer}>
               {voice.requesting ? (
@@ -402,7 +340,11 @@ export function TrainingChat({
                   ? t('training.chatProcessing')
                   : recording
                     ? t('training.chatStopRecording')
-                    : t('training.chatRecord')}
+                    : t(
+                        kind === 'check'
+                          ? 'training.chatRecordCheck'
+                          : 'training.chatRecord',
+                      )}
             </Button>
             {voice.error ? (
               <Text role="alert" className={styles.error}>

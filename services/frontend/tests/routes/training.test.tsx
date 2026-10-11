@@ -4,11 +4,12 @@ import {
   createRouter,
   RouterProvider,
 } from '@tanstack/react-router'
-import { beforeEach, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { createQueryClient } from '@/bootstrap/providers'
 import { mockApiFetch } from '@/bootstrap/mock-api'
 import { routeTree } from '@/routeTree.gen'
 import * as audio from '@/shared/lib'
+import { mockChatVoice } from '../support/mock-chat-voice'
 
 beforeEach(async () => {
   vi.stubEnv('VITE_API_MODE', 'mock')
@@ -25,11 +26,14 @@ beforeEach(async () => {
       .mockResolvedValue(new Blob(['audio'], { type: 'audio/webm' })),
     dispose: vi.fn(),
   })
+  mockChatVoice()
   vi.spyOn(audio, 'createAudioUrl').mockReturnValue({
     url: 'blob:recording',
     dispose: vi.fn(),
   })
 })
+
+afterEach(() => vi.unstubAllGlobals())
 
 it('opens training directly from the diagnostic result', async () => {
   const router = createRouter({
@@ -80,10 +84,21 @@ it('opens training directly from the diagnostic result', async () => {
   expect(screen.getByRole('img', { name: 'Визуализация записи' })).toBeVisible()
   const workspace = screen.getByRole('main')
   expect(workspace).toHaveAttribute('data-variant', 'training')
-  expect(screen.getByRole('heading', { name: 'Цели тренировки' })).toBeVisible()
-  const input = screen.getByRole('textbox', { name: 'Сообщение репетитору' })
-  fireEvent.change(input, { target: { value: 'Что означает классификация?' } })
-  fireEvent.click(screen.getByRole('button', { name: 'Отправить' }))
+  expect(
+    screen.queryByRole('heading', { name: 'Цели тренировки' }),
+  ).not.toBeInTheDocument()
+  expect(
+    screen.queryByRole('heading', { name: 'История ответов' }),
+  ).not.toBeInTheDocument()
+  expect(
+    screen.queryByRole('textbox', { name: 'Сообщение репетитору' }),
+  ).not.toBeInTheDocument()
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Записать голосовую реплику' }),
+  )
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Остановить и отправить' }),
+  )
   expect(
     await screen.findByText(
       'Вы назвали важную часть рассуждения. Какое свойство результата подтверждает ваш выбор?',
@@ -91,16 +106,21 @@ it('opens training directly from the diagnostic result', async () => {
   ).toBeVisible()
   expect(screen.getByText(/Раунд 1/)).toBeVisible()
   expect(screen.queryByText(/Оценка:/)).not.toBeInTheDocument()
-  fireEvent.click(screen.getByRole('button', { name: 'Нужна подсказка' }))
+  fireEvent.change(
+    screen.getByRole('combobox', { name: 'Что продиктовать:' }),
+    {
+      target: { value: 'check' },
+    },
+  )
   expect(
-    await screen.findByText(
-      'Подскажи следующий шаг, не раскрывая готовый ответ.',
-    ),
+    screen.getByRole('button', { name: 'Записать итоговый ответ' }),
   ).toBeVisible()
-  fireEvent.change(input, {
-    target: { value: 'Классификация выбирает один из классов.' },
-  })
-  fireEvent.click(screen.getByRole('button', { name: 'Проверить ответ' }))
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Записать итоговый ответ' }),
+  )
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Остановить и отправить' }),
+  )
   expect(await screen.findByText('Ответ проверен')).toBeVisible()
   expect(screen.queryByText(/Результат проверки:/)).not.toBeInTheDocument()
   expect(screen.queryByText(/2 \/ 2/)).not.toBeInTheDocument()
@@ -110,13 +130,9 @@ it('opens training directly from the diagnostic result', async () => {
       'Какой тип задачи предсказывает числовое значение?',
     ),
   ).toBeVisible()
-  fireEvent.click(await screen.findByRole('button', { name: 'Открыть диалог' }))
   expect(
-    await screen.findAllByText('Классификация выбирает один из классов.'),
-  ).toHaveLength(2)
-  expect(
-    screen.getAllByRole('textbox', { name: 'Сообщение репетитору' }),
-  ).toHaveLength(1)
+    screen.queryByRole('textbox', { name: 'Сообщение репетитору' }),
+  ).not.toBeInTheDocument()
   fireEvent.click(screen.getByRole('button', { name: 'Пропустить упражнение' }))
   expect(
     await screen.findByText(

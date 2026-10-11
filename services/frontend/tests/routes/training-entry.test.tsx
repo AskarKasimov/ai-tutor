@@ -13,6 +13,7 @@ import {
 } from '@/entities/training'
 import { userQueryKeys } from '@/entities/user'
 import { TrainingEntry } from '@/pages/trainer/ui/training-entry'
+import { mockChatVoice } from '../support/mock-chat-voice'
 
 const target = {
   kind: 'partial_competency',
@@ -71,6 +72,7 @@ beforeEach(async () => {
 })
 afterEach(() => {
   vi.restoreAllMocks()
+  vi.unstubAllGlobals()
   vi.unstubAllEnvs()
 })
 function setup(
@@ -138,15 +140,15 @@ function setup(
     async () => (entry.submit ? entry.submit() : progress),
   )
   if (entry.sendChat)
-    vi.spyOn(dependencies.training, 'sendTrainingChatText').mockImplementation(
+    vi.spyOn(dependencies.training, 'sendTrainingChatVoice').mockImplementation(
       async () => entry.sendChat!(),
     )
-  vi.spyOn(dependencies.training, 'readTrainingHistory').mockImplementation(
-    function (...args) {
+  const readHistory = vi
+    .spyOn(dependencies.training, 'readTrainingHistory')
+    .mockImplementation(function (...args) {
       const pages = entry.historyPages ?? [{ items: [], targets: [target] }]
       return Promise.resolve(args[1] ? pages[1] : pages[0])
-    },
-  )
+    })
   const onBack = vi.fn()
   const queryClient = createQueryClient()
   queryClient.setQueryData(userQueryKeys.auth, {
@@ -177,7 +179,7 @@ function setup(
       <Harness />
     </AppProviders>,
   )
-  return { start, readPlan, readSession, readChat, onBack }
+  return { start, readPlan, readSession, readChat, readHistory, onBack }
 }
 
 it('opens a new training directly without an extra start click', async () => {
@@ -268,7 +270,7 @@ it('clears a missing session and returns to the subject selector', async () => {
   expect(onBack).toHaveBeenCalledOnce()
 })
 
-it('refetches chat and preserves the draft after a revision conflict', async () => {
+it('refetches chat after a voice revision conflict', async () => {
   const { readChat } = setup({
     existing: progress,
     sendChat: () =>
@@ -276,19 +278,17 @@ it('refetches chat and preserves the draft after a revision conflict', async () 
         new TrainingApiError(409, 'TRAINING_EXERCISE_NOT_CURRENT'),
       ),
   })
-  fireEvent.change(
-    await screen.findByRole('textbox', { name: 'Сообщение репетитору' }),
-    {
-      target: { value: 'Проверка конфликта' },
-    },
+  mockChatVoice()
+  await screen.findByText('Начнём разбирать задачу.')
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Записать голосовую реплику' }),
   )
-  fireEvent.click(screen.getByRole('button', { name: 'Отправить' }))
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Остановить и отправить' }),
+  )
   expect(await screen.findByRole('alert')).toHaveTextContent(
     'Состояние диалога изменилось. Обновляем историю…',
   )
-  expect(
-    screen.getByRole('textbox', { name: 'Сообщение репетитору' }),
-  ).toHaveValue('Проверка конфликта')
   await waitFor(() => expect(readChat).toHaveBeenCalledTimes(2))
 })
 
@@ -301,33 +301,35 @@ it('returns to the selector from the chat session', async () => {
   expect(await screen.findByText('Выбор предмета')).toBeVisible()
 })
 
-it('loads additional answer history pages on demand', async () => {
-  const attempt = (sequence: number, text: string) => ({
-    sequence,
-    exercise_id: `e${sequence}`,
-    round: sequence,
-    target_index: 0,
-    transcription_id: `t${sequence}`,
-    text,
-    score: 1,
-    max_score: 2,
-    verdict: 'partial' as const,
-    criterion_results: [],
-    feedback: [],
-    created_at: sequence,
-  })
-  setup({
-    existing: progress,
-    historyPages: [
-      {
-        items: [attempt(1, 'Первая запись')],
-        targets: [target],
-        next_cursor: 'next',
-      },
-      { items: [attempt(2, 'Вторая запись')], targets: [target] },
-    ],
-  })
-  expect(await screen.findByText('Первая запись')).toBeVisible()
-  fireEvent.click(screen.getByRole('button', { name: 'Показать ещё' }))
-  expect(await screen.findByText('Вторая запись')).toBeVisible()
+it('does not render training targets or fetch answer history', async () => {
+  const { readHistory } = setup({ existing: progress })
+  expect(
+    await screen.findByRole('heading', { name: 'Репетитор' }),
+  ).toBeVisible()
+  expect(
+    screen.queryByRole('heading', { name: 'Цели тренировки' }),
+  ).not.toBeInTheDocument()
+  expect(
+    screen.queryByRole('heading', { name: 'История ответов' }),
+  ).not.toBeInTheDocument()
+  expect(readHistory).not.toHaveBeenCalled()
+})
+
+it('offers only voice input for tutor messages and checks', async () => {
+  setup({ existing: progress })
+  expect(
+    await screen.findByRole('button', { name: 'Записать голосовую реплику' }),
+  ).toBeVisible()
+  expect(
+    screen.getByRole('combobox', { name: 'Что продиктовать:' }),
+  ).toBeVisible()
+  expect(
+    screen.queryByRole('textbox', { name: 'Сообщение репетитору' }),
+  ).not.toBeInTheDocument()
+  expect(
+    screen.queryByRole('button', { name: 'Отправить' }),
+  ).not.toBeInTheDocument()
+  expect(
+    screen.queryByRole('button', { name: 'Нужна подсказка' }),
+  ).not.toBeInTheDocument()
 })

@@ -1,10 +1,9 @@
-import { Button, Heading, Text } from '@radix-ui/themes'
+import { Button, Text } from '@radix-ui/themes'
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { TrainingApiError, type TrainingProgress } from '@/entities/training'
 import { isMockApi } from '@/shared/api'
 import { useTrainingSession, useTrainingVoice } from '@/features/training'
-import { TrainingHistory } from './training-history'
 import { TrainingChat } from './training-chat'
 import {
   ListenButton,
@@ -160,20 +159,11 @@ export function TrainingSession({
               onRecordingChange={setChatRecording}
             />
             <section className={sessionStyles.trainingDetails}>
-              <Heading as="h2">{t('training.targets')}</Heading>
-              <ul>
-                {progress.targets.map((target, index) => (
-                  <li key={`${target.outcome_id}-${index}`}>
-                    <Text>{target.outcome_name}</Text>
-                  </li>
-                ))}
-              </ul>
               {skipFailed ? (
                 <Text role="alert">
                   {t(apiError ? errorCode(apiError) : 'session.skipError')}
                 </Text>
               ) : null}
-              <TrainingHistory userId={userId} progress={progress} />
               <Button
                 className={sessionStyles.primary}
                 disabled={!canSkip}

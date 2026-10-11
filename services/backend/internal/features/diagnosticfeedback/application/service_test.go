@@ -215,6 +215,9 @@ func TestAnalyzeResultTreatsUserSkippedAnswerAsZero(t *testing.T) {
 	if len(report.UnverifiedCompetencies) != 0 || len(report.PartialCompetencies) != 0 || len(report.ConfirmedGaps) != 1 || report.ConfirmedGaps[0].OutcomeID != "basic" {
 		t.Fatalf("skipped zero-score basic should be a confirmed gap: %+v", report)
 	}
+	if strings.Contains(report.ConfirmedGaps[0].Advice, "следующим вопросом") {
+		t.Fatalf("unexpected next question prompt in advice: %s", report.ConfirmedGaps[0].Advice)
+	}
 }
 
 func TestFeedbackServiceCachingAndErrorHandling(t *testing.T) {

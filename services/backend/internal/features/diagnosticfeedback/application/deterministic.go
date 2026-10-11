@@ -99,8 +99,18 @@ func AnalyzeResult(result diagnostic.Result) DeterministicReport {
 				}
 
 				advice := ""
-				if len(b.Feedback) >= 3 && strings.TrimSpace(b.Feedback[2]) != "" {
-					advice = b.Feedback[2]
+				isSkip := b.Skipped || (len(b.Feedback) >= 3 && (strings.Contains(b.Feedback[2], "следующим вопросом") || strings.Contains(b.Feedback[2], "следующий вопрос")))
+				if isSkip {
+					advice = "Вопрос пропущен, требуется отработка."
+				} else if len(b.Feedback) >= 3 && strings.TrimSpace(b.Feedback[2]) != "" {
+					adv := cleanSentence(b.Feedback[2])
+					if adv != "" && !strings.Contains(strings.ToLower(adv), "следующ") {
+						advice = adv + "."
+					} else {
+						advice = "Изучить теорию и разобрать примеры решения."
+					}
+				} else {
+					advice = "Изучить теорию и разобрать примеры решения."
 				}
 
 				report.ConfirmedGaps = append(report.ConfirmedGaps, diagnostic.ConfirmedGap{
@@ -117,10 +127,12 @@ func AnalyzeResult(result diagnostic.Result) DeterministicReport {
 		}
 
 		if !hasBasicZero && classified[mainAns.CompetencyID+"\x00"+mainAns.Task.OutcomeID] == "partial_competency" {
-			detail := fmt.Sprintf("Базовые понятия темы «%s» усвоены, но требуется закрепление на более высоком уровне (%s).",
-				compName, mainAns.Task.TaxonomyCode)
+			detail := "Базовые понятия усвоены, требуется закрепление на практике."
 			if len(mainAns.Feedback) >= 2 && strings.TrimSpace(mainAns.Feedback[1]) != "" {
-				detail += " Причина: " + mainAns.Feedback[1]
+				reason := cleanSentence(mainAns.Feedback[1])
+				if reason != "" && !strings.Contains(strings.ToLower(reason), "следующ") {
+					detail = reason + ". Требуется закрепление на практике."
+				}
 			}
 			report.PartialCompetencies = append(report.PartialCompetencies, diagnostic.PartialCompetency{
 				CompetencyID:   compID,
@@ -147,9 +159,9 @@ func AnalyzeResult(result diagnostic.Result) DeterministicReport {
 	})
 
 	for i, gap := range sortGaps {
-		rationale := fmt.Sprintf("Подтверждён пробел в базовом результате «%s».", gap.OutcomeName)
-		if gap.Advice != "" {
-			rationale += " Рекомендация: " + gap.Advice
+		rationale := "Отработать базовые задания на тренировке."
+		if gap.Advice != "" && gap.Advice != "Вопрос пропущен, требуется отработка." {
+			rationale = "Закрепить применение темы на практических заданиях."
 		}
 		report.TrainingRecommendations = append(report.TrainingRecommendations, diagnostic.TrainingRecommendation{
 			CompetencyID:   gap.CompetencyID,

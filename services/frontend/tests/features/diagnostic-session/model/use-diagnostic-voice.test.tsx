@@ -575,10 +575,14 @@ it.each(['pending', 'processing'])(
     expect(browserSpeak).not.toHaveBeenCalled()
     expect(view.result.current.speechError).toBe(false)
     expect(play).not.toHaveBeenCalled()
-    await waitFor(() => expect(play).toHaveBeenCalledTimes(1), {
-      timeout: 2500,
-    })
-    expect(view.result.current.pendingHint).toBe(false)
+    await waitFor(
+      () => {
+        expect(play).toHaveBeenCalledTimes(1)
+        expect(view.result.current.pendingHint).toBe(false)
+        expect(view.result.current.speech).toBe('playing')
+      },
+      { timeout: 2500 },
+    )
     view.unmount()
   },
 )

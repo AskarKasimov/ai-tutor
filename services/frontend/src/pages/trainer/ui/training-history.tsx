@@ -61,10 +61,8 @@ function HistoryItem({ attempt }: { attempt: TrainingAttempt }) {
           round: attempt.round,
           count: attempt.sequence,
         })}
-        : {attempt.score} / {attempt.max_score}
       </Text>
       <Text as="p">{attempt.text}</Text>
-      <Text as="p">{attempt.feedback.join(' ')}</Text>
     </li>
   )
 }

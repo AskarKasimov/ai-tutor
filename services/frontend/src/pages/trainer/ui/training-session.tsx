@@ -9,10 +9,8 @@ import { TrainingHistory } from './training-history'
 import {
   ListenButton,
   QuestionNavigator,
-  TrainerAnswerPanel,
   TrainerCapturePanel,
   TrainerQuestion,
-  TrainerScore,
   TrainerShell,
   TrainerTranscript,
   TrainerWorkspace,
@@ -48,8 +46,8 @@ function errorCode(error: unknown) {
   return 'training.submitError'
 }
 
-// Training is endless: answered exercises keep the score colors recorded in
-// this browser and the open exercise is current.
+// Training is endless: answered exercises are shown as done without their
+// score and the open exercise is current.
 function useTrainingTrack(
   progress: TrainingProgress,
   result: TrainingProgress['answer'] | undefined,
@@ -85,13 +83,7 @@ function useTrainingTrack(
     const state = store.current.track.states[i]
     return {
       number: i + 1,
-      state:
-        state === 'correct' ||
-        state === 'partial' ||
-        state === 'incorrect' ||
-        state === 'skipped'
-          ? state
-          : 'done',
+      state: state === 'skipped' ? state : 'done',
     }
   })
   if (!result) items.push({ number: answered + 1, state: 'current' })
@@ -265,61 +257,30 @@ export function TrainingSession({
                     {progress.targets.map((target, index) => (
                       <li key={`${target.outcome_id}-${index}`}>
                         <Text>{target.outcome_name}</Text>
-                        {target.last_score !== null && (
-                          <Text> · {target.last_score}</Text>
-                        )}
                       </li>
                     ))}
                   </ul>
-                  <Text>
-                    {t('training.latestScore', {
-                      score: progress.answer?.score ?? '—',
-                    })}
-                  </Text>
                 </section>
                 <TrainingHistory userId={userId} progress={progress} />
               </div>
             </TrainerQuestion>
             {result ? (
-              <TrainerAnswerPanel>
-                <Text as="p" className={styles.eyebrow}>
-                  {t('session.result')}
-                </Text>
-                <TrainerScore
-                  score={result.score}
-                  maxScore={result.max_score}
-                  verdict={t(
-                    `diagnostic.verdict.${result.skipped ? 'skipped' : result.verdict}`,
-                  )}
-                  skipped={result.skipped}
-                />
-                <Heading as="h2" className={styles.feedbackTitle}>
-                  {t('training.score', {
-                    score: result.score,
-                    max: result.max_score,
-                  })}
-                </Heading>
-                <Text as="p" className={styles.feedbackLine}>
-                  {result.feedback.join(' ')}
-                </Text>
-                {voice.answerUrl && (
-                  <div className={styles.audio}>
-                    <audio
-                      controls
-                      src={voice.answerUrl}
-                      aria-label={t('trainer.listenRecording')}
-                    />
-                  </div>
-                )}
-                <div className={sessionStyles.actions}>
-                  <Button
-                    className={sessionStyles.primary}
-                    onClick={voice.next}
-                  >
-                    {t('training.next')}
-                  </Button>
-                </div>
-              </TrainerAnswerPanel>
+              <TrainerCapturePanel
+                stage="ready"
+                seconds={seconds}
+                speech={
+                  <ListenButton
+                    state={voice.speaking ? 'playing' : 'idle'}
+                    onClick={() => void voice.speak()}
+                  />
+                }
+                audioUrl={voice.answerUrl}
+                answered={result.skipped ? 'skipped' : 'accepted'}
+              >
+                <Button className={sessionStyles.primary} onClick={voice.next}>
+                  {t('session.next')}
+                </Button>
+              </TrainerCapturePanel>
             ) : (
               <>
                 <TrainerCapturePanel

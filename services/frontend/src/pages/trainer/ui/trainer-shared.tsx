@@ -386,6 +386,7 @@ export function ListenButton({
 
 // The voice panel: instruction playback, live waveform with a timer and the
 // answer actions; a failed microphone shows the crossed-out microphone state.
+// Once an answer is accepted the panel only confirms it, without a score.
 export function TrainerCapturePanel({
   stage,
   seconds,
@@ -394,6 +395,7 @@ export function TrainerCapturePanel({
   errorMessage,
   micError,
   audioUrl,
+  answered,
   onSkip,
   skipDisabled,
   children,
@@ -405,6 +407,7 @@ export function TrainerCapturePanel({
   errorMessage?: string
   micError?: { title: string; help: string }
   audioUrl?: string
+  answered?: 'accepted' | 'skipped'
   onSkip?: () => void
   skipDisabled?: boolean
   children: ReactNode
@@ -443,6 +446,14 @@ export function TrainerCapturePanel({
                   : 'session.processingStatus',
               )}
             </Text>
+          ) : answered ? (
+            <Text className={styles.waveStatus} role="status">
+              {t(
+                answered === 'skipped'
+                  ? 'session.answerSkipped'
+                  : 'session.answerAccepted',
+              )}
+            </Text>
           ) : stage === 'recording' ? (
             <Text className={styles.timer}>{seconds}</Text>
           ) : null}
@@ -455,7 +466,7 @@ export function TrainerCapturePanel({
         </Text>
       )}
       <div className={styles.actions}>{children}</div>
-      {audioUrl && stage === 'error' && (
+      {audioUrl && (stage === 'error' || answered) && (
         <div className={styles.audio}>
           <audio
             controls
@@ -465,7 +476,7 @@ export function TrainerCapturePanel({
         </div>
       )}
       <div className={styles.spacer} />
-      {onSkip && (
+      {onSkip && !answered && (
         <Button
           variant="outline"
           color="gray"

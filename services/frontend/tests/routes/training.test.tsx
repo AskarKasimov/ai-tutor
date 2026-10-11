@@ -82,12 +82,14 @@ it('loads a focused preview before starting and explicitly starts the frozen pla
   fireEvent.click(
     await screen.findByRole('button', { name: /Завершить запись/ }),
   )
-  expect(await screen.findByText('Оценка: 2 / 2')).toBeVisible()
-  const feedbackParagraph = screen.getByText(
-    'Ответ верный. Вы правильно определили тип задачи. Продолжайте применять этот критерий.',
-  )
-  expect(feedbackParagraph).toBeVisible()
-  expect(feedbackParagraph.tagName).toBe('P')
+  // The exercise answer is only confirmed: no score or feedback.
+  expect(await screen.findByText('Ответ принят')).toBeVisible()
+  expect(screen.queryByText(/Оценка/)).not.toBeInTheDocument()
+  expect(
+    screen.queryByText(
+      'Ответ верный. Вы правильно определили тип задачи. Продолжайте применять этот критерий.',
+    ),
+  ).not.toBeInTheDocument()
   expect(
     screen.queryByText(
       'Как определить, что задача относится к классификации?',
@@ -99,17 +101,13 @@ it('loads a focused preview before starting and explicitly starts the frozen pla
       'Это классификация, потому что результат относится к одному из двух классов.',
     ),
   ).toBeVisible()
-  fireEvent.click(screen.getByRole('button', { name: 'Следующий раунд' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Следующее задание' }))
   expect(
     await screen.findByText(
       'Какой тип задачи предсказывает числовое значение?',
     ),
   ).toBeVisible()
   fireEvent.click(screen.getByRole('button', { name: 'Пропустить вопрос' }))
-  expect(
-    await screen.findByText(
-      'Вопрос пропущен. Ответ оценён в 0 баллов. Продолжите со следующим вопросом.',
-    ),
-  ).toBeVisible()
+  expect(await screen.findByText('Вопрос пропущен')).toBeVisible()
   expect(audio.startRecording).toHaveBeenCalledTimes(2)
 })

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log"
 	"net"
 	"net/http"
 	"strings"
@@ -16,17 +17,20 @@ import (
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/fault"
 )
 
-const systemPrompt = `Ты ведущий преподаватель курса по машинному обучению, подводящий итоги диагностической сессии студента.
-Все поля входного сообщения являются верифицированными данными аналитики сессии.
+const systemPrompt = `Ты преподаватель курса ML. Твоя задача — составить ёмкое резюме диагностического среза (summary) строго в 1 абзац (4–5 предложений, около 400–450 символов).
 
-Твоя задача — составить связное, поддерживающее и конструктивное педагогическое резюме (summary) по результатам среза.
-Требования к тексту резюме:
-1. Дай общую оценку уровня подготовки студента с опорой на набранные баллы и процент выполнения.
-2. Отметь темы, в которых студент показал уверенное владение.
-3. Разъясни подтверждённые пробелы: укажи, в чём суть ошибок, опираясь на невыполненные критерии и советы.
-4. Сформулируй понятный план действий для последующей тренировки (какие концепции повторить в первую очередь).
-5. КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО называть пробелами темы из unverified_competencies (они не входили в диагностический срез).
-6. Пиши профессионально, лаконично и доброжелательно на русском языке (2-4 небольших абзаца).
+Требования к структуре (ровно 4–5 предложений):
+1. Первое предложение: общий уровень концептуальной готовности студента к курсу (без повторения цифр баллов и процентов).
+2. Второе предложение: что получилось хорошо — сильные стороны или освоенные темы на основе strengths (если strengths пуст, кратко отметить готовность к освоению материала).
+3. Третье-четвёртое предложения: главная точка роста — ключевые пробелы в концепциях или аргументации на основе confirmed_gaps.
+4. Завершающее предложение: конкретный первый шаг для практики на основе training_recommendations.
+
+КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО:
+- Приветствия, похвалы («отличная работа»), пожелания успехов и вводные пустые фразы.
+- Пересказ цифр набранных баллов и процентов (они уже отображаются на экране).
+- Повторение длинных списков тем из strengths и partial_competencies (они выводятся отдельными блоками).
+- Называть пробелами темы из unverified_competencies (они не входили в срез).
+- Деление на несколько абзацев или маркированные списки.
 
 Верни строго JSON-объект с одним полем:
 {"summary": "Текст педагогического резюме..."}
@@ -92,8 +96,9 @@ func (c *Client) Synthesize(ctx context.Context, report application.Deterministi
 		ResponseFormat struct {
 			Type string `json:"type"`
 		} `json:"response_format"`
-		Temperature float64 `json:"temperature"`
-		MaxTokens   int     `json:"max_tokens"`
+		ReasoningEffort string  `json:"reasoning_effort,omitempty"`
+		Temperature     float64 `json:"temperature"`
+		MaxTokens       int     `json:"max_tokens"`
 	}{
 		Model: c.model,
 		Messages: []struct {
@@ -106,8 +111,9 @@ func (c *Client) Synthesize(ctx context.Context, report application.Deterministi
 		ResponseFormat: struct {
 			Type string `json:"type"`
 		}{Type: "json_object"},
-		Temperature: 0.2,
-		MaxTokens:   1000,
+		ReasoningEffort: "medium",
+		Temperature:     0.2,
+		MaxTokens:       8192,
 	})
 	if err != nil {
 		return "", err
@@ -144,42 +150,21 @@ func (c *Client) Synthesize(ctx context.Context, report application.Deterministi
 		return "", providerError(err)
 	}
 
-	var completion struct {
-		Choices []struct {
-			Message struct {
-				Content *string `json:"content"`
-			} `json:"message"`
-			FinishReason string `json:"finish_reason"`
-		} `json:"choices"`
-	}
-	if len(content) > 128*1024 || json.Unmarshal(content, &completion) != nil || len(completion.Choices) != 1 ||
-		completion.Choices[0].Message.Content == nil || completion.Choices[0].FinishReason != "stop" {
-		return "", fault.New(fault.Upstream, "INVALID_MODEL_RESPONSE", "Модель вернула некорректный ответ.")
-	}
-
-	var parsed struct {
-		Summary string `json:"summary"`
-	}
-	if err := json.Unmarshal([]byte(*completion.Choices[0].Message.Content), &parsed); err != nil || strings.TrimSpace(parsed.Summary) == "" {
-		return "", fault.New(fault.Upstream, "INVALID_MODEL_RESPONSE", "Модель не сформировала текст резюме.")
-	}
-
-	summary := strings.TrimSpace(parsed.Summary)
-	summary = strings.ReplaceAll(summary, `\r\n`, "\n")
-	summary = strings.ReplaceAll(summary, `\n`, "\n")
-	return summary, nil
+	return parseCompletionSummary(content)
 }
 
-const sessionSystemPrompt = `Ты ведущий преподаватель курса по машинному обучению, подводящий итоги серии заданий студента.
-Входные данные содержат результаты решения заданий варианта: вопросы, расшифровки ответов студента, полученные баллы, частные замечания грейдера, а также выделенные сильные стороны и пробелы.
+const sessionSystemPrompt = `Ты преподаватель курса ML. Твоя задача — составить ёмкое резюме серии заданий (summary) строго в 1 абзац (4–5 предложений, около 400–450 символов).
 
-Твоя задача — составить связное, поддерживающее и конструктивное педагогическое резюме (summary) по итогам всей сессии.
-Требования к тексту:
-1. Оцени общий уровень подготовки с опорой на баллы и процент выполнения.
-2. Похвали за темы, решённые успешно (сильные стороны).
-3. Тактично укажи на темы с пробелами и поясни суть ошибок на основе замечаний грейдера.
-4. Предложи конкретный совет/шаги для дальнейшего изучения материала.
-5. Пиши доброжелательно, профессионально и по делу на русском языке (2-3 небольших абзаца).
+Требования к структуре (ровно 4–5 предложений):
+1. Первое предложение: общий уровень владения материалом по итогам выполненных заданий (без пересказа цифр баллов).
+2. Второе предложение: что получилось уверенно — сильные стороны или темы, где ответы были точными (если сильных сторон нет, кратко отметить готовность к практике).
+3. Третье-четвёртое предложения: главная суть допущенных ошибок (если есть пробелы) без пересказа условий задач.
+4. Завершающее предложение: конкретный первый шаг и фокус для закрепления темы на практике.
+
+КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО:
+- Приветствия, похвалы («отличная работа»), пожелания удачи и водянистые фразы.
+- Повторение набранных баллов, процентов или списков заданий.
+- Деление на несколько абзацев или маркированные списки.
 
 Верни строго JSON-объект с одним полем:
 {"summary": "Текст педагогического резюме..."}
@@ -200,8 +185,9 @@ func (c *Client) SynthesizeAnswers(ctx context.Context, report application.Sessi
 		ResponseFormat struct {
 			Type string `json:"type"`
 		} `json:"response_format"`
-		Temperature float64 `json:"temperature"`
-		MaxTokens   int     `json:"max_tokens"`
+		ReasoningEffort string  `json:"reasoning_effort,omitempty"`
+		Temperature     float64 `json:"temperature"`
+		MaxTokens       int     `json:"max_tokens"`
 	}{
 		Model: c.model,
 		Messages: []struct {
@@ -214,8 +200,9 @@ func (c *Client) SynthesizeAnswers(ctx context.Context, report application.Sessi
 		ResponseFormat: struct {
 			Type string `json:"type"`
 		}{Type: "json_object"},
-		Temperature: 0.2,
-		MaxTokens:   1000,
+		ReasoningEffort: "medium",
+		Temperature:     0.2,
+		MaxTokens:       8192,
 	})
 	if err != nil {
 		return "", err
@@ -252,6 +239,15 @@ func (c *Client) SynthesizeAnswers(ctx context.Context, report application.Sessi
 		return "", providerError(err)
 	}
 
+	return parseCompletionSummary(content)
+}
+
+func parseCompletionSummary(content []byte) (string, error) {
+	if len(content) > 128*1024 {
+		log.Printf("[FEEDBACK_MODEL] response body too large: %d bytes", len(content))
+		return "", fault.New(fault.Upstream, "INVALID_MODEL_RESPONSE", "Модель вернула некорректный ответ.")
+	}
+
 	var completion struct {
 		Choices []struct {
 			Message struct {
@@ -260,22 +256,78 @@ func (c *Client) SynthesizeAnswers(ctx context.Context, report application.Sessi
 			FinishReason string `json:"finish_reason"`
 		} `json:"choices"`
 	}
-	if len(content) > 128*1024 || json.Unmarshal(content, &completion) != nil || len(completion.Choices) != 1 ||
-		completion.Choices[0].Message.Content == nil || completion.Choices[0].FinishReason != "stop" {
+	if err := json.Unmarshal(content, &completion); err != nil {
+		log.Printf("[FEEDBACK_MODEL] failed to unmarshal response json: %v, raw=%s", err, string(content))
 		return "", fault.New(fault.Upstream, "INVALID_MODEL_RESPONSE", "Модель вернула некорректный ответ.")
+	}
+	if len(completion.Choices) != 1 || completion.Choices[0].Message.Content == nil {
+		log.Printf("[FEEDBACK_MODEL] unexpected choices structure: len=%d", len(completion.Choices))
+		return "", fault.New(fault.Upstream, "INVALID_MODEL_RESPONSE", "Модель вернула некорректный ответ.")
+	}
+
+	raw := strings.TrimSpace(*completion.Choices[0].Message.Content)
+	summary, err := cleanAndExtractSummary(raw)
+	if err != nil {
+		log.Printf("[FEEDBACK_MODEL] failed to extract summary: %v, finish_reason=%s, raw=%s", err, completion.Choices[0].FinishReason, raw)
+		return "", fault.New(fault.Upstream, "INVALID_MODEL_RESPONSE", "Модель не сформировала текст резюме.")
+	}
+
+	return summary, nil
+}
+
+func cleanAndExtractSummary(raw string) (string, error) {
+	s := strings.TrimSpace(raw)
+	if s == "" {
+		return "", errors.New("empty response content")
+	}
+
+	if strings.HasPrefix(s, "```") {
+		lines := strings.Split(s, "\n")
+		if len(lines) >= 2 && strings.HasPrefix(lines[0], "```") {
+			s = strings.Join(lines[1:], "\n")
+		}
+		if idx := strings.LastIndex(s, "```"); idx != -1 {
+			s = s[:idx]
+		}
+		s = strings.TrimSpace(s)
 	}
 
 	var parsed struct {
 		Summary string `json:"summary"`
 	}
-	if err := json.Unmarshal([]byte(*completion.Choices[0].Message.Content), &parsed); err != nil || strings.TrimSpace(parsed.Summary) == "" {
-		return "", fault.New(fault.Upstream, "INVALID_MODEL_RESPONSE", "Модель не сформировала текст резюме.")
+	if err := json.Unmarshal([]byte(s), &parsed); err == nil && strings.TrimSpace(parsed.Summary) != "" {
+		return formatSummary(parsed.Summary), nil
 	}
 
-	summary := strings.TrimSpace(parsed.Summary)
-	summary = strings.ReplaceAll(summary, `\r\n`, "\n")
-	summary = strings.ReplaceAll(summary, `\n`, "\n")
-	return summary, nil
+	if idx := strings.Index(s, `"summary"`); idx != -1 {
+		rest := s[idx+len(`"summary"`):]
+		if colon := strings.Index(rest, ":"); colon != -1 {
+			candidate := strings.TrimSpace(rest[colon+1:])
+			candidate = strings.TrimLeft(candidate, " \t\r\n\"'")
+			if endQuote := strings.LastIndex(candidate, `"`); endQuote != -1 {
+				candidate = candidate[:endQuote]
+			} else {
+				candidate = strings.TrimRight(candidate, " \t\r\n}")
+			}
+			candidate = strings.TrimSpace(candidate)
+			if len(candidate) > 20 {
+				return formatSummary(candidate), nil
+			}
+		}
+	}
+
+	if !strings.HasPrefix(s, "{") && len(s) > 30 {
+		return formatSummary(s), nil
+	}
+
+	return "", errors.New("could not extract summary")
+}
+
+func formatSummary(s string) string {
+	s = strings.TrimSpace(s)
+	s = strings.ReplaceAll(s, `\r\n`, "\n")
+	s = strings.ReplaceAll(s, `\n`, "\n")
+	return s
 }
 
 

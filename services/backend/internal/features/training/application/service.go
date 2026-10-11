@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"strings"
 	"time"
@@ -32,12 +31,18 @@ type IDs interface{ New(string) (string, error) }
 type ExerciseProvider interface {
 	Generate(context.Context, training.Target, []training.Attempt) (training.Task, string, error)
 }
+// TheoryWriter summarizes the ОС of a competency for the theory stage.
+type TheoryWriter interface {
+	Summarize(context.Context, training.TheoryRequest) (string, error)
+}
 type Repository interface {
 	Get(context.Context, string, string) (training.Session, error)
 	ByDiagnostic(context.Context, string, string) (training.Session, error)
 	ByStartKey(context.Context, string, string, string) (training.Session, bool, error)
-	Practice(context.Context, string) (int64, []training.Task, error)
+	Material(context.Context, string) (training.Material, error)
 	Create(context.Context, training.Session, string, *int64) (training.Session, bool, error)
+	// AdvanceTheory saves the state that follows the expected theory exercise.
+	AdvanceTheory(context.Context, string, string, training.Session) (training.Progress, error)
 	Reserve(context.Context, string, string, string, string, string, string) (*training.Progress, *training.Reservation, training.Session, error)
 	Accept(context.Context, string, training.Reservation, training.Session, training.Attempt) (training.Progress, error)
 	Fail(context.Context, string, string, training.Reservation) error
@@ -55,6 +60,13 @@ type Service struct {
 	audio       audioasset.MetadataReader
 	regenerator audioasset.Regenerator
 	checkedNext CheckedNextRepository
+	theory      TheoryWriter
+}
+
+// WithTheory enables model summaries; without it theory shows the source ОС texts.
+func (s *Service) WithTheory(writer TheoryWriter) *Service {
+	s.theory = writer
+	return s
 }
 
 func (s *Service) WithCheckedNext(repository CheckedNextRepository) *Service {
@@ -85,62 +97,106 @@ func (s *Service) plan(ctx context.Context, owner, id string) (training.Session,
 		return training.Session{}, fault.New(fault.Conflict, "DIAGNOSTIC_SESSION_ACTIVE", "Сначала завершите диагностику.")
 	}
 	state := training.Session{OwnerID: owner, DiagnosticID: id, SubjectID: d.Variant.SubjectID, SubjectName: d.Variant.SubjectNameSnapshot, Mode: "focused", PlanRevision: d.Variant.MapRevision, Round: 1, Targets: []training.Target{}}
-	for _, target := range diagnostic.TrainingTargets(d.Answers) {
-		raw, err := json.Marshal(target.Answer.Task)
-		if err != nil {
-			return state, err
-		}
-		var task training.Task
-		if err = json.Unmarshal(raw, &task); err != nil {
-			return state, err
-		}
-		max := 2
-		if target.Kind == "confirmed_gap" {
-			max = 1
-		}
-		criteria := []training.CriterionResult{}
-		for _, c := range target.Answer.CriterionResults {
-			criteria = append(criteria, training.CriterionResult{Key: c.Key, Satisfied: c.Satisfied, Explanation: c.Explanation})
-		}
-		state.Targets = append(state.Targets, training.Target{Kind: target.Kind, Source: task, OriginalScore: target.Answer.Score, OriginalMaxScore: max, OriginalFeedback: append([]string{}, target.Answer.Feedback...), OriginalCriteria: criteria})
-	}
-	score := 0
 	for _, a := range d.Answers {
 		if a.Role == "main" {
-			score += a.Score
+			state.DiagnosticScore += a.Score
 		}
-		state.DiagnosticScore = score
-		state.MaximumScore = 2 * d.Variant.IncludedCompetencyCount
 	}
-	if len(state.Targets) == 0 && d.Variant.IncludedCompetencyCount > 0 && score == 2*d.Variant.IncludedCompetencyCount {
-		state.Mode = "free_practice"
-		revision, tasks, err := s.repo.Practice(ctx, state.SubjectID)
-		if err != nil {
-			return state, err
+	state.MaximumScore = 2 * d.Variant.IncludedCompetencyCount
+	// Each competency with a gap becomes one block; the shared classifier labels it.
+	kinds := map[string]string{}
+	for _, target := range diagnostic.TrainingTargets(d.Answers) {
+		if _, exists := kinds[target.Answer.CompetencyID]; !exists {
+			kinds[target.Answer.CompetencyID] = target.Kind
 		}
-		state.PlanRevision = revision
-		indices := map[string]int{}
-		for _, task := range tasks {
-			if index, exists := indices[task.OutcomeID]; exists {
-				state.Targets[index].Sources = append(state.Targets[index].Sources, task)
+	}
+	excellent := len(kinds) == 0 && d.Variant.IncludedCompetencyCount > 0 && state.DiagnosticScore == state.MaximumScore
+	if len(kinds) == 0 && !excellent {
+		return state, nil
+	}
+	material, err := s.repo.Material(ctx, state.SubjectID)
+	if err != nil {
+		return state, err
+	}
+	if excellent {
+		state.Mode = "free_practice"
+		state.PlanRevision = material.Revision
+	}
+	for _, competency := range d.Variant.Competencies {
+		kind, exists := kinds[competency.ID]
+		if !exists {
+			if !excellent {
 				continue
 			}
-			indices[task.OutcomeID] = len(state.Targets)
-			target := training.Target{Kind: "free_practice", Source: task, Sources: []training.Task{task}}
-			for _, a := range d.Answers {
-				if a.OutcomeID == task.OutcomeID {
-					target.OriginalScore = a.Score
-					target.OriginalMaxScore = 2
-					if a.Role == "basic" {
-						target.OriginalMaxScore = 1
-					}
-					break
-				}
-			}
+			kind = "free_practice"
+		}
+		if target, ok := blockTarget(kind, competency, d.Answers, material); ok {
 			state.Targets = append(state.Targets, target)
 		}
 	}
 	return state, nil
+}
+
+func trainingTask(t diagnostic.TaskSnapshot) training.Task {
+	return training.Task{SourceTaskID: t.SourceTaskID, CompetencyID: t.CompetencyID, CompetencyName: t.CompetencyName, ConstituentID: t.ConstituentID, ConstituentName: t.ConstituentName, OutcomeID: t.OutcomeID, OutcomeName: t.OutcomeName, Question: t.Question, Options: append([]string{}, t.Options...), VoiceInstruction: t.VoiceInstruction, ReferenceAnswer: t.ReferenceAnswer, Criteria: t.Criteria, TaxonomyCode: t.TaxonomyCode, ALDLevelCode: t.ALDLevelCode, EducationalContent: t.EducationalContent, Importance: t.Importance, AudioAssetID: t.AudioAssetID}
+}
+
+// outcomeKey matches tasks by names because a reimport issues new IDs.
+func outcomeKey(t training.Task) string { return t.CompetencyName + "\x00" + t.OutcomeName }
+
+// taskPool puts other ready tasks of the same ОР first: the snapshot task was
+// already shown in the diagnostic. Randomness is not needed; the pool rotates.
+func taskPool(snapshot training.Task, bank []training.Task) []training.Task {
+	pool := []training.Task{}
+	for _, task := range bank {
+		if outcomeKey(task) == outcomeKey(snapshot) && task.SourceTaskID != snapshot.SourceTaskID {
+			pool = append(pool, task)
+		}
+	}
+	return append(pool, snapshot)
+}
+
+func blockTarget(kind string, competency diagnostic.Competency, answers []diagnostic.Answer, material training.Material) (training.Target, bool) {
+	var main *training.Task
+	basics := []training.Task{}
+	for _, snapshot := range competency.Tasks {
+		task := trainingTask(snapshot)
+		switch snapshot.Role {
+		case "main":
+			main = &task
+		case "basic":
+			basics = append(basics, task)
+		}
+	}
+	if main == nil {
+		return training.Target{}, false
+	}
+	block := &training.Block{Main: taskPool(*main, material.Tasks), Basics: [][]training.Task{}, BasicShown: make([]int, len(basics))}
+	for _, basic := range basics {
+		block.Basics = append(block.Basics, taskPool(basic, material.Tasks))
+	}
+	// Theory covers every ОС of the competency, including outcomes not in the test.
+	block.Notes = append([]training.TheoryNote{}, material.Notes[competency.Name]...)
+	if len(block.Notes) == 0 {
+		for _, task := range append([]training.Task{*main}, basics...) {
+			if strings.TrimSpace(task.EducationalContent) != "" {
+				block.Notes = append(block.Notes, training.TheoryNote{OutcomeID: task.OutcomeID, OutcomeName: task.OutcomeName, IncludeInTest: true, Content: task.EducationalContent})
+			}
+		}
+	}
+	target := training.Target{Kind: kind, Source: *main, Block: block}
+	for _, a := range answers {
+		if a.CompetencyID != competency.ID || a.Role != "main" {
+			continue
+		}
+		target.OriginalScore, target.OriginalMaxScore = a.Score, 2
+		target.OriginalFeedback = append([]string{}, a.Feedback...)
+		target.OriginalCriteria = []training.CriterionResult{}
+		for _, c := range a.CriterionResults {
+			target.OriginalCriteria = append(target.OriginalCriteria, training.CriterionResult{Key: c.Key, Satisfied: c.Satisfied, Explanation: c.Explanation})
+		}
+	}
+	return target, true
 }
 func (s *Service) Preview(ctx context.Context, owner, id string) (training.Preview, error) {
 	state, err := s.plan(ctx, owner, id)
@@ -190,7 +246,7 @@ func (s *Service) Start(ctx context.Context, owner, id, key string, revision *in
 		return training.Progress{}, false, err
 	}
 	if len(state.Targets) > 0 {
-		state.Current, err = s.exercise(ctx, state, 0, nil)
+		state.Current, err = s.exercise(ctx, state, state.Entry(0), nil)
 		if err != nil {
 			return training.Progress{}, false, err
 		}
@@ -198,17 +254,117 @@ func (s *Service) Start(ctx context.Context, owner, id, key string, revision *in
 	stored, reused, err := s.repo.Create(ctx, state, key, revision)
 	return stored.Progress(), reused, err
 }
-func (s *Service) exercise(ctx context.Context, state training.Session, index int, attempts []training.Attempt) (training.Exercise, error) {
-	target := state.Targets[index]
-	if len(target.Sources) > 0 {
-		target.Source = target.Sources[(state.Round-1)%int64(len(target.Sources))]
+
+// exercise creates the instance for a step. It mutates the shared block state:
+// pool counters and the cached theory are saved together with the new exercise.
+func (s *Service) exercise(ctx context.Context, state training.Session, step training.Step, attempts []training.Attempt) (training.Exercise, error) {
+	target := state.Targets[step.TargetIndex]
+	block := target.Block
+	exercise := training.Exercise{TargetIndex: step.TargetIndex, Round: state.Round, Stage: step.Stage, BasicIndex: step.BasicIndex}
+	switch {
+	case block == nil:
+		if len(target.Sources) > 0 {
+			target.Source = target.Sources[(state.Round-1)%int64(len(target.Sources))]
+		}
+	case step.Stage == training.StageTheory:
+		exercise.Task = theoryTask(target.Source)
+		exercise.ProviderVersion = "theory-v1"
+		exercise.Theory = s.theoryText(ctx, state.SubjectName, target.Source, block)
+		id, err := s.ids.New("exercise")
+		exercise.ID = id
+		return exercise, err
+	case step.Stage == training.StageBasic:
+		for len(block.BasicShown) < len(block.Basics) {
+			block.BasicShown = append(block.BasicShown, 0)
+		}
+		if step.BasicIndex < 0 || step.BasicIndex >= len(block.Basics) {
+			return training.Exercise{}, fault.New(fault.Conflict, "TRAINING_STEP_INVALID", "Некорректный шаг тренировки.")
+		}
+		task, ok := training.Pick(block.Basics[step.BasicIndex], block.BasicShown[step.BasicIndex])
+		if !ok {
+			return training.Exercise{}, fault.New(fault.Conflict, "TRAINING_STEP_INVALID", "Некорректный шаг тренировки.")
+		}
+		block.BasicShown[step.BasicIndex]++
+		target.Source = task
+	default:
+		if task, ok := training.Pick(block.Main, block.MainShown); ok {
+			target.Source = task
+		}
+		block.MainShown++
 	}
 	task, version, err := s.provider.Generate(ctx, target, attempts)
 	if err != nil {
 		return training.Exercise{}, err
 	}
-	id, err := s.ids.New("exercise")
-	return training.Exercise{ID: id, Task: task, ProviderVersion: version, TargetIndex: index, Round: state.Round}, err
+	exercise.Task, exercise.ProviderVersion = task, version
+	exercise.ID, err = s.ids.New("exercise")
+	return exercise, err
+}
+
+func theoryTask(main training.Task) training.Task {
+	return training.Task{
+		CompetencyID: main.CompetencyID, CompetencyName: main.CompetencyName,
+		ConstituentID: main.ConstituentID, ConstituentName: main.ConstituentName,
+		OutcomeID: main.OutcomeID, OutcomeName: main.OutcomeName,
+		Question:         "Теория по теме «" + main.CompetencyName + "»",
+		VoiceInstruction: "Прочитайте краткую теорию. Если что-то непонятно, спросите репетитора, затем переходите к закрепляющим задачам.",
+		Options:          []string{},
+	}
+}
+
+// theoryText generates the summary once per block. A model failure must not stop
+// the student: the source ОС texts are shown and the next cycle retries the model.
+func (s *Service) theoryText(ctx context.Context, subject string, main training.Task, block *training.Block) string {
+	if strings.TrimSpace(block.Theory) != "" {
+		return block.Theory
+	}
+	if s.theory != nil && len(block.Notes) > 0 {
+		text, err := s.theory.Summarize(ctx, training.TheoryRequest{SubjectName: subject, CompetencyName: main.CompetencyName, MainOutcome: main.OutcomeName, Notes: append([]training.TheoryNote{}, block.Notes...)})
+		if text = strings.TrimSpace(text); err == nil && text != "" {
+			block.Theory = text
+			return text
+		}
+	}
+	return training.FallbackTheory(block.Notes)
+}
+
+// advance records the attempt and creates the exercise of the next step.
+func (s *Service) advance(ctx context.Context, state *training.Session, attempt training.Attempt) error {
+	score := attempt.Score
+	state.Targets[state.Current.TargetIndex].LastScore = &score
+	state.AnswerCount++
+	step := state.Advance(attempt.Score)
+	next, err := s.exercise(ctx, *state, step, []training.Attempt{attempt})
+	if err != nil {
+		return err
+	}
+	state.Current = next
+	return nil
+}
+
+func theoryStage() error {
+	return fault.New(fault.Conflict, "TRAINING_THEORY_STAGE", "Сейчас этап теории: изучите её и переходите к задачам.")
+}
+
+// CompleteTheory moves the student from the theory summary to the basic tasks.
+func (s *Service) CompleteTheory(ctx context.Context, owner, id, exerciseID string) (training.Progress, error) {
+	state, err := s.repo.Get(ctx, owner, id)
+	if err != nil {
+		return training.Progress{}, err
+	}
+	if state.Current.ID != exerciseID {
+		return training.Progress{}, fault.New(fault.Conflict, "TRAINING_EXERCISE_NOT_CURRENT", "Упражнение изменилось.")
+	}
+	if state.Current.Stage != training.StageTheory {
+		return training.Progress{}, fault.New(fault.Conflict, "TRAINING_NOT_THEORY_STAGE", "Текущее упражнение не является теорией.")
+	}
+	step := state.Advance(0)
+	next, err := s.exercise(ctx, state, step, nil)
+	if err != nil {
+		return training.Progress{}, err
+	}
+	state.Current = next
+	return s.repo.AdvanceTheory(ctx, owner, exerciseID, state)
 }
 func (s *Service) Get(ctx context.Context, owner, id string) (training.Progress, error) {
 	v, err := s.repo.Get(ctx, owner, id)
@@ -263,6 +419,9 @@ func (s *Service) NextChecked(ctx context.Context, owner, id, exerciseID, key st
 	}()
 	state := reservation.Session
 	check := reservation.Check
+	if state.Current.Stage == training.StageTheory {
+		return training.Progress{}, theoryStage()
+	}
 	if state.Current.ID != exerciseID || check.Revision != revision {
 		return training.Progress{}, fault.New(fault.Conflict, "CHAT_CHECK_REQUIRED", "Сначала проверьте итоговый ответ для текущего упражнения.")
 	}
@@ -275,16 +434,7 @@ func (s *Service) NextChecked(ctx context.Context, owner, id, exerciseID, key st
 	if check.TranscriptionID != nil {
 		attempt.TranscriptionID = *check.TranscriptionID
 	}
-	score := attempt.Score
-	state.Targets[state.Current.TargetIndex].LastScore = &score
-	state.AnswerCount++
-	next := state.Current.TargetIndex + 1
-	if next == len(state.Targets) {
-		next = 0
-		state.Round++
-	}
-	state.Current, err = s.exercise(ctx, state, next, []training.Attempt{attempt})
-	if err != nil {
+	if err = s.advance(ctx, &state, attempt); err != nil {
 		return training.Progress{}, err
 	}
 	result, err := s.checkedNext.AcceptNext(ctx, *reservation, state, attempt)
@@ -323,6 +473,9 @@ func (s *Service) answerRequest(ctx context.Context, owner, id, exerciseID, key 
 		return *replay, nil
 	}
 	defer func() { _ = s.repo.Fail(context.WithoutCancel(ctx), owner, id, *reserved) }()
+	if state.Current.Stage == training.StageTheory {
+		return training.Progress{}, theoryStage()
+	}
 	if skip {
 		reserved.TranscriptionID, err = s.ids.New("skip")
 		if err != nil {
@@ -356,16 +509,7 @@ func (s *Service) answerRequest(ctx context.Context, owner, id, exerciseID, key 
 	for _, c := range evaluation.CriterionResults {
 		attempt.CriterionResults = append(attempt.CriterionResults, training.CriterionResult{Key: c.Key, Satisfied: c.Satisfied, Explanation: c.Explanation})
 	}
-	score := attempt.Score
-	state.Targets[state.Current.TargetIndex].LastScore = &score
-	state.AnswerCount++
-	next := state.Current.TargetIndex + 1
-	if next == len(state.Targets) {
-		next = 0
-		state.Round++
-	}
-	state.Current, err = s.exercise(ctx, state, next, []training.Attempt{attempt})
-	if err != nil {
+	if err = s.advance(ctx, &state, attempt); err != nil {
 		return training.Progress{}, err
 	}
 	return s.repo.Accept(ctx, owner, *reserved, state, attempt)

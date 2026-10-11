@@ -8,7 +8,15 @@ export type TrainingTarget = {
   original_score: number | null
   original_max_score: number | null
   last_score: number | null
+  /** The main task of the block was solved during training. */
+  mastered?: boolean
 }
+
+/**
+ * Block stages: the main task first, theory after a failed main task, then
+ * basic tasks. `practice` marks sessions created before blocks existed.
+ */
+export type TrainingStage = 'main' | 'theory' | 'basic' | 'practice'
 
 export type TrainingExercise = {
   exercise_id: string
@@ -17,6 +25,12 @@ export type TrainingExercise = {
   question: string
   options: string[]
   voice_instruction: string
+  stage?: TrainingStage
+  competency_name?: string
+  /** Theory summary of every ОС of the competency; only on the theory stage. */
+  theory?: string
+  basic_index?: number
+  basic_count?: number
 }
 
 export type TrainingCriterionResult = {

@@ -151,12 +151,27 @@ it('opens training directly from the diagnostic result', async () => {
   expect(
     screen.queryByRole('textbox', { name: 'Сообщение репетитору' }),
   ).not.toBeInTheDocument()
+  expect(screen.getByText('Главная задача темы')).toBeVisible()
   fireEvent.click(screen.getByRole('button', { name: 'Пропустить упражнение' }))
+  // A failed main task opens theory over the block before the basic tasks.
+  expect(
+    await screen.findByRole('heading', {
+      name: 'Теория по теме «Виды задач машинного обучения»',
+    }),
+  ).toBeVisible()
+  expect(screen.getByText(/Классификация: модель выбирает класс/)).toBeVisible()
+  expect(
+    screen.queryByRole('button', { name: 'Пропустить упражнение' }),
+  ).not.toBeInTheDocument()
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Изучил — перейти к задачам' }),
+  )
   expect(
     await screen.findByText(
-      'Как определить, что задача относится к классификации?',
+      'Нужно предсказать цену квартиры в рублях. Это классификация или регрессия?',
     ),
   ).toBeVisible()
+  expect(screen.getByText('Закрепление 1 из 2')).toBeVisible()
   expect(audio.startRecording).toHaveBeenCalledTimes(1)
   // Back home, the single course action resumes the process in training.
   fireEvent.click(screen.getByRole('button', { name: 'На главную' }))

@@ -354,7 +354,19 @@ func TestOpenAPIResponses(t *testing.T) {
 	if err := json.Unmarshal(trainingSkip.Body.Bytes(), &skippedTraining); err != nil || skippedTraining.Current.ID == "" {
 		t.Fatalf("training skip response: %s (%v)", trainingSkip.Body.String(), err)
 	}
-	chatPath := "/training-sessions/" + skippedTraining.ID + "/exercises/" + skippedTraining.Current.ID + "/chat"
+	// A skipped main task opens theory; completing it leads to a basic task.
+	if skippedTraining.Current.Stage != training.StageTheory || skippedTraining.Current.Theory == "" {
+		t.Fatalf("failed main must open theory: %s", trainingSkip.Body.String())
+	}
+	theoryDone := postJSON("/training-sessions/"+skippedTraining.ID+"/exercises/"+skippedTraining.Current.ID+"/theory/complete", "", nil)
+	if theoryDone.Code != http.StatusOK {
+		t.Fatalf("theory complete: %d %s", theoryDone.Code, theoryDone.Body.String())
+	}
+	check("POST", "/training-sessions/{id}/exercises/{exercise_id}/theory/complete", theoryDone)
+	if err := json.Unmarshal(theoryDone.Body.Bytes(), &skippedTraining); err != nil || skippedTraining.Current.Stage != training.StageBasic {
+		t.Fatalf("theory complete response: %s (%v)", theoryDone.Body.String(), err)
+	}
+	chatPath :="/training-sessions/" + skippedTraining.ID + "/exercises/" + skippedTraining.Current.ID + "/chat"
 	check("GET", "/training-sessions/{id}/exercises/{exercise_id}/chat", f.request("GET", chatPath, "", access))
 	chatMessage := postJSON(chatPath+"/turns", "contract-chat-message", []byte(`{"revision":0,"kind":"message","text":"Как начать рассуждение?"}`))
 	if chatMessage.Code != http.StatusOK {

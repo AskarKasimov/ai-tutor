@@ -326,7 +326,11 @@ func (r *ChatRepository) Read(ctx context.Context, ownerID, sessionID, exerciseI
 		if idErr != nil {
 			return training.ChatPage{}, idErr
 		}
-		if err = q.InsertTrainingChatMessage(ctx, db.InsertTrainingChatMessageParams{ID: id, ExerciseID: exerciseID, Sequence: 1, Role: string(training.ChatRoleAssistant), Kind: string(training.ChatKindWelcome), Text: "С чего начнём? Расскажите, что уже понятно в условии и где возникло затруднение.", ToTimestamp: float64(time.Now().Unix())}); err != nil {
+		welcome := "С чего начнём? Расскажите, что уже понятно в условии и где возникло затруднение."
+		if exercise.Stage == training.StageTheory {
+			welcome = "Прочитайте выжимку теории. Если что-то непонятно, спросите меня, а когда будете готовы, переходите к задачам."
+		}
+		if err = q.InsertTrainingChatMessage(ctx, db.InsertTrainingChatMessageParams{ID: id, ExerciseID: exerciseID, Sequence: 1, Role: string(training.ChatRoleAssistant), Kind: string(training.ChatKindWelcome), Text: welcome, ToTimestamp: float64(time.Now().Unix())}); err != nil {
 			return training.ChatPage{}, err
 		}
 		chat, err = q.ReadTrainingChat(ctx, db.ReadTrainingChatParams{SessionID: sessionID, ExerciseID: exerciseID})

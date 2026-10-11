@@ -58,8 +58,10 @@ export function TrainingSession({
       setMissing(true)
   }, [resource.query.error])
 
+  const theory = progress.current.stage === 'theory'
   useEffect(() => {
-    void voice.speak({ auto: true })
+    // Theory has no recorded instruction; the summary is read on screen.
+    if (!theory) void voice.speak({ auto: true })
     // Instruction audio belongs to the exercise; tutor messages never submit an attempt.
   }, [progress.current.exercise_id])
 
@@ -67,6 +69,17 @@ export function TrainingSession({
     missing || resource.query.isPending || resource.query.isError
   const apiError = voice.error instanceof TrainingApiError ? voice.error : null
   const canSkip = !resource.submit.isPending
+  const badge =
+    progress.current.stage === 'main'
+      ? t('training.stage.main')
+      : progress.current.stage === 'basic'
+        ? t('training.stage.basic', {
+            index: (progress.current.basic_index ?? 0) + 1,
+            count: progress.current.basic_count ?? 2,
+          })
+        : theory
+          ? t('training.stage.theory')
+          : t('session.practice')
 
   async function skip() {
     setSkipFailed(false)
@@ -121,7 +134,7 @@ export function TrainingSession({
               exerciseId={progress.current.exercise_id}
               onRecordingStart={voice.stopSpeech}
               onRecordingChange={setChatRecording}
-              onSkip={() => void skip()}
+              onSkip={theory ? undefined : () => void skip()}
               skipDisabled={!canSkip}
               skipError={
                 skipFailed
@@ -131,46 +144,83 @@ export function TrainingSession({
             />
           }
         >
-          <TrainerQuestion
-            badge={t('session.practice')}
-            eyebrow={progress.current.outcome_name}
-            eyebrowHeading
-            question={progress.current.question}
-            options={progress.current.options}
-            instruction={
-              <div className={trainingStyles.playback}>
-                <ListenButton
-                  disabled={chatRecording}
-                  state={
-                    voice.speaking
-                      ? 'playing'
-                      : voice.audioStatus === 'loading'
-                        ? 'loading'
-                        : 'idle'
-                  }
-                  onClick={() => void voice.speak()}
-                />
+          {theory ? (
+            <TrainerQuestion
+              badge={badge}
+              eyebrow={progress.current.competency_name}
+              eyebrowHeading
+              question={progress.current.question}
+              options={[]}
+            >
+              <Text as="p" className={sessionStyles.hint}>
+                {t('training.theoryHelp')}
+              </Text>
+              <div className={trainingStyles.theory}>
+                {progress.current.theory}
               </div>
-            }
-          >
-            {isMockApi() ? (
-              <Text as="p" role="note" className={sessionStyles.note}>
-                {t('training.demoNotice')}
-              </Text>
-            ) : null}
-            {voice.audioStatus !== 'idle' &&
-            voice.audioStatus !== 'ready' &&
-            voice.audioStatus !== 'loading' ? (
-              <Text role="status" className={sessionStyles.hint}>
-                {t(`training.audio.${voice.audioStatus}`)}
-              </Text>
-            ) : null}
-            {voice.speechError ? (
-              <Text role="alert" className={sessionStyles.hint}>
-                {t('trainer.speechError')}
-              </Text>
-            ) : null}
-          </TrainerQuestion>
+              <div className={trainingStyles.theoryActions}>
+                <Button
+                  size="3"
+                  disabled={resource.completeTheory.isPending}
+                  onClick={() =>
+                    resource.completeTheory.mutate(progress.current.exercise_id)
+                  }
+                >
+                  {t(
+                    resource.completeTheory.isPending
+                      ? 'training.theoryContinuing'
+                      : 'training.theoryContinue',
+                  )}
+                </Button>
+                {resource.completeTheory.isError ? (
+                  <Text role="alert" className={sessionStyles.hint}>
+                    {t('training.theoryError')}
+                  </Text>
+                ) : null}
+              </div>
+            </TrainerQuestion>
+          ) : (
+            <TrainerQuestion
+              badge={badge}
+              eyebrow={progress.current.outcome_name}
+              eyebrowHeading
+              question={progress.current.question}
+              options={progress.current.options}
+              instruction={
+                <div className={trainingStyles.playback}>
+                  <ListenButton
+                    disabled={chatRecording}
+                    state={
+                      voice.speaking
+                        ? 'playing'
+                        : voice.audioStatus === 'loading'
+                          ? 'loading'
+                          : 'idle'
+                    }
+                    onClick={() => void voice.speak()}
+                  />
+                </div>
+              }
+            >
+              {isMockApi() ? (
+                <Text as="p" role="note" className={sessionStyles.note}>
+                  {t('training.demoNotice')}
+                </Text>
+              ) : null}
+              {voice.audioStatus !== 'idle' &&
+              voice.audioStatus !== 'ready' &&
+              voice.audioStatus !== 'loading' ? (
+                <Text role="status" className={sessionStyles.hint}>
+                  {t(`training.audio.${voice.audioStatus}`)}
+                </Text>
+              ) : null}
+              {voice.speechError ? (
+                <Text role="alert" className={sessionStyles.hint}>
+                  {t('trainer.speechError')}
+                </Text>
+              ) : null}
+            </TrainerQuestion>
+          )}
         </TrainingWorkspace>
       )}
     </TrainerShell>

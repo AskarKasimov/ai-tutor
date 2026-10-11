@@ -96,6 +96,7 @@ export function createAppDependencies(): AppDependencies {
       createTrainingSkipSubmission: training.createTrainingSkipSubmission,
       submitTraining: training.submitTraining,
       nextTrainingExercise: training.nextTrainingExercise,
+      completeTrainingTheory: training.completeTrainingTheory,
       resetTrainingAnswer: training.resetTrainingAnswer,
       readTrainingHistory: training.readTrainingHistory,
       readTrainingAudio: training.readTrainingAudio,

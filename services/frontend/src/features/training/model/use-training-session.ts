@@ -246,7 +246,44 @@ export function useTrainingSession(userId: string, sessionId: string) {
       if (token) handleUnauthorized(cache, userId, token, error)
     },
   })
-  return { query, submit }
+  const completeTheory = useMutation({
+    mutationKey: ['training-theory', userId, sessionId],
+    retry: false,
+    gcTime: 0,
+    onMutate: () => captureSession(cache),
+    mutationFn: async (exerciseId: string) => {
+      const token = captureSession(cache)
+      try {
+        const progress = (
+          await registered(
+            cache,
+            token,
+            new AbortController().signal,
+            (signal) =>
+              training.completeTrainingTheory(sessionId, exerciseId, signal),
+          )
+        ).value
+        return { progress, token }
+      } catch (error) {
+        handleUnauthorized(cache, userId, token, error)
+        throw error
+      }
+    },
+    onSuccess: async ({ progress, token }) => {
+      if (!isCurrentSession(cache, token) || progress.session_id !== sessionId)
+        return
+      await cache.cancelQueries({ queryKey, exact: true })
+      if (!isCurrentSession(cache, token)) return
+      cache.setQueryData(queryKey, progress)
+    },
+    onError: (error, _exerciseId, token) => {
+      if (token) handleUnauthorized(cache, userId, token, error)
+      // A conflict means the exercise already changed: reload the current one.
+      if (error instanceof TrainingApiError && error.status === 409)
+        void cache.invalidateQueries({ queryKey, exact: true })
+    },
+  })
+  return { query, submit, completeTheory }
 }
 
 export function useTrainingHistoryQuery(userId: string, sessionId: string) {

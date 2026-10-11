@@ -1,5 +1,6 @@
 import { afterEach, expect, it, vi } from 'vitest'
 import {
+  completeTrainingTheory,
   createTrainingSubmission,
   findTrainingForDiagnostic,
   readTrainingHistory,
@@ -275,5 +276,46 @@ it('accepts only a task-audio URL for ready training audio', async () => {
   )
   await expect(
     readTrainingAudio('t1', 'e1', new AbortController().signal),
+  ).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
+})
+
+it('completes theory, rejects theory without text and requires a new exercise', async () => {
+  const basic = {
+    exercise_id: 'e2',
+    outcome_id: 'o2',
+    outcome_name: 'Basic',
+    question: 'Basic?',
+    options: [],
+    voice_instruction: 'Answer.',
+    stage: 'basic',
+    competency_name: 'C',
+    basic_index: 0,
+    basic_count: 2,
+  }
+  const fetchMock = vi
+    .fn()
+    .mockResolvedValue(Response.json(progress({ current: basic })))
+  vi.stubGlobal('fetch', fetchMock)
+  await expect(
+    completeTrainingTheory('t1', 'e1', new AbortController().signal),
+  ).resolves.toMatchObject({ current: { stage: 'basic', basic_index: 0 } })
+  expect(fetchMock.mock.calls[0][0]).toBe(
+    '/api/v1/training-sessions/t1/exercises/e1/theory/complete',
+  )
+  expect(fetchMock.mock.calls[0][1]).toMatchObject({ method: 'POST' })
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json(progress())))
+  await expect(
+    completeTrainingTheory('t1', 'e1', new AbortController().signal),
+  ).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
+  vi.stubGlobal(
+    'fetch',
+    vi
+      .fn()
+      .mockResolvedValue(
+        Response.json(progress({ current: { ...basic, stage: 'theory' } })),
+      ),
+  )
+  await expect(
+    readTrainingSession('t1', new AbortController().signal),
   ).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
 })

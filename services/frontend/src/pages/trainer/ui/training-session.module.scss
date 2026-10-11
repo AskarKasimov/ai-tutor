@@ -2,3 +2,20 @@
   display: inline-flex;
   max-width: 100%;
 }
+
+.theory {
+  white-space: pre-wrap;
+  line-height: 1.6;
+  padding: var(--space-4);
+  border-radius: var(--radius-3);
+  background: var(--gray-a2);
+  border: 1px solid var(--gray-a5);
+}
+
+.theoryActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+}

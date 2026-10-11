@@ -136,29 +136,30 @@ func TestTrainingPersistsCyclesAndReplaysAnswers(t *testing.T) {
 	}
 }
 
-type blockedPractice struct {
+type blockedMaterial struct {
 	*trainingpg.Repository
 	entered chan struct{}
 	release chan struct{}
 }
 
-func (r *blockedPractice) Practice(ctx context.Context, subjectID string) (int64, []training.Task, error) {
+func (r *blockedMaterial) Material(ctx context.Context, subjectID string) (training.Material, error) {
 	close(r.entered)
 	select {
 	case <-r.release:
 	case <-ctx.Done():
-		return 0, nil, ctx.Err()
+		return training.Material{}, ctx.Err()
 	}
-	return r.Repository.Practice(ctx, subjectID)
+	return r.Repository.Material(ctx, subjectID)
 }
 func TestConcurrentStartReplaysExistingTrainingBeforeStalePreview(t *testing.T) {
 	f, _, admin, owner, d := trainingFixture(t, 2)
 	repo := trainingpg.New(f.pool)
-	revision, _, err := repo.Practice(t.Context(), d.Variant.SubjectID)
+	material, err := repo.Material(t.Context(), d.Variant.SubjectID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	blocked := &blockedPractice{Repository: repo, entered: make(chan struct{}), release: make(chan struct{})}
+	revision := material.Revision
+	blocked := &blockedMaterial{Repository: repo, entered: make(chan struct{}), release: make(chan struct{})}
 	first := trainingapp.New(blocked, f.app.diagnosticStore, nil, nil, trainingsnapshot.Provider{}, security.IDGenerator{}, f.app.now)
 	second := trainingapp.New(repo, f.app.diagnosticStore, nil, nil, trainingsnapshot.Provider{}, security.IDGenerator{}, f.app.now)
 	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
@@ -194,7 +195,7 @@ func TestConcurrentStartReplaysExistingTrainingBeforeStalePreview(t *testing.T) 
 	}
 }
 
-func TestFreePracticeRotatesAllSavedTasksOfOneOutcome(t *testing.T) {
+func TestTrainingBlockRunsTheoryAndFreshBasicTasksAfterReimport(t *testing.T) {
 	f, _, admin, owner, d := trainingFixture(t, 2)
 	if _, err := f.pool.Exec(t.Context(), `INSERT INTO tasks(id,outcome_id,question,voice_instruction,reference_answer,created_at) SELECT 'alternate-task',id,'Другой вопрос','Ответьте','Ответ',1 FROM outcomes WHERE name='Знает параметры данных'`); err != nil {
 		t.Fatal(err)
@@ -209,17 +210,41 @@ func TestFreePracticeRotatesAllSavedTasksOfOneOutcome(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if len(progress.Targets) != 1 || progress.Current.Stage != training.StageMain || progress.Current.OutcomeName != "Применяет линейную регрессию" {
+		t.Fatalf("block must start with the main task: %+v", progress)
+	}
 	if w := upload(f, "/admin/subjects/subject:test/competency-map/import", "file", "map.csv", "text/csv", variantMapCSV(t), admin); w.Code != 200 {
 		t.Fatal(w.Body.String())
 	}
-	for i := 0; i < len(progress.Targets); i++ {
-		progress, err = service.Answer(t.Context(), owner, progress.ID, progress.Current.ID, fmt.Sprintf("answer-%d", i), wavBytes(), "audio/wav")
+	// The test grader returns 1 of 2: the main task is not solved.
+	progress, err = service.Answer(t.Context(), owner, progress.ID, progress.Current.ID, "answer-main", wavBytes(), "audio/wav")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Without a theory model the source ОС of every outcome is shown.
+	if progress.Current.Stage != training.StageTheory || !strings.Contains(progress.Current.Theory, "Нужно знать структуру таблицы.") || !strings.Contains(progress.Current.Theory, "Нужно знать линейную модель.") {
+		t.Fatalf("failed main must open theory: %+v", progress.Current)
+	}
+	progress, err = service.CompleteTheory(t.Context(), owner, progress.ID, progress.Current.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	questions := []string{}
+	for i := 0; i < 2; i++ {
+		if progress.Current.Stage != training.StageBasic || progress.Current.BasicIndex != i {
+			t.Fatalf("basic %d expected: %+v", i, progress.Current)
+		}
+		questions = append(questions, progress.Current.Question)
+		progress, err = service.Answer(t.Context(), owner, progress.ID, progress.Current.ID, fmt.Sprintf("answer-basic-%d", i), wavBytes(), "audio/wav")
 		if err != nil {
 			t.Fatal(err)
 		}
 	}
-	if progress.Round != 2 || progress.Current.Question != "Другой вопрос" {
-		t.Fatalf("rotation %+v", progress)
+	if !strings.Contains(strings.Join(questions, "|"), "Другой вопрос") {
+		t.Fatalf("basic pool must start with a task not shown in diagnostic: %v", questions)
+	}
+	if progress.Current.Stage != training.StageTheory || progress.Round != 1 || progress.AnswerCount != 3 {
+		t.Fatalf("failed basics must repeat theory: %+v", progress)
 	}
 }
 
@@ -411,7 +436,8 @@ func TestFreePracticeExcludesFalseAndStalePreviewDoesNotWrite(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &p); err != nil || w.Code != 200 {
 		t.Fatalf("preview %d %s %v", w.Code, w.Body.String(), err)
 	}
-	if p.Mode != "free_practice" || len(p.Topics) != 2 {
+	// One block per variant competency; its topic is the main ОР.
+	if p.Mode != "free_practice" || len(p.Topics) != 1 {
 		t.Fatalf("FALSE outcome must not be practised: %+v", p)
 	}
 	for _, topic := range p.Topics {

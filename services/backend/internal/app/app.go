@@ -178,8 +178,11 @@ func (a *App) Handler() http.Handler {
 	var tutor trainingapp.Tutor
 	if a.cfg.APIMode == "mock" {
 		tutor = trainingmock.Tutor{}
+		trainingService = trainingService.WithTheory(trainingmock.Theory{})
 	} else if a.cfg.TutorEnabled {
 		tutor = trainingmodel.NewTutor(a.client, a.cfg.TutorBaseURL, a.cfg.TutorModel, a.cfg.TutorTimeout)
+		// Theory summaries use the same local model as the tutor.
+		trainingService = trainingService.WithTheory(trainingmodel.NewTheory(a.client, a.cfg.TutorBaseURL, a.cfg.TutorModel, a.cfg.TutorTimeout))
 	}
 	chatService := trainingapp.NewChatService(chatRepository, voice, tutor, trainingFinalGrader{assessmentService}, security.IDGenerator{}, a.now).
 		WithContextLimits(training.ContextLimits{TaskMaxChars: a.cfg.TutorTaskMaxChars, HistoryMaxChars: a.cfg.TutorHistoryMaxChars, SummaryMaxChars: a.cfg.TutorSummaryMaxChars})
@@ -219,6 +222,7 @@ func (a *App) Handler() http.Handler {
 	mux.Handle("POST /training-sessions/{id}/skip", protect(auth, http.HandlerFunc(trainingHandlers.Skip)))
 	mux.Handle("POST /training-sessions/{id}/answers/reset", protect(auth, http.HandlerFunc(trainingHandlers.ResetAnswer)))
 	mux.Handle("POST /training-sessions/{id}/exercises/{exercise_id}/next", protect(auth, http.HandlerFunc(trainingHandlers.NextChecked)))
+	mux.Handle("POST /training-sessions/{id}/exercises/{exercise_id}/theory/complete", protect(auth, http.HandlerFunc(trainingHandlers.CompleteTheory)))
 	mux.Handle("GET /training-sessions/{id}/history", protect(auth, http.HandlerFunc(trainingHandlers.History)))
 	mux.Handle("GET /training-sessions/{id}/current/audio", protect(auth, http.HandlerFunc(trainingHandlers.Audio)))
 	mux.Handle("POST /training-sessions/{id}/current/audio/regenerate", protect(auth, http.HandlerFunc(trainingHandlers.RegenerateAudio)))

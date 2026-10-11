@@ -302,6 +302,31 @@ func (h *Handler) NextChecked(w http.ResponseWriter, r *http.Request) {
 	httpx.JSON(w, http.StatusOK, progress)
 }
 
+// CompleteTheory moves from the theory summary to the basic tasks of the block.
+// @Summary Перейти от теории к закрепляющим задачам
+// @Tags Тренировка
+// @Security accessCookie
+// @Produce json
+// @Param id path string true "ID тренировки"
+// @Param exercise_id path string true "ID упражнения теории"
+// @Success 200 {object} training.Progress
+// @Failure 401 {object} fault.Error
+// @Failure 404 {object} fault.Error
+// @Failure 409 {object} fault.Error
+// @Router /training-sessions/{id}/exercises/{exercise_id}/theory/complete [post]
+func (h *Handler) CompleteTheory(w http.ResponseWriter, r *http.Request) {
+	ownerID, ok := owner(w, r)
+	if !ok || !noQuery(w, r) {
+		return
+	}
+	progress, err := h.service.CompleteTheory(r.Context(), ownerID, r.PathValue("id"), r.PathValue("exercise_id"))
+	if err != nil {
+		httpx.Error(r.Context(), w, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, progress)
+}
+
 // ResetAnswer clears a failed, non-active answer reservation so a new recording can be submitted.
 // @Summary Сбросить неудачную отправку ответа
 // @Tags Тренировка

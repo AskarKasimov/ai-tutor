@@ -29,15 +29,23 @@ const targetSchema: z.ZodType<TrainingTarget> = z.object({
   original_score: score.nullable(),
   original_max_score: count.max(2).nullable(),
   last_score: score.nullable(),
+  mastered: z.boolean().optional(),
 })
-const exerciseSchema = z.object({
-  exercise_id: id,
-  outcome_id: id,
-  outcome_name: z.string(),
-  question: id,
-  options: z.array(z.string()),
-  voice_instruction: id,
-})
+const exerciseSchema = z
+  .object({
+    exercise_id: id,
+    outcome_id: id,
+    outcome_name: z.string(),
+    question: id,
+    options: z.array(z.string()),
+    voice_instruction: id,
+    stage: z.enum(['main', 'theory', 'basic', 'practice']).optional(),
+    competency_name: z.string().optional(),
+    theory: z.string().optional(),
+    basic_index: count.optional(),
+    basic_count: count.optional(),
+  })
+  .refine((exercise) => exercise.stage !== 'theory' || !!exercise.theory)
 const criterionSchema = z.object({
   key: id,
   satisfied: z.boolean(),
@@ -335,6 +343,28 @@ export async function nextTrainingExercise(
   return progress
 }
 
+export async function completeTrainingTheory(
+  sessionId: string,
+  exerciseId: string,
+  signal: AbortSignal,
+) {
+  const progress = await parse(
+    await request(
+      `/training-sessions/${encodeURIComponent(sessionId)}/exercises/${encodeURIComponent(exerciseId)}/theory/complete`,
+      signal,
+      { method: 'POST' },
+    ),
+    progressSchema,
+    signal,
+  )
+  if (
+    progress.session_id !== sessionId ||
+    progress.current.exercise_id === exerciseId
+  )
+    throw new TrainingApiError(0, 'INVALID_RESPONSE')
+  return progress
+}
+
 export async function resetTrainingAnswer(
   sessionId: string,
   signal: AbortSignal,
@@ -419,6 +449,7 @@ export type TrainingApi = {
   createTrainingSkipSubmission: typeof createTrainingSkipSubmission
   submitTraining: typeof submitTraining
   nextTrainingExercise: typeof nextTrainingExercise
+  completeTrainingTheory: typeof completeTrainingTheory
   resetTrainingAnswer: typeof resetTrainingAnswer
   readTrainingHistory: typeof readTrainingHistory
   readTrainingAudio: typeof readTrainingAudio

@@ -19,6 +19,9 @@ func (Tutor) Reply(ctx context.Context, input training.TutorContext) (training.T
 		}
 		return training.TutorReply{AssistantText: "Пока не все требования выполнены. Какой признак из условия поможет уточнить вашу формулировку?", Pedagogy: training.PedagogyHint}, nil
 	}
+	if input.Exercise.Stage == training.StageTheory {
+		return training.TutorReply{AssistantText: "Хороший вопрос по теории. Сформулируйте своими словами главное правило темы, а когда будете готовы, переходите к задачам.", Pedagogy: training.PedagogyConcept}, nil
+	}
 	text := strings.ToLower(strings.TrimSpace(input.StudentText))
 	if text == "" {
 		return training.TutorReply{AssistantText: "Что уже понятно в условии и какой результат нужно получить?", Pedagogy: training.PedagogyQuestion}, nil

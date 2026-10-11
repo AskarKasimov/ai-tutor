@@ -52,6 +52,8 @@ type tutorTaskSnapshot struct {
 	EducationalContent string   `json:"educational_content,omitempty"`
 	ReferenceAnswer    string   `json:"reference_answer"`
 	Criteria           string   `json:"criteria,omitempty"`
+	Stage              string   `json:"stage,omitempty"`
+	Theory             string   `json:"theory,omitempty"`
 }
 
 type tutorCriterionState struct {
@@ -77,7 +79,7 @@ func tutorSnapshot(ctx training.TutorContext) (tutorSnapshotEnvelope, error) {
 	task := ctx.Exercise.Task
 	envelope := tutorSnapshotEnvelope{
 		Type: "trusted_training_exercise_data", PromptVersion: TutorPromptVersion,
-		Task: tutorTaskSnapshot{Question: task.Question, Options: append([]string(nil), task.Options...), VoiceInstruction: task.VoiceInstruction, OutcomeName: task.OutcomeName, TaxonomyCode: task.TaxonomyCode, ALDLevelCode: task.ALDLevelCode, EducationalContent: task.EducationalContent, ReferenceAnswer: task.ReferenceAnswer, Criteria: task.Criteria},
+		Task: tutorTaskSnapshot{Question: task.Question, Options: append([]string(nil), task.Options...), VoiceInstruction: task.VoiceInstruction, OutcomeName: task.OutcomeName, TaxonomyCode: task.TaxonomyCode, ALDLevelCode: task.ALDLevelCode, EducationalContent: task.EducationalContent, ReferenceAnswer: task.ReferenceAnswer, Criteria: task.Criteria, Stage: ctx.Exercise.Stage, Theory: ctx.Exercise.Theory},
 	}
 	if ctx.Check != nil {
 		criteria := make([]tutorCriterionState, 0, len(ctx.Check.CriterionResults))

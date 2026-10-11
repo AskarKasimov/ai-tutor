@@ -5,6 +5,7 @@ import type {
   TrainingExercise,
   TrainingPreview,
   TrainingProgress,
+  TrainingStage,
   TrainingTarget,
 } from '@/entities/training'
 import type {
@@ -37,19 +38,45 @@ const targets: TrainingTarget[] = [
     last_score: null,
   },
 ]
+const demoTheory = [
+  'Тип задачи машинного обучения определяется тем, что модель должна выдать на выходе.',
+  '• Классификация: модель выбирает класс из конечного набора, например «вернёт кредит» или «не вернёт».',
+  '• Регрессия: модель прогнозирует число, например цену квартиры.',
+  '• Ранжирование: модель упорядочивает объекты по релевантности.',
+  '• Кластеризация: модель ищет группы похожих объектов без заранее заданной целевой переменной.',
+  'Типичная ошибка — смотреть на признаки, а не на формат целевой переменной.',
+].join('\n')
+const basicQuestions = [
+  'Нужно предсказать цену квартиры в рублях. Это классификация или регрессия?',
+  'Нужно определить, спам письмо или нет. Это классификация или регрессия?',
+]
 const exerciseFor = (
   round: number,
   target: TrainingTarget,
+  stage: TrainingStage = 'main',
+  basicIndex = 0,
 ): TrainingExercise => ({
   exercise_id: `demo-exercise-${crypto.randomUUID()}`,
   outcome_id: target.outcome_id,
   outcome_name: target.outcome_name,
   question:
-    round % 2
-      ? 'Как определить, что задача относится к классификации?'
-      : 'Какой тип задачи предсказывает числовое значение?',
-  options: ['Классификация', 'Регрессия'],
-  voice_instruction: 'Назовите тип задачи и объясните свой выбор.',
+    stage === 'theory'
+      ? `Теория по теме «${target.competency_name}»`
+      : stage === 'basic'
+        ? basicQuestions[basicIndex % basicQuestions.length]!
+        : round % 2
+          ? 'Как определить, что задача относится к классификации?'
+          : 'Какой тип задачи предсказывает числовое значение?',
+  options: stage === 'theory' ? [] : ['Классификация', 'Регрессия'],
+  voice_instruction:
+    stage === 'theory'
+      ? 'Прочитайте краткую теорию и переходите к закрепляющим задачам.'
+      : 'Назовите тип задачи и объясните свой выбор.',
+  stage,
+  competency_name: target.competency_name,
+  basic_index: basicIndex,
+  basic_count: basicQuestions.length,
+  ...(stage === 'theory' ? { theory: demoTheory } : {}),
 })
 type TrainingSession = {
   userId: string
@@ -61,6 +88,8 @@ type TrainingSession = {
   targets: TrainingTarget[]
   answers: TrainingAttempt[]
   exercise: TrainingExercise
+  targetIndex: number
+  basicScores: number[]
   accepted: Map<
     string,
     {
@@ -129,6 +158,36 @@ function current(session: TrainingSession): TrainingProgress {
     ...(session.answers.length ? { answer: session.answers.at(-1) } : {}),
   }
 }
+// Mirrors the backend block cycle: main → theory → basics → main.
+function advance(session: TrainingSession, score: number) {
+  const stage = session.exercise.stage ?? 'main'
+  const basicIndex = session.exercise.basic_index ?? 0
+  const round = session.answers.length + 1
+  const target = session.targets[session.targetIndex]!
+  if (stage === 'theory') {
+    session.basicScores = []
+    session.exercise = exerciseFor(round, target, 'basic', 0)
+    return
+  }
+  if (stage === 'basic') {
+    session.basicScores.push(score)
+    if (basicIndex + 1 < basicQuestions.length) {
+      session.exercise = exerciseFor(round, target, 'basic', basicIndex + 1)
+      return
+    }
+    const solved = session.basicScores.every((value) => value === 2)
+    session.basicScores = []
+    session.exercise = exerciseFor(round, target, solved ? 'main' : 'theory')
+    return
+  }
+  if (score === 2) {
+    session.targets[session.targetIndex] = { ...target, mastered: true }
+    session.targetIndex = (session.targetIndex + 1) % session.targets.length
+    session.exercise = exerciseFor(round, session.targets[session.targetIndex]!)
+    return
+  }
+  session.exercise = exerciseFor(round, target, 'theory')
+}
 function preview(
   diagnosticId: string,
   subject: { id: string; name: string },
@@ -163,7 +222,11 @@ function chatFor(session: TrainingSession, exerciseId: string): MockChat {
       sequence: 1,
       role: 'assistant',
       kind: 'welcome',
-      text: 'Давайте разберём условие вместе. Что уже удалось понять?',
+      text:
+        session.exercise.exercise_id === exerciseId &&
+        session.exercise.stage === 'theory'
+          ? 'Прочитайте выжимку теории. Если что-то непонятно, спросите меня, а когда будете готовы, переходите к задачам.'
+          : 'Давайте разберём условие вместе. Что уже удалось понять?',
       created_at: Math.floor(Date.now() / 1000),
     }
     chat = {
@@ -204,6 +267,9 @@ export async function mockTrainingResponse(
   )
   const nextMatch = path.match(
     /^\/api\/v1\/training-sessions\/([^/]+)\/exercises\/([^/]+)\/next$/,
+  )
+  const theoryMatch = path.match(
+    /^\/api\/v1\/training-sessions\/([^/]+)\/exercises\/([^/]+)\/theory\/complete$/,
   )
   if (previewMatch) {
     const id = decodeURIComponent(previewMatch[1])
@@ -251,6 +317,8 @@ export async function mockTrainingResponse(
             : targets.map((target) => ({ ...target })),
         answers: [],
         exercise: exerciseFor(1, targets[0]),
+        targetIndex: 0,
+        basicScores: [],
         accepted: new Map(),
       }
       sessions.set(session.id, session)
@@ -259,12 +327,26 @@ export async function mockTrainingResponse(
       return json(current(session), 201)
     }
   }
-  if (!sessionMatch && !chatMatch && !nextMatch) return undefined
+  if (!sessionMatch && !chatMatch && !nextMatch && !theoryMatch)
+    return undefined
   const sessionId = decodeURIComponent(
-    (sessionMatch ?? chatMatch ?? nextMatch)![1],
+    (sessionMatch ?? chatMatch ?? nextMatch ?? theoryMatch)![1],
   )
   const session = sessions.get(sessionId)
   if (!session || session.userId !== userId) return failed('NOT_FOUND', 404)
+  if (theoryMatch) {
+    if (method !== 'POST') return failed('NOT_FOUND', 404)
+    const exerciseId = decodeURIComponent(theoryMatch[2])
+    if (
+      exerciseId !== session.exercise.exercise_id ||
+      session.exercise.stage !== 'theory'
+    )
+      return failed('TRAINING_EXERCISE_NOT_CURRENT', 409)
+    const theoryChat = chats.get(exerciseId)
+    if (theoryChat) theoryChat.status = 'closed'
+    advance(session, 0)
+    return json(current(session))
+  }
   if (chatMatch) {
     const exerciseId = decodeURIComponent(chatMatch[2])
     const chat = chatFor(session, exerciseId)
@@ -304,9 +386,13 @@ export async function mockTrainingResponse(
         : 0
     const verdict =
       score === 2 ? 'correct' : score === 1 ? 'partial' : 'incorrect'
+    const theory = session.exercise.stage === 'theory'
+    if (theory && chatKind === 'check')
+      return failed('TRAINING_THEORY_STAGE', 409)
     const answerReady =
-      chatKind === 'check' ||
-      /потому|так как|выбирает один из классов/i.test(text)
+      !theory &&
+      (chatKind === 'check' ||
+        /потому|так как|выбирает один из классов/i.test(text))
     const check: TrainingChatCheck | null = answerReady
       ? {
           revision: chat.revision + 1,
@@ -332,11 +418,13 @@ export async function mockTrainingResponse(
       sequence: chat.revision * 2 + 3,
       role: 'assistant',
       kind: chatKind,
-      text: answerReady
-        ? score === 2
-          ? 'Вы связали ответ с условием. Хотите уточнить ещё один признак?'
-          : 'Пока не все требования выполнены. Какой признак поможет уточнить ответ?'
-        : 'Вы назвали важную часть рассуждения. Какое свойство результата подтверждает ваш выбор?',
+      text: theory
+        ? 'Хороший вопрос по теории. Сформулируйте главное правило темы своими словами, а когда будете готовы, переходите к задачам.'
+        : answerReady
+          ? score === 2
+            ? 'Вы связали ответ с условием. Хотите уточнить ещё один признак?'
+            : 'Пока не все требования выполнены. Какой признак поможет уточнить ответ?'
+          : 'Вы назвали важную часть рассуждения. Какое свойство результата подтверждает ваш выбор?',
       created_at: now,
     }
     chat.items.push(userMessage, assistantMessage)
@@ -376,7 +464,7 @@ export async function mockTrainingResponse(
     )
       return failed('CHAT_CHECK_REQUIRED', 409)
     const check = chat.latest_check
-    const index = session.answers.length % session.targets.length
+    const index = session.targetIndex
     const attempt: TrainingAttempt = {
       sequence: session.answers.length + 1,
       exercise_id: exerciseId,
@@ -419,10 +507,7 @@ export async function mockTrainingResponse(
       session.targets[index]!,
       check.score,
     )
-    session.exercise = exerciseFor(
-      session.answers.length + 1,
-      session.targets[session.answers.length % session.targets.length]!,
-    )
+    advance(session, check.score)
     chat.status = 'closed'
     const result = { ...current(session), answer: attempt }
     nextResults.set(identity, { fingerprint, result })
@@ -458,7 +543,9 @@ export async function mockTrainingResponse(
         : failed('IDEMPOTENCY_KEY_REUSED', 409)
     if (exerciseId !== session.exercise.exercise_id)
       return failed('EXERCISE_CHANGED', 409)
-    const index = session.answers.length % session.targets.length
+    if (session.exercise.stage === 'theory')
+      return failed('TRAINING_THEORY_STAGE', 409)
+    const index = session.targetIndex
     const round = session.answers.length + 1
     const now = Math.floor(Date.now() / 1000)
     const attempt: TrainingAttempt = {
@@ -499,10 +586,7 @@ export async function mockTrainingResponse(
     session.answers.push(attempt)
     const completedChat = chats.get(exerciseId)
     if (completedChat) completedChat.status = 'closed'
-    session.exercise = exerciseFor(
-      session.answers.length + 1,
-      session.targets[session.answers.length % session.targets.length],
-    )
+    advance(session, attempt.score)
     const result = current(session)
     session.accepted.set(key, {
       result,

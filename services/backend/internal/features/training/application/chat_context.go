@@ -20,6 +20,8 @@ type tutorTaskContext struct {
 	EducationalContent string   `json:"educational_content,omitempty"`
 	ReferenceAnswer    string   `json:"reference_answer"`
 	Criteria           string   `json:"criteria,omitempty"`
+	Stage              string   `json:"stage,omitempty"`
+	Theory             string   `json:"theory,omitempty"`
 }
 
 func contextTooLarge() error {
@@ -32,6 +34,7 @@ func taskContext(exercise training.Exercise) tutorTaskContext {
 		Question: task.Question, Options: append([]string(nil), task.Options...), VoiceInstruction: task.VoiceInstruction,
 		OutcomeName: task.OutcomeName, TaxonomyCode: task.TaxonomyCode, ALDLevelCode: task.ALDLevelCode,
 		EducationalContent: task.EducationalContent, ReferenceAnswer: task.ReferenceAnswer, Criteria: task.Criteria,
+		Stage: exercise.Stage, Theory: exercise.Theory,
 	}
 }
 

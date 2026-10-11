@@ -1346,6 +1346,12 @@ components:
     training.ExerciseView:
       additionalProperties: false
       properties:
+        basic_count:
+          type: integer
+        basic_index:
+          type: integer
+        competency_name:
+          type: string
         exercise_id:
           type: string
         options:
@@ -1359,14 +1365,22 @@ components:
           type: string
         question:
           type: string
+        stage:
+          type: string
+        theory:
+          type: string
         voice_instruction:
           type: string
       required:
+        - basic_count
+        - basic_index
+        - competency_name
         - exercise_id
         - options
         - outcome_id
         - outcome_name
         - question
+        - stage
         - voice_instruction
       type: object
     training.PendingTurnView:
@@ -1496,6 +1510,8 @@ components:
           type:
             - integer
             - "null"
+        mastered:
+          type: boolean
         original_max_score:
           type:
             - integer
@@ -1514,6 +1530,7 @@ components:
         - kind
         - label
         - last_score
+        - mastered
         - original_max_score
         - original_score
         - outcome_id
@@ -4036,6 +4053,52 @@ paths:
       security:
         - accessCookie: []
       summary: Завершить тренировочное упражнение
+      tags:
+        - Тренировка
+      x-implementation: implemented
+  /training-sessions/{id}/exercises/{exercise_id}/theory/complete:
+    post:
+      parameters:
+        - description: ID тренировки
+          in: path
+          name: id
+          required: true
+          schema:
+            type: string
+        - description: ID упражнения теории
+          in: path
+          name: exercise_id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/training.Progress'
+          description: OK
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unauthorized
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Not Found
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Conflict
+      security:
+        - accessCookie: []
+      summary: Перейти от теории к закрепляющим задачам
       tags:
         - Тренировка
       x-implementation: implemented

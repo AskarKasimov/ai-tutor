@@ -6,6 +6,7 @@ export type {
   TrainingHistory,
   TrainingPreview,
   TrainingProgress,
+  TrainingStage,
   TrainingSubmission,
   TrainingTarget,
 } from './model/training'
@@ -37,6 +38,7 @@ export {
   startTraining,
   submitTraining,
   nextTrainingExercise,
+  completeTrainingTheory,
 } from './api/training-api'
 export {
   readTrainingChat,

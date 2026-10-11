@@ -53,7 +53,7 @@ func TestTutorSendsFixedSystemPromptAndStudentHistoryAsDataMessages(t *testing.T
 		if !strings.Contains(body.Messages[0].Content, "терпеливый русскоязычный учебный репетитор") || strings.Contains(body.Messages[0].Content, "закрытая формулировка") {
 			t.Errorf("system message is not the fixed policy: %s", body.Messages[0].Content)
 		}
-		if !strings.Contains(body.Messages[1].Content, "закрытая формулировка") || !strings.Contains(body.Messages[1].Content, "training-tutor-v2") {
+		if !strings.Contains(body.Messages[1].Content, "закрытая формулировка") || !strings.Contains(body.Messages[1].Content, "training-tutor-v3") {
 			t.Errorf("trusted snapshot envelope missing: %s", body.Messages[1].Content)
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -65,7 +65,7 @@ func TestTutorSendsFixedSystemPromptAndStudentHistoryAsDataMessages(t *testing.T
 	if err != nil || got.Pedagogy != training.PedagogyQuestion || got.AssistantText != "Какой результат должна выдавать модель?" {
 		t.Fatalf("unexpected tutor reply: %+v %v", got, err)
 	}
-	if TutorPromptVersion != "training-tutor-v2" {
+	if TutorPromptVersion != "training-tutor-v3" {
 		t.Fatalf("unexpected prompt version %q", TutorPromptVersion)
 	}
 }

@@ -63,35 +63,46 @@ func (r *Repository) ByStartKey(ctx context.Context, owner, key, diagnosticID st
 	s, err := r.Get(ctx, owner, row.SessionID)
 	return s, true, err
 }
-func (r *Repository) Practice(ctx context.Context, subjectID string) (int64, []training.Task, error) {
+// Material reads the active bank: ready tasks for the pools of selected ОР and
+// the ОС of every outcome, including outcomes not marked TRUE for the test.
+func (r *Repository) Material(ctx context.Context, subjectID string) (training.Material, error) {
+	material := training.Material{Notes: map[string][]training.TheoryNote{}}
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
-		return 0, nil, err
+		return material, err
 	}
 	defer tx.Rollback(ctx)
 	q := r.q.WithTx(tx)
 	subject, err := q.LockSubjectForVariant(ctx, subjectID)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return 0, nil, fault.New(fault.NotFound, "SUBJECT_NOT_FOUND", "Предмет не найден.")
+		return material, fault.New(fault.NotFound, "SUBJECT_NOT_FOUND", "Предмет не найден.")
 	}
 	if err != nil {
-		return 0, nil, err
+		return material, err
 	}
 	rows, err := q.ReadVariantCandidates(ctx, subject.ActiveRevision)
 	if err != nil {
-		return 0, nil, err
+		return material, err
 	}
-	tasks := []training.Task{}
+	material.Revision = subject.ActiveRevision
+	noted := map[string]bool{}
 	for _, row := range rows {
-		if row.TaskID == nil {
-			continue
-		}
 		var t variant.TaskProfile
 		if err = json.Unmarshal(row.ProfileJson, &t); err != nil {
-			return 0, nil, err
+			return material, err
 		}
-		// Free practice covers only outcomes marked TRUE for the test.
-		if t.Outcome.IncludeInTest == nil || !*t.Outcome.IncludeInTest {
+		if t.Outcome.ID == "" {
+			continue
+		}
+		if !noted[t.Outcome.ID] {
+			noted[t.Outcome.ID] = true
+			if t.Outcome.EducationalContent != nil && strings.TrimSpace(*t.Outcome.EducationalContent) != "" {
+				note := training.TheoryNote{OutcomeID: t.Outcome.ID, OutcomeName: t.Outcome.Name, IncludeInTest: t.Outcome.IncludeInTest != nil && *t.Outcome.IncludeInTest, Content: *t.Outcome.EducationalContent}
+				// Names survive a reimport; competency names are unique in a map.
+				material.Notes[t.Competency.Name] = append(material.Notes[t.Competency.Name], note)
+			}
+		}
+		if row.TaskID == nil {
 			continue
 		}
 		if strings.TrimSpace(t.Question) == "" || t.VoiceInstruction == nil || strings.TrimSpace(*t.VoiceInstruction) == "" || t.ReferenceAnswer == nil || strings.TrimSpace(*t.ReferenceAnswer) == "" {
@@ -113,12 +124,12 @@ func (r *Repository) Practice(ctx context.Context, subjectID string) (int64, []t
 		if t.Outcome.Importance != nil {
 			task.Importance = *t.Outcome.Importance
 		}
-		tasks = append(tasks, task)
+		material.Tasks = append(material.Tasks, task)
 	}
 	if err = tx.Commit(ctx); err != nil {
-		return 0, nil, err
+		return material, err
 	}
-	return subject.ActiveRevision, tasks, nil
+	return material, nil
 }
 func (r *Repository) Create(ctx context.Context, s training.Session, key string, expectedRevision *int64) (training.Session, bool, error) {
 	tx, err := r.pool.Begin(ctx)
@@ -210,6 +221,60 @@ func insertExercise(ctx context.Context, q *db.Queries, sessionID string, e trai
 		return err
 	}
 	return q.InsertTrainingExercise(ctx, db.InsertTrainingExerciseParams{ID: e.ID, SessionID: sessionID, Round: e.Round, TargetIndex: int32(e.TargetIndex), ExerciseData: raw, AudioAssetID: e.Task.AudioAssetID})
+}
+// AdvanceTheory replaces the theory exercise without an attempt. The state was
+// computed from a read outside the transaction, so the stored position must
+// still be the expected theory exercise and no answer or chat turn may be active.
+func (r *Repository) AdvanceTheory(ctx context.Context, owner, exerciseID string, s training.Session) (training.Progress, error) {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return training.Progress{}, err
+	}
+	defer tx.Rollback(ctx)
+	q := r.q.WithTx(tx)
+	row, err := q.LockTrainingSession(ctx, db.LockTrainingSessionParams{OwnerID: owner, ID: s.ID})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return training.Progress{}, notFound()
+	}
+	if err != nil {
+		return training.Progress{}, err
+	}
+	previous, err := decode(row.StateData)
+	if err != nil {
+		return training.Progress{}, err
+	}
+	if previous.Current.ID != exerciseID || previous.Current.Stage != training.StageTheory || previous.AnswerCount != s.AnswerCount {
+		return training.Progress{}, conflict("TRAINING_EXERCISE_NOT_CURRENT", "Упражнение изменилось.")
+	}
+	if row.Leased {
+		return training.Progress{}, conflict("TRAINING_ANSWER_IN_PROGRESS", "Тренировка уже обрабатывается.")
+	}
+	if len(row.ReservationData) > 0 {
+		var active training.Reservation
+		if err = json.Unmarshal(row.ReservationData, &active); err != nil {
+			return training.Progress{}, err
+		}
+		if active.Operation == "chat" {
+			return training.Progress{}, conflict("CHAT_PENDING_TURN_EXISTS", "Сначала повторите или отмените ожидающую реплику.")
+		}
+	}
+	raw, err := json.Marshal(s)
+	if err != nil {
+		return training.Progress{}, err
+	}
+	if err = q.SaveTrainingState(ctx, db.SaveTrainingStateParams{OwnerID: owner, ID: s.ID, StateData: raw}); err != nil {
+		return training.Progress{}, err
+	}
+	if err = insertExercise(ctx, q, s.ID, s.Current); err != nil {
+		return training.Progress{}, err
+	}
+	if err = q.CloseTrainingChat(ctx, db.CloseTrainingChatParams{SessionID: s.ID, ExerciseID: exerciseID}); err != nil {
+		return training.Progress{}, err
+	}
+	if err = tx.Commit(ctx); err != nil {
+		return training.Progress{}, err
+	}
+	return s.Progress(), nil
 }
 func (r *Repository) Reserve(ctx context.Context, owner, id, key, fingerprint, exerciseID, token string) (*training.Progress, *training.Reservation, training.Session, error) {
 	tx, err := r.pool.Begin(ctx)

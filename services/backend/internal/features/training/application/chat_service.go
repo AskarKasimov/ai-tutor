@@ -170,6 +170,11 @@ func (s *ChatService) runReserved(ctx context.Context, reservation training.Turn
 		check = &training.Check{Revision: reservation.Turn.ExpectedRevision + 1, FinalAnswer: answer, Source: reservation.Turn.Source, TranscriptionID: transcriptionID, Score: evaluation.Score, MaxScore: evaluation.MaxScore, Verdict: evaluation.Verdict, CriterionResults: criterionResults(evaluation.CriterionResults), Feedback: append([]string(nil), evaluation.Feedback...)}
 		return nil
 	}
+	// Theory has no reference answer: the tutor only explains it and never grades.
+	theory := reservation.Exercise.Stage == training.StageTheory
+	if theory && reservation.Turn.Operation == training.ChatKindCheck {
+		return training.TurnResult{}, fault.New(fault.Conflict, "TRAINING_THEORY_STAGE", "Сейчас этап теории: изучите её и переходите к задачам.")
+	}
 	// Keep explicit checks compatible with historical clients. The current UI sends one kind of turn.
 	if reservation.Turn.Operation == training.ChatKindCheck {
 		if err := grade(studentText); err != nil {
@@ -184,7 +189,7 @@ func (s *ChatService) runReserved(ctx context.Context, reservation training.Turn
 	if err != nil {
 		return training.TurnResult{}, err
 	}
-	if check == nil && reply.AnswerReady {
+	if check == nil && reply.AnswerReady && !theory {
 		// Grade only the student's complete recent statements, never tutor suggestions or truncated summaries.
 		answers := make([]string, 0, len(tutorContext.Recent)+1)
 		for _, message := range tutorContext.Recent {

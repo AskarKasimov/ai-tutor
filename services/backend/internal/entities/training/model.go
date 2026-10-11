@@ -30,6 +30,8 @@ type Target struct {
 	LastScore        *int
 	OriginalFeedback []string
 	OriginalCriteria []CriterionResult
+	// Block is nil for sessions created before competency blocks.
+	Block *Block `json:",omitempty"`
 }
 type Exercise struct {
 	ID              string
@@ -37,6 +39,10 @@ type Exercise struct {
 	Round           int64
 	ProviderVersion string
 	Task            Task
+	Stage           string `json:",omitempty"`
+	BasicIndex      int    `json:",omitempty"`
+	// Theory is the summary shown on the theory stage.
+	Theory string `json:",omitempty"`
 }
 type Session struct {
 	ID              string
@@ -104,6 +110,7 @@ type TargetView struct {
 	OriginalScore    *int   `json:"original_score" extensions:"x-nullable"`
 	OriginalMaxScore *int   `json:"original_max_score" extensions:"x-nullable"`
 	LastScore        *int   `json:"last_score" extensions:"x-nullable"`
+	Mastered         bool   `json:"mastered"`
 }
 type ExerciseView struct {
 	ID               string   `json:"exercise_id"`
@@ -112,6 +119,11 @@ type ExerciseView struct {
 	Question         string   `json:"question"`
 	Options          []string `json:"options"`
 	VoiceInstruction string   `json:"voice_instruction"`
+	Stage            string   `json:"stage"`
+	CompetencyName   string   `json:"competency_name"`
+	Theory           string   `json:"theory,omitempty" binding:"optional"`
+	BasicIndex       int      `json:"basic_index"`
+	BasicCount       int      `json:"basic_count"`
 }
 type Progress struct {
 	ID           string       `json:"session_id"`
@@ -153,13 +165,24 @@ func View(t Target) TargetView {
 		score = &t.OriginalScore
 		maxScore = &t.OriginalMaxScore
 	}
-	return TargetView{Kind: t.Kind, Label: label, CompetencyID: t.Source.CompetencyID, CompetencyName: t.Source.CompetencyName, OutcomeID: t.Source.OutcomeID, OutcomeName: t.Source.OutcomeName, OriginalScore: score, OriginalMaxScore: maxScore, LastScore: t.LastScore}
+	return TargetView{Kind: t.Kind, Label: label, CompetencyID: t.Source.CompetencyID, CompetencyName: t.Source.CompetencyName, OutcomeID: t.Source.OutcomeID, OutcomeName: t.Source.OutcomeName, OriginalScore: score, OriginalMaxScore: maxScore, LastScore: t.LastScore, Mastered: t.Block != nil && t.Block.Mastered}
+}
+
+func (s Session) exerciseView() ExerciseView {
+	t := s.Current.Task
+	view := ExerciseView{ID: s.Current.ID, OutcomeID: t.OutcomeID, OutcomeName: t.OutcomeName, Question: t.Question, Options: append([]string{}, t.Options...), VoiceInstruction: t.VoiceInstruction, Stage: s.Current.Stage, CompetencyName: t.CompetencyName, Theory: s.Current.Theory, BasicIndex: s.Current.BasicIndex}
+	if view.Stage == "" {
+		view.Stage = StagePractice
+	}
+	if s.Current.TargetIndex >= 0 && s.Current.TargetIndex < len(s.Targets) && s.Targets[s.Current.TargetIndex].Block != nil {
+		view.BasicCount = len(s.Targets[s.Current.TargetIndex].Block.Basics)
+	}
+	return view
 }
 func (s Session) Progress() Progress {
 	targets := make([]TargetView, 0, len(s.Targets))
 	for _, t := range s.Targets {
 		targets = append(targets, View(t))
 	}
-	t := s.Current.Task
-	return Progress{ID: s.ID, DiagnosticID: s.DiagnosticID, SubjectID: s.SubjectID, SubjectName: s.SubjectName, Mode: s.Mode, Status: "active", Round: s.Round, AnswerCount: s.AnswerCount, Targets: targets, Current: ExerciseView{ID: s.Current.ID, OutcomeID: t.OutcomeID, OutcomeName: t.OutcomeName, Question: t.Question, Options: append([]string{}, t.Options...), VoiceInstruction: t.VoiceInstruction}}
+	return Progress{ID: s.ID, DiagnosticID: s.DiagnosticID, SubjectID: s.SubjectID, SubjectName: s.SubjectName, Mode: s.Mode, Status: "active", Round: s.Round, AnswerCount: s.AnswerCount, Targets: targets, Current: s.exerciseView()}
 }

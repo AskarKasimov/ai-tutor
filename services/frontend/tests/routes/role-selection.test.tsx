@@ -34,6 +34,9 @@ it('opens student login with a banner and returns to role selection on logout', 
   expect(screen.queryByLabelText('Пароль')).not.toBeInTheDocument()
   fireEvent.click(screen.getByRole('button', { name: 'Войти как ученик' }))
   expect(await screen.findByText('Вход как ученик')).toBeVisible()
+  expect(
+    screen.getByText('Подтянем до уверенного уровня в кратчайшие сроки'),
+  ).toBeVisible()
   fireEvent.click(screen.getByRole('button', { name: 'Назад' }))
   fireEvent.click(
     await screen.findByRole('button', { name: 'Войти как ученик' }),

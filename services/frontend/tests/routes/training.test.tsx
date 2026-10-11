@@ -103,4 +103,15 @@ it('opens training directly from the diagnostic result', async () => {
   fireEvent.click(screen.getByRole('button', { name: 'Пропустить вопрос' }))
   expect(await screen.findByText('Вопрос пропущен')).toBeVisible()
   expect(audio.startRecording).toHaveBeenCalledTimes(2)
+  // Back home, the single course action resumes the process in training.
+  fireEvent.click(screen.getByRole('button', { name: 'На главную' }))
+  expect(
+    await screen.findByText('Проверка пройдена — продолжайте тренировку.'),
+  ).toBeVisible()
+  expect(
+    screen.getByRole('button', { name: 'Пройти проверку заново' }),
+  ).toHaveAccessibleDescription('С первого вопроса')
+  expect(
+    screen.getByRole('button', { name: 'Продолжить обучение' }),
+  ).toHaveAccessibleDescription('С того же места')
 })

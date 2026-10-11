@@ -1,13 +1,16 @@
 import { Button, Heading, Text } from '@radix-ui/themes'
 import {
+  Check,
   ChevronDown,
   ChevronRight,
   ChevronUp,
   CircleAlert,
   GraduationCap,
   LoaderCircle,
+  Mic,
   MicOff,
   Play,
+  SkipForward,
   Square,
 } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -36,12 +39,46 @@ export type NavigatorItem = {
   basics?: NavigatorState[]
 }
 
+// The progress bar under the header: a label on the left, whole percent on
+// the right and a continuous bar.
+export function TrainerProgress({
+  label,
+  percent,
+}: {
+  label: string
+  percent: number
+}) {
+  const { t } = useTranslation()
+  return (
+    <div className={styles.progress}>
+      <div className={styles.progressText}>
+        <Text>{label}</Text>
+        <Text className={styles.progressPercent}>
+          {t('session.percent', { value: percent })}
+        </Text>
+      </div>
+      <div
+        className={styles.progressTrack}
+        role="progressbar"
+        aria-label={label}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={percent}
+        aria-valuetext={t('session.percent', { value: percent })}
+      >
+        <div className={styles.progressFill} style={{ width: `${percent}%` }} />
+      </div>
+    </div>
+  )
+}
+
 export function TrainerShell({
   title,
   subject,
   crumb,
   onBack,
   navigator,
+  progress,
   children,
 }: {
   title: string
@@ -49,12 +86,15 @@ export function TrainerShell({
   crumb?: string
   onBack?: () => void
   navigator?: ReactNode
+  progress?: ReactNode
   children: ReactNode
 }) {
   const { t } = useTranslation()
   return (
     <div data-trainer-app className={styles.shell}>
-      <div className={styles.frame}>
+      <div
+        className={`${styles.frame} ${progress ? styles.frameWithProgress : ''}`}
+      >
         <header className={styles.header}>
           {onBack ? (
             // The product logo returns to the student home.
@@ -108,6 +148,7 @@ export function TrainerShell({
             <AccountMenu />
           </div>
         </header>
+        {progress}
         <div className={`${styles.body} ${navigator ? '' : styles.bodyWide}`}>
           {navigator}
           <div className={styles.stage}>{children}</div>
@@ -240,6 +281,7 @@ export function TrainerQuestion({
   eyebrowHeading = false,
   question,
   options,
+  instruction,
   children,
 }: {
   badge: string
@@ -247,6 +289,7 @@ export function TrainerQuestion({
   eyebrowHeading?: boolean
   question: string
   options: string[]
+  instruction?: ReactNode
   children?: ReactNode
 }) {
   const { t } = useTranslation()
@@ -271,6 +314,9 @@ export function TrainerQuestion({
       >
         {question}
       </Heading>
+      {/* The spoken instruction sits right under the task text; options
+          follow under their own title. */}
+      {instruction && <div className={styles.instruction}>{instruction}</div>}
       {options.length > 0 && (
         <section
           aria-labelledby="answer-options-title"
@@ -384,8 +430,10 @@ export function ListenButton({
   )
 }
 
-// The voice panel: instruction playback, live waveform with a timer and the
-// answer actions; a failed microphone shows the crossed-out microphone state.
+// The voice panel: instruction playback, the microphone circle with its states
+// (record button, recording with a timer and live waveform, processing,
+// answered) and the recovery actions; a failed microphone shows the
+// crossed-out microphone.
 // Once an answer is accepted the panel only confirms it, without a score.
 export function TrainerCapturePanel({
   stage,
@@ -394,8 +442,8 @@ export function TrainerCapturePanel({
   speech,
   errorMessage,
   micError,
-  audioUrl,
   answered,
+  onMic,
   onSkip,
   skipDisabled,
   children,
@@ -403,17 +451,36 @@ export function TrainerCapturePanel({
   stage: 'ready' | 'permission' | 'recording' | 'processing' | 'error'
   seconds: string
   stream?: MediaStream
-  speech: ReactNode
+  speech?: ReactNode
   errorMessage?: string
   micError?: { title: string; help: string }
-  audioUrl?: string
   answered?: 'accepted' | 'skipped'
+  onMic?: () => void
   onSkip?: () => void
   skipDisabled?: boolean
   children: ReactNode
 }) {
   const { t } = useTranslation()
   const busy = stage === 'processing' || stage === 'permission'
+  const micState = answered ?? (busy ? 'busy' : stage)
+  const micLabel = answered
+    ? undefined
+    : stage === 'ready'
+      ? t('trainer.start')
+      : stage === 'recording'
+        ? t('trainer.stopRecording')
+        : undefined
+  const micIcon = busy ? (
+    <LoaderCircle size={40} className={styles.spinner} />
+  ) : answered === 'accepted' ? (
+    <Check size={44} />
+  ) : answered === 'skipped' ? (
+    <SkipForward size={40} />
+  ) : stage === 'recording' ? (
+    <Square size={32} fill="currentColor" />
+  ) : (
+    <Mic size={48} />
+  )
   return (
     <TrainerAnswerPanel>
       <Heading as="h2" className={styles.panelTitle}>
@@ -432,14 +499,32 @@ export function TrainerCapturePanel({
           <Text as="p">{micError.help}</Text>
         </div>
       ) : (
-        <div className={styles.wave} aria-hidden={busy ? undefined : true}>
-          {busy ? (
-            <LoaderCircle size={40} className={styles.spinner} />
+        <div className={styles.voice}>
+          {/* The circle is the record button: it starts and stops recording.
+              After a failure it only duplicates the recovery button below. */}
+          {onMic ? (
+            <button
+              type="button"
+              className={styles.mic}
+              data-state={micState}
+              onClick={onMic}
+              {...(micLabel
+                ? { 'aria-label': micLabel }
+                : { tabIndex: -1, 'aria-hidden': true })}
+            >
+              {micIcon}
+            </button>
           ) : (
-            <LiveWaveform stream={stream} />
+            <span
+              className={styles.mic}
+              data-state={micState}
+              aria-hidden="true"
+            >
+              {micIcon}
+            </span>
           )}
           {busy ? (
-            <Text className={styles.waveStatus} role="status">
+            <Text className={styles.voiceStatus} role="status">
               {t(
                 stage === 'permission'
                   ? 'trainer.allow'
@@ -447,7 +532,7 @@ export function TrainerCapturePanel({
               )}
             </Text>
           ) : answered ? (
-            <Text className={styles.waveStatus} role="status">
+            <Text className={styles.voiceStatus} role="status">
               {t(
                 answered === 'skipped'
                   ? 'session.answerSkipped'
@@ -455,7 +540,17 @@ export function TrainerCapturePanel({
               )}
             </Text>
           ) : stage === 'recording' ? (
-            <Text className={styles.timer}>{seconds}</Text>
+            <>
+              <Text className={styles.timer} role="timer">
+                {seconds}
+              </Text>
+              <div className={styles.voiceWave} aria-hidden="true">
+                <LiveWaveform stream={stream} height={44} />
+              </div>
+              <Text className={styles.voiceHint}>{t('session.tapToStop')}</Text>
+            </>
+          ) : onMic ? (
+            <Text className={styles.voiceHint}>{t('session.tapToRecord')}</Text>
           ) : null}
         </div>
       )}
@@ -466,15 +561,6 @@ export function TrainerCapturePanel({
         </Text>
       )}
       <div className={styles.actions}>{children}</div>
-      {audioUrl && (stage === 'error' || answered) && (
-        <div className={styles.audio}>
-          <audio
-            controls
-            src={audioUrl}
-            aria-label={t('trainer.listenRecording')}
-          />
-        </div>
-      )}
       <div className={styles.spacer} />
       {onSkip && !answered && (
         <Button

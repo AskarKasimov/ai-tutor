@@ -10,6 +10,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 6
+      start_period: 90s
     restart: unless-stopped
 
 networks:

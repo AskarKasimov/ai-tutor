@@ -4,7 +4,6 @@ import type { AuthInput } from '@/entities/user'
 import type { User } from '@/entities/user'
 
 export type AuthDependencies = {
-  mode: 'demo' | 'real'
   auth: {
     readCurrentUser(signal: AbortSignal): Promise<User | null>
     authenticate(input: AuthInput, signal: AbortSignal): Promise<User>

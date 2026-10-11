@@ -14,7 +14,6 @@ import {
 import { afterEach, expect, it, vi } from 'vitest'
 import { createQueryClient } from '@/bootstrap/providers'
 import { routeTree } from '@/routeTree.gen'
-import * as trainerSource from '@/bootstrap/demo-trainer-session-source'
 
 const admin = {
   id: 'admin-1',
@@ -170,10 +169,6 @@ afterEach(() => {
 it.each(['/admin', '/admin/'])(
   'opens the map administration by default when the admin panel opens at %s',
   async (path) => {
-    const createLesson = vi.spyOn(
-      trainerSource,
-      'createMockTrainerSessionSource',
-    )
     backend()
     const router = renderApp(path)
     expect(
@@ -195,7 +190,6 @@ it.each(['/admin', '/admin/'])(
     expect(
       screen.queryByRole('combobox', { name: 'Предмет' }),
     ).not.toBeInTheDocument()
-    expect(createLesson).not.toHaveBeenCalled()
   },
 )
 

@@ -6,13 +6,6 @@ export type AssessmentTask = {
   voiceInstruction: string
 }
 
-export type DemoAssessmentTask = Omit<
-  AssessmentTask,
-  'variantId' | 'variantTaskId'
-> & {
-  taskId: string
-}
-
 export type AssessmentVerdict = 'correct' | 'partial' | 'incorrect'
 
 export type CriterionResult = {

@@ -117,12 +117,6 @@ export function useDiagnosticVoice(
       ),
       exact: true,
     })
-    void cache.cancelQueries({
-      queryKey: ['stored-task-audio', userId, sessionId, task?.variant_task_id],
-    })
-    cache.removeQueries({
-      queryKey: ['stored-task-audio', userId, sessionId, task?.variant_task_id],
-    })
     player.current?.()
     player.current = null
     setSpeech('idle')
@@ -178,13 +172,6 @@ export function useDiagnosticVoice(
       setSpeech('playing')
       return true
     }
-    const audioKey = (audioUrl: string) =>
-      diagnosticSessionQueryKeys.storedTaskAudio(
-        userId,
-        sessionId,
-        taskId,
-        audioUrl,
-      )
     const canRepair = (error: unknown) =>
       error instanceof StoredAudioError &&
       (error.kind === 'invalid' ||
@@ -238,15 +225,9 @@ export function useDiagnosticVoice(
         return
       }
       const fetchBlob = (url: string) =>
-        cache.fetchQuery({
-          queryKey: audioKey(url),
-          queryFn: ({ signal }) =>
-            diagnostic.fetchDiagnosticAudioFile(url, signal),
-          staleTime: Infinity,
-        })
+        diagnostic.fetchDiagnosticAudioFile(url, request.signal)
       const playBlob = async (
         blob: Blob,
-        url: string,
         isRepairReplay = false,
       ): Promise<void> => {
         if (!stillCurrent()) return
@@ -281,7 +262,6 @@ export function useDiagnosticVoice(
           repairAttempted = true
           setSpeech('loading')
           repairPromise = (async () => {
-            cache.removeQueries({ queryKey: audioKey(url), exact: true })
             const repaired = await repair.mutateAsync({
               taskId,
               signal: request.signal,
@@ -290,13 +270,9 @@ export function useDiagnosticVoice(
             if (repaired.status !== 'ready' || !repaired.audio_url)
               throw new Error('Audio repair did not return ready metadata')
             const repairedURL = repaired.audio_url
-            cache.removeQueries({
-              queryKey: audioKey(repairedURL),
-              exact: true,
-            })
             const repairedBlob = await fetchBlob(repairedURL)
             if (!stillCurrent()) return
-            await playBlob(repairedBlob, repairedURL, true)
+            await playBlob(repairedBlob, true)
           })()
           const currentRepair = repairPromise
           void currentRepair.then(
@@ -358,7 +334,7 @@ export function useDiagnosticVoice(
           throw new Error('Audio repair did not return ready metadata')
         const repairedBlob = await fetchBlob(repaired.audio_url)
         if (!stillCurrent()) return
-        await playBlob(repairedBlob, repaired.audio_url, true)
+        await playBlob(repairedBlob, true)
         return
       }
       let blob: Blob
@@ -367,10 +343,6 @@ export function useDiagnosticVoice(
       } catch (error) {
         if (!canRepair(error) || repairAttempted) throw error
         repairAttempted = true
-        cache.removeQueries({
-          queryKey: audioKey(metadata!.audio_url!),
-          exact: true,
-        })
         const repaired = await repair.mutateAsync({
           taskId,
           signal: request.signal,
@@ -380,11 +352,11 @@ export function useDiagnosticVoice(
           throw new Error('Audio repair did not return ready metadata')
         blob = await fetchBlob(repaired.audio_url)
         if (!stillCurrent()) return
-        await playBlob(blob, repaired.audio_url, true)
+        await playBlob(blob, true)
         return
       }
       if (!stillCurrent()) return
-      await playBlob(blob, metadata!.audio_url!)
+      await playBlob(blob)
     } catch (error) {
       if (!request.signal.aborted) {
         const blocked =
@@ -423,22 +395,6 @@ export function useDiagnosticVoice(
           task?.variant_task_id,
         ),
         exact: true,
-      })
-      void cache.cancelQueries({
-        queryKey: [
-          'stored-task-audio',
-          userId,
-          sessionId,
-          task?.variant_task_id,
-        ],
-      })
-      cache.removeQueries({
-        queryKey: [
-          'stored-task-audio',
-          userId,
-          sessionId,
-          task?.variant_task_id,
-        ],
       })
       player.current?.()
     }

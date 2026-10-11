@@ -85,6 +85,7 @@ export async function fetchStoredAudio(
   const fetchSignal = requestSignal(signal)
   try {
     response = await apiFetch(`${apiBase}${audioUrl}`, {
+      cache: 'no-store',
       credentials: 'include',
       signal: fetchSignal,
     })

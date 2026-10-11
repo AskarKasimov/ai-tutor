@@ -42,6 +42,7 @@ it('fetches stored WAV from an internal API path with cookie credentials', async
   expect(await audio.arrayBuffer()).toEqual(wav)
   expect(fetchMock.mock.calls[0][0]).toBe('/api/v1/task-audio/audio-1/file')
   expect(fetchMock.mock.calls[0][1].credentials).toBe('include')
+  expect(fetchMock.mock.calls[0][1].cache).toBe('no-store')
   await expect(
     fetchStoredAudio(
       'https://evil.example/audio.wav',

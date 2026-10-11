@@ -17,6 +17,28 @@ type skipRepository struct {
 	accepted *training.Progress
 }
 
+type checkedNextFake struct {
+	reservation training.NextReservation
+	result      *training.Progress
+	failures    int
+	accepted    bool
+}
+
+func (r *checkedNextFake) ReserveNext(context.Context, string, string, string, string, int64, string) (*training.Progress, *training.NextReservation, error) {
+	return r.result, &r.reservation, nil
+}
+func (r *checkedNextFake) AcceptNext(_ context.Context, _ training.NextReservation, state training.Session, attempt training.Attempt) (training.Progress, error) {
+	r.accepted = true
+	p := state.Progress()
+	p.Answer = &attempt
+	r.result = &p
+	return p, nil
+}
+func (r *checkedNextFake) FailNext(context.Context, training.NextReservation) error {
+	r.failures++
+	return nil
+}
+
 func (r *skipRepository) Reserve(_ context.Context, _, _, key, fingerprint, exerciseID, token string) (*training.Progress, *training.Reservation, training.Session, error) {
 	if r.accepted != nil {
 		return r.accepted, nil, r.state, nil
@@ -72,5 +94,31 @@ func TestSkipAdvancesWithoutSpeechOrGrading(t *testing.T) {
 	}
 	if voice.called || grader.called || progress.Answer == nil || !progress.Answer.Skipped || progress.Answer.Score != 0 || progress.Answer.Text != "Я не знаю. Пропустить" || progress.Current.ID == "exercise-1" || progress.AnswerCount != 1 || progress.Targets[0].LastScore == nil || *progress.Targets[0].LastScore != 0 {
 		t.Fatalf("skip did not advance cleanly: %+v, voice=%v grader=%v", progress, voice.called, grader.called)
+	}
+}
+
+func TestNextCheckedAdvancesFromTrustedChatCheck(t *testing.T) {
+	task := training.Task{OutcomeID: "outcome-1", OutcomeName: "Topic", Question: "Question", VoiceInstruction: "Answer"}
+	state := training.Session{ID: "session-1", OwnerID: "owner-1", Round: 1, Targets: []training.Target{{Source: task}}, Current: training.Exercise{ID: "exercise-1", Task: task}}
+	check := training.Check{Revision: 3, FinalAnswer: "student text", Source: training.AnswerSourceText, Score: 1, MaxScore: 2, Verdict: "partial", CriterionResults: []training.CriterionResult{{Key: "reason", Satisfied: true}}, Feedback: []string{"a", "b", "c"}}
+	repository := &checkedNextFake{reservation: training.NextReservation{OwnerID: "owner-1", SessionID: state.ID, ExerciseID: state.Current.ID, Token: "token", Key: "next-key", Fingerprint: "fingerprint", Session: state, Check: check}}
+	service := New(&skipRepository{}, nil, nil, nil, skipProvider{}, &skipIDs{}, func() time.Time { return time.Unix(10, 0) }).WithCheckedNext(repository)
+	progress, err := service.NextChecked(context.Background(), "owner-1", state.ID, state.Current.ID, "next-key", 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !repository.accepted || repository.failures != 0 || progress.Answer == nil || progress.Answer.AnswerSource != training.AnswerSourceText || progress.Answer.TranscriptionID != "" || progress.Answer.Text != "student text" || progress.Answer.Score != 1 || len(progress.Answer.Feedback) != 3 || progress.AnswerCount != 1 {
+		t.Fatalf("checked Next did not preserve the trusted check: %+v, repository=%+v", progress, repository)
+	}
+}
+
+func TestNextCheckedRejectsStaleCheckAndLeavesChatOpen(t *testing.T) {
+	task := training.Task{Question: "Question"}
+	state := training.Session{ID: "session-1", OwnerID: "owner-1", Round: 1, Targets: []training.Target{{Source: task}}, Current: training.Exercise{ID: "exercise-1", Task: task}}
+	repository := &checkedNextFake{reservation: training.NextReservation{Session: state, Check: training.Check{Revision: 2, FinalAnswer: "answer", MaxScore: 2}}}
+	service := New(&skipRepository{}, nil, nil, nil, skipProvider{}, &skipIDs{}, time.Now).WithCheckedNext(repository)
+	_, err := service.NextChecked(context.Background(), "owner-1", state.ID, state.Current.ID, "next-key", 3)
+	if err == nil || !repository.accepted && repository.failures != 1 {
+		t.Fatalf("stale check must fail without closing: err=%v repo=%+v", err, repository)
 	}
 }

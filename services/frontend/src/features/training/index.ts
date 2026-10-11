@@ -11,4 +11,6 @@ export {
   useTrainingHistoryQuery,
 } from './model/use-training-session'
 export { useTrainingVoice } from './model/use-training-voice'
+export { useTrainingChat } from './model/use-training-chat'
+export { useTrainingChatVoice } from './model/use-training-chat-voice'
 export type { TrainingSubmit } from './model/use-training-voice'

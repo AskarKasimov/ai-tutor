@@ -1,8 +1,10 @@
 import { Button, Card, Heading, Text } from '@radix-ui/themes'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { TrainingAttempt, TrainingProgress } from '@/entities/training'
 import { useTrainingHistoryQuery } from '@/features/training'
 import styles from './trainer-layout.module.scss'
+import { TrainingChat } from './training-chat'
 
 export function TrainingHistory({
   userId,
@@ -33,7 +35,12 @@ export function TrainingHistory({
       ) : (
         <ol className={styles.history}>
           {items.map((attempt) => (
-            <HistoryItem key={attempt.sequence} attempt={attempt} />
+            <HistoryItem
+              key={attempt.sequence}
+              attempt={attempt}
+              userId={userId}
+              sessionId={progress.session_id}
+            />
           ))}
         </ol>
       )}
@@ -52,8 +59,18 @@ export function TrainingHistory({
     </section>
   )
 }
-function HistoryItem({ attempt }: { attempt: TrainingAttempt }) {
+function HistoryItem({
+  attempt,
+  userId,
+  sessionId,
+}: {
+  attempt: TrainingAttempt
+  userId: string
+  sessionId: string
+}) {
   const { t } = useTranslation()
+  const [open, setOpen] = useState(false)
+  const chatId = `history-chat-${attempt.exercise_id}`
   return (
     <li>
       <Text>
@@ -63,6 +80,29 @@ function HistoryItem({ attempt }: { attempt: TrainingAttempt }) {
         })}
       </Text>
       <Text as="p">{attempt.text}</Text>
+      {attempt.answer_source ? (
+        <>
+          <Button
+            variant="soft"
+            aria-expanded={open}
+            aria-controls={chatId}
+            onClick={() => setOpen((value) => !value)}
+          >
+            {t(open ? 'training.chatHideHistory' : 'training.chatOpenHistory')}
+          </Button>
+          {open ? (
+            <div id={chatId} className={styles.historyChat}>
+              <TrainingChat
+                userId={userId}
+                sessionId={sessionId}
+                exerciseId={attempt.exercise_id}
+                readOnly
+                sectionId={`${chatId}-title`}
+              />
+            </div>
+          ) : null}
+        </>
+      ) : null}
     </li>
   )
 }

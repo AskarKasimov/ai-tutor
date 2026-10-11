@@ -24,6 +24,7 @@ func configuredEnv(t *testing.T) map[string]string {
 		"BACKEND_TASKGEN_TIMEOUT":         "45s",
 		"BACKEND_VOICE_TIMEOUT":           "120s",
 		"BACKEND_ASSESSMENT_TIMEOUT":      "90s",
+		"BACKEND_TUTOR_TIMEOUT":           "60s",
 		"BACKEND_MAX_UPLOAD_BYTES":        "26214400",
 		"BACKEND_S3_ENDPOINT":             "",
 		"BACKEND_S3_REGION":               "us-east-1",
@@ -42,9 +43,51 @@ func configuredEnv(t *testing.T) map[string]string {
 	return values
 }
 
+func TestTutorConfigInheritsAssessmentDefaults(t *testing.T) {
+	configuredEnv(t)
+	cfg, err := ConfigFromEnv()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.TutorEnabled || cfg.TutorBaseURL != cfg.AssessmentBaseURL || cfg.TutorModel != cfg.AssessmentModel || cfg.TutorTimeout != 60*time.Second || cfg.TutorTaskMaxChars != 16000 || cfg.TutorHistoryMaxChars != 16000 || cfg.TutorSummaryMaxChars != 4000 {
+		t.Fatalf("unexpected tutor settings: %+v", cfg)
+	}
+	t.Setenv("BACKEND_TUTOR_ENABLED", "false")
+	t.Setenv("BACKEND_TUTOR_BASE_URL", "")
+	t.Setenv("BACKEND_TUTOR_MODEL", "")
+	cfg, err = ConfigFromEnv()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.TutorEnabled {
+		t.Fatal("disabled tutor setting was ignored")
+	}
+}
+
+func TestTutorConfigRejectsInvalidSettings(t *testing.T) {
+	for key, values := range map[string][]string{
+		"BACKEND_TUTOR_ENABLED":           {"maybe"},
+		"BACKEND_TUTOR_BASE_URL":          {"relative", "ftp://tutor.test", "http://user:pass@tutor.test"},
+		"BACKEND_TUTOR_TIMEOUT":           {"bad", "0s", "-1s"},
+		"BACKEND_TUTOR_TASK_MAX_CHARS":    {"bad", "0", "-1"},
+		"BACKEND_TUTOR_HISTORY_MAX_CHARS": {"0", "-1"},
+		"BACKEND_TUTOR_SUMMARY_MAX_CHARS": {"0", "-1"},
+	} {
+		for _, value := range values {
+			t.Run(key+"/"+value, func(t *testing.T) {
+				configuredEnv(t)
+				t.Setenv(key, value)
+				if _, err := ConfigFromEnv(); err == nil {
+					t.Fatalf("%s=%q should be rejected", key, value)
+				}
+			})
+		}
+	}
+}
+
 func TestAudioConfigRequiresEverySetting(t *testing.T) {
 	for key := range configuredEnv(t) {
-		if key == "BACKEND_S3_ENDPOINT" || key == "BACKEND_S3_REGION" || key == "BACKEND_S3_PATH_STYLE" || key == "BACKEND_S3_TIMEOUT" || key == "BACKEND_S3_CREATE_BUCKET" || key == "BACKEND_AUDIO_WORKERS" || key == "BACKEND_AUDIO_POLL_INTERVAL" {
+		if key == "BACKEND_S3_ENDPOINT" || key == "BACKEND_S3_REGION" || key == "BACKEND_S3_PATH_STYLE" || key == "BACKEND_S3_TIMEOUT" || key == "BACKEND_S3_CREATE_BUCKET" || key == "BACKEND_AUDIO_WORKERS" || key == "BACKEND_AUDIO_POLL_INTERVAL" || key == "BACKEND_TUTOR_TIMEOUT" {
 			continue
 		}
 		t.Run(key, func(t *testing.T) {
@@ -137,6 +180,8 @@ func testConfig() Config {
 		AssessmentBaseURL: "http://assessment.test/v1", AssessmentModel: "test-model",
 		TaskgenBaseURL: "http://generation.test/v1", TaskgenModel: "generation-model", TaskgenTimeout: 45 * time.Second,
 		VoiceTimeout: 120 * time.Second, AssessmentTimeout: 90 * time.Second,
+		TutorBaseURL: "http://assessment.test/v1", TutorModel: "test-model", TutorTimeout: 60 * time.Second, TutorEnabled: true,
+		TutorTaskMaxChars: 16000, TutorHistoryMaxChars: 16000, TutorSummaryMaxChars: 4000,
 		MaxUploadBytes: 25 * 1024 * 1024,
 		S3Region:       "us-east-1", S3Bucket: "task-audio-test", S3AccessKey: "test-access", S3SecretKey: "test-secret",
 		S3PathStyle: true, S3Timeout: 30 * time.Second, S3CreateBucket: true, AudioWorkers: 1, AudioPollInterval: time.Second,

@@ -7,17 +7,12 @@ import { mockApiFetch } from '@/bootstrap/mock-api'
 import {
   TrainingApiError,
   type TrainingHistory,
+  type TrainingChatPage,
   type TrainingPreview,
   type TrainingProgress,
 } from '@/entities/training'
 import { userQueryKeys } from '@/entities/user'
-import * as audio from '@/shared/lib'
 import { TrainingEntry } from '@/pages/trainer/ui/training-entry'
-
-vi.mock('@/shared/lib', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@/shared/lib')>()),
-  createVoiceWaveform: () => ({ setStream: () => {}, dispose: () => {} }),
-}))
 
 const target = {
   kind: 'partial_competency',
@@ -85,6 +80,7 @@ function setup(
     start?: (plan: TrainingPreview) => Promise<TrainingProgress>
     sessionMissing?: boolean
     submit?: () => Promise<TrainingProgress>
+    sendChat?: () => Promise<never>
     historyPages?: TrainingHistory[]
   } = {},
 ) {
@@ -113,6 +109,26 @@ function setup(
         : progress,
     )
   const readSession = vi.spyOn(dependencies.training, 'readTrainingSession')
+  const readChat = vi.spyOn(dependencies.training, 'readTrainingChat')
+  readChat.mockResolvedValue({
+    session_id: progress.session_id,
+    exercise_id: progress.current.exercise_id,
+    revision: 0,
+    status: 'active',
+    items: [
+      {
+        id: 'welcome',
+        sequence: 1,
+        role: 'assistant',
+        kind: 'welcome',
+        text: 'Начнём разбирать задачу.',
+        created_at: 1,
+      },
+    ],
+    next_cursor: null,
+    latest_check: null,
+    pending_turn: null,
+  } satisfies TrainingChatPage)
   if (entry.sessionMissing)
     readSession.mockRejectedValue(
       new TrainingApiError(404, 'TRAINING_SESSION_NOT_FOUND'),
@@ -121,6 +137,10 @@ function setup(
   vi.spyOn(dependencies.training, 'submitTraining').mockImplementation(
     async () => (entry.submit ? entry.submit() : progress),
   )
+  if (entry.sendChat)
+    vi.spyOn(dependencies.training, 'sendTrainingChatText').mockImplementation(
+      async () => entry.sendChat!(),
+    )
   vi.spyOn(dependencies.training, 'readTrainingHistory').mockImplementation(
     function (...args) {
       const pages = entry.historyPages ?? [{ items: [], targets: [target] }]
@@ -157,7 +177,7 @@ function setup(
       <Harness />
     </AppProviders>,
   )
-  return { start, readPlan, readSession, onBack }
+  return { start, readPlan, readSession, readChat, onBack }
 }
 
 it('opens a new training directly without an extra start click', async () => {
@@ -248,51 +268,37 @@ it('clears a missing session and returns to the subject selector', async () => {
   expect(onBack).toHaveBeenCalledOnce()
 })
 
-it('refreshes the current session after an exercise conflict', async () => {
-  const { readSession } = setup({
+it('refetches chat and preserves the draft after a revision conflict', async () => {
+  const { readChat } = setup({
     existing: progress,
-    submit: () =>
+    sendChat: () =>
       Promise.reject(
         new TrainingApiError(409, 'TRAINING_EXERCISE_NOT_CURRENT'),
       ),
   })
-  vi.spyOn(audio, 'startRecording').mockResolvedValue({
-    stream: {} as MediaStream,
-    dispose: vi.fn(),
-    stop: vi.fn().mockResolvedValue(new Blob(['voice'])),
-  })
-  vi.spyOn(audio, 'createAudioUrl').mockReturnValue({
-    url: 'blob:voice',
-    dispose: vi.fn(),
-  })
-  fireEvent.click(await screen.findByRole('button', { name: 'Начать запись' }))
-  fireEvent.click(
-    await screen.findByRole('button', { name: /Завершить запись/ }),
+  fireEvent.change(
+    await screen.findByRole('textbox', { name: 'Сообщение репетитору' }),
+    {
+      target: { value: 'Проверка конфликта' },
+    },
   )
+  fireEvent.click(screen.getByRole('button', { name: 'Отправить' }))
   expect(await screen.findByRole('alert')).toHaveTextContent(
-    'Текущий вопрос изменился.',
+    'Состояние диалога изменилось. Обновляем историю…',
   )
-  fireEvent.click(
-    screen.getByRole('button', { name: 'Обновить текущий вопрос' }),
-  )
-  await waitFor(() => expect(readSession).toHaveBeenCalledTimes(2))
+  expect(
+    screen.getByRole('textbox', { name: 'Сообщение репетитору' }),
+  ).toHaveValue('Проверка конфликта')
+  await waitFor(() => expect(readChat).toHaveBeenCalledTimes(2))
 })
 
-it('disposes an active recording when Back returns to the selector', async () => {
-  const dispose = vi.fn()
+it('returns to the selector from the chat session', async () => {
   setup({ existing: progress })
-  vi.spyOn(audio, 'startRecording').mockResolvedValue({
-    stream: {} as MediaStream,
-    dispose,
-    stop: vi.fn(),
-  })
-  fireEvent.click(await screen.findByRole('button', { name: 'Начать запись' }))
   expect(
-    await screen.findByRole('button', { name: /Завершить запись/ }),
+    await screen.findByRole('heading', { name: 'Репетитор' }),
   ).toBeVisible()
   fireEvent.click(screen.getByRole('button', { name: 'На главную' }))
   expect(await screen.findByText('Выбор предмета')).toBeVisible()
-  expect(dispose).toHaveBeenCalled()
 })
 
 it('loads additional answer history pages on demand', async () => {

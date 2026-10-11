@@ -71,38 +71,59 @@ it('opens training directly from the diagnostic result', async () => {
   await waitFor(() =>
     expect(play.mock.calls.length).toBeGreaterThan(playedBeforeTraining),
   )
-  fireEvent.click(await screen.findByRole('button', { name: 'Начать запись' }))
-  fireEvent.click(
-    await screen.findByRole('button', { name: /Завершить запись/ }),
-  )
-  // The exercise answer is only confirmed: no score or feedback.
-  expect(await screen.findByText('Ответ принят')).toBeVisible()
-  expect(screen.queryByText(/Оценка/)).not.toBeInTheDocument()
   expect(
-    screen.queryByText(
-      'Ответ верный. Вы правильно определили тип задачи. Продолжайте применять этот критерий.',
-    ),
-  ).not.toBeInTheDocument()
+    await screen.findByRole('heading', { name: 'Репетитор' }),
+  ).toBeVisible()
   expect(
-    screen.queryByText(
-      'Как определить, что задача относится к классификации?',
-      { selector: 'p' },
-    ),
-  ).not.toBeInTheDocument()
+    screen.getByRole('button', { name: 'Записать голосовую реплику' }),
+  ).toBeVisible()
+  expect(screen.getByRole('img', { name: 'Визуализация записи' })).toBeVisible()
+  const workspace = screen.getByRole('main')
+  expect(workspace).toHaveAttribute('data-variant', 'training')
+  expect(screen.getByRole('heading', { name: 'Цели тренировки' })).toBeVisible()
+  const input = screen.getByRole('textbox', { name: 'Сообщение репетитору' })
+  fireEvent.change(input, { target: { value: 'Что означает классификация?' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Отправить' }))
   expect(
-    screen.getByText(
-      'Это классификация, потому что результат относится к одному из двух классов.',
+    await screen.findByText(
+      'Вы назвали важную часть рассуждения. Какое свойство результата подтверждает ваш выбор?',
     ),
   ).toBeVisible()
-  fireEvent.click(screen.getByRole('button', { name: 'Следующее задание' }))
+  expect(screen.getByText(/Раунд 1/)).toBeVisible()
+  expect(screen.queryByText(/Оценка:/)).not.toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: 'Нужна подсказка' }))
+  expect(
+    await screen.findByText(
+      'Подскажи следующий шаг, не раскрывая готовый ответ.',
+    ),
+  ).toBeVisible()
+  fireEvent.change(input, {
+    target: { value: 'Классификация выбирает один из классов.' },
+  })
+  fireEvent.click(screen.getByRole('button', { name: 'Проверить ответ' }))
+  expect(await screen.findByText('Ответ проверен')).toBeVisible()
+  expect(screen.queryByText(/Результат проверки:/)).not.toBeInTheDocument()
+  expect(screen.queryByText(/2 \/ 2/)).not.toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: 'Следующий раунд' }))
   expect(
     await screen.findByText(
       'Какой тип задачи предсказывает числовое значение?',
     ),
   ).toBeVisible()
-  fireEvent.click(screen.getByRole('button', { name: 'Пропустить вопрос' }))
-  expect(await screen.findByText('Вопрос пропущен')).toBeVisible()
-  expect(audio.startRecording).toHaveBeenCalledTimes(2)
+  fireEvent.click(await screen.findByRole('button', { name: 'Открыть диалог' }))
+  expect(
+    await screen.findAllByText('Классификация выбирает один из классов.'),
+  ).toHaveLength(2)
+  expect(
+    screen.getAllByRole('textbox', { name: 'Сообщение репетитору' }),
+  ).toHaveLength(1)
+  fireEvent.click(screen.getByRole('button', { name: 'Пропустить упражнение' }))
+  expect(
+    await screen.findByText(
+      'Как определить, что задача относится к классификации?',
+    ),
+  ).toBeVisible()
+  expect(audio.startRecording).toHaveBeenCalledTimes(1)
   // Back home, the single course action resumes the process in training.
   fireEvent.click(screen.getByRole('button', { name: 'На главную' }))
   expect(

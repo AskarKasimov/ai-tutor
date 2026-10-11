@@ -208,6 +208,10 @@
   grid-template-columns: minmax(0, 1fr) 272px;
   gap: var(--session-gap);
 }
+.workspace[data-variant='training'] {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+}
 
 // Question navigator: 64px block, 32px items, arrows 24px from the list.
 .navigator {
@@ -326,6 +330,16 @@
   p {
     margin: 0;
   }
+}
+.workspace[data-variant='training'] > .question {
+  grid-column: 1 / -1;
+  justify-self: stretch;
+  width: 100%;
+  min-width: 0;
+  max-width: none;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
 }
 .eyebrowRow {
   display: flex;
@@ -447,6 +461,24 @@
     padding-left: 20px;
     display: grid;
     gap: 6px;
+  }
+}
+
+.trainingDetails {
+  display: grid;
+  gap: 14px;
+  padding-top: 18px;
+  border-top: 1px solid var(--app-border);
+  h2 {
+    margin: 0;
+    font-size: 18px;
+  }
+  ul {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 18px;
+    margin: 0;
+    padding-left: 20px;
   }
 }
 
@@ -800,8 +832,14 @@ button.mic {
   .workspace {
     grid-template-columns: minmax(0, 1fr);
   }
+  .workspace[data-variant='training'] {
+    grid-template-rows: auto;
+  }
   .question,
   .panel {
+    overflow: visible;
+  }
+  .workspace[data-variant='training'] > .question {
     overflow: visible;
   }
   .voice {

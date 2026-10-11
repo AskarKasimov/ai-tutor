@@ -158,8 +158,18 @@ export function TrainerShell({
   )
 }
 
-export function TrainerWorkspace({ children }: { children: ReactNode }) {
-  return <main className={styles.workspace}>{children}</main>
+export function TrainerWorkspace({
+  children,
+  variant,
+}: {
+  children: ReactNode
+  variant?: 'training'
+}) {
+  return (
+    <main className={styles.workspace} data-variant={variant}>
+      {children}
+    </main>
+  )
 }
 
 // Numbers of the session questions; arrows scroll the list, it is not

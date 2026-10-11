@@ -610,6 +610,7 @@ export function useTrainingVoice(
     submitAudio,
     skip,
     speak,
+    stopSpeech,
     next,
     reset,
   }

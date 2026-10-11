@@ -30,7 +30,8 @@ export type TrainingAttempt = {
   exercise_id: string
   round: number
   target_index: number
-  transcription_id: string
+  transcription_id?: string
+  answer_source?: 'text' | 'voice'
   text: string
   score: number
   max_score: number

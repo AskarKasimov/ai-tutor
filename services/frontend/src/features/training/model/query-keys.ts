@@ -10,4 +10,9 @@ export const trainingQueryKeys = {
     sessionId: string | undefined,
     exerciseId: string | undefined,
   ) => ['training-audio', userId, sessionId, exerciseId] as const,
+  chat: (
+    userId: string | undefined,
+    sessionId: string | undefined,
+    exerciseId: string | undefined,
+  ) => ['training-chat', userId, sessionId, exerciseId] as const,
 }

@@ -495,12 +495,10 @@ it('plays the stored server instruction automatically when a task opens', async 
   ).toBe(true)
 })
 
-it('reads the instruction with the browser voice while stored audio is being prepared', async () => {
+it('shows loading while queued audio is prepared and plays it without browser speech', async () => {
   const requests = server()
-  const spoken: string[] = []
-  const speak = vi.fn((utterance: { text: string }) =>
-    spoken.push(utterance.text),
-  )
+  const speak = vi.fn()
+  let ready = false
   vi.stubGlobal(
     'SpeechSynthesisUtterance',
     class {
@@ -520,16 +518,24 @@ it('reads the instruction with the browser voice while stored audio is being pre
     'fetch',
     vi.fn(async (url: string, init?: RequestInit) =>
       url.includes('/current/audio?')
-        ? Response.json({ variant_task_id: 'v-main', status: 'pending' })
+        ? Response.json({
+            variant_task_id: 'v-main',
+            status: ready ? 'ready' : 'pending',
+            audio_url: ready ? '/task-audio/audio-main/file' : null,
+          })
         : requests(url, init),
     ),
   )
-  vi.spyOn(audio, 'playQuestion')
+  const play = vi.spyOn(audio, 'playQuestion').mockResolvedValue(vi.fn())
   await home()
-  await waitFor(() =>
-    expect(spoken).toEqual(['Назовите модель и объясните решение.']),
-  )
-  expect(audio.playQuestion).not.toHaveBeenCalled()
+  expect(
+    await screen.findByRole('button', { name: 'Отменить озвучивание' }),
+  ).toBeInTheDocument()
+  expect(play).not.toHaveBeenCalled()
+  expect(speak).not.toHaveBeenCalled()
+  ready = true
+  await waitFor(() => expect(play).toHaveBeenCalledOnce(), { timeout: 2500 })
+  expect(screen.getByRole('button', { name: 'Остановить' })).toBeInTheDocument()
   expect(screen.queryByText(/Аудио готовится/)).not.toBeInTheDocument()
   expect(screen.queryByRole('alert')).not.toBeInTheDocument()
 })

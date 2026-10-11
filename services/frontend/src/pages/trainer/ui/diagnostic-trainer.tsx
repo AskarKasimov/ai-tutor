@@ -506,11 +506,6 @@ function DiagnosticFlow({
                   {t('trainer.speechError')}
                 </Text>
               )}
-              {voice.pendingHint && (
-                <Text as="p" role="status" className={sessionStyles.hint}>
-                  {t('trainer.audioPreparing')}
-                </Text>
-              )}
               {voice.cancelledHint && (
                 <Text as="p" role="status" className={sessionStyles.hint}>
                   {t('trainer.audioCancelled')}

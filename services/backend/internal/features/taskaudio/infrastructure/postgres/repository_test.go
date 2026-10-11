@@ -112,6 +112,173 @@ func TestClaimIsExclusiveAndStaleClaimCannotComplete(t *testing.T) {
 	}
 }
 
+func TestPriorityMovesAheadWithoutInterruptingClaimsAndSurvivesRestart(t *testing.T) {
+	repository, pool, ctx := setupAudioRepository(t)
+	seedCurrentTaskAudio(t, pool, ctx, "asset-a", "task-a")
+	for _, id := range []string{"b", "c", "wanted"} {
+		if _, err := pool.Exec(ctx, "INSERT INTO audio_assets(id,instruction,object_key) VALUES ($1,'Speak answer',$1)", "asset-"+id); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := pool.Exec(ctx, "INSERT INTO tasks(id,outcome_id,question,voice_instruction,created_at,audio_asset_id) VALUES ($1,'audio-outcome','Q','Speak answer',1,$2)", "task-"+id, "asset-"+id); err != nil {
+			t.Fatal(err)
+		}
+	}
+	first, ok, err := repository.Claim(ctx, "worker-a", time.Minute)
+	if err != nil || !ok {
+		t.Fatalf("first claim: ok=%v err=%v", ok, err)
+	}
+	second, ok, err := repository.Claim(ctx, "worker-b", time.Minute)
+	if err != nil || !ok {
+		t.Fatalf("second claim: ok=%v err=%v", ok, err)
+	}
+	if changed, err := repository.Prioritize(ctx, "asset-wanted"); err != nil || !changed {
+		t.Fatalf("prioritize: changed=%v err=%v", changed, err)
+	}
+	for _, claim := range []application.Claim{first, second} {
+		if current, err := repository.IsCurrent(ctx, claim); err != nil || !current {
+			t.Fatalf("priority interrupted running TTS: asset=%s current=%v err=%v", claim.Asset.ID, current, err)
+		}
+	}
+	if completed, err := repository.Complete(ctx, first, "bucket", "s3://bucket/key", "/task-audio/asset-a/file"); err != nil || !completed {
+		t.Fatalf("background completion: completed=%v err=%v", completed, err)
+	}
+	restarted := New(pool)
+	wanted, ok, err := restarted.Claim(ctx, "wanted-worker", time.Minute)
+	if err != nil || !ok || wanted.Asset.ID != "asset-wanted" {
+		t.Fatalf("priority lost on restart: claim=%#v ok=%v err=%v", wanted, ok, err)
+	}
+	if changed, err := restarted.Prioritize(ctx, wanted.Asset.ID); err != nil || changed {
+		t.Fatalf("poll changed active recording: changed=%v err=%v", changed, err)
+	}
+	if current, err := restarted.IsCurrent(ctx, wanted); err != nil || !current {
+		t.Fatalf("poll revoked wanted claim: current=%v err=%v", current, err)
+	}
+}
+
+func TestRequestedWaitingRecordingMovesAheadOfANewerPriority(t *testing.T) {
+	repository, pool, ctx := setupAudioRepository(t)
+	seedCurrentTaskAudio(t, pool, ctx, "asset-a", "task-a")
+	if _, err := pool.Exec(ctx, "INSERT INTO audio_assets(id,instruction,object_key) VALUES ('asset-b','Speak answer','b'); INSERT INTO tasks(id,outcome_id,question,voice_instruction,created_at,audio_asset_id) VALUES ('task-b','audio-outcome','Q','Speak answer',1,'asset-b')"); err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{"asset-a", "asset-b", "asset-a"} {
+		if changed, err := repository.Prioritize(ctx, id); err != nil || !changed {
+			t.Fatalf("request %s: changed=%v err=%v", id, changed, err)
+		}
+	}
+	if changed, err := repository.Prioritize(ctx, "asset-a"); err != nil || changed {
+		t.Fatalf("repeated front-of-queue request: changed=%v err=%v", changed, err)
+	}
+	first, ok, err := repository.Claim(ctx, "worker", time.Minute)
+	if err != nil || !ok || first.Asset.ID != "asset-a" {
+		t.Fatalf("requested recording not first: claim=%#v ok=%v err=%v", first, ok, err)
+	}
+}
+
+func TestPriorityDoesNotInterruptWhenWorkerHasFreeCapacity(t *testing.T) {
+	repository, pool, ctx := setupAudioRepository(t)
+	seedCurrentTaskAudio(t, pool, ctx, "asset-a", "task-a")
+	if _, err := pool.Exec(ctx, "INSERT INTO audio_assets(id,instruction,object_key) VALUES ('asset-wanted','Speak answer','wanted'); INSERT INTO tasks(id,outcome_id,question,voice_instruction,created_at,audio_asset_id) VALUES ('task-wanted','audio-outcome','Q','Speak answer',1,'asset-wanted')"); err != nil {
+		t.Fatal(err)
+	}
+	first, ok, err := repository.Claim(ctx, "worker-a", time.Minute)
+	if err != nil || !ok {
+		t.Fatalf("claim: ok=%v err=%v", ok, err)
+	}
+	if changed, err := repository.Prioritize(ctx, "asset-wanted"); err != nil || !changed {
+		t.Fatalf("priority: changed=%v err=%v", changed, err)
+	}
+	if current, err := repository.IsCurrent(ctx, first); err != nil || !current {
+		t.Fatalf("unused lane still caused cancellation: current=%v err=%v", current, err)
+	}
+}
+
+func TestClaimRecoversInterruptedFinalAttemptAfterLeaseExpires(t *testing.T) {
+	repository, pool, ctx := setupAudioRepository(t)
+	seedCurrentTaskAudio(t, pool, ctx, "asset-crashed", "task-crashed")
+	if _, err := pool.Exec(ctx, "UPDATE audio_assets SET attempts=4 WHERE id='asset-crashed'"); err != nil {
+		t.Fatal(err)
+	}
+	claim, ok, err := repository.Claim(ctx, "killed-worker", time.Hour)
+	if err != nil || !ok {
+		t.Fatalf("claim: ok=%v err=%v", ok, err)
+	}
+	restarted := New(pool)
+	if _, ok, err := restarted.Claim(ctx, "restarted-worker", time.Minute); err != nil || ok {
+		t.Fatalf("restart stole an unexpired claim: ok=%v err=%v", ok, err)
+	}
+	if _, err := pool.Exec(ctx, "UPDATE audio_assets SET lease_until=now()-interval '1 second' WHERE id=$1", claim.Asset.ID); err != nil {
+		t.Fatal(err)
+	}
+	next, ok, err := restarted.Claim(ctx, "restarted-worker", time.Minute)
+	if err != nil || !ok || next.Asset.Attempts != 5 {
+		t.Fatalf("crash exhausted the interrupted final attempt: claim=%#v ok=%v err=%v", next, ok, err)
+	}
+	if failed, err := restarted.Fail(ctx, next, "synthesis_failed", time.Second); err != nil || !failed {
+		t.Fatalf("record final real failure: failed=%v err=%v", failed, err)
+	}
+	asset, err := restarted.Get(ctx, claim.Asset.ID)
+	if err != nil || asset.Status != "failed" {
+		t.Fatalf("five actual failures must still exhaust retries: asset=%#v err=%v", asset, err)
+	}
+}
+
+func TestReleaseInterruptedClaimRequeuesImmediatelyWithoutConsumingAttempt(t *testing.T) {
+	repository, pool, ctx := setupAudioRepository(t)
+	seedCurrentTaskAudio(t, pool, ctx, "asset-interrupted", "task-interrupted")
+	if _, err := pool.Exec(ctx, "UPDATE audio_assets SET attempts=4 WHERE id='asset-interrupted'"); err != nil {
+		t.Fatal(err)
+	}
+	claim, ok, err := repository.Claim(ctx, "old-worker", time.Hour)
+	if err != nil || !ok || claim.Asset.Attempts != 5 {
+		t.Fatalf("final claim: %#v ok=%v err=%v", claim, ok, err)
+	}
+	foreign := claim
+	foreign.Token = "other-worker"
+	if released, err := repository.Release(ctx, foreign); err != nil || released {
+		t.Fatalf("foreign worker released a claim: released=%v err=%v", released, err)
+	}
+	if released, err := repository.Release(ctx, claim); err != nil || !released {
+		t.Fatalf("shutdown did not release claim: released=%v err=%v", released, err)
+	}
+	asset, err := repository.Get(ctx, claim.Asset.ID)
+	if err != nil || asset.Status != "pending" || asset.Attempts != 4 {
+		t.Fatalf("interrupted attempt exhausted retries: asset=%#v err=%v", asset, err)
+	}
+	next, ok, err := New(pool).Claim(ctx, "new-worker", time.Minute)
+	if err != nil || !ok || next.Asset.ID != claim.Asset.ID {
+		t.Fatalf("restart still waits for old lease: claim=%#v ok=%v err=%v", next, ok, err)
+	}
+	if released, err := repository.Release(ctx, claim); err != nil || released {
+		t.Fatalf("old worker released the new claim: released=%v err=%v", released, err)
+	}
+	if completed, err := repository.Complete(ctx, next, "bucket", "s3://bucket/key", "/task-audio/asset-interrupted/file"); err != nil || !completed {
+		t.Fatalf("restarted completion: completed=%v err=%v", completed, err)
+	}
+	if released, err := repository.Release(ctx, next); err != nil || released {
+		t.Fatalf("shutdown requeued completed recording: released=%v err=%v", released, err)
+	}
+}
+
+func TestReleaseInterruptedClaimCancelsReplacedTask(t *testing.T) {
+	repository, pool, ctx := setupAudioRepository(t)
+	seedCurrentTaskAudio(t, pool, ctx, "asset-replaced", "task-replaced")
+	claim, ok, err := repository.Claim(ctx, "old-worker", time.Hour)
+	if err != nil || !ok {
+		t.Fatalf("claim: ok=%v err=%v", ok, err)
+	}
+	if _, err := pool.Exec(ctx, "UPDATE subjects SET active_revision=NULL WHERE id='subject:test'"); err != nil {
+		t.Fatal(err)
+	}
+	if released, err := repository.Release(ctx, claim); err != nil || !released {
+		t.Fatalf("release stale task: released=%v err=%v", released, err)
+	}
+	asset, err := repository.Get(ctx, claim.Asset.ID)
+	if err != nil || asset.Status != "cancelled" {
+		t.Fatalf("replaced task was requeued: asset=%#v err=%v", asset, err)
+	}
+}
+
 func TestClaimRepairSerializesReadyAssetsAndClearsReadyReferences(t *testing.T) {
 	repository, pool, ctx := setupAudioRepository(t)
 	seedCurrentTaskAudio(t, pool, ctx, "asset-repair", "task-repair")
@@ -202,7 +369,7 @@ func TestClaimRepairResetsOldAttemptsSoExpiredRepairRecovers(t *testing.T) {
 		t.Fatal(err)
 	}
 	recovered, ok, err := repository.Claim(ctx, "token-recovered-repair", time.Minute)
-	if err != nil || !ok || recovered.Asset.Status != "processing" || recovered.Asset.Attempts != 2 {
+	if err != nil || !ok || recovered.Asset.Status != "processing" || recovered.Asset.Attempts != 1 {
 		t.Fatalf("expired repair did not recover: asset=%+v ok=%v err=%v", recovered.Asset, ok, err)
 	}
 }

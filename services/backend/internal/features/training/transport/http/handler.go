@@ -342,6 +342,7 @@ func (h *Handler) History(w http.ResponseWriter, r *http.Request) {
 
 // Audio reads saved current exercise audio metadata.
 // @Summary Озвучка текущего упражнения
+// @Description Незавершённая запись получает первое место среди ожидающих. Уже выполняющаяся озвучка не прерывается.
 // @Tags Тренировка
 // @Security accessCookie
 // @Produce json

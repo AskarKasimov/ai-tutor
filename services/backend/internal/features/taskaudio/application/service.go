@@ -14,8 +14,14 @@ import (
 const maxStoredAudioBytes = 64 << 20
 
 type Service struct {
-	reader AssetReader
-	store  Storage
+	reader   AssetReader
+	store    Storage
+	priority Prioritizer
+}
+
+func (s *Service) WithPrioritizer(priority Prioritizer) *Service {
+	s.priority = priority
+	return s
 }
 
 func NewService(reader AssetReader, store Storage) *Service {
@@ -26,6 +32,11 @@ func (s *Service) Metadata(ctx context.Context, assetID string) (audioasset.Asse
 	asset, err := s.reader.Get(ctx, assetID)
 	if err != nil {
 		return audioasset.Asset{}, err
+	}
+	if asset.Status == audioasset.Pending && s.priority != nil {
+		if err := s.priority.Prioritize(ctx, asset.ID); err != nil {
+			return audioasset.Asset{}, err
+		}
 	}
 	return asset, nil
 }

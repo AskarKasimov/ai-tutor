@@ -31,20 +31,21 @@ type AssignmentResponse struct {
 }
 
 type AudioAsset struct {
-	ID            string
-	Instruction   string
-	ObjectKey     string
-	Status        string
-	Bucket        *string
-	StorageUri    *string
-	AudioUrl      *string
-	Attempts      int32
-	NextAttemptAt pgtype.Timestamptz
-	LeaseUntil    pgtype.Timestamptz
-	ClaimToken    *string
-	LastErrorCode *string
-	CreatedAt     pgtype.Timestamptz
-	UpdatedAt     pgtype.Timestamptz
+	ID                  string
+	Instruction         string
+	ObjectKey           string
+	Status              string
+	Bucket              *string
+	StorageUri          *string
+	AudioUrl            *string
+	Attempts            int32
+	NextAttemptAt       pgtype.Timestamptz
+	LeaseUntil          pgtype.Timestamptz
+	ClaimToken          *string
+	LastErrorCode       *string
+	CreatedAt           pgtype.Timestamptz
+	UpdatedAt           pgtype.Timestamptz
+	PriorityRequestedAt pgtype.Timestamptz
 }
 
 type AuthSession struct {

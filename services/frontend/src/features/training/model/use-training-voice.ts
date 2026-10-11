@@ -10,12 +10,7 @@ import {
   userQueryKeys,
 } from '@/entities/user'
 import { StoredAudioError } from '@/shared/api'
-import {
-  createAudioUrl,
-  playQuestion,
-  speakInstruction,
-  startRecording,
-} from '@/shared/lib'
+import { createAudioUrl, playQuestion, startRecording } from '@/shared/lib'
 import type { Recording } from '@/shared/lib'
 import { useTrainingDependencies } from './dependencies-context'
 import { trainingQueryKeys } from './query-keys'
@@ -99,6 +94,7 @@ export function useTrainingVoice(
     player.current?.()
     player.current = null
     setSpeaking(false)
+    setAudioStatus('idle')
   }, [])
 
   useEffect(() => {
@@ -407,29 +403,26 @@ export function useTrainingVoice(
         current === generation.current &&
         context.current.exerciseId === exerciseId &&
         isCurrentSession(cache, token)
-      // When stored audio is not ready or unplayable, the browser voice reads
-      // the instruction so an exercise never stays silent.
-      const startFallback = () => {
-        if (!isCurrent()) return false
-        const stop = speakInstruction(exercise.voice_instruction, () => {
-          if (player.current !== stop) return
-          setSpeaking(false)
-          player.current = null
-        })
-        if (!stop) return false
-        player.current = stop
-        setAudioStatus('ready')
-        setSpeechError(false)
-        setSpeaking(true)
-        return true
-      }
       try {
-        const metadata = await training.readTrainingAudio(
+        let metadata = await training.readTrainingAudio(
           progress.session_id,
           exerciseId,
           signal,
         )
         if (!isCurrent()) return
+        while (
+          metadata.status === 'pending' ||
+          metadata.status === 'processing'
+        ) {
+          await waitForAudioPoll(signal)
+          if (!isCurrent()) return
+          metadata = await training.readTrainingAudio(
+            progress.session_id,
+            exerciseId,
+            signal,
+          )
+          if (!isCurrent()) return
+        }
         setAudioStatus(metadata.status)
         if (metadata.status === 'failed') {
           setAudioStatus('loading')
@@ -440,8 +433,7 @@ export function useTrainingVoice(
           )
           if (!isCurrent()) return
           if (repaired.status !== 'ready' || !repaired.audio_url) {
-            startFallback()
-            return
+            throw new Error('Audio repair did not return ready metadata')
           }
           const blob = await training.fetchTrainingAudioFile(
             repaired.audio_url,
@@ -457,7 +449,7 @@ export function useTrainingVoice(
             () => {
               player.current = null
               setSpeaking(false)
-              if (!startFallback()) setSpeechError(true)
+              setSpeechError(true)
             },
           )
           if (!isCurrent()) {
@@ -471,7 +463,7 @@ export function useTrainingVoice(
           return
         }
         if (metadata.status !== 'ready' || !metadata.audio_url) {
-          startFallback()
+          setSpeechError(true)
           return
         }
         let blob: Blob
@@ -496,8 +488,7 @@ export function useTrainingVoice(
           )
           if (!isCurrent()) return
           if (repaired.status !== 'ready' || !repaired.audio_url) {
-            startFallback()
-            return
+            throw new Error('Audio repair did not return ready metadata')
           }
           blob = await training.fetchTrainingAudioFile(
             repaired.audio_url,
@@ -517,7 +508,7 @@ export function useTrainingVoice(
             if (isCurrent()) {
               setSpeaking(false)
               player.current = null
-              if (!startFallback()) setSpeechError(true)
+              setSpeechError(true)
             }
           },
         )
@@ -541,9 +532,9 @@ export function useTrainingVoice(
             failure instanceof DOMException &&
             failure.name === 'NotAllowedError'
           if (!blocked) onError(failure)
-          // Blocked autoplay keeps the manual button; other failures fall back.
+          // Blocked autoplay keeps the manual button available.
           if (auto && blocked) setAudioStatus('idle')
-          else if (!startFallback()) {
+          else {
             if (auto) setAudioStatus('idle')
             else {
               setSpeechError(true)
@@ -558,7 +549,6 @@ export function useTrainingVoice(
     },
     [
       cache,
-      exercise.voice_instruction,
       exerciseId,
       onError,
       progress.session_id,
@@ -623,4 +613,20 @@ export function useTrainingVoice(
     next,
     reset,
   }
+}
+
+function waitForAudioPoll(signal: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    if (signal.aborted) {
+      resolve()
+      return
+    }
+    const finish = () => {
+      clearTimeout(timer)
+      signal.removeEventListener('abort', finish)
+      resolve()
+    }
+    const timer = setTimeout(finish, 1000)
+    signal.addEventListener('abort', finish, { once: true })
+  })
 }

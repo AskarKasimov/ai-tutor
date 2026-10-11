@@ -7,6 +7,11 @@ import type {
   TrainingProgress,
   TrainingTarget,
 } from '@/entities/training'
+import type {
+  TrainingChatCheck,
+  TrainingChatMessage,
+  TrainingChatPage,
+} from '@/entities/training'
 
 const targets: TrainingTarget[] = [
   {
@@ -70,11 +75,19 @@ type TrainingSession = {
 const sessions = new Map<string, TrainingSession>()
 const sessionByDiagnostic = new Map<string, string>()
 const starts = new Map<string, string>()
+type MockChat = Omit<TrainingChatPage, 'next_cursor'>
+const chats = new Map<string, MockChat>()
+const nextResults = new Map<
+  string,
+  { fingerprint: string; result: TrainingProgress }
+>()
 
 export function resetMockTraining() {
   sessions.clear()
   sessionByDiagnostic.clear()
   starts.clear()
+  chats.clear()
+  nextResults.clear()
 }
 export function mockTrainingSessionForDiagnostic(
   userId: string,
@@ -142,6 +155,31 @@ function audioPath(exerciseId: string) {
   return `/task-audio/demo_${(hash >>> 0).toString(16)}/file`
 }
 
+function chatFor(session: TrainingSession, exerciseId: string): MockChat {
+  let chat = chats.get(exerciseId)
+  if (!chat) {
+    const welcome: TrainingChatMessage = {
+      id: crypto.randomUUID(),
+      sequence: 1,
+      role: 'assistant',
+      kind: 'welcome',
+      text: 'Давайте разберём условие вместе. Что уже удалось понять?',
+      created_at: Math.floor(Date.now() / 1000),
+    }
+    chat = {
+      session_id: session.id,
+      exercise_id: exerciseId,
+      revision: 0,
+      status: 'active',
+      items: [welcome],
+      latest_check: null,
+      pending_turn: null,
+    }
+    chats.set(exerciseId, chat)
+  }
+  return chat
+}
+
 export async function mockTrainingResponse(
   userId: string,
   path: string,
@@ -160,6 +198,12 @@ export async function mockTrainingResponse(
   )
   const sessionMatch = path.match(
     /^\/api\/v1\/training-sessions\/([^/]+)(?:\/(answers(?:\/reset)?|skip|history|current\/audio))?$/,
+  )
+  const chatMatch = path.match(
+    /^\/api\/v1\/training-sessions\/([^/]+)\/exercises\/([^/]+)\/chat(?:\/turns(?:\/([^/]+)\/(retry|cancel))?)?$/,
+  )
+  const nextMatch = path.match(
+    /^\/api\/v1\/training-sessions\/([^/]+)\/exercises\/([^/]+)\/next$/,
   )
   if (previewMatch) {
     const id = decodeURIComponent(previewMatch[1])
@@ -215,10 +259,176 @@ export async function mockTrainingResponse(
       return json(current(session), 201)
     }
   }
-  if (!sessionMatch) return undefined
-  const sessionId = decodeURIComponent(sessionMatch[1])
+  if (!sessionMatch && !chatMatch && !nextMatch) return undefined
+  const sessionId = decodeURIComponent(
+    (sessionMatch ?? chatMatch ?? nextMatch)![1],
+  )
   const session = sessions.get(sessionId)
   if (!session || session.userId !== userId) return failed('NOT_FOUND', 404)
+  if (chatMatch) {
+    const exerciseId = decodeURIComponent(chatMatch[2])
+    const chat = chatFor(session, exerciseId)
+    if (method === 'GET' && !chatMatch[3]) return json(chat)
+    if (method === 'POST' && chatMatch[4] === 'cancel')
+      return new Response(null, { status: 204 })
+    if (method === 'POST' && chatMatch[4] === 'retry')
+      return failed('CHAT_TURN_IN_PROGRESS', 409)
+    if (method !== 'POST' || chatMatch[3]) return failed('NOT_FOUND', 404)
+    const key = new Headers(options.headers).get('Idempotency-Key')
+    const form = options.body instanceof FormData ? options.body : undefined
+    const revision = Number(form?.get('revision') ?? body.revision)
+    const kind = String(form?.get('kind') ?? body.kind)
+    const source = form ? 'voice' : 'text'
+    const text =
+      source === 'voice'
+        ? revision === 0
+          ? 'Демонстрационная голосовая реплика: объясните свой выбор.'
+          : 'Классификация, потому что модель выбирает один из классов.'
+        : String(body.text ?? '')
+    if (
+      !key ||
+      !['message', 'check'].includes(kind) ||
+      !Number.isInteger(revision) ||
+      revision < 0 ||
+      !text.trim()
+    )
+      return failed('VALIDATION_ERROR', 422)
+    const chatKind = kind as 'message' | 'check'
+    if (exerciseId !== session.exercise.exercise_id || chat.status !== 'active')
+      return failed('TRAINING_EXERCISE_NOT_CURRENT', 409)
+    if (revision !== chat.revision) return failed('CHAT_REVISION_CONFLICT', 409)
+    const score: 0 | 1 | 2 = /классификац|classification/i.test(text)
+      ? 2
+      : /класс|class/i.test(text)
+        ? 1
+        : 0
+    const verdict =
+      score === 2 ? 'correct' : score === 1 ? 'partial' : 'incorrect'
+    const answerReady =
+      chatKind === 'check' ||
+      /потому|так как|выбирает один из классов/i.test(text)
+    const check: TrainingChatCheck | null = answerReady
+      ? {
+          revision: chat.revision + 1,
+          final_answer: text,
+          source,
+          score,
+          max_score: 2,
+          verdict,
+        }
+      : null
+    const now = Math.floor(Date.now() / 1000)
+    const userMessage: TrainingChatMessage = {
+      id: crypto.randomUUID(),
+      sequence: chat.revision * 2 + 2,
+      role: 'user',
+      kind: chatKind,
+      source,
+      text,
+      created_at: now,
+    }
+    const assistantMessage: TrainingChatMessage = {
+      id: crypto.randomUUID(),
+      sequence: chat.revision * 2 + 3,
+      role: 'assistant',
+      kind: chatKind,
+      text: answerReady
+        ? score === 2
+          ? 'Вы связали ответ с условием. Хотите уточнить ещё один признак?'
+          : 'Пока не все требования выполнены. Какой признак поможет уточнить ответ?'
+        : 'Вы назвали важную часть рассуждения. Какое свойство результата подтверждает ваш выбор?',
+      created_at: now,
+    }
+    chat.items.push(userMessage, assistantMessage)
+    chat.revision++
+    chat.latest_check = check
+    chat.pending_turn = null
+    const turnId = crypto.randomUUID()
+    return json({
+      session_id: session.id,
+      exercise_id: exerciseId,
+      revision: chat.revision,
+      turn_id: turnId,
+      messages: [userMessage, assistantMessage],
+      latest_check: check,
+    })
+  }
+  if (nextMatch && method === 'POST') {
+    const exerciseId = decodeURIComponent(nextMatch[2])
+    const key = new Headers(options.headers).get('Idempotency-Key')
+    const revision = body.revision
+    if (!key || !Number.isInteger(revision) || Number(revision) < 0)
+      return failed('VALIDATION_ERROR', 422)
+    const identity = `${session.id}:${key}`
+    const fingerprint = `${exerciseId}:${revision}`
+    const replay = nextResults.get(identity)
+    if (replay)
+      return replay.fingerprint === fingerprint
+        ? json(replay.result)
+        : failed('IDEMPOTENCY_KEY_REUSED', 409)
+    const chat = chatFor(session, exerciseId)
+    if (exerciseId !== session.exercise.exercise_id)
+      return failed('TRAINING_EXERCISE_NOT_CURRENT', 409)
+    if (
+      chat.status !== 'active' ||
+      chat.revision !== revision ||
+      chat.latest_check?.revision !== revision
+    )
+      return failed('CHAT_CHECK_REQUIRED', 409)
+    const check = chat.latest_check
+    const index = session.answers.length % session.targets.length
+    const attempt: TrainingAttempt = {
+      sequence: session.answers.length + 1,
+      exercise_id: exerciseId,
+      round: session.answers.length + 1,
+      target_index: index,
+      text: check.final_answer,
+      answer_source: check.source,
+      ...(check.transcription_id
+        ? { transcription_id: check.transcription_id }
+        : {}),
+      score: check.score,
+      max_score: 2,
+      verdict: check.verdict,
+      criterion_results: [
+        {
+          key: 'understanding',
+          satisfied: check.score === 2,
+          explanation:
+            check.score === 2
+              ? 'Связал ответ с условием.'
+              : 'Ответ можно уточнить.',
+        },
+      ],
+      feedback:
+        check.score === 2
+          ? [
+              'Ответ верный.',
+              'Вы правильно применили понятие.',
+              'Продолжайте так же.',
+            ]
+          : [
+              'Ответ частично верный.',
+              'Уточните связь с условием.',
+              'Попробуйте ещё раз.',
+            ],
+      created_at: Math.floor(Date.now() / 1000),
+    }
+    session.answers.push(attempt)
+    session.targets[index] = trainingTarget(
+      session.targets[index]!,
+      check.score,
+    )
+    session.exercise = exerciseFor(
+      session.answers.length + 1,
+      session.targets[session.answers.length % session.targets.length]!,
+    )
+    chat.status = 'closed'
+    const result = { ...current(session), answer: attempt }
+    nextResults.set(identity, { fingerprint, result })
+    return json(result)
+  }
+  if (!sessionMatch) return undefined
   const operation = sessionMatch[2]
   if (!operation && method === 'GET') return json(current(session))
   if ((operation === 'answers' || operation === 'skip') && method === 'POST') {
@@ -287,6 +497,8 @@ export async function mockTrainingResponse(
       created_at: now,
     }
     session.answers.push(attempt)
+    const completedChat = chats.get(exerciseId)
+    if (completedChat) completedChat.status = 'closed'
     session.exercise = exerciseFor(
       session.answers.length + 1,
       session.targets[session.answers.length % session.targets.length],

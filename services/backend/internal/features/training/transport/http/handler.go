@@ -24,6 +24,9 @@ func New(service *application.Service, maxBytes int64) *Handler { return &Handle
 type StartRequest struct {
 	PlanRevision *int64 `json:"plan_revision,omitempty" binding:"optional"`
 }
+type NextRequest struct {
+	Revision int64 `json:"revision"`
+}
 type AudioResponse struct {
 	ExerciseID string  `json:"exercise_id"`
 	Status     string  `json:"status"`
@@ -259,6 +262,44 @@ func (h *Handler) Skip(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpx.JSON(w, 200, v)
+}
+
+// NextChecked advances after an explicit current chat check.
+// @Summary Завершить тренировочное упражнение
+// @Tags Тренировка
+// @Security accessCookie
+// @Accept json
+// @Produce json
+// @Param id path string true "ID тренировки"
+// @Param exercise_id path string true "ID упражнения"
+// @Param Idempotency-Key header string true "Ключ операции"
+// @Param body body NextRequest true "Текущая ревизия диалога"
+// @Success 200 {object} training.Progress
+// @Failure 401 {object} fault.Error
+// @Failure 404 {object} fault.Error
+// @Failure 409 {object} fault.Error
+// @Router /training-sessions/{id}/exercises/{exercise_id}/next [post]
+func (h *Handler) NextChecked(w http.ResponseWriter, r *http.Request) {
+	ownerID, ok := owner(w, r)
+	if !ok {
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, 32*1024)
+	var input NextRequest
+	if err := httpx.DecodeJSON(r, &input); err != nil {
+		httpx.Error(r.Context(), w, err)
+		return
+	}
+	if input.Revision < 0 {
+		httpx.Error(r.Context(), w, fault.Validation("revision", "Ревизия должна быть неотрицательной."))
+		return
+	}
+	progress, err := h.service.NextChecked(r.Context(), ownerID, r.PathValue("id"), r.PathValue("exercise_id"), r.Header.Get("Idempotency-Key"), input.Revision)
+	if err != nil {
+		httpx.Error(r.Context(), w, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, progress)
 }
 
 // ResetAnswer clears a failed, non-active answer reservation so a new recording can be submitted.

@@ -1,0 +1,129 @@
+.chat {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  gap: 12px;
+  min-height: 250px;
+  min-width: 0;
+}
+.heading {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  p {
+    margin: 0;
+  }
+}
+.messages {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 72px;
+  flex: 1;
+  max-height: none;
+  margin: 0;
+  padding: 0 4px 0 0;
+  list-style: none;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+.messages li {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: fit-content;
+  max-width: min(92%, 680px);
+  padding: 10px 12px;
+  border-radius: 14px;
+  overflow-wrap: anywhere;
+}
+.user {
+  align-self: flex-end;
+  background: color-mix(
+    in srgb,
+    var(--app-accent) 12%,
+    var(--color-panel-solid)
+  );
+  box-shadow: inset -3px 0 0 var(--app-accent);
+}
+.assistant {
+  align-self: flex-start;
+  background: var(--app-soft);
+  box-shadow: inset 3px 0 0 var(--app-border);
+}
+.role {
+  color: var(--app-muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+.timestamp {
+  align-self: flex-end;
+  color: var(--app-muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.announcement {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+.composer {
+  flex: none;
+}
+.capture {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 4fr);
+  align-items: center;
+  gap: var(--space-2);
+  padding-block: var(--space-2);
+}
+.microphone.microphone[data-state] {
+  width: min(100%, 64px);
+  height: auto;
+  aspect-ratio: 1;
+  margin: 0;
+  box-shadow: none;
+  &::after {
+    animation: none;
+  }
+  &:focus-visible {
+    outline-offset: 4px;
+  }
+}
+.waveform {
+  min-width: 0;
+  height: 64px;
+  overflow: hidden;
+  > div {
+    width: 100%;
+    height: 100%;
+  }
+}
+.timer {
+  grid-column: 2;
+  color: var(--app-accent);
+  font-variant-numeric: tabular-nums;
+}
+.captureStatus {
+  grid-column: 1 / -1;
+}
+.pending,
+.notice {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.error {
+  color: var(--red-11);
+}
+.next {
+  align-self: flex-start;
+}

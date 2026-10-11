@@ -7,17 +7,13 @@ import { mockApiFetch } from '@/bootstrap/mock-api'
 import {
   TrainingApiError,
   type TrainingHistory,
+  type TrainingChatPage,
   type TrainingPreview,
   type TrainingProgress,
 } from '@/entities/training'
 import { userQueryKeys } from '@/entities/user'
-import * as audio from '@/shared/lib'
 import { TrainingEntry } from '@/pages/trainer/ui/training-entry'
-
-vi.mock('@/shared/lib', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@/shared/lib')>()),
-  createVoiceWaveform: () => ({ setStream: () => {}, dispose: () => {} }),
-}))
+import { mockChatVoice } from '../support/mock-chat-voice'
 
 const target = {
   kind: 'partial_competency',
@@ -76,6 +72,7 @@ beforeEach(async () => {
 })
 afterEach(() => {
   vi.restoreAllMocks()
+  vi.unstubAllGlobals()
   vi.unstubAllEnvs()
 })
 function setup(
@@ -85,6 +82,7 @@ function setup(
     start?: (plan: TrainingPreview) => Promise<TrainingProgress>
     sessionMissing?: boolean
     submit?: () => Promise<TrainingProgress>
+    sendChat?: () => Promise<never>
     historyPages?: TrainingHistory[]
   } = {},
 ) {
@@ -113,6 +111,26 @@ function setup(
         : progress,
     )
   const readSession = vi.spyOn(dependencies.training, 'readTrainingSession')
+  const readChat = vi.spyOn(dependencies.training, 'readTrainingChat')
+  readChat.mockResolvedValue({
+    session_id: progress.session_id,
+    exercise_id: progress.current.exercise_id,
+    revision: 0,
+    status: 'active',
+    items: [
+      {
+        id: 'welcome',
+        sequence: 1,
+        role: 'assistant',
+        kind: 'welcome',
+        text: 'Начнём разбирать задачу.',
+        created_at: 1,
+      },
+    ],
+    next_cursor: null,
+    latest_check: null,
+    pending_turn: null,
+  } satisfies TrainingChatPage)
   if (entry.sessionMissing)
     readSession.mockRejectedValue(
       new TrainingApiError(404, 'TRAINING_SESSION_NOT_FOUND'),
@@ -121,12 +139,16 @@ function setup(
   vi.spyOn(dependencies.training, 'submitTraining').mockImplementation(
     async () => (entry.submit ? entry.submit() : progress),
   )
-  vi.spyOn(dependencies.training, 'readTrainingHistory').mockImplementation(
-    function (...args) {
+  if (entry.sendChat)
+    vi.spyOn(dependencies.training, 'sendTrainingChatVoice').mockImplementation(
+      async () => entry.sendChat!(),
+    )
+  const readHistory = vi
+    .spyOn(dependencies.training, 'readTrainingHistory')
+    .mockImplementation(function (...args) {
       const pages = entry.historyPages ?? [{ items: [], targets: [target] }]
       return Promise.resolve(args[1] ? pages[1] : pages[0])
-    },
-  )
+    })
   const onBack = vi.fn()
   const queryClient = createQueryClient()
   queryClient.setQueryData(userQueryKeys.auth, {
@@ -157,7 +179,7 @@ function setup(
       <Harness />
     </AppProviders>,
   )
-  return { start, readPlan, readSession, onBack }
+  return { start, readPlan, readSession, readChat, readHistory, onBack }
 }
 
 it('opens a new training directly without an extra start click', async () => {
@@ -248,80 +270,67 @@ it('clears a missing session and returns to the subject selector', async () => {
   expect(onBack).toHaveBeenCalledOnce()
 })
 
-it('refreshes the current session after an exercise conflict', async () => {
-  const { readSession } = setup({
+it('refetches chat after a voice revision conflict', async () => {
+  const { readChat } = setup({
     existing: progress,
-    submit: () =>
+    sendChat: () =>
       Promise.reject(
         new TrainingApiError(409, 'TRAINING_EXERCISE_NOT_CURRENT'),
       ),
   })
-  vi.spyOn(audio, 'startRecording').mockResolvedValue({
-    stream: {} as MediaStream,
-    dispose: vi.fn(),
-    stop: vi.fn().mockResolvedValue(new Blob(['voice'])),
-  })
-  vi.spyOn(audio, 'createAudioUrl').mockReturnValue({
-    url: 'blob:voice',
-    dispose: vi.fn(),
-  })
-  fireEvent.click(await screen.findByRole('button', { name: 'Начать запись' }))
+  mockChatVoice()
+  await screen.findByText('Начнём разбирать задачу.')
   fireEvent.click(
-    await screen.findByRole('button', { name: /Завершить запись/ }),
+    await screen.findByRole('button', { name: 'Ответить голосом' }),
+  )
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Остановить и отправить' }),
   )
   expect(await screen.findByRole('alert')).toHaveTextContent(
-    'Текущий вопрос изменился.',
+    'Состояние диалога изменилось. Обновляем историю…',
   )
-  fireEvent.click(
-    screen.getByRole('button', { name: 'Обновить текущий вопрос' }),
-  )
-  await waitFor(() => expect(readSession).toHaveBeenCalledTimes(2))
+  await waitFor(() => expect(readChat).toHaveBeenCalledTimes(2))
 })
 
-it('disposes an active recording when Back returns to the selector', async () => {
-  const dispose = vi.fn()
+it('returns to the selector from the chat session', async () => {
   setup({ existing: progress })
-  vi.spyOn(audio, 'startRecording').mockResolvedValue({
-    stream: {} as MediaStream,
-    dispose,
-    stop: vi.fn(),
-  })
-  fireEvent.click(await screen.findByRole('button', { name: 'Начать запись' }))
   expect(
-    await screen.findByRole('button', { name: /Завершить запись/ }),
+    await screen.findByRole('heading', { name: 'Репетитор' }),
   ).toBeVisible()
   fireEvent.click(screen.getByRole('button', { name: 'На главную' }))
   expect(await screen.findByText('Выбор предмета')).toBeVisible()
-  expect(dispose).toHaveBeenCalled()
 })
 
-it('loads additional answer history pages on demand', async () => {
-  const attempt = (sequence: number, text: string) => ({
-    sequence,
-    exercise_id: `e${sequence}`,
-    round: sequence,
-    target_index: 0,
-    transcription_id: `t${sequence}`,
-    text,
-    score: 1,
-    max_score: 2,
-    verdict: 'partial' as const,
-    criterion_results: [],
-    feedback: [],
-    created_at: sequence,
-  })
-  setup({
-    existing: progress,
-    historyPages: [
-      {
-        items: [attempt(1, 'Первая запись')],
-        targets: [target],
-        next_cursor: 'next',
-      },
-      { items: [attempt(2, 'Вторая запись')], targets: [target] },
-    ],
-  })
-  expect(await screen.findByText('Первая запись')).toBeVisible()
-  fireEvent.click(screen.getByRole('button', { name: 'Показать ещё' }))
-  expect(await screen.findByText('Вторая запись')).toBeVisible()
+it('does not render training targets or fetch answer history', async () => {
+  const { readHistory } = setup({ existing: progress })
+  expect(
+    await screen.findByRole('heading', { name: 'Репетитор' }),
+  ).toBeVisible()
+  expect(
+    screen.queryByRole('heading', { name: 'Цели тренировки' }),
+  ).not.toBeInTheDocument()
+  expect(
+    screen.queryByRole('heading', { name: 'История ответов' }),
+  ).not.toBeInTheDocument()
+  expect(readHistory).not.toHaveBeenCalled()
+})
+
+it('offers one voice action without a separate check mode', async () => {
+  setup({ existing: progress })
+  expect(
+    await screen.findByRole('button', { name: 'Ответить голосом' }),
+  ).toBeVisible()
+  expect(screen.queryByRole('combobox')).not.toBeInTheDocument()
+  expect(
+    screen.queryByRole('button', { name: 'Записать итоговый ответ' }),
+  ).not.toBeInTheDocument()
+  expect(
+    screen.queryByRole('textbox', { name: 'Сообщение репетитору' }),
+  ).not.toBeInTheDocument()
+  expect(
+    screen.queryByRole('button', { name: 'Отправить' }),
+  ).not.toBeInTheDocument()
+  expect(
+    screen.queryByRole('button', { name: 'Нужна подсказка' }),
+  ).not.toBeInTheDocument()
 })

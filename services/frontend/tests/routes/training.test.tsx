@@ -1,14 +1,21 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react'
 import {
   createMemoryHistory,
   createRouter,
   RouterProvider,
 } from '@tanstack/react-router'
-import { beforeEach, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { createQueryClient } from '@/bootstrap/providers'
 import { mockApiFetch } from '@/bootstrap/mock-api'
 import { routeTree } from '@/routeTree.gen'
 import * as audio from '@/shared/lib'
+import { mockChatVoice } from '../support/mock-chat-voice'
 
 beforeEach(async () => {
   vi.stubEnv('VITE_API_MODE', 'mock')
@@ -25,11 +32,14 @@ beforeEach(async () => {
       .mockResolvedValue(new Blob(['audio'], { type: 'audio/webm' })),
     dispose: vi.fn(),
   })
+  mockChatVoice()
   vi.spyOn(audio, 'createAudioUrl').mockReturnValue({
     url: 'blob:recording',
     dispose: vi.fn(),
   })
 })
+
+afterEach(() => vi.unstubAllGlobals())
 
 it('opens training directly from the diagnostic result', async () => {
   const router = createRouter({
@@ -71,38 +81,83 @@ it('opens training directly from the diagnostic result', async () => {
   await waitFor(() =>
     expect(play.mock.calls.length).toBeGreaterThan(playedBeforeTraining),
   )
-  fireEvent.click(await screen.findByRole('button', { name: 'Начать запись' }))
+  expect(
+    await screen.findByRole('heading', { name: 'Репетитор' }),
+  ).toBeVisible()
+  expect(screen.getByRole('button', { name: 'Ответить голосом' })).toBeVisible()
+  const tutorPanel = screen.getByRole('complementary', { name: 'Репетитор' })
+  expect(
+    within(tutorPanel).getByRole('button', { name: 'Ответить голосом' }),
+  ).toBeVisible()
+  expect(
+    within(tutorPanel).getByRole('button', { name: 'Пропустить упражнение' }),
+  ).toBeVisible()
+  expect(
+    within(tutorPanel).getByRole('img', { name: 'Визуализация записи' }),
+  ).toBeVisible()
+  expect(
+    within(tutorPanel).queryByText('Нажмите на микрофон, чтобы начать запись'),
+  ).not.toBeInTheDocument()
+  const workspace = screen.getByRole('main')
+  expect(workspace).toHaveAttribute('data-variant', 'training')
+  expect(
+    screen.getByRole('complementary', { name: 'Репетитор' }),
+  ).toContainElement(screen.getByRole('heading', { name: 'Репетитор' }))
+  expect(
+    screen.getByRole('separator', { name: 'Изменить ширину панели чата' }),
+  ).toHaveAttribute('aria-orientation', 'vertical')
+  expect(
+    screen.queryByRole('heading', { name: 'Цели тренировки' }),
+  ).not.toBeInTheDocument()
+  expect(
+    screen.queryByRole('heading', { name: 'История ответов' }),
+  ).not.toBeInTheDocument()
+  expect(
+    screen.queryByRole('textbox', { name: 'Сообщение репетитору' }),
+  ).not.toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: 'Ответить голосом' }))
   fireEvent.click(
-    await screen.findByRole('button', { name: /Завершить запись/ }),
+    await screen.findByRole('button', { name: 'Остановить и отправить' }),
   )
-  // The exercise answer is only confirmed: no score or feedback.
-  expect(await screen.findByText('Ответ принят')).toBeVisible()
-  expect(screen.queryByText(/Оценка/)).not.toBeInTheDocument()
   expect(
-    screen.queryByText(
-      'Ответ верный. Вы правильно определили тип задачи. Продолжайте применять этот критерий.',
-    ),
-  ).not.toBeInTheDocument()
-  expect(
-    screen.queryByText(
-      'Как определить, что задача относится к классификации?',
-      { selector: 'p' },
-    ),
-  ).not.toBeInTheDocument()
-  expect(
-    screen.getByText(
-      'Это классификация, потому что результат относится к одному из двух классов.',
+    await screen.findByText(
+      'Вы назвали важную часть рассуждения. Какое свойство результата подтверждает ваш выбор?',
     ),
   ).toBeVisible()
-  fireEvent.click(screen.getByRole('button', { name: 'Следующее задание' }))
+  expect(screen.getByText(/Раунд 1/)).toBeVisible()
+  expect(screen.queryByText(/Оценка:/)).not.toBeInTheDocument()
+  expect(screen.queryByRole('combobox')).not.toBeInTheDocument()
+  expect(
+    screen.queryByRole('button', { name: 'Следующий раунд' }),
+  ).not.toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Ответить голосом' })).toBeVisible()
+  fireEvent.click(screen.getByRole('button', { name: 'Ответить голосом' }))
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Остановить и отправить' }),
+  )
+  expect(
+    await screen.findByText(
+      'Вы связали ответ с условием. Хотите уточнить ещё один признак?',
+    ),
+  ).toBeVisible()
+  expect(screen.queryByText(/Результат проверки:/)).not.toBeInTheDocument()
+  expect(screen.queryByText(/2 \/ 2/)).not.toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: 'Следующий раунд' }))
   expect(
     await screen.findByText(
       'Какой тип задачи предсказывает числовое значение?',
     ),
   ).toBeVisible()
-  fireEvent.click(screen.getByRole('button', { name: 'Пропустить вопрос' }))
-  expect(await screen.findByText('Вопрос пропущен')).toBeVisible()
-  expect(audio.startRecording).toHaveBeenCalledTimes(2)
+  expect(
+    screen.queryByRole('textbox', { name: 'Сообщение репетитору' }),
+  ).not.toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: 'Пропустить упражнение' }))
+  expect(
+    await screen.findByText(
+      'Как определить, что задача относится к классификации?',
+    ),
+  ).toBeVisible()
+  expect(audio.startRecording).toHaveBeenCalledTimes(1)
   // Back home, the single course action resumes the process in training.
   fireEvent.click(screen.getByRole('button', { name: 'На главную' }))
   expect(

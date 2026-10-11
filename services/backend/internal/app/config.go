@@ -27,6 +27,13 @@ type Config struct {
 	TaskgenTimeout        time.Duration
 	VoiceTimeout          time.Duration
 	AssessmentTimeout     time.Duration
+	TutorBaseURL          string
+	TutorModel            string
+	TutorTimeout          time.Duration
+	TutorEnabled          bool
+	TutorTaskMaxChars     int
+	TutorHistoryMaxChars  int
+	TutorSummaryMaxChars  int
 	MaxUploadBytes        int64
 	S3Endpoint            string
 	S3Region              string
@@ -43,7 +50,7 @@ type Config struct {
 // HTTPWriteTimeout allows sequential STT and grading, or task generation, to
 // finish with time for request handling, persistence and writing the response.
 func (c Config) HTTPWriteTimeout() time.Duration {
-	return max(c.VoiceTimeout+c.AssessmentTimeout, c.TaskgenTimeout, c.VoiceTimeout+5*c.S3Timeout) + 30*time.Second
+	return max(c.VoiceTimeout+c.AssessmentTimeout+c.TutorTimeout, c.TaskgenTimeout, c.VoiceTimeout+5*c.S3Timeout) + 30*time.Second
 }
 
 func ConfigFromEnv() (Config, error) {
@@ -65,6 +72,10 @@ func ConfigFromEnv() (Config, error) {
 		{"BACKEND_DATABASE_URL", &c.DatabaseURL},
 	}
 	if c.APIMode == "real" {
+		c.TutorEnabled, err = envBool("BACKEND_TUTOR_ENABLED", true)
+		if err != nil {
+			return c, err
+		}
 		settings = append(settings,
 			stringSetting{"BACKEND_STT_URL", &c.STTURL},
 			stringSetting{"BACKEND_TTS_URL", &c.TTSURL},
@@ -82,6 +93,8 @@ func ConfigFromEnv() (Config, error) {
 		*setting.dst = value
 	}
 	if c.APIMode == "real" {
+		c.TutorBaseURL = envOrDefault("BACKEND_TUTOR_BASE_URL", c.AssessmentBaseURL)
+		c.TutorModel = envOrDefault("BACKEND_TUTOR_MODEL", c.AssessmentModel)
 		value, err := requiredEnv("BACKEND_TTS_SEED")
 		if err != nil {
 			return c, err
@@ -114,6 +127,22 @@ func ConfigFromEnv() (Config, error) {
 	}{
 		{"BACKEND_VOICE_TIMEOUT", &c.VoiceTimeout},
 		{"BACKEND_ASSESSMENT_TIMEOUT", &c.AssessmentTimeout},
+	}
+	c.TutorTimeout, err = envDuration("BACKEND_TUTOR_TIMEOUT", 60*time.Second)
+	if err != nil {
+		return c, err
+	}
+	c.TutorTaskMaxChars, err = envInt("BACKEND_TUTOR_TASK_MAX_CHARS", 16000)
+	if err != nil {
+		return c, err
+	}
+	c.TutorHistoryMaxChars, err = envInt("BACKEND_TUTOR_HISTORY_MAX_CHARS", 16000)
+	if err != nil {
+		return c, err
+	}
+	c.TutorSummaryMaxChars, err = envInt("BACKEND_TUTOR_SUMMARY_MAX_CHARS", 4000)
+	if err != nil {
+		return c, err
 	}
 	if c.APIMode == "real" {
 		durations = append(durations, struct {
@@ -243,6 +272,15 @@ func (c Config) validate() error {
 				return fmt.Errorf("%s must be an absolute HTTP(S) URL without credentials", setting.key)
 			}
 		}
+		if c.TutorEnabled {
+			u, err := url.Parse(c.TutorBaseURL)
+			if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.User != nil || u.Fragment != "" {
+				return fmt.Errorf("BACKEND_TUTOR_BASE_URL must be an absolute HTTP(S) URL without credentials")
+			}
+			if strings.TrimSpace(c.TutorModel) == "" {
+				return fmt.Errorf("BACKEND_TUTOR_MODEL is required when tutor is enabled")
+			}
+		}
 		if math.IsNaN(c.TTSCFGValue) || math.IsInf(c.TTSCFGValue, 0) || c.TTSCFGValue < 0 || c.TTSCFGValue > 5 {
 			return fmt.Errorf("BACKEND_TTS_CFG_VALUE must be a finite number from 0 to 5")
 		}
@@ -272,6 +310,12 @@ func (c Config) validate() error {
 	}
 	if strings.TrimSpace(c.S3Bucket) == "" {
 		return fmt.Errorf("BACKEND_S3_BUCKET is required")
+	}
+	if c.TutorTimeout <= 0 {
+		return fmt.Errorf("BACKEND_TUTOR_TIMEOUT must be positive")
+	}
+	if c.TutorTaskMaxChars < 1 || c.TutorHistoryMaxChars < 1 || c.TutorSummaryMaxChars < 1 {
+		return fmt.Errorf("BACKEND_TUTOR_*_MAX_CHARS values are invalid")
 	}
 	if strings.TrimSpace(c.S3AccessKey) == "" {
 		return fmt.Errorf("BACKEND_S3_ACCESS_KEY is required")

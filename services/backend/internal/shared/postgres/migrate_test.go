@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"crypto/rand"
+	"database/sql"
 	"encoding/hex"
 	"errors"
 	"io/fs"
@@ -18,6 +19,23 @@ import (
 	"github.com/pressly/goose/v3"
 	"github.com/pressly/goose/v3/lock"
 )
+
+func TestEmbeddedMigrationsInitializeWithoutDatabase(t *testing.T) {
+	files, err := fs.Sub(migrations, "migrations")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Provider initialization checks migration versions without connecting to PostgreSQL.
+	db, err := sql.Open("pgx", "postgres://localhost/unused")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err := goose.NewProvider(goose.DialectPostgres, db, files,
+		goose.WithDisableGlobalRegistry(true)); err != nil {
+		t.Fatalf("initialize embedded migrations: %v", err)
+	}
+}
 
 func migrationPool(t *testing.T) *pgxpool.Pool {
 	t.Helper()
@@ -87,8 +105,8 @@ func TestMigrateFreshAndRepeat(t *testing.T) {
 		t.Fatalf("fresh imports=%d err=%v", imports, err)
 	}
 	var versions int
-	if err := pool.QueryRow(ctx, "SELECT count(*) FROM goose_db_version WHERE is_applied AND version_id > 0").Scan(&versions); err != nil || versions != 6 {
-		t.Fatalf("applied migrations=%d err=%v, want 6", versions, err)
+	if err := pool.QueryRow(ctx, "SELECT count(*) FROM goose_db_version WHERE is_applied AND version_id > 0").Scan(&versions); err != nil || versions != 7 {
+		t.Fatalf("applied migrations=%d err=%v, want 7", versions, err)
 	}
 }
 

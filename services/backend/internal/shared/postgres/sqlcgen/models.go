@@ -298,6 +298,49 @@ type TrainingAttempt struct {
 	ResponseData []byte
 }
 
+type TrainingChat struct {
+	ExerciseID      string
+	SessionID       string
+	Revision        int64
+	Status          string
+	LatestCheckData []byte
+	CreatedAt       pgtype.Timestamptz
+}
+
+type TrainingChatMessage struct {
+	ID         string
+	ExerciseID string
+	Sequence   int64
+	Role       string
+	Kind       string
+	Source     *string
+	Text       string
+	CreatedAt  pgtype.Timestamptz
+}
+
+type TrainingChatTurn struct {
+	ID                string
+	SessionID         string
+	ExerciseID        string
+	RequestKey        string
+	Operation         string
+	Fingerprint       string
+	ExpectedRevision  int64
+	Token             string
+	LeaseUntil        pgtype.Timestamptz
+	Status            string
+	RequestData       []byte
+	PendingAudio      []byte
+	TranscriptionID   *string
+	TranscriptionText *string
+	CheckData         []byte
+	ResponseData      []byte
+	ErrorCode         *string
+	PromptVersion     *string
+	CreatedAt         pgtype.Timestamptz
+	UpdatedAt         pgtype.Timestamptz
+}
+
 type TrainingExercise struct {
 	ID           string
 	SessionID    string

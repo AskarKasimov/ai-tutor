@@ -226,7 +226,9 @@ func (a *App) Handler() http.Handler {
 
 func protect(auth *authapp.Service, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		principal, err := auth.Me(r.Context(), httpx.Cookie(r, "access_token"))
+		// The admin panel sends its portal header and its own session cookie.
+		access, _ := httpx.SessionCookieNames(r)
+		principal, err := auth.Me(r.Context(), httpx.Cookie(r, access))
 		if err != nil {
 			httpx.Error(r.Context(), w, err)
 			return

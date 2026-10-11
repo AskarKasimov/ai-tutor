@@ -2,7 +2,7 @@
 .SYNOPSIS
     Поднимает dev-стек AI Tutor на Windows одной командой (аналог dev.sh).
 .EXAMPLE
-    .\up.ps1          # собрать и запустить, дождаться health, открыть браузер
+    .\up.ps1          # собрать и запустить, дождаться health, открыть сайт ученика и админку
     .\up.ps1 -Logs    # смотреть логи api и frontend
     .\up.ps1 -Down    # остановить; данные БД и S3 сохраняются
 #>
@@ -16,6 +16,8 @@ $ErrorActionPreference = 'Continue'
 Set-Location -LiteralPath $PSScriptRoot
 $compose = @('compose', '--env-file', '.env', '-f', 'docker-compose.yaml')
 $appUrl = 'https://localhost:8443'
+# The admin panel is a separate site on the same address with its own session.
+$adminUrl = "$appUrl/admin"
 
 function Step($text) { Write-Host "==> $text" -ForegroundColor Cyan }
 function Fail($text) { Write-Host "Ошибка: $text" -ForegroundColor Red; exit 1 }
@@ -85,5 +87,7 @@ if ($health -ne '200') {
     Fail "health вернул '$health'. Логи: .\up.ps1 -Logs"
 }
 
-Write-Host "Готово: $appUrl" -ForegroundColor Green
+Write-Host "Готово. Ученик: $appUrl" -ForegroundColor Green
+Write-Host "       Админка: $adminUrl" -ForegroundColor Green
 Start-Process $appUrl
+Start-Process $adminUrl

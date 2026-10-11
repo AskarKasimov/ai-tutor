@@ -141,9 +141,7 @@ it('shows the dev ribbon when the API mode is not real', async () => {
   vi.stubEnv('VITE_API_MODE', 'preview')
   renderHome()
   expect(await screen.findByText('dev-режим')).toBeVisible()
-  fireEvent.click(
-    await screen.findByRole('button', { name: 'Войти как ученик' }),
-  )
+  // The student site opens straight on sign-in.
   expect(await screen.findByRole('button', { name: 'Войти' })).toBeEnabled()
   expect(
     screen.queryByRole('button', { name: 'Начать запись' }),
@@ -437,6 +435,6 @@ it('returns to the separate login screen after logout', async () => {
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   await logOut()
   expect(
-    await screen.findByRole('heading', { name: 'Как вы хотите войти?' }),
+    await screen.findByRole('heading', { name: 'Вход в AI Tutor' }),
   ).toBeVisible()
 })

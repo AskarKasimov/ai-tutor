@@ -13,36 +13,33 @@ import { logOut } from '../support/account-menu'
 afterEach(() => {
   vi.restoreAllMocks()
   vi.unstubAllGlobals()
+  window.history.replaceState({}, '', '/')
 })
-function renderApp() {
+
+// The browser address decides the portal, as it does for the API transport.
+function renderApp(path: string) {
+  window.history.replaceState({}, '', path)
   const router = createRouter({
     context: { queryClient: createQueryClient() },
-    history: createMemoryHistory({ initialEntries: ['/'] }),
+    history: createMemoryHistory({ initialEntries: [path] }),
     routeTree,
   })
   render(<RouterProvider router={router} />)
   return router
 }
 
-it('opens student login with a banner and returns to role selection on logout', async () => {
+it('opens the student site straight on sign-in and returns there on logout', async () => {
   vi.stubEnv('VITE_API_MODE', 'mock')
   await mockApiFetch('/api/v1/auth/logout', { method: 'POST' })
-  const router = renderApp()
-  expect(
-    await screen.findByRole('button', { name: 'Войти как учитель' }),
-  ).toBeVisible()
-  expect(screen.queryByLabelText('Пароль')).not.toBeInTheDocument()
-  fireEvent.click(screen.getByRole('button', { name: 'Войти как ученик' }))
-  expect(await screen.findByText('Вход как ученик')).toBeVisible()
+  const router = renderApp('/')
+  expect(await screen.findByLabelText('Пароль')).toBeVisible()
+  expect(router.state.location.pathname).toBe('/login')
   expect(
     screen.getByText('Подтянем до уверенного уровня в кратчайшие сроки'),
   ).toBeVisible()
-  fireEvent.click(screen.getByRole('button', { name: 'Назад' }))
-  fireEvent.click(
-    await screen.findByRole('button', { name: 'Войти как ученик' }),
-  )
-  fireEvent.click(await screen.findByRole('button', { name: 'Регистрация' }))
-  expect(screen.getByText('Вход как ученик')).toBeVisible()
+  // There is no role choice and no way into the teacher account.
+  expect(screen.queryByText(/учител/i)).not.toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: 'Регистрация' }))
   fireEvent.click(screen.getByRole('button', { name: 'Вход' }))
   fireEvent.click(screen.getByRole('button', { name: 'Войти' }))
   expect(
@@ -50,20 +47,15 @@ it('opens student login with a banner and returns to role selection on logout', 
   ).toBeVisible()
   // Logout stays hidden until the profile menu is opened.
   expect(
-    screen.queryByRole('button', { name: 'Выйти' }),
-  ).not.toBeInTheDocument()
-  expect(
     screen.queryByRole('menuitem', { name: 'Выйти' }),
   ).not.toBeInTheDocument()
   await logOut()
-  expect(
-    await screen.findByRole('button', { name: 'Войти как учитель' }),
-  ).toBeVisible()
-  expect(router.state.location.pathname).toBe('/welcome')
+  expect(await screen.findByLabelText('Пароль')).toBeVisible()
+  expect(router.state.location.pathname).toBe('/login')
 })
 
 it.each(['real', 'mock', 'preview'])(
-  'logs in as teacher without credentials in %s mode',
+  'opens the admin panel without a sign-in step in %s mode',
   async (mode) => {
     vi.stubEnv('VITE_API_MODE', mode)
     await mockApiFetch('/api/v1/auth/logout', { method: 'POST' })
@@ -71,10 +63,7 @@ it.each(['real', 'mock', 'preview'])(
       mockApiFetch(url, options),
     )
     vi.stubGlobal('fetch', fetch)
-    const router = renderApp()
-    fireEvent.click(
-      await screen.findByRole('button', { name: 'Войти как учитель' }),
-    )
+    const router = renderApp('/admin')
     expect(
       await screen.findByRole('heading', { name: 'Карта компетенций' }),
     ).toBeVisible()
@@ -88,33 +77,35 @@ it.each(['real', 'mock', 'preview'])(
       expect(call[1]?.method).toBe('POST')
       expect(call[1]?.body).toBeUndefined()
       expect(call[1]?.credentials).toBe('include')
+      // The admin panel keeps its own session through the portal header.
+      expect(new Headers(call[1]?.headers).get('X-AI-Tutor-Portal')).toBe(
+        'admin',
+      )
     } else expect(fetch).not.toHaveBeenCalled()
+    // Signing out of the shared account simply enters it again.
     await logOut()
     expect(
-      await screen.findByRole('button', { name: 'Войти как учитель' }),
+      await screen.findByRole('heading', { name: 'Карта компетенций' }),
     ).toBeVisible()
   },
 )
 
-it('keeps role selection available for retry when teacher login fails', async () => {
+it('offers a retry when the admin panel cannot sign in', async () => {
   vi.stubEnv('VITE_API_MODE', 'real')
-  vi.stubGlobal(
-    'fetch',
-    vi.fn(async (url: string) =>
-      url.endsWith('/auth/teacher')
-        ? Response.json({ message: 'Сервер недоступен.' }, { status: 503 })
-        : new Response(null, { status: 401 }),
-    ),
+  const fetch = vi.fn(async (url: string) =>
+    url.endsWith('/auth/teacher')
+      ? Response.json({ message: 'Сервер недоступен.' }, { status: 503 })
+      : new Response(null, { status: 401 }),
   )
-  renderApp()
-  fireEvent.click(
-    await screen.findByRole('button', { name: 'Войти как учитель' }),
-  )
+  vi.stubGlobal('fetch', fetch)
+  renderApp('/admin')
   expect(await screen.findByRole('alert')).toHaveTextContent(
-    'Сервер недоступен.',
+    'Не удалось открыть админ-панель.',
   )
-  expect(screen.getByRole('button', { name: 'Войти как ученик' })).toBeEnabled()
-  expect(
-    screen.getByRole('button', { name: 'Войти как учитель' }),
-  ).toBeEnabled()
+  const attempts = () =>
+    fetch.mock.calls.filter(([url]) => url.endsWith('/auth/teacher')).length
+  expect(attempts()).toBe(1)
+  fireEvent.click(screen.getByRole('button', { name: 'Попробовать снова' }))
+  expect(await screen.findByRole('alert')).toBeVisible()
+  expect(attempts()).toBe(2)
 })

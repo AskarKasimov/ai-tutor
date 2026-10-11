@@ -29,10 +29,35 @@ type Worker struct {
 	synth  Synthesizer
 	config WorkerConfig
 	slots  chan struct{}
+	wakeMu sync.Mutex
+	wake   chan struct{}
 }
 
 func NewWorker(queue Queue, store Storage, synth Synthesizer, config WorkerConfig) *Worker {
-	return &Worker{queue: queue, store: store, synth: synth, config: config, slots: make(chan struct{}, max(1, config.Concurrency))}
+	return &Worker{queue: queue, store: store, synth: synth, config: config, slots: make(chan struct{}, max(1, config.Concurrency)), wake: make(chan struct{})}
+}
+
+func (w *Worker) Prioritize(ctx context.Context, assetID string) error {
+	if err := w.validate(); err != nil {
+		return err
+	}
+	changed, err := w.queue.Prioritize(ctx, assetID)
+	if err != nil {
+		return err
+	}
+	if changed {
+		w.wakeMu.Lock()
+		close(w.wake)
+		w.wake = make(chan struct{})
+		w.wakeMu.Unlock()
+	}
+	return nil
+}
+
+func (w *Worker) wakeup() <-chan struct{} {
+	w.wakeMu.Lock()
+	defer w.wakeMu.Unlock()
+	return w.wake
 }
 
 func RetryDelay(attempt int) time.Duration {
@@ -41,7 +66,7 @@ func RetryDelay(attempt int) time.Duration {
 }
 
 // ProcessOne claims and handles at most one asset. Errors are returned after a
-// safe retry transition; cancellation leaves the lease for recovery on restart.
+// safe retry transition; cancellation releases only this worker's own claim.
 func (w *Worker) ProcessOne(ctx context.Context) (bool, error) {
 	if err := w.validate(); err != nil {
 		return false, err
@@ -59,10 +84,18 @@ func (w *Worker) ProcessOne(ctx context.Context) (bool, error) {
 	if err != nil || !ok {
 		return ok, err
 	}
-	if err := w.processClaim(ctx, claim); err != nil {
-		return true, err
+	processErr := w.processClaim(ctx, claim)
+	if ctx.Err() != nil {
+		// Shutdown cancels the operation context. Use a bounded fresh context so
+		// PostgreSQL can release the claim before the worker exits.
+		cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		_, releaseErr := w.queue.Release(cleanupCtx, claim)
+		cancel()
+		if releaseErr != nil {
+			return true, errors.Join(processErr, fmt.Errorf("release interrupted task audio: %w", releaseErr))
+		}
 	}
-	return true, nil
+	return true, processErr
 }
 
 // Regenerate synchronously repairs one ready or failed asset while sharing the worker's
@@ -379,18 +412,19 @@ func (w *Worker) Run(ctx context.Context) error {
 		go func() {
 			defer workers.Done()
 			for ctx.Err() == nil {
+				wake := w.wakeup()
 				_, err := w.ProcessOne(ctx)
 				if err != nil && ctx.Err() != nil {
 					return
 				}
 				if err != nil {
-					if wait(ctx, w.config.PollInterval) != nil {
+					if waitForWork(ctx, w.config.PollInterval, wake) != nil {
 						return
 					}
 					continue
 				}
 				// Whether one item was processed or the queue was empty, bound idle polling.
-				if wait(ctx, w.config.PollInterval) != nil {
+				if waitForWork(ctx, w.config.PollInterval, wake) != nil {
 					return
 				}
 			}
@@ -398,6 +432,19 @@ func (w *Worker) Run(ctx context.Context) error {
 	}
 	workers.Wait()
 	return nil
+}
+
+func waitForWork(ctx context.Context, delay time.Duration, wake <-chan struct{}) error {
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-wake:
+		return nil
+	case <-timer.C:
+		return nil
+	}
 }
 
 func wait(ctx context.Context, delay time.Duration) error {

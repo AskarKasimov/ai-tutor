@@ -80,6 +80,7 @@ type App struct {
 		Run(context.Context) error
 		ProcessOne(context.Context) (bool, error)
 		Regenerate(context.Context, string) (audioasset.Asset, error)
+		Prioritize(context.Context, string) error
 	}
 	audioStorage taskaudioapp.Storage
 }
@@ -163,7 +164,7 @@ func (a *App) Handler() http.Handler {
 		taskgenapp.NewMaterialService(taskgenRepository, func() int64 { return a.now().Unix() }),
 	)
 	variantgenHandlers := variantgenhttp.New(variantgenapp.New(a.variantRepository, variantgenrandom.Chooser{}, security.IDGenerator{}, a.now))
-	taskAudioService := taskaudioapp.NewService(taskaudiopg.New(a.pool), a.audioStorage)
+	taskAudioService := taskaudioapp.NewService(taskaudiopg.New(a.pool), a.audioStorage).WithPrioritizer(a.audioWorker)
 	taskAudioHandlers := taskaudiohttp.New(taskAudioService)
 	diagnosticService := diagnosticapp.New(a.diagnosticStore, a.variantRepository, voice, assessmentService, security.IDGenerator{}, a.now).WithAudioReader(taskAudioService).WithAudioRegenerator(a.audioWorker)
 	diagnosticHandlers := diagnostichttp.New(diagnosticService, a.cfg.MaxUploadBytes)

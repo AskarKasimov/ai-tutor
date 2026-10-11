@@ -1,9 +1,8 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useEffectEvent, useRef, useState } from 'react'
 import {
   AudioPlaybackError,
   createAudioUrl,
   playQuestion,
-  speakInstruction,
   startRecording,
 } from '@/shared/lib'
 import { StoredAudioError } from '@/shared/api'
@@ -51,6 +50,7 @@ export function useDiagnosticVoice(
     userId,
     sessionId,
     task?.variant_task_id,
+    pendingHint,
   )
   const repair = useMutation({
     mutationKey: ['diagnostic-audio-regenerate', userId, sessionId],
@@ -126,6 +126,10 @@ export function useDiagnosticVoice(
   // auto: played on task open; never stops current playback and stays silent
   // when the browser blocks autoplay, leaving the manual button.
   async function speak({ auto = false }: { auto?: boolean } = {}) {
+    if (pendingHint && !auto) {
+      stopSpeech()
+      return
+    }
     if (speechRequest.current) {
       if (auto && !speechRequest.current.signal.aborted) return
       if (!auto) {
@@ -153,25 +157,6 @@ export function useDiagnosticVoice(
       currentContext.current.taskId === taskId &&
       currentContext.current.sessionId === sessionId &&
       currentContext.current.userId === userId
-    // When stored audio is not ready or unplayable, the browser voice reads
-    // the instruction so a task never stays silent.
-    const instruction = task?.voice_instruction ?? ''
-    const startFallback = () => {
-      if (!stillCurrent()) return false
-      const stop = speakInstruction(instruction, () => {
-        if (!stillCurrent() || player.current !== stop) return
-        speechRequest.current = null
-        player.current = null
-        setSpeech('idle')
-      })
-      if (!stop) return false
-      player.current = stop
-      setSpeechError(false)
-      setPendingHint(false)
-      setCancelledHint(false)
-      setSpeech('playing')
-      return true
-    }
     const canRepair = (error: unknown) =>
       error instanceof StoredAudioError &&
       (error.kind === 'invalid' ||
@@ -200,14 +185,11 @@ export function useDiagnosticVoice(
         metadata &&
         (metadata.status === 'pending' || metadata.status === 'processing')
       ) {
-        if (startFallback()) return
         speechRequest.current = null
-        setSpeech('idle')
         setPendingHint(true)
         return
       }
       if (metadata?.status === 'cancelled') {
-        if (startFallback()) return
         speechRequest.current = null
         setSpeech('idle')
         setCancelledHint(true)
@@ -218,7 +200,6 @@ export function useDiagnosticVoice(
         !repairBadMetadata &&
         (metadata?.status !== 'ready' || !metadata.audio_url)
       ) {
-        if (startFallback()) return
         speechRequest.current = null
         setSpeech('idle')
         setSpeechError(true)
@@ -253,7 +234,6 @@ export function useDiagnosticVoice(
               'Stored audio is still unreadable after repair',
             )
             onError(error)
-            if (startFallback()) return Promise.resolve()
             setSpeechError(true)
             setSpeech('idle')
             speechRequest.current = null
@@ -283,7 +263,6 @@ export function useDiagnosticVoice(
               if (repairPromise === currentRepair) repairPromise = null
               if (!stillCurrent()) return
               onError(error)
-              if (startFallback()) return
               setSpeechError(true)
               setSpeech('idle')
               speechRequest.current = null
@@ -363,8 +342,7 @@ export function useDiagnosticVoice(
           error instanceof DOMException && error.name === 'NotAllowedError'
         if (!(error instanceof DiagnosticApiError && error.status === 409))
           if (!blocked) onError(error)
-        // Blocked autoplay keeps the manual button; other failures fall back.
-        if (!(auto && blocked) && startFallback()) return
+        // Blocked autoplay keeps the manual button available.
         speechRequest.current = null
         if (
           !(error instanceof DiagnosticApiError && error.status === 409) &&
@@ -376,6 +354,38 @@ export function useDiagnosticVoice(
       }
     }
   }
+  const resumeReadySpeech = useEffectEvent(() => {
+    void speak({ auto: true })
+  })
+  useEffect(() => {
+    if (!pendingHint || stage !== 'ready') return
+    const metadata = audioQuery.data
+    if (audioQuery.isError) {
+      setPendingHint(false)
+      setSpeech('idle')
+      setSpeechError(true)
+      return
+    }
+    if (!metadata || metadata.variant_task_id !== task?.variant_task_id) return
+    if (metadata.status === 'pending' || metadata.status === 'processing')
+      return
+    setPendingHint(false)
+    if (metadata.status === 'ready') {
+      resumeReadySpeech()
+    } else if (metadata.status === 'cancelled') {
+      setSpeech('idle')
+      setCancelledHint(true)
+    } else {
+      setSpeech('idle')
+      setSpeechError(true)
+    }
+  }, [
+    audioQuery.data,
+    audioQuery.isError,
+    pendingHint,
+    stage,
+    task?.variant_task_id,
+  ])
   useEffect(() => {
     return () => {
       speechRequest.current?.abort()

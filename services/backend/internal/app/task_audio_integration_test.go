@@ -306,6 +306,228 @@ func TestRegenerateCurrentAudioRepairsMissingObjectSynchronously(t *testing.T) {
 	}
 }
 
+func TestCurrentAudioRequestMovesAheadAfterBackgroundTTSCompletes(t *testing.T) {
+	f := newFixture(t)
+	data := variantMapCSV(t)
+	for index := 1; index <= 3; index++ {
+		data = bytes.Replace(data, []byte("Назовите ответ."), []byte(fmt.Sprintf("Назовите ответ на задание %d.", index)), 1)
+	}
+	assets := importCurrentTaskAudios(t, f, "priority-map.csv", data)
+	access, _, _ := f.register(t, "audio-priority@example.edu")
+	foreign, _, _ := f.register(t, "foreign-audio-priority@example.edu")
+	post := func(path, key, body string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest(http.MethodPost, path, strings.NewReader(body))
+		r.Header.Set("Content-Type", "application/json")
+		r.Header.Set("Idempotency-Key", key)
+		r.AddCookie(access)
+		w := httptest.NewRecorder()
+		f.handler.ServeHTTP(w, r)
+		return w
+	}
+	var variant struct {
+		ID string `json:"id"`
+	}
+	created := post("/variants", "priority-variant", `{"subject_id":"subject:test"}`)
+	if err := json.Unmarshal(created.Body.Bytes(), &variant); err != nil || created.Code != http.StatusCreated {
+		t.Fatalf("create variant: %d %s", created.Code, created.Body.String())
+	}
+	var progress diagnostichttp.ProgressResponse
+	started := post("/diagnostic-sessions", "priority-session", `{"variant_id":"`+variant.ID+`"}`)
+	if err := json.Unmarshal(started.Body.Bytes(), &progress); err != nil || progress.Current == nil {
+		t.Fatalf("start session: %d %s", started.Code, started.Body.String())
+	}
+	var wanted string
+	if err := f.pool.QueryRow(t.Context(), "SELECT audio_asset_id FROM variant_tasks WHERE id=$1", progress.Current.ID).Scan(&wanted); err != nil {
+		t.Fatal(err)
+	}
+	background := ""
+	for _, asset := range assets {
+		if asset.id != wanted {
+			background = asset.id
+			break
+		}
+	}
+	if background == "" {
+		t.Fatal("test requires a second recording")
+	}
+	keepOnlyQueuedAudio(t, f, assets, wanted)
+	if _, err := f.pool.Exec(t.Context(), "UPDATE audio_assets SET status='pending',next_attempt_at=CASE WHEN id=$1 THEN now()+interval '1 hour' ELSE now() END WHERE id IN ($1,$2)", wanted, background); err != nil {
+		t.Fatal(err)
+	}
+	var calls atomic.Int32
+	backgroundStarted, backgroundCancelled, wantedStarted := make(chan struct{}), make(chan struct{}), make(chan struct{})
+	releaseBackground := make(chan struct{})
+	releaseWanted := make(chan struct{})
+	tts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.Copy(io.Discard, r.Body)
+		switch calls.Add(1) {
+		case 1:
+			close(backgroundStarted)
+			select {
+			case <-releaseBackground:
+			case <-r.Context().Done():
+				close(backgroundCancelled)
+				return
+			}
+		case 2:
+			close(wantedStarted)
+			select {
+			case <-releaseWanted:
+			case <-r.Context().Done():
+				return
+			}
+		}
+		w.Header().Set("Content-Type", "audio/wav")
+		_, _ = w.Write(wavBytes())
+	}))
+	defer tts.Close()
+	cfg := f.app.cfg
+	cfg.TTSURL, cfg.AudioWorkers, cfg.AudioPollInterval = tts.URL, 1, time.Hour
+	cfg.VoiceTimeout = 30 * time.Second
+	a, err := New(cfg, f.pool, zap.NewNop())
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.now = f.app.now
+	f.app, f.handler = a, a.Handler()
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	done := make(chan error, 1)
+	go func() { done <- a.RunAudioWorker(ctx) }()
+	waitSignal := func(signal <-chan struct{}, message string) {
+		t.Helper()
+		select {
+		case <-signal:
+		case <-time.After(3 * time.Second):
+			t.Fatal(message)
+		}
+	}
+	waitSignal(backgroundStarted, "background TTS did not start")
+	path := "/diagnostic-sessions/" + progress.SessionID + "/current/audio?variant_task_id=" + progress.Current.ID
+	if response := f.request(http.MethodGet, path, "", foreign); response.Code != http.StatusNotFound {
+		t.Fatalf("foreign session request: %d %s", response.Code, response.Body.String())
+	}
+	var priority *time.Time
+	if err := f.pool.QueryRow(t.Context(), "SELECT priority_requested_at FROM audio_assets WHERE id=$1", wanted).Scan(&priority); err != nil || priority != nil {
+		t.Fatalf("foreign request changed queue priority: priority=%v err=%v", priority, err)
+	}
+	if response := f.request(http.MethodGet, path, "", access); response.Code != http.StatusOK {
+		t.Fatalf("request wanted recording: %d %s", response.Code, response.Body.String())
+	}
+	var backgroundStatus string
+	var backgroundAttempts int
+	if err := f.pool.QueryRow(t.Context(), "SELECT status,attempts FROM audio_assets WHERE id=$1", background).Scan(&backgroundStatus, &backgroundAttempts); err != nil || backgroundStatus != "processing" || backgroundAttempts != 1 {
+		t.Fatalf("priority interrupted background TTS: status=%q attempts=%d err=%v", backgroundStatus, backgroundAttempts, err)
+	}
+	for range 3 {
+		response := f.request(http.MethodGet, path, "", access)
+		if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"status":"pending"`) {
+			t.Fatalf("pending poll: %d %s", response.Code, response.Body.String())
+		}
+	}
+	select {
+	case <-backgroundCancelled:
+		t.Fatal("priority cancelled background TTS")
+	default:
+	}
+	if calls.Load() != 1 {
+		t.Fatalf("priority started before current TTS finished: calls=%d", calls.Load())
+	}
+	close(releaseBackground)
+	waitSignal(wantedStarted, "wanted recording was not next after background TTS finished")
+	var token string
+	if err := f.pool.QueryRow(t.Context(), "SELECT claim_token FROM audio_assets WHERE id=$1", wanted).Scan(&token); err != nil {
+		t.Fatal(err)
+	}
+	for range 3 {
+		response := f.request(http.MethodGet, path, "", access)
+		if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"status":"processing"`) {
+			t.Fatalf("poll interrupted wanted recording: %d %s", response.Code, response.Body.String())
+		}
+	}
+	var currentToken string
+	if err := f.pool.QueryRow(t.Context(), "SELECT claim_token FROM audio_assets WHERE id=$1", wanted).Scan(&currentToken); err != nil || currentToken != token || calls.Load() != 2 {
+		t.Fatalf("poll restarted wanted TTS: same token=%v calls=%d err=%v", currentToken == token, calls.Load(), err)
+	}
+	close(releaseWanted)
+	deadline := time.Now().Add(3 * time.Second)
+	var status string
+	for time.Now().Before(deadline) {
+		if err := f.pool.QueryRow(t.Context(), "SELECT status FROM audio_assets WHERE id=$1", wanted).Scan(&status); err != nil {
+			t.Fatal(err)
+		}
+		if status == "ready" {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	cancel()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("worker did not stop")
+	}
+	if status != "ready" {
+		t.Fatalf("wanted recording status=%q", status)
+	}
+	var attempts int
+	if err := f.pool.QueryRow(t.Context(), "SELECT status,attempts FROM audio_assets WHERE id=$1", background).Scan(&status, &attempts); err != nil || status != "ready" || attempts != 1 {
+		t.Fatalf("background recording did not finish normally: status=%q attempts=%d err=%v", status, attempts, err)
+	}
+}
+
+func TestTaskAudioWorkerResumesQueueAfterRestart(t *testing.T) {
+	f := newFixture(t)
+	assets := importCurrentTaskAudios(t, f, "restart-map.csv", variantMapCSV(t))
+	assetID := assets[0].id
+	keepOnlyQueuedAudio(t, f, assets, assetID)
+	// A killed process leaves its claim in PostgreSQL until its lease expires.
+	if _, err := f.pool.Exec(t.Context(), "UPDATE audio_assets SET status='processing',claim_token='killed-worker',lease_until=now()-interval '1 second',attempts=1 WHERE id=$1", assetID); err != nil {
+		t.Fatal(err)
+	}
+	cfg := f.app.cfg
+	cfg.APIMode = "mock"
+	cfg.AudioPollInterval = time.Millisecond
+	restarted, err := New(cfg, f.pool, zap.NewNop())
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	done := make(chan error, 1)
+	go func() { done <- restarted.RunAudioWorker(ctx) }()
+	deadline := time.Now().Add(3 * time.Second)
+	var status string
+	for time.Now().Before(deadline) {
+		if err := f.pool.QueryRow(t.Context(), "SELECT status FROM audio_assets WHERE id=$1", assetID).Scan(&status); err != nil {
+			t.Fatal(err)
+		}
+		if status == "ready" {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	cancel()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("restarted worker did not stop")
+	}
+	if status != "ready" {
+		t.Fatalf("queue did not resume after restart: status=%q", status)
+	}
+	asset, err := restarted.audioWorker.Regenerate(t.Context(), assetID)
+	if err != nil || asset.Status != "ready" {
+		t.Fatalf("resumed recording is unreadable: status=%q err=%v", asset.Status, err)
+	}
+}
+
 func TestTaskAudioWorkerRecoversUploadedObjectAndRetriesHeadFailure(t *testing.T) {
 	f := newFixture(t)
 	assets := importCurrentTaskAudios(t, f, "recovery-map.csv", variantMapCSV(t))

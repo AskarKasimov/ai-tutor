@@ -77,6 +77,7 @@ WITH candidate AS (
     -- Students hear audio first where they wait for it: current training
     -- exercises, then started variants in question order, then the rest.
     ORDER BY
+        priority_requested_at DESC NULLS LAST,
         EXISTS (
             SELECT 1 FROM training_exercises exercise
             WHERE exercise.audio_asset_id = audio_assets.id
@@ -503,6 +504,32 @@ func (q *Queries) LinkTaskAudioAsset(ctx context.Context, arg LinkTaskAudioAsset
 	return result.RowsAffected(), nil
 }
 
+const prioritizeTaskAudio = `-- name: PrioritizeTaskAudio :execrows
+UPDATE audio_assets asset
+SET priority_requested_at = now(), next_attempt_at = now(), updated_at = now()
+WHERE asset.id = $1 AND asset.status = 'pending'
+  AND (asset.priority_requested_at IS NULL OR EXISTS (
+      SELECT 1 FROM audio_assets other
+      WHERE other.status = 'pending' AND other.priority_requested_at > asset.priority_requested_at
+  ))
+  AND EXISTS (
+      SELECT 1 FROM tasks task
+      JOIN outcomes outcome ON outcome.id = task.outcome_id
+      JOIN constituents constituent ON constituent.id = outcome.constituent_id
+      JOIN competencies competency ON competency.id = constituent.competency_id
+      JOIN subjects subject ON subject.active_revision = competency.revision
+      WHERE task.audio_asset_id = asset.id
+  )
+`
+
+func (q *Queries) PrioritizeTaskAudio(ctx context.Context, id string) (int64, error) {
+	result, err := q.db.Exec(ctx, prioritizeTaskAudio, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const recoverExpiredTaskAudio = `-- name: RecoverExpiredTaskAudio :exec
 UPDATE audio_assets
 SET status = CASE
@@ -515,12 +542,12 @@ SET status = CASE
             JOIN subjects subject ON subject.active_revision = competency.revision
             WHERE task.audio_asset_id = audio_assets.id
         ) THEN 'cancelled'
-        WHEN attempts >= 5 THEN 'failed'
         ELSE 'pending'
     END,
+    attempts = greatest(attempts - 1, 0),
     lease_until = NULL,
     claim_token = NULL,
-    next_attempt_at = CASE WHEN attempts >= 5 THEN next_attempt_at ELSE now() END,
+    next_attempt_at = now(),
     last_error_code = CASE
         WHEN NOT EXISTS (
             SELECT 1
@@ -531,8 +558,7 @@ SET status = CASE
             JOIN subjects subject ON subject.active_revision = competency.revision
             WHERE task.audio_asset_id = audio_assets.id
         ) THEN 'task_no_longer_current'
-        WHEN attempts >= 5 THEN 'attempts_exhausted'
-        ELSE last_error_code
+        ELSE 'worker_interrupted'
     END,
     updated_at = now()
 WHERE status = 'processing' AND lease_until <= now()
@@ -541,4 +567,39 @@ WHERE status = 'processing' AND lease_until <= now()
 func (q *Queries) RecoverExpiredTaskAudio(ctx context.Context) error {
 	_, err := q.db.Exec(ctx, recoverExpiredTaskAudio)
 	return err
+}
+
+const releaseTaskAudio = `-- name: ReleaseTaskAudio :execrows
+WITH current_task AS (
+    SELECT EXISTS (
+        SELECT 1
+        FROM tasks task
+        JOIN outcomes outcome ON outcome.id = task.outcome_id
+        JOIN constituents constituent ON constituent.id = outcome.constituent_id
+        JOIN competencies competency ON competency.id = constituent.competency_id
+        JOIN subjects subject ON subject.active_revision = competency.revision
+        WHERE task.audio_asset_id = $1
+    ) AS is_current
+)
+UPDATE audio_assets asset
+SET status = CASE WHEN current_task.is_current THEN 'pending' ELSE 'cancelled' END,
+    attempts = greatest(asset.attempts - 1, 0),
+    lease_until = NULL, claim_token = NULL, next_attempt_at = now(),
+    last_error_code = CASE WHEN current_task.is_current THEN 'worker_interrupted' ELSE 'task_no_longer_current' END,
+    updated_at = now()
+FROM current_task
+WHERE asset.id = $1 AND asset.status = 'processing' AND asset.claim_token = $2
+`
+
+type ReleaseTaskAudioParams struct {
+	ID         string
+	ClaimToken *string
+}
+
+func (q *Queries) ReleaseTaskAudio(ctx context.Context, arg ReleaseTaskAudioParams) (int64, error) {
+	result, err := q.db.Exec(ctx, releaseTaskAudio, arg.ID, arg.ClaimToken)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }

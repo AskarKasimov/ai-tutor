@@ -22,6 +22,14 @@ func New(pool *pgxpool.Pool) *Repository {
 	return &Repository{pool: pool, q: db.New(pool)}
 }
 
+func (r *Repository) Prioritize(ctx context.Context, assetID string) (bool, error) {
+	rows, err := r.q.PrioritizeTaskAudio(ctx, assetID)
+	if err != nil {
+		return false, err
+	}
+	return rows != 0, nil
+}
+
 func (r *Repository) Enqueue(ctx context.Context, id, instruction, objectKey string) error {
 	return r.q.EnqueueTaskAudio(ctx, db.EnqueueTaskAudioParams{ID: id, Instruction: instruction, ObjectKey: objectKey})
 }
@@ -105,6 +113,14 @@ func (r *Repository) Fail(ctx context.Context, claim application.Claim, code str
 	})
 	if err != nil {
 		return false, fmt.Errorf("fail task audio: %w", err)
+	}
+	return rows == 1, nil
+}
+
+func (r *Repository) Release(ctx context.Context, claim application.Claim) (bool, error) {
+	rows, err := r.q.ReleaseTaskAudio(ctx, db.ReleaseTaskAudioParams{ID: claim.Asset.ID, ClaimToken: &claim.Token})
+	if err != nil {
+		return false, fmt.Errorf("release interrupted task audio: %w", err)
 	}
 	return rows == 1, nil
 }

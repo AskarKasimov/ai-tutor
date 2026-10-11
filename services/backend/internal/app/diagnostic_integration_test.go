@@ -149,6 +149,10 @@ func TestDiagnosticSessionAPIProgressOwnershipAndSnapshotPrivacy(t *testing.T) {
 	if readyMetadata.Code != http.StatusOK || !strings.Contains(readyMetadata.Body.String(), `"status":"ready"`) || !strings.Contains(readyMetadata.Body.String(), `"audio_url":"/task-audio/`+audioID+`/file"`) {
 		t.Fatalf("ready metadata: %d %s", readyMetadata.Code, readyMetadata.Body.String())
 	}
+	var pendingCount int
+	if err := f.pool.QueryRow(t.Context(), "SELECT count(*) FROM audio_assets WHERE status='pending'").Scan(&pendingCount); err != nil || pendingCount == 0 {
+		t.Fatalf("ready audio must be served while other map recordings are pending: count=%d err=%v", pendingCount, err)
+	}
 	for range 10 {
 		fileResponse := f.request(http.MethodGet, "/task-audio/"+audioID+"/file", "", access)
 		if fileResponse.Code != http.StatusOK || fileResponse.Header().Get("Content-Type") != "audio/wav" || fileResponse.Header().Get("Cache-Control") != "private, no-store" || !bytes.Equal(fileResponse.Body.Bytes(), wavBytes()) {

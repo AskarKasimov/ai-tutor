@@ -2381,6 +2381,7 @@ paths:
       x-implementation: implemented
   /diagnostic-sessions/{id}/current/audio:
     get:
+      description: Незавершённая запись получает первое место среди ожидающих. Уже выполняющаяся озвучка не прерывается.
       parameters:
         - description: ID сессии
           in: path
@@ -3371,6 +3372,7 @@ paths:
       x-implementation: implemented
   /training-sessions/{id}/current/audio:
     get:
+      description: Незавершённая запись получает первое место среди ожидающих. Уже выполняющаяся озвучка не прерывается.
       parameters:
         - description: ID тренировки
           in: path

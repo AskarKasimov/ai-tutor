@@ -12,7 +12,7 @@ import {
 } from '@/entities/training'
 import { userQueryKeys } from '@/entities/user'
 import * as audio from '@/shared/lib'
-import { TrainingPreview as TrainingPreviewScreen } from '@/pages/trainer/ui/training-preview'
+import { TrainingEntry } from '@/pages/trainer/ui/training-entry'
 
 vi.mock('@/shared/lib', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/shared/lib')>()),
@@ -100,7 +100,8 @@ function setup(
   const readPlan = vi
     .spyOn(dependencies.training, 'readTrainingPreview')
     .mockImplementation(
-      async () => plans[Math.min(readPlan.mock.calls.length, plans.length - 1)],
+      async () =>
+        plans[Math.min(readPlan.mock.calls.length - 1, plans.length - 1)],
     )
   const start = vi
     .spyOn(dependencies.training, 'startTraining')
@@ -138,7 +139,7 @@ function setup(
   function Harness() {
     const [visible, setVisible] = useState(true)
     return visible ? (
-      <TrainingPreviewScreen
+      <TrainingEntry
         userId="demo-student"
         diagnosticId="d1"
         subjectName="Предмет"
@@ -159,14 +160,19 @@ function setup(
   return { start, readPlan, readSession, onBack }
 }
 
-it('renders free preview as untested when the original score is null', async () => {
-  setup()
+it('opens a new training directly without an extra start click', async () => {
+  const { start } = setup()
+  expect(await screen.findByText('Вопрос')).toBeVisible()
   expect(
-    (await screen.findAllByRole('heading', { name: 'Свободная тренировка' }))
-      .length,
-  ).toBe(1)
-  expect(screen.getByText('Исходный результат не проверен.')).toBeVisible()
-  expect(screen.queryByText(/Исходный балл: 0/)).not.toBeInTheDocument()
+    screen.queryByRole('button', { name: 'Начать тренировку' }),
+  ).not.toBeInTheDocument()
+  expect(start).toHaveBeenCalledOnce()
+  expect(start).toHaveBeenCalledWith(
+    'd1',
+    expect.any(String),
+    1,
+    expect.any(AbortSignal),
+  )
 })
 
 it('does not allow a start when the preview has no practice tasks', async () => {
@@ -179,12 +185,12 @@ it('does not allow a start when the preview has no practice tasks', async () => 
     ),
   ).toBeVisible()
   expect(
-    screen.getByRole('button', { name: 'Начать тренировку' }),
-  ).toBeDisabled()
+    screen.queryByRole('button', { name: 'Начать тренировку' }),
+  ).not.toBeInTheDocument()
   expect(start).not.toHaveBeenCalled()
 })
 
-it('refreshes stale preview and waits for a second explicit start click', async () => {
+it('refreshes a stale plan and allows retrying the failed start', async () => {
   const refreshed = preview({
     plan_revision: 2,
     topics: [{ ...target, outcome_name: 'Обновлённая тема' }],
@@ -198,37 +204,42 @@ it('refreshes stale preview and waits for a second explicit start click', async 
       )
       .mockResolvedValue(progress),
   })
-  fireEvent.click(
-    await screen.findByRole('button', { name: 'Начать тренировку' }),
-  )
   expect(await screen.findByText(/План обновился/)).toBeVisible()
   await waitFor(() => expect(readPlan).toHaveBeenCalledTimes(2))
-  expect(screen.getByText(/Обновлённая тема/)).toBeVisible()
   expect(start).toHaveBeenCalledTimes(1)
-  fireEvent.click(screen.getByRole('button', { name: 'Начать тренировку' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Попробовать снова' }))
   expect(await screen.findByText('Вопрос')).toBeVisible()
   expect(start).toHaveBeenCalledTimes(2)
 })
 
-it('offers a resume card and continues an existing session without posting a new start', async () => {
+it('opens an existing session directly without posting a new start', async () => {
   const { start } = setup({ existing: progress })
-  expect(
-    await screen.findByRole('button', { name: 'Продолжить тренировку' }),
-  ).toBeVisible()
-  expect(
-    screen.getByRole('heading', { name: /Вы остановились на раунде/ }),
-  ).toBeVisible()
-  expect(screen.queryByText(/Исходный балл/)).not.toBeInTheDocument()
-  fireEvent.click(screen.getByRole('button', { name: 'Продолжить тренировку' }))
   expect(await screen.findByText('Вопрос')).toBeVisible()
+  expect(
+    screen.queryByRole('button', { name: 'Продолжить тренировку' }),
+  ).not.toBeInTheDocument()
   expect(start).not.toHaveBeenCalled()
+})
+
+it('allows retrying a failed automatic start', async () => {
+  const { start } = setup({
+    start: vi
+      .fn()
+      .mockRejectedValueOnce(new TrainingApiError(500, 'ERROR'))
+      .mockResolvedValue(progress),
+  })
+  expect(await screen.findByRole('alert')).toHaveTextContent(
+    'Не удалось начать тренировку',
+  )
+  expect(start).toHaveBeenCalledOnce()
+  fireEvent.click(screen.getByRole('button', { name: 'Попробовать снова' }))
+  expect(await screen.findByText('Вопрос')).toBeVisible()
+  expect(start).toHaveBeenCalledTimes(2)
+  expect(start.mock.calls[1][1]).toBe(start.mock.calls[0][1])
 })
 
 it('clears a missing session and returns to the subject selector', async () => {
   const { onBack } = setup({ existing: progress, sessionMissing: true })
-  fireEvent.click(
-    await screen.findByRole('button', { name: 'Продолжить тренировку' }),
-  )
   expect(
     await screen.findByText('Текущая тренировка больше недоступна.'),
   ).toBeVisible()
@@ -254,9 +265,6 @@ it('refreshes the current session after an exercise conflict', async () => {
     url: 'blob:voice',
     dispose: vi.fn(),
   })
-  fireEvent.click(
-    await screen.findByRole('button', { name: 'Продолжить тренировку' }),
-  )
   fireEvent.click(await screen.findByRole('button', { name: 'Начать запись' }))
   fireEvent.click(
     await screen.findByRole('button', { name: /Завершить запись/ }),
@@ -278,9 +286,6 @@ it('disposes an active recording when Back returns to the selector', async () =>
     dispose,
     stop: vi.fn(),
   })
-  fireEvent.click(
-    await screen.findByRole('button', { name: 'Продолжить тренировку' }),
-  )
   fireEvent.click(await screen.findByRole('button', { name: 'Начать запись' }))
   expect(
     await screen.findByRole('button', { name: /Завершить запись/ }),
@@ -316,9 +321,6 @@ it('loads additional answer history pages on demand', async () => {
       { items: [attempt(2, 'Вторая запись')], targets: [target] },
     ],
   })
-  fireEvent.click(
-    await screen.findByRole('button', { name: 'Продолжить тренировку' }),
-  )
   expect(await screen.findByText('Первая запись')).toBeVisible()
   fireEvent.click(screen.getByRole('button', { name: 'Показать ещё' }))
   expect(await screen.findByText('Вторая запись')).toBeVisible()

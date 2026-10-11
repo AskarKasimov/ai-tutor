@@ -5,9 +5,9 @@ import {
   Mic,
   RotateCcw,
   Sparkles,
-  Square,
 } from 'lucide-react'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/features/auth'
 import { DiagnosticApiError } from '@/entities/diagnostic-session'
@@ -23,8 +23,8 @@ import type {
 } from '@/entities/diagnostic-session'
 import {
   ListenButton,
-  QuestionNavigator,
   TrainerCapturePanel,
+  TrainerProgress,
   TrainerQuestion,
   TrainerScore,
   TrainerShell,
@@ -32,22 +32,7 @@ import {
   TrainerWorkspace,
   sessionStyles,
 } from './trainer-shared'
-import type { NavigatorItem, NavigatorState } from './trainer-shared'
-import {
-  initialTrack,
-  readTopicTrack,
-  readTrack,
-  recordDiagnosticAnswer,
-  recordTopicAnswer,
-  scoreState,
-  writeTopicTrack,
-  writeTrack,
-} from '../model/question-track'
-import type {
-  QuestionTrack,
-  TopicTrack,
-  TrackState,
-} from '../model/question-track'
+import { diagnosticPercent } from '../model/diagnostic-percent'
 import styles from '@/pages/trainer/ui/trainer-layout.module.scss'
 import diagnosticStyles from '@/pages/trainer/ui/diagnostic.module.scss'
 
@@ -151,33 +136,16 @@ function StudentDiagnostic({
       /* A broken page intent must not affect the diagnostic session. */
     }
   }, [progress, subjectId, userId])
-  const track = useDiagnosticTrack(progress)
-  const crumb =
-    track.kind === 'topic'
-      ? track.crumb &&
-        t(
-          track.crumb.basic ? 'session.topicBasicCrumb' : 'session.topicCrumb',
-          {
-            number: track.crumb.topic,
-            count: track.crumb.count,
-          },
-        )
-      : track.question !== undefined
-        ? t('session.questionNumber', { number: track.question })
-        : undefined
   return (
     <TrainerShell
       title={t('diagnostic.title')}
       subject={subjectName}
-      crumb={crumb}
       onBack={onBack}
-      navigator={
+      progress={
         progress ? (
-          <QuestionNavigator
-            label={t('session.navigatorLabel')}
-            items={track.items}
-            progress={track.progress}
-            kind={track.kind}
+          <TrainerProgress
+            label={t('session.diagnosticProgress')}
+            percent={diagnosticPercent(progress)}
           />
         ) : undefined
       }
@@ -221,8 +189,6 @@ function StudentDiagnostic({
           key={progress.session_id}
           userId={userId}
           onTraining={onTraining}
-          onAnswered={track.record}
-          onShown={track.clearShown}
           training={training}
           progress={progress}
         />
@@ -230,152 +196,14 @@ function StudentDiagnostic({
     </TrainerShell>
   )
 }
-// Navigator states for the fixed diagnostic order: answered positions are
-// shown as done without their score, the next position is current.
-type TopicPosition = { topic: number; step: number }
-
-function trackState(state: TrackState | undefined): NavigatorState {
-  return state === 'skipped' ? state : 'done'
-}
-
-// Navigator states. With competency_count the navigator shows topics: their
-// number is fixed, while clarifying (basic) questions appear only when asked.
-// Older sessions without it keep the per-question view.
-function useDiagnosticTrack(progress?: DiagnosticProgress) {
-  const sessionId = progress?.session_id
-  const done = progress ? progress.completed_tasks + progress.skipped_tasks : 0
-  const [, rerender] = useState(0)
-  const [shown, setShownIndex] = useState<number | null>(null)
-  const [shownTopic, setShownTopic] = useState<TopicPosition | null>(null)
-  const current = useRef<{
-    id?: string
-    track: QuestionTrack | null
-    topics: TopicTrack
-  }>({ track: null, topics: {} })
-  if (sessionId && current.current.id !== sessionId)
-    current.current = {
-      id: sessionId,
-      track:
-        readTrack(sessionId) ??
-        initialTrack(done, progress?.skipped_tasks ?? 0),
-      topics: readTopicTrack(sessionId),
-    }
-  // Remember where each shown task sits, so its answer lands in its topic.
-  const positions = useRef(new Map<string, TopicPosition>())
-  if (progress?.current && progress.current_competency)
-    positions.current.set(progress.current.variant_task_id, {
-      topic: progress.current_competency,
-      step: progress.current_step ?? 0,
-    })
-  const handled = useRef<unknown>(null)
-  const record = useCallback((taskId: string, response: DiagnosticProgress) => {
-    const id = current.current.id
-    const base = current.current.track
-    if (!id || !base || handled.current === response) return
-    handled.current = response
-    const next = recordDiagnosticAnswer(base, response)
-    let topics = current.current.topics
-    const position = positions.current.get(taskId)
-    if (position) {
-      topics = recordTopicAnswer(
-        topics,
-        position.topic,
-        position.step,
-        response.answer_skipped
-          ? 'skipped'
-          : scoreState(response.score ?? 0, response.grader_max_score ?? 1),
-      )
-      writeTopicTrack(id, topics)
-    }
-    current.current = { id, track: next.track, topics }
-    writeTrack(id, next.track)
-    setShownIndex(next.index)
-    setShownTopic(position ?? null)
-    rerender((value) => value + 1)
-  }, [])
-  const clearShown = useCallback(() => {
-    setShownIndex(null)
-    setShownTopic(null)
-  }, [])
-  const count = progress?.competency_count
-  if (progress && count) {
-    const active = progress.status === 'active'
-    const topic = active ? (progress.current_competency ?? 1) : count + 1
-    const step = active ? (progress.current_step ?? 0) : 0
-    const items: NavigatorItem[] = Array.from({ length: count }, (_, i) => {
-      const number = i + 1
-      const states = current.current.topics[number] ?? []
-      const basics: NavigatorState[] = []
-      for (const basic of [1, 2]) {
-        if (states[basic]) basics.push(trackState(states[basic]))
-        else if (number === topic && basic === step) basics.push('current')
-      }
-      return {
-        number,
-        state: states[0]
-          ? trackState(states[0])
-          : number < topic || (number === topic && step > 0)
-            ? 'done'
-            : number === topic
-              ? 'current'
-              : 'locked',
-        basics,
-      }
-    })
-    const position = shownTopic ?? (active ? { topic, step } : null)
-    return {
-      kind: 'topic' as const,
-      items,
-      record,
-      clearShown,
-      progress: { current: Math.min(topic - 1, count), total: count },
-      crumb: position
-        ? { topic: position.topic, count, basic: position.step > 0 }
-        : undefined,
-    }
-  }
-  const states = current.current.track?.states ?? []
-  const items: NavigatorItem[] = progress
-    ? Array.from({ length: progress.total_tasks }, (_, index) => ({
-        number: index + 1,
-        state:
-          index < done
-            ? trackState(states[index])
-            : index === done && progress.status === 'active'
-              ? 'current'
-              : 'locked',
-      }))
-    : []
-  const number =
-    shown !== null
-      ? shown + 1
-      : progress?.status === 'active'
-        ? done + 1
-        : undefined
-  return {
-    kind: 'question' as const,
-    items,
-    record,
-    clearShown,
-    progress: progress
-      ? { current: done, total: progress.total_tasks }
-      : undefined,
-    question: number,
-  }
-}
-
 function DiagnosticFlow({
   userId,
   onTraining,
-  onAnswered,
-  onShown,
   training,
   progress,
 }: {
   userId: string
   onTraining: (diagnosticId: string) => void
-  onAnswered: (taskId: string, response: DiagnosticProgress) => void
-  onShown: () => void
   training: ReturnType<typeof useDiagnosticSession>
   progress: DiagnosticProgress
 }) {
@@ -396,11 +224,6 @@ function DiagnosticFlow({
     if (openTaskId) void voice.speak({ auto: true })
     // voice is recreated on every render; autoplay runs once per opened task.
   }, [openTaskId])
-  const accepted = voice.accepted
-  useEffect(() => {
-    if (accepted) onAnswered(accepted.task.variant_task_id, accepted.progress)
-    else onShown()
-  }, [accepted, onAnswered, onShown])
   const [skipFailed, setSkipFailed] = useState(false)
   async function skip() {
     setSkipFailed(false)
@@ -465,20 +288,41 @@ function DiagnosticFlow({
           help: t('trainer.micFailedHelp'),
         }
       : undefined
+  const instruction = (
+    <>
+      <ListenButton
+        state={voice.speech}
+        disabled={!response && blocked}
+        onClick={() => void voice.speak()}
+      />
+      {voice.speechError && (
+        <Text as="p" role="alert" className={sessionStyles.hint}>
+          {t('trainer.speechError')}
+        </Text>
+      )}
+      {!response && voice.pendingHint && (
+        <Text as="p" role="status" className={sessionStyles.hint}>
+          {t('trainer.audioPreparing')}
+        </Text>
+      )}
+      {!response && voice.cancelledHint && (
+        <Text as="p" role="status" className={sessionStyles.hint}>
+          {t('trainer.audioCancelled')}
+        </Text>
+      )}
+    </>
+  )
   return (
     <TrainerWorkspace>
-      <Question task={task} transcript={response?.text} />
+      <Question
+        task={task}
+        transcript={response?.text}
+        instruction={instruction}
+      />
       {response ? (
         <TrainerCapturePanel
           stage="ready"
           seconds={seconds}
-          speech={
-            <ListenButton
-              state={voice.speech}
-              onClick={() => void voice.speak()}
-            />
-          }
-          audioUrl={voice.audioUrl}
           answered={response.answer_skipped ? 'skipped' : 'accepted'}
         >
           <Button className={sessionStyles.primary} onClick={voice.reset}>
@@ -494,30 +338,6 @@ function DiagnosticFlow({
           stage={voice.stage === 'result' ? 'ready' : voice.stage}
           seconds={seconds}
           stream={voice.stream}
-          speech={
-            <>
-              <ListenButton
-                state={voice.speech}
-                disabled={blocked}
-                onClick={() => void voice.speak()}
-              />
-              {voice.speechError && (
-                <Text as="p" role="alert" className={sessionStyles.hint}>
-                  {t('trainer.speechError')}
-                </Text>
-              )}
-              {voice.pendingHint && (
-                <Text as="p" role="status" className={sessionStyles.hint}>
-                  {t('trainer.audioPreparing')}
-                </Text>
-              )}
-              {voice.cancelledHint && (
-                <Text as="p" role="status" className={sessionStyles.hint}>
-                  {t('trainer.audioCancelled')}
-                </Text>
-              )}
-            </>
-          }
           errorMessage={
             skipFailed
               ? t('session.skipError')
@@ -530,7 +350,16 @@ function DiagnosticFlow({
                 : undefined
           }
           micError={micError}
-          audioUrl={voice.audioUrl}
+          onMic={
+            // The circle only starts or stops a recording; a pending retry or
+            // a stale question keeps their explicit buttons.
+            needsRefresh ||
+            processing ||
+            waiting ||
+            (!recording && voice.hasPending && !rerecord)
+              ? undefined
+              : () => void (recording ? voice.stop() : voice.start())
+          }
           onSkip={() => void skip()}
           skipDisabled={blocked}
         >
@@ -541,45 +370,31 @@ function DiagnosticFlow({
             >
               {t('diagnostic.refresh')}
             </Button>
-          ) : (
+          ) : failed ? (
+            // Recording starts and stops from the microphone circle; the
+            // button only recovers from a failure.
             <Button
-              className={recording ? sessionStyles.stop : sessionStyles.primary}
-              variant={recording ? 'soft' : 'solid'}
-              disabled={processing || waiting}
+              className={sessionStyles.primary}
               onClick={() =>
-                void (recording
-                  ? voice.stop()
-                  : voice.hasPending && !rerecord
-                    ? voice.retry()
-                    : voice.start())
+                void (voice.hasPending && !rerecord
+                  ? voice.retry()
+                  : voice.start())
               }
             >
-              {recording && (
-                <Square size={14} fill="currentColor" aria-hidden="true" />
+              {voice.hasPending && !rerecord ? (
+                <RotateCcw size={18} aria-hidden="true" />
+              ) : (
+                <Mic size={18} aria-hidden="true" />
               )}
-              {failed &&
-                (voice.hasPending && !rerecord ? (
-                  <RotateCcw size={18} aria-hidden="true" />
-                ) : (
-                  <Mic size={18} aria-hidden="true" />
-                ))}
               {t(
-                recording
-                  ? 'trainer.stopRecording'
-                  : processing
-                    ? 'trainer.busy'
-                    : waiting
-                      ? 'trainer.allow'
-                      : voice.hasPending && !rerecord
-                        ? 'diagnostic.retrySubmit'
-                        : micError
-                          ? 'trainer.retry'
-                          : failed
-                            ? 'diagnostic.recordAgain'
-                            : 'trainer.start',
+                voice.hasPending && !rerecord
+                  ? 'diagnostic.retrySubmit'
+                  : micError
+                    ? 'trainer.retry'
+                    : 'diagnostic.recordAgain',
               )}
             </Button>
-          )}
+          ) : null}
           {canAlsoRerecord && (
             <Button
               variant="ghost"
@@ -598,9 +413,11 @@ function DiagnosticFlow({
 function Question({
   task,
   transcript,
+  instruction,
 }: {
   task: DiagnosticTask
   transcript?: string
+  instruction?: ReactNode
 }) {
   const { t } = useTranslation()
   return (
@@ -608,6 +425,7 @@ function Question({
       badge={t(`diagnostic.${task.role}`)}
       question={task.question}
       options={task.options}
+      instruction={instruction}
     >
       <TrainerTranscript id="transcript-title" text={transcript} />
     </TrainerQuestion>

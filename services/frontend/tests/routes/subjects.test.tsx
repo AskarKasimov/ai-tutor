@@ -67,11 +67,13 @@ it('loads subjects without creating a variant, then starts only the chosen subje
     screen.getByRole('article', { name: 'Демонстрационный предмет A' }),
   ).toBeVisible()
   // Diagnostic and training are one process: a single action, no training tile.
-  expect(
-    screen.getByText(
-      'Всё проходит голосом: слушайте задание и отвечайте в микрофон.',
-    ),
-  ).toBeVisible()
+  // Four steps say what the student does, starting with a voice check.
+  const steps = screen.getByRole('list', { name: 'Как проходит обучение' })
+  expect(steps).toHaveTextContent('Пройдите проверку')
+  expect(steps).toHaveTextContent('Голосом, без клавиатуры')
+  expect(steps).toHaveTextContent('Найдите пробелы')
+  expect(steps).toHaveTextContent('Составлен лично под вас')
+  expect(steps).toHaveTextContent('Подготовьтесь по плану')
   expect(
     screen.queryByRole('button', { name: /тренировк/i }),
   ).not.toBeInTheDocument()
@@ -81,6 +83,9 @@ it('loads subjects without creating a variant, then starts only the chosen subje
   expect(requests.some((r) => r.includes('/learning-state'))).toBe(true)
   expect(requests.some((r) => r.endsWith('POST /api/v1/variants'))).toBe(false)
   const startButton = screen.getByRole('button', { name: 'Начать обучение' })
+  expect(startButton).toHaveAccessibleDescription(
+    'Проверка знаний, затем подготовка',
+  )
   fireEvent.click(startButton)
   fireEvent.click(startButton)
   expect(

@@ -1,10 +1,10 @@
 import WaveSurfer from 'wavesurfer.js'
 import RecordPlugin from 'wavesurfer.js/dist/plugins/record.esm.js'
 
-export function createVoiceWaveform(container: HTMLElement) {
+export function createVoiceWaveform(container: HTMLElement, height = 82) {
   const waveform = WaveSurfer.create({
     container,
-    height: 82,
+    height,
     waveColor: '#6c99f2',
     cursorWidth: 0,
     barWidth: 5,

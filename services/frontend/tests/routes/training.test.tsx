@@ -60,7 +60,10 @@ it('loads a focused preview before starting and explicitly starts the frozen pla
   ).toBeVisible()
   expect(
     screen.getByRole('button', { name: 'Пройти проверку заново' }),
-  ).toBeEnabled()
+  ).toHaveAccessibleDescription('С первого вопроса')
+  expect(
+    screen.getByRole('button', { name: 'Продолжить обучение' }),
+  ).toHaveAccessibleDescription('С того же места')
   fireEvent.click(
     await screen.findByRole('button', { name: 'Продолжить обучение' }),
   )

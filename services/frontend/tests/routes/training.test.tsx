@@ -42,7 +42,7 @@ it('loads a focused preview before starting and explicitly starts the frozen pla
   fireEvent.click(
     await screen.findByRole(
       'button',
-      { name: 'Начать диагностику' },
+      { name: 'Начать обучение' },
       { timeout: 5000 },
     ),
   )
@@ -54,8 +54,15 @@ it('loads a focused preview before starting and explicitly starts the frozen pla
     await screen.findByRole('button', { name: 'Посмотреть итог' }),
   )
   fireEvent.click(await screen.findByRole('button', { name: 'На главную' }))
+  // The single course action resumes the process in training.
+  expect(
+    await screen.findByText('Проверка пройдена — продолжайте тренировку.'),
+  ).toBeVisible()
+  expect(
+    screen.getByRole('button', { name: 'Пройти проверку заново' }),
+  ).toBeEnabled()
   fireEvent.click(
-    await screen.findByRole('button', { name: 'Открыть тренировку' }),
+    await screen.findByRole('button', { name: 'Продолжить обучение' }),
   )
 
   expect(

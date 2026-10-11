@@ -41,6 +41,7 @@ func newFakeQueue(count int) *fakeQueue {
 	}
 	return &fakeQueue{assets: assets, completeOK: true, current: true, completeCh: make(chan struct{}, count), failedCh: make(chan struct{}, count)}
 }
+func (q *fakeQueue) Prioritize(context.Context, string) (bool, error) { return false, nil }
 func (q *fakeQueue) FindReady(_ context.Context, instruction, excludeID string) (audioasset.Asset, bool, error) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
@@ -95,6 +96,18 @@ func (q *fakeQueue) Complete(_ context.Context, claim Claim, bucket, uri, url st
 	q.mu.Unlock()
 	q.completeCh <- struct{}{}
 	return ok, err
+}
+func (q *fakeQueue) Release(ctx context.Context, claim Claim) (bool, error) {
+	if err := ctx.Err(); err != nil {
+		return false, err
+	}
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	asset := claim.Asset
+	asset.Status = audioasset.Pending
+	asset.Attempts--
+	q.assets = append(q.assets, asset)
+	return true, nil
 }
 func (q *fakeQueue) Fail(_ context.Context, claim Claim, code string, delay time.Duration) (bool, error) {
 	q.mu.Lock()
@@ -201,6 +214,86 @@ func (s *fakeSynth) Synthesize(ctx context.Context, _ string) ([]byte, error) {
 }
 
 type testWorkerConfig struct{ concurrency int }
+
+func TestRunRequeuesInterruptedClaimBeforeLeaseExpires(t *testing.T) {
+	queue := newFakeQueue(1)
+	queue.assets[0].Attempts = 4
+	synth := &fakeSynth{data: testWAV(), started: make(chan struct{}, 1), release: make(chan struct{})}
+	config := WorkerConfig{Concurrency: 1, PollInterval: time.Millisecond, VoiceTimeout: time.Minute, S3Timeout: time.Second, Bucket: "task-audio"}
+	worker := NewWorker(queue, &fakeStorage{}, synth, config)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan error, 1)
+	go func() { done <- worker.Run(ctx) }()
+	select {
+	case <-synth.started:
+	case <-time.After(time.Second):
+		t.Fatal("worker did not start synthesis")
+	}
+	cancel()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("worker did not stop")
+	}
+	if len(queue.assets) != 1 || queue.assets[0].Status != audioasset.Pending || queue.assets[0].Attempts != 4 {
+		t.Fatalf("interrupted final attempt was not returned to the queue: %#v", queue.assets)
+	}
+	restarted := NewWorker(queue, &fakeStorage{}, &fakeSynth{data: testWAV()}, config)
+	if processed, err := restarted.ProcessOne(context.Background()); !processed || err != nil || len(queue.completed) != 1 {
+		t.Fatalf("restart did not finish the interrupted recording: processed=%v err=%v completed=%d", processed, err, len(queue.completed))
+	}
+}
+
+type independentSynth func(context.Context, string) ([]byte, error)
+
+func (s independentSynth) Synthesize(ctx context.Context, text string) ([]byte, error) {
+	return s(ctx, text)
+}
+
+func TestRunCompletesReadyRecordingWhileAnotherIsStillSynthesizing(t *testing.T) {
+	queue := newFakeQueue(2)
+	queue.assets[0].Instruction = "slow"
+	queue.assets[1].Instruction = "fast"
+	slowStarted := make(chan struct{})
+	synth := independentSynth(func(ctx context.Context, text string) ([]byte, error) {
+		if text == "slow" {
+			close(slowStarted)
+			<-ctx.Done()
+			return nil, ctx.Err()
+		}
+		<-slowStarted
+		return testWAV(), nil
+	})
+	worker := NewWorker(queue, &fakeStorage{}, synth, WorkerConfig{Concurrency: 2, PollInterval: time.Millisecond, VoiceTimeout: 5 * time.Second, S3Timeout: time.Second, Bucket: "task-audio"})
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan error, 1)
+	go func() { done <- worker.Run(ctx) }()
+	select {
+	case <-queue.completeCh:
+		queue.mu.Lock()
+		completed := append([]Claim(nil), queue.completed...)
+		queue.mu.Unlock()
+		if len(completed) != 1 || completed[0].Asset.ID != "asset-01" {
+			t.Fatalf("independent completion = %#v", completed)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("ready recording waited for the slow recording")
+	}
+	cancel()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("worker did not stop")
+	}
+}
 
 func TestProcessOneSynthesizesOnceAndPersistsStableReferences(t *testing.T) {
 	queue, storage, synth := newFakeQueue(1), &fakeStorage{}, &fakeSynth{data: testWAV()}

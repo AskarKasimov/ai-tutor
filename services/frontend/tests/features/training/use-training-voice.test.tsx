@@ -26,6 +26,96 @@ const progress: TrainingProgress = {
     voice_instruction: 'Say it',
   },
 }
+it.each(['pending', 'processing'] as const)(
+  'keeps the button loading and polls %s training audio until ready',
+  async (status) => {
+    const deps = createAppDependencies()
+    let reads = 0
+    vi.spyOn(deps.training, 'readTrainingAudio').mockImplementation(
+      async () => ({
+        exercise_id: 'e1',
+        status: ++reads === 1 ? status : 'ready',
+        audio_url: reads === 1 ? null : '/task-audio/audio-1/file',
+      }),
+    )
+    vi.spyOn(deps.training, 'fetchTrainingAudioFile').mockResolvedValue(
+      new Blob(['wav'], { type: 'audio/wav' }),
+    )
+    const play = vi.spyOn(audio, 'playQuestion').mockResolvedValue(vi.fn())
+    const view = renderHook(
+      () => useTrainingVoice('u1', progress, vi.fn(), vi.fn()),
+      { wrapper: createQueryWrapper(createQueryClient(), deps) },
+    )
+    let speaking!: Promise<void>
+    act(() => {
+      speaking = view.result.current.speak()
+    })
+    await waitFor(() => expect(reads).toBe(1))
+    expect(view.result.current.audioStatus).toBe('loading')
+    expect(play).not.toHaveBeenCalled()
+    await act(async () => {
+      await speaking
+    })
+    await waitFor(() => expect(view.result.current.speaking).toBe(true), {
+      timeout: 2500,
+    })
+    expect(play).toHaveBeenCalledOnce()
+    view.unmount()
+  },
+)
+it.each(['button', 'microphone', 'unmount', 'exercise'])(
+  'cancels queued training audio using the %s',
+  async (action) => {
+    const deps = createAppDependencies()
+    const read = vi
+      .spyOn(deps.training, 'readTrainingAudio')
+      .mockResolvedValue({
+        exercise_id: 'e1',
+        status: 'pending',
+        audio_url: null,
+      })
+    vi.spyOn(audio, 'startRecording').mockResolvedValue({
+      stream: {} as MediaStream,
+      dispose: vi.fn(),
+      stop: vi.fn(),
+    })
+    const play = vi.spyOn(audio, 'playQuestion').mockResolvedValue(vi.fn())
+    const view = renderHook(
+      ({ current }) => useTrainingVoice('u1', current, vi.fn(), vi.fn()),
+      {
+        wrapper: createQueryWrapper(createQueryClient(), deps),
+        initialProps: { current: progress },
+      },
+    )
+    let speaking!: Promise<void>
+    act(() => {
+      speaking = view.result.current.speak()
+    })
+    await waitFor(() => expect(view.result.current.audioStatus).toBe('loading'))
+    await act(async () => {
+      if (action === 'button') await view.result.current.speak()
+      else if (action === 'microphone') await view.result.current.start()
+      else if (action === 'unmount') view.unmount()
+      else
+        view.rerender({
+          current: {
+            ...progress,
+            current: { ...progress.current, exercise_id: 'e2' },
+          },
+        })
+    })
+    await act(async () => {
+      await speaking
+    })
+    expect(read).toHaveBeenCalledOnce()
+    expect(play).not.toHaveBeenCalled()
+    if (action !== 'unmount') {
+      expect(view.result.current.audioStatus).toBe('idle')
+      view.unmount()
+    }
+  },
+)
+
 it('stops active instruction playback without starting it again', async () => {
   const deps = createAppDependencies()
   vi.spyOn(deps.training, 'readTrainingAudio').mockResolvedValue({

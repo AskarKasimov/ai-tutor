@@ -10,7 +10,8 @@ import (
 
 type countingAudioWorker struct{ runs atomic.Int32 }
 
-func (w *countingAudioWorker) Run(context.Context) error { w.runs.Add(1); return nil }
+func (w *countingAudioWorker) Run(context.Context) error                { w.runs.Add(1); return nil }
+func (w *countingAudioWorker) Prioritize(context.Context, string) error { return nil }
 func (w *countingAudioWorker) ProcessOne(context.Context) (bool, error) {
 	return false, nil
 }

@@ -6,6 +6,7 @@ export function useDiagnosticAudioQuery(
   userId: string,
   sessionId: string,
   taskId: string | undefined,
+  waiting = false,
 ) {
   const { diagnostic } = useDiagnosticDependencies()
   return useQuery({
@@ -18,9 +19,15 @@ export function useDiagnosticAudioQuery(
       taskId
         ? diagnostic.readDiagnosticAudio(sessionId, taskId, signal)
         : Promise.reject(new Error('Current task is missing')),
-    enabled: false,
+    enabled: waiting && !!taskId,
+    refetchInterval: (query) =>
+      waiting &&
+      (query.state.data?.status === 'pending' ||
+        query.state.data?.status === 'processing')
+        ? 1000
+        : false,
     retry: false,
-    staleTime: 0,
+    staleTime: waiting ? Infinity : 0,
     gcTime: 0,
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,

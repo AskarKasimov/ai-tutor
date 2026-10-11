@@ -530,46 +530,148 @@ it('does not repair a stored-audio authorization failure', async () => {
   expect(view.result.current.speechError).toBe(true)
 })
 
-it('shows a pending hint and plays only after a later ready read', async () => {
-  let reads = 0
-  vi.stubGlobal(
-    'fetch',
-    vi.fn(async (url: string) => {
-      if (url.includes('/current/audio')) {
-        reads++
-        return Promise.resolve(
-          Response.json(
-            reads === 1
-              ? { variant_task_id: 't1', status: 'pending', audio_url: null }
-              : {
-                  variant_task_id: 't1',
-                  status: 'ready',
-                  audio_url: '/task-audio/audio-1/file',
-                },
-          ),
-        )
-      }
-      return new Response(await validWavBlob().arrayBuffer(), {
-        headers: { 'Content-Type': 'audio/wav' },
-      })
-    }),
-  )
-  const play = vi.spyOn(audio, 'playQuestion').mockResolvedValue(vi.fn())
-  const view = renderDiagnosticVoice(() =>
-    useDiagnosticVoice('u1', 's1', task, vi.fn(), vi.fn()),
-  )
-  await act(async () => {
-    await view.result.current.speak()
-  })
-  expect(view.result.current.pendingHint).toBe(true)
-  expect(view.result.current.speechError).toBe(false)
-  expect(play).not.toHaveBeenCalled()
-  await act(async () => {
-    await view.result.current.speak()
-  })
-  expect(view.result.current.pendingHint).toBe(false)
-  expect(play).toHaveBeenCalledTimes(1)
-})
+it.each(['pending', 'processing'])(
+  'plays a %s recording as soon as it becomes ready without another click',
+  async (status) => {
+    const browserSpeak = vi.fn()
+    vi.stubGlobal('SpeechSynthesisUtterance', class {})
+    vi.stubGlobal('speechSynthesis', {
+      getVoices: () => [{ lang: 'ru-RU' }],
+      speak: browserSpeak,
+      cancel: vi.fn(),
+    })
+    let reads = 0
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        if (url.includes('/current/audio')) {
+          reads++
+          return Promise.resolve(
+            Response.json(
+              reads === 1
+                ? { variant_task_id: 't1', status, audio_url: null }
+                : {
+                    variant_task_id: 't1',
+                    status: 'ready',
+                    audio_url: '/task-audio/audio-1/file',
+                  },
+            ),
+          )
+        }
+        return new Response(await validWavBlob().arrayBuffer(), {
+          headers: { 'Content-Type': 'audio/wav' },
+        })
+      }),
+    )
+    const play = vi.spyOn(audio, 'playQuestion').mockResolvedValue(vi.fn())
+    const view = renderDiagnosticVoice(() =>
+      useDiagnosticVoice('u1', 's1', task, vi.fn(), vi.fn()),
+    )
+    await act(async () => {
+      await view.result.current.speak()
+    })
+    expect(view.result.current.pendingHint).toBe(true)
+    expect(view.result.current.speech).toBe('loading')
+    expect(browserSpeak).not.toHaveBeenCalled()
+    expect(view.result.current.speechError).toBe(false)
+    expect(play).not.toHaveBeenCalled()
+    await waitFor(() => expect(play).toHaveBeenCalledTimes(1), {
+      timeout: 2500,
+    })
+    expect(view.result.current.pendingHint).toBe(false)
+    view.unmount()
+  },
+)
+
+it.each(['failed', 'cancelled'])(
+  'stops waiting when queued audio becomes %s',
+  async (status) => {
+    let reads = 0
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        Response.json({
+          variant_task_id: 't1',
+          status: ++reads === 1 ? 'pending' : status,
+          audio_url: null,
+        }),
+      ),
+    )
+    const play = vi.spyOn(audio, 'playQuestion').mockResolvedValue(vi.fn())
+    const view = renderDiagnosticVoice(() =>
+      useDiagnosticVoice('u1', 's1', task, vi.fn(), vi.fn()),
+    )
+    await act(async () => {
+      await view.result.current.speak()
+    })
+    expect(view.result.current.pendingHint).toBe(true)
+    await waitFor(() => expect(view.result.current.pendingHint).toBe(false), {
+      timeout: 2500,
+    })
+    expect(view.result.current.cancelledHint).toBe(status === 'cancelled')
+    expect(view.result.current.speechError).toBe(status === 'failed')
+    expect(play).not.toHaveBeenCalled()
+    view.unmount()
+  },
+)
+
+it.each(['microphone', 'button'])(
+  'cancels waiting for queued audio using the %s',
+  async (action) => {
+    let resolvePoll!: (response: Response) => void
+    let pollSignal!: AbortSignal
+    let reads = 0
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((_url, init: RequestInit) => {
+        if (++reads === 1)
+          return Promise.resolve(
+            Response.json({
+              variant_task_id: 't1',
+              status: 'pending',
+              audio_url: null,
+            }),
+          )
+        pollSignal = init.signal!
+        return new Promise<Response>((resolve) => {
+          resolvePoll = resolve
+        })
+      }),
+    )
+    vi.spyOn(audio, 'startRecording').mockResolvedValue({
+      stream: {} as MediaStream,
+      dispose: vi.fn(),
+      stop: vi.fn(),
+    })
+    const play = vi.spyOn(audio, 'playQuestion').mockResolvedValue(vi.fn())
+    const view = renderDiagnosticVoice(() =>
+      useDiagnosticVoice('u1', 's1', task, vi.fn(), vi.fn()),
+    )
+    await act(async () => {
+      await view.result.current.speak()
+    })
+    await waitFor(() => expect(pollSignal).toBeDefined(), { timeout: 2500 })
+    await act(async () => {
+      if (action === 'microphone') await view.result.current.start()
+      else await view.result.current.speak()
+      resolvePoll(
+        Response.json({
+          variant_task_id: 't1',
+          status: 'ready',
+          audio_url: '/task-audio/audio-1/file',
+        }),
+      )
+    })
+    expect(pollSignal.aborted).toBe(true)
+    expect(view.result.current.stage).toBe(
+      action === 'microphone' ? 'recording' : 'ready',
+    )
+    expect(view.result.current.speech).toBe('idle')
+    expect(view.result.current.pendingHint).toBe(false)
+    expect(play).not.toHaveBeenCalled()
+    view.unmount()
+  },
+)
 
 it('shows a clear hint when the task audio was cancelled after a map replacement', async () => {
   vi.stubGlobal(

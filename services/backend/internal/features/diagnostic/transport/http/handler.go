@@ -132,6 +132,7 @@ func (h *Handler) Read(w http.ResponseWriter, r *http.Request) {
 
 // CurrentAudio returns saved audio metadata for the current task without advancing the session.
 // @Summary Прочитать состояние озвучки текущего задания
+// @Description Незавершённая запись получает первое место среди ожидающих. Уже выполняющаяся озвучка не прерывается.
 // @Tags Диагностика
 // @Security accessCookie
 // @Produce json

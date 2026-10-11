@@ -48,7 +48,7 @@ it('completes local diagnostic and displays its overall feedback', async () => {
   })
   render(<RouterProvider router={router} />)
   fireEvent.click(
-    await screen.findByRole('button', { name: 'Начать диагностику' }),
+    await screen.findByRole('button', { name: 'Начать обучение' }),
   )
   expect(
     await screen.findByRole('heading', {

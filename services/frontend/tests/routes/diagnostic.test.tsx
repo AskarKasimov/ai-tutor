@@ -102,7 +102,7 @@ async function home() {
     fireEvent.click(
       await screen.findByRole(
         'button',
-        { name: 'Начать диагностику' },
+        { name: 'Начать обучение' },
         { timeout: 5000 },
       ),
     )

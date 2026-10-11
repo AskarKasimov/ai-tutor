@@ -66,17 +66,21 @@ it('loads subjects without creating a variant, then starts only the chosen subje
   expect(
     screen.getByRole('article', { name: 'Демонстрационный предмет A' }),
   ).toBeVisible()
+  // Diagnostic and training are one process: a single action, no training tile.
   expect(
-    await screen.findByRole('button', { name: 'Откроется после диагностики' }),
-  ).toBeDisabled()
-  // The hint stays only on the locked training tile, not on the diagnostic one.
-  expect(screen.getAllByText('Сначала пройдите диагностику.')).toHaveLength(1)
+    screen.getByText(
+      'Всё проходит голосом: слушайте задание и отвечайте в микрофон.',
+    ),
+  ).toBeVisible()
   expect(
-    await screen.findByRole('button', { name: 'Начать диагностику' }),
+    screen.queryByRole('button', { name: /тренировк/i }),
+  ).not.toBeInTheDocument()
+  expect(
+    await screen.findByRole('button', { name: 'Начать обучение' }),
   ).toBeEnabled()
   expect(requests.some((r) => r.includes('/learning-state'))).toBe(true)
   expect(requests.some((r) => r.endsWith('POST /api/v1/variants'))).toBe(false)
-  const startButton = screen.getByRole('button', { name: 'Начать диагностику' })
+  const startButton = screen.getByRole('button', { name: 'Начать обучение' })
   fireEvent.click(startButton)
   fireEvent.click(startButton)
   expect(
@@ -148,7 +152,7 @@ it('returns to subject selection after refresh during a pending start and reuses
   })
   const first = render(<RouterProvider router={firstRouter} />)
   fireEvent.click(
-    await screen.findByRole('button', { name: 'Начать диагностику' }),
+    await screen.findByRole('button', { name: 'Начать обучение' }),
   )
   await waitFor(() =>
     expect(requests.filter((r) => r.path.endsWith('/variants'))).toHaveLength(
@@ -173,7 +177,7 @@ it('returns to subject selection after refresh during a pending start and reuses
   expect(requests.filter((r) => r.path.endsWith('/variants'))).toHaveLength(1)
 
   fireEvent.click(
-    await screen.findByRole('button', { name: 'Начать диагностику' }),
+    await screen.findByRole('button', { name: 'Начать обучение' }),
   )
   expect(
     await screen.findByRole('heading', {
@@ -222,7 +226,7 @@ it('starts with a fresh variant after demo state resets between variant and sess
   })
   const first = render(<RouterProvider router={firstRouter} />)
   fireEvent.click(
-    await screen.findByRole('button', { name: 'Начать диагностику' }),
+    await screen.findByRole('button', { name: 'Начать обучение' }),
   )
   expect(await screen.findByRole('alert')).toBeVisible()
   expect(
@@ -257,7 +261,7 @@ it('starts with a fresh variant after demo state resets between variant and sess
   ).toHaveLength(1)
 
   fireEvent.click(
-    await screen.findByRole('button', { name: 'Начать диагностику' }),
+    await screen.findByRole('button', { name: 'Начать обучение' }),
   )
   expect(
     await screen.findByRole('heading', {

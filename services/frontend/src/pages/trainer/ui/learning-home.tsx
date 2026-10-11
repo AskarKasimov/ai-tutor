@@ -1,5 +1,5 @@
 import { Button, Card, Heading, Text } from '@radix-ui/themes'
-import { ArrowRight, Dumbbell, GraduationCap, Lock, Target } from 'lucide-react'
+import { ArrowRight, GraduationCap, Mic } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
@@ -53,10 +53,6 @@ export function LearningHome() {
   const queryClient = useQueryClient()
   const userId = user?.id ?? ''
   const subjectsQuery = useSubjectsQuery(userId)
-  const [trainingRequested, setTrainingRequested] = useState(() => {
-    const saved = userId ? readIntent(userId) : null
-    return saved?.mode === 'training'
-  })
   const [intent, setIntent] = useState<Intent | null>(() =>
     userId ? readIntent(userId) : null,
   )
@@ -98,7 +94,6 @@ export function LearningHome() {
   function back() {
     sessionStorage.removeItem('ai-tutor:learning-home')
     setIntent(null)
-    setTrainingRequested(false)
     if (selected)
       void queryClient.invalidateQueries({
         queryKey: subjectQueryKeys.learningState(userId, selected.id),
@@ -118,7 +113,6 @@ export function LearningHome() {
     }
     sessionStorage.setItem('ai-tutor:learning-home', JSON.stringify(next))
     setIntent(next)
-    setTrainingRequested(true)
   }
   if (intent?.mode === 'training' && selected && userId)
     return (
@@ -150,8 +144,22 @@ export function LearningHome() {
     )
 
   const data = learning.data
-  const trainingOpen =
-    !!data?.training_available && !!data.diagnostic_session_id
+  // Diagnostic and training are one process for the student: the course
+  // offers a single action that resumes where they stopped.
+  const stage = !data
+    ? undefined
+    : data.active_session_id
+      ? 'diagnostic'
+      : data.training_available && data.diagnostic_session_id
+        ? 'training'
+        : 'start'
+  function resume() {
+    if (!selected || !data) return
+    if (stage === 'diagnostic')
+      openDiagnostic(selected, data.active_session_id ?? undefined, false)
+    else if (stage === 'training') openTraining()
+    else openDiagnostic(selected, undefined, true)
+  }
   return (
     <div className={styles.page}>
       <header className={styles.header}>
@@ -192,6 +200,10 @@ export function LearningHome() {
                   {t('home.intro')}
                 </Text>
               </div>
+              <Text as="p" size="2" className={styles.voiceHint}>
+                <Mic size={16} aria-hidden="true" />
+                {t('home.voiceHint')}
+              </Text>
               {learning.isPending ? (
                 <Text role="status">{t('home.learningLoading')}</Text>
               ) : learning.isError ? (
@@ -202,98 +214,43 @@ export function LearningHome() {
                   </Button>
                 </Card>
               ) : data ? (
-                <section className={styles.tiles}>
-                  <article className={styles.tile} data-tone="diagnostic">
-                    <span className={styles.tileIcon} aria-hidden="true">
-                      <Target size={28} />
-                    </span>
-                    <Heading as="h3" size="6">
-                      {t('home.diagnostic')}
-                    </Heading>
-                    <Text as="p" color="gray">
-                      {t('home.diagnosticDescription')}
+                <div className={styles.actions}>
+                  {stage !== 'start' && (
+                    <Text as="p" className={styles.status}>
+                      {t(
+                        stage === 'diagnostic'
+                          ? 'home.statusDiagnostic'
+                          : 'home.statusTraining',
+                      )}
                     </Text>
-                    {(data.diagnostic_completed ||
-                      data.diagnostic_status === 'active') && (
-                      <Text as="p" className={styles.status}>
-                        {t(
-                          data.diagnostic_completed
-                            ? 'home.diagnosticComplete'
-                            : 'home.diagnosticActive',
-                        )}
-                      </Text>
-                    )}
+                  )}
+                  <div className={styles.actionRow}>
                     <Button
                       size="3"
-                      className={styles.tileAction}
-                      onClick={() =>
-                        data.active_session_id
-                          ? openDiagnostic(
-                              selected,
-                              data.active_session_id,
-                              false,
-                            )
-                          : openDiagnostic(selected, undefined, true)
-                      }
+                      className={styles.primaryAction}
+                      onClick={resume}
                     >
                       {t(
-                        data.active_session_id
-                          ? 'home.continueDiagnostic'
-                          : data.diagnostic_completed
-                            ? 'home.retakeDiagnostic'
-                            : 'home.startDiagnostic',
+                        stage === 'start'
+                          ? 'home.startLearning'
+                          : 'home.continueLearning',
                       )}
                       <ArrowRight size={18} aria-hidden="true" />
                     </Button>
-                  </article>
-                  <article
-                    className={styles.tile}
-                    data-tone="training"
-                    data-locked={!trainingOpen || undefined}
-                  >
-                    <span className={styles.tileIcon} aria-hidden="true">
-                      {trainingOpen ? (
-                        <Dumbbell size={28} />
-                      ) : (
-                        <Lock size={26} />
-                      )}
-                    </span>
-                    <Heading as="h3" size="6">
-                      {t('home.training')}
-                    </Heading>
-                    <Text as="p" color="gray">
-                      {t('home.trainingDescription')}
-                    </Text>
-                    <Text as="p" className={styles.status}>
-                      {data.training_available
-                        ? t(
-                            trainingRequested
-                              ? 'home.trainingLoading'
-                              : 'home.trainingReady',
-                          )
-                        : t('home.diagnosticRequired')}
-                    </Text>
-                    <Button
-                      size="3"
-                      className={styles.tileAction}
-                      variant={trainingOpen ? 'solid' : 'soft'}
-                      color={trainingOpen ? undefined : 'gray'}
-                      disabled={!trainingOpen}
-                      onClick={() => openTraining()}
-                    >
-                      {t(
-                        trainingRequested
-                          ? 'home.trainingLoading'
-                          : data.training_available
-                            ? 'home.openTraining'
-                            : 'home.trainingLocked',
-                      )}
-                      {trainingOpen && (
-                        <ArrowRight size={18} aria-hidden="true" />
-                      )}
-                    </Button>
-                  </article>
-                </section>
+                    {stage === 'training' && (
+                      <Button
+                        size="3"
+                        variant="ghost"
+                        color="gray"
+                        onClick={() =>
+                          openDiagnostic(selected, undefined, true)
+                        }
+                      >
+                        {t('home.restart')}
+                      </Button>
+                    )}
+                  </div>
+                </div>
               ) : null}
             </article>
           </section>

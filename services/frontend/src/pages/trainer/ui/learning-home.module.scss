@@ -60,62 +60,41 @@
     margin: 0;
   }
 }
-.tiles {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--space-5);
+// Small chip under the intro: the whole course runs by voice.
+.voiceHint {
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-4);
+  background: var(--accent-3);
+  color: var(--accent-11);
+  font-weight: 500;
+  svg {
+    flex: none;
+  }
 }
-.tile {
-  --tile-soft: var(--blue-3);
-  --tile-ink: var(--blue-11);
-  min-height: 320px;
-  box-sizing: border-box;
-  display: flex;
-  flex-direction: column;
+.actions {
+  display: grid;
   gap: var(--space-3);
-  padding: var(--space-7);
-  border-radius: var(--radius-6);
-  border: 1px solid var(--app-border);
-  background: var(--app-soft);
-  p {
-    margin: 0;
-    line-height: 1.55;
-  }
-  &[data-tone='training'] {
-    --tile-soft: var(--green-3);
-    --tile-ink: var(--green-11);
-  }
-  &[data-locked] {
-    --tile-soft: var(--gray-3);
-    --tile-ink: var(--gray-10);
-    background: var(--gray-2);
-    h2 {
-      color: var(--gray-11);
-    }
-  }
-}
-.tileIcon {
-  display: grid;
-  place-items: center;
-  width: 64px;
-  height: 64px;
-  margin-bottom: var(--space-2);
-  border-radius: var(--radius-5);
-  background: var(--tile-soft);
-  color: var(--tile-ink);
+  padding-top: var(--space-5);
+  border-top: 1px solid var(--app-border);
 }
 .status {
-  align-self: flex-start;
-  padding: var(--space-1) var(--space-3);
-  border-radius: 999px;
-  background: var(--tile-soft);
-  color: var(--tile-ink);
-  font-size: var(--font-size-2);
+  margin: 0;
+  color: var(--gray-11);
   font-weight: 600;
 }
-.tileAction {
-  margin-top: auto;
-  align-self: stretch;
+.actionRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3) var(--space-5);
+}
+.primaryAction {
+  min-width: 260px;
   font-weight: 700;
 }
 .notice {
@@ -132,15 +111,12 @@
     padding: var(--space-6) var(--space-4);
     gap: var(--space-5);
   }
-  .tiles {
-    grid-template-columns: minmax(0, 1fr);
-  }
   .course {
     padding: var(--space-4);
     gap: var(--space-4);
   }
-  .tile {
-    min-height: 0;
-    padding: var(--space-5);
+  .primaryAction {
+    min-width: 0;
+    flex: 1 1 100%;
   }
 }

@@ -139,23 +139,21 @@ it('cancels instruction generation when recording starts and never plays its lat
   expect(view.result.current.stage).toBe('recording')
 })
 
-it('ends instruction playback without holding a stale player after it finishes', async () => {
-  vi.stubGlobal(
-    'fetch',
-    vi.fn(async (url: string) =>
-      Promise.resolve(
-        url.includes('/current/audio')
-          ? Response.json({
-              variant_task_id: 't1',
-              status: 'ready',
-              audio_url: '/task-audio/audio-1/file',
-            })
-          : new Response(await validWavBlob().arrayBuffer(), {
-              headers: { 'Content-Type': 'audio/wav' },
-            }),
-      ),
+it('downloads audio again on replay and releases the finished player', async () => {
+  const fetchMock = vi.fn(async (url: string) =>
+    Promise.resolve(
+      url.includes('/current/audio')
+        ? Response.json({
+            variant_task_id: 't1',
+            status: 'ready',
+            audio_url: '/task-audio/audio-1/file',
+          })
+        : new Response(await validWavBlob().arrayBuffer(), {
+            headers: { 'Content-Type': 'audio/wav' },
+          }),
     ),
   )
+  vi.stubGlobal('fetch', fetchMock)
   let ended!: () => void
   const dispose = vi.fn()
   vi.spyOn(audio, 'playQuestion').mockImplementation(async (_blob, onEnd) => {
@@ -172,6 +170,15 @@ it('ends instruction playback without holding a stale player after it finishes',
     ended()
   })
   expect(view.result.current.speech).toBe('idle')
+  await act(async () => {
+    await view.result.current.speak()
+  })
+  expect(
+    fetchMock.mock.calls.filter(([url]) => url.endsWith('/file')),
+  ).toHaveLength(2)
+  act(() => {
+    ended()
+  })
   view.unmount()
   // playQuestion disposes its own URL/player on ended; the hook must drop its handle.
   expect(dispose).not.toHaveBeenCalled()

@@ -222,7 +222,7 @@ func TestRegenerateCurrentAudioRepairsMissingObjectSynchronously(t *testing.T) {
 	tts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		synthCalls.Add(1)
 		var request map[string]any
-		if err := json.NewDecoder(r.Body).Decode(&request); err != nil || request["text"] != "Назовите ответ" {
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil || request["text"] != "Назовите ответ!!!..." {
 			t.Errorf("repair used unexpected TTS text: %v err=%v", request, err)
 		}
 		w.Header().Set("Content-Type", "audio/wav")

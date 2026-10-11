@@ -31,7 +31,7 @@ func TestSynthesizeSendsConfiguredVoiceSettings(t *testing.T) {
 			if err := json.NewDecoder(r.Body).Decode(&got); err != nil {
 				t.Error(err)
 			}
-			want := map[string]any{"text": "Привет.", "seed": float64(options.Seed), "cfg_value": options.CFGValue, "inference_timesteps": float64(options.InferenceTimesteps)}
+			want := map[string]any{"text": "Привет.!!!...", "seed": float64(options.Seed), "cfg_value": options.CFGValue, "inference_timesteps": float64(options.InferenceTimesteps)}
 			if !reflect.DeepEqual(got, want) {
 				t.Errorf("payload = %v, want %v", got, want)
 			}
@@ -47,5 +47,39 @@ func TestSynthesizeSendsConfiguredVoiceSettings(t *testing.T) {
 		if !bytes.Equal(got, wav) {
 			t.Fatal("WAV response changed")
 		}
+	}
+}
+
+func TestSynthesizeAddsCompletionSuffix(t *testing.T) {
+	wav, err := (voicemock.Client{}).Synthesize(context.Background(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	instruction := "Не произносите формулу. Объясните, почему аналитическое решение в обычном виде неприменимо"
+	for _, text := range []string{instruction, instruction + "!!!..."} {
+		t.Run(text, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				var payload struct {
+					Text string `json:"text"`
+				}
+				if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+					t.Error(err)
+				}
+				if payload.Text != instruction+"!!!..." {
+					t.Errorf("text = %q, want %q", payload.Text, instruction+"!!!...")
+				}
+				w.Header().Set("Content-Type", "audio/wav")
+				_, _ = w.Write(wav)
+			}))
+			defer server.Close()
+			client := New(server.Client(), "", server.URL, time.Second, TTSOptions{})
+			got, err := client.Synthesize(context.Background(), text)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(got, wav) {
+				t.Fatal("WAV response changed")
+			}
+		})
 	}
 }

@@ -107,6 +107,11 @@ func (c *Client) Recognize(ctx context.Context, data []byte, media string) (stri
 }
 
 func (c *Client) Synthesize(ctx context.Context, text string) ([]byte, error) {
+	// VoxCPM can cut off the last word; append the completion cue only upstream.
+	const completionSuffix = "!!!..."
+	if !strings.HasSuffix(text, completionSuffix) {
+		text += completionSuffix
+	}
 	body, err := json.Marshal(struct {
 		Text string `json:"text"`
 		TTSOptions

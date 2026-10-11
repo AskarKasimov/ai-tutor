@@ -281,7 +281,9 @@ export async function mockTrainingResponse(
     const source = form ? 'voice' : 'text'
     const text =
       source === 'voice'
-        ? 'Демонстрационная голосовая реплика: объясните свой выбор.'
+        ? revision === 0
+          ? 'Демонстрационная голосовая реплика: объясните свой выбор.'
+          : 'Классификация, потому что модель выбирает один из классов.'
         : String(body.text ?? '')
     if (
       !key ||
@@ -302,17 +304,19 @@ export async function mockTrainingResponse(
         : 0
     const verdict =
       score === 2 ? 'correct' : score === 1 ? 'partial' : 'incorrect'
-    const check: TrainingChatCheck | null =
-      chatKind === 'check'
-        ? {
-            revision: chat.revision + 1,
-            final_answer: text,
-            source,
-            score,
-            max_score: 2,
-            verdict,
-          }
-        : chat.latest_check
+    const answerReady =
+      chatKind === 'check' ||
+      /потому|так как|выбирает один из классов/i.test(text)
+    const check: TrainingChatCheck | null = answerReady
+      ? {
+          revision: chat.revision + 1,
+          final_answer: text,
+          source,
+          score,
+          max_score: 2,
+          verdict,
+        }
+      : null
     const now = Math.floor(Date.now() / 1000)
     const userMessage: TrainingChatMessage = {
       id: crypto.randomUUID(),
@@ -328,12 +332,11 @@ export async function mockTrainingResponse(
       sequence: chat.revision * 2 + 3,
       role: 'assistant',
       kind: chatKind,
-      text:
-        chatKind === 'check'
-          ? score === 2
-            ? 'Вы связали ответ с условием. Хотите уточнить ещё один признак?'
-            : 'Пока не все требования выполнены. Какой признак поможет уточнить ответ?'
-          : 'Вы назвали важную часть рассуждения. Какое свойство результата подтверждает ваш выбор?',
+      text: answerReady
+        ? score === 2
+          ? 'Вы связали ответ с условием. Хотите уточнить ещё один признак?'
+          : 'Пока не все требования выполнены. Какой признак поможет уточнить ответ?'
+        : 'Вы назвали важную часть рассуждения. Какое свойство результата подтверждает ваш выбор?',
       created_at: now,
     }
     chat.items.push(userMessage, assistantMessage)

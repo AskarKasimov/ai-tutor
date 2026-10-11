@@ -181,11 +181,12 @@ func (c *TutorClient) Reply(ctx context.Context, tutorContext training.TutorCont
 	}
 	var result struct {
 		AssistantText *string `json:"assistant_text"`
+		AnswerReady   *bool   `json:"answer_ready"`
 		Pedagogy      *string `json:"pedagogy"`
 	}
 	decoder := json.NewDecoder(strings.NewReader(*completion.Choices[0].Message.Content))
 	decoder.DisallowUnknownFields()
-	if decoder.Decode(&result) != nil || decoder.Decode(new(any)) != io.EOF || result.AssistantText == nil || result.Pedagogy == nil {
+	if decoder.Decode(&result) != nil || decoder.Decode(new(any)) != io.EOF || result.AssistantText == nil || result.Pedagogy == nil || result.AnswerReady == nil {
 		return training.TutorReply{}, invalidTutorResponse()
 	}
 	text := strings.TrimSpace(*result.AssistantText)
@@ -198,7 +199,7 @@ func (c *TutorClient) Reply(ctx context.Context, tutorContext training.TutorCont
 	default:
 		return training.TutorReply{}, invalidTutorResponse()
 	}
-	return training.TutorReply{AssistantText: text, Pedagogy: pedagogy}, nil
+	return training.TutorReply{AssistantText: text, Pedagogy: pedagogy, AnswerReady: *result.AnswerReady}, nil
 }
 
 var _ interface {

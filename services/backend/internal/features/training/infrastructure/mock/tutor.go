@@ -13,7 +13,7 @@ func (Tutor) Reply(ctx context.Context, input training.TutorContext) (training.T
 	if err := ctx.Err(); err != nil {
 		return training.TutorReply{}, err
 	}
-	if input.Kind == training.ChatKindCheck && input.Check != nil {
+	if input.Check != nil {
 		if input.Check.Score == input.Check.MaxScore {
 			return training.TutorReply{AssistantText: "Вы сформулировали ответ и связали его с условием. Хотите проверить ещё какой-нибудь признак?", Pedagogy: training.PedagogyConfirmation}, nil
 		}
@@ -29,7 +29,8 @@ func (Tutor) Reply(ctx context.Context, input training.TutorContext) (training.T
 	if strings.Contains(text, "почему") || strings.Contains(text, "что такое") {
 		return training.TutorReply{AssistantText: "Сначала выделите, что именно должно получиться на выходе. Это число или одна из заданных групп?", Pedagogy: training.PedagogyConcept}, nil
 	}
-	return training.TutorReply{AssistantText: "Вы назвали важную часть рассуждения. Какое свойство результата подтверждает ваш выбор?", Pedagogy: training.PedagogyQuestion}, nil
+	ready := strings.Contains(text, "потому") || strings.Contains(text, "так как") || strings.Contains(text, "выбирает один из классов")
+	return training.TutorReply{AnswerReady: ready, AssistantText: "Вы назвали важную часть рассуждения. Какое свойство результата подтверждает ваш выбор?", Pedagogy: training.PedagogyQuestion}, nil
 }
 
 var _ interface {

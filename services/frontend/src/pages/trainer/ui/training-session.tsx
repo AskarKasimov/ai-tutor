@@ -5,14 +5,15 @@ import { TrainingApiError, type TrainingProgress } from '@/entities/training'
 import { isMockApi } from '@/shared/api'
 import { useTrainingSession, useTrainingVoice } from '@/features/training'
 import { TrainingChat } from './training-chat'
+import { TrainingWorkspace } from './training-workspace'
 import {
   ListenButton,
   TrainerQuestion,
   TrainerShell,
-  TrainerWorkspace,
   sessionStyles,
 } from './trainer-shared'
 import styles from './trainer-layout.module.scss'
+import trainingStyles from './training-session.module.scss'
 
 function errorCode(error: unknown) {
   if (!(error instanceof TrainingApiError)) return 'training.skipError'
@@ -112,33 +113,51 @@ export function TrainingSession({
           )}
         </main>
       ) : (
-        <TrainerWorkspace variant="training">
+        <TrainingWorkspace
+          chat={
+            <TrainingChat
+              userId={userId}
+              sessionId={progress.session_id}
+              exerciseId={progress.current.exercise_id}
+              onRecordingStart={voice.stopSpeech}
+              onRecordingChange={setChatRecording}
+              onSkip={() => void skip()}
+              skipDisabled={!canSkip}
+              skipError={
+                skipFailed
+                  ? t(apiError ? errorCode(apiError) : 'session.skipError')
+                  : undefined
+              }
+            />
+          }
+        >
           <TrainerQuestion
             badge={t('session.practice')}
             eyebrow={progress.current.outcome_name}
             eyebrowHeading
             question={progress.current.question}
             options={progress.current.options}
+            instruction={
+              <div className={trainingStyles.playback}>
+                <ListenButton
+                  disabled={chatRecording}
+                  state={
+                    voice.speaking
+                      ? 'playing'
+                      : voice.audioStatus === 'loading'
+                        ? 'loading'
+                        : 'idle'
+                  }
+                  onClick={() => void voice.speak()}
+                />
+              </div>
+            }
           >
             {isMockApi() ? (
               <Text as="p" role="note" className={sessionStyles.note}>
                 {t('training.demoNotice')}
               </Text>
             ) : null}
-            <Text as="p" className={sessionStyles.note}>
-              {progress.current.voice_instruction}
-            </Text>
-            <ListenButton
-              disabled={chatRecording}
-              state={
-                voice.speaking
-                  ? 'playing'
-                  : voice.audioStatus === 'loading'
-                    ? 'loading'
-                    : 'idle'
-              }
-              onClick={() => void voice.speak()}
-            />
             {voice.audioStatus !== 'idle' &&
             voice.audioStatus !== 'ready' &&
             voice.audioStatus !== 'loading' ? (
@@ -151,29 +170,8 @@ export function TrainingSession({
                 {t('trainer.speechError')}
               </Text>
             ) : null}
-            <TrainingChat
-              userId={userId}
-              sessionId={progress.session_id}
-              exerciseId={progress.current.exercise_id}
-              onRecordingStart={voice.stopSpeech}
-              onRecordingChange={setChatRecording}
-            />
-            <section className={sessionStyles.trainingDetails}>
-              {skipFailed ? (
-                <Text role="alert">
-                  {t(apiError ? errorCode(apiError) : 'session.skipError')}
-                </Text>
-              ) : null}
-              <Button
-                className={sessionStyles.primary}
-                disabled={!canSkip}
-                onClick={() => void skip()}
-              >
-                {t('training.skipExercise')}
-              </Button>
-            </section>
           </TrainerQuestion>
-        </TrainerWorkspace>
+        </TrainingWorkspace>
       )}
     </TrainerShell>
   )

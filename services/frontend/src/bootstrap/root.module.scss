@@ -2,4 +2,8 @@
   min-height: 100dvh;
   display: flex;
   flex-direction: column;
+
+  &:has(> [data-trainer-app]) {
+    background: var(--app-soft);
+  }
 }

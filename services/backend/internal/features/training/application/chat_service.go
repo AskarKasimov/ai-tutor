@@ -156,18 +156,25 @@ func (s *ChatService) runReserved(ctx context.Context, reservation training.Turn
 		return training.TurnResult{}, fault.New(fault.Unavailable, "TUTOR_UNAVAILABLE", "Репетитор временно недоступен.")
 	}
 	check := (*training.Check)(nil)
-	if reservation.Turn.Operation == training.ChatKindCheck {
+	grade := func(answer string) error {
 		if s.grader == nil {
-			return training.TurnResult{}, fault.New(fault.Unavailable, "ASSESSMENT_UNAVAILABLE", "Проверка ответа временно недоступна.")
+			return fault.New(fault.Unavailable, "ASSESSMENT_UNAVAILABLE", "Проверка ответа временно недоступна.")
 		}
-		evaluation, err := s.grader.GradeFinal(ctx, reservation.Exercise, studentText)
+		evaluation, err := s.grader.GradeFinal(ctx, reservation.Exercise, answer)
 		if err != nil {
-			return training.TurnResult{}, err
+			return err
 		}
 		if err = validateFinalEvaluation(evaluation); err != nil {
+			return err
+		}
+		check = &training.Check{Revision: reservation.Turn.ExpectedRevision + 1, FinalAnswer: answer, Source: reservation.Turn.Source, TranscriptionID: transcriptionID, Score: evaluation.Score, MaxScore: evaluation.MaxScore, Verdict: evaluation.Verdict, CriterionResults: criterionResults(evaluation.CriterionResults), Feedback: append([]string(nil), evaluation.Feedback...)}
+		return nil
+	}
+	// Keep explicit checks compatible with historical clients. The current UI sends one kind of turn.
+	if reservation.Turn.Operation == training.ChatKindCheck {
+		if err := grade(studentText); err != nil {
 			return training.TurnResult{}, err
 		}
-		check = &training.Check{Revision: reservation.Turn.ExpectedRevision + 1, FinalAnswer: studentText, Source: reservation.Turn.Source, TranscriptionID: transcriptionID, Score: evaluation.Score, MaxScore: evaluation.MaxScore, Verdict: evaluation.Verdict, CriterionResults: criterionResults(evaluation.CriterionResults), Feedback: append([]string(nil), evaluation.Feedback...)}
 	}
 	tutorContext, err := BuildTutorContext(reservation.Exercise, reservation.History, training.TutorInput{Text: studentText, Kind: reservation.Turn.Operation, Check: check, Summary: reservation.Summary}, s.limits)
 	if err != nil {
@@ -176,6 +183,24 @@ func (s *ChatService) runReserved(ctx context.Context, reservation training.Turn
 	reply, err := s.tutor.Reply(ctx, tutorContext)
 	if err != nil {
 		return training.TurnResult{}, err
+	}
+	if check == nil && reply.AnswerReady {
+		// Grade only the student's complete recent statements, never tutor suggestions or truncated summaries.
+		answers := make([]string, 0, len(tutorContext.Recent)+1)
+		for _, message := range tutorContext.Recent {
+			if message.Role == training.ChatRoleUser {
+				answers = append(answers, message.Text)
+			}
+		}
+		answers = append(answers, studentText)
+		if err := grade(strings.Join(answers, "\n\n")); err != nil {
+			return training.TurnResult{}, err
+		}
+		tutorContext.Check = cloneCheck(check)
+		reply, err = s.tutor.Reply(ctx, tutorContext)
+		if err != nil {
+			return training.TurnResult{}, err
+		}
 	}
 	userID, err := s.ids.New("chat_message")
 	if err != nil {

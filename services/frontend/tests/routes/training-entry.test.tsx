@@ -281,7 +281,7 @@ it('refetches chat after a voice revision conflict', async () => {
   mockChatVoice()
   await screen.findByText('Начнём разбирать задачу.')
   fireEvent.click(
-    await screen.findByRole('button', { name: 'Записать голосовую реплику' }),
+    await screen.findByRole('button', { name: 'Ответить голосом' }),
   )
   fireEvent.click(
     await screen.findByRole('button', { name: 'Остановить и отправить' }),
@@ -315,14 +315,15 @@ it('does not render training targets or fetch answer history', async () => {
   expect(readHistory).not.toHaveBeenCalled()
 })
 
-it('offers only voice input for tutor messages and checks', async () => {
+it('offers one voice action without a separate check mode', async () => {
   setup({ existing: progress })
   expect(
-    await screen.findByRole('button', { name: 'Записать голосовую реплику' }),
+    await screen.findByRole('button', { name: 'Ответить голосом' }),
   ).toBeVisible()
+  expect(screen.queryByRole('combobox')).not.toBeInTheDocument()
   expect(
-    screen.getByRole('combobox', { name: 'Что продиктовать:' }),
-  ).toBeVisible()
+    screen.queryByRole('button', { name: 'Записать итоговый ответ' }),
+  ).not.toBeInTheDocument()
   expect(
     screen.queryByRole('textbox', { name: 'Сообщение репетитору' }),
   ).not.toBeInTheDocument()

@@ -7,6 +7,7 @@ import type { TrainingChatMessage } from '@/entities/training'
 import { useTrainingChat, useTrainingChatVoice } from '@/features/training'
 import styles from './training-chat.module.scss'
 import { LiveWaveform } from './trainer-answer'
+import sessionStyles from './session.module.scss'
 
 function flatten(pages: TrainingChatMessage[][] | undefined) {
   const unique = new Map<string, TrainingChatMessage>()
@@ -23,6 +24,9 @@ export function TrainingChat({
   sectionId = 'training-chat-title',
   onRecordingStart,
   onRecordingChange,
+  onSkip,
+  skipDisabled,
+  skipError,
 }: {
   userId: string
   sessionId: string
@@ -31,16 +35,17 @@ export function TrainingChat({
   sectionId?: string
   onRecordingStart?: () => void
   onRecordingChange?: (recording: boolean) => void
+  onSkip?: () => void
+  skipDisabled?: boolean
+  skipError?: string
 }) {
   const { t, i18n } = useTranslation()
   const chat = useTrainingChat(userId, sessionId, exerciseId)
-  const [kind, setKind] = useState<'message' | 'check'>('message')
   const [voiceProcessing, setVoiceProcessing] = useState(false)
   const messagesEnd = useRef<HTMLDivElement | null>(null)
   const messagesViewport = useRef<HTMLOListElement | null>(null)
   const followLatest = useRef(true)
   const voiceCapture = useRef<{
-    kind: 'message' | 'check'
     revision: number
   } | null>(null)
   const messages = useMemo(
@@ -55,7 +60,7 @@ export function TrainingChat({
     setVoiceProcessing(true)
     void chat.send
       .mutateAsync({
-        kind: capture.kind,
+        kind: 'message',
         source: 'voice',
         revision: capture.revision,
         audio,
@@ -95,7 +100,7 @@ export function TrainingChat({
   const startVoice = () => {
     if (!page || readOnly || busy) return
     onRecordingStart?.()
-    voiceCapture.current = { kind, revision: page.revision }
+    voiceCapture.current = { revision: page.revision }
     void voice.start()
   }
 
@@ -139,7 +144,7 @@ export function TrainingChat({
         <Heading id={sectionId} as="h2">
           {t('training.chatTitle')}
         </Heading>
-        <Text>
+        <Text as="p" className={sessionStyles.panelHelp}>
           {t(readOnly ? 'training.chatHistoryHelp' : 'training.chatHelp')}
         </Text>
       </div>
@@ -209,11 +214,6 @@ export function TrainingChat({
               ? t('training.chatProcessing')
               : ''}
       </div>
-      {page?.latest_check ? (
-        <Text className={styles.check} role="status">
-          {t('training.chatChecked')}
-        </Text>
-      ) : null}
       {!readOnly &&
       page?.status === 'active' &&
       page.latest_check?.revision === page.revision &&
@@ -259,95 +259,59 @@ export function TrainingChat({
         <Text>{t('training.chatClosed')}</Text>
       ) : (
         <div className={styles.composer}>
-          <label
-            className={styles.voiceMode}
-            htmlFor={`training-chat-voice-kind-${exerciseId}`}
-          >
-            <span>{t('training.chatVoiceMode')}</span>
-            <select
-              id={`training-chat-voice-kind-${exerciseId}`}
-              value={kind}
-              onChange={(event) =>
-                setKind(event.target.value as 'message' | 'check')
+          <div className={styles.capture}>
+            <button
+              type="button"
+              className={`${sessionStyles.mic} ${styles.microphone}`}
+              data-state={
+                recording ? 'recording' : busy || pending ? 'busy' : 'ready'
               }
-              disabled={recording || voice.requesting || !!pending}
-            >
-              <option value="message">{t('training.chatVoiceMessage')}</option>
-              <option value="check">{t('training.chatVoiceCheck')}</option>
-            </select>
-          </label>
-          <div className={styles.voiceCapture}>
-            <div className={styles.voiceVisualizer}>
-              {voice.requesting ? (
-                <div className={styles.voiceProcessing}>
-                  <LoaderCircle
-                    aria-hidden="true"
-                    className={styles.spinner}
-                    size={20}
-                  />
-                  <Text role="status">{t('training.chatMicPermission')}</Text>
-                </div>
-              ) : voiceProcessing ? (
-                <div className={styles.voiceProcessing}>
-                  <LoaderCircle
-                    aria-hidden="true"
-                    className={styles.spinner}
-                    size={20}
-                  />
-                  <Text role="status">{t('training.chatProcessing')}</Text>
-                </div>
-              ) : (
-                <div
-                  className={styles.liveWave}
-                  role="img"
-                  aria-label={t('training.waveform')}
-                >
-                  <LiveWaveform stream={voice.stream} />
-                </div>
-              )}
-              {recording ? (
-                <Text className={styles.timer}>
-                  {t('training.chatRecordingTime', { time: recordingTime })}
-                </Text>
-              ) : null}
-            </div>
-            <Button
-              className={styles.recordButton}
-              variant={recording ? 'solid' : 'soft'}
-              color={recording ? 'red' : undefined}
-              disabled={
-                voice.requesting ||
-                (!!pending && !recording) ||
-                (busy && !recording)
-              }
-              onClick={() => (recording ? voice.stop() : startVoice())}
+              disabled={!recording && (!page || busy || !!pending)}
+              onClick={recording ? () => voice.stop() : startVoice}
               aria-pressed={recording}
+              aria-label={t(
+                recording
+                  ? 'training.chatStopRecording'
+                  : 'training.chatRecord',
+              )}
             >
               {recording ? (
-                <Square size={17} fill="currentColor" aria-hidden="true" />
-              ) : voice.requesting || voiceProcessing ? (
+                <Square size={20} fill="currentColor" aria-hidden="true" />
+              ) : busy || pending ? (
                 <LoaderCircle
-                  className={styles.spinner}
-                  size={19}
+                  className={sessionStyles.spinner}
+                  size={26}
                   aria-hidden="true"
                 />
               ) : (
-                <Mic size={19} aria-hidden="true" />
+                <Mic size={28} aria-hidden="true" />
               )}
-              {voice.requesting
-                ? t('training.chatMicPermission')
-                : voiceProcessing
-                  ? t('training.chatProcessing')
-                  : recording
-                    ? t('training.chatStopRecording')
-                    : t(
-                        kind === 'check'
-                          ? 'training.chatRecordCheck'
-                          : 'training.chatRecord',
-                      )}
-            </Button>
+            </button>
+            <div
+              className={styles.waveform}
+              role="img"
+              aria-label={t('training.waveform')}
+            >
+              <LiveWaveform stream={voice.stream} height={64} />
+            </div>
+            {recording ? (
+              <Text className={styles.timer} role="timer">
+                {recordingTime}
+              </Text>
+            ) : voice.requesting || voiceProcessing || chat.send.isPending ? (
+              <Text className={styles.captureStatus} role="status">
+                {t(
+                  voice.requesting
+                    ? 'training.chatMicPermission'
+                    : 'training.chatProcessing',
+                )}
+              </Text>
+            ) : null}
             {voice.error ? (
-              <Text role="alert" className={styles.error}>
+              <Text
+                role="alert"
+                className={`${styles.error} ${styles.captureStatus}`}
+              >
                 {t(
                   voice.error === 'denied'
                     ? 'training.chatMicDenied'
@@ -358,6 +322,22 @@ export function TrainingChat({
           </div>
         </div>
       )}
+      {!readOnly && onSkip ? (
+        <Button
+          variant="outline"
+          color="gray"
+          className={sessionStyles.skip}
+          disabled={skipDisabled || busy || !!pending}
+          onClick={onSkip}
+        >
+          {t('training.skipExercise')}
+        </Button>
+      ) : null}
+      {skipError ? (
+        <Text role="alert" className={styles.error}>
+          {skipError}
+        </Text>
+      ) : null}
     </section>
   )
 }

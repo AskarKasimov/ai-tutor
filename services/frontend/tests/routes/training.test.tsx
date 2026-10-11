@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react'
 import {
   createMemoryHistory,
   createRouter,
@@ -78,12 +84,28 @@ it('opens training directly from the diagnostic result', async () => {
   expect(
     await screen.findByRole('heading', { name: 'Репетитор' }),
   ).toBeVisible()
+  expect(screen.getByRole('button', { name: 'Ответить голосом' })).toBeVisible()
+  const tutorPanel = screen.getByRole('complementary', { name: 'Репетитор' })
   expect(
-    screen.getByRole('button', { name: 'Записать голосовую реплику' }),
+    within(tutorPanel).getByRole('button', { name: 'Ответить голосом' }),
   ).toBeVisible()
-  expect(screen.getByRole('img', { name: 'Визуализация записи' })).toBeVisible()
+  expect(
+    within(tutorPanel).getByRole('button', { name: 'Пропустить упражнение' }),
+  ).toBeVisible()
+  expect(
+    within(tutorPanel).getByRole('img', { name: 'Визуализация записи' }),
+  ).toBeVisible()
+  expect(
+    within(tutorPanel).queryByText('Нажмите на микрофон, чтобы начать запись'),
+  ).not.toBeInTheDocument()
   const workspace = screen.getByRole('main')
   expect(workspace).toHaveAttribute('data-variant', 'training')
+  expect(
+    screen.getByRole('complementary', { name: 'Репетитор' }),
+  ).toContainElement(screen.getByRole('heading', { name: 'Репетитор' }))
+  expect(
+    screen.getByRole('separator', { name: 'Изменить ширину панели чата' }),
+  ).toHaveAttribute('aria-orientation', 'vertical')
   expect(
     screen.queryByRole('heading', { name: 'Цели тренировки' }),
   ).not.toBeInTheDocument()
@@ -93,9 +115,7 @@ it('opens training directly from the diagnostic result', async () => {
   expect(
     screen.queryByRole('textbox', { name: 'Сообщение репетитору' }),
   ).not.toBeInTheDocument()
-  fireEvent.click(
-    screen.getByRole('button', { name: 'Записать голосовую реплику' }),
-  )
+  fireEvent.click(screen.getByRole('button', { name: 'Ответить голосом' }))
   fireEvent.click(
     await screen.findByRole('button', { name: 'Остановить и отправить' }),
   )
@@ -106,22 +126,20 @@ it('opens training directly from the diagnostic result', async () => {
   ).toBeVisible()
   expect(screen.getByText(/Раунд 1/)).toBeVisible()
   expect(screen.queryByText(/Оценка:/)).not.toBeInTheDocument()
-  fireEvent.change(
-    screen.getByRole('combobox', { name: 'Что продиктовать:' }),
-    {
-      target: { value: 'check' },
-    },
-  )
+  expect(screen.queryByRole('combobox')).not.toBeInTheDocument()
   expect(
-    screen.getByRole('button', { name: 'Записать итоговый ответ' }),
-  ).toBeVisible()
-  fireEvent.click(
-    screen.getByRole('button', { name: 'Записать итоговый ответ' }),
-  )
+    screen.queryByRole('button', { name: 'Следующий раунд' }),
+  ).not.toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Ответить голосом' })).toBeVisible()
+  fireEvent.click(screen.getByRole('button', { name: 'Ответить голосом' }))
   fireEvent.click(
     await screen.findByRole('button', { name: 'Остановить и отправить' }),
   )
-  expect(await screen.findByText('Ответ проверен')).toBeVisible()
+  expect(
+    await screen.findByText(
+      'Вы связали ответ с условием. Хотите уточнить ещё один признак?',
+    ),
+  ).toBeVisible()
   expect(screen.queryByText(/Результат проверки:/)).not.toBeInTheDocument()
   expect(screen.queryByText(/2 \/ 2/)).not.toBeInTheDocument()
   fireEvent.click(screen.getByRole('button', { name: 'Следующий раунд' }))

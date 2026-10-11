@@ -53,11 +53,11 @@ func TestTutorSendsFixedSystemPromptAndStudentHistoryAsDataMessages(t *testing.T
 		if !strings.Contains(body.Messages[0].Content, "терпеливый русскоязычный учебный репетитор") || strings.Contains(body.Messages[0].Content, "закрытая формулировка") {
 			t.Errorf("system message is not the fixed policy: %s", body.Messages[0].Content)
 		}
-		if !strings.Contains(body.Messages[1].Content, "закрытая формулировка") || !strings.Contains(body.Messages[1].Content, "training-tutor-v1") {
+		if !strings.Contains(body.Messages[1].Content, "закрытая формулировка") || !strings.Contains(body.Messages[1].Content, "training-tutor-v2") {
 			t.Errorf("trusted snapshot envelope missing: %s", body.Messages[1].Content)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"{\"assistant_text\":\"Какой результат должна выдавать модель?\",\"pedagogy\":\"question\"}"},"finish_reason":"stop"}]}`))
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"{\"assistant_text\":\"Какой результат должна выдавать модель?\",\"pedagogy\":\"question\",\"answer_ready\":false}"},"finish_reason":"stop"}]}`))
 	}))
 	defer server.Close()
 	client := NewTutor(server.Client(), server.URL, "tutor-model", time.Second)
@@ -65,19 +65,22 @@ func TestTutorSendsFixedSystemPromptAndStudentHistoryAsDataMessages(t *testing.T
 	if err != nil || got.Pedagogy != training.PedagogyQuestion || got.AssistantText != "Какой результат должна выдавать модель?" {
 		t.Fatalf("unexpected tutor reply: %+v %v", got, err)
 	}
-	if TutorPromptVersion != "training-tutor-v1" {
+	if TutorPromptVersion != "training-tutor-v2" {
 		t.Fatalf("unexpected prompt version %q", TutorPromptVersion)
 	}
 }
 
 func TestTutorRejectsMalformedOrUnsafeStructuredResponses(t *testing.T) {
 	tests := map[string]struct{ content, finish string }{
-		"malformed":        {"{", "stop"},
-		"unknown field":    {`{"assistant_text":"Подумайте","pedagogy":"hint","score":2}`, "stop"},
-		"empty":            {`{"assistant_text":"  ","pedagogy":"question"}`, "stop"},
-		"unknown pedagogy": {`{"assistant_text":"Подумайте","pedagogy":"solution"}`, "stop"},
-		"too long":         {fmt.Sprintf(`{"assistant_text":%q,"pedagogy":"hint"}`, strings.Repeat("я", 1501)), "stop"},
-		"truncated finish": {`{"assistant_text":"Подумайте","pedagogy":"hint"}`, "length"},
+		"missing readiness": {`{"assistant_text":"Подумайте","pedagogy":"hint"}`, "stop"},
+		"string readiness":  {`{"assistant_text":"Подумайте","pedagogy":"hint","answer_ready":"true"}`, "stop"},
+		"null readiness":    {`{"assistant_text":"Подумайте","pedagogy":"hint","answer_ready":null}`, "stop"},
+		"malformed":         {"{", "stop"},
+		"unknown field":     {`{"assistant_text":"Подумайте","pedagogy":"hint","score":2}`, "stop"},
+		"empty":             {`{"assistant_text":"  ","pedagogy":"question","answer_ready":false}`, "stop"},
+		"unknown pedagogy":  {`{"assistant_text":"Подумайте","pedagogy":"solution","answer_ready":false}`, "stop"},
+		"too long":          {fmt.Sprintf(`{"assistant_text":%q,"pedagogy":"hint","answer_ready":false}`, strings.Repeat("я", 1501)), "stop"},
+		"truncated finish":  {`{"assistant_text":"Подумайте","pedagogy":"hint","answer_ready":false}`, "length"},
 	}
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -135,5 +138,16 @@ func TestTutorLimitsProviderBodyTo64KiB(t *testing.T) {
 	var f *fault.Error
 	if !errors.As(err, &f) || f.Code != "INVALID_TUTOR_RESPONSE" {
 		t.Fatalf("expected size-limited response error, got %v", err)
+	}
+}
+
+func TestTutorReturnsReadinessDecision(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = fmt.Fprintf(w, `{"choices":[{"message":{"content":%q},"finish_reason":"stop"}]}`, `{"assistant_text":"Рассуждение сформулировано.","pedagogy":"confirmation","answer_ready":true}`)
+	}))
+	defer server.Close()
+	got, err := NewTutor(server.Client(), server.URL, "model", time.Second).Reply(t.Context(), validTutorContext())
+	if err != nil || !got.AnswerReady {
+		t.Fatalf("readiness was not parsed: %+v %v", got, err)
 	}
 }

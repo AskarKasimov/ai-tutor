@@ -2,7 +2,7 @@ package training
 
 import "time"
 
-const TutorPromptVersion = "training-tutor-v1"
+const TutorPromptVersion = "training-tutor-v2"
 
 type ChatRole string
 
@@ -62,6 +62,7 @@ type Check struct {
 func (c Check) IsCurrent(revision int64) bool { return c.Revision == revision }
 
 type TutorReply struct {
+	AnswerReady   bool
 	AssistantText string
 	Pedagogy      Pedagogy
 }

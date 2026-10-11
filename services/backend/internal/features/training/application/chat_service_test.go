@@ -26,7 +26,11 @@ func (r *chatRepoFake) Read(context.Context, string, string, string, int64, int)
 	return training.ChatPage{}, nil
 }
 func (r *chatRepoFake) ReserveTurn(_ context.Context, owner, session string, input training.TurnInput) (training.TurnReservation, *training.TurnResult, error) {
-	r.reservation = training.TurnReservation{OwnerID: owner, SessionID: session, Exercise: validChatExercise(), History: []training.ChatMessage{{Sequence: 1, Role: training.ChatRoleAssistant, Kind: training.ChatKindWelcome, Text: "С чего начнём?"}}, Input: input, Turn: training.Turn{ID: "turn-1", SessionID: session, ExerciseID: input.ExerciseID, RequestKey: input.Key, ExpectedRevision: input.Revision, Token: "token-1", Status: training.TurnStatusProcessing, Source: input.Source, Text: input.Text, PendingAudio: input.Audio, Operation: input.Kind}}
+	history := r.reservation.History
+	if history == nil {
+		history = []training.ChatMessage{{Sequence: 1, Role: training.ChatRoleAssistant, Kind: training.ChatKindWelcome, Text: "С чего начнём?"}}
+	}
+	r.reservation = training.TurnReservation{OwnerID: owner, SessionID: session, Exercise: validChatExercise(), History: history, Input: input, Turn: training.Turn{ID: "turn-1", SessionID: session, ExerciseID: input.ExerciseID, RequestKey: input.Key, ExpectedRevision: input.Revision, Token: "token-1", Status: training.TurnStatusProcessing, Source: input.Source, Text: input.Text, PendingAudio: input.Audio, Operation: input.Kind}}
 	return r.reservation, nil, nil
 }
 func (r *chatRepoFake) ResumeTurn(context.Context, string, string, string, string) (training.TurnReservation, *training.TurnResult, error) {
@@ -162,5 +166,39 @@ func TestCheckProviderFailureDoesNotCreateAZeroScoreOrCommit(t *testing.T) {
 	_, err := service.Send(context.Background(), "owner-1", "session-1", training.TurnInput{ExerciseID: "exercise-1", Key: "key-fail", Revision: 0, Kind: training.ChatKindCheck, Source: training.AnswerSourceText, Text: "Итоговый ответ ученика"})
 	if err == nil || repo.commits != 0 || repo.check != nil || tutor.calls != 0 || repo.failures != 1 {
 		t.Fatalf("failed grade became a check or reached tutor: err=%v commits=%d check=%+v tutor=%d failures=%d", err, repo.commits, repo.check, tutor.calls, repo.failures)
+	}
+}
+
+func TestTutorReadinessAutomaticallyGradesStudentDialogue(t *testing.T) {
+	repo := &chatRepoFake{reservation: training.TurnReservation{History: []training.ChatMessage{
+		{Role: training.ChatRoleUser, Text: "Это классификация."},
+		{Role: training.ChatRoleAssistant, Text: "Закрытая подсказка репетитора."},
+	}}}
+	tutor := &chatTutorFake{reply: training.TutorReply{AnswerReady: true, AssistantText: "Уточним результат.", Pedagogy: training.PedagogyConfirmation}}
+	grader := &finalGraderFake{result: assessment.Evaluation{Score: 2, MaxScore: 2, Verdict: "correct", Feedback: []string{"one", "two", "three"}, CriterionResults: []assessment.CriterionResult{{Key: "x", Satisfied: true}}}}
+	service := NewChatService(repo, nil, tutor, grader, &chatIDsFake{}, time.Now)
+	result, err := service.Send(t.Context(), "owner-1", "session-1", training.TurnInput{ExerciseID: "exercise-1", Key: "auto-check", Kind: training.ChatKindMessage, Source: training.AnswerSourceText, Text: "Потому что результат — один из классов."})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if grader.calls != 1 || tutor.calls != 2 || repo.commits != 1 || result.Response.LatestCheck == nil {
+		t.Fatalf("ready dialogue was not checked: grade=%d tutor=%d commits=%d result=%+v", grader.calls, tutor.calls, repo.commits, result)
+	}
+	if grader.answer != "Это классификация.\n\nПотому что результат — один из классов." {
+		t.Fatalf("grader did not receive only the student dialogue: %q", grader.answer)
+	}
+	if tutor.context.Check == nil || tutor.context.Check.Feedback != nil || result.Response.Messages[0].Kind != training.ChatKindMessage {
+		t.Fatalf("unified turn lost trusted feedback or changed its kind: context=%+v result=%+v", tutor.context, result)
+	}
+}
+
+func TestAutomaticCheckFailureDoesNotCommitOrCreateZeroScore(t *testing.T) {
+	repo := &chatRepoFake{}
+	tutor := &chatTutorFake{reply: training.TutorReply{AnswerReady: true, AssistantText: "Проверим рассуждение.", Pedagogy: training.PedagogyConfirmation}}
+	grader := &finalGraderFake{err: errors.New("grader unavailable")}
+	service := NewChatService(repo, nil, tutor, grader, &chatIDsFake{}, time.Now)
+	_, err := service.Send(t.Context(), "owner-1", "session-1", training.TurnInput{ExerciseID: "exercise-1", Key: "auto-check-error", Kind: training.ChatKindMessage, Source: training.AnswerSourceText, Text: "Классификация, потому что выбираем класс."})
+	if err == nil || grader.calls != 1 || tutor.calls != 1 || repo.commits != 0 || repo.check != nil || repo.failures != 1 {
+		t.Fatalf("failed automatic grading was committed: err=%v grader=%d tutor=%d commits=%d check=%+v failures=%d", err, grader.calls, tutor.calls, repo.commits, repo.check, repo.failures)
 	}
 }

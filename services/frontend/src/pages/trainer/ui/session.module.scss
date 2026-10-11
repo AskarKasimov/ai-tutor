@@ -1,7 +1,6 @@
 // Shared diagnostic/training session layout: header, progress bar (diagnostic)
-// or question navigator (training), question card and voice panel in a frame with the design's
-// proportions, centered in the window without page scroll; long content
-// scrolls inside its own block.
+// or question navigator (training), question card and voice panel.
+// Long content scrolls inside its own block on desktop.
 .shell {
   --session-gap: 16px;
   --session-radius: 20px;
@@ -16,23 +15,28 @@
   --session-neutral-fill: rgb(197 197 197 / 0.7);
   --session-neutral-text: #747474;
   box-sizing: border-box;
-  min-height: 100dvh;
+  flex: none;
+  height: 100dvh;
+  max-height: 900px;
+  min-height: 0;
+  min-width: 0;
   display: grid;
-  place-items: center;
+  grid-template-rows: minmax(0, 1fr);
+  justify-items: center;
   overflow: hidden;
   background: var(--app-soft);
   color: var(--app-ink);
 }
-// Large screens keep the design frame (1280×840) instead of stretching the
-// blocks; smaller windows use their full size.
+// The shell is capped at 900px; panels scroll within it.
 .frame {
   box-sizing: border-box;
   width: min(100%, 1280px);
-  height: min(100dvh, 840px);
+  height: 100%;
+  min-height: 0;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
-  gap: var(--session-gap);
-  padding: var(--session-gap);
+  gap: var(--space-2) var(--session-gap);
+  padding: var(--space-2) var(--session-gap);
 }
 .frameWithProgress {
   grid-template-rows: auto auto minmax(0, 1fr);
@@ -792,6 +796,8 @@ button.mic {
 
 @media (max-width: 900px) {
   .shell {
+    height: auto;
+    max-height: none;
     display: block;
     overflow: visible;
   }
@@ -799,6 +805,7 @@ button.mic {
     width: 100%;
     height: auto;
     min-height: 100dvh;
+    max-height: none;
     grid-template-rows: auto auto;
   }
   .frameWithProgress {

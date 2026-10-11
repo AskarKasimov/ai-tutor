@@ -5,11 +5,17 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
+	"time"
 
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/assessment"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/training"
 	trainingapp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/training/application"
+	trainingmodel "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/training/infrastructure/modelapi"
 	trainingpg "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/training/infrastructure/postgres"
 	trainingsnapshot "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/training/infrastructure/snapshot"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/fault"
@@ -238,5 +244,76 @@ func TestTrainingChatReplayPrecedesCurrentExerciseAndRejectsChangedBody(t *testi
 		if !errors.As(err, &f) || f.Code != "IDEMPOTENCY_KEY_REUSED" {
 			t.Fatalf("expected idempotency conflict, got %v", err)
 		}
+	}
+}
+
+type automaticChatGrader struct{ answer string }
+
+func (g *automaticChatGrader) GradeFinal(_ context.Context, _ training.Exercise, answer string) (assessment.Evaluation, error) {
+	g.answer = answer
+	return assessment.Evaluation{Score: 2, MaxScore: 2, Verdict: "correct", CriterionResults: []assessment.CriterionResult{{Key: "answer_correctness", Satisfied: true}}, Feedback: []string{"one", "two", "three"}}, nil
+}
+
+func TestTrainingChatTutorAutomaticallyChecksAndEnablesNext(t *testing.T) {
+	f, repository, chats, owner, progress := startTrainingChatFixture(t)
+	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var request struct {
+			Messages []struct {
+				Content string `json:"content"`
+			} `json:"messages"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			t.Error(err)
+			w.WriteHeader(400)
+			return
+		}
+		var snapshot struct {
+			Check *json.RawMessage `json:"trusted_check"`
+		}
+		if err := json.Unmarshal([]byte(request.Messages[1].Content), &snapshot); err != nil {
+			t.Error(err)
+			w.WriteHeader(400)
+			return
+		}
+		ready := strings.Contains(request.Messages[len(request.Messages)-1].Content, "потому")
+		reply := map[string]any{"answer_ready": ready, "assistant_text": "Какой признак подтверждает выбор?", "pedagogy": "question"}
+		if snapshot.Check != nil {
+			reply["assistant_text"] = "Вы связали вывод с условием."
+			reply["pedagogy"] = "confirmation"
+		}
+		encoded, _ := json.Marshal(reply)
+		_ = json.NewEncoder(w).Encode(map[string]any{"choices": []any{map[string]any{"message": map[string]any{"content": string(encoded)}, "finish_reason": "stop"}}})
+	}))
+	defer provider.Close()
+	grader := &automaticChatGrader{}
+	service := trainingapp.NewChatService(chats, nil, trainingmodel.NewTutor(provider.Client(), provider.URL, "test-tutor", time.Second), grader, security.IDGenerator{}, f.app.now)
+	input := training.TurnInput{ExerciseID: progress.Current.ID, Key: "auto-first", Kind: training.ChatKindMessage, Source: training.AnswerSourceText, Text: "Это классификация."}
+	first, err := service.Send(t.Context(), owner, progress.ID, input)
+	if err != nil || first.Response.LatestCheck != nil || grader.answer != "" {
+		t.Fatalf("partial turn was graded: %+v %v answer=%q", first, err, grader.answer)
+	}
+	nextService := trainingapp.New(repository, f.app.diagnosticStore, nil, nil, trainingsnapshot.Provider{}, security.IDGenerator{}, f.app.now).WithCheckedNext(chats)
+	if _, err := nextService.NextChecked(t.Context(), owner, progress.ID, progress.Current.ID, "next-before-ready", first.Response.Revision); err == nil {
+		t.Fatal("next succeeded before tutor readiness")
+	}
+	input.Key, input.Revision, input.Text = "auto-second", first.Response.Revision, "потому что модель выбирает один из классов."
+	checked, err := service.Send(t.Context(), owner, progress.ID, input)
+	if err != nil || checked.Response.LatestCheck == nil || checked.Response.LatestCheck.Revision != checked.Response.Revision {
+		t.Fatalf("ready turn was not checked: %+v %v", checked, err)
+	}
+	if grader.answer != "Это классификация.\n\nпотому что модель выбирает один из классов." {
+		t.Fatalf("grading dialogue: %q", grader.answer)
+	}
+	replay, err := service.Send(t.Context(), owner, progress.ID, input)
+	if err != nil || replay.Response.TurnID != checked.Response.TurnID {
+		t.Fatalf("auto-check replay: %+v %v", replay, err)
+	}
+	page, err := chats.Read(t.Context(), owner, progress.ID, progress.Current.ID, 0, 40)
+	if err != nil || page.LatestCheck == nil || page.LatestCheck.Score != 2 {
+		t.Fatalf("persisted auto-check: %+v %v", page, err)
+	}
+	next, err := nextService.NextChecked(t.Context(), owner, progress.ID, progress.Current.ID, "auto-next", page.Revision)
+	if err != nil || next.Current.ID == progress.Current.ID || next.AnswerCount != 1 {
+		t.Fatalf("next after automatic check: %+v %v", next, err)
 	}
 }

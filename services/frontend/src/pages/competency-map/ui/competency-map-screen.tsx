@@ -125,7 +125,7 @@ function CompetencyMapAdmin({ userId }: { userId: string }) {
           <ShieldCheck size={24} aria-hidden="true" />
           <Text weight="bold">{t('competencyMap.admin')}</Text>
         </div>
-        <AccountMenu />
+        <AccountMenu canLogout={false} />
       </header>
       <main className={styles.content}>
         <div className={styles.intro}>

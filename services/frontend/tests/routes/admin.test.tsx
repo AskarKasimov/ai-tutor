@@ -15,7 +15,6 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { createQueryClient } from '@/bootstrap/providers'
 import { routeTree } from '@/routeTree.gen'
 import * as trainerSource from '@/bootstrap/demo-trainer-session-source'
-import { logOut } from '../support/account-menu'
 
 const admin = {
   id: 'admin-1',
@@ -530,20 +529,15 @@ it('keeps the file for a retry after a technical import failure', async () => {
   ).toBeEnabled()
 })
 
-it('enters the shared account again after logout', async () => {
-  const fetch = backend()
+it('shows the shared account without a logout in the admin panel', async () => {
+  backend()
   renderApp()
   await screen.findByRole('heading', { name: 'Карта компетенций' })
-  await logOut()
-  await waitFor(() =>
-    expect(
-      fetch.mock.calls.some(([url]) => url.endsWith('/auth/teacher')),
-    ).toBe(true),
-  )
+  expect(screen.getByLabelText('Профиль: Администратор')).toBeVisible()
   expect(
-    await screen.findByLabelText('Файл карты компетенций'),
-  ).toBeInTheDocument()
-  expect(screen.queryByLabelText('Пароль')).not.toBeInTheDocument()
+    screen.queryByRole('button', { name: /Меню профиля/ }),
+  ).not.toBeInTheDocument()
+  expect(screen.queryByText('Выйти')).not.toBeInTheDocument()
 })
 
 it('does not expose the upload form when the admin panel cannot sign in', async () => {

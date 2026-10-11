@@ -218,9 +218,36 @@ function server(
         score_percentage: 100,
         summary: 'Итоговое педагогическое резюме.',
         strengths,
-        confirmed_gaps: [],
+        confirmed_gaps: [
+          {
+            competency_id: 'c1',
+            competency_name: 'Модели',
+            outcome_id: 'o1',
+            outcome_name: 'Различать модели',
+            taxonomy_code: 'apply',
+            importance: 3,
+            failed_criteria: [],
+            advice: 'Повторный совет к рекомендации.',
+          },
+          {
+            competency_id: 'c1',
+            competency_name: 'Модели',
+            outcome_id: 'o2',
+            outcome_name: 'Выбирать метрику',
+            taxonomy_code: 'apply',
+            importance: 3,
+            failed_criteria: [],
+            advice: 'Сравните метрики на двух задачах.',
+          },
+        ],
         partial_competencies: [],
-        unverified_competencies: [],
+        unverified_competencies: [
+          {
+            competency_id: 'c9',
+            competency_name: 'Непроверенная компетенция',
+            code: 'NOT_ASKED',
+          },
+        ],
         training_recommendations: [
           {
             competency_id: 'c1',
@@ -285,6 +312,10 @@ it('runs real diagnostic audio, obeys skipped basics and displays the server tot
   })
   const card = screen.getByRole('heading', { level: 1 }).closest('section')!
   expect(card).toContainElement(listen)
+  // There is no way to skip a question: every task is answered by voice.
+  expect(
+    screen.queryByRole('button', { name: 'Пропустить вопрос' }),
+  ).not.toBeInTheDocument()
   expect(
     listen.compareDocumentPosition(
       screen.getByRole('heading', { name: 'Варианты ответа' }),
@@ -345,12 +376,12 @@ it('runs real diagnostic audio, obeys skipped basics and displays the server tot
     screen.getByText('Диагностический балл').parentElement,
   ).toHaveTextContent('2 / 2')
   expect(
-    screen.getByRole('button', { name: 'Пройти тренировку' }),
+    screen.getByRole('button', { name: 'Подтянуть слабые темы' }),
   ).toBeVisible()
   // The task review is folded until the student opens it.
   expect(screen.queryByText('Настоящая расшифровка')).not.toBeInTheDocument()
   fireEvent.click(
-    await screen.findByRole('button', { name: /Разбор по заданиям/ }),
+    await screen.findByRole('button', { name: /Посмотреть мои ответы/ }),
   )
   expect(screen.getByText('Настоящая расшифровка')).toBeVisible()
   expect(screen.getByText(feedback.join(' '))).toBeVisible()
@@ -359,13 +390,23 @@ it('runs real diagnostic audio, obeys skipped basics and displays the server tot
     await screen.findByText('Итоговое педагогическое резюме.'),
   ).toBeVisible()
   expect(screen.getByText('Вы уверенно различаете модели.')).toBeVisible()
+  // The overall feedback names only what was checked.
+  expect(
+    screen.queryByText('Непроверенная компетенция'),
+  ).not.toBeInTheDocument()
   expect(
     screen.getByText(/Закрепите выбор модели на новых примерах/),
   ).toBeVisible()
-  expect(screen.getByText('Базовый вопрос из банка')).toBeVisible()
-  expect(screen.getByText(/Не проверено/)).toBeVisible()
+  // Confirmed gaps join the plan unless a recommendation already covers them.
+  expect(screen.getByText('Сравните метрики на двух задачах.')).toBeVisible()
   expect(
-    screen.getByRole('button', { name: 'Пройти тренировку' }),
+    screen.queryByText('Повторный совет к рекомендации.'),
+  ).not.toBeInTheDocument()
+  // Skipped basics are not listed: the review shows only the asked tasks.
+  expect(screen.queryByText('Базовый вопрос из банка')).not.toBeInTheDocument()
+  expect(screen.queryByText(/Не проверено/)).not.toBeInTheDocument()
+  expect(
+    screen.getByRole('button', { name: 'Подтянуть слабые темы' }),
   ).toBeEnabled()
   expect(
     screen.queryByRole('button', { name: 'Новая диагностика' }),
@@ -443,7 +484,7 @@ it('shows the task review only together with the overall feedback', async () => 
     await screen.findByText('Итоговое педагогическое резюме.'),
   ).toBeVisible()
   fireEvent.click(
-    await screen.findByRole('button', { name: /Разбор по заданиям/ }),
+    await screen.findByRole('button', { name: /Посмотреть мои ответы/ }),
   )
   expect(screen.getByText('Настоящая расшифровка')).toBeVisible()
   expect(
@@ -641,35 +682,6 @@ it('keeps answered positions after a page reload', async () => {
   )
 })
 
-it('skips a question without sending audio for transcription', async () => {
-  const requests = server()
-  await home()
-  fireEvent.click(
-    await screen.findByRole('button', { name: 'Пропустить вопрос' }),
-  )
-  expect(await screen.findByText('Вопрос пропущен')).toBeVisible()
-  expect(
-    screen.queryByText(
-      'Вопрос пропущен. Ответ оценён в 0 баллов. Продолжите со следующим вопросом.',
-    ),
-  ).not.toBeInTheDocument()
-  expect(screen.getByRole('progressbar')).not.toHaveAttribute(
-    'aria-valuenow',
-    '0',
-  )
-  expect(audio.startRecording).not.toHaveBeenCalled()
-  const [, init] = requests.mock.calls.find(([url]) => url.endsWith('/skip'))!
-  expect(JSON.parse(init?.body as string)).toEqual({
-    variant_task_id: 'v-main',
-  })
-  expect(requests.mock.calls.some(([url]) => url.endsWith('/answers'))).toBe(
-    false,
-  )
-  expect(
-    requests.mock.calls.some(([url]) => url.endsWith('/audio/skip-answer.wav')),
-  ).toBe(false)
-})
-
 it('shows the crossed-out microphone when recording cannot start', async () => {
   server()
   vi.mocked(audio.startRecording).mockRejectedValueOnce(
@@ -686,9 +698,6 @@ it('shows the crossed-out microphone when recording cannot start', async () => {
   fireEvent.click(screen.getByRole('button', { name: 'Попробовать снова' }))
   expect(
     await screen.findByRole('button', { name: 'Завершить запись' }),
-  ).toBeVisible()
-  expect(
-    screen.getByRole('button', { name: 'Пропустить вопрос' }),
   ).toBeVisible()
 })
 
@@ -1020,13 +1029,12 @@ it.each([1, 2])(
       screen.getByText('Диагностический балл').parentElement,
     ).toHaveTextContent('2 / 2')
     fireEvent.click(
-      await screen.findByRole('button', { name: /Разбор по заданиям/ }),
+      await screen.findByRole('button', { name: /Посмотреть мои ответы/ }),
     )
     expect(screen.queryByText('Второй базовый вопрос')).not.toBeInTheDocument()
-    if (totalTasks === 1)
-      expect(
-        screen.queryByText('Базовый вопрос из банка'),
-      ).not.toBeInTheDocument()
-    else expect(screen.getByText('Базовый вопрос из банка')).toBeVisible()
+    // Basics left out after a full main answer are not listed.
+    expect(
+      screen.queryByText('Базовый вопрос из банка'),
+    ).not.toBeInTheDocument()
   },
 )

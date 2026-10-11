@@ -601,13 +601,13 @@
   line-height: 18px;
 }
 .voice {
-  flex: 1 0 auto;
+  flex: none;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 14px;
-  padding: 36px 0 20px;
+  padding: 36px 0 8px;
   text-align: center;
 }
 // The microphone circle with two soft halo rings; recording makes the rings
@@ -790,6 +790,7 @@ button.mic {
 .spacer {
   flex: 1;
 }
+// The training chat keeps its skip button.
 .skip {
   flex: none;
 }
@@ -855,6 +856,10 @@ button.mic {
   }
   .voice {
     padding: 28px 0 12px;
+  }
+  // Stacked blocks have no spare height: the microphone follows the text.
+  .spacer {
+    flex: none;
   }
 }
 @media (prefers-reduced-motion: reduce) {

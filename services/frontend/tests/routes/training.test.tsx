@@ -65,7 +65,7 @@ it('opens training directly from the diagnostic result', async () => {
   )
   const playedBeforeTraining = play.mock.calls.length
   fireEvent.click(
-    await screen.findByRole('button', { name: 'Пройти тренировку' }),
+    await screen.findByRole('button', { name: 'Подтянуть слабые темы' }),
   )
   expect(
     screen.queryByRole('button', { name: 'Начать тренировку' }),

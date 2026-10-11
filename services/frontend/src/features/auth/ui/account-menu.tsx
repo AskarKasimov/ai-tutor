@@ -18,11 +18,27 @@ function initials(name: string) {
   )
 }
 
-export function AccountMenu() {
+// canLogout=false shows only the profile, without the menu: the admin panel
+// is a shared account that enters by itself, so leaving it makes no sense.
+export function AccountMenu({ canLogout = true }: { canLogout?: boolean }) {
   const { t } = useTranslation()
   const { user, logout } = useAuth()
   // Accounts created before the name became required fall back to email.
   const name = user?.display_name || user?.email || ''
+  if (!canLogout)
+    return (
+      <div className={styles.account}>
+        <span
+          className={`${styles.profile} ${styles.profileStatic}`}
+          aria-label={`${t('auth.account')}: ${name}`}
+        >
+          <span className={styles.avatar} aria-hidden="true">
+            {initials(name)}
+          </span>
+          <span className={styles.user}>{name}</span>
+        </span>
+      </div>
+    )
   return (
     <div className={styles.account}>
       <DropdownMenu.Root>

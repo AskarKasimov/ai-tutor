@@ -2,7 +2,6 @@ import { Button, Text } from '@radix-ui/themes'
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { TrainingApiError, type TrainingProgress } from '@/entities/training'
-import { isMockApi } from '@/shared/api'
 import { useTrainingSession, useTrainingVoice } from '@/features/training'
 import { TrainingChat } from './training-chat'
 import { TrainingWorkspace } from './training-workspace'
@@ -153,11 +152,6 @@ export function TrainingSession({
               </div>
             }
           >
-            {isMockApi() ? (
-              <Text as="p" role="note" className={sessionStyles.note}>
-                {t('training.demoNotice')}
-              </Text>
-            ) : null}
             {voice.audioStatus !== 'idle' &&
             voice.audioStatus !== 'ready' &&
             voice.audioStatus !== 'loading' ? (

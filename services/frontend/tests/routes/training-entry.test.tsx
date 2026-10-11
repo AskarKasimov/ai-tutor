@@ -3,7 +3,6 @@ import { useState } from 'react'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { AppProviders, createQueryClient } from '@/bootstrap/providers'
 import { createAppDependencies } from '@/bootstrap/dependencies'
-import { mockApiFetch } from '@/bootstrap/mock-api'
 import {
   TrainingApiError,
   type TrainingHistory,
@@ -62,14 +61,13 @@ const preview = (
   ...overrides,
 })
 
-beforeEach(async () => {
-  vi.stubEnv('VITE_API_MODE', 'mock')
-  await mockApiFetch('/api/v1/auth/logout', { method: 'POST' })
-  await mockApiFetch('/api/v1/auth/login', {
-    method: 'POST',
-    body: JSON.stringify({ email: '', password: '' }),
-  })
+beforeEach(() => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => Response.json({ exercise_id: 'e1', status: 'missing' })),
+  )
 })
+
 afterEach(() => {
   vi.restoreAllMocks()
   vi.unstubAllGlobals()

@@ -6,7 +6,6 @@ import {
 } from '@tanstack/react-router'
 import { afterEach, expect, it, vi } from 'vitest'
 import { createQueryClient } from '@/bootstrap/providers'
-import { mockApiFetch } from '@/bootstrap/mock-api'
 import { routeTree } from '@/routeTree.gen'
 import { logOut } from '../support/account-menu'
 
@@ -15,6 +14,42 @@ afterEach(() => {
   vi.unstubAllGlobals()
   window.history.replaceState({}, '', '/')
 })
+
+function backend() {
+  let user: {
+    id: string
+    email: string
+    display_name: string
+    role: string
+  } | null = null
+  const fetch = vi.fn(async (url: string, options?: RequestInit) => {
+    if (
+      (url.endsWith('/auth/teacher') || url.endsWith('/auth/login')) &&
+      options?.method === 'POST'
+    ) {
+      const teacher = url.endsWith('/auth/teacher')
+      user = {
+        id: teacher ? 'teacher-1' : 'student-1',
+        email: 'user@example.com',
+        display_name: teacher ? 'Учитель' : 'Студент',
+        role: teacher ? 'admin' : 'student',
+      }
+      return Response.json({ user })
+    }
+    if (url.endsWith('/auth/logout')) {
+      user = null
+      return new Response(null, { status: 204 })
+    }
+    if (url.endsWith('/auth/me'))
+      return user ? Response.json(user) : new Response(null, { status: 401 })
+    if (url.endsWith('/auth/refresh'))
+      return new Response(null, { status: 401 })
+    if (url.endsWith('/subjects')) return Response.json([])
+    throw new Error(`Unexpected request: ${url}`)
+  })
+  vi.stubGlobal('fetch', fetch)
+  return fetch
+}
 
 // The browser address decides the portal, as it does for the API transport.
 function renderApp(path: string) {
@@ -29,8 +64,7 @@ function renderApp(path: string) {
 }
 
 it('opens the student site straight on sign-in and returns there on logout', async () => {
-  vi.stubEnv('VITE_API_MODE', 'mock')
-  await mockApiFetch('/api/v1/auth/logout', { method: 'POST' })
+  backend()
   const router = renderApp('/')
   expect(await screen.findByLabelText('Пароль')).toBeVisible()
   expect(router.state.location.pathname).toBe('/login')
@@ -41,6 +75,14 @@ it('opens the student site straight on sign-in and returns there on logout', asy
   expect(screen.queryByText(/учител/i)).not.toBeInTheDocument()
   fireEvent.click(screen.getByRole('button', { name: 'Регистрация' }))
   fireEvent.click(screen.getByRole('button', { name: 'Вход' }))
+  expect(screen.getByLabelText('Email')).toBeRequired()
+  expect(screen.getByLabelText('Пароль')).toBeRequired()
+  fireEvent.change(screen.getByLabelText('Email'), {
+    target: { value: 'student@example.com' },
+  })
+  fireEvent.change(screen.getByLabelText('Пароль'), {
+    target: { value: 'student-password' },
+  })
   fireEvent.click(screen.getByRole('button', { name: 'Войти' }))
   expect(
     await screen.findByRole('button', { name: /Меню профиля/ }),
@@ -54,43 +96,32 @@ it('opens the student site straight on sign-in and returns there on logout', asy
   expect(router.state.location.pathname).toBe('/login')
 })
 
-it.each(['real', 'mock', 'preview'])(
-  'opens the admin panel without a sign-in step in %s mode',
-  async (mode) => {
-    vi.stubEnv('VITE_API_MODE', mode)
-    await mockApiFetch('/api/v1/auth/logout', { method: 'POST' })
-    const fetch = vi.fn((url: string, options?: RequestInit) =>
-      mockApiFetch(url, options),
-    )
-    vi.stubGlobal('fetch', fetch)
-    const router = renderApp('/admin')
-    expect(
-      await screen.findByRole('heading', { name: 'Карта компетенций' }),
-    ).toBeVisible()
-    expect(screen.getByText('Учитель')).toBeVisible()
-    expect(router.state.location.pathname).toBe('/admin/competency-map')
-    expect(screen.queryByLabelText('Пароль')).not.toBeInTheDocument()
-    if (mode === 'real') {
-      const call = fetch.mock.calls.find(([url]) =>
-        url.endsWith('/auth/teacher'),
-      )!
-      expect(call[1]?.method).toBe('POST')
-      expect(call[1]?.body).toBeUndefined()
-      expect(call[1]?.credentials).toBe('include')
-      // The admin panel keeps its own session through the portal header.
-      expect(new Headers(call[1]?.headers).get('X-AI-Tutor-Portal')).toBe(
-        'admin',
-      )
-    } else expect(fetch).not.toHaveBeenCalled()
-    // The shared account has no logout.
-    expect(
-      screen.queryByRole('button', { name: /Меню профиля/ }),
-    ).not.toBeInTheDocument()
-  },
-)
+it('opens the admin panel through the backend without a sign-in step', async () => {
+  const fetch = backend()
+  const router = renderApp('/admin')
+  expect(
+    await screen.findByRole('heading', { name: 'Карта компетенций' }),
+  ).toBeVisible()
+  expect(screen.getByText('Учитель')).toBeVisible()
+  expect(router.state.location.pathname).toBe('/admin/competency-map')
+  expect(screen.queryByLabelText('Пароль')).not.toBeInTheDocument()
+  {
+    const call = fetch.mock.calls.find(([url]) =>
+      url.endsWith('/auth/teacher'),
+    )!
+    expect(call[1]?.method).toBe('POST')
+    expect(call[1]?.body).toBeUndefined()
+    expect(call[1]?.credentials).toBe('include')
+    // The admin panel keeps its own session through the portal header.
+    expect(new Headers(call[1]?.headers).get('X-AI-Tutor-Portal')).toBe('admin')
+  }
+  // The shared account has no logout.
+  expect(
+    screen.queryByRole('button', { name: /Меню профиля/ }),
+  ).not.toBeInTheDocument()
+})
 
 it('offers a retry when the admin panel cannot sign in', async () => {
-  vi.stubEnv('VITE_API_MODE', 'real')
   const fetch = vi.fn(async (url: string) =>
     url.endsWith('/auth/teacher')
       ? Response.json({ message: 'Сервер недоступен.' }, { status: 503 })

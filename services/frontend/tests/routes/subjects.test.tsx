@@ -7,10 +7,72 @@ import {
 } from '@tanstack/react-router'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { createQueryClient } from '@/bootstrap/providers'
-import * as mockApi from '@/bootstrap/mock-api'
 import { routeTree } from '@/routeTree.gen'
 
-beforeEach(async () => {
+function backendResponse(url: string, init?: RequestInit): Promise<Response> {
+  const current = {
+    variant_task_id: 'v-main',
+    source_task_id: 'bank-main',
+    role: 'main',
+    competency_id: 'c1',
+    competency_name: 'Модели',
+    constituent_id: 's1',
+    constituent_name: 'Выбор модели',
+    outcome_id: 'o1',
+    outcome_name: 'Различать модели',
+    question: 'Вопрос о классификации',
+    options: ['Классификация', 'Регрессия'],
+    voice_instruction: 'Назовите модель и объясните решение.',
+  }
+  const progress = {
+    session_id: 'session-1',
+    status: 'active',
+    completed_tasks: 0,
+    skipped_tasks: 0,
+    total_tasks: 1,
+    current,
+  }
+  if (url.endsWith('/auth/me'))
+    return Promise.resolve(
+      Response.json({
+        id: 'student-1',
+        email: 'student@example.com',
+        display_name: 'Студент',
+        role: 'student',
+      }),
+    )
+  if (url.endsWith('/subjects'))
+    return Promise.resolve(
+      Response.json([{ id: 'subject-1', name: 'Предмет A', ready: true }]),
+    )
+  if (url.endsWith('/learning-state'))
+    return Promise.resolve(
+      Response.json({
+        subject_id: 'subject-1',
+        subject_name: 'Предмет A',
+        diagnostic_status: 'not_started',
+        diagnostic_completed: false,
+        training_available: false,
+      }),
+    )
+  if (url.endsWith('/variants') && init?.method === 'POST')
+    return Promise.resolve(Response.json({ id: 'variant-1' }, { status: 201 }))
+  if (
+    url.endsWith('/diagnostic-sessions') ||
+    url.endsWith('/diagnostic-sessions/session-1')
+  )
+    return Promise.resolve(Response.json(progress))
+  if (url.includes('/current/audio?'))
+    return Promise.resolve(
+      Response.json({
+        variant_task_id: 'v-main',
+        status: 'missing',
+      }),
+    )
+  throw new Error(`Unexpected request: ${url}`)
+}
+
+beforeEach(() => {
   vi.stubGlobal(
     'ResizeObserver',
     class {
@@ -19,13 +81,8 @@ beforeEach(async () => {
       disconnect() {}
     },
   )
-  vi.stubEnv('VITE_API_MODE', 'demo')
   sessionStorage.clear()
-  await mockApi.mockApiFetch('/api/v1/auth/logout', { method: 'POST' })
-  await mockApi.mockApiFetch('/api/v1/auth/login', {
-    method: 'POST',
-    body: JSON.stringify({ email: '', password: '' }),
-  })
+  vi.stubGlobal('fetch', vi.fn(backendResponse))
 })
 afterEach(() => {
   vi.restoreAllMocks()
@@ -34,15 +91,13 @@ afterEach(() => {
 
 it('loads subjects without creating a variant, then starts only the chosen subject on explicit action', async () => {
   const requests: string[] = []
-  const original = mockApi.mockApiFetch
-  const api = vi
-    .spyOn(mockApi, 'mockApiFetch')
-    .mockImplementation(async (url, init) => {
-      requests.push(
-        `${init?.method ?? 'GET'} ${new URL(url, 'http://local').pathname}`,
-      )
-      return original(url, init)
-    })
+  const original = backendResponse
+  const api = vi.mocked(fetch).mockImplementation(async (url, init) => {
+    requests.push(
+      `${init?.method ?? 'GET'} ${new URL(String(url), 'http://local').pathname}`,
+    )
+    return original(String(url), init)
+  })
   const router = createRouter({
     context: { queryClient: createQueryClient() },
     history: createMemoryHistory({ initialEntries: ['/'] }),
@@ -55,7 +110,7 @@ it('loads subjects without creating a variant, then starts only the chosen subje
   )
   expect(
     await screen.findByRole('heading', {
-      name: 'Демонстрационный предмет A',
+      name: 'Предмет A',
       level: 2,
     }),
   ).toBeVisible()
@@ -63,9 +118,7 @@ it('loads subjects without creating a variant, then starts only the chosen subje
     screen.queryByRole('combobox', { name: 'Предмет' }),
   ).not.toBeInTheDocument()
   expect(screen.getByRole('heading', { name: 'Курсы', level: 1 })).toBeVisible()
-  expect(
-    screen.getByRole('article', { name: 'Демонстрационный предмет A' }),
-  ).toBeVisible()
+  expect(screen.getByRole('article', { name: 'Предмет A' })).toBeVisible()
   // Diagnostic and training are one process: a single action, no training tile.
   // Four steps say what the student does, starting with a voice check.
   const steps = screen.getByRole('list', { name: 'Как проходит обучение' })
@@ -90,7 +143,7 @@ it('loads subjects without creating a variant, then starts only the chosen subje
   fireEvent.click(startButton)
   expect(
     await screen.findByRole('heading', {
-      name: 'Демонстрационный вопрос о классификации',
+      name: 'Вопрос о классификации',
     }),
   ).toBeVisible()
   await waitFor(() =>
@@ -107,7 +160,7 @@ it('loads subjects without creating a variant, then starts only the chosen subje
   render(<RouterProvider router={refreshed} />)
   expect(
     await screen.findByRole('heading', {
-      name: 'Демонстрационный вопрос о классификации',
+      name: 'Вопрос о классификации',
     }),
   ).toBeVisible()
   await waitFor(() =>
@@ -124,31 +177,25 @@ it('loads subjects without creating a variant, then starts only the chosen subje
 it('returns to subject selection after refresh during a pending start and reuses its key only after a new click', async () => {
   const requests: Array<{ method: string; path: string; key?: string }> = []
   let deferFirstVariant = true
-  const original = mockApi.mockApiFetch
-  vi.spyOn(mockApi, 'mockApiFetch').mockImplementation(
-    async (url, init = {}) => {
-      const path = new URL(url, 'http://local').pathname
-      const method = init.method ?? 'GET'
-      const key = new Headers(init.headers).get('Idempotency-Key') ?? undefined
-      if (
-        path.endsWith('/variants') &&
-        method === 'POST' &&
-        deferFirstVariant
-      ) {
-        deferFirstVariant = false
-        requests.push({ method, path, key })
-        return new Promise<Response>((_resolve, reject) => {
-          init.signal?.addEventListener(
-            'abort',
-            () => reject(new DOMException('Aborted', 'AbortError')),
-            { once: true },
-          )
-        })
-      }
+  const original = backendResponse
+  vi.mocked(fetch).mockImplementation(async (url, init = {}) => {
+    const path = new URL(String(url), 'http://local').pathname
+    const method = init.method ?? 'GET'
+    const key = new Headers(init.headers).get('Idempotency-Key') ?? undefined
+    if (path.endsWith('/variants') && method === 'POST' && deferFirstVariant) {
+      deferFirstVariant = false
       requests.push({ method, path, key })
-      return original(url, init)
-    },
-  )
+      return new Promise<Response>((_resolve, reject) => {
+        init.signal?.addEventListener(
+          'abort',
+          () => reject(new DOMException('Aborted', 'AbortError')),
+          { once: true },
+        )
+      })
+    }
+    requests.push({ method, path, key })
+    return original(String(url), init)
+  })
 
   const firstRouter = createRouter({
     context: { queryClient: createQueryClient() },
@@ -174,7 +221,7 @@ it('returns to subject selection after refresh during a pending start and reuses
   render(<RouterProvider router={refreshedRouter} />)
   expect(
     await screen.findByRole('heading', {
-      name: 'Демонстрационный предмет A',
+      name: 'Предмет A',
       level: 2,
     }),
   ).toBeVisible()
@@ -186,99 +233,10 @@ it('returns to subject selection after refresh during a pending start and reuses
   )
   expect(
     await screen.findByRole('heading', {
-      name: 'Демонстрационный вопрос о классификации',
+      name: 'Вопрос о классификации',
     }),
   ).toBeVisible()
   const variantRequests = requests.filter((r) => r.path.endsWith('/variants'))
   expect(variantRequests).toHaveLength(2)
   expect(variantRequests[1].key).toBe(variantRequests[0].key)
-})
-
-it('starts with a fresh variant after demo state resets between variant and session creation', async () => {
-  const requests: Array<{ method: string; path: string }> = []
-  const original = mockApi.mockApiFetch
-  let interruptSessionStart = true
-  vi.spyOn(mockApi, 'mockApiFetch').mockImplementation(
-    async (url, init = {}) => {
-      const path = new URL(url, 'http://local').pathname
-      const method = init.method ?? 'GET'
-      if (
-        method === 'POST' &&
-        path.endsWith('/diagnostic-sessions') &&
-        interruptSessionStart
-      ) {
-        interruptSessionStart = false
-        requests.push({ method, path })
-        return Response.json({ code: 'TEMPORARY_FAILURE' }, { status: 500 })
-      }
-      if (
-        method === 'POST' &&
-        (path.endsWith('/auth/logout') || path.endsWith('/auth/login'))
-      ) {
-        const response = await original(url, init)
-        requests.push({ method, path })
-        return response
-      }
-      requests.push({ method, path })
-      return original(url, init)
-    },
-  )
-
-  const firstRouter = createRouter({
-    context: { queryClient: createQueryClient() },
-    history: createMemoryHistory({ initialEntries: ['/'] }),
-    routeTree,
-  })
-  const first = render(<RouterProvider router={firstRouter} />)
-  fireEvent.click(
-    await screen.findByRole('button', { name: 'Начать обучение' }),
-  )
-  expect(await screen.findByRole('alert')).toBeVisible()
-  expect(
-    requests.filter((r) => r.method === 'POST' && r.path.endsWith('/variants')),
-  ).toHaveLength(1)
-  expect(
-    requests.filter(
-      (r) => r.method === 'POST' && r.path.endsWith('/diagnostic-sessions'),
-    ),
-  ).toHaveLength(1)
-
-  first.unmount()
-  await original('/api/v1/auth/logout', { method: 'POST' })
-  await original('/api/v1/auth/login', {
-    method: 'POST',
-    body: JSON.stringify({ email: '', password: '' }),
-  })
-  const refreshedRouter = createRouter({
-    context: { queryClient: createQueryClient() },
-    history: createMemoryHistory({ initialEntries: ['/'] }),
-    routeTree,
-  })
-  render(<RouterProvider router={refreshedRouter} />)
-  await new Promise((resolve) => setTimeout(resolve, 120))
-  expect(
-    requests.filter((r) => r.method === 'POST' && r.path.endsWith('/variants')),
-  ).toHaveLength(1)
-  expect(
-    requests.filter(
-      (r) => r.method === 'POST' && r.path.endsWith('/diagnostic-sessions'),
-    ),
-  ).toHaveLength(1)
-
-  fireEvent.click(
-    await screen.findByRole('button', { name: 'Начать обучение' }),
-  )
-  expect(
-    await screen.findByRole('heading', {
-      name: 'Демонстрационный вопрос о классификации',
-    }),
-  ).toBeVisible()
-  expect(
-    requests.filter((r) => r.method === 'POST' && r.path.endsWith('/variants')),
-  ).toHaveLength(2)
-  expect(
-    requests.filter(
-      (r) => r.method === 'POST' && r.path.endsWith('/diagnostic-sessions'),
-    ),
-  ).toHaveLength(2)
 })

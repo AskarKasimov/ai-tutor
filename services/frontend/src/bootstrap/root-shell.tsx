@@ -6,13 +6,11 @@ import type { QueryClient } from '@tanstack/react-query'
 import { useAuth } from '@/features/auth'
 import { AppProviders } from './providers'
 import styles from './root.module.scss'
-import { DevBanner } from './ui/dev-banner'
 
 export function RootShell({ queryClient }: { queryClient: QueryClient }) {
   return (
     <AppProviders queryClient={queryClient}>
       <div className={styles.app}>
-        <DevBanner />
         <SessionGate />
       </div>
     </AppProviders>

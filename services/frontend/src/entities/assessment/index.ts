@@ -12,6 +12,7 @@ export type {
 export { AssessmentApiError } from './model/service-errors'
 export {
   normalizeText,
+  parseStructuredSummary,
   parseGapItem,
   parsePartialItem,
   getExpressSteps,

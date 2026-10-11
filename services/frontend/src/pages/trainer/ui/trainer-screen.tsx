@@ -10,6 +10,7 @@ import { LearningHome } from './learning-home'
 import { AccountMenu } from '@/features/auth'
 import { TrainerAnswer, SavedAnswer } from '@/pages/trainer/ui/trainer-answer'
 import { SessionSummary } from '@/pages/trainer/ui/session-summary'
+import { FormattedQuestionContent } from './trainer-shared'
 import styles from '@/pages/trainer/ui/trainer-layout.module.scss'
 
 export function TrainerScreen() {
@@ -214,9 +215,10 @@ function SessionScreen({
                 {String(index + 1).padStart(2, '0')} / 07
               </span>
             </div>
-            <Heading as="h1" className={styles.questionTitle}>
-              {t(selected.questionKey)}
-            </Heading>
+            <FormattedQuestionContent
+              question={t(selected.questionKey)}
+              headingLevel="h1"
+            />
             <section
               aria-labelledby="answer-options-title"
               className={styles.options}

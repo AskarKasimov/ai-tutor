@@ -17,6 +17,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { AccountMenu } from '@/features/auth'
+import { parseQuestionContent } from '@/shared/lib'
 import { LiveWaveform } from './trainer-answer'
 import styles from './session.module.scss'
 
@@ -275,6 +276,98 @@ export function QuestionNavigator({
   )
 }
 
+export function FormattedQuestionContent({
+  question,
+  headingLevel = 'h1',
+  className,
+}: {
+  question: string
+  headingLevel?: 'h1' | 'h2' | 'h3'
+  className?: string
+}) {
+  const blocks = parseQuestionContent(question)
+
+  if (blocks.length === 0) {
+    return null
+  }
+
+  if (blocks.length === 1 && blocks[0].type === 'text') {
+    return (
+      <Heading
+        as={headingLevel}
+        className={`${styles.questionTitle} ${question.length > 300 ? styles.longQuestion : ''} ${className ?? ''}`}
+      >
+        {blocks[0].text}
+      </Heading>
+    )
+  }
+
+  return (
+    <div className={`${styles.formattedQuestion} ${className ?? ''}`}>
+      {blocks.map((block, idx) => {
+        if (block.type === 'text') {
+          if (idx === 0) {
+            return (
+              <Heading
+                key={idx}
+                as={headingLevel}
+                className={`${styles.questionTitle} ${styles.questionLeadTitle}`}
+              >
+                {block.text}
+              </Heading>
+            )
+          }
+          return (
+            <div key={idx} className={styles.questionParagraph}>
+              {block.text}
+            </div>
+          )
+        }
+
+        const { headers, alignments, rows } = block.data
+        return (
+          <div key={idx} className={styles.taskTableWrapper}>
+            <table className={styles.taskTable}>
+              <thead>
+                <tr>
+                  {headers.map((header, hIdx) => {
+                    const align = alignments[hIdx] || 'left'
+                    return (
+                      <th
+                        key={hIdx}
+                        className={`${styles.taskTh} ${styles[`align_${align}`] || ''}`}
+                      >
+                        {header}
+                      </th>
+                    )
+                  })}
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((row, rIdx) => (
+                  <tr key={rIdx} className={styles.taskTr}>
+                    {row.map((cell, cIdx) => {
+                      const align = alignments[cIdx] || 'left'
+                      return (
+                        <td
+                          key={cIdx}
+                          className={`${styles.taskTd} ${styles[`align_${align}`] || ''}`}
+                        >
+                          {cell}
+                        </td>
+                      )
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 export function TrainerQuestion({
   badge,
   eyebrow,
@@ -308,12 +401,7 @@ export function TrainerQuestion({
             </Text>
           ))}
       </div>
-      <Heading
-        as="h1"
-        className={`${styles.questionTitle} ${question.length > 300 ? styles.longQuestion : ''}`}
-      >
-        {question}
-      </Heading>
+      <FormattedQuestionContent question={question} headingLevel="h1" />
       {/* The spoken instruction sits right under the task text; options
           follow under their own title. */}
       {instruction && <div className={styles.instruction}>{instruction}</div>}

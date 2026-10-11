@@ -3,14 +3,10 @@ import { Button, Heading, Text } from '@radix-ui/themes'
 import {
   AlertCircle,
   AlertTriangle,
-  ArrowRight,
   BookOpen,
   CheckCircle2,
-  ListChecks,
   LoaderCircle,
   Sparkles,
-  Target,
-  Zap,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useOverallFeedbackMutation } from '@/features/voice-answer'
@@ -19,14 +15,13 @@ import { buildOverallFeedbackPayload } from '@/features/trainer-session'
 import {
   getExpressSteps,
   normalizeText,
+  parseStructuredSummary,
   parseGapItem,
   parsePartialItem,
   extractCleanTopicTitle,
 } from '@/entities/assessment'
 import type { TrainerSession } from '@/entities/trainer-session'
 import styles from '@/pages/trainer/ui/trainer-layout.module.scss'
-
-type FeedbackViewMode = 'express' | 'detailed'
 
 export function SessionSummary({
   session,
@@ -49,7 +44,6 @@ export function SessionSummary({
   )
   const [feedback, setFeedback] = useState<OverallFeedbackData | null>(null)
   const [loadingFeedback, setLoadingFeedback] = useState(true)
-  const [feedbackMode, setFeedbackMode] = useState<FeedbackViewMode>('express')
 
   useEffect(() => {
     let active = true
@@ -102,35 +96,6 @@ export function SessionSummary({
             />
             <Heading as="h2">Педагогический фидбэк по итогам варианта</Heading>
           </div>
-
-          {feedback && (
-            <div
-              className={styles.feedbackModeToggle}
-              role="tablist"
-              aria-label="Формат фидбэка"
-            >
-              <button
-                type="button"
-                role="tab"
-                aria-selected={feedbackMode === 'express'}
-                className={`${styles.modeButton} ${feedbackMode === 'express' ? styles.modeButtonActive : ''}`}
-                onClick={() => setFeedbackMode('express')}
-              >
-                <Zap size={14} aria-hidden="true" />
-                <span>Краткий разбор</span>
-              </button>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={feedbackMode === 'detailed'}
-                className={`${styles.modeButton} ${feedbackMode === 'detailed' ? styles.modeButtonActive : ''}`}
-                onClick={() => setFeedbackMode('detailed')}
-              >
-                <ListChecks size={14} aria-hidden="true" />
-                <span>Подробный разбор</span>
-              </button>
-            </div>
-          )}
         </div>
 
         {loadingFeedback ? (
@@ -141,326 +106,160 @@ export function SessionSummary({
               aria-hidden="true"
             />
             <Text>
-              Формируем персонализированный фидбэк и план повторения...
+              Формируем персонализированный фидбэк и рекомендации...
             </Text>
           </div>
         ) : feedback ? (
-          feedbackMode === 'express' ? (
-            <div className={styles.expressContainer}>
-              <div className={styles.statBadges}>
-                <div
-                  className={`${styles.statBadge} ${styles.statBadgeSuccess}`}
-                >
-                  <CheckCircle2 size={15} aria-hidden="true" />
-                  <span>Освоено: {feedback.strengths.length}</span>
-                </div>
-                {feedback.partials.length > 0 && (
+          (() => {
+            const structured = parseStructuredSummary(feedback.summary || '')
+            const generalText =
+              structured.generalText || normalizeText(feedback.summary || '')
+            const goodText = structured.whatIsGood
+            const badText = structured.whatNeedsWork
+
+            const recommendations: string[] = []
+            if (feedback.recommendations && feedback.recommendations.length > 0) {
+              recommendations.push(
+                ...feedback.recommendations.slice(0, 3).map(normalizeText),
+              )
+            } else {
+              const steps = getExpressSteps(
+                feedback.gaps,
+                feedback.partials,
+                feedback.recommendations,
+              )
+              for (const step of steps.slice(0, 3)) {
+                recommendations.push(`${step.title}: ${step.note}`)
+              }
+            }
+
+            return (
+              <div className={styles.feedbackContent}>
+                {generalText && (
+                  <div className={styles.feedbackSummaryText}>
+                    {generalText
+                      .split(/\n+/)
+                      .filter(Boolean)
+                      .map((paragraph, idx) => (
+                        <p key={idx} className={styles.feedbackParagraph}>
+                          {paragraph.trim()}
+                        </p>
+                      ))}
+                  </div>
+                )}
+
+                <div className={styles.summaryCardsGrid}>
+                  {/* 1. Блок «Что хорошо» */}
                   <div
-                    className={`${styles.statBadge} ${styles.statBadgePartial}`}
+                    className={`${styles.summaryCard} ${styles.summaryCardGood}`}
                   >
-                    <AlertTriangle size={15} aria-hidden="true" />
-                    <span>Частично: {feedback.partials.length}</span>
-                  </div>
-                )}
-                <div className={`${styles.statBadge} ${styles.statBadgeGap}`}>
-                  <AlertCircle size={15} aria-hidden="true" />
-                  <span>Пробелы: {feedback.gaps.length}</span>
-                </div>
-              </div>
-
-              {feedback.gaps.length > 0 && (
-                <div className={styles.expressSection}>
-                  <div className={styles.expressSectionTitle}>
-                    <Target
-                      size={16}
-                      className={styles.iconGap}
-                      aria-hidden="true"
-                    />
-                    <Text weight="bold">
-                      Пробелы (0/2) — первоочередной фокус (
-                      {feedback.gaps.length})
-                    </Text>
-                  </div>
-                  <div className={styles.expressGapsGrid}>
-                    {feedback.gaps.map((gap, idx) => {
-                      const parsed = parseGapItem(gap)
-                      const topic = extractCleanTopicTitle(parsed.title)
-                      return (
-                        <div key={idx} className={styles.expressGapCard}>
-                          <div className={styles.expressGapCardHeader}>
-                            <span className={styles.expressGapBadge}>
-                              0 / 2
-                            </span>
-                            <span className={styles.expressGapTopic}>
-                              {topic}
-                            </span>
-                          </div>
-                          {parsed.subtopics.length > 0 ? (
-                            <div className={styles.expressSubtopics}>
-                              <span className={styles.expressSubtopicsLabel}>
-                                Что повторить:
-                              </span>
-                              <span className={styles.expressSubtopicsInline}>
-                                {parsed.subtopics.slice(0, 2).join(' · ')}
-                              </span>
-                            </div>
-                          ) : parsed.explanation ? (
-                            <div className={styles.expressGapExplanation}>
-                              {parsed.explanation}
-                            </div>
-                          ) : null}
-                        </div>
-                      )
-                    })}
-                  </div>
-                </div>
-              )}
-
-              {feedback.partials.length > 0 && (
-                <div className={styles.expressSection}>
-                  <div className={styles.expressSectionTitle}>
-                    <AlertTriangle
-                      size={16}
-                      className={styles.iconPartial}
-                      aria-hidden="true"
-                    />
-                    <Text weight="bold">
-                      Частично освоенные темы (1/2) — дотянуть до максимума (
-                      {feedback.partials.length})
-                    </Text>
-                  </div>
-                  <div className={styles.expressGapsGrid}>
-                    {feedback.partials.map((part, idx) => {
-                      const parsed = parsePartialItem(part)
-                      const topic = extractCleanTopicTitle(parsed.title)
-                      return (
-                        <div
-                          key={idx}
-                          className={`${styles.expressGapCard} ${styles.expressPartialCard}`}
-                        >
-                          <div className={styles.expressGapCardHeader}>
-                            <span className={styles.expressPartialBadge}>
-                              1 / 2
-                            </span>
-                            <span className={styles.expressGapTopic}>
-                              {topic}
-                            </span>
-                          </div>
-                          <div className={styles.expressPartialNote}>
-                            <span className={styles.expressSubtopicsLabel}>
-                              Что доработать:
-                            </span>
-                            <span>
-                              {parsed.note ||
-                                'Уточнить аргументацию и обосновать выбор своими словами.'}
-                            </span>
-                          </div>
-                        </div>
-                      )
-                    })}
-                  </div>
-                </div>
-              )}
-
-              {feedback.gaps.length === 0 && feedback.partials.length === 0 && (
-                <div className={styles.expressSuccessNotice}>
-                  <CheckCircle2
-                    size={20}
-                    className={styles.iconSuccess}
-                    aria-hidden="true"
-                  />
-                  <div>
-                    <div className={styles.expressSuccessTitle}>
-                      Идеальный результат (14/14)!
+                    <div className={styles.summaryCardHeader}>
+                      <CheckCircle2
+                        size={18}
+                        className={styles.iconSuccess}
+                        aria-hidden="true"
+                      />
+                      <span className={styles.summaryCardTitleGood}>
+                        Что хорошо
+                      </span>
                     </div>
-                    <div className={styles.expressSuccessSub}>
-                      Все темы освоены на максимум. Пробелов не обнаружено.
+                    <div className={styles.summaryCardBody}>
+                      {goodText ? (
+                        <p className={styles.feedbackParagraph}>{goodText}</p>
+                      ) : feedback.strengths.length > 0 ? (
+                        <ul className={styles.summaryCardList}>
+                          {feedback.strengths.slice(0, 3).map((item, idx) => (
+                            <li key={idx}>
+                              <strong>{normalizeText(item)}</strong>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <p className={styles.feedbackParagraph}>
+                          Базовые понятия поняты верно, продолжайте практиковаться для закрепления уверенности.
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* 2. Блок «Что доработать» */}
+                  <div
+                    className={`${styles.summaryCard} ${styles.summaryCardWarning}`}
+                  >
+                    <div className={styles.summaryCardHeader}>
+                      <AlertTriangle
+                        size={18}
+                        className={styles.iconWarning}
+                        aria-hidden="true"
+                      />
+                      <span className={styles.summaryCardTitleWarning}>
+                        Что доработать
+                      </span>
+                    </div>
+                    <div className={styles.summaryCardBody}>
+                      {badText ? (
+                        <p className={styles.feedbackParagraph}>{badText}</p>
+                      ) : feedback.gaps.length > 0 ? (
+                        <ul className={styles.summaryCardList}>
+                          {feedback.gaps.slice(0, 3).map((gap, idx) => {
+                            const parsed = parseGapItem(gap)
+                            const cleanTopic = extractCleanTopicTitle(parsed.title)
+                            return (
+                              <li key={idx}>
+                                <strong>{cleanTopic}:</strong>{' '}
+                                {parsed.explanation || 'требуется разобрать ключевую концепцию и критерии'}
+                              </li>
+                            )
+                          })}
+                        </ul>
+                      ) : feedback.partials.length > 0 ? (
+                        <ul className={styles.summaryCardList}>
+                          {feedback.partials.slice(0, 3).map((part, idx) => {
+                            const parsed = parsePartialItem(part)
+                            const cleanTopic = extractCleanTopicTitle(parsed.title)
+                            return (
+                              <li key={idx}>
+                                <strong>{cleanTopic}:</strong>{' '}
+                                {parsed.note || 'требуется закрепить обоснование и практическое применение'}
+                              </li>
+                            )
+                          })}
+                        </ul>
+                      ) : (
+                        <p className={styles.feedbackParagraph}>
+                          Критических пробелов нет! Все проверенные темы освоены на высоком уровне.
+                        </p>
+                      )}
                     </div>
                   </div>
                 </div>
-              )}
 
-              <div className={styles.expressSection}>
-                <div className={styles.expressSectionTitle}>
-                  <ListChecks
-                    size={16}
-                    className={styles.iconRec}
-                    aria-hidden="true"
-                  />
-                  <Text weight="bold">План действий</Text>
-                </div>
-                <ol className={styles.expressStepsList}>
-                  {getExpressSteps(
-                    feedback.gaps,
-                    feedback.partials,
-                    feedback.recommendations,
-                  ).map((step, idx) => (
-                    <li key={idx} className={styles.expressStepItem}>
-                      <div className={styles.expressStepNumber}>{idx + 1}</div>
-                      <div className={styles.expressStepContent}>
-                        <div className={styles.expressStepTitle}>
-                          {step.title}
-                        </div>
-                        <div className={styles.expressStepNote}>
-                          {step.note}
-                        </div>
-                      </div>
-                    </li>
-                  ))}
-                </ol>
-              </div>
-
-              <div className={styles.expressFooter}>
-                <button
-                  type="button"
-                  className={styles.switchDetailedButton}
-                  onClick={() => setFeedbackMode('detailed')}
-                >
-                  <span>Перейти к подробному разбору с пояснением ошибок</span>
-                  <ArrowRight size={14} aria-hidden="true" />
-                </button>
-              </div>
-            </div>
-          ) : (
-            <div className={styles.feedbackContent}>
-              {feedback.summary && (
-                <div className={styles.feedbackSummaryText}>
-                  {normalizeText(feedback.summary)
-                    .split(/\n+/)
-                    .filter(Boolean)
-                    .map((paragraph, idx) => (
-                      <p key={idx} className={styles.feedbackParagraph}>
-                        {paragraph.trim()}
-                      </p>
-                    ))}
-                </div>
-              )}
-
-              <div className={styles.feedbackGroup}>
-                <div className={styles.feedbackGroupTitle}>
-                  <CheckCircle2
-                    size={16}
-                    className={styles.iconSuccess}
-                    aria-hidden="true"
-                  />
-                  <Text weight="bold">Сильные стороны</Text>
-                </div>
-                {feedback.strengths.length > 0 ? (
-                  <ul className={styles.feedbackList}>
-                    {feedback.strengths.map((str, idx) => (
-                      <li key={idx} className={styles.feedbackItem}>
-                        <Text>{normalizeText(str)}</Text>
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <Text className={styles.emptyNote}>
-                    В этой попытке пока нет тем с максимальным баллом (2/2).
-                    Проработайте темы с пробелами ниже для закрепления знаний.
-                  </Text>
+                {/* 3. Блок «Рекомендации» (кратко расписанные) */}
+                {recommendations.length > 0 && (
+                  <div className={styles.recommendationsCard}>
+                    <div className={styles.recommendationsHeader}>
+                      <BookOpen
+                        size={18}
+                        className={styles.iconRec}
+                        aria-hidden="true"
+                      />
+                      <span className={styles.recommendationsTitle}>
+                        Рекомендации
+                      </span>
+                    </div>
+                    <ul className={styles.recommendationsList}>
+                      {recommendations.map((rec, idx) => (
+                        <li key={idx}>
+                          <span className={styles.recNumber}>{idx + 1}</span>
+                          <span>{rec}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
                 )}
               </div>
-
-              {feedback.partials.length > 0 && (
-                <div className={styles.feedbackGroup}>
-                  <div className={styles.feedbackGroupTitle}>
-                    <AlertTriangle
-                      size={16}
-                      className={styles.iconPartial}
-                      aria-hidden="true"
-                    />
-                    <Text weight="bold">Частично освоенные темы</Text>
-                  </div>
-                  <ul className={styles.feedbackList}>
-                    {feedback.partials.map((part, idx) => (
-                      <li key={idx} className={styles.feedbackItem}>
-                        <Text>{normalizeText(part)}</Text>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-
-              {feedback.gaps.length > 0 && (
-                <div className={styles.feedbackGroup}>
-                  <div className={styles.feedbackGroupTitle}>
-                    <AlertCircle
-                      size={16}
-                      className={styles.iconGap}
-                      aria-hidden="true"
-                    />
-                    <Text weight="bold">Темы, требующие повторения</Text>
-                  </div>
-                  <div className={styles.gapCardsList}>
-                    {feedback.gaps.map((gap, idx) => {
-                      const parsed = parseGapItem(gap)
-                      return (
-                        <div key={idx} className={styles.gapCardItem}>
-                          <div className={styles.gapTitle}>
-                            <Text weight="bold">{parsed.title}</Text>
-                          </div>
-                          {parsed.explanation && (
-                            <div className={styles.gapMistakeRow}>
-                              <span className={styles.gapLabel}>
-                                В чём ошибка
-                              </span>
-                              <span className={styles.gapValue}>
-                                {parsed.explanation}
-                              </span>
-                            </div>
-                          )}
-                          {parsed.subtopics.length > 0 && (
-                            <div className={styles.gapRepeatBlock}>
-                              <span className={styles.gapLabel}>
-                                Что повторить по теме:
-                              </span>
-                              <ul className={styles.gapSubtopicsList}>
-                                {parsed.subtopics.map((sub, sIdx) => (
-                                  <li key={sIdx}>{sub}</li>
-                                ))}
-                              </ul>
-                            </div>
-                          )}
-                        </div>
-                      )
-                    })}
-                  </div>
-                </div>
-              )}
-
-              {feedback.recommendations.length > 0 && (
-                <div className={styles.feedbackGroup}>
-                  <div className={styles.feedbackGroupTitle}>
-                    <BookOpen
-                      size={16}
-                      className={styles.iconRec}
-                      aria-hidden="true"
-                    />
-                    <Text weight="bold">
-                      Рекомендации по дальнейшему обучению
-                    </Text>
-                  </div>
-                  <ul className={styles.feedbackList}>
-                    {feedback.recommendations.map((rec, idx) => (
-                      <li key={idx} className={styles.feedbackItem}>
-                        <Text>{normalizeText(rec)}</Text>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-
-              <div className={styles.expressFooter}>
-                <button
-                  type="button"
-                  className={styles.switchDetailedButton}
-                  onClick={() => setFeedbackMode('express')}
-                >
-                  <span>← Вернуться к краткому разбору</span>
-                </button>
-              </div>
-            </div>
-          )
+            )
+          })()
         ) : null}
       </section>
 

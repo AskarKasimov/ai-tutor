@@ -7,6 +7,77 @@ export function normalizeText(text: string): string {
     .trim()
 }
 
+interface ParsedStructuredSummary {
+  generalText: string
+  whatIsGood: string
+  whatNeedsWork: string
+}
+
+export function parseStructuredSummary(rawSummary: string): ParsedStructuredSummary {
+  const normalized = normalizeText(rawSummary)
+  if (!normalized) {
+    return { generalText: '', whatIsGood: '', whatNeedsWork: '' }
+  }
+
+  // Look for headings: "Что хорошо:" and "Что нужно изучить:" (or "Что плохо:")
+  const goodMatch = normalized.search(/(?:^|\n)\s*(?:•|\-|\—|\*|\s)*(?:###?\s*)?Что хорошо:\s*/i)
+  const badMatch = normalized.search(/(?:^|\n)\s*(?:•|\-|\—|\*|\s)*(?:###?\s*)?Что (?:нужно изучить|плохо|доработать):\s*/i)
+
+  if (goodMatch !== -1 && badMatch !== -1 && badMatch > goodMatch) {
+    const generalPart = normalized.slice(0, goodMatch).trim()
+    const goodPartRaw = normalized.slice(goodMatch, badMatch).trim()
+    const badPartRaw = normalized.slice(badMatch).trim()
+
+    const whatIsGood = goodPartRaw
+      .replace(/^(?:•|\-|\—|\*|\s)*(?:###?\s*)?Что хорошо:\s*/i, '')
+      .trim()
+    const whatNeedsWork = badPartRaw
+      .replace(/^(?:•|\-|\—|\*|\s)*(?:###?\s*)?Что (?:нужно изучить|плохо|доработать):\s*/i, '')
+      .trim()
+
+    return {
+      generalText: generalPart,
+      whatIsGood,
+      whatNeedsWork,
+    }
+  }
+
+  // If only "Что хорошо" is present
+  if (goodMatch !== -1 && badMatch === -1) {
+    const generalPart = normalized.slice(0, goodMatch).trim()
+    const whatIsGood = normalized
+      .slice(goodMatch)
+      .replace(/^(?:•|\-|\—|\*|\s)*(?:###?\s*)?Что хорошо:\s*/i, '')
+      .trim()
+    return {
+      generalText: generalPart,
+      whatIsGood,
+      whatNeedsWork: '',
+    }
+  }
+
+  // If only "Что нужно изучить / плохо" is present
+  if (goodMatch === -1 && badMatch !== -1) {
+    const generalPart = normalized.slice(0, badMatch).trim()
+    const whatNeedsWork = normalized
+      .slice(badMatch)
+      .replace(/^(?:•|\-|\—|\*|\s)*(?:###?\s*)?Что (?:нужно изучить|плохо|доработать):\s*/i, '')
+      .trim()
+    return {
+      generalText: generalPart,
+      whatIsGood: '',
+      whatNeedsWork,
+    }
+  }
+
+  // Fallback: entire string is general feedback
+  return {
+    generalText: normalized,
+    whatIsGood: '',
+    whatNeedsWork: '',
+  }
+}
+
 interface ParsedGap {
   title: string
   explanation: string

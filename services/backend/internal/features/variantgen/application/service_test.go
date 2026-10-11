@@ -29,84 +29,55 @@ func (g *fixedIDs) New(prefix string) (string, error) {
 	return prefix + "-" + string(rune('0'+g.n)), nil
 }
 
-func TestBuildUsesPriorityAndStrictlyLowerBasics(t *testing.T) {
+func TestBuildPicksMainByBloomThenImportance(t *testing.T) {
 	chooser := &fixedChooser{index: 1}
 	service := New(nil, chooser, &fixedIDs{}, func() time.Time { return time.Unix(100, 0) })
 	candidates := []variant.CandidateOutcome{
 		candidate("c1", "Comp", "low-a", "Low A", "understanding", 3, 10, "low-a-task", 1),
 		candidate("c1", "Comp", "low-b", "Low B", "understanding", 2, 20, "low-b-task", 2),
-		candidate("c1", "Comp", "main", "Main", "application", 5, 30, "main-task-1", 3),
-		candidate("c1", "Comp", "main", "Main", "application", 5, 30, "main-task-2", 3),
-		candidate("c1", "Comp", "tie", "Tie", "analysis", 4, 40, "tie-task", 4),
+		// A higher importance does not outweigh a lower Bloom rank.
+		candidate("c1", "Comp", "important", "Important", "application", 5, 30, "important-task", 3),
+		candidate("c1", "Comp", "main", "Main", "analysis", 2, 40, "main-task-1", 4),
+		candidate("c1", "Comp", "main", "Main", "analysis", 2, 40, "main-task-2", 4),
+		candidate("c1", "Comp", "rival", "Rival", "analysis", 1, 50, "rival-task", 5),
 	}
 	got, err := service.build("owner", "subject:test", "Тест", 7, candidates)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.MapRevision != 7 || got.SubjectID != "subject:test" || got.SubjectNameSnapshot != "Тест" || got.IncludedCompetencyCount != 1 || got.CreatedAt != 100 {
+	if got.MapRevision != 7 || got.SubjectID != "subject:test" || got.SubjectNameSnapshot != "Тест" || got.IncludedCompetencyCount != 1 || got.CreatedAt != 100 || got.AlgorithmVersion != "competency-map-v4" {
 		t.Fatalf("variant metadata: %+v", got)
 	}
-	selection := got.Competencies[0]
-	if selection.Tasks[0].Task.Outcome.ID != "main" {
-		t.Fatalf("main outcome = %s", selection.Tasks[0].Task.Outcome.ID)
+	tasks := got.Competencies[0].Tasks
+	if len(tasks) != 3 || tasks[0].Role != "main" || tasks[1].Role != "basic" || tasks[2].Role != "basic" {
+		t.Fatalf("tasks: %+v", tasks)
 	}
-	if selection.Tasks[0].Task.ID != "main-task-2" {
-		t.Fatalf("random chooser did not select pool member: %s", selection.Tasks[0].Task.ID)
+	if tasks[0].Task.Outcome.ID != "main" {
+		t.Fatalf("main outcome = %s, want the analysis outcome with the higher importance", tasks[0].Task.Outcome.ID)
 	}
-	if selection.Tasks[1].Task.Outcome.ID != "low-a" || selection.Tasks[2].Task.Outcome.ID != "low-b" {
-		t.Fatalf("basic order: %s, %s", selection.Tasks[1].Task.Outcome.ID, selection.Tasks[2].Task.Outcome.ID)
+	if tasks[0].Task.ID != "main-task-2" {
+		t.Fatalf("random chooser did not select pool member: %s", tasks[0].Task.ID)
+	}
+	if tasks[1].Task.Outcome.ID != "low-a" || tasks[2].Task.Outcome.ID != "low-b" {
+		t.Fatalf("basics: %s, %s; want the simplest outcomes", tasks[1].Task.Outcome.ID, tasks[2].Task.Outcome.ID)
 	}
 	if chooser.calls != 1 {
 		t.Fatalf("chooser called %d times, want once for multi-task pool", chooser.calls)
 	}
-	for _, task := range selection.Tasks {
-		if task.Task.Outcome.ID == "tie" {
-			t.Fatal("higher Bloom tie-break incorrectly selected as a basic")
-		}
-	}
 }
 
-func TestBuildRequiresTwoLowerBloomBasicsForEveryMain(t *testing.T) {
-	for _, tc := range []struct {
-		name       string
-		candidates []variant.CandidateOutcome
-		code       string
-	}{
-		{"only main", []variant.CandidateOutcome{candidate("c1", "Comp", "main", "Main", "application", 5, 1, "t1", 1)}, "INSUFFICIENT_DISTINCT_OUTCOMES"},
-		{"one basic and analogs", []variant.CandidateOutcome{
-			candidate("c1", "Comp", "main", "Main", "analysis", 5, 1, "t1", 1),
-			candidate("c1", "Comp", "main", "Main", "analysis", 5, 1, "t1b", 1),
-			candidate("c1", "Comp", "low", "Low", "understanding", 2, 2, "t2", 2)}, "INSUFFICIENT_DISTINCT_OUTCOMES"},
-		{"no two lower Bloom", []variant.CandidateOutcome{
-			candidate("c1", "Comp", "main", "Main", "application", 5, 1, "t1", 1),
-			candidate("c1", "Comp", "same", "Same", "application", 4, 2, "t2", 2),
-			candidate("c1", "Comp", "third", "Third", "application", 3, 3, "t3", 3)}, "INSUFFICIENT_LOWER_BLOOM_OUTCOMES"},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			service := New(nil, &fixedChooser{}, &fixedIDs{}, time.Now)
-			_, err := service.build("owner", "subject:test", "Тест", 1, tc.candidates)
-			failure, ok := err.(*fault.Error)
-			if !ok || failure.Code != "NO_ELIGIBLE_COMPETENCIES" || len(failure.Details) != 1 || failure.Details[0].Code != tc.code {
-				t.Fatalf("want competency skipped with %s, got %v", tc.code, err)
-			}
-		})
-	}
-}
-
-// The "Подготовка данных" case: an equally scored main without lower outcomes
-// must give way to the main that has two basics.
-func TestBuildPrefersMainThatHasTwoBasics(t *testing.T) {
+func TestBuildAllowsBasicsWithTheMainBloomRank(t *testing.T) {
 	service := New(nil, &fixedChooser{}, &fixedIDs{}, time.Now)
 	got, err := service.build("owner", "subject:test", "Тест", 1, []variant.CandidateOutcome{
-		candidate("c1", "Comp", "analysis", "Analysis", "analysis", 4, 1, "t1", 1),
-		candidate("c1", "Comp", "app-4", "App 4", "application", 4, 2, "t2", 2),
-		candidate("c1", "Comp", "app-5", "App 5", "application", 5, 3, "t3", 3),
+		candidate("c1", "Comp", "app-3", "App 3", "application", 3, 1, "t1", 1),
+		candidate("c1", "Comp", "app-5", "App 5", "application", 5, 2, "t2", 2),
+		candidate("c1", "Comp", "app-4", "App 4", "application", 4, 3, "t3", 3),
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	tasks := got.Competencies[0].Tasks
-	want := []string{"analysis", "app-5", "app-4"}
+	want := []string{"app-5", "app-4", "app-3"}
 	if len(tasks) != 3 {
 		t.Fatalf("tasks: %+v", tasks)
 	}
@@ -114,6 +85,28 @@ func TestBuildPrefersMainThatHasTwoBasics(t *testing.T) {
 		if tasks[i].Task.Outcome.ID != id {
 			t.Fatalf("task %d = %s, want %s", i, tasks[i].Task.Outcome.ID, id)
 		}
+	}
+}
+
+func TestBuildSkipsCompetencyWithFewerThanThreeOutcomes(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		candidates []variant.CandidateOutcome
+	}{
+		{"only main", []variant.CandidateOutcome{candidate("c1", "Comp", "main", "Main", "application", 5, 1, "t1", 1)}},
+		{"one basic and analogs", []variant.CandidateOutcome{
+			candidate("c1", "Comp", "main", "Main", "analysis", 5, 1, "t1", 1),
+			candidate("c1", "Comp", "main", "Main", "analysis", 5, 1, "t1b", 1),
+			candidate("c1", "Comp", "low", "Low", "understanding", 2, 2, "t2", 2)}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			service := New(nil, &fixedChooser{}, &fixedIDs{}, time.Now)
+			_, err := service.build("owner", "subject:test", "Тест", 1, tc.candidates)
+			failure, ok := err.(*fault.Error)
+			if !ok || failure.Code != "NO_ELIGIBLE_COMPETENCIES" || len(failure.Details) != 1 || failure.Details[0].Code != "INSUFFICIENT_DISTINCT_OUTCOMES" {
+				t.Fatalf("want competency skipped with INSUFFICIENT_DISTINCT_OUTCOMES, got %v", err)
+			}
+		})
 	}
 }
 

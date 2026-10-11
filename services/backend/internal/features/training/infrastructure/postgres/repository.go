@@ -90,6 +90,10 @@ func (r *Repository) Practice(ctx context.Context, subjectID string) (int64, []t
 		if err = json.Unmarshal(row.ProfileJson, &t); err != nil {
 			return 0, nil, err
 		}
+		// Free practice covers only outcomes marked TRUE for the test.
+		if t.Outcome.IncludeInTest == nil || !*t.Outcome.IncludeInTest {
+			continue
+		}
 		if strings.TrimSpace(t.Question) == "" || t.VoiceInstruction == nil || strings.TrimSpace(*t.VoiceInstruction) == "" || t.ReferenceAnswer == nil || strings.TrimSpace(*t.ReferenceAnswer) == "" {
 			continue
 		}

@@ -5,6 +5,8 @@ RETURNING id, name;
 
 -- name: ListSubjects :many
 SELECT subject.id, subject.name,
+       -- Mirrors variantgen: a competency needs three ready TRUE outcomes
+       -- (one main and two basics).
        EXISTS (
            SELECT 1
            FROM competencies competency
@@ -20,6 +22,8 @@ SELECT subject.id, subject.name,
              AND task.question ~ '[^[:space:]]'
              AND task.voice_instruction ~ '[^[:space:]]'
              AND task.reference_answer ~ '[^[:space:]]'
+           GROUP BY competency.id
+           HAVING count(DISTINCT outcome.id) >= 3
        ) AS ready
 FROM subjects subject
 ORDER BY lower(subject.name), subject.id;

@@ -146,6 +146,7 @@ func TestSubjectCatalogShowsOnlyVariantgenReadySubjectsToStudents(t *testing.T) 
 		field, invalidate, restore string
 	}{
 		{"TRUE outcome", `UPDATE outcomes SET include_in_test=false`, `UPDATE outcomes SET include_in_test=true`},
+		{"three outcomes in a competency", `UPDATE outcomes SET include_in_test=false WHERE name='Знает параметры данных'`, `UPDATE outcomes SET include_in_test=true`},
 		{"known taxonomy", `UPDATE outcomes SET taxonomy_id=NULL`, `UPDATE outcomes SET taxonomy_id='taxonomy:application'`},
 		{"importance range", `UPDATE outcomes SET importance=NULL`, `UPDATE outcomes SET importance=4`},
 		{"nonblank question", `UPDATE tasks SET question=chr(9)`, `UPDATE tasks SET question='Вопрос'`},

@@ -1,5 +1,7 @@
 # Frontend предметов, диагностики и тренировки — план для Luna
 
+> Исторический план. По [решениям встречи 10.10.2026](ai-journey-plan.md) диагностика и тренировка для студента объединяются в один процесс, preview заменяется планом «тема — ОР», баллы студенту не показываются.
+
 Статус: реализовано и проверено 9 октября 2026. Финальное ревью: Ready — Yes после исправлений `7d69de5` и `0507b7a`. Независимая проверка на `0507b7a`: format, lint, typecheck, build и 209 тестов в 34 файлах прошли. Backend route cleanup проверен с отдельной PostgreSQL 18: `go test ./...`, `go vet ./...`, `go build ./cmd/api` прошли.
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development to implement this plan task-by-task. Steps use checkbox syntax for tracking.

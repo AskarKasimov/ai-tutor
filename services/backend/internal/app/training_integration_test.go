@@ -398,7 +398,7 @@ func trainingJSON(f *fixture, access *http.Cookie, path, key, body string) *http
 	return w
 }
 
-func TestFreePracticeIncludesFalseAndStalePreviewDoesNotWrite(t *testing.T) {
+func TestFreePracticeExcludesFalseAndStalePreviewDoesNotWrite(t *testing.T) {
 	f, access, admin, _, d := trainingFixture(t, 2)
 	if _, err := f.pool.Exec(t.Context(), `UPDATE outcomes SET include_in_test=false WHERE name='Знает параметры данных'`); err != nil {
 		t.Fatal(err)
@@ -411,8 +411,13 @@ func TestFreePracticeIncludesFalseAndStalePreviewDoesNotWrite(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &p); err != nil || w.Code != 200 {
 		t.Fatalf("preview %d %s %v", w.Code, w.Body.String(), err)
 	}
-	if p.Mode != "free_practice" || len(p.Topics) != 3 {
-		t.Fatalf("FALSE excluded: %+v", p)
+	if p.Mode != "free_practice" || len(p.Topics) != 2 {
+		t.Fatalf("FALSE outcome must not be practised: %+v", p)
+	}
+	for _, topic := range p.Topics {
+		if topic.OutcomeName == "Знает параметры данных" {
+			t.Fatalf("FALSE outcome in free practice: %+v", p)
+		}
 	}
 	var count int
 	if err := f.pool.QueryRow(t.Context(), "SELECT count(*) FROM training_sessions").Scan(&count); err != nil || count != 0 {

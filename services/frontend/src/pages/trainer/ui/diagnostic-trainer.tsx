@@ -24,7 +24,6 @@ import type {
 import {
   ListenButton,
   QuestionNavigator,
-  TrainerAnswerPanel,
   TrainerCapturePanel,
   TrainerQuestion,
   TrainerScore,
@@ -231,17 +230,12 @@ function StudentDiagnostic({
     </TrainerShell>
   )
 }
-// Navigator states for the fixed diagnostic order: answered positions keep
-// the colors recorded in this browser, the next position is current.
+// Navigator states for the fixed diagnostic order: answered positions are
+// shown as done without their score, the next position is current.
 type TopicPosition = { topic: number; step: number }
 
 function trackState(state: TrackState | undefined): NavigatorState {
-  return state === 'correct' ||
-    state === 'partial' ||
-    state === 'incorrect' ||
-    state === 'skipped'
-    ? state
-    : 'done'
+  return state === 'skipped' ? state : 'done'
 }
 
 // Navigator states. With competency_count the navigator shows topics: their
@@ -475,34 +469,26 @@ function DiagnosticFlow({
     <TrainerWorkspace>
       <Question task={task} transcript={response?.text} />
       {response ? (
-        <TrainerAnswerPanel>
-          <Feedback
-            score={response.score!}
-            maxScore={response.grader_max_score!}
-            verdict={response.verdict!}
-            skipped={response.answer_skipped}
-            feedback={response.feedback!}
-          />
-          {voice.audioUrl && (
-            <div className={styles.audio}>
-              <Text as="p">{t('trainer.listenRecording')}</Text>
-              <audio
-                controls
-                src={voice.audioUrl}
-                aria-label={t('trainer.listenRecording')}
-              />
-            </div>
-          )}
-          <div className={sessionStyles.actions}>
-            <Button className={sessionStyles.primary} onClick={voice.reset}>
-              {t(
-                progress.status === 'completed'
-                  ? 'session.viewSummary'
-                  : 'session.next',
-              )}
-            </Button>
-          </div>
-        </TrainerAnswerPanel>
+        <TrainerCapturePanel
+          stage="ready"
+          seconds={seconds}
+          speech={
+            <ListenButton
+              state={voice.speech}
+              onClick={() => void voice.speak()}
+            />
+          }
+          audioUrl={voice.audioUrl}
+          answered={response.answer_skipped ? 'skipped' : 'accepted'}
+        >
+          <Button className={sessionStyles.primary} onClick={voice.reset}>
+            {t(
+              progress.status === 'completed'
+                ? 'session.viewSummary'
+                : 'session.next',
+            )}
+          </Button>
+        </TrainerCapturePanel>
       ) : (
         <TrainerCapturePanel
           stage={voice.stage === 'result' ? 'ready' : voice.stage}

@@ -277,6 +277,20 @@ func (q *Queries) ReadTrainingSession(ctx context.Context, arg ReadTrainingSessi
 	return state_data, err
 }
 
+const resetTrainingReservation = `-- name: ResetTrainingReservation :exec
+UPDATE training_sessions SET reservation_data=NULL,lease_until=NULL WHERE owner_id=$1 AND id=$2
+`
+
+type ResetTrainingReservationParams struct {
+	OwnerID string
+	ID      string
+}
+
+func (q *Queries) ResetTrainingReservation(ctx context.Context, arg ResetTrainingReservationParams) error {
+	_, err := q.db.Exec(ctx, resetTrainingReservation, arg.OwnerID, arg.ID)
+	return err
+}
+
 const saveTrainingReservation = `-- name: SaveTrainingReservation :exec
 UPDATE training_sessions SET reservation_data=$3,lease_until=CASE WHEN $4::boolean THEN now()+interval '5 minutes' ELSE NULL END WHERE owner_id=$1 AND id=$2
 `
@@ -295,20 +309,6 @@ func (q *Queries) SaveTrainingReservation(ctx context.Context, arg SaveTrainingR
 		arg.ReservationData,
 		arg.Leased,
 	)
-	return err
-}
-
-const resetTrainingReservation = `-- name: ResetTrainingReservation :exec
-UPDATE training_sessions SET reservation_data=NULL,lease_until=NULL WHERE owner_id=$1 AND id=$2
-`
-
-type ResetTrainingReservationParams struct {
-	OwnerID string
-	ID      string
-}
-
-func (q *Queries) ResetTrainingReservation(ctx context.Context, arg ResetTrainingReservationParams) error {
-	_, err := q.db.Exec(ctx, resetTrainingReservation, arg.OwnerID, arg.ID)
 	return err
 }
 

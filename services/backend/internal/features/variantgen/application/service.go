@@ -14,7 +14,7 @@ import (
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/fault"
 )
 
-const AlgorithmVersion = "competency-map-v3"
+const AlgorithmVersion = "competency-map-v4"
 
 var bloomRanks = map[string]int{"knowledge": 1, "understanding": 2, "application": 3, "analysis": 4}
 
@@ -123,31 +123,23 @@ func (s *Service) build(ownerID, subjectID, subjectName string, revision int64, 
 			result.SkippedCompetencies = append(result.SkippedCompetencies, variant.SkippedCompetency{CompetencyID: comp.profile.ID, CompetencyName: comp.profile.Name, Code: "NO_READY_OUTCOMES", EligibleOutcomes: len(outcomes)})
 			continue
 		}
-		// A main always comes with two basics: only outcomes with at least two
-		// lower-ranked outcomes may be main, and the hardest of them is chosen.
-		var main *taskPool
-		for _, outcome := range outcomes {
-			lower := 0
-			for _, other := range outcomes {
-				if other.rank < outcome.rank {
-					lower++
-				}
-			}
-			if lower >= 2 && (main == nil || harder(outcome, main)) {
+		// A main always comes with two basics from other outcomes, so a
+		// competency needs three of them.
+		if len(outcomes) < 3 {
+			result.SkippedCompetencies = append(result.SkippedCompetencies, variant.SkippedCompetency{CompetencyID: comp.profile.ID, CompetencyName: comp.profile.Name, Code: "INSUFFICIENT_DISTINCT_OUTCOMES", EligibleOutcomes: len(outcomes)})
+			continue
+		}
+		main := outcomes[0]
+		for _, outcome := range outcomes[1:] {
+			if harder(outcome, main) {
 				main = outcome
 			}
 		}
-		if main == nil {
-			code := "INSUFFICIENT_LOWER_BLOOM_OUTCOMES"
-			if len(outcomes) < 3 {
-				code = "INSUFFICIENT_DISTINCT_OUTCOMES"
-			}
-			result.SkippedCompetencies = append(result.SkippedCompetencies, variant.SkippedCompetency{CompetencyID: comp.profile.ID, CompetencyName: comp.profile.Name, Code: code, EligibleOutcomes: len(outcomes)})
-			continue
-		}
+		// Basics are the simplest remaining outcomes; they may share the main's
+		// Bloom rank but never exceed it.
 		basics := make([]*taskPool, 0, len(outcomes)-1)
 		for _, outcome := range outcomes {
-			if outcome.outcome.ID != main.outcome.ID && outcome.rank < main.rank {
+			if outcome.outcome.ID != main.outcome.ID {
 				basics = append(basics, outcome)
 			}
 		}
@@ -223,9 +215,6 @@ func noEligible(skipped []variant.SkippedCompetency) *fault.Error {
 			continue
 		}
 		message := fmt.Sprintf("Компетенция «%s»: подходящих ОР — %d", item.CompetencyName, item.EligibleOutcomes)
-		if item.Code == "INSUFFICIENT_LOWER_BLOOM_OUTCOMES" {
-			message += fmt.Sprintf("; ОР с Блумом ниже основного — %d (ранг основного %d)", item.LowerBloomOutcomes, item.MainBloomRank)
-		}
 		e.Details = append(e.Details, fault.Detail{Path: "competencies/" + item.CompetencyID, Code: item.Code, Message: message})
 	}
 	return e
@@ -284,10 +273,10 @@ func (s *Service) List(ctx context.Context, ownerID, subjectID string, limit int
 	return items, EncodeCursor(*next), nil
 }
 
+// harder ranks main candidates: Bloom rank first, then importance.
 func harder(a, b *taskPool) bool {
-	pa, pb := a.rank+a.importance, b.rank+b.importance
-	if pa != pb {
-		return pa > pb
+	if a.rank != b.rank {
+		return a.rank > b.rank
 	}
 	if a.importance != b.importance {
 		return a.importance > b.importance

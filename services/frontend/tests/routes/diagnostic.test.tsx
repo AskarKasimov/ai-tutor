@@ -291,13 +291,15 @@ it('runs real diagnostic audio, obeys skipped basics and displays the server tot
   fireEvent.click(
     await screen.findByRole('button', { name: 'Завершить запись' }),
   )
-  const feedbackParagraph = await screen.findByText(feedback.join(' '))
-  expect(feedbackParagraph).toBeVisible()
-  expect(feedbackParagraph.tagName).toBe('P')
+  // The answer is only confirmed: no score, verdict or feedback per task.
+  expect(await screen.findByText('Ответ принят')).toBeVisible()
+  expect(screen.queryByText(feedback.join(' '))).not.toBeInTheDocument()
+  expect(screen.queryByText('2 / 2')).not.toBeInTheDocument()
+  expect(screen.queryByText('Верно')).not.toBeInTheDocument()
   expect(screen.queryByText('Модель названа.')).not.toBeInTheDocument()
   expect(screen.queryByText(/Критерий (не )?выполнен/)).not.toBeInTheDocument()
-  // The main answer scored 2/2 and both basics were skipped by the server.
-  expect(screen.getByLabelText('Вопрос 1: верно')).toBeVisible()
+  // The main answer is done and both basics were skipped by the server.
+  expect(screen.getByLabelText('Вопрос 1: пройден')).toBeVisible()
   expect(screen.getByLabelText('Вопрос 2: пропущен')).toBeVisible()
   expect(screen.getByLabelText('Вопрос 3: пропущен')).toBeVisible()
   expect(screen.getByText('Настоящая расшифровка')).toBeVisible()
@@ -449,7 +451,7 @@ it('keeps the audio and idempotency key on a failed submission and retries witho
     'Настоящий вопрос из банка',
   )
   fireEvent.click(screen.getByRole('button', { name: 'Отправить снова' }))
-  expect(await screen.findByText(/Серверное объяснение\./)).toBeVisible()
+  expect(await screen.findByText('Ответ принят')).toBeVisible()
   const calls = requests.mock.calls.filter(([url]) => url.endsWith('/answers'))
   expect(calls).toHaveLength(2)
   expect(calls[0][1]?.headers).toEqual(calls[1][1]?.headers)
@@ -573,7 +575,8 @@ it('shows progress by topic and adds clarifying questions only when asked', asyn
   fireEvent.click(
     await screen.findByRole('button', { name: 'Завершить запись' }),
   )
-  expect(await screen.findByLabelText('Тема 1: неверно')).toBeVisible()
+  expect(await screen.findByLabelText('Тема 1: пройдена')).toBeVisible()
+  expect(screen.queryByLabelText('Тема 1: неверно')).not.toBeInTheDocument()
   expect(
     screen.getByLabelText('Тема 1, уточняющий вопрос 1: текущий'),
   ).toBeVisible()
@@ -585,17 +588,17 @@ it('shows progress by topic and adds clarifying questions only when asked', asyn
   ).toBeVisible()
 })
 
-it('keeps navigator colors after a page reload', async () => {
+it('keeps answered positions after a page reload', async () => {
   server()
   const first = await home()
   fireEvent.click(await screen.findByRole('button', { name: 'Начать запись' }))
   fireEvent.click(
     await screen.findByRole('button', { name: 'Завершить запись' }),
   )
-  expect(await screen.findByLabelText('Вопрос 1: верно')).toBeVisible()
+  expect(await screen.findByLabelText('Вопрос 1: пройден')).toBeVisible()
   first.unmount()
   await home()
-  expect(await screen.findByLabelText('Вопрос 1: верно')).toBeVisible()
+  expect(await screen.findByLabelText('Вопрос 1: пройден')).toBeVisible()
 })
 
 it('skips a question without sending audio for transcription', async () => {
@@ -604,11 +607,12 @@ it('skips a question without sending audio for transcription', async () => {
   fireEvent.click(
     await screen.findByRole('button', { name: 'Пропустить вопрос' }),
   )
+  expect(await screen.findByText('Вопрос пропущен')).toBeVisible()
   expect(
-    await screen.findByText(
+    screen.queryByText(
       'Вопрос пропущен. Ответ оценён в 0 баллов. Продолжите со следующим вопросом.',
     ),
-  ).toBeVisible()
+  ).not.toBeInTheDocument()
   expect(screen.getByLabelText('Вопрос 1: пропущен')).toBeVisible()
   expect(audio.startRecording).not.toHaveBeenCalled()
   const [, init] = requests.mock.calls.find(([url]) => url.endsWith('/skip'))!
@@ -753,10 +757,10 @@ it('uses backend basic tasks with a 0/1 scale and excludes them from the diagnos
     fireEvent.click(
       await screen.findByRole('button', { name: 'Завершить запись' }),
     )
+    expect(await screen.findByText('Ответ принят')).toBeVisible()
     expect(
-      await screen.findByText(`${scores[index]} / ${index === 0 ? 2 : 1}`),
-    ).toBeVisible()
-    if (index === 1) expect(screen.getByText('Верно')).toBeVisible()
+      screen.queryByText(`${scores[index]} / ${index === 0 ? 2 : 1}`),
+    ).not.toBeInTheDocument()
     fireEvent.click(
       screen.getByRole('button', {
         name: index === 2 ? 'Посмотреть итог' : 'Следующее задание',
@@ -875,7 +879,7 @@ it('retains the original audio/key when the backend reports that an answer is st
   )
   await screen.findByRole('alert')
   fireEvent.click(screen.getByRole('button', { name: 'Отправить снова' }))
-  expect(await screen.findByText(/Серверное объяснение\./)).toBeVisible()
+  expect(await screen.findByText('Ответ принят')).toBeVisible()
   expect(submissions[0].headers).toEqual(submissions[1].headers)
   expect(submissions[0].body).toBe(submissions[1].body)
 })

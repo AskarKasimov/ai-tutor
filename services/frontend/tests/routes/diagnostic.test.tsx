@@ -316,7 +316,7 @@ it('runs real diagnostic audio, obeys skipped basics and displays the server tot
     screen.getByText('Диагностический балл').parentElement,
   ).toHaveTextContent('2 / 2')
   expect(
-    screen.getByRole('button', { name: 'Перейти к тренировке' }),
+    screen.getByRole('button', { name: 'Пройти тренировку' }),
   ).toBeVisible()
   // The task review is folded until the student opens it.
   expect(screen.queryByText('Настоящая расшифровка')).not.toBeInTheDocument()
@@ -336,7 +336,7 @@ it('runs real diagnostic audio, obeys skipped basics and displays the server tot
   expect(screen.getByText('Базовый вопрос из банка')).toBeVisible()
   expect(screen.getByText(/Не проверено/)).toBeVisible()
   expect(
-    screen.getByRole('button', { name: 'Перейти к тренировке' }),
+    screen.getByRole('button', { name: 'Пройти тренировку' }),
   ).toBeEnabled()
   expect(
     screen.queryByRole('button', { name: 'Новая диагностика' }),

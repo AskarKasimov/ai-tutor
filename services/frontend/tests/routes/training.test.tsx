@@ -31,7 +31,7 @@ beforeEach(async () => {
   })
 })
 
-it('loads a focused preview before starting and explicitly starts the frozen plan', async () => {
+it('opens training directly from the diagnostic result', async () => {
   const router = createRouter({
     context: { queryClient: createQueryClient() },
     history: createMemoryHistory({ initialEntries: ['/'] }),
@@ -53,27 +53,13 @@ it('loads a focused preview before starting and explicitly starts the frozen pla
   fireEvent.click(
     await screen.findByRole('button', { name: 'Посмотреть итог' }),
   )
-  fireEvent.click(await screen.findByRole('button', { name: 'На главную' }))
-  // The single course action resumes the process in training.
-  expect(
-    await screen.findByText('Проверка пройдена — продолжайте тренировку.'),
-  ).toBeVisible()
-  expect(
-    screen.getByRole('button', { name: 'Пройти проверку заново' }),
-  ).toBeEnabled()
-  fireEvent.click(
-    await screen.findByRole('button', { name: 'Продолжить обучение' }),
-  )
-
-  expect(
-    await screen.findByRole('heading', { name: 'Неосвоенные темы' }),
-  ).toBeVisible()
-  expect(
-    screen.getByRole('heading', { name: 'Частичные пробелы в знаниях' }),
-  ).toBeVisible()
-  expect(screen.getByText('Диагностический балл: 2 / 2')).toBeVisible()
   const playedBeforeTraining = play.mock.calls.length
-  fireEvent.click(screen.getByRole('button', { name: 'Начать тренировку' }))
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Пройти тренировку' }),
+  )
+  expect(
+    screen.queryByRole('button', { name: 'Начать тренировку' }),
+  ).not.toBeInTheDocument()
   expect(
     await screen.findByRole('heading', {
       name: 'Различать классификацию и регрессию',

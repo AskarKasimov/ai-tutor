@@ -72,10 +72,12 @@ it('completes local diagnostic and displays its overall feedback', async () => {
     screen.getByText('Диагностический балл').parentElement,
   ).toHaveTextContent('2 / 2')
   // The summary leads straight to training as the next stage.
-  fireEvent.click(screen.getByRole('button', { name: 'Перейти к тренировке' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Пройти тренировку' }))
   expect(
-    (await screen.findAllByRole('heading', { name: /Тренировка/ })).length,
-  ).toBeGreaterThan(0)
+    await screen.findByText(
+      'Как определить, что задача относится к классификации?',
+    ),
+  ).toBeVisible()
   expect(
     screen.queryByRole('heading', { name: 'Общий фидбэк' }),
   ).not.toBeInTheDocument()

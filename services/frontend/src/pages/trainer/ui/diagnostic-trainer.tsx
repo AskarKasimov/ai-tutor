@@ -1,10 +1,12 @@
 import { Button, Heading, Text } from '@radix-ui/themes'
 import {
-  ArrowRight,
+  Check,
   ChevronRight,
   Mic,
   RotateCcw,
   Sparkles,
+  TrendingUp,
+  Zap,
 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
@@ -224,15 +226,6 @@ function DiagnosticFlow({
     if (openTaskId) void voice.speak({ auto: true })
     // voice is recreated on every render; autoplay runs once per opened task.
   }, [openTaskId])
-  const [skipFailed, setSkipFailed] = useState(false)
-  async function skip() {
-    setSkipFailed(false)
-    try {
-      await voice.skip()
-    } catch {
-      setSkipFailed(true)
-    }
-  }
   if (progress.status === 'completed' && !voice.accepted)
     return (
       <DiagnosticSummary
@@ -334,15 +327,13 @@ function DiagnosticFlow({
           seconds={seconds}
           stream={voice.stream}
           errorMessage={
-            skipFailed
-              ? t('session.skipError')
-              : failed
-                ? t(
-                    voice.captureError
-                      ? `trainer.${voice.captureError}`
-                      : errorKey(voice.error, 'diagnostic.submitError'),
-                  )
-                : undefined
+            failed
+              ? t(
+                  voice.captureError
+                    ? `trainer.${voice.captureError}`
+                    : errorKey(voice.error, 'diagnostic.submitError'),
+                )
+              : undefined
           }
           micError={micError}
           onMic={
@@ -355,8 +346,6 @@ function DiagnosticFlow({
               ? undefined
               : () => void (recording ? voice.stop() : voice.start())
           }
-          onSkip={() => void skip()}
-          skipDisabled={blocked}
         >
           {needsRefresh ? (
             <Button
@@ -530,19 +519,32 @@ function DiagnosticSummary({
       <Text as="p" className={styles.summaryHelp}>
         {t('diagnostic.completedHelp')}
       </Text>
-      <div className={styles.summaryScore}>
-        <Text>
-          {value.diagnostic_score} / {value.maximum_score}
-        </Text>
-        <Text>{t('diagnostic.totalScore')}</Text>
-        <Button
-          size="3"
+      {/* The result leads straight on: a bright card whose main action is
+          to work through the weak topics. */}
+      <div className={diagnosticStyles.scoreHero}>
+        <div className={diagnosticStyles.scoreText}>
+          <div>
+            <Text className={diagnosticStyles.scoreNumber}>
+              {value.diagnostic_score} / {value.maximum_score}
+            </Text>{' '}
+            <Text className={diagnosticStyles.scoreLabel}>
+              {t('diagnostic.totalScore')}
+            </Text>
+          </div>
+          <Text as="p" className={diagnosticStyles.scoreNext}>
+            {t('diagnostic.nextStep')}
+          </Text>
+        </div>
+        <button
+          type="button"
           className={diagnosticStyles.toTraining}
           onClick={() => onTraining(sessionId)}
         >
+          <span className={diagnosticStyles.toTrainingIcon} aria-hidden="true">
+            <Zap size={20} fill="currentColor" />
+          </span>
           {t('diagnostic.toTraining')}
-          <ArrowRight size={18} aria-hidden="true" />
-        </Button>
+        </button>
       </div>
       {overall.isPending ? (
         <FeedbackPreparing />
@@ -595,28 +597,9 @@ function DiagnosticSummary({
                   </li>
                 ))}
               </ol>
-              {value.untested_basics.length > 0 && (
-                <section className={diagnosticStyles.untested}>
-                  <Heading as="h2">{t('diagnostic.untested')}</Heading>
-                  <ul>
-                    {value.untested_basics.map((task) => (
-                      <li key={task.variant_task_id}>{task.question}</li>
-                    ))}
-                  </ul>
-                </section>
-              )}
-              {value.skipped_competencies.length > 0 && (
-                <section className={diagnosticStyles.untested}>
-                  <Heading as="h2">
-                    {t('diagnostic.skippedCompetencies')}
-                  </Heading>
-                  <ul>
-                    {value.skipped_competencies.map((item) => (
-                      <li key={item.competency_id}>{item.competency_name}</li>
-                    ))}
-                  </ul>
-                </section>
-              )}
+              {/* Basics left out after a full main answer and competencies
+                  outside the variant stay in the API: the review shows only
+                  the tasks that were asked. */}
             </div>
           )}
         </>
@@ -651,6 +634,32 @@ function FeedbackPreparing() {
   )
 }
 
+// A coloured feedback card: good (already works), almost (partly mastered)
+// and next (what to work on).
+function FeedbackCard({
+  tone,
+  icon,
+  title,
+  children,
+}: {
+  tone: 'good' | 'almost' | 'next'
+  icon: ReactNode
+  title: string
+  children: ReactNode
+}) {
+  return (
+    <section className={diagnosticStyles.feedbackCard} data-tone={tone}>
+      <Heading as="h3">
+        <span className={diagnosticStyles.feedbackIcon} aria-hidden="true">
+          {icon}
+        </span>
+        {title}
+      </Heading>
+      {children}
+    </section>
+  )
+}
+
 function DiagnosticOverallFeedback({
   feedback,
 }: {
@@ -658,6 +667,27 @@ function DiagnosticOverallFeedback({
 }) {
   const { t } = useTranslation()
   const value = feedback.data
+  // What to work on next: the recommendations in their order, then confirmed
+  // gaps they do not cover, each with its own advice.
+  const covered = new Set(
+    value?.training_recommendations.map((item) => item.outcome_id),
+  )
+  const steps = value
+    ? [
+        ...value.training_recommendations.map((item) => ({
+          id: item.outcome_id,
+          title: `${item.competency_name} — ${item.outcome_name}`,
+          text: item.rationale,
+        })),
+        ...value.confirmed_gaps
+          .filter((item) => !covered.has(item.outcome_id))
+          .map((item) => ({
+            id: item.outcome_id,
+            title: `${item.competency_name} — ${item.outcome_name}`,
+            text: item.advice,
+          })),
+      ]
+    : []
   return (
     <section
       className={diagnosticStyles.overallFeedback}
@@ -685,65 +715,62 @@ function DiagnosticOverallFeedback({
           <Text as="p" className={diagnosticStyles.overallSummary}>
             {value.summary}
           </Text>
-          {value.strengths.length > 0 && (
-            <div>
-              <Heading as="h3">{t('diagnostic.strengths')}</Heading>
-              <ul>
-                {value.strengths.map((item, index) => (
-                  <li key={index}>{item}</li>
-                ))}
-              </ul>
-            </div>
-          )}
-          {value.partial_competencies.length > 0 && (
-            <div>
-              <Heading as="h3">{t('diagnostic.partialCompetencies')}</Heading>
-              <ul>
-                {value.partial_competencies.map((item) => (
-                  <li key={item.competency_id}>
-                    {item.competency_name}: {item.details}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-          {value.confirmed_gaps.length > 0 && (
-            <div>
-              <Heading as="h3">{t('diagnostic.confirmedGaps')}</Heading>
-              <ul>
-                {value.confirmed_gaps.map((item) => (
-                  <li key={item.outcome_id}>
-                    {item.competency_name} — {item.outcome_name}: {item.advice}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-          {value.training_recommendations.length > 0 && (
-            <div>
-              <Heading as="h3">{t('diagnostic.recommendations')}</Heading>
-              <ol>
-                {value.training_recommendations.map((item) => (
-                  <li key={item.outcome_id}>
-                    {item.competency_name} — {item.outcome_name}:{' '}
-                    {item.rationale}
-                  </li>
-                ))}
-              </ol>
-            </div>
-          )}
-          {value.unverified_competencies.length > 0 && (
-            <div>
-              <Heading as="h3">
-                {t('diagnostic.unverifiedCompetencies')}
-              </Heading>
-              <ul>
-                {value.unverified_competencies.map((item) => (
-                  <li key={item.competency_id}>{item.competency_name}</li>
-                ))}
-              </ul>
-            </div>
-          )}
+          <div className={diagnosticStyles.feedbackCards}>
+            {value.strengths.length > 0 && (
+              <FeedbackCard
+                tone="good"
+                icon={<Check size={18} strokeWidth={2.5} />}
+                title={t('diagnostic.strengths')}
+              >
+                <ul>
+                  {value.strengths.map((item, index) => (
+                    <li key={index}>{item}</li>
+                  ))}
+                </ul>
+              </FeedbackCard>
+            )}
+            {value.partial_competencies.length > 0 && (
+              <FeedbackCard
+                tone="almost"
+                icon={<TrendingUp size={18} strokeWidth={2.5} />}
+                title={t('diagnostic.partialCompetencies')}
+              >
+                <ul>
+                  {value.partial_competencies.map((item) => (
+                    <li key={item.competency_id}>
+                      <strong>{item.competency_name}</strong> {item.details}
+                    </li>
+                  ))}
+                </ul>
+              </FeedbackCard>
+            )}
+            {steps.length > 0 && (
+              <FeedbackCard
+                tone="next"
+                icon={<Zap size={18} fill="currentColor" />}
+                title={t('diagnostic.recommendations')}
+              >
+                <ol className={diagnosticStyles.feedbackSteps}>
+                  {steps.map((item, index) => (
+                    <li key={item.id}>
+                      <span
+                        className={diagnosticStyles.feedbackStepNumber}
+                        aria-hidden="true"
+                      >
+                        {index + 1}
+                      </span>
+                      <span className={diagnosticStyles.feedbackStepText}>
+                        <strong>{item.title}</strong>
+                        <span>{item.text}</span>
+                      </span>
+                    </li>
+                  ))}
+                </ol>
+              </FeedbackCard>
+            )}
+          </div>
+          {/* Unverified competencies stay in the API but are not shown: the
+              overall feedback names only what was checked. */}
         </>
       ) : null}
     </section>

@@ -56,6 +56,14 @@
     color: var(--app-muted);
   }
 }
+// A profile without a menu is not a control.
+.profileStatic {
+  cursor: default;
+  &:hover {
+    border-color: var(--app-border);
+    box-shadow: none;
+  }
+}
 
 .app {
   min-height: 100dvh;

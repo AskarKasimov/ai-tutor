@@ -82,11 +82,10 @@ it.each(['real', 'mock', 'preview'])(
         'admin',
       )
     } else expect(fetch).not.toHaveBeenCalled()
-    // Signing out of the shared account simply enters it again.
-    await logOut()
+    // The shared account has no logout.
     expect(
-      await screen.findByRole('heading', { name: 'Карта компетенций' }),
-    ).toBeVisible()
+      screen.queryByRole('button', { name: /Меню профиля/ }),
+    ).not.toBeInTheDocument()
   },
 )
 

@@ -1974,6 +1974,14 @@ paths:
   /auth/login:
     post:
       operationId: login
+      parameters:
+        - description: admin — сессия админ-панели с отдельными cookies
+          in: header
+          name: X-AI-Tutor-Portal
+          schema:
+            enum:
+              - admin
+            type: string
       requestBody:
         content:
           application/json:
@@ -1992,7 +2000,7 @@ paths:
           description: OK
           headers:
             Set-Cookie:
-              description: 'access_token и refresh_token: Path=/; Secure; HttpOnly; SameSite=Lax'
+              description: 'access_token и refresh_token (с заголовком X-AI-Tutor-Portal: admin — admin_access_token и admin_refresh_token): Path=/; Secure; HttpOnly; SameSite=Lax'
               schema:
                 type: string
         "401":
@@ -2015,12 +2023,20 @@ paths:
     post:
       description: Refresh cookie необязательна; без неё возвращается 204 и удаляются обе cookies.
       operationId: logout
+      parameters:
+        - description: admin — сессия админ-панели с отдельными cookies
+          in: header
+          name: X-AI-Tutor-Portal
+          schema:
+            enum:
+              - admin
+            type: string
       responses:
         "204":
           description: Сессия завершена
           headers:
             Set-Cookie:
-              description: 'access_token и refresh_token: Path=/; Secure; HttpOnly; SameSite=Lax'
+              description: 'access_token и refresh_token (с заголовком X-AI-Tutor-Portal: admin — admin_access_token и admin_refresh_token): Path=/; Secure; HttpOnly; SameSite=Lax'
               schema:
                 type: string
         "422":
@@ -2036,6 +2052,14 @@ paths:
   /auth/me:
     get:
       operationId: getCurrentUser
+      parameters:
+        - description: admin — сессия админ-панели с отдельными cookies
+          in: header
+          name: X-AI-Tutor-Portal
+          schema:
+            enum:
+              - admin
+            type: string
       responses:
         "200":
           content:
@@ -2058,6 +2082,14 @@ paths:
   /auth/refresh:
     post:
       operationId: refreshTokens
+      parameters:
+        - description: admin — сессия админ-панели с отдельными cookies
+          in: header
+          name: X-AI-Tutor-Portal
+          schema:
+            enum:
+              - admin
+            type: string
       responses:
         "200":
           content:
@@ -2067,7 +2099,7 @@ paths:
           description: OK
           headers:
             Set-Cookie:
-              description: 'access_token и refresh_token: Path=/; Secure; HttpOnly; SameSite=Lax'
+              description: 'access_token и refresh_token (с заголовком X-AI-Tutor-Portal: admin — admin_access_token и admin_refresh_token): Path=/; Secure; HttpOnly; SameSite=Lax'
               schema:
                 type: string
         "401":
@@ -2091,6 +2123,14 @@ paths:
   /auth/register:
     post:
       operationId: register
+      parameters:
+        - description: admin — сессия админ-панели с отдельными cookies
+          in: header
+          name: X-AI-Tutor-Portal
+          schema:
+            enum:
+              - admin
+            type: string
       requestBody:
         content:
           application/json:
@@ -2109,7 +2149,7 @@ paths:
           description: Created
           headers:
             Set-Cookie:
-              description: 'access_token и refresh_token: Path=/; Secure; HttpOnly; SameSite=Lax'
+              description: 'access_token и refresh_token (с заголовком X-AI-Tutor-Portal: admin — admin_access_token и admin_refresh_token): Path=/; Secure; HttpOnly; SameSite=Lax'
               schema:
                 type: string
         "409":
@@ -2136,7 +2176,17 @@ paths:
       x-implementation: implemented
   /auth/teacher:
     post:
+      description: 'Доступно только админ-панели: без заголовка X-AI-Tutor-Portal: admin возвращается 404.'
       operationId: loginTeacher
+      parameters:
+        - description: Только admin
+          in: header
+          name: X-AI-Tutor-Portal
+          required: true
+          schema:
+            enum:
+              - admin
+            type: string
       responses:
         "200":
           content:
@@ -2146,9 +2196,15 @@ paths:
           description: OK
           headers:
             Set-Cookie:
-              description: 'access_token и refresh_token: Path=/; Secure; HttpOnly; SameSite=Lax'
+              description: 'access_token и refresh_token (с заголовком X-AI-Tutor-Portal: admin — admin_access_token и admin_refresh_token): Path=/; Secure; HttpOnly; SameSite=Lax'
               schema:
                 type: string
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Not Found
         "422":
           content:
             application/json:

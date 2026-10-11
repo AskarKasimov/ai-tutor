@@ -16,5 +16,7 @@ mkcert -install
 mkdir -p certs
 mkcert -cert-file certs/server.pem -key-file certs/server-key.pem localhost 127.0.0.1 ::1
 
+printf '%s\n' 'Student site: https://localhost:8443' 'Admin panel:  https://localhost:8443/admin'
+
 # The root Compose creates its managed dev network before starting containers.
 exec docker compose --env-file .env -f docker-compose.yaml up --build "$@"

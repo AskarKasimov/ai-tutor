@@ -2,6 +2,7 @@ export {
   apiFetch,
   configureMockApiHandler,
   fetchStaticAsset,
+  isAdminPortal,
   isMockApi,
 } from './api-fetch'
 export {

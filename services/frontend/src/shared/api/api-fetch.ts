@@ -18,14 +18,28 @@ export function isMockApi() {
   return import.meta.env.VITE_API_MODE !== 'real'
 }
 
+// The admin panel lives under /admin and keeps its own session: its API
+// requests carry the portal header, so the backend uses separate cookies and
+// the student site in another tab stays signed in.
+export function isAdminPortal() {
+  return globalThis.location?.pathname.startsWith('/admin') ?? false
+}
+
+function withPortal(options?: RequestInit): RequestInit | undefined {
+  if (!isAdminPortal()) return options
+  const headers = new Headers(options?.headers)
+  headers.set('X-AI-Tutor-Portal', 'admin')
+  return { ...options, headers }
+}
+
 function recoverSession(): Promise<Response> {
   if (!recovery) {
     const signal = AbortSignal.timeout(30_000)
     recovery = withAuthRefreshLock(
-      `auth-refresh:${apiBase}`,
+      `auth-refresh:${apiBase}:${isAdminPortal() ? 'admin' : 'student'}`,
       signal,
       async () => {
-        const options = { credentials: 'include' as const, signal }
+        const options = withPortal({ credentials: 'include', signal })
         const current = await fetch(`${apiBase}/auth/me`, options)
         if (current.status !== 401) return current
         return fetch(`${apiBase}/auth/refresh`, { ...options, method: 'POST' })
@@ -44,8 +58,11 @@ export function fetchStaticAsset(path: string): Promise<Response> {
 
 export async function apiFetch(
   url: string,
-  options?: RequestInit,
+  requestOptions?: RequestInit,
 ): Promise<Response> {
+  const options = url.startsWith(`${apiBase}/`)
+    ? withPortal(requestOptions)
+    : requestOptions
   if (isMockApi()) {
     if (!mockHandler) throw new Error('Demo API handler is not configured')
     return mockHandler(url, options)

@@ -13,17 +13,6 @@
   width: min(100%, 460px);
 }
 
-.banner {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
-  padding: var(--space-3);
-  margin-bottom: var(--space-4);
-  border-radius: var(--radius-3);
-  background: var(--accent-3);
-}
-
 // The product promise above the student sign-in, in gradient text.
 .slogan {
   margin: 0 0 var(--space-5);

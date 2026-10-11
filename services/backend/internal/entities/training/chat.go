@@ -129,7 +129,7 @@ type ChatTurnResult struct {
 	Revision    int64          `json:"revision"`
 	TurnID      string         `json:"turn_id"`
 	Messages    [2]ChatMessage `json:"messages"`
-	LatestCheck *ChatCheckView `json:"latest_check"`
+	LatestCheck *ChatCheckView `json:"latest_check" extensions:"x-nullable"`
 }
 
 type ChatCheckView struct {
@@ -147,7 +147,7 @@ type PendingTurnView struct {
 	Kind       ChatKind     `json:"kind"`
 	Source     AnswerSource `json:"source"`
 	Status     TurnStatus   `json:"status"`
-	UserText   *string      `json:"user_text"`
+	UserText   *string      `json:"user_text" extensions:"x-nullable"`
 	RetryAfter int64        `json:"retry_after_ms"`
 }
 
@@ -158,8 +158,8 @@ type ChatPage struct {
 	Status      ChatStatus       `json:"status"`
 	Items       []ChatMessage    `json:"items"`
 	NextCursor  *string          `json:"next_cursor,omitempty" binding:"optional"`
-	LatestCheck *ChatCheckView   `json:"latest_check"`
-	PendingTurn *PendingTurnView `json:"pending_turn"`
+	LatestCheck *ChatCheckView   `json:"latest_check" extensions:"x-nullable"`
+	PendingTurn *PendingTurnView `json:"pending_turn" extensions:"x-nullable"`
 }
 
 type TurnInput struct {

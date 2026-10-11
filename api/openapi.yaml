@@ -1261,11 +1261,15 @@ components:
           type: array
           uniqueItems: false
         latest_check:
-          $ref: '#/components/schemas/training.ChatCheckView'
+          anyOf:
+            - $ref: '#/components/schemas/training.ChatCheckView'
+            - type: "null"
         next_cursor:
           type: string
         pending_turn:
-          $ref: '#/components/schemas/training.PendingTurnView'
+          anyOf:
+            - $ref: '#/components/schemas/training.PendingTurnView'
+            - type: "null"
         revision:
           type: integer
         session_id:
@@ -1303,7 +1307,9 @@ components:
         exercise_id:
           type: string
         latest_check:
-          $ref: '#/components/schemas/training.ChatCheckView'
+          anyOf:
+            - $ref: '#/components/schemas/training.ChatCheckView'
+            - type: "null"
         messages:
           items:
             $ref: '#/components/schemas/training.ChatMessage'
@@ -1377,7 +1383,9 @@ components:
         status:
           $ref: '#/components/schemas/training.TurnStatus'
         user_text:
-          type: string
+          type:
+            - string
+            - "null"
       required:
         - id
         - kind

@@ -20,8 +20,12 @@ func startTrainingChatFixture(t *testing.T) (*fixture, *trainingpg.Repository, *
 	t.Helper()
 	f, _, _, owner, diagnosticSession := trainingFixture(t, 2)
 	repository := trainingpg.New(f.pool)
-	progress, _, err := trainingapp.New(repository, f.app.diagnosticStore, nil, nil, trainingsnapshot.Provider{}, security.IDGenerator{}, f.app.now).
-		Start(t.Context(), owner, diagnosticSession.ID, "chat-start", nil)
+	service := trainingapp.New(repository, f.app.diagnosticStore, nil, nil, trainingsnapshot.Provider{}, security.IDGenerator{}, f.app.now)
+	preview, err := service.Preview(t.Context(), owner, diagnosticSession.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	progress, _, err := service.Start(t.Context(), owner, diagnosticSession.ID, "chat-start", &preview.PlanRevision)
 	if err != nil {
 		t.Fatal(err)
 	}

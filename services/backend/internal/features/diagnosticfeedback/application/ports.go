@@ -15,9 +15,11 @@ type FeedbackSynthesizer interface {
 	SynthesizeAnswers(ctx context.Context, report SessionFeedbackReport) (string, error)
 }
 
-type FeedbackCache interface {
-	Get(ctx context.Context, sessionID string) (*diagnostic.OverallFeedback, bool)
-	Set(ctx context.Context, sessionID string, feedback diagnostic.OverallFeedback)
+// FeedbackStore keeps the overall feedback of a diagnostic once it is
+// generated, so the student always reads the same text.
+type FeedbackStore interface {
+	Get(ctx context.Context, ownerID, sessionID string) (diagnostic.OverallFeedback, bool, error)
+	Save(ctx context.Context, ownerID string, feedback diagnostic.OverallFeedback) error
 }
 
 type TaskMetadataFinder interface {

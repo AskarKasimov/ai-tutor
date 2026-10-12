@@ -1,7 +1,6 @@
 import { Button, Heading, Text } from '@radix-ui/themes'
 import {
   AlertTriangle,
-  BookOpen,
   CheckCircle2,
   ChevronRight,
   Mic,
@@ -686,50 +685,54 @@ type OverallFeedback = NonNullable<
 // out and are hidden when there is nothing to say: no invented praise.
 function OverallFeedbackContent({ value }: { value: OverallFeedback }) {
   const { t } = useTranslation()
-  const structured = parseStructuredSummary(value.summary || '')
+  // The model writes only the general paragraph; headings of older texts
+  // are cut off.
   const generalText =
-    structured.generalText || normalizeText(value.summary || '')
-  // What to work on next: the recommendations in their order, then confirmed
-  // gaps they do not cover, each with its own advice.
-  const covered = new Set(
-    value.training_recommendations.map((item) => item.outcome_id),
+    parseStructuredSummary(value.summary || '').generalText ||
+    normalizeText(value.summary || '')
+  // The cards come only from the stored per-answer reviews: no invented
+  // praise. An empty card is not shown.
+  const priority = new Map(
+    value.training_recommendations.map((item) => [
+      item.outcome_id,
+      item.priority,
+    ]),
   )
-  const recommendations = [
-    ...value.training_recommendations.map((item) => ({
-      id: item.outcome_id,
-      title: `${item.competency_name} — ${item.outcome_name}`,
-      text: item.rationale,
-    })),
-    ...value.confirmed_gaps
-      .filter((gap) => !covered.has(gap.outcome_id))
-      .map((gap) => ({
-        id: gap.outcome_id,
-        title: `${gap.competency_name} — ${gap.outcome_name}`,
-        text: gap.advice,
-      })),
-  ]
-  const good = structured.whatIsGood ? (
-    <p className={styles.feedbackParagraph}>{structured.whatIsGood}</p>
-  ) : value.strengths.length > 0 ? (
-    <ul className={styles.summaryCardList}>
-      {value.strengths.map((item, index) => (
-        <li key={index}>{normalizeText(item)}</li>
-      ))}
-    </ul>
-  ) : null
-  const work = structured.whatNeedsWork ? (
-    <p className={styles.feedbackParagraph}>{structured.whatNeedsWork}</p>
-  ) : value.partial_competencies.length > 0 ? (
-    <ul className={styles.summaryCardList}>
-      {value.partial_competencies.map((part) => (
-        <li key={part.competency_id}>
-          <span>
-            <strong>{part.competency_name}:</strong> {part.details}
-          </span>
-        </li>
-      ))}
-    </ul>
-  ) : null
+  const gaps = [...value.confirmed_gaps].sort(
+    (a, b) =>
+      (priority.get(a.outcome_id) ?? Infinity) -
+      (priority.get(b.outcome_id) ?? Infinity),
+  )
+  const good =
+    value.strengths.length > 0 ? (
+      <ul className={styles.summaryCardList}>
+        {value.strengths.map((item, index) => (
+          <li key={index}>{normalizeText(item)}</li>
+        ))}
+      </ul>
+    ) : null
+  const work =
+    gaps.length + value.partial_competencies.length > 0 ? (
+      <ul className={styles.summaryCardList}>
+        {gaps.map((gap) => (
+          <li key={gap.outcome_id}>
+            <span>
+              <strong>
+                {gap.competency_name} — {gap.outcome_name}.
+              </strong>{' '}
+              {gap.advice}
+            </span>
+          </li>
+        ))}
+        {value.partial_competencies.map((part) => (
+          <li key={part.competency_id}>
+            <span>
+              <strong>{part.competency_name}.</strong> {part.details}
+            </span>
+          </li>
+        ))}
+      </ul>
+    ) : null
   return (
     <div className={styles.feedbackContent}>
       {generalText && (
@@ -781,28 +784,6 @@ function OverallFeedbackContent({ value }: { value: OverallFeedback }) {
             </section>
           )}
         </div>
-      )}
-      {recommendations.length > 0 && (
-        <section className={styles.recommendationsCard}>
-          <h3 className={styles.recommendationsHeader}>
-            <BookOpen size={18} className={styles.iconRec} aria-hidden="true" />
-            <span className={styles.recommendationsTitle}>
-              {t('diagnostic.recommendations')}
-            </span>
-          </h3>
-          <ol className={styles.recommendationsList}>
-            {recommendations.map((item, index) => (
-              <li key={item.id}>
-                <span className={styles.recNumber} aria-hidden="true">
-                  {index + 1}
-                </span>
-                <span>
-                  <strong>{item.title}:</strong> {item.text}
-                </span>
-              </li>
-            ))}
-          </ol>
-        </section>
       )}
     </div>
   )

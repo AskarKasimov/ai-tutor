@@ -137,6 +137,13 @@ type DiagnosticAnswer struct {
 	CreatedAt      pgtype.Timestamptz
 }
 
+type DiagnosticFeedback struct {
+	SessionID    string
+	OwnerID      string
+	FeedbackData []byte
+	CreatedAt    pgtype.Timestamptz
+}
+
 type DiagnosticSession struct {
 	ID                    string
 	OwnerID               string

@@ -895,57 +895,6 @@
     }
   }
 }
-.recommendationsCard {
-  border-radius: 12px;
-  padding: 16px 18px;
-  display: grid;
-  gap: 12px;
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
-  border-left: 4px solid var(--app-accent, #4f46e5);
-  margin-top: 6px;
-}
-.recommendationsHeader {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 0;
-}
-.recommendationsTitle {
-  font-size: 14px;
-  font-weight: 700;
-  color: var(--app-accent-strong, #3730a3);
-  letter-spacing: 0.01em;
-}
-.recommendationsList {
-  list-style: none;
-  padding-left: 0;
-  margin: 0;
-  display: grid;
-  gap: 8px;
-  li {
-    display: flex;
-    align-items: flex-start;
-    gap: 10px;
-    font-size: 14px;
-    line-height: 20px;
-    color: var(--app-ink, #0f172a);
-  }
-}
-.recNumber {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 20px;
-  height: 20px;
-  border-radius: 50%;
-  background: var(--app-soft, #e0e7ff);
-  color: var(--app-accent, #4f46e5);
-  font-size: 11px;
-  font-weight: 700;
-  flex-shrink: 0;
-  margin-top: 1px;
-}
 .feedbackGroup {
   display: grid;
   gap: 8px;
@@ -962,9 +911,6 @@
 }
 .iconGap {
   color: #dc2626;
-}
-.iconRec {
-  color: var(--app-accent);
 }
 .iconPartial,
 .iconWarning {

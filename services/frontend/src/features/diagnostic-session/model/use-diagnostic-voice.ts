@@ -2,6 +2,7 @@ import { useEffect, useEffectEvent, useRef, useState } from 'react'
 import {
   AudioPlaybackError,
   createAudioUrl,
+  MAX_ANSWER_SECONDS,
   playQuestion,
   startRecording,
 } from '@/shared/lib'
@@ -72,6 +73,8 @@ export function useDiagnosticVoice(
   const generation = useRef(0)
   const locked = useRef(false)
   const started = useRef(0)
+  // Stops a recording that reached the answer length limit.
+  const autoStop = useRef<() => void>(() => {})
   const currentContext = useRef({
     userId,
     sessionId,
@@ -92,10 +95,11 @@ export function useDiagnosticVoice(
   )
   useEffect(() => {
     if (stage !== 'recording') return
-    const timer = setInterval(
-      () => setSeconds(Math.floor((Date.now() - started.current) / 1000)),
-      250,
-    )
+    const timer = setInterval(() => {
+      const elapsed = Math.floor((Date.now() - started.current) / 1000)
+      setSeconds(elapsed)
+      if (elapsed >= MAX_ANSWER_SECONDS) autoStop.current()
+    }, 250)
     return () => clearInterval(timer)
   }, [stage])
   function stopSpeech() {
@@ -466,6 +470,7 @@ export function useDiagnosticVoice(
       if (answerRequest.current === request) answerRequest.current = null
     }
   }
+  autoStop.current = () => void stop()
   async function stop() {
     if (locked.current || !recording.current || !task) return
     locked.current = true

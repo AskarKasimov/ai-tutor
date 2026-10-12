@@ -1,6 +1,6 @@
 import { act, renderHook } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest'
-import { useTrainingChatVoice } from '@/features/training'
+import { useVoiceRecorder } from '@/features/learning-plan'
 
 class DeferredRecorder {
   static last: DeferredRecorder | undefined
@@ -51,7 +51,7 @@ it('stops a permission result that arrives after switching exercises', async () 
   installMedia(() => pending)
   const recorded = vi.fn()
   const view = renderHook(
-    ({ identity }) => useTrainingChatVoice(identity, recorded),
+    ({ identity }) => useVoiceRecorder(identity, recorded),
     { initialProps: { identity: 'session:exercise-a' } },
   )
   let request!: Promise<void>
@@ -77,7 +77,7 @@ it('ignores a delayed recorder stop callback from the previous exercise', async 
   installMedia(async () => media.value)
   const recorded = vi.fn()
   const view = renderHook(
-    ({ identity }) => useTrainingChatVoice(identity, recorded),
+    ({ identity }) => useVoiceRecorder(identity, recorded),
     { initialProps: { identity: 'session:exercise-a' } },
   )
   await act(async () => view.result.current.start())

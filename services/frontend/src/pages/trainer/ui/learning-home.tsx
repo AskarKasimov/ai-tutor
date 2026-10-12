@@ -17,7 +17,7 @@ import {
   useSubjectsQuery,
 } from '@/features/subject-selection'
 import { subjectQueryKeys, type Subject } from '@/entities/subject'
-import { TrainingEntry } from './training-entry'
+import { LearningPlanEntry } from './learning-plan'
 import { DiagnosticTrainer } from './diagnostic-trainer'
 import { AccountMenu } from '@/features/auth'
 import styles from './learning-home.module.scss'
@@ -124,7 +124,7 @@ export function LearningHome() {
   }
   if (intent?.mode === 'training' && selected && userId)
     return (
-      <TrainingEntry
+      <LearningPlanEntry
         key={intent.diagnosticId}
         userId={userId}
         diagnosticId={

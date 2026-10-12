@@ -398,6 +398,9 @@
   height: 82px;
   padding: 0 12px;
   box-sizing: border-box;
+  // The scrolling waveform adds new sound at the right edge; mirroring it makes
+  // speech flow from left to right.
+  transform: scaleX(-1);
 }
 .answerTitle {
   font-family: inherit;

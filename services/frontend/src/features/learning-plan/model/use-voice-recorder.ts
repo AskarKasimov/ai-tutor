@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { MAX_ANSWER_SECONDS, prepareSpeech } from '@/shared/lib'
 
 type RecordingError = 'denied' | 'unavailable' | null
 
-export function useTrainingChatVoice(
+// Records one spoken answer; identity resets the recorder for a new question.
+export function useVoiceRecorder(
   identity: string,
   onRecording: (audio: Blob) => void,
 ) {
@@ -60,8 +62,11 @@ export function useTrainingChatVoice(
       setElapsedSeconds(0)
       if (timer.current) clearInterval(timer.current)
       timer.current = setInterval(() => {
-        if (generation.current === currentGeneration)
-          setElapsedSeconds(Math.floor((Date.now() - startedAt.current) / 1000))
+        if (generation.current !== currentGeneration) return
+        const elapsed = Math.floor((Date.now() - startedAt.current) / 1000)
+        setElapsedSeconds(elapsed)
+        if (elapsed >= MAX_ANSWER_SECONDS && instance.state === 'recording')
+          instance.stop()
       }, 250)
       instance.ondataavailable = (event) => {
         if (event.data.size) chunks.push(event.data)
@@ -78,7 +83,11 @@ export function useTrainingChatVoice(
         const audio = new Blob(chunks, {
           type: instance.mimeType || 'audio/webm',
         })
-        if (audio.size) callback.current(audio)
+        if (!audio.size) return
+        void prepareSpeech(audio).then((prepared) => {
+          if (generation.current === currentGeneration)
+            callback.current(prepared)
+        })
       }
       instance.start()
       setRecording(true)

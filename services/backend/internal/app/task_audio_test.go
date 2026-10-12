@@ -20,6 +20,7 @@ func (w *countingAudioWorker) Regenerate(context.Context, string) (audioasset.As
 }
 
 func TestHandlerDoesNotStartAudioWorker(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t)
 	worker := &countingAudioWorker{}
 	f.app.audioWorker = worker

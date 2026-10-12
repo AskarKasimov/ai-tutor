@@ -43,6 +43,7 @@ func startTrainingChatFixture(t *testing.T) (*fixture, *trainingpg.Repository, *
 }
 
 func TestTrainingChatReadCreatesOnePersistentWelcome(t *testing.T) {
+	t.Parallel()
 	f, _, chats, owner, progress := startTrainingChatFixture(t)
 	first, err := chats.Read(t.Context(), owner, progress.ID, progress.Current.ID, 0, 40)
 	if err != nil {
@@ -70,6 +71,7 @@ func TestTrainingChatReadCreatesOnePersistentWelcome(t *testing.T) {
 }
 
 func TestTrainingChatAllowsOnlyOneWriterPerSession(t *testing.T) {
+	t.Parallel()
 	_, _, chats, owner, progress := startTrainingChatFixture(t)
 	start := make(chan struct{})
 	type outcome struct {
@@ -109,6 +111,7 @@ func TestTrainingChatAllowsOnlyOneWriterPerSession(t *testing.T) {
 }
 
 func TestLegacyAnswerAndResetCannotBypassChatReservation(t *testing.T) {
+	t.Parallel()
 	_, legacy, chats, owner, progress := startTrainingChatFixture(t)
 	input := training.TurnInput{ExerciseID: progress.Current.ID, Key: "chat-pending", Revision: 0, Kind: training.ChatKindMessage, Source: training.AnswerSourceText, Text: "начинаю рассуждение"}
 	reservation, _, err := chats.ReserveTurn(t.Context(), owner, progress.ID, input)
@@ -140,6 +143,7 @@ func TestLegacyAnswerAndResetCannotBypassChatReservation(t *testing.T) {
 }
 
 func TestTrainingChatCancelFencesLateCommitAndRetry(t *testing.T) {
+	t.Parallel()
 	_, _, chats, owner, progress := startTrainingChatFixture(t)
 	input := training.TurnInput{ExerciseID: progress.Current.ID, Key: "cancelled-chat-turn", Revision: 0, Kind: training.ChatKindMessage, Source: training.AnswerSourceText, Text: "не отправлять результат"}
 	reservation, _, err := chats.ReserveTurn(t.Context(), owner, progress.ID, input)
@@ -164,6 +168,7 @@ func TestTrainingChatCancelFencesLateCommitAndRetry(t *testing.T) {
 }
 
 func TestTrainingChatMessageStalesPublicCheckButKeepsPrivateHistory(t *testing.T) {
+	t.Parallel()
 	f, _, chats, owner, progress := startTrainingChatFixture(t)
 	checkInput := training.TurnInput{ExerciseID: progress.Current.ID, Key: "checked-turn", Revision: 0, Kind: training.ChatKindCheck, Source: training.AnswerSourceText, Text: "Финальная формулировка ученика"}
 	checkReservation, _, err := chats.ReserveTurn(t.Context(), owner, progress.ID, checkInput)
@@ -206,6 +211,7 @@ func TestTrainingChatMessageStalesPublicCheckButKeepsPrivateHistory(t *testing.T
 }
 
 func TestTrainingChatReplayPrecedesCurrentExerciseAndRejectsChangedBody(t *testing.T) {
+	t.Parallel()
 	f, repository, chats, owner, progress := startTrainingChatFixture(t)
 	input := training.TurnInput{ExerciseID: progress.Current.ID, Key: "stable-chat-key", Revision: 0, Kind: training.ChatKindMessage, Source: training.AnswerSourceText, Text: "моя гипотеза"}
 	reservation, replay, err := chats.ReserveTurn(t.Context(), owner, progress.ID, input)
@@ -255,6 +261,7 @@ func (g *automaticChatGrader) GradeFinal(_ context.Context, _ training.Exercise,
 }
 
 func TestTrainingChatTutorAutomaticallyChecksAndEnablesNext(t *testing.T) {
+	t.Parallel()
 	f, repository, chats, owner, progress := startTrainingChatFixture(t)
 	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var request struct {

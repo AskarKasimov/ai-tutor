@@ -12,6 +12,7 @@ import (
 )
 
 func TestSubjectCatalogPermissionsAndEmptySubjects(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t)
 	if _, err := f.pool.Exec(context.Background(), `DELETE FROM subjects WHERE id='subject:test'`); err != nil {
 		t.Fatal(err)
@@ -63,6 +64,7 @@ func TestSubjectCatalogPermissionsAndEmptySubjects(t *testing.T) {
 }
 
 func TestSubjectMapRoutesRequireAuthenticationAndAdminImport(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t)
 	for _, path := range []string{"/competency-map", "/admin/competency-map/import"} {
 		if response := f.request(http.MethodGet, path, ""); response.Code != http.StatusNotFound {
@@ -84,6 +86,7 @@ func TestSubjectMapRoutesRequireAuthenticationAndAdminImport(t *testing.T) {
 }
 
 func TestSubjectCatalogShowsOnlyVariantgenReadySubjectsToStudents(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t)
 	student, _, _ := f.register(t, "subject-ready-student@example.edu")
 	admin := f.admin(t)
@@ -166,6 +169,7 @@ func TestSubjectCatalogShowsOnlyVariantgenReadySubjectsToStudents(t *testing.T) 
 }
 
 func TestSubjectImportsReplaceOnlySelectedMapAndKeepSnapshots(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t)
 	admin := f.admin(t)
 	const mlID = "subject:test"

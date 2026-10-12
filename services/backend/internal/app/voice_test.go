@@ -31,6 +31,7 @@ func wavBytes() []byte {
 }
 
 func TestVoiceTranscriptionPersistsOwnerAndUsesLongform(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t)
 	access, _, id := f.register(t, "voice@example.edu")
 	wav := wavBytes()
@@ -83,6 +84,7 @@ func TestVoiceTranscriptionPersistsOwnerAndUsesLongform(t *testing.T) {
 }
 
 func TestVoiceSynthesisWAVAndUnicodeValidation(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t)
 	access, _, _ := f.register(t, "tts@example.edu")
 	wav := wavBytes()
@@ -112,6 +114,7 @@ func TestVoiceSynthesisWAVAndUnicodeValidation(t *testing.T) {
 }
 
 func TestVoiceInputLimitsAndMultipart(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t)
 	access, _, _ := f.register(t, "limits@example.edu")
 	const path = "/voice/transcriptions"
@@ -128,6 +131,7 @@ func TestVoiceInputLimitsAndMultipart(t *testing.T) {
 }
 
 func TestVoiceProviderFailuresNeverPersist(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t)
 	access, _, _ := f.register(t, "errors@example.edu")
 	for _, tc := range []struct {
@@ -177,6 +181,7 @@ func TestVoiceProviderFailuresNeverPersist(t *testing.T) {
 }
 
 func TestVoiceRejectsInvalidTTSOutput(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t)
 	access, _, _ := f.register(t, "badtts@example.edu")
 	badFormat := wavBytes()

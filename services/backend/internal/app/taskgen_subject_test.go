@@ -8,6 +8,7 @@ import (
 )
 
 func TestTaskgenEndpointsRequireNonblankSubjectID(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t)
 	admin := f.admin(t)
 	for _, tc := range []struct {

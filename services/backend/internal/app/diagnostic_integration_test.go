@@ -15,6 +15,7 @@ import (
 )
 
 func TestDiagnosticSkipAdvancesWithoutAudio(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t)
 	f.app.cfg.APIMode = "mock"
 	f.handler = f.app.Handler()
@@ -56,6 +57,7 @@ func TestDiagnosticSkipAdvancesWithoutAudio(t *testing.T) {
 }
 
 func TestDiagnosticSessionAPIProgressOwnershipAndSnapshotPrivacy(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t)
 	f.app.cfg.APIMode = "mock"
 	f.handler = f.app.Handler()

@@ -52,6 +52,7 @@ func readMap(t *testing.T, f *fixture, cookie *http.Cookie) mapReadResponse {
 }
 
 func TestReadCompetencyMapIncludesEntireHierarchyAndTasklessOutcomes(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t)
 	f.app.cfg.APIMode = "mock"
 	admin := f.admin(t)
@@ -128,6 +129,7 @@ func TestReadCompetencyMapIncludesEntireHierarchyAndTasklessOutcomes(t *testing.
 }
 
 func TestReadCompetencyMapPreservesMLPropertiesAndReplacesRevision(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t)
 	admin := f.admin(t)
 	csv := "Компетенция;Составляющая;Образовательный результат;Уровень темы;Что должно войти в тест;Таксономия;Уровень ALDs;Важность;Раздел РПД · компетенции РПД;ОС;Задание1\nК;С;О;Продвинутый;FALSE;Анализ;Средний;4;\"Р.1 Введение\nОПК-2;ПК-2\";Учебный контекст;\"Экран: Вопрос. Варианты: 1 — A; 2 — B. Голосовая инструкция: Ответьте. Ответ: A\"\n"

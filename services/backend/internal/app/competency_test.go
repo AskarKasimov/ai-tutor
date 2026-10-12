@@ -48,6 +48,7 @@ func (f *fixture) admin(t *testing.T) *http.Cookie {
 }
 
 func TestImportAtomicReplacementAndPermissions(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t)
 	student, _, _ := f.register(t, "student@example.edu")
 	const path = "/admin/subjects/subject:test/competency-map/import"
@@ -94,6 +95,7 @@ func TestImportAtomicReplacementAndPermissions(t *testing.T) {
 }
 
 func TestImportConcurrentRevisions(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t)
 	admin := f.admin(t)
 	var wg sync.WaitGroup

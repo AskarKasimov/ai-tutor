@@ -16,6 +16,7 @@ import (
 )
 
 func TestMockModeUsesLocalModelsWithRealAuthAndStorage(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t)
 	f.app.cfg.APIMode = "mock"
 	var calls atomic.Int32

@@ -80,6 +80,7 @@ func keepOnlyQueuedAudio(t *testing.T, f *fixture, assets []taskAudioTestAsset, 
 }
 
 func TestTaskAudioIsSynthesizedOnceAndServedFromStorage(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t)
 	var synthCalls atomic.Int32
 	tts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -217,6 +218,7 @@ func TestTaskAudioIsSynthesizedOnceAndServedFromStorage(t *testing.T) {
 }
 
 func TestRegenerateCurrentAudioRepairsMissingObjectSynchronously(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t)
 	var synthCalls atomic.Int32
 	tts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -307,6 +309,7 @@ func TestRegenerateCurrentAudioRepairsMissingObjectSynchronously(t *testing.T) {
 }
 
 func TestCurrentAudioRequestMovesAheadAfterBackgroundTTSCompletes(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t)
 	data := variantMapCSV(t)
 	for index := 1; index <= 3; index++ {
@@ -480,6 +483,7 @@ func TestCurrentAudioRequestMovesAheadAfterBackgroundTTSCompletes(t *testing.T) 
 }
 
 func TestTaskAudioWorkerResumesQueueAfterRestart(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t)
 	assets := importCurrentTaskAudios(t, f, "restart-map.csv", variantMapCSV(t))
 	assetID := assets[0].id
@@ -529,6 +533,7 @@ func TestTaskAudioWorkerResumesQueueAfterRestart(t *testing.T) {
 }
 
 func TestTaskAudioWorkerRecoversUploadedObjectAndRetriesHeadFailure(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t)
 	assets := importCurrentTaskAudios(t, f, "recovery-map.csv", variantMapCSV(t))
 	if len(assets) < 2 {
@@ -589,6 +594,7 @@ func TestTaskAudioWorkerRecoversUploadedObjectAndRetriesHeadFailure(t *testing.T
 }
 
 func TestTaskAudioReplacementCancelsSnapshotOnlyAndExpiredAssets(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t)
 	access, _, _ := f.register(t, "task-audio-replacement@example.edu")
 	admin := f.admin(t)
@@ -673,6 +679,7 @@ func TestTaskAudioReplacementCancelsSnapshotOnlyAndExpiredAssets(t *testing.T) {
 }
 
 func TestTaskAudioWorkerUsesMockSynthesizerWithPostgresAndS3(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t)
 	assets := importCurrentTaskAudios(t, f, "mock-map.csv", variantMapCSV(t))
 	assetID, objectKey := assets[0].id, assets[0].key
@@ -764,6 +771,7 @@ func TestTaskAudioPostgresRustFSSmoke(t *testing.T) {
 }
 
 func TestTaskAudioLargeQueueBoundsClaimsAndDoesNotBlockImport(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t)
 	admin := f.admin(t)
 	baseAssets := importCurrentTaskAudios(t, f, "large-map-a.csv", variantMapCSV(t), admin)
@@ -855,6 +863,7 @@ func TestTaskAudioLargeQueueBoundsClaimsAndDoesNotBlockImport(t *testing.T) {
 }
 
 func TestTaskAudioReimportCopiesReadyAudioInsteadOfSynthesis(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t)
 	var ttsCalls atomic.Int32
 	var lastText atomic.Value
@@ -931,6 +940,7 @@ func TestTaskAudioReimportCopiesReadyAudioInsteadOfSynthesis(t *testing.T) {
 }
 
 func TestTaskAudioQueueSynthesizesStartedVariantFirst(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t)
 	access, _, _ := f.register(t, "task-audio-priority@example.edu")
 	admin := f.admin(t)

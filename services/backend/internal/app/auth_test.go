@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -17,12 +18,36 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/jackc/pgx/v5/stdlib"
+	"github.com/pressly/goose/v3"
 	"go.uber.org/zap"
 
-	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/postgres"
+	authapp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/auth/application"
 )
 
 const password = "Надёжная фраза для теста 42!"
+
+// Most HTTP integration tests need real users and sessions, but do not test
+// password hashing. Keep expensive Argon2 coverage in the dedicated auth tests.
+type fixturePasswordHasher struct{}
+
+func (fixturePasswordHasher) Hash(ctx context.Context, password string) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+	hash := sha256.Sum256([]byte(password))
+	return "test-sha256:" + hex.EncodeToString(hash[:]), nil
+}
+
+func (h fixturePasswordHasher) Verify(ctx context.Context, encoded, password string) (bool, error) {
+	hash, err := h.Hash(ctx, password)
+	return encoded != "" && encoded == hash, err
+}
+
+func newFixtureWithRealPasswords(t *testing.T) *fixture {
+	t.Helper()
+	return newFixtureWithPasswordHasher(t, testConfig(), nil)
+}
 
 type fixture struct {
 	app          *App
@@ -48,6 +73,11 @@ func newFixture(t *testing.T) *fixture {
 
 func newFixtureWithConfig(t *testing.T, cfg Config) *fixture {
 	t.Helper()
+	return newFixtureWithPasswordHasher(t, cfg, fixturePasswordHasher{})
+}
+
+func newFixtureWithPasswordHasher(t *testing.T, cfg Config, hasher authapp.PasswordHasher) *fixture {
+	t.Helper()
 	dsn := os.Getenv("TEST_DATABASE_URL")
 	if dsn == "" {
 		t.Skip("TEST_DATABASE_URL is required for PostgreSQL integration tests")
@@ -70,14 +100,13 @@ func newFixtureWithConfig(t *testing.T, cfg Config) *fixture {
 		t.Fatal(err)
 	}
 	pc.ConnConfig.RuntimeParams["search_path"] = schema
+	pc.MaxConns = 4
 	pool, err := pgxpool.NewWithConfig(ctx, pc)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { pool.Close(); _, _ = admin.Exec(ctx, "DROP SCHEMA "+schema+" CASCADE"); admin.Close() })
-	if err := postgres.Migrate(ctx, pool); err != nil {
-		t.Fatal(err)
-	}
+	migrateFixture(t, ctx, pool)
 	if _, err := pool.Exec(ctx, `INSERT INTO subjects(id,name,created_at) VALUES ('subject:test','Тестовый предмет',1)`); err != nil {
 		t.Fatal(err)
 	}
@@ -141,8 +170,28 @@ func newFixtureWithConfig(t *testing.T, cfg Config) *fixture {
 	}
 	f.app = a
 	a.now = func() time.Time { return f.now }
+	if hasher != nil {
+		a.hasher = hasher
+	}
 	f.handler = a.Handler()
 	return f
+}
+
+func migrateFixture(t *testing.T, ctx context.Context, pool *pgxpool.Pool) {
+	t.Helper()
+	db := stdlib.OpenDB(*pool.Config().ConnConfig)
+	defer db.Close()
+	// Every fixture owns a unique schema and has only one migrator. A global
+	// session lock would serialize unrelated parallel tests (and other packages).
+	// Use the same SQL migrations; production migration locking is tested in postgres.
+	provider, err := goose.NewProvider(goose.DialectPostgres, db,
+		os.DirFS("../shared/postgres/migrations"), goose.WithDisableGlobalRegistry(true))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := provider.Up(ctx); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func (f *fixture) request(method, path, body string, cookies ...*http.Cookie) *httptest.ResponseRecorder {
@@ -190,7 +239,8 @@ func requireCode(t *testing.T, w *httptest.ResponseRecorder, status int, code st
 }
 
 func TestAuthRegistrationCookiesNormalizationAndPersistence(t *testing.T) {
-	f := newFixture(t)
+	t.Parallel()
+	f := newFixtureWithRealPasswords(t)
 	access, refresh, id := f.register(t, " Student@Example.edu ")
 	for _, c := range []*http.Cookie{access, refresh} {
 		if !c.Secure || !c.HttpOnly || c.SameSite != http.SameSiteLaxMode || c.Domain != "" {
@@ -232,7 +282,8 @@ func TestAuthRegistrationCookiesNormalizationAndPersistence(t *testing.T) {
 }
 
 func TestAuthLoginAndValidation(t *testing.T) {
-	f := newFixture(t)
+	t.Parallel()
+	f := newFixtureWithRealPasswords(t)
 	f.register(t, "login@example.edu")
 	bad := f.request("POST", "/auth/login", `{"email":"login@example.edu","password":"wrong"}`)
 	unknown := f.request("POST", "/auth/login", `{"email":"unknown@example.edu","password":"wrong"}`)
@@ -263,6 +314,7 @@ func TestAuthLoginAndValidation(t *testing.T) {
 }
 
 func TestAuthRefreshReplayRevokesOnlyOneSession(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t)
 	access, refresh, _ := f.register(t, "refresh@example.edu")
 	login := f.request("POST", "/auth/login", `{"email":"refresh@example.edu","password":"`+password+`"}`)
@@ -294,6 +346,7 @@ func TestAuthRefreshReplayRevokesOnlyOneSession(t *testing.T) {
 }
 
 func TestAuthLogoutAndExpiry(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t)
 	access, refresh, _ := f.register(t, "logout@example.edu")
 	if f.request("POST", "/auth/logout", "", refresh).Code != 204 {
@@ -314,6 +367,7 @@ func TestAuthLogoutAndExpiry(t *testing.T) {
 }
 
 func TestAuthConcurrentRefresh(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t)
 	access, refresh, _ := f.register(t, "concurrent@example.edu")
 	var wg sync.WaitGroup
@@ -335,6 +389,7 @@ func TestAuthConcurrentRefresh(t *testing.T) {
 }
 
 func TestRepeatedLoginFailuresDoNotBlockAuthentication(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t)
 	for range 12 {
 		w := f.request("POST", "/auth/login", `{"email":"login@example.edu","password":"wrong"}`)
@@ -357,7 +412,8 @@ func (transport noNetworkTransport) RoundTrip(*http.Request) (*http.Response, er
 }
 
 func TestRegistrationHasNoExternalPasswordDependency(t *testing.T) {
-	f := newFixture(t)
+	t.Parallel()
+	f := newFixtureWithRealPasswords(t)
 	f.app.client.Transport = noNetworkTransport{t}
 	access, _, _ := f.register(t, "student@example.edu")
 	w := f.request("GET", "/auth/me", "", access)
@@ -367,6 +423,7 @@ func TestRegistrationHasNoExternalPasswordDependency(t *testing.T) {
 }
 
 func TestAuthPostRequestsHaveNoSharedIPLimit(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t)
 	for range 35 {
 		requireCode(t, f.request("POST", "/auth/register", `{}`), 422, "VALIDATION_ERROR")

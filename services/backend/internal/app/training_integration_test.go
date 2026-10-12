@@ -25,7 +25,6 @@ import (
 func TestTrainingPersistsCyclesAndReplaysAnswers(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
-	f.app.cfg.APIMode = "mock"
 	f.handler = f.app.Handler()
 	access, _, owner := f.register(t, "training@example.edu")
 	admin := f.admin(t)
@@ -356,7 +355,6 @@ func TestTrainingHistoryPaginationAndSnapshotAudioAfterReimport(t *testing.T) {
 func trainingFixture(t *testing.T, score int) (*fixture, *http.Cookie, *http.Cookie, string, diagnostic.Session) {
 	t.Helper()
 	f := newFixture(t)
-	f.app.cfg.APIMode = "mock"
 	f.handler = f.app.Handler()
 	access, _, owner := f.register(t, "source@example.edu")
 	admin := f.admin(t)

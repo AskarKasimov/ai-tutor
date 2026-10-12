@@ -17,7 +17,7 @@ PostgreSQL с фоновым TTS/S3 worker и HTTP API диагностичес�
 planned — проект. `/tasks/generate` и `/admin/materials` сохраняются как API отдельного taskgen.
 `/assessments/evaluate` принимает позицию сохранённого варианта. Диагностическая сессия вызывает тот же assessment
 application по `variant_id`, `variant_task_id` и `transcription_id`, без HTTP-вызова
-собственного backend. В mock и real режимах используются соответствующие assessment graders.
+собственного backend. Оценивание выполняет assessment через API модели.
 Assessment напрямую реализует порт сессии; оба модуля используют результат из `entities/assessment`.
 
 Сессии доступны через `POST /diagnostic-sessions`, `GET /diagnostic-sessions/{id}`,
@@ -167,9 +167,8 @@ docker compose --env-file ../../.env up -d --build
 подключение; по умолчанию db:5432 и DB_PASSWORD. API слушает :8002 за Caddy HTTPS.
 Публичный префикс /api/v1 удаляется proxy. Secure cookies требуют HTTPS.
 
-BACKEND_API_MODE=mock подменяет модели; handlers и адаптеры хранилищ те же, что в real.
-БД и S3 при этом остаются настоящими и используют обычные volumes.
-В real нужны все
+Backend всегда обращается к API моделей. БД и S3 используют обычные volumes.
+Обязательны все
 BACKEND_STT_URL, BACKEND_TTS_* (URL и параметры голоса), BACKEND_ASSESSMENT_* и BACKEND_TASKGEN_* из
 корневого шаблона: taskgen сохраняется отдельным действующим модулем. Таймауты, адрес
 прослушивания и лимит загрузки обязательны. После изменения env пересоздайте API.
@@ -214,7 +213,7 @@ Go-файлов, SQL, `go.mod` и `go.sum`. Конфигурация watcher —
 polling позволяет подхватывать изменения через Docker Desktop.
 Модули Go, кеш сборки и каталог `.air` с dev-бинарником находятся в Docker volumes.
 Миграции применяются штатным запуском API; SQLC-запросы требуют отдельной генерации Go-кода.
-Режим моделей остаётся значением `BACKEND_API_MODE` из `.env`.
+Адреса и параметры моделей задаются в `.env`.
 Локальный Compose backend продолжает использовать готовый production-бинарник.
 
 ## БД и импорт
@@ -233,8 +232,8 @@ advisory lock. История расходной dev-БД объединена �
 Согласованный сброс удаляет учебные аккаунты, карты и сессии; для будущих БД
 с настоящими данными новые изменения оформляются следующими миграциями.
 
-Админ-панель (`/admin`) сама вызывает `POST /auth/teacher` без тела и пароля во
-всех режимах, передавая заголовок `X-AI-Tutor-Portal: admin`; без него маршрут
+Админ-панель (`/admin`) сама вызывает `POST /auth/teacher` без тела и пароля,
+передавая заголовок `X-AI-Tutor-Portal: admin`; без него маршрут
 отвечает 404. С этим заголовком auth-маршруты и защищённые запросы используют
 отдельные cookies `admin_access_token`/`admin_refresh_token`, поэтому сессии
 ученика и админки в одном браузере независимы. Backend атомарно создаёт общий аккаунт

@@ -17,7 +17,6 @@ import (
 func TestDiagnosticSkipAdvancesWithoutAudio(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
-	f.app.cfg.APIMode = "mock"
 	f.handler = f.app.Handler()
 	access, _, _ := f.register(t, "diagnostic-skip@example.edu")
 	admin := f.admin(t)
@@ -59,7 +58,6 @@ func TestDiagnosticSkipAdvancesWithoutAudio(t *testing.T) {
 func TestDiagnosticSessionAPIProgressOwnershipAndSnapshotPrivacy(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
-	f.app.cfg.APIMode = "mock"
 	f.handler = f.app.Handler()
 	access, _, _ := f.register(t, "diagnostic@example.edu")
 	admin := f.admin(t)

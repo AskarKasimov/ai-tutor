@@ -12,15 +12,10 @@ import (
 	"reflect"
 	"testing"
 	"time"
-
-	voicemock "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/voice/infrastructure/mock"
 )
 
 func TestSynthesizeSendsConfiguredVoiceSettings(t *testing.T) {
-	wav, err := (voicemock.Client{}).Synthesize(context.Background(), "")
-	if err != nil {
-		t.Fatal(err)
-	}
+	wav := testWAV()
 	for _, options := range []TTSOptions{
 		{Seed: 17, CFGValue: 2, InferenceTimesteps: 50},
 		{Seed: 0, CFGValue: 0, InferenceTimesteps: 1},
@@ -54,10 +49,7 @@ func TestSynthesizeSendsConfiguredVoiceSettings(t *testing.T) {
 }
 
 func TestSynthesizeAddsCompletionSuffix(t *testing.T) {
-	wav, err := (voicemock.Client{}).Synthesize(context.Background(), "")
-	if err != nil {
-		t.Fatal(err)
-	}
+	wav := testWAV()
 	instruction := "Не произносите формулу. Объясните, почему аналитическое решение в обычном виде неприменимо"
 	for _, text := range []string{instruction, instruction + "!!!..."} {
 		t.Run(text, func(t *testing.T) {
@@ -129,4 +121,21 @@ func TestRecognizeSendsLongWAVInParts(t *testing.T) {
 	if calls != 3 || text != "часть1 часть2 часть3" {
 		t.Fatalf("calls=%d text=%q", calls, text)
 	}
+}
+
+func testWAV() []byte {
+	data := make([]byte, 46)
+	copy(data, "RIFF")
+	binary.LittleEndian.PutUint32(data[4:], 38)
+	copy(data[8:], "WAVEfmt ")
+	binary.LittleEndian.PutUint32(data[16:], 16)
+	binary.LittleEndian.PutUint16(data[20:], 1)
+	binary.LittleEndian.PutUint16(data[22:], 1)
+	binary.LittleEndian.PutUint32(data[24:], 8000)
+	binary.LittleEndian.PutUint32(data[28:], 16000)
+	binary.LittleEndian.PutUint16(data[32:], 2)
+	binary.LittleEndian.PutUint16(data[34:], 16)
+	copy(data[36:], "data")
+	binary.LittleEndian.PutUint32(data[40:], 2)
+	return data
 }

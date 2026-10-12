@@ -194,9 +194,8 @@ Vite читает env из корня монорепозитория, в том 
 Прямой `docker build` поддерживает `--build-arg VITE_API_BASE_URL=...`.
 Изменение адреса API для статической сборки требует пересборки; runtime env nginx
 не меняет уже собранный frontend.
-HTTP-контракт и сценарии проверяются тестами. Локальный backend может работать
-с `BACKEND_API_MODE=mock`: STT/TTS/grader заменены серверными заглушками, а
-БД и S3 остаются настоящими.
+HTTP-контракт и сценарии проверяются тестами. Backend использует API моделей
+для STT/TTS и оценивания; их настройки обязательны и задаются в корневом `.env`.
 
 Макет: https://www.figma.com/design/0QMZU6tpUJCFmtZKMkYn4B/?node-id=186-6.
 В `public/assets/voice-trainer/` хранятся только два SVG: `logo.svg` и

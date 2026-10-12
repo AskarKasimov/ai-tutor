@@ -54,7 +54,6 @@ func readMap(t *testing.T, f *fixture, cookie *http.Cookie) mapReadResponse {
 func TestReadCompetencyMapIncludesEntireHierarchyAndTasklessOutcomes(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
-	f.app.cfg.APIMode = "mock"
 	admin := f.admin(t)
 	student, _, _ := f.register(t, "map-reader@example.test")
 	requireCode(t, f.request("GET", "/subjects/subject:test/competency-map", ""), 401, "UNAUTHORIZED")

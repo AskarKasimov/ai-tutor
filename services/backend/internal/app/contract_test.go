@@ -165,23 +165,7 @@ func TestOpenAPIResponses(t *testing.T) {
 		case "/transcribe":
 			httpx.JSON(w, 200, map[string]any{"text": "Ответ.", "model": "v3", "segments": []any{}})
 		case "/chat/completions":
-			var request struct {
-				Messages []struct {
-					Role    string `json:"role"`
-					Content string `json:"content"`
-				} `json:"messages"`
-			}
-			if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-				t.Fatal(err)
-			}
-			content := `{"score":2,"verdict":"correct","criterion_results":[{"key":"answer_correctness","satisfied":true,"explanation":"Тип задачи назван правильно."},{"key":"instruction_following","satisfied":true,"explanation":"Выбор объяснён через два дискретных класса."}],"feedback":["Верно.","Оба критерия выполнены.","Закрепите тему."]}`
-			if len(request.Messages) > 0 && strings.Contains(request.Messages[0].Content, "Ты создаёшь одно учебное задание") {
-				content = `{"question":"Новое задание","options":[],"voice_instruction":"Ответьте.","reference_answer":"Ответ","criteria":""}`
-			}
-			httpx.JSON(w, 200, map[string]any{"choices": []any{map[string]any{
-				"message":       map[string]any{"content": content},
-				"finish_reason": "stop",
-			}}})
+			serveFixtureCompletion(t, w, r)
 		default:
 			t.Errorf("unexpected provider path: %s", r.URL.Path)
 			http.NotFound(w, r)
@@ -256,7 +240,6 @@ func TestOpenAPIResponses(t *testing.T) {
 		t.Fatalf("assessment: %d %s", evaluation.Code, evaluation.Body.String())
 	}
 	check("POST", "/assessments/evaluate", evaluation)
-	f.app.cfg.APIMode = "mock"
 	diagnosticStartBody, _ := json.Marshal(map[string]string{"variant_id": createdVariant.ID})
 	diagnosticStartRequest := httptest.NewRequest(http.MethodPost, "https://api.example/diagnostic-sessions", bytes.NewReader(diagnosticStartBody))
 	diagnosticStartRequest.Header.Set("Content-Type", "application/json")
@@ -413,7 +396,6 @@ func TestOpenAPIResponses(t *testing.T) {
 		t.Fatalf("diagnostic skip: %d %s", diagnosticSkip.Code, diagnosticSkip.Body.String())
 	}
 	check("POST", "/diagnostic-sessions/{id}/skip", diagnosticSkip)
-	f.app.cfg.APIMode = "real"
 	check("GET", "/variants", f.request("GET", "/variants?subject_id=subject%3Atest", "", access))
 	check("GET", "/variants/{id}", f.request("GET", "/variants/"+createdVariant.ID, "", access))
 	check("GET", "/variants/{id}/tasks/{task_id}", f.request("GET", "/variants/"+createdVariant.ID+"/tasks/"+createdVariant.Competencies[0].Main.ID, "", access))
@@ -456,8 +438,7 @@ func TestOpenAPIResponses(t *testing.T) {
 	check("POST", "/auth/logout", f.request("POST", "/auth/logout", "", refresh))
 	check("GET", "/health", f.request("GET", "/health", ""))
 	// Learning plan: a student whose diagnostic has a mistake gets a plan.
-	// The mock teacher writes lessons without a model.
-	f.app.cfg.APIMode = "mock"
+	// The teacher uses the HTTP model fixture.
 	f.handler = f.app.Handler()
 	access, _, learner := f.register(t, "learner@example.edu")
 	var learningVariant struct {

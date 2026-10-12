@@ -391,25 +391,28 @@ it('runs real diagnostic audio, obeys skipped basics and displays the server tot
     await screen.findByText('Итоговое педагогическое резюме.'),
   ).toBeVisible()
   expect(screen.getByText('Вы уверенно различаете модели.')).toBeVisible()
-  // Without the model's parts the cards come from the report; an empty one
-  // is hidden rather than filled with stock phrases.
-  expect(screen.getByRole('heading', { name: 'Что хорошо' })).toBeVisible()
-  expect(
-    screen.queryByRole('heading', { name: 'Что доработать' }),
-  ).not.toBeInTheDocument()
+  // The cards come from the stored per-answer reviews only: mastered
+  // competencies, then every gap with the advice from its review.
+  const good = screen
+    .getByRole('heading', { name: 'Что хорошо' })
+    .closest('section')!
+  expect(good).toHaveTextContent('Вы уверенно различаете модели.')
+  const work = screen
+    .getByRole('heading', { name: 'Что доработать' })
+    .closest('section')!
+  expect(work).toHaveTextContent(
+    'Модели — Различать модели. Повторный совет к рекомендации.',
+  )
+  expect(work).toHaveTextContent(
+    'Модели — Выбирать метрику. Сравните метрики на двух задачах.',
+  )
   expect(screen.queryByText(/Критических пробелов нет/)).not.toBeInTheDocument()
-  expect(screen.getByRole('heading', { name: 'Рекомендации' })).toBeVisible()
+  expect(
+    screen.queryByRole('heading', { name: 'Рекомендации' }),
+  ).not.toBeInTheDocument()
   // The overall feedback names only what was checked.
   expect(
     screen.queryByText('Непроверенная компетенция'),
-  ).not.toBeInTheDocument()
-  expect(
-    screen.getByText(/Закрепите выбор модели на новых примерах/),
-  ).toBeVisible()
-  // Confirmed gaps join the plan unless a recommendation already covers them.
-  expect(screen.getByText('Сравните метрики на двух задачах.')).toBeVisible()
-  expect(
-    screen.queryByText('Повторный совет к рекомендации.'),
   ).not.toBeInTheDocument()
   // Skipped basics are not listed: the review shows only the asked tasks.
   expect(screen.queryByText('Базовый вопрос из банка')).not.toBeInTheDocument()
@@ -522,7 +525,7 @@ it('shows overall feedback when the backend sends null strengths', async () => {
     screen.queryByRole('heading', { name: 'Что хорошо' }),
   ).not.toBeInTheDocument()
 })
-it('splits the model summary into general text, what is good and what to work on', async () => {
+it('fills the cards from the reviews, not from the model text', async () => {
   server(
     200,
     3,
@@ -538,17 +541,15 @@ it('splits the model summary into general text, what is good and what to work on
   fireEvent.click(
     await screen.findByRole('button', { name: 'Посмотреть итог' }),
   )
+  // Only the general paragraph comes from the model; parts it adds under
+  // headings are not shown, the cards keep the reviewed facts.
   expect(await screen.findByText('Общая оценка по регрессии.')).toBeVisible()
   const good = screen
     .getByRole('heading', { name: 'Что хорошо' })
     .closest('section')!
-  expect(good).toHaveTextContent('Различает классификацию и регрессию.')
-  // The model's own part replaces the report list.
-  expect(good).not.toHaveTextContent('Вы уверенно различаете модели.')
-  const work = screen
-    .getByRole('heading', { name: 'Что доработать' })
-    .closest('section')!
-  expect(work).toHaveTextContent('Путает MAE и R².')
+  expect(good).toHaveTextContent('Вы уверенно различаете модели.')
+  expect(screen.queryByText(/Различает классификацию/)).not.toBeInTheDocument()
+  expect(screen.queryByText(/Путает MAE/)).not.toBeInTheDocument()
 })
 it('keeps the audio and idempotency key on a failed submission and retries without recording again', async () => {
   const requests = server(502)

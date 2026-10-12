@@ -140,12 +140,21 @@ it('teaches the current topic in the chat and moves on after a voice answer', as
     await screen.findByRole('button', { name: 'Закончить запись' }),
   )
   await waitFor(() => expect(answer).toHaveBeenCalledTimes(1))
-  await waitFor(() =>
-    expect(screen.getByRole('progressbar')).toHaveAttribute(
-      'aria-valuenow',
-      '50',
-    ),
-  )
+  // A correct answer is celebrated instead of jumping to the next topic; the
+  // next lesson is prepared meanwhile.
+  const dialog = await screen.findByRole('dialog', { name: 'Еее, ты молодец!' })
+  expect(dialog).toHaveTextContent('Тема «Результат 1» освоена')
+  expect(dialog).toHaveTextContent('С первой попытки!')
+  expect(
+    screen.getByRole('heading', { level: 2, name: 'Результат 1' }),
+  ).toBeVisible()
+  await waitFor(() => expect(open).toHaveBeenCalledTimes(2))
+  fireEvent.click(screen.getByRole('button', { name: /Продолжить/ }))
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  expect(
+    screen.getByRole('heading', { level: 2, name: 'Результат 2' }),
+  ).toBeVisible()
+  expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '50')
   // The passed topic opens read-only.
   fireEvent.click(screen.getByRole('button', { name: /Результат 1/ }))
   await waitFor(() =>

@@ -1,5 +1,6 @@
 import { Button, Heading, Text } from '@radix-ui/themes'
 import {
+  ArrowRight,
   Check,
   CircleAlert,
   Clock,
@@ -14,8 +15,8 @@ import {
   Trophy,
   Zap,
 } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
-import type { ReactNode } from 'react'
+import { useEffect, useId, useMemo, useRef, useState } from 'react'
+import type { CSSProperties, ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   LearningPlanApiError,
@@ -190,10 +191,31 @@ function LearningPlanScreen({
   const { t } = useTranslation()
   // null follows the current topic; a passed topic can be opened to read it.
   const [viewed, setViewed] = useState<number | null>(null)
+  const openFor = useRef<number | null>(null)
   const index = viewed ?? plan.current_index
   const item = index === null ? undefined : plan.items[index]
   const isCurrent = index !== null && index === plan.current_index
-  const actions = useLessonActions(userId, plan)
+  const [celebration, setCelebration] = useState<CelebrationData | null>(null)
+  // A correct answer does not jump to the next topic: the passed topic stays
+  // on screen under a celebration until the student continues. The next
+  // lesson is prepared meanwhile.
+  const actions = useLessonActions(userId, plan, (before, after) => {
+    const passed = before.current_index
+    if (passed === null || after.items[passed]?.status !== 'passed') return
+    setViewed(passed)
+    setCelebration({
+      index: passed,
+      outcome: after.items[passed].outcome_name,
+      attempts: after.items[passed].attempts,
+      from: before.progress_percent,
+      to: after.progress_percent,
+      finished: after.status === 'completed',
+    })
+    if (after.current_index !== null) {
+      openFor.current = after.current_index
+      actions.open.mutate()
+    }
+  })
   const messages = useLessonMessages(
     userId,
     plan.id,
@@ -201,7 +223,6 @@ function LearningPlanScreen({
     isCurrent && actions.answer.isPending,
   )
   const { mutate: open } = actions.open
-  const openFor = useRef<number | null>(null)
   // The current lesson is written once, as soon as its topic is reached.
   useEffect(() => {
     if (
@@ -229,6 +250,15 @@ function LearningPlanScreen({
         />
       }
     >
+      {celebration && (
+        <Celebration
+          data={celebration}
+          onContinue={() => {
+            setCelebration(null)
+            setViewed(null)
+          }}
+        />
+      )}
       <div className={styles.layout}>
         <Outline
           plan={plan}
@@ -607,6 +637,148 @@ function Done({ plan }: { plan: LearningPlan }) {
           {t('learning.doneReview', { count: review })}
         </Text>
       )}
+    </div>
+  )
+}
+
+type CelebrationData = {
+  index: number
+  outcome: string
+  attempts: number
+  from: number
+  to: number
+  finished: boolean
+}
+
+const confettiColors = [
+  '#6366f1',
+  '#8b5cf6',
+  '#ec4899',
+  '#f59e0b',
+  '#10b981',
+  '#3b82f6',
+]
+// Fixed pseudo-random pieces: the same burst on every render.
+const confetti = Array.from({ length: 48 }, (_, i) => ({
+  left: (i * 37) % 100,
+  delay: ((i * 53) % 60) / 100,
+  duration: 2.2 + ((i * 29) % 15) / 10,
+  size: 6 + ((i * 17) % 7),
+  turn: (i * 71) % 360,
+  drift: ((i * 43) % 120) - 60,
+  color: confettiColors[i % confettiColors.length],
+  round: i % 3 === 0,
+}))
+
+// The plan progress counts up from the old to the new value.
+function useCountUp(from: number, to: number, duration = 900) {
+  const [value, setValue] = useState(from)
+  useEffect(() => {
+    let frame = 0
+    const start = performance.now()
+    const step = (now: number) => {
+      const t = Math.min(1, (now - start) / duration)
+      const eased = 1 - (1 - t) ** 3
+      setValue(Math.round(from + (to - from) * eased))
+      if (t < 1) frame = requestAnimationFrame(step)
+    }
+    frame = requestAnimationFrame(step)
+    return () => cancelAnimationFrame(frame)
+  }, [from, to, duration])
+  return value
+}
+
+// A modal reward for a passed topic: confetti, a trophy, praise and the plan
+// progress growing; the student continues explicitly.
+function Celebration({
+  data,
+  onContinue,
+}: {
+  data: CelebrationData
+  onContinue: () => void
+}) {
+  const { t } = useTranslation()
+  const progress = useCountUp(data.from, data.to)
+  const titleId = useId()
+  useEffect(() => {
+    const close = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onContinue()
+    }
+    window.addEventListener('keydown', close)
+    return () => window.removeEventListener('keydown', close)
+  }, [onContinue])
+  return (
+    <div className={styles.celebration}>
+      <div className={styles.confetti} aria-hidden="true">
+        {confetti.map((piece, i) => (
+          <span
+            key={i}
+            style={
+              {
+                left: `${piece.left}%`,
+                width: piece.size,
+                height: piece.round ? piece.size : piece.size * 1.6,
+                borderRadius: piece.round ? '50%' : 2,
+                background: piece.color,
+                animationDelay: `${piece.delay}s`,
+                animationDuration: `${piece.duration}s`,
+                '--turn': `${piece.turn}deg`,
+                '--drift': `${piece.drift}px`,
+              } as CSSProperties
+            }
+          />
+        ))}
+      </div>
+      <div
+        className={styles.celebrationCard}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+      >
+        <span className={styles.trophy} aria-hidden="true">
+          <Trophy size={44} />
+        </span>
+        <Heading as="h2" id={titleId} className={styles.celebrationTitle}>
+          {t(`learning.cheer.${data.index % 4}`)}
+        </Heading>
+        <Text as="p" className={styles.celebrationText}>
+          {t('learning.topicPassed', { name: data.outcome })}
+        </Text>
+        <span className={styles.celebrationBadge}>
+          <Flame size={16} aria-hidden="true" />
+          {data.attempts <= 1
+            ? t('learning.firstTry')
+            : t('learning.persistence', { count: data.attempts })}
+        </span>
+        <div className={styles.celebrationProgress}>
+          <div className={styles.celebrationProgressText}>
+            <span>{t('learning.progress')}</span>
+            <strong>{t('session.percent', { value: progress })}</strong>
+          </div>
+          <div
+            className={styles.celebrationTrack}
+            role="progressbar"
+            aria-label={t('learning.progress')}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={data.to}
+          >
+            <div
+              className={styles.celebrationFill}
+              style={{ width: `${progress}%` }}
+            />
+          </div>
+        </div>
+        <button
+          type="button"
+          className={styles.celebrationButton}
+          autoFocus
+          onClick={onContinue}
+        >
+          {t(data.finished ? 'learning.toResult' : 'learning.continue')}
+          <ArrowRight size={20} aria-hidden="true" />
+        </button>
+      </div>
     </div>
   )
 }

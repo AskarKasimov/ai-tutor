@@ -593,42 +593,49 @@ export function TrainerCapturePanel({
               {micIcon}
             </span>
           )}
-          {busy ? (
-            <Text className={styles.voiceStatus} role="status">
-              {t(
-                stage === 'permission'
-                  ? 'trainer.allow'
-                  : 'session.processingStatus',
-              )}
-            </Text>
-          ) : answered ? (
-            <Text className={styles.voiceStatus} role="status">
-              {t(
-                answered === 'skipped'
-                  ? 'session.answerSkipped'
-                  : 'session.answerAccepted',
-              )}
-            </Text>
-          ) : stage === 'recording' ? (
-            <>
-              <Text className={styles.timer} role="timer">
-                {seconds}
+          {/* Everything under the circle shares one fixed-height area and the
+              actions keep a reserved place, so the circle never moves. */}
+          <div className={styles.voiceBelow}>
+            {busy ? (
+              <Text className={styles.voiceStatus} role="status">
+                {t(
+                  stage === 'permission'
+                    ? 'trainer.allow'
+                    : 'session.processingStatus',
+                )}
               </Text>
-              <div className={styles.voiceWave} aria-hidden="true">
-                <LiveWaveform stream={stream} height={44} />
-              </div>
-              <Text className={styles.voiceHint}>{t('session.tapToStop')}</Text>
-            </>
-          ) : onMic ? (
-            <Text className={styles.voiceHint}>{t('session.tapToRecord')}</Text>
-          ) : null}
+            ) : answered ? (
+              <Text className={styles.voiceStatus} role="status">
+                {t(
+                  answered === 'skipped'
+                    ? 'session.answerSkipped'
+                    : 'session.answerAccepted',
+                )}
+              </Text>
+            ) : stage === 'recording' ? (
+              <>
+                <Text className={styles.timer} role="timer">
+                  {seconds}
+                </Text>
+                <div className={styles.voiceWave} aria-hidden="true">
+                  <LiveWaveform stream={stream} height={44} />
+                </div>
+                <Text className={styles.voiceHint}>
+                  {t('session.tapToStop')}
+                </Text>
+              </>
+            ) : errorMessage ? (
+              <Text as="p" role="alert" className={styles.alert}>
+                <CircleAlert size={16} aria-hidden="true" />
+                {errorMessage}
+              </Text>
+            ) : onMic ? (
+              <Text className={styles.voiceHint}>
+                {t('session.tapToRecord')}
+              </Text>
+            ) : null}
+          </div>
         </div>
-      )}
-      {errorMessage && !micError && (
-        <Text as="p" role="alert" className={styles.alert}>
-          <CircleAlert size={16} aria-hidden="true" />
-          {errorMessage}
-        </Text>
       )}
       <div className={styles.actions}>{children}</div>
     </TrainerAnswerPanel>

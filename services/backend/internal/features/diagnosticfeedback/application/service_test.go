@@ -42,20 +42,20 @@ func (m *mockSynthesizer) SynthesizeAnswers(ctx context.Context, report SessionF
 	return m.summary, nil
 }
 
-type mockCache struct {
+type mockStore struct {
 	data map[string]diagnostic.OverallFeedback
 }
 
-func (m *mockCache) Get(ctx context.Context, sessionID string) (*diagnostic.OverallFeedback, bool) {
-	v, ok := m.data[sessionID]
-	if !ok {
-		return nil, false
-	}
-	return &v, true
+func (m *mockStore) Get(_ context.Context, ownerID, sessionID string) (diagnostic.OverallFeedback, bool, error) {
+	v, ok := m.data[ownerID+"/"+sessionID]
+	return v, ok, nil
 }
 
-func (m *mockCache) Set(ctx context.Context, sessionID string, feedback diagnostic.OverallFeedback) {
-	m.data[sessionID] = feedback
+func (m *mockStore) Save(_ context.Context, ownerID string, feedback diagnostic.OverallFeedback) error {
+	if _, exists := m.data[ownerID+"/"+feedback.SessionID]; !exists {
+		m.data[ownerID+"/"+feedback.SessionID] = feedback
+	}
+	return nil
 }
 
 func TestAnalyzeResultDeterministicRules(t *testing.T) {
@@ -229,11 +229,11 @@ func TestFeedbackServiceCachingAndErrorHandling(t *testing.T) {
 		},
 	}
 	synthesizer := &mockSynthesizer{summary: "Отличный результат, все темы освоены на максимум!"}
-	cache := &mockCache{data: make(map[string]diagnostic.OverallFeedback)}
+	store := &mockStore{data: make(map[string]diagnostic.OverallFeedback)}
 
-	svc := New(reader, synthesizer, cache, func() time.Time { return time.Unix(1000, 0) })
+	svc := New(reader, synthesizer, store, func() time.Time { return time.Unix(1000, 0) })
 
-	// First call: calls synthesizer and caches
+	// First call: calls synthesizer and stores the feedback
 	fb, err := svc.GetFeedback(context.Background(), "user-1", "s-123")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -242,15 +242,26 @@ func TestFeedbackServiceCachingAndErrorHandling(t *testing.T) {
 		t.Errorf("summary = %q", fb.Summary)
 	}
 
-	// Change synthesizer to error to ensure cache is used
+	if _, ok := store.data["user-1/s-123"]; !ok {
+		t.Fatal("feedback must be stored for its owner")
+	}
+
+	// The stored text is read back: the model is not asked again.
 	synthesizer.err = errors.New("should not be called")
-	cachedFb, err := svc.GetFeedback(context.Background(), "user-1", "s-123")
+	storedFb, err := svc.GetFeedback(context.Background(), "user-1", "s-123")
 	if err != nil {
-		t.Fatalf("cache lookup failed: %v", err)
+		t.Fatalf("stored feedback lookup failed: %v", err)
 	}
-	if cachedFb.Summary != fb.Summary {
-		t.Errorf("cached summary mismatch")
+	if storedFb.Summary != fb.Summary {
+		t.Errorf("stored summary mismatch")
 	}
+
+	// The owner is checked before the stored feedback is read.
+	reader.err = fault.New(fault.NotFound, "DIAGNOSTIC_SESSION_NOT_FOUND", "")
+	if _, err = svc.GetFeedback(context.Background(), "user-2", "s-123"); err == nil {
+		t.Fatal("another user must not read the stored feedback")
+	}
+	reader.err = nil
 
 	// Validation error for empty ID
 	_, err = svc.GetFeedback(context.Background(), "user-1", "")

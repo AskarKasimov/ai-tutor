@@ -12,19 +12,19 @@ import (
 type Service struct {
 	reader      ResultReader
 	synthesizer FeedbackSynthesizer
-	cache       FeedbackCache
+	store       FeedbackStore
 	taskFinder  TaskMetadataFinder
 	now         func() time.Time
 }
 
-func New(reader ResultReader, synthesizer FeedbackSynthesizer, cache FeedbackCache, now func() time.Time) *Service {
+func New(reader ResultReader, synthesizer FeedbackSynthesizer, store FeedbackStore, now func() time.Time) *Service {
 	if now == nil {
 		now = time.Now
 	}
 	return &Service{
 		reader:      reader,
 		synthesizer: synthesizer,
-		cache:       cache,
+		store:       store,
 		now:         now,
 	}
 }
@@ -40,15 +40,19 @@ func (s *Service) GetFeedback(ctx context.Context, ownerID, sessionID string) (d
 		return diagnostic.OverallFeedback{}, fault.Validation("id", "Укажите корректный ID диагностической сессии.")
 	}
 
-	if s.cache != nil {
-		if cached, ok := s.cache.Get(ctx, sessionID); ok && cached != nil {
-			return *cached, nil
-		}
-	}
-
+	// Reading the result also checks that the session belongs to the owner.
 	result, err := s.reader.Result(ctx, ownerID, sessionID)
 	if err != nil {
 		return diagnostic.OverallFeedback{}, err
+	}
+	if s.store != nil {
+		stored, ok, err := s.store.Get(ctx, ownerID, result.SessionID)
+		if err != nil {
+			return diagnostic.OverallFeedback{}, err
+		}
+		if ok {
+			return stored, nil
+		}
 	}
 
 	report := AnalyzeResult(result)
@@ -72,8 +76,14 @@ func (s *Service) GetFeedback(ctx context.Context, ownerID, sessionID string) (d
 		GeneratedAt:             s.now().Unix(),
 	}
 
-	if s.cache != nil {
-		s.cache.Set(ctx, sessionID, feedback)
+	if s.store != nil {
+		if err := s.store.Save(ctx, ownerID, feedback); err != nil {
+			return diagnostic.OverallFeedback{}, err
+		}
+		// A concurrent request may have saved its text first: show that one.
+		if stored, ok, err := s.store.Get(ctx, ownerID, result.SessionID); err == nil && ok {
+			return stored, nil
+		}
 	}
 
 	return feedback, nil

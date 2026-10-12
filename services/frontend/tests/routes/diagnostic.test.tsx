@@ -114,6 +114,7 @@ function server(
   totalTasks = 3,
   feedbackStatus = 200,
   strengths: string[] | null = ['Вы уверенно различаете модели.'],
+  summary = 'Итоговое педагогическое резюме.',
 ) {
   const sessionProgress = { ...progress, total_tasks: totalTasks }
   let answered = false
@@ -216,7 +217,7 @@ function server(
         diagnostic_score: 2,
         maximum_score: 2,
         score_percentage: 100,
-        summary: 'Итоговое педагогическое резюме.',
+        summary,
         strengths,
         confirmed_gaps: [
           {
@@ -390,6 +391,14 @@ it('runs real diagnostic audio, obeys skipped basics and displays the server tot
     await screen.findByText('Итоговое педагогическое резюме.'),
   ).toBeVisible()
   expect(screen.getByText('Вы уверенно различаете модели.')).toBeVisible()
+  // Without the model's parts the cards come from the report; an empty one
+  // is hidden rather than filled with stock phrases.
+  expect(screen.getByRole('heading', { name: 'Что хорошо' })).toBeVisible()
+  expect(
+    screen.queryByRole('heading', { name: 'Что доработать' }),
+  ).not.toBeInTheDocument()
+  expect(screen.queryByText(/Критических пробелов нет/)).not.toBeInTheDocument()
+  expect(screen.getByRole('heading', { name: 'Рекомендации' })).toBeVisible()
   // The overall feedback names only what was checked.
   expect(
     screen.queryByText('Непроверенная компетенция'),
@@ -508,6 +517,38 @@ it('shows overall feedback when the backend sends null strengths', async () => {
   expect(
     screen.queryByText('Не удалось загрузить общий фидбэк.'),
   ).not.toBeInTheDocument()
+  // No strengths and no "what is good" part: no invented praise.
+  expect(
+    screen.queryByRole('heading', { name: 'Что хорошо' }),
+  ).not.toBeInTheDocument()
+})
+it('splits the model summary into general text, what is good and what to work on', async () => {
+  server(
+    200,
+    3,
+    200,
+    ['Вы уверенно различаете модели.'],
+    'Общая оценка по регрессии.\n\nЧто хорошо:\nРазличает классификацию и регрессию.\n\nЧто доработать:\nПутает MAE и R².',
+  )
+  await home()
+  fireEvent.click(await screen.findByRole('button', { name: 'Начать запись' }))
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Завершить запись' }),
+  )
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Посмотреть итог' }),
+  )
+  expect(await screen.findByText('Общая оценка по регрессии.')).toBeVisible()
+  const good = screen
+    .getByRole('heading', { name: 'Что хорошо' })
+    .closest('section')!
+  expect(good).toHaveTextContent('Различает классификацию и регрессию.')
+  // The model's own part replaces the report list.
+  expect(good).not.toHaveTextContent('Вы уверенно различаете модели.')
+  const work = screen
+    .getByRole('heading', { name: 'Что доработать' })
+    .closest('section')!
+  expect(work).toHaveTextContent('Путает MAE и R².')
 })
 it('keeps the audio and idempotency key on a failed submission and retries without recording again', async () => {
   const requests = server(502)

@@ -674,159 +674,139 @@ function DiagnosticOverallFeedback({
           </Button>
         </div>
       ) : value ? (
-        (() => {
-          const structured = parseStructuredSummary(value.summary || '')
-          const generalText =
-            structured.generalText || normalizeText(value.summary || '')
-          const goodText = structured.whatIsGood
-          const badText = structured.whatNeedsWork
-
-          const recommendations =
-            value.training_recommendations &&
-            value.training_recommendations.length > 0
-              ? value.training_recommendations
-                  .slice(0, 3)
-                  .map((rec) =>
-                    rec.outcome_name
-                      ? `${rec.outcome_name}: ${rec.rationale}`
-                      : rec.rationale,
-                  )
-              : []
-          const covered = new Set(
-            value.training_recommendations?.map((item) => item.outcome_id) ??
-              [],
-          )
-          const uncoveredGaps = (value.confirmed_gaps || []).filter(
-            (gap) => !covered.has(gap.outcome_id),
-          )
-
-          return (
-            <div className={styles.feedbackContent}>
-              {generalText && (
-                <div className={styles.feedbackSummaryText}>
-                  {generalText
-                    .split(/\n+/)
-                    .filter(Boolean)
-                    .map((paragraph, idx) => (
-                      <p key={idx} className={styles.feedbackParagraph}>
-                        {paragraph.trim()}
-                      </p>
-                    ))}
-                </div>
-              )}
-
-              <div className={styles.summaryCardsGrid}>
-                {/* 1. Блок «Что хорошо» */}
-                <div
-                  className={`${styles.summaryCard} ${styles.summaryCardGood}`}
-                >
-                  <div className={styles.summaryCardHeader}>
-                    <CheckCircle2
-                      size={18}
-                      className={styles.iconSuccess}
-                      aria-hidden="true"
-                    />
-                    <span className={styles.summaryCardTitleGood}>
-                      Что хорошо
-                    </span>
-                  </div>
-                  <div className={styles.summaryCardBody}>
-                    {goodText ? (
-                      <p className={styles.feedbackParagraph}>{goodText}</p>
-                    ) : value.strengths && value.strengths.length > 0 ? (
-                      <ul className={styles.summaryCardList}>
-                        {value.strengths.slice(0, 3).map((item, idx) => (
-                          <li key={idx}>
-                            <strong>{normalizeText(item)}</strong>
-                          </li>
-                        ))}
-                      </ul>
-                    ) : (
-                      <p className={styles.feedbackParagraph}>
-                        Базовые понятия поняты верно, продолжайте практиковаться
-                        для закрепления уверенности.
-                      </p>
-                    )}
-                  </div>
-                </div>
-
-                {/* 2. Блок «Что доработать» */}
-                <div
-                  className={`${styles.summaryCard} ${styles.summaryCardWarning}`}
-                >
-                  <div className={styles.summaryCardHeader}>
-                    <AlertTriangle
-                      size={18}
-                      className={styles.iconWarning}
-                      aria-hidden="true"
-                    />
-                    <span className={styles.summaryCardTitleWarning}>
-                      Что доработать
-                    </span>
-                  </div>
-                  <div className={styles.summaryCardBody}>
-                    {badText ? (
-                      <p className={styles.feedbackParagraph}>{badText}</p>
-                    ) : uncoveredGaps.length > 0 ? (
-                      <ul className={styles.summaryCardList}>
-                        {uncoveredGaps.slice(0, 3).map((gap, idx) => (
-                          <li key={idx}>
-                            <strong>
-                              {gap.outcome_name || gap.competency_name}:
-                            </strong>{' '}
-                            {gap.advice}
-                          </li>
-                        ))}
-                      </ul>
-                    ) : value.partial_competencies &&
-                      value.partial_competencies.length > 0 ? (
-                      <ul className={styles.summaryCardList}>
-                        {value.partial_competencies
-                          .slice(0, 3)
-                          .map((part, idx) => (
-                            <li key={idx}>
-                              <strong>{part.competency_name}:</strong>{' '}
-                              {part.details}
-                            </li>
-                          ))}
-                      </ul>
-                    ) : (
-                      <p className={styles.feedbackParagraph}>
-                        Критических пробелов нет! Все проверенные темы освоены
-                        на высоком уровне.
-                      </p>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              {/* 3. Блок «Рекомендации» (кратко расписанные) */}
-              {recommendations.length > 0 && (
-                <div className={styles.recommendationsCard}>
-                  <div className={styles.recommendationsHeader}>
-                    <BookOpen
-                      size={18}
-                      className={styles.iconRec}
-                      aria-hidden="true"
-                    />
-                    <span className={styles.recommendationsTitle}>
-                      Рекомендации
-                    </span>
-                  </div>
-                  <ul className={styles.recommendationsList}>
-                    {recommendations.map((rec, idx) => (
-                      <li key={idx}>
-                        <span className={styles.recNumber}>{idx + 1}</span>
-                        <span>{rec}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-            </div>
-          )
-        })()
+        <OverallFeedbackContent value={value} />
       ) : null}
     </section>
+  )
+}
+
+type OverallFeedback = NonNullable<
+  ReturnType<typeof useDiagnosticFeedbackQuery>['data']
+>
+
+// The model summary splits into a general paragraph, "what is good" and "what
+// to work on". Cards are filled from the report when the model leaves a part
+// out and are hidden when there is nothing to say: no invented praise.
+function OverallFeedbackContent({ value }: { value: OverallFeedback }) {
+  const { t } = useTranslation()
+  const structured = parseStructuredSummary(value.summary || '')
+  const generalText =
+    structured.generalText || normalizeText(value.summary || '')
+  // What to work on next: the recommendations in their order, then confirmed
+  // gaps they do not cover, each with its own advice.
+  const covered = new Set(
+    value.training_recommendations.map((item) => item.outcome_id),
+  )
+  const recommendations = [
+    ...value.training_recommendations.map((item) => ({
+      id: item.outcome_id,
+      title: `${item.competency_name} — ${item.outcome_name}`,
+      text: item.rationale,
+    })),
+    ...value.confirmed_gaps
+      .filter((gap) => !covered.has(gap.outcome_id))
+      .map((gap) => ({
+        id: gap.outcome_id,
+        title: `${gap.competency_name} — ${gap.outcome_name}`,
+        text: gap.advice,
+      })),
+  ]
+  const good = structured.whatIsGood ? (
+    <p className={styles.feedbackParagraph}>{structured.whatIsGood}</p>
+  ) : value.strengths.length > 0 ? (
+    <ul className={styles.summaryCardList}>
+      {value.strengths.map((item, index) => (
+        <li key={index}>{normalizeText(item)}</li>
+      ))}
+    </ul>
+  ) : null
+  const work = structured.whatNeedsWork ? (
+    <p className={styles.feedbackParagraph}>{structured.whatNeedsWork}</p>
+  ) : value.partial_competencies.length > 0 ? (
+    <ul className={styles.summaryCardList}>
+      {value.partial_competencies.map((part) => (
+        <li key={part.competency_id}>
+          <span>
+            <strong>{part.competency_name}:</strong> {part.details}
+          </span>
+        </li>
+      ))}
+    </ul>
+  ) : null
+  return (
+    <div className={styles.feedbackContent}>
+      {generalText && (
+        <div className={styles.feedbackSummaryText}>
+          {generalText
+            .split(/\n+/)
+            .filter((paragraph) => paragraph.trim())
+            .map((paragraph, index) => (
+              <p key={index} className={styles.feedbackParagraph}>
+                {paragraph.trim()}
+              </p>
+            ))}
+        </div>
+      )}
+      {(good || work) && (
+        <div className={styles.summaryCardsGrid}>
+          {good && (
+            <section
+              className={`${styles.summaryCard} ${styles.summaryCardGood}`}
+            >
+              <h3 className={styles.summaryCardHeader}>
+                <CheckCircle2
+                  size={18}
+                  className={styles.iconSuccess}
+                  aria-hidden="true"
+                />
+                <span className={styles.summaryCardTitleGood}>
+                  {t('diagnostic.feedbackGood')}
+                </span>
+              </h3>
+              <div className={styles.summaryCardBody}>{good}</div>
+            </section>
+          )}
+          {work && (
+            <section
+              className={`${styles.summaryCard} ${styles.summaryCardWarning}`}
+            >
+              <h3 className={styles.summaryCardHeader}>
+                <AlertTriangle
+                  size={18}
+                  className={styles.iconWarning}
+                  aria-hidden="true"
+                />
+                <span className={styles.summaryCardTitleWarning}>
+                  {t('diagnostic.feedbackWork')}
+                </span>
+              </h3>
+              <div className={styles.summaryCardBody}>{work}</div>
+            </section>
+          )}
+        </div>
+      )}
+      {recommendations.length > 0 && (
+        <section className={styles.recommendationsCard}>
+          <h3 className={styles.recommendationsHeader}>
+            <BookOpen size={18} className={styles.iconRec} aria-hidden="true" />
+            <span className={styles.recommendationsTitle}>
+              {t('diagnostic.recommendations')}
+            </span>
+          </h3>
+          <ol className={styles.recommendationsList}>
+            {recommendations.map((item, index) => (
+              <li key={item.id}>
+                <span className={styles.recNumber} aria-hidden="true">
+                  {index + 1}
+                </span>
+                <span>
+                  <strong>{item.title}:</strong> {item.text}
+                </span>
+              </li>
+            ))}
+          </ol>
+        </section>
+      )}
+    </div>
   )
 }

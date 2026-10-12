@@ -20,6 +20,7 @@ func decodePlan(t *testing.T, body []byte) learninghttp.PlanResponse {
 // A diagnostic with a mistake builds a plan from every outcome of that
 // competency; each outcome is taught with theory and practice in the chat.
 func TestLearningPlanTeachesTheCompetencyWithAMistake(t *testing.T) {
+	t.Parallel()
 	f, access, _, _, d := trainingFixture(t, 0)
 	planPath := "/diagnostic-sessions/" + d.ID + "/learning-plan"
 	requireCode(t, f.request("GET", planPath, "", access), 404, "LEARNING_PLAN_NOT_FOUND")
@@ -75,6 +76,7 @@ func TestLearningPlanTeachesTheCompetencyWithAMistake(t *testing.T) {
 }
 
 func TestLearningPlanWithoutMistakesIsCompleted(t *testing.T) {
+	t.Parallel()
 	f, access, _, _, d := trainingFixture(t, 2)
 	created := f.request("POST", "/diagnostic-sessions/"+d.ID+"/learning-plan", `{"hours":1}`, access)
 	plan := decodePlan(t, created.Body.Bytes())

@@ -14,7 +14,6 @@ import (
 	"go.uber.org/zap"
 
 	assessmentapp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/assessment/application"
-	assessmentmock "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/assessment/infrastructure/mock"
 	assessmentmodel "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/assessment/infrastructure/modelapi"
 	assessmentpg "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/assessment/infrastructure/postgres"
 	assessmenthttp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/assessment/transport/http"
@@ -30,12 +29,10 @@ import (
 	diagnosticpg "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/diagnostic/infrastructure/postgres"
 	diagnostichttp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/diagnostic/transport/http"
 	diagnosticfeedbackapp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/diagnosticfeedback/application"
-	diagnosticfeedbackmock "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/diagnosticfeedback/infrastructure/mock"
 	diagnosticfeedbackmodel "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/diagnosticfeedback/infrastructure/modelapi"
 	diagnosticfeedbackpg "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/diagnosticfeedback/infrastructure/postgres"
 	diagnosticfeedbackhttp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/diagnosticfeedback/transport/http"
 	learningapp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/learning/application"
-	learningmock "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/learning/infrastructure/mock"
 	learningmodel "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/learning/infrastructure/modelapi"
 	learningpg "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/learning/infrastructure/postgres"
 	learninghttp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/learning/transport/http"
@@ -50,12 +47,10 @@ import (
 	taskbankpg "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/taskbank/infrastructure/postgres"
 	taskbankhttp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/taskbank/transport/http"
 	taskgenapp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/taskgen/application"
-	taskgenmock "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/taskgen/infrastructure/mock"
 	taskgenmodel "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/taskgen/infrastructure/modelapi"
 	taskgenpg "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/taskgen/infrastructure/postgres"
 	taskgenhttp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/taskgen/transport/http"
 	trainingapp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/training/application"
-	trainingmock "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/training/infrastructure/mock"
 	trainingmodel "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/training/infrastructure/modelapi"
 	trainingpg "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/training/infrastructure/postgres"
 	trainingsnapshot "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/training/infrastructure/snapshot"
@@ -65,7 +60,6 @@ import (
 	variantgenrandom "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/variantgen/infrastructure/random"
 	variantgenhttp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/variantgen/transport/http"
 	voiceapp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/voice/application"
-	voicemock "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/voice/infrastructure/mock"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/features/voice/infrastructure/modelapi"
 	voicepg "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/voice/infrastructure/postgres"
 	voicehttp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/voice/transport/http"
@@ -122,12 +116,7 @@ func New(cfg Config, pool *pgxpool.Pool, logger *zap.Logger) (*App, error) {
 	if err != nil {
 		return nil, fmt.Errorf("configure task audio storage: %w", err)
 	}
-	var synth taskaudioapp.Synthesizer
-	if cfg.APIMode == "mock" {
-		synth = voicemock.Client{}
-	} else {
-		synth = modelapi.New(a.client, cfg.STTURL, cfg.TTSURL, cfg.VoiceTimeout, modelapi.TTSOptions{Seed: cfg.TTSSeed, CFGValue: cfg.TTSCFGValue, InferenceTimesteps: cfg.TTSInferenceTimesteps})
-	}
+	synth := modelapi.New(a.client, cfg.STTURL, cfg.TTSURL, cfg.VoiceTimeout, modelapi.TTSOptions{Seed: cfg.TTSSeed, CFGValue: cfg.TTSCFGValue, InferenceTimesteps: cfg.TTSInferenceTimesteps})
 	a.audioWorker = taskaudioapp.NewWorker(taskaudiopg.New(pool), storage, synth, taskaudioapp.WorkerConfig{
 		Concurrency: cfg.AudioWorkers, PollInterval: cfg.AudioPollInterval, VoiceTimeout: cfg.VoiceTimeout,
 		S3Timeout: cfg.S3Timeout, Bucket: cfg.S3Bucket,
@@ -139,25 +128,11 @@ func New(cfg Config, pool *pgxpool.Pool, logger *zap.Logger) (*App, error) {
 func (a *App) Handler() http.Handler {
 	auth := authapp.New(authpg.New(a.pool), a.hasher, a.now)
 	authHandlers := authhttp.New(auth, a.now)
-	var recognizer voiceapp.Recognizer
-	var synthesizer voiceapp.Synthesizer
-	var grader assessmentapp.Grader
-	var feedbackSynthesizer diagnosticfeedbackapp.FeedbackSynthesizer
-	var taskGenerator taskgenapp.Generator
-	modelName := a.cfg.TaskgenModel
-	if a.cfg.APIMode == "mock" {
-		recognizer, synthesizer = voicemock.Client{}, voicemock.Client{}
-		grader = assessmentmock.Grader{}
-		feedbackSynthesizer = diagnosticfeedbackmock.New()
-		taskGenerator, modelName = taskgenmock.Generator{}, "mock"
-	} else {
-		models := modelapi.New(a.client, a.cfg.STTURL, a.cfg.TTSURL, a.cfg.VoiceTimeout, modelapi.TTSOptions{Seed: a.cfg.TTSSeed, CFGValue: a.cfg.TTSCFGValue, InferenceTimesteps: a.cfg.TTSInferenceTimesteps})
-		recognizer, synthesizer = models, models
-		grader = assessmentmodel.New(a.client, a.cfg.AssessmentBaseURL, a.cfg.AssessmentModel, a.cfg.AssessmentTimeout)
-		feedbackSynthesizer = diagnosticfeedbackmodel.New(a.client, a.cfg.AssessmentBaseURL, a.cfg.AssessmentModel, a.cfg.AssessmentTimeout)
-		taskGenerator = taskgenmodel.New(a.client, a.cfg.TaskgenBaseURL, a.cfg.TaskgenModel, a.cfg.TaskgenTimeout)
-	}
-	voice := voiceapp.New(voicepg.New(a.pool), recognizer, synthesizer, a.now)
+	models := modelapi.New(a.client, a.cfg.STTURL, a.cfg.TTSURL, a.cfg.VoiceTimeout, modelapi.TTSOptions{Seed: a.cfg.TTSSeed, CFGValue: a.cfg.TTSCFGValue, InferenceTimesteps: a.cfg.TTSInferenceTimesteps})
+	grader := assessmentmodel.New(a.client, a.cfg.AssessmentBaseURL, a.cfg.AssessmentModel, a.cfg.AssessmentTimeout)
+	feedbackSynthesizer := diagnosticfeedbackmodel.New(a.client, a.cfg.AssessmentBaseURL, a.cfg.AssessmentModel, a.cfg.AssessmentTimeout)
+	taskGenerator := taskgenmodel.New(a.client, a.cfg.TaskgenBaseURL, a.cfg.TaskgenModel, a.cfg.TaskgenTimeout)
+	voice := voiceapp.New(voicepg.New(a.pool), models, models, a.now)
 	voiceHandlers := voicehttp.New(voice, a.cfg.MaxUploadBytes)
 	competency := competencyapp.New(competencypg.New(a.pool), &csvparser.Parser{}, a.now)
 	competencyHandlers := competencyhttp.New(competency, a.cfg.MaxUploadBytes)
@@ -167,7 +142,7 @@ func (a *App) Handler() http.Handler {
 	taskbankHandlers := taskbankhttp.New(taskbankapp.New(taskbankpg.New(a.pool)))
 	taskgenRepository := taskgenpg.New(a.pool)
 	taskgenHandlers := taskgenhttp.New(
-		taskgenapp.New(taskgenRepository, taskGenerator, modelName, func() int64 { return a.now().Unix() }),
+		taskgenapp.New(taskgenRepository, taskGenerator, a.cfg.TaskgenModel, func() int64 { return a.now().Unix() }),
 		taskgenapp.NewMaterialService(taskgenRepository, func() int64 { return a.now().Unix() }),
 	)
 	variantgenHandlers := variantgenhttp.New(variantgenapp.New(a.variantRepository, variantgenrandom.Chooser{}, security.IDGenerator{}, a.now))
@@ -180,18 +155,14 @@ func (a *App) Handler() http.Handler {
 	chatRepository := trainingpg.NewChatRepository(a.pool).WithLease(a.cfg.VoiceTimeout + a.cfg.AssessmentTimeout + a.cfg.TutorTimeout + 30*time.Second)
 	trainingService = trainingService.WithCheckedNext(chatRepository)
 	var tutor trainingapp.Tutor
-	if a.cfg.APIMode == "mock" {
-		tutor = trainingmock.Tutor{}
-	} else if a.cfg.TutorEnabled {
+	if a.cfg.TutorEnabled {
 		tutor = trainingmodel.NewTutor(a.client, a.cfg.TutorBaseURL, a.cfg.TutorModel, a.cfg.TutorTimeout)
 	}
 	chatService := trainingapp.NewChatService(chatRepository, voice, tutor, trainingFinalGrader{assessmentService}, security.IDGenerator{}, a.now).
 		WithContextLimits(training.ContextLimits{TaskMaxChars: a.cfg.TutorTaskMaxChars, HistoryMaxChars: a.cfg.TutorHistoryMaxChars, SummaryMaxChars: a.cfg.TutorSummaryMaxChars})
 	chatHandlers := traininghttp.NewChatHandler(chatService, a.cfg.MaxUploadBytes)
 	var teacher learningapp.Teacher
-	if a.cfg.APIMode == "mock" {
-		teacher = learningmock.Teacher{}
-	} else if a.cfg.TutorEnabled {
+	if a.cfg.TutorEnabled {
 		teacher = learningmodel.New(a.client, a.cfg.TutorBaseURL, a.cfg.TutorModel, a.cfg.TutorTimeout)
 	}
 	learningHandlers := learninghttp.New(learningapp.New(learningpg.New(a.pool), a.diagnosticStore, voice, teacher, security.IDGenerator{}, a.now), a.cfg.MaxUploadBytes)

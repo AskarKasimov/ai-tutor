@@ -49,13 +49,12 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 if (-not (Test-Path .env)) {
-    Step 'Создаём .env из .env.example (режим real, случайные секреты)'
+    Step 'Создаём .env из .env.example (случайные секреты)'
     function New-Secret {
         -join ((48..57) + (65..90) + (97..122) | Get-Random -Count 40 | ForEach-Object { [char]$_ })
     }
     $text = (Get-Content .env.example -Raw -Encoding UTF8) -replace "`r`n", "`n"
-    $text = $text -replace '(?m)^BACKEND_API_MODE=mock', 'BACKEND_API_MODE=real' `
-        -replace '(?m)^DB_PASSWORD=replace-with-a-long-random-value', "DB_PASSWORD=$(New-Secret)" `
+    $text = $text -replace '(?m)^DB_PASSWORD=replace-with-a-long-random-value', "DB_PASSWORD=$(New-Secret)" `
         -replace '(?m)^S3_ACCESS_KEY=replace-with-a-random-access-key', "S3_ACCESS_KEY=$(New-Secret)" `
         -replace '(?m)^S3_SECRET_KEY=replace-with-a-random-secret-key', "S3_SECRET_KEY=$(New-Secret)"
     # Compose reads .env best without a BOM.

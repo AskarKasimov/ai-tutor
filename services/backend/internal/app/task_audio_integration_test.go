@@ -493,7 +493,6 @@ func TestTaskAudioWorkerResumesQueueAfterRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	cfg := f.app.cfg
-	cfg.APIMode = "mock"
 	cfg.AudioPollInterval = time.Millisecond
 	restarted, err := New(cfg, f.pool, zap.NewNop())
 	if err != nil {
@@ -678,14 +677,13 @@ func TestTaskAudioReplacementCancelsSnapshotOnlyAndExpiredAssets(t *testing.T) {
 	}
 }
 
-func TestTaskAudioWorkerUsesMockSynthesizerWithPostgresAndS3(t *testing.T) {
+func TestTaskAudioWorkerUsesModelAPIWithPostgresAndS3(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
-	assets := importCurrentTaskAudios(t, f, "mock-map.csv", variantMapCSV(t))
+	assets := importCurrentTaskAudios(t, f, "model-map.csv", variantMapCSV(t))
 	assetID, objectKey := assets[0].id, assets[0].key
 	keepOnlyQueuedAudio(t, f, assets, assetID)
 	cfg := f.app.cfg
-	cfg.APIMode = "mock"
 	a, err := New(cfg, f.pool, zap.NewNop())
 	if err != nil {
 		t.Fatal(err)
@@ -693,23 +691,23 @@ func TestTaskAudioWorkerUsesMockSynthesizerWithPostgresAndS3(t *testing.T) {
 	f.app = a
 	processed, err := f.app.audioWorker.ProcessOne(context.Background())
 	if err != nil || !processed {
-		t.Fatalf("mock ProcessOne: processed=%v err=%v", processed, err)
+		t.Fatalf("model ProcessOne: processed=%v err=%v", processed, err)
 	}
 	var status, bucket string
 	if err := f.pool.QueryRow(context.Background(), "SELECT status,bucket FROM audio_assets WHERE id=$1", assetID).Scan(&status, &bucket); err != nil || status != "ready" || bucket != cfg.S3Bucket {
-		t.Fatalf("mock asset status=%q bucket=%q err=%v", status, bucket, err)
+		t.Fatalf("model asset status=%q bucket=%q err=%v", status, bucket, err)
 	}
 	file, info, err := f.app.audioStorage.Open(context.Background(), bucket, objectKey)
 	if err != nil {
-		t.Fatalf("mock S3 object not readable: %v", err)
+		t.Fatalf("model S3 object not readable: %v", err)
 	}
 	defer file.Close()
 	data, err := io.ReadAll(file)
 	if err != nil {
-		t.Fatalf("read mock object: %v", err)
+		t.Fatalf("read model object: %v", err)
 	}
 	if len(data) == 0 || info.AssetID != assetID || info.ContentType != "audio/wav" || !bytes.HasPrefix(data, []byte("RIFF")) {
-		t.Fatalf("mock object metadata/data: bytes=%d info=%+v", len(data), info)
+		t.Fatalf("model object metadata/data: bytes=%d info=%+v", len(data), info)
 	}
 }
 
@@ -731,7 +729,6 @@ func TestTaskAudioPostgresRustFSSmoke(t *testing.T) {
 	suffix := fmt.Sprintf("%d", time.Now().UnixNano())
 	bucket := "codex-e2e-smoke-" + suffix
 	cfg := f.app.cfg
-	cfg.APIMode = "mock"
 	cfg.S3Endpoint, cfg.S3Bucket = endpoint, bucket
 	cfg.S3AccessKey, cfg.S3SecretKey = accessKey, secretKey
 	cfg.S3CreateBucket = true
@@ -969,7 +966,6 @@ func TestTaskAudioQueueSynthesizesStartedVariantFirst(t *testing.T) {
 		t.Fatal(err)
 	}
 	cfg := f.app.cfg
-	cfg.APIMode = "mock"
 	a, err := New(cfg, f.pool, zap.NewNop())
 	if err != nil {
 		t.Fatal(err)

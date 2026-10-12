@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react'
 import { StrictMode } from 'react'
 import {
   createMemoryHistory,
@@ -119,6 +125,12 @@ it('loads subjects without creating a variant, then starts only the chosen subje
   ).not.toBeInTheDocument()
   expect(screen.getByRole('heading', { name: 'Курсы', level: 1 })).toBeVisible()
   expect(screen.getByRole('article', { name: 'Предмет A' })).toBeVisible()
+  const header = within(screen.getByRole('banner'))
+  expect(header.getByText('Голосовой тренажёр')).toBeVisible()
+  expect(header.queryByRole('navigation')).not.toBeInTheDocument()
+  expect(header.queryByText('Предмет A')).not.toBeInTheDocument()
+  expect(header.getByRole('button', { name: /Студент/ })).toBeVisible()
+
   // Diagnostic and training are one process: a single action, no training tile.
   // Four steps say what the student does, starting with a voice check.
   const steps = screen.getByRole('list', { name: 'Как проходит обучение' })

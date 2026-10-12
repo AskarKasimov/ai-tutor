@@ -44,8 +44,8 @@
 .block {
   min-height: 0;
   box-sizing: border-box;
-  border-radius: var(--session-radius);
-  background: var(--session-block);
+  border-radius: var(--session-radius, 20px);
+  background: var(--session-block, var(--color-panel-solid));
   box-shadow: 0 0 0 1px var(--app-border);
 }
 // The progress bar under the header: label and percent above a slim bar.
@@ -177,6 +177,7 @@
   color: var(--app-faint);
 }
 .account {
+  grid-column: -2 / -1;
   justify-self: end;
 }
 .body {

@@ -19,7 +19,7 @@ import {
 import { subjectQueryKeys, type Subject } from '@/entities/subject'
 import { LearningPlanEntry } from './learning-plan'
 import { DiagnosticTrainer } from './diagnostic-trainer'
-import { AccountMenu } from '@/features/auth'
+import { TrainerHeader } from './trainer-shared'
 import styles from './learning-home.module.scss'
 
 type Intent = {
@@ -170,15 +170,9 @@ export function LearningHome() {
   }
   return (
     <div className={styles.page}>
-      <header className={styles.header}>
-        <div className={styles.brand}>
-          <span className={styles.brandIcon} aria-hidden="true">
-            <GraduationCap size={22} />
-          </span>
-          <Text weight="bold">{t('trainer.title')}</Text>
-        </div>
-        <AccountMenu />
-      </header>
+      <div className={styles.headerFrame}>
+        <TrainerHeader title={t('home.courses')} />
+      </div>
       <main className={styles.content}>
         <Heading as="h1" size="8" id="courses-title">
           {t('home.courses')}

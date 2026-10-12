@@ -272,6 +272,19 @@ void i18n.init({
           sending: 'Распознаём ответ…',
           micDenied: 'Нет доступа к микрофону. Разрешите его в браузере.',
           micUnavailable: 'Микрофон недоступен в этом браузере.',
+          cheer: {
+            '0': 'Еее, ты молодец!',
+            '1': 'Огонь, всё верно!',
+            '2': 'Вот это уровень!',
+            '3': 'Красота, так держать!',
+          },
+          topicPassed: 'Тема «{{name}}» освоена',
+          firstTry: 'С первой попытки!',
+          persistence_one: 'С {{count}}-й попытки — упорство решает!',
+          persistence_few: 'С {{count}}-й попытки — упорство решает!',
+          persistence_many: 'С {{count}}-й попытки — упорство решает!',
+          continue: 'Продолжить',
+          toResult: 'К итогам плана',
           doneTitle: 'План пройден!',
           doneText: 'Вы прошли все темы плана.',
           doneReview_one:
@@ -320,7 +333,6 @@ void i18n.init({
           feedbackRetry: 'Повторить загрузку фидбэка',
           feedbackGood: 'Что хорошо',
           feedbackWork: 'Что доработать',
-          recommendations: 'Рекомендации',
           criterionMet: 'Критерий выполнен',
           criterionUnmet: 'Критерий не выполнен',
           verdict: {

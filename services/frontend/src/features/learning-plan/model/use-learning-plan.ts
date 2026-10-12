@@ -51,8 +51,12 @@ export function useLessonMessages(
 }
 
 // Lesson actions return the updated plan; the chat of the touched topics is
-// read again.
-export function useLessonActions(userId: string, plan: LearningPlan) {
+// read again. onChecked receives the plan before and after a checked answer.
+export function useLessonActions(
+  userId: string,
+  plan: LearningPlan,
+  onChecked?: (before: LearningPlan, after: LearningPlan) => void,
+) {
   const { learningPlan } = useLearningPlanDependencies()
   const cache = useQueryClient()
   const touched = plan.current_index
@@ -75,7 +79,10 @@ export function useLessonActions(userId: string, plan: LearningPlan) {
   const answer = useMutation({
     mutationFn: (audio: Blob) =>
       learningPlan.answerLesson(plan.id, audio, signal()),
-    onSuccess: settle,
+    onSuccess: (next) => {
+      settle(next)
+      onChecked?.(plan, next)
+    },
     // A failed check still saved the transcript: show it with a retry.
     onError: () => {
       void cache.invalidateQueries({
@@ -92,7 +99,10 @@ export function useLessonActions(userId: string, plan: LearningPlan) {
   })
   const retry = useMutation({
     mutationFn: () => learningPlan.retryLessonAnswer(plan.id, signal()),
-    onSuccess: settle,
+    onSuccess: (next) => {
+      settle(next)
+      onChecked?.(plan, next)
+    },
   })
   return { open, answer, retry }
 }

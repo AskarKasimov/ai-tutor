@@ -13,15 +13,21 @@ interface ParsedStructuredSummary {
   whatNeedsWork: string
 }
 
-export function parseStructuredSummary(rawSummary: string): ParsedStructuredSummary {
+export function parseStructuredSummary(
+  rawSummary: string,
+): ParsedStructuredSummary {
   const normalized = normalizeText(rawSummary)
   if (!normalized) {
     return { generalText: '', whatIsGood: '', whatNeedsWork: '' }
   }
 
   // Look for headings: "Что хорошо:" and "Что нужно изучить:" (or "Что плохо:")
-  const goodMatch = normalized.search(/(?:^|\n)\s*(?:•|\-|\—|\*|\s)*(?:###?\s*)?Что хорошо:\s*/i)
-  const badMatch = normalized.search(/(?:^|\n)\s*(?:•|\-|\—|\*|\s)*(?:###?\s*)?Что (?:нужно изучить|плохо|доработать):\s*/i)
+  const goodMatch = normalized.search(
+    /(?:^|\n)\s*(?:•|\-|\—|\*|\s)*(?:###?\s*)?Что хорошо:\s*/i,
+  )
+  const badMatch = normalized.search(
+    /(?:^|\n)\s*(?:•|\-|\—|\*|\s)*(?:###?\s*)?Что (?:нужно изучить|плохо|доработать):\s*/i,
+  )
 
   if (goodMatch !== -1 && badMatch !== -1 && badMatch > goodMatch) {
     const generalPart = normalized.slice(0, goodMatch).trim()
@@ -32,7 +38,10 @@ export function parseStructuredSummary(rawSummary: string): ParsedStructuredSumm
       .replace(/^(?:•|\-|\—|\*|\s)*(?:###?\s*)?Что хорошо:\s*/i, '')
       .trim()
     const whatNeedsWork = badPartRaw
-      .replace(/^(?:•|\-|\—|\*|\s)*(?:###?\s*)?Что (?:нужно изучить|плохо|доработать):\s*/i, '')
+      .replace(
+        /^(?:•|\-|\—|\*|\s)*(?:###?\s*)?Что (?:нужно изучить|плохо|доработать):\s*/i,
+        '',
+      )
       .trim()
 
     return {
@@ -61,7 +70,10 @@ export function parseStructuredSummary(rawSummary: string): ParsedStructuredSumm
     const generalPart = normalized.slice(0, badMatch).trim()
     const whatNeedsWork = normalized
       .slice(badMatch)
-      .replace(/^(?:•|\-|\—|\*|\s)*(?:###?\s*)?Что (?:нужно изучить|плохо|доработать):\s*/i, '')
+      .replace(
+        /^(?:•|\-|\—|\*|\s)*(?:###?\s*)?Что (?:нужно изучить|плохо|доработать):\s*/i,
+        '',
+      )
       .trim()
     return {
       generalText: generalPart,

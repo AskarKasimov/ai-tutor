@@ -52,9 +52,15 @@ describe('trainer feedback parsing', () => {
 
     const parsed = parseStructuredSummary(raw)
     expect(parsed.generalText).toContain('Студент показал уверенное понимание')
-    expect(parsed.generalText).toContain('Рекомендуется повторить ключевые формулы')
-    expect(parsed.whatIsGood).toBe('Отлично объяснены базовые концепции и постановка задачи обучения с учителем.')
-    expect(parsed.whatNeedsWork).toBe('Обратить внимание на различие между Precision и Recall при дисбалансе классов.')
+    expect(parsed.generalText).toContain(
+      'Рекомендуется повторить ключевые формулы',
+    )
+    expect(parsed.whatIsGood).toBe(
+      'Отлично объяснены базовые концепции и постановка задачи обучения с учителем.',
+    )
+    expect(parsed.whatNeedsWork).toBe(
+      'Обратить внимание на различие между Precision и Recall при дисбалансе классов.',
+    )
   })
 
   it('parses structured summary with "Что доработать:" heading', () => {
@@ -68,7 +74,11 @@ describe('trainer feedback parsing', () => {
 
     const parsed = parseStructuredSummary(raw)
     expect(parsed.generalText).toContain('Студент хорошо ориентируется')
-    expect(parsed.whatIsGood).toBe('Точно определена постановка задачи регрессии и вычисление MSE.')
-    expect(parsed.whatNeedsWork).toBe('Повторить аналитическое решение МНК и условия вырожденности матрицы XᵀX.')
+    expect(parsed.whatIsGood).toBe(
+      'Точно определена постановка задачи регрессии и вычисление MSE.',
+    )
+    expect(parsed.whatNeedsWork).toBe(
+      'Повторить аналитическое решение МНК и условия вырожденности матрицы XᵀX.',
+    )
   })
 })

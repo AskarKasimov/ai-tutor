@@ -1,6 +1,5 @@
 import { Button, Heading, Text } from '@radix-ui/themes'
 import {
-  AlertCircle,
   AlertTriangle,
   ArrowRight,
   BookOpen,
@@ -756,7 +755,8 @@ function DiagnosticOverallFeedback({
                       </ul>
                     ) : (
                       <p className={styles.feedbackParagraph}>
-                        Базовые понятия поняты верно, продолжайте практиковаться для закрепления уверенности.
+                        Базовые понятия поняты верно, продолжайте практиковаться
+                        для закрепления уверенности.
                       </p>
                     )}
                   </div>
@@ -779,26 +779,34 @@ function DiagnosticOverallFeedback({
                   <div className={styles.summaryCardBody}>
                     {badText ? (
                       <p className={styles.feedbackParagraph}>{badText}</p>
-                    ) : value.confirmed_gaps && value.confirmed_gaps.length > 0 ? (
+                    ) : value.confirmed_gaps &&
+                      value.confirmed_gaps.length > 0 ? (
                       <ul className={styles.summaryCardList}>
                         {value.confirmed_gaps.slice(0, 3).map((gap, idx) => (
                           <li key={idx}>
-                            <strong>{gap.outcome_name || gap.competency_name}:</strong> {gap.advice}
+                            <strong>
+                              {gap.outcome_name || gap.competency_name}:
+                            </strong>{' '}
+                            {gap.advice}
                           </li>
                         ))}
                       </ul>
                     ) : value.partial_competencies &&
                       value.partial_competencies.length > 0 ? (
                       <ul className={styles.summaryCardList}>
-                        {value.partial_competencies.slice(0, 3).map((part, idx) => (
-                          <li key={idx}>
-                            <strong>{part.competency_name}:</strong> {part.details}
-                          </li>
-                        ))}
+                        {value.partial_competencies
+                          .slice(0, 3)
+                          .map((part, idx) => (
+                            <li key={idx}>
+                              <strong>{part.competency_name}:</strong>{' '}
+                              {part.details}
+                            </li>
+                          ))}
                       </ul>
                     ) : (
                       <p className={styles.feedbackParagraph}>
-                        Критических пробелов нет! Все проверенные темы освоены на высоком уровне.
+                        Критических пробелов нет! Все проверенные темы освоены
+                        на высоком уровне.
                       </p>
                     )}
                   </div>

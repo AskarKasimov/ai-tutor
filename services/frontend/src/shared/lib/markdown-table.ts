@@ -5,8 +5,7 @@ export interface TableData {
 }
 
 export type QuestionBlock =
-  | { type: 'text'; text: string }
-  | { type: 'table'; data: TableData }
+  { type: 'text'; text: string } | { type: 'table'; data: TableData }
 
 function parseRowCells(rowStr: string): string[] {
   const parts = rowStr.split('|').map((p) => p.trim())

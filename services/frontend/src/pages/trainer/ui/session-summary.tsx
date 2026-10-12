@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Button, Heading, Text } from '@radix-ui/themes'
 import {
-  AlertCircle,
   AlertTriangle,
   BookOpen,
   CheckCircle2,
@@ -105,9 +104,7 @@ export function SessionSummary({
               className={styles.spinner}
               aria-hidden="true"
             />
-            <Text>
-              Формируем персонализированный фидбэк и рекомендации...
-            </Text>
+            <Text>Формируем персонализированный фидбэк и рекомендации...</Text>
           </div>
         ) : feedback ? (
           (() => {
@@ -118,7 +115,10 @@ export function SessionSummary({
             const badText = structured.whatNeedsWork
 
             const recommendations: string[] = []
-            if (feedback.recommendations && feedback.recommendations.length > 0) {
+            if (
+              feedback.recommendations &&
+              feedback.recommendations.length > 0
+            ) {
               recommendations.push(
                 ...feedback.recommendations.slice(0, 3).map(normalizeText),
               )
@@ -176,7 +176,8 @@ export function SessionSummary({
                         </ul>
                       ) : (
                         <p className={styles.feedbackParagraph}>
-                          Базовые понятия поняты верно, продолжайте практиковаться для закрепления уверенности.
+                          Базовые понятия поняты верно, продолжайте
+                          практиковаться для закрепления уверенности.
                         </p>
                       )}
                     </div>
@@ -203,11 +204,14 @@ export function SessionSummary({
                         <ul className={styles.summaryCardList}>
                           {feedback.gaps.slice(0, 3).map((gap, idx) => {
                             const parsed = parseGapItem(gap)
-                            const cleanTopic = extractCleanTopicTitle(parsed.title)
+                            const cleanTopic = extractCleanTopicTitle(
+                              parsed.title,
+                            )
                             return (
                               <li key={idx}>
                                 <strong>{cleanTopic}:</strong>{' '}
-                                {parsed.explanation || 'требуется разобрать ключевую концепцию и критерии'}
+                                {parsed.explanation ||
+                                  'требуется разобрать ключевую концепцию и критерии'}
                               </li>
                             )
                           })}
@@ -216,18 +220,22 @@ export function SessionSummary({
                         <ul className={styles.summaryCardList}>
                           {feedback.partials.slice(0, 3).map((part, idx) => {
                             const parsed = parsePartialItem(part)
-                            const cleanTopic = extractCleanTopicTitle(parsed.title)
+                            const cleanTopic = extractCleanTopicTitle(
+                              parsed.title,
+                            )
                             return (
                               <li key={idx}>
                                 <strong>{cleanTopic}:</strong>{' '}
-                                {parsed.note || 'требуется закрепить обоснование и практическое применение'}
+                                {parsed.note ||
+                                  'требуется закрепить обоснование и практическое применение'}
                               </li>
                             )
                           })}
                         </ul>
                       ) : (
                         <p className={styles.feedbackParagraph}>
-                          Критических пробелов нет! Все проверенные темы освоены на высоком уровне.
+                          Критических пробелов нет! Все проверенные темы освоены
+                          на высоком уровне.
                         </p>
                       )}
                     </div>

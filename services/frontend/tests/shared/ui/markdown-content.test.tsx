@@ -60,3 +60,35 @@ it('normalizes code blocks glued directly to preceding text on the same line', (
   expect(p).not.toBeNull()
   expect(p?.textContent).toBe('Пример в Python:')
 })
+
+it.each([
+  ['Python string', '```python', 'marker = "```"\nprint(marker)\n', '```'],
+  ['four-backtick fence', '````text', '```python\nx = 1\n```\n', '````'],
+  ['tilde fence', '~~~python', 'marker = "```"\n', '~~~'],
+  ['unclosed fence', '```python', 'marker = "```"\n', ''],
+  ['longer closing fence', '```python', 'x = 1\n', '````'],
+])('preserves code inside a %s', (_name, opening, code, closing) => {
+  const { container } = render(
+    <MarkdownContent text={`${opening}\n${code}${closing}`} />,
+  )
+  expect(container.querySelector('pre')?.textContent).toBe(code)
+})
+
+it('preserves inline code delimited with triple backticks', () => {
+  const { container } = render(
+    <MarkdownContent text={'Используйте ```x ` y``` в примере.'} />,
+  )
+  expect(container.querySelector('pre')).toBeNull()
+  expect(container.querySelector('code')?.textContent).toBe('x ` y')
+})
+
+it('normalizes a glued fence after a closed code block', () => {
+  const { container } = render(
+    <MarkdownContent
+      text={'```python\nx = 1\n````\n\nСледующий пример: ```python\ny = 2\n```'}
+    />,
+  )
+  expect(
+    Array.from(container.querySelectorAll('pre'), (pre) => pre.textContent),
+  ).toEqual(['x = 1\n', 'y = 2\n'])
+})

@@ -20,6 +20,39 @@ const defaultComponents: Components = {
   h6: ({ children }) => <h6>{children}</h6>,
 }
 
+function normalizeGluedFences(text: string): string {
+  let fence: { marker: string; length: number } | undefined
+  return text
+    .split('\n')
+    .map((line) => {
+      if (fence) {
+        const closing = /^ {0,3}(`{3,}|~{3,})[ \t\r]*$/.exec(line)
+        if (
+          closing &&
+          closing[1][0] === fence.marker &&
+          closing[1].length >= fence.length
+        ) {
+          fence = undefined
+        }
+        return line
+      }
+
+      const opening = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(line)
+      if (opening && (opening[1][0] === '~' || !opening[2].includes('`'))) {
+        fence = { marker: opening[1][0], length: opening[1].length }
+        return line
+      }
+
+      // Repair only an opening fence at the end of prose. Leave inline code
+      // spans and indented code alone; never rewrite an existing fenced block.
+      const glued = /^([^`]+)(`{3,})([a-zA-Z0-9_+-]*)[ \t\r]*$/.exec(line)
+      if (!glued || /^ {4}|^\t/.test(line) || !glued[1].trim()) return line
+      fence = { marker: '`', length: glued[2].length }
+      return `${glued[1]}\n${line.slice(glued[1].length)}`
+    })
+    .join('\n')
+}
+
 // Markdown is authored at the source. Keep code and escapes intact; raw HTML
 // stays disabled by react-markdown's default renderer.
 export function MarkdownContent({
@@ -31,12 +64,7 @@ export function MarkdownContent({
   className?: string
   components?: Components
 }) {
-  const normalized = useMemo(() => {
-    if (!text) return ''
-    // Ensure code blocks glued to preceding text (e.g. `Пример: ```python`)
-    // start on a new line so CommonMark parses them as fenced blocks.
-    return text.replace(/([^\n])(```[a-zA-Z0-9_-]*)/g, '$1\n$2')
-  }, [text])
+  const normalized = useMemo(() => normalizeGluedFences(text), [text])
 
   if (!normalized.trim()) return null
   return (

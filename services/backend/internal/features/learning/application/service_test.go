@@ -99,12 +99,16 @@ func (v *voice) Transcribe(context.Context, string, []byte, string) (transcripti
 }
 
 // teacher marks answers containing "верно" correct; fail makes Check fail once.
-type teacher struct{ fail bool }
+type teacher struct {
+	fail      bool
+	lastInput learning.CheckInput
+}
 
 func (teacher) Lesson(_ context.Context, input learning.LessonInput) (learning.Lesson, error) {
 	return learning.Lesson{Theory: "Теория " + input.Item.OutcomeID, Question: "Вопрос 1"}, nil
 }
 func (t *teacher) Check(_ context.Context, input learning.CheckInput) (learning.Check, error) {
+	t.lastInput = input
 	if t.fail {
 		t.fail = false
 		return learning.Check{}, errors.New("model down")
@@ -172,6 +176,9 @@ func TestLearningPlanTeachesEachOutcomeUntilMastered(t *testing.T) {
 		if plan.Current != 0 || plan.Items[0].Attempts != attempt || plan.Items[0].Question != "Новый вопрос" {
 			t.Fatalf("attempt %d: %+v", attempt, plan)
 		}
+		if tc.lastInput.Theory != "Теория o1" {
+			t.Fatalf("check theory: %q", tc.lastInput.Theory)
+		}
 	}
 	if plan, err = s.Answer(ctx, "u", "plan", []byte("a"), "audio/wav"); err != nil {
 		t.Fatal(err)
@@ -198,6 +205,9 @@ func TestLearningPlanTeachesEachOutcomeUntilMastered(t *testing.T) {
 	}
 	if plan.Items[1].Status != learning.ItemPassed || !plan.Completed() || plan.PendingAnswer != nil || plan.Progress() != 100 {
 		t.Fatalf("finished plan: %+v", plan)
+	}
+	if tc.lastInput.Theory != "Теория o2" {
+		t.Fatalf("retry must use current lesson theory: %q", tc.lastInput.Theory)
 	}
 	kinds := []learning.MessageKind{}
 	for _, m := range repo.messages {

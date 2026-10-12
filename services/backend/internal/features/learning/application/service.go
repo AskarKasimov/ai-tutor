@@ -322,9 +322,20 @@ func (s *Service) check(ctx context.Context, owner, id string) (learning.Plan, e
 	}
 	index, answer := plan.Current, *plan.PendingAnswer
 	item := plan.Items[index]
+	messages, err := s.repo.Messages(ctx, plan.ID, index)
+	if err != nil {
+		return learning.Plan{}, err
+	}
+	var theory string
+	for _, message := range messages {
+		if message.Role == learning.RoleAssistant && message.Kind == learning.KindTheory {
+			theory = message.Text
+			break
+		}
+	}
 	result, err := s.teacher.Check(ctx, learning.CheckInput{
 		SubjectName: plan.SubjectName, Item: item, Detail: plan.Detail,
-		Question: item.Question, Answer: answer, LastAttempt: item.Attempts+1 >= learning.MaxAttempts,
+		Question: item.Question, Answer: answer, Theory: theory, LastAttempt: item.Attempts+1 >= learning.MaxAttempts,
 	})
 	if err != nil {
 		return learning.Plan{}, err

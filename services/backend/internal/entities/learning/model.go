@@ -162,6 +162,8 @@ type CheckInput struct {
 	Detail      Detail
 	Question    string
 	Answer      string
+	// Theory is the saved lesson text, grounding grading and follow-up practice.
+	Theory string
 	// LastAttempt means no further practice follows a wrong answer.
 	LastAttempt bool
 }

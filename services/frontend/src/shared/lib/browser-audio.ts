@@ -39,7 +39,9 @@ export async function startRecording(): Promise<Recording> {
         new Promise((resolve, reject) => {
           recorder.onstop = () => {
             release()
-            resolve(new Blob(chunks, { type: recorder.mimeType }))
+            resolve(
+              prepareSpeech(new Blob(chunks, { type: recorder.mimeType })),
+            )
           }
           recorder.onerror = () => {
             release()
@@ -100,4 +102,55 @@ export async function playQuestion(
 export function createAudioUrl(blob: Blob) {
   const url = URL.createObjectURL(blob)
   return { url, dispose: () => URL.revokeObjectURL(url) }
+}
+
+// Spoken answers stop recording automatically after a minute and a half.
+export const MAX_ANSWER_SECONDS = 90
+
+// Speech recognition accepts short compressed recordings as they are. A longer
+// one becomes 16 kHz mono WAV, which the backend cuts at pauses into parts the
+// recognizer accepts. When the browser cannot decode it, the recording is sent
+// unchanged.
+export async function prepareSpeech(blob: Blob, shortSeconds = 20) {
+  if (typeof OfflineAudioContext === 'undefined' || !blob.size) return blob
+  try {
+    const rate = 16_000
+    const decoded = await new OfflineAudioContext(
+      1,
+      rate,
+      rate,
+    ).decodeAudioData(await blob.arrayBuffer())
+    if (decoded.duration <= shortSeconds) return blob
+    const length = Math.ceil(decoded.duration * rate)
+    const context = new OfflineAudioContext(1, length, rate)
+    const source = context.createBufferSource()
+    source.buffer = decoded
+    source.connect(context.destination)
+    source.start()
+    const samples = (await context.startRendering()).getChannelData(0)
+    const wav = new DataView(new ArrayBuffer(44 + samples.length * 2))
+    const text = (offset: number, value: string) =>
+      [...value].forEach((char, i) =>
+        wav.setUint8(offset + i, char.charCodeAt(0)),
+      )
+    text(0, 'RIFF')
+    wav.setUint32(4, 36 + samples.length * 2, true)
+    text(8, 'WAVEfmt ')
+    wav.setUint32(16, 16, true)
+    wav.setUint16(20, 1, true)
+    wav.setUint16(22, 1, true)
+    wav.setUint32(24, rate, true)
+    wav.setUint32(28, rate * 2, true)
+    wav.setUint16(32, 2, true)
+    wav.setUint16(34, 16, true)
+    text(36, 'data')
+    wav.setUint32(40, samples.length * 2, true)
+    samples.forEach((sample, i) => {
+      const clamped = Math.max(-1, Math.min(1, sample))
+      wav.setInt16(44 + i * 2, clamped * 0x7fff, true)
+    })
+    return new Blob([wav], { type: 'audio/wav' })
+  } catch {
+    return blob
+  }
 }

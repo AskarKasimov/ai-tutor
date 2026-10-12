@@ -194,6 +194,7 @@ func (r *Repository) Replace(ctx context.Context, subjectID, actorID string, par
 			IncludeInTest: outcome.IncludeInTest,
 			TaxonomyCode:  outcome.TaxonomyCode, AldLevelCode: outcome.ALDLevelCode,
 			Importance: importance, EducationalContent: stringValue(outcome.EducationalContent),
+			TheoryMinutes: minutes(outcome.TheoryMinutes), PracticeMinutes: minutes(outcome.PracticeMinutes),
 		}); err != nil {
 			return competencymap.ImportResult{}, err
 		}
@@ -282,4 +283,13 @@ func errCurriculumSectionConflict(code string) error {
 
 func errMissingSourceRow(index int) error {
 	return fmt.Errorf("source row index %d is missing", index)
+}
+
+// minutes stores an optional planning value of the map.
+func minutes(value *int) *int16 {
+	if value == nil {
+		return nil
+	}
+	converted := int16(*value)
+	return &converted
 }

@@ -183,6 +183,24 @@ type GenerationRunExample struct {
 	TaskID          string
 }
 
+type LearningMessage struct {
+	PlanID    string
+	Sequence  int64
+	ItemIndex int32
+	Role      string
+	Kind      string
+	Body      string
+	CreatedAt int64
+}
+
+type LearningPlan struct {
+	ID           string
+	OwnerID      string
+	DiagnosticID string
+	PlanData     []byte
+	CreatedAt    pgtype.Timestamptz
+}
+
 type LearningSession struct {
 	ID          string
 	UserID      string
@@ -225,6 +243,8 @@ type Outcome struct {
 	AldLevelID         *string
 	Importance         *int16
 	EducationalContent *string
+	TheoryMinutes      *int16
+	PracticeMinutes    *int16
 }
 
 type OutcomeSourceRow struct {

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"mime"
 	"mime/multipart"
 	"net"
 	"net/http"
@@ -62,7 +63,37 @@ func providerStatus(status int, failureCode string, stt bool) error {
 	}
 }
 
+// sttPartSeconds keeps each request within the short-form limit of GigaAM:
+// without its long-form VAD weights the model rejects audio over ~25 s.
+const sttPartSeconds = 20
+
+// Recognize transcribes the audio. A long 16-bit PCM WAV is sent in parts cut
+// at pauses, and their texts are joined.
 func (c *Client) Recognize(ctx context.Context, data []byte, media string) (string, error) {
+	base, _, _ := mime.ParseMediaType(media)
+	if base != "audio/wav" && base != "audio/x-wav" && base != "audio/wave" {
+		return c.recognize(ctx, data, media)
+	}
+	parts, ok := audio.SplitWAV(data, sttPartSeconds)
+	if !ok || len(parts) == 1 {
+		return c.recognize(ctx, data, media)
+	}
+	ctx, cancel := context.WithTimeout(ctx, c.timeout)
+	defer cancel()
+	texts := make([]string, 0, len(parts))
+	for _, part := range parts {
+		text, err := c.recognize(ctx, part, "audio/wav")
+		if err != nil {
+			return "", err
+		}
+		if text != "" {
+			texts = append(texts, text)
+		}
+	}
+	return strings.Join(texts, " "), nil
+}
+
+func (c *Client) recognize(ctx context.Context, data []byte, media string) (string, error) {
 	var body bytes.Buffer
 	writer := multipart.NewWriter(&body)
 	h := make(textproto.MIMEHeader)

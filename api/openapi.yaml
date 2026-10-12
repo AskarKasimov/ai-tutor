@@ -885,6 +885,153 @@ components:
         - competency_id
         - competency_name
       type: object
+    learninghttp.CreatePlanRequest:
+      additionalProperties: false
+      properties:
+        hours:
+          maximum: 100
+          minimum: 1
+          type: integer
+      required:
+        - hours
+      type: object
+    learninghttp.MessageResponse:
+      additionalProperties: false
+      properties:
+        created_at:
+          type: integer
+        item_index:
+          type: integer
+        kind:
+          enum:
+            - theory
+            - practice
+            - answer
+            - feedback
+          type: string
+        role:
+          enum:
+            - assistant
+            - user
+          type: string
+        sequence:
+          type: integer
+        text:
+          type: string
+      required:
+        - created_at
+        - item_index
+        - kind
+        - role
+        - sequence
+        - text
+      type: object
+    learninghttp.MessagesResponse:
+      additionalProperties: false
+      properties:
+        items:
+          items:
+            $ref: '#/components/schemas/learninghttp.MessageResponse'
+          type: array
+          uniqueItems: false
+      required:
+        - items
+      type: object
+    learninghttp.PlanItemResponse:
+      additionalProperties: false
+      properties:
+        attempts:
+          type: integer
+        competency_id:
+          type: string
+        competency_name:
+          type: string
+        in_plan:
+          type: boolean
+        index:
+          type: integer
+        outcome_id:
+          type: string
+        outcome_name:
+          type: string
+        practice_minutes:
+          type: integer
+        status:
+          enum:
+            - pending
+            - current
+            - passed
+            - review
+          type: string
+        theory_minutes:
+          type: integer
+      required:
+        - attempts
+        - competency_id
+        - competency_name
+        - in_plan
+        - index
+        - outcome_id
+        - outcome_name
+        - practice_minutes
+        - status
+        - theory_minutes
+      type: object
+    learninghttp.PlanResponse:
+      additionalProperties: false
+      properties:
+        current_index:
+          type:
+            - integer
+            - "null"
+        detail:
+          enum:
+            - brief
+            - standard
+            - deep
+          type: string
+        diagnostic_session_id:
+          type: string
+        hours:
+          type: integer
+        id:
+          type: string
+        items:
+          items:
+            $ref: '#/components/schemas/learninghttp.PlanItemResponse'
+          type: array
+          uniqueItems: false
+        pending_answer:
+          type:
+            - string
+            - "null"
+        planned_minutes:
+          type: integer
+        progress_percent:
+          type: integer
+        status:
+          enum:
+            - active
+            - completed
+          type: string
+        subject_id:
+          type: string
+        subject_name:
+          type: string
+      required:
+        - current_index
+        - detail
+        - diagnostic_session_id
+        - hours
+        - id
+        - items
+        - pending_answer
+        - planned_minutes
+        - progress_percent
+        - status
+        - subject_id
+        - subject_name
+      type: object
     subject.Subject:
       additionalProperties: false
       properties:
@@ -2816,6 +2963,95 @@ paths:
       tags:
         - Диагностика
       x-implementation: implemented
+  /diagnostic-sessions/{id}/learning-plan:
+    get:
+      parameters:
+        - description: ID диагностики
+          in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/learninghttp.PlanResponse'
+          description: OK
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unauthorized
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Not Found
+      security:
+        - accessCookie: []
+      summary: План обучения по диагностике
+      tags:
+        - Обучение
+      x-implementation: implemented
+    post:
+      description: 'План строится один раз: в него входят все ОР компетенций с ошибками, важные первыми, пока хватает часов; остальные — «если останется время». Повторный запрос возвращает уже созданный план.'
+      parameters:
+        - description: ID диагностики
+          in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/learninghttp.CreatePlanRequest'
+              description: Часы на изучение предмета
+              summary: request
+        description: Часы на изучение предмета
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/learninghttp.PlanResponse'
+          description: OK
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unauthorized
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Not Found
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Conflict
+        "422":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unprocessable Entity
+      security:
+        - accessCookie: []
+      summary: Создать план обучения
+      tags:
+        - Обучение
+      x-implementation: implemented
   /diagnostic-sessions/{id}/result:
     get:
       parameters:
@@ -3096,6 +3332,283 @@ paths:
       summary: Проверить API и подключение к PostgreSQL
       tags:
         - Сервис
+      x-implementation: implemented
+  /learning-plans/{id}:
+    get:
+      parameters:
+        - description: ID плана
+          in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/learninghttp.PlanResponse'
+          description: OK
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unauthorized
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Not Found
+      security:
+        - accessCookie: []
+      summary: План обучения
+      tags:
+        - Обучение
+      x-implementation: implemented
+  /learning-plans/{id}/answers:
+    post:
+      description: Расшифровка сохраняется сразу, затем наставник проверяет ответ. Верный ответ завершает тему; неверный получает разбор и новый вопрос, после трёх попыток тема помечается «повторить».
+      parameters:
+        - description: ID плана
+          in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              additionalProperties: false
+              properties:
+                audio:
+                  description: Голосовой ответ
+                  format: binary
+                  type: string
+              required:
+                - audio
+              type: object
+        description: Голосовой ответ
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/learninghttp.PlanResponse'
+          description: OK
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unauthorized
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Not Found
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Conflict
+        "413":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Request Entity Too Large
+        "415":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unsupported Media Type
+        "422":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unprocessable Entity
+        "502":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Bad Gateway
+        "503":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Service Unavailable
+        "504":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Gateway Timeout
+      security:
+        - accessCookie: []
+      summary: Ответить голосом на практику
+      tags:
+        - Обучение
+      x-implementation: implemented
+  /learning-plans/{id}/answers/retry:
+    post:
+      parameters:
+        - description: ID плана
+          in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/learninghttp.PlanResponse'
+          description: OK
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unauthorized
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Not Found
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Conflict
+        "502":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Bad Gateway
+        "503":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Service Unavailable
+        "504":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Gateway Timeout
+      security:
+        - accessCookie: []
+      summary: Повторить проверку ответа
+      tags:
+        - Обучение
+      x-implementation: implemented
+  /learning-plans/{id}/items/{index}/messages:
+    get:
+      parameters:
+        - description: ID плана
+          in: path
+          name: id
+          required: true
+          schema:
+            type: string
+        - description: Номер темы плана
+          in: path
+          name: index
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/learninghttp.MessagesResponse'
+          description: OK
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unauthorized
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Not Found
+      security:
+        - accessCookie: []
+      summary: Чат урока по теме плана
+      tags:
+        - Обучение
+      x-implementation: implemented
+  /learning-plans/{id}/open:
+    post:
+      description: Наставник пишет теорию и первый вопрос на закрепление один раз; повторный запрос ничего не меняет.
+      parameters:
+        - description: ID плана
+          in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/learninghttp.PlanResponse'
+          description: OK
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unauthorized
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Not Found
+        "502":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Bad Gateway
+        "503":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Service Unavailable
+        "504":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Gateway Timeout
+      security:
+        - accessCookie: []
+      summary: Открыть урок текущей темы
+      tags:
+        - Обучение
       x-implementation: implemented
   /subjects:
     get:

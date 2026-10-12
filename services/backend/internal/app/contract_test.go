@@ -17,6 +17,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/audio"
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/diagnostic"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/training"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/features/competency/infrastructure/csvparser"
 	trainingpg "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/training/infrastructure/postgres"
@@ -454,6 +455,59 @@ func TestOpenAPIResponses(t *testing.T) {
 	check("POST", "/auth/refresh", f.request("POST", "/auth/refresh", "", refresh))
 	check("POST", "/auth/logout", f.request("POST", "/auth/logout", "", refresh))
 	check("GET", "/health", f.request("GET", "/health", ""))
+	// Learning plan: a student whose diagnostic has a mistake gets a plan.
+	// The mock teacher writes lessons without a model.
+	f.app.cfg.APIMode = "mock"
+	f.handler = f.app.Handler()
+	access, _, learner := f.register(t, "learner@example.edu")
+	var learningVariant struct {
+		ID string `json:"id"`
+	}
+	json.Unmarshal(trainingJSON(f, access, "/variants", "contract-learning-variant", `{"subject_id":"subject:test"}`).Body.Bytes(), &learningVariant)
+	var learningStart struct {
+		ID string `json:"session_id"`
+	}
+	json.Unmarshal(trainingJSON(f, access, "/diagnostic-sessions", "contract-learning-start", `{"variant_id":"`+learningVariant.ID+`"}`).Body.Bytes(), &learningStart)
+	learningDiagnostic, err := f.app.diagnosticStore.Get(t.Context(), learner, learningStart.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	failedTask := learningDiagnostic.Variant.Competencies[0].Tasks[0]
+	if _, _, err = f.app.diagnosticStore.Reserve(t.Context(), learner, learningDiagnostic.ID, "learning-answer", "digest", failedTask.ID, "token"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = f.app.diagnosticStore.Accept(t.Context(), learner, learningDiagnostic.ID, "token", "learning-answer", "digest", diagnostic.Answer{VariantTaskID: failedTask.ID, CompetencyID: failedTask.CompetencyID, OutcomeID: failedTask.OutcomeID, Role: "main", Score: 0, Task: failedTask}, diagnostic.Transition{Status: diagnostic.StatusCompleted, CurrentCompetency: 1}); err != nil {
+		t.Fatal(err)
+	}
+	learningPath := "/diagnostic-sessions/" + learningDiagnostic.ID + "/learning-plan"
+	check("GET", "/diagnostic-sessions/{id}/learning-plan", f.request("GET", learningPath, "", access))
+	created := f.request("POST", learningPath, `{"hours":3}`, access)
+	check("POST", "/diagnostic-sessions/{id}/learning-plan", created)
+	check("POST", "/diagnostic-sessions/{id}/learning-plan", f.request("POST", learningPath, `{"hours":0}`, access))
+	check("GET", "/diagnostic-sessions/{id}/learning-plan", f.request("GET", learningPath, "", access))
+	var plan struct {
+		ID           string `json:"id"`
+		CurrentIndex int    `json:"current_index"`
+	}
+	if err = json.Unmarshal(created.Body.Bytes(), &plan); err != nil || plan.ID == "" {
+		t.Fatalf("learning plan: %s", created.Body.String())
+	}
+	planPath := "/learning-plans/" + plan.ID
+	check("GET", "/learning-plans/{id}", f.request("GET", planPath, "", access))
+	check("POST", "/learning-plans/{id}/answers", upload(f, planPath+"/answers", "audio", "voice.wav", "audio/wav", wavBytes(), access))
+	check("POST", "/learning-plans/{id}/open", f.request("POST", planPath+"/open", "", access))
+	check("GET", "/learning-plans/{id}/items/{index}/messages", f.request("GET", fmt.Sprintf("%s/items/%d/messages", planPath, plan.CurrentIndex), "", access))
+	check("POST", "/learning-plans/{id}/answers/retry", f.request("POST", planPath+"/answers/retry", "", access))
+	// A check that failed leaves the answer waiting; retry checks it again.
+	if _, err = f.pool.Exec(t.Context(), `UPDATE learning_plans SET plan_data = jsonb_set(plan_data, '{pending_answer}', '"Ответ"') WHERE id=$1`, plan.ID); err != nil {
+		t.Fatal(err)
+	}
+	check("POST", "/learning-plans/{id}/answers", upload(f, planPath+"/answers", "audio", "voice.wav", "audio/wav", wavBytes(), access))
+	check("POST", "/learning-plans/{id}/answers/retry", f.request("POST", planPath+"/answers/retry", "", access))
+	// The retried answer passed the topic; the next lesson takes a fresh answer.
+	check("POST", "/learning-plans/{id}/open", f.request("POST", planPath+"/open", "", access))
+	check("POST", "/learning-plans/{id}/answers", upload(f, planPath+"/answers", "audio", "voice.wav", "audio/wav", wavBytes(), access))
+
 	for path, node := range paths {
 		implemented := false
 		for _, value := range node.(map[string]any) {

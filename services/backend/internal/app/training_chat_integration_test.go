@@ -1,12 +1,16 @@
 package app
 
 import (
+	"bytes"
 	"context"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"net/textproto"
 	"strings"
 	"sync"
 	"testing"
@@ -24,7 +28,13 @@ import (
 
 func startTrainingChatFixture(t *testing.T) (*fixture, *trainingpg.Repository, *trainingpg.ChatRepository, string, training.Progress) {
 	t.Helper()
-	f, _, _, owner, diagnosticSession := trainingFixture(t, 2)
+	f, _, repository, chats, owner, progress := startTrainingChatFixtureWithAuth(t)
+	return f, repository, chats, owner, progress
+}
+
+func startTrainingChatFixtureWithAuth(t *testing.T) (*fixture, *http.Cookie, *trainingpg.Repository, *trainingpg.ChatRepository, string, training.Progress) {
+	t.Helper()
+	f, access, _, owner, diagnosticSession := trainingFixture(t, 2)
 	repository := trainingpg.New(f.pool)
 	service := trainingapp.New(repository, f.app.diagnosticStore, nil, nil, trainingsnapshot.Provider{}, security.IDGenerator{}, f.app.now)
 	preview, err := service.Preview(t.Context(), owner, diagnosticSession.ID)
@@ -39,7 +49,7 @@ func startTrainingChatFixture(t *testing.T) (*fixture, *trainingpg.Repository, *
 	if _, err = chats.Read(t.Context(), owner, progress.ID, progress.Current.ID, 0, 40); err != nil {
 		t.Fatal(err)
 	}
-	return f, repository, chats, owner, progress
+	return f, access, repository, chats, owner, progress
 }
 
 func TestTrainingChatReadCreatesOnePersistentWelcome(t *testing.T) {
@@ -317,3 +327,52 @@ func TestTrainingChatTutorAutomaticallyChecksAndEnablesNext(t *testing.T) {
 		t.Fatalf("next after automatic check: %+v %v", next, err)
 	}
 }
+
+func largeWavBytes(payloadSize int) []byte {
+	var b bytes.Buffer
+	b.WriteString("RIFF")
+	_ = binary.Write(&b, binary.LittleEndian, uint32(36+payloadSize))
+	b.WriteString("WAVEfmt ")
+	for _, v := range []any{uint32(16), uint16(1), uint16(1), uint32(16000), uint32(32000), uint16(2), uint16(16)} {
+		_ = binary.Write(&b, binary.LittleEndian, v)
+	}
+	b.WriteString("data")
+	_ = binary.Write(&b, binary.LittleEndian, uint32(payloadSize))
+	b.Write(make([]byte, payloadSize))
+	return b.Bytes()
+}
+
+func TestTrainingChatTurnAcceptsVoiceLargerThan32KiB(t *testing.T) {
+	f, access, _, _, _, progress := startTrainingChatFixtureWithAuth(t)
+	path := fmt.Sprintf("/training-sessions/%s/exercises/%s/chat/turns", progress.ID, progress.Current.ID)
+	var body bytes.Buffer
+	mw := multipart.NewWriter(&body)
+	_ = mw.WriteField("revision", "0")
+	_ = mw.WriteField("kind", "message")
+	h := make(textproto.MIMEHeader)
+	h.Set("Content-Disposition", `form-data; name="audio"; filename="speech.wav"`)
+	h.Set("Content-Type", "audio/wav")
+	part, err := mw.CreatePart(h)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 40 KiB audio payload to verify it exceeds the 32 KiB default middleware limit.
+	wav := largeWavBytes(40 * 1024)
+	_, _ = part.Write(wav)
+	_ = mw.Close()
+
+	req := httptest.NewRequest("POST", "https://api.example"+path, &body)
+	req.Header.Set("Content-Type", mw.FormDataContentType())
+	req.Header.Set("Idempotency-Key", "chat-large-voice-turn")
+	req.AddCookie(access)
+
+	rec := httptest.NewRecorder()
+	f.handler.ServeHTTP(rec, req)
+	if rec.Code == http.StatusRequestEntityTooLarge {
+		t.Fatalf("voice chat turn unexpectedly blocked by 32 KiB body limit: got %d %s", rec.Code, rec.Body.String())
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK, got %d %s", rec.Code, rec.Body.String())
+	}
+}
+

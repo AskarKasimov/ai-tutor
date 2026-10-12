@@ -17,7 +17,8 @@ func (a *App) middleware(next http.Handler) http.Handler {
 		}
 		if r.URL.Path == "/voice/transcriptions" ||
 			(strings.HasPrefix(r.URL.Path, "/admin/subjects/") && strings.HasSuffix(r.URL.Path, "/competency-map/import")) ||
-			((strings.HasPrefix(r.URL.Path, "/diagnostic-sessions/") || strings.HasPrefix(r.URL.Path, "/training-sessions/")) && strings.HasSuffix(r.URL.Path, "/answers")) {
+			((strings.HasPrefix(r.URL.Path, "/diagnostic-sessions/") || strings.HasPrefix(r.URL.Path, "/training-sessions/")) && strings.HasSuffix(r.URL.Path, "/answers")) ||
+			(strings.HasPrefix(r.URL.Path, "/training-sessions/") && strings.HasSuffix(r.URL.Path, "/chat/turns")) {
 			limit = a.cfg.MaxUploadBytes + 64*1024
 		}
 		r.Body = http.MaxBytesReader(w, r.Body, limit)

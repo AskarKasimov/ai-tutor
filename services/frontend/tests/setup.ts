@@ -10,10 +10,14 @@ if (!globalThis.ResizeObserver) {
 if (!Element.prototype.scrollIntoView) {
   Element.prototype.scrollIntoView = () => undefined
 }
-import { cleanup } from '@testing-library/react'
+import { cleanup, configure } from '@testing-library/react'
 import { afterEach } from 'vitest'
 
 afterEach(cleanup)
+// The first render of a route file loads code-split routes and their
+// dependencies (react-markdown and its micromark modules) cold; under a full
+// parallel run that can take longer than the default 1 s wait.
+configure({ asyncUtilTimeout: 5000 })
 Object.defineProperty(window, 'matchMedia', {
   configurable: true,
   value: (query: string): MediaQueryList => ({

@@ -246,6 +246,77 @@
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+.formattedQuestion {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  width: 100%;
+  max-width: 720px;
+}
+.questionLeadTitle {
+  margin: 18px 0 8px;
+}
+.questionParagraph {
+  font-size: 16px;
+  line-height: 24px;
+  color: var(--app-ink, #0f172a);
+  background: var(--app-soft, #f8fafc);
+  padding: 12px 16px;
+  border-radius: 10px;
+  border-left: 3px solid var(--app-accent, #4f46e5);
+}
+.taskTableWrapper {
+  width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--app-border, #e2e8f0);
+  border-radius: 12px;
+  background: white;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  margin: 6px 0 16px;
+  -webkit-overflow-scrolling: touch;
+}
+.taskTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+  line-height: 20px;
+  text-align: left;
+}
+.taskTh {
+  background: var(--app-soft, #f1f5f9);
+  color: var(--app-ink, #0f172a);
+  font-weight: 600;
+  padding: 10px 14px;
+  border-bottom: 2px solid var(--app-border, #cbd5e1);
+  white-space: nowrap;
+}
+.taskTr {
+  transition: background-color 0.15s ease;
+  &:nth-child(even) {
+    background-color: #f8fafc;
+  }
+  &:hover {
+    background-color: #f1f5f9;
+  }
+  &:last-child .taskTd {
+    border-bottom: none;
+  }
+}
+.taskTd {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--app-border, #e2e8f0);
+  color: var(--app-ink, #1e293b);
+  font-variant-numeric: tabular-nums;
+}
+.align_left {
+  text-align: left;
+}
+.align_center {
+  text-align: center;
+}
+.align_right {
+  text-align: right;
+}
 .trainingInstruction {
   margin-top: 24px;
   color: var(--app-muted);
@@ -758,6 +829,123 @@
     margin-bottom: 0;
   }
 }
+.summaryCardsGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
+  margin-top: 4px;
+}
+.summaryCard {
+  border-radius: 12px;
+  padding: 16px 18px;
+  display: grid;
+  gap: 10px;
+  border: 1px solid transparent;
+}
+.summaryCardGood {
+  background: #f0fdf4;
+  border-color: #bbf7d0;
+  border-left: 4px solid #16a34a;
+}
+.summaryCardWarning,
+.summaryCardBad {
+  background: #fffbeb;
+  border-color: #fde68a;
+  border-left: 4px solid #f59e0b;
+}
+.summaryCardHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+}
+.summaryCardTitleGood {
+  font-size: 14px;
+  font-weight: 700;
+  color: #15803d;
+  letter-spacing: 0.01em;
+}
+.summaryCardTitleWarning,
+.summaryCardTitleBad {
+  font-size: 14px;
+  font-weight: 700;
+  color: #b45309;
+  letter-spacing: 0.01em;
+}
+.summaryCardBody {
+  font-size: 14px;
+  line-height: 21px;
+  color: var(--app-ink);
+}
+.summaryCardList {
+  list-style: none;
+  padding-left: 0;
+  margin: 0;
+  display: grid;
+  gap: 6px;
+  li {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    line-height: 20px;
+    &::before {
+      content: '•';
+      color: var(--app-muted);
+      flex-shrink: 0;
+    }
+  }
+}
+.recommendationsCard {
+  border-radius: 12px;
+  padding: 16px 18px;
+  display: grid;
+  gap: 12px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-left: 4px solid var(--app-accent, #4f46e5);
+  margin-top: 6px;
+}
+.recommendationsHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+}
+.recommendationsTitle {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--app-accent-strong, #3730a3);
+  letter-spacing: 0.01em;
+}
+.recommendationsList {
+  list-style: none;
+  padding-left: 0;
+  margin: 0;
+  display: grid;
+  gap: 8px;
+  li {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    font-size: 14px;
+    line-height: 20px;
+    color: var(--app-ink, #0f172a);
+  }
+}
+.recNumber {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--app-soft, #e0e7ff);
+  color: var(--app-accent, #4f46e5);
+  font-size: 11px;
+  font-weight: 700;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
 .feedbackGroup {
   display: grid;
   gap: 8px;
@@ -778,7 +966,8 @@
 .iconRec {
   color: var(--app-accent);
 }
-.iconPartial {
+.iconPartial,
+.iconWarning {
   color: #d97706;
 }
 .feedbackList {

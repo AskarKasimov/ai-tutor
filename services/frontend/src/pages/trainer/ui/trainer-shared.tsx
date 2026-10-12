@@ -13,10 +13,13 @@ import {
   SkipForward,
   Square,
 } from 'lucide-react'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { AccountMenu } from '@/features/auth'
+import Markdown, { type Components } from 'react-markdown'
+import remarkBreaks from 'remark-breaks'
+import remarkGfm from 'remark-gfm'
 import { LiveWaveform } from './trainer-answer'
 import styles from './session.module.scss'
 
@@ -285,6 +288,70 @@ export function QuestionNavigator({
   )
 }
 
+const markdownPlugins = [remarkGfm, remarkBreaks]
+
+// The task text is Markdown: GFM tables and lists, and single line breaks are
+// kept. The first paragraph is the task heading; raw HTML is not rendered.
+export function FormattedQuestionContent({
+  question,
+  headingLevel = 'h1',
+  className,
+}: {
+  question: string
+  headingLevel?: 'h1' | 'h2' | 'h3'
+  className?: string
+}) {
+  const long = question.length > 300
+  // Stable element renderers: new ones on every render would remount the
+  // whole task text.
+  const components = useMemo<Components>(
+    () => ({
+      p: ({ node, children }) =>
+        node?.position?.start.line === 1 ? (
+          <Heading
+            as={headingLevel}
+            className={`${styles.questionTitle} ${long ? styles.longQuestion : ''}`}
+          >
+            {children}
+          </Heading>
+        ) : (
+          <p className={styles.questionParagraph}>{children}</p>
+        ),
+      ul: ({ children }) => <ul className={styles.questionList}>{children}</ul>,
+      ol: ({ children, start }) => (
+        <ol className={styles.questionList} start={start}>
+          {children}
+        </ol>
+      ),
+      table: ({ children }) => (
+        <div className={styles.taskTableWrapper}>
+          <table className={styles.taskTable}>{children}</table>
+        </div>
+      ),
+      th: ({ children, style }) => (
+        <th className={styles.taskTh} style={style}>
+          {children}
+        </th>
+      ),
+      tr: ({ children }) => <tr className={styles.taskTr}>{children}</tr>,
+      td: ({ children, style }) => (
+        <td className={styles.taskTd} style={style}>
+          {children}
+        </td>
+      ),
+    }),
+    [headingLevel, long],
+  )
+  if (!question.trim()) return null
+  return (
+    <div className={`${styles.formattedQuestion} ${className ?? ''}`}>
+      <Markdown remarkPlugins={markdownPlugins} components={components}>
+        {question}
+      </Markdown>
+    </div>
+  )
+}
+
 export function TrainerQuestion({
   badge,
   eyebrow,
@@ -318,12 +385,7 @@ export function TrainerQuestion({
             </Text>
           ))}
       </div>
-      <Heading
-        as="h1"
-        className={`${styles.questionTitle} ${question.length > 300 ? styles.longQuestion : ''}`}
-      >
-        {question}
-      </Heading>
+      <FormattedQuestionContent question={question} headingLevel="h1" />
       {/* The spoken instruction sits right under the task text; options
           follow under their own title. */}
       {instruction && <div className={styles.instruction}>{instruction}</div>}

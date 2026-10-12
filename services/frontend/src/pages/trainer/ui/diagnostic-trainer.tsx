@@ -1,11 +1,12 @@
 import { Button, Heading, Text } from '@radix-ui/themes'
 import {
-  Check,
+  AlertTriangle,
+  BookOpen,
+  CheckCircle2,
   ChevronRight,
   Mic,
   RotateCcw,
   Sparkles,
-  TrendingUp,
   Zap,
 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
@@ -33,7 +34,9 @@ import {
   TrainerTranscript,
   TrainerWorkspace,
   sessionStyles,
+  FormattedQuestionContent,
 } from './trainer-shared'
+import { normalizeText, parseStructuredSummary } from '@/entities/assessment'
 import { diagnosticPercent } from '../model/diagnostic-percent'
 import styles from '@/pages/trainer/ui/trainer-layout.module.scss'
 import diagnosticStyles from '@/pages/trainer/ui/diagnostic.module.scss'
@@ -575,7 +578,10 @@ function DiagnosticSummary({
                     key={answer.variant_task_id}
                     className={diagnosticStyles.answer}
                   >
-                    <Heading as="h3">{answer.task.question}</Heading>
+                    <FormattedQuestionContent
+                      question={answer.task.question}
+                      headingLevel="h3"
+                    />
                     <Text as="p" className={styles.eyebrow}>
                       {answer.task.competency_name} ·{' '}
                       {t(`diagnostic.${answer.role}`)}
@@ -631,32 +637,6 @@ function FeedbackPreparing() {
   )
 }
 
-// A coloured feedback card: good (already works), almost (partly mastered)
-// and next (what to work on).
-function FeedbackCard({
-  tone,
-  icon,
-  title,
-  children,
-}: {
-  tone: 'good' | 'almost' | 'next'
-  icon: ReactNode
-  title: string
-  children: ReactNode
-}) {
-  return (
-    <section className={diagnosticStyles.feedbackCard} data-tone={tone}>
-      <Heading as="h3">
-        <span className={diagnosticStyles.feedbackIcon} aria-hidden="true">
-          {icon}
-        </span>
-        {title}
-      </Heading>
-      {children}
-    </section>
-  )
-}
-
 function DiagnosticOverallFeedback({
   feedback,
 }: {
@@ -664,33 +644,16 @@ function DiagnosticOverallFeedback({
 }) {
   const { t } = useTranslation()
   const value = feedback.data
-  // What to work on next: the recommendations in their order, then confirmed
-  // gaps they do not cover, each with its own advice.
-  const covered = new Set(
-    value?.training_recommendations.map((item) => item.outcome_id),
-  )
-  const steps = value
-    ? [
-        ...value.training_recommendations.map((item) => ({
-          id: item.outcome_id,
-          title: `${item.competency_name} — ${item.outcome_name}`,
-          text: item.rationale,
-        })),
-        ...value.confirmed_gaps
-          .filter((item) => !covered.has(item.outcome_id))
-          .map((item) => ({
-            id: item.outcome_id,
-            title: `${item.competency_name} — ${item.outcome_name}`,
-            text: item.advice,
-          })),
-      ]
-    : []
   return (
     <section
       className={diagnosticStyles.overallFeedback}
       aria-label={t('diagnostic.overallFeedback')}
     >
-      <Heading as="h2">{t('diagnostic.overallFeedback')}</Heading>
+      <div className={styles.feedbackHeaderTitle}>
+        <Sparkles size={20} className={styles.sparkleIcon} aria-hidden="true" />
+        <Heading as="h2">{t('diagnostic.overallFeedback')}</Heading>
+      </div>
+
       {feedback.isPending ? (
         <Text as="p" role="status">
           {t('diagnostic.feedbackLoading')}
@@ -708,68 +671,139 @@ function DiagnosticOverallFeedback({
           </Button>
         </div>
       ) : value ? (
-        <>
-          <Text as="p" className={diagnosticStyles.overallSummary}>
-            {value.summary}
-          </Text>
-          <div className={diagnosticStyles.feedbackCards}>
-            {value.strengths.length > 0 && (
-              <FeedbackCard
-                tone="good"
-                icon={<Check size={18} strokeWidth={2.5} />}
-                title={t('diagnostic.strengths')}
-              >
-                <ul>
-                  {value.strengths.map((item, index) => (
-                    <li key={index}>{item}</li>
-                  ))}
-                </ul>
-              </FeedbackCard>
-            )}
-            {value.partial_competencies.length > 0 && (
-              <FeedbackCard
-                tone="almost"
-                icon={<TrendingUp size={18} strokeWidth={2.5} />}
-                title={t('diagnostic.partialCompetencies')}
-              >
-                <ul>
-                  {value.partial_competencies.map((item) => (
-                    <li key={item.competency_id}>
-                      <strong>{item.competency_name}</strong> {item.details}
-                    </li>
-                  ))}
-                </ul>
-              </FeedbackCard>
-            )}
-            {steps.length > 0 && (
-              <FeedbackCard
-                tone="next"
-                icon={<Zap size={18} fill="currentColor" />}
-                title={t('diagnostic.recommendations')}
-              >
-                <ol className={diagnosticStyles.feedbackSteps}>
-                  {steps.map((item, index) => (
-                    <li key={item.id}>
-                      <span
-                        className={diagnosticStyles.feedbackStepNumber}
-                        aria-hidden="true"
-                      >
-                        {index + 1}
-                      </span>
-                      <span className={diagnosticStyles.feedbackStepText}>
-                        <strong>{item.title}</strong>
-                        <span>{item.text}</span>
-                      </span>
-                    </li>
-                  ))}
-                </ol>
-              </FeedbackCard>
-            )}
-          </div>
-          {/* Unverified competencies stay in the API but are not shown: the
-              overall feedback names only what was checked. */}
-        </>
+        <OverallFeedbackContent value={value} />
       ) : null}
     </section>
+  )
+}
+
+type OverallFeedback = NonNullable<
+  ReturnType<typeof useDiagnosticFeedbackQuery>['data']
+>
+
+// The model summary splits into a general paragraph, "what is good" and "what
+// to work on". Cards are filled from the report when the model leaves a part
+// out and are hidden when there is nothing to say: no invented praise.
+function OverallFeedbackContent({ value }: { value: OverallFeedback }) {
+  const { t } = useTranslation()
+  const structured = parseStructuredSummary(value.summary || '')
+  const generalText =
+    structured.generalText || normalizeText(value.summary || '')
+  // What to work on next: the recommendations in their order, then confirmed
+  // gaps they do not cover, each with its own advice.
+  const covered = new Set(
+    value.training_recommendations.map((item) => item.outcome_id),
+  )
+  const recommendations = [
+    ...value.training_recommendations.map((item) => ({
+      id: item.outcome_id,
+      title: `${item.competency_name} — ${item.outcome_name}`,
+      text: item.rationale,
+    })),
+    ...value.confirmed_gaps
+      .filter((gap) => !covered.has(gap.outcome_id))
+      .map((gap) => ({
+        id: gap.outcome_id,
+        title: `${gap.competency_name} — ${gap.outcome_name}`,
+        text: gap.advice,
+      })),
+  ]
+  const good = structured.whatIsGood ? (
+    <p className={styles.feedbackParagraph}>{structured.whatIsGood}</p>
+  ) : value.strengths.length > 0 ? (
+    <ul className={styles.summaryCardList}>
+      {value.strengths.map((item, index) => (
+        <li key={index}>{normalizeText(item)}</li>
+      ))}
+    </ul>
+  ) : null
+  const work = structured.whatNeedsWork ? (
+    <p className={styles.feedbackParagraph}>{structured.whatNeedsWork}</p>
+  ) : value.partial_competencies.length > 0 ? (
+    <ul className={styles.summaryCardList}>
+      {value.partial_competencies.map((part) => (
+        <li key={part.competency_id}>
+          <span>
+            <strong>{part.competency_name}:</strong> {part.details}
+          </span>
+        </li>
+      ))}
+    </ul>
+  ) : null
+  return (
+    <div className={styles.feedbackContent}>
+      {generalText && (
+        <div className={styles.feedbackSummaryText}>
+          {generalText
+            .split(/\n+/)
+            .filter((paragraph) => paragraph.trim())
+            .map((paragraph, index) => (
+              <p key={index} className={styles.feedbackParagraph}>
+                {paragraph.trim()}
+              </p>
+            ))}
+        </div>
+      )}
+      {(good || work) && (
+        <div className={styles.summaryCardsGrid}>
+          {good && (
+            <section
+              className={`${styles.summaryCard} ${styles.summaryCardGood}`}
+            >
+              <h3 className={styles.summaryCardHeader}>
+                <CheckCircle2
+                  size={18}
+                  className={styles.iconSuccess}
+                  aria-hidden="true"
+                />
+                <span className={styles.summaryCardTitleGood}>
+                  {t('diagnostic.feedbackGood')}
+                </span>
+              </h3>
+              <div className={styles.summaryCardBody}>{good}</div>
+            </section>
+          )}
+          {work && (
+            <section
+              className={`${styles.summaryCard} ${styles.summaryCardWarning}`}
+            >
+              <h3 className={styles.summaryCardHeader}>
+                <AlertTriangle
+                  size={18}
+                  className={styles.iconWarning}
+                  aria-hidden="true"
+                />
+                <span className={styles.summaryCardTitleWarning}>
+                  {t('diagnostic.feedbackWork')}
+                </span>
+              </h3>
+              <div className={styles.summaryCardBody}>{work}</div>
+            </section>
+          )}
+        </div>
+      )}
+      {recommendations.length > 0 && (
+        <section className={styles.recommendationsCard}>
+          <h3 className={styles.recommendationsHeader}>
+            <BookOpen size={18} className={styles.iconRec} aria-hidden="true" />
+            <span className={styles.recommendationsTitle}>
+              {t('diagnostic.recommendations')}
+            </span>
+          </h3>
+          <ol className={styles.recommendationsList}>
+            {recommendations.map((item, index) => (
+              <li key={item.id}>
+                <span className={styles.recNumber} aria-hidden="true">
+                  {index + 1}
+                </span>
+                <span>
+                  <strong>{item.title}:</strong> {item.text}
+                </span>
+              </li>
+            ))}
+          </ol>
+        </section>
+      )}
+    </div>
   )
 }

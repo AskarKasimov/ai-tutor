@@ -11,11 +11,12 @@ import (
 // Teacher writes fixed lessons. An answer is wrong when it says "не знаю".
 type Teacher struct{}
 
-func (Teacher) Lesson(_ context.Context, input learning.LessonInput) (learning.Lesson, error) {
-	return learning.Lesson{
-		Theory:   "Разберём «" + input.Item.OutcomeName + "». Это демонстрационная теория: здесь наставник объясняет главное по теме.",
-		Question: "Объясните своими словами, как вы применили бы «" + input.Item.OutcomeName + "» на практике?",
-	}, nil
+func (Teacher) Theory(_ context.Context, input learning.LessonInput) (string, error) {
+	return "Разберём «" + input.Item.OutcomeName + "». Это демонстрационная теория: здесь наставник объясняет главное по теме.", nil
+}
+
+func (Teacher) Practice(_ context.Context, input learning.LessonInput, _ string) (string, error) {
+	return "Объясните своими словами, как вы применили бы «" + input.Item.OutcomeName + "» на практике?", nil
 }
 
 func (Teacher) Check(_ context.Context, input learning.CheckInput) (learning.Check, error) {

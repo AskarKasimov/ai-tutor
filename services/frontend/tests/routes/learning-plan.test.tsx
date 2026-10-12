@@ -63,7 +63,12 @@ const lesson: LearningMessage[] = [
   },
 ]
 
-function setup(existing: LearningPlan | null) {
+function setup(
+  existing: LearningPlan | null,
+  configure?: (
+    api: ReturnType<typeof createAppDependencies>['learningPlan'],
+  ) => void,
+) {
   const dependencies = createAppDependencies()
   const api = dependencies.learningPlan
   vi.spyOn(api, 'findLearningPlan').mockResolvedValue(existing)
@@ -97,6 +102,7 @@ function setup(existing: LearningPlan | null) {
     role: 'student',
     created_at: 0,
   })
+  configure?.(api)
   render(
     <AppProviders queryClient={queryClient} dependencies={dependencies}>
       <LearningPlanEntry
@@ -176,4 +182,86 @@ it('shows the finished plan with topics to review', async () => {
   )
   expect(await screen.findByText('План пройден!')).toBeInTheDocument()
   expect(screen.getByText(/1 тему стоит повторить/)).toBeInTheDocument()
+})
+
+it('shows theory while practice is pending and enables recording after it arrives', async () => {
+  let theoryReady = false
+  let practiceReady = false
+  let finishOpen!: (value: LearningPlan) => void
+  const pendingOpen = new Promise<LearningPlan>((resolve) => {
+    finishOpen = resolve
+  })
+  const { open } = setup(plan(), (api) => {
+    vi.mocked(api.readLearningMessages).mockImplementation(async () =>
+      practiceReady ? lesson : theoryReady ? lesson.slice(0, 1) : [],
+    )
+    vi.mocked(api.openLesson).mockReturnValue(pendingOpen)
+  })
+  await waitFor(() => expect(open).toHaveBeenCalledTimes(1))
+  theoryReady = true
+  await waitFor(
+    () => expect(screen.getByText('Теория по теме')).toBeVisible(),
+    { timeout: 4000 },
+  )
+  expect(
+    screen.getByText('Практика готовится — пока можно прочитать теорию.'),
+  ).toBeVisible()
+  expect(screen.queryByText('Практический вопрос?')).toBeNull()
+  expect(screen.getByRole('button', { name: 'Записать ответ' })).toBeDisabled()
+  practiceReady = true
+  finishOpen(plan())
+  expect(await screen.findByText('Практический вопрос?')).toBeVisible()
+  await waitFor(() =>
+    expect(
+      screen.getByRole('button', { name: 'Записать ответ' }),
+    ).toBeEnabled(),
+  )
+  expect(screen.getByText('Теория по теме')).toBeVisible()
+  expect(
+    screen.queryByText('Практика готовится — пока можно прочитать теорию.'),
+  ).toBeNull()
+})
+
+it('keeps theory after a practice failure and lets the student retry', async () => {
+  let theoryReady = false
+  let practiceReady = false
+  const { open } = setup(plan(), (api) => {
+    vi.mocked(api.readLearningMessages).mockImplementation(async () =>
+      practiceReady ? lesson : theoryReady ? lesson.slice(0, 1) : [],
+    )
+    vi.mocked(api.openLesson)
+      .mockImplementationOnce(async () => {
+        theoryReady = true
+        throw new Error('practice unavailable')
+      })
+      .mockImplementation(async () => {
+        practiceReady = true
+        return plan()
+      })
+  })
+  expect(await screen.findByText('Теория по теме')).toBeVisible()
+  expect(await screen.findByRole('alert')).toHaveTextContent(
+    'Наставник не ответил. Попробуйте ещё раз.',
+  )
+  expect(screen.getByRole('button', { name: 'Записать ответ' })).toBeDisabled()
+  fireEvent.click(screen.getByRole('button', { name: 'Попробовать снова' }))
+  expect(await screen.findByText('Практический вопрос?')).toBeVisible()
+  expect(open).toHaveBeenCalledTimes(2)
+  expect(screen.getAllByText('Теория по теме')).toHaveLength(1)
+})
+
+it('resumes an incomplete lesson after reopening the page', async () => {
+  let practiceReady = false
+  const { open } = setup(plan(), (api) => {
+    vi.mocked(api.readLearningMessages).mockImplementation(async () =>
+      practiceReady ? lesson : lesson.slice(0, 1),
+    )
+    vi.mocked(api.openLesson).mockImplementation(async () => {
+      practiceReady = true
+      return plan()
+    })
+  })
+  expect(await screen.findByText('Практический вопрос?')).toBeVisible()
+  expect(open).toHaveBeenCalledTimes(1)
+  expect(screen.getAllByText('Теория по теме')).toHaveLength(1)
 })

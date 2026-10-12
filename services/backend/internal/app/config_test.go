@@ -220,3 +220,10 @@ func TestConfigLoadsTTSSettings(t *testing.T) {
 		t.Fatalf("TTS settings ignored: %+v", cfg)
 	}
 }
+
+func TestHTTPWriteTimeoutAllowsTheoryThenPractice(t *testing.T) {
+	cfg := Config{TutorTimeout: 2 * time.Minute}
+	if cfg.HTTPWriteTimeout() < 2*cfg.TutorTimeout+30*time.Second {
+		t.Fatal("HTTP response deadline cuts off sequential theory and practice")
+	}
+}

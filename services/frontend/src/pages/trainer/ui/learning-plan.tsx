@@ -220,7 +220,10 @@ function LearningPlanScreen({
     userId,
     plan.id,
     index,
-    isCurrent && actions.answer.isPending,
+    isCurrent &&
+      (actions.open.isPending ||
+        actions.answer.isPending ||
+        actions.retry.isPending),
   )
   const { mutate: open } = actions.open
   // The current lesson is written once, as soon as its topic is reached.
@@ -229,7 +232,7 @@ function LearningPlanScreen({
       !isCurrent ||
       index === null ||
       !messages.isSuccess ||
-      messages.data.length > 0 ||
+      messages.data.some((message) => message.kind === 'practice') ||
       openFor.current === index
     )
       return
@@ -299,7 +302,11 @@ function LearningPlanScreen({
                 <LessonControls
                   plan={plan}
                   actions={actions}
-                  lessonReady={!!messages.data?.length}
+                  lessonReady={
+                    !!messages.data?.some(
+                      (message) => message.kind === 'practice',
+                    )
+                  }
                   onReopen={() => {
                     openFor.current = index
                     open()
@@ -444,8 +451,11 @@ function Chat({
   const { t } = useTranslation()
   const end = useRef<HTMLLIElement>(null)
   useEffect(() => {
+    // Appending practice must not pull the student away from the theory.
+    if (!pendingAnswer && !messages.some((message) => message.role === 'user'))
+      return
     end.current?.scrollIntoView?.({ block: 'end', behavior: 'smooth' })
-  }, [messages.length, thinking])
+  }, [messages, thinking, pendingAnswer])
   const label = (message: LearningMessage) =>
     message.kind === 'theory'
       ? t('learning.theory')
@@ -485,7 +495,15 @@ function Chat({
       {thinking && (
         <li className={`${styles.assistant} ${styles.thinking}`}>
           <span className={styles.role}>{t('learning.teacher')}</span>
-          {writingLesson && <Text size="2">{t('learning.writingLesson')}</Text>}
+          {writingLesson && (
+            <Text size="2">
+              {t(
+                messages.some((message) => message.kind === 'theory')
+                  ? 'learning.preparingPractice'
+                  : 'learning.writingLesson',
+              )}
+            </Text>
+          )}
           <span className={styles.dots} role="status">
             <span />
             <span />

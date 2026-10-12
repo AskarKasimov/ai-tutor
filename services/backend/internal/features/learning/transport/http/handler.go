@@ -208,9 +208,9 @@ func (h *Handler) Messages(w http.ResponseWriter, r *http.Request) {
 	httpx.JSON(w, 200, response)
 }
 
-// Open writes the lesson of the current topic: theory and a practice question.
+// Open saves theory first, then prepares and reviews the practice question.
 // @Summary Открыть урок текущей темы
-// @Description Наставник пишет теорию и первый вопрос на закрепление один раз; повторный запрос ничего не меняет.
+// @Description Теория сохраняется сразу и доступна через сообщения темы, пока готовится практика. Ответ возвращается после готовности вопроса. При ошибке практики теория сохраняется; повторный запрос продолжает с неё. Готовый урок не пересоздаётся.
 // @Tags Обучение
 // @Security accessCookie
 // @Produce json

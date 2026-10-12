@@ -26,7 +26,8 @@ type Voice interface {
 
 // Teacher writes lessons and checks practice answers.
 type Teacher interface {
-	Lesson(ctx context.Context, input learning.LessonInput) (learning.Lesson, error)
+	Theory(ctx context.Context, input learning.LessonInput) (string, error)
+	Practice(ctx context.Context, input learning.LessonInput, theory string) (string, error)
 	Check(ctx context.Context, input learning.CheckInput) (learning.Check, error)
 }
 
@@ -219,8 +220,8 @@ func BuildItems(outcomes []learning.Outcome, hours int) ([]learning.Item, learni
 	}
 }
 
-// Open writes the lesson of the current item once: theory and the first
-// practice question. A lesson already written is left as it is.
+// Open saves theory as soon as it is ready, then prepares the first practice
+// question. Retrying resumes from the saved theory; completed lessons stay intact.
 func (s *Service) Open(ctx context.Context, owner, id string) (learning.Plan, error) {
 	plan, err := s.repo.Get(ctx, owner, id)
 	if err != nil {
@@ -233,7 +234,28 @@ func (s *Service) Open(ctx context.Context, owner, id string) (learning.Plan, er
 	if s.teacher == nil {
 		return learning.Plan{}, fault.New(fault.Unavailable, "TEACHER_UNAVAILABLE", "Наставник временно недоступен.")
 	}
-	lesson, err := s.teacher.Lesson(ctx, learning.LessonInput{SubjectName: plan.SubjectName, Item: plan.Items[index], Detail: plan.Detail})
+	if plan.Items[index].Theory == "" {
+		theory, err := s.teacher.Theory(ctx, learning.LessonInput{SubjectName: plan.SubjectName, Item: plan.Items[index], Detail: plan.Detail})
+		if err != nil {
+			return learning.Plan{}, err
+		}
+		now := s.now().Unix()
+		plan, err = s.repo.Update(ctx, owner, id, func(plan *learning.Plan) ([]learning.Message, error) {
+			// Concurrent opens share whichever theory was saved first.
+			if plan.Current != index || plan.Items[index].Question != "" || plan.Items[index].Theory != "" {
+				return nil, nil
+			}
+			plan.Items[index].Theory = theory
+			return []learning.Message{{ItemIndex: index, Role: learning.RoleAssistant, Kind: learning.KindTheory, Text: theory, CreatedAt: now}}, nil
+		})
+		if err != nil {
+			return learning.Plan{}, err
+		}
+		if plan.Current != index || plan.Items[index].Question != "" {
+			return plan, nil
+		}
+	}
+	question, err := s.teacher.Practice(ctx, learning.LessonInput{SubjectName: plan.SubjectName, Item: plan.Items[index], Detail: plan.Detail}, plan.Items[index].Theory)
 	if err != nil {
 		return learning.Plan{}, err
 	}
@@ -243,10 +265,9 @@ func (s *Service) Open(ctx context.Context, owner, id string) (learning.Plan, er
 		if plan.Current != index || plan.Items[index].Question != "" {
 			return nil, nil
 		}
-		plan.Items[index].Question = lesson.Question
+		plan.Items[index].Question = question
 		return []learning.Message{
-			{ItemIndex: index, Role: learning.RoleAssistant, Kind: learning.KindTheory, Text: lesson.Theory, CreatedAt: now},
-			{ItemIndex: index, Role: learning.RoleAssistant, Kind: learning.KindPractice, Text: lesson.Question, CreatedAt: now},
+			{ItemIndex: index, Role: learning.RoleAssistant, Kind: learning.KindPractice, Text: question, CreatedAt: now},
 		}, nil
 	})
 }

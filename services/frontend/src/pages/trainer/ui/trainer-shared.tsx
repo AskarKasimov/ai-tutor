@@ -1,4 +1,4 @@
-import { Button, Heading, Text } from '@radix-ui/themes'
+import { Heading, Text } from '@radix-ui/themes'
 import {
   Check,
   ChevronDown,
@@ -159,8 +159,18 @@ export function TrainerShell({
   )
 }
 
-export function TrainerWorkspace({ children }: { children: ReactNode }) {
-  return <main className={styles.workspace}>{children}</main>
+export function TrainerWorkspace({
+  children,
+  variant,
+}: {
+  children: ReactNode
+  variant?: 'training'
+}) {
+  return (
+    <main className={styles.workspace} data-variant={variant}>
+      {children}
+    </main>
+  )
 }
 
 // Numbers of the session questions; arrows scroll the list, it is not
@@ -532,8 +542,6 @@ export function TrainerCapturePanel({
   micError,
   answered,
   onMic,
-  onSkip,
-  skipDisabled,
   children,
 }: {
   stage: 'ready' | 'permission' | 'recording' | 'processing' | 'error'
@@ -544,8 +552,6 @@ export function TrainerCapturePanel({
   micError?: { title: string; help: string }
   answered?: 'accepted' | 'skipped'
   onMic?: () => void
-  onSkip?: () => void
-  skipDisabled?: boolean
   children: ReactNode
 }) {
   const { t } = useTranslation()
@@ -578,6 +584,8 @@ export function TrainerCapturePanel({
         {t('diagnostic.answerHelp')}
       </Text>
       {speech}
+      {/* The microphone sits at the bottom of the panel, under the hand. */}
+      <div className={styles.spacer} />
       {micError ? (
         <div className={styles.micError} role="alert">
           <span className={styles.micErrorIcon} aria-hidden="true">
@@ -649,18 +657,6 @@ export function TrainerCapturePanel({
         </Text>
       )}
       <div className={styles.actions}>{children}</div>
-      <div className={styles.spacer} />
-      {onSkip && !answered && (
-        <Button
-          variant="outline"
-          color="gray"
-          className={styles.skip}
-          disabled={skipDisabled}
-          onClick={onSkip}
-        >
-          {t('session.skipQuestion')}
-        </Button>
-      )}
     </TrainerAnswerPanel>
   )
 }

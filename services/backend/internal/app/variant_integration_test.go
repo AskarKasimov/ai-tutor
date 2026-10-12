@@ -41,6 +41,7 @@ func variantMapCSV(t *testing.T) []byte {
 }
 
 func TestVariantCreateReadIdempotencyOwnershipAndHistoricalReader(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t)
 	access, _, ownerID := f.register(t, "variant-owner@example.edu")
 	admin := f.admin(t)
@@ -209,6 +210,7 @@ func TestVariantCreateReadIdempotencyOwnershipAndHistoricalReader(t *testing.T) 
 }
 
 func TestVariantsAreScopedBySubjectAndRetainSubjectSnapshot(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t)
 	access, _, _ := f.register(t, "subject-variant-owner@example.edu")
 	admin := f.admin(t)
@@ -299,6 +301,7 @@ func TestVariantsAreScopedBySubjectAndRetainSubjectSnapshot(t *testing.T) {
 }
 
 func TestVariantSnapshotLockBlocksConcurrentSubjectImport(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t)
 	_, _, ownerID := f.register(t, "variant-lock-owner@example.edu")
 	admin := f.admin(t)
@@ -359,6 +362,7 @@ func TestVariantSnapshotLockBlocksConcurrentSubjectImport(t *testing.T) {
 }
 
 func TestVariantCreationRollsBackWhenSnapshotInsertFails(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t)
 	access, _, ownerID := f.register(t, "variant-rollback@example.edu")
 	admin := f.admin(t)
@@ -401,6 +405,7 @@ $$;`)
 // Only competencies with a main and two basics enter a variant; the others
 // are listed as skipped and the saved task count follows the kept positions.
 func TestVariantKeepsOnlyCompleteCompetenciesAndPersistsTaskCount(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t)
 	access, _, _ := f.register(t, "variable-variant@example.edu")
 	admin := f.admin(t)

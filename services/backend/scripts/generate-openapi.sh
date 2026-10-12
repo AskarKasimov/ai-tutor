@@ -11,6 +11,7 @@ go run github.com/swaggo/swag/v2/cmd/swag@v2.0.0-rc6 init --v3.1 --parseInternal
 go run github.com/mikefarah/yq/v4@v4.54.1 -P -o=yaml '
   del(.externalDocs) |
   (.. | select(has("type") and .type == "file")) |= (.type = "string" | .format = "binary") |
+  (.. | select(has("x-nullable") and .["x-nullable"] == true and has("$ref"))) |= (.anyOf = [{"$ref": .["$ref"]}, {"type": "null"}] | del(.["$ref"], .["x-nullable"])) |
   (.. | select(has("x-nullable") and .["x-nullable"] == true)) |= (.type = [.type, "null"] | del(.["x-nullable"])) |
   (.. | select(has("properties") and .type == "object")).additionalProperties = false |
   (.. | select(has("content") and .content.["audio/wav"].schema.["$ref"] == "#/components/schemas/fault.Error")).content |= {"application/json": .["audio/wav"]}

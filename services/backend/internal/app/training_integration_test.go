@@ -23,6 +23,7 @@ import (
 )
 
 func TestTrainingPersistsCyclesAndReplaysAnswers(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t)
 	f.app.cfg.APIMode = "mock"
 	f.handler = f.app.Handler()
@@ -152,6 +153,7 @@ func (r *blockedPractice) Practice(ctx context.Context, subjectID string) (int64
 	return r.Repository.Practice(ctx, subjectID)
 }
 func TestConcurrentStartReplaysExistingTrainingBeforeStalePreview(t *testing.T) {
+	t.Parallel()
 	f, _, admin, owner, d := trainingFixture(t, 2)
 	repo := trainingpg.New(f.pool)
 	revision, _, err := repo.Practice(t.Context(), d.Variant.SubjectID)
@@ -195,6 +197,7 @@ func TestConcurrentStartReplaysExistingTrainingBeforeStalePreview(t *testing.T) 
 }
 
 func TestFreePracticeRotatesAllSavedTasksOfOneOutcome(t *testing.T) {
+	t.Parallel()
 	f, _, admin, owner, d := trainingFixture(t, 2)
 	if _, err := f.pool.Exec(t.Context(), `INSERT INTO tasks(id,outcome_id,question,voice_instruction,reference_answer,created_at) SELECT 'alternate-task',id,'Другой вопрос','Ответьте','Ответ',1 FROM outcomes WHERE name='Знает параметры данных'`); err != nil {
 		t.Fatal(err)
@@ -245,6 +248,7 @@ func (g *trainingTestGrader) EvaluateTraining(_ context.Context, _, _ string, _ 
 	return assessment.Evaluation{Score: 1, MaxScore: 2, Verdict: "partial", Feedback: []string{"Итог", "Причина", "Совет"}, CriterionResults: []assessment.CriterionResult{}}, nil
 }
 func TestTrainingModelFailureDoesNotAdvanceAndRetryReusesTranscript(t *testing.T) {
+	t.Parallel()
 	f, _, _, owner, d := trainingFixture(t, 1)
 	repo := trainingpg.New(f.pool)
 	voice := &trainingTestVoice{fail: true}
@@ -278,6 +282,7 @@ func TestTrainingModelFailureDoesNotAdvanceAndRetryReusesTranscript(t *testing.T
 }
 
 func TestTrainingHistoryPaginationAndSnapshotAudioAfterReimport(t *testing.T) {
+	t.Parallel()
 	f, access, admin, owner, d := trainingFixture(t, 1)
 	created := trainingJSON(f, access, "/diagnostic-sessions/"+d.ID+"/training", "start", `{}`)
 	var p training.Progress
@@ -399,6 +404,7 @@ func trainingJSON(f *fixture, access *http.Cookie, path, key, body string) *http
 }
 
 func TestFreePracticeExcludesFalseAndStalePreviewDoesNotWrite(t *testing.T) {
+	t.Parallel()
 	f, access, admin, _, d := trainingFixture(t, 2)
 	if _, err := f.pool.Exec(t.Context(), `UPDATE outcomes SET include_in_test=false WHERE name='Знает параметры данных'`); err != nil {
 		t.Fatal(err)
@@ -448,6 +454,7 @@ func TestFreePracticeExcludesFalseAndStalePreviewDoesNotWrite(t *testing.T) {
 }
 
 func TestTrainingReservationLeaseConcurrencyAndRetryTranscription(t *testing.T) {
+	t.Parallel()
 	f, access, _, owner, d := trainingFixture(t, 1)
 	created := trainingJSON(f, access, "/diagnostic-sessions/"+d.ID+"/training", "start", `{}`)
 	var p training.Progress
@@ -511,6 +518,7 @@ func TestTrainingReservationLeaseConcurrencyAndRetryTranscription(t *testing.T) 
 }
 
 func TestTrainingReservationCanBeResetAfterFailedGrading(t *testing.T) {
+	t.Parallel()
 	f, access, _, owner, d := trainingFixture(t, 1)
 	created := trainingJSON(f, access, "/diagnostic-sessions/"+d.ID+"/training", "start", `{}`)
 	var p training.Progress

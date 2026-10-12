@@ -54,6 +54,12 @@ type Service struct {
 	now         func() time.Time
 	audio       audioasset.MetadataReader
 	regenerator audioasset.Regenerator
+	checkedNext CheckedNextRepository
+}
+
+func (s *Service) WithCheckedNext(repository CheckedNextRepository) *Service {
+	s.checkedNext = repository
+	return s
 }
 
 func New(repo Repository, diagnostics Diagnostics, voice Voice, grader Grader, provider ExerciseProvider, ids IDs, now func() time.Time) *Service {
@@ -218,6 +224,75 @@ func (s *Service) Answer(ctx context.Context, owner, id, exerciseID, key string,
 
 func (s *Service) Skip(ctx context.Context, owner, id, exerciseID, key string) (training.Progress, error) {
 	return s.answerRequest(ctx, owner, id, exerciseID, key, nil, "", true)
+}
+
+// NextChecked advances only after a current explicit chat check. It shares the
+// ordinary training exercise-generation policy while the chat repository owns
+// the transaction that closes the old conversation and records the attempt.
+func (s *Service) NextChecked(ctx context.Context, owner, id, exerciseID, key string, revision int64) (training.Progress, error) {
+	if s.checkedNext == nil {
+		return training.Progress{}, fault.New(fault.Unavailable, "TRAINING_NEXT_UNAVAILABLE", "Переход сейчас недоступен.")
+	}
+	if err := ValidKey(key); err != nil {
+		return training.Progress{}, err
+	}
+	if revision < 0 {
+		return training.Progress{}, fault.Validation("revision", "Ревизия должна быть неотрицательным целым числом.")
+	}
+	token, err := s.ids.New("training_next")
+	if err != nil {
+		return training.Progress{}, err
+	}
+	progress, reservation, err := s.checkedNext.ReserveNext(ctx, owner, id, exerciseID, key, revision, token)
+	if err != nil {
+		return training.Progress{}, err
+	}
+	if progress != nil {
+		return *progress, nil
+	}
+	if reservation == nil {
+		return training.Progress{}, fault.New(fault.Unavailable, "TRAINING_NEXT_UNAVAILABLE", "Переход сейчас недоступен.")
+	}
+	failed := true
+	defer func() {
+		if failed {
+			cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+			defer cancel()
+			_ = s.checkedNext.FailNext(cleanupCtx, *reservation)
+		}
+	}()
+	state := reservation.Session
+	check := reservation.Check
+	if state.Current.ID != exerciseID || check.Revision != revision {
+		return training.Progress{}, fault.New(fault.Conflict, "CHAT_CHECK_REQUIRED", "Сначала проверьте итоговый ответ для текущего упражнения.")
+	}
+	attempt := training.Attempt{
+		Sequence: state.AnswerCount + 1, ExerciseID: exerciseID, Round: state.Current.Round,
+		TargetIndex: state.Current.TargetIndex, Text: check.FinalAnswer, Score: check.Score,
+		MaxScore: 2, Verdict: check.Verdict, CriterionResults: append([]training.CriterionResult(nil), check.CriterionResults...),
+		Feedback: append([]string(nil), check.Feedback...), CreatedAt: s.now().Unix(), AnswerSource: check.Source,
+	}
+	if check.TranscriptionID != nil {
+		attempt.TranscriptionID = *check.TranscriptionID
+	}
+	score := attempt.Score
+	state.Targets[state.Current.TargetIndex].LastScore = &score
+	state.AnswerCount++
+	next := state.Current.TargetIndex + 1
+	if next == len(state.Targets) {
+		next = 0
+		state.Round++
+	}
+	state.Current, err = s.exercise(ctx, state, next, []training.Attempt{attempt})
+	if err != nil {
+		return training.Progress{}, err
+	}
+	result, err := s.checkedNext.AcceptNext(ctx, *reservation, state, attempt)
+	if err != nil {
+		return training.Progress{}, err
+	}
+	failed = false
+	return result, nil
 }
 
 func (s *Service) answerRequest(ctx context.Context, owner, id, exerciseID, key string, data []byte, media string, skip bool) (training.Progress, error) {

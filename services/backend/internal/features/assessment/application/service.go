@@ -176,21 +176,13 @@ func validateEvaluation(result Evaluation, gradingContext GradingContext) error 
 	return nil
 }
 
-func (s *Service) evaluateWithContext(ctx context.Context, ownerID, transcriptionID string, gradingContext GradingContext) (Evaluation, error) {
-	if !validText(transcriptionID, 128) {
-		return Evaluation{}, fault.Validation("transcription_id", "Укажите сохранённую расшифровку.")
-	}
+func (s *Service) gradeAndValidate(ctx context.Context, gradingContext GradingContext, answer string) (Evaluation, error) {
 	maxScore, err := gradingMaxScore(gradingContext)
 	if err != nil {
 		return Evaluation{}, err
 	}
-
-	answer, err := s.transcriptions.TextByOwner(ctx, ownerID, transcriptionID)
-	if err != nil {
-		return Evaluation{}, err
-	}
 	if !validText(answer, 20000) {
-		return Evaluation{}, fault.New(fault.Invalid, "INVALID_TRANSCRIPTION", "Расшифровка слишком длинная или повреждена.")
+		return Evaluation{}, fault.New(fault.Invalid, "INVALID_ANSWER", "Ответ пустой, слишком длинный или повреждён.")
 	}
 	result, err := s.grader.Grade(ctx, gradingContext, answer)
 	if err != nil {
@@ -201,6 +193,20 @@ func (s *Service) evaluateWithContext(ctx context.Context, ownerID, transcriptio
 	}
 	result.MaxScore = maxScore
 	return result, nil
+}
+
+func (s *Service) evaluateWithContext(ctx context.Context, ownerID, transcriptionID string, gradingContext GradingContext) (Evaluation, error) {
+	if !validText(transcriptionID, 128) {
+		return Evaluation{}, fault.Validation("transcription_id", "Укажите сохранённую расшифровку.")
+	}
+	answer, err := s.transcriptions.TextByOwner(ctx, ownerID, transcriptionID)
+	if err != nil {
+		return Evaluation{}, err
+	}
+	if !validText(answer, 20000) {
+		return Evaluation{}, fault.New(fault.Invalid, "INVALID_TRANSCRIPTION", "Расшифровка слишком длинная или повреждена.")
+	}
+	return s.gradeAndValidate(ctx, gradingContext, answer)
 }
 
 func (s *Service) EvaluateVariant(ctx context.Context, ownerID, transcriptionID, variantID, variantTaskID string) (Evaluation, error) {
@@ -232,4 +238,14 @@ func (s *Service) EvaluateTrusted(ctx context.Context, ownerID, transcriptionID 
 		return Evaluation{}, err
 	}
 	return s.evaluateWithContext(ctx, ownerID, transcriptionID, gradingContext)
+}
+
+// EvaluateTrustedText grades a final answer against a server-owned exercise snapshot.
+// Unlike EvaluateTrusted, it never looks up browser-supplied transcription data.
+func (s *Service) EvaluateTrustedText(ctx context.Context, item variant.VariantTask, answer string) (Evaluation, error) {
+	gradingContext, err := GradingContextFromVariantTask(item)
+	if err != nil {
+		return Evaluation{}, err
+	}
+	return s.gradeAndValidate(ctx, gradingContext, answer)
 }

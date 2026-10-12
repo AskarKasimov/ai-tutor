@@ -29,16 +29,16 @@ Router вне FSD layers, а сгенерированный `src/routeTree.gen.t
 | ---------------- | -------------------------------------------------------------------------------------------------------------------- |
 | `src/bootstrap/` | Entrypoint, composition root, providers и глобальные стили.                                                          |
 | `src/pages/`     | Страницы с уникальной экранной композицией; widgets добавляются, когда блок страницы действительно переиспользуется. |
-| `src/features/`  | Пользовательские действия: auth, diagnostic-session, trainer-session, voice-answer и import-competency-map.          |
-| `src/entities/`  | Предметные модели и принадлежащие им API: user, diagnostic-session, trainer-session, assessment и competency-map.    |
+| `src/features/`  | Пользовательские действия: auth, diagnostic-session, training, subject-selection и import-competency-map.            |
+| `src/entities/`  | Предметные модели и принадлежащие им API: user, diagnostic-session, training, subject, assessment и competency-map.  |
 | `src/shared/`    | Общий транспорт, браузерные адаптеры, локализация и UI без предметной ответственности.                               |
 | `src/routes/`    | Тонкая регистрация URL и подключение page API; `__root.tsx` передаёт управление bootstrap shell.                     |
 
 - Слои импортируют только нижние слои: `bootstrap → pages → widgets → features → entities → shared` (отсутствующий `widgets` пропускается).
 - Slices одного слоя изолированы. Исключение для взаимных entity типов — только минимальный `@x/<consumer>` API. Публичный API slice находится в `index.ts`; глубокие импорты между слайсами запрещены. Внутри slice используйте относительные импорты.
 - `shared` не импортирует верхние слои. Импорт другого shared-сегмента идёт через его `index.ts`.
-- Не создавайте слой или widget без отдельной ответственности. Query hooks и предметные порты размещайте у owning feature/entity, а реальные и demo реализации подключайте per-slice через `bootstrap`; не помещайте общий aggregate зависимостей в `shared`.
-- Чистые сценарии в `model`/`lib` остаются без React и HTTP. QueryClient lifecycle принадлежит использующим его hooks и providers. Реальный и demo источники используют одинаковые контракты.
+- Не создавайте слой или widget без отдельной ответственности. Query hooks и предметные порты размещайте у owning feature/entity, а HTTP-адаптеры подключайте per-slice через `bootstrap`; не помещайте общий aggregate зависимостей в `shared`.
+- Чистые сценарии в `model`/`lib` остаются без React и HTTP. QueryClient lifecycle принадлежит использующим его hooks и providers. Тестовые fake-порты используют те же контракты, что и HTTP-адаптеры.
 
 ## Маршруты и компоненты
 

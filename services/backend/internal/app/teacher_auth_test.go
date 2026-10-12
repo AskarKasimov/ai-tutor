@@ -1,20 +1,61 @@
 package app
 
 import (
+	"bytes"
 	"encoding/json"
-	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/user"
+	"mime/multipart"
 	"net/http"
+	"net/http/httptest"
+	"net/textproto"
+	"strings"
 	"sync"
 	"testing"
+
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/user"
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/httpx"
 )
 
+// portal sends a request from the admin panel.
+func (f *fixture) portal(method, path, body string, cookies ...*http.Cookie) *httptest.ResponseRecorder {
+	req := httptest.NewRequest(method, "https://api.example"+path, strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(httpx.PortalHeader, "admin")
+	for _, c := range cookies {
+		req.AddCookie(c)
+	}
+	w := httptest.NewRecorder()
+	f.app.Handler().ServeHTTP(w, req)
+	return w
+}
+
+func portalUpload(f *fixture, path string, data []byte, cookie *http.Cookie) *httptest.ResponseRecorder {
+	var body bytes.Buffer
+	mw := multipart.NewWriter(&body)
+	h := make(textproto.MIMEHeader)
+	h.Set("Content-Disposition", `form-data; name="file"; filename="map.csv"`)
+	h.Set("Content-Type", "text/csv")
+	p, _ := mw.CreatePart(h)
+	_, _ = p.Write(data)
+	_ = mw.Close()
+	r := httptest.NewRequest("POST", "https://api.example"+path, &body)
+	r.Header.Set("Content-Type", mw.FormDataContentType())
+	r.Header.Set(httpx.PortalHeader, "admin")
+	r.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	f.app.Handler().ServeHTTP(w, r)
+	return w
+}
+
 func TestTeacherLoginAcrossModesAndSessions(t *testing.T) {
+	t.Parallel()
 	for _, mode := range []string{"real", "mock"} {
 		t.Run(mode, func(t *testing.T) {
 			f := newFixture(t)
 			f.app.cfg.APIMode = mode
 			f.handler = f.app.Handler()
-			login := f.request("POST", "/auth/teacher", "")
+			// The student site cannot open the teacher account.
+			requireCode(t, f.request("POST", "/auth/teacher", ""), 404, "NOT_FOUND")
+			login := f.portal("POST", "/auth/teacher", "")
 			if login.Code != 200 {
 				t.Fatalf("login: %d %s", login.Code, login.Body.String())
 			}
@@ -37,7 +78,10 @@ func TestTeacherLoginAcrossModesAndSessions(t *testing.T) {
 				}
 			}
 			access, refresh := cookies[0], cookies[1]
-			second := f.request("POST", "/auth/teacher", "")
+			if access.Name != "admin_access_token" || refresh.Name != "admin_refresh_token" {
+				t.Fatalf("admin cookies: %s %s", access.Name, refresh.Name)
+			}
+			second := f.portal("POST", "/auth/teacher", "")
 			var repeated struct {
 				User user.User `json:"user"`
 			}
@@ -46,10 +90,10 @@ func TestTeacherLoginAcrossModesAndSessions(t *testing.T) {
 				t.Fatal("teacher identity/session isolation")
 			}
 			f.handler = f.app.Handler()
-			if got := f.request("GET", "/auth/me", "", access); got.Code != 200 {
+			if got := f.portal("GET", "/auth/me", "", access); got.Code != 200 {
 				t.Fatal(got.Body.String())
 			}
-			created := f.request("POST", "/admin/subjects", `{"name":"Предмет учителя"}`, access)
+			created := f.portal("POST", "/admin/subjects", `{"name":"Предмет учителя"}`, access)
 			if created.Code != 201 {
 				t.Fatal(created.Body.String())
 			}
@@ -57,36 +101,75 @@ func TestTeacherLoginAcrossModesAndSessions(t *testing.T) {
 				ID string `json:"id"`
 			}
 			json.Unmarshal(created.Body.Bytes(), &subject)
-			imported := upload(f, "/admin/subjects/"+subject.ID+"/competency-map/import", "file", "map.csv", "text/csv", variantMapCSV(t), access)
+			imported := portalUpload(f, "/admin/subjects/"+subject.ID+"/competency-map/import", variantMapCSV(t), access)
 			if imported.Code != 200 {
 				t.Fatal(imported.Body.String())
 			}
-			if got := f.request("POST", "/auth/refresh", "", refresh); got.Code != 200 {
+			if got := f.portal("POST", "/auth/refresh", "", refresh); got.Code != 200 {
 				t.Fatal(got.Body.String())
 			} else {
 				refresh = got.Result().Cookies()[1]
 			}
-			if got := f.request("POST", "/auth/logout", "", refresh); got.Code != 204 {
+			if got := f.portal("POST", "/auth/logout", "", refresh); got.Code != 204 {
 				t.Fatal(got.Body.String())
 			}
-			requireCode(t, f.request("GET", "/auth/me", "", access), 401, "UNAUTHORIZED")
-			if got := f.request("GET", "/auth/me", "", second.Result().Cookies()[0]); got.Code != 200 {
+			requireCode(t, f.portal("GET", "/auth/me", "", access), 401, "UNAUTHORIZED")
+			if got := f.portal("GET", "/auth/me", "", second.Result().Cookies()[0]); got.Code != 200 {
 				t.Fatal("logout revoked another teacher session")
 			}
-			requireCode(t, f.request("POST", "/auth/teacher", `{}`), 422, "VALIDATION_ERROR")
+			requireCode(t, f.portal("POST", "/auth/teacher", `{}`), 422, "VALIDATION_ERROR")
 			requireCode(t, f.request("POST", "/auth/register", `{"email":"shared-teacher@ai-tutor.invalid","password":"`+password+`","display_name":"Учитель"}`), 422, "VALIDATION_ERROR")
 		})
 	}
 }
 
+// One browser keeps a student session and an admin panel session at once:
+// each portal reads only its own cookies.
+func TestAdminPortalSessionIsIndependentFromStudent(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	studentAccess, studentRefresh, studentID := f.register(t, "student@example.edu")
+	login := f.portal("POST", "/auth/teacher", "")
+	if login.Code != 200 {
+		t.Fatal(login.Body.String())
+	}
+	adminAccess, adminRefresh := login.Result().Cookies()[0], login.Result().Cookies()[1]
+	all := []*http.Cookie{studentAccess, studentRefresh, adminAccess, adminRefresh}
+	me := func(w *httptest.ResponseRecorder) user.User {
+		t.Helper()
+		if w.Code != 200 {
+			t.Fatal(w.Body.String())
+		}
+		var u user.User
+		_ = json.Unmarshal(w.Body.Bytes(), &u)
+		return u
+	}
+	if u := me(f.request("GET", "/auth/me", "", all...)); u.ID != studentID || u.Role != user.Student {
+		t.Fatalf("student site sees %+v", u)
+	}
+	if u := me(f.portal("GET", "/auth/me", "", all...)); u.Role != user.Admin {
+		t.Fatalf("admin panel sees %+v", u)
+	}
+	// The student cookie alone does not open the admin panel.
+	requireCode(t, f.portal("GET", "/auth/me", "", studentAccess), 401, "UNAUTHORIZED")
+	// Signing out of the admin panel keeps the student signed in.
+	if got := f.portal("POST", "/auth/logout", "", all...); got.Code != 204 {
+		t.Fatal(got.Body.String())
+	}
+	if u := me(f.request("GET", "/auth/me", "", all...)); u.ID != studentID {
+		t.Fatalf("student session lost: %+v", u)
+	}
+}
+
 func TestConcurrentTeacherLoginUsesOneAccount(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t)
 	var wg sync.WaitGroup
 	for i := 0; i < 8; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			if w := f.request("POST", "/auth/teacher", ""); w.Code != 200 {
+			if w := f.portal("POST", "/auth/teacher", ""); w.Code != 200 {
 				t.Errorf("login: %d %s", w.Code, w.Body.String())
 			}
 		}()

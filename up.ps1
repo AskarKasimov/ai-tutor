@@ -2,7 +2,7 @@
 .SYNOPSIS
     Поднимает dev-стек AI Tutor на Windows одной командой (аналог dev.sh).
 .EXAMPLE
-    .\up.ps1          # собрать и запустить, дождаться health, открыть браузер
+    .\up.ps1          # собрать и запустить, дождаться health, открыть сайт ученика и админку
     .\up.ps1 -Logs    # смотреть логи api и frontend
     .\up.ps1 -Down    # остановить; данные БД и S3 сохраняются
 #>
@@ -16,6 +16,8 @@ $ErrorActionPreference = 'Continue'
 Set-Location -LiteralPath $PSScriptRoot
 $compose = @('compose', '--env-file', '.env', '-f', 'docker-compose.yaml')
 $appUrl = 'https://localhost:8443'
+# The admin panel is a separate site on the same address with its own session.
+$adminUrl = "$appUrl/admin"
 
 function Step($text) { Write-Host "==> $text" -ForegroundColor Cyan }
 function Fail($text) { Write-Host "Ошибка: $text" -ForegroundColor Red; exit 1 }
@@ -53,7 +55,6 @@ if (-not (Test-Path .env)) {
     }
     $text = (Get-Content .env.example -Raw -Encoding UTF8) -replace "`r`n", "`n"
     $text = $text -replace '(?m)^BACKEND_API_MODE=mock', 'BACKEND_API_MODE=real' `
-        -replace '(?m)^VITE_API_MODE=mock', 'VITE_API_MODE=real' `
         -replace '(?m)^DB_PASSWORD=replace-with-a-long-random-value', "DB_PASSWORD=$(New-Secret)" `
         -replace '(?m)^S3_ACCESS_KEY=replace-with-a-random-access-key', "S3_ACCESS_KEY=$(New-Secret)" `
         -replace '(?m)^S3_SECRET_KEY=replace-with-a-random-secret-key', "S3_SECRET_KEY=$(New-Secret)"
@@ -85,5 +86,7 @@ if ($health -ne '200') {
     Fail "health вернул '$health'. Логи: .\up.ps1 -Logs"
 }
 
-Write-Host "Готово: $appUrl" -ForegroundColor Green
+Write-Host "Готово. Ученик: $appUrl" -ForegroundColor Green
+Write-Host "       Админка: $adminUrl" -ForegroundColor Green
 Start-Process $appUrl
+Start-Process $adminUrl

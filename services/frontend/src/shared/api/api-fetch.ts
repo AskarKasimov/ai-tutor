@@ -5,27 +5,28 @@ const apiBase = (import.meta.env.VITE_API_BASE_URL || '/api/v1').replace(
   '',
 )
 let recovery: Promise<Response> | undefined
-let mockHandler:
-  ((url: string, options?: RequestInit) => Promise<Response>) | undefined
-
-export function configureMockApiHandler(
-  handler: (url: string, options?: RequestInit) => Promise<Response>,
-) {
-  mockHandler = handler
+// The admin panel lives under /admin and keeps its own session: its API
+// requests carry the portal header, so the backend uses separate cookies and
+// the student site in another tab stays signed in.
+export function isAdminPortal() {
+  return globalThis.location?.pathname.startsWith('/admin') ?? false
 }
 
-export function isMockApi() {
-  return import.meta.env.VITE_API_MODE !== 'real'
+function withPortal(options?: RequestInit): RequestInit | undefined {
+  if (!isAdminPortal()) return options
+  const headers = new Headers(options?.headers)
+  headers.set('X-AI-Tutor-Portal', 'admin')
+  return { ...options, headers }
 }
 
 function recoverSession(): Promise<Response> {
   if (!recovery) {
     const signal = AbortSignal.timeout(30_000)
     recovery = withAuthRefreshLock(
-      `auth-refresh:${apiBase}`,
+      `auth-refresh:${apiBase}:${isAdminPortal() ? 'admin' : 'student'}`,
       signal,
       async () => {
-        const options = { credentials: 'include' as const, signal }
+        const options = withPortal({ credentials: 'include', signal })
         const current = await fetch(`${apiBase}/auth/me`, options)
         if (current.status !== 401) return current
         return fetch(`${apiBase}/auth/refresh`, { ...options, method: 'POST' })
@@ -37,19 +38,18 @@ function recoverSession(): Promise<Response> {
   return recovery!
 }
 
-// Same-origin static files bundled with the app, served in every API mode.
+// Same-origin static files bundled with the app.
 export function fetchStaticAsset(path: string): Promise<Response> {
   return fetch(`${import.meta.env.BASE_URL}${path.replace(/^\//, '')}`)
 }
 
 export async function apiFetch(
   url: string,
-  options?: RequestInit,
+  requestOptions?: RequestInit,
 ): Promise<Response> {
-  if (isMockApi()) {
-    if (!mockHandler) throw new Error('Demo API handler is not configured')
-    return mockHandler(url, options)
-  }
+  const options = url.startsWith(`${apiBase}/`)
+    ? withPortal(requestOptions)
+    : requestOptions
   const response = await fetch(url, options)
   if (
     response.status !== 401 ||

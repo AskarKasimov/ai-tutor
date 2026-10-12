@@ -312,6 +312,29 @@ func (q *Queries) SaveTrainingReservation(ctx context.Context, arg SaveTrainingR
 	return err
 }
 
+const saveTrainingReservationWithLease = `-- name: SaveTrainingReservationWithLease :exec
+UPDATE training_sessions SET reservation_data=$3,
+ lease_until=CASE WHEN $4::bigint>0 THEN now()+$4::bigint*interval '1 second' ELSE NULL END
+WHERE owner_id=$1 AND id=$2
+`
+
+type SaveTrainingReservationWithLeaseParams struct {
+	OwnerID         string
+	ID              string
+	ReservationData []byte
+	LeaseSeconds    int64
+}
+
+func (q *Queries) SaveTrainingReservationWithLease(ctx context.Context, arg SaveTrainingReservationWithLeaseParams) error {
+	_, err := q.db.Exec(ctx, saveTrainingReservationWithLease,
+		arg.OwnerID,
+		arg.ID,
+		arg.ReservationData,
+		arg.LeaseSeconds,
+	)
+	return err
+}
+
 const saveTrainingState = `-- name: SaveTrainingState :exec
 UPDATE training_sessions SET state_data=$3,reservation_data=NULL,lease_until=NULL WHERE owner_id=$1 AND id=$2
 `

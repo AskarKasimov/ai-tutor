@@ -57,7 +57,10 @@ type Reservation struct {
 	Key             string
 	Fingerprint     string
 	Token           string
+	Operation       string
 	ExerciseID      string
+	TurnID          string
+	Revision        int64
 	LeaseUntil      time.Time
 	TranscriptionID string
 	Text            string
@@ -73,7 +76,8 @@ type Attempt struct {
 	ExerciseID       string            `json:"exercise_id"`
 	Round            int64             `json:"round"`
 	TargetIndex      int               `json:"target_index"`
-	TranscriptionID  string            `json:"transcription_id"`
+	TranscriptionID  string            `json:"transcription_id,omitempty" binding:"optional"`
+	AnswerSource     AnswerSource      `json:"answer_source,omitempty" binding:"optional"`
 	Text             string            `json:"text"`
 	Score            int               `json:"score"`
 	MaxScore         int               `json:"max_score"`
@@ -82,6 +86,14 @@ type Attempt struct {
 	Feedback         []string          `json:"feedback"`
 	CreatedAt        int64             `json:"created_at"`
 }
+
+func (a Attempt) EffectiveAnswerSource() AnswerSource {
+	if a.AnswerSource == "" {
+		return AnswerSourceVoice
+	}
+	return a.AnswerSource
+}
+
 type TargetView struct {
 	Kind             string `json:"kind"`
 	Label            string `json:"label"`

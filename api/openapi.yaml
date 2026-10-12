@@ -1132,9 +1132,19 @@ components:
         - outcome_ids
         - subject_id
       type: object
+    training.AnswerSource:
+      enum:
+        - text
+        - voice
+      type: string
+      x-enum-varnames:
+        - AnswerSourceText
+        - AnswerSourceVoice
     training.Attempt:
       additionalProperties: false
       properties:
+        answer_source:
+          $ref: '#/components/schemas/training.AnswerSource'
         created_at:
           type: integer
         criterion_results:
@@ -1178,8 +1188,146 @@ components:
         - sequence
         - target_index
         - text
-        - transcription_id
         - verdict
+      type: object
+    training.ChatCheckView:
+      additionalProperties: false
+      properties:
+        final_answer:
+          type: string
+        max_score:
+          type: integer
+        revision:
+          type: integer
+        score:
+          type: integer
+        source:
+          $ref: '#/components/schemas/training.AnswerSource'
+        transcription_id:
+          type: string
+        verdict:
+          type: string
+      required:
+        - final_answer
+        - max_score
+        - revision
+        - score
+        - source
+        - verdict
+      type: object
+    training.ChatKind:
+      enum:
+        - welcome
+        - message
+        - check
+      type: string
+      x-enum-varnames:
+        - ChatKindWelcome
+        - ChatKindMessage
+        - ChatKindCheck
+    training.ChatMessage:
+      additionalProperties: false
+      properties:
+        created_at:
+          type: integer
+        id:
+          type: string
+        kind:
+          $ref: '#/components/schemas/training.ChatKind'
+        role:
+          $ref: '#/components/schemas/training.ChatRole'
+        sequence:
+          type: integer
+        source:
+          $ref: '#/components/schemas/training.AnswerSource'
+        text:
+          type: string
+      required:
+        - created_at
+        - id
+        - kind
+        - role
+        - sequence
+        - text
+      type: object
+    training.ChatPage:
+      additionalProperties: false
+      properties:
+        exercise_id:
+          type: string
+        items:
+          items:
+            $ref: '#/components/schemas/training.ChatMessage'
+          type: array
+          uniqueItems: false
+        latest_check:
+          anyOf:
+            - $ref: '#/components/schemas/training.ChatCheckView'
+            - type: "null"
+        next_cursor:
+          type: string
+        pending_turn:
+          anyOf:
+            - $ref: '#/components/schemas/training.PendingTurnView'
+            - type: "null"
+        revision:
+          type: integer
+        session_id:
+          type: string
+        status:
+          $ref: '#/components/schemas/training.ChatStatus'
+      required:
+        - exercise_id
+        - items
+        - latest_check
+        - pending_turn
+        - revision
+        - session_id
+        - status
+      type: object
+    training.ChatRole:
+      enum:
+        - user
+        - assistant
+      type: string
+      x-enum-varnames:
+        - ChatRoleUser
+        - ChatRoleAssistant
+    training.ChatStatus:
+      enum:
+        - active
+        - closed
+      type: string
+      x-enum-varnames:
+        - ChatStatusActive
+        - ChatStatusClosed
+    training.ChatTurnResult:
+      additionalProperties: false
+      properties:
+        exercise_id:
+          type: string
+        latest_check:
+          anyOf:
+            - $ref: '#/components/schemas/training.ChatCheckView'
+            - type: "null"
+        messages:
+          items:
+            $ref: '#/components/schemas/training.ChatMessage'
+          type: array
+          uniqueItems: false
+        revision:
+          type: integer
+        session_id:
+          type: string
+        turn_id:
+          type: string
+      required:
+        - exercise_id
+        - latest_check
+        - messages
+        - revision
+        - session_id
+        - turn_id
       type: object
     training.CriterionResult:
       additionalProperties: false
@@ -1220,6 +1368,31 @@ components:
         - outcome_name
         - question
         - voice_instruction
+      type: object
+    training.PendingTurnView:
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+        kind:
+          $ref: '#/components/schemas/training.ChatKind'
+        retry_after_ms:
+          type: integer
+        source:
+          $ref: '#/components/schemas/training.AnswerSource'
+        status:
+          $ref: '#/components/schemas/training.TurnStatus'
+        user_text:
+          type:
+            - string
+            - "null"
+      required:
+        - id
+        - kind
+        - retry_after_ms
+        - source
+        - status
+        - user_text
       type: object
     training.Preview:
       additionalProperties: false
@@ -1346,6 +1519,18 @@ components:
         - outcome_id
         - outcome_name
       type: object
+    training.TurnStatus:
+      enum:
+        - processing
+        - failed
+        - completed
+        - cancelled
+      type: string
+      x-enum-varnames:
+        - TurnStatusProcessing
+        - TurnStatusFailed
+        - TurnStatusCompleted
+        - TurnStatusCancelled
     traininghttp.AudioResponse:
       additionalProperties: false
       properties:
@@ -1361,6 +1546,22 @@ components:
         - audio_url
         - exercise_id
         - status
+      type: object
+    traininghttp.ChatTextRequest:
+      additionalProperties: false
+      properties:
+        kind:
+          type: string
+        revision:
+          type: integer
+        text:
+          type: string
+      required:
+        - kind
+        - revision
+        - text
+      type: object
+    traininghttp.EmptyChatRequest:
       type: object
     traininghttp.HistoryResponse:
       additionalProperties: false
@@ -1380,6 +1581,14 @@ components:
       required:
         - items
         - targets
+      type: object
+    traininghttp.NextRequest:
+      additionalProperties: false
+      properties:
+        revision:
+          type: integer
+      required:
+        - revision
       type: object
     traininghttp.SkipRequest:
       additionalProperties: false
@@ -1974,6 +2183,14 @@ paths:
   /auth/login:
     post:
       operationId: login
+      parameters:
+        - description: admin — сессия админ-панели с отдельными cookies
+          in: header
+          name: X-AI-Tutor-Portal
+          schema:
+            enum:
+              - admin
+            type: string
       requestBody:
         content:
           application/json:
@@ -1992,7 +2209,7 @@ paths:
           description: OK
           headers:
             Set-Cookie:
-              description: 'access_token и refresh_token: Path=/; Secure; HttpOnly; SameSite=Lax'
+              description: 'access_token и refresh_token (с заголовком X-AI-Tutor-Portal: admin — admin_access_token и admin_refresh_token): Path=/; Secure; HttpOnly; SameSite=Lax'
               schema:
                 type: string
         "401":
@@ -2015,12 +2232,20 @@ paths:
     post:
       description: Refresh cookie необязательна; без неё возвращается 204 и удаляются обе cookies.
       operationId: logout
+      parameters:
+        - description: admin — сессия админ-панели с отдельными cookies
+          in: header
+          name: X-AI-Tutor-Portal
+          schema:
+            enum:
+              - admin
+            type: string
       responses:
         "204":
           description: Сессия завершена
           headers:
             Set-Cookie:
-              description: 'access_token и refresh_token: Path=/; Secure; HttpOnly; SameSite=Lax'
+              description: 'access_token и refresh_token (с заголовком X-AI-Tutor-Portal: admin — admin_access_token и admin_refresh_token): Path=/; Secure; HttpOnly; SameSite=Lax'
               schema:
                 type: string
         "422":
@@ -2036,6 +2261,14 @@ paths:
   /auth/me:
     get:
       operationId: getCurrentUser
+      parameters:
+        - description: admin — сессия админ-панели с отдельными cookies
+          in: header
+          name: X-AI-Tutor-Portal
+          schema:
+            enum:
+              - admin
+            type: string
       responses:
         "200":
           content:
@@ -2058,6 +2291,14 @@ paths:
   /auth/refresh:
     post:
       operationId: refreshTokens
+      parameters:
+        - description: admin — сессия админ-панели с отдельными cookies
+          in: header
+          name: X-AI-Tutor-Portal
+          schema:
+            enum:
+              - admin
+            type: string
       responses:
         "200":
           content:
@@ -2067,7 +2308,7 @@ paths:
           description: OK
           headers:
             Set-Cookie:
-              description: 'access_token и refresh_token: Path=/; Secure; HttpOnly; SameSite=Lax'
+              description: 'access_token и refresh_token (с заголовком X-AI-Tutor-Portal: admin — admin_access_token и admin_refresh_token): Path=/; Secure; HttpOnly; SameSite=Lax'
               schema:
                 type: string
         "401":
@@ -2091,6 +2332,14 @@ paths:
   /auth/register:
     post:
       operationId: register
+      parameters:
+        - description: admin — сессия админ-панели с отдельными cookies
+          in: header
+          name: X-AI-Tutor-Portal
+          schema:
+            enum:
+              - admin
+            type: string
       requestBody:
         content:
           application/json:
@@ -2109,7 +2358,7 @@ paths:
           description: Created
           headers:
             Set-Cookie:
-              description: 'access_token и refresh_token: Path=/; Secure; HttpOnly; SameSite=Lax'
+              description: 'access_token и refresh_token (с заголовком X-AI-Tutor-Portal: admin — admin_access_token и admin_refresh_token): Path=/; Secure; HttpOnly; SameSite=Lax'
               schema:
                 type: string
         "409":
@@ -2136,7 +2385,17 @@ paths:
       x-implementation: implemented
   /auth/teacher:
     post:
+      description: 'Доступно только админ-панели: без заголовка X-AI-Tutor-Portal: admin возвращается 404.'
       operationId: loginTeacher
+      parameters:
+        - description: Только admin
+          in: header
+          name: X-AI-Tutor-Portal
+          required: true
+          schema:
+            enum:
+              - admin
+            type: string
       responses:
         "200":
           content:
@@ -2146,9 +2405,15 @@ paths:
           description: OK
           headers:
             Set-Cookie:
-              description: 'access_token и refresh_token: Path=/; Secure; HttpOnly; SameSite=Lax'
+              description: 'access_token и refresh_token (с заголовком X-AI-Tutor-Portal: admin — admin_access_token и admin_refresh_token): Path=/; Secure; HttpOnly; SameSite=Lax'
               schema:
                 type: string
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Not Found
         "422":
           content:
             application/json:
@@ -3420,6 +3685,357 @@ paths:
       security:
         - accessCookie: []
       summary: Озвучка текущего упражнения
+      tags:
+        - Тренировка
+      x-implementation: implemented
+  /training-sessions/{id}/exercises/{exercise_id}/chat:
+    get:
+      parameters:
+        - description: ID тренировки
+          in: path
+          name: id
+          required: true
+          schema:
+            type: string
+        - description: ID упражнения
+          in: path
+          name: exercise_id
+          required: true
+          schema:
+            type: string
+        - description: Sequence старого сообщения
+          in: query
+          name: cursor
+          schema:
+            type: string
+        - description: Размер страницы, 1–100
+          in: query
+          name: limit
+          schema:
+            type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/training.ChatPage'
+          description: OK
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unauthorized
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Not Found
+      security:
+        - accessCookie: []
+      summary: Прочитать диалог репетитора
+      tags:
+        - Тренировка
+      x-implementation: implemented
+  /training-sessions/{id}/exercises/{exercise_id}/chat/turns:
+    post:
+      parameters:
+        - description: ID тренировки
+          in: path
+          name: id
+          required: true
+          schema:
+            type: string
+        - description: ID упражнения
+          in: path
+          name: exercise_id
+          required: true
+          schema:
+            type: string
+        - description: Ключ операции
+          in: header
+          name: Idempotency-Key
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/traininghttp.ChatTextRequest'
+              description: Текстовая реплика; для аудио используйте поля multipart
+              summary: body
+          multipart/form-data:
+            schema:
+              additionalProperties: false
+              properties:
+                audio:
+                  description: WAV, Ogg/Opus или WebM/Opus
+                  format: binary
+                  type: string
+                kind:
+                  description: message или check
+                  type: string
+                revision:
+                  description: Ревизия диалога
+                  type: integer
+              required:
+                - revision
+                - kind
+                - audio
+              type: object
+        description: Текстовая реплика; для аудио используйте поля multipart
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/training.ChatTurnResult'
+          description: OK
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unauthorized
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Not Found
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Conflict
+        "413":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Request Entity Too Large
+        "415":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unsupported Media Type
+        "422":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unprocessable Entity
+        "502":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Bad Gateway
+        "503":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Service Unavailable
+        "504":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Gateway Timeout
+      security:
+        - accessCookie: []
+      summary: Отправить реплику репетитору
+      tags:
+        - Тренировка
+      x-implementation: implemented
+  /training-sessions/{id}/exercises/{exercise_id}/chat/turns/{turn_id}/cancel:
+    post:
+      parameters:
+        - description: ID тренировки
+          in: path
+          name: id
+          required: true
+          schema:
+            type: string
+        - description: ID упражнения
+          in: path
+          name: exercise_id
+          required: true
+          schema:
+            type: string
+        - description: ID реплики
+          in: path
+          name: turn_id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/traininghttp.EmptyChatRequest'
+              description: Пустой объект
+              summary: body
+        description: Пустой объект
+        required: true
+      responses:
+        "204":
+          description: No Content
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unauthorized
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Not Found
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Conflict
+      security:
+        - accessCookie: []
+      summary: Отменить ожидающую реплику
+      tags:
+        - Тренировка
+      x-implementation: implemented
+  /training-sessions/{id}/exercises/{exercise_id}/chat/turns/{turn_id}/retry:
+    post:
+      parameters:
+        - description: ID тренировки
+          in: path
+          name: id
+          required: true
+          schema:
+            type: string
+        - description: ID упражнения
+          in: path
+          name: exercise_id
+          required: true
+          schema:
+            type: string
+        - description: ID реплики
+          in: path
+          name: turn_id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/traininghttp.EmptyChatRequest'
+              description: Пустой объект
+              summary: body
+        description: Пустой объект
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/training.ChatTurnResult'
+          description: OK
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unauthorized
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Not Found
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Conflict
+        "503":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Service Unavailable
+      security:
+        - accessCookie: []
+      summary: Повторить реплику репетитору
+      tags:
+        - Тренировка
+      x-implementation: implemented
+  /training-sessions/{id}/exercises/{exercise_id}/next:
+    post:
+      parameters:
+        - description: ID тренировки
+          in: path
+          name: id
+          required: true
+          schema:
+            type: string
+        - description: ID упражнения
+          in: path
+          name: exercise_id
+          required: true
+          schema:
+            type: string
+        - description: Ключ операции
+          in: header
+          name: Idempotency-Key
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/traininghttp.NextRequest'
+              description: Текущая ревизия диалога
+              summary: body
+        description: Текущая ревизия диалога
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/training.Progress'
+          description: OK
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unauthorized
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Not Found
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Conflict
+      security:
+        - accessCookie: []
+      summary: Завершить тренировочное упражнение
       tags:
         - Тренировка
       x-implementation: implemented

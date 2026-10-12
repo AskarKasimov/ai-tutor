@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/audioasset"
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/training"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"go.uber.org/zap"
 
@@ -50,6 +51,8 @@ import (
 	taskgenpg "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/taskgen/infrastructure/postgres"
 	taskgenhttp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/taskgen/transport/http"
 	trainingapp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/training/application"
+	trainingmock "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/training/infrastructure/mock"
+	trainingmodel "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/training/infrastructure/modelapi"
 	trainingpg "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/training/infrastructure/postgres"
 	trainingsnapshot "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/training/infrastructure/snapshot"
 	traininghttp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/training/transport/http"
@@ -72,7 +75,7 @@ type App struct {
 	pool              *pgxpool.Pool
 	client            *http.Client
 	now               func() time.Time
-	hasher            *argon2.Hasher
+	hasher            authapp.PasswordHasher
 	logger            *zap.Logger
 	variantRepository variantgenapp.Repository
 	diagnosticStore   diagnosticapp.Store
@@ -170,6 +173,17 @@ func (a *App) Handler() http.Handler {
 	diagnosticHandlers := diagnostichttp.New(diagnosticService, a.cfg.MaxUploadBytes)
 	trainingService := trainingapp.New(trainingpg.New(a.pool), a.diagnosticStore, voice, trainingGrader{assessmentService}, trainingsnapshot.Provider{}, security.IDGenerator{}, a.now).WithAudio(taskAudioService).WithAudioRegenerator(a.audioWorker)
 	trainingHandlers := traininghttp.New(trainingService, a.cfg.MaxUploadBytes)
+	chatRepository := trainingpg.NewChatRepository(a.pool).WithLease(a.cfg.VoiceTimeout + a.cfg.AssessmentTimeout + a.cfg.TutorTimeout + 30*time.Second)
+	trainingService = trainingService.WithCheckedNext(chatRepository)
+	var tutor trainingapp.Tutor
+	if a.cfg.APIMode == "mock" {
+		tutor = trainingmock.Tutor{}
+	} else if a.cfg.TutorEnabled {
+		tutor = trainingmodel.NewTutor(a.client, a.cfg.TutorBaseURL, a.cfg.TutorModel, a.cfg.TutorTimeout)
+	}
+	chatService := trainingapp.NewChatService(chatRepository, voice, tutor, trainingFinalGrader{assessmentService}, security.IDGenerator{}, a.now).
+		WithContextLimits(training.ContextLimits{TaskMaxChars: a.cfg.TutorTaskMaxChars, HistoryMaxChars: a.cfg.TutorHistoryMaxChars, SummaryMaxChars: a.cfg.TutorSummaryMaxChars})
+	chatHandlers := traininghttp.NewChatHandler(chatService, a.cfg.MaxUploadBytes)
 	feedbackService := diagnosticfeedbackapp.New(diagnosticService, feedbackSynthesizer, diagnosticfeedbackmemory.New(), a.now).
 		WithTaskFinder(diagnosticfeedbackpg.NewTaskFinder(a.pool))
 	feedbackHandlers := diagnosticfeedbackhttp.New(feedbackService)
@@ -204,9 +218,14 @@ func (a *App) Handler() http.Handler {
 	mux.Handle("POST /training-sessions/{id}/answers", protect(auth, http.HandlerFunc(trainingHandlers.Answer)))
 	mux.Handle("POST /training-sessions/{id}/skip", protect(auth, http.HandlerFunc(trainingHandlers.Skip)))
 	mux.Handle("POST /training-sessions/{id}/answers/reset", protect(auth, http.HandlerFunc(trainingHandlers.ResetAnswer)))
+	mux.Handle("POST /training-sessions/{id}/exercises/{exercise_id}/next", protect(auth, http.HandlerFunc(trainingHandlers.NextChecked)))
 	mux.Handle("GET /training-sessions/{id}/history", protect(auth, http.HandlerFunc(trainingHandlers.History)))
 	mux.Handle("GET /training-sessions/{id}/current/audio", protect(auth, http.HandlerFunc(trainingHandlers.Audio)))
 	mux.Handle("POST /training-sessions/{id}/current/audio/regenerate", protect(auth, http.HandlerFunc(trainingHandlers.RegenerateAudio)))
+	mux.Handle("GET /training-sessions/{id}/exercises/{exercise_id}/chat", protect(auth, http.HandlerFunc(chatHandlers.Read)))
+	mux.Handle("POST /training-sessions/{id}/exercises/{exercise_id}/chat/turns", protect(auth, http.HandlerFunc(chatHandlers.Send)))
+	mux.Handle("POST /training-sessions/{id}/exercises/{exercise_id}/chat/turns/{turn_id}/retry", protect(auth, http.HandlerFunc(chatHandlers.Retry)))
+	mux.Handle("POST /training-sessions/{id}/exercises/{exercise_id}/chat/turns/{turn_id}/cancel", protect(auth, http.HandlerFunc(chatHandlers.Cancel)))
 	mux.Handle("GET /tasks", protect(auth, http.HandlerFunc(taskbankHandlers.Search)))
 	mux.Handle("GET /subjects/{subject_id}/competency-map", protect(auth, http.HandlerFunc(competencyHandlers.ReadSubject)))
 	mux.Handle("GET /subjects", protect(auth, http.HandlerFunc(subjectHandlers.List)))
@@ -226,7 +245,9 @@ func (a *App) Handler() http.Handler {
 
 func protect(auth *authapp.Service, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		principal, err := auth.Me(r.Context(), httpx.Cookie(r, "access_token"))
+		// The admin panel sends its portal header and its own session cookie.
+		access, _ := httpx.SessionCookieNames(r)
+		principal, err := auth.Me(r.Context(), httpx.Cookie(r, access))
 		if err != nil {
 			httpx.Error(r.Context(), w, err)
 			return

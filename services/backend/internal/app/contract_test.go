@@ -19,6 +19,7 @@ import (
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/audio"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/training"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/features/competency/infrastructure/csvparser"
+	trainingpg "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/training/infrastructure/postgres"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/httpx"
 )
 
@@ -66,6 +67,7 @@ func TestOpenAPIContractSchemas(t *testing.T) {
 
 // Validate actual handler responses using only implemented contract operations.
 func TestOpenAPIResponses(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t)
 	data, err := os.ReadFile("../../../../api/openapi.yaml")
 	if err != nil {
@@ -152,6 +154,7 @@ func TestOpenAPIResponses(t *testing.T) {
 	check("GET", "/auth/me", f.request("GET", "/auth/me", "", access))
 	check("GET", "/auth/me", f.request("GET", "/auth/me", ""))
 	check("POST", "/auth/login", f.request("POST", "/auth/login", `{"email":"contract@example.edu","password":"`+password+`"}`))
+	check("POST", "/auth/teacher", f.portal("POST", "/auth/teacher", ""))
 	check("POST", "/auth/teacher", f.request("POST", "/auth/teacher", ""))
 	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
@@ -348,6 +351,48 @@ func TestOpenAPIResponses(t *testing.T) {
 		t.Fatalf("training skip: %d %s", trainingSkip.Code, trainingSkip.Body.String())
 	}
 	check("POST", "/training-sessions/{id}/skip", trainingSkip)
+	var skippedTraining training.Progress
+	if err := json.Unmarshal(trainingSkip.Body.Bytes(), &skippedTraining); err != nil || skippedTraining.Current.ID == "" {
+		t.Fatalf("training skip response: %s (%v)", trainingSkip.Body.String(), err)
+	}
+	chatPath := "/training-sessions/" + skippedTraining.ID + "/exercises/" + skippedTraining.Current.ID + "/chat"
+	check("GET", "/training-sessions/{id}/exercises/{exercise_id}/chat", f.request("GET", chatPath, "", access))
+	chatMessage := postJSON(chatPath+"/turns", "contract-chat-message", []byte(`{"revision":0,"kind":"message","text":"Как начать рассуждение?"}`))
+	if chatMessage.Code != http.StatusOK {
+		t.Fatalf("chat message: %d %s", chatMessage.Code, chatMessage.Body.String())
+	}
+	check("POST", "/training-sessions/{id}/exercises/{exercise_id}/chat/turns", chatMessage)
+	chatTurn := postJSON(chatPath+"/turns", "contract-chat-check", []byte(`{"revision":1,"kind":"check","text":"Мой ответ на задание"}`))
+	if chatTurn.Code != http.StatusOK {
+		t.Fatalf("chat check: %d %s", chatTurn.Code, chatTurn.Body.String())
+	}
+	check("POST", "/training-sessions/{id}/exercises/{exercise_id}/chat/turns", chatTurn)
+	var checkedTurn training.ChatTurnResult
+	if err := json.Unmarshal(chatTurn.Body.Bytes(), &checkedTurn); err != nil || checkedTurn.TurnID == "" || checkedTurn.LatestCheck == nil {
+		t.Fatalf("chat check response: %s (%v)", chatTurn.Body.String(), err)
+	}
+	check("POST", "/training-sessions/{id}/exercises/{exercise_id}/chat/turns/{turn_id}/retry",
+		postJSON(chatPath+"/turns/"+checkedTurn.TurnID+"/retry", "", []byte(`{}`)))
+	var trainingOwner string
+	if err := f.pool.QueryRow(t.Context(), "SELECT owner_id FROM training_sessions WHERE id=$1", skippedTraining.ID).Scan(&trainingOwner); err != nil {
+		t.Fatal(err)
+	}
+	pending, _, err := trainingpg.NewChatRepository(f.pool).ReserveTurn(t.Context(), trainingOwner, skippedTraining.ID, training.TurnInput{
+		ExerciseID: skippedTraining.Current.ID, Key: "contract-chat-cancel", Revision: checkedTurn.Revision,
+		Kind: training.ChatKindMessage, Source: training.AnswerSourceVoice, Audio: wavBytes(), MediaType: "audio/wav",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	check("GET", "/training-sessions/{id}/exercises/{exercise_id}/chat", f.request("GET", chatPath, "", access))
+	check("POST", "/training-sessions/{id}/exercises/{exercise_id}/chat/turns/{turn_id}/cancel",
+		postJSON(chatPath+"/turns/"+pending.Turn.ID+"/cancel", "", []byte(`{}`)))
+	nextBody, _ := json.Marshal(map[string]int64{"revision": checkedTurn.Revision})
+	next := postJSON("/training-sessions/"+skippedTraining.ID+"/exercises/"+skippedTraining.Current.ID+"/next", "contract-training-next", nextBody)
+	if next.Code != http.StatusOK {
+		t.Fatalf("training next: %d %s", next.Code, next.Body.String())
+	}
+	check("POST", "/training-sessions/{id}/exercises/{exercise_id}/next", next)
 	diagnosticSkipStart := postJSON("/diagnostic-sessions", "contract-diagnostic-skip-start", diagnosticStartBody)
 	if diagnosticSkipStart.Code != http.StatusCreated {
 		t.Fatalf("diagnostic skip session: %d %s", diagnosticSkipStart.Code, diagnosticSkipStart.Body.String())
@@ -423,6 +468,7 @@ func TestOpenAPIResponses(t *testing.T) {
 }
 
 func TestHTTPSCookieLifecycle(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t)
 	server := httptest.NewTLSServer(f.handler)
 	defer server.Close()

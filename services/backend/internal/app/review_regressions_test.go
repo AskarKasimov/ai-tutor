@@ -10,6 +10,7 @@ import (
 )
 
 func TestMaterialHTTPAcceptsMaximumContentAndRejectsOversize(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t)
 	admin := f.admin(t)
 	response := upload(f, "/admin/subjects/subject:test/competency-map/import", "file", "map.csv", "text/csv", []byte("Ком,Сост,ОР,Задание 1,Критерии 1\nК,С,О,В,К\n"), admin)
@@ -52,6 +53,7 @@ func TestMaterialHTTPAcceptsMaximumContentAndRejectsOversize(t *testing.T) {
 	}
 }
 func TestTaskSearchImportanceRange(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t)
 	admin := f.admin(t)
 	csv := "Ком,Сост,ОР,Важность,Задание 1,Критерии 1\nК,С,О1,1,Низкий,К\n,,О3,3,Средний,К\n,,О5,5,Высокий,К\n,,Нет важности,,Неизвестный,К\n"
@@ -122,6 +124,7 @@ func TestGenerationUsesIndependentModelConfiguration(t *testing.T) {
 }
 
 func TestPairedImportPersistsPartialProfileAndSourceLinks(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t)
 	admin := f.admin(t)
 	csv := "Ком,Сост,ОР,Что должно войти в тест,Таксономия,Важность,Задание 1,Критерии 1\nК,С,О,TRUE,Знание,3,В,К\n,,,,,,В2,К2\n,,Без задания,FALSE,,,,\n"
@@ -151,6 +154,7 @@ func TestPairedImportPersistsPartialProfileAndSourceLinks(t *testing.T) {
 }
 
 func TestConflictingCurriculumTitleReturnsValidationAndPreservesMap(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t)
 	admin := f.admin(t)
 	response := upload(f, "/admin/subjects/subject:test/competency-map/import", "file", "map.csv", "text/csv", []byte("Ком,Сост,ОР,Задание 1,Критерии 1\nК,С,О,Прежний вопрос,К\n"), admin)
@@ -173,6 +177,7 @@ func TestConflictingCurriculumTitleReturnsValidationAndPreservesMap(t *testing.T
 }
 
 func TestMaterialHTTPRejectsNULBeforePersistence(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t)
 	admin := f.admin(t)
 	response := upload(f, "/admin/subjects/subject:test/competency-map/import", "file", "map.csv", "text/csv", []byte("Ком,Сост,ОР,Задание 1,Критерии 1\nК,С,О,В,К\n"), admin)
@@ -214,6 +219,7 @@ func TestMaterialHTTPRejectsNULBeforePersistence(t *testing.T) {
 }
 
 func TestMaterialHTTPPreservesCodeFormatting(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t)
 	admin := f.admin(t)
 	response := upload(f, "/admin/subjects/subject:test/competency-map/import", "file", "map.csv", "text/csv", []byte("Ком,Сост,ОР,Задание 1,Критерии 1\nК,С,О,В,К\n"), admin)

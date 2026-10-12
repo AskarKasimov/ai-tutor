@@ -14,8 +14,6 @@ import {
 import { afterEach, expect, it, vi } from 'vitest'
 import { createQueryClient } from '@/bootstrap/providers'
 import { routeTree } from '@/routeTree.gen'
-import * as trainerSource from '@/bootstrap/demo-trainer-session-source'
-import { logOut } from '../support/account-menu'
 
 const admin = {
   id: 'admin-1',
@@ -82,7 +80,9 @@ const subjects = [
   { id: 'subject-b', name: 'Статистика', ready: false },
 ]
 
-function renderApp(path = '/') {
+// The admin panel is the /admin site; the browser address decides the portal.
+function renderApp(path = '/admin') {
+  window.history.replaceState({}, '', path)
   const router = createRouter({
     context: { queryClient: createQueryClient() },
     history: createMemoryHistory({ initialEntries: [path] }),
@@ -98,18 +98,30 @@ function backend(
     result?: unknown
     status?: number
     subjects?: typeof subjects
+    teacherFails?: boolean
   } = {},
 ) {
   let active: typeof emptyMap | typeof importedMap = emptyMap
   const activeSubjects = [...(options.subjects ?? subjects)]
+  let signedIn = options.user !== null
   const fetch = vi.fn(async (url: string, init?: RequestInit) => {
     if (url.endsWith('/auth/refresh'))
       return new Response(null, { status: 401 })
     if (url.endsWith('/auth/me'))
-      return new Response(
-        JSON.stringify(options.user === undefined ? admin : options.user),
-        { status: options.user === null ? 401 : 200 },
-      )
+      return signedIn
+        ? new Response(JSON.stringify(options.user ?? admin))
+        : new Response(null, { status: 401 })
+    // The admin panel enters the shared teacher account by itself.
+    if (url.endsWith('/auth/teacher')) {
+      if (options.teacherFails)
+        return Response.json({ message: 'Сервер недоступен.' }, { status: 503 })
+      signedIn = true
+      return Response.json({ user: admin })
+    }
+    if (url.endsWith('/auth/logout')) {
+      signedIn = false
+      return new Response(null, { status: 204 })
+    }
     if (url.endsWith('/subjects') && !init?.method)
       return new Response(JSON.stringify(activeSubjects))
     if (url.endsWith('/admin/subjects') && init?.method === 'POST') {
@@ -151,15 +163,12 @@ function backend(
 afterEach(() => {
   vi.unstubAllGlobals()
   vi.restoreAllMocks()
+  window.history.replaceState({}, '', '/')
 })
 
-it.each(['/', '/login'])(
-  'opens the map administration by default for a restored admin session at %s',
+it.each(['/admin', '/admin/'])(
+  'opens the map administration by default when the admin panel opens at %s',
   async (path) => {
-    const createLesson = vi.spyOn(
-      trainerSource,
-      'createMockTrainerSessionSource',
-    )
     backend()
     const router = renderApp(path)
     expect(
@@ -181,7 +190,6 @@ it.each(['/', '/login'])(
     expect(
       screen.queryByRole('combobox', { name: 'Предмет' }),
     ).not.toBeInTheDocument()
-    expect(createLesson).not.toHaveBeenCalled()
   },
 )
 
@@ -205,12 +213,9 @@ it('does not mount the lesson while the current session is being checked', async
   )
   expect(screen.queryByText('Машинное обучение')).not.toBeInTheDocument()
   await act(async () => finish(new Response('{}', { status: 401 })))
-  expect(
-    await screen.findByRole('heading', {
-      name: 'Как вы хотите войти?',
-      level: 1,
-    }),
-  ).toBeVisible()
+  expect(await screen.findByRole('alert')).toHaveTextContent(
+    'Не удалось открыть админ-панель.',
+  )
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
 })
 
@@ -280,43 +285,15 @@ it('switches to editing with the error when the first map import fails', async (
   expect(screen.queryByLabelText('Название предмета')).not.toBeInTheDocument()
 })
 
-it('routes an admin straight from the login form to the import screen', async () => {
-  let authenticated = false
-  vi.stubGlobal(
-    'fetch',
-    vi.fn(async (url: string) => {
-      if (url.endsWith('/auth/refresh'))
-        return new Response(null, { status: 401 })
-      if (url.endsWith('/auth/me'))
-        return new Response(JSON.stringify(admin), {
-          status: authenticated ? 200 : 401,
-        })
-      if (url.endsWith('/auth/login')) {
-        authenticated = true
-        return new Response(JSON.stringify({ user: admin }))
-      }
-      return new Response(JSON.stringify(emptyMap))
-    }),
-  )
-  renderApp()
-  fireEvent.click(
-    await screen.findByRole('button', { name: 'Войти как ученик' }),
-  )
-  await screen.findByRole('heading', { name: 'Вход в AI Tutor' })
-  expect(screen.queryByText('Машинное обучение')).not.toBeInTheDocument()
-  fireEvent.change(screen.getByLabelText('Email'), {
-    target: { value: 'admin@example.com' },
-  })
-  fireEvent.change(screen.getByLabelText('Пароль'), {
-    target: { value: 'admin-password' },
-  })
-  fireEvent.click(screen.getByRole('button', { name: 'Войти' }))
+it('keeps the student site free of the admin panel even for an admin account', async () => {
+  backend()
+  const router = renderApp('/')
+  expect(await screen.findByRole('heading', { name: 'Курсы' })).toBeVisible()
+  expect(router.state.location.pathname).toBe('/')
   expect(
-    await screen.findByRole('heading', { name: 'Карта компетенций' }),
-  ).toBeVisible()
-  expect(
-    screen.queryByRole('button', { name: 'Начать запись' }),
+    screen.queryByRole('heading', { name: 'Карта компетенций' }),
   ).not.toBeInTheDocument()
+  expect(document.querySelector('a[href^="/admin"]')).toBeNull()
 })
 
 it('denies students direct access to the import screen without fetching the map', async () => {
@@ -375,7 +352,10 @@ it.each(['csv', 'xlsx'])(
       '/api/v1/admin/subjects/subject-a/competency-map/import',
     )
     expect(init?.credentials).toBe('include')
-    expect(init?.headers).toBeUndefined()
+    // The browser sets the multipart boundary; only the portal header is ours.
+    const headers = new Headers(init?.headers)
+    expect(headers.get('Content-Type')).toBeNull()
+    expect(headers.get('X-AI-Tutor-Portal')).toBe('admin')
     const file = (init?.body as FormData).get('file') as File
     expect(file.name).toBe(`map.${extension}`)
     expect(file.type).toBe(
@@ -543,32 +523,30 @@ it('keeps the file for a retry after a technical import failure', async () => {
   ).toBeEnabled()
 })
 
-it('returns to the separate login screen after logout', async () => {
-  const fetch = backend()
-  fetch.mockImplementationOnce(async () => new Response(JSON.stringify(admin)))
+it('shows the shared account without a logout in the admin panel', async () => {
+  backend()
   renderApp()
   await screen.findByRole('heading', { name: 'Карта компетенций' })
-  fetch.mockImplementation(async () => new Response(null, { status: 204 }))
-  await logOut()
+  expect(screen.getByLabelText('Профиль: Администратор')).toBeVisible()
   expect(
-    await screen.findByRole('heading', { name: 'Как вы хотите войти?' }),
-  ).toBeVisible()
-  expect(
-    screen.queryByLabelText('Файл карты компетенций'),
+    screen.queryByRole('button', { name: /Меню профиля/ }),
   ).not.toBeInTheDocument()
+  expect(screen.queryByText('Выйти')).not.toBeInTheDocument()
 })
 
-it('does not expose the upload form to guests opening the admin URL directly', async () => {
-  const fetch = backend({ user: null })
+it('does not expose the upload form when the admin panel cannot sign in', async () => {
+  const fetch = backend({ user: null, teacherFails: true })
   renderApp('/admin/competency-map')
-  expect(
-    await screen.findByRole('heading', { name: 'Как вы хотите войти?' }),
-  ).toBeVisible()
+  expect(await screen.findByRole('alert')).toHaveTextContent(
+    'Не удалось открыть админ-панель.',
+  )
   expect(
     screen.queryByLabelText('Файл карты компетенций'),
   ).not.toBeInTheDocument()
   expect(
-    fetch.mock.calls.every(([url]) => /\/auth\/(me|refresh)$/.test(url)),
+    fetch.mock.calls.every(([url]) =>
+      /\/auth\/(me|refresh|teacher)$/.test(url),
+    ),
   ).toBe(true)
 })
 
@@ -594,9 +572,7 @@ it('restores the admin screen after reload with an expired access cookie', async
   expect(
     await screen.findByRole('heading', { name: 'Карта компетенций' }),
   ).toBeVisible()
-  expect(
-    screen.queryByRole('heading', { name: 'Как вы хотите войти?' }),
-  ).not.toBeInTheDocument()
+  expect(screen.queryByText('Открываем админ-панель…')).not.toBeInTheDocument()
 })
 
 it('blocks a second upload and changing the file while import is pending', async () => {
@@ -627,8 +603,8 @@ it('blocks a second upload and changing the file while import is pending', async
   expect(await screen.findByText('Предупреждения импорта')).toBeVisible()
 })
 
-it('returns to login when the backend rejects an import with an expired session', async () => {
-  backend({
+it('enters the shared account again when an import meets an expired session', async () => {
+  const fetch = backend({
     status: 401,
     result: { code: 'UNAUTHORIZED', message: 'Сессия завершилась.' },
   })
@@ -642,12 +618,14 @@ it('returns to login when the backend rejects an import with an expired session'
       name: 'Перезаписать',
     }),
   )
+  await waitFor(() =>
+    expect(
+      fetch.mock.calls.some(([url]) => url.endsWith('/auth/teacher')),
+    ).toBe(true),
+  )
   expect(
-    await screen.findByRole('heading', { name: 'Как вы хотите войти?' }),
-  ).toBeVisible()
-  expect(
-    screen.queryByLabelText('Файл карты компетенций'),
-  ).not.toBeInTheDocument()
+    await screen.findByLabelText('Файл карты компетенций'),
+  ).toBeInTheDocument()
 })
 
 it('does not claim success for an unreadable import result', async () => {
@@ -687,47 +665,50 @@ it('retries a failed session check without exposing the lesson', async () => {
   ).toBeVisible()
 })
 
-it('can log in again after an expired map refresh without reusing the cached 401', async () => {
+it('enters again after an expired map refresh without reusing the cached 401', async () => {
   const fetch = backend()
   const router = renderApp()
   await screen.findByText('Карта ещё не загружена.')
-  fetch.mockImplementation(async (url: string) =>
-    url.endsWith('/subjects/subject-a/competency-map')
-      ? new Response(JSON.stringify({ message: 'Сессия завершилась.' }), {
-          status: 401,
-        })
-      : new Response(JSON.stringify(admin)),
-  )
+  let signedIn = true
+  let expired = false
+  let finish!: (response: Response) => void
+  fetch.mockImplementation(async (url: string) => {
+    if (url.endsWith('/auth/refresh'))
+      return new Response(null, { status: 401 })
+    if (url.endsWith('/auth/me'))
+      return signedIn
+        ? Response.json(admin)
+        : new Response(null, { status: 401 })
+    if (url.endsWith('/auth/teacher')) {
+      signedIn = true
+      return Response.json({ user: admin })
+    }
+    if (url.endsWith('/subjects')) return Response.json(subjects)
+    // The first map read finds the session expired; after entering again
+    // the map is read afresh.
+    if (!expired) {
+      expired = true
+      signedIn = false
+      return Response.json({ message: 'Сессия завершилась.' }, { status: 401 })
+    }
+    return new Promise<Response>((resolve) => {
+      finish = resolve
+    })
+  })
   await act(async () => {
     await router.options.context!.queryClient.invalidateQueries({
       queryKey: ['competency-map'],
     })
   })
-  fireEvent.click(
-    await screen.findByRole('button', { name: 'Войти как ученик' }),
+  await waitFor(() =>
+    expect(
+      fetch.mock.calls.some(([url]) => url.endsWith('/auth/teacher')),
+    ).toBe(true),
   )
-  await screen.findByRole('heading', { name: 'Вход в AI Tutor' })
-  let finish!: (response: Response) => void
-  fetch.mockImplementation(async (url: string) =>
-    url.endsWith('/auth/login')
-      ? new Response(JSON.stringify({ user: admin }))
-      : new Promise<Response>((resolve) => {
-          finish = resolve
-        }),
-  )
-  fireEvent.change(screen.getByLabelText('Email'), {
-    target: { value: 'admin@example.com' },
-  })
-  fireEvent.change(screen.getByLabelText('Пароль'), {
-    target: { value: 'admin-password' },
-  })
-  fireEvent.click(screen.getByRole('button', { name: 'Войти' }))
   await waitFor(() => expect(finish).toBeDefined())
-  await act(async () => finish(new Response(JSON.stringify(emptyMap))))
+  await act(async () => finish(Response.json(emptyMap)))
   expect(
     await screen.findByRole('heading', { name: 'Карта компетенций' }),
   ).toBeVisible()
-  expect(
-    screen.queryByRole('heading', { name: 'Как вы хотите войти?' }),
-  ).not.toBeInTheDocument()
+  expect(await screen.findByText('Карта ещё не загружена.')).toBeVisible()
 })

@@ -1,7 +1,6 @@
 import { afterEach, expect, it, vi } from 'vitest'
 
 import { evaluateAnswer } from '@/entities/assessment'
-import { evaluateDemoAnswer } from '@/bootstrap/mock-api'
 
 afterEach(() => vi.unstubAllGlobals())
 
@@ -62,7 +61,7 @@ it.each([
   ).rejects.toThrow('Invalid assessment response')
 })
 
-it('does not send an assessment without saved IDs or demo grading in real mode', async () => {
+it('does not send an assessment without saved IDs', async () => {
   const fetchMock = vi.fn()
   vi.stubGlobal('fetch', fetchMock)
   await expect(
@@ -72,18 +71,6 @@ it('does not send an assessment without saved IDs or demo grading in real mode',
       new AbortController().signal,
     ),
   ).rejects.toThrow('Saved variant')
-  await expect(
-    evaluateDemoAnswer(
-      'tr-1',
-      {
-        taskId: 'demo-task',
-        question: 'Вопрос',
-        options: [],
-        voiceInstruction: 'Ответьте',
-      },
-      new AbortController().signal,
-    ),
-  ).rejects.toThrow('mock mode')
   expect(fetchMock).not.toHaveBeenCalled()
 })
 

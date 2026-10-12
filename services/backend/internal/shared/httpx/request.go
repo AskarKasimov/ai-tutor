@@ -72,6 +72,22 @@ func NoBody(r *http.Request) error {
 	return nil
 }
 
+// PortalHeader marks requests from the admin web panel. Its sessions use their
+// own cookies, so the student site and the admin panel stay signed in
+// independently in one browser.
+const PortalHeader = "X-AI-Tutor-Portal"
+
+func AdminPortal(r *http.Request) bool { return r.Header.Get(PortalHeader) == "admin" }
+
+// SessionCookieNames returns the access and refresh cookie names of the
+// request's portal.
+func SessionCookieNames(r *http.Request) (access, refresh string) {
+	if AdminPortal(r) {
+		return "admin_access_token", "admin_refresh_token"
+	}
+	return "access_token", "refresh_token"
+}
+
 func Cookie(r *http.Request, name string) string {
 	c, err := r.Cookie(name)
 	if err != nil || len(c.Value) > 128 {

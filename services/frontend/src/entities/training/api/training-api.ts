@@ -10,6 +10,7 @@ import type {
   TrainingSubmission,
   TrainingTarget,
 } from '../model/training'
+import type { TrainingChatApi } from './training-chat-api'
 
 const apiBase = (import.meta.env.VITE_API_BASE_URL || '/api/v1').replace(
   /\/$/,
@@ -49,7 +50,8 @@ const attemptSchema: z.ZodType<TrainingAttempt> = z
     exercise_id: id,
     round: count.min(1),
     target_index: count,
-    transcription_id: id,
+    transcription_id: id.optional(),
+    answer_source: z.enum(['text', 'voice']).optional(),
     text: id,
     score,
     max_score: z.literal(2),
@@ -303,6 +305,36 @@ export async function submitTraining(
   return progress
 }
 
+export async function nextTrainingExercise(
+  sessionId: string,
+  exerciseId: string,
+  revision: number,
+  key: string,
+  signal: AbortSignal,
+) {
+  const progress = await parse(
+    await request(
+      `/training-sessions/${encodeURIComponent(sessionId)}/exercises/${encodeURIComponent(exerciseId)}/next`,
+      signal,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Idempotency-Key': key },
+        body: JSON.stringify({ revision }),
+      },
+      240_000,
+    ),
+    progressSchema,
+    signal,
+  )
+  if (
+    progress.session_id !== sessionId ||
+    !progress.answer ||
+    progress.answer.exercise_id !== exerciseId
+  )
+    throw new TrainingApiError(0, 'INVALID_RESPONSE')
+  return progress
+}
+
 export async function resetTrainingAnswer(
   sessionId: string,
   signal: AbortSignal,
@@ -386,9 +418,10 @@ export type TrainingApi = {
   createTrainingSubmission: typeof createTrainingSubmission
   createTrainingSkipSubmission: typeof createTrainingSkipSubmission
   submitTraining: typeof submitTraining
+  nextTrainingExercise: typeof nextTrainingExercise
   resetTrainingAnswer: typeof resetTrainingAnswer
   readTrainingHistory: typeof readTrainingHistory
   readTrainingAudio: typeof readTrainingAudio
   fetchTrainingAudioFile: typeof fetchTrainingAudioFile
   regenerateTrainingAudio: typeof regenerateTrainingAudio
-}
+} & TrainingChatApi

@@ -344,3 +344,56 @@ func TestEvaluateVariantStopsWhenSnapshotLookupFails(t *testing.T) {
 		t.Fatalf("expected snapshot lookup failure before transcription/model access, got %v", err)
 	}
 }
+
+func TestEvaluateTrustedTextUsesTrainingScaleAndTaskInstruction(t *testing.T) {
+	grader := &graderStub{result: validEvaluation()}
+	service := New(nil, nil, grader)
+
+	got, err := service.EvaluateTrustedText(context.Background(), validVariantTask("training"), "Классификация, потому что ответ принимает два класса.")
+	if err != nil {
+		t.Fatalf("trusted text evaluation failed: %v", err)
+	}
+	if got.Score != 2 || got.MaxScore != 2 || got.Verdict != "correct" {
+		t.Fatalf("expected training scale 2/2, got %+v", got)
+	}
+	if grader.answer != "Классификация, потому что ответ принимает два класса." {
+		t.Fatalf("grader received %q", grader.answer)
+	}
+	if grader.gradingContext.Criteria[1].Mandatory != true || !strings.Contains(grader.gradingContext.Criteria[1].Description, "Назовите тип задачи") {
+		t.Fatalf("trusted grading omitted the mandatory instruction: %+v", grader.gradingContext.Criteria)
+	}
+}
+
+func TestEvaluateTrustedTextRejectsBlankAnswer(t *testing.T) {
+	grader := &graderStub{result: validEvaluation()}
+	_, err := New(nil, nil, grader).EvaluateTrustedText(context.Background(), validVariantTask("training"), " \t ")
+	if err == nil || grader.answer != "" {
+		t.Fatalf("expected blank answer to fail before grading; err=%v answer=%q", err, grader.answer)
+	}
+}
+
+func TestEvaluateTrustedTextRejectsScoreVerdictMismatch(t *testing.T) {
+	result := validEvaluation()
+	result.Score = 1
+	grader := &graderStub{result: result}
+	_, err := New(nil, nil, grader).EvaluateTrustedText(context.Background(), validVariantTask("training"), "Ответ ученика")
+	var f *fault.Error
+	if !errors.As(err, &f) || f.Code != "INVALID_MODEL_RESPONSE" {
+		t.Fatalf("expected inconsistent score/verdict rejection, got %v", err)
+	}
+}
+
+func TestEvaluateTrustedTextAllowsNumberOnlyWhenMandatoryInstructionIsMet(t *testing.T) {
+	result := validEvaluation()
+	result.Score = 0
+	result.Verdict = "incorrect"
+	result.CriterionResults[1] = CriterionResult{Key: "instruction_following", Satisfied: false, Explanation: "Тип задачи указан только номером."}
+	grader := &graderStub{result: result}
+	got, err := New(nil, nil, grader).EvaluateTrustedText(context.Background(), validVariantTask("training"), "1")
+	if err != nil || got.Score != 0 || got.Verdict != "incorrect" {
+		t.Fatalf("expected a number-only answer to fail the required instruction, got %+v, %v", got, err)
+	}
+	if !grader.gradingContext.Criteria[1].Mandatory || !strings.Contains(grader.gradingContext.Criteria[1].Description, "Назовите тип задачи") {
+		t.Fatalf("number-only answer was not checked against the instruction: %+v", grader.gradingContext.Criteria)
+	}
+}

@@ -248,14 +248,21 @@ func (r *Repository) Reserve(ctx context.Context, owner, id, key, fingerprint, e
 			return nil, nil, s, err
 		}
 		if reserved.Token != "" && row.Leased {
+			if reserved.Operation == "chat" {
+				return nil, nil, s, conflict("CHAT_TURN_IN_PROGRESS", "Реплика уже обрабатывается.")
+			}
 			return nil, nil, s, conflict("TRAINING_ANSWER_IN_PROGRESS", "Ответ уже обрабатывается.")
 		}
 		if reserved.Key != key || reserved.Fingerprint != fingerprint || reserved.ExerciseID != exerciseID {
+			if reserved.Operation == "chat" {
+				return nil, nil, s, conflict("CHAT_PENDING_TURN_EXISTS", "Сначала повторите или отмените ожидающую реплику.")
+			}
 			return nil, nil, s, conflict("TRAINING_ANSWER_RETRY_MISMATCH", "Для повтора используйте исходный ключ и аудио.")
 		}
 	}
 	reserved.Key = key
 	reserved.Fingerprint = fingerprint
+	reserved.Operation = "answer"
 	reserved.ExerciseID = exerciseID
 	reserved.Token = token
 	raw, err := json.Marshal(reserved)
@@ -291,7 +298,15 @@ func (r *Repository) Accept(ctx context.Context, owner string, reserved training
 	if err = json.Unmarshal(row.ReservationData, &current); err != nil {
 		return training.Progress{}, err
 	}
-	if !row.Leased || current.Token != reserved.Token || current.Key != reserved.Key || current.Fingerprint != reserved.Fingerprint || current.ExerciseID != attempt.ExerciseID {
+	currentOperation := current.Operation
+	if currentOperation == "" {
+		currentOperation = "answer" // Legacy reservations predate the operation discriminator.
+	}
+	reservedOperation := reserved.Operation
+	if reservedOperation == "" {
+		reservedOperation = "answer"
+	}
+	if !row.Leased || currentOperation != "answer" || reservedOperation != "answer" || current.Token != reserved.Token || current.Key != reserved.Key || current.Fingerprint != reserved.Fingerprint || current.ExerciseID != attempt.ExerciseID {
 		return training.Progress{}, conflict("TRAINING_ANSWER_STALE", "Обработка устарела.")
 	}
 	previous, err := decode(row.StateData)
@@ -322,6 +337,9 @@ func (r *Repository) Accept(ctx context.Context, owner string, reserved training
 		return p, err
 	}
 	if err = q.InsertTrainingAttempt(ctx, db.InsertTrainingAttemptParams{SessionID: s.ID, Sequence: attempt.Sequence, RequestKey: reserved.Key, Fingerprint: reserved.Fingerprint, ExerciseID: attempt.ExerciseID, AttemptData: answerJSON, ResponseData: responseJSON}); err != nil {
+		return p, err
+	}
+	if err = q.CloseTrainingChat(ctx, db.CloseTrainingChatParams{SessionID: s.ID, ExerciseID: attempt.ExerciseID}); err != nil {
 		return p, err
 	}
 	if err = tx.Commit(ctx); err != nil {
@@ -376,6 +394,18 @@ func (r *Repository) ResetReservation(ctx context.Context, owner, id string) err
 	}
 	if err != nil {
 		return err
+	}
+	if len(row.ReservationData) > 0 {
+		var current training.Reservation
+		if err = json.Unmarshal(row.ReservationData, &current); err != nil {
+			return err
+		}
+		if current.Operation == "chat" {
+			if row.Leased {
+				return conflict("CHAT_TURN_IN_PROGRESS", "Реплика ещё обрабатывается.")
+			}
+			return conflict("CHAT_PENDING_TURN_EXISTS", "Чат содержит незавершённую реплику.")
+		}
 	}
 	if row.Leased {
 		return conflict("TRAINING_ANSWER_IN_PROGRESS", "Ответ ещё обрабатывается.")

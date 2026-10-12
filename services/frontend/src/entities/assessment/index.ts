@@ -1,7 +1,6 @@
 export type {
   Assessment,
   AssessmentTask,
-  DemoAssessmentTask,
   AssessmentVerdict,
   CriterionResult,
 } from './model/assessment'

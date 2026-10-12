@@ -20,6 +20,11 @@ INSERT INTO training_exercises(id,session_id,round,target_index,exercise_data,au
 -- name: SaveTrainingReservation :exec
 UPDATE training_sessions SET reservation_data=$3,lease_until=CASE WHEN sqlc.arg(leased)::boolean THEN now()+interval '5 minutes' ELSE NULL END WHERE owner_id=$1 AND id=$2;
 
+-- name: SaveTrainingReservationWithLease :exec
+UPDATE training_sessions SET reservation_data=$3,
+ lease_until=CASE WHEN sqlc.arg(lease_seconds)::bigint>0 THEN now()+sqlc.arg(lease_seconds)::bigint*interval '1 second' ELSE NULL END
+WHERE owner_id=$1 AND id=$2;
+
 -- name: ResetTrainingReservation :exec
 UPDATE training_sessions SET reservation_data=NULL,lease_until=NULL WHERE owner_id=$1 AND id=$2;
 -- name: SaveTrainingState :exec

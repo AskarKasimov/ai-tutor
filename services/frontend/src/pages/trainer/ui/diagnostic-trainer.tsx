@@ -1,13 +1,13 @@
 import { Button, Heading, Text } from '@radix-ui/themes'
 import {
   AlertTriangle,
-  ArrowRight,
   BookOpen,
   CheckCircle2,
   ChevronRight,
   Mic,
   RotateCcw,
   Sparkles,
+  Zap,
 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
@@ -229,15 +229,6 @@ function DiagnosticFlow({
     if (openTaskId) void voice.speak({ auto: true })
     // voice is recreated on every render; autoplay runs once per opened task.
   }, [openTaskId])
-  const [skipFailed, setSkipFailed] = useState(false)
-  async function skip() {
-    setSkipFailed(false)
-    try {
-      await voice.skip()
-    } catch {
-      setSkipFailed(true)
-    }
-  }
   if (progress.status === 'completed' && !voice.accepted)
     return (
       <DiagnosticSummary
@@ -339,15 +330,13 @@ function DiagnosticFlow({
           seconds={seconds}
           stream={voice.stream}
           errorMessage={
-            skipFailed
-              ? t('session.skipError')
-              : failed
-                ? t(
-                    voice.captureError
-                      ? `trainer.${voice.captureError}`
-                      : errorKey(voice.error, 'diagnostic.submitError'),
-                  )
-                : undefined
+            failed
+              ? t(
+                  voice.captureError
+                    ? `trainer.${voice.captureError}`
+                    : errorKey(voice.error, 'diagnostic.submitError'),
+                )
+              : undefined
           }
           micError={micError}
           onMic={
@@ -360,8 +349,6 @@ function DiagnosticFlow({
               ? undefined
               : () => void (recording ? voice.stop() : voice.start())
           }
-          onSkip={() => void skip()}
-          skipDisabled={blocked}
         >
           {needsRefresh ? (
             <Button
@@ -535,19 +522,32 @@ function DiagnosticSummary({
       <Text as="p" className={styles.summaryHelp}>
         {t('diagnostic.completedHelp')}
       </Text>
-      <div className={styles.summaryScore}>
-        <Text>
-          {value.diagnostic_score} / {value.maximum_score}
-        </Text>
-        <Text>{t('diagnostic.totalScore')}</Text>
-        <Button
-          size="3"
+      {/* The result leads straight on: a bright card whose main action is
+          to work through the weak topics. */}
+      <div className={diagnosticStyles.scoreHero}>
+        <div className={diagnosticStyles.scoreText}>
+          <div>
+            <Text className={diagnosticStyles.scoreNumber}>
+              {value.diagnostic_score} / {value.maximum_score}
+            </Text>{' '}
+            <Text className={diagnosticStyles.scoreLabel}>
+              {t('diagnostic.totalScore')}
+            </Text>
+          </div>
+          <Text as="p" className={diagnosticStyles.scoreNext}>
+            {t('diagnostic.nextStep')}
+          </Text>
+        </div>
+        <button
+          type="button"
           className={diagnosticStyles.toTraining}
           onClick={() => onTraining(sessionId)}
         >
+          <span className={diagnosticStyles.toTrainingIcon} aria-hidden="true">
+            <Zap size={20} fill="currentColor" />
+          </span>
           {t('diagnostic.toTraining')}
-          <ArrowRight size={18} aria-hidden="true" />
-        </Button>
+        </button>
       </div>
       {overall.isPending ? (
         <FeedbackPreparing />
@@ -603,28 +603,9 @@ function DiagnosticSummary({
                   </li>
                 ))}
               </ol>
-              {value.untested_basics.length > 0 && (
-                <section className={diagnosticStyles.untested}>
-                  <Heading as="h2">{t('diagnostic.untested')}</Heading>
-                  <ul>
-                    {value.untested_basics.map((task) => (
-                      <li key={task.variant_task_id}>{task.question}</li>
-                    ))}
-                  </ul>
-                </section>
-              )}
-              {value.skipped_competencies.length > 0 && (
-                <section className={diagnosticStyles.untested}>
-                  <Heading as="h2">
-                    {t('diagnostic.skippedCompetencies')}
-                  </Heading>
-                  <ul>
-                    {value.skipped_competencies.map((item) => (
-                      <li key={item.competency_id}>{item.competency_name}</li>
-                    ))}
-                  </ul>
-                </section>
-              )}
+              {/* Basics left out after a full main answer and competencies
+                  outside the variant stay in the API: the review shows only
+                  the tasks that were asked. */}
             </div>
           )}
         </>
@@ -711,6 +692,13 @@ function DiagnosticOverallFeedback({
                       : rec.rationale,
                   )
               : []
+          const covered = new Set(
+            value.training_recommendations?.map((item) => item.outcome_id) ??
+              [],
+          )
+          const uncoveredGaps = (value.confirmed_gaps || []).filter(
+            (gap) => !covered.has(gap.outcome_id),
+          )
 
           return (
             <div className={styles.feedbackContent}>
@@ -779,10 +767,9 @@ function DiagnosticOverallFeedback({
                   <div className={styles.summaryCardBody}>
                     {badText ? (
                       <p className={styles.feedbackParagraph}>{badText}</p>
-                    ) : value.confirmed_gaps &&
-                      value.confirmed_gaps.length > 0 ? (
+                    ) : uncoveredGaps.length > 0 ? (
                       <ul className={styles.summaryCardList}>
-                        {value.confirmed_gaps.slice(0, 3).map((gap, idx) => (
+                        {uncoveredGaps.slice(0, 3).map((gap, idx) => (
                           <li key={idx}>
                             <strong>
                               {gap.outcome_name || gap.competency_name}:

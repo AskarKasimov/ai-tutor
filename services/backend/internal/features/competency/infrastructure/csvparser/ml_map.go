@@ -519,8 +519,28 @@ func parseMLTask(raw string) (competencymap.Task, bool) {
 	}
 	voice = strings.TrimSuffix(voice, ".")
 	voice = strings.TrimPrefix(strings.TrimSuffix(voice, "»"), "«")
-	task.Question = screen
+	task.Question = normalizeTaskContent(screen)
 	task.ReferenceAnswer = correct
 	task.VoiceInstruction = voice
 	return task, true
+}
+
+var rawPythonBlock = regexp.MustCompile(`(?s)(?:^|\n)python(?:\r?\n|\\n)(.+)$`)
+
+// normalizeTaskContent ensures code blocks like "python\nimport numpy..." with
+// literal \n escapes are converted into standard Markdown code blocks: ```python ... ```.
+func normalizeTaskContent(text string) string {
+	match := rawPythonBlock.FindStringSubmatchIndex(text)
+	if match == nil {
+		return text
+	}
+	prefix := strings.TrimSpace(text[:match[0]])
+	code := text[match[2]:match[3]]
+	code = strings.ReplaceAll(code, "\\n", "\n")
+	code = strings.TrimSpace(code)
+	fenced := "```python\n" + code + "\n```"
+	if prefix == "" {
+		return fenced
+	}
+	return prefix + "\n\n" + fenced
 }

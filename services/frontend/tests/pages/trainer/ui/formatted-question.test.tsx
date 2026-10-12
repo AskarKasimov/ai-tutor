@@ -64,3 +64,21 @@ it('does not render raw HTML from the task text', () => {
   )
   expect(container.querySelector('img')).toBeNull()
 })
+
+it('renders code blocks in pre elements with monospaced code content', () => {
+  const { container } = render(
+    <FormattedQuestionContent
+      question={[
+        'Изучите код:',
+        '```python',
+        'import numpy as np',
+        'X = np.array([1, 2])',
+        '```',
+      ].join('\n')}
+    />,
+  )
+  const pre = container.querySelector('pre')
+  expect(pre).not.toBeNull()
+  expect(pre).toHaveTextContent('import numpy as np')
+  expect(pre).toHaveTextContent('X = np.array([1, 2])')
+})

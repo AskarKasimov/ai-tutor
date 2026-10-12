@@ -151,3 +151,20 @@ func TestMLMapReadsOptionalPlanningMinutes(t *testing.T) {
 		}
 	}
 }
+
+func TestMLMapNormalizesCodeBlocks(t *testing.T) {
+	header := ";Компетенция;Уровень темы;Составляющая;Образовательный результат;Что должно войти в тест;Таксономия;Уровень ALDs;Важность;Раздел РПД · компетенции РПД;Задание1;ОС\n"
+	rawTask := "Экран: код.\n\npython\\nimport numpy as np\\n\\nX = np.array([1, 2])\n\nГолосовая инструкция: «Объясните код».\n\nОтвет: вектор."
+	data := header + ";К;Базовый;С;ОР;TRUE;Знание;базовый;4;\"Р.1 Введение\nОПК-2\";" + `"` + strings.ReplaceAll(rawTask, `"`, `""`) + `"` + ";ОС\n"
+	parsed, err := Parse([]byte(data))
+	if err != nil {
+		t.Fatalf("parse code task: %v", err)
+	}
+	if len(parsed.Tasks) != 1 {
+		t.Fatalf("tasks count = %d, want 1", len(parsed.Tasks))
+	}
+	expected := "код.\n\n```python\nimport numpy as np\n\nX = np.array([1, 2])\n```"
+	if parsed.Tasks[0].Question != expected {
+		t.Fatalf("question = %q, want %q", parsed.Tasks[0].Question, expected)
+	}
+}

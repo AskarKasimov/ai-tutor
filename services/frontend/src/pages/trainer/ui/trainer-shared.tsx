@@ -339,6 +339,18 @@ export function FormattedQuestionContent({
           {children}
         </td>
       ),
+      pre: ({ children }) => (
+        <div className={styles.codeBlockWrapper}>
+          <pre className={styles.codeBlock}>{children}</pre>
+        </div>
+      ),
+      code: ({ className, children }) => {
+        const isBlock = Boolean(className)
+        if (isBlock) {
+          return <code className={styles.codeContent}>{children}</code>
+        }
+        return <code className={styles.inlineCode}>{children}</code>
+      },
     }),
     [headingLevel, long],
   )

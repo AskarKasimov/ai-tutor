@@ -6,5 +6,3 @@ export {
 } from './browser-audio'
 export type { Recording } from './browser-audio'
 export { createVoiceWaveform } from './live-waveform'
-export { parseQuestionContent } from './markdown-table'
-export type { TableData, QuestionBlock } from './markdown-table'

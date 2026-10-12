@@ -389,10 +389,8 @@
   gap: 14px;
   width: 100%;
 }
-.questionLeadTitle {
-  margin: 0;
-}
 .questionParagraph {
+  margin: 0;
   font-size: 16px;
   line-height: 24px;
   color: var(--app-ink);
@@ -444,14 +442,14 @@
   color: var(--app-ink, #1e293b);
   font-variant-numeric: tabular-nums;
 }
-.align_left {
-  text-align: left;
-}
-.align_center {
-  text-align: center;
-}
-.align_right {
-  text-align: right;
+.questionList {
+  margin: 0;
+  padding-left: 22px;
+  display: grid;
+  gap: 6px;
+  font-size: 16px;
+  line-height: 24px;
+  color: var(--app-ink);
 }
 // The spoken instruction under the task text; when options follow, a divider
 // and their title separate them from it.

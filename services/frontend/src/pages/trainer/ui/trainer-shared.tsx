@@ -13,11 +13,13 @@ import {
   SkipForward,
   Square,
 } from 'lucide-react'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { AccountMenu } from '@/features/auth'
-import { parseQuestionContent } from '@/shared/lib'
+import Markdown, { type Components } from 'react-markdown'
+import remarkBreaks from 'remark-breaks'
+import remarkGfm from 'remark-gfm'
 import { LiveWaveform } from './trainer-answer'
 import styles from './session.module.scss'
 
@@ -286,6 +288,10 @@ export function QuestionNavigator({
   )
 }
 
+const markdownPlugins = [remarkGfm, remarkBreaks]
+
+// The task text is Markdown: GFM tables and lists, and single line breaks are
+// kept. The first paragraph is the task heading; raw HTML is not rendered.
 export function FormattedQuestionContent({
   question,
   headingLevel = 'h1',
@@ -295,85 +301,53 @@ export function FormattedQuestionContent({
   headingLevel?: 'h1' | 'h2' | 'h3'
   className?: string
 }) {
-  const blocks = parseQuestionContent(question)
-
-  if (blocks.length === 0) {
-    return null
-  }
-
-  if (blocks.length === 1 && blocks[0].type === 'text') {
-    return (
-      <Heading
-        as={headingLevel}
-        className={`${styles.questionTitle} ${question.length > 300 ? styles.longQuestion : ''} ${className ?? ''}`}
-      >
-        {blocks[0].text}
-      </Heading>
-    )
-  }
-
+  const long = question.length > 300
+  // Stable element renderers: new ones on every render would remount the
+  // whole task text.
+  const components = useMemo<Components>(
+    () => ({
+      p: ({ node, children }) =>
+        node?.position?.start.line === 1 ? (
+          <Heading
+            as={headingLevel}
+            className={`${styles.questionTitle} ${long ? styles.longQuestion : ''}`}
+          >
+            {children}
+          </Heading>
+        ) : (
+          <p className={styles.questionParagraph}>{children}</p>
+        ),
+      ul: ({ children }) => <ul className={styles.questionList}>{children}</ul>,
+      ol: ({ children, start }) => (
+        <ol className={styles.questionList} start={start}>
+          {children}
+        </ol>
+      ),
+      table: ({ children }) => (
+        <div className={styles.taskTableWrapper}>
+          <table className={styles.taskTable}>{children}</table>
+        </div>
+      ),
+      th: ({ children, style }) => (
+        <th className={styles.taskTh} style={style}>
+          {children}
+        </th>
+      ),
+      tr: ({ children }) => <tr className={styles.taskTr}>{children}</tr>,
+      td: ({ children, style }) => (
+        <td className={styles.taskTd} style={style}>
+          {children}
+        </td>
+      ),
+    }),
+    [headingLevel, long],
+  )
+  if (!question.trim()) return null
   return (
     <div className={`${styles.formattedQuestion} ${className ?? ''}`}>
-      {blocks.map((block, idx) => {
-        if (block.type === 'text') {
-          if (idx === 0) {
-            return (
-              <Heading
-                key={idx}
-                as={headingLevel}
-                className={`${styles.questionTitle} ${styles.questionLeadTitle}`}
-              >
-                {block.text}
-              </Heading>
-            )
-          }
-          return (
-            <div key={idx} className={styles.questionParagraph}>
-              {block.text}
-            </div>
-          )
-        }
-
-        const { headers, alignments, rows } = block.data
-        return (
-          <div key={idx} className={styles.taskTableWrapper}>
-            <table className={styles.taskTable}>
-              <thead>
-                <tr>
-                  {headers.map((header, hIdx) => {
-                    const align = alignments[hIdx] || 'left'
-                    return (
-                      <th
-                        key={hIdx}
-                        className={`${styles.taskTh} ${styles[`align_${align}`] || ''}`}
-                      >
-                        {header}
-                      </th>
-                    )
-                  })}
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((row, rIdx) => (
-                  <tr key={rIdx} className={styles.taskTr}>
-                    {row.map((cell, cIdx) => {
-                      const align = alignments[cIdx] || 'left'
-                      return (
-                        <td
-                          key={cIdx}
-                          className={`${styles.taskTd} ${styles[`align_${align}`] || ''}`}
-                        >
-                          {cell}
-                        </td>
-                      )
-                    })}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )
-      })}
+      <Markdown remarkPlugins={markdownPlugins} components={components}>
+        {question}
+      </Markdown>
     </div>
   )
 }

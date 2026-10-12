@@ -91,36 +91,31 @@ func outcome(subject string, item learning.Item) outcomeData {
 	return outcomeData{Subject: subject, Competency: item.CompetencyName, Outcome: item.OutcomeName, Taxonomy: item.TaxonomyCode, EducationalContent: item.EducationalContent}
 }
 
-func (t *Teacher) Lesson(ctx context.Context, input learning.LessonInput) (learning.Lesson, error) {
+func (t *Teacher) Theory(ctx context.Context, input learning.LessonInput) (string, error) {
 	payload, err := json.Marshal(struct {
 		Type   string      `json:"type"`
 		Detail string      `json:"detail"`
 		Data   outcomeData `json:"data"`
 	}{"learning_outcome", string(input.Detail), outcome(input.SubjectName, input.Item)})
 	if err != nil {
-		return learning.Lesson{}, err
+		return "", err
 	}
 	var result struct {
 		Theory *string `json:"theory"`
 	}
-	// One deadline covers both requests, keeping the configured lesson timeout.
-	ctx, cancel := context.WithTimeout(ctx, t.timeout)
-	defer cancel()
 	if err := t.complete(ctx, theoryPrompt, string(payload), &result); err != nil {
-		return learning.Lesson{}, err
+		return "", err
 	}
 	if !validText(result.Theory, 6000) {
-		return learning.Lesson{}, invalidResponse()
+		return "", invalidResponse()
 	}
-	theory := strings.TrimSpace(*result.Theory)
-	question, err := t.practice(ctx, input, theory)
-	if err != nil {
-		return learning.Lesson{}, err
-	}
-	return learning.Lesson{Theory: theory, Question: question}, nil
+	return strings.TrimSpace(*result.Theory), nil
 }
 
-func (t *Teacher) practice(ctx context.Context, input learning.LessonInput, theory string) (string, error) {
+func (t *Teacher) Practice(ctx context.Context, input learning.LessonInput, theory string) (string, error) {
+	// Draft and review share the practice deadline, independent of theory.
+	ctx, cancel := context.WithTimeout(ctx, t.timeout)
+	defer cancel()
 	payload, err := json.Marshal(struct {
 		Type   string      `json:"type"`
 		Data   outcomeData `json:"data"`

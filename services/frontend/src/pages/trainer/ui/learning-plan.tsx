@@ -227,7 +227,10 @@ function LearningPlanScreen({
     userId,
     plan.id,
     index,
-    isCurrent && actions.answer.isPending,
+    isCurrent &&
+      (actions.open.isPending ||
+        actions.answer.isPending ||
+        actions.retry.isPending),
   )
   const { mutate: open } = actions.open
   // The current lesson is written once, as soon as its topic is reached.
@@ -236,7 +239,7 @@ function LearningPlanScreen({
       !isCurrent ||
       index === null ||
       !messages.isSuccess ||
-      messages.data.length > 0 ||
+      messages.data.some((message) => message.kind === 'practice') ||
       openFor.current === index
     )
       return
@@ -302,7 +305,11 @@ function LearningPlanScreen({
                 <LessonControls
                   plan={plan}
                   actions={actions}
-                  lessonReady={!!messages.data?.length}
+                  lessonReady={
+                    !!messages.data?.some(
+                      (message) => message.kind === 'practice',
+                    )
+                  }
                   onReopen={() => {
                     openFor.current = index
                     open()
@@ -438,6 +445,7 @@ function Chat({
   pendingAnswer: string | null
   thinking: boolean
   answerPending: boolean
+  writingLesson: boolean
 }) {
   const { t } = useTranslation()
   const chat = useRef<HTMLOListElement>(null)
@@ -518,6 +526,15 @@ function Chat({
           <span className={styles.role}>
             {t(answerPending ? 'learning.you' : 'learning.teacher')}
           </span>
+          {writingLesson && (
+            <Text size="2">
+              {t(
+                messages.some((message) => message.kind === 'theory')
+                  ? 'learning.preparingPractice'
+                  : 'learning.writingLesson',
+              )}
+            </Text>
+          )}
           <span className={styles.dots} role="status">
             <span />
             <span />

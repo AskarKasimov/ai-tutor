@@ -66,7 +66,11 @@ func TestTeacherResponses(t *testing.T) {
 					t.Fatal("unexpected next question after completion")
 				}
 			} else {
-				_, err = teacher.Lesson(context.Background(), learning.LessonInput{})
+				var theory string
+				theory, err = teacher.Theory(context.Background(), learning.LessonInput{})
+				if err == nil {
+					_, err = teacher.Practice(context.Background(), learning.LessonInput{}, theory)
+				}
 			}
 			if (err != nil) != tc.wantError {
 				t.Fatalf("error = %v, want error = %v", err, tc.wantError)
@@ -88,7 +92,7 @@ func TestTeacherResponses(t *testing.T) {
 	}
 }
 
-func TestLessonDiscardsPartialResultWhenPracticeFails(t *testing.T) {
+func TestPracticeFailureLeavesTheoryAvailable(t *testing.T) {
 	for _, failAt := range []int{2, 3} {
 		t.Run(strconv.Itoa(failAt), func(t *testing.T) {
 			var requests atomic.Int32
@@ -105,9 +109,14 @@ func TestLessonDiscardsPartialResultWhenPracticeFails(t *testing.T) {
 				json.NewEncoder(w).Encode(map[string]any{"choices": []any{map[string]any{"message": map[string]any{"content": content}}}})
 			}))
 			defer server.Close()
-			result, err := New(server.Client(), server.URL, "test-model", time.Second).Lesson(t.Context(), learning.LessonInput{})
-			if err == nil || result != (learning.Lesson{}) || requests.Load() != int32(failAt) {
-				t.Fatalf("partial lesson escaped: result=%+v, err=%v, requests=%d", result, err, requests.Load())
+			teacher := New(server.Client(), server.URL, "test-model", time.Second)
+			theory, err := teacher.Theory(t.Context(), learning.LessonInput{})
+			if err != nil || theory != "Сохранённая теория" {
+				t.Fatalf("theory = %q, error = %v", theory, err)
+			}
+			question, err := teacher.Practice(t.Context(), learning.LessonInput{}, theory)
+			if err == nil || question != "" || requests.Load() != int32(failAt) {
+				t.Fatalf("partial practice escaped: question=%q, err=%v, requests=%d", question, err, requests.Load())
 			}
 		})
 	}

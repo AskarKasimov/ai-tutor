@@ -104,8 +104,11 @@ type teacher struct {
 	lastInput learning.CheckInput
 }
 
-func (teacher) Lesson(_ context.Context, input learning.LessonInput) (learning.Lesson, error) {
-	return learning.Lesson{Theory: "Теория " + input.Item.OutcomeID, Question: "Вопрос 1"}, nil
+func (teacher) Theory(_ context.Context, input learning.LessonInput) (string, error) {
+	return "Теория " + input.Item.OutcomeID, nil
+}
+func (teacher) Practice(_ context.Context, _ learning.LessonInput, _ string) (string, error) {
+	return "Вопрос 1", nil
 }
 func (t *teacher) Check(_ context.Context, input learning.CheckInput) (learning.Check, error) {
 	t.lastInput = input
@@ -231,4 +234,91 @@ func TestLearningPlanWithoutMistakesIsComplete(t *testing.T) {
 func hasCode(err error, code string) bool {
 	var f *fault.Error
 	return errors.As(err, &f) && f.Code == code
+}
+
+type stagedTeacher struct {
+	teacher
+	theoryCalls, practiceCalls int
+	practiceStarted, release   chan struct{}
+	failPractice               bool
+	usedTheory                 string
+}
+
+func (t *stagedTeacher) Theory(ctx context.Context, input learning.LessonInput) (string, error) {
+	t.theoryCalls++
+	return t.teacher.Theory(ctx, input)
+}
+
+func (t *stagedTeacher) Practice(ctx context.Context, _ learning.LessonInput, theory string) (string, error) {
+	t.practiceCalls++
+	t.usedTheory = theory
+	if t.practiceStarted != nil {
+		close(t.practiceStarted)
+		select {
+		case <-t.release:
+		case <-ctx.Done():
+			return "", ctx.Err()
+		}
+	}
+	if t.failPractice {
+		return "", errors.New("practice unavailable")
+	}
+	return "Готовая практика", nil
+}
+
+func TestOpenPublishesTheoryBeforePracticeIsReady(t *testing.T) {
+	s, repo, _, _ := newService(t, 1)
+	if _, err := s.Create(t.Context(), "u", "d", 5); err != nil {
+		t.Fatal(err)
+	}
+	teacher := &stagedTeacher{practiceStarted: make(chan struct{}), release: make(chan struct{})}
+	s.teacher = teacher
+	finished := make(chan error, 1)
+	go func() { _, err := s.Open(t.Context(), "u", "plan"); finished <- err }()
+	<-teacher.practiceStarted
+	messages, err := s.Messages(t.Context(), "u", "plan", 0)
+	if err != nil || len(messages) != 1 || messages[0].Kind != learning.KindTheory || messages[0].Text != "Теория o1" {
+		t.Errorf("theory not available during practice generation: %+v, %v", messages, err)
+	}
+	if repo.plan.Items[0].Question != "" {
+		t.Error("practice published before completion")
+	}
+	if _, err := s.Answer(t.Context(), "u", "plan", []byte("a"), "audio/wav"); !hasCode(err, "LEARNING_LESSON_NOT_OPEN") {
+		t.Errorf("answer allowed before practice: %v", err)
+	}
+	close(teacher.release)
+	if err := <-finished; err != nil {
+		t.Fatal(err)
+	}
+	if len(repo.messages) != 2 || repo.messages[1].Kind != learning.KindPractice || teacher.usedTheory != repo.messages[0].Text {
+		t.Fatalf("practice not paired with saved theory: %+v", repo.messages)
+	}
+	if _, err := s.Open(t.Context(), "u", "plan"); err != nil {
+		t.Fatal(err)
+	}
+	if teacher.theoryCalls != 1 || teacher.practiceCalls != 1 {
+		t.Fatal("completed lesson was regenerated")
+	}
+}
+
+func TestOpenResumesPracticeWithoutRewritingTheory(t *testing.T) {
+	s, repo, _, _ := newService(t, 1)
+	if _, err := s.Create(t.Context(), "u", "d", 5); err != nil {
+		t.Fatal(err)
+	}
+	teacher := &stagedTeacher{failPractice: true}
+	s.teacher = teacher
+	if _, err := s.Open(t.Context(), "u", "plan"); err == nil {
+		t.Fatal("expected practice failure")
+	}
+	if len(repo.messages) != 1 || repo.messages[0].Text != "Теория o1" || repo.plan.Items[0].Theory != "Теория o1" {
+		t.Fatalf("theory lost after practice failure: %+v", repo.messages)
+	}
+	teacher.failPractice = false
+	if _, err := s.Open(t.Context(), "u", "plan"); err != nil {
+		t.Fatal(err)
+	}
+	if teacher.theoryCalls != 1 || teacher.practiceCalls != 2 || len(repo.messages) != 2 || teacher.usedTheory != "Теория o1" {
+		t.Fatalf("retry regenerated theory: %+v, %+v", teacher, repo.messages)
+	}
 }

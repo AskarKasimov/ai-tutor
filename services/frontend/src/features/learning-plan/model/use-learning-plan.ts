@@ -42,8 +42,7 @@ export function useLessonMessages(
   return useQuery({
     queryKey: learningPlanQueryKeys.messages(userId, planId, index ?? -1),
     enabled: !!planId && index !== null,
-    // While an answer is checked, its transcript is saved first: polling shows
-    // it in the chat before the teacher replies.
+    // Theory and answer transcripts are saved before the full reply is ready.
     refetchInterval: polling ? 1500 : false,
     queryFn: ({ signal }) =>
       learningPlan.readLearningMessages(planId, index ?? 0, signal),
@@ -75,6 +74,13 @@ export function useLessonActions(
   const open = useMutation({
     mutationFn: () => learningPlan.openLesson(plan.id, signal()),
     onSuccess: settle,
+    // A failed practice request still leaves the theory available to read.
+    onError: () => {
+      if (touched !== null)
+        void cache.invalidateQueries({
+          queryKey: learningPlanQueryKeys.messages(userId, plan.id, touched),
+        })
+    },
   })
   const answer = useMutation({
     mutationFn: (audio: Blob) =>

@@ -50,6 +50,8 @@ type Item struct {
 	Attempts           int        `json:"attempts"`
 	// Question is the practice question waiting for an answer.
 	Question string `json:"question,omitempty"`
+	// Theory is saved before practice is ready so opening can resume on failure.
+	Theory string `json:"theory,omitempty"`
 }
 
 // Minutes is the planned time of the item.

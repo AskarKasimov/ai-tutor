@@ -131,8 +131,8 @@ export async function readLearningMessages(
   return page.items
 }
 
-// Asks the teacher for the theory and the first practice question of the
-// current topic; repeated calls do not rewrite an opened lesson.
+// Theory becomes readable through messages before this request finishes.
+// Repeated calls resume incomplete practice without rewriting saved theory.
 export function openLesson(planId: string, signal: AbortSignal) {
   return request(
     `${plan(planId)}/open`,

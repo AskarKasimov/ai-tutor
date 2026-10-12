@@ -1,3 +1,4 @@
+import { useMemo } from 'react'
 import Markdown, { type Components } from 'react-markdown'
 import remarkBreaks from 'remark-breaks'
 import remarkGfm from 'remark-gfm'
@@ -30,7 +31,14 @@ export function MarkdownContent({
   className?: string
   components?: Components
 }) {
-  if (!text.trim()) return null
+  const normalized = useMemo(() => {
+    if (!text) return ''
+    // Ensure code blocks glued to preceding text (e.g. `Пример: ```python`)
+    // start on a new line so CommonMark parses them as fenced blocks.
+    return text.replace(/([^\n])(```[a-zA-Z0-9_-]*)/g, '$1\n$2')
+  }, [text])
+
+  if (!normalized.trim()) return null
   return (
     <div className={`${styles.content} ${className ?? ''}`}>
       <Markdown
@@ -41,7 +49,7 @@ export function MarkdownContent({
             : defaultComponents
         }
       >
-        {text}
+        {normalized}
       </Markdown>
     </div>
   )

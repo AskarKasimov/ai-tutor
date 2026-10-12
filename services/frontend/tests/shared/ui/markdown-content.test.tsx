@@ -46,3 +46,17 @@ it('keeps raw HTML and unsafe links inactive', () => {
     expect.stringContaining('javascript:'),
   )
 })
+
+it('normalizes code blocks glued directly to preceding text on the same line', () => {
+  const { container } = render(
+    <MarkdownContent
+      text={'Пример в Python: ```python\nimport pandas as pd\nx = 1\n```'}
+    />,
+  )
+  const pre = container.querySelector('pre')
+  expect(pre).not.toBeNull()
+  expect(pre?.textContent).toContain('import pandas as pd')
+  const p = container.querySelector('p')
+  expect(p).not.toBeNull()
+  expect(p?.textContent).toBe('Пример в Python:')
+})

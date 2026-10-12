@@ -92,3 +92,70 @@ it('normalizes a glued fence after a closed code block', () => {
     Array.from(container.querySelectorAll('pre'), (pre) => pre.textContent),
   ).toEqual(['x = 1\n', 'y = 2\n'])
 })
+
+it.each([
+  ['python', 'def greet():\n    return "hello"', 'def'],
+  ['py', 'def greet():\n    return "hello"', 'def'],
+  ['javascript', 'const answer = 42;', 'const'],
+  ['js', 'const answer = 42;', 'const'],
+  ['typescript', 'interface User { name: string }', 'interface'],
+  ['sql', 'SELECT name FROM users;', 'SELECT'],
+  ['go', 'func main() {}', 'func'],
+])(
+  'highlights %s code without changing its text',
+  (language, code, keyword) => {
+    const { container } = render(
+      <MarkdownContent text={`\`\`\`${language}\n${code}\n\`\`\``} />,
+    )
+    const pre = container.querySelector('pre')
+    expect(pre?.textContent).toBe(`${code}\n`)
+    expect(
+      Array.from(
+        pre?.querySelectorAll('.hljs-keyword') ?? [],
+        (node) => node.textContent,
+      ),
+    ).toContain(keyword)
+    expect(container.querySelector('pre pre')).toBeNull()
+    expect(pre?.querySelector('[style]')).toBeNull()
+    expect(pre).not.toHaveAttribute('style')
+  },
+)
+
+it.each(['', 'unknown-language', 'text'])(
+  'keeps %s blocks plain',
+  (language) => {
+    const { container } = render(
+      <MarkdownContent
+        text={`\`\`\`${language}\nconst answer = "a\\nb";\n\`\`\``}
+      />,
+    )
+    const pre = container.querySelector('pre')
+    expect(pre?.textContent).toBe('const answer = "a\\nb";\n')
+    expect(pre?.querySelector('span')).toBeNull()
+  },
+)
+
+it('keeps inline code plain next to a highlighted block', () => {
+  const { container } = render(
+    <MarkdownContent
+      text={'Используйте `const x = 1`:\n\n```js\nconst x = 1\n```'}
+    />,
+  )
+  const inline = container.querySelector('p code')
+  expect(inline?.textContent).toBe('const x = 1')
+  expect(inline?.querySelector('span')).toBeNull()
+  expect(container.querySelector('pre .hljs-keyword')).toHaveTextContent(
+    'const',
+  )
+})
+
+it('highlights HTML as code without creating executable elements', () => {
+  const { container } = render(
+    <MarkdownContent text={'```html\n<script>alert(1)</script>\n```'} />,
+  )
+  expect(container.querySelector('pre')?.textContent).toBe(
+    '<script>alert(1)</script>\n',
+  )
+  expect(container.querySelector('pre .hljs-name')).toHaveTextContent('script')
+  expect(container.querySelector('script')).toBeNull()
+})

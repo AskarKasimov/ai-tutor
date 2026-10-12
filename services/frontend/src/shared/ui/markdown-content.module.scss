@@ -53,6 +53,38 @@
     white-space: pre;
     overflow-wrap: normal;
     tab-size: 4;
+
+    :global(.hljs-keyword),
+    :global(.hljs-selector-tag),
+    :global(.hljs-meta) {
+      color: var(--purple-11);
+    }
+    :global(.hljs-string),
+    :global(.hljs-regexp),
+    :global(.hljs-addition) {
+      color: var(--green-11);
+    }
+    :global(.hljs-number),
+    :global(.hljs-literal),
+    :global(.hljs-symbol) {
+      color: var(--orange-11);
+    }
+    :global(.hljs-title),
+    :global(.hljs-built_in),
+    :global(.hljs-name),
+    :global(.hljs-type) {
+      color: var(--blue-11);
+    }
+    :global(.hljs-attr),
+    :global(.hljs-attribute),
+    :global(.hljs-variable) {
+      color: var(--ruby-11);
+    }
+    :global(.hljs-comment),
+    :global(.hljs-quote) {
+      color: var(--gray-11);
+      font-style: italic;
+    }
   }
   table {
     width: 100%;

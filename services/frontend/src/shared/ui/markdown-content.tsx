@@ -2,10 +2,12 @@ import { useMemo } from 'react'
 import Markdown, { type Components } from 'react-markdown'
 import remarkBreaks from 'remark-breaks'
 import remarkGfm from 'remark-gfm'
+import { MarkdownCodeBlock } from './markdown-code-block'
 import styles from './markdown-content.module.scss'
 
 const plugins = [remarkGfm, remarkBreaks]
 const defaultComponents: Components = {
+  pre: ({ children }) => <MarkdownCodeBlock>{children}</MarkdownCodeBlock>,
   table: ({ children }) => (
     <div className={styles.tableWrapper}>
       <table>{children}</table>

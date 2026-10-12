@@ -32,7 +32,11 @@ import {
   useVoiceRecorder,
 } from '@/features/learning-plan'
 import { LiveWaveform } from './trainer-answer'
-import { TrainerProgress, TrainerShell } from './trainer-shared'
+import {
+  FormattedMarkdown,
+  TrainerProgress,
+  TrainerShell,
+} from './trainer-shared'
 import styles from './learning-plan.module.scss'
 
 const hourOptions = [
@@ -413,21 +417,6 @@ function Outline({
   )
 }
 
-function Paragraphs({ text }: { text: string }) {
-  return (
-    <>
-      {text
-        .split(/\n\s*\n/)
-        .filter((part) => part.trim())
-        .map((part, i) => (
-          <p key={i} className={styles.paragraph}>
-            {part.trim()}
-          </p>
-        ))}
-    </>
-  )
-}
-
 function Chat({
   messages,
   loading,
@@ -469,7 +458,7 @@ function Chat({
             data-kind={message.kind}
           >
             <span className={styles.role}>{label(message)}</span>
-            <Paragraphs text={message.text} />
+            <FormattedMarkdown content={message.text} />
           </li>
         )
       })}
@@ -479,7 +468,7 @@ function Chat({
         ) && (
           <li className={styles.user}>
             <span className={styles.role}>{t('learning.you')}</span>
-            <Paragraphs text={pendingAnswer} />
+            <FormattedMarkdown content={pendingAnswer} />
           </li>
         )}
       {thinking && (

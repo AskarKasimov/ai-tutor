@@ -1,6 +1,9 @@
 import { render, screen, within } from '@testing-library/react'
 import { expect, it } from 'vitest'
-import { FormattedQuestionContent } from '@/pages/trainer/ui/trainer-shared'
+import {
+  FormattedMarkdown,
+  FormattedQuestionContent,
+} from '@/pages/trainer/ui/trainer-shared'
 
 it('shows a plain task as the heading', () => {
   render(<FormattedQuestionContent question="Что такое регрессия?" />)
@@ -81,4 +84,24 @@ it('renders code blocks in pre elements with monospaced code content', () => {
   expect(pre).not.toBeNull()
   expect(pre).toHaveTextContent('import numpy as np')
   expect(pre).toHaveTextContent('X = np.array([1, 2])')
+})
+
+it('renders tutor markdown message with code block and inline code', () => {
+  const { container } = render(
+    <FormattedMarkdown
+      content={[
+        'Отличная мысль! Обратите внимание на функцию `fit()`:',
+        '```python',
+        'model.fit(X_train, y_train)',
+        '```',
+        'Что возвращает этот вызов?',
+      ].join('\n')}
+    />,
+  )
+  const pre = container.querySelector('pre')
+  expect(pre).not.toBeNull()
+  expect(pre).toHaveTextContent('model.fit(X_train, y_train)')
+  const inline = container.querySelector('code:not(pre code)')
+  expect(inline).not.toBeNull()
+  expect(inline).toHaveTextContent('fit()')
 })

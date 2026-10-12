@@ -364,6 +364,65 @@ export function FormattedQuestionContent({
   )
 }
 
+export function FormattedMarkdown({
+  content,
+  className,
+}: {
+  content: string
+  className?: string
+}) {
+  const components = useMemo<Components>(
+    () => ({
+      p: ({ children }) => (
+        <p className={styles.questionParagraph}>{children}</p>
+      ),
+      ul: ({ children }) => <ul className={styles.questionList}>{children}</ul>,
+      ol: ({ children, start }) => (
+        <ol className={styles.questionList} start={start}>
+          {children}
+        </ol>
+      ),
+      table: ({ children }) => (
+        <div className={styles.taskTableWrapper}>
+          <table className={styles.taskTable}>{children}</table>
+        </div>
+      ),
+      th: ({ children, style }) => (
+        <th className={styles.taskTh} style={style}>
+          {children}
+        </th>
+      ),
+      tr: ({ children }) => <tr className={styles.taskTr}>{children}</tr>,
+      td: ({ children, style }) => (
+        <td className={styles.taskTd} style={style}>
+          {children}
+        </td>
+      ),
+      pre: ({ children }) => (
+        <div className={styles.codeBlockWrapper}>
+          <pre className={styles.codeBlock}>{children}</pre>
+        </div>
+      ),
+      code: ({ className, children }) => {
+        const isBlock = Boolean(className)
+        if (isBlock) {
+          return <code className={styles.codeContent}>{children}</code>
+        }
+        return <code className={styles.inlineCode}>{children}</code>
+      },
+    }),
+    [],
+  )
+  if (!content.trim()) return null
+  return (
+    <div className={`${styles.formattedQuestion} ${className ?? ''}`}>
+      <Markdown remarkPlugins={markdownPlugins} components={components}>
+        {content}
+      </Markdown>
+    </div>
+  )
+}
+
 export function TrainerQuestion({
   badge,
   eyebrow,

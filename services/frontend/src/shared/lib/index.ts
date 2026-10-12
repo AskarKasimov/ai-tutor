@@ -1,6 +1,8 @@
 export {
   AudioPlaybackError,
   createAudioUrl,
+  MAX_ANSWER_SECONDS,
+  prepareSpeech,
   playQuestion,
   startRecording,
 } from './browser-audio'

@@ -6,8 +6,8 @@ import type { AuthDependencies } from '@/features/auth'
 import type { CompetencyMapDependencies } from '@/features/import-competency-map'
 import type { DiagnosticDependencies } from '@/features/diagnostic-session'
 import type { SubjectSelectionDependencies } from '@/features/subject-selection'
-import type { TrainingDependencies } from '@/features/training'
-import * as training from '@/entities/training'
+import type { LearningPlanDependencies } from '@/features/learning-plan'
+import * as learningPlan from '@/entities/learning-plan'
 import { createDiagnosticIdentity } from '@/features/diagnostic-session'
 import { diagnosticSessionStorage } from '@/features/diagnostic-session'
 
@@ -19,7 +19,7 @@ export type AppDependencies = {
   createDiagnosticIdentity: DiagnosticDependencies['createDiagnosticIdentity']
   diagnosticStorage: DiagnosticDependencies['diagnosticStorage']
   diagnostic: DiagnosticDependencies['diagnostic']
-  training: TrainingDependencies['training']
+  learningPlan: LearningPlanDependencies['learningPlan']
 }
 
 const apiBase = (import.meta.env.VITE_API_BASE_URL || '/api/v1').replace(
@@ -59,27 +59,14 @@ export function createAppDependencies(): AppDependencies {
       regenerateDiagnosticAudio: diagnostic.regenerateDiagnosticAudio,
       fetchDiagnosticAudioFile: diagnostic.fetchDiagnosticAudioFile,
     },
-    training: {
-      readTrainingPreview: training.readTrainingPreview,
-      startTraining: training.startTraining,
-      findTrainingForDiagnostic: training.findTrainingForDiagnostic,
-      readTrainingSession: training.readTrainingSession,
-      createTrainingSubmission: training.createTrainingSubmission,
-      createTrainingSkipSubmission: training.createTrainingSkipSubmission,
-      submitTraining: training.submitTraining,
-      nextTrainingExercise: training.nextTrainingExercise,
-      resetTrainingAnswer: training.resetTrainingAnswer,
-      readTrainingHistory: training.readTrainingHistory,
-      readTrainingAudio: training.readTrainingAudio,
-      fetchTrainingAudioFile: training.fetchTrainingAudioFile,
-      regenerateTrainingAudio: training.regenerateTrainingAudio,
-      readTrainingChat: training.readTrainingChat,
-      createTrainingChatText: training.createTrainingChatText,
-      createTrainingChatVoice: training.createTrainingChatVoice,
-      sendTrainingChatText: training.sendTrainingChatText,
-      sendTrainingChatVoice: training.sendTrainingChatVoice,
-      retryTrainingChatTurn: training.retryTrainingChatTurn,
-      cancelTrainingChatTurn: training.cancelTrainingChatTurn,
+    learningPlan: {
+      findLearningPlan: learningPlan.findLearningPlan,
+      createLearningPlan: learningPlan.createLearningPlan,
+      readLearningPlan: learningPlan.readLearningPlan,
+      readLearningMessages: learningPlan.readLearningMessages,
+      openLesson: learningPlan.openLesson,
+      answerLesson: learningPlan.answerLesson,
+      retryLessonAnswer: learningPlan.retryLessonAnswer,
     },
   }
 }

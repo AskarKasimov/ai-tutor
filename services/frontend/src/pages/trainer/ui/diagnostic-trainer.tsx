@@ -519,9 +519,6 @@ function DiagnosticSummary({
         {t('session.summary')}
       </Text>
       <Heading as="h1">{t('session.completed')}</Heading>
-      <Text as="p" className={styles.summaryHelp}>
-        {t('diagnostic.completedHelp')}
-      </Text>
       {/* The result leads straight on: a bright card whose main action is
           to work through the weak topics. */}
       <div className={diagnosticStyles.scoreHero}>

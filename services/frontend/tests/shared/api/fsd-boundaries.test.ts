@@ -48,7 +48,7 @@ describe('FSD boundaries', () => {
         'bootstrap/providers.tsx',
         'pages/trainer/ui/trainer-screen.tsx',
         'features/diagnostic-session/model/start-session.ts',
-        'features/training/model/use-training-voice.ts',
+        'features/learning-plan/model/use-learning-plan.ts',
         'entities/user/model/user.ts',
         'entities/assessment/model/feedback.ts',
         'shared/api/api-fetch.ts',

@@ -47,6 +47,7 @@ func portalUpload(f *fixture, path string, data []byte, cookie *http.Cookie) *ht
 }
 
 func TestTeacherLoginAcrossModesAndSessions(t *testing.T) {
+	t.Parallel()
 	for _, mode := range []string{"real", "mock"} {
 		t.Run(mode, func(t *testing.T) {
 			f := newFixture(t)
@@ -125,6 +126,7 @@ func TestTeacherLoginAcrossModesAndSessions(t *testing.T) {
 // One browser keeps a student session and an admin panel session at once:
 // each portal reads only its own cookies.
 func TestAdminPortalSessionIsIndependentFromStudent(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t)
 	studentAccess, studentRefresh, studentID := f.register(t, "student@example.edu")
 	login := f.portal("POST", "/auth/teacher", "")
@@ -160,6 +162,7 @@ func TestAdminPortalSessionIsIndependentFromStudent(t *testing.T) {
 }
 
 func TestConcurrentTeacherLoginUsesOneAccount(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t)
 	var wg sync.WaitGroup
 	for i := 0; i < 8; i++ {

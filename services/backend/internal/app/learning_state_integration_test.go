@@ -8,6 +8,7 @@ import (
 )
 
 func TestLearningStateUnknownSubjectIsNotFound(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t)
 	access, _, _ := f.register(t, "learning-state@example.edu")
 	w := f.request(http.MethodGet, "/subjects/missing/learning-state", "", access)
@@ -16,6 +17,7 @@ func TestLearningStateUnknownSubjectIsNotFound(t *testing.T) {
 	}
 }
 func TestLearningStateOrdersCompletedByTimeThenIDAndKeepsNewActive(t *testing.T) {
+	t.Parallel()
 	f, access, _, owner, d := trainingFixture(t, 1)
 	for _, id := range []string{"a-completed", "z-completed"} {
 		copy := d

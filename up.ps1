@@ -55,7 +55,6 @@ if (-not (Test-Path .env)) {
     }
     $text = (Get-Content .env.example -Raw -Encoding UTF8) -replace "`r`n", "`n"
     $text = $text -replace '(?m)^BACKEND_API_MODE=mock', 'BACKEND_API_MODE=real' `
-        -replace '(?m)^VITE_API_MODE=mock', 'VITE_API_MODE=real' `
         -replace '(?m)^DB_PASSWORD=replace-with-a-long-random-value', "DB_PASSWORD=$(New-Secret)" `
         -replace '(?m)^S3_ACCESS_KEY=replace-with-a-random-access-key', "S3_ACCESS_KEY=$(New-Secret)" `
         -replace '(?m)^S3_SECRET_KEY=replace-with-a-random-secret-key', "S3_SECRET_KEY=$(New-Secret)"

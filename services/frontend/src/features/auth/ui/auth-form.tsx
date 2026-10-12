@@ -2,12 +2,10 @@ import { useState } from 'react'
 import { LoaderCircle } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '../model/use-auth'
-import { useAuthDependencies } from '../model/dependencies-context'
 import styles from './auth-modal.module.scss'
 import type { SubmitEvent } from 'react'
 
 export function AuthForm() {
-  const { mode: apiMode } = useAuthDependencies()
   const { t } = useTranslation()
   const { checkingSession, authenticate } = useAuth()
   const [mode, setMode] = useState<'login' | 'register'>('login')
@@ -15,8 +13,6 @@ export function AuthForm() {
   const [password, setPassword] = useState('')
   const [name, setName] = useState('')
   const pending = checkingSession || authenticate.isPending
-  const emptyDemoLogin =
-    apiMode === 'demo' && mode === 'login' && email === '' && password === ''
 
   async function submit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -78,7 +74,7 @@ export function AuthForm() {
               autoComplete="username"
               value={email}
               onChange={(event) => setEmail(event.target.value)}
-              required={!emptyDemoLogin}
+              required
               maxLength={254}
             />
           </label>
@@ -91,7 +87,7 @@ export function AuthForm() {
               }
               value={password}
               onChange={(event) => setPassword(event.target.value)}
-              required={!emptyDemoLogin}
+              required
               minLength={mode === 'register' ? 15 : 1}
               maxLength={128}
               aria-describedby={

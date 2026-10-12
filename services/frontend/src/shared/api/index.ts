@@ -1,10 +1,4 @@
-export {
-  apiFetch,
-  configureMockApiHandler,
-  fetchStaticAsset,
-  isAdminPortal,
-  isMockApi,
-} from './api-fetch'
+export { apiFetch, fetchStaticAsset, isAdminPortal } from './api-fetch'
 export {
   VoiceApiError,
   StoredAudioError,

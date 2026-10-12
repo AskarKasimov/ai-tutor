@@ -75,7 +75,7 @@ type App struct {
 	pool              *pgxpool.Pool
 	client            *http.Client
 	now               func() time.Time
-	hasher            *argon2.Hasher
+	hasher            authapp.PasswordHasher
 	logger            *zap.Logger
 	variantRepository variantgenapp.Repository
 	diagnosticStore   diagnosticapp.Store

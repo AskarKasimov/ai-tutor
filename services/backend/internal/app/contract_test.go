@@ -67,6 +67,7 @@ func TestOpenAPIContractSchemas(t *testing.T) {
 
 // Validate actual handler responses using only implemented contract operations.
 func TestOpenAPIResponses(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t)
 	data, err := os.ReadFile("../../../../api/openapi.yaml")
 	if err != nil {
@@ -479,6 +480,7 @@ func TestOpenAPIResponses(t *testing.T) {
 }
 
 func TestHTTPSCookieLifecycle(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t)
 	server := httptest.NewTLSServer(f.handler)
 	defer server.Close()

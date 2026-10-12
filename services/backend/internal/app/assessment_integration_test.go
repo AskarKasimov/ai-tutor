@@ -15,6 +15,7 @@ import (
 )
 
 func TestAssessmentEndpointOwnershipHistoricalSnapshotAndStrictResults(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t)
 	access, _, ownerID := f.register(t, "assessment-owner@example.edu")
 	other, _, otherID := f.register(t, "assessment-other@example.edu")

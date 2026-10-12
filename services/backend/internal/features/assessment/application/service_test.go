@@ -313,8 +313,6 @@ func TestEvaluateTrustedTrainingOversizedFeedback(t *testing.T) {
 func TestEvaluateVariantRejectsMalformedFeedback(t *testing.T) {
 	for _, feedback := range [][]string{
 		{"", "Причина.", "Совет."},
-		{"Наблюдение.\nСледующая строка.", "Причина.", "Совет."},
-		{"Наблюдение.\rПричина.", "Причина.", "Совет."},
 		{"Наблюдение.\x00Пробел", "Причина.", "Совет."},
 		{string([]byte{0xff}), "Причина.", "Совет."},
 	} {
@@ -395,5 +393,98 @@ func TestEvaluateTrustedTextAllowsNumberOnlyWhenMandatoryInstructionIsMet(t *tes
 	}
 	if !grader.gradingContext.Criteria[1].Mandatory || !strings.Contains(grader.gradingContext.Criteria[1].Description, "Назовите тип задачи") {
 		t.Fatalf("number-only answer was not checked against the instruction: %+v", grader.gradingContext.Criteria)
+	}
+}
+
+func TestEvaluateVariantNormalizesFeedbackLineBreaks(t *testing.T) {
+	result := validEvaluation()
+	result.Feedback = []string{" Верно.\r\nОба критерия выполнены. ", "\n Причина.\rУточнение.\n", " Совет. "}
+	got, err := New(&transcriptionStub{text: "ответ"}, &variantTaskStub{result: validVariantTask("main")}, &graderStub{result: result}).EvaluateVariant(context.Background(), "owner", "tr", "variant", "task")
+	want := []string{"Верно. Оба критерия выполнены.", "Причина. Уточнение.", "Совет."}
+	if err != nil || !reflect.DeepEqual(got.Feedback, want) || got.Score != 2 {
+		t.Fatalf("expected normalized feedback and preserved grade, got %+v, %v", got, err)
+	}
+}
+
+type gradingFunc func(context.Context, GradingContext, string) (Evaluation, error)
+
+func (f gradingFunc) Grade(ctx context.Context, gc GradingContext, answer string) (Evaluation, error) {
+	return f(ctx, gc, answer)
+}
+
+func TestEvaluateVariantRetriesInvalidModelResponse(t *testing.T) {
+	for _, kind := range []string{"feedback", "JSON", "score"} {
+		t.Run(kind, func(t *testing.T) {
+			calls := 0
+			grader := gradingFunc(func(_ context.Context, _ GradingContext, answer string) (Evaluation, error) {
+				calls++
+				if answer != "ответ" {
+					t.Fatalf("retry changed answer: %q", answer)
+				}
+				result := validEvaluation()
+				if calls == 1 {
+					switch kind {
+					case "feedback":
+						result.Feedback = []string{"Верно."}
+					case "JSON":
+						return Evaluation{}, fault.New(fault.Upstream, "INVALID_MODEL_RESPONSE", "Некорректный JSON")
+					case "score":
+						result.Score = 3
+					}
+				}
+				return result, nil
+			})
+			got, err := New(&transcriptionStub{text: "ответ"}, &variantTaskStub{result: validVariantTask("main")}, grader).EvaluateVariant(context.Background(), "owner", "tr", "variant", "task")
+			if err != nil || got.Score != 2 || got.MaxScore != 2 || len(got.Feedback) != 3 || calls != 2 {
+				t.Fatalf("expected recovery after invalid %s, got %+v, %v (%d calls)", kind, got, err, calls)
+			}
+		})
+	}
+}
+
+func TestEvaluateVariantRetryIsBounded(t *testing.T) {
+	calls := 0
+	grader := gradingFunc(func(context.Context, GradingContext, string) (Evaluation, error) {
+		calls++
+		result := validEvaluation()
+		result.Feedback = nil
+		return result, nil
+	})
+	got, err := New(&transcriptionStub{text: "ответ"}, &variantTaskStub{result: validVariantTask("main")}, grader).EvaluateVariant(context.Background(), "owner", "tr", "variant", "task")
+	var f *fault.Error
+	if !errors.As(err, &f) || f.Code != "INVALID_MODEL_RESPONSE" || calls != 2 || got.Verdict != "" {
+		t.Fatalf("expected two failed attempts and no fabricated grade, got %+v, %v (%d calls)", got, err, calls)
+	}
+}
+
+func TestEvaluateVariantDoesNotRetryProviderFailures(t *testing.T) {
+	for _, code := range []string{"MODEL_TIMEOUT", "MODEL_UNAVAILABLE", "MODEL_UPSTREAM_ERROR"} {
+		t.Run(code, func(t *testing.T) {
+			calls := 0
+			failure := fault.New(fault.Upstream, code, "Ошибка провайдера")
+			grader := gradingFunc(func(context.Context, GradingContext, string) (Evaluation, error) {
+				calls++
+				return Evaluation{}, failure
+			})
+			_, err := New(&transcriptionStub{text: "ответ"}, &variantTaskStub{result: validVariantTask("main")}, grader).EvaluateVariant(context.Background(), "owner", "tr", "variant", "task")
+			if err != failure || calls != 1 {
+				t.Fatalf("expected original error without retry, got %v (%d calls)", err, calls)
+			}
+		})
+	}
+}
+
+func TestEvaluateVariantDoesNotRetryAfterCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	calls := 0
+	grader := gradingFunc(func(context.Context, GradingContext, string) (Evaluation, error) {
+		calls++
+		cancel()
+		return Evaluation{}, fault.New(fault.Upstream, "INVALID_MODEL_RESPONSE", "Ошибка формата")
+	})
+	_, err := New(&transcriptionStub{text: "ответ"}, &variantTaskStub{result: validVariantTask("main")}, grader).EvaluateVariant(ctx, "owner", "tr", "variant", "task")
+	if err == nil || calls != 1 {
+		t.Fatalf("expected no retry after cancellation, got %v (%d calls)", err, calls)
 	}
 }

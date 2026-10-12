@@ -2,6 +2,7 @@ package application
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -166,8 +167,12 @@ func validateEvaluation(result Evaluation, gradingContext GradingContext) error 
 		return fault.New(fault.Upstream, "INVALID_MODEL_RESPONSE", "Модель вернула некорректный фидбэк.")
 	}
 	for i, line := range result.Feedback {
-		line = strings.TrimSpace(line)
-		if line == "" || !utf8.ValidString(line) || strings.ContainsAny(line, "\x00\r\n") {
+		if !utf8.ValidString(line) || strings.ContainsRune(line, 0) {
+			return fault.New(fault.Upstream, "INVALID_MODEL_RESPONSE", "Модель вернула некорректный фидбэк.")
+		}
+		// Formatting from the model must not discard an otherwise valid grade.
+		line = strings.Join(strings.Fields(line), " ")
+		if line == "" {
 			return fault.New(fault.Upstream, "INVALID_MODEL_RESPONSE", "Модель вернула некорректный фидбэк.")
 		}
 		result.Feedback[i] = line
@@ -184,15 +189,25 @@ func (s *Service) gradeAndValidate(ctx context.Context, gradingContext GradingCo
 	if !validText(answer, 20000) {
 		return Evaluation{}, fault.New(fault.Invalid, "INVALID_ANSWER", "Ответ пустой, слишком длинный или повреждён.")
 	}
-	result, err := s.grader.Grade(ctx, gradingContext, answer)
-	if err != nil {
-		return Evaluation{}, err
+	// Retry malformed model output once, including JSON rejected by the adapter.
+	// Every attempt is validated; technical failures never become a student score.
+	for attempt := 0; ; attempt++ {
+		if err := ctx.Err(); err != nil {
+			return Evaluation{}, err
+		}
+		result, err := s.grader.Grade(ctx, gradingContext, answer)
+		if err == nil {
+			err = validateEvaluation(result, gradingContext)
+		}
+		if err == nil {
+			result.MaxScore = maxScore
+			return result, nil
+		}
+		var modelErr *fault.Error
+		if attempt == 1 || !errors.As(err, &modelErr) || modelErr.Code != "INVALID_MODEL_RESPONSE" {
+			return Evaluation{}, err
+		}
 	}
-	if err := validateEvaluation(result, gradingContext); err != nil {
-		return Evaluation{}, err
-	}
-	result.MaxScore = maxScore
-	return result, nil
 }
 
 func (s *Service) evaluateWithContext(ctx context.Context, ownerID, transcriptionID string, gradingContext GradingContext) (Evaluation, error) {

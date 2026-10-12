@@ -17,7 +17,10 @@ type Outcome struct {
 	TaxonomyCode, ALDLevelCode string
 	Importance                 *int
 	EducationalContent         *string
-	SourceRowIndexes           []int
+	// Planned minutes for theory and for practice; nil when the map leaves
+	// the cell empty.
+	TheoryMinutes, PracticeMinutes *int
+	SourceRowIndexes               []int
 }
 type Task struct {
 	OutcomeKey, Question, Criteria, ReferenceAnswer, Column, VoiceInstruction string

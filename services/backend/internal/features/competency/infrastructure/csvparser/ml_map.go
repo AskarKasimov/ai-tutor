@@ -29,6 +29,8 @@ func parseMLMap(reader *csv.Reader, headers []string, headerLine int, restoreCel
 		"Что должно войти в тест": true, "Таксономия": true,
 		"Уровень ALDs": true, "Важность": true,
 		"Раздел РПД · компетенции РПД": true, "ОС": true,
+		// Optional planning columns, minutes per outcome.
+		theoryMinutesColumn: true, practiceMinutesColumn: true,
 	}
 	for i, header := range headers {
 		if _, exists := columns[header]; exists {
@@ -278,12 +280,19 @@ func appendUnique(values []string, value string) []string {
 	return append(values, value)
 }
 
+const (
+	theoryMinutesColumn   = "Время на теорию"
+	practiceMinutesColumn = "Время на практику"
+)
+
 type outcomeProperties struct {
 	includeInTest      *bool
 	taxonomyCode       string
 	aldLevelCode       string
 	importance         *int
 	educationalContent *string
+	theoryMinutes      *int
+	practiceMinutes    *int
 }
 
 func parseOutcomeProperties(row []string, columns map[string]int, line int) (outcomeProperties, error) {
@@ -342,7 +351,32 @@ func parsePresentOutcomeProperties(row []string, columns map[string]int, line in
 	if value := cell("ОС"); value != "" {
 		properties.educationalContent = &value
 	}
+	for _, column := range []struct {
+		name string
+		dst  **int
+	}{{theoryMinutesColumn, &properties.theoryMinutes}, {practiceMinutesColumn, &properties.practiceMinutes}} {
+		if value := cell(column.name); value != "" {
+			parsed, ok := minutesValue(value)
+			if !ok {
+				return properties, csvError(line, column.name, "Ожидается целое число минут от 0 до 600.")
+			}
+			*column.dst = &parsed
+		}
+	}
 	return properties, nil
+}
+
+// minutesValue accepts whole minutes 0–600, including spreadsheet numerics
+// such as "15.0" or "15,0".
+func minutesValue(value string) (int, bool) {
+	if parsed, err := strconv.Atoi(value); err == nil {
+		return parsed, parsed >= 0 && parsed <= 600
+	}
+	number, err := strconv.ParseFloat(strings.Replace(value, ",", ".", 1), 64)
+	if err != nil || number != math.Trunc(number) || number < 0 || number > 600 {
+		return 0, false
+	}
+	return int(number), true
 }
 
 // importanceValue accepts whole numbers 1–5, including spreadsheet numerics
@@ -374,6 +408,12 @@ func mergeOutcomeProperties(target *competencymap.Outcome, incoming outcomePrope
 	if target.EducationalContent != nil && incoming.educationalContent != nil && *target.EducationalContent != *incoming.educationalContent {
 		return csvError(line, "ОС", "Для образовательного результата указаны разные значения.")
 	}
+	if target.TheoryMinutes != nil && incoming.theoryMinutes != nil && *target.TheoryMinutes != *incoming.theoryMinutes {
+		return csvError(line, theoryMinutesColumn, "Для образовательного результата указаны разные значения.")
+	}
+	if target.PracticeMinutes != nil && incoming.practiceMinutes != nil && *target.PracticeMinutes != *incoming.practiceMinutes {
+		return csvError(line, practiceMinutesColumn, "Для образовательного результата указаны разные значения.")
+	}
 	if incoming.includeInTest != nil {
 		target.IncludeInTest = incoming.includeInTest
 	}
@@ -388,6 +428,12 @@ func mergeOutcomeProperties(target *competencymap.Outcome, incoming outcomePrope
 	}
 	if incoming.educationalContent != nil {
 		target.EducationalContent = incoming.educationalContent
+	}
+	if incoming.theoryMinutes != nil {
+		target.TheoryMinutes = incoming.theoryMinutes
+	}
+	if incoming.practiceMinutes != nil {
+		target.PracticeMinutes = incoming.practiceMinutes
 	}
 	return nil
 }

@@ -124,3 +124,30 @@ func TestMLMapRejectsConflictingOutcomeMetadata(t *testing.T) {
 		t.Fatalf("conflict should identify the later row and conflicting column: %#v", failure.Details[0])
 	}
 }
+
+// The map may plan minutes for theory and practice per outcome; both columns
+// are optional and empty cells stay unset.
+func TestMLMapReadsOptionalPlanningMinutes(t *testing.T) {
+	header := ";Компетенция;Уровень темы;Составляющая;Образовательный результат;Что должно войти в тест;Таксономия;Уровень ALDs;Важность;Раздел РПД · компетенции РПД;Задание1;ОС;Время на теорию;Время на практику\n"
+	data := header +
+		";К;Базовый;С;ОР1;TRUE;Знание;базовый;4;;;;20;25,0\n" +
+		";К;;С;ОР2;TRUE;Знание;базовый;3;;;;;\n"
+	parsed, err := Parse([]byte(data))
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, second := parsed.Outcomes[0], parsed.Outcomes[1]
+	if first.TheoryMinutes == nil || *first.TheoryMinutes != 20 || first.PracticeMinutes == nil || *first.PracticeMinutes != 25 {
+		t.Fatalf("minutes: %+v", first)
+	}
+	if second.TheoryMinutes != nil || second.PracticeMinutes != nil {
+		t.Fatalf("empty minutes must stay unset: %+v", second)
+	}
+	for _, bad := range []string{"-1", "601", "полчаса", "12.5"} {
+		_, err := Parse([]byte(header + ";К;Базовый;С;ОР1;TRUE;Знание;базовый;4;;;;" + bad + ";10\n"))
+		failure, ok := err.(*fault.Error)
+		if !ok || failure.Code != "CSV_INVALID" || !strings.Contains(failure.Details[0].Message, "Время на теорию") {
+			t.Fatalf("%q must be rejected: %#v", bad, err)
+		}
+	}
+}

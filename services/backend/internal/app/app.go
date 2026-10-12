@@ -35,6 +35,11 @@ import (
 	diagnosticfeedbackmodel "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/diagnosticfeedback/infrastructure/modelapi"
 	diagnosticfeedbackpg "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/diagnosticfeedback/infrastructure/postgres"
 	diagnosticfeedbackhttp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/diagnosticfeedback/transport/http"
+	learningapp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/learning/application"
+	learningmock "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/learning/infrastructure/mock"
+	learningmodel "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/learning/infrastructure/modelapi"
+	learningpg "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/learning/infrastructure/postgres"
+	learninghttp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/learning/transport/http"
 	subjectapp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/subject/application"
 	subjectpg "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/subject/infrastructure/postgres"
 	subjecthttp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/subject/transport/http"
@@ -184,6 +189,13 @@ func (a *App) Handler() http.Handler {
 	chatService := trainingapp.NewChatService(chatRepository, voice, tutor, trainingFinalGrader{assessmentService}, security.IDGenerator{}, a.now).
 		WithContextLimits(training.ContextLimits{TaskMaxChars: a.cfg.TutorTaskMaxChars, HistoryMaxChars: a.cfg.TutorHistoryMaxChars, SummaryMaxChars: a.cfg.TutorSummaryMaxChars})
 	chatHandlers := traininghttp.NewChatHandler(chatService, a.cfg.MaxUploadBytes)
+	var teacher learningapp.Teacher
+	if a.cfg.APIMode == "mock" {
+		teacher = learningmock.Teacher{}
+	} else if a.cfg.TutorEnabled {
+		teacher = learningmodel.New(a.client, a.cfg.TutorBaseURL, a.cfg.TutorModel, a.cfg.TutorTimeout)
+	}
+	learningHandlers := learninghttp.New(learningapp.New(learningpg.New(a.pool), a.diagnosticStore, voice, teacher, security.IDGenerator{}, a.now), a.cfg.MaxUploadBytes)
 	feedbackService := diagnosticfeedbackapp.New(diagnosticService, feedbackSynthesizer, diagnosticfeedbackmemory.New(), a.now).
 		WithTaskFinder(diagnosticfeedbackpg.NewTaskFinder(a.pool))
 	feedbackHandlers := diagnosticfeedbackhttp.New(feedbackService)
@@ -236,6 +248,13 @@ func (a *App) Handler() http.Handler {
 	mux.Handle("GET /variants", protect(auth, http.HandlerFunc(variantgenHandlers.List)))
 	mux.Handle("GET /variants/{id}", protect(auth, http.HandlerFunc(variantgenHandlers.Read)))
 	mux.Handle("GET /variants/{id}/tasks/{task_id}", protect(auth, http.HandlerFunc(variantgenHandlers.ReadTask)))
+	mux.Handle("POST /diagnostic-sessions/{id}/learning-plan", protect(auth, http.HandlerFunc(learningHandlers.Create)))
+	mux.Handle("GET /diagnostic-sessions/{id}/learning-plan", protect(auth, http.HandlerFunc(learningHandlers.ByDiagnostic)))
+	mux.Handle("GET /learning-plans/{id}", protect(auth, http.HandlerFunc(learningHandlers.Get)))
+	mux.Handle("GET /learning-plans/{id}/items/{index}/messages", protect(auth, http.HandlerFunc(learningHandlers.Messages)))
+	mux.Handle("POST /learning-plans/{id}/open", protect(auth, http.HandlerFunc(learningHandlers.Open)))
+	mux.Handle("POST /learning-plans/{id}/answers", protect(auth, http.HandlerFunc(learningHandlers.Answer)))
+	mux.Handle("POST /learning-plans/{id}/answers/retry", protect(auth, http.HandlerFunc(learningHandlers.Retry)))
 	mux.HandleFunc("GET /health", a.health)
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(r.Context(), w, fault.New(fault.NotFound, "NOT_FOUND", "Ресурс не найден."))

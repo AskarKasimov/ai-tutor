@@ -29,12 +29,13 @@ VALUES ($1, $2, $3, NULLIF(sqlc.arg(topic_level_id)::text, ''));
 -- name: InsertOutcome :exec
 INSERT INTO outcomes(
     id, constituent_id, name, include_in_test, taxonomy_id,
-    ald_level_id, importance, educational_content
+    ald_level_id, importance, educational_content, theory_minutes, practice_minutes
 ) VALUES (
     $1, $2, $3, $4,
     (SELECT id FROM taxonomies WHERE code = NULLIF(sqlc.arg(taxonomy_code)::text, '')),
     (SELECT id FROM ald_levels WHERE code = NULLIF(sqlc.arg(ald_level_code)::text, '')),
-    NULLIF(sqlc.arg(importance)::smallint, 0), NULLIF(sqlc.arg(educational_content)::text, '')
+    NULLIF(sqlc.arg(importance)::smallint, 0), NULLIF(sqlc.arg(educational_content)::text, ''),
+    sqlc.narg(theory_minutes)::smallint, sqlc.narg(practice_minutes)::smallint
 );
 
 -- name: InsertCurriculumSection :exec

@@ -533,12 +533,13 @@ func (q *Queries) InsertMaterialChunk(ctx context.Context, arg InsertMaterialChu
 const insertOutcome = `-- name: InsertOutcome :exec
 INSERT INTO outcomes(
     id, constituent_id, name, include_in_test, taxonomy_id,
-    ald_level_id, importance, educational_content
+    ald_level_id, importance, educational_content, theory_minutes, practice_minutes
 ) VALUES (
     $1, $2, $3, $4,
     (SELECT id FROM taxonomies WHERE code = NULLIF($5::text, '')),
     (SELECT id FROM ald_levels WHERE code = NULLIF($6::text, '')),
-    NULLIF($7::smallint, 0), NULLIF($8::text, '')
+    NULLIF($7::smallint, 0), NULLIF($8::text, ''),
+    $9::smallint, $10::smallint
 )
 `
 
@@ -551,6 +552,8 @@ type InsertOutcomeParams struct {
 	AldLevelCode       string
 	Importance         int16
 	EducationalContent string
+	TheoryMinutes      *int16
+	PracticeMinutes    *int16
 }
 
 func (q *Queries) InsertOutcome(ctx context.Context, arg InsertOutcomeParams) error {
@@ -563,6 +566,8 @@ func (q *Queries) InsertOutcome(ctx context.Context, arg InsertOutcomeParams) er
 		arg.AldLevelCode,
 		arg.Importance,
 		arg.EducationalContent,
+		arg.TheoryMinutes,
+		arg.PracticeMinutes,
 	)
 	return err
 }

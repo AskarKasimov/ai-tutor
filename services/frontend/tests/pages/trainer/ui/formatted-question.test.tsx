@@ -9,6 +9,27 @@ it('shows a plain task as the heading', () => {
   )
 })
 
+it.each([
+  ['h1', 1, 2],
+  ['h3', 3, 4],
+] as const)(
+  'keeps authored headings at the %s question level',
+  (headingLevel, lead, section) => {
+    render(
+      <FormattedQuestionContent
+        headingLevel={headingLevel}
+        question={'# Объясните результат\n\n## Данные\n\n```python\nx = 1\n```'}
+      />,
+    )
+    expect(
+      screen.getByRole('heading', { name: 'Объясните результат', level: lead }),
+    ).toBeVisible()
+    expect(
+      screen.getByRole('heading', { name: 'Данные', level: section }),
+    ).toBeVisible()
+  },
+)
+
 it('renders a Markdown table under the lead text', () => {
   render(
     <FormattedQuestionContent

@@ -63,14 +63,14 @@ const lesson: LearningMessage[] = [
   },
 ]
 
-function setup(existing: LearningPlan | null) {
+function setup(existing: LearningPlan | null, messages = lesson) {
   const dependencies = createAppDependencies()
   const api = dependencies.learningPlan
   vi.spyOn(api, 'findLearningPlan').mockResolvedValue(existing)
   const create = vi.spyOn(api, 'createLearningPlan').mockResolvedValue(plan())
   let opened = false
   vi.spyOn(api, 'readLearningMessages').mockImplementation(
-    async (_id, index) => (index === 0 && opened ? lesson : []),
+    async (_id, index) => (index === 0 && opened ? messages : []),
   )
   let current = existing ?? plan()
   const open = vi.spyOn(api, 'openLesson').mockImplementation(async () => {
@@ -97,7 +97,7 @@ function setup(existing: LearningPlan | null) {
     role: 'student',
     created_at: 0,
   })
-  render(
+  const { container } = render(
     <AppProviders queryClient={queryClient} dependencies={dependencies}>
       <LearningPlanEntry
         userId="u1"
@@ -107,7 +107,7 @@ function setup(existing: LearningPlan | null) {
       />
     </AppProviders>,
   )
-  return { create, open, answer }
+  return { create, open, answer, container }
 }
 
 it('asks for the hours once and builds the plan with one click', async () => {
@@ -176,4 +176,52 @@ it('shows the finished plan with topics to review', async () => {
   )
   expect(await screen.findByText('План пройден!')).toBeInTheDocument()
   expect(screen.getByText(/1 тему стоит повторить/)).toBeInTheDocument()
+})
+
+it('renders teacher Markdown while preserving code and literal student answers', async () => {
+  const theory = [
+    '# Обновление весов',
+    '**Градиент** задаёт направление.',
+    '',
+    '- Вычислите ошибку.',
+    '- Обновите веса.',
+    '',
+    '| Шаг | Loss |',
+    '|---|---:|',
+    '| 1 | 0.5 |',
+    '',
+    '```python',
+    'for step in range(2):',
+    '    print("a\\nb")',
+    '```',
+  ].join('\n')
+  const { container } = setup(plan(), [
+    { ...lesson[0], text: theory },
+    { ...lesson[1], text: 'Объясните `grad_w`.' },
+    {
+      ...lesson[0],
+      sequence: 3,
+      kind: 'feedback',
+      text: '**Верно:** уменьшайте loss.',
+    },
+    {
+      ...lesson[0],
+      sequence: 4,
+      role: 'user',
+      kind: 'answer',
+      text: '**Это мои слова**',
+    },
+  ])
+  await screen.findByText('Теория')
+  expect(screen.getByRole('table')).toBeVisible()
+  expect(
+    screen.getByRole('heading', { name: 'Обновление весов', level: 3 }),
+  ).toBeVisible()
+  expect(screen.getByText('Градиент').tagName).toBe('STRONG')
+  expect(screen.getByText('grad_w').tagName).toBe('CODE')
+  expect(screen.getByText('Верно:').tagName).toBe('STRONG')
+  expect(container.querySelector('pre')?.textContent).toBe(
+    'for step in range(2):\n    print("a\\nb")\n',
+  )
+  expect(screen.getByText('**Это мои слова**')).toBeVisible()
 })

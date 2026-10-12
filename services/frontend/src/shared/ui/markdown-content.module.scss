@@ -1,0 +1,80 @@
+.content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+  width: 100%;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+
+  p,
+  ul,
+  ol,
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6,
+  blockquote {
+    margin: 0;
+  }
+  ul,
+  ol {
+    padding-left: var(--space-5);
+  }
+  blockquote {
+    padding-left: var(--space-3);
+    border-left: 3px solid var(--gray-6);
+  }
+  code {
+    font-family: var(--code-font-family, ui-monospace, monospace);
+  }
+  :not(pre) > code {
+    padding: var(--space-1);
+    border-radius: var(--radius-2);
+    background: var(--gray-3);
+    color: var(--gray-12);
+    font-size: 0.9em;
+  }
+  pre {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    margin: 0;
+    padding: var(--space-3);
+    overflow-x: auto;
+    border: 1px solid var(--gray-6);
+    border-radius: var(--radius-3);
+    background: var(--gray-2);
+    color: var(--gray-12);
+    font-size: var(--font-size-2);
+    line-height: 1.5;
+    white-space: pre;
+    overflow-wrap: normal;
+    tab-size: 4;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: inherit;
+    text-align: left;
+  }
+  th,
+  td {
+    padding: var(--space-2) var(--space-3);
+    border-bottom: 1px solid var(--gray-6);
+    font-variant-numeric: tabular-nums;
+  }
+  th {
+    background: var(--gray-3);
+    white-space: nowrap;
+  }
+}
+.tableWrapper {
+  width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+  border: 1px solid var(--gray-6);
+  border-radius: var(--radius-3);
+}

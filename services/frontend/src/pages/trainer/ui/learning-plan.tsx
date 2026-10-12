@@ -33,6 +33,7 @@ import {
 } from '@/features/learning-plan'
 import { LiveWaveform } from './trainer-answer'
 import { TrainerProgress, TrainerShell } from './trainer-shared'
+import { MarkdownContent } from '@/shared/ui'
 import styles from './learning-plan.module.scss'
 
 const hourOptions = [
@@ -469,7 +470,14 @@ function Chat({
             data-kind={message.kind}
           >
             <span className={styles.role}>{label(message)}</span>
-            <Paragraphs text={message.text} />
+            {message.role === 'assistant' ? (
+              <MarkdownContent
+                text={message.text}
+                className={styles.lessonContent}
+              />
+            ) : (
+              <Paragraphs text={message.text} />
+            )}
           </li>
         )
       })}

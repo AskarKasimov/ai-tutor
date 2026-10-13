@@ -417,12 +417,8 @@ it('runs real diagnostic audio, obeys skipped basics and displays the server tot
   const work = screen
     .getByRole('heading', { name: 'Что доработать' })
     .closest('section')!
-  expect(work).toHaveTextContent(
-    'Модели — Различать модели. Повторный совет к рекомендации.',
-  )
-  expect(work).toHaveTextContent(
-    'Модели — Выбирать метрику. Сравните метрики на двух задачах.',
-  )
+  expect(work).toHaveTextContent('Модели. Повторный совет к рекомендации.')
+  expect(work).toHaveTextContent('Модели. Сравните метрики на двух задачах.')
   expect(screen.queryByText(/Критических пробелов нет/)).not.toBeInTheDocument()
   expect(
     screen.queryByRole('heading', { name: 'Рекомендации' }),
@@ -557,6 +553,30 @@ it('shows overall feedback when the backend sends null strengths', async () => {
     screen.queryByRole('heading', { name: 'Что хорошо' }),
   ).not.toBeInTheDocument()
 })
+it('renders Markdown in the overall feedback without rewriting code escapes', async () => {
+  server(
+    200,
+    3,
+    200,
+    null,
+    '**Регрессия** требует практики.\n\n```python\nprint("a\\nb")\n```',
+  )
+  const { container } = await home()
+  fireEvent.click(await screen.findByRole('button', { name: 'Начать запись' }))
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Завершить запись' }),
+  )
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Отправить ответ' }),
+  )
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Посмотреть итог' }),
+  )
+  await screen.findByRole('button', { name: /Посмотреть мои ответы/ })
+  expect(screen.getByText('Регрессия').tagName).toBe('STRONG')
+  expect(container.querySelector('pre')?.textContent).toBe('print("a\\nb")\n')
+})
+
 it('fills the cards from the reviews, not from the model text', async () => {
   server(
     200,

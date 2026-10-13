@@ -15,6 +15,7 @@ import (
 )
 
 func TestGenerateSendsOpenAIJSONModeRequestAndDecodesDraft(t *testing.T) {
+	question := "Почему?\n\n```python\nprint(\"a\\nb\")\n```"
 	var request struct {
 		Model          string `json:"model"`
 		Messages       []struct{ Role, Content string }
@@ -35,7 +36,8 @@ func TestGenerateSendsOpenAIJSONModeRequestAndDecodesDraft(t *testing.T) {
 			t.Errorf("decode request: %v", err)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"{\"question\":\"Почему?\",\"options\":[],\"voice_instruction\":\"Объясните выбор\",\"reference_answer\":\"Потому что\",\"criteria\":\"\"}"}}]}`))
+		content, _ := json.Marshal(map[string]any{"question": question, "options": []string{}, "voice_instruction": "Объясните выбор", "reference_answer": "Потому что", "criteria": ""})
+		_ = json.NewEncoder(w).Encode(map[string]any{"choices": []any{map[string]any{"message": map[string]any{"content": string(content)}}}})
 	}))
 	defer server.Close()
 
@@ -80,7 +82,7 @@ func TestGenerateSendsOpenAIJSONModeRequestAndDecodesDraft(t *testing.T) {
 	if len(sections) != 1 || sections[0].Code != "Р.1" || sections[0].Title != "Введение" || len(sections[0].Competencies) != 1 || sections[0].Competencies[0] != "ОПК-1" {
 		t.Fatalf("request lost curriculum profile: %s", request.Messages[1].Content)
 	}
-	if draft.Question != "Почему?" || draft.VoiceInstruction != "Объясните выбор" || draft.ReferenceAnswer != "Потому что" || draft.Criteria != "" || draft.Options == nil {
+	if draft.Question != question || draft.VoiceInstruction != "Объясните выбор" || draft.ReferenceAnswer != "Потому что" || draft.Criteria != "" || draft.Options == nil {
 		t.Fatalf("decoded draft = %#v", draft)
 	}
 }

@@ -1,3 +1,4 @@
+import { MarkdownContent } from '@/shared/ui'
 import { Button, Heading, Text } from '@radix-ui/themes'
 import {
   AlertTriangle,
@@ -457,9 +458,10 @@ function Feedback({
       <Heading as={heading} className={styles.feedbackTitle}>
         {t('trainer.feedback')}
       </Heading>
-      <Text as="p" className={styles.feedbackLine}>
-        {feedback.join(' ')}
-      </Text>
+      <MarkdownContent
+        text={feedback.join(' ')}
+        className={styles.feedbackLine}
+      />
     </>
   )
 }
@@ -725,7 +727,9 @@ function OverallFeedbackContent({ value }: { value: OverallFeedback }) {
     value.strengths.length > 0 ? (
       <ul className={styles.summaryCardList}>
         {value.strengths.map((item, index) => (
-          <li key={index}>{normalizeText(item)}</li>
+          <li key={index}>
+            <MarkdownContent text={item} />
+          </li>
         ))}
       </ul>
     ) : null
@@ -734,19 +738,19 @@ function OverallFeedbackContent({ value }: { value: OverallFeedback }) {
       <ul className={styles.summaryCardList}>
         {gaps.map((gap) => (
           <li key={gap.outcome_id}>
-            <span>
-              <strong>
-                {gap.competency_name} — {gap.outcome_name}.
-              </strong>{' '}
-              {gap.advice}
-            </span>
+            <div>
+              {/* The advice already names the constituent and the outcome. */}
+              <strong>{gap.competency_name}.</strong>{' '}
+              <MarkdownContent text={gap.advice} />
+            </div>
           </li>
         ))}
         {value.partial_competencies.map((part) => (
           <li key={part.competency_id}>
-            <span>
-              <strong>{part.competency_name}.</strong> {part.details}
-            </span>
+            <div>
+              <strong>{part.competency_name}.</strong>{' '}
+              <MarkdownContent text={part.details} />
+            </div>
           </li>
         ))}
       </ul>
@@ -755,14 +759,7 @@ function OverallFeedbackContent({ value }: { value: OverallFeedback }) {
     <div className={styles.feedbackContent}>
       {generalText && (
         <div className={styles.feedbackSummaryText}>
-          {generalText
-            .split(/\n+/)
-            .filter((paragraph) => paragraph.trim())
-            .map((paragraph, index) => (
-              <p key={index} className={styles.feedbackParagraph}>
-                {paragraph.trim()}
-              </p>
-            ))}
+          <MarkdownContent text={generalText} />
         </div>
       )}
       {(good || work) && (

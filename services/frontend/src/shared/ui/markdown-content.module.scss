@@ -1,0 +1,119 @@
+.content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+  width: 100%;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+
+  p,
+  ul,
+  ol,
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6,
+  blockquote {
+    margin: 0;
+  }
+  ul,
+  ol {
+    padding-left: var(--space-5);
+  }
+  blockquote {
+    padding-left: var(--space-3);
+    border-left: 3px solid var(--gray-6);
+  }
+  :global(.katex-display) {
+    max-width: 100%;
+    margin: 0;
+    padding-block: var(--space-2);
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+  code {
+    font-family: var(--code-font-family, ui-monospace, monospace);
+  }
+  :not(pre) > code {
+    padding: var(--space-1);
+    border-radius: var(--radius-2);
+    background: var(--gray-3);
+    color: var(--gray-12);
+    font-size: 0.9em;
+  }
+  pre {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    margin: 0;
+    padding: var(--space-3);
+    overflow-x: auto;
+    border: 1px solid var(--gray-6);
+    border-radius: var(--radius-3);
+    background: var(--gray-2);
+    color: var(--gray-12);
+    font-size: var(--font-size-2);
+    line-height: 1.5;
+    white-space: pre;
+    overflow-wrap: normal;
+    tab-size: 4;
+
+    :global(.hljs-keyword),
+    :global(.hljs-selector-tag),
+    :global(.hljs-meta) {
+      color: var(--purple-11);
+    }
+    :global(.hljs-string),
+    :global(.hljs-regexp),
+    :global(.hljs-addition) {
+      color: var(--green-11);
+    }
+    :global(.hljs-number),
+    :global(.hljs-literal),
+    :global(.hljs-symbol) {
+      color: var(--orange-11);
+    }
+    :global(.hljs-title),
+    :global(.hljs-built_in),
+    :global(.hljs-name),
+    :global(.hljs-type) {
+      color: var(--blue-11);
+    }
+    :global(.hljs-attr),
+    :global(.hljs-attribute),
+    :global(.hljs-variable) {
+      color: var(--ruby-11);
+    }
+    :global(.hljs-comment),
+    :global(.hljs-quote) {
+      color: var(--gray-11);
+      font-style: italic;
+    }
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: inherit;
+    text-align: left;
+  }
+  th,
+  td {
+    padding: var(--space-2) var(--space-3);
+    border-bottom: 1px solid var(--gray-6);
+    font-variant-numeric: tabular-nums;
+  }
+  th {
+    background: var(--gray-3);
+    white-space: nowrap;
+  }
+}
+.tableWrapper {
+  width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+  border: 1px solid var(--gray-6);
+  border-radius: var(--radius-3);
+}

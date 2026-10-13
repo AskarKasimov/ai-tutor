@@ -69,9 +69,14 @@ func AnalyzeResult(result diagnostic.Result) DeterministicReport {
 			CompetencyID: a.CompetencyID, CompetencyName: a.Task.CompetencyName,
 			OutcomeID: id, OutcomeName: a.Task.OutcomeName, Rationale: advice})
 	}
+	// Legacy snapshots keep the outcome ID on the answer, as the items above.
 	importance := map[string]int16{}
 	for _, a := range result.Answers {
-		importance[a.Task.OutcomeID] = a.Task.Importance
+		id := a.Task.OutcomeID
+		if id == "" {
+			id = a.OutcomeID
+		}
+		importance[id] = a.Task.Importance
 	}
 	sort.SliceStable(report.TrainingRecommendations, func(i, j int) bool {
 		return importance[report.TrainingRecommendations[i].OutcomeID] > importance[report.TrainingRecommendations[j].OutcomeID]

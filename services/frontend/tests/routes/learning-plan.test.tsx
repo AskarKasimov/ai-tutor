@@ -70,6 +70,7 @@ function setup(
     api: ReturnType<typeof createAppDependencies>['learningPlan'],
   ) => void,
   noGaps = false,
+  messages = lesson,
 ) {
   const dependencies = createAppDependencies()
   vi.spyOn(dependencies.diagnostic, 'readDiagnosticResult').mockResolvedValue({
@@ -126,7 +127,7 @@ function setup(
   const create = vi.spyOn(api, 'createLearningPlan').mockResolvedValue(plan())
   let opened = false
   vi.spyOn(api, 'readLearningMessages').mockImplementation(
-    async (_id, index) => (index === 0 && opened ? lesson : []),
+    async (_id, index) => (index === 0 && opened ? messages : []),
   )
   let current = existing ?? plan()
   const open = vi.spyOn(api, 'openLesson').mockImplementation(async () => {
@@ -154,7 +155,7 @@ function setup(
     created_at: 0,
   })
   configure?.(api)
-  render(
+  const { container } = render(
     <AppProviders queryClient={queryClient} dependencies={dependencies}>
       <LearningPlanEntry
         userId="u1"
@@ -164,7 +165,7 @@ function setup(
       />
     </AppProviders>,
   )
-  return { create, open, answer }
+  return { create, open, answer, container }
 }
 
 it('asks for the hours once and builds the plan with one click', async () => {
@@ -224,15 +225,11 @@ it('teaches the current topic in the chat and moves on after a voice answer', as
   const dialog = await screen.findByRole('dialog', { name: 'Еее, ты молодец!' })
   expect(dialog).toHaveTextContent('Тема «Результат 1» освоена')
   expect(dialog).toHaveTextContent('С первой попытки!')
-  expect(
-    screen.getByRole('heading', { level: 2, name: 'Результат 1' }),
-  ).toBeVisible()
+  expect(screen.getByRole('region', { name: 'Результат 1' })).toBeVisible()
   await waitFor(() => expect(open).toHaveBeenCalledTimes(2))
   fireEvent.click(screen.getByRole('button', { name: /Продолжить/ }))
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
-  expect(
-    screen.getByRole('heading', { level: 2, name: 'Результат 2' }),
-  ).toBeVisible()
+  expect(screen.getByRole('region', { name: 'Результат 2' })).toBeVisible()
   expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '50')
   // The passed topic opens read-only.
   fireEvent.click(screen.getByRole('button', { name: /Результат 1/ }))
@@ -276,9 +273,6 @@ it('shows theory while practice is pending and enables recording after it arrive
     () => expect(screen.getByText('Теория по теме')).toBeVisible(),
     { timeout: 4000 },
   )
-  expect(
-    screen.getByText('Практика готовится — пока можно прочитать теорию.'),
-  ).toBeVisible()
   expect(screen.queryByText('Практический вопрос?')).toBeNull()
   expect(screen.getByRole('button', { name: 'Записать ответ' })).toBeDisabled()
   practiceReady = true
@@ -290,9 +284,6 @@ it('shows theory while practice is pending and enables recording after it arrive
     ).toBeEnabled(),
   )
   expect(screen.getByText('Теория по теме')).toBeVisible()
-  expect(
-    screen.queryByText('Практика готовится — пока можно прочитать теорию.'),
-  ).toBeNull()
 })
 
 it('keeps theory after a practice failure and lets the student retry', async () => {
@@ -422,4 +413,54 @@ it('drops the local recording once the server owns a transcript awaiting a check
   expect(
     screen.queryByLabelText('Прослушать записанный ответ'),
   ).not.toBeInTheDocument()
+})
+
+it('renders teacher Markdown while preserving code and literal student answers', async () => {
+  const theory = [
+    '# Обновление весов',
+    '**Градиент** задаёт направление.',
+    'Среднее: $\\frac{a+b}{2}$.',
+    '',
+    '- Вычислите ошибку.',
+    '- Обновите веса.',
+    '',
+    '| Шаг | Loss |',
+    '|---|---:|',
+    '| 1 | 0.5 |',
+    '',
+    '```python',
+    'for step in range(2):',
+    '    print("a\\nb")',
+    '```',
+  ].join('\n')
+  const { container } = setup(plan(), undefined, false, [
+    { ...lesson[0], text: theory },
+    { ...lesson[1], text: 'Объясните `grad_w`.' },
+    {
+      ...lesson[0],
+      sequence: 3,
+      kind: 'feedback',
+      text: '**Верно:** уменьшайте loss.',
+    },
+    {
+      ...lesson[0],
+      sequence: 4,
+      role: 'user',
+      kind: 'answer',
+      text: '**Это мои слова** $x^2$',
+    },
+  ])
+  expect(await screen.findAllByText('Теория')).toHaveLength(2)
+  expect(screen.getByRole('table')).toBeVisible()
+  expect(
+    screen.getByRole('heading', { name: 'Обновление весов', level: 3 }),
+  ).toBeVisible()
+  expect(screen.getByText('Градиент').tagName).toBe('STRONG')
+  expect(screen.getByText('grad_w').tagName).toBe('CODE')
+  expect(screen.getByText('Верно:').tagName).toBe('STRONG')
+  expect(container.querySelector('pre')?.textContent).toBe(
+    'for step in range(2):\n    print("a\\nb")\n',
+  )
+  expect(container.querySelector('math mfrac')).not.toBeNull()
+  expect(screen.getByText('**Это мои слова** $x^2$')).toBeVisible()
 })

@@ -13,13 +13,19 @@ import {
   SkipForward,
   Square,
 } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  createElement,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { AccountMenu } from '@/features/auth'
-import Markdown, { type Components } from 'react-markdown'
-import remarkBreaks from 'remark-breaks'
-import remarkGfm from 'remark-gfm'
+import type { Components } from 'react-markdown'
+import { MarkdownContent } from '@/shared/ui'
 import { LiveWaveform } from './trainer-answer'
 import styles from './session.module.scss'
 
@@ -288,8 +294,6 @@ export function QuestionNavigator({
   )
 }
 
-const markdownPlugins = [remarkGfm, remarkBreaks]
-
 // The task text is Markdown: GFM tables and lists, and single line breaks are
 // kept. The first paragraph is the task heading; raw HTML is not rendered.
 export function FormattedQuestionContent({
@@ -304,51 +308,44 @@ export function FormattedQuestionContent({
   const long = question.length > 300
   // Stable element renderers: new ones on every render would remount the
   // whole task text.
-  const components = useMemo<Components>(
-    () => ({
+  const components = useMemo<Components>(() => {
+    const title = (children: ReactNode) => (
+      <Heading
+        as={headingLevel}
+        className={`${styles.questionTitle} ${long ? styles.longQuestion : ''}`}
+      >
+        {children}
+      </Heading>
+    )
+    const subheading =
+      (depth: number) =>
+      ({ children }: { children?: ReactNode }) =>
+        createElement(
+          `h${Math.min(Number(headingLevel[1]) + depth, 6)}`,
+          null,
+          children,
+        )
+    return {
       p: ({ node, children }) =>
         node?.position?.start.line === 1 ? (
-          <Heading
-            as={headingLevel}
-            className={`${styles.questionTitle} ${long ? styles.longQuestion : ''}`}
-          >
-            {children}
-          </Heading>
+          title(children)
         ) : (
           <p className={styles.questionParagraph}>{children}</p>
         ),
-      ul: ({ children }) => <ul className={styles.questionList}>{children}</ul>,
-      ol: ({ children, start }) => (
-        <ol className={styles.questionList} start={start}>
-          {children}
-        </ol>
-      ),
-      table: ({ children }) => (
-        <div className={styles.taskTableWrapper}>
-          <table className={styles.taskTable}>{children}</table>
-        </div>
-      ),
-      th: ({ children, style }) => (
-        <th className={styles.taskTh} style={style}>
-          {children}
-        </th>
-      ),
-      tr: ({ children }) => <tr className={styles.taskTr}>{children}</tr>,
-      td: ({ children, style }) => (
-        <td className={styles.taskTd} style={style}>
-          {children}
-        </td>
-      ),
-    }),
-    [headingLevel, long],
-  )
-  if (!question.trim()) return null
+      h1: ({ children }) => title(children),
+      h2: subheading(1),
+      h3: subheading(2),
+      h4: subheading(3),
+      h5: subheading(4),
+      h6: subheading(5),
+    }
+  }, [headingLevel, long])
   return (
-    <div className={`${styles.formattedQuestion} ${className ?? ''}`}>
-      <Markdown remarkPlugins={markdownPlugins} components={components}>
-        {question}
-      </Markdown>
-    </div>
+    <MarkdownContent
+      text={question}
+      className={className}
+      components={components}
+    />
   )
 }
 
@@ -403,7 +400,7 @@ export function TrainerQuestion({
                 <span className={styles.optionLetter} aria-hidden="true">
                   {String.fromCharCode(65 + index)}
                 </span>
-                <Text>{option}</Text>
+                <MarkdownContent text={option} />
               </li>
             ))}
           </ol>

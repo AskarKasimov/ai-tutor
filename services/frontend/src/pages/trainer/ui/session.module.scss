@@ -383,12 +383,6 @@
   font-size: 22px;
   line-height: 30px;
 }
-.formattedQuestion {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  width: 100%;
-}
 .questionParagraph {
   margin: 0;
   font-size: 16px;
@@ -398,58 +392,6 @@
   padding: 12px 16px;
   border-radius: 10px;
   border-left: 3px solid var(--app-accent);
-}
-.taskTableWrapper {
-  width: 100%;
-  overflow-x: auto;
-  border: 1px solid var(--app-border, #e2e8f0);
-  border-radius: 12px;
-  background: white;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
-  margin: 4px 0 14px;
-  -webkit-overflow-scrolling: touch;
-}
-.taskTable {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 14px;
-  line-height: 20px;
-  text-align: left;
-}
-.taskTh {
-  background: var(--app-soft, #f1f5f9);
-  color: var(--app-ink, #0f172a);
-  font-weight: 600;
-  padding: 10px 14px;
-  border-bottom: 2px solid var(--app-border, #cbd5e1);
-  white-space: nowrap;
-}
-.taskTr {
-  transition: background-color 0.15s ease;
-  &:nth-child(even) {
-    background-color: #f8fafc;
-  }
-  &:hover {
-    background-color: #f1f5f9;
-  }
-  &:last-child .taskTd {
-    border-bottom: none;
-  }
-}
-.taskTd {
-  padding: 10px 14px;
-  border-bottom: 1px solid var(--app-border, #e2e8f0);
-  color: var(--app-ink, #1e293b);
-  font-variant-numeric: tabular-nums;
-}
-.questionList {
-  margin: 0;
-  padding-left: 22px;
-  display: grid;
-  gap: 6px;
-  font-size: 16px;
-  line-height: 24px;
-  color: var(--app-ink);
 }
 // The spoken instruction under the task text; when options follow, a divider
 // and their title separate them from it.

@@ -131,7 +131,7 @@ func TestReadCompetencyMapPreservesMLPropertiesAndReplacesRevision(t *testing.T)
 	t.Parallel()
 	f := newFixture(t)
 	admin := f.admin(t)
-	csv := "Компетенция;Составляющая;Образовательный результат;Уровень темы;Что должно войти в тест;Таксономия;Уровень ALDs;Важность;Раздел РПД · компетенции РПД;ОС;Задание1\nК;С;О;Продвинутый;FALSE;Анализ;Средний;4;\"Р.1 Введение\nОПК-2;ПК-2\";Учебный контекст;\"Экран: Вопрос. Варианты: 1 — A; 2 — B. Голосовая инструкция: Ответьте. Ответ: A\"\n"
+	csv := "Компетенция;Составляющая;Образовательный результат;Уровень темы;Что должно войти в тест;Таксономия;Уровень ALDs;Важность;Раздел РПД · компетенции РПД;ОС;Задание1\nК;С;О;Продвинутый;FALSE;Анализ;Средний;4;\"Р.1 Введение\nОПК-2;ПК-2\";Учебный контекст;\"Вопрос.\n\n\n- A\n- B\n\n\nОтветьте.\n\n\nA\"\n"
 	response := upload(f, "/admin/subjects/subject:test/competency-map/import", "file", "map.csv", "text/csv", []byte(csv), admin)
 	if response.Code != 200 {
 		t.Fatal(response.Body.String())

@@ -153,7 +153,7 @@ func TestAssessmentEndpointOwnershipHistoricalSnapshotAndStrictResults(t *testin
 	for _, tc := range []struct {
 		name, taskID string
 		score, max   int
-	}{{"main", mainID, 2, 2}, {"basic", basicID, 1, 1}, {"partial", mainID, 1, 2}, {"mandatory failed", mainID, 0, 2}, {"long feedback", mainID, 2, 2}} {
+	}{{"main", mainID, 3, 3}, {"basic", basicID, 1, 1}, {"partial", mainID, 1, 3}, {"mandatory failed", mainID, 0, 3}, {"long feedback", mainID, 3, 3}} {
 		t.Run(tc.name, func(t *testing.T) {
 			if tc.name == "mandatory failed" || tc.name == "partial" || tc.name == "long feedback" {
 				mode.Store(tc.name)

@@ -97,6 +97,11 @@ func (s *Store) LearningState(ctx context.Context, ownerID, subjectID string) (d
 	}
 	state := diagnostic.LearningState{SubjectID: row.ID, SubjectName: row.Name, DiagnosticSessionID: row.CompletedID, ActiveSessionID: row.ActiveID, DiagnosticStatus: "not_started", DiagnosticCompleted: row.CompletedID != "", TrainingAvailable: row.CompletedID != ""}
 	if row.CompletedID != "" {
+		completed, err := s.Get(ctx, ownerID, row.CompletedID)
+		if err != nil {
+			return diagnostic.LearningState{}, err
+		}
+		state.TrainingAvailable = diagnostic.HasLearningGaps(completed.Answers)
 		state.DiagnosticStatus = "completed"
 	} else if row.ActiveID != "" {
 		state.DiagnosticStatus = "active"

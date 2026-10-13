@@ -7,7 +7,7 @@ import (
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/diagnostic"
 )
 
-// Store keeps feedback in memory; the first saved feedback of a session wins.
+// Store keeps the first saved feedback within each analysis version.
 type Store struct {
 	mu   sync.RWMutex
 	data map[string]diagnostic.OverallFeedback
@@ -35,7 +35,7 @@ func (s *Store) Save(ctx context.Context, ownerID string, feedback diagnostic.Ov
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if _, exists := s.data[key(ownerID, feedback.SessionID)]; !exists {
+	if current, exists := s.data[key(ownerID, feedback.SessionID)]; !exists || current.AnalysisVersion < feedback.AnalysisVersion {
 		s.data[key(ownerID, feedback.SessionID)] = feedback
 	}
 	return nil

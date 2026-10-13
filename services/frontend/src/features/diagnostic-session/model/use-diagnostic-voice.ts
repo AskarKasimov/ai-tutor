@@ -6,7 +6,7 @@ import {
   playQuestion,
   startRecording,
 } from '@/shared/lib'
-import { StoredAudioError } from '@/shared/api'
+import { StoredAudioError, VoiceApiError } from '@/shared/api'
 import type { Recording } from '@/shared/lib'
 import type {
   DiagnosticProgress,
@@ -20,7 +20,14 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { diagnosticSessionQueryKeys } from './query-keys'
 
 type Stage =
-  'ready' | 'permission' | 'recording' | 'processing' | 'error' | 'result'
+  | 'ready'
+  | 'permission'
+  | 'recording'
+  | 'processing'
+  | 'recognizing'
+  | 'review'
+  | 'error'
+  | 'result'
 export function useDiagnosticVoice(
   userId: string,
   sessionId: string,
@@ -38,6 +45,7 @@ export function useDiagnosticVoice(
   const [seconds, setSeconds] = useState(0)
   const [stream, setStream] = useState<MediaStream>()
   const [audioUrl, setAudioUrl] = useState<string>()
+  const [previewText, setPreviewText] = useState<string>()
   const [accepted, setAccepted] = useState<{
     task: DiagnosticTask
     progress: DiagnosticProgress
@@ -64,6 +72,7 @@ export function useDiagnosticVoice(
   const pending = useRef<{
     input: DiagnosticSubmission
     task: DiagnosticTask
+    requiresPreview?: boolean
   } | null>(null)
   const audio = useRef<ReturnType<typeof createAudioUrl> | null>(null)
   const answerRequest = useRef<AbortController | null>(null)
@@ -390,7 +399,27 @@ export function useDiagnosticVoice(
     stage,
     task?.variant_task_id,
   ])
+  const captureContext = useRef({
+    userId,
+    sessionId,
+    taskId: task?.variant_task_id,
+  })
+  const resetChangedDraft = useEffectEvent(() => {
+    const previous = captureContext.current
+    captureContext.current = {
+      userId,
+      sessionId,
+      taskId: task?.variant_task_id,
+    }
+    if (
+      previous.userId !== userId ||
+      previous.sessionId !== sessionId ||
+      (previous.taskId !== task?.variant_task_id && !accepted)
+    )
+      reset()
+  })
   useEffect(() => {
+    resetChangedDraft()
     return () => {
       speechRequest.current?.abort()
       generation.current++
@@ -430,6 +459,7 @@ export function useDiagnosticVoice(
       audio.current?.dispose()
       audio.current = null
       setAudioUrl(undefined)
+      setPreviewText(undefined)
       recording.current = capture
       pending.current = null
       setStream(capture.stream)
@@ -471,6 +501,37 @@ export function useDiagnosticVoice(
     }
   }
   autoStop.current = () => void stop()
+  async function recognize(current: number) {
+    if (!pending.current) return
+    const attempt = pending.current
+    const blob = attempt.input.body.get('audio')
+    if (!(blob instanceof Blob)) return
+    const request = new AbortController()
+    answerRequest.current = request
+    setStage('recognizing')
+    setError(undefined)
+    try {
+      const transcript = await diagnostic.transcribeRecording(
+        blob,
+        request.signal,
+      )
+      if (current !== generation.current || request.signal.aborted) return
+      attempt.input.transcriptionId = transcript.id
+      setPreviewText(transcript.text)
+      setStage('review')
+    } catch (cause) {
+      if (current !== generation.current || request.signal.aborted) return
+      const error =
+        cause instanceof VoiceApiError
+          ? new DiagnosticApiError(cause.status, cause.code)
+          : cause
+      onError(error)
+      setError(error)
+      setStage('error')
+    } finally {
+      if (answerRequest.current === request) answerRequest.current = null
+    }
+  }
   async function stop() {
     if (locked.current || !recording.current || !task) return
     locked.current = true
@@ -493,8 +554,9 @@ export function useDiagnosticVoice(
           capturedTask.role,
         ),
         task: capturedTask,
+        requiresPreview: true,
       }
-      await send(current)
+      await recognize(current)
     } catch {
       if (current !== generation.current) return
       setCaptureError('capture')
@@ -556,7 +618,12 @@ export function useDiagnosticVoice(
     if (locked.current || !pending.current) return
     locked.current = true
     try {
-      await send(generation.current)
+      if (
+        pending.current.requiresPreview &&
+        !pending.current.input.transcriptionId
+      )
+        await recognize(generation.current)
+      else await send(generation.current)
     } finally {
       locked.current = false
     }
@@ -572,6 +639,7 @@ export function useDiagnosticVoice(
     pending.current = null
     locked.current = false
     setAudioUrl(undefined)
+    setPreviewText(undefined)
     setStream(undefined)
     setAccepted(undefined)
     setError(undefined)
@@ -588,6 +656,8 @@ export function useDiagnosticVoice(
     seconds,
     stream,
     audioUrl,
+    previewText,
+    hasConfirmed: !!pending.current?.input.transcriptionId,
     accepted,
     speech,
     speechError,

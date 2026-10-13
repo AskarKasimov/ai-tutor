@@ -50,16 +50,22 @@ type Repository interface {
 const MaxHours = 100
 
 type Service struct {
-	repo        Repository
-	diagnostics Diagnostics
-	voice       Voice
-	teacher     Teacher
-	ids         IDs
-	now         func() time.Time
+	repo           Repository
+	diagnostics    Diagnostics
+	voice          Voice
+	transcriptions transcription.Reader
+	teacher        Teacher
+	ids            IDs
+	now            func() time.Time
 }
 
 func New(repo Repository, diagnostics Diagnostics, voice Voice, teacher Teacher, ids IDs, now func() time.Time) *Service {
 	return &Service{repo: repo, diagnostics: diagnostics, voice: voice, teacher: teacher, ids: ids, now: now}
+}
+
+func (s *Service) WithTranscriptions(reader transcription.Reader) *Service {
+	s.transcriptions = reader
+	return s
 }
 
 func (s *Service) Get(ctx context.Context, owner, id string) (learning.Plan, error) {
@@ -123,56 +129,6 @@ func (s *Service) Create(ctx context.Context, owner, diagnosticID string, hours 
 // diagnostic (its main task not answered in full), in variant order. A
 // competency the current map no longer has falls back to the outcomes the
 // diagnostic itself asked.
-func (s *Service) outcomes(ctx context.Context, session diagnostic.Session) ([]learning.Outcome, error) {
-	mains := map[string]int{}
-	for _, answer := range session.Answers {
-		if answer.Role == "main" {
-			mains[answer.CompetencyID] = answer.Score
-		}
-	}
-	failed := []string{}
-	for _, competency := range session.Variant.Competencies {
-		if score, answered := mains[competency.ID]; answered && score < 2 {
-			failed = append(failed, competency.ID)
-		}
-	}
-	if len(failed) == 0 {
-		return nil, nil
-	}
-	fromMap, err := s.repo.Outcomes(ctx, failed)
-	if err != nil {
-		return nil, err
-	}
-	byCompetency := map[string][]learning.Outcome{}
-	for _, outcome := range fromMap {
-		byCompetency[outcome.CompetencyID] = append(byCompetency[outcome.CompetencyID], outcome)
-	}
-	result := []learning.Outcome{}
-	for _, competency := range session.Variant.Competencies {
-		if score, answered := mains[competency.ID]; !answered || score >= 2 {
-			continue
-		}
-		if outcomes := byCompetency[competency.ID]; len(outcomes) > 0 {
-			result = append(result, outcomes...)
-			continue
-		}
-		seen := map[string]bool{}
-		for _, task := range competency.Tasks {
-			if seen[task.OutcomeID] {
-				continue
-			}
-			seen[task.OutcomeID] = true
-			result = append(result, learning.Outcome{
-				CompetencyID: competency.ID, CompetencyName: competency.Name,
-				OutcomeID: task.OutcomeID, OutcomeName: task.OutcomeName,
-				TaxonomyCode: task.TaxonomyCode, Importance: int(task.Importance),
-				EducationalContent: task.EducationalContent,
-			})
-		}
-	}
-	return result, nil
-}
-
 // BuildItems fits the outcomes into the hours: the most important ones first
 // until the planned minutes are used up; the rest stay in the plan as
 // "if time remains". Fewer hours than needed make theory brief, plenty of
@@ -299,12 +255,41 @@ func (s *Service) Answer(ctx context.Context, owner, id string, audio []byte, me
 		return learning.Plan{}, err
 	}
 	text := strings.TrimSpace(transcribed.Text)
+	return s.saveAnswer(ctx, owner, id, index, plan.Items[index].Attempts, plan.Items[index].Question, text)
+}
+
+// AnswerTranscription checks exactly the owned text previewed by the student.
+func (s *Service) AnswerTranscription(ctx context.Context, owner, id, transcriptionID string, index, attempts int, question string) (learning.Plan, error) {
+	if strings.TrimSpace(transcriptionID) == "" || len(transcriptionID) > 128 {
+		return learning.Plan{}, fault.Validation("transcription_id", "Укажите сохранённую расшифровку.")
+	}
+	plan, err := s.repo.Get(ctx, owner, id)
+	if err != nil {
+		return learning.Plan{}, err
+	}
+	if plan.Completed() || plan.Current != index || index < 0 || index >= len(plan.Items) || question == "" || plan.Items[index].Question != question || plan.Items[index].Attempts != attempts {
+		return learning.Plan{}, fault.New(fault.Conflict, "LEARNING_QUESTION_CHANGED", "Текущее задание изменилось. Запишите ответ заново.")
+	}
+	if plan.PendingAnswer != nil {
+		return learning.Plan{}, errAnswerPending
+	}
+	if s.transcriptions == nil {
+		return learning.Plan{}, fault.New(fault.Unavailable, "TRANSCRIPTION_UNAVAILABLE", "Расшифровка временно недоступна.")
+	}
+	text, err := s.transcriptions.TextByOwner(ctx, owner, transcriptionID)
+	if err != nil {
+		return learning.Plan{}, err
+	}
+	return s.saveAnswer(ctx, owner, id, index, attempts, question, strings.TrimSpace(text))
+}
+
+func (s *Service) saveAnswer(ctx context.Context, owner, id string, index, attempts int, question, text string) (learning.Plan, error) {
 	if text == "" {
 		return learning.Plan{}, fault.New(fault.Invalid, "NO_SPEECH_DETECTED", "Не удалось распознать ответ. Запишите его ещё раз.")
 	}
 	now := s.now().Unix()
-	if _, err = s.repo.Update(ctx, owner, id, func(plan *learning.Plan) ([]learning.Message, error) {
-		if plan.Current != index || plan.PendingAnswer != nil {
+	if _, err := s.repo.Update(ctx, owner, id, func(plan *learning.Plan) ([]learning.Message, error) {
+		if plan.Current != index || plan.PendingAnswer != nil || plan.Items[index].Question != question || plan.Items[index].Attempts != attempts {
 			return nil, errAnswerPending
 		}
 		plan.PendingAnswer = &text

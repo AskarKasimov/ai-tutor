@@ -92,9 +92,13 @@ func (d diagnostics) Get(context.Context, string, string) (diagnostic.Session, e
 	return d.session, nil
 }
 
-type voice struct{ text string }
+type voice struct {
+	text  string
+	calls int
+}
 
 func (v *voice) Transcribe(context.Context, string, []byte, string) (transcription.Transcription, error) {
+	v.calls++
 	return transcription.Transcription{ID: "t", Text: v.text}, nil
 }
 
@@ -134,7 +138,13 @@ func newService(t *testing.T, main int) (*Service, *memoryRepo, *voice, *teacher
 	t.Helper()
 	session := diagnostic.Session{ID: "d", Status: diagnostic.StatusCompleted,
 		Variant: diagnostic.VariantSnapshot{SubjectID: "s", SubjectNameSnapshot: "ML", Competencies: []diagnostic.Competency{{ID: "c1", Name: "К1"}, {ID: "c2", Name: "К2"}}},
-		Answers: []diagnostic.Answer{{CompetencyID: "c1", Role: "main", Score: main}, {CompetencyID: "c2", Role: "main", Score: 2}},
+		Answers: []diagnostic.Answer{
+			{CompetencyID: "c1", Role: "main", Score: main, Task: diagnostic.TaskSnapshot{OutcomeID: "o1"}},
+			{CompetencyID: "c2", Role: "main", Score: 2},
+		},
+	}
+	if main < 2 {
+		session.Answers = append(session.Answers, diagnostic.Answer{CompetencyID: "c1", Role: "basic", Score: 0, Task: diagnostic.TaskSnapshot{OutcomeID: "o2"}})
 	}
 	repo := &memoryRepo{outcomes: []learning.Outcome{
 		{CompetencyID: "c1", CompetencyName: "К1", OutcomeID: "o1", Importance: 3},
@@ -320,5 +330,66 @@ func TestOpenResumesPracticeWithoutRewritingTheory(t *testing.T) {
 	}
 	if teacher.theoryCalls != 1 || teacher.practiceCalls != 2 || len(repo.messages) != 2 || teacher.usedTheory != "Теория o1" {
 		t.Fatalf("retry regenerated theory: %+v, %+v", teacher, repo.messages)
+	}
+}
+
+type previewReader struct{ owner, text string }
+
+func (r previewReader) TextByOwner(_ context.Context, owner, id string) (string, error) {
+	if owner != r.owner || id != "preview" {
+		return "", fault.New(fault.NotFound, "TRANSCRIPTION_NOT_FOUND", "")
+	}
+	return r.text, nil
+}
+func TestConfirmedLearningAnswerUsesOwnedPreviewAndRejectsChangedQuestion(t *testing.T) {
+	s, repo, voice, teacher := newService(t, 1)
+	s.WithTranscriptions(previewReader{owner: "u", text: "верно"})
+	if _, err := s.Create(t.Context(), "u", "d", 5); err != nil {
+		t.Fatal(err)
+	}
+	p, err := s.Open(t.Context(), "u", "plan")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, question := range []string{"", "старый вопрос"} {
+		if _, err = s.AnswerTranscription(t.Context(), "u", "plan", "preview", p.Current, 0, question); !hasCode(err, "LEARNING_QUESTION_CHANGED") {
+			t.Fatalf("stale question: %v", err)
+		}
+	}
+	s.WithTranscriptions(previewReader{owner: "someone-else", text: "верно"})
+	if _, err = s.AnswerTranscription(t.Context(), "u", "plan", "preview", p.Current, 0, p.Items[p.Current].Question); !hasCode(err, "TRANSCRIPTION_NOT_FOUND") {
+		t.Fatalf("foreign preview: %v", err)
+	}
+	if repo.plan.Items[0].Attempts != 0 || voice.calls != 0 || teacher.lastInput.Answer != "" {
+		t.Fatal("unconfirmed answer changed learning")
+	}
+	s.WithTranscriptions(previewReader{owner: "u", text: "верно"})
+	got, err := s.AnswerTranscription(t.Context(), "u", "plan", "preview", p.Current, 0, p.Items[p.Current].Question)
+	if err != nil || got.Items[0].Status != learning.ItemPassed || teacher.lastInput.Answer != "верно" || voice.calls != 0 {
+		t.Fatalf("prepared answer: %+v %v STT=%d", got, err, voice.calls)
+	}
+}
+
+func TestConfirmedLearningAnswerRejectsRepeatedPreviewWhenFollowupTextRepeats(t *testing.T) {
+	s, repo, _, _ := newService(t, 1)
+	s.WithTranscriptions(previewReader{owner: "u", text: "wrong"})
+	if _, err := s.Create(t.Context(), "u", "d", 5); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Open(t.Context(), "u", "plan"); err != nil {
+		t.Fatal(err)
+	}
+	repo.plan.Items[0].Question = "Новый вопрос"
+	if _, err := s.AnswerTranscription(t.Context(), "u", "plan", "preview", 0, 0, "Новый вопрос"); err != nil {
+		t.Fatal(err)
+	}
+	if repo.plan.Items[0].Attempts != 1 || repo.plan.Items[0].Question != "Новый вопрос" {
+		t.Fatal("fixture did not repeat the text")
+	}
+	if _, err := s.AnswerTranscription(t.Context(), "u", "plan", "preview", 0, 0, "Новый вопрос"); !hasCode(err, "LEARNING_QUESTION_CHANGED") {
+		t.Fatalf("duplicate preview accepted: %v", err)
+	}
+	if repo.plan.Items[0].Attempts != 1 {
+		t.Fatal("duplicate preview created another attempt")
 	}
 }

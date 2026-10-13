@@ -255,6 +255,55 @@ func (h *Handler) Answer(w http.ResponseWriter, r *http.Request) {
 	httpx.JSON(w, http.StatusOK, progressResponse(result))
 }
 
+type TranscriptionAnswerRequest struct {
+	VariantTaskID   string `json:"variant_task_id" minLength:"1" maxLength:"128" binding:"required"`
+	TranscriptionID string `json:"transcription_id" minLength:"1" maxLength:"128" binding:"required"`
+}
+
+// AnswerTranscription grades an owned, already previewed transcription.
+// @Summary Отправить подтверждённую расшифровку ответа
+// @Description Использует сохранённый текст текущего пользователя без повторного STT. Не принимает редактируемый текст ответа.
+// @Tags Диагностика
+// @Security accessCookie
+// @Accept json
+// @Produce json
+// @Param id path string true "ID сессии"
+// @Param Idempotency-Key header string true "Ключ повтора запроса"
+// @Param request body TranscriptionAnswerRequest true "Подтверждённая расшифровка"
+// @Success 200 {object} ProgressResponse
+// @Failure 401 {object} fault.Error
+// @Failure 404 {object} fault.Error
+// @Failure 409 {object} fault.Error
+// @Failure 413 {object} fault.Error
+// @Failure 422 {object} fault.Error
+// @Failure 502 {object} fault.Error
+// @Failure 503 {object} fault.Error
+// @Failure 504 {object} fault.Error
+// @Router /diagnostic-sessions/{id}/answers/transcription [post]
+func (h *Handler) AnswerTranscription(w http.ResponseWriter, r *http.Request) {
+	principal, ok := httpx.Principal[user.User](r)
+	if !ok {
+		httpx.Error(r.Context(), w, fault.New(fault.Unauthorized, "UNAUTHORIZED", "Требуется действующая сессия."))
+		return
+	}
+	if err := noQuery(r); err != nil {
+		httpx.Error(r.Context(), w, err)
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, 32*1024)
+	var request TranscriptionAnswerRequest
+	if err := httpx.DecodeJSON(r, &request); err != nil {
+		httpx.Error(r.Context(), w, err)
+		return
+	}
+	result, err := h.service.AnswerTranscription(r.Context(), principal.ID, r.PathValue("id"), request.VariantTaskID, r.Header.Get("Idempotency-Key"), request.TranscriptionID)
+	if err != nil {
+		httpx.Error(r.Context(), w, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, progressResponse(result))
+}
+
 type SkipRequest struct {
 	VariantTaskID string `json:"variant_task_id" minLength:"1" maxLength:"128" binding:"required"`
 }

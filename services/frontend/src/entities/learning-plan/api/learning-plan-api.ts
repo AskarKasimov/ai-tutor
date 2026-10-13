@@ -143,7 +143,30 @@ export function openLesson(planId: string, signal: AbortSignal) {
   )
 }
 
-export function answerLesson(planId: string, audio: Blob, signal: AbortSignal) {
+export type ConfirmedLessonAnswer = {
+  transcription_id: string
+  item_index: number
+  attempts: number
+  question: string
+}
+
+export function answerLesson(
+  planId: string,
+  audio: Blob | ConfirmedLessonAnswer,
+  signal: AbortSignal,
+) {
+  if (!(audio instanceof Blob))
+    return request(
+      `${plan(planId)}/answers/transcription`,
+      planSchema,
+      signal,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(audio),
+      },
+      modelTimeout,
+    )
   const extension = audio.type.includes('ogg')
     ? 'ogg'
     : audio.type.includes('wav')
@@ -171,6 +194,10 @@ export function retryLessonAnswer(planId: string, signal: AbortSignal) {
 }
 
 export type LearningPlanApi = {
+  previewAnswer(
+    blob: Blob,
+    signal: AbortSignal,
+  ): Promise<{ id: string; text: string }>
   findLearningPlan: typeof findLearningPlan
   createLearningPlan: typeof createLearningPlan
   readLearningPlan: typeof readLearningPlan

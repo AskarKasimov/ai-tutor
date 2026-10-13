@@ -793,3 +793,10 @@
     display: none;
   }
 }
+.draftTranscript {
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--app-soft);
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}

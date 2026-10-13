@@ -39,6 +39,7 @@ import {
 } from './trainer-shared'
 import { normalizeText, parseStructuredSummary } from '@/entities/assessment'
 import { diagnosticPercent } from '../model/diagnostic-percent'
+import { ConfirmVoiceAnswer } from './trainer-answer'
 import styles from '@/pages/trainer/ui/trainer-layout.module.scss'
 import diagnosticStyles from '@/pages/trainer/ui/diagnostic.module.scss'
 
@@ -246,7 +247,8 @@ function DiagnosticFlow({
       </main>
     )
   const recording = voice.stage === 'recording'
-  const processing = voice.stage === 'processing'
+  const processing =
+    voice.stage === 'processing' || voice.stage === 'recognizing'
   const waiting = voice.stage === 'permission'
   const blocked = recording || processing || waiting
   const failed = voice.stage === 'error'
@@ -308,7 +310,7 @@ function DiagnosticFlow({
     <TrainerWorkspace>
       <Question
         task={task}
-        transcript={response?.text}
+        transcript={response?.text ?? voice.previewText}
         instruction={instruction}
       />
       {response ? (
@@ -376,7 +378,9 @@ function DiagnosticFlow({
               )}
               {t(
                 voice.hasPending && !rerecord
-                  ? 'diagnostic.retrySubmit'
+                  ? voice.hasConfirmed
+                    ? 'diagnostic.retrySubmit'
+                    : 'trainer.retryRecognition'
                   : micError
                     ? 'trainer.retry'
                     : 'diagnostic.recordAgain',
@@ -392,6 +396,12 @@ function DiagnosticFlow({
             >
               {t('diagnostic.recordAgain')}
             </Button>
+          )}
+          {voice.stage === 'review' && (
+            <ConfirmVoiceAnswer
+              onSend={() => void voice.retry()}
+              onRerecord={() => void voice.start()}
+            />
           )}
         </TrainerCapturePanel>
       )}
@@ -415,7 +425,7 @@ function Question({
       options={task.options}
       instruction={instruction}
     >
-      <TrainerTranscript id="transcript-title" text={transcript} />
+      <TrainerTranscript id="transcript-title" text={transcript} autoReveal />
     </TrainerQuestion>
   )
 }
@@ -518,6 +528,9 @@ function DiagnosticSummary({
       </main>
     )
   const value = result.data
+  const hasGaps = value.answers.some(
+    (answer) => answer.score < (answer.role === 'basic' ? 1 : 2),
+  )
   return (
     <main className={styles.summary}>
       <Text as="p" className={styles.eyebrow}>
@@ -537,19 +550,24 @@ function DiagnosticSummary({
             </Text>
           </div>
           <Text as="p" className={diagnosticStyles.scoreNext}>
-            {t('diagnostic.nextStep')}
+            {t(hasGaps ? 'diagnostic.nextStep' : 'diagnostic.noGaps')}
           </Text>
         </div>
-        <button
-          type="button"
-          className={diagnosticStyles.toTraining}
-          onClick={() => onTraining(sessionId)}
-        >
-          <span className={diagnosticStyles.toTrainingIcon} aria-hidden="true">
-            <Zap size={20} fill="currentColor" />
-          </span>
-          {t('diagnostic.toTraining')}
-        </button>
+        {hasGaps && (
+          <button
+            type="button"
+            className={diagnosticStyles.toTraining}
+            onClick={() => onTraining(sessionId)}
+          >
+            <span
+              className={diagnosticStyles.toTrainingIcon}
+              aria-hidden="true"
+            >
+              <Zap size={20} fill="currentColor" />
+            </span>
+            {t('diagnostic.toTraining')}
+          </button>
+        )}
       </div>
       {overall.isPending ? (
         <FeedbackPreparing />

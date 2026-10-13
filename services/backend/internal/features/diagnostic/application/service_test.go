@@ -392,6 +392,55 @@ func TestVariableSizeCompetenciesAdvanceAndCountActualTasks(t *testing.T) {
 	}
 }
 
+type transcriptionReaderStub struct {
+	owner, id, text string
+	calls           int
+}
+
+func (r *transcriptionReaderStub) TextByOwner(_ context.Context, owner, id string) (string, error) {
+	r.calls++
+	if owner != r.owner || id != r.id {
+		return "", errors.New("transcription not owned")
+	}
+	return r.text, nil
+}
+
+func TestConfirmedTranscriptionReusesPreviewAndIdempotentResult(t *testing.T) {
+	s, voice, grader, _ := newTestService(grade(3))
+	reader := &transcriptionReaderStub{owner: "owner-1", id: "preview-1", text: "Показанный ответ"}
+	s.WithTranscriptions(reader)
+	progress, _, err := s.Start(t.Context(), "owner-1", "variant-1", "start")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.AnswerTranscription(t.Context(), "owner-1", progress.SessionID, progress.Current.ID, "answer", "preview-1")
+	if err != nil || got.Text != reader.text || voice.transcribes != 0 || grader.transcriptionID != "preview-1" {
+		t.Fatalf("prepared answer: %+v %v STT=%d", got, err, voice.transcribes)
+	}
+	if _, err = s.AnswerTranscription(t.Context(), "owner-1", progress.SessionID, progress.Current.ID, "answer", "preview-1"); err != nil || grader.calls != 1 || reader.calls != 1 {
+		t.Fatalf("repeat: %v grader=%d reader=%d", err, grader.calls, reader.calls)
+	}
+	if _, err = s.AnswerTranscription(t.Context(), "owner-1", progress.SessionID, progress.Current.ID, "answer", "other-id"); err == nil {
+		t.Fatal("same key accepted another transcript")
+	}
+}
+
+func TestForeignPreviewDoesNotGradeOrAdvanceDiagnostic(t *testing.T) {
+	s, voice, grader, _ := newTestService(grade(3))
+	s.WithTranscriptions(&transcriptionReaderStub{owner: "someone-else", id: "preview-1", text: "Ответ"})
+	p, _, err := s.Start(t.Context(), "owner-1", "variant-1", "start")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.AnswerTranscription(t.Context(), "owner-1", p.SessionID, p.Current.ID, "answer", "preview-1"); err == nil {
+		t.Fatal("foreign transcript accepted")
+	}
+	after, err := s.Read(t.Context(), "owner-1", p.SessionID)
+	if err != nil || after.Completed != 0 || grader.calls != 0 || voice.transcribes != 0 {
+		t.Fatalf("advanced without owned text: %+v %v", after, err)
+	}
+}
+
 func TestBasicsContributeToThreePointCompetencyTotal(t *testing.T) {
 	perfect := grade(3)
 	perfect.evaluation.Score, perfect.evaluation.MaxScore = 3, 3

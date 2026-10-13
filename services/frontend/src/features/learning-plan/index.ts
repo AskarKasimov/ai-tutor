@@ -11,3 +11,4 @@ export {
   useLessonMessages,
 } from './model/use-learning-plan'
 export { useVoiceRecorder } from './model/use-voice-recorder'
+export { useAnswerPreview } from './model/use-answer-preview'

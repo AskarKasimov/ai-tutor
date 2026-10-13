@@ -221,3 +221,10 @@ func TestHTTPWriteTimeoutAllowsTheoryThenPractice(t *testing.T) {
 		t.Fatal("HTTP response deadline cuts off sequential theory and practice")
 	}
 }
+
+func TestHTTPWriteTimeoutAllowsTranscriptionAndThreeLearningCalls(t *testing.T) {
+	cfg := Config{VoiceTimeout: time.Minute, TutorTimeout: time.Minute}
+	if cfg.HTTPWriteTimeout() < cfg.VoiceTimeout+3*cfg.TutorTimeout+30*time.Second {
+		t.Fatal("HTTP response deadline cuts off learning grading, followup and review")
+	}
+}

@@ -6,6 +6,7 @@ export type {
 } from './model/learning-plan'
 export { LearningPlanApiError } from './model/learning-plan-api-error'
 export type { LearningPlanApi } from './api/learning-plan-api'
+export type { ConfirmedLessonAnswer } from './api/learning-plan-api'
 export {
   answerLesson,
   createLearningPlan,

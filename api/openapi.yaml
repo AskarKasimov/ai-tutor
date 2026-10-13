@@ -715,6 +715,21 @@ components:
         - variant_task_id
         - voice_instruction
       type: object
+    diagnostichttp.TranscriptionAnswerRequest:
+      additionalProperties: false
+      properties:
+        transcription_id:
+          maxLength: 128
+          minLength: 1
+          type: string
+        variant_task_id:
+          maxLength: 128
+          minLength: 1
+          type: string
+      required:
+        - transcription_id
+        - variant_task_id
+      type: object
     fault.Detail:
       additionalProperties: false
       properties:
@@ -1031,6 +1046,28 @@ components:
         - status
         - subject_id
         - subject_name
+      type: object
+    learninghttp.TranscriptionAnswerRequest:
+      additionalProperties: false
+      properties:
+        attempts:
+          minimum: 0
+          type: integer
+        item_index:
+          minimum: 0
+          type: integer
+        question:
+          minLength: 1
+          type: string
+        transcription_id:
+          maxLength: 128
+          minLength: 1
+          type: string
+      required:
+        - attempts
+        - item_index
+        - question
+        - transcription_id
       type: object
     subject.Subject:
       additionalProperties: false
@@ -2791,6 +2828,92 @@ paths:
       tags:
         - Диагностика
       x-implementation: implemented
+  /diagnostic-sessions/{id}/answers/transcription:
+    post:
+      description: Использует сохранённый текст текущего пользователя без повторного STT. Не принимает редактируемый текст ответа.
+      parameters:
+        - description: ID сессии
+          in: path
+          name: id
+          required: true
+          schema:
+            type: string
+        - description: Ключ повтора запроса
+          in: header
+          name: Idempotency-Key
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/diagnostichttp.TranscriptionAnswerRequest'
+              description: Подтверждённая расшифровка
+              summary: request
+        description: Подтверждённая расшифровка
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/diagnostichttp.ProgressResponse'
+          description: OK
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unauthorized
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Not Found
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Conflict
+        "413":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Request Entity Too Large
+        "422":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unprocessable Entity
+        "502":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Bad Gateway
+        "503":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Service Unavailable
+        "504":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Gateway Timeout
+      security:
+        - accessCookie: []
+      summary: Отправить подтверждённую расшифровку ответа
+      tags:
+        - Диагностика
+      x-implementation: implemented
   /diagnostic-sessions/{id}/current/audio:
     get:
       description: Незавершённая запись получает первое место среди ожидающих. Уже выполняющаяся озвучка не прерывается.
@@ -3514,6 +3637,86 @@ paths:
       security:
         - accessCookie: []
       summary: Повторить проверку ответа
+      tags:
+        - Обучение
+      x-implementation: implemented
+  /learning-plans/{id}/answers/transcription:
+    post:
+      description: Проверяет сохранённый текст текущего пользователя без повторного STT. Номер темы и текст вопроса защищают от отправки на изменившееся задание.
+      parameters:
+        - description: ID плана
+          in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/learninghttp.TranscriptionAnswerRequest'
+              description: Подтверждённая расшифровка и текущее задание
+              summary: request
+        description: Подтверждённая расшифровка и текущее задание
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/learninghttp.PlanResponse'
+          description: OK
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unauthorized
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Not Found
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Conflict
+        "413":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Request Entity Too Large
+        "422":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unprocessable Entity
+        "502":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Bad Gateway
+        "503":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Service Unavailable
+        "504":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Gateway Timeout
+      security:
+        - accessCookie: []
+      summary: Отправить подтверждённую расшифровку практики
       tags:
         - Обучение
       x-implementation: implemented

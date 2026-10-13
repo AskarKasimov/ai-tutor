@@ -2,6 +2,7 @@ export class VoiceApiError extends Error {
   constructor(
     operation: string,
     readonly status: number,
+    readonly code = '',
   ) {
     super(`${operation} failed: ${status}`)
     this.name = 'VoiceApiError'
@@ -58,7 +59,17 @@ export async function transcribeRecording(
     body: form,
     signal: requestSignal(signal),
   })
-  if (!response.ok) throw new VoiceApiError('Transcription', response.status)
+  if (!response.ok) {
+    const error: unknown = await response.json().catch(() => null)
+    const code =
+      error &&
+      typeof error === 'object' &&
+      'code' in error &&
+      typeof error.code === 'string'
+        ? error.code
+        : ''
+    throw new VoiceApiError('Transcription', response.status, code)
+  }
   const data: unknown = await response.json()
   if (
     !data ||

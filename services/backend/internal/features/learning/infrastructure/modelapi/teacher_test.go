@@ -6,12 +6,73 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strconv"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/learning"
 )
+
+func TestCheckGradesBeforeGeneratingAndReviewingNewCase(t *testing.T) {
+	var calls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var request struct {
+			Messages  []message `json:"messages"`
+			MaxTokens int       `json:"max_tokens"`
+			Reasoning string    `json:"reasoning_effort"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			t.Error(err)
+			return
+		}
+		if request.MaxTokens != 4096 || request.Reasoning != "medium" {
+			t.Errorf("output budget: %+v", request)
+		}
+		var payload map[string]any
+		if err := json.Unmarshal([]byte(request.Messages[1].Content), &payload); err != nil {
+			t.Error(err)
+			return
+		}
+		var result any
+		switch calls.Add(1) {
+		case 1:
+			if payload["question"] != "Старый случай" || strings.Contains(request.Messages[0].Content, "ПРАКТИКА НА ПОНИМАНИЕ") {
+				t.Error("grading diluted by question generation")
+			}
+			result = map[string]any{"correct": false, "feedback": "Свяжите вывод с условиями случая.", "question": ""}
+		case 2:
+			if payload["previous_question"] != "Старый случай" || payload["theory"] != "Изученная теория" {
+				t.Errorf("followup lost context: %+v", payload)
+			}
+			result = map[string]any{"question": "Черновик другого случая"}
+		case 3:
+			if payload["previous_question"] != "Старый случай" || payload["draft_question"] != "Черновик другого случая" {
+				t.Errorf("review lost previous case: %+v", payload)
+			}
+			result = map[string]any{"question": "Другой случай с изменённым существенным условием"}
+		default:
+			t.Error("unexpected extra request")
+		}
+		content, _ := json.Marshal(result)
+		json.NewEncoder(w).Encode(map[string]any{"choices": []any{map[string]any{"message": map[string]any{"content": string(content)}, "finish_reason": "stop"}}})
+	}))
+	defer server.Close()
+	got, err := New(server.Client(), server.URL, "model", time.Second).Check(t.Context(), learning.CheckInput{Theory: "Изученная теория", Question: "Старый случай", Answer: "Общий пересказ"})
+	if err != nil || got.Correct || got.Question != "Другой случай с изменённым существенным условием" || calls.Load() != 3 {
+		t.Fatalf("result: %+v, %v, calls=%d", got, err, calls.Load())
+	}
+}
+
+func TestTeacherRejectsTruncatedCompletionEvenWithValidJSON(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]any{"choices": []any{map[string]any{"message": map[string]any{"content": `{"theory":"Теория"}`}, "finish_reason": "length"}}})
+	}))
+	defer server.Close()
+	if _, err := New(server.Client(), server.URL, "model", time.Second).Theory(t.Context(), learning.LessonInput{}); err == nil {
+		t.Fatal("truncated completion accepted")
+	}
+}
 
 // Exercise the provider boundary, including questions after a wrong answer:
 // malformed model output must never become a lesson or a follow-up task.
@@ -83,6 +144,9 @@ func TestTeacherResponses(t *testing.T) {
 				wantRequests = 3
 			}
 			if tc.name == "retry" {
+				wantRequests = 2
+			}
+			if tc.name == "missing retry" {
 				wantRequests = 2
 			}
 			if requests.Load() != int32(wantRequests) {

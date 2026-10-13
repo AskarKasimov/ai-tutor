@@ -1,10 +1,6 @@
 export function normalizeText(text: string): string {
   if (!text) return ''
-  return text
-    .replace(/\\r\\n/g, '\n')
-    .replace(/\\n/g, '\n')
-    .replace(/\r\n/g, '\n')
-    .trim()
+  return text.replace(/\r\n/g, '\n').trim()
 }
 
 interface ParsedStructuredSummary {

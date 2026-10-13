@@ -2,7 +2,7 @@ package training
 
 import "time"
 
-const TutorPromptVersion = "training-tutor-v2"
+const TutorPromptVersion = "training-tutor-v3"
 
 type ChatRole string
 

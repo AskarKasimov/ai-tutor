@@ -22,7 +22,6 @@ func (*Parser) Parse(data []byte) (competencymap.Map, error) { return Parse(data
 
 var taskColumn = regexp.MustCompile(`^(Задание|Критерии) ?([1-9][0-9]*)$`)
 var topicColumn = regexp.MustCompile(`^Тем [1-9][0-9]*$`)
-var optionNumber = regexp.MustCompile(`^[1-9][0-9]*\s*[—–-]\s*`)
 
 func csvError(row int, column, message string) *fault.Error {
 	e := fault.New(fault.Invalid, "CSV_INVALID", "Карта компетенций содержит ошибку.")

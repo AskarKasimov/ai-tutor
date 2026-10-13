@@ -525,6 +525,27 @@ it('shows overall feedback when the backend sends null strengths', async () => {
     screen.queryByRole('heading', { name: 'Что хорошо' }),
   ).not.toBeInTheDocument()
 })
+it('renders Markdown in the overall feedback without rewriting code escapes', async () => {
+  server(
+    200,
+    3,
+    200,
+    null,
+    '**Регрессия** требует практики.\n\n```python\nprint("a\\nb")\n```',
+  )
+  const { container } = await home()
+  fireEvent.click(await screen.findByRole('button', { name: 'Начать запись' }))
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Завершить запись' }),
+  )
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Посмотреть итог' }),
+  )
+  await screen.findByRole('button', { name: /Посмотреть мои ответы/ })
+  expect(screen.getByText('Регрессия').tagName).toBe('STRONG')
+  expect(container.querySelector('pre')?.textContent).toBe('print("a\\nb")\n')
+})
+
 it('fills the cards from the reviews, not from the model text', async () => {
   server(
     200,

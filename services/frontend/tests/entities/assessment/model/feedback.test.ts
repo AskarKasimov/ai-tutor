@@ -8,10 +8,10 @@ import {
 } from '@/entities/assessment/model/feedback'
 
 describe('trainer feedback parsing', () => {
-  it('normalizes escaped line breaks and parses gap explanations and topics', () => {
+  it('normalizes physical line breaks and parses gap explanations and topics', () => {
     expect(
       normalizeText(
-        'Тема\\nПояснение: причина\\r\\nЧто повторить: основы; практика',
+        'Тема\nПояснение: причина\r\nЧто повторить: основы; практика',
       ),
     ).toBe('Тема\nПояснение: причина\nЧто повторить: основы; практика')
     expect(
@@ -23,6 +23,12 @@ describe('trainer feedback parsing', () => {
       explanation: 'причина',
       subtopics: ['основы', 'практика'],
     })
+  })
+
+  it('preserves Python string escapes in Markdown feedback', () => {
+    const markdown = '```python\nprint("a\\nb")\n```'
+    expect(normalizeText(markdown)).toBe(markdown)
+    expect(parseStructuredSummary(markdown).generalText).toBe(markdown)
   })
 
   it('parses partial feedback and builds express steps from parsed topics', () => {

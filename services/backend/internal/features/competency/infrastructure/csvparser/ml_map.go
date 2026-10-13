@@ -15,7 +15,6 @@ import (
 
 var rpdSection = regexp.MustCompile(`^Р\s*\.\s*(\d+(?:\.\d+)*)\s*(.*)$`)
 var rpdCompetency = regexp.MustCompile(`(?:ОПК|ПК)-[0-9]+`)
-var optionSplit = regexp.MustCompile(`(?:^|;\s*)[1-9][0-9]*\s*[—–-]\s*`)
 
 // parseMLMap accepts the ML spreadsheet export. Its
 // task columns contain both complete assignments and fragments of assignments.
@@ -509,14 +508,57 @@ func parseMLTask(raw string) (competencymap.Task, bool) {
 		if screen == "" {
 			return task, false
 		}
-		matches := optionSplit.FindAllStringIndex(optionText, -1)
+		type optionMatch struct {
+			contentStart int
+			prefixStart  int
+		}
+		var matches []optionMatch
+		dashes := []string{"—", "–", "-"}
+		searchPos := 0
+		for num := 1; ; num++ {
+			foundPos := -1
+			matchLen := 0
+			numStr := strconv.Itoa(num)
+			// Префикс варианта должен начинаться либо в начале текста, либо после ';', либо с новой строки.
+			for _, dash := range dashes {
+				for _, p := range []string{numStr + " " + dash + " ", numStr + " " + dash, numStr + dash + " ", numStr + dash} {
+					offset := searchPos
+					for {
+						idx := strings.Index(optionText[offset:], p)
+						if idx < 0 {
+							break
+						}
+						absPos := offset + idx
+						// Проверяем, что перед цифрой нет других цифр, букв или двоеточия,
+						// а стоит начало строки, точка с запятой или пробел после точки с запятой / перенос строки.
+						pre := strings.TrimRight(optionText[:absPos], " \t\r")
+						if pre == "" || strings.HasSuffix(pre, ";") || strings.HasSuffix(pre, "\n") {
+							if foundPos == -1 || absPos < foundPos {
+								foundPos = absPos
+								matchLen = len(p)
+							}
+							break
+						}
+						offset = absPos + len(p)
+					}
+				}
+			}
+			if foundPos == -1 {
+				break
+			}
+			matches = append(matches, optionMatch{
+				prefixStart:  foundPos,
+				contentStart: foundPos + matchLen,
+			})
+			searchPos = foundPos + matchLen
+		}
+
 		for i, m := range matches {
-			start := m[1]
 			end := len(optionText)
 			if i+1 < len(matches) {
-				end = matches[i+1][0]
+				end = matches[i+1].prefixStart
 			}
-			option := strings.TrimSpace(optionText[start:end])
+			option := strings.TrimSpace(optionText[m.contentStart:end])
 			option = strings.TrimSuffix(option, ";")
 			option = strings.TrimSuffix(option, ".")
 			option = strings.TrimSpace(option)

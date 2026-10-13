@@ -269,6 +269,7 @@
   &[aria-current='step'] {
     background: var(--app-soft);
     box-shadow: inset 3px 0 0 var(--app-accent);
+    cursor: default;
   }
   &:disabled {
     cursor: default;
@@ -301,6 +302,13 @@
   &[data-status='review'] {
     background: #f59e0b;
   }
+}
+.currentDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: white;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.45);
 }
 .outcomeText {
   min-width: 0;

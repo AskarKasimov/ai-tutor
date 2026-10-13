@@ -251,7 +251,7 @@ void i18n.init({
           createError: 'Не удалось собрать план. Попробуйте ещё раз.',
           outline: 'Оглавление',
           extra: 'Если останется время',
-          minutes: '{{theory}} + {{practice}} мин',
+          minutes: '{{count}} мин',
           status: {
             pending: 'Впереди',
             current: 'Сейчас',

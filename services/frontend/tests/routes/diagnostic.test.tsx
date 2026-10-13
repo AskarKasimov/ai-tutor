@@ -150,7 +150,7 @@ function server(
         status: 'ready',
         audio_url: '/task-audio/audio-main/file',
       })
-    if (url.endsWith('/task-audio/audio-main/file'))
+    if (url.includes('/task-audio/') && url.endsWith('/file'))
       return new Response(await validWavBlob().arrayBuffer(), {
         headers: { 'Content-Type': 'audio/wav' },
       })
@@ -503,6 +503,33 @@ it('shows the task review only together with the overall feedback', async () => 
     screen.queryByRole('heading', { name: 'Готовим ваш персональный разбор' }),
   ).not.toBeInTheDocument()
 })
+
+it('allows listening to task instruction from the review list', async () => {
+  const play = vi.spyOn(audio, 'playQuestion').mockResolvedValue(vi.fn())
+  server()
+  await home()
+  fireEvent.click(await screen.findByRole('button', { name: 'Начать запись' }))
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Завершить запись' }),
+  )
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Посмотреть итог' }),
+  )
+  expect(
+    await screen.findByText('Итоговое педагогическое резюме.'),
+  ).toBeVisible()
+  fireEvent.click(
+    await screen.findByRole('button', { name: /Посмотреть мои ответы/ }),
+  )
+  expect(screen.getByText('Настоящая расшифровка')).toBeVisible()
+  expect(screen.getByText('Ваш ответ')).toBeVisible()
+  const listenBtn = screen.getByRole('button', {
+    name: 'Прослушать инструкцию',
+  })
+  expect(listenBtn).toBeVisible()
+  fireEvent.click(listenBtn)
+  await waitFor(() => expect(play).toHaveBeenCalled())
+}, 15000)
 
 it('shows overall feedback when the backend sends null strengths', async () => {
   server(200, 3, 200, null)
@@ -1101,3 +1128,34 @@ it.each([1, 2])(
     ).not.toBeInTheDocument()
   },
 )
+
+it('shows preparing audio and permits retry in the completed review', async () => {
+  const requests = server()
+  const original = requests.getMockImplementation()!
+  let preparing = true
+  requests.mockImplementation(async (url, init) => {
+    if (preparing && url.includes('/task-audio/') && url.endsWith('/file'))
+      return Response.json({ code: 'AUDIO_NOT_READY' }, { status: 409 })
+    return original(url, init)
+  })
+  const play = vi.spyOn(audio, 'playQuestion').mockResolvedValue(vi.fn())
+  await home()
+  fireEvent.click(await screen.findByRole('button', { name: 'Начать запись' }))
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Завершить запись' }),
+  )
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Посмотреть итог' }),
+  )
+  await screen.findByText('Итоговое педагогическое резюме.')
+  fireEvent.click(screen.getByRole('button', { name: /Посмотреть мои ответы/ }))
+  fireEvent.click(screen.getByRole('button', { name: 'Прослушать инструкцию' }))
+  expect(
+    await screen.findByText('Аудио готовится. Попробуйте немного позже.'),
+  ).toBeVisible()
+  expect(screen.getByText(main.voice_instruction)).toBeVisible()
+  expect(play).not.toHaveBeenCalled()
+  preparing = false
+  fireEvent.click(screen.getByRole('button', { name: 'Прослушать инструкцию' }))
+  await waitFor(() => expect(play).toHaveBeenCalledOnce())
+})

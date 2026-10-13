@@ -1,6 +1,6 @@
 import { afterEach, expect, it, vi } from 'vitest'
 import { transcribeRecording } from '@/shared/api'
-import { startRecording } from '@/shared/lib'
+import { playQuestion, startRecording } from '@/shared/lib'
 
 afterEach(() => vi.unstubAllGlobals())
 
@@ -76,4 +76,38 @@ it('releases microphone tracks if recorder initialization fails', async () => {
   })
   await expect(startRecording()).rejects.toThrow('recording')
   expect(release).toHaveBeenCalledOnce()
+})
+
+it('stops and releases a player aborted before play resolves', async () => {
+  let resolvePlay!: () => void
+  const pause = vi.fn()
+  const removeAttribute = vi.fn()
+  vi.stubGlobal(
+    'Audio',
+    class {
+      onended = null
+      onerror = null
+      pause = pause
+      removeAttribute = removeAttribute
+      play() {
+        return new Promise<void>((resolve) => {
+          resolvePlay = resolve
+        })
+      }
+    },
+  )
+  vi.stubGlobal('URL', {
+    createObjectURL: vi.fn(() => 'blob:pending'),
+    revokeObjectURL: vi.fn(),
+  })
+  const controller = new AbortController()
+  const playing = playQuestion(new Blob(), vi.fn(), vi.fn(), controller.signal)
+  const rejected = expect(playing).rejects.toThrow()
+  controller.abort()
+  expect(pause).toHaveBeenCalledOnce()
+  expect(removeAttribute).toHaveBeenCalledWith('src')
+  expect(URL.revokeObjectURL).toHaveBeenCalledOnce()
+  resolvePlay()
+  await rejected
+  expect(URL.revokeObjectURL).toHaveBeenCalledOnce()
 })

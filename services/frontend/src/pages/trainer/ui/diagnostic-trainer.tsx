@@ -15,6 +15,7 @@ import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/features/auth'
 import { DiagnosticApiError } from '@/entities/diagnostic-session'
 import {
+  useReviewAudioPlayer,
   useDiagnosticResultQuery,
   useDiagnosticFeedbackQuery,
   useDiagnosticSession,
@@ -439,12 +440,14 @@ function Feedback({
       <Text as="p" className={styles.eyebrow}>
         {t('session.result')}
       </Text>
-      <TrainerScore
-        score={score}
-        maxScore={maxScore}
-        verdict={t(`diagnostic.verdict.${skipped ? 'skipped' : verdict}`)}
-        skipped={skipped}
-      />
+      <div className={diagnosticStyles.reviewScore}>
+        <TrainerScore
+          score={score}
+          maxScore={maxScore}
+          verdict={t(`diagnostic.verdict.${skipped ? 'skipped' : verdict}`)}
+          skipped={skipped}
+        />
+      </div>
       <Heading as={heading} className={styles.feedbackTitle}>
         {t('trainer.feedback')}
       </Heading>
@@ -472,6 +475,7 @@ function DiagnosticSummary({
   const overall = useDiagnosticFeedbackQuery(userId, sessionId)
   // The task review is long; it stays folded so training is one click away.
   const [reviewOpen, setReviewOpen] = useState(false)
+  const reviewAudio = useReviewAudioPlayer()
   const { handleError } = training
   useEffect(() => {
     if (result.error) handleError(result.error)
@@ -559,7 +563,12 @@ function DiagnosticSummary({
             className={diagnosticStyles.reviewToggle}
             aria-expanded={reviewOpen}
             aria-controls="task-review"
-            onClick={() => setReviewOpen((open) => !open)}
+            onClick={() =>
+              setReviewOpen((open) => {
+                if (open) reviewAudio.stop()
+                return !open
+              })
+            }
           >
             <ChevronRight
               size={20}
@@ -583,13 +592,53 @@ function DiagnosticSummary({
                       question={answer.task.question}
                       headingLevel="h3"
                     />
-                    <Text as="p" className={styles.eyebrow}>
-                      {answer.task.competency_name} ·{' '}
-                      {t(`diagnostic.${answer.role}`)}
-                    </Text>
-                    <Text as="p" className={styles.transcript}>
-                      {answer.text}
-                    </Text>
+                    {answer.task.source_task_id && (
+                      <div className={diagnosticStyles.reviewAudio}>
+                        <ListenButton
+                          state={
+                            reviewAudio.loadingId === answer.task.source_task_id
+                              ? 'loading'
+                              : reviewAudio.playingId ===
+                                  answer.task.source_task_id
+                                ? 'playing'
+                                : 'idle'
+                          }
+                          onClick={() =>
+                            void reviewAudio.play(answer.task.source_task_id)
+                          }
+                        />
+                        {reviewAudio.notice?.taskId ===
+                          answer.task.source_task_id && (
+                          <>
+                            <Text as="p" className={sessionStyles.hint}>
+                              {answer.task.voice_instruction}
+                            </Text>
+                            <Text
+                              as="p"
+                              role={
+                                reviewAudio.notice.key === 'trainer.speechError'
+                                  ? 'alert'
+                                  : 'status'
+                              }
+                              className={sessionStyles.hint}
+                            >
+                              {t(reviewAudio.notice.key)}
+                            </Text>
+                          </>
+                        )}
+                      </div>
+                    )}
+                    <div className={diagnosticStyles.reviewAnswerSection}>
+                      <Text as="p" className={styles.eyebrow}>
+                        {t('trainer.yourAnswer')}
+                      </Text>
+                      <Text
+                        as="p"
+                        className={diagnosticStyles.reviewAnswerText}
+                      >
+                        {answer.text}
+                      </Text>
+                    </div>
                     <Feedback
                       heading="h4"
                       score={answer.score}

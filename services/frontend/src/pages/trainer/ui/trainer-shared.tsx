@@ -552,7 +552,9 @@ export function TrainerCapturePanel({
   const { t } = useTranslation()
   const busy =
     stage === 'processing' || stage === 'permission' || stage === 'recognizing'
-  const micState = answered ?? (busy ? 'busy' : stage)
+  // A ready transcript shows a check: nothing runs until the student sends it.
+  const review = stage === 'review'
+  const micState = answered ?? (busy ? 'busy' : review ? 'accepted' : stage)
   const micLabel = answered
     ? undefined
     : stage === 'ready'
@@ -562,7 +564,7 @@ export function TrainerCapturePanel({
         : undefined
   const micIcon = busy ? (
     <LoaderCircle size={40} className={styles.spinner} />
-  ) : answered === 'accepted' ? (
+  ) : answered === 'accepted' || review ? (
     <Check size={44} />
   ) : answered === 'skipped' ? (
     <SkipForward size={40} />
@@ -594,11 +596,11 @@ export function TrainerCapturePanel({
           <Heading as="h3">{micError.title}</Heading>
           <Text as="p">{micError.help}</Text>
         </div>
-      ) : stage === 'review' ? null : (
+      ) : (
         <div className={styles.voice}>
           {/* The circle is the record button: it starts and stops recording.
               After a failure it only duplicates the recovery button below. */}
-          {onMic ? (
+          {onMic && !review ? (
             <button
               type="button"
               className={styles.mic}
@@ -639,6 +641,10 @@ export function TrainerCapturePanel({
                     ? 'session.answerSkipped'
                     : 'session.answerAccepted',
                 )}
+              </Text>
+            ) : review ? (
+              <Text className={styles.voicePill} role="status">
+                {t('trainer.reviewTranscript')}
               </Text>
             ) : stage === 'recording' ? (
               <>

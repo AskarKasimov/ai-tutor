@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
-import { Button, Flex, Text } from '@radix-ui/themes'
+import { Button, Flex } from '@radix-ui/themes'
 import { useTranslation } from 'react-i18next'
 import { createVoiceWaveform } from '@/shared/lib'
 import styles from './trainer-layout.module.scss'
+import sessionStyles from './session.module.scss'
 
 function QuietWaveform() {
   return <div className={styles.waveBars} />
@@ -19,21 +20,25 @@ export function ConfirmVoiceAnswer({
 }) {
   const { t } = useTranslation()
   return (
-    <Flex direction="column" gap="3" width="100%">
-      <Text size="2">{t('trainer.reviewTranscript')}</Text>
-      <Flex gap="2" wrap="wrap" justify="between">
-        <Button
-          size="3"
-          variant="soft"
-          disabled={disabled}
-          onClick={onRerecord}
-        >
-          {t('trainer.rerecordAnswer')}
-        </Button>
-        <Button size="3" disabled={disabled} onClick={onSend}>
-          {t('trainer.sendAnswer')}
-        </Button>
-      </Flex>
+    // Both actions span the panel, so they share one size.
+    <Flex direction="column" gap="2" width="100%">
+      <Button
+        size="3"
+        className={sessionStyles.primary}
+        disabled={disabled}
+        onClick={onSend}
+      >
+        {t('trainer.sendAnswer')}
+      </Button>
+      <Button
+        size="3"
+        variant="soft"
+        className={sessionStyles.primary}
+        disabled={disabled}
+        onClick={onRerecord}
+      >
+        {t('trainer.rerecordAnswer')}
+      </Button>
     </Flex>
   )
 }

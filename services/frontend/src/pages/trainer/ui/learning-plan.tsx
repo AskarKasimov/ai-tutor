@@ -283,9 +283,6 @@ function LearningPlanScreen({
           ) : (
             <>
               <header className={styles.chatHeader}>
-                <Text className={styles.chatCompetency}>
-                  {item.competency_name}
-                </Text>
                 <Heading as="h2" size="5">
                   {item.outcome_name}
                 </Heading>

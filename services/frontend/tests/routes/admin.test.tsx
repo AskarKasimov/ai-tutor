@@ -59,19 +59,19 @@ const imported = {
       row: 8,
       column_index: 12,
       column: 'Задание 2',
-      code: 'TASK_MISSING_SCREEN',
+      code: 'TASK_INVALID_BLOCK_COUNT',
     },
     {
       row: 8,
       column_index: 11,
       column: 'Задание 1',
-      code: 'TASK_MISSING_VOICE_AND_ANSWER',
+      code: 'TASK_INVALID_OPTIONS',
     },
     {
       row: 8,
       column_index: 13,
       column: 'Задание 3',
-      code: 'TASK_MISSING_SCREEN',
+      code: 'TASK_INVALID_BLOCK_COUNT',
     },
   ],
 }
@@ -335,8 +335,8 @@ it.each(['csv', 'xlsx'])(
     const rows = screen.getAllByRole('row')
     expect(rows).toHaveLength(2)
     expect(rows[1]).toHaveTextContent(
-      '8Задание 1: задание обрезано: нет «Голосовая инструкция:» и «Ответ:».' +
-        'Задание 2, Задание 3: обрывок без «Экран:» — скорее всего, продолжение задания из соседней ячейки.',
+      '8Задание 1: варианты должны быть нумерованным Markdown-списком или [] для задания без выбора.' +
+        'Задание 2, Задание 3: нужны четыре блока: вопрос, варианты, голосовая инструкция и эталон. Разделитель — две пустые строки.',
     )
     expect(screen.getByText(/строк: 1/)).toBeVisible()
     await waitFor(() =>

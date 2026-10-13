@@ -41,9 +41,9 @@ func TestParseIntroToMLWorkbook(t *testing.T) {
 		}
 	}
 	want := map[string]string{
-		"Задание 1": "TASK_MISSING_VOICE_AND_ANSWER",
-		"Задание 2": "TASK_MISSING_SCREEN",
-		"Задание 3": "TASK_MISSING_SCREEN",
+		"Задание 1": "TASK_INVALID_BLOCK_COUNT",
+		"Задание 2": "TASK_INVALID_BLOCK_COUNT",
+		"Задание 3": "TASK_INVALID_BLOCK_COUNT",
 	}
 	for column, code := range want {
 		if codes[column] != code {
@@ -54,11 +54,9 @@ func TestParseIntroToMLWorkbook(t *testing.T) {
 
 func TestTaskFragmentCodeNamesTheMissingPart(t *testing.T) {
 	for raw, want := range map[string]string{
-		"---:":             "TASK_MISSING_SCREEN",
-		"Экран: | A | B |": "TASK_MISSING_VOICE_AND_ANSWER",
-		"Экран: Вопрос\nОтвет: да":                                "TASK_MISSING_VOICE",
-		"Экран: Вопрос\nОтвет: да\nГолосовая инструкция: скажите": "TASK_MISSING_ANSWER",
-		"Экран:\nГолосовая инструкция: скажите\nОтвет: да":        "TASK_EMPTY_PART",
+		"---:": "TASK_INVALID_BLOCK_COUNT",
+		"Вопрос\n\n\n[]\n\n\n \n\n\nОтвет":            "TASK_EMPTY_PART",
+		"Вопрос\n\n\nне список\n\n\nГолос\n\n\nОтвет": "TASK_INVALID_OPTIONS",
 	} {
 		if got := taskFragmentCode(raw); got != want {
 			t.Errorf("taskFragmentCode(%q) = %q, want %q", raw, got, want)

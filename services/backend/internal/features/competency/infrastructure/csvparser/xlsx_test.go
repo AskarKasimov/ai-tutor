@@ -62,7 +62,7 @@ func TestXLSXMapPreservesBlankRowsAndParsesSourceCoordinates(t *testing.T) {
 	if firstTask.SourceColumnIndex != 11 || firstTask.SourceRowIndex <= 0 {
 		t.Fatalf("source coordinate: row=%d column=%d", firstTask.SourceRowIndex, firstTask.SourceColumnIndex)
 	}
-	if !strings.HasPrefix(parsed.SourceRows[firstTask.SourceRowIndex-1].Cells[firstTask.SourceColumnIndex-1], "Экран:") {
+	if !strings.HasPrefix(parsed.SourceRows[firstTask.SourceRowIndex-1].Cells[firstTask.SourceColumnIndex-1], firstTask.Question) {
 		t.Fatal("XLSX source coordinates do not point to original task cell")
 	}
 }

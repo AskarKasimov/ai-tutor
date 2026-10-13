@@ -7,6 +7,7 @@ require (
 	github.com/pressly/goose/v3 v3.28.0
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.3
 	github.com/xuri/excelize/v2 v2.11.0
+	github.com/yuin/goldmark v1.7.13
 	go.uber.org/zap v1.27.1
 	golang.org/x/crypto v0.57.0
 	gopkg.in/yaml.v3 v3.0.1

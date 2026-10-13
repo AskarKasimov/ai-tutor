@@ -134,7 +134,7 @@ func TestOriginalMLMapHasTypedMetadataAndKeepsSourceCoordinates(t *testing.T) {
 	if row.Index != first.SourceRowIndex || row.Line != 6 {
 		t.Fatalf("task logical/physical source coordinates = %d/%d, want logical %d and physical line 6", row.Index, row.Line, first.SourceRowIndex)
 	}
-	if !strings.HasPrefix(row.Cells[first.SourceColumnIndex-1], "Экран:") {
+	if !strings.HasPrefix(row.Cells[first.SourceColumnIndex-1], first.Question) {
 		t.Fatal("task logical column does not point back to its original question cell")
 	}
 	if row.Line == row.Index {

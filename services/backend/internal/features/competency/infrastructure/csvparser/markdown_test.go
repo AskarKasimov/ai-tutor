@@ -12,7 +12,7 @@ func TestMapFormatsPreserveAuthoredMarkdown(t *testing.T) {
 	question := "Объясните `x`.\n\n```python\nfor step in range(2):\n    print(\"a\\nb\")\n```\n\n| Шаг | Loss |\n|---|---:|\n| 1 | 0.5 |"
 	rows := [][]string{
 		{"", "Компетенция", "Уровень темы", "Составляющая", "Образовательный результат", "Что должно войти в тест", "Таксономия", "Уровень ALDs", "Важность", "Раздел РПД · компетенции РПД", "Задание1", "ОС"},
-		{"", "К", "Базовый", "С", "ОР", "TRUE", "Знание", "базовый", "4", "Р.1 Введение\nОПК-2", "Экран: " + question + "\n\nГолосовая инструкция: «Объясните код».\n\nОтвет: пример.", "ОС"},
+		{"", "К", "Базовый", "С", "ОР", "TRUE", "Знание", "базовый", "4", "Р.1 Введение\nОПК-2", question + "\n\n\n1. **Первый**; с пояснением\n2. Второй\n\n\nОбъясните код.\n\n\nпример.", "ОС"},
 	}
 	var csvData bytes.Buffer
 	writer := csv.NewWriter(&csvData)
@@ -45,6 +45,9 @@ func TestMapFormatsPreserveAuthoredMarkdown(t *testing.T) {
 			}
 			if len(parsed.Tasks) != 1 {
 				t.Fatalf("tasks = %d, want 1", len(parsed.Tasks))
+			}
+			if options := parsed.Tasks[0].Options; len(options) != 2 || options[0] != "**Первый**; с пояснением" || options[1] != "Второй" {
+				t.Fatalf("numbered options changed: %#v", options)
 			}
 			if got := parsed.Tasks[0].Question; got != question {
 				t.Fatalf("Markdown changed: got %q, want %q", got, question)

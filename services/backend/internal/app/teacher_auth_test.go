@@ -46,81 +46,76 @@ func portalUpload(f *fixture, path string, data []byte, cookie *http.Cookie) *ht
 	return w
 }
 
-func TestTeacherLoginAcrossModesAndSessions(t *testing.T) {
+func TestTeacherLoginAndSessions(t *testing.T) {
 	t.Parallel()
-	for _, mode := range []string{"real", "mock"} {
-		t.Run(mode, func(t *testing.T) {
-			f := newFixture(t)
-			f.app.cfg.APIMode = mode
-			f.handler = f.app.Handler()
-			// The student site cannot open the teacher account.
-			requireCode(t, f.request("POST", "/auth/teacher", ""), 404, "NOT_FOUND")
-			login := f.portal("POST", "/auth/teacher", "")
-			if login.Code != 200 {
-				t.Fatalf("login: %d %s", login.Code, login.Body.String())
-			}
-			var body struct {
-				User user.User `json:"user"`
-			}
-			if err := json.Unmarshal(login.Body.Bytes(), &body); err != nil {
-				t.Fatal(err)
-			}
-			if body.User.Role != user.Admin || body.User.ID == "" {
-				t.Fatalf("teacher: %+v", body)
-			}
-			cookies := login.Result().Cookies()
-			if len(cookies) != 2 {
-				t.Fatal("missing session cookies")
-			}
-			for _, cookie := range cookies {
-				if !cookie.Secure || !cookie.HttpOnly || cookie.Path != "/" || cookie.SameSite != http.SameSiteLaxMode {
-					t.Fatal("invalid session cookie")
-				}
-			}
-			access, refresh := cookies[0], cookies[1]
-			if access.Name != "admin_access_token" || refresh.Name != "admin_refresh_token" {
-				t.Fatalf("admin cookies: %s %s", access.Name, refresh.Name)
-			}
-			second := f.portal("POST", "/auth/teacher", "")
-			var repeated struct {
-				User user.User `json:"user"`
-			}
-			json.Unmarshal(second.Body.Bytes(), &repeated)
-			if repeated.User.ID != body.User.ID || cookies[0].Value == second.Result().Cookies()[0].Value {
-				t.Fatal("teacher identity/session isolation")
-			}
-			f.handler = f.app.Handler()
-			if got := f.portal("GET", "/auth/me", "", access); got.Code != 200 {
-				t.Fatal(got.Body.String())
-			}
-			created := f.portal("POST", "/admin/subjects", `{"name":"Предмет учителя"}`, access)
-			if created.Code != 201 {
-				t.Fatal(created.Body.String())
-			}
-			var subject struct {
-				ID string `json:"id"`
-			}
-			json.Unmarshal(created.Body.Bytes(), &subject)
-			imported := portalUpload(f, "/admin/subjects/"+subject.ID+"/competency-map/import", variantMapCSV(t), access)
-			if imported.Code != 200 {
-				t.Fatal(imported.Body.String())
-			}
-			if got := f.portal("POST", "/auth/refresh", "", refresh); got.Code != 200 {
-				t.Fatal(got.Body.String())
-			} else {
-				refresh = got.Result().Cookies()[1]
-			}
-			if got := f.portal("POST", "/auth/logout", "", refresh); got.Code != 204 {
-				t.Fatal(got.Body.String())
-			}
-			requireCode(t, f.portal("GET", "/auth/me", "", access), 401, "UNAUTHORIZED")
-			if got := f.portal("GET", "/auth/me", "", second.Result().Cookies()[0]); got.Code != 200 {
-				t.Fatal("logout revoked another teacher session")
-			}
-			requireCode(t, f.portal("POST", "/auth/teacher", `{}`), 422, "VALIDATION_ERROR")
-			requireCode(t, f.request("POST", "/auth/register", `{"email":"shared-teacher@ai-tutor.invalid","password":"`+password+`","display_name":"Учитель"}`), 422, "VALIDATION_ERROR")
-		})
+	f := newFixture(t)
+	f.handler = f.app.Handler()
+	// The student site cannot open the teacher account.
+	requireCode(t, f.request("POST", "/auth/teacher", ""), 404, "NOT_FOUND")
+	login := f.portal("POST", "/auth/teacher", "")
+	if login.Code != 200 {
+		t.Fatalf("login: %d %s", login.Code, login.Body.String())
 	}
+	var body struct {
+		User user.User `json:"user"`
+	}
+	if err := json.Unmarshal(login.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if body.User.Role != user.Admin || body.User.ID == "" {
+		t.Fatalf("teacher: %+v", body)
+	}
+	cookies := login.Result().Cookies()
+	if len(cookies) != 2 {
+		t.Fatal("missing session cookies")
+	}
+	for _, cookie := range cookies {
+		if !cookie.Secure || !cookie.HttpOnly || cookie.Path != "/" || cookie.SameSite != http.SameSiteLaxMode {
+			t.Fatal("invalid session cookie")
+		}
+	}
+	access, refresh := cookies[0], cookies[1]
+	if access.Name != "admin_access_token" || refresh.Name != "admin_refresh_token" {
+		t.Fatalf("admin cookies: %s %s", access.Name, refresh.Name)
+	}
+	second := f.portal("POST", "/auth/teacher", "")
+	var repeated struct {
+		User user.User `json:"user"`
+	}
+	json.Unmarshal(second.Body.Bytes(), &repeated)
+	if repeated.User.ID != body.User.ID || cookies[0].Value == second.Result().Cookies()[0].Value {
+		t.Fatal("teacher identity/session isolation")
+	}
+	f.handler = f.app.Handler()
+	if got := f.portal("GET", "/auth/me", "", access); got.Code != 200 {
+		t.Fatal(got.Body.String())
+	}
+	created := f.portal("POST", "/admin/subjects", `{"name":"Предмет учителя"}`, access)
+	if created.Code != 201 {
+		t.Fatal(created.Body.String())
+	}
+	var subject struct {
+		ID string `json:"id"`
+	}
+	json.Unmarshal(created.Body.Bytes(), &subject)
+	imported := portalUpload(f, "/admin/subjects/"+subject.ID+"/competency-map/import", variantMapCSV(t), access)
+	if imported.Code != 200 {
+		t.Fatal(imported.Body.String())
+	}
+	if got := f.portal("POST", "/auth/refresh", "", refresh); got.Code != 200 {
+		t.Fatal(got.Body.String())
+	} else {
+		refresh = got.Result().Cookies()[1]
+	}
+	if got := f.portal("POST", "/auth/logout", "", refresh); got.Code != 204 {
+		t.Fatal(got.Body.String())
+	}
+	requireCode(t, f.portal("GET", "/auth/me", "", access), 401, "UNAUTHORIZED")
+	if got := f.portal("GET", "/auth/me", "", second.Result().Cookies()[0]); got.Code != 200 {
+		t.Fatal("logout revoked another teacher session")
+	}
+	requireCode(t, f.portal("POST", "/auth/teacher", `{}`), 422, "VALIDATION_ERROR")
+	requireCode(t, f.request("POST", "/auth/register", `{"email":"shared-teacher@ai-tutor.invalid","password":"`+password+`","display_name":"Учитель"}`), 422, "VALIDATION_ERROR")
 }
 
 // One browser keeps a student session and an admin panel session at once:

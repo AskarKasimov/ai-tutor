@@ -12,7 +12,6 @@ import (
 )
 
 type Config struct {
-	APIMode               string
 	ListenAddress         string
 	DatabaseURL           string
 	STTURL                string
@@ -55,35 +54,23 @@ func (c Config) HTTPWriteTimeout() time.Duration {
 
 func ConfigFromEnv() (Config, error) {
 	var c Config
-	mode, err := requiredEnv("BACKEND_API_MODE")
+	var err error
+	c.TutorEnabled, err = envBool("BACKEND_TUTOR_ENABLED", true)
 	if err != nil {
 		return c, err
 	}
-	c.APIMode = mode
-	if err := validateAPIMode(mode); err != nil {
-		return c, err
-	}
-	type stringSetting struct {
+	settings := []struct {
 		key string
 		dst *string
-	}
-	settings := []stringSetting{
+	}{
 		{"BACKEND_LISTEN_ADDRESS", &c.ListenAddress},
 		{"BACKEND_DATABASE_URL", &c.DatabaseURL},
-	}
-	if c.APIMode == "real" {
-		c.TutorEnabled, err = envBool("BACKEND_TUTOR_ENABLED", true)
-		if err != nil {
-			return c, err
-		}
-		settings = append(settings,
-			stringSetting{"BACKEND_STT_URL", &c.STTURL},
-			stringSetting{"BACKEND_TTS_URL", &c.TTSURL},
-			stringSetting{"BACKEND_ASSESSMENT_BASE_URL", &c.AssessmentBaseURL},
-			stringSetting{"BACKEND_ASSESSMENT_MODEL", &c.AssessmentModel},
-			stringSetting{"BACKEND_TASKGEN_BASE_URL", &c.TaskgenBaseURL},
-			stringSetting{"BACKEND_TASKGEN_MODEL", &c.TaskgenModel},
-		)
+		{"BACKEND_STT_URL", &c.STTURL},
+		{"BACKEND_TTS_URL", &c.TTSURL},
+		{"BACKEND_ASSESSMENT_BASE_URL", &c.AssessmentBaseURL},
+		{"BACKEND_ASSESSMENT_MODEL", &c.AssessmentModel},
+		{"BACKEND_TASKGEN_BASE_URL", &c.TaskgenBaseURL},
+		{"BACKEND_TASKGEN_MODEL", &c.TaskgenModel},
 	}
 	for _, setting := range settings {
 		value, err := requiredEnv(setting.key)
@@ -92,33 +79,31 @@ func ConfigFromEnv() (Config, error) {
 		}
 		*setting.dst = value
 	}
-	if c.APIMode == "real" {
-		c.TutorBaseURL = envOrDefault("BACKEND_TUTOR_BASE_URL", c.AssessmentBaseURL)
-		c.TutorModel = envOrDefault("BACKEND_TUTOR_MODEL", c.AssessmentModel)
-		value, err := requiredEnv("BACKEND_TTS_SEED")
-		if err != nil {
-			return c, err
-		}
-		c.TTSSeed, err = strconv.ParseInt(value, 10, 64)
-		if err != nil {
-			return c, fmt.Errorf("BACKEND_TTS_SEED: %w", err)
-		}
-		value, err = requiredEnv("BACKEND_TTS_CFG_VALUE")
-		if err != nil {
-			return c, err
-		}
-		c.TTSCFGValue, err = strconv.ParseFloat(value, 64)
-		if err != nil {
-			return c, fmt.Errorf("BACKEND_TTS_CFG_VALUE: %w", err)
-		}
-		value, err = requiredEnv("BACKEND_TTS_INFERENCE_TIMESTEPS")
-		if err != nil {
-			return c, err
-		}
-		c.TTSInferenceTimesteps, err = strconv.Atoi(value)
-		if err != nil {
-			return c, fmt.Errorf("BACKEND_TTS_INFERENCE_TIMESTEPS: %w", err)
-		}
+	c.TutorBaseURL = envOrDefault("BACKEND_TUTOR_BASE_URL", c.AssessmentBaseURL)
+	c.TutorModel = envOrDefault("BACKEND_TUTOR_MODEL", c.AssessmentModel)
+	value, err := requiredEnv("BACKEND_TTS_SEED")
+	if err != nil {
+		return c, err
+	}
+	c.TTSSeed, err = strconv.ParseInt(value, 10, 64)
+	if err != nil {
+		return c, fmt.Errorf("BACKEND_TTS_SEED: %w", err)
+	}
+	value, err = requiredEnv("BACKEND_TTS_CFG_VALUE")
+	if err != nil {
+		return c, err
+	}
+	c.TTSCFGValue, err = strconv.ParseFloat(value, 64)
+	if err != nil {
+		return c, fmt.Errorf("BACKEND_TTS_CFG_VALUE: %w", err)
+	}
+	value, err = requiredEnv("BACKEND_TTS_INFERENCE_TIMESTEPS")
+	if err != nil {
+		return c, err
+	}
+	c.TTSInferenceTimesteps, err = strconv.Atoi(value)
+	if err != nil {
+		return c, fmt.Errorf("BACKEND_TTS_INFERENCE_TIMESTEPS: %w", err)
 	}
 
 	durations := []struct {
@@ -127,6 +112,7 @@ func ConfigFromEnv() (Config, error) {
 	}{
 		{"BACKEND_VOICE_TIMEOUT", &c.VoiceTimeout},
 		{"BACKEND_ASSESSMENT_TIMEOUT", &c.AssessmentTimeout},
+		{"BACKEND_TASKGEN_TIMEOUT", &c.TaskgenTimeout},
 	}
 	c.TutorTimeout, err = envDuration("BACKEND_TUTOR_TIMEOUT", 60*time.Second)
 	if err != nil {
@@ -144,12 +130,6 @@ func ConfigFromEnv() (Config, error) {
 	if err != nil {
 		return c, err
 	}
-	if c.APIMode == "real" {
-		durations = append(durations, struct {
-			key string
-			dst *time.Duration
-		}{"BACKEND_TASKGEN_TIMEOUT", &c.TaskgenTimeout})
-	}
 	for _, setting := range durations {
 		value, err := requiredEnv(setting.key)
 		if err != nil {
@@ -161,7 +141,7 @@ func ConfigFromEnv() (Config, error) {
 		}
 		*setting.dst = duration
 	}
-	value, err := requiredEnv("BACKEND_MAX_UPLOAD_BYTES")
+	value, err = requiredEnv("BACKEND_MAX_UPLOAD_BYTES")
 	if err != nil {
 		return c, err
 	}
@@ -250,9 +230,6 @@ func requiredEnv(key string) (string, error) {
 }
 
 func (c Config) validate() error {
-	if err := validateAPIMode(c.APIMode); err != nil {
-		return err
-	}
 	_, port, err := net.SplitHostPort(c.ListenAddress)
 	portNumber, portErr := strconv.Atoi(port)
 	if err != nil || portErr != nil || portNumber < 1 || portNumber > 65535 {
@@ -261,41 +238,39 @@ func (c Config) validate() error {
 	if strings.TrimSpace(c.DatabaseURL) == "" {
 		return fmt.Errorf("BACKEND_DATABASE_URL is required")
 	}
-	if c.APIMode == "real" {
-		for _, setting := range []struct{ key, value string }{
-			{"BACKEND_STT_URL", c.STTURL}, {"BACKEND_TTS_URL", c.TTSURL},
-			{"BACKEND_ASSESSMENT_BASE_URL", c.AssessmentBaseURL},
-			{"BACKEND_TASKGEN_BASE_URL", c.TaskgenBaseURL},
-		} {
-			u, err := url.Parse(setting.value)
-			if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.User != nil || u.Fragment != "" {
-				return fmt.Errorf("%s must be an absolute HTTP(S) URL without credentials", setting.key)
-			}
+	for _, setting := range []struct{ key, value string }{
+		{"BACKEND_STT_URL", c.STTURL}, {"BACKEND_TTS_URL", c.TTSURL},
+		{"BACKEND_ASSESSMENT_BASE_URL", c.AssessmentBaseURL},
+		{"BACKEND_TASKGEN_BASE_URL", c.TaskgenBaseURL},
+	} {
+		u, err := url.Parse(setting.value)
+		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.User != nil || u.Fragment != "" {
+			return fmt.Errorf("%s must be an absolute HTTP(S) URL without credentials", setting.key)
 		}
-		if c.TutorEnabled {
-			u, err := url.Parse(c.TutorBaseURL)
-			if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.User != nil || u.Fragment != "" {
-				return fmt.Errorf("BACKEND_TUTOR_BASE_URL must be an absolute HTTP(S) URL without credentials")
-			}
-			if strings.TrimSpace(c.TutorModel) == "" {
-				return fmt.Errorf("BACKEND_TUTOR_MODEL is required when tutor is enabled")
-			}
+	}
+	if c.TutorEnabled {
+		u, err := url.Parse(c.TutorBaseURL)
+		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.User != nil || u.Fragment != "" {
+			return fmt.Errorf("BACKEND_TUTOR_BASE_URL must be an absolute HTTP(S) URL without credentials")
 		}
-		if math.IsNaN(c.TTSCFGValue) || math.IsInf(c.TTSCFGValue, 0) || c.TTSCFGValue < 0 || c.TTSCFGValue > 5 {
-			return fmt.Errorf("BACKEND_TTS_CFG_VALUE must be a finite number from 0 to 5")
+		if strings.TrimSpace(c.TutorModel) == "" {
+			return fmt.Errorf("BACKEND_TUTOR_MODEL is required when tutor is enabled")
 		}
-		if c.TTSInferenceTimesteps < 1 || c.TTSInferenceTimesteps > 50 {
-			return fmt.Errorf("BACKEND_TTS_INFERENCE_TIMESTEPS must be from 1 to 50")
-		}
-		if strings.TrimSpace(c.TaskgenModel) == "" {
-			return fmt.Errorf("BACKEND_TASKGEN_MODEL is required")
-		}
-		if c.TaskgenTimeout <= 0 {
-			return fmt.Errorf("BACKEND_TASKGEN_TIMEOUT must be positive")
-		}
-		if strings.TrimSpace(c.AssessmentModel) == "" {
-			return fmt.Errorf("BACKEND_ASSESSMENT_MODEL is required")
-		}
+	}
+	if math.IsNaN(c.TTSCFGValue) || math.IsInf(c.TTSCFGValue, 0) || c.TTSCFGValue < 0 || c.TTSCFGValue > 5 {
+		return fmt.Errorf("BACKEND_TTS_CFG_VALUE must be a finite number from 0 to 5")
+	}
+	if c.TTSInferenceTimesteps < 1 || c.TTSInferenceTimesteps > 50 {
+		return fmt.Errorf("BACKEND_TTS_INFERENCE_TIMESTEPS must be from 1 to 50")
+	}
+	if strings.TrimSpace(c.TaskgenModel) == "" {
+		return fmt.Errorf("BACKEND_TASKGEN_MODEL is required")
+	}
+	if c.TaskgenTimeout <= 0 {
+		return fmt.Errorf("BACKEND_TASKGEN_TIMEOUT must be positive")
+	}
+	if strings.TrimSpace(c.AssessmentModel) == "" {
+		return fmt.Errorf("BACKEND_ASSESSMENT_MODEL is required")
 	}
 	for _, setting := range []struct {
 		key   string
@@ -343,13 +318,6 @@ func (c Config) validate() error {
 	}
 	if c.MaxUploadBytes < 1 || c.MaxUploadBytes > 25*1024*1024 {
 		return fmt.Errorf("BACKEND_MAX_UPLOAD_BYTES must be positive and cannot exceed 25 MiB")
-	}
-	return nil
-}
-
-func validateAPIMode(mode string) error {
-	if mode != "mock" && mode != "real" {
-		return fmt.Errorf("BACKEND_API_MODE must be mock or real")
 	}
 	return nil
 }

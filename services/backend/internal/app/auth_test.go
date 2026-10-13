@@ -162,6 +162,7 @@ func newFixtureWithPasswordHasher(t *testing.T, cfg Config, hasher authapp.Passw
 		}
 	}))
 	t.Cleanup(f.s3.Close)
+	configureFixtureModels(t, &cfg)
 	cfg.S3Endpoint = f.s3.URL
 	cfg.S3CreateBucket = false
 	a, err := New(cfg, pool, zap.NewNop())

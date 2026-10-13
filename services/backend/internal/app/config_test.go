@@ -9,7 +9,6 @@ import (
 func configuredEnv(t *testing.T) map[string]string {
 	t.Helper()
 	values := map[string]string{
-		"BACKEND_API_MODE":                "real",
 		"BACKEND_LISTEN_ADDRESS":          ":8002",
 		"BACKEND_DATABASE_URL":            "postgres://example/db",
 		"BACKEND_STT_URL":                 "http://stt.test/transcribe",
@@ -116,7 +115,6 @@ func TestAudioConfigLoadsExplicitSettings(t *testing.T) {
 
 func TestAudioConfigRejectsInvalidSettings(t *testing.T) {
 	cases := map[string][]string{
-		"BACKEND_API_MODE":                {"preview", "REAL", "dev"},
 		"BACKEND_LISTEN_ADDRESS":          {"bad", ":bad", ":70000"},
 		"BACKEND_STT_URL":                 {"relative", "ftp://stt.test", "http://user:password@stt.test"},
 		"BACKEND_TTS_URL":                 {"http://tts.test/#fragment"},
@@ -151,29 +149,25 @@ func TestAudioConfigRejectsInvalidSettings(t *testing.T) {
 	}
 }
 
-func TestMockConfigDoesNotRequireModelSettings(t *testing.T) {
+func TestConfigDoesNotRequireAPIMode(t *testing.T) {
 	configuredEnv(t)
-	t.Setenv("BACKEND_API_MODE", "mock")
-	for _, key := range []string{"BACKEND_STT_URL", "BACKEND_TTS_URL", "BACKEND_TTS_SEED", "BACKEND_TTS_CFG_VALUE", "BACKEND_TTS_INFERENCE_TIMESTEPS", "BACKEND_ASSESSMENT_BASE_URL", "BACKEND_ASSESSMENT_MODEL", "BACKEND_TASKGEN_BASE_URL", "BACKEND_TASKGEN_MODEL", "BACKEND_TASKGEN_TIMEOUT"} {
-		t.Setenv(key, "")
-	}
+	t.Setenv("BACKEND_API_MODE", "")
 	if _, err := ConfigFromEnv(); err != nil {
-		t.Fatalf("mock mode must work without model settings: %v", err)
+		t.Fatalf("model configuration must work without an API mode: %v", err)
 	}
 }
 
-func TestMockConfigStillRequiresDatabase(t *testing.T) {
+func TestLegacyMockModeCannotBypassModelSettings(t *testing.T) {
 	configuredEnv(t)
 	t.Setenv("BACKEND_API_MODE", "mock")
-	t.Setenv("BACKEND_DATABASE_URL", "")
-	if _, err := ConfigFromEnv(); err == nil || !strings.Contains(err.Error(), "BACKEND_DATABASE_URL") {
-		t.Fatalf("got %v, want missing database error", err)
+	t.Setenv("BACKEND_STT_URL", "")
+	if _, err := ConfigFromEnv(); err == nil || !strings.Contains(err.Error(), "BACKEND_STT_URL") {
+		t.Fatalf("got %v, want missing STT setting error", err)
 	}
 }
 
 func testConfig() Config {
 	return Config{
-		APIMode:       "real",
 		ListenAddress: ":8002", DatabaseURL: "postgres://example/db",
 		STTURL: "http://stt.test/transcribe", TTSURL: "http://tts.test/synthesize",
 		TTSSeed: 17, TTSCFGValue: 2, TTSInferenceTimesteps: 50,

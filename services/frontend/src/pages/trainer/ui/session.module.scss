@@ -731,10 +731,7 @@
     background: #a9c1f6;
   }
   &[data-state='accepted'] {
-    background: var(--app-success);
-    box-shadow:
-      0 0 0 16px var(--app-success-soft),
-      0 0 0 32px #f4fbf8;
+    background: linear-gradient(160deg, #4f8cf5, #2867e1);
   }
   &[data-state='skipped'] {
     background: #a3acb9;

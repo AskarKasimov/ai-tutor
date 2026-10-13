@@ -142,8 +142,9 @@ func TestSubjectKnowledgeIsNotReplacedByInstructionFollowing(t *testing.T) {
 	}{
 		{"wrong content with instruction", "main", 0, false, true, true},
 		{"partial content", "main", 1, false, true, true},
-		{"incomplete cannot receive full score", "main", 2, false, true, false},
-		{"complete content", "main", 2, true, true, true},
+		{"incomplete cannot receive full score", "main", 3, false, true, false},
+		{"complete content", "main", 3, true, true, true},
+		{"main never scores two", "main", 2, true, true, false},
 		{"complete cannot receive partial score", "main", 1, true, true, false},
 		{"instruction remains mandatory", "main", 1, true, false, false},
 		{"wrong basic with instruction", "basic", 0, false, true, true},

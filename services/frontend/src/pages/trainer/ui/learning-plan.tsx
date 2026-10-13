@@ -508,7 +508,6 @@ function Chat({
   pendingAnswer: string | null
   thinking: boolean
   answerPending: boolean
-  writingLesson: boolean
 }) {
   const { t } = useTranslation()
   const chat = useRef<HTMLOListElement>(null)
@@ -589,15 +588,6 @@ function Chat({
           <span className={styles.role}>
             {t(answerPending ? 'learning.you' : 'learning.teacher')}
           </span>
-          {writingLesson && (
-            <Text size="2">
-              {t(
-                messages.some((message) => message.kind === 'theory')
-                  ? 'learning.preparingPractice'
-                  : 'learning.writingLesson',
-              )}
-            </Text>
-          )}
           <span className={styles.dots} role="status">
             <span />
             <span />

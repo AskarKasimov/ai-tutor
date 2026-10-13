@@ -65,12 +65,14 @@ func OutcomeFindings(answers []Answer) []OutcomeFinding {
 			continue
 		}
 		seen[key] = true
-		maxScore := 2
+		// A full main answer scores 3 now and 2 in sessions graded before
+		// the 0/1/3 scale; 2 is no longer a valid new main score.
+		full := 2
 		if a.Role == "basic" {
-			maxScore = 1
+			full = 1
 		}
 		g := groups[a.CompetencyID+"\x00"+a.Task.ConstituentID]
-		findings = append(findings, OutcomeFinding{Answer: a, Mastered: a.Score == maxScore && !a.Skipped,
+		findings = append(findings, OutcomeFinding{Answer: a, Mastered: a.Score >= full && !a.Skipped,
 			FullStudy: a.Task.ConstituentID != "" && strings.TrimSpace(a.Task.ConstituentName) != "" && g.main != "" && !g.basics[g.main] && len(g.basics) == 2 && g.allZero})
 	}
 	return findings

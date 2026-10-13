@@ -231,12 +231,12 @@ func TestTeacherPreservesMarkdownInJSONTextFields(t *testing.T) {
 					t.Fatalf("check = %+v", result)
 				}
 			} else {
-				result, err := teacher.Lesson(context.Background(), learning.LessonInput{})
+				result, err := teacher.Theory(context.Background(), learning.LessonInput{})
 				if err != nil {
 					t.Fatal(err)
 				}
-				if result.Theory != theory || result.Question != question {
-					t.Fatalf("lesson = %+v", result)
+				if result != theory {
+					t.Fatalf("theory = %q", result)
 				}
 			}
 		})

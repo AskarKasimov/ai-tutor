@@ -134,7 +134,6 @@ func TestLearningTheoryIsReadableWhilePracticeIsGenerated(t *testing.T) {
 	}))
 	defer model.Close()
 	defer releaseOnce.Do(func() { close(release) })
-	f.app.cfg.APIMode = "real"
 	f.app.cfg.TutorBaseURL, f.app.cfg.TutorModel = model.URL, "test-model"
 	f.handler = f.app.Handler()
 	finished := make(chan *httptest.ResponseRecorder, 1)

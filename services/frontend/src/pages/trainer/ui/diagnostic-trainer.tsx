@@ -788,9 +788,8 @@ function OverallFeedbackContent({ value }: { value: OverallFeedback }) {
         {gaps.map((gap) => (
           <li key={gap.outcome_id}>
             <div>
-              <strong>
-                {gap.competency_name} — {gap.outcome_name}.
-              </strong>{' '}
+              {/* The advice already names the constituent and the outcome. */}
+              <strong>{gap.competency_name}.</strong>{' '}
               <MarkdownContent text={gap.advice} />
             </div>
           </li>

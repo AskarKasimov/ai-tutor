@@ -66,14 +66,12 @@ const lesson: LearningMessage[] = [
 
 function setup(
   existing: LearningPlan | null,
-  messagesOrConfigure: LearningMessage[] | ((api: ReturnType<typeof createAppDependencies>["learningPlan"]) => void) = lesson,
   configure?: (
     api: ReturnType<typeof createAppDependencies>['learningPlan'],
   ) => void,
   noGaps = false,
+  messages = lesson,
 ) {
-  const messages = Array.isArray(messagesOrConfigure) ? messagesOrConfigure : lesson
-  if (typeof messagesOrConfigure === "function") configure = messagesOrConfigure
   const dependencies = createAppDependencies()
   vi.spyOn(dependencies.diagnostic, 'readDiagnosticResult').mockResolvedValue({
     session_id: 'd1',
@@ -256,56 +254,6 @@ it('shows the finished plan with topics to review', async () => {
   expect(screen.getByText(/1 тему стоит повторить/)).toBeInTheDocument()
 })
 
-it('renders teacher Markdown while preserving code and literal student answers', async () => {
-  const theory = [
-    '# Обновление весов',
-    '**Градиент** задаёт направление.',
-    'Среднее: $\\frac{a+b}{2}$.',
-    '',
-    '- Вычислите ошибку.',
-    '- Обновите веса.',
-    '',
-    '| Шаг | Loss |',
-    '|---|---:|',
-    '| 1 | 0.5 |',
-    '',
-    '```python',
-    'for step in range(2):',
-    '    print("a\\nb")',
-    '```',
-  ].join('\n')
-  const { container } = setup(plan(), [
-    { ...lesson[0], text: theory },
-    { ...lesson[1], text: 'Объясните `grad_w`.' },
-    {
-      ...lesson[0],
-      sequence: 3,
-      kind: 'feedback',
-      text: '**Верно:** уменьшайте loss.',
-    },
-    {
-      ...lesson[0],
-      sequence: 4,
-      role: 'user',
-      kind: 'answer',
-      text: '**Это мои слова** $x^2$',
-    },
-  ])
-  expect(await screen.findAllByText('Теория')).toHaveLength(2)
-  expect(screen.getByRole('table')).toBeVisible()
-  expect(
-    screen.getByRole('heading', { name: 'Обновление весов', level: 3 }),
-  ).toBeVisible()
-  expect(screen.getByText('Градиент').tagName).toBe('STRONG')
-  expect(screen.getByText('grad_w').tagName).toBe('CODE')
-  expect(screen.getByText('Верно:').tagName).toBe('STRONG')
-  expect(container.querySelector('pre')?.textContent).toBe(
-    'for step in range(2):\n    print("a\\nb")\n',
-  )
-  expect(container.querySelector('math mfrac')).not.toBeNull()
-  expect(screen.getByText('**Это мои слова** $x^2$')).toBeVisible()
-})
-
 it('shows theory while practice is pending and enables recording after it arrives', async () => {
   let theoryReady = false
   let practiceReady = false
@@ -325,9 +273,6 @@ it('shows theory while practice is pending and enables recording after it arrive
     () => expect(screen.getByText('Теория по теме')).toBeVisible(),
     { timeout: 4000 },
   )
-  expect(
-    screen.getByText('Практика готовится — пока можно прочитать теорию.'),
-  ).toBeVisible()
   expect(screen.queryByText('Практический вопрос?')).toBeNull()
   expect(screen.getByRole('button', { name: 'Записать ответ' })).toBeDisabled()
   practiceReady = true
@@ -339,9 +284,6 @@ it('shows theory while practice is pending and enables recording after it arrive
     ).toBeEnabled(),
   )
   expect(screen.getByText('Теория по теме')).toBeVisible()
-  expect(
-    screen.queryByText('Практика готовится — пока можно прочитать теорию.'),
-  ).toBeNull()
 })
 
 it('keeps theory after a practice failure and lets the student retry', async () => {
@@ -471,4 +413,54 @@ it('drops the local recording once the server owns a transcript awaiting a check
   expect(
     screen.queryByLabelText('Прослушать записанный ответ'),
   ).not.toBeInTheDocument()
+})
+
+it('renders teacher Markdown while preserving code and literal student answers', async () => {
+  const theory = [
+    '# Обновление весов',
+    '**Градиент** задаёт направление.',
+    'Среднее: $\\frac{a+b}{2}$.',
+    '',
+    '- Вычислите ошибку.',
+    '- Обновите веса.',
+    '',
+    '| Шаг | Loss |',
+    '|---|---:|',
+    '| 1 | 0.5 |',
+    '',
+    '```python',
+    'for step in range(2):',
+    '    print("a\\nb")',
+    '```',
+  ].join('\n')
+  const { container } = setup(plan(), undefined, false, [
+    { ...lesson[0], text: theory },
+    { ...lesson[1], text: 'Объясните `grad_w`.' },
+    {
+      ...lesson[0],
+      sequence: 3,
+      kind: 'feedback',
+      text: '**Верно:** уменьшайте loss.',
+    },
+    {
+      ...lesson[0],
+      sequence: 4,
+      role: 'user',
+      kind: 'answer',
+      text: '**Это мои слова** $x^2$',
+    },
+  ])
+  expect(await screen.findAllByText('Теория')).toHaveLength(2)
+  expect(screen.getByRole('table')).toBeVisible()
+  expect(
+    screen.getByRole('heading', { name: 'Обновление весов', level: 3 }),
+  ).toBeVisible()
+  expect(screen.getByText('Градиент').tagName).toBe('STRONG')
+  expect(screen.getByText('grad_w').tagName).toBe('CODE')
+  expect(screen.getByText('Верно:').tagName).toBe('STRONG')
+  expect(container.querySelector('pre')?.textContent).toBe(
+    'for step in range(2):\n    print("a\\nb")\n',
+  )
+  expect(container.querySelector('math mfrac')).not.toBeNull()
+  expect(screen.getByText('**Это мои слова** $x^2$')).toBeVisible()
 })

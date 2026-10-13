@@ -125,8 +125,6 @@ void i18n.init({
           answerHelp: 'Назовите вариант и объясните\nсвой выбор.',
           start: 'Начать запись',
           stopRecording: 'Завершить запись',
-          reviewRecording: 'Запись готова. Прослушайте ответ перед отправкой.',
-          recordingPreview: 'Прослушать записанный ответ',
           sendAnswer: 'Отправить ответ',
           rerecordAnswer: 'Перезаписать ответ',
           reviewTranscript:
@@ -278,9 +276,6 @@ void i18n.init({
           theory: 'Теория',
           practice: 'Практика',
           thinking: 'Наставник думает',
-          writingLesson: 'Наставник готовит теорию…',
-          preparingPractice:
-            'Практика готовится — пока можно прочитать теорию.',
           openError: 'Наставник не ответил. Попробуйте ещё раз.',
           answerError: 'Не удалось проверить ответ.',
           noSpeech: 'Не расслышали ответ. Запишите ещё раз.',

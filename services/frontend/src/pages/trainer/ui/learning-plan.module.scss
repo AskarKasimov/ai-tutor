@@ -355,9 +355,10 @@
   flex-direction: column;
   gap: 10px;
   margin: 0;
-  padding: 14px 4px 14px 0;
+  padding: 14px 24px 14px 0;
   list-style: none;
   overflow-y: auto;
+  scrollbar-gutter: stable;
   overscroll-behavior: contain;
 }
 .assistant,
@@ -371,6 +372,19 @@
   padding: 12px 14px;
   border-radius: 16px;
   overflow-wrap: anywhere;
+  &[data-enter='true'] {
+    animation: messageAppear 260ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+}
+@keyframes messageAppear {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 .assistant {
   align-self: flex-start;
@@ -381,16 +395,16 @@
 }
 .user {
   align-self: flex-end;
-  background: color-mix(
-    in srgb,
-    var(--app-accent) 14%,
-    var(--color-panel-solid)
-  );
+  background: #173b6d;
+  color: #f8fbff;
 }
 .role {
   font-size: 12px;
   font-weight: 700;
   color: var(--app-muted);
+}
+.user .role {
+  color: #c7dcff;
 }
 .lessonContent {
   font-size: 15px;
@@ -439,10 +453,6 @@
 .inlineError {
   color: var(--app-error);
   font-size: 13px;
-}
-.end {
-  flex: none;
-  height: 1px;
 }
 .readOnly {
   flex: none;
@@ -576,6 +586,7 @@
   color: #b45309;
 }
 @media (prefers-reduced-motion: reduce) {
+  .messages > [data-enter='true'],
   .dots > span,
   .barMic::after,
   .spinner {

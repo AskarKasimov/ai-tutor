@@ -213,7 +213,7 @@ it('renders teacher Markdown while preserving code and literal student answers',
       text: '**Это мои слова** $x^2$',
     },
   ])
-  await screen.findByText('Теория')
+  expect(await screen.findAllByText('Теория')).toHaveLength(2)
   expect(screen.getByRole('table')).toBeVisible()
   expect(
     screen.getByRole('heading', { name: 'Обновление весов', level: 3 }),

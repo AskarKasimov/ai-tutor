@@ -15,7 +15,14 @@ import {
   Trophy,
   Zap,
 } from 'lucide-react'
-import { useEffect, useId, useMemo, useRef, useState } from 'react'
+import {
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import type { CSSProperties, ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
@@ -294,7 +301,11 @@ function LearningPlanScreen({
                     actions.answer.isPending ||
                     actions.retry.isPending)
                 }
-                writingLesson={isCurrent && actions.open.isPending}
+                answerPending={
+                  isCurrent &&
+                  actions.answer.isPending &&
+                  messages.data?.at(-1)?.role !== 'user'
+                }
               />
               {isCurrent ? (
                 <LessonControls
@@ -434,19 +445,29 @@ function Chat({
   loading,
   pendingAnswer,
   thinking,
-  writingLesson,
+  answerPending,
 }: {
   messages: LearningMessage[]
   loading: boolean
   pendingAnswer: string | null
   thinking: boolean
-  writingLesson: boolean
+  answerPending: boolean
 }) {
   const { t } = useTranslation()
-  const end = useRef<HTMLLIElement>(null)
-  useEffect(() => {
-    end.current?.scrollIntoView?.({ block: 'end', behavior: 'smooth' })
-  }, [messages.length, thinking])
+  const chat = useRef<HTMLOListElement>(null)
+  const followOutput = useRef(true)
+  const [historyEnd, setHistoryEnd] = useState<number | null>(() =>
+    loading ? null : (messages.at(-1)?.sequence ?? 0),
+  )
+  useLayoutEffect(() => {
+    if (!loading && historyEnd === null)
+      setHistoryEnd(messages.at(-1)?.sequence ?? 0)
+  }, [loading, messages, historyEnd])
+  useLayoutEffect(() => {
+    const element = chat.current
+    if (element && followOutput.current)
+      element.scrollTop = element.scrollHeight
+  }, [loading, messages.length, pendingAnswer, thinking])
   const label = (message: LearningMessage) =>
     message.kind === 'theory'
       ? t('learning.theory')
@@ -454,9 +475,18 @@ function Chat({
         ? t('learning.practice')
         : message.role === 'user'
           ? t('learning.you')
-          : t('learning.teacher')
+          : t('learning.theory')
   return (
-    <ol className={styles.messages} aria-live="polite">
+    <ol
+      ref={chat}
+      className={styles.messages}
+      aria-live="polite"
+      onScroll={(event) => {
+        const element = event.currentTarget
+        followOutput.current =
+          element.scrollHeight - element.scrollTop - element.clientHeight <= 40
+      }}
+    >
       {loading && (
         <li className={styles.assistant}>
           <Text role="status">{t('learning.loading')}</Text>
@@ -468,6 +498,7 @@ function Chat({
             key={message.sequence}
             className={message.role === 'user' ? styles.user : styles.assistant}
             data-kind={message.kind}
+            data-enter={historyEnd !== null && message.sequence > historyEnd}
           >
             <span className={styles.role}>{label(message)}</span>
             {message.role === 'assistant' ? (
@@ -485,15 +516,22 @@ function Chat({
         !messages.some(
           (m) => m.kind === 'answer' && m.text === pendingAnswer,
         ) && (
-          <li className={styles.user}>
+          <li className={styles.user} data-enter="true">
             <span className={styles.role}>{t('learning.you')}</span>
             <Paragraphs text={pendingAnswer} />
           </li>
         )}
       {thinking && (
-        <li className={`${styles.assistant} ${styles.thinking}`}>
-          <span className={styles.role}>{t('learning.teacher')}</span>
-          {writingLesson && <Text size="2">{t('learning.writingLesson')}</Text>}
+        <li
+          data-enter="true"
+          className={[
+            answerPending ? styles.user : styles.assistant,
+            styles.thinking,
+          ].join(' ')}
+        >
+          <span className={styles.role}>
+            {t(answerPending ? 'learning.you' : 'learning.teacher')}
+          </span>
           <span className={styles.dots} role="status">
             <span />
             <span />
@@ -502,7 +540,6 @@ function Chat({
           </span>
         </li>
       )}
-      <li ref={end} className={styles.end} aria-hidden="true" />
     </ol>
   )
 }

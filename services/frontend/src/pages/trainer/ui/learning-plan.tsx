@@ -282,11 +282,6 @@ function LearningPlanScreen({
             <Done plan={plan} />
           ) : (
             <>
-              <header className={styles.chatHeader}>
-                <Heading as="h2" size="5">
-                  {item.outcome_name}
-                </Heading>
-              </header>
               <Chat
                 key={index}
                 messages={messages.data ?? []}

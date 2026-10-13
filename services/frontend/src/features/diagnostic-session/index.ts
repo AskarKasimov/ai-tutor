@@ -16,3 +16,4 @@ export {
   saveDiagnosticIdentity,
   diagnosticSessionStorage,
 } from './model/diagnostic-session-storage'
+export { useReviewAudioPlayer } from './model/use-review-audio-player'

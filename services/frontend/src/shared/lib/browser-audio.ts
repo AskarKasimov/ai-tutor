@@ -65,16 +65,23 @@ export async function playQuestion(
   blob: Blob,
   onEnd: () => void,
   onError: (error: AudioPlaybackError) => void,
+  signal?: AbortSignal,
 ) {
+  signal?.throwIfAborted()
   const source = createAudioUrl(blob)
   const player = new Audio(source.url)
+  let disposed = false
   const dispose = () => {
+    if (disposed) return
+    disposed = true
+    signal?.removeEventListener('abort', dispose)
     player.onended = null
     player.onerror = null
     player.pause()
     player.removeAttribute('src')
     source.dispose()
   }
+  signal?.addEventListener('abort', dispose, { once: true })
   player.onended = () => {
     dispose()
     onEnd()
@@ -90,6 +97,7 @@ export async function playQuestion(
   }
   try {
     await player.play()
+    signal?.throwIfAborted()
     return dispose
   } catch (error) {
     dispose()

@@ -151,3 +151,31 @@ func TestMLMapReadsOptionalPlanningMinutes(t *testing.T) {
 		}
 	}
 }
+
+func TestMLMapParsesOptionsWithInternalSemicolons(t *testing.T) {
+	header := ";Компетенция;Уровень темы;Составляющая;Образовательный результат;Что должно войти в тест;Таксономия;Уровень ALDs;Важность;Раздел РПД · компетенции РПД;Задание1;ОС\n"
+	taskCell := "\"Экран: Таблица автосалона\n\nВарианты: 1 — Объект: автомобиль; Таргет: марка; Признаки: цена и пробег; 2 — Объект: автомобиль; Таргет: цена продажи; Признаки: пробег; 3 — Объект: салон; Таргет: год; 4 — Объект: цена; Таргет: ID.\n\nГолосовая инструкция: «Назовите объект».\n\nОтвет: 2\""
+	data := header + ";К;Базовый;С;ОР;TRUE;Знание;базовый;4;\"Р.1 Введение\nОПК-2\";" + taskCell + ";ОС\n"
+	parsed, err := Parse([]byte(data))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(parsed.Tasks) != 1 {
+		t.Fatalf("expected 1 task, got %d", len(parsed.Tasks))
+	}
+	options := parsed.Tasks[0].Options
+	if len(options) != 4 {
+		t.Fatalf("expected 4 options, got %d: %#v", len(options), options)
+	}
+	expected := []string{
+		"Объект: автомобиль; Таргет: марка; Признаки: цена и пробег",
+		"Объект: автомобиль; Таргет: цена продажи; Признаки: пробег",
+		"Объект: салон; Таргет: год",
+		"Объект: цена; Таргет: ID",
+	}
+	for i, want := range expected {
+		if options[i] != want {
+			t.Errorf("option[%d] = %q, want %q", i, options[i], want)
+		}
+	}
+}

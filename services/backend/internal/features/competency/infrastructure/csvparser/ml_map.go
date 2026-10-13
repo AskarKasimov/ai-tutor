@@ -15,6 +15,7 @@ import (
 
 var rpdSection = regexp.MustCompile(`^Р\s*\.\s*(\d+(?:\.\d+)*)\s*(.*)$`)
 var rpdCompetency = regexp.MustCompile(`(?:ОПК|ПК)-[0-9]+`)
+var optionSplit = regexp.MustCompile(`(?:^|;\s*)[1-9][0-9]*\s*[—–-]\s*`)
 
 // parseMLMap accepts the ML spreadsheet export. Its
 // task columns contain both complete assignments and fragments of assignments.
@@ -508,13 +509,24 @@ func parseMLTask(raw string) (competencymap.Task, bool) {
 		if screen == "" {
 			return task, false
 		}
-		for _, numbered := range strings.Split(optionText, ";") {
-			option := strings.TrimSpace(optionNumber.ReplaceAllString(strings.TrimSpace(numbered), ""))
+		matches := optionSplit.FindAllStringIndex(optionText, -1)
+		for i, m := range matches {
+			start := m[1]
+			end := len(optionText)
+			if i+1 < len(matches) {
+				end = matches[i+1][0]
+			}
+			option := strings.TrimSpace(optionText[start:end])
+			option = strings.TrimSuffix(option, ";")
 			option = strings.TrimSuffix(option, ".")
+			option = strings.TrimSpace(option)
 			if option == "" {
 				return task, false
 			}
 			task.Options = append(task.Options, option)
+		}
+		if len(task.Options) == 0 {
+			return task, false
 		}
 	}
 	voice = strings.TrimSuffix(voice, ".")

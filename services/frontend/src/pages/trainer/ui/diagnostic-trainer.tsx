@@ -693,8 +693,7 @@ function DiagnosticSummary({
                             void reviewAudio.play(answer.task.source_task_id)
                           }
                         />
-                        {reviewAudio.errorId ===
-                          answer.task.source_task_id && (
+                        {reviewAudio.errorId === answer.task.source_task_id && (
                           <Text
                             as="p"
                             role="alert"

@@ -11,9 +11,14 @@ import {
   createRouter,
   RouterProvider,
 } from '@tanstack/react-router'
-import { afterEach, expect, it, vi } from 'vitest'
+import { afterEach, beforeAll, expect, it, vi } from 'vitest'
 import { createQueryClient } from '@/bootstrap/providers'
 import { routeTree } from '@/routeTree.gen'
+
+// Load the lazy page outside timed user interactions, as in diagnostic tests.
+beforeAll(async () => {
+  await import('@/pages/competency-map')
+}, 30000)
 
 const admin = {
   id: 'admin-1',

@@ -1,5 +1,5 @@
 // Package learning describes the personal learning plan built after a
-// diagnostic: the outcomes of every competency with a mistake, taught one by
+// diagnostic: checked gaps and fully unstudied constituents, taught one by
 // one in a chat — theory first, then practice until the outcome is mastered.
 package learning
 
@@ -133,6 +133,8 @@ type Message struct {
 
 // Outcome is a map outcome a plan can teach.
 type Outcome struct {
+	ConstituentID      string
+	MapRevision        int64
 	CompetencyID       string
 	CompetencyName     string
 	OutcomeID          string

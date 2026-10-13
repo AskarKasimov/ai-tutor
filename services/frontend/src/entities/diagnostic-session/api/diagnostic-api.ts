@@ -283,16 +283,25 @@ export async function submitDiagnostic(
 ) {
   const progress = await parse(
     await request(
-      `/diagnostic-sessions/${encodeURIComponent(input.sessionId)}/${input.skip ? 'skip' : 'answers'}`,
+      `/diagnostic-sessions/${encodeURIComponent(input.sessionId)}/${input.skip ? 'skip' : input.transcriptionId ? 'answers/transcription' : 'answers'}`,
       signal,
       {
         method: 'POST',
-        headers: input.skip
-          ? { 'Idempotency-Key': input.key, 'Content-Type': 'application/json' }
-          : { 'Idempotency-Key': input.key },
+        headers:
+          input.skip || input.transcriptionId
+            ? {
+                'Idempotency-Key': input.key,
+                'Content-Type': 'application/json',
+              }
+            : { 'Idempotency-Key': input.key },
         body: input.skip
           ? JSON.stringify({ variant_task_id: input.taskId })
-          : input.body,
+          : input.transcriptionId
+            ? JSON.stringify({
+                variant_task_id: input.taskId,
+                transcription_id: input.transcriptionId,
+              })
+            : input.body,
       },
       240_000,
     ),

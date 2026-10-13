@@ -19,18 +19,24 @@ import (
 )
 
 type Service struct {
-	store       Store
-	variants    VariantReader
-	voice       Voice
-	audio       audioasset.MetadataReader
-	regenerator audioasset.Regenerator
-	grader      Grader
-	ids         IDGenerator
-	now         func() time.Time
+	store          Store
+	variants       VariantReader
+	voice          Voice
+	transcriptions transcription.Reader
+	audio          audioasset.MetadataReader
+	regenerator    audioasset.Regenerator
+	grader         Grader
+	ids            IDGenerator
+	now            func() time.Time
 }
 
 func (s *Service) WithAudioReader(reader audioasset.MetadataReader) *Service {
 	s.audio = reader
+	return s
+}
+
+func (s *Service) WithTranscriptions(reader transcription.Reader) *Service {
+	s.transcriptions = reader
 	return s
 }
 
@@ -192,14 +198,21 @@ func (s *Service) RegenerateCurrentAudio(ctx context.Context, ownerID, sessionID
 }
 
 func (s *Service) Answer(ctx context.Context, ownerID, sessionID, taskID, key string, data []byte, media string) (diagnostic.Progress, error) {
-	return s.answerRequest(ctx, ownerID, sessionID, taskID, key, data, media, false)
+	return s.answerRequest(ctx, ownerID, sessionID, taskID, key, data, media, false, "")
+}
+
+func (s *Service) AnswerTranscription(ctx context.Context, ownerID, sessionID, taskID, key, transcriptionID string) (diagnostic.Progress, error) {
+	if !validID(transcriptionID) {
+		return diagnostic.Progress{}, fault.Validation("transcription_id", "Укажите сохранённую расшифровку.")
+	}
+	return s.answerRequest(ctx, ownerID, sessionID, taskID, key, nil, "transcription:"+transcriptionID, false, transcriptionID)
 }
 
 func (s *Service) Skip(ctx context.Context, ownerID, sessionID, taskID, key string) (diagnostic.Progress, error) {
-	return s.answerRequest(ctx, ownerID, sessionID, taskID, key, nil, "", true)
+	return s.answerRequest(ctx, ownerID, sessionID, taskID, key, nil, "", true, "")
 }
 
-func (s *Service) answerRequest(ctx context.Context, ownerID, sessionID, taskID, key string, data []byte, media string, skip bool) (diagnostic.Progress, error) {
+func (s *Service) answerRequest(ctx context.Context, ownerID, sessionID, taskID, key string, data []byte, media string, skip bool, preparedID string) (diagnostic.Progress, error) {
 	if err := validKey(key); err != nil {
 		return diagnostic.Progress{}, err
 	}
@@ -209,7 +222,7 @@ func (s *Service) answerRequest(ctx context.Context, ownerID, sessionID, taskID,
 	if !validID(taskID) {
 		return diagnostic.Progress{}, fault.Validation("variant_task_id", "Укажите ID текущей позиции варианта.")
 	}
-	if !skip {
+	if !skip && preparedID == "" {
 		if err := audio.Check(data, media); err != nil {
 			return diagnostic.Progress{}, err
 		}
@@ -267,14 +280,25 @@ func (s *Service) answerRequest(ctx context.Context, ownerID, sessionID, taskID,
 		return s.store.Accept(ctx, ownerID, sessionID, token, key, fingerprint, answer, nextTransition(value, answer))
 	}
 	if transcriptionID == "" {
-		transcription, transcribeErr := s.voice.Transcribe(ctx, ownerID, data, media)
+		var transcribed transcription.Transcription
+		var transcribeErr error
+		if preparedID != "" {
+			if s.transcriptions == nil {
+				return diagnostic.Progress{}, fault.New(fault.Unavailable, "TRANSCRIPTION_UNAVAILABLE", "Расшифровка временно недоступна.")
+			}
+			text, readErr := s.transcriptions.TextByOwner(ctx, ownerID, preparedID)
+			transcribeErr = readErr
+			transcribed = transcription.Transcription{ID: preparedID, OwnerID: ownerID, Text: text}
+		} else {
+			transcribed, transcribeErr = s.voice.Transcribe(ctx, ownerID, data, media)
+		}
 		if transcribeErr != nil {
 			return diagnostic.Progress{}, transcribeErr
 		}
-		if !validTranscription(transcription, ownerID) {
+		if !validTranscription(transcribed, ownerID) {
 			return diagnostic.Progress{}, fault.New(fault.Upstream, "TRANSCRIPTION_INVALID_RESPONSE", "Сервис распознавания вернул некорректную расшифровку.")
 		}
-		transcriptionID, text = transcription.ID, transcription.Text
+		transcriptionID, text = transcribed.ID, transcribed.Text
 	}
 	evaluation, err := s.grader.EvaluateVariant(ctx, ownerID, transcriptionID, value.Variant.ID, current.ID)
 	if err != nil {

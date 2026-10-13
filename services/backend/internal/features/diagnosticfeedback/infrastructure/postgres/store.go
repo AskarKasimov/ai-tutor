@@ -13,7 +13,8 @@ import (
 )
 
 // Store keeps the overall feedback of a diagnostic in PostgreSQL. The first
-// saved feedback of a session wins, so its text never changes.
+// saved feedback of a session wins within an analysis version. A newer version
+// may replace obsolete conclusions; repeated reads then retain its first text.
 type Store struct {
 	q *db.Queries
 }

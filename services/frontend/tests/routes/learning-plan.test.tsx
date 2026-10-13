@@ -6,6 +6,7 @@ import type { LearningMessage, LearningPlan } from '@/entities/learning-plan'
 import { userQueryKeys } from '@/entities/user'
 import { LearningPlanEntry } from '@/pages/trainer/ui/learning-plan'
 import { mockChatVoice } from '../support/mock-chat-voice'
+import * as browserAudio from '@/shared/lib'
 
 afterEach(() => {
   vi.restoreAllMocks()
@@ -68,9 +69,59 @@ function setup(
   configure?: (
     api: ReturnType<typeof createAppDependencies>['learningPlan'],
   ) => void,
+  noGaps = false,
 ) {
   const dependencies = createAppDependencies()
+  vi.spyOn(dependencies.diagnostic, 'readDiagnosticResult').mockResolvedValue({
+    session_id: 'd1',
+    status: 'completed',
+    variant_id: 'v1',
+    map_revision: 1,
+    included_competency_count: 1,
+    skipped_competencies: [],
+    completed_tasks: 1,
+    total_tasks: 3,
+    diagnostic_score: noGaps ? 2 : 1,
+    maximum_score: 2,
+    untested_basics: [],
+    answers: [
+      {
+        variant_task_id: 't1',
+        source_task_id: 't1',
+        competency_id: 'c1',
+        outcome_id: 'o1',
+        role: 'main',
+        task: {
+          variant_task_id: 't1',
+          source_task_id: 't1',
+          role: 'main',
+          competency_id: 'c1',
+          competency_name: 'ML',
+          constituent_id: 'part1',
+          constituent_name: 'Тема',
+          outcome_id: 'o1',
+          outcome_name: 'Результат',
+          question: 'Вопрос',
+          options: [],
+          voice_instruction: 'Ответьте',
+        },
+        transcription_id: 'tr1',
+        text: 'Ответ',
+        grader_score: noGaps ? 2 : 1,
+        grader_max_score: 2,
+        score: noGaps ? 2 : 1,
+        verdict: noGaps ? 'correct' : 'partial',
+        criterion_results: [],
+        feedback: [],
+        created_at: 1,
+      },
+    ],
+  })
   const api = dependencies.learningPlan
+  vi.spyOn(api, 'previewAnswer').mockResolvedValue({
+    id: 'preview-id',
+    text: 'Предварительная расшифровка',
+  })
   vi.spyOn(api, 'findLearningPlan').mockResolvedValue(existing)
   const create = vi.spyOn(api, 'createLearningPlan').mockResolvedValue(plan())
   let opened = false
@@ -130,8 +181,25 @@ it('asks for the hours once and builds the plan with one click', async () => {
   ).toBeInTheDocument()
 })
 
+it('does not ask for hours or create a plan when checked answers have no gaps', async () => {
+  const { create } = setup(null, undefined, true)
+  expect(
+    await screen.findByText(
+      'По проверенным заданиям пробелов не выявлено. Дополнительная подготовка не требуется.',
+    ),
+  ).toBeVisible()
+  expect(
+    screen.queryByRole('heading', { name: 'Сколько у тебя часов?' }),
+  ).not.toBeInTheDocument()
+  expect(create).not.toHaveBeenCalled()
+})
+
 it('teaches the current topic in the chat and moves on after a voice answer', async () => {
   mockChatVoice()
+  vi.spyOn(browserAudio, 'createAudioUrl').mockReturnValue({
+    url: 'blob:preview',
+    dispose: vi.fn(),
+  })
   const { open, answer } = setup(plan())
   expect(await screen.findByText('Теория по теме')).toBeInTheDocument()
   expect(open).toHaveBeenCalledTimes(1)
@@ -145,6 +213,11 @@ it('teaches the current topic in the chat and moves on after a voice answer', as
   fireEvent.click(
     await screen.findByRole('button', { name: 'Закончить запись' }),
   )
+  expect(
+    await screen.findByRole('button', { name: 'Отправить ответ' }),
+  ).toBeVisible()
+  expect(answer).not.toHaveBeenCalled()
+  fireEvent.click(screen.getByRole('button', { name: 'Отправить ответ' }))
   await waitFor(() => expect(answer).toHaveBeenCalledTimes(1))
   // A correct answer is celebrated instead of jumping to the next topic; the
   // next lesson is prepared meanwhile.
@@ -264,4 +337,89 @@ it('resumes an incomplete lesson after reopening the page', async () => {
   expect(await screen.findByText('Практический вопрос?')).toBeVisible()
   expect(open).toHaveBeenCalledTimes(1)
   expect(screen.getAllByText('Теория по теме')).toHaveLength(1)
+})
+
+it('lets the learner replace a recording before explicitly sending it', async () => {
+  const media = mockChatVoice()
+  const dispose = vi.fn()
+  vi.spyOn(browserAudio, 'createAudioUrl').mockReturnValue({
+    url: 'blob:preview',
+    dispose,
+  })
+  const { answer } = setup(plan())
+  expect(await screen.findByText('Практический вопрос?')).toBeVisible()
+  await waitFor(() =>
+    expect(
+      screen.getByRole('button', { name: 'Записать ответ' }),
+    ).toBeEnabled(),
+  )
+  fireEvent.click(await screen.findByRole('button', { name: 'Записать ответ' }))
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Закончить запись' }),
+  )
+  expect(
+    await screen.findByLabelText('Расшифровка перед отправкой'),
+  ).toBeVisible()
+  expect(answer).not.toHaveBeenCalled()
+  fireEvent.click(screen.getByRole('button', { name: 'Перезаписать ответ' }))
+  expect(browserAudio.createAudioUrl).not.toHaveBeenCalled()
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Закончить запись' }),
+  )
+  expect(
+    await screen.findByRole('button', { name: 'Отправить ответ' }),
+  ).toBeEnabled()
+  expect(media.getUserMedia).toHaveBeenCalledTimes(2)
+  expect(answer).not.toHaveBeenCalled()
+  fireEvent.click(screen.getByRole('button', { name: 'Отправить ответ' }))
+  await waitFor(() => expect(answer).toHaveBeenCalledOnce())
+})
+
+it('drops the local recording once the server owns a transcript awaiting a check retry', async () => {
+  mockChatVoice()
+  vi.spyOn(browserAudio, 'createAudioUrl').mockReturnValue({
+    url: 'blob:preview',
+    dispose: vi.fn(),
+  })
+  let pending = false
+  setup(plan(), (api) => {
+    vi.mocked(api.findLearningPlan).mockImplementation(async () =>
+      plan({ pending_answer: pending ? 'Распознанный ответ' : null }),
+    )
+    vi.mocked(api.answerLesson).mockImplementation(async () => {
+      pending = true
+      throw new Error('check failed')
+    })
+    vi.spyOn(api, 'retryLessonAnswer').mockImplementation(async () => {
+      pending = false
+      return plan()
+    })
+  })
+  expect(await screen.findByText('Практический вопрос?')).toBeVisible()
+  await waitFor(() =>
+    expect(
+      screen.getByRole('button', { name: 'Записать ответ' }),
+    ).toBeEnabled(),
+  )
+  fireEvent.click(screen.getByRole('button', { name: 'Записать ответ' }))
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Закончить запись' }),
+  )
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Отправить ответ' }),
+  )
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Проверить ещё раз' }),
+  )
+  await waitFor(() =>
+    expect(
+      screen.getByRole('button', { name: 'Записать ответ' }),
+    ).toBeEnabled(),
+  )
+  expect(
+    screen.queryByRole('button', { name: 'Отправить ответ' }),
+  ).not.toBeInTheDocument()
+  expect(
+    screen.queryByLabelText('Прослушать записанный ответ'),
+  ).not.toBeInTheDocument()
 })

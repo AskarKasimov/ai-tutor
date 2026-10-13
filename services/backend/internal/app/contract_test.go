@@ -377,6 +377,20 @@ func TestOpenAPIResponses(t *testing.T) {
 		t.Fatalf("training next: %d %s", next.Code, next.Body.String())
 	}
 	check("POST", "/training-sessions/{id}/exercises/{exercise_id}/next", next)
+	// Confirming a preview is a separate operation and must not run STT again.
+	confirmedStart := postJSON("/diagnostic-sessions", "contract-confirmed-start", diagnosticStartBody)
+	var confirmedProgress struct {
+		SessionID string `json:"session_id"`
+		Current   struct {
+			ID string `json:"variant_task_id"`
+		} `json:"current"`
+	}
+	if err := json.Unmarshal(confirmedStart.Body.Bytes(), &confirmedProgress); err != nil || confirmedProgress.Current.ID == "" {
+		t.Fatal(confirmedStart.Body.String())
+	}
+	confirmedBody, _ := json.Marshal(map[string]string{"variant_task_id": confirmedProgress.Current.ID, "transcription_id": saved.ID})
+	check("POST", "/diagnostic-sessions/{id}/answers/transcription", postJSON("/diagnostic-sessions/"+confirmedProgress.SessionID+"/answers/transcription", "contract-confirmed-answer", confirmedBody))
+
 	diagnosticSkipStart := postJSON("/diagnostic-sessions", "contract-diagnostic-skip-start", diagnosticStartBody)
 	if diagnosticSkipStart.Code != http.StatusCreated {
 		t.Fatalf("diagnostic skip session: %d %s", diagnosticSkipStart.Code, diagnosticSkipStart.Body.String())
@@ -457,7 +471,16 @@ func TestOpenAPIResponses(t *testing.T) {
 	if _, _, err = f.app.diagnosticStore.Reserve(t.Context(), learner, learningDiagnostic.ID, "learning-answer", "digest", failedTask.ID, "token"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = f.app.diagnosticStore.Accept(t.Context(), learner, learningDiagnostic.ID, "token", "learning-answer", "digest", diagnostic.Answer{VariantTaskID: failedTask.ID, CompetencyID: failedTask.CompetencyID, OutcomeID: failedTask.OutcomeID, Role: "main", Score: 0, Task: failedTask}, diagnostic.Transition{Status: diagnostic.StatusCompleted, CurrentCompetency: 1}); err != nil {
+	if _, err = f.app.diagnosticStore.Accept(t.Context(), learner, learningDiagnostic.ID, "token", "learning-answer", "digest", diagnostic.Answer{VariantTaskID: failedTask.ID, CompetencyID: failedTask.CompetencyID, OutcomeID: failedTask.OutcomeID, Role: "main", Score: 0, Task: failedTask}, diagnostic.Transition{Status: diagnostic.StatusActive, CurrentTask: 1}); err != nil {
+		t.Fatal(err)
+	}
+	// Two actually checked gaps keep a second lesson available after retrying
+	// the first. Untested siblings no longer enter a learning plan.
+	failedBasic := learningDiagnostic.Variant.Competencies[0].Tasks[1]
+	if _, _, err = f.app.diagnosticStore.Reserve(t.Context(), learner, learningDiagnostic.ID, "learning-basic", "digest-basic", failedBasic.ID, "token-basic"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = f.app.diagnosticStore.Accept(t.Context(), learner, learningDiagnostic.ID, "token-basic", "learning-basic", "digest-basic", diagnostic.Answer{VariantTaskID: failedBasic.ID, CompetencyID: failedBasic.CompetencyID, OutcomeID: failedBasic.OutcomeID, Role: "basic", Score: 0, Task: failedBasic}, diagnostic.Transition{Status: diagnostic.StatusCompleted, CurrentCompetency: 1}); err != nil {
 		t.Fatal(err)
 	}
 	learningPath := "/diagnostic-sessions/" + learningDiagnostic.ID + "/learning-plan"
@@ -488,6 +511,51 @@ func TestOpenAPIResponses(t *testing.T) {
 	// The retried answer passed the topic; the next lesson takes a fresh answer.
 	check("POST", "/learning-plans/{id}/open", f.request("POST", planPath+"/open", "", access))
 	check("POST", "/learning-plans/{id}/answers", upload(f, planPath+"/answers", "audio", "voice.wav", "audio/wav", wavBytes(), access))
+
+	// An independent plan verifies the JSON path while retaining legacy audio coverage.
+	confirmedDiagnostic, err := f.app.diagnosticStore.Get(t.Context(), learner, learningDiagnostic.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	confirmedDiagnostic.ID = "contract-confirmed-learning"
+	confirmedDiagnostic.StartRequestDigest = "confirmed-learning"
+	if _, _, err = f.app.diagnosticStore.Create(t.Context(), learner, "confirmed-learning", "confirmed-learning", confirmedDiagnostic); err != nil {
+		t.Fatal(err)
+	}
+	confirmedPlanResponse := f.request("POST", "/diagnostic-sessions/"+confirmedDiagnostic.ID+"/learning-plan", `{"hours":3}`, access)
+	confirmedPlan := decodePlan(t, confirmedPlanResponse.Body.Bytes())
+	if confirmedPlan.CurrentIndex == nil {
+		t.Fatal(confirmedPlanResponse.Body.String())
+	}
+	confirmedPlanPath := "/learning-plans/" + confirmedPlan.ID
+	if opened := f.request("POST", confirmedPlanPath+"/open", "", access); opened.Code != 200 {
+		t.Fatal(opened.Body.String())
+	}
+	messagesResponse := f.request("GET", fmt.Sprintf("%s/items/%d/messages", confirmedPlanPath, *confirmedPlan.CurrentIndex), "", access)
+	var messages struct {
+		Items []struct {
+			Kind string `json:"kind"`
+			Text string `json:"text"`
+		} `json:"items"`
+	}
+	if err = json.Unmarshal(messagesResponse.Body.Bytes(), &messages); err != nil {
+		t.Fatal(err)
+	}
+	var question string
+	for _, message := range messages.Items {
+		if message.Kind == "practice" {
+			question = message.Text
+		}
+	}
+	ownedPreview := upload(f, "/voice/transcriptions", "audio", "voice.wav", "audio/wav", wavBytes(), access)
+	var confirmedPreview struct {
+		ID string `json:"id"`
+	}
+	if err = json.Unmarshal(ownedPreview.Body.Bytes(), &confirmedPreview); err != nil {
+		t.Fatal(err)
+	}
+	confirmedLearningBody, _ := json.Marshal(map[string]any{"transcription_id": confirmedPreview.ID, "item_index": *confirmedPlan.CurrentIndex, "attempts": 0, "question": question})
+	check("POST", "/learning-plans/{id}/answers/transcription", f.request("POST", confirmedPlanPath+"/answers/transcription", string(confirmedLearningBody), access))
 
 	for path, node := range paths {
 		implemented := false

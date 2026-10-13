@@ -236,3 +236,27 @@ it('rejects an active session missing the current task', async () => {
     readDiagnostic('s1', new AbortController().signal),
   ).rejects.toBeInstanceOf(DiagnosticApiError)
 })
+
+it('sends the confirmed transcript with the same idempotency key instead of repeating STT', async () => {
+  const fetcher = vi.fn().mockResolvedValue(Response.json(accepted))
+  vi.stubGlobal('fetch', fetcher)
+  const submission = createSubmission(
+    's1',
+    't1',
+    new Blob(['voice'], { type: 'audio/webm' }),
+    'main',
+  )
+  submission.transcriptionId = 'preview-id'
+  await submitDiagnostic(submission, new AbortController().signal)
+  expect(fetcher.mock.calls[0][0]).toBe(
+    '/api/v1/diagnostic-sessions/s1/answers/transcription',
+  )
+  expect(JSON.parse(fetcher.mock.calls[0][1].body)).toEqual({
+    variant_task_id: 't1',
+    transcription_id: 'preview-id',
+  })
+  expect(fetcher.mock.calls[0][1].headers).toMatchObject({
+    'Idempotency-Key': submission.key,
+    'Content-Type': 'application/json',
+  })
+})

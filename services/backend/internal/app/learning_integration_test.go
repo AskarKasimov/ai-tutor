@@ -22,9 +22,8 @@ func decodePlan(t *testing.T, body []byte) learninghttp.PlanResponse {
 	return plan
 }
 
-// A diagnostic with a mistake builds a plan from every outcome of that
-// competency; each outcome is taught with theory and practice in the chat.
-func TestLearningPlanTeachesTheCompetencyWithAMistake(t *testing.T) {
+// A checked mistake builds a plan for that result, not untested siblings.
+func TestLearningPlanTeachesOnlyCheckedMistakes(t *testing.T) {
 	t.Parallel()
 	f, access, _, _, d := trainingFixture(t, 0)
 	planPath := "/diagnostic-sessions/" + d.ID + "/learning-plan"
@@ -35,8 +34,8 @@ func TestLearningPlanTeachesTheCompetencyWithAMistake(t *testing.T) {
 		t.Fatal(created.Body.String())
 	}
 	plan := decodePlan(t, created.Body.Bytes())
-	// The map holds three outcomes of the failed competency.
-	if len(plan.Items) != 3 || plan.Status != "active" || plan.CurrentIndex == nil || plan.Hours != 2 || plan.ProgressPercent != 0 {
+	// The map holds three outcomes, but only the main was actually checked.
+	if len(plan.Items) != 1 || plan.Status != "active" || plan.CurrentIndex == nil || plan.Hours != 2 || plan.ProgressPercent != 0 {
 		t.Fatalf("plan: %+v", plan)
 	}
 	for _, item := range plan.Items {
@@ -69,7 +68,7 @@ func TestLearningPlanTeachesTheCompetencyWithAMistake(t *testing.T) {
 		t.Fatal(answered.Body.String())
 	}
 	plan = decodePlan(t, answered.Body.Bytes())
-	if plan.Items[current].Status != "passed" || plan.CurrentIndex == nil || *plan.CurrentIndex == current || plan.ProgressPercent != 33 || plan.PendingAnswer != nil {
+	if plan.Items[current].Status != "passed" || plan.CurrentIndex != nil || plan.Status != "completed" || plan.ProgressPercent != 100 || plan.PendingAnswer != nil {
 		t.Fatalf("after a correct answer: %+v", plan)
 	}
 	json.Unmarshal(f.request("GET", messagesPath, "", access).Body.Bytes(), &chat)

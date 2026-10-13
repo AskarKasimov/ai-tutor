@@ -52,7 +52,7 @@ func (m *mockStore) Get(_ context.Context, ownerID, sessionID string) (diagnosti
 }
 
 func (m *mockStore) Save(_ context.Context, ownerID string, feedback diagnostic.OverallFeedback) error {
-	if _, exists := m.data[ownerID+"/"+feedback.SessionID]; !exists {
+	if current, exists := m.data[ownerID+"/"+feedback.SessionID]; !exists || current.AnalysisVersion < feedback.AnalysisVersion {
 		m.data[ownerID+"/"+feedback.SessionID] = feedback
 	}
 	return nil
@@ -171,8 +171,8 @@ func TestAnalyzeResultDeterministicRules(t *testing.T) {
 		t.Fatalf("ScorePercentage = %d, want 50", report.ScorePercentage)
 	}
 
-	if len(report.Strengths) != 1 {
-		t.Fatalf("Strengths count = %d, want 1", len(report.Strengths))
+	if len(report.Strengths) != 4 {
+		t.Fatalf("Strengths count = %d, want 4 checked outcomes", len(report.Strengths))
 	}
 
 	if len(report.PartialCompetencies) != 1 {
@@ -182,10 +182,10 @@ func TestAnalyzeResultDeterministicRules(t *testing.T) {
 		t.Errorf("Partial competency = %s", report.PartialCompetencies[0].CompetencyName)
 	}
 
-	if len(report.ConfirmedGaps) != 1 {
-		t.Fatalf("ConfirmedGaps count = %d, want 1", len(report.ConfirmedGaps))
+	if len(report.ConfirmedGaps) != 2 {
+		t.Fatalf("ConfirmedGaps count = %d, want main and failed basic", len(report.ConfirmedGaps))
 	}
-	gap := report.ConfirmedGaps[0]
+	gap := report.ConfirmedGaps[1]
 	if gap.OutcomeName != "Precision и Recall" || gap.Importance != 5 {
 		t.Errorf("Gap = %+v", gap)
 	}
@@ -193,8 +193,8 @@ func TestAnalyzeResultDeterministicRules(t *testing.T) {
 		t.Errorf("Failed criteria = %v", gap.FailedCriteria)
 	}
 
-	if len(report.TrainingRecommendations) != 1 {
-		t.Fatalf("TrainingRecommendations count = %d, want 1", len(report.TrainingRecommendations))
+	if len(report.TrainingRecommendations) != 3 {
+		t.Fatalf("TrainingRecommendations count = %d, want 3 checked gaps", len(report.TrainingRecommendations))
 	}
 	rec := report.TrainingRecommendations[0]
 	if rec.Priority != 1 || rec.OutcomeName != "Precision и Recall" {
@@ -212,7 +212,7 @@ func TestAnalyzeResultTreatsUserSkippedAnswerAsZero(t *testing.T) {
 		{CompetencyID: "c1", OutcomeID: "basic", Role: "basic", Skipped: true, Task: diagnostic.TaskSnapshot{CompetencyName: "Тема", OutcomeID: "basic"}},
 	}}
 	report := AnalyzeResult(result)
-	if len(report.UnverifiedCompetencies) != 0 || len(report.PartialCompetencies) != 0 || len(report.ConfirmedGaps) != 1 || report.ConfirmedGaps[0].OutcomeID != "basic" {
+	if len(report.UnverifiedCompetencies) != 0 || len(report.PartialCompetencies) != 1 || len(report.ConfirmedGaps) != 1 || report.ConfirmedGaps[0].OutcomeID != "basic" {
 		t.Fatalf("skipped zero-score basic should be a confirmed gap: %+v", report)
 	}
 	if strings.Contains(report.ConfirmedGaps[0].Advice, "следующим вопросом") {

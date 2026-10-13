@@ -269,6 +269,59 @@ func (h *Handler) Answer(w http.ResponseWriter, r *http.Request) {
 	reply(w, r, 200, plan, err)
 }
 
+type TranscriptionAnswerRequest struct {
+	TranscriptionID string `json:"transcription_id" minLength:"1" maxLength:"128" binding:"required"`
+	ItemIndex       *int   `json:"item_index" minimum:"0" binding:"required"`
+	Attempts        *int   `json:"attempts" minimum:"0" binding:"required"`
+	Question        string `json:"question" minLength:"1" binding:"required"`
+}
+
+// AnswerTranscription checks the previously previewed voice transcription.
+// @Summary Отправить подтверждённую расшифровку практики
+// @Description Проверяет сохранённый текст текущего пользователя без повторного STT. Номер темы и текст вопроса защищают от отправки на изменившееся задание.
+// @Tags Обучение
+// @Security accessCookie
+// @Accept json
+// @Produce json
+// @Param id path string true "ID плана"
+// @Param request body TranscriptionAnswerRequest true "Подтверждённая расшифровка и текущее задание"
+// @Success 200 {object} PlanResponse
+// @Failure 401 {object} fault.Error
+// @Failure 404 {object} fault.Error
+// @Failure 409 {object} fault.Error
+// @Failure 413 {object} fault.Error
+// @Failure 422 {object} fault.Error
+// @Failure 502 {object} fault.Error
+// @Failure 503 {object} fault.Error
+// @Failure 504 {object} fault.Error
+// @Router /learning-plans/{id}/answers/transcription [post]
+func (h *Handler) AnswerTranscription(w http.ResponseWriter, r *http.Request) {
+	id, ok := owner(w, r)
+	if !ok {
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, 32*1024)
+	var request TranscriptionAnswerRequest
+	if err := httpx.DecodeJSON(r, &request); err != nil {
+		httpx.Error(r.Context(), w, err)
+		return
+	}
+	if request.ItemIndex == nil || *request.ItemIndex < 0 {
+		httpx.Error(r.Context(), w, fault.Validation("item_index", "Укажите текущую тему."))
+		return
+	}
+	if request.Question == "" {
+		httpx.Error(r.Context(), w, fault.Validation("question", "Укажите текущее задание."))
+		return
+	}
+	if request.Attempts == nil || *request.Attempts < 0 {
+		httpx.Error(r.Context(), w, fault.Validation("attempts", "Укажите текущую попытку."))
+		return
+	}
+	plan, err := h.service.AnswerTranscription(r.Context(), id, r.PathValue("id"), request.TranscriptionID, *request.ItemIndex, *request.Attempts, request.Question)
+	reply(w, r, 200, plan, err)
+}
+
 // Retry checks the saved answer again after the check failed.
 // @Summary Повторить проверку ответа
 // @Tags Обучение

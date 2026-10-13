@@ -18,6 +18,8 @@ import {
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
+import { splitLessonParagraphs } from '../model/lesson-paragraphs'
+import { useDiagnosticResultQuery } from '@/features/diagnostic-session'
 import {
   LearningPlanApiError,
   type LearningItem,
@@ -30,10 +32,12 @@ import {
   useLessonActions,
   useLessonMessages,
   useVoiceRecorder,
+  useAnswerPreview,
 } from '@/features/learning-plan'
-import { LiveWaveform } from './trainer-answer'
+import { LiveWaveform, ConfirmVoiceAnswer } from './trainer-answer'
 import { TrainerProgress, TrainerShell } from './trainer-shared'
 import styles from './learning-plan.module.scss'
+import { VoiceApiError } from '@/shared/api'
 
 const hourOptions = [
   { hours: 1, icon: <Zap size={26} fill="currentColor" /> },
@@ -67,7 +71,10 @@ export function LearningPlanEntry({
     )
   if (query.data === null)
     return (
-      <HoursForm
+      <EligibleHoursForm
+        userId={userId}
+        diagnosticId={diagnosticId}
+        subjectName={subjectName}
         pending={create.isPending ? create.variables : undefined}
         failed={create.isError}
         onChoose={(hours) => create.mutate(hours)}
@@ -94,6 +101,57 @@ export function LearningPlanEntry({
         )}
       </main>
     </TrainerShell>
+  )
+}
+
+function EligibleHoursForm({
+  userId,
+  diagnosticId,
+  subjectName,
+  ...props
+}: {
+  userId: string
+  diagnosticId: string
+  subjectName: string
+  pending?: number
+  failed: boolean
+  onChoose: (hours: number) => void
+  onBack: () => void
+}) {
+  const { t } = useTranslation()
+  const result = useDiagnosticResultQuery(userId, diagnosticId)
+  if (result.data) {
+    const gaps = result.data.answers.some(
+      (answer) =>
+        answer.skipped || answer.score < (answer.role === 'basic' ? 1 : 2),
+    )
+    if (gaps) return <HoursForm {...props} />
+    return (
+      <TrainerShell
+        title={t('session.completed')}
+        subject={subjectName}
+        onBack={props.onBack}
+      >
+        <main className={styles.notice}>
+          <Text as="p">{t('diagnostic.noGaps')}</Text>
+          <Button onClick={props.onBack}>{t('learning.back')}</Button>
+        </main>
+      </TrainerShell>
+    )
+  }
+  return (
+    <main className={styles.notice}>
+      {result.isError ? (
+        <>
+          <Text role="alert">{t('diagnostic.resultError')}</Text>
+          <Button onClick={() => void result.refetch()}>
+            {t('trainer.retry')}
+          </Button>
+        </>
+      ) : (
+        <Text role="status">{t('diagnostic.resultLoading')}</Text>
+      )}
+    </main>
   )
 }
 
@@ -174,7 +232,9 @@ function HoursForm({
 }
 
 function errorCode(error: unknown) {
-  return error instanceof LearningPlanApiError ? error.code : ''
+  return error instanceof LearningPlanApiError || error instanceof VoiceApiError
+    ? error.code
+    : ''
 }
 
 function LearningPlanScreen({
@@ -303,9 +363,15 @@ function LearningPlanScreen({
                   plan={plan}
                   actions={actions}
                   lessonReady={
+                    !messages.isFetching &&
                     !!messages.data?.some(
                       (message) => message.kind === 'practice',
                     )
+                  }
+                  question={
+                    messages.data
+                      ?.filter((message) => message.kind === 'practice')
+                      .at(-1)?.text ?? ''
                   }
                   onReopen={() => {
                     openFor.current = index
@@ -423,14 +489,11 @@ function Outline({
 function Paragraphs({ text }: { text: string }) {
   return (
     <>
-      {text
-        .split(/\n\s*\n/)
-        .filter((part) => part.trim())
-        .map((part, i) => (
-          <p key={i} className={styles.paragraph}>
-            {part.trim()}
-          </p>
-        ))}
+      {splitLessonParagraphs(text).map((part, i) => (
+        <p key={i} className={styles.paragraph}>
+          {part}
+        </p>
+      ))}
     </>
   )
 }
@@ -528,21 +591,36 @@ function LessonControls({
   plan,
   actions,
   lessonReady,
+  question,
   onReopen,
 }: {
   plan: LearningPlan
   actions: ReturnType<typeof useLessonActions>
   lessonReady: boolean
+  question: string
   onReopen: () => void
 }) {
   const { t } = useTranslation()
   const { open, answer, retry } = actions
-  const recorder = useVoiceRecorder(
-    `${plan.id}:${plan.current_index}`,
-    (audio) => answer.mutate(audio),
-  )
+  const attempts =
+    plan.current_index === null ? 0 : plan.items[plan.current_index].attempts
+  const identity = `${plan.id}:${plan.current_index}:${attempts}:${question}`
+  const preview = useAnswerPreview(identity)
+  const draft = preview.data
+  const sending = useRef(false)
+  useEffect(() => {
+    if (plan.pending_answer !== null) preview.clear()
+  }, [plan.pending_answer])
+  const recorder = useVoiceRecorder(identity, (audio) => {
+    void preview.recognize(audio)
+  })
   const busy =
-    open.isPending || answer.isPending || retry.isPending || recorder.requesting
+    open.isPending ||
+    answer.isPending ||
+    retry.isPending ||
+    recorder.requesting ||
+    recorder.preparing ||
+    preview.busy
   const waiting = plan.pending_answer !== null
   const canRecord = lessonReady && !busy && !waiting
   let alert: ReactNode = null
@@ -570,6 +648,29 @@ function LessonControls({
         ? 'learning.noSpeech'
         : 'learning.answerError',
     )
+  else if (preview.error && !busy)
+    alert = (
+      <>
+        {t(
+          errorCode(preview.error) === 'NO_SPEECH_DETECTED'
+            ? 'learning.noSpeech'
+            : 'trainer.recognitionError',
+        )}
+        <Button size="1" variant="soft" onClick={() => void preview.retry()}>
+          {t('trainer.retryRecognition')}
+        </Button>
+        <Button
+          size="1"
+          variant="soft"
+          onClick={() => {
+            preview.clear()
+            void recorder.start()
+          }}
+        >
+          {t('trainer.rerecordAnswer')}
+        </Button>
+      </>
+    )
   else if (recorder.error)
     alert = t(
       recorder.error === 'denied'
@@ -590,7 +691,7 @@ function LessonControls({
           type="button"
           className={styles.barMic}
           data-state={state}
-          disabled={!recorder.recording && !canRecord}
+          disabled={!recorder.recording && (!canRecord || !!draft)}
           aria-label={t(
             recorder.recording
               ? 'learning.stopRecording'
@@ -625,13 +726,53 @@ function LessonControls({
             </Text>
           ) : busy ? (
             <Text className={styles.barStatus} role="status">
-              {t('learning.thinking')}
+              {t(preview.busy ? 'trainer.transcribing' : 'learning.thinking')}
             </Text>
-          ) : (
+          ) : draft ? null : (
             <Text className={styles.barHint}>{t('learning.tapToRecord')}</Text>
           )}
         </div>
       </div>
+      {draft && !waiting && (
+        <>
+          <Text
+            as="p"
+            className={styles.draftTranscript}
+            aria-label={t('trainer.transcriptPreview')}
+          >
+            {draft.text}
+          </Text>
+          <ConfirmVoiceAnswer
+            disabled={busy}
+            onSend={() => {
+              if (sending.current || !canRecord) return
+              sending.current = true
+              if (plan.current_index === null) {
+                sending.current = false
+                return
+              }
+              answer.mutate(
+                {
+                  transcription_id: draft.id,
+                  item_index: plan.current_index,
+                  attempts,
+                  question,
+                },
+                {
+                  onSuccess: preview.clear,
+                  onSettled: () => {
+                    sending.current = false
+                  },
+                },
+              )
+            }}
+            onRerecord={() => {
+              preview.clear()
+              void recorder.start()
+            }}
+          />
+        </>
+      )}
     </div>
   )
 }

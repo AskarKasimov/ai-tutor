@@ -1,5 +1,7 @@
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { createQueryClient } from '@/bootstrap/providers'
+import { createAppDependencies } from '@/bootstrap/dependencies'
+import type { AppDependencies } from '@/bootstrap/dependencies'
 import { createQueryWrapper } from '../../../support/query-wrapper'
 import { afterEach, expect, it, vi } from 'vitest'
 import * as audio from '@/shared/lib'
@@ -30,9 +32,16 @@ afterEach(() => {
 
 function renderDiagnosticVoice(
   callback: () => ReturnType<typeof useDiagnosticVoice>,
+  configure?: (dependencies: AppDependencies) => void,
 ) {
   const client = createQueryClient()
-  const wrapper = createQueryWrapper(client)
+  const dependencies = createAppDependencies()
+  vi.spyOn(dependencies.diagnostic, 'transcribeRecording').mockResolvedValue({
+    id: 'preview-id',
+    text: 'Распознанный ответ',
+  })
+  configure?.(dependencies)
+  const wrapper = createQueryWrapper(client, dependencies)
   return renderHook(callback, { wrapper })
 }
 
@@ -86,7 +95,10 @@ it('aborts a pending audio submission and releases recording playback on unmount
   })
   let stopping!: Promise<void>
   act(() => {
-    stopping = view.result.current.stop()
+    stopping = (async () => {
+      await view.result.current.stop()
+      await view.result.current.retry()
+    })()
   })
   await waitFor(() => expect(view.result.current.stage).toBe('processing'))
   await waitFor(() => expect(request).toBeDefined())
@@ -765,4 +777,81 @@ it('cancels a rapidly repeated instruction click instead of launching concurrent
   expect(fetch).toHaveBeenCalledTimes(1)
   expect(requests[0].aborted).toBe(true)
   expect(view.result.current.speech).toBe('idle')
+})
+
+it('stops at the recording limit without submitting before confirmation', async () => {
+  vi.useFakeTimers()
+  const submit = vi.fn()
+  const dispose = vi.fn()
+  vi.spyOn(audio, 'createAudioUrl').mockReturnValue({
+    url: 'blob:answer',
+    dispose,
+  })
+  vi.spyOn(audio, 'startRecording').mockResolvedValue({
+    stream: {} as MediaStream,
+    dispose: vi.fn(),
+    stop: async () => new Blob(['answer'], { type: 'audio/webm' }),
+  })
+  const view = renderDiagnosticVoice(() =>
+    useDiagnosticVoice('u1', 's1', task, submit, vi.fn()),
+  )
+  try {
+    await act(async () => view.result.current.start())
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(audio.MAX_ANSWER_SECONDS * 1000)
+    })
+    expect(view.result.current.stage).toBe('review')
+    expect(submit).not.toHaveBeenCalled()
+    view.unmount()
+    expect(dispose).toHaveBeenCalledOnce()
+  } finally {
+    vi.useRealTimers()
+  }
+})
+
+it('unlocks a new task and ignores a late preview after the previous question changes', async () => {
+  let finish!: (value: { id: string; text: string }) => void
+  let signal!: AbortSignal
+  let currentTask = task
+  vi.spyOn(audio, 'startRecording').mockResolvedValue({
+    stream: {} as MediaStream,
+    dispose: vi.fn(),
+    stop: async () => new Blob(['audio'], { type: 'audio/webm' }),
+  })
+  vi.spyOn(audio, 'createAudioUrl').mockReturnValue({
+    url: 'blob:recording',
+    dispose: vi.fn(),
+  })
+  const submit = vi.fn()
+  const view = renderDiagnosticVoice(
+    () => useDiagnosticVoice('u1', 's1', currentTask, submit, vi.fn()),
+    (dependencies) => {
+      vi.mocked(dependencies.diagnostic.transcribeRecording).mockImplementation(
+        (_blob, requestSignal) => {
+          signal = requestSignal
+          return new Promise((resolve) => {
+            finish = resolve
+          })
+        },
+      )
+    },
+  )
+  await act(async () => view.result.current.start())
+  let stopping!: Promise<void>
+  act(() => {
+    stopping = view.result.current.stop()
+  })
+  await waitFor(() => expect(view.result.current.stage).toBe('recognizing'))
+  currentTask = { ...task, variant_task_id: 't2' }
+  view.rerender()
+  expect(signal.aborted).toBe(true)
+  expect(view.result.current.stage).toBe('ready')
+  await act(async () => {
+    finish({ id: 'old', text: 'old answer' })
+    await stopping
+  })
+  expect(view.result.current.previewText).toBeUndefined()
+  expect(submit).not.toHaveBeenCalled()
+  await act(async () => view.result.current.start())
+  expect(view.result.current.stage).toBe('recording')
 })

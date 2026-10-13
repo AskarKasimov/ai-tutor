@@ -62,7 +62,7 @@ func serveFixtureCompletion(t *testing.T, w http.ResponseWriter, r *http.Request
 		result = map[string]any{"theory": "Теория по образовательному результату с примером.", "question": "Объясните пример."}
 	case strings.Contains(system, "Ты — наставник, который составляет один практический вопрос"), strings.Contains(system, "Ты — редактор учебной практики"):
 		result = map[string]any{"question": "Объясните пример."}
-	case strings.Contains(system, "last_attempt"):
+	case strings.Contains(system, "last_attempt"), strings.Contains(system, "Проверь устный ответ на ТЕКУЩИЙ"):
 		result = map[string]any{"correct": true, "feedback": "Вы правильно объяснили пример.", "question": ""}
 	case strings.Contains(system, "summary"):
 		result = map[string]any{"summary": "Вы освоили основные темы. Закрепите их на практике."}

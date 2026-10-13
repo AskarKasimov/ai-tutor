@@ -4,11 +4,17 @@ import {
   createRouter,
   RouterProvider,
 } from '@tanstack/react-router'
-import { beforeEach, afterEach, expect, it, vi } from 'vitest'
+import { beforeAll, beforeEach, afterEach, expect, it, vi } from 'vitest'
 import { createQueryClient } from '@/bootstrap/providers'
 import * as audio from '@/shared/lib'
 import { validWavBlob } from '../support/audio'
 import { routeTree } from '@/routeTree.gen'
+
+// Compile the lazy page before timing user interactions. Cold transforms on
+// a Windows bind mount can otherwise consume the route's entire wait budget.
+beforeAll(async () => {
+  await import('@/pages/trainer')
+}, 30000)
 
 vi.mock('@/shared/lib', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/shared/lib')>()),
@@ -177,7 +183,9 @@ function server(
         ],
       })
     }
-    if (url.endsWith('/answers')) {
+    if (url.endsWith('/voice/transcriptions'))
+      return Response.json({ id: 'preview-id', text: 'Настоящая расшифровка' })
+    if (url.endsWith('/answers/transcription')) {
       if (answerStatus !== 200) {
         answerStatus = 200
         return Response.json(
@@ -351,6 +359,15 @@ it('runs real diagnostic audio, obeys skipped basics and displays the server tot
     screen.queryByText('Нажмите на микрофон, чтобы начать запись'),
   ).not.toBeInTheDocument()
   fireEvent.click(stop)
+  expect(
+    await screen.findByRole('button', { name: 'Отправить ответ' }),
+  ).toBeVisible()
+  expect(
+    requests.mock.calls.filter(([url]) =>
+      url.endsWith('/answers/transcription'),
+    ),
+  ).toHaveLength(0)
+  fireEvent.click(screen.getByRole('button', { name: 'Отправить ответ' }))
   // The answer is only confirmed: no score, verdict or feedback per task.
   expect(await screen.findByText('Ответ принят')).toBeVisible()
   expect(screen.queryByText(feedback.join(' '))).not.toBeInTheDocument()
@@ -377,8 +394,8 @@ it('runs real diagnostic audio, obeys skipped basics and displays the server tot
     screen.getByText('Диагностический балл').parentElement,
   ).toHaveTextContent('2 / 2')
   expect(
-    screen.getByRole('button', { name: 'Подтянуть слабые темы' }),
-  ).toBeVisible()
+    screen.queryByRole('button', { name: 'Подтянуть слабые темы' }),
+  ).not.toBeInTheDocument()
   // The task review is folded until the student opens it.
   expect(screen.queryByText('Настоящая расшифровка')).not.toBeInTheDocument()
   fireEvent.click(
@@ -418,24 +435,30 @@ it('runs real diagnostic audio, obeys skipped basics and displays the server tot
   expect(screen.queryByText('Базовый вопрос из банка')).not.toBeInTheDocument()
   expect(screen.queryByText(/Не проверено/)).not.toBeInTheDocument()
   expect(
-    screen.getByRole('button', { name: 'Подтянуть слабые темы' }),
-  ).toBeEnabled()
+    screen.queryByRole('button', { name: 'Подтянуть слабые темы' }),
+  ).not.toBeInTheDocument()
   expect(
     screen.queryByRole('button', { name: 'Новая диагностика' }),
   ).not.toBeInTheDocument()
   const [url, init] = requests.mock.calls.find(([url]) =>
-    url.endsWith('/answers'),
+    url.endsWith('/answers/transcription'),
   )!
-  expect(url).toBe('/api/v1/diagnostic-sessions/session-real/answers')
+  expect(url).toBe(
+    '/api/v1/diagnostic-sessions/session-real/answers/transcription',
+  )
   expect(init?.credentials).toBe('include')
   expect(init?.headers).toMatchObject({ 'Idempotency-Key': expect.any(String) })
-  const body = init?.body as FormData
-  expect(body.get('variant_task_id')).toBe('v-main')
-  expect(await (body.get('audio') as File).text()).toBe('recorded-answer')
+  expect(JSON.parse(init?.body as string)).toEqual({
+    variant_task_id: 'v-main',
+    transcription_id: 'preview-id',
+  })
   expect(
-    requests.mock.calls.some(([url]) =>
-      /voice\/transcriptions|assessments\/evaluate/.test(url),
+    requests.mock.calls.filter(([url]) =>
+      url.endsWith('/voice/transcriptions'),
     ),
+  ).toHaveLength(1)
+  expect(
+    requests.mock.calls.some(([url]) => /assessments\/evaluate/.test(url)),
   ).toBe(false)
 })
 it('keeps the diagnostic result visible and retries failed overall feedback', async () => {
@@ -444,6 +467,9 @@ it('keeps the diagnostic result visible and retries failed overall feedback', as
   fireEvent.click(await screen.findByRole('button', { name: 'Начать запись' }))
   fireEvent.click(
     await screen.findByRole('button', { name: 'Завершить запись' }),
+  )
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Отправить ответ' }),
   )
   fireEvent.click(
     await screen.findByRole('button', { name: 'Посмотреть итог' }),
@@ -483,6 +509,9 @@ it('shows the task review only together with the overall feedback', async () => 
     await screen.findByRole('button', { name: 'Завершить запись' }),
   )
   fireEvent.click(
+    await screen.findByRole('button', { name: 'Отправить ответ' }),
+  )
+  fireEvent.click(
     await screen.findByRole('button', { name: 'Посмотреть итог' }),
   )
   expect(
@@ -512,6 +541,9 @@ it('shows overall feedback when the backend sends null strengths', async () => {
     await screen.findByRole('button', { name: 'Завершить запись' }),
   )
   fireEvent.click(
+    await screen.findByRole('button', { name: 'Отправить ответ' }),
+  )
+  fireEvent.click(
     await screen.findByRole('button', { name: 'Посмотреть итог' }),
   )
   expect(
@@ -539,6 +571,9 @@ it('fills the cards from the reviews, not from the model text', async () => {
     await screen.findByRole('button', { name: 'Завершить запись' }),
   )
   fireEvent.click(
+    await screen.findByRole('button', { name: 'Отправить ответ' }),
+  )
+  fireEvent.click(
     await screen.findByRole('button', { name: 'Посмотреть итог' }),
   )
   // Only the general paragraph comes from the model; parts it adds under
@@ -558,13 +593,18 @@ it('keeps the audio and idempotency key on a failed submission and retries witho
   fireEvent.click(
     await screen.findByRole('button', { name: 'Завершить запись' }),
   )
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Отправить ответ' }),
+  )
   expect(await screen.findByRole('alert')).toHaveTextContent('ответ')
   expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(
     'Настоящий вопрос из банка',
   )
   fireEvent.click(screen.getByRole('button', { name: 'Отправить снова' }))
   expect(await screen.findByText('Ответ принят')).toBeVisible()
-  const calls = requests.mock.calls.filter(([url]) => url.endsWith('/answers'))
+  const calls = requests.mock.calls.filter(([url]) =>
+    url.endsWith('/answers/transcription'),
+  )
   expect(calls).toHaveLength(2)
   expect(calls[0][1]?.headers).toEqual(calls[1][1]?.headers)
   expect(calls[0][1]?.body).toBe(calls[1][1]?.body)
@@ -666,7 +706,7 @@ it('shows progress by topic and adds clarifying questions only when asked', asyn
     vi.fn(async (url: string, init?: RequestInit) => {
       if (url.endsWith('/diagnostic-sessions') && init?.method === 'POST')
         return Response.json(start, { status: 201 })
-      if (url.endsWith('/answers'))
+      if (url.endsWith('/answers/transcription'))
         return Response.json({
           ...start,
           current: basic,
@@ -693,6 +733,9 @@ it('shows progress by topic and adds clarifying questions only when asked', asyn
   fireEvent.click(
     await screen.findByRole('button', { name: 'Завершить запись' }),
   )
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Отправить ответ' }),
+  )
   // A weak main opens two basics: it adds a third of its topic, 1/3 of 50%.
   expect(await screen.findByText('Ответ принят')).toBeVisible()
   expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '17')
@@ -710,6 +753,9 @@ it('keeps answered positions after a page reload', async () => {
   fireEvent.click(await screen.findByRole('button', { name: 'Начать запись' }))
   fireEvent.click(
     await screen.findByRole('button', { name: 'Завершить запись' }),
+  )
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Отправить ответ' }),
   )
   expect(await screen.findByText('Ответ принят')).toBeVisible()
   const percent = screen.getByRole('progressbar').getAttribute('aria-valuenow')
@@ -797,7 +843,7 @@ it('uses backend basic tasks with a 0/1 scale and excludes them from the diagnos
   vi.stubGlobal(
     'fetch',
     vi.fn(async (url: string, init?: RequestInit) => {
-      if (url.endsWith('/answers')) {
+      if (url.endsWith('/answers/transcription')) {
         const index = position++
         return Response.json({
           ...progress,
@@ -851,6 +897,9 @@ it('uses backend basic tasks with a 0/1 scale and excludes them from the diagnos
     fireEvent.click(
       await screen.findByRole('button', { name: 'Завершить запись' }),
     )
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Отправить ответ' }),
+    )
     expect(await screen.findByText('Ответ принят')).toBeVisible()
     expect(
       screen.queryByText(`${scores[index]} / ${index === 0 ? 2 : 1}`),
@@ -897,7 +946,7 @@ it('returns to login if diagnostic submission loses authorization', async () => 
   vi.stubGlobal(
     'fetch',
     vi.fn(async (url: string, init?: RequestInit) =>
-      url.endsWith('/answers')
+      url.endsWith('/answers/transcription')
         ? Response.json({ code: 'UNAUTHORIZED' }, { status: 401 })
         : requests(url, init),
     ),
@@ -906,6 +955,9 @@ it('returns to login if diagnostic submission loses authorization', async () => 
   fireEvent.click(await screen.findByRole('button', { name: 'Начать запись' }))
   fireEvent.click(
     await screen.findByRole('button', { name: 'Завершить запись' }),
+  )
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Отправить ответ' }),
   )
   expect(
     await screen.findByRole('heading', { name: 'Вход в AI Tutor' }),
@@ -955,7 +1007,7 @@ it('retains the original audio/key when the backend reports that an answer is st
   vi.stubGlobal(
     'fetch',
     vi.fn(async (url: string, init?: RequestInit) => {
-      if (url.endsWith('/answers')) {
+      if (url.endsWith('/answers/transcription')) {
         submissions.push(init!)
         if (++attempt === 1)
           return Response.json(
@@ -971,6 +1023,9 @@ it('retains the original audio/key when the backend reports that an answer is st
   fireEvent.click(
     await screen.findByRole('button', { name: 'Завершить запись' }),
   )
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Отправить ответ' }),
+  )
   await screen.findByRole('alert')
   fireEvent.click(screen.getByRole('button', { name: 'Отправить снова' }))
   expect(await screen.findByText('Ответ принят')).toBeVisible()
@@ -983,7 +1038,7 @@ it('offers only a new recording when speech was not recognized', async () => {
   vi.stubGlobal(
     'fetch',
     vi.fn(async (url: string, init?: RequestInit) =>
-      url.endsWith('/answers')
+      url.endsWith('/voice/transcriptions')
         ? Response.json(
             {
               code: 'NO_SPEECH_DETECTED',
@@ -1034,6 +1089,9 @@ it('offers a new diagnostic if the completed result disappears after a backend r
     await screen.findByRole('button', { name: 'Завершить запись' }),
   )
   fireEvent.click(
+    await screen.findByRole('button', { name: 'Отправить ответ' }),
+  )
+  fireEvent.click(
     await screen.findByRole('button', { name: 'Посмотреть итог' }),
   )
   expect(await screen.findByRole('alert')).toHaveTextContent(
@@ -1062,6 +1120,9 @@ it.each([1, 2])(
       await screen.findByRole('button', { name: 'Завершить запись' }),
     )
     fireEvent.click(
+      await screen.findByRole('button', { name: 'Отправить ответ' }),
+    )
+    fireEvent.click(
       await screen.findByRole('button', { name: 'Посмотреть итог' }),
     )
     expect(
@@ -1080,3 +1141,32 @@ it.each([1, 2])(
     ).not.toBeInTheDocument()
   },
 )
+
+it('lets the learner replace diagnostic audio without sending the discarded answer', async () => {
+  const requests = server()
+  await home()
+  fireEvent.click(await screen.findByRole('button', { name: 'Начать запись' }))
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Завершить запись' }),
+  )
+  expect(await screen.findByText('Настоящая расшифровка')).toBeVisible()
+  expect(
+    requests.mock.calls.filter(([url]) =>
+      url.endsWith('/answers/transcription'),
+    ),
+  ).toHaveLength(0)
+  fireEvent.click(screen.getByRole('button', { name: 'Перезаписать ответ' }))
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Завершить запись' }),
+  )
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Отправить ответ' }),
+  )
+  expect(await screen.findByText('Ответ принят')).toBeVisible()
+  expect(audio.startRecording).toHaveBeenCalledTimes(2)
+  expect(
+    requests.mock.calls.filter(([url]) =>
+      url.endsWith('/answers/transcription'),
+    ),
+  ).toHaveLength(1)
+})

@@ -131,15 +131,20 @@ func validateEvaluation(result Evaluation, gradingContext GradingContext) error 
 		return fault.New(fault.Upstream, "INVALID_MODEL_RESPONSE", "Модель вернула неполные результаты по критериям.")
 	}
 
-	satisfied := 0
+	contentSatisfied := 0
+	contentCount := 0
 	mandatoryFailed := false
 	for i, criterion := range gradingContext.Criteria {
 		item := result.CriterionResults[i]
 		if item.Key != criterion.Key || !validText(item.Explanation, 400) || strings.ContainsAny(item.Explanation, "\r\n") {
 			return fault.New(fault.Upstream, "INVALID_MODEL_RESPONSE", "Модель вернула некорректные результаты по критериям.")
 		}
-		if item.Satisfied {
-			satisfied++
+		// Instructions are a gate, not evidence of subject knowledge.
+		if criterion.Key != "instruction_following" {
+			contentCount++
+			if item.Satisfied {
+				contentSatisfied++
+			}
 		}
 		if criterion.Mandatory && !item.Satisfied {
 			mandatoryFailed = true
@@ -147,16 +152,24 @@ func validateEvaluation(result Evaluation, gradingContext GradingContext) error 
 		result.CriterionResults[i].Explanation = strings.TrimSpace(item.Explanation)
 	}
 
+	if contentCount == 0 {
+		return fault.New(fault.Invalid, "INVALID_GRADING_CONTEXT", "Контекст не содержит предметных критериев.")
+	}
 	expectedScore := 0
 	if !mandatoryFailed {
 		if maxScore == 1 {
-			if satisfied == len(gradingContext.Criteria) {
+			if contentSatisfied == contentCount {
 				expectedScore = 1
 			}
-		} else if satisfied == len(gradingContext.Criteria) {
+		} else if contentSatisfied == contentCount {
 			expectedScore = 2
-		} else if satisfied > 0 {
-			expectedScore = 1
+		} else {
+			// A boolean criterion only distinguishes full completion. The grader
+			// distinguishes partial subject knowledge from a wholly wrong answer
+			// using the trusted reference and rubric, not the instruction count.
+			if result.Score == 0 || result.Score == 1 {
+				expectedScore = result.Score
+			}
 		}
 	}
 	if result.Score != expectedScore {

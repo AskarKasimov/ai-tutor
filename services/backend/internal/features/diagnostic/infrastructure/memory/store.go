@@ -105,7 +105,7 @@ func (s *Store) LearningState(ctx context.Context, ownerID, subjectID string) (d
 		state.SubjectName = v.Variant.SubjectNameSnapshot
 		state.DiagnosticSessionID = v.ID
 		state.DiagnosticCompleted = true
-		state.TrainingAvailable = true
+		state.TrainingAvailable = diagnostic.HasLearningGaps(v.Answers)
 		state.DiagnosticStatus = "completed"
 	}
 	return state, err

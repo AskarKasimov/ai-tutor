@@ -16,6 +16,16 @@ func TestLearningStateUnknownSubjectIsNotFound(t *testing.T) {
 		t.Fatalf("unknown subject %d %s", w.Code, w.Body.String())
 	}
 }
+
+func TestLearningStateDoesNotOfferRemediationWithoutCheckedGaps(t *testing.T) {
+	t.Parallel()
+	f, access, _, _, d := trainingFixture(t, 2)
+	w := f.request("GET", "/subjects/"+d.Variant.SubjectID+"/learning-state", "", access)
+	var state diagnostic.LearningState
+	if err := json.Unmarshal(w.Body.Bytes(), &state); err != nil || w.Code != 200 || !state.DiagnosticCompleted || state.TrainingAvailable {
+		t.Fatalf("completed without gaps: %d %s %v", w.Code, w.Body.String(), err)
+	}
+}
 func TestLearningStateOrdersCompletedByTimeThenIDAndKeepsNewActive(t *testing.T) {
 	t.Parallel()
 	f, access, _, owner, d := trainingFixture(t, 1)

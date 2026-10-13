@@ -12,11 +12,13 @@ export function useVoiceRecorder(
   const recorder = useRef<MediaRecorder | null>(null)
   const stream = useRef<MediaStream | null>(null)
   const active = useRef(false)
+  const requestingLock = useRef(false)
   const generation = useRef(0)
   const startedAt = useRef(0)
   const timer = useRef<ReturnType<typeof setInterval> | null>(null)
   const [recording, setRecording] = useState(false)
   const [requesting, setRequesting] = useState(false)
+  const [preparing, setPreparing] = useState(false)
   const [streamState, setStreamState] = useState<MediaStream>()
   const [elapsedSeconds, setElapsedSeconds] = useState(0)
   const [error, setError] = useState<RecordingError>(null)
@@ -27,13 +29,21 @@ export function useVoiceRecorder(
   }, [])
 
   const start = useCallback(async () => {
-    if (recording || requesting || !active.current) return
-    const currentGeneration = generation.current
+    if (
+      recorder.current ||
+      requestingLock.current ||
+      preparing ||
+      !active.current
+    )
+      return
+    requestingLock.current = true
+    const currentGeneration = ++generation.current
     if (
       !navigator.mediaDevices?.getUserMedia ||
       typeof MediaRecorder === 'undefined'
     ) {
       setError('unavailable')
+      requestingLock.current = false
       return
     }
     setError(null)
@@ -83,10 +93,16 @@ export function useVoiceRecorder(
         const audio = new Blob(chunks, {
           type: instance.mimeType || 'audio/webm',
         })
-        if (!audio.size) return
+        if (!audio.size) {
+          setError('unavailable')
+          return
+        }
+        setPreparing(true)
         void prepareSpeech(audio).then((prepared) => {
-          if (generation.current === currentGeneration)
+          if (generation.current === currentGeneration) {
+            setPreparing(false)
             callback.current(prepared)
+          }
         })
       }
       instance.start()
@@ -107,23 +123,26 @@ export function useVoiceRecorder(
         )
       }
     } finally {
-      if (active.current && generation.current === currentGeneration)
+      if (active.current && generation.current === currentGeneration) {
         setRequesting(false)
+        requestingLock.current = false
+      }
     }
-  }, [recording, requesting])
+  }, [requesting, preparing])
 
   useEffect(() => {
     generation.current += 1
-    const currentGeneration = generation.current
     active.current = true
+    requestingLock.current = false
     setStreamState(undefined)
     setRecording(false)
     setRequesting(false)
+    setPreparing(false)
     setElapsedSeconds(0)
     setError(null)
     return () => {
       active.current = false
-      if (generation.current === currentGeneration) generation.current += 1
+      generation.current += 1
       if (timer.current) clearInterval(timer.current)
       timer.current = null
       const oldRecorder = recorder.current
@@ -138,6 +157,7 @@ export function useVoiceRecorder(
   return {
     recording,
     requesting,
+    preparing,
     stream: streamState,
     elapsedSeconds,
     error,

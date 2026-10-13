@@ -67,6 +67,7 @@ func GradingContextFromVariantTask(item variant.VariantTask) (GradingContext, er
 	if criteria := pointerText(task.Criteria); criteria != "" {
 		correctness = criteria
 	}
+	correctness += " Учитывай предметные требования голосовой инструкции. Правильный вывод без явно требуемого объяснения или обоснования — частичное выполнение этого критерия. Если объяснение не требуется заданием или критериями, не добавляй это требование."
 
 	return GradingContext{
 		TaskID:           item.ID,
@@ -88,7 +89,7 @@ func GradingContextFromVariantTask(item variant.VariantTask) (GradingContext, er
 			},
 			{
 				Key:         "instruction_following",
-				Description: "Ответ выполняет голосовую инструкцию: " + voiceInstruction,
+				Description: "Ответ выполняет требования к способу передачи и идентификации ответа: " + voiceInstruction + ". Отсутствие объяснения или обоснования учитывается только в answer_correctness, а не как нарушение этого обязательного критерия.",
 				Mandatory:   true,
 			},
 		},

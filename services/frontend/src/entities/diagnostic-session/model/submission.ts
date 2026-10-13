@@ -7,4 +7,5 @@ export type DiagnosticSubmission = {
   key: string
   body: FormData
   skip?: boolean
+  transcriptionId?: string
 }

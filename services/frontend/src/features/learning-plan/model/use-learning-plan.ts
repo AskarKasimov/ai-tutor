@@ -1,5 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import type { LearningPlan } from '@/entities/learning-plan'
+import type {
+  LearningPlan,
+  ConfirmedLessonAnswer,
+} from '@/entities/learning-plan'
 import { useLearningPlanDependencies } from './dependencies-context'
 import { learningPlanQueryKeys } from './query-keys'
 
@@ -83,7 +86,7 @@ export function useLessonActions(
     },
   })
   const answer = useMutation({
-    mutationFn: (audio: Blob) =>
+    mutationFn: (audio: Blob | ConfirmedLessonAnswer) =>
       learningPlan.answerLesson(plan.id, audio, signal()),
     onSuccess: (next) => {
       settle(next)

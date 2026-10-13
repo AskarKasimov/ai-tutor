@@ -61,10 +61,11 @@ export async function evaluateAnswer(
     typeof data.score !== 'number' ||
     !Number.isInteger(data.score) ||
     data.score < 0 ||
-    data.score > 2 ||
+    data.score > 3 ||
     !('max_score' in data) ||
-    (data.max_score !== 1 && data.max_score !== 2) ||
+    (data.max_score !== 1 && data.max_score !== 2 && data.max_score !== 3) ||
     data.score > data.max_score ||
+    (data.max_score === 3 && data.score === 2) ||
     !('verdict' in data) ||
     !isVerdict(data.verdict) ||
     data.verdict !==
@@ -86,7 +87,7 @@ export async function evaluateAnswer(
   }
 
   return {
-    score: data.score as 0 | 1 | 2,
+    score: data.score as 0 | 1 | 2 | 3,
     maxScore: data.max_score,
     verdict: data.verdict,
     criterionResults: data.criterion_results,

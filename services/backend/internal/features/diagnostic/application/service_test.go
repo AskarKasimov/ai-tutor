@@ -126,11 +126,11 @@ func grade(score int) gradeResult {
 	verdict := "incorrect"
 	if score == 1 {
 		verdict = "partial"
-	} else if score == 2 {
+	} else if score == 3 {
 		verdict = "correct"
 	}
-	return gradeResult{evaluation: assessment.Evaluation{Score: score, MaxScore: 2, Verdict: verdict,
-		CriterionResults: []assessment.CriterionResult{{Key: "c1", Satisfied: score == 2, Explanation: "Объяснение"}},
+	return gradeResult{evaluation: assessment.Evaluation{Score: score, MaxScore: 3, Verdict: verdict,
+		CriterionResults: []assessment.CriterionResult{{Key: "c1", Satisfied: score == 3, Explanation: "Объяснение"}},
 		Feedback:         []string{"Статус", "Причина", "Совет"}}}
 }
 
@@ -185,7 +185,7 @@ func testAudio(sample byte) []byte {
 }
 
 func TestMainPerfectSkipsBasicsAndIdempotencySurvivesCompletion(t *testing.T) {
-	service, voice, grader, variants := newTestService(grade(2), grade(2))
+	service, voice, grader, variants := newTestService(grade(3), grade(3))
 	started := service.start(t)
 	replayed, reused, err := service.Start(context.Background(), "owner-1", "variant-1", "start-1")
 	if err != nil || !reused || replayed.SessionID != started.SessionID || variants.calls != 1 {
@@ -217,7 +217,7 @@ func TestMainPerfectSkipsBasicsAndIdempotencySurvivesCompletion(t *testing.T) {
 		t.Fatalf("accepted retry performed work twice: grader=%d STT=%d", grader.calls, voice.transcribes)
 	}
 	result, err := service.Result(context.Background(), "owner-1", completed.SessionID)
-	if err != nil || result.DiagnosticScore != 4 || result.MaximumScore != 4 || len(result.UntestedBasics) != 4 {
+	if err != nil || result.DiagnosticScore != 6 || result.MaximumScore != 6 || len(result.UntestedBasics) != 4 {
 		t.Fatalf("unexpected completed result %+v, err=%v", result, err)
 	}
 }
@@ -249,7 +249,7 @@ func TestSkipAdvancesWithoutSpeechOrGrading(t *testing.T) {
 }
 
 func TestCanceledGradingReleasesReservationAndRetryReusesTranscription(t *testing.T) {
-	service, voice, grader, _ := newTestService(grade(2))
+	service, voice, grader, _ := newTestService(grade(3))
 	started := service.start(t)
 	grader.started = make(chan struct{}, 1)
 	grader.continueCall = make(chan struct{})
@@ -274,8 +274,8 @@ func TestCanceledGradingReleasesReservationAndRetryReusesTranscription(t *testin
 	}
 }
 
-func TestRoleSpecificScoresAndOnlyMainContributesToDiagnostic(t *testing.T) {
-	service, _, _, _ := newTestService(grade(1), gradeBasic(0), gradeBasic(1), grade(2))
+func TestRoleSpecificScoresAndBasicsContributeToDiagnostic(t *testing.T) {
+	service, _, _, _ := newTestService(grade(1), gradeBasic(0), gradeBasic(1), grade(3))
 	progress := service.start(t)
 	progress = service.answer(t, progress, "main")
 	progress = service.answer(t, progress, "basic-zero")
@@ -291,8 +291,8 @@ func TestRoleSpecificScoresAndOnlyMainContributesToDiagnostic(t *testing.T) {
 	}
 	progress = service.answer(t, progress, "next-main")
 	result, err := service.Result(context.Background(), "owner-1", progress.SessionID)
-	if err != nil || result.DiagnosticScore != 3 || result.MaximumScore != 4 {
-		t.Fatalf("basic scores affected diagnostic sum: %+v, err=%v", result, err)
+	if err != nil || result.DiagnosticScore != 5 || result.MaximumScore != 6 {
+		t.Fatalf("unexpected diagnostic sum including basics: %+v, err=%v", result, err)
 	}
 	if result.Answers[2].GraderScore != 1 || result.Answers[2].GraderMaxScore != 1 || result.Answers[2].Score != 1 || result.Answers[2].Verdict != "correct" {
 		t.Fatalf("source grader result was not preserved: %+v", result.Answers[2])
@@ -300,14 +300,14 @@ func TestRoleSpecificScoresAndOnlyMainContributesToDiagnostic(t *testing.T) {
 }
 
 func TestGraderFailureRetriesStoredTranscriptionWithoutRegradingAcceptedAnswer(t *testing.T) {
-	service, voice, grader, _ := newTestService(gradeResult{err: errors.New("model unavailable")}, grade(2), grade(0))
+	service, voice, grader, _ := newTestService(gradeResult{err: errors.New("model unavailable")}, grade(3), grade(0))
 	progress := service.start(t)
 	taskID := progress.Current.ID
 	if _, err := service.Answer(context.Background(), "owner-1", progress.SessionID, taskID, "same-key", testAudio(0), "audio/wav"); err == nil {
 		t.Fatal("first grader call should fail")
 	}
 	progress, err := service.Answer(context.Background(), "owner-1", progress.SessionID, taskID, "same-key", testAudio(0), "audio/wav")
-	if err != nil || progress.Score == nil || *progress.Score != 2 || voice.transcribes != 1 || grader.calls != 2 {
+	if err != nil || progress.Score == nil || *progress.Score != 3 || voice.transcribes != 1 || grader.calls != 2 {
 		t.Fatalf("retry did not reuse transcription: progress=%+v STT=%d grader=%d err=%v", progress, voice.transcribes, grader.calls, err)
 	}
 	if _, err = service.Answer(context.Background(), "owner-1", progress.SessionID, taskID, "same-key", testAudio(1), "audio/wav"); err == nil {
@@ -340,7 +340,7 @@ func TestVariableSizeCompetenciesAdvanceAndCountActualTasks(t *testing.T) {
 		t.Run(fmt.Sprintf("perfect=%v", perfect), func(t *testing.T) {
 			results := []gradeResult{grade(0), grade(1), gradeBasic(1), grade(0), gradeBasic(0), gradeBasic(1)}
 			if perfect {
-				results = []gradeResult{grade(2), grade(2), grade(2)}
+				results = []gradeResult{grade(3), grade(3), grade(3)}
 			}
 			service, _, _, variants := newTestService(results...)
 			value := testVariant()
@@ -381,11 +381,11 @@ func TestVariableSizeCompetenciesAdvanceAndCountActualTasks(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			wantScore, wantSkipped := 1, 0
+			wantScore, wantSkipped := 3, 0
 			if perfect {
-				wantScore, wantSkipped = 6, 3
+				wantScore, wantSkipped = 9, 3
 			}
-			if result.TotalTasks != 6 || result.MaximumScore != 6 || result.DiagnosticScore != wantScore || len(result.UntestedBasics) != wantSkipped {
+			if result.TotalTasks != 6 || result.MaximumScore != 9 || result.DiagnosticScore != wantScore || len(result.UntestedBasics) != wantSkipped {
 				t.Fatalf("result: %+v", result)
 			}
 		})
@@ -406,7 +406,7 @@ func (r *transcriptionReaderStub) TextByOwner(_ context.Context, owner, id strin
 }
 
 func TestConfirmedTranscriptionReusesPreviewAndIdempotentResult(t *testing.T) {
-	s, voice, grader, _ := newTestService(grade(2))
+	s, voice, grader, _ := newTestService(grade(3))
 	reader := &transcriptionReaderStub{owner: "owner-1", id: "preview-1", text: "Показанный ответ"}
 	s.WithTranscriptions(reader)
 	progress, _, err := s.Start(t.Context(), "owner-1", "variant-1", "start")
@@ -426,7 +426,7 @@ func TestConfirmedTranscriptionReusesPreviewAndIdempotentResult(t *testing.T) {
 }
 
 func TestForeignPreviewDoesNotGradeOrAdvanceDiagnostic(t *testing.T) {
-	s, voice, grader, _ := newTestService(grade(2))
+	s, voice, grader, _ := newTestService(grade(3))
 	s.WithTranscriptions(&transcriptionReaderStub{owner: "someone-else", id: "preview-1", text: "Ответ"})
 	p, _, err := s.Start(t.Context(), "owner-1", "variant-1", "start")
 	if err != nil {
@@ -438,5 +438,21 @@ func TestForeignPreviewDoesNotGradeOrAdvanceDiagnostic(t *testing.T) {
 	after, err := s.Read(t.Context(), "owner-1", p.SessionID)
 	if err != nil || after.Completed != 0 || grader.calls != 0 || voice.transcribes != 0 {
 		t.Fatalf("advanced without owned text: %+v %v", after, err)
+	}
+}
+
+func TestBasicsContributeToThreePointCompetencyTotal(t *testing.T) {
+	perfect := grade(3)
+	perfect.evaluation.Score, perfect.evaluation.MaxScore = 3, 3
+	partial := grade(1)
+	partial.evaluation.MaxScore = 3
+	service, _, _, _ := newTestService(partial, gradeBasic(1), gradeBasic(1), perfect)
+	progress := service.start(t)
+	for _, key := range []string{"main", "basic-one", "basic-two", "perfect"} {
+		progress = service.answer(t, progress, key)
+	}
+	result, err := service.Result(context.Background(), "owner-1", progress.SessionID)
+	if err != nil || result.DiagnosticScore != 6 || result.MaximumScore != 6 || len(result.UntestedBasics) != 2 {
+		t.Fatalf("result: %+v, %v", result, err)
 	}
 }

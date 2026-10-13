@@ -265,7 +265,7 @@ func (s *Service) answerRequest(ctx context.Context, ownerID, sessionID, taskID,
 		}
 		maxScore := 1
 		if current.Role == "main" {
-			maxScore = 2
+			maxScore = 3
 		}
 		answer := diagnostic.Answer{
 			Skipped:       true,
@@ -340,13 +340,11 @@ func (s *Service) Result(ctx context.Context, ownerID, sessionID string) (diagno
 		SessionID: value.ID, Status: value.Status, VariantID: value.VariantID,
 		MapRevision: value.Variant.MapRevision, IncludedCompetencyCount: value.Variant.IncludedCompetencyCount,
 		SkippedCompetencies: append([]diagnostic.SkippedCompetency{}, value.Variant.SkippedCompetencies...), CompletedTasks: len(value.Answers),
-		TotalTasks: value.Variant.TaskCount(), MaximumScore: value.Variant.IncludedCompetencyCount * 2,
+		TotalTasks: value.Variant.TaskCount(), MaximumScore: value.Variant.IncludedCompetencyCount * 3,
 		Answers: append([]diagnostic.Answer(nil), value.Answers...), UntestedBasics: append([]diagnostic.TaskSnapshot{}, value.SkippedBasics...),
 	}
 	for _, answer := range value.Answers {
-		if answer.Role == "main" {
-			result.DiagnosticScore += answer.Score
-		}
+		result.DiagnosticScore += answer.Score
 	}
 	return result, nil
 }
@@ -356,19 +354,19 @@ func (s *Service) ResultForTraining(ctx context.Context, ownerID, sessionID stri
 }
 
 func validateEvaluation(value assessment.Evaluation, role string) error {
-	maxScore := 2
+	maxScore := 3
 	if role == "basic" {
 		maxScore = 1
 	} else if role != "main" {
 		return fault.New(fault.Upstream, "ASSESSMENT_INVALID_RESPONSE", "Задание содержит неизвестную роль.")
 	}
-	if value.MaxScore != maxScore || value.Score < 0 || value.Score > maxScore {
+	if value.MaxScore != maxScore || value.Score < 0 || value.Score > maxScore || (role == "main" && value.Score == 2) {
 		return fault.New(fault.Upstream, "ASSESSMENT_INVALID_RESPONSE", "Грейдер вернул оценку вне диапазона роли задания.")
 	}
 	want := "incorrect"
 	if value.Score == maxScore {
 		want = "correct"
-	} else if maxScore == 2 && value.Score == 1 {
+	} else if maxScore == 3 && value.Score == 1 {
 		want = "partial"
 	}
 	if value.Verdict != want || len(value.CriterionResults) == 0 || len(value.Feedback) != 3 {
@@ -394,7 +392,7 @@ func nextTransition(value diagnostic.Session, answer diagnostic.Answer) diagnost
 		Status:            value.Status,
 	}
 	competency := value.Variant.Competencies[value.CurrentCompetency]
-	if answer.Role == "main" && answer.Score == 2 {
+	if answer.Role == "main" && answer.Verdict == "correct" {
 		transition.SkippedBasics = append(transition.SkippedBasics, competency.Tasks[value.CurrentTask+1:]...)
 		transition.CurrentCompetency++
 		transition.CurrentTask = 0

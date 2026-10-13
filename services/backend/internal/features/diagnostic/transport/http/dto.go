@@ -45,9 +45,9 @@ type ProgressResponse struct {
 	CurrentCompetency int                       `json:"current_competency,omitempty" minimum:"1" binding:"optional"`
 	CurrentStep       int                       `json:"current_step,omitempty" minimum:"0" maximum:"2" binding:"optional"`
 	Current           *TaskResponse             `json:"current,omitempty" binding:"optional"`
-	Score             *int                      `json:"score,omitempty" minimum:"0" maximum:"2" binding:"optional"`
-	GraderScore       *int                      `json:"grader_score,omitempty" minimum:"0" maximum:"2" binding:"optional"`
-	GraderMaxScore    *int                      `json:"grader_max_score,omitempty" minimum:"1" maximum:"2" binding:"optional"`
+	Score             *int                      `json:"score,omitempty" minimum:"0" maximum:"3" binding:"optional"`
+	GraderScore       *int                      `json:"grader_score,omitempty" minimum:"0" maximum:"3" binding:"optional"`
+	GraderMaxScore    *int                      `json:"grader_max_score,omitempty" minimum:"1" maximum:"3" binding:"optional"`
 	Verdict           string                    `json:"verdict,omitempty" enums:"correct,partial,incorrect" binding:"optional"`
 	CriterionResults  []CriterionResultResponse `json:"criterion_results,omitempty" binding:"optional"`
 	Feedback          []string                  `json:"feedback,omitempty" minItems:"3" maxItems:"3" binding:"optional"`
@@ -63,9 +63,9 @@ type AnswerResponse struct {
 	Task             TaskResponse              `json:"task"`
 	TranscriptionID  string                    `json:"transcription_id"`
 	Text             string                    `json:"text"`
-	GraderScore      int                       `json:"grader_score" minimum:"0" maximum:"2"`
-	GraderMaxScore   int                       `json:"grader_max_score" minimum:"1" maximum:"2"`
-	Score            int                       `json:"score" minimum:"0" maximum:"2"`
+	GraderScore      int                       `json:"grader_score" minimum:"0" maximum:"3"`
+	GraderMaxScore   int                       `json:"grader_max_score" minimum:"1" maximum:"3"`
+	Score            int                       `json:"score" minimum:"0" maximum:"3"`
 	Verdict          string                    `json:"verdict" enums:"correct,partial,incorrect"`
 	CriterionResults []CriterionResultResponse `json:"criterion_results" minItems:"1"`
 	Feedback         []string                  `json:"feedback" minItems:"3" maxItems:"3"`

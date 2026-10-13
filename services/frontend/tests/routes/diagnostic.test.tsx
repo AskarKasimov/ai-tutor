@@ -73,8 +73,8 @@ const resultBody = {
   skipped_competencies: [],
   completed_tasks: 1,
   total_tasks: 3,
-  diagnostic_score: 2,
-  maximum_score: 2,
+  diagnostic_score: 3,
+  maximum_score: 3,
   answers: [
     {
       variant_task_id: 'v-main',
@@ -85,9 +85,9 @@ const resultBody = {
       task: main,
       transcription_id: 'tr1',
       text: 'Настоящая расшифровка',
-      grader_score: 2,
-      grader_max_score: 2,
-      score: 2,
+      grader_score: 3,
+      grader_max_score: 3,
+      score: 3,
       verdict: 'correct',
       criterion_results: criteria,
       feedback,
@@ -171,7 +171,7 @@ function server(
         text: 'Я не знаю. Пропустить',
         score: 0,
         grader_score: 0,
-        grader_max_score: 2,
+        grader_max_score: 3,
         verdict: 'incorrect',
         criterion_results: [
           { key: 'skipped', satisfied: false, explanation: 'Вопрос пропущен.' },
@@ -201,9 +201,9 @@ function server(
         completed_tasks: 1,
         skipped_tasks: totalTasks - 1,
         text: 'Настоящая расшифровка',
-        score: 2,
-        grader_score: 2,
-        grader_max_score: 2,
+        score: 3,
+        grader_score: 3,
+        grader_max_score: 3,
         verdict: 'correct',
         criterion_results: criteria,
         feedback,
@@ -222,8 +222,8 @@ function server(
       }
       return Response.json({
         session_id: 'session-real',
-        diagnostic_score: 2,
-        maximum_score: 2,
+        diagnostic_score: 3,
+        maximum_score: 3,
         score_percentage: 100,
         summary,
         strengths,
@@ -371,7 +371,7 @@ it('runs real diagnostic audio, obeys skipped basics and displays the server tot
   // The answer is only confirmed: no score, verdict or feedback per task.
   expect(await screen.findByText('Ответ принят')).toBeVisible()
   expect(screen.queryByText(feedback.join(' '))).not.toBeInTheDocument()
-  expect(screen.queryByText('2 / 2')).not.toBeInTheDocument()
+  expect(screen.queryByText('3 / 3')).not.toBeInTheDocument()
   expect(screen.queryByText('Верно')).not.toBeInTheDocument()
   expect(screen.queryByText('Модель названа.')).not.toBeInTheDocument()
   expect(screen.queryByText(/Критерий (не )?выполнен/)).not.toBeInTheDocument()
@@ -392,7 +392,7 @@ it('runs real diagnostic audio, obeys skipped basics and displays the server tot
   ).toBeVisible()
   expect(
     screen.getByText('Диагностический балл').parentElement,
-  ).toHaveTextContent('2 / 2')
+  ).toHaveTextContent('3 / 3')
   expect(
     screen.queryByRole('button', { name: 'Подтянуть слабые темы' }),
   ).not.toBeInTheDocument()
@@ -475,7 +475,7 @@ it('keeps the diagnostic result visible and retries failed overall feedback', as
   ).toBeVisible()
   expect(
     screen.getByText('Диагностический балл').parentElement,
-  ).toHaveTextContent('2 / 2')
+  ).toHaveTextContent('3 / 3')
   fireEvent.click(
     screen.getByRole('button', { name: 'Повторить загрузку фидбэка' }),
   )
@@ -765,7 +765,7 @@ it('shows progress by topic and adds clarifying questions only when asked', asyn
           text: 'Неуверенный ответ',
           score: 0,
           grader_score: 0,
-          grader_max_score: 2,
+          grader_max_score: 3,
           verdict: 'incorrect',
           criterion_results: criteria,
           feedback,
@@ -885,7 +885,7 @@ it('allows starting a fresh diagnostic after the backend has lost the stored ses
   ).toHaveLength(2)
 })
 
-it('uses backend basic tasks with a 0/1 scale and excludes them from the diagnostic total', async () => {
+it('uses backend basic tasks with a 0/1 scale and includes them in the diagnostic total', async () => {
   const requests = server()
   let position = 0
   const tasks = [main, basic, basic2]
@@ -903,7 +903,7 @@ it('uses backend basic tasks with a 0/1 scale and excludes them from the diagnos
           status: position === 3 ? 'completed' : 'active',
           score: scores[index],
           grader_score: scores[index],
-          grader_max_score: index === 0 ? 2 : 1,
+          grader_max_score: index === 0 ? 3 : 1,
           verdict:
             index === 2 ? 'incorrect' : index === 1 ? 'correct' : 'partial',
           criterion_results: criteria,
@@ -913,7 +913,7 @@ it('uses backend basic tasks with a 0/1 scale and excludes them from the diagnos
       if (url.endsWith('/result'))
         return Response.json({
           ...resultBody,
-          diagnostic_score: 1,
+          diagnostic_score: 2,
           completed_tasks: 3,
           untested_basics: [],
           answers: tasks.map((task, index) => ({
@@ -924,7 +924,7 @@ it('uses backend basic tasks with a 0/1 scale and excludes them from the diagnos
             role: task.role,
             score: scores[index],
             grader_score: scores[index],
-            grader_max_score: index === 0 ? 2 : 1,
+            grader_max_score: index === 0 ? 3 : 1,
             verdict:
               index === 2 ? 'incorrect' : index === 1 ? 'correct' : 'partial',
           })),
@@ -952,7 +952,7 @@ it('uses backend basic tasks with a 0/1 scale and excludes them from the diagnos
     )
     expect(await screen.findByText('Ответ принят')).toBeVisible()
     expect(
-      screen.queryByText(`${scores[index]} / ${index === 0 ? 2 : 1}`),
+      screen.queryByText(`${scores[index]} / ${index === 0 ? 3 : 1}`),
     ).not.toBeInTheDocument()
     fireEvent.click(
       screen.getByRole('button', {
@@ -963,7 +963,7 @@ it('uses backend basic tasks with a 0/1 scale and excludes them from the diagnos
   expect(await screen.findByText('Диагностический балл')).toBeVisible()
   expect(
     screen.getByText('Диагностический балл').parentElement,
-  ).toHaveTextContent('1 / 2')
+  ).toHaveTextContent('2 / 3')
   expect(screen.queryByText(/Не проверено/)).not.toBeInTheDocument()
 })
 
@@ -1180,7 +1180,7 @@ it.each([1, 2])(
     ).toBeVisible()
     expect(
       screen.getByText('Диагностический балл').parentElement,
-    ).toHaveTextContent('2 / 2')
+    ).toHaveTextContent('3 / 3')
     fireEvent.click(
       await screen.findByRole('button', { name: /Посмотреть мои ответы/ }),
     )

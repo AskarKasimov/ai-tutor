@@ -27,6 +27,13 @@
     padding-left: var(--space-3);
     border-left: 3px solid var(--gray-6);
   }
+  :global(.katex-display) {
+    max-width: 100%;
+    margin: 0;
+    padding-block: var(--space-2);
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
   code {
     font-family: var(--code-font-family, ui-monospace, monospace);
   }

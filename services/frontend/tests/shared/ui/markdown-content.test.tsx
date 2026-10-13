@@ -2,6 +2,61 @@ import { render, screen, within } from '@testing-library/react'
 import { expect, it } from 'vitest'
 import { MarkdownContent } from '@/shared/ui'
 
+it('renders inline LaTeX with accessible MathML', () => {
+  const { container } = render(
+    <MarkdownContent text={'Среднее: $\\frac{a+b}{2}$.'} />,
+  )
+  expect(container.querySelector('p .katex')).not.toBeNull()
+  expect(container.querySelector('math mfrac')).not.toBeNull()
+  expect(container.querySelector('annotation')?.textContent).toBe(
+    '\\frac{a+b}{2}',
+  )
+  expect(container.querySelector('.katex-display')).toBeNull()
+})
+
+it('renders block LaTeX separately from surrounding prose', () => {
+  const { container } = render(
+    <MarkdownContent
+      text={
+        'Ошибка:\n\n$$\n\\sum_{i=1}^{n} (y_i - \\hat{y}_i)^2\n$$\n\nПояснение.'
+      }
+    />,
+  )
+  expect(container.querySelector('.katex-display math')).not.toBeNull()
+  expect(container.querySelector('pre')).toBeNull()
+  expect(screen.getByText('Пояснение.')).toBeVisible()
+})
+
+it('preserves math notation inside inline and highlighted code', () => {
+  const { container } = render(
+    <MarkdownContent
+      text={'Пример: `$x^2$`\n\n```python\nformula = "$x^2$"\n```'}
+    />,
+  )
+  expect(container.querySelector('p code')?.textContent).toBe('$x^2$')
+  expect(container.querySelector('pre')?.textContent).toBe(
+    'formula = "$x^2$"\n',
+  )
+  expect(container.querySelector('.katex')).toBeNull()
+  expect(container.querySelector('pre .hljs-string')).not.toBeNull()
+})
+
+it('keeps invalid LaTeX readable without losing the surrounding text', () => {
+  const { container } = render(
+    <MarkdownContent text={'Пример: $\\frac{$\n\nСледующий абзац.'} />,
+  )
+  expect(container.querySelector('.katex-error')?.textContent).toBe('\\frac{')
+  expect(screen.getByText('Следующий абзац.')).toBeVisible()
+})
+
+it('keeps escaped currency as plain text', () => {
+  const { container } = render(
+    <MarkdownContent text={'Стоимость: \\$5 и \\$10.'} />,
+  )
+  expect(screen.getByText('Стоимость: $5 и $10.')).toBeVisible()
+  expect(container.querySelector('.katex')).toBeNull()
+})
+
 it.each(['python', ''])(
   'keeps %s code separate from the following table',
   (language) => {

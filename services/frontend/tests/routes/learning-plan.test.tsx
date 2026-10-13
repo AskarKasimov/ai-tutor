@@ -182,6 +182,7 @@ it('renders teacher Markdown while preserving code and literal student answers',
   const theory = [
     '# Обновление весов',
     '**Градиент** задаёт направление.',
+    'Среднее: $\\frac{a+b}{2}$.',
     '',
     '- Вычислите ошибку.',
     '- Обновите веса.',
@@ -209,7 +210,7 @@ it('renders teacher Markdown while preserving code and literal student answers',
       sequence: 4,
       role: 'user',
       kind: 'answer',
-      text: '**Это мои слова**',
+      text: '**Это мои слова** $x^2$',
     },
   ])
   await screen.findByText('Теория')
@@ -223,5 +224,6 @@ it('renders teacher Markdown while preserving code and literal student answers',
   expect(container.querySelector('pre')?.textContent).toBe(
     'for step in range(2):\n    print("a\\nb")\n',
   )
-  expect(screen.getByText('**Это мои слова**')).toBeVisible()
+  expect(container.querySelector('math mfrac')).not.toBeNull()
+  expect(screen.getByText('**Это мои слова** $x^2$')).toBeVisible()
 })

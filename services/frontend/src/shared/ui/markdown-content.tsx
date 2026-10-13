@@ -1,11 +1,17 @@
 import { useMemo } from 'react'
-import Markdown, { type Components } from 'react-markdown'
+import Markdown, { type Components, type Options } from 'react-markdown'
 import remarkBreaks from 'remark-breaks'
 import remarkGfm from 'remark-gfm'
+import remarkMath from 'remark-math'
+import rehypeKatex from 'rehype-katex'
+import 'katex/dist/katex.min.css'
 import { MarkdownCodeBlock } from './markdown-code-block'
 import styles from './markdown-content.module.scss'
 
-const plugins = [remarkGfm, remarkBreaks]
+const plugins = [remarkGfm, remarkBreaks, remarkMath]
+const rehypePlugins: Options['rehypePlugins'] = [
+  [rehypeKatex, { errorColor: 'var(--ruby-11)' }],
+]
 const defaultComponents: Components = {
   pre: ({ children }) => <MarkdownCodeBlock>{children}</MarkdownCodeBlock>,
   table: ({ children }) => (
@@ -73,6 +79,7 @@ export function MarkdownContent({
     <div className={`${styles.content} ${className ?? ''}`}>
       <Markdown
         remarkPlugins={plugins}
+        rehypePlugins={rehypePlugins}
         components={
           components
             ? { ...defaultComponents, ...components }

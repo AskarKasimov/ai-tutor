@@ -13,8 +13,9 @@ import (
 
 func TestTeacherPreservesMarkdownInJSONTextFields(t *testing.T) {
 	theory := "**Обновление весов**\n\n```python\nfor step in range(2):\n    print(\"a\\nb\")\n```\n\n| Шаг | Loss |\n|---|---:|\n| 1 | 0.5 |"
-	question := "Объясните `grad_w`."
-	feedback := "**Уточните:** вычитайте градиент."
+	theory += "\n\n$$\n\\frac{a+b}{2}\n$$"
+	question := "Объясните $\\hat{y}$."
+	feedback := "**Уточните:** вычитайте $\\nabla L$."
 	for _, check := range []bool{false, true} {
 		name := "lesson"
 		if check {

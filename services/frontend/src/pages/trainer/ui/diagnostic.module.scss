@@ -14,6 +14,30 @@
     margin: 0 0 var(--space-3);
   }
 }
+.reviewAudio {
+  margin: var(--space-3) 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+
+  button {
+    align-self: flex-start;
+  }
+}
+.reviewAnswerSection {
+  margin: var(--space-4) 0;
+}
+.reviewAnswerText {
+  margin: var(--space-1) 0 0;
+  font-size: 15px;
+  line-height: 24px;
+  color: var(--app-ink);
+  overflow-wrap: anywhere;
+}
+.reviewScore {
+  margin-top: 10px;
+}
 // The overall feedback: the summary as a large phrase, then light coloured
 // cards — what already works, what is almost there and what to work on next.
 .overallFeedback {

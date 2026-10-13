@@ -9,11 +9,14 @@ import {
   Sparkles,
   Zap,
 } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/features/auth'
-import { DiagnosticApiError } from '@/entities/diagnostic-session'
+import {
+  DiagnosticApiError,
+  fetchDiagnosticAudioFile,
+} from '@/entities/diagnostic-session'
 import {
   useDiagnosticResultQuery,
   useDiagnosticFeedbackQuery,
@@ -24,6 +27,7 @@ import type {
   DiagnosticProgress,
   DiagnosticTask,
 } from '@/entities/diagnostic-session'
+import { playQuestion } from '@/shared/lib'
 import {
   ListenButton,
   TrainerCapturePanel,
@@ -439,12 +443,14 @@ function Feedback({
       <Text as="p" className={styles.eyebrow}>
         {t('session.result')}
       </Text>
-      <TrainerScore
-        score={score}
-        maxScore={maxScore}
-        verdict={t(`diagnostic.verdict.${skipped ? 'skipped' : verdict}`)}
-        skipped={skipped}
-      />
+      <div className={diagnosticStyles.reviewScore}>
+        <TrainerScore
+          score={score}
+          maxScore={maxScore}
+          verdict={t(`diagnostic.verdict.${skipped ? 'skipped' : verdict}`)}
+          skipped={skipped}
+        />
+      </div>
       <Heading as={heading} className={styles.feedbackTitle}>
         {t('trainer.feedback')}
       </Heading>
@@ -455,6 +461,89 @@ function Feedback({
     </>
   )
 }
+function useReviewAudioPlayer() {
+  const [playingId, setPlayingId] = useState<string | null>(null)
+  const [loadingId, setLoadingId] = useState<string | null>(null)
+  const [errorId, setErrorId] = useState<string | null>(null)
+
+  const activeController = useRef<AbortController | null>(null)
+  const activeDispose = useRef<(() => void) | null>(null)
+
+  const stop = useCallback(() => {
+    if (activeController.current) {
+      activeController.current.abort()
+      activeController.current = null
+    }
+    if (activeDispose.current) {
+      activeDispose.current()
+      activeDispose.current = null
+    }
+    setPlayingId(null)
+    setLoadingId(null)
+  }, [])
+
+  const play = useCallback(
+    async (sourceTaskId: string) => {
+      if (playingId === sourceTaskId || loadingId === sourceTaskId) {
+        stop()
+        return
+      }
+
+      stop()
+      setErrorId(null)
+      setLoadingId(sourceTaskId)
+
+      const controller = new AbortController()
+      activeController.current = controller
+
+      try {
+        const audioId = sourceTaskId.startsWith('taskaudio_')
+          ? sourceTaskId
+          : `taskaudio_${sourceTaskId}`
+        const audioUrl = `/task-audio/${audioId}/file`
+        const blob = await fetchDiagnosticAudioFile(audioUrl, controller.signal)
+        if (controller.signal.aborted) return
+
+        setLoadingId(null)
+        setPlayingId(sourceTaskId)
+
+        const dispose = await playQuestion(
+          blob,
+          () => {
+            activeDispose.current = null
+            setPlayingId(null)
+          },
+          () => {
+            activeDispose.current = null
+            setPlayingId(null)
+            setErrorId(sourceTaskId)
+          },
+        )
+        if (controller.signal.aborted) {
+          dispose()
+          return
+        }
+        activeDispose.current = dispose
+      } catch {
+        if (!controller.signal.aborted) {
+          setLoadingId(null)
+          setPlayingId(null)
+          setErrorId(sourceTaskId)
+        }
+      }
+    },
+    [playingId, loadingId, stop],
+  )
+
+  useEffect(() => {
+    return () => {
+      stop()
+    }
+  }, [stop])
+
+  return { playingId, loadingId, errorId, play, stop }
+}
+
 function DiagnosticSummary({
   userId,
   sessionId,
@@ -472,6 +561,7 @@ function DiagnosticSummary({
   const overall = useDiagnosticFeedbackQuery(userId, sessionId)
   // The task review is long; it stays folded so training is one click away.
   const [reviewOpen, setReviewOpen] = useState(false)
+  const reviewAudio = useReviewAudioPlayer()
   const { handleError } = training
   useEffect(() => {
     if (result.error) handleError(result.error)
@@ -559,7 +649,12 @@ function DiagnosticSummary({
             className={diagnosticStyles.reviewToggle}
             aria-expanded={reviewOpen}
             aria-controls="task-review"
-            onClick={() => setReviewOpen((open) => !open)}
+            onClick={() =>
+              setReviewOpen((open) => {
+                if (open) reviewAudio.stop()
+                return !open
+              })
+            }
           >
             <ChevronRight
               size={20}
@@ -583,13 +678,44 @@ function DiagnosticSummary({
                       question={answer.task.question}
                       headingLevel="h3"
                     />
-                    <Text as="p" className={styles.eyebrow}>
-                      {answer.task.competency_name} ·{' '}
-                      {t(`diagnostic.${answer.role}`)}
-                    </Text>
-                    <Text as="p" className={styles.transcript}>
-                      {answer.text}
-                    </Text>
+                    {answer.task.source_task_id && (
+                      <div className={diagnosticStyles.reviewAudio}>
+                        <ListenButton
+                          state={
+                            reviewAudio.loadingId === answer.task.source_task_id
+                              ? 'loading'
+                              : reviewAudio.playingId ===
+                                  answer.task.source_task_id
+                                ? 'playing'
+                                : 'idle'
+                          }
+                          onClick={() =>
+                            void reviewAudio.play(answer.task.source_task_id)
+                          }
+                        />
+                        {reviewAudio.errorId ===
+                          answer.task.source_task_id && (
+                          <Text
+                            as="p"
+                            role="alert"
+                            className={sessionStyles.hint}
+                          >
+                            {t('trainer.speechError')}
+                          </Text>
+                        )}
+                      </div>
+                    )}
+                    <div className={diagnosticStyles.reviewAnswerSection}>
+                      <Text as="p" className={styles.eyebrow}>
+                        {t('trainer.yourAnswer')}
+                      </Text>
+                      <Text
+                        as="p"
+                        className={diagnosticStyles.reviewAnswerText}
+                      >
+                        {answer.text}
+                      </Text>
+                    </div>
                     <Feedback
                       heading="h4"
                       score={answer.score}

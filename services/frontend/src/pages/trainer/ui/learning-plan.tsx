@@ -8,7 +8,6 @@ import {
   Lock,
   LoaderCircle,
   Mic,
-  Play,
   RotateCcw,
   Rocket,
   Square,
@@ -336,7 +335,7 @@ function StatusIcon({ status }: { status: LearningItem['status'] }) {
       ) : status === 'pending' ? (
         <Lock size={12} />
       ) : (
-        <Play size={11} fill="currentColor" />
+        <span className={styles.currentDot} />
       )}
     </span>
   )
@@ -387,12 +386,7 @@ function Outline({
               <span className={styles.outcomeText}>
                 <span className={styles.outcomeName}>{item.outcome_name}</span>
                 <span className={styles.outcomeMeta}>
-                  {t('learning.minutes', {
-                    theory: item.theory_minutes,
-                    practice: item.practice_minutes,
-                  })}
-                  {' · '}
-                  {t(`learning.status.${item.status}`)}
+                  {t('learning.minutes', { count: item.theory_minutes })}
                 </span>
               </span>
             </button>

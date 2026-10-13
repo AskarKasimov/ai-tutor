@@ -21,7 +21,7 @@ func TrainingTargets(answers []Answer) []TrainingTarget {
 	seen := map[string]bool{}
 	for _, a := range answers {
 		m, exists := main[a.CompetencyID]
-		if !exists || m.Score == 2 {
+		if !exists || m.Score >= 2 {
 			continue
 		}
 		kind := ""

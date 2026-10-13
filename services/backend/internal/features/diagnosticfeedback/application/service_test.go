@@ -61,18 +61,18 @@ func (m *mockStore) Save(_ context.Context, ownerID string, feedback diagnostic.
 func TestAnalyzeResultDeterministicRules(t *testing.T) {
 	result := diagnostic.Result{
 		SessionID:               "sess-1",
-		DiagnosticScore:         3,
-		MaximumScore:            6,
+		DiagnosticScore:         7,
+		MaximumScore:            9,
 		IncludedCompetencyCount: 3,
 		SkippedCompetencies: []diagnostic.SkippedCompetency{
 			{ID: "c-skip", Name: "Рекомендательные системы", Code: "INSUFFICIENT_DISTINCT_OUTCOMES"},
 		},
 		Answers: []diagnostic.Answer{
-			// Competency 1: Main=2 (Mastered)
+			// Competency 1: Main=3 (Mastered)
 			{
 				Role:         "main",
 				CompetencyID: "c-1",
-				Score:        2,
+				Score:        3,
 				Task: diagnostic.TaskSnapshot{
 					CompetencyID:   "c-1",
 					CompetencyName: "Обучение с учителем",
@@ -167,8 +167,8 @@ func TestAnalyzeResultDeterministicRules(t *testing.T) {
 
 	report := AnalyzeResult(result)
 
-	if report.ScorePercentage != 50 {
-		t.Fatalf("ScorePercentage = %d, want 50", report.ScorePercentage)
+	if report.ScorePercentage != 77 {
+		t.Fatalf("ScorePercentage = %d, want 77", report.ScorePercentage)
 	}
 
 	if len(report.Strengths) != 1 {
@@ -207,7 +207,7 @@ func TestAnalyzeResultDeterministicRules(t *testing.T) {
 }
 
 func TestAnalyzeResultTreatsUserSkippedAnswerAsZero(t *testing.T) {
-	result := diagnostic.Result{MaximumScore: 2, Answers: []diagnostic.Answer{
+	result := diagnostic.Result{MaximumScore: 3, Answers: []diagnostic.Answer{
 		{CompetencyID: "c1", OutcomeID: "main", Role: "main", Score: 1, Task: diagnostic.TaskSnapshot{CompetencyName: "Тема", OutcomeID: "main"}},
 		{CompetencyID: "c1", OutcomeID: "basic", Role: "basic", Skipped: true, Task: diagnostic.TaskSnapshot{CompetencyName: "Тема", OutcomeID: "basic"}},
 	}}

@@ -23,7 +23,8 @@ criterion_results — массив: по одному объекту на каж
 
 Оценка:
 - невыполненный критерий mandatory=true всегда даёт 0/incorrect;
-- иначе main/training (max_score=2): все критерии выполнены — 2/correct, часть — 1/partial, ни один — 0/incorrect;
+- иначе main (max_score=3): все критерии выполнены — 3/correct, часть — 1/partial, ни один — 0/incorrect; 2 балла недопустимы;
+- training (max_score=2): все критерии выполнены — 2/correct, часть — 1/partial, ни один — 0/incorrect;
 - basic (max_score=1): все выполнены — 1/correct, иначе 0/incorrect.
 
 feedback — массив из ровно трёх непустых предложений на русском, без переносов строк. Это один связный мини-отзыв: наблюдение по ответу, главное уточнение, конкретный следующий шаг. Не повторяй условие, вердикт или одну мысль дважды. Без заголовков «Критерий не выполнен», списков и лишних двоеточий. Не выдумывай достоинства ответа. Цель — до 180 символов суммарно с пробелами между предложениями; выбирай краткие формулировки, не подсчитывай символы вручную.`
@@ -61,7 +62,7 @@ func invalidGradingContext() error {
 func (c *Client) Grade(ctx context.Context, gradingContext application.GradingContext, answer string) (application.Evaluation, error) {
 	role := gradingContext.Role
 	maxScore := gradingContext.MaxScore
-	if !(((role == "main" || role == "training") && maxScore == 2) || (role == "basic" && maxScore == 1)) {
+	if !(((role == "main" && maxScore == 3) || (role == "training" && maxScore == 2)) || (role == "basic" && maxScore == 1)) {
 		return application.Evaluation{}, invalidGradingContext()
 	}
 

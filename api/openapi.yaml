@@ -58,11 +58,11 @@ components:
           type: array
           uniqueItems: false
         max_score:
-          maximum: 2
+          maximum: 3
           minimum: 1
           type: integer
         score:
-          maximum: 2
+          maximum: 3
           minimum: 0
           type: integer
         verdict:
@@ -374,11 +374,11 @@ components:
           type: array
           uniqueItems: false
         grader_max_score:
-          maximum: 2
+          maximum: 3
           minimum: 1
           type: integer
         grader_score:
-          maximum: 2
+          maximum: 3
           minimum: 0
           type: integer
         outcome_id:
@@ -389,7 +389,7 @@ components:
             - basic
           type: string
         score:
-          maximum: 2
+          maximum: 3
           minimum: 0
           type: integer
         skipped:
@@ -527,15 +527,15 @@ components:
           type: array
           uniqueItems: false
         grader_max_score:
-          maximum: 2
+          maximum: 3
           minimum: 1
           type: integer
         grader_score:
-          maximum: 2
+          maximum: 3
           minimum: 0
           type: integer
         score:
-          maximum: 2
+          maximum: 3
           minimum: 0
           type: integer
         session_id:

@@ -197,7 +197,7 @@ func TestDiagnosticSessionAPIProgressOwnershipAndSnapshotPrivacy(t *testing.T) {
 		t.Fatalf("answer: %d %s", answerResponse.Code, answerResponse.Body.String())
 	}
 	var completed diagnostichttp.ProgressResponse
-	if err := json.Unmarshal(answerResponse.Body.Bytes(), &completed); err != nil || completed.Status != "completed" || completed.Score == nil || *completed.Score != 2 || completed.GraderMaxScore == nil || *completed.GraderMaxScore != 2 || completed.Skipped != 2 {
+	if err := json.Unmarshal(answerResponse.Body.Bytes(), &completed); err != nil || completed.Status != "completed" || completed.Score == nil || *completed.Score != 3 || completed.GraderMaxScore == nil || *completed.GraderMaxScore != 3 || completed.Skipped != 2 {
 		t.Fatalf("invalid answer response: %s, %v", answerResponse.Body.String(), err)
 	}
 	result := f.request(http.MethodGet, "/diagnostic-sessions/"+completed.SessionID+"/result", "", access)
@@ -214,7 +214,7 @@ func TestDiagnosticSessionAPIProgressOwnershipAndSnapshotPrivacy(t *testing.T) {
 		} `json:"answers"`
 		UntestedBasics []map[string]any `json:"untested_basics"`
 	}
-	if err := json.Unmarshal(result.Body.Bytes(), &resultBody); err != nil || resultBody.DiagnosticScore != 2 || resultBody.MaximumScore != 2 || len(resultBody.Answers) != 1 || resultBody.Answers[0].GraderMaxScore != 2 || len(resultBody.UntestedBasics) != 2 {
+	if err := json.Unmarshal(result.Body.Bytes(), &resultBody); err != nil || resultBody.DiagnosticScore != 3 || resultBody.MaximumScore != 3 || len(resultBody.Answers) != 1 || resultBody.Answers[0].GraderMaxScore != 3 || len(resultBody.UntestedBasics) != 2 {
 		t.Fatalf("invalid result data: %s, %v", result.Body.String(), err)
 	}
 	feedbackResp := f.request(http.MethodGet, "/diagnostic-sessions/"+completed.SessionID+"/feedback", "", access)

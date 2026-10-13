@@ -44,7 +44,9 @@ func validText(value string, max int) bool {
 
 func gradingMaxScore(gradingContext GradingContext) (int, error) {
 	switch {
-	case (gradingContext.Role == "main" || gradingContext.Role == "training") && gradingContext.MaxScore == 2:
+	case gradingContext.Role == "main" && gradingContext.MaxScore == 3:
+		return 3, nil
+	case gradingContext.Role == "training" && gradingContext.MaxScore == 2:
 		return 2, nil
 	case gradingContext.Role == "basic" && gradingContext.MaxScore == 1:
 		return 1, nil
@@ -69,7 +71,7 @@ func expectedVerdict(score, maxScore int) string {
 		}
 	}
 	switch score {
-	case 2:
+	case maxScore:
 		return "correct"
 	case 1:
 		return "partial"
@@ -154,7 +156,7 @@ func validateEvaluation(result Evaluation, gradingContext GradingContext) error 
 				expectedScore = 1
 			}
 		} else if satisfied == len(gradingContext.Criteria) {
-			expectedScore = 2
+			expectedScore = maxScore
 		} else if satisfied > 0 {
 			expectedScore = 1
 		}

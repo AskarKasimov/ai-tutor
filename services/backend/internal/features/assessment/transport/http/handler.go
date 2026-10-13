@@ -17,8 +17,8 @@ type EvaluateRequest struct {
 }
 
 type EvaluateResponse struct {
-	Score            int                           `json:"score" minimum:"0" maximum:"2"`
-	MaxScore         int                           `json:"max_score" minimum:"1" maximum:"2"`
+	Score            int                           `json:"score" minimum:"0" maximum:"3"`
+	MaxScore         int                           `json:"max_score" minimum:"1" maximum:"3"`
 	Verdict          string                        `json:"verdict" enums:"correct,partial,incorrect"`
 	CriterionResults []application.CriterionResult `json:"criterion_results"`
 	Feedback         []string                      `json:"feedback" minItems:"3" maxItems:"3"`

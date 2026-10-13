@@ -94,25 +94,22 @@ func (s *Service) plan(ctx context.Context, owner, id string) (training.Session,
 		if err = json.Unmarshal(raw, &task); err != nil {
 			return state, err
 		}
-		max := 2
-		if target.Kind == "confirmed_gap" {
-			max = 1
-		}
+		max := diagnosticAnswerMaxScore(target.Answer)
 		criteria := []training.CriterionResult{}
 		for _, c := range target.Answer.CriterionResults {
 			criteria = append(criteria, training.CriterionResult{Key: c.Key, Satisfied: c.Satisfied, Explanation: c.Explanation})
 		}
 		state.Targets = append(state.Targets, training.Target{Kind: target.Kind, Source: task, OriginalScore: target.Answer.Score, OriginalMaxScore: max, OriginalFeedback: append([]string{}, target.Answer.Feedback...), OriginalCriteria: criteria})
 	}
-	score := 0
+	perfectMains := 0
 	for _, a := range d.Answers {
-		if a.Role == "main" {
-			score += a.Score
+		state.DiagnosticScore += a.Score
+		if a.Role == "main" && a.Score >= 2 {
+			perfectMains++
 		}
-		state.DiagnosticScore = score
-		state.MaximumScore = 2 * d.Variant.IncludedCompetencyCount
 	}
-	if len(state.Targets) == 0 && d.Variant.IncludedCompetencyCount > 0 && score == 2*d.Variant.IncludedCompetencyCount {
+	state.MaximumScore = 3 * d.Variant.IncludedCompetencyCount
+	if len(state.Targets) == 0 && d.Variant.IncludedCompetencyCount > 0 && perfectMains == d.Variant.IncludedCompetencyCount {
 		state.Mode = "free_practice"
 		revision, tasks, err := s.repo.Practice(ctx, state.SubjectID)
 		if err != nil {
@@ -130,10 +127,7 @@ func (s *Service) plan(ctx context.Context, owner, id string) (training.Session,
 			for _, a := range d.Answers {
 				if a.OutcomeID == task.OutcomeID {
 					target.OriginalScore = a.Score
-					target.OriginalMaxScore = 2
-					if a.Role == "basic" {
-						target.OriginalMaxScore = 1
-					}
+					target.OriginalMaxScore = diagnosticAnswerMaxScore(a)
 					break
 				}
 			}
@@ -428,4 +422,18 @@ func (s *Service) RegenerateCurrentAudio(ctx context.Context, owner, id, exercis
 		return audioasset.Metadata{}, fault.New(fault.Unavailable, "AUDIO_STORAGE_UNAVAILABLE", "Озвучка временно недоступна.")
 	}
 	return audioasset.Metadata{Status: asset.Status, AudioURL: asset.AudioURL}, nil
+}
+
+// Retain the original scale for historical diagnostic answers.
+func diagnosticAnswerMaxScore(answer diagnostic.Answer) int {
+	if answer.GraderMaxScore > 0 {
+		return answer.GraderMaxScore
+	}
+	if answer.Role == "basic" {
+		return 1
+	}
+	if answer.Score == 2 {
+		return 2
+	}
+	return 3
 }

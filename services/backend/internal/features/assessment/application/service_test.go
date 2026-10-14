@@ -161,7 +161,7 @@ func TestSubjectKnowledgeIsNotReplacedByInstructionFollowing(t *testing.T) {
 			result.Verdict = expectedVerdict(tc.score, gc.MaxScore)
 			result.CriterionResults[0].Satisfied = tc.full
 			result.CriterionResults[1].Satisfied = tc.instruction
-			if err := validateEvaluation(result, gc); (err == nil) != tc.accepted {
+			if err := validateEvaluation(&result, gc); (err == nil) != tc.accepted {
 				t.Fatalf("accepted=%v, error=%v", tc.accepted, err)
 			}
 		})

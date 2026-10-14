@@ -366,6 +366,59 @@ it('lets the learner replace a recording before explicitly sending it', async ()
   await waitFor(() => expect(answer).toHaveBeenCalledOnce())
 })
 
+it('clears failed recognition when a new answer is recorded with the microphone', async () => {
+  mockChatVoice()
+  let preview!: ReturnType<typeof vi.spyOn>
+  const { answer } = setup(plan(), (api) => {
+    preview = vi
+      .mocked(api.previewAnswer)
+      .mockRejectedValueOnce(new Error('STT unavailable'))
+      .mockResolvedValue({ id: 'new-transcript', text: 'Новый ответ' })
+  })
+  expect(await screen.findByText('Практический вопрос?')).toBeVisible()
+  await waitFor(() =>
+    expect(
+      screen.getByRole('button', { name: 'Записать ответ' }),
+    ).toBeEnabled(),
+  )
+  fireEvent.click(screen.getByRole('button', { name: 'Записать ответ' }))
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Закончить запись' }),
+  )
+  const retry = await screen.findByRole('button', {
+    name: 'Повторить распознавание',
+  })
+  expect(retry).toBeEnabled()
+
+  fireEvent.click(screen.getByRole('button', { name: 'Записать ответ' }))
+  await screen.findByRole('button', { name: 'Закончить запись' })
+  expect(
+    screen.queryByRole('button', { name: 'Повторить распознавание' }),
+  ).not.toBeInTheDocument()
+  expect(
+    screen.queryByRole('button', { name: 'Перезаписать ответ' }),
+  ).not.toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: 'Закончить запись' }))
+  expect(
+    await screen.findByLabelText('Расшифровка перед отправкой'),
+  ).toHaveTextContent('Новый ответ')
+  expect(preview).toHaveBeenCalledTimes(2)
+  expect(preview.mock.calls[1][0]).not.toBe(preview.mock.calls[0][0])
+  fireEvent.click(screen.getByRole('button', { name: 'Отправить ответ' }))
+  await waitFor(() =>
+    expect(answer).toHaveBeenCalledWith(
+      'p1',
+      {
+        transcription_id: 'new-transcript',
+        item_index: 0,
+        attempts: 0,
+        question: 'Практический вопрос?',
+      },
+      expect.anything(),
+    ),
+  )
+})
+
 it('drops the local recording once the server owns a transcript awaiting a check retry', async () => {
   mockChatVoice()
   vi.spyOn(browserAudio, 'createAudioUrl').mockReturnValue({

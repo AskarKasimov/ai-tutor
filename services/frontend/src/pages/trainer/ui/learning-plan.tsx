@@ -8,7 +8,6 @@ import {
   Lock,
   LoaderCircle,
   Mic,
-  Play,
   RotateCcw,
   Rocket,
   Square,
@@ -409,7 +408,7 @@ function StatusIcon({ status }: { status: LearningItem['status'] }) {
       ) : status === 'pending' ? (
         <Lock size={12} />
       ) : (
-        <Play size={11} fill="currentColor" />
+        <span className={styles.currentDot} />
       )}
     </span>
   )
@@ -460,12 +459,7 @@ function Outline({
               <span className={styles.outcomeText}>
                 <span className={styles.outcomeName}>{item.outcome_name}</span>
                 <span className={styles.outcomeMeta}>
-                  {t('learning.minutes', {
-                    theory: item.theory_minutes,
-                    practice: item.practice_minutes,
-                  })}
-                  {' · '}
-                  {t(`learning.status.${item.status}`)}
+                  {t('learning.minutes', { count: item.theory_minutes })}
                 </span>
               </span>
             </button>
@@ -640,6 +634,10 @@ function LessonControls({
   const recorder = useVoiceRecorder(identity, (audio) => {
     void preview.recognize(audio)
   })
+  function startRecording() {
+    preview.clear()
+    void recorder.start()
+  }
   const busy =
     open.isPending ||
     answer.isPending ||
@@ -685,14 +683,7 @@ function LessonControls({
         <Button size="1" variant="soft" onClick={() => void preview.retry()}>
           {t('trainer.retryRecognition')}
         </Button>
-        <Button
-          size="1"
-          variant="soft"
-          onClick={() => {
-            preview.clear()
-            void recorder.start()
-          }}
-        >
+        <Button size="1" variant="soft" onClick={startRecording}>
           {t('trainer.rerecordAnswer')}
         </Button>
       </>
@@ -724,7 +715,7 @@ function LessonControls({
               : 'learning.recordAnswer',
           )}
           onClick={() =>
-            recorder.recording ? recorder.stop() : void recorder.start()
+            recorder.recording ? recorder.stop() : startRecording()
           }
         >
           {busy ? (
@@ -792,10 +783,7 @@ function LessonControls({
                 },
               )
             }}
-            onRerecord={() => {
-              preview.clear()
-              void recorder.start()
-            }}
+            onRerecord={startRecording}
           />
         </>
       )}

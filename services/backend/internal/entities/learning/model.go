@@ -1,5 +1,5 @@
 // Package learning describes the personal learning plan built after a
-// diagnostic: the outcomes of every competency with a mistake, taught one by
+// diagnostic: checked gaps and fully unstudied constituents, taught one by
 // one in a chat — theory first, then practice until the outcome is mastered.
 package learning
 
@@ -50,6 +50,8 @@ type Item struct {
 	Attempts           int        `json:"attempts"`
 	// Question is the practice question waiting for an answer.
 	Question string `json:"question,omitempty"`
+	// Theory is saved before practice is ready so opening can resume on failure.
+	Theory string `json:"theory,omitempty"`
 }
 
 // Minutes is the planned time of the item.
@@ -131,6 +133,8 @@ type Message struct {
 
 // Outcome is a map outcome a plan can teach.
 type Outcome struct {
+	ConstituentID      string
+	MapRevision        int64
 	CompetencyID       string
 	CompetencyName     string
 	OutcomeID          string
@@ -162,6 +166,9 @@ type CheckInput struct {
 	Detail      Detail
 	Question    string
 	Answer      string
+	// Theory includes the saved lesson and earlier feedback for this outcome,
+	// grounding grading and follow-up practice in everything taught so far.
+	Theory string
 	// LastAttempt means no further practice follows a wrong answer.
 	LastAttempt bool
 }

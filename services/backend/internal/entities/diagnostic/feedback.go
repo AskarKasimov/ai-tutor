@@ -1,6 +1,7 @@
 package diagnostic
 
 type OverallFeedback struct {
+	AnalysisVersion         int                      `json:"analysis_version,omitempty"`
 	SessionID               string                   `json:"session_id"`
 	DiagnosticScore         int                      `json:"diagnostic_score"`
 	MaximumScore            int                      `json:"maximum_score"`

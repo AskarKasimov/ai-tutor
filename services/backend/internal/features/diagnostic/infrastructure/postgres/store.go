@@ -97,6 +97,11 @@ func (s *Store) LearningState(ctx context.Context, ownerID, subjectID string) (d
 	}
 	state := diagnostic.LearningState{SubjectID: row.ID, SubjectName: row.Name, DiagnosticSessionID: row.CompletedID, ActiveSessionID: row.ActiveID, DiagnosticStatus: "not_started", DiagnosticCompleted: row.CompletedID != "", TrainingAvailable: row.CompletedID != ""}
 	if row.CompletedID != "" {
+		completed, err := s.Get(ctx, ownerID, row.CompletedID)
+		if err != nil {
+			return diagnostic.LearningState{}, err
+		}
+		state.TrainingAvailable = diagnostic.HasLearningGaps(completed.Answers)
 		state.DiagnosticStatus = "completed"
 	} else if row.ActiveID != "" {
 		state.DiagnosticStatus = "active"
@@ -137,14 +142,11 @@ func (s *Store) Reserve(ctx context.Context, ownerID, id, key, digest, taskID, t
 	if current == nil || current.ID != taskID {
 		return nil, nil, fault.New(fault.Conflict, "DIAGNOSTIC_TASK_NOT_CURRENT", "Укажите текущее задание сессии.")
 	}
-	if value.InFlight != nil {
-		p := value.InFlight
-		if p.Token != "" && row.Leased {
-			return nil, nil, fault.New(fault.Conflict, "DIAGNOSTIC_ANSWER_IN_PROGRESS", "Ответ для текущего задания уже обрабатывается.")
-		}
-		if p.Key != key || p.Fingerprint != digest || p.VariantTaskID != taskID {
-			return nil, nil, fault.New(fault.Conflict, "DIAGNOSTIC_ANSWER_RETRY_MISMATCH", "Для повтора используйте исходный ключ и аудио.")
-		}
+	if p := value.InFlight; p != nil && p.Token != "" && row.Leased {
+		return nil, nil, fault.New(fault.Conflict, "DIAGNOSTIC_ANSWER_IN_PROGRESS", "Ответ для текущего задания уже обрабатывается.")
+	}
+	// A failed attempt was never accepted, so a new recording or skip replaces it.
+	if p := value.InFlight; p != nil && p.Key == key && p.Fingerprint == digest && p.VariantTaskID == taskID {
 		p.Token = token
 	} else {
 		value.InFlight = &diagnostic.Reservation{Key: key, Fingerprint: digest, VariantTaskID: taskID, Token: token}

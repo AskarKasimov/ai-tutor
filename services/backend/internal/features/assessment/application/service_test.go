@@ -86,6 +86,7 @@ func TestTrustedTrainingSnapshotUsesTwoPointScale(t *testing.T) {
 				result.Score = 1
 				result.Verdict = "partial"
 				result.CriterionResults[0].Satisfied = false
+				result.CriterionResults[0].Explanation = "Тип назван верно, но объяснение не связывает его с целевой переменной."
 			}
 			grader := &graderStub{result: result}
 			service := New(&transcriptionStub{text: "Ответ"}, nil, grader)
@@ -129,6 +130,69 @@ func TestEvaluateVariantBasicUsesOnePointScale(t *testing.T) {
 
 	if err != nil || got.Score != 1 || got.MaxScore != 1 || got.Verdict != "correct" {
 		t.Fatalf("expected basic 1/1 correct, got %#v, %v", got, err)
+	}
+}
+
+func TestSubjectKnowledgeIsNotReplacedByInstructionFollowing(t *testing.T) {
+	for _, tc := range []struct {
+		name, role        string
+		score             int
+		full, instruction bool
+		accepted          bool
+	}{
+		{"wrong content with instruction", "main", 0, false, true, true},
+		{"partial content", "main", 1, false, true, true},
+		{"incomplete cannot receive full score", "main", 3, false, true, false},
+		{"complete content", "main", 3, true, true, true},
+		{"main never scores two", "main", 2, true, true, false},
+		{"complete cannot receive partial score", "main", 1, true, true, false},
+		{"instruction remains mandatory", "main", 1, true, false, false},
+		{"wrong basic with instruction", "basic", 0, false, true, true},
+		{"incomplete basic cannot earn a point", "basic", 1, false, true, false},
+		{"complete basic", "basic", 1, true, true, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			gc, err := GradingContextFromVariantTask(validVariantTask(tc.role))
+			if err != nil {
+				t.Fatal(err)
+			}
+			result := validEvaluation()
+			result.Score = tc.score
+			result.Verdict = expectedVerdict(tc.score, gc.MaxScore)
+			result.CriterionResults[0].Satisfied = tc.full
+			result.CriterionResults[1].Satisfied = tc.instruction
+			if err := validateEvaluation(&result, gc); (err == nil) != tc.accepted {
+				t.Fatalf("accepted=%v, error=%v", tc.accepted, err)
+			}
+		})
+	}
+}
+
+func TestGradingUsesRubricFromSavedMap(t *testing.T) {
+	item := validVariantTask("main")
+	item.Task.Criteria = text("Назван тип задачи и указано, что целевая переменная дискретная.")
+	gc, err := GradingContextFromVariantTask(item)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(gc.Criteria[0].Description, *item.Task.Criteria) || gc.ReferenceAnswer != *item.Task.ReferenceAnswer {
+		t.Fatalf("saved rubric or reference lost: %+v", gc)
+	}
+}
+
+func TestWrongContentWithCompletedInstructionIsAcceptedWithoutRetry(t *testing.T) {
+	calls := 0
+	grader := gradingFunc(func(context.Context, GradingContext, string) (Evaluation, error) {
+		calls++
+		result := validEvaluation()
+		result.Score, result.Verdict = 0, "incorrect"
+		result.CriterionResults[0].Satisfied = false
+		result.CriterionResults[0].Explanation = "Названа регрессия, хотя целевая переменная имеет два класса."
+		return result, nil
+	})
+	got, err := New(nil, nil, grader).EvaluateTrustedText(context.Background(), validVariantTask("main"), "Регрессия, потому что нужно предсказать число.")
+	if err != nil || got.Score != 0 || got.Verdict != "incorrect" || calls != 1 {
+		t.Fatalf("wrong content must stay zero despite completed instruction: %+v, %v, calls=%d", got, err, calls)
 	}
 }
 
@@ -403,6 +467,26 @@ func TestEvaluateVariantNormalizesFeedbackLineBreaks(t *testing.T) {
 	want := []string{"Верно. Оба критерия выполнены.", "Причина. Уточнение.", "Совет."}
 	if err != nil || !reflect.DeepEqual(got.Feedback, want) || got.Score != 3 {
 		t.Fatalf("expected normalized feedback and preserved grade, got %+v, %v", got, err)
+	}
+}
+
+func TestEvaluateVariantSplitsPackedFeedback(t *testing.T) {
+	for _, feedback := range [][]string{
+		{"Ответ не содержит признака. Назовите признак с утечкой! Почему он недоступен?"},
+		{"Ответ не содержит признака. Назовите признак с утечкой!", "Почему он недоступен?"},
+	} {
+		calls := 0
+		grader := gradingFunc(func(context.Context, GradingContext, string) (Evaluation, error) {
+			calls++
+			result := validMainEvaluation()
+			result.Feedback = append([]string(nil), feedback...)
+			return result, nil
+		})
+		got, err := New(&transcriptionStub{text: "ответ"}, &variantTaskStub{result: validVariantTask("main")}, grader).EvaluateVariant(context.Background(), "owner", "tr", "variant", "task")
+		want := []string{"Ответ не содержит признака.", "Назовите признак с утечкой!", "Почему он недоступен?"}
+		if err != nil || !reflect.DeepEqual(got.Feedback, want) || calls != 1 {
+			t.Fatalf("expected packed feedback to be split without retry, got %+v, %v (%d calls)", got, err, calls)
+		}
 	}
 }
 

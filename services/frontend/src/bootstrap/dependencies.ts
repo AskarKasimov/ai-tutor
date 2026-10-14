@@ -10,6 +10,7 @@ import type { LearningPlanDependencies } from '@/features/learning-plan'
 import * as learningPlan from '@/entities/learning-plan'
 import { createDiagnosticIdentity } from '@/features/diagnostic-session'
 import { diagnosticSessionStorage } from '@/features/diagnostic-session'
+import { transcribeRecording } from '@/shared/api'
 
 export type AppDependencies = {
   auth: AuthDependencies['auth']
@@ -47,6 +48,7 @@ export function createAppDependencies(): AppDependencies {
       readLearningState: subjects.readLearningState,
     },
     diagnostic: {
+      transcribeRecording,
       createVariant: diagnostic.createVariant,
       startDiagnostic: diagnostic.startDiagnostic,
       readDiagnostic: diagnostic.readDiagnostic,
@@ -60,6 +62,7 @@ export function createAppDependencies(): AppDependencies {
       fetchDiagnosticAudioFile: diagnostic.fetchDiagnosticAudioFile,
     },
     learningPlan: {
+      previewAnswer: transcribeRecording,
       findLearningPlan: learningPlan.findLearningPlan,
       createLearningPlan: learningPlan.createLearningPlan,
       readLearningPlan: learningPlan.readLearningPlan,

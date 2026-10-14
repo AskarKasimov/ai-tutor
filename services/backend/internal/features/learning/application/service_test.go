@@ -92,19 +92,30 @@ func (d diagnostics) Get(context.Context, string, string) (diagnostic.Session, e
 	return d.session, nil
 }
 
-type voice struct{ text string }
+type voice struct {
+	text  string
+	calls int
+}
 
 func (v *voice) Transcribe(context.Context, string, []byte, string) (transcription.Transcription, error) {
+	v.calls++
 	return transcription.Transcription{ID: "t", Text: v.text}, nil
 }
 
 // teacher marks answers containing "верно" correct; fail makes Check fail once.
-type teacher struct{ fail bool }
+type teacher struct {
+	fail      bool
+	lastInput learning.CheckInput
+}
 
-func (teacher) Lesson(_ context.Context, input learning.LessonInput) (learning.Lesson, error) {
-	return learning.Lesson{Theory: "Теория " + input.Item.OutcomeID, Question: "Вопрос 1"}, nil
+func (teacher) Theory(_ context.Context, input learning.LessonInput) (string, error) {
+	return "Теория " + input.Item.OutcomeID, nil
+}
+func (teacher) Practice(_ context.Context, _ learning.LessonInput, _ string) (string, error) {
+	return "Вопрос 1", nil
 }
 func (t *teacher) Check(_ context.Context, input learning.CheckInput) (learning.Check, error) {
+	t.lastInput = input
 	if t.fail {
 		t.fail = false
 		return learning.Check{}, errors.New("model down")
@@ -127,7 +138,13 @@ func newService(t *testing.T, main int) (*Service, *memoryRepo, *voice, *teacher
 	t.Helper()
 	session := diagnostic.Session{ID: "d", Status: diagnostic.StatusCompleted,
 		Variant: diagnostic.VariantSnapshot{SubjectID: "s", SubjectNameSnapshot: "ML", Competencies: []diagnostic.Competency{{ID: "c1", Name: "К1"}, {ID: "c2", Name: "К2"}}},
-		Answers: []diagnostic.Answer{{CompetencyID: "c1", Role: "main", Score: main}, {CompetencyID: "c2", Role: "main", Score: 2}},
+		Answers: []diagnostic.Answer{
+			{CompetencyID: "c1", Role: "main", Score: main, Task: diagnostic.TaskSnapshot{OutcomeID: "o1"}},
+			{CompetencyID: "c2", Role: "main", Score: 2},
+		},
+	}
+	if main < 2 {
+		session.Answers = append(session.Answers, diagnostic.Answer{CompetencyID: "c1", Role: "basic", Score: 0, Task: diagnostic.TaskSnapshot{OutcomeID: "o2"}})
 	}
 	repo := &memoryRepo{outcomes: []learning.Outcome{
 		{CompetencyID: "c1", CompetencyName: "К1", OutcomeID: "o1", Importance: 3},
@@ -172,9 +189,16 @@ func TestLearningPlanTeachesEachOutcomeUntilMastered(t *testing.T) {
 		if plan.Current != 0 || plan.Items[0].Attempts != attempt || plan.Items[0].Question != "Новый вопрос" {
 			t.Fatalf("attempt %d: %+v", attempt, plan)
 		}
+		wantTheory := []string{"Теория o1", "Теория o1\n\nРазбор"}[attempt-1]
+		if tc.lastInput.Theory != wantTheory {
+			t.Fatalf("check theory: %q", tc.lastInput.Theory)
+		}
 	}
 	if plan, err = s.Answer(ctx, "u", "plan", []byte("a"), "audio/wav"); err != nil {
 		t.Fatal(err)
+	}
+	if tc.lastInput.Theory != "Теория o1\n\nРазбор\n\nРазбор" {
+		t.Fatalf("last attempt must retain both explanations: %q", tc.lastInput.Theory)
 	}
 	if plan.Items[0].Status != learning.ItemReview || plan.Current != 1 || plan.Items[1].Status != learning.ItemCurrent {
 		t.Fatalf("after the last attempt: %+v", plan)
@@ -199,6 +223,9 @@ func TestLearningPlanTeachesEachOutcomeUntilMastered(t *testing.T) {
 	if plan.Items[1].Status != learning.ItemPassed || !plan.Completed() || plan.PendingAnswer != nil || plan.Progress() != 100 {
 		t.Fatalf("finished plan: %+v", plan)
 	}
+	if tc.lastInput.Theory != "Теория o2" {
+		t.Fatalf("retry must use current lesson theory: %q", tc.lastInput.Theory)
+	}
 	kinds := []learning.MessageKind{}
 	for _, m := range repo.messages {
 		if m.ItemIndex == 1 {
@@ -221,4 +248,152 @@ func TestLearningPlanWithoutMistakesIsComplete(t *testing.T) {
 func hasCode(err error, code string) bool {
 	var f *fault.Error
 	return errors.As(err, &f) && f.Code == code
+}
+
+type stagedTeacher struct {
+	teacher
+	theoryCalls, practiceCalls int
+	practiceStarted, release   chan struct{}
+	failPractice               bool
+	usedTheory                 string
+}
+
+func (t *stagedTeacher) Theory(ctx context.Context, input learning.LessonInput) (string, error) {
+	t.theoryCalls++
+	return t.teacher.Theory(ctx, input)
+}
+
+func (t *stagedTeacher) Practice(ctx context.Context, _ learning.LessonInput, theory string) (string, error) {
+	t.practiceCalls++
+	t.usedTheory = theory
+	if t.practiceStarted != nil {
+		close(t.practiceStarted)
+		select {
+		case <-t.release:
+		case <-ctx.Done():
+			return "", ctx.Err()
+		}
+	}
+	if t.failPractice {
+		return "", errors.New("practice unavailable")
+	}
+	return "Готовая практика", nil
+}
+
+func TestOpenPublishesTheoryBeforePracticeIsReady(t *testing.T) {
+	s, repo, _, _ := newService(t, 1)
+	if _, err := s.Create(t.Context(), "u", "d", 5); err != nil {
+		t.Fatal(err)
+	}
+	teacher := &stagedTeacher{practiceStarted: make(chan struct{}), release: make(chan struct{})}
+	s.teacher = teacher
+	finished := make(chan error, 1)
+	go func() { _, err := s.Open(t.Context(), "u", "plan"); finished <- err }()
+	<-teacher.practiceStarted
+	messages, err := s.Messages(t.Context(), "u", "plan", 0)
+	if err != nil || len(messages) != 1 || messages[0].Kind != learning.KindTheory || messages[0].Text != "Теория o1" {
+		t.Errorf("theory not available during practice generation: %+v, %v", messages, err)
+	}
+	if repo.plan.Items[0].Question != "" {
+		t.Error("practice published before completion")
+	}
+	if _, err := s.Answer(t.Context(), "u", "plan", []byte("a"), "audio/wav"); !hasCode(err, "LEARNING_LESSON_NOT_OPEN") {
+		t.Errorf("answer allowed before practice: %v", err)
+	}
+	close(teacher.release)
+	if err := <-finished; err != nil {
+		t.Fatal(err)
+	}
+	if len(repo.messages) != 2 || repo.messages[1].Kind != learning.KindPractice || teacher.usedTheory != repo.messages[0].Text {
+		t.Fatalf("practice not paired with saved theory: %+v", repo.messages)
+	}
+	if _, err := s.Open(t.Context(), "u", "plan"); err != nil {
+		t.Fatal(err)
+	}
+	if teacher.theoryCalls != 1 || teacher.practiceCalls != 1 {
+		t.Fatal("completed lesson was regenerated")
+	}
+}
+
+func TestOpenResumesPracticeWithoutRewritingTheory(t *testing.T) {
+	s, repo, _, _ := newService(t, 1)
+	if _, err := s.Create(t.Context(), "u", "d", 5); err != nil {
+		t.Fatal(err)
+	}
+	teacher := &stagedTeacher{failPractice: true}
+	s.teacher = teacher
+	if _, err := s.Open(t.Context(), "u", "plan"); err == nil {
+		t.Fatal("expected practice failure")
+	}
+	if len(repo.messages) != 1 || repo.messages[0].Text != "Теория o1" || repo.plan.Items[0].Theory != "Теория o1" {
+		t.Fatalf("theory lost after practice failure: %+v", repo.messages)
+	}
+	teacher.failPractice = false
+	if _, err := s.Open(t.Context(), "u", "plan"); err != nil {
+		t.Fatal(err)
+	}
+	if teacher.theoryCalls != 1 || teacher.practiceCalls != 2 || len(repo.messages) != 2 || teacher.usedTheory != "Теория o1" {
+		t.Fatalf("retry regenerated theory: %+v, %+v", teacher, repo.messages)
+	}
+}
+
+type previewReader struct{ owner, text string }
+
+func (r previewReader) TextByOwner(_ context.Context, owner, id string) (string, error) {
+	if owner != r.owner || id != "preview" {
+		return "", fault.New(fault.NotFound, "TRANSCRIPTION_NOT_FOUND", "")
+	}
+	return r.text, nil
+}
+func TestConfirmedLearningAnswerUsesOwnedPreviewAndRejectsChangedQuestion(t *testing.T) {
+	s, repo, voice, teacher := newService(t, 1)
+	s.WithTranscriptions(previewReader{owner: "u", text: "верно"})
+	if _, err := s.Create(t.Context(), "u", "d", 5); err != nil {
+		t.Fatal(err)
+	}
+	p, err := s.Open(t.Context(), "u", "plan")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, question := range []string{"", "старый вопрос"} {
+		if _, err = s.AnswerTranscription(t.Context(), "u", "plan", "preview", p.Current, 0, question); !hasCode(err, "LEARNING_QUESTION_CHANGED") {
+			t.Fatalf("stale question: %v", err)
+		}
+	}
+	s.WithTranscriptions(previewReader{owner: "someone-else", text: "верно"})
+	if _, err = s.AnswerTranscription(t.Context(), "u", "plan", "preview", p.Current, 0, p.Items[p.Current].Question); !hasCode(err, "TRANSCRIPTION_NOT_FOUND") {
+		t.Fatalf("foreign preview: %v", err)
+	}
+	if repo.plan.Items[0].Attempts != 0 || voice.calls != 0 || teacher.lastInput.Answer != "" {
+		t.Fatal("unconfirmed answer changed learning")
+	}
+	s.WithTranscriptions(previewReader{owner: "u", text: "верно"})
+	got, err := s.AnswerTranscription(t.Context(), "u", "plan", "preview", p.Current, 0, p.Items[p.Current].Question)
+	if err != nil || got.Items[0].Status != learning.ItemPassed || teacher.lastInput.Answer != "верно" || voice.calls != 0 {
+		t.Fatalf("prepared answer: %+v %v STT=%d", got, err, voice.calls)
+	}
+}
+
+func TestConfirmedLearningAnswerRejectsRepeatedPreviewWhenFollowupTextRepeats(t *testing.T) {
+	s, repo, _, _ := newService(t, 1)
+	s.WithTranscriptions(previewReader{owner: "u", text: "wrong"})
+	if _, err := s.Create(t.Context(), "u", "d", 5); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Open(t.Context(), "u", "plan"); err != nil {
+		t.Fatal(err)
+	}
+	repo.plan.Items[0].Question = "Новый вопрос"
+	if _, err := s.AnswerTranscription(t.Context(), "u", "plan", "preview", 0, 0, "Новый вопрос"); err != nil {
+		t.Fatal(err)
+	}
+	if repo.plan.Items[0].Attempts != 1 || repo.plan.Items[0].Question != "Новый вопрос" {
+		t.Fatal("fixture did not repeat the text")
+	}
+	if _, err := s.AnswerTranscription(t.Context(), "u", "plan", "preview", 0, 0, "Новый вопрос"); !hasCode(err, "LEARNING_QUESTION_CHANGED") {
+		t.Fatalf("duplicate preview accepted: %v", err)
+	}
+	if repo.plan.Items[0].Attempts != 1 {
+		t.Fatal("duplicate preview created another attempt")
+	}
 }

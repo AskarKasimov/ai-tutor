@@ -472,6 +472,10 @@
   // The scrolling waveform adds new sound at the right edge; mirroring it makes
   // speech flow from left to right.
   transform: scaleX(-1);
+  // A finished recording is already drawn from start to end.
+  &[data-recorded='true'] {
+    transform: none;
+  }
 }
 .answerTitle {
   font-family: inherit;

@@ -411,10 +411,27 @@ export function TrainerQuestion({
   )
 }
 
-export function TrainerTranscript({ id, text }: { id: string; text?: string }) {
+export function TrainerTranscript({
+  id,
+  text,
+  autoReveal = false,
+}: {
+  id: string
+  text?: string
+  autoReveal?: boolean
+}) {
   const { t } = useTranslation()
+  const transcript = useRef<HTMLElement>(null)
+  useEffect(() => {
+    if (autoReveal && text)
+      transcript.current?.scrollIntoView?.({ block: 'nearest' })
+  }, [autoReveal, text])
   return (
-    <section className={styles.transcript} aria-labelledby={id}>
+    <section
+      ref={transcript}
+      className={styles.transcript}
+      aria-labelledby={id}
+    >
       <Heading as="h2" id={id} className={styles.eyebrow}>
         {t('trainer.yourAnswer')}
       </Heading>
@@ -515,7 +532,14 @@ export function TrainerCapturePanel({
   onMic,
   children,
 }: {
-  stage: 'ready' | 'permission' | 'recording' | 'processing' | 'error'
+  stage:
+    | 'ready'
+    | 'permission'
+    | 'recording'
+    | 'processing'
+    | 'recognizing'
+    | 'review'
+    | 'error'
   seconds: string
   stream?: MediaStream
   speech?: ReactNode
@@ -526,8 +550,11 @@ export function TrainerCapturePanel({
   children: ReactNode
 }) {
   const { t } = useTranslation()
-  const busy = stage === 'processing' || stage === 'permission'
-  const micState = answered ?? (busy ? 'busy' : stage)
+  const busy =
+    stage === 'processing' || stage === 'permission' || stage === 'recognizing'
+  // A ready transcript shows a check: nothing runs until the student sends it.
+  const review = stage === 'review'
+  const micState = answered ?? (busy ? 'busy' : review ? 'accepted' : stage)
   const micLabel = answered
     ? undefined
     : stage === 'ready'
@@ -537,7 +564,7 @@ export function TrainerCapturePanel({
         : undefined
   const micIcon = busy ? (
     <LoaderCircle size={40} className={styles.spinner} />
-  ) : answered === 'accepted' ? (
+  ) : answered === 'accepted' || review ? (
     <Check size={44} />
   ) : answered === 'skipped' ? (
     <SkipForward size={40} />
@@ -549,11 +576,15 @@ export function TrainerCapturePanel({
   return (
     <TrainerAnswerPanel>
       <Heading as="h2" className={styles.panelTitle}>
-        {t('session.answerByVoice')}
+        {t(
+          stage === 'review' ? 'trainer.reviewTitle' : 'session.answerByVoice',
+        )}
       </Heading>
-      <Text as="p" className={styles.panelHelp}>
-        {t('diagnostic.answerHelp')}
-      </Text>
+      {stage !== 'review' && (
+        <Text as="p" className={styles.panelHelp}>
+          {t('diagnostic.answerHelp')}
+        </Text>
+      )}
       {speech}
       {/* The microphone sits at the bottom of the panel, under the hand. */}
       <div className={styles.spacer} />
@@ -569,7 +600,7 @@ export function TrainerCapturePanel({
         <div className={styles.voice}>
           {/* The circle is the record button: it starts and stops recording.
               After a failure it only duplicates the recovery button below. */}
-          {onMic ? (
+          {onMic && !review ? (
             <button
               type="button"
               className={styles.mic}
@@ -598,7 +629,9 @@ export function TrainerCapturePanel({
                 {t(
                   stage === 'permission'
                     ? 'trainer.allow'
-                    : 'session.processingStatus',
+                    : stage === 'recognizing'
+                      ? 'trainer.transcribing'
+                      : 'session.processingStatus',
                 )}
               </Text>
             ) : answered ? (
@@ -608,6 +641,10 @@ export function TrainerCapturePanel({
                     ? 'session.answerSkipped'
                     : 'session.answerAccepted',
                 )}
+              </Text>
+            ) : review ? (
+              <Text className={styles.voicePill} role="status">
+                {t('trainer.reviewTranscript')}
               </Text>
             ) : stage === 'recording' ? (
               <>

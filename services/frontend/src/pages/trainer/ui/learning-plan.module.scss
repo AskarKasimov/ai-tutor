@@ -520,6 +520,11 @@
     box-shadow: 0 0 0 16px rgba(74, 132, 240, 0);
   }
 }
+.barAction {
+  flex: none;
+  width: 48px;
+  height: 48px;
+}
 .barBody {
   flex: 1;
   min-width: 0;
@@ -546,7 +551,7 @@
 .barWave {
   flex: 1;
   min-width: 0;
-  height: 36px;
+  height: 48px;
   overflow: hidden;
   > div {
     width: 100%;
@@ -792,4 +797,11 @@
   .confetti {
     display: none;
   }
+}
+.draftTranscript {
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--app-soft);
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
 }

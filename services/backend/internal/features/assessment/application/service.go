@@ -121,7 +121,24 @@ func shortenFeedback(feedback []string) {
 	}
 }
 
-func validateEvaluation(result Evaluation, gradingContext GradingContext) error {
+// splitSentences splits text after terminal punctuation that is followed by whitespace.
+func splitSentences(text string) []string {
+	var sentences []string
+	runes := []rune(strings.TrimSpace(text))
+	start := 0
+	for i, r := range runes {
+		if strings.ContainsRune(".!?…", r) && i+1 < len(runes) && unicode.IsSpace(runes[i+1]) {
+			sentences = append(sentences, strings.TrimSpace(string(runes[start:i+1])))
+			start = i + 1
+		}
+	}
+	if rest := strings.TrimSpace(string(runes[start:])); rest != "" {
+		sentences = append(sentences, rest)
+	}
+	return sentences
+}
+
+func validateEvaluation(result *Evaluation, gradingContext GradingContext) error {
 	maxScore, err := gradingMaxScore(gradingContext)
 	if err != nil {
 		return err
@@ -133,15 +150,20 @@ func validateEvaluation(result Evaluation, gradingContext GradingContext) error 
 		return fault.New(fault.Upstream, "INVALID_MODEL_RESPONSE", "Модель вернула неполные результаты по критериям.")
 	}
 
-	satisfied := 0
+	contentSatisfied := 0
+	contentCount := 0
 	mandatoryFailed := false
 	for i, criterion := range gradingContext.Criteria {
 		item := result.CriterionResults[i]
 		if item.Key != criterion.Key || !validText(item.Explanation, 400) || strings.ContainsAny(item.Explanation, "\r\n") {
 			return fault.New(fault.Upstream, "INVALID_MODEL_RESPONSE", "Модель вернула некорректные результаты по критериям.")
 		}
-		if item.Satisfied {
-			satisfied++
+		// Instructions are a gate, not evidence of subject knowledge.
+		if criterion.Key != "instruction_following" {
+			contentCount++
+			if item.Satisfied {
+				contentSatisfied++
+			}
 		}
 		if criterion.Mandatory && !item.Satisfied {
 			mandatoryFailed = true
@@ -149,22 +171,35 @@ func validateEvaluation(result Evaluation, gradingContext GradingContext) error 
 		result.CriterionResults[i].Explanation = strings.TrimSpace(item.Explanation)
 	}
 
+	if contentCount == 0 {
+		return fault.New(fault.Invalid, "INVALID_GRADING_CONTEXT", "Контекст не содержит предметных критериев.")
+	}
 	expectedScore := 0
 	if !mandatoryFailed {
 		if maxScore == 1 {
-			if satisfied == len(gradingContext.Criteria) {
+			if contentSatisfied == contentCount {
 				expectedScore = 1
 			}
-		} else if satisfied == len(gradingContext.Criteria) {
+		} else if contentSatisfied == contentCount {
 			expectedScore = maxScore
-		} else if satisfied > 0 {
-			expectedScore = 1
+		} else {
+			// A boolean criterion only distinguishes full completion. The grader
+			// distinguishes partial subject knowledge from a wholly wrong answer
+			// using the trusted reference and rubric, not the instruction count.
+			if result.Score == 0 || result.Score == 1 {
+				expectedScore = result.Score
+			}
 		}
 	}
 	if result.Score != expectedScore {
 		return fault.New(fault.Upstream, "INVALID_MODEL_RESPONSE", "Оценка модели не согласуется с результатами по критериям.")
 	}
 
+	// The model sometimes packs the three sentences into fewer array items; a
+	// temperature-0 retry tends to repeat that shape, so recover it here.
+	if len(result.Feedback) != 3 {
+		result.Feedback = splitSentences(strings.Join(result.Feedback, " "))
+	}
 	if len(result.Feedback) != 3 {
 		return fault.New(fault.Upstream, "INVALID_MODEL_RESPONSE", "Модель вернула некорректный фидбэк.")
 	}
@@ -199,7 +234,7 @@ func (s *Service) gradeAndValidate(ctx context.Context, gradingContext GradingCo
 		}
 		result, err := s.grader.Grade(ctx, gradingContext, answer)
 		if err == nil {
-			err = validateEvaluation(result, gradingContext)
+			err = validateEvaluation(&result, gradingContext)
 		}
 		if err == nil {
 			result.MaxScore = maxScore

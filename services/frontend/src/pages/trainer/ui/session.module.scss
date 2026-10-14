@@ -635,8 +635,8 @@
     text-align: left;
   }
 }
-// The microphone circle with two soft halo rings; recording makes the rings
-// pulse and deepens the circle colour.
+// The microphone circle; only a recording gets two soft halo rings, which
+// pulse, and a deeper colour.
 .mic {
   position: relative;
   display: grid;
@@ -649,9 +649,6 @@
   border-radius: 50%;
   color: white;
   background: #86a9f4;
-  box-shadow:
-    0 0 0 16px #e6eefd,
-    0 0 0 32px #f3f7ff;
   font: inherit;
   transition:
     background 0.2s ease,
@@ -665,6 +662,9 @@
   }
   &[data-state='recording'] {
     background: #4a84f0;
+    box-shadow:
+      0 0 0 16px #e6eefd,
+      0 0 0 32px #f3f7ff;
     &::after {
       animation: micPulse 1.6s ease-out infinite;
     }
@@ -677,13 +677,10 @@
   }
   &[data-state='skipped'] {
     background: #a3acb9;
-    box-shadow:
-      0 0 0 16px #eef0f3,
-      0 0 0 32px #f7f8fa;
   }
 }
-// Before recording the circle is a raised, saturated record button without
-// halo rings; it lifts on hover.
+// Before recording the circle is a raised, saturated record button; it lifts
+// on hover.
 button.mic {
   cursor: pointer;
   &[data-state='ready'],
@@ -722,6 +719,17 @@ button.mic {
 .voiceHint {
   font-size: 13px;
   line-height: 18px;
+  color: var(--app-muted);
+}
+// A status pill, not an action: no border, no hover, muted text.
+.voicePill {
+  max-width: 100%;
+  padding: 8px 16px;
+  border-radius: 999px;
+  background: var(--gray-a3);
+  font-size: 13px;
+  line-height: 18px;
+  text-align: center;
   color: var(--app-muted);
 }
 .voiceStatus {

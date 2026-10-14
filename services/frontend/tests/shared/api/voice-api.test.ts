@@ -151,10 +151,17 @@ it('preserves an aborted body read instead of classifying it for repair', async 
 })
 
 it('rejects service failures and empty transcriptions instead of supplying a mock', async () => {
-  vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 422 }))
+  vi.stubGlobal(
+    'fetch',
+    vi
+      .fn()
+      .mockImplementation(async () =>
+        Response.json({ code: 'NO_SPEECH_DETECTED' }, { status: 422 }),
+      ),
+  )
   await expect(
     transcribeRecording(new Blob(['a']), new AbortController().signal),
-  ).rejects.toThrow('422')
+  ).rejects.toMatchObject({ status: 422, code: 'NO_SPEECH_DETECTED' })
   vi.stubGlobal(
     'fetch',
     vi.fn().mockResolvedValue({
@@ -192,7 +199,14 @@ it('sends production requests through the same origin without build-time env', a
 })
 
 it('preserves unauthorized status for a useful session error', async () => {
-  vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 401 }))
+  vi.stubGlobal(
+    'fetch',
+    vi
+      .fn()
+      .mockImplementation(async () =>
+        Response.json({ code: 'UNAUTHORIZED' }, { status: 401 }),
+      ),
+  )
   await expect(
     transcribeRecording(new Blob(['a']), new AbortController().signal),
   ).rejects.toMatchObject({ status: 401 })

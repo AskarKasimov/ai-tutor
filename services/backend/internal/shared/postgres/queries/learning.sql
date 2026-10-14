@@ -1,5 +1,6 @@
 -- name: ListLearningOutcomes :many
 SELECT competency.id AS competency_id, competency.name AS competency_name,
+	   constituent.id AS constituent_id, competency.revision AS map_revision,
        outcome.id AS outcome_id, outcome.name AS outcome_name,
        COALESCE(taxonomy.code, '')::text AS taxonomy_code,
        COALESCE(outcome.importance, 0)::smallint AS importance,

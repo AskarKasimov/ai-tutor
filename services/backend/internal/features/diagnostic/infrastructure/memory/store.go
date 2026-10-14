@@ -105,7 +105,7 @@ func (s *Store) LearningState(ctx context.Context, ownerID, subjectID string) (d
 		state.SubjectName = v.Variant.SubjectNameSnapshot
 		state.DiagnosticSessionID = v.ID
 		state.DiagnosticCompleted = true
-		state.TrainingAvailable = true
+		state.TrainingAvailable = diagnostic.HasLearningGaps(v.Answers)
 		state.DiagnosticStatus = "completed"
 	}
 	return state, err
@@ -143,13 +143,13 @@ func (s *Store) Reserve(ctx context.Context, ownerID, id, key, digest, taskID, t
 		if pending.Token != "" {
 			return nil, nil, fault.New(fault.Conflict, "DIAGNOSTIC_ANSWER_IN_PROGRESS", "Ответ для текущего задания уже обрабатывается.")
 		}
-		if pending.Key != key || pending.Fingerprint != digest || pending.VariantTaskID != taskID {
-			return nil, nil, fault.New(fault.Conflict, "DIAGNOSTIC_ANSWER_RETRY_MISMATCH", "Для повтора используйте исходный ключ и аудио.")
+		// A failed attempt was never accepted, so a new recording or skip replaces it.
+		if pending.Key == key && pending.Fingerprint == digest && pending.VariantTaskID == taskID {
+			pending.Token = token
+			s.sessions[id] = value
+			copy := *pending
+			return nil, &copy, nil
 		}
-		pending.Token = token
-		s.sessions[id] = value
-		copy := *pending
-		return nil, &copy, nil
 	}
 	value.InFlight = &diagnostic.Reservation{Key: key, Fingerprint: digest, VariantTaskID: taskID, Token: token}
 	s.sessions[id] = value

@@ -126,6 +126,7 @@ func (q *Queries) ListLearningMessages(ctx context.Context, arg ListLearningMess
 
 const listLearningOutcomes = `-- name: ListLearningOutcomes :many
 SELECT competency.id AS competency_id, competency.name AS competency_name,
+	   constituent.id AS constituent_id, competency.revision AS map_revision,
        outcome.id AS outcome_id, outcome.name AS outcome_name,
        COALESCE(taxonomy.code, '')::text AS taxonomy_code,
        COALESCE(outcome.importance, 0)::smallint AS importance,
@@ -144,6 +145,8 @@ ORDER BY competency.id,
 type ListLearningOutcomesRow struct {
 	CompetencyID       string
 	CompetencyName     string
+	ConstituentID      string
+	MapRevision        int64
 	OutcomeID          string
 	OutcomeName        string
 	TaxonomyCode       string
@@ -165,6 +168,8 @@ func (q *Queries) ListLearningOutcomes(ctx context.Context, competencyIds []stri
 		if err := rows.Scan(
 			&i.CompetencyID,
 			&i.CompetencyName,
+			&i.ConstituentID,
+			&i.MapRevision,
 			&i.OutcomeID,
 			&i.OutcomeName,
 			&i.TaxonomyCode,

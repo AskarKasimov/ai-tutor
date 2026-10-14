@@ -160,7 +160,9 @@ export function LearningHome() {
       ? 'diagnostic'
       : data.training_available && data.diagnostic_session_id
         ? 'training'
-        : 'start'
+        : data.diagnostic_completed
+          ? 'completed'
+          : 'start'
   function resume() {
     if (!selected || !data) return
     if (stage === 'diagnostic')
@@ -250,7 +252,9 @@ export function LearningHome() {
                       {t(
                         stage === 'diagnostic'
                           ? 'home.statusDiagnostic'
-                          : 'home.statusTraining',
+                          : stage === 'completed'
+                            ? 'home.statusCompleted'
+                            : 'home.statusTraining',
                       )}
                     </Text>
                   )}
@@ -261,14 +265,18 @@ export function LearningHome() {
                       title={t(
                         stage === 'start'
                           ? 'home.startLearning'
-                          : 'home.continueLearning',
+                          : stage === 'completed'
+                            ? 'home.restart'
+                            : 'home.continueLearning',
                       )}
                       hint={t(
                         stage === 'start'
                           ? 'home.startLearningHint'
                           : stage === 'diagnostic'
                             ? 'home.continueDiagnosticHint'
-                            : 'home.continueTrainingHint',
+                            : stage === 'completed'
+                              ? 'home.restartHint'
+                              : 'home.continueTrainingHint',
                       )}
                       onClick={resume}
                     />

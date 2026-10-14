@@ -87,3 +87,22 @@ it('rejects a malformed plan', async () => {
     LearningPlanApiError,
   )
 })
+
+it('sends the confirmed transcript and task identity without uploading audio again', async () => {
+  const fetcher = vi.fn().mockResolvedValue(Response.json(plan))
+  vi.stubGlobal('fetch', fetcher)
+  const confirmed = {
+    transcription_id: 'preview-id',
+    item_index: 0,
+    attempts: 0,
+    question: 'Вопрос?',
+  }
+  await answerLesson('p1', confirmed, new AbortController().signal)
+  expect(fetcher.mock.calls[0][0]).toBe(
+    '/api/v1/learning-plans/p1/answers/transcription',
+  )
+  expect(JSON.parse(fetcher.mock.calls[0][1].body)).toEqual(confirmed)
+  expect(fetcher.mock.calls[0][1].headers).toEqual({
+    'Content-Type': 'application/json',
+  })
+})

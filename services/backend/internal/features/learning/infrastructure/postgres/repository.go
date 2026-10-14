@@ -48,6 +48,7 @@ func (r *Repository) Outcomes(ctx context.Context, competencyIDs []string) ([]le
 	outcomes := make([]learning.Outcome, 0, len(rows))
 	for _, row := range rows {
 		outcomes = append(outcomes, learning.Outcome{
+			ConstituentID: row.ConstituentID, MapRevision: row.MapRevision,
 			CompetencyID: row.CompetencyID, CompetencyName: row.CompetencyName,
 			OutcomeID: row.OutcomeID, OutcomeName: row.OutcomeName,
 			TaxonomyCode: row.TaxonomyCode, Importance: int(row.Importance),

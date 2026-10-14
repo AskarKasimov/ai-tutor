@@ -41,6 +41,25 @@ it('preserves math notation inside inline and highlighted code', () => {
   expect(container.querySelector('pre .hljs-string')).not.toBeNull()
 })
 
+it('repairs doubly escaped LaTeX commands but keeps real line breaks', () => {
+  const { container } = render(
+    <MarkdownContent
+      text={
+        'Модель: $\\\\hat y = 2.5\\\\,x_{\\\\text{м²}}$.\n\n$$\na \\\\ b\n$$'
+      }
+    />,
+  )
+  const [inline, block] = Array.from(
+    container.querySelectorAll('annotation'),
+  ).map((node) => node.textContent)
+  expect(inline).toBe('\\hat y = 2.5\\,x_{\\text{м²}}')
+  expect(block).toBe('a \\\\ b')
+  expect(container.querySelector('.katex-error')).toBeNull()
+  // Code keeps its backslashes untouched.
+  const code = render(<MarkdownContent text={'`\\\\beta`'} />).container
+  expect(code.querySelector('code')?.textContent).toBe('\\\\beta')
+})
+
 it('keeps invalid LaTeX readable without losing the surrounding text', () => {
   const { container } = render(
     <MarkdownContent text={'Пример: $\\frac{$\n\nСледующий абзац.'} />,

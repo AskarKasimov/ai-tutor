@@ -38,6 +38,10 @@ export type DiagnosticDependencies = {
     clearPending(userId: string, apiBase: string, subjectId: string): void
   }
   diagnostic: {
+    transcribeRecording(
+      blob: Blob,
+      signal: AbortSignal,
+    ): Promise<{ id: string; text: string }>
     createVariant(
       subjectId: string,
       key: string,

@@ -1,10 +1,16 @@
 import WaveSurfer from 'wavesurfer.js'
 import RecordPlugin from 'wavesurfer.js/dist/plugins/record.esm.js'
 
-export function createVoiceWaveform(container: HTMLElement, height = 82) {
+// Gain scales live microphone bars so ordinary speech is clearly visible.
+export function createVoiceWaveform(
+  container: HTMLElement,
+  height = 82,
+  gain = 1,
+) {
   const waveform = WaveSurfer.create({
     container,
     height,
+    barHeight: gain,
     waveColor: '#6c99f2',
     cursorWidth: 0,
     barWidth: 5,
@@ -34,6 +40,7 @@ export function createVoiceWaveform(container: HTMLElement, height = 82) {
         showSilence()
         return
       }
+      waveform.setOptions({ normalize: false, barHeight: gain })
       const plugin = waveform.registerPlugin(
         RecordPlugin.create({
           scrollingWaveform: true,
@@ -60,6 +67,8 @@ export function createVoiceWaveform(container: HTMLElement, height = 82) {
         showSilence()
         return
       }
+      // A finished answer is stretched to the full height, however quiet.
+      waveform.setOptions({ normalize: true, barHeight: 1 })
       void waveform.loadBlob(audio).catch(() => showSilence())
     },
     dispose() {

@@ -47,11 +47,14 @@ export function LiveWaveform({
   stream,
   audio,
   height,
+  gain,
 }: {
   stream?: MediaStream
   // A finished recording drawn instead of the live microphone.
   audio?: Blob
   height?: number
+  // Vertical amplification of the live microphone bars.
+  gain?: number
 }) {
   const container = useRef<HTMLDivElement>(null)
   const waveform = useRef<ReturnType<typeof createVoiceWaveform> | null>(null)
@@ -59,7 +62,7 @@ export function LiveWaveform({
   useEffect(() => {
     if (!container.current) return
     try {
-      waveform.current = createVoiceWaveform(container.current, height)
+      waveform.current = createVoiceWaveform(container.current, height, gain)
     } catch {
       setUnavailable(true)
     }
@@ -67,7 +70,7 @@ export function LiveWaveform({
       waveform.current?.dispose()
       waveform.current = null
     }
-    // The height is fixed for the lifetime of the waveform.
+    // The height and gain are fixed for the lifetime of the waveform.
   }, [])
   useEffect(() => {
     try {
@@ -79,7 +82,14 @@ export function LiveWaveform({
     }
   }, [stream])
   useEffect(() => {
-    if (audio) waveform.current?.setAudio(audio)
+    if (!audio) return
+    try {
+      waveform.current?.setAudio(audio)
+    } catch {
+      waveform.current?.dispose()
+      waveform.current = null
+      setUnavailable(true)
+    }
   }, [audio])
   return unavailable ? (
     <QuietWaveform />

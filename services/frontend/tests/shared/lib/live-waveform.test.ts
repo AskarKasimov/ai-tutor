@@ -11,6 +11,8 @@ afterEach(() => vi.resetAllMocks())
 
 function setup() {
   const load = vi.fn().mockResolvedValue(undefined)
+  const loadBlob = vi.fn().mockResolvedValue(undefined)
+  const setOptions = vi.fn()
   const destroy = vi.fn()
   const onDestroy = vi.fn()
   const pluginDestroy = vi.fn()
@@ -21,10 +23,20 @@ function setup() {
   )
   vi.mocked(WaveSurfer.create).mockReturnValue({
     load,
+    loadBlob,
+    setOptions,
     registerPlugin: () => plugin,
     destroy,
   } as unknown as WaveSurfer)
-  return { load, destroy, onDestroy, pluginDestroy, renderMicStream }
+  return {
+    load,
+    loadBlob,
+    setOptions,
+    destroy,
+    onDestroy,
+    pluginDestroy,
+    renderMicStream,
+  }
 }
 
 it('keeps the same renderer when recording starts, stops and starts again', () => {
@@ -66,4 +78,26 @@ it('releases visualization resources when microphone monitoring fails', () => {
   expect(pluginDestroy).toHaveBeenCalledTimes(1)
   waveform.dispose()
   expect(destroy).toHaveBeenCalledTimes(1)
+})
+
+it('amplifies live microphone bars and stretches a finished recording', () => {
+  const { loadBlob, setOptions } = setup()
+  const waveform = createVoiceWaveform(document.createElement('div'), 48, 2.5)
+  expect(WaveSurfer.create).toHaveBeenCalledWith(
+    expect.objectContaining({ height: 48, barHeight: 2.5 }),
+  )
+  waveform.setStream({} as MediaStream)
+  expect(setOptions).toHaveBeenLastCalledWith({
+    normalize: false,
+    barHeight: 2.5,
+  })
+  // A recording is not redrawn while the microphone is still live.
+  const audio = new Blob(['voice'])
+  waveform.setAudio(audio)
+  expect(loadBlob).not.toHaveBeenCalled()
+  waveform.setStream(undefined)
+  waveform.setAudio(audio)
+  expect(setOptions).toHaveBeenLastCalledWith({ normalize: true, barHeight: 1 })
+  expect(loadBlob).toHaveBeenCalledWith(audio)
+  waveform.dispose()
 })

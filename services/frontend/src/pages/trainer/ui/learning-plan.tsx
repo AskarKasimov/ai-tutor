@@ -7,10 +7,10 @@ import {
   Flame,
   Lock,
   LoaderCircle,
-  Mail,
   Mic,
   RotateCcw,
   Rocket,
+  SendHorizontal,
   Square,
   Trash2,
   Trophy,
@@ -767,13 +767,13 @@ function LessonControls({
                 {seconds(recorder.elapsedSeconds)}
               </Text>
               <div className={styles.barWave} aria-hidden="true">
-                <LiveWaveform stream={recorder.stream} height={36} />
+                <LiveWaveform stream={recorder.stream} height={48} gain={2.5} />
               </div>
               <Text className={styles.barHint}>{t('learning.tapToStop')}</Text>
             </>
           ) : reviewing ? (
             <div className={styles.barWave} aria-hidden="true">
-              <LiveWaveform audio={recorded} height={36} />
+              <LiveWaveform audio={recorded} height={48} />
             </div>
           ) : answer.isPending ? null : busy ? (
             <Text className={styles.barStatus} role="status">
@@ -792,7 +792,7 @@ function LessonControls({
             aria-label={t('trainer.sendAnswer')}
             onClick={send}
           >
-            <Mail size={24} aria-hidden="true" />
+            <SendHorizontal size={24} aria-hidden="true" />
           </button>
         ) : (
           <button

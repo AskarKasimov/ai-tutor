@@ -110,3 +110,26 @@ func TestStoreOwnsAcceptedAnswersAndReplayResponses(t *testing.T) {
 		t.Fatalf("caller mutation changed stored session data: %+v", stored)
 	}
 }
+
+func TestStoreReplacesFailedAttemptWithNewRecording(t *testing.T) {
+	ctx := context.Background()
+	store := New()
+	session := diagnostic.Session{
+		ID: "session", OwnerID: "owner", Status: diagnostic.StatusActive,
+		Variant:          diagnostic.VariantSnapshot{Competencies: []diagnostic.Competency{{Tasks: []diagnostic.TaskSnapshot{{ID: "main", Role: "main"}}}}},
+		AcceptedRequests: make(map[string]diagnostic.AcceptedRequest),
+	}
+	if _, _, err := store.Create(ctx, "owner", "start", "start-digest", session); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := store.Reserve(ctx, "owner", "session", "first", "audio-a", "main", "token-a"); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Fail(ctx, "owner", "session", "token-a", "tr-a", "text a"); err != nil {
+		t.Fatal(err)
+	}
+	_, reserved, err := store.Reserve(ctx, "owner", "session", "second", "audio-b", "main", "token-b")
+	if err != nil || reserved == nil || reserved.Key != "second" || reserved.TranscriptionID != "" {
+		t.Fatalf("new recording after failure: %+v %v", reserved, err)
+	}
+}

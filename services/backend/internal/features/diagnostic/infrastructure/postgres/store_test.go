@@ -201,3 +201,25 @@ func TestDiagnosticStoreReservesOnlyOneConcurrentAnswer(t *testing.T) {
 		t.Fatalf("accepted=%d conflicts=%d", accepted, conflicts)
 	}
 }
+
+func TestFailedReservationIsReplacedByNewRecording(t *testing.T) {
+	pool, ctx := setupStore(t)
+	s := New(pool)
+	v := diagnostic.Session{ID: "rerecord-session", OwnerID: "diag-owner-a", VariantID: "variant-a", Status: diagnostic.StatusActive, AcceptedRequests: map[string]diagnostic.AcceptedRequest{}, Variant: diagnostic.VariantSnapshot{Competencies: []diagnostic.Competency{{Tasks: []diagnostic.TaskSnapshot{{ID: "task", Role: "main"}}}}}}
+	if _, _, err := s.Create(ctx, v.OwnerID, "rerecord-start", "digest", v); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := s.Reserve(ctx, v.OwnerID, v.ID, "first", "audio-a", "task", "token-a"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Fail(ctx, v.OwnerID, v.ID, "token-a", "tr-a", "text a"); err != nil {
+		t.Fatal(err)
+	}
+	_, reserved, err := s.Reserve(ctx, v.OwnerID, v.ID, "second", "audio-b", "task", "token-b")
+	if err != nil || reserved == nil || reserved.Key != "second" || reserved.TranscriptionID != "" {
+		t.Fatalf("new recording after failure: %+v %v", reserved, err)
+	}
+	if _, _, err := s.Reserve(ctx, v.OwnerID, v.ID, "first", "audio-a", "task", "token-c"); !isKind(err, fault.Conflict) {
+		t.Fatalf("stale retry while new recording is processed: %v", err)
+	}
+}

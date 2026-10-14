@@ -470,6 +470,26 @@ func TestEvaluateVariantNormalizesFeedbackLineBreaks(t *testing.T) {
 	}
 }
 
+func TestEvaluateVariantSplitsPackedFeedback(t *testing.T) {
+	for _, feedback := range [][]string{
+		{"Ответ не содержит признака. Назовите признак с утечкой! Почему он недоступен?"},
+		{"Ответ не содержит признака. Назовите признак с утечкой!", "Почему он недоступен?"},
+	} {
+		calls := 0
+		grader := gradingFunc(func(context.Context, GradingContext, string) (Evaluation, error) {
+			calls++
+			result := validMainEvaluation()
+			result.Feedback = append([]string(nil), feedback...)
+			return result, nil
+		})
+		got, err := New(&transcriptionStub{text: "ответ"}, &variantTaskStub{result: validVariantTask("main")}, grader).EvaluateVariant(context.Background(), "owner", "tr", "variant", "task")
+		want := []string{"Ответ не содержит признака.", "Назовите признак с утечкой!", "Почему он недоступен?"}
+		if err != nil || !reflect.DeepEqual(got.Feedback, want) || calls != 1 {
+			t.Fatalf("expected packed feedback to be split without retry, got %+v, %v (%d calls)", got, err, calls)
+		}
+	}
+}
+
 type gradingFunc func(context.Context, GradingContext, string) (Evaluation, error)
 
 func (f gradingFunc) Grade(ctx context.Context, gc GradingContext, answer string) (Evaluation, error) {

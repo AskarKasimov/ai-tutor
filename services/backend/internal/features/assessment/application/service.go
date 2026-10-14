@@ -121,7 +121,24 @@ func shortenFeedback(feedback []string) {
 	}
 }
 
-func validateEvaluation(result Evaluation, gradingContext GradingContext) error {
+// splitSentences splits text after terminal punctuation that is followed by whitespace.
+func splitSentences(text string) []string {
+	var sentences []string
+	runes := []rune(strings.TrimSpace(text))
+	start := 0
+	for i, r := range runes {
+		if strings.ContainsRune(".!?…", r) && i+1 < len(runes) && unicode.IsSpace(runes[i+1]) {
+			sentences = append(sentences, strings.TrimSpace(string(runes[start:i+1])))
+			start = i + 1
+		}
+	}
+	if rest := strings.TrimSpace(string(runes[start:])); rest != "" {
+		sentences = append(sentences, rest)
+	}
+	return sentences
+}
+
+func validateEvaluation(result *Evaluation, gradingContext GradingContext) error {
 	maxScore, err := gradingMaxScore(gradingContext)
 	if err != nil {
 		return err
@@ -178,6 +195,11 @@ func validateEvaluation(result Evaluation, gradingContext GradingContext) error 
 		return fault.New(fault.Upstream, "INVALID_MODEL_RESPONSE", "Оценка модели не согласуется с результатами по критериям.")
 	}
 
+	// The model sometimes packs the three sentences into fewer array items; a
+	// temperature-0 retry tends to repeat that shape, so recover it here.
+	if len(result.Feedback) != 3 {
+		result.Feedback = splitSentences(strings.Join(result.Feedback, " "))
+	}
 	if len(result.Feedback) != 3 {
 		return fault.New(fault.Upstream, "INVALID_MODEL_RESPONSE", "Модель вернула некорректный фидбэк.")
 	}
@@ -212,7 +234,7 @@ func (s *Service) gradeAndValidate(ctx context.Context, gradingContext GradingCo
 		}
 		result, err := s.grader.Grade(ctx, gradingContext, answer)
 		if err == nil {
-			err = validateEvaluation(result, gradingContext)
+			err = validateEvaluation(&result, gradingContext)
 		}
 		if err == nil {
 			result.MaxScore = maxScore

@@ -35,7 +35,7 @@ func New(client *http.Client, baseURL, model string, timeout time.Duration) *Tea
 const theoryPrompt = `Ты — наставник, который готовит студента к экзамену по образовательным результатам (ОР).
 Тебе приходит JSON с предметом, компетенцией, ОР, таксономией, учебным содержанием и уровнем подробности.
 Напиши теорию по этому ОР.
-Теория: по-русски, понятно, ёмко, без «воды» и лишних вступлений, с одним наглядным примером.
+Теория: только по-русски, даже если название предмета или термины написаны латиницей; понятно, ёмко, без «воды» и лишних вступлений, с одним наглядным примером.
 Объём и подробность:
 - brief: 3–4 ёмких предложения;
 - standard: 1–2 компактных абзаца с микро-примером;
@@ -103,16 +103,29 @@ func (t *Teacher) Theory(ctx context.Context, input learning.LessonInput) (strin
 	if err != nil {
 		return "", err
 	}
-	var result struct {
-		Theory *string `json:"theory"`
+	// Both attempts share the single theory deadline.
+	ctx, cancel := context.WithTimeout(ctx, t.timeout)
+	defer cancel()
+	// The model occasionally drifts into English; one fresh attempt usually
+	// returns Russian, and a second drift is reported instead of shown.
+	for attempt := 0; ; attempt++ {
+		var result struct {
+			Theory *string `json:"theory"`
+		}
+		if err := t.complete(ctx, theoryPrompt, string(payload), &result); err != nil {
+			return "", err
+		}
+		if !validText(result.Theory, 6000) {
+			return "", invalidResponse()
+		}
+		theory := normalizeTheoryParagraphs(strings.TrimSpace(*result.Theory))
+		if russianProse(theory) {
+			return theory, nil
+		}
+		if attempt == 1 {
+			return "", invalidResponse()
+		}
 	}
-	if err := t.complete(ctx, theoryPrompt, string(payload), &result); err != nil {
-		return "", err
-	}
-	if !validText(result.Theory, 6000) {
-		return "", invalidResponse()
-	}
-	return normalizeTheoryParagraphs(strings.TrimSpace(*result.Theory)), nil
 }
 
 func (t *Teacher) Practice(ctx context.Context, input learning.LessonInput, theory string) (string, error) {

@@ -8,8 +8,44 @@ import 'katex/dist/katex.min.css'
 import { MarkdownCodeBlock } from './markdown-code-block'
 import styles from './markdown-content.module.scss'
 
+type HastNode = {
+  type: string
+  value?: string
+  properties?: { className?: unknown }
+  children?: HastNode[]
+}
+
+const mathClasses = ['language-math', 'math-inline', 'math-display']
+
+// Models sometimes escape LaTeX twice, so `\beta` arrives as `\\beta`, which
+// KaTeX reads as a line break followed by text. Inside math, `\\` directly
+// before a command letter or spacing mark is never an intended line break.
+function collapseDoubleEscapes(node: HastNode) {
+  if (node.type === 'text' && node.value)
+    node.value = node.value.replace(/\\\\(?=[A-Za-z,;:!])/g, '\\')
+  node.children?.forEach(collapseDoubleEscapes)
+}
+
+function rehypeRepairMath() {
+  return (tree: HastNode) => {
+    const visit = (node: HastNode) => {
+      const classes = node.properties?.className
+      if (
+        Array.isArray(classes) &&
+        classes.some((name) => mathClasses.includes(String(name)))
+      ) {
+        collapseDoubleEscapes(node)
+        return
+      }
+      node.children?.forEach(visit)
+    }
+    visit(tree)
+  }
+}
+
 const plugins = [remarkGfm, remarkBreaks, remarkMath]
 const rehypePlugins: Options['rehypePlugins'] = [
+  rehypeRepairMath,
   [rehypeKatex, { errorColor: 'var(--ruby-11)' }],
 ]
 const defaultComponents: Components = {

@@ -242,3 +242,29 @@ func TestTeacherPreservesMarkdownInJSONTextFields(t *testing.T) {
 		})
 	}
 }
+
+func TestTheoryRetriesOnceWhenModelAnswersInEnglish(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		responses []string
+		want      string
+		wantError bool
+	}{
+		{"recovers", []string{"The sign shows the direction of influence.", "Знак показывает направление влияния."}, "Знак показывает направление влияния.", false},
+		{"gives up", []string{"The sign shows the direction.", "Positive means growth."}, "", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var requests atomic.Int32
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				theory := tc.responses[requests.Add(1)-1]
+				content, _ := json.Marshal(map[string]string{"theory": theory})
+				json.NewEncoder(w).Encode(map[string]any{"choices": []any{map[string]any{"message": map[string]any{"content": string(content)}}}})
+			}))
+			defer server.Close()
+			got, err := New(server.Client(), server.URL, "model", time.Second).Theory(t.Context(), learning.LessonInput{})
+			if got != tc.want || (err != nil) != tc.wantError || requests.Load() != 2 {
+				t.Fatalf("theory=%q err=%v requests=%d", got, err, requests.Load())
+			}
+		})
+	}
+}

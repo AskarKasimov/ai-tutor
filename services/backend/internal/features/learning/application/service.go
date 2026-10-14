@@ -332,16 +332,15 @@ func (s *Service) check(ctx context.Context, owner, id string) (learning.Plan, e
 	if err != nil {
 		return learning.Plan{}, err
 	}
-	var theory string
+	var explanations []string
 	for _, message := range messages {
-		if message.Role == learning.RoleAssistant && message.Kind == learning.KindTheory {
-			theory = message.Text
-			break
+		if message.Role == learning.RoleAssistant && (message.Kind == learning.KindTheory || message.Kind == learning.KindFeedback) {
+			explanations = append(explanations, message.Text)
 		}
 	}
 	result, err := s.teacher.Check(ctx, learning.CheckInput{
 		SubjectName: plan.SubjectName, Item: item, Detail: plan.Detail,
-		Question: item.Question, Answer: answer, Theory: theory, LastAttempt: item.Attempts+1 >= learning.MaxAttempts,
+		Question: item.Question, Answer: answer, Theory: strings.Join(explanations, "\n\n"), LastAttempt: item.Attempts+1 >= learning.MaxAttempts,
 	})
 	if err != nil {
 		return learning.Plan{}, err

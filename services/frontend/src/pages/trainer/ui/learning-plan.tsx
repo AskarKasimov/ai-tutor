@@ -634,6 +634,10 @@ function LessonControls({
   const recorder = useVoiceRecorder(identity, (audio) => {
     void preview.recognize(audio)
   })
+  function startRecording() {
+    preview.clear()
+    void recorder.start()
+  }
   const busy =
     open.isPending ||
     answer.isPending ||
@@ -679,14 +683,7 @@ function LessonControls({
         <Button size="1" variant="soft" onClick={() => void preview.retry()}>
           {t('trainer.retryRecognition')}
         </Button>
-        <Button
-          size="1"
-          variant="soft"
-          onClick={() => {
-            preview.clear()
-            void recorder.start()
-          }}
-        >
+        <Button size="1" variant="soft" onClick={startRecording}>
           {t('trainer.rerecordAnswer')}
         </Button>
       </>
@@ -718,7 +715,7 @@ function LessonControls({
               : 'learning.recordAnswer',
           )}
           onClick={() =>
-            recorder.recording ? recorder.stop() : void recorder.start()
+            recorder.recording ? recorder.stop() : startRecording()
           }
         >
           {busy ? (
@@ -786,10 +783,7 @@ function LessonControls({
                 },
               )
             }}
-            onRerecord={() => {
-              preview.clear()
-              void recorder.start()
-            }}
+            onRerecord={startRecording}
           />
         </>
       )}

@@ -189,12 +189,16 @@ func TestLearningPlanTeachesEachOutcomeUntilMastered(t *testing.T) {
 		if plan.Current != 0 || plan.Items[0].Attempts != attempt || plan.Items[0].Question != "Новый вопрос" {
 			t.Fatalf("attempt %d: %+v", attempt, plan)
 		}
-		if tc.lastInput.Theory != "Теория o1" {
+		wantTheory := []string{"Теория o1", "Теория o1\n\nРазбор"}[attempt-1]
+		if tc.lastInput.Theory != wantTheory {
 			t.Fatalf("check theory: %q", tc.lastInput.Theory)
 		}
 	}
 	if plan, err = s.Answer(ctx, "u", "plan", []byte("a"), "audio/wav"); err != nil {
 		t.Fatal(err)
+	}
+	if tc.lastInput.Theory != "Теория o1\n\nРазбор\n\nРазбор" {
+		t.Fatalf("last attempt must retain both explanations: %q", tc.lastInput.Theory)
 	}
 	if plan.Items[0].Status != learning.ItemReview || plan.Current != 1 || plan.Items[1].Status != learning.ItemCurrent {
 		t.Fatalf("after the last attempt: %+v", plan)

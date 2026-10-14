@@ -417,8 +417,10 @@ it('runs real diagnostic audio, obeys skipped basics and displays the server tot
   const work = screen
     .getByRole('heading', { name: 'Что доработать' })
     .closest('section')!
-  expect(work).toHaveTextContent('Модели. Повторный совет к рекомендации.')
-  expect(work).toHaveTextContent('Модели. Сравните метрики на двух задачах.')
+  expect(work.querySelectorAll('strong')).toHaveLength(1)
+  expect(work.querySelector('strong')).toHaveTextContent('Модели.')
+  expect(work).toHaveTextContent('Повторный совет к рекомендации.')
+  expect(work).toHaveTextContent('Сравните метрики на двух задачах.')
   expect(screen.queryByText(/Критических пробелов нет/)).not.toBeInTheDocument()
   expect(
     screen.queryByRole('heading', { name: 'Рекомендации' }),

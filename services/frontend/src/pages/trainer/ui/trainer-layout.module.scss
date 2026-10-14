@@ -899,6 +899,18 @@
     }
   }
 }
+.feedbackGroups {
+  li {
+    display: list-item;
+    &::before {
+      content: none;
+    }
+  }
+  > li {
+    display: grid;
+    gap: 6px;
+  }
+}
 .feedbackGroup {
   display: grid;
   gap: 8px;

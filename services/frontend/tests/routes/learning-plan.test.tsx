@@ -366,6 +366,43 @@ it('lets the learner replace a recording before explicitly sending it', async ()
   await waitFor(() => expect(answer).toHaveBeenCalledOnce())
 })
 
+it('reviews a recognized answer in the voice bar and sends it without a transcribing status', async () => {
+  mockChatVoice()
+  const { answer } = setup(plan(), (api) => {
+    vi.mocked(api.answerLesson).mockReturnValue(new Promise(() => {}))
+  })
+  expect(await screen.findByText('Практический вопрос?')).toBeVisible()
+  await waitFor(() =>
+    expect(
+      screen.getByRole('button', { name: 'Записать ответ' }),
+    ).toBeEnabled(),
+  )
+  fireEvent.click(screen.getByRole('button', { name: 'Записать ответ' }))
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Закончить запись' }),
+  )
+  const transcript = await screen.findByLabelText('Расшифровка перед отправкой')
+  expect(transcript).toHaveTextContent('Предварительная расшифровка')
+  const remove = screen.getByRole('button', { name: 'Перезаписать ответ' })
+  const send = screen.getByRole('button', { name: 'Отправить ответ' })
+  // The transcript sits above the bar: delete on the left, send on the right.
+  expect(
+    transcript.compareDocumentPosition(remove) &
+      Node.DOCUMENT_POSITION_FOLLOWING,
+  ).toBeTruthy()
+  expect(
+    remove.compareDocumentPosition(send) & Node.DOCUMENT_POSITION_FOLLOWING,
+  ).toBeTruthy()
+  expect(screen.queryByRole('button', { name: 'Записать ответ' })).toBeNull()
+
+  fireEvent.click(send)
+  await waitFor(() => expect(answer).toHaveBeenCalledOnce())
+  expect(screen.queryByText('Распознаём ответ…')).not.toBeInTheDocument()
+  expect(
+    screen.queryByLabelText('Расшифровка перед отправкой'),
+  ).not.toBeInTheDocument()
+})
+
 it('clears failed recognition when a new answer is recorded with the microphone', async () => {
   mockChatVoice()
   let preview!: ReturnType<typeof vi.spyOn>

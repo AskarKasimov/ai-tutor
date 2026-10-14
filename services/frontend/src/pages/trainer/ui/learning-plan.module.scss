@@ -520,6 +520,11 @@
     box-shadow: 0 0 0 16px rgba(74, 132, 240, 0);
   }
 }
+.barAction {
+  flex: none;
+  width: 48px;
+  height: 48px;
+}
 .barBody {
   flex: 1;
   min-width: 0;

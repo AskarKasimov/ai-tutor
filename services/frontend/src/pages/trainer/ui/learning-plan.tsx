@@ -1,4 +1,4 @@
-import { Button, Heading, Text } from '@radix-ui/themes'
+import { Button, Heading, IconButton, Text } from '@radix-ui/themes'
 import {
   ArrowRight,
   Check,
@@ -7,10 +7,12 @@ import {
   Flame,
   Lock,
   LoaderCircle,
+  Mail,
   Mic,
   RotateCcw,
   Rocket,
   Square,
+  Trash2,
   Trophy,
   Zap,
 } from 'lucide-react'
@@ -40,7 +42,7 @@ import {
   useVoiceRecorder,
   useAnswerPreview,
 } from '@/features/learning-plan'
-import { LiveWaveform, ConfirmVoiceAnswer } from './trainer-answer'
+import { LiveWaveform } from './trainer-answer'
 import { TrainerProgress, TrainerShell } from './trainer-shared'
 import { MarkdownContent } from '@/shared/ui'
 import styles from './learning-plan.module.scss'
@@ -631,12 +633,39 @@ function LessonControls({
   useEffect(() => {
     if (plan.pending_answer !== null) preview.clear()
   }, [plan.pending_answer])
+  // The finished recording stays visible as a waveform until it is replaced.
+  const [recorded, setRecorded] = useState<Blob>()
+  useEffect(() => setRecorded(undefined), [identity])
   const recorder = useVoiceRecorder(identity, (audio) => {
+    setRecorded(audio)
     void preview.recognize(audio)
   })
   function startRecording() {
     preview.clear()
+    setRecorded(undefined)
     void recorder.start()
+  }
+  function send() {
+    if (sending.current || !canRecord || !draft) return
+    if (plan.current_index === null) return
+    sending.current = true
+    answer.mutate(
+      {
+        transcription_id: draft.id,
+        item_index: plan.current_index,
+        attempts,
+        question,
+      },
+      {
+        onSuccess: () => {
+          preview.clear()
+          setRecorded(undefined)
+        },
+        onSettled: () => {
+          sending.current = false
+        },
+      },
+    )
   }
   const busy =
     open.isPending ||
@@ -695,6 +724,10 @@ function LessonControls({
         : 'learning.micUnavailable',
     )
   const state = recorder.recording ? 'recording' : busy ? 'busy' : 'ready'
+  // A recognized answer waits for an explicit send or delete; once sent, the
+  // chat shows it with the teacher's typing dots instead.
+  const reviewing =
+    !!draft && !waiting && !answer.isPending && !recorder.recording
   return (
     <div className={styles.composer}>
       {alert && (
@@ -703,29 +736,30 @@ function LessonControls({
           {alert}
         </div>
       )}
-      <div className={styles.bar}>
-        <button
-          type="button"
-          className={styles.barMic}
-          data-state={state}
-          disabled={!recorder.recording && (!canRecord || !!draft)}
-          aria-label={t(
-            recorder.recording
-              ? 'learning.stopRecording'
-              : 'learning.recordAnswer',
-          )}
-          onClick={() =>
-            recorder.recording ? recorder.stop() : startRecording()
-          }
+      {reviewing && (
+        <Text
+          as="p"
+          className={styles.draftTranscript}
+          aria-label={t('trainer.transcriptPreview')}
         >
-          {busy ? (
-            <LoaderCircle size={24} className={styles.spinner} />
-          ) : recorder.recording ? (
-            <Square size={20} fill="currentColor" />
-          ) : (
-            <Mic size={26} />
-          )}
-        </button>
+          {draft.text}
+        </Text>
+      )}
+      <div className={styles.bar}>
+        {reviewing && (
+          <IconButton
+            size="3"
+            radius="full"
+            variant="soft"
+            color="gray"
+            className={styles.barAction}
+            disabled={busy}
+            aria-label={t('trainer.rerecordAnswer')}
+            onClick={startRecording}
+          >
+            <Trash2 size={20} aria-hidden="true" />
+          </IconButton>
+        )}
         <div className={styles.barBody}>
           {recorder.recording ? (
             <>
@@ -737,56 +771,58 @@ function LessonControls({
               </div>
               <Text className={styles.barHint}>{t('learning.tapToStop')}</Text>
             </>
-          ) : answer.isPending ? (
-            <Text className={styles.barStatus} role="status">
-              {t('learning.sending')}
-            </Text>
-          ) : busy ? (
+          ) : reviewing ? (
+            <div className={styles.barWave} aria-hidden="true">
+              <LiveWaveform audio={recorded} height={36} />
+            </div>
+          ) : answer.isPending ? null : busy ? (
             <Text className={styles.barStatus} role="status">
               {t(preview.busy ? 'trainer.transcribing' : 'learning.thinking')}
             </Text>
-          ) : draft ? null : (
+          ) : (
             <Text className={styles.barHint}>{t('learning.tapToRecord')}</Text>
           )}
         </div>
-      </div>
-      {draft && !waiting && (
-        <>
-          <Text
-            as="p"
-            className={styles.draftTranscript}
-            aria-label={t('trainer.transcriptPreview')}
+        {reviewing ? (
+          <button
+            type="button"
+            className={styles.barMic}
+            data-state={state}
+            disabled={busy || !canRecord}
+            aria-label={t('trainer.sendAnswer')}
+            onClick={send}
           >
-            {draft.text}
-          </Text>
-          <ConfirmVoiceAnswer
-            disabled={busy}
-            onSend={() => {
-              if (sending.current || !canRecord) return
-              sending.current = true
-              if (plan.current_index === null) {
-                sending.current = false
-                return
-              }
-              answer.mutate(
-                {
-                  transcription_id: draft.id,
-                  item_index: plan.current_index,
-                  attempts,
-                  question,
-                },
-                {
-                  onSuccess: preview.clear,
-                  onSettled: () => {
-                    sending.current = false
-                  },
-                },
-              )
-            }}
-            onRerecord={startRecording}
-          />
-        </>
-      )}
+            <Mail size={24} aria-hidden="true" />
+          </button>
+        ) : (
+          <button
+            type="button"
+            className={styles.barMic}
+            data-state={state}
+            disabled={!recorder.recording && (!canRecord || !!draft)}
+            aria-label={t(
+              recorder.recording
+                ? 'learning.stopRecording'
+                : 'learning.recordAnswer',
+            )}
+            onClick={() =>
+              recorder.recording ? recorder.stop() : startRecording()
+            }
+          >
+            {busy ? (
+              <LoaderCircle
+                size={24}
+                className={styles.spinner}
+                aria-hidden="true"
+              />
+            ) : recorder.recording ? (
+              <Square size={20} fill="currentColor" aria-hidden="true" />
+            ) : (
+              <Mic size={26} aria-hidden="true" />
+            )}
+          </button>
+        )}
+      </div>
     </div>
   )
 }

@@ -45,9 +45,12 @@ export function ConfirmVoiceAnswer({
 
 export function LiveWaveform({
   stream,
+  audio,
   height,
 }: {
   stream?: MediaStream
+  // A finished recording drawn instead of the live microphone.
+  audio?: Blob
   height?: number
 }) {
   const container = useRef<HTMLDivElement>(null)
@@ -75,9 +78,16 @@ export function LiveWaveform({
       setUnavailable(true)
     }
   }, [stream])
+  useEffect(() => {
+    if (audio) waveform.current?.setAudio(audio)
+  }, [audio])
   return unavailable ? (
     <QuietWaveform />
   ) : (
-    <div ref={container} className={styles.liveWaveform} />
+    <div
+      ref={container}
+      className={styles.liveWaveform}
+      data-recorded={audio ? 'true' : undefined}
+    />
   )
 }

@@ -53,6 +53,15 @@ export function createVoiceWaveform(container: HTMLElement, height = 82) {
         throw error
       }
     },
+    // Draws a finished recording; the silent line stays if it cannot be decoded.
+    setAudio(audio?: Blob) {
+      if (activeStream) return
+      if (!audio) {
+        showSilence()
+        return
+      }
+      void waveform.loadBlob(audio).catch(() => showSilence())
+    },
     dispose() {
       stopMonitor?.()
       stopMonitor = undefined

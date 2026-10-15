@@ -106,7 +106,7 @@
 <main>
   <header>
     <h1>Чек-лист перехода на Geek</h1>
-    <p>Видение от 15.10.2026: устный экзамен и тренировка по графу курса из материалов. Показ — 18.10.2026, курс Introduction to AI (DSAI). Подробности — README.md.</p>
+    <p>Видение от 15.10.2026 по концепции проректора: устный экзамен и тренировка в диспуте по графу курса из материалов. Показ — 18.10.2026, курс Introduction to AI (DSAI). Подробности — README.md.</p>
   </header>
 
   <div class="bar">
@@ -148,49 +148,62 @@
         <li><label><input type="checkbox" data-id="cg-node"><span><span class="t">Вершина хранит текст, неделю и источники</span><span class="d">Источники: лекция / лаба / туториал.</span></span></label></li>
         <li><label><input type="checkbox" data-id="cg-top"><span><span class="t">Верхних вершин ≈ число тем курса</span><span class="d">Темы, а не подтемы; иерархия «тема → подтема» плюс пререквизиты.</span></span></label></li>
         <li><label><input type="checkbox" data-id="cg-questions"><span><span class="t">Вопросы к вершинам на препроцессинге</span><span class="d">Что не успели — Geek генерирует в рантайме.</span></span></label></li>
-        <li><label><input type="checkbox" data-id="cg-viz"><span><span class="t">Визуализация графа для фактчекинга <span class="tag">в будущем</span></span><span class="d">Для команды, не для студента.</span></span></label></li>
       </ul>
     </section>
 
-    <section>
+        <section>
       <h2>3. Geek: устный экзамен <small></small></h2>
       <p>Диалог ведёт LLM; цель — найти пробелы по материалам курса.</p>
       <ul>
         <li><label><input type="checkbox" data-id="g-oral"><span><span class="t">Вопросы на рассуждение с развёрнутым ответом</span><span class="d">Тестовых вопросов по возможности нет.</span></span></label></li>
         <li><label><input type="checkbox" data-id="g-start-top"><span><span class="t">Обход начинается с верхних вершин</span></span></label></li>
-        <li><label><input type="checkbox" data-id="g-correct"><span><span class="t">Верно → вершина и всё поддерево освоены</span></span></label></li>
-        <li><label><input type="checkbox" data-id="g-wrong"><span><span class="t">Неверно → вопрос по каждому пререквизиту</span><span class="d">Спуск к более простым темам.</span></span></label></li>
-        <li><label><input type="checkbox" data-id="g-binary"><span><span class="t">Ответ только верный или неверный по тексту вершины</span><span class="d">В целом верно и без нарушения ограничений задания — верно.</span></span></label></li>
-        <li><label><input type="checkbox" data-id="g-partial"><span><span class="t">Частично верные ответы <span class="tag">в будущем</span></span><span class="d">Засчитать пререквизит, на основе которого студент ответил верно. В первой версии не делаем.</span></span></label></li>
+        <li><label><input type="checkbox" data-id="g-correct"><span><span class="t">Освоено → поддерево засчитано со статусом «засчитано по вышестоящей теме»</span></span></label></li>
+        <li><label><input type="checkbox" data-id="g-wrong"><span><span class="t">Не освоено → вопрос по каждому пререквизиту</span><span class="d">Спуск к более простым темам.</span></span></label></li>
+        <li><label><input type="checkbox" data-id="g-extra"><span><span class="t">На тему — основной вопрос и максимум один дополнительный</span><span class="d">Углубление (пример, контрпример, изменённые условия) или прояснение неоднозначного ответа.</span></span></label></li>
+        <li><label><input type="checkbox" data-id="g-rephrase"><span><span class="t">Каждый вопрос можно один раз переформулировать</span><span class="d">Других подсказок нет.</span></span></label></li>
+        <li><label><input type="checkbox" data-id="g-criteria"><span><span class="t">Четыре критерия с уровнями освоения</span><span class="d">Корректность и терминология; логика и обоснование; возражения и контрпримеры; изменённые условия.</span></span></label></li>
+        <li><label><input type="checkbox" data-id="g-criteria-rule"><span><span class="t">Правило: уровни критериев → статус темы <span class="tag">открыто</span></span><span class="d">Учитывается ли «ответ с помощью» как освоение.</span></span></label></li>
+        <li><label><input type="checkbox" data-id="g-status"><span><span class="t">Статусы: самостоятельно / с помощью / пробел / нет данных / по вышестоящей</span></span></label></li>
+        <li><label><input type="checkbox" data-id="g-evidence"><span><span class="t">Для темы сохраняются глубина понимания и фрагменты диалога</span></span></label></li>
         <li><label><input type="checkbox" data-id="g-gap"><span><span class="t">Пробел = самая глубокая неосвоенная вершина с освоенными пререквизитами</span></span></label></li>
-        <li><label><input type="checkbox" data-id="g-io"><span><span class="t">Реплики Geek — текст + голос (дублирование)</span><span class="d">Студент отвечает голосом или текстом.</span></span></label></li>
-        <li><label><input type="checkbox" data-id="g-dontknow"><span><span class="t">«Не знаю» = неверно; подсказок и переспрашивания нет</span></span></label></li>
-        <li><label><input type="checkbox" data-id="g-limit"><span><span class="t">Ограничение длины спуска <span class="tag">в будущем</span></span><span class="d">Если экзамен окажется слишком долгим.</span></span></label></li>
+        <li><label><input type="checkbox" data-id="g-io"><span><span class="t">Реплики Geek — текст + голос; ответ голосом или текстом</span></span></label></li>
       </ul>
     </section>
 
-    <section>
-      <h2>4. Итог экзамена <small></small></h2>
+        <section>
+      <h2>4. Итог для студента <small></small></h2>
       <ul>
-        <li><label><input type="checkbox" data-id="r-grade"><span><span class="t">Оценка A / B / C / D по шкале РПД</span><span class="d">Доля освоенных верхнеуровневых тем: ≥ 90% A, ≥ 75% B, ≥ 60% C, иначе D.</span></span></label></li>
+        <li><label><input type="checkbox" data-id="r-grade"><span><span class="t">Предварительная оценка A / B / C / D</span><span class="d">Доля освоенных верхнеуровневых тем: ≥ 90% A, ≥ 75% B, ≥ 60% C, иначе D.</span></span></label></li>
         <li><label><input type="checkbox" data-id="r-gaps"><span><span class="t">Список пробелов с неделями и источниками</span><span class="d">Лекция / лаба / туториал.</span></span></label></li>
-        <li><label><input type="checkbox" data-id="r-graph"><span><span class="t">Карта графа для студента <span class="tag">в будущем</span></span></span></label></li>
         <li><label><input type="checkbox" data-id="r-rebuild"><span><span class="t">После пересборки графа у старых диагностик остаётся только фидбэк</span></span></label></li>
       </ul>
     </section>
 
-    <section>
-      <h2>5. Тренировка <small></small></h2>
+        <section>
+      <h2>5. Материалы для преподавателя <small></small></h2>
+      <ul>
+        <li><label><input type="checkbox" data-id="p-transcript"><span><span class="t">Транскрипт с разделением реплик и нумерацией строк</span></span></label></li>
+        <li><label><input type="checkbox" data-id="p-coverage"><span><span class="t">Карта покрытия: статус каждой темы графа</span></span></label></li>
+        <li><label><input type="checkbox" data-id="p-observations"><span><span class="t">Наблюдения по критериям для пробелов со ссылками на строки транскрипта</span></span></label></li>
+        <li><label><input type="checkbox" data-id="p-delivery"><span><span class="t">Где преподаватель получает пакет <span class="tag">открыто</span></span><span class="d">Админка, файл или API.</span></span></label></li>
+      </ul>
+    </section>
+
+        <section>
+      <h2>6. Тренировка — диспут <small></small></h2>
       <ul>
         <li><label><input type="checkbox" data-id="t-hours"><span><span class="t">Вопрос «Сколько у тебя часов?»</span></span></label></li>
         <li><label><input type="checkbox" data-id="t-order"><span><span class="t">План — пробелы снизу вверх по пререквизитам</span></span></label></li>
-        <li><label><input type="checkbox" data-id="t-lesson"><span><span class="t">По подтеме: теория из лекции, практика по лабе/туториалу, проверочный вопрос</span></span></label></li>
+        <li><label><input type="checkbox" data-id="t-lesson"><span><span class="t">По подтеме: теория из лекции, практика по лабе/туториалу</span></span></label></li>
+        <li><label><input type="checkbox" data-id="t-dispute"><span><span class="t">Диспут: возражения, контрпримеры, сопоставление объяснений</span></span></label></li>
+        <li><label><input type="checkbox" data-id="t-hints"><span><span class="t">Подсказки фиксируются, поддержка сокращается, финальная задача без подсказки</span></span></label></li>
+        <li><label><input type="checkbox" data-id="t-questions"><span><span class="t">Вопросы студента: материалы → пререквизиты из листьев → название темы без ссылки</span><span class="d">Ответ вне материалов помечается.</span></span></label></li>
         <li><label><input type="checkbox" data-id="t-learning"><span><span class="t">Переиспользован модуль learning</span><span class="d">План по часам, уроки, чат наставника, голосовые ответы.</span></span></label></li>
       </ul>
     </section>
 
     <section>
-      <h2>6. Клиент к 4 LLM <small></small></h2>
+      <h2>7. Клиент к 4 LLM <small></small></h2>
       <ul>
         <li><label><input type="checkbox" data-id="l-client"><span><span class="t">Модуль backend «клиент к 4 LLM» с очередью и балансировкой готов (пишет коллега)</span><span class="d">Четыре модели уровня gpt-oss-120b на серверах команды.</span></span></label></li>
         <li><label><input type="checkbox" data-id="l-geek"><span><span class="t">Geek ходит в LLM через клиент</span></span></label></li>
@@ -201,7 +214,7 @@
     </section>
 
     <section>
-      <h2>7. Переход с текущей системы <small></small></h2>
+      <h2>8. Переход с текущей системы <small></small></h2>
       <p>Переиспользуем максимум. Удаление — только после явного согласования.</p>
       <ul>
         <li><label><input type="checkbox" data-id="m-infra"><span><span class="t">Оставлены auth, STT/TTS, S3, Caddy, PostgreSQL, Compose</span></span></label></li>
@@ -213,12 +226,26 @@
     </section>
 
     <section>
-      <h2>8. Документация <small></small></h2>
+      <h2>9. Документация <small></small></h2>
       <ul>
         <li><label><input type="checkbox" data-id="doc-readme"><span><span class="t">README описывает новое видение</span></span></label></li>
         <li><label><input type="checkbox" data-id="doc-legacy"><span><span class="t">Документы прежней модели помечены</span></span></label></li>
         <li><label><input type="checkbox" data-id="doc-open"><span><span class="t">Оставшиеся открытые вопросы закрыты и записаны в README</span></span></label></li>
         <li><label><input type="checkbox" data-id="doc-api"><span><span class="t">Контракт API Geek и course-graph в OpenAPI</span></span></label></li>
+      </ul>
+    </section>
+
+        <section>
+      <h2>10. В будущем <small></small></h2>
+      <ul>
+        <li><label><input type="checkbox" data-id="f-attest"><span><span class="t">Устная аттестация с прокторингом и заметками <span class="tag">в будущем</span></span><span class="d">Итоговую оценку ставит преподаватель.</span></span></label></li>
+        <li><label><input type="checkbox" data-id="f-rediag"><span><span class="t">Повторная диагностика после тренировки <span class="tag">в будущем</span></span></span></label></li>
+        <li><label><input type="checkbox" data-id="f-map"><span><span class="t">Визуальная карта покрытия (граф) <span class="tag">в будущем</span></span></span></label></li>
+        <li><label><input type="checkbox" data-id="f-limit"><span><span class="t">Ограничение длины спуска <span class="tag">в будущем</span></span></span></label></li>
+        <li><label><input type="checkbox" data-id="f-partial"><span><span class="t">Частично верный ответ засчитывает пререквизит <span class="tag">в будущем</span></span></span></label></li>
+        <li><label><input type="checkbox" data-id="f-summary"><span><span class="t">Смысловое сжатие беседы и события прокторинга в пакете <span class="tag">в будущем</span></span></span></label></li>
+        <li><label><input type="checkbox" data-id="f-pilot"><span><span class="t">Показатели пилота <span class="tag">TODO</span></span><span class="d">Объяснение перед преподавателем, сохранение знаний, согласованность с оценкой преподавателя; время и число тренировок.</span></span></label></li>
+        <li><label><input type="checkbox" data-id="cg-viz"><span><span class="t">Визуализация графа для фактчекинга команды <span class="tag">в будущем</span></span></span></label></li>
       </ul>
     </section>
   </div>

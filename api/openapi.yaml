@@ -791,6 +791,14 @@ components:
         - outcome_name
         - taxonomy_code
       type: object
+    http.DeleteResponse:
+      additionalProperties: false
+      properties:
+        status:
+          type: string
+      required:
+        - status
+      type: object
     http.OverallFeedbackResponse:
       additionalProperties: false
       properties:
@@ -899,6 +907,37 @@ components:
         - code
         - competency_id
         - competency_name
+      type: object
+    http.UploadFailedItem:
+      additionalProperties: false
+      properties:
+        code:
+          type: string
+        filename:
+          type: string
+        message:
+          type: string
+      required:
+        - code
+        - filename
+        - message
+      type: object
+    http.UploadResult:
+      additionalProperties: false
+      properties:
+        failed:
+          items:
+            $ref: '#/components/schemas/http.UploadFailedItem'
+          type: array
+          uniqueItems: false
+        uploaded:
+          items:
+            $ref: '#/components/schemas/material.Material'
+          type: array
+          uniqueItems: false
+      required:
+        - failed
+        - uploaded
       type: object
     learninghttp.CreatePlanRequest:
       additionalProperties: false
@@ -1069,6 +1108,59 @@ components:
         - question
         - transcription_id
       type: object
+    material.Material:
+      additionalProperties: false
+      properties:
+        char_count:
+          type: integer
+        content_type:
+          type: string
+        created_at:
+          type: integer
+        error_message:
+          type: string
+        file_size:
+          type: integer
+        filename:
+          type: string
+        id:
+          type: string
+        parsed_text:
+          type: string
+        s3_parsed_key:
+          type: string
+        s3_raw_key:
+          type: string
+        status:
+          $ref: '#/components/schemas/material.Status'
+        subject_id:
+          type: string
+        updated_at:
+          type: integer
+      required:
+        - char_count
+        - content_type
+        - created_at
+        - file_size
+        - filename
+        - id
+        - parsed_text
+        - s3_parsed_key
+        - s3_raw_key
+        - status
+        - subject_id
+        - updated_at
+      type: object
+    material.Status:
+      enum:
+        - pending
+        - parsed
+        - failed
+      type: string
+      x-enum-varnames:
+        - StatusPending
+        - StatusParsed
+        - StatusFailed
     subject.Subject:
       additionalProperties: false
       properties:
@@ -2295,6 +2387,239 @@ paths:
       summary: Заменить карту предмета
       tags:
         - Учебная база
+      x-implementation: implemented
+  /admin/subjects/{subject_id}/materials:
+    get:
+      description: Доступно только admin. Возвращает список загруженных материалов курса с извлеченным текстом.
+      operationId: listSubjectMaterials
+      parameters:
+        - description: ID предмета
+          in: path
+          name: subject_id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: '#/components/schemas/material.Material'
+                type: array
+          description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Bad Request
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Forbidden
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Internal Server Error
+      security:
+        - accessCookie: []
+      summary: Список материалов курса
+      tags:
+        - Материалы
+      x-implementation: implemented
+    post:
+      description: Доступно только admin. Загружает файлы лекций/лаб, сохраняет их в S3, выполняет OCR и сохраняет извлеченный Markdown с формулами LaTeX.
+      operationId: uploadSubjectMaterials
+      parameters:
+        - description: ID предмета
+          in: path
+          name: subject_id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              additionalProperties: false
+              properties:
+                file:
+                  description: Файл лекции или лабы (PDF, Markdown, текст)
+                  format: binary
+                  type: string
+              required:
+                - file
+              type: object
+        description: Файл лекции или лабы (PDF, Markdown, текст)
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/http.UploadResult'
+          description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Bad Request
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Forbidden
+        "413":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Request Entity Too Large
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Internal Server Error
+      security:
+        - accessCookie: []
+      summary: Загрузить материалы курса
+      tags:
+        - Материалы
+      x-implementation: implemented
+  /admin/subjects/{subject_id}/materials/{material_id}:
+    delete:
+      description: Доступно только admin. Удаляет материал из базы и S3.
+      operationId: deleteSubjectMaterial
+      parameters:
+        - description: ID предмета
+          in: path
+          name: subject_id
+          required: true
+          schema:
+            type: string
+        - description: ID материала
+          in: path
+          name: material_id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/http.DeleteResponse'
+          description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Bad Request
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Forbidden
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Internal Server Error
+      security:
+        - accessCookie: []
+      summary: Удалить материал курса
+      tags:
+        - Материалы
+      x-implementation: implemented
+  /admin/subjects/{subject_id}/materials/{material_id}/raw:
+    get:
+      description: Доступно только admin. Скачивание исходного файла материала.
+      operationId: downloadSubjectMaterialRaw
+      parameters:
+        - description: ID предмета
+          in: path
+          name: subject_id
+          required: true
+          schema:
+            type: string
+        - description: ID материала
+          in: path
+          name: material_id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          content:
+            application/octet-stream:
+              schema:
+                format: binary
+                type: string
+          description: Исходный файл
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Bad Request
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Forbidden
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Not Found
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Internal Server Error
+      security:
+        - accessCookie: []
+      summary: Скачать исходный файл материала
+      tags:
+        - Материалы
       x-implementation: implemented
   /assessments/evaluate:
     post:

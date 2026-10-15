@@ -120,6 +120,13 @@ func TestOpenAPIResponses(t *testing.T) {
 			checked[path] = true
 			return
 		}
+		if _, ok := content["application/octet-stream"]; ok {
+			if w.Body.Len() == 0 {
+				t.Fatal("empty octet-stream response")
+			}
+			checked[path] = true
+			return
+		}
 		schemaNode := content["application/json"].(map[string]any)["schema"].(map[string]any)
 		ref, ok := schemaNode["$ref"].(string)
 		if !ok {
@@ -192,6 +199,23 @@ func TestOpenAPIResponses(t *testing.T) {
 	admin := f.admin(t)
 	check("POST", "/admin/subjects", f.request("POST", "/admin/subjects", `{"name":"Предмет контракта"}`, admin))
 	check("GET", "/subjects", f.request("GET", "/subjects", "", admin))
+	materialsUpload := upload(f, "/admin/subjects/subject:test/materials", "file", "lecture.md", "text/markdown", []byte("# Введение\nФормула $x=1$"), admin)
+	check("POST", "/admin/subjects/{subject_id}/materials", materialsUpload)
+	var uploadResult struct {
+		Uploaded []struct {
+			ID string `json:"id"`
+		} `json:"uploaded"`
+		Failed []struct {
+			Filename string `json:"filename"`
+		} `json:"failed"`
+	}
+	if err := json.Unmarshal(materialsUpload.Body.Bytes(), &uploadResult); err != nil || len(uploadResult.Uploaded) == 0 {
+		t.Fatalf("materials upload: %s (%v)", materialsUpload.Body.String(), err)
+	}
+	matID := uploadResult.Uploaded[0].ID
+	check("GET", "/admin/subjects/{subject_id}/materials", f.request("GET", "/admin/subjects/subject:test/materials", "", admin))
+	check("GET", "/admin/subjects/{subject_id}/materials/{material_id}/raw", f.request("GET", "/admin/subjects/subject:test/materials/"+matID+"/raw", "", admin))
+	check("DELETE", "/admin/subjects/{subject_id}/materials/{material_id}", f.request("DELETE", "/admin/subjects/subject:test/materials/"+matID, "", admin))
 	check("POST", "/admin/subjects/{subject_id}/competency-map/import", upload(f, "/admin/subjects/subject:test/competency-map/import", "file", "map.csv", "text/csv", []byte(mapCSV), admin))
 	if variantImport := upload(f, "/admin/subjects/subject:test/competency-map/import", "file", "variant.csv", "text/csv", variantMapCSV(t), admin); variantImport.Code != http.StatusOK {
 		t.Fatalf("variant map import: %d %s", variantImport.Code, variantImport.Body.String())

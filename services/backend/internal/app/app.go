@@ -5,6 +5,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"time"
 
@@ -36,6 +37,10 @@ import (
 	learningmodel "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/learning/infrastructure/modelapi"
 	learningpg "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/learning/infrastructure/postgres"
 	learninghttp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/learning/transport/http"
+	materialsapp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/materials/application"
+	materialsocr "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/materials/infrastructure/ocr"
+	materialspg "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/materials/infrastructure/postgres"
+	materialshttp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/materials/transport/http"
 	subjectapp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/subject/application"
 	subjectpg "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/subject/infrastructure/postgres"
 	subjecthttp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/subject/transport/http"
@@ -84,6 +89,7 @@ type App struct {
 		Prioritize(context.Context, string) error
 	}
 	audioStorage taskaudioapp.Storage
+	materialsStorage materialsapp.S3Storage
 }
 
 func New(cfg Config, pool *pgxpool.Pool, logger *zap.Logger) (*App, error) {
@@ -114,7 +120,7 @@ func New(cfg Config, pool *pgxpool.Pool, logger *zap.Logger) (*App, error) {
 		PathStyle: cfg.S3PathStyle, CreateBucket: cfg.S3CreateBucket, Timeout: cfg.S3Timeout,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("configure task audio storage: %w", err)
+		return nil, fmt.Errorf("configure S3 storage: %w", err)
 	}
 	synth := modelapi.New(a.client, cfg.STTURL, cfg.TTSURL, cfg.VoiceTimeout, modelapi.TTSOptions{Seed: cfg.TTSSeed, CFGValue: cfg.TTSCFGValue, InferenceTimesteps: cfg.TTSInferenceTimesteps})
 	a.audioWorker = taskaudioapp.NewWorker(taskaudiopg.New(pool), storage, synth, taskaudioapp.WorkerConfig{
@@ -122,7 +128,29 @@ func New(cfg Config, pool *pgxpool.Pool, logger *zap.Logger) (*App, error) {
 		S3Timeout: cfg.S3Timeout, Bucket: cfg.S3Bucket,
 	})
 	a.audioStorage = storage
+	a.materialsStorage = &materialsStorageAdapter{storage: storage, bucket: cfg.S3Bucket}
 	return a, nil
+}
+
+type materialsStorageAdapter struct {
+	storage *taskaudios3.Client
+	bucket  string
+}
+
+func (m *materialsStorageAdapter) Put(ctx context.Context, key, contentType string, data []byte) error {
+	return m.storage.PutObject(ctx, m.bucket, key, contentType, data)
+}
+
+func (m *materialsStorageAdapter) Get(ctx context.Context, key string) ([]byte, error) {
+	return m.storage.GetObject(ctx, m.bucket, key)
+}
+
+func (m *materialsStorageAdapter) Open(ctx context.Context, key string) (io.ReadCloser, string, int64, error) {
+	return m.storage.OpenObject(ctx, m.bucket, key)
+}
+
+func (m *materialsStorageAdapter) Delete(ctx context.Context, key string) error {
+	return m.storage.DeleteObject(ctx, m.bucket, key)
 }
 
 func (a *App) Handler() http.Handler {
@@ -170,6 +198,10 @@ func (a *App) Handler() http.Handler {
 		WithTaskFinder(diagnosticfeedbackpg.NewTaskFinder(a.pool))
 	feedbackHandlers := diagnosticfeedbackhttp.New(feedbackService)
 
+	materialsOCR := materialsocr.New(a.cfg.CourseGraphURL, a.cfg.CourseGraphTimeout)
+	materialsService := materialsapp.New(materialspg.New(a.pool), a.materialsStorage, materialsOCR, a.now)
+	materialsHandlers := materialshttp.NewHandler(materialsService, a.cfg.MaxUploadBytes)
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /auth/register", authHandlers.Register)
 	mux.HandleFunc("POST /auth/login", authHandlers.Login)
@@ -178,6 +210,10 @@ func (a *App) Handler() http.Handler {
 	mux.HandleFunc("POST /auth/logout", authHandlers.Logout)
 	mux.HandleFunc("GET /auth/me", authHandlers.Me)
 	mux.Handle("POST /admin/subjects/{subject_id}/competency-map/import", protect(auth, http.HandlerFunc(competencyHandlers.ImportSubject)))
+	mux.Handle("POST /admin/subjects/{subject_id}/materials", protect(auth, http.HandlerFunc(materialsHandlers.UploadMaterials)))
+	mux.Handle("GET /admin/subjects/{subject_id}/materials", protect(auth, http.HandlerFunc(materialsHandlers.ListMaterials)))
+	mux.Handle("DELETE /admin/subjects/{subject_id}/materials/{material_id}", protect(auth, http.HandlerFunc(materialsHandlers.DeleteMaterial)))
+	mux.Handle("GET /admin/subjects/{subject_id}/materials/{material_id}/raw", protect(auth, http.HandlerFunc(materialsHandlers.DownloadRaw)))
 	mux.Handle("POST /admin/subjects", protect(auth, http.HandlerFunc(subjectHandlers.Create)))
 	mux.Handle("POST /voice/transcriptions", protect(auth, http.HandlerFunc(voiceHandlers.Transcribe)))
 	mux.Handle("POST /voice/syntheses", protect(auth, http.HandlerFunc(voiceHandlers.Synthesize)))

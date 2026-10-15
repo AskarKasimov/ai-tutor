@@ -14,7 +14,8 @@ go run github.com/mikefarah/yq/v4@v4.54.1 -P -o=yaml '
   (.. | select(has("x-nullable") and .["x-nullable"] == true and has("$ref"))) |= (.anyOf = [{"$ref": .["$ref"]}, {"type": "null"}] | del(.["$ref"], .["x-nullable"])) |
   (.. | select(has("x-nullable") and .["x-nullable"] == true)) |= (.type = [.type, "null"] | del(.["x-nullable"])) |
   (.. | select(has("properties") and .type == "object")).additionalProperties = false |
-  (.. | select(has("content") and .content.["audio/wav"].schema.["$ref"] == "#/components/schemas/fault.Error")).content |= {"application/json": .["audio/wav"]}
+  (.. | select(has("content") and .content.["audio/wav"].schema.["$ref"] == "#/components/schemas/fault.Error")).content |= {"application/json": .["audio/wav"]} |
+  (.. | select(has("content") and .content.["application/octet-stream"].schema.["$ref"] == "#/components/schemas/fault.Error")).content |= {"application/json": .["application/octet-stream"]}
 ' "$openapi_tmp/swagger.json" > "$openapi_tmp/implemented.yaml"
 
 # The single contract also contains planned operations. Refresh implemented

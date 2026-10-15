@@ -80,6 +80,35 @@ void i18n.init({
             importedAt: 'Загружена',
             revision: 'Версия карты',
           },
+          materialsTitle: 'Материалы и лекции курса',
+          materialsSubtitle: '',
+          materialsDropTitle: 'Загрузить файлы материалов',
+          materialsDropHint:
+            'Нажмите или перетащите один или несколько файлов лекций и лабораторных',
+          materialsDropReplace: 'Выбрано файлов: {{count}}',
+          materialsSubmit: 'Загрузить и распознать материалы',
+          materialsUploading:
+            'Идёт сохранение в S3 и распознавание материалов…',
+          materialsProgress: 'Обработка и распознавание материалов…',
+          materialsEmpty: 'Материалы курса ещё не загружены.',
+          materialsSuccess:
+            'Материалы успешно загружены, распознаны и сохранены в S3.',
+          materialsListTitle: 'Загруженные лекции и лабораторные',
+          materialsDelete: 'Удалить',
+          materialsDeleteConfirm: 'Удалить этот файл и его распознанный текст?',
+          materialsCharCount: 'Символов: {{count}}',
+          materialsSize: 'Размер: {{size}}',
+          materialsStatus: {
+            parsed: 'Распознан',
+            pending: 'В обработке',
+            failed: 'Ошибка распознавания',
+          },
+          materialsPreview: 'Предпросмотр распознанного текста',
+          materialsDownloadError: 'Не удалось скачать файл.',
+          materialsPartialWarning:
+            'Часть файлов не удалось загрузить: {{failed}}',
+          materialsInvalidType: 'Поддерживаются файлы PDF и Markdown.',
+          materialsEmptyFiles: 'Выберите хотя бы один файл.',
           unparsed:
             'Ячеек, не вошедших в банк заданий: {{count}} (строк: {{rows}}). Текст сохранён, но задание попадает в банк, только если в одной ячейке есть «Экран:», «Голосовая инструкция:» и «Ответ:».',
           warnings: 'Предупреждения импорта',

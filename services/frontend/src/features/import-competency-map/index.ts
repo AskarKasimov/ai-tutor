@@ -1,6 +1,9 @@
 export {
   useCompetencyMapQuery,
   useImportCompetencyMapMutation,
+  useSubjectMaterialsQuery,
+  useUploadCourseMaterialsMutation,
+  useDeleteCourseMaterialMutation,
 } from './model/use-competency-map'
 export {
   CompetencyMapDependenciesProvider,

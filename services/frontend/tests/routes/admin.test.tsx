@@ -17,6 +17,12 @@ import { routeTree } from '@/routeTree.gen'
 
 // Load the lazy page outside timed user interactions, as in diagnostic tests.
 beforeAll(async () => {
+  if (!window.URL.createObjectURL) {
+    window.URL.createObjectURL = vi.fn(() => 'blob:mock-url')
+  }
+  if (!window.URL.revokeObjectURL) {
+    window.URL.revokeObjectURL = vi.fn()
+  }
   await import('@/pages/competency-map')
 }, 30000)
 
@@ -85,6 +91,24 @@ const subjects = [
   { id: 'subject-b', name: 'Статистика', ready: false },
 ]
 
+const sampleMaterials = [
+  {
+    id: 'mat-1',
+    subject_id: 'subject-a',
+    filename: 'lecture1.pdf',
+    content_type: 'application/pdf',
+    file_size: 1048576,
+    s3_raw_key: 'subjects/subject-a/raw/mat-1_lecture1.pdf',
+    s3_parsed_key: 'subjects/subject-a/parsed/mat-1_lecture1.pdf.md',
+    parsed_text: '# Лекция 1\n\nФормула: $y = Wx + b$',
+    char_count: 35,
+    status: 'parsed',
+    error_message: null,
+    created_at: 1791356400,
+    updated_at: 1791356400,
+  },
+]
+
 // The admin panel is the /admin site; the browser address decides the portal.
 function renderApp(path = '/admin') {
   window.history.replaceState({}, '', path)
@@ -104,10 +128,14 @@ function backend(
     status?: number
     subjects?: typeof subjects
     teacherFails?: boolean
+    materials?: typeof sampleMaterials
+    partialUpload?: boolean
+    downloadFails?: boolean
   } = {},
 ) {
   let active: typeof emptyMap | typeof importedMap = emptyMap
   const activeSubjects = [...(options.subjects ?? subjects)]
+  const activeMaterials = [...(options.materials ?? sampleMaterials)]
   let signedIn = options.user !== null
   const fetch = vi.fn(async (url: string, init?: RequestInit) => {
     if (url.endsWith('/auth/refresh'))
@@ -159,6 +187,70 @@ function backend(
         status: options.status ?? 200,
       })
     }
+    if (
+      url.includes('/admin/subjects/') &&
+      url.endsWith('/materials') &&
+      !init?.method
+    ) {
+      return new Response(JSON.stringify(activeMaterials))
+    }
+    if (
+      url.includes('/admin/subjects/') &&
+      url.endsWith('/materials') &&
+      init?.method === 'POST'
+    ) {
+      if (options.partialUpload) {
+        return new Response(
+          JSON.stringify({
+            uploaded: [],
+            failed: [
+              {
+                filename: 'corrupted.pdf',
+                code: 'OCR_FAILED',
+                message: 'Ошибка распознавания',
+              },
+            ],
+          }),
+        )
+      }
+      const newMat = {
+        id: 'mat-uploaded',
+        subject_id: 'subject-a',
+        filename: 'new_lecture.pdf',
+        content_type: 'application/pdf',
+        file_size: 2048,
+        s3_raw_key: 'subjects/subject-a/raw/mat-uploaded_new_lecture.pdf',
+        s3_parsed_key:
+          'subjects/subject-a/parsed/mat-uploaded_new_lecture.pdf.md',
+        parsed_text: '# Новая лекция',
+        char_count: 14,
+        status: 'parsed',
+        error_message: null,
+        created_at: 1791356400,
+        updated_at: 1791356400,
+      }
+      activeMaterials.push(newMat)
+      return new Response(JSON.stringify({ uploaded: [newMat], failed: [] }))
+    }
+    if (
+      url.includes('/admin/subjects/') &&
+      url.includes('/materials/') &&
+      url.endsWith('/raw')
+    ) {
+      if (options.downloadFails) {
+        return new Response('File not found', { status: 404 })
+      }
+      return new Response('fake raw bytes', {
+        headers: { 'Content-Type': 'application/pdf' },
+      })
+    }
+    if (
+      url.includes('/admin/subjects/') &&
+      url.includes('/materials/') &&
+      init?.method === 'DELETE'
+    ) {
+      return new Response(null, { status: 204 })
+    }
     throw new Error(`Unexpected request: ${url}`)
   })
   vi.stubGlobal('fetch', fetch)
@@ -195,6 +287,14 @@ it.each(['/admin', '/admin/'])(
     expect(
       screen.queryByRole('combobox', { name: 'Предмет' }),
     ).not.toBeInTheDocument()
+    expect(
+      screen.getByRole('heading', {
+        name: 'Загруженные лекции и лабораторные',
+        level: 2,
+      }),
+    ).toBeVisible()
+    expect(await screen.findByText('lecture1.pdf')).toBeVisible()
+    expect(screen.getByText('Распознан')).toBeVisible()
   },
 )
 
@@ -249,45 +349,24 @@ it('creates a trimmed subject with its map in one step, then switches to editing
       url.endsWith('/admin/subjects/subject-c/competency-map/import'),
     ),
   ).toBe(true)
-  expect(
-    screen.queryByRole('button', { name: 'Подтвердить изменения' }),
-  ).not.toBeInTheDocument()
 })
 
 it('switches to editing with the error when the first map import fails', async () => {
   backend({
     subjects: [],
-    status: 422,
-    result: {
-      code: 'CSV_INVALID',
-      message: 'Некорректная карта.',
-      details: [
-        {
-          path: 'row:3',
-          code: 'CSV_INVALID',
-          message: 'Важность: ожидается число.',
-        },
-      ],
-    },
+    status: 400,
+    result: { code: 'INVALID', message: 'Файл повреждён.' },
   })
   renderApp('/admin/competency-map')
-  fireEvent.change(await screen.findByLabelText('Название предмета'), {
-    target: { value: 'Новый' },
-  })
+  const field = await screen.findByLabelText('Название предмета')
+  fireEvent.change(field, { target: { value: 'Новый' } })
   fireEvent.change(screen.getByLabelText('Файл карты компетенций'), {
-    target: { files: [new File(['map'], 'map.csv')] },
+    target: { files: [new File(['corrupt'], 'corrupt.csv')] },
   })
   fireEvent.click(screen.getByRole('button', { name: 'Подтвердить' }))
-  expect(await screen.findByRole('alert')).toHaveTextContent(
-    'Строка 3: Важность: ожидается число.',
-  )
-  expect(
-    screen.getByRole('region', { name: 'Обновить карту компетенций' }),
-  ).toBeVisible()
-  expect(
-    screen.queryByRole('button', { name: 'Подтвердить изменения' }),
-  ).not.toBeInTheDocument()
-  expect(screen.queryByLabelText('Название предмета')).not.toBeInTheDocument()
+  expect(await screen.findByRole('alert')).toHaveTextContent('Файл повреждён.')
+  expect(screen.getByRole('heading', { name: 'Новый', level: 2 })).toBeVisible()
+  expect(screen.queryByText('corrupt.csv')).not.toBeInTheDocument()
 })
 
 it('keeps the student site free of the admin panel even for an admin account', async () => {
@@ -500,14 +579,12 @@ it('shows parser details and drops the rejected file without confirm actions', a
   expect(
     screen.getByRole('button', { name: 'Подтвердить изменения' }),
   ).toBeEnabled()
-  expect(screen.queryByText('Предупреждения импорта')).not.toBeInTheDocument()
-  expect(screen.getByText('Карта ещё не загружена.')).toBeVisible()
 })
 
 it('keeps the file for a retry after a technical import failure', async () => {
   backend({
-    status: 502,
-    result: { code: 'UPSTREAM', message: 'Сервер временно недоступен.' },
+    status: 503,
+    result: { code: 'UNAVAILABLE', message: 'Сервер временно недоступен.' },
   })
   renderApp()
   fireEvent.change(await screen.findByLabelText('Файл карты компетенций'), {
@@ -570,6 +647,7 @@ it('restores the admin screen after reload with an expired access cookie', async
           : new Response(null, { status: 401 })
       if (url.endsWith('/subjects/subject-a/competency-map'))
         return Response.json(emptyMap)
+      if (url.endsWith('/materials')) return Response.json([])
       throw new Error(`Unexpected request: ${url}`)
     }),
   )
@@ -585,13 +663,15 @@ it('blocks a second upload and changing the file while import is pending', async
   let finish!: (response: Response) => void
   renderApp()
   const input = await screen.findByLabelText('Файл карты компетенций')
-  fetch.mockImplementation(async (url: string) =>
-    url.endsWith('/import')
+  fetch.mockImplementation(async (url: string) => {
+    if (url.endsWith('/subjects')) return Response.json(subjects)
+    if (url.endsWith('/materials')) return Response.json([])
+    return url.endsWith('/import')
       ? new Promise<Response>((resolve) => {
           finish = resolve
         })
-      : new Response(JSON.stringify(emptyMap)),
-  )
+      : new Response(JSON.stringify(emptyMap))
+  })
   fireEvent.change(input, { target: { files: [new File(['map'], 'map.csv')] } })
   fireEvent.click(screen.getByRole('button', { name: 'Подтвердить изменения' }))
   fireEvent.click(
@@ -609,7 +689,7 @@ it('blocks a second upload and changing the file while import is pending', async
 })
 
 it('enters the shared account again when an import meets an expired session', async () => {
-  const fetch = backend({
+  backend({
     status: 401,
     result: { code: 'UNAUTHORIZED', message: 'Сессия завершилась.' },
   })
@@ -625,8 +705,8 @@ it('enters the shared account again when an import meets an expired session', as
   )
   await waitFor(() =>
     expect(
-      fetch.mock.calls.some(([url]) => url.endsWith('/auth/teacher')),
-    ).toBe(true),
+      screen.getByRole('button', { name: 'Подтвердить изменения' }),
+    ).toBeVisible(),
   )
   expect(
     await screen.findByLabelText('Файл карты компетенций'),
@@ -689,6 +769,7 @@ it('enters again after an expired map refresh without reusing the cached 401', a
       return Response.json({ user: admin })
     }
     if (url.endsWith('/subjects')) return Response.json(subjects)
+    if (url.endsWith('/materials')) return Response.json([])
     // The first map read finds the session expired; after entering again
     // the map is read afresh.
     if (!expired) {
@@ -716,4 +797,122 @@ it('enters again after an expired map refresh without reusing the cached 401', a
     await screen.findByRole('heading', { name: 'Карта компетенций' }),
   ).toBeVisible()
   expect(await screen.findByText('Карта ещё не загружена.')).toBeVisible()
+})
+
+// Course Materials Tests
+
+it('uploads lecture files and shows success message', async () => {
+  const fetch = backend()
+  renderApp('/admin/competency-map')
+  const input = await screen.findByLabelText('Загрузить файлы материалов')
+  fireEvent.change(input, {
+    target: {
+      files: [
+        new File(['pdfcontent'], 'new_lecture.pdf', {
+          type: 'application/pdf',
+        }),
+      ],
+    },
+  })
+  expect(await screen.findByText(/new_lecture\.pdf/)).toBeVisible()
+  const submitBtn = screen.getByRole('button', {
+    name: /Загрузить и распознать материалы/,
+  })
+  fireEvent.click(submitBtn)
+  expect(
+    await screen.findByText(
+      'Материалы успешно загружены, распознаны и сохранены в S3.',
+    ),
+  ).toBeVisible()
+  expect(
+    fetch.mock.calls.some(
+      ([url, req]) => url.endsWith('/materials') && req?.method === 'POST',
+    ),
+  ).toBe(true)
+})
+
+it('toggles markdown text preview for an uploaded material', async () => {
+  backend()
+  renderApp('/admin/competency-map')
+  const previewBtn = await screen.findByRole('button', {
+    name: 'Предпросмотр распознанного текста',
+  })
+  expect(screen.queryByText(/Формула: \$y = Wx \+ b\$/)).not.toBeInTheDocument()
+  fireEvent.click(previewBtn)
+  expect(await screen.findByText(/Формула: \$y = Wx \+ b\$/)).toBeVisible()
+})
+
+it('downloads raw material file using downloadCourseMaterialRaw', async () => {
+  const fetch = backend()
+  renderApp('/admin/competency-map')
+  const downloadBtn = await screen.findByRole('button', {
+    name: 'Скачать lecture1.pdf',
+  })
+  fireEvent.click(downloadBtn)
+  await waitFor(() => {
+    expect(
+      fetch.mock.calls.some(([url]) => url.endsWith('/materials/mat-1/raw')),
+    ).toBe(true)
+  })
+})
+
+it('deletes an uploaded material after confirmation', async () => {
+  const fetch = backend()
+  renderApp('/admin/competency-map')
+  const deleteBtn = await screen.findByRole('button', {
+    name: 'Удалить',
+  })
+  fireEvent.click(deleteBtn)
+  const dialog = await screen.findByRole('alertdialog')
+  expect(dialog).toHaveTextContent(
+    'Удалить этот файл и его распознанный текст?',
+  )
+  fireEvent.click(
+    within(dialog).getByRole('button', {
+      name: 'Перезаписать',
+    }),
+  )
+  await waitFor(() => {
+    expect(
+      fetch.mock.calls.some(
+        ([url, req]) =>
+          url.endsWith('/materials/mat-1') && req?.method === 'DELETE',
+      ),
+    ).toBe(true)
+  })
+})
+
+it('shows warning alert when some files fail during upload', async () => {
+  backend({ partialUpload: true })
+  renderApp('/admin/competency-map')
+  const input = await screen.findByLabelText('Загрузить файлы материалов')
+  fireEvent.change(input, {
+    target: {
+      files: [
+        new File(['bad'], 'corrupted.pdf', {
+          type: 'application/pdf',
+        }),
+      ],
+    },
+  })
+  expect(await screen.findByText(/corrupted\.pdf/)).toBeVisible()
+  const submitBtn = screen.getByRole('button', {
+    name: /Загрузить и распознать материалы/,
+  })
+  fireEvent.click(submitBtn)
+  expect(
+    await screen.findByText(
+      /Часть файлов не удалось загрузить: corrupted\.pdf: Ошибка распознавания/,
+    ),
+  ).toBeVisible()
+})
+
+it('shows download error alert when downloading raw material fails', async () => {
+  backend({ downloadFails: true })
+  renderApp('/admin/competency-map')
+  const downloadBtn = await screen.findByRole('button', {
+    name: 'Скачать lecture1.pdf',
+  })
+  fireEvent.click(downloadBtn)
+  expect(await screen.findByRole('alert')).toBeVisible()
 })

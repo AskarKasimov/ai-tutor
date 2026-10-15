@@ -273,6 +273,22 @@ type Subject struct {
 	CreatedAt      int64
 }
 
+type SubjectMaterial struct {
+	ID           string
+	SubjectID    string
+	Filename     string
+	ContentType  string
+	FileSize     int64
+	S3RawKey     string
+	S3ParsedKey  string
+	ParsedText   string
+	CharCount    int32
+	Status       string
+	ErrorMessage *string
+	CreatedAt    int64
+	UpdatedAt    int64
+}
+
 type Task struct {
 	ID                string
 	OutcomeID         string

@@ -3,4 +3,4 @@ uvicorn[standard]>=0.28.0
 python-multipart>=0.0.9
 pydantic>=2.0.0
 pypdf>=4.0.0
-marker-pdf
+docling>=2.0.0

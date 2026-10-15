@@ -1,6 +1,6 @@
 # Архитектура backend
 
-> Описывает текущий код (прежняя модель). Планируемые части нового видения — Geek, course-graph и клиент к 4 LLM — будут отдельными модулями backend с теми же слоями; Python-часть course-graph вызывает клиент по gRPC. Описание — в [README](../README.md).
+> Описывает текущий код (прежняя модель). Планируемые части нового видения — Geek, course-graph и клиент к 4 LLM — будут отдельными модулями backend с теми же слоями; этапы обработки course-graph выполняет отдельный Python-сервис `services/course-graph`, который вызывает клиент по gRPC. Описание — в [README](../README.md).
 
 Дата: 15 октября 2026. Код находится в `services/backend`, Go-модуль — `github.com/AskarKasimov/ai-tutor/services/backend`.
 

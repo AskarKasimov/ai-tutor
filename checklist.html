@@ -210,7 +210,7 @@
         <li><label><input type="checkbox" data-id="l-client"><span><span class="t">Модуль backend «клиент к 4 LLM» с очередью и балансировкой готов (пишет коллега)</span><span class="d">Четыре модели уровня gpt-oss-120b на серверах команды.</span></span></label></li>
         <li><label><input type="checkbox" data-id="l-geek"><span><span class="t">Geek ходит в LLM через клиент</span></span></label></li>
         <li><label><input type="checkbox" data-id="l-modules"><span><span class="t">Geek, course-graph и клиент — отдельные модули backend</span></span></label></li>
-        <li><label><input type="checkbox" data-id="l-python"><span><span class="t">course-graph подключён к клиенту</span><span class="d">Python-часть — в backend, к клиенту по gRPC.</span></span></label></li>
+        <li><label><input type="checkbox" data-id="l-python"><span><span class="t">course-graph подключён к клиенту</span><span class="d">Python-сервис <code>services/course-graph</code> ходит в клиент по gRPC.</span></span></label></li>
         <li><label><input type="checkbox" data-id="l-roles"><span><span class="t">Запросы к модели идут параллельно</span><span class="d">Для кода одна модель; очередь и распределение по 4 LLM — в клиенте.</span></span></label></li>
       </ul>
     </section>

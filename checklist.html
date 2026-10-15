@@ -106,7 +106,7 @@
 <main>
   <header>
     <h1>Чек-лист перехода на Geek</h1>
-    <p>Видение от 15.10.2026 по концепции проректора: устный экзамен и тренировка в диспуте по графу курса из материалов. Показ — 18.10.2026, курс Introduction to AI (DSAI). Подробности — README.md.</p>
+    <p>Видение от 15.10.2026 по концепции проректора, решения 16.10.2026: устный экзамен и тренировка в диспуте по графу курса из материалов. Показ — 18.10.2026, курс Introduction to AI (DSAI). Подробности — README.md.</p>
   </header>
 
   <div class="bar">
@@ -125,18 +125,19 @@
       <h2>1. Курс <small></small></h2>
       <p>Содержание — только материалы курса.</p>
       <ul>
-        <li><label><input type="checkbox" data-id="course-upload"><span><span class="t">Загрузка материалов курса в админке</span></span></label></li>
-        <li><label><input type="checkbox" data-id="course-materials"><span><span class="t">Собраны русскоязычные PDF лекций, лаб и туториалов по неделям</span><span class="d">Демокурс: 16 недель × 3 = 48 документов.</span></span></label></li>
+        <li><label><input type="checkbox" data-id="course-upload"><span><span class="t">Загрузка материалов курса в админке</span><span class="d">API загрузки и OCR есть (#69); экрана в админке пока нет.</span></span></label></li>
+        <li><label><input type="checkbox" data-id="course-materials" checked><span><span class="t">Собраны PDF лекций, лаб и туториалов по неделям</span><span class="d">28 PDF за недели 1–14 в documents/materials/.</span></span></label></li>
+        <li><label><input type="checkbox" data-id="course-meta"><span><span class="t">Неделя и вид материала указываются при загрузке</span><span class="d">Лекция / лаба / туториал; хранятся у материала.</span></span></label></li>
         <li><label><input type="checkbox" data-id="course-flex"><span><span class="t">Число недель и видов материалов не зашито в код</span><span class="d">Бывают курсы на 8 недель, без лаб/туториалов или только с лабами.</span></span></label></li>
-        <li><label><input type="checkbox" data-id="course-ru"><span><span class="t">Всё на русском</span><span class="d">Русскоязычные материалы курса скоро будут загружены.</span></span></label></li>
+        <li><label><input type="checkbox" data-id="course-ru"><span><span class="t">Всё на русском</span><span class="d">Материалы пока на английском; команда переведёт их вручную.</span></span></label></li>
       </ul>
     </section>
 
     <section>
       <h2>2. course-graph: построение графа <small></small></h2>
-      <p>Отдельный модуль backend (возможна часть на Python), не разовые скрипты.</p>
+      <p>Этапы обработки — Python-сервис services/course-graph; запуск, хранение графа и админка — модуль backend.</p>
       <ul>
-        <li><label><input type="checkbox" data-id="cg-ocr"><span><span class="t">Этап 1. OCR</span><span class="d">PDF → текст: по документу на лекцию, лабу и туториал недели.</span></span></label></li>
+        <li><label><input type="checkbox" data-id="cg-ocr" checked><span><span class="t">Этап 1. OCR</span><span class="d">PDF → текст: по документу на лекцию, лабу и туториал недели.</span></span></label></li>
         <li><label><input type="checkbox" data-id="cg-clean"><span><span class="t">Этап 2. Очистка LLM</span><span class="d">Убрать лектора, команду курса, office hours, объявления, «спасибо за внимание».</span></span></label></li>
         <li><label><input type="checkbox" data-id="cg-units"><span><span class="t">Этап 3. Извлечение атомарных подтем</span><span class="d">Каждый документ недели отдельно; лекция «Матрицы» → умножение, обратная, транспонирование.</span></span></label></li>
         <li><label><input type="checkbox" data-id="cg-dedup-week"><span><span class="t">Этап 4а. Дедупликация внутри недели</span><span class="d">Один проход по лекции, лабе и туториалу недели.</span></span></label></li>
@@ -147,6 +148,8 @@
         <li><label><input type="checkbox" data-id="cg-node"><span><span class="t">Вершина хранит текст, неделю и источники</span><span class="d">Источники: лекция / лаба / туториал.</span></span></label></li>
         <li><label><input type="checkbox" data-id="cg-top"><span><span class="t">Верхних вершин ≈ число тем курса</span><span class="d">Темы, а не подтемы; иерархия «тема → подтема» плюс пререквизиты.</span></span></label></li>
         <li><label><input type="checkbox" data-id="cg-questions"><span><span class="t">Вопросы к вершинам на препроцессинге</span><span class="d">Что не успели — Geek генерирует в рантайме.</span></span></label></li>
+        <li><label><input type="checkbox" data-id="cg-ru"><span><span class="t">Названия и тексты вершин на русском</span><span class="d">Даже пока материалы на английском.</span></span></label></li>
+        <li><label><input type="checkbox" data-id="cg-build"><span><span class="t">Сборка графа кнопкой «Собрать граф» в админке</span><span class="d">Не автоматически после каждой загрузки.</span></span></label></li>
       </ul>
     </section>
 
@@ -157,7 +160,7 @@
         <li><label><input type="checkbox" data-id="g-oral"><span><span class="t">Вопросы на рассуждение с развёрнутым ответом</span><span class="d">Тестовых вопросов по возможности нет.</span></span></label></li>
         <li><label><input type="checkbox" data-id="g-start-top"><span><span class="t">Обход начинается с верхних вершин</span></span></label></li>
         <li><label><input type="checkbox" data-id="g-correct"><span><span class="t">Тема на A / B / C → поддерево засчитано со статусом «засчитано по вышестоящей теме»</span></span></label></li>
-        <li><label><input type="checkbox" data-id="g-wrong"><span><span class="t">Тема на D (пробел) → вопрос по каждому пререквизиту</span><span class="d">Спуск к более простым темам.</span></span></label></li>
+        <li><label><input type="checkbox" data-id="g-wrong"><span><span class="t">Тема на D → её подтемы; подтема на D → её пререквизиты</span><span class="d">Дальше рекурсивно, к более простым подтемам.</span></span></label></li>
         <li><label><input type="checkbox" data-id="g-extra"><span><span class="t">На тему — основной вопрос и максимум один дополнительный</span><span class="d">Углубление (пример, контрпример, изменённые условия) или прояснение неоднозначного ответа.</span></span></label></li>
         <li><label><input type="checkbox" data-id="g-rephrase"><span><span class="t">Каждый вопрос можно один раз переформулировать</span><span class="d">Других подсказок нет.</span></span></label></li>
         <li><label><input type="checkbox" data-id="g-criteria"><span><span class="t">Модель оценивает четыре критерия на 0 / 1 / 2</span><span class="d">Корректность и терминология; логика и обоснование; возражения и контрпримеры; изменённые условия.</span></span></label></li>
@@ -203,13 +206,12 @@
     </section>
 
     <section>
-      <h2>7. Клиент к 4 LLM <small></small></h2>
+      <h2>7. LLM gateway <small></small></h2>
       <ul>
-        <li><label><input type="checkbox" data-id="l-client"><span><span class="t">Модуль backend «клиент к 4 LLM» с очередью и балансировкой готов (пишет коллега)</span><span class="d">Четыре модели уровня gpt-oss-120b на серверах команды.</span></span></label></li>
-        <li><label><input type="checkbox" data-id="l-geek"><span><span class="t">Geek ходит в LLM через клиент</span></span></label></li>
-        <li><label><input type="checkbox" data-id="l-modules"><span><span class="t">Geek, course-graph и клиент — отдельные модули backend</span></span></label></li>
-        <li><label><input type="checkbox" data-id="l-python"><span><span class="t">course-graph подключён к клиенту</span><span class="d">Python-сервис <code>services/course-graph</code> ходит в клиент по gRPC.</span></span></label></li>
-        <li><label><input type="checkbox" data-id="l-roles"><span><span class="t">Запросы к модели идут параллельно</span><span class="d">Для кода одна модель; очередь и распределение по 4 LLM — в клиенте.</span></span></label></li>
+        <li><label><input type="checkbox" data-id="l-client"><span><span class="t">LLM gateway готов и влит в master</span><span class="d">Отдельный сервис services/llm-gateway; HTTP-версия в ветке feat/llm-gateway-http, gRPC — позже.</span></span></label></li>
+        <li><label><input type="checkbox" data-id="l-geek"><span><span class="t">Geek ходит в LLM через gateway</span></span></label></li>
+        <li><label><input type="checkbox" data-id="l-python"><span><span class="t">course-graph подключён к gateway</span><span class="d">Сейчас HTTP, позже gRPC.</span></span></label></li>
+        <li><label><input type="checkbox" data-id="l-roles"><span><span class="t">Сложность запроса задаёт вызывающий код</span><span class="d">Модель выбирает gateway; запросы идут параллельно.</span></span></label></li>
       </ul>
     </section>
 
@@ -217,20 +219,21 @@
       <h2>8. Переход с текущей системы <small></small></h2>
       <p>Переиспользуем максимум. Удаление — только после явного согласования.</p>
       <ul>
-        <li><label><input type="checkbox" data-id="m-infra"><span><span class="t">Оставлены auth, STT/TTS, S3, Caddy, PostgreSQL, Compose</span></span></label></li>
+        <li><label><input type="checkbox" data-id="m-infra" checked><span><span class="t">Оставлены auth, STT/TTS, S3, Caddy, PostgreSQL, Compose</span></span></label></li>
         <li><label><input type="checkbox" data-id="m-subject"><span><span class="t">Предмет (subject) стал курсом</span></span></label></li>
         <li><label><input type="checkbox" data-id="m-summary"><span><span class="t">Экран итога и diagnosticfeedback переделаны под A–D, пробелы и пакет для преподавателя</span></span></label></li>
         <li><label><input type="checkbox" data-id="m-dialog"><span><span class="t">Frontend: диагностика в формате диалога</span><span class="d">Главная, запись голоса и чат переиспользуются.</span></span></label></li>
-        <li><label><input type="checkbox" data-id="m-approve"><span><span class="t">Согласовано, что удалить <span class="tag">спросить</span></span><span class="d">Импорт карты CSV/XLSX, TRUE-ОР, variantgen, diagnostic 0/1/3, assessment, taskgen + FTS, training, админка карт.</span></span></label></li>
+        <li><label><input type="checkbox" data-id="m-diag"><span><span class="t">diagnostic переделан на месте под Geek</span><span class="d">Пути /diagnostic-sessions сохраняются; данные и прежние миграции не сохраняются.</span></span></label></li>
+        <li><label><input type="checkbox" data-id="m-approve"><span><span class="t">Согласовано, что удалить <span class="tag">спросить</span></span><span class="d">Импорт карты CSV/XLSX, TRUE-ОР, variantgen, assessment, taskgen + FTS, training, админка карт.</span></span></label></li>
       </ul>
     </section>
 
     <section>
       <h2>9. Документация <small></small></h2>
       <ul>
-        <li><label><input type="checkbox" data-id="doc-readme"><span><span class="t">README описывает новое видение</span></span></label></li>
-        <li><label><input type="checkbox" data-id="doc-legacy"><span><span class="t">Документы прежней модели помечены</span></span></label></li>
-        <li><label><input type="checkbox" data-id="doc-open"><span><span class="t">Открытых вопросов нет; новые фиксируются в README</span></span></label></li>
+        <li><label><input type="checkbox" data-id="doc-readme" checked><span><span class="t">README описывает новое видение</span></span></label></li>
+        <li><label><input type="checkbox" data-id="doc-legacy" checked><span><span class="t">Документы прежней модели помечены</span></span></label></li>
+        <li><label><input type="checkbox" data-id="doc-open" checked><span><span class="t">Открытых вопросов нет; новые фиксируются в README</span></span></label></li>
         <li><label><input type="checkbox" data-id="doc-api"><span><span class="t">Контракт API Geek и course-graph в OpenAPI</span></span></label></li>
       </ul>
     </section>
@@ -250,11 +253,11 @@
     </section>
   </div>
 
-  <footer>Отметки хранятся только в этом браузере.</footer>
+  <footer>Отмечено по состоянию репозитория на 16.10.2026. Свои отметки хранятся только в этом браузере.</footer>
 </main>
 <script>
 (function () {
-  var KEY = 'geek-checklist-v1';
+  var KEY = 'geek-checklist-v2';
   var boxes = Array.prototype.slice.call(document.querySelectorAll('input[type="checkbox"]'));
   var state = {};
   try { state = JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (e) { state = {}; }
@@ -265,7 +268,7 @@
   function render() {
     var done = 0;
     boxes.forEach(function (b) {
-      b.checked = !!state[b.dataset.id];
+      b.checked = b.dataset.id in state ? state[b.dataset.id] : b.defaultChecked;
       b.closest('li').classList.toggle('checked', b.checked);
       if (b.checked) done++;
     });
@@ -281,7 +284,7 @@
   }
   boxes.forEach(function (b) {
     b.addEventListener('change', function () {
-      if (b.checked) state[b.dataset.id] = true; else delete state[b.dataset.id];
+      state[b.dataset.id] = b.checked;
       save(); render();
     });
   });

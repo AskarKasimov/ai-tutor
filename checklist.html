@@ -125,10 +125,11 @@
       <h2>1. Курс и РПД <small></small></h2>
       <p>Содержание — только материалы курса; РПД — для сверки и шкалы оценки.</p>
       <ul>
+        <li><label><input type="checkbox" data-id="course-upload"><span><span class="t">Загрузка материалов курса в админке</span></span></label></li>
         <li><label><input type="checkbox" data-id="course-rpd"><span><span class="t">РПД DSAI (Б1.О.17) в examples/</span><span class="d">CSE (Б1.О.15) — только для справки.</span></span></label></li>
         <li><label><input type="checkbox" data-id="course-materials"><span><span class="t">Собраны русскоязычные PDF лекций, лаб и туториалов по неделям</span><span class="d">Демокурс: 16 недель × 3 = 48 документов.</span></span></label></li>
         <li><label><input type="checkbox" data-id="course-flex"><span><span class="t">Число недель и видов материалов не зашито в код</span><span class="d">Бывают курсы на 8 недель, без лаб/туториалов или только с лабами.</span></span></label></li>
-        <li><label><input type="checkbox" data-id="course-rpd-map"><span><span class="t">Темы графа сверены с 11 разделами РПД</span><span class="d">Приоритет у материалов; расхождения фиксируются.</span></span></label></li>
+        <li><label><input type="checkbox" data-id="course-rpd-map"><span><span class="t">Расхождения тем с 11 разделами РПД подсвечиваются в админке</span><span class="d">При загрузке материалов. Темы вне РПД тоже спрашиваются; работаем только по материалам.</span></span></label></li>
         <li><label><input type="checkbox" data-id="course-ru"><span><span class="t">Всё на русском</span><span class="d">Русскоязычные материалы курса скоро будут загружены.</span></span></label></li>
       </ul>
     </section>
@@ -209,7 +210,7 @@
         <li><label><input type="checkbox" data-id="l-client"><span><span class="t">Модуль backend «клиент к 4 LLM» с очередью и балансировкой готов (пишет коллега)</span><span class="d">Четыре модели уровня gpt-oss-120b на серверах команды.</span></span></label></li>
         <li><label><input type="checkbox" data-id="l-geek"><span><span class="t">Geek ходит в LLM через клиент</span></span></label></li>
         <li><label><input type="checkbox" data-id="l-modules"><span><span class="t">Geek, course-graph и клиент — отдельные модули backend</span></span></label></li>
-        <li><label><input type="checkbox" data-id="l-python"><span><span class="t">course-graph подключён к клиенту</span><span class="d">Python-часть — по gRPC.</span></span></label></li>
+        <li><label><input type="checkbox" data-id="l-python"><span><span class="t">course-graph подключён к клиенту</span><span class="d">Python-часть — в backend, к клиенту по gRPC.</span></span></label></li>
         <li><label><input type="checkbox" data-id="l-roles"><span><span class="t">Запросы к модели идут параллельно</span><span class="d">Для кода одна модель; очередь и распределение по 4 LLM — в клиенте.</span></span></label></li>
       </ul>
     </section>
@@ -231,7 +232,7 @@
       <ul>
         <li><label><input type="checkbox" data-id="doc-readme"><span><span class="t">README описывает новое видение</span></span></label></li>
         <li><label><input type="checkbox" data-id="doc-legacy"><span><span class="t">Документы прежней модели помечены</span></span></label></li>
-        <li><label><input type="checkbox" data-id="doc-open"><span><span class="t">Оставшиеся открытые вопросы закрыты и записаны в README</span></span></label></li>
+        <li><label><input type="checkbox" data-id="doc-open"><span><span class="t">Открытых вопросов нет; новые фиксируются в README</span></span></label></li>
         <li><label><input type="checkbox" data-id="doc-api"><span><span class="t">Контракт API Geek и course-graph в OpenAPI</span></span></label></li>
       </ul>
     </section>

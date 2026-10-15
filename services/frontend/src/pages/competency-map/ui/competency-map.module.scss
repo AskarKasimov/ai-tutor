@@ -210,6 +210,12 @@
   margin-bottom: 0;
   padding-left: var(--space-5);
 }
+.warning {
+  padding: var(--space-4);
+  background: var(--amber-3);
+  color: var(--amber-11);
+  border-radius: var(--radius-3);
+}
 .denied {
   padding: var(--space-7);
 }

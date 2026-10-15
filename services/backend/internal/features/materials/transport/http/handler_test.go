@@ -36,7 +36,7 @@ func (m *memoryRepo) List(ctx context.Context, subjectID string) ([]material.Mat
 func (m *memoryRepo) Get(ctx context.Context, id string) (material.Material, error) {
 	item, ok := m.items[id]
 	if !ok {
-		return material.Material{}, io.EOF
+		return material.Material{}, material.ErrNotFound
 	}
 	return item, nil
 }
@@ -139,7 +139,7 @@ func TestHandlerUploadAndList(t *testing.T) {
 	}
 
 	// 3. Admin upload -> 200 OK
-	var uploaded []material.Material
+	var uploadRes materialshttp.UploadResult
 	{
 		req, rec := makeUploadReq()
 		req = httpx.WithPrincipal(req, admin)
@@ -147,14 +147,14 @@ func TestHandlerUploadAndList(t *testing.T) {
 		if rec.Code != http.StatusOK {
 			t.Fatalf("expected 200 OK, got %d: %s", rec.Code, rec.Body.String())
 		}
-		if err := json.NewDecoder(rec.Body).Decode(&uploaded); err != nil {
+		if err := json.NewDecoder(rec.Body).Decode(&uploadRes); err != nil {
 			t.Fatalf("decode response: %v", err)
 		}
-		if len(uploaded) != 1 {
-			t.Fatalf("expected 1 uploaded material, got %d", len(uploaded))
+		if len(uploadRes.Uploaded) != 1 {
+			t.Fatalf("expected 1 uploaded material, got %d", len(uploadRes.Uploaded))
 		}
-		if !strings.Contains(uploaded[0].ParsedText, "\\nabla L") {
-			t.Errorf("expected LaTeX formula in parsed text, got: %s", uploaded[0].ParsedText)
+		if !strings.Contains(uploadRes.Uploaded[0].ParsedText, "\\nabla L") {
+			t.Errorf("expected LaTeX formula in parsed text, got: %s", uploadRes.Uploaded[0].ParsedText)
 		}
 	}
 
@@ -191,9 +191,9 @@ func TestHandlerUploadAndList(t *testing.T) {
 
 	// 6. Download raw as admin -> 200 OK with safe headers
 	{
-		reqRaw := httptest.NewRequest(http.MethodGet, "/admin/subjects/sub-1/materials/"+uploaded[0].ID+"/raw", nil)
+		reqRaw := httptest.NewRequest(http.MethodGet, "/admin/subjects/sub-1/materials/"+uploadRes.Uploaded[0].ID+"/raw", nil)
 		reqRaw.SetPathValue("subject_id", "sub-1")
-		reqRaw.SetPathValue("material_id", uploaded[0].ID)
+		reqRaw.SetPathValue("material_id", uploadRes.Uploaded[0].ID)
 		reqRaw = httpx.WithPrincipal(reqRaw, admin)
 		recRaw := httptest.NewRecorder()
 		handler.DownloadRaw(recRaw, reqRaw)
@@ -210,9 +210,9 @@ func TestHandlerUploadAndList(t *testing.T) {
 
 	// 7. Delete as admin -> 200 OK
 	{
-		reqDel := httptest.NewRequest(http.MethodDelete, "/admin/subjects/sub-1/materials/"+uploaded[0].ID, nil)
+		reqDel := httptest.NewRequest(http.MethodDelete, "/admin/subjects/sub-1/materials/"+uploadRes.Uploaded[0].ID, nil)
 		reqDel.SetPathValue("subject_id", "sub-1")
-		reqDel.SetPathValue("material_id", uploaded[0].ID)
+		reqDel.SetPathValue("material_id", uploadRes.Uploaded[0].ID)
 		reqDel = httpx.WithPrincipal(reqDel, admin)
 		recDel := httptest.NewRecorder()
 		handler.DeleteMaterial(recDel, reqDel)

@@ -12,3 +12,7 @@ export {
   deleteCourseMaterial,
   downloadCourseMaterialRaw,
 } from './api/competency-map-api'
+export type {
+  CourseMaterialUploadFailedItem,
+  CourseMaterialUploadResult,
+} from './api/competency-map-api'

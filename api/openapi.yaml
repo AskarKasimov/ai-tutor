@@ -908,6 +908,37 @@ components:
         - competency_id
         - competency_name
       type: object
+    http.UploadFailedItem:
+      additionalProperties: false
+      properties:
+        code:
+          type: string
+        filename:
+          type: string
+        message:
+          type: string
+      required:
+        - code
+        - filename
+        - message
+      type: object
+    http.UploadResult:
+      additionalProperties: false
+      properties:
+        failed:
+          items:
+            $ref: '#/components/schemas/http.UploadFailedItem'
+          type: array
+          uniqueItems: false
+        uploaded:
+          items:
+            $ref: '#/components/schemas/material.Material'
+          type: array
+          uniqueItems: false
+      required:
+        - failed
+        - uploaded
+      type: object
     learninghttp.CreatePlanRequest:
       additionalProperties: false
       properties:
@@ -2437,9 +2468,7 @@ paths:
           content:
             application/json:
               schema:
-                items:
-                  $ref: '#/components/schemas/material.Material'
-                type: array
+                $ref: '#/components/schemas/http.UploadResult'
           description: OK
         "400":
           content:

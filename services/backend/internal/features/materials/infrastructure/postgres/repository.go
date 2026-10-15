@@ -2,10 +2,12 @@ package postgres
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/material"
 	db "github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/postgres/sqlcgen"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -35,6 +37,9 @@ func (r *Repository) Get(ctx context.Context, id string) (material.Material, err
 	q := db.New(r.pool)
 	row, err := q.GetSubjectMaterialByID(ctx, id)
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return material.Material{}, material.ErrNotFound
+		}
 		return material.Material{}, fmt.Errorf("get subject material %s: %w", id, err)
 	}
 	return toMaterial(row), nil

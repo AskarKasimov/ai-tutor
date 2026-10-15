@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -95,7 +96,8 @@ func (s *Service) Upload(ctx context.Context, actor user.User, subjectID string,
 		contentType = "application/octet-stream"
 	}
 	if err := s.s3.Put(ctx, s3RawKey, contentType, input.Data); err != nil {
-		return material.Material{}, fault.New(fault.Unavailable, "S3_UPLOAD_ERROR", fmt.Sprintf("failed to upload raw file to S3: %v", err))
+		log.Printf("Failed to upload raw file to S3 for %s: %v", cleanFilename, err)
+		return material.Material{}, fault.New(fault.Unavailable, "S3_UPLOAD_ERROR", "Хранилище недоступно, попробуйте позже.")
 	}
 
 	// 2. Parse text with Marker OCR (or fallback)
@@ -137,9 +139,16 @@ func (s *Service) Upload(ctx context.Context, actor user.User, subjectID string,
 
 	created, err := s.repo.Insert(ctx, matRecord)
 	if err != nil {
-		_ = s.s3.Delete(ctx, s3RawKey)
-		_ = s.s3.Delete(ctx, s3ParsedKey)
-		return material.Material{}, fault.New(fault.Unavailable, "DATABASE_ERROR", fmt.Sprintf("failed to save material to database: %v", err))
+		log.Printf("Failed to save material %s to database: %v", cleanFilename, err)
+		cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
+		defer cancel()
+		if delErr := s.s3.Delete(cleanupCtx, s3RawKey); delErr != nil {
+			log.Printf("Failed to cleanup raw S3 object %s after DB error: %v", s3RawKey, delErr)
+		}
+		if delErr := s.s3.Delete(cleanupCtx, s3ParsedKey); delErr != nil {
+			log.Printf("Failed to cleanup parsed S3 object %s after DB error: %v", s3ParsedKey, delErr)
+		}
+		return material.Material{}, fault.New(fault.Unavailable, "DATABASE_ERROR", "Не удалось сохранить материал в базу данных, попробуйте позже.")
 	}
 
 	return created, nil
@@ -158,7 +167,11 @@ func (s *Service) Get(ctx context.Context, actor user.User, subjectID, materialI
 	}
 	mat, err := s.repo.Get(ctx, materialID)
 	if err != nil {
-		return material.Material{}, fault.New(fault.NotFound, "NOT_FOUND", "Материал не найден.")
+		if errors.Is(err, material.ErrNotFound) {
+			return material.Material{}, fault.New(fault.NotFound, "NOT_FOUND", "Материал не найден.")
+		}
+		log.Printf("Failed to get material %s from repository: %v", materialID, err)
+		return material.Material{}, fault.New(fault.Unavailable, "DATABASE_ERROR", "База данных временно недоступна, попробуйте позже.")
 	}
 	if mat.SubjectID != subjectID {
 		return material.Material{}, fault.New(fault.NotFound, "NOT_FOUND", "Материал не принадлежит указанному предмету.")
@@ -175,11 +188,18 @@ func (s *Service) Delete(ctx context.Context, actor user.User, subjectID, materi
 		return err
 	}
 
-	_ = s.s3.Delete(ctx, mat.S3RawKey)
-	_ = s.s3.Delete(ctx, mat.S3ParsedKey)
-
 	if err := s.repo.Delete(ctx, subjectID, materialID); err != nil {
+		log.Printf("Failed to delete material %s from repository: %v", materialID, err)
 		return fault.New(fault.Unavailable, "DATABASE_ERROR", "Не удалось удалить материал из базы данных.")
+	}
+
+	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
+	defer cancel()
+	if delErr := s.s3.Delete(cleanupCtx, mat.S3RawKey); delErr != nil {
+		log.Printf("Failed to delete raw S3 object %s for material %s: %v", mat.S3RawKey, materialID, delErr)
+	}
+	if delErr := s.s3.Delete(cleanupCtx, mat.S3ParsedKey); delErr != nil {
+		log.Printf("Failed to delete parsed S3 object %s for material %s: %v", mat.S3ParsedKey, materialID, delErr)
 	}
 	return nil
 }

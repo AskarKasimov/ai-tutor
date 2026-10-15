@@ -1,5 +1,9 @@
 package material
 
+import "errors"
+
+var ErrNotFound = errors.New("material not found")
+
 type Status string
 
 const (

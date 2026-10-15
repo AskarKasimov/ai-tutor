@@ -4,6 +4,7 @@ import type {
   CompetencyMapImport,
   CompetencyMapSummary,
   CourseMaterial,
+  CourseMaterialUploadResult,
 } from '@/entities/competency-map'
 
 export type CompetencyMapDependencies = {
@@ -22,7 +23,7 @@ export type CompetencyMapDependencies = {
       subjectId: string,
       files: File[],
       signal?: AbortSignal,
-    ): Promise<CourseMaterial[]>
+    ): Promise<CourseMaterialUploadResult>
     deleteCourseMaterial(
       subjectId: string,
       materialId: string,

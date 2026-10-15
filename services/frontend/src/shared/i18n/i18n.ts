@@ -104,6 +104,9 @@ void i18n.init({
             failed: 'Ошибка распознавания',
           },
           materialsPreview: 'Предпросмотр распознанного текста',
+          materialsDownloadError: 'Не удалось скачать файл.',
+          materialsPartialWarning:
+            'Часть файлов не удалось загрузить: {{failed}}',
           materialsInvalidType: 'Поддерживаются файлы PDF и Markdown.',
           materialsEmptyFiles: 'Выберите хотя бы один файл.',
           unparsed:

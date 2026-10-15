@@ -1,6 +1,7 @@
 package http
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -19,6 +20,17 @@ import (
 
 type DeleteResponse struct {
 	Status string `json:"status"`
+}
+
+type UploadFailedItem struct {
+	Filename string `json:"filename"`
+	Code     string `json:"code"`
+	Message  string `json:"message"`
+}
+
+type UploadResult struct {
+	Uploaded []material.Material `json:"uploaded"`
+	Failed   []UploadFailedItem  `json:"failed"`
 }
 
 type Handler struct {
@@ -43,7 +55,7 @@ func NewHandler(service *application.Service, maxUploadBytes int64) *Handler {
 // @Produce json
 // @Param subject_id path string true "ID предмета"
 // @Param file formData file true "Файл лекции или лабы (PDF, Markdown, текст)"
-// @Success 200 {array} material.Material
+// @Success 200 {object} UploadResult
 // @Failure 400 {object} fault.Error
 // @Failure 401 {object} fault.Error
 // @Failure 403 {object} fault.Error
@@ -77,8 +89,8 @@ func (h *Handler) UploadMaterials(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var results []material.Material
-	var firstErr error
+	var uploaded []material.Material
+	var failed []UploadFailedItem
 
 	for {
 		part, err := mr.NextPart()
@@ -87,6 +99,20 @@ func (h *Handler) UploadMaterials(w http.ResponseWriter, r *http.Request) {
 		}
 		if err != nil {
 			log.Printf("UploadMaterials: reading next part: %v", err)
+			var maxBytesErr *http.MaxBytesError
+			if errors.As(err, &maxBytesErr) {
+				failed = append(failed, UploadFailedItem{
+					Filename: "request",
+					Code:     "PAYLOAD_TOO_LARGE",
+					Message:  "Превышен общий лимит размера запроса.",
+				})
+			} else {
+				failed = append(failed, UploadFailedItem{
+					Filename: "part",
+					Code:     "READ_ERROR",
+					Message:  "Ошибка чтения части multipart-запроса.",
+				})
+			}
 			break
 		}
 		if part.FormName() != "file" && part.FormName() != "files" {
@@ -104,18 +130,27 @@ func (h *Handler) UploadMaterials(w http.ResponseWriter, r *http.Request) {
 		_ = part.Close()
 		if err != nil {
 			log.Printf("UploadMaterials: failed to read file %q: %v", filename, err)
-			if firstErr == nil {
-				firstErr = err
-			}
+			failed = append(failed, UploadFailedItem{
+				Filename: filename,
+				Code:     "READ_ERROR",
+				Message:  "Не удалось прочитать содержимое файла.",
+			})
 			continue
 		}
 		if int64(len(data)) > h.maxUploadBytes {
-			if firstErr == nil {
-				firstErr = fault.New(fault.TooLarge, "PAYLOAD_TOO_LARGE", fmt.Sprintf("Файл %q превышает допустимый размер.", filename))
-			}
+			failed = append(failed, UploadFailedItem{
+				Filename: filename,
+				Code:     "PAYLOAD_TOO_LARGE",
+				Message:  fmt.Sprintf("Файл %q превышает допустимый размер.", filename),
+			})
 			continue
 		}
 		if len(data) == 0 {
+			failed = append(failed, UploadFailedItem{
+				Filename: filename,
+				Code:     "EMPTY_FILE",
+				Message:  fmt.Sprintf("Файл %q пуст.", filename),
+			})
 			continue
 		}
 
@@ -131,24 +166,43 @@ func (h *Handler) UploadMaterials(w http.ResponseWriter, r *http.Request) {
 		})
 		if err != nil {
 			log.Printf("UploadMaterials: failed to upload material %q: %v", filename, err)
-			if firstErr == nil {
-				firstErr = err
+			code := "UPLOAD_ERROR"
+			msg := err.Error()
+			var fe *fault.Error
+			if errors.As(err, &fe) {
+				code = fe.Code
+				msg = fe.Message
 			}
+			failed = append(failed, UploadFailedItem{
+				Filename: filename,
+				Code:     code,
+				Message:  msg,
+			})
 			continue
 		}
-		results = append(results, mat)
+		uploaded = append(uploaded, mat)
 	}
 
-	if len(results) == 0 {
-		if firstErr != nil {
-			httpx.Error(r.Context(), w, firstErr)
+	if len(uploaded) == 0 {
+		if len(failed) > 0 {
+			first := failed[0]
+			kind := fault.Invalid
+			if first.Code == "PAYLOAD_TOO_LARGE" {
+				kind = fault.TooLarge
+			} else if first.Code == "S3_UPLOAD_ERROR" || first.Code == "DATABASE_ERROR" {
+				kind = fault.Unavailable
+			}
+			httpx.Error(r.Context(), w, fault.New(kind, first.Code, first.Message))
 			return
 		}
 		httpx.Error(r.Context(), w, fault.New(fault.Invalid, "BAD_REQUEST", "Не предоставлены файлы для загрузки."))
 		return
 	}
 
-	httpx.JSON(w, http.StatusOK, results)
+	httpx.JSON(w, http.StatusOK, UploadResult{
+		Uploaded: uploaded,
+		Failed:   failed,
+	})
 }
 
 // ListMaterials handles GET /admin/subjects/{subject_id}/materials.

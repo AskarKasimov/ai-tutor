@@ -191,11 +191,33 @@ export async function readSubjectMaterials(
   }))
 }
 
+export interface CourseMaterialUploadFailedItem {
+  filename: string
+  code: string
+  message: string
+}
+
+export interface CourseMaterialUploadResult {
+  uploaded: CourseMaterial[]
+  failed: CourseMaterialUploadFailedItem[]
+}
+
+const courseMaterialUploadFailedItemSchema = z.object({
+  filename: z.string(),
+  code: z.string(),
+  message: z.string(),
+})
+
+const courseMaterialUploadResultSchema = z.object({
+  uploaded: z.array(courseMaterialSchema),
+  failed: z.array(courseMaterialUploadFailedItemSchema),
+})
+
 export async function uploadCourseMaterials(
   subjectId: string,
   files: File[],
   signal?: AbortSignal,
-): Promise<CourseMaterial[]> {
+): Promise<CourseMaterialUploadResult> {
   const body = new FormData()
   for (const file of files) {
     body.append('file', file, file.name)
@@ -210,25 +232,28 @@ export async function uploadCourseMaterials(
       signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
     },
   )
-  const parsed = z
-    .array(courseMaterialSchema)
-    .safeParse(await readResponse(response))
+  const parsed = courseMaterialUploadResultSchema.safeParse(
+    await readResponse(response),
+  )
   if (!parsed.success) throw new Error(i18n.t('competencyMap.unknownResult'))
-  return parsed.data.map((item) => ({
-    id: item.id,
-    subjectId: item.subject_id,
-    filename: item.filename,
-    contentType: item.content_type,
-    fileSize: item.file_size,
-    s3RawKey: item.s3_raw_key,
-    s3ParsedKey: item.s3_parsed_key,
-    parsedText: item.parsed_text,
-    charCount: item.char_count,
-    status: item.status,
-    errorMessage: item.error_message,
-    createdAt: item.created_at,
-    updatedAt: item.updated_at,
-  }))
+  return {
+    uploaded: parsed.data.uploaded.map((item) => ({
+      id: item.id,
+      subjectId: item.subject_id,
+      filename: item.filename,
+      contentType: item.content_type,
+      fileSize: item.file_size,
+      s3RawKey: item.s3_raw_key,
+      s3ParsedKey: item.s3_parsed_key,
+      parsedText: item.parsed_text,
+      charCount: item.char_count,
+      status: item.status,
+      errorMessage: item.error_message,
+      createdAt: item.created_at,
+      updatedAt: item.updated_at,
+    })),
+    failed: parsed.data.failed,
+  }
 }
 
 export async function deleteCourseMaterial(
@@ -276,6 +301,8 @@ export async function downloadCourseMaterialRaw(
     a.click()
     document.body.removeChild(a)
   } finally {
-    URL.revokeObjectURL(url)
+    setTimeout(() => {
+      URL.revokeObjectURL(url)
+    }, 10_000)
   }
 }

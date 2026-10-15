@@ -129,6 +129,8 @@ function backend(
     subjects?: typeof subjects
     teacherFails?: boolean
     materials?: typeof sampleMaterials
+    partialUpload?: boolean
+    downloadFails?: boolean
   } = {},
 ) {
   let active: typeof emptyMap | typeof importedMap = emptyMap
@@ -197,6 +199,20 @@ function backend(
       url.endsWith('/materials') &&
       init?.method === 'POST'
     ) {
+      if (options.partialUpload) {
+        return new Response(
+          JSON.stringify({
+            uploaded: [],
+            failed: [
+              {
+                filename: 'corrupted.pdf',
+                code: 'OCR_FAILED',
+                message: 'Ошибка распознавания',
+              },
+            ],
+          }),
+        )
+      }
       const newMat = {
         id: 'mat-uploaded',
         subject_id: 'subject-a',
@@ -214,13 +230,16 @@ function backend(
         updated_at: 1791356400,
       }
       activeMaterials.push(newMat)
-      return new Response(JSON.stringify([newMat]))
+      return new Response(JSON.stringify({ uploaded: [newMat], failed: [] }))
     }
     if (
       url.includes('/admin/subjects/') &&
       url.includes('/materials/') &&
       url.endsWith('/raw')
     ) {
+      if (options.downloadFails) {
+        return new Response('File not found', { status: 404 })
+      }
       return new Response('fake raw bytes', {
         headers: { 'Content-Type': 'application/pdf' },
       })
@@ -861,4 +880,39 @@ it('deletes an uploaded material after confirmation', async () => {
       ),
     ).toBe(true)
   })
+})
+
+it('shows warning alert when some files fail during upload', async () => {
+  backend({ partialUpload: true })
+  renderApp('/admin/competency-map')
+  const input = await screen.findByLabelText('Загрузить файлы материалов')
+  fireEvent.change(input, {
+    target: {
+      files: [
+        new File(['bad'], 'corrupted.pdf', {
+          type: 'application/pdf',
+        }),
+      ],
+    },
+  })
+  expect(await screen.findByText(/corrupted\.pdf/)).toBeVisible()
+  const submitBtn = screen.getByRole('button', {
+    name: /Загрузить и распознать материалы/,
+  })
+  fireEvent.click(submitBtn)
+  expect(
+    await screen.findByText(
+      /Часть файлов не удалось загрузить: corrupted\.pdf: Ошибка распознавания/,
+    ),
+  ).toBeVisible()
+})
+
+it('shows download error alert when downloading raw material fails', async () => {
+  backend({ downloadFails: true })
+  renderApp('/admin/competency-map')
+  const downloadBtn = await screen.findByRole('button', {
+    name: 'Скачать lecture1.pdf',
+  })
+  fireEvent.click(downloadBtn)
+  expect(await screen.findByRole('alert')).toBeVisible()
 })

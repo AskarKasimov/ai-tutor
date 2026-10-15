@@ -98,6 +98,7 @@ function CompetencyMapAdmin({ userId }: { userId: string }) {
     null,
   )
   const [previewId, setPreviewId] = useState<string | null>(null)
+  const [uploadWarning, setUploadWarning] = useState<string | null>(null)
 
   // A file the server rejected (format or size) is dropped, so there is
   // nothing left to confirm; technical failures keep it for a retry.
@@ -143,6 +144,7 @@ function CompetencyMapAdmin({ userId }: { userId: string }) {
   function selectLectureFiles(selected: FileList | null) {
     uploadMaterials.reset()
     setMaterialsFileError(null)
+    setUploadWarning(null)
     if (!selected || selected.length === 0) return
     const validFiles: File[] = []
     for (let i = 0; i < selected.length; i++) {
@@ -511,6 +513,12 @@ function CompetencyMapAdmin({ userId }: { userId: string }) {
                 </Text>
               )}
 
+              {uploadWarning && (
+                <div role="alert" className={styles.warning}>
+                  <Text as="p">{uploadWarning}</Text>
+                </div>
+              )}
+
               {lectureFiles.length > 0 && (
                 <div className={styles.actions}>
                   <Button
@@ -519,9 +527,24 @@ function CompetencyMapAdmin({ userId }: { userId: string }) {
                     className={styles.submit}
                     disabled={lectureFiles.length === 0 || busy}
                     onClick={() => {
+                      setUploadWarning(null)
                       uploadMaterials.mutate(
                         { files: lectureFiles, subjectId },
-                        { onSuccess: () => setLectureFiles([]) },
+                        {
+                          onSuccess: (result) => {
+                            setLectureFiles([])
+                            if (result.failed && result.failed.length > 0) {
+                              const failedMsg = result.failed
+                                .map((f) => `${f.filename}: ${f.message}`)
+                                .join('; ')
+                              setUploadWarning(
+                                t('competencyMap.materialsPartialWarning', {
+                                  failed: failedMsg,
+                                }),
+                              )
+                            }
+                          },
+                        },
                       )
                     }}
                   >
@@ -735,6 +758,7 @@ function MaterialItemCard({
 }) {
   const { t, i18n } = useTranslation()
   const [downloading, setDownloading] = useState(false)
+  const [downloadError, setDownloadError] = useState<string | null>(null)
   const formattedSize =
     material.fileSize > 1024 * 1024
       ? `${(material.fileSize / (1024 * 1024)).toFixed(1)} МБ`
@@ -754,10 +778,15 @@ function MaterialItemCard({
 
   async function handleDownload() {
     setDownloading(true)
+    setDownloadError(null)
     try {
       await downloadCourseMaterialRaw(subjectId, material.id, material.filename)
-    } catch {
-      // Error is handled/alerted by api error handler if needed
+    } catch (err) {
+      setDownloadError(
+        err instanceof Error
+          ? err.message
+          : t('competencyMap.materialsDownloadError'),
+      )
     } finally {
       setDownloading(false)
     }
@@ -843,6 +872,12 @@ function MaterialItemCard({
           <span>{dateStr}</span>
         </Flex>
       </div>
+
+      {downloadError && (
+        <Text as="p" role="alert" color="red" size="2">
+          {downloadError}
+        </Text>
+      )}
 
       {previewOpen && (
         <div className={styles.materialPreview}>

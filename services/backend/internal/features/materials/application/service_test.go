@@ -29,7 +29,7 @@ func (m *memoryRepo) List(ctx context.Context, subjectID string) ([]material.Mat
 func (m *memoryRepo) Get(ctx context.Context, id string) (material.Material, error) {
 	item, ok := m.items[id]
 	if !ok {
-		return material.Material{}, io.EOF
+		return material.Material{}, material.ErrNotFound
 	}
 	return item, nil
 }

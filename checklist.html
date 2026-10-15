@@ -161,8 +161,8 @@
         <li><label><input type="checkbox" data-id="g-wrong"><span><span class="t">Не освоено → вопрос по каждому пререквизиту</span><span class="d">Спуск к более простым темам.</span></span></label></li>
         <li><label><input type="checkbox" data-id="g-extra"><span><span class="t">На тему — основной вопрос и максимум один дополнительный</span><span class="d">Углубление (пример, контрпример, изменённые условия) или прояснение неоднозначного ответа.</span></span></label></li>
         <li><label><input type="checkbox" data-id="g-rephrase"><span><span class="t">Каждый вопрос можно один раз переформулировать</span><span class="d">Других подсказок нет.</span></span></label></li>
-        <li><label><input type="checkbox" data-id="g-criteria"><span><span class="t">Четыре критерия с уровнями освоения</span><span class="d">Корректность и терминология; логика и обоснование; возражения и контрпримеры; изменённые условия.</span></span></label></li>
-        <li><label><input type="checkbox" data-id="g-criteria-rule"><span><span class="t">Правило: уровни критериев → статус темы <span class="tag">открыто</span></span><span class="d">Учитывается ли «ответ с помощью» как освоение.</span></span></label></li>
+        <li><label><input type="checkbox" data-id="g-criteria"><span><span class="t">Модель оценивает четыре критерия на 0 / 1 / 2</span><span class="d">Корректность и терминология; логика и обоснование; возражения и контрпримеры; изменённые условия.</span></span></label></li>
+        <li><label><input type="checkbox" data-id="g-criteria-rule"><span><span class="t">Критерии → оценка темы A–D</span><span class="d">A, B, C — тема и поддерево засчитаны; D — пробел. Ответ с помощью — только B или C.</span></span></label></li>
         <li><label><input type="checkbox" data-id="g-status"><span><span class="t">Статусы: самостоятельно / с помощью / пробел / нет данных / по вышестоящей</span></span></label></li>
         <li><label><input type="checkbox" data-id="g-evidence"><span><span class="t">Для темы сохраняются глубина понимания и фрагменты диалога</span></span></label></li>
         <li><label><input type="checkbox" data-id="g-gap"><span><span class="t">Пробел = самая глубокая неосвоенная вершина с освоенными пререквизитами</span></span></label></li>
@@ -173,7 +173,8 @@
         <section>
       <h2>4. Итог для студента <small></small></h2>
       <ul>
-        <li><label><input type="checkbox" data-id="r-grade"><span><span class="t">Предварительная оценка A / B / C / D</span><span class="d">Доля освоенных верхнеуровневых тем: ≥ 90% A, ≥ 75% B, ≥ 60% C, иначе D.</span></span></label></li>
+        <li><label><input type="checkbox" data-id="r-grade"><span><span class="t">Предварительная оценка A / B / C / D</span><span class="d">Средняя по верхнеуровневым темам (A = 4 … D = 1) с округлением.</span></span></label></li>
+        <li><label><input type="checkbox" data-id="r-rounding"><span><span class="t">Округление средней и темы «недостаточно данных» <span class="tag">открыто</span></span></span></label></li>
         <li><label><input type="checkbox" data-id="r-gaps"><span><span class="t">Список пробелов с неделями и источниками</span><span class="d">Лекция / лаба / туториал.</span></span></label></li>
         <li><label><input type="checkbox" data-id="r-rebuild"><span><span class="t">После пересборки графа у старых диагностик остаётся только фидбэк</span></span></label></li>
       </ul>
@@ -185,7 +186,7 @@
         <li><label><input type="checkbox" data-id="p-transcript"><span><span class="t">Транскрипт с разделением реплик и нумерацией строк</span></span></label></li>
         <li><label><input type="checkbox" data-id="p-coverage"><span><span class="t">Карта покрытия: статус каждой темы графа</span></span></label></li>
         <li><label><input type="checkbox" data-id="p-observations"><span><span class="t">Наблюдения по критериям для пробелов со ссылками на строки транскрипта</span></span></label></li>
-        <li><label><input type="checkbox" data-id="p-delivery"><span><span class="t">Где преподаватель получает пакет <span class="tag">открыто</span></span><span class="d">Админка, файл или API.</span></span></label></li>
+        <li><label><input type="checkbox" data-id="p-delivery"><span><span class="t">Пакет доступен преподавателю в админке</span></span></label></li>
       </ul>
     </section>
 

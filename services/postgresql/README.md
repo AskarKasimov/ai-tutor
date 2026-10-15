@@ -15,7 +15,7 @@ docker compose --env-file ../../.env ps
 Обычный `down` сохраняет volume; `down -v` удаляет данные.
 
 Goose при старте API штатно применяет к существующему volume миграции
-`00001`–`00009` (список — в [backend README](../backend/README.md#бд-и-импорт)).
+`00001`–`00010` (список — в [backend README](../backend/README.md#бд-и-импорт)).
 `00003_task_audio.sql` создаёт очередь и ссылки на задания/снимки, но не генерирует
 WAV: backend worker обрабатывает backlog после старта. Для состояния очереди выполните:
 

@@ -201,7 +201,7 @@ Geek проводит диагностику и тренировку тольк�
 | --- | --- |
 | `services/backend/` | Go API, миграции и SQLC. |
 | `services/frontend/` | Интерфейс, запись голоса и клиент API. |
-| `services/postgresql/`, `services/s3/`, `services/caddy/` | PostgreSQL, S3-хранилище и HTTPS-прокси. |
+| `services/postgresql/`, `services/s3/`, `services/caddy/`, `services/course-graph/` | PostgreSQL, S3-хранилище, HTTPS-прокси и сервис графа курса (course-graph). |
 | `api/` | Единый OpenAPI. |
 | `documents/` | Сценарии, алгоритмы и архитектура. |
 | `examples/` | Концепция проректора и РПД демонстрационного курса. |
@@ -230,7 +230,7 @@ cp .env.example .env
 - Frontend использует HTTP API для auth, предметов, диагностики, итогового фидбэка и плана обучения. ID сессии сохраняется в sessionStorage; учебные данные хранятся в PostgreSQL и переживают перезапуск backend. В dev VITE_* передаются контейнеру; после изменения .env пересоздайте frontend. В production значения применяются при сборке.
 - Backend всегда использует действующие модели; STT/TTS и настройки assessment/taskgen из `.env.example` обязательны. Worker готовит озвучку после импорта, а браузер получает сохранённый WAV через авторизованный backend.
 - STT принимает WAV/Ogg/WebM до 25 МиБ и возвращает сохранённую расшифровку. TTS принимает до 500 символов и возвращает WAV. Без longform/VAD весов на сервере модели GigaAM отклоняет записи длиннее ~25 с, поэтому браузер переводит ответ длиннее 20 с в WAV 16 кГц, а backend режет его по паузам на части до 20 с и склеивает текст. Запись ответа автоматически останавливается через 1,5 минуты.
-- PostgreSQL и S3 хранят данные в отдельных volumes. `down` сохраняет их; `down -v` удаляет. Миграции `00001`–`00009` применяются при запуске API; удалять volumes для обновления не нужно.
+- PostgreSQL и S3 хранят данные в отдельных volumes. `down` сохраняет их; `down -v` удаляет. Миграции `00001`–`00010` применяются при запуске API; удалять volumes для обновления не нужно.
 
 ### Live reload в Docker
 
@@ -275,4 +275,4 @@ Backend DB-тесты требуют TEST_DATABASE_URL; без него проп
 | [documents/](documents/README.md) | Сценарии, алгоритмы, оценивание, архитектура и авторизация. |
 | [Концепция проректора](documents/Концепция_Репетитор_устного_экзамена.md) | Исходное видение «Репетитор устного экзамена»; принятая трактовка — в этом README. |
 | [PLAN.md](PLAN.md) | Исторический: план backend-сессии диагностики прежней модели. |
-| [Backend](services/backend/README.md), [frontend](services/frontend/README.md), [PostgreSQL](services/postgresql/README.md), [S3](services/s3/README.md), [Caddy](services/caddy/README.md) | Запуск и разработка сервисов. |
+| [Backend](services/backend/README.md), [frontend](services/frontend/README.md), [PostgreSQL](services/postgresql/README.md), [S3](services/s3/README.md), [Caddy](services/caddy/README.md), [Course Graph](services/course-graph/README.md) | Запуск и разработка сервисов. |

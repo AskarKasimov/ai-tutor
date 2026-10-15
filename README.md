@@ -201,7 +201,7 @@ Geek проводит диагностику и тренировку тольк�
 | --- | --- |
 | `services/backend/` | Go API, миграции и SQLC. |
 | `services/frontend/` | Интерфейс, запись голоса и клиент API. |
-| `services/postgresql/`, `services/s3/`, `services/caddy/` | PostgreSQL, S3-хранилище и HTTPS-прокси. |
+| `services/postgresql/`, `services/s3/`, `services/caddy/`, `services/ocr/` | PostgreSQL, S3-хранилище, HTTPS-прокси и OCR-сервис. |
 | `api/` | Единый OpenAPI. |
 | `documents/` | Сценарии, алгоритмы и архитектура. |
 | `examples/` | Концепция проректора и РПД демонстрационного курса. |
@@ -275,4 +275,4 @@ Backend DB-тесты требуют TEST_DATABASE_URL; без него проп
 | [documents/](documents/README.md) | Сценарии, алгоритмы, оценивание, архитектура и авторизация. |
 | [documents/ai-journey-plan.md](documents/ai-journey-plan.md) | Исторический: решения встречи 10.10.2026 для прежней модели. |
 | [PLAN.md](PLAN.md) | Исторический: план backend-сессии диагностики прежней модели. |
-| [Backend](services/backend/README.md), [frontend](services/frontend/README.md), [PostgreSQL](services/postgresql/README.md), [S3](services/s3/README.md), [Caddy](services/caddy/README.md) | Запуск и разработка сервисов. |
+| [Backend](services/backend/README.md), [frontend](services/frontend/README.md), [PostgreSQL](services/postgresql/README.md), [S3](services/s3/README.md), [Caddy](services/caddy/README.md), [OCR](services/ocr/README.md) | Запуск и разработка сервисов. |

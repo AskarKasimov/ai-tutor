@@ -292,7 +292,7 @@ cp .env.example .env
 
 На Windows вместо `dev.sh` используйте `.\up.ps1` из PowerShell: скрипт запускает Docker Desktop, при отсутствии создаёт `.env` из `.env.example` в режиме real со случайными секретами, выпускает сертификаты, поднимает стек, ждёт health и открывает сайт ученика и админ-панель. `.\up.ps1 -Logs` показывает логи, `.\up.ps1 -Down` останавливает стек с сохранением данных. Если PowerShell блокирует скрипты, один раз выполните `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`.
 
-Локально нужны Docker Compose и mkcert. Сайт ученика: https://localhost:8443, админ-панель: https://localhost:8443/admin, публичный API: `/api/v1`, health: `/api/v1/health`. Swagger backend доступен на `/docs/`. В dev профиле по умолчанию запущен LLM Gateway на `http://localhost:8010`; его OpenAPI preview использует этот адрес и принимает Try it запросы из VS Code.
+Локально нужны Docker Compose и mkcert. Сайт ученика: https://localhost:8443, админ-панель: https://localhost:8443/admin, публичный API: `/api/v1`, health: `/api/v1/health`. Swagger backend доступен на `/docs/`. В dev профиле по умолчанию запущен LLM Gateway. OpenAPI preview и Try it доступны через Caddy на `https://localhost:8443/llm-gateway` с CORS для VS Code webview.
 
 Для сервера: `.env.prod.example` → `.env`, готовые `certs/server.pem`/`server-key.pem`, сеть `ai-tutor_default`, затем `./prod.sh`. Dev-стек и серверные Compose используют общие имена сети и volumes; одновременно их не запускают.
 

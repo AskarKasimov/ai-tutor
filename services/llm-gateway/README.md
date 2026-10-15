@@ -35,4 +35,4 @@ Consumer транзакционно сохраняет `queued` вместе с 
 
 ### Dev Compose и VS Code preview
 
-В `.env` задано `COMPOSE_PROFILES=swagger,gateway`, поэтому обычный `./dev.sh` запускает gateway вместе с Redpanda. API опубликован только на `127.0.0.1:8010`. `openapi.yaml` указывает на `http://localhost:8010`; gateway разрешает CORS только для VS Code webview origins, чтобы работал preview и Try it.
+В `.env` задано `COMPOSE_PROFILES=swagger,gateway`, поэтому обычный `./dev.sh` запускает gateway вместе с Redpanda. API опубликован только на `127.0.0.1:8010`. `openapi.yaml` использует `https://localhost:8443/llm-gateway`; Caddy проксирует этот путь к gateway и разрешает CORS только для VS Code webview origins, чтобы работали preview и Try it.

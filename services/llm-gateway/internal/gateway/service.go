@@ -11,7 +11,6 @@ import (
 	"io"
 	"math"
 	"net/http"
-	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -1272,26 +1271,4 @@ func newID() string {
 }
 func ioReadAll(r io.Reader) ([]byte, error) { return io.ReadAll(r) }
 
-var vscodePreviewOrigin = regexp.MustCompile(`^(vscode-webview://[a-zA-Z0-9-]+|https://[a-zA-Z0-9-]+\.vscode-cdn\.net)$`)
-
-func (s *Service) Handler() http.Handler { return http.HandlerFunc(s.serveHTTP) }
-
-func (s *Service) serveHTTP(w http.ResponseWriter, r *http.Request) {
-	origin := r.Header.Get("Origin")
-	allowedOrigin := vscodePreviewOrigin.MatchString(origin)
-	if allowedOrigin {
-		w.Header().Set("Access-Control-Allow-Origin", origin)
-		w.Header().Add("Vary", "Origin")
-		w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Idempotency-Key")
-	}
-	if r.Method == http.MethodOptions && r.URL.Path == "/v1/chat/completions" {
-		if !allowedOrigin || r.Header.Get("Access-Control-Request-Method") != http.MethodPost {
-			writeError(w, http.StatusForbidden, "invalid_request_error", "cors_origin_denied", "Origin is not allowed.")
-			return
-		}
-		w.WriteHeader(http.StatusNoContent)
-		return
-	}
-	s.handler(w, r)
-}
+func (s *Service) Handler() http.Handler { return http.HandlerFunc(s.handler) }

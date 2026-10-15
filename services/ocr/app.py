@@ -43,10 +43,25 @@ async def convert_document(file: UploadFile = File(...)):
         tmp.write(content)
         tmp_path = tmp.name
 
+    lecture_title = os.path.splitext(filename)[0]
+
     try:
         converter = get_converter()
         conv_res = converter.convert(tmp_path)
-        markdown_text = conv_res.document.export_to_markdown()
+        doc = conv_res.document
+
+        slides_text = [f"# {lecture_title}\n"]
+
+        if hasattr(doc, "pages") and doc.pages:
+            for page_no in sorted(doc.pages.keys()):
+                slide_md = doc.export_to_markdown(page_no=page_no).strip()
+                if slide_md:
+                    slides_text.append(f"## Слайд {page_no}\n\n{slide_md}")
+            markdown_text = "\n\n".join(slides_text)
+        else:
+            raw_md = doc.export_to_markdown().strip()
+            markdown_text = f"# {lecture_title}\n\n{raw_md}" if raw_md else ""
+
         if markdown_text and markdown_text.strip():
             return {"markdown": markdown_text}
 
@@ -54,25 +69,25 @@ async def convert_document(file: UploadFile = File(...)):
         import pypdf
 
         reader = pypdf.PdfReader(tmp_path)
-        pages = []
+        slides_text = [f"# {lecture_title}\n"]
         for i, page in enumerate(reader.pages):
             text = page.extract_text() or ""
             if text.strip():
-                pages.append(f"## Слайд / Страница {i+1}\n\n{text}")
-        return {"markdown": "\n\n".join(pages)}
+                slides_text.append(f"## Слайд {i+1}\n\n{text}")
+        return {"markdown": "\n\n".join(slides_text)}
     except Exception as e:
         traceback.print_exc()
         try:
             import pypdf
 
             reader = pypdf.PdfReader(tmp_path)
-            pages = []
+            slides_text = [f"# {lecture_title}\n"]
             for i, page in enumerate(reader.pages):
                 text = page.extract_text() or ""
                 if text.strip():
-                    pages.append(f"## Слайд / Страница {i+1}\n\n{text}")
-            if pages:
-                return {"markdown": "\n\n".join(pages)}
+                    slides_text.append(f"## Слайд {i+1}\n\n{text}")
+            if len(slides_text) > 1:
+                return {"markdown": "\n\n".join(slides_text)}
         except Exception:
             pass
 

@@ -759,6 +759,90 @@ components:
         - code
         - message
       type: object
+    http.AnswerItemDTO:
+      additionalProperties: false
+      properties:
+        feedback:
+          items:
+            type: string
+          type: array
+          uniqueItems: false
+        max_score:
+          type: integer
+        question:
+          type: string
+        score:
+          type: integer
+        task_id:
+          type: string
+        topic:
+          type: string
+        transcript:
+          type: string
+      required:
+        - feedback
+        - max_score
+        - question
+        - score
+        - task_id
+        - topic
+        - transcript
+      type: object
+    http.AnswersFeedbackRequest:
+      additionalProperties: false
+      properties:
+        answers:
+          items:
+            $ref: '#/components/schemas/http.AnswerItemDTO'
+          type: array
+          uniqueItems: false
+      required:
+        - answers
+      type: object
+    http.AnswersFeedbackResponse:
+      additionalProperties: false
+      properties:
+        gaps:
+          items:
+            type: string
+          type: array
+          uniqueItems: false
+        generated_at:
+          type: integer
+        max_score:
+          type: integer
+        partials:
+          items:
+            type: string
+          type: array
+          uniqueItems: false
+        recommendations:
+          items:
+            type: string
+          type: array
+          uniqueItems: false
+        score:
+          type: integer
+        score_percentage:
+          type: integer
+        strengths:
+          items:
+            type: string
+          type: array
+          uniqueItems: false
+        summary:
+          type: string
+      required:
+        - gaps
+        - generated_at
+        - max_score
+        - partials
+        - recommendations
+        - score
+        - score_percentage
+        - strengths
+        - summary
+      type: object
     http.ConfirmedGapResponse:
       additionalProperties: false
       properties:
@@ -2361,6 +2445,49 @@ paths:
       security:
         - accessCookie: []
       summary: Оценить сохранённый голосовой ответ
+      tags:
+        - Грейдинг и фидбэк
+      x-implementation: implemented
+  /assessments/overall-feedback:
+    post:
+      description: Принимает список выполненных заданий сессии с частными оценками и замечаниями и возвращает единый синтезированный фидбэк.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/http.AnswersFeedbackRequest'
+              description: Список выполненных заданий с частными оценками
+              summary: request
+        description: Список выполненных заданий с частными оценками
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/http.AnswersFeedbackResponse'
+          description: OK
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unauthorized
+        "422":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unprocessable Entity
+        "503":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Service Unavailable
+      security:
+        - accessCookie: []
+      summary: Сгенерировать итоговый педагогический фидбэк по ответам сессии
       tags:
         - Грейдинг и фидбэк
       x-implementation: implemented
@@ -4351,6 +4478,42 @@ paths:
       tags:
         - Тренировка
       x-implementation: implemented
+  /training-sessions/{id}/answers/reset:
+    post:
+      parameters:
+        - description: ID тренировки
+          in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: No Content
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unauthorized
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Not Found
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Conflict
+      security:
+        - accessCookie: []
+      summary: Сбросить неудачную отправку ответа
+      tags:
+        - Тренировка
+      x-implementation: implemented
   /training-sessions/{id}/current/audio:
     get:
       description: Незавершённая запись получает первое место среди ожидающих. Уже выполняющаяся озвучка не прерывается.
@@ -4401,6 +4564,34 @@ paths:
       security:
         - accessCookie: []
       summary: Озвучка текущего упражнения
+      tags:
+        - Тренировка
+      x-implementation: implemented
+  /training-sessions/{id}/current/audio/regenerate:
+    post:
+      parameters:
+        - description: ID тренировки
+          in: path
+          name: id
+          required: true
+          schema:
+            type: string
+        - description: Текущее упражнение
+          in: query
+          name: exercise_id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/traininghttp.AudioResponse'
+          description: OK
+      security:
+        - accessCookie: []
+      summary: Повторить озвучку текущего упражнения
       tags:
         - Тренировка
       x-implementation: implemented

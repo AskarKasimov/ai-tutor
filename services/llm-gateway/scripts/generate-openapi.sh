@@ -8,7 +8,7 @@ go run github.com/swaggo/swag/v2/cmd/swag@v2.0.0-rc6 init --v3.1 --parseInternal
   --generalInfo cmd/llm-gateway/main.go --outputTypes json --output "$out" --quiet
 go run github.com/mikefarah/yq/v4@v4.54.1 -P -o=yaml '
   del(.externalDocs) |
-  .servers = [{"url": "http://llm-gateway:8010"}] |
+  .servers = [{"url": "http://localhost:8010"}] |
   .components.schemas["gateway.OpenAPIRequest"].additionalProperties = false |
   .components.schemas["gateway.OpenAPIRequest"].properties.messages.minItems = 1 |
   .components.schemas["gateway.Message"].additionalProperties = false |

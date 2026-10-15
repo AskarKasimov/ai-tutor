@@ -244,4 +244,4 @@ paths:
       summary: Queue and execute a chat completion
 openapi: 3.1.0
 servers:
-  - url: http://llm-gateway:8010
+  - url: http://localhost:8010

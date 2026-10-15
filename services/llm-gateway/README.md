@@ -31,3 +31,8 @@ Consumer транзакционно сохраняет `queued` вместе с 
 ### Контракт и проверки
 
 `openapi.yaml` генерируется из аннотаций и типов Go командой `bash scripts/generate-openapi.sh`. CI повторяет генерацию и проверяет, что файл уже актуален. Локальный конфиг upstream — `config.json`; он игнорируется Git.
+
+
+### Dev Compose и VS Code preview
+
+В `.env` задано `COMPOSE_PROFILES=swagger,gateway`, поэтому обычный `./dev.sh` запускает gateway вместе с Redpanda. API опубликован только на `127.0.0.1:8010`. `openapi.yaml` указывает на `http://localhost:8010`; gateway разрешает CORS только для VS Code webview origins, чтобы работал preview и Try it.

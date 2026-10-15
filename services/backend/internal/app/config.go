@@ -44,6 +44,8 @@ type Config struct {
 	S3CreateBucket        bool
 	AudioWorkers          int
 	AudioPollInterval     time.Duration
+	CourseGraphURL        string
+	CourseGraphTimeout    time.Duration
 	OCRURL                string
 	OCRTimeout            time.Duration
 }
@@ -185,11 +187,22 @@ func ConfigFromEnv() (Config, error) {
 	if err != nil {
 		return c, err
 	}
-	c.OCRURL = strings.TrimSpace(os.Getenv("BACKEND_OCR_URL"))
-	c.OCRTimeout, err = envDuration("BACKEND_OCR_TIMEOUT", 120*time.Second)
+	c.CourseGraphURL = strings.TrimSpace(os.Getenv("BACKEND_COURSE_GRAPH_URL"))
+	if c.CourseGraphURL == "" {
+		c.CourseGraphURL = strings.TrimSpace(os.Getenv("BACKEND_OCR_URL"))
+	}
+	c.CourseGraphTimeout, err = envDuration("BACKEND_COURSE_GRAPH_TIMEOUT", 120*time.Second)
 	if err != nil {
 		return c, err
 	}
+	if os.Getenv("BACKEND_COURSE_GRAPH_TIMEOUT") == "" && os.Getenv("BACKEND_OCR_TIMEOUT") != "" {
+		c.CourseGraphTimeout, err = envDuration("BACKEND_OCR_TIMEOUT", 120*time.Second)
+		if err != nil {
+			return c, err
+		}
+	}
+	c.OCRURL = c.CourseGraphURL
+	c.OCRTimeout = c.CourseGraphTimeout
 	return c, c.validate()
 }
 

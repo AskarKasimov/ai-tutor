@@ -100,7 +100,7 @@ func (s *Service) Upload(ctx context.Context, actor user.User, subjectID string,
 		return material.Material{}, fault.New(fault.Unavailable, "S3_UPLOAD_ERROR", "Хранилище недоступно, попробуйте позже.")
 	}
 
-	// 2. Parse text with Marker OCR (or fallback)
+	// 2. Parse text with course-graph OCR
 	parsedText, ocrErr := s.ocr.Convert(ctx, cleanFilename, input.Data)
 	status := material.StatusParsed
 	var errMsg *string

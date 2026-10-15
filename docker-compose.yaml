@@ -10,10 +10,10 @@ services:
       file: ./services/s3/docker-compose.yaml
       service: s3
 
-  ocr:
+  course-graph:
     extends:
-      file: ./services/ocr/docker-compose.yaml
-      service: ocr
+      file: ./services/course-graph/docker-compose.yaml
+      service: course-graph
 
   api:
     extends:

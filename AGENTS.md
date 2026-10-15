@@ -4,7 +4,7 @@
 
 ## Порядок работы
 
-1. Определите слой изменения: services/backend, services/frontend, services/postgresql, services/caddy, services/ocr, api или documents. Geek, course-graph и клиент к 4 LLM — отдельные модули backend.
+1. Определите слой изменения: services/backend, services/frontend, services/postgresql, services/caddy, services/course-graph, api или documents. Geek, course-graph и клиент к 4 LLM — отдельные модули backend.
 2. Новую учебную логику сверяйте с видением в [README](README.md) и РПД в [examples/](examples/). Для существующих модулей прежней модели — [сценарий](documents/voice-trainer-scenarios.md) и [алгоритм варианта](documents/Алгоритм_составления_варианта.md); [решения встречи 10.10.2026](documents/ai-journey-plan.md) — исторические. Наблюдения перед реализацией диагностики — [PLAN.md](PLAN.md); схема и импорт — [backend README](services/backend/README.md#бд-и-импорт); авторизация — [auth.md](documents/auth.md).
 3. Для HTTP сверяйте код и [единый OpenAPI](api/openapi.yaml). implemented означает подключённую операцию, planned — проект. При изменении DTO/аннотаций обновляйте контракт генератором и соответствующие тесты.
 4. В backend сохраняйте слои и направление зависимостей из [архитектуры](documents/backend-architecture.md). SQLC генерируйте из запросов. Применённые миграции дополняйте следующей версией; согласованный сброс расходной dev-БД допускает переработку начальной схемы без переноса старых данных.

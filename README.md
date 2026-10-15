@@ -163,7 +163,6 @@ Geek проводит диагностику и тренировку тольк�
 | Вызов LLM из Python | По gRPC через клиент к 4 LLM. |
 | Роли моделей | Не распределяются: одна модель с параллельными запросами, очередь на стороне клиента. |
 | Размещение | Geek, course-graph и клиент к 4 LLM — отдельные модули backend; Python-часть course-graph тоже в backend. |
-| Сервис OCR | Вынесен в отдельный микросервис `services/ocr` (FastAPI + Marker OCR) из-за тяжёлых ML-зависимостей (PyTorch, модели распознавания формул и таблиц) для изоляции ресурсов. |
 | Расхождения с РПД | Темы, которые есть в материалах, но нет в РПД, спрашиваются. Все расхождения подсвечиваются в админке при загрузке материалов; дальше работаем только по материалам. |
 
 ## Термины
@@ -202,7 +201,7 @@ Geek проводит диагностику и тренировку тольк�
 | --- | --- |
 | `services/backend/` | Go API, миграции и SQLC. |
 | `services/frontend/` | Интерфейс, запись голоса и клиент API. |
-| `services/postgresql/`, `services/s3/`, `services/caddy/`, `services/ocr/` | PostgreSQL, S3-хранилище, HTTPS-прокси и OCR-сервис. |
+| `services/postgresql/`, `services/s3/`, `services/caddy/`, `services/course-graph/` | PostgreSQL, S3-хранилище, HTTPS-прокси и сервис графа курса (course-graph). |
 | `api/` | Единый OpenAPI. |
 | `documents/` | Сценарии, алгоритмы и архитектура. |
 | `examples/` | Концепция проректора и РПД демонстрационного курса. |
@@ -276,4 +275,4 @@ Backend DB-тесты требуют TEST_DATABASE_URL; без него проп
 | [documents/](documents/README.md) | Сценарии, алгоритмы, оценивание, архитектура и авторизация. |
 | [documents/ai-journey-plan.md](documents/ai-journey-plan.md) | Исторический: решения встречи 10.10.2026 для прежней модели. |
 | [PLAN.md](PLAN.md) | Исторический: план backend-сессии диагностики прежней модели. |
-| [Backend](services/backend/README.md), [frontend](services/frontend/README.md), [PostgreSQL](services/postgresql/README.md), [S3](services/s3/README.md), [Caddy](services/caddy/README.md), [OCR](services/ocr/README.md) | Запуск и разработка сервисов. |
+| [Backend](services/backend/README.md), [frontend](services/frontend/README.md), [PostgreSQL](services/postgresql/README.md), [S3](services/s3/README.md), [Caddy](services/caddy/README.md), [Course Graph](services/course-graph/README.md) | Запуск и разработка сервисов. |

@@ -1,5 +1,5 @@
 services:
-  ocr:
+  course-graph:
     build:
       context: .
     environment:

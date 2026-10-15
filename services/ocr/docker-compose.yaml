@@ -1,0 +1,14 @@
+services:
+  ocr:
+    build:
+      context: .
+    environment:
+      PORT: 8000
+    ports:
+      - "127.0.0.1:8005:8000"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped

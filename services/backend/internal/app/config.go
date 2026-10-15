@@ -44,6 +44,8 @@ type Config struct {
 	S3CreateBucket        bool
 	AudioWorkers          int
 	AudioPollInterval     time.Duration
+	OCRURL                string
+	OCRTimeout            time.Duration
 }
 
 // HTTPWriteTimeout allows sequential STT and grading, or task generation, to
@@ -180,6 +182,11 @@ func ConfigFromEnv() (Config, error) {
 		return c, err
 	}
 	c.AudioPollInterval, err = envDuration("BACKEND_AUDIO_POLL_INTERVAL", time.Second)
+	if err != nil {
+		return c, err
+	}
+	c.OCRURL = strings.TrimSpace(os.Getenv("BACKEND_OCR_URL"))
+	c.OCRTimeout, err = envDuration("BACKEND_OCR_TIMEOUT", 120*time.Second)
 	if err != nil {
 		return c, err
 	}

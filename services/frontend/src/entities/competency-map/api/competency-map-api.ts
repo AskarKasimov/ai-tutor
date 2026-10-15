@@ -140,3 +140,106 @@ export async function importCompetencyMap(
     })),
   }
 }
+
+const courseMaterialSchema = z.object({
+  id: z.string(),
+  subject_id: z.string(),
+  filename: z.string(),
+  content_type: z.string(),
+  file_size: z.number().int().nonnegative(),
+  s3_raw_key: z.string(),
+  s3_parsed_key: z.string(),
+  parsed_text: z.string(),
+  char_count: z.number().int().nonnegative(),
+  status: z.enum(['pending', 'parsed', 'failed']),
+  error_message: z.string().nullable().optional(),
+  created_at: count,
+  updated_at: count,
+})
+
+export async function readSubjectMaterials(
+  subjectId: string,
+  signal?: AbortSignal,
+): Promise<CourseMaterial[]> {
+  const timeout = AbortSignal.timeout(30_000)
+  const response = await apiFetch(
+    `${apiBase}/admin/subjects/${encodeURIComponent(subjectId)}/materials`,
+    {
+      credentials: 'include',
+      signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
+    },
+  )
+  const parsed = z.array(courseMaterialSchema).safeParse(await readResponse(response))
+  if (!parsed.success) throw new Error(i18n.t('competencyMap.invalidResponse'))
+  return parsed.data.map((item) => ({
+    id: item.id,
+    subjectId: item.subject_id,
+    filename: item.filename,
+    contentType: item.content_type,
+    fileSize: item.file_size,
+    s3RawKey: item.s3_raw_key,
+    s3ParsedKey: item.s3_parsed_key,
+    parsedText: item.parsed_text,
+    charCount: item.char_count,
+    status: item.status,
+    errorMessage: item.error_message,
+    createdAt: item.created_at,
+    updatedAt: item.updated_at,
+  }))
+}
+
+export async function uploadCourseMaterials(
+  subjectId: string,
+  files: File[],
+  signal?: AbortSignal,
+): Promise<CourseMaterial[]> {
+  const body = new FormData()
+  for (const file of files) {
+    body.append('file', file, file.name)
+  }
+  const timeout = AbortSignal.timeout(900_000)
+  const response = await apiFetch(
+    `${apiBase}/admin/subjects/${encodeURIComponent(subjectId)}/materials`,
+    {
+      method: 'POST',
+      credentials: 'include',
+      body,
+      signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
+    },
+  )
+  const parsed = z.array(courseMaterialSchema).safeParse(await readResponse(response))
+  if (!parsed.success) throw new Error(i18n.t('competencyMap.unknownResult'))
+  return parsed.data.map((item) => ({
+    id: item.id,
+    subjectId: item.subject_id,
+    filename: item.filename,
+    contentType: item.content_type,
+    fileSize: item.file_size,
+    s3RawKey: item.s3_raw_key,
+    s3ParsedKey: item.s3_parsed_key,
+    parsedText: item.parsed_text,
+    charCount: item.char_count,
+    status: item.status,
+    errorMessage: item.error_message,
+    createdAt: item.created_at,
+    updatedAt: item.updated_at,
+  }))
+}
+
+export async function deleteCourseMaterial(
+  subjectId: string,
+  materialId: string,
+  signal?: AbortSignal,
+): Promise<void> {
+  const timeout = AbortSignal.timeout(30_000)
+  await apiFetch(
+    `${apiBase}/admin/subjects/${encodeURIComponent(subjectId)}/materials/${encodeURIComponent(materialId)}`,
+    {
+      method: 'DELETE',
+      credentials: 'include',
+      signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
+    },
+  )
+}
+
+

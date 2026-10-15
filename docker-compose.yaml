@@ -10,6 +10,11 @@ services:
       file: ./services/s3/docker-compose.yaml
       service: s3
 
+  ocr:
+    extends:
+      file: ./services/ocr/docker-compose.yaml
+      service: ocr
+
   api:
     extends:
       file: ./services/backend/docker-compose.yaml
@@ -23,7 +28,7 @@ services:
       - backend_dev_bin:/src/.air
     healthcheck:
       test: ["CMD", "/src/.air/api", "healthcheck"]
-      start_period: 60s
+      start_period: 180s
     depends_on:
       db:
         condition: service_healthy

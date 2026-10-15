@@ -91,7 +91,8 @@ func run(logger *zap.Logger) error {
 	if err != nil {
 		return err
 	}
-	server := &http.Server{Addr: cfg.ListenAddress, Handler: a.Handler(), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 30 * time.Second, WriteTimeout: cfg.HTTPWriteTimeout(), IdleTimeout: 60 * time.Second, MaxHeaderBytes: 32 * 1024}
+	writeTimeout := max(cfg.HTTPWriteTimeout(), 15*time.Minute)
+	server := &http.Server{Addr: cfg.ListenAddress, Handler: a.Handler(), ReadHeaderTimeout: 10 * time.Second, ReadTimeout: 15 * time.Minute, WriteTimeout: writeTimeout, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 32 * 1024}
 	logger.Info("API listening", zap.String("address", cfg.ListenAddress))
 	return serveWithAudioWorker(ctx, server, a.RunAudioWorker)
 }

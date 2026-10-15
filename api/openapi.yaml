@@ -10,6 +10,54 @@ components:
       required:
         - status
       type: object
+    material.Material:
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+        subject_id:
+          type: string
+        filename:
+          type: string
+        content_type:
+          type: string
+        file_size:
+          type: integer
+        s3_raw_key:
+          type: string
+        s3_parsed_key:
+          type: string
+        parsed_text:
+          type: string
+        char_count:
+          type: integer
+        status:
+          enum:
+            - pending
+            - parsed
+            - failed
+          type: string
+        error_message:
+          nullable: true
+          type: string
+        created_at:
+          type: integer
+        updated_at:
+          type: integer
+      required:
+        - id
+        - subject_id
+        - filename
+        - content_type
+        - file_size
+        - s3_raw_key
+        - s3_parsed_key
+        - parsed_text
+        - char_count
+        - status
+        - created_at
+        - updated_at
+      type: object
     application.CriterionResult:
       additionalProperties: false
       properties:
@@ -2295,6 +2343,133 @@ paths:
       summary: Заменить карту предмета
       tags:
         - Учебная база
+      x-implementation: implemented
+  /admin/subjects/{subject_id}/materials:
+    get:
+      description: Доступно только admin. Возвращает список загруженных материалов курса с извлеченным текстом.
+      operationId: listSubjectMaterials
+      parameters:
+        - description: ID предмета
+          in: path
+          name: subject_id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: '#/components/schemas/material.Material'
+                type: array
+          description: OK
+      security:
+        - accessCookie: []
+      summary: Список материалов курса
+      tags:
+        - Материалы
+      x-implementation: implemented
+    post:
+      description: Доступно только admin. Загружает файлы лекций/лаб, сохраняет их в S3, выполняет OCR и сохраняет извлеченный Markdown с формулами LaTeX.
+      operationId: uploadSubjectMaterials
+      parameters:
+        - description: ID предмета
+          in: path
+          name: subject_id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              properties:
+                file:
+                  description: Файл лекции или лабы (PDF, Markdown, текст)
+                  format: binary
+                  type: string
+              type: object
+        description: Файлы материалов курса
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: '#/components/schemas/material.Material'
+                type: array
+          description: OK
+      security:
+        - accessCookie: []
+      summary: Загрузить материалы курса
+      tags:
+        - Материалы
+      x-implementation: implemented
+  /admin/subjects/{subject_id}/materials/{material_id}:
+    delete:
+      description: Доступно только admin. Удаляет материал из базы и S3.
+      operationId: deleteSubjectMaterial
+      parameters:
+        - description: ID предмета
+          in: path
+          name: subject_id
+          required: true
+          schema:
+            type: string
+        - description: ID материала
+          in: path
+          name: material_id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                properties:
+                  status:
+                    type: string
+                type: object
+          description: OK
+      security:
+        - accessCookie: []
+      summary: Удалить материал курса
+      tags:
+        - Материалы
+      x-implementation: implemented
+  /admin/subjects/{subject_id}/materials/{material_id}/raw:
+    get:
+      description: Скачивание или просмотр исходного файла материала.
+      operationId: downloadSubjectMaterialRaw
+      parameters:
+        - description: ID предмета
+          in: path
+          name: subject_id
+          required: true
+          schema:
+            type: string
+        - description: ID материала
+          in: path
+          name: material_id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          content:
+            application/octet-stream:
+              schema:
+                format: binary
+                type: string
+          description: Исходный файл
+      security:
+        - accessCookie: []
+      summary: Скачать исходный файл материала
+      tags:
+        - Материалы
       x-implementation: implemented
   /assessments/evaluate:
     post:

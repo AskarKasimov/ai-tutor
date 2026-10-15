@@ -36,6 +36,11 @@ import (
 	learningmodel "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/learning/infrastructure/modelapi"
 	learningpg "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/learning/infrastructure/postgres"
 	learninghttp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/learning/transport/http"
+	materialsapp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/materials/application"
+	materialsocr "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/materials/infrastructure/ocr"
+	materialspg "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/materials/infrastructure/postgres"
+	materialss3 "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/materials/infrastructure/s3"
+	materialshttp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/materials/transport/http"
 	subjectapp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/subject/application"
 	subjectpg "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/subject/infrastructure/postgres"
 	subjecthttp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/subject/transport/http"
@@ -170,6 +175,18 @@ func (a *App) Handler() http.Handler {
 		WithTaskFinder(diagnosticfeedbackpg.NewTaskFinder(a.pool))
 	feedbackHandlers := diagnosticfeedbackhttp.New(feedbackService)
 
+	materialsS3Storage, err := materialss3.New(materialss3.Config{
+		Endpoint: a.cfg.S3Endpoint, Region: a.cfg.S3Region, Bucket: a.cfg.S3Bucket,
+		AccessKey: a.cfg.S3AccessKey, SecretKey: a.cfg.S3SecretKey,
+		PathStyle: a.cfg.S3PathStyle, CreateBucket: a.cfg.S3CreateBucket, Timeout: a.cfg.S3Timeout,
+	})
+	if err != nil {
+		a.logger.Warn("materials S3 storage init warning", zap.Error(err))
+	}
+	materialsOCR := materialsocr.New(a.cfg.OCRURL, a.cfg.OCRTimeout)
+	materialsService := materialsapp.New(materialspg.New(a.pool), materialsS3Storage, materialsOCR, a.now)
+	materialsHandlers := materialshttp.NewHandler(materialsService, 2500*1024*1024)
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /auth/register", authHandlers.Register)
 	mux.HandleFunc("POST /auth/login", authHandlers.Login)
@@ -178,6 +195,10 @@ func (a *App) Handler() http.Handler {
 	mux.HandleFunc("POST /auth/logout", authHandlers.Logout)
 	mux.HandleFunc("GET /auth/me", authHandlers.Me)
 	mux.Handle("POST /admin/subjects/{subject_id}/competency-map/import", protect(auth, http.HandlerFunc(competencyHandlers.ImportSubject)))
+	mux.Handle("POST /admin/subjects/{subject_id}/materials", protect(auth, http.HandlerFunc(materialsHandlers.UploadMaterials)))
+	mux.Handle("GET /admin/subjects/{subject_id}/materials", protect(auth, http.HandlerFunc(materialsHandlers.ListMaterials)))
+	mux.Handle("DELETE /admin/subjects/{subject_id}/materials/{material_id}", protect(auth, http.HandlerFunc(materialsHandlers.DeleteMaterial)))
+	mux.Handle("GET /admin/subjects/{subject_id}/materials/{material_id}/raw", protect(auth, http.HandlerFunc(materialsHandlers.DownloadRaw)))
 	mux.Handle("POST /admin/subjects", protect(auth, http.HandlerFunc(subjectHandlers.Create)))
 	mux.Handle("POST /voice/transcriptions", protect(auth, http.HandlerFunc(voiceHandlers.Transcribe)))
 	mux.Handle("POST /voice/syntheses", protect(auth, http.HandlerFunc(voiceHandlers.Synthesize)))

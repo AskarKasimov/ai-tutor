@@ -15,7 +15,9 @@ func (a *App) middleware(next http.Handler) http.Handler {
 			// Leave room for the name, outcome IDs and JSON structure.
 			limit = 1280 * 1024
 		}
-		if r.URL.Path == "/voice/transcriptions" ||
+		if strings.HasPrefix(r.URL.Path, "/admin/subjects/") && strings.HasSuffix(r.URL.Path, "/materials") {
+			limit = 2500 * 1024 * 1024
+		} else if r.URL.Path == "/voice/transcriptions" ||
 			(strings.HasPrefix(r.URL.Path, "/admin/subjects/") && strings.HasSuffix(r.URL.Path, "/competency-map/import")) ||
 			((strings.HasPrefix(r.URL.Path, "/diagnostic-sessions/") || strings.HasPrefix(r.URL.Path, "/training-sessions/") || strings.HasPrefix(r.URL.Path, "/learning-plans/")) && strings.HasSuffix(r.URL.Path, "/answers")) {
 			limit = a.cfg.MaxUploadBytes + 64*1024

@@ -1,0 +1,25 @@
+services:
+  llm-gateway:
+    build:
+      context: .
+    environment:
+      GATEWAY_CONFIG: /etc/llm-gateway/config.json
+    volumes:
+      - ./config.json:/etc/llm-gateway/config.json:ro
+    ports:
+      - "127.0.0.1:8010:8010"
+    healthcheck:
+      test: ["CMD", "/bin/sh", "-c", "wget -q -O /dev/null http://127.0.0.1:8010/health/ready"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+      start_period: 30s
+    depends_on:
+      redpanda:
+        condition: service_healthy
+    restart: unless-stopped
+
+networks:
+  default:
+    external: true
+    name: ai-tutor_default

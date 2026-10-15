@@ -1,6 +1,6 @@
 # Архитектура backend
 
-Код находится в `services/backend`, Go-модуль — `github.com/AskarKasimov/ai-tutor/services/backend`. Прежняя модель (карта компетенций, варианты, assessment, taskgen, тренировка, озвучка заданий) удалена 16.10.2026. Geek — модуль `features/geek`; оркестрация course-graph будет отдельным модулем с теми же слоями; LLM вызываются через отдельный сервис LLM gateway; этапы обработки course-graph выполняет Python-сервис `services/course-graph`. Видение — в [README](../README.md).
+Код находится в `services/backend`, Go-модуль — `github.com/AskarKasimov/ai-tutor/services/backend`. Прежняя модель (карта компетенций, варианты, assessment, taskgen, тренировка, озвучка заданий) удалена 16.10.2026. Geek — модуль `features/geek`; оркестрация course-graph будет отдельным модулем с теми же слоями; LLM вызываются через отдельный HTTP-сервис LLM gateway (`services/llm-gateway`, контракт в его `openapi.yaml`); этапы обработки course-graph выполняет Python-сервис `services/course-graph`. Видение — в [README](../README.md).
 
 ## Реализованные части
 

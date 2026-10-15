@@ -1,0 +1,68 @@
+{
+  "listen_address": ":8010",
+  "kafka_brokers": ["redpanda:9092"],
+  "requests_topic": "llm.requests.v1",
+  "state_topic": "llm.state.v1",
+  "consumer_group": "llm-gateway-v1",
+  "transactional_id": "llm-gateway-v1",
+  "max_body_bytes": 1048576,
+  "max_pending": 1000,
+  "max_pending_bytes": 268435456,
+  "max_connections": 1024,
+  "request_deadline": "180s",
+  "upstream_timeout": "120s",
+  "retention": "24h",
+  "max_input_lag": "24h",
+  "grace_period": "30s",
+  "pools": {
+    "low": ["model-a", "model-b", "model-c", "model-d"],
+    "medium": ["model-a", "model-b", "model-c", "model-d"],
+    "high": ["model-a", "model-b", "model-c", "model-d"]
+  },
+  "instances": [
+    {
+      "id": "model-a",
+      "base_url": "https://llm-a.internal",
+      "model": "gpt-oss-120b",
+      "token": "",
+      "max_in_flight": 1,
+      "supported_parameters": ["temperature", "top_p", "stop", "presence_penalty", "frequency_penalty", "seed", "max_tokens", "max_completion_tokens", "response_format", "reasoning_effort"],
+      "supported_response_formats": ["text", "json_object"],
+      "context_window": 131072,
+      "timeout": "120s"
+    },
+    {
+      "id": "model-b",
+      "base_url": "https://llm-b.internal",
+      "model": "gpt-oss-120b",
+      "token": "",
+      "max_in_flight": 1,
+      "supported_parameters": ["temperature", "top_p", "stop", "presence_penalty", "frequency_penalty", "seed", "max_tokens", "max_completion_tokens", "response_format", "reasoning_effort"],
+      "supported_response_formats": ["text", "json_object"],
+      "context_window": 131072,
+      "timeout": "120s"
+    },
+    {
+      "id": "model-c",
+      "base_url": "https://llm-c.internal",
+      "model": "gpt-oss-120b",
+      "token": "",
+      "max_in_flight": 1,
+      "supported_parameters": ["temperature", "top_p", "stop", "presence_penalty", "frequency_penalty", "seed", "max_tokens", "max_completion_tokens", "response_format", "reasoning_effort"],
+      "supported_response_formats": ["text", "json_object"],
+      "context_window": 131072,
+      "timeout": "120s"
+    },
+    {
+      "id": "model-d",
+      "base_url": "https://llm-d.internal",
+      "model": "gpt-oss-120b",
+      "token": "",
+      "max_in_flight": 1,
+      "supported_parameters": ["temperature", "top_p", "stop", "presence_penalty", "frequency_penalty", "seed", "max_tokens", "max_completion_tokens", "response_format", "reasoning_effort"],
+      "supported_response_formats": ["text", "json_object"],
+      "context_window": 131072,
+      "timeout": "120s"
+    }
+  ]
+}

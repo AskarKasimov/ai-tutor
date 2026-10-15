@@ -16,6 +16,7 @@ jobs:
     outputs:
       backend: ${{ steps.detect.outputs.backend }}
       frontend: ${{ steps.detect.outputs.frontend }}
+      gateway: ${{ steps.detect.outputs.gateway }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -30,6 +31,7 @@ jobs:
 
           backend=false
           frontend=false
+          gateway=false
           case "$GITHUB_EVENT_NAME" in
             pull_request) comparison="$BASE_SHA...$HEAD_SHA" ;;
             push) comparison="$BASE_SHA..$HEAD_SHA" ;;
@@ -40,6 +42,7 @@ jobs:
             # New branches and force pushes may have no available base: check both services.
             backend=true
             frontend=true
+            gateway=true
           else
             changed_files=$(mktemp)
             trap 'rm -f "$changed_files"' EXIT
@@ -51,6 +54,7 @@ jobs:
                 services/frontend/*) frontend=true ;;
                 services/s3/*) backend=true ;;
                 services/course-graph/*) backend=true ;;
+                services/llm-gateway/*) gateway=true ;;
                 .github/*|api/*|docker-compose*.yaml|services/postgresql/*|services/caddy/*|prod.sh|dev.sh|.env.example|.env.prod.example)
                   backend=true
                   frontend=true
@@ -59,8 +63,8 @@ jobs:
             done < "$changed_files"
           fi
 
-          printf 'backend=%s\nfrontend=%s\n' "$backend" "$frontend" >> "$GITHUB_OUTPUT"
-          echo "Selected services: backend=$backend frontend=$frontend"
+          printf 'backend=%s\nfrontend=%s\ngateway=%s\n' "$backend" "$frontend" "$gateway" >> "$GITHUB_OUTPUT"
+          echo "Selected services: backend=$backend frontend=$frontend gateway=$gateway"
 
   compose:
     name: Compose configuration
@@ -75,7 +79,7 @@ jobs:
           docker compose --env-file .env.example config --quiet
           COMPOSE_PROFILES= docker compose --env-file .env.example config --quiet
           for env_file in .env.example .env.prod.example; do
-            for file in services/postgresql/docker-compose.yaml services/s3/docker-compose.yaml services/backend/docker-compose.yaml services/frontend/docker-compose.yaml services/caddy/docker-compose.yaml services/course-graph/docker-compose.yaml; do
+            for file in services/postgresql/docker-compose.yaml services/s3/docker-compose.yaml services/backend/docker-compose.yaml services/frontend/docker-compose.yaml services/caddy/docker-compose.yaml services/course-graph/docker-compose.yaml services/llm-gateway/docker-compose.yaml; do
               docker compose --env-file "$env_file" -f "$file" config --quiet
             done
           done
@@ -92,9 +96,15 @@ jobs:
     if: ${{ needs.detect-changes.outputs.frontend == 'true' }}
     uses: ./.github/workflows/frontend-ci.yaml
 
+  gateway:
+    name: LLM Gateway CI
+    needs: detect-changes
+    if: ${{ needs.detect-changes.outputs.gateway == 'true' }}
+    uses: ./.github/workflows/gateway-ci.yaml
+
   ci-passed:
     name: CI passed
-    needs: [detect-changes, compose, backend, frontend]
+    needs: [detect-changes, compose, backend, frontend, gateway]
     if: ${{ always() }}
     runs-on: ubuntu-latest
     steps:
@@ -106,6 +116,8 @@ jobs:
           BACKEND_RESULT: ${{ needs.backend.result }}
           FRONTEND_SELECTED: ${{ needs.detect-changes.outputs.frontend }}
           FRONTEND_RESULT: ${{ needs.frontend.result }}
+          GATEWAY_SELECTED: ${{ needs.detect-changes.outputs.gateway }}
+          GATEWAY_RESULT: ${{ needs.gateway.result }}
         run: |
           set -euo pipefail
 
@@ -132,4 +144,5 @@ jobs:
 
           check_service backend "$BACKEND_SELECTED" "$BACKEND_RESULT"
           check_service frontend "$FRONTEND_SELECTED" "$FRONTEND_RESULT"
+          check_service gateway "$GATEWAY_SELECTED" "$GATEWAY_RESULT"
           echo "All required service checks passed."

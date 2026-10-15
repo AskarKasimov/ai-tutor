@@ -1,0 +1,37 @@
+name: LLM Gateway CI
+on:
+  workflow_call:
+permissions:
+  contents: read
+jobs:
+  test:
+    name: Gateway tests, vet and build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/llm-gateway
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: services/llm-gateway/go.mod
+          cache: true
+          cache-dependency-path: services/llm-gateway/go.sum
+      - name: Check generated OpenAPI contract
+        run: |
+          expected=$(sha256sum openapi.yaml)
+          bash scripts/generate-openapi.sh
+          test "$expected" = "$(sha256sum openapi.yaml)"
+      - name: Start Redpanda for gateway integration tests
+        run: docker compose --profile gateway --env-file .env.example up -d --wait --wait-timeout 120 redpanda
+        working-directory: .
+      - name: Run tests
+        run: go test -race ./... -count=1
+        env:
+          TEST_KAFKA_BROKERS: localhost:19092
+      - run: go vet ./...
+      - run: go build -o /tmp/llm-gateway ./cmd/llm-gateway
+      - name: Stop Redpanda
+        if: ${{ always() }}
+        run: docker compose --profile gateway --env-file .env.example stop redpanda
+        working-directory: .

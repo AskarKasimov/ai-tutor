@@ -82,7 +82,7 @@ void i18n.init({
           },
           materialsTitle: 'Материалы и лекции курса',
           materialsSubtitle: '',
-          materialsDropTitle: 'Загрузить файлы материалов (PDF, MD)',
+          materialsDropTitle: 'Загрузить файлы материалов',
           materialsDropHint: 'Нажмите или перетащите один или несколько файлов лекций и лабораторных',
           materialsDropReplace: 'Выбрано файлов: {{count}}',
           materialsSubmit: 'Загрузить и распознать материалы',

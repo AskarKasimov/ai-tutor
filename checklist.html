@@ -1,0 +1,278 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Чек-лист Geek</title>
+<style>
+  :root {
+    --bg: #f6f7f9;
+    --card: #ffffff;
+    --text: #1b1f24;
+    --muted: #5d6673;
+    --line: #e2e5ea;
+    --accent: #2f6fde;
+    --accent-soft: #e6eefc;
+    --done: #1f8a4c;
+    --open: #b25e00;
+    --open-soft: #fff1df;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #121417;
+      --card: #1b1e23;
+      --text: #e7eaee;
+      --muted: #9aa3ae;
+      --line: #2c3138;
+      --accent: #6ea0ff;
+      --accent-soft: #1f2a3d;
+      --done: #4cc47f;
+      --open: #ffb15c;
+      --open-soft: #3a2a16;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #121417;
+    --card: #1b1e23;
+    --text: #e7eaee;
+    --muted: #9aa3ae;
+    --line: #2c3138;
+    --accent: #6ea0ff;
+    --accent-soft: #1f2a3d;
+    --done: #4cc47f;
+    --open: #ffb15c;
+    --open-soft: #3a2a16;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  main { max-width: 860px; margin: 0 auto; padding: 32px 16px 64px; }
+  header h1 { margin: 0 0 4px; font-size: 1.75rem; }
+  header p { margin: 0; color: var(--muted); }
+  .bar {
+    position: sticky; top: 0; z-index: 1;
+    background: var(--bg);
+    padding: 16px 0 12px;
+    border-bottom: 1px solid var(--line);
+    margin-bottom: 24px;
+  }
+  .progress { height: 8px; background: var(--line); border-radius: 4px; overflow: hidden; }
+  .progress > span { display: block; height: 100%; width: 0; background: var(--accent); transition: width .2s; }
+  .bar-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 8px; font-size: .9rem; color: var(--muted); flex-wrap: wrap; }
+  button {
+    font: inherit; font-size: .85rem;
+    color: var(--accent); background: none;
+    border: 1px solid var(--line); border-radius: 6px;
+    padding: 4px 10px; cursor: pointer;
+  }
+  button:hover { background: var(--accent-soft); }
+  section {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 16px 20px 8px;
+    margin-bottom: 16px;
+  }
+  section h2 { margin: 0 0 4px; font-size: 1.1rem; display: flex; justify-content: space-between; gap: 12px; }
+  section h2 small { color: var(--muted); font-weight: 400; white-space: nowrap; }
+  section > p { margin: 0 0 8px; color: var(--muted); font-size: .9rem; }
+  ul { list-style: none; margin: 0; padding: 0; }
+  li { border-top: 1px solid var(--line); }
+  li:first-child { border-top: 0; }
+  label { display: flex; gap: 12px; padding: 10px 0; cursor: pointer; align-items: flex-start; }
+  input[type="checkbox"] { width: 18px; height: 18px; margin-top: 3px; flex: none; accent-color: var(--done); }
+  .t { font-weight: 600; }
+  .d { display: block; color: var(--muted); font-size: .9rem; }
+  li.checked .t { color: var(--muted); text-decoration: line-through; }
+  .tag {
+    display: inline-block; margin-left: 6px;
+    font-size: .72rem; font-weight: 600;
+    padding: 1px 6px; border-radius: 4px;
+    color: var(--open); background: var(--open-soft);
+    vertical-align: 1px;
+  }
+  footer { color: var(--muted); font-size: .85rem; margin-top: 24px; }
+  @media (max-width: 520px) {
+    section { padding: 12px 14px 4px; }
+    section h2 { flex-direction: column; gap: 0; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Чек-лист перехода на Geek</h1>
+    <p>Видение от 15.10.2026: устный экзамен и тренировка по графу курса из материалов. Показ — 18.10.2026, курс Introduction to AI (DSAI). Подробности — README.md.</p>
+  </header>
+
+  <div class="bar">
+    <div class="progress" role="progressbar" aria-label="Выполнено" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span id="fill"></span></div>
+    <div class="bar-row">
+      <span id="count">0 из 0</span>
+      <span>
+        <button type="button" id="theme">Тема</button>
+        <button type="button" id="reset">Сбросить отметки</button>
+      </span>
+    </div>
+  </div>
+
+  <div id="list">
+    <section>
+      <h2>1. Курс и РПД <small></small></h2>
+      <p>Содержание — только материалы курса; РПД — для сверки и шкалы оценки.</p>
+      <ul>
+        <li><label><input type="checkbox" data-id="course-rpd"><span><span class="t">РПД DSAI (Б1.О.17) в examples/</span><span class="d">CSE (Б1.О.15) — только для справки.</span></span></label></li>
+        <li><label><input type="checkbox" data-id="course-materials"><span><span class="t">Собраны русскоязычные PDF лекций, лаб и туториалов по неделям</span><span class="d">Демокурс: 16 недель × 3 = 48 документов.</span></span></label></li>
+        <li><label><input type="checkbox" data-id="course-flex"><span><span class="t">Число недель и видов материалов не зашито в код</span><span class="d">Бывают курсы на 8 недель, без лаб/туториалов или только с лабами.</span></span></label></li>
+        <li><label><input type="checkbox" data-id="course-rpd-map"><span><span class="t">Темы графа сверены с 11 разделами РПД</span><span class="d">Приоритет у материалов; расхождения фиксируются.</span></span></label></li>
+        <li><label><input type="checkbox" data-id="course-ru"><span><span class="t">Всё на русском</span><span class="d">Русскоязычные материалы курса скоро будут загружены.</span></span></label></li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>2. course-graph: построение графа <small></small></h2>
+      <p>Отдельный модуль backend (возможна часть на Python), не разовые скрипты.</p>
+      <ul>
+        <li><label><input type="checkbox" data-id="cg-ocr"><span><span class="t">Этап 1. OCR</span><span class="d">PDF → текст: по документу на лекцию, лабу и туториал недели.</span></span></label></li>
+        <li><label><input type="checkbox" data-id="cg-clean"><span><span class="t">Этап 2. Очистка LLM</span><span class="d">Убрать лектора, команду курса, office hours, объявления, «спасибо за внимание».</span></span></label></li>
+        <li><label><input type="checkbox" data-id="cg-units"><span><span class="t">Этап 3. Извлечение атомарных подтем</span><span class="d">Каждый документ недели отдельно; лекция «Матрицы» → умножение, обратная, транспонирование.</span></span></label></li>
+        <li><label><input type="checkbox" data-id="cg-dedup-week"><span><span class="t">Этап 4а. Дедупликация внутри недели</span><span class="d">Один проход по лекции, лабе и туториалу недели.</span></span></label></li>
+        <li><label><input type="checkbox" data-id="cg-dedup-all"><span><span class="t">Этап 4б. Дедупликация между неделями</span><span class="d">Второй проход по всем подтемам курса.</span></span></label></li>
+        <li><label><input type="checkbox" data-id="cg-edges"><span><span class="t">Этап 5. Стрелки-пререквизиты</span><span class="d">«Что нужно знать, чтобы понять эту подтему»: ранг → Гаусс, определение матрицы, миноры.</span></span></label></li>
+        <li><label><input type="checkbox" data-id="cg-validate"><span><span class="t">Этап 6. LLM-валидация стрелок</span><span class="d">Несколько прогонов, без циклов. Человек в контуре не нужен.</span></span></label></li>
+        <li><label><input type="checkbox" data-id="cg-store"><span><span class="t">Этап 7. Сохранение в PostgreSQL</span><span class="d">Одна версия графа на курс; пересборка заменяет граф.</span></span></label></li>
+        <li><label><input type="checkbox" data-id="cg-node"><span><span class="t">Вершина хранит текст, неделю и источники</span><span class="d">Источники: лекция / лаба / туториал.</span></span></label></li>
+        <li><label><input type="checkbox" data-id="cg-top"><span><span class="t">Верхних вершин ≈ число тем курса</span><span class="d">Темы, а не подтемы; иерархия «тема → подтема» плюс пререквизиты.</span></span></label></li>
+        <li><label><input type="checkbox" data-id="cg-questions"><span><span class="t">Вопросы к вершинам на препроцессинге</span><span class="d">Что не успели — Geek генерирует в рантайме.</span></span></label></li>
+        <li><label><input type="checkbox" data-id="cg-viz"><span><span class="t">Визуализация графа для фактчекинга <span class="tag">в будущем</span></span><span class="d">Для команды, не для студента.</span></span></label></li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>3. Geek: устный экзамен <small></small></h2>
+      <p>Диалог ведёт LLM; цель — найти пробелы по материалам курса.</p>
+      <ul>
+        <li><label><input type="checkbox" data-id="g-oral"><span><span class="t">Вопросы на рассуждение с развёрнутым ответом</span><span class="d">Тестовых вопросов по возможности нет.</span></span></label></li>
+        <li><label><input type="checkbox" data-id="g-start-top"><span><span class="t">Обход начинается с верхних вершин</span></span></label></li>
+        <li><label><input type="checkbox" data-id="g-correct"><span><span class="t">Верно → вершина и всё поддерево освоены</span></span></label></li>
+        <li><label><input type="checkbox" data-id="g-wrong"><span><span class="t">Неверно → вопрос по каждому пререквизиту</span><span class="d">Спуск к более простым темам.</span></span></label></li>
+        <li><label><input type="checkbox" data-id="g-binary"><span><span class="t">Ответ только верный или неверный по тексту вершины</span><span class="d">В целом верно и без нарушения ограничений задания — верно.</span></span></label></li>
+        <li><label><input type="checkbox" data-id="g-partial"><span><span class="t">Частично верные ответы <span class="tag">в будущем</span></span><span class="d">Засчитать пререквизит, на основе которого студент ответил верно. В первой версии не делаем.</span></span></label></li>
+        <li><label><input type="checkbox" data-id="g-gap"><span><span class="t">Пробел = самая глубокая неосвоенная вершина с освоенными пререквизитами</span></span></label></li>
+        <li><label><input type="checkbox" data-id="g-io"><span><span class="t">Реплики Geek — текст + голос (дублирование)</span><span class="d">Студент отвечает голосом или текстом.</span></span></label></li>
+        <li><label><input type="checkbox" data-id="g-dontknow"><span><span class="t">«Не знаю» = неверно; подсказок и переспрашивания нет</span></span></label></li>
+        <li><label><input type="checkbox" data-id="g-limit"><span><span class="t">Ограничение длины спуска <span class="tag">в будущем</span></span><span class="d">Если экзамен окажется слишком долгим.</span></span></label></li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>4. Итог экзамена <small></small></h2>
+      <ul>
+        <li><label><input type="checkbox" data-id="r-grade"><span><span class="t">Оценка A / B / C / D по шкале РПД</span><span class="d">Доля освоенных верхнеуровневых тем: ≥ 90% A, ≥ 75% B, ≥ 60% C, иначе D.</span></span></label></li>
+        <li><label><input type="checkbox" data-id="r-gaps"><span><span class="t">Список пробелов с неделями и источниками</span><span class="d">Лекция / лаба / туториал.</span></span></label></li>
+        <li><label><input type="checkbox" data-id="r-graph"><span><span class="t">Карта графа для студента <span class="tag">в будущем</span></span></span></label></li>
+        <li><label><input type="checkbox" data-id="r-rebuild"><span><span class="t">После пересборки графа у старых диагностик остаётся только фидбэк</span></span></label></li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>5. Тренировка <small></small></h2>
+      <ul>
+        <li><label><input type="checkbox" data-id="t-hours"><span><span class="t">Вопрос «Сколько у тебя часов?»</span></span></label></li>
+        <li><label><input type="checkbox" data-id="t-order"><span><span class="t">План — пробелы снизу вверх по пререквизитам</span></span></label></li>
+        <li><label><input type="checkbox" data-id="t-lesson"><span><span class="t">По подтеме: теория из лекции, практика по лабе/туториалу, проверочный вопрос</span></span></label></li>
+        <li><label><input type="checkbox" data-id="t-learning"><span><span class="t">Переиспользован модуль learning</span><span class="d">План по часам, уроки, чат наставника, голосовые ответы.</span></span></label></li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>6. Клиент к 4 LLM <small></small></h2>
+      <ul>
+        <li><label><input type="checkbox" data-id="l-client"><span><span class="t">Модуль backend «клиент к 4 LLM» с очередью и балансировкой готов (пишет коллега)</span><span class="d">Четыре модели уровня gpt-oss-120b на серверах команды.</span></span></label></li>
+        <li><label><input type="checkbox" data-id="l-geek"><span><span class="t">Geek ходит в LLM через клиент</span></span></label></li>
+        <li><label><input type="checkbox" data-id="l-modules"><span><span class="t">Geek, course-graph и клиент — отдельные модули backend</span></span></label></li>
+        <li><label><input type="checkbox" data-id="l-python"><span><span class="t">course-graph подключён к клиенту</span><span class="d">Python-часть — по gRPC.</span></span></label></li>
+        <li><label><input type="checkbox" data-id="l-roles"><span><span class="t">Запросы к модели идут параллельно</span><span class="d">Для кода одна модель; очередь и распределение по 4 LLM — в клиенте.</span></span></label></li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>7. Переход с текущей системы <small></small></h2>
+      <p>Переиспользуем максимум. Удаление — только после явного согласования.</p>
+      <ul>
+        <li><label><input type="checkbox" data-id="m-infra"><span><span class="t">Оставлены auth, STT/TTS, S3, Caddy, PostgreSQL, Compose</span></span></label></li>
+        <li><label><input type="checkbox" data-id="m-subject"><span><span class="t">Предмет (subject) стал курсом</span></span></label></li>
+        <li><label><input type="checkbox" data-id="m-summary"><span><span class="t">Экран итога и diagnosticfeedback переделаны под A–D и пробелы</span></span></label></li>
+        <li><label><input type="checkbox" data-id="m-dialog"><span><span class="t">Frontend: диагностика в формате диалога</span><span class="d">Главная, запись голоса и чат переиспользуются.</span></span></label></li>
+        <li><label><input type="checkbox" data-id="m-approve"><span><span class="t">Согласовано, что удалить <span class="tag">спросить</span></span><span class="d">Импорт карты CSV/XLSX, TRUE-ОР, variantgen, diagnostic 0/1/3, assessment, taskgen + FTS, training, админка карт.</span></span></label></li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>8. Документация <small></small></h2>
+      <ul>
+        <li><label><input type="checkbox" data-id="doc-readme"><span><span class="t">README описывает новое видение</span></span></label></li>
+        <li><label><input type="checkbox" data-id="doc-legacy"><span><span class="t">Документы прежней модели помечены</span></span></label></li>
+        <li><label><input type="checkbox" data-id="doc-open"><span><span class="t">Оставшиеся открытые вопросы закрыты и записаны в README</span></span></label></li>
+        <li><label><input type="checkbox" data-id="doc-api"><span><span class="t">Контракт API Geek и course-graph в OpenAPI</span></span></label></li>
+      </ul>
+    </section>
+  </div>
+
+  <footer>Отметки хранятся только в этом браузере.</footer>
+</main>
+<script>
+(function () {
+  var KEY = 'geek-checklist-v1';
+  var boxes = Array.prototype.slice.call(document.querySelectorAll('input[type="checkbox"]'));
+  var state = {};
+  try { state = JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (e) { state = {}; }
+
+  function save() {
+    try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {}
+  }
+  function render() {
+    var done = 0;
+    boxes.forEach(function (b) {
+      b.checked = !!state[b.dataset.id];
+      b.closest('li').classList.toggle('checked', b.checked);
+      if (b.checked) done++;
+    });
+    document.querySelectorAll('section').forEach(function (s) {
+      var all = s.querySelectorAll('input[type="checkbox"]');
+      var on = s.querySelectorAll('input[type="checkbox"]:checked');
+      s.querySelector('h2 small').textContent = on.length + ' / ' + all.length;
+    });
+    var pct = boxes.length ? Math.round(done / boxes.length * 100) : 0;
+    document.getElementById('fill').style.width = pct + '%';
+    document.querySelector('.progress').setAttribute('aria-valuenow', pct);
+    document.getElementById('count').textContent = done + ' из ' + boxes.length + ' · ' + pct + '%';
+  }
+  boxes.forEach(function (b) {
+    b.addEventListener('change', function () {
+      if (b.checked) state[b.dataset.id] = true; else delete state[b.dataset.id];
+      save(); render();
+    });
+  });
+  document.getElementById('reset').addEventListener('click', function () {
+    if (!confirm('Сбросить все отметки?')) return;
+    state = {}; save(); render();
+  });
+  var root = document.documentElement;
+  try { var t = localStorage.getItem(KEY + '-theme'); if (t) root.dataset.theme = t; } catch (e) {}
+  document.getElementById('theme').addEventListener('click', function () {
+    var dark = root.dataset.theme
+      ? root.dataset.theme === 'dark'
+      : window.matchMedia('(prefers-color-scheme: dark)').matches;
+    root.dataset.theme = dark ? 'light' : 'dark';
+    try { localStorage.setItem(KEY + '-theme', root.dataset.theme); } catch (e) {}
+  });
+  render();
+})();
+</script>
+</body>
+</html>

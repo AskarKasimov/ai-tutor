@@ -89,8 +89,8 @@ func (h *Handler) UploadMaterials(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var uploaded []material.Material
-	var failed []UploadFailedItem
+	uploaded := make([]material.Material, 0)
+	failed := make([]UploadFailedItem, 0)
 
 	for {
 		part, err := mr.NextPart()

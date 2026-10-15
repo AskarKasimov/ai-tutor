@@ -201,13 +201,18 @@ func TestOpenAPIResponses(t *testing.T) {
 	check("GET", "/subjects", f.request("GET", "/subjects", "", admin))
 	materialsUpload := upload(f, "/admin/subjects/subject:test/materials", "file", "lecture.md", "text/markdown", []byte("# Введение\nФормула $x=1$"), admin)
 	check("POST", "/admin/subjects/{subject_id}/materials", materialsUpload)
-	var uploadedList []struct {
-		ID string `json:"id"`
+	var uploadResult struct {
+		Uploaded []struct {
+			ID string `json:"id"`
+		} `json:"uploaded"`
+		Failed []struct {
+			Filename string `json:"filename"`
+		} `json:"failed"`
 	}
-	if err := json.Unmarshal(materialsUpload.Body.Bytes(), &uploadedList); err != nil || len(uploadedList) == 0 {
+	if err := json.Unmarshal(materialsUpload.Body.Bytes(), &uploadResult); err != nil || len(uploadResult.Uploaded) == 0 {
 		t.Fatalf("materials upload: %s (%v)", materialsUpload.Body.String(), err)
 	}
-	matID := uploadedList[0].ID
+	matID := uploadResult.Uploaded[0].ID
 	check("GET", "/admin/subjects/{subject_id}/materials", f.request("GET", "/admin/subjects/subject:test/materials", "", admin))
 	check("GET", "/admin/subjects/{subject_id}/materials/{material_id}/raw", f.request("GET", "/admin/subjects/subject:test/materials/"+matID+"/raw", "", admin))
 	check("DELETE", "/admin/subjects/{subject_id}/materials/{material_id}", f.request("DELETE", "/admin/subjects/subject:test/materials/"+matID, "", admin))

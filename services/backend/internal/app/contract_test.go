@@ -240,6 +240,11 @@ func TestOpenAPIResponses(t *testing.T) {
 		t.Fatalf("assessment: %d %s", evaluation.Code, evaluation.Body.String())
 	}
 	check("POST", "/assessments/evaluate", evaluation)
+	overallFeedbackBody, _ := json.Marshal(map[string]any{"answers": []map[string]any{{
+		"task_id": createdVariant.Competencies[0].Main.ID, "question": "Вопрос?", "transcript": "Ответ.",
+		"score": 3, "max_score": 3, "feedback": []string{"Ответ верный."},
+	}}})
+	check("POST", "/assessments/overall-feedback", f.request("POST", "/assessments/overall-feedback", string(overallFeedbackBody), access))
 	diagnosticStartBody, _ := json.Marshal(map[string]string{"variant_id": createdVariant.ID})
 	diagnosticStartRequest := httptest.NewRequest(http.MethodPost, "https://api.example/diagnostic-sessions", bytes.NewReader(diagnosticStartBody))
 	diagnosticStartRequest.Header.Set("Content-Type", "application/json")
@@ -307,6 +312,18 @@ func TestOpenAPIResponses(t *testing.T) {
 	check("GET", "/diagnostic-sessions/{id}/training", f.request("GET", "/diagnostic-sessions/"+diagnosticProgress.SessionID+"/training", "", access))
 	check("GET", "/training-sessions/{id}", f.request("GET", "/training-sessions/"+trainingProgress.ID, "", access))
 	check("GET", "/training-sessions/{id}/current/audio", f.request("GET", "/training-sessions/"+trainingProgress.ID+"/current/audio?exercise_id="+trainingProgress.Current.ID, "", access))
+	var trainingAudioID, trainingAudioKey string
+	if err := f.pool.QueryRow(t.Context(), "SELECT asset.id, asset.object_key FROM training_exercises exercise JOIN audio_assets asset ON asset.id=exercise.audio_asset_id WHERE exercise.id=$1", trainingProgress.Current.ID).Scan(&trainingAudioID, &trainingAudioKey); err != nil {
+		t.Fatalf("training exercise audio link: %v", err)
+	}
+	if _, err := f.pool.Exec(t.Context(), "UPDATE audio_assets SET status='ready', bucket='task-audio-test', storage_uri='s3://task-audio-test/'||object_key, audio_url='/task-audio/'||id||'/file' WHERE id=$1", trainingAudioID); err != nil {
+		t.Fatal(err)
+	}
+	f.s3Mu.Lock()
+	f.s3AssetID = trainingAudioID
+	f.s3Objects[trainingAudioKey] = fixtureS3Object{data: wavBytes(), assetID: trainingAudioID}
+	f.s3Mu.Unlock()
+	check("POST", "/training-sessions/{id}/current/audio/regenerate", f.request("POST", "/training-sessions/"+trainingProgress.ID+"/current/audio/regenerate?exercise_id="+trainingProgress.Current.ID, "", access))
 	trainingBody, trainingContentType := diagnosticAnswerBody(t, trainingProgress.Current.ID)
 	trainingRequest := httptest.NewRequest("POST", "/training-sessions/"+trainingProgress.ID+"/answers", strings.NewReader(strings.ReplaceAll(trainingBody.String(), "variant_task_id", "exercise_id")))
 	trainingRequest.AddCookie(access)
@@ -316,6 +333,7 @@ func TestOpenAPIResponses(t *testing.T) {
 	f.app.Handler().ServeHTTP(trainingAnswer, trainingRequest)
 	check("POST", "/training-sessions/{id}/answers", trainingAnswer)
 	check("GET", "/training-sessions/{id}/history", f.request("GET", "/training-sessions/"+trainingProgress.ID+"/history?limit=1", "", access))
+	check("POST", "/training-sessions/{id}/answers/reset", f.request("POST", "/training-sessions/"+trainingProgress.ID+"/answers/reset", "", access))
 	postJSON := func(path, key string, body []byte) *httptest.ResponseRecorder {
 		request := httptest.NewRequest(http.MethodPost, "https://api.example"+path, bytes.NewReader(body))
 		request.Header.Set("Content-Type", "application/json")

@@ -426,6 +426,11 @@ func (h *Handler) Audio(w http.ResponseWriter, r *http.Request) {
 // @Param id path string true "ID тренировки"
 // @Param exercise_id query string true "Текущее упражнение"
 // @Success 200 {object} AudioResponse
+// @Failure 401 {object} fault.Error
+// @Failure 404 {object} fault.Error
+// @Failure 409 {object} fault.Error
+// @Failure 422 {object} fault.Error
+// @Failure 503 {object} fault.Error
 // @Router /training-sessions/{id}/current/audio/regenerate [post]
 func (h *Handler) RegenerateAudio(w http.ResponseWriter, r *http.Request) {
 	id, ok := owner(w, r)

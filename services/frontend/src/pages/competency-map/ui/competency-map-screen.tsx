@@ -4,6 +4,7 @@ import {
   Button,
   Flex,
   Heading,
+  Progress,
   Text,
   TextField,
 } from '@radix-ui/themes'
@@ -23,7 +24,7 @@ import {
   Upload,
   X,
 } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { CourseMaterial } from '@/entities/competency-map'
 import { useAuth } from '@/features/auth'
@@ -119,9 +120,6 @@ function CompetencyMapAdmin({ userId }: { userId: string }) {
           <Heading as="h1" size="8">
             {t('competencyMap.title')}
           </Heading>
-          <Text as="p" color="gray">
-            {t('competencyMap.materialsSubtitle')}
-          </Text>
         </div>
 
         {subjects.isPending ? (
@@ -207,12 +205,7 @@ function CompetencyMapAdmin({ userId }: { userId: string }) {
               )}
 
               {uploadMaterials.isPending && (
-                <Flex gap="2" align="center">
-                  <Sparkles size={16} aria-hidden="true" />
-                  <Text as="p" role="status" size="2">
-                    {t('competencyMap.materialsUploading')}
-                  </Text>
-                </Flex>
+                <MaterialsUploadProgressBar filesCount={lectureFiles.length} />
               )}
 
               {uploadMaterials.isError && (
@@ -524,3 +517,39 @@ function LectureFilesZone({
     </div>
   )
 }
+
+function MaterialsUploadProgressBar({ filesCount }: { filesCount: number }) {
+  const { t } = useTranslation()
+  const [percent, setPercent] = useState(10)
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setPercent((prev) => {
+        if (prev >= 95) return prev
+        const remaining = 95 - prev
+        const step = Math.max(1, Math.floor(remaining / 8))
+        return Math.min(95, prev + step)
+      })
+    }, 600)
+    return () => clearInterval(timer)
+  }, [])
+
+  return (
+    <div className={styles.uploadProgressBox} role="status" aria-live="polite">
+      <div className={styles.uploadProgressHeader}>
+        <Flex gap="2" align="center">
+          <Sparkles size={16} aria-hidden="true" className={styles.spinIcon} />
+          <Text size="2" weight="medium">
+            {t('competencyMap.materialsUploading')}
+            {filesCount > 1 ? ` (${filesCount})` : ''}
+          </Text>
+        </Flex>
+        <Text size="2" color="gray" weight="bold">
+          {percent}%
+        </Text>
+      </div>
+      <Progress value={percent} size="2" color="blue" />
+    </div>
+  )
+}
+

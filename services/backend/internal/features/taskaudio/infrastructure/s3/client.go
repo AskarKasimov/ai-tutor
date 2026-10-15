@@ -132,6 +132,63 @@ func (c *Client) Put(ctx context.Context, bucket, key, assetID string, data []by
 	return nil
 }
 
+func (c *Client) PutObject(ctx context.Context, bucket, key, contentType string, data []byte) error {
+	_, err := c.client.PutObject(ctx, &s3.PutObjectInput{
+		Bucket:        aws.String(bucket),
+		Key:           aws.String(key),
+		Body:          bytes.NewReader(data),
+		ContentType:   aws.String(contentType),
+		ContentLength: aws.Int64(int64(len(data))),
+	})
+	if err != nil {
+		return fmt.Errorf("put S3 object %s: %w", key, err)
+	}
+	return nil
+}
+
+func (c *Client) GetObject(ctx context.Context, bucket, key string) ([]byte, error) {
+	rc, _, _, err := c.OpenObject(ctx, bucket, key)
+	if err != nil {
+		return nil, err
+	}
+	defer rc.Close()
+	return io.ReadAll(rc)
+}
+
+func (c *Client) OpenObject(ctx context.Context, bucket, key string) (io.ReadCloser, string, int64, error) {
+	output, err := c.client.GetObject(ctx, &s3.GetObjectInput{
+		Bucket: aws.String(bucket),
+		Key:    aws.String(key),
+	})
+	if err != nil {
+		return nil, "", 0, fmt.Errorf("get S3 object %s: %w", key, err)
+	}
+	contentType := "application/octet-stream"
+	if output.ContentType != nil {
+		contentType = *output.ContentType
+	}
+	var size int64
+	if output.ContentLength != nil {
+		size = *output.ContentLength
+	}
+	return output.Body, contentType, size, nil
+}
+
+func (c *Client) DeleteObject(ctx context.Context, bucket, key string) error {
+	_, err := c.client.DeleteObject(ctx, &s3.DeleteObjectInput{
+		Bucket: aws.String(bucket),
+		Key:    aws.String(key),
+	})
+	if err != nil {
+		var apiError smithy.APIError
+		if errors.As(err, &apiError) && (apiError.ErrorCode() == "NoSuchKey" || apiError.ErrorCode() == "NotFound") {
+			return nil
+		}
+		return fmt.Errorf("delete S3 object %s: %w", key, err)
+	}
+	return nil
+}
+
 func (c *Client) Open(ctx context.Context, bucket, key string) (io.ReadCloser, application.ObjectInfo, error) {
 	output, err := c.client.GetObject(ctx, &s3.GetObjectInput{Bucket: aws.String(bucket), Key: aws.String(key)})
 	if err != nil {

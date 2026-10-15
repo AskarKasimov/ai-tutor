@@ -5,6 +5,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"time"
 
@@ -39,7 +40,6 @@ import (
 	materialsapp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/materials/application"
 	materialsocr "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/materials/infrastructure/ocr"
 	materialspg "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/materials/infrastructure/postgres"
-	materialss3 "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/materials/infrastructure/s3"
 	materialshttp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/materials/transport/http"
 	subjectapp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/subject/application"
 	subjectpg "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/subject/infrastructure/postgres"
@@ -120,15 +120,7 @@ func New(cfg Config, pool *pgxpool.Pool, logger *zap.Logger) (*App, error) {
 		PathStyle: cfg.S3PathStyle, CreateBucket: cfg.S3CreateBucket, Timeout: cfg.S3Timeout,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("configure task audio storage: %w", err)
-	}
-	materialsStorage, err := materialss3.New(materialss3.Config{
-		Endpoint: cfg.S3Endpoint, Region: cfg.S3Region, Bucket: cfg.S3Bucket,
-		AccessKey: cfg.S3AccessKey, SecretKey: cfg.S3SecretKey,
-		PathStyle: cfg.S3PathStyle, CreateBucket: cfg.S3CreateBucket, Timeout: cfg.S3Timeout,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("configure materials S3 storage: %w", err)
+		return nil, fmt.Errorf("configure S3 storage: %w", err)
 	}
 	synth := modelapi.New(a.client, cfg.STTURL, cfg.TTSURL, cfg.VoiceTimeout, modelapi.TTSOptions{Seed: cfg.TTSSeed, CFGValue: cfg.TTSCFGValue, InferenceTimesteps: cfg.TTSInferenceTimesteps})
 	a.audioWorker = taskaudioapp.NewWorker(taskaudiopg.New(pool), storage, synth, taskaudioapp.WorkerConfig{
@@ -136,8 +128,29 @@ func New(cfg Config, pool *pgxpool.Pool, logger *zap.Logger) (*App, error) {
 		S3Timeout: cfg.S3Timeout, Bucket: cfg.S3Bucket,
 	})
 	a.audioStorage = storage
-	a.materialsStorage = materialsStorage
+	a.materialsStorage = &materialsStorageAdapter{storage: storage, bucket: cfg.S3Bucket}
 	return a, nil
+}
+
+type materialsStorageAdapter struct {
+	storage *taskaudios3.Client
+	bucket  string
+}
+
+func (m *materialsStorageAdapter) Put(ctx context.Context, key, contentType string, data []byte) error {
+	return m.storage.PutObject(ctx, m.bucket, key, contentType, data)
+}
+
+func (m *materialsStorageAdapter) Get(ctx context.Context, key string) ([]byte, error) {
+	return m.storage.GetObject(ctx, m.bucket, key)
+}
+
+func (m *materialsStorageAdapter) Open(ctx context.Context, key string) (io.ReadCloser, string, int64, error) {
+	return m.storage.OpenObject(ctx, m.bucket, key)
+}
+
+func (m *materialsStorageAdapter) Delete(ctx context.Context, key string) error {
+	return m.storage.DeleteObject(ctx, m.bucket, key)
 }
 
 func (a *App) Handler() http.Handler {

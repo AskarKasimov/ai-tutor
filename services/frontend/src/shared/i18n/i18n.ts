@@ -83,13 +83,16 @@ void i18n.init({
           materialsTitle: 'Материалы и лекции курса',
           materialsSubtitle: '',
           materialsDropTitle: 'Загрузить файлы материалов',
-          materialsDropHint: 'Нажмите или перетащите один или несколько файлов лекций и лабораторных',
+          materialsDropHint:
+            'Нажмите или перетащите один или несколько файлов лекций и лабораторных',
           materialsDropReplace: 'Выбрано файлов: {{count}}',
           materialsSubmit: 'Загрузить и распознать материалы',
-          materialsUploading: 'Идёт сохранение в S3 и распознавание материалов…',
+          materialsUploading:
+            'Идёт сохранение в S3 и распознавание материалов…',
           materialsProgress: 'Обработка и распознавание материалов…',
           materialsEmpty: 'Материалы курса ещё не загружены.',
-          materialsSuccess: 'Материалы успешно загружены, распознаны и сохранены в S3.',
+          materialsSuccess:
+            'Материалы успешно загружены, распознаны и сохранены в S3.',
           materialsListTitle: 'Загруженные лекции и лабораторные',
           materialsDelete: 'Удалить',
           materialsDeleteConfirm: 'Удалить этот файл и его распознанный текст?',

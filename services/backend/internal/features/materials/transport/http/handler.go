@@ -13,6 +13,10 @@ import (
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/httpx"
 )
 
+type DeleteResponse struct {
+	Status string `json:"status"`
+}
+
 type Handler struct {
 	service        *application.Service
 	maxUploadBytes int64
@@ -25,6 +29,22 @@ func NewHandler(service *application.Service, maxUploadBytes int64) *Handler {
 	}
 }
 
+// UploadMaterials handles POST /admin/subjects/{subject_id}/materials.
+// @Summary Загрузить материалы курса
+// @Description Доступно только admin. Загружает файлы лекций/лаб, сохраняет их в S3, выполняет OCR и сохраняет извлеченный Markdown с формулами LaTeX.
+// @ID uploadSubjectMaterials
+// @Tags Материалы
+// @Security accessCookie
+// @Accept multipart/form-data
+// @Produce json
+// @Param subject_id path string true "ID предмета"
+// @Param file formData file true "Файл лекции или лабы (PDF, Markdown, текст)"
+// @Success 200 {array} material.Material
+// @Failure 400 {object} fault.Error
+// @Failure 401 {object} fault.Error
+// @Failure 403 {object} fault.Error
+// @Failure 500 {object} fault.Error
+// @Router /admin/subjects/{subject_id}/materials [post]
 func (h *Handler) UploadMaterials(w http.ResponseWriter, r *http.Request) {
 	subjectID := r.PathValue("subject_id")
 	if subjectID == "" {
@@ -90,6 +110,20 @@ func (h *Handler) UploadMaterials(w http.ResponseWriter, r *http.Request) {
 	httpx.JSON(w, http.StatusOK, results)
 }
 
+// ListMaterials handles GET /admin/subjects/{subject_id}/materials.
+// @Summary Список материалов курса
+// @Description Доступно только admin. Возвращает список загруженных материалов курса с извлеченным текстом.
+// @ID listSubjectMaterials
+// @Tags Материалы
+// @Security accessCookie
+// @Produce json
+// @Param subject_id path string true "ID предмета"
+// @Success 200 {array} material.Material
+// @Failure 400 {object} fault.Error
+// @Failure 401 {object} fault.Error
+// @Failure 403 {object} fault.Error
+// @Failure 500 {object} fault.Error
+// @Router /admin/subjects/{subject_id}/materials [get]
 func (h *Handler) ListMaterials(w http.ResponseWriter, r *http.Request) {
 	subjectID := r.PathValue("subject_id")
 	if subjectID == "" {
@@ -108,6 +142,21 @@ func (h *Handler) ListMaterials(w http.ResponseWriter, r *http.Request) {
 	httpx.JSON(w, http.StatusOK, items)
 }
 
+// DeleteMaterial handles DELETE /admin/subjects/{subject_id}/materials/{material_id}.
+// @Summary Удалить материал курса
+// @Description Доступно только admin. Удаляет материал из базы и S3.
+// @ID deleteSubjectMaterial
+// @Tags Материалы
+// @Security accessCookie
+// @Produce json
+// @Param subject_id path string true "ID предмета"
+// @Param material_id path string true "ID материала"
+// @Success 200 {object} DeleteResponse
+// @Failure 400 {object} fault.Error
+// @Failure 401 {object} fault.Error
+// @Failure 403 {object} fault.Error
+// @Failure 500 {object} fault.Error
+// @Router /admin/subjects/{subject_id}/materials/{material_id} [delete]
 func (h *Handler) DeleteMaterial(w http.ResponseWriter, r *http.Request) {
 	subjectID := r.PathValue("subject_id")
 	materialID := r.PathValue("material_id")
@@ -120,9 +169,24 @@ func (h *Handler) DeleteMaterial(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(r.Context(), w, err)
 		return
 	}
-	httpx.JSON(w, http.StatusOK, map[string]string{"status": "deleted"})
+	httpx.JSON(w, http.StatusOK, DeleteResponse{Status: "deleted"})
 }
 
+// DownloadRaw handles GET /admin/subjects/{subject_id}/materials/{material_id}/raw.
+// @Summary Скачать исходный файл материала
+// @Description Скачивание или просмотр исходного файла материала.
+// @ID downloadSubjectMaterialRaw
+// @Tags Материалы
+// @Security accessCookie
+// @Produce application/octet-stream
+// @Param subject_id path string true "ID предмета"
+// @Param material_id path string true "ID материала"
+// @Success 200 {file} file "Исходный файл"
+// @Failure 400 {object} fault.Error
+// @Failure 401 {object} fault.Error
+// @Failure 404 {object} fault.Error
+// @Failure 500 {object} fault.Error
+// @Router /admin/subjects/{subject_id}/materials/{material_id}/raw [get]
 func (h *Handler) DownloadRaw(w http.ResponseWriter, r *http.Request) {
 	subjectID := r.PathValue("subject_id")
 	materialID := r.PathValue("material_id")

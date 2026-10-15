@@ -3,7 +3,8 @@ import { i18n } from '@/shared/i18n'
 import type {
   CompetencyMapImport,
   CompetencyMapSummary,
-} from '@/entities/competency-map'
+  CourseMaterial,
+} from '../model/competency-map'
 import { apiFetch } from '@/shared/api'
 
 const apiBase = (import.meta.env.VITE_API_BASE_URL || '/api/v1').replace(
@@ -169,7 +170,9 @@ export async function readSubjectMaterials(
       signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
     },
   )
-  const parsed = z.array(courseMaterialSchema).safeParse(await readResponse(response))
+  const parsed = z
+    .array(courseMaterialSchema)
+    .safeParse(await readResponse(response))
   if (!parsed.success) throw new Error(i18n.t('competencyMap.invalidResponse'))
   return parsed.data.map((item) => ({
     id: item.id,
@@ -207,7 +210,9 @@ export async function uploadCourseMaterials(
       signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
     },
   )
-  const parsed = z.array(courseMaterialSchema).safeParse(await readResponse(response))
+  const parsed = z
+    .array(courseMaterialSchema)
+    .safeParse(await readResponse(response))
   if (!parsed.success) throw new Error(i18n.t('competencyMap.unknownResult'))
   return parsed.data.map((item) => ({
     id: item.id,
@@ -241,5 +246,3 @@ export async function deleteCourseMaterial(
     },
   )
 }
-
-

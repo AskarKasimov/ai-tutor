@@ -10,54 +10,6 @@ components:
       required:
         - status
       type: object
-    material.Material:
-      additionalProperties: false
-      properties:
-        id:
-          type: string
-        subject_id:
-          type: string
-        filename:
-          type: string
-        content_type:
-          type: string
-        file_size:
-          type: integer
-        s3_raw_key:
-          type: string
-        s3_parsed_key:
-          type: string
-        parsed_text:
-          type: string
-        char_count:
-          type: integer
-        status:
-          enum:
-            - pending
-            - parsed
-            - failed
-          type: string
-        error_message:
-          nullable: true
-          type: string
-        created_at:
-          type: integer
-        updated_at:
-          type: integer
-      required:
-        - id
-        - subject_id
-        - filename
-        - content_type
-        - file_size
-        - s3_raw_key
-        - s3_parsed_key
-        - parsed_text
-        - char_count
-        - status
-        - created_at
-        - updated_at
-      type: object
     application.CriterionResult:
       additionalProperties: false
       properties:
@@ -839,6 +791,14 @@ components:
         - outcome_name
         - taxonomy_code
       type: object
+    http.DeleteResponse:
+      additionalProperties: false
+      properties:
+        status:
+          type: string
+      required:
+        - status
+      type: object
     http.OverallFeedbackResponse:
       additionalProperties: false
       properties:
@@ -1117,6 +1077,60 @@ components:
         - question
         - transcription_id
       type: object
+    material.Material:
+      additionalProperties: false
+      properties:
+        char_count:
+          type: integer
+        content_type:
+          type: string
+        created_at:
+          type: integer
+        error_message:
+          type: string
+        file_size:
+          type: integer
+        filename:
+          type: string
+        id:
+          type: string
+        parsed_text:
+          type: string
+        s3_parsed_key:
+          type: string
+        s3_raw_key:
+          type: string
+        status:
+          $ref: '#/components/schemas/material.Status'
+        subject_id:
+          type: string
+        updated_at:
+          type: integer
+      required:
+        - char_count
+        - content_type
+        - created_at
+        - error_message
+        - file_size
+        - filename
+        - id
+        - parsed_text
+        - s3_parsed_key
+        - s3_raw_key
+        - status
+        - subject_id
+        - updated_at
+      type: object
+    material.Status:
+      enum:
+        - pending
+        - parsed
+        - failed
+      type: string
+      x-enum-varnames:
+        - StatusPending
+        - StatusParsed
+        - StatusFailed
     subject.Subject:
       additionalProperties: false
       properties:
@@ -2364,6 +2378,30 @@ paths:
                   $ref: '#/components/schemas/material.Material'
                 type: array
           description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Bad Request
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Forbidden
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Internal Server Error
       security:
         - accessCookie: []
       summary: Список материалов курса
@@ -2384,13 +2422,16 @@ paths:
         content:
           multipart/form-data:
             schema:
+              additionalProperties: false
               properties:
                 file:
                   description: Файл лекции или лабы (PDF, Markdown, текст)
                   format: binary
                   type: string
+              required:
+                - file
               type: object
-        description: Файлы материалов курса
+        description: Файл лекции или лабы (PDF, Markdown, текст)
         required: true
       responses:
         "200":
@@ -2401,6 +2442,30 @@ paths:
                   $ref: '#/components/schemas/material.Material'
                 type: array
           description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Bad Request
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Forbidden
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Internal Server Error
       security:
         - accessCookie: []
       summary: Загрузить материалы курса
@@ -2429,11 +2494,32 @@ paths:
           content:
             application/json:
               schema:
-                properties:
-                  status:
-                    type: string
-                type: object
+                $ref: '#/components/schemas/http.DeleteResponse'
           description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Bad Request
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Forbidden
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Internal Server Error
       security:
         - accessCookie: []
       summary: Удалить материал курса
@@ -2465,6 +2551,30 @@ paths:
                 format: binary
                 type: string
           description: Исходный файл
+        "400":
+          content:
+            application/octet-stream:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Bad Request
+        "401":
+          content:
+            application/octet-stream:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unauthorized
+        "404":
+          content:
+            application/octet-stream:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Not Found
+        "500":
+          content:
+            application/octet-stream:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Internal Server Error
       security:
         - accessCookie: []
       summary: Скачать исходный файл материала

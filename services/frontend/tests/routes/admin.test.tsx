@@ -1,10 +1,4 @@
-import {
-  act,
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-} from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import {
   createMemoryHistory,
   createRouter,
@@ -13,7 +7,6 @@ import {
 import { afterEach, beforeAll, expect, it, vi } from 'vitest'
 import { createQueryClient } from '@/bootstrap/providers'
 import { routeTree } from '@/routeTree.gen'
-import type { CourseMaterial } from '@/entities/competency-map'
 
 beforeAll(async () => {
   await import('@/pages/competency-map')
@@ -189,7 +182,9 @@ it('creates a subject and switches to materials view', async () => {
   fireEvent.change(field, { target: { value: '  Новый  ' } })
   expect(submit).not.toBeDisabled()
   fireEvent.click(submit)
-  expect(await screen.findByRole('heading', { name: 'Новый', level: 2 })).toBeVisible()
+  expect(
+    await screen.findByRole('heading', { name: 'Новый', level: 2 }),
+  ).toBeVisible()
   const [, init] = fetch.mock.calls.find(
     ([url, request]) =>
       url.endsWith('/admin/subjects') && request?.method === 'POST',
@@ -209,21 +204,39 @@ it('denies students direct access to admin materials screen', async () => {
 it('uploads lecture files and shows success message', async () => {
   const fetch = backend()
   renderApp('/admin/competency-map')
-  const input = await screen.findByLabelText('Загрузить файлы материалов (PDF, MD)')
+  const input = await screen.findByLabelText('Загрузить файлы материалов')
   fireEvent.change(input, {
-    target: { files: [new File(['pdfcontent'], 'new_lecture.pdf', { type: 'application/pdf' })] },
+    target: {
+      files: [
+        new File(['pdfcontent'], 'new_lecture.pdf', {
+          type: 'application/pdf',
+        }),
+      ],
+    },
   })
   expect(await screen.findByText(/new_lecture\.pdf/)).toBeVisible()
-  const submitBtn = screen.getByRole('button', { name: /Загрузить и распознать материалы/ })
+  const submitBtn = screen.getByRole('button', {
+    name: /Загрузить и распознать материалы/,
+  })
   fireEvent.click(submitBtn)
-  expect(await screen.findByText('Материалы успешно загружены, распознаны и сохранены в S3.')).toBeVisible()
-  expect(fetch.mock.calls.some(([url, req]) => url.endsWith('/materials') && req?.method === 'POST')).toBe(true)
+  expect(
+    await screen.findByText(
+      'Материалы успешно загружены, распознаны и сохранены в S3.',
+    ),
+  ).toBeVisible()
+  expect(
+    fetch.mock.calls.some(
+      ([url, req]) => url.endsWith('/materials') && req?.method === 'POST',
+    ),
+  ).toBe(true)
 })
 
 it('toggles markdown text preview for an uploaded material', async () => {
   backend()
   renderApp('/admin/competency-map')
-  const previewBtn = await screen.findByRole('button', { name: 'Предпросмотр распознанного текста' })
+  const previewBtn = await screen.findByRole('button', {
+    name: 'Предпросмотр распознанного текста',
+  })
   expect(screen.queryByText(/Формула: \$y = Wx \+ b\$/)).not.toBeInTheDocument()
   fireEvent.click(previewBtn)
   expect(await screen.findByText(/Формула: \$y = Wx \+ b\$/)).toBeVisible()

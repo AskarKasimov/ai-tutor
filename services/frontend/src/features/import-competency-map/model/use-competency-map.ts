@@ -116,6 +116,8 @@ export function useImportCompetencyMapMutation(
 export function useSubjectMaterialsQuery(userId: string, subjectId: string) {
   const { competencyMap } = useCompetencyMapDependencies()
   const cache = useQueryClient()
+  // Auth epoch is QueryClient-local and intentionally not part of the public resource key.
+  // eslint-disable-next-line @tanstack/query/exhaustive-deps
   return useQuery({
     queryKey: competencyMapQueryKeys.subjectMaterials(userId, subjectId),
     enabled: !!userId && !!subjectId,
@@ -156,7 +158,10 @@ export function useUploadCourseMaterialsMutation(
   const controllerRef = useRef<AbortController | null>(null)
   useEffect(() => () => controllerRef.current?.abort(), [subjectId])
   return useMutation({
-    mutationKey: competencyMapQueryKeys.uploadSubjectMaterials(userId, subjectId),
+    mutationKey: competencyMapQueryKeys.uploadSubjectMaterials(
+      userId,
+      subjectId,
+    ),
     gcTime: 0,
     onMutate: () => {
       tokenRef.current = captureSession(cache)
@@ -189,7 +194,10 @@ export function useUploadCourseMaterialsMutation(
     onSuccess: async (_data, variables) => {
       if (!isCurrentSession(cache, tokenRef.current)) return
       await cache.invalidateQueries({
-        queryKey: competencyMapQueryKeys.subjectMaterials(userId, variables.subjectId),
+        queryKey: competencyMapQueryKeys.subjectMaterials(
+          userId,
+          variables.subjectId,
+        ),
       })
     },
     onError: async (error, variables) => {
@@ -197,7 +205,10 @@ export function useUploadCourseMaterialsMutation(
       if (error instanceof CompetencyMapApiError && error.status === 401)
         await replaceSession(cache, null)
       await cache.invalidateQueries({
-        queryKey: competencyMapQueryKeys.subjectMaterials(userId, variables.subjectId),
+        queryKey: competencyMapQueryKeys.subjectMaterials(
+          userId,
+          variables.subjectId,
+        ),
       })
     },
     retry: false,
@@ -221,17 +232,22 @@ export function useDeleteCourseMaterialMutation(
       subjectId: targetSubjectId,
     }: {
       materialId: string
-      subjectId: string
+      subjectId?: string
     }) => {
-      return await competencyMap.deleteCourseMaterial(targetSubjectId, materialId)
+      return await competencyMap.deleteCourseMaterial(
+        targetSubjectId || subjectId,
+        materialId,
+      )
     },
     onSuccess: async (_data, variables) => {
       if (!isCurrentSession(cache, tokenRef.current)) return
       await cache.invalidateQueries({
-        queryKey: competencyMapQueryKeys.subjectMaterials(userId, variables.subjectId),
+        queryKey: competencyMapQueryKeys.subjectMaterials(
+          userId,
+          variables.subjectId || subjectId,
+        ),
       })
     },
     retry: false,
   })
 }
-

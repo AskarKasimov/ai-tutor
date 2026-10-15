@@ -73,10 +73,13 @@ function CompetencyMapAdmin({ userId }: { userId: string }) {
 
   const [subjectName, setSubjectName] = useState('')
   const [lectureFiles, setLectureFiles] = useState<File[]>([])
-  const [materialsFileError, setMaterialsFileError] = useState<string | null>(null)
+  const [materialsFileError, setMaterialsFileError] = useState<string | null>(
+    null,
+  )
   const [previewId, setPreviewId] = useState<string | null>(null)
 
-  const busy = create.isPending || uploadMaterials.isPending || deleteMaterial.isPending
+  const busy =
+    create.isPending || uploadMaterials.isPending || deleteMaterial.isPending
 
   function selectLectureFiles(selected: FileList | null) {
     uploadMaterials.reset()
@@ -552,4 +555,3 @@ function MaterialsUploadProgressBar({ filesCount }: { filesCount: number }) {
     </div>
   )
 }
-

@@ -377,6 +377,11 @@ void i18n.init({
           feedbackRetry: 'Повторить загрузку фидбэка',
           feedbackGood: 'Что хорошо',
           feedbackWork: 'Что доработать',
+          feedbackSkillsToImprove: 'Что нужно подтянуть:',
+          feedbackStudyTopic: 'Изучите тему: {{topic}}.',
+          feedbackReviewTopic: 'Повторите тему: {{topic}}.',
+          feedbackSkippedTopic:
+            'Вы пропустили вопрос. Разберите тему: {{topic}}.',
           criterionMet: 'Критерий выполнен',
           criterionUnmet: 'Критерий не выполнен',
           verdict: {

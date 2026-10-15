@@ -39,6 +39,7 @@ import {
 } from './trainer-shared'
 import { normalizeText, parseStructuredSummary } from '@/entities/assessment'
 import { diagnosticPercent } from '../model/diagnostic-percent'
+import { groupFeedbackDetails } from '../model/group-feedback-details'
 import { ConfirmVoiceAnswer } from './trainer-answer'
 import styles from '@/pages/trainer/ui/trainer-layout.module.scss'
 import diagnosticStyles from '@/pages/trainer/ui/diagnostic.module.scss'
@@ -772,6 +773,26 @@ function OverallFeedbackContent({ value }: { value: OverallFeedback }) {
       (priority.get(a.outcome_id) ?? Infinity) -
       (priority.get(b.outcome_id) ?? Infinity),
   )
+  const workGroups = new Map<string, { name: string; details: string[] }>()
+  for (const item of [
+    ...gaps.map((gap) => ({
+      id: gap.competency_id,
+      name: gap.competency_name,
+      text: gap.advice,
+    })),
+    ...value.partial_competencies.map((part) => ({
+      id: part.competency_id,
+      name: part.competency_name,
+      text: part.details,
+    })),
+  ]) {
+    const group = workGroups.get(item.id)
+    if (group) {
+      group.details.push(item.text)
+    } else {
+      workGroups.set(item.id, { name: item.name, details: [item.text] })
+    }
+  }
   const good =
     value.strengths.length > 0 ? (
       <ul className={styles.summaryCardList}>
@@ -784,22 +805,29 @@ function OverallFeedbackContent({ value }: { value: OverallFeedback }) {
     ) : null
   const work =
     gaps.length + value.partial_competencies.length > 0 ? (
-      <ul className={styles.summaryCardList}>
-        {gaps.map((gap) => (
-          <li key={gap.outcome_id}>
-            <div>
-              {/* The advice already names the constituent and the outcome. */}
-              <strong>{gap.competency_name}.</strong>{' '}
-              <MarkdownContent text={gap.advice} />
-            </div>
-          </li>
-        ))}
-        {value.partial_competencies.map((part) => (
-          <li key={part.competency_id}>
-            <div>
-              <strong>{part.competency_name}.</strong>{' '}
-              <MarkdownContent text={part.details} />
-            </div>
+      <ul className={`${styles.summaryCardList} ${styles.feedbackGroups}`}>
+        {[...workGroups].map(([id, group]) => (
+          <li key={id}>
+            <strong>{group.name}.</strong>
+            {groupFeedbackDetails(group.details).map((detail, index) => (
+              <div key={index}>
+                {detail.heading && <MarkdownContent text={detail.heading} />}
+                {detail.heading && (
+                  <p>{t('diagnostic.feedbackSkillsToImprove')}</p>
+                )}
+                {detail.items.length === 1 ? (
+                  <MarkdownContent text={detail.items[0]} />
+                ) : (
+                  <ul>
+                    {detail.items.map((text, itemIndex) => (
+                      <li key={itemIndex}>
+                        <MarkdownContent text={text} />
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            ))}
           </li>
         ))}
       </ul>

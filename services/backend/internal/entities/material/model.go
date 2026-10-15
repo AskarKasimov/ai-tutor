@@ -19,7 +19,7 @@ type Material struct {
 	ParsedText   string  `json:"parsed_text"`
 	CharCount    int     `json:"char_count"`
 	Status       Status  `json:"status"`
-	ErrorMessage *string `json:"error_message,omitempty"`
+	ErrorMessage *string `json:"error_message,omitempty" binding:"optional"`
 	CreatedAt    int64   `json:"created_at"`
 	UpdatedAt    int64   `json:"updated_at"`
 }

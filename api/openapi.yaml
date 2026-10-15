@@ -1110,7 +1110,6 @@ components:
         - char_count
         - content_type
         - created_at
-        - error_message
         - file_size
         - filename
         - id
@@ -2553,25 +2552,25 @@ paths:
           description: Исходный файл
         "400":
           content:
-            application/octet-stream:
+            application/json:
               schema:
                 $ref: '#/components/schemas/fault.Error'
           description: Bad Request
         "401":
           content:
-            application/octet-stream:
+            application/json:
               schema:
                 $ref: '#/components/schemas/fault.Error'
           description: Unauthorized
         "404":
           content:
-            application/octet-stream:
+            application/json:
               schema:
                 $ref: '#/components/schemas/fault.Error'
           description: Not Found
         "500":
           content:
-            application/octet-stream:
+            application/json:
               schema:
                 $ref: '#/components/schemas/fault.Error'
           description: Internal Server Error

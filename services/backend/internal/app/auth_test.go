@@ -63,8 +63,9 @@ type fixture struct {
 }
 
 type fixtureS3Object struct {
-	data    []byte
-	assetID string
+	data        []byte
+	contentType string
+	assetID     string
 }
 
 func newFixture(t *testing.T) *fixture {
@@ -133,7 +134,11 @@ func newFixtureWithPasswordHasher(t *testing.T, cfg Config, hasher authapp.Passw
 				return
 			}
 			w.Header().Set("Content-Length", strconv.Itoa(len(object.data)))
-			w.Header().Set("Content-Type", "audio/wav")
+			contentType := object.contentType
+			if contentType == "" {
+				contentType = "audio/wav"
+			}
+			w.Header().Set("Content-Type", contentType)
 			w.Header().Set("x-amz-meta-audio-asset-id", object.assetID)
 		case http.MethodPut:
 			data, err := io.ReadAll(r.Body)
@@ -142,8 +147,12 @@ func newFixtureWithPasswordHasher(t *testing.T, cfg Config, hasher authapp.Passw
 				return
 			}
 			key := strings.TrimPrefix(r.URL.Path, "/task-audio-test/")
+			contentType := r.Header.Get("Content-Type")
+			if contentType == "" {
+				contentType = "audio/wav"
+			}
 			f.s3Mu.Lock()
-			f.s3Objects[key] = fixtureS3Object{data: data, assetID: r.Header.Get("x-amz-meta-audio-asset-id")}
+			f.s3Objects[key] = fixtureS3Object{data: data, contentType: contentType, assetID: r.Header.Get("x-amz-meta-audio-asset-id")}
 			f.s3Mu.Unlock()
 			w.WriteHeader(http.StatusOK)
 		case http.MethodGet:
@@ -153,10 +162,20 @@ func newFixtureWithPasswordHasher(t *testing.T, cfg Config, hasher authapp.Passw
 				_, _ = w.Write(wavBytes())
 				return
 			}
-			w.Header().Set("Content-Type", "audio/wav")
+			contentType := object.contentType
+			if contentType == "" {
+				contentType = "audio/wav"
+			}
+			w.Header().Set("Content-Type", contentType)
 			w.Header().Set("x-amz-meta-audio-asset-id", object.assetID)
 			w.Header().Set("Content-Length", strconv.Itoa(len(object.data)))
 			_, _ = w.Write(object.data)
+		case http.MethodDelete:
+			key := strings.TrimPrefix(r.URL.Path, "/task-audio-test/")
+			f.s3Mu.Lock()
+			delete(f.s3Objects, key)
+			f.s3Mu.Unlock()
+			w.WriteHeader(http.StatusNoContent)
 		default:
 			w.WriteHeader(http.StatusMethodNotAllowed)
 		}

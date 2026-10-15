@@ -237,7 +237,7 @@ export async function deleteCourseMaterial(
   signal?: AbortSignal,
 ): Promise<void> {
   const timeout = AbortSignal.timeout(30_000)
-  await apiFetch(
+  const response = await apiFetch(
     `${apiBase}/admin/subjects/${encodeURIComponent(subjectId)}/materials/${encodeURIComponent(materialId)}`,
     {
       method: 'DELETE',
@@ -245,4 +245,37 @@ export async function deleteCourseMaterial(
       signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
     },
   )
+  await readResponse(response)
+}
+
+export async function downloadCourseMaterialRaw(
+  subjectId: string,
+  materialId: string,
+  filename: string,
+  signal?: AbortSignal,
+): Promise<void> {
+  const timeout = AbortSignal.timeout(60_000)
+  const response = await apiFetch(
+    `${apiBase}/admin/subjects/${encodeURIComponent(subjectId)}/materials/${encodeURIComponent(materialId)}/raw`,
+    {
+      credentials: 'include',
+      signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
+    },
+  )
+  if (!response.ok) {
+    await readResponse(response)
+    return
+  }
+  const blob = await response.blob()
+  const url = URL.createObjectURL(blob)
+  try {
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+  } finally {
+    URL.revokeObjectURL(url)
+  }
 }

@@ -10,8 +10,11 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/material"
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/user"
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/fault"
 )
 
 type Repository interface {
@@ -51,18 +54,29 @@ func New(repo Repository, s3 S3Storage, ocr OCRParser, now func() time.Time) *Se
 	}
 }
 
+// Authorize ensures only admin users can access materials operations.
+func (s *Service) Authorize(actor user.User) error {
+	if actor.Role != user.Admin {
+		return fault.New(fault.Forbidden, "FORBIDDEN", "Операция доступна только admin.")
+	}
+	return nil
+}
+
 type UploadInput struct {
 	Filename    string
 	ContentType string
 	Data        []byte
 }
 
-func (s *Service) Upload(ctx context.Context, subjectID string, input UploadInput) (material.Material, error) {
+func (s *Service) Upload(ctx context.Context, actor user.User, subjectID string, input UploadInput) (material.Material, error) {
+	if err := s.Authorize(actor); err != nil {
+		return material.Material{}, err
+	}
 	if strings.TrimSpace(subjectID) == "" {
-		return material.Material{}, fmt.Errorf("subject_id is required")
+		return material.Material{}, fault.New(fault.Invalid, "BAD_REQUEST", "ID предмета обязателен.")
 	}
 	if len(input.Data) == 0 {
-		return material.Material{}, fmt.Errorf("file data cannot be empty")
+		return material.Material{}, fault.New(fault.Invalid, "BAD_REQUEST", "Файл не может быть пустым.")
 	}
 	cleanFilename := filepath.Base(input.Filename)
 	if cleanFilename == "" || cleanFilename == "." {
@@ -81,7 +95,7 @@ func (s *Service) Upload(ctx context.Context, subjectID string, input UploadInpu
 		contentType = "application/octet-stream"
 	}
 	if err := s.s3.Put(ctx, s3RawKey, contentType, input.Data); err != nil {
-		return material.Material{}, fmt.Errorf("failed to upload raw file to S3: %w", err)
+		return material.Material{}, fault.New(fault.Unavailable, "S3_UPLOAD_ERROR", fmt.Sprintf("failed to upload raw file to S3: %v", err))
 	}
 
 	// 2. Parse text with Marker OCR (or fallback)
@@ -114,7 +128,7 @@ func (s *Service) Upload(ctx context.Context, subjectID string, input UploadInpu
 		S3RawKey:     s3RawKey,
 		S3ParsedKey:  s3ParsedKey,
 		ParsedText:   parsedText,
-		CharCount:    len([]rune(parsedText)),
+		CharCount:    utf8.RuneCountInString(parsedText),
 		Status:       status,
 		ErrorMessage: errMsg,
 		CreatedAt:    nowUnix,
@@ -123,29 +137,40 @@ func (s *Service) Upload(ctx context.Context, subjectID string, input UploadInpu
 
 	created, err := s.repo.Insert(ctx, matRecord)
 	if err != nil {
-		return material.Material{}, fmt.Errorf("failed to save material to database: %w", err)
+		_ = s.s3.Delete(ctx, s3RawKey)
+		_ = s.s3.Delete(ctx, s3ParsedKey)
+		return material.Material{}, fault.New(fault.Unavailable, "DATABASE_ERROR", fmt.Sprintf("failed to save material to database: %v", err))
 	}
 
 	return created, nil
 }
 
-func (s *Service) List(ctx context.Context, subjectID string) ([]material.Material, error) {
+func (s *Service) List(ctx context.Context, actor user.User, subjectID string) ([]material.Material, error) {
+	if err := s.Authorize(actor); err != nil {
+		return nil, err
+	}
 	return s.repo.List(ctx, subjectID)
 }
 
-func (s *Service) Get(ctx context.Context, subjectID, materialID string) (material.Material, error) {
-	mat, err := s.repo.Get(ctx, materialID)
-	if err != nil {
+func (s *Service) Get(ctx context.Context, actor user.User, subjectID, materialID string) (material.Material, error) {
+	if err := s.Authorize(actor); err != nil {
 		return material.Material{}, err
 	}
+	mat, err := s.repo.Get(ctx, materialID)
+	if err != nil {
+		return material.Material{}, fault.New(fault.NotFound, "NOT_FOUND", "Материал не найден.")
+	}
 	if mat.SubjectID != subjectID {
-		return material.Material{}, fmt.Errorf("material does not belong to subject")
+		return material.Material{}, fault.New(fault.NotFound, "NOT_FOUND", "Материал не принадлежит указанному предмету.")
 	}
 	return mat, nil
 }
 
-func (s *Service) Delete(ctx context.Context, subjectID, materialID string) error {
-	mat, err := s.Get(ctx, subjectID, materialID)
+func (s *Service) Delete(ctx context.Context, actor user.User, subjectID, materialID string) error {
+	if err := s.Authorize(actor); err != nil {
+		return err
+	}
+	mat, err := s.Get(ctx, actor, subjectID, materialID)
 	if err != nil {
 		return err
 	}
@@ -153,18 +178,24 @@ func (s *Service) Delete(ctx context.Context, subjectID, materialID string) erro
 	_ = s.s3.Delete(ctx, mat.S3RawKey)
 	_ = s.s3.Delete(ctx, mat.S3ParsedKey)
 
-	return s.repo.Delete(ctx, subjectID, materialID)
+	if err := s.repo.Delete(ctx, subjectID, materialID); err != nil {
+		return fault.New(fault.Unavailable, "DATABASE_ERROR", "Не удалось удалить материал из базы данных.")
+	}
+	return nil
 }
 
-func (s *Service) OpenRaw(ctx context.Context, subjectID, materialID string) (io.ReadCloser, string, int64, string, error) {
-	mat, err := s.Get(ctx, subjectID, materialID)
+func (s *Service) OpenRaw(ctx context.Context, actor user.User, subjectID, materialID string) (io.ReadCloser, string, int64, string, error) {
+	if err := s.Authorize(actor); err != nil {
+		return nil, "", 0, "", err
+	}
+	mat, err := s.Get(ctx, actor, subjectID, materialID)
 	if err != nil {
 		return nil, "", 0, "", err
 	}
 
 	rc, contentType, size, err := s.s3.Open(ctx, mat.S3RawKey)
 	if err != nil {
-		return nil, "", 0, "", err
+		return nil, "", 0, "", fault.New(fault.NotFound, "NOT_FOUND", "Исходный файл не найден в хранилище.")
 	}
 	return rc, contentType, size, mat.Filename, nil
 }

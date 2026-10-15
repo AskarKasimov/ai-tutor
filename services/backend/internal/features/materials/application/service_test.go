@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/material"
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/user"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/features/materials/application"
 )
 
@@ -99,10 +100,22 @@ func TestUploadMaterial(t *testing.T) {
 	s3 := &memoryS3{}
 	ocr := &stubOCR{markdown: "# Лекция 1\n\nТест $E = mc^2$"}
 	fixedTime := time.Unix(1700000000, 0)
+	admin := user.User{ID: "usr-admin", Role: user.Admin}
+	student := user.User{ID: "usr-student", Role: user.Student}
 
 	svc := application.New(repo, s3, ocr, func() time.Time { return fixedTime })
 
-	mat, err := svc.Upload(context.Background(), "sub-123", application.UploadInput{
+	// Test student authorization failure
+	_, err := svc.Upload(context.Background(), student, "sub-123", application.UploadInput{
+		Filename:    "lecture-1.pdf",
+		ContentType: "application/pdf",
+		Data:        []byte("%PDF-fake-content"),
+	})
+	if err == nil {
+		t.Fatalf("expected error for student actor on upload, got nil")
+	}
+
+	mat, err := svc.Upload(context.Background(), admin, "sub-123", application.UploadInput{
 		Filename:    "lecture-1.pdf",
 		ContentType: "application/pdf",
 		Data:        []byte("%PDF-fake-content"),
@@ -127,14 +140,24 @@ func TestUploadMaterial(t *testing.T) {
 		t.Errorf("expected 2 objects in S3 (raw and parsed), got %d", len(s3.objects))
 	}
 
-	// Verify listing
-	list, err := svc.List(context.Background(), "sub-123")
+	// Verify listing by student fails
+	if _, err := svc.List(context.Background(), student, "sub-123"); err == nil {
+		t.Fatalf("expected error for student actor on list, got nil")
+	}
+
+	// Verify listing by admin
+	list, err := svc.List(context.Background(), admin, "sub-123")
 	if err != nil || len(list) != 1 {
 		t.Fatalf("expected 1 listed item, got %d (err: %v)", len(list), err)
 	}
 
-	// Verify delete
-	err = svc.Delete(context.Background(), "sub-123", mat.ID)
+	// Verify delete by student fails
+	if err := svc.Delete(context.Background(), student, "sub-123", mat.ID); err == nil {
+		t.Fatalf("expected error for student actor on delete, got nil")
+	}
+
+	// Verify delete by admin
+	err = svc.Delete(context.Background(), admin, "sub-123", mat.ID)
 	if err != nil {
 		t.Fatalf("unexpected delete error: %v", err)
 	}

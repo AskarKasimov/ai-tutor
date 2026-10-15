@@ -13,8 +13,10 @@ import (
 	"time"
 
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/material"
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/user"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/features/materials/application"
 	materialshttp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/materials/transport/http"
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/httpx"
 )
 
 type memoryRepo struct {
@@ -98,62 +100,125 @@ func TestHandlerUploadAndList(t *testing.T) {
 	svc := application.New(repo, s3, ocr, time.Now)
 	handler := materialshttp.NewHandler(svc, 25*1024*1024)
 
-	// Create multipart body
-	var body bytes.Buffer
-	writer := multipart.NewWriter(&body)
-	part, err := writer.CreateFormFile("file", "lecture1.pdf")
-	if err != nil {
-		t.Fatalf("create form file: %v", err)
-	}
-	part.Write([]byte("fake-pdf-content"))
-	writer.Close()
+	admin := user.User{ID: "adm-1", Role: user.Admin}
+	student := user.User{ID: "stu-1", Role: user.Student}
 
-	// 1. Upload
-	req := httptest.NewRequest(http.MethodPost, "/admin/subjects/sub-1/materials", &body)
-	req.SetPathValue("subject_id", "sub-1")
-	req.Header.Set("Content-Type", writer.FormDataContentType())
-	rec := httptest.NewRecorder()
+	makeUploadReq := func() (*http.Request, *httptest.ResponseRecorder) {
+		var body bytes.Buffer
+		writer := multipart.NewWriter(&body)
+		part, err := writer.CreateFormFile("file", "lecture1.pdf")
+		if err != nil {
+			t.Fatalf("create form file: %v", err)
+		}
+		part.Write([]byte("fake-pdf-content"))
+		writer.Close()
 
-	handler.UploadMaterials(rec, req)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200 OK, got %d: %s", rec.Code, rec.Body.String())
+		req := httptest.NewRequest(http.MethodPost, "/admin/subjects/sub-1/materials", &body)
+		req.SetPathValue("subject_id", "sub-1")
+		req.Header.Set("Content-Type", writer.FormDataContentType())
+		return req, httptest.NewRecorder()
 	}
 
+	// 1. Unauthenticated request -> 401
+	{
+		req, rec := makeUploadReq()
+		handler.UploadMaterials(rec, req)
+		if rec.Code != http.StatusUnauthorized {
+			t.Fatalf("expected 401 Unauthorized for unauth, got %d", rec.Code)
+		}
+	}
+
+	// 2. Student request -> 403
+	{
+		req, rec := makeUploadReq()
+		req = httpx.WithPrincipal(req, student)
+		handler.UploadMaterials(rec, req)
+		if rec.Code != http.StatusForbidden {
+			t.Fatalf("expected 403 Forbidden for student, got %d", rec.Code)
+		}
+	}
+
+	// 3. Admin upload -> 200 OK
 	var uploaded []material.Material
-	if err := json.NewDecoder(rec.Body).Decode(&uploaded); err != nil {
-		t.Fatalf("decode response: %v", err)
-	}
-	if len(uploaded) != 1 {
-		t.Fatalf("expected 1 uploaded material, got %d", len(uploaded))
-	}
-	if !strings.Contains(uploaded[0].ParsedText, "\\nabla L") {
-		t.Errorf("expected LaTeX formula in parsed text, got: %s", uploaded[0].ParsedText)
-	}
-
-	// 2. List
-	reqList := httptest.NewRequest(http.MethodGet, "/admin/subjects/sub-1/materials", nil)
-	reqList.SetPathValue("subject_id", "sub-1")
-	recList := httptest.NewRecorder()
-	handler.ListMaterials(recList, reqList)
-	if recList.Code != http.StatusOK {
-		t.Fatalf("expected 200 OK, got %d", recList.Code)
-	}
-
-	var listed []material.Material
-	if err := json.NewDecoder(recList.Body).Decode(&listed); err != nil {
-		t.Fatalf("decode list: %v", err)
-	}
-	if len(listed) != 1 {
-		t.Fatalf("expected 1 listed material, got %d", len(listed))
+	{
+		req, rec := makeUploadReq()
+		req = httpx.WithPrincipal(req, admin)
+		handler.UploadMaterials(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected 200 OK, got %d: %s", rec.Code, rec.Body.String())
+		}
+		if err := json.NewDecoder(rec.Body).Decode(&uploaded); err != nil {
+			t.Fatalf("decode response: %v", err)
+		}
+		if len(uploaded) != 1 {
+			t.Fatalf("expected 1 uploaded material, got %d", len(uploaded))
+		}
+		if !strings.Contains(uploaded[0].ParsedText, "\\nabla L") {
+			t.Errorf("expected LaTeX formula in parsed text, got: %s", uploaded[0].ParsedText)
+		}
 	}
 
-	// 3. Delete
-	reqDel := httptest.NewRequest(http.MethodDelete, "/admin/subjects/sub-1/materials/"+uploaded[0].ID, nil)
-	reqDel.SetPathValue("subject_id", "sub-1")
-	reqDel.SetPathValue("material_id", uploaded[0].ID)
-	recDel := httptest.NewRecorder()
-	handler.DeleteMaterial(recDel, reqDel)
-	if recDel.Code != http.StatusOK {
-		t.Fatalf("expected 200 OK on delete, got %d", recDel.Code)
+	// 4. List as student -> 403
+	{
+		reqList := httptest.NewRequest(http.MethodGet, "/admin/subjects/sub-1/materials", nil)
+		reqList.SetPathValue("subject_id", "sub-1")
+		reqList = httpx.WithPrincipal(reqList, student)
+		recList := httptest.NewRecorder()
+		handler.ListMaterials(recList, reqList)
+		if recList.Code != http.StatusForbidden {
+			t.Fatalf("expected 403 Forbidden for student list, got %d", recList.Code)
+		}
+	}
+
+	// 5. List as admin -> 200 OK
+	{
+		reqList := httptest.NewRequest(http.MethodGet, "/admin/subjects/sub-1/materials", nil)
+		reqList.SetPathValue("subject_id", "sub-1")
+		reqList = httpx.WithPrincipal(reqList, admin)
+		recList := httptest.NewRecorder()
+		handler.ListMaterials(recList, reqList)
+		if recList.Code != http.StatusOK {
+			t.Fatalf("expected 200 OK, got %d", recList.Code)
+		}
+		var listed []material.Material
+		if err := json.NewDecoder(recList.Body).Decode(&listed); err != nil {
+			t.Fatalf("decode list: %v", err)
+		}
+		if len(listed) != 1 {
+			t.Fatalf("expected 1 listed material, got %d", len(listed))
+		}
+	}
+
+	// 6. Download raw as admin -> 200 OK with safe headers
+	{
+		reqRaw := httptest.NewRequest(http.MethodGet, "/admin/subjects/sub-1/materials/"+uploaded[0].ID+"/raw", nil)
+		reqRaw.SetPathValue("subject_id", "sub-1")
+		reqRaw.SetPathValue("material_id", uploaded[0].ID)
+		reqRaw = httpx.WithPrincipal(reqRaw, admin)
+		recRaw := httptest.NewRecorder()
+		handler.DownloadRaw(recRaw, reqRaw)
+		if recRaw.Code != http.StatusOK {
+			t.Fatalf("expected 200 OK on download raw, got %d", recRaw.Code)
+		}
+		if !strings.Contains(recRaw.Header().Get("Content-Disposition"), "attachment;") {
+			t.Errorf("expected attachment Content-Disposition, got %s", recRaw.Header().Get("Content-Disposition"))
+		}
+		if recRaw.Header().Get("X-Content-Type-Options") != "nosniff" {
+			t.Errorf("expected nosniff header, got %s", recRaw.Header().Get("X-Content-Type-Options"))
+		}
+	}
+
+	// 7. Delete as admin -> 200 OK
+	{
+		reqDel := httptest.NewRequest(http.MethodDelete, "/admin/subjects/sub-1/materials/"+uploaded[0].ID, nil)
+		reqDel.SetPathValue("subject_id", "sub-1")
+		reqDel.SetPathValue("material_id", uploaded[0].ID)
+		reqDel = httpx.WithPrincipal(reqDel, admin)
+		recDel := httptest.NewRecorder()
+		handler.DeleteMaterial(recDel, reqDel)
+		if recDel.Code != http.StatusOK {
+			t.Fatalf("expected 200 OK on delete, got %d", recDel.Code)
+		}
 	}
 }
+

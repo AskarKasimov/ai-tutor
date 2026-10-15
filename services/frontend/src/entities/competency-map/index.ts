@@ -10,4 +10,5 @@ export {
   readSubjectMaterials,
   uploadCourseMaterials,
   deleteCourseMaterial,
+  downloadCourseMaterialRaw,
 } from './api/competency-map-api'

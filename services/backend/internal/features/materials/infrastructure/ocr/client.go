@@ -49,7 +49,7 @@ func (c *Client) Convert(ctx context.Context, filename string, data []byte) (str
 	}
 
 	// Fallback to local extraction
-	return c.convertLocalFallback(filename, data)
+	return c.convertLocalFallback(ctx, filename, data)
 }
 
 func (c *Client) convertViaOCRService(ctx context.Context, filename string, data []byte) (string, error) {
@@ -91,16 +91,21 @@ func (c *Client) convertViaOCRService(ctx context.Context, filename string, data
 	if result.Error != "" {
 		return "", fmt.Errorf("OCR error: %s", result.Error)
 	}
-	return result.Markdown, nil
+	return sanitizeUTF8(result.Markdown), nil
 }
 
-func (c *Client) convertLocalFallback(filename string, data []byte) (string, error) {
+func (c *Client) convertLocalFallback(ctx context.Context, filename string, data []byte) (string, error) {
 	lower := strings.ToLower(filename)
 	if strings.HasSuffix(lower, ".txt") || strings.HasSuffix(lower, ".md") || strings.HasSuffix(lower, ".markdown") {
-		return string(data), nil
+		return sanitizeUTF8(string(data)), nil
 	}
 
 	if strings.HasSuffix(lower, ".pdf") {
+		pdftotextPath, err := exec.LookPath("pdftotext")
+		if err != nil {
+			return "", fmt.Errorf("pdftotext is not available on host and OCR service is unreachable: %w", err)
+		}
+
 		tmpFile, err := os.CreateTemp("", "doc-*.pdf")
 		if err != nil {
 			return "", fmt.Errorf("create temp pdf: %w", err)
@@ -113,16 +118,20 @@ func (c *Client) convertLocalFallback(filename string, data []byte) (string, err
 		}
 		tmpFile.Close()
 
-		cmd := exec.Command("pdftotext", tmpFile.Name(), "-")
+		cmd := exec.CommandContext(ctx, pdftotextPath, tmpFile.Name(), "-")
 		var stdout, stderr bytes.Buffer
 		cmd.Stdout = &stdout
 		cmd.Stderr = &stderr
 		if err := cmd.Run(); err != nil {
 			return "", fmt.Errorf("pdftotext extraction: %w (%s)", err, stderr.String())
 		}
-		return stdout.String(), nil
+		return sanitizeUTF8(stdout.String()), nil
 	}
 
-	// Default fallback: return as raw string
-	return string(data), nil
+	return "", fmt.Errorf("unsupported file format %q for text extraction without OCR service", filename)
+}
+
+func sanitizeUTF8(s string) string {
+	s = strings.ReplaceAll(s, "\x00", "")
+	return strings.ToValidUTF8(s, "")
 }

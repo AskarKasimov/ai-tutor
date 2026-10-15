@@ -88,7 +88,7 @@ void i18n.init({
           materialsDropReplace: 'Выбрано файлов: {{count}}',
           materialsSubmit: 'Загрузить и распознать материалы',
           materialsUploading:
-            'Идёт сохранение в S3 и распознавание материалов…',
+            'Идёт сохранение в S3 и распознавание формул через Marker OCR…',
           materialsProgress: 'Обработка и распознавание материалов…',
           materialsEmpty: 'Материалы курса ещё не загружены.',
           materialsSuccess:

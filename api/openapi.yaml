@@ -2459,6 +2459,12 @@ paths:
               schema:
                 $ref: '#/components/schemas/fault.Error'
           description: Forbidden
+        "413":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Request Entity Too Large
         "500":
           content:
             application/json:
@@ -2527,7 +2533,7 @@ paths:
       x-implementation: implemented
   /admin/subjects/{subject_id}/materials/{material_id}/raw:
     get:
-      description: Скачивание или просмотр исходного файла материала.
+      description: Доступно только admin. Скачивание исходного файла материала.
       operationId: downloadSubjectMaterialRaw
       parameters:
         - description: ID предмета
@@ -2562,6 +2568,12 @@ paths:
               schema:
                 $ref: '#/components/schemas/fault.Error'
           description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Forbidden
         "404":
           content:
             application/json:

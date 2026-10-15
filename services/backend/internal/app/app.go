@@ -89,6 +89,7 @@ type App struct {
 		Prioritize(context.Context, string) error
 	}
 	audioStorage taskaudioapp.Storage
+	materialsStorage materialsapp.S3Storage
 }
 
 func New(cfg Config, pool *pgxpool.Pool, logger *zap.Logger) (*App, error) {
@@ -121,12 +122,21 @@ func New(cfg Config, pool *pgxpool.Pool, logger *zap.Logger) (*App, error) {
 	if err != nil {
 		return nil, fmt.Errorf("configure task audio storage: %w", err)
 	}
+	materialsStorage, err := materialss3.New(materialss3.Config{
+		Endpoint: cfg.S3Endpoint, Region: cfg.S3Region, Bucket: cfg.S3Bucket,
+		AccessKey: cfg.S3AccessKey, SecretKey: cfg.S3SecretKey,
+		PathStyle: cfg.S3PathStyle, CreateBucket: cfg.S3CreateBucket, Timeout: cfg.S3Timeout,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("configure materials S3 storage: %w", err)
+	}
 	synth := modelapi.New(a.client, cfg.STTURL, cfg.TTSURL, cfg.VoiceTimeout, modelapi.TTSOptions{Seed: cfg.TTSSeed, CFGValue: cfg.TTSCFGValue, InferenceTimesteps: cfg.TTSInferenceTimesteps})
 	a.audioWorker = taskaudioapp.NewWorker(taskaudiopg.New(pool), storage, synth, taskaudioapp.WorkerConfig{
 		Concurrency: cfg.AudioWorkers, PollInterval: cfg.AudioPollInterval, VoiceTimeout: cfg.VoiceTimeout,
 		S3Timeout: cfg.S3Timeout, Bucket: cfg.S3Bucket,
 	})
 	a.audioStorage = storage
+	a.materialsStorage = materialsStorage
 	return a, nil
 }
 
@@ -175,17 +185,9 @@ func (a *App) Handler() http.Handler {
 		WithTaskFinder(diagnosticfeedbackpg.NewTaskFinder(a.pool))
 	feedbackHandlers := diagnosticfeedbackhttp.New(feedbackService)
 
-	materialsS3Storage, err := materialss3.New(materialss3.Config{
-		Endpoint: a.cfg.S3Endpoint, Region: a.cfg.S3Region, Bucket: a.cfg.S3Bucket,
-		AccessKey: a.cfg.S3AccessKey, SecretKey: a.cfg.S3SecretKey,
-		PathStyle: a.cfg.S3PathStyle, CreateBucket: a.cfg.S3CreateBucket, Timeout: a.cfg.S3Timeout,
-	})
-	if err != nil {
-		a.logger.Warn("materials S3 storage init warning", zap.Error(err))
-	}
 	materialsOCR := materialsocr.New(a.cfg.OCRURL, a.cfg.OCRTimeout)
-	materialsService := materialsapp.New(materialspg.New(a.pool), materialsS3Storage, materialsOCR, a.now)
-	materialsHandlers := materialshttp.NewHandler(materialsService, 2500*1024*1024)
+	materialsService := materialsapp.New(materialspg.New(a.pool), a.materialsStorage, materialsOCR, a.now)
+	materialsHandlers := materialshttp.NewHandler(materialsService, a.cfg.MaxUploadBytes)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /auth/register", authHandlers.Register)

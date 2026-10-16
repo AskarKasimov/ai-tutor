@@ -108,8 +108,12 @@ func TestGatewayAsksWithComplexityAndJSONFormat(t *testing.T) {
 		t.Fatalf("messages = %v", messages)
 	}
 	if _, err := g.Question(context.Background(), application.QuestionRequest{Kind: exam.KindFollowup, Node: node}); err != nil ||
-		f.requests[1].GetComplexity() != llmgatewayv1.Complexity_COMPLEXITY_MEDIUM {
+		f.requests[1].GetComplexity() != llmgatewayv1.Complexity_COMPLEXITY_LOW {
 		t.Fatalf("followup complexity = %s, %v", f.requests[1].GetComplexity(), err)
+	}
+	if _, err := g.Question(context.Background(), application.QuestionRequest{Kind: exam.KindQuestion, Node: node}); err != nil ||
+		f.requests[2].GetComplexity() != llmgatewayv1.Complexity_COMPLEXITY_MEDIUM {
+		t.Fatalf("main question complexity = %s, %v", f.requests[2].GetComplexity(), err)
 	}
 }
 

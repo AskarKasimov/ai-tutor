@@ -63,8 +63,13 @@ func run(logger *zap.Logger) error {
 		}
 		return nil
 	}
+	if len(os.Args) > 1 && os.Args[1] == "prepare-questions" {
+		ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+		defer cancel()
+		return prepareQuestions(ctx, logger, os.Args[2:])
+	}
 	if len(os.Args) > 1 && os.Args[1] != "migrate" {
-		return fmt.Errorf("usage: api [migrate|healthcheck]")
+		return fmt.Errorf("usage: api [migrate|healthcheck|prepare-questions <graph.json> <out.json>]")
 	}
 	cfg, err := app.ConfigFromEnv()
 	if err != nil {

@@ -49,8 +49,10 @@ func Dial(address string, timeout time.Duration) (*Gateway, *grpc.ClientConn, er
 }
 
 func (g *Gateway) Question(ctx context.Context, r application.QuestionRequest) (string, error) {
+	// The main question is usually prepared with the graph; the followup and
+	// the rephrase are asked live, so they use the fast low pool.
 	level := llmgatewayv1.Complexity_COMPLEXITY_MEDIUM
-	if r.Kind == exam.KindRephrase {
+	if r.Kind == exam.KindRephrase || r.Kind == exam.KindFollowup {
 		level = llmgatewayv1.Complexity_COMPLEXITY_LOW
 	}
 	var text string

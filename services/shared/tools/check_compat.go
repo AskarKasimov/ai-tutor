@@ -10,7 +10,7 @@ import (
 
 func main() {
 	if len(os.Args) != 3 {
-		panic("usage: check_compat old.desc new.desc")
+		panic("использование: check_compat old.desc new.desc")
 	}
 	old := read(os.Args[1])
 	now := read(os.Args[2])
@@ -18,7 +18,7 @@ func main() {
 	for name, oldFile := range old {
 		newFile := now[name]
 		if newFile == nil {
-			fmt.Fprintln(os.Stderr, "removed file:", name)
+			fmt.Fprintln(os.Stderr, "удалён файл:", name)
 			errs++
 			continue
 		}
@@ -27,7 +27,7 @@ func main() {
 		for path, oldMsg := range oldMessages {
 			newMsg := newMessages[path]
 			if newMsg == nil {
-				fmt.Fprintln(os.Stderr, "removed message:", path)
+				fmt.Fprintln(os.Stderr, "удалён message:", path)
 				errs++
 				continue
 			}
@@ -41,17 +41,17 @@ func main() {
 				next := byNumber[f.GetNumber()]
 				if next == nil {
 					if !reserved(newMsg, f) {
-						fmt.Fprintln(os.Stderr, "removed field without reservation:", path, f.GetName())
+						fmt.Fprintln(os.Stderr, "поле удалено без reserved:", path, f.GetName())
 						errs++
 					}
 					continue
 				}
 				if next.GetName() != f.GetName() || next.GetType() != f.GetType() || next.GetTypeName() != f.GetTypeName() || next.GetLabel() != f.GetLabel() || next.GetProto3Optional() != f.GetProto3Optional() {
-					fmt.Fprintln(os.Stderr, "changed field:", path, f.GetName())
+					fmt.Fprintln(os.Stderr, "изменено поле:", path, f.GetName())
 					errs++
 				}
 				if byName[f.GetName()] != next {
-					fmt.Fprintln(os.Stderr, "reused field name:", path, f.GetName())
+					fmt.Fprintln(os.Stderr, "повторно использовано имя поля:", path, f.GetName())
 					errs++
 				}
 			}
@@ -61,7 +61,7 @@ func main() {
 		for path, oldEnum := range oldEnums {
 			next := newEnums[path]
 			if next == nil {
-				fmt.Fprintln(os.Stderr, "removed enum:", path)
+				fmt.Fprintln(os.Stderr, "удалён enum:", path)
 				errs++
 				continue
 			}
@@ -71,7 +71,7 @@ func main() {
 			}
 			for _, v := range oldEnum.Value {
 				if byNumber[v.GetNumber()] != v.GetName() {
-					fmt.Fprintln(os.Stderr, "changed enum value:", path, v.GetName())
+					fmt.Fprintln(os.Stderr, "изменено значение enum:", path, v.GetName())
 					errs++
 				}
 			}
@@ -83,7 +83,7 @@ func main() {
 		for _, svc := range oldFile.Service {
 			next := byService[svc.GetName()]
 			if next == nil {
-				fmt.Fprintln(os.Stderr, "removed service:", svc.GetName())
+				fmt.Fprintln(os.Stderr, "удалён service:", svc.GetName())
 				errs++
 				continue
 			}
@@ -94,7 +94,7 @@ func main() {
 			for _, m := range svc.Method {
 				n := byMethod[m.GetName()]
 				if n == nil || n.GetInputType() != m.GetInputType() || n.GetOutputType() != m.GetOutputType() || n.GetClientStreaming() != m.GetClientStreaming() || n.GetServerStreaming() != m.GetServerStreaming() {
-					fmt.Fprintln(os.Stderr, "changed RPC:", svc.GetName(), m.GetName())
+					fmt.Fprintln(os.Stderr, "изменён RPC:", svc.GetName(), m.GetName())
 					errs++
 				}
 			}

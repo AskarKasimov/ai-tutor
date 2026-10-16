@@ -124,7 +124,7 @@ components:
       additionalProperties: false
       properties:
         dont_know:
-          description: 'Кнопка «Не знаю»: пробел без оценки моделью'
+          description: 'Кнопка «Не знаю» без оценки моделью: на основной вопрос или переформулировку — пробел, на дополнительный — К3 и К4 на 0'
           type: boolean
         text:
           description: Текстовый ответ

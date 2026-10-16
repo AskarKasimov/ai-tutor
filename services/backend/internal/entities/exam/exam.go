@@ -165,8 +165,8 @@ func (e *Exam) finishTop() {
 // the next step. A "don't know" on the main question or the rephrase makes the
 // topic a gap at once. A main answer on D is rephrased once; an answer after
 // the rephrase is assisted. A non-D answer gets one followup on K3 and K4, and
-// the grade is set after it; "don't know" on the followup also makes the topic
-// a gap. A gap leads to its prerequisites; a mastered
+// the grade is set after it; "don't know" or an unclear answer on the followup
+// sets K3 and K4 to 0 and grades by the table. A gap leads to its prerequisites; a mastered
 // topic credits all of its unchecked prerequisites.
 func (e *Exam) Apply(ev Evaluation) Step {
 	cur := *e.Current
@@ -203,9 +203,6 @@ func (e *Exam) Apply(ev Evaluation) Step {
 		if ev.Verdict != VerdictAnswered {
 			c = *state.Criteria
 			c.K3, c.K4 = 0, 0
-		}
-		if ev.Verdict == VerdictDontKnow {
-			return e.gap(cur.NodeID, c, state.Assisted)
 		}
 		state.Criteria = &c
 		grade := TopicGrade(c, state.Assisted)

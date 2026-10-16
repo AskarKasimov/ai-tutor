@@ -9,8 +9,10 @@ import (
 	"testing"
 	"time"
 
+	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
 	llmgatewayv1 "github.com/AskarKasimov/ai-tutor/services/shared/gen/go/llmgateway/v1"
@@ -29,6 +31,7 @@ type fakeGateway struct {
 	err       error
 	block     bool
 	cancelled chan struct{}
+	header    metadata.MD
 }
 
 func (f *fakeGateway) Complete(ctx context.Context, r *llmgatewayv1.CompleteRequest) (*llmgatewayv1.CompleteResponse, error) {
@@ -40,6 +43,9 @@ func (f *fakeGateway) Complete(ctx context.Context, r *llmgatewayv1.CompleteRequ
 		<-ctx.Done()
 		close(f.cancelled)
 		return nil, ctx.Err()
+	}
+	if f.header != nil {
+		_ = grpc.SetHeader(ctx, f.header)
 	}
 	if f.err != nil {
 		return nil, f.err
@@ -146,6 +152,19 @@ func TestGatewayFailureIsNotRetried(t *testing.T) {
 	_, err := g.Question(context.Background(), application.QuestionRequest{Node: node})
 	if status.Code(err) != codes.Unavailable || len(f.requests) != 1 {
 		t.Fatalf("err = %v after %d calls", err, len(f.requests))
+	}
+}
+
+func TestFailedCallKeepsTheGatewayRequestID(t *testing.T) {
+	request := &llmgatewayv1.CompleteRequest{Complexity: llmgatewayv1.Complexity_COMPLEXITY_LOW}
+	f := &fakeGateway{err: status.Error(codes.Unavailable, "no slots"), header: metadata.Pairs("x-request-id", "gateway-error-42")}
+	if _, id, err := serve(t, f, time.Second).call(context.Background(), request); err == nil || id != "gateway-error-42" {
+		t.Fatalf("header: id = %q, err = %v", id, err)
+	}
+	detailed, _ := status.New(codes.ResourceExhausted, "queue full").WithDetails(&errdetails.ErrorInfo{Reason: "QUEUE_FULL", Metadata: map[string]string{"request_id": "gateway-error-43"}})
+	f = &fakeGateway{err: detailed.Err()}
+	if _, id, err := serve(t, f, time.Second).call(context.Background(), request); err == nil || id != "gateway-error-43" {
+		t.Fatalf("error info: id = %q, err = %v", id, err)
 	}
 }
 

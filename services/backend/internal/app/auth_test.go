@@ -191,6 +191,7 @@ func newFixtureWithPasswordHasher(t *testing.T, cfg Config, hasher authapp.Passw
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { _ = a.Close() })
 	f.app = a
 	a.now = func() time.Time { return f.now }
 	if hasher != nil {

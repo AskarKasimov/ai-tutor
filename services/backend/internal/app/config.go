@@ -202,6 +202,11 @@ func requiredEnv(key string) (string, error) {
 	return value, nil
 }
 
+func validPort(port string) bool {
+	n, err := strconv.Atoi(port)
+	return err == nil && n >= 1 && n <= 65535
+}
+
 func (c Config) validate() error {
 	_, port, err := net.SplitHostPort(c.ListenAddress)
 	portNumber, portErr := strconv.Atoi(port)
@@ -249,8 +254,8 @@ func (c Config) validate() error {
 	if c.S3Timeout <= 0 {
 		return fmt.Errorf("BACKEND_S3_TIMEOUT must be positive")
 	}
-	if host, port, err := net.SplitHostPort(c.LLMGatewayAddress); err != nil || host == "" || port == "" {
-		return fmt.Errorf("BACKEND_LLM_GATEWAY_ADDR must be a host:port gRPC address")
+	if host, port, err := net.SplitHostPort(c.LLMGatewayAddress); err != nil || host == "" || !validPort(port) {
+		return fmt.Errorf("BACKEND_LLM_GATEWAY_ADDR must be a host:port gRPC address with a port from 1 to 65535")
 	}
 	if c.LLMTimeout <= 0 {
 		return fmt.Errorf("BACKEND_LLM_TIMEOUT must be positive")

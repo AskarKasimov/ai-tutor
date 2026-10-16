@@ -121,7 +121,7 @@ Geek проводит диагностику и тренировку тольк�
 
 ## LLM gateway
 
-LLM gateway — отдельный HTTP/gRPC-сервис `services/llm-gateway` со спецификациями [HTTP](documents/llm-gateway-spec.md) и [gRPC](documents/llm-gateway-grpc-spec.md), контрактами [OpenAPI](services/llm-gateway/openapi.yaml) и [protobuf](services/shared/proto/llmgateway/v1/gateway.proto). Он принимает OpenAI-совместимый `POST /v1/chat/completions` без выбора модели клиентом: обязательная сложность `complexity` (low / medium / high) и необязательная срочность `urgent`. Очередь — Redpanda, балансировка по четырём моделям — в gateway. Dev Compose запускает его с профилем `gateway`; локальный `services/llm-gateway/config.json` содержит настройки моделей. HTTP и gRPC доступны клиентам доверенной сети; существующие адаптеры backend и `services/course-graph` ещё не переведены на gateway. CORS настроен в Caddy.
+LLM gateway — отдельный HTTP/gRPC-сервис `services/llm-gateway` со спецификациями [HTTP](documents/llm-gateway-spec.md) и [gRPC](documents/llm-gateway-grpc-spec.md), контрактами [OpenAPI](services/llm-gateway/openapi.yaml) и [protobuf](services/shared/proto/llmgateway/v1/gateway.proto). Он принимает OpenAI-совместимый `POST /v1/chat/completions` без выбора модели клиентом: обязательная сложность `complexity` (low / medium / high) и необязательная срочность `urgent`. Очередь — Redpanda, балансировка по четырём моделям — в gateway. Dev Compose запускает его с Redpanda под профилем `gateway`, `prod.sh` — всегда (проект `services/llm-gateway` вместе с одноброкерной Redpanda и созданием топиков); локальный `services/llm-gateway/config.json` содержит настройки моделей. HTTP и gRPC доступны клиентам доверенной сети. Backend (Geek) обязательно ходит в gateway по gRPC: без него вопросы и оценки отвечают 503 `MODEL_UNAVAILABLE`. `services/course-graph` к gateway ещё не подключён. CORS настроен в Caddy.
 
 ## Переход с прежней системы
 
@@ -227,7 +227,7 @@ LLM gateway — отдельный HTTP/gRPC-сервис `services/llm-gateway`
 | Поток | Что входит | Статус на 16.10 |
 | --- | --- | --- |
 | A — данные и граф | Загрузка материалов с неделей и видом, этапы course-graph 2–7, хранение графа, кнопка сборки, compose и стенд. | Сделаны загрузка материалов через API и OCR (#69). Неделя и вид, этапы 2–7, хранение графа и кнопка — не начаты. |
-| B — Geek backend | Диагностика по графу (вопросы, переформулировка, К1–К4 → A–D, статусы, спуск), итог A–D; Could — API пакета для преподавателя. | Диагностика, итог и озвучка реплик реализованы (`/diagnostic-sessions/*`, миграция `00002`); граф — из фикстуры, LLM — мок до мержа gateway. Пакет для преподавателя — данные хранятся, ручек нет. |
+| B — Geek backend | Диагностика по графу (вопросы, переформулировка, К1–К4 → A–D, статусы, спуск), итог A–D; Could — API пакета для преподавателя. | Диагностика, итог и озвучка реплик реализованы (`/diagnostic-sessions/*`, миграция `00002`); граф — из фикстуры; LLM — gateway по gRPC. Пакет для преподавателя — данные хранятся, ручек нет. |
 | C — frontend | Диагностика-диалог с голосом, итог A–D с пробелами, админка материалов; Could — пакет для преподавателя. | Не начат: в админке пока только импорт карты. |
 | LLM gateway | Отдельный сервис с очередью и балансировкой. | HTTP/gRPC-сервис `services/llm-gateway`; локальная настройка через `config.json`, который создаётся из example при запуске `dev.sh` или `prod.sh`. |
 | Тимлид | Контракты между потоками, фикстура графа, ревью, прогоны качества, сценарий и репетиция 17.10. | Контракты и фикстура графа (`api/fixtures/course-graph.json`) готовы; сквозной прогон — `services/backend/scripts/geek-smoke.sh`. |
@@ -259,7 +259,7 @@ LLM gateway — отдельный HTTP/gRPC-сервис `services/llm-gateway`
 
 | Часть | Состояние |
 | --- | --- |
-| Backend | Go: auth с cookies, предметы, STT/TTS, загрузка материалов курса с OCR через course-graph, хранение в S3 и PostgreSQL. Диагностика Geek: устный экзамен по графу, итог A–D и озвучка реплик; граф — из фикстуры, пока его хранение не готово; LLM — мок, пока gateway не влит. |
+| Backend | Go: auth с cookies, предметы, STT/TTS, загрузка материалов курса с OCR через course-graph, хранение в S3 и PostgreSQL. Диагностика Geek: устный экзамен по графу, итог A–D и озвучка реплик; граф — из фикстуры, пока его хранение не готово; LLM — gateway по gRPC (обязателен). |
 | course-graph | Python-сервис: OCR (этап 1). |
 | Frontend | Вход и регистрация; админка `/admin` — создание предмета и материалы курса. Экраны студента остались от прежней модели и ждут переделки под Geek. |
 | Инфраструктура | PostgreSQL, локальный RustFS S3, Caddy HTTPS и Swagger UI через Docker Compose. |

@@ -12,15 +12,13 @@ require (
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.3
 	go.uber.org/zap v1.27.1
 	golang.org/x/crypto v0.57.0
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20260831171406-18b4a7587f8a
 	google.golang.org/grpc v1.84.0
 	google.golang.org/protobuf v1.36.12
 	gopkg.in/yaml.v3 v3.0.1
 )
 
-require (
-	golang.org/x/net v0.58.0 // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20260831171406-18b4a7587f8a // indirect
-)
+require golang.org/x/net v0.58.0 // indirect
 
 require (
 	github.com/AskarKasimov/ai-tutor/services/shared v0.0.0

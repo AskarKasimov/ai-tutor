@@ -48,8 +48,10 @@ type App struct {
 	logger           *zap.Logger
 	storage          *s3.Client
 	materialsStorage materialsapp.S3Storage
-	// examiner is the LLM gateway over gRPC; the connection lives as long as the app.
+	// examiner is the LLM gateway over gRPC; the app owns its connection and
+	// closes it in Close.
 	examiner geekapp.Examiner
+	gateway  io.Closer
 }
 
 func New(cfg Config, pool *pgxpool.Pool, logger *zap.Logger) (*App, error) {
@@ -82,10 +84,20 @@ func New(cfg Config, pool *pgxpool.Pool, logger *zap.Logger) (*App, error) {
 	}
 	a.storage = storage
 	a.materialsStorage = &materialsStorageAdapter{storage: storage, bucket: cfg.S3Bucket}
-	if a.examiner, _, err = geekllm.Dial(cfg.LLMGatewayAddress, cfg.LLMTimeout); err != nil {
+	examiner, conn, err := geekllm.Dial(cfg.LLMGatewayAddress, cfg.LLMTimeout)
+	if err != nil {
 		return nil, err
 	}
+	a.examiner, a.gateway = examiner, conn
 	return a, nil
+}
+
+// Close releases the app's connections once requests have finished.
+func (a *App) Close() error {
+	if a.gateway == nil {
+		return nil
+	}
+	return a.gateway.Close()
 }
 
 // RunStorageSetup provisions the S3 bucket in the background, retrying until it

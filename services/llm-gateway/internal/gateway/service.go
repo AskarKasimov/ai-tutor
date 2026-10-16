@@ -587,18 +587,29 @@ func (s *Service) next() (*durableJob, InstanceConfig, bool) {
 	}
 	sort.Slice(pending, func(i, j int) bool { return pending[i].Offset < pending[j].Offset })
 	for pass := 0; pass < 2; pass++ {
-		for _, job := range pending {
+		ordered := pending
+		if pass == 1 {
+			ordered = append([]*durableJob(nil), pending...)
+			sort.SliceStable(ordered, func(i, j int) bool {
+				ri := complexityRank(ordered[i].Request.Complexity)
+				rj := complexityRank(ordered[j].Request.Complexity)
+				if ri != rj {
+					return ri > rj
+				}
+				return ordered[i].Offset < ordered[j].Offset
+			})
+		}
+		for _, job := range ordered {
 			if time.Now().Before(job.NotBefore) {
 				continue
 			}
 			if (pass == 0) != job.Request.IsUrgent() {
 				continue
 			}
-			pool := s.cfg.Pools[job.Request.Complexity]
+			pool := s.eligibleInstances(job.Request.Complexity)
 			var candidates []InstanceConfig
-			for _, id := range pool {
-				in := s.instance(id)
-				if in.ID == "" || s.inFlight[id] >= in.MaxInFlight || !supports(in, job.Request) || !s.caller.circuit(id).available(time.Now()) {
+			for _, in := range pool {
+				if s.inFlight[in.ID] >= in.MaxInFlight || !supports(in, job.Request) || !s.caller.circuit(in.ID).available(time.Now()) {
 					continue
 				}
 				candidates = append(candidates, in)
@@ -607,14 +618,20 @@ func (s *Service) next() (*durableJob, InstanceConfig, bool) {
 				continue
 			}
 			sort.SliceStable(candidates, func(a, b int) bool {
-				ra := float64(s.inFlight[candidates[a].ID]) / float64(candidates[a].MaxInFlight)
-				rb := float64(s.inFlight[candidates[b].ID]) / float64(candidates[b].MaxInFlight)
+				ia, ib := candidates[a].ID, candidates[b].ID
+				ta, tb := s.instanceTier(ia), s.instanceTier(ib)
+				if ta != tb {
+					return ta < tb
+				}
+				ra := float64(s.inFlight[ia]) / float64(candidates[a].MaxInFlight)
+				rb := float64(s.inFlight[ib]) / float64(candidates[b].MaxInFlight)
 				return ra < rb
 			})
+			bestTier := s.instanceTier(candidates[0].ID)
 			best := float64(s.inFlight[candidates[0].ID]) / float64(candidates[0].MaxInFlight)
 			ties := make([]InstanceConfig, 0, len(candidates))
 			for _, candidate := range candidates {
-				if float64(s.inFlight[candidate.ID])/float64(candidate.MaxInFlight) == best {
+				if s.instanceTier(candidate.ID) == bestTier && float64(s.inFlight[candidate.ID])/float64(candidate.MaxInFlight) == best {
 					ties = append(ties, candidate)
 				}
 			}
@@ -674,6 +691,56 @@ func (s *Service) instance(id string) InstanceConfig {
 	}
 	return InstanceConfig{}
 }
+
+func complexityRank(complexity string) int {
+	switch complexity {
+	case "low":
+		return 0
+	case "medium":
+		return 1
+	case "high":
+		return 2
+	default:
+		return -1
+	}
+}
+
+func (s *Service) instanceTier(id string) int {
+	tier := -1
+	for complexity, instances := range s.cfg.Pools {
+		for _, candidate := range instances {
+			if candidate == id && complexityRank(complexity) > tier {
+				tier = complexityRank(complexity)
+			}
+		}
+	}
+	return tier
+}
+
+func (s *Service) eligibleInstances(complexity string) []InstanceConfig {
+	rank := complexityRank(complexity)
+	if rank < 0 {
+		return nil
+	}
+	seen := make(map[string]bool)
+	var instances []InstanceConfig
+	for _, level := range []string{"low", "medium", "high"} {
+		if complexityRank(level) < rank {
+			continue
+		}
+		for _, id := range s.cfg.Pools[level] {
+			if seen[id] {
+				continue
+			}
+			seen[id] = true
+			if instance := s.instance(id); instance.ID != "" {
+				instances = append(instances, instance)
+			}
+		}
+	}
+	return instances
+}
+
 func supports(in InstanceConfig, r Request) bool {
 	if !supportsParameters(in, r) {
 		return false
@@ -1140,8 +1207,7 @@ func (s *Service) retryPublish(payload durableRequest, raw []byte, size int64) {
 
 func (s *Service) validatePool(r Request) error {
 	parametersSupported := false
-	for _, id := range s.cfg.Pools[r.Complexity] {
-		in := s.instance(id)
+	for _, in := range s.eligibleInstances(r.Complexity) {
 		if supportsParameters(in, r) {
 			parametersSupported = true
 		}
@@ -1150,9 +1216,9 @@ func (s *Service) validatePool(r Request) error {
 		}
 	}
 	if !parametersSupported {
-		return apiErr(400, "invalid_request_error", "unsupported_parameter", "No instance in the selected complexity pool supports all requested parameters.")
+		return apiErr(400, "invalid_request_error", "unsupported_parameter", "No compatible instance supports all requested parameters.")
 	}
-	return apiErr(400, "invalid_request_error", "context_length_exceeded", "The request exceeds the context window configured for this complexity pool.")
+	return apiErr(400, "invalid_request_error", "context_length_exceeded", "The request exceeds the context window of every compatible instance.")
 }
 func (s *Service) await(w http.ResponseWriter, r *http.Request, id string, ch chan struct{}) {
 	s.mu.Lock()

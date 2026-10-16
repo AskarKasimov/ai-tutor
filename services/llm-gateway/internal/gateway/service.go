@@ -692,17 +692,15 @@ func (s *Service) instance(id string) InstanceConfig {
 	return InstanceConfig{}
 }
 
+var complexityLevels = [...]string{"low", "medium", "high"}
+
 func complexityRank(complexity string) int {
-	switch complexity {
-	case "low":
-		return 0
-	case "medium":
-		return 1
-	case "high":
-		return 2
-	default:
-		return -1
+	for rank, level := range complexityLevels {
+		if complexity == level {
+			return rank
+		}
 	}
+	return -1
 }
 
 func (s *Service) instanceTier(id string) int {
@@ -724,7 +722,7 @@ func (s *Service) eligibleInstances(complexity string) []InstanceConfig {
 	}
 	seen := make(map[string]bool)
 	var instances []InstanceConfig
-	for _, level := range []string{"low", "medium", "high"} {
+	for _, level := range complexityLevels {
 		if complexityRank(level) < rank {
 			continue
 		}

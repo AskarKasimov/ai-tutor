@@ -1,12 +1,9 @@
 package app
 
 import (
-	"bytes"
 	"encoding/json"
-	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
-	"net/textproto"
 	"strings"
 	"sync"
 	"testing"
@@ -25,24 +22,6 @@ func (f *fixture) portal(method, path, body string, cookies ...*http.Cookie) *ht
 	}
 	w := httptest.NewRecorder()
 	f.app.Handler().ServeHTTP(w, req)
-	return w
-}
-
-func portalUpload(f *fixture, path string, data []byte, cookie *http.Cookie) *httptest.ResponseRecorder {
-	var body bytes.Buffer
-	mw := multipart.NewWriter(&body)
-	h := make(textproto.MIMEHeader)
-	h.Set("Content-Disposition", `form-data; name="file"; filename="map.csv"`)
-	h.Set("Content-Type", "text/csv")
-	p, _ := mw.CreatePart(h)
-	_, _ = p.Write(data)
-	_ = mw.Close()
-	r := httptest.NewRequest("POST", "https://api.example"+path, &body)
-	r.Header.Set("Content-Type", mw.FormDataContentType())
-	r.Header.Set(httpx.PortalHeader, "admin")
-	r.AddCookie(cookie)
-	w := httptest.NewRecorder()
-	f.app.Handler().ServeHTTP(w, r)
 	return w
 }
 
@@ -98,9 +77,8 @@ func TestTeacherLoginAndSessions(t *testing.T) {
 		ID string `json:"id"`
 	}
 	json.Unmarshal(created.Body.Bytes(), &subject)
-	imported := portalUpload(f, "/admin/subjects/"+subject.ID+"/competency-map/import", variantMapCSV(t), access)
-	if imported.Code != 200 {
-		t.Fatal(imported.Body.String())
+	if materials := f.portal("GET", "/admin/subjects/"+subject.ID+"/materials", "", access); materials.Code != 200 {
+		t.Fatal(materials.Body.String())
 	}
 	if got := f.portal("POST", "/auth/refresh", "", refresh); got.Code != 200 {
 		t.Fatal(got.Body.String())

@@ -14,16 +14,7 @@ docker compose --env-file ../../.env ps
 При изменении пароля в `.env` пароль существующей БД сам не изменяется.
 Обычный `down` сохраняет volume; `down -v` удаляет данные.
 
-Goose при старте API штатно применяет к существующему volume миграции
-`00001`–`00010` (список — в [backend README](../backend/README.md#бд-и-импорт)).
-`00003_task_audio.sql` создаёт очередь и ссылки на задания/снимки, но не генерирует
-WAV: backend worker обрабатывает backlog после старта. Для состояния очереди выполните:
-
-```sql
-SELECT id, status, attempts, last_error_code, bucket, storage_uri, updated_at
-FROM audio_assets
-ORDER BY created_at, id;
-```
-
-Не выбирайте `instruction` в общих диагностических запросах. Правила отбора:
-[алгоритм](../../documents/Алгоритм_составления_варианта.md).
+Goose при старте API штатно применяет к volume миграцию `00001_initial.sql`
+(схема — в [backend README](../backend/README.md#бд-и-импорт)). Схема собрана заново
+16.10.2026 и несовместима с volume, где применена прежняя история из десяти миграций:
+такой volume нужно удалить (`down -v`) перед запуском новой версии.

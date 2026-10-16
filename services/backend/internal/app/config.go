@@ -19,20 +19,7 @@ type Config struct {
 	TTSSeed               int64
 	TTSCFGValue           float64
 	TTSInferenceTimesteps int
-	AssessmentBaseURL     string
-	AssessmentModel       string
-	TaskgenBaseURL        string
-	TaskgenModel          string
-	TaskgenTimeout        time.Duration
 	VoiceTimeout          time.Duration
-	AssessmentTimeout     time.Duration
-	TutorBaseURL          string
-	TutorModel            string
-	TutorTimeout          time.Duration
-	TutorEnabled          bool
-	TutorTaskMaxChars     int
-	TutorHistoryMaxChars  int
-	TutorSummaryMaxChars  int
 	MaxUploadBytes        int64
 	S3Endpoint            string
 	S3Region              string
@@ -42,27 +29,21 @@ type Config struct {
 	S3PathStyle           bool
 	S3Timeout             time.Duration
 	S3CreateBucket        bool
-	AudioWorkers          int
-	AudioPollInterval     time.Duration
 	CourseGraphURL        string
 	CourseGraphTimeout    time.Duration
 	OCRURL                string
 	OCRTimeout            time.Duration
 }
 
-// HTTPWriteTimeout allows sequential STT and grading, or task generation, to
-// finish with time for request handling, persistence and writing the response.
+// HTTPWriteTimeout allows STT with S3 writes, or OCR of an uploaded material,
+// to finish with time for request handling, persistence and writing the response.
 func (c Config) HTTPWriteTimeout() time.Duration {
-	return max(c.VoiceTimeout+c.AssessmentTimeout+c.TutorTimeout, c.VoiceTimeout+3*c.TutorTimeout, c.TaskgenTimeout, c.VoiceTimeout+5*c.S3Timeout) + 30*time.Second
+	return max(c.VoiceTimeout+5*c.S3Timeout, c.CourseGraphTimeout) + 30*time.Second
 }
 
 func ConfigFromEnv() (Config, error) {
 	var c Config
 	var err error
-	c.TutorEnabled, err = envBool("BACKEND_TUTOR_ENABLED", true)
-	if err != nil {
-		return c, err
-	}
 	settings := []struct {
 		key string
 		dst *string
@@ -71,10 +52,6 @@ func ConfigFromEnv() (Config, error) {
 		{"BACKEND_DATABASE_URL", &c.DatabaseURL},
 		{"BACKEND_STT_URL", &c.STTURL},
 		{"BACKEND_TTS_URL", &c.TTSURL},
-		{"BACKEND_ASSESSMENT_BASE_URL", &c.AssessmentBaseURL},
-		{"BACKEND_ASSESSMENT_MODEL", &c.AssessmentModel},
-		{"BACKEND_TASKGEN_BASE_URL", &c.TaskgenBaseURL},
-		{"BACKEND_TASKGEN_MODEL", &c.TaskgenModel},
 	}
 	for _, setting := range settings {
 		value, err := requiredEnv(setting.key)
@@ -83,8 +60,6 @@ func ConfigFromEnv() (Config, error) {
 		}
 		*setting.dst = value
 	}
-	c.TutorBaseURL = envOrDefault("BACKEND_TUTOR_BASE_URL", c.AssessmentBaseURL)
-	c.TutorModel = envOrDefault("BACKEND_TUTOR_MODEL", c.AssessmentModel)
 	value, err := requiredEnv("BACKEND_TTS_SEED")
 	if err != nil {
 		return c, err
@@ -110,40 +85,13 @@ func ConfigFromEnv() (Config, error) {
 		return c, fmt.Errorf("BACKEND_TTS_INFERENCE_TIMESTEPS: %w", err)
 	}
 
-	durations := []struct {
-		key string
-		dst *time.Duration
-	}{
-		{"BACKEND_VOICE_TIMEOUT", &c.VoiceTimeout},
-		{"BACKEND_ASSESSMENT_TIMEOUT", &c.AssessmentTimeout},
-		{"BACKEND_TASKGEN_TIMEOUT", &c.TaskgenTimeout},
-	}
-	c.TutorTimeout, err = envDuration("BACKEND_TUTOR_TIMEOUT", 60*time.Second)
+	value, err = requiredEnv("BACKEND_VOICE_TIMEOUT")
 	if err != nil {
 		return c, err
 	}
-	c.TutorTaskMaxChars, err = envInt("BACKEND_TUTOR_TASK_MAX_CHARS", 16000)
+	c.VoiceTimeout, err = time.ParseDuration(value)
 	if err != nil {
-		return c, err
-	}
-	c.TutorHistoryMaxChars, err = envInt("BACKEND_TUTOR_HISTORY_MAX_CHARS", 16000)
-	if err != nil {
-		return c, err
-	}
-	c.TutorSummaryMaxChars, err = envInt("BACKEND_TUTOR_SUMMARY_MAX_CHARS", 4000)
-	if err != nil {
-		return c, err
-	}
-	for _, setting := range durations {
-		value, err := requiredEnv(setting.key)
-		if err != nil {
-			return c, err
-		}
-		duration, err := time.ParseDuration(value)
-		if err != nil {
-			return c, fmt.Errorf("%s: %w", setting.key, err)
-		}
-		*setting.dst = duration
+		return c, fmt.Errorf("BACKEND_VOICE_TIMEOUT: %w", err)
 	}
 	value, err = requiredEnv("BACKEND_MAX_UPLOAD_BYTES")
 	if err != nil {
@@ -176,14 +124,6 @@ func ConfigFromEnv() (Config, error) {
 		return c, err
 	}
 	c.S3CreateBucket, err = envBool("BACKEND_S3_CREATE_BUCKET", false)
-	if err != nil {
-		return c, err
-	}
-	c.AudioWorkers, err = envInt("BACKEND_AUDIO_WORKERS", 1)
-	if err != nil {
-		return c, err
-	}
-	c.AudioPollInterval, err = envDuration("BACKEND_AUDIO_POLL_INTERVAL", time.Second)
 	if err != nil {
 		return c, err
 	}
@@ -223,15 +163,6 @@ func envDuration(key string, fallback time.Duration) (time.Duration, error) {
 	return duration, nil
 }
 
-func envInt(key string, fallback int) (int, error) {
-	value := envOrDefault(key, strconv.Itoa(fallback))
-	parsed, err := strconv.Atoi(value)
-	if err != nil {
-		return 0, fmt.Errorf("%s: %w", key, err)
-	}
-	return parsed, nil
-}
-
 func envBool(key string, fallback bool) (bool, error) {
 	value := envOrDefault(key, strconv.FormatBool(fallback))
 	parsed, err := strconv.ParseBool(value)
@@ -260,21 +191,10 @@ func (c Config) validate() error {
 	}
 	for _, setting := range []struct{ key, value string }{
 		{"BACKEND_STT_URL", c.STTURL}, {"BACKEND_TTS_URL", c.TTSURL},
-		{"BACKEND_ASSESSMENT_BASE_URL", c.AssessmentBaseURL},
-		{"BACKEND_TASKGEN_BASE_URL", c.TaskgenBaseURL},
 	} {
 		u, err := url.Parse(setting.value)
 		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.User != nil || u.Fragment != "" {
 			return fmt.Errorf("%s must be an absolute HTTP(S) URL without credentials", setting.key)
-		}
-	}
-	if c.TutorEnabled {
-		u, err := url.Parse(c.TutorBaseURL)
-		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.User != nil || u.Fragment != "" {
-			return fmt.Errorf("BACKEND_TUTOR_BASE_URL must be an absolute HTTP(S) URL without credentials")
-		}
-		if strings.TrimSpace(c.TutorModel) == "" {
-			return fmt.Errorf("BACKEND_TUTOR_MODEL is required when tutor is enabled")
 		}
 	}
 	if math.IsNaN(c.TTSCFGValue) || math.IsInf(c.TTSCFGValue, 0) || c.TTSCFGValue < 0 || c.TTSCFGValue > 5 {
@@ -283,34 +203,11 @@ func (c Config) validate() error {
 	if c.TTSInferenceTimesteps < 1 || c.TTSInferenceTimesteps > 50 {
 		return fmt.Errorf("BACKEND_TTS_INFERENCE_TIMESTEPS must be from 1 to 50")
 	}
-	if strings.TrimSpace(c.TaskgenModel) == "" {
-		return fmt.Errorf("BACKEND_TASKGEN_MODEL is required")
-	}
-	if c.TaskgenTimeout <= 0 {
-		return fmt.Errorf("BACKEND_TASKGEN_TIMEOUT must be positive")
-	}
-	if strings.TrimSpace(c.AssessmentModel) == "" {
-		return fmt.Errorf("BACKEND_ASSESSMENT_MODEL is required")
-	}
-	for _, setting := range []struct {
-		key   string
-		value time.Duration
-	}{
-		{"BACKEND_VOICE_TIMEOUT", c.VoiceTimeout},
-		{"BACKEND_ASSESSMENT_TIMEOUT", c.AssessmentTimeout},
-	} {
-		if setting.value <= 0 {
-			return fmt.Errorf("%s must be positive", setting.key)
-		}
+	if c.VoiceTimeout <= 0 {
+		return fmt.Errorf("BACKEND_VOICE_TIMEOUT must be positive")
 	}
 	if strings.TrimSpace(c.S3Bucket) == "" {
 		return fmt.Errorf("BACKEND_S3_BUCKET is required")
-	}
-	if c.TutorTimeout <= 0 {
-		return fmt.Errorf("BACKEND_TUTOR_TIMEOUT must be positive")
-	}
-	if c.TutorTaskMaxChars < 1 || c.TutorHistoryMaxChars < 1 || c.TutorSummaryMaxChars < 1 {
-		return fmt.Errorf("BACKEND_TUTOR_*_MAX_CHARS values are invalid")
 	}
 	if strings.TrimSpace(c.S3AccessKey) == "" {
 		return fmt.Errorf("BACKEND_S3_ACCESS_KEY is required")
@@ -329,12 +226,6 @@ func (c Config) validate() error {
 	}
 	if c.S3Timeout <= 0 {
 		return fmt.Errorf("BACKEND_S3_TIMEOUT must be positive")
-	}
-	if c.AudioWorkers <= 0 {
-		return fmt.Errorf("BACKEND_AUDIO_WORKERS must be positive")
-	}
-	if c.AudioPollInterval <= 0 {
-		return fmt.Errorf("BACKEND_AUDIO_POLL_INTERVAL must be positive")
 	}
 	if c.MaxUploadBytes < 1 || c.MaxUploadBytes > 25*1024*1024 {
 		return fmt.Errorf("BACKEND_MAX_UPLOAD_BYTES must be positive and cannot exceed 25 MiB")

@@ -1,0 +1,247 @@
+openapi: 3.1.0
+info:
+  title: Course Graph Service API
+  version: 0.1.0
+  description: >-
+    Внутренний API Python-сервиса services/course-graph. Его вызывает только backend из сети Compose;
+    через Caddy он не публикуется. implemented — подключённые операции, planned — проект.
+    Backend передаёт тексты распознанных материалов, создаёт задание на сборку графа, опрашивает его
+    и сам сохраняет готовый граф. LLM сервис вызывает через LLM gateway.
+x-design-date: "2026-10-16"
+servers:
+  - description: Сеть Docker Compose
+    url: http://course-graph:8000
+paths:
+  /health:
+    get:
+      summary: Проверка работоспособности
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                additionalProperties: false
+                properties:
+                  status:
+                    const: ok
+                  service:
+                    const: course-graph
+                required: [status, service]
+                type: object
+      x-implementation: implemented
+  /ocr/convert:
+    post:
+      summary: Распознать документ в Markdown
+      description: OCR — этап 1. PDF, Markdown или текст → Markdown с формулами LaTeX. Алиас — POST /convert.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              additionalProperties: false
+              properties:
+                file:
+                  format: binary
+                  type: string
+              required: [file]
+              type: object
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                additionalProperties: false
+                properties:
+                  markdown:
+                    type: string
+                required: [markdown]
+                type: object
+        "400":
+          description: Пустой файл
+          content:
+            application/json:
+              schema:
+                properties:
+                  detail:
+                    type: string
+                type: object
+        "500":
+          description: Ошибка распознавания
+          content:
+            application/json:
+              schema:
+                properties:
+                  error:
+                    type: string
+                type: object
+      x-implementation: implemented
+  /graph/jobs:
+    post:
+      summary: Создать задание на сборку графа
+      description: >-
+        Этапы 2–6: очистка, подтемы, дедупликация внутри недели и между неделями, пререквизиты, валидация.
+        Названия и тексты вершин — на русском, даже если материалы на английском. Сервис выполняет одно
+        задание на курс за раз.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/JobRequest"
+      responses:
+        "202":
+          description: Задание принято
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Job"
+        "422":
+          description: Некорректный запрос
+      x-implementation: planned
+  /graph/jobs/{job_id}:
+    get:
+      summary: Статус задания и готовый граф
+      description: >-
+        Backend опрашивает задание до succeeded или failed. Готовый граф отдаётся в поле graph;
+        сохраняет его backend. 404 — задание неизвестно, например после перезапуска сервиса:
+        backend тогда помечает сборку failed.
+      parameters:
+        - in: path
+          name: job_id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Job"
+        "404":
+          description: Задание неизвестно
+      x-implementation: planned
+components:
+  schemas:
+    MaterialKind:
+      enum: [lecture, lab, tutorial]
+      type: string
+    Material:
+      additionalProperties: false
+      description: Распознанный материал курса
+      properties:
+        id:
+          description: ID материала в backend
+          type: string
+        week:
+          minimum: 1
+          type: integer
+        kind:
+          $ref: "#/components/schemas/MaterialKind"
+        filename:
+          type: string
+        text:
+          description: Markdown после OCR
+          type: string
+      required: [id, week, kind, filename, text]
+      type: object
+    JobRequest:
+      additionalProperties: false
+      properties:
+        subject_id:
+          type: string
+        course_title:
+          type: string
+        materials:
+          items:
+            $ref: "#/components/schemas/Material"
+          minItems: 1
+          type: array
+      required: [subject_id, course_title, materials]
+      type: object
+    Job:
+      additionalProperties: false
+      properties:
+        job_id:
+          type: string
+        subject_id:
+          type: string
+        status:
+          enum: [queued, running, succeeded, failed]
+          type: string
+        stage:
+          description: Текущий этап; null до начала и после завершения
+          enum: [cleaning, units, dedup, prerequisites, validation, null]
+          type: [string, "null"]
+        error:
+          description: Причина failed
+          type: [string, "null"]
+        graph:
+          anyOf:
+            - $ref: "#/components/schemas/Graph"
+            - type: "null"
+          description: Только при succeeded
+      required: [job_id, subject_id, status, stage, error, graph]
+      type: object
+    Node:
+      properties:
+        id:
+          description: ID вершины, уникальный внутри графа
+          type: string
+        title:
+          description: Название на русском
+          type: string
+        content:
+          description: Текст вершины из материалов, на русском
+          type: string
+        week:
+          description: Самая ранняя неделя источников
+          minimum: 1
+          type: integer
+        position:
+          description: Порядок внутри родителя
+          minimum: 0
+          type: integer
+        material_ids:
+          description: Материалы-источники; неделю, вид и имя файла backend берёт у материала
+          items:
+            type: string
+          minItems: 1
+          type: array
+      required: [id, title, content, week, position, material_ids]
+      type: object
+    Subtopic:
+      allOf:
+        - $ref: "#/components/schemas/Node"
+      properties:
+        prerequisites:
+          description: ID подтем-пререквизитов из любых тем курса; граф пререквизитов ацикличен
+          items:
+            type: string
+          type: array
+      required: [prerequisites]
+      unevaluatedProperties: false
+      type: object
+    Topic:
+      allOf:
+        - $ref: "#/components/schemas/Node"
+      description: Верхнеуровневая тема курса — лекция недели; подтемы — юниты лекции, лабы и туториала этой недели. См. README.
+      properties:
+        subtopics:
+          items:
+            $ref: "#/components/schemas/Subtopic"
+          type: array
+      required: [subtopics]
+      unevaluatedProperties: false
+      type: object
+    Graph:
+      additionalProperties: false
+      properties:
+        topics:
+          items:
+            $ref: "#/components/schemas/Topic"
+          type: array
+      required: [topics]
+      type: object

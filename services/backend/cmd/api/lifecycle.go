@@ -8,10 +8,10 @@ import (
 	"time"
 )
 
-func serveWithAudioWorker(ctx context.Context, server *http.Server, runWorker func(context.Context) error) error {
+func serveWithBackground(ctx context.Context, server *http.Server, runBackground func(context.Context) error) error {
 	workerCtx, cancelWorker := context.WithCancel(ctx)
 	workerDone := make(chan error, 1)
-	go func() { workerDone <- runWorker(workerCtx) }()
+	go func() { workerDone <- runBackground(workerCtx) }()
 
 	serverDone := make(chan error, 1)
 	go func() { serverDone <- server.ListenAndServe() }()
@@ -27,7 +27,7 @@ func serveWithAudioWorker(ctx context.Context, server *http.Server, runWorker fu
 			return workerErr
 		}
 		if serverErr != nil && workerErr != nil {
-			return errors.Join(serverErr, fmt.Errorf("audio worker: %w", workerErr))
+			return errors.Join(serverErr, fmt.Errorf("background task: %w", workerErr))
 		}
 		return serverErr
 	case <-ctx.Done():

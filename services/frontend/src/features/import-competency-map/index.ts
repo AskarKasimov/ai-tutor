@@ -1,6 +1,4 @@
 export {
-  useCompetencyMapQuery,
-  useImportCompetencyMapMutation,
   useSubjectMaterialsQuery,
   useUploadCourseMaterialsMutation,
   useDeleteCourseMaterialMutation,

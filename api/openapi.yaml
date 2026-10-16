@@ -10,74 +10,6 @@ components:
       required:
         - status
       type: object
-    application.CriterionResult:
-      additionalProperties: false
-      properties:
-        explanation:
-          type: string
-        key:
-          type: string
-        satisfied:
-          type: boolean
-      required:
-        - explanation
-        - key
-        - satisfied
-      type: object
-    assessmenthttp.EvaluateRequest:
-      additionalProperties: false
-      properties:
-        transcription_id:
-          maxLength: 128
-          minLength: 1
-          type: string
-        variant_id:
-          maxLength: 128
-          minLength: 1
-          type: string
-        variant_task_id:
-          maxLength: 128
-          minLength: 1
-          type: string
-      required:
-        - transcription_id
-        - variant_id
-        - variant_task_id
-      type: object
-    assessmenthttp.EvaluateResponse:
-      additionalProperties: false
-      properties:
-        criterion_results:
-          items:
-            $ref: '#/components/schemas/application.CriterionResult'
-          type: array
-          uniqueItems: false
-        feedback:
-          items:
-            type: string
-          type: array
-          uniqueItems: false
-        max_score:
-          maximum: 3
-          minimum: 1
-          type: integer
-        score:
-          maximum: 3
-          minimum: 0
-          type: integer
-        verdict:
-          enum:
-            - correct
-            - partial
-            - incorrect
-          type: string
-      required:
-        - criterion_results
-        - feedback
-        - max_score
-        - score
-        - verdict
-      type: object
     authhttp.LoginRequest:
       additionalProperties: false
       properties:
@@ -159,577 +91,6 @@ components:
         - id
         - role
       type: object
-    competencyhttp.Competency:
-      additionalProperties: false
-      properties:
-        constituents:
-          items:
-            $ref: '#/components/schemas/competencyhttp.Constituent'
-          type: array
-          uniqueItems: false
-        id:
-          type: string
-        name:
-          type: string
-      required:
-        - constituents
-        - id
-        - name
-      type: object
-    competencyhttp.Constituent:
-      additionalProperties: false
-      properties:
-        curriculum_sections:
-          items:
-            $ref: '#/components/schemas/competencyhttp.CurriculumSection'
-          type: array
-          uniqueItems: false
-        id:
-          type: string
-        name:
-          type: string
-        outcomes:
-          items:
-            $ref: '#/components/schemas/competencyhttp.Outcome'
-          type: array
-          uniqueItems: false
-        topic_level_code:
-          type:
-            - string
-            - "null"
-      required:
-        - curriculum_sections
-        - id
-        - name
-        - outcomes
-        - topic_level_code
-      type: object
-    competencyhttp.CurriculumSection:
-      additionalProperties: false
-      properties:
-        code:
-          type: string
-        curriculum_competencies:
-          items:
-            type: string
-          type: array
-          uniqueItems: false
-        title:
-          type: string
-      required:
-        - code
-        - curriculum_competencies
-        - title
-      type: object
-    competencyhttp.ImportResult:
-      additionalProperties: false
-      properties:
-        competency_count:
-          type: integer
-        constituent_count:
-          type: integer
-        imported_at:
-          type: integer
-        outcome_count:
-          type: integer
-        revision:
-          type: integer
-        task_count:
-          type: integer
-        unparsed_task_cell_count:
-          type: integer
-        warnings:
-          items:
-            $ref: '#/components/schemas/competencyhttp.ImportWarning'
-          type: array
-          uniqueItems: false
-      required:
-        - competency_count
-        - constituent_count
-        - imported_at
-        - outcome_count
-        - revision
-        - task_count
-        - unparsed_task_cell_count
-        - warnings
-      type: object
-    competencyhttp.ImportWarning:
-      additionalProperties: false
-      properties:
-        code:
-          type: string
-        column:
-          type: string
-        column_index:
-          type: integer
-        row:
-          type: integer
-      required:
-        - code
-        - column
-        - column_index
-        - row
-      type: object
-    competencyhttp.MapSnapshot:
-      additionalProperties: false
-      properties:
-        competencies:
-          items:
-            $ref: '#/components/schemas/competencyhttp.Competency'
-          type: array
-          uniqueItems: false
-        imported_at:
-          type:
-            - integer
-            - "null"
-        revision:
-          type: integer
-      required:
-        - competencies
-        - imported_at
-        - revision
-      type: object
-    competencyhttp.Outcome:
-      additionalProperties: false
-      properties:
-        ald_level_code:
-          type:
-            - string
-            - "null"
-        educational_content:
-          type:
-            - string
-            - "null"
-        id:
-          type: string
-        importance:
-          type:
-            - integer
-            - "null"
-        include_in_test:
-          type:
-            - boolean
-            - "null"
-        name:
-          type: string
-        tasks:
-          items:
-            $ref: '#/components/schemas/competencyhttp.Task'
-          type: array
-          uniqueItems: false
-        taxonomy_code:
-          type:
-            - string
-            - "null"
-      required:
-        - ald_level_code
-        - educational_content
-        - id
-        - importance
-        - include_in_test
-        - name
-        - tasks
-        - taxonomy_code
-      type: object
-    competencyhttp.Task:
-      additionalProperties: false
-      properties:
-        id:
-          type: string
-        options:
-          items:
-            type: string
-          type: array
-          uniqueItems: false
-        origin:
-          type: string
-        question:
-          type: string
-        voice_instruction:
-          type:
-            - string
-            - "null"
-      required:
-        - id
-        - options
-        - origin
-        - question
-        - voice_instruction
-      type: object
-    diagnostichttp.AnswerResponse:
-      additionalProperties: false
-      properties:
-        competency_id:
-          type: string
-        created_at:
-          type: integer
-        criterion_results:
-          items:
-            $ref: '#/components/schemas/diagnostichttp.CriterionResultResponse'
-          type: array
-          uniqueItems: false
-        feedback:
-          items:
-            type: string
-          type: array
-          uniqueItems: false
-        grader_max_score:
-          maximum: 3
-          minimum: 1
-          type: integer
-        grader_score:
-          maximum: 3
-          minimum: 0
-          type: integer
-        outcome_id:
-          type: string
-        role:
-          enum:
-            - main
-            - basic
-          type: string
-        score:
-          maximum: 3
-          minimum: 0
-          type: integer
-        skipped:
-          type: boolean
-        source_task_id:
-          type: string
-        task:
-          $ref: '#/components/schemas/diagnostichttp.TaskResponse'
-        text:
-          type: string
-        transcription_id:
-          type: string
-        variant_task_id:
-          type: string
-        verdict:
-          enum:
-            - correct
-            - partial
-            - incorrect
-          type: string
-      required:
-        - competency_id
-        - created_at
-        - criterion_results
-        - feedback
-        - grader_max_score
-        - grader_score
-        - outcome_id
-        - role
-        - score
-        - source_task_id
-        - task
-        - text
-        - transcription_id
-        - variant_task_id
-        - verdict
-      type: object
-    diagnostichttp.AudioMetadataResponse:
-      additionalProperties: false
-      properties:
-        audio_url:
-          type:
-            - string
-            - "null"
-        status:
-          enum:
-            - missing
-            - pending
-            - processing
-            - ready
-            - failed
-            - cancelled
-          type: string
-        variant_task_id:
-          type: string
-      required:
-        - audio_url
-        - status
-        - variant_task_id
-      type: object
-    diagnostichttp.AudioRegenerationRequest:
-      additionalProperties: false
-      properties:
-        variant_task_id:
-          type: string
-      required:
-        - variant_task_id
-      type: object
-    diagnostichttp.CriterionResultResponse:
-      additionalProperties: false
-      properties:
-        explanation:
-          type: string
-        key:
-          type: string
-        satisfied:
-          type: boolean
-      required:
-        - explanation
-        - key
-        - satisfied
-      type: object
-    diagnostichttp.LearningStateResponse:
-      additionalProperties: false
-      properties:
-        active_session_id:
-          type: string
-        diagnostic_completed:
-          type: boolean
-        diagnostic_session_id:
-          type: string
-        diagnostic_status:
-          type: string
-        subject_id:
-          type: string
-        subject_name:
-          type: string
-        training_available:
-          type: boolean
-      required:
-        - diagnostic_completed
-        - diagnostic_status
-        - subject_id
-        - subject_name
-        - training_available
-      type: object
-    diagnostichttp.ProgressResponse:
-      additionalProperties: false
-      properties:
-        answer_skipped:
-          type: boolean
-        competency_count:
-          minimum: 1
-          type: integer
-        completed_tasks:
-          minimum: 0
-          type: integer
-        criterion_results:
-          items:
-            $ref: '#/components/schemas/diagnostichttp.CriterionResultResponse'
-          type: array
-          uniqueItems: false
-        current:
-          $ref: '#/components/schemas/diagnostichttp.TaskResponse'
-        current_competency:
-          minimum: 1
-          type: integer
-        current_step:
-          maximum: 2
-          minimum: 0
-          type: integer
-        feedback:
-          items:
-            type: string
-          type: array
-          uniqueItems: false
-        grader_max_score:
-          maximum: 3
-          minimum: 1
-          type: integer
-        grader_score:
-          maximum: 3
-          minimum: 0
-          type: integer
-        score:
-          maximum: 3
-          minimum: 0
-          type: integer
-        session_id:
-          maxLength: 128
-          minLength: 1
-          type: string
-        skipped_tasks:
-          minimum: 0
-          type: integer
-        status:
-          enum:
-            - active
-            - completed
-          type: string
-        text:
-          minLength: 1
-          type: string
-        total_tasks:
-          minimum: 1
-          type: integer
-        verdict:
-          enum:
-            - correct
-            - partial
-            - incorrect
-          type: string
-      required:
-        - completed_tasks
-        - session_id
-        - skipped_tasks
-        - status
-        - total_tasks
-      type: object
-    diagnostichttp.ResultResponse:
-      additionalProperties: false
-      properties:
-        answers:
-          items:
-            $ref: '#/components/schemas/diagnostichttp.AnswerResponse'
-          type: array
-          uniqueItems: false
-        completed_tasks:
-          type: integer
-        diagnostic_score:
-          type: integer
-        included_competency_count:
-          type: integer
-        map_revision:
-          type: integer
-        maximum_score:
-          type: integer
-        session_id:
-          type: string
-        skipped_competencies:
-          items:
-            $ref: '#/components/schemas/diagnostichttp.SkippedCompetencyResponse'
-          type: array
-          uniqueItems: false
-        status:
-          enum:
-            - completed
-          type: string
-        total_tasks:
-          type: integer
-        untested_basics:
-          items:
-            $ref: '#/components/schemas/diagnostichttp.TaskResponse'
-          type: array
-          uniqueItems: false
-        variant_id:
-          type: string
-      required:
-        - answers
-        - completed_tasks
-        - diagnostic_score
-        - included_competency_count
-        - map_revision
-        - maximum_score
-        - session_id
-        - skipped_competencies
-        - status
-        - total_tasks
-        - untested_basics
-        - variant_id
-      type: object
-    diagnostichttp.SkipRequest:
-      additionalProperties: false
-      properties:
-        variant_task_id:
-          maxLength: 128
-          minLength: 1
-          type: string
-      required:
-        - variant_task_id
-      type: object
-    diagnostichttp.SkippedCompetencyResponse:
-      additionalProperties: false
-      properties:
-        code:
-          type: string
-        competency_id:
-          type: string
-        competency_name:
-          type: string
-      required:
-        - code
-        - competency_id
-        - competency_name
-      type: object
-    diagnostichttp.StartRequest:
-      additionalProperties: false
-      properties:
-        variant_id:
-          maxLength: 128
-          minLength: 1
-          type: string
-      required:
-        - variant_id
-      type: object
-    diagnostichttp.TaskResponse:
-      additionalProperties: false
-      properties:
-        competency_id:
-          maxLength: 128
-          minLength: 1
-          type: string
-        competency_name:
-          type: string
-        constituent_id:
-          maxLength: 128
-          minLength: 1
-          type: string
-        constituent_name:
-          type: string
-        options:
-          items:
-            type: string
-          type: array
-          uniqueItems: false
-        outcome_id:
-          maxLength: 128
-          minLength: 1
-          type: string
-        outcome_name:
-          type: string
-        question:
-          minLength: 1
-          type: string
-        role:
-          enum:
-            - main
-            - basic
-          type: string
-        source_task_id:
-          maxLength: 128
-          minLength: 1
-          type: string
-        variant_task_id:
-          maxLength: 128
-          minLength: 1
-          type: string
-        voice_instruction:
-          maxLength: 500
-          minLength: 1
-          type: string
-      required:
-        - competency_id
-        - competency_name
-        - constituent_id
-        - constituent_name
-        - options
-        - outcome_id
-        - outcome_name
-        - question
-        - role
-        - source_task_id
-        - variant_task_id
-        - voice_instruction
-      type: object
-    diagnostichttp.TranscriptionAnswerRequest:
-      additionalProperties: false
-      properties:
-        transcription_id:
-          maxLength: 128
-          minLength: 1
-          type: string
-        variant_task_id:
-          maxLength: 128
-          minLength: 1
-          type: string
-      required:
-        - transcription_id
-        - variant_task_id
-      type: object
     fault.Detail:
       additionalProperties: false
       properties:
@@ -759,356 +120,269 @@ components:
         - code
         - message
       type: object
-    http.ConfirmedGapResponse:
+    geek.AnswerRequest:
       additionalProperties: false
+      description: Ровно одно из transcription_id, text, dont_know
+      oneOf:
+        - required:
+            - transcription_id
+        - required:
+            - text
+        - required:
+            - dont_know
       properties:
-        advice:
-          type: string
-        competency_id:
-          type: string
-        competency_name:
-          type: string
-        failed_criteria:
-          items:
-            type: string
-          type: array
-          uniqueItems: false
-        importance:
-          type: integer
-        outcome_id:
-          type: string
-        outcome_name:
-          type: string
-        taxonomy_code:
-          type: string
-      required:
-        - advice
-        - competency_id
-        - competency_name
-        - failed_criteria
-        - importance
-        - outcome_id
-        - outcome_name
-        - taxonomy_code
-      type: object
-    http.DeleteResponse:
-      additionalProperties: false
-      properties:
-        status:
-          type: string
-      required:
-        - status
-      type: object
-    http.OverallFeedbackResponse:
-      additionalProperties: false
-      properties:
-        confirmed_gaps:
-          items:
-            $ref: '#/components/schemas/http.ConfirmedGapResponse'
-          type: array
-          uniqueItems: false
-        diagnostic_score:
-          minimum: 0
-          type: integer
-        generated_at:
-          type: integer
-        maximum_score:
-          minimum: 0
-          type: integer
-        partial_competencies:
-          items:
-            $ref: '#/components/schemas/http.PartialCompetencyResponse'
-          type: array
-          uniqueItems: false
-        score_percentage:
-          maximum: 100
-          minimum: 0
-          type: integer
-        session_id:
-          type: string
-        strengths:
-          items:
-            type: string
-          type: array
-          uniqueItems: false
-        summary:
-          type: string
-        training_recommendations:
-          items:
-            $ref: '#/components/schemas/http.TrainingRecommendationResponse'
-          type: array
-          uniqueItems: false
-        unverified_competencies:
-          items:
-            $ref: '#/components/schemas/http.UnverifiedCompetencyResponse'
-          type: array
-          uniqueItems: false
-      required:
-        - confirmed_gaps
-        - diagnostic_score
-        - generated_at
-        - maximum_score
-        - partial_competencies
-        - score_percentage
-        - session_id
-        - strengths
-        - summary
-        - training_recommendations
-        - unverified_competencies
-      type: object
-    http.PartialCompetencyResponse:
-      additionalProperties: false
-      properties:
-        competency_id:
-          type: string
-        competency_name:
-          type: string
-        details:
-          type: string
-      required:
-        - competency_id
-        - competency_name
-        - details
-      type: object
-    http.TrainingRecommendationResponse:
-      additionalProperties: false
-      properties:
-        competency_id:
-          type: string
-        competency_name:
-          type: string
-        outcome_id:
-          type: string
-        outcome_name:
-          type: string
-        priority:
-          minimum: 1
-          type: integer
-        rationale:
-          type: string
-      required:
-        - competency_id
-        - competency_name
-        - outcome_id
-        - outcome_name
-        - priority
-        - rationale
-      type: object
-    http.UnverifiedCompetencyResponse:
-      additionalProperties: false
-      properties:
-        code:
-          type: string
-        competency_id:
-          type: string
-        competency_name:
-          type: string
-      required:
-        - code
-        - competency_id
-        - competency_name
-      type: object
-    http.UploadFailedItem:
-      additionalProperties: false
-      properties:
-        code:
-          type: string
-        filename:
-          type: string
-        message:
-          type: string
-      required:
-        - code
-        - filename
-        - message
-      type: object
-    http.UploadResult:
-      additionalProperties: false
-      properties:
-        failed:
-          items:
-            $ref: '#/components/schemas/http.UploadFailedItem'
-          type: array
-          uniqueItems: false
-        uploaded:
-          items:
-            $ref: '#/components/schemas/material.Material'
-          type: array
-          uniqueItems: false
-      required:
-        - failed
-        - uploaded
-      type: object
-    learninghttp.CreatePlanRequest:
-      additionalProperties: false
-      properties:
-        hours:
-          maximum: 100
-          minimum: 1
-          type: integer
-      required:
-        - hours
-      type: object
-    learninghttp.MessageResponse:
-      additionalProperties: false
-      properties:
-        created_at:
-          type: integer
-        item_index:
-          type: integer
-        kind:
-          enum:
-            - theory
-            - practice
-            - answer
-            - feedback
-          type: string
-        role:
-          enum:
-            - assistant
-            - user
-          type: string
-        sequence:
-          type: integer
+        dont_know:
+          const: true
+          description: 'Кнопка «Не знаю»: пробел без оценки моделью'
         text:
-          type: string
-      required:
-        - created_at
-        - item_index
-        - kind
-        - role
-        - sequence
-        - text
-      type: object
-    learninghttp.MessagesResponse:
-      additionalProperties: false
-      properties:
-        items:
-          items:
-            $ref: '#/components/schemas/learninghttp.MessageResponse'
-          type: array
-          uniqueItems: false
-      required:
-        - items
-      type: object
-    learninghttp.PlanItemResponse:
-      additionalProperties: false
-      properties:
-        attempts:
-          type: integer
-        competency_id:
-          type: string
-        competency_name:
-          type: string
-        in_plan:
-          type: boolean
-        index:
-          type: integer
-        outcome_id:
-          type: string
-        outcome_name:
-          type: string
-        practice_minutes:
-          type: integer
-        status:
-          enum:
-            - pending
-            - current
-            - passed
-            - review
-          type: string
-        theory_minutes:
-          type: integer
-      required:
-        - attempts
-        - competency_id
-        - competency_name
-        - in_plan
-        - index
-        - outcome_id
-        - outcome_name
-        - practice_minutes
-        - status
-        - theory_minutes
-      type: object
-    learninghttp.PlanResponse:
-      additionalProperties: false
-      properties:
-        current_index:
-          type:
-            - integer
-            - "null"
-        detail:
-          enum:
-            - brief
-            - standard
-            - deep
-          type: string
-        diagnostic_session_id:
-          type: string
-        hours:
-          type: integer
-        id:
-          type: string
-        items:
-          items:
-            $ref: '#/components/schemas/learninghttp.PlanItemResponse'
-          type: array
-          uniqueItems: false
-        pending_answer:
-          type:
-            - string
-            - "null"
-        planned_minutes:
-          type: integer
-        progress_percent:
-          type: integer
-        status:
-          enum:
-            - active
-            - completed
-          type: string
-        subject_id:
-          type: string
-        subject_name:
-          type: string
-      required:
-        - current_index
-        - detail
-        - diagnostic_session_id
-        - hours
-        - id
-        - items
-        - pending_answer
-        - planned_minutes
-        - progress_percent
-        - status
-        - subject_id
-        - subject_name
-      type: object
-    learninghttp.TranscriptionAnswerRequest:
-      additionalProperties: false
-      properties:
-        attempts:
-          minimum: 0
-          type: integer
-        item_index:
-          minimum: 0
-          type: integer
-        question:
+          description: Текстовый ответ
+          maxLength: 4000
           minLength: 1
           type: string
         transcription_id:
-          maxLength: 128
+          description: Расшифровка из POST /voice/transcriptions, подтверждённая студентом
+          minLength: 1
+          type: string
+        turn_id:
+          description: current_turn_id сессии
           minLength: 1
           type: string
       required:
-        - attempts
-        - item_index
-        - question
-        - transcription_id
+        - turn_id
       type: object
-    material.Material:
+    geek.CoverageItem:
+      additionalProperties: false
+      properties:
+        criteria:
+          anyOf:
+            - $ref: '#/components/schemas/geek.Criteria'
+            - type: "null"
+        evidence_lines:
+          items:
+            description: Строки транскрипта, на которых основан вывод
+            minimum: 1
+            type: integer
+          type: array
+        grade:
+          description: Оценка A–D; null — оценки нет (тема не проверялась или недостаточно данных)
+          enum:
+            - A
+            - B
+            - C
+            - D
+            - null
+          type:
+            - string
+            - "null"
+        level:
+          enum:
+            - topic
+            - subtopic
+          type: string
+        node_id:
+          type: string
+        parent_id:
+          type:
+            - string
+            - "null"
+        status:
+          $ref: '#/components/schemas/geek.NodeStatus'
+        title:
+          type: string
+      required:
+        - criteria
+        - evidence_lines
+        - grade
+        - level
+        - node_id
+        - parent_id
+        - status
+        - title
+      type: object
+    geek.Criteria:
+      additionalProperties: false
+      description: К1 корректность и терминология, К2 логика и обоснование, К3 возражения и контрпримеры, К4 изменённые условия; 0/1/2
+      properties:
+        k1:
+          maximum: 2
+          minimum: 0
+          type: integer
+        k2:
+          maximum: 2
+          minimum: 0
+          type: integer
+        k3:
+          maximum: 2
+          minimum: 0
+          type: integer
+        k4:
+          maximum: 2
+          minimum: 0
+          type: integer
+      required:
+        - k1
+        - k2
+        - k3
+        - k4
+      type: object
+    geek.Gap:
+      additionalProperties: false
+      description: Самая глубокая неосвоенная вершина, все пререквизиты которой освоены
+      properties:
+        node_id:
+          type: string
+        sources:
+          items:
+            $ref: '#/components/schemas/geek.Source'
+          type: array
+        title:
+          type: string
+        topic_title:
+          type: string
+        week:
+          minimum: 1
+          type: integer
+      required:
+        - node_id
+        - sources
+        - title
+        - topic_title
+        - week
+      type: object
+    geek.Graph:
+      additionalProperties: false
+      description: 'Граф курса: одна версия на курс, пересборка заменяет его целиком'
+      properties:
+        built_at:
+          type: integer
+        subject_id:
+          type: string
+        topics:
+          items:
+            $ref: '#/components/schemas/geek.GraphTopic'
+          type: array
+      required:
+        - built_at
+        - subject_id
+        - topics
+      type: object
+    geek.GraphBuild:
+      additionalProperties: false
+      description: Последняя сборка графа курса. Даты — Unix seconds.
+      properties:
+        error:
+          type:
+            - string
+            - "null"
+        finished_at:
+          type:
+            - integer
+            - "null"
+        stage:
+          anyOf:
+            - $ref: '#/components/schemas/geek.GraphBuildStage'
+            - type: "null"
+        started_at:
+          type: integer
+        status:
+          enum:
+            - queued
+            - running
+            - succeeded
+            - failed
+          type: string
+      required:
+        - error
+        - finished_at
+        - stage
+        - started_at
+        - status
+      type: object
+    geek.GraphBuildStage:
+      description: Текущий этап сборки в course-graph
+      enum:
+        - cleaning
+        - units
+        - dedup
+        - prerequisites
+        - validation
+      type: string
+    geek.GraphSubtopic:
+      additionalProperties: false
+      description: Подтема. Пререквизиты — подтемы любых тем курса; граф пререквизитов ацикличен.
+      properties:
+        content:
+          description: Текст вершины из материалов, на русском
+          type: string
+        id:
+          type: string
+        position:
+          description: Порядок внутри родителя
+          minimum: 0
+          type: integer
+        prerequisites:
+          items:
+            description: ID подтемы-пререквизита
+            type: string
+          type: array
+        sources:
+          items:
+            $ref: '#/components/schemas/geek.Source'
+          type: array
+        title:
+          description: Название на русском
+          type: string
+        week:
+          description: Самая ранняя неделя источников
+          minimum: 1
+          type: integer
+      required:
+        - content
+        - id
+        - position
+        - prerequisites
+        - sources
+        - title
+        - week
+      type: object
+    geek.GraphTopic:
+      additionalProperties: false
+      description: Верхнеуровневая тема курса
+      properties:
+        content:
+          description: Текст вершины из материалов, на русском
+          type: string
+        id:
+          type: string
+        position:
+          description: Порядок внутри родителя
+          minimum: 0
+          type: integer
+        sources:
+          items:
+            $ref: '#/components/schemas/geek.Source'
+          type: array
+        subtopics:
+          items:
+            $ref: '#/components/schemas/geek.GraphSubtopic'
+          type: array
+        title:
+          description: Название на русском
+          type: string
+        week:
+          description: Самая ранняя неделя источников
+          minimum: 1
+          type: integer
+      required:
+        - content
+        - id
+        - position
+        - sources
+        - subtopics
+        - title
+        - week
+      type: object
+    geek.Material:
       additionalProperties: false
       properties:
         char_count:
@@ -1125,6 +399,11 @@ components:
           type: string
         id:
           type: string
+        kind:
+          anyOf:
+            - $ref: '#/components/schemas/geek.MaterialKind'
+            - type: "null"
+          description: Вид материала; null — у материалов, загруженных до появления поля
         parsed_text:
           type: string
         s3_parsed_key:
@@ -1137,6 +416,12 @@ components:
           type: string
         updated_at:
           type: integer
+        week:
+          description: Неделя курса; null — у материалов, загруженных до появления поля
+          minimum: 1
+          type:
+            - integer
+            - "null"
       required:
         - char_count
         - content_type
@@ -1144,12 +429,411 @@ components:
         - file_size
         - filename
         - id
+        - kind
         - parsed_text
         - s3_parsed_key
         - s3_raw_key
         - status
         - subject_id
         - updated_at
+        - week
+      type: object
+    geek.MaterialKind:
+      description: Вид материала
+      enum:
+        - lecture
+        - lab
+        - tutorial
+      type: string
+    geek.MaterialPatch:
+      additionalProperties: false
+      description: Правка недели и вида без повторного OCR; хотя бы одно поле
+      properties:
+        kind:
+          $ref: '#/components/schemas/geek.MaterialKind'
+        week:
+          minimum: 1
+          type: integer
+      required: []
+      type: object
+    geek.NodeResult:
+      additionalProperties: false
+      properties:
+        grade:
+          description: Оценка A–D; null — оценки нет (тема не проверялась или недостаточно данных)
+          enum:
+            - A
+            - B
+            - C
+            - D
+            - null
+          type:
+            - string
+            - "null"
+        node_id:
+          type: string
+        status:
+          $ref: '#/components/schemas/geek.NodeStatus'
+        title:
+          type: string
+      required:
+        - grade
+        - node_id
+        - status
+        - title
+      type: object
+    geek.NodeStatus:
+      description: independent — самостоятельный ответ, assisted — ответ с помощью, gap — пробел, insufficient — недостаточно данных, credited_by_parent — засчитано по вышестоящей теме, unchecked — не спрашивалась
+      enum:
+        - independent
+        - assisted
+        - gap
+        - insufficient
+        - credited_by_parent
+        - unchecked
+      type: string
+    geek.Observation:
+      additionalProperties: false
+      description: Наблюдение по критерию для пробела; к показу 18.10 список пуст
+      properties:
+        criterion:
+          enum:
+            - k1
+            - k2
+            - k3
+            - k4
+          type: string
+        lines:
+          items:
+            minimum: 1
+            type: integer
+          type: array
+        node_id:
+          type: string
+        text:
+          type: string
+      required:
+        - criterion
+        - lines
+        - node_id
+        - text
+      type: object
+    geek.Report:
+      additionalProperties: false
+      description: Пакет для преподавателя
+      properties:
+        coverage:
+          items:
+            $ref: '#/components/schemas/geek.CoverageItem'
+          type: array
+        observations:
+          items:
+            $ref: '#/components/schemas/geek.Observation'
+          type: array
+        session:
+          $ref: '#/components/schemas/geek.SessionSummary'
+        subject_id:
+          type: string
+        transcript:
+          items:
+            $ref: '#/components/schemas/geek.Turn'
+          type: array
+      required:
+        - coverage
+        - observations
+        - session
+        - subject_id
+        - transcript
+      type: object
+    geek.Result:
+      additionalProperties: false
+      description: Итог для студента; баллы по критериям и основания — только в пакете для преподавателя
+      properties:
+        gaps:
+          items:
+            $ref: '#/components/schemas/geek.Gap'
+          type: array
+        grade:
+          description: Предварительная оценка курса A–D по среднему баллу верхнеуровневых тем; null — ни одной темы с оценкой
+          enum:
+            - A
+            - B
+            - C
+            - D
+            - null
+          type:
+            - string
+            - "null"
+        score_percent:
+          description: Средний балл тем (A=4…D=1) в процентах от 4; темы «недостаточно данных» исключены
+          maximum: 100
+          minimum: 0
+          type:
+            - integer
+            - "null"
+        session_id:
+          type: string
+        topics:
+          items:
+            $ref: '#/components/schemas/geek.TopicResult'
+          type: array
+      required:
+        - gaps
+        - grade
+        - score_percent
+        - session_id
+        - topics
+      type: object
+    geek.Session:
+      additionalProperties: false
+      properties:
+        completed_at:
+          type:
+            - integer
+            - "null"
+        current_turn_id:
+          description: Реплика Geek, на которую ждут ответ; null, если сессия не active
+          type:
+            - string
+            - "null"
+        id:
+          type: string
+        progress_percent:
+          description: Доля верхнеуровневых тем, по которым вывод уже сделан, вместе со спуском; не уменьшается
+          maximum: 100
+          minimum: 0
+          type: integer
+        started_at:
+          type: integer
+        status:
+          description: cancelled — граф курса пересобран во время диагностики
+          enum:
+            - active
+            - completed
+            - cancelled
+          type: string
+        subject_id:
+          type: string
+        turns:
+          items:
+            $ref: '#/components/schemas/geek.Turn'
+          type: array
+      required:
+        - completed_at
+        - current_turn_id
+        - id
+        - progress_percent
+        - started_at
+        - status
+        - subject_id
+        - turns
+      type: object
+    geek.SessionList:
+      additionalProperties: false
+      properties:
+        items:
+          items:
+            $ref: '#/components/schemas/geek.SessionSummary'
+          type: array
+      required:
+        - items
+      type: object
+    geek.SessionSummary:
+      additionalProperties: false
+      properties:
+        completed_at:
+          type:
+            - integer
+            - "null"
+        grade:
+          description: Оценка A–D; null — оценки нет (тема не проверялась или недостаточно данных)
+          enum:
+            - A
+            - B
+            - C
+            - D
+            - null
+          type:
+            - string
+            - "null"
+        id:
+          type: string
+        started_at:
+          type: integer
+        status:
+          enum:
+            - active
+            - completed
+            - cancelled
+          type: string
+        student:
+          $ref: '#/components/schemas/geek.Student'
+      required:
+        - completed_at
+        - grade
+        - id
+        - started_at
+        - status
+        - student
+      type: object
+    geek.Source:
+      additionalProperties: false
+      description: Материал, из которого взята вершина
+      properties:
+        filename:
+          type: string
+        kind:
+          $ref: '#/components/schemas/geek.MaterialKind'
+        material_id:
+          type: string
+        week:
+          minimum: 1
+          type: integer
+      required:
+        - filename
+        - kind
+        - material_id
+        - week
+      type: object
+    geek.StartRequest:
+      additionalProperties: false
+      properties:
+        subject_id:
+          minLength: 1
+          type: string
+      required:
+        - subject_id
+      type: object
+    geek.Student:
+      additionalProperties: false
+      properties:
+        display_name:
+          type: string
+        id:
+          type: string
+      required:
+        - display_name
+        - id
+      type: object
+    geek.TopicResult:
+      additionalProperties: false
+      properties:
+        grade:
+          description: Оценка A–D; null — оценки нет (тема не проверялась или недостаточно данных)
+          enum:
+            - A
+            - B
+            - C
+            - D
+            - null
+          type:
+            - string
+            - "null"
+        node_id:
+          type: string
+        status:
+          $ref: '#/components/schemas/geek.NodeStatus'
+        subtopics:
+          items:
+            $ref: '#/components/schemas/geek.NodeResult'
+          type: array
+        title:
+          type: string
+      required:
+        - grade
+        - node_id
+        - status
+        - subtopics
+        - title
+      type: object
+    geek.Turn:
+      additionalProperties: false
+      properties:
+        created_at:
+          type: integer
+        id:
+          type: string
+        kind:
+          description: question — основной вопрос, followup — дополнительный, rephrase — переформулировка, closing — завершение, answer — ответ студента
+          enum:
+            - question
+            - followup
+            - rephrase
+            - closing
+            - answer
+          type: string
+        line:
+          description: Номер строки транскрипта
+          minimum: 1
+          type: integer
+        node_id:
+          description: Вершина графа, к которой относится реплика; null у closing
+          type:
+            - string
+            - "null"
+        source:
+          description: 'Только у реплик студента: голос после подтверждения, текст или кнопка «Не знаю»'
+          enum:
+            - voice
+            - text
+            - dont_know
+            - null
+          type:
+            - string
+            - "null"
+        speaker:
+          enum:
+            - geek
+            - student
+          type: string
+        text:
+          type: string
+      required:
+        - created_at
+        - id
+        - kind
+        - line
+        - node_id
+        - source
+        - speaker
+        - text
+      type: object
+    geek.UploadResult:
+      additionalProperties: false
+      properties:
+        failed:
+          items:
+            $ref: '#/components/schemas/http.UploadFailedItem'
+          type: array
+        uploaded:
+          items:
+            $ref: '#/components/schemas/geek.Material'
+          type: array
+      required:
+        - failed
+        - uploaded
+      type: object
+    http.DeleteResponse:
+      additionalProperties: false
+      properties:
+        status:
+          type: string
+      required:
+        - status
+      type: object
+    http.UploadFailedItem:
+      additionalProperties: false
+      properties:
+        code:
+          type: string
+        filename:
+          type: string
+        message:
+          type: string
+      required:
+        - code
+        - filename
+        - message
       type: object
     material.Status:
       enum:
@@ -1185,703 +869,6 @@ components:
       required:
         - name
       type: object
-    taskbankhttp.CurriculumSection:
-      additionalProperties: false
-      properties:
-        code:
-          type: string
-        curriculum_competencies:
-          items:
-            type: string
-          type: array
-          uniqueItems: false
-        title:
-          type: string
-      required:
-        - code
-        - curriculum_competencies
-        - title
-      type: object
-    taskbankhttp.TaskProfile:
-      additionalProperties: false
-      properties:
-        ald_level_code:
-          type:
-            - string
-            - "null"
-        competency_id:
-          type: string
-        competency_name:
-          type: string
-        constituent_id:
-          type: string
-        constituent_name:
-          type: string
-        curriculum_sections:
-          items:
-            $ref: '#/components/schemas/taskbankhttp.CurriculumSection'
-          type: array
-          uniqueItems: false
-        educational_content:
-          type:
-            - string
-            - "null"
-        id:
-          type: string
-        importance:
-          type:
-            - integer
-            - "null"
-        include_in_test:
-          type:
-            - boolean
-            - "null"
-        options:
-          items:
-            type: string
-          type: array
-          uniqueItems: false
-        origin:
-          type: string
-        outcome_id:
-          type: string
-        outcome_name:
-          type: string
-        question:
-          type: string
-        taxonomy_code:
-          type:
-            - string
-            - "null"
-        topic_level_code:
-          type:
-            - string
-            - "null"
-        voice_instruction:
-          type:
-            - string
-            - "null"
-      required:
-        - ald_level_code
-        - competency_id
-        - competency_name
-        - constituent_id
-        - constituent_name
-        - curriculum_sections
-        - educational_content
-        - id
-        - importance
-        - include_in_test
-        - options
-        - origin
-        - outcome_id
-        - outcome_name
-        - question
-        - taxonomy_code
-        - topic_level_code
-        - voice_instruction
-      type: object
-    taskbankhttp.TaskSummary:
-      additionalProperties: false
-      properties:
-        ald_level_code:
-          type:
-            - string
-            - "null"
-        competency_name:
-          type: string
-        constituent_name:
-          type: string
-        id:
-          type: string
-        importance:
-          type:
-            - integer
-            - "null"
-        include_in_test:
-          type:
-            - boolean
-            - "null"
-        options:
-          items:
-            type: string
-          type: array
-          uniqueItems: false
-        origin:
-          type: string
-        outcome_id:
-          type: string
-        outcome_name:
-          type: string
-        question:
-          type: string
-        taxonomy_code:
-          type:
-            - string
-            - "null"
-        topic_level_code:
-          type:
-            - string
-            - "null"
-        voice_instruction:
-          type:
-            - string
-            - "null"
-      required:
-        - ald_level_code
-        - competency_name
-        - constituent_name
-        - id
-        - importance
-        - include_in_test
-        - options
-        - origin
-        - outcome_id
-        - outcome_name
-        - question
-        - taxonomy_code
-        - topic_level_code
-        - voice_instruction
-      type: object
-    taskgenhttp.GenerateRequest:
-      additionalProperties: false
-      properties:
-        outcome_id:
-          maxLength: 128
-          minLength: 1
-          type: string
-        subject_id:
-          maxLength: 128
-          minLength: 1
-          type: string
-      required:
-        - outcome_id
-        - subject_id
-      type: object
-    taskgenhttp.GeneratedTask:
-      additionalProperties: false
-      properties:
-        id:
-          type: string
-        options:
-          items:
-            type: string
-          type: array
-          uniqueItems: false
-        origin:
-          type: string
-        outcome_id:
-          type: string
-        question:
-          type: string
-        voice_instruction:
-          type:
-            - string
-            - "null"
-      required:
-        - id
-        - options
-        - origin
-        - outcome_id
-        - question
-        - voice_instruction
-      type: object
-    taskgenhttp.ImportMaterialRequest:
-      additionalProperties: false
-      properties:
-        content:
-          type: string
-        name:
-          type: string
-        outcome_ids:
-          items:
-            type: string
-          type: array
-          uniqueItems: false
-        subject_id:
-          maxLength: 128
-          minLength: 1
-          type: string
-      required:
-        - content
-        - name
-        - outcome_ids
-        - subject_id
-      type: object
-    training.AnswerSource:
-      enum:
-        - text
-        - voice
-      type: string
-      x-enum-varnames:
-        - AnswerSourceText
-        - AnswerSourceVoice
-    training.Attempt:
-      additionalProperties: false
-      properties:
-        answer_source:
-          $ref: '#/components/schemas/training.AnswerSource'
-        created_at:
-          type: integer
-        criterion_results:
-          items:
-            $ref: '#/components/schemas/training.CriterionResult'
-          type: array
-          uniqueItems: false
-        exercise_id:
-          type: string
-        feedback:
-          items:
-            type: string
-          type: array
-          uniqueItems: false
-        max_score:
-          type: integer
-        round:
-          type: integer
-        score:
-          type: integer
-        sequence:
-          type: integer
-        skipped:
-          type: boolean
-        target_index:
-          type: integer
-        text:
-          type: string
-        transcription_id:
-          type: string
-        verdict:
-          type: string
-      required:
-        - created_at
-        - criterion_results
-        - exercise_id
-        - feedback
-        - max_score
-        - round
-        - score
-        - sequence
-        - target_index
-        - text
-        - verdict
-      type: object
-    training.ChatCheckView:
-      additionalProperties: false
-      properties:
-        final_answer:
-          type: string
-        max_score:
-          type: integer
-        revision:
-          type: integer
-        score:
-          type: integer
-        source:
-          $ref: '#/components/schemas/training.AnswerSource'
-        transcription_id:
-          type: string
-        verdict:
-          type: string
-      required:
-        - final_answer
-        - max_score
-        - revision
-        - score
-        - source
-        - verdict
-      type: object
-    training.ChatKind:
-      enum:
-        - welcome
-        - message
-        - check
-      type: string
-      x-enum-varnames:
-        - ChatKindWelcome
-        - ChatKindMessage
-        - ChatKindCheck
-    training.ChatMessage:
-      additionalProperties: false
-      properties:
-        created_at:
-          type: integer
-        id:
-          type: string
-        kind:
-          $ref: '#/components/schemas/training.ChatKind'
-        role:
-          $ref: '#/components/schemas/training.ChatRole'
-        sequence:
-          type: integer
-        source:
-          $ref: '#/components/schemas/training.AnswerSource'
-        text:
-          type: string
-      required:
-        - created_at
-        - id
-        - kind
-        - role
-        - sequence
-        - text
-      type: object
-    training.ChatPage:
-      additionalProperties: false
-      properties:
-        exercise_id:
-          type: string
-        items:
-          items:
-            $ref: '#/components/schemas/training.ChatMessage'
-          type: array
-          uniqueItems: false
-        latest_check:
-          anyOf:
-            - $ref: '#/components/schemas/training.ChatCheckView'
-            - type: "null"
-        next_cursor:
-          type: string
-        pending_turn:
-          anyOf:
-            - $ref: '#/components/schemas/training.PendingTurnView'
-            - type: "null"
-        revision:
-          type: integer
-        session_id:
-          type: string
-        status:
-          $ref: '#/components/schemas/training.ChatStatus'
-      required:
-        - exercise_id
-        - items
-        - latest_check
-        - pending_turn
-        - revision
-        - session_id
-        - status
-      type: object
-    training.ChatRole:
-      enum:
-        - user
-        - assistant
-      type: string
-      x-enum-varnames:
-        - ChatRoleUser
-        - ChatRoleAssistant
-    training.ChatStatus:
-      enum:
-        - active
-        - closed
-      type: string
-      x-enum-varnames:
-        - ChatStatusActive
-        - ChatStatusClosed
-    training.ChatTurnResult:
-      additionalProperties: false
-      properties:
-        exercise_id:
-          type: string
-        latest_check:
-          anyOf:
-            - $ref: '#/components/schemas/training.ChatCheckView'
-            - type: "null"
-        messages:
-          items:
-            $ref: '#/components/schemas/training.ChatMessage'
-          type: array
-          uniqueItems: false
-        revision:
-          type: integer
-        session_id:
-          type: string
-        turn_id:
-          type: string
-      required:
-        - exercise_id
-        - latest_check
-        - messages
-        - revision
-        - session_id
-        - turn_id
-      type: object
-    training.CriterionResult:
-      additionalProperties: false
-      properties:
-        explanation:
-          type: string
-        key:
-          type: string
-        satisfied:
-          type: boolean
-      required:
-        - explanation
-        - key
-        - satisfied
-      type: object
-    training.ExerciseView:
-      additionalProperties: false
-      properties:
-        exercise_id:
-          type: string
-        options:
-          items:
-            type: string
-          type: array
-          uniqueItems: false
-        outcome_id:
-          type: string
-        outcome_name:
-          type: string
-        question:
-          type: string
-        voice_instruction:
-          type: string
-      required:
-        - exercise_id
-        - options
-        - outcome_id
-        - outcome_name
-        - question
-        - voice_instruction
-      type: object
-    training.PendingTurnView:
-      additionalProperties: false
-      properties:
-        id:
-          type: string
-        kind:
-          $ref: '#/components/schemas/training.ChatKind'
-        retry_after_ms:
-          type: integer
-        source:
-          $ref: '#/components/schemas/training.AnswerSource'
-        status:
-          $ref: '#/components/schemas/training.TurnStatus'
-        user_text:
-          type:
-            - string
-            - "null"
-      required:
-        - id
-        - kind
-        - retry_after_ms
-        - source
-        - status
-        - user_text
-      type: object
-    training.Preview:
-      additionalProperties: false
-      properties:
-        confirmed_gaps:
-          items:
-            $ref: '#/components/schemas/training.TargetView'
-          type: array
-          uniqueItems: false
-        diagnostic_score:
-          type: integer
-        diagnostic_session_id:
-          type: string
-        maximum_score:
-          type: integer
-        mode:
-          type: string
-        partial_competencies:
-          items:
-            $ref: '#/components/schemas/training.TargetView'
-          type: array
-          uniqueItems: false
-        plan_revision:
-          type: integer
-        status:
-          type: string
-        subject_id:
-          type: string
-        subject_name:
-          type: string
-        topics:
-          items:
-            $ref: '#/components/schemas/training.TargetView'
-          type: array
-          uniqueItems: false
-      required:
-        - confirmed_gaps
-        - diagnostic_score
-        - diagnostic_session_id
-        - maximum_score
-        - mode
-        - partial_competencies
-        - plan_revision
-        - status
-        - subject_id
-        - subject_name
-        - topics
-      type: object
-    training.Progress:
-      additionalProperties: false
-      properties:
-        answer:
-          $ref: '#/components/schemas/training.Attempt'
-        answer_count:
-          type: integer
-        current:
-          $ref: '#/components/schemas/training.ExerciseView'
-        diagnostic_session_id:
-          type: string
-        mode:
-          type: string
-        round:
-          type: integer
-        session_id:
-          type: string
-        status:
-          type: string
-        subject_id:
-          type: string
-        subject_name:
-          type: string
-        targets:
-          items:
-            $ref: '#/components/schemas/training.TargetView'
-          type: array
-          uniqueItems: false
-      required:
-        - answer_count
-        - current
-        - diagnostic_session_id
-        - mode
-        - round
-        - session_id
-        - status
-        - subject_id
-        - subject_name
-        - targets
-      type: object
-    training.TargetView:
-      additionalProperties: false
-      properties:
-        competency_id:
-          type: string
-        competency_name:
-          type: string
-        kind:
-          type: string
-        label:
-          type: string
-        last_score:
-          type:
-            - integer
-            - "null"
-        original_max_score:
-          type:
-            - integer
-            - "null"
-        original_score:
-          type:
-            - integer
-            - "null"
-        outcome_id:
-          type: string
-        outcome_name:
-          type: string
-      required:
-        - competency_id
-        - competency_name
-        - kind
-        - label
-        - last_score
-        - original_max_score
-        - original_score
-        - outcome_id
-        - outcome_name
-      type: object
-    training.TurnStatus:
-      enum:
-        - processing
-        - failed
-        - completed
-        - cancelled
-      type: string
-      x-enum-varnames:
-        - TurnStatusProcessing
-        - TurnStatusFailed
-        - TurnStatusCompleted
-        - TurnStatusCancelled
-    traininghttp.AudioResponse:
-      additionalProperties: false
-      properties:
-        audio_url:
-          type:
-            - string
-            - "null"
-        exercise_id:
-          type: string
-        status:
-          type: string
-      required:
-        - audio_url
-        - exercise_id
-        - status
-      type: object
-    traininghttp.ChatTextRequest:
-      additionalProperties: false
-      properties:
-        kind:
-          type: string
-        revision:
-          type: integer
-        text:
-          type: string
-      required:
-        - kind
-        - revision
-        - text
-      type: object
-    traininghttp.EmptyChatRequest:
-      type: object
-    traininghttp.HistoryResponse:
-      additionalProperties: false
-      properties:
-        items:
-          items:
-            $ref: '#/components/schemas/training.Attempt'
-          type: array
-          uniqueItems: false
-        next_cursor:
-          type: string
-        targets:
-          items:
-            $ref: '#/components/schemas/training.TargetView'
-          type: array
-          uniqueItems: false
-      required:
-        - items
-        - targets
-      type: object
-    traininghttp.NextRequest:
-      additionalProperties: false
-      properties:
-        revision:
-          type: integer
-      required:
-        - revision
-      type: object
-    traininghttp.SkipRequest:
-      additionalProperties: false
-      properties:
-        exercise_id:
-          maxLength: 128
-          minLength: 1
-          type: string
-      required:
-        - exercise_id
-      type: object
-    traininghttp.StartRequest:
-      additionalProperties: false
-      properties:
-        plan_revision:
-          type: integer
-      type: object
     user.Role:
       enum:
         - student
@@ -1890,277 +877,6 @@ components:
       x-enum-varnames:
         - Student
         - Admin
-    variantgenhttp.CompetencyBlock:
-      additionalProperties: false
-      properties:
-        basic:
-          items:
-            $ref: '#/components/schemas/variantgenhttp.VariantTask'
-          type: array
-          uniqueItems: false
-        competency_id:
-          maxLength: 128
-          minLength: 1
-          type: string
-        competency_name:
-          type: string
-        main:
-          $ref: '#/components/schemas/variantgenhttp.VariantTask'
-        position:
-          minimum: 1
-          type: integer
-      required:
-        - basic
-        - competency_id
-        - competency_name
-        - main
-        - position
-      type: object
-    variantgenhttp.CreateRequest:
-      additionalProperties: false
-      properties:
-        subject_id:
-          maxLength: 128
-          minLength: 1
-          type: string
-      required:
-        - subject_id
-      type: object
-    variantgenhttp.SkippedCompetency:
-      additionalProperties: false
-      properties:
-        code:
-          enum:
-            - NO_READY_OUTCOMES
-            - INSUFFICIENT_DISTINCT_OUTCOMES
-            - INSUFFICIENT_LOWER_BLOOM_OUTCOMES
-          type: string
-        competency_id:
-          maxLength: 128
-          minLength: 1
-          type: string
-        competency_name:
-          type: string
-        eligible_outcome_count:
-          maximum: 101
-          minimum: 0
-          type: integer
-        lower_bloom_outcome_count:
-          maximum: 101
-          minimum: 0
-          type: integer
-        main_bloom_rank:
-          maximum: 4
-          minimum: 1
-          type: integer
-        message:
-          type: string
-      required:
-        - code
-        - competency_id
-        - competency_name
-        - eligible_outcome_count
-        - message
-      type: object
-    variantgenhttp.Variant:
-      additionalProperties: false
-      properties:
-        algorithm_version:
-          maxLength: 128
-          minLength: 1
-          type: string
-        competencies:
-          items:
-            $ref: '#/components/schemas/variantgenhttp.CompetencyBlock'
-          type: array
-          uniqueItems: false
-        created_at:
-          minimum: 0
-          type: integer
-        id:
-          maxLength: 128
-          minLength: 1
-          type: string
-        included_competency_count:
-          minimum: 1
-          type: integer
-        map_revision:
-          minimum: 1
-          type: integer
-        skipped_competencies:
-          items:
-            $ref: '#/components/schemas/variantgenhttp.SkippedCompetency'
-          type: array
-          uniqueItems: false
-        skipped_competency_count:
-          minimum: 0
-          type: integer
-        subject_id:
-          maxLength: 128
-          minLength: 1
-          type: string
-        subject_name_snapshot:
-          minLength: 1
-          type: string
-        task_count:
-          minimum: 1
-          type: integer
-      required:
-        - algorithm_version
-        - competencies
-        - created_at
-        - id
-        - included_competency_count
-        - map_revision
-        - skipped_competencies
-        - skipped_competency_count
-        - subject_id
-        - subject_name_snapshot
-        - task_count
-      type: object
-    variantgenhttp.VariantList:
-      additionalProperties: false
-      properties:
-        items:
-          items:
-            $ref: '#/components/schemas/variantgenhttp.VariantSummary'
-          type: array
-          uniqueItems: false
-        next_cursor:
-          type:
-            - string
-            - "null"
-      required:
-        - items
-        - next_cursor
-      type: object
-    variantgenhttp.VariantSummary:
-      additionalProperties: false
-      properties:
-        algorithm_version:
-          maxLength: 128
-          minLength: 1
-          type: string
-        created_at:
-          minimum: 0
-          type: integer
-        id:
-          maxLength: 128
-          minLength: 1
-          type: string
-        included_competency_count:
-          minimum: 1
-          type: integer
-        map_revision:
-          minimum: 1
-          type: integer
-        skipped_competency_count:
-          minimum: 0
-          type: integer
-        subject_id:
-          maxLength: 128
-          minLength: 1
-          type: string
-        subject_name_snapshot:
-          minLength: 1
-          type: string
-        task_count:
-          minimum: 1
-          type: integer
-      required:
-        - algorithm_version
-        - created_at
-        - id
-        - included_competency_count
-        - map_revision
-        - skipped_competency_count
-        - subject_id
-        - subject_name_snapshot
-        - task_count
-      type: object
-    variantgenhttp.VariantTask:
-      additionalProperties: false
-      properties:
-        competency_id:
-          maxLength: 128
-          minLength: 1
-          type: string
-        competency_name:
-          type: string
-        constituent_id:
-          maxLength: 128
-          minLength: 1
-          type: string
-        constituent_name:
-          type: string
-        id:
-          maxLength: 128
-          minLength: 1
-          type: string
-        importance:
-          maximum: 5
-          minimum: 1
-          type: integer
-        include_in_test:
-          enum:
-            - true
-          type: boolean
-        options:
-          items:
-            type: string
-          type: array
-          uniqueItems: false
-        origin:
-          enum:
-            - authored
-            - ai_generated
-          type: string
-        outcome_id:
-          maxLength: 128
-          minLength: 1
-          type: string
-        outcome_name:
-          type: string
-        question:
-          minLength: 1
-          type: string
-        role:
-          enum:
-            - main
-            - basic
-          type: string
-        source_task_id:
-          maxLength: 128
-          minLength: 1
-          type: string
-        taxonomy_code:
-          enum:
-            - knowledge
-            - understanding
-            - application
-            - analysis
-          type: string
-        voice_instruction:
-          minLength: 1
-          type: string
-      required:
-        - competency_id
-        - competency_name
-        - constituent_id
-        - constituent_name
-        - id
-        - importance
-        - include_in_test
-        - options
-        - origin
-        - outcome_id
-        - outcome_name
-        - question
-        - role
-        - source_task_id
-        - taxonomy_code
-        - voice_instruction
-      type: object
     voicehttp.SynthesizeRequest:
       additionalProperties: false
       properties:
@@ -2195,32 +911,30 @@ components:
       name: refresh_token
       type: apiKey
 info:
-  description: 'Единый API: implemented — подключённые операции, planned — будущие операции. Variantgen собирает, сохраняет и читает варианты; грейдинг, ответы и тренировка находятся вне его scope. Источник — текущий ML CSV/XLSX. Даты — Unix seconds; cookies Secure/HttpOnly.'
+  description: 'Единый API Geek: implemented — подключённые операции, planned — будущие операции. Курс строится из материалов; диагностика — устный экзамен по графу курса. Даты — Unix seconds; cookies Secure/HttpOnly.'
   title: AI Tutor Backend API
   version: 0.2.0
 openapi: 3.1.0
 paths:
-  /admin/materials:
-    post:
-      operationId: importMaterial
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/taskgenhttp.ImportMaterialRequest'
-              description: Текст и связи материала
-              summary: request
-        description: Текст и связи материала
-        required: true
+  /admin/diagnostic-sessions/{id}/report:
+    get:
+      description: Доступно только admin. Транскрипт с номерами строк, карта покрытия с критериями и основаниями, наблюдения.
+      parameters:
+        - description: ID диагностики
+          in: path
+          name: id
+          required: true
+          schema:
+            maxLength: 128
+            minLength: 1
+            type: string
       responses:
-        "201":
+        "200":
           content:
             application/json:
               schema:
-                additionalProperties:
-                  type: string
-                type: object
-          description: Created
+                $ref: '#/components/schemas/geek.Report'
+          description: OK
         "401":
           content:
             application/json:
@@ -2233,30 +947,18 @@ paths:
               schema:
                 $ref: '#/components/schemas/fault.Error'
           description: Forbidden
-        "413":
+        "404":
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/fault.Error'
-          description: Request Entity Too Large
-        "422":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Unprocessable Entity
-        "503":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Service Unavailable
+          description: Not Found
       security:
         - accessCookie: []
-      summary: Загрузить учебный материал в контекст RAG
+      summary: Пакет для преподавателя
       tags:
-        - Учебная база
-      x-implementation: implemented
+        - Пакет для преподавателя
+      x-implementation: planned
   /admin/subjects:
     post:
       description: Создать предмет без карты компетенций. Доступно только admin.
@@ -2307,38 +1009,24 @@ paths:
       tags:
         - Предметы
       x-implementation: implemented
-  /admin/subjects/{subject_id}/competency-map/import:
-    post:
-      description: Доступно только admin. Импорт атомарно заменяет карту указанного предмета.
-      operationId: importSubjectCompetencyMap
+  /admin/subjects/{subject_id}/diagnostic-sessions:
+    get:
+      description: Доступно только admin. Все диагностики курса, новые первыми.
       parameters:
-        - description: ID предмета
+        - description: ID курса (предмета)
           in: path
           name: subject_id
           required: true
           schema:
+            maxLength: 128
+            minLength: 1
             type: string
-      requestBody:
-        content:
-          multipart/form-data:
-            schema:
-              additionalProperties: false
-              properties:
-                file:
-                  description: Карта компетенций CSV или XLSX, до 25 МиБ
-                  format: binary
-                  type: string
-              required:
-                - file
-              type: object
-        description: Карта компетенций CSV или XLSX, до 25 МиБ
-        required: true
       responses:
         "200":
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/competencyhttp.ImportResult'
+                $ref: '#/components/schemas/geek.SessionList'
           description: OK
         "401":
           content:
@@ -2358,18 +1046,140 @@ paths:
               schema:
                 $ref: '#/components/schemas/fault.Error'
           description: Not Found
-        "413":
+      security:
+        - accessCookie: []
+      summary: Диагностики курса
+      tags:
+        - Пакет для преподавателя
+      x-implementation: planned
+  /admin/subjects/{subject_id}/graph:
+    get:
+      description: Доступно только admin. Темы → подтемы с пререквизитами и источниками; 404 — граф ещё не собран.
+      parameters:
+        - description: ID курса (предмета)
+          in: path
+          name: subject_id
+          required: true
+          schema:
+            maxLength: 128
+            minLength: 1
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/geek.Graph'
+          description: OK
+        "401":
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/fault.Error'
-          description: Request Entity Too Large
-        "415":
+          description: Unauthorized
+        "403":
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/fault.Error'
-          description: Unsupported Media Type
+          description: Forbidden
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Not Found
+      security:
+        - accessCookie: []
+      summary: Граф курса
+      tags:
+        - Граф курса
+      x-implementation: planned
+  /admin/subjects/{subject_id}/graph/build:
+    get:
+      description: Доступно только admin. Последняя сборка; 404 — сборок не было.
+      parameters:
+        - description: ID курса (предмета)
+          in: path
+          name: subject_id
+          required: true
+          schema:
+            maxLength: 128
+            minLength: 1
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/geek.GraphBuild'
+          description: OK
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Forbidden
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Not Found
+      security:
+        - accessCookie: []
+      summary: Статус сборки графа
+      tags:
+        - Граф курса
+      x-implementation: planned
+    post:
+      description: 'Доступно только admin. Кнопка «Собрать граф»: запускает сборку по всем распознанным материалам курса. 409 — сборка уже идёт; 422 — нет распознанных материалов или у материала нет недели или вида. Успешная сборка заменяет граф целиком и переводит активные диагностики курса в cancelled.'
+      parameters:
+        - description: ID курса (предмета)
+          in: path
+          name: subject_id
+          required: true
+          schema:
+            maxLength: 128
+            minLength: 1
+            type: string
+      responses:
+        "202":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/geek.GraphBuild'
+          description: Accepted
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Forbidden
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Not Found
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Conflict
         "422":
           content:
             application/json:
@@ -2384,10 +1194,10 @@ paths:
           description: Service Unavailable
       security:
         - accessCookie: []
-      summary: Заменить карту предмета
+      summary: Собрать граф курса
       tags:
-        - Учебная база
-      x-implementation: implemented
+        - Граф курса
+      x-implementation: planned
   /admin/subjects/{subject_id}/materials:
     get:
       description: Доступно только admin. Возвращает список загруженных материалов курса с извлеченным текстом.
@@ -2405,7 +1215,7 @@ paths:
             application/json:
               schema:
                 items:
-                  $ref: '#/components/schemas/material.Material'
+                  $ref: '#/components/schemas/geek.Material'
                 type: array
           description: OK
         "400":
@@ -2437,7 +1247,7 @@ paths:
       summary: Список материалов курса
       tags:
         - Материалы
-      x-implementation: implemented
+      x-implementation: planned
     post:
       description: Доступно только admin. Загружает файлы лекций/лаб, сохраняет их в S3, выполняет OCR и сохраняет извлеченный Markdown с формулами LaTeX.
       operationId: uploadSubjectMaterials
@@ -2458,17 +1268,25 @@ paths:
                   description: Файл лекции или лабы (PDF, Markdown, текст)
                   format: binary
                   type: string
+                kind:
+                  $ref: '#/components/schemas/geek.MaterialKind'
+                week:
+                  description: Неделя курса; применяется ко всем файлам запроса
+                  minimum: 1
+                  type: integer
               required:
+                - week
+                - kind
                 - file
               type: object
-        description: Файл лекции или лабы (PDF, Markdown, текст)
+        description: Неделя, вид и файлы. Поля week и kind идут в форме до файлов и применяются ко всем файлам запроса.
         required: true
       responses:
         "200":
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/http.UploadResult'
+                $ref: '#/components/schemas/geek.UploadResult'
           description: OK
         "400":
           content:
@@ -2494,6 +1312,12 @@ paths:
               schema:
                 $ref: '#/components/schemas/fault.Error'
           description: Request Entity Too Large
+        "422":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unprocessable Entity
         "500":
           content:
             application/json:
@@ -2505,7 +1329,7 @@ paths:
       summary: Загрузить материалы курса
       tags:
         - Материалы
-      x-implementation: implemented
+      x-implementation: planned
   /admin/subjects/{subject_id}/materials/{material_id}:
     delete:
       description: Доступно только admin. Удаляет материал из базы и S3.
@@ -2560,6 +1384,69 @@ paths:
       tags:
         - Материалы
       x-implementation: implemented
+    patch:
+      description: Доступно только admin. Меняет неделю и вид без повторного OCR.
+      parameters:
+        - description: ID курса (предмета)
+          in: path
+          name: subject_id
+          required: true
+          schema:
+            maxLength: 128
+            minLength: 1
+            type: string
+        - description: ID материала
+          in: path
+          name: material_id
+          required: true
+          schema:
+            maxLength: 128
+            minLength: 1
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/geek.MaterialPatch'
+        description: Новые неделя и/или вид
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/geek.Material'
+          description: OK
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Forbidden
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Not Found
+        "422":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unprocessable Entity
+      security:
+        - accessCookie: []
+      summary: Исправить неделю или вид материала
+      tags:
+        - Материалы
+      x-implementation: planned
   /admin/subjects/{subject_id}/materials/{material_id}/raw:
     get:
       description: Доступно только admin. Скачивание исходного файла материала.
@@ -2620,74 +1507,6 @@ paths:
       summary: Скачать исходный файл материала
       tags:
         - Материалы
-      x-implementation: implemented
-  /assessments/evaluate:
-    post:
-      description: Принимает ID расшифровки, сохранённого варианта и позиции задания. Сервер проверяет владельца, берёт исторический снимок задания и роль main/basic. Оценка не сохраняется.
-      operationId: evaluateAnswer
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/assessmenthttp.EvaluateRequest'
-              description: Расшифровка и позиция сохранённого варианта
-              summary: request
-        description: Расшифровка и позиция сохранённого варианта
-        required: true
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/assessmenthttp.EvaluateResponse'
-          description: OK
-        "401":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Unauthorized
-        "404":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Not Found
-        "413":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Request Entity Too Large
-        "422":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Unprocessable Entity
-        "502":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Bad Gateway
-        "503":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Service Unavailable
-        "504":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Gateway Timeout
-      security:
-        - accessCookie: []
-      summary: Оценить сохранённый голосовой ответ
-      tags:
-        - Грейдинг и фидбэк
       x-implementation: implemented
   /auth/login:
     post:
@@ -2941,7 +1760,7 @@ paths:
       x-implementation: implemented
   /diagnostic-sessions:
     post:
-      description: Сохраняет в PostgreSQL снимок порядка варианта. Повтор с тем же ключом возвращает ту же сессию.
+      description: 'Устный экзамен Geek по графу курса. У студента одна активная диагностика на курс: если она есть, возвращается она (200), иначе создаётся новая с первым вопросом (201). 409 GRAPH_NOT_READY — граф курса не собран.'
       parameters:
         - description: Ключ повтора запроса
           in: header
@@ -2953,23 +1772,21 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/diagnostichttp.StartRequest'
-              description: Вариант для прохождения
-              summary: request
-        description: Вариант для прохождения
+              $ref: '#/components/schemas/geek.StartRequest'
+        description: Курс
         required: true
       responses:
         "200":
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/diagnostichttp.ProgressResponse'
+                $ref: '#/components/schemas/geek.Session'
           description: OK
         "201":
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/diagnostichttp.ProgressResponse'
+                $ref: '#/components/schemas/geek.Session'
           description: Created
         "401":
           content:
@@ -3003,14 +1820,15 @@ paths:
           description: Service Unavailable
       security:
         - accessCookie: []
-      summary: Начать диагностическую сессию
+      summary: Начать или продолжить диагностику
       tags:
         - Диагностика
-      x-implementation: implemented
+      x-implementation: planned
   /diagnostic-sessions/{id}:
     get:
+      description: Реплики, прогресс и текущий вопрос. Доступ владельца.
       parameters:
-        - description: ID сессии
+        - description: ID диагностики
           in: path
           name: id
           required: true
@@ -3023,7 +1841,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/diagnostichttp.ProgressResponse'
+                $ref: '#/components/schemas/geek.Session'
           description: OK
         "401":
           content:
@@ -3037,23 +1855,17 @@ paths:
               schema:
                 $ref: '#/components/schemas/fault.Error'
           description: Not Found
-        "422":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Unprocessable Entity
       security:
         - accessCookie: []
-      summary: Прочитать состояние диагностики
+      summary: Состояние диагностики
       tags:
         - Диагностика
-      x-implementation: implemented
+      x-implementation: planned
   /diagnostic-sessions/{id}/answers:
     post:
-      description: Выполняет STT, затем вызывает assessment application с variant_id, variant_task_id и transcription_id. Грейдер читает доверенный снимок и роль; ошибка оценки не меняет позицию.
+      description: 'Синхронно: ответ содержит реплику студента и следующую реплику Geek либо завершённую сессию. Повтор с тем же ключом возвращает тот же результат. 409 — turn_id не текущий или сессия не active.'
       parameters:
-        - description: ID сессии
+        - description: ID диагностики
           in: path
           name: id
           required: true
@@ -3069,200 +1881,17 @@ paths:
             type: string
       requestBody:
         content:
-          multipart/form-data:
-            schema:
-              additionalProperties: false
-              properties:
-                audio:
-                  description: WAV, Ogg/Opus или WebM/Opus, до 25 МиБ
-                  format: binary
-                  type: string
-                variant_task_id:
-                  description: ID текущей позиции варианта
-                  type: string
-              required:
-                - audio
-                - variant_task_id
-              type: object
-        description: WAV, Ogg/Opus или WebM/Opus, до 25 МиБ
-        required: true
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/diagnostichttp.ProgressResponse'
-          description: OK
-        "401":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Unauthorized
-        "404":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Not Found
-        "409":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Conflict
-        "413":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Request Entity Too Large
-        "415":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Unsupported Media Type
-        "422":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Unprocessable Entity
-        "502":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Bad Gateway
-        "503":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Service Unavailable
-        "504":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Gateway Timeout
-      security:
-        - accessCookie: []
-      summary: Отправить голосовой ответ
-      tags:
-        - Диагностика
-      x-implementation: implemented
-  /diagnostic-sessions/{id}/answers/transcription:
-    post:
-      description: Использует сохранённый текст текущего пользователя без повторного STT. Не принимает редактируемый текст ответа.
-      parameters:
-        - description: ID сессии
-          in: path
-          name: id
-          required: true
-          schema:
-            type: string
-        - description: Ключ повтора запроса
-          in: header
-          name: Idempotency-Key
-          required: true
-          schema:
-            type: string
-      requestBody:
-        content:
           application/json:
             schema:
-              $ref: '#/components/schemas/diagnostichttp.TranscriptionAnswerRequest'
-              description: Подтверждённая расшифровка
-              summary: request
-        description: Подтверждённая расшифровка
+              $ref: '#/components/schemas/geek.AnswerRequest'
+        description: Ответ на текущую реплику
         required: true
       responses:
         "200":
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/diagnostichttp.ProgressResponse'
-          description: OK
-        "401":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Unauthorized
-        "404":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Not Found
-        "409":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Conflict
-        "413":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Request Entity Too Large
-        "422":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Unprocessable Entity
-        "502":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Bad Gateway
-        "503":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Service Unavailable
-        "504":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Gateway Timeout
-      security:
-        - accessCookie: []
-      summary: Отправить подтверждённую расшифровку ответа
-      tags:
-        - Диагностика
-      x-implementation: implemented
-  /diagnostic-sessions/{id}/current/audio:
-    get:
-      description: Незавершённая запись получает первое место среди ожидающих. Уже выполняющаяся озвучка не прерывается.
-      parameters:
-        - description: ID сессии
-          in: path
-          name: id
-          required: true
-          schema:
-            maxLength: 128
-            minLength: 1
-            type: string
-        - description: ID текущего задания
-          in: query
-          name: variant_task_id
-          required: true
-          schema:
-            type: string
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/diagnostichttp.AudioMetadataResponse'
+                $ref: '#/components/schemas/geek.Session'
           description: OK
         "401":
           content:
@@ -3296,214 +1925,15 @@ paths:
           description: Service Unavailable
       security:
         - accessCookie: []
-      summary: Прочитать состояние озвучки текущего задания
+      summary: Ответить на реплику Geek
       tags:
         - Диагностика
-      x-implementation: implemented
-  /diagnostic-sessions/{id}/current/audio/regenerate:
-    post:
-      description: Проверяет сохранённый объект и при необходимости синхронно восстанавливает только сохранённую инструкцию задания.
-      parameters:
-        - description: ID сессии
-          in: path
-          name: id
-          required: true
-          schema:
-            maxLength: 128
-            minLength: 1
-            type: string
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/diagnostichttp.AudioRegenerationRequest'
-              description: Текущее задание
-              summary: request
-        description: Текущее задание
-        required: true
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/diagnostichttp.AudioMetadataResponse'
-          description: OK
-        "401":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Unauthorized
-        "404":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Not Found
-        "409":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Conflict
-        "422":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Unprocessable Entity
-        "503":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Service Unavailable
-      security:
-        - accessCookie: []
-      summary: Восстановить озвучку текущего задания
-      tags:
-        - Диагностика
-      x-implementation: implemented
-  /diagnostic-sessions/{id}/feedback:
-    get:
-      description: Детерминированно агрегирует результаты сессии (освоенные темы, частичные знания, подтверждённые пробелы) и формирует педагогическое резюме.
-      parameters:
-        - description: ID сессии
-          in: path
-          name: id
-          required: true
-          schema:
-            type: string
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/http.OverallFeedbackResponse'
-          description: OK
-        "401":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Unauthorized
-        "404":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Not Found
-        "409":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Conflict
-        "503":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Service Unavailable
-      security:
-        - accessCookie: []
-      summary: Получить итоговый педагогический фидбэк по диагностической сессии
-      tags:
-        - Диагностика
-      x-implementation: implemented
-  /diagnostic-sessions/{id}/learning-plan:
-    get:
-      parameters:
-        - description: ID диагностики
-          in: path
-          name: id
-          required: true
-          schema:
-            type: string
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/learninghttp.PlanResponse'
-          description: OK
-        "401":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Unauthorized
-        "404":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Not Found
-      security:
-        - accessCookie: []
-      summary: План обучения по диагностике
-      tags:
-        - Обучение
-      x-implementation: implemented
-    post:
-      description: 'План строится один раз: в него входят все ОР компетенций с ошибками, важные первыми, пока хватает часов; остальные — «если останется время». Повторный запрос возвращает уже созданный план.'
-      parameters:
-        - description: ID диагностики
-          in: path
-          name: id
-          required: true
-          schema:
-            type: string
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/learninghttp.CreatePlanRequest'
-              description: Часы на изучение предмета
-              summary: request
-        description: Часы на изучение предмета
-        required: true
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/learninghttp.PlanResponse'
-          description: OK
-        "401":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Unauthorized
-        "404":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Not Found
-        "409":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Conflict
-        "422":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Unprocessable Entity
-      security:
-        - accessCookie: []
-      summary: Создать план обучения
-      tags:
-        - Обучение
-      x-implementation: implemented
+      x-implementation: planned
   /diagnostic-sessions/{id}/result:
     get:
+      description: Предварительная оценка A–D, статусы тем и пробелы с неделями и источниками. 409 — диагностика не completed.
       parameters:
-        - description: ID сессии
+        - description: ID диагностики
           in: path
           name: id
           required: true
@@ -3516,7 +1946,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/diagnostichttp.ResultResponse'
+                $ref: '#/components/schemas/geek.Result'
           description: OK
         "401":
           content:
@@ -3536,49 +1966,40 @@ paths:
               schema:
                 $ref: '#/components/schemas/fault.Error'
           description: Conflict
-        "422":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Unprocessable Entity
       security:
         - accessCookie: []
-      summary: Прочитать результат диагностики
+      summary: Итог диагностики
       tags:
         - Диагностика
-      x-implementation: implemented
-  /diagnostic-sessions/{id}/skip:
-    post:
+      x-implementation: planned
+  /diagnostic-sessions/{id}/turns/{turn_id}/audio:
+    get:
+      description: Backend синтезирует реплику Geek через TTS и кэширует WAV в S3; длина реплики не ограничена лимитом /voice/syntheses. 404 — реплика студента или чужая сессия.
       parameters:
-        - description: ID сессии
+        - description: ID диагностики
           in: path
           name: id
           required: true
           schema:
+            maxLength: 128
+            minLength: 1
             type: string
-        - description: Ключ повтора запроса
-          in: header
-          name: Idempotency-Key
+        - description: ID реплики Geek
+          in: path
+          name: turn_id
           required: true
           schema:
+            maxLength: 128
+            minLength: 1
             type: string
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/diagnostichttp.SkipRequest'
-              description: Текущее задание
-              summary: request
-        description: Текущее задание
-        required: true
       responses:
         "200":
           content:
-            application/json:
+            audio/wav:
               schema:
-                $ref: '#/components/schemas/diagnostichttp.ProgressResponse'
-          description: OK
+                format: binary
+                type: string
+          description: WAV реплики
         "401":
           content:
             application/json:
@@ -3591,18 +2012,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/fault.Error'
           description: Not Found
-        "409":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Conflict
-        "422":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Unprocessable Entity
         "503":
           content:
             application/json:
@@ -3611,156 +2020,10 @@ paths:
           description: Service Unavailable
       security:
         - accessCookie: []
-      summary: Пропустить вопрос диагностики
+      summary: Голос реплики Geek
       tags:
         - Диагностика
-      x-implementation: implemented
-  /diagnostic-sessions/{id}/training:
-    get:
-      parameters:
-        - description: ID диагностики
-          in: path
-          name: id
-          required: true
-          schema:
-            type: string
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/training.Progress'
-          description: OK
-        "401":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Unauthorized
-        "404":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Not Found
-      security:
-        - accessCookie: []
-      summary: Тренировка по диагностике
-      tags:
-        - Тренировка
-      x-implementation: implemented
-    post:
-      parameters:
-        - description: ID диагностики
-          in: path
-          name: id
-          required: true
-          schema:
-            type: string
-        - description: Ключ запуска
-          in: header
-          name: Idempotency-Key
-          required: true
-          schema:
-            type: string
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/traininghttp.StartRequest'
-              description: Ревизия preview для свободной тренировки
-              summary: request
-        description: Ревизия preview для свободной тренировки
-        required: true
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/training.Progress'
-          description: OK
-        "201":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/training.Progress'
-          description: Created
-        "401":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Unauthorized
-        "404":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Not Found
-        "409":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Conflict
-        "422":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Unprocessable Entity
-      security:
-        - accessCookie: []
-      summary: Начать тренировку
-      tags:
-        - Тренировка
-      x-implementation: implemented
-  /diagnostic-sessions/{id}/training/preview:
-    get:
-      parameters:
-        - description: ID диагностики
-          in: path
-          name: id
-          required: true
-          schema:
-            type: string
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/training.Preview'
-          description: OK
-        "401":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Unauthorized
-        "404":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Not Found
-        "409":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Conflict
-        "422":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Unprocessable Entity
-      security:
-        - accessCookie: []
-      summary: Темы предстоящей тренировки
-      tags:
-        - Тренировка
-      x-implementation: implemented
+      x-implementation: planned
   /health:
     get:
       operationId: health
@@ -3781,366 +2044,9 @@ paths:
       tags:
         - Сервис
       x-implementation: implemented
-  /learning-plans/{id}:
-    get:
-      parameters:
-        - description: ID плана
-          in: path
-          name: id
-          required: true
-          schema:
-            type: string
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/learninghttp.PlanResponse'
-          description: OK
-        "401":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Unauthorized
-        "404":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Not Found
-      security:
-        - accessCookie: []
-      summary: План обучения
-      tags:
-        - Обучение
-      x-implementation: implemented
-  /learning-plans/{id}/answers:
-    post:
-      description: Расшифровка сохраняется сразу, затем наставник проверяет ответ. Верный ответ завершает тему; неверный получает разбор и новый вопрос, после трёх попыток тема помечается «повторить».
-      parameters:
-        - description: ID плана
-          in: path
-          name: id
-          required: true
-          schema:
-            type: string
-      requestBody:
-        content:
-          multipart/form-data:
-            schema:
-              additionalProperties: false
-              properties:
-                audio:
-                  description: Голосовой ответ
-                  format: binary
-                  type: string
-              required:
-                - audio
-              type: object
-        description: Голосовой ответ
-        required: true
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/learninghttp.PlanResponse'
-          description: OK
-        "401":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Unauthorized
-        "404":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Not Found
-        "409":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Conflict
-        "413":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Request Entity Too Large
-        "415":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Unsupported Media Type
-        "422":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Unprocessable Entity
-        "502":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Bad Gateway
-        "503":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Service Unavailable
-        "504":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Gateway Timeout
-      security:
-        - accessCookie: []
-      summary: Ответить голосом на практику
-      tags:
-        - Обучение
-      x-implementation: implemented
-  /learning-plans/{id}/answers/retry:
-    post:
-      parameters:
-        - description: ID плана
-          in: path
-          name: id
-          required: true
-          schema:
-            type: string
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/learninghttp.PlanResponse'
-          description: OK
-        "401":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Unauthorized
-        "404":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Not Found
-        "409":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Conflict
-        "502":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Bad Gateway
-        "503":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Service Unavailable
-        "504":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Gateway Timeout
-      security:
-        - accessCookie: []
-      summary: Повторить проверку ответа
-      tags:
-        - Обучение
-      x-implementation: implemented
-  /learning-plans/{id}/answers/transcription:
-    post:
-      description: Проверяет сохранённый текст текущего пользователя без повторного STT. Номер темы и текст вопроса защищают от отправки на изменившееся задание.
-      parameters:
-        - description: ID плана
-          in: path
-          name: id
-          required: true
-          schema:
-            type: string
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/learninghttp.TranscriptionAnswerRequest'
-              description: Подтверждённая расшифровка и текущее задание
-              summary: request
-        description: Подтверждённая расшифровка и текущее задание
-        required: true
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/learninghttp.PlanResponse'
-          description: OK
-        "401":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Unauthorized
-        "404":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Not Found
-        "409":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Conflict
-        "413":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Request Entity Too Large
-        "422":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Unprocessable Entity
-        "502":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Bad Gateway
-        "503":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Service Unavailable
-        "504":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Gateway Timeout
-      security:
-        - accessCookie: []
-      summary: Отправить подтверждённую расшифровку практики
-      tags:
-        - Обучение
-      x-implementation: implemented
-  /learning-plans/{id}/items/{index}/messages:
-    get:
-      parameters:
-        - description: ID плана
-          in: path
-          name: id
-          required: true
-          schema:
-            type: string
-        - description: Номер темы плана
-          in: path
-          name: index
-          required: true
-          schema:
-            type: integer
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/learninghttp.MessagesResponse'
-          description: OK
-        "401":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Unauthorized
-        "404":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Not Found
-      security:
-        - accessCookie: []
-      summary: Чат урока по теме плана
-      tags:
-        - Обучение
-      x-implementation: implemented
-  /learning-plans/{id}/open:
-    post:
-      description: Теория сохраняется сразу и доступна через сообщения темы, пока готовится практика. Ответ возвращается после готовности вопроса. При ошибке практики теория сохраняется; повторный запрос продолжает с неё. Готовый урок не пересоздаётся.
-      parameters:
-        - description: ID плана
-          in: path
-          name: id
-          required: true
-          schema:
-            type: string
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/learninghttp.PlanResponse'
-          description: OK
-        "401":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Unauthorized
-        "404":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Not Found
-        "502":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Bad Gateway
-        "503":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Service Unavailable
-        "504":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Gateway Timeout
-      security:
-        - accessCookie: []
-      summary: Открыть урок текущей темы
-      tags:
-        - Обучение
-      x-implementation: implemented
   /subjects:
     get:
-      description: Студентам возвращаются только предметы, для которых variantgen может собрать вариант. Admin видит все предметы и признак готовности.
+      description: 'Студентам возвращаются только готовые курсы: пока граф курса не хранится, готов курс с распознанным материалом. Admin видит все предметы и признак готовности.'
       operationId: listSubjects
       responses:
         "200":
@@ -4169,1278 +2075,6 @@ paths:
       tags:
         - Предметы
       x-implementation: implemented
-  /subjects/{subject_id}/competency-map:
-    get:
-      description: Ревизия, время импорта и дерево компетенций предмета. Эталоны и критерии не возвращаются.
-      operationId: readSubjectCompetencyMap
-      parameters:
-        - description: ID предмета
-          in: path
-          name: subject_id
-          required: true
-          schema:
-            type: string
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/competencyhttp.MapSnapshot'
-          description: OK
-        "401":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Unauthorized
-        "404":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Not Found
-        "503":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Service Unavailable
-      security:
-        - accessCookie: []
-      summary: Прочитать карту предмета
-      tags:
-        - Учебная база
-      x-implementation: implemented
-  /subjects/{subject_id}/learning-state:
-    get:
-      parameters:
-        - description: ID предмета
-          in: path
-          name: subject_id
-          required: true
-          schema:
-            type: string
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/diagnostichttp.LearningStateResponse'
-          description: OK
-        "401":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Unauthorized
-        "404":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Not Found
-      security:
-        - accessCookie: []
-      summary: Состояние обучения по предмету
-      tags:
-        - Диагностика
-      x-implementation: implemented
-  /task-audio/{id}/file:
-    get:
-      parameters:
-        - description: ID аудиозаписи задания
-          in: path
-          name: id
-          required: true
-          schema:
-            maxLength: 256
-            minLength: 1
-            type: string
-      responses:
-        "200":
-          content:
-            audio/wav:
-              schema:
-                format: binary
-                type: string
-          description: Сохранённая WAV-озвучка
-        "401":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Unauthorized
-        "404":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Not Found
-        "409":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Conflict
-        "422":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Unprocessable Entity
-        "503":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Service Unavailable
-      security:
-        - accessCookie: []
-      summary: Получить сохранённую озвучку задания
-      tags:
-        - Задания
-      x-implementation: implemented
-  /tasks:
-    get:
-      description: Query-параметры должны быть известными, непустыми и передаваться однократно. Некорректное кодирование и недопустимые значения возвращают 422.
-      operationId: searchTasks
-      parameters:
-        - description: ID образовательного результата
-          in: query
-          name: outcome_id
-          schema:
-            type: string
-        - description: ID предмета
-          in: query
-          name: subject_id
-          required: true
-          schema:
-            type: string
-        - description: ID компетенции
-          in: query
-          name: competency_id
-          schema:
-            type: string
-        - description: ID составляющей
-          in: query
-          name: constituent_id
-          schema:
-            type: string
-        - description: Код таксономии
-          in: query
-          name: taxonomy
-          schema:
-            type: string
-        - description: Код уровня ALDs
-          in: query
-          name: ald_level
-          schema:
-            type: string
-        - description: Код уровня темы
-          in: query
-          name: topic_level
-          schema:
-            type: string
-        - description: Точная важность 1–5
-          in: query
-          name: importance
-          schema:
-            type: integer
-        - description: Минимальная важность 1–5 (включительно)
-          in: query
-          name: importance_min
-          schema:
-            type: integer
-        - description: Максимальная важность 1–5 (включительно)
-          in: query
-          name: importance_max
-          schema:
-            type: integer
-        - description: Фильтр включения в тест
-          in: query
-          name: include_in_test
-          schema:
-            type: boolean
-        - description: Код раздела РПД
-          in: query
-          name: section
-          schema:
-            type: string
-        - description: Код компетенции РПД
-          in: query
-          name: curriculum_competency
-          schema:
-            type: string
-        - description: authored или ai_generated
-          in: query
-          name: origin
-          schema:
-            type: string
-        - description: Максимум 100
-          in: query
-          name: limit
-          schema:
-            type: integer
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                items:
-                  $ref: '#/components/schemas/taskbankhttp.TaskSummary'
-                type: array
-          description: OK
-        "401":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Unauthorized
-        "422":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Unprocessable Entity
-        "503":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Service Unavailable
-      security:
-        - accessCookie: []
-      summary: Найти задания по свойствам карты
-      tags:
-        - Банк заданий
-      x-implementation: implemented
-  /tasks/{id}:
-    get:
-      operationId: getTaskProfile
-      parameters:
-        - description: ID задания
-          in: path
-          name: id
-          required: true
-          schema:
-            type: string
-        - description: ID предмета
-          in: query
-          name: subject_id
-          required: true
-          schema:
-            type: string
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/taskbankhttp.TaskProfile'
-          description: OK
-        "401":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Unauthorized
-        "404":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Not Found
-        "422":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Unprocessable Entity
-        "503":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Service Unavailable
-      security:
-        - accessCookie: []
-      summary: Получить профиль задания
-      tags:
-        - Банк заданий
-      x-implementation: implemented
-  /tasks/generate:
-    post:
-      operationId: generateTask
-      parameters:
-        - description: Ключ повтора запроса
-          in: header
-          name: Idempotency-Key
-          required: true
-          schema:
-            type: string
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/taskgenhttp.GenerateRequest'
-              description: Образовательный результат
-              summary: request
-        description: Образовательный результат
-        required: true
-      responses:
-        "201":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/taskgenhttp.GeneratedTask'
-          description: Created
-        "401":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Unauthorized
-        "404":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Not Found
-        "409":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Conflict
-        "413":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Request Entity Too Large
-        "422":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Unprocessable Entity
-        "502":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Bad Gateway
-        "503":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Service Unavailable
-      security:
-        - accessCookie: []
-      summary: Сгенерировать аналог задания
-      tags:
-        - Банк заданий
-      x-implementation: implemented
-  /training-sessions/{id}:
-    get:
-      parameters:
-        - description: ID тренировки
-          in: path
-          name: id
-          required: true
-          schema:
-            type: string
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/training.Progress'
-          description: OK
-        "401":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Unauthorized
-        "404":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Not Found
-      security:
-        - accessCookie: []
-      summary: Текущее упражнение и прогресс
-      tags:
-        - Тренировка
-      x-implementation: implemented
-  /training-sessions/{id}/answers:
-    post:
-      parameters:
-        - description: ID тренировки
-          in: path
-          name: id
-          required: true
-          schema:
-            type: string
-        - description: Ключ ответа
-          in: header
-          name: Idempotency-Key
-          required: true
-          schema:
-            type: string
-      requestBody:
-        content:
-          multipart/form-data:
-            schema:
-              additionalProperties: false
-              properties:
-                audio:
-                  description: Голосовой ответ
-                  format: binary
-                  type: string
-                exercise_id:
-                  description: Текущее упражнение
-                  type: string
-              required:
-                - exercise_id
-                - audio
-              type: object
-        description: Текущее упражнение
-        required: true
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/training.Progress'
-          description: OK
-        "401":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Unauthorized
-        "404":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Not Found
-        "409":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Conflict
-        "413":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Request Entity Too Large
-        "415":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Unsupported Media Type
-        "422":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Unprocessable Entity
-        "502":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Bad Gateway
-        "503":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Service Unavailable
-        "504":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Gateway Timeout
-      security:
-        - accessCookie: []
-      summary: Ответить на упражнение
-      tags:
-        - Тренировка
-      x-implementation: implemented
-  /training-sessions/{id}/current/audio:
-    get:
-      description: Незавершённая запись получает первое место среди ожидающих. Уже выполняющаяся озвучка не прерывается.
-      parameters:
-        - description: ID тренировки
-          in: path
-          name: id
-          required: true
-          schema:
-            type: string
-        - description: Текущее упражнение
-          in: query
-          name: exercise_id
-          required: true
-          schema:
-            type: string
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/traininghttp.AudioResponse'
-          description: OK
-        "401":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Unauthorized
-        "404":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Not Found
-        "409":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Conflict
-        "422":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Unprocessable Entity
-      security:
-        - accessCookie: []
-      summary: Озвучка текущего упражнения
-      tags:
-        - Тренировка
-      x-implementation: implemented
-  /training-sessions/{id}/exercises/{exercise_id}/chat:
-    get:
-      parameters:
-        - description: ID тренировки
-          in: path
-          name: id
-          required: true
-          schema:
-            type: string
-        - description: ID упражнения
-          in: path
-          name: exercise_id
-          required: true
-          schema:
-            type: string
-        - description: Sequence старого сообщения
-          in: query
-          name: cursor
-          schema:
-            type: string
-        - description: Размер страницы, 1–100
-          in: query
-          name: limit
-          schema:
-            type: integer
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/training.ChatPage'
-          description: OK
-        "401":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Unauthorized
-        "404":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Not Found
-      security:
-        - accessCookie: []
-      summary: Прочитать диалог репетитора
-      tags:
-        - Тренировка
-      x-implementation: implemented
-  /training-sessions/{id}/exercises/{exercise_id}/chat/turns:
-    post:
-      parameters:
-        - description: ID тренировки
-          in: path
-          name: id
-          required: true
-          schema:
-            type: string
-        - description: ID упражнения
-          in: path
-          name: exercise_id
-          required: true
-          schema:
-            type: string
-        - description: Ключ операции
-          in: header
-          name: Idempotency-Key
-          required: true
-          schema:
-            type: string
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/traininghttp.ChatTextRequest'
-              description: Текстовая реплика; для аудио используйте поля multipart
-              summary: body
-          multipart/form-data:
-            schema:
-              additionalProperties: false
-              properties:
-                audio:
-                  description: WAV, Ogg/Opus или WebM/Opus
-                  format: binary
-                  type: string
-                kind:
-                  description: message или check
-                  type: string
-                revision:
-                  description: Ревизия диалога
-                  type: integer
-              required:
-                - revision
-                - kind
-                - audio
-              type: object
-        description: Текстовая реплика; для аудио используйте поля multipart
-        required: true
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/training.ChatTurnResult'
-          description: OK
-        "401":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Unauthorized
-        "404":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Not Found
-        "409":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Conflict
-        "413":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Request Entity Too Large
-        "415":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Unsupported Media Type
-        "422":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Unprocessable Entity
-        "502":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Bad Gateway
-        "503":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Service Unavailable
-        "504":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Gateway Timeout
-      security:
-        - accessCookie: []
-      summary: Отправить реплику репетитору
-      tags:
-        - Тренировка
-      x-implementation: implemented
-  /training-sessions/{id}/exercises/{exercise_id}/chat/turns/{turn_id}/cancel:
-    post:
-      parameters:
-        - description: ID тренировки
-          in: path
-          name: id
-          required: true
-          schema:
-            type: string
-        - description: ID упражнения
-          in: path
-          name: exercise_id
-          required: true
-          schema:
-            type: string
-        - description: ID реплики
-          in: path
-          name: turn_id
-          required: true
-          schema:
-            type: string
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/traininghttp.EmptyChatRequest'
-              description: Пустой объект
-              summary: body
-        description: Пустой объект
-        required: true
-      responses:
-        "204":
-          description: No Content
-        "401":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Unauthorized
-        "404":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Not Found
-        "409":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Conflict
-      security:
-        - accessCookie: []
-      summary: Отменить ожидающую реплику
-      tags:
-        - Тренировка
-      x-implementation: implemented
-  /training-sessions/{id}/exercises/{exercise_id}/chat/turns/{turn_id}/retry:
-    post:
-      parameters:
-        - description: ID тренировки
-          in: path
-          name: id
-          required: true
-          schema:
-            type: string
-        - description: ID упражнения
-          in: path
-          name: exercise_id
-          required: true
-          schema:
-            type: string
-        - description: ID реплики
-          in: path
-          name: turn_id
-          required: true
-          schema:
-            type: string
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/traininghttp.EmptyChatRequest'
-              description: Пустой объект
-              summary: body
-        description: Пустой объект
-        required: true
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/training.ChatTurnResult'
-          description: OK
-        "401":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Unauthorized
-        "404":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Not Found
-        "409":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Conflict
-        "503":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Service Unavailable
-      security:
-        - accessCookie: []
-      summary: Повторить реплику репетитору
-      tags:
-        - Тренировка
-      x-implementation: implemented
-  /training-sessions/{id}/exercises/{exercise_id}/next:
-    post:
-      parameters:
-        - description: ID тренировки
-          in: path
-          name: id
-          required: true
-          schema:
-            type: string
-        - description: ID упражнения
-          in: path
-          name: exercise_id
-          required: true
-          schema:
-            type: string
-        - description: Ключ операции
-          in: header
-          name: Idempotency-Key
-          required: true
-          schema:
-            type: string
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/traininghttp.NextRequest'
-              description: Текущая ревизия диалога
-              summary: body
-        description: Текущая ревизия диалога
-        required: true
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/training.Progress'
-          description: OK
-        "401":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Unauthorized
-        "404":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Not Found
-        "409":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Conflict
-      security:
-        - accessCookie: []
-      summary: Завершить тренировочное упражнение
-      tags:
-        - Тренировка
-      x-implementation: implemented
-  /training-sessions/{id}/history:
-    get:
-      parameters:
-        - description: ID тренировки
-          in: path
-          name: id
-          required: true
-          schema:
-            type: string
-        - description: Размер страницы
-          in: query
-          name: limit
-          schema:
-            default: 20
-            maximum: 100
-            minimum: 1
-            type: integer
-        - description: Курсор
-          in: query
-          name: cursor
-          schema:
-            type: string
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/traininghttp.HistoryResponse'
-          description: OK
-        "401":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Unauthorized
-        "404":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Not Found
-        "422":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Unprocessable Entity
-      security:
-        - accessCookie: []
-      summary: История ответов тренировки
-      tags:
-        - Тренировка
-      x-implementation: implemented
-  /training-sessions/{id}/skip:
-    post:
-      parameters:
-        - description: ID сессии
-          in: path
-          name: id
-          required: true
-          schema:
-            type: string
-        - description: Ключ повтора запроса
-          in: header
-          name: Idempotency-Key
-          required: true
-          schema:
-            type: string
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/traininghttp.SkipRequest'
-              description: Текущее упражнение
-              summary: request
-        description: Текущее упражнение
-        required: true
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/training.Progress'
-          description: OK
-        "401":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Unauthorized
-        "404":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Not Found
-        "409":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Conflict
-        "422":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Unprocessable Entity
-        "503":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Service Unavailable
-      security:
-        - accessCookie: []
-      summary: Пропустить вопрос тренировки
-      tags:
-        - Тренировка
-      x-implementation: implemented
-  /variants:
-    get:
-      description: Возвращает только метаданные вариантов владельца с cursor-пагинацией по времени создания и ID. Query-параметры должны быть известными, непустыми и передаваться однократно. Некорректное кодирование и недопустимые значения возвращают 422.
-      parameters:
-        - description: Размер страницы, 1–100
-          in: query
-          name: limit
-          schema:
-            default: 20
-            maximum: 100
-            minimum: 1
-            type: integer
-        - description: Курсор страницы
-          in: query
-          name: cursor
-          schema:
-            type: string
-        - description: ID предмета
-          in: query
-          name: subject_id
-          required: true
-          schema:
-            type: string
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/variantgenhttp.VariantList'
-          description: OK
-        "401":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Unauthorized
-        "404":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Not Found
-        "422":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Unprocessable Entity
-        "503":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Service Unavailable
-      security:
-        - accessCookie: []
-      summary: Прочитать свои сохранённые варианты
-      tags:
-        - Варианты
-      x-implementation: implemented
-    post:
-      description: Вариант строится по активной карте указанного предмета из готовых TRUE-ОР. Компетенции нужны три таких ОР. Основной — с наибольшим рангом Блума, при равенстве — с большей важностью; два базовых — самые простые из остальных. Неуспешные компетенции возвращаются с причиной. Повтор ключа для другого предмета возвращает конфликт.
-      parameters:
-        - description: Ключ повтора успешного запроса
-          in: header
-          name: Idempotency-Key
-          required: true
-          schema:
-            maxLength: 128
-            minLength: 1
-            type: string
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/variantgenhttp.CreateRequest'
-              description: Предмет варианта
-              summary: request
-        description: Предмет варианта
-        required: true
-      responses:
-        "201":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/variantgenhttp.Variant'
-          description: Created
-        "401":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Unauthorized
-        "404":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Not Found
-        "409":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Conflict
-        "422":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Unprocessable Entity
-        "503":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Service Unavailable
-      security:
-        - accessCookie: []
-      summary: Собрать и сохранить вариант
-      tags:
-        - Варианты
-      x-implementation: implemented
-  /variants/{id}:
-    get:
-      description: Возвращает сохранённый план всей включённой карты, включая тексты main и обоих basic. Эталоны, criteria и ОС не выдаются.
-      parameters:
-        - description: ID варианта
-          in: path
-          name: id
-          required: true
-          schema:
-            maxLength: 128
-            minLength: 1
-            type: string
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/variantgenhttp.Variant'
-          description: OK
-        "401":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Unauthorized
-        "404":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Not Found
-        "503":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Service Unavailable
-      security:
-        - accessCookie: []
-      summary: Прочитать вариант
-      tags:
-        - Варианты
-      x-implementation: implemented
-    parameters:
-      - in: path
-        name: id
-        required: true
-        schema:
-          maxLength: 128
-          minLength: 1
-          type: string
-  /variants/{id}/tasks/{task_id}:
-    get:
-      description: Возвращает публичные поля задания и профиля без эталона, criteria и ОС. Позиция должна принадлежать указанному варианту и владельцу.
-      parameters:
-        - description: ID варианта
-          in: path
-          name: id
-          required: true
-          schema:
-            maxLength: 128
-            minLength: 1
-            type: string
-        - description: ID позиции варианта
-          in: path
-          name: task_id
-          required: true
-          schema:
-            maxLength: 128
-            minLength: 1
-            type: string
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/variantgenhttp.VariantTask'
-          description: OK
-        "401":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Unauthorized
-        "404":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Not Found
-        "503":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Service Unavailable
-      security:
-        - accessCookie: []
-      summary: Прочитать задание варианта
-      tags:
-        - Варианты
-      x-implementation: implemented
-    parameters:
-      - in: path
-        name: id
-        required: true
-        schema:
-          maxLength: 128
-          minLength: 1
-          type: string
-      - description: ID сохранённой позиции варианта, не ID живого банка.
-        in: path
-        name: task_id
-        required: true
-        schema:
-          maxLength: 128
-          minLength: 1
-          type: string
   /voice/syntheses:
     post:
       operationId: synthesizeQuestion

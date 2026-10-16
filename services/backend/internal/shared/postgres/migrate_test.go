@@ -8,7 +8,6 @@ import (
 	"errors"
 	"io/fs"
 	"os"
-	"strings"
 	"sync"
 	"testing"
 	"testing/fstest"
@@ -93,24 +92,17 @@ func TestMigrateFreshAndRepeat(t *testing.T) {
 		}
 	}
 	assertGooseVersion(t, pool)
-	var revision int64
-	if err := pool.QueryRow(ctx, "SELECT revision FROM competency_map_state").Scan(&revision); err != nil || revision != 0 {
-		t.Fatalf("initial state: revision=%d, err=%v", revision, err)
-	}
-	var subjects, imports int
+	var subjects int
 	if err := pool.QueryRow(ctx, "SELECT count(*) FROM subjects").Scan(&subjects); err != nil || subjects != 0 {
 		t.Fatalf("fresh subjects=%d err=%v", subjects, err)
 	}
-	if err := pool.QueryRow(ctx, "SELECT count(*) FROM competency_map_imports").Scan(&imports); err != nil || imports != 0 {
-		t.Fatalf("fresh imports=%d err=%v", imports, err)
-	}
 	var versions int
-	if err := pool.QueryRow(ctx, "SELECT count(*) FROM goose_db_version WHERE is_applied AND version_id > 0").Scan(&versions); err != nil || versions != 10 {
-		t.Fatalf("applied migrations=%d err=%v, want 10", versions, err)
+	if err := pool.QueryRow(ctx, "SELECT count(*) FROM goose_db_version WHERE is_applied AND version_id > 0").Scan(&versions); err != nil || versions != 1 {
+		t.Fatalf("applied migrations=%d err=%v, want 1", versions, err)
 	}
 }
 
-func TestMigrateDownRemovesCyclicSubjectSchema(t *testing.T) {
+func TestMigrateDownRemovesSchema(t *testing.T) {
 	pool := migrationPool(t)
 	ctx := context.Background()
 	if err := Migrate(ctx, pool); err != nil {
@@ -137,114 +129,11 @@ func TestMigrateDownRemovesCyclicSubjectSchema(t *testing.T) {
 	var remaining int
 	if err := pool.QueryRow(ctx, `SELECT count(*) FROM information_schema.tables
 WHERE table_schema=current_schema() AND table_name IN
-('subjects','competency_map_imports','competency_map_state','variants','audio_assets','diagnostic_sessions','training_sessions','subject_materials')`).Scan(&remaining); err != nil {
+('users','auth_sessions','transcriptions','subjects','subject_materials')`).Scan(&remaining); err != nil {
 		t.Fatal(err)
 	}
 	if remaining != 0 {
 		t.Fatalf("schema tables remain after rollback: %d", remaining)
-	}
-}
-
-func TestSubjectRequiredWithoutDefaults(t *testing.T) {
-	pool := migrationPool(t)
-	ctx := context.Background()
-	if err := Migrate(ctx, pool); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := pool.Exec(ctx, `INSERT INTO users(id,email,password_hash,created_at) VALUES ('u','u@example.test','hash',1)`); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := pool.Exec(ctx, `INSERT INTO competency_map_imports(revision,imported_at,imported_by,competency_count,constituent_count,outcome_count,task_count,source_format,source_headers) VALUES (1,1,'u',0,0,0,0,'paired','[]')`); err == nil {
-		t.Fatal("import without subject_id succeeded")
-	}
-	if _, err := pool.Exec(ctx, `INSERT INTO variants(id,user_id,create_request_key,map_revision,algorithm_version,included_competency_count,skipped_competencies,created_at) VALUES ('v','u','key',0,'test',1,'[]',1)`); err == nil {
-		t.Fatal("variant without subject fields succeeded")
-	}
-	for _, column := range []struct{ table, name string }{{"competency_map_imports", "subject_id"}, {"variants", "subject_id"}, {"variants", "subject_name_snapshot"}} {
-		var def *string
-		if err := pool.QueryRow(ctx, `SELECT column_default FROM information_schema.columns WHERE table_schema=current_schema() AND table_name=$1 AND column_name=$2`, column.table, column.name).Scan(&def); err != nil {
-			t.Fatal(err)
-		}
-		if def != nil {
-			t.Fatalf("%s.%s default = %q", column.table, column.name, *def)
-		}
-	}
-}
-
-func TestActiveRevisionForeignKeyAllowsReimport(t *testing.T) {
-	pool := migrationPool(t)
-	ctx := context.Background()
-	if err := Migrate(ctx, pool); err != nil {
-		t.Fatal(err)
-	}
-	_, err := pool.Exec(ctx, `
-INSERT INTO users(id,email,password_hash,created_at) VALUES ('u','u@example.test','hash',1);
-INSERT INTO subjects(id,name,created_at) VALUES ('s','Subject',1);
-INSERT INTO competency_map_imports(revision,imported_at,imported_by,competency_count,constituent_count,outcome_count,task_count,source_format,source_headers,subject_id)
-VALUES (1,1,'u',1,1,1,1,'paired','[]','s');
-INSERT INTO competencies(id,name,revision) VALUES ('c','Competency',1);
-INSERT INTO variants(id,user_id,create_request_key,map_revision,algorithm_version,included_competency_count,skipped_competencies,created_at,subject_id,subject_name_snapshot)
-VALUES ('v','u','request',1,'test',1,'[]',1,'s','Subject');
-INSERT INTO variant_tasks(id,variant_id,source_task_id_snapshot,competency_position,slot,role,task_snapshot,profile_snapshot)
-VALUES ('vt','v','old-task',1,0,'main','{"question":"Historical snapshot"}','{}');
-UPDATE subjects SET active_revision=1 WHERE id='s';`)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var fk string
-	if err := pool.QueryRow(ctx, `SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conname='subjects_active_revision_fkey'`).Scan(&fk); err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(fk, "ON DELETE SET NULL") {
-		t.Fatalf("active revision FK = %q", fk)
-	}
-	tx, err := pool.Begin(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := tx.Exec(ctx, `DELETE FROM competency_map_imports WHERE subject_id='s'`); err != nil {
-		_ = tx.Rollback(ctx)
-		t.Fatal(err)
-	}
-	var active *int64
-	if err := tx.QueryRow(ctx, `SELECT active_revision FROM subjects WHERE id='s'`).Scan(&active); err != nil || active != nil {
-		_ = tx.Rollback(ctx)
-		t.Fatalf("active revision after import delete=%v err=%v", active, err)
-	}
-	if _, err := tx.Exec(ctx, `INSERT INTO competency_map_imports(revision,imported_at,imported_by,competency_count,constituent_count,outcome_count,task_count,source_format,source_headers,subject_id) VALUES (2,2,'u',1,1,1,1,'paired','[]','s')`); err != nil {
-		_ = tx.Rollback(ctx)
-		t.Fatal(err)
-	}
-	if _, err := tx.Exec(ctx, `UPDATE subjects SET active_revision=2 WHERE id='s'`); err != nil {
-		_ = tx.Rollback(ctx)
-		t.Fatal(err)
-	}
-	if err := tx.Commit(ctx); err != nil {
-		t.Fatal(err)
-	}
-	var snapshot string
-	if err := pool.QueryRow(ctx, `SELECT task_snapshot->>'question' FROM variant_tasks WHERE id='vt'`).Scan(&snapshot); err != nil || snapshot != "Historical snapshot" {
-		t.Fatalf("snapshot=%q err=%v", snapshot, err)
-	}
-}
-
-func TestInitialSchemaAllowsPartialOutcomeProfiles(t *testing.T) {
-	pool := migrationPool(t)
-	ctx := context.Background()
-	if err := Migrate(ctx, pool); err != nil {
-		t.Fatal(err)
-	}
-	_, err := pool.Exec(ctx, `INSERT INTO users(id,email,password_hash,created_at) VALUES ('u','u@example.test','hash',1);
-INSERT INTO subjects(id,name,created_at) VALUES ('s','Subject',1);
-INSERT INTO competency_map_imports(revision,imported_at,imported_by,competency_count,constituent_count,outcome_count,task_count,source_format,source_headers,subject_id) VALUES (1,1,'u',1,1,1,0,'paired','[]','s');
-INSERT INTO competencies(id,name,revision) VALUES ('c','К',1);
-INSERT INTO constituents(id,competency_id,name) VALUES ('const','c','С');
-INSERT INTO outcomes(id,constituent_id,name,importance) VALUES ('o','const','О',3);`)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := pool.Exec(ctx, "UPDATE outcomes SET include_in_test=true WHERE id='o'"); err != nil {
-		t.Fatalf("initial schema rejected partial profile: %v", err)
 	}
 }
 

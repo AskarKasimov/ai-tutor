@@ -16,14 +16,7 @@ func configuredEnv(t *testing.T) map[string]string {
 		"BACKEND_TTS_SEED":                "17",
 		"BACKEND_TTS_CFG_VALUE":           "2",
 		"BACKEND_TTS_INFERENCE_TIMESTEPS": "50",
-		"BACKEND_ASSESSMENT_BASE_URL":     "http://assessment.test/v1",
-		"BACKEND_ASSESSMENT_MODEL":        "test-model",
-		"BACKEND_TASKGEN_BASE_URL":        "http://generation.test/v1",
-		"BACKEND_TASKGEN_MODEL":           "generation-model",
-		"BACKEND_TASKGEN_TIMEOUT":         "45s",
 		"BACKEND_VOICE_TIMEOUT":           "120s",
-		"BACKEND_ASSESSMENT_TIMEOUT":      "90s",
-		"BACKEND_TUTOR_TIMEOUT":           "60s",
 		"BACKEND_MAX_UPLOAD_BYTES":        "26214400",
 		"BACKEND_S3_ENDPOINT":             "",
 		"BACKEND_S3_REGION":               "us-east-1",
@@ -33,8 +26,6 @@ func configuredEnv(t *testing.T) map[string]string {
 		"BACKEND_S3_PATH_STYLE":           "true",
 		"BACKEND_S3_TIMEOUT":              "30s",
 		"BACKEND_S3_CREATE_BUCKET":        "true",
-		"BACKEND_AUDIO_WORKERS":           "1",
-		"BACKEND_AUDIO_POLL_INTERVAL":     "1s",
 	}
 	for key, value := range values {
 		t.Setenv(key, value)
@@ -42,51 +33,9 @@ func configuredEnv(t *testing.T) map[string]string {
 	return values
 }
 
-func TestTutorConfigInheritsAssessmentDefaults(t *testing.T) {
-	configuredEnv(t)
-	cfg, err := ConfigFromEnv()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !cfg.TutorEnabled || cfg.TutorBaseURL != cfg.AssessmentBaseURL || cfg.TutorModel != cfg.AssessmentModel || cfg.TutorTimeout != 60*time.Second || cfg.TutorTaskMaxChars != 16000 || cfg.TutorHistoryMaxChars != 16000 || cfg.TutorSummaryMaxChars != 4000 {
-		t.Fatalf("unexpected tutor settings: %+v", cfg)
-	}
-	t.Setenv("BACKEND_TUTOR_ENABLED", "false")
-	t.Setenv("BACKEND_TUTOR_BASE_URL", "")
-	t.Setenv("BACKEND_TUTOR_MODEL", "")
-	cfg, err = ConfigFromEnv()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if cfg.TutorEnabled {
-		t.Fatal("disabled tutor setting was ignored")
-	}
-}
-
-func TestTutorConfigRejectsInvalidSettings(t *testing.T) {
-	for key, values := range map[string][]string{
-		"BACKEND_TUTOR_ENABLED":           {"maybe"},
-		"BACKEND_TUTOR_BASE_URL":          {"relative", "ftp://tutor.test", "http://user:pass@tutor.test"},
-		"BACKEND_TUTOR_TIMEOUT":           {"bad", "0s", "-1s"},
-		"BACKEND_TUTOR_TASK_MAX_CHARS":    {"bad", "0", "-1"},
-		"BACKEND_TUTOR_HISTORY_MAX_CHARS": {"0", "-1"},
-		"BACKEND_TUTOR_SUMMARY_MAX_CHARS": {"0", "-1"},
-	} {
-		for _, value := range values {
-			t.Run(key+"/"+value, func(t *testing.T) {
-				configuredEnv(t)
-				t.Setenv(key, value)
-				if _, err := ConfigFromEnv(); err == nil {
-					t.Fatalf("%s=%q should be rejected", key, value)
-				}
-			})
-		}
-	}
-}
-
 func TestAudioConfigRequiresEverySetting(t *testing.T) {
 	for key := range configuredEnv(t) {
-		if key == "BACKEND_S3_ENDPOINT" || key == "BACKEND_S3_REGION" || key == "BACKEND_S3_PATH_STYLE" || key == "BACKEND_S3_TIMEOUT" || key == "BACKEND_S3_CREATE_BUCKET" || key == "BACKEND_AUDIO_WORKERS" || key == "BACKEND_AUDIO_POLL_INTERVAL" || key == "BACKEND_TUTOR_TIMEOUT" {
+		if key == "BACKEND_S3_ENDPOINT" || key == "BACKEND_S3_REGION" || key == "BACKEND_S3_PATH_STYLE" || key == "BACKEND_S3_TIMEOUT" || key == "BACKEND_S3_CREATE_BUCKET" {
 			continue
 		}
 		t.Run(key, func(t *testing.T) {
@@ -108,7 +57,7 @@ func TestAudioConfigLoadsExplicitSettings(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.STTURL != "http://stt.test/transcribe" || cfg.AssessmentModel != "test-model" || cfg.MaxUploadBytes != 1024 || cfg.TaskgenBaseURL != "http://generation.test/v1" || cfg.TaskgenModel != "generation-model" || cfg.TaskgenTimeout != 45*time.Second || cfg.S3Bucket != "task-audio-test" || cfg.AudioWorkers != 1 || cfg.AudioPollInterval != time.Second {
+	if cfg.STTURL != "http://stt.test/transcribe" || cfg.VoiceTimeout != 120*time.Second || cfg.MaxUploadBytes != 1024 || cfg.S3Bucket != "task-audio-test" {
 		t.Fatalf("settings were replaced or ignored: %+v", cfg)
 	}
 }
@@ -121,11 +70,7 @@ func TestAudioConfigRejectsInvalidSettings(t *testing.T) {
 		"BACKEND_TTS_SEED":                {"bad", "1.5", "9223372036854775808"},
 		"BACKEND_TTS_CFG_VALUE":           {"bad", "-0.1", "5.1", "NaN", "Inf"},
 		"BACKEND_TTS_INFERENCE_TIMESTEPS": {"bad", "0", "51", "1.5"},
-		"BACKEND_ASSESSMENT_BASE_URL":     {"relative"},
-		"BACKEND_TASKGEN_BASE_URL":        {"relative", "ftp://generation.test", "http://user:pass@generation.test", "http://generation.test/#fragment"},
-		"BACKEND_TASKGEN_TIMEOUT":         {"bad", "0s", "-1s"},
 		"BACKEND_VOICE_TIMEOUT":           {"bad", "0s", "-1s"},
-		"BACKEND_ASSESSMENT_TIMEOUT":      {"bad", "0s"},
 		"BACKEND_MAX_UPLOAD_BYTES":        {"bad", "0", "-1", "26214401"},
 		"BACKEND_S3_ENDPOINT":             {"relative", "ftp://s3.test", "http://user:pass@s3.test", "http://s3.test/?x=1", "http://s3.test/#fragment"},
 		"BACKEND_S3_BUCKET":               {""},
@@ -133,8 +78,6 @@ func TestAudioConfigRejectsInvalidSettings(t *testing.T) {
 		"BACKEND_S3_SECRET_KEY":           {""},
 		"BACKEND_S3_PATH_STYLE":           {"maybe"},
 		"BACKEND_S3_TIMEOUT":              {"bad", "0s", "-1s"},
-		"BACKEND_AUDIO_WORKERS":           {"bad", "0", "-1"},
-		"BACKEND_AUDIO_POLL_INTERVAL":     {"bad", "0s", "-1s"},
 	}
 	for key, values := range cases {
 		for _, value := range values {
@@ -171,14 +114,10 @@ func testConfig() Config {
 		ListenAddress: ":8002", DatabaseURL: "postgres://example/db",
 		STTURL: "http://stt.test/transcribe", TTSURL: "http://tts.test/synthesize",
 		TTSSeed: 17, TTSCFGValue: 2, TTSInferenceTimesteps: 50,
-		AssessmentBaseURL: "http://assessment.test/v1", AssessmentModel: "test-model",
-		TaskgenBaseURL: "http://generation.test/v1", TaskgenModel: "generation-model", TaskgenTimeout: 45 * time.Second,
-		VoiceTimeout: 120 * time.Second, AssessmentTimeout: 90 * time.Second,
-		TutorBaseURL: "http://assessment.test/v1", TutorModel: "test-model", TutorTimeout: 60 * time.Second, TutorEnabled: true,
-		TutorTaskMaxChars: 16000, TutorHistoryMaxChars: 16000, TutorSummaryMaxChars: 4000,
+		VoiceTimeout:   120 * time.Second,
 		MaxUploadBytes: 25 * 1024 * 1024,
 		S3Region:       "us-east-1", S3Bucket: "task-audio-test", S3AccessKey: "test-access", S3SecretKey: "test-secret",
-		S3PathStyle: true, S3Timeout: 30 * time.Second, S3CreateBucket: true, AudioWorkers: 1, AudioPollInterval: time.Second,
+		S3PathStyle: true, S3Timeout: 30 * time.Second, S3CreateBucket: true,
 	}
 }
 
@@ -190,13 +129,11 @@ func TestAudioConfigLoadsCustomS3Settings(t *testing.T) {
 	t.Setenv("BACKEND_S3_PATH_STYLE", "false")
 	t.Setenv("BACKEND_S3_TIMEOUT", "12s")
 	t.Setenv("BACKEND_S3_CREATE_BUCKET", "false")
-	t.Setenv("BACKEND_AUDIO_WORKERS", "3")
-	t.Setenv("BACKEND_AUDIO_POLL_INTERVAL", "250ms")
 	cfg, err := ConfigFromEnv()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.S3Endpoint != "https://objects.example.test" || cfg.S3Region != "eu-west-1" || cfg.S3Bucket != "private-audio" || cfg.S3PathStyle || cfg.S3Timeout != 12*time.Second || cfg.S3CreateBucket || cfg.AudioWorkers != 3 || cfg.AudioPollInterval != 250*time.Millisecond {
+	if cfg.S3Endpoint != "https://objects.example.test" || cfg.S3Region != "eu-west-1" || cfg.S3Bucket != "private-audio" || cfg.S3PathStyle || cfg.S3Timeout != 12*time.Second || cfg.S3CreateBucket {
 		t.Fatalf("custom storage config = %+v", cfg)
 	}
 }
@@ -212,19 +149,5 @@ func TestConfigLoadsTTSSettings(t *testing.T) {
 	}
 	if cfg.TTSSeed != 0 || cfg.TTSCFGValue != 1.5 || cfg.TTSInferenceTimesteps != 20 {
 		t.Fatalf("TTS settings ignored: %+v", cfg)
-	}
-}
-
-func TestHTTPWriteTimeoutAllowsTheoryThenPractice(t *testing.T) {
-	cfg := Config{TutorTimeout: 2 * time.Minute}
-	if cfg.HTTPWriteTimeout() < 2*cfg.TutorTimeout+30*time.Second {
-		t.Fatal("HTTP response deadline cuts off sequential theory and practice")
-	}
-}
-
-func TestHTTPWriteTimeoutAllowsTranscriptionAndThreeLearningCalls(t *testing.T) {
-	cfg := Config{VoiceTimeout: time.Minute, TutorTimeout: time.Minute}
-	if cfg.HTTPWriteTimeout() < cfg.VoiceTimeout+3*cfg.TutorTimeout+30*time.Second {
-		t.Fatal("HTTP response deadline cuts off learning grading, followup and review")
 	}
 }

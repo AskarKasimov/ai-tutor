@@ -2,10 +2,11 @@ import {
   AlertDialog,
   Badge,
   Button,
-  Callout,
+  Dialog,
   Flex,
   Heading,
   Progress,
+  Select,
   Text,
   TextField,
 } from '@radix-ui/themes'
@@ -19,13 +20,9 @@ import {
   Eye,
   EyeOff,
   FileText,
-  Layers,
-  Network,
   ShieldCheck,
   Sparkles,
-  Target,
   Trash2,
-  TriangleAlert,
   Upload,
   X,
 } from 'lucide-react'
@@ -33,18 +30,22 @@ import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   downloadCourseMaterialRaw,
-  type CourseGraphSnapshot,
   type CourseMaterial,
 } from '@/entities/competency-map'
+import { CourseGraphApiError } from '@/entities/course-graph'
 import { AccountMenu, useAuth } from '@/features/auth'
 import {
-  materialInProgress,
-  useBuildCourseGraphMutation,
-  useCourseGraphQuery,
   useDeleteCourseMaterialMutation,
   useSubjectMaterialsQuery,
+  useUpdateCourseMaterialMetadataMutation,
   useUploadCourseMaterialsMutation,
 } from '@/features/import-competency-map'
+import {
+  useCourseGraphQuery,
+  useLatestCourseGraphBuildQuery,
+  useStartCourseGraphBuildMutation,
+} from '@/features/course-graph-build'
+import type { CourseMaterialKind } from '@/entities/competency-map'
 import {
   useCreateSubjectMutation,
   useSubjectsQuery,
@@ -58,7 +59,7 @@ export function CompetencyMapAdminScreen() {
   if (user?.role !== 'admin')
     return (
       <main className={styles.denied}>
-        <Heading as="h1">{t('competencyMap.title')}</Heading>
+        <Heading as="h1">{t('courseGraph.title')}</Heading>
         <Text as="p" role="alert">
           {t('competencyMap.forbidden')}
         </Text>
@@ -74,24 +75,33 @@ function CompetencyMapAdmin({ userId }: { userId: string }) {
   const { t } = useTranslation()
   const subjects = useSubjectsQuery(userId)
   const create = useCreateSubjectMutation(userId)
-  // The teacher manages one subject; a new one is used until the list refetches.
+  const [subjectName, setSubjectName] = useState('')
+  // Keep the newly created course visible while the catalogue query refreshes.
   const [createdId, setCreatedId] = useState('')
-  const subject = subjects.data?.[0]
-  const subjectId = subject?.id ?? createdId
+  const [createCourseOpen, setCreateCourseOpen] = useState(false)
+  const [selectedSubjectId, setSelectedSubjectId] = useState('')
+  const subject =
+    subjects.data?.find((candidate) => candidate.id === selectedSubjectId) ??
+    subjects.data?.[0]
+  const subjectId = selectedSubjectId || subject?.id || createdId
+  const subjectDisplayName =
+    subjects.data?.find((candidate) => candidate.id === subjectId)?.name ??
+    (createdId === subjectId ? subjectName.trim() : subject?.name)
 
   // Course materials state and mutations
   const materialsQuery = useSubjectMaterialsQuery(userId, subjectId)
-  const materialsBusy = materialsQuery.data?.some(materialInProgress) ?? false
-  const courseGraphQuery = useCourseGraphQuery(userId, subjectId, materialsBusy)
-  const buildGraph = useBuildCourseGraphMutation(userId, subjectId)
-  const refetchGraph = courseGraphQuery.refetch
-  // Once the last material finishes, read inputs_ready without waiting for focus.
-  useEffect(() => {
-    if (!materialsBusy && subjectId) void refetchGraph()
-  }, [materialsBusy, subjectId, refetchGraph])
   const uploadMaterials = useUploadCourseMaterialsMutation(userId, subjectId)
   const deleteMaterial = useDeleteCourseMaterialMutation(userId, subjectId)
+  const updateMetadata = useUpdateCourseMaterialMetadataMutation(
+    userId,
+    subjectId,
+  )
+  const latestBuild = useLatestCourseGraphBuildQuery(userId, subjectId)
+  const courseGraph = useCourseGraphQuery(userId, subjectId)
+  const startBuild = useStartCourseGraphBuildMutation(userId, subjectId)
   const [lectureFiles, setLectureFiles] = useState<File[]>([])
+  const [uploadWeek, setUploadWeek] = useState('1')
+  const [uploadKind, setUploadKind] = useState<CourseMaterialKind>('lecture')
   const [materialsFileError, setMaterialsFileError] = useState<string | null>(
     null,
   )
@@ -111,7 +121,7 @@ function CompetencyMapAdmin({ userId }: { userId: string }) {
         return
       }
       if (f.size > 50 * 1024 * 1024) {
-        setMaterialsFileError(t('competencyMap.materialsTooLarge'))
+        setMaterialsFileError(t('competencyMap.tooLarge'))
         return
       }
       if (f.size === 0) {
@@ -120,28 +130,50 @@ function CompetencyMapAdmin({ userId }: { userId: string }) {
       }
       validFiles.push(f)
     }
-    // Skip names already chosen, in earlier picks and within this one.
-    const seenNames = new Set(lectureFiles.map((f) => f.name.toLowerCase()))
-    const unique = validFiles.filter((f) => {
-      const name = f.name.toLowerCase()
-      if (seenNames.has(name)) return false
-      seenNames.add(name)
-      return true
-    })
-    if (lectureFiles.length + unique.length > 48) {
-      setMaterialsFileError(t('competencyMap.materialsTooManyFiles'))
-      return
-    }
-    setLectureFiles((prev) => [...prev, ...unique])
+    setLectureFiles((prev) => [...prev, ...validFiles])
   }
 
   function removeLectureFile(index: number) {
     setLectureFiles((prev) => prev.filter((_, i) => i !== index))
   }
 
-  const [subjectName, setSubjectName] = useState('')
   const busy =
-    create.isPending || uploadMaterials.isPending || deleteMaterial.isPending
+    create.isPending ||
+    uploadMaterials.isPending ||
+    deleteMaterial.isPending ||
+    updateMetadata.isPending
+  const materials = materialsQuery.data ?? []
+  const graphStateResolved =
+    materialsQuery.isSuccess &&
+    latestBuild.isSuccess &&
+    (courseGraph.isSuccess ||
+      (courseGraph.error instanceof CourseGraphApiError &&
+        courseGraph.error.status === 404))
+  const parsedCount = materials.filter(
+    (material) => material.status === 'parsed',
+  ).length
+  const failedCount = materials.filter(
+    (material) => material.status === 'failed',
+  ).length
+  const missingMetadataCount = materials.filter(
+    (material) => !material.week || !material.kind,
+  ).length
+  const graphBlockers = [
+    ...(materials.length === 0 ? [t('courseGraph.blockNoMaterials')] : []),
+    ...(parsedCount === 0 && materials.length > 0
+      ? [t('courseGraph.blockNoParsed')]
+      : []),
+    ...(missingMetadataCount > 0
+      ? [t('courseGraph.blockMetadata', { count: missingMetadataCount })]
+      : []),
+    ...(failedCount > 0
+      ? [t('courseGraph.blockFailed', { count: failedCount })]
+      : []),
+    ...(materials.some((material) => material.status === 'pending')
+      ? [t('courseGraph.blockPending')]
+      : []),
+  ]
+  const hasGraph = courseGraph.data !== undefined
 
   return (
     <div className={styles.page}>
@@ -155,14 +187,10 @@ function CompetencyMapAdmin({ userId }: { userId: string }) {
       <main className={styles.content}>
         <div className={styles.intro}>
           <Heading as="h1" size="8">
-            {t('competencyMap.title')}
+            {t('courseGraph.title')}
           </Heading>
           <Text as="p" color="gray">
-            {t(
-              subjectId
-                ? 'competencyMap.editSubtitle'
-                : 'competencyMap.subtitle',
-            )}
+            {t(subjectId ? 'courseGraph.subtitle' : 'competencyMap.subtitle')}
           </Text>
         </div>
         {subjects.isPending ? (
@@ -221,10 +249,104 @@ function CompetencyMapAdmin({ userId }: { userId: string }) {
                   {t('competencyMap.subject')}
                 </Text>
                 <Heading as="h2" size="6" id="subject-title">
-                  {subject?.name ?? subjectName.trim()}
+                  {subjectDisplayName}
                 </Heading>
+                {(subjects.data?.length ?? 0) > 1 && (
+                  <Select.Root
+                    value={subjectId}
+                    onValueChange={setSelectedSubjectId}
+                  >
+                    <Select.Trigger
+                      aria-label={t('courseGraph.selectCourse')}
+                    />
+                    <Select.Content>
+                      {subjects.data?.map((candidate) => (
+                        <Select.Item key={candidate.id} value={candidate.id}>
+                          {candidate.name}
+                        </Select.Item>
+                      ))}
+                    </Select.Content>
+                  </Select.Root>
+                )}
+                <Dialog.Root
+                  open={createCourseOpen}
+                  onOpenChange={setCreateCourseOpen}
+                >
+                  <Dialog.Trigger>
+                    <Button
+                      variant="soft"
+                      size="2"
+                      onClick={() => setCreateCourseOpen(true)}
+                    >
+                      {t('courseGraph.createAnotherCourse')}
+                    </Button>
+                  </Dialog.Trigger>
+                  <Dialog.Content maxWidth="420px">
+                    <Dialog.Title>
+                      {t('courseGraph.createCourseTitle')}
+                    </Dialog.Title>
+                    <TextField.Root
+                      aria-label={t('competencyMap.subjectName')}
+                      placeholder={t('competencyMap.subjectPlaceholder')}
+                      value={subjectName}
+                      onChange={(event) => setSubjectName(event.target.value)}
+                    />
+                    {create.isError && (
+                      <Text as="p" role="alert" color="red" size="2">
+                        {t('competencyMap.createSubjectError')}
+                      </Text>
+                    )}
+                    <Flex gap="3" mt="4" justify="end">
+                      <Dialog.Close>
+                        <Button variant="soft" color="gray">
+                          {t('competencyMap.cancel')}
+                        </Button>
+                      </Dialog.Close>
+                      <Button
+                        disabled={!subjectName.trim() || create.isPending}
+                        onClick={() => {
+                          const name = subjectName.trim()
+                          if (!name) return
+                          create.mutate(name, {
+                            onSuccess: (created) => {
+                              setCreatedId(created.id)
+                              setSelectedSubjectId(created.id)
+                              setCreateCourseOpen(false)
+                            },
+                          })
+                        }}
+                      >
+                        {t('courseGraph.createCourseAction')}
+                      </Button>
+                    </Flex>
+                  </Dialog.Content>
+                </Dialog.Root>
               </div>
             </section>
+
+            <nav
+              className={styles.pipeline}
+              aria-label={t('courseGraph.pipeline')}
+            >
+              <div data-active="true">
+                <span>1</span>
+                <Text weight="bold">{t('courseGraph.materialsStep')}</Text>
+              </div>
+              <div
+                data-ready={
+                  (parsedCount > 0 && graphBlockers.length === 0) ||
+                  hasGraph ||
+                  undefined
+                }
+              >
+                <span>2</span>
+                <Text weight="bold">{t('courseGraph.graphStep')}</Text>
+              </div>
+              <div data-ready={hasGraph || undefined}>
+                <span>3</span>
+                <Text weight="bold">{t('courseGraph.readyStep')}</Text>
+              </div>
+            </nav>
 
             <section
               className={styles.card}
@@ -243,6 +365,43 @@ function CompetencyMapAdmin({ userId }: { userId: string }) {
                 onSelect={selectLectureFiles}
                 onRemove={removeLectureFile}
               />
+
+              <div className={styles.uploadMetadata}>
+                <label>
+                  {t('courseGraph.weekLabel')}
+                  <TextField.Root
+                    type="number"
+                    min="1"
+                    step="1"
+                    value={uploadWeek}
+                    disabled={busy}
+                    onChange={(event) => setUploadWeek(event.target.value)}
+                    aria-label={t('courseGraph.weekLabel')}
+                  />
+                </label>
+                <label>
+                  {t('courseGraph.kindLabel')}
+                  <Select.Root
+                    value={uploadKind}
+                    onValueChange={(value) =>
+                      setUploadKind(value as CourseMaterialKind)
+                    }
+                  >
+                    <Select.Trigger aria-label={t('courseGraph.kindLabel')} />
+                    <Select.Content>
+                      <Select.Item value="lecture">
+                        {t('courseGraph.kinds.lecture')}
+                      </Select.Item>
+                      <Select.Item value="lab">
+                        {t('courseGraph.kinds.lab')}
+                      </Select.Item>
+                      <Select.Item value="tutorial">
+                        {t('courseGraph.kinds.tutorial')}
+                      </Select.Item>
+                    </Select.Content>
+                  </Select.Root>
+                </label>
+              </div>
 
               {materialsFileError && (
                 <Text as="p" role="alert" color="red" size="2">
@@ -283,11 +442,21 @@ function CompetencyMapAdmin({ userId }: { userId: string }) {
                     size="3"
                     color="green"
                     className={styles.submit}
-                    disabled={lectureFiles.length === 0 || busy}
+                    disabled={
+                      lectureFiles.length === 0 ||
+                      busy ||
+                      !/^\d+$/.test(uploadWeek) ||
+                      Number(uploadWeek) < 1
+                    }
                     onClick={() => {
                       setUploadWarning(null)
                       uploadMaterials.mutate(
-                        { files: lectureFiles, subjectId },
+                        {
+                          files: lectureFiles,
+                          subjectId,
+                          week: Number(uploadWeek),
+                          kind: uploadKind,
+                        },
                         {
                           onSuccess: (result) => {
                             setLectureFiles([])
@@ -370,6 +539,9 @@ function CompetencyMapAdmin({ userId }: { userId: string }) {
                           subjectId,
                         })
                       }
+                      onMetadataChange={(patch) =>
+                        updateMetadata.mutate({ materialId: mat.id, patch })
+                      }
                       busy={busy}
                     />
                   ))}
@@ -381,15 +553,169 @@ function CompetencyMapAdmin({ userId }: { userId: string }) {
               )}
             </section>
 
-            <CourseGraphCard
-              snapshot={courseGraphQuery.data}
-              loading={courseGraphQuery.isPending}
-              error={courseGraphQuery.isError}
-              onRetry={() => void courseGraphQuery.refetch()}
-              onBuild={() => buildGraph.mutate()}
-              buildPending={buildGraph.isPending}
-              buildError={buildGraph.error?.message}
-            />
+            <section className={styles.card} aria-labelledby="graph-title">
+              <div className={styles.sectionHeading}>
+                <Sparkles aria-hidden="true" />
+                <Heading as="h2" size="4" id="graph-title">
+                  {t('courseGraph.graphTitle')}
+                </Heading>
+                <Badge
+                  color={
+                    hasGraph ? 'green' : graphBlockers.length ? 'amber' : 'blue'
+                  }
+                >
+                  {hasGraph
+                    ? t('courseGraph.graphStored')
+                    : t('courseGraph.graphNotReady')}
+                </Badge>
+              </div>
+              <Text as="p" color="gray" size="2">
+                {t('courseGraph.materialSummary', {
+                  total: materials.length,
+                  parsed: parsedCount,
+                  failed: failedCount,
+                })}
+              </Text>
+              {graphBlockers.length > 0 && !hasGraph && (
+                <div className={styles.warning} role="status">
+                  <Text weight="bold">{t('courseGraph.blockedTitle')}</Text>
+                  <ul>
+                    {graphBlockers.map((reason) => (
+                      <li key={reason}>{reason}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {latestBuild.isError && (
+                <div>
+                  <Text as="p" role="alert" color="red">
+                    {t('courseGraph.statusError')}
+                  </Text>
+                  <Button
+                    variant="ghost"
+                    onClick={() => void latestBuild.refetch()}
+                  >
+                    {t('trainer.retry')}
+                  </Button>
+                </div>
+              )}
+              {(latestBuild.data?.status === 'queued' ||
+                latestBuild.data?.status === 'running') && (
+                <div role="status" className={styles.buildProgress}>
+                  <Text weight="bold">
+                    {t(`courseGraph.status.${latestBuild.data.status}`)}
+                  </Text>
+                  <Text size="2" color="gray">
+                    {latestBuild.data.stage
+                      ? t(`courseGraph.stages.${latestBuild.data.stage}`)
+                      : t('courseGraph.stagePreparing')}
+                  </Text>
+                  <Progress
+                    value={
+                      latestBuild.data.stage
+                        ? ([
+                            'cleaning',
+                            'units',
+                            'dedup',
+                            'prerequisites',
+                            'validation',
+                          ].indexOf(latestBuild.data.stage) +
+                            1) *
+                          20
+                        : 8
+                    }
+                  />
+                </div>
+              )}
+              {latestBuild.data?.status === 'failed' && (
+                <div className={styles.error} role="alert">
+                  <Text weight="bold">{t('courseGraph.buildFailed')}</Text>
+                  <Text as="p">
+                    {latestBuild.data.error?.message ??
+                      t('courseGraph.buildFailedHint')}
+                  </Text>
+                </div>
+              )}
+              {courseGraph.isError &&
+                courseGraph.error instanceof CourseGraphApiError &&
+                courseGraph.error.status !== 404 && (
+                  <div>
+                    <Text as="p" role="alert" color="red">
+                      {t('courseGraph.graphReadError')}
+                    </Text>
+                    <Button
+                      variant="ghost"
+                      onClick={() => void courseGraph.refetch()}
+                    >
+                      {t('trainer.retry')}
+                    </Button>
+                  </div>
+                )}
+              {hasGraph && (
+                <div className={styles.success} role="status">
+                  <CheckCircle2 aria-hidden="true" />
+                  <span>
+                    {t('courseGraph.readyMessage', {
+                      count: courseGraph.data.nodes.length,
+                    })}
+                  </span>
+                </div>
+              )}
+              {startBuild.isError && (
+                <Text as="p" role="alert" color="red">
+                  {startBuild.error instanceof Error
+                    ? startBuild.error.message
+                    : t('courseGraph.buildFailedHint')}
+                </Text>
+              )}
+              <AlertDialog.Root>
+                <AlertDialog.Trigger>
+                  <Button
+                    size="3"
+                    color="green"
+                    disabled={
+                      !graphStateResolved ||
+                      graphBlockers.length > 0 ||
+                      latestBuild.data?.status === 'queued' ||
+                      latestBuild.data?.status === 'running' ||
+                      startBuild.isPending
+                    }
+                  >
+                    <Sparkles size={17} aria-hidden="true" />
+                    {hasGraph
+                      ? t('courseGraph.rebuild')
+                      : t('courseGraph.build')}
+                  </Button>
+                </AlertDialog.Trigger>
+                <AlertDialog.Content maxWidth="440px">
+                  <AlertDialog.Title>
+                    {hasGraph
+                      ? t('courseGraph.rebuildTitle')
+                      : t('courseGraph.buildTitle')}
+                  </AlertDialog.Title>
+                  <AlertDialog.Description>
+                    {hasGraph
+                      ? t('courseGraph.rebuildWarning')
+                      : t('courseGraph.buildConfirm')}
+                  </AlertDialog.Description>
+                  <Flex gap="3" mt="4" justify="end">
+                    <AlertDialog.Cancel>
+                      <Button variant="soft" color="gray">
+                        {t('competencyMap.cancel')}
+                      </Button>
+                    </AlertDialog.Cancel>
+                    <AlertDialog.Action>
+                      <Button
+                        color="green"
+                        onClick={() => startBuild.mutate(subjectId)}
+                      >
+                        {t('courseGraph.confirmBuild')}
+                      </Button>
+                    </AlertDialog.Action>
+                  </Flex>
+                </AlertDialog.Content>
+              </AlertDialog.Root>
+            </section>
           </>
         )}
       </main>
@@ -403,6 +729,7 @@ function MaterialItemCard({
   previewOpen,
   onTogglePreview,
   onDelete,
+  onMetadataChange,
   busy,
 }: {
   material: CourseMaterial
@@ -410,11 +737,17 @@ function MaterialItemCard({
   previewOpen: boolean
   onTogglePreview: () => void
   onDelete: () => void
+  onMetadataChange: (patch: {
+    week?: number
+    kind?: CourseMaterialKind
+  }) => void
   busy: boolean
 }) {
   const { t, i18n } = useTranslation()
   const [downloading, setDownloading] = useState(false)
   const [downloadError, setDownloadError] = useState<string | null>(null)
+  const [weekValue, setWeekValue] = useState(String(material.week ?? ''))
+  useEffect(() => setWeekValue(String(material.week ?? '')), [material.week])
   const formattedSize =
     material.fileSize > 1024 * 1024
       ? `${(material.fileSize / (1024 * 1024)).toFixed(1)} МБ`
@@ -426,29 +759,11 @@ function MaterialItemCard({
   )
 
   const statusTone =
-    material.processing?.status === 'failed' ||
-    material.cleaning?.status === 'failed'
-      ? 'red'
-      : material.status === 'parsed'
-        ? 'green'
-        : material.status === 'failed'
-          ? 'red'
-          : 'amber'
-  const cleaningActive =
-    material.cleaning?.status === 'pending' ||
-    material.cleaning?.status === 'processing'
-  const processingStage = cleaningActive
-    ? 'cleaning'
-    : material.processing?.stage
-  const lastSignalAt = cleaningActive
-    ? material.cleaning?.updatedAt
-    : material.processing?.updatedAt
-  const errorCoveredByReport =
-    material.errorMessage &&
-    material.ocrWarnings?.some((warning) =>
-      material.errorMessage?.includes(warning),
-    )
-  const showErrorMessage = material.errorMessage && !errorCoveredByReport
+    material.status === 'parsed'
+      ? 'green'
+      : material.status === 'failed'
+        ? 'red'
+        : 'amber'
 
   async function handleDownload() {
     setDownloading(true)
@@ -532,79 +847,6 @@ function MaterialItemCard({
         </Flex>
       </div>
 
-      {processingStage && (
-        <Flex gap="2" align="center" wrap="wrap" role="status">
-          <Badge
-            color={
-              material.processing?.status === 'failed' ||
-              material.processing?.status === 'ready'
-                ? material.processing.status === 'failed'
-                  ? 'red'
-                  : 'green'
-                : 'blue'
-            }
-            size="1"
-          >
-            {t(`competencyMap.materialStage.${processingStage}`)}
-          </Badge>
-          {lastSignalAt !== undefined && lastSignalAt > 0 && (
-            <Text size="1" color="gray">
-              {t('competencyMap.materialLastSignal', {
-                date: new Date(lastSignalAt * 1000).toLocaleString(
-                  i18n.language,
-                  { dateStyle: 'medium', timeStyle: 'short' },
-                ),
-              })}
-            </Text>
-          )}
-        </Flex>
-      )}
-
-      {showErrorMessage && (
-        <Callout.Root
-          role={
-            material.status === 'failed' ||
-            material.processing?.status === 'failed' ||
-            material.cleaning?.status === 'failed'
-              ? 'alert'
-              : 'status'
-          }
-          color={
-            material.status === 'failed' ||
-            material.processing?.status === 'failed' ||
-            material.cleaning?.status === 'failed'
-              ? 'red'
-              : 'amber'
-          }
-          size="1"
-        >
-          <Callout.Icon>
-            <TriangleAlert size={14} />
-          </Callout.Icon>
-          <Callout.Text>{material.errorMessage}</Callout.Text>
-        </Callout.Root>
-      )}
-
-      {material.ocrWarnings && material.ocrWarnings.length > 0 && (
-        <Callout.Root color="amber" size="1">
-          <Callout.Icon>
-            <TriangleAlert size={14} />
-          </Callout.Icon>
-          <Callout.Text>
-            <Text size="1" weight="bold">
-              {t('competencyMap.materialWarnings')}:
-            </Text>
-            <ul className={styles.materialWarnings}>
-              {material.ocrWarnings.map((warning, index) => (
-                <li key={index}>
-                  <Text size="1">{warning}</Text>
-                </li>
-              ))}
-            </ul>
-          </Callout.Text>
-        </Callout.Root>
-      )}
-
       <div className={styles.materialMeta}>
         <span>{t('competencyMap.materialsSize', { size: formattedSize })}</span>
         <span>•</span>
@@ -618,6 +860,64 @@ function MaterialItemCard({
           <Clock size={12} />
           <span>{dateStr}</span>
         </Flex>
+      </div>
+
+      <div className={styles.materialClassification}>
+        <label>
+          {t('courseGraph.weekLabel')}
+          <TextField.Root
+            type="number"
+            min="1"
+            step="1"
+            value={weekValue}
+            disabled={busy}
+            aria-label={`${t('courseGraph.weekLabel')}: ${material.filename}`}
+            onChange={(event) => setWeekValue(event.target.value)}
+            onBlur={() => {
+              const value = weekValue
+              if (
+                /^\d+$/.test(value) &&
+                Number(value) > 0 &&
+                Number(value) !== material.week
+              )
+                onMetadataChange({ week: Number(value) })
+            }}
+          />
+        </label>
+        <label>
+          {t('courseGraph.kindLabel')}
+          <Select.Root
+            value={material.kind ?? ''}
+            onValueChange={(value) =>
+              onMetadataChange({ kind: value as CourseMaterialKind })
+            }
+          >
+            <Select.Trigger
+              aria-label={`${t('courseGraph.kindLabel')}: ${material.filename}`}
+              placeholder={t('courseGraph.kindMissing')}
+              disabled={busy}
+            />
+            <Select.Content>
+              <Select.Item value="lecture">
+                {t('courseGraph.kinds.lecture')}
+              </Select.Item>
+              <Select.Item value="lab">
+                {t('courseGraph.kinds.lab')}
+              </Select.Item>
+              <Select.Item value="tutorial">
+                {t('courseGraph.kinds.tutorial')}
+              </Select.Item>
+            </Select.Content>
+          </Select.Root>
+        </label>
+        {(!material.week || !material.kind) && (
+          <Badge color="amber">{t('courseGraph.metadataMissing')}</Badge>
+        )}
+        {material.status === 'failed' && material.errorMessage && (
+          <Text color="red" size="2">
+            {material.errorMessage}
+          </Text>
+        )}
       </div>
 
       {downloadError && (
@@ -745,325 +1045,5 @@ function MaterialsUploadProgressBar({ filesCount }: { filesCount: number }) {
       </div>
       <Progress value={percent} size="2" color="blue" />
     </div>
-  )
-}
-
-function CourseGraphCard({
-  snapshot,
-  loading,
-  error,
-  onRetry,
-  onBuild,
-  buildPending,
-  buildError,
-}: {
-  snapshot?: CourseGraphSnapshot
-  loading: boolean
-  error: boolean
-  onRetry: () => void
-  onBuild: () => void
-  buildPending: boolean
-  buildError?: string
-}) {
-  const { t } = useTranslation()
-  const [treeOpen, setTreeOpen] = useState(false)
-
-  const status = snapshot?.status ?? 'not_requested'
-  const isBuilding = status === 'processing' || status === 'pending'
-  const graph = snapshot?.graph
-  const topicsCount = graph?.topics?.length ?? 0
-  const prereqsCount = graph?.prerequisites?.length ?? 0
-  const hierarchyCount = graph?.hierarchy?.length ?? 0
-
-  return (
-    <section className={styles.card} aria-labelledby="course-graph-title">
-      <div className={styles.sectionHeading}>
-        <Network aria-hidden="true" />
-        <Heading as="h2" size="4" id="course-graph-title">
-          {t('competencyMap.graphTitle')}
-        </Heading>
-      </div>
-
-      <Text size="2" color="gray">
-        {t('competencyMap.graphSubtitle')}
-      </Text>
-
-      {loading ? (
-        <Text as="p" role="status" color="gray" size="2">
-          {t('competencyMap.loading')}
-        </Text>
-      ) : error ? (
-        <Flex gap="3" align="center" wrap="wrap">
-          <Text as="p" color="red" size="2">
-            {t('competencyMap.loadError')}
-          </Text>
-          <Button variant="ghost" size="1" onClick={onRetry}>
-            {t('trainer.retry')}
-          </Button>
-        </Flex>
-      ) : (
-        <div className={styles.graphBody}>
-          <Flex align="center" gap="3" wrap="wrap">
-            <span className={styles.graphBadge} data-status={status}>
-              {isBuilding ? (
-                <>
-                  <Clock
-                    size={14}
-                    className={styles.spinIcon}
-                    aria-hidden="true"
-                  />
-                  {t('competencyMap.graphBuilding')}
-                </>
-              ) : status === 'ready' ? (
-                <>
-                  <CheckCircle2 size={14} aria-hidden="true" />
-                  {t('competencyMap.graphReady')}
-                </>
-              ) : status === 'failed' ? (
-                <>
-                  <TriangleAlert size={14} aria-hidden="true" />
-                  {t('competencyMap.graphFailed')}
-                </>
-              ) : (
-                t('competencyMap.graphNotRequested')
-              )}
-            </span>
-
-            {snapshot?.stale && topicsCount > 0 && (
-              <Badge color="amber" size="1">
-                {t('competencyMap.graphStale')}
-              </Badge>
-            )}
-          </Flex>
-
-          <Flex align="center" gap="3" wrap="wrap">
-            <Button
-              size="2"
-              color="green"
-              disabled={!snapshot?.inputsReady || isBuilding || buildPending}
-              onClick={onBuild}
-            >
-              <Network size={16} aria-hidden="true" />
-              {t('competencyMap.graphBuild')}
-            </Button>
-            {!snapshot?.inputsReady && !isBuilding && (
-              <Text size="2" color="gray">
-                {t('competencyMap.graphInputsNotReady')}
-              </Text>
-            )}
-          </Flex>
-          {buildError && (
-            <Text as="p" role="alert" color="red" size="2">
-              {buildError}
-            </Text>
-          )}
-
-          {isBuilding && (
-            <Text size="2" color="gray">
-              {t('competencyMap.graphBuildingHint')}
-            </Text>
-          )}
-
-          {status === 'failed' && snapshot?.errorMessage && (
-            <Callout.Root color="red" size="1">
-              <Callout.Icon>
-                <TriangleAlert size={14} />
-              </Callout.Icon>
-              <Callout.Text>{snapshot.errorMessage}</Callout.Text>
-            </Callout.Root>
-          )}
-
-          {graph && (status === 'ready' || snapshot?.stale) && (
-            <>
-              <dl className={styles.stats}>
-                <div className={styles.statRow} data-tone="blue">
-                  <span className={styles.statIcon} aria-hidden="true">
-                    <BookOpen size={16} />
-                  </span>
-                  <dt>{t('competencyMap.graphStats.topics')}</dt>
-                  <dd>{topicsCount}</dd>
-                </div>
-                <div className={styles.statRow} data-tone="green">
-                  <span className={styles.statIcon} aria-hidden="true">
-                    <Target size={16} />
-                  </span>
-                  <dt>{t('competencyMap.graphStats.prerequisites')}</dt>
-                  <dd>{prereqsCount}</dd>
-                </div>
-                <div className={styles.statRow} data-tone="violet">
-                  <span className={styles.statIcon} aria-hidden="true">
-                    <Layers size={16} />
-                  </span>
-                  <dt>{t('competencyMap.graphStats.hierarchy')}</dt>
-                  <dd>{hierarchyCount}</dd>
-                </div>
-              </dl>
-
-              <div>
-                <Button
-                  size="2"
-                  variant="soft"
-                  onClick={() => setTreeOpen((prev) => !prev)}
-                >
-                  {treeOpen ? (
-                    <>
-                      <EyeOff size={16} aria-hidden="true" />
-                      {t('competencyMap.graphHideView')}
-                    </>
-                  ) : (
-                    <>
-                      <Eye size={16} aria-hidden="true" />
-                      {t('competencyMap.graphToggleView')}
-                    </>
-                  )}
-                </Button>
-              </div>
-
-              {treeOpen && (
-                <div className={styles.graphTree}>
-                  <Text weight="bold" size="2">
-                    {t('competencyMap.graphSections')}
-                  </Text>
-                  {(() => {
-                    const topicsById = new Map(
-                      graph.topics.map((t) => [t.id, t]),
-                    )
-                    const childrenByParent = new Map<string, string[]>()
-                    const childIds = new Set<string>()
-
-                    for (const h of graph.hierarchy) {
-                      const list = childrenByParent.get(h.source) || []
-                      list.push(h.target)
-                      childrenByParent.set(h.source, list)
-                      childIds.add(h.target)
-                    }
-
-                    const roots = graph.topics.filter(
-                      (t) => !childIds.has(t.id),
-                    )
-
-                    const renderedIds = new Set<string>()
-
-                    const renderSubtree = (
-                      topicId: string,
-                      visitedInBranch: Set<string>,
-                    ): React.ReactNode => {
-                      renderedIds.add(topicId)
-                      const children = childrenByParent.get(topicId) || []
-                      if (children.length === 0) return null
-
-                      return (
-                        <ul className={styles.graphChildrenList}>
-                          {children.map((childId) => {
-                            if (visitedInBranch.has(childId)) {
-                              return null
-                            }
-                            const child = topicsById.get(childId)
-                            const nextVisited = new Set(visitedInBranch).add(
-                              childId,
-                            )
-                            return (
-                              <li key={childId}>
-                                <Text size="2" color="gray">
-                                  └─ {child?.title || childId}
-                                </Text>
-                                {renderSubtree(childId, nextVisited)}
-                              </li>
-                            )
-                          })}
-                        </ul>
-                      )
-                    }
-
-                    const primaryRoots = roots.length > 0 ? roots : graph.topics
-
-                    return (
-                      <div className={styles.graphSectionsList}>
-                        {primaryRoots.map((root) => {
-                          renderedIds.add(root.id)
-                          return (
-                            <div
-                              key={root.id}
-                              className={styles.graphSectionItem}
-                            >
-                              <Text weight="bold" size="2">
-                                {root.title}
-                              </Text>
-                              {renderSubtree(root.id, new Set([root.id]))}
-                            </div>
-                          )
-                        })}
-                        {graph.topics
-                          .filter((t) => !renderedIds.has(t.id))
-                          .map((orphan) => {
-                            renderedIds.add(orphan.id)
-                            return (
-                              <div
-                                key={orphan.id}
-                                className={styles.graphSectionItem}
-                              >
-                                <Text weight="bold" size="2">
-                                  {orphan.title}
-                                </Text>
-                                {renderSubtree(orphan.id, new Set([orphan.id]))}
-                              </div>
-                            )
-                          })}
-                      </div>
-                    )
-                  })()}
-
-                  {graph.prerequisites.length > 0 && (
-                    <>
-                      <Text
-                        weight="bold"
-                        size="2"
-                        className={styles.graphDependenciesTitle}
-                      >
-                        {t('competencyMap.graphDependencies')}
-                      </Text>
-                      {(() => {
-                        const topicsById = new Map(
-                          graph.topics.map((t) => [t.id, t]),
-                        )
-                        return (
-                          <div className={styles.graphPrereqList}>
-                            {graph.prerequisites.map((p, idx) => {
-                              const src =
-                                topicsById.get(p.source)?.title || p.source
-                              const tgt =
-                                topicsById.get(p.target)?.title || p.target
-                              return (
-                                <div
-                                  key={idx}
-                                  className={styles.graphPrereqItem}
-                                >
-                                  <Text size="2" weight="bold">
-                                    {src}
-                                  </Text>
-                                  <Text size="2" color="gray">
-                                    →
-                                  </Text>
-                                  <Text size="2">{tgt}</Text>
-                                  {p.reason && (
-                                    <Text size="1" color="gray">
-                                      ({p.reason})
-                                    </Text>
-                                  )}
-                                </div>
-                              )
-                            })}
-                          </div>
-                        )
-                      })()}
-                    </>
-                  )}
-                </div>
-              )}
-            </>
-          )}
-        </div>
-      )}
-    </section>
   )
 }

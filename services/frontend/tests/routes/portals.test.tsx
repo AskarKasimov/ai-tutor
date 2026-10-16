@@ -100,7 +100,7 @@ it('opens the admin panel through the backend without a sign-in step', async () 
   const fetch = backend()
   const router = renderApp('/admin')
   expect(
-    await screen.findByRole('heading', { name: 'Материалы курса' }),
+    await screen.findByRole('heading', { name: 'Подготовка курса' }),
   ).toBeVisible()
   expect(screen.getByText('Учитель')).toBeVisible()
   expect(router.state.location.pathname).toBe('/admin/competency-map')

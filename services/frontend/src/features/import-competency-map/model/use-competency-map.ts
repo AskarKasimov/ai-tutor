@@ -1,9 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef } from 'react'
-import {
-  CompetencyMapApiError,
-  type CourseGraphSnapshot,
-  type CourseMaterial,
+import { CompetencyMapApiError } from '@/entities/competency-map'
+import type {
+  CourseMaterialKind,
+  CourseMaterialMetadataPatch,
 } from '@/entities/competency-map'
 import { useCompetencyMapDependencies } from './dependencies-context'
 import {
@@ -13,39 +13,6 @@ import {
   replaceSession,
 } from '@/entities/user'
 import { competencyMapQueryKeys } from './query-keys'
-
-const pollMs = 4000
-
-// A material is still moving through OCR, translation or cleaning.
-export function materialInProgress(material: CourseMaterial): boolean {
-  const active = (status?: string) =>
-    status === 'pending' || status === 'processing'
-  if (material.status === 'failed') return false
-  return (
-    material.status === 'pending' ||
-    active(material.processing?.status) ||
-    active(material.cleaning?.status)
-  )
-}
-
-// Materials are polled until each one reaches a terminal state.
-export function materialsRefetchInterval(
-  materials: CourseMaterial[] | undefined,
-): number | false {
-  return materials?.some(materialInProgress) ? pollMs : false
-}
-
-// The graph is polled while a build runs and while materials are processed,
-// so inputs_ready and stale follow them without a manual reload.
-export function courseGraphRefetchInterval(
-  snapshot: CourseGraphSnapshot | undefined,
-  materialsBusy: boolean,
-): number | false {
-  const status = snapshot?.status
-  return status === 'pending' || status === 'processing' || materialsBusy
-    ? pollMs
-    : false
-}
 
 export function useSubjectMaterialsQuery(userId: string, subjectId: string) {
   const { competencyMap } = useCompetencyMapDependencies()
@@ -79,7 +46,6 @@ export function useSubjectMaterialsQuery(userId: string, subjectId: string) {
         unregister()
       }
     },
-    refetchInterval: (query) => materialsRefetchInterval(query.state.data),
   })
 }
 
@@ -104,9 +70,13 @@ export function useUploadCourseMaterialsMutation(
     mutationFn: async ({
       files,
       subjectId: targetSubjectId,
+      week,
+      kind,
     }: {
       files: File[]
       subjectId: string
+      week: number
+      kind: CourseMaterialKind
     }) => {
       const controller = new AbortController()
       controllerRef.current = controller
@@ -119,6 +89,8 @@ export function useUploadCourseMaterialsMutation(
         return await competencyMap.uploadCourseMaterials(
           targetSubjectId,
           files,
+          week,
+          kind,
           controller.signal,
         )
       } finally {
@@ -134,10 +106,54 @@ export function useUploadCourseMaterialsMutation(
           variables.subjectId,
         ),
       })
+    },
+    onError: async (error, variables) => {
+      if (!isCurrentSession(cache, tokenRef.current)) return
+      if (error instanceof CompetencyMapApiError && error.status === 401)
+        await replaceSession(cache, null)
       await cache.invalidateQueries({
-        queryKey: competencyMapQueryKeys.courseGraph(
+        queryKey: competencyMapQueryKeys.subjectMaterials(
           userId,
           variables.subjectId,
+        ),
+      })
+    },
+    retry: false,
+  })
+}
+
+export function useUpdateCourseMaterialMetadataMutation(
+  userId: string,
+  subjectId: string,
+) {
+  const { competencyMap } = useCompetencyMapDependencies()
+  const cache = useQueryClient()
+  const tokenRef = useRef(captureSession(cache))
+  return useMutation({
+    gcTime: 0,
+    onMutate: () => {
+      tokenRef.current = captureSession(cache)
+    },
+    mutationFn: async ({
+      materialId,
+      patch,
+      subjectId: targetSubjectId,
+    }: {
+      materialId: string
+      patch: CourseMaterialMetadataPatch
+      subjectId?: string
+    }) =>
+      competencyMap.updateCourseMaterialMetadata(
+        targetSubjectId || subjectId,
+        materialId,
+        patch,
+      ),
+    onSuccess: async (_data, variables) => {
+      if (!isCurrentSession(cache, tokenRef.current)) return
+      await cache.invalidateQueries({
+        queryKey: competencyMapQueryKeys.subjectMaterials(
+          userId,
+          variables.subjectId || subjectId,
         ),
       })
     },
@@ -148,7 +164,7 @@ export function useUploadCourseMaterialsMutation(
       await cache.invalidateQueries({
         queryKey: competencyMapQueryKeys.subjectMaterials(
           userId,
-          variables.subjectId,
+          variables.subjectId || subjectId,
         ),
       })
     },
@@ -182,96 +198,11 @@ export function useDeleteCourseMaterialMutation(
     },
     onSuccess: async (_data, variables) => {
       if (!isCurrentSession(cache, tokenRef.current)) return
-      const targetId = variables.subjectId || subjectId
       await cache.invalidateQueries({
-        queryKey: competencyMapQueryKeys.subjectMaterials(userId, targetId),
-      })
-      await cache.invalidateQueries({
-        queryKey: competencyMapQueryKeys.courseGraph(userId, targetId),
-      })
-    },
-    retry: false,
-  })
-}
-
-export function useCourseGraphQuery(
-  userId: string,
-  subjectId: string,
-  materialsBusy: boolean,
-) {
-  const { competencyMap } = useCompetencyMapDependencies()
-  const cache = useQueryClient()
-  // eslint-disable-next-line @tanstack/query/exhaustive-deps
-  return useQuery({
-    queryKey: competencyMapQueryKeys.courseGraph(userId, subjectId),
-    enabled: !!userId && !!subjectId,
-    queryFn: async ({ signal }) => {
-      const token = captureSession(cache)
-      const controller = new AbortController()
-      const unregister = registerSessionRequest(cache, token, controller)
-      try {
-        const data = await competencyMap.readCourseGraph(
-          subjectId,
-          AbortSignal.any([signal, controller.signal]),
-        )
-        if (!isCurrentSession(cache, token) || token.userId !== userId)
-          throw new DOMException('Stale session', 'AbortError')
-        return data
-      } catch (error) {
-        if (
-          error instanceof CompetencyMapApiError &&
-          error.status === 401 &&
-          isCurrentSession(cache, token)
-        )
-          await replaceSession(cache, null)
-        throw error
-      } finally {
-        unregister()
-      }
-    },
-    refetchInterval: (query) =>
-      courseGraphRefetchInterval(query.state.data, materialsBusy),
-  })
-}
-
-export function useBuildCourseGraphMutation(userId: string, subjectId: string) {
-  const { competencyMap } = useCompetencyMapDependencies()
-  const cache = useQueryClient()
-  const tokenRef = useRef(captureSession(cache))
-  return useMutation({
-    gcTime: 0,
-    onMutate: () => {
-      tokenRef.current = captureSession(cache)
-    },
-    mutationFn: async () => {
-      const controller = new AbortController()
-      const unregister = registerSessionRequest(
-        cache,
-        tokenRef.current,
-        controller,
-      )
-      try {
-        return await competencyMap.requestCourseGraphBuild(
-          subjectId,
-          controller.signal,
-        )
-      } finally {
-        unregister()
-      }
-    },
-    onSuccess: (snapshot) => {
-      if (!isCurrentSession(cache, tokenRef.current)) return
-      cache.setQueryData(
-        competencyMapQueryKeys.courseGraph(userId, subjectId),
-        snapshot,
-      )
-    },
-    onError: async (error) => {
-      if (!isCurrentSession(cache, tokenRef.current)) return
-      if (error instanceof CompetencyMapApiError && error.status === 401)
-        await replaceSession(cache, null)
-      await cache.invalidateQueries({
-        queryKey: competencyMapQueryKeys.courseGraph(userId, subjectId),
+        queryKey: competencyMapQueryKeys.subjectMaterials(
+          userId,
+          variables.subjectId || subjectId,
+        ),
       })
     },
     retry: false,

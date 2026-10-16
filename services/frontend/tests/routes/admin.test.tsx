@@ -50,6 +50,8 @@ const sampleMaterials = [
     parsed_text: '# Лекция 1\n\nФормула: $y = Wx + b$',
     char_count: 35,
     status: 'parsed',
+    week: 1 as number | null,
+    kind: 'lecture' as 'lecture' | 'lab' | 'tutorial' | null,
     error_message: null,
     created_at: 1791356400,
     updated_at: 1791356400,
@@ -76,6 +78,26 @@ function backend(
     materials?: typeof sampleMaterials
     partialUpload?: boolean
     downloadFails?: boolean
+    graph?: {
+      version: string
+      nodes: Array<{
+        id: string
+        title: string
+        content: string
+        prerequisites: string[]
+        outcomes: string[]
+        questions: string[]
+      }>
+    }
+    build?: {
+      id: string
+      subject_id: string
+      status: string
+      stage: string | null
+      started_at: number | null
+      completed_at: number | null
+      error: { code: string; message: string } | null
+    }
   } = {},
 ) {
   const activeSubjects = [...(options.subjects ?? subjects)]
@@ -154,12 +176,56 @@ function backend(
         parsed_text: '# Новая лекция',
         char_count: 14,
         status: 'parsed',
+        week: 1,
+        kind: 'lecture' as const,
         error_message: null,
         created_at: 1791356400,
         updated_at: 1791356400,
       }
       activeMaterials.push(newMat)
       return new Response(JSON.stringify({ uploaded: [newMat], failed: [] }))
+    }
+    if (
+      url.includes('/admin/subjects/') &&
+      url.endsWith('/graph/build') &&
+      init?.method === 'POST'
+    )
+      return Response.json(
+        options.build ?? {
+          id: 'build-1',
+          subject_id: 'subject-a',
+          status: 'queued',
+          stage: null,
+          started_at: null,
+          completed_at: null,
+          error: null,
+        },
+        { status: 202 },
+      )
+    if (url.includes('/admin/subjects/') && url.endsWith('/graph/build'))
+      return options.build
+        ? Response.json(options.build)
+        : Response.json(
+            { code: 'NOT_FOUND', message: 'Not found' },
+            { status: 404 },
+          )
+    if (url.includes('/admin/subjects/') && url.endsWith('/graph'))
+      return options.graph
+        ? Response.json(options.graph)
+        : Response.json(
+            { code: 'NOT_FOUND', message: 'Not found' },
+            { status: 404 },
+          )
+    if (
+      url.includes('/admin/subjects/') &&
+      url.includes('/materials/') &&
+      init?.method === 'PATCH'
+    ) {
+      const material =
+        activeMaterials.find((item) => url.includes(item.id)) ??
+        activeMaterials[0]
+      Object.assign(material, JSON.parse(init.body as string))
+      return Response.json(material)
     }
     if (
       url.includes('/admin/subjects/') &&
@@ -199,7 +265,7 @@ it.each(['/admin', '/admin/'])(
     const router = renderApp(path)
     expect(
       await screen.findByRole('heading', {
-        name: 'Материалы курса',
+        name: 'Подготовка курса',
         level: 1,
       }),
     ).toBeVisible()
@@ -214,10 +280,13 @@ it.each(['/admin', '/admin/'])(
         level: 2,
       }),
     ).toBeVisible()
-    expect(screen.queryByText('Статистика')).not.toBeInTheDocument()
+    const courseSelect = screen.getByRole('combobox', { name: 'Курс' })
+    expect(courseSelect).toBeVisible()
+    fireEvent.click(courseSelect)
     expect(
-      screen.queryByRole('combobox', { name: 'Предмет' }),
-    ).not.toBeInTheDocument()
+      await screen.findByRole('option', { name: 'Статистика' }),
+    ).toBeVisible()
+    fireEvent.keyDown(courseSelect, { key: 'Escape' })
     expect(
       screen.getByRole('heading', {
         name: 'Загруженные лекции и лабораторные',
@@ -258,7 +327,7 @@ it('does not mount the lesson while the current session is being checked', async
 it('creates a trimmed subject, then switches to its materials', async () => {
   const fetch = backend({ subjects: [], materials: [] })
   renderApp('/admin/competency-map')
-  const field = await screen.findByLabelText('Название предмета')
+  const field = await screen.findByLabelText('Название курса')
   const submit = screen.getByRole('button', { name: 'Подтвердить' })
   expect(submit).toBeDisabled()
   fireEvent.change(field, { target: { value: '  Новый  ' } })
@@ -276,13 +345,31 @@ it('creates a trimmed subject, then switches to its materials', async () => {
   expect(JSON.parse(init?.body as string)).toEqual({ name: 'Новый' })
 })
 
+it('creates an additional course without replacing the existing course', async () => {
+  const fetch = backend()
+  renderApp('/admin/competency-map')
+  fireEvent.click(await screen.findByRole('button', { name: 'Создать курс' }))
+  const dialog = await screen.findByRole('dialog')
+  fireEvent.change(within(dialog).getByLabelText('Название курса'), {
+    target: { value: '  Новый курс  ' },
+  })
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Создать' }))
+  expect(
+    await screen.findByRole('heading', { name: 'Новый', level: 2 }),
+  ).toBeVisible()
+  const [, request] = fetch.mock.calls.find(
+    ([url, init]) => url.endsWith('/admin/subjects') && init?.method === 'POST',
+  )!
+  expect(JSON.parse(request?.body as string)).toEqual({ name: 'Новый курс' })
+})
+
 it('keeps the student site free of the admin panel even for an admin account', async () => {
   backend()
   const router = renderApp('/')
   expect(await screen.findByRole('heading', { name: 'Курсы' })).toBeVisible()
   expect(router.state.location.pathname).toBe('/')
   expect(
-    screen.queryByRole('heading', { name: 'Материалы курса' }),
+    screen.queryByRole('heading', { name: 'Подготовка курса' }),
   ).not.toBeInTheDocument()
   expect(document.querySelector('a[href^="/admin"]')).toBeNull()
 })
@@ -302,7 +389,7 @@ it('denies students direct access to the admin screen without fetching materials
 it('shows the shared account without a logout in the admin panel', async () => {
   backend()
   renderApp()
-  await screen.findByRole('heading', { name: 'Материалы курса' })
+  await screen.findByRole('heading', { name: 'Подготовка курса' })
   expect(screen.getByLabelText('Профиль: Администратор')).toBeVisible()
   expect(
     screen.queryByRole('button', { name: /Меню профиля/ }),
@@ -346,7 +433,7 @@ it('restores the admin screen after reload with an expired access cookie', async
   )
   renderApp('/admin/competency-map')
   expect(
-    await screen.findByRole('heading', { name: 'Материалы курса' }),
+    await screen.findByRole('heading', { name: 'Подготовка курса' }),
   ).toBeVisible()
   expect(screen.queryByText('Открываем админ-панель…')).not.toBeInTheDocument()
 })
@@ -361,7 +448,7 @@ it('retries a failed session check without exposing the lesson', async () => {
   expect(screen.queryByText('Машинное обучение')).not.toBeInTheDocument()
   fireEvent.click(screen.getByRole('button', { name: 'Попробовать снова' }))
   expect(
-    await screen.findByRole('heading', { name: 'Материалы курса' }),
+    await screen.findByRole('heading', { name: 'Подготовка курса' }),
   ).toBeVisible()
 })
 
@@ -393,6 +480,111 @@ it('uploads lecture files and shows success message', async () => {
       ([url, req]) => url.endsWith('/materials') && req?.method === 'POST',
     ),
   ).toBe(true)
+  const [, request] = fetch.mock.calls.find(
+    ([url, init]) => url.endsWith('/materials') && init?.method === 'POST',
+  )!
+  expect(request?.body).toBeInstanceOf(FormData)
+  expect((request?.body as FormData).get('week')).toBe('1')
+  expect((request?.body as FormData).get('kind')).toBe('lecture')
+})
+
+it('blocks graph generation for legacy materials until their metadata is fixed', async () => {
+  backend({ materials: [{ ...sampleMaterials[0], week: null, kind: null }] })
+  renderApp('/admin/competency-map')
+  expect(
+    await screen.findByText('У 1 материалов не указаны неделя или тип.'),
+  ).toBeVisible()
+  expect(
+    screen.getByRole('button', { name: /Собрать граф тем/ }),
+  ).toBeDisabled()
+})
+
+it('persists corrected metadata without uploading the source again', async () => {
+  const fetch = backend({
+    materials: [{ ...sampleMaterials[0], week: null, kind: null }],
+  })
+  renderApp('/admin/competency-map')
+  const typeSelect = await screen.findByRole('combobox', {
+    name: 'Тип материала: lecture1.pdf',
+  })
+  fireEvent.click(typeSelect)
+  fireEvent.click(await screen.findByRole('option', { name: 'Лабораторная' }))
+  await waitFor(() =>
+    expect(
+      fetch.mock.calls.some(
+        ([url, request]) =>
+          url.endsWith('/materials/mat-1') && request?.method === 'PATCH',
+      ),
+    ).toBe(true),
+  )
+  expect(
+    fetch.mock.calls.some(
+      ([url, request]) =>
+        url.endsWith('/materials') && request?.method === 'POST',
+    ),
+  ).toBe(false)
+})
+
+it('shows the durable active build stage recovered from the server', async () => {
+  backend({
+    build: {
+      id: 'build-1',
+      subject_id: 'subject-a',
+      status: 'running',
+      stage: 'dedup',
+      started_at: 1791356400,
+      completed_at: null,
+      error: null,
+    },
+  })
+  renderApp('/admin/competency-map')
+  expect(await screen.findByText('Объединение повторов')).toBeVisible()
+  expect(screen.getByText('Собираем граф тем')).toBeVisible()
+  expect(
+    screen.getByRole('button', { name: /Собрать граф тем/ }),
+  ).toBeDisabled()
+})
+
+it('requires confirmation before replacing an existing graph', async () => {
+  const fetch = backend({
+    graph: {
+      version: 'v1',
+      nodes: [
+        {
+          id: 'topic-1',
+          title: 'Матрицы',
+          content: 'Основы матриц',
+          prerequisites: [],
+          outcomes: [],
+          questions: [],
+        },
+      ],
+    },
+  })
+  renderApp('/admin/competency-map')
+  expect(
+    await screen.findByText('Курс готов для студентов. В графе тем: 1.'),
+  ).toBeVisible()
+  fireEvent.click(screen.getByRole('button', { name: 'Пересобрать граф' }))
+  const dialog = await screen.findByRole('alertdialog')
+  expect(dialog).toHaveTextContent(
+    'Активные диагностики по курсу будут отменены.',
+  )
+  expect(
+    fetch.mock.calls.some(
+      ([url, request]) =>
+        url.endsWith('/graph/build') && request?.method === 'POST',
+    ),
+  ).toBe(false)
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Начать сборку' }))
+  await waitFor(() =>
+    expect(
+      fetch.mock.calls.some(
+        ([url, request]) =>
+          url.endsWith('/graph/build') && request?.method === 'POST',
+      ),
+    ).toBe(true),
+  )
 })
 
 it('toggles markdown text preview for an uploaded material', async () => {

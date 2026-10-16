@@ -1,6 +1,7 @@
 export {
   useSubjectMaterialsQuery,
   useUploadCourseMaterialsMutation,
+  useUpdateCourseMaterialMetadataMutation,
   useDeleteCourseMaterialMutation,
   useCourseGraphQuery,
   useBuildCourseGraphMutation,

@@ -4,6 +4,11 @@ set -eu
 repo_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 cd "$repo_dir"
 
+gateway_config=services/llm-gateway/config.json
+if [ ! -f "$gateway_config" ]; then
+    cp services/llm-gateway/config.example.json "$gateway_config"
+fi
+
 if ! command -v docker >/dev/null 2>&1; then
     printf '%s\n' 'Docker with Compose is required. See README.md.' >&2
     exit 1

@@ -227,7 +227,7 @@ components:
     Topic:
       allOf:
         - $ref: "#/components/schemas/Node"
-      description: Верхнеуровневая тема курса. Как формируются темы — открытый вопрос, см. README.
+      description: Верхнеуровневая тема курса — лекция недели; подтемы — юниты лекции, лабы и туториала этой недели. См. README.
       properties:
         subtopics:
           items:

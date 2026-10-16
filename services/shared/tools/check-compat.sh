@@ -2,10 +2,10 @@
 set -eu
 cd "$(dirname "$0")/../../.."
 base="${1:-}"
-[ -n "$base" ] || { echo "No base ref; first contract version is baseline"; exit 0; }
+[ -n "$base" ] || { echo "Базовая ветка не указана: первая версия контракта становится точкой сравнения"; exit 0; }
 tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
 if ! git show "$base:services/shared/proto/llmgateway/v1/gateway.proto" > "$tmp/gateway.proto" 2>/dev/null; then
-  echo "No contract in base ref; first contract version is baseline"; exit 0
+  echo "В базовой ветке нет контракта: первая версия контракта становится точкой сравнения"; exit 0
 fi
 mkdir -p "$tmp/old/llmgateway/v1"
 mv "$tmp/gateway.proto" "$tmp/old/llmgateway/v1/gateway.proto"

@@ -2,9 +2,9 @@
 set -eu
 cd "$(dirname "$0")/../../.."
 . services/shared/tools/versions.env
-[ "$(protoc --version)" = "libprotoc $PROTOC_VERSION" ] || { echo "protoc $PROTOC_VERSION required" >&2; exit 1; }
-[ "$(protoc-gen-go --version)" = "protoc-gen-go $PROTOC_GEN_GO_VERSION" ] || { echo "protoc-gen-go $PROTOC_GEN_GO_VERSION required" >&2; exit 1; }
-[ "$(protoc-gen-go-grpc --version)" = "protoc-gen-go-grpc ${PROTOC_GEN_GO_GRPC_VERSION#v}" ] || { echo "protoc-gen-go-grpc $PROTOC_GEN_GO_GRPC_VERSION required" >&2; exit 1; }
+[ "$(protoc --version)" = "libprotoc $PROTOC_VERSION" ] || { echo "нужен protoc $PROTOC_VERSION" >&2; exit 1; }
+[ "$(protoc-gen-go --version)" = "protoc-gen-go $PROTOC_GEN_GO_VERSION" ] || { echo "нужен protoc-gen-go $PROTOC_GEN_GO_VERSION" >&2; exit 1; }
+[ "$(protoc-gen-go-grpc --version)" = "protoc-gen-go-grpc ${PROTOC_GEN_GO_GRPC_VERSION#v}" ] || { echo "нужен protoc-gen-go-grpc $PROTOC_GEN_GO_GRPC_VERSION" >&2; exit 1; }
 generate() {
   out="$1"
   mkdir -p "$out"
@@ -18,7 +18,7 @@ case "${1:-}" in
     diff -ru services/shared/gen/go "$tmp"
     ;;
   "")
-    echo "usage: $0 <output-directory>|--check" >&2
+    echo "использование: $0 <каталог-вывода>|--check" >&2
     exit 2
     ;;
   *) generate "$1" ;;

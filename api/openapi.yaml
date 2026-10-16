@@ -356,6 +356,31 @@ components:
         - question
         - voice_instruction
       type: object
+    coursegraph.Snapshot:
+      additionalProperties: false
+      properties:
+        attempts:
+          type: integer
+        error_message:
+          type: string
+        graph:
+          type:
+            - object
+            - "null"
+        stale:
+          type: boolean
+        status:
+          type: string
+        updated_at:
+          type: integer
+      required:
+        - attempts
+        - error_message
+        - graph
+        - stale
+        - status
+        - updated_at
+      type: object
     diagnostichttp.AnswerResponse:
       additionalProperties: false
       properties:
@@ -2420,6 +2445,54 @@ paths:
       summary: Заменить карту предмета
       tags:
         - Учебная база
+      x-implementation: implemented
+  /admin/subjects/{subject_id}/graph:
+    get:
+      description: Доступно только admin. Автоматическая сборка начинается после обработки всех материалов. stale означает, что материалы изменились или ещё обрабатываются.
+      operationId: getCourseGraph
+      parameters:
+        - description: ID предмета
+          in: path
+          name: subject_id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/coursegraph.Snapshot'
+          description: OK
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Forbidden
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Not Found
+        "503":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Service Unavailable
+      security:
+        - accessCookie: []
+      summary: Граф курса и состояние построения
+      tags:
+        - Материалы
       x-implementation: implemented
   /admin/subjects/{subject_id}/materials:
     get:

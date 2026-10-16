@@ -11,13 +11,13 @@ import (
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/features/materials/application"
 )
 
-func (c *Client) Clean(ctx context.Context, markdown string) (application.CleaningResult, error) {
+func (c *Client) Clean(ctx context.Context, markdown, materialID string) (application.CleaningResult, error) {
 	var result application.CleaningResult
-	payload, err := json.Marshal(map[string]string{"markdown": markdown})
+	payload, err := json.Marshal(map[string]string{"markdown": markdown, "material_id": materialID})
 	if err != nil {
 		return result, err
 	}
-	req, err := http.NewRequestWithContext(ctx, "POST", c.courseGraphURL+"/clean", bytes.NewReader(payload))
+	req, err := http.NewRequestWithContext(ctx, "POST", c.courseGraphURL+"/topics/extract", bytes.NewReader(payload))
 	if err != nil {
 		return result, err
 	}

@@ -105,8 +105,8 @@ func TestMigrateFreshAndRepeat(t *testing.T) {
 		t.Fatalf("fresh imports=%d err=%v", imports, err)
 	}
 	var versions int
-	if err := pool.QueryRow(ctx, "SELECT count(*) FROM goose_db_version WHERE is_applied AND version_id > 0").Scan(&versions); err != nil || versions != 11 {
-		t.Fatalf("applied migrations=%d err=%v, want 11", versions, err)
+	if err := pool.QueryRow(ctx, "SELECT count(*) FROM goose_db_version WHERE is_applied AND version_id > 0").Scan(&versions); err != nil || versions != 12 {
+		t.Fatalf("applied migrations=%d err=%v, want 12", versions, err)
 	}
 }
 

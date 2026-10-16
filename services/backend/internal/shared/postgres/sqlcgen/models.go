@@ -113,6 +113,30 @@ type ConstituentSectionCompetency struct {
 	CurriculumCompetencyID string
 }
 
+type CourseGraph struct {
+	SubjectID   string
+	Fingerprint string
+	Graph       []byte
+	UpdatedAt   int64
+}
+
+type CourseGraphInput struct {
+	SubjectID   string
+	Fingerprint string
+}
+
+type CourseGraphJob struct {
+	SubjectID    string
+	Fingerprint  string
+	Status       string
+	Attempts     int32
+	AvailableAt  int64
+	LeaseUntil   int64
+	LeaseToken   string
+	ErrorMessage string
+	UpdatedAt    int64
+}
+
 type CurriculumCompetency struct {
 	ID       string
 	Revision int64

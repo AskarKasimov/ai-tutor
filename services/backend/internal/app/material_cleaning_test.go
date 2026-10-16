@@ -16,7 +16,7 @@ import (
 
 type fixtureCleaner struct{ fail bool }
 
-func (c fixtureCleaner) Clean(_ context.Context, source string) (materialsapp.CleaningResult, error) {
+func (c fixtureCleaner) Clean(_ context.Context, source, _ string) (materialsapp.CleaningResult, error) {
 	if c.fail {
 		return materialsapp.CleaningResult{}, errors.New("unavailable")
 	}

@@ -70,6 +70,8 @@ networks:
     name: ai-tutor_default
 
 volumes:
+  course_graph_models:
+  course_graph_data:
   postgres_data:
     name: ai-tutor_postgres_data
   task_audio_data:

@@ -26,6 +26,10 @@ import (
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/features/competency/infrastructure/csvparser"
 	competencypg "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/competency/infrastructure/postgres"
 	competencyhttp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/competency/transport/http"
+	graphapp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/coursegraph/application"
+	graphapi "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/coursegraph/infrastructure/courseapi"
+	graphpg "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/coursegraph/infrastructure/postgres"
+	graphhttp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/coursegraph/transport/http"
 	diagnosticapp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/diagnostic/application"
 	diagnosticpg "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/diagnostic/infrastructure/postgres"
 	diagnostichttp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/diagnostic/transport/http"
@@ -37,6 +41,8 @@ import (
 	learningmodel "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/learning/infrastructure/modelapi"
 	learningpg "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/learning/infrastructure/postgres"
 	learninghttp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/learning/transport/http"
+	llmapp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/llm/application"
+	llmmodel "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/llm/infrastructure/modelapi"
 	materialsapp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/materials/application"
 	materialsocr "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/materials/infrastructure/ocr"
 	materialspg "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/materials/infrastructure/postgres"
@@ -92,6 +98,8 @@ type App struct {
 	audioStorage     taskaudioapp.Storage
 	materialsStorage materialsapp.S3Storage
 	cleaningWorker   *materialsapp.CleaningWorker
+	graphWorker      *graphapp.Worker
+	modelClient      llmapp.Completer
 }
 
 func New(cfg Config, pool *pgxpool.Pool, logger *zap.Logger) (*App, error) {
@@ -131,7 +139,17 @@ func New(cfg Config, pool *pgxpool.Pool, logger *zap.Logger) (*App, error) {
 	})
 	a.audioStorage = storage
 	a.materialsStorage = &materialsStorageAdapter{storage: storage, bucket: cfg.S3Bucket}
+	endpoints := cfg.LLMBaseURLs
+	if len(endpoints) == 0 {
+		endpoints = []string{cfg.AssessmentBaseURL}
+	}
+	model := cfg.LLMModel
+	if model == "" {
+		model = cfg.AssessmentModel
+	}
+	a.modelClient = llmmodel.New(a.client, endpoints, model, cfg.LLMAPIKey, 110*time.Second)
 	a.cleaningWorker = materialsapp.NewCleaningWorker(materialspg.New(pool), a.materialsStorage, materialsocr.New(cfg.CourseGraphURL, 330*time.Second))
+	a.graphWorker = graphapp.New(graphpg.New(pool), materialspg.New(pool), a.materialsStorage, graphapi.New(cfg.CourseGraphURL))
 	return a, nil
 }
 
@@ -202,14 +220,7 @@ func (a *App) Handler() http.Handler {
 	feedbackHandlers := diagnosticfeedbackhttp.New(feedbackService)
 
 	materialsOCR := materialsocr.New(a.cfg.CourseGraphURL, a.cfg.CourseGraphTimeout)
-	materialsTranslator := materialstranslator.New(
-		a.client,
-		a.cfg.TranslatorBaseURL,
-		a.cfg.TranslatorModel,
-		a.cfg.TranslatorAPIKey,
-		a.cfg.TranslatorWorkers,
-		a.cfg.TranslatorTimeout,
-	)
+	materialsTranslator := materialstranslator.NewWithCompleter(a.modelClient, a.cfg.TranslatorWorkers)
 	materialsService := materialsapp.New(materialspg.New(a.pool), a.materialsStorage, materialsOCR, a.now).
 		WithTranslator(materialsTranslator)
 	materialsHandlers := materialshttp.NewHandler(materialsService, a.cfg.MaxUploadBytes)
@@ -224,6 +235,7 @@ func (a *App) Handler() http.Handler {
 	mux.Handle("POST /admin/subjects/{subject_id}/competency-map/import", protect(auth, http.HandlerFunc(competencyHandlers.ImportSubject)))
 	mux.Handle("POST /admin/subjects/{subject_id}/materials", protect(auth, http.HandlerFunc(materialsHandlers.UploadMaterials)))
 	mux.Handle("GET /admin/subjects/{subject_id}/materials", protect(auth, http.HandlerFunc(materialsHandlers.ListMaterials)))
+	mux.Handle("GET /admin/subjects/{subject_id}/graph", protect(auth, http.HandlerFunc(graphhttp.New(a.graphWorker).Read)))
 	mux.Handle("DELETE /admin/subjects/{subject_id}/materials/{material_id}", protect(auth, http.HandlerFunc(materialsHandlers.DeleteMaterial)))
 	mux.Handle("GET /admin/subjects/{subject_id}/materials/{material_id}/raw", protect(auth, http.HandlerFunc(materialsHandlers.DownloadRaw)))
 	mux.Handle("POST /admin/subjects", protect(auth, http.HandlerFunc(subjectHandlers.Create)))

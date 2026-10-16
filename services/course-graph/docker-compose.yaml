@@ -8,6 +8,17 @@ services:
     environment:
       PORT: 8000
       COURSE_GRAPH_LLM_GRPC_TARGET: api:8003
+      COURSE_GRAPH_EMBEDDING_MODEL: ${COURSE_GRAPH_EMBEDDING_MODEL:-intfloat/multilingual-e5-small}
+      COURSE_GRAPH_EMBEDDING_THREADS: ${COURSE_GRAPH_EMBEDDING_THREADS:-4}
+      COURSE_GRAPH_TOPIC_MAX_CHARS: ${COURSE_GRAPH_TOPIC_MAX_CHARS:-6000}
+      COURSE_GRAPH_OCR_CACHE_DIR: /var/lib/course-graph/ocr
+      COURSE_GRAPH_OCR_DOCUMENT_TIMEOUT: ${COURSE_GRAPH_OCR_DOCUMENT_TIMEOUT:-480}
+      COURSE_GRAPH_OCR_ENRICH_CODE: ${COURSE_GRAPH_OCR_ENRICH_CODE:-true}
+      COURSE_GRAPH_OCR_ENRICH_FORMULA: ${COURSE_GRAPH_OCR_ENRICH_FORMULA:-true}
+      COURSE_GRAPH_OCR_FULL_PAGE: ${COURSE_GRAPH_OCR_FULL_PAGE:-false}
+    volumes:
+      - course_graph_models:/root/.cache/huggingface
+      - course_graph_data:/var/lib/course-graph
     ports:
       - "127.0.0.1:8005:8000"
     healthcheck:

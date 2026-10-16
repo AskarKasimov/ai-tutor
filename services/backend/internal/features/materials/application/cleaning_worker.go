@@ -15,7 +15,7 @@ type CleaningResult struct {
 	Report   json.RawMessage `json:"report"`
 }
 type Cleaner interface {
-	Clean(context.Context, string) (CleaningResult, error)
+	Clean(context.Context, string, string) (CleaningResult, error)
 }
 type CleaningQueue interface {
 	ClaimCleaning(context.Context, string, time.Time) (material.CleaningJob, error)
@@ -91,7 +91,7 @@ func (w *CleaningWorker) process(ctx context.Context, job material.CleaningJob) 
 	if len(source) == 0 || len(source) > 8*1024*1024 {
 		return fmt.Errorf("invalid parsed material size")
 	}
-	result, err := w.cleaner.Clean(ctx, string(source))
+	result, err := w.cleaner.Clean(ctx, string(source), m.ID)
 	if err != nil {
 		return err
 	}

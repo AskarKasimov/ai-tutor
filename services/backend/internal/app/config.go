@@ -201,7 +201,7 @@ func ConfigFromEnv() (Config, error) {
 	if c.CourseGraphURL == "" {
 		c.CourseGraphURL = strings.TrimSpace(os.Getenv("BACKEND_OCR_URL"))
 	}
-	c.CourseGraphTimeout, err = envDuration("BACKEND_COURSE_GRAPH_TIMEOUT", 120*time.Second)
+	c.CourseGraphTimeout, err = envDuration("BACKEND_COURSE_GRAPH_TIMEOUT", 600*time.Second)
 	if err != nil {
 		return c, err
 	}

@@ -286,7 +286,7 @@ func TestUploadMaterialTranslationFailureFallback(t *testing.T) {
 		t.Errorf("expected S3ParsedKey to point to parsed object on fallback, got: %s", mat.S3ParsedKey)
 	}
 
-	if mat.Status != material.StatusParsed {
-		t.Errorf("expected status parsed, got: %s", mat.Status)
+	if mat.Status != material.StatusFailed || mat.ErrorMessage == nil {
+		t.Errorf("failed translation must remain visible and prevent graph processing: status=%s, error=%v", mat.Status, mat.ErrorMessage)
 	}
 }

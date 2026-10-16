@@ -117,3 +117,112 @@ def test_slow_ocr_keeps_health_responsive(monkeypatch):
                 release.set()
             assert (await job).status_code == 200
     asyncio.run(run())
+
+
+def test_picture_labels_recovered_without_inventing_diagram_relations():
+    from types import SimpleNamespace as S
+    from course_graph.ocr.pictures import picture_texts
+    picture = S(prov=[S(page_no=8)], get_image=lambda doc: "crop")
+    document = S(pictures=[picture])
+    reader = lambda crop: S(txts=("Here you can add", "Facts", "SWI-Prolog", "noisy"), scores=(.99,.98,.99,.6))
+    converter = S(initialized_pipelines={1:S(ocr_model=S(reader=reader))})
+    recovered, metrics = picture_texts(document,converter,{8:"## SWI-Prolog\n<!-- image -->"})
+    assert recovered == {8:[(1,["Here you can add","Facts"])]}
+    assert metrics == {"regions":1,"lines":2,"failed_regions":0}
+
+
+def test_picture_ocr_failure_is_explicit_and_keeps_document():
+    from types import SimpleNamespace as S
+    from course_graph.ocr.pictures import picture_texts
+    document = S(pictures=[S(prov=[S(page_no=3)],get_image=lambda doc:None)])
+    converter = S(initialized_pipelines={1:S(ocr_model=S(reader=lambda _:None))})
+    recovered, metrics = picture_texts(document,converter,{3:"Source text"})
+    assert not recovered and metrics["failed_regions"] == 1
+
+
+def test_prolog_literals_are_fenced_without_changing_operators():
+    from course_graph.ocr.converter import protect_prolog_literals
+    source = "## Prolog\nFor example: tiger(X) :- cat(X), big(X).\n## ?- cat(X).\ncat(tom). [Tom is cat]\n```\npet(X) :- cat(X), not(wild(X)).\n```"
+    result = protect_prolog_literals(source)
+    assert "```prolog\ntiger(X) :- cat(X), big(X).\n```" in result
+    assert "```prolog\n?- cat(X).\n```" in result
+    assert "```prolog\ncat(tom).\n```" in result
+    assert result.count("pet(X) :- cat(X), not(wild(X)).") == 1
+    assert protect_prolog_literals(result) == result
+
+
+def test_prolog_fencing_survives_light_mode_and_docling_failure(monkeypatch):
+    import course_graph.ocr.converter as converter
+    monkeypatch.setattr(converter, "_extract_with_pypdf", lambda *_: "# Prolog\npet(X) :- cat(X), not(wild(X)).")
+    def broken_docling():
+        raise RuntimeError("model unavailable")
+    monkeypatch.setattr(converter, "get_converter", broken_docling)
+    for with_docling in ("false", "true"):
+        monkeypatch.setenv("COURSE_GRAPH_WITH_DOCLING", with_docling)
+        result = converter.convert_document("source.pdf", b"fixture")
+        assert "```prolog\npet(X) :- cat(X), not(wild(X)).\n```" in result["markdown"]
+        assert result["report"]["engine"] == "pypdf"
+        assert result["report"]["warnings"]
+
+
+def test_native_program_text_survives_generative_enrichment():
+    from types import SimpleNamespace as S
+    from docling_core.types.doc import DocItemLabel
+    from course_graph.ocr.enrichment import NativeSyntaxGuard
+    class Stage:
+        engine = object()
+        def __call__(self, doc, elements):
+            for element in elements:
+                element.item.text = "corrupted output"
+                yield element.item
+    code = S(text="pet(X) :- cat(X), not(wild(X)).", label=DocItemLabel.CODE)
+    formula = S(text="animal(X) :- cat(X).", label=DocItemLabel.FORMULA)
+    stage = NativeSyntaxGuard(Stage())
+    result = list(stage(None, [S(item=code), S(item=formula)]))
+    assert result[0].text == "pet(X) :- cat(X), not(wild(X))."
+    assert result[1].text == "animal(X) :- cat(X)."
+    assert result[1].label == DocItemLabel.TEXT
+    assert len(stage.warnings) == 2
+
+
+def test_enrichment_sets_model_cache_and_rejects_truncation():
+    import pytest
+    from types import SimpleNamespace as S
+    from course_graph.ocr.enrichment import AuditedEngine
+    class Engine:
+        options = S(use_kv_cache=True)
+        vlm_model = S(generation_config=S(use_cache=False))
+        def initialize(self):
+            pass
+        def predict_batch(self, inputs):
+            assert self.vlm_model.generation_config.use_cache
+            return [S(text="truncated", metadata={"num_tokens":2048})]
+    warnings = []
+    with pytest.raises(ValueError, match="token limit"):
+        AuditedEngine(Engine(), warnings).predict_batch([S(max_new_tokens=2048)])
+    assert warnings and "частично" in warnings[0]
+
+
+def test_formula_misclassification_recovers_native_pdf_rectangle():
+    import io
+    from types import SimpleNamespace as S
+    from pypdf import PdfWriter
+    from pypdf.generic import DictionaryObject, NameObject, DecodedStreamObject
+    from docling_core.types.doc import DocItemLabel, BoundingBox, CoordOrigin, FormulaItem, TextItem, ProvenanceItem
+    from course_graph.ocr.enrichment import recover_native_programs
+    writer = PdfWriter()
+    page = writer.add_blank_page(width=300, height=300)
+    font = DictionaryObject({NameObject("/Type"):NameObject("/Font"),NameObject("/Subtype"):NameObject("/Type1"),NameObject("/BaseFont"):NameObject("/Helvetica")})
+    page[NameObject("/Resources")] = DictionaryObject({NameObject("/Font"):DictionaryObject({NameObject("/F1"):writer._add_object(font)})})
+    stream = DecodedStreamObject()
+    stream.set_data(b"BT /F1 12 Tf 20 20 Td (animal\\(X\\) :- cat\\(X\\).) Tj ET")
+    page[NameObject("/Contents")] = writer._add_object(stream)
+    content = io.BytesIO()
+    writer.write(content)
+    item = FormulaItem(self_ref="#/texts/0",text="wrong colon",orig="wrong colon",prov=[ProvenanceItem(page_no=1,charspan=(0,11),bbox=BoundingBox(l=10,t=50,r=290,b=0,coord_origin=CoordOrigin.BOTTOMLEFT))])
+    document = S(texts=[item])
+    warnings = recover_native_programs(document, content.getvalue())
+    assert document.texts[0].text == "animal(X) :- cat(X)."
+    assert type(document.texts[0]) is TextItem
+    assert document.texts[0].label == DocItemLabel.TEXT
+    assert len(warnings) == 1

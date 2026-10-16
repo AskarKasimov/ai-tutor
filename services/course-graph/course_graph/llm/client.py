@@ -13,7 +13,7 @@ class ModelClient:
 
     async def complete(self, system: str, text: str) -> str:
         response = await self.stub.Complete(
-            llm_pb2.CompleteRequest(system=system, input=text), timeout=120,
+            llm_pb2.CompleteRequest(system=system, input=text), timeout=300,
         )
         return response.content
 

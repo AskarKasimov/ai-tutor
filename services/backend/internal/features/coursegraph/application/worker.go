@@ -121,7 +121,7 @@ func (w *Worker) process(ctx context.Context, job coursegraph.Job) error {
 			return err
 		}
 		input := coursegraph.Material{ID: m.ID, Markdown: string(source)}
-		if cached.TopicsVersion == "topics-v1" {
+		if cached.TopicsVersion == "topics-v2" {
 			input.Topics = cached.Topics
 		}
 		inputs = append(inputs, input)

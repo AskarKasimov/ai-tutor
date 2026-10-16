@@ -142,9 +142,15 @@ func (s *Service) Upload(ctx context.Context, actor user.User, subjectID string,
 		translatedText, transErr := s.translator.Translate(ctx, parsedText)
 		if transErr != nil {
 			log.Printf("Translation warning for %s: %v (preserving original OCR text)", cleanFilename, transErr)
+			status = material.StatusFailed
+			message := "Перевод не завершён; исходный OCR сохранён: " + transErr.Error()
+			errMsg = &message
 		} else if translatedText != "" && translatedText != parsedText {
 			if err := s.s3.Put(ctx, s3TranslatedKey, "text/markdown; charset=utf-8", []byte(translatedText)); err != nil {
 				log.Printf("Failed to upload translated markdown to S3 for %s: %v", cleanFilename, err)
+				status = material.StatusFailed
+				message := "Не удалось сохранить перевод; исходный OCR сохранён."
+				errMsg = &message
 			} else {
 				targetS3ParsedKey = s3TranslatedKey
 				finalText = translatedText

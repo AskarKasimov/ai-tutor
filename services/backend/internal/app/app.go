@@ -223,7 +223,7 @@ func (a *App) Handler() http.Handler {
 	materialsTranslator := materialstranslator.NewWithCompleter(a.modelClient, a.cfg.TranslatorWorkers)
 	materialsService := materialsapp.New(materialspg.New(a.pool), a.materialsStorage, materialsOCR, a.now).
 		WithTranslator(materialsTranslator)
-	materialsHandlers := materialshttp.NewHandler(materialsService, a.cfg.MaxUploadBytes)
+	materialsHandlers := materialshttp.NewHandler(materialsService, a.cfg.MaxUploadBytes, a.cfg.HTTPWriteTimeout())
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /auth/register", authHandlers.Register)

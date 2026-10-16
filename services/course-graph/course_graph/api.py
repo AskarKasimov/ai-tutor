@@ -104,13 +104,20 @@ async def extract_document(request: ExtractRequest):
 graph_slots = asyncio.Semaphore(1)
 
 
+async def encoder_for_topics(topics):
+    # A course without dependencies needs no embeddings or downloaded weights.
+    if len(topics) > 1 and any(t.requires for t in topics):
+        return await asyncio.to_thread(get_encoder)
+    return None
+
+
 @app.post("/graph/links")
 async def link_topics(request: LinkRequest):
     async with graph_slots:
         client = ModelClient()
         try:
             async with asyncio.timeout(2400):
-                encoder = await asyncio.to_thread(get_encoder)
+                encoder = await encoder_for_topics(request.topics)
                 return await build_links(request.topics, client.complete, encoder, request.per_requirement,
                                          request.max_chars, request.evidence_chars)
         except Exception:
@@ -145,7 +152,7 @@ async def build_course(request: BuildRequest):
                                                       material.week, ExtractionSettings(max_chars=request.max_chars))
                         topics.extend(Topic.model_validate(t) for t in result["report"]["topics"])
                         reports.append({"material_id": material.id, **result["report"]})
-                encoder = await asyncio.to_thread(get_encoder)
+                encoder = await encoder_for_topics(topics)
                 graph = await build_links(topics, client.complete, encoder, request.per_requirement)
                 graph["extraction_reports"] = reports
                 return graph

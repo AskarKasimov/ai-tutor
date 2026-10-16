@@ -34,14 +34,16 @@ type UploadResult struct {
 }
 
 type Handler struct {
-	service        *application.Service
-	maxUploadBytes int64
+	service           *application.Service
+	maxUploadBytes    int64
+	processingTimeout time.Duration
 }
 
-func NewHandler(service *application.Service, maxUploadBytes int64) *Handler {
+func NewHandler(service *application.Service, maxUploadBytes int64, processingTimeout time.Duration) *Handler {
 	return &Handler{
-		service:        service,
-		maxUploadBytes: maxUploadBytes,
+		service:           service,
+		maxUploadBytes:    maxUploadBytes,
+		processingTimeout: processingTimeout,
 	}
 }
 
@@ -81,7 +83,7 @@ func (h *Handler) UploadMaterials(w http.ResponseWriter, r *http.Request) {
 
 	rc := http.NewResponseController(w)
 	_ = rc.SetReadDeadline(time.Now().Add(15 * time.Minute))
-	_ = rc.SetWriteDeadline(time.Now().Add(15 * time.Minute))
+	_ = rc.SetWriteDeadline(time.Now().Add(15*time.Minute + h.processingTimeout))
 
 	mr, err := r.MultipartReader()
 	if err != nil {
@@ -93,6 +95,10 @@ func (h *Handler) UploadMaterials(w http.ResponseWriter, r *http.Request) {
 	failed := make([]UploadFailedItem, 0)
 
 	for {
+		// OCR may outlast the upload deadline. Renew before reading each file;
+		// time spent processing a previous file is not time spent uploading.
+		_ = rc.SetReadDeadline(time.Now().Add(15 * time.Minute))
+		_ = rc.SetWriteDeadline(time.Now().Add(15*time.Minute + h.processingTimeout))
 		part, err := mr.NextPart()
 		if err == io.EOF {
 			break
@@ -159,6 +165,7 @@ func (h *Handler) UploadMaterials(w http.ResponseWriter, r *http.Request) {
 			contentType = "application/octet-stream"
 		}
 
+		_ = rc.SetWriteDeadline(time.Now().Add(h.processingTimeout))
 		mat, err := h.service.Upload(r.Context(), actor, subjectID, application.UploadInput{
 			Filename:    filename,
 			ContentType: contentType,
@@ -183,6 +190,7 @@ func (h *Handler) UploadMaterials(w http.ResponseWriter, r *http.Request) {
 		uploaded = append(uploaded, mat)
 	}
 
+	_ = rc.SetWriteDeadline(time.Now().Add(30 * time.Second))
 	if len(uploaded) == 0 {
 		if len(failed) > 0 {
 			first := failed[0]

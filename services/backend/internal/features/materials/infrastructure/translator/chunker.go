@@ -2,6 +2,7 @@ package translator
 
 import (
 	"strings"
+	"unicode/utf8"
 )
 
 // DefaultMaxCharsPerChunk is the target maximum size of a text chunk in characters (~500-800 tokens).
@@ -9,8 +10,9 @@ const DefaultMaxCharsPerChunk = 2500
 
 // Chunk represents an indexed portion of markdown text for parallel translation.
 type Chunk struct {
-	Index int
-	Text  string
+	Index     int
+	Text      string
+	separator *string
 }
 
 // SplitIntoChunks slices a Markdown lecture into coherent chunks (usually 1-3 slides each)
@@ -72,7 +74,8 @@ func SplitIntoChunks(markdown string, maxCharsPerChunk int) []Chunk {
 	chunkIndex := 0
 
 	for _, section := range sections {
-		// If a single section alone exceeds limit, flush current and append section alone
+		// Split large sections at paragraph/line/word boundaries. Continuations
+		// retain their separator so splitting a Markdown table does not add blank rows.
 		if len(section) > maxCharsPerChunk {
 			if currentBuilder.Len() > 0 {
 				chunks = append(chunks, Chunk{
@@ -82,11 +85,11 @@ func SplitIntoChunks(markdown string, maxCharsPerChunk int) []Chunk {
 				chunkIndex++
 				currentBuilder.Reset()
 			}
-			chunks = append(chunks, Chunk{
-				Index: chunkIndex,
-				Text:  section,
-			})
-			chunkIndex++
+			for _, fragment := range splitLargeSection(section, maxCharsPerChunk) {
+				fragment.Index = chunkIndex
+				chunks = append(chunks, fragment)
+				chunkIndex++
+			}
 			continue
 		}
 
@@ -122,9 +125,11 @@ func JoinChunks(chunks []Chunk) string {
 	}
 
 	ordered := make([]string, len(chunks))
+	separators := make([]*string, len(chunks))
 	for _, c := range chunks {
 		if c.Index >= 0 && c.Index < len(chunks) {
 			ordered[c.Index] = strings.TrimSpace(c.Text)
+			separators[c.Index] = c.separator
 		}
 	}
 
@@ -134,10 +139,53 @@ func JoinChunks(chunks []Chunk) string {
 			continue
 		}
 		if i > 0 && sb.Len() > 0 {
-			sb.WriteString("\n\n")
+			if separators[i] == nil {
+				sb.WriteString("\n\n")
+			} else {
+				sb.WriteString(*separators[i])
+			}
 		}
 		sb.WriteString(text)
 	}
 
 	return sb.String()
+}
+
+func splitLargeSection(text string, limit int) []Chunk {
+	var result []Chunk
+	var before *string
+	for len(text) > limit {
+		cut, separator := strings.LastIndex(text[:limit], "\n\n"), "\n\n"
+		if cut < 1 {
+			cut, separator = strings.LastIndex(text[:limit], "\n"), "\n"
+		}
+		if cut < 1 && strings.HasPrefix(strings.TrimSpace(text), "|") {
+			// A table row is indivisible; keep its cells together even if one
+			// unusually large row exceeds the target size.
+			cut, separator = strings.Index(text, "\n"), "\n"
+			if cut < 1 {
+				break
+			}
+		}
+		if cut < 1 {
+			cut, separator = strings.LastIndex(text[:limit], " "), " "
+		}
+		if cut < 1 {
+			cut, separator = limit, ""
+			for cut > 0 && !utf8.RuneStart(text[cut]) {
+				cut--
+			}
+			if cut == 0 {
+				_, cut = utf8.DecodeRuneInString(text)
+			}
+		}
+		result = append(result, Chunk{Text: text[:cut], separator: before})
+		text = text[cut+len(separator):]
+		joiner := separator
+		before = &joiner
+	}
+	if text != "" {
+		result = append(result, Chunk{Text: text, separator: before})
+	}
+	return result
 }

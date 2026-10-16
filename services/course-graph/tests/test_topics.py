@@ -4,7 +4,7 @@ import json
 import numpy as np
 import pytest
 
-from course_graph.topics.extract import ExtractionSettings, extract_topics, topic_blocks
+from course_graph.topics.extract import ExtractionSettings, administrative_question, extract_topics, topic_blocks
 from course_graph.topics.graph import build_links, valid_evidence
 from course_graph.topics.models import Evidence, Source, Topic
 from course_graph.topics.retrieval import CandidateIndex
@@ -103,6 +103,120 @@ def test_slide_grouping_keeps_administrative_paragraph_deletable():
     assert "скорость изменения" in result["markdown"]
     assert "Спасибо" not in result["markdown"]
     assert result["report"]["removed"][0]["reason"] == "thanks"
+
+
+@pytest.mark.parametrize("protected_text", [
+    "```python\nx = 2\n```",
+    "$$f'(x)=2x$$",
+    "| Аргумент | Значение |\n| --- | --- |\n| x | 2 |",
+    "![График функции](function.png)",
+])
+def test_ignored_protected_removal_cannot_reappear_in_markdown_audit(protected_text):
+    source = "Производная показывает скорость изменения функции.\n\n" + protected_text + "\n\nСпасибо за внимание!"
+
+    async def misguided_removal(system, payload):
+        blocks = json.loads(payload)["blocks"]
+        return json.dumps({
+            "remove": [{"id": b["id"], "reason": "thanks"} for b in blocks
+                       if b["protected"] or b["text"].strip() == "Спасибо за внимание!"],
+            "topics": [{"title": "Производная", "requires": [],
+                        "provides": ["Объяснять смысл производной"],
+                        "question": "Что показывает производная?",
+                        "block_ids": [b["id"] for b in blocks if not b["protected"]
+                                      and b["text"].strip() != "Спасибо за внимание!"]}],
+        }, ensure_ascii=False)
+
+    result = run(extract_topics(source, misguided_removal, "lecture"))
+    report = result["report"]
+    assert protected_text in result["markdown"]
+    assert "Спасибо за внимание!" not in result["markdown"]
+    assert [r["text"].strip() for r in report["removed"]] == ["Спасибо за внимание!"]
+    topic = report["topics"][0]
+    assert protected_text in topic["text"]
+    removed_ids = {r["id"] for r in report["removed"]}
+    assert not removed_ids.intersection(s["block_id"] for s in topic["sources"])
+    assert report["quality"]["assigned_blocks"] == report["quality"]["retained_blocks"]
+
+
+@pytest.mark.parametrize("context", [
+    "## Слайд 1\n\n# Введение в ИИ\n\nНеделя 3",
+    "## Slide 1\n\n# Introduction to AI\n\nWeek 3",
+    "## Слайд 1\n\n# План\n\n- Агенты\n- Окружающая среда",
+    "## Слайд 1\n\n# Агент и среда\n\n<!-- image -->\nДатчики\nАгент\nСреда",
+])
+def test_context_is_retained_without_becoming_an_independent_claim(context):
+    teaching = "## Слайд 2\n\nАгент воспринимает среду через датчики и действует с помощью исполнительных устройств."
+    source = context + "\n\n" + teaching
+    seen_blocks = []
+
+    async def explain_agent(system, payload):
+        blocks = json.loads(payload)["blocks"]
+        seen_blocks.extend(b["text"] for b in blocks)
+        assert all("воспринимает" in b["text"] for b in blocks)
+        return json.dumps({"remove": [], "topics": [{
+            "title": "Взаимодействие агента со средой", "requires": [],
+            "provides": ["Объяснять назначение датчиков и исполнительных устройств"],
+            "question": "Как агент воспринимает среду и действует на неё?",
+            "block_ids": [b["id"] for b in blocks],
+        }]}, ensure_ascii=False)
+
+    result = run(extract_topics(source, explain_agent, "lecture", week=3))
+    assert seen_blocks
+    assert result["markdown"] == source
+    report = result["report"]
+    assert len(report["topics"]) == 1
+    assert len(report["context_blocks"]) == 1
+    topic = report["topics"][0]
+    assert topic["sources"][0]["page"] == 1
+    assert topic["sources"][1]["page"] == 2
+    assert all(s["week"] == 3 and source[s["start"]:s["end"]] == s["text"] for s in topic["sources"])
+    assert context in topic["text"]
+    assert report["quality"]["assigned_blocks"] == report["quality"]["retained_blocks"]
+
+
+def test_only_context_cannot_publish_topics_with_invented_content():
+    async def never(*args):
+        raise AssertionError("No model calls for cover-only material")
+
+    with pytest.raises(ValueError, match="нет объяснений"):
+        run(extract_topics("## Слайд 1\n\n# Введение в ИИ\n\nНеделя 3", never))
+
+
+@pytest.mark.parametrize("administrative", [
+    "Сколько человек должно быть в каждой сформированной команде?",
+    "Каков размер команды для выполнения задания?",
+    "Сколько времени даётся на подготовку задания?",
+    "Когда нужно сдавать выполненную работу?",
+])
+def test_administrative_question_is_repaired_without_deleting_mixed_exercise(administrative):
+    source = "Сформируйте команды по 4–5 человек. За 10 минут опишите датчики и исполнительные устройства агента для выбранного сценария."
+    calls = []
+
+    async def complete(system, payload):
+        data = json.loads(payload)
+        calls.append(data)
+        return json.dumps({"remove": [], "topics": [{
+            "title": "Датчики и исполнительные устройства агента", "requires": [],
+            "provides": ["Подбирать датчики и исполнительные устройства для сценария"],
+            "question": administrative if len(calls) == 1 else "Какие датчики и исполнительные устройства нужны агенту в выбранном сценарии?",
+            "block_ids": [b["id"] for b in data["blocks"]],
+        }]}, ensure_ascii=False)
+
+    result = run(extract_topics(source, complete))
+    assert len(calls) == 2
+    assert "организац" in calls[1]["correction"]
+    assert result["markdown"] == source
+    assert result["report"]["removed"] == []
+    assert result["report"]["topics"][0]["question"].startswith("Какие датчики")
+
+
+@pytest.mark.parametrize("question", [
+    "Сколько команд выполняет процессор за один такт?",
+    "Сколько времени нужно для работы алгоритма?",
+    "Сколько времени занимает подготовка обучающих данных?",
+])
+def test_administrative_filter_allows_technical_counts_and_runtime_questions(question):
+    assert not administrative_question(question)
 
 
 def test_global_retrieval_finds_distant_topic_and_excludes_self():
@@ -221,5 +335,13 @@ def test_joint_endpoint_returns_cards_and_cleaning_audit(monkeypatch):
     response = TestClient(api.app).post("/topics/extract", json={"markdown": "Производная показывает скорость изменения функции.\n\nСпасибо за внимание!", "material_id": "m"})
     assert response.status_code == 200
     report = response.json()["report"]
-    assert report["topics_version"] == "topics-v1"
+    assert report["topics_version"] == "topics-v2"
     assert report["topics"][0]["sources"][0]["material_id"] == "m"
+@pytest.mark.parametrize("text",["", "   ", "\n\r\n\t"])
+def test_blank_material_cannot_publish_empty_graph(text):
+    async def complete(*args):
+        raise AssertionError("Blank material must not call LLM")
+    with pytest.raises(ValueError,match="не содержит"):
+        run(extract_topics(text,complete))
+
+

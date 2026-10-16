@@ -94,12 +94,77 @@ func (o *stubOCR) Convert(ctx context.Context, filename string, data []byte) (st
 	return "# " + filename + "\n\nФормула: $\\theta_{t+1} = \\theta_t - \\eta \\nabla L$", nil
 }
 
+type deadlineRecorder struct {
+	*httptest.ResponseRecorder
+	readDeadlines []time.Time
+	writeDeadline time.Time
+}
+
+func (r *deadlineRecorder) SetReadDeadline(deadline time.Time) error {
+	r.readDeadlines = append(r.readDeadlines, deadline)
+	return nil
+}
+
+func (r *deadlineRecorder) SetWriteDeadline(deadline time.Time) error {
+	r.writeDeadline = deadline
+	return nil
+}
+
+type deadlineOCR struct {
+	t        *testing.T
+	recorder *deadlineRecorder
+	calls    int
+}
+
+func (o *deadlineOCR) Convert(_ context.Context, _ string, _ []byte) (string, error) {
+	o.calls++
+	if time.Until(o.recorder.writeDeadline) < 119*time.Minute {
+		o.t.Fatal("upload handler cuts off the configured two-hour OCR budget")
+	}
+	return "Материалы лекции", nil
+}
+
+func TestUploadDeadlinesAllowConfiguredOCRAndMultipleFiles(t *testing.T) {
+	recorder := &deadlineRecorder{ResponseRecorder: httptest.NewRecorder()}
+	ocr := &deadlineOCR{t: t, recorder: recorder}
+	svc := application.New(&memoryRepo{}, &memoryS3{}, ocr, time.Now)
+	handler := materialshttp.NewHandler(svc, 1024, 2*time.Hour)
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	for _, filename := range []string{"first.pdf", "second.pdf"} {
+		part, err := writer.CreateFormFile("file", filename)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err = part.Write([]byte("PDF")); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/admin/subjects/sub/materials", &body)
+	req.SetPathValue("subject_id", "sub")
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	req = httpx.WithPrincipal(req, user.User{ID: "admin", Role: user.Admin})
+	handler.UploadMaterials(recorder, req)
+	if recorder.Code != http.StatusOK || ocr.calls != 2 {
+		t.Fatalf("upload failed: status=%d calls=%d body=%s", recorder.Code, ocr.calls, recorder.Body.String())
+	}
+	if len(recorder.readDeadlines) < 4 {
+		t.Fatal("read deadline was not renewed between files")
+	}
+	if remaining := time.Until(recorder.writeDeadline); remaining <= 0 || remaining > 30*time.Second {
+		t.Fatalf("response deadline was not bounded after processing: %v", remaining)
+	}
+}
+
 func TestHandlerUploadAndList(t *testing.T) {
 	repo := &memoryRepo{}
 	s3 := &memoryS3{}
 	ocr := &stubOCR{}
 	svc := application.New(repo, s3, ocr, time.Now)
-	handler := materialshttp.NewHandler(svc, 25*1024*1024)
+	handler := materialshttp.NewHandler(svc, 25*1024*1024, 2*time.Hour)
 
 	admin := user.User{ID: "adm-1", Role: user.Admin}
 	student := user.User{ID: "stu-1", Role: user.Student}

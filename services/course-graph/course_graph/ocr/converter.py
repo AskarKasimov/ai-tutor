@@ -21,12 +21,13 @@ def get_converter():
         options = PdfPipelineOptions()
         options.do_code_enrichment = os.environ.get("COURSE_GRAPH_OCR_ENRICH_CODE", "true").lower() == "true"
         options.do_formula_enrichment = os.environ.get("COURSE_GRAPH_OCR_ENRICH_FORMULA", "true").lower() == "true"
+        options.generate_picture_images = os.environ.get("COURSE_GRAPH_OCR_PICTURE_TEXT", "true").lower() == "true"
         # The model preset requests bfloat16. On AVX2-only CPUs this is emulated
         # and a small code region took minutes. Use native CPU float32 explicitly.
         from docling.datamodel.vlm_engine_options import TransformersVlmEngineOptions
         options.code_formula_options.engine_options = TransformersVlmEngineOptions(
             torch_dtype="float32", load_in_8bit=False, use_kv_cache=True, compile_model=False)
-        options.document_timeout = float(os.environ.get("COURSE_GRAPH_OCR_DOCUMENT_TIMEOUT", "480"))
+        options.document_timeout = float(os.environ.get("COURSE_GRAPH_OCR_DOCUMENT_TIMEOUT", "3600"))
         from docling.datamodel.pipeline_options import RapidOcrOptions
         ocr = RapidOcrOptions(backend="torch", force_full_page_ocr=os.environ.get("COURSE_GRAPH_OCR_FULL_PAGE", "false").lower() == "true")
         model_dir = Path(os.environ.get("COURSE_GRAPH_RAPID_CACHE_DIR", "/var/lib/course-graph/rapidocr"))
@@ -36,7 +37,9 @@ def get_converter():
             if (model_dir/name).exists():
                 setattr(ocr, field, str(model_dir/name))
         options.ocr_options = ocr
-        _converter = DocumentConverter(format_options={InputFormat.PDF: PdfFormatOption(pipeline_options=options)})
+        from .enrichment import audited_pipeline_class
+        _converter = DocumentConverter(format_options={InputFormat.PDF: PdfFormatOption(
+            pipeline_options=options, pipeline_cls=audited_pipeline_class())})
     return _converter
 
 
@@ -63,7 +66,9 @@ def convert_document(filename: str, content: bytes) -> dict:
         raise ValueError("Empty file content")
     started = time.monotonic()
     source_hash = hashlib.sha256(content).hexdigest()
-    configuration = {"version": "ocr-v3-cpu-fp32", "with_docling": os.environ.get("COURSE_GRAPH_WITH_DOCLING", "true"),
+    configuration = {"version": "ocr-v6-native-syntax", "with_docling": os.environ.get("COURSE_GRAPH_WITH_DOCLING", "true"),
+                     "picture_text": os.environ.get("COURSE_GRAPH_OCR_PICTURE_TEXT", "true"),
+                     "document_timeout": os.environ.get("COURSE_GRAPH_OCR_DOCUMENT_TIMEOUT", "3600"),
                      "enrich_code": os.environ.get("COURSE_GRAPH_OCR_ENRICH_CODE", "true"),
                      "enrich_formula": os.environ.get("COURSE_GRAPH_OCR_ENRICH_FORMULA", "true"),
                      "full_page_ocr": os.environ.get("COURSE_GRAPH_OCR_FULL_PAGE", "false")}
@@ -77,10 +82,10 @@ def convert_document(filename: str, content: bytes) -> dict:
             cached["report"]["cache_hit"] = True
             return cached
 
-    def result(markdown, engine, pages=None, exported_pages=None, warnings=None):
+    def result(markdown, engine, pages=None, exported_pages=None, warnings=None, picture_ocr=None):
         report = {"engine": engine, "source_sha256": source_hash, "cache_hit": False,
                   "seconds": round(time.monotonic()-started, 3), "pages": pages,
-                  "exported_pages": exported_pages, "warnings": warnings or [],
+                  "exported_pages": exported_pages, "warnings": warnings or [], "picture_ocr": picture_ocr,
                   "code_blocks": len(re.findall(r"^```", markdown, re.M))//2,
                   "undecoded_formulas": markdown.count("<!-- formula-not-decoded -->"),
                   "image_placeholders": markdown.count("<!-- image -->"), **configuration}
@@ -88,7 +93,9 @@ def convert_document(filename: str, content: bytes) -> dict:
             report["warnings"].append("Часть формул не распознана; такие маркеры не являются учебным содержанием")
         data = {"markdown": markdown, "report": report}
         # Do not permanently cache a degraded fallback after transient model errors.
-        if cache_path and engine in {"docling", "text"} and not any("частично" in w for w in report["warnings"]):
+        degraded = (report["undecoded_formulas"] > 0 or bool(picture_ocr and picture_ocr.get("failed_regions"))
+                    or any("частично" in w for w in report["warnings"]))
+        if cache_path and engine in {"docling", "text"} and not degraded:
             cache_path.parent.mkdir(parents=True, exist_ok=True)
             with tempfile.NamedTemporaryFile(mode="w", dir=cache_path.parent, delete=False) as f:
                 json.dump(data, f, ensure_ascii=False)
@@ -114,21 +121,38 @@ def convert_document(filename: str, content: bytes) -> dict:
         if os.environ.get("COURSE_GRAPH_WITH_DOCLING", "true").lower() == "false":
             markdown = _extract_with_pypdf(tmp_path, lecture_title)
             if markdown:
-                return result(markdown, "pypdf", warnings=["Облегчённое извлечение: код/формулы из изображений не распознаны"])
+                return result(protect_prolog_literals(markdown), "pypdf", warnings=["Облегчённое извлечение: код/формулы из изображений не распознаны"])
             raise RuntimeError("Лёгкая сборка извлекает текстовый PDF; для сканов нужна полная сборка с Docling")
 
         # 1. Try Docling
         fallback_reason = "Docling не вернул текст"
         try:
             converter = get_converter()
+            from .enrichment import enrichment_warnings
+            enrichment_warnings(converter, reset=True)
             conv_res = converter.convert(tmp_path)
             doc = conv_res.document
+            native_warnings = []
+            if lower.endswith(".pdf"):
+                try:
+                    from .enrichment import recover_native_programs
+                    native_warnings = recover_native_programs(doc, content)
+                except Exception as error:
+                    native_warnings = ["Проверка исходного синтаксиса PDF выполнена частично: " + str(error)[:200]]
 
             slides_text = [f"# {lecture_title}\n"]
             exported_pages = []
+            picture_ocr = None
             if hasattr(doc, "pages") and doc.pages:
+                page_markdown = {n: doc.export_to_markdown(page_no=n).strip() for n in sorted(doc.pages)}
+                recovered = {}
+                if configuration["picture_text"].lower() == "true":
+                    from .pictures import picture_texts
+                    recovered, picture_ocr = picture_texts(doc, converter, page_markdown)
                 for page_no in sorted(doc.pages.keys()):
-                    slide_md = doc.export_to_markdown(page_no=page_no).strip()
+                    slide_md = page_markdown[page_no]
+                    for picture_id, lines in recovered.get(page_no, []):
+                        slide_md += f"\n\n### Текст изображения {picture_id} (OCR)\n\n" + "\n".join(lines)
                     if slide_md:
                         exported_pages.append(page_no)
                         slides_text.append(f"## Слайд {page_no}\n\n{slide_md}")
@@ -139,10 +163,15 @@ def convert_document(filename: str, content: bytes) -> dict:
 
             if markdown_text and markdown_text.strip():
                 status = str(getattr(conv_res, "status", ""))
-                warnings = [] if "partial" not in status.lower() else ["Docling завершил документ частично"]
+                warnings = enrichment_warnings(converter) + native_warnings
+                if "partial" in status.lower():
+                    warnings.append("Docling завершил документ частично")
+                markdown_text = protect_prolog_literals(markdown_text)
                 if "<!-- image -->" in markdown_text:
-                    warnings.append("В документе есть изображения: их смысл и структура схем не восстановлены текстовым OCR")
-                return result(markdown_text, "docling", len(doc.pages) if hasattr(doc, "pages") else None, exported_pages, warnings)
+                    warnings.append("Подписи изображений извлечены отдельно, если распознаны; смысл и пространственная структура схем не восстановлены текстовым OCR")
+                if picture_ocr and picture_ocr["failed_regions"]:
+                    warnings.append("Часть изображений не удалось обработать текстовым OCR")
+                return result(markdown_text, "docling", len(doc.pages) if hasattr(doc, "pages") else None, exported_pages, warnings, picture_ocr)
         except Exception as error:
             fallback_reason = type(error).__name__ + ": " + str(error)[:300]
             traceback.print_exc()
@@ -150,7 +179,7 @@ def convert_document(filename: str, content: bytes) -> dict:
         # 2. Fallback to pypdf without code duplication
         pypdf_text = _extract_with_pypdf(tmp_path, lecture_title)
         if pypdf_text:
-            return result(pypdf_text, "pypdf", warnings=["Docling недоступен: " + fallback_reason,
+            return result(protect_prolog_literals(pypdf_text), "pypdf", warnings=["Docling недоступен: " + fallback_reason,
                                                        "Fallback не гарантирует распознавание кода/формул/текста из изображений"])
 
         raise RuntimeError(f"Не удалось извлечь текст из файла {filename}")
@@ -165,3 +194,38 @@ def convert_document(filename: str, content: bytes) -> dict:
 def convert_document_to_markdown(filename: str, content: bytes) -> str:
     """Compatibility wrapper for existing consumers expecting a string."""
     return convert_document(filename, content)["markdown"]
+
+
+def protect_prolog_literals(markdown: str) -> str:
+    """Fence literal rules/queries so translation cannot rename predicates."""
+    if not re.search(r"prolog|:-", markdown, re.I):
+        return markdown
+    pattern = re.compile(r"(?:[a-z]\w*\([^\n]*?\)\s*:-\s*[^\n]+?\.|\?-\s*[^\n]+?\.|[A-Z]\w*\s*:-\s*[A-Z]\w*\.)")
+    fact = re.compile(r"^(?:#+\s*)?([a-z]\w*\([^\n]*?\)\.)(\s*(?:\[.*\])?)$")
+    lines = []
+    fence = None
+    for line in markdown.splitlines():
+        marker = re.match(r"^\s*(`{3,}|~{3,})", line)
+        if marker:
+            if fence is None:
+                fence = marker.group(1)[0]
+            elif marker.group(1)[0] == fence:
+                fence = None
+            lines.append(line)
+            continue
+        if fence:
+            lines.append(line)
+            continue
+        match = pattern.search(line) or fact.fullmatch(line)
+        if not match:
+            lines.append(line)
+            continue
+        start, end = match.span(1) if match.re is fact else match.span()
+        # A heading marker on a native query/fact is layout, not code syntax.
+        prefix = re.sub(r"^#+\s*", "", line[:start]).strip()
+        if prefix and prefix not in {"-", "*", "+"}:
+            lines.append(prefix)
+        lines.extend(["", "```prolog", line[start:end], "```", ""])
+        if line[end:].strip():
+            lines.append(line[end:].strip())
+    return "\n".join(lines)

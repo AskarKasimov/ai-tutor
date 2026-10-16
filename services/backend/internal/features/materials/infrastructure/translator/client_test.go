@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -87,6 +88,13 @@ Consider the Python implementation:
 
 ` + "```python\ndef bfs(graph, start):\n    queue = [start]\n    return queue\n```",
 			}
+			tokens := regexp.MustCompile(`__COURSE_KEEP_[a-f0-9]+_\d+__`).FindAllString(prompt, -1)
+			if len(tokens) != 2 {
+				return "", fmt.Errorf("expected protected formula and code, got %v", tokens)
+			}
+			resp["translation"] = strings.Replace(resp["translation"], "$f(n) = g(n) + h(n)$", tokens[0], 1)
+			codeStart := strings.Index(resp["translation"], "```python")
+			resp["translation"] = resp["translation"][:codeStart] + tokens[1]
 			data, _ := json.Marshal(resp)
 			return string(data), nil
 		},
@@ -131,8 +139,8 @@ func TestTranslateWithHTTPServer(t *testing.T) {
 		receivedAuth = r.Header.Get("Authorization")
 
 		var req struct {
-			Model          string `json:"model"`
-			Messages       []struct {
+			Model    string `json:"model"`
+			Messages []struct {
 				Role    string `json:"role"`
 				Content string `json:"content"`
 			} `json:"messages"`
@@ -155,7 +163,7 @@ func TestTranslateWithHTTPServer(t *testing.T) {
 				{
 					"finish_reason": "stop",
 					"message": map[string]string{
-						"role": "assistant",
+						"role":    "assistant",
 						"content": "```json\n{\"translation\": \"## Слайд 1\\n\\nМашинное обучение — это область искусственного интеллекта.\"}\n```",
 					},
 				},

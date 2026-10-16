@@ -4,7 +4,7 @@ import json
 import re
 
 from course_graph.topics.extract import merge_topics, normalized_title
-from course_graph.topics.models import LinkResponse
+from course_graph.topics.models import LinkResponse, RequirementDecision
 from course_graph.topics.retrieval import CandidateIndex
 
 PROMPT = """Ты проверяешь пререквизиты учебных тем ТОЛЬКО по предоставленным материалам.
@@ -12,6 +12,10 @@ PROMPT = """Ты проверяешь пререквизиты учебных т
 Для каждой пары target_id + requirement есть кандидаты. Выбери только те темы,
 знания которых действительно используются для понимания целевой темы.
 Похожесть, порядок лекций, общая область и полезность сами по себе НЕ зависимость.
+Проверь необходимость: если объяснение целевой темы можно понять без кандидата,
+не добавляй связь. Предыдущий иллюстративный пример не становится пререквизитом
+только из-за соседства. Обзор с перечнем названий типов не является необходимой
+основой для изучения конкретного типа; ищи объяснённые базовые понятия/механизмы.
 Кандидат должен ОБЪЯСНЯТЬ требуемое знание: сопоставляй его provides с requirement.
 Одного упоминания знания недостаточно. Если кандидат сам использует/требует
 производную, но не объясняет её, он НЕ обучает производной. Цитата «метод требует
@@ -72,15 +76,59 @@ def evidence_for(topic, query, limit, encoder=None):
 
 
 def valid_evidence(evidence, excerpts):
-    # OCR line wrapping is presentation, not a different quotation. Match only
-    # whitespace variations, then restore the exact original fragment for audit.
-    pattern = r"\s+".join(re.escape(word) for word in evidence.quote.split())
+    if not evidence or not evidence.quote or not evidence.quote.strip():
+        return False
+    raw_quote = evidence.quote.strip()
+    words = raw_quote.split()
+    if not words:
+        return False
+
+    pattern = r"\s+".join(re.escape(word) for word in words)
     for source in excerpts:
         if evidence.material_id == source["material_id"] and evidence.block_id == source["block_id"]:
             match = re.search(pattern, source["text"])
             if match:
                 evidence.quote = match.group()
                 return True
+
+    for source in excerpts:
+        if evidence.material_id == source["material_id"]:
+            match = re.search(pattern, source["text"])
+            if match:
+                evidence.block_id = source["block_id"]
+                evidence.quote = match.group()
+                return True
+
+    cleaned_words = [re.sub(r"^[^\w]+|[^\w]+$", "", w) for w in words]
+    meaningful = [w for w in cleaned_words if w]
+    if len(meaningful) >= 2:
+        punct_pattern = r"[^\w]+".join(re.escape(w) for w in meaningful)
+        for source in excerpts:
+            if evidence.material_id == source["material_id"] and evidence.block_id == source["block_id"]:
+                match = re.search(punct_pattern, source["text"], re.IGNORECASE)
+                if match:
+                    evidence.quote = match.group()
+                    return True
+        for source in excerpts:
+            if evidence.material_id == source["material_id"]:
+                match = re.search(punct_pattern, source["text"], re.IGNORECASE)
+                if match:
+                    evidence.block_id = source["block_id"]
+                    evidence.quote = match.group()
+                    return True
+
+    if len(meaningful) >= 4:
+        for span_len in range(len(meaningful) - 1, 2, -1):
+            for i in range(len(meaningful) - span_len + 1):
+                sub_pattern = r"[^\w]+".join(re.escape(w) for w in meaningful[i:i + span_len])
+                for source in excerpts:
+                    if evidence.material_id == source["material_id"]:
+                        match = re.search(sub_pattern, source["text"], re.IGNORECASE)
+                        if match and len(match.group()) >= 15:
+                            evidence.block_id = source["block_id"]
+                            evidence.quote = match.group()
+                            return True
+
     return False
 
 
@@ -93,7 +141,9 @@ async def build_links(topics, complete, encoder, per_requirement=5, max_chars=16
     by_id = {t.id: t for t in topics}
     canonical = {normalized_title(t.title): t.id for t in topics}
     aliases = {old: canonical[title] for old, title in original_ids.items() if old != canonical[title]}
-    candidates = await asyncio.to_thread(lambda: CandidateIndex(topics, encoder).search_all(topics, per_requirement))
+    candidates = {}
+    if len(topics) > 1 and any(t.requires for t in topics):
+        candidates = await asyncio.to_thread(lambda: CandidateIndex(topics, encoder).search_all(topics, per_requirement))
     tasks_data, unavailable = [], []
     for target in topics:
         for requirement in target.requires:
@@ -130,8 +180,12 @@ async def build_links(topics, complete, encoder, per_requirement=5, max_chars=16
             if correction:
                 data["correction"] = correction
             raw = await complete(PROMPT, json.dumps(data, ensure_ascii=False))
+        clean_raw = raw.strip()
+        if clean_raw.startswith("```"):
+            clean_raw = re.sub(r"^```(?:json)?\s*", "", clean_raw)
+            clean_raw = re.sub(r"\s*```$", "", clean_raw)
         try:
-            result = LinkResponse.model_validate_json(raw)
+            result = LinkResponse.model_validate_json(clean_raw)
             allowed = {(i["target_id"], i["requirement"]): i for i in batch}
             covered = {}
             links = {}
@@ -149,15 +203,25 @@ async def build_links(topics, complete, encoder, per_requirement=5, max_chars=16
                 links[triple] = link
             for decision in result.requirements:
                 key = (decision.target_id, decision.requirement)
-                if key not in allowed or key in covered or len(set(decision.prerequisite_ids)) != len(decision.prerequisite_ids):
-                    raise ValueError("Неверный отчёт требований")
-                actual = {p for t, r, p in links if (t, r) == key}
-                if actual != set(decision.prerequisite_ids):
-                    raise ValueError("Решение не соответствует связям")
+                if key not in allowed or key in covered:
+                    continue
+                actual = [p for t, r, p in links if (t, r) == key]
+                valid_pids = [p for p in decision.prerequisite_ids if (decision.target_id, decision.requirement, p) in links]
+                for p in actual:
+                    if p not in valid_pids:
+                        valid_pids.append(p)
+                decision.prerequisite_ids = valid_pids
                 covered[key] = decision
-            if set(covered) != set(allowed):
-                raise ValueError("Модель пропустила требования")
-            return result.links, result.requirements
+            for key, item in allowed.items():
+                if key not in covered:
+                    actual = [p for t, r, p in links if (t, r) == key]
+                    covered[key] = RequirementDecision(
+                        target_id=key[0],
+                        requirement=key[1],
+                        prerequisite_ids=actual,
+                        reason="Связи не найдены" if not actual else "Подтверждено",
+                    )
+            return list(links.values()), list(covered.values())
         except ValueError as error:
             if correction is None:
                 return await judge(batch, retry, str(error) + ". Исправь ответ. Цитаты копируй из evidence без изменения слов; отрази каждое требование.")

@@ -61,18 +61,28 @@ class CandidateIndex:
             query_tokens = tokens(requirement)
             lexical = sorted(valid, key=lambda i: (-len(query_tokens & tokens(self.entries[i][1]+" "+self.entries[i][2])), i))
             # Reciprocal-rank fusion. Keep lexical entries only when terms match.
-            fused = {}
+            fused, representatives = {}, {}
             for ranking in (semantic, [i for i in lexical if query_tokens & tokens(self.entries[i][1]+" "+self.entries[i][2])]):
-                for rank, i in enumerate(ranking[:max(30, per_requirement*4)], 1):
-                    fused[i] = fused.get(i, 0) + 1/(60+rank)
-            selected, seen = [], set()
-            for i in sorted(fused, key=lambda i: (-fused[i], i)):
-                topic_id, skill, _ = self.entries[i]
-                if topic_id in seen:
-                    continue
+                # Rank distinct topics, not skills: one topic with many provides
+                # must not exhaust the shortlist and hide the other candidates.
+                distinct, seen_topics = [], set()
+                for i in ranking:
+                    topic_id = self.entries[i][0]
+                    if topic_id not in seen_topics:
+                        distinct.append(i)
+                        seen_topics.add(topic_id)
+                    if len(distinct) >= max(30, per_requirement*4):
+                        break
+                for rank, i in enumerate(distinct, 1):
+                    topic_id = self.entries[i][0]
+                    representatives.setdefault(topic_id, i)
+                    fused[topic_id] = fused.get(topic_id, 0) + 1/(60+rank)
+            selected = []
+            for topic_id in sorted(fused, key=lambda topic_id: (-fused[topic_id], representatives[topic_id])):
+                i = representatives[topic_id]
+                _, skill, _ = self.entries[i]
                 selected.append({"topic_id": topic_id, "skill": skill,
-                                 "similarity": round(float(scores[i]), 5), "rank_score": fused[i]})
-                seen.add(topic_id)
+                                 "similarity": round(float(scores[i]), 5), "rank_score": fused[topic_id]})
                 if len(selected) >= per_requirement:
                     break
             result[(target_id, requirement)] = selected

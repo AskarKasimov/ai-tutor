@@ -16,16 +16,29 @@ import urllib.request
 import uuid
 from pathlib import Path
 
+from audit_pdf_graph import audit as audit_graph
+
 
 def protected_spans(text):
     return re.findall(r"```.*?```|~~~.*?~~~|\$\$.*?\$\$|\\\[.*?\\\]|(?<!\$)\$[^$\n]+\$(?!\$)", text, re.S)
 
 
 def language_ratio(text):
-    text = re.sub(r"```.*?```|\$\$.*?\$\$|`[^`\n]*`|https?://\S+", "", text, flags=re.S)
+    text = re.sub(r"```.*?```|\$\$.*?\$\$|`[^`\n]*`|https?://\S+|<!--.*?-->", "", text, flags=re.S)
     latin = len(re.findall(r"[a-zA-Z]", text))
     cyrillic = len(re.findall(r"[а-яА-ЯёЁ]", text))
     return round(cyrillic/max(1, latin+cyrillic), 4)
+
+
+def native_programs(text):
+    # Literal expectations from the PDF text layer, independent of generative OCR.
+    return list(dict.fromkeys(re.findall(r"\b[a-z][A-Za-z_]*\([^\n]+?\)\s*:-[^\n]*?\.",text)))
+
+
+def missing_programs(programs, text):
+    compact = lambda value: re.sub(r"\s+", "", value)
+    target = compact(text)
+    return [program for program in programs if compact(program) not in target]
 
 
 def main(args):
@@ -43,7 +56,7 @@ def main(args):
             data = json.dumps(data, ensure_ascii=False).encode()
         req = urllib.request.Request((base or args.url)+path, data=data, method=method,
                                      headers={"Content-Type": content_type, "X-AI-Tutor-Portal": "admin"})
-        with opener.open(req, timeout=900) as response:
+        with opener.open(req, timeout=7200) as response:
             return json.load(response)
 
     def save():
@@ -120,15 +133,21 @@ def main(args):
             native_words = set(re.findall(r"[a-zA-Z]{3,}", native.casefold()))
             ocr_words = set(re.findall(r"[a-zA-Z]{3,}", raw["markdown"].casefold()))
             missing = [span for span in protected_spans(raw["markdown"]) if span not in material["parsed_text"]]
+            programs = native_programs(native)
+            lost_programs = {"ocr": missing_programs(programs, raw["markdown"]),
+                             "translation": missing_programs(programs, material["parsed_text"])}
             entry["audit"] = {"ocr": raw.get("report"), "native_word_recall": round(len(native_words & ocr_words)/max(1,len(native_words)), 4),
                               "ocr_chars": len(raw["markdown"]), "translated_chars": len(material["parsed_text"]),
                               "russian_prose_ratio": language_ratio(material["parsed_text"]),
                               "protected_fragments": len(protected_spans(raw["markdown"])), "changed_protected_fragments": len(missing),
-                              "translated_s3": "/translated/" in material["s3_parsed_key"]}
+                              "translated_s3": "/translated/" in material["s3_parsed_key"],
+                              "native_programs": programs, "lost_programs": lost_programs}
             if missing:
                 (directory/"changed_protected_fragments.json").write_text(json.dumps(missing, ensure_ascii=False, indent=2))
             entry["status"] = "uploaded"
             save()
+            if missing or any(lost_programs.values()):
+                raise RuntimeError("Code/formula preservation failed; inspect this material's audit")
             print(f"  OCR={entry['audit']['ocr']['engine']}; upload={entry['upload_seconds']}s; RU={entry['audit']['russian_prose_ratio']}; protected changed={len(missing)}", flush=True)
         except Exception as error:
             entry["status"] = "error"
@@ -147,6 +166,20 @@ def main(args):
         save()
         if snapshot["status"] == "ready" and not snapshot["stale"]:
             graph = snapshot["graph"]
+            checks = audit_graph(materials, graph)
+            for material in materials:
+                entry = manifest["files"].get(material["filename"])
+                if entry:
+                    (output/entry["artifact_dir"]/"cleaned.md").write_text(material["cleaning"]["cleaned_text"])
+                    lost = missing_programs(entry.get("audit",{}).get("native_programs",[]), material["cleaning"]["cleaned_text"])
+                    if lost:
+                        checks["errors"].append("Cleaning lost literal PDF programs: " + material["filename"])
+                        checks["structural_checks_passed"] = False
+            (output/"independent_audit.json").write_text(json.dumps(checks, ensure_ascii=False, indent=2))
+            manifest["independent_audit"] = checks
+            if not checks["structural_checks_passed"]:
+                save()
+                raise RuntimeError("Independent graph audit failed: " + str(checks["errors"]))
             manifest["graph_quality"] = graph["quality"]
             manifest["finished_at"] = time.time()
             save()

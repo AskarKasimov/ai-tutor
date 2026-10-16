@@ -16,8 +16,7 @@ var (
 // slide markers to determine whether the text is predominantly English and
 // needs translation to Russian.
 func DetectLanguage(markdown string) (lang string, needsTranslation bool) {
-	clean := codeSpans.ReplaceAllString(markdown, " ")
-	clean = mathSpans.ReplaceAllString(clean, " ")
+	clean := immutableSpans.ReplaceAllString(markdown, " ")
 	clean = slideHeaders.ReplaceAllString(clean, " ")
 	clean = urlSpans.ReplaceAllString(clean, " ")
 

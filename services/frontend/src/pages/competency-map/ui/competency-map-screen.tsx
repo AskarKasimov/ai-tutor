@@ -2,6 +2,7 @@ import {
   AlertDialog,
   Badge,
   Button,
+  Callout,
   Flex,
   Heading,
   Progress,
@@ -857,6 +858,23 @@ function MaterialItemCard({
           </AlertDialog.Root>
         </Flex>
       </div>
+
+      {material.errorMessage && (
+        <Callout.Root
+          role={material.status === 'failed' ? 'alert' : 'status'}
+          color={material.status === 'failed' ? 'red' : 'amber'}
+          aria-label={t(
+            material.status === 'failed'
+              ? 'competencyMap.materialsProcessingError'
+              : 'competencyMap.materialsProcessingWarning',
+          )}
+        >
+          <Callout.Icon>
+            <TriangleAlert size={16} aria-hidden="true" />
+          </Callout.Icon>
+          <Callout.Text>{material.errorMessage}</Callout.Text>
+        </Callout.Root>
+      )}
 
       <div className={styles.materialMeta}>
         <span>{t('competencyMap.materialsSize', { size: formattedSize })}</span>

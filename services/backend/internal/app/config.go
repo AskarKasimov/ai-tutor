@@ -63,7 +63,7 @@ type Config struct {
 // HTTPWriteTimeout allows sequential STT and grading, or task generation, to
 // finish with time for request handling, persistence and writing the response.
 func (c Config) HTTPWriteTimeout() time.Duration {
-	return max(c.VoiceTimeout+c.AssessmentTimeout+c.TutorTimeout, c.VoiceTimeout+3*c.TutorTimeout, c.TaskgenTimeout, c.VoiceTimeout+5*c.S3Timeout) + 30*time.Second
+	return max(c.VoiceTimeout+c.AssessmentTimeout+c.TutorTimeout, c.VoiceTimeout+3*c.TutorTimeout, c.TaskgenTimeout, c.VoiceTimeout+5*c.S3Timeout, c.CourseGraphTimeout+c.TranslatorTimeout+5*c.S3Timeout) + 30*time.Second
 }
 
 func ConfigFromEnv() (Config, error) {
@@ -201,7 +201,7 @@ func ConfigFromEnv() (Config, error) {
 	if c.CourseGraphURL == "" {
 		c.CourseGraphURL = strings.TrimSpace(os.Getenv("BACKEND_OCR_URL"))
 	}
-	c.CourseGraphTimeout, err = envDuration("BACKEND_COURSE_GRAPH_TIMEOUT", 600*time.Second)
+	c.CourseGraphTimeout, err = envDuration("BACKEND_COURSE_GRAPH_TIMEOUT", 4200*time.Second)
 	if err != nil {
 		return c, err
 	}

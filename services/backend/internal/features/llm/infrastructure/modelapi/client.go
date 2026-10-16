@@ -29,8 +29,6 @@ func New(client *http.Client, endpoints []string, model, token string, timeout t
 }
 
 func (c *Client) Complete(ctx context.Context, system, input string) (string, error) {
-	ctx, cancel := context.WithTimeout(ctx, c.timeout)
-	defer cancel()
 	var endpoint string
 	select {
 	case endpoint = <-c.slots:
@@ -38,6 +36,10 @@ func (c *Client) Complete(ctx context.Context, system, input string) (string, er
 		return "", ctx.Err()
 	}
 	defer func() { c.slots <- endpoint }()
+	// Queue waiting uses the caller's deadline; a busy slot must not consume
+	// the time available for the model request itself.
+	ctx, cancel := context.WithTimeout(ctx, c.timeout)
+	defer cancel()
 	payload, err := json.Marshal(map[string]any{
 		"model": c.model, "temperature": 0, "max_tokens": 4096, "reasoning_effort": "low",
 		"messages":        []map[string]string{{"role": "system", "content": system}, {"role": "user", "content": input}},

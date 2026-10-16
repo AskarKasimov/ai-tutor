@@ -83,3 +83,22 @@ Heuristic search: A* search algorithm uses $f(n) = g(n) + h(n)$.
 		}
 	})
 }
+func TestLongSlideAndTableKeepBoundaries(t *testing.T) {
+	for _, text := range []string{
+		"## Slide 1\n\n" + strings.Repeat("A rational agent perceives the environment. ", 400),
+		"## Slide 1\n\n| Agent | Sensor |\n|---|---|\n" + strings.Repeat("| Medical diagnosis system | Touchscreen |\n", 200),
+	} {
+		chunks := translator.SplitIntoChunks(text, 2500)
+		if len(chunks) < 2 {
+			t.Fatal("oversized slide was not split")
+		}
+		for _, chunk := range chunks {
+			if len(chunk.Text) > 2500 {
+				t.Fatalf("oversized chunk: %d", len(chunk.Text))
+			}
+		}
+		if got := translator.JoinChunks(chunks); got != strings.TrimSpace(text) {
+			t.Fatal("chunking changed paragraph/table separators")
+		}
+	}
+}

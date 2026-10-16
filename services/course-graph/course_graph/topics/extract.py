@@ -24,14 +24,22 @@ PROMPT = """Ты выделяешь учебные темы из лекции и
 Каждый входной block id должен быть либо в remove, либо хотя бы в одной теме.
 Один блок можно отнести к нескольким темам; соседний context_only не присваивай.
 Не возвращай текст лекции: он будет точно собран по block_ids.
-Не создавай темы или знания, которым данный фрагмент не учит. Не придумывай
-пререквизиты из общих представлений о дисциплине; requires — знания, которые
+Не создавай темы или знания, которым данный фрагмент не учит.
+Сведения из context_only нельзя включать в provides или использовать как ответ:
+тема и её вопрос должны подтверждаться только назначенными ей blocks.
+Не фиксируй в вопросе число компонентов, шагов или свойств, если назначенные
+блоки не подтверждают именно это число. При неоднозначном перечислении спроси
+«Какие компоненты…», а не «Какие четыре компонента…».
+Не придумывай пререквизиты из общих представлений о дисциплине; requires — знания, которые
 действительно используются в объяснении. Если их нет, requires=[].
 parent_title указывай только для явно выраженной более общей темы, иначе null.
 Пустые заголовки и номера слайдов прикрепляй к ближайшей учебной теме.
 Обложка, название курса и оглавление не являются отдельными учебными темами:
 привяжи их к содержательной теме. Не задавай вопросы о названии или номере
 слайда и о том, какой вопрос написан на слайде. Проверяй понимание содержания.
+Не проверяй организационные указания: число участников команды, сроки сдачи,
+время подготовки или формат выступления. Если слайд смешивает такие указания
+с учебным упражнением, сохрани текст, но вопрос задай по учебному содержанию.
 Маркеры <!-- image --> не раскрывают содержимое картинки. Не выдумывай по ним
 алгоритмы, формулы или объяснения. Страницу с одним заголовком и картинкой
 сохраняй как контекст к содержательной теме, а не как изученное знание.
@@ -139,10 +147,45 @@ def merge_topics(topics):
     return list(by_title.values())
 
 
+def context_block(text):
+    """Retain covers, agendas and bare diagram labels without generating claims."""
+    if re.search(r"```|~~~|\$|\\\[|\\\(", text):
+        return False
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    headings = [re.sub(r"^#+\s*", "", line) for line in lines if line.startswith("#")]
+    body = [line for line in lines if not line.startswith("#") and not re.fullmatch(r"<!--.*?-->", line)]
+    if not body:
+        return True
+    if all(re.fullmatch(r"(?:неделя|week|лекция|lecture)\s*\d+\.?", line, re.I) for line in body):
+        return True
+    if any(re.match(r"введение в|introduction to", h, re.I) for h in headings) and len(" ".join(body)) < 160 and re.search(r"(?:недел\w*|week)\s*\d+", " ".join(body), re.I):
+        return True
+    if any(re.fullmatch(r"план|повестка(?: дня)?|оглавление|итоги(?: лекции)?|agenda|summary|contents", h, re.I) for h in headings):
+        return len(body) <= 15 and all(len(line) <= 100 for line in body)
+    # OCR labels alone do not explain relationships within a picture.
+    if "<!-- image -->" in text and not any(re.match(r"[-*+]\s|\d+[.)]\s", line) for line in body):
+        return all(len(line) <= 55 for line in body) and (len(body) > 2 or len(" ".join(body)) <= 65)
+    return False
+
+
+def administrative_question(question):
+    return bool(re.search(
+        r"(?:сколько|количеств\w*|числ\w*).*?(?:человек|участник|студент).*?(?:команд|учебн\w*\s+групп)"
+        r"|(?:размер\w*|состав\w*).*?(?:команд|учебн\w*\s+групп)"
+        r"|(?:команд|групп).*?(?:человек|участник|студент)"
+        r"|(?:сколько|како\w*).*?(?:времен|минут|час|срок).*?(?:отвод|да[её]тся|выдел|подготов\w*\s+(?:задан|упражнен|выступлен|презентац)|сдач|выполнен\w*\s+(?:задан|упражнен|лабораторн))"
+        r"|(?:когда|каков\w*\s+срок|до\s+какого).*?(?:сда|дедлайн|представ|подготов|загруз)",
+        question, re.I))
+
+
 async def extract_topics(text, complete, material_id="material", week=None, settings=None):
+    if not text.strip():
+        raise ValueError("Материал не содержит учебного текста")
     settings = settings or ExtractionSettings()
     blocks = topic_blocks(text, settings.max_chars)
-    batches = list(pack_blocks(blocks, settings))
+    context_blocks = [b for b in blocks if context_block(b.text)]
+    context_ids = {b.id for b in context_blocks}
+    batches = list(pack_blocks([b for b in blocks if b.id not in context_ids], settings))
     semaphore = asyncio.Semaphore(settings.concurrency)
     metrics = {"requests": 0, "adaptive_splits": 0, "input_chars": 0}
 
@@ -163,19 +206,36 @@ async def extract_topics(text, complete, material_id="material", week=None, sett
             ids = {b.id for b in batch}
             removed = {}
             protected = {b.id for b in batch if b.protected}
+            seen_removals = set()
             for item in decision.remove:
-                if item.id not in ids or item.id in protected or item.id in removed or item.reason not in REASONS:
-                    raise ValueError("Неверное удаление или защищённый блок")
+                if item.id not in ids or item.id in seen_removals or item.reason not in REASONS:
+                    raise ValueError("Неверное удаление: неизвестный/повторный id или недопустимая причина")
+                seen_removals.add(item.id)
+                if item.id in protected:
+                    continue
                 removed[item.id] = item.reason
+            # Persist only accepted removals. The aggregate audit consumes this
+            # decision later, so filtering a local lookup alone would delete code.
+            decision.remove = [item for item in decision.remove if item.id in removed]
             assigned = set()
             for topic in decision.topics:
                 if re.search(r"как\s+(?:называется|назван|озаглавлен).*?(?:слайд|лекци|курс)", topic.question, re.I):
                     raise ValueError("Вопрос проверяет название слайда, а не учебное содержание; присоедини обложку к содержательной теме")
+                if re.search(r"(?:какой|каков)\s+номер\s+(?:недел|слайд|лекци)|(?:темы|вопросы).*?(?:итогах|оглавлении|плане лекции)", topic.question, re.I):
+                    raise ValueError("Вопрос проверяет метаданные или оглавление, а не учебное содержание")
+                if administrative_question(topic.question):
+                    raise ValueError("Вопрос проверяет организацию работы (команды или сроки). Сохрани упражнение, но проверяй его учебное содержание")
                 if len(set(topic.block_ids)) != len(topic.block_ids):
                     raise ValueError("Повторный блок темы")
                 for block_id in topic.block_ids:
                     if block_id not in ids or block_id in removed:
                         raise ValueError("Тема ссылается на неизвестный/удалённый блок")
+                    assigned.add(block_id)
+            for block_id in sorted((ids - assigned - set(removed)) & protected):
+                if decision.topics:
+                    nearest = min(decision.topics, key=lambda t: min(abs(block_id - bid) for bid in t.block_ids))
+                    nearest.block_ids.append(block_id)
+                    nearest.block_ids.sort()
                     assigned.add(block_id)
             if assigned | set(removed) != ids:
                 missing = sorted(ids - assigned - set(removed))
@@ -230,12 +290,30 @@ async def extract_topics(text, complete, material_id="material", week=None, sett
         cursor = block.end
     parts.append(text[cursor:])
     topics = merge_topics(topics)
+    context_assignments = []
+    if context_blocks and not topics:
+        raise ValueError("Есть только заголовки/иллюстрации; нет объяснений для создания учебных тем")
+    for block in context_blocks:
+        def distance(topic):
+            return min((min(abs(block.end-s.start), abs(block.start-s.end)), 0 if s.start >= block.end else 1)
+                       for s in topic.sources)
+        target = min(topics, key=distance)
+        first_line_end = block.start + len(block.text.splitlines(keepends=True)[0])
+        pages = list(re.finditer(r"^##\s+(?:Слайд|Slide|Страница|Page)\s+(\d+)\s*$", text[:first_line_end], re.M | re.I))
+        target.sources.append(Source(material_id=material_id, block_id=block.id, start=block.start,
+                                     end=block.end, text=block.text, week=week,
+                                     page=int(pages[-1].group(1)) if pages else None))
+        context_assignments.append({"block_id": block.id, "topic_id": target.id})
+    for topic in topics:
+        topic.sources.sort(key=lambda s: s.start)
+        topic.text = "\n\n".join(s.text for s in topic.sources)
     return {"markdown": "".join(parts), "report": {
-        "version": "material-cleaning-v1", "topics_version": "topics-v1",
+        "version": "material-cleaning-v1", "topics_version": "topics-v2",
         "source_sha256": hashlib.sha256(text.encode()).hexdigest(),
         "blocks": len(blocks), "warnings": [], **metrics,
         "removed": [{"id": b.id, "start": b.start, "end": b.end, "text": b.text, "reason": removed[b.id]} for b in spans],
         "topics": [t.model_dump() for t in topics],
+        "context_blocks": context_assignments,
         "quality": {"assigned_blocks": len({s.block_id for t in topics for s in t.sources}),
                     "retained_blocks": len(blocks)-len(spans), "unassigned_blocks": 0,
                     "topic_count": len(topics), "semantic_quality": "not_expert_validated"},

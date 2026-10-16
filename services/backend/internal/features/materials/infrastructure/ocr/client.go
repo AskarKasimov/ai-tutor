@@ -21,6 +21,9 @@ type Client struct {
 type ConvertResponse struct {
 	Markdown string `json:"markdown"`
 	Error    string `json:"error,omitempty"`
+	Report   struct {
+		Warnings []string `json:"warnings"`
+	} `json:"report"`
 }
 
 func New(courseGraphURL string, timeout time.Duration) *Client {
@@ -87,6 +90,11 @@ func (c *Client) convertViaCourseGraph(ctx context.Context, filename string, dat
 	}
 	if result.Error != "" {
 		return "", fmt.Errorf("ошибка распознавания: %s", result.Error)
+	}
+	if len(result.Report.Warnings) > 0 {
+		// Service.Upload preserves a partial result and records its warning;
+		// successful HTTP conversion must not hide missing image/formula content.
+		return sanitizeUTF8(result.Markdown), fmt.Errorf("Предупреждение OCR: %s", strings.Join(result.Report.Warnings, "; "))
 	}
 	return sanitizeUTF8(result.Markdown), nil
 }

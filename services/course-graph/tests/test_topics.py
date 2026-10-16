@@ -431,3 +431,81 @@ def test_blank_material_cannot_publish_empty_graph(text):
         run(extract_topics(text,complete))
 
 
+def test_clean_topic_title_strips_multipart_suffixes_and_balances_delimiters():
+    assert clean_topic_title("Свойства среды – часть 1") == "Свойства среды"
+    assert clean_topic_title("Свойства среды – часть 2") == "Свойства среды"
+    assert clean_topic_title("Свойства среды (часть 3)") == "Свойства среды"
+    assert clean_topic_title("Мир Вампуса (продолжение)") == "Мир Вампуса"
+    assert clean_topic_title("Алгоритм A* (1)") == "Алгоритм A*"
+    assert clean_topic_title("Мир Вампуса (описание среды") == "Мир Вампуса (описание среды)"
+    assert clean_topic_title("Аргумент «Китайская комната") == "Аргумент «Китайская комната»"
+
+
+def test_build_hierarchy_materializes_parent_and_creates_edges():
+    t1 = make_topic("t1", "Доступность среды", ["свойства среды"])
+    t1.parent_title = "Свойства среды"
+    t2 = make_topic("t2", "Детерминированность среды", ["свойства среды"])
+    t2.parent_title = "Свойства среды"
+
+    async def stub_judge(system, payload):
+        return json.dumps({"links": [], "requirements": []}, ensure_ascii=False)
+
+    graph = run(build_links([t1, t2], stub_judge, Encoder()))
+    titles = [t["title"] for t in graph["topics"]]
+    assert "Свойства среды" in titles
+    parent = next(t for t in graph["topics"] if t["title"] == "Свойства среды")
+    parent_id = parent["id"]
+    targets = [h["target"] for h in graph["hierarchy"] if h["source"] == parent_id]
+    assert "t1" in targets and "t2" in targets
+
+
+def test_orphan_fallback_prevents_isolated_topics():
+    t1 = make_topic("t1", "Интеллектуальные агенты", ["понятие агента"])
+    t2 = make_topic("t2", "Рациональность агента", ["критерий рациональности"], ["понятие агента"])
+    t3 = make_topic("t3", "История искусственного интеллекта", ["исторические вехи"])
+
+    graph = run(build_links([t1, t2, t3], grounded_judge, Encoder()))
+    adj_nodes = set()
+    for p in graph["prerequisites"]:
+        adj_nodes.add(p["source"])
+        adj_nodes.add(p["target"])
+    for h in graph["hierarchy"]:
+        adj_nodes.add(h["source"])
+        adj_nodes.add(h["target"])
+
+    for t in graph["topics"]:
+        assert t["id"] in adj_nodes, f"Topic {t['title']} is completely isolated"
+
+
+def test_batch_sequential_reuse_passes_existing_topics():
+    calls = []
+
+    async def complete(system, payload):
+        data = json.loads(payload)
+        calls.append(data)
+        if len(calls) == 1:
+            return json.dumps({"remove": [], "topics": [{
+                "title": "Свойства среды", "requires": [],
+                "provides": ["Определение свойств среды"],
+                "question": "Какие бывают свойства среды?",
+                "block_ids": [b["id"] for b in data["blocks"]],
+            }]}, ensure_ascii=False)
+        else:
+            assert "existing_topics" in data, "Second batch must receive existing_topics from first batch"
+            assert any(e["title"] == "Свойства среды" for e in data["existing_topics"])
+            return json.dumps({"remove": [], "topics": [{
+                "title": "Свойства среды", "requires": [],
+                "provides": ["Детерминированность среды"],
+                "question": "Что такое детерминированность среды?",
+                "block_ids": [b["id"] for b in data["blocks"]],
+            }]}, ensure_ascii=False)
+
+    source = "Блок 1 о свойствах среды.\n\nБлок 2 о свойствах среды."
+    settings = ExtractionSettings(max_chars=1500, max_blocks=1)
+    result = run(extract_topics(source, complete, settings=settings))
+    assert len(calls) >= 2
+    assert len(result["report"]["topics"]) == 1
+    assert result["report"]["topics"][0]["title"] == "Свойства среды"
+
+
+

@@ -30,9 +30,23 @@ PROMPT = """Ты выделяешь учебные темы из лекции и
 Не фиксируй в вопросе число компонентов, шагов или свойств, если назначенные
 блоки не подтверждают именно это число. При неоднозначном перечислении спроси
 «Какие компоненты…», а не «Какие четыре компонента…».
-Не придумывай пререквизиты из общих представлений о дисциплине; requires — знания, которые
-действительно используются в объяснении. Если их нет, requires=[].
-parent_title указывай только для явно выраженной более общей темы, иначе null.
+ПРЕДОТВРАЩЕНИЕ СВЕРХДРОБЛЕНИЯ:
+Объединяй слайды и блоки одной предметной концепции (например, правила, перцепты и действия в одной модели — это единая тема, а не несколько тем по слайдам).
+Если передан список existing_topics, сопоставь текущие блоки с темами из этого списка:
+если текущие блоки продолжают, углубляют или детализируют тему из existing_topics (свойства, шаги, примеры, применение),
+ОБЯЗАТЕЛЬНО используй в точности её название (title), чтобы они объединились в единую тему.
+СТРОГО ЗАПРЕЩЕНО создавать темы вида «Тема – часть 2», «Тема (продолжение)» или отдельную тему на каждый слайд.
+ИЕРАРХИЯ ТЕМ (parent_title):
+Каждая конкретная подтема (отдельный метод, частный алгоритм, отдельное свойство, правило, тип или практическая задача)
+ОБЯЗАТЕЛЬНО должна иметь parent_title — название более общей темы/раздела лекции, частью которого она является.
+Примеры parent_title:
+- для тем «Агенты с целями», «Обучающие агенты» -> parent_title: «Типы интеллектуальных агентов»
+- для тем «Доступность среды», «Детерминированность» -> parent_title: «Свойства среды»
+- для тем «Перцепты в мире Вампуса», «Правила мира Вампуса» -> parent_title: «Мир Вампуса»
+- для тем «Alpha-Beta отсечение», «Минимакс» -> parent_title: «Антагонистический поиск»
+- для тем логики («Квантификация», «Предикаты») -> parent_title: «Логика первого порядка»
+- для тем «Поиск с возвратом в N ферзей» -> parent_title: «Задача о размещении N ферзей»
+Только крупная верхнеуровневая тема раздела лекции указывает parent_title: null.
 Пустые заголовки и номера слайдов прикрепляй к ближайшей учебной теме.
 Обложка, название курса и оглавление не являются отдельными учебными темами:
 привяжи их к содержательной теме. Не задавай вопросы о названии или номере
@@ -177,6 +191,19 @@ def context_block(text):
     return False
 
 
+def balance_delimiters(text: str) -> str:
+    s = text.strip()
+    if s.count("(") > s.count(")"):
+        s += ")" * (s.count("(") - s.count(")"))
+    if s.count("[") > s.count("]"):
+        s += "]" * (s.count("[") - s.count("]"))
+    if s.count("«") > s.count("»"):
+        s += "»" * (s.count("«") - s.count("»"))
+    if s.count('"') % 2 == 1:
+        s += '"'
+    return s
+
+
 def clean_topic_title(title: str) -> str:
     cleaned = title.strip().lstrip("#").strip()
     cleaned = re.sub(
@@ -186,7 +213,16 @@ def clean_topic_title(title: str) -> str:
     cleaned = re.sub(
         r"[\s(:—\-]*(?:домашнее\s+задание|дз|homework)[\s):—\-]*",
         "", cleaned, flags=re.I
-    ).strip(" -—:.,«»\"'()")
+    )
+    # Strip multi-part / continuation suffixes that lead to topic over-segmentation
+    cleaned = re.sub(r"[\s–—\-]+(?:часть|part)\s*\d+\b", "", cleaned, flags=re.I)
+    cleaned = re.sub(r"\((?:часть|part)\s*\d+\)", "", cleaned, flags=re.I)
+    cleaned = re.sub(r"[\s–—\-]+(?:продолжение|continuation)\b", "", cleaned, flags=re.I)
+    cleaned = re.sub(r"\((?:продолжение|continuation)\)", "", cleaned, flags=re.I)
+    cleaned = re.sub(r"\s*\(\s*\d+\s*\)$", "", cleaned, flags=re.I)
+
+    cleaned = cleaned.strip(" -—:.,«»\"'()")
+    cleaned = balance_delimiters(cleaned)
     if cleaned:
         cleaned = cleaned[:1].upper() + cleaned[1:]
     return cleaned if cleaned else title
@@ -230,11 +266,13 @@ async def extract_topics(text, complete, material_id="material", week=None, sett
     semaphore = asyncio.Semaphore(settings.concurrency)
     metrics = {"requests": 0, "adaptive_splits": 0, "input_chars": 0}
 
-    async def classify(batch, depth=0, repair=None):
+    async def classify(batch, depth=0, repair=None, existing_topics=None):
         first, last = batch[0].id, batch[-1].id
         context = [b.text[:500] for b in blocks[max(0, first-1):first] + blocks[last+1:last+2]]
         data = {"context_only": context, "blocks": [
             {"id": b.id, "text": b.text, "protected": b.protected} for b in batch]}
+        if existing_topics:
+            data["existing_topics"] = existing_topics
         if repair:
             data["correction"] = repair
         payload = json.dumps(data, ensure_ascii=False)
@@ -306,7 +344,7 @@ async def extract_topics(text, complete, material_id="material", week=None, sett
             if repair is not None:
                 raise
             try:
-                return await classify(batch, depth, str(error) + ". Верни исправленную полную разметку, сохрани учебный текст.")
+                return await classify(batch, depth, str(error) + ". Верни исправленную полную разметку, сохрани учебный текст.", existing_topics)
             except (ValueError, TypeError):
                 pass
             if len(batch) < 2 or depth >= settings.max_split_depth:
@@ -314,16 +352,19 @@ async def extract_topics(text, complete, material_id="material", week=None, sett
             metrics["adaptive_splits"] += 1
             middle = len(batch) // 2
             # Sequential adaptive retries avoid an unbounded retry fan-out.
-            return await classify(batch[:middle], depth+1) + await classify(batch[middle:], depth+1)
+            return await classify(batch[:middle], depth+1, existing_topics=existing_topics) + await classify(batch[middle:], depth+1, existing_topics=existing_topics)
 
-    tasks = [asyncio.create_task(classify(batch)) for batch in batches]
-    try:
-        results = [item for group in await asyncio.gather(*tasks) for item in group]
-    except BaseException:
-        for task in tasks:
-            task.cancel()
-        await asyncio.gather(*tasks, return_exceptions=True)
-        raise
+    results = []
+    known_topics = []
+    for batch in batches:
+        batch_results = await classify(batch, existing_topics=known_topics if known_topics else None)
+        results.extend(batch_results)
+        for decision, _ in batch_results:
+            for item in decision.topics:
+                c_title = clean_topic_title(item.title)
+                if c_title and not procedural_title(c_title):
+                    if not any(k["title"] == c_title for k in known_topics):
+                        known_topics.append({"title": c_title, "provides": item.provides[:2]})
     removed, topics = {}, []
     for decision, batch in results:
         removed.update({r.id: r.reason for r in decision.remove})

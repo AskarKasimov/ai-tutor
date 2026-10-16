@@ -3,8 +3,14 @@ import asyncio
 import json
 import re
 
-from course_graph.topics.extract import clean_topic_title, merge_topics, normalized_title, procedural_title
-from course_graph.topics.models import LinkResponse, RequirementDecision
+from course_graph.topics.extract import (
+    clean_topic_title,
+    merge_topics,
+    normalized_title,
+    procedural_title,
+    topic_id,
+)
+from course_graph.topics.models import LinkResponse, RequirementDecision, Source, Topic
 from course_graph.topics.retrieval import CandidateIndex
 
 PROMPT = """Ты проверяешь пререквизиты учебных тем ТОЛЬКО по предоставленным материалам.
@@ -154,6 +160,163 @@ def valid_evidence(evidence, excerpts):
     return False
 
 
+COMMON_CLUSTERS = {
+    "мир вампуса": "Мир Вампуса",
+    "n ферзей": "Задача о размещении N ферзей",
+    "свойства сред": "Свойства среды",
+    "свойств среды": "Свойства среды",
+    "законы робототехники": "Законы робототехники",
+    "закон робототехники": "Законы робототехники",
+    "китайская комната": "Аргумент «Китайская комната»",
+    "китайской комнате": "Аргумент «Китайская комната»",
+    "логики первого порядка": "Логика первого порядка",
+    "логика первого порядка": "Логика первого порядка",
+    "предикат": "Логика первого порядка",
+    "этическ": "Этика и философия искусственного интеллекта",
+    "философск": "Этика и философия искусственного интеллекта",
+    "тьюринг": "Тест Тьюринга и философия ИИ",
+    "типы агентов": "Типы интеллектуальных агентов",
+    "рефлекторные агенты": "Типы интеллектуальных агентов",
+    "обучающие агенты": "Типы интеллектуальных агентов",
+    "модель peas": "Модель PEAS",
+    "peas-модель": "Модель PEAS",
+    "антагонистический поиск": "Антагонистический поиск в играх",
+    "минимакс": "Антагонистический поиск в играх",
+}
+
+
+def resolve_parent_topic(parent_title: str, topics: list[Topic], by_norm: dict[str, Topic], encoder=None) -> Topic | None:
+    norm_p = normalized_title(parent_title)
+    if not norm_p:
+        return None
+    if norm_p in by_norm:
+        return by_norm[norm_p]
+    candidates = []
+    for norm_t, t in by_norm.items():
+        if (norm_p in norm_t or norm_t in norm_p) and len(norm_t) > 3:
+            candidates.append(t)
+    if candidates:
+        return min(candidates, key=lambda c: abs(len(c.title) - len(parent_title)))
+    if encoder and len(topics) > 1:
+        try:
+            parent_vec = encoder.encode([parent_title], query=True)[0]
+            titles = [t.title for t in topics]
+            title_vecs = encoder.encode(titles)
+            scores = title_vecs @ parent_vec
+            best_idx = int(scores.argmax())
+            if float(scores[best_idx]) >= 0.85:
+                return topics[best_idx]
+        except Exception:
+            pass
+    return None
+
+
+def synthesize_parent_topic(parent_title: str, children: list[Topic]) -> Topic:
+    clean_p = clean_topic_title(parent_title)
+    first_child = children[0]
+    mat_id = first_child.sources[0].material_id if first_child.sources else "course"
+    week = first_child.sources[0].week if first_child.sources else None
+
+    seen_sources = set()
+    aggregated_sources = []
+    for c in children:
+        for s in c.sources:
+            src_key = (s.material_id, s.start, s.end)
+            if src_key not in seen_sources:
+                seen_sources.add(src_key)
+                aggregated_sources.append(s)
+    aggregated_sources.sort(key=lambda s: s.start)
+
+    agg_provides = [f"Освоение концепции: {clean_p}"]
+    for c in children:
+        for p in c.provides:
+            if p not in agg_provides:
+                agg_provides.append(p)
+
+    agg_requires = []
+    for c in children:
+        for r in c.requires:
+            if r not in agg_requires and r not in agg_provides:
+                agg_requires.append(r)
+
+    return Topic(
+        id=topic_id(mat_id, clean_p),
+        title=clean_p,
+        requires=agg_requires[:12],
+        provides=agg_provides[:12],
+        question=f"Что представляет собой концепция «{clean_p}» и какие основные понятия или методы в неё входят?",
+        text="\n\n".join(s.text for s in aggregated_sources) if aggregated_sources else f"Раздел курса: {clean_p}",
+        sources=aggregated_sources if aggregated_sources else [
+            Source(material_id=mat_id, block_id=0, start=0, end=len(clean_p), text=clean_p, week=week)
+        ],
+        parent_title=None
+    )
+
+
+def build_hierarchy(topics: list[Topic], edges: list[dict], canonical: dict[str, str], encoder=None) -> tuple[list[Topic], list[dict], dict[str, set[str]]]:
+    for t in topics:
+        if not t.parent_title:
+            title_lower = t.title.lower()
+            for pattern, p_title in COMMON_CLUSTERS.items():
+                if pattern in title_lower and clean_topic_title(p_title) != clean_topic_title(t.title):
+                    t.parent_title = p_title
+                    break
+
+    by_norm = {normalized_title(t.title): t for t in topics}
+    parent_requests: dict[str, list[Topic]] = {}
+
+    for t in topics:
+        if t.parent_title:
+            p_title = clean_topic_title(t.parent_title)
+            if normalized_title(p_title) != normalized_title(t.title):
+                parent_requests.setdefault(p_title, []).append(t)
+
+    for p_title, children in parent_requests.items():
+        matched = resolve_parent_topic(p_title, topics, by_norm, encoder)
+        if not matched:
+            new_parent = synthesize_parent_topic(p_title, children)
+            topics.append(new_parent)
+            by_norm[normalized_title(new_parent.title)] = new_parent
+            canonical[normalized_title(new_parent.title)] = new_parent.id
+
+    hierarchy, hierarchy_adj = [], {}
+    for p_title, children in parent_requests.items():
+        parent = resolve_parent_topic(p_title, topics, by_norm, encoder)
+        if parent:
+            for c in children:
+                if c.id != parent.id and not reachable(hierarchy_adj, c.id, parent.id):
+                    hierarchy.append({"source": parent.id, "target": c.id})
+                    hierarchy_adj.setdefault(parent.id, set()).add(c.id)
+
+    if len(topics) >= 2:
+        adj = {}
+        for e in edges:
+            adj.setdefault(e["source"], set()).add(e["target"])
+            adj.setdefault(e["target"], set()).add(e["source"])
+        for h in hierarchy:
+            adj.setdefault(h["source"], set()).add(h["target"])
+            adj.setdefault(h["target"], set()).add(h["source"])
+
+        isolated = [t for t in topics if t.id not in adj]
+        if isolated:
+            child_ids = {h["target"] for h in hierarchy}
+            root_candidates = [t for t in topics if t.id not in child_ids]
+            for iso in isolated:
+                mat_id = iso.sources[0].material_id if iso.sources else None
+                week = iso.sources[0].week if iso.sources else None
+                same_mat_roots = [r for r in root_candidates if r.id != iso.id and any(s.material_id == mat_id for s in r.sources)]
+                if not same_mat_roots and week is not None:
+                    same_mat_roots = [r for r in root_candidates if r.id != iso.id and any(s.week == week for s in r.sources)]
+                target_root = same_mat_roots[0] if same_mat_roots else (root_candidates[0] if root_candidates and root_candidates[0].id != iso.id else None)
+                if target_root and not reachable(hierarchy_adj, iso.id, target_root.id):
+                    hierarchy.append({"source": target_root.id, "target": iso.id})
+                    hierarchy_adj.setdefault(target_root.id, set()).add(iso.id)
+                    adj.setdefault(target_root.id, set()).add(iso.id)
+                    adj.setdefault(iso.id, set()).add(target_root.id)
+
+    return topics, hierarchy, hierarchy_adj
+
+
 async def build_links(topics, complete, encoder, per_requirement=5, max_chars=16000, evidence_chars=1400, concurrency=2):
     valid_topics = []
     for t in topics:
@@ -293,12 +456,7 @@ async def build_links(topics, complete, encoder, per_requirement=5, max_chars=16
     for decision in decisions:
         decision["prerequisite_ids"] = [p for p in decision["prerequisite_ids"] if
             (decision["target_id"], decision["requirement"], p) in accepted]
-    hierarchy, hierarchy_adj = [], {}
-    for topic in topics:
-        parent = canonical.get(normalized_title(topic.parent_title)) if topic.parent_title else None
-        if parent and parent != topic.id and not reachable(hierarchy_adj, topic.id, parent):
-            hierarchy.append({"source": parent, "target": topic.id})
-            hierarchy_adj.setdefault(parent, set()).add(topic.id)
+    topics, hierarchy, hierarchy_adj = build_hierarchy(topics, edges, canonical, encoder)
     return {"version": "course-graph-v1", "topics": [t.model_dump() for t in topics],
             "aliases": aliases, "prerequisites": edges, "hierarchy": hierarchy,
             "requirements": decisions, "rejected_links": rejected,

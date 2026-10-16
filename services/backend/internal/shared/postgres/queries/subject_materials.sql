@@ -71,3 +71,6 @@ RETURNING
 -- name: DeleteSubjectMaterial :exec
 DELETE FROM subject_materials
 WHERE id = $1 AND subject_id = $2;
+
+-- name: LockSubjectMaterial :one
+SELECT id FROM subject_materials WHERE id = $1 FOR UPDATE;

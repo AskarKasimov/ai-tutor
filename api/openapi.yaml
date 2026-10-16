@@ -1108,11 +1108,44 @@ components:
         - question
         - transcription_id
       type: object
+    material.Cleaning:
+      additionalProperties: false
+      properties:
+        attempts:
+          type: integer
+        cleaned_text:
+          type: string
+        error_message:
+          type: string
+        s3_cleaned_key:
+          type: string
+        s3_report_key:
+          type: string
+        status:
+          enum:
+            - pending
+            - processing
+            - ready
+            - failed
+          type: string
+        updated_at:
+          type: integer
+      required:
+        - attempts
+        - cleaned_text
+        - error_message
+        - s3_cleaned_key
+        - s3_report_key
+        - status
+        - updated_at
+      type: object
     material.Material:
       additionalProperties: false
       properties:
         char_count:
           type: integer
+        cleaning:
+          $ref: '#/components/schemas/material.Cleaning'
         content_type:
           type: string
         created_at:

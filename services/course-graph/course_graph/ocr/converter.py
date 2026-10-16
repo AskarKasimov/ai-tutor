@@ -52,6 +52,12 @@ def convert_document_to_markdown(filename: str, content: bytes) -> str:
     lecture_title = os.path.splitext(filename)[0]
 
     try:
+        if os.environ.get("COURSE_GRAPH_WITH_DOCLING", "true").lower() == "false":
+            markdown = _extract_with_pypdf(tmp_path, lecture_title)
+            if markdown:
+                return markdown
+            raise RuntimeError("Лёгкая сборка извлекает текстовый PDF; для сканов нужна полная сборка с Docling")
+
         # 1. Try Docling
         try:
             converter = get_converter()

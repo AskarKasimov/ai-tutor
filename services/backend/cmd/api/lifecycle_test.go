@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"net/http"
 	"sync/atomic"
 	"testing"
@@ -68,5 +70,15 @@ func TestServeWithAudioWorkerStopsWorkerWhenListenFails(t *testing.T) {
 	case <-stopped:
 	case <-time.After(time.Second):
 		t.Fatal("audio worker was not joined after ListenAndServe error")
+	}
+}
+
+func TestServeStopsWhenBackgroundServiceFails(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	failure := fmt.Errorf("gRPC listener unavailable")
+	err := serveWithAudioWorker(ctx, &http.Server{Addr: "127.0.0.1:0"}, func(context.Context) error { return failure })
+	if !errors.Is(err, failure) {
+		t.Fatalf("background failure lost: %v", err)
 	}
 }

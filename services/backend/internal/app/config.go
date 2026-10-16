@@ -12,6 +12,11 @@ import (
 )
 
 type Config struct {
+	LLMBaseURLs    []string
+	LLMModel       string
+	LLMAPIKey      string
+	LLMGRPCAddress string
+
 	ListenAddress         string
 	DatabaseURL           string
 	STTURL                string
@@ -48,6 +53,11 @@ type Config struct {
 	CourseGraphTimeout    time.Duration
 	OCRURL                string
 	OCRTimeout            time.Duration
+	TranslatorBaseURL     string
+	TranslatorModel       string
+	TranslatorAPIKey      string
+	TranslatorTimeout     time.Duration
+	TranslatorWorkers     int
 }
 
 // HTTPWriteTimeout allows sequential STT and grading, or task generation, to
@@ -201,8 +211,28 @@ func ConfigFromEnv() (Config, error) {
 			return c, err
 		}
 	}
+	c.LLMGRPCAddress = envOrDefault("BACKEND_LLM_GRPC_ADDRESS", ":8003")
+	c.LLMModel = envOrDefault("BACKEND_LLM_MODEL", c.AssessmentModel)
+	c.LLMAPIKey = strings.TrimSpace(os.Getenv("BACKEND_LLM_API_KEY"))
+	for _, endpoint := range strings.Split(envOrDefault("BACKEND_LLM_BASE_URLS", c.AssessmentBaseURL), ",") {
+		c.LLMBaseURLs = append(c.LLMBaseURLs, strings.TrimSpace(endpoint))
+	}
 	c.OCRURL = c.CourseGraphURL
 	c.OCRTimeout = c.CourseGraphTimeout
+	c.TranslatorBaseURL = envOrDefault("BACKEND_TRANSLATOR_BASE_URL", envOrDefault("BACKEND_TUTOR_BASE_URL", c.AssessmentBaseURL))
+	c.TranslatorModel = envOrDefault("BACKEND_TRANSLATOR_MODEL", envOrDefault("BACKEND_TUTOR_MODEL", c.AssessmentModel))
+	c.TranslatorAPIKey = strings.TrimSpace(os.Getenv("BACKEND_TRANSLATOR_API_KEY"))
+	if c.TranslatorAPIKey == "" {
+		c.TranslatorAPIKey = c.LLMAPIKey
+	}
+	c.TranslatorTimeout, err = envDuration("BACKEND_TRANSLATOR_TIMEOUT", 120*time.Second)
+	if err != nil {
+		return c, err
+	}
+	c.TranslatorWorkers, err = envInt("BACKEND_TRANSLATOR_WORKERS", 4)
+	if err != nil {
+		return c, err
+	}
 	return c, c.validate()
 }
 
@@ -250,6 +280,7 @@ func requiredEnv(key string) (string, error) {
 }
 
 func (c Config) validate() error {
+
 	_, port, err := net.SplitHostPort(c.ListenAddress)
 	portNumber, portErr := strconv.Atoi(port)
 	if err != nil || portErr != nil || portNumber < 1 || portNumber > 65535 {
@@ -339,5 +370,20 @@ func (c Config) validate() error {
 	if c.MaxUploadBytes < 1 || c.MaxUploadBytes > 25*1024*1024 {
 		return fmt.Errorf("BACKEND_MAX_UPLOAD_BYTES must be positive and cannot exceed 25 MiB")
 	}
+	if len(c.LLMBaseURLs) > 4 {
+		return fmt.Errorf("BACKEND_LLM_BASE_URLS supports at most four endpoints")
+	}
+	for _, endpoint := range c.LLMBaseURLs {
+		u, err := url.Parse(endpoint)
+		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
+			return fmt.Errorf("BACKEND_LLM_BASE_URLS must contain absolute HTTP(S) URLs")
+		}
+	}
+	if c.LLMGRPCAddress != "" {
+		if _, _, err := net.SplitHostPort(c.LLMGRPCAddress); err != nil {
+			return fmt.Errorf("BACKEND_LLM_GRPC_ADDRESS must be host:port")
+		}
+	}
+
 	return nil
 }

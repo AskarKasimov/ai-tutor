@@ -40,6 +40,7 @@ import (
 	materialsapp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/materials/application"
 	materialsocr "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/materials/infrastructure/ocr"
 	materialspg "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/materials/infrastructure/postgres"
+	materialstranslator "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/materials/infrastructure/translator"
 	materialshttp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/materials/transport/http"
 	subjectapp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/subject/application"
 	subjectpg "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/subject/infrastructure/postgres"
@@ -88,8 +89,9 @@ type App struct {
 		Regenerate(context.Context, string) (audioasset.Asset, error)
 		Prioritize(context.Context, string) error
 	}
-	audioStorage taskaudioapp.Storage
+	audioStorage     taskaudioapp.Storage
 	materialsStorage materialsapp.S3Storage
+	cleaningWorker   *materialsapp.CleaningWorker
 }
 
 func New(cfg Config, pool *pgxpool.Pool, logger *zap.Logger) (*App, error) {
@@ -129,6 +131,7 @@ func New(cfg Config, pool *pgxpool.Pool, logger *zap.Logger) (*App, error) {
 	})
 	a.audioStorage = storage
 	a.materialsStorage = &materialsStorageAdapter{storage: storage, bucket: cfg.S3Bucket}
+	a.cleaningWorker = materialsapp.NewCleaningWorker(materialspg.New(pool), a.materialsStorage, materialsocr.New(cfg.CourseGraphURL, 330*time.Second))
 	return a, nil
 }
 
@@ -199,7 +202,16 @@ func (a *App) Handler() http.Handler {
 	feedbackHandlers := diagnosticfeedbackhttp.New(feedbackService)
 
 	materialsOCR := materialsocr.New(a.cfg.CourseGraphURL, a.cfg.CourseGraphTimeout)
-	materialsService := materialsapp.New(materialspg.New(a.pool), a.materialsStorage, materialsOCR, a.now)
+	materialsTranslator := materialstranslator.New(
+		a.client,
+		a.cfg.TranslatorBaseURL,
+		a.cfg.TranslatorModel,
+		a.cfg.TranslatorAPIKey,
+		a.cfg.TranslatorWorkers,
+		a.cfg.TranslatorTimeout,
+	)
+	materialsService := materialsapp.New(materialspg.New(a.pool), a.materialsStorage, materialsOCR, a.now).
+		WithTranslator(materialsTranslator)
 	materialsHandlers := materialshttp.NewHandler(materialsService, a.cfg.MaxUploadBytes)
 
 	mux := http.NewServeMux()

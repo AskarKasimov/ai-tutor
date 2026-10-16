@@ -49,9 +49,10 @@ func (m *memoryRepo) Insert(ctx context.Context, mat material.Material) (materia
 	return mat, nil
 }
 
-func (m *memoryRepo) Delete(ctx context.Context, subjectID, id string) error {
+func (m *memoryRepo) Delete(ctx context.Context, subjectID, id string) (material.Material, error) {
+	item := m.items[id]
 	delete(m.items, id)
-	return nil
+	return item, nil
 }
 
 type memoryS3 struct {
@@ -221,4 +222,3 @@ func TestHandlerUploadAndList(t *testing.T) {
 		}
 	}
 }
-

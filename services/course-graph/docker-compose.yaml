@@ -2,8 +2,12 @@ services:
   course-graph:
     build:
       context: .
+      args:
+        PYTHON_BASE_IMAGE: ${COURSE_GRAPH_BASE_IMAGE:-python:3.11-slim}
+        INSTALL_DOCLING: ${COURSE_GRAPH_INSTALL_DOCLING:-true}
     environment:
       PORT: 8000
+      COURSE_GRAPH_LLM_GRPC_TARGET: api:8003
     ports:
       - "127.0.0.1:8005:8000"
     healthcheck:

@@ -21,6 +21,15 @@ func serveWithAudioWorker(ctx context.Context, server *http.Server, runWorker fu
 		return <-workerDone
 	}
 	select {
+	case workerErr := <-workerDone:
+		cancelWorker()
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		_ = server.Shutdown(shutdownCtx)
+		if workerErr != nil {
+			return fmt.Errorf("background workers: %w", workerErr)
+		}
+		return nil
 	case serverErr := <-serverDone:
 		workerErr := stopWorker()
 		if errors.Is(serverErr, http.ErrServerClosed) {

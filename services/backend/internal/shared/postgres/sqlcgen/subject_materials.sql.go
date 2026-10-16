@@ -202,3 +202,13 @@ func (q *Queries) ListSubjectMaterials(ctx context.Context, subjectID string) ([
 	}
 	return items, nil
 }
+
+const lockSubjectMaterial = `-- name: LockSubjectMaterial :one
+SELECT id FROM subject_materials WHERE id = $1 FOR UPDATE
+`
+
+func (q *Queries) LockSubjectMaterial(ctx context.Context, id string) (string, error) {
+	row := q.db.QueryRow(ctx, lockSubjectMaterial, id)
+	err := row.Scan(&id)
+	return id, err
+}

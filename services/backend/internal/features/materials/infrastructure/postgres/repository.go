@@ -30,6 +30,19 @@ func (r *Repository) List(ctx context.Context, subjectID string) ([]material.Mat
 	for i, row := range rows {
 		result[i] = toMaterial(row)
 	}
+	cleaning, err := q.ListMaterialCleaning(ctx, subjectID)
+	if err != nil {
+		return nil, fmt.Errorf("list cleaning: %w", err)
+	}
+	byID := make(map[string]material.Cleaning, len(cleaning))
+	for _, job := range cleaning {
+		byID[job.MaterialID] = toCleaning(job)
+	}
+	for i := range result {
+		if state, ok := byID[result[i].ID]; ok {
+			result[i].Cleaning = &state
+		}
+	}
 	return result, nil
 }
 
@@ -42,11 +55,24 @@ func (r *Repository) Get(ctx context.Context, id string) (material.Material, err
 		}
 		return material.Material{}, fmt.Errorf("get subject material %s: %w", id, err)
 	}
-	return toMaterial(row), nil
+	result := toMaterial(row)
+	job, err := q.GetMaterialCleaning(ctx, id)
+	if err == nil {
+		state := toCleaning(job)
+		result.Cleaning = &state
+	} else if !errors.Is(err, pgx.ErrNoRows) {
+		return material.Material{}, fmt.Errorf("get cleaning: %w", err)
+	}
+	return result, nil
 }
 
 func (r *Repository) Insert(ctx context.Context, m material.Material) (material.Material, error) {
-	q := db.New(r.pool)
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return material.Material{}, err
+	}
+	defer tx.Rollback(ctx)
+	q := db.New(tx)
 	row, err := q.InsertSubjectMaterial(ctx, db.InsertSubjectMaterialParams{
 		ID:           m.ID,
 		SubjectID:    m.SubjectID,
@@ -65,19 +91,52 @@ func (r *Repository) Insert(ctx context.Context, m material.Material) (material.
 	if err != nil {
 		return material.Material{}, fmt.Errorf("insert subject material: %w", err)
 	}
-	return toMaterial(row), nil
+	result := toMaterial(row)
+	if m.Status == material.StatusParsed && m.ParsedText != "" {
+		if err := q.EnqueueMaterialCleaning(ctx, db.EnqueueMaterialCleaningParams{MaterialID: m.ID, UpdatedAt: m.UpdatedAt}); err != nil {
+			return material.Material{}, fmt.Errorf("enqueue cleaning: %w", err)
+		}
+		result.Cleaning = &material.Cleaning{Status: "pending", UpdatedAt: m.UpdatedAt}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return material.Material{}, err
+	}
+	return result, nil
 }
 
-func (r *Repository) Delete(ctx context.Context, subjectID, id string) error {
-	q := db.New(r.pool)
-	err := q.DeleteSubjectMaterial(ctx, db.DeleteSubjectMaterialParams{
-		ID:        id,
-		SubjectID: subjectID,
-	})
+// Lock the material before reading output keys so deletion cannot race completion.
+func (r *Repository) Delete(ctx context.Context, subjectID, id string) (material.Material, error) {
+	tx, err := r.pool.Begin(ctx)
 	if err != nil {
-		return fmt.Errorf("delete subject material: %w", err)
+		return material.Material{}, err
 	}
-	return nil
+	defer tx.Rollback(ctx)
+	q := db.New(tx)
+	if _, err = q.LockSubjectMaterial(ctx, id); err != nil {
+		return material.Material{}, err
+	}
+	row, err := q.GetSubjectMaterialByID(ctx, id)
+	if err != nil {
+		return material.Material{}, err
+	}
+	result := toMaterial(row)
+	if result.SubjectID != subjectID {
+		return material.Material{}, material.ErrNotFound
+	}
+	job, err := q.GetMaterialCleaning(ctx, id)
+	if err == nil {
+		state := toCleaning(job)
+		result.Cleaning = &state
+	} else if !errors.Is(err, pgx.ErrNoRows) {
+		return material.Material{}, err
+	}
+	if err = q.DeleteSubjectMaterial(ctx, db.DeleteSubjectMaterialParams{ID: id, SubjectID: subjectID}); err != nil {
+		return material.Material{}, err
+	}
+	if err = tx.Commit(ctx); err != nil {
+		return material.Material{}, err
+	}
+	return result, nil
 }
 
 func toMaterial(row db.SubjectMaterial) material.Material {

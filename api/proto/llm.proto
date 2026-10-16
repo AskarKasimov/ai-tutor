@@ -1,0 +1,15 @@
+syntax = "proto3";
+package ai_tutor.llm.v1;
+option go_package = "github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/llmpb";
+
+// Internal only: course-graph uses the backend's single model pool.
+service LLM {
+  rpc Complete(CompleteRequest) returns (CompleteResponse);
+}
+message CompleteRequest {
+  string system = 1;
+  string input = 2;
+}
+message CompleteResponse {
+  string content = 1;
+}

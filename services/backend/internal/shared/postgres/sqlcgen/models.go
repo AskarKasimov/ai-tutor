@@ -233,6 +233,20 @@ type MaterialChunkOutcome struct {
 	OutcomeID string
 }
 
+type MaterialCleaningJob struct {
+	MaterialID   string
+	Status       string
+	Attempts     int32
+	AvailableAt  int64
+	LeaseUntil   int64
+	LeaseToken   string
+	CleanedText  string
+	S3CleanedKey string
+	S3ReportKey  string
+	ErrorMessage string
+	UpdatedAt    int64
+}
+
 type MaterialEmbedding struct {
 	ChunkID     string
 	Model       string

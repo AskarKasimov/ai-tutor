@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import { apiFetch } from '@/shared/api'
 import { SubjectApiError } from '../model/subject-api-error'
-import type { LearningState, Subject } from '../model/subject'
+import type { Subject } from '../model/subject'
 
 const apiBase = (import.meta.env.VITE_API_BASE_URL || '/api/v1').replace(
   /\/$/,
@@ -13,16 +13,6 @@ const subjectSchema: z.ZodType<Subject> = z.object({
   name: z.string().min(1),
   ready: z.boolean(),
 })
-const learningStateSchema: z.ZodType<LearningState> = z.object({
-  subject_id: id,
-  subject_name: z.string(),
-  diagnostic_status: z.enum(['not_started', 'active', 'completed']),
-  diagnostic_completed: z.boolean(),
-  training_available: z.boolean(),
-  diagnostic_session_id: id.optional(),
-  active_session_id: id.optional(),
-})
-
 async function request(
   path: string,
   signal: AbortSignal,
@@ -85,25 +75,7 @@ export async function createSubject(
   )
 }
 
-export async function readLearningState(
-  subjectId: string,
-  signal: AbortSignal,
-): Promise<LearningState> {
-  const state = await parse(
-    await request(
-      `/subjects/${encodeURIComponent(subjectId)}/learning-state`,
-      signal,
-    ),
-    learningStateSchema,
-    signal,
-  )
-  if (state.subject_id !== subjectId)
-    throw new SubjectApiError(0, 'INVALID_RESPONSE')
-  return state
-}
-
 export type SubjectApi = {
   listSubjects: typeof listSubjects
   createSubject: typeof createSubject
-  readLearningState: typeof readLearningState
 }

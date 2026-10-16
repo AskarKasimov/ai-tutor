@@ -1,175 +1,125 @@
-import { Button, Card, Heading, Text } from '@radix-ui/themes'
-import {
-  GraduationCap,
-  Mic,
-  RotateCcw,
-  Sparkles,
-  Target,
-  Zap,
-} from 'lucide-react'
+import { Badge, Button, Card, Heading, Text } from '@radix-ui/themes'
+import { GraduationCap, Mic, Play, Sparkles, Target, Zap } from 'lucide-react'
 import { useEffect, useId, useState } from 'react'
 import type { ReactNode } from 'react'
-import { useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import { useAuth } from '@/features/auth'
+import { AccountMenu, useAuth } from '@/features/auth'
+import { useSubjectsQuery } from '@/features/subject-selection'
 import {
-  useLearningStateQuery,
-  useSubjectsQuery,
-} from '@/features/subject-selection'
-import { subjectQueryKeys, type Subject } from '@/entities/subject'
-import { LearningPlanEntry } from './learning-plan'
-import { DiagnosticTrainer } from './diagnostic-trainer'
-import { AccountMenu } from '@/features/auth'
+  useDiagnosticHistoryQuery,
+  useStartDiagnosticMutation,
+} from '@/features/diagnostic-session'
+import {
+  DiagnosticApiError,
+  type DiagnosticSummary,
+} from '@/entities/diagnostic-session'
+import { GeekDialog } from './geek-dialog'
+import { GeekResult } from './geek-result'
 import styles from './learning-home.module.scss'
 
-type Intent = {
-  apiBase: string
+// The open screen survives a reload of the tab.
+type View = {
   userId: string
   subjectId: string
   sessionId: string
-  mode: 'diagnostic' | 'training'
-  diagnosticId?: string
+  screen: 'dialog' | 'result'
 }
-const apiBase = (import.meta.env.VITE_API_BASE_URL || '/api/v1').replace(
-  /\/$/,
-  '',
-)
-function readIntent(userId: string): Intent | null {
+const viewKey = 'ai-tutor:geek-view'
+
+function readView(userId: string): View | null {
   try {
-    const raw = sessionStorage.getItem('ai-tutor:learning-home')
-    const value = JSON.parse(raw ?? 'null') as Intent | null
-    const valid =
-      value?.userId === userId &&
-      value.apiBase === apiBase &&
-      (value.mode === 'diagnostic' || value.mode === 'training')
-    if (!value || !valid) return null
-    if (value.mode === 'diagnostic' && !value.sessionId) {
-      // A pending create is not a resumable session. Require a new explicit
-      // start click, while diagnostic identity storage retains its idempotency keys.
-      sessionStorage.removeItem('ai-tutor:learning-home')
-      return null
-    }
-    return value
+    const view = JSON.parse(sessionStorage.getItem(viewKey) ?? 'null') as View
+    return view?.userId === userId &&
+      view.sessionId &&
+      (view.screen === 'dialog' || view.screen === 'result')
+      ? view
+      : null
   } catch {
     return null
+  }
+}
+
+function saveView(view: View | null) {
+  try {
+    if (view) sessionStorage.setItem(viewKey, JSON.stringify(view))
+    else sessionStorage.removeItem(viewKey)
+  } catch {
+    // Without storage the screen is simply not restored after a reload.
   }
 }
 
 export function LearningHome() {
   const { t } = useTranslation()
   const { user } = useAuth()
-  const queryClient = useQueryClient()
   const userId = user?.id ?? ''
   const subjectsQuery = useSubjectsQuery(userId)
-  const [intent, setIntent] = useState<Intent | null>(() =>
-    userId ? readIntent(userId) : null,
-  )
   const subjects = subjectsQuery.data ?? []
-  // Students study the single subject the teacher manages: the first one.
+  const [view, setView] = useState<View | null>(() =>
+    userId ? readView(userId) : null,
+  )
+  // Students study the single course the teacher manages: the first one.
   const selected =
-    subjects.find((subject) => subject.id === intent?.subjectId) ?? subjects[0]
-  const learning = useLearningStateQuery(userId, selected?.id ?? '')
+    subjects.find((subject) => subject.id === view?.subjectId) ?? subjects[0]
+  const history = useDiagnosticHistoryQuery(userId, selected?.id ?? '')
+  const start = useStartDiagnosticMutation(userId, selected?.id ?? '')
 
   useEffect(() => {
     if (
-      intent &&
+      view &&
       !subjectsQuery.isPending &&
       subjects.length &&
-      !subjects.some((s) => s.id === intent.subjectId)
+      !subjects.some((s) => s.id === view.subjectId)
     ) {
-      sessionStorage.removeItem('ai-tutor:learning-home')
-      setIntent(null)
+      saveView(null)
+      setView(null)
     }
-  }, [intent, subjects, subjectsQuery.isPending])
+  }, [view, subjects, subjectsQuery.isPending])
 
-  function openDiagnostic(
-    subject: Subject,
-    sessionId: string | undefined,
-    startNew: boolean,
-  ) {
-    if (!userId) return
-    const next: Intent = {
-      apiBase,
-      userId,
-      subjectId: subject.id,
-      sessionId: sessionId ?? '',
-      mode: 'diagnostic',
-    }
-    if (startNew) next.sessionId = ''
-    sessionStorage.setItem('ai-tutor:learning-home', JSON.stringify(next))
-    setIntent(next)
+  function open(sessionId: string, screen: View['screen']) {
+    if (!selected) return
+    const next = { userId, subjectId: selected.id, sessionId, screen }
+    saveView(next)
+    setView(next)
   }
   function back() {
-    sessionStorage.removeItem('ai-tutor:learning-home')
-    setIntent(null)
-    if (selected)
-      void queryClient.invalidateQueries({
-        queryKey: subjectQueryKeys.learningState(userId, selected.id),
-      })
+    saveView(null)
+    setView(null)
   }
-  function openTraining(
-    diagnosticId = learning.data?.diagnostic_session_id ?? '',
-  ) {
-    if (!selected || !diagnosticId) return
-    const next: Intent = {
-      apiBase,
-      userId,
-      subjectId: selected.id,
-      sessionId: '',
-      mode: 'training',
-      diagnosticId,
-    }
-    sessionStorage.setItem('ai-tutor:learning-home', JSON.stringify(next))
-    setIntent(next)
+  function begin() {
+    start.mutate(undefined, {
+      onSuccess: (session) => open(session.id, 'dialog'),
+    })
   }
-  if (intent?.mode === 'training' && selected && userId)
-    return (
-      <LearningPlanEntry
-        key={intent.diagnosticId}
+
+  if (view && selected)
+    return view.screen === 'dialog' ? (
+      <GeekDialog
+        key={view.sessionId}
         userId={userId}
-        diagnosticId={
-          intent.diagnosticId ?? learning.data?.diagnostic_session_id ?? ''
-        }
+        sessionId={view.sessionId}
         subjectName={selected.name}
         onBack={back}
+        onResult={() => open(view.sessionId, 'result')}
       />
-    )
-  if (intent?.mode === 'diagnostic' && selected)
-    return (
-      <DiagnosticTrainer
-        subjectId={selected.id}
+    ) : (
+      <GeekResult
+        key={view.sessionId}
+        userId={userId}
+        sessionId={view.sessionId}
         subjectName={selected.name}
         onBack={back}
-        onTraining={(diagnosticId) => {
-          void queryClient.invalidateQueries({
-            queryKey: subjectQueryKeys.learningState(userId, selected.id),
-          })
-          openTraining(diagnosticId)
-        }}
-        initialSessionId={intent.sessionId || undefined}
-        startNew={!intent.sessionId}
+        onAgain={begin}
       />
     )
 
-  const data = learning.data
-  // Diagnostic and training are one process for the student: the course
-  // offers a single action that resumes where they stopped.
-  const stage = !data
-    ? undefined
-    : data.active_session_id
-      ? 'diagnostic'
-      : data.training_available && data.diagnostic_session_id
-        ? 'training'
-        : data.diagnostic_completed
-          ? 'completed'
-          : 'start'
-  function resume() {
-    if (!selected || !data) return
-    if (stage === 'diagnostic')
-      openDiagnostic(selected, data.active_session_id ?? undefined, false)
-    else if (stage === 'training') openTraining()
-    else openDiagnostic(selected, undefined, true)
-  }
+  const active = history.data?.find((item) => item.status === 'active')
+  const startError =
+    start.error instanceof DiagnosticApiError &&
+    start.error.code === 'GRAPH_NOT_READY'
+      ? t('home.graphNotReady')
+      : start.error
+        ? t('home.startError')
+        : ''
   return (
     <div className={styles.page}>
       <header className={styles.header}>
@@ -199,7 +149,6 @@ export function LearningHome() {
             <Text>{t('home.empty')}</Text>
           </Card>
         ) : (
-          // One course today; the list layout is ready for several.
           <section className={styles.courses} aria-labelledby="courses-title">
             <article className={styles.course} aria-labelledby="course-title">
               <div className={styles.courseHeader}>
@@ -210,9 +159,8 @@ export function LearningHome() {
                   {t('home.intro')}
                 </Text>
               </div>
-              {/* Four coloured, numbered steps say what the student does: a voice
-                  check, its gaps, a personal plan and exam preparation. They
-                  are information, not controls. */}
+              {/* Four numbered steps say what the student does; they are
+                  information, not controls. */}
               <ol className={styles.steps} aria-label={t('home.stepsLabel')}>
                 {[
                   { key: 'check', icon: <Mic size={20} /> },
@@ -236,65 +184,40 @@ export function LearningHome() {
                   </li>
                 ))}
               </ol>
-              {learning.isPending ? (
-                <Text role="status">{t('home.learningLoading')}</Text>
-              ) : learning.isError ? (
-                <Card className={styles.notice}>
-                  <Text role="alert">{t('home.learningError')}</Text>
-                  <Button onClick={() => void learning.refetch()}>
-                    {t('trainer.retry')}
-                  </Button>
-                </Card>
-              ) : data ? (
-                <div className={styles.actions}>
-                  {stage !== 'start' && (
-                    <Text as="p" className={styles.status}>
-                      {t(
-                        stage === 'diagnostic'
-                          ? 'home.statusDiagnostic'
-                          : stage === 'completed'
-                            ? 'home.statusCompleted'
-                            : 'home.statusTraining',
-                      )}
-                    </Text>
-                  )}
-                  <div className={styles.actionRow}>
+              <div className={styles.actions}>
+                <div className={styles.actionRow}>
+                  {active ? (
                     <CourseAction
-                      kind="primary"
+                      icon={<Play size={22} fill="currentColor" />}
+                      title={t('home.resume')}
+                      hint={t('home.resumeHint')}
+                      onClick={() => open(active.id, 'dialog')}
+                    />
+                  ) : (
+                    <CourseAction
                       icon={<Zap size={22} fill="currentColor" />}
                       title={t(
-                        stage === 'start'
-                          ? 'home.startLearning'
-                          : stage === 'completed'
-                            ? 'home.restart'
-                            : 'home.continueLearning',
+                        start.isPending ? 'home.starting' : 'home.start',
                       )}
-                      hint={t(
-                        stage === 'start'
-                          ? 'home.startLearningHint'
-                          : stage === 'diagnostic'
-                            ? 'home.continueDiagnosticHint'
-                            : stage === 'completed'
-                              ? 'home.restartHint'
-                              : 'home.continueTrainingHint',
-                      )}
-                      onClick={resume}
+                      hint={t('home.startHint')}
+                      disabled={start.isPending || history.isPending}
+                      onClick={begin}
                     />
-                    {stage === 'training' && (
-                      <CourseAction
-                        kind="secondary"
-                        icon={<RotateCcw size={22} />}
-                        title={t('home.restart')}
-                        hint={t('home.restartHint')}
-                        onClick={() =>
-                          openDiagnostic(selected, undefined, true)
-                        }
-                      />
-                    )}
-                  </div>
+                  )}
                 </div>
-              ) : null}
+                {startError && (
+                  <Text as="p" role="alert" color="red">
+                    {startError}
+                  </Text>
+                )}
+              </div>
             </article>
+            <History
+              query={history}
+              onOpen={(item) =>
+                open(item.id, item.status === 'completed' ? 'result' : 'dialog')
+              }
+            />
           </section>
         )}
       </main>
@@ -302,19 +225,91 @@ export function LearningHome() {
   )
 }
 
+function History({
+  query,
+  onOpen,
+}: {
+  query: ReturnType<typeof useDiagnosticHistoryQuery>
+  onOpen: (item: DiagnosticSummary) => void
+}) {
+  const { t, i18n } = useTranslation()
+  return (
+    <section className={styles.history} aria-labelledby="history-title">
+      <Heading as="h2" size="5" id="history-title">
+        {t('home.historyTitle')}
+      </Heading>
+      {query.isPending ? (
+        <Text role="status">{t('home.historyLoading')}</Text>
+      ) : query.isError ? (
+        <Card className={styles.notice}>
+          <Text role="alert">{t('home.historyError')}</Text>
+          <Button onClick={() => void query.refetch()}>
+            {t('trainer.retry')}
+          </Button>
+        </Card>
+      ) : query.data.length === 0 ? (
+        <Text as="p" color="gray">
+          {t('home.historyEmpty')}
+        </Text>
+      ) : (
+        <ul className={styles.historyList}>
+          {query.data.map((item) => (
+            <li key={item.id} className={styles.historyItem}>
+              <span className={styles.historyText}>
+                <Text weight="bold">
+                  {t('home.historyItem', {
+                    date: new Date(item.startedAt * 1000).toLocaleString(
+                      i18n.language,
+                      { dateStyle: 'medium', timeStyle: 'short' },
+                    ),
+                  })}
+                </Text>
+                <Text size="2" color="gray">
+                  {t(`home.historyStatus.${item.status}`, {
+                    progress: item.progressPercent,
+                  })}
+                </Text>
+              </span>
+              {item.status === 'completed' && (
+                <Badge size="2" color={item.grade ? 'blue' : 'gray'}>
+                  {item.grade && item.scorePercent !== null
+                    ? t('home.historyGrade', {
+                        grade: item.grade,
+                        percent: item.scorePercent,
+                      })
+                    : t('home.historyNoGrade')}
+                </Badge>
+              )}
+              {item.status !== 'cancelled' && (
+                <Button variant="soft" onClick={() => onOpen(item)}>
+                  {t(
+                    item.status === 'completed'
+                      ? 'home.openResult'
+                      : 'home.continue',
+                  )}
+                </Button>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  )
+}
+
 // A large course action: icon, title and a line explaining what happens. The
 // title is the accessible name; the explanation describes it.
 function CourseAction({
-  kind,
   icon,
   title,
   hint,
+  disabled,
   onClick,
 }: {
-  kind: 'primary' | 'secondary'
   icon: ReactNode
   title: string
   hint: string
+  disabled?: boolean
   onClick: () => void
 }) {
   const hintId = useId()
@@ -322,9 +317,10 @@ function CourseAction({
     <button
       type="button"
       className={styles.courseAction}
-      data-kind={kind}
+      data-kind="primary"
       aria-label={title}
       aria-describedby={hintId}
+      disabled={disabled}
       onClick={onClick}
     >
       <span className={styles.courseActionIcon} aria-hidden="true">

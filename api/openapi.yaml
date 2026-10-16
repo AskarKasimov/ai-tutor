@@ -314,6 +314,64 @@ components:
         - outcomes
         - questions
       type: object
+    geek.History:
+      additionalProperties: false
+      properties:
+        items:
+          items:
+            $ref: '#/components/schemas/geek.HistoryItem'
+          type: array
+          uniqueItems: false
+      required:
+        - items
+      type: object
+    geek.HistoryItem:
+      additionalProperties: false
+      properties:
+        completed_at:
+          type:
+            - integer
+            - "null"
+        grade:
+          description: Предварительная оценка курса; null — диагностика не завершена или ни одной темы верхнего уровня с оценкой
+          enum:
+            - A
+            - B
+            - C
+            - D
+            - null
+          type:
+            - string
+            - "null"
+        id:
+          type: string
+        progress_percent:
+          maximum: 100
+          minimum: 0
+          type: integer
+        score_percent:
+          maximum: 100
+          minimum: 0
+          type:
+            - integer
+            - "null"
+        started_at:
+          type: integer
+        status:
+          enum:
+            - active
+            - completed
+            - cancelled
+          type: string
+      required:
+        - completed_at
+        - grade
+        - id
+        - progress_percent
+        - score_percent
+        - started_at
+        - status
+      type: object
     geek.Material:
       additionalProperties: false
       properties:
@@ -1655,6 +1713,43 @@ paths:
         - Auth
       x-implementation: implemented
   /diagnostic-sessions:
+    get:
+      description: Диагностики текущего студента по курсу, новые первыми (не больше 50). Оценка — только у завершённых.
+      operationId: listDiagnosticSessions
+      parameters:
+        - description: ID курса (предмета)
+          in: query
+          name: subject_id
+          required: true
+          schema:
+            maxLength: 128
+            minLength: 1
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/geek.History'
+          description: OK
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unauthorized
+        "422":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unprocessable Entity
+      security:
+        - accessCookie: []
+      summary: Мои диагностики курса
+      tags:
+        - Диагностика
+      x-implementation: implemented
     post:
       description: 'Устный экзамен Geek по графу курса. У студента одна активная диагностика на курс: если она есть, возвращается она (200), иначе создаётся новая с первым вопросом (201). 409 GRAPH_NOT_READY — граф курса не собран.'
       operationId: startDiagnosticSession

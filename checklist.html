@@ -168,7 +168,7 @@
         <li><label><input type="checkbox" data-id="g-status" checked><span><span class="t">Статусы: самостоятельно / с помощью / пробел / нет данных / по вышестоящей</span></span></label></li>
         <li><label><input type="checkbox" data-id="g-evidence" checked><span><span class="t">Для темы сохраняются глубина понимания и фрагменты диалога</span></span></label></li>
         <li><label><input type="checkbox" data-id="g-gap" checked><span><span class="t">Пробел = самая глубокая неосвоенная вершина с освоенными пререквизитами</span></span></label></li>
-        <li><label><input type="checkbox" data-id="g-io"><span><span class="t">Реплики Geek — текст + голос; ответ голосом или текстом</span></span></label></li>
+        <li><label><input type="checkbox" data-id="g-io" checked><span><span class="t">Реплики Geek — текст + голос; ответ голосом или текстом</span></span></label></li>
       </ul>
     </section>
 
@@ -221,9 +221,9 @@
       <ul>
         <li><label><input type="checkbox" data-id="m-infra" checked><span><span class="t">Оставлены auth, STT/TTS, S3, Caddy, PostgreSQL, Compose</span></span></label></li>
         <li><label><input type="checkbox" data-id="m-subject"><span><span class="t">Предмет (subject) стал курсом</span></span></label></li>
-        <li><label><input type="checkbox" data-id="m-summary"><span><span class="t">Экран итога и diagnosticfeedback переделаны под A–D, пробелы и пакет для преподавателя</span></span></label></li>
-        <li><label><input type="checkbox" data-id="m-dialog"><span><span class="t">Frontend: диагностика в формате диалога</span><span class="d">Главная, запись голоса и чат переиспользуются.</span></span></label></li>
-        <li><label><input type="checkbox" data-id="m-diag"><span><span class="t">Диагностика Geek написана на путях /diagnostic-sessions</span><span class="d">Прежний diagnostic удалён; схема БД собрана заново.</span></span></label></li>
+        <li><label><input type="checkbox" data-id="m-summary" checked><span><span class="t">Экран итога переделан под A–D и пробелы</span><span class="d">Пакет для преподавателя — Could, ещё не сделан.</span></span></label></li>
+        <li><label><input type="checkbox" data-id="m-dialog" checked><span><span class="t">Frontend: диагностика в формате диалога</span><span class="d">Главная, запись голоса и чат переиспользуются.</span></span></label></li>
+        <li><label><input type="checkbox" data-id="m-diag" checked><span><span class="t">Диагностика Geek написана на путях /diagnostic-sessions</span><span class="d">Прежний diagnostic удалён; схема БД собрана заново.</span></span></label></li>
         <li><label><input type="checkbox" data-id="m-approve" checked><span><span class="t">Прежняя модель удалена</span><span class="d">Импорт карты CSV/XLSX, variantgen, assessment, taskgen + FTS, training, taskaudio, diagnostic, diagnosticfeedback, learning, админка карт, документы прежней модели.</span></span></label></li>
       </ul>
     </section>
@@ -253,7 +253,7 @@
     </section>
   </div>
 
-  <footer>Отмечено по состоянию репозитория на 16.10.2026 (backend Geek; экраны frontend — поток C). Свои отметки хранятся только в этом браузере.</footer>
+  <footer>Отмечено по состоянию репозитория на 16.10.2026 (backend и экраны Geek; админка графа и пакет — нет). Свои отметки хранятся только в этом браузере.</footer>
 </main>
 <script>
 (function () {

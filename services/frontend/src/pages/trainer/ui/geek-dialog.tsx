@@ -1,0 +1,463 @@
+import { Button, Text, TextArea } from '@radix-ui/themes'
+import {
+  AudioLines,
+  CircleAlert,
+  LoaderCircle,
+  Mic,
+  Send,
+  Square,
+  Volume2,
+} from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
+import {
+  DiagnosticApiError,
+  type DiagnosticAnswer,
+  type DiagnosticSession,
+  type Turn,
+} from '@/entities/diagnostic-session'
+import {
+  useAnswerMutation,
+  useDiagnosticQuery,
+  useTurnAudio,
+  useVoiceAnswer,
+  type TurnAudioState,
+} from '@/features/diagnostic-session'
+import { MarkdownContent } from '@/shared/ui'
+import { LiveWaveform } from './trainer-answer'
+import { TrainerProgress, TrainerShell } from './trainer-shared'
+import styles from './geek.module.scss'
+
+type Props = {
+  userId: string
+  sessionId: string
+  subjectName: string
+  onBack: () => void
+  onResult: () => void
+}
+
+// The oral exam: Geek's turns on the left with their voice, the student's
+// answers on the right and the answer field at the bottom.
+export function GeekDialog({
+  userId,
+  sessionId,
+  subjectName,
+  onBack,
+  onResult,
+}: Props) {
+  const { t } = useTranslation()
+  const query = useDiagnosticQuery(userId, sessionId)
+  const session = query.data
+  return (
+    <TrainerShell
+      title={t('geek.title')}
+      subject={subjectName}
+      crumb={t('geek.crumb')}
+      onBack={onBack}
+      progress={
+        session && (
+          <TrainerProgress
+            label={t('geek.progress')}
+            percent={session.progressPercent}
+          />
+        )
+      }
+    >
+      {query.isPending ? (
+        <main>
+          <Text role="status">{t('geek.loading')}</Text>
+        </main>
+      ) : query.isError ? (
+        <main>
+          <Text as="p" role="alert">
+            {t('geek.loadError')}
+          </Text>
+          <Button onClick={() => void query.refetch()}>
+            {t('trainer.retry')}
+          </Button>
+        </main>
+      ) : (
+        <Dialogue
+          userId={userId}
+          session={query.data}
+          onBack={onBack}
+          onResult={onResult}
+        />
+      )}
+    </TrainerShell>
+  )
+}
+
+function Dialogue({
+  userId,
+  session,
+  onBack,
+  onResult,
+}: {
+  userId: string
+  session: DiagnosticSession
+  onBack: () => void
+  onResult: () => void
+}) {
+  const { t } = useTranslation()
+  const answer = useAnswerMutation(userId, session.id)
+  const audio = useTurnAudio(session.id)
+  const end = useRef<HTMLDivElement>(null)
+  const currentTurnId = session.currentTurnId
+  const lastTurn = session.turns[session.turns.length - 1]
+
+  // A new Geek turn is voiced at once; the first one after loading too, since
+  // the student has just pressed start or continue.
+  const voiced = useRef('')
+  const play = audio.play
+  useEffect(() => {
+    if (lastTurn?.speaker === 'geek' && voiced.current !== lastTurn.id) {
+      voiced.current = lastTurn.id
+      void play(lastTurn.id)
+    }
+  }, [lastTurn, play])
+  useEffect(() => {
+    end.current?.scrollIntoView?.({ block: 'end' })
+  }, [session.turns.length, answer.isPending])
+
+  const send = (reply: DiagnosticAnswer, display: string) => {
+    if (!currentTurnId || answer.isPending) return
+    audio.stop()
+    answer.mutate({ turnId: currentTurnId, answer: reply, display })
+  }
+  const pending = answer.isPending ? answer.variables : undefined
+
+  return (
+    <main className={styles.dialog} aria-label={t('geek.title')}>
+      <ol className={styles.turns}>
+        {session.turns.map((turn) => (
+          <TurnItem key={turn.id} turn={turn} audio={audio} />
+        ))}
+        {pending && (
+          <>
+            <li className={styles.student}>
+              <Text as="p" className={styles.bubble}>
+                {pending.display}
+              </Text>
+            </li>
+            <li className={styles.geek}>
+              <Text role="status" className={styles.thinking}>
+                <LoaderCircle
+                  size={16}
+                  className={styles.spin}
+                  aria-hidden="true"
+                />
+                {t('geek.thinking')}
+              </Text>
+            </li>
+          </>
+        )}
+      </ol>
+      {session.status === 'completed' ? (
+        <div className={styles.footer}>
+          <Text as="p">{t('geek.completed')}</Text>
+          <Button size="3" onClick={onResult}>
+            {t('geek.toResult')}
+          </Button>
+        </div>
+      ) : session.status === 'cancelled' ? (
+        <div className={styles.footer} role="alert">
+          <Text as="p">{t('geek.cancelled')}</Text>
+          <Button size="3" variant="soft" onClick={onBack}>
+            {t('home.back')}
+          </Button>
+        </div>
+      ) : (
+        <Composer
+          key={currentTurnId}
+          turnId={currentTurnId ?? ''}
+          busy={answer.isPending}
+          error={answer.error}
+          onSend={send}
+          onRetry={() =>
+            answer.variables &&
+            send(answer.variables.answer, answer.variables.display)
+          }
+        />
+      )}
+      {/* The scroll anchor sits under the answer field, so the latest turn is
+          never hidden behind it. */}
+      <div ref={end} />
+    </main>
+  )
+}
+
+function TurnItem({
+  turn,
+  audio,
+}: {
+  turn: Turn
+  audio: ReturnType<typeof useTurnAudio>
+}) {
+  const { t } = useTranslation()
+  if (turn.speaker === 'student')
+    return (
+      <li className={styles.student}>
+        <Text as="p" className={styles.bubble}>
+          {turn.source === 'dont_know' ? t('geek.dontKnowAnswer') : turn.text}
+        </Text>
+      </li>
+    )
+  return (
+    <li className={styles.geek}>
+      <div className={styles.geekHead}>
+        <Text weight="bold">{t('geek.speaker')}</Text>
+        {turn.kind !== 'closing' && turn.kind !== 'answer' && (
+          <Text size="2" className={styles.kind}>
+            {t(`geek.kind.${turn.kind}`)}
+          </Text>
+        )}
+        <ListenButton turnId={turn.id} state={audio.state} audio={audio} />
+      </div>
+      <MarkdownContent text={turn.text} className={styles.geekText} />
+    </li>
+  )
+}
+
+function ListenButton({
+  turnId,
+  state,
+  audio,
+}: {
+  turnId: string
+  state: TurnAudioState
+  audio: ReturnType<typeof useTurnAudio>
+}) {
+  const { t } = useTranslation()
+  const mine = state.turnId === turnId ? state.status : 'idle'
+  const label =
+    mine === 'playing'
+      ? t('geek.stopListening')
+      : mine === 'loading'
+        ? t('geek.audioLoading')
+        : mine === 'error'
+          ? t('geek.audioError')
+          : t('geek.listen')
+  return (
+    <button
+      type="button"
+      className={styles.listen}
+      data-state={mine}
+      aria-label={label}
+      title={label}
+      onClick={() =>
+        mine === 'playing' || mine === 'loading'
+          ? audio.stop()
+          : void audio.play(turnId)
+      }
+    >
+      {mine === 'loading' ? (
+        <LoaderCircle size={16} className={styles.spin} aria-hidden="true" />
+      ) : mine === 'playing' ? (
+        <Square size={12} fill="currentColor" aria-hidden="true" />
+      ) : mine === 'error' ? (
+        <CircleAlert size={16} aria-hidden="true" />
+      ) : (
+        <Volume2 size={16} aria-hidden="true" />
+      )}
+    </button>
+  )
+}
+
+function errorText(error: Error | null, t: (key: string) => string) {
+  if (!error) return ''
+  if (error instanceof DiagnosticApiError) {
+    if (error.status === 409) return t('geek.staleTurn')
+    if (error.status === 503 || error.code === 'TIMEOUT')
+      return t('geek.modelUnavailable')
+  }
+  return t('geek.answerError')
+}
+
+// The answer field: text, a spoken answer checked as a transcript before
+// sending, or "don't know".
+function Composer({
+  turnId,
+  busy,
+  error,
+  onSend,
+  onRetry,
+}: {
+  turnId: string
+  busy: boolean
+  error: Error | null
+  onSend: (answer: DiagnosticAnswer, display: string) => void
+  onRetry: () => void
+}) {
+  const { t } = useTranslation()
+  const [text, setText] = useState('')
+  const voice = useVoiceAnswer(turnId)
+  const recording = voice.recording || voice.requesting
+  const stale = error instanceof DiagnosticApiError && error.status === 409
+  const seconds = `${Math.floor(voice.elapsedSeconds / 60)}:${String(voice.elapsedSeconds % 60).padStart(2, '0')}`
+  const sendText = () => {
+    const value = text.trim()
+    if (value) onSend({ kind: 'text', text: value }, value)
+  }
+
+  return (
+    <div className={styles.composer}>
+      {error && !busy && (
+        <div className={styles.error} role="alert">
+          <Text as="p">{errorText(error, t)}</Text>
+          {!stale && (
+            <Button size="2" variant="soft" onClick={onRetry}>
+              {t('geek.retryAnswer')}
+            </Button>
+          )}
+        </div>
+      )}
+      {voice.error && (
+        <Text as="p" role="alert" className={styles.voiceError}>
+          {t(
+            voice.error === 'denied' ? 'geek.micDenied' : 'geek.micUnavailable',
+          )}
+        </Text>
+      )}
+      {voice.transcriptionError && (
+        <div className={styles.error} role="alert">
+          <Text as="p">
+            {t(
+              voice.transcriptionError === 'no_speech'
+                ? 'geek.noSpeech'
+                : 'geek.transcriptionError',
+            )}
+          </Text>
+          {voice.transcriptionError === 'transcription' && (
+            <Button size="2" variant="soft" onClick={voice.retryTranscription}>
+              {t('geek.retryTranscription')}
+            </Button>
+          )}
+        </div>
+      )}
+      {voice.transcript ? (
+        <section
+          className={styles.transcript}
+          aria-labelledby="transcript-title"
+        >
+          <Text as="p" size="2" weight="bold" id="transcript-title">
+            {t('geek.transcriptTitle')}
+          </Text>
+          <Text as="p" className={styles.transcriptText}>
+            {voice.transcript.text}
+          </Text>
+          <div className={styles.transcriptActions}>
+            <Button
+              disabled={busy}
+              onClick={() =>
+                onSend(
+                  { kind: 'voice', transcriptionId: voice.transcript!.id },
+                  voice.transcript!.text,
+                )
+              }
+            >
+              {t('geek.sendTranscript')}
+            </Button>
+            <Button variant="soft" disabled={busy} onClick={voice.discard}>
+              {t('geek.rerecord')}
+            </Button>
+          </div>
+        </section>
+      ) : recording || voice.preparing || voice.transcribing ? (
+        <div className={styles.recording}>
+          {recording ? (
+            <>
+              <Text role="timer" className={styles.timer}>
+                {seconds}
+              </Text>
+              <div className={styles.wave} aria-hidden="true">
+                <LiveWaveform stream={voice.stream} height={32} />
+              </div>
+              <Text className={styles.visuallyHidden} role="status">
+                {t('geek.recording')}
+              </Text>
+              <button
+                type="button"
+                className={styles.round}
+                data-tone="stop"
+                aria-label={t('geek.stopRecording')}
+                onClick={voice.stop}
+              >
+                <Square size={16} fill="currentColor" aria-hidden="true" />
+              </button>
+            </>
+          ) : (
+            <Text role="status" className={styles.thinking}>
+              <LoaderCircle
+                size={16}
+                className={styles.spin}
+                aria-hidden="true"
+              />
+              {t('geek.transcribing')}
+            </Text>
+          )}
+        </div>
+      ) : (
+        <form
+          className={styles.field}
+          onSubmit={(event) => {
+            event.preventDefault()
+            sendText()
+          }}
+        >
+          <TextArea
+            className={styles.input}
+            aria-label={t('geek.answerLabel')}
+            placeholder={t('geek.answerPlaceholder')}
+            value={text}
+            disabled={busy}
+            maxLength={4000}
+            rows={1}
+            onChange={(event) => setText(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' && !event.shiftKey) {
+                event.preventDefault()
+                sendText()
+              }
+            }}
+          />
+          <button
+            type="button"
+            className={styles.icon}
+            aria-label={t('geek.record')}
+            title={t('geek.record')}
+            disabled={busy}
+            onClick={() => void voice.start()}
+          >
+            <Mic size={20} aria-hidden="true" />
+          </button>
+          <button
+            type="submit"
+            className={styles.round}
+            aria-label={t('geek.send')}
+            title={t('geek.send')}
+            disabled={busy || !text.trim()}
+          >
+            {text.trim() ? (
+              <Send size={18} aria-hidden="true" />
+            ) : (
+              <AudioLines size={18} aria-hidden="true" />
+            )}
+          </button>
+        </form>
+      )}
+      <div className={styles.secondary}>
+        <Button
+          variant="ghost"
+          color="gray"
+          disabled={busy || recording || voice.transcribing}
+          onClick={() =>
+            onSend({ kind: 'dont_know' }, t('geek.dontKnowAnswer'))
+          }
+        >
+          {t('geek.dontKnow')}
+        </Button>
+      </div>
+    </div>
+  )
+}

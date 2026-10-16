@@ -29,3 +29,9 @@ ON CONFLICT (owner_id, key) DO NOTHING;
 
 -- name: GetOwnedTranscriptionText :one
 SELECT text FROM transcriptions WHERE id = $1 AND user_id = $2;
+
+-- name: ListOwnGeekSessions :many
+SELECT state FROM geek_sessions
+WHERE owner_id = $1 AND subject_id = $2
+ORDER BY started_at DESC, id DESC
+LIMIT 50;

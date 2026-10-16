@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
@@ -59,6 +60,19 @@ func (m *memoryStore) ActiveSession(_ context.Context, owner, subject string) (e
 		}
 	}
 	return exam.Session{}, false, nil
+}
+
+func (m *memoryStore) Sessions(_ context.Context, owner, subject string) ([]exam.Session, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := []exam.Session{}
+	for _, data := range m.sessions {
+		if s := decode(data); s.OwnerID == owner && s.SubjectID == subject {
+			out = append(out, s)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ID > out[j].ID })
+	return out, nil
 }
 
 func (m *memoryStore) Request(_ context.Context, owner, key string) (Request, bool, error) {
@@ -310,6 +324,26 @@ func TestResumeKeyKeepsItsResult(t *testing.T) {
 	}
 	if _, _, err := f.service.Start(ctx, "student", "other", "resume"); code(err) != "IDEMPOTENCY_KEY_REUSED" {
 		t.Fatalf("resume key with another course: %v", err)
+	}
+}
+
+func TestHistoryListsOwnDiagnosticsOfTheCourse(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	s, _, _ := f.service.Start(ctx, "student", "subject", "first")
+	for s.Status == exam.SessionActive {
+		s = f.answer(t, s, Answer{DontKnow: true})
+	}
+	next, _, _ := f.service.Start(ctx, "student", "subject", "second")
+	history, err := f.service.History(ctx, "student", "subject")
+	if err != nil || len(history) != 2 || history[0].ID != next.ID || history[1].Status != exam.SessionCompleted {
+		t.Fatalf("history = %d %v", len(history), err)
+	}
+	if other, _ := f.service.History(ctx, "intruder", "subject"); len(other) != 0 {
+		t.Fatal("another student's diagnostics listed")
+	}
+	if _, err := f.service.History(ctx, "student", " "); code(err) != "VALIDATION_ERROR" {
+		t.Fatalf("blank course: %v", err)
 	}
 }
 

@@ -162,13 +162,14 @@ func TestGeekConfigRequiresTheGatewayAndHasNoLimits(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.LLMGatewayAddress != "gateway.test:8011" || cfg.LLMTimeout != 120*time.Second || cfg.GeekGraphFixture != "" || cfg.GeekMaxQuestions != 0 {
+	if cfg.LLMGatewayAddress != "gateway.test:8011" || cfg.LLMTimeout != 120*time.Second || cfg.GeekGraphFixture != "" || cfg.GeekGraphFixtureSubject != "" || cfg.GeekMaxQuestions != 0 {
 		t.Fatalf("geek defaults = %+v", cfg)
 	}
 	t.Setenv("BACKEND_LLM_GATEWAY_ADDR", "llm-gateway:8011")
 	t.Setenv("BACKEND_GEEK_GRAPH_FIXTURE", "/fixtures/course-graph.json")
+	t.Setenv("BACKEND_GEEK_GRAPH_FIXTURE_SUBJECT_ID", " demo ")
 	t.Setenv("BACKEND_GEEK_MAX_QUESTIONS", "12")
-	if cfg, err = ConfigFromEnv(); err != nil || cfg.LLMGatewayAddress != "llm-gateway:8011" || cfg.GeekGraphFixture != "/fixtures/course-graph.json" || cfg.GeekMaxQuestions != 12 {
+	if cfg, err = ConfigFromEnv(); err != nil || cfg.LLMGatewayAddress != "llm-gateway:8011" || cfg.GeekGraphFixture != "/fixtures/course-graph.json" || cfg.GeekGraphFixtureSubject != "demo" || cfg.GeekMaxQuestions != 12 {
 		t.Fatalf("geek settings = %+v, %v", cfg, err)
 	}
 }

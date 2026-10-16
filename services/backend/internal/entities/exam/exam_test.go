@@ -302,12 +302,34 @@ func pair() Graph {
 	}}
 }
 
-func TestDontKnowOnTheFollowupIsAGap(t *testing.T) {
+func TestDontKnowOnTheFollowupZeroesK3AndK4(t *testing.T) {
+	// A strong main answer keeps C: K1 and K2 on 2, K3 and K4 on 0.
 	e, first := NewExam(pair(), 0)
 	steps := run(t, e, first, func(s Step) Evaluation {
+		if s.Kind == KindFollowup {
+			return unknown
+		}
+		return strong
+	})
+	if e.Nodes["top"].Status != StatusIndependent || *e.Nodes["top"].Grade != GradeC {
+		t.Fatalf("top = %+v", e.Nodes["top"])
+	}
+	if c := *e.Nodes["top"].Criteria; c != (Criteria{2, 2, 0, 0}) {
+		t.Fatalf("top criteria = %+v", c)
+	}
+	if got := asked(steps, KindQuestion); !slices.Equal(got, []string{"top"}) {
+		t.Fatalf("questions = %v (base is credited)", got)
+	}
+	if e.Nodes["base"].Status != StatusCredited {
+		t.Fatalf("base = %s", e.Nodes["base"].Status)
+	}
+
+	// A main answer on C that relied on K3 or K4 falls to D and descends.
+	e, first = NewExam(pair(), 0)
+	steps = run(t, e, first, func(s Step) Evaluation {
 		switch {
 		case s.NodeID == "top" && s.Kind == KindQuestion:
-			return Evaluation{Verdict: VerdictAnswered, Criteria: Criteria{2, 2, 0, 0}}
+			return Evaluation{Verdict: VerdictAnswered, Criteria: Criteria{1, 1, 2, 0}}
 		case s.NodeID == "top":
 			return unknown
 		case s.Kind == KindFollowup:

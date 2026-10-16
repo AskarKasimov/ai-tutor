@@ -304,25 +304,7 @@ func (s *Service) install(j *durableJob) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if expiredForRetention(j, time.Now(), s.cfg.Retention) {
-		if old := s.jobs[j.ID]; old != nil {
-			if isPending(old.Status) {
-				s.bytes -= int64(len(mustJSON(old.Request)))
-			}
-			if old.SlotHeld && old.Instance != "" && s.inFlight[old.Instance] > 0 {
-				s.inFlight[old.Instance]--
-			}
-			oldKey := string(stateKey(old))
-			if s.stateIDs[oldKey] == j.ID {
-				delete(s.stateIDs, oldKey)
-			}
-			if old.IdempotencyKey != "" {
-				index := identity(old.ClientID, old.IdempotencyKey)
-				if s.keys[index] == j.ID {
-					delete(s.keys, index)
-				}
-			}
-			delete(s.jobs, j.ID)
-		}
+		s.forgetExpiredJobLocked(j.ID)
 		return
 	}
 	if old := s.jobs[j.ID]; old != nil {
@@ -355,6 +337,32 @@ func (s *Service) install(j *durableJob) {
 	if copy.SlotHeld && copy.Instance != "" {
 		s.inFlight[copy.Instance]++
 	}
+}
+
+// forgetExpiredJobLocked removes all process-local state for a key whose
+// retention has elapsed, including transient cancellation state that could
+// otherwise poison a new request reusing the same stable job ID.
+func (s *Service) forgetExpiredJobLocked(id string) {
+	if old := s.jobs[id]; old != nil {
+		if isPending(old.Status) {
+			s.bytes -= int64(len(mustJSON(old.Request)))
+		}
+		if old.SlotHeld && old.Instance != "" && s.inFlight[old.Instance] > 0 {
+			s.inFlight[old.Instance]--
+		}
+		delete(s.jobs, id)
+	}
+	for key, jobID := range s.stateIDs {
+		if jobID == id {
+			delete(s.stateIDs, key)
+		}
+	}
+	for key, jobID := range s.keys {
+		if jobID == id {
+			delete(s.keys, key)
+		}
+	}
+	delete(s.cancelled, id)
 }
 
 func (s *Service) removeByStateKey(key []byte) {
@@ -913,17 +921,7 @@ func (s *Service) compactExpired(ctx context.Context, now time.Time) {
 		}
 		s.mu.Lock()
 		if current := s.jobs[j.ID]; current != nil && expiredForRetention(current, now, s.cfg.Retention) {
-			delete(s.jobs, j.ID)
-			delete(s.stateIDs, string(stateKey(current)))
-			if current.IdempotencyKey != "" {
-				key := identity(current.ClientID, current.IdempotencyKey)
-				if s.keys[key] == current.ID {
-					delete(s.keys, key)
-				}
-			}
-			if current.SlotHeld && current.Instance != "" && s.inFlight[current.Instance] > 0 {
-				s.inFlight[current.Instance]--
-			}
+			s.forgetExpiredJobLocked(j.ID)
 		}
 		s.mu.Unlock()
 		s.stateMu.Unlock()

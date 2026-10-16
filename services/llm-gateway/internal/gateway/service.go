@@ -111,7 +111,7 @@ func NewService(cfg Config) (*Service, error) {
 		s.submitter.Close()
 		return nil, fmt.Errorf("create state producer: %w", err)
 	}
-	s.ingest, err = kgo.NewGroupTransactSession(kgo.SeedBrokers(brokers...), kgo.TransactionalID(cfg.TransactionalID+"-ingest"), kgo.ConsumerGroup(cfg.ConsumerGroup), kgo.ConsumeTopics(cfg.RequestsTopic), kgo.ConsumeResetOffset(kgo.NoResetOffset()), kgo.FetchIsolationLevel(kgo.ReadCommitted()), kgo.DisableAutoCommit(), kgo.RequiredAcks(kgo.AllISRAcks()), kgo.ProducerBatchMaxBytes(40<<20))
+	s.ingest, err = kgo.NewGroupTransactSession(kgo.SeedBrokers(brokers...), kgo.TransactionalID(cfg.TransactionalID+"-ingest"), kgo.ConsumerGroup(cfg.ConsumerGroup), kgo.ConsumeTopics(cfg.RequestsTopic), kgo.ConsumeStartOffset(kgo.NewOffset().AtStart()), kgo.ConsumeResetOffset(kgo.NoResetOffset()), kgo.FetchIsolationLevel(kgo.ReadCommitted()), kgo.DisableAutoCommit(), kgo.RequiredAcks(kgo.AllISRAcks()), kgo.ProducerBatchMaxBytes(40<<20))
 	if err != nil {
 		s.submitter.Close()
 		s.stateWriter.Close()
@@ -304,6 +304,25 @@ func (s *Service) install(j *durableJob) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if expiredForRetention(j, time.Now(), s.cfg.Retention) {
+		if old := s.jobs[j.ID]; old != nil {
+			if isPending(old.Status) {
+				s.bytes -= int64(len(mustJSON(old.Request)))
+			}
+			if old.SlotHeld && old.Instance != "" && s.inFlight[old.Instance] > 0 {
+				s.inFlight[old.Instance]--
+			}
+			oldKey := string(stateKey(old))
+			if s.stateIDs[oldKey] == j.ID {
+				delete(s.stateIDs, oldKey)
+			}
+			if old.IdempotencyKey != "" {
+				index := identity(old.ClientID, old.IdempotencyKey)
+				if s.keys[index] == j.ID {
+					delete(s.keys, index)
+				}
+			}
+			delete(s.jobs, j.ID)
+		}
 		return
 	}
 	if old := s.jobs[j.ID]; old != nil {
@@ -400,6 +419,8 @@ func (s *Service) consume(ctx context.Context) {
 		if _, ok := s.jobs[request.ID]; ok {
 			duplicate = true
 		}
+		orphaned := !duplicate && (s.accepted[request.ID] == nil || s.activeWaiters[request.ID] == 0)
+		canceled := s.cancelled[request.ID]
 		s.mu.Unlock()
 		s.stateMu.Lock()
 		if err := s.ingest.Begin(); err != nil {
@@ -410,6 +431,15 @@ func (s *Service) consume(ctx context.Context) {
 		var job *durableJob
 		if !duplicate {
 			job = &durableJob{Version: 1, ID: request.ID, ClientID: request.ClientID, IdempotencyKey: request.IdempotencyKey, Hash: request.Hash, Request: request.Request, SubmittedAt: request.SubmittedAt, Deadline: request.Deadline, Offset: record.Offset, Status: "queued"}
+			if orphaned {
+				code, message := "client_disconnected", "No client remains connected to receive this request."
+				if canceled {
+					code, message = "request_canceled", "The request was canceled because no clients are waiting."
+				}
+				job.Status = "failed"
+				job.FinishedAt = time.Now()
+				job.Error = &storedError{Status: 409, Type: "request_cancelled", Code: code, Message: message}
+			}
 			raw, _ := json.Marshal(job)
 			if got := s.ingest.ProduceSync(ctx, &kgo.Record{Topic: s.cfg.StateTopic, Key: stateKey(job), Value: raw}); got.FirstErr() != nil {
 				_, _ = s.ingest.End(context.Background(), kgo.TryAbort)
@@ -425,7 +455,9 @@ func (s *Service) consume(ctx context.Context) {
 		}
 		if job != nil {
 			s.install(job)
-			s.signal()
+			if job.Status == "queued" {
+				s.signal()
+			}
 		}
 		s.stateMu.Unlock()
 	}

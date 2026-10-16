@@ -123,3 +123,28 @@ func TestRestoreRetainsResultFor24HoursAfterCompletion(t *testing.T) {
 		t.Fatal("result was discarded before 24 hours elapsed after completion")
 	}
 }
+
+func TestExpiredTerminalReplacesRestoredRunningJob(t *testing.T) {
+	s := schedulerFixture([]InstanceConfig{schedulerInstance("model-a")}, []string{"model-a"})
+	s.cfg.Retention = 24 * time.Hour
+	s.stateIDs = make(map[string]string)
+	s.keys = make(map[string]string)
+	now := time.Now()
+	running := &durableJob{ID: "expired-terminal", ClientID: "client", IdempotencyKey: "key", Status: "running", Instance: "model-a", SlotHeld: true, SubmittedAt: now.Add(-48 * time.Hour), StartedAt: now.Add(-47 * time.Hour)}
+	s.install(running)
+	if s.inFlight["model-a"] != 1 {
+		t.Fatalf("restored running slot count = %d, want 1", s.inFlight["model-a"])
+	}
+
+	terminal := &durableJob{ID: running.ID, ClientID: running.ClientID, IdempotencyKey: running.IdempotencyKey, Status: "succeeded", SubmittedAt: now.Add(-48 * time.Hour), FinishedAt: now.Add(-25 * time.Hour)}
+	s.install(terminal)
+	if _, ok := s.jobs[running.ID]; ok {
+		t.Fatal("expired terminal left the earlier running job installed")
+	}
+	if s.inFlight["model-a"] != 0 {
+		t.Fatalf("in-flight slot count = %d, want 0", s.inFlight["model-a"])
+	}
+	if len(s.stateIDs) != 0 || len(s.keys) != 0 {
+		t.Fatalf("stale indexes remain: stateIDs=%v keys=%v", s.stateIDs, s.keys)
+	}
+}

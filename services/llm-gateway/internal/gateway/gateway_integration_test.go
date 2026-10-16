@@ -286,10 +286,47 @@ func TestGatewayPersistsCompletionAndReplaysAfterRestart(t *testing.T) {
 	}
 	stopFirst()
 
+	// A fresh request group must start at the beginning and terminally record
+	// durable input that has no waiting client after restart.
+	orphanRequest, err := ParseRequest(requestBody)
+	if err != nil {
+		t.Fatal(err)
+	}
+	orphanID := stableJobID("internal", "preexisting-orphan")
+	orphanInput := durableRequest{Version: 1, ID: orphanID, ClientID: "internal", IdempotencyKey: "preexisting-orphan", Hash: orphanRequest.CanonicalHash(), Request: orphanRequest, SubmittedAt: time.Now(), Deadline: time.Now().Add(10 * time.Second)}
+	orphanInputRaw, _ := json.Marshal(orphanInput)
+	produceCtx, produceCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	if err := admin.ProduceSync(produceCtx, &kgo.Record{Topic: requestsTopic, Key: []byte(orphanID), Value: orphanInputRaw}).FirstErr(); err != nil {
+		t.Fatal(err)
+	}
+	produceCancel()
+
 	// Restore state with a fresh group and ensure the idempotent replay does not call the model again.
 	cfg.ConsumerGroup += "-after-restart"
 	secondURL, secondGRPC, secondService, stopSecond := startIntegrationGateway(t, cfg)
 	defer stopSecond()
+	orphanWaitUntil := time.Now().Add(5 * time.Second)
+	for {
+		secondService.mu.Lock()
+		job := secondService.jobs[orphanID]
+		if job != nil {
+			code := ""
+			if job.Error != nil {
+				code = job.Error.Code
+			}
+			status := job.Status
+			secondService.mu.Unlock()
+			if status != "failed" || code != "client_disconnected" {
+				t.Fatalf("preexisting request status/code = %s/%s, want failed/client_disconnected", status, code)
+			}
+			break
+		}
+		secondService.mu.Unlock()
+		if time.Now().After(orphanWaitUntil) {
+			t.Fatal("fresh consumer group did not consume preexisting request")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 	secondResponse := postCompletion(t, secondURL, requestBody, "integration-idempotency-key")
 	if secondResponse.Code != http.StatusOK || !bytes.Contains(secondResponse.Body.Bytes(), []byte("persisted answer")) {
 		t.Fatalf("replayed completion = (%d, %s), want persisted HTTP 200 completion", secondResponse.Code, secondResponse.Body.String())

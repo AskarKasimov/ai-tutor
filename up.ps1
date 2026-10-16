@@ -33,6 +33,16 @@ if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
 if ($Down) { Invoke-Docker @compose down; exit 0 }
 if ($Logs) { & docker @compose logs -f api frontend; exit 0 }
 
+$gatewayConfig = 'services\llm-gateway\config.json'
+$gatewayConfigExample = 'services\llm-gateway\config.example.json'
+if (Test-Path -LiteralPath $gatewayConfig -PathType Container) {
+    Fail "$gatewayConfig существует как папка. Удалите её или переместите, затем запустите скрипт снова."
+}
+if (-not (Test-Path -LiteralPath $gatewayConfig -PathType Leaf)) {
+    Step 'Создаём конфигурацию LLM Gateway из примера'
+    Copy-Item -LiteralPath $gatewayConfigExample -Destination $gatewayConfig
+}
+
 Step 'Проверяем Docker'
 & docker info *> $null
 if ($LASTEXITCODE -ne 0) {

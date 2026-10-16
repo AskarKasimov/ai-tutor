@@ -209,7 +209,7 @@
       <h2>7. LLM gateway <small></small></h2>
       <ul>
         <li><label><input type="checkbox" data-id="l-client"><span><span class="t">LLM gateway готов и влит в master</span><span class="d">Отдельный сервис services/llm-gateway; HTTP-версия в ветке feat/llm-gateway-http, gRPC — позже.</span></span></label></li>
-        <li><label><input type="checkbox" data-id="l-geek"><span><span class="t">Geek ходит в LLM через gateway</span><span class="d">HTTP-адаптер готов и включается BACKEND_LLM_GATEWAY_URL; до мержа gateway работает мок.</span></span></label></li>
+        <li><label><input type="checkbox" data-id="l-geek" checked><span><span class="t">Geek ходит в LLM через gateway</span><span class="d">По gRPC (llmgateway.v1.Gateway/Complete); мок удалён.</span></span></label></li>
         <li><label><input type="checkbox" data-id="l-python"><span><span class="t">course-graph подключён к gateway</span><span class="d">Сейчас HTTP, позже gRPC.</span></span></label></li>
         <li><label><input type="checkbox" data-id="l-roles"><span><span class="t">Сложность запроса задаёт вызывающий код</span><span class="d">Модель выбирает gateway; запросы идут параллельно.</span></span></label></li>
       </ul>

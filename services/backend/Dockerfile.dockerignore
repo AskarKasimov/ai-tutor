@@ -1,0 +1,10 @@
+# The backend builds from the repository root; only its own sources and the
+# shared gRPC contracts are sent to the builder.
+*
+!services/backend/go.mod
+!services/backend/go.sum
+!services/backend/.air.toml
+!services/backend/cmd
+!services/backend/internal
+!services/shared
+**/*_test.go

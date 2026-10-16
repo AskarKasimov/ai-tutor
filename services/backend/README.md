@@ -25,7 +25,7 @@ Go API и PostgreSQL. Команды выполняются из `services/backe
 
 Сессия хранится одной строкой `geek_sessions` (снимок графа, состояние обхода и транскрипт в `state`) с версией для конкурентных обновлений; ключи повтора — в `geek_requests`. Если граф курса пересобран (сменилась версия), активная диагностика получает статус `cancelled`.
 
-Граф берётся адаптером-цепочкой: сначала из БД (появится с хранением графа, поток A), затем из фикстуры `BACKEND_GEEK_GRAPH_FIXTURE`. LLM: при пустом `BACKEND_LLM_GATEWAY_URL` работает детерминированный мок (оценка по длине ответа, «не знаю» распознаётся), иначе — HTTP-клиент gateway (`POST /v1/chat/completions` без `model`, `complexity`: оценка — `high`, вопрос — `medium`, переформулировка — `low`; `response_format: json_object`; невалидный ответ повторяется один раз). Промпты, ответы модели и тексты студентов логируются.
+Граф берётся адаптером-цепочкой: сначала из БД (появится с хранением графа, поток A), затем из фикстуры `BACKEND_GEEK_GRAPH_FIXTURE`. LLM — gRPC-клиент LLM gateway (`llmgateway.v1.Gateway/Complete` из модуля `services/shared`, адрес `BACKEND_LLM_GATEWAY_ADDR`): без `model`, `complexity` — оценка `high`, вопрос `medium`, переформулировка `low`; `RESPONSE_FORMAT_JSON_OBJECT`; невалидный ответ повторяется один раз. Отмена контекста (студент ушёл, истёк таймаут) отменяет запрос и в gateway. Промпты, ответы модели, `request_id` gateway и тексты студентов логируются. В тестах gateway заменяет локальный gRPC-сервер с детерминированными ответами.
 
 Сквозной прогон для репетиции: `scripts/geek-smoke.sh [base-url] [strong|weak|mixed]` создаёт курс от админки, регистрирует студента и отвечает на все реплики до итога.
 
@@ -45,6 +45,8 @@ CI проверяет повторяемость генерации и вали�
 
 Общий dev-стек запускается из корня через `./dev.sh -d` после настройки `.env`. Нужны Docker Compose и mkcert. Серверный `./prod.sh` использует готовые сертификаты и сеть `ai-tutor_default`; параметры находятся в `.env.prod.example`.
 
+Backend импортирует сгенерированный клиент gateway из соседнего модуля `services/shared` (`replace ../shared` в `go.mod`), поэтому Docker собирает его из корня репозитория (`Dockerfile.dockerignore` пропускает только `services/backend` и `services/shared`). Dev-контейнер монтирует оба модуля в `/work/backend` и `/work/shared`, и Air следит за обоими: изменение контракта в `services/shared` тоже пересобирает API. Gateway в production поднимает `prod.sh` (проект `services/llm-gateway` с Redpanda); соединение с ним закрывается после остановки HTTP-сервера.
+
 Для отдельного backend Compose из этой папки:
 
 ```bash
@@ -53,7 +55,7 @@ docker compose --env-file ../../.env up -d --build
 
 Уже должны работать db и внешняя сеть. BACKEND_DATABASE_URL переопределяет подключение; по умолчанию db:5432 и DB_PASSWORD. API слушает :8002 за Caddy HTTPS. Публичный префикс /api/v1 удаляется proxy. Secure cookies требуют HTTPS.
 
-Обязательны BACKEND_STT_URL, BACKEND_TTS_* (URL и параметры голоса), BACKEND_VOICE_TIMEOUT, адрес прослушивания, лимит загрузки и настройки S3 из корневого шаблона. BACKEND_COURSE_GRAPH_URL — адрес сервиса course-graph для OCR. Geek: BACKEND_LLM_GATEWAY_URL (пусто — мок), BACKEND_LLM_TIMEOUT (по умолчанию 120s), BACKEND_GEEK_GRAPH_FIXTURE (Compose монтирует `api/fixtures` в `/fixtures` и по умолчанию берёт `/fixtures/course-graph.json`), BACKEND_GEEK_MAX_QUESTIONS (0 — без ограничения). После изменения env пересоздайте API.
+Обязательны BACKEND_STT_URL, BACKEND_TTS_* (URL и параметры голоса), BACKEND_VOICE_TIMEOUT, адрес прослушивания, лимит загрузки и настройки S3 из корневого шаблона. BACKEND_COURSE_GRAPH_URL — адрес сервиса course-graph для OCR. Geek: BACKEND_LLM_GATEWAY_ADDR (обязателен, gRPC host:port; в Compose — `llm-gateway:8011`, gateway запускается профилем `gateway`), BACKEND_LLM_TIMEOUT (по умолчанию 120s), BACKEND_GEEK_GRAPH_FIXTURE (Compose монтирует `api/fixtures` в `/fixtures` и по умолчанию берёт `/fixtures/course-graph.json`), BACKEND_GEEK_MAX_QUESTIONS (0 — без ограничения). После изменения env пересоздайте API.
 
 Запросы VoxCPM передают `BACKEND_TTS_SEED`, `BACKEND_TTS_CFG_VALUE` (0–5) и `BACKEND_TTS_INFERENCE_TIMESTEPS` (1–50); шаблоны env задают 510, 2 и 20. Перед отправкой текста backend добавляет `!!!...`, чтобы озвучка завершала последнее слово. По решению встречи 10.10.2026 голос наставника — мужской, взрослый, низкий; сервис VoxCPM клонирует его по референсу, сохранённому в своём volume.
 
@@ -72,7 +74,7 @@ STT принимает multipart audio (WAV/Ogg/WebM) до 25 МиБ, сохра
 
 ## Live reload в Docker
 
-Корневой `./dev.sh -d` использует Dockerfile target `dev` с Air. Исходники смонтированы в `/src`; Air пересобирает и перезапускает API при изменениях Go-файлов, SQL, `go.mod` и `go.sum`. Конфигурация watcher — `.air.toml`; polling позволяет подхватывать изменения через Docker Desktop. Модули Go, кеш сборки и каталог `.air` с dev-бинарником находятся в Docker volumes. Миграции применяются штатным запуском API; SQLC-запросы требуют отдельной генерации Go-кода. Локальный Compose backend использует готовый production-бинарник.
+Корневой `./dev.sh -d` использует Dockerfile target `dev` с Air. Исходники backend смонтированы в `/work/backend`, общий модуль контрактов — в `/work/shared`; Air пересобирает и перезапускает API при изменениях Go-файлов, SQL, `go.mod` и `go.sum` в обоих. Конфигурация watcher — `.air.toml`; polling позволяет подхватывать изменения через Docker Desktop. Модули Go, кеш сборки и каталог `.air` с dev-бинарником находятся в Docker volumes. Миграции применяются штатным запуском API; SQLC-запросы требуют отдельной генерации Go-кода. Локальный Compose backend использует готовый production-бинарник.
 
 ## БД и импорт
 

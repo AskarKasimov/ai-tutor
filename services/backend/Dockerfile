@@ -1,17 +1,23 @@
+# Build context: the repository root. The backend imports the generated LLM
+# gateway client from the sibling module services/shared (go.mod replace
+# ../shared), so the shared module always sits next to the backend.
+# In dev both live under /work, so Air watches them together.
 FROM golang:1.26-alpine AS dev
-WORKDIR /src
+WORKDIR /work/backend
 RUN go install github.com/air-verse/air@v1.67.4
-COPY go.mod go.sum ./
+COPY services/shared /work/shared
+COPY services/backend/go.mod services/backend/go.sum ./
 RUN go mod download
-COPY .air.toml ./
+COPY services/backend/.air.toml ./
 CMD ["air", "-c", ".air.toml"]
 
 FROM golang:1.26-alpine AS build
 WORKDIR /src
-COPY go.mod go.sum ./
+COPY services/shared /shared
+COPY services/backend/go.mod services/backend/go.sum ./
 RUN go mod download
-COPY cmd ./cmd
-COPY internal ./internal
+COPY services/backend/cmd ./cmd
+COPY services/backend/internal ./internal
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /api ./cmd/api
 
 FROM alpine:3.24

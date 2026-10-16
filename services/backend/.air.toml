@@ -1,11 +1,15 @@
-root = "."
-tmp_dir = ".air"
+# Air runs from services/backend; its root is the parent so it also watches
+# the shared gRPC contracts (services/shared) the backend imports. Commands
+# run in services/backend; watched paths and entrypoint are relative to root.
+root = ".."
+tmp_dir = "backend/.air"
 
 [build]
 cmd = "go build -o ./.air/api ./cmd/api"
-entrypoint = ["./.air/api"]
+entrypoint = ["backend/.air/api"]
+include_dir = ["backend", "shared"]
 include_ext = ["go", "sql", "mod", "sum"]
-exclude_dir = [".air", "bin", ".git"]
+exclude_dir = ["backend/.air", "backend/bin", ".git"]
 exclude_regex = ["_test\\.go"]
 exclude_unchanged = true
 poll = true

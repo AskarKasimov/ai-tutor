@@ -207,6 +207,7 @@ func TestOpenAPIResponses(t *testing.T) {
 	matID := uploadResult.Uploaded[0].ID
 	check("GET", "/admin/subjects/{subject_id}/materials/{material_id}/raw", f.request("GET", "/admin/subjects/subject:test/materials/"+matID+"/raw", "", admin))
 	check("DELETE", "/admin/subjects/{subject_id}/materials/{material_id}", f.request("DELETE", "/admin/subjects/subject:test/materials/"+matID, "", admin))
+	geekFlow(t, f, access, check)
 	check("POST", "/auth/refresh", f.request("POST", "/auth/refresh", "", refresh))
 	check("POST", "/auth/logout", f.request("POST", "/auth/logout", "", refresh))
 	check("GET", "/health", f.request("GET", "/health", ""))

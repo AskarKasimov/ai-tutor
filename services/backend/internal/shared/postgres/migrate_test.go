@@ -97,8 +97,8 @@ func TestMigrateFreshAndRepeat(t *testing.T) {
 		t.Fatalf("fresh subjects=%d err=%v", subjects, err)
 	}
 	var versions int
-	if err := pool.QueryRow(ctx, "SELECT count(*) FROM goose_db_version WHERE is_applied AND version_id > 0").Scan(&versions); err != nil || versions != 1 {
-		t.Fatalf("applied migrations=%d err=%v, want 1", versions, err)
+	if err := pool.QueryRow(ctx, "SELECT count(*) FROM goose_db_version WHERE is_applied AND version_id > 0").Scan(&versions); err != nil || versions != 2 {
+		t.Fatalf("applied migrations=%d err=%v, want 2", versions, err)
 	}
 }
 
@@ -129,7 +129,7 @@ func TestMigrateDownRemovesSchema(t *testing.T) {
 	var remaining int
 	if err := pool.QueryRow(ctx, `SELECT count(*) FROM information_schema.tables
 WHERE table_schema=current_schema() AND table_name IN
-('users','auth_sessions','transcriptions','subjects','subject_materials')`).Scan(&remaining); err != nil {
+('users','auth_sessions','transcriptions','subjects','subject_materials','geek_sessions','geek_requests')`).Scan(&remaining); err != nil {
 		t.Fatal(err)
 	}
 	if remaining != 0 {

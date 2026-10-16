@@ -16,6 +16,12 @@ import (
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/features/auth/infrastructure/argon2"
 	authpg "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/auth/infrastructure/postgres"
 	authhttp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/auth/transport/http"
+	geekapp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/geek/application"
+	geekgraph "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/geek/infrastructure/graph"
+	geekllm "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/geek/infrastructure/llm"
+	geekpg "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/geek/infrastructure/postgres"
+	geekstorage "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/geek/infrastructure/storage"
+	geekhttp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/geek/transport/http"
 	materialsapp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/materials/application"
 	materialsocr "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/materials/infrastructure/ocr"
 	materialspg "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/materials/infrastructure/postgres"
@@ -131,6 +137,16 @@ func (a *App) Handler() http.Handler {
 	materialsService := materialsapp.New(materialspg.New(a.pool), a.materialsStorage, materialsOCR, a.now)
 	materialsHandlers := materialshttp.NewHandler(materialsService, a.cfg.MaxUploadBytes)
 
+	var examiner geekapp.Examiner = geekllm.Mock{}
+	if a.cfg.LLMGatewayURL != "" {
+		examiner = geekllm.NewGateway(a.client, a.cfg.LLMGatewayURL, a.cfg.LLMTimeout)
+	}
+	// The stored graph of stream A goes first once it exists; the fixture is the fallback.
+	graphs := geekgraph.Chain{geekgraph.Fixture{Path: a.cfg.GeekGraphFixture}}
+	geekService := geekapp.New(graphs, geekpg.New(a.pool), geekpg.NewTranscriptions(a.pool), examiner, models,
+		geekstorage.NewAudio(a.storage, a.cfg.S3Bucket), security.IDGenerator{}, a.now, geekapp.Config{MaxQuestions: a.cfg.GeekMaxQuestions})
+	geekHandlers := geekhttp.New(geekService)
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /auth/register", authHandlers.Register)
 	mux.HandleFunc("POST /auth/login", authHandlers.Login)
@@ -146,6 +162,11 @@ func (a *App) Handler() http.Handler {
 	mux.Handle("POST /voice/transcriptions", protect(auth, http.HandlerFunc(voiceHandlers.Transcribe)))
 	mux.Handle("POST /voice/syntheses", protect(auth, http.HandlerFunc(voiceHandlers.Synthesize)))
 	mux.Handle("GET /subjects", protect(auth, http.HandlerFunc(subjectHandlers.List)))
+	mux.Handle("POST /diagnostic-sessions", protect(auth, http.HandlerFunc(geekHandlers.Start)))
+	mux.Handle("GET /diagnostic-sessions/{id}", protect(auth, http.HandlerFunc(geekHandlers.Read)))
+	mux.Handle("POST /diagnostic-sessions/{id}/answers", protect(auth, http.HandlerFunc(geekHandlers.Answer)))
+	mux.Handle("GET /diagnostic-sessions/{id}/result", protect(auth, http.HandlerFunc(geekHandlers.Result)))
+	mux.Handle("GET /diagnostic-sessions/{id}/turns/{turn_id}/audio", protect(auth, http.HandlerFunc(geekHandlers.TurnAudio)))
 	mux.HandleFunc("GET /health", a.health)
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(r.Context(), w, fault.New(fault.NotFound, "NOT_FOUND", "Ресурс не найден."))

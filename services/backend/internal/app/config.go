@@ -33,12 +33,21 @@ type Config struct {
 	CourseGraphTimeout    time.Duration
 	OCRURL                string
 	OCRTimeout            time.Duration
+	// LLMGatewayURL is the LLM gateway; empty runs Geek on the mock examiner.
+	LLMGatewayURL string
+	LLMTimeout    time.Duration
+	// GeekGraphFixture is a graph file used for courses without a stored graph.
+	GeekGraphFixture string
+	// GeekMaxQuestions stops a diagnostic after that many questions; 0 is no limit.
+	GeekMaxQuestions int
 }
 
-// HTTPWriteTimeout allows STT with S3 writes, or OCR of an uploaded material,
-// to finish with time for request handling, persistence and writing the response.
+// HTTPWriteTimeout allows STT with S3 writes, OCR of an uploaded material, a
+// Geek answer (evaluation and the next question, each retried once) or the
+// synthesis of a long Geek turn to finish, with time for request handling,
+// persistence and writing the response.
 func (c Config) HTTPWriteTimeout() time.Duration {
-	return max(c.VoiceTimeout+5*c.S3Timeout, c.CourseGraphTimeout) + 30*time.Second
+	return max(c.VoiceTimeout+5*c.S3Timeout, c.CourseGraphTimeout, 4*c.LLMTimeout, 4*c.VoiceTimeout+2*c.S3Timeout) + 30*time.Second
 }
 
 func ConfigFromEnv() (Config, error) {
@@ -143,6 +152,16 @@ func ConfigFromEnv() (Config, error) {
 	}
 	c.OCRURL = c.CourseGraphURL
 	c.OCRTimeout = c.CourseGraphTimeout
+	c.LLMGatewayURL = strings.TrimSpace(os.Getenv("BACKEND_LLM_GATEWAY_URL"))
+	c.LLMTimeout, err = envDuration("BACKEND_LLM_TIMEOUT", 120*time.Second)
+	if err != nil {
+		return c, err
+	}
+	c.GeekGraphFixture = strings.TrimSpace(os.Getenv("BACKEND_GEEK_GRAPH_FIXTURE"))
+	value = envOrDefault("BACKEND_GEEK_MAX_QUESTIONS", "0")
+	if c.GeekMaxQuestions, err = strconv.Atoi(value); err != nil {
+		return c, fmt.Errorf("BACKEND_GEEK_MAX_QUESTIONS: %w", err)
+	}
 	return c, c.validate()
 }
 
@@ -226,6 +245,18 @@ func (c Config) validate() error {
 	}
 	if c.S3Timeout <= 0 {
 		return fmt.Errorf("BACKEND_S3_TIMEOUT must be positive")
+	}
+	if c.LLMGatewayURL != "" {
+		u, err := url.Parse(c.LLMGatewayURL)
+		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
+			return fmt.Errorf("BACKEND_LLM_GATEWAY_URL must be an absolute HTTP(S) URL without credentials, query or fragment")
+		}
+	}
+	if c.LLMTimeout <= 0 {
+		return fmt.Errorf("BACKEND_LLM_TIMEOUT must be positive")
+	}
+	if c.GeekMaxQuestions < 0 {
+		return fmt.Errorf("BACKEND_GEEK_MAX_QUESTIONS must not be negative")
 	}
 	if c.MaxUploadBytes < 1 || c.MaxUploadBytes > 25*1024*1024 {
 		return fmt.Errorf("BACKEND_MAX_UPLOAD_BYTES must be positive and cannot exceed 25 MiB")

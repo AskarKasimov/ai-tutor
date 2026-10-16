@@ -19,6 +19,9 @@ import (
 	"github.com/aws/smithy-go"
 )
 
+// ErrNotFound reports a missing object.
+var ErrNotFound = errors.New("S3 object not found")
+
 type Config struct {
 	Endpoint     string
 	Region       string
@@ -118,6 +121,10 @@ func (c *Client) OpenObject(ctx context.Context, bucket, key string) (io.ReadClo
 		Key:    aws.String(key),
 	})
 	if err != nil {
+		var apiError smithy.APIError
+		if errors.As(err, &apiError) && (apiError.ErrorCode() == "NoSuchKey" || apiError.ErrorCode() == "NotFound") {
+			return nil, "", 0, fmt.Errorf("get S3 object %s: %w", key, ErrNotFound)
+		}
 		return nil, "", 0, fmt.Errorf("get S3 object %s: %w", key, err)
 	}
 	contentType := "application/octet-stream"

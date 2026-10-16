@@ -108,3 +108,17 @@ func TestMockRecognisesDontKnowAndGradesByLength(t *testing.T) {
 		t.Fatalf("whole topic = %+v", e)
 	}
 }
+
+func TestGatewayDoesNotReuseFieldsOfARejectedAnswer(t *testing.T) {
+	server, requests := gatewayServer(t,
+		`{"verdict":"answered","criteria":{"k1":2,"k2":2,"k3":2,"k4":3},"evidence_lines":[2]}`,
+		`{"verdict":"answered","criteria":{"k4":2},"evidence_lines":[2]}`)
+	g := NewGateway(server.Client(), server.URL, time.Second)
+	turns := []exam.Turn{{Line: 1, Speaker: exam.SpeakerGeek, Text: "Вопрос?"}, {Line: 2, Speaker: exam.SpeakerStudent, Text: "Ответ."}}
+	if e, err := g.Evaluate(context.Background(), application.EvaluationRequest{Node: node, Dialogue: turns}); err == nil {
+		t.Fatalf("the second answer lacks K1-K3 but was accepted as %+v", e)
+	}
+	if len(*requests) != 2 {
+		t.Fatalf("requests = %d", len(*requests))
+	}
+}

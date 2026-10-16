@@ -43,6 +43,9 @@ type Store interface {
 	// Update saves s if its stored version is still previous; otherwise
 	// ErrConflict. A non-nil request is saved in the same transaction.
 	Update(ctx context.Context, s exam.Session, previous int, r *Request) error
+	// SaveRequest records a request that did not change a session; a request
+	// already stored under the key is kept.
+	SaveRequest(ctx context.Context, r Request) error
 }
 
 // Transcriptions reads a transcription owned by the student.

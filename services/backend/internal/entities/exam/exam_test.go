@@ -294,3 +294,56 @@ func TestCourseGradeThresholds(t *testing.T) {
 		t.Fatal("no graded topics give no grade")
 	}
 }
+
+func pair() Graph {
+	return Graph{Nodes: []Node{
+		{ID: "base", Title: "База"},
+		{ID: "top", Title: "Верх", Prerequisites: []string{"base"}},
+	}}
+}
+
+func TestDontKnowOnTheFollowupIsAGap(t *testing.T) {
+	e, first := NewExam(pair(), 0)
+	steps := run(t, e, first, func(s Step) Evaluation {
+		switch {
+		case s.NodeID == "top" && s.Kind == KindQuestion:
+			return Evaluation{Verdict: VerdictAnswered, Criteria: Criteria{2, 2, 0, 0}}
+		case s.NodeID == "top":
+			return unknown
+		case s.Kind == KindFollowup:
+			return strong
+		}
+		return partial
+	})
+	if e.Nodes["top"].Status != StatusGap || *e.Nodes["top"].Grade != GradeD {
+		t.Fatalf("top = %+v", e.Nodes["top"])
+	}
+	if got := asked(steps, KindQuestion); !slices.Equal(got, []string{"top", "base"}) {
+		t.Fatalf("questions = %v (the gap descends to base, which is not credited)", got)
+	}
+	if e.Nodes["base"].Status != StatusIndependent {
+		t.Fatalf("base = %s", e.Nodes["base"].Status)
+	}
+}
+
+func TestGapOverAnUnknownPrerequisiteIsNotListed(t *testing.T) {
+	e, first := NewExam(pair(), 0)
+	run(t, e, first, func(s Step) Evaluation {
+		if s.NodeID == "top" {
+			return unknown
+		}
+		return vague
+	})
+	if e.Nodes["base"].Status != StatusInsufficient {
+		t.Fatalf("base = %s", e.Nodes["base"].Status)
+	}
+	if got := e.Gaps(); len(got) != 0 {
+		t.Fatalf("gaps = %v: the mastery of top's prerequisite is unknown", got)
+	}
+	// The same holds for a prerequisite left unchecked by the question limit.
+	e, first = NewExam(pair(), 1)
+	run(t, e, first, func(Step) Evaluation { return unknown })
+	if e.Nodes["base"].Status != StatusUnchecked || len(e.Gaps()) != 0 {
+		t.Fatalf("base = %s gaps = %v", e.Nodes["base"].Status, e.Gaps())
+	}
+}

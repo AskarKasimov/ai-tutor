@@ -114,6 +114,10 @@ func (s *Store) Update(ctx context.Context, session exam.Session, previous int, 
 	})
 }
 
+func (s *Store) SaveRequest(ctx context.Context, r application.Request) error {
+	return insertRequest(ctx, db.New(s.pool), r)
+}
+
 func (s *Store) tx(ctx context.Context, fn func(*db.Queries) error) error {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {

@@ -43,52 +43,60 @@ func (g *Gateway) Question(ctx context.Context, r application.QuestionRequest) (
 	if r.Kind == exam.KindRephrase {
 		level = low
 	}
-	var out struct {
-		Text string `json:"text"`
-	}
-	err := g.complete(ctx, "question:"+string(r.Kind), level, questionPrompt(r), &out, func() error {
-		if strings.TrimSpace(out.Text) == "" {
+	var text string
+	err := g.complete(ctx, "question:"+string(r.Kind), level, questionPrompt(r), func(content []byte) error {
+		var out struct {
+			Text string `json:"text"`
+		}
+		if err := json.Unmarshal(content, &out); err != nil {
+			return err
+		}
+		if text = strings.TrimSpace(out.Text); text == "" {
 			return errors.New("empty text")
 		}
 		return nil
 	})
-	return strings.TrimSpace(out.Text), err
+	return text, err
 }
 
 func (g *Gateway) Evaluate(ctx context.Context, r application.EvaluationRequest) (exam.Evaluation, error) {
-	var out struct {
-		Verdict  exam.Verdict `json:"verdict"`
-		Criteria *struct {
-			K1 *int `json:"k1"`
-			K2 *int `json:"k2"`
-			K3 *int `json:"k3"`
-			K4 *int `json:"k4"`
-		} `json:"criteria"`
-		Evidence []int `json:"evidence_lines"`
-	}
-	var c exam.Criteria
-	err := g.complete(ctx, "evaluate:"+string(r.Kind), high, evaluationPrompt(r), &out, func() error {
-		switch out.Verdict {
-		case exam.VerdictAnswered, exam.VerdictDontKnow, exam.VerdictInsufficient:
-		default:
-			return fmt.Errorf("unknown verdict %q", out.Verdict)
+	var result exam.Evaluation
+	err := g.complete(ctx, "evaluate:"+string(r.Kind), high, evaluationPrompt(r), func(content []byte) error {
+		var out struct {
+			Verdict  exam.Verdict `json:"verdict"`
+			Criteria *struct {
+				K1 *int `json:"k1"`
+				K2 *int `json:"k2"`
+				K3 *int `json:"k3"`
+				K4 *int `json:"k4"`
+			} `json:"criteria"`
+			Evidence []int `json:"evidence_lines"`
 		}
-		if out.Verdict == exam.VerdictAnswered {
+		if err := json.Unmarshal(content, &out); err != nil {
+			return err
+		}
+		e := exam.Evaluation{Verdict: out.Verdict, Evidence: out.Evidence}
+		switch out.Verdict {
+		case exam.VerdictAnswered:
 			k := out.Criteria
 			if k == nil || k.K1 == nil || k.K2 == nil || k.K3 == nil || k.K4 == nil {
 				return errors.New("missing criteria")
 			}
-			c = exam.Criteria{K1: *k.K1, K2: *k.K2, K3: *k.K3, K4: *k.K4}
-			if !c.Valid() {
-				return fmt.Errorf("criteria out of range: %+v", c)
+			e.Criteria = exam.Criteria{K1: *k.K1, K2: *k.K2, K3: *k.K3, K4: *k.K4}
+			if !e.Criteria.Valid() {
+				return fmt.Errorf("criteria out of range: %+v", e.Criteria)
 			}
+		case exam.VerdictDontKnow, exam.VerdictInsufficient:
+		default:
+			return fmt.Errorf("unknown verdict %q", out.Verdict)
 		}
+		result = e
 		return nil
 	})
 	if err != nil {
 		return exam.Evaluation{}, err
 	}
-	return exam.Evaluation{Verdict: out.Verdict, Criteria: c, Evidence: out.Evidence}, nil
+	return result, nil
 }
 
 type message struct {
@@ -103,9 +111,9 @@ type request struct {
 	ResponseFormat map[string]string `json:"response_format"`
 }
 
-// complete asks for a JSON object, decodes it into out and checks it; an
-// invalid answer is retried once.
-func (g *Gateway) complete(ctx context.Context, operation string, level complexity, prompt string, out any, check func() error) error {
+// complete asks for a JSON object and hands each answer to parse, which
+// decodes it into a fresh value and checks it; an invalid answer is retried once.
+func (g *Gateway) complete(ctx context.Context, operation string, level complexity, prompt string, parse func([]byte) error) error {
 	logger := httpx.LoggerFromContext(ctx).With(zap.String("llm_operation", operation), zap.String("complexity", string(level)))
 	body, err := json.Marshal(request{
 		Messages:       []message{{Role: "system", Content: systemPrompt}, {Role: "user", Content: prompt}},
@@ -125,10 +133,7 @@ func (g *Gateway) complete(ctx context.Context, operation string, level complexi
 		if err != nil {
 			return err
 		}
-		if err = json.Unmarshal([]byte(stripFence(content)), out); err == nil {
-			err = check()
-		}
-		if err == nil {
+		if err = parse([]byte(stripFence(content))); err == nil {
 			return nil
 		}
 		last = fmt.Errorf("invalid model answer: %w", err)

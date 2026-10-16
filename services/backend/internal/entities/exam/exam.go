@@ -165,7 +165,8 @@ func (e *Exam) finishTop() {
 // the next step. A "don't know" on the main question or the rephrase makes the
 // topic a gap at once. A main answer on D is rephrased once; an answer after
 // the rephrase is assisted. A non-D answer gets one followup on K3 and K4, and
-// the grade is set after it. A gap leads to its prerequisites; a mastered
+// the grade is set after it; "don't know" on the followup also makes the topic
+// a gap. A gap leads to its prerequisites; a mastered
 // topic credits all of its unchecked prerequisites.
 func (e *Exam) Apply(ev Evaluation) Step {
 	cur := *e.Current
@@ -202,6 +203,9 @@ func (e *Exam) Apply(ev Evaluation) Step {
 		if ev.Verdict != VerdictAnswered {
 			c = *state.Criteria
 			c.K3, c.K4 = 0, 0
+		}
+		if ev.Verdict == VerdictDontKnow {
+			return e.gap(cur.NodeID, c, state.Assisted)
 		}
 		state.Criteria = &c
 		grade := TopicGrade(c, state.Assisted)
@@ -282,8 +286,9 @@ func (e *Exam) Progress() int {
 	return min(99, int(sum/float64(len(top))*100))
 }
 
-// Gaps are the deepest unmastered topics: gaps none of whose prerequisites is
-// a gap. Unchecked and insufficient prerequisites do not count as unmastered.
+// Gaps are the deepest unmastered topics: gaps all of whose prerequisites are
+// mastered. A gap over an unchecked or insufficient prerequisite is not listed,
+// since whether its prerequisites are learned is unknown.
 func (e *Exam) Gaps() []string {
 	out := []string{}
 	for _, n := range e.Graph.Nodes {
@@ -292,7 +297,7 @@ func (e *Exam) Gaps() []string {
 		}
 		deepest := true
 		for _, p := range n.Prerequisites {
-			if e.Nodes[p].Status == StatusGap {
+			if !e.Nodes[p].Status.Mastered() {
 				deepest = false
 			}
 		}

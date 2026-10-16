@@ -88,7 +88,7 @@ func (s *Service) Start(ctx context.Context, ownerID, subjectID, key string) (ex
 			return exam.Session{}, false, err
 		}
 		if active.Status == exam.SessionActive {
-			return active, false, nil
+			return s.resume(ctx, ownerID, key, fingerprint, active)
 		}
 	}
 	graph, ok, err := s.graphs.Current(ctx, subjectID)
@@ -110,16 +110,27 @@ func (s *Service) Start(ctx context.Context, ownerID, subjectID, key string) (ex
 	request := Request{OwnerID: ownerID, Key: key, Fingerprint: fingerprint, SessionID: id, Created: true, Response: session, CreatedAt: s.now().Unix()}
 	switch err := s.store.Create(ctx, session, request); {
 	case errors.Is(err, ErrActiveExists):
-		// A concurrent start won; return its session.
+		// A concurrent start won; resume its session.
 		active, ok, err := s.store.ActiveSession(ctx, ownerID, subjectID)
 		if err != nil || !ok {
 			return exam.Session{}, false, errors.Join(ErrConflict, err)
 		}
-		return active, false, nil
+		return s.resume(ctx, ownerID, key, fingerprint, active)
 	case err != nil:
 		return exam.Session{}, false, err
 	}
 	return session, true, nil
+}
+
+// resume records the start request that returned an existing session, so its
+// key keeps returning that result, and returns what is stored under the key.
+func (s *Service) resume(ctx context.Context, ownerID, key, fingerprint string, active exam.Session) (exam.Session, bool, error) {
+	request := Request{OwnerID: ownerID, Key: key, Fingerprint: fingerprint, SessionID: active.ID, Response: active, CreatedAt: s.now().Unix()}
+	if err := s.store.SaveRequest(ctx, request); err != nil {
+		return exam.Session{}, false, err
+	}
+	r, _, err := s.replay(ctx, ownerID, key, fingerprint)
+	return r.Response, r.Created, err
 }
 
 // Get reads a diagnostic of its owner.

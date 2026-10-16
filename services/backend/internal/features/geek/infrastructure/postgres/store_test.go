@@ -101,6 +101,18 @@ func TestStoreKeepsOneActiveSessionAndVersionsUpdates(t *testing.T) {
 	if err := store.Create(ctx, session("d2"), application.Request{OwnerID: "u", Key: "k2", SessionID: "d2", Response: first}); err != nil {
 		t.Fatal(err)
 	}
+	// SaveRequest keeps the first request stored under a key.
+	resumed := application.Request{OwnerID: "u", Key: "k4", Fingerprint: "start:s", SessionID: "d2", Response: first}
+	if err := store.SaveRequest(ctx, resumed); err != nil {
+		t.Fatal(err)
+	}
+	resumed.Fingerprint = "other"
+	if err := store.SaveRequest(ctx, resumed); err != nil {
+		t.Fatal(err)
+	}
+	if r, ok, err := store.Request(ctx, "u", "k4"); err != nil || !ok || r.Fingerprint != "start:s" || r.Created {
+		t.Fatalf("saved request: %+v %v %v", r, ok, err)
+	}
 	texts := NewTranscriptions(store.pool)
 	if text, ok, err := texts.Text(ctx, "u", "tr"); err != nil || !ok || text != "Ответ голосом" {
 		t.Fatalf("transcription: %q %v %v", text, ok, err)

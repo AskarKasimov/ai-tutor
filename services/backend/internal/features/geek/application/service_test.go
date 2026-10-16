@@ -85,6 +85,15 @@ func (m *memoryStore) Create(_ context.Context, s exam.Session, r Request) error
 	return nil
 }
 
+func (m *memoryStore) SaveRequest(_ context.Context, r Request) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if _, ok := m.requests[r.OwnerID+"/"+r.Key]; !ok {
+		m.requests[r.OwnerID+"/"+r.Key] = r
+	}
+	return nil
+}
+
 func (m *memoryStore) Update(_ context.Context, s exam.Session, previous int, r *Request) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -275,6 +284,32 @@ func TestStartIsIdempotentAndReturnsTheActiveSession(t *testing.T) {
 	}
 	if _, err := f.service.Get(ctx, "intruder", s.ID); code(err) != "SESSION_NOT_FOUND" {
 		t.Fatalf("other owner: %v", err)
+	}
+}
+
+func TestResumeKeyKeepsItsResult(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	s, _, _ := f.service.Start(ctx, "student", "subject", "initial")
+	resumed, created, err := f.service.Start(ctx, "student", "subject", "resume")
+	if err != nil || created || resumed.ID != s.ID {
+		t.Fatalf("resume: %v %v", created, err)
+	}
+	// After an answer and after completion the resume key still returns the
+	// session as it was resumed, and never starts a new diagnostic.
+	next := f.answer(t, s, Answer{DontKnow: true})
+	again, created, err := f.service.Start(ctx, "student", "subject", "resume")
+	if err != nil || created || again.ID != s.ID || again.Version != resumed.Version || next.Version == resumed.Version {
+		t.Fatalf("replay after an answer: version %d, want %d (%v)", again.Version, resumed.Version, err)
+	}
+	for next.Status == exam.SessionActive {
+		next = f.answer(t, next, Answer{DontKnow: true})
+	}
+	if again, created, err := f.service.Start(ctx, "student", "subject", "resume"); err != nil || created || again.ID != s.ID {
+		t.Fatalf("replay after completion started %v %v", created, err)
+	}
+	if _, _, err := f.service.Start(ctx, "student", "other", "resume"); code(err) != "IDEMPOTENCY_KEY_REUSED" {
+		t.Fatalf("resume key with another course: %v", err)
 	}
 }
 

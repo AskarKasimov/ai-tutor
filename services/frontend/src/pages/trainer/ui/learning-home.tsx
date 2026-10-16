@@ -91,6 +91,14 @@ export function LearningHome() {
     })
   }
 
+  const active = history.data?.find((item) => item.status === 'active')
+  const startError =
+    start.error instanceof DiagnosticApiError &&
+    start.error.code === 'GRAPH_NOT_READY'
+      ? t('home.graphNotReady')
+      : start.error
+        ? t('home.startError')
+        : ''
   if (view && selected)
     return view.screen === 'dialog' ? (
       <GeekDialog
@@ -109,17 +117,11 @@ export function LearningHome() {
         subjectName={selected.name}
         onBack={back}
         onAgain={begin}
+        starting={start.isPending}
+        startError={startError}
       />
     )
 
-  const active = history.data?.find((item) => item.status === 'active')
-  const startError =
-    start.error instanceof DiagnosticApiError &&
-    start.error.code === 'GRAPH_NOT_READY'
-      ? t('home.graphNotReady')
-      : start.error
-        ? t('home.startError')
-        : ''
   return (
     <div className={styles.page}>
       <header className={styles.header}>

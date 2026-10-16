@@ -11,6 +11,7 @@ import {
   createRouter,
   RouterProvider,
 } from '@tanstack/react-router'
+import { focusManager } from '@tanstack/react-query'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { createQueryClient } from '@/bootstrap/providers'
 import { routeTree } from '@/routeTree.gen'
@@ -69,6 +70,7 @@ function geekBackend(
     ),
   ]
   let failures = options.failAnswers ?? 0
+  const control = { failReads: 0, failStarts: 0 }
   let session: {
     id: string
     subject_id: string
@@ -91,6 +93,40 @@ function geekBackend(
       }
     : null
   const answers: { key: string; body: Record<string, unknown> }[] = []
+  type ApiSession = NonNullable<typeof session>
+  function accept(
+    current: ApiSession,
+    body: Record<string, unknown>,
+  ): ApiSession {
+    let session = current
+    const n = session.turns.length
+    const student: ApiTurn = {
+      id: `t${n + 1}`,
+      line: n + 1,
+      speaker: 'student',
+      kind: 'answer',
+      node_id: 'a-star',
+      source: body.dont_know ? 'dont_know' : body.text ? 'text' : 'voice',
+      text: body.dont_know ? 'Не знаю.' : String(body.text ?? 'Ответ голосом'),
+      created_at: n + 1,
+    }
+    const next = script[(n + 1) / 2]
+    const done = next.kind === 'closing'
+    session = {
+      ...session,
+      status: done ? 'completed' : 'active',
+      progress_percent: done ? 100 : session.progress_percent + 30,
+      current_turn_id: done ? null : next.id,
+      completed_at: done ? 1791160000 : null,
+      turns: [...session.turns, student, next],
+    }
+    return session
+  }
+  // An answer accepted elsewhere, for example in another tab.
+  const advance = () => {
+    if (session) session = accept(session, { text: 'Ответ из другой вкладки' })
+  }
+
   const fetch = vi.fn(async (url: string, init?: RequestInit) => {
     const method = init?.method ?? 'GET'
     if (url.endsWith('/auth/me'))
@@ -121,6 +157,13 @@ function geekBackend(
           : [],
       })
     if (url.endsWith('/diagnostic-sessions') && method === 'POST') {
+      if (control.failStarts > 0) {
+        control.failStarts--
+        return Response.json(
+          { code: 'PROCESSING_UNAVAILABLE', message: 'Недоступно.' },
+          { status: 503 },
+        )
+      }
       if (options.graphReady === false)
         return Response.json(
           { code: 'GRAPH_NOT_READY', message: 'Граф курса ещё не собран.' },
@@ -138,8 +181,16 @@ function geekBackend(
       }
       return Response.json(session, { status: 201 })
     }
-    if (url.endsWith('/diagnostic-sessions/d1') && session)
+    if (url.endsWith('/diagnostic-sessions/d1') && session) {
+      if (control.failReads > 0) {
+        control.failReads--
+        return Response.json(
+          { code: 'PROCESSING_UNAVAILABLE', message: 'Недоступно.' },
+          { status: 503 },
+        )
+      }
       return Response.json(session)
+    }
     if (url.endsWith('/diagnostic-sessions/d1/answers') && session) {
       const body = JSON.parse(String(init?.body)) as Record<string, unknown>
       answers.push({
@@ -153,29 +204,7 @@ function geekBackend(
           { status: 503 },
         )
       }
-      const n = session.turns.length
-      const student: ApiTurn = {
-        id: `t${n + 1}`,
-        line: n + 1,
-        speaker: 'student',
-        kind: 'answer',
-        node_id: 'a-star',
-        source: body.dont_know ? 'dont_know' : body.text ? 'text' : 'voice',
-        text: body.dont_know
-          ? 'Не знаю.'
-          : String(body.text ?? 'Ответ голосом'),
-        created_at: n + 1,
-      }
-      const next = script[(n + 1) / 2]
-      const done = next.kind === 'closing'
-      session = {
-        ...session,
-        status: done ? 'completed' : 'active',
-        progress_percent: done ? 100 : session.progress_percent + 30,
-        current_turn_id: done ? null : next.id,
-        completed_at: done ? 1791160000 : null,
-        turns: [...session.turns, student, next],
-      }
+      session = accept(session, body)
       return Response.json(session)
     }
     if (url.endsWith('/diagnostic-sessions/d1/result'))
@@ -221,11 +250,12 @@ function geekBackend(
     throw new Error(`Unexpected request: ${method} ${url}`)
   })
   vi.stubGlobal('fetch', fetch)
-  return { fetch, answers }
+  return { fetch, answers, control, advance }
 }
 
 class FakeAudio {
   static played: string[] = []
+  static paused = 0
   onended: (() => void) | null = null
   onerror: (() => void) | null = null
   error = null
@@ -234,13 +264,16 @@ class FakeAudio {
     FakeAudio.played.push(this.src)
     return Promise.resolve()
   }
-  pause() {}
+  pause() {
+    FakeAudio.paused++
+  }
   removeAttribute() {}
 }
 
 beforeEach(() => {
   sessionStorage.clear()
   FakeAudio.played = []
+  FakeAudio.paused = 0
   vi.stubGlobal('Audio', FakeAudio)
   vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:turn')
   vi.spyOn(URL, 'revokeObjectURL').mockReturnValue(undefined)
@@ -310,7 +343,7 @@ it('runs a diagnostic from the home page to the result and back to the history',
     turn_id: 't1',
     text: 'Перестанет быть оптимальным',
   })
-  expect(answers[0].key).toMatch(/^answer:t1:text:/)
+  expect(answers[0].key).toMatch(/^answer:/)
 
   fireEvent.click(screen.getByRole('button', { name: 'Не знаю' }))
   expect(await screen.findByText('эвристическая функция')).toBeVisible()
@@ -445,4 +478,133 @@ it('answers by voice after the student checks the transcript', async () => {
     await screen.findByText('А где допустимая эвристика не поможет?'),
   ).toBeVisible()
   expect(answers[0].body).toEqual({ turn_id: 't1', transcription_id: 'tr-1' })
+})
+
+// A tab regains focus: React Query refetches the open session.
+async function refocus() {
+  await act(async () => {
+    focusManager.setFocused(false)
+    focusManager.setFocused(true)
+  })
+}
+
+it('retries the original turn and drops the retry once the session moved on', async () => {
+  const { answers, advance } = geekBackend({ failAnswers: 2 })
+  renderApp()
+  await start()
+  await answerByText('Перестанет быть оптимальным')
+  expect(await screen.findByText('Geek сейчас не отвечает.')).toBeVisible()
+  fireEvent.click(screen.getByRole('button', { name: 'Отправить ещё раз' }))
+  expect(await screen.findByText('Geek сейчас не отвечает.')).toBeVisible()
+  expect(answers[1].body).toEqual(answers[0].body)
+  expect(answers[1].key).toBe(answers[0].key)
+  // The answer was accepted in another tab; the refreshed dialogue shows the
+  // next question and no longer offers to resend the old answer.
+  advance()
+  await refocus()
+  expect(
+    await screen.findByText('А где допустимая эвристика не поможет?'),
+  ).toBeVisible()
+  expect(
+    screen.queryByRole('button', { name: 'Отправить ещё раз' }),
+  ).not.toBeInTheDocument()
+  expect(answers).toHaveLength(2)
+})
+
+it('keeps an unsent draft when a background refresh fails', async () => {
+  const { control } = geekBackend()
+  renderApp()
+  await start()
+  const field = await answerField()
+  fireEvent.change(field, { target: { value: 'Черновик ответа' } })
+  control.failReads = 1
+  await refocus()
+  const alert = await screen.findByText(
+    'Не удалось обновить диагностику. Ваш ответ сохранён в поле.',
+  )
+  expect(alert).toBeVisible()
+  expect(screen.getByRole('textbox', { name: 'Ваш ответ' })).toHaveValue(
+    'Черновик ответа',
+  )
+  fireEvent.click(screen.getByRole('button', { name: 'Попробовать снова' }))
+  await waitFor(() =>
+    expect(
+      screen.queryByText(
+        'Не удалось обновить диагностику. Ваш ответ сохранён в поле.',
+      ),
+    ).not.toBeInTheDocument(),
+  )
+  expect(screen.getByRole('textbox', { name: 'Ваш ответ' })).toHaveValue(
+    'Черновик ответа',
+  )
+})
+
+it('stops Geek audio before opening the microphone and keeps it silent while recording', async () => {
+  geekBackend()
+  class FakeRecorder {
+    static isTypeSupported() {
+      return true
+    }
+    state = 'inactive'
+    mimeType = 'audio/webm'
+    ondataavailable: ((event: { data: Blob }) => void) | null = null
+    onstop: (() => void) | null = null
+    start() {
+      this.state = 'recording'
+    }
+    stop() {
+      this.state = 'inactive'
+      this.onstop?.()
+    }
+  }
+  vi.stubGlobal('MediaRecorder', FakeRecorder)
+  Object.defineProperty(navigator, 'mediaDevices', {
+    configurable: true,
+    value: {
+      getUserMedia: () => Promise.resolve({ getTracks: () => [{ stop() {} }] }),
+    },
+  })
+  renderApp()
+  await start()
+  expect(
+    await screen.findByRole('button', { name: 'Остановить озвучку' }),
+  ).toBeVisible()
+  const pausedBefore = FakeAudio.paused
+  fireEvent.click(screen.getByRole('button', { name: 'Ответить голосом' }))
+  expect(
+    await screen.findByRole('button', { name: 'Остановить запись' }),
+  ).toBeVisible()
+  expect(FakeAudio.paused).toBeGreaterThan(pausedBefore)
+  expect(
+    screen.getByRole('button', { name: 'Прослушать реплику' }),
+  ).toBeDisabled()
+})
+
+it('reports a failed start again on the result screen', async () => {
+  const { control } = geekBackend()
+  renderApp()
+  await start()
+  await answerByText('Перестанет быть оптимальным')
+  fireEvent.click(await screen.findByRole('button', { name: 'Не знаю' }))
+  await screen.findByText('эвристическая функция')
+  await answerByText('Оценка расстояния до цели')
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Перейти к итогу' }),
+  )
+  await screen.findByText('81% от максимума')
+  control.failStarts = 1
+  fireEvent.click(screen.getByRole('button', { name: 'Пройти заново' }))
+  expect(await screen.findByRole('alert')).toHaveTextContent(
+    'Не удалось начать диагностику.',
+  )
+  expect(screen.getByRole('button', { name: 'Пройти заново' })).toBeEnabled()
+})
+
+it('gives the dialogue a level-one heading', async () => {
+  geekBackend()
+  renderApp()
+  await start()
+  expect(
+    await screen.findByRole('heading', { name: 'Устный экзамен', level: 1 }),
+  ).toBeInTheDocument()
 })

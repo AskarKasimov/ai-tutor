@@ -1,4 +1,4 @@
-import { Button, Text, TextArea } from '@radix-ui/themes'
+import { Button, Heading, Text, TextArea } from '@radix-ui/themes'
 import {
   AudioLines,
   CircleAlert,
@@ -8,7 +8,7 @@ import {
   Square,
   Volume2,
 } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   DiagnosticApiError,
@@ -63,12 +63,22 @@ export function GeekDialog({
         )
       }
     >
-      {query.isPending ? (
-        <main>
-          <Text role="status">{t('geek.loading')}</Text>
-        </main>
+      {session ? (
+        // A failed background refresh keeps the dialogue, its draft and a
+        // running recording; the error is shown above the answer field.
+        <Dialogue
+          userId={userId}
+          session={session}
+          refreshFailed={query.isError}
+          onRefresh={() => void query.refetch()}
+          onBack={onBack}
+          onResult={onResult}
+        />
       ) : query.isError ? (
         <main>
+          <Heading as="h1" size="6">
+            {t('geek.title')}
+          </Heading>
           <Text as="p" role="alert">
             {t('geek.loadError')}
           </Text>
@@ -77,12 +87,9 @@ export function GeekDialog({
           </Button>
         </main>
       ) : (
-        <Dialogue
-          userId={userId}
-          session={query.data}
-          onBack={onBack}
-          onResult={onResult}
-        />
+        <main>
+          <Text role="status">{t('geek.loading')}</Text>
+        </main>
       )}
     </TrainerShell>
   )
@@ -91,17 +98,31 @@ export function GeekDialog({
 function Dialogue({
   userId,
   session,
+  refreshFailed,
+  onRefresh,
   onBack,
   onResult,
 }: {
   userId: string
   session: DiagnosticSession
+  refreshFailed: boolean
+  onRefresh: () => void
   onBack: () => void
   onResult: () => void
 }) {
   const { t } = useTranslation()
   const answer = useAnswerMutation(userId, session.id)
   const audio = useTurnAudio(session.id)
+  // While the student records or checks a spoken answer, Geek stays silent.
+  const [capturing, setCapturing] = useState(false)
+  const stopAudio = audio.stop
+  const capture = useCallback(
+    (active: boolean) => {
+      if (active) stopAudio()
+      setCapturing(active)
+    },
+    [stopAudio],
+  )
   const end = useRef<HTMLDivElement>(null)
   const currentTurnId = session.currentTurnId
   const lastTurn = session.turns[session.turns.length - 1]
@@ -111,11 +132,15 @@ function Dialogue({
   const voiced = useRef('')
   const play = audio.play
   useEffect(() => {
-    if (lastTurn?.speaker === 'geek' && voiced.current !== lastTurn.id) {
+    if (
+      lastTurn?.speaker === 'geek' &&
+      voiced.current !== lastTurn.id &&
+      !capturing
+    ) {
       voiced.current = lastTurn.id
       void play(lastTurn.id)
     }
-  }, [lastTurn, play])
+  }, [lastTurn, play, capturing])
   useEffect(() => {
     end.current?.scrollIntoView?.({ block: 'end' })
   }, [session.turns.length, answer.isPending])
@@ -126,12 +151,21 @@ function Dialogue({
     answer.mutate({ turnId: currentTurnId, answer: reply, display })
   }
   const pending = answer.isPending ? answer.variables : undefined
+  // A failed answer belongs to its own turn: once the session moved on, the
+  // old error and its retry are not offered for the new question.
+  const failed =
+    answer.error && answer.variables?.turnId === currentTurnId
+      ? answer.error
+      : null
 
   return (
-    <main className={styles.dialog} aria-label={t('geek.title')}>
+    <main className={styles.dialog} aria-labelledby="dialog-title">
+      <Heading as="h1" id="dialog-title" className={styles.visuallyHidden}>
+        {t('geek.title')}
+      </Heading>
       <ol className={styles.turns}>
         {session.turns.map((turn) => (
-          <TurnItem key={turn.id} turn={turn} audio={audio} />
+          <TurnItem key={turn.id} turn={turn} audio={audio} muted={capturing} />
         ))}
         {pending && (
           <>
@@ -153,6 +187,14 @@ function Dialogue({
           </>
         )}
       </ol>
+      {refreshFailed && (
+        <div className={styles.error} role="alert">
+          <Text as="p">{t('geek.refreshError')}</Text>
+          <Button size="2" variant="soft" onClick={onRefresh}>
+            {t('trainer.retry')}
+          </Button>
+        </div>
+      )}
       {session.status === 'completed' ? (
         <div className={styles.footer}>
           <Text as="p">{t('geek.completed')}</Text>
@@ -172,12 +214,14 @@ function Dialogue({
           key={currentTurnId}
           turnId={currentTurnId ?? ''}
           busy={answer.isPending}
-          error={answer.error}
+          error={failed}
           onSend={send}
-          onRetry={() =>
-            answer.variables &&
-            send(answer.variables.answer, answer.variables.display)
-          }
+          // The retry repeats the failed request exactly: its turn and key.
+          onRetry={() => {
+            if (answer.variables && !answer.isPending)
+              answer.mutate(answer.variables)
+          }}
+          onCapture={capture}
         />
       )}
       {/* The scroll anchor sits under the answer field, so the latest turn is
@@ -190,9 +234,11 @@ function Dialogue({
 function TurnItem({
   turn,
   audio,
+  muted,
 }: {
   turn: Turn
   audio: ReturnType<typeof useTurnAudio>
+  muted: boolean
 }) {
   const { t } = useTranslation()
   if (turn.speaker === 'student')
@@ -212,7 +258,12 @@ function TurnItem({
             {t(`geek.kind.${turn.kind}`)}
           </Text>
         )}
-        <ListenButton turnId={turn.id} state={audio.state} audio={audio} />
+        <ListenButton
+          turnId={turn.id}
+          state={audio.state}
+          audio={audio}
+          disabled={muted}
+        />
       </div>
       <MarkdownContent text={turn.text} className={styles.geekText} />
     </li>
@@ -223,10 +274,12 @@ function ListenButton({
   turnId,
   state,
   audio,
+  disabled,
 }: {
   turnId: string
   state: TurnAudioState
   audio: ReturnType<typeof useTurnAudio>
+  disabled: boolean
 }) {
   const { t } = useTranslation()
   const mine = state.turnId === turnId ? state.status : 'idle'
@@ -245,6 +298,7 @@ function ListenButton({
       data-state={mine}
       aria-label={label}
       title={label}
+      disabled={disabled}
       onClick={() =>
         mine === 'playing' || mine === 'loading'
           ? audio.stop()
@@ -282,17 +336,26 @@ function Composer({
   error,
   onSend,
   onRetry,
+  onCapture,
 }: {
   turnId: string
   busy: boolean
   error: Error | null
   onSend: (answer: DiagnosticAnswer, display: string) => void
   onRetry: () => void
+  // Reports when the microphone or a transcript check starts and ends.
+  onCapture: (active: boolean) => void
 }) {
   const { t } = useTranslation()
   const [text, setText] = useState('')
   const voice = useVoiceAnswer(turnId)
   const recording = voice.recording || voice.requesting
+  const capturing =
+    recording || voice.preparing || voice.transcribing || !!voice.transcript
+  useEffect(() => {
+    onCapture(capturing)
+  }, [capturing, onCapture])
+  useEffect(() => () => onCapture(false), [onCapture])
   const stale = error instanceof DiagnosticApiError && error.status === 409
   const seconds = `${Math.floor(voice.elapsedSeconds / 60)}:${String(voice.elapsedSeconds % 60).padStart(2, '0')}`
   const sendText = () => {
@@ -427,7 +490,11 @@ function Composer({
             aria-label={t('geek.record')}
             title={t('geek.record')}
             disabled={busy}
-            onClick={() => void voice.start()}
+            onClick={() => {
+              // Geek's voice must not end up in the recording.
+              onCapture(true)
+              void voice.start()
+            }}
           >
             <Mic size={20} aria-hidden="true" />
           </button>

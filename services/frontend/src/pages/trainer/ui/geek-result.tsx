@@ -22,12 +22,17 @@ export function GeekResult({
   subjectName,
   onBack,
   onAgain,
+  starting = false,
+  startError = '',
 }: {
   userId: string
   sessionId: string
   subjectName: string
   onBack: () => void
   onAgain: () => void
+  // The state of "start again", which runs from this screen.
+  starting?: boolean
+  startError?: string
 }) {
   const { t } = useTranslation()
   const query = useDiagnosticResultQuery(userId, sessionId)
@@ -122,9 +127,14 @@ export function GeekResult({
             </section>
           </>
         )}
+        {startError && (
+          <Text as="p" role="alert" color="red">
+            {startError}
+          </Text>
+        )}
         <div className={styles.resultActions}>
-          <Button size="3" onClick={onAgain}>
-            {t('geek.again')}
+          <Button size="3" disabled={starting} onClick={onAgain}>
+            {t(starting ? 'home.starting' : 'geek.again')}
           </Button>
           <Button size="3" variant="soft" onClick={onBack}>
             {t('home.back')}

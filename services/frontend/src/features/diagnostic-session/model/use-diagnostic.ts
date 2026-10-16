@@ -12,7 +12,7 @@ import {
   registerSessionRequest,
   replaceSession,
 } from '@/entities/user'
-import { answerKey } from './answer-key'
+import { createAnswerKeys } from './answer-key'
 import { useDiagnosticDependencies } from './dependencies-context'
 import { diagnosticSessionQueryKeys } from './query-keys'
 
@@ -130,6 +130,7 @@ export function useStartDiagnosticMutation(userId: string, subjectId: string) {
 export function useAnswerMutation(userId: string, sessionId: string) {
   const { diagnostic } = useDiagnosticDependencies()
   const client = useQueryClient()
+  const keys = useRef(createAnswerKeys())
   return useMutation({
     mutationKey: diagnosticSessionQueryKeys.answer(userId, sessionId),
     // display is what the dialogue shows while the answer is being sent.
@@ -146,7 +147,7 @@ export function useAnswerMutation(userId: string, sessionId: string) {
           sessionId,
           turnId,
           answer,
-          answerKey(turnId, answer),
+          keys.current(turnId, answer),
           s,
         ),
       ),

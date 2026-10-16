@@ -1216,7 +1216,7 @@ func (s *Service) validatePool(r Request) error {
 		}
 	}
 	if !parametersSupported {
-		return apiErr(400, "invalid_request_error", "unsupported_parameter", "No compatible instance supports all requested parameters.")
+		return apiErr(400, "invalid_request_error", "unsupported_parameter", "No instance in the compatible complexity pools supports all requested parameters.")
 	}
 	return apiErr(400, "invalid_request_error", "context_length_exceeded", "The request exceeds the context window of every compatible instance.")
 }

@@ -15,11 +15,11 @@
 
 `POST /v1/chat/completions` требует `messages` и `complexity` (`low`, `medium`, `high`). Gateway не проверяет клиентский bearer-токен: в Compose он доступен сервисам внутренней сети, а опубликованный порт привязан к `127.0.0.1`. Необязательные поля и ошибки описаны в [openapi.yaml](openapi.yaml). `model` и streaming запрещены. `urgent` по умолчанию `false`; `Idempotency-Key` дедуплицируется в пределах внутреннего клиента gateway.
 
-Client и upstream секреты читаются из локального JSON-конфига. Gateway не пишет содержимое диалогов в логи. Внутренние адреса и секреты не возвращаются клиенту.
+Upstream-токены читаются из локального JSON-конфига; клиентских секретов нет. Gateway не пишет содержимое диалогов в логи. Внутренние адреса и секреты не возвращаются клиенту.
 
 ## Состояние v1
 
-Consumer транзакционно сохраняет `queued` вместе с входным offset. Состояние `running` коммитится до вызова модели; `succeeded`/`failed` — до ответа ожидающему HTTP или gRPC-клиенту. При восстановлении незавершённый `running` становится `execution_interrupted` без повторной генерации. Уточните compatibility JSON mode, `reasoning_effort`, токенизатор и ограничения размера на реальных endpoint до перевода backend-клиентов.
+Consumer транзакционно сохраняет `queued` вместе с входным offset. Состояние `running` коммитится до вызова модели; `succeeded`/`failed` — до ответа ожидающему HTTP или gRPC-клиенту. При восстановлении незавершённый `running` становится `execution_interrupted` без повторной генерации. Уточните compatibility JSON mode, `reasoning_effort`, токенизатор и ограничения размера на реальных endpoint.
 
 Контекст пока оценивается консервативно по UTF-8 размеру текста (байты/2) плюс резерв 8 токенов на сообщение. Это не tokenizer конкретной модели и может отвергать допустимые запросы; подключите адаптерный tokenizer до production-подключения. `/metrics` пока публикует базовые gauges очереди и занятых слотов; расширенные метрики из спецификации (consumer lag, latency histograms, per-instance breaker/retry counters) ещё нужно добавить.
 
@@ -39,8 +39,8 @@ Consumer транзакционно сохраняет `queued` вместе с 
 
 ## gRPC
 
-`llmgateway.v1.Gateway/Complete` listens on `llm-gateway:8011` inside Docker. Its protobuf contract is in [shared](../shared/README.md); the existing HTTP endpoint and OpenAPI remain available. Through Caddy, use the same HTTPS host and port as the site, for example `localhost:8443`, with the project CA trusted. The gRPC path is `/llmgateway.v1.Gateway/Complete`; no prefix is added to the client target. The initial `idempotency-key` metadata shares the HTTP key namespace. `x-request-id` is returned as response metadata. A canceled last waiter stops queued or active work and a retry with the same key returns the saved cancellation.
+`llmgateway.v1.Gateway/Complete` слушает `llm-gateway:8011` внутри Docker; protobuf-контракт — в [shared](../shared/README.md), HTTP-эндпоинт и OpenAPI остаются доступны. Через Caddy используется тот же HTTPS-хост и порт, что у сайта (например, `localhost:8443`) с доверенным CA проекта; путь — `/llmgateway.v1.Gateway/Complete`, префикс к адресу клиента не добавляется. Начальная metadata `idempotency-key` делит пространство ключей с HTTP, `x-request-id` возвращается в metadata ответа. Отмена последнего ожидающего клиента останавливает задание в очереди или у модели; повтор с тем же ключом возвращает сохранённую отмену.
 
-`COMPOSE_PROFILES=gateway docker compose up --build` enables both Caddy gateway routes. `COMPOSE_PROFILES= docker compose up --build` disables both; recreate proxy when changing the value. `COMPOSE_PROFILES=swagger,gateway` enables docs as well. The gRPC listener has no host port mapping. The service exports gRPC health inside Docker; Caddy exposes only the Gateway service path.
+`COMPOSE_PROFILES=gateway docker compose up --build` включает оба маршрута gateway в Caddy, `COMPOSE_PROFILES= docker compose up --build` — отключает; после смены значения пересоздайте proxy. `COMPOSE_PROFILES=swagger,gateway` дополнительно включает документацию. У gRPC-порта нет проброса на хост; gRPC health доступен внутри Docker, Caddy публикует только путь сервиса Gateway.
 
-Existing backend and course-graph adapters are not switched to gRPC by this change.
+Backend (Geek) ходит в gateway по gRPC (`BACKEND_LLM_GATEWAY_ADDR`); `services/course-graph` к gateway пока не подключён.

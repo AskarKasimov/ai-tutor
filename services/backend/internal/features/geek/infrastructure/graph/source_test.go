@@ -34,6 +34,17 @@ func TestChainPrefersTheStoredGraphOverTheFixture(t *testing.T) {
 	}
 }
 
+func TestFixtureServesOnlyItsCourse(t *testing.T) {
+	ctx := context.Background()
+	fixture := Fixture{Path: "../../../../../../../api/fixtures/course-graph.json", SubjectID: "demo"}
+	if _, ok, err := fixture.Current(ctx, "demo"); !ok || err != nil {
+		t.Fatalf("demo course: %v %v", ok, err)
+	}
+	if _, ok, err := fixture.Current(ctx, "other"); ok || err != nil {
+		t.Fatalf("other course got the fixture: %v %v", ok, err)
+	}
+}
+
 func TestFixtureRejectsAnInvalidGraph(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "graph.json")
 	if err := os.WriteFile(path, []byte(`{"nodes":[{"id":"a","title":"A","prerequisites":["a"]}]}`), 0o600); err != nil {

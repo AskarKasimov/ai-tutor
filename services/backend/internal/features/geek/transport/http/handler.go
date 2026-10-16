@@ -24,7 +24,7 @@ type AnswerRequest struct {
 	TranscriptionID string `json:"transcription_id,omitempty" minLength:"1" binding:"optional"`
 	// Текстовый ответ
 	Text string `json:"text,omitempty" minLength:"1" maxLength:"4000" binding:"optional"`
-	// Кнопка «Не знаю»: пробел без оценки моделью
+	// Кнопка «Не знаю» без оценки моделью: на основной вопрос или переформулировку — пробел, на дополнительный — К3 и К4 на 0
 	DontKnow bool `json:"dont_know,omitempty" binding:"optional"`
 }
 

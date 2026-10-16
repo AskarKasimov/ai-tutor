@@ -2,7 +2,6 @@ import { afterEach, expect, it, vi } from 'vitest'
 import {
   createSubject,
   listSubjects,
-  readLearningState,
   SubjectApiError,
 } from '@/entities/subject'
 
@@ -82,31 +81,4 @@ it('creates a subject as JSON and carries backend error codes', async () => {
   await expect(
     createSubject('Физика', new AbortController().signal),
   ).rejects.toMatchObject({ status: 409, code: 'CONFLICT' })
-})
-
-it('reads encoded learning state and checks the requested subject ID', async () => {
-  const state = {
-    subject_id: 'subject:ml/a',
-    subject_name: 'ML',
-    diagnostic_status: 'completed',
-    diagnostic_completed: true,
-    training_available: true,
-    diagnostic_session_id: 'd1',
-    active_session_id: 't1',
-  }
-  const fetchMock = vi.fn().mockResolvedValue(Response.json(state))
-  vi.stubGlobal('fetch', fetchMock)
-  await expect(
-    readLearningState('subject:ml/a', new AbortController().signal),
-  ).resolves.toEqual(state)
-  expect(fetchMock.mock.calls[0][0]).toBe(
-    '/api/v1/subjects/subject%3Aml%2Fa/learning-state',
-  )
-  vi.stubGlobal(
-    'fetch',
-    vi.fn().mockResolvedValue(Response.json({ ...state, subject_id: 'other' })),
-  )
-  await expect(
-    readLearningState('subject:ml/a', new AbortController().signal),
-  ).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
 })

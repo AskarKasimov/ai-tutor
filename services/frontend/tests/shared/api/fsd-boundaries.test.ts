@@ -47,10 +47,10 @@ describe('FSD boundaries', () => {
       expect.arrayContaining([
         'bootstrap/providers.tsx',
         'pages/trainer/ui/trainer-screen.tsx',
-        'features/diagnostic-session/model/start-session.ts',
-        'features/learning-plan/model/use-learning-plan.ts',
+        'pages/trainer/ui/geek-dialog.tsx',
+        'features/diagnostic-session/model/use-diagnostic.ts',
         'entities/user/model/user.ts',
-        'entities/assessment/model/feedback.ts',
+        'entities/diagnostic-session/api/diagnostic-api.ts',
         'shared/api/api-fetch.ts',
         'routes/index.tsx',
       ]),
@@ -171,11 +171,10 @@ describe('FSD boundaries', () => {
     expect(violations).toEqual([])
   })
 
-  it('keeps independent diagnostic orchestration and feedback parsing free of runtime packages and HTTP', () => {
+  it('keeps pure diagnostic models free of runtime packages and HTTP', () => {
     const pure = [
-      'features/diagnostic-session/model/start-session.ts',
-      'features/diagnostic-session/model/bootstrap-coordinator.ts',
-      'entities/assessment/model/feedback.ts',
+      'features/diagnostic-session/model/answer-key.ts',
+      'entities/diagnostic-session/model/diagnostic-session.ts',
     ]
     const violations: string[] = []
     for (const path of pure) {

@@ -36,6 +36,8 @@ type Store interface {
 	SubjectExists(ctx context.Context, subjectID string) (bool, error)
 	Session(ctx context.Context, ownerID, id string) (exam.Session, error)
 	ActiveSession(ctx context.Context, ownerID, subjectID string) (exam.Session, bool, error)
+	// Sessions lists the owner's diagnostics of a course, newest first.
+	Sessions(ctx context.Context, ownerID, subjectID string) ([]exam.Session, error)
 	Request(ctx context.Context, ownerID, key string) (Request, bool, error)
 	// Create inserts a session; ErrActiveExists if the owner already has an
 	// active one on the course.

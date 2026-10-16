@@ -1,0 +1,284 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/gic/course-graph.schema.json",
+  "title": "GIC Course Graph v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "dataset_id",
+    "provenance",
+    "semantics",
+    "topics",
+    "prerequisites",
+    "diagnostic_groups",
+    "unmapped_requirements",
+    "curriculum_gaps",
+    "external_review_status"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.0.0"
+    },
+    "dataset_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "provenance": {
+      "type": "object"
+    },
+    "semantics": {
+      "type": "object"
+    },
+    "external_review_status": {
+      "type": "string"
+    },
+    "topics": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/topic"
+      }
+    },
+    "prerequisites": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/edge"
+      }
+    },
+    "diagnostic_groups": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/group"
+      }
+    },
+    "unmapped_requirements": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "curriculum_gaps": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    }
+  },
+  "$defs": {
+    "topic": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "title",
+        "section_id",
+        "section",
+        "kind",
+        "material_status",
+        "status",
+        "is_atomic",
+        "is_terminal",
+        "question",
+        "provides",
+        "requires",
+        "rubric",
+        "source_quality",
+        "source_pages",
+        "full_text"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^AI-[0-9]{2}-[0-9]{2}$"
+        },
+        "title": {
+          "type": "string"
+        },
+        "section_id": {
+          "type": "integer"
+        },
+        "section": {
+          "type": "string"
+        },
+        "kind": {
+          "const": "topic"
+        },
+        "material_status": {
+          "enum": [
+            "available",
+            "missing"
+          ]
+        },
+        "status": {
+          "enum": [
+            "draft_requires_review",
+            "validated"
+          ]
+        },
+        "is_atomic": {
+          "type": "boolean"
+        },
+        "is_terminal": {
+          "type": "boolean"
+        },
+        "question": {
+          "type": "string"
+        },
+        "provides": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "requires": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "rubric": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "source_quality": {
+          "type": "string"
+        },
+        "source_pages": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "full_text": {
+          "type": "string"
+        }
+      }
+    },
+    "edge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source",
+        "target",
+        "kind",
+        "requirement_ids",
+        "requirements",
+        "rationale",
+        "validation_status"
+      ],
+      "properties": {
+        "source": {
+          "type": "string"
+        },
+        "target": {
+          "type": "string"
+        },
+        "kind": {
+          "const": "prerequisite"
+        },
+        "requirement_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "requirements": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "rationale": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "validation_status": {
+          "enum": [
+            "provisional",
+            "validated",
+            "rejected"
+          ]
+        }
+      }
+    },
+    "group": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "title",
+        "kind",
+        "assessment_mode",
+        "validation_status",
+        "auto_close_allowed",
+        "terminal_topic_ids",
+        "closure_topic_ids",
+        "composite_prompt_draft",
+        "rubric_draft",
+        "source_sections",
+        "note"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^DG-[0-9]{2}$"
+        },
+        "title": {
+          "type": "string"
+        },
+        "kind": {
+          "const": "diagnostic_group"
+        },
+        "assessment_mode": {
+          "enum": [
+            "integrated_pilot",
+            "routing_only"
+          ]
+        },
+        "validation_status": {
+          "enum": [
+            "draft_unvalidated",
+            "validated"
+          ]
+        },
+        "auto_close_allowed": {
+          "type": "boolean"
+        },
+        "terminal_topic_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "closure_topic_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "composite_prompt_draft": {
+          "type": "string"
+        },
+        "rubric_draft": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "source_sections": {
+          "type": "array",
+          "items": {
+            "type": "integer"
+          }
+        },
+        "note": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

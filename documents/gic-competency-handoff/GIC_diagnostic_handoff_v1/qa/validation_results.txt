@@ -1,0 +1,12 @@
+PASS: JSON Schema, IDs, DAG, 145 edges, 132 active / 5 missing,
+      15 atomic, 69 terminal, 20 gates, 69 unique assignments, all closures, no auto-close.
+test_cannot_grade_wrong_item (test_engine.GicEngineTests.test_cannot_grade_wrong_item) ... ok
+test_every_terminal_screened_once (test_engine.GicEngineTests.test_every_terminal_screened_once) ... ok
+test_gap_drills_into_direct_prerequisites (test_engine.GicEngineTests.test_gap_drills_into_direct_prerequisites) ... ok
+test_structure (test_engine.GicEngineTests.test_structure) ... ok
+test_uncertain_is_not_failure (test_engine.GicEngineTests.test_uncertain_is_not_failure) ... ok
+
+----------------------------------------------------------------------
+Ran 5 tests in 0.005s
+
+OK

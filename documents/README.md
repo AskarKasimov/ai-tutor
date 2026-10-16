@@ -10,3 +10,4 @@
 | [Backend: БД](../services/backend/README.md#бд-и-импорт) | Схема, миграции, админ-аккаунт и материалы курса. |
 | [Формат учебного текста](markdown-content.md) | Markdown и формулы в учебном тексте и ответах модели. |
 | [Материалы демокурса](materials/) | PDF лекций, лаб и туториалов Introduction to AI за недели 1–14. |
+| [Карта Introduction to AI: handoff и аудит](gic-competency-handoff/README.md) | Канонические 137 тем, история, QA и проекция 132 активных тем в текущий Graph; ограничения и расхождения с политикой Geek. |

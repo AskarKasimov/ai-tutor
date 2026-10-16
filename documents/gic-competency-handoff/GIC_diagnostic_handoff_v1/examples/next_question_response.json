@@ -1,0 +1,11 @@
+{
+  "screening_finished": false,
+  "question": {
+    "question_id": "session-demo:AI-04-08:attempt-1",
+    "topic_id": "AI-04-08",
+    "group_id": "DG-08",
+    "prompt": "Проверь согласованность эвристики на нескольких рёбрах графа и объясни следствие.",
+    "rubric": ["Привести условие h(n) ≤ c(n,n′) + h(n′)", "Проверить условие на каждом заданном ребре"],
+    "reason": "terminal_screening"
+  }
+}

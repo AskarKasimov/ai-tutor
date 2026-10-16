@@ -1,0 +1,5585 @@
+{
+  "schema_version": "1.0.0",
+  "dataset_id": "intro-ai-gic-2026-10-16-v1",
+  "provenance": {
+    "topic_source": "ai_topics_review_v2/topics_reviewed_v2.json",
+    "dependency_source": "ai_dependency_graph_v1/graph.json",
+    "assessment_source": "ai_diagnostic_layer_v2/diagnostic_overlay.json"
+  },
+  "semantics": {
+    "prerequisite": "source must be learned before target; DAG edges only",
+    "diagnostic_group": "routing and evidence aggregation, not a prerequisite node",
+    "missing": "curriculum topic without teaching materials, excluded from active diagnosis"
+  },
+  "topics": [
+    {
+      "id": "AI-01-01",
+      "title": "Подходы к определению искусственного интеллекта",
+      "section_id": 1,
+      "section": "Введение в искусственный интеллект",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": true,
+      "is_terminal": false,
+      "question": "Классифицируй три описанные системы по подходам к определению ИИ и объясни пограничный случай.",
+      "provides": [
+        "различать четыре подхода к определению ИИ по поведению и мышлению",
+        "классифицировать ИИ-систему по используемому критерию"
+      ],
+      "requires": [
+        "понимание различия между наблюдаемым поведением и внутренним процессом"
+      ],
+      "source_quality": "thin_source",
+      "source_pages": [
+        "week1 lecture.pdf p.13",
+        "week1 lecture.pdf p.14",
+        "week1 lecture.pdf p.15",
+        "week1 lecture.pdf p.16"
+      ]
+    },
+    {
+      "id": "AI-01-02",
+      "title": "Сильный и слабый искусственный интеллект",
+      "section_id": 1,
+      "section": "Введение в искусственный интеллект",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": false,
+      "is_terminal": true,
+      "question": "Сопоставь сильный и слабый ИИ на двух примерах и объясни, что из этого реально продемонстрировано.",
+      "provides": [
+        "отличать сильный ИИ как тезис о понимании от слабого ИИ как инструментального подхода",
+        "оценивать силу доказательства разумности системы"
+      ],
+      "requires": [
+        "базовое представление о том, что называют искусственным интеллектом"
+      ],
+      "source_quality": "thin_source",
+      "source_pages": [
+        "week1 lecture.pdf p.27"
+      ]
+    },
+    {
+      "id": "AI-01-03",
+      "title": "Контекстная и ситуационная природа интеллекта",
+      "section_id": 1,
+      "section": "Введение в искусственный интеллект",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": true,
+      "is_terminal": true,
+      "question": "Почему одинаковая система может считаться интеллектуальной в одной среде, но не в другой?",
+      "provides": [
+        "объяснять относительность оценки интеллектуального поведения к задаче и среде",
+        "различать культурные и биологические контексты интеллекта"
+      ],
+      "requires": [
+        "умение задавать критерий успешности поведения в конкретной среде"
+      ],
+      "source_quality": "source_present_visuals_unverified",
+      "source_pages": [
+        "week1 lecture.pdf p.21",
+        "week1 lecture.pdf p.22",
+        "week1 lecture.pdf p.23",
+        "week1 lecture.pdf p.24",
+        "week1 lecture.pdf p.25"
+      ]
+    },
+    {
+      "id": "AI-01-04",
+      "title": "Влияние ИИ на профессии и общество",
+      "section_id": 1,
+      "section": "Введение в искусственный интеллект",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": true,
+      "is_terminal": true,
+      "question": "Проанализируй внедрение ИИ в выбранную профессию с выгодами, потерями и вторичными последствиями.",
+      "provides": [
+        "анализировать эффект автоматизации на труд и принятие решений",
+        "различать прямые выгоды и социальные риски внедрения ИИ"
+      ],
+      "requires": [
+        "понимание типичных сфер применения ИИ"
+      ],
+      "source_quality": "boundary_review_required",
+      "source_pages": [
+        "week1 lecture.pdf p.17",
+        "week1 lecture.pdf p.18",
+        "week1 lecture.pdf p.19",
+        "week1 lecture.pdf p.20"
+      ]
+    },
+    {
+      "id": "AI-01-05",
+      "title": "Четвёртая промышленная революция",
+      "section_id": 1,
+      "section": "Введение в искусственный интеллект",
+      "kind": "topic",
+      "material_status": "missing",
+      "status": "draft_requires_review",
+      "is_atomic": false,
+      "is_terminal": false,
+      "question": "Назови признаки четвёртой промышленной революции и объясни роль ИИ на конкретном примере.",
+      "provides": [
+        "характеризовать цифровую интеграцию ИИ с робототехникой и данными",
+        "выделять эффекты четвёртой промышленной революции"
+      ],
+      "requires": [
+        "общая история автоматизации и цифровизации"
+      ],
+      "source_quality": "missing_RPD_only",
+      "source_pages": []
+    },
+    {
+      "id": "AI-01-06",
+      "title": "Знание, обоснование и контрпримеры Геттиера",
+      "section_id": 1,
+      "section": "Введение в искусственный интеллект",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": true,
+      "is_terminal": true,
+      "question": "Покажи на собственном примере, почему обоснованное истинное убеждение может не считаться знанием.",
+      "provides": [
+        "различать истинное убеждение, обоснование и знание",
+        "строить контрпример Геттиера к определению знания"
+      ],
+      "requires": [
+        "навык различения утверждения и его обоснования"
+      ],
+      "source_quality": "source_present_visuals_unverified",
+      "source_pages": [
+        "Week 2 Lecture.pdf p.3",
+        "Week 2 Lecture.pdf p.4",
+        "Week 2 Lecture.pdf p.5"
+      ]
+    },
+    {
+      "id": "AI-01-07",
+      "title": "Тест Тьюринга и его интерпретация",
+      "section_id": 1,
+      "section": "Введение в искусственный интеллект",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": false,
+      "is_terminal": false,
+      "question": "Спроектируй испытание Тьюринга и объясни, что прохождение теста доказывает, а чего не доказывает.",
+      "provides": [
+        "объяснять протокол имитационной игры и критерий успеха",
+        "различать наблюдаемую имитацию и доказательство мышления"
+      ],
+      "requires": [
+        "понятие критерия наблюдаемого интеллектуального поведения"
+      ],
+      "source_quality": "source_present_visuals_unverified",
+      "source_pages": [
+        "Week 2 Lecture.pdf p.7",
+        "Week 2 Lecture.pdf p.8"
+      ]
+    },
+    {
+      "id": "AI-01-08",
+      "title": "Аргумент китайской комнаты и возражения",
+      "section_id": 1,
+      "section": "Введение в искусственный интеллект",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": false,
+      "is_terminal": true,
+      "question": "Объясни китайскую комнату, приведи одно содержательное возражение и ответ на него.",
+      "provides": [
+        "различать синтаксическую обработку и семантическое понимание",
+        "воспроизводить китайскую комнату и содержательное возражение"
+      ],
+      "requires": [
+        "идея символического следования правилам",
+        "понятие теста на поведение разумной системы"
+      ],
+      "source_quality": "source_present_visuals_unverified",
+      "source_pages": [
+        "Week 2 Lecture.pdf p.10",
+        "Week 2 Lecture.pdf p.11",
+        "Week 2 Lecture.pdf p.12",
+        "Week 2 Lecture.pdf p.13"
+      ]
+    },
+    {
+      "id": "AI-01-09",
+      "title": "Законы робототехники Азимова и их ограничения",
+      "section_id": 1,
+      "section": "Введение в искусственный интеллект",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": false,
+      "is_terminal": true,
+      "question": "Разреши конфликт двух приказов роботу, используя иерархию законов, и укажи границу подхода.",
+      "provides": [
+        "применять приоритеты трёх законов Азимова к конфликту приказов",
+        "указывать ограничения формальных правил безопасности робота"
+      ],
+      "requires": [
+        "понятие автономного агента и конфликтующих целей"
+      ],
+      "source_quality": "source_present_visuals_unverified",
+      "source_pages": [
+        "Week 2 Lecture.pdf p.20",
+        "Week 2 Lecture.pdf p.21",
+        "Week 2 Lecture.pdf p.22",
+        "Week 2 Lecture.pdf p.23",
+        "Week 2 Lecture.pdf p.24",
+        "Week 2 Lecture.pdf p.25",
+        "Week 2 Lecture.pdf p.26",
+        "Week 2 Lecture.pdf p.27"
+      ]
+    },
+    {
+      "id": "AI-01-10",
+      "title": "Этические риски автономных решений",
+      "section_id": 1,
+      "section": "Введение в искусственный интеллект",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": false,
+      "is_terminal": true,
+      "question": "Разбери решение автономного робота с точки зрения ответственности, вреда и человеческого контроля.",
+      "provides": [
+        "анализировать риск вреда от автономного решения и человеческую ответственность",
+        "выявлять конфликт целей и требований безопасности"
+      ],
+      "requires": [
+        "понятие автономного решения",
+        "основы оценки последствий действия"
+      ],
+      "source_quality": "shared_only_review_required",
+      "source_pages": [
+        "Week 14 Lecture Slides.pdf p.12",
+        "Week 14 Lecture Slides.pdf p.13",
+        "Week 2 Lecture.pdf p.28",
+        "Week 2 Lecture.pdf p.29"
+      ]
+    },
+    {
+      "id": "AI-01-11",
+      "title": "Справедливость, прозрачность и подотчётность ИИ",
+      "section_id": 1,
+      "section": "Введение в искусственный интеллект",
+      "kind": "topic",
+      "material_status": "missing",
+      "status": "draft_requires_review",
+      "is_atomic": false,
+      "is_terminal": false,
+      "question": "Проанализируй ошибочную рекомендацию модели по критериям fairness, transparency и accountability.",
+      "provides": [
+        "различать fairness, transparency и accountability",
+        "распознавать ущемление групп и дефицит объяснимости и ответственности"
+      ],
+      "requires": [
+        "понятия входных данных, предсказания модели и последствий решения"
+      ],
+      "source_quality": "missing_RPD_only",
+      "source_pages": []
+    },
+    {
+      "id": "AI-01-12",
+      "title": "Когнитивные искажения, надёжность данных и оценка выдачи ИИ",
+      "section_id": 1,
+      "section": "Введение в искусственный интеллект",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": true,
+      "is_terminal": false,
+      "question": "На примере сомнительного ответа генеративной модели покажи, как проверять факты, ссылки и возможные смещения, и обоснуй независимость выбранных источников.",
+      "provides": [
+        "проверять достоверность ответа ИИ с помощью источников",
+        "обнаруживать неподтверждённые факты и возможные смещения"
+      ],
+      "requires": [
+        "навык отличать утверждение от свидетельства в его поддержку",
+        "основы поиска первоисточника"
+      ],
+      "source_quality": "shared_only_review_required",
+      "source_pages": [
+        "14 Tutorial.pdf p.9",
+        "14 Tutorial.pdf p.10",
+        "Week 14 Lecture Slides.pdf p.13"
+      ]
+    },
+    {
+      "id": "AI-01-13",
+      "title": "Высказывания и логические связки",
+      "section_id": 1,
+      "section": "Введение в искусственный интеллект",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": true,
+      "is_terminal": false,
+      "question": "Переведи словесную задачу в формулы логики высказываний, пояснив каждую связку.",
+      "provides": [
+        "отличать высказывания от не-высказываний",
+        "формализовать условия с помощью ¬ ∧ ∨ → ↔"
+      ],
+      "requires": [
+        "элементарное представление о истинности и ложности"
+      ],
+      "source_quality": "source_present_visuals_unverified",
+      "source_pages": [
+        "Tutorial 2.pdf p.3",
+        "Tutorial 2.pdf p.4",
+        "Tutorial 2.pdf p.5",
+        "Tutorial 2.pdf p.6",
+        "Tutorial 2.pdf p.7",
+        "Tutorial 2.pdf p.8",
+        "Tutorial 2.pdf p.9",
+        "Tutorial 2.pdf p.10"
+      ]
+    },
+    {
+      "id": "AI-01-14",
+      "title": "Таблицы истинности",
+      "section_id": 1,
+      "section": "Введение в искусственный интеллект",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": false,
+      "is_terminal": false,
+      "question": "Построй и интерпретируй таблицу истинности составной формулы с тремя переменными.",
+      "provides": [
+        "строить полную таблицу истинности для сложной формулы",
+        "интерпретировать значения логических операций"
+      ],
+      "requires": [
+        "синтаксис высказываний и связок",
+        "двоичные истинностные значения"
+      ],
+      "source_quality": "source_present_visuals_unverified",
+      "source_pages": [
+        "Tutorial 2.pdf p.13",
+        "Tutorial 2.pdf p.14",
+        "Tutorial 2.pdf p.15",
+        "Tutorial 2.pdf p.16",
+        "Tutorial 2.pdf p.17"
+      ]
+    },
+    {
+      "id": "AI-01-15",
+      "title": "Логическая эквивалентность и законы преобразования",
+      "section_id": 1,
+      "section": "Введение в искусственный интеллект",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": false,
+      "is_terminal": false,
+      "question": "Проверь эквивалентность двух формул и преобразуй одну в другую законами логики.",
+      "provides": [
+        "доказывать эквивалентность формул логическими законами и таблицами",
+        "отличать тавтологию от противоречия"
+      ],
+      "requires": [
+        "построение таблиц истинности",
+        "использование логических связок"
+      ],
+      "source_quality": "source_present_visuals_unverified",
+      "source_pages": [
+        "Tutorial 2.pdf p.18",
+        "Tutorial 2.pdf p.19",
+        "Tutorial 2.pdf p.20",
+        "Tutorial 2.pdf p.21",
+        "Tutorial 2.pdf p.22",
+        "Tutorial 2.pdf p.23",
+        "Tutorial 2.pdf p.24",
+        "Tutorial 2.pdf p.25"
+      ]
+    },
+    {
+      "id": "AI-01-16",
+      "title": "Предикаты, отношения и формулы первого порядка",
+      "section_id": 1,
+      "section": "Введение в искусственный интеллект",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": false,
+      "is_terminal": false,
+      "question": "Объясни, почему данное высказывание не выразить пропозиционально, и запиши его в FOL.",
+      "provides": [
+        "представлять объекты, предикаты, отношения и переменные в FOL",
+        "отличать выразимость FOL от логики высказываний"
+      ],
+      "requires": [
+        "высказывания и логические связки",
+        "различие объектов и свойств"
+      ],
+      "source_quality": "source_present_visuals_unverified",
+      "source_pages": [
+        "Tutorial 2.pdf p.33",
+        "Tutorial 2.pdf p.34",
+        "Tutorial 2.pdf p.35",
+        "Tutorial 2.pdf p.36",
+        "Tutorial 2.pdf p.37",
+        "Tutorial 2.pdf p.38",
+        "Tutorial 2.pdf p.39",
+        "Week 2 Lecture.pdf p.14"
+      ]
+    },
+    {
+      "id": "AI-01-17",
+      "title": "Кванторы и области действия",
+      "section_id": 1,
+      "section": "Введение в искусственный интеллект",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": false,
+      "is_terminal": false,
+      "question": "Переведи две фразы с разным порядком кванторов и покажи различие на модели.",
+      "provides": [
+        "переводить фразы в кванторные формулы",
+        "объяснять область действия и эффект перестановки ∀ и ∃"
+      ],
+      "requires": [
+        "предикаты, переменные и синтаксис FOL"
+      ],
+      "source_quality": "source_present_visuals_unverified",
+      "source_pages": [
+        "Tutorial 2.pdf p.40",
+        "Tutorial 2.pdf p.41",
+        "Tutorial 2.pdf p.42",
+        "Tutorial 2.pdf p.43",
+        "Tutorial 2.pdf p.44",
+        "Tutorial 2.pdf p.45",
+        "Tutorial 2.pdf p.46",
+        "Tutorial 2.pdf p.47"
+      ]
+    },
+    {
+      "id": "AI-01-18",
+      "title": "Правила логического вывода и построение доказательства",
+      "section_id": 1,
+      "section": "Введение в искусственный интеллект",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": false,
+      "is_terminal": false,
+      "question": "По набору посылок пошагово выведи заключение, подписав Modus Ponens, Modus Tollens, Resolution или другие допустимые правила и объяснив, где вывод мог бы быть ошибочным.",
+      "provides": [
+        "применять правила дедуктивного вывода к формальным посылкам",
+        "строить проверяемую последовательность доказательных шагов"
+      ],
+      "requires": [
+        "логические связки и формулы",
+        "преобразования логических выражений"
+      ],
+      "source_quality": "source_present_visuals_unverified",
+      "source_pages": [
+        "Tutorial 2.pdf p.49",
+        "Tutorial 3.pdf p.3",
+        "Tutorial 3.pdf p.4",
+        "Tutorial 3.pdf p.7",
+        "Tutorial 3.pdf p.14",
+        "Tutorial 3.pdf p.15",
+        "Tutorial 3.pdf p.16",
+        "Tutorial 3.pdf p.17"
+      ]
+    },
+    {
+      "id": "AI-01-19",
+      "title": "Исторические и культурные образы искусственного разума",
+      "section_id": 1,
+      "section": "Введение в искусственный интеллект",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": false,
+      "is_terminal": true,
+      "question": "Сопоставь древний образ искусственного существа с современным агентом и объясни принципиальное различие.",
+      "provides": [
+        "сопоставлять мифологический образ искусственного существа и современную техническую систему",
+        "отличать культурную метафору от операционального определения"
+      ],
+      "requires": [
+        "общее понятие искусственного интеллекта"
+      ],
+      "source_quality": "thin_source",
+      "source_pages": [
+        "week1 lecture.pdf p.26"
+      ]
+    },
+    {
+      "id": "AI-01-20",
+      "title": "Ситуационное исчисление и логическое представление изменений",
+      "section_id": 1,
+      "section": "Введение в искусственный интеллект",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": false,
+      "is_terminal": true,
+      "question": "Покажи, как с помощью ситуации s, result(a,s) и предикатов состояния формализовать перемещение агента; объясни qualification и ramification problems.",
+      "provides": [
+        "описывать меняющийся мир через ситуации и result(a,s)",
+        "различать qualification и ramification problems в формализации действий"
+      ],
+      "requires": [
+        "предикаты и переменные логики первого порядка",
+        "агентные состояния, действия и переходы"
+      ],
+      "source_quality": "source_present_visuals_unverified",
+      "source_pages": [
+        "Tutorial 3.pdf p.38",
+        "Tutorial 3.pdf p.39",
+        "Tutorial 3.pdf p.40",
+        "Tutorial 3.pdf p.41",
+        "Tutorial 3.pdf p.42",
+        "Tutorial 3.pdf p.43"
+      ]
+    },
+    {
+      "id": "AI-01-21",
+      "title": "Доказательство по математической индукции",
+      "section_id": 1,
+      "section": "Введение в искусственный интеллект",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": true,
+      "is_terminal": true,
+      "question": "Докажи формулу для суммы первых n натуральных чисел по индукции: запиши базу, переход и объясни, почему они покрывают все n.",
+      "provides": [
+        "доказывать утверждение по математической индукции",
+        "обосновывать базу и корректность индукционного перехода"
+      ],
+      "requires": [
+        "натуральные числа",
+        "элементарные алгебраические преобразования"
+      ],
+      "source_quality": "source_present_visuals_unverified",
+      "source_pages": [
+        "Tutorial 3.pdf p.5",
+        "Tutorial 3.pdf p.6"
+      ]
+    },
+    {
+      "id": "AI-01-22",
+      "title": "Модели, выполнимость и логическое следование",
+      "section_id": 1,
+      "section": "Введение в искусственный интеллект",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": false,
+      "is_terminal": false,
+      "question": "Для трёх интерпретаций базы знаний определи её модели, проверь выполнимость и реши, следует ли заданное заключение семантически.",
+      "provides": [
+        "определять модели и выполнимость формул",
+        "проверять логическое следование через возможные интерпретации"
+      ],
+      "requires": [
+        "оценка истинности логических формул",
+        "логические связки и кванторы"
+      ],
+      "source_quality": "source_present_visuals_unverified",
+      "source_pages": [
+        "Tutorial 3.pdf p.8",
+        "Tutorial 3.pdf p.9",
+        "Tutorial 3.pdf p.10",
+        "Tutorial 3.pdf p.11",
+        "Tutorial 3.pdf p.12"
+      ]
+    },
+    {
+      "id": "AI-01-23",
+      "title": "Корректность и полнота логического вывода",
+      "section_id": 1,
+      "section": "Введение в искусственный интеллект",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": false,
+      "is_terminal": true,
+      "question": "Для двух описанных процедур доказывания установи, что требуется показать для корректности и полноты, и объясни различие KB ⊢ Q и KB ⊨ Q.",
+      "provides": [
+        "отличать семантическое следование от синтаксического доказательства",
+        "формулировать условия soundness и completeness для правил вывода"
+      ],
+      "requires": [
+        "модели и логическое следование",
+        "применение правил логического вывода"
+      ],
+      "source_quality": "source_present_visuals_unverified",
+      "source_pages": [
+        "Tutorial 3.pdf p.13",
+        "Tutorial 3.pdf p.18",
+        "Tutorial 3.pdf p.19",
+        "Tutorial 3.pdf p.29",
+        "Tutorial 3.pdf p.30"
+      ]
+    },
+    {
+      "id": "AI-01-24",
+      "title": "Необходимые и достаточные условия",
+      "section_id": 1,
+      "section": "Введение в искусственный интеллект",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": false,
+      "is_terminal": true,
+      "question": "Для пары условий P и Q запиши импликации для «необходимо», «достаточно» и «необходимо и достаточно» и объясни их на контрпримере.",
+      "provides": [
+        "различать необходимое и достаточное условия",
+        "переводить их в прямые и обратные импликации"
+      ],
+      "requires": [
+        "импликация и логическая эквивалентность"
+      ],
+      "source_quality": "source_present_visuals_unverified",
+      "source_pages": [
+        "Tutorial 3.pdf p.26",
+        "Tutorial 3.pdf p.27"
+      ]
+    },
+    {
+      "id": "AI-02-01",
+      "title": "Понятие агента и агентной функции",
+      "section_id": 2,
+      "section": "Агенты",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": true,
+      "is_terminal": false,
+      "question": "Спроектируй агента и объясни соответствие между наблюдениями и действиями.",
+      "provides": [
+        "определять агента, восприятия, действия и агентную функцию",
+        "задавать взаимодействие агента со средой"
+      ],
+      "requires": [
+        "понятие вычислительной системы",
+        "различие входа и выхода"
+      ],
+      "source_quality": "source_present_visuals_unverified",
+      "source_pages": [
+        "Week 13 Lecture.pdf p.18",
+        "Week 13 Lecture.pdf p.19",
+        "Week 13 Lecture.pdf p.20",
+        "Week 3 Lecture.pdf p.4",
+        "Week 3 Lecture.pdf p.5"
+      ]
+    },
+    {
+      "id": "AI-02-02",
+      "title": "Рациональность и ограниченность знаний агента",
+      "section_id": 2,
+      "section": "Агенты",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": false,
+      "is_terminal": true,
+      "question": "Выбери рациональное действие при неполной информации и объясни отличие рациональности от всеведения.",
+      "provides": [
+        "обосновывать рациональность по доступной информации и цели",
+        "отличать рациональность от всеведения и гарантированного успеха"
+      ],
+      "requires": [
+        "агент, наблюдения и действия",
+        "критерий успешности"
+      ],
+      "source_quality": "source_present_visuals_unverified",
+      "source_pages": [
+        "Week 3 Lecture.pdf p.6",
+        "Week 3 Lecture.pdf p.7"
+      ]
+    },
+    {
+      "id": "AI-02-03",
+      "title": "Описание задачи с помощью PEAS",
+      "section_id": 2,
+      "section": "Агенты",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": false,
+      "is_terminal": false,
+      "question": "Составь PEAS для нового агента и обоснуй каждую компоненту.",
+      "provides": [
+        "заполнять PEAS для конкретного агента",
+        "связывать performance, environment, actuators, sensors"
+      ],
+      "requires": [
+        "агент и взаимодействие со средой",
+        "понятие критерия эффективности"
+      ],
+      "source_quality": "source_present_visuals_unverified",
+      "source_pages": [
+        "Week 3 Lab.pptx.pdf p.3",
+        "Week 3 Lab.pptx.pdf p.4",
+        "Week 3 Lab.pptx.pdf p.5",
+        "Week 3 Lab.pptx.pdf p.6",
+        "Week 3 Lab.pptx.pdf p.7",
+        "Week 3 Lab.pptx.pdf p.8",
+        "Week 3 Lab.pptx.pdf p.9",
+        "Week 3 Lab.pptx.pdf p.10"
+      ]
+    },
+    {
+      "id": "AI-02-04",
+      "title": "Свойства среды агента",
+      "section_id": 2,
+      "section": "Агенты",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": false,
+      "is_terminal": false,
+      "question": "Классифицируй среду по наблюдаемости, детерминизму, динамичности и остальным осям.",
+      "provides": [
+        "классифицировать среду по наблюдаемости, стохастичности, эпизодичности и динамичности",
+        "объяснять последствия свойств среды для решения агента"
+      ],
+      "requires": [
+        "определение агента и восприятий"
+      ],
+      "source_quality": "source_present_visuals_unverified",
+      "source_pages": [
+        "Week 3 Lecture.pdf p.10",
+        "Week 3 Lecture.pdf p.11",
+        "Week 3 Lecture.pdf p.12",
+        "Week 3 Lecture.pdf p.13",
+        "Week 3 Lecture.pdf p.14",
+        "Week 3 Lecture.pdf p.15"
+      ]
+    },
+    {
+      "id": "AI-02-05",
+      "title": "Простой рефлексный агент",
+      "section_id": 2,
+      "section": "Агенты",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": false,
+      "is_terminal": false,
+      "question": "Для робота-пылесоса составь три правила condition→action по текущим ощущениям и приведи два неразличимых наблюдения, при которых одинаковое действие будет неверным хотя бы в одном случае.",
+      "provides": [
+        "строить condition-action правила рефлексного агента",
+        "объяснять ограничения при частичной наблюдаемости"
+      ],
+      "requires": [
+        "агентная функция и текущее восприятие",
+        "условные правила"
+      ],
+      "source_quality": "thin_source",
+      "source_pages": [
+        "Week 3 Lecture.pdf p.16",
+        "Week 3 Lecture.pdf p.17",
+        "Week 3 Lecture.pdf p.18"
+      ]
+    },
+    {
+      "id": "AI-02-06",
+      "title": "Рефлексный агент с внутренней моделью",
+      "section_id": 2,
+      "section": "Агенты",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": false,
+      "is_terminal": true,
+      "question": "В частично наблюдаемом мире опиши две последовательности наблюдений с одинаковым текущим percept и объясни, как внутреннее состояние позволяет агенту принимать разные решения.",
+      "provides": [
+        "поддерживать внутреннее состояние агента при изменении среды",
+        "объяснять необходимость модели мира"
+      ],
+      "requires": [
+        "рефлексный агент",
+        "частичная наблюдаемость среды"
+      ],
+      "source_quality": "thin_source",
+      "source_pages": [
+        "Week 3 Lecture.pdf p.19",
+        "Week 3 Lecture.pdf p.20"
+      ]
+    },
+    {
+      "id": "AI-02-07",
+      "title": "Целеориентированный агент",
+      "section_id": 2,
+      "section": "Агенты",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": false,
+      "is_terminal": false,
+      "question": "Выбери действия агента по цели и объясни, почему одних рефлексов недостаточно.",
+      "provides": [
+        "планировать поведение агента относительно цели",
+        "сравнивать цели с простыми рефлексами"
+      ],
+      "requires": [
+        "агент, его действия и критерий цели",
+        "переходы между состояниями"
+      ],
+      "source_quality": "source_present_visuals_unverified",
+      "source_pages": [
+        "Week 3 Lecture.pdf p.21",
+        "Week 3 Lecture.pdf p.22"
+      ]
+    },
+    {
+      "id": "AI-02-08",
+      "title": "Агент на основе функции полезности",
+      "section_id": 2,
+      "section": "Агенты",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": false,
+      "is_terminal": true,
+      "question": "Сравни два достижения цели с разной полезностью и обоснуй выбор агента.",
+      "provides": [
+        "выбирать действия по функции полезности",
+        "различать достижение цели и сравнительную предпочтительность исходов"
+      ],
+      "requires": [
+        "целеориентированный агент",
+        "сравнение числовых оценок исходов"
+      ],
+      "source_quality": "thin_source",
+      "source_pages": [
+        "Week 3 Lecture.pdf p.23",
+        "Week 3 Lecture.pdf p.24"
+      ]
+    },
+    {
+      "id": "AI-02-09",
+      "title": "Обучающийся агент и обратная связь",
+      "section_id": 2,
+      "section": "Агенты",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": false,
+      "is_terminal": true,
+      "question": "Объясни, как критик, элемент обучения и исполнитель влияют друг на друга на примере.",
+      "provides": [
+        "объяснять роли performance element, critic, learning element и problem generator",
+        "анализировать обратную связь для обучения агента"
+      ],
+      "requires": [
+        "агентная архитектура",
+        "понятие результата действия и оценочной обратной связи"
+      ],
+      "source_quality": "source_present_visuals_unverified",
+      "source_pages": [
+        "Week 3 Lecture.pdf p.25",
+        "Week 3 Lecture.pdf p.26"
+      ]
+    },
+    {
+      "id": "AI-03-01",
+      "title": "Назначение и архитектура экспертных систем",
+      "section_id": 3,
+      "section": "Экспертные системы",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": true,
+      "is_terminal": false,
+      "question": "Спроектируй структуру экспертной системы для диагностики и перечисли, что хранится в базе знаний.",
+      "provides": [
+        "объяснять назначение экспертной системы, базы знаний и механизма вывода",
+        "проектировать модули экспертной диагностики"
+      ],
+      "requires": [
+        "представление фактов и правил в предметной области"
+      ],
+      "source_quality": "source_present_visuals_unverified",
+      "source_pages": [
+        "Week 4 Lecture.pdf p.3",
+        "Week 4 Lecture.pdf p.4",
+        "Week 4 Lecture.pdf p.13"
+      ]
+    },
+    {
+      "id": "AI-03-02",
+      "title": "Получение знаний от эксперта",
+      "section_id": 3,
+      "section": "Экспертные системы",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": false,
+      "is_terminal": true,
+      "question": "Предложи способ извлечения и проверки правил от специалиста при создании экспертной системы.",
+      "provides": [
+        "выделять правила из интервью и примеров эксперта",
+        "объяснять проблему дороговизны получения и проверки знаний"
+      ],
+      "requires": [
+        "понятие базы знаний и правил экспертной системы"
+      ],
+      "source_quality": "thin_source",
+      "source_pages": [
+        "Week 4 Lecture.pdf p.14"
+      ]
+    },
+    {
+      "id": "AI-03-03",
+      "title": "ELIZA и системы сопоставления шаблонов",
+      "section_id": 3,
+      "section": "Экспертные системы",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": true,
+      "is_terminal": true,
+      "question": "Построй диалог, показывающий различие между шаблонными ответами и содержательным выводом.",
+      "provides": [
+        "объяснять шаблонное сопоставление в ELIZA",
+        "отличать имитацию беседы от семантического рассуждения"
+      ],
+      "requires": [
+        "понятие строки, шаблона и ответа системы"
+      ],
+      "source_quality": "source_present_visuals_unverified",
+      "source_pages": [
+        "Week 4 Lecture.pdf p.5",
+        "Week 4 Lecture.pdf p.6",
+        "Week 4 Lecture.pdf p.7"
+      ]
+    },
+    {
+      "id": "AI-03-04",
+      "title": "Зима искусственного интеллекта",
+      "section_id": 3,
+      "section": "Экспертные системы",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": false,
+      "is_terminal": true,
+      "question": "Свяжи ожидания от экспертных систем с их ограничениями и объясни спад интереса к ИИ.",
+      "provides": [
+        "объяснять причины и последствия зим ИИ",
+        "сопоставлять ожидания от экспертных систем с ресурсными ограничениями"
+      ],
+      "requires": [
+        "общее представление об экспертных системах и истории ИИ"
+      ],
+      "source_quality": "thin_source",
+      "source_pages": [
+        "Week 4 Lecture.pdf p.12"
+      ]
+    },
+    {
+      "id": "AI-03-05",
+      "title": "Логическое и императивное программирование",
+      "section_id": 3,
+      "section": "Экспертные системы",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": true,
+      "is_terminal": false,
+      "question": "Сравни решение одной задачи правилами и пошаговым алгоритмом.",
+      "provides": [
+        "различать декларативные отношения и императивные команды",
+        "выбирать способ записи решения на правилах"
+      ],
+      "requires": [
+        "элементарные условные конструкции и логическое утверждение"
+      ],
+      "source_quality": "source_present_visuals_unverified",
+      "source_pages": [
+        "Week 4 Lecture.pdf p.8",
+        "Week 4 Lecture.pdf p.9",
+        "Week 4 Lecture.pdf p.10",
+        "Week 4 Lecture.pdf p.11"
+      ]
+    },
+    {
+      "id": "AI-03-06",
+      "title": "Факты и правила Prolog",
+      "section_id": 3,
+      "section": "Экспертные системы",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": false,
+      "is_terminal": false,
+      "question": "Запиши факты и правила для малой предметной области и объясни их семантику.",
+      "provides": [
+        "записывать факты и правила в синтаксисе Prolog",
+        "объяснять смысл переменных и импликации в правиле"
+      ],
+      "requires": [
+        "логическое программирование",
+        "предикаты и отношения"
+      ],
+      "source_quality": "source_present_visuals_unverified",
+      "source_pages": [
+        "Tutorial 4. Prolog.pdf p.2",
+        "Tutorial 4. Prolog.pdf p.3",
+        "Tutorial 4. Prolog.pdf p.4",
+        "Tutorial 4. Prolog.pdf p.5",
+        "Tutorial 4. Prolog.pdf p.6",
+        "Week 04 Lab.pdf p.4",
+        "Week 04 Lab.pdf p.5",
+        "Week 04 Lab.pdf p.6"
+      ]
+    },
+    {
+      "id": "AI-03-07",
+      "title": "Запросы, сопоставление и логический вывод Prolog",
+      "section_id": 3,
+      "section": "Экспертные системы",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": false,
+      "is_terminal": false,
+      "question": "Предскажи результат нескольких запросов к базе знаний и объясни цепочку сопоставлений.",
+      "provides": [
+        "выполнять запросы Prolog через унификацию и поиск с возвратом",
+        "объяснять успех и неудачу запроса"
+      ],
+      "requires": [
+        "факты и правила Prolog",
+        "сопоставление переменных со значениями"
+      ],
+      "source_quality": "source_present_visuals_unverified",
+      "source_pages": [
+        "Tutorial 4. Prolog.pdf p.7",
+        "Tutorial 4. Prolog.pdf p.10",
+        "Tutorial 4. Prolog.pdf p.11",
+        "Tutorial 4. Prolog.pdf p.12",
+        "Tutorial 4. Prolog.pdf p.13",
+        "Tutorial 4. Prolog.pdf p.14"
+      ]
+    },
+    {
+      "id": "AI-03-08",
+      "title": "Термы, переменные, структуры и списки Prolog",
+      "section_id": 3,
+      "section": "Экспертные системы",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": false,
+      "is_terminal": false,
+      "question": "Составь запрос с составным термом и списком и объясни связывание переменных.",
+      "provides": [
+        "создавать атомарные и составные термы, списки и запросы",
+        "отслеживать связывание переменных"
+      ],
+      "requires": [
+        "факты, правила и запросы Prolog"
+      ],
+      "source_quality": "source_present_visuals_unverified",
+      "source_pages": [
+        "Tutorial 4. Prolog.pdf p.15",
+        "Week 4 Lecture.pdf p.21",
+        "Week 4 Lecture.pdf p.22",
+        "Week 4 Lecture.pdf p.23",
+        "Week 4 Lecture.pdf p.24",
+        "Week 4 Lecture.pdf p.25",
+        "Week 4 Lecture.pdf p.26",
+        "Week 4 Lecture.pdf p.27"
+      ]
+    },
+    {
+      "id": "AI-03-09",
+      "title": "Рекурсия и вычисления в Prolog",
+      "section_id": 3,
+      "section": "Экспертные системы",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": false,
+      "is_terminal": true,
+      "question": "Напиши рекурсивное правило для списка или факториала и разбери работу на примере.",
+      "provides": [
+        "писать базу и рекурсивный случай в Prolog",
+        "разбирать ход вычисления и завершение рекурсии"
+      ],
+      "requires": [
+        "термы и списки Prolog",
+        "унификация и поиск с возвратом",
+        "идея рекурсии"
+      ],
+      "source_quality": "source_present_visuals_unverified",
+      "source_pages": [
+        "Tutorial 4. Prolog.pdf p.20",
+        "Tutorial 4. Prolog.pdf p.21",
+        "Tutorial 4. Prolog.pdf p.22",
+        "Tutorial 4. Prolog.pdf p.23",
+        "Tutorial 4. Prolog.pdf p.24",
+        "Tutorial 4. Prolog.pdf p.25",
+        "Tutorial 4. Prolog.pdf p.26",
+        "Tutorial 4. Prolog.pdf p.27"
+      ]
+    },
+    {
+      "id": "AI-03-10",
+      "title": "Проектирование базы знаний семейных отношений",
+      "section_id": 3,
+      "section": "Экспертные системы",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": false,
+      "is_terminal": true,
+      "question": "Создай небольшую базу генеалогии, запроси две нетривиальные связи и проверь ответы.",
+      "provides": [
+        "моделировать родственные отношения фактами и правилами",
+        "проверять непрямые отношения запросами"
+      ],
+      "requires": [
+        "факты, правила и запросы Prolog",
+        "предикаты отношений"
+      ],
+      "source_quality": "source_present_visuals_unverified",
+      "source_pages": [
+        "Week 04 Lab.pdf p.9",
+        "Week 04 Lab.pdf p.10",
+        "Week 04 Lab.pdf p.11",
+        "Week 4 Lecture.pdf p.29",
+        "Week 4 Lecture.pdf p.30",
+        "Week 4 Lecture.pdf p.31",
+        "Week 4 Lecture.pdf p.32",
+        "Week 4 Lecture.pdf p.33"
+      ]
+    },
+    {
+      "id": "AI-04-01",
+      "title": "Формулировка задачи поиска и пространства состояний",
+      "section_id": 4,
+      "section": "Обучение через поиск",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": false,
+      "is_terminal": false,
+      "question": "Определи состояния, действия, цель и стоимость для новой задачи и покажи один переход.",
+      "provides": [
+        "задавать пространство состояний, действия, начальное состояние, цель и стоимость",
+        "моделировать переходы в задаче поиска"
+      ],
+      "requires": [
+        "понятие агента и цели",
+        "простейшее представление графа"
+      ],
+      "source_quality": "source_present_visuals_unverified",
+      "source_pages": [
+        "Lecture 5.pdf p.4",
+        "Lecture 5.pdf p.9"
+      ]
+    },
+    {
+      "id": "AI-04-02",
+      "title": "Информированный и неинформированный поиск",
+      "section_id": 4,
+      "section": "Обучение через поиск",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": false,
+      "is_terminal": true,
+      "question": "Сравни два поиска для одной задачи и укажи, откуда в одном берётся дополнительная информация.",
+      "provides": [
+        "различать информированный и неинформированный поиск",
+        "описывать роль априорной информации о цели"
+      ],
+      "requires": [
+        "пространство состояний и действия",
+        "понятие стоимости поиска"
+      ],
+      "source_quality": "shared_only_review_required",
+      "source_pages": [
+        "Lecture 5.pdf p.5",
+        "Lecture 5.pdf p.6",
+        "Lecture 5.pdf p.11"
+      ]
+    },
+    {
+      "id": "AI-04-03",
+      "title": "Поиск в глубину и представление дерева",
+      "section_id": 4,
+      "section": "Обучение через поиск",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": false,
+      "is_terminal": false,
+      "question": "Проведи поиск в глубину на графе с циклом и покажи стек и множество посещённых.",
+      "provides": [
+        "выполнять DFS со стеком и учётом посещений",
+        "объяснять эффекты порядка соседей и циклов"
+      ],
+      "requires": [
+        "деревья/графы и представление состояний",
+        "пространство поиска"
+      ],
+      "source_quality": "shared_only_review_required",
+      "source_pages": [
+        "Lecture 5.pdf p.11",
+        "Lecture 5.pdf p.12"
+      ]
+    },
+    {
+      "id": "AI-04-04",
+      "title": "Поиск с возвратом и отсечение ветвей",
+      "section_id": 4,
+      "section": "Обучение через поиск",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": false,
+      "is_terminal": false,
+      "question": "Реши маленькую задачу ограничений backtracking и поясни момент отката.",
+      "provides": [
+        "решать задачу перебором с возвратом и отсечением",
+        "объяснять локальные ограничения и откат"
+      ],
+      "requires": [
+        "дерево перебора и рекурсивные вызовы",
+        "проверка ограничения"
+      ],
+      "source_quality": "source_present_visuals_unverified",
+      "source_pages": [
+        "Lab 4 (without solution).pdf p.4",
+        "Lecture 5.pdf p.13",
+        "Lecture 5.pdf p.14"
+      ]
+    },
+    {
+      "id": "AI-04-05",
+      "title": "Расстановка N ферзей",
+      "section_id": 4,
+      "section": "Обучение через поиск",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": false,
+      "is_terminal": true,
+      "question": "Реши 4-queens с пошаговыми проверками ограничений и отсечениями.",
+      "provides": [
+        "моделировать N-queens как задачу с ограничениями",
+        "применять backtracking и отсечение недопустимых ходов"
+      ],
+      "requires": [
+        "поиск с возвратом",
+        "представление шахматной доски и атаки ферзя"
+      ],
+      "source_quality": "source_present_visuals_unverified",
+      "source_pages": [
+        "Lab 4 (without solution).pdf p.9",
+        "Lab 4 (without solution).pdf p.10"
+      ]
+    },
+    {
+      "id": "AI-04-06",
+      "title": "Эвристическая функция",
+      "section_id": 4,
+      "section": "Обучение через поиск",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": false,
+      "is_terminal": false,
+      "question": "Предложи оценку h для 8-puzzle и обоснуй, какую информацию она даёт поиску и почему сама по себе не гарантирует оптимальность.",
+      "provides": [
+        "конструировать эвристическую оценку состояния",
+        "различать информативность и вычислительную цену эвристики"
+      ],
+      "requires": [
+        "пространство состояний",
+        "различие оценки и фактической стоимости"
+      ],
+      "source_quality": "boundary_review_required",
+      "source_pages": [
+        "Lecture 5.pdf p.15"
+      ]
+    },
+    {
+      "id": "AI-04-07",
+      "title": "Допустимость эвристики",
+      "section_id": 4,
+      "section": "Обучение через поиск",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": false,
+      "is_terminal": false,
+      "question": "Определи на конкретных оценках, допустима ли эвристика, и покажи контрпример.",
+      "provides": [
+        "проверять h(n)≤h*(n) для допустимости",
+        "объяснять связь недооценки и оптимальности поиска"
+      ],
+      "requires": [
+        "эвристическая оценка",
+        "минимальная стоимость до цели"
+      ],
+      "source_quality": "source_present_visuals_unverified",
+      "source_pages": [
+        "Lecture 5.pdf p.16"
+      ]
+    },
+    {
+      "id": "AI-04-08",
+      "title": "Согласованность эвристики",
+      "section_id": 4,
+      "section": "Обучение через поиск",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": false,
+      "is_terminal": true,
+      "question": "Проверь согласованность эвристики на нескольких рёбрах графа и объясни следствие.",
+      "provides": [
+        "проверять h(n)≤c(n,n')+h(n') на ребре",
+        "объяснять согласованность и монотонность оценок"
+      ],
+      "requires": [
+        "эвристическая оценка",
+        "стоимость ребра",
+        "допустимость эвристики"
+      ],
+      "source_quality": "source_present_visuals_unverified",
+      "source_pages": [
+        "Lecture 5.pdf p.17"
+      ]
+    },
+    {
+      "id": "AI-04-09",
+      "title": "Минимакс и дерево игры",
+      "section_id": 4,
+      "section": "Обучение через поиск",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": false,
+      "is_terminal": false,
+      "question": "Вычисли значения внутренних узлов дерева игры и выбери оптимальный первый ход.",
+      "provides": [
+        "распространять значения minimax по игровому дереву",
+        "выбирать ход при противодействии соперника"
+      ],
+      "requires": [
+        "дерево состояний",
+        "понятие выигрыша/оценки позиции"
+      ],
+      "source_quality": "source_present_visuals_unverified",
+      "source_pages": [
+        "Lecture 5.pdf p.18",
+        "Lecture 5.pdf p.19",
+        "Lecture 5.pdf p.20",
+        "Lecture 5.pdf p.21",
+        "Lecture 5.pdf p.22",
+        "Lecture 5.pdf p.23",
+        "Tutorial 5.pdf p.1"
+      ]
+    },
+    {
+      "id": "AI-04-10",
+      "title": "Альфа-бета-отсечение",
+      "section_id": 4,
+      "section": "Обучение через поиск",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": false,
+      "is_terminal": true,
+      "question": "Выполни альфа-бета поиск на размеченном дереве и укажи точно отброшенные ветви.",
+      "provides": [
+        "проводить alpha-beta отсечение и вести α/β границы",
+        "объяснять сохранение оптимального minimax-хода"
+      ],
+      "requires": [
+        "минимакс и оценки игрового дерева",
+        "упорядочение обхода дерева"
+      ],
+      "source_quality": "source_present_visuals_unverified",
+      "source_pages": [
+        "Lecture 5.pdf p.24",
+        "Lecture 5.pdf p.25",
+        "Lecture 5.pdf p.26",
+        "Lecture 5.pdf p.27",
+        "Lecture 5.pdf p.28",
+        "Lecture 5.pdf p.29",
+        "Lecture 5.pdf p.30",
+        "Tutorial 5.pdf p.2"
+      ]
+    },
+    {
+      "id": "AI-04-11",
+      "title": "Жадный выбор и его локальная оптимальность",
+      "section_id": 4,
+      "section": "Обучение через поиск",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": false,
+      "is_terminal": false,
+      "question": "Покажи задачу, где жадный выбор проигрывает глобальному оптимуму, и объясни причину.",
+      "provides": [
+        "объяснять локальный жадный выбор",
+        "строить контрпример к глобальной оптимальности"
+      ],
+      "requires": [
+        "пространство состояний и локальный критерий выбора"
+      ],
+      "source_quality": "source_present_visuals_unverified",
+      "source_pages": [
+        "Lecture 5.pdf p.31",
+        "Lecture 5.pdf p.32",
+        "Lecture 5.pdf p.33",
+        "Lecture 5.pdf p.34",
+        "Lecture 5.pdf p.35",
+        "Lecture 5.pdf p.36"
+      ]
+    },
+    {
+      "id": "AI-04-12",
+      "title": "Поиск с восхождением к вершине",
+      "section_id": 4,
+      "section": "Обучение через поиск",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": false,
+      "is_terminal": false,
+      "question": "Проведи hill climbing по соседним состояниям и объясни, где и почему он остановится.",
+      "provides": [
+        "выполнять hill climbing по соседям",
+        "объяснять выбор следующего состояния и остановку"
+      ],
+      "requires": [
+        "функция оценки состояния",
+        "окрестность и локальные шаги"
+      ],
+      "source_quality": "source_present_visuals_unverified",
+      "source_pages": [
+        "Lecture 5.pdf p.37",
+        "Lecture 5.pdf p.38",
+        "Lecture 5.pdf p.39",
+        "Lecture 5.pdf p.40",
+        "Lecture 5.pdf p.41",
+        "Lecture 5.pdf p.42",
+        "Lecture 5.pdf p.44",
+        "Lecture 5.pdf p.45"
+      ]
+    },
+    {
+      "id": "AI-04-13",
+      "title": "Локальные оптимумы, плато и перезапуски",
+      "section_id": 4,
+      "section": "Обучение через поиск",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": false,
+      "is_terminal": true,
+      "question": "Диагностируй сбой локального поиска на ландшафте и выбери стратегию выхода.",
+      "provides": [
+        "распознавать плато, локальный экстремум и ребро плато",
+        "предлагать перезапуск или изменение окрестности"
+      ],
+      "requires": [
+        "hill climbing",
+        "локальная функция качества"
+      ],
+      "source_quality": "source_present_visuals_unverified",
+      "source_pages": [
+        "Lecture 5.pdf p.54",
+        "Lecture 5.pdf p.55"
+      ]
+    },
+    {
+      "id": "AI-04-14",
+      "title": "Имитация отжига",
+      "section_id": 4,
+      "section": "Обучение через поиск",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": false,
+      "is_terminal": true,
+      "question": "Проведи несколько шагов simulated annealing и обоснуй принятие ухудшающего хода.",
+      "provides": [
+        "рассчитывать вероятность принятия ухудшающего перехода при температуре",
+        "объяснять охлаждение и выход из локального экстремума"
+      ],
+      "requires": [
+        "локальный поиск и функция качества",
+        "экспонента и вероятность"
+      ],
+      "source_quality": "source_present_visuals_unverified",
+      "source_pages": [
+        "Week 6 Lecture.pdf p.4",
+        "Week 6 Lecture.pdf p.5",
+        "Week 6 Lecture.pdf p.6",
+        "Week 6 Lecture.pdf p.7",
+        "Week 6 Tutorial_Covered.pdf p.13",
+        "Week 6 Tutorial_Covered.pdf p.14",
+        "Week 6 Tutorial_Covered.pdf p.15",
+        "Week 6 Tutorial_Covered.pdf p.16"
+      ]
+    },
+    {
+      "id": "AI-04-15",
+      "title": "Дилемма исследования и использования",
+      "section_id": 4,
+      "section": "Обучение через поиск",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": true,
+      "is_terminal": false,
+      "question": "Предложи стратегию exploration-exploitation для агента и объясни, как она меняется со временем.",
+      "provides": [
+        "объяснять компромисс между пробой альтернатив и эксплуатацией лучшего",
+        "проектировать правило переключения стратегии"
+      ],
+      "requires": [
+        "понятие неопределённой награды и действия",
+        "вероятностный выбор"
+      ],
+      "source_quality": "source_present_visuals_unverified",
+      "source_pages": [
+        "Week 6 Lab 5 (without solution).pdf p.3",
+        "Week 6 Lab 5 (without solution).pdf p.4",
+        "Week 6 Lab 5 (without solution).pdf p.5",
+        "Week 6 Lab 5 (without solution).pdf p.6",
+        "Week 6 Lab 5 (without solution).pdf p.7",
+        "Week 6 Lab 5 (without solution).pdf p.8",
+        "Week 6 Lab 5 (without solution).pdf p.9",
+        "Week 6 Lab 5 (without solution).pdf p.10"
+      ]
+    },
+    {
+      "id": "AI-04-16",
+      "title": "Функция оценки A* f=g+h",
+      "section_id": 4,
+      "section": "Обучение через поиск",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": false,
+      "is_terminal": false,
+      "question": "Рассчитай f, g, h нескольких узлов и выбери следующий для раскрытия.",
+      "provides": [
+        "вычислять g, h и f=g+h",
+        "интерпретировать вклад стоимости пути и оценки остатка"
+      ],
+      "requires": [
+        "поиск пути и накопленная стоимость",
+        "эвристическая оценка"
+      ],
+      "source_quality": "source_present_visuals_unverified",
+      "source_pages": [
+        "Week 6 Lecture.pdf p.14",
+        "Week 6 Lecture.pdf p.15"
+      ]
+    },
+    {
+      "id": "AI-04-17",
+      "title": "Алгоритм A* и списки OPEN/CLOSED",
+      "section_id": 4,
+      "section": "Обучение через поиск",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": false,
+      "is_terminal": true,
+      "question": "На небольшой карте выполни шаги A* с OPEN/CLOSED, вычисли f=g+h и восстанови путь, пояснив критерий выбора следующего состояния.",
+      "provides": [
+        "проводить A* с OPEN/CLOSED и пересчётом стоимости",
+        "восстанавливать путь и обсуждать условия оптимальности"
+      ],
+      "requires": [
+        "оценка f=g+h",
+        "граф и представление пути",
+        "работа очереди с приоритетом"
+      ],
+      "source_quality": "boundary_review_required",
+      "source_pages": [
+        "Week 6 Lab 5 (without solution).pdf p.26",
+        "Week 6 Lab 5 (without solution).pdf p.27",
+        "Week 6 Lab 5 (without solution).pdf p.28",
+        "Week 6 Lecture.pdf p.17",
+        "Week 6 Lecture.pdf p.18",
+        "Week 6 Lecture.pdf p.19",
+        "Week 6 Lecture.pdf p.20",
+        "Week 6 Lecture.pdf p.21"
+      ]
+    },
+    {
+      "id": "AI-04-18",
+      "title": "Модель соседства на сетке для поиска пути",
+      "section_id": 4,
+      "section": "Обучение через поиск",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": false,
+      "is_terminal": true,
+      "question": "Сравни допустимые ходы и эвристики для окрестностей Мура и фон Неймана.",
+      "provides": [
+        "различать окрестности Мура и фон Неймана",
+        "связывать допустимые переходы и стоимость движения на сетке"
+      ],
+      "requires": [
+        "сетка как граф",
+        "состояние и действие перемещения"
+      ],
+      "source_quality": "source_present_visuals_unverified",
+      "source_pages": [
+        "Week 6 Lab 5 (without solution).pdf p.21",
+        "Week 6 Lab 5 (without solution).pdf p.22",
+        "Week 6 Lab 5 (without solution).pdf p.23",
+        "Week 6 Lab 5 (without solution).pdf p.24",
+        "Week 6 Lab 5 (without solution).pdf p.25"
+      ]
+    },
+    {
+      "id": "AI-04-19",
+      "title": "Табу-поиск и запрещённые ходы",
+      "section_id": 4,
+      "section": "Обучение через поиск",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": false,
+      "is_terminal": false,
+      "question": "Пройди несколько итераций tabu search и объясни роль tabu list.",
+      "provides": [
+        "выполнять итерации tabu search с памятью запрещённых переходов",
+        "объяснять предотвращение зацикливания"
+      ],
+      "requires": [
+        "локальный поиск",
+        "критерий качества соседнего решения"
+      ],
+      "source_quality": "source_present_visuals_unverified",
+      "source_pages": [
+        "Week 6 Lecture.pdf p.48",
+        "Week 6 Tutorial_Covered.pdf p.2",
+        "Week 6 Tutorial_Covered.pdf p.3",
+        "Week 6 Tutorial_Covered.pdf p.4",
+        "Week 6 Tutorial_Covered.pdf p.5",
+        "Week 6 Tutorial_Covered.pdf p.6",
+        "Week 6 Tutorial_Covered.pdf p.7",
+        "Week 6 Tutorial_Covered.pdf p.8"
+      ]
+    },
+    {
+      "id": "AI-04-20",
+      "title": "Длительность запрета и критерий aspiration",
+      "section_id": 4,
+      "section": "Обучение через поиск",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": false,
+      "is_terminal": true,
+      "question": "Приведи случай, когда следует снять табу, и вычисли срок хранения запрета.",
+      "provides": [
+        "задавать tabu tenure и aspiration criterion",
+        "объяснять исключения из списка запретов"
+      ],
+      "requires": [
+        "tabu search и список запрещённых ходов",
+        "качество текущего и лучшего решения"
+      ],
+      "source_quality": "source_present_visuals_unverified",
+      "source_pages": [
+        "Week 6 Tutorial_Covered.pdf p.11",
+        "Week 6 Tutorial_Covered.pdf p.12"
+      ]
+    },
+    {
+      "id": "AI-04-21",
+      "title": "Мир Wumpus как задача поиска",
+      "section_id": 4,
+      "section": "Обучение через поиск",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": false,
+      "is_terminal": true,
+      "question": "Опиши состояния, наблюдения и разрешённые ходы Wumpus-агента для безопасного маршрута.",
+      "provides": [
+        "моделировать правила и восприятия Wumpus",
+        "обосновывать безопасный шаг с учётом известных опасностей"
+      ],
+      "requires": [
+        "агент и частичная наблюдаемость",
+        "пространство состояний",
+        "простые логические утверждения"
+      ],
+      "source_quality": "source_present_visuals_unverified",
+      "source_pages": [
+        "Lab 4 (without solution).pdf p.11",
+        "Lab 4 (without solution).pdf p.12",
+        "Lab 4 (without solution).pdf p.13",
+        "Lab 4 (without solution).pdf p.14",
+        "Lab 4 (without solution).pdf p.15",
+        "Tutorial 3.pdf p.31",
+        "Tutorial 3.pdf p.32",
+        "Tutorial 3.pdf p.33"
+      ]
+    },
+    {
+      "id": "AI-04-22",
+      "title": "Ландшафт приспособленности и бассейны притяжения",
+      "section_id": 4,
+      "section": "Обучение через поиск",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": false,
+      "is_terminal": false,
+      "question": "Построй ландшафт малого поиска, определи локальные максимумы и бассейны притяжения.",
+      "provides": [
+        "рисовать ландшафт качества, локальные оптимумы и бассейны притяжения",
+        "связывать геометрию поверхности с поведением поиска"
+      ],
+      "requires": [
+        "локальный поиск и функция качества",
+        "окрестности решений"
+      ],
+      "source_quality": "source_present_visuals_unverified",
+      "source_pages": [
+        "Week 7 Lecture.pdf p.39",
+        "Week 7 Lecture.pdf p.40",
+        "Week 7 Lecture.pdf p.45",
+        "Week 7 Lecture.pdf p.46",
+        "Week 7 Lecture.pdf p.47",
+        "Week 7 Lecture.pdf p.48"
+      ]
+    },
+    {
+      "id": "AI-04-23",
+      "title": "Измерение сложности ландшафта случайными блужданиями",
+      "section_id": 4,
+      "section": "Обучение через поиск",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": false,
+      "is_terminal": true,
+      "question": "Объясни, как информационное содержание по случайным блужданиям характеризует ландшафт.",
+      "provides": [
+        "описывать случайное блуждание по ландшафту и показатели сложности",
+        "интерпретировать их для трудности оптимизации"
+      ],
+      "requires": [
+        "ландшафт приспособленности",
+        "случайный переход между соседними состояниями"
+      ],
+      "source_quality": "source_present_visuals_unverified",
+      "source_pages": [
+        "Week 7 Lecture.pdf p.52",
+        "Week 7 Lecture.pdf p.53",
+        "Week 7 Lecture.pdf p.54",
+        "Week 7 Lecture.pdf p.55"
+      ]
+    },
+    {
+      "id": "AI-05-01",
+      "title": "Метод Монте-Карло и случайные проигрывания",
+      "section_id": 5,
+      "section": "Поиск по дереву Монте-Карло",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": false,
+      "is_terminal": false,
+      "question": "Оцени два игровых действия серией случайных проигрываний и интерпретируй оценки.",
+      "provides": [
+        "оценивать действия случайными симуляциями и средними наградами",
+        "различать выборочную оценку и истинное качество хода"
+      ],
+      "requires": [
+        "игровые состояния, исходы и награды",
+        "элементарное усреднение"
+      ],
+      "source_quality": "source_present_visuals_unverified",
+      "source_pages": [
+        "Week 7 Lecture.pdf p.4",
+        "Week 7 Lecture.pdf p.5",
+        "Week 7 Lecture.pdf p.6"
+      ]
+    },
+    {
+      "id": "AI-05-02",
+      "title": "Мотивация частичного построения дерева MCTS",
+      "section_id": 5,
+      "section": "Поиск по дереву Монте-Карло",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": false,
+      "is_terminal": true,
+      "question": "Объясни, почему полный minimax становится непрактичным для Go, а MCTS исследует часть дерева.",
+      "provides": [
+        "объяснять рост полного дерева игры и мотивацию частичного обхода",
+        "сопоставлять minimax и выборочное дерево MCTS"
+      ],
+      "requires": [
+        "игровое дерево и minimax",
+        "принцип случайного проигрывания"
+      ],
+      "source_quality": "source_present_visuals_unverified",
+      "source_pages": [
+        "Week 7 Lab_noSol.pdf p.3",
+        "Week 7 Lecture.pdf p.7",
+        "Week 7 Lecture.pdf p.8",
+        "Week 7 Lecture.pdf p.9",
+        "Week 7 Lecture.pdf p.10",
+        "Week 7 Lecture.pdf p.35"
+      ]
+    },
+    {
+      "id": "AI-05-03",
+      "title": "Полный цикл MCTS: selection, expansion, rollout, backpropagation",
+      "section_id": 5,
+      "section": "Поиск по дереву Монте-Карло",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": false,
+      "is_terminal": false,
+      "question": "На миниатюрном дереве игры Connect Four выполни один цикл MCTS: выбери узел, расширь, проведи rollout и обнови статистику посещений и наград.",
+      "provides": [
+        "выполнять четыре фазы MCTS",
+        "обновлять статистику дерева по результатам проигрывания"
+      ],
+      "requires": [
+        "правила игры и представление дерева состояний",
+        "случайный rollout и значение награды"
+      ],
+      "source_quality": "source_present_visuals_unverified",
+      "source_pages": [
+        "Week 7 Lab_noSol.pdf p.4",
+        "Week 7 Lab_noSol.pdf p.6",
+        "Week 7 Lecture.pdf p.14",
+        "Week 7 Lecture.pdf p.15"
+      ]
+    },
+    {
+      "id": "AI-05-04",
+      "title": "Статистика посещений и наград MCTS",
+      "section_id": 5,
+      "section": "Поиск по дереву Монте-Карло",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": false,
+      "is_terminal": false,
+      "question": "Обнови статистику узлов после двух роллаутов и выбери предпочтительное действие.",
+      "provides": [
+        "обновлять число посещений и сумму/среднюю награду дерева",
+        "отслеживать обратное распространение результата"
+      ],
+      "requires": [
+        "четыре этапа MCTS",
+        "счётчик и среднее по наблюдениям"
+      ],
+      "source_quality": "shared_only_review_required",
+      "source_pages": [
+        "Week 7 Lecture.pdf p.16",
+        "Week 7 Lecture.pdf p.17",
+        "Week 7 Lecture.pdf p.18",
+        "Week 7 Lecture.pdf p.19",
+        "Week 7 Lecture.pdf p.20",
+        "Week 7 Lecture.pdf p.21",
+        "Week 7 Lecture.pdf p.22",
+        "Week 7 Lecture.pdf p.23"
+      ]
+    },
+    {
+      "id": "AI-05-05",
+      "title": "Баланс исследования и использования в UCT",
+      "section_id": 5,
+      "section": "Поиск по дереву Монте-Карло",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": false,
+      "is_terminal": true,
+      "question": "По заданным посещениям и наградам сравни UCT двух детей и объясни оба слагаемых.",
+      "provides": [
+        "рассчитывать UCT из exploitation и exploration",
+        "объяснять влияние коэффициента и числа посещений"
+      ],
+      "requires": [
+        "награды и посещения узлов MCTS",
+        "логарифм и квадратный корень",
+        "дилемма исследования и использования"
+      ],
+      "source_quality": "shared_only_review_required",
+      "source_pages": [
+        "Week 7 Lecture.pdf p.26",
+        "Week 7 Lecture.pdf p.27",
+        "Week 7 Lecture.pdf p.28",
+        "Week 7 Lecture.pdf p.29",
+        "Week 7 Lecture.pdf p.30",
+        "Week 7 Lecture.pdf p.31",
+        "Week 7 Lecture.pdf p.32",
+        "Week 7 Lecture.pdf p.33"
+      ]
+    },
+    {
+      "id": "AI-05-07",
+      "title": "Выбор финального действия по статистике MCTS",
+      "section_id": 5,
+      "section": "Поиск по дереву Монте-Карло",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": false,
+      "is_terminal": true,
+      "question": "На основе статистики посещений и побед нескольких детей корня выбери финальный ход MCTS и объясни, почему не всегда следует брать максимальный процент побед.",
+      "provides": [
+        "выбирать итоговое действие MCTS по числу посещений",
+        "учитывать неопределённость небольших выборок"
+      ],
+      "requires": [
+        "визиты и награды узлов дерева MCTS"
+      ],
+      "source_quality": "shared_only_review_required",
+      "source_pages": [
+        "Week 7 Lecture.pdf p.32",
+        "Week 7 Lecture.pdf p.33",
+        "Week 7 Lecture.pdf p.34"
+      ]
+    },
+    {
+      "id": "AI-05-08",
+      "title": "Параллелизация Monte Carlo Tree Search",
+      "section_id": 5,
+      "section": "Поиск по дереву Монте-Карло",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": false,
+      "is_terminal": true,
+      "question": "Для ускорения MCTS сравни leaf, root и tree parallelization, выбери одну схему для заданных условий и укажи проблему синхронизации.",
+      "provides": [
+        "сравнивать три схемы параллельного MCTS",
+        "объяснять конфликты одновременных обновлений дерева"
+      ],
+      "requires": [
+        "MCTS-дерево, rollout и накопленная статистика",
+        "параллельные вычисления и общий доступ к данным"
+      ],
+      "source_quality": "thin_source",
+      "source_pages": [
+        "Week 7 Lecture.pdf p.36"
+      ]
+    },
+    {
+      "id": "AI-06-01",
+      "title": "Планирование как поиск последовательности действий",
+      "section_id": 6,
+      "section": "Язык определения проблемной области планирования (PDDL)",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": false,
+      "is_terminal": false,
+      "question": "Сформулируй planning-задачу с началом, целью и последовательностью действий.",
+      "provides": [
+        "формализовать планирование как последовательность действий от начального к целевому состоянию",
+        "различать действие и план"
+      ],
+      "requires": [
+        "агентная цель",
+        "представление состояний и переходов"
+      ],
+      "source_quality": "source_present_visuals_unverified",
+      "source_pages": [
+        "PDDL (Lecture +Tutorial).pdf p.2",
+        "PDDL (Lecture +Tutorial).pdf p.3",
+        "PDDL (Lecture +Tutorial).pdf p.4",
+        "PDDL (Lecture +Tutorial).pdf p.5",
+        "PDDL (Lecture +Tutorial).pdf p.6",
+        "PDDL (Lecture +Tutorial).pdf p.7"
+      ]
+    },
+    {
+      "id": "AI-06-02",
+      "title": "Структура PDDL domain/problem на примере задач планирования",
+      "section_id": 6,
+      "section": "Язык определения проблемной области планирования (PDDL)",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": false,
+      "is_terminal": false,
+      "question": "Для заданного мира (например Wumpus) раздели описание на domain и problem, покажи место объектов, действий, начального состояния и цели.",
+      "provides": [
+        "разделять общие правила области и конкретный экземпляр задачи в PDDL",
+        "составлять каркас domain и problem для небольшого мира"
+      ],
+      "requires": [
+        "понятие состояния, действия и цели",
+        "предикатная запись фактов"
+      ],
+      "source_quality": "source_present_visuals_unverified",
+      "source_pages": [
+        "PDDL (Lecture +Tutorial).pdf p.12",
+        "PDDL (Lecture +Tutorial).pdf p.14",
+        "Week 9 Lab.pdf p.10"
+      ]
+    },
+    {
+      "id": "AI-06-03",
+      "title": "Предикаты, объекты и типы в PDDL",
+      "section_id": 6,
+      "section": "Язык определения проблемной области планирования (PDDL)",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": false,
+      "is_terminal": false,
+      "question": "Задай объекты и предикаты предметной области и проверь правильность типизации.",
+      "provides": [
+        "описать типы, объекты и предикаты PDDL",
+        "проверять корректность описания фактов"
+      ],
+      "requires": [
+        "domain/problem PDDL",
+        "предикаты и отношения"
+      ],
+      "source_quality": "shared_only_review_required",
+      "source_pages": [
+        "PDDL (Lecture +Tutorial).pdf p.15",
+        "PDDL (Lecture +Tutorial).pdf p.16",
+        "PDDL (Lecture +Tutorial).pdf p.17",
+        "PDDL (Lecture +Tutorial).pdf p.18",
+        "Week 9 Lab.pdf p.4",
+        "Week 9 Lab.pdf p.5",
+        "Week 9 Lab.pdf p.6",
+        "Week 9 Lab.pdf p.7"
+      ]
+    },
+    {
+      "id": "AI-06-04",
+      "title": "Предусловия, действия и эффекты PDDL",
+      "section_id": 6,
+      "section": "Язык определения проблемной области планирования (PDDL)",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": false,
+      "is_terminal": false,
+      "question": "Определи действие с предусловием, add и delete effects и вычисли новое состояние.",
+      "provides": [
+        "определять параметры действия, предусловия, добавляемые и удаляемые факты",
+        "вычислять новое состояние"
+      ],
+      "requires": [
+        "предикаты PDDL",
+        "планирование как переход состояний"
+      ],
+      "source_quality": "shared_only_review_required",
+      "source_pages": [
+        "PDDL (Lecture +Tutorial).pdf p.17",
+        "PDDL (Lecture +Tutorial).pdf p.18",
+        "PDDL (Lecture +Tutorial).pdf p.19",
+        "PDDL (Lecture +Tutorial).pdf p.20",
+        "PDDL (Lecture +Tutorial).pdf p.21",
+        "PDDL (Lecture +Tutorial).pdf p.22"
+      ]
+    },
+    {
+      "id": "AI-06-05",
+      "title": "Начальное состояние и целевое условие",
+      "section_id": 6,
+      "section": "Язык определения проблемной области планирования (PDDL)",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": false,
+      "is_terminal": false,
+      "question": "Запиши PDDL-проблему с исходными фактами и проверяемой целью.",
+      "provides": [
+        "задавать init/goal и объектные экземпляры PDDL",
+        "проверять истинность целевого условия"
+      ],
+      "requires": [
+        "domain/problem PDDL",
+        "предикаты и объекты PDDL"
+      ],
+      "source_quality": "shared_only_review_required",
+      "source_pages": [
+        "PDDL (Lecture +Tutorial).pdf p.16",
+        "PDDL (Lecture +Tutorial).pdf p.17",
+        "PDDL (Lecture +Tutorial).pdf p.18",
+        "PDDL (Lecture +Tutorial).pdf p.19",
+        "PDDL (Lecture +Tutorial).pdf p.20",
+        "Week 9 Lab.pdf p.8",
+        "Week 9 Lab.pdf p.9"
+      ]
+    },
+    {
+      "id": "AI-06-06",
+      "title": "Получение и проверка плана PDDL-планировщиком",
+      "section_id": 6,
+      "section": "Язык определения проблемной области планирования (PDDL)",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": false,
+      "is_terminal": false,
+      "question": "В задаче с переключателями проверь план из трёх действий: для каждого шага рассчитай состояние, найди недопустимый переход и установи, выполнена ли цель.",
+      "provides": [
+        "проверять выполнимость действий в плане и достижимость цели",
+        "диагностировать неверный план"
+      ],
+      "requires": [
+        "предусловия и эффекты PDDL",
+        "начальное и целевое состояние"
+      ],
+      "source_quality": "shared_only_review_required",
+      "source_pages": [
+        "PDDL (Lecture +Tutorial).pdf p.13",
+        "PDDL (Lecture +Tutorial).pdf p.19",
+        "PDDL (Lecture +Tutorial).pdf p.20",
+        "PDDL (Lecture +Tutorial).pdf p.21",
+        "PDDL (Lecture +Tutorial).pdf p.22"
+      ]
+    },
+    {
+      "id": "AI-06-07",
+      "title": "Временное планирование в PDDL 2.1",
+      "section_id": 6,
+      "section": "Язык определения проблемной области планирования (PDDL)",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": false,
+      "is_terminal": true,
+      "question": "Опиши длительное действие с временными ограничениями и объясни отличие от классического PDDL.",
+      "provides": [
+        "различать мгновенные и длительные действия PDDL 2.1",
+        "моделировать интервальные условия и эффекты"
+      ],
+      "requires": [
+        "классические PDDL-действия и предикаты",
+        "время и длительность"
+      ],
+      "source_quality": "source_present_visuals_unverified",
+      "source_pages": [
+        "PDDL (Lecture +Tutorial).pdf p.23",
+        "PDDL (Lecture +Tutorial).pdf p.24",
+        "PDDL (Lecture +Tutorial).pdf p.25",
+        "PDDL (Lecture +Tutorial).pdf p.26",
+        "PDDL (Lecture +Tutorial).pdf p.27",
+        "PDDL (Lecture +Tutorial).pdf p.28",
+        "PDDL (Lecture +Tutorial).pdf p.29"
+      ]
+    },
+    {
+      "id": "AI-06-08",
+      "title": "PDDL и исполнение планов в робототехнике через ROSPlan",
+      "section_id": 6,
+      "section": "Язык определения проблемной области планирования (PDDL)",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": false,
+      "is_terminal": true,
+      "question": "Объясни, как задача из PDDL превращается в исполнение и обратную связь у робота.",
+      "provides": [
+        "связывать генерацию PDDL-плана с выполнением роботом через ROSPlan",
+        "объяснять мониторинг и перепланирование"
+      ],
+      "requires": [
+        "domain/problem и проверка плана PDDL",
+        "агентные сенсоры и исполнительные механизмы"
+      ],
+      "source_quality": "source_present_visuals_unverified",
+      "source_pages": [
+        "PDDL (Lecture +Tutorial).pdf p.30",
+        "PDDL (Lecture +Tutorial).pdf p.31",
+        "PDDL (Lecture +Tutorial).pdf p.32",
+        "PDDL (Lecture +Tutorial).pdf p.33",
+        "PDDL (Lecture +Tutorial).pdf p.34",
+        "PDDL (Lecture +Tutorial).pdf p.35",
+        "PDDL (Lecture +Tutorial).pdf p.36",
+        "PDDL (Lecture +Tutorial).pdf p.37"
+      ]
+    },
+    {
+      "id": "AI-07-01",
+      "title": "Эволюционный цикл популяции решений",
+      "section_id": 7,
+      "section": "Эволюционные вычисления",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": true,
+      "is_terminal": false,
+      "question": "Разбери одну итерацию EA: представление, fitness, selection, variation и replacement.",
+      "provides": [
+        "объяснять цикл initialize→evaluate→select→vary→replace",
+        "прослеживать изменения популяции"
+      ],
+      "requires": [
+        "представление задачи оптимизации",
+        "критерий качества кандидата"
+      ],
+      "source_quality": "source_present_visuals_unverified",
+      "source_pages": [
+        "Week 10 Lecture.pdf p.5",
+        "Week 10 Lecture.pdf p.6",
+        "Week 10 Lecture.pdf p.7"
+      ]
+    },
+    {
+      "id": "AI-07-02",
+      "title": "Фитнес-функция и отбор",
+      "section_id": 7,
+      "section": "Эволюционные вычисления",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": false,
+      "is_terminal": false,
+      "question": "Предложи функцию приспособленности и сравни последствия двух разных шкал оценки.",
+      "provides": [
+        "конструировать функцию приспособленности и сравнивать способы отбора",
+        "объяснять давление отбора"
+      ],
+      "requires": [
+        "популяция кандидатов",
+        "измеримая целевая функция"
+      ],
+      "source_quality": "shared_only_review_required",
+      "source_pages": [
+        "Week 10 Lecture.pdf p.8",
+        "Week 10 Lecture.pdf p.9",
+        "Week 10 Lecture.pdf p.10",
+        "Week 7 Lecture.pdf p.41",
+        "Week 7 Lecture.pdf p.42",
+        "Week 7 Lecture.pdf p.43",
+        "Week 7 Lecture.pdf p.44"
+      ]
+    },
+    {
+      "id": "AI-07-03",
+      "title": "Пропорциональный отбор roulette wheel",
+      "section_id": 7,
+      "section": "Эволюционные вычисления",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": false,
+      "is_terminal": true,
+      "question": "Для fitness 2, 3 и 5 вычисли вероятности roulette-wheel отбора и продемонстрируй выбор родителей по двум значениям случайной величины из [0,1].",
+      "provides": [
+        "вычислять roulette-wheel вероятности из положительных fitness",
+        "моделировать выбор родителей"
+      ],
+      "requires": [
+        "фитнес-функция и отбор",
+        "нормирование положительных чисел"
+      ],
+      "source_quality": "source_present_visuals_unverified",
+      "source_pages": [
+        "Week 10 Lecture.pdf p.11"
+      ]
+    },
+    {
+      "id": "AI-07-04",
+      "title": "Ранговый и турнирный отбор",
+      "section_id": 7,
+      "section": "Эволюционные вычисления",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": false,
+      "is_terminal": true,
+      "question": "Для четырёх кандидатов с заданными fitness и двумя случайно сформированными турнирами рассчитай ранговые вероятности, выбери победителей турниров и объясни влияние их размера.",
+      "provides": [
+        "выполнять ранговый и турнирный отбор",
+        "объяснять влияние размера турнира на селективность"
+      ],
+      "requires": [
+        "оценка приспособленности",
+        "ранжирование кандидатов"
+      ],
+      "source_quality": "source_present_visuals_unverified",
+      "source_pages": [
+        "Week 10 Lecture.pdf p.12",
+        "Week 10 Lecture.pdf p.13",
+        "Week 10 Lecture.pdf p.14"
+      ]
+    },
+    {
+      "id": "AI-07-05",
+      "title": "Хромосома и генетический алгоритм",
+      "section_id": 7,
+      "section": "Эволюционные вычисления",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": false,
+      "is_terminal": false,
+      "question": "Закодируй решение в хромосому и покажи полный цикл GA.",
+      "provides": [
+        "представлять решение хромосомой и организовать GA-цикл",
+        "выбирать допустимые генетические операторы"
+      ],
+      "requires": [
+        "общий цикл эволюционного алгоритма",
+        "представление кандидата и фитнес"
+      ],
+      "source_quality": "source_present_visuals_unverified",
+      "source_pages": [
+        "Week 10 Lecture.pdf p.15"
+      ]
+    },
+    {
+      "id": "AI-07-06",
+      "title": "Кроссовер и мутация строковых хромосом",
+      "section_id": 7,
+      "section": "Эволюционные вычисления",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": false,
+      "is_terminal": false,
+      "question": "Построй детей после одноточечного кроссовера и мутации с сохранением допустимости.",
+      "provides": [
+        "выполнять одно-/двухточечный кроссовер и мутацию строк",
+        "проверять допустимость потомков"
+      ],
+      "requires": [
+        "строковая хромосома GA",
+        "условия допустимости решения"
+      ],
+      "source_quality": "shared_only_review_required",
+      "source_pages": [
+        "Week 10 Lecture.pdf p.16",
+        "Week 10 Lecture.pdf p.17",
+        "Week 10 Lecture.pdf p.18",
+        "Week 10 Lecture.pdf p.19",
+        "Week 10 Lecture.pdf p.20",
+        "Week 10 Lecture.pdf p.21",
+        "Week 10 Lecture.pdf p.22",
+        "Week 10 Lecture.pdf p.23"
+      ]
+    },
+    {
+      "id": "AI-07-07",
+      "title": "Деревья генетического программирования и корректные операторы",
+      "section_id": 7,
+      "section": "Эволюционные вычисления",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": false,
+      "is_terminal": false,
+      "question": "Построй GP-дерево выражения, проведи кроссовер поддеревьев и проверь корректность операций, включая защищённое деление.",
+      "provides": [
+        "представлять выражения GP-деревом и проводить генетические операторы",
+        "обеспечивать корректность функций при вычислении GP-программ"
+      ],
+      "requires": [
+        "префиксная запись выражений и функции",
+        "понятие эволюционной вариации"
+      ],
+      "source_quality": "source_present_visuals_unverified",
+      "source_pages": [
+        "Week 10 Lecture.pdf p.24",
+        "Week 10 Lecture.pdf p.25",
+        "Week 10 Lecture.pdf p.26",
+        "Week 10 Lecture.pdf p.27",
+        "Week 10 Lecture.pdf p.28",
+        "Week 10 Lecture.pdf p.29",
+        "Week 10 Lecture.pdf p.30",
+        "Week 10 Lecture.pdf p.31"
+      ]
+    },
+    {
+      "id": "AI-07-08",
+      "title": "Разрастание деревьев GP и борьба с bloat",
+      "section_id": 7,
+      "section": "Эволюционные вычисления",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": false,
+      "is_terminal": true,
+      "question": "В двух эквивалентных GP-деревьях найди не влияющие на результат поддеревья, объясни защитный эффект bloat и предложи штраф за сложность без изменения вычисляемой функции.",
+      "provides": [
+        "выявлять нейтральные и избыточные поддеревья",
+        "применять принцип parsimony и контролировать сложность GP"
+      ],
+      "requires": [
+        "представление выражений деревьями GP",
+        "операции мутации и их влияние на структуру дерева"
+      ],
+      "source_quality": "source_present_visuals_unverified",
+      "source_pages": [
+        "Week 10 Lecture.pdf p.32",
+        "Week 10 Lecture.pdf p.34",
+        "Week 10 Lecture.pdf p.35",
+        "Week 10 Lecture.pdf p.36",
+        "Week 10 Lecture.pdf p.37",
+        "Week 10 Lecture.pdf p.40"
+      ]
+    },
+    {
+      "id": "AI-07-09",
+      "title": "Декартово генетическое программирование",
+      "section_id": 7,
+      "section": "Эволюционные вычисления",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": false,
+      "is_terminal": true,
+      "question": "Кодируй небольшую программу в виде CGP-графа и покажи допустимую мутацию.",
+      "provides": [
+        "описывать CGP как направленный вычислительный граф",
+        "применять допустимую мутацию связей/функций"
+      ],
+      "requires": [
+        "генетическое программирование",
+        "ориентированные графы и входы функций"
+      ],
+      "source_quality": "source_present_visuals_unverified",
+      "source_pages": [
+        "Week 10 Lecture.pdf p.41",
+        "Week 10 Lecture.pdf p.42",
+        "Week 10 Lecture.pdf p.43",
+        "Week 10 Lecture.pdf p.44",
+        "Week 10 Lecture.pdf p.45",
+        "Week 10 Lecture.pdf p.46"
+      ]
+    },
+    {
+      "id": "AI-07-10",
+      "title": "Эволюционное программирование и конечные автоматы",
+      "section_id": 7,
+      "section": "Эволюционные вычисления",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": false,
+      "is_terminal": true,
+      "question": "Приведи FSM-хромосому и выполни оператор мутации из evolutionary programming.",
+      "provides": [
+        "кодировать конечный автомат эволюционного программирования",
+        "изменять переходы мутацией"
+      ],
+      "requires": [
+        "эволюционный цикл",
+        "понятия состояния и перехода конечного автомата"
+      ],
+      "source_quality": "source_present_visuals_unverified",
+      "source_pages": [
+        "Week 10 Lecture.pdf p.47",
+        "Week 10 Lecture.pdf p.48",
+        "Week 10 Lecture.pdf p.49",
+        "Week 10 Lecture.pdf p.50"
+      ]
+    },
+    {
+      "id": "AI-07-11",
+      "title": "Эволюционные стратегии и вещественные векторы",
+      "section_id": 7,
+      "section": "Эволюционные вычисления",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": false,
+      "is_terminal": true,
+      "question": "Опиши ES над вещественным вектором, включая гауссовы мутации и выбор лучшего.",
+      "provides": [
+        "обновлять вещественные векторы эволюционной стратегии гауссовой мутацией",
+        "сравнивать выбор родителей и потомков"
+      ],
+      "requires": [
+        "эволюционный цикл",
+        "вещественный вектор",
+        "нормальное распределение"
+      ],
+      "source_quality": "source_present_visuals_unverified",
+      "source_pages": [
+        "Week 10 Lecture.pdf p.51",
+        "Week 10 Lecture.pdf p.52",
+        "Week 10 Lecture.pdf p.53",
+        "Week 10 Lecture.pdf p.54"
+      ]
+    },
+    {
+      "id": "AI-07-12",
+      "title": "Представления решения в эволюционных алгоритмах: прямое, косвенное и вещественное",
+      "section_id": 7,
+      "section": "Эволюционные вычисления",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": false,
+      "is_terminal": false,
+      "question": "Для одного задания предложи прямую и косвенную кодировки (включая вещественный вариант), покажи декодирование и объясни, как выбор кодировки меняет допустимые операторы и пространство поиска.",
+      "provides": [
+        "различать генотип, фенотип и прямое/косвенное представление",
+        "проектировать вещественную косвенную кодировку и выбирать допустимые операторы"
+      ],
+      "requires": [
+        "понятие генотипа и фенотипа",
+        "мутация и кроссовер в эволюционных алгоритмах"
+      ],
+      "source_quality": "source_present_visuals_unverified",
+      "source_pages": [
+        "Week 11 Lecture.pdf p.4",
+        "Week 11 Lecture.pdf p.5",
+        "Week 11 Lecture.pdf p.6",
+        "Week 11 Lecture.pdf p.7",
+        "Week 11 Lecture.pdf p.11",
+        "Week 11 Lecture.pdf p.12",
+        "Week 11 Lecture.pdf p.13",
+        "Week 11 Lecture.pdf p.14"
+      ]
+    },
+    {
+      "id": "AI-07-13",
+      "title": "Эпистаз и взаимодействие генов",
+      "section_id": 7,
+      "section": "Эволюционные вычисления",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": false,
+      "is_terminal": true,
+      "question": "Предложи пример эпистаза и объясни, почему одиночная мутация может иметь нелокальный эффект.",
+      "provides": [
+        "объяснять взаимодействия генов и эпистаз",
+        "показывать влияние взаимодействия на приспособленность"
+      ],
+      "requires": [
+        "представление генотипа и фитнес-функция"
+      ],
+      "source_quality": "source_present_visuals_unverified",
+      "source_pages": [
+        "Week 11 Lecture.pdf p.18",
+        "Week 11 Lecture.pdf p.52"
+      ]
+    },
+    {
+      "id": "AI-07-14",
+      "title": "Кроссовер для перестановок в TSP",
+      "section_id": 7,
+      "section": "Эволюционные вычисления",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": false,
+      "is_terminal": true,
+      "question": "Покажи PMX на двух маршрутах и объясни, почему обычный кроссовер может нарушить перестановку.",
+      "provides": [
+        "выполнять перестановочно-безопасный кроссовер PMX",
+        "выявлять недопустимые дубликаты городов"
+      ],
+      "requires": [
+        "перестановка как хромосома",
+        "генетический кроссовер",
+        "постановка TSP"
+      ],
+      "source_quality": "source_present_visuals_unverified",
+      "source_pages": [
+        "Week 11 Lecture.pdf p.19",
+        "Week 11 Lecture.pdf p.20",
+        "Week 11 Lecture.pdf p.21",
+        "Week 11 Lecture.pdf p.22",
+        "Week 11 Lecture.pdf p.23",
+        "Week 11 Lecture.pdf p.24",
+        "Week 11 Lecture.pdf p.25",
+        "Week 11 Lecture.pdf p.26"
+      ]
+    },
+    {
+      "id": "AI-07-16",
+      "title": "Коэволюция и относительная приспособленность",
+      "section_id": 7,
+      "section": "Эволюционные вычисления",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": false,
+      "is_terminal": true,
+      "question": "Объясни, как меняются оценки агентов при коэволюции в повторяющейся дилемме заключённых.",
+      "provides": [
+        "объяснять коэволюцию и зависимость fitness от других агентов",
+        "распознавать циклическую смену относительного превосходства"
+      ],
+      "requires": [
+        "эволюционный цикл",
+        "модель взаимодействующих агентов"
+      ],
+      "source_quality": "source_present_visuals_unverified",
+      "source_pages": [
+        "Week 11 Lecture.pdf p.32",
+        "Week 11 Lecture.pdf p.33",
+        "Week 11 Lecture.pdf p.34",
+        "Week 11 Lecture.pdf p.35",
+        "Week 11 Lecture.pdf p.36",
+        "Week 11 Lecture.pdf p.37",
+        "Week 11 Lecture.pdf p.38"
+      ]
+    },
+    {
+      "id": "AI-07-17",
+      "title": "Поведенческие деревья: selector, sequence и decorator",
+      "section_id": 7,
+      "section": "Эволюционные вычисления",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": false,
+      "is_terminal": false,
+      "question": "Нарисуй behaviour tree робота, поясни выбор ветвей и условия завершения.",
+      "provides": [
+        "строить behaviour tree из selector, sequence и decorator",
+        "предсказывать ход выполнения по статусам"
+      ],
+      "requires": [
+        "иерархическая схема действий агента",
+        "условные ветвления"
+      ],
+      "source_quality": "source_present_visuals_unverified",
+      "source_pages": [
+        "Tutorial 09.pdf p.3",
+        "Tutorial 09.pdf p.4",
+        "Tutorial 09.pdf p.5",
+        "Tutorial 09.pdf p.6",
+        "Tutorial 09.pdf p.7",
+        "Tutorial 09.pdf p.8",
+        "Tutorial 09.pdf p.9",
+        "Tutorial 09.pdf p.10"
+      ]
+    },
+    {
+      "id": "AI-07-18",
+      "title": "Эволюция структур поведенческих деревьев",
+      "section_id": 7,
+      "section": "Эволюционные вычисления",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": false,
+      "is_terminal": true,
+      "question": "Проведи crossover и mutation корректного дерева поведения и проверь структуру.",
+      "provides": [
+        "выполнять мутацию и кроссовер деревьев поведения",
+        "проверять синтаксическую и поведенческую допустимость"
+      ],
+      "requires": [
+        "структура behaviour tree",
+        "генетические операторы деревьев"
+      ],
+      "source_quality": "source_present_visuals_unverified",
+      "source_pages": [
+        "Tutorial 09.pdf p.16",
+        "Tutorial 09.pdf p.17",
+        "Tutorial 09.pdf p.18",
+        "Tutorial 09.pdf p.19",
+        "Tutorial 09.pdf p.20",
+        "Tutorial 09.pdf p.21",
+        "Tutorial 09.pdf p.22",
+        "Tutorial 09.pdf p.23"
+      ]
+    },
+    {
+      "id": "AI-07-19",
+      "title": "Эволюция управления роботизированным роем",
+      "section_id": 7,
+      "section": "Эволюционные вычисления",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": false,
+      "is_terminal": true,
+      "question": "Выбери fitness и схему эволюции контроллера роя для задачи сбора объектов.",
+      "provides": [
+        "формировать критерий эффективности для контроллера роя и эволюционную схему",
+        "отделять локальные правила от коллективного эффекта"
+      ],
+      "requires": [
+        "эволюционный цикл",
+        "многоагентная среда",
+        "функция fitness"
+      ],
+      "source_quality": "source_present_visuals_unverified",
+      "source_pages": [
+        "Tutorial 09.pdf p.36",
+        "Tutorial 09.pdf p.37",
+        "Tutorial 09.pdf p.38",
+        "Tutorial 09.pdf p.39",
+        "Tutorial 09.pdf p.40",
+        "Tutorial 09.pdf p.41",
+        "Tutorial 09.pdf p.42",
+        "Tutorial 09.pdf p.43"
+      ]
+    },
+    {
+      "id": "AI-07-20",
+      "title": "Проектирование хромосомы в конкурентной симуляции",
+      "section_id": 7,
+      "section": "Эволюционные вычисления",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": false,
+      "is_terminal": true,
+      "question": "Предложи представление агента Sunburn и объясни, какие операторы нарушат смысл расположения генов.",
+      "provides": [
+        "проектировать кодирование стратегии конкурентного агента",
+        "согласовывать гены и операторы с семантикой управления"
+      ],
+      "requires": [
+        "генотип и операторы GA",
+        "цель конкурентной симуляции"
+      ],
+      "source_quality": "source_present_visuals_unverified",
+      "source_pages": [
+        "Week 11 Lecture.pdf p.39",
+        "Week 11 Lecture.pdf p.40",
+        "Week 11 Lecture.pdf p.41",
+        "Week 11 Lecture.pdf p.42",
+        "Week 11 Lecture.pdf p.43",
+        "Week 11 Lecture.pdf p.44",
+        "Week 11 Lecture.pdf p.45",
+        "Week 11 Lecture.pdf p.46"
+      ]
+    },
+    {
+      "id": "AI-08-01",
+      "title": "Искусственный нейрон как взвешенная функция",
+      "section_id": 8,
+      "section": "Искусственные нейронные сети",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": true,
+      "is_terminal": false,
+      "question": "Вычисли выход нейрона по входам, весам, смещению и активации.",
+      "provides": [
+        "вычислять взвешенную сумму, смещение и выход нейрона",
+        "интерпретировать веса и активацию"
+      ],
+      "requires": [
+        "вектор входных чисел",
+        "умножение и сложение"
+      ],
+      "source_quality": "source_present_visuals_unverified",
+      "source_pages": [
+        "Week 12 Lecture.pdf p.4",
+        "Week 12 Lecture.pdf p.5",
+        "Week 12 Lecture.pdf p.6",
+        "Week 12 Lecture.pdf p.7",
+        "Week 12 Lecture.pdf p.8"
+      ]
+    },
+    {
+      "id": "AI-08-02",
+      "title": "Перцептрон Розенблатта и линейная разделимость",
+      "section_id": 8,
+      "section": "Искусственные нейронные сети",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": false,
+      "is_terminal": false,
+      "question": "Построй классифицирующий перцептрон и поясни границу его выразимости.",
+      "provides": [
+        "определять пороговый перцептрон и его линейную границу решений",
+        "объяснять ограничение разделимости"
+      ],
+      "requires": [
+        "искусственный нейрон",
+        "линейная комбинация входов"
+      ],
+      "source_quality": "shared_only_review_required",
+      "source_pages": [
+        "Week 12 Lecture.pdf p.9",
+        "Week 12 Lecture.pdf p.15",
+        "Week 12 Lecture.pdf p.16",
+        "Week 12 Lecture.pdf p.17",
+        "Week 12 Lecture.pdf p.18",
+        "Week 12 Lecture.pdf p.19"
+      ]
+    },
+    {
+      "id": "AI-08-03",
+      "title": "Логические операции AND, OR, NOT, NAND в перцептроне",
+      "section_id": 8,
+      "section": "Искусственные нейронные сети",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": false,
+      "is_terminal": true,
+      "question": "Подбери веса и порог для заданной логической операции и проверь таблицу истинности.",
+      "provides": [
+        "представлять AND/OR/NOT/NAND весами и смещением",
+        "проверять результат таблицей истинности"
+      ],
+      "requires": [
+        "пороговый перцептрон",
+        "таблицы истинности булевых функций"
+      ],
+      "source_quality": "shared_only_review_required",
+      "source_pages": [
+        "Week 12 Lecture.pdf p.15",
+        "Week 12 Lecture.pdf p.16",
+        "Week 12 Lecture.pdf p.17",
+        "Week 12 Lecture.pdf p.18"
+      ]
+    },
+    {
+      "id": "AI-08-04",
+      "title": "Неразделимость XOR одним перцептроном",
+      "section_id": 8,
+      "section": "Искусственные нейронные сети",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": false,
+      "is_terminal": true,
+      "question": "Объясни невозможность XOR в одном линейном перцептроне и предложи двухслойное решение.",
+      "provides": [
+        "доказывать невозможность XOR одной линейной границей",
+        "объяснять, зачем нужен дополнительный слой"
+      ],
+      "requires": [
+        "линейная разделимость перцептрона",
+        "истинностная таблица XOR"
+      ],
+      "source_quality": "shared_only_review_required",
+      "source_pages": [
+        "Week 12 Lecture.pdf p.19",
+        "Week 12 Lecture.pdf p.20",
+        "Week 12 Lecture.pdf p.21"
+      ]
+    },
+    {
+      "id": "AI-08-05",
+      "title": "Активации ReLU, Leaky ReLU, PReLU, Softplus",
+      "section_id": 8,
+      "section": "Искусственные нейронные сети",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": false,
+      "is_terminal": false,
+      "question": "Вычисли четыре активации для данного входа и объясни различия градиентов.",
+      "provides": [
+        "вычислять ReLU, Leaky ReLU, PReLU и Softplus",
+        "объяснять последствия производной/нулевого градиента"
+      ],
+      "requires": [
+        "нейрон с функцией активации",
+        "простое понятие производной"
+      ],
+      "source_quality": "source_present_visuals_unverified",
+      "source_pages": [
+        "Week 12 Lecture.pdf p.10",
+        "Week 12 Lecture.pdf p.11",
+        "Week 12 Lecture.pdf p.12",
+        "Week 12 Lecture.pdf p.13",
+        "Week 12 Lecture.pdf p.14"
+      ]
+    },
+    {
+      "id": "AI-08-06",
+      "title": "Многослойный перцептрон и прямой проход",
+      "section_id": 8,
+      "section": "Искусственные нейронные сети",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": false,
+      "is_terminal": false,
+      "question": "Вычисли численный прямой проход через двухслойную сеть.",
+      "provides": [
+        "вычислять прямой проход MLP по слоям",
+        "объяснять роль нелинейности в композиции"
+      ],
+      "requires": [
+        "нейрон и активации",
+        "векторно-матричное умножение"
+      ],
+      "source_quality": "thin_source",
+      "source_pages": [
+        "Week 12 Lecture.pdf p.20",
+        "Week 12 Lecture.pdf p.21"
+      ]
+    },
+    {
+      "id": "AI-08-07",
+      "title": "Обучение обратным распространением ошибки",
+      "section_id": 8,
+      "section": "Искусственные нейронные сети",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": false,
+      "is_terminal": false,
+      "question": "На примере сети с одним скрытым слоем объясни, как после вычисления ошибки получают изменения весов предыдущих слоёв.",
+      "provides": [
+        "выполнять концептуальный шаг backpropagation и обновления весов",
+        "объяснять передачу ошибки в предыдущие слои"
+      ],
+      "requires": [
+        "прямой проход многослойной сети",
+        "функция потерь и производная",
+        "правило цепочки дифференцирования"
+      ],
+      "source_quality": "boundary_review_required",
+      "source_pages": [
+        "Week 12 Lecture.pdf p.22",
+        "Week 12 Lecture.pdf p.23"
+      ]
+    },
+    {
+      "id": "AI-08-08",
+      "title": "Интерпретируемость и ограничения нейросетей",
+      "section_id": 8,
+      "section": "Искусственные нейронные сети",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": false,
+      "is_terminal": true,
+      "question": "Разбери случай ошибочного предсказания и объясни трудности интерпретации ANN.",
+      "provides": [
+        "объяснять непрозрачность скрытых представлений",
+        "диагностировать проблемы переобучения и интерпретации"
+      ],
+      "requires": [
+        "многослойная сеть и обучение по ошибке"
+      ],
+      "source_quality": "boundary_review_required",
+      "source_pages": [
+        "Week 12 Lecture.pdf p.27"
+      ]
+    },
+    {
+      "id": "AI-08-09",
+      "title": "Нейроэволюция и поиск весов",
+      "section_id": 8,
+      "section": "Искусственные нейронные сети",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": false,
+      "is_terminal": true,
+      "question": "Покажи, как веса нейросети можно оптимизировать эволюционным алгоритмом.",
+      "provides": [
+        "кодировать веса ANN как эволюционный кандидат",
+        "сравнивать эволюцию и градиентное обучение"
+      ],
+      "requires": [
+        "нейрон и веса",
+        "эволюционный цикл и fitness"
+      ],
+      "source_quality": "source_present_visuals_unverified",
+      "source_pages": [
+        "Week 12 Lecture.pdf p.25",
+        "Week 12 Lecture.pdf p.26"
+      ]
+    },
+    {
+      "id": "AI-08-10",
+      "title": "Практическая классификация датасета Moons",
+      "section_id": 8,
+      "section": "Искусственные нейронные сети",
+      "kind": "topic",
+      "material_status": "missing",
+      "status": "draft_requires_review",
+      "is_atomic": false,
+      "is_terminal": false,
+      "question": "Обоснуй архитектуру и проверь качество сети на двух полумесяцах.",
+      "provides": [
+        "построить бинарный классификатор Moons",
+        "выбрать архитектуру и провести оценку на отложенных данных"
+      ],
+      "requires": [
+        "MLP и прямой проход",
+        "основы обучающей/тестовой выборки",
+        "использование sklearn"
+      ],
+      "source_quality": "missing_RPD_only",
+      "source_pages": []
+    },
+    {
+      "id": "AI-08-11",
+      "title": "Практическая классификация MNIST",
+      "section_id": 8,
+      "section": "Искусственные нейронные сети",
+      "kind": "topic",
+      "material_status": "missing",
+      "status": "draft_requires_review",
+      "is_atomic": false,
+      "is_terminal": false,
+      "question": "Опиши обработку изображений цифр, обучение и проверку нейронной сети.",
+      "provides": [
+        "построить классификатор цифр MNIST",
+        "обработать изображения и оценить ошибки модели"
+      ],
+      "requires": [
+        "обучение нейросети",
+        "тензоры изображений",
+        "разбиение train/test"
+      ],
+      "source_quality": "missing_RPD_only",
+      "source_pages": []
+    },
+    {
+      "id": "AI-08-12",
+      "title": "AlphaGo как пример сочетания обучения и игрового поиска",
+      "section_id": 8,
+      "section": "Искусственные нейронные сети",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": false,
+      "is_terminal": true,
+      "question": "На примере Go объясни, зачем сочетать оценку позиции нейросетью и поиск по дереву, и чем подход выигрывает у полного перебора.",
+      "provides": [
+        "объяснять сочетание нейросетевых оценок и игрового поиска в AlphaGo",
+        "различать роль обучения и планирования"
+      ],
+      "requires": [
+        "игровое дерево и MCTS",
+        "нейронная сеть и её предсказание"
+      ],
+      "source_quality": "boundary_review_required",
+      "source_pages": [
+        "Week 12 Lecture.pdf p.28",
+        "Week 12 Lecture.pdf p.29",
+        "Week 12 Lecture.pdf p.30",
+        "Week 12 Lecture.pdf p.31"
+      ]
+    },
+    {
+      "id": "AI-09-01",
+      "title": "Модель частицы, её позиция и скорость в PSO",
+      "section_id": 9,
+      "section": "Метод роя частиц и муравьиные алгоритмы",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": true,
+      "is_terminal": false,
+      "question": "Задай состояние частицы и объясни смысл personal best и global best.",
+      "provides": [
+        "определять позицию, скорость, pbest и gbest частицы PSO",
+        "объяснять популяционный поиск без кроссовера"
+      ],
+      "requires": [
+        "векторные координаты и функция качества",
+        "популяционный поиск"
+      ],
+      "source_quality": "source_present_visuals_unverified",
+      "source_pages": [
+        "Week 13 Lecture.pdf p.3",
+        "Week 13 Lecture.pdf p.4",
+        "Week 13 Lecture.pdf p.5",
+        "Week 13 Lecture.pdf p.6",
+        "Week 13 Lecture.pdf p.7"
+      ]
+    },
+    {
+      "id": "AI-09-02",
+      "title": "Формула обновления скорости и положения PSO",
+      "section_id": 9,
+      "section": "Метод роя частиц и муравьиные алгоритмы",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": false,
+      "is_terminal": false,
+      "question": "Вычисли следующий шаг частицы при заданных коэффициентах, случайных значениях и pBest/gBest.",
+      "provides": [
+        "вычислять переход позиции и скорости PSO",
+        "объяснять три составляющие движения"
+      ],
+      "requires": [
+        "частица PSO с pbest/gbest",
+        "арифметика векторов",
+        "случайные коэффициенты"
+      ],
+      "source_quality": "shared_only_review_required",
+      "source_pages": [
+        "Week 13 Lecture.pdf p.9",
+        "Week 13 Lecture.pdf p.10",
+        "Week 13 Lecture.pdf p.21",
+        "Week 13 Lecture.pdf p.22"
+      ]
+    },
+    {
+      "id": "AI-09-03",
+      "title": "Инерция и управление exploration-exploitation в PSO",
+      "section_id": 9,
+      "section": "Метод роя частиц и муравьиные алгоритмы",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": false,
+      "is_terminal": true,
+      "question": "Предскажи последствия изменения инерции и коэффициентов притяжения на движение роя.",
+      "provides": [
+        "объяснять эффект инерции и коэффициентов притяжения",
+        "управлять exploration/exploitation в рое"
+      ],
+      "requires": [
+        "формула обновления PSO",
+        "дилемма исследования и использования"
+      ],
+      "source_quality": "shared_only_review_required",
+      "source_pages": [
+        "Week 13 Lecture.pdf p.8",
+        "Week 13 Lecture.pdf p.21",
+        "Week 13 Lecture.pdf p.22"
+      ]
+    },
+    {
+      "id": "AI-09-04",
+      "title": "Топологии gbest и lbest",
+      "section_id": 9,
+      "section": "Метод роя частиц и муравьиные алгоритмы",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": false,
+      "is_terminal": true,
+      "question": "Сравни обновление частиц при двух топологиях и объясни компромисс скорость-разнообразие.",
+      "provides": [
+        "сравнивать gbest/lbest топологии обмена лучшими решениями",
+        "оценивать скорость сходимости и разнообразие"
+      ],
+      "requires": [
+        "обновление PSO и pbest/gbest",
+        "понятие соседства частиц"
+      ],
+      "source_quality": "source_present_visuals_unverified",
+      "source_pages": [
+        "Week 13 Lecture.pdf p.23",
+        "Week 13 Lecture.pdf p.24",
+        "Week 13 Lecture.pdf p.25",
+        "Week 13 Lecture.pdf p.26",
+        "Week 13 Lecture.pdf p.27"
+      ]
+    },
+    {
+      "id": "AI-09-05",
+      "title": "Критерии остановки PSO",
+      "section_id": 9,
+      "section": "Метод роя частиц и муравьиные алгоритмы",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": false,
+      "is_terminal": true,
+      "question": "Для заданной истории значений gBest, радиуса роя и скоростей предложи два критерия остановки PSO и объясни риск преждевременного завершения.",
+      "provides": [
+        "выбирать и проверять критерии остановки PSO",
+        "оценивать компромисс между затратами и качеством результата"
+      ],
+      "requires": [
+        "итерационный PSO и gBest",
+        "стагнация и величина скорости частиц"
+      ],
+      "source_quality": "thin_source",
+      "source_pages": [
+        "Week 13 Lecture.pdf p.11",
+        "Week 13 Lecture.pdf p.12"
+      ]
+    },
+    {
+      "id": "AI-09-06",
+      "title": "Муравьиная оптимизация: стигмергия и общие семейства ACO",
+      "section_id": 9,
+      "section": "Метод роя частиц и муравьиные алгоритмы",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": false,
+      "is_terminal": false,
+      "question": "Объясни на схеме графа, как стигмергия позволяет муравьям усиливать хорошие маршруты; поясни, почему перечень названий вариантов ACO ещё не раскрывает различия их алгоритмов.",
+      "provides": [
+        "объяснять стигмергию и косвенную коммуникацию феромонами",
+        "распознавать семейства ACO как варианты общего подхода без недоказанного сравнения механизмов"
+      ],
+      "requires": [
+        "граф с весами рёбер и маршруты",
+        "популяционные итеративные методы оптимизации"
+      ],
+      "source_quality": "source_present_visuals_unverified",
+      "source_pages": [
+        "Week 13 Lecture.pdf p.28",
+        "Week 13 Lecture.pdf p.29",
+        "Week 13 Lecture.pdf p.30",
+        "Week 13 Lecture.pdf p.31",
+        "Week 13 Lecture.pdf p.32",
+        "Week 13 Lecture.pdf p.33",
+        "Week 13 Lecture.pdf p.34",
+        "Week 13. Tutorial.pptx.pdf p.5"
+      ]
+    },
+    {
+      "id": "AI-09-07",
+      "title": "Вероятностный выбор следующего ребра в ACO",
+      "section_id": 9,
+      "section": "Метод роя частиц и муравьиные алгоритмы",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": false,
+      "is_terminal": false,
+      "question": "Рассчитай вероятности перехода муравья по двум рёбрам по феромону и эвристике.",
+      "provides": [
+        "вычислять вероятность хода по τ, η, α, β",
+        "объяснять роль эвристической привлекательности"
+      ],
+      "requires": [
+        "основы ACO и феромонный след",
+        "нормирование весов в вероятности"
+      ],
+      "source_quality": "source_present_visuals_unverified",
+      "source_pages": [
+        "Week 13. Tutorial.pptx.pdf p.34"
+      ]
+    },
+    {
+      "id": "AI-09-08",
+      "title": "Обновление феромона, испарение и подкрепление",
+      "section_id": 9,
+      "section": "Метод роя частиц и муравьиные алгоритмы",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": false,
+      "is_terminal": false,
+      "question": "Обнови матрицу феромонов после одного тура и объясни эффект испарения.",
+      "provides": [
+        "обновлять τ с испарением и добавленным феромоном",
+        "интерпретировать усиление качественных путей"
+      ],
+      "requires": [
+        "феромонное поле ACO",
+        "понятие длины и качества маршрута"
+      ],
+      "source_quality": "source_present_visuals_unverified",
+      "source_pages": [
+        "Week 13 Lecture.pdf p.35",
+        "Week 13. Tutorial.pptx.pdf p.17",
+        "Week 13. Tutorial.pptx.pdf p.38"
+      ]
+    },
+    {
+      "id": "AI-09-09",
+      "title": "Ant System для коммивояжёра",
+      "section_id": 9,
+      "section": "Метод роя частиц и муравьиные алгоритмы",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": false,
+      "is_terminal": true,
+      "question": "Проведи один цикл Ant System на четырёх городах и выбери следующий маршрут.",
+      "provides": [
+        "проводить цикл Ant System для TSP",
+        "выбирать маршруты и выполнять обновление феромона"
+      ],
+      "requires": [
+        "вероятностное правило выбора ACO",
+        "испарение и подкрепление",
+        "постановка TSP"
+      ],
+      "source_quality": "source_present_visuals_unverified",
+      "source_pages": [
+        "Week 13. Tutorial.pptx.pdf p.2",
+        "Week 13. Tutorial.pptx.pdf p.3",
+        "Week 13. Tutorial.pptx.pdf p.4",
+        "Week 13. Tutorial.pptx.pdf p.19",
+        "Week 13. Tutorial.pptx.pdf p.20",
+        "Week 13. Tutorial.pptx.pdf p.21",
+        "Week 13. Tutorial.pptx.pdf p.22",
+        "Week 13. Tutorial.pptx.pdf p.23"
+      ]
+    },
+    {
+      "id": "AI-09-11",
+      "title": "Моделирование коллективного движения и flocking",
+      "section_id": 9,
+      "section": "Метод роя частиц и муравьиные алгоритмы",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": false,
+      "is_terminal": true,
+      "question": "Объясни, почему локальные правила перемещения способны порождать коллективное движение и какую дополнительную спецификацию нужно задать для работающего симулятора.",
+      "provides": [
+        "объяснять, как локальные правила движения ведут к flocking",
+        "называть области применения массовой симуляции"
+      ],
+      "requires": [
+        "агент и его локальные наблюдения",
+        "геометрическое положение и соседство"
+      ],
+      "source_quality": "boundary_review_required",
+      "source_pages": [
+        "Week 13 Lecture.pdf p.16",
+        "Week 13 Lecture.pdf p.17"
+      ]
+    },
+    {
+      "id": "AI-09-12",
+      "title": "Адаптация PSO для дискретного поиска",
+      "section_id": 9,
+      "section": "Метод роя частиц и муравьиные алгоритмы",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": false,
+      "is_terminal": true,
+      "question": "Предложи отображение вещественной позиции частицы на допустимое дискретное решение и объясни, как квантование влияет на поисковые ходы.",
+      "provides": [
+        "переводить вещественные позиции в дискретные состояния",
+        "объяснять влияние квантования на достижимые решения"
+      ],
+      "requires": [
+        "позиция частицы и обновление PSO",
+        "дискретное представление решения"
+      ],
+      "source_quality": "thin_source",
+      "source_pages": [
+        "Week 13 Lecture.pdf p.14"
+      ]
+    },
+    {
+      "id": "AI-09-13",
+      "title": "Распределение частиц и обмен лучшими решениями в PSO",
+      "section_id": 9,
+      "section": "Метод роя частиц и муравьиные алгоритмы",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": false,
+      "is_terminal": true,
+      "question": "Спроектируй распределённую схему нескольких роёв PSO и объясни, как global best передаётся между вычислительными узлами.",
+      "provides": [
+        "организовывать несколько подроёв в распределённом PSO",
+        "объяснять обмен глобально лучшими решениями"
+      ],
+      "requires": [
+        "pBest/gBest и PSO-цикл",
+        "понятие распределённых вычислений"
+      ],
+      "source_quality": "source_present_visuals_unverified",
+      "source_pages": [
+        "Week 13 Lecture.pdf p.15"
+      ]
+    },
+    {
+      "id": "AI-10-01",
+      "title": "Генеративные и дискриминативные модели",
+      "section_id": 10,
+      "section": "Введение в генеративный искусственный интеллект",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": false,
+      "is_terminal": false,
+      "question": "Для нескольких задач объясни, нужен ли генеративный или дискриминативный подход и почему.",
+      "provides": [
+        "различать моделирование распределения данных и предсказание метки",
+        "выбирать генеративный или дискриминативный подход"
+      ],
+      "requires": [
+        "общее понятие ИИ-системы",
+        "данные и целевая переменная"
+      ],
+      "source_quality": "source_present_visuals_unverified",
+      "source_pages": [
+        "14 Tutorial.pdf p.3",
+        "14 Tutorial.pdf p.4",
+        "Week 14 Lecture Slides.pdf p.5"
+      ]
+    },
+    {
+      "id": "AI-10-02",
+      "title": "Исторические этапы генеративного ИИ",
+      "section_id": 10,
+      "section": "Введение в генеративный искусственный интеллект",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": false,
+      "is_terminal": true,
+      "question": "Свяжи основные подходы генерации с этапами развития и объясни смену возможностей.",
+      "provides": [
+        "соотносить основные этапы генеративного ИИ с архитектурными идеями",
+        "объяснять переход к более сложным возможностям"
+      ],
+      "requires": [
+        "различие генеративного и дискриминативного подходов"
+      ],
+      "source_quality": "boundary_review_required",
+      "source_pages": [
+        "Week 14 Lecture Slides.pdf p.4"
+      ]
+    },
+    {
+      "id": "AI-10-03",
+      "title": "Вариационные автоэнкодеры VAE",
+      "section_id": 10,
+      "section": "Введение в генеративный искусственный интеллект",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": false,
+      "is_terminal": true,
+      "question": "Покажи путь данных через кодировщик, латентное представление и декодировщик VAE, объяснив смысл генерации новых образцов.",
+      "provides": [
+        "объяснять роль кодировщика, латентного представления и декодировщика VAE",
+        "прослеживать генерацию примера из латентного вектора"
+      ],
+      "requires": [
+        "нейросетевые слои и прямой проход",
+        "понятие скрытой переменной и распределения"
+      ],
+      "source_quality": "boundary_review_required",
+      "source_pages": [
+        "Week 14 Lecture Slides.pdf p.6",
+        "Week 14 Lecture Slides.pdf p.7"
+      ]
+    },
+    {
+      "id": "AI-10-04",
+      "title": "Генеративно-состязательные сети GAN",
+      "section_id": 10,
+      "section": "Введение в генеративный искусственный интеллект",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": false,
+      "is_terminal": true,
+      "question": "Покажи взаимодействие генератора и дискриминатора и критерий остановки обучения.",
+      "provides": [
+        "объяснять состязательное обучение генератора и дискриминатора",
+        "предсказывать эффект изменений качества одного из участников"
+      ],
+      "requires": [
+        "базовая нейросеть",
+        "различие генеративной и дискриминативной задачи"
+      ],
+      "source_quality": "source_present_visuals_unverified",
+      "source_pages": [
+        "Week 12 Lecture.pdf p.32",
+        "Week 12 Lecture.pdf p.33",
+        "Week 12 Lecture.pdf p.34",
+        "Week 12 Lecture.pdf p.35",
+        "Week 14 Lecture Slides.pdf p.8"
+      ]
+    },
+    {
+      "id": "AI-10-05",
+      "title": "Диффузионные генеративные модели",
+      "section_id": 10,
+      "section": "Введение в генеративный искусственный интеллект",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": false,
+      "is_terminal": true,
+      "question": "На концептуальном уровне объясни прямое зашумление и обратное восстановление в диффузионной модели; чем эти этапы отличаются?",
+      "provides": [
+        "описывать прямой процесс зашумления и обратный процесс генерации",
+        "объяснять роль последовательного денойзинга"
+      ],
+      "requires": [
+        "вероятностный шум",
+        "идея обучаемой генеративной модели"
+      ],
+      "source_quality": "boundary_review_required",
+      "source_pages": [
+        "Week 14 Lecture Slides.pdf p.9"
+      ]
+    },
+    {
+      "id": "AI-10-06",
+      "title": "Языковые модели LLM и предсказание токенов",
+      "section_id": 10,
+      "section": "Введение в генеративный искусственный интеллект",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": false,
+      "is_terminal": false,
+      "question": "Разбери пошаговую генерацию текста из токенов и объясни роль контекста.",
+      "provides": [
+        "объяснять токенизацию и авторегрессионное предсказание",
+        "различать статистическую генерацию и проверенный факт"
+      ],
+      "requires": [
+        "базовые представления о нейросетях",
+        "условная вероятность последовательности"
+      ],
+      "source_quality": "source_present_visuals_unverified",
+      "source_pages": [
+        "14 Tutorial.pdf p.5",
+        "Week 14 Lecture Slides.pdf p.10"
+      ]
+    },
+    {
+      "id": "AI-10-07",
+      "title": "Возможности и сферы применения генеративного ИИ",
+      "section_id": 10,
+      "section": "Введение в генеративный искусственный интеллект",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": false,
+      "is_terminal": false,
+      "question": "Выбери генеративную модель под задачу создания контента и обоснуй ограничения.",
+      "provides": [
+        "сопоставлять типы генерируемого контента с приложениями",
+        "оценивать пригодность и ограничения генеративного сервиса"
+      ],
+      "requires": [
+        "понятие генеративной модели и основных видов выходных данных"
+      ],
+      "source_quality": "source_present_visuals_unverified",
+      "source_pages": [
+        "Week 14 Lecture Slides.pdf p.11"
+      ]
+    },
+    {
+      "id": "AI-10-08",
+      "title": "Галлюцинации и проверка достоверности",
+      "section_id": 10,
+      "section": "Введение в генеративный искусственный интеллект",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": false,
+      "is_terminal": false,
+      "question": "Найди уязвимости в выданном LLM ответе и составь план проверки его утверждений.",
+      "provides": [
+        "распознавать галлюцинации и недостоверные ссылки",
+        "строить последовательность фактчекинга"
+      ],
+      "requires": [
+        "генерация текста LLM",
+        "утверждение и проверяемый источник"
+      ],
+      "source_quality": "shared_only_review_required",
+      "source_pages": [
+        "14 Tutorial.pdf p.9",
+        "Week 14 Lecture Slides.pdf p.13"
+      ]
+    },
+    {
+      "id": "AI-10-09",
+      "title": "Проектирование промпта для LLM",
+      "section_id": 10,
+      "section": "Введение в генеративный искусственный интеллект",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": false,
+      "is_terminal": false,
+      "question": "Улучши неоднозначный запрос, задав цель, контекст, роль и формат, и обоснуй выбор.",
+      "provides": [
+        "формулировать конкретный prompt с целью, контекстом и форматом",
+        "объяснять, как неоднозначность ухудшает ответ"
+      ],
+      "requires": [
+        "представление о текстовом запросе к LLM"
+      ],
+      "source_quality": "source_present_visuals_unverified",
+      "source_pages": [
+        "14 Tutorial.pdf p.7",
+        "14 Tutorial.pdf p.8"
+      ]
+    },
+    {
+      "id": "AI-10-10",
+      "title": "RAG и опора на проверяемые источники",
+      "section_id": 10,
+      "section": "Введение в генеративный искусственный интеллект",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": false,
+      "is_terminal": true,
+      "question": "Предложи схему retrieval плюс generation для чат-бота и объясни, почему меньше галлюцинаций.",
+      "provides": [
+        "строить retrieve→augment→generate конвейер RAG",
+        "объяснять роль надёжного контекста и границы метода"
+      ],
+      "requires": [
+        "LLM и prompt",
+        "поиск релевантных документов",
+        "галлюцинации"
+      ],
+      "source_quality": "thin_source",
+      "source_pages": [
+        "14 Tutorial.pdf p.10"
+      ]
+    },
+    {
+      "id": "AI-10-11",
+      "title": "LLM-агенты с инструментами и состоянием",
+      "section_id": 10,
+      "section": "Введение в генеративный искусственный интеллект",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": false,
+      "is_terminal": true,
+      "question": "Спроектируй LLM-агента с вызовами инструментов, входом и выходом, обработкой ошибки.",
+      "provides": [
+        "проектировать агента на основе LLM с инструментами и состоянием",
+        "описать управление вызовами и ошибками"
+      ],
+      "requires": [
+        "LLM и prompting",
+        "понятия агента и инструментального действия"
+      ],
+      "source_quality": "source_present_visuals_unverified",
+      "source_pages": [
+        "14 Tutorial.pdf p.11",
+        "14 Tutorial.pdf p.12",
+        "14 Tutorial.pdf p.13",
+        "14 Tutorial.pdf p.14"
+      ]
+    },
+    {
+      "id": "AI-10-12",
+      "title": "Риски, преимущества и ограничения генеративного ИИ",
+      "section_id": 10,
+      "section": "Введение в генеративный искусственный интеллект",
+      "kind": "topic",
+      "material_status": "available",
+      "status": "draft_requires_review",
+      "is_atomic": false,
+      "is_terminal": true,
+      "question": "Оцени внедрение генеративного сервиса по качеству, рискам и эффекту для пользователей.",
+      "provides": [
+        "оценивать преимущества, риски и условия безопасного применения GenAI",
+        "предлагать меры контроля качества"
+      ],
+      "requires": [
+        "возможности генеративного ИИ",
+        "основы оценки достоверности выдачи"
+      ],
+      "source_quality": "shared_only_review_required",
+      "source_pages": [
+        "14 Tutorial.pdf p.9",
+        "Week 14 Lecture Slides.pdf p.12",
+        "Week 14 Lecture Slides.pdf p.13"
+      ]
+    },
+    {
+      "id": "AI-10-13",
+      "title": "Полноценный жизненный цикл этически ответственного ИИ",
+      "section_id": 10,
+      "section": "Введение в генеративный искусственный интеллект",
+      "kind": "topic",
+      "material_status": "missing",
+      "status": "draft_requires_review",
+      "is_atomic": false,
+      "is_terminal": false,
+      "question": "Спроектируй систему контроля этических рисков на этапах подготовки данных, обучения, выпуска и мониторинга модели; кто за что отвечает?",
+      "provides": [
+        "анализировать этические риски на этапах данных, обучения, внедрения и мониторинга",
+        "распределять ответственность и контроль"
+      ],
+      "requires": [
+        "жизненный цикл ИИ-модели",
+        "этические риски автоматизированных решений"
+      ],
+      "source_quality": "missing_RPD_only",
+      "source_pages": []
+    }
+  ],
+  "prerequisites": [
+    {
+      "source": "AI-01-01",
+      "target": "AI-01-02",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-01-01",
+      "target": "AI-01-07",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-01-01",
+      "target": "AI-01-19",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-01-01",
+      "target": "AI-10-01",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-01-07",
+      "target": "AI-01-08",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-01-12",
+      "target": "AI-10-08",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-01-13",
+      "target": "AI-01-14",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-01-13",
+      "target": "AI-01-16",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-01-13",
+      "target": "AI-04-21",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-01-14",
+      "target": "AI-01-15",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-01-14",
+      "target": "AI-01-22",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-01-14",
+      "target": "AI-08-03",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-01-14",
+      "target": "AI-08-04",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-01-15",
+      "target": "AI-01-18",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-01-15",
+      "target": "AI-01-24",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-01-16",
+      "target": "AI-01-17",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-01-16",
+      "target": "AI-01-20",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-01-16",
+      "target": "AI-03-06",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-01-16",
+      "target": "AI-06-02",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-01-17",
+      "target": "AI-01-22",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-01-18",
+      "target": "AI-01-23",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-01-22",
+      "target": "AI-01-23",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-02-01",
+      "target": "AI-01-09",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-02-01",
+      "target": "AI-01-10",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-02-01",
+      "target": "AI-02-02",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-02-01",
+      "target": "AI-02-03",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-02-01",
+      "target": "AI-02-04",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-02-01",
+      "target": "AI-02-05",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-02-01",
+      "target": "AI-02-07",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-02-01",
+      "target": "AI-02-09",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-02-01",
+      "target": "AI-04-01",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-02-01",
+      "target": "AI-07-16",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-02-01",
+      "target": "AI-07-17",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-02-01",
+      "target": "AI-09-11",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-02-01",
+      "target": "AI-10-11",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-02-03",
+      "target": "AI-06-08",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-02-04",
+      "target": "AI-02-06",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-02-04",
+      "target": "AI-04-21",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-02-05",
+      "target": "AI-02-06",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-02-07",
+      "target": "AI-02-08",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-02-07",
+      "target": "AI-06-01",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-03-01",
+      "target": "AI-03-02",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-03-01",
+      "target": "AI-03-04",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-03-05",
+      "target": "AI-03-06",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-03-06",
+      "target": "AI-03-07",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-03-07",
+      "target": "AI-03-08",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-03-07",
+      "target": "AI-03-10",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-03-08",
+      "target": "AI-03-09",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-04-01",
+      "target": "AI-01-20",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-04-01",
+      "target": "AI-04-02",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-04-01",
+      "target": "AI-04-03",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-04-01",
+      "target": "AI-04-06",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-04-01",
+      "target": "AI-04-11",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-04-01",
+      "target": "AI-04-18",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-04-01",
+      "target": "AI-04-21",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-04-01",
+      "target": "AI-05-01",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-04-01",
+      "target": "AI-06-01",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-04-01",
+      "target": "AI-09-06",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-04-03",
+      "target": "AI-04-04",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-04-03",
+      "target": "AI-04-09",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-04-03",
+      "target": "AI-05-03",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-04-04",
+      "target": "AI-04-05",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-04-06",
+      "target": "AI-04-07",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-04-06",
+      "target": "AI-04-16",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-04-07",
+      "target": "AI-04-08",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-04-09",
+      "target": "AI-04-10",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-04-09",
+      "target": "AI-05-02",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-04-11",
+      "target": "AI-04-12",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-04-12",
+      "target": "AI-04-13",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-04-12",
+      "target": "AI-04-14",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-04-12",
+      "target": "AI-04-19",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-04-12",
+      "target": "AI-04-22",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-04-15",
+      "target": "AI-05-05",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-04-15",
+      "target": "AI-09-03",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-04-16",
+      "target": "AI-04-17",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-04-19",
+      "target": "AI-04-20",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-04-22",
+      "target": "AI-04-23",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-05-01",
+      "target": "AI-05-02",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-05-01",
+      "target": "AI-05-03",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-05-03",
+      "target": "AI-05-04",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-05-03",
+      "target": "AI-08-12",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-05-04",
+      "target": "AI-05-05",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-05-04",
+      "target": "AI-05-07",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-05-04",
+      "target": "AI-05-08",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-06-01",
+      "target": "AI-06-02",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-06-02",
+      "target": "AI-06-03",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-06-03",
+      "target": "AI-06-04",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-06-03",
+      "target": "AI-06-05",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-06-04",
+      "target": "AI-06-06",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-06-04",
+      "target": "AI-06-07",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-06-05",
+      "target": "AI-06-06",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-06-06",
+      "target": "AI-06-08",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-07-01",
+      "target": "AI-07-02",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-07-01",
+      "target": "AI-07-10",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-07-01",
+      "target": "AI-07-11",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-07-01",
+      "target": "AI-07-16",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-07-02",
+      "target": "AI-07-03",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-07-02",
+      "target": "AI-07-04",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-07-02",
+      "target": "AI-07-05",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-07-02",
+      "target": "AI-07-19",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-07-02",
+      "target": "AI-08-09",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-07-05",
+      "target": "AI-07-06",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-07-05",
+      "target": "AI-07-07",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-07-05",
+      "target": "AI-07-12",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-07-06",
+      "target": "AI-07-14",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-07-06",
+      "target": "AI-07-20",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-07-07",
+      "target": "AI-07-08",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-07-07",
+      "target": "AI-07-09",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-07-07",
+      "target": "AI-07-18",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-07-12",
+      "target": "AI-07-13",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-07-12",
+      "target": "AI-07-14",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-07-17",
+      "target": "AI-07-18",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-08-01",
+      "target": "AI-08-02",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-08-01",
+      "target": "AI-08-05",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-08-01",
+      "target": "AI-08-09",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-08-01",
+      "target": "AI-10-06",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-08-02",
+      "target": "AI-08-03",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-08-02",
+      "target": "AI-08-04",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-08-05",
+      "target": "AI-08-06",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-08-06",
+      "target": "AI-08-07",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-08-06",
+      "target": "AI-08-12",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-08-06",
+      "target": "AI-10-03",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-08-06",
+      "target": "AI-10-04",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-08-07",
+      "target": "AI-08-08",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-09-01",
+      "target": "AI-09-02",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-09-02",
+      "target": "AI-09-03",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-09-02",
+      "target": "AI-09-04",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-09-02",
+      "target": "AI-09-05",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-09-02",
+      "target": "AI-09-12",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-09-02",
+      "target": "AI-09-13",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-09-06",
+      "target": "AI-09-07",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-09-06",
+      "target": "AI-09-08",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-09-07",
+      "target": "AI-09-09",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-09-08",
+      "target": "AI-09-09",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-10-01",
+      "target": "AI-10-02",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-10-01",
+      "target": "AI-10-04",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-10-01",
+      "target": "AI-10-05",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-10-01",
+      "target": "AI-10-07",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-10-06",
+      "target": "AI-10-08",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-10-06",
+      "target": "AI-10-09",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-10-07",
+      "target": "AI-10-12",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-10-08",
+      "target": "AI-10-10",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-10-08",
+      "target": "AI-10-12",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-10-09",
+      "target": "AI-10-10",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    },
+    {
+      "source": "AI-10-09",
+      "target": "AI-10-11",
+      "kind": "prerequisite",
+      "validation_status": "provisional"
+    }
+  ],
+  "diagnostic_groups": [
+    {
+      "id": "DG-01",
+      "title": "Понимание и философия искусственного интеллекта",
+      "kind": "diagnostic_group",
+      "assessment_mode": "routing_only",
+      "validation_status": "draft_unvalidated",
+      "auto_close_allowed": false,
+      "terminal_topic_ids": [
+        "AI-01-02",
+        "AI-01-03",
+        "AI-01-06",
+        "AI-01-08",
+        "AI-01-19"
+      ],
+      "closure_topic_ids": [
+        "AI-01-01",
+        "AI-01-02",
+        "AI-01-03",
+        "AI-01-06",
+        "AI-01-07",
+        "AI-01-08",
+        "AI-01-19"
+      ],
+      "composite_prompt_draft": "Представь два мысленных эксперимента о машинном интеллекте. Разбери критерий интеллектуальности, возможность понимания и роль обоснования. Для историко-культурных аспектов используй дополнительный независимый подпункт.",
+      "rubric_draft": [
+        {
+          "topic_id": "AI-01-02",
+          "criterion": "Продемонстрировано: отличать сильный ИИ как тезис о понимании от слабого ИИ как инструментального подхода; оценивать силу доказательства разумности системы",
+          "status": "unvalidated"
+        },
+        {
+          "topic_id": "AI-01-03",
+          "criterion": "Продемонстрировано: объяснять относительность оценки интеллектуального поведения к задаче и среде; различать культурные и биологические контексты интеллекта",
+          "status": "unvalidated"
+        },
+        {
+          "topic_id": "AI-01-06",
+          "criterion": "Продемонстрировано: различать истинное убеждение, обоснование и знание; строить контрпример Геттиера к определению знания",
+          "status": "unvalidated"
+        },
+        {
+          "topic_id": "AI-01-08",
+          "criterion": "Продемонстрировано: различать синтаксическую обработку и семантическое понимание; воспроизводить китайскую комнату и содержательное возражение",
+          "status": "unvalidated"
+        },
+        {
+          "topic_id": "AI-01-19",
+          "criterion": "Продемонстрировано: сопоставлять мифологический образ искусственного существа и современную техническую систему; отличать культурную метафору от операционального определения",
+          "status": "unvalidated"
+        }
+      ],
+      "source_sections": [
+        1
+      ],
+      "note": "Только маршрутизатор: нужен набор независимых подпроверок."
+    },
+    {
+      "id": "DG-02",
+      "title": "Общественные последствия и этика ИИ",
+      "kind": "diagnostic_group",
+      "assessment_mode": "integrated_pilot",
+      "validation_status": "draft_unvalidated",
+      "auto_close_allowed": false,
+      "terminal_topic_ids": [
+        "AI-01-04",
+        "AI-01-09",
+        "AI-01-10"
+      ],
+      "closure_topic_ids": [
+        "AI-01-04",
+        "AI-01-09",
+        "AI-01-10",
+        "AI-02-01"
+      ],
+      "composite_prompt_draft": "Разбери внедрение автономной ИИ-системы в общественно важную профессию: последствия для людей, конфликтующие правила поведения робота, ответственность и риск причинения вреда.",
+      "rubric_draft": [
+        {
+          "topic_id": "AI-01-04",
+          "criterion": "Продемонстрировано: анализировать эффект автоматизации на труд и принятие решений; различать прямые выгоды и социальные риски внедрения ИИ",
+          "status": "unvalidated"
+        },
+        {
+          "topic_id": "AI-01-09",
+          "criterion": "Продемонстрировано: применять приоритеты трёх законов Азимова к конфликту приказов; указывать ограничения формальных правил безопасности робота",
+          "status": "unvalidated"
+        },
+        {
+          "topic_id": "AI-01-10",
+          "criterion": "Продемонстрировано: анализировать риск вреда от автономного решения и человеческую ответственность; выявлять конфликт целей и требований безопасности",
+          "status": "unvalidated"
+        }
+      ],
+      "source_sections": [
+        1
+      ],
+      "note": "Кандидат на комплексный кейс: необходима проверка того, что каждый пункт действительно оценивается."
+    },
+    {
+      "id": "DG-03",
+      "title": "Логика, доказательства и изменение состояний",
+      "kind": "diagnostic_group",
+      "assessment_mode": "routing_only",
+      "validation_status": "draft_unvalidated",
+      "auto_close_allowed": false,
+      "terminal_topic_ids": [
+        "AI-01-20",
+        "AI-01-21",
+        "AI-01-23",
+        "AI-01-24"
+      ],
+      "closure_topic_ids": [
+        "AI-01-13",
+        "AI-01-14",
+        "AI-01-15",
+        "AI-01-16",
+        "AI-01-17",
+        "AI-01-18",
+        "AI-01-20",
+        "AI-01-21",
+        "AI-01-22",
+        "AI-01-23",
+        "AI-01-24",
+        "AI-02-01",
+        "AI-04-01"
+      ],
+      "composite_prompt_draft": "Разбери формальное описание меняющейся системы и свойства логического доказательства. Индукцию и необходимые/достаточные условия проверь отдельными независимыми подпунктами.",
+      "rubric_draft": [
+        {
+          "topic_id": "AI-01-20",
+          "criterion": "Продемонстрировано: описывать меняющийся мир через ситуации и result(a,s); различать qualification и ramification problems в формализации действий",
+          "status": "unvalidated"
+        },
+        {
+          "topic_id": "AI-01-21",
+          "criterion": "Продемонстрировано: доказывать утверждение по математической индукции; обосновывать базу и корректность индукционного перехода",
+          "status": "unvalidated"
+        },
+        {
+          "topic_id": "AI-01-23",
+          "criterion": "Продемонстрировано: отличать семантическое следование от синтаксического доказательства; формулировать условия soundness и completeness для правил вывода",
+          "status": "unvalidated"
+        },
+        {
+          "topic_id": "AI-01-24",
+          "criterion": "Продемонстрировано: различать необходимое и достаточное условия; переводить их в прямые и обратные импликации",
+          "status": "unvalidated"
+        }
+      ],
+      "source_sections": [
+        1
+      ],
+      "note": "Только маршрутизатор: нужен набор независимых подпроверок."
+    },
+    {
+      "id": "DG-04",
+      "title": "Проектирование рациональных агентов",
+      "kind": "diagnostic_group",
+      "assessment_mode": "integrated_pilot",
+      "validation_status": "draft_unvalidated",
+      "auto_close_allowed": false,
+      "terminal_topic_ids": [
+        "AI-02-02",
+        "AI-02-06",
+        "AI-02-08",
+        "AI-02-09"
+      ],
+      "closure_topic_ids": [
+        "AI-02-01",
+        "AI-02-02",
+        "AI-02-04",
+        "AI-02-05",
+        "AI-02-06",
+        "AI-02-07",
+        "AI-02-08",
+        "AI-02-09"
+      ],
+      "composite_prompt_draft": "Спроектируй агента для частично наблюдаемой среды: выбери рациональное действие, используй внутреннюю модель, функцию полезности и механизм обучения по обратной связи. Обоснуй каждый компонент.",
+      "rubric_draft": [
+        {
+          "topic_id": "AI-02-02",
+          "criterion": "Продемонстрировано: обосновывать рациональность по доступной информации и цели; отличать рациональность от всеведения и гарантированного успеха",
+          "status": "unvalidated"
+        },
+        {
+          "topic_id": "AI-02-06",
+          "criterion": "Продемонстрировано: поддерживать внутреннее состояние агента при изменении среды; объяснять необходимость модели мира",
+          "status": "unvalidated"
+        },
+        {
+          "topic_id": "AI-02-08",
+          "criterion": "Продемонстрировано: выбирать действия по функции полезности; различать достижение цели и сравнительную предпочтительность исходов",
+          "status": "unvalidated"
+        },
+        {
+          "topic_id": "AI-02-09",
+          "criterion": "Продемонстрировано: объяснять роли performance element, critic, learning element и problem generator; анализировать обратную связь для обучения агента",
+          "status": "unvalidated"
+        }
+      ],
+      "source_sections": [
+        2
+      ],
+      "note": "Кандидат на комплексный кейс: необходима проверка того, что каждый пункт действительно оценивается."
+    },
+    {
+      "id": "DG-05",
+      "title": "Экспертные системы: применение и ограничения",
+      "kind": "diagnostic_group",
+      "assessment_mode": "routing_only",
+      "validation_status": "draft_unvalidated",
+      "auto_close_allowed": false,
+      "terminal_topic_ids": [
+        "AI-03-02",
+        "AI-03-03",
+        "AI-03-04"
+      ],
+      "closure_topic_ids": [
+        "AI-03-01",
+        "AI-03-02",
+        "AI-03-03",
+        "AI-03-04"
+      ],
+      "composite_prompt_draft": "Рассмотри разработку экспертной системы: получение правил от специалиста, различие шаблонного диалога и знания, а также исторические ограничения и причины спада интереса.",
+      "rubric_draft": [
+        {
+          "topic_id": "AI-03-02",
+          "criterion": "Продемонстрировано: выделять правила из интервью и примеров эксперта; объяснять проблему дороговизны получения и проверки знаний",
+          "status": "unvalidated"
+        },
+        {
+          "topic_id": "AI-03-03",
+          "criterion": "Продемонстрировано: объяснять шаблонное сопоставление в ELIZA; отличать имитацию беседы от семантического рассуждения",
+          "status": "unvalidated"
+        },
+        {
+          "topic_id": "AI-03-04",
+          "criterion": "Продемонстрировано: объяснять причины и последствия зим ИИ; сопоставлять ожидания от экспертных систем с ресурсными ограничениями",
+          "status": "unvalidated"
+        }
+      ],
+      "source_sections": [
+        3
+      ],
+      "note": "Только маршрутизатор: нужен набор независимых подпроверок."
+    },
+    {
+      "id": "DG-06",
+      "title": "Программирование знаний в Prolog",
+      "kind": "diagnostic_group",
+      "assessment_mode": "integrated_pilot",
+      "validation_status": "draft_unvalidated",
+      "auto_close_allowed": false,
+      "terminal_topic_ids": [
+        "AI-03-09",
+        "AI-03-10"
+      ],
+      "closure_topic_ids": [
+        "AI-01-13",
+        "AI-01-16",
+        "AI-03-05",
+        "AI-03-06",
+        "AI-03-07",
+        "AI-03-08",
+        "AI-03-09",
+        "AI-03-10"
+      ],
+      "composite_prompt_draft": "Спроектируй Prolog-базу семейных отношений, напиши рекурсивный предикат, выполни нетривиальный запрос и пошагово объясни поиск решения.",
+      "rubric_draft": [
+        {
+          "topic_id": "AI-03-09",
+          "criterion": "Продемонстрировано: писать базу и рекурсивный случай в Prolog; разбирать ход вычисления и завершение рекурсии",
+          "status": "unvalidated"
+        },
+        {
+          "topic_id": "AI-03-10",
+          "criterion": "Продемонстрировано: моделировать родственные отношения фактами и правилами; проверять непрямые отношения запросами",
+          "status": "unvalidated"
+        }
+      ],
+      "source_sections": [
+        3
+      ],
+      "note": "Кандидат на комплексный кейс: необходима проверка того, что каждый пункт действительно оценивается."
+    },
+    {
+      "id": "DG-07",
+      "title": "Формализация задач поиска и ограничений",
+      "kind": "diagnostic_group",
+      "assessment_mode": "routing_only",
+      "validation_status": "draft_unvalidated",
+      "auto_close_allowed": false,
+      "terminal_topic_ids": [
+        "AI-04-02",
+        "AI-04-05",
+        "AI-04-21"
+      ],
+      "closure_topic_ids": [
+        "AI-01-13",
+        "AI-02-01",
+        "AI-02-04",
+        "AI-04-01",
+        "AI-04-02",
+        "AI-04-03",
+        "AI-04-04",
+        "AI-04-05",
+        "AI-04-21"
+      ],
+      "composite_prompt_draft": "Сравни постановки поисковых задач для N-ферзей и мира Wumpus, выделив пространства состояний, ограничения и доступную информацию. Непохожие задачи проверь отдельными подзадачами.",
+      "rubric_draft": [
+        {
+          "topic_id": "AI-04-02",
+          "criterion": "Продемонстрировано: различать информированный и неинформированный поиск; описывать роль априорной информации о цели",
+          "status": "unvalidated"
+        },
+        {
+          "topic_id": "AI-04-05",
+          "criterion": "Продемонстрировано: моделировать N-queens как задачу с ограничениями; применять backtracking и отсечение недопустимых ходов",
+          "status": "unvalidated"
+        },
+        {
+          "topic_id": "AI-04-21",
+          "criterion": "Продемонстрировано: моделировать правила и восприятия Wumpus; обосновывать безопасный шаг с учётом известных опасностей",
+          "status": "unvalidated"
+        }
+      ],
+      "source_sections": [
+        4
+      ],
+      "note": "Только маршрутизатор: нужен набор независимых подпроверок."
+    },
+    {
+      "id": "DG-08",
+      "title": "Эвристический поиск пути",
+      "kind": "diagnostic_group",
+      "assessment_mode": "integrated_pilot",
+      "validation_status": "draft_unvalidated",
+      "auto_close_allowed": false,
+      "terminal_topic_ids": [
+        "AI-04-08",
+        "AI-04-17",
+        "AI-04-18"
+      ],
+      "closure_topic_ids": [
+        "AI-02-01",
+        "AI-04-01",
+        "AI-04-06",
+        "AI-04-07",
+        "AI-04-08",
+        "AI-04-16",
+        "AI-04-17",
+        "AI-04-18"
+      ],
+      "composite_prompt_draft": "Для сеточной карты выбери модель соседства, задай эвристику, проверь её согласованность и проведи A* с OPEN/CLOSED до получения пути.",
+      "rubric_draft": [
+        {
+          "topic_id": "AI-04-08",
+          "criterion": "Продемонстрировано: проверять h(n)≤c(n,n')+h(n') на ребре; объяснять согласованность и монотонность оценок",
+          "status": "unvalidated"
+        },
+        {
+          "topic_id": "AI-04-17",
+          "criterion": "Продемонстрировано: проводить A* с OPEN/CLOSED и пересчётом стоимости; восстанавливать путь и обсуждать условия оптимальности",
+          "status": "unvalidated"
+        },
+        {
+          "topic_id": "AI-04-18",
+          "criterion": "Продемонстрировано: различать окрестности Мура и фон Неймана; связывать допустимые переходы и стоимость движения на сетке",
+          "status": "unvalidated"
+        }
+      ],
+      "source_sections": [
+        4
+      ],
+      "note": "Кандидат на комплексный кейс: необходима проверка того, что каждый пункт действительно оценивается."
+    },
+    {
+      "id": "DG-09",
+      "title": "Состязательный поиск и Monte Carlo Tree Search",
+      "kind": "diagnostic_group",
+      "assessment_mode": "integrated_pilot",
+      "validation_status": "draft_unvalidated",
+      "auto_close_allowed": false,
+      "terminal_topic_ids": [
+        "AI-04-10",
+        "AI-05-02",
+        "AI-05-05",
+        "AI-05-07",
+        "AI-05-08"
+      ],
+      "closure_topic_ids": [
+        "AI-02-01",
+        "AI-04-01",
+        "AI-04-03",
+        "AI-04-09",
+        "AI-04-10",
+        "AI-04-15",
+        "AI-05-01",
+        "AI-05-02",
+        "AI-05-03",
+        "AI-05-04",
+        "AI-05-05",
+        "AI-05-07",
+        "AI-05-08"
+      ],
+      "composite_prompt_draft": "Для игровой задачи сравни alpha-beta и MCTS: проведи отсечения на малом дереве, объясни частичное построение дерева, рассчитай UCT, выбери финальное действие и предложи вариант параллелизации.",
+      "rubric_draft": [
+        {
+          "topic_id": "AI-04-10",
+          "criterion": "Продемонстрировано: проводить alpha-beta отсечение и вести α/β границы; объяснять сохранение оптимального minimax-хода",
+          "status": "unvalidated"
+        },
+        {
+          "topic_id": "AI-05-02",
+          "criterion": "Продемонстрировано: объяснять рост полного дерева игры и мотивацию частичного обхода; сопоставлять minimax и выборочное дерево MCTS",
+          "status": "unvalidated"
+        },
+        {
+          "topic_id": "AI-05-05",
+          "criterion": "Продемонстрировано: рассчитывать UCT из exploitation и exploration; объяснять влияние коэффициента и числа посещений",
+          "status": "unvalidated"
+        },
+        {
+          "topic_id": "AI-05-07",
+          "criterion": "Продемонстрировано: выбирать итоговое действие MCTS по числу посещений; учитывать неопределённость небольших выборок",
+          "status": "unvalidated"
+        },
+        {
+          "topic_id": "AI-05-08",
+          "criterion": "Продемонстрировано: сравнивать три схемы параллельного MCTS; объяснять конфликты одновременных обновлений дерева",
+          "status": "unvalidated"
+        }
+      ],
+      "source_sections": [
+        4,
+        5
+      ],
+      "note": "Кандидат на комплексный кейс: необходима проверка того, что каждый пункт действительно оценивается."
+    },
+    {
+      "id": "DG-10",
+      "title": "Локальный поиск и оптимизационные ландшафты",
+      "kind": "diagnostic_group",
+      "assessment_mode": "integrated_pilot",
+      "validation_status": "draft_unvalidated",
+      "auto_close_allowed": false,
+      "terminal_topic_ids": [
+        "AI-04-13",
+        "AI-04-14",
+        "AI-04-20",
+        "AI-04-23"
+      ],
+      "closure_topic_ids": [
+        "AI-02-01",
+        "AI-04-01",
+        "AI-04-11",
+        "AI-04-12",
+        "AI-04-13",
+        "AI-04-14",
+        "AI-04-19",
+        "AI-04-20",
+        "AI-04-22",
+        "AI-04-23"
+      ],
+      "composite_prompt_draft": "Для ландшафта оптимизации выяви плато или локальный оптимум, сравни simulated annealing и tabu search и предложи измерение сложности ландшафта через случайные блуждания.",
+      "rubric_draft": [
+        {
+          "topic_id": "AI-04-13",
+          "criterion": "Продемонстрировано: распознавать плато, локальный экстремум и ребро плато; предлагать перезапуск или изменение окрестности",
+          "status": "unvalidated"
+        },
+        {
+          "topic_id": "AI-04-14",
+          "criterion": "Продемонстрировано: рассчитывать вероятность принятия ухудшающего перехода при температуре; объяснять охлаждение и выход из локального экстремума",
+          "status": "unvalidated"
+        },
+        {
+          "topic_id": "AI-04-20",
+          "criterion": "Продемонстрировано: задавать tabu tenure и aspiration criterion; объяснять исключения из списка запретов",
+          "status": "unvalidated"
+        },
+        {
+          "topic_id": "AI-04-23",
+          "criterion": "Продемонстрировано: описывать случайное блуждание по ландшафту и показатели сложности; интерпретировать их для трудности оптимизации",
+          "status": "unvalidated"
+        }
+      ],
+      "source_sections": [
+        4
+      ],
+      "note": "Кандидат на комплексный кейс: необходима проверка того, что каждый пункт действительно оценивается."
+    },
+    {
+      "id": "DG-11",
+      "title": "Планирование и исполнение в PDDL",
+      "kind": "diagnostic_group",
+      "assessment_mode": "integrated_pilot",
+      "validation_status": "draft_unvalidated",
+      "auto_close_allowed": false,
+      "terminal_topic_ids": [
+        "AI-06-07",
+        "AI-06-08"
+      ],
+      "closure_topic_ids": [
+        "AI-01-13",
+        "AI-01-16",
+        "AI-02-01",
+        "AI-02-03",
+        "AI-02-07",
+        "AI-04-01",
+        "AI-06-01",
+        "AI-06-02",
+        "AI-06-03",
+        "AI-06-04",
+        "AI-06-05",
+        "AI-06-06",
+        "AI-06-07",
+        "AI-06-08"
+      ],
+      "composite_prompt_draft": "Опиши робототехнический сценарий с ограничениями во времени: задай ключевые элементы PDDL, объясни длительные действия, связь планировщика с ROSPlan и обратную связь при исполнении.",
+      "rubric_draft": [
+        {
+          "topic_id": "AI-06-07",
+          "criterion": "Продемонстрировано: различать мгновенные и длительные действия PDDL 2.1; моделировать интервальные условия и эффекты",
+          "status": "unvalidated"
+        },
+        {
+          "topic_id": "AI-06-08",
+          "criterion": "Продемонстрировано: связывать генерацию PDDL-плана с выполнением роботом через ROSPlan; объяснять мониторинг и перепланирование",
+          "status": "unvalidated"
+        }
+      ],
+      "source_sections": [
+        6
+      ],
+      "note": "Кандидат на комплексный кейс: необходима проверка того, что каждый пункт действительно оценивается."
+    },
+    {
+      "id": "DG-12",
+      "title": "Генетические алгоритмы: представление и отбор",
+      "kind": "diagnostic_group",
+      "assessment_mode": "integrated_pilot",
+      "validation_status": "draft_unvalidated",
+      "auto_close_allowed": false,
+      "terminal_topic_ids": [
+        "AI-07-03",
+        "AI-07-04",
+        "AI-07-13",
+        "AI-07-14",
+        "AI-07-20"
+      ],
+      "closure_topic_ids": [
+        "AI-07-01",
+        "AI-07-02",
+        "AI-07-03",
+        "AI-07-04",
+        "AI-07-05",
+        "AI-07-06",
+        "AI-07-12",
+        "AI-07-13",
+        "AI-07-14",
+        "AI-07-20"
+      ],
+      "composite_prompt_draft": "Спроектируй генетический алгоритм для задачи маршрута: выбери кодирование, объясни roulette/rank/tournament selection, проведи кроссовер перестановок и разъясни роль эпистаза.",
+      "rubric_draft": [
+        {
+          "topic_id": "AI-07-03",
+          "criterion": "Продемонстрировано: вычислять roulette-wheel вероятности из положительных fitness; моделировать выбор родителей",
+          "status": "unvalidated"
+        },
+        {
+          "topic_id": "AI-07-04",
+          "criterion": "Продемонстрировано: выполнять ранговый и турнирный отбор; объяснять влияние размера турнира на селективность",
+          "status": "unvalidated"
+        },
+        {
+          "topic_id": "AI-07-13",
+          "criterion": "Продемонстрировано: объяснять взаимодействия генов и эпистаз; показывать влияние взаимодействия на приспособленность",
+          "status": "unvalidated"
+        },
+        {
+          "topic_id": "AI-07-14",
+          "criterion": "Продемонстрировано: выполнять перестановочно-безопасный кроссовер PMX; выявлять недопустимые дубликаты городов",
+          "status": "unvalidated"
+        },
+        {
+          "topic_id": "AI-07-20",
+          "criterion": "Продемонстрировано: проектировать кодирование стратегии конкурентного агента; согласовывать гены и операторы с семантикой управления",
+          "status": "unvalidated"
+        }
+      ],
+      "source_sections": [
+        7
+      ],
+      "note": "Кандидат на комплексный кейс: необходима проверка того, что каждый пункт действительно оценивается."
+    },
+    {
+      "id": "DG-13",
+      "title": "Генетическое программирование и эволюция структур",
+      "kind": "diagnostic_group",
+      "assessment_mode": "integrated_pilot",
+      "validation_status": "draft_unvalidated",
+      "auto_close_allowed": false,
+      "terminal_topic_ids": [
+        "AI-07-08",
+        "AI-07-09",
+        "AI-07-18"
+      ],
+      "closure_topic_ids": [
+        "AI-02-01",
+        "AI-07-01",
+        "AI-07-02",
+        "AI-07-05",
+        "AI-07-07",
+        "AI-07-08",
+        "AI-07-09",
+        "AI-07-17",
+        "AI-07-18"
+      ],
+      "composite_prompt_draft": "Сравни генетическое программирование деревьями, CGP и поведенческими деревьями: выполни структурную мутацию, проверь корректность и объясни bloat.",
+      "rubric_draft": [
+        {
+          "topic_id": "AI-07-08",
+          "criterion": "Продемонстрировано: выявлять нейтральные и избыточные поддеревья; применять принцип parsimony и контролировать сложность GP",
+          "status": "unvalidated"
+        },
+        {
+          "topic_id": "AI-07-09",
+          "criterion": "Продемонстрировано: описывать CGP как направленный вычислительный граф; применять допустимую мутацию связей/функций",
+          "status": "unvalidated"
+        },
+        {
+          "topic_id": "AI-07-18",
+          "criterion": "Продемонстрировано: выполнять мутацию и кроссовер деревьев поведения; проверять синтаксическую и поведенческую допустимость",
+          "status": "unvalidated"
+        }
+      ],
+      "source_sections": [
+        7
+      ],
+      "note": "Кандидат на комплексный кейс: необходима проверка того, что каждый пункт действительно оценивается."
+    },
+    {
+      "id": "DG-14",
+      "title": "Эволюционные парадигмы и коэволюция",
+      "kind": "diagnostic_group",
+      "assessment_mode": "routing_only",
+      "validation_status": "draft_unvalidated",
+      "auto_close_allowed": false,
+      "terminal_topic_ids": [
+        "AI-07-10",
+        "AI-07-11",
+        "AI-07-16",
+        "AI-07-19"
+      ],
+      "closure_topic_ids": [
+        "AI-02-01",
+        "AI-07-01",
+        "AI-07-02",
+        "AI-07-10",
+        "AI-07-11",
+        "AI-07-16",
+        "AI-07-19"
+      ],
+      "composite_prompt_draft": "Подбери методы эволюционной оптимизации для управления: сравни ES, EP, коэволюцию и эволюцию контроллера роя; для каждой парадигмы приведи отдельный проверяемый пример.",
+      "rubric_draft": [
+        {
+          "topic_id": "AI-07-10",
+          "criterion": "Продемонстрировано: кодировать конечный автомат эволюционного программирования; изменять переходы мутацией",
+          "status": "unvalidated"
+        },
+        {
+          "topic_id": "AI-07-11",
+          "criterion": "Продемонстрировано: обновлять вещественные векторы эволюционной стратегии гауссовой мутацией; сравнивать выбор родителей и потомков",
+          "status": "unvalidated"
+        },
+        {
+          "topic_id": "AI-07-16",
+          "criterion": "Продемонстрировано: объяснять коэволюцию и зависимость fitness от других агентов; распознавать циклическую смену относительного превосходства",
+          "status": "unvalidated"
+        },
+        {
+          "topic_id": "AI-07-19",
+          "criterion": "Продемонстрировано: формировать критерий эффективности для контроллера роя и эволюционную схему; отделять локальные правила от коллективного эффекта",
+          "status": "unvalidated"
+        }
+      ],
+      "source_sections": [
+        7
+      ],
+      "note": "Только маршрутизатор: нужен набор независимых подпроверок."
+    },
+    {
+      "id": "DG-15",
+      "title": "Перцептрон и границы линейных классификаторов",
+      "kind": "diagnostic_group",
+      "assessment_mode": "integrated_pilot",
+      "validation_status": "draft_unvalidated",
+      "auto_close_allowed": false,
+      "terminal_topic_ids": [
+        "AI-08-03",
+        "AI-08-04"
+      ],
+      "closure_topic_ids": [
+        "AI-01-13",
+        "AI-01-14",
+        "AI-08-01",
+        "AI-08-02",
+        "AI-08-03",
+        "AI-08-04"
+      ],
+      "composite_prompt_draft": "Реализуй линейно разделимые логические функции перцептроном и затем объясни невозможность XOR на одном перцептроне и способ решения многослойной сетью.",
+      "rubric_draft": [
+        {
+          "topic_id": "AI-08-03",
+          "criterion": "Продемонстрировано: представлять AND/OR/NOT/NAND весами и смещением; проверять результат таблицей истинности",
+          "status": "unvalidated"
+        },
+        {
+          "topic_id": "AI-08-04",
+          "criterion": "Продемонстрировано: доказывать невозможность XOR одной линейной границей; объяснять, зачем нужен дополнительный слой",
+          "status": "unvalidated"
+        }
+      ],
+      "source_sections": [
+        8
+      ],
+      "note": "Кандидат на комплексный кейс: необходима проверка того, что каждый пункт действительно оценивается."
+    },
+    {
+      "id": "DG-16",
+      "title": "Ограничения и гибридные применения нейросетей",
+      "kind": "diagnostic_group",
+      "assessment_mode": "routing_only",
+      "validation_status": "draft_unvalidated",
+      "auto_close_allowed": false,
+      "terminal_topic_ids": [
+        "AI-08-08",
+        "AI-08-09",
+        "AI-08-12"
+      ],
+      "closure_topic_ids": [
+        "AI-02-01",
+        "AI-04-01",
+        "AI-04-03",
+        "AI-05-01",
+        "AI-05-03",
+        "AI-07-01",
+        "AI-07-02",
+        "AI-08-01",
+        "AI-08-05",
+        "AI-08-06",
+        "AI-08-07",
+        "AI-08-08",
+        "AI-08-09",
+        "AI-08-12"
+      ],
+      "composite_prompt_draft": "Разбери нейросеть с ошибками и её интерпретируемость, затем отдельно проверь поиск весов эволюцией и сочетание обучения с поиском в AlphaGo.",
+      "rubric_draft": [
+        {
+          "topic_id": "AI-08-08",
+          "criterion": "Продемонстрировано: объяснять непрозрачность скрытых представлений; диагностировать проблемы переобучения и интерпретации",
+          "status": "unvalidated"
+        },
+        {
+          "topic_id": "AI-08-09",
+          "criterion": "Продемонстрировано: кодировать веса ANN как эволюционный кандидат; сравнивать эволюцию и градиентное обучение",
+          "status": "unvalidated"
+        },
+        {
+          "topic_id": "AI-08-12",
+          "criterion": "Продемонстрировано: объяснять сочетание нейросетевых оценок и игрового поиска в AlphaGo; различать роль обучения и планирования",
+          "status": "unvalidated"
+        }
+      ],
+      "source_sections": [
+        8
+      ],
+      "note": "Только маршрутизатор: нужен набор независимых подпроверок."
+    },
+    {
+      "id": "DG-17",
+      "title": "Оптимизация роем частиц PSO",
+      "kind": "diagnostic_group",
+      "assessment_mode": "integrated_pilot",
+      "validation_status": "draft_unvalidated",
+      "auto_close_allowed": false,
+      "terminal_topic_ids": [
+        "AI-09-03",
+        "AI-09-04",
+        "AI-09-05",
+        "AI-09-12",
+        "AI-09-13"
+      ],
+      "closure_topic_ids": [
+        "AI-04-15",
+        "AI-09-01",
+        "AI-09-02",
+        "AI-09-03",
+        "AI-09-04",
+        "AI-09-05",
+        "AI-09-12",
+        "AI-09-13"
+      ],
+      "composite_prompt_draft": "Спроектируй PSO для оптимизации: задай инерцию и gbest/lbest, правило остановки, адаптацию к дискретным вариантам и схему обмена лучшими решениями.",
+      "rubric_draft": [
+        {
+          "topic_id": "AI-09-03",
+          "criterion": "Продемонстрировано: объяснять эффект инерции и коэффициентов притяжения; управлять exploration/exploitation в рое",
+          "status": "unvalidated"
+        },
+        {
+          "topic_id": "AI-09-04",
+          "criterion": "Продемонстрировано: сравнивать gbest/lbest топологии обмена лучшими решениями; оценивать скорость сходимости и разнообразие",
+          "status": "unvalidated"
+        },
+        {
+          "topic_id": "AI-09-05",
+          "criterion": "Продемонстрировано: выбирать и проверять критерии остановки PSO; оценивать компромисс между затратами и качеством результата",
+          "status": "unvalidated"
+        },
+        {
+          "topic_id": "AI-09-12",
+          "criterion": "Продемонстрировано: переводить вещественные позиции в дискретные состояния; объяснять влияние квантования на достижимые решения",
+          "status": "unvalidated"
+        },
+        {
+          "topic_id": "AI-09-13",
+          "criterion": "Продемонстрировано: организовывать несколько подроёв в распределённом PSO; объяснять обмен глобально лучшими решениями",
+          "status": "unvalidated"
+        }
+      ],
+      "source_sections": [
+        9
+      ],
+      "note": "Кандидат на комплексный кейс: необходима проверка того, что каждый пункт действительно оценивается."
+    },
+    {
+      "id": "DG-18",
+      "title": "Муравьиные алгоритмы и коллективное поведение",
+      "kind": "diagnostic_group",
+      "assessment_mode": "routing_only",
+      "validation_status": "draft_unvalidated",
+      "auto_close_allowed": false,
+      "terminal_topic_ids": [
+        "AI-09-09",
+        "AI-09-11"
+      ],
+      "closure_topic_ids": [
+        "AI-02-01",
+        "AI-04-01",
+        "AI-09-06",
+        "AI-09-07",
+        "AI-09-08",
+        "AI-09-09",
+        "AI-09-11"
+      ],
+      "composite_prompt_draft": "Покажи решение TSP муравьиным алгоритмом, а затем отдельно объясни правила flocking. Общая идея коллективного поведения не заменяет оценку обоих механизмов.",
+      "rubric_draft": [
+        {
+          "topic_id": "AI-09-09",
+          "criterion": "Продемонстрировано: проводить цикл Ant System для TSP; выбирать маршруты и выполнять обновление феромона",
+          "status": "unvalidated"
+        },
+        {
+          "topic_id": "AI-09-11",
+          "criterion": "Продемонстрировано: объяснять, как локальные правила движения ведут к flocking; называть области применения массовой симуляции",
+          "status": "unvalidated"
+        }
+      ],
+      "source_sections": [
+        9
+      ],
+      "note": "Только маршрутизатор: нужен набор независимых подпроверок."
+    },
+    {
+      "id": "DG-19",
+      "title": "Архитектуры генеративных моделей",
+      "kind": "diagnostic_group",
+      "assessment_mode": "integrated_pilot",
+      "validation_status": "draft_unvalidated",
+      "auto_close_allowed": false,
+      "terminal_topic_ids": [
+        "AI-10-02",
+        "AI-10-03",
+        "AI-10-04",
+        "AI-10-05"
+      ],
+      "closure_topic_ids": [
+        "AI-01-01",
+        "AI-08-01",
+        "AI-08-05",
+        "AI-08-06",
+        "AI-10-01",
+        "AI-10-02",
+        "AI-10-03",
+        "AI-10-04",
+        "AI-10-05"
+      ],
+      "composite_prompt_draft": "Для генерации изображений сравни VAE, GAN и диффузионную модель: опиши принципы обучения, ограничения и обоснованный выбор, связав методы с историей развития.",
+      "rubric_draft": [
+        {
+          "topic_id": "AI-10-02",
+          "criterion": "Продемонстрировано: соотносить основные этапы генеративного ИИ с архитектурными идеями; объяснять переход к более сложным возможностям",
+          "status": "unvalidated"
+        },
+        {
+          "topic_id": "AI-10-03",
+          "criterion": "Продемонстрировано: объяснять роль кодировщика, латентного представления и декодировщика VAE; прослеживать генерацию примера из латентного вектора",
+          "status": "unvalidated"
+        },
+        {
+          "topic_id": "AI-10-04",
+          "criterion": "Продемонстрировано: объяснять состязательное обучение генератора и дискриминатора; предсказывать эффект изменений качества одного из участников",
+          "status": "unvalidated"
+        },
+        {
+          "topic_id": "AI-10-05",
+          "criterion": "Продемонстрировано: описывать прямой процесс зашумления и обратный процесс генерации; объяснять роль последовательного денойзинга",
+          "status": "unvalidated"
+        }
+      ],
+      "source_sections": [
+        10
+      ],
+      "note": "Кандидат на комплексный кейс: необходима проверка того, что каждый пункт действительно оценивается."
+    },
+    {
+      "id": "DG-20",
+      "title": "LLM-системы: RAG, инструменты и риски",
+      "kind": "diagnostic_group",
+      "assessment_mode": "integrated_pilot",
+      "validation_status": "draft_unvalidated",
+      "auto_close_allowed": false,
+      "terminal_topic_ids": [
+        "AI-10-10",
+        "AI-10-11",
+        "AI-10-12"
+      ],
+      "closure_topic_ids": [
+        "AI-01-01",
+        "AI-01-12",
+        "AI-02-01",
+        "AI-08-01",
+        "AI-10-01",
+        "AI-10-06",
+        "AI-10-07",
+        "AI-10-08",
+        "AI-10-09",
+        "AI-10-10",
+        "AI-10-11",
+        "AI-10-12"
+      ],
+      "composite_prompt_draft": "Спроектируй LLM-ассистента с RAG и инструментами: покажи контур получения фактов, планирование действий, управление состоянием и контроль рисков/ошибок.",
+      "rubric_draft": [
+        {
+          "topic_id": "AI-10-10",
+          "criterion": "Продемонстрировано: строить retrieve→augment→generate конвейер RAG; объяснять роль надёжного контекста и границы метода",
+          "status": "unvalidated"
+        },
+        {
+          "topic_id": "AI-10-11",
+          "criterion": "Продемонстрировано: проектировать агента на основе LLM с инструментами и состоянием; описать управление вызовами и ошибками",
+          "status": "unvalidated"
+        },
+        {
+          "topic_id": "AI-10-12",
+          "criterion": "Продемонстрировано: оценивать преимущества, риски и условия безопасного применения GenAI; предлагать меры контроля качества",
+          "status": "unvalidated"
+        }
+      ],
+      "source_sections": [
+        10
+      ],
+      "note": "Кандидат на комплексный кейс: необходима проверка того, что каждый пункт действительно оценивается."
+    }
+  ],
+  "external_review_status": "unvalidated_graph_and_diagnostic_items"
+}

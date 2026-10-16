@@ -1,0 +1,8 @@
+{
+  "question_id": "session-demo:AI-04-08:attempt-1",
+  "topic_id": "AI-04-08",
+  "answer": "Я проверил только одно ребро и не знаю, как проверить остальные.",
+  "outcome": "gap",
+  "grader": "teacher",
+  "rationale": "Не выполнена проверка согласованности на всех рёбрах."
+}

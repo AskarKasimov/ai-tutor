@@ -1,0 +1,147 @@
+openapi: 3.1.0
+info:
+  title: GIC Diagnostic API
+  version: 1.0.0-draft
+  description: >
+    Example REST boundary for GIC. The starter engine uses one active question
+    per session. Assessment outcomes come from a teacher or an external calibrated
+    scorer; this API does not claim to grade free text autonomously.
+servers:
+  - url: /api/gic/v1
+paths:
+  /course-graphs/{dataset_id}:
+    get:
+      summary: Get graph and assessment metadata
+      parameters:
+        - in: path
+          name: dataset_id
+          required: true
+          schema: {type: string}
+      responses:
+        '200':
+          description: JSON matching course_graph.schema.json (may omit full_text for student client)
+          content:
+            application/json:
+              schema: {type: object}
+  /sessions:
+    post:
+      summary: Start a diagnostic session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [student_id, dataset_id]
+              properties:
+                student_id: {type: string}
+                dataset_id: {type: string}
+                group_ids: {type: array, items: {type: string}}
+      responses:
+        '201':
+          description: Session created
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [session_id, dataset_id, status]
+                properties:
+                  session_id: {type: string, format: uuid}
+                  dataset_id: {type: string}
+                  status: {type: string, enum: [in_progress]}
+        '400': {description: Invalid or unsupported group IDs}
+  /sessions/{session_id}/next:
+    get:
+      summary: Get current/next unanswered question (idempotent until answer submitted)
+      parameters:
+        - in: path
+          name: session_id
+          required: true
+          schema: {type: string, format: uuid}
+      responses:
+        '200':
+          description: Next question, or null when screening finished
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [question, screening_finished]
+                properties:
+                  screening_finished: {type: boolean}
+                  question:
+                    oneOf:
+                      - $ref: '#/components/schemas/Question'
+                      - type: 'null'
+  /sessions/{session_id}/evidence:
+    post:
+      summary: Submit graded answer and update evidence ledger
+      parameters:
+        - in: path
+          name: session_id
+          required: true
+          schema: {type: string, format: uuid}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [question_id, topic_id, answer, outcome, grader, rationale]
+              properties:
+                question_id: {type: string}
+                topic_id: {type: string}
+                answer: {type: string}
+                outcome: {type: string, enum: [pass, gap, uncertain]}
+                grader: {type: string, enum: [expert, teacher, rubric_engine]}
+                rationale: {type: string, minLength: 1}
+      responses:
+        '201':
+          description: Evidence recorded, repeat same request with same idempotency key returns same record
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Evidence'}
+        '409': {description: Question is no longer active or already graded differently}
+  /sessions/{session_id}/summary:
+    get:
+      summary: Fetch statuses, attempts, unresolved skills, and learning plan
+      parameters:
+        - in: path
+          name: session_id
+          required: true
+          schema: {type: string, format: uuid}
+      responses:
+        '200':
+          description: Summary
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  session_id: {type: string}
+                  screening_finished: {type: boolean}
+                  status_by_topic: {type: object, additionalProperties: {type: string, enum: [unknown, mastered_observed, suspected_gap, insufficient_evidence]}}
+                  learning_plan: {type: array, items: {type: object}}
+components:
+  schemas:
+    Question:
+      type: object
+      required: [question_id, topic_id, group_id, prompt, rubric, reason]
+      properties:
+        question_id: {type: string}
+        topic_id: {type: string}
+        group_id: {type: string}
+        prompt: {type: string}
+        rubric: {type: array, items: {type: string}}
+        reason: {type: string, enum: [terminal_screening, prerequisite_drilldown]}
+    Evidence:
+      type: object
+      required: [evidence_id, topic_id, group_id, outcome, answer, grader, rationale, created_at]
+      properties:
+        evidence_id: {type: string}
+        topic_id: {type: string}
+        group_id: {type: string}
+        outcome: {type: string, enum: [pass, gap, uncertain]}
+        answer: {type: string}
+        grader: {type: string, enum: [expert, teacher, rubric_engine]}
+        rationale: {type: string}
+        created_at: {type: string, format: date-time}

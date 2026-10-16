@@ -1,0 +1,16 @@
+{
+  "version": "1.0.0",
+  "generated_at_utc": "2026-10-16",
+  "topic_total": 137,
+  "available_topics": 132,
+  "missing_topics": 5,
+  "atomic_topics": 15,
+  "terminal_topics": 69,
+  "prerequisite_edges": 145,
+  "diagnostic_groups": 20,
+  "diagnostic_links": 69,
+  "longest_prerequisite_path_edges": 7,
+  "unmapped_requirements": 80,
+  "full_graph_sha256": "d9195f7c830b4dda8893e4126a075fbb324fb397595fd74ff27ab3a4d0f70f20",
+  "warning": "All edges and assessment criteria are preliminary; do not enable auto-close."
+}

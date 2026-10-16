@@ -88,3 +88,24 @@ func SplitWAV(data []byte, maxSeconds int) (parts [][]byte, ok bool) {
 	}
 	return parts, true
 }
+
+// JoinWAV concatenates 16-bit PCM WAV parts of the same format into one WAV.
+// ok is false for no parts, an unparsable part or mismatched formats.
+func JoinWAV(parts [][]byte) (joined []byte, ok bool) {
+	if len(parts) == 0 {
+		return nil, false
+	}
+	first, ok := parsePCM16(parts[0])
+	if !ok {
+		return nil, false
+	}
+	frames := []byte{}
+	for _, part := range parts {
+		p, ok := parsePCM16(part)
+		if !ok || string(p.format) != string(first.format) {
+			return nil, false
+		}
+		frames = append(frames, p.frames...)
+	}
+	return first.wav(frames), true
+}

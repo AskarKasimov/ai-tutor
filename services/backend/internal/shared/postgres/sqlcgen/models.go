@@ -17,6 +17,28 @@ type AuthSession struct {
 	RevokedAt *int64
 }
 
+type GeekRequest struct {
+	OwnerID     string
+	Key         string
+	Fingerprint string
+	SessionID   string
+	Created     bool
+	Response    []byte
+	CreatedAt   int64
+}
+
+type GeekSession struct {
+	ID          string
+	OwnerID     string
+	SubjectID   string
+	Status      string
+	Version     int32
+	StartedAt   int64
+	CompletedAt *int64
+	UpdatedAt   int64
+	State       []byte
+}
+
 type RefreshToken struct {
 	TokenHash []byte
 	SessionID string

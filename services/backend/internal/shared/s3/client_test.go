@@ -2,6 +2,7 @@ package s3
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -75,5 +76,21 @@ func TestS3GenericObjectOperations(t *testing.T) {
 	_ = rc.Close()
 	if err := client.DeleteObject(ctx, "test-bucket", "notes.md"); err != nil {
 		t.Fatalf("DeleteObject failed: %v", err)
+	}
+}
+
+func TestS3OpenObjectReportsMissingObjects(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/xml")
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`<Error><Code>NoSuchKey</Code><Message>missing</Message></Error>`))
+	}))
+	defer server.Close()
+	client, err := New(Config{Endpoint: server.URL, Region: "us-east-1", Bucket: "b", AccessKey: "key", SecretKey: "secret", PathStyle: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, _, err := client.OpenObject(context.Background(), "b", "missing.wav"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("err = %v", err)
 	}
 }

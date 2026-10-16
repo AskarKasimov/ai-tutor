@@ -122,18 +122,10 @@ components:
       type: object
     geek.AnswerRequest:
       additionalProperties: false
-      description: Ровно одно из transcription_id, text, dont_know
-      oneOf:
-        - required:
-            - transcription_id
-        - required:
-            - text
-        - required:
-            - dont_know
       properties:
         dont_know:
-          const: true
           description: 'Кнопка «Не знаю»: пробел без оценки моделью'
+          type: boolean
         text:
           description: Текстовый ответ
           maxLength: 4000
@@ -220,7 +212,6 @@ components:
       type: object
     geek.Gap:
       additionalProperties: false
-      description: Самая глубокая неосвоенная вершина, все пререквизиты которой освоены
       properties:
         node_id:
           type: string
@@ -414,7 +405,15 @@ components:
         node_id:
           type: string
         status:
-          $ref: '#/components/schemas/geek.NodeStatus'
+          description: independent — самостоятельный ответ, assisted — ответ с помощью, gap — пробел, insufficient — недостаточно данных, credited_by_parent — засчитано по вышестоящей вершине (для неё это пререквизит), unchecked — не спрашивалась
+          enum:
+            - independent
+            - assisted
+            - gap
+            - insufficient
+            - credited_by_parent
+            - unchecked
+          type: string
         title:
           type: string
         top_level:
@@ -492,12 +491,12 @@ components:
       type: object
     geek.Result:
       additionalProperties: false
-      description: Итог для студента; баллы по критериям и основания — только в пакете для преподавателя
       properties:
         gaps:
           items:
             $ref: '#/components/schemas/geek.Gap'
           type: array
+          uniqueItems: false
         grade:
           description: Предварительная оценка курса A–D по среднему баллу вершин верхнего уровня; null — ни одной такой вершины с оценкой
           enum:
@@ -513,6 +512,7 @@ components:
           items:
             $ref: '#/components/schemas/geek.NodeResult'
           type: array
+          uniqueItems: false
         score_percent:
           description: Средний балл вершин верхнего уровня (A=4…D=1) в процентах от 4; вершины «недостаточно данных» исключены
           maximum: 100
@@ -544,7 +544,7 @@ components:
         id:
           type: string
         progress_percent:
-          description: Доля верхнеуровневых тем, по которым вывод уже сделан, вместе со спуском; не уменьшается
+          description: Доля тем верхнего уровня, по которым вывод уже сделан, вместе со спуском; не уменьшается
           maximum: 100
           minimum: 0
           type: integer
@@ -563,6 +563,7 @@ components:
           items:
             $ref: '#/components/schemas/geek.Turn'
           type: array
+          uniqueItems: false
       required:
         - completed_at
         - current_turn_id
@@ -1656,6 +1657,7 @@ paths:
   /diagnostic-sessions:
     post:
       description: 'Устный экзамен Geek по графу курса. У студента одна активная диагностика на курс: если она есть, возвращается она (200), иначе создаётся новая с первым вопросом (201). 409 GRAPH_NOT_READY — граф курса не собран.'
+      operationId: startDiagnosticSession
       parameters:
         - description: Ключ повтора запроса
           in: header
@@ -1668,6 +1670,8 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/geek.StartRequest'
+              description: Курс
+              summary: request
         description: Курс
         required: true
       responses:
@@ -1718,10 +1722,11 @@ paths:
       summary: Начать или продолжить диагностику
       tags:
         - Диагностика
-      x-implementation: planned
+      x-implementation: implemented
   /diagnostic-sessions/{id}:
     get:
       description: Реплики, прогресс и текущий вопрос. Доступ владельца.
+      operationId: getDiagnosticSession
       parameters:
         - description: ID диагностики
           in: path
@@ -1755,10 +1760,11 @@ paths:
       summary: Состояние диагностики
       tags:
         - Диагностика
-      x-implementation: planned
+      x-implementation: implemented
   /diagnostic-sessions/{id}/answers:
     post:
       description: 'Синхронно: ответ содержит реплику студента и следующую реплику Geek либо завершённую сессию. Повтор с тем же ключом возвращает тот же результат. 409 — turn_id не текущий или сессия не active.'
+      operationId: answerDiagnosticSession
       parameters:
         - description: ID диагностики
           in: path
@@ -1779,6 +1785,8 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/geek.AnswerRequest'
+              description: Ответ на текущую реплику
+              summary: request
         description: Ответ на текущую реплику
         required: true
       responses:
@@ -1823,10 +1831,11 @@ paths:
       summary: Ответить на реплику Geek
       tags:
         - Диагностика
-      x-implementation: planned
+      x-implementation: implemented
   /diagnostic-sessions/{id}/result:
     get:
-      description: Предварительная оценка A–D, статусы тем и пробелы с неделями и источниками. 409 — диагностика не completed.
+      description: Предварительная оценка A–D, статусы тем и список пробелов. 409 — диагностика не completed.
+      operationId: getDiagnosticResult
       parameters:
         - description: ID диагностики
           in: path
@@ -1866,10 +1875,11 @@ paths:
       summary: Итог диагностики
       tags:
         - Диагностика
-      x-implementation: planned
+      x-implementation: implemented
   /diagnostic-sessions/{id}/turns/{turn_id}/audio:
     get:
       description: Backend синтезирует реплику Geek через TTS и кэширует WAV в S3; длина реплики не ограничена лимитом /voice/syntheses. 404 — реплика студента или чужая сессия.
+      operationId: getDiagnosticTurnAudio
       parameters:
         - description: ID диагностики
           in: path
@@ -1918,7 +1928,7 @@ paths:
       summary: Голос реплики Geek
       tags:
         - Диагностика
-      x-implementation: planned
+      x-implementation: implemented
   /health:
     get:
       operationId: health

@@ -21,6 +21,12 @@ services:
       BACKEND_S3_TIMEOUT: ${BACKEND_S3_TIMEOUT:-30s}
       BACKEND_S3_CREATE_BUCKET: ${BACKEND_S3_CREATE_BUCKET:-false}
       BACKEND_COURSE_GRAPH_URL: ${BACKEND_COURSE_GRAPH_URL:-http://course-graph:8000}
+      BACKEND_LLM_GATEWAY_URL: ${BACKEND_LLM_GATEWAY_URL:-}
+      BACKEND_LLM_TIMEOUT: ${BACKEND_LLM_TIMEOUT:-120s}
+      BACKEND_GEEK_GRAPH_FIXTURE: ${BACKEND_GEEK_GRAPH_FIXTURE:-/fixtures/course-graph.json}
+      BACKEND_GEEK_MAX_QUESTIONS: ${BACKEND_GEEK_MAX_QUESTIONS:-0}
+    volumes:
+      - ../../api/fixtures:/fixtures:ro
     ports:
       - "127.0.0.1:8002:8002"
     healthcheck:

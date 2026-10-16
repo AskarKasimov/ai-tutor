@@ -1,0 +1,423 @@
+package application
+
+import (
+	"context"
+	"encoding/binary"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"os"
+	"strings"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/audio"
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/exam"
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/fault"
+)
+
+type memoryStore struct {
+	mu       sync.Mutex
+	subjects map[string]bool
+	sessions map[string][]byte
+	requests map[string]Request
+}
+
+func newMemoryStore() *memoryStore {
+	return &memoryStore{subjects: map[string]bool{"subject": true}, sessions: map[string][]byte{}, requests: map[string]Request{}}
+}
+
+func decode(t []byte) exam.Session {
+	var s exam.Session
+	_ = json.Unmarshal(t, &s)
+	return s
+}
+
+func (m *memoryStore) SubjectExists(_ context.Context, id string) (bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.subjects[id], nil
+}
+
+func (m *memoryStore) Session(_ context.Context, owner, id string) (exam.Session, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	data, ok := m.sessions[id]
+	if s := decode(data); ok && s.OwnerID == owner {
+		return s, nil
+	}
+	return exam.Session{}, ErrNotFound
+}
+
+func (m *memoryStore) ActiveSession(_ context.Context, owner, subject string) (exam.Session, bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, data := range m.sessions {
+		if s := decode(data); s.OwnerID == owner && s.SubjectID == subject && s.Status == exam.SessionActive {
+			return s, true, nil
+		}
+	}
+	return exam.Session{}, false, nil
+}
+
+func (m *memoryStore) Request(_ context.Context, owner, key string) (Request, bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	r, ok := m.requests[owner+"/"+key]
+	if ok {
+		data, _ := json.Marshal(r.Response)
+		r.Response = decode(data)
+	}
+	return r, ok, nil
+}
+
+func (m *memoryStore) Create(_ context.Context, s exam.Session, r Request) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, data := range m.sessions {
+		if o := decode(data); o.OwnerID == s.OwnerID && o.SubjectID == s.SubjectID && o.Status == exam.SessionActive {
+			return ErrActiveExists
+		}
+	}
+	m.sessions[s.ID], _ = json.Marshal(s)
+	m.requests[r.OwnerID+"/"+r.Key] = r
+	return nil
+}
+
+func (m *memoryStore) Update(_ context.Context, s exam.Session, previous int, r *Request) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if decode(m.sessions[s.ID]).Version != previous {
+		return ErrConflict
+	}
+	m.sessions[s.ID], _ = json.Marshal(s)
+	if r != nil {
+		m.requests[r.OwnerID+"/"+r.Key] = *r
+	}
+	return nil
+}
+
+type graphs struct{ graph *exam.Graph }
+
+func (g *graphs) Current(context.Context, string) (exam.Graph, bool, error) {
+	if g.graph == nil {
+		return exam.Graph{}, false, nil
+	}
+	return *g.graph, true, nil
+}
+
+type texts map[string]string
+
+func (t texts) Text(_ context.Context, owner, id string) (string, bool, error) {
+	text, ok := t[owner+"/"+id]
+	return text, ok, nil
+}
+
+// examiner grades by the answer text: "сильно" is 2/2/2/2, "частично"
+// 2/2/1/1, anything else 0/1/0/0.
+type examiner struct {
+	mu        sync.Mutex
+	fail      error
+	questions []QuestionRequest
+	evals     int
+}
+
+func (e *examiner) Question(_ context.Context, r QuestionRequest) (string, error) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.fail != nil {
+		return "", e.fail
+	}
+	e.questions = append(e.questions, r)
+	return fmt.Sprintf("%s: %s?", r.Kind, r.Node.Title), nil
+}
+
+func (e *examiner) Evaluate(_ context.Context, r EvaluationRequest) (exam.Evaluation, error) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.fail != nil {
+		return exam.Evaluation{}, e.fail
+	}
+	e.evals++
+	last := r.Dialogue[len(r.Dialogue)-1]
+	switch {
+	case strings.Contains(last.Text, "не знаю"):
+		return exam.Evaluation{Verdict: exam.VerdictDontKnow}, nil
+	case strings.Contains(last.Text, "сильно"):
+		return exam.Evaluation{Verdict: exam.VerdictAnswered, Criteria: exam.Criteria{K1: 2, K2: 2, K3: 2, K4: 2}, Evidence: []int{last.Line}}, nil
+	case strings.Contains(last.Text, "частично"):
+		return exam.Evaluation{Verdict: exam.VerdictAnswered, Criteria: exam.Criteria{K1: 2, K2: 2, K3: 1, K4: 1}, Evidence: []int{last.Line}}, nil
+	}
+	return exam.Evaluation{Verdict: exam.VerdictAnswered, Criteria: exam.Criteria{K2: 1}, Evidence: []int{last.Line}}, nil
+}
+
+func wav(samples int) []byte {
+	data := make([]byte, 44+samples*2)
+	copy(data[0:4], "RIFF")
+	binary.LittleEndian.PutUint32(data[4:8], uint32(36+samples*2))
+	copy(data[8:16], "WAVEfmt ")
+	binary.LittleEndian.PutUint32(data[16:20], 16)
+	binary.LittleEndian.PutUint16(data[20:22], 1)
+	binary.LittleEndian.PutUint16(data[22:24], 1)
+	binary.LittleEndian.PutUint32(data[24:28], 8000)
+	binary.LittleEndian.PutUint32(data[28:32], 16000)
+	binary.LittleEndian.PutUint16(data[32:34], 2)
+	binary.LittleEndian.PutUint16(data[34:36], 16)
+	copy(data[36:40], "data")
+	binary.LittleEndian.PutUint32(data[40:44], uint32(samples*2))
+	return data
+}
+
+type voice struct{ calls []string }
+
+func (v *voice) Synthesize(_ context.Context, text string) ([]byte, error) {
+	v.calls = append(v.calls, text)
+	return wav(10), nil
+}
+
+type audioStore map[string][]byte
+
+func (a audioStore) Get(_ context.Context, key string) ([]byte, bool, error) {
+	data, ok := a[key]
+	return data, ok, nil
+}
+
+func (a audioStore) Put(_ context.Context, key string, data []byte) error {
+	a[key] = data
+	return nil
+}
+
+type ids struct{ n int }
+
+func (i *ids) New(prefix string) (string, error) {
+	i.n++
+	return fmt.Sprintf("%s_%d", prefix, i.n), nil
+}
+
+type fixture struct {
+	service  *Service
+	store    *memoryStore
+	graphs   *graphs
+	examiner *examiner
+	voice    *voice
+	audio    audioStore
+	key      int
+}
+
+func loadGraph(t *testing.T) exam.Graph {
+	t.Helper()
+	data, err := os.ReadFile("../../../../../../api/fixtures/course-graph.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var g exam.Graph
+	if err := json.Unmarshal(data, &g); err != nil {
+		t.Fatal(err)
+	}
+	g.Version = "v1"
+	return g
+}
+
+func newFixture(t *testing.T) *fixture {
+	g := loadGraph(t)
+	f := &fixture{store: newMemoryStore(), graphs: &graphs{graph: &g}, examiner: &examiner{}, voice: &voice{}, audio: audioStore{}}
+	f.service = New(f.graphs, f.store, texts{"student/tr": "сильно отвечаю голосом"}, f.examiner, f.voice, f.audio, &ids{}, func() time.Time { return time.Unix(100, 0) }, Config{})
+	return f
+}
+
+func (f *fixture) nextKey() string {
+	f.key++
+	return fmt.Sprintf("key-%d", f.key)
+}
+
+func (f *fixture) answer(t *testing.T, s exam.Session, a Answer) exam.Session {
+	t.Helper()
+	turn, ok := s.CurrentTurn()
+	if !ok {
+		t.Fatal("no current turn")
+	}
+	a.TurnID = turn.ID
+	next, err := f.service.Answer(context.Background(), "student", s.ID, f.nextKey(), a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return next
+}
+
+func code(err error) string {
+	var f *fault.Error
+	if errors.As(err, &f) {
+		return f.Code
+	}
+	return ""
+}
+
+func TestStartIsIdempotentAndReturnsTheActiveSession(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	s, created, err := f.service.Start(ctx, "student", "subject", "start")
+	if err != nil || !created || s.Status != exam.SessionActive || len(s.Turns) != 1 {
+		t.Fatalf("start: %+v created=%v err=%v", s, created, err)
+	}
+	first := s.Turns[0]
+	if first.Kind != exam.KindQuestion || *first.NodeID != "a-star" || first.Text != "Что изменится в работе A*, если эвристика начнёт переоценивать расстояние до цели?" {
+		t.Fatalf("first turn = %+v (a node question is used as is)", first)
+	}
+	if again, created, err := f.service.Start(ctx, "student", "subject", "start"); err != nil || !created || again.ID != s.ID {
+		t.Fatalf("replay: %v %v %v", again.ID, created, err)
+	}
+	if again, created, err := f.service.Start(ctx, "student", "subject", "other"); err != nil || created || again.ID != s.ID {
+		t.Fatalf("second start: %v %v %v", again.ID, created, err)
+	}
+	if _, _, err := f.service.Start(ctx, "student", "missing", "missing"); code(err) != "SUBJECT_NOT_FOUND" {
+		t.Fatalf("missing subject: %v", err)
+	}
+	if _, err := f.service.Get(ctx, "intruder", s.ID); code(err) != "SESSION_NOT_FOUND" {
+		t.Fatalf("other owner: %v", err)
+	}
+}
+
+func TestStartWithoutGraph(t *testing.T) {
+	f := newFixture(t)
+	f.graphs.graph = nil
+	if _, _, err := f.service.Start(context.Background(), "student", "subject", "k"); code(err) != "GRAPH_NOT_READY" {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestDiagnosticRunsToTheResult(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	s, _, _ := f.service.Start(ctx, "student", "subject", "start")
+	if _, err := f.service.Result(ctx, "student", s.ID); code(err) != "SESSION_NOT_COMPLETED" {
+		t.Fatalf("early result: %v", err)
+	}
+	// a-star: don't know (button) -> its prerequisites; every other topic is
+	// answered fully by voice or text.
+	s = f.answer(t, s, Answer{DontKnow: true})
+	if f.examiner.evals != 0 {
+		t.Fatal("the don't know button must not call the model")
+	}
+	for s.Status == exam.SessionActive {
+		turn, _ := s.CurrentTurn()
+		if turn.Kind == exam.KindFollowup {
+			s = f.answer(t, s, Answer{TranscriptionID: "tr"})
+		} else {
+			s = f.answer(t, s, Answer{Text: "частично, отвечаю текстом"})
+		}
+	}
+	last := s.Turns[len(s.Turns)-1]
+	if last.Kind != exam.KindClosing || s.CompletedAt == nil || s.Exam.Progress() != 100 {
+		t.Fatalf("last turn %+v completed=%v", last, s.CompletedAt)
+	}
+	for i, turn := range s.Turns {
+		if turn.Line != i+1 {
+			t.Fatalf("line %d at %d", turn.Line, i)
+		}
+	}
+	r, err := f.service.Result(ctx, "student", s.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// a-star is a gap; its prerequisites are mastered, so it is the gap itself.
+	if *r.Grade != exam.GradeB || *r.ScorePercent != 81 || len(r.Gaps) != 1 || r.Gaps[0].NodeID != "a-star" {
+		t.Fatalf("result = %+v gaps=%+v", r, r.Gaps)
+	}
+	if _, err := f.service.Answer(ctx, "student", s.ID, "late", Answer{TurnID: last.ID, Text: "ещё"}); code(err) != "SESSION_NOT_ACTIVE" {
+		t.Fatalf("answer after completion: %v", err)
+	}
+}
+
+func TestModelFailureLeavesTheSessionAndTheRetrySucceeds(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	s, _, _ := f.service.Start(ctx, "student", "subject", "start")
+	turn := s.Turns[0]
+	f.examiner.fail = errors.New("gateway down")
+	_, err := f.service.Answer(ctx, "student", s.ID, "answer", Answer{TurnID: turn.ID, Text: "частично"})
+	if code(err) != "MODEL_UNAVAILABLE" {
+		t.Fatalf("err = %v", err)
+	}
+	if stored, _ := f.service.Get(ctx, "student", s.ID); len(stored.Turns) != 1 || stored.Version != s.Version {
+		t.Fatalf("session changed on failure: %d turns", len(stored.Turns))
+	}
+	f.examiner.fail = nil
+	next, err := f.service.Answer(ctx, "student", s.ID, "answer", Answer{TurnID: turn.ID, Text: "частично"})
+	if err != nil || len(next.Turns) != 3 {
+		t.Fatalf("retry: %v %d", err, len(next.Turns))
+	}
+	replay, err := f.service.Answer(ctx, "student", s.ID, "answer", Answer{TurnID: turn.ID, Text: "частично"})
+	if err != nil || replay.Version != next.Version || f.examiner.evals != 1 {
+		t.Fatalf("replay: %v version=%d evals=%d", err, replay.Version, f.examiner.evals)
+	}
+	if _, err := f.service.Answer(ctx, "student", s.ID, "answer", Answer{TurnID: turn.ID, Text: "другое"}); code(err) != "IDEMPOTENCY_KEY_REUSED" {
+		t.Fatalf("reused key: %v", err)
+	}
+	if _, err := f.service.Answer(ctx, "student", s.ID, "stale", Answer{TurnID: turn.ID, Text: "ещё раз"}); code(err) != "TURN_NOT_CURRENT" {
+		t.Fatalf("stale turn: %v", err)
+	}
+}
+
+func TestAnswerValidation(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	s, _, _ := f.service.Start(ctx, "student", "subject", "start")
+	turn := s.Turns[0].ID
+	for name, a := range map[string]Answer{
+		"none":  {TurnID: turn},
+		"two":   {TurnID: turn, Text: "a", DontKnow: true},
+		"blank": {TurnID: turn, Text: "   "},
+		"long":  {TurnID: turn, Text: strings.Repeat("я", 4001)},
+	} {
+		if _, err := f.service.Answer(ctx, "student", s.ID, name, a); code(err) != "VALIDATION_ERROR" {
+			t.Fatalf("%s: %v", name, err)
+		}
+	}
+	if _, err := f.service.Answer(ctx, "student", s.ID, "tr", Answer{TurnID: turn, TranscriptionID: "foreign"}); code(err) != "TRANSCRIPTION_NOT_FOUND" {
+		t.Fatalf("foreign transcription: %v", err)
+	}
+}
+
+func TestRebuiltGraphCancelsTheActiveDiagnostic(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	s, _, _ := f.service.Start(ctx, "student", "subject", "start")
+	rebuilt := *f.graphs.graph
+	rebuilt.Version = "v2"
+	f.graphs.graph = &rebuilt
+	if got, err := f.service.Get(ctx, "student", s.ID); err != nil || got.Status != exam.SessionCancelled {
+		t.Fatalf("get: %v %v", got.Status, err)
+	}
+	next, created, err := f.service.Start(ctx, "student", "subject", "restart")
+	if err != nil || !created || next.ID == s.ID || next.Exam.Graph.Version != "v2" {
+		t.Fatalf("restart: %v %v", created, err)
+	}
+}
+
+func TestTurnAudioIsSynthesizedByPartsAndCached(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	g := *f.graphs.graph
+	g.Nodes[4].Questions = []string{strings.Repeat("Очень длинный вопрос про поиск. ", 30)}
+	f.graphs.graph = &g
+	s, _, _ := f.service.Start(ctx, "student", "subject", "start")
+	turn := s.Turns[0]
+	data, err := f.service.TurnAudio(ctx, "student", s.ID, turn.ID)
+	if err != nil || !audio.ValidWAV(data) || len(f.voice.calls) < 2 {
+		t.Fatalf("audio: %v calls=%d", err, len(f.voice.calls))
+	}
+	for _, call := range f.voice.calls {
+		if len([]rune(call)) > speechLimit {
+			t.Fatalf("part of %d runes", len([]rune(call)))
+		}
+	}
+	calls := len(f.voice.calls)
+	if _, err := f.service.TurnAudio(ctx, "student", s.ID, turn.ID); err != nil || len(f.voice.calls) != calls {
+		t.Fatalf("cached audio synthesized again: %v", err)
+	}
+	next := f.answer(t, s, Answer{Text: "частично"})
+	if _, err := f.service.TurnAudio(ctx, "student", s.ID, next.Turns[1].ID); code(err) != "TURN_NOT_FOUND" {
+		t.Fatalf("student turn audio: %v", err)
+	}
+}

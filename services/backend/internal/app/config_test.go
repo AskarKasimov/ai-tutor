@@ -78,6 +78,9 @@ func TestAudioConfigRejectsInvalidSettings(t *testing.T) {
 		"BACKEND_S3_SECRET_KEY":           {""},
 		"BACKEND_S3_PATH_STYLE":           {"maybe"},
 		"BACKEND_S3_TIMEOUT":              {"bad", "0s", "-1s"},
+		"BACKEND_LLM_GATEWAY_URL":         {"relative", "ftp://gateway.test", "http://user:pass@gateway.test", "http://gateway.test/?x=1"},
+		"BACKEND_LLM_TIMEOUT":             {"bad", "0s", "-1s"},
+		"BACKEND_GEEK_MAX_QUESTIONS":      {"bad", "-1"},
 	}
 	for key, values := range cases {
 		for _, value := range values {
@@ -114,7 +117,7 @@ func testConfig() Config {
 		ListenAddress: ":8002", DatabaseURL: "postgres://example/db",
 		STTURL: "http://stt.test/transcribe", TTSURL: "http://tts.test/synthesize",
 		TTSSeed: 17, TTSCFGValue: 2, TTSInferenceTimesteps: 50,
-		VoiceTimeout:   120 * time.Second,
+		VoiceTimeout: 120 * time.Second, LLMTimeout: 120 * time.Second,
 		MaxUploadBytes: 25 * 1024 * 1024,
 		S3Region:       "us-east-1", S3Bucket: "task-audio-test", S3AccessKey: "test-access", S3SecretKey: "test-secret",
 		S3PathStyle: true, S3Timeout: 30 * time.Second, S3CreateBucket: true,
@@ -149,5 +152,22 @@ func TestConfigLoadsTTSSettings(t *testing.T) {
 	}
 	if cfg.TTSSeed != 0 || cfg.TTSCFGValue != 1.5 || cfg.TTSInferenceTimesteps != 20 {
 		t.Fatalf("TTS settings ignored: %+v", cfg)
+	}
+}
+
+func TestGeekConfigDefaultsToTheMockWithoutLimits(t *testing.T) {
+	configuredEnv(t)
+	cfg, err := ConfigFromEnv()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.LLMGatewayURL != "" || cfg.LLMTimeout != 120*time.Second || cfg.GeekGraphFixture != "" || cfg.GeekMaxQuestions != 0 {
+		t.Fatalf("geek defaults = %+v", cfg)
+	}
+	t.Setenv("BACKEND_LLM_GATEWAY_URL", "http://llm-gateway:8080")
+	t.Setenv("BACKEND_GEEK_GRAPH_FIXTURE", "/fixtures/course-graph.json")
+	t.Setenv("BACKEND_GEEK_MAX_QUESTIONS", "12")
+	if cfg, err = ConfigFromEnv(); err != nil || cfg.LLMGatewayURL != "http://llm-gateway:8080" || cfg.GeekGraphFixture != "/fixtures/course-graph.json" || cfg.GeekMaxQuestions != 12 {
+		t.Fatalf("geek settings = %+v, %v", cfg, err)
 	}
 }

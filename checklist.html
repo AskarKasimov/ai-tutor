@@ -157,17 +157,17 @@
       <h2>3. Geek: устный экзамен <small></small></h2>
       <p>Диалог ведёт LLM; цель — найти пробелы по материалам курса.</p>
       <ul>
-        <li><label><input type="checkbox" data-id="g-oral"><span><span class="t">Вопросы на рассуждение с развёрнутым ответом</span><span class="d">Тестовых вопросов по возможности нет.</span></span></label></li>
-        <li><label><input type="checkbox" data-id="g-start-top"><span><span class="t">Обход начинается с верхних вершин</span></span></label></li>
-        <li><label><input type="checkbox" data-id="g-correct"><span><span class="t">Тема на A / B / C → её пререквизиты засчитаны со статусом «засчитано по вышестоящей теме»</span></span></label></li>
-        <li><label><input type="checkbox" data-id="g-wrong"><span><span class="t">Тема на D → её пререквизиты</span><span class="d">Дальше рекурсивно, к более простым темам.</span></span></label></li>
-        <li><label><input type="checkbox" data-id="g-extra"><span><span class="t">На тему — основной вопрос и максимум один дополнительный</span><span class="d">Углубление (пример, контрпример, изменённые условия) или прояснение неоднозначного ответа.</span></span></label></li>
-        <li><label><input type="checkbox" data-id="g-rephrase"><span><span class="t">Каждый вопрос можно один раз переформулировать</span><span class="d">Других подсказок нет.</span></span></label></li>
-        <li><label><input type="checkbox" data-id="g-criteria"><span><span class="t">Модель оценивает четыре критерия на 0 / 1 / 2</span><span class="d">Корректность и терминология; логика и обоснование; возражения и контрпримеры; изменённые условия.</span></span></label></li>
-        <li><label><input type="checkbox" data-id="g-criteria-rule"><span><span class="t">Критерии → оценка темы A–D</span><span class="d">A, B, C — тема и её пререквизиты засчитаны; D — пробел. Ответ с помощью — только B или C.</span></span></label></li>
-        <li><label><input type="checkbox" data-id="g-status"><span><span class="t">Статусы: самостоятельно / с помощью / пробел / нет данных / по вышестоящей</span></span></label></li>
-        <li><label><input type="checkbox" data-id="g-evidence"><span><span class="t">Для темы сохраняются глубина понимания и фрагменты диалога</span></span></label></li>
-        <li><label><input type="checkbox" data-id="g-gap"><span><span class="t">Пробел = самая глубокая неосвоенная вершина с освоенными пререквизитами</span></span></label></li>
+        <li><label><input type="checkbox" data-id="g-oral" checked><span><span class="t">Вопросы на рассуждение с развёрнутым ответом</span><span class="d">Тестовых вопросов по возможности нет.</span></span></label></li>
+        <li><label><input type="checkbox" data-id="g-start-top" checked><span><span class="t">Обход начинается с верхних вершин</span></span></label></li>
+        <li><label><input type="checkbox" data-id="g-correct" checked><span><span class="t">Тема на A / B / C → её пререквизиты засчитаны со статусом «засчитано по вышестоящей теме»</span></span></label></li>
+        <li><label><input type="checkbox" data-id="g-wrong" checked><span><span class="t">Тема на D → её пререквизиты</span><span class="d">Дальше рекурсивно, к более простым темам.</span></span></label></li>
+        <li><label><input type="checkbox" data-id="g-extra" checked><span><span class="t">На тему — основной вопрос и максимум один дополнительный</span><span class="d">Углубление (пример, контрпример, изменённые условия) или прояснение неоднозначного ответа.</span></span></label></li>
+        <li><label><input type="checkbox" data-id="g-rephrase" checked><span><span class="t">Каждый вопрос можно один раз переформулировать</span><span class="d">Других подсказок нет.</span></span></label></li>
+        <li><label><input type="checkbox" data-id="g-criteria" checked><span><span class="t">Модель оценивает четыре критерия на 0 / 1 / 2</span><span class="d">Корректность и терминология; логика и обоснование; возражения и контрпримеры; изменённые условия.</span></span></label></li>
+        <li><label><input type="checkbox" data-id="g-criteria-rule" checked><span><span class="t">Критерии → оценка темы A–D</span><span class="d">A, B, C — тема и её пререквизиты засчитаны; D — пробел. Ответ с помощью — только B или C.</span></span></label></li>
+        <li><label><input type="checkbox" data-id="g-status" checked><span><span class="t">Статусы: самостоятельно / с помощью / пробел / нет данных / по вышестоящей</span></span></label></li>
+        <li><label><input type="checkbox" data-id="g-evidence" checked><span><span class="t">Для темы сохраняются глубина понимания и фрагменты диалога</span></span></label></li>
+        <li><label><input type="checkbox" data-id="g-gap" checked><span><span class="t">Пробел = самая глубокая неосвоенная вершина с освоенными пререквизитами</span></span></label></li>
         <li><label><input type="checkbox" data-id="g-io"><span><span class="t">Реплики Geek — текст + голос; ответ голосом или текстом</span></span></label></li>
       </ul>
     </section>
@@ -175,10 +175,10 @@
         <section>
       <h2>4. Итог для студента <small></small></h2>
       <ul>
-        <li><label><input type="checkbox" data-id="r-grade"><span><span class="t">Предварительная оценка A / B / C / D</span><span class="d">Средний балл верхних тем (A = 4 … D = 1) в % от 4: ≥ 90% A, ≥ 75% B, ≥ 60% C, иначе D.</span></span></label></li>
-        <li><label><input type="checkbox" data-id="r-nodata"><span><span class="t">Темы «недостаточно данных» исключены из среднего</span></span></label></li>
-        <li><label><input type="checkbox" data-id="r-gaps"><span><span class="t">Список пробелов</span><span class="d">Недели и источники вернутся вместе с ними у вершины.</span></span></label></li>
-        <li><label><input type="checkbox" data-id="r-rebuild"><span><span class="t">После пересборки графа у старых диагностик остаётся только фидбэк</span></span></label></li>
+        <li><label><input type="checkbox" data-id="r-grade" checked><span><span class="t">Предварительная оценка A / B / C / D</span><span class="d">Средний балл верхних тем (A = 4 … D = 1) в % от 4: ≥ 90% A, ≥ 75% B, ≥ 60% C, иначе D.</span></span></label></li>
+        <li><label><input type="checkbox" data-id="r-nodata" checked><span><span class="t">Темы «недостаточно данных» исключены из среднего</span></span></label></li>
+        <li><label><input type="checkbox" data-id="r-gaps" checked><span><span class="t">Список пробелов</span><span class="d">Недели и источники вернутся вместе с ними у вершины.</span></span></label></li>
+        <li><label><input type="checkbox" data-id="r-rebuild" checked><span><span class="t">После пересборки графа у старых диагностик остаётся только фидбэк</span></span></label></li>
       </ul>
     </section>
 
@@ -209,7 +209,7 @@
       <h2>7. LLM gateway <small></small></h2>
       <ul>
         <li><label><input type="checkbox" data-id="l-client"><span><span class="t">LLM gateway готов и влит в master</span><span class="d">Отдельный сервис services/llm-gateway; HTTP-версия в ветке feat/llm-gateway-http, gRPC — позже.</span></span></label></li>
-        <li><label><input type="checkbox" data-id="l-geek"><span><span class="t">Geek ходит в LLM через gateway</span></span></label></li>
+        <li><label><input type="checkbox" data-id="l-geek"><span><span class="t">Geek ходит в LLM через gateway</span><span class="d">HTTP-адаптер готов и включается BACKEND_LLM_GATEWAY_URL; до мержа gateway работает мок.</span></span></label></li>
         <li><label><input type="checkbox" data-id="l-python"><span><span class="t">course-graph подключён к gateway</span><span class="d">Сейчас HTTP, позже gRPC.</span></span></label></li>
         <li><label><input type="checkbox" data-id="l-roles"><span><span class="t">Сложность запроса задаёт вызывающий код</span><span class="d">Модель выбирает gateway; запросы идут параллельно.</span></span></label></li>
       </ul>
@@ -253,7 +253,7 @@
     </section>
   </div>
 
-  <footer>Отмечено по состоянию репозитория на 16.10.2026. Свои отметки хранятся только в этом браузере.</footer>
+  <footer>Отмечено по состоянию репозитория на 16.10.2026 (backend Geek; экраны frontend — поток C). Свои отметки хранятся только в этом браузере.</footer>
 </main>
 <script>
 (function () {

@@ -65,3 +65,17 @@ func TestSplitWAVKeepsShortAudioAndRejectsOtherFormats(t *testing.T) {
 		t.Fatal("non-WAV audio cannot be split")
 	}
 }
+
+func TestJoinWAVConcatenatesPartsOfOneFormat(t *testing.T) {
+	quiet := func(float64) int16 { return 100 }
+	joined, ok := JoinWAV([][]byte{wav16(8000, 2, quiet), wav16(8000, 3, quiet)})
+	if !ok || !ValidWAV(joined) || seconds(joined) != 5 {
+		t.Fatalf("joined ok=%v seconds=%v", ok, seconds(joined))
+	}
+	if _, ok := JoinWAV([][]byte{wav16(8000, 1, quiet), wav16(16000, 1, quiet)}); ok {
+		t.Fatal("parts of different formats were joined")
+	}
+	if _, ok := JoinWAV(nil); ok {
+		t.Fatal("no parts were joined")
+	}
+}

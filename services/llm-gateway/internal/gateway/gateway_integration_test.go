@@ -288,7 +288,7 @@ func TestGatewayPersistsCompletionAndReplaysAfterRestart(t *testing.T) {
 
 	// Restore state with a fresh group and ensure the idempotent replay does not call the model again.
 	cfg.ConsumerGroup += "-after-restart"
-	secondURL, secondGRPC, _, stopSecond := startIntegrationGateway(t, cfg)
+	secondURL, secondGRPC, secondService, stopSecond := startIntegrationGateway(t, cfg)
 	defer stopSecond()
 	secondResponse := postCompletion(t, secondURL, requestBody, "integration-idempotency-key")
 	if secondResponse.Code != http.StatusOK || !bytes.Contains(secondResponse.Body.Bytes(), []byte("persisted answer")) {
@@ -304,6 +304,19 @@ func TestGatewayPersistsCompletionAndReplaysAfterRestart(t *testing.T) {
 	}
 	if got := upstreamCalls.Load(); got != 4 {
 		t.Fatalf("upstream calls = %d, want 4 after persisted replay", got)
+	}
+
+	expired := &durableJob{Version: 1, ID: "expired-queued", SubmittedAt: time.Now().Add(-time.Minute), Deadline: time.Now().Add(-time.Second), Offset: 100, Status: "queued", Request: Request{Messages: []Message{{Role: "user", Content: "expired"}}, Complexity: "low"}}
+	secondService.install(expired)
+	secondService.mu.Lock()
+	secondService.inFlight["model-a"] = 1
+	secondService.mu.Unlock()
+	secondService.expireQueued(time.Now())
+	secondService.mu.Lock()
+	gotStatus := secondService.jobs[expired.ID].Status
+	secondService.mu.Unlock()
+	if gotStatus != "expired" {
+		t.Fatalf("expired request with a full pool status = %q, want expired", gotStatus)
 	}
 }
 
@@ -379,9 +392,9 @@ func startIntegrationGateway(t *testing.T, cfg Config) (string, string, *Service
 	server.Close()
 	grpcServer.Stop()
 	cancel()
-	_ = <-runDone
+	runErr := <-runDone
 	service.Close()
-	t.Fatal("gateway did not become ready before timeout")
+	t.Fatalf("gateway did not become ready before timeout (Run error: %v)", runErr)
 	return "", "", nil, func() {}
 }
 

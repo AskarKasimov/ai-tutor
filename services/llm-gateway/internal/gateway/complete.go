@@ -81,7 +81,7 @@ func (s *Service) complete(ctx context.Context, req Request, key string, admitte
 	if key != "" {
 		index := identity(clientID, key)
 		if oldID, ok := s.keys[index]; ok {
-			if old := s.jobs[oldID]; old != nil && !isPending(old.Status) && !old.SlotHeld && time.Since(old.SubmittedAt) >= s.cfg.Retention {
+			if old := s.jobs[oldID]; expiredForRetention(old, time.Now(), s.cfg.Retention) {
 				delete(s.jobs, oldID)
 				delete(s.keys, index)
 			}

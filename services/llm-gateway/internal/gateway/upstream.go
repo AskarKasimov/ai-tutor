@@ -98,10 +98,14 @@ func (c *Caller) call(ctx context.Context, in InstanceConfig, req Request, reque
 	for k, v := range req.Parameters {
 		params[k] = v
 	}
-	var fields map[string]any
-	_ = json.Unmarshal(mustJSON(params), &fields)
-	fields["model"] = in.Model
-	fields["messages"] = req.Messages
+	fields := make(map[string]json.RawMessage, len(params)+2)
+	for key, value := range params {
+		fields[key] = append(json.RawMessage(nil), value...)
+	}
+	model, _ := json.Marshal(in.Model)
+	messages, _ := json.Marshal(req.Messages)
+	fields["model"] = model
+	fields["messages"] = messages
 	body, err := json.Marshal(fields)
 	if err != nil {
 		cb.release(false, time.Now())

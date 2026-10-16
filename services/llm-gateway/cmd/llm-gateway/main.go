@@ -115,13 +115,10 @@ func main() {
 	}()
 	wg.Wait()
 	if !runFinished {
-		select {
-		case runResult := <-runErr:
-			if runResult != nil {
-				fatal = true
-				slog.Error("gateway runtime failed", "error", runResult)
-			}
-		case <-shutdownCtx.Done():
+		runResult := <-runErr
+		if runResult != nil {
+			fatal = true
+			slog.Error("gateway runtime failed", "error", runResult)
 		}
 	}
 	service.Close()

@@ -2,12 +2,40 @@ package gateway
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/twmb/franz-go/pkg/kgo"
 )
+
+func TestRestoreBarrierRecognizesOnlyCurrentMarker(t *testing.T) {
+	current := &kgo.Record{Key: []byte(restoreBarrierKey), Value: []byte("current")}
+	if !isRestoreBarrier(current, "current") {
+		t.Fatal("current restore marker was not recognized")
+	}
+	if isRestoreBarrier(current, "previous") {
+		t.Fatal("an older restore marker completed the current recovery")
+	}
+	if isRestoreBarrier(&kgo.Record{Key: []byte("job-id"), Value: []byte("current")}, "current") {
+		t.Fatal("ordinary job state was recognized as a restore marker")
+	}
+}
+
+func TestUpstreamReadFailureRetainsUncertainSlot(t *testing.T) {
+	if !uncertainUpstreamOutcome(&UpstreamFailure{Code: "upstream_response_error", Err: io.ErrUnexpectedEOF}) {
+		t.Fatal("response read failure was treated as a confirmed upstream completion")
+	}
+	if uncertainUpstreamOutcome(&UpstreamFailure{Code: "upstream_transport_error", BeforeSend: true}) {
+		t.Fatal("connection failure before sending was treated as an uncertain generation")
+	}
+	if !uncertainUpstreamOutcome(&UpstreamFailure{Code: "upstream_transport_error"}) {
+		t.Fatal("transport failure after an unknown send outcome was treated as certain")
+	}
+}
 
 func TestValidatePoolRejectsUnsupportedParametersAndExcessContext(t *testing.T) {
 	instance := schedulerInstance("model-a")

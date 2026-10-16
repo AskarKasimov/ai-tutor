@@ -210,6 +210,10 @@ func (s *Service) restore(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("connect to Redpanda before state recovery: %w", err)
 	}
+	barrierValue, err := s.publishRestoreBarrier(ctx)
+	if err != nil {
+		return fmt.Errorf("publish gateway state recovery barrier: %w", err)
+	}
 	for {
 		c, cancel := context.WithTimeout(ctx, 250*time.Millisecond)
 		fs := reader.PollFetches(c)
@@ -220,10 +224,16 @@ func (s *Service) restore(ctx context.Context) error {
 			}
 			return fmt.Errorf("read gateway state: %w", e.Err)
 		}
-		count := 0
+		barrierSeen := false
 		for it := fs.RecordIter(); !it.Done(); {
 			r := it.Next()
-			count++
+			if string(r.Key) == restoreBarrierKey {
+				if isRestoreBarrier(r, barrierValue) {
+					barrierSeen = true
+					break
+				}
+				continue
+			}
 			if len(r.Value) == 0 {
 				s.removeByStateKey(r.Key)
 				continue
@@ -234,15 +244,20 @@ func (s *Service) restore(ctx context.Context) error {
 			}
 			s.install(&j)
 		}
-		if count == 0 {
+		if barrierSeen {
 			s.mu.Lock()
 			var recoveries []*durableJob
 			for _, j := range s.jobs {
 				if j.Error != nil && j.Error.Code == "execution_interrupted" || j.Status == "queued" {
 					copy := *j
 					if copy.Status == "queued" {
-						copy.Status = "failed"
-						copy.Error = &storedError{Status: 409, Type: "request_cancelled", Code: "client_disconnected", Message: "No client remains connected after gateway restart."}
+						if !time.Now().Before(copy.Deadline) {
+							copy.Status = "expired"
+							copy.Error = &storedError{Status: 504, Type: "gateway_timeout", Code: "request_deadline_exceeded", Message: "LLM request deadline exceeded."}
+						} else {
+							copy.Status = "failed"
+							copy.Error = &storedError{Status: 409, Type: "request_cancelled", Code: "client_disconnected", Message: "No client remains connected after gateway restart."}
+						}
 					}
 					recoveries = append(recoveries, &copy)
 				}
@@ -261,13 +276,35 @@ func (s *Service) restore(ctx context.Context) error {
 	}
 }
 
+const restoreBarrierKey = "\x00llm-gateway-restore-barrier"
+
+func isRestoreBarrier(record *kgo.Record, value string) bool {
+	return record != nil && string(record.Key) == restoreBarrierKey && string(record.Value) == value
+}
+
+func (s *Service) publishRestoreBarrier(ctx context.Context) (string, error) {
+	value := newID()
+	s.stateMu.Lock()
+	defer s.stateMu.Unlock()
+	if err := s.stateWriter.BeginTransaction(); err != nil {
+		return "", err
+	}
+	result := s.stateWriter.ProduceSync(ctx, &kgo.Record{Topic: s.cfg.StateTopic, Key: []byte(restoreBarrierKey), Value: []byte(value)})
+	if err := result.FirstErr(); err != nil {
+		_ = s.stateWriter.EndTransaction(context.Background(), kgo.TryAbort)
+		return "", err
+	}
+	if err := s.stateWriter.EndTransaction(ctx, kgo.TryCommit); err != nil {
+		return "", err
+	}
+	return value, nil
+}
+
 func (s *Service) install(j *durableJob) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if j.Status == "succeeded" || j.Status == "failed" || j.Status == "expired" {
-		if time.Since(j.SubmittedAt) > s.cfg.Retention {
-			return
-		}
+	if expiredForRetention(j, time.Now(), s.cfg.Retention) {
+		return
 	}
 	if old := s.jobs[j.ID]; old != nil {
 		if isPending(old.Status) {
@@ -355,20 +392,13 @@ func (s *Service) consume(ctx context.Context) {
 		}
 		s.mu.Lock()
 		duplicate := s.cancelled[request.ID]
-		var duplicateState *durableJob
 		if request.IdempotencyKey != "" {
 			if existingID, ok := s.keys[identity(request.ClientID, request.IdempotencyKey)]; ok && existingID != request.ID {
 				duplicate = true
-				if existing := s.jobs[existingID]; existing != nil {
-					copy := *existing
-					duplicateState = &copy
-				}
 			}
 		}
-		if existing, ok := s.jobs[request.ID]; ok {
+		if _, ok := s.jobs[request.ID]; ok {
 			duplicate = true
-			copy := *existing
-			duplicateState = &copy
 		}
 		s.mu.Unlock()
 		s.stateMu.Lock()
@@ -382,14 +412,6 @@ func (s *Service) consume(ctx context.Context) {
 			job = &durableJob{Version: 1, ID: request.ID, ClientID: request.ClientID, IdempotencyKey: request.IdempotencyKey, Hash: request.Hash, Request: request.Request, SubmittedAt: request.SubmittedAt, Deadline: request.Deadline, Offset: record.Offset, Status: "queued"}
 			raw, _ := json.Marshal(job)
 			if got := s.ingest.ProduceSync(ctx, &kgo.Record{Topic: s.cfg.StateTopic, Key: stateKey(job), Value: raw}); got.FirstErr() != nil {
-				_, _ = s.ingest.End(context.Background(), kgo.TryAbort)
-				s.stateMu.Unlock()
-				time.Sleep(time.Second)
-				continue
-			}
-		} else if duplicateState != nil {
-			raw, _ := json.Marshal(duplicateState)
-			if got := s.ingest.ProduceSync(ctx, &kgo.Record{Topic: s.cfg.StateTopic, Key: stateKey(duplicateState), Value: raw}); got.FirstErr() != nil {
 				_, _ = s.ingest.End(context.Background(), kgo.TryAbort)
 				s.stateMu.Unlock()
 				time.Sleep(time.Second)
@@ -424,6 +446,7 @@ func (s *Service) dispatch(ctx, workCtx context.Context) {
 		case <-time.After(time.Second):
 		}
 		for {
+			s.expireQueued(time.Now())
 			j, in, ok := s.next()
 			if !ok {
 				break
@@ -442,11 +465,13 @@ func (s *Service) dispatch(ctx, workCtx context.Context) {
 			j.Instance = in.ID
 			j.SlotHeld = true
 			if err := s.save(ctx, j); err != nil {
-				if j.ProbeReserved {
-					s.caller.circuit(in.ID).releaseReservation()
-				}
-				s.releaseSlot(j)
+				s.rollbackDispatch(j)
 				break
+			}
+			if time.Now().After(j.Deadline) {
+				s.finish(j, submitResult{504, errorBody("gateway_timeout", "request_deadline_exceeded", "LLM request deadline exceeded.")}, "expired")
+				s.releaseSlot(j)
+				continue
 			}
 			jobCtx, jobCancel := context.WithCancel(workCtx)
 			s.mu.Lock()
@@ -462,6 +487,45 @@ func (s *Service) dispatch(ctx, workCtx context.Context) {
 				defer func() { s.mu.Lock(); delete(s.jobCancels, j.ID); s.mu.Unlock() }()
 				s.execute(jobCtx, j, in)
 			}()
+		}
+	}
+}
+
+func (s *Service) rollbackDispatch(j *durableJob) {
+	if j.ProbeReserved {
+		s.caller.circuit(j.Instance).releaseReservation()
+	}
+	s.mu.Lock()
+	if current := s.jobs[j.ID]; current != nil && current.Status == "running" {
+		current.Status = "queued"
+		current.Instance = ""
+		current.SlotHeld = false
+	}
+	if s.inFlight[j.Instance] > 0 {
+		s.inFlight[j.Instance]--
+	}
+	s.mu.Unlock()
+	s.signal()
+}
+
+func (s *Service) expireQueued(now time.Time) {
+	s.mu.Lock()
+	var expired []*durableJob
+	for _, job := range s.jobs {
+		if job.Status == "queued" && !now.Before(job.Deadline) {
+			job.Status = "expiring"
+			copy := *job
+			expired = append(expired, &copy)
+		}
+	}
+	s.mu.Unlock()
+	for _, job := range expired {
+		if !s.finish(job, submitResult{504, errorBody("gateway_timeout", "request_deadline_exceeded", "LLM request deadline exceeded.")}, "expired") {
+			s.mu.Lock()
+			if current := s.jobs[job.ID]; current != nil && current.Status == "expiring" {
+				current.Status = "queued"
+			}
+			s.mu.Unlock()
 		}
 	}
 }
@@ -531,6 +595,9 @@ func (s *Service) next() (*durableJob, InstanceConfig, bool) {
 				continue
 			}
 			s.inFlight[selected.ID]++
+			job.Status = "running"
+			job.Instance = selected.ID
+			job.SlotHeld = true
 			j := *job
 			j.Instance = selected.ID
 			j.SlotHeld = true
@@ -668,7 +735,7 @@ func (s *Service) execute(ctx context.Context, j *durableJob, in InstanceConfig)
 			msg = "The upstream LLM request timed out."
 		}
 		body := errorBody(typ, code, msg)
-		uncertain := errors.Is(failure.Err, context.DeadlineExceeded) || (failure.Code == "upstream_transport_error" && !failure.BeforeSend)
+		uncertain := uncertainUpstreamOutcome(failure)
 		if !uncertain {
 			j.SlotHeld = false
 		}
@@ -693,6 +760,13 @@ func (s *Service) execute(ctx context.Context, j *durableJob, in InstanceConfig)
 	if err := s.persistResult(ctx, j, 200, result.Body, "succeeded"); err == nil || errors.Is(err, errCanceledJob) {
 		s.releaseSlot(j)
 	}
+}
+
+func uncertainUpstreamOutcome(failure *UpstreamFailure) bool {
+	if failure == nil {
+		return false
+	}
+	return errors.Is(failure.Err, context.DeadlineExceeded) || failure.Code == "upstream_response_error" || (failure.Code == "upstream_transport_error" && !failure.BeforeSend)
 }
 
 func (s *Service) persistResult(ctx context.Context, j *durableJob, status int, body []byte, state string, retryAfter ...time.Duration) error {
@@ -767,7 +841,7 @@ func (s *Service) compactExpired(ctx context.Context, now time.Time) {
 	s.mu.Lock()
 	var expired []*durableJob
 	for _, j := range s.jobs {
-		if !isPending(j.Status) && !j.SlotHeld && now.Sub(j.SubmittedAt) >= s.cfg.Retention {
+		if expiredForRetention(j, now, s.cfg.Retention) {
 			copy := *j
 			expired = append(expired, &copy)
 		}
@@ -777,7 +851,7 @@ func (s *Service) compactExpired(ctx context.Context, now time.Time) {
 		s.stateMu.Lock()
 		s.mu.Lock()
 		current := s.jobs[j.ID]
-		stillExpired := current != nil && current.ID == j.ID && !isPending(current.Status) && !current.SlotHeld && now.Sub(current.SubmittedAt) >= s.cfg.Retention
+		stillExpired := current != nil && current.ID == j.ID && expiredForRetention(current, now, s.cfg.Retention)
 		s.mu.Unlock()
 		if !stillExpired {
 			s.stateMu.Unlock()
@@ -798,7 +872,7 @@ func (s *Service) compactExpired(ctx context.Context, now time.Time) {
 			continue
 		}
 		s.mu.Lock()
-		if current := s.jobs[j.ID]; current != nil && !isPending(current.Status) && !current.SlotHeld && now.Sub(current.SubmittedAt) >= s.cfg.Retention {
+		if current := s.jobs[j.ID]; current != nil && expiredForRetention(current, now, s.cfg.Retention) {
 			delete(s.jobs, j.ID)
 			delete(s.stateIDs, string(stateKey(current)))
 			if current.IdempotencyKey != "" {
@@ -815,7 +889,7 @@ func (s *Service) compactExpired(ctx context.Context, now time.Time) {
 		s.stateMu.Unlock()
 	}
 }
-func (s *Service) finish(j *durableJob, result submitResult, state string) {
+func (s *Service) finish(j *durableJob, result submitResult, state string) bool {
 	j.Status = state
 	j.FinishedAt = time.Now()
 	var e ErrorEnvelope
@@ -830,9 +904,11 @@ func (s *Service) finish(j *durableJob, result submitResult, state string) {
 			delete(s.waiters, j.ID)
 		}
 		s.mu.Unlock()
+		return true
 	} else {
 		s.markStateUncertain()
 		s.notifyEphemeral(j.ID, submitResult{503, errorBody("server_error", "state_unavailable", "Gateway could not durably save the request state.")})
+		return false
 	}
 }
 func (s *Service) releaseSlot(j *durableJob) {
@@ -1079,7 +1155,20 @@ func (s *Service) await(w http.ResponseWriter, r *http.Request, id string, ch ch
 			s.respond(w, id, saved)
 			return
 		}
+		queued := j != nil && j.Status == "queued" && !time.Now().Before(j.Deadline)
 		s.mu.Unlock()
+		if queued {
+			s.expireQueued(time.Now())
+			s.mu.Lock()
+			j = s.jobs[id]
+			if j != nil && (j.Status == "succeeded" || j.Status == "failed" || j.Status == "expired") {
+				saved := *j
+				s.mu.Unlock()
+				s.respond(w, id, saved)
+				return
+			}
+			s.mu.Unlock()
+		}
 		w.Header().Set("X-Request-ID", id)
 		writeError(w, 503, "server_error", "state_unavailable", "Gateway did not persist a result before the request deadline.")
 		return
@@ -1228,7 +1317,19 @@ func errorBody(typ, code, msg string) []byte {
 	return b
 }
 func identity(client, key string) string { return client + "\x00" + key }
-func isPending(status string) bool       { return status == "queued" || status == "running" }
+func isPending(status string) bool {
+	return status == "queued" || status == "running" || status == "expiring"
+}
+func expiredForRetention(j *durableJob, now time.Time, retention time.Duration) bool {
+	if j == nil || isPending(j.Status) || j.SlotHeld {
+		return false
+	}
+	completedAt := j.FinishedAt
+	if completedAt.IsZero() {
+		completedAt = j.SubmittedAt
+	}
+	return !completedAt.IsZero() && now.Sub(completedAt) >= retention
+}
 func stateKey(j *durableJob) []byte {
 	if j.IdempotencyKey == "" {
 		return []byte(j.ID)

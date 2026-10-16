@@ -70,6 +70,32 @@ func TestCallerSendsConfiguredRequestAndNormalizesModel(t *testing.T) {
 	}
 }
 
+func TestCallerPreservesLargeIntegerSeed(t *testing.T) {
+	var gotSeed string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]json.RawMessage
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Errorf("decode request: %v", err)
+		}
+		gotSeed = string(body["seed"])
+		_, _ = w.Write([]byte(`{"id":"completion-1","object":"chat.completion","created":1,"choices":[{}]}`))
+	}))
+	defer server.Close()
+	request, err := ParseRequest([]byte(`{"messages":[{"role":"user","content":"hi"}],"complexity":"low","seed":9007199254740993}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	caller := NewCaller(Config{UpstreamTimeout: time.Second})
+	defer caller.client.CloseIdleConnections()
+	_, failure := caller.call(context.Background(), InstanceConfig{ID: "model-a", BaseURL: server.URL, Model: "served-model", Timeout: time.Second}, request, "request-123", false)
+	if failure != nil {
+		t.Fatalf("call() failure = %v", failure)
+	}
+	if gotSeed != "9007199254740993" {
+		t.Fatalf("upstream seed = %s, want 9007199254740993", gotSeed)
+	}
+}
+
 func TestCallerReturnsRetryAfterForUpstreamRateLimit(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Retry-After", "7")

@@ -100,3 +100,26 @@ func TestNextRoundRobinsEqualLoadInstances(t *testing.T) {
 		t.Fatalf("second selection = (%v, %v), want model-b", second, ok)
 	}
 }
+
+func TestRestoreKeepsUncertainSlotPastResultRetention(t *testing.T) {
+	s := schedulerFixture([]InstanceConfig{schedulerInstance("model-a")}, []string{"model-a"})
+	s.cfg.Retention = 24 * time.Hour
+	s.stateIDs = make(map[string]string)
+	s.keys = make(map[string]string)
+	s.install(&durableJob{ID: "uncertain", Status: "failed", Instance: "model-a", SlotHeld: true, SubmittedAt: time.Now().Add(-48 * time.Hour), FinishedAt: time.Now().Add(-24 * time.Hour), Error: &storedError{Code: "upstream_timeout"}})
+	if s.inFlight["model-a"] != 1 {
+		t.Fatalf("restored in-flight count = %d, want uncertain slot retained", s.inFlight["model-a"])
+	}
+}
+
+func TestRestoreRetainsResultFor24HoursAfterCompletion(t *testing.T) {
+	s := schedulerFixture([]InstanceConfig{schedulerInstance("model-a")}, []string{"model-a"})
+	s.cfg.Retention = 24 * time.Hour
+	s.stateIDs = make(map[string]string)
+	s.keys = make(map[string]string)
+	job := &durableJob{ID: "recent-result", Status: "succeeded", SubmittedAt: time.Now().Add(-48 * time.Hour), FinishedAt: time.Now().Add(-23 * time.Hour), Response: []byte(`{"id":"saved"}`)}
+	s.install(job)
+	if s.jobs[job.ID] == nil {
+		t.Fatal("result was discarded before 24 hours elapsed after completion")
+	}
+}

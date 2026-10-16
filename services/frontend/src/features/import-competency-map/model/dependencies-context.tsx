@@ -1,20 +1,12 @@
 import { createContext, useContext } from 'react'
 import type { PropsWithChildren } from 'react'
 import type {
-  CompetencyMapImport,
-  CompetencyMapSummary,
   CourseMaterial,
   CourseMaterialUploadResult,
 } from '@/entities/competency-map'
 
 export type CompetencyMapDependencies = {
   competencyMap: {
-    read(subjectId: string, signal: AbortSignal): Promise<CompetencyMapSummary>
-    import(
-      subjectId: string,
-      file: File,
-      signal: AbortSignal,
-    ): Promise<CompetencyMapImport>
     readSubjectMaterials(
       subjectId: string,
       signal?: AbortSignal,

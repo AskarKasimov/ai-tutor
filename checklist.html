@@ -183,7 +183,7 @@
     </section>
 
         <section>
-      <h2>5. Материалы для преподавателя <small></small></h2>
+      <h2>5. Материалы для преподавателя <span class="tag">Could</span> <small></small></h2>
       <ul>
         <li><label><input type="checkbox" data-id="p-transcript"><span><span class="t">Транскрипт с разделением реплик и нумерацией строк</span></span></label></li>
         <li><label><input type="checkbox" data-id="p-coverage"><span><span class="t">Карта покрытия: статус каждой темы графа</span></span></label></li>
@@ -193,7 +193,7 @@
     </section>
 
         <section>
-      <h2>6. Тренировка — диспут <small></small></h2>
+      <h2>6. Тренировка — диспут <span class="tag">после показа</span> <small></small></h2>
       <ul>
         <li><label><input type="checkbox" data-id="t-hours"><span><span class="t">Вопрос «Сколько у тебя часов?»</span></span></label></li>
         <li><label><input type="checkbox" data-id="t-order"><span><span class="t">План — пробелы снизу вверх по пререквизитам</span></span></label></li>
@@ -201,7 +201,7 @@
         <li><label><input type="checkbox" data-id="t-dispute"><span><span class="t">Диспут: возражения, контрпримеры, сопоставление объяснений</span></span></label></li>
         <li><label><input type="checkbox" data-id="t-hints"><span><span class="t">Подсказки фиксируются, поддержка сокращается, финальная задача без подсказки</span></span></label></li>
         <li><label><input type="checkbox" data-id="t-questions"><span><span class="t">Вопросы студента: материалы → пререквизиты из листьев → название темы без ссылки</span><span class="d">Ответ вне материалов помечается.</span></span></label></li>
-        <li><label><input type="checkbox" data-id="t-learning"><span><span class="t">Переиспользован модуль learning</span><span class="d">План по часам, уроки, чат наставника, голосовые ответы.</span></span></label></li>
+        <li><label><input type="checkbox" data-id="t-learning"><span><span class="t">Модуль learning восстановлен из истории git</span><span class="d">Удалён 16.10 вместе с прежней диагностикой; план по часам, уроки, чат наставника, голосовые ответы.</span></span></label></li>
       </ul>
     </section>
 
@@ -216,15 +216,15 @@
     </section>
 
     <section>
-      <h2>8. Переход с текущей системы <small></small></h2>
-      <p>Переиспользуем максимум. Удаление — только после явного согласования.</p>
+      <h2>8. Переход с прежней системы <small></small></h2>
+      <p>16.10.2026 код прежней модели удалён; он остался в истории git и в релизе.</p>
       <ul>
         <li><label><input type="checkbox" data-id="m-infra" checked><span><span class="t">Оставлены auth, STT/TTS, S3, Caddy, PostgreSQL, Compose</span></span></label></li>
         <li><label><input type="checkbox" data-id="m-subject"><span><span class="t">Предмет (subject) стал курсом</span></span></label></li>
         <li><label><input type="checkbox" data-id="m-summary"><span><span class="t">Экран итога и diagnosticfeedback переделаны под A–D, пробелы и пакет для преподавателя</span></span></label></li>
         <li><label><input type="checkbox" data-id="m-dialog"><span><span class="t">Frontend: диагностика в формате диалога</span><span class="d">Главная, запись голоса и чат переиспользуются.</span></span></label></li>
-        <li><label><input type="checkbox" data-id="m-diag"><span><span class="t">diagnostic переделан на месте под Geek</span><span class="d">Пути /diagnostic-sessions сохраняются; данные и прежние миграции не сохраняются.</span></span></label></li>
-        <li><label><input type="checkbox" data-id="m-approve"><span><span class="t">Согласовано, что удалить <span class="tag">спросить</span></span><span class="d">Импорт карты CSV/XLSX, TRUE-ОР, variantgen, assessment, taskgen + FTS, training, админка карт.</span></span></label></li>
+        <li><label><input type="checkbox" data-id="m-diag"><span><span class="t">Диагностика Geek написана на путях /diagnostic-sessions</span><span class="d">Прежний diagnostic удалён; схема БД собрана заново.</span></span></label></li>
+        <li><label><input type="checkbox" data-id="m-approve" checked><span><span class="t">Прежняя модель удалена</span><span class="d">Импорт карты CSV/XLSX, variantgen, assessment, taskgen + FTS, training, taskaudio, diagnostic, diagnosticfeedback, learning, админка карт, документы прежней модели.</span></span></label></li>
       </ul>
     </section>
 

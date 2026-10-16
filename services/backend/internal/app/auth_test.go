@@ -1,6 +1,7 @@
 package app
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
@@ -8,8 +9,10 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"net/textproto"
 	"os"
 	"strconv"
 	"strings"
@@ -453,4 +456,32 @@ func TestAuthPostRequestsHaveNoSharedIPLimit(t *testing.T) {
 			t.Fatalf("logout: %d", w.Code)
 		}
 	}
+}
+
+func upload(f *fixture, path, field, filename, media string, data []byte, cookie *http.Cookie) *httptest.ResponseRecorder {
+	var body bytes.Buffer
+	mw := multipart.NewWriter(&body)
+	h := make(textproto.MIMEHeader)
+	h.Set("Content-Disposition", `form-data; name="`+field+`"; filename="`+filename+`"`)
+	h.Set("Content-Type", media)
+	p, _ := mw.CreatePart(h)
+	_, _ = p.Write(data)
+	_ = mw.Close()
+	r := httptest.NewRequest("POST", "https://api.example"+path, &body)
+	r.Header.Set("Content-Type", mw.FormDataContentType())
+	if cookie != nil {
+		r.AddCookie(cookie)
+	}
+	w := httptest.NewRecorder()
+	f.app.Handler().ServeHTTP(w, r)
+	return w
+}
+
+func (f *fixture) admin(t *testing.T) *http.Cookie {
+	t.Helper()
+	access, _, id := f.register(t, "admin@example.edu")
+	if _, err := f.pool.Exec(context.Background(), "UPDATE users SET role='admin' WHERE id=$1", id); err != nil {
+		t.Fatal(err)
+	}
+	return access
 }

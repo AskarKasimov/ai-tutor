@@ -39,8 +39,6 @@ export function createAppDependencies(): AppDependencies {
       logout: auth.logout,
     },
     competencyMap: {
-      read: competencyMap.readCompetencyMap,
-      import: competencyMap.importCompetencyMap,
       readSubjectMaterials: competencyMap.readSubjectMaterials,
       uploadCourseMaterials: competencyMap.uploadCourseMaterials,
       deleteCourseMaterial: competencyMap.deleteCourseMaterial,

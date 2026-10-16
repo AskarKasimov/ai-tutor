@@ -1,0 +1,51 @@
+﻿id,page_markers,cyrillic_share,source_quality,notes
+AI-01-01,3,0.594,thin_source,У исходной ноды есть ограничения качества; см. source_quality.
+AI-01-02,1,0.716,thin_source,У исходной ноды есть ограничения качества; см. source_quality.
+AI-01-07,2,0.694,source_present_visuals_unverified,
+AI-01-08,4,0.722,source_present_visuals_unverified,
+AI-01-09,8,0.642,source_present_visuals_unverified,
+AI-01-10,4,0.714,shared_only_review_required,У исходной ноды есть ограничения качества; см. source_quality.
+AI-01-12,3,0.711,shared_only_review_required,У исходной ноды есть ограничения качества; см. source_quality.
+AI-01-19,1,0.731,thin_source,У исходной ноды есть ограничения качества; см. source_quality.
+AI-01-21,2,0.701,source_present_visuals_unverified,Перевод сохраняет пометки о повреждённых формулах/схемах или ошибках исходного материала.
+AI-01-24,2,0.575,source_present_visuals_unverified,
+AI-02-02,2,0.734,source_present_visuals_unverified,
+AI-02-05,3,0.655,thin_source,У исходной ноды есть ограничения качества; см. source_quality.
+AI-02-06,2,0.724,thin_source,Перевод сохраняет пометки о повреждённых формулах/схемах или ошибках исходного материала.; У исходной ноды есть ограничения качества; см. source_quality.
+AI-02-07,4,0.731,source_present_visuals_unverified,
+AI-02-08,2,0.718,thin_source,Перевод сохраняет пометки о повреждённых формулах/схемах или ошибках исходного материала.; У исходной ноды есть ограничения качества; см. source_quality.
+AI-02-09,2,0.596,source_present_visuals_unverified,
+AI-03-02,1,0.75,thin_source,У исходной ноды есть ограничения качества; см. source_quality.
+AI-03-04,1,0.759,thin_source,У исходной ноды есть ограничения качества; см. source_quality.
+AI-04-02,3,0.725,shared_only_review_required,У исходной ноды есть ограничения качества; см. source_quality.
+AI-04-03,2,0.659,shared_only_review_required,У исходной ноды есть ограничения качества; см. source_quality.
+AI-04-06,3,0.708,boundary_review_required,Перевод сохраняет пометки о повреждённых формулах/схемах или ошибках исходного материала.; У исходной ноды есть ограничения качества; см. source_quality.
+AI-04-07,2,0.763,source_present_visuals_unverified,Перевод сохраняет пометки о повреждённых формулах/схемах или ошибках исходного материала.
+AI-04-18,5,0.558,source_present_visuals_unverified,
+AI-04-23,4,0.682,source_present_visuals_unverified,
+AI-05-08,1,0.685,thin_source,У исходной ноды есть ограничения качества; см. source_quality.
+AI-07-03,2,0.703,source_present_visuals_unverified,
+AI-07-09,6,0.631,source_present_visuals_unverified,
+AI-07-10,4,0.692,source_present_visuals_unverified,Перевод сохраняет пометки о повреждённых формулах/схемах или ошибках исходного материала.
+AI-08-02,6,0.531,shared_only_review_required,Перевод сохраняет пометки о повреждённых формулах/схемах или ошибках исходного материала.; У исходной ноды есть ограничения качества; см. source_quality.
+AI-08-03,4,0.467,shared_only_review_required,Перевод сохраняет пометки о повреждённых формулах/схемах или ошибках исходного материала.; У исходной ноды есть ограничения качества; см. source_quality.
+AI-08-04,3,0.66,shared_only_review_required,Перевод сохраняет пометки о повреждённых формулах/схемах или ошибках исходного материала.; У исходной ноды есть ограничения качества; см. source_quality.
+AI-08-05,5,0.604,source_present_visuals_unverified,Перевод сохраняет пометки о повреждённых формулах/схемах или ошибках исходного материала.
+AI-08-06,2,0.713,thin_source,Перевод сохраняет пометки о повреждённых формулах/схемах или ошибках исходного материала.; У исходной ноды есть ограничения качества; см. source_quality.
+AI-08-08,2,0.746,boundary_review_required,Перевод сохраняет пометки о повреждённых формулах/схемах или ошибках исходного материала.; У исходной ноды есть ограничения качества; см. source_quality.
+AI-08-09,2,0.72,source_present_visuals_unverified,Перевод сохраняет пометки о повреждённых формулах/схемах или ошибках исходного материала.
+AI-09-03,3,0.564,shared_only_review_required,У исходной ноды есть ограничения качества; см. source_quality.
+AI-09-05,2,0.616,thin_source,У исходной ноды есть ограничения качества; см. source_quality.
+AI-09-11,2,0.657,boundary_review_required,У исходной ноды есть ограничения качества; см. source_quality.
+AI-09-12,1,0.775,thin_source,У исходной ноды есть ограничения качества; см. source_quality.
+AI-09-13,1,0.746,source_present_visuals_unverified,
+AI-10-01,3,0.736,source_present_visuals_unverified,
+AI-10-02,1,0.654,boundary_review_required,Перевод сохраняет пометки о повреждённых формулах/схемах или ошибках исходного материала.; У исходной ноды есть ограничения качества; см. source_quality.
+AI-10-03,2,0.72,boundary_review_required,У исходной ноды есть ограничения качества; см. source_quality.
+AI-10-05,1,0.764,boundary_review_required,Перевод сохраняет пометки о повреждённых формулах/схемах или ошибках исходного материала.; У исходной ноды есть ограничения качества; см. source_quality.
+AI-10-06,3,0.698,source_present_visuals_unverified,
+AI-10-07,3,0.693,source_present_visuals_unverified,
+AI-10-08,2,0.741,shared_only_review_required,У исходной ноды есть ограничения качества; см. source_quality.
+AI-10-09,2,0.719,source_present_visuals_unverified,
+AI-10-10,1,0.699,thin_source,У исходной ноды есть ограничения качества; см. source_quality.
+AI-10-12,3,0.711,shared_only_review_required,У исходной ноды есть ограничения качества; см. source_quality.

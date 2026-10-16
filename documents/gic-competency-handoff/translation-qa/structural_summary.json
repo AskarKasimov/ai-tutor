@@ -1,0 +1,27 @@
+{
+  "reference": {
+    "topics": 50,
+    "marker_exact_topics": 50,
+    "numeric_difference_topics": 16,
+    "code_difference_topics": 0,
+    "delimited_math_difference_topics": 1
+  },
+  "reference_matched_subset": {
+    "topics": 5,
+    "marker_exact_topics": 5,
+    "numeric_difference_topics": 4,
+    "code_difference_topics": 0,
+    "delimited_math_difference_topics": 1
+  },
+  "candidate": {
+    "topics": 5,
+    "marker_exact_topics": 2,
+    "numeric_difference_topics": 2,
+    "code_difference_topics": 0,
+    "delimited_math_difference_topics": 1
+  },
+  "source_sha256": "d9195f7c830b4dda8893e4126a075fbb324fb397595fd74ff27ab3a4d0f70f20",
+  "localized_sha256": "e2dc75399855e7269eb0c92ceb049c718e63f6f2a6d54f7e1fdf79be0749fdef",
+  "original_fields_preserved": true,
+  "limitations": "Counts flag review candidates, not semantic errors; plain-text mathematics requires manual review. Reference covers 13.2% of original text."
+}

@@ -9,6 +9,7 @@
 3. [Канонические данные](GIC_diagnostic_handoff_v1/data/course_graph.v1.json) и [provenance](GIC_diagnostic_handoff_v1/data/topic_provenance.v1.json).
 4. [Отчёт проверки и сообщение для Феди](REVIEW.md).
 5. [Проекция в формат Феди](course-graph.fedia.v1.json) и [воспроизводимый экспорт](export_review.py).
+6. [Частичный русский перевод и оценка модуля Ваче](translation-qa/README.md): 50 присланных переводов и пилот на пяти темах; массовый прогон остановлен по результатам проверки.
 
 Весь исходный комплект распакован без изменения байтов, включая шесть архивов `history/`, визуализации, схемы и reference engine. Отдельный handoff из Downloads совпадает с архивным по SHA256. Оригинальные PDF не входят в полученный комплект; для сверки формул и показа слайдов нужен `AI_course_cleaned(1).zip`. `.gitattributes` сохраняет оригинальные байты и SHA256 при checkout на Windows/Linux.
 

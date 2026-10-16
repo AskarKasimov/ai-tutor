@@ -1,0 +1,27 @@
+{
+  "date": "2026-10-16",
+  "module_ref": "origin/language_trans",
+  "module_commit": "801395bf344538a5fc1e43f9723591cd0ea7754e",
+  "model": "gpt-oss-120b",
+  "model_weights_revision": "not exposed/verified",
+  "transport": "actual translator.New HTTP path; configured private project endpoint; credentials not included",
+  "temperature": 0.2,
+  "max_tokens_per_chunk": 4096,
+  "workers": 4,
+  "timeout_seconds_per_chunk": 120,
+  "topics_sequential": true,
+  "pilot_ids": [
+    "AI-01-02",
+    "AI-04-07",
+    "AI-04-23",
+    "AI-08-05",
+    "AI-10-01"
+  ],
+  "reference_archive_sha256": "7cda977943242263eadfb2905c30c139004fce3f85ea78ba2420b9e7a00c1dca",
+  "protocol_sha256": "c115c9124f35c7b7494b502c1c1e5ba7b979bff5d79b6206cb43a63a5b6bf004",
+  "source_module_files": {
+    "client.go": "97b1200a4ac0eca65f11241ffa8a8cb9a21fe6691da091ea4664d86cf6339820",
+    "chunker.go": "cfcf4e5b30e60ddbf46211b4a1e2d78234ea82464bc8d9d3b42f0960ac766dd6",
+    "detector.go": "05db0fbdd0c397ea4ec68a4c80392861646281d00b547adb7bc24cf3cc0b4043"
+  }
+}

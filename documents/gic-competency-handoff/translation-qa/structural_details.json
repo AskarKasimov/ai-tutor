@@ -1,0 +1,1200 @@
+[
+  {
+    "id": "AI-01-01",
+    "title": "Подходы к определению искусственного интеллекта",
+    "source_chars": 555,
+    "reference": {
+      "markers_exact": true,
+      "source_markers": 3,
+      "output_markers": 3,
+      "missing_numeric_tokens": [],
+      "added_numeric_tokens": [],
+      "code_exact": true,
+      "delimited_math_exact": true,
+      "length_ratio": 1.42
+    },
+    "candidate": null,
+    "error": "not_run"
+  },
+  {
+    "id": "AI-01-02",
+    "title": "Сильный и слабый искусственный интеллект",
+    "source_chars": 239,
+    "reference": {
+      "markers_exact": true,
+      "source_markers": 1,
+      "output_markers": 1,
+      "missing_numeric_tokens": [],
+      "added_numeric_tokens": [],
+      "code_exact": true,
+      "delimited_math_exact": true,
+      "length_ratio": 1.665
+    },
+    "candidate": {
+      "markers_exact": false,
+      "source_markers": 1,
+      "output_markers": 1,
+      "missing_numeric_tokens": [],
+      "added_numeric_tokens": [],
+      "code_exact": true,
+      "delimited_math_exact": true,
+      "length_ratio": 1.259
+    },
+    "error": null
+  },
+  {
+    "id": "AI-01-07",
+    "title": "Тест Тьюринга и его интерпретация",
+    "source_chars": 760,
+    "reference": {
+      "markers_exact": true,
+      "source_markers": 2,
+      "output_markers": 2,
+      "missing_numeric_tokens": [
+        "1"
+      ],
+      "added_numeric_tokens": [],
+      "code_exact": true,
+      "delimited_math_exact": true,
+      "length_ratio": 1.529
+    },
+    "candidate": null,
+    "error": "not_run"
+  },
+  {
+    "id": "AI-01-08",
+    "title": "Аргумент китайской комнаты и возражения",
+    "source_chars": 1361,
+    "reference": {
+      "markers_exact": true,
+      "source_markers": 4,
+      "output_markers": 4,
+      "missing_numeric_tokens": [],
+      "added_numeric_tokens": [],
+      "code_exact": true,
+      "delimited_math_exact": true,
+      "length_ratio": 1.126
+    },
+    "candidate": null,
+    "error": "not_run"
+  },
+  {
+    "id": "AI-01-09",
+    "title": "Законы робототехники Азимова и их ограничения",
+    "source_chars": 1358,
+    "reference": {
+      "markers_exact": true,
+      "source_markers": 8,
+      "output_markers": 8,
+      "missing_numeric_tokens": [],
+      "added_numeric_tokens": [],
+      "code_exact": true,
+      "delimited_math_exact": true,
+      "length_ratio": 1.087
+    },
+    "candidate": null,
+    "error": "not_run"
+  },
+  {
+    "id": "AI-01-10",
+    "title": "Этические риски автономных решений",
+    "source_chars": 1211,
+    "reference": {
+      "markers_exact": true,
+      "source_markers": 4,
+      "output_markers": 4,
+      "missing_numeric_tokens": [],
+      "added_numeric_tokens": [],
+      "code_exact": true,
+      "delimited_math_exact": true,
+      "length_ratio": 1.13
+    },
+    "candidate": null,
+    "error": "not_run"
+  },
+  {
+    "id": "AI-01-12",
+    "title": "Когнитивные искажения, надёжность данных и оценка выдачи ИИ",
+    "source_chars": 1050,
+    "reference": {
+      "markers_exact": true,
+      "source_markers": 3,
+      "output_markers": 3,
+      "missing_numeric_tokens": [],
+      "added_numeric_tokens": [],
+      "code_exact": true,
+      "delimited_math_exact": true,
+      "length_ratio": 1.269
+    },
+    "candidate": null,
+    "error": "not_run"
+  },
+  {
+    "id": "AI-01-19",
+    "title": "Исторические и культурные образы искусственного разума",
+    "source_chars": 444,
+    "reference": {
+      "markers_exact": true,
+      "source_markers": 1,
+      "output_markers": 1,
+      "missing_numeric_tokens": [],
+      "added_numeric_tokens": [],
+      "code_exact": true,
+      "delimited_math_exact": true,
+      "length_ratio": 1.005
+    },
+    "candidate": null,
+    "error": "not_run"
+  },
+  {
+    "id": "AI-01-21",
+    "title": "Доказательство по математической индукции",
+    "source_chars": 725,
+    "reference": {
+      "markers_exact": true,
+      "source_markers": 2,
+      "output_markers": 2,
+      "missing_numeric_tokens": [
+        "1",
+        "1",
+        "2",
+        "2"
+      ],
+      "added_numeric_tokens": [],
+      "code_exact": true,
+      "delimited_math_exact": true,
+      "length_ratio": 1.429
+    },
+    "candidate": null,
+    "error": "not_run"
+  },
+  {
+    "id": "AI-01-24",
+    "title": "Необходимые и достаточные условия",
+    "source_chars": 577,
+    "reference": {
+      "markers_exact": true,
+      "source_markers": 2,
+      "output_markers": 2,
+      "missing_numeric_tokens": [],
+      "added_numeric_tokens": [],
+      "code_exact": true,
+      "delimited_math_exact": true,
+      "length_ratio": 1.161
+    },
+    "candidate": null,
+    "error": "not_run"
+  },
+  {
+    "id": "AI-02-02",
+    "title": "Рациональность и ограниченность знаний агента",
+    "source_chars": 1045,
+    "reference": {
+      "markers_exact": true,
+      "source_markers": 2,
+      "output_markers": 2,
+      "missing_numeric_tokens": [],
+      "added_numeric_tokens": [],
+      "code_exact": true,
+      "delimited_math_exact": true,
+      "length_ratio": 1.031
+    },
+    "candidate": null,
+    "error": "not_run"
+  },
+  {
+    "id": "AI-02-05",
+    "title": "Простой рефлексный агент",
+    "source_chars": 466,
+    "reference": {
+      "markers_exact": true,
+      "source_markers": 3,
+      "output_markers": 3,
+      "missing_numeric_tokens": [],
+      "added_numeric_tokens": [],
+      "code_exact": true,
+      "delimited_math_exact": true,
+      "length_ratio": 1.513
+    },
+    "candidate": null,
+    "error": "not_run"
+  },
+  {
+    "id": "AI-02-06",
+    "title": "Рефлексный агент с внутренней моделью",
+    "source_chars": 546,
+    "reference": {
+      "markers_exact": true,
+      "source_markers": 2,
+      "output_markers": 2,
+      "missing_numeric_tokens": [],
+      "added_numeric_tokens": [],
+      "code_exact": true,
+      "delimited_math_exact": true,
+      "length_ratio": 1.375
+    },
+    "candidate": null,
+    "error": "not_run"
+  },
+  {
+    "id": "AI-02-07",
+    "title": "Целеориентированный агент",
+    "source_chars": 1308,
+    "reference": {
+      "markers_exact": true,
+      "source_markers": 4,
+      "output_markers": 4,
+      "missing_numeric_tokens": [],
+      "added_numeric_tokens": [
+        "1",
+        "1"
+      ],
+      "code_exact": true,
+      "delimited_math_exact": true,
+      "length_ratio": 1.051
+    },
+    "candidate": null,
+    "error": "not_run"
+  },
+  {
+    "id": "AI-02-08",
+    "title": "Агент на основе функции полезности",
+    "source_chars": 419,
+    "reference": {
+      "markers_exact": true,
+      "source_markers": 2,
+      "output_markers": 2,
+      "missing_numeric_tokens": [],
+      "added_numeric_tokens": [],
+      "code_exact": true,
+      "delimited_math_exact": true,
+      "length_ratio": 1.592
+    },
+    "candidate": null,
+    "error": "not_run"
+  },
+  {
+    "id": "AI-02-09",
+    "title": "Обучающийся агент и обратная связь",
+    "source_chars": 725,
+    "reference": {
+      "markers_exact": true,
+      "source_markers": 2,
+      "output_markers": 2,
+      "missing_numeric_tokens": [
+        "4"
+      ],
+      "added_numeric_tokens": [],
+      "code_exact": true,
+      "delimited_math_exact": true,
+      "length_ratio": 1.479
+    },
+    "candidate": null,
+    "error": "not_run"
+  },
+  {
+    "id": "AI-03-02",
+    "title": "Получение знаний от эксперта",
+    "source_chars": 492,
+    "reference": {
+      "markers_exact": true,
+      "source_markers": 1,
+      "output_markers": 1,
+      "missing_numeric_tokens": [],
+      "added_numeric_tokens": [],
+      "code_exact": true,
+      "delimited_math_exact": true,
+      "length_ratio": 1.4
+    },
+    "candidate": null,
+    "error": "not_run"
+  },
+  {
+    "id": "AI-03-04",
+    "title": "Зима искусственного интеллекта",
+    "source_chars": 437,
+    "reference": {
+      "markers_exact": true,
+      "source_markers": 1,
+      "output_markers": 1,
+      "missing_numeric_tokens": [],
+      "added_numeric_tokens": [
+        "1980"
+      ],
+      "code_exact": true,
+      "delimited_math_exact": true,
+      "length_ratio": 1.474
+    },
+    "candidate": null,
+    "error": "not_run"
+  },
+  {
+    "id": "AI-04-02",
+    "title": "Информированный и неинформированный поиск",
+    "source_chars": 1313,
+    "reference": {
+      "markers_exact": true,
+      "source_markers": 3,
+      "output_markers": 3,
+      "missing_numeric_tokens": [],
+      "added_numeric_tokens": [],
+      "code_exact": true,
+      "delimited_math_exact": true,
+      "length_ratio": 1.065
+    },
+    "candidate": null,
+    "error": "not_run"
+  },
+  {
+    "id": "AI-04-03",
+    "title": "Поиск в глубину и представление дерева",
+    "source_chars": 1088,
+    "reference": {
+      "markers_exact": true,
+      "source_markers": 2,
+      "output_markers": 2,
+      "missing_numeric_tokens": [],
+      "added_numeric_tokens": [],
+      "code_exact": true,
+      "delimited_math_exact": true,
+      "length_ratio": 1.23
+    },
+    "candidate": null,
+    "error": "not_run"
+  },
+  {
+    "id": "AI-04-06",
+    "title": "Эвристическая функция",
+    "source_chars": 1262,
+    "reference": {
+      "markers_exact": true,
+      "source_markers": 3,
+      "output_markers": 3,
+      "missing_numeric_tokens": [
+        "8",
+        "8",
+        "8",
+        "8",
+        "8",
+        "8",
+        "8",
+        "3",
+        "3",
+        "3",
+        "3",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "2",
+        "2",
+        "2",
+        "2",
+        "181,400",
+        "4",
+        "4",
+        "4",
+        "4",
+        "5",
+        "5",
+        "5",
+        "5",
+        "6",
+        "6",
+        "6",
+        "6",
+        "7",
+        "7",
+        "7",
+        "7"
+      ],
+      "added_numeric_tokens": [
+        "1870",
+        "181",
+        "181",
+        "440",
+        "400"
+      ],
+      "code_exact": true,
+      "delimited_math_exact": true,
+      "length_ratio": 1.132
+    },
+    "candidate": null,
+    "error": "not_run"
+  },
+  {
+    "id": "AI-04-07",
+    "title": "Допустимость эвристики",
+    "source_chars": 1371,
+    "reference": {
+      "markers_exact": true,
+      "source_markers": 2,
+      "output_markers": 2,
+      "missing_numeric_tokens": [],
+      "added_numeric_tokens": [
+        "0"
+      ],
+      "code_exact": true,
+      "delimited_math_exact": false,
+      "length_ratio": 0.899
+    },
+    "candidate": {
+      "markers_exact": true,
+      "source_markers": 2,
+      "output_markers": 2,
+      "missing_numeric_tokens": [],
+      "added_numeric_tokens": [],
+      "code_exact": true,
+      "delimited_math_exact": true,
+      "length_ratio": 0.949
+    },
+    "error": null
+  },
+  {
+    "id": "AI-04-18",
+    "title": "Модель соседства на сетке для поиска пути",
+    "source_chars": 1178,
+    "reference": {
+      "markers_exact": true,
+      "source_markers": 5,
+      "output_markers": 5,
+      "missing_numeric_tokens": [
+        "8",
+        "2"
+      ],
+      "added_numeric_tokens": [],
+      "code_exact": true,
+      "delimited_math_exact": true,
+      "length_ratio": 0.934
+    },
+    "candidate": null,
+    "error": "not_run"
+  },
+  {
+    "id": "AI-04-23",
+    "title": "Измерение сложности ландшафта случайными блужданиями",
+    "source_chars": 1379,
+    "reference": {
+      "markers_exact": true,
+      "source_markers": 4,
+      "output_markers": 4,
+      "missing_numeric_tokens": [
+        "0,0,1,1,1,1,1,1,0",
+        "0,1",
+        "1,0,1,1,0"
+      ],
+      "added_numeric_tokens": [
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0"
+      ],
+      "code_exact": true,
+      "delimited_math_exact": true,
+      "length_ratio": 1.174
+    },
+    "candidate": {
+      "markers_exact": false,
+      "source_markers": 4,
+      "output_markers": 0,
+      "missing_numeric_tokens": [],
+      "added_numeric_tokens": [
+        "1",
+        "1",
+        "1",
+        "0",
+        "0,0,1,1,1,1,1,1,0",
+        "0,1",
+        "1,0,1,1,0",
+        "6",
+        "10"
+      ],
+      "code_exact": true,
+      "delimited_math_exact": true,
+      "length_ratio": 1.908
+    },
+    "error": null
+  },
+  {
+    "id": "AI-05-08",
+    "title": "Параллелизация Monte Carlo Tree Search",
+    "source_chars": 471,
+    "reference": {
+      "markers_exact": true,
+      "source_markers": 1,
+      "output_markers": 1,
+      "missing_numeric_tokens": [],
+      "added_numeric_tokens": [],
+      "code_exact": true,
+      "delimited_math_exact": true,
+      "length_ratio": 1.408
+    },
+    "candidate": null,
+    "error": "not_run"
+  },
+  {
+    "id": "AI-07-03",
+    "title": "Пропорциональный отбор roulette wheel",
+    "source_chars": 609,
+    "reference": {
+      "markers_exact": true,
+      "source_markers": 2,
+      "output_markers": 2,
+      "missing_numeric_tokens": [],
+      "added_numeric_tokens": [],
+      "code_exact": true,
+      "delimited_math_exact": true,
+      "length_ratio": 1.281
+    },
+    "candidate": null,
+    "error": "not_run"
+  },
+  {
+    "id": "AI-07-09",
+    "title": "Декартово генетическое программирование",
+    "source_chars": 1128,
+    "reference": {
+      "markers_exact": true,
+      "source_markers": 6,
+      "output_markers": 6,
+      "missing_numeric_tokens": [],
+      "added_numeric_tokens": [],
+      "code_exact": true,
+      "delimited_math_exact": true,
+      "length_ratio": 1.27
+    },
+    "candidate": null,
+    "error": "not_run"
+  },
+  {
+    "id": "AI-07-10",
+    "title": "Эволюционное программирование и конечные автоматы",
+    "source_chars": 1333,
+    "reference": {
+      "markers_exact": true,
+      "source_markers": 4,
+      "output_markers": 4,
+      "missing_numeric_tokens": [],
+      "added_numeric_tokens": [],
+      "code_exact": true,
+      "delimited_math_exact": true,
+      "length_ratio": 1.32
+    },
+    "candidate": null,
+    "error": "not_run"
+  },
+  {
+    "id": "AI-08-02",
+    "title": "Перцептрон Розенблатта и линейная разделимость",
+    "source_chars": 1249,
+    "reference": {
+      "markers_exact": true,
+      "source_markers": 6,
+      "output_markers": 6,
+      "missing_numeric_tokens": [
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "81",
+        "81",
+        "81",
+        "81",
+        "81",
+        "2",
+        "2",
+        "2",
+        "2",
+        "2",
+        "2",
+        "2",
+        "2",
+        "2",
+        "2",
+        "3"
+      ],
+      "added_numeric_tokens": [
+        "00",
+        "00",
+        "00",
+        "01",
+        "01",
+        "01",
+        "10",
+        "10",
+        "10",
+        "11",
+        "11",
+        "11"
+      ],
+      "code_exact": true,
+      "delimited_math_exact": true,
+      "length_ratio": 1.194
+    },
+    "candidate": null,
+    "error": "not_run"
+  },
+  {
+    "id": "AI-08-03",
+    "title": "Логические операции AND, OR, NOT, NAND в перцептроне",
+    "source_chars": 813,
+    "reference": {
+      "markers_exact": true,
+      "source_markers": 4,
+      "output_markers": 4,
+      "missing_numeric_tokens": [
+        "81",
+        "81",
+        "81",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "2",
+        "2",
+        "2",
+        "2",
+        "2",
+        "2",
+        "2",
+        "2",
+        "2"
+      ],
+      "added_numeric_tokens": [
+        "00",
+        "00",
+        "00",
+        "01",
+        "01",
+        "01",
+        "10",
+        "10",
+        "10",
+        "11",
+        "11",
+        "11"
+      ],
+      "code_exact": true,
+      "delimited_math_exact": true,
+      "length_ratio": 1.439
+    },
+    "candidate": null,
+    "error": "not_run"
+  },
+  {
+    "id": "AI-08-04",
+    "title": "Неразделимость XOR одним перцептроном",
+    "source_chars": 774,
+    "reference": {
+      "markers_exact": true,
+      "source_markers": 3,
+      "output_markers": 3,
+      "missing_numeric_tokens": [],
+      "added_numeric_tokens": [],
+      "code_exact": true,
+      "delimited_math_exact": true,
+      "length_ratio": 1.332
+    },
+    "candidate": null,
+    "error": "not_run"
+  },
+  {
+    "id": "AI-08-05",
+    "title": "Активации ReLU, Leaky ReLU, PReLU, Softplus",
+    "source_chars": 1102,
+    "reference": {
+      "markers_exact": true,
+      "source_markers": 5,
+      "output_markers": 5,
+      "missing_numeric_tokens": [
+        "1",
+        "1",
+        "10",
+        "0.833",
+        "0.833",
+        "2",
+        "2",
+        "3"
+      ],
+      "added_numeric_tokens": [],
+      "code_exact": true,
+      "delimited_math_exact": true,
+      "length_ratio": 1.397
+    },
+    "candidate": {
+      "markers_exact": false,
+      "source_markers": 5,
+      "output_markers": 0,
+      "missing_numeric_tokens": [],
+      "added_numeric_tokens": [
+        "11",
+        "12",
+        "13",
+        "14"
+      ],
+      "code_exact": true,
+      "delimited_math_exact": false,
+      "length_ratio": 0.973
+    },
+    "error": null
+  },
+  {
+    "id": "AI-08-06",
+    "title": "Многослойный перцептрон и прямой проход",
+    "source_chars": 570,
+    "reference": {
+      "markers_exact": true,
+      "source_markers": 2,
+      "output_markers": 2,
+      "missing_numeric_tokens": [],
+      "added_numeric_tokens": [],
+      "code_exact": true,
+      "delimited_math_exact": true,
+      "length_ratio": 1.556
+    },
+    "candidate": null,
+    "error": "not_run"
+  },
+  {
+    "id": "AI-08-08",
+    "title": "Интерпретируемость и ограничения нейросетей",
+    "source_chars": 843,
+    "reference": {
+      "markers_exact": true,
+      "source_markers": 2,
+      "output_markers": 2,
+      "missing_numeric_tokens": [],
+      "added_numeric_tokens": [
+        "1970"
+      ],
+      "code_exact": true,
+      "delimited_math_exact": true,
+      "length_ratio": 1.311
+    },
+    "candidate": null,
+    "error": "not_run"
+  },
+  {
+    "id": "AI-08-09",
+    "title": "Нейроэволюция и поиск весов",
+    "source_chars": 827,
+    "reference": {
+      "markers_exact": true,
+      "source_markers": 2,
+      "output_markers": 2,
+      "missing_numeric_tokens": [],
+      "added_numeric_tokens": [],
+      "code_exact": true,
+      "delimited_math_exact": true,
+      "length_ratio": 1.284
+    },
+    "candidate": null,
+    "error": "not_run"
+  },
+  {
+    "id": "AI-09-03",
+    "title": "Инерция и управление exploration-exploitation в PSO",
+    "source_chars": 1146,
+    "reference": {
+      "markers_exact": true,
+      "source_markers": 3,
+      "output_markers": 3,
+      "missing_numeric_tokens": [],
+      "added_numeric_tokens": [],
+      "code_exact": true,
+      "delimited_math_exact": true,
+      "length_ratio": 1.137
+    },
+    "candidate": null,
+    "error": "not_run"
+  },
+  {
+    "id": "AI-09-05",
+    "title": "Критерии остановки PSO",
+    "source_chars": 253,
+    "reference": {
+      "markers_exact": true,
+      "source_markers": 2,
+      "output_markers": 2,
+      "missing_numeric_tokens": [],
+      "added_numeric_tokens": [],
+      "code_exact": true,
+      "delimited_math_exact": true,
+      "length_ratio": 1.514
+    },
+    "candidate": null,
+    "error": "not_run"
+  },
+  {
+    "id": "AI-09-11",
+    "title": "Моделирование коллективного движения и flocking",
+    "source_chars": 613,
+    "reference": {
+      "markers_exact": true,
+      "source_markers": 2,
+      "output_markers": 2,
+      "missing_numeric_tokens": [],
+      "added_numeric_tokens": [],
+      "code_exact": true,
+      "delimited_math_exact": true,
+      "length_ratio": 1.462
+    },
+    "candidate": null,
+    "error": "not_run"
+  },
+  {
+    "id": "AI-09-12",
+    "title": "Адаптация PSO для дискретного поиска",
+    "source_chars": 337,
+    "reference": {
+      "markers_exact": true,
+      "source_markers": 1,
+      "output_markers": 1,
+      "missing_numeric_tokens": [],
+      "added_numeric_tokens": [],
+      "code_exact": true,
+      "delimited_math_exact": true,
+      "length_ratio": 1.291
+    },
+    "candidate": null,
+    "error": "not_run"
+  },
+  {
+    "id": "AI-09-13",
+    "title": "Распределение частиц и обмен лучшими решениями в PSO",
+    "source_chars": 589,
+    "reference": {
+      "markers_exact": true,
+      "source_markers": 1,
+      "output_markers": 1,
+      "missing_numeric_tokens": [],
+      "added_numeric_tokens": [],
+      "code_exact": true,
+      "delimited_math_exact": true,
+      "length_ratio": 1.304
+    },
+    "candidate": null,
+    "error": "not_run"
+  },
+  {
+    "id": "AI-10-01",
+    "title": "Генеративные и дискриминативные модели",
+    "source_chars": 1301,
+    "reference": {
+      "markers_exact": true,
+      "source_markers": 3,
+      "output_markers": 3,
+      "missing_numeric_tokens": [
+        "0.03",
+        "0.05"
+      ],
+      "added_numeric_tokens": [
+        "0,03",
+        "0,05"
+      ],
+      "code_exact": true,
+      "delimited_math_exact": true,
+      "length_ratio": 1.195
+    },
+    "candidate": {
+      "markers_exact": true,
+      "source_markers": 3,
+      "output_markers": 3,
+      "missing_numeric_tokens": [],
+      "added_numeric_tokens": [],
+      "code_exact": true,
+      "delimited_math_exact": true,
+      "length_ratio": 1.093
+    },
+    "error": null
+  },
+  {
+    "id": "AI-10-02",
+    "title": "Исторические этапы генеративного ИИ",
+    "source_chars": 672,
+    "reference": {
+      "markers_exact": true,
+      "source_markers": 1,
+      "output_markers": 1,
+      "missing_numeric_tokens": [],
+      "added_numeric_tokens": [
+        "1970",
+        "2013",
+        "2020"
+      ],
+      "code_exact": true,
+      "delimited_math_exact": true,
+      "length_ratio": 1.54
+    },
+    "candidate": null,
+    "error": "not_run"
+  },
+  {
+    "id": "AI-10-03",
+    "title": "Вариационные автоэнкодеры VAE",
+    "source_chars": 826,
+    "reference": {
+      "markers_exact": true,
+      "source_markers": 2,
+      "output_markers": 2,
+      "missing_numeric_tokens": [],
+      "added_numeric_tokens": [],
+      "code_exact": true,
+      "delimited_math_exact": true,
+      "length_ratio": 1.211
+    },
+    "candidate": null,
+    "error": "not_run"
+  },
+  {
+    "id": "AI-10-05",
+    "title": "Диффузионные генеративные модели",
+    "source_chars": 752,
+    "reference": {
+      "markers_exact": true,
+      "source_markers": 1,
+      "output_markers": 1,
+      "missing_numeric_tokens": [],
+      "added_numeric_tokens": [],
+      "code_exact": true,
+      "delimited_math_exact": true,
+      "length_ratio": 1.166
+    },
+    "candidate": null,
+    "error": "not_run"
+  },
+  {
+    "id": "AI-10-06",
+    "title": "Языковые модели LLM и предсказание токенов",
+    "source_chars": 1173,
+    "reference": {
+      "markers_exact": true,
+      "source_markers": 3,
+      "output_markers": 3,
+      "missing_numeric_tokens": [],
+      "added_numeric_tokens": [],
+      "code_exact": true,
+      "delimited_math_exact": true,
+      "length_ratio": 1.294
+    },
+    "candidate": null,
+    "error": "not_run"
+  },
+  {
+    "id": "AI-10-07",
+    "title": "Возможности и сферы применения генеративного ИИ",
+    "source_chars": 934,
+    "reference": {
+      "markers_exact": true,
+      "source_markers": 3,
+      "output_markers": 3,
+      "missing_numeric_tokens": [],
+      "added_numeric_tokens": [],
+      "code_exact": true,
+      "delimited_math_exact": true,
+      "length_ratio": 1.082
+    },
+    "candidate": null,
+    "error": "not_run"
+  },
+  {
+    "id": "AI-10-08",
+    "title": "Галлюцинации и проверка достоверности",
+    "source_chars": 700,
+    "reference": {
+      "markers_exact": true,
+      "source_markers": 2,
+      "output_markers": 2,
+      "missing_numeric_tokens": [],
+      "added_numeric_tokens": [],
+      "code_exact": true,
+      "delimited_math_exact": true,
+      "length_ratio": 1.249
+    },
+    "candidate": null,
+    "error": "not_run"
+  },
+  {
+    "id": "AI-10-09",
+    "title": "Проектирование промпта для LLM",
+    "source_chars": 641,
+    "reference": {
+      "markers_exact": true,
+      "source_markers": 2,
+      "output_markers": 2,
+      "missing_numeric_tokens": [
+        "5"
+      ],
+      "added_numeric_tokens": [],
+      "code_exact": true,
+      "delimited_math_exact": true,
+      "length_ratio": 1.17
+    },
+    "candidate": null,
+    "error": "not_run"
+  },
+  {
+    "id": "AI-10-10",
+    "title": "RAG и опора на проверяемые источники",
+    "source_chars": 348,
+    "reference": {
+      "markers_exact": true,
+      "source_markers": 1,
+      "output_markers": 1,
+      "missing_numeric_tokens": [],
+      "added_numeric_tokens": [],
+      "code_exact": true,
+      "delimited_math_exact": true,
+      "length_ratio": 1.71
+    },
+    "candidate": null,
+    "error": "not_run"
+  },
+  {
+    "id": "AI-10-12",
+    "title": "Риски, преимущества и ограничения генеративного ИИ",
+    "source_chars": 915,
+    "reference": {
+      "markers_exact": true,
+      "source_markers": 3,
+      "output_markers": 3,
+      "missing_numeric_tokens": [],
+      "added_numeric_tokens": [],
+      "code_exact": true,
+      "delimited_math_exact": true,
+      "length_ratio": 1.149
+    },
+    "candidate": null,
+    "error": "not_run"
+  }
+]

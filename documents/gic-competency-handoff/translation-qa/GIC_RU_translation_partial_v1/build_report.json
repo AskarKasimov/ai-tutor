@@ -1,0 +1,16 @@
+{
+  "dataset_id": "intro-ai-gic-2026-10-16-v1-ru-draft",
+  "source_dataset": "intro-ai-gic-2026-10-16-v1",
+  "source_sha256": "d9195f7c830b4dda8893e4126a075fbb324fb397595fd74ff27ab3a4d0f70f20",
+  "counts": {
+    "translated_from_extracted_text": 50,
+    "pending_translation": 82,
+    "no_source": 5
+  },
+  "source_chars": 320701,
+  "translated_source_chars": 42228,
+  "ru_chars": 52277,
+  "translation_method": "expert-style manual draft against previously extracted English slides; no independent complete visual PDF audit",
+  "all_prerequisites_unchanged": true,
+  "all_diagnostic_groups_unchanged": true
+}

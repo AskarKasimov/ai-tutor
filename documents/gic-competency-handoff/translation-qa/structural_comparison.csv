@@ -1,0 +1,56 @@
+id,variant,markers_exact,missing_numbers,added_numbers,code_exact,math_exact,length_ratio
+AI-01-01,reference,True,,,True,True,1.42
+AI-01-02,reference,True,,,True,True,1.665
+AI-01-02,candidate,False,,,True,True,1.259
+AI-01-07,reference,True,1,,True,True,1.529
+AI-01-08,reference,True,,,True,True,1.126
+AI-01-09,reference,True,,,True,True,1.087
+AI-01-10,reference,True,,,True,True,1.13
+AI-01-12,reference,True,,,True,True,1.269
+AI-01-19,reference,True,,,True,True,1.005
+AI-01-21,reference,True,1 1 2 2,,True,True,1.429
+AI-01-24,reference,True,,,True,True,1.161
+AI-02-02,reference,True,,,True,True,1.031
+AI-02-05,reference,True,,,True,True,1.513
+AI-02-06,reference,True,,,True,True,1.375
+AI-02-07,reference,True,,1 1,True,True,1.051
+AI-02-08,reference,True,,,True,True,1.592
+AI-02-09,reference,True,4,,True,True,1.479
+AI-03-02,reference,True,,,True,True,1.4
+AI-03-04,reference,True,,1980,True,True,1.474
+AI-04-02,reference,True,,,True,True,1.065
+AI-04-03,reference,True,,,True,True,1.23
+AI-04-06,reference,True,"8 8 8 8 8 8 8 3 3 3 3 1 1 1 1 1 2 2 2 2 181,400 4 4 4 4 5 5 5 5 6 6 6 6 7 7 7 7",1870 181 181 440 400,True,True,1.132
+AI-04-07,reference,True,,0,True,False,0.899
+AI-04-07,candidate,True,,,True,True,0.949
+AI-04-18,reference,True,8 2,,True,True,0.934
+AI-04-23,reference,True,"0,0,1,1,1,1,1,1,0 0,1 1,0,1,1,0",1 1 1 1 1 1 1 1 1 1 0 0 0 0 0 0,True,True,1.174
+AI-04-23,candidate,False,,"1 1 1 0 0,0,1,1,1,1,1,1,0 0,1 1,0,1,1,0 6 10",True,True,1.908
+AI-05-08,reference,True,,,True,True,1.408
+AI-07-03,reference,True,,,True,True,1.281
+AI-07-09,reference,True,,,True,True,1.27
+AI-07-10,reference,True,,,True,True,1.32
+AI-08-02,reference,True,1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 81 81 81 81 81 2 2 2 2 2 2 2 2 2 2 3,00 00 00 01 01 01 10 10 10 11 11 11,True,True,1.194
+AI-08-03,reference,True,81 81 81 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 2 2 2 2 2 2 2 2 2,00 00 00 01 01 01 10 10 10 11 11 11,True,True,1.439
+AI-08-04,reference,True,,,True,True,1.332
+AI-08-05,reference,True,1 1 10 0.833 0.833 2 2 3,,True,True,1.397
+AI-08-05,candidate,False,,11 12 13 14,True,False,0.973
+AI-08-06,reference,True,,,True,True,1.556
+AI-08-08,reference,True,,1970,True,True,1.311
+AI-08-09,reference,True,,,True,True,1.284
+AI-09-03,reference,True,,,True,True,1.137
+AI-09-05,reference,True,,,True,True,1.514
+AI-09-11,reference,True,,,True,True,1.462
+AI-09-12,reference,True,,,True,True,1.291
+AI-09-13,reference,True,,,True,True,1.304
+AI-10-01,reference,True,0.03 0.05,"0,03 0,05",True,True,1.195
+AI-10-01,candidate,True,,,True,True,1.093
+AI-10-02,reference,True,,1970 2013 2020,True,True,1.54
+AI-10-03,reference,True,,,True,True,1.211
+AI-10-05,reference,True,,,True,True,1.166
+AI-10-06,reference,True,,,True,True,1.294
+AI-10-07,reference,True,,,True,True,1.082
+AI-10-08,reference,True,,,True,True,1.249
+AI-10-09,reference,True,5,,True,True,1.17
+AI-10-10,reference,True,,,True,True,1.71
+AI-10-12,reference,True,,,True,True,1.149

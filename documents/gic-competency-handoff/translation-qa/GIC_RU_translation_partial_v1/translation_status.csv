@@ -1,0 +1,138 @@
+﻿id,title,status,source_chars,ru_chars,source_pages,source_quality
+AI-01-01,Подходы к определению искусственного интеллекта,translated_from_extracted_text,555,788,4,thin_source
+AI-01-02,Сильный и слабый искусственный интеллект,translated_from_extracted_text,239,398,1,thin_source
+AI-01-03,Контекстная и ситуационная природа интеллекта,pending_translation,1795,0,5,source_present_visuals_unverified
+AI-01-04,Влияние ИИ на профессии и общество,pending_translation,2188,0,4,boundary_review_required
+AI-01-05,Четвёртая промышленная революция,no_source,0,0,0,missing_RPD_only
+AI-01-06,"Знание, обоснование и контрпримеры Геттиера",pending_translation,1435,0,3,source_present_visuals_unverified
+AI-01-07,Тест Тьюринга и его интерпретация,translated_from_extracted_text,760,1162,2,source_present_visuals_unverified
+AI-01-08,Аргумент китайской комнаты и возражения,translated_from_extracted_text,1361,1532,4,source_present_visuals_unverified
+AI-01-09,Законы робототехники Азимова и их ограничения,translated_from_extracted_text,1358,1476,8,source_present_visuals_unverified
+AI-01-10,Этические риски автономных решений,translated_from_extracted_text,1211,1369,4,shared_only_review_required
+AI-01-11,"Справедливость, прозрачность и подотчётность ИИ",no_source,0,0,0,missing_RPD_only
+AI-01-12,"Когнитивные искажения, надёжность данных и оценка выдачи ИИ",translated_from_extracted_text,1050,1332,3,shared_only_review_required
+AI-01-13,Высказывания и логические связки,pending_translation,3235,0,8,source_present_visuals_unverified
+AI-01-14,Таблицы истинности,pending_translation,2365,0,5,source_present_visuals_unverified
+AI-01-15,Логическая эквивалентность и законы преобразования,pending_translation,5146,0,8,source_present_visuals_unverified
+AI-01-16,"Предикаты, отношения и формулы первого порядка",pending_translation,3263,0,8,source_present_visuals_unverified
+AI-01-17,Кванторы и области действия,pending_translation,4191,0,8,source_present_visuals_unverified
+AI-01-18,Правила логического вывода и построение доказательства,pending_translation,6355,0,8,source_present_visuals_unverified
+AI-01-19,Исторические и культурные образы искусственного разума,translated_from_extracted_text,444,446,1,thin_source
+AI-01-20,Ситуационное исчисление и логическое представление изменений,pending_translation,3347,0,6,source_present_visuals_unverified
+AI-01-21,Доказательство по математической индукции,translated_from_extracted_text,725,1036,2,source_present_visuals_unverified
+AI-01-22,"Модели, выполнимость и логическое следование",pending_translation,1916,0,5,source_present_visuals_unverified
+AI-01-23,Корректность и полнота логического вывода,pending_translation,1795,0,5,source_present_visuals_unverified
+AI-01-24,Необходимые и достаточные условия,translated_from_extracted_text,577,670,2,source_present_visuals_unverified
+AI-02-01,Понятие агента и агентной функции,pending_translation,2032,0,5,source_present_visuals_unverified
+AI-02-02,Рациональность и ограниченность знаний агента,translated_from_extracted_text,1045,1077,2,source_present_visuals_unverified
+AI-02-03,Описание задачи с помощью PEAS,pending_translation,4303,0,8,source_present_visuals_unverified
+AI-02-04,Свойства среды агента,pending_translation,2723,0,6,source_present_visuals_unverified
+AI-02-05,Простой рефлексный агент,translated_from_extracted_text,466,705,3,thin_source
+AI-02-06,Рефлексный агент с внутренней моделью,translated_from_extracted_text,546,751,2,thin_source
+AI-02-07,Целеориентированный агент,translated_from_extracted_text,1308,1375,2,source_present_visuals_unverified
+AI-02-08,Агент на основе функции полезности,translated_from_extracted_text,419,667,2,thin_source
+AI-02-09,Обучающийся агент и обратная связь,translated_from_extracted_text,725,1072,2,source_present_visuals_unverified
+AI-03-01,Назначение и архитектура экспертных систем,pending_translation,1647,0,3,source_present_visuals_unverified
+AI-03-02,Получение знаний от эксперта,translated_from_extracted_text,492,689,1,thin_source
+AI-03-03,ELIZA и системы сопоставления шаблонов,pending_translation,1551,0,3,source_present_visuals_unverified
+AI-03-04,Зима искусственного интеллекта,translated_from_extracted_text,437,644,1,thin_source
+AI-03-05,Логическое и императивное программирование,pending_translation,2115,0,4,source_present_visuals_unverified
+AI-03-06,Факты и правила Prolog,pending_translation,6781,0,8,source_present_visuals_unverified
+AI-03-07,"Запросы, сопоставление и логический вывод Prolog",pending_translation,3827,0,6,source_present_visuals_unverified
+AI-03-08,"Термы, переменные, структуры и списки Prolog",pending_translation,5210,0,8,source_present_visuals_unverified
+AI-03-09,Рекурсия и вычисления в Prolog,pending_translation,4155,0,8,source_present_visuals_unverified
+AI-03-10,Проектирование базы знаний семейных отношений,pending_translation,3036,0,8,source_present_visuals_unverified
+AI-04-01,Формулировка задачи поиска и пространства состояний,pending_translation,3447,0,2,source_present_visuals_unverified
+AI-04-02,Информированный и неинформированный поиск,translated_from_extracted_text,1313,1398,3,shared_only_review_required
+AI-04-03,Поиск в глубину и представление дерева,translated_from_extracted_text,1088,1338,2,shared_only_review_required
+AI-04-04,Поиск с возвратом и отсечение ветвей,pending_translation,2713,0,3,source_present_visuals_unverified
+AI-04-05,Расстановка N ферзей,pending_translation,2069,0,2,source_present_visuals_unverified
+AI-04-06,Эвристическая функция,translated_from_extracted_text,1262,1428,1,boundary_review_required
+AI-04-07,Допустимость эвристики,translated_from_extracted_text,1371,1232,1,source_present_visuals_unverified
+AI-04-08,Согласованность эвристики,pending_translation,1556,0,1,source_present_visuals_unverified
+AI-04-09,Минимакс и дерево игры,pending_translation,2316,0,7,source_present_visuals_unverified
+AI-04-10,Альфа-бета-отсечение,pending_translation,3924,0,8,source_present_visuals_unverified
+AI-04-11,Жадный выбор и его локальная оптимальность,pending_translation,1773,0,6,source_present_visuals_unverified
+AI-04-12,Поиск с восхождением к вершине,pending_translation,4377,0,8,source_present_visuals_unverified
+AI-04-13,"Локальные оптимумы, плато и перезапуски",pending_translation,2201,0,2,source_present_visuals_unverified
+AI-04-14,Имитация отжига,pending_translation,4117,0,8,source_present_visuals_unverified
+AI-04-15,Дилемма исследования и использования,pending_translation,3964,0,8,source_present_visuals_unverified
+AI-04-16,Функция оценки A* f=g+h,pending_translation,6037,0,2,source_present_visuals_unverified
+AI-04-17,Алгоритм A* и списки OPEN/CLOSED,pending_translation,19334,0,8,boundary_review_required
+AI-04-18,Модель соседства на сетке для поиска пути,translated_from_extracted_text,1178,1100,5,source_present_visuals_unverified
+AI-04-19,Табу-поиск и запрещённые ходы,pending_translation,6783,0,8,source_present_visuals_unverified
+AI-04-20,Длительность запрета и критерий aspiration,pending_translation,3917,0,2,source_present_visuals_unverified
+AI-04-21,Мир Wumpus как задача поиска,pending_translation,7407,0,8,source_present_visuals_unverified
+AI-04-22,Ландшафт приспособленности и бассейны притяжения,pending_translation,3708,0,6,source_present_visuals_unverified
+AI-04-23,Измерение сложности ландшафта случайными блужданиями,translated_from_extracted_text,1379,1619,4,source_present_visuals_unverified
+AI-05-01,Метод Монте-Карло и случайные проигрывания,pending_translation,2477,0,3,source_present_visuals_unverified
+AI-05-02,Мотивация частичного построения дерева MCTS,pending_translation,2057,0,6,source_present_visuals_unverified
+AI-05-03,"Полный цикл MCTS: selection, expansion, rollout, backpropagation",pending_translation,3163,0,4,source_present_visuals_unverified
+AI-05-04,Статистика посещений и наград MCTS,pending_translation,3032,0,8,shared_only_review_required
+AI-05-05,Баланс исследования и использования в UCT,pending_translation,2838,0,8,shared_only_review_required
+AI-05-07,Выбор финального действия по статистике MCTS,pending_translation,1557,0,3,shared_only_review_required
+AI-05-08,Параллелизация Monte Carlo Tree Search,translated_from_extracted_text,471,663,1,thin_source
+AI-06-01,Планирование как поиск последовательности действий,pending_translation,3257,0,6,source_present_visuals_unverified
+AI-06-02,Структура PDDL domain/problem на примере задач планирования,pending_translation,5955,0,3,source_present_visuals_unverified
+AI-06-03,"Предикаты, объекты и типы в PDDL",pending_translation,4021,0,8,shared_only_review_required
+AI-06-04,"Предусловия, действия и эффекты PDDL",pending_translation,2426,0,6,shared_only_review_required
+AI-06-05,Начальное состояние и целевое условие,pending_translation,2849,0,7,shared_only_review_required
+AI-06-06,Получение и проверка плана PDDL-планировщиком,pending_translation,1713,0,5,shared_only_review_required
+AI-06-07,Временное планирование в PDDL 2.1,pending_translation,3831,0,7,source_present_visuals_unverified
+AI-06-08,PDDL и исполнение планов в робототехнике через ROSPlan,pending_translation,3908,0,8,source_present_visuals_unverified
+AI-07-01,Эволюционный цикл популяции решений,pending_translation,2853,0,3,source_present_visuals_unverified
+AI-07-02,Фитнес-функция и отбор,pending_translation,2774,0,7,shared_only_review_required
+AI-07-03,Пропорциональный отбор roulette wheel,translated_from_extracted_text,609,780,1,source_present_visuals_unverified
+AI-07-04,Ранговый и турнирный отбор,pending_translation,1650,0,3,source_present_visuals_unverified
+AI-07-05,Хромосома и генетический алгоритм,pending_translation,1886,0,1,source_present_visuals_unverified
+AI-07-06,Кроссовер и мутация строковых хромосом,pending_translation,1554,0,8,shared_only_review_required
+AI-07-07,Деревья генетического программирования и корректные операторы,pending_translation,1642,0,8,source_present_visuals_unverified
+AI-07-08,Разрастание деревьев GP и борьба с bloat,pending_translation,2370,0,6,source_present_visuals_unverified
+AI-07-09,Декартово генетическое программирование,translated_from_extracted_text,1128,1433,6,source_present_visuals_unverified
+AI-07-10,Эволюционное программирование и конечные автоматы,translated_from_extracted_text,1333,1760,4,source_present_visuals_unverified
+AI-07-11,Эволюционные стратегии и вещественные векторы,pending_translation,1761,0,4,source_present_visuals_unverified
+AI-07-12,"Представления решения в эволюционных алгоритмах: прямое, косвенное и вещественное",pending_translation,4765,0,8,source_present_visuals_unverified
+AI-07-13,Эпистаз и взаимодействие генов,pending_translation,1600,0,2,source_present_visuals_unverified
+AI-07-14,Кроссовер для перестановок в TSP,pending_translation,1856,0,8,source_present_visuals_unverified
+AI-07-16,Коэволюция и относительная приспособленность,pending_translation,2704,0,7,source_present_visuals_unverified
+AI-07-17,"Поведенческие деревья: selector, sequence и decorator",pending_translation,3037,0,8,source_present_visuals_unverified
+AI-07-18,Эволюция структур поведенческих деревьев,pending_translation,3429,0,8,source_present_visuals_unverified
+AI-07-19,Эволюция управления роботизированным роем,pending_translation,7154,0,8,source_present_visuals_unverified
+AI-07-20,Проектирование хромосомы в конкурентной симуляции,pending_translation,3392,0,8,source_present_visuals_unverified
+AI-08-01,Искусственный нейрон как взвешенная функция,pending_translation,2190,0,5,source_present_visuals_unverified
+AI-08-02,Перцептрон Розенблатта и линейная разделимость,translated_from_extracted_text,1249,1491,6,shared_only_review_required
+AI-08-03,"Логические операции AND, OR, NOT, NAND в перцептроне",translated_from_extracted_text,813,1170,4,shared_only_review_required
+AI-08-04,Неразделимость XOR одним перцептроном,translated_from_extracted_text,774,1031,3,shared_only_review_required
+AI-08-05,"Активации ReLU, Leaky ReLU, PReLU, Softplus",translated_from_extracted_text,1102,1540,5,source_present_visuals_unverified
+AI-08-06,Многослойный перцептрон и прямой проход,translated_from_extracted_text,570,887,2,thin_source
+AI-08-07,Обучение обратным распространением ошибки,pending_translation,1736,0,2,boundary_review_required
+AI-08-08,Интерпретируемость и ограничения нейросетей,translated_from_extracted_text,843,1105,1,boundary_review_required
+AI-08-09,Нейроэволюция и поиск весов,translated_from_extracted_text,827,1062,2,source_present_visuals_unverified
+AI-08-10,Практическая классификация датасета Moons,no_source,0,0,0,missing_RPD_only
+AI-08-11,Практическая классификация MNIST,no_source,0,0,0,missing_RPD_only
+AI-08-12,AlphaGo как пример сочетания обучения и игрового поиска,pending_translation,1914,0,4,boundary_review_required
+AI-09-01,"Модель частицы, её позиция и скорость в PSO",pending_translation,3077,0,5,source_present_visuals_unverified
+AI-09-02,Формула обновления скорости и положения PSO,pending_translation,1947,0,4,shared_only_review_required
+AI-09-03,Инерция и управление exploration-exploitation в PSO,translated_from_extracted_text,1146,1303,3,shared_only_review_required
+AI-09-04,Топологии gbest и lbest,pending_translation,2713,0,5,source_present_visuals_unverified
+AI-09-05,Критерии остановки PSO,translated_from_extracted_text,253,383,2,thin_source
+AI-09-06,Муравьиная оптимизация: стигмергия и общие семейства ACO,pending_translation,5830,0,8,source_present_visuals_unverified
+AI-09-07,Вероятностный выбор следующего ребра в ACO,pending_translation,2803,0,1,source_present_visuals_unverified
+AI-09-08,"Обновление феромона, испарение и подкрепление",pending_translation,3923,0,3,source_present_visuals_unverified
+AI-09-09,Ant System для коммивояжёра,pending_translation,5199,0,8,source_present_visuals_unverified
+AI-09-11,Моделирование коллективного движения и flocking,translated_from_extracted_text,613,896,2,boundary_review_required
+AI-09-12,Адаптация PSO для дискретного поиска,translated_from_extracted_text,337,435,1,thin_source
+AI-09-13,Распределение частиц и обмен лучшими решениями в PSO,translated_from_extracted_text,589,768,1,source_present_visuals_unverified
+AI-10-01,Генеративные и дискриминативные модели,translated_from_extracted_text,1301,1555,3,source_present_visuals_unverified
+AI-10-02,Исторические этапы генеративного ИИ,translated_from_extracted_text,672,1035,1,boundary_review_required
+AI-10-03,Вариационные автоэнкодеры VAE,translated_from_extracted_text,826,1000,2,boundary_review_required
+AI-10-04,Генеративно-состязательные сети GAN,pending_translation,3187,0,5,source_present_visuals_unverified
+AI-10-05,Диффузионные генеративные модели,translated_from_extracted_text,752,877,1,boundary_review_required
+AI-10-06,Языковые модели LLM и предсказание токенов,translated_from_extracted_text,1173,1518,2,source_present_visuals_unverified
+AI-10-07,Возможности и сферы применения генеративного ИИ,translated_from_extracted_text,934,1011,1,source_present_visuals_unverified
+AI-10-08,Галлюцинации и проверка достоверности,translated_from_extracted_text,700,874,2,shared_only_review_required
+AI-10-09,Проектирование промпта для LLM,translated_from_extracted_text,641,750,2,source_present_visuals_unverified
+AI-10-10,RAG и опора на проверяемые источники,translated_from_extracted_text,348,595,1,thin_source
+AI-10-11,LLM-агенты с инструментами и состоянием,pending_translation,2389,0,4,source_present_visuals_unverified
+AI-10-12,"Риски, преимущества и ограничения генеративного ИИ",translated_from_extracted_text,915,1051,3,shared_only_review_required
+AI-10-13,Полноценный жизненный цикл этически ответственного ИИ,no_source,0,0,0,missing_RPD_only

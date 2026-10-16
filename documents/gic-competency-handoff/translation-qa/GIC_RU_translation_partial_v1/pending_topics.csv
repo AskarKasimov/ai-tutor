@@ -1,0 +1,83 @@
+﻿id,title,section,source_chars,source_quality
+AI-01-03,Контекстная и ситуационная природа интеллекта,Введение в искусственный интеллект,1795,source_present_visuals_unverified
+AI-01-04,Влияние ИИ на профессии и общество,Введение в искусственный интеллект,2188,boundary_review_required
+AI-01-06,"Знание, обоснование и контрпримеры Геттиера",Введение в искусственный интеллект,1435,source_present_visuals_unverified
+AI-01-13,Высказывания и логические связки,Введение в искусственный интеллект,3235,source_present_visuals_unverified
+AI-01-14,Таблицы истинности,Введение в искусственный интеллект,2365,source_present_visuals_unverified
+AI-01-15,Логическая эквивалентность и законы преобразования,Введение в искусственный интеллект,5146,source_present_visuals_unverified
+AI-01-16,"Предикаты, отношения и формулы первого порядка",Введение в искусственный интеллект,3263,source_present_visuals_unverified
+AI-01-17,Кванторы и области действия,Введение в искусственный интеллект,4191,source_present_visuals_unverified
+AI-01-18,Правила логического вывода и построение доказательства,Введение в искусственный интеллект,6355,source_present_visuals_unverified
+AI-01-20,Ситуационное исчисление и логическое представление изменений,Введение в искусственный интеллект,3347,source_present_visuals_unverified
+AI-01-22,"Модели, выполнимость и логическое следование",Введение в искусственный интеллект,1916,source_present_visuals_unverified
+AI-01-23,Корректность и полнота логического вывода,Введение в искусственный интеллект,1795,source_present_visuals_unverified
+AI-02-01,Понятие агента и агентной функции,Агенты,2032,source_present_visuals_unverified
+AI-02-03,Описание задачи с помощью PEAS,Агенты,4303,source_present_visuals_unverified
+AI-02-04,Свойства среды агента,Агенты,2723,source_present_visuals_unverified
+AI-03-01,Назначение и архитектура экспертных систем,Экспертные системы,1647,source_present_visuals_unverified
+AI-03-03,ELIZA и системы сопоставления шаблонов,Экспертные системы,1551,source_present_visuals_unverified
+AI-03-05,Логическое и императивное программирование,Экспертные системы,2115,source_present_visuals_unverified
+AI-03-06,Факты и правила Prolog,Экспертные системы,6781,source_present_visuals_unverified
+AI-03-07,"Запросы, сопоставление и логический вывод Prolog",Экспертные системы,3827,source_present_visuals_unverified
+AI-03-08,"Термы, переменные, структуры и списки Prolog",Экспертные системы,5210,source_present_visuals_unverified
+AI-03-09,Рекурсия и вычисления в Prolog,Экспертные системы,4155,source_present_visuals_unverified
+AI-03-10,Проектирование базы знаний семейных отношений,Экспертные системы,3036,source_present_visuals_unverified
+AI-04-01,Формулировка задачи поиска и пространства состояний,Обучение через поиск,3447,source_present_visuals_unverified
+AI-04-04,Поиск с возвратом и отсечение ветвей,Обучение через поиск,2713,source_present_visuals_unverified
+AI-04-05,Расстановка N ферзей,Обучение через поиск,2069,source_present_visuals_unverified
+AI-04-08,Согласованность эвристики,Обучение через поиск,1556,source_present_visuals_unverified
+AI-04-09,Минимакс и дерево игры,Обучение через поиск,2316,source_present_visuals_unverified
+AI-04-10,Альфа-бета-отсечение,Обучение через поиск,3924,source_present_visuals_unverified
+AI-04-11,Жадный выбор и его локальная оптимальность,Обучение через поиск,1773,source_present_visuals_unverified
+AI-04-12,Поиск с восхождением к вершине,Обучение через поиск,4377,source_present_visuals_unverified
+AI-04-13,"Локальные оптимумы, плато и перезапуски",Обучение через поиск,2201,source_present_visuals_unverified
+AI-04-14,Имитация отжига,Обучение через поиск,4117,source_present_visuals_unverified
+AI-04-15,Дилемма исследования и использования,Обучение через поиск,3964,source_present_visuals_unverified
+AI-04-16,Функция оценки A* f=g+h,Обучение через поиск,6037,source_present_visuals_unverified
+AI-04-17,Алгоритм A* и списки OPEN/CLOSED,Обучение через поиск,19334,boundary_review_required
+AI-04-19,Табу-поиск и запрещённые ходы,Обучение через поиск,6783,source_present_visuals_unverified
+AI-04-20,Длительность запрета и критерий aspiration,Обучение через поиск,3917,source_present_visuals_unverified
+AI-04-21,Мир Wumpus как задача поиска,Обучение через поиск,7407,source_present_visuals_unverified
+AI-04-22,Ландшафт приспособленности и бассейны притяжения,Обучение через поиск,3708,source_present_visuals_unverified
+AI-05-01,Метод Монте-Карло и случайные проигрывания,Поиск по дереву Монте-Карло,2477,source_present_visuals_unverified
+AI-05-02,Мотивация частичного построения дерева MCTS,Поиск по дереву Монте-Карло,2057,source_present_visuals_unverified
+AI-05-03,"Полный цикл MCTS: selection, expansion, rollout, backpropagation",Поиск по дереву Монте-Карло,3163,source_present_visuals_unverified
+AI-05-04,Статистика посещений и наград MCTS,Поиск по дереву Монте-Карло,3032,shared_only_review_required
+AI-05-05,Баланс исследования и использования в UCT,Поиск по дереву Монте-Карло,2838,shared_only_review_required
+AI-05-07,Выбор финального действия по статистике MCTS,Поиск по дереву Монте-Карло,1557,shared_only_review_required
+AI-06-01,Планирование как поиск последовательности действий,Язык определения проблемной области планирования (PDDL),3257,source_present_visuals_unverified
+AI-06-02,Структура PDDL domain/problem на примере задач планирования,Язык определения проблемной области планирования (PDDL),5955,source_present_visuals_unverified
+AI-06-03,"Предикаты, объекты и типы в PDDL",Язык определения проблемной области планирования (PDDL),4021,shared_only_review_required
+AI-06-04,"Предусловия, действия и эффекты PDDL",Язык определения проблемной области планирования (PDDL),2426,shared_only_review_required
+AI-06-05,Начальное состояние и целевое условие,Язык определения проблемной области планирования (PDDL),2849,shared_only_review_required
+AI-06-06,Получение и проверка плана PDDL-планировщиком,Язык определения проблемной области планирования (PDDL),1713,shared_only_review_required
+AI-06-07,Временное планирование в PDDL 2.1,Язык определения проблемной области планирования (PDDL),3831,source_present_visuals_unverified
+AI-06-08,PDDL и исполнение планов в робототехнике через ROSPlan,Язык определения проблемной области планирования (PDDL),3908,source_present_visuals_unverified
+AI-07-01,Эволюционный цикл популяции решений,Эволюционные вычисления,2853,source_present_visuals_unverified
+AI-07-02,Фитнес-функция и отбор,Эволюционные вычисления,2774,shared_only_review_required
+AI-07-04,Ранговый и турнирный отбор,Эволюционные вычисления,1650,source_present_visuals_unverified
+AI-07-05,Хромосома и генетический алгоритм,Эволюционные вычисления,1886,source_present_visuals_unverified
+AI-07-06,Кроссовер и мутация строковых хромосом,Эволюционные вычисления,1554,shared_only_review_required
+AI-07-07,Деревья генетического программирования и корректные операторы,Эволюционные вычисления,1642,source_present_visuals_unverified
+AI-07-08,Разрастание деревьев GP и борьба с bloat,Эволюционные вычисления,2370,source_present_visuals_unverified
+AI-07-11,Эволюционные стратегии и вещественные векторы,Эволюционные вычисления,1761,source_present_visuals_unverified
+AI-07-12,"Представления решения в эволюционных алгоритмах: прямое, косвенное и вещественное",Эволюционные вычисления,4765,source_present_visuals_unverified
+AI-07-13,Эпистаз и взаимодействие генов,Эволюционные вычисления,1600,source_present_visuals_unverified
+AI-07-14,Кроссовер для перестановок в TSP,Эволюционные вычисления,1856,source_present_visuals_unverified
+AI-07-16,Коэволюция и относительная приспособленность,Эволюционные вычисления,2704,source_present_visuals_unverified
+AI-07-17,"Поведенческие деревья: selector, sequence и decorator",Эволюционные вычисления,3037,source_present_visuals_unverified
+AI-07-18,Эволюция структур поведенческих деревьев,Эволюционные вычисления,3429,source_present_visuals_unverified
+AI-07-19,Эволюция управления роботизированным роем,Эволюционные вычисления,7154,source_present_visuals_unverified
+AI-07-20,Проектирование хромосомы в конкурентной симуляции,Эволюционные вычисления,3392,source_present_visuals_unverified
+AI-08-01,Искусственный нейрон как взвешенная функция,Искусственные нейронные сети,2190,source_present_visuals_unverified
+AI-08-07,Обучение обратным распространением ошибки,Искусственные нейронные сети,1736,boundary_review_required
+AI-08-12,AlphaGo как пример сочетания обучения и игрового поиска,Искусственные нейронные сети,1914,boundary_review_required
+AI-09-01,"Модель частицы, её позиция и скорость в PSO",Метод роя частиц и муравьиные алгоритмы,3077,source_present_visuals_unverified
+AI-09-02,Формула обновления скорости и положения PSO,Метод роя частиц и муравьиные алгоритмы,1947,shared_only_review_required
+AI-09-04,Топологии gbest и lbest,Метод роя частиц и муравьиные алгоритмы,2713,source_present_visuals_unverified
+AI-09-06,Муравьиная оптимизация: стигмергия и общие семейства ACO,Метод роя частиц и муравьиные алгоритмы,5830,source_present_visuals_unverified
+AI-09-07,Вероятностный выбор следующего ребра в ACO,Метод роя частиц и муравьиные алгоритмы,2803,source_present_visuals_unverified
+AI-09-08,"Обновление феромона, испарение и подкрепление",Метод роя частиц и муравьиные алгоритмы,3923,source_present_visuals_unverified
+AI-09-09,Ant System для коммивояжёра,Метод роя частиц и муравьиные алгоритмы,5199,source_present_visuals_unverified
+AI-10-04,Генеративно-состязательные сети GAN,Введение в генеративный искусственный интеллект,3187,source_present_visuals_unverified
+AI-10-11,LLM-агенты с инструментами и состоянием,Введение в генеративный искусственный интеллект,2389,source_present_visuals_unverified

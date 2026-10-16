@@ -3,3 +3,6 @@ history/** -text
 AGENT_HANDOFF_COMPETENCY_GRAPH.md -text
 AGENT_START_PROMPT.md -text
 INDEX.md -text
+translation-qa/GIC_RU_translation_partial_v1/** -text
+translation-qa/TRANSLATION_QA_PROTOCOL.md -text
+translation-qa/translation_jobs_pending.jsonl -text

@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"unicode"
 )
 
 var immutableSpans = regexp.MustCompile("(?s)```.*?```|~~~.*?~~~|`[^`\\n]*`|\\$\\$.*?\\$\\$|\\$[^$\\n]*\\$|\\\\\\[.*?\\\\\\]|\\\\\\(.*?\\\\\\)|<!--.*?-->")
@@ -55,6 +56,32 @@ func untranslatedProse(text string) bool {
 		}
 	}
 	return false
+}
+
+func hasSignificantEnglish(text string) bool {
+	clean := immutableSpans.ReplaceAllString(text, " ")
+	clean = protectedTokens.ReplaceAllString(clean, " ")
+	clean = slideHeaders.ReplaceAllString(clean, " ")
+	clean = urlSpans.ReplaceAllString(clean, " ")
+
+	cyrillic := 0
+	latin := 0
+
+	for _, r := range clean {
+		switch {
+		case unicode.Is(unicode.Cyrillic, r):
+			cyrillic++
+		case r < unicode.MaxASCII && unicode.IsLetter(r):
+			latin++
+		}
+	}
+
+	total := cyrillic + latin
+	if total > 0 && float64(cyrillic)/float64(total) >= 0.50 {
+		return false
+	}
+
+	return untranslatedProse(text)
 }
 
 func sameTableShape(source, translated string) bool {

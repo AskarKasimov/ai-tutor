@@ -95,3 +95,28 @@ func TestBlankTranslationMustBeRepaired(t *testing.T) {
 		t.Fatalf("blank translation accepted: calls=%d err=%v output=%q", calls, err, got)
 	}
 }
+
+func TestTranslationSoftValidationAcceptsPartiallyEnglishChunks(t *testing.T) {
+	text := "Artificial Intelligence is situational.\n\n" +
+		"Probability of computerisation of different occupations:\n" +
+		"| Job | Probability |\n|---|---|\n| Recreational therapists | 0.003 |\n\n" +
+		"Source: The Future of Employment by C. Frey and M. Osborne (2013)"
+	calls := 0
+	client := NewWithCompleter(translationFunc(func(_ context.Context, _, prompt string) (string, error) {
+		calls++
+		translation := "Искусственный интеллект ситуативен.\n\n" +
+			"Вероятность компьютеризации различных профессий:\n" +
+			"| Профессия | Вероятность |\n|---|---|\n| Терапевты | 0.003 |\n\n" +
+			"Source: The Future of Employment by C. Frey and M. Osborne (2013)"
+		body, _ := json.Marshal(map[string]string{"translation": translation})
+		return string(body), nil
+	}), 1)
+
+	got, err := client.Translate(context.Background(), text)
+	if err != nil {
+		t.Fatalf("expected softened validator to accept partially English chunk, got err: %v", err)
+	}
+	if !strings.Contains(got, "Искусственный интеллект ситуативен") {
+		t.Fatalf("expected translated Russian content, got: %q", got)
+	}
+}

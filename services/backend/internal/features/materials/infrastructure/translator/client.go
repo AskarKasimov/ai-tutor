@@ -127,9 +127,11 @@ func (c *Client) Translate(ctx context.Context, markdown string) (string, error)
 
 func (c *Client) checkedChunk(ctx context.Context, text string) (string, error) {
 	var lastErr error
+	var bestResult string
+
 	for attempt := 0; attempt < 2; attempt++ {
 		input := text
-		if attempt > 0 {
+		if attempt > 0 && lastErr != nil {
 			input = "Предыдущий ответ не прошёл проверку: " + lastErr.Error() + ". Переведи весь текст на русский, сохрани каждый маркер __COURSE_KEEP_...__ ровно один раз. Исходник:\n\n" + text
 		}
 		translated, err := c.translateChunk(ctx, input)
@@ -141,14 +143,7 @@ func (c *Client) checkedChunk(ctx context.Context, text string) (string, error) 
 			lastErr = fmt.Errorf("перевод пустой")
 			continue
 		}
-		if untranslatedProse(translated) {
-			lastErr = fmt.Errorf("часть обычного текста осталась на английском")
-			continue
-		}
-		if !sameTableShape(text, translated) {
-			lastErr = fmt.Errorf("изменено число строк или столбцов таблицы")
-			continue
-		}
+
 		valid := true
 		for _, token := range protectedTokens.FindAllString(text, -1) {
 			if strings.Count(translated, token) != 1 {
@@ -160,8 +155,27 @@ func (c *Client) checkedChunk(ctx context.Context, text string) (string, error) 
 			lastErr = fmt.Errorf("пропущен или повторён маркер защищённого фрагмента")
 			continue
 		}
+
+		if !sameTableShape(text, translated) {
+			lastErr = fmt.Errorf("изменено число строк или столбцов таблицы")
+			continue
+		}
+
+		if hasSignificantEnglish(translated) {
+			lastErr = fmt.Errorf("часть обычного текста осталась на английском")
+			bestResult = translated
+			if attempt == 0 {
+				continue
+			}
+		}
+
 		return translated, nil
 	}
+
+	if bestResult != "" {
+		return bestResult, nil
+	}
+
 	return "", fmt.Errorf("translation validation: %w", lastErr)
 }
 

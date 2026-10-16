@@ -1,6 +1,6 @@
 module github.com/AskarKasimov/ai-tutor/services/backend
 
-go 1.26.0
+go 1.26.4
 
 require (
 	github.com/aws/aws-sdk-go-v2 v1.47.1
@@ -12,10 +12,16 @@ require (
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.3
 	go.uber.org/zap v1.27.1
 	golang.org/x/crypto v0.57.0
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20260831171406-18b4a7587f8a
+	google.golang.org/grpc v1.84.0
+	google.golang.org/protobuf v1.36.12
 	gopkg.in/yaml.v3 v3.0.1
 )
 
+require golang.org/x/net v0.58.0 // indirect
+
 require (
+	github.com/AskarKasimov/ai-tutor/services/shared v0.0.0
 	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.7.20 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/configsources v1.5.4 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.8.4 // indirect
@@ -35,3 +41,5 @@ require (
 	golang.org/x/sys v0.48.0 // indirect
 	golang.org/x/text v0.42.0 // indirect
 )
+
+replace github.com/AskarKasimov/ai-tutor/services/shared => ../shared

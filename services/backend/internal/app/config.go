@@ -33,9 +33,9 @@ type Config struct {
 	CourseGraphTimeout    time.Duration
 	OCRURL                string
 	OCRTimeout            time.Duration
-	// LLMGatewayURL is the LLM gateway; empty runs Geek on the mock examiner.
-	LLMGatewayURL string
-	LLMTimeout    time.Duration
+	// LLMGatewayAddress is the gRPC address (host:port) of the LLM gateway.
+	LLMGatewayAddress string
+	LLMTimeout        time.Duration
 	// GeekGraphFixture is a graph file used for courses without a stored graph.
 	GeekGraphFixture string
 	// GeekMaxQuestions stops a diagnostic after that many questions; 0 is no limit.
@@ -152,7 +152,10 @@ func ConfigFromEnv() (Config, error) {
 	}
 	c.OCRURL = c.CourseGraphURL
 	c.OCRTimeout = c.CourseGraphTimeout
-	c.LLMGatewayURL = strings.TrimSpace(os.Getenv("BACKEND_LLM_GATEWAY_URL"))
+	c.LLMGatewayAddress, err = requiredEnv("BACKEND_LLM_GATEWAY_ADDR")
+	if err != nil {
+		return c, err
+	}
 	c.LLMTimeout, err = envDuration("BACKEND_LLM_TIMEOUT", 120*time.Second)
 	if err != nil {
 		return c, err
@@ -197,6 +200,11 @@ func requiredEnv(key string) (string, error) {
 		return "", fmt.Errorf("%s is required", key)
 	}
 	return value, nil
+}
+
+func validPort(port string) bool {
+	n, err := strconv.Atoi(port)
+	return err == nil && n >= 1 && n <= 65535
 }
 
 func (c Config) validate() error {
@@ -246,11 +254,8 @@ func (c Config) validate() error {
 	if c.S3Timeout <= 0 {
 		return fmt.Errorf("BACKEND_S3_TIMEOUT must be positive")
 	}
-	if c.LLMGatewayURL != "" {
-		u, err := url.Parse(c.LLMGatewayURL)
-		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
-			return fmt.Errorf("BACKEND_LLM_GATEWAY_URL must be an absolute HTTP(S) URL without credentials, query or fragment")
-		}
+	if host, port, err := net.SplitHostPort(c.LLMGatewayAddress); err != nil || host == "" || !validPort(port) {
+		return fmt.Errorf("BACKEND_LLM_GATEWAY_ADDR must be a host:port gRPC address with a port from 1 to 65535")
 	}
 	if c.LLMTimeout <= 0 {
 		return fmt.Errorf("BACKEND_LLM_TIMEOUT must be positive")

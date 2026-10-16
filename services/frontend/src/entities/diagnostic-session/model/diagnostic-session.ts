@@ -1,120 +1,74 @@
-import type { AssessmentVerdict } from '@/entities/assessment/@x/diagnostic-session'
+// The Geek oral exam as the API returns it, in camelCase.
 
-export type DiagnosticTask = {
-  variant_task_id: string
-  source_task_id: string
-  role: 'main' | 'basic'
-  competency_id: string
-  competency_name: string
-  constituent_id: string
-  constituent_name: string
-  outcome_id: string
-  outcome_name: string
-  question: string
-  options: string[]
-  voice_instruction: string
-}
+export type Speaker = 'geek' | 'student'
+export type TurnKind =
+  'question' | 'followup' | 'rephrase' | 'closing' | 'answer'
+export type AnswerSource = 'voice' | 'text' | 'dont_know'
 
-export type DiagnosticProgress = {
-  answer_skipped?: boolean
-  text?: string
-  session_id: string
-  status: 'active' | 'completed'
-  completed_tasks: number
-  skipped_tasks: number
-  total_tasks: number
-  // Topics are fixed; questions vary with answers (main plus 0–2 basics).
-  competency_count?: number
-  current_competency?: number
-  current_step?: number
-  current?: DiagnosticTask
-  score?: number
-  grader_score?: number
-  grader_max_score?: number
-  verdict?: AssessmentVerdict
-  criterion_results?: { key: string; satisfied: boolean; explanation: string }[]
-  feedback?: string[]
-}
-
-export type DiagnosticAudioMetadata = {
-  variant_task_id: string
-  status:
-    'missing' | 'pending' | 'processing' | 'ready' | 'failed' | 'cancelled'
-  audio_url: string | null
-}
-
-export type DiagnosticAnswer = {
-  skipped?: boolean
-  variant_task_id: string
-  source_task_id: string
-  competency_id: string
-  outcome_id: string
-  role: 'main' | 'basic'
-  task: DiagnosticTask
-  transcription_id: string
+// One line of the transcript.
+export type Turn = {
+  id: string
+  line: number
+  speaker: Speaker
+  kind: TurnKind
+  nodeId: string | null
+  source: AnswerSource | null
   text: string
-  grader_score: number
-  grader_max_score: number
-  score: number
-  verdict: AssessmentVerdict
-  criterion_results: { key: string; satisfied: boolean; explanation: string }[]
-  feedback: string[]
-  created_at: number
+  createdAt: number
+}
+
+export type SessionStatus = 'active' | 'completed' | 'cancelled'
+
+export type DiagnosticSession = {
+  id: string
+  subjectId: string
+  status: SessionStatus
+  progressPercent: number
+  // The Geek turn awaiting an answer; null unless the session is active.
+  currentTurnId: string | null
+  startedAt: number
+  completedAt: number | null
+  turns: Turn[]
+}
+
+export type Grade = 'A' | 'B' | 'C' | 'D'
+export type TopicStatus =
+  | 'independent'
+  | 'assisted'
+  | 'gap'
+  | 'insufficient'
+  | 'credited_by_parent'
+  | 'unchecked'
+
+export type TopicResult = {
+  nodeId: string
+  title: string
+  status: TopicStatus
+  grade: Grade | null
+  topLevel: boolean
 }
 
 export type DiagnosticResult = {
-  session_id: string
-  status: 'completed'
-  variant_id: string
-  map_revision: number
-  included_competency_count: number
-  skipped_competencies: {
-    competency_id: string
-    competency_name: string
-    code: string
-  }[]
-  completed_tasks: number
-  total_tasks: number
-  diagnostic_score: number
-  maximum_score: number
-  answers: DiagnosticAnswer[]
-  untested_basics: DiagnosticTask[]
+  sessionId: string
+  grade: Grade | null
+  scorePercent: number | null
+  topics: TopicResult[]
+  gaps: { nodeId: string; title: string }[]
 }
 
-export type DiagnosticOverallFeedback = {
-  session_id: string
-  diagnostic_score: number
-  maximum_score: number
-  score_percentage: number
-  summary: string
-  strengths: string[]
-  confirmed_gaps: {
-    competency_id: string
-    competency_name: string
-    outcome_id: string
-    outcome_name: string
-    taxonomy_code: string
-    importance: number
-    failed_criteria: string[]
-    advice: string
-  }[]
-  partial_competencies: {
-    competency_id: string
-    competency_name: string
-    details: string
-  }[]
-  unverified_competencies: {
-    competency_id: string
-    competency_name: string
-    code: string
-  }[]
-  training_recommendations: {
-    competency_id: string
-    competency_name: string
-    outcome_id: string
-    outcome_name: string
-    priority: number
-    rationale: string
-  }[]
-  generated_at: number
+// A past or current diagnostic of the student on the course.
+export type DiagnosticSummary = {
+  id: string
+  status: SessionStatus
+  progressPercent: number
+  startedAt: number
+  completedAt: number | null
+  grade: Grade | null
+  scorePercent: number | null
 }
+
+// The reply to the current Geek turn.
+export type DiagnosticAnswer =
+  | { kind: 'text'; text: string }
+  | { kind: 'voice'; transcriptionId: string }
+  | { kind: 'dont_know' }

@@ -54,6 +54,22 @@ func (s *Store) ActiveSession(ctx context.Context, ownerID, subjectID string) (e
 	return session, err == nil, err
 }
 
+func (s *Store) Sessions(ctx context.Context, ownerID, subjectID string) ([]exam.Session, error) {
+	states, err := db.New(s.pool).ListOwnGeekSessions(ctx, db.ListOwnGeekSessionsParams{OwnerID: ownerID, SubjectID: subjectID})
+	if err != nil {
+		return nil, fmt.Errorf("list geek sessions: %w", err)
+	}
+	sessions := make([]exam.Session, 0, len(states))
+	for _, state := range states {
+		session, err := decode(state)
+		if err != nil {
+			return nil, err
+		}
+		sessions = append(sessions, session)
+	}
+	return sessions, nil
+}
+
 func (s *Store) Request(ctx context.Context, ownerID, key string) (application.Request, bool, error) {
 	row, err := db.New(s.pool).GetGeekRequest(ctx, db.GetGeekRequestParams{OwnerID: ownerID, Key: key})
 	if errors.Is(err, pgx.ErrNoRows) {

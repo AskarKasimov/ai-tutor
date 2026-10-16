@@ -1,7 +1,8 @@
 services:
   api:
     build:
-      context: .
+      context: ../..
+      dockerfile: services/backend/Dockerfile
     environment:
       BACKEND_DATABASE_URL: ${BACKEND_DATABASE_URL:-postgres://ai_tutor:${DB_PASSWORD:-}@db:5432/ai_tutor?sslmode=disable}
       BACKEND_STT_URL: ${BACKEND_STT_URL:-}
@@ -21,7 +22,7 @@ services:
       BACKEND_S3_TIMEOUT: ${BACKEND_S3_TIMEOUT:-30s}
       BACKEND_S3_CREATE_BUCKET: ${BACKEND_S3_CREATE_BUCKET:-false}
       BACKEND_COURSE_GRAPH_URL: ${BACKEND_COURSE_GRAPH_URL:-http://course-graph:8000}
-      BACKEND_LLM_GATEWAY_URL: ${BACKEND_LLM_GATEWAY_URL:-}
+      BACKEND_LLM_GATEWAY_ADDR: ${BACKEND_LLM_GATEWAY_ADDR:-llm-gateway:8011}
       BACKEND_LLM_TIMEOUT: ${BACKEND_LLM_TIMEOUT:-120s}
       BACKEND_GEEK_GRAPH_FIXTURE: ${BACKEND_GEEK_GRAPH_FIXTURE:-/fixtures/course-graph.json}
       BACKEND_GEEK_MAX_QUESTIONS: ${BACKEND_GEEK_MAX_QUESTIONS:-0}

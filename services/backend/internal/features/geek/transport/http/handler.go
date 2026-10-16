@@ -85,6 +85,22 @@ type Result struct {
 	SessionID    string `json:"session_id"`
 }
 
+// HistoryItem is one of the student's diagnostics on the course.
+type HistoryItem struct {
+	CompletedAt *int64 `json:"completed_at" extensions:"x-nullable"`
+	// Предварительная оценка курса; null — диагностика не завершена или ни одной темы верхнего уровня с оценкой
+	Grade           *string `json:"grade" enums:"A,B,C,D" extensions:"x-nullable"`
+	ID              string  `json:"id"`
+	ProgressPercent int     `json:"progress_percent" minimum:"0" maximum:"100"`
+	ScorePercent    *int    `json:"score_percent" minimum:"0" maximum:"100" extensions:"x-nullable"`
+	StartedAt       int64   `json:"started_at"`
+	Status          string  `json:"status" enums:"active,completed,cancelled"`
+}
+
+type History struct {
+	Items []HistoryItem `json:"items"`
+}
+
 type Handler struct{ service *application.Service }
 
 func New(service *application.Service) *Handler { return &Handler{service: service} }
@@ -135,6 +151,45 @@ func (h *Handler) Start(w http.ResponseWriter, r *http.Request) {
 		status = http.StatusCreated
 	}
 	httpx.JSON(w, status, toSession(session))
+}
+
+// History handles GET /diagnostic-sessions.
+// @Summary Мои диагностики курса
+// @Description Диагностики текущего студента по курсу, новые первыми (не больше 50). Оценка — только у завершённых.
+// @ID listDiagnosticSessions
+// @Tags Диагностика
+// @Security accessCookie
+// @Produce json
+// @Param subject_id query string true "ID курса (предмета)" minlength(1) maxlength(128)
+// @Success 200 {object} History
+// @Failure 401 {object} fault.Error
+// @Failure 422 {object} fault.Error
+// @Router /diagnostic-sessions [get]
+func (h *Handler) History(w http.ResponseWriter, r *http.Request) {
+	u, ok := principal(w, r)
+	if !ok {
+		return
+	}
+	query, err := httpx.ParseQuery(r, "subject_id")
+	if err != nil {
+		httpx.Error(r.Context(), w, err)
+		return
+	}
+	sessions, err := h.service.History(r.Context(), u.ID, query.Get("subject_id"))
+	if err != nil {
+		httpx.Error(r.Context(), w, err)
+		return
+	}
+	out := History{Items: []HistoryItem{}}
+	for _, s := range sessions {
+		item := HistoryItem{CompletedAt: s.CompletedAt, ID: s.ID, ProgressPercent: s.Exam.Progress(), StartedAt: s.StartedAt, Status: string(s.Status)}
+		if s.Status == domain.SessionCompleted {
+			r := s.Result()
+			item.Grade, item.ScorePercent = grade(r.Grade), r.ScorePercent
+		}
+		out.Items = append(out.Items, item)
+	}
+	httpx.JSON(w, http.StatusOK, out)
 }
 
 // Read handles GET /diagnostic-sessions/{id}.

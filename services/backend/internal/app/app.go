@@ -48,6 +48,10 @@ type App struct {
 	logger           *zap.Logger
 	storage          *s3.Client
 	materialsStorage materialsapp.S3Storage
+	// examiner is the LLM gateway over gRPC; the app owns its connection and
+	// closes it in Close.
+	examiner geekapp.Examiner
+	gateway  io.Closer
 }
 
 func New(cfg Config, pool *pgxpool.Pool, logger *zap.Logger) (*App, error) {
@@ -80,7 +84,20 @@ func New(cfg Config, pool *pgxpool.Pool, logger *zap.Logger) (*App, error) {
 	}
 	a.storage = storage
 	a.materialsStorage = &materialsStorageAdapter{storage: storage, bucket: cfg.S3Bucket}
+	examiner, conn, err := geekllm.Dial(cfg.LLMGatewayAddress, cfg.LLMTimeout)
+	if err != nil {
+		return nil, err
+	}
+	a.examiner, a.gateway = examiner, conn
 	return a, nil
+}
+
+// Close releases the app's connections once requests have finished.
+func (a *App) Close() error {
+	if a.gateway == nil {
+		return nil
+	}
+	return a.gateway.Close()
 }
 
 // RunStorageSetup provisions the S3 bucket in the background, retrying until it
@@ -137,13 +154,9 @@ func (a *App) Handler() http.Handler {
 	materialsService := materialsapp.New(materialspg.New(a.pool), a.materialsStorage, materialsOCR, a.now)
 	materialsHandlers := materialshttp.NewHandler(materialsService, a.cfg.MaxUploadBytes)
 
-	var examiner geekapp.Examiner = geekllm.Mock{}
-	if a.cfg.LLMGatewayURL != "" {
-		examiner = geekllm.NewGateway(a.client, a.cfg.LLMGatewayURL, a.cfg.LLMTimeout)
-	}
 	// The stored graph of stream A goes first once it exists; the fixture is the fallback.
 	graphs := geekgraph.Chain{geekgraph.Fixture{Path: a.cfg.GeekGraphFixture}}
-	geekService := geekapp.New(graphs, geekpg.New(a.pool), geekpg.NewTranscriptions(a.pool), examiner, models,
+	geekService := geekapp.New(graphs, geekpg.New(a.pool), geekpg.NewTranscriptions(a.pool), a.examiner, models,
 		geekstorage.NewAudio(a.storage, a.cfg.S3Bucket), security.IDGenerator{}, a.now, geekapp.Config{MaxQuestions: a.cfg.GeekMaxQuestions})
 	geekHandlers := geekhttp.New(geekService)
 
@@ -163,6 +176,7 @@ func (a *App) Handler() http.Handler {
 	mux.Handle("POST /voice/syntheses", protect(auth, http.HandlerFunc(voiceHandlers.Synthesize)))
 	mux.Handle("GET /subjects", protect(auth, http.HandlerFunc(subjectHandlers.List)))
 	mux.Handle("POST /diagnostic-sessions", protect(auth, http.HandlerFunc(geekHandlers.Start)))
+	mux.Handle("GET /diagnostic-sessions", protect(auth, http.HandlerFunc(geekHandlers.History)))
 	mux.Handle("GET /diagnostic-sessions/{id}", protect(auth, http.HandlerFunc(geekHandlers.Read)))
 	mux.Handle("POST /diagnostic-sessions/{id}/answers", protect(auth, http.HandlerFunc(geekHandlers.Answer)))
 	mux.Handle("GET /diagnostic-sessions/{id}/result", protect(auth, http.HandlerFunc(geekHandlers.Result)))

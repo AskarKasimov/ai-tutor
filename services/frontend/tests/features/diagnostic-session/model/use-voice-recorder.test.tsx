@@ -1,6 +1,6 @@
 import { act, renderHook } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest'
-import { useVoiceRecorder } from '@/features/learning-plan'
+import { useVoiceRecorder } from '@/features/diagnostic-session'
 
 class DeferredRecorder {
   static last: DeferredRecorder | undefined

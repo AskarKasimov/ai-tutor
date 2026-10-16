@@ -2,6 +2,5 @@ export { SubjectSelectionDependenciesProvider } from './model/dependencies-conte
 export type { SubjectSelectionDependencies } from './model/dependencies-context'
 export {
   useSubjectsQuery,
-  useLearningStateQuery,
   useCreateSubjectMutation,
 } from './model/use-subjects'

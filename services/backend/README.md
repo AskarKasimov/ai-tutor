@@ -20,7 +20,7 @@ Go API и PostgreSQL. Команды выполняются из `services/backe
 
 - `POST /diagnostic-sessions` — начать или продолжить (одна активная на курс), `Idempotency-Key` обязателен; без графа — `409 GRAPH_NOT_READY`.
 - `POST /diagnostic-sessions/{id}/answers` — синхронный ответ (расшифровка, текст или «не знаю»): реплика студента и следующая реплика Geek в том же ответе. Модель вызывается до сохранения: при сбое `503 MODEL_UNAVAILABLE`, сессия не меняется, повтор с тем же ключом. Повтор после успеха возвращает сохранённый результат; тот же ключ с другим телом — `422 IDEMPOTENCY_KEY_REUSED`.
-- `GET /diagnostic-sessions/{id}`, `GET /diagnostic-sessions/{id}/result` (только завершённая).
+- `GET /diagnostic-sessions?subject_id=…` — свои диагностики курса, новые первыми (до 50), с оценкой у завершённых; `GET /diagnostic-sessions/{id}`, `GET /diagnostic-sessions/{id}/result` (только завершённая).
 - `GET /diagnostic-sessions/{id}/turns/{turn_id}/audio` — WAV реплики Geek: синтез частями до 500 символов, склейка и кэш в S3 (`geek/{session}/{turn}.wav`).
 
 Сессия хранится одной строкой `geek_sessions` (снимок графа, состояние обхода и транскрипт в `state`) с версией для конкурентных обновлений; ключи повтора — в `geek_requests`. Если граф курса пересобран (сменилась версия), активная диагностика получает статус `cancelled`.

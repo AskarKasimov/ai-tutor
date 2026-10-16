@@ -176,6 +176,7 @@ func (a *App) Handler() http.Handler {
 	mux.Handle("POST /voice/syntheses", protect(auth, http.HandlerFunc(voiceHandlers.Synthesize)))
 	mux.Handle("GET /subjects", protect(auth, http.HandlerFunc(subjectHandlers.List)))
 	mux.Handle("POST /diagnostic-sessions", protect(auth, http.HandlerFunc(geekHandlers.Start)))
+	mux.Handle("GET /diagnostic-sessions", protect(auth, http.HandlerFunc(geekHandlers.History)))
 	mux.Handle("GET /diagnostic-sessions/{id}", protect(auth, http.HandlerFunc(geekHandlers.Read)))
 	mux.Handle("POST /diagnostic-sessions/{id}/answers", protect(auth, http.HandlerFunc(geekHandlers.Answer)))
 	mux.Handle("GET /diagnostic-sessions/{id}/result", protect(auth, http.HandlerFunc(geekHandlers.Result)))

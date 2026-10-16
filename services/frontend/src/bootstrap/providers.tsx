@@ -6,7 +6,6 @@ import { AuthDependenciesProvider } from '@/features/auth'
 import { CompetencyMapDependenciesProvider } from '@/features/import-competency-map'
 import { DiagnosticDependenciesProvider } from '@/features/diagnostic-session'
 import { SubjectSelectionDependenciesProvider } from '@/features/subject-selection'
-import { LearningPlanDependenciesProvider } from '@/features/learning-plan'
 import { createAppDependencies } from './dependencies'
 import type { AppDependencies } from './dependencies'
 import '@/shared/i18n'
@@ -36,26 +35,17 @@ export function AppProviders({
           value={{ subjects: services.subjects }}
         >
           <DiagnosticDependenciesProvider
-            value={{
-              apiBase: services.apiBase,
-              createDiagnosticIdentity: services.createDiagnosticIdentity,
-              diagnosticStorage: services.diagnosticStorage,
-              diagnostic: services.diagnostic,
-            }}
+            value={{ diagnostic: services.diagnostic }}
           >
-            <LearningPlanDependenciesProvider
-              value={{ learningPlan: services.learningPlan }}
+            <Theme
+              className={styles.root}
+              accentColor="blue"
+              appearance="light"
             >
-              <Theme
-                className={styles.root}
-                accentColor="blue"
-                appearance="light"
-              >
-                <QueryClientProvider client={queryClient}>
-                  {children}
-                </QueryClientProvider>
-              </Theme>
-            </LearningPlanDependenciesProvider>
+              <QueryClientProvider client={queryClient}>
+                {children}
+              </QueryClientProvider>
+            </Theme>
           </DiagnosticDependenciesProvider>
         </SubjectSelectionDependenciesProvider>
       </CompetencyMapDependenciesProvider>

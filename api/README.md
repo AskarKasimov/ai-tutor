@@ -2,7 +2,7 @@
 
 Контракт: [openapi.yaml](openapi.yaml), OpenAPI 3.1. Все пути относительны к `/api/v1`.
 
-- `x-implementation: implemented` — подключённая операция: auth, предметы, voice, удаление и скачивание материалов, диагностика Geek (`/diagnostic-sessions`, `/{id}`, `/{id}/answers`, `/{id}/result`, `/{id}/turns/{turn_id}/audio`), health. Операции прежней модели (карта, банк заданий, assessment, taskgen, variantgen, план обучения, тренировка, озвучка заданий) удалены 16.10.2026 вместе с кодом.
+- `x-implementation: implemented` — подключённая операция: auth, предметы, voice, удаление и скачивание материалов, диагностика Geek (`POST`/`GET /diagnostic-sessions` — старт и свои диагностики курса, `/{id}`, `/{id}/answers`, `/{id}/result`, `/{id}/turns/{turn_id}/audio`), health. Операции прежней модели (карта, банк заданий, assessment, taskgen, variantgen, план обучения, тренировка, озвучка заданий) удалены 16.10.2026 вместе с кодом.
 - `x-implementation: planned` — проект до реализации; наличие planned-операции в Swagger не означает наличие handler.
 
 Контракт Geek согласован 16.10.2026 и описан как planned, схемы — с префиксом `geek.`:

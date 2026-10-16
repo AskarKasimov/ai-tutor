@@ -161,6 +161,38 @@ func (q *Queries) InsertGeekSession(ctx context.Context, arg InsertGeekSessionPa
 	return err
 }
 
+const listOwnGeekSessions = `-- name: ListOwnGeekSessions :many
+SELECT state FROM geek_sessions
+WHERE owner_id = $1 AND subject_id = $2
+ORDER BY started_at DESC, id DESC
+LIMIT 50
+`
+
+type ListOwnGeekSessionsParams struct {
+	OwnerID   string
+	SubjectID string
+}
+
+func (q *Queries) ListOwnGeekSessions(ctx context.Context, arg ListOwnGeekSessionsParams) ([][]byte, error) {
+	rows, err := q.db.Query(ctx, listOwnGeekSessions, arg.OwnerID, arg.SubjectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := [][]byte{}
+	for rows.Next() {
+		var state []byte
+		if err := rows.Scan(&state); err != nil {
+			return nil, err
+		}
+		items = append(items, state)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const updateGeekSession = `-- name: UpdateGeekSession :execrows
 UPDATE geek_sessions
 SET status = $1, version = $2, completed_at = $3,

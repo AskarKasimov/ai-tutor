@@ -1,17 +1,12 @@
 export const diagnosticSessionQueryKeys = {
-  diagnosticProgress: (userId: string, sessionId: string | undefined) =>
+  history: (userId: string, subjectId: string) =>
+    ['diagnostic-history', userId, subjectId] as const,
+  session: (userId: string, sessionId: string) =>
     ['diagnostic-session', userId, sessionId] as const,
-  diagnosticResults: (userId: string) => ['diagnostic-result', userId] as const,
-  diagnosticResult: (userId: string, sessionId: string) =>
+  result: (userId: string, sessionId: string) =>
     ['diagnostic-result', userId, sessionId] as const,
-  diagnosticFeedback: (userId: string, sessionId: string) =>
-    ['diagnostic-feedback', userId, sessionId] as const,
-  diagnosticAudio: (
-    userId: string,
-    sessionId: string,
-    taskId: string | undefined,
-  ) => ['diagnostic-audio', userId, sessionId, taskId] as const,
-  startDiagnostic: (userId: string) => ['diagnostic', 'start', userId] as const,
-  submitDiagnostic: (userId: string, sessionId: string) =>
-    ['diagnostic', 'submit', userId, sessionId] as const,
+  start: (userId: string, subjectId: string) =>
+    ['diagnostic', 'start', userId, subjectId] as const,
+  answer: (userId: string, sessionId: string) =>
+    ['diagnostic', 'answer', userId, sessionId] as const,
 }

@@ -148,3 +148,34 @@ func TestExpiredTerminalReplacesRestoredRunningJob(t *testing.T) {
 		t.Fatalf("stale indexes remain: stateIDs=%v keys=%v", s.stateIDs, s.keys)
 	}
 }
+
+func TestExpiredJobClearsCancellationForReusedKey(t *testing.T) {
+	s := schedulerFixture([]InstanceConfig{schedulerInstance("model-a")}, []string{"model-a"})
+	s.cfg.Retention = time.Hour
+	s.stateIDs = make(map[string]string)
+	s.keys = make(map[string]string)
+	s.cancelled = make(map[string]bool)
+	now := time.Now()
+	job := &durableJob{
+		ID: "reused-key", ClientID: "internal", IdempotencyKey: "same-key",
+		Status: "failed", Error: &storedError{Status: 409, Code: "request_canceled"},
+		SubmittedAt: now.Add(-2 * time.Hour), FinishedAt: now.Add(-time.Hour),
+	}
+	s.jobs[job.ID] = job
+	s.keys[identity(job.ClientID, job.IdempotencyKey)] = job.ID
+	s.stateIDs[string(stateKey(job))] = job.ID
+	s.cancelled[job.ID] = true
+
+	s.install(&durableJob{
+		ID: job.ID, ClientID: job.ClientID, IdempotencyKey: job.IdempotencyKey,
+		Status: "failed", Error: &storedError{Status: 409, Code: "request_canceled"},
+		SubmittedAt: job.SubmittedAt, FinishedAt: job.FinishedAt,
+	})
+
+	if s.isCanceled(job.ID) {
+		t.Fatal("expired cancellation flag still applies to the reused idempotency key")
+	}
+	if len(s.jobs) != 0 || len(s.keys) != 0 || len(s.stateIDs) != 0 {
+		t.Fatalf("expired job indexes remain: jobs=%v keys=%v stateIDs=%v", s.jobs, s.keys, s.stateIDs)
+	}
+}

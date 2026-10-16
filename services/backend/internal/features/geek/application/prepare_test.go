@@ -3,6 +3,7 @@ package application
 import (
 	"context"
 	"errors"
+	"slices"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -78,5 +79,29 @@ func TestPrepareQuestionsFillsOnlyMissingMainQuestions(t *testing.T) {
 		if n.ID != "a-star" && len(n.Questions) != 0 {
 			t.Fatal("the input graph was changed")
 		}
+	}
+}
+
+func TestPrepareQuestionsKeepsRemainingQuestionsWhenMainIsEmpty(t *testing.T) {
+	for _, first := range []string{"", " \t\n"} {
+		t.Run(first, func(t *testing.T) {
+			questions := []string{first, "Существующий второй вопрос?", "Существующий третий вопрос?"}
+			before := slices.Clone(questions)
+			g := exam.Graph{Nodes: []exam.Node{{ID: "topic", Title: "Тема", Content: "Текст темы", Questions: questions}}}
+			if err := g.Validate(); err != nil {
+				t.Fatal(err)
+			}
+			out, count, err := PrepareQuestions(context.Background(), &preparing{}, g, 1)
+			if err != nil || count != 1 {
+				t.Fatalf("prepared=%d err=%v", count, err)
+			}
+			want := []string{"Вопрос про «Тема»?", before[1], before[2]}
+			if !slices.Equal(out.Nodes[0].Questions, want) {
+				t.Fatalf("questions=%q, want %q", out.Nodes[0].Questions, want)
+			}
+			if !slices.Equal(g.Nodes[0].Questions, before) {
+				t.Fatalf("input changed: %q", g.Nodes[0].Questions)
+			}
+		})
 	}
 }

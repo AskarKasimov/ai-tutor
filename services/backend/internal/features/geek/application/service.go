@@ -142,6 +142,24 @@ func (s *Service) Get(ctx context.Context, ownerID, id string) (exam.Session, er
 	return s.refresh(ctx, session)
 }
 
+// History lists the student's diagnostics of a course, newest first; an active
+// one over a rebuilt graph is cancelled on the way.
+func (s *Service) History(ctx context.Context, ownerID, subjectID string) ([]exam.Session, error) {
+	if strings.TrimSpace(subjectID) == "" {
+		return nil, fault.Validation("subject_id", "Укажите курс.")
+	}
+	sessions, err := s.store.Sessions(ctx, ownerID, subjectID)
+	if err != nil {
+		return nil, err
+	}
+	for i := range sessions {
+		if sessions[i], err = s.refresh(ctx, sessions[i]); err != nil {
+			return nil, err
+		}
+	}
+	return sessions, nil
+}
+
 // Answer accepts the reply to the current Geek turn and returns the session
 // with the next turn. The model is called before anything is saved, so a
 // failure leaves the session unchanged and the request can be retried.

@@ -60,6 +60,8 @@ func geekFlow(t *testing.T, f *fixture, access *http.Cookie, check func(method, 
 	check("POST", "/diagnostic-sessions", f.request("POST", "/diagnostic-sessions", start))
 	session := decodeSession(t, created)
 	path := "/diagnostic-sessions/" + session.ID
+	check("GET", "/diagnostic-sessions", f.request("GET", "/diagnostic-sessions?subject_id=subject%3Atest", "", access))
+	check("GET", "/diagnostic-sessions", f.request("GET", "/diagnostic-sessions?subject=x", "", access))
 	check("GET", "/diagnostic-sessions/{id}", f.request("GET", path, "", access))
 	check("GET", "/diagnostic-sessions/{id}", f.request("GET", "/diagnostic-sessions/unknown", "", access))
 	check("GET", "/diagnostic-sessions/{id}/result", f.request("GET", path+"/result", "", access))

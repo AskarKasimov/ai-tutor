@@ -113,6 +113,9 @@ func TestStoreKeepsOneActiveSessionAndVersionsUpdates(t *testing.T) {
 	if r, ok, err := store.Request(ctx, "u", "k4"); err != nil || !ok || r.Fingerprint != "start:s" || r.Created {
 		t.Fatalf("saved request: %+v %v %v", r, ok, err)
 	}
+	if list, err := store.Sessions(ctx, "u", "s"); err != nil || len(list) != 2 {
+		t.Fatalf("sessions: %d %v", len(list), err)
+	}
 	texts := NewTranscriptions(store.pool)
 	if text, ok, err := texts.Text(ctx, "u", "tr"); err != nil || !ok || text != "Ответ голосом" {
 		t.Fatalf("transcription: %q %v %v", text, ok, err)

@@ -211,7 +211,7 @@ components:
             type: string
           type: array
         questions:
-          description: Вопросы к вершине; сервис может вернуть пустой список — backend заполняет основной вопрос перед сохранением графа
+          description: Вопросы к вершине; сервис может вернуть пустой список. Автоматическое заполнение основного вопроса backend перед сохранением графа запланировано; сейчас доступна CLI-подготовка api prepare-questions.
           items:
             type: string
           type: array

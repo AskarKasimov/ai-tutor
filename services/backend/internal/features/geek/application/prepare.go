@@ -54,7 +54,11 @@ func PrepareQuestions(ctx context.Context, examiner Examiner, g exam.Graph, para
 				failures = append(failures, fmt.Errorf("%s: %w", node.ID, err))
 				return
 			}
-			out.Nodes[i].Questions = []string{question}
+			questions := []string{question}
+			if len(node.Questions) > 1 {
+				questions = append(questions, node.Questions[1:]...)
+			}
+			out.Nodes[i].Questions = questions
 			prepared++
 		}()
 	}

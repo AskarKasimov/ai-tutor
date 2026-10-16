@@ -1,262 +1,218 @@
 import { afterEach, expect, it, vi } from 'vitest'
 import {
-  createSubmission,
+  answerDiagnostic,
   DiagnosticApiError,
-  readDiagnosticAudio,
-  regenerateDiagnosticAudio,
+  fetchTurnAudio,
+  listDiagnostics,
   readDiagnostic,
-  readDiagnosticFeedback,
-  submitDiagnostic,
-  createVariant,
+  readDiagnosticResult,
+  startDiagnostic,
 } from '@/entities/diagnostic-session'
 
-const accepted = {
-  session_id: 's1',
-  status: 'completed',
-  completed_tasks: 1,
-  skipped_tasks: 2,
-  total_tasks: 3,
-  score: 3,
-  grader_score: 3,
-  grader_max_score: 3,
-  verdict: 'correct',
-  criterion_results: [
-    { key: 'choice', satisfied: true, explanation: 'Верно.' },
+afterEach(() => vi.unstubAllGlobals())
+
+const signal = () => new AbortController().signal
+
+export const apiSession = {
+  id: 'd1',
+  subject_id: 'subject:ml',
+  status: 'active',
+  progress_percent: 25,
+  current_turn_id: 't3',
+  started_at: 1791158400,
+  completed_at: null,
+  turns: [
+    {
+      id: 't1',
+      line: 1,
+      speaker: 'geek',
+      kind: 'question',
+      node_id: 'a-star',
+      source: null,
+      text: 'Что такое A*?',
+      created_at: 1,
+    },
+    {
+      id: 't2',
+      line: 2,
+      speaker: 'student',
+      kind: 'answer',
+      node_id: 'a-star',
+      source: 'text',
+      text: 'Поиск',
+      created_at: 2,
+    },
+    {
+      id: 't3',
+      line: 3,
+      speaker: 'geek',
+      kind: 'rephrase',
+      node_id: 'a-star',
+      source: null,
+      text: 'Иначе: зачем эвристика?',
+      created_at: 3,
+    },
   ],
-  feedback: ['Верно.', 'Причина.', 'Совет.'],
 }
-afterEach(() => {
-  vi.useRealTimers()
-  vi.restoreAllMocks()
-  vi.unstubAllGlobals()
-})
 
-it('creates a variant for the explicitly selected subject', async () => {
-  const fetchMock = vi
-    .fn()
-    .mockResolvedValue(Response.json({ id: 'variant-1' }, { status: 201 }))
+function stub(response: Response) {
+  const fetchMock = vi.fn().mockResolvedValue(response)
   vi.stubGlobal('fetch', fetchMock)
-  await expect(
-    createVariant('subject:ml', 'key-1', new AbortController().signal),
-  ).resolves.toEqual({ id: 'variant-1' })
-  expect(fetchMock.mock.calls[0][0]).toBe('/api/v1/variants')
-  expect(fetchMock.mock.calls[0][1].method).toBe('POST')
-  expect(fetchMock.mock.calls[0][1].headers).toMatchObject({
-    'Idempotency-Key': 'key-1',
-    'Content-Type': 'application/json',
+  return fetchMock
+}
+
+it('starts a diagnostic with the idempotency key and maps the session', async () => {
+  const fetchMock = stub(Response.json(apiSession, { status: 201 }))
+  const session = await startDiagnostic('subject:ml', 'start:k', signal())
+  const [url, init] = fetchMock.mock.calls[0]
+  expect(url).toBe('/api/v1/diagnostic-sessions')
+  expect(init.method).toBe('POST')
+  expect(new Headers(init.headers).get('Idempotency-Key')).toBe('start:k')
+  expect(JSON.parse(init.body)).toEqual({ subject_id: 'subject:ml' })
+  expect(session).toMatchObject({
+    id: 'd1',
+    subjectId: 'subject:ml',
+    progressPercent: 25,
+    currentTurnId: 't3',
+    completedAt: null,
   })
-  expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({
-    subject_id: 'subject:ml',
-  })
-})
-
-it('accepts an empty strengths list serialized as null by the backend', async () => {
-  vi.stubGlobal(
-    'fetch',
-    vi.fn().mockResolvedValue(
-      Response.json({
-        session_id: 'session-1',
-        diagnostic_score: 0,
-        maximum_score: 4,
-        score_percentage: 0,
-        summary: 'Повторите базовые темы.',
-        strengths: null,
-        confirmed_gaps: [],
-        partial_competencies: [],
-        unverified_competencies: [],
-        training_recommendations: [],
-        generated_at: 1791538582,
-      }),
-    ),
-  )
-  await expect(
-    readDiagnosticFeedback('session-1', new AbortController().signal),
-  ).resolves.toMatchObject({
-    strengths: [],
-    summary: 'Повторите базовые темы.',
-  })
-})
-
-it('regenerates only the expected task and returns ready metadata', async () => {
-  const response = {
-    variant_task_id: 't1',
-    status: 'ready',
-    audio_url: '/task-audio/audio-1/file',
-  }
-  const fetchMock = vi.fn().mockResolvedValue(Response.json(response))
-  vi.stubGlobal('fetch', fetchMock)
-  await expect(
-    regenerateDiagnosticAudio('s1', 't1', new AbortController().signal),
-  ).resolves.toEqual(response)
-  expect(fetchMock.mock.calls[0][0]).toBe(
-    '/api/v1/diagnostic-sessions/s1/current/audio/regenerate',
-  )
-  expect(fetchMock.mock.calls[0][1].method).toBe('POST')
-  expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({
-    variant_task_id: 't1',
-  })
-  expect(fetchMock.mock.calls[0][1].credentials).toBe('include')
-  expect(fetchMock.mock.calls[0][1].signal.aborted).toBe(false)
-})
-
-it('reads task audio metadata with the expected task ID and accepts only ready URLs', async () => {
-  const response = {
-    variant_task_id: 't1',
-    status: 'ready',
-    audio_url: '/task-audio/audio-1/file',
-  }
-  const fetchMock = vi.fn().mockResolvedValue(Response.json(response))
-  vi.stubGlobal('fetch', fetchMock)
-  await expect(
-    readDiagnosticAudio('s1', 't1', new AbortController().signal),
-  ).resolves.toEqual(response)
-  expect(fetchMock.mock.calls[0][0]).toBe(
-    '/api/v1/diagnostic-sessions/s1/current/audio?variant_task_id=t1',
-  )
-  expect(fetchMock.mock.calls[0][1].method).toBeUndefined()
-
-  vi.stubGlobal(
-    'fetch',
-    vi
-      .fn()
-      .mockResolvedValue(
-        Response.json({ ...response, variant_task_id: 'stale-task' }),
-      ),
-  )
-  await expect(
-    readDiagnosticAudio('s1', 't1', new AbortController().signal),
-  ).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
-  vi.stubGlobal(
-    'fetch',
-    vi.fn().mockResolvedValue(
-      Response.json({
-        ...response,
-        audio_url: 'https://evil.example/audio.wav',
-      }),
-    ),
-  )
-  await expect(
-    readDiagnosticAudio('s1', 't1', new AbortController().signal),
-  ).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
-})
-
-it('accepts cancelled task-audio metadata without a file URL', async () => {
-  vi.stubGlobal(
-    'fetch',
-    vi.fn().mockResolvedValue(
-      Response.json({
-        variant_task_id: 't1',
-        status: 'cancelled',
-        audio_url: null,
-      }),
-    ),
-  )
-  await expect(
-    readDiagnosticAudio('s1', 't1', new AbortController().signal),
-  ).resolves.toMatchObject({ status: 'cancelled', audio_url: null })
-})
-
-it('allows an answer to finish after sequential transcription and grading exceed two minutes', async () => {
-  vi.useFakeTimers()
-  vi.spyOn(AbortSignal, 'timeout').mockImplementation((ms) => {
-    const request = new AbortController()
-    setTimeout(
-      () => request.abort(new DOMException('Timeout', 'TimeoutError')),
-      ms,
-    )
-    return request.signal
-  })
-  vi.stubGlobal(
-    'fetch',
-    vi.fn(
-      (_url, init: RequestInit) =>
-        new Promise((resolve, reject) => {
-          const timer = setTimeout(
-            () => resolve(Response.json(accepted)),
-            150_000,
-          )
-          init.signal?.addEventListener('abort', () => {
-            clearTimeout(timer)
-            reject(init.signal?.reason)
-          })
-        }),
-    ),
-  )
-  const result = submitDiagnostic(
-    createSubmission(
-      's1',
-      't1',
-      new Blob(['audio'], { type: 'audio/webm' }),
-      'main',
-    ),
-    new AbortController().signal,
-  ).then(
-    (value) => ({ value }),
-    (error) => ({ error }),
-  )
-  await vi.advanceTimersByTimeAsync(150_000)
-  expect(await result).toMatchObject({
-    value: { session_id: 's1', score: 3, status: 'completed' },
+  expect(session.turns[1]).toEqual({
+    id: 't2',
+    line: 2,
+    speaker: 'student',
+    kind: 'answer',
+    nodeId: 'a-star',
+    source: 'text',
+    text: 'Поиск',
+    createdAt: 2,
   })
 })
 
 it.each([
-  { ...accepted, completed_tasks: 5 },
-  { ...accepted, feedback: ['one'] },
-  { ...accepted, session_id: 'other-user-session' },
-  { ...accepted, score: 9 },
-  { ...accepted, grader_max_score: 1 },
-])(
-  'rejects malformed accepted responses without recording a score',
-  async (response) => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json(response)))
-    await expect(
-      submitDiagnostic(
-        createSubmission('s1', 't1', new Blob(['audio']), 'main'),
-        new AbortController().signal,
-      ),
-    ).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
+  [
+    { kind: 'text', text: 'Ответ' },
+    { turn_id: 't3', text: 'Ответ' },
+  ],
+  [
+    { kind: 'voice', transcriptionId: 'tr1' },
+    { turn_id: 't3', transcription_id: 'tr1' },
+  ],
+  [{ kind: 'dont_know' }, { turn_id: 't3', dont_know: true }],
+] as const)(
+  'sends the %o answer as the contract body',
+  async (answer, body) => {
+    const fetchMock = stub(Response.json(apiSession))
+    await answerDiagnostic('d/1', 't3', answer, 'answer:k', signal())
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(url).toBe('/api/v1/diagnostic-sessions/d%2F1/answers')
+    expect(JSON.parse(init.body)).toEqual(body)
+    expect(new Headers(init.headers).get('Idempotency-Key')).toBe('answer:k')
   },
 )
 
-it('rejects an active session missing the current task', async () => {
-  vi.stubGlobal(
-    'fetch',
-    vi.fn().mockResolvedValue(
-      Response.json({
-        session_id: 's1',
-        status: 'active',
-        completed_tasks: 0,
-        skipped_tasks: 0,
-        total_tasks: 3,
-      }),
-    ),
+it('reads the session, history and result by encoded URLs', async () => {
+  let fetchMock = stub(Response.json(apiSession))
+  await readDiagnostic('d1', signal())
+  expect(fetchMock.mock.calls[0][0]).toBe('/api/v1/diagnostic-sessions/d1')
+
+  fetchMock = stub(
+    Response.json({
+      items: [
+        {
+          id: 'd1',
+          status: 'completed',
+          progress_percent: 100,
+          started_at: 1,
+          completed_at: 2,
+          grade: 'B',
+          score_percent: 81,
+        },
+      ],
+    }),
   )
-  await expect(
-    readDiagnostic('s1', new AbortController().signal),
-  ).rejects.toBeInstanceOf(DiagnosticApiError)
+  await expect(listDiagnostics('subject:ml/a', signal())).resolves.toEqual([
+    {
+      id: 'd1',
+      status: 'completed',
+      progressPercent: 100,
+      startedAt: 1,
+      completedAt: 2,
+      grade: 'B',
+      scorePercent: 81,
+    },
+  ])
+  expect(fetchMock.mock.calls[0][0]).toBe(
+    '/api/v1/diagnostic-sessions?subject_id=subject%3Aml%2Fa',
+  )
+
+  stub(
+    Response.json({
+      session_id: 'd1',
+      grade: null,
+      score_percent: null,
+      nodes: [
+        {
+          node_id: 'a',
+          title: 'A*',
+          status: 'insufficient',
+          grade: null,
+          top_level: true,
+        },
+      ],
+      gaps: [{ node_id: 'b', title: 'Эвристика' }],
+    }),
+  )
+  await expect(readDiagnosticResult('d1', signal())).resolves.toEqual({
+    sessionId: 'd1',
+    grade: null,
+    scorePercent: null,
+    topics: [
+      {
+        nodeId: 'a',
+        title: 'A*',
+        status: 'insufficient',
+        grade: null,
+        topLevel: true,
+      },
+    ],
+    gaps: [{ nodeId: 'b', title: 'Эвристика' }],
+  })
 })
 
-it('sends the confirmed transcript with the same idempotency key instead of repeating STT', async () => {
-  const fetcher = vi.fn().mockResolvedValue(Response.json(accepted))
-  vi.stubGlobal('fetch', fetcher)
-  const submission = createSubmission(
-    's1',
-    't1',
-    new Blob(['voice'], { type: 'audio/webm' }),
-    'main',
+it('keeps the error code and rejects responses outside the contract', async () => {
+  stub(
+    Response.json(
+      { code: 'GRAPH_NOT_READY', message: 'нет графа' },
+      { status: 409 },
+    ),
   )
-  submission.transcriptionId = 'preview-id'
-  await submitDiagnostic(submission, new AbortController().signal)
-  expect(fetcher.mock.calls[0][0]).toBe(
-    '/api/v1/diagnostic-sessions/s1/answers/transcription',
-  )
-  expect(JSON.parse(fetcher.mock.calls[0][1].body)).toEqual({
-    variant_task_id: 't1',
-    transcription_id: 'preview-id',
+  await expect(startDiagnostic('s', 'k', signal())).rejects.toMatchObject({
+    status: 409,
+    code: 'GRAPH_NOT_READY',
   })
-  expect(fetcher.mock.calls[0][1].headers).toMatchObject({
-    'Idempotency-Key': submission.key,
-    'Content-Type': 'application/json',
+  stub(Response.json({ ...apiSession, status: 'paused' }))
+  await expect(readDiagnostic('d1', signal())).rejects.toBeInstanceOf(
+    DiagnosticApiError,
+  )
+  vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('offline')))
+  await expect(readDiagnostic('d1', signal())).rejects.toMatchObject({
+    code: 'NETWORK',
+  })
+})
+
+it('fetches the WAV of a Geek turn', async () => {
+  const fetchMock = stub(
+    new Response(new Uint8Array([82, 73, 70, 70]), {
+      headers: { 'Content-Type': 'audio/wav' },
+    }),
+  )
+  const audio = await fetchTurnAudio('d1', 't 1', signal())
+  expect(fetchMock.mock.calls[0][0]).toBe(
+    '/api/v1/diagnostic-sessions/d1/turns/t%201/audio',
+  )
+  expect(audio.type).toBe('audio/wav')
+  stub(Response.json({ code: 'X' }))
+  await expect(fetchTurnAudio('d1', 't1', signal())).rejects.toMatchObject({
+    code: 'INVALID_RESPONSE',
   })
 })

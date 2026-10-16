@@ -1,25 +1,24 @@
 export type {
+  AnswerSource,
   DiagnosticAnswer,
-  DiagnosticAudioMetadata,
-  DiagnosticProgress,
   DiagnosticResult,
-  DiagnosticOverallFeedback,
-  DiagnosticTask,
+  DiagnosticSession,
+  DiagnosticSummary,
+  Grade,
+  SessionStatus,
+  Speaker,
+  TopicResult,
+  TopicStatus,
+  Turn,
+  TurnKind,
 } from './model/diagnostic-session'
-export type { DiagnosticSessionIdentity } from './model/session-identity'
-export type { DiagnosticSubmission } from './model/submission'
-export { diagnosticApiBase } from './api/diagnostic-api'
 export { DiagnosticApiError } from './model/diagnostic-error'
 export {
-  createSubmission,
-  createSkipSubmission,
-  createVariant,
-  fetchDiagnosticAudioFile,
-  readDiagnosticAudio,
-  regenerateDiagnosticAudio,
+  answerDiagnostic,
+  fetchTurnAudio,
+  listDiagnostics,
   readDiagnostic,
   readDiagnosticResult,
-  readDiagnosticFeedback,
   startDiagnostic,
-  submitDiagnostic,
 } from './api/diagnostic-api'
+export type { DiagnosticApi } from './api/diagnostic-api'

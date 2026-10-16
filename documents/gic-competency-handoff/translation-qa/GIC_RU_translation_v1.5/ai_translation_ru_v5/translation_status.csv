@@ -1,0 +1,138 @@
+﻿id,title,translation_status,english_characters,russian_characters,page_count,new_in_batch5
+AI-01-01,Подходы к определению искусственного интеллекта,translated_from_extracted_text,555,788,4,False
+AI-01-02,Сильный и слабый искусственный интеллект,translated_from_extracted_text,239,398,1,False
+AI-01-03,Контекстная и ситуационная природа интеллекта,translated_from_extracted_text,1795,2429,5,False
+AI-01-04,Влияние ИИ на профессии и общество,translated_from_extracted_text,2188,2888,4,False
+AI-01-05,Четвёртая промышленная революция,no_source,0,0,0,False
+AI-01-06,"Знание, обоснование и контрпримеры Геттиера",translated_from_extracted_text,1435,1862,3,False
+AI-01-07,Тест Тьюринга и его интерпретация,translated_from_extracted_text,760,1162,2,False
+AI-01-08,Аргумент китайской комнаты и возражения,translated_from_extracted_text,1361,1532,4,False
+AI-01-09,Законы робототехники Азимова и их ограничения,translated_from_extracted_text,1358,1476,8,False
+AI-01-10,Этические риски автономных решений,translated_from_extracted_text,1211,1369,4,False
+AI-01-11,"Справедливость, прозрачность и подотчётность ИИ",no_source,0,0,0,False
+AI-01-12,"Когнитивные искажения, надёжность данных и оценка выдачи ИИ",translated_from_extracted_text,1050,1332,3,False
+AI-01-13,Высказывания и логические связки,translated_from_extracted_text,3235,3354,8,False
+AI-01-14,Таблицы истинности,translated_from_extracted_text,2365,2065,5,False
+AI-01-15,Логическая эквивалентность и законы преобразования,translated_from_extracted_text,5146,5041,8,True
+AI-01-16,"Предикаты, отношения и формулы первого порядка",translated_from_extracted_text,3263,4158,8,False
+AI-01-17,Кванторы и области действия,translated_from_extracted_text,4191,4288,8,True
+AI-01-18,Правила логического вывода и построение доказательства,translated_from_extracted_text,6355,5810,8,True
+AI-01-19,Исторические и культурные образы искусственного разума,translated_from_extracted_text,444,446,1,False
+AI-01-20,Ситуационное исчисление и логическое представление изменений,translated_from_extracted_text,3347,3020,6,False
+AI-01-21,Доказательство по математической индукции,translated_from_extracted_text,725,1036,2,False
+AI-01-22,"Модели, выполнимость и логическое следование",translated_from_extracted_text,1916,2192,5,False
+AI-01-23,Корректность и полнота логического вывода,translated_from_extracted_text,1795,2411,5,False
+AI-01-24,Необходимые и достаточные условия,translated_from_extracted_text,577,670,2,False
+AI-02-01,Понятие агента и агентной функции,translated_from_extracted_text,2032,2247,5,False
+AI-02-02,Рациональность и ограниченность знаний агента,translated_from_extracted_text,1045,1077,2,False
+AI-02-03,Описание задачи с помощью PEAS,translated_from_extracted_text,4303,5536,8,True
+AI-02-04,Свойства среды агента,translated_from_extracted_text,2723,2953,6,False
+AI-02-05,Простой рефлексный агент,translated_from_extracted_text,466,705,3,False
+AI-02-06,Рефлексный агент с внутренней моделью,translated_from_extracted_text,546,751,2,False
+AI-02-07,Целеориентированный агент,translated_from_extracted_text,1308,1375,2,False
+AI-02-08,Агент на основе функции полезности,translated_from_extracted_text,419,667,2,False
+AI-02-09,Обучающийся агент и обратная связь,translated_from_extracted_text,725,1072,2,False
+AI-03-01,Назначение и архитектура экспертных систем,translated_from_extracted_text,1647,1848,3,False
+AI-03-02,Получение знаний от эксперта,translated_from_extracted_text,492,689,1,False
+AI-03-03,ELIZA и системы сопоставления шаблонов,translated_from_extracted_text,1551,2354,3,False
+AI-03-04,Зима искусственного интеллекта,translated_from_extracted_text,437,644,1,False
+AI-03-05,Логическое и императивное программирование,translated_from_extracted_text,2115,2878,4,False
+AI-03-06,Факты и правила Prolog,translated_from_extracted_text,6781,6568,8,True
+AI-03-07,"Запросы, сопоставление и логический вывод Prolog",translated_from_extracted_text,3827,4356,6,False
+AI-03-08,"Термы, переменные, структуры и списки Prolog",translated_from_extracted_text,5210,5237,8,True
+AI-03-09,Рекурсия и вычисления в Prolog,translated_from_extracted_text,4155,4275,8,True
+AI-03-10,Проектирование базы знаний семейных отношений,translated_from_extracted_text,3036,3147,8,False
+AI-04-01,Формулировка задачи поиска и пространства состояний,translated_from_extracted_text,3447,3624,2,False
+AI-04-02,Информированный и неинформированный поиск,translated_from_extracted_text,1313,1398,3,False
+AI-04-03,Поиск в глубину и представление дерева,translated_from_extracted_text,1088,1338,2,False
+AI-04-04,Поиск с возвратом и отсечение ветвей,translated_from_extracted_text,2713,3380,3,False
+AI-04-05,Расстановка N ферзей,translated_from_extracted_text,2069,2161,2,False
+AI-04-06,Эвристическая функция,translated_from_extracted_text,1262,1428,1,False
+AI-04-07,Допустимость эвристики,translated_from_extracted_text,1371,1232,1,False
+AI-04-08,Согласованность эвристики,translated_from_extracted_text,1556,1471,1,False
+AI-04-09,Минимакс и дерево игры,translated_from_extracted_text,2316,2956,7,False
+AI-04-10,Альфа-бета-отсечение,translated_from_extracted_text,3924,4826,8,True
+AI-04-11,Жадный выбор и его локальная оптимальность,translated_from_extracted_text,1773,2089,6,False
+AI-04-12,Поиск с восхождением к вершине,translated_from_extracted_text,4377,4923,8,True
+AI-04-13,"Локальные оптимумы, плато и перезапуски",translated_from_extracted_text,2201,2828,2,False
+AI-04-14,Имитация отжига,translated_from_extracted_text,4117,3900,8,True
+AI-04-15,Дилемма исследования и использования,translated_from_extracted_text,3964,3970,8,True
+AI-04-16,Функция оценки A* f=g+h,translated_from_extracted_text,6037,5629,2,True
+AI-04-17,Алгоритм A* и списки OPEN/CLOSED,translated_from_extracted_text,19334,20588,8,True
+AI-04-18,Модель соседства на сетке для поиска пути,translated_from_extracted_text,1178,1100,5,False
+AI-04-19,Табу-поиск и запрещённые ходы,translated_from_extracted_text,6783,7124,8,True
+AI-04-20,Длительность запрета и критерий aspiration,translated_from_extracted_text,3917,4243,2,False
+AI-04-21,Мир Wumpus как задача поиска,translated_from_extracted_text,7407,6547,8,True
+AI-04-22,Ландшафт приспособленности и бассейны притяжения,translated_from_extracted_text,3708,4112,6,False
+AI-04-23,Измерение сложности ландшафта случайными блужданиями,translated_from_extracted_text,1379,1619,4,False
+AI-05-01,Метод Монте-Карло и случайные проигрывания,translated_from_extracted_text,2477,2463,3,False
+AI-05-02,Мотивация частичного построения дерева MCTS,translated_from_extracted_text,2057,2780,6,False
+AI-05-03,"Полный цикл MCTS: selection, expansion, rollout, backpropagation",translated_from_extracted_text,3163,3632,4,False
+AI-05-04,Статистика посещений и наград MCTS,translated_from_extracted_text,3032,3668,8,False
+AI-05-05,Баланс исследования и использования в UCT,translated_from_extracted_text,2838,3377,8,False
+AI-05-07,Выбор финального действия по статистике MCTS,translated_from_extracted_text,1557,1954,3,False
+AI-05-08,Параллелизация Monte Carlo Tree Search,translated_from_extracted_text,471,663,1,False
+AI-06-01,Планирование как поиск последовательности действий,translated_from_extracted_text,3257,3635,6,False
+AI-06-02,Структура PDDL domain/problem на примере задач планирования,translated_from_extracted_text,5955,6118,3,True
+AI-06-03,"Предикаты, объекты и типы в PDDL",translated_from_extracted_text,4021,4112,8,True
+AI-06-04,"Предусловия, действия и эффекты PDDL",translated_from_extracted_text,2426,3226,6,False
+AI-06-05,Начальное состояние и целевое условие,translated_from_extracted_text,2849,3111,7,False
+AI-06-06,Получение и проверка плана PDDL-планировщиком,translated_from_extracted_text,1713,2462,5,False
+AI-06-07,Временное планирование в PDDL 2.1,translated_from_extracted_text,3831,3683,7,False
+AI-06-08,PDDL и исполнение планов в робототехнике через ROSPlan,translated_from_extracted_text,3908,3664,8,False
+AI-07-01,Эволюционный цикл популяции решений,translated_from_extracted_text,2853,3409,3,False
+AI-07-02,Фитнес-функция и отбор,translated_from_extracted_text,2774,3453,7,False
+AI-07-03,Пропорциональный отбор roulette wheel,translated_from_extracted_text,609,780,1,False
+AI-07-04,Ранговый и турнирный отбор,translated_from_extracted_text,1650,1999,3,False
+AI-07-05,Хромосома и генетический алгоритм,translated_from_extracted_text,1886,2549,1,False
+AI-07-06,Кроссовер и мутация строковых хромосом,translated_from_extracted_text,1554,2605,8,False
+AI-07-07,Деревья генетического программирования и корректные операторы,translated_from_extracted_text,1642,2388,8,False
+AI-07-08,Разрастание деревьев GP и борьба с bloat,translated_from_extracted_text,2370,2936,6,False
+AI-07-09,Декартово генетическое программирование,translated_from_extracted_text,1128,1433,6,False
+AI-07-10,Эволюционное программирование и конечные автоматы,translated_from_extracted_text,1333,1760,4,False
+AI-07-11,Эволюционные стратегии и вещественные векторы,translated_from_extracted_text,1761,2179,4,False
+AI-07-12,"Представления решения в эволюционных алгоритмах: прямое, косвенное и вещественное",translated_from_extracted_text,4765,5670,8,True
+AI-07-13,Эпистаз и взаимодействие генов,translated_from_extracted_text,1600,2222,2,False
+AI-07-14,Кроссовер для перестановок в TSP,translated_from_extracted_text,1856,5254,8,False
+AI-07-16,Коэволюция и относительная приспособленность,translated_from_extracted_text,2704,3910,7,False
+AI-07-17,"Поведенческие деревья: selector, sequence и decorator",translated_from_extracted_text,3037,4729,8,False
+AI-07-18,Эволюция структур поведенческих деревьев,translated_from_extracted_text,3429,3614,8,False
+AI-07-19,Эволюция управления роботизированным роем,translated_from_extracted_text,7154,7701,8,True
+AI-07-20,Проектирование хромосомы в конкурентной симуляции,translated_from_extracted_text,3392,4097,8,False
+AI-08-01,Искусственный нейрон как взвешенная функция,translated_from_extracted_text,2190,3164,5,False
+AI-08-02,Перцептрон Розенблатта и линейная разделимость,translated_from_extracted_text,1249,1491,6,False
+AI-08-03,"Логические операции AND, OR, NOT, NAND в перцептроне",translated_from_extracted_text,813,1170,4,False
+AI-08-04,Неразделимость XOR одним перцептроном,translated_from_extracted_text,774,1031,3,False
+AI-08-05,"Активации ReLU, Leaky ReLU, PReLU, Softplus",translated_from_extracted_text,1102,1540,5,False
+AI-08-06,Многослойный перцептрон и прямой проход,translated_from_extracted_text,570,887,2,False
+AI-08-07,Обучение обратным распространением ошибки,translated_from_extracted_text,1736,2647,2,False
+AI-08-08,Интерпретируемость и ограничения нейросетей,translated_from_extracted_text,843,1105,1,False
+AI-08-09,Нейроэволюция и поиск весов,translated_from_extracted_text,827,1062,2,False
+AI-08-10,Практическая классификация датасета Moons,no_source,0,0,0,False
+AI-08-11,Практическая классификация MNIST,no_source,0,0,0,False
+AI-08-12,AlphaGo как пример сочетания обучения и игрового поиска,translated_from_extracted_text,1914,2399,4,False
+AI-09-01,"Модель частицы, её позиция и скорость в PSO",translated_from_extracted_text,3077,3360,5,False
+AI-09-02,Формула обновления скорости и положения PSO,translated_from_extracted_text,1947,2117,4,False
+AI-09-03,Инерция и управление exploration-exploitation в PSO,translated_from_extracted_text,1146,1303,3,False
+AI-09-04,Топологии gbest и lbest,translated_from_extracted_text,2713,2918,5,False
+AI-09-05,Критерии остановки PSO,translated_from_extracted_text,253,383,2,False
+AI-09-06,Муравьиная оптимизация: стигмергия и общие семейства ACO,translated_from_extracted_text,5830,6306,8,True
+AI-09-07,Вероятностный выбор следующего ребра в ACO,translated_from_extracted_text,2803,3560,1,False
+AI-09-08,"Обновление феромона, испарение и подкрепление",translated_from_extracted_text,3923,4873,3,True
+AI-09-09,Ant System для коммивояжёра,translated_from_extracted_text,5199,6266,8,True
+AI-09-11,Моделирование коллективного движения и flocking,translated_from_extracted_text,613,896,2,False
+AI-09-12,Адаптация PSO для дискретного поиска,translated_from_extracted_text,337,435,1,False
+AI-09-13,Распределение частиц и обмен лучшими решениями в PSO,translated_from_extracted_text,589,768,1,False
+AI-10-01,Генеративные и дискриминативные модели,translated_from_extracted_text,1301,1555,3,False
+AI-10-02,Исторические этапы генеративного ИИ,translated_from_extracted_text,672,1035,1,False
+AI-10-03,Вариационные автоэнкодеры VAE,translated_from_extracted_text,826,1000,2,False
+AI-10-04,Генеративно-состязательные сети GAN,translated_from_extracted_text,3187,2756,5,False
+AI-10-05,Диффузионные генеративные модели,translated_from_extracted_text,752,877,1,False
+AI-10-06,Языковые модели LLM и предсказание токенов,translated_from_extracted_text,1173,1518,2,False
+AI-10-07,Возможности и сферы применения генеративного ИИ,translated_from_extracted_text,934,1011,1,False
+AI-10-08,Галлюцинации и проверка достоверности,translated_from_extracted_text,700,874,2,False
+AI-10-09,Проектирование промпта для LLM,translated_from_extracted_text,641,750,2,False
+AI-10-10,RAG и опора на проверяемые источники,translated_from_extracted_text,348,595,1,False
+AI-10-11,LLM-агенты с инструментами и состоянием,translated_from_extracted_text,2389,3069,4,False
+AI-10-12,"Риски, преимущества и ограничения генеративного ИИ",translated_from_extracted_text,915,1051,3,False
+AI-10-13,Полноценный жизненный цикл этически ответственного ИИ,no_source,0,0,0,False

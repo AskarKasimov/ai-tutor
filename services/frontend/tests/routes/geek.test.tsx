@@ -608,3 +608,37 @@ it('gives the dialogue a level-one heading', async () => {
     await screen.findByRole('heading', { name: 'Устный экзамен', level: 1 }),
   ).toBeInTheDocument()
 })
+
+it.each(['mediaDevices', 'MediaRecorder', 'permission'])(
+  'restores Geek playback when microphone start fails: %s',
+  async (failure) => {
+    vi.stubGlobal(
+      'MediaRecorder',
+      failure === 'MediaRecorder' ? undefined : class {},
+    )
+    Object.defineProperty(navigator, 'mediaDevices', {
+      configurable: true,
+      value:
+        failure === 'mediaDevices'
+          ? undefined
+          : {
+              getUserMedia: () =>
+                Promise.reject(new DOMException('Denied', 'NotAllowedError')),
+            },
+    })
+    geekBackend()
+    renderApp()
+    await start()
+    await screen.findByRole('button', { name: 'Остановить озвучку' })
+    const pausedBefore = FakeAudio.paused
+    fireEvent.click(screen.getByRole('button', { name: 'Ответить голосом' }))
+    expect(await screen.findByRole('alert')).toBeVisible()
+    expect(FakeAudio.paused).toBeGreaterThan(pausedBefore)
+    const listen = screen.getByRole('button', { name: 'Прослушать реплику' })
+    await waitFor(() => expect(listen).toBeEnabled())
+    fireEvent.click(listen)
+    expect(
+      await screen.findByRole('button', { name: 'Остановить озвучку' }),
+    ).toBeEnabled()
+  },
+)

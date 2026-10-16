@@ -15,6 +15,36 @@
 		respond 404
 	}
 
+	@llm_gateway path /llm-gateway /llm-gateway/*
+	handle @llm_gateway {
+		@gateway_enabled expression {env.COMPOSE_PROFILES}.matches('(^|,)gateway(,|$)')
+		handle @gateway_enabled {
+			@vscode_origin header_regexp Origin ^(vscode-webview://[a-zA-Z0-9-]+|https://[a-zA-Z0-9-]+\.vscode-cdn\.net)$
+			route @vscode_origin {
+				header {
+					Access-Control-Allow-Origin "{http.request.header.Origin}"
+					Access-Control-Allow-Methods "POST, OPTIONS"
+					Access-Control-Allow-Headers "Content-Type, Idempotency-Key"
+					Access-Control-Expose-Headers "X-Request-ID"
+					+Vary Origin
+				}
+				@preflight method OPTIONS
+				respond @preflight 204
+			}
+			uri strip_prefix /llm-gateway
+			reverse_proxy llm-gateway:8010
+		}
+		respond 404
+	}
+
+	handle /llmgateway.v1.Gateway/* {
+		@gateway_enabled expression {env.COMPOSE_PROFILES}.matches('(^|,)gateway(,|$)')
+		handle @gateway_enabled {
+			reverse_proxy h2c://llm-gateway:8011
+		}
+		respond 404
+	}
+
 	@api path /api/v1 /api/v1/*
 	handle @api {
 		@vscode_origin header_regexp Origin ^(vscode-webview://[a-zA-Z0-9-]+|https://[a-zA-Z0-9-]+\.vscode-cdn\.net)$

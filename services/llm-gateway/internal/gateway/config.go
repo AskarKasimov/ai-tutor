@@ -1,0 +1,226 @@
+package gateway
+
+import (
+	"encoding/json"
+	"errors"
+	"fmt"
+	"net/url"
+	"os"
+	"time"
+)
+
+type Config struct {
+	ListenAddress            string              `json:"listen_address"`
+	GRPCListenAddress        string              `json:"grpc_listen_address"`
+	GRPCMaxReceiveBytes      int                 `json:"grpc_max_receive_bytes"`
+	GRPCMaxSendBytes         int                 `json:"grpc_max_send_bytes"`
+	GRPCMaxConcurrentStreams int                 `json:"grpc_max_concurrent_streams"`
+	KafkaBrokers             []string            `json:"kafka_brokers"`
+	RequestsTopic            string              `json:"requests_topic"`
+	StateTopic               string              `json:"state_topic"`
+	ConsumerGroup            string              `json:"consumer_group"`
+	TransactionalID          string              `json:"transactional_id"`
+	MaxBodyBytes             int64               `json:"max_body_bytes"`
+	MaxPending               int                 `json:"max_pending"`
+	MaxPendingBytes          int64               `json:"max_pending_bytes"`
+	MaxConnections           int                 `json:"max_connections"`
+	RequestDeadline          time.Duration       `json:"request_deadline"`
+	UpstreamTimeout          time.Duration       `json:"upstream_timeout"`
+	Retention                time.Duration       `json:"retention"`
+	MaxInputLag              time.Duration       `json:"max_input_lag"`
+	GracePeriod              time.Duration       `json:"grace_period"`
+	Pools                    map[string][]string `json:"pools"`
+	Instances                []InstanceConfig    `json:"instances"`
+}
+
+type InstanceConfig struct {
+	ID                       string        `json:"id"`
+	BaseURL                  string        `json:"base_url"`
+	Model                    string        `json:"model"`
+	Token                    string        `json:"token"`
+	MaxInFlight              int           `json:"max_in_flight"`
+	SupportedParameters      []string      `json:"supported_parameters"`
+	SupportedResponseFormats []string      `json:"supported_response_formats"`
+	ContextWindow            int           `json:"context_window"`
+	Timeout                  time.Duration `json:"timeout"`
+}
+
+func (i *InstanceConfig) UnmarshalJSON(data []byte) error {
+	type plain InstanceConfig
+	var raw struct {
+		*plain
+		Timeout string `json:"timeout"`
+	}
+	raw.plain = (*plain)(i)
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	if raw.Timeout != "" {
+		d, err := time.ParseDuration(raw.Timeout)
+		if err != nil {
+			return fmt.Errorf("timeout: %w", err)
+		}
+		i.Timeout = d
+	}
+	return nil
+}
+
+func LoadConfig(path string) (Config, error) {
+	var c Config
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return c, fmt.Errorf("read gateway config: %w", err)
+	}
+	if err := json.Unmarshal(b, &c); err != nil {
+		return c, fmt.Errorf("decode gateway config: %w", err)
+	}
+	c.defaults()
+	return c, c.Validate()
+}
+
+func (c *Config) UnmarshalJSON(data []byte) error {
+	type plain Config
+	var raw struct {
+		*plain
+		RequestDeadline string `json:"request_deadline"`
+		UpstreamTimeout string `json:"upstream_timeout"`
+		Retention       string `json:"retention"`
+		MaxInputLag     string `json:"max_input_lag"`
+		GracePeriod     string `json:"grace_period"`
+	}
+	raw.plain = (*plain)(c)
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	for _, value := range []struct {
+		name, raw string
+		out       *time.Duration
+	}{
+		{"request_deadline", raw.RequestDeadline, &c.RequestDeadline}, {"upstream_timeout", raw.UpstreamTimeout, &c.UpstreamTimeout},
+		{"retention", raw.Retention, &c.Retention}, {"max_input_lag", raw.MaxInputLag, &c.MaxInputLag}, {"grace_period", raw.GracePeriod, &c.GracePeriod},
+	} {
+		if value.raw != "" {
+			parsed, err := time.ParseDuration(value.raw)
+			if err != nil {
+				return fmt.Errorf("%s: %w", value.name, err)
+			}
+			*value.out = parsed
+		}
+	}
+	return nil
+}
+
+func (c *Config) defaults() {
+	if c.GRPCListenAddress == "" {
+		c.GRPCListenAddress = ":8011"
+	}
+	if c.GRPCMaxReceiveBytes == 0 {
+		c.GRPCMaxReceiveBytes = 2 << 20
+	}
+	if c.GRPCMaxSendBytes == 0 {
+		c.GRPCMaxSendBytes = 40 << 20
+	}
+	if c.GRPCMaxConcurrentStreams == 0 {
+		c.GRPCMaxConcurrentStreams = 128
+	}
+	if c.ListenAddress == "" {
+		c.ListenAddress = ":8010"
+	}
+	if c.RequestsTopic == "" {
+		c.RequestsTopic = "llm.requests.v1"
+	}
+	if c.StateTopic == "" {
+		c.StateTopic = "llm.state.v1"
+	}
+	if c.ConsumerGroup == "" {
+		c.ConsumerGroup = "llm-gateway-v1"
+	}
+	if c.TransactionalID == "" {
+		c.TransactionalID = "llm-gateway-v1"
+	}
+	if c.MaxBodyBytes == 0 {
+		c.MaxBodyBytes = 1 << 20
+	}
+	if c.MaxPending == 0 {
+		c.MaxPending = 1000
+	}
+	if c.MaxPendingBytes == 0 {
+		c.MaxPendingBytes = 256 << 20
+	}
+	if c.MaxConnections == 0 {
+		c.MaxConnections = 1024
+	}
+	if c.RequestDeadline == 0 {
+		c.RequestDeadline = 180 * time.Second
+	}
+	if c.UpstreamTimeout == 0 {
+		c.UpstreamTimeout = 120 * time.Second
+	}
+	if c.Retention == 0 {
+		c.Retention = 24 * time.Hour
+	}
+	if c.MaxInputLag == 0 {
+		c.MaxInputLag = 24 * time.Hour
+	}
+	if c.GracePeriod == 0 {
+		c.GracePeriod = 30 * time.Second
+	}
+	for i := range c.Instances {
+		if c.Instances[i].Timeout == 0 {
+			c.Instances[i].Timeout = c.UpstreamTimeout
+		}
+	}
+}
+
+func (c Config) Validate() error {
+	if c.GRPCListenAddress == c.ListenAddress || c.GRPCMaxReceiveBytes <= 0 || c.GRPCMaxSendBytes <= 0 || c.GRPCMaxConcurrentStreams <= 0 {
+		return errors.New("invalid gRPC listener or limits")
+	}
+	if len(c.KafkaBrokers) == 0 {
+		return errors.New("kafka_brokers must not be empty")
+	}
+	if c.RequestDeadline <= 0 || c.UpstreamTimeout <= 0 || c.UpstreamTimeout > 120*time.Second || c.Retention <= 0 || c.MaxInputLag <= 0 || c.GracePeriod <= 0 {
+		return errors.New("request_deadline and upstream_timeout must be positive; upstream_timeout cannot exceed 120s")
+	}
+	if c.MaxBodyBytes <= 0 || c.MaxPending <= 0 || c.MaxPendingBytes <= 0 || c.MaxConnections <= 0 {
+		return errors.New("gateway limits must be positive")
+	}
+	instances := make(map[string]InstanceConfig, len(c.Instances))
+	for _, in := range c.Instances {
+		if !validInstanceID(in.ID) || in.Model == "" || in.MaxInFlight < 1 || in.ContextWindow < 1 {
+			return fmt.Errorf("instance %q has invalid id, model, max_in_flight, or context_window", in.ID)
+		}
+		u, err := url.Parse(in.BaseURL)
+		if err != nil || u.Scheme == "" || u.Host == "" || (u.Scheme != "https" && u.Scheme != "http") {
+			return fmt.Errorf("instance %q has invalid base_url", in.ID)
+		}
+		if _, exists := instances[in.ID]; exists {
+			return fmt.Errorf("duplicate instance id %q", in.ID)
+		}
+		instances[in.ID] = in
+	}
+	for _, level := range []string{"low", "medium", "high"} {
+		pool := c.Pools[level]
+		if len(pool) == 0 {
+			return fmt.Errorf("pools.%s must not be empty", level)
+		}
+		for _, id := range pool {
+			if _, ok := instances[id]; !ok {
+				return fmt.Errorf("pools.%s references unknown instance %q", level, id)
+			}
+		}
+	}
+	return nil
+}
+
+func validInstanceID(id string) bool {
+	if id == "" {
+		return false
+	}
+	for _, r := range id {
+		if !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '-' || r == '_' || r == '.') {
+			return false
+		}
+	}
+	return true
+}

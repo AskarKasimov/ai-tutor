@@ -8,7 +8,7 @@ import {
   Square,
   Volume2,
 } from 'lucide-react'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   DiagnosticApiError,
@@ -115,14 +115,6 @@ function Dialogue({
   const audio = useTurnAudio(session.id)
   // While the student records or checks a spoken answer, Geek stays silent.
   const [capturing, setCapturing] = useState(false)
-  const stopAudio = audio.stop
-  const capture = useCallback(
-    (active: boolean) => {
-      if (active) stopAudio()
-      setCapturing(active)
-    },
-    [stopAudio],
-  )
   const end = useRef<HTMLDivElement>(null)
   const currentTurnId = session.currentTurnId
   const lastTurn = session.turns[session.turns.length - 1]
@@ -221,7 +213,8 @@ function Dialogue({
             if (answer.variables && !answer.isPending)
               answer.mutate(answer.variables)
           }}
-          onCapture={capture}
+          onBeforeRecord={audio.stop}
+          onCapture={setCapturing}
         />
       )}
       {/* The scroll anchor sits under the answer field, so the latest turn is
@@ -336,6 +329,7 @@ function Composer({
   error,
   onSend,
   onRetry,
+  onBeforeRecord,
   onCapture,
 }: {
   turnId: string
@@ -343,7 +337,9 @@ function Composer({
   error: Error | null
   onSend: (answer: DiagnosticAnswer, display: string) => void
   onRetry: () => void
-  // Reports when the microphone or a transcript check starts and ends.
+  // Stop playback synchronously before requesting the microphone.
+  onBeforeRecord: () => void
+  // Reports actual microphone or transcript activity, including failed starts.
   onCapture: (active: boolean) => void
 }) {
   const { t } = useTranslation()
@@ -492,7 +488,7 @@ function Composer({
             disabled={busy}
             onClick={() => {
               // Geek's voice must not end up in the recording.
-              onCapture(true)
+              onBeforeRecord()
               void voice.start()
             }}
           >

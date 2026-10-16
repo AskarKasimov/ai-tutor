@@ -3,7 +3,7 @@ import asyncio
 import json
 import re
 
-from course_graph.topics.extract import merge_topics, normalized_title
+from course_graph.topics.extract import clean_topic_title, merge_topics, normalized_title, procedural_title
 from course_graph.topics.models import LinkResponse, RequirementDecision
 from course_graph.topics.retrieval import CandidateIndex
 
@@ -76,7 +76,7 @@ def evidence_for(topic, query, limit, encoder=None):
 
 
 def valid_evidence(evidence, excerpts):
-    if not evidence or not evidence.quote or not evidence.quote.strip():
+    if not excerpts or not evidence or not evidence.quote or not evidence.quote.strip():
         return False
     raw_quote = evidence.quote.strip()
     words = raw_quote.split()
@@ -99,6 +99,14 @@ def valid_evidence(evidence, excerpts):
                 evidence.quote = match.group()
                 return True
 
+    for source in excerpts:
+        match = re.search(pattern, source["text"])
+        if match:
+            evidence.material_id = source["material_id"]
+            evidence.block_id = source["block_id"]
+            evidence.quote = match.group()
+            return True
+
     cleaned_words = [re.sub(r"^[^\w]+|[^\w]+$", "", w) for w in words]
     meaningful = [w for w in cleaned_words if w]
     if len(meaningful) >= 2:
@@ -116,6 +124,13 @@ def valid_evidence(evidence, excerpts):
                     evidence.block_id = source["block_id"]
                     evidence.quote = match.group()
                     return True
+        for source in excerpts:
+            match = re.search(punct_pattern, source["text"], re.IGNORECASE)
+            if match:
+                evidence.material_id = source["material_id"]
+                evidence.block_id = source["block_id"]
+                evidence.quote = match.group()
+                return True
 
     if len(meaningful) >= 4:
         for span_len in range(len(meaningful) - 1, 2, -1):
@@ -128,11 +143,35 @@ def valid_evidence(evidence, excerpts):
                             evidence.block_id = source["block_id"]
                             evidence.quote = match.group()
                             return True
+                for source in excerpts:
+                    match = re.search(sub_pattern, source["text"], re.IGNORECASE)
+                    if match and len(match.group()) >= 15:
+                        evidence.material_id = source["material_id"]
+                        evidence.block_id = source["block_id"]
+                        evidence.quote = match.group()
+                        return True
 
     return False
 
 
 async def build_links(topics, complete, encoder, per_requirement=5, max_chars=16000, evidence_chars=1400, concurrency=2):
+    valid_topics = []
+    for t in topics:
+        cleaned = clean_topic_title(t.title)
+        if procedural_title(cleaned) or procedural_title(t.title):
+            if t.title.strip().lower() in ("ссылки", "литература", "источники", "библиография", "references", "links") and not any(r for r in t.requires):
+                continue
+            for prov in t.provides:
+                c_prov = clean_topic_title(prov.strip().strip(". "))
+                if c_prov and not procedural_title(c_prov):
+                    cleaned = c_prov[:1].upper() + c_prov[1:]
+                    break
+            else:
+                cleaned = "Практическое применение концепций" if not cleaned or procedural_title(cleaned) else cleaned
+        t.title = cleaned
+        valid_topics.append(t)
+    topics = valid_topics if valid_topics else topics
+
     if len({t.id for t in topics}) != len(topics):
         raise ValueError("Повторный ID темы")
     # Exact title dedup only: do not silently merge merely similar concepts.

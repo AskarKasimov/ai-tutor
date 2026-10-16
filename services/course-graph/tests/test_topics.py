@@ -4,7 +4,14 @@ import json
 import numpy as np
 import pytest
 
-from course_graph.topics.extract import ExtractionSettings, administrative_question, extract_topics, topic_blocks
+from course_graph.topics.extract import (
+    ExtractionSettings,
+    administrative_question,
+    clean_topic_title,
+    extract_topics,
+    procedural_title,
+    topic_blocks,
+)
 from course_graph.topics.graph import build_links, valid_evidence
 from course_graph.topics.models import Evidence, Source, Topic
 from course_graph.topics.retrieval import CandidateIndex
@@ -217,6 +224,85 @@ def test_administrative_question_is_repaired_without_deleting_mixed_exercise(adm
 ])
 def test_administrative_filter_allows_technical_counts_and_runtime_questions(question):
     assert not administrative_question(question)
+
+
+def test_procedural_title_cleaning_and_detection():
+    assert clean_topic_title("## Упражнение 1: Семейное дерево") == "Семейное дерево"
+    assert clean_topic_title("Задание 2 — Поиск в глубину") == "Поиск в глубину"
+    assert clean_topic_title("Практика: Основы Prolog") == "Основы Prolog"
+    assert clean_topic_title("Лабораторная работа 1: Синтаксис") == "Синтаксис"
+    assert clean_topic_title("Домашнее задание: Рекурсивные правила") == "Рекурсивные правила"
+
+    assert procedural_title("Домашнее задание")
+    assert procedural_title("Упражнение 4: Домашнее задание (запрос без новых правил)")
+    assert procedural_title("Ссылки")
+    assert procedural_title("Литература")
+    assert procedural_title("Вопросы для самопроверки")
+    assert not procedural_title("Семейное дерево")
+    assert not procedural_title("Производная функции")
+    assert not procedural_title("Составление запросов к базе фактов в Prolog")
+
+
+def test_procedural_title_is_repaired_to_substantive_concept():
+    source = "Составьте запрос к базе фактов, определяющий всех людей с одинаковой фамилией без добавления новых правил."
+    calls = []
+
+    async def complete(system, payload):
+        data = json.loads(payload)
+        calls.append(data)
+        if len(calls) == 1:
+            title = "Упражнение 4: Домашнее задание"
+        else:
+            title = "Составление запросов к базе фактов в Prolog"
+        return json.dumps({"remove": [], "topics": [{
+            "title": title, "requires": ["факты в Prolog"],
+            "provides": ["составление запросов к фактам без правил"],
+            "question": "Какой запрос вернет людей с одинаковой фамилией?",
+            "block_ids": [b["id"] for b in data["blocks"]],
+        }]}, ensure_ascii=False)
+
+    result = run(extract_topics(source, complete))
+    assert len(calls) == 2
+    assert "процедурное" in calls[1]["correction"]
+    assert result["report"]["topics"][0]["title"] == "Составление запросов к базе фактов в Prolog"
+
+
+def test_procedural_prefix_is_cleaned_without_retry():
+    source = "Опишите факты parent(X, Y) для построения генеалогического древа."
+    calls = []
+
+    async def complete(system, payload):
+        data = json.loads(payload)
+        calls.append(data)
+        return json.dumps({"remove": [], "topics": [{
+            "title": "Упражнение 1: Семейное дерево", "requires": [],
+            "provides": ["моделирование родственных отношений"],
+            "question": "Как объявить предикат parent?",
+            "block_ids": [b["id"] for b in data["blocks"]],
+        }]}, ensure_ascii=False)
+
+    result = run(extract_topics(source, complete))
+    assert len(calls) == 1
+    assert result["report"]["topics"][0]["title"] == "Семейное дерево"
+
+
+def test_build_links_sanitizes_procedural_titles_and_filters_links_card():
+    t_normal = make_topic("T1", "Синтаксис Prolog", ["базовый синтаксис"])
+    t_hw = make_topic("T2", "Упражнение 4: Домашнее задание", ["формирование запросов к фактам"], ["базовый синтаксис"])
+    t_links = make_topic("T3", "Ссылки", ["перечень видеоматериалов"])
+
+    async def stub_judge(system, payload):
+        tasks = json.loads(payload)["tasks"]
+        decisions = [{"target_id": t["target_id"], "requirement": t["requirement"],
+                      "prerequisite_ids": [], "reason": "Нет связей"} for t in tasks]
+        return json.dumps({"links": [], "requirements": decisions}, ensure_ascii=False)
+
+    graph = run(build_links([t_normal, t_hw, t_links], stub_judge, Encoder()))
+    titles = [t["title"] for t in graph["topics"]]
+    assert "Ссылки" not in titles
+    assert "Упражнение 4: Домашнее задание" not in titles
+    assert "Формирование запросов к фактам" in titles
+
 
 
 def test_global_retrieval_finds_distant_topic_and_excludes_self():

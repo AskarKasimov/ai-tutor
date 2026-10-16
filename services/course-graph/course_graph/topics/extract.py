@@ -48,6 +48,15 @@ grading (правила оценки студентов), contacts, greeting, th
 Не удаляй определения, упражнения, условия задач, примеры и библиографию.
 Смешанный блок сохраняй целиком. Блоки protected нельзя удалять: код, формулы,
 таблицы и изображения должны быть привязаны к учебной теме.
+Каждое название темы (title) должно отражать реальное предметное понятие, метод или навык.
+СТРОГО ЗАПРЕЩЕНО использовать процедурные названия и номера:
+«Домашнее задание», «ДЗ», «Упражнение», «Упражнение 1», «Задание 2», «Лабораторная работа»,
+«Практика», «Самостоятельная работа», «Слайд N», «Homework», «Task», «Exercise», «Ссылки».
+Если блок содержит упражнение, задачу или домашнее задание, ОБЯЗАТЕЛЬНО проанализируй его
+предметное содержание и назови тему по изучаемому навыку или концепции (например,
+вместо «Упражнение 4: Домашнее задание» — «Составление запросов к базе фактов в Prolog»;
+вместо «Упражнение 1: Семейное дерево» — «Моделирование родственных отношений в Prolog»;
+вместо «Упражнение 3: Рекурсия» — «Рекурсивные правила в Prolog»).
 """
 
 
@@ -160,11 +169,43 @@ def context_block(text):
         return True
     if any(re.match(r"введение в|introduction to", h, re.I) for h in headings) and len(" ".join(body)) < 160 and re.search(r"(?:недел\w*|week)\s*\d+", " ".join(body), re.I):
         return True
-    if any(re.fullmatch(r"план|повестка(?: дня)?|оглавление|итоги(?: лекции)?|agenda|summary|contents", h, re.I) for h in headings):
-        return len(body) <= 15 and all(len(line) <= 100 for line in body)
+    if any(re.fullmatch(r"план|повестка(?: дня)?|оглавление|итоги(?: лекции)?|ссылки|литература|источники|ресурсы|agenda|summary|contents|references|links", h, re.I) for h in headings):
+        return len(body) <= 20 and (all(len(line) <= 250 for line in body) or all(re.search(r"https?://|www\.", line) for line in body))
     # OCR labels alone do not explain relationships within a picture.
     if "<!-- image -->" in text and not any(re.match(r"[-*+]\s|\d+[.)]\s", line) for line in body):
         return all(len(line) <= 55 for line in body) and (len(body) > 2 or len(" ".join(body)) <= 65)
+    return False
+
+
+def clean_topic_title(title: str) -> str:
+    cleaned = title.strip().lstrip("#").strip()
+    cleaned = re.sub(
+        r"^(?:упражнени\w*|домашн\w*\s+задан\w*|дз|задани\w*|задач\w*|практик\w*|лабораторн\w*\s+работ\w*|лаба|exercise|task|homework|lab)\s*\d*(?:\s+(?:по|на|в|for|in|on))?[\s.:\-—]+\s*",
+        "", cleaned, flags=re.I
+    )
+    cleaned = re.sub(
+        r"[\s(:—\-]*(?:домашнее\s+задание|дз|homework)[\s):—\-]*",
+        "", cleaned, flags=re.I
+    ).strip(" -—:.,«»\"'()")
+    if cleaned:
+        cleaned = cleaned[:1].upper() + cleaned[1:]
+    return cleaned if cleaned else title
+
+
+def procedural_title(title: str) -> bool:
+    t = title.strip()
+    if re.search(r"домашн\w*\s+задан\w*|\bдз\b|homework", t, re.I):
+        return True
+    if re.search(r"^(?:упражнени\w*|лабораторн\w*\s+работ\w*|практик\w*|задани\w*|задач\w*|слайд\s*\d+|exercise|task|lab)\b", t, re.I):
+        return True
+    if re.search(r"^(?:ссылки|литература|источники|библиография|references|links|вопросы|итоги|введение)$", t, re.I):
+        return True
+    if re.search(r"^(?:контрольные\s+вопросы|вопросы\s+для\s+самопроверки|вопросы\s+к\s+лекции)\b", t, re.I):
+        return True
+    if t.startswith("(") and t.endswith(")"):
+        return True
+    if len(t) <= 2:
+        return True
     return False
 
 
@@ -219,6 +260,26 @@ async def extract_topics(text, complete, material_id="material", week=None, sett
             decision.remove = [item for item in decision.remove if item.id in removed]
             assigned = set()
             for topic in decision.topics:
+                cleaned = clean_topic_title(topic.title)
+                if procedural_title(cleaned):
+                    if repair is None:
+                        raise ValueError(f"Название темы '{topic.title}' процедурное. Проанализируй содержание и сформулируй предметное название (понятие или навык), без слов 'Упражнение', 'Домашнее задание', 'Задание' и т.п.")
+                    for prov in topic.provides:
+                        c_prov = clean_topic_title(prov.strip().strip(". "))
+                        if c_prov and not procedural_title(c_prov):
+                            cleaned = c_prov[:1].upper() + c_prov[1:]
+                            break
+                    else:
+                        cleaned = "Практическое применение концепций" if not cleaned or procedural_title(cleaned) else cleaned
+                topic.title = cleaned
+
+                if topic.parent_title:
+                    p_cleaned = clean_topic_title(topic.parent_title)
+                    if procedural_title(p_cleaned):
+                        topic.parent_title = None
+                    else:
+                        topic.parent_title = p_cleaned
+
                 if re.search(r"как\s+(?:называется|назван|озаглавлен).*?(?:слайд|лекци|курс)", topic.question, re.I):
                     raise ValueError("Вопрос проверяет название слайда, а не учебное содержание; присоедини обложку к содержательной теме")
                 if re.search(r"(?:какой|каков)\s+номер\s+(?:недел|слайд|лекци)|(?:темы|вопросы).*?(?:итогах|оглавлении|плане лекции)", topic.question, re.I):

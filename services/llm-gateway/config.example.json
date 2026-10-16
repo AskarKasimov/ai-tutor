@@ -1,10 +1,8 @@
 {
   "listen_address": ":8010",
-  "grpc_listen_address": ":8011",
-  "grpc_max_receive_bytes": 2097152,
-  "grpc_max_send_bytes": 41943040,
-  "grpc_max_concurrent_streams": 128,
-  "kafka_brokers": ["redpanda:9092"],
+  "kafka_brokers": [
+    "redpanda:9092"
+  ],
   "requests_topic": "llm.requests.v1",
   "state_topic": "llm.state.v1",
   "consumer_group": "llm-gateway-v1",
@@ -19,54 +17,121 @@
   "max_input_lag": "24h",
   "grace_period": "30s",
   "pools": {
-    "low": ["model-a", "model-b", "model-c", "model-d"],
-    "medium": ["model-a", "model-b", "model-c", "model-d"],
-    "high": ["model-a", "model-b", "model-c", "model-d"]
+    "low": [
+      "gemma"
+    ],
+    "medium": [
+      "qwen-3-6"
+    ],
+    "high": [
+      "gpt-oss-120b",
+      "qwen3-coder-next"
+    ]
   },
   "instances": [
     {
-      "id": "model-a",
-      "base_url": "https://llm-a.internal",
-      "model": "gpt-oss-120b",
+      "id": "qwen-3-6",
+      "base_url": "http://10.100.10.70:8123/v1",
+      "model": "Qwen/Qwen3.6-35B-A3B",
       "token": "",
       "max_in_flight": 1,
-      "supported_parameters": ["temperature", "top_p", "stop", "presence_penalty", "frequency_penalty", "seed", "max_tokens", "max_completion_tokens", "response_format", "reasoning_effort"],
-      "supported_response_formats": ["text", "json_object"],
-      "context_window": 131072,
+      "supported_parameters": [
+        "temperature",
+        "top_p",
+        "stop",
+        "presence_penalty",
+        "frequency_penalty",
+        "seed",
+        "max_tokens",
+        "max_completion_tokens",
+        "response_format",
+        "reasoning_effort"
+      ],
+      "supported_response_formats": [
+        "text",
+        "json_object"
+      ],
+      "context_window": 128000,
       "timeout": "120s"
     },
     {
-      "id": "model-b",
-      "base_url": "https://llm-b.internal",
-      "model": "gpt-oss-120b",
+      "id": "gemma",
+      "base_url": "http://10.100.10.70:9998/v1",
+      "model": "google/gemma-4-31B-it",
       "token": "",
       "max_in_flight": 1,
-      "supported_parameters": ["temperature", "top_p", "stop", "presence_penalty", "frequency_penalty", "seed", "max_tokens", "max_completion_tokens", "response_format", "reasoning_effort"],
-      "supported_response_formats": ["text", "json_object"],
-      "context_window": 131072,
+      "supported_parameters": [
+        "temperature",
+        "top_p",
+        "stop",
+        "presence_penalty",
+        "frequency_penalty",
+        "seed",
+        "max_tokens",
+        "max_completion_tokens",
+        "response_format",
+        "reasoning_effort"
+      ],
+      "supported_response_formats": [
+        "text",
+        "json_object"
+      ],
+      "context_window": 65536,
       "timeout": "120s"
     },
     {
-      "id": "model-c",
-      "base_url": "https://llm-c.internal",
+      "id": "gpt-oss-120b",
+      "base_url": "http://10.100.10.105:30245/v1",
       "model": "gpt-oss-120b",
       "token": "",
       "max_in_flight": 1,
-      "supported_parameters": ["temperature", "top_p", "stop", "presence_penalty", "frequency_penalty", "seed", "max_tokens", "max_completion_tokens", "response_format", "reasoning_effort"],
-      "supported_response_formats": ["text", "json_object"],
-      "context_window": 131072,
+      "supported_parameters": [
+        "temperature",
+        "top_p",
+        "stop",
+        "presence_penalty",
+        "frequency_penalty",
+        "seed",
+        "max_tokens",
+        "max_completion_tokens",
+        "response_format",
+        "reasoning_effort"
+      ],
+      "supported_response_formats": [
+        "text",
+        "json_object"
+      ],
+      "context_window": 128000,
       "timeout": "120s"
     },
     {
-      "id": "model-d",
-      "base_url": "https://llm-d.internal",
-      "model": "gpt-oss-120b",
+      "id": "qwen3-coder-next",
+      "base_url": "http://10.100.10.105:30888/v1",
+      "model": "Qwen3-Coder-Next",
       "token": "",
       "max_in_flight": 1,
-      "supported_parameters": ["temperature", "top_p", "stop", "presence_penalty", "frequency_penalty", "seed", "max_tokens", "max_completion_tokens", "response_format", "reasoning_effort"],
-      "supported_response_formats": ["text", "json_object"],
-      "context_window": 131072,
+      "supported_parameters": [
+        "temperature",
+        "top_p",
+        "stop",
+        "presence_penalty",
+        "frequency_penalty",
+        "seed",
+        "max_tokens",
+        "max_completion_tokens",
+        "response_format",
+        "reasoning_effort"
+      ],
+      "supported_response_formats": [
+        "text",
+        "json_object"
+      ],
+      "context_window": 128000,
       "timeout": "120s"
     }
-  ]
+  ],
+  "grpc_listen_address": ":8011",
+  "grpc_max_receive_bytes": 2097152,
+  "grpc_max_send_bytes": 41943040,
+  "grpc_max_concurrent_streams": 128
 }

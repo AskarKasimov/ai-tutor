@@ -4,6 +4,11 @@ set -eu
 repo_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 cd "$repo_dir"
 
+gateway_config=services/llm-gateway/config.json
+if [ ! -f "$gateway_config" ]; then
+    cp services/llm-gateway/config.example.json "$gateway_config"
+fi
+
 if [ ! -f .env ]; then
     printf '%s\n' '.env is missing. Copy and configure it: cp .env.example .env' >&2
     exit 1

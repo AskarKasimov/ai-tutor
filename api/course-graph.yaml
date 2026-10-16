@@ -186,6 +186,10 @@ components:
       required: [job_id, subject_id, status, stage, error, graph]
       type: object
     Node:
+      additionalProperties: false
+      description: >-
+        Вершина графа курса. Граф пререквизитов ацикличен; плоский граф без рёбер — частный случай.
+        Неделя и источники у вершины пока не хранятся.
       properties:
         id:
           description: ID вершины, уникальный внутри графа
@@ -196,52 +200,30 @@ components:
         content:
           description: Текст вершины из материалов, на русском
           type: string
-        week:
-          description: Самая ранняя неделя источников
-          minimum: 1
-          type: integer
-        position:
-          description: Порядок внутри родителя
-          minimum: 0
-          type: integer
-        material_ids:
-          description: Материалы-источники; неделю, вид и имя файла backend берёт у материала
-          items:
-            type: string
-          minItems: 1
-          type: array
-      required: [id, title, content, week, position, material_ids]
-      type: object
-    Subtopic:
-      allOf:
-        - $ref: "#/components/schemas/Node"
-      properties:
         prerequisites:
-          description: ID подтем-пререквизитов из любых тем курса; граф пререквизитов ацикличен
+          description: ID вершин, которые нужно знать до этой; у пререквизитов могут быть свои пререквизиты
           items:
             type: string
           type: array
-      required: [prerequisites]
-      unevaluatedProperties: false
-      type: object
-    Topic:
-      allOf:
-        - $ref: "#/components/schemas/Node"
-      description: Верхнеуровневая тема курса — лекция недели; подтемы — юниты лекции, лабы и туториала этой недели. См. README.
-      properties:
-        subtopics:
+        outcomes:
+          description: Образовательные результаты; сервис пока возвращает пустой список, их заполнят позже
           items:
-            $ref: "#/components/schemas/Subtopic"
+            type: string
           type: array
-      required: [subtopics]
-      unevaluatedProperties: false
+        questions:
+          description: Вопросы к вершине; сервис пока возвращает пустой список, их заполнят позже
+          items:
+            type: string
+          type: array
+      required: [id, title, content, prerequisites, outcomes, questions]
       type: object
     Graph:
       additionalProperties: false
       properties:
-        topics:
+        nodes:
+          description: Вершины в порядке изучения
           items:
-            $ref: "#/components/schemas/Topic"
+            $ref: "#/components/schemas/Node"
           type: array
-      required: [topics]
+      required: [nodes]
       type: object

@@ -139,14 +139,14 @@
       <ul>
         <li><label><input type="checkbox" data-id="cg-ocr" checked><span><span class="t">Этап 1. OCR</span><span class="d">PDF → текст: по документу на лекцию, лабу и туториал недели.</span></span></label></li>
         <li><label><input type="checkbox" data-id="cg-clean"><span><span class="t">Этап 2. Очистка LLM</span><span class="d">Убрать лектора, команду курса, office hours, объявления, «спасибо за внимание».</span></span></label></li>
-        <li><label><input type="checkbox" data-id="cg-units"><span><span class="t">Этап 3. Извлечение атомарных подтем</span><span class="d">Каждый документ недели отдельно; лекция «Матрицы» → умножение, обратная, транспонирование.</span></span></label></li>
+        <li><label><input type="checkbox" data-id="cg-units"><span><span class="t">Этап 3. Извлечение атомарных тем</span><span class="d">Каждый документ недели отдельно; лекция «Матрицы» → умножение, обратная, транспонирование.</span></span></label></li>
         <li><label><input type="checkbox" data-id="cg-dedup-week"><span><span class="t">Этап 4а. Дедупликация внутри недели</span><span class="d">Один проход по лекции, лабе и туториалу недели.</span></span></label></li>
-        <li><label><input type="checkbox" data-id="cg-dedup-all"><span><span class="t">Этап 4б. Дедупликация между неделями</span><span class="d">Второй проход по всем подтемам курса.</span></span></label></li>
-        <li><label><input type="checkbox" data-id="cg-edges"><span><span class="t">Этап 5. Стрелки-пререквизиты</span><span class="d">«Что нужно знать, чтобы понять эту подтему»: ранг → Гаусс, определение матрицы, миноры.</span></span></label></li>
+        <li><label><input type="checkbox" data-id="cg-dedup-all"><span><span class="t">Этап 4б. Дедупликация между неделями</span><span class="d">Второй проход по всем темам курса.</span></span></label></li>
+        <li><label><input type="checkbox" data-id="cg-edges"><span><span class="t">Этап 5. Стрелки-пререквизиты</span><span class="d">«Что нужно знать, чтобы понять эту тему»: ранг → Гаусс, определение матрицы, миноры.</span></span></label></li>
         <li><label><input type="checkbox" data-id="cg-validate"><span><span class="t">Этап 6. LLM-валидация стрелок</span><span class="d">Несколько прогонов, без циклов. Человек в контуре не нужен.</span></span></label></li>
         <li><label><input type="checkbox" data-id="cg-store"><span><span class="t">Этап 7. Сохранение в PostgreSQL</span><span class="d">Одна версия графа на курс; пересборка заменяет граф.</span></span></label></li>
-        <li><label><input type="checkbox" data-id="cg-node"><span><span class="t">Вершина хранит текст, неделю и источники</span><span class="d">Источники: лекция / лаба / туториал.</span></span></label></li>
-        <li><label><input type="checkbox" data-id="cg-top"><span><span class="t">Верхних вершин ≈ число тем курса</span><span class="d">Темы, а не подтемы; иерархия «тема → подтема» плюс пререквизиты.</span></span></label></li>
+        <li><label><input type="checkbox" data-id="cg-node"><span><span class="t">Вершина хранит название, текст, пререквизиты, ОР и вопросы</span><span class="d">ОР и вопросы — строки, пока могут быть пустыми; недели и источников пока нет.</span></span></label></li>
+        <li><label><input type="checkbox" data-id="cg-top"><span><span class="t">Граф общего вида без циклов</span><span class="d">У пререквизитов свои пререквизиты; верхний уровень — темы, которые не служат пререквизитом другим; плоский граф — частный случай.</span></span></label></li>
         <li><label><input type="checkbox" data-id="cg-questions"><span><span class="t">Вопросы к вершинам на препроцессинге</span><span class="d">Что не успели — Geek генерирует в рантайме.</span></span></label></li>
         <li><label><input type="checkbox" data-id="cg-ru"><span><span class="t">Названия и тексты вершин на русском</span><span class="d">Даже пока материалы на английском.</span></span></label></li>
         <li><label><input type="checkbox" data-id="cg-build"><span><span class="t">Сборка графа кнопкой «Собрать граф» в админке</span><span class="d">Не автоматически после каждой загрузки.</span></span></label></li>
@@ -159,12 +159,12 @@
       <ul>
         <li><label><input type="checkbox" data-id="g-oral"><span><span class="t">Вопросы на рассуждение с развёрнутым ответом</span><span class="d">Тестовых вопросов по возможности нет.</span></span></label></li>
         <li><label><input type="checkbox" data-id="g-start-top"><span><span class="t">Обход начинается с верхних вершин</span></span></label></li>
-        <li><label><input type="checkbox" data-id="g-correct"><span><span class="t">Тема на A / B / C → поддерево засчитано со статусом «засчитано по вышестоящей теме»</span></span></label></li>
-        <li><label><input type="checkbox" data-id="g-wrong"><span><span class="t">Тема на D → её подтемы; подтема на D → её пререквизиты</span><span class="d">Дальше рекурсивно, к более простым подтемам.</span></span></label></li>
+        <li><label><input type="checkbox" data-id="g-correct"><span><span class="t">Тема на A / B / C → её пререквизиты засчитаны со статусом «засчитано по вышестоящей теме»</span></span></label></li>
+        <li><label><input type="checkbox" data-id="g-wrong"><span><span class="t">Тема на D → её пререквизиты</span><span class="d">Дальше рекурсивно, к более простым темам.</span></span></label></li>
         <li><label><input type="checkbox" data-id="g-extra"><span><span class="t">На тему — основной вопрос и максимум один дополнительный</span><span class="d">Углубление (пример, контрпример, изменённые условия) или прояснение неоднозначного ответа.</span></span></label></li>
         <li><label><input type="checkbox" data-id="g-rephrase"><span><span class="t">Каждый вопрос можно один раз переформулировать</span><span class="d">Других подсказок нет.</span></span></label></li>
         <li><label><input type="checkbox" data-id="g-criteria"><span><span class="t">Модель оценивает четыре критерия на 0 / 1 / 2</span><span class="d">Корректность и терминология; логика и обоснование; возражения и контрпримеры; изменённые условия.</span></span></label></li>
-        <li><label><input type="checkbox" data-id="g-criteria-rule"><span><span class="t">Критерии → оценка темы A–D</span><span class="d">A, B, C — тема и поддерево засчитаны; D — пробел. Ответ с помощью — только B или C.</span></span></label></li>
+        <li><label><input type="checkbox" data-id="g-criteria-rule"><span><span class="t">Критерии → оценка темы A–D</span><span class="d">A, B, C — тема и её пререквизиты засчитаны; D — пробел. Ответ с помощью — только B или C.</span></span></label></li>
         <li><label><input type="checkbox" data-id="g-status"><span><span class="t">Статусы: самостоятельно / с помощью / пробел / нет данных / по вышестоящей</span></span></label></li>
         <li><label><input type="checkbox" data-id="g-evidence"><span><span class="t">Для темы сохраняются глубина понимания и фрагменты диалога</span></span></label></li>
         <li><label><input type="checkbox" data-id="g-gap"><span><span class="t">Пробел = самая глубокая неосвоенная вершина с освоенными пререквизитами</span></span></label></li>
@@ -177,7 +177,7 @@
       <ul>
         <li><label><input type="checkbox" data-id="r-grade"><span><span class="t">Предварительная оценка A / B / C / D</span><span class="d">Средний балл верхних тем (A = 4 … D = 1) в % от 4: ≥ 90% A, ≥ 75% B, ≥ 60% C, иначе D.</span></span></label></li>
         <li><label><input type="checkbox" data-id="r-nodata"><span><span class="t">Темы «недостаточно данных» исключены из среднего</span></span></label></li>
-        <li><label><input type="checkbox" data-id="r-gaps"><span><span class="t">Список пробелов с неделями и источниками</span><span class="d">Лекция / лаба / туториал.</span></span></label></li>
+        <li><label><input type="checkbox" data-id="r-gaps"><span><span class="t">Список пробелов</span><span class="d">Недели и источники вернутся вместе с ними у вершины.</span></span></label></li>
         <li><label><input type="checkbox" data-id="r-rebuild"><span><span class="t">После пересборки графа у старых диагностик остаётся только фидбэк</span></span></label></li>
       </ul>
     </section>
@@ -197,7 +197,7 @@
       <ul>
         <li><label><input type="checkbox" data-id="t-hours"><span><span class="t">Вопрос «Сколько у тебя часов?»</span></span></label></li>
         <li><label><input type="checkbox" data-id="t-order"><span><span class="t">План — пробелы снизу вверх по пререквизитам</span></span></label></li>
-        <li><label><input type="checkbox" data-id="t-lesson"><span><span class="t">По подтеме: теория из лекции, практика по лабе/туториалу</span></span></label></li>
+        <li><label><input type="checkbox" data-id="t-lesson"><span><span class="t">По теме: теория из лекции, практика по лабе/туториалу</span><span class="d">Нужны источники у вершины.</span></span></label></li>
         <li><label><input type="checkbox" data-id="t-dispute"><span><span class="t">Диспут: возражения, контрпримеры, сопоставление объяснений</span></span></label></li>
         <li><label><input type="checkbox" data-id="t-hints"><span><span class="t">Подсказки фиксируются, поддержка сокращается, финальная задача без подсказки</span></span></label></li>
         <li><label><input type="checkbox" data-id="t-questions"><span><span class="t">Вопросы студента: материалы → пререквизиты из листьев → название темы без ссылки</span><span class="d">Ответ вне материалов помечается.</span></span></label></li>
@@ -233,7 +233,7 @@
       <ul>
         <li><label><input type="checkbox" data-id="doc-readme" checked><span><span class="t">README описывает новое видение</span></span></label></li>
         <li><label><input type="checkbox" data-id="doc-legacy" checked><span><span class="t">Документы прежней модели помечены</span></span></label></li>
-        <li><label><input type="checkbox" data-id="doc-open" checked><span><span class="t">Открытых вопросов нет; новые фиксируются в README</span></span></label></li>
+        <li><label><input type="checkbox" data-id="doc-open" checked><span><span class="t">Открытые вопросы фиксируются в README</span></span></label></li>
         <li><label><input type="checkbox" data-id="doc-api"><span><span class="t">Контракт API Geek и course-graph в OpenAPI</span></span></label></li>
       </ul>
     </section>

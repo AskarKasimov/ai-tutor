@@ -61,6 +61,22 @@ func TestValidatePoolRejectsUnsupportedParametersAndExcessContext(t *testing.T) 
 	}
 }
 
+func TestSupportsRejectsOutputBudgetThatOverflowsContext(t *testing.T) {
+	instance := schedulerInstance("model-a")
+	instance.SupportedParameters = []string{"max_tokens", "max_completion_tokens"}
+	for _, field := range []string{"max_tokens", "max_completion_tokens"} {
+		t.Run(field, func(t *testing.T) {
+			request, err := ParseRequest([]byte(`{"messages":[{"role":"user","content":"x"}],"complexity":"low","` + field + `":9223372036854775807}`))
+			if err != nil {
+				t.Fatalf("ParseRequest() error = %v", err)
+			}
+			if supports(instance, request) {
+				t.Fatalf("supports() accepted MaxInt64 %s for context window %d", field, instance.ContextWindow)
+			}
+		})
+	}
+}
+
 func TestSupportsChecksResponseFormatCapabilities(t *testing.T) {
 	request, err := ParseRequest([]byte(`{"messages":[{"role":"user","content":"x"}],"complexity":"low","response_format":{"type":"json_object"}}`))
 	if err != nil {

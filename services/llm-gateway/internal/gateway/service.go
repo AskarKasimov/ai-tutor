@@ -670,23 +670,26 @@ func supports(in InstanceConfig, r Request) bool {
 	if !supportsParameters(in, r) {
 		return false
 	}
-	chars := 0
+	promptTokens := int64(0)
 	for _, m := range r.Messages {
-		chars += len([]byte(m.Content))/2 + 8
+		promptTokens += int64(len(m.Content))/2 + 8
 	}
-	tokens := chars
-	max := in.ContextWindow
-	if raw, ok := r.Parameters["max_tokens"]; ok {
-		var n int
-		_ = json.Unmarshal(raw, &n)
-		tokens += n
+	remaining := int64(in.ContextWindow) - promptTokens
+	if remaining < 0 {
+		return false
 	}
-	if raw, ok := r.Parameters["max_completion_tokens"]; ok {
-		var n int
-		_ = json.Unmarshal(raw, &n)
-		tokens += n
+	for _, name := range []string{"max_tokens", "max_completion_tokens"} {
+		raw, ok := r.Parameters[name]
+		if !ok {
+			continue
+		}
+		var budget int64
+		if err := json.Unmarshal(raw, &budget); err != nil || budget <= 0 || budget > remaining {
+			return false
+		}
+		remaining -= budget
 	}
-	return tokens <= max
+	return true
 }
 
 func supportsParameters(in InstanceConfig, r Request) bool {

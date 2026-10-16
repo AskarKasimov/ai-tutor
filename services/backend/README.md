@@ -45,7 +45,7 @@ CI проверяет повторяемость генерации и вали�
 
 Общий dev-стек запускается из корня через `./dev.sh -d` после настройки `.env`. Нужны Docker Compose и mkcert. Серверный `./prod.sh` использует готовые сертификаты и сеть `ai-tutor_default`; параметры находятся в `.env.prod.example`.
 
-Backend импортирует сгенерированный клиент gateway из соседнего модуля `services/shared` (`replace ../shared` в `go.mod`), поэтому Docker собирает его из корня репозитория (`Dockerfile.dockerignore` пропускает только `services/backend` и `services/shared`), а dev-контейнер монтирует `services/shared` в `/shared`.
+Backend импортирует сгенерированный клиент gateway из соседнего модуля `services/shared` (`replace ../shared` в `go.mod`), поэтому Docker собирает его из корня репозитория (`Dockerfile.dockerignore` пропускает только `services/backend` и `services/shared`). Dev-контейнер монтирует оба модуля в `/work/backend` и `/work/shared`, и Air следит за обоими: изменение контракта в `services/shared` тоже пересобирает API. Gateway в production поднимает `prod.sh` (проект `services/llm-gateway` с Redpanda); соединение с ним закрывается после остановки HTTP-сервера.
 
 Для отдельного backend Compose из этой папки:
 
@@ -74,7 +74,7 @@ STT принимает multipart audio (WAV/Ogg/WebM) до 25 МиБ, сохра
 
 ## Live reload в Docker
 
-Корневой `./dev.sh -d` использует Dockerfile target `dev` с Air. Исходники смонтированы в `/src`; Air пересобирает и перезапускает API при изменениях Go-файлов, SQL, `go.mod` и `go.sum`. Конфигурация watcher — `.air.toml`; polling позволяет подхватывать изменения через Docker Desktop. Модули Go, кеш сборки и каталог `.air` с dev-бинарником находятся в Docker volumes. Миграции применяются штатным запуском API; SQLC-запросы требуют отдельной генерации Go-кода. Локальный Compose backend использует готовый production-бинарник.
+Корневой `./dev.sh -d` использует Dockerfile target `dev` с Air. Исходники backend смонтированы в `/work/backend`, общий модуль контрактов — в `/work/shared`; Air пересобирает и перезапускает API при изменениях Go-файлов, SQL, `go.mod` и `go.sum` в обоих. Конфигурация watcher — `.air.toml`; polling позволяет подхватывать изменения через Docker Desktop. Модули Go, кеш сборки и каталог `.air` с dev-бинарником находятся в Docker volumes. Миграции применяются штатным запуском API; SQLC-запросы требуют отдельной генерации Go-кода. Локальный Compose backend использует готовый production-бинарник.
 
 ## БД и импорт
 

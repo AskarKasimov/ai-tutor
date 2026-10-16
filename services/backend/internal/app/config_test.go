@@ -79,7 +79,7 @@ func TestAudioConfigRejectsInvalidSettings(t *testing.T) {
 		"BACKEND_S3_SECRET_KEY":           {""},
 		"BACKEND_S3_PATH_STYLE":           {"maybe"},
 		"BACKEND_S3_TIMEOUT":              {"bad", "0s", "-1s"},
-		"BACKEND_LLM_GATEWAY_ADDR":        {"gateway", ":8011", "http://gateway:8011"},
+		"BACKEND_LLM_GATEWAY_ADDR":        {"gateway", ":8011", "http://gateway:8011", "gateway:abc", "gateway:0", "gateway:-1", "gateway:65536", "gateway:70000"},
 		"BACKEND_LLM_TIMEOUT":             {"bad", "0s", "-1s"},
 		"BACKEND_GEEK_MAX_QUESTIONS":      {"bad", "-1"},
 	}
@@ -170,5 +170,15 @@ func TestGeekConfigRequiresTheGatewayAndHasNoLimits(t *testing.T) {
 	t.Setenv("BACKEND_GEEK_MAX_QUESTIONS", "12")
 	if cfg, err = ConfigFromEnv(); err != nil || cfg.LLMGatewayAddress != "llm-gateway:8011" || cfg.GeekGraphFixture != "/fixtures/course-graph.json" || cfg.GeekMaxQuestions != 12 {
 		t.Fatalf("geek settings = %+v, %v", cfg, err)
+	}
+}
+
+func TestGatewayAddressAcceptsBoundaryPorts(t *testing.T) {
+	for _, address := range []string{"llm-gateway:1", "llm-gateway:65535", "10.0.0.5:8011"} {
+		configuredEnv(t)
+		t.Setenv("BACKEND_LLM_GATEWAY_ADDR", address)
+		if _, err := ConfigFromEnv(); err != nil {
+			t.Fatalf("%s: %v", address, err)
+		}
 	}
 }

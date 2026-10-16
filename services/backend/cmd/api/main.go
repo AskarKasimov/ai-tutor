@@ -93,5 +93,6 @@ func run(logger *zap.Logger) error {
 	}
 	server := &http.Server{Addr: cfg.ListenAddress, Handler: a.Handler(), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 30 * time.Second, WriteTimeout: cfg.HTTPWriteTimeout(), IdleTimeout: 60 * time.Second, MaxHeaderBytes: 32 * 1024}
 	logger.Info("API listening", zap.String("address", cfg.ListenAddress))
+	defer a.Close()
 	return serveWithBackground(ctx, server, a.RunStorageSetup)
 }

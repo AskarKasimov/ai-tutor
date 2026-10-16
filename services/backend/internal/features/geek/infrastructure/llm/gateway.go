@@ -9,8 +9,11 @@ import (
 	"time"
 
 	"go.uber.org/zap"
+	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 
 	llmgatewayv1 "github.com/AskarKasimov/ai-tutor/services/shared/gen/go/llmgateway/v1"
@@ -141,9 +144,10 @@ func (g *Gateway) complete(ctx context.Context, operation string, level llmgatew
 func (g *Gateway) call(ctx context.Context, request *llmgatewayv1.CompleteRequest) (content, requestID string, err error) {
 	ctx, cancel := context.WithTimeout(ctx, g.timeout)
 	defer cancel()
-	response, err := g.client.Complete(ctx, request)
+	var header metadata.MD
+	response, err := g.client.Complete(ctx, request, grpc.Header(&header))
 	if err != nil {
-		return "", "", fmt.Errorf("call LLM gateway: %w", err)
+		return "", failedRequestID(header, err), fmt.Errorf("call LLM gateway: %w", err)
 	}
 	var completion struct {
 		Choices []struct {
@@ -161,6 +165,23 @@ func (g *Gateway) call(ctx context.Context, request *llmgatewayv1.CompleteReques
 		return choice.Message.Content, response.GetRequestId(), errors.New("LLM answer was cut by the token limit")
 	}
 	return choice.Message.Content, response.GetRequestId(), nil
+}
+
+// failedRequestID is the gateway request of a failed call: from the
+// x-request-id header, else from the request_id of the error's ErrorInfo.
+// A transport failure before the gateway answered has none.
+func failedRequestID(header metadata.MD, err error) string {
+	if ids := header.Get("x-request-id"); len(ids) > 0 {
+		return ids[0]
+	}
+	if s, ok := status.FromError(err); ok {
+		for _, detail := range s.Details() {
+			if info, ok := detail.(*errdetails.ErrorInfo); ok && info.GetMetadata()["request_id"] != "" {
+				return info.GetMetadata()["request_id"]
+			}
+		}
+	}
+	return ""
 }
 
 // stripFence removes a Markdown code fence some models put around JSON.

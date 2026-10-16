@@ -152,9 +152,9 @@ precision/recall без отдельной разметки не заявляю�
 ## Проверки
 
 ```bash
-python -m venv .venv
+uv venv .venv
 . .venv/bin/activate
-pip install -r requirements.txt
+uv pip install -r requirements.txt
 python -m pytest -q
 ```
 

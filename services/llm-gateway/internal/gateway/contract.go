@@ -22,6 +22,29 @@ type Request struct {
 	Parameters map[string]json.RawMessage `json:"-"`
 }
 
+// MarshalJSON keeps validated generation parameters in the durable JSON job.
+func (r Request) MarshalJSON() ([]byte, error) {
+	fields := map[string]any{"messages": r.Messages, "complexity": r.Complexity}
+	if r.Urgent != nil {
+		fields["urgent"] = *r.Urgent
+	}
+	if r.Stream != nil {
+		fields["stream"] = *r.Stream
+	}
+	for key, raw := range r.Parameters {
+		fields[key] = raw
+	}
+	return json.Marshal(fields)
+}
+func (r *Request) UnmarshalJSON(data []byte) error {
+	parsed, err := ParseRequest(data)
+	if err != nil {
+		return err
+	}
+	*r = parsed
+	return nil
+}
+
 type APIError struct {
 	Message string `json:"message"`
 	Type    string `json:"type"`
@@ -145,6 +168,11 @@ func ParseRequest(body []byte) (Request, error) {
 			return req, apiErr(400, "invalid_request_error", "invalid_parameter", "stop must be a string or array of strings")
 		}
 	}
+	if raw, ok := fields["stop"]; ok && len(raw) > 0 && raw[0] == '"' {
+		var stop string
+		_ = json.Unmarshal(raw, &stop)
+		fields["stop"], _ = json.Marshal([]string{stop})
+	}
 	if raw, ok := fields["response_format"]; ok {
 		var v struct {
 			Type string `json:"type"`
@@ -184,9 +212,21 @@ func (r Request) CanonicalHash() string {
 	params := map[string]any{}
 	for key, raw := range r.Parameters {
 		var value any
-		if json.Unmarshal(raw, &value) == nil {
+		decoder := json.NewDecoder(bytes.NewReader(raw))
+		decoder.UseNumber()
+		if decoder.Decode(&value) == nil {
+			if key == "temperature" || key == "top_p" || key == "presence_penalty" || key == "frequency_penalty" {
+				if number, ok := value.(json.Number); ok {
+					if f, err := number.Float64(); err == nil {
+						value = f
+					}
+				}
+			}
 			params[key] = value
 		}
+	}
+	if stop, ok := params["stop"].(string); ok {
+		params["stop"] = []string{stop}
 	}
 	for key, value := range map[string]float64{"temperature": 1, "top_p": 1, "presence_penalty": 0, "frequency_penalty": 0} {
 		if _, ok := params[key]; !ok {
@@ -217,3 +257,48 @@ type statusError struct {
 }
 
 func (e statusError) Error() string { return e.body.Error.Message }
+
+// legacyHashes recognizes v1 records whose Request JSON omitted Parameters.
+// Those records retained the pre-normalization hash but cannot recover their parameters.
+func (r Request) legacyHashes() []string {
+	hashes := []string{r.legacyHash(false)}
+	if raw, ok := r.Parameters["stop"]; ok {
+		var values []string
+		if json.Unmarshal(raw, &values) == nil && len(values) == 1 {
+			hashes = append(hashes, r.legacyHash(true))
+		}
+	}
+	return hashes
+}
+func (r Request) legacyHash(stopAsString bool) string {
+	params := map[string]any{}
+	for key, raw := range r.Parameters {
+		var value any
+		if json.Unmarshal(raw, &value) == nil {
+			params[key] = value
+		}
+	}
+	if stopAsString {
+		if values, ok := params["stop"].([]any); ok && len(values) == 1 {
+			params["stop"] = values[0]
+		}
+	}
+	for key, value := range map[string]float64{"temperature": 1, "top_p": 1, "presence_penalty": 0, "frequency_penalty": 0} {
+		if _, ok := params[key]; !ok {
+			params[key] = value
+		}
+	}
+	if _, ok := params["response_format"]; !ok {
+		params["response_format"] = map[string]string{"type": "text"}
+	}
+	raw, _ := json.Marshal(struct {
+		Messages   []Message      `json:"messages"`
+		Complexity string         `json:"complexity"`
+		Urgent     bool           `json:"urgent"`
+		Parameters map[string]any `json:"parameters"`
+	}{r.Messages, r.Complexity, r.IsUrgent(), params})
+	var compact bytes.Buffer
+	_ = json.Compact(&compact, raw)
+	sum := sha256.Sum256(compact.Bytes())
+	return hex.EncodeToString(sum[:])
+}

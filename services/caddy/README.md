@@ -18,4 +18,4 @@ UI и спецификацию отдаёт Swagger; YAML не монтируе�
 `ai-tutor_caddy_config`. Сертификаты остаются в корневой папке `certs/`,
 из которой Caddy загружает их при запуске. Общий dev-стек включает этот же Compose.
 
-При `COMPOSE_PROFILES=gateway` Caddy также проксирует `/llm-gateway/*` в `llm-gateway:8010`. CORS для VS Code webview включён только на этом маршруте; OpenAPI preview использует `https://localhost:8443/llm-gateway`.
+При `COMPOSE_PROFILES=gateway` Caddy также проксирует `/llm-gateway/*` в `llm-gateway:8010` и `/llmgateway.v1.Gateway/*` по h2c в `llm-gateway:8011`. CORS для VS Code webview включён только на этом маршруте; OpenAPI preview использует `https://localhost:8443/llm-gateway`.

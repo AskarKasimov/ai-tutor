@@ -10,23 +10,27 @@ import (
 )
 
 type Config struct {
-	ListenAddress   string              `json:"listen_address"`
-	KafkaBrokers    []string            `json:"kafka_brokers"`
-	RequestsTopic   string              `json:"requests_topic"`
-	StateTopic      string              `json:"state_topic"`
-	ConsumerGroup   string              `json:"consumer_group"`
-	TransactionalID string              `json:"transactional_id"`
-	MaxBodyBytes    int64               `json:"max_body_bytes"`
-	MaxPending      int                 `json:"max_pending"`
-	MaxPendingBytes int64               `json:"max_pending_bytes"`
-	MaxConnections  int                 `json:"max_connections"`
-	RequestDeadline time.Duration       `json:"request_deadline"`
-	UpstreamTimeout time.Duration       `json:"upstream_timeout"`
-	Retention       time.Duration       `json:"retention"`
-	MaxInputLag     time.Duration       `json:"max_input_lag"`
-	GracePeriod     time.Duration       `json:"grace_period"`
-	Pools           map[string][]string `json:"pools"`
-	Instances       []InstanceConfig    `json:"instances"`
+	ListenAddress            string              `json:"listen_address"`
+	GRPCListenAddress        string              `json:"grpc_listen_address"`
+	GRPCMaxReceiveBytes      int                 `json:"grpc_max_receive_bytes"`
+	GRPCMaxSendBytes         int                 `json:"grpc_max_send_bytes"`
+	GRPCMaxConcurrentStreams int                 `json:"grpc_max_concurrent_streams"`
+	KafkaBrokers             []string            `json:"kafka_brokers"`
+	RequestsTopic            string              `json:"requests_topic"`
+	StateTopic               string              `json:"state_topic"`
+	ConsumerGroup            string              `json:"consumer_group"`
+	TransactionalID          string              `json:"transactional_id"`
+	MaxBodyBytes             int64               `json:"max_body_bytes"`
+	MaxPending               int                 `json:"max_pending"`
+	MaxPendingBytes          int64               `json:"max_pending_bytes"`
+	MaxConnections           int                 `json:"max_connections"`
+	RequestDeadline          time.Duration       `json:"request_deadline"`
+	UpstreamTimeout          time.Duration       `json:"upstream_timeout"`
+	Retention                time.Duration       `json:"retention"`
+	MaxInputLag              time.Duration       `json:"max_input_lag"`
+	GracePeriod              time.Duration       `json:"grace_period"`
+	Pools                    map[string][]string `json:"pools"`
+	Instances                []InstanceConfig    `json:"instances"`
 }
 
 type InstanceConfig struct {
@@ -107,6 +111,18 @@ func (c *Config) UnmarshalJSON(data []byte) error {
 }
 
 func (c *Config) defaults() {
+	if c.GRPCListenAddress == "" {
+		c.GRPCListenAddress = ":8011"
+	}
+	if c.GRPCMaxReceiveBytes == 0 {
+		c.GRPCMaxReceiveBytes = 2 << 20
+	}
+	if c.GRPCMaxSendBytes == 0 {
+		c.GRPCMaxSendBytes = 40 << 20
+	}
+	if c.GRPCMaxConcurrentStreams == 0 {
+		c.GRPCMaxConcurrentStreams = 128
+	}
 	if c.ListenAddress == "" {
 		c.ListenAddress = ":8010"
 	}
@@ -157,6 +173,9 @@ func (c *Config) defaults() {
 }
 
 func (c Config) Validate() error {
+	if c.GRPCListenAddress == c.ListenAddress || c.GRPCMaxReceiveBytes <= 0 || c.GRPCMaxSendBytes <= 0 || c.GRPCMaxConcurrentStreams <= 0 {
+		return errors.New("invalid gRPC listener or limits")
+	}
 	if len(c.KafkaBrokers) == 0 {
 		return errors.New("kafka_brokers must not be empty")
 	}

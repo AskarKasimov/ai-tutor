@@ -1,5 +1,9 @@
 {
   "listen_address": ":8010",
+  "grpc_listen_address": ":8011",
+  "grpc_max_receive_bytes": 2097152,
+  "grpc_max_send_bytes": 41943040,
+  "grpc_max_concurrent_streams": 128,
   "kafka_brokers": ["redpanda:9092"],
   "requests_topic": "llm.requests.v1",
   "state_topic": "llm.state.v1",

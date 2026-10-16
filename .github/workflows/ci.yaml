@@ -54,7 +54,7 @@ jobs:
                 services/frontend/*) frontend=true ;;
                 services/s3/*) backend=true ;;
                 services/course-graph/*) backend=true ;;
-                services/llm-gateway/*) gateway=true ;;
+                services/llm-gateway/*|services/shared/*|.dockerignore|.github/workflows/gateway-ci.yaml) gateway=true ;;
                 .github/*|api/*|docker-compose*.yaml|services/postgresql/*|services/caddy/*|prod.sh|dev.sh|.env.example|.env.prod.example)
                   backend=true
                   frontend=true

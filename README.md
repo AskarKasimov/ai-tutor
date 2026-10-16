@@ -121,7 +121,7 @@ Geek проводит диагностику и тренировку тольк�
 
 ## LLM gateway
 
-LLM gateway — отдельный HTTP-сервис `services/llm-gateway` со спецификацией [llm-gateway-spec.md](documents/llm-gateway-spec.md) и контрактом [openapi.yaml](services/llm-gateway/openapi.yaml). Он принимает OpenAI-совместимый `POST /v1/chat/completions` без выбора модели клиентом: обязательная сложность `complexity` (low / medium / high) и необязательная срочность `urgent`. Очередь — Redpanda, балансировка по четырём моделям — в gateway. Dev Compose запускает его с профилем `gateway`; локальный `services/llm-gateway/config.json` содержит настройки моделей. Backend и `services/course-graph` вызывают gateway из доверенной сети; CORS настроен в Caddy.
+LLM gateway — отдельный HTTP/gRPC-сервис `services/llm-gateway` со спецификациями [HTTP](documents/llm-gateway-spec.md) и [gRPC](documents/llm-gateway-grpc-spec.md), контрактами [OpenAPI](services/llm-gateway/openapi.yaml) и [protobuf](services/shared/proto/llmgateway/v1/gateway.proto). Он принимает OpenAI-совместимый `POST /v1/chat/completions` без выбора модели клиентом: обязательная сложность `complexity` (low / medium / high) и необязательная срочность `urgent`. Очередь — Redpanda, балансировка по четырём моделям — в gateway. Dev Compose запускает его с профилем `gateway`; локальный `services/llm-gateway/config.json` содержит настройки моделей. HTTP и gRPC доступны клиентам доверенной сети; существующие адаптеры backend и `services/course-graph` ещё не переведены на gateway. CORS настроен в Caddy.
 
 ## Переход с прежней системы
 
@@ -179,7 +179,7 @@ LLM gateway — отдельный HTTP-сервис `services/llm-gateway` со
 | Диагностика | Модуль `diagnostic` и пути `/diagnostic-sessions` переделываются на месте; данные и прежние миграции не сохраняются. |
 | Реплика студента | Синхронно: ответ Geek приходит в том же HTTP-запросе, с Idempotency-Key и повтором при сбое. |
 | Тренировка | К показу не делаем. После показа — на существующих `/learning-plans`: план из пробелов в порядке пререквизитов. |
-| LLM | Через LLM gateway коллеги: сейчас HTTP, позже также gRPC. |
+| LLM | Через LLM gateway коллеги: HTTP и gRPC доступны внутренним клиентам. |
 | Верхнеуровневые темы | Тема — лекция недели, подтемы — юниты недели. Заменено решением ниже: иерархии «тема → подтема» нет. |
 | Граф | Общего вида: вершины и пререквизиты, у пререквизитов свои пререквизиты, без циклов; плоский граф — частный случай. Верхний уровень — вершины, которые не служат пререквизитом другим. Вершина: название, текст, ID пререквизитов, ОР и вопросы (строки, пока могут быть пустыми). Неделя и источники у вершины пока не хранятся; итог показывает пробелы без них. |
 | Общий пререквизит | Если тему уже засчитала другая тема (на A–C), её повторно не спрашивают; тогда пробелом становится тема на D, которая к ней ведёт. Если тему уже спросили, её собственный ответ важнее засчитывания. |
@@ -276,7 +276,7 @@ LLM gateway — отдельный HTTP-сервис `services/llm-gateway` со
 | `documents/` | Концепция, архитектура, авторизация и материалы демокурса. |
 | `checklist.html` | Чек-лист перехода на новое видение. |
 
-Geek и оркестрация course-graph будут отдельными модулями backend, LLM gateway — отдельным сервисом `services/llm-gateway`. Этапы обработки course-graph выполняет Python-сервис `services/course-graph`; он обращается к gateway по HTTP, позже — по gRPC.
+Geek и оркестрация course-graph будут отдельными модулями backend, LLM gateway — отдельным сервисом `services/llm-gateway`. Этапы обработки course-graph выполняет Python-сервис `services/course-graph`; его адаптер сможет обращаться к gateway через HTTP или gRPC после подключения.
 
 Правила изменения кода — [AGENTS.md](AGENTS.md). Каждый сервис имеет свой Compose; корневой Compose объединяет dev-стек через extends.
 

@@ -25,7 +25,7 @@ func TestLoadConfigParsesDurationsAndAppliesDefaults(t *testing.T) {
 	if got.Instances[0].Timeout != 45*time.Second {
 		t.Fatalf("instance timeout = %s, want inherited 45s", got.Instances[0].Timeout)
 	}
-	if got.ListenAddress != ":8010" || got.MaxBodyBytes != 1<<20 || got.MaxPending != 1000 {
+	if got.ListenAddress != ":8010" || got.MaxBodyBytes != 1<<20 || got.MaxPending != 1000 || got.GRPCListenAddress != ":8011" || got.GRPCMaxReceiveBytes != 2<<20 || got.GRPCMaxSendBytes != 40<<20 || got.GRPCMaxConcurrentStreams != 128 {
 		t.Fatalf("defaults were not applied: %#v", got)
 	}
 }

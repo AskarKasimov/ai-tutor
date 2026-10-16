@@ -125,6 +125,10 @@ func (c *Caller) call(ctx context.Context, in InstanceConfig, req Request, reque
 	httpReq.Header.Set("X-Request-ID", requestID)
 	resp, err := c.client.Do(httpReq)
 	if err != nil {
+		if errors.Is(ctx.Err(), context.Canceled) {
+			cb.releaseReservation()
+			return UpstreamResult{}, &UpstreamFailure{Code: "request_canceled", Err: err}
+		}
 		var ne net.Error
 		before := strings.Contains(err.Error(), "connect: ") || strings.Contains(err.Error(), "no such host") || strings.Contains(err.Error(), "connection refused") || strings.Contains(err.Error(), "network is unreachable")
 		if errorsAs(err, &ne) && !ne.Timeout() {
@@ -136,6 +140,10 @@ func (c *Caller) call(ctx context.Context, in InstanceConfig, req Request, reque
 	defer resp.Body.Close()
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, (32<<20)+1))
 	if err != nil {
+		if errors.Is(ctx.Err(), context.Canceled) {
+			cb.releaseReservation()
+			return UpstreamResult{}, &UpstreamFailure{Code: "request_canceled", Err: err}
+		}
 		cb.release(false, time.Now())
 		return UpstreamResult{}, &UpstreamFailure{Code: "upstream_response_error", Err: err}
 	}

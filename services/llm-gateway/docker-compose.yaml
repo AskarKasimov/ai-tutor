@@ -1,7 +1,8 @@
 services:
   llm-gateway:
     build:
-      context: .
+      context: ../..
+      dockerfile: services/llm-gateway/Dockerfile
     environment:
       GATEWAY_CONFIG: /etc/llm-gateway/config.json
     volumes:
@@ -14,9 +15,6 @@ services:
       timeout: 3s
       retries: 6
       start_period: 30s
-    depends_on:
-      redpanda:
-        condition: service_healthy
     restart: unless-stopped
 
 networks:

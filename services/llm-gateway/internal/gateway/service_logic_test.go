@@ -164,3 +164,27 @@ func TestAwaitReturnsPersistedOrEphemeralResult(t *testing.T) {
 		})
 	}
 }
+
+func TestCancellationStateFailureDisablesReadiness(t *testing.T) {
+	cfg := Config{KafkaBrokers: []string{"127.0.0.1:1"}, MaxConnections: 1}
+	s, err := NewService(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	job := &durableJob{ID: "cancel-state-failure", ClientID: "internal", Status: "queued", SubmittedAt: time.Now(), Deadline: time.Now().Add(time.Minute)}
+	s.mu.Lock()
+	s.jobs[job.ID] = job
+	s.cancelled[job.ID] = true
+	s.ready = true
+	s.brokerAvailable = true
+	s.mu.Unlock()
+	s.persistCancellation(job.ID, "request_canceled")
+	s.mu.Lock()
+	uncertain := s.stateUncertain
+	ephemeral := s.ephemeral[job.ID]
+	s.mu.Unlock()
+	if !uncertain || s.Ready() || ephemeral.status != 503 || !strings.Contains(string(ephemeral.body), "state_unavailable") {
+		t.Fatalf("uncertain=%v ready=%v ephemeral=%+v", uncertain, s.Ready(), ephemeral)
+	}
+}

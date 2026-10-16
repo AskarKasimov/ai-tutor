@@ -77,6 +77,10 @@ type Service struct {
 	accepted          map[string]*durableRequest
 	stateIDs          map[string]string
 	waiters           map[string]chan struct{}
+	activeWaiters     map[string]int
+	transportCalls    map[string]map[int]uint64
+	cancelled         map[string]bool
+	jobCancels        map[string]context.CancelFunc
 	ephemeral         map[string]submitResult
 	inFlight          map[string]int
 	reserved          int
@@ -87,25 +91,27 @@ type Service struct {
 	roundRobin        map[string]int
 	ready             bool
 	brokerAvailable   bool
+	stateUncertain    bool
 	stopping          bool
 	started           time.Time
 	idempotentReplays uint64
 }
 
 func NewService(cfg Config) (*Service, error) {
-	s := &Service{cfg: cfg, jobs: map[string]*durableJob{}, keys: map[string]string{}, accepted: map[string]*durableRequest{}, stateIDs: map[string]string{}, waiters: map[string]chan struct{}{}, ephemeral: map[string]submitResult{}, inFlight: map[string]int{}, connections: make(chan struct{}, cfg.MaxConnections), wake: make(chan struct{}, 1), roundRobin: map[string]int{}, started: time.Now()}
+	cfg.defaults()
+	s := &Service{cfg: cfg, jobs: map[string]*durableJob{}, keys: map[string]string{}, accepted: map[string]*durableRequest{}, stateIDs: map[string]string{}, waiters: map[string]chan struct{}{}, activeWaiters: map[string]int{}, cancelled: map[string]bool{}, jobCancels: map[string]context.CancelFunc{}, ephemeral: map[string]submitResult{}, inFlight: map[string]int{}, connections: make(chan struct{}, cfg.MaxConnections), wake: make(chan struct{}, 1), roundRobin: map[string]int{}, started: time.Now()}
 	brokers := cfg.KafkaBrokers
 	var err error
-	s.submitter, err = kgo.NewClient(kgo.SeedBrokers(brokers...), kgo.RequiredAcks(kgo.AllISRAcks()), kgo.RecordRetries(3), kgo.ProducerLinger(5*time.Millisecond), kgo.MaxBufferedRecords(cfg.MaxConnections))
+	s.submitter, err = kgo.NewClient(kgo.SeedBrokers(brokers...), kgo.RequiredAcks(kgo.AllISRAcks()), kgo.RecordRetries(3), kgo.ProducerLinger(5*time.Millisecond), kgo.MaxBufferedRecords(cfg.MaxConnections), kgo.ProducerBatchMaxBytes(2<<20))
 	if err != nil {
 		return nil, fmt.Errorf("create request producer: %w", err)
 	}
-	s.stateWriter, err = kgo.NewClient(kgo.SeedBrokers(brokers...), kgo.TransactionalID(cfg.TransactionalID+"-state"), kgo.RequiredAcks(kgo.AllISRAcks()), kgo.RecordRetries(3))
+	s.stateWriter, err = kgo.NewClient(kgo.SeedBrokers(brokers...), kgo.TransactionalID(cfg.TransactionalID+"-state"), kgo.RequiredAcks(kgo.AllISRAcks()), kgo.RecordRetries(3), kgo.ProducerBatchMaxBytes(40<<20))
 	if err != nil {
 		s.submitter.Close()
 		return nil, fmt.Errorf("create state producer: %w", err)
 	}
-	s.ingest, err = kgo.NewGroupTransactSession(kgo.SeedBrokers(brokers...), kgo.TransactionalID(cfg.TransactionalID+"-ingest"), kgo.ConsumerGroup(cfg.ConsumerGroup), kgo.ConsumeTopics(cfg.RequestsTopic), kgo.ConsumeResetOffset(kgo.NoResetOffset()), kgo.FetchIsolationLevel(kgo.ReadCommitted()), kgo.DisableAutoCommit(), kgo.RequiredAcks(kgo.AllISRAcks()))
+	s.ingest, err = kgo.NewGroupTransactSession(kgo.SeedBrokers(brokers...), kgo.TransactionalID(cfg.TransactionalID+"-ingest"), kgo.ConsumerGroup(cfg.ConsumerGroup), kgo.ConsumeTopics(cfg.RequestsTopic), kgo.ConsumeResetOffset(kgo.NoResetOffset()), kgo.FetchIsolationLevel(kgo.ReadCommitted()), kgo.DisableAutoCommit(), kgo.RequiredAcks(kgo.AllISRAcks()), kgo.ProducerBatchMaxBytes(40<<20))
 	if err != nil {
 		s.submitter.Close()
 		s.stateWriter.Close()
@@ -182,7 +188,7 @@ func (s *Service) monitorReadiness(ctx context.Context) {
 				}
 			}
 			if !s.stopping {
-				s.ready = err == nil && !lagged
+				s.ready = err == nil && !lagged && !s.stateUncertain
 			}
 			s.mu.Unlock()
 			if err == nil {
@@ -232,11 +238,11 @@ func (s *Service) restore(ctx context.Context) error {
 			s.mu.Lock()
 			var recoveries []*durableJob
 			for _, j := range s.jobs {
-				if j.Error != nil && j.Error.Code == "execution_interrupted" || j.Status == "queued" && time.Now().After(j.Deadline) {
+				if j.Error != nil && j.Error.Code == "execution_interrupted" || j.Status == "queued" {
 					copy := *j
 					if copy.Status == "queued" {
-						copy.Status = "expired"
-						copy.Error = &storedError{Status: 504, Type: "gateway_timeout", Code: "request_deadline_exceeded", Message: "LLM request deadline exceeded."}
+						copy.Status = "failed"
+						copy.Error = &storedError{Status: 409, Type: "request_cancelled", Code: "client_disconnected", Message: "No client remains connected after gateway restart."}
 					}
 					recoveries = append(recoveries, &copy)
 				}
@@ -348,7 +354,7 @@ func (s *Service) consume(ctx context.Context) {
 			continue
 		}
 		s.mu.Lock()
-		duplicate := false
+		duplicate := s.cancelled[request.ID]
 		var duplicateState *durableJob
 		if request.IdempotencyKey != "" {
 			if existingID, ok := s.keys[identity(request.ClientID, request.IdempotencyKey)]; ok && existingID != request.ID {
@@ -442,8 +448,20 @@ func (s *Service) dispatch(ctx, workCtx context.Context) {
 				s.releaseSlot(j)
 				break
 			}
+			jobCtx, jobCancel := context.WithCancel(workCtx)
+			s.mu.Lock()
+			s.jobCancels[j.ID] = jobCancel
+			if s.cancelled[j.ID] {
+				jobCancel()
+			}
+			s.mu.Unlock()
 			s.workers.Add(1)
-			go func() { defer s.workers.Done(); s.execute(workCtx, j, in) }()
+			go func() {
+				defer s.workers.Done()
+				defer jobCancel()
+				defer func() { s.mu.Lock(); delete(s.jobCancels, j.ID); s.mu.Unlock() }()
+				s.execute(jobCtx, j, in)
+			}()
 		}
 	}
 }
@@ -454,12 +472,12 @@ func (s *Service) next() (*durableJob, InstanceConfig, bool) {
 	if s.stopping {
 		return nil, InstanceConfig{}, false
 	}
-	if !s.brokerAvailable {
+	if !s.brokerAvailable || s.stateUncertain {
 		return nil, InstanceConfig{}, false
 	}
 	var pending []*durableJob
 	for _, j := range s.jobs {
-		if j.Status == "queued" {
+		if j.Status == "queued" && !s.cancelled[j.ID] {
 			pending = append(pending, j)
 		}
 	}
@@ -617,6 +635,10 @@ func (s *Service) execute(ctx context.Context, j *durableJob, in InstanceConfig)
 	result, failure := s.caller.call(callCtx, in, j.Request, j.ID, j.ProbeReserved)
 	cancel()
 	if failure != nil {
+		if s.isCanceled(j.ID) {
+			s.releaseSlot(j)
+			return
+		}
 		if j.Attempt < 2 && (failure.BeforeSend || failure.Status == 429) && time.Now().Add(failure.RetryAfter).Before(j.Deadline) {
 			s.releaseSlot(j)
 			j.Status = "queued"
@@ -650,11 +672,15 @@ func (s *Service) execute(ctx context.Context, j *durableJob, in InstanceConfig)
 		if !uncertain {
 			j.SlotHeld = false
 		}
-		if err := s.persistResult(ctx, j, status, body, "failed", failure.RetryAfter); err == nil {
-			if !uncertain {
+		if err := s.persistResult(ctx, j, status, body, "failed", failure.RetryAfter); err == nil || errors.Is(err, errCanceledJob) {
+			if !uncertain || errors.Is(err, errCanceledJob) {
 				s.releaseSlot(j)
 			}
 		}
+		return
+	}
+	if s.isCanceled(j.ID) {
+		s.releaseSlot(j)
 		return
 	}
 	if int64(len(result.Body)) > 32<<20 {
@@ -664,7 +690,7 @@ func (s *Service) execute(ctx context.Context, j *durableJob, in InstanceConfig)
 		return
 	}
 	j.SlotHeld = false
-	if err := s.persistResult(ctx, j, 200, result.Body, "succeeded"); err == nil {
+	if err := s.persistResult(ctx, j, 200, result.Body, "succeeded"); err == nil || errors.Is(err, errCanceledJob) {
 		s.releaseSlot(j)
 	}
 }
@@ -686,8 +712,12 @@ func (s *Service) persistResult(ctx context.Context, j *durableJob, status int, 
 		if err := s.save(ctx, j); err == nil {
 			break
 		} else {
+			if errors.Is(err, errCanceledJob) {
+				return err
+			}
 			if time.Now().After(j.Deadline) || ctx.Err() != nil {
-				s.notifyEphemeral(j.ID, submitResult{503, errorBody("server_error", "result_not_persisted", "Gateway could not durably save the LLM result.")})
+				s.markStateUncertain()
+				s.notifyEphemeral(j.ID, submitResult{503, errorBody("server_error", "state_unavailable", "Gateway could not durably save the LLM result.")})
 				return err
 			}
 			timer := time.NewTimer(250 * time.Millisecond)
@@ -801,6 +831,7 @@ func (s *Service) finish(j *durableJob, result submitResult, state string) {
 		}
 		s.mu.Unlock()
 	} else {
+		s.markStateUncertain()
 		s.notifyEphemeral(j.ID, submitResult{503, errorBody("server_error", "state_unavailable", "Gateway could not durably save the request state.")})
 	}
 }
@@ -823,6 +854,26 @@ func (s *Service) releaseSlot(j *durableJob) {
 func (s *Service) save(ctx context.Context, j *durableJob) error {
 	s.stateMu.Lock()
 	defer s.stateMu.Unlock()
+	s.mu.Lock()
+	current := s.jobs[j.ID]
+	if s.cancelled[j.ID] && (j.Error == nil || j.Error.Code != "request_canceled") {
+		s.mu.Unlock()
+		return errCanceledJob
+	}
+	if current != nil && !isPending(current.Status) {
+		currentCode, nextCode := "", ""
+		if current.Error != nil {
+			currentCode = current.Error.Code
+		}
+		if j.Error != nil {
+			nextCode = j.Error.Code
+		}
+		if current.Status != j.Status || currentCode != nextCode {
+			s.mu.Unlock()
+			return errCanceledJob
+		}
+	}
+	s.mu.Unlock()
 	copy := *j
 	raw, err := json.Marshal(copy)
 	if err != nil {
@@ -833,7 +884,9 @@ func (s *Service) save(ctx context.Context, j *durableJob) error {
 	}
 	res := s.stateWriter.ProduceSync(ctx, &kgo.Record{Topic: s.cfg.StateTopic, Key: stateKey(j), Value: raw})
 	if err = res.FirstErr(); err != nil {
-		_ = s.stateWriter.EndTransaction(context.Background(), kgo.TryAbort)
+		abortCtx, stopAbort := context.WithTimeout(context.Background(), 2*time.Second)
+		_ = s.stateWriter.EndTransaction(abortCtx, kgo.TryAbort)
+		stopAbort()
 		return err
 	}
 	if err = s.stateWriter.EndTransaction(ctx, kgo.TryCommit); err != nil {
@@ -851,6 +904,13 @@ func (s *Service) save(ctx context.Context, j *durableJob) error {
 		}
 		if isPending(j.Status) {
 			s.bytes += int64(len(mustJSON(j.Request)))
+		}
+	}
+	if !isPending(j.Status) {
+		if accepted := s.accepted[j.ID]; accepted != nil {
+			delete(s.accepted, j.ID)
+			s.reserved--
+			s.reservedBytes -= int64(len(mustJSON(accepted)))
 		}
 	}
 	saved := *j
@@ -892,138 +952,47 @@ func (s *Service) handler(w http.ResponseWriter, r *http.Request) {
 	case s.connections <- struct{}{}:
 		defer func() { <-s.connections }()
 	default:
+		s.recordCall("http", 429)
 		writeError(w, 429, "rate_limit_error", "connection_limit", "Too many concurrent requests.")
 		return
 	}
-	s.mu.Lock()
-	ready := s.ready && !s.stopping
-	s.mu.Unlock()
-	if !ready {
+	if !s.Ready() {
+		s.recordCall("http", 503)
 		writeError(w, 503, "server_error", "gateway_not_ready", "Gateway is not ready.")
 		return
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, s.cfg.MaxBodyBytes)
 	body, err := ioReadAll(r.Body)
 	if err != nil {
+		s.recordCall("http", 413)
 		writeError(w, 413, "invalid_request_error", "request_too_large", "Request body is too large.")
 		return
 	}
 	req, err := ParseRequest(body)
 	if err != nil {
+		s.recordCall("http", 400)
 		writeStatusError(w, err)
 		return
 	}
-	if err := s.validatePool(req); err != nil {
+	result, id, err := s.Complete(r.Context(), req, strings.TrimSpace(r.Header.Get("Idempotency-Key")), "http", true, func(id string) { w.Header().Set("X-Request-ID", id) })
+	w.Header().Set("X-Request-ID", id)
+	if err != nil {
 		writeStatusError(w, err)
 		return
 	}
-	clientID := "internal"
-	key := strings.TrimSpace(r.Header.Get("Idempotency-Key"))
-	hash := req.CanonicalHash()
-	created := time.Now()
-	deadline := created.Add(s.cfg.RequestDeadline)
-	jobID := newID()
-	if key != "" {
-		jobID = stableJobID(clientID, key)
+	if result.retryAfter > 0 {
+		w.Header().Set("Retry-After", strconv.Itoa(result.retryAfter))
 	}
-	w.Header().Set("X-Request-ID", jobID)
-	payload := durableRequest{Version: 1, ID: jobID, ClientID: clientID, IdempotencyKey: key, Hash: hash, Request: req, SubmittedAt: created, Deadline: deadline}
-	queuedBytes := int64(len(mustJSON(payload)))
-	var wait chan struct{}
-	s.mu.Lock()
-	if key != "" {
-		index := identity(clientID, key)
-		if id, ok := s.keys[index]; ok {
-			existing := s.jobs[id]
-			if existing != nil && !isPending(existing.Status) && !existing.SlotHeld && time.Since(existing.SubmittedAt) >= s.cfg.Retention {
-				delete(s.jobs, id)
-				delete(s.keys, index)
-			}
-		}
-	}
-	if key != "" {
-		if id, ok := s.keys[identity(clientID, key)]; ok {
-			s.idempotentReplays++
-			existing := s.jobs[id]
-			existingHash := ""
-			if existing != nil {
-				existingHash = existing.Hash
-			} else if accepted := s.accepted[id]; accepted != nil {
-				existingHash = accepted.Hash
-			}
-			if existingHash != hash {
-				s.mu.Unlock()
-				writeError(w, 409, "idempotency_error", "idempotency_conflict", "Idempotency-Key was already used with a different request.")
-				return
-			}
-			jobID = id
-			if existing != nil && existing.Status == "succeeded" {
-				raw := append([]byte(nil), existing.Response...)
-				s.mu.Unlock()
-				w.Header().Set("X-Request-ID", id)
-				w.Header().Set("Content-Type", "application/json")
-				w.WriteHeader(200)
-				_, _ = w.Write(raw)
-				return
-			}
-			if existing != nil && (existing.Status == "failed" || existing.Status == "expired") {
-				e := existing.Error
-				s.mu.Unlock()
-				w.Header().Set("X-Request-ID", id)
-				if e.RetryAfter > 0 {
-					w.Header().Set("Retry-After", strconv.Itoa(e.RetryAfter))
-				}
-				writeError(w, e.Status, e.Type, e.Code, e.Message)
-				return
-			}
-			wait = s.waiters[id]
-			if wait == nil {
-				wait = make(chan struct{})
-				s.waiters[id] = wait
-			}
-			s.mu.Unlock()
-			s.await(w, r, id, wait)
-			return
-		}
-	}
-	pending := 0
-	for _, existing := range s.jobs {
-		if isPending(existing.Status) {
-			pending++
-		}
-	}
-	if pending+s.reserved >= s.cfg.MaxPending || s.bytes+s.reservedBytes+queuedBytes > s.cfg.MaxPendingBytes {
-		s.mu.Unlock()
-		writeError(w, 429, "rate_limit_error", "gateway_overloaded", "Gateway queue capacity has been reached.")
-		return
-	}
-	wait = make(chan struct{})
-	s.waiters[jobID] = wait
-	s.accepted[jobID] = &payload
-	if key != "" {
-		s.keys[identity(clientID, key)] = jobID
-	}
-	s.reserved++
-	s.reservedBytes += queuedBytes
-	s.mu.Unlock()
-	raw, _ := json.Marshal(payload)
-	submitCtx, stopSubmit := context.WithDeadline(context.Background(), deadline)
-	pr := s.submitter.ProduceSync(submitCtx, &kgo.Record{Topic: s.cfg.RequestsTopic, Key: []byte(jobID), Value: raw})
-	stopSubmit()
-	if e := pr.FirstErr(); e != nil {
-		go s.retryPublish(payload, raw, queuedBytes)
-		writeError(w, 503, "server_error", "queue_unavailable", "Gateway could not durably accept the request.")
-		return
-	}
-	w.Header().Set("X-Request-ID", jobID)
-	s.await(w, r, jobID, wait)
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(result.status)
+	_, _ = w.Write(result.body)
 }
 
 func (s *Service) retryPublish(payload durableRequest, raw []byte, size int64) {
 	ctx, cancel := context.WithDeadline(context.Background(), payload.Deadline)
 	defer cancel()
 	for {
-		if ctx.Err() != nil {
+		if ctx.Err() != nil || s.isCanceled(payload.ID) {
 			break
 		}
 		res := s.submitter.ProduceSync(ctx, &kgo.Record{Topic: s.cfg.RequestsTopic, Key: []byte(payload.ID), Value: raw})
@@ -1036,6 +1005,9 @@ func (s *Service) retryPublish(payload durableRequest, raw []byte, size int64) {
 			timer.Stop()
 		case <-timer.C:
 		}
+	}
+	if s.isCanceled(payload.ID) {
+		return
 	}
 	s.mu.Lock()
 	if _, stored := s.jobs[payload.ID]; !stored {
@@ -1203,6 +1175,12 @@ func (s *Service) writeMetrics(w http.ResponseWriter) {
 			open = 1
 		}
 		fmt.Fprintf(w, "gateway_instance_in_flight{instance=%q} %d\ngateway_instance_capacity{instance=%q} %d\ngateway_circuit_open{instance=%q} %d\n", in.ID, s.inFlight[in.ID], in.ID, in.MaxInFlight, in.ID, open)
+	}
+	fmt.Fprintln(w, "# TYPE gateway_calls_total counter")
+	for _, transport := range []string{"http", "grpc"} {
+		for status, count := range s.transportCalls[transport] {
+			fmt.Fprintf(w, "gateway_calls_total{transport=%q,status=%q} %d\n", transport, strconv.Itoa(status), count)
+		}
 	}
 	fmt.Fprintln(w, "# TYPE gateway_requests_total counter")
 	for status, count := range results {

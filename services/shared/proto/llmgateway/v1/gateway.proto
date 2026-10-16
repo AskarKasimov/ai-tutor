@@ -1,0 +1,30 @@
+syntax = "proto3";
+package llmgateway.v1;
+option go_package = "github.com/AskarKasimov/ai-tutor/services/shared/gen/go/llmgateway/v1;llmgatewayv1";
+
+service Gateway { rpc Complete(CompleteRequest) returns (CompleteResponse); }
+message CompleteRequest {
+  repeated Message messages = 1;
+  Complexity complexity = 2;
+  bool urgent = 3;
+  GenerationParameters parameters = 4;
+}
+message Message { Role role = 1; optional string content = 2; }
+enum Role { ROLE_UNSPECIFIED = 0; ROLE_SYSTEM = 1; ROLE_USER = 2; ROLE_ASSISTANT = 3; }
+enum Complexity { COMPLEXITY_UNSPECIFIED = 0; COMPLEXITY_LOW = 1; COMPLEXITY_MEDIUM = 2; COMPLEXITY_HIGH = 3; }
+message GenerationParameters {
+  optional double temperature = 1;
+  optional double top_p = 2;
+  optional double presence_penalty = 3;
+  optional double frequency_penalty = 4;
+  optional int64 seed = 5;
+  optional int64 max_tokens = 6;
+  optional int64 max_completion_tokens = 7;
+  StopSequences stop = 8;
+  optional ResponseFormat response_format = 9;
+  optional ReasoningEffort reasoning_effort = 10;
+}
+message StopSequences { repeated string values = 1; }
+enum ResponseFormat { RESPONSE_FORMAT_UNSPECIFIED = 0; RESPONSE_FORMAT_TEXT = 1; RESPONSE_FORMAT_JSON_OBJECT = 2; }
+enum ReasoningEffort { REASONING_EFFORT_UNSPECIFIED = 0; REASONING_EFFORT_LOW = 1; REASONING_EFFORT_MEDIUM = 2; REASONING_EFFORT_HIGH = 3; }
+message CompleteResponse { string request_id = 1; bytes completion_json = 2; }

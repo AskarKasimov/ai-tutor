@@ -12,11 +12,30 @@ jobs:
         working-directory: services/llm-gateway
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-go@v5
         with:
           go-version-file: services/llm-gateway/go.mod
           cache: true
           cache-dependency-path: services/llm-gateway/go.sum
+      - name: Install pinned protoc and Go generators
+        working-directory: .
+        run: |
+          curl -fsSL https://github.com/protocolbuffers/protobuf/releases/download/v35.0/protoc-35.0-linux-x86_64.zip -o /tmp/protoc.zip
+          unzip -q /tmp/protoc.zip -d /tmp/protoc-35
+          echo "/tmp/protoc-35/bin" >> "$GITHUB_PATH"
+          go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.10
+          go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.5.1
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+      - name: Check generated shared code
+        working-directory: .
+        run: services/shared/tools/generate.sh --check
+      - name: Check protobuf compatibility
+        working-directory: .
+        run: |
+          services/shared/tools/check-compat.sh "${{ github.event.pull_request.base.sha }}"
+          cd services/shared && GOWORK=off go test ./...
       - name: Check generated OpenAPI contract
         run: |
           expected=$(sha256sum openapi.yaml)
@@ -26,11 +45,20 @@ jobs:
         run: docker compose --profile gateway --env-file .env.example up -d --wait --wait-timeout 120 redpanda
         working-directory: .
       - name: Run tests
-        run: go test -race ./... -count=1
+        run: GOWORK=off go test -race ./... -count=1
         env:
           TEST_KAFKA_BROKERS: localhost:19092
-      - run: go vet ./...
-      - run: go build -o /tmp/llm-gateway ./cmd/llm-gateway
+      - run: GOWORK=off go vet ./...
+      - run: GOWORK=off go build -o /tmp/llm-gateway ./cmd/llm-gateway
+      - name: Build gateway image from repository context
+        working-directory: .
+        run: docker build -f services/llm-gateway/Dockerfile -t llm-gateway-ci .
+      - name: Validate Caddy routing
+        working-directory: .
+        run: |
+          mkdir -p /tmp/llm-gateway-caddy-certs
+          openssl req -x509 -newkey rsa:2048 -nodes -keyout /tmp/llm-gateway-caddy-certs/server-key.pem -out /tmp/llm-gateway-caddy-certs/server.pem -subj /CN=localhost -days 1
+          docker run --rm -v "$PWD/services/caddy/Caddyfile:/etc/caddy/Caddyfile:ro" -v /tmp/llm-gateway-caddy-certs:/certs:ro caddy:2-alpine caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
       - name: Stop Redpanda
         if: ${{ always() }}
         run: docker compose --profile gateway --env-file .env.example stop redpanda

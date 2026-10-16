@@ -37,6 +37,14 @@
 		respond 404
 	}
 
+	handle /llmgateway.v1.Gateway/* {
+		@gateway_enabled expression {env.COMPOSE_PROFILES}.matches('(^|,)gateway(,|$)')
+		handle @gateway_enabled {
+			reverse_proxy h2c://llm-gateway:8011
+		}
+		respond 404
+	}
+
 	@api path /api/v1 /api/v1/*
 	handle @api {
 		@vscode_origin header_regexp Origin ^(vscode-webview://[a-zA-Z0-9-]+|https://[a-zA-Z0-9-]+\.vscode-cdn\.net)$

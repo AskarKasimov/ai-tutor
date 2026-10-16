@@ -208,10 +208,10 @@
     <section>
       <h2>7. LLM gateway <small></small></h2>
       <ul>
-        <li><label><input type="checkbox" data-id="l-client" checked><span><span class="t">LLM gateway готов и влит в master</span><span class="d">Отдельный сервис services/llm-gateway с HTTP и gRPC.</span></span></label></li>
+        <li><label><input type="checkbox" data-id="l-client" checked><span><span class="t">LLM gateway готов и влит в master</span><span class="d">Отдельный сервис services/llm-gateway: HTTP API и protobuf gRPC, очередь и балансировка по четырём моделям.</span></span></label></li>
         <li><label><input type="checkbox" data-id="l-geek" checked><span><span class="t">Geek ходит в LLM через gateway</span><span class="d">По gRPC (llmgateway.v1.Gateway/Complete); мок удалён.</span></span></label></li>
-        <li><label><input type="checkbox" data-id="l-python"><span><span class="t">course-graph подключён к gateway</span><span class="d">Сейчас HTTP, позже gRPC.</span></span></label></li>
-        <li><label><input type="checkbox" data-id="l-roles" checked><span><span class="t">Сложность запроса задаёт вызывающий код</span><span class="d">Geek: оценка — high, основной вопрос — medium, дополнительный и переформулировка — low; модель выбирает gateway.</span></span></label></li>
+        <li><label><input type="checkbox" data-id="l-python"><span><span class="t">course-graph подключён к gateway</span><span class="d">Пока не подключён; требуется адаптер для Python-сервиса.</span></span></label></li>
+        <li><label><input type="checkbox" data-id="l-roles" checked><span><span class="t">Сложность запроса задаёт вызывающий код</span><span class="d">Клиент указывает complexity (low / medium / high) и при необходимости urgent. Для Geek: оценка — high, основной вопрос — medium, дополнительный и переформулировка — low; модель выбирает gateway.</span></span></label></li>
       </ul>
     </section>
 

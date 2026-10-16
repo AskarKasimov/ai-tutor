@@ -211,7 +211,7 @@ components:
             type: string
           type: array
         questions:
-          description: Вопросы к вершине; сервис пока возвращает пустой список, их заполнят позже
+          description: Вопросы к вершине; сервис может вернуть пустой список — backend заполняет основной вопрос перед сохранением графа
           items:
             type: string
           type: array

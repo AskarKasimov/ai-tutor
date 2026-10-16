@@ -38,8 +38,6 @@ type Config struct {
 	LLMTimeout        time.Duration
 	// GeekGraphFixture is a graph file used for courses without a stored graph.
 	GeekGraphFixture string
-	// GeekGraphFixtureSubject limits the fixture to one course; empty serves every course.
-	GeekGraphFixtureSubject string
 	// GeekMaxQuestions stops a diagnostic after that many questions; 0 is no limit.
 	GeekMaxQuestions int
 }
@@ -163,7 +161,6 @@ func ConfigFromEnv() (Config, error) {
 		return c, err
 	}
 	c.GeekGraphFixture = strings.TrimSpace(os.Getenv("BACKEND_GEEK_GRAPH_FIXTURE"))
-	c.GeekGraphFixtureSubject = strings.TrimSpace(os.Getenv("BACKEND_GEEK_GRAPH_FIXTURE_SUBJECT_ID"))
 	value = envOrDefault("BACKEND_GEEK_MAX_QUESTIONS", "0")
 	if c.GeekMaxQuestions, err = strconv.Atoi(value); err != nil {
 		return c, fmt.Errorf("BACKEND_GEEK_MAX_QUESTIONS: %w", err)

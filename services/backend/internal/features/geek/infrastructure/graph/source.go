@@ -30,16 +30,12 @@ func (c Chain) Current(ctx context.Context, subjectID string) (exam.Graph, bool,
 	return exam.Graph{}, false, nil
 }
 
-// Fixture serves one graph file to the course SubjectID, or to every course
-// when SubjectID is empty. The version is the hash of the file, so editing it
-// counts as a rebuild.
-type Fixture struct {
-	Path      string
-	SubjectID string
-}
+// Fixture serves one graph file for every course. The version is the hash of
+// the file, so editing it counts as a rebuild.
+type Fixture struct{ Path string }
 
-func (f Fixture) Current(_ context.Context, subjectID string) (exam.Graph, bool, error) {
-	if f.Path == "" || f.SubjectID != "" && f.SubjectID != subjectID {
+func (f Fixture) Current(context.Context, string) (exam.Graph, bool, error) {
+	if f.Path == "" {
 		return exam.Graph{}, false, nil
 	}
 	data, err := os.ReadFile(f.Path)

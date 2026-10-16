@@ -174,30 +174,23 @@ components:
           type:
             - string
             - "null"
-        level:
-          enum:
-            - topic
-            - subtopic
-          type: string
         node_id:
           type: string
-        parent_id:
-          type:
-            - string
-            - "null"
         status:
           $ref: '#/components/schemas/geek.NodeStatus'
         title:
           type: string
+        top_level:
+          description: 'Вершина верхнего уровня: не пререквизит ни одной другой'
+          type: boolean
       required:
         - criteria
         - evidence_lines
         - grade
-        - level
         - node_id
-        - parent_id
         - status
         - title
+        - top_level
       type: object
     geek.Criteria:
       additionalProperties: false
@@ -231,23 +224,11 @@ components:
       properties:
         node_id:
           type: string
-        sources:
-          items:
-            $ref: '#/components/schemas/geek.Source'
-          type: array
         title:
           type: string
-        topic_title:
-          type: string
-        week:
-          minimum: 1
-          type: integer
       required:
         - node_id
-        - sources
         - title
-        - topic_title
-        - week
       type: object
     geek.Graph:
       additionalProperties: false
@@ -255,16 +236,16 @@ components:
       properties:
         built_at:
           type: integer
+        nodes:
+          items:
+            $ref: '#/components/schemas/geek.GraphNode'
+          type: array
         subject_id:
           type: string
-        topics:
-          items:
-            $ref: '#/components/schemas/geek.GraphTopic'
-          type: array
       required:
         - built_at
+        - nodes
         - subject_id
-        - topics
       type: object
     geek.GraphBuild:
       additionalProperties: false
@@ -307,80 +288,40 @@ components:
         - prerequisites
         - validation
       type: string
-    geek.GraphSubtopic:
+    geek.GraphNode:
       additionalProperties: false
-      description: Подтема. Пререквизиты — подтемы любых тем курса; граф пререквизитов ацикличен.
+      description: Вершина графа курса. Граф пререквизитов ацикличен; плоский граф без рёбер — частный случай. Порядок вершин в массиве — порядок изучения.
       properties:
         content:
           description: Текст вершины из материалов, на русском
           type: string
         id:
           type: string
-        position:
-          description: Порядок внутри родителя
-          minimum: 0
-          type: integer
-        prerequisites:
+        outcomes:
+          description: Образовательные результаты; пока могут быть пустыми
           items:
-            description: ID подтемы-пререквизита
             type: string
           type: array
-        sources:
+        prerequisites:
+          description: ID вершин, которые нужно знать до этой; у пререквизитов могут быть свои пререквизиты
           items:
-            $ref: '#/components/schemas/geek.Source'
+            type: string
+          type: array
+        questions:
+          description: Вопросы к вершине; пока могут быть пустыми, недостающие Geek генерирует в рантайме
+          items:
+            type: string
           type: array
         title:
           description: Название на русском
           type: string
-        week:
-          description: Самая ранняя неделя источников
-          minimum: 1
-          type: integer
       required:
-        - content
         - id
-        - position
+        - title
+        - content
         - prerequisites
-        - sources
-        - title
-        - week
-      type: object
-    geek.GraphTopic:
-      additionalProperties: false
-      description: Верхнеуровневая тема курса
-      properties:
-        content:
-          description: Текст вершины из материалов, на русском
-          type: string
-        id:
-          type: string
-        position:
-          description: Порядок внутри родителя
-          minimum: 0
-          type: integer
-        sources:
-          items:
-            $ref: '#/components/schemas/geek.Source'
-          type: array
-        subtopics:
-          items:
-            $ref: '#/components/schemas/geek.GraphSubtopic'
-          type: array
-        title:
-          description: Название на русском
-          type: string
-        week:
-          description: Самая ранняя неделя источников
-          minimum: 1
-          type: integer
-      required:
-        - content
-        - id
-        - position
-        - sources
-        - subtopics
-        - title
-        - week
+        - outcomes
+        - questions
       type: object
     geek.Material:
       additionalProperties: false
@@ -476,14 +417,18 @@ components:
           $ref: '#/components/schemas/geek.NodeStatus'
         title:
           type: string
+        top_level:
+          description: 'Вершина верхнего уровня: не пререквизит ни одной другой; по ним считается оценка курса'
+          type: boolean
       required:
         - grade
         - node_id
         - status
         - title
+        - top_level
       type: object
     geek.NodeStatus:
-      description: independent — самостоятельный ответ, assisted — ответ с помощью, gap — пробел, insufficient — недостаточно данных, credited_by_parent — засчитано по вышестоящей теме, unchecked — не спрашивалась
+      description: independent — самостоятельный ответ, assisted — ответ с помощью, gap — пробел, insufficient — недостаточно данных, credited_by_parent — засчитано по вышестоящей вершине (для неё это пререквизит), unchecked — не спрашивалась
       enum:
         - independent
         - assisted
@@ -554,7 +499,7 @@ components:
             $ref: '#/components/schemas/geek.Gap'
           type: array
         grade:
-          description: Предварительная оценка курса A–D по среднему баллу верхнеуровневых тем; null — ни одной темы с оценкой
+          description: Предварительная оценка курса A–D по среднему баллу вершин верхнего уровня; null — ни одной такой вершины с оценкой
           enum:
             - A
             - B
@@ -564,8 +509,12 @@ components:
           type:
             - string
             - "null"
+        nodes:
+          items:
+            $ref: '#/components/schemas/geek.NodeResult'
+          type: array
         score_percent:
-          description: Средний балл тем (A=4…D=1) в процентах от 4; темы «недостаточно данных» исключены
+          description: Средний балл вершин верхнего уровня (A=4…D=1) в процентах от 4; вершины «недостаточно данных» исключены
           maximum: 100
           minimum: 0
           type:
@@ -573,16 +522,12 @@ components:
             - "null"
         session_id:
           type: string
-        topics:
-          items:
-            $ref: '#/components/schemas/geek.TopicResult'
-          type: array
       required:
         - gaps
         - grade
+        - nodes
         - score_percent
         - session_id
-        - topics
       type: object
     geek.Session:
       additionalProperties: false
@@ -676,25 +621,6 @@ components:
         - status
         - student
       type: object
-    geek.Source:
-      additionalProperties: false
-      description: Материал, из которого взята вершина
-      properties:
-        filename:
-          type: string
-        kind:
-          $ref: '#/components/schemas/geek.MaterialKind'
-        material_id:
-          type: string
-        week:
-          minimum: 1
-          type: integer
-      required:
-        - filename
-        - kind
-        - material_id
-        - week
-      type: object
     geek.StartRequest:
       additionalProperties: false
       properties:
@@ -714,37 +640,6 @@ components:
       required:
         - display_name
         - id
-      type: object
-    geek.TopicResult:
-      additionalProperties: false
-      properties:
-        grade:
-          description: Оценка A–D; null — оценки нет (тема не проверялась или недостаточно данных)
-          enum:
-            - A
-            - B
-            - C
-            - D
-            - null
-          type:
-            - string
-            - "null"
-        node_id:
-          type: string
-        status:
-          $ref: '#/components/schemas/geek.NodeStatus'
-        subtopics:
-          items:
-            $ref: '#/components/schemas/geek.NodeResult'
-          type: array
-        title:
-          type: string
-      required:
-        - grade
-        - node_id
-        - status
-        - subtopics
-        - title
       type: object
     geek.Turn:
       additionalProperties: false

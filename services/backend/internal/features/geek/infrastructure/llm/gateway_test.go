@@ -3,122 +3,167 @@ package llm
 import (
 	"context"
 	"encoding/json"
-	"net/http"
-	"net/http/httptest"
+	"net"
 	"strings"
+	"sync"
 	"testing"
 	"time"
+
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
+	llmgatewayv1 "github.com/AskarKasimov/ai-tutor/services/shared/gen/go/llmgateway/v1"
 
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/exam"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/features/geek/application"
 )
 
-func gatewayServer(t *testing.T, answers ...string) (*httptest.Server, *[]map[string]any) {
+// fakeGateway answers Complete with scripted message contents in order; the
+// last one repeats.
+type fakeGateway struct {
+	llmgatewayv1.UnimplementedGatewayServer
+	mu        sync.Mutex
+	requests  []*llmgatewayv1.CompleteRequest
+	answers   []string
+	err       error
+	block     bool
+	cancelled chan struct{}
+}
+
+func (f *fakeGateway) Complete(ctx context.Context, r *llmgatewayv1.CompleteRequest) (*llmgatewayv1.CompleteResponse, error) {
+	f.mu.Lock()
+	f.requests = append(f.requests, r)
+	n := len(f.requests)
+	f.mu.Unlock()
+	if f.block {
+		<-ctx.Done()
+		close(f.cancelled)
+		return nil, ctx.Err()
+	}
+	if f.err != nil {
+		return nil, f.err
+	}
+	completion, _ := json.Marshal(map[string]any{
+		"id": "c", "object": "chat.completion", "created": 1, "model": "gpt-oss-120b",
+		"choices": []any{map[string]any{"index": 0, "message": map[string]string{"role": "assistant", "content": f.answers[min(n, len(f.answers))-1]}, "finish_reason": "stop"}},
+	})
+	return &llmgatewayv1.CompleteResponse{RequestId: "req-1", CompletionJson: completion}, nil
+}
+
+func (f *fakeGateway) count() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return len(f.requests)
+}
+
+func serve(t *testing.T, f *fakeGateway, timeout time.Duration) *Gateway {
 	t.Helper()
-	requests := &[]map[string]any{}
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/v1/chat/completions" {
-			t.Errorf("path = %s", r.URL.Path)
-		}
-		var body map[string]any
-		_ = json.NewDecoder(r.Body).Decode(&body)
-		*requests = append(*requests, body)
-		answer := answers[min(len(*requests), len(answers))-1]
-		if answer == "500" {
-			w.WriteHeader(http.StatusInternalServerError)
-			return
-		}
-		_ = json.NewEncoder(w).Encode(map[string]any{"choices": []any{map[string]any{"message": map[string]string{"role": "assistant", "content": answer}, "finish_reason": "stop"}}})
-	}))
-	t.Cleanup(server.Close)
-	return server, requests
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := grpc.NewServer()
+	llmgatewayv1.RegisterGatewayServer(server, f)
+	go func() { _ = server.Serve(listener) }()
+	t.Cleanup(server.Stop)
+	g, conn, err := Dial(listener.Addr().String(), timeout)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = conn.Close() })
+	return g
 }
 
 var node = exam.Node{ID: "a-star", Title: "Алгоритм A*", Content: "f(n) = g(n) + h(n)."}
 
-func TestGatewayAsksWithComplexityAndWithoutModel(t *testing.T) {
-	server, requests := gatewayServer(t, `{"text": "Почему A* оптимален?"}`)
-	g := NewGateway(server.Client(), server.URL+"/", time.Second)
+var turns = []exam.Turn{
+	{Line: 1, Speaker: exam.SpeakerGeek, Text: "Вопрос?"},
+	{Line: 2, Speaker: exam.SpeakerStudent, Text: "Ответ."},
+}
+
+func TestGatewayAsksWithComplexityAndJSONFormat(t *testing.T) {
+	f := &fakeGateway{answers: []string{`{"text": "Почему A* оптимален?"}`}}
+	g := serve(t, f, time.Second)
 	text, err := g.Question(context.Background(), application.QuestionRequest{Kind: exam.KindRephrase, Node: node})
 	if err != nil || text != "Почему A* оптимален?" {
 		t.Fatalf("question = %q, %v", text, err)
 	}
-	body := (*requests)[0]
-	if _, ok := body["model"]; ok {
-		t.Fatal("model must not be sent")
+	r := f.requests[0]
+	if r.GetComplexity() != llmgatewayv1.Complexity_COMPLEXITY_LOW || r.GetUrgent() {
+		t.Fatalf("complexity = %s urgent = %v", r.GetComplexity(), r.GetUrgent())
 	}
-	if body["complexity"] != "low" || body["response_format"].(map[string]any)["type"] != "json_object" {
-		t.Fatalf("request = %v", body)
+	if r.GetParameters().GetResponseFormat() != llmgatewayv1.ResponseFormat_RESPONSE_FORMAT_JSON_OBJECT || r.GetParameters().GetTemperature() != 0.2 {
+		t.Fatalf("parameters = %v", r.GetParameters())
 	}
-	if !strings.Contains(body["messages"].([]any)[1].(map[string]any)["content"].(string), "f(n) = g(n) + h(n).") {
-		t.Fatal("topic text is missing from the prompt")
+	messages := r.GetMessages()
+	if len(messages) != 2 || messages[0].GetRole() != llmgatewayv1.Role_ROLE_SYSTEM || messages[1].GetRole() != llmgatewayv1.Role_ROLE_USER ||
+		!strings.Contains(messages[1].GetContent(), "f(n) = g(n) + h(n).") {
+		t.Fatalf("messages = %v", messages)
+	}
+	if _, err := g.Question(context.Background(), application.QuestionRequest{Kind: exam.KindFollowup, Node: node}); err != nil ||
+		f.requests[1].GetComplexity() != llmgatewayv1.Complexity_COMPLEXITY_MEDIUM {
+		t.Fatalf("followup complexity = %s, %v", f.requests[1].GetComplexity(), err)
 	}
 }
 
 func TestGatewayEvaluatesAndRetriesAnInvalidAnswerOnce(t *testing.T) {
-	server, requests := gatewayServer(t, "не JSON", "```json\n{\"verdict\":\"answered\",\"criteria\":{\"k1\":2,\"k2\":1,\"k3\":0,\"k4\":1},\"evidence_lines\":[2]}\n```")
-	g := NewGateway(server.Client(), server.URL, time.Second)
-	turns := []exam.Turn{{Line: 1, Speaker: exam.SpeakerGeek, Text: "Вопрос?"}, {Line: 2, Speaker: exam.SpeakerStudent, Text: "Ответ."}}
+	f := &fakeGateway{answers: []string{"не JSON", "```json\n{\"verdict\":\"answered\",\"criteria\":{\"k1\":2,\"k2\":1,\"k3\":0,\"k4\":1},\"evidence_lines\":[2]}\n```"}}
+	g := serve(t, f, time.Second)
 	e, err := g.Evaluate(context.Background(), application.EvaluationRequest{Kind: exam.KindQuestion, Node: node, Dialogue: turns})
 	if err != nil || e.Verdict != exam.VerdictAnswered || e.Criteria != (exam.Criteria{K1: 2, K2: 1, K4: 1}) || e.Evidence[0] != 2 {
 		t.Fatalf("evaluation = %+v, %v", e, err)
 	}
-	if len(*requests) != 2 || (*requests)[0]["complexity"] != "high" {
-		t.Fatalf("requests = %d", len(*requests))
+	if len(f.requests) != 2 || f.requests[0].GetComplexity() != llmgatewayv1.Complexity_COMPLEXITY_HIGH {
+		t.Fatalf("requests = %d", len(f.requests))
 	}
-	prompt := (*requests)[0]["messages"].([]any)[1].(map[string]any)["content"].(string)
-	if !strings.Contains(prompt, "[2] Студент: Ответ.") {
-		t.Fatalf("prompt lacks numbered dialogue: %s", prompt)
-	}
-}
-
-func TestGatewayRejectsInvalidCriteriaAndFailures(t *testing.T) {
-	server, _ := gatewayServer(t, `{"verdict":"answered","criteria":{"k1":3,"k2":1,"k3":0,"k4":1}}`)
-	g := NewGateway(server.Client(), server.URL, time.Second)
-	turns := []exam.Turn{{Line: 1, Speaker: exam.SpeakerStudent, Text: "Ответ."}}
-	if _, err := g.Evaluate(context.Background(), application.EvaluationRequest{Node: node, Dialogue: turns}); err == nil {
-		t.Fatal("criteria out of range accepted")
-	}
-	failing, requests := gatewayServer(t, "500")
-	if _, err := NewGateway(failing.Client(), failing.URL, time.Second).Question(context.Background(), application.QuestionRequest{Node: node}); err == nil || len(*requests) != 1 {
-		t.Fatalf("gateway failure: %v after %d calls (no retry of transport errors)", err, len(*requests))
-	}
-}
-
-func TestMockRecognisesDontKnowAndGradesByLength(t *testing.T) {
-	ctx := context.Background()
-	for text, want := range map[string]exam.Verdict{"Честно, не знаю": exam.VerdictDontKnow, "Ну это поиск": exam.VerdictAnswered} {
-		e, _ := Mock{}.Evaluate(ctx, application.EvaluationRequest{Node: node, Dialogue: []exam.Turn{{Line: 1, Speaker: exam.SpeakerStudent, Text: text}}})
-		if e.Verdict != want {
-			t.Fatalf("%q -> %s", text, e.Verdict)
-		}
-	}
-	long := strings.Repeat("эвристика оценивает путь до цели ", 4)
-	student := exam.SpeakerStudent
-	e, _ := Mock{}.Evaluate(ctx, application.EvaluationRequest{Node: node, Dialogue: []exam.Turn{{Line: 3, Speaker: student, Text: long}}})
-	if exam.TopicGrade(e.Criteria, false) != exam.GradeA || e.Evidence[0] != 3 {
-		t.Fatalf("long answer = %+v", e)
-	}
-	// A strong main answer keeps K1 and K2 after a weak followup.
-	e, _ = Mock{}.Evaluate(ctx, application.EvaluationRequest{Kind: exam.KindFollowup, Node: node, Dialogue: []exam.Turn{
-		{Line: 1, Speaker: exam.SpeakerGeek, Text: "Вопрос?"}, {Line: 2, Speaker: student, Text: long},
-		{Line: 3, Speaker: exam.SpeakerGeek, Text: "А если?"}, {Line: 4, Speaker: student, Text: "Ну это поиск"},
-	}})
-	if e.Criteria != (exam.Criteria{K1: 2, K2: 2}) || exam.TopicGrade(e.Criteria, false) != exam.GradeC || len(e.Evidence) != 2 {
-		t.Fatalf("whole topic = %+v", e)
+	if !strings.Contains(f.requests[0].GetMessages()[1].GetContent(), "[2] Студент: Ответ.") {
+		t.Fatal("prompt lacks the numbered dialogue")
 	}
 }
 
 func TestGatewayDoesNotReuseFieldsOfARejectedAnswer(t *testing.T) {
-	server, requests := gatewayServer(t,
+	f := &fakeGateway{answers: []string{
 		`{"verdict":"answered","criteria":{"k1":2,"k2":2,"k3":2,"k4":3},"evidence_lines":[2]}`,
-		`{"verdict":"answered","criteria":{"k4":2},"evidence_lines":[2]}`)
-	g := NewGateway(server.Client(), server.URL, time.Second)
-	turns := []exam.Turn{{Line: 1, Speaker: exam.SpeakerGeek, Text: "Вопрос?"}, {Line: 2, Speaker: exam.SpeakerStudent, Text: "Ответ."}}
+		`{"verdict":"answered","criteria":{"k4":2},"evidence_lines":[2]}`,
+	}}
+	g := serve(t, f, time.Second)
 	if e, err := g.Evaluate(context.Background(), application.EvaluationRequest{Node: node, Dialogue: turns}); err == nil {
 		t.Fatalf("the second answer lacks K1-K3 but was accepted as %+v", e)
 	}
-	if len(*requests) != 2 {
-		t.Fatalf("requests = %d", len(*requests))
+	if len(f.requests) != 2 {
+		t.Fatalf("requests = %d", len(f.requests))
+	}
+}
+
+func TestGatewayFailureIsNotRetried(t *testing.T) {
+	f := &fakeGateway{err: status.Error(codes.Unavailable, "no slots")}
+	g := serve(t, f, time.Second)
+	_, err := g.Question(context.Background(), application.QuestionRequest{Node: node})
+	if status.Code(err) != codes.Unavailable || len(f.requests) != 1 {
+		t.Fatalf("err = %v after %d calls", err, len(f.requests))
+	}
+}
+
+func TestCancellingTheRequestStopsItInTheGateway(t *testing.T) {
+	f := &fakeGateway{block: true, cancelled: make(chan struct{})}
+	g := serve(t, f, time.Minute)
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() {
+		_, err := g.Question(ctx, application.QuestionRequest{Node: node})
+		done <- err
+	}()
+	for f.count() == 0 {
+		time.Sleep(5 * time.Millisecond)
+	}
+	cancel()
+	select {
+	case <-f.cancelled:
+	case <-time.After(2 * time.Second):
+		t.Fatal("the gateway did not see the cancellation")
+	}
+	if err := <-done; err == nil {
+		t.Fatal("a cancelled request succeeded")
 	}
 }

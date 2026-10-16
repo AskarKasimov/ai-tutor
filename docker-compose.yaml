@@ -59,6 +59,7 @@ services:
       target: dev
     volumes:
       - ./services/backend:/src
+      - ./services/shared:/shared:ro
       - backend_go_modules:/go/pkg/mod
       - backend_go_build:/root/.cache/go-build
       - backend_dev_bin:/src/.air

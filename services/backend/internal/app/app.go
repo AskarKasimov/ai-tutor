@@ -48,6 +48,8 @@ type App struct {
 	logger           *zap.Logger
 	storage          *s3.Client
 	materialsStorage materialsapp.S3Storage
+	// examiner is the LLM gateway over gRPC; the connection lives as long as the app.
+	examiner geekapp.Examiner
 }
 
 func New(cfg Config, pool *pgxpool.Pool, logger *zap.Logger) (*App, error) {
@@ -80,6 +82,9 @@ func New(cfg Config, pool *pgxpool.Pool, logger *zap.Logger) (*App, error) {
 	}
 	a.storage = storage
 	a.materialsStorage = &materialsStorageAdapter{storage: storage, bucket: cfg.S3Bucket}
+	if a.examiner, _, err = geekllm.Dial(cfg.LLMGatewayAddress, cfg.LLMTimeout); err != nil {
+		return nil, err
+	}
 	return a, nil
 }
 
@@ -137,13 +142,9 @@ func (a *App) Handler() http.Handler {
 	materialsService := materialsapp.New(materialspg.New(a.pool), a.materialsStorage, materialsOCR, a.now)
 	materialsHandlers := materialshttp.NewHandler(materialsService, a.cfg.MaxUploadBytes)
 
-	var examiner geekapp.Examiner = geekllm.Mock{}
-	if a.cfg.LLMGatewayURL != "" {
-		examiner = geekllm.NewGateway(a.client, a.cfg.LLMGatewayURL, a.cfg.LLMTimeout)
-	}
 	// The stored graph of stream A goes first once it exists; the fixture is the fallback.
 	graphs := geekgraph.Chain{geekgraph.Fixture{Path: a.cfg.GeekGraphFixture}}
-	geekService := geekapp.New(graphs, geekpg.New(a.pool), geekpg.NewTranscriptions(a.pool), examiner, models,
+	geekService := geekapp.New(graphs, geekpg.New(a.pool), geekpg.NewTranscriptions(a.pool), a.examiner, models,
 		geekstorage.NewAudio(a.storage, a.cfg.S3Bucket), security.IDGenerator{}, a.now, geekapp.Config{MaxQuestions: a.cfg.GeekMaxQuestions})
 	geekHandlers := geekhttp.New(geekService)
 

@@ -1,5 +1,4 @@
-// Package llm implements the Geek examiner: a client of the LLM gateway and a
-// deterministic mock used until the gateway is configured.
+// Package llm implements the Geek examiner as a gRPC client of the LLM gateway.
 package llm
 
 import (

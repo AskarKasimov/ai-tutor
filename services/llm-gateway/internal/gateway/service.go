@@ -747,6 +747,11 @@ func (s *Service) execute(ctx context.Context, j *durableJob, in InstanceConfig)
 			j.ProbeReserved = false
 			if err := s.save(ctx, j); err == nil {
 				s.signal()
+			} else if !errors.Is(err, errCanceledJob) {
+				// The durable state is still "running". Do not dispatch more work
+				// while local state claims this retry is queued.
+				s.markStateUncertain()
+				s.notifyEphemeral(j.ID, submitResult{503, errorBody("server_error", "state_unavailable", "Gateway could not durably reschedule the LLM request.")})
 			}
 			return
 		}

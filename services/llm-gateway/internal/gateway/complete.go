@@ -217,6 +217,37 @@ func (s *Service) awaitCompletion(ctx context.Context, id string, ch chan struct
 		return Completion{}, ctx.Err()
 	case <-ch:
 	case <-timer.C:
+		s.mu.Lock()
+		j = s.jobs[id]
+		accepted := s.accepted[id]
+		queued := j != nil && j.Status == "queued"
+		missing := j == nil && accepted == nil
+		s.mu.Unlock()
+		if missing {
+			return Completion{}, apiErr(503, "server_error", "state_unavailable", "Gateway result is unavailable.")
+		}
+		if queued {
+			s.expireQueued(time.Now())
+		} else if j == nil && accepted != nil {
+			// The input record may not have reached the consumer before its
+			// deadline. Persist the terminal result directly so a late delivery
+			// cannot start an already expired job.
+			expired := &durableJob{
+				Version: accepted.Version, ID: accepted.ID, ClientID: accepted.ClientID,
+				IdempotencyKey: accepted.IdempotencyKey, Hash: accepted.Hash,
+				Request: accepted.Request, SubmittedAt: accepted.SubmittedAt,
+				Deadline: accepted.Deadline, Status: "queued",
+			}
+			s.finish(expired, submitResult{504, errorBody("gateway_timeout", "request_deadline_exceeded", "LLM request deadline exceeded.")}, "expired")
+		}
+		// The execution or expiry worker owns the durable terminal transition.
+		// Wait for its notification so a race with that write cannot turn an
+		// ordinary deadline into a transient state_unavailable response.
+		select {
+		case <-ctx.Done():
+			return Completion{}, ctx.Err()
+		case <-ch:
+		}
 	}
 	s.mu.Lock()
 	j = s.jobs[id]

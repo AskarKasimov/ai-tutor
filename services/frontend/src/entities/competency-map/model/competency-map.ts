@@ -39,12 +39,22 @@ export type MaterialCleaning = {
   errorMessage: string
 }
 
+// Where the course-graph service found a topic in the course materials.
+export type CourseGraphSource = {
+  material_id: string
+  page?: number | null
+  week?: number | null
+}
+
 export type CourseGraphTopic = {
   id: string
   title: string
   question?: string
+  // The topic's theory assembled from the materials (Markdown).
+  text?: string
   provides?: string[]
   requires?: string[]
+  sources?: CourseGraphSource[]
   parent_title?: string | null
 }
 

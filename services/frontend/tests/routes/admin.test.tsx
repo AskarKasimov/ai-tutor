@@ -76,6 +76,7 @@ function backend(
     materials?: typeof sampleMaterials
     partialUpload?: boolean
     downloadFails?: boolean
+    graph?: unknown
   } = {},
 ) {
   const activeSubjects = [...(options.subjects ?? subjects)]
@@ -116,6 +117,16 @@ function backend(
           training_available: false,
         }),
       )
+    if (url.endsWith('/graph') && options.graph)
+      return Response.json({
+        status: 'ready',
+        attempts: 1,
+        error_message: '',
+        graph: options.graph,
+        stale: false,
+        inputs_ready: true,
+        updated_at: 1791356400,
+      })
     if (
       url.includes('/admin/subjects/') &&
       url.endsWith('/materials') &&
@@ -479,4 +490,42 @@ it('shows download error alert when downloading raw material fails', async () =>
   })
   fireEvent.click(downloadBtn)
   expect(await screen.findByRole('alert')).toBeVisible()
+})
+
+it('shows the built course graph as an interactive map and as a list', async () => {
+  backend({
+    graph: {
+      topics: [
+        { id: 'ml', title: 'Основы обучения' },
+        {
+          id: 'gd',
+          title: 'Градиентный спуск',
+          sources: [{ material_id: 'mat-1', page: 3 }],
+        },
+      ],
+      hierarchy: [{ source: 'ml', target: 'gd' }],
+      prerequisites: [],
+    },
+  })
+  renderApp('/admin/competency-map')
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Показать структуру графа' }),
+  )
+  const canvas = await screen.findByRole('region', {
+    name: 'Граф знаний курса',
+  })
+  const card = canvas.querySelector('[aria-label="Градиентный спуск"]')!
+  fireEvent.click(card)
+  const details = screen.getByRole('complementary', {
+    name: 'Градиентный спуск',
+  })
+  // Sources name the uploaded material instead of its id.
+  expect(within(details).getByText('lecture1.pdf · стр. 3')).toBeVisible()
+
+  fireEvent.click(screen.getByRole('radio', { name: 'Списком' }))
+  expect(
+    screen.queryByRole('region', { name: 'Граф знаний курса' }),
+  ).not.toBeInTheDocument()
+  expect(screen.getByText('Разделы и темы курса')).toBeVisible()
+  expect(screen.getByText(/Градиентный спуск/)).toBeVisible()
 })

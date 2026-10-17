@@ -287,12 +287,20 @@ export async function downloadCourseMaterialRaw(
   }
 }
 
+const courseGraphSourceSchema = z.object({
+  material_id: z.string(),
+  page: z.number().int().nullable().optional(),
+  week: z.number().int().nullable().optional(),
+})
+
 const courseGraphTopicSchema = z.object({
   id: z.string(),
   title: z.string(),
   question: z.string().optional(),
+  text: z.string().optional(),
   provides: z.array(z.string()).optional(),
   requires: z.array(z.string()).optional(),
+  sources: z.array(courseGraphSourceSchema).optional(),
   parent_title: z.string().nullable().optional(),
 })
 

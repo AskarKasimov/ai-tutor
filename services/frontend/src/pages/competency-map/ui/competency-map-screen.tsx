@@ -6,6 +6,7 @@ import {
   Flex,
   Heading,
   Progress,
+  SegmentedControl,
   Text,
   TextField,
 } from '@radix-ui/themes'
@@ -29,7 +30,7 @@ import {
   Upload,
   X,
 } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   downloadCourseMaterialRaw,
@@ -50,6 +51,9 @@ import {
   useSubjectsQuery,
 } from '@/features/subject-selection'
 import styles from '@/pages/competency-map/ui/competency-map.module.scss'
+
+// React Flow and the layout engine load only when the graph is opened.
+const CourseGraphCanvas = lazy(() => import('./course-graph-canvas'))
 
 export function CompetencyMapAdminScreen() {
   const { t } = useTranslation()
@@ -382,6 +386,7 @@ function CompetencyMapAdmin({ userId }: { userId: string }) {
             </section>
 
             <CourseGraphCard
+              materials={materialsQuery.data}
               snapshot={courseGraphQuery.data}
               loading={courseGraphQuery.isPending}
               error={courseGraphQuery.isError}
@@ -749,6 +754,7 @@ function MaterialsUploadProgressBar({ filesCount }: { filesCount: number }) {
 }
 
 function CourseGraphCard({
+  materials,
   snapshot,
   loading,
   error,
@@ -757,6 +763,7 @@ function CourseGraphCard({
   buildPending,
   buildError,
 }: {
+  materials?: CourseMaterial[]
   snapshot?: CourseGraphSnapshot
   loading: boolean
   error: boolean
@@ -767,6 +774,11 @@ function CourseGraphCard({
 }) {
   const { t } = useTranslation()
   const [treeOpen, setTreeOpen] = useState(false)
+  const [mode, setMode] = useState<'canvas' | 'outline'>('canvas')
+  const materialNames = useMemo(
+    () => new Map((materials ?? []).map((m) => [m.id, m.filename])),
+    [materials],
+  )
 
   const status = snapshot?.status ?? 'not_requested'
   const isBuilding = status === 'processing' || status === 'pending'
@@ -920,6 +932,39 @@ function CourseGraphCard({
               </div>
 
               {treeOpen && (
+                <SegmentedControl.Root
+                  size="2"
+                  value={mode}
+                  onValueChange={(value) =>
+                    setMode(value as 'canvas' | 'outline')
+                  }
+                  className={styles.graphMode}
+                >
+                  <SegmentedControl.Item value="canvas">
+                    {t('competencyMap.graphView.modeCanvas')}
+                  </SegmentedControl.Item>
+                  <SegmentedControl.Item value="outline">
+                    {t('competencyMap.graphView.modeOutline')}
+                  </SegmentedControl.Item>
+                </SegmentedControl.Root>
+              )}
+
+              {treeOpen && mode === 'canvas' && (
+                <Suspense
+                  fallback={
+                    <Text as="p" role="status" color="gray" size="2">
+                      {t('competencyMap.graphView.loading')}
+                    </Text>
+                  }
+                >
+                  <CourseGraphCanvas
+                    graph={graph}
+                    materialNames={materialNames}
+                  />
+                </Suspense>
+              )}
+
+              {treeOpen && mode === 'outline' && (
                 <div className={styles.graphTree}>
                   <Text weight="bold" size="2">
                     {t('competencyMap.graphSections')}

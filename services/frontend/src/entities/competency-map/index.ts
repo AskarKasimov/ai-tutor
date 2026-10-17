@@ -3,6 +3,7 @@ export type {
   MaterialProcessing,
   MaterialCleaning,
   CourseGraphTopic,
+  CourseGraphSource,
   CourseGraphPrerequisite,
   CourseGraphHierarchyEdge,
   CourseGraph,

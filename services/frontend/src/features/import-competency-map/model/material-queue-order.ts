@@ -19,7 +19,7 @@ export function sortMaterialsByWeek<T extends WeekItem>(
     .map(({ item }) => item)
 }
 
-export function moveMaterialQueueItem<T extends { id: string }>(
+export function moveMaterialQueueItem<T extends WeekItem>(
   items: readonly T[],
   draggedId: string,
   targetId: string,
@@ -32,10 +32,10 @@ export function moveMaterialQueueItem<T extends { id: string }>(
   const targetIndex = reordered.findIndex((item) => item.id === targetId)
   if (targetIndex < 0) return [...items]
   reordered.splice(targetIndex, 0, dragged)
-  return reordered
+  return applyNeighborWeek(reordered, draggedId)
 }
 
-export function moveMaterialQueueItemToIndex<T extends { id: string }>(
+export function moveMaterialQueueItemToIndex<T extends WeekItem>(
   items: readonly T[],
   movedId: string,
   targetIndex: number,
@@ -47,5 +47,21 @@ export function moveMaterialQueueItemToIndex<T extends { id: string }>(
   const reordered = [...items]
   const [moved] = reordered.splice(sourceIndex, 1)
   reordered.splice(targetIndex, 0, moved)
-  return reordered
+  return applyNeighborWeek(reordered, movedId)
+}
+
+function applyNeighborWeek<T extends WeekItem>(
+  items: T[],
+  movedId: string,
+): T[] {
+  const index = items.findIndex((item) => item.id === movedId)
+  const neighbor = items[index - 1] ?? items[index + 1]
+  if (!neighbor || weekNumber(neighbor.week) === Number.POSITIVE_INFINITY)
+    return items
+
+  return sortMaterialsByWeek(
+    items.map((item) =>
+      item.id === movedId ? { ...item, week: neighbor.week } : item,
+    ),
+  )
 }

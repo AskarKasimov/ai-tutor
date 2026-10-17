@@ -53,6 +53,8 @@ it('sorts by week and supports drag-and-drop and keyboard reordering', async () 
 
   rows = screen.getAllByRole('listitem')
   expect(rows[0]).toHaveTextContent('Lecture 10.pdf')
+  expect(screen.getAllByRole('spinbutton')[0]).toHaveValue(2)
+  expect(screen.getAllByRole('spinbutton')[1]).toHaveValue(2)
 
   const reorderedWeeks = screen.getAllByRole('spinbutton')
   fireEvent.change(reorderedWeeks[1], { target: { value: '1' } })

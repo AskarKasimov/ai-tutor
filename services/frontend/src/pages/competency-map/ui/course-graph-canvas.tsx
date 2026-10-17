@@ -19,6 +19,7 @@ import {
   ReactFlowProvider,
   useNodesState,
   useReactFlow,
+  type AriaLabelConfig,
   type Edge,
   type Node,
   type NodeProps,
@@ -125,6 +126,34 @@ function GraphExplorer({
   const [expanded, setExpanded] = useState(false)
 
   const matches = useMemo(() => searchTopics(view, query), [view, query])
+  // A rebuilt graph may no longer have the chosen section (topic ids follow
+  // their titles); its filter would dim the whole graph with no legend
+  // button left to undo it.
+  const activeSection =
+    sectionId !== undefined && view.sections.some((s) => s.id === sectionId)
+      ? sectionId
+      : undefined
+  const ariaLabels = useMemo<Partial<AriaLabelConfig>>(
+    () => ({
+      'node.a11yDescription.default': t('competencyMap.graphView.a11y.node'),
+      'node.a11yDescription.keyboardDisabled': t(
+        'competencyMap.graphView.a11y.node',
+      ),
+      'node.a11yDescription.ariaLiveMessage': ({ direction, x, y }) =>
+        t('competencyMap.graphView.a11y.moved', { direction, x, y }),
+      'edge.a11yDescription.default': t('competencyMap.graphView.a11y.edge'),
+      'controls.ariaLabel': t('competencyMap.graphView.controls'),
+      'controls.zoomIn.ariaLabel': t('competencyMap.graphView.a11y.zoomIn'),
+      'controls.zoomOut.ariaLabel': t('competencyMap.graphView.a11y.zoomOut'),
+      'controls.fitView.ariaLabel': t('competencyMap.graphView.a11y.fitView'),
+      'controls.interactive.ariaLabel': t(
+        'competencyMap.graphView.a11y.interactive',
+      ),
+      'minimap.ariaLabel': t('competencyMap.graphView.minimap'),
+      'handle.ariaLabel': t('competencyMap.graphView.a11y.handle'),
+    }),
+    [t],
+  )
   const selected = selectedId ? view.topics.get(selectedId) : undefined
 
   const highlight = useMemo<Highlight>(() => {
@@ -133,18 +162,18 @@ function GraphExplorer({
       return { selectedId, focusId, activeIds: neighbourhood(view, focusId) }
     if (query.trim())
       return { selectedId, focusId: null, activeIds: new Set(matches) }
-    if (sectionId !== undefined)
+    if (activeSection !== undefined)
       return {
         selectedId,
         focusId: null,
         activeIds: new Set(
           view.order.filter(
-            (id) => view.topics.get(id)!.section.id === sectionId,
+            (id) => view.topics.get(id)!.section.id === activeSection,
           ),
         ),
       }
     return { selectedId, focusId: null, activeIds: null }
-  }, [view, selectedId, hoveredId, query, matches, sectionId])
+  }, [view, selectedId, hoveredId, query, matches, activeSection])
 
   const edges = useMemo(
     () => toEdges(view, highlight, showHierarchy),
@@ -171,9 +200,12 @@ function GraphExplorer({
     [flow],
   )
 
+  // A search or a section shows what the student asked for now, so it closes
+  // the topic picked before, whose neighbourhood would otherwise win.
   const toggleSection = (section: GraphSection) => {
-    const next = sectionId === section.id ? undefined : section.id
+    const next = activeSection === section.id ? undefined : section.id
     setSectionId(next)
+    setSelectedId(null)
     // fitView waits for the next node change; bounds move the camera now.
     const cluster = flow.getNode(clusterId(section))
     const bounds =
@@ -209,7 +241,10 @@ function GraphExplorer({
           value={query}
           placeholder={t('competencyMap.graphView.searchPlaceholder')}
           aria-label={t('competencyMap.graphView.search')}
-          onChange={(event) => setQuery(event.target.value)}
+          onChange={(event) => {
+            setQuery(event.target.value)
+            setSelectedId(null)
+          }}
           onKeyDown={(event) => {
             if (event.key === 'Enter' && matches[0]) focusTopic(matches[0])
           }}
@@ -289,7 +324,7 @@ function GraphExplorer({
               type="button"
               className={styles.chip}
               data-tone={section.tone}
-              aria-pressed={sectionId === section.id}
+              aria-pressed={activeSection === section.id}
               onClick={() => toggleSection(section)}
             >
               <span className={styles.swatch} aria-hidden="true" />
@@ -336,6 +371,7 @@ function GraphExplorer({
               edgesFocusable={false}
               minZoom={0.05}
               maxZoom={2}
+              ariaLabelConfig={ariaLabels}
               fitView
               fitViewOptions={{ padding: FIT_PADDING }}
             >

@@ -100,6 +100,18 @@ void i18n.init({
             sources: 'Источники',
             week: 'неделя {{week}}',
             page: 'стр. {{page}}',
+            // Built-in labels of the React Flow canvas.
+            a11y: {
+              node: 'Нажмите Enter или пробел, чтобы открыть карточку темы.',
+              edge: 'Связь между темами.',
+              moved:
+                'Тема перемещена: {{direction}}. Новая позиция: x {{x}}, y {{y}}.',
+              zoomIn: 'Приблизить',
+              zoomOut: 'Отдалить',
+              fitView: 'Показать весь граф',
+              interactive: 'Разрешить перемещение',
+              handle: 'Точка связи',
+            },
           },
           title: 'Подготовка курса',
           admin: 'Администрирование',

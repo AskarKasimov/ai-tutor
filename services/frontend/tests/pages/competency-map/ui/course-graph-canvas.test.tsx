@@ -130,3 +130,81 @@ it('searches topics and opens a found one', () => {
   )
   expect(screen.getByRole('status')).toHaveTextContent('Таких тем нет')
 })
+
+const twoSections: CourseGraph = {
+  topics: [
+    ...graph.topics,
+    { id: 'stats', title: 'Статистика' },
+    { id: 'mean', title: 'Среднее значение' },
+  ],
+  hierarchy: [...graph.hierarchy!, { source: 'stats', target: 'mean' }],
+  prerequisites: graph.prerequisites,
+}
+
+function renderGraph(value: CourseGraph) {
+  const canvas = (g: CourseGraph) => (
+    <Theme>
+      <CourseGraphCanvas graph={g} materialNames={new Map()} />
+    </Theme>
+  )
+  const result = render(canvas(value))
+  return { ...result, update: (g: CourseGraph) => result.rerender(canvas(g)) }
+}
+
+const state = (title: string) =>
+  node(title).querySelector('[data-state]')!.getAttribute('data-state')
+
+it('lets a new search or section win over the topic picked before', () => {
+  renderGraph(twoSections)
+  fireEvent.click(node('Функция потерь'))
+  expect(state('Среднее значение')).toBe('dimmed')
+
+  fireEvent.change(
+    screen.getByRole('textbox', { name: 'Поиск темы в графе' }),
+    { target: { value: 'Среднее' } },
+  )
+  expect(state('Среднее значение')).not.toBe('dimmed')
+  expect(screen.queryByRole('complementary')).not.toBeInTheDocument()
+
+  fireEvent.change(
+    screen.getByRole('textbox', { name: 'Поиск темы в графе' }),
+    { target: { value: '' } },
+  )
+  fireEvent.click(node('Функция потерь'))
+  const legend = screen.getByRole('group', { name: 'Разделы курса' })
+  fireEvent.click(within(legend).getByRole('button', { name: /Статистика/ }))
+  expect(state('Среднее значение')).not.toBe('dimmed')
+  expect(state('Функция потерь')).toBe('dimmed')
+})
+
+it('drops the filter of a section the rebuilt graph no longer has', () => {
+  const { update } = renderGraph(twoSections)
+  const legend = screen.getByRole('group', { name: 'Разделы курса' })
+  fireEvent.click(within(legend).getByRole('button', { name: /Статистика/ }))
+  expect(state('Функция потерь')).toBe('dimmed')
+
+  // The rebuild renamed the section, so its topic id changed.
+  update({
+    ...twoSections,
+    topics: twoSections.topics.map((t) =>
+      t.id === 'stats'
+        ? { id: 'stats-2', title: 'Описательная статистика' }
+        : t,
+    ),
+    hierarchy: [...graph.hierarchy!, { source: 'stats-2', target: 'mean' }],
+  })
+  expect(state('Функция потерь')).not.toBe('dimmed')
+  expect(state('Среднее значение')).not.toBe('dimmed')
+  expect(
+    within(screen.getByRole('group', { name: 'Разделы курса' }))
+      .getAllByRole('button')
+      .some((b) => b.getAttribute('aria-pressed') === 'true'),
+  ).toBe(false)
+})
+
+it('labels the built-in controls in Russian', () => {
+  renderCanvas()
+  for (const name of ['Приблизить', 'Отдалить', 'Показать весь граф'])
+    expect(screen.getByRole('button', { name })).toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: /Zoom|Fit View/ })).toBeNull()
+})

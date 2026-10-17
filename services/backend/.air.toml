@@ -18,3 +18,5 @@ delay = 300
 send_interrupt = true
 kill_delay = "2s"
 stop_on_error = true
+rerun = true
+rerun_delay = 2000

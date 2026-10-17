@@ -65,6 +65,9 @@ services:
         condition: service_healthy
       course-graph:
         condition: service_healthy
+      llm-gateway:
+        condition: service_healthy
+        required: false
   swagger:
     extends:
       file: ./services/backend/docker-compose.yaml

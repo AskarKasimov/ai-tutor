@@ -58,6 +58,43 @@ def reachable(adjacency, start, target):
     return False
 
 
+def validate_topology(topics, prerequisites, hierarchy):
+    """Check the final result independently of incremental edge filtering."""
+    ids = {topic.id for topic in topics}
+    if len(ids) != len(topics) or any(not value.strip() for value in ids):
+        raise ValueError("Пустой или повторный ID темы")
+    titles = [normalized_title(topic.title) for topic in topics]
+    if any(not title for title in titles) or len(set(titles)) != len(titles):
+        raise ValueError("Пустое или повторное название темы")
+    # Hierarchy and prerequisites describe different relations, each a DAG.
+    for edges, with_requirement in ((prerequisites, True), (hierarchy, False)):
+        adjacency = {id: set() for id in ids}
+        indegree = dict.fromkeys(ids, 0)
+        seen = set()
+        for edge in edges:
+            source, target = edge["source"], edge["target"]
+            if source not in ids or target not in ids or source == target:
+                raise ValueError("Связь ссылается на неизвестную тему или на саму себя")
+            key = (source, target, edge["requirement"]) if with_requirement else (source, target)
+            if key in seen:
+                raise ValueError("Повторная связь в итоговом графе")
+            seen.add(key)
+            if target not in adjacency[source]:
+                adjacency[source].add(target)
+                indegree[target] += 1
+        ready = [id for id, count in indegree.items() if count == 0]
+        visited = 0
+        while ready:
+            source = ready.pop()
+            visited += 1
+            for target in adjacency[source]:
+                indegree[target] -= 1
+                if indegree[target] == 0:
+                    ready.append(target)
+        if visited != len(ids):
+            raise ValueError("Цикл в итоговом графе")
+
+
 def evidence_for(topic, query, limit, encoder=None):
     from course_graph.topics.retrieval import tokens
     terms = tokens(query)
@@ -173,19 +210,23 @@ def build_hierarchy(topics: list[Topic], edges: list[dict], canonical: dict[str,
 
     # A declared parent that has no independently sourced topic remains
     # unresolved. Creating a synthetic assessable topic would invent content.
-    hierarchy, hierarchy_adj = [], {}
+    hierarchy, hierarchy_adj, seen = [], {}, set()
     for p_title, children in parent_requests.items():
         parent = resolve_parent_topic(p_title, topics, by_norm, encoder)
         if parent:
             for c in children:
-                if c.id != parent.id and not reachable(hierarchy_adj, c.id, parent.id):
+                if ((parent.id, c.id) not in seen and c.id != parent.id
+                        and not reachable(hierarchy_adj, c.id, parent.id)):
                     hierarchy.append({"source": parent.id, "target": c.id})
+                    seen.add((parent.id, c.id))
                     hierarchy_adj.setdefault(parent.id, set()).add(c.id)
 
     return topics, hierarchy, hierarchy_adj
 
 
 async def build_links(topics, complete, encoder, per_requirement=5, max_chars=16000, evidence_chars=1400, concurrency=2):
+    if len({t.id for t in topics}) != len(topics):
+        raise ValueError("Повторный ID темы")
     valid_topics = []
     for t in topics:
         cleaned = clean_topic_title(t.title)
@@ -203,8 +244,6 @@ async def build_links(topics, complete, encoder, per_requirement=5, max_chars=16
         valid_topics.append(t)
     topics = valid_topics if valid_topics else topics
 
-    if len({t.id for t in topics}) != len(topics):
-        raise ValueError("Повторный ID темы")
     # Exact title dedup only: do not silently merge merely similar concepts.
     original_ids = {t.id: normalized_title(t.title) for t in topics}
     topics = merge_topics(topics)
@@ -269,15 +308,18 @@ async def build_links(topics, complete, encoder, per_requirement=5, max_chars=16
                     raise ValueError("Недостоверная цитата связи")
                 triple = (*key, link.prerequisite_id)
                 if triple in links:
+                    if links[triple] == link:
+                        continue
                     raise ValueError("Повторная связь")
                 links[triple] = link
             for decision in result.requirements:
                 key = (decision.target_id, decision.requirement)
+                decision.prerequisite_ids = list(dict.fromkeys(decision.prerequisite_ids))
+                if key in covered and covered[key] == decision:
+                    continue
                 if key not in allowed or key in covered:
                     raise ValueError("Неизвестное или повторное решение requirement")
                 actual = [p for t, r, p in links if (t, r) == key]
-                if len(set(decision.prerequisite_ids)) != len(decision.prerequisite_ids):
-                    raise ValueError("Повторный prerequisite в решении")
                 if set(decision.prerequisite_ids) != set(actual):
                     raise ValueError("Решение requirements не совпадает с подтверждёнными links")
                 covered[key] = decision
@@ -304,10 +346,14 @@ async def build_links(topics, complete, encoder, per_requirement=5, max_chars=16
             job.cancel()
         await asyncio.gather(*jobs, return_exceptions=True)
         raise
-    adjacency, edges, rejected = {}, [], []
+    adjacency, edges, rejected, seen_edges = {}, [], [], set()
     for links, _ in results:
         for link in links:
             source, target = link.prerequisite_id, link.target_id
+            edge_key = (source, target, link.requirement)
+            if edge_key in seen_edges:
+                continue
+            seen_edges.add(edge_key)
             if reachable(adjacency, target, source):
                 rejected.append({**link.model_dump(), "validation_error": "cycle"})
                 continue
@@ -319,6 +365,7 @@ async def build_links(topics, complete, encoder, per_requirement=5, max_chars=16
         decision["prerequisite_ids"] = [p for p in decision["prerequisite_ids"] if
             (decision["target_id"], decision["requirement"], p) in accepted]
     topics, hierarchy, hierarchy_adj = build_hierarchy(topics, edges, canonical, encoder)
+    validate_topology(topics, edges, hierarchy)
     return {"version": "course-graph-v1", "topics": [t.model_dump() for t in topics],
             "aliases": aliases, "prerequisites": edges, "hierarchy": hierarchy,
             "requirements": decisions, "rejected_links": rejected,

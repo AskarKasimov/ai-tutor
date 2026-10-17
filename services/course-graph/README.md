@@ -198,6 +198,11 @@ backend с `TEST_DATABASE_URL` (HTTP-фикстура S3, изолированн
 сохраняет Docling: `docker compose build course-graph`.
 Собранный образ можно запустить командой `docker compose up -d --no-build course-graph api`.
 
+Модели работают только на CPU, поэтому PyTorch ставится CPU-сборкой
+(`UV_TORCH_BACKEND=cpu`, без CUDA и triton). Загрузки uv хранятся в кеше BuildKit
+(`--mount=type=cache`): при изменении `requirements.txt` пакеты берутся из кеша,
+а не скачиваются заново. Кеш очищает `docker builder prune`.
+
 ### Повторное использование готового OCR-образа
 
 Если локально уже есть образ OCR с Docling, его можно использовать как базовый,

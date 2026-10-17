@@ -8,7 +8,6 @@ import (
 	"io"
 	"net/http"
 	"strings"
-	"time"
 
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/coursegraph"
 )
@@ -19,7 +18,7 @@ type Client struct {
 }
 
 func New(base string) *Client {
-	return &Client{strings.TrimRight(base, "/"), &http.Client{Timeout: 41 * time.Minute}}
+	return &Client{strings.TrimRight(base, "/"), &http.Client{}}
 }
 func (c *Client) Build(ctx context.Context, materials []coursegraph.Material) (json.RawMessage, error) {
 	body, err := json.Marshal(map[string]any{"materials": materials})

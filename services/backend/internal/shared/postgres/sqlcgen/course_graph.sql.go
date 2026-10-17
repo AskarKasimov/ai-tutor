@@ -10,8 +10,8 @@ import (
 )
 
 const claimCourseGraph = `-- name: ClaimCourseGraph :one
-UPDATE course_graph_jobs SET status='processing', attempts=attempts+1,
-    lease_token=$1, lease_until=$2::bigint+2700, updated_at=$2
+UPDATE course_graph_jobs SET status='processing', attempts=attempts+CASE WHEN status='pending' THEN 1 ELSE 0 END,
+    lease_token=$1, lease_until=$2::bigint+60, updated_at=$2
 WHERE subject_id=(SELECT j.subject_id FROM course_graph_jobs j JOIN course_graph_inputs i
     ON i.subject_id=j.subject_id AND i.fingerprint=j.fingerprint
     WHERE (j.status='pending' AND j.available_at<=$2)
@@ -134,6 +134,45 @@ func (q *Queries) ReadCourseGraph(ctx context.Context, id string) (ReadCourseGra
 		&i.Stale,
 	)
 	return i, err
+}
+
+const releaseCourseGraph = `-- name: ReleaseCourseGraph :execrows
+UPDATE course_graph_jobs SET status='pending', attempts=GREATEST(attempts-1,0), lease_until=0,
+    lease_token='', updated_at=$1
+WHERE subject_id=$2 AND lease_token=$3 AND status='processing'
+`
+
+type ReleaseCourseGraphParams struct {
+	Now       int64
+	SubjectID string
+	Token     string
+}
+
+func (q *Queries) ReleaseCourseGraph(ctx context.Context, arg ReleaseCourseGraphParams) (int64, error) {
+	result, err := q.db.Exec(ctx, releaseCourseGraph, arg.Now, arg.SubjectID, arg.Token)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const renewCourseGraph = `-- name: RenewCourseGraph :execrows
+UPDATE course_graph_jobs SET lease_until=$1::bigint+60, updated_at=$1
+WHERE subject_id=$2 AND lease_token=$3 AND status='processing'
+`
+
+type RenewCourseGraphParams struct {
+	Now       int64
+	SubjectID string
+	Token     string
+}
+
+func (q *Queries) RenewCourseGraph(ctx context.Context, arg RenewCourseGraphParams) (int64, error) {
+	result, err := q.db.Exec(ctx, renewCourseGraph, arg.Now, arg.SubjectID, arg.Token)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const syncCourseGraphJobs = `-- name: SyncCourseGraphJobs :exec

@@ -2,6 +2,7 @@ import { afterEach, expect, it, vi } from 'vitest'
 import {
   importCompetencyMap,
   readCompetencyMap,
+  readSubjectMaterials,
 } from '@/entities/competency-map'
 
 afterEach(() => vi.unstubAllGlobals())
@@ -44,4 +45,74 @@ it('imports into the explicit encoded subject and preserves multipart file data'
   expect(
     (fetchMock.mock.calls[0][1].body as FormData).get('file'),
   ).toMatchObject({ name: 'x.csv', type: 'text/csv' })
+})
+
+it('reads optional material progress and OCR warnings while accepting legacy rows', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn().mockResolvedValue(
+      Response.json([
+        {
+          id: 'active',
+          subject_id: 'course',
+          filename: 'lecture.pdf',
+          content_type: 'application/pdf',
+          file_size: 100,
+          s3_raw_key: 'raw/lecture.pdf',
+          s3_parsed_key: 'parsed/lecture.md',
+          parsed_text: '',
+          char_count: 0,
+          status: 'pending',
+          processing: {
+            stage: 'waiting_models',
+            status: 'processing',
+            updated_at: 1792180000,
+            attempts: 2,
+          },
+          ocr_report: {
+            warnings: ['Некоторые изображения не распознаны.'],
+            pipeline_warnings: ['Перевод не завершён.'],
+            pages: 57,
+          },
+          created_at: 1792180000,
+          updated_at: 1792180000,
+        },
+        {
+          id: 'legacy',
+          subject_id: 'course',
+          filename: 'notes.md',
+          content_type: 'text/markdown',
+          file_size: 20,
+          s3_raw_key: 'raw/notes.md',
+          s3_parsed_key: 'parsed/notes.md',
+          parsed_text: 'Текст',
+          char_count: 5,
+          status: 'parsed',
+          created_at: 1792180000,
+          updated_at: 1792180000,
+        },
+      ]),
+    ),
+  )
+
+  const materials = await readSubjectMaterials('course')
+
+  expect(materials[0]).toMatchObject({
+    processing: {
+      stage: 'waiting_models',
+      status: 'processing',
+      updatedAt: 1792180000,
+      attempts: 2,
+    },
+    ocrWarnings: [
+      'Некоторые изображения не распознаны.',
+      'Перевод не завершён.',
+    ],
+  })
+  expect(materials[1]).toMatchObject({
+    status: 'parsed',
+    processing: undefined,
+    cleaning: undefined,
+    ocrWarnings: [],
+  })
 })

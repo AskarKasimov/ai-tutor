@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"mime/multipart"
 	"net/http"
@@ -124,7 +125,7 @@ func (o *deadlineOCR) Convert(_ context.Context, _ string, _ []byte) (string, er
 	return "Материалы лекции", nil
 }
 
-func TestUploadDeadlinesAllowConfiguredOCRAndMultipleFiles(t *testing.T) {
+func TestUploadQueuesMultipleFilesWithoutRunningOCRInRequest(t *testing.T) {
 	recorder := &deadlineRecorder{ResponseRecorder: httptest.NewRecorder()}
 	ocr := &deadlineOCR{t: t, recorder: recorder}
 	svc := application.New(&memoryRepo{}, &memoryS3{}, ocr, time.Now)
@@ -148,7 +149,7 @@ func TestUploadDeadlinesAllowConfiguredOCRAndMultipleFiles(t *testing.T) {
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 	req = httpx.WithPrincipal(req, user.User{ID: "admin", Role: user.Admin})
 	handler.UploadMaterials(recorder, req)
-	if recorder.Code != http.StatusOK || ocr.calls != 2 {
+	if recorder.Code != http.StatusOK || ocr.calls != 0 {
 		t.Fatalf("upload failed: status=%d calls=%d body=%s", recorder.Code, ocr.calls, recorder.Body.String())
 	}
 	if len(recorder.readDeadlines) < 4 {
@@ -156,6 +157,42 @@ func TestUploadDeadlinesAllowConfiguredOCRAndMultipleFiles(t *testing.T) {
 	}
 	if remaining := time.Until(recorder.writeDeadline); remaining <= 0 || remaining > 30*time.Second {
 		t.Fatalf("response deadline was not bounded after processing: %v", remaining)
+	}
+}
+
+func TestUploadMaterialsCapsBatchAt48Files(t *testing.T) {
+	repo := &memoryRepo{}
+	svc := application.New(repo, &memoryS3{}, &stubOCR{}, time.Now)
+	handler := materialshttp.NewHandler(svc, 1024, 2*time.Hour)
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	for i := 0; i < materialshttp.MaxFilesPerRequest+1; i++ {
+		part, err := writer.CreateFormFile("file", fmt.Sprintf("lecture-%02d.pdf", i))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := part.Write([]byte("PDF")); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/admin/subjects/sub/materials", &body)
+	req.SetPathValue("subject_id", "sub")
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	req = httpx.WithPrincipal(req, user.User{ID: "admin", Role: user.Admin})
+	recorder := httptest.NewRecorder()
+	handler.UploadMaterials(recorder, req)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("upload status = %d, body=%s", recorder.Code, recorder.Body.String())
+	}
+	var result materialshttp.UploadResult
+	if err := json.NewDecoder(recorder.Body).Decode(&result); err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Uploaded) != materialshttp.MaxFilesPerRequest || len(result.Failed) != 1 || result.Failed[0].Code != "TOO_MANY_FILES" {
+		t.Fatalf("unexpected batch result: uploaded=%d failed=%+v", len(result.Uploaded), result.Failed)
 	}
 }
 
@@ -219,8 +256,8 @@ func TestHandlerUploadAndList(t *testing.T) {
 		if len(uploadRes.Uploaded) != 1 {
 			t.Fatalf("expected 1 uploaded material, got %d", len(uploadRes.Uploaded))
 		}
-		if !strings.Contains(uploadRes.Uploaded[0].ParsedText, "\\nabla L") {
-			t.Errorf("expected LaTeX formula in parsed text, got: %s", uploadRes.Uploaded[0].ParsedText)
+		if uploadRes.Uploaded[0].Status != material.StatusPending || uploadRes.Uploaded[0].ParsedText != "" {
+			t.Errorf("expected pending material before background OCR, got status=%s text=%q", uploadRes.Uploaded[0].Status, uploadRes.Uploaded[0].ParsedText)
 		}
 	}
 

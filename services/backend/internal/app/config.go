@@ -60,10 +60,10 @@ type Config struct {
 	TranslatorWorkers     int
 }
 
-// HTTPWriteTimeout allows sequential STT and grading, or task generation, to
-// finish with time for request handling, persistence and writing the response.
+// HTTPWriteTimeout allows synchronous voice grading, task generation, or
+// audio repair to finish with time for request handling and persistence.
 func (c Config) HTTPWriteTimeout() time.Duration {
-	return max(c.VoiceTimeout+c.AssessmentTimeout+c.TutorTimeout, c.VoiceTimeout+3*c.TutorTimeout, c.TaskgenTimeout, c.VoiceTimeout+5*c.S3Timeout, c.CourseGraphTimeout+c.TranslatorTimeout+5*c.S3Timeout) + 30*time.Second
+	return max(c.VoiceTimeout+c.AssessmentTimeout+c.TutorTimeout, c.VoiceTimeout+3*c.TutorTimeout, c.TaskgenTimeout, c.VoiceTimeout+5*c.S3Timeout) + 30*time.Second
 }
 
 func ConfigFromEnv() (Config, error) {
@@ -201,15 +201,18 @@ func ConfigFromEnv() (Config, error) {
 	if c.CourseGraphURL == "" {
 		c.CourseGraphURL = strings.TrimSpace(os.Getenv("BACKEND_OCR_URL"))
 	}
-	c.CourseGraphTimeout, err = envDuration("BACKEND_COURSE_GRAPH_TIMEOUT", 4200*time.Second)
+	c.CourseGraphTimeout, err = envDuration("BACKEND_COURSE_GRAPH_TIMEOUT", 0)
 	if err != nil {
 		return c, err
 	}
 	if os.Getenv("BACKEND_COURSE_GRAPH_TIMEOUT") == "" && os.Getenv("BACKEND_OCR_TIMEOUT") != "" {
-		c.CourseGraphTimeout, err = envDuration("BACKEND_OCR_TIMEOUT", 120*time.Second)
+		c.CourseGraphTimeout, err = envDuration("BACKEND_OCR_TIMEOUT", 0)
 		if err != nil {
 			return c, err
 		}
+	}
+	if c.CourseGraphTimeout < 0 {
+		return c, fmt.Errorf("BACKEND_COURSE_GRAPH_TIMEOUT must be non-negative")
 	}
 	c.LLMGRPCAddress = envOrDefault("BACKEND_LLM_GRPC_ADDRESS", ":8003")
 	c.LLMModel = envOrDefault("BACKEND_LLM_MODEL", c.AssessmentModel)

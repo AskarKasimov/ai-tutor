@@ -39,12 +39,17 @@ void i18n.init({
           title: 'Карта компетенций',
           admin: 'Администрирование',
           subtitle:
-            'Введите название предмета и загрузите карту компетенций — из неё строятся диагностика и тренировка.',
+            'Создайте предмет и загрузите материалы курса для построения графа знаний. Карту компетенций можно добавить отдельно.',
           editSubtitle:
             'Здесь можно загрузить обновлённую карту компетенций предмета.',
           subjectsLoading: 'Загружаем предмет…',
           subjectsError: 'Не удалось загрузить предмет.',
           createSubject: 'Добавление нового предмета',
+          createSubjectHelp:
+            'Для графа знаний достаточно названия предмета и лекций. Карта компетенций нужна для прежнего режима диагностики и добавляется отдельно.',
+          createSubjectMapOptional:
+            'Карту можно загрузить сейчас, это необязательно.',
+          createSubjectSubmit: 'Создать предмет',
           subjectName: 'Название предмета',
           subjectPlaceholder: 'Например, Машинное обучение',
           createSubjectError:
@@ -84,7 +89,7 @@ void i18n.init({
           materialsSubtitle: '',
           materialsDropTitle: 'Загрузить файлы материалов',
           materialsDropHint:
-            'Нажмите или перетащите один или несколько файлов лекций и лабораторных',
+            'PDF и Markdown, до 50 МиБ каждый; не больше 48 файлов за одну загрузку.',
           materialsDropReplace: 'Выбрано файлов: {{count}}',
           materialsSubmit: 'Загрузить и распознать материалы',
           materialsUploading:
@@ -107,10 +112,27 @@ void i18n.init({
           materialsDownloadError: 'Не удалось скачать файл.',
           materialsProcessingWarning: 'Предупреждение при распознавании',
           materialsProcessingError: 'Ошибка обработки материала',
+          materialOcrWarnings: 'Предупреждения OCR',
+          materialsCleaningWarning: 'Предупреждение при очистке материала',
+          materialsCleaningError: 'Ошибка очистки материала',
+          materialLastSignal: 'Последнее обновление: {{date}}',
+          materialStage: {
+            queued: 'В очереди',
+            waiting_models: 'Ожидает загрузки моделей',
+            ocr: 'Распознаёт материал',
+            translation: 'Переводит материал',
+            cleaning: 'Очищает текст и выделяет темы',
+            graph: 'Строит граф курса',
+            ready: 'Обработка завершена',
+            failed: 'Ошибка обработки',
+          },
           materialsPartialWarning:
             'Часть файлов не удалось загрузить: {{failed}}',
           materialsInvalidType: 'Поддерживаются файлы PDF и Markdown.',
           materialsEmptyFiles: 'Выберите хотя бы один файл.',
+          materialsTooLarge: 'Размер одного файла не должен превышать 50 МиБ.',
+          materialsTooManyFiles:
+            'За один запрос можно загрузить не больше 48 файлов.',
           graphTitle: 'Граф знаний курса (Geek)',
           graphSubtitle:
             'Автоматически строится по распознанным материалам для устного экзамена и тренировки',

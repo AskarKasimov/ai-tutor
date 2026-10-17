@@ -355,6 +355,14 @@ def test_ocr_line_wrapping_is_canonicalized_but_words_cannot_change():
     assert not valid_evidence(Evidence(material_id="a", block_id=0, quote="important different concept"), excerpts)
 
 
+def test_evidence_cannot_salvage_partial_quote_or_reassign_source():
+    excerpts = [{"material_id": "a", "block_id": 1, "text": "important concept appears here"}]
+    assert not valid_evidence(Evidence(material_id="a", block_id=1,
+                                       quote="FALSE important concept extra FALSE"), excerpts)
+    assert not valid_evidence(Evidence(material_id="a", block_id=2, quote="important concept"), excerpts)
+    assert not valid_evidence(Evidence(material_id="other", block_id=1, quote="important concept"), excerpts)
+
+
 def test_cycle_is_reported_and_never_enters_published_graph():
     topics = [make_topic("a", "A", ["Знание A"], ["Знание B"]),
               make_topic("b", "B", ["Знание B"], ["Знание A"])]
@@ -441,7 +449,7 @@ def test_clean_topic_title_strips_multipart_suffixes_and_balances_delimiters():
     assert clean_topic_title("Аргумент «Китайская комната") == "Аргумент «Китайская комната»"
 
 
-def test_build_hierarchy_materializes_parent_and_creates_edges():
+def test_build_hierarchy_does_not_invent_parent_topic():
     t1 = make_topic("t1", "Доступность среды", ["свойства среды"])
     t1.parent_title = "Свойства среды"
     t2 = make_topic("t2", "Детерминированность среды", ["свойства среды"])
@@ -451,15 +459,11 @@ def test_build_hierarchy_materializes_parent_and_creates_edges():
         return json.dumps({"links": [], "requirements": []}, ensure_ascii=False)
 
     graph = run(build_links([t1, t2], stub_judge, Encoder()))
-    titles = [t["title"] for t in graph["topics"]]
-    assert "Свойства среды" in titles
-    parent = next(t for t in graph["topics"] if t["title"] == "Свойства среды")
-    parent_id = parent["id"]
-    targets = [h["target"] for h in graph["hierarchy"] if h["source"] == parent_id]
-    assert "t1" in targets and "t2" in targets
+    assert {t["id"] for t in graph["topics"]} == {"t1", "t2"}
+    assert graph["hierarchy"] == []
 
 
-def test_orphan_fallback_prevents_isolated_topics():
+def test_independent_topic_remains_isolated_without_evidence():
     t1 = make_topic("t1", "Интеллектуальные агенты", ["понятие агента"])
     t2 = make_topic("t2", "Рациональность агента", ["критерий рациональности"], ["понятие агента"])
     t3 = make_topic("t3", "История искусственного интеллекта", ["исторические вехи"])
@@ -473,8 +477,8 @@ def test_orphan_fallback_prevents_isolated_topics():
         adj_nodes.add(h["source"])
         adj_nodes.add(h["target"])
 
-    for t in graph["topics"]:
-        assert t["id"] in adj_nodes, f"Topic {t['title']} is completely isolated"
+    assert "t3" not in adj_nodes
+    assert {t["id"] for t in graph["topics"]} == {"t1", "t2", "t3"}
 
 
 def test_batch_sequential_reuse_passes_existing_topics():

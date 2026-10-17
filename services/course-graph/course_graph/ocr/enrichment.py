@@ -1,20 +1,25 @@
 """Keep native program syntax and make Docling enrichment failures observable."""
 
+import threading
+
 
 class AuditedEngine:
     def __init__(self, engine, warnings):
         self.engine = engine
         self.warnings = warnings
 
+    def initialize(self):
+        self.engine.initialize()
+        model = getattr(self.engine, "vlm_model", None)
+        if model is not None and self.engine.options.use_kv_cache:
+            model.generation_config.use_cache = True
+
     def predict_batch(self, inputs):
         try:
             # Transformers >=4.50 replaces global GenerationConfig defaults with
             # model defaults. CodeFormulaV2 ships use_cache=False, overriding the
             # True requested by Docling unless the model config is corrected too.
-            self.engine.initialize()
-            model = getattr(self.engine, "vlm_model", None)
-            if model is not None and self.engine.options.use_kv_cache:
-                model.generation_config.use_cache = True
+            self.initialize()
             outputs = self.engine.predict_batch(inputs)
             if len(outputs) != len(inputs):
                 raise ValueError("enrichment output count mismatch")
@@ -31,31 +36,100 @@ class AuditedEngine:
 
 
 class NativeSyntaxGuard:
-    def __init__(self, stage):
+    def __init__(self, stage, native_text_for=None):
         self.stage = stage
+        self.native_text_for = native_text_for
         self.warnings = []
         stage.engine = AuditedEngine(stage.engine, self.warnings)
 
     def __getattr__(self, name):
         return getattr(self.stage, name)
 
+    @staticmethod
+    def _normalized_native(text):
+        if not isinstance(text, str) or not text.strip() or "\ufffd" in text:
+            return None
+        if any(ord(char) < 32 and char not in "\r\n\t" for char in text):
+            return None
+        return text.replace("\r\n", "\n").replace("\r", "\n").strip()
+
+    def _matches_native_pdf(self, item):
+        native_text = self._native_pdf_text(item)
+        item_text = self._normalized_native(getattr(item, "text", None))
+        return native_text is not None and item_text is not None and native_text == item_text, native_text
+
+    def _native_pdf_text(self, item):
+        if self.native_text_for is None:
+            return None
+        try:
+            return self._normalized_native(self.native_text_for(item))
+        except Exception:
+            return None
+
     def __call__(self, doc, element_batch):
         from docling_core.types.doc import DocItemLabel
 
         elements = list(element_batch)
-        originals = {id(element.item): (element.item.text, element.item.label) for element in elements}
-        for item in self.stage(doc, elements):
-            native, label = originals[id(item)]
-            if native.strip() and label == DocItemLabel.CODE and item.text != native:
-                item.text = native
-                self.warnings.append("Код сохранён из исходного PDF: результат генеративного OCR отличался от исходного текста")
-            elif native.strip() and label == DocItemLabel.FORMULA and ":-" in native:
+        native_by_element = {}
+        preserved = []
+        for element in elements:
+            item = element.item
+            if item.label not in (DocItemLabel.CODE, DocItemLabel.FORMULA) or not item.text.strip():
+                continue
+            matches, native = self._matches_native_pdf(item)
+            native_by_element[id(element)] = native
+            if matches:
+                preserved.append(element)
+        preserved_ids = {id(element) for element in preserved}
+        enrich = [element for element in elements if id(element) not in preserved_ids]
+        output = list(self.stage(doc, enrich)) if enrich else []
+        output_by_id = {id(item): item for item in output}
+        for element in elements:
+            item = element.item if id(element) in preserved_ids else output_by_id.get(id(element.item), element.item)
+            native = native_by_element.get(id(element))
+            if (id(element) in preserved_ids and element.item.label == DocItemLabel.FORMULA
+                    and native is not None and ":-" in native):
                 # Logic-program rules are code, even if layout classified them
                 # as mathematics. A LaTeX colon cannot replace Prolog's ':-'.
                 item.text = native
                 item.label = DocItemLabel.TEXT
                 self.warnings.append("Правило Prolog ошибочно размечено как формула; сохранён исходный синтаксис")
             yield item
+
+
+class NativePdfTextReader:
+    """Read native characters from the same PDF region Docling classified."""
+
+    def __init__(self, pdf_content):
+        import pypdfium2 as pdfium
+        self._pdf = pdfium.PdfDocument(pdf_content)
+        self._lock = threading.Lock()
+
+    def __call__(self, item):
+        provenance = getattr(item, "prov", None)
+        if not provenance or len(provenance) != 1:
+            return None
+        proof = provenance[0]
+        if not 1 <= proof.page_no <= len(self._pdf):
+            return None
+        with self._lock:
+            page = self._pdf[proof.page_no - 1]
+            try:
+                bbox = proof.bbox.to_bottom_left_origin(page.get_height())
+                textpage = page.get_textpage()
+                try:
+                    return textpage.get_text_bounded(
+                        left=bbox.l - 0.5, bottom=bbox.b - 0.5,
+                        right=bbox.r + 0.5, top=bbox.t + 0.5,
+                    )
+                finally:
+                    textpage.close()
+            finally:
+                page.close()
+
+    def close(self):
+        with self._lock:
+            self._pdf.close()
 
 
 def audited_pipeline_class():
@@ -113,7 +187,12 @@ def recover_native_programs(document, pdf_content):
             finally:
                 page.close()
             if is_formula and ":-" in native:
-                item.text = native
+                native_text = NativeSyntaxGuard._normalized_native(native)
+                item_text = NativeSyntaxGuard._normalized_native(item.text)
+                if native_text is None or item_text != native_text:
+                    warnings.append("Правило в PDF не совпало с исходным текстом Docling; автоматическая подмена отклонена")
+                    continue
+                item.text = native_text
                 item.label = DocItemLabel.TEXT
                 if isinstance(item, FormulaItem):
                     # The Markdown serializer dispatches on the Python class,

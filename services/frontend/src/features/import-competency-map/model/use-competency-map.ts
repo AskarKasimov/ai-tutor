@@ -145,6 +145,17 @@ export function useSubjectMaterialsQuery(userId: string, subjectId: string) {
         unregister()
       }
     },
+    refetchInterval: (query) =>
+      query.state.data?.some(
+        (material) =>
+          material.status === 'pending' ||
+          material.processing?.status === 'pending' ||
+          material.processing?.status === 'processing' ||
+          material.cleaning?.status === 'pending' ||
+          material.cleaning?.status === 'processing',
+      )
+        ? 4000
+        : false,
   })
 }
 
@@ -295,6 +306,7 @@ export function useCourseGraphQuery(userId: string, subjectId: string) {
       if (status === 'processing' || status === 'pending') {
         return 4000
       }
+      if (status === 'waiting_materials') return 4000
       return false
     },
   })

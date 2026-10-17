@@ -39,11 +39,17 @@ func TestCourseGraphQueueSnapshotsAndStaleWorkers(t *testing.T) {
 	if job, err := repo.Claim(ctx, "double", now); err != nil || job.SubjectID != "" {
 		t.Fatalf("double claim: %+v %v", job, err)
 	}
-	next, err := repo.Claim(ctx, "next", now.Add(46*time.Minute))
+	if owned, err := repo.Renew(ctx, first, now.Add(30*time.Second)); err != nil || !owned {
+		t.Fatalf("heartbeat renew: owned=%v err=%v", owned, err)
+	}
+	if job, err := repo.Claim(ctx, "before-renewed-expiry", now.Add(61*time.Second)); err != nil || job.SubjectID != "" {
+		t.Fatalf("heartbeat did not extend graph lease: %+v %v", job, err)
+	}
+	next, err := repo.Claim(ctx, "next", now.Add(91*time.Second))
 	if err != nil || next.Token != "next" {
 		t.Fatalf("lease: %+v %v", next, err)
 	}
-	graph := json.RawMessage(`{"version":"course-graph-v1","topics":[],"prerequisites":[],"quality":{"acyclic":true}}`)
+	graph := json.RawMessage(`{"version":"course-graph-v1","topics":[{"id":"t1"}],"prerequisites":[],"quality":{"acyclic":true}}`)
 	if ok, err := repo.Finish(ctx, first, graph, now); err != nil || ok {
 		t.Fatalf("stale accepted: %v %v", ok, err)
 	}

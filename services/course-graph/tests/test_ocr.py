@@ -95,11 +95,22 @@ def test_cpu_enrichment_uses_native_precision(monkeypatch):
     assert options.code_formula_options.engine_options.use_kv_cache
 
 
+def test_zero_document_timeout_means_unlimited_and_negative_is_invalid(monkeypatch):
+    import pytest
+    from course_graph.ocr.converter import configured_document_timeout
+    monkeypatch.setenv("COURSE_GRAPH_OCR_DOCUMENT_TIMEOUT", "0")
+    assert configured_document_timeout() is None
+    monkeypatch.setenv("COURSE_GRAPH_OCR_DOCUMENT_TIMEOUT", "-1")
+    with pytest.raises(ValueError, match="non-negative"):
+        configured_document_timeout()
+
+
 def test_slow_ocr_keeps_health_responsive(monkeypatch):
     import asyncio
     import threading
     import httpx
     import course_graph.api as api
+    monkeypatch.setenv("COURSE_GRAPH_WITH_DOCLING", "false")
     started, release = threading.Event(), threading.Event()
     def slow(*args):
         started.set()
@@ -116,6 +127,103 @@ def test_slow_ocr_keeps_health_responsive(monkeypatch):
             finally:
                 release.set()
             assert (await job).status_code == 200
+    asyncio.run(run())
+
+
+def test_ocr_jobs_are_singleflight_and_reject_changed_content():
+    import pytest
+    from course_graph.ocr.jobs import JobConflict, OcrJobs
+
+    jobs = OcrJobs()
+    job, owner, future = jobs.reserve("material-1", "source.pdf", b"same source")
+    assert owner and future is not None
+    duplicate, duplicate_owner, duplicate_future = jobs.reserve("material-1", "source.pdf", b"same source")
+    assert duplicate is job and not duplicate_owner and duplicate_future is future
+    jobs.update(job, state="running", stage="converting")
+    status = jobs.get("material-1")
+    assert status["state"] == "running"
+    assert status["progress"] == {"pages_done": None, "pages_total": None}
+    with pytest.raises(JobConflict):
+        jobs.reserve("material-1", "source.pdf", b"different source")
+
+
+def test_model_bootstrap_runs_once_and_readiness_does_not_reinitialize(monkeypatch):
+    from course_graph.model_runtime import ModelRuntime
+
+    monkeypatch.setenv("COURSE_GRAPH_WITH_DOCLING", "true")
+    monkeypatch.setenv("COURSE_GRAPH_MODEL_BOOTSTRAP", "true")
+    runtime = ModelRuntime()
+    calls = []
+    runtime._prepare_models = lambda: calls.append("prepared")
+    runtime.start()
+    assert runtime.wait()
+    status = runtime.status()
+    assert status["ready"] is True and status["state"] == status["stage"] == "ready"
+    assert "updated_at" in status and "progress" in status
+    assert calls == ["prepared"]
+
+
+def test_remote_url_log_redaction_removes_signed_query():
+    import logging
+    from course_graph.model_runtime import RedactRemoteURLs
+
+    record = logging.LogRecord("test", logging.WARNING, "", 1, "download failed: https://cdn.example/model?token=secret", (), None)
+    RedactRemoteURLs().filter(record)
+    assert "secret" not in record.getMessage()
+    assert "<remote-url-redacted>" in record.getMessage()
+
+
+def test_ocr_http_reconnect_joins_same_job_and_status_adopts_result(monkeypatch):
+    import asyncio
+    import threading
+    import httpx
+    import course_graph.api as api
+
+    monkeypatch.setenv("COURSE_GRAPH_WITH_DOCLING", "false")
+    started, release = threading.Event(), threading.Event()
+    calls = []
+
+    def slow(filename, content):
+        calls.append(content)
+        started.set()
+        assert release.wait(3)
+        return {"markdown": content.decode(), "report": {"engine": "test"}}
+
+    monkeypatch.setattr(api, "convert_source_document", slow)
+
+    async def run():
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=api.app), base_url="http://test") as client:
+            headers = {"X-Job-ID": "material-reconnect-test"}
+            first = asyncio.create_task(client.post(
+                "/ocr/convert", files={"file": ("source.md", b"same source")}, headers=headers,
+            ))
+            try:
+                assert await asyncio.to_thread(started.wait, 2)
+                status = await client.get("/ocr/jobs/material-reconnect-test")
+                assert status.status_code == 200
+                assert status.json()["state"] == "running"
+                reconnect = asyncio.create_task(client.post(
+                    "/ocr/convert", files={"file": ("source.md", b"same source")}, headers=headers,
+                ))
+                await asyncio.sleep(0.05)
+            finally:
+                release.set()
+            first_response, reconnect_response = await asyncio.gather(first, reconnect)
+            assert first_response.status_code == reconnect_response.status_code == 200
+            assert first_response.json() == reconnect_response.json()
+            adopted = await client.get("/ocr/jobs/material-reconnect-test")
+            assert adopted.json()["state"] == "succeeded"
+            assert adopted.json()["result"] == first_response.json()
+            cached = await client.post(
+                "/ocr/convert", files={"file": ("source.md", b"same source")}, headers=headers,
+            )
+            assert cached.status_code == 200
+            conflict = await client.post(
+                "/ocr/convert", files={"file": ("source.md", b"changed")}, headers=headers,
+            )
+            assert conflict.status_code == 409
+            assert len(calls) == 1
+
     asyncio.run(run())
 
 
@@ -172,17 +280,55 @@ def test_native_program_text_survives_generative_enrichment():
     class Stage:
         engine = object()
         def __call__(self, doc, elements):
+            assert all(element.item.label != DocItemLabel.CODE for element in elements)
             for element in elements:
                 element.item.text = "corrupted output"
                 yield element.item
     code = S(text="pet(X) :- cat(X), not(wild(X)).", label=DocItemLabel.CODE)
     formula = S(text="animal(X) :- cat(X).", label=DocItemLabel.FORMULA)
-    stage = NativeSyntaxGuard(Stage())
+    stage = NativeSyntaxGuard(Stage(), native_text_for=lambda item: item.text)
     result = list(stage(None, [S(item=code), S(item=formula)]))
     assert result[0].text == "pet(X) :- cat(X), not(wild(X))."
     assert result[1].text == "animal(X) :- cat(X)."
     assert result[1].label == DocItemLabel.TEXT
-    assert len(stage.warnings) == 2
+    assert len(stage.warnings) == 1
+
+
+def test_code_enrichment_is_bypassed_only_for_exact_native_pdf_text():
+    from types import SimpleNamespace as S
+    from docling_core.types.doc import DocItemLabel
+    from course_graph.ocr.enrichment import NativeSyntaxGuard
+
+    source = "def search():\n    return True"
+    scanned = S(text=source, label=DocItemLabel.CODE)
+    mismatch = S(text=source, label=DocItemLabel.CODE)
+    matching = S(text=source, label=DocItemLabel.CODE)
+    missing_provenance = S(text=source, label=DocItemLabel.CODE)
+
+    class Stage:
+        engine = object()
+        def __init__(self):
+            self.seen = []
+        def __call__(self, _, elements):
+            self.seen.extend(elements)
+            for element in elements:
+                element.item.text = "enriched result"
+                yield element.item
+
+    stage_impl = Stage()
+    native = {
+        id(scanned): None,
+        id(mismatch): "def search(): return False",
+        id(matching): source,
+        id(missing_provenance): None,
+    }
+    guard = NativeSyntaxGuard(stage_impl, native_text_for=lambda item: native[id(item)])
+    result = list(guard(None, [S(item=scanned), S(item=mismatch), S(item=matching), S(item=missing_provenance)]))
+    assert result[0].text == "enriched result"
+    assert result[1].text == "enriched result"
+    assert result[2].text == source
+    assert result[3].text == "enriched result"
+    assert [entry.item for entry in stage_impl.seen] == [scanned, mismatch, missing_provenance]
 
 
 def test_enrichment_sets_model_cache_and_rejects_truncation():
@@ -203,13 +349,40 @@ def test_enrichment_sets_model_cache_and_rejects_truncation():
     assert warnings and "частично" in warnings[0]
 
 
+def test_bootstrap_can_initialize_the_guarded_enrichment_engine():
+    from types import SimpleNamespace as S
+    from docling_core.types.doc import DocItemLabel
+    from course_graph.ocr.enrichment import NativeSyntaxGuard
+
+    class Engine:
+        options = S(use_kv_cache=True)
+        def __init__(self):
+            self.calls = 0
+            self.vlm_model = S(generation_config=S(use_cache=False))
+        def initialize(self):
+            self.calls += 1
+        def predict_batch(self, _):
+            return []
+
+    class Stage:
+        def __init__(self):
+            self.engine = Engine()
+        def __call__(self, _, elements):
+            return elements
+
+    stage = NativeSyntaxGuard(Stage())
+    stage.engine.initialize()
+    assert stage.engine.engine.calls == 1
+    assert stage.engine.engine.vlm_model.generation_config.use_cache is True
+
+
 def test_formula_misclassification_recovers_native_pdf_rectangle():
     import io
     from types import SimpleNamespace as S
     from pypdf import PdfWriter
     from pypdf.generic import DictionaryObject, NameObject, DecodedStreamObject
     from docling_core.types.doc import DocItemLabel, BoundingBox, CoordOrigin, FormulaItem, TextItem, ProvenanceItem
-    from course_graph.ocr.enrichment import recover_native_programs
+    from course_graph.ocr.enrichment import NativePdfTextReader, recover_native_programs
     writer = PdfWriter()
     page = writer.add_blank_page(width=300, height=300)
     font = DictionaryObject({NameObject("/Type"):NameObject("/Font"),NameObject("/Subtype"):NameObject("/Type1"),NameObject("/BaseFont"):NameObject("/Helvetica")})
@@ -219,10 +392,17 @@ def test_formula_misclassification_recovers_native_pdf_rectangle():
     page[NameObject("/Contents")] = writer._add_object(stream)
     content = io.BytesIO()
     writer.write(content)
-    item = FormulaItem(self_ref="#/texts/0",text="wrong colon",orig="wrong colon",prov=[ProvenanceItem(page_no=1,charspan=(0,11),bbox=BoundingBox(l=10,t=50,r=290,b=0,coord_origin=CoordOrigin.BOTTOMLEFT))])
-    document = S(texts=[item])
+    provenance = [ProvenanceItem(page_no=1,charspan=(0,11),bbox=BoundingBox(l=10,t=50,r=290,b=0,coord_origin=CoordOrigin.BOTTOMLEFT))]
+    wrong = FormulaItem(self_ref="#/texts/0",text="wrong colon",orig="wrong colon",prov=provenance)
+    exact = FormulaItem(self_ref="#/texts/1",text="animal(X) :- cat(X).",orig="animal(X) :- cat(X).",prov=provenance)
+    reader = NativePdfTextReader(content.getvalue())
+    assert reader(exact) == "animal(X) :- cat(X)."
+    reader.close()
+    document = S(texts=[wrong, exact])
     warnings = recover_native_programs(document, content.getvalue())
-    assert document.texts[0].text == "animal(X) :- cat(X)."
-    assert type(document.texts[0]) is TextItem
-    assert document.texts[0].label == DocItemLabel.TEXT
-    assert len(warnings) == 1
+    assert document.texts[0].text == "wrong colon"
+    assert type(document.texts[0]) is FormulaItem
+    assert document.texts[1].text == "animal(X) :- cat(X)."
+    assert type(document.texts[1]) is TextItem
+    assert document.texts[1].label == DocItemLabel.TEXT
+    assert len(warnings) == 2

@@ -96,67 +96,6 @@ def valid_evidence(evidence, excerpts):
             if match:
                 evidence.quote = match.group()
                 return True
-
-    for source in excerpts:
-        if evidence.material_id == source["material_id"]:
-            match = re.search(pattern, source["text"])
-            if match:
-                evidence.block_id = source["block_id"]
-                evidence.quote = match.group()
-                return True
-
-    for source in excerpts:
-        match = re.search(pattern, source["text"])
-        if match:
-            evidence.material_id = source["material_id"]
-            evidence.block_id = source["block_id"]
-            evidence.quote = match.group()
-            return True
-
-    cleaned_words = [re.sub(r"^[^\w]+|[^\w]+$", "", w) for w in words]
-    meaningful = [w for w in cleaned_words if w]
-    if len(meaningful) >= 2:
-        punct_pattern = r"[^\w]+".join(re.escape(w) for w in meaningful)
-        for source in excerpts:
-            if evidence.material_id == source["material_id"] and evidence.block_id == source["block_id"]:
-                match = re.search(punct_pattern, source["text"], re.IGNORECASE)
-                if match:
-                    evidence.quote = match.group()
-                    return True
-        for source in excerpts:
-            if evidence.material_id == source["material_id"]:
-                match = re.search(punct_pattern, source["text"], re.IGNORECASE)
-                if match:
-                    evidence.block_id = source["block_id"]
-                    evidence.quote = match.group()
-                    return True
-        for source in excerpts:
-            match = re.search(punct_pattern, source["text"], re.IGNORECASE)
-            if match:
-                evidence.material_id = source["material_id"]
-                evidence.block_id = source["block_id"]
-                evidence.quote = match.group()
-                return True
-
-    if len(meaningful) >= 4:
-        for span_len in range(len(meaningful) - 1, 2, -1):
-            for i in range(len(meaningful) - span_len + 1):
-                sub_pattern = r"[^\w]+".join(re.escape(w) for w in meaningful[i:i + span_len])
-                for source in excerpts:
-                    if evidence.material_id == source["material_id"]:
-                        match = re.search(sub_pattern, source["text"], re.IGNORECASE)
-                        if match and len(match.group()) >= 15:
-                            evidence.block_id = source["block_id"]
-                            evidence.quote = match.group()
-                            return True
-                for source in excerpts:
-                    match = re.search(sub_pattern, source["text"], re.IGNORECASE)
-                    if match and len(match.group()) >= 15:
-                        evidence.material_id = source["material_id"]
-                        evidence.block_id = source["block_id"]
-                        evidence.quote = match.group()
-                        return True
-
     return False
 
 
@@ -193,23 +132,6 @@ def resolve_parent_topic(parent_title: str, topics: list[Topic], by_norm: dict[s
         return None
     if norm_p in by_norm:
         return by_norm[norm_p]
-    candidates = []
-    for norm_t, t in by_norm.items():
-        if (norm_p in norm_t or norm_t in norm_p) and len(norm_t) > 3:
-            candidates.append(t)
-    if candidates:
-        return min(candidates, key=lambda c: abs(len(c.title) - len(parent_title)))
-    if encoder and len(topics) > 1:
-        try:
-            parent_vec = encoder.encode([parent_title], query=True)[0]
-            titles = [t.title for t in topics]
-            title_vecs = encoder.encode(titles)
-            scores = title_vecs @ parent_vec
-            best_idx = int(scores.argmax())
-            if float(scores[best_idx]) >= 0.85:
-                return topics[best_idx]
-        except Exception:
-            pass
     return None
 
 
@@ -256,14 +178,6 @@ def synthesize_parent_topic(parent_title: str, children: list[Topic]) -> Topic:
 
 
 def build_hierarchy(topics: list[Topic], edges: list[dict], canonical: dict[str, str], encoder=None) -> tuple[list[Topic], list[dict], dict[str, set[str]]]:
-    for t in topics:
-        if not t.parent_title:
-            title_lower = t.title.lower()
-            for pattern, p_title in COMMON_CLUSTERS.items():
-                if pattern in title_lower and clean_topic_title(p_title) != clean_topic_title(t.title):
-                    t.parent_title = p_title
-                    break
-
     by_norm = {normalized_title(t.title): t for t in topics}
     parent_requests: dict[str, list[Topic]] = {}
 
@@ -275,11 +189,8 @@ def build_hierarchy(topics: list[Topic], edges: list[dict], canonical: dict[str,
 
     for p_title, children in parent_requests.items():
         matched = resolve_parent_topic(p_title, topics, by_norm, encoder)
-        if not matched:
-            new_parent = synthesize_parent_topic(p_title, children)
-            topics.append(new_parent)
-            by_norm[normalized_title(new_parent.title)] = new_parent
-            canonical[normalized_title(new_parent.title)] = new_parent.id
+        # A declared parent that has no independently sourced topic remains
+        # unresolved. Creating a synthetic assessable topic would invent content.
 
     hierarchy, hierarchy_adj = [], {}
     for p_title, children in parent_requests.items():
@@ -289,32 +200,6 @@ def build_hierarchy(topics: list[Topic], edges: list[dict], canonical: dict[str,
                 if c.id != parent.id and not reachable(hierarchy_adj, c.id, parent.id):
                     hierarchy.append({"source": parent.id, "target": c.id})
                     hierarchy_adj.setdefault(parent.id, set()).add(c.id)
-
-    if len(topics) >= 2:
-        adj = {}
-        for e in edges:
-            adj.setdefault(e["source"], set()).add(e["target"])
-            adj.setdefault(e["target"], set()).add(e["source"])
-        for h in hierarchy:
-            adj.setdefault(h["source"], set()).add(h["target"])
-            adj.setdefault(h["target"], set()).add(h["source"])
-
-        isolated = [t for t in topics if t.id not in adj]
-        if isolated:
-            child_ids = {h["target"] for h in hierarchy}
-            root_candidates = [t for t in topics if t.id not in child_ids]
-            for iso in isolated:
-                mat_id = iso.sources[0].material_id if iso.sources else None
-                week = iso.sources[0].week if iso.sources else None
-                same_mat_roots = [r for r in root_candidates if r.id != iso.id and any(s.material_id == mat_id for s in r.sources)]
-                if not same_mat_roots and week is not None:
-                    same_mat_roots = [r for r in root_candidates if r.id != iso.id and any(s.week == week for s in r.sources)]
-                target_root = same_mat_roots[0] if same_mat_roots else (root_candidates[0] if root_candidates and root_candidates[0].id != iso.id else None)
-                if target_root and not reachable(hierarchy_adj, iso.id, target_root.id):
-                    hierarchy.append({"source": target_root.id, "target": iso.id})
-                    hierarchy_adj.setdefault(target_root.id, set()).add(iso.id)
-                    adj.setdefault(target_root.id, set()).add(iso.id)
-                    adj.setdefault(iso.id, set()).add(target_root.id)
 
     return topics, hierarchy, hierarchy_adj
 
@@ -408,23 +293,15 @@ async def build_links(topics, complete, encoder, per_requirement=5, max_chars=16
             for decision in result.requirements:
                 key = (decision.target_id, decision.requirement)
                 if key not in allowed or key in covered:
-                    continue
+                    raise ValueError("Неизвестное или повторное решение requirement")
                 actual = [p for t, r, p in links if (t, r) == key]
-                valid_pids = [p for p in decision.prerequisite_ids if (decision.target_id, decision.requirement, p) in links]
-                for p in actual:
-                    if p not in valid_pids:
-                        valid_pids.append(p)
-                decision.prerequisite_ids = valid_pids
+                if len(set(decision.prerequisite_ids)) != len(decision.prerequisite_ids):
+                    raise ValueError("Повторный prerequisite в решении")
+                if set(decision.prerequisite_ids) != set(actual):
+                    raise ValueError("Решение requirements не совпадает с подтверждёнными links")
                 covered[key] = decision
-            for key, item in allowed.items():
-                if key not in covered:
-                    actual = [p for t, r, p in links if (t, r) == key]
-                    covered[key] = RequirementDecision(
-                        target_id=key[0],
-                        requirement=key[1],
-                        prerequisite_ids=actual,
-                        reason="Связи не найдены" if not actual else "Подтверждено",
-                    )
+            if set(covered) != set(allowed):
+                raise ValueError("Не каждое требование отражено ровно один раз")
             return list(links.values()), list(covered.values())
         except ValueError as error:
             if correction is None:

@@ -155,9 +155,53 @@ const courseMaterialSchema = z.object({
   char_count: z.number().int().nonnegative(),
   status: z.enum(['pending', 'parsed', 'failed']),
   error_message: z.string().nullable().optional(),
+  processing: z
+    .object({
+      stage: z.enum([
+        'queued',
+        'waiting_models',
+        'ocr',
+        'translation',
+        'cleaning',
+        'graph',
+        'ready',
+        'failed',
+      ]),
+      status: z.enum(['pending', 'processing', 'ready', 'failed']),
+      updated_at: count,
+      attempts: count,
+    })
+    .nullable()
+    .optional(),
+  cleaning: z
+    .object({
+      status: z.enum(['pending', 'processing', 'ready', 'failed']),
+      updated_at: count,
+      attempts: count,
+      error_message: z.string(),
+    })
+    .nullable()
+    .optional(),
+  ocr_report: z.unknown().optional(),
   created_at: count,
   updated_at: count,
 })
+
+function getOcrWarnings(report: unknown): string[] {
+  if (!report || typeof report !== 'object' || Array.isArray(report)) return []
+  const record = report as Record<string, unknown>
+  const warnings = [record.warnings, record.pipeline_warnings].flatMap(
+    (value) =>
+      Array.isArray(value)
+        ? value.filter(
+            (warning): warning is string => typeof warning === 'string',
+          )
+        : [],
+  )
+  return warnings.filter(
+    (warning, index) => warnings.indexOf(warning) === index,
+  )
+}
 
 export async function readSubjectMaterials(
   subjectId: string,
@@ -187,6 +231,23 @@ export async function readSubjectMaterials(
     charCount: item.char_count,
     status: item.status,
     errorMessage: item.error_message,
+    processing: item.processing
+      ? {
+          stage: item.processing.stage,
+          status: item.processing.status,
+          updatedAt: item.processing.updated_at,
+          attempts: item.processing.attempts,
+        }
+      : undefined,
+    cleaning: item.cleaning
+      ? {
+          status: item.cleaning.status,
+          updatedAt: item.cleaning.updated_at,
+          attempts: item.cleaning.attempts,
+          errorMessage: item.cleaning.error_message,
+        }
+      : undefined,
+    ocrWarnings: getOcrWarnings(item.ocr_report),
     createdAt: item.created_at,
     updatedAt: item.updated_at,
   }))
@@ -223,14 +284,15 @@ export async function uploadCourseMaterials(
   for (const file of files) {
     body.append('file', file, file.name)
   }
-  const timeout = AbortSignal.timeout(900_000)
   const response = await apiFetch(
     `${apiBase}/admin/subjects/${encodeURIComponent(subjectId)}/materials`,
     {
       method: 'POST',
       credentials: 'include',
       body,
-      signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
+      // OCR and translation run in the background; do not cut off large uploads
+      // with a browser timer. Let the caller cancel on navigation.
+      signal,
     },
   )
   const parsed = courseMaterialUploadResultSchema.safeParse(
@@ -250,6 +312,23 @@ export async function uploadCourseMaterials(
       charCount: item.char_count,
       status: item.status,
       errorMessage: item.error_message,
+      processing: item.processing
+        ? {
+            stage: item.processing.stage,
+            status: item.processing.status,
+            updatedAt: item.processing.updated_at,
+            attempts: item.processing.attempts,
+          }
+        : undefined,
+      cleaning: item.cleaning
+        ? {
+            status: item.cleaning.status,
+            updatedAt: item.cleaning.updated_at,
+            attempts: item.cleaning.attempts,
+            errorMessage: item.cleaning.error_message,
+          }
+        : undefined,
+      ocrWarnings: getOcrWarnings(item.ocr_report),
       createdAt: item.created_at,
       updatedAt: item.updated_at,
     })),

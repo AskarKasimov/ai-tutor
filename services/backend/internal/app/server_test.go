@@ -25,9 +25,9 @@ func TestHTTPWriteTimeoutAllowsDiagnosticAndGenerationToFinish(t *testing.T) {
 	}
 }
 
-func TestHTTPWriteTimeoutAllowsFullPDFOCR(t *testing.T) {
-	cfg := Config{CourseGraphTimeout: 70 * time.Minute, TranslatorTimeout: 2 * time.Minute, S3Timeout: time.Second}
-	if cfg.HTTPWriteTimeout() < cfg.CourseGraphTimeout+cfg.TranslatorTimeout {
-		t.Fatal("HTTP response deadline interrupts PDF processing")
+func TestHTTPWriteTimeoutDoesNotIncludeBackgroundMaterialProcessing(t *testing.T) {
+	cfg := Config{CourseGraphTimeout: 70 * time.Minute, TranslatorTimeout: 2 * time.Minute}
+	if got := cfg.HTTPWriteTimeout(); got != 30*time.Second {
+		t.Fatalf("background processing affects HTTP write deadline: %s", got)
 	}
 }

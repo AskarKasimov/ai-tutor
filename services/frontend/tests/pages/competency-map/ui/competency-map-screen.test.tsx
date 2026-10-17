@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import {
   createMemoryHistory,
   createRouter,
@@ -11,6 +11,7 @@ import { routeTree } from '@/routeTree.gen'
 afterEach(() => vi.unstubAllGlobals())
 
 it.each([
+  ['pending', 'status', 'В обработке'],
   ['parsed', 'status', 'Предупреждение при распознавании'],
   ['failed', 'alert', 'Ошибка обработки материала'],
 ] as const)(
@@ -53,19 +54,39 @@ it.each([
               parsed_text: 'Текст лекции',
               char_count: 12,
               status,
-              error_message: message,
+              error_message: status === 'pending' ? null : message,
+              ...(status === 'pending'
+                ? {
+                    processing: {
+                      stage: 'waiting_models',
+                      status: 'processing',
+                      updated_at: 1792180000,
+                      attempts: 1,
+                    },
+                    ocr_report: {
+                      warnings: ['Некоторые страницы ещё не распознаны.'],
+                    },
+                  }
+                : {}),
               created_at: 1792180000,
               updated_at: 1792180000,
             },
           ])
         if (url.endsWith('/graph'))
           return Response.json({
-            status: 'waiting_materials',
-            attempts: 0,
+            status: status === 'pending' ? 'processing' : 'waiting_materials',
+            attempts: status === 'pending' ? 1 : 0,
             error_message: '',
-            graph: null,
-            stale: false,
-            updated_at: 0,
+            graph:
+              status === 'pending'
+                ? {
+                    topics: [{ id: 'old-topic', title: 'Сохранённая тема' }],
+                    prerequisites: [],
+                    hierarchy: [],
+                  }
+                : null,
+            stale: status === 'pending',
+            updated_at: status === 'pending' ? 1792180000 : 0,
           })
         throw new Error(`Unexpected request: ${url}`)
       }),
@@ -79,9 +100,25 @@ it.each([
     })
     render(<RouterProvider router={router} />)
 
-    expect(await screen.findByRole(role, { name: label })).toHaveTextContent(
-      message,
-    )
+    if (status === 'pending') {
+      expect(await screen.findByText(label)).toBeVisible()
+      expect(await screen.findByText('Ожидает загрузки моделей')).toBeVisible()
+      expect(screen.getByText(/Последнее обновление:/)).toBeVisible()
+      expect(
+        screen.getByText('Некоторые страницы ещё не распознаны.'),
+      ).toBeVisible()
+      expect(
+        await screen.findByText('Материалы обновились, идёт пересборка графа…'),
+      ).toBeVisible()
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Показать структуру графа' }),
+      )
+      expect(screen.getByText('Сохранённая тема')).toBeVisible()
+    } else {
+      expect(await screen.findByRole(role, { name: label })).toHaveTextContent(
+        message,
+      )
+    }
     expect(screen.getByText('lecture.pdf')).toBeVisible()
   },
 )

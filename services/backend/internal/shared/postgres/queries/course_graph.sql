@@ -6,14 +6,23 @@ ON CONFLICT(subject_id) DO UPDATE SET fingerprint=excluded.fingerprint,
 WHERE course_graph_jobs.fingerprint <> excluded.fingerprint;
 
 -- name: ClaimCourseGraph :one
-UPDATE course_graph_jobs SET status='processing', attempts=attempts+1,
-    lease_token=sqlc.arg(token), lease_until=sqlc.arg(now)::bigint+2700, updated_at=sqlc.arg(now)
+UPDATE course_graph_jobs SET status='processing', attempts=attempts+CASE WHEN status='pending' THEN 1 ELSE 0 END,
+    lease_token=sqlc.arg(token), lease_until=sqlc.arg(now)::bigint+60, updated_at=sqlc.arg(now)
 WHERE subject_id=(SELECT j.subject_id FROM course_graph_jobs j JOIN course_graph_inputs i
     ON i.subject_id=j.subject_id AND i.fingerprint=j.fingerprint
     WHERE (j.status='pending' AND j.available_at<=sqlc.arg(now))
        OR (j.status='processing' AND j.lease_until<=sqlc.arg(now))
     ORDER BY j.updated_at FOR UPDATE OF j SKIP LOCKED LIMIT 1)
 RETURNING *;
+
+-- name: RenewCourseGraph :execrows
+UPDATE course_graph_jobs SET lease_until=sqlc.arg(now)::bigint+60, updated_at=sqlc.arg(now)
+WHERE subject_id=sqlc.arg(subject_id) AND lease_token=sqlc.arg(token) AND status='processing';
+
+-- name: ReleaseCourseGraph :execrows
+UPDATE course_graph_jobs SET status='pending', attempts=GREATEST(attempts-1,0), lease_until=0,
+    lease_token='', updated_at=sqlc.arg(now)
+WHERE subject_id=sqlc.arg(subject_id) AND lease_token=sqlc.arg(token) AND status='processing';
 
 -- name: FinishCourseGraph :one
 WITH accepted AS (

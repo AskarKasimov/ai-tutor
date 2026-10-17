@@ -15,6 +15,7 @@ import (
 func (a *App) RunBackground(ctx context.Context) error {
 	group, ctx := errgroup.WithContext(ctx)
 	group.Go(func() error { return a.RunAudioWorker(ctx) })
+	group.Go(func() error { return a.ocrWorker.Run(ctx) })
 	group.Go(func() error { return a.cleaningWorker.Run(ctx) })
 	group.Go(func() error { return a.graphWorker.Run(ctx) })
 	group.Go(func() error {

@@ -3,6 +3,7 @@ package application
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"time"
@@ -79,10 +80,18 @@ func (w *Worker) ProcessOne(ctx context.Context) (bool, error) {
 	if err != nil || job.SubjectID == "" {
 		return false, err
 	}
-	taskCtx, cancel := context.WithTimeout(ctx, 41*time.Minute)
-	defer cancel()
-	err = w.process(taskCtx, job)
+	if owner, ok := w.repo.(interface {
+		Renew(context.Context, coursegraph.Job, time.Time) (bool, error)
+		Release(context.Context, coursegraph.Job, time.Time) error
+	}); ok {
+		err = runWithLease(ctx, job, owner.Renew, owner.Release, func(taskCtx context.Context) error { return w.process(taskCtx, job) })
+	} else {
+		err = w.process(ctx, job)
+	}
 	if err != nil {
+		if ctx.Err() != nil || errors.Is(err, errGraphLeaseLost) {
+			return true, nil
+		}
 		failureCtx, stop := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
 		defer stop()
 		if failure := w.repo.Fail(failureCtx, job, "Не удалось построить граф; предыдущий граф сохранён.", time.Now()); failure != nil {
@@ -90,6 +99,51 @@ func (w *Worker) ProcessOne(ctx context.Context) (bool, error) {
 		}
 	}
 	return true, err
+}
+
+var errGraphLeaseLost = errors.New("course graph lease lost")
+
+func runWithLease(ctx context.Context, job coursegraph.Job,
+	renew func(context.Context, coursegraph.Job, time.Time) (bool, error),
+	release func(context.Context, coursegraph.Job, time.Time) error,
+	process func(context.Context) error) error {
+	workCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	done := make(chan error, 1)
+	go func() { done <- process(workCtx) }()
+	ticker := time.NewTicker(10 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case err := <-done:
+			if ctx.Err() != nil {
+				releaseCtx, stop := context.WithTimeout(context.Background(), 10*time.Second)
+				_ = release(releaseCtx, job, time.Now())
+				stop()
+				return ctx.Err()
+			}
+			return err
+		case <-ctx.Done():
+			cancel()
+			<-done
+			releaseCtx, stop := context.WithTimeout(context.Background(), 10*time.Second)
+			_ = release(releaseCtx, job, time.Now())
+			stop()
+			return ctx.Err()
+		case <-ticker.C:
+			heartbeatCtx, stop := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+			owned, err := renew(heartbeatCtx, job, time.Now())
+			stop()
+			if err != nil || !owned {
+				cancel()
+				<-done
+				if err != nil {
+					return err
+				}
+				return errGraphLeaseLost
+			}
+		}
+	}
 }
 
 func (w *Worker) process(ctx context.Context, job coursegraph.Job) error {
@@ -141,7 +195,7 @@ func (w *Worker) process(ctx context.Context, job coursegraph.Job) error {
 			Acyclic bool `json:"acyclic"`
 		} `json:"quality"`
 	}
-	if json.Unmarshal(graph, &shape) != nil || shape.Version != "course-graph-v1" || !shape.Quality.Acyclic || shape.Topics == nil || shape.Prerequisites == nil {
+	if json.Unmarshal(graph, &shape) != nil || shape.Version != "course-graph-v1" || !shape.Quality.Acyclic || len(shape.Topics) == 0 || shape.Prerequisites == nil {
 		return fmt.Errorf("invalid graph result")
 	}
 	_, err = w.repo.Finish(ctx, job, graph, time.Now())

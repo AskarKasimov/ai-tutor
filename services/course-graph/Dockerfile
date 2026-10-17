@@ -23,6 +23,8 @@ RUN if [ "$INSTALL_DOCLING" = "true" ]; then \
       uv pip install --system --no-cache -r /tmp/requirements-light.txt; \
     else exit 1; fi
 ENV COURSE_GRAPH_WITH_DOCLING=${INSTALL_DOCLING}
+ENV HF_HUB_DISABLE_XET=1
+ENV HF_HUB_DOWNLOAD_TIMEOUT=30
 
 COPY course_graph/ course_graph/
 

@@ -11,6 +11,18 @@ from typing import Optional
 _converter = None
 
 
+def configured_document_timeout():
+    raw = os.environ.get("COURSE_GRAPH_OCR_DOCUMENT_TIMEOUT", "0")
+    try:
+        value = float(raw)
+    except ValueError as error:
+        raise ValueError("COURSE_GRAPH_OCR_DOCUMENT_TIMEOUT must be a non-negative number") from error
+    if value < 0:
+        raise ValueError("COURSE_GRAPH_OCR_DOCUMENT_TIMEOUT must be a non-negative number")
+    # Docling treats None as no document-wide deadline; zero can mean immediate timeout.
+    return value or None
+
+
 def get_converter():
     global _converter
     if _converter is None:
@@ -19,6 +31,8 @@ def get_converter():
         from docling.datamodel.base_models import InputFormat
         from docling.datamodel.pipeline_options import PdfPipelineOptions
         options = PdfPipelineOptions()
+        from ..model_runtime import configured_ocr_threads
+        options.accelerator_options.num_threads = configured_ocr_threads()
         options.do_code_enrichment = os.environ.get("COURSE_GRAPH_OCR_ENRICH_CODE", "true").lower() == "true"
         options.do_formula_enrichment = os.environ.get("COURSE_GRAPH_OCR_ENRICH_FORMULA", "true").lower() == "true"
         options.generate_picture_images = os.environ.get("COURSE_GRAPH_OCR_PICTURE_TEXT", "true").lower() == "true"
@@ -27,7 +41,7 @@ def get_converter():
         from docling.datamodel.vlm_engine_options import TransformersVlmEngineOptions
         options.code_formula_options.engine_options = TransformersVlmEngineOptions(
             torch_dtype="float32", load_in_8bit=False, use_kv_cache=True, compile_model=False)
-        options.document_timeout = float(os.environ.get("COURSE_GRAPH_OCR_DOCUMENT_TIMEOUT", "3600"))
+        options.document_timeout = configured_document_timeout()
         from docling.datamodel.pipeline_options import RapidOcrOptions
         ocr = RapidOcrOptions(backend="torch", force_full_page_ocr=os.environ.get("COURSE_GRAPH_OCR_FULL_PAGE", "false").lower() == "true")
         model_dir = Path(os.environ.get("COURSE_GRAPH_RAPID_CACHE_DIR", "/var/lib/course-graph/rapidocr"))
@@ -68,7 +82,7 @@ def convert_document(filename: str, content: bytes) -> dict:
     source_hash = hashlib.sha256(content).hexdigest()
     configuration = {"version": "ocr-v6-native-syntax", "with_docling": os.environ.get("COURSE_GRAPH_WITH_DOCLING", "true"),
                      "picture_text": os.environ.get("COURSE_GRAPH_OCR_PICTURE_TEXT", "true"),
-                     "document_timeout": os.environ.get("COURSE_GRAPH_OCR_DOCUMENT_TIMEOUT", "3600"),
+                     "document_timeout": os.environ.get("COURSE_GRAPH_OCR_DOCUMENT_TIMEOUT", "0"),
                      "enrich_code": os.environ.get("COURSE_GRAPH_OCR_ENRICH_CODE", "true"),
                      "enrich_formula": os.environ.get("COURSE_GRAPH_OCR_ENRICH_FORMULA", "true"),
                      "full_page_ocr": os.environ.get("COURSE_GRAPH_OCR_FULL_PAGE", "false")}
@@ -128,11 +142,27 @@ def convert_document(filename: str, content: bytes) -> dict:
         fallback_reason = "Docling не вернул текст"
         try:
             converter = get_converter()
-            from .enrichment import enrichment_warnings
+            from .enrichment import NativePdfTextReader, NativeSyntaxGuard, enrichment_warnings
             enrichment_warnings(converter, reset=True)
-            conv_res = converter.convert(tmp_path)
-            doc = conv_res.document
             native_warnings = []
+            if lower.endswith(".pdf"):
+                from docling.datamodel.base_models import InputFormat
+
+                pipeline = converter.initialize_pipeline(InputFormat.PDF)
+                reader = NativePdfTextReader(content)
+                guards = [stage for stage in getattr(pipeline, "enrichment_pipe", [])
+                          if isinstance(stage, NativeSyntaxGuard)]
+                for guard in guards:
+                    guard.native_text_for = reader
+                try:
+                    conv_res = converter.convert(tmp_path)
+                finally:
+                    for guard in guards:
+                        guard.native_text_for = None
+                    reader.close()
+            else:
+                conv_res = converter.convert(tmp_path)
+            doc = conv_res.document
             if lower.endswith(".pdf"):
                 try:
                     from .enrichment import recover_native_programs

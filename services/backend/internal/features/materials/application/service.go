@@ -11,7 +11,6 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
-	"unicode/utf8"
 
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/material"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/user"
@@ -99,8 +98,6 @@ func (s *Service) Upload(ctx context.Context, actor user.User, subjectID string,
 
 	s3RawKey := fmt.Sprintf("subjects/%s/raw/%s_%s", subjectID, materialID, cleanFilename)
 	s3ParsedKey := fmt.Sprintf("subjects/%s/parsed/%s_%s.md", subjectID, materialID, cleanFilename)
-	s3TranslatedKey := fmt.Sprintf("subjects/%s/translated/%s_%s.md", subjectID, materialID, cleanFilename)
-
 	// 1. Store raw file in S3
 	contentType := input.ContentType
 	if contentType == "" {
@@ -111,54 +108,8 @@ func (s *Service) Upload(ctx context.Context, actor user.User, subjectID string,
 		return material.Material{}, fault.New(fault.Unavailable, "S3_UPLOAD_ERROR", "Хранилище недоступно, попробуйте позже.")
 	}
 
-	// 2. Parse text with course-graph OCR
-	parsedText, ocrErr := s.ocr.Convert(ctx, cleanFilename, input.Data)
-	status := material.StatusParsed
-	var errMsg *string
-	if ocrErr != nil {
-		log.Printf("OCR conversion error for %s: %v", cleanFilename, ocrErr)
-		errStr := ocrErr.Error()
-		errMsg = &errStr
-		if parsedText == "" {
-			status = material.StatusFailed
-		}
-	}
-
-	// 3. Store parsed markdown in S3 if non-empty
-	if len(parsedText) > 0 {
-		if err := s.s3.Put(ctx, s3ParsedKey, "text/markdown; charset=utf-8", []byte(parsedText)); err != nil {
-			log.Printf("Failed to upload parsed markdown to S3 for %s: %v", cleanFilename, err)
-			cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
-			_ = s.s3.Delete(cleanupCtx, s3RawKey)
-			cancel()
-			return material.Material{}, fault.New(fault.Unavailable, "S3_UPLOAD_ERROR", "Не удалось сохранить извлечённый текст, попробуйте позже.")
-		}
-	}
-
-	// 4. Translate if needed and translator configured
-	finalText := parsedText
-	targetS3ParsedKey := s3ParsedKey
-	if len(parsedText) > 0 && s.translator != nil {
-		translatedText, transErr := s.translator.Translate(ctx, parsedText)
-		if transErr != nil {
-			log.Printf("Translation warning for %s: %v (preserving original OCR text)", cleanFilename, transErr)
-			status = material.StatusFailed
-			message := "Перевод не завершён; исходный OCR сохранён: " + transErr.Error()
-			errMsg = &message
-		} else if translatedText != "" && translatedText != parsedText {
-			if err := s.s3.Put(ctx, s3TranslatedKey, "text/markdown; charset=utf-8", []byte(translatedText)); err != nil {
-				log.Printf("Failed to upload translated markdown to S3 for %s: %v", cleanFilename, err)
-				status = material.StatusFailed
-				message := "Не удалось сохранить перевод; исходный OCR сохранён."
-				errMsg = &message
-			} else {
-				targetS3ParsedKey = s3TranslatedKey
-				finalText = translatedText
-			}
-		}
-	}
-
-	// 5. Save metadata and parsed text in PostgreSQL
+	// OCR and translation run in a durable background job so a long batch does
+	// not keep the browser and reverse proxy waiting for the entire pipeline.
 	matRecord := material.Material{
 		ID:           materialID,
 		SubjectID:    subjectID,
@@ -166,11 +117,11 @@ func (s *Service) Upload(ctx context.Context, actor user.User, subjectID string,
 		ContentType:  contentType,
 		FileSize:     int64(len(input.Data)),
 		S3RawKey:     s3RawKey,
-		S3ParsedKey:  targetS3ParsedKey,
-		ParsedText:   finalText,
-		CharCount:    utf8.RuneCountInString(finalText),
-		Status:       status,
-		ErrorMessage: errMsg,
+		S3ParsedKey:  s3ParsedKey,
+		ParsedText:   "",
+		CharCount:    0,
+		Status:       material.StatusPending,
+		ErrorMessage: nil,
 		CreatedAt:    nowUnix,
 		UpdatedAt:    nowUnix,
 	}
@@ -183,12 +134,6 @@ func (s *Service) Upload(ctx context.Context, actor user.User, subjectID string,
 		if delErr := s.s3.Delete(cleanupCtx, s3RawKey); delErr != nil {
 			log.Printf("Failed to cleanup raw S3 object %s after DB error: %v", s3RawKey, delErr)
 		}
-		if delErr := s.s3.Delete(cleanupCtx, s3ParsedKey); delErr != nil {
-			log.Printf("Failed to cleanup parsed S3 object %s after DB error: %v", s3ParsedKey, delErr)
-		}
-		if targetS3ParsedKey == s3TranslatedKey {
-			_ = s.s3.Delete(cleanupCtx, s3TranslatedKey)
-		}
 		return material.Material{}, fault.New(fault.Unavailable, "DATABASE_ERROR", "Не удалось сохранить материал в базу данных, попробуйте позже.")
 	}
 
@@ -199,7 +144,27 @@ func (s *Service) List(ctx context.Context, actor user.User, subjectID string) (
 	if err := s.Authorize(actor); err != nil {
 		return nil, err
 	}
-	return s.repo.List(ctx, subjectID)
+	items, err := s.repo.List(ctx, subjectID)
+	if err != nil {
+		return nil, err
+	}
+	needsModels := false
+	for _, item := range items {
+		if item.Status == material.StatusPending && item.Processing != nil && item.Processing.Stage == "queued" && strings.HasSuffix(strings.ToLower(item.Filename), ".pdf") {
+			needsModels = true
+			break
+		}
+	}
+	if needsModels {
+		if readiness, ok := s.ocr.(interface{ Ready(context.Context) error }); ok && readiness.Ready(ctx) != nil {
+			for i := range items {
+				if items[i].Status == material.StatusPending && items[i].Processing != nil && items[i].Processing.Stage == "queued" && strings.HasSuffix(strings.ToLower(items[i].Filename), ".pdf") {
+					items[i].Processing.Stage = "waiting_models"
+				}
+			}
+		}
+	}
+	return items, nil
 }
 
 func (s *Service) Get(ctx context.Context, actor user.User, subjectID, materialID string) (material.Material, error) {
@@ -243,6 +208,11 @@ func (s *Service) Delete(ctx context.Context, actor user.User, subjectID, materi
 	}
 	if delErr := s.s3.Delete(cleanupCtx, mat.S3ParsedKey); delErr != nil {
 		log.Printf("Failed to delete parsed S3 object %s for material %s: %v", mat.S3ParsedKey, materialID, delErr)
+	}
+	if mat.S3OCRKey != "" {
+		if delErr := s.s3.Delete(cleanupCtx, mat.S3OCRKey); delErr != nil {
+			log.Printf("Failed to delete OCR S3 object for material %s: %v", materialID, delErr)
+		}
 	}
 	parsedKey := fmt.Sprintf("subjects/%s/parsed/%s_%s.md", mat.SubjectID, mat.ID, mat.Filename)
 	if parsedKey != mat.S3ParsedKey {

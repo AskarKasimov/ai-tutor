@@ -16,11 +16,21 @@ func toCleaning(j db.MaterialCleaningJob) material.Cleaning {
 		S3CleanedKey: j.S3CleanedKey, S3ReportKey: j.S3ReportKey, ErrorMessage: j.ErrorMessage, UpdatedAt: j.UpdatedAt}
 }
 func (r *Repository) ClaimCleaning(ctx context.Context, token string, now time.Time) (material.CleaningJob, error) {
-	j, err := db.New(r.pool).ClaimMaterialCleaning(ctx, db.ClaimMaterialCleaningParams{LeaseToken: token, Now: now.Unix(), LeaseUntil: now.Add(7 * time.Minute).Unix()})
+	j, err := db.New(r.pool).ClaimMaterialCleaning(ctx, db.ClaimMaterialCleaningParams{LeaseToken: token, Now: now.Unix()})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return material.CleaningJob{}, nil
 	}
 	return material.CleaningJob{MaterialID: j.MaterialID, Token: j.LeaseToken, Attempts: int(j.Attempts)}, err
+}
+
+func (r *Repository) RenewCleaning(ctx context.Context, job material.CleaningJob, now time.Time) (bool, error) {
+	n, err := db.New(r.pool).RenewMaterialCleaning(ctx, db.RenewMaterialCleaningParams{MaterialID: job.MaterialID, LeaseToken: job.Token, Now: now.Unix()})
+	return n == 1, err
+}
+
+func (r *Repository) ReleaseCleaning(ctx context.Context, job material.CleaningJob, now time.Time) error {
+	_, err := db.New(r.pool).ReleaseMaterialCleaning(ctx, db.ReleaseMaterialCleaningParams{MaterialID: job.MaterialID, LeaseToken: job.Token, Now: now.Unix()})
+	return err
 }
 func (r *Repository) FinishCleaning(ctx context.Context, job material.CleaningJob, result application.CleaningResult, textKey, reportKey string, now time.Time) (bool, error) {
 	tx, err := r.pool.Begin(ctx)

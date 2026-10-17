@@ -159,7 +159,7 @@ function CompetencyMapAdmin({ userId }: { userId: string }) {
         return
       }
       if (f.size > 50 * 1024 * 1024) {
-        setMaterialsFileError(t('competencyMap.tooLarge'))
+        setMaterialsFileError(t('competencyMap.materialsTooLarge'))
         return
       }
       if (f.size === 0) {
@@ -168,13 +168,15 @@ function CompetencyMapAdmin({ userId }: { userId: string }) {
       }
       validFiles.push(f)
     }
-    setLectureFiles((prev) => {
-      const existingNames = new Set(prev.map((f) => f.name.toLowerCase()))
-      const unique = validFiles.filter(
-        (f) => !existingNames.has(f.name.toLowerCase()),
-      )
-      return [...prev, ...unique]
-    })
+    const existingNames = new Set(lectureFiles.map((f) => f.name.toLowerCase()))
+    const unique = validFiles.filter(
+      (f) => !existingNames.has(f.name.toLowerCase()),
+    )
+    if (lectureFiles.length + unique.length > 48) {
+      setMaterialsFileError(t('competencyMap.materialsTooManyFiles'))
+      return
+    }
+    setLectureFiles((prev) => [...prev, ...unique])
   }
 
   function removeLectureFile(index: number) {
@@ -238,6 +240,12 @@ function CompetencyMapAdmin({ userId }: { userId: string }) {
               disabled={busy}
               onChange={(event) => setSubjectName(event.target.value)}
             />
+            <Text as="p" color="gray" size="2">
+              {t('competencyMap.createSubjectHelp')}
+            </Text>
+            <Text as="p" color="gray" size="2">
+              {t('competencyMap.createSubjectMapOptional')}
+            </Text>
             <MapFileZone file={file} disabled={busy} onSelect={selectFile} />
             {fileError && (
               <Text as="p" role="alert" color="red" size="2">
@@ -253,20 +261,24 @@ function CompetencyMapAdmin({ userId }: { userId: string }) {
               size="3"
               color="green"
               className={styles.submit}
-              disabled={!subjectName.trim() || !file || busy}
+              disabled={!subjectName.trim() || busy}
               onClick={() => {
                 const name = subjectName.trim()
-                if (!name || !file) return
+                if (!name) return
                 create.mutate(name, {
                   onSuccess: (created) => {
                     setCreatedId(created.id)
-                    setQueuedImport(true)
+                    if (file) setQueuedImport(true)
                   },
                 })
               }}
             >
               <Check size={18} aria-hidden="true" />
-              {t(busy ? 'competencyMap.uploading' : 'competencyMap.submit')}
+              {t(
+                busy
+                  ? 'competencyMap.uploading'
+                  : 'competencyMap.createSubjectSubmit',
+              )}
             </Button>
           </section>
         ) : (
@@ -788,11 +800,29 @@ function MaterialItemCard({
   )
 
   const statusTone =
-    material.status === 'parsed'
-      ? 'green'
-      : material.status === 'failed'
-        ? 'red'
-        : 'amber'
+    material.processing?.status === 'failed' ||
+    material.cleaning?.status === 'failed'
+      ? 'red'
+      : material.status === 'parsed'
+        ? 'green'
+        : material.status === 'failed'
+          ? 'red'
+          : 'amber'
+  const cleaningActive =
+    material.cleaning?.status === 'pending' ||
+    material.cleaning?.status === 'processing'
+  const processingStage = cleaningActive
+    ? 'cleaning'
+    : material.processing?.stage
+  const lastSignalAt = cleaningActive
+    ? material.cleaning?.updatedAt
+    : material.processing?.updatedAt
+  const errorCoveredByReport =
+    material.errorMessage &&
+    material.ocrWarnings.some((warning) =>
+      material.errorMessage?.includes(warning),
+    )
+  const showErrorMessage = material.errorMessage && !errorCoveredByReport
 
   async function handleDownload() {
     setDownloading(true)
@@ -876,12 +906,54 @@ function MaterialItemCard({
         </Flex>
       </div>
 
-      {material.errorMessage && (
+      {processingStage && (
+        <Flex gap="2" align="center" wrap="wrap" role="status">
+          <Badge
+            color={
+              material.processing?.status === 'failed' ||
+              material.processing?.status === 'ready'
+                ? material.processing.status === 'failed'
+                  ? 'red'
+                  : 'green'
+                : 'blue'
+            }
+            size="1"
+          >
+            {t(`competencyMap.materialStage.${processingStage}`)}
+          </Badge>
+          {lastSignalAt !== undefined && lastSignalAt > 0 && (
+            <Text size="1" color="gray">
+              {t('competencyMap.materialLastSignal', {
+                date: new Date(lastSignalAt * 1000).toLocaleString(
+                  i18n.language,
+                  { dateStyle: 'medium', timeStyle: 'short' },
+                ),
+              })}
+            </Text>
+          )}
+        </Flex>
+      )}
+
+      {showErrorMessage && (
         <Callout.Root
-          role={material.status === 'failed' ? 'alert' : 'status'}
-          color={material.status === 'failed' ? 'red' : 'amber'}
+          role={
+            material.status === 'failed' ||
+            material.processing?.status === 'failed' ||
+            material.cleaning?.status === 'failed'
+              ? 'alert'
+              : 'status'
+          }
+          color={
+            material.status === 'failed' ||
+            material.processing?.status === 'failed' ||
+            material.cleaning?.status === 'failed'
+              ? 'red'
+              : 'amber'
+          }
           aria-label={t(
-            material.status === 'failed'
+            material.status === 'failed' ||
+              material.processing?.status === 'failed' ||
+              material.cleaning?.status === 'failed'
               ? 'competencyMap.materialsProcessingError'
               : 'competencyMap.materialsProcessingWarning',
           )}
@@ -890,6 +962,42 @@ function MaterialItemCard({
             <TriangleAlert size={16} aria-hidden="true" />
           </Callout.Icon>
           <Callout.Text>{material.errorMessage}</Callout.Text>
+        </Callout.Root>
+      )}
+
+      {material.cleaning?.errorMessage && (
+        <Callout.Root
+          role={material.cleaning.status === 'failed' ? 'alert' : 'status'}
+          color={material.cleaning.status === 'failed' ? 'red' : 'amber'}
+          aria-label={t(
+            material.cleaning.status === 'failed'
+              ? 'competencyMap.materialsCleaningError'
+              : 'competencyMap.materialsCleaningWarning',
+          )}
+        >
+          <Callout.Icon>
+            <TriangleAlert size={16} aria-hidden="true" />
+          </Callout.Icon>
+          <Callout.Text>{material.cleaning.errorMessage}</Callout.Text>
+        </Callout.Root>
+      )}
+
+      {material.ocrWarnings.length > 0 && (
+        <Callout.Root
+          role="status"
+          color="amber"
+          aria-label={t('competencyMap.materialOcrWarnings')}
+        >
+          <Callout.Icon>
+            <TriangleAlert size={16} aria-hidden="true" />
+          </Callout.Icon>
+          <Callout.Text>
+            <ul className={styles.materialWarnings}>
+              {material.ocrWarnings.map((warning, index) => (
+                <li key={`${index}-${warning}`}>{warning}</li>
+              ))}
+            </ul>
+          </Callout.Text>
         </Callout.Root>
       )}
 
@@ -1111,7 +1219,7 @@ function CourseGraphCard({
               )}
             </span>
 
-            {snapshot?.stale && status === 'ready' && (
+            {snapshot?.stale && (
               <Badge color="amber" size="1">
                 {t('competencyMap.graphStale')}
               </Badge>
@@ -1133,7 +1241,7 @@ function CourseGraphCard({
             </Callout.Root>
           )}
 
-          {status === 'ready' && graph && (
+          {graph && (status === 'ready' || snapshot?.stale) && (
             <>
               <dl className={styles.stats}>
                 <div className={styles.statRow} data-tone="blue">

@@ -2,6 +2,7 @@ package application_test
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"strings"
 	"testing"
@@ -14,6 +15,7 @@ import (
 
 type memoryRepo struct {
 	items map[string]material.Material
+	jobs  []application.OCRJob
 }
 
 func (m *memoryRepo) List(ctx context.Context, subjectID string) ([]material.Material, error) {
@@ -39,7 +41,36 @@ func (m *memoryRepo) Insert(ctx context.Context, mat material.Material) (materia
 		m.items = make(map[string]material.Material)
 	}
 	m.items[mat.ID] = mat
+	if mat.Status == material.StatusPending {
+		m.jobs = append(m.jobs, application.OCRJob{MaterialID: mat.ID, Token: "lease", Attempts: 1})
+	}
 	return mat, nil
+}
+
+func (m *memoryRepo) ClaimOCR(context.Context, string, time.Time) (application.OCRJob, error) {
+	if len(m.jobs) == 0 {
+		return application.OCRJob{}, nil
+	}
+	job := m.jobs[0]
+	m.jobs = m.jobs[1:]
+	return job, nil
+}
+
+func (m *memoryRepo) FinishOCR(_ context.Context, job application.OCRJob, ocrKey, key string, report json.RawMessage, text string, warning *string, now time.Time) (bool, error) {
+	mat, ok := m.items[job.MaterialID]
+	if !ok {
+		return false, nil
+	}
+	var parsedReport map[string]any
+	_ = json.Unmarshal(report, &parsedReport)
+	mat.Status, mat.S3OCRKey, mat.S3ParsedKey, mat.OCRReport, mat.ParsedText, mat.UpdatedAt, mat.ErrorMessage = material.StatusParsed, ocrKey, key, parsedReport, text, now.Unix(), warning
+	mat.CharCount = len([]rune(text))
+	m.items[job.MaterialID] = mat
+	return true, nil
+}
+
+func (m *memoryRepo) FailOCR(context.Context, application.OCRJob, string, time.Time) error {
+	return nil
 }
 
 func (m *memoryRepo) Delete(ctx context.Context, subjectID, id string) (material.Material, error) {
@@ -131,14 +162,22 @@ func TestUploadMaterial(t *testing.T) {
 	if mat.Filename != "lecture-1.pdf" {
 		t.Errorf("expected filename lecture-1.pdf, got %s", mat.Filename)
 	}
-	if mat.Status != material.StatusParsed {
-		t.Errorf("expected status parsed, got %s", mat.Status)
+	if mat.Status != material.StatusPending {
+		t.Errorf("expected status pending, got %s", mat.Status)
 	}
-	if !strings.Contains(mat.ParsedText, "$E = mc^2$") {
-		t.Errorf("expected formula in parsed_text, got %s", mat.ParsedText)
+	if mat.ParsedText != "" || len(repo.jobs) != 1 {
+		t.Errorf("upload should enqueue OCR without running it: text=%q jobs=%d", mat.ParsedText, len(repo.jobs))
 	}
-	if len(s3.objects) != 2 {
-		t.Errorf("expected 2 objects in S3 (raw and parsed), got %d", len(s3.objects))
+	if len(s3.objects) != 1 {
+		t.Errorf("expected only raw object before OCR, got %d", len(s3.objects))
+	}
+	worker := application.NewOCRWorker(repo, s3, ocr, nil)
+	if worked, err := worker.ProcessOne(context.Background()); err != nil || !worked {
+		t.Fatalf("OCR worker: worked=%v err=%v", worked, err)
+	}
+	mat, _ = repo.Get(context.Background(), mat.ID)
+	if mat.Status != material.StatusParsed || !strings.Contains(mat.ParsedText, "$E = mc^2$") {
+		t.Fatalf("OCR result not persisted: %#v", mat)
 	}
 
 	// Verify listing by student fails
@@ -176,16 +215,20 @@ func (s *failingParsedS3) Put(ctx context.Context, key, contentType string, data
 	return s.memoryS3.Put(ctx, key, contentType, data)
 }
 
-func TestFailedParsedStorageDoesNotCreateCleaningTask(t *testing.T) {
+func TestFailedParsedStorageRetriesBackgroundOCR(t *testing.T) {
 	repo := &memoryRepo{}
 	storage := &failingParsedS3{}
 	svc := application.New(repo, storage, &stubOCR{}, nil)
-	_, err := svc.Upload(context.Background(), user.User{Role: user.Admin}, "sub", application.UploadInput{Filename: "lecture.md", Data: []byte("Теория")})
-	if err == nil {
-		t.Fatal("parsed storage failure ignored")
+	mat, err := svc.Upload(context.Background(), user.User{Role: user.Admin}, "sub", application.UploadInput{Filename: "lecture.md", Data: []byte("Теория")})
+	if err != nil {
+		t.Fatalf("raw upload failed: %v", err)
 	}
-	if len(repo.items) != 0 || len(storage.objects) != 0 {
-		t.Fatal("failed upload left a material or raw object")
+	worker := application.NewOCRWorker(repo, storage, &stubOCR{}, nil)
+	if worked, err := worker.ProcessOne(context.Background()); !worked || err == nil {
+		t.Fatalf("expected background parsed storage failure, worked=%v err=%v", worked, err)
+	}
+	if len(repo.items) != 1 || len(storage.objects) != 2 || mat.Status != material.StatusPending {
+		t.Fatal("failed OCR attempt should preserve raw pending material")
 	}
 }
 
@@ -226,30 +269,33 @@ func TestUploadMaterialWithTranslation(t *testing.T) {
 		t.Fatalf("unexpected upload error: %v", err)
 	}
 
-	if trans.calls != 1 {
-		t.Errorf("expected 1 call to translator, got %d", trans.calls)
+	if trans.calls != 0 || mat.Status != material.StatusPending {
+		t.Fatal("upload must enqueue OCR and translation asynchronously")
+	}
+	worker := application.NewOCRWorker(repo, s3, ocr, trans)
+	if worked, err := worker.ProcessOne(context.Background()); !worked || err != nil {
+		t.Fatalf("worker: worked=%v err=%v", worked, err)
+	}
+	mat, _ = repo.Get(context.Background(), mat.ID)
+	if trans.calls != 1 || !strings.Contains(mat.ParsedText, "Алгоритм поиска в ширину") || !strings.Contains(mat.S3ParsedKey, "/translated/") {
+		t.Fatalf("translation result missing: %#v calls=%d", mat, trans.calls)
+	}
+	if mat.S3OCRKey == "" || string(s3.objects[mat.S3OCRKey]) != ocr.markdown || len(mat.OCRReport) == 0 {
+		t.Fatalf("original OCR/report not preserved alongside translation: key=%q report=%s", mat.S3OCRKey, mat.OCRReport)
 	}
 
-	if !strings.Contains(mat.ParsedText, "Алгоритм поиска в ширину") {
-		t.Errorf("expected translated Russian text, got: %s", mat.ParsedText)
-	}
-
-	if !strings.Contains(mat.S3ParsedKey, "/translated/") {
-		t.Errorf("expected S3ParsedKey to point to translated object, got: %s", mat.S3ParsedKey)
-	}
-
-	// Verify S3 objects: raw, parsed (original), translated
+	// Verify S3 objects: raw upload, original OCR, translated parsed text.
 	if len(s3.objects) != 3 {
-		t.Errorf("expected 3 objects in S3 (raw, parsed, translated), got %d: %v", len(s3.objects), s3.objects)
+		t.Errorf("expected raw, original OCR and translated objects in S3, got %d: %v", len(s3.objects), s3.objects)
 	}
 
-	// Verify Delete cleans up all 3 S3 objects
+	// Verify Delete cleans up all source and derived S3 objects.
 	err = svc.Delete(context.Background(), admin, "sub-cs", mat.ID)
 	if err != nil {
 		t.Fatalf("unexpected delete error: %v", err)
 	}
 	if len(s3.objects) != 0 {
-		t.Errorf("expected all 3 S3 objects to be deleted, remaining: %d (%v)", len(s3.objects), s3.objects)
+		t.Errorf("expected all S3 objects to be deleted, remaining: %d (%v)", len(s3.objects), s3.objects)
 	}
 }
 
@@ -277,16 +323,12 @@ func TestUploadMaterialTranslationFailureFallback(t *testing.T) {
 		t.Fatalf("upload should succeed even when translation fails: %v", err)
 	}
 
-	// Should fallback to original OCR text
-	if mat.ParsedText != "# Lecture 1\n\nOriginal English text." {
-		t.Errorf("expected fallback to original English text, got: %s", mat.ParsedText)
+	worker := application.NewOCRWorker(repo, s3, ocr, trans)
+	if worked, err := worker.ProcessOne(context.Background()); !worked || err != nil {
+		t.Fatalf("translation fallback should succeed: worked=%v err=%v", worked, err)
 	}
-
-	if !strings.Contains(mat.S3ParsedKey, "/parsed/") {
-		t.Errorf("expected S3ParsedKey to point to parsed object on fallback, got: %s", mat.S3ParsedKey)
-	}
-
-	if mat.Status != material.StatusFailed || mat.ErrorMessage == nil {
-		t.Errorf("failed translation must remain visible and prevent graph processing: status=%s, error=%v", mat.Status, mat.ErrorMessage)
+	mat, _ = repo.Get(context.Background(), mat.ID)
+	if mat.ParsedText != "# Lecture 1\n\nOriginal English text." || !strings.Contains(mat.S3ParsedKey, "/parsed/") || mat.Status != material.StatusParsed || mat.ErrorMessage == nil {
+		t.Fatalf("translation fallback incorrect: %#v", mat)
 	}
 }

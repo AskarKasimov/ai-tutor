@@ -10,8 +10,8 @@ SELECT * FROM material_cleaning_jobs WHERE material_id = $1;
 
 -- name: ClaimMaterialCleaning :one
 UPDATE material_cleaning_jobs j
-SET status = 'processing', attempts = attempts + 1,
-    lease_until = sqlc.arg(lease_until), lease_token = sqlc.arg(lease_token), updated_at = sqlc.arg(now)::bigint
+SET status = 'processing', attempts = attempts + CASE WHEN status='pending' THEN 1 ELSE 0 END,
+    lease_until = sqlc.arg(now)::bigint + 60, lease_token = sqlc.arg(lease_token), updated_at = sqlc.arg(now)::bigint
 WHERE j.material_id = (
     SELECT material_id FROM material_cleaning_jobs
     WHERE (status = 'pending' AND available_at <= sqlc.arg(now)::bigint)
@@ -19,6 +19,15 @@ WHERE j.material_id = (
     ORDER BY updated_at, material_id FOR UPDATE SKIP LOCKED LIMIT 1
 )
 RETURNING j.*;
+
+-- name: RenewMaterialCleaning :execrows
+UPDATE material_cleaning_jobs SET lease_until=sqlc.arg(now)::bigint+60, updated_at=sqlc.arg(now)
+WHERE material_id=sqlc.arg(material_id) AND lease_token=sqlc.arg(lease_token) AND status='processing';
+
+-- name: ReleaseMaterialCleaning :execrows
+UPDATE material_cleaning_jobs SET status='pending', attempts=GREATEST(attempts-1,0), lease_until=0,
+    lease_token='', updated_at=sqlc.arg(now)
+WHERE material_id=sqlc.arg(material_id) AND lease_token=sqlc.arg(lease_token) AND status='processing';
 
 -- name: FinishMaterialCleaning :execrows
 UPDATE material_cleaning_jobs

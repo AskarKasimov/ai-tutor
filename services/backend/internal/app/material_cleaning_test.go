@@ -68,24 +68,44 @@ func TestMaterialCleaningLeaseAndRetryLimit(t *testing.T) {
 	if err != nil || first.MaterialID == "" {
 		t.Fatal(err)
 	}
+	if owned, err := repo.RenewCleaning(ctx, first, now.Add(30*time.Second)); err != nil || !owned {
+		t.Fatalf("heartbeat renew: owned=%v err=%v", owned, err)
+	}
 	if second, err := repo.ClaimCleaning(ctx, "second", now); err != nil || second.MaterialID != "" {
 		t.Fatalf("double claim: %+v %v", second, err)
 	}
-	next, err := repo.ClaimCleaning(ctx, "next", now.Add(8*time.Minute))
+	if second, err := repo.ClaimCleaning(ctx, "before-renewed-expiry", now.Add(61*time.Second)); err != nil || second.MaterialID != "" {
+		t.Fatalf("heartbeat did not extend lease: %+v %v", second, err)
+	}
+	next, err := repo.ClaimCleaning(ctx, "next", now.Add(91*time.Second))
 	if err != nil || next.Token != "next" {
 		t.Fatalf("expired lease: %+v %v", next, err)
 	}
 	if ok, err := repo.FinishCleaning(ctx, first, materialsapp.CleaningResult{}, "old", "old", now); err != nil || ok {
 		t.Fatalf("stale completion accepted: %v %v", ok, err)
 	}
-	if err = repo.FailCleaning(ctx, next, "retry", now); err != nil {
+	if err = repo.ReleaseCleaning(ctx, next, now.Add(92*time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	released, err := repo.ClaimCleaning(ctx, "released", now.Add(93*time.Second))
+	if err != nil || released.Attempts != 1 {
+		t.Fatalf("graceful release consumed an attempt: %+v %v", released, err)
+	}
+	if err = repo.FailCleaning(ctx, released, "retry", now); err != nil {
 		t.Fatal(err)
 	}
 	final, err := repo.ClaimCleaning(ctx, "final", now.Add(10*time.Minute))
-	if err != nil || final.Attempts != 3 {
-		t.Fatalf("third attempt: %+v %v", final, err)
+	if err != nil || final.Attempts != 2 {
+		t.Fatalf("second failing attempt: %+v %v", final, err)
 	}
-	if err = repo.FailCleaning(ctx, final, "failed", now); err != nil {
+	if err = repo.FailCleaning(ctx, final, "retry", now); err != nil {
+		t.Fatal(err)
+	}
+	third, err := repo.ClaimCleaning(ctx, "third", now.Add(11*time.Minute))
+	if err != nil || third.Attempts != 3 {
+		t.Fatalf("third attempt: %+v %v", third, err)
+	}
+	if err = repo.FailCleaning(ctx, third, "failed", now); err != nil {
 		t.Fatal(err)
 	}
 	got, err := repo.Get(ctx, m.ID)

@@ -27,6 +27,16 @@ func (r *Repository) Claim(ctx context.Context, token string, now time.Time) (co
 	}
 	return coursegraph.Job{SubjectID: job.SubjectID, Fingerprint: job.Fingerprint, Token: job.LeaseToken, Attempts: int(job.Attempts)}, err
 }
+
+func (r *Repository) Renew(ctx context.Context, job coursegraph.Job, now time.Time) (bool, error) {
+	n, err := db.New(r.pool).RenewCourseGraph(ctx, db.RenewCourseGraphParams{SubjectID: job.SubjectID, Token: job.Token, Now: now.Unix()})
+	return n == 1, err
+}
+
+func (r *Repository) Release(ctx context.Context, job coursegraph.Job, now time.Time) error {
+	_, err := db.New(r.pool).ReleaseCourseGraph(ctx, db.ReleaseCourseGraphParams{SubjectID: job.SubjectID, Token: job.Token, Now: now.Unix()})
+	return err
+}
 func (r *Repository) Finish(ctx context.Context, job coursegraph.Job, graph json.RawMessage, now time.Time) (bool, error) {
 	_, err := db.New(r.pool).FinishCourseGraph(ctx, db.FinishCourseGraphParams{SubjectID: job.SubjectID, Fingerprint: job.Fingerprint, Token: job.Token, Graph: graph, Now: now.Unix()})
 	if errors.Is(err, pgx.ErrNoRows) {

@@ -279,6 +279,18 @@ type MaterialEmbedding struct {
 	Embedding   []float64
 }
 
+type MaterialOcrJob struct {
+	MaterialID   string
+	Status       string
+	Attempts     int32
+	AvailableAt  int64
+	LeaseUntil   int64
+	LeaseToken   string
+	ErrorMessage string
+	UpdatedAt    int64
+	Stage        string
+}
+
 type Outcome struct {
 	ID                 string
 	ConstituentID      string
@@ -325,6 +337,8 @@ type SubjectMaterial struct {
 	ErrorMessage *string
 	CreatedAt    int64
 	UpdatedAt    int64
+	S3OcrKey     string
+	OcrReport    []byte
 }
 
 type Task struct {

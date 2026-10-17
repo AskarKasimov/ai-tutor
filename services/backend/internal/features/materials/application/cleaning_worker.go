@@ -3,6 +3,7 @@ package application
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"time"
@@ -63,10 +64,19 @@ func (w *CleaningWorker) ProcessOne(ctx context.Context) (bool, error) {
 	if job.MaterialID == "" {
 		return false, nil
 	}
-	taskCtx, cancel := context.WithTimeout(ctx, 6*time.Minute)
-	defer cancel()
-	err = w.process(taskCtx, job)
+	callbacks := leaseCallbacks{}
+	if owner, ok := w.queue.(interface {
+		RenewCleaning(context.Context, material.CleaningJob, time.Time) (bool, error)
+		ReleaseCleaning(context.Context, material.CleaningJob, time.Time) error
+	}); ok {
+		callbacks.renew = func(ctx context.Context, now time.Time) (bool, error) { return owner.RenewCleaning(ctx, job, now) }
+		callbacks.release = func(ctx context.Context, now time.Time) error { return owner.ReleaseCleaning(ctx, job, now) }
+	}
+	err = runLeased(ctx, callbacks, func(taskCtx context.Context) error { return w.process(taskCtx, job) })
 	if err != nil {
+		if ctx.Err() != nil || errors.Is(err, errLeaseLost) {
+			return true, nil
+		}
 		retryCtx, retryCancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
 		defer retryCancel()
 		if failErr := w.queue.FailCleaning(retryCtx, job, "Не удалось очистить материал; исходный текст сохранён.", time.Now()); failErr != nil {

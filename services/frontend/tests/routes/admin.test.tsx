@@ -335,13 +335,13 @@ it('does not mount the lesson while the current session is being checked', async
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
 })
 
-it('creates a trimmed subject with its map in one step, then switches to editing', async () => {
+it('creates a trimmed subject with an optional map in one step, then switches to editing', async () => {
   const fetch = backend({ subjects: [] })
   renderApp('/admin/competency-map')
   const field = await screen.findByLabelText('Название предмета')
-  const submit = screen.getByRole('button', { name: 'Подтвердить' })
+  const submit = screen.getByRole('button', { name: 'Создать предмет' })
   fireEvent.change(field, { target: { value: '  Новый  ' } })
-  expect(submit).toBeDisabled()
+  expect(submit).toBeEnabled()
   fireEvent.change(screen.getByLabelText('Файл карты компетенций'), {
     target: { files: [new File(['map'], 'map.csv')] },
   })
@@ -362,6 +362,30 @@ it('creates a trimmed subject with its map in one step, then switches to editing
   ).toBe(true)
 })
 
+it('creates a subject without a competency map so course materials can be uploaded', async () => {
+  const fetch = backend({ subjects: [] })
+  renderApp('/admin/competency-map')
+  fireEvent.change(await screen.findByLabelText('Название предмета'), {
+    target: { value: '  Новый  ' },
+  })
+  expect(
+    screen.getByText('Карту можно загрузить сейчас, это необязательно.'),
+  ).toBeVisible()
+  fireEvent.click(screen.getByRole('button', { name: 'Создать предмет' }))
+  expect(
+    await screen.findByRole('heading', { name: 'Новый', level: 2 }),
+  ).toBeVisible()
+  expect(
+    await screen.findByRole('heading', {
+      name: 'Загруженные лекции и лабораторные',
+      level: 2,
+    }),
+  ).toBeVisible()
+  expect(
+    fetch.mock.calls.some(([url]) => url.endsWith('/competency-map/import')),
+  ).toBe(false)
+})
+
 it('switches to editing with the error when the first map import fails', async () => {
   backend({
     subjects: [],
@@ -374,7 +398,7 @@ it('switches to editing with the error when the first map import fails', async (
   fireEvent.change(screen.getByLabelText('Файл карты компетенций'), {
     target: { files: [new File(['corrupt'], 'corrupt.csv')] },
   })
-  fireEvent.click(screen.getByRole('button', { name: 'Подтвердить' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Создать предмет' }))
   expect(await screen.findByRole('alert')).toHaveTextContent('Файл повреждён.')
   expect(screen.getByRole('heading', { name: 'Новый', level: 2 })).toBeVisible()
   expect(screen.queryByText('corrupt.csv')).not.toBeInTheDocument()

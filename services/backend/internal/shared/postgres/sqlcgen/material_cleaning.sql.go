@@ -11,25 +11,24 @@ import (
 
 const claimMaterialCleaning = `-- name: ClaimMaterialCleaning :one
 UPDATE material_cleaning_jobs j
-SET status = 'processing', attempts = attempts + 1,
-    lease_until = $1, lease_token = $2, updated_at = $3::bigint
+SET status = 'processing', attempts = attempts + CASE WHEN status='pending' THEN 1 ELSE 0 END,
+    lease_until = $1::bigint + 60, lease_token = $2, updated_at = $1::bigint
 WHERE j.material_id = (
     SELECT material_id FROM material_cleaning_jobs
-    WHERE (status = 'pending' AND available_at <= $3::bigint)
-       OR (status = 'processing' AND lease_until <= $3::bigint)
+    WHERE (status = 'pending' AND available_at <= $1::bigint)
+       OR (status = 'processing' AND lease_until <= $1::bigint)
     ORDER BY updated_at, material_id FOR UPDATE SKIP LOCKED LIMIT 1
 )
 RETURNING j.material_id, j.status, j.attempts, j.available_at, j.lease_until, j.lease_token, j.cleaned_text, j.s3_cleaned_key, j.s3_report_key, j.error_message, j.updated_at
 `
 
 type ClaimMaterialCleaningParams struct {
-	LeaseUntil int64
-	LeaseToken string
 	Now        int64
+	LeaseToken string
 }
 
 func (q *Queries) ClaimMaterialCleaning(ctx context.Context, arg ClaimMaterialCleaningParams) (MaterialCleaningJob, error) {
-	row := q.db.QueryRow(ctx, claimMaterialCleaning, arg.LeaseUntil, arg.LeaseToken, arg.Now)
+	row := q.db.QueryRow(ctx, claimMaterialCleaning, arg.Now, arg.LeaseToken)
 	var i MaterialCleaningJob
 	err := row.Scan(
 		&i.MaterialID,
@@ -179,4 +178,43 @@ func (q *Queries) ListMaterialCleaning(ctx context.Context, subjectID string) ([
 		return nil, err
 	}
 	return items, nil
+}
+
+const releaseMaterialCleaning = `-- name: ReleaseMaterialCleaning :execrows
+UPDATE material_cleaning_jobs SET status='pending', attempts=GREATEST(attempts-1,0), lease_until=0,
+    lease_token='', updated_at=$1
+WHERE material_id=$2 AND lease_token=$3 AND status='processing'
+`
+
+type ReleaseMaterialCleaningParams struct {
+	Now        int64
+	MaterialID string
+	LeaseToken string
+}
+
+func (q *Queries) ReleaseMaterialCleaning(ctx context.Context, arg ReleaseMaterialCleaningParams) (int64, error) {
+	result, err := q.db.Exec(ctx, releaseMaterialCleaning, arg.Now, arg.MaterialID, arg.LeaseToken)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const renewMaterialCleaning = `-- name: RenewMaterialCleaning :execrows
+UPDATE material_cleaning_jobs SET lease_until=$1::bigint+60, updated_at=$1
+WHERE material_id=$2 AND lease_token=$3 AND status='processing'
+`
+
+type RenewMaterialCleaningParams struct {
+	Now        int64
+	MaterialID string
+	LeaseToken string
+}
+
+func (q *Queries) RenewMaterialCleaning(ctx context.Context, arg RenewMaterialCleaningParams) (int64, error) {
+	result, err := q.db.Exec(ctx, renewMaterialCleaning, arg.Now, arg.MaterialID, arg.LeaseToken)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }

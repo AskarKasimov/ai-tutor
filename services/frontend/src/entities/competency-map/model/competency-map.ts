@@ -24,8 +24,33 @@ export type CourseMaterial = {
   charCount: number
   status: 'pending' | 'parsed' | 'failed'
   errorMessage?: string | null
+  processing?: MaterialProcessing
+  cleaning?: MaterialCleaning
+  ocrWarnings: string[]
   createdAt: number
   updatedAt: number
+}
+
+export type MaterialProcessing = {
+  stage:
+    | 'queued'
+    | 'waiting_models'
+    | 'ocr'
+    | 'translation'
+    | 'cleaning'
+    | 'graph'
+    | 'ready'
+    | 'failed'
+  status: 'pending' | 'processing' | 'ready' | 'failed'
+  updatedAt: number
+  attempts: number
+}
+
+export type MaterialCleaning = {
+  status: 'pending' | 'processing' | 'ready' | 'failed'
+  updatedAt: number
+  attempts: number
+  errorMessage: string
 }
 
 export type CourseGraphTopic = {

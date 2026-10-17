@@ -1183,8 +1183,13 @@ components:
           type: string
         id:
           type: string
+        ocr_report:
+          additionalProperties: {}
+          type: object
         parsed_text:
           type: string
+        processing:
+          $ref: '#/components/schemas/material.Processing'
         s3_parsed_key:
           type: string
         s3_raw_key:
@@ -1202,11 +1207,43 @@ components:
         - file_size
         - filename
         - id
+        - ocr_report
         - parsed_text
         - s3_parsed_key
         - s3_raw_key
         - status
         - subject_id
+        - updated_at
+      type: object
+    material.Processing:
+      additionalProperties: false
+      properties:
+        attempts:
+          type: integer
+        stage:
+          enum:
+            - queued
+            - waiting_models
+            - ocr
+            - translation
+            - cleaning
+            - graph
+            - ready
+            - failed
+          type: string
+        status:
+          enum:
+            - pending
+            - processing
+            - ready
+            - failed
+          type: string
+        updated_at:
+          type: integer
+      required:
+        - attempts
+        - stage
+        - status
         - updated_at
       type: object
     material.Status:

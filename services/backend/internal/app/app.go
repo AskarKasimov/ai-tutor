@@ -97,6 +97,7 @@ type App struct {
 	}
 	audioStorage     taskaudioapp.Storage
 	materialsStorage materialsapp.S3Storage
+	ocrWorker        *materialsapp.OCRWorker
 	cleaningWorker   *materialsapp.CleaningWorker
 	graphWorker      *graphapp.Worker
 	modelClient      llmapp.Completer
@@ -148,7 +149,11 @@ func New(cfg Config, pool *pgxpool.Pool, logger *zap.Logger) (*App, error) {
 		model = cfg.AssessmentModel
 	}
 	a.modelClient = llmmodel.New(a.client, endpoints, model, cfg.LLMAPIKey, 110*time.Second)
-	a.cleaningWorker = materialsapp.NewCleaningWorker(materialspg.New(pool), a.materialsStorage, materialsocr.New(cfg.CourseGraphURL, 330*time.Second))
+	materialRepository := materialspg.New(pool)
+	materialsOCR := materialsocr.New(cfg.CourseGraphURL, cfg.CourseGraphTimeout)
+	materialsTranslator := materialstranslator.NewWithCompleter(a.modelClient, cfg.TranslatorWorkers)
+	a.ocrWorker = materialsapp.NewOCRWorker(materialRepository, a.materialsStorage, materialsOCR, materialsTranslator)
+	a.cleaningWorker = materialsapp.NewCleaningWorker(materialRepository, a.materialsStorage, materialsocr.New(cfg.CourseGraphURL, 330*time.Second))
 	a.graphWorker = graphapp.New(graphpg.New(pool), materialspg.New(pool), a.materialsStorage, graphapi.New(cfg.CourseGraphURL))
 	return a, nil
 }
@@ -219,11 +224,8 @@ func (a *App) Handler() http.Handler {
 		WithTaskFinder(diagnosticfeedbackpg.NewTaskFinder(a.pool))
 	feedbackHandlers := diagnosticfeedbackhttp.New(feedbackService)
 
-	materialsOCR := materialsocr.New(a.cfg.CourseGraphURL, a.cfg.CourseGraphTimeout)
-	materialsTranslator := materialstranslator.NewWithCompleter(a.modelClient, a.cfg.TranslatorWorkers)
-	materialsService := materialsapp.New(materialspg.New(a.pool), a.materialsStorage, materialsOCR, a.now).
-		WithTranslator(materialsTranslator)
-	materialsHandlers := materialshttp.NewHandler(materialsService, a.cfg.MaxUploadBytes, a.cfg.HTTPWriteTimeout())
+	materialsService := materialsapp.New(materialspg.New(a.pool), a.materialsStorage, nil, a.now)
+	materialsHandlers := materialshttp.NewHandler(materialsService, materialshttp.MaxUploadFileBytes, a.cfg.HTTPWriteTimeout())
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /auth/register", authHandlers.Register)

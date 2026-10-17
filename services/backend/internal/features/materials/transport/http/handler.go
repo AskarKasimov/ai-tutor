@@ -34,16 +34,19 @@ type UploadResult struct {
 }
 
 type Handler struct {
-	service           *application.Service
-	maxUploadBytes    int64
-	processingTimeout time.Duration
+	service        *application.Service
+	maxUploadBytes int64
 }
 
-func NewHandler(service *application.Service, maxUploadBytes int64, processingTimeout time.Duration) *Handler {
+const (
+	MaxUploadFileBytes = 50 * 1024 * 1024
+	MaxFilesPerRequest = 48
+)
+
+func NewHandler(service *application.Service, maxUploadBytes int64, _ ...time.Duration) *Handler {
 	return &Handler{
-		service:           service,
-		maxUploadBytes:    maxUploadBytes,
-		processingTimeout: processingTimeout,
+		service:        service,
+		maxUploadBytes: maxUploadBytes,
 	}
 }
 
@@ -83,7 +86,10 @@ func (h *Handler) UploadMaterials(w http.ResponseWriter, r *http.Request) {
 
 	rc := http.NewResponseController(w)
 	_ = rc.SetReadDeadline(time.Now().Add(15 * time.Minute))
-	_ = rc.SetWriteDeadline(time.Now().Add(15*time.Minute + h.processingTimeout))
+	// The server's global WriteTimeout also covers time spent receiving a large
+	// multipart body. Clear it for this upload; work after upload is durable and
+	// asynchronous, and the response itself is small.
+	_ = rc.SetWriteDeadline(time.Time{})
 
 	mr, err := r.MultipartReader()
 	if err != nil {
@@ -93,12 +99,12 @@ func (h *Handler) UploadMaterials(w http.ResponseWriter, r *http.Request) {
 
 	uploaded := make([]material.Material, 0)
 	failed := make([]UploadFailedItem, 0)
+	fileCount := 0
 
 	for {
-		// OCR may outlast the upload deadline. Renew before reading each file;
-		// time spent processing a previous file is not time spent uploading.
+		// Renew the inactivity deadline for each part. OCR runs in a background
+		// worker after the raw file and queue record have been saved.
 		_ = rc.SetReadDeadline(time.Now().Add(15 * time.Minute))
-		_ = rc.SetWriteDeadline(time.Now().Add(15*time.Minute + h.processingTimeout))
 		part, err := mr.NextPart()
 		if err == io.EOF {
 			break
@@ -128,6 +134,17 @@ func (h *Handler) UploadMaterials(w http.ResponseWriter, r *http.Request) {
 		filename := part.FileName()
 		if filename == "" {
 			_ = part.Close()
+			continue
+		}
+		fileCount++
+		if fileCount > MaxFilesPerRequest {
+			_, _ = io.Copy(io.Discard, part)
+			_ = part.Close()
+			failed = append(failed, UploadFailedItem{
+				Filename: filename,
+				Code:     "TOO_MANY_FILES",
+				Message:  fmt.Sprintf("За один запрос можно загрузить не больше %d файлов.", MaxFilesPerRequest),
+			})
 			continue
 		}
 
@@ -165,7 +182,6 @@ func (h *Handler) UploadMaterials(w http.ResponseWriter, r *http.Request) {
 			contentType = "application/octet-stream"
 		}
 
-		_ = rc.SetWriteDeadline(time.Now().Add(h.processingTimeout))
 		mat, err := h.service.Upload(r.Context(), actor, subjectID, application.UploadInput{
 			Filename:    filename,
 			ContentType: contentType,

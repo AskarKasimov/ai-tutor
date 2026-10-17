@@ -180,7 +180,8 @@
       <ul>
         <li><label><input type="checkbox" data-id="r-grade" checked><span><span class="t">Предварительная оценка A / B / C / D</span><span class="d">Средний балл верхних тем (A = 4 … D = 1) в % от 4: ≥ 90% A, ≥ 75% B, ≥ 60% C, иначе D.</span></span></label></li>
         <li><label><input type="checkbox" data-id="r-nodata" checked><span><span class="t">Темы «недостаточно данных» исключены из среднего</span></span></label></li>
-        <li><label><input type="checkbox" data-id="r-gaps" checked><span><span class="t">Список пробелов</span><span class="d">Недели и источники вернутся вместе с ними у вершины.</span></span></label></li>
+        <li><label><input type="checkbox" data-id="r-gaps" checked><span><span class="t">Список пробелов с неделями, источниками и подбором материалов</span><span class="d">Завершённая диагностика хранит свой graph snapshot; теория берётся из лекций, практика — из лаб и туториалов, другие виды остаются дополнительными.</span></span></label></li>
+        <li><label><input type="checkbox" data-id="r-source-access" checked><span><span class="t">Открытие связанного исходника из результата</span><span class="d">Доступ только владельцу и только к материалам snapshot; заменённый или удалённый PDF показывает локальное состояние недоступности.</span></span></label></li>
         <li><label><input type="checkbox" data-id="r-rebuild" checked><span><span class="t">После пересборки графа у старых диагностик остаётся только фидбэк</span></span></label></li>
       </ul>
     </section>
@@ -200,7 +201,7 @@
       <ul>
         <li><label><input type="checkbox" data-id="t-hours"><span><span class="t">Вопрос «Сколько у тебя часов?»</span></span></label></li>
         <li><label><input type="checkbox" data-id="t-order"><span><span class="t">План — пробелы снизу вверх по пререквизитам</span></span></label></li>
-        <li><label><input type="checkbox" data-id="t-lesson"><span><span class="t">По теме: теория из лекции, практика по лабе/туториалу</span><span class="d">Нужны источники у вершины.</span></span></label></li>
+        <li><label><input type="checkbox" data-id="t-lesson" checked><span><span class="t">Подбор источников: теория из лекции, практика по лабе/туториалу</span><span class="d">Подготовка источников реализована в диагностике. Диалог и план тренировки остаются после показа.</span></span></label></li>
         <li><label><input type="checkbox" data-id="t-dispute"><span><span class="t">Диспут: возражения, контрпримеры, сопоставление объяснений</span></span></label></li>
         <li><label><input type="checkbox" data-id="t-hints"><span><span class="t">Подсказки фиксируются, поддержка сокращается, финальная задача без подсказки</span></span></label></li>
         <li><label><input type="checkbox" data-id="t-questions"><span><span class="t">Вопросы студента: материалы → пререквизиты из листьев → название темы без ссылки</span><span class="d">Ответ вне материалов помечается.</span></span></label></li>

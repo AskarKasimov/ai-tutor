@@ -15,6 +15,7 @@ export function useLatestCourseGraphBuildQuery(
   userId: string,
   subjectId: string,
   materialsBusy = false,
+  metadataIncomplete = false,
 ) {
   const { courseGraph } = useCourseGraphBuildDependencies()
   const cache = useQueryClient()
@@ -58,9 +59,9 @@ export function useLatestCourseGraphBuildQuery(
     },
     refetchInterval: (current) =>
       materialsBusy ||
-      current.state.data?.inputsReady === false ||
-      current.state.data?.status === 'queued' ||
-      current.state.data?.status === 'running'
+      (!metadataIncomplete && current.state.data?.inputsReady === false) ||
+      current.state.data?.status === 'running' ||
+      (!metadataIncomplete && current.state.data?.status === 'queued')
         ? 2000
         : false,
   })
@@ -82,6 +83,7 @@ export function useCourseGraphQuery(
   userId: string,
   subjectId: string,
   materialsBusy = false,
+  metadataIncomplete = false,
 ) {
   const { courseGraph } = useCourseGraphBuildDependencies()
   const cache = useQueryClient()
@@ -98,7 +100,10 @@ export function useCourseGraphQuery(
   return useQuery<CourseGraph>({
     queryKey: courseGraphQueryKeys.graph(userId, subjectId),
     refetchInterval: (current) =>
-      materialsBusy || current.state.data?.inputsReady === false ? 2000 : false,
+      materialsBusy ||
+      (!metadataIncomplete && current.state.data?.inputsReady === false)
+        ? 2000
+        : false,
     enabled: !!userId && !!subjectId,
     queryFn: async ({ signal }) => {
       const token = captureSession(cache)

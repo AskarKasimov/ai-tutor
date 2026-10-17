@@ -247,13 +247,28 @@ components:
     geek.Gap:
       additionalProperties: false
       properties:
+        learning_materials:
+          $ref: '#/components/schemas/geek.LearningMaterials'
         node_id:
           type: string
+        sources:
+          items:
+            $ref: '#/components/schemas/geek.SourceCitation'
+          type: array
+          uniqueItems: false
         title:
           type: string
+        weeks:
+          items:
+            type: integer
+          type: array
+          uniqueItems: false
       required:
+        - learning_materials
         - node_id
+        - sources
         - title
+        - weeks
       type: object
     geek.GraphBuild:
       additionalProperties: false
@@ -353,6 +368,62 @@ components:
         - score_percent
         - started_at
         - status
+      type: object
+    geek.LearningMaterials:
+      additionalProperties: false
+      properties:
+        additional:
+          items:
+            $ref: '#/components/schemas/geek.MaterialReference'
+          type: array
+          uniqueItems: false
+        practice:
+          items:
+            $ref: '#/components/schemas/geek.MaterialReference'
+          type: array
+          uniqueItems: false
+        theory:
+          items:
+            $ref: '#/components/schemas/geek.MaterialReference'
+          type: array
+          uniqueItems: false
+      required:
+        - additional
+        - practice
+        - theory
+      type: object
+    geek.MaterialReference:
+      additionalProperties: false
+      properties:
+        filename:
+          type:
+            - string
+            - "null"
+        kind:
+          type:
+            - string
+            - "null"
+        kind_label:
+          type:
+            - string
+            - "null"
+        material_id:
+          type: string
+        material_revision:
+          type:
+            - string
+            - "null"
+        week:
+          type:
+            - integer
+            - "null"
+      required:
+        - filename
+        - kind
+        - kind_label
+        - material_id
+        - material_revision
+        - week
       type: object
     geek.NodeResult:
       additionalProperties: false
@@ -588,6 +659,56 @@ components:
         - status
         - student
       type: object
+    geek.SourceCitation:
+      additionalProperties: false
+      properties:
+        block_id:
+          type: integer
+        end:
+          type: integer
+        filename:
+          type:
+            - string
+            - "null"
+        kind:
+          type:
+            - string
+            - "null"
+        kind_label:
+          type:
+            - string
+            - "null"
+        material_id:
+          type: string
+        material_revision:
+          type:
+            - string
+            - "null"
+        page:
+          type:
+            - integer
+            - "null"
+        start:
+          type: integer
+        text:
+          type: string
+        week:
+          type:
+            - integer
+            - "null"
+      required:
+        - block_id
+        - end
+        - filename
+        - kind
+        - kind_label
+        - material_id
+        - material_revision
+        - page
+        - start
+        - text
+        - week
+      type: object
     geek.StartRequest:
       additionalProperties: false
       properties:
@@ -794,6 +915,8 @@ components:
           type:
             - string
             - "null"
+        kind_label:
+          type: string
         ocr_report:
           additionalProperties: {}
           type:
@@ -825,6 +948,7 @@ components:
         - filename
         - id
         - kind
+        - kind_label
         - ocr_report
         - parsed_text
         - s3_parsed_key
@@ -2139,6 +2263,49 @@ paths:
       security:
         - accessCookie: []
       summary: Ответить на реплику Geek
+      tags:
+        - Диагностика
+      x-implementation: implemented
+  /diagnostic-sessions/{id}/materials/{material_id}/raw:
+    get:
+      description: Выдаёт исходный PDF только если он связан со snapshot диагностики и не заменён.
+      operationId: getDiagnosticMaterial
+      parameters:
+        - description: ID диагностики
+          in: path
+          name: id
+          required: true
+          schema:
+            type: string
+        - description: ID материала
+          in: path
+          name: material_id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          content:
+            application/pdf:
+              schema:
+                format: binary
+                type: string
+          description: OK
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Not Found
+        "410":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Gone
+      security:
+        - accessCookie: []
+      summary: Исходный материал пробела
       tags:
         - Диагностика
       x-implementation: implemented

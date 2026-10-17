@@ -24,6 +24,7 @@ const (
 type Material struct {
 	Week         *int32         `json:"week" extensions:"x-nullable"`
 	Kind         *Kind          `json:"kind" extensions:"x-nullable"`
+	KindLabel    string         `json:"kind_label"`
 	Cleaning     *Cleaning      `json:"cleaning,omitempty" binding:"optional"`
 	Processing   *Processing    `json:"processing,omitempty" binding:"optional"`
 	ID           string         `json:"id"`

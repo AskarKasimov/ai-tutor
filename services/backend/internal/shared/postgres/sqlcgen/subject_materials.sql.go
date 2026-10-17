@@ -41,6 +41,22 @@ func (q *Queries) DeleteSubjectMaterial(ctx context.Context, arg DeleteSubjectMa
 	return err
 }
 
+const getRawSubjectMaterial = `-- name: GetRawSubjectMaterial :one
+SELECT s3_raw_key, filename FROM subject_materials WHERE id=$1
+`
+
+type GetRawSubjectMaterialRow struct {
+	S3RawKey string
+	Filename string
+}
+
+func (q *Queries) GetRawSubjectMaterial(ctx context.Context, id string) (GetRawSubjectMaterialRow, error) {
+	row := q.db.QueryRow(ctx, getRawSubjectMaterial, id)
+	var i GetRawSubjectMaterialRow
+	err := row.Scan(&i.S3RawKey, &i.Filename)
+	return i, err
+}
+
 const getSubjectMaterialByID = `-- name: GetSubjectMaterialByID :one
 SELECT id, subject_id, filename, content_type, file_size, s3_raw_key, s3_parsed_key, parsed_text, char_count, status, error_message, created_at, updated_at, s3_ocr_key, ocr_report, week, kind
 FROM subject_materials WHERE id=$1

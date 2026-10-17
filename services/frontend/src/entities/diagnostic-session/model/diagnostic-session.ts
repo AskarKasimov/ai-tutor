@@ -58,7 +58,38 @@ export type DiagnosticResult = {
   grade: Grade | null
   scorePercent: number | null
   topics: TopicResult[]
-  gaps: { nodeId: string; title: string }[]
+  gaps: DiagnosticGap[]
+}
+
+export type MaterialReference = {
+  materialId: string
+  filename: string | null
+  kind: string | null
+  kindLabel: string | null
+  week: number | null
+  revision: string | null
+}
+
+export type SourceCitation = MaterialReference & {
+  blockId: number
+  start: number
+  end: number
+  text: string
+  page: number | null
+}
+
+export type LearningMaterials = {
+  theory: MaterialReference[]
+  practice: MaterialReference[]
+  additional: MaterialReference[]
+}
+
+export type DiagnosticGap = {
+  nodeId: string
+  title: string
+  weeks: number[]
+  sources: SourceCitation[]
+  learningMaterials: LearningMaterials
 }
 
 // A past or current diagnostic of the student on the course.

@@ -6,6 +6,9 @@ FROM subject_materials WHERE subject_id=$1 ORDER BY created_at DESC;
 SELECT *
 FROM subject_materials WHERE id=$1;
 
+-- name: GetRawSubjectMaterial :one
+SELECT s3_raw_key, filename FROM subject_materials WHERE id=$1;
+
 -- name: InsertSubjectMaterial :one
 INSERT INTO subject_materials (
     id, subject_id, filename, content_type, file_size, s3_raw_key, s3_parsed_key,

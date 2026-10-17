@@ -49,8 +49,8 @@ func repositoryPool(t *testing.T) *pgxpool.Pool {
 	}
 	exec(t, pool,
 		`INSERT INTO subjects(id, name, created_at) VALUES ('s', 'Курс', 1)`,
-		`INSERT INTO subject_materials(id, subject_id, filename, content_type, s3_raw_key, s3_parsed_key, status, created_at, updated_at)
-		 VALUES ('m', 's', 'week1.md', 'text/markdown', 'raw', 'parsed', 'parsed', 1, 1)`,
+		`INSERT INTO subject_materials(id, subject_id, filename, content_type, s3_raw_key, s3_parsed_key, status, created_at, updated_at, week, kind)
+		 VALUES ('m', 's', 'week1.md', 'text/markdown', 'raw', 'parsed', 'parsed', 1, 1, 1, 'lecture')`,
 		`INSERT INTO material_cleaning_jobs(material_id, status, updated_at) VALUES ('m', 'pending', 1)`)
 	return pool
 }
@@ -80,8 +80,16 @@ func TestMetadataAndReplacementInvalidateOnlyChangedGraphInputs(t *testing.T) {
 		t.Fatalf("metadata: %+v %v", updated, err)
 	}
 	var after string
+	if err = pool.QueryRow(ctx, `SELECT fingerprint FROM course_graph_inputs WHERE subject_id='s'`).Scan(&after); err != nil || before == after {
+		t.Fatalf("metadata did not change fingerprint: %s %s %v", before, after, err)
+	}
+	before = after
+	_, err = repo.UpdateMetadata(ctx, "s", "m", &week, &kind)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err = pool.QueryRow(ctx, `SELECT fingerprint FROM course_graph_inputs WHERE subject_id='s'`).Scan(&after); err != nil || before != after {
-		t.Fatalf("metadata changed fingerprint: %s %s %v", before, after, err)
+		t.Fatalf("same metadata changed fingerprint: %s %s %v", before, after, err)
 	}
 	updated.Filename = "replacement.pdf"
 	updated.S3RawKey = "new-raw"

@@ -66,8 +66,41 @@ type NodeResult struct {
 }
 
 type Gap struct {
-	NodeID string
-	Title  string
+	NodeID            string
+	Title             string
+	Weeks             []int32
+	Sources           []SourceCitation
+	LearningMaterials LearningMaterials
+}
+
+type MaterialReference struct {
+	MaterialID string  `json:"material_id"`
+	Filename   *string `json:"filename"`
+	Kind       *string `json:"kind"`
+	KindLabel  *string `json:"kind_label"`
+	Week       *int32  `json:"week"`
+	Revision   *string `json:"material_revision"`
+}
+
+type LearningMaterials struct {
+	Theory     []MaterialReference `json:"theory"`
+	Practice   []MaterialReference `json:"practice"`
+	Additional []MaterialReference `json:"additional"`
+}
+
+// NewGap derives the stable source list and study plan from this graph snapshot.
+func NewGap(id, title string, sources []SourceCitation) Gap {
+	weeks := []int32{}
+	seenWeeks := map[int32]bool{}
+	for _, source := range sources {
+		if source.Week != nil && !seenWeeks[*source.Week] {
+			weeks = append(weeks, *source.Week)
+			seenWeeks[*source.Week] = true
+		}
+	}
+	slices.Sort(weeks)
+	materials := SelectLearningMaterials(sources)
+	return Gap{NodeID: id, Title: title, Weeks: weeks, Sources: append([]SourceCitation{}, sources...), LearningMaterials: materials}
 }
 
 // Result is the student's outcome of a completed diagnostic.
@@ -90,7 +123,7 @@ func (s Session) Result() Result {
 	}
 	for _, id := range e.Gaps() {
 		n, _ := e.Graph.Node(id)
-		r.Gaps = append(r.Gaps, Gap{NodeID: id, Title: n.Title})
+		r.Gaps = append(r.Gaps, NewGap(id, n.Title, n.Sources))
 	}
 	return r
 }

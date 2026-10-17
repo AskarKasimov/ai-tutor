@@ -26,6 +26,23 @@ const snapshotSchema = z.object({
           provides: z.array(z.string()).optional(),
           requires: z.array(z.string()).optional(),
           parent_title: z.string().nullable().optional(),
+          sources: z
+            .array(
+              z.object({
+                material_id: z.string(),
+                block_id: z.number().int(),
+                start: z.number().int(),
+                end: z.number().int(),
+                text: z.string(),
+                page: z.number().int().nullable().optional(),
+                week: z.number().int().nullable().optional(),
+                kind: z.string().nullable().optional(),
+                filename: z.string().nullable().optional(),
+                kind_label: z.string().nullable().optional(),
+                material_revision: z.string().nullable().optional(),
+              }),
+            )
+            .optional(),
         }),
       ),
       prerequisites: z.array(

@@ -49,6 +49,7 @@ export type CourseGraphView = {
     provides?: string[]
     requires?: string[]
     parent_title?: string | null
+    sources?: TopicSource[]
   }[]
   prerequisites: {
     source: string
@@ -64,4 +65,18 @@ export type CourseGraphView = {
     unresolved_requirements?: number
     [key: string]: unknown
   }
+}
+
+export type TopicSource = {
+  material_id: string
+  block_id: number
+  start: number
+  end: number
+  text: string
+  page?: number | null
+  week?: number | null
+  kind?: string | null
+  filename?: string | null
+  kind_label?: string | null
+  material_revision?: string | null
 }

@@ -14,6 +14,7 @@ const (
 	Upstream
 	Timeout
 	NotFound
+	Gone
 )
 
 type Detail struct {

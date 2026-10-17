@@ -28,8 +28,19 @@ func (r *Repository) List(ctx context.Context, subjectID string) ([]material.Mat
 	}
 
 	result := make([]material.Material, len(rows))
+	kinds, err := q.ListMaterialKinds(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list material kinds: %w", err)
+	}
+	labels := make(map[string]string, len(kinds))
+	for _, kind := range kinds {
+		labels[kind.Code] = kind.Label
+	}
 	for i, row := range rows {
 		result[i] = toMaterial(row)
+		if result[i].Kind != nil {
+			result[i].KindLabel = labels[string(*result[i].Kind)]
+		}
 	}
 	ocrRows, err := q.ListMaterialOCRProgress(ctx, subjectID)
 	if err != nil {

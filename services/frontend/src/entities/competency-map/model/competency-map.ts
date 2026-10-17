@@ -18,6 +18,7 @@ export type CourseMaterial = {
   status: 'pending' | 'parsed' | 'failed'
   week: number | null
   kind: CourseMaterialKind | null
+  kindLabel?: string
   processing?: MaterialProcessing
   cleaning?: MaterialCleaning
   ocrWarnings?: string[]

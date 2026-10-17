@@ -358,6 +358,15 @@ void i18n.init({
           gapsHint:
             'Самые глубокие темы, с которых начинается непонимание. Их пререквизиты вы знаете.',
           gapsEmpty: 'Пробелов не найдено.',
+          materialsNone: 'Материалы для этой темы пока не связаны.',
+          weeks: 'Недели: {{weeks}}',
+          theory: 'Теория',
+          practice: 'Практика',
+          additional: 'Другие материалы',
+          openMaterial: 'Открыть {{filename}}',
+          materialWeek: 'неделя {{week}}',
+          materialUnavailable: 'Исходный файл больше недоступен.',
+          materialDownloadError: 'Не удалось открыть материал.',
           topicsTitle: 'Все темы',
           topLevel: 'Основная тема',
           status: {

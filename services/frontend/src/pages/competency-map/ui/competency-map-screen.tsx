@@ -122,12 +122,21 @@ function CompetencyMapAdmin({
   )
   const deleteMaterial = useDeleteCourseMaterialMutation(userId, subjectId)
   const materialsBusy = materialsQuery.data?.some(materialInProgress) ?? false
+  const metadataIncomplete =
+    materialsQuery.data?.some((material) => !material.week || !material.kind) ??
+    false
   const latestBuild = useLatestCourseGraphBuildQuery(
     userId,
     subjectId,
     materialsBusy,
+    metadataIncomplete,
   )
-  const courseGraph = useCourseGraphQuery(userId, subjectId, materialsBusy)
+  const courseGraph = useCourseGraphQuery(
+    userId,
+    subjectId,
+    materialsBusy,
+    metadataIncomplete,
+  )
   const refetchBuild = latestBuild.refetch
   const refetchGraph = courseGraph.refetch
   useEffect(() => {
@@ -262,6 +271,7 @@ function CompetencyMapAdmin({
       : []),
     ...(latestBuild.data?.inputsReady === false &&
     !materialsBusy &&
+    !metadataIncomplete &&
     failedCount === 0
       ? [t('courseGraph.blockPending')]
       : []),

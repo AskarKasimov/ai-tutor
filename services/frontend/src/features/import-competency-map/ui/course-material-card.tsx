@@ -9,6 +9,8 @@ export function CourseMaterialCard({
   name,
   status,
   statusColor,
+  nameAction,
+  statusAction,
   meta,
   actions,
   children,
@@ -17,6 +19,8 @@ export function CourseMaterialCard({
   name: string
   status: string
   statusColor: MaterialStatusColor
+  nameAction?: ReactNode
+  statusAction?: ReactNode
   meta: ReactNode
   actions?: ReactNode
   children: ReactNode
@@ -30,9 +34,11 @@ export function CourseMaterialCard({
           <Text weight="bold" size="3" className={styles.name}>
             {name}
           </Text>
-          <Badge color={statusColor} size="1">
+          {nameAction}
+          <Badge color={statusColor} size="1" className={styles.materialLabel}>
             {status}
           </Badge>
+          {statusAction}
         </Flex>
         {actions && <div className={styles.actions}>{actions}</div>}
       </header>

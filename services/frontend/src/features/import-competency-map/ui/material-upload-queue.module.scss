@@ -77,7 +77,18 @@
   width: 5rem;
 }
 .kindField {
+  flex: 1;
   min-width: 0;
+}
+.kindControls {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.sendOne {
+  flex: 0 0 auto;
+  white-space: nowrap;
 }
 .kindField :global(.rt-SelectTrigger) {
   width: 100%;

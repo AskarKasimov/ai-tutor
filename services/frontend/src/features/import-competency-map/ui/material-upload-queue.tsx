@@ -1,5 +1,11 @@
 import { Button, Select, Text, TextField } from '@radix-ui/themes'
-import { ChevronDown, ChevronUp, GripVertical } from 'lucide-react'
+import {
+  ChevronDown,
+  ChevronUp,
+  GripVertical,
+  Send,
+  Trash2,
+} from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import styles from './material-upload-queue.module.scss'
@@ -207,6 +213,8 @@ export function MaterialUploadQueue({
                 onWeekChange={(week) => queue.updateWeek(item.id, week)}
                 onKindChange={(kind) => queue.updateKind(item.id, kind)}
                 onRemove={() => queue.removeItem(item.id)}
+                onSend={() => queue.sendItem(item.id)}
+                sending={queue.sendingItemId === item.id}
               />
             </div>
           ))}
@@ -234,7 +242,7 @@ export function MaterialUploadSubmit({
       onClick={queue.sendAll}
     >
       {queue.isPending
-        ? t('competencyMap.uploading')
+        ? t('competencyMap.queueSending')
         : t('competencyMap.queueSendAll')}
     </Button>
   )
@@ -248,6 +256,8 @@ export function MaterialQueueCard({
   onWeekChange,
   onKindChange,
   onRemove,
+  onSend,
+  sending,
 }: {
   item: MaterialQueueItem
   kinds: CourseMaterialKindOption[]
@@ -256,12 +266,18 @@ export function MaterialQueueCard({
   onWeekChange: (week: string) => void
   onKindChange: (kind: MaterialQueueItem['kind']) => void
   onRemove: () => void
+  onSend: () => void
+  sending: boolean
 }) {
   const { t } = useTranslation()
   const formattedSize =
     item.file.size > 1024 * 1024
       ? `${(item.file.size / (1024 * 1024)).toFixed(1)} МБ`
       : `${Math.round(item.file.size / 1024)} КБ`
+  const canSend =
+    /^\d+$/.test(item.week) &&
+    Number(item.week) > 0 &&
+    kinds.some((kind) => kind.code === item.kind)
 
   return (
     <CourseMaterialCard
@@ -277,12 +293,15 @@ export function MaterialQueueCard({
       actions={
         <Button
           type="button"
+          size="1"
           variant="soft"
           color="red"
           disabled={disabled}
           onClick={onRemove}
+          aria-label={t('competencyMap.queueRemove')}
+          title={t('competencyMap.queueRemove')}
         >
-          {t('competencyMap.queueRemove')}
+          <Trash2 size={14} />
         </Button>
       }
     >
@@ -303,23 +322,41 @@ export function MaterialQueueCard({
             onChange={(event) => onWeekChange(event.target.value)}
           />
         </label>
-        <div className={styles.kindField}>
-          <Select.Root
-            value={item.kind}
-            disabled={disabled}
-            onValueChange={(kind) =>
-              onKindChange(kind as MaterialQueueItem['kind'])
-            }
+        <div className={styles.kindControls}>
+          <div className={styles.kindField}>
+            <Select.Root
+              value={item.kind}
+              disabled={disabled}
+              onValueChange={(kind) =>
+                onKindChange(kind as MaterialQueueItem['kind'])
+              }
+            >
+              <Select.Trigger aria-label={t('courseGraph.kindLabel')} />
+              <Select.Content>
+                {kinds.map((kind) => (
+                  <Select.Item key={kind.code} value={kind.code}>
+                    {kind.label}
+                  </Select.Item>
+                ))}
+              </Select.Content>
+            </Select.Root>
+          </div>
+          <Button
+            type="button"
+            size="2"
+            variant="soft"
+            color="green"
+            className={styles.sendOne}
+            disabled={disabled || !canSend}
+            onClick={onSend}
+            aria-label={t('competencyMap.queueSendOne')}
+            title={t('competencyMap.queueSendOne')}
           >
-            <Select.Trigger aria-label={t('courseGraph.kindLabel')} />
-            <Select.Content>
-              {kinds.map((kind) => (
-                <Select.Item key={kind.code} value={kind.code}>
-                  {kind.label}
-                </Select.Item>
-              ))}
-            </Select.Content>
-          </Select.Root>
+            <Send size={14} />
+            {sending
+              ? t('competencyMap.queueSending')
+              : t('competencyMap.queueSendOne')}
+          </Button>
         </div>
       </div>
     </CourseMaterialCard>

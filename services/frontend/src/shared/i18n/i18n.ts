@@ -64,6 +64,8 @@ void i18n.init({
           queueDragItem: 'Перетащить {{name}}',
           queueRemove: 'Удалить из списка',
           queueSendAll: 'Отправить всё',
+          queueSendOne: 'Отправить',
+          queueSending: 'Отправляем…',
           queueItemReady: 'Готов к отправке',
           queueItemError: 'Ошибка',
           queueInvalidArchive: 'Не удалось прочитать выбранный файл.',
@@ -80,6 +82,7 @@ void i18n.init({
             'queue-too-large': 'Общий размер очереди превышает 250 МиБ.',
           },
           materialReplace: 'Заменить PDF',
+          materialReplaceAction: 'Заменить',
           materialsSubtitle: '',
           materialsDropTitle: 'Загрузить файлы материалов',
           materialsDropHint:
@@ -102,7 +105,8 @@ void i18n.init({
             pending: 'В обработке',
             failed: 'Ошибка распознавания',
           },
-          materialsPreview: 'Предпросмотр распознанного текста',
+          materialsPreview: 'Предпросмотр',
+          closePreview: 'Закрыть предпросмотр',
           materialsDownloadError: 'Не удалось скачать файл.',
           materialWarnings: 'Предупреждения OCR',
           materialStage: {

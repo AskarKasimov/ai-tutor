@@ -17,14 +17,16 @@ import {
   Clock,
   Download,
   Eye,
-  EyeOff,
   FileText,
   ArrowRight,
+  Replace,
   ShieldCheck,
   Sparkles,
   Trash2,
+  X,
 } from 'lucide-react'
-import { useState } from 'react'
+import ReactModal from 'react-modal'
+import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   downloadCourseMaterialRaw,
@@ -60,7 +62,10 @@ import {
   useCreateSubjectMutation,
   useSubjectsQuery,
 } from '@/features/subject-selection'
+import { MarkdownContent } from '@/shared/ui'
 import styles from '@/pages/competency-map/ui/competency-map.module.scss'
+
+ReactModal.setAppElement('#root')
 
 type MaterialListRow =
   | { id: string; week: string; queued: MaterialQueueItem }
@@ -72,7 +77,7 @@ export function CompetencyMapAdminScreen() {
   const navigate = useNavigate()
   if (user?.role !== 'admin')
     return (
-      <main className={styles.denied}>
+      <main className={styles.denied} data-admin-screen>
         <Heading as="h1">{t('courseGraph.title')}</Heading>
         <Text as="p" role="alert">
           {t('competencyMap.forbidden')}
@@ -128,6 +133,23 @@ function CompetencyMapAdmin({ userId }: { userId: string }) {
   // Covers queue uploads and saved-material operations.
   const materialsChanging = useCourseMaterialsChanging(userId, subjectId)
   const busy = create.isPending || materialsChanging
+  const graphBuilding =
+    startBuild.isPending ||
+    latestBuild.data?.status === 'queued' ||
+    latestBuild.data?.status === 'running'
+  const shouldWarnBeforeExit =
+    queue.items.length > 0 || materialsChanging || graphBuilding
+
+  useEffect(() => {
+    if (!shouldWarnBeforeExit) return
+    const warnBeforeExit = (event: BeforeUnloadEvent) => {
+      event.preventDefault()
+      event.returnValue = ''
+    }
+    window.addEventListener('beforeunload', warnBeforeExit)
+    return () => window.removeEventListener('beforeunload', warnBeforeExit)
+  }, [shouldWarnBeforeExit])
+
   const materials = materialsQuery.data ?? []
   const materialRows: MaterialListRow[] = [
     ...materials.map((saved) => ({
@@ -212,7 +234,7 @@ function CompetencyMapAdmin({ userId }: { userId: string }) {
   const hasGraph = courseGraph.data !== undefined
 
   return (
-    <div className={styles.page}>
+    <div className={styles.page} data-admin-screen>
       <header className={styles.header}>
         <div className={styles.brand}>
           <ShieldCheck size={24} aria-hidden="true" />
@@ -536,6 +558,8 @@ function CompetencyMapAdmin({ userId }: { userId: string }) {
                               queue.updateKind(row.id, kind)
                             }
                             onRemove={() => queue.removeItem(row.id)}
+                            onSend={() => queue.sendItem(row.id)}
+                            sending={queue.sendingItemId === row.id}
                           />
                         ) : (
                           <MaterialItemCard
@@ -579,9 +603,11 @@ function CompetencyMapAdmin({ userId }: { userId: string }) {
                   {t('courseGraph.graphTitle')}
                 </Heading>
                 <Badge
+                  size="1"
                   color={
                     hasGraph ? 'green' : graphBlockers.length ? 'amber' : 'blue'
                   }
+                  className={styles.materialTag}
                 >
                   {hasGraph
                     ? t('courseGraph.graphStored')
@@ -804,6 +830,7 @@ function MaterialItemCard({
   busy: boolean
 }) {
   const { t, i18n } = useTranslation()
+  const replaceInputRef = useRef<HTMLInputElement>(null)
   const [downloading, setDownloading] = useState(false)
   const [downloadError, setDownloadError] = useState<string | null>(null)
   const [actionError, setActionError] = useState<{
@@ -876,6 +903,61 @@ function MaterialItemCard({
       name={material.filename}
       status={t(`competencyMap.materialsStatus.${material.status}`)}
       statusColor={statusTone}
+      nameAction={
+        <Button
+          size="1"
+          variant="ghost"
+          color="gray"
+          disabled={downloading}
+          onClick={() => void handleDownload()}
+          aria-label={`Скачать ${material.filename}`}
+          title={`Скачать ${material.filename}`}
+        >
+          <Download size={14} />
+        </Button>
+      }
+      statusAction={
+        <>
+          {material.status === 'parsed' && (
+            <Button
+              size="1"
+              variant="soft"
+              color="gray"
+              className={styles.previewButton}
+              onClick={onTogglePreview}
+            >
+              <Eye size={14} />
+              {t('competencyMap.materialsPreview')}
+            </Button>
+          )}
+          <Button
+            size="1"
+            variant="soft"
+            color="gray"
+            className={styles.previewButton}
+            disabled={busy}
+            onClick={() => replaceInputRef.current?.click()}
+            aria-label={t('competencyMap.materialReplace')}
+            title={t('competencyMap.materialReplace')}
+          >
+            <Replace size={14} />
+            {t('competencyMap.materialReplaceAction')}
+          </Button>
+          <input
+            ref={replaceInputRef}
+            type="file"
+            accept=".pdf,application/pdf"
+            disabled={busy}
+            className={styles.hiddenReplaceInput}
+            aria-label={t('competencyMap.materialReplace')}
+            onChange={(event) => {
+              const file = event.currentTarget.files?.[0]
+              if (file) onReplace(file)
+              event.currentTarget.value = ''
+            }}
+          />
+        </>
+      }
       dropTarget={dropTarget}
       meta={
         <>
@@ -897,32 +979,17 @@ function MaterialItemCard({
       }
       actions={
         <Flex gap="2" align="center">
-          <Button
-            size="1"
-            variant="soft"
-            color="gray"
-            onClick={onTogglePreview}
-          >
-            {previewOpen ? <EyeOff size={14} /> : <Eye size={14} />}
-            {t('competencyMap.materialsPreview')}
-          </Button>
-
-          <Button
-            size="1"
-            variant="ghost"
-            color="gray"
-            disabled={downloading}
-            onClick={() => void handleDownload()}
-            aria-label={`Скачать ${material.filename}`}
-          >
-            <Download size={14} />
-          </Button>
-
           <AlertDialog.Root>
             <AlertDialog.Trigger>
-              <Button size="1" color="red" variant="soft" disabled={busy}>
+              <Button
+                size="1"
+                color="red"
+                variant="soft"
+                disabled={busy}
+                aria-label={t('competencyMap.materialsDelete')}
+                title={t('competencyMap.materialsDelete')}
+              >
                 <Trash2 size={14} />
-                {t('competencyMap.materialsDelete')}
               </Button>
             </AlertDialog.Trigger>
             <AlertDialog.Content maxWidth="400px">
@@ -949,19 +1016,6 @@ function MaterialItemCard({
         </Flex>
       }
     >
-      <label className={styles.replaceMaterial}>
-        <span>{t('competencyMap.materialReplace')}</span>
-        <input
-          type="file"
-          accept=".pdf,application/pdf"
-          disabled={busy}
-          onChange={(event) => {
-            const file = event.currentTarget.files?.[0]
-            if (file) onReplace(file)
-            event.currentTarget.value = ''
-          }}
-        />
-      </label>
       <div className={styles.materialClassification}>
         <label>
           <Text as="span" size="2">
@@ -972,13 +1026,15 @@ function MaterialItemCard({
           </Text>
         </label>
         {material.kind && (
-          <Badge color="gray" size="2">
+          <Badge color="gray" size="1" className={styles.materialTag}>
             {kinds.find((kind) => kind.code === material.kind)?.label ??
               material.kind}
           </Badge>
         )}
         {(!material.week || !material.kind) && (
-          <Badge color="amber">{t('courseGraph.metadataMissing')}</Badge>
+          <Badge color="amber" size="1" className={styles.materialTag}>
+            {t('courseGraph.metadataMissing')}
+          </Badge>
         )}
         {material.status === 'failed' && material.errorMessage && (
           <Text color="red" size="2">
@@ -1003,11 +1059,32 @@ function MaterialItemCard({
         </Flex>
       )}
 
-      {previewOpen && (
-        <div className={styles.materialPreview}>
-          {material.parsedText || '(текст отсутствует)'}
+      <ReactModal
+        isOpen={previewOpen}
+        onRequestClose={onTogglePreview}
+        contentLabel={`${t('competencyMap.materialsPreview')}: ${material.filename}`}
+        className={styles.previewModal}
+        overlayClassName={styles.previewModalOverlay}
+      >
+        <div className={styles.previewModalHeader}>
+          <Heading as="h2" size="4">
+            {material.filename}
+          </Heading>
+          <Button
+            type="button"
+            variant="ghost"
+            color="gray"
+            aria-label={t('competencyMap.closePreview')}
+            onClick={onTogglePreview}
+          >
+            <X size={18} />
+          </Button>
         </div>
-      )}
+        <MarkdownContent
+          text={material.parsedText || '(текст отсутствует)'}
+          className={styles.previewMarkdown}
+        />
+      </ReactModal>
     </CourseMaterialCard>
   )
 }

@@ -159,6 +159,15 @@
     min-width: 0;
   }
 }
+.materialTag:global(.rt-Badge),
+.previewButton:global(.rt-Button) {
+  box-sizing: border-box;
+  height: 1.5rem;
+  min-height: 1.5rem;
+  padding-inline: 0.5rem;
+  font-size: 0.75rem;
+  line-height: 1;
+}
 .buildProgress {
   display: grid;
   gap: var(--space-2);
@@ -381,17 +390,65 @@
   }
 }
 
-.materialPreview {
-  margin-top: var(--space-2);
-  padding: var(--space-3);
-  border-radius: var(--radius-2);
-  background: var(--color-panel-solid);
-  border: 1px solid var(--app-border);
-  font-family: monospace;
-  font-size: 0.825rem;
-  white-space: pre-wrap;
-  max-height: 250px;
-  overflow-y: auto;
+.previewModalOverlay {
+  position: fixed;
+  z-index: 1000;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: rgb(15 23 42 / 55%);
+}
+
+.previewModal {
+  position: relative;
+  box-sizing: border-box;
+  width: min(900px, calc(100vw - 2rem));
+  max-height: calc(100vh - 2rem);
+  overflow: auto;
+  margin: auto;
+  padding: 1.5rem;
+  border: 1px solid #d1d5db;
+  border-radius: 0.75rem;
+  outline: none;
+  background: #fff;
+  color: #1f2937;
+  box-shadow: 0 20px 60px rgb(15 23 42 / 30%);
+}
+
+.previewModalHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.previewModalHeader h2 {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: #111827;
+}
+
+.previewMarkdown {
+  box-sizing: border-box;
+  max-height: min(70vh, 700px);
+  margin-top: 1rem;
+  padding: 1rem;
+  overflow: auto;
+  border: 1px solid #d1d5db;
+  border-radius: 0.5rem;
+  background: #f8fafc;
+  color: #1f2937;
+
+  pre {
+    padding: 1rem;
+    border: 1px solid #d1d5db;
+    border-radius: 0.5rem;
+    background: #fff;
+    color: #1f2937;
+  }
 }
 
 .uploadProgressBox {
@@ -423,10 +480,8 @@
   }
 }
 
-.replaceMaterial {
-  display: flex;
-  gap: var(--space-2);
-  align-items: center;
+.hiddenReplaceInput {
+  display: none;
 }
 
 .graphPublishedAt {

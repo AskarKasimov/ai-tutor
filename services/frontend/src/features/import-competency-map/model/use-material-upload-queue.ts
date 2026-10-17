@@ -32,6 +32,7 @@ export function useMaterialUploadQueue(
   const [error, setError] = useState('')
   const [success, setSuccess] = useState(false)
   const [preparing, setPreparing] = useState(false)
+  const [sendingItemId, setSendingItemId] = useState<string | null>(null)
   const preparingRef = useRef(false)
   const subjectRef = useRef(subjectId)
 
@@ -160,6 +161,56 @@ export function useMaterialUploadQueue(
     )
   }
 
+  function sendItem(id: string) {
+    const item = items.find((candidate) => candidate.id === id)
+    if (
+      !item ||
+      upload.isPending ||
+      !/^\d+$/.test(item.week) ||
+      Number(item.week) <= 0 ||
+      !kinds.some((kind) => kind.code === item.kind)
+    )
+      return
+
+    setSuccess(false)
+    setSendingItemId(id)
+    upload.mutate(
+      {
+        subjectId,
+        items: [
+          {
+            clientId: item.id,
+            file: item.file,
+            week: Number(item.week),
+            kind: item.kind,
+          },
+        ],
+      },
+      {
+        onSuccess: (result: CourseMaterialUploadResult) => {
+          const entry = result.results.find(
+            (candidate) => candidate.clientId === item.id,
+          )
+          if (entry?.material) {
+            setItems((current) =>
+              current.filter(({ id: itemId }) => itemId !== id),
+            )
+            setSuccess(true)
+          } else if (entry?.error) {
+            setItems((current) =>
+              current.map((candidate) =>
+                candidate.id === id
+                  ? { ...candidate, error: entry.error?.message }
+                  : candidate,
+              ),
+            )
+          }
+        },
+        onSettled: () => setSendingItemId(null),
+      },
+    )
+  }
+
   const valid =
     items.length > 0 &&
     items.every(
@@ -176,6 +227,7 @@ export function useMaterialUploadQueue(
     success,
     preparing,
     isPending: upload.isPending,
+    sendingItemId,
     valid,
     uploadError: upload.isError
       ? upload.error instanceof Error
@@ -188,5 +240,6 @@ export function useMaterialUploadQueue(
     updateWeek,
     updateKind,
     sendAll,
+    sendItem,
   }
 }

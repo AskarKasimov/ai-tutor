@@ -10,6 +10,7 @@ import {
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import styles from './material-upload-queue.module.scss'
+import { MaterialUploadResultModal } from './material-upload-result-modal'
 import {
   useMaterialUploadQueue,
   type MaterialQueueItem,
@@ -118,21 +119,10 @@ export function MaterialUploadQueueToolbar({
           }}
         />
       </label>
-      {queue.error && (
-        <Text role="alert" color="red">
-          {queue.error}
-        </Text>
-      )}
-      {queue.uploadError && (
-        <Text role="alert" color="red">
-          {queue.uploadError}
-        </Text>
-      )}
-      {queue.success && (
-        <Text role="status" color="green">
-          {t('competencyMap.materialsSuccess')}
-        </Text>
-      )}
+      <MaterialUploadResultModal
+        notification={queue.notification}
+        onClose={queue.dismissNotification}
+      />
     </div>
   )
 }

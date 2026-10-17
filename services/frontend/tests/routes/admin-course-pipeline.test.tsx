@@ -246,6 +246,7 @@ it('blocks building the graph while a queued upload is in flight', async () => {
     ).toBeDisabled(),
   )
   finish()
+  fireEvent.click(await screen.findByRole('button', { name: 'Понятно' }))
   await waitFor(() =>
     expect(
       screen.getByRole('button', { name: 'Собрать граф тем' }),

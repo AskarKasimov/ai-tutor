@@ -29,8 +29,10 @@ export function useMaterialUploadQueue(
   const { t } = useTranslation()
   const upload = useUploadCourseMaterialsMutation(userId, subjectId)
   const [items, setItems] = useState<MaterialQueueItem[]>([])
-  const [error, setError] = useState('')
-  const [success, setSuccess] = useState(false)
+  const [notification, setNotification] = useState<{
+    type: 'success' | 'error' | 'warning'
+    message: string
+  } | null>(null)
   const [sending, setSending] = useState(false)
   const sendingRef = useRef(false)
   const [preparing, setPreparing] = useState(false)
@@ -42,16 +44,14 @@ export function useMaterialUploadQueue(
     if (subjectRef.current === subjectId) return
     subjectRef.current = subjectId
     setItems([])
-    setError('')
-    setSuccess(false)
+    setNotification(null)
   }, [subjectId])
 
   async function addFile(file?: File) {
     if (!file || preparingRef.current) return
     preparingRef.current = true
     setPreparing(true)
-    setError('')
-    setSuccess(false)
+    setNotification(null)
     try {
       const prepared = await prepareMaterialFiles(file)
       assertMaterialQueueCapacity(items.length, prepared.length)
@@ -75,11 +75,12 @@ export function useMaterialUploadQueue(
       const message = t(`competencyMap.archiveErrors.${archiveError.message}`, {
         defaultValue: t('competencyMap.queueInvalidArchive'),
       })
-      setError(
-        archiveError.paths?.length
+      setNotification({
+        type: 'error',
+        message: archiveError.paths?.length
           ? `${message}: ${archiveError.paths.join(', ')}`
           : message,
-      )
+      })
     } finally {
       preparingRef.current = false
       setPreparing(false)
@@ -130,7 +131,7 @@ export function useMaterialUploadQueue(
       return
     sendingRef.current = true
     setSending(true)
-    setSuccess(false)
+    setNotification(null)
     setSendingItemId(selected.length === 1 ? selected[0].id : null)
     let complete = true
     try {
@@ -163,9 +164,22 @@ export function useMaterialUploadQueue(
         )
         if (persisted.size !== batch.length) complete = false
       }
-      setSuccess(complete)
-    } catch {
-      // The mutation provides the error; keep failed and unsent files queued.
+      setNotification({
+        type: complete ? 'success' : 'warning',
+        message: t(
+          complete
+            ? 'competencyMap.materialsSuccess'
+            : 'competencyMap.uploadResultPartial',
+        ),
+      })
+    } catch (cause) {
+      setNotification({
+        type: 'error',
+        message:
+          cause instanceof Error
+            ? cause.message
+            : t('competencyMap.requestError'),
+      })
     } finally {
       sendingRef.current = false
       setSending(false)
@@ -191,17 +205,12 @@ export function useMaterialUploadQueue(
   return {
     items,
     setItems,
-    error,
-    success,
+    notification,
+    dismissNotification: () => setNotification(null),
     preparing,
     isPending: sending,
     sendingItemId,
     valid,
-    uploadError: upload.isError
-      ? upload.error instanceof Error
-        ? upload.error.message
-        : t('competencyMap.requestError')
-      : '',
     addFile,
     removeItem,
     updateItems,

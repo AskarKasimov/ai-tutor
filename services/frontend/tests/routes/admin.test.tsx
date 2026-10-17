@@ -514,7 +514,7 @@ it('uploads lecture files and shows success message', async () => {
   fireEvent.click(submitBtn)
   expect(
     await screen.findByText(
-      'Материалы успешно загружены, распознаны и сохранены в S3.',
+      'Материалы загружены и сохранены. Распознавание и обработка продолжаются в фоне.',
     ),
   ).toBeVisible()
   expect(
@@ -871,7 +871,7 @@ it('deletes an uploaded material after confirmation', async () => {
   })
 })
 
-it('shows warning alert when some files fail during upload', async () => {
+it('shows a warning dialog and keeps failed files available for retry', async () => {
   backend({ partialUpload: true })
   renderApp('/admin/competency-map/subject-a')
   const input = await screen.findByLabelText('Добавить PDF или ZIP')
@@ -887,6 +887,10 @@ it('shows warning alert when some files fail during upload', async () => {
   expect(await screen.findByText(/corrupted\.pdf/)).toBeVisible()
   const submitBtn = screen.getByRole('button', { name: 'Отправить всё' })
   fireEvent.click(submitBtn)
+  expect(
+    await screen.findByRole('dialog', { name: 'Загружены не все материалы' }),
+  ).toBeVisible()
+  fireEvent.click(screen.getByRole('button', { name: 'Понятно' }))
   expect(await screen.findByText(/Ошибка распознавания/)).toBeVisible()
   expect(screen.getByText('corrupted.pdf')).toBeVisible()
   expect(screen.getByRole('button', { name: 'Отправить всё' })).toBeEnabled()
@@ -942,7 +946,11 @@ it('rejects a mixed ZIP without adding any PDFs to the queue', async () => {
     'materials.zip',
   )
   fireEvent.change(input, { target: { files: [archive] } })
-  expect(await screen.findByRole('alert')).toHaveTextContent('notes.txt')
+  expect(
+    await screen.findByRole('dialog', {
+      name: 'Не удалось загрузить материалы',
+    }),
+  ).toHaveTextContent('notes.txt')
   expect(screen.queryByText('week.pdf')).not.toBeInTheDocument()
   expect(
     screen.queryByRole('button', { name: 'Отправить всё' }),

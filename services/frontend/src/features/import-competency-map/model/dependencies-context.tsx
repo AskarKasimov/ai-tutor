@@ -6,10 +6,14 @@ import type {
   CourseMaterialUploadResult,
   CourseMaterialMetadataPatch,
   CourseMaterialUploadItem,
+  CourseMaterialKindOption,
 } from '@/entities/competency-map'
 
 export type CompetencyMapDependencies = {
   competencyMap: {
+    readCourseMaterialKinds(
+      signal?: AbortSignal,
+    ): Promise<CourseMaterialKindOption[]>
     readSubjectMaterials(
       subjectId: string,
       signal?: AbortSignal,

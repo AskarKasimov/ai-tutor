@@ -1,4 +1,9 @@
-export type CourseMaterialKind = 'lecture' | 'lab' | 'tutorial'
+export type CourseMaterialKind = string
+
+export type CourseMaterialKindOption = {
+  code: CourseMaterialKind
+  label: string
+}
 
 export type CourseMaterial = {
   id: string

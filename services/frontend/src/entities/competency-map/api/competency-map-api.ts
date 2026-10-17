@@ -3,6 +3,7 @@ import { i18n } from '@/shared/i18n'
 import type {
   CourseMaterial,
   CourseMaterialKind,
+  CourseMaterialKindOption,
 } from '../model/competency-map'
 import { apiFetch } from '@/shared/api'
 
@@ -64,11 +65,26 @@ const courseMaterialSchema = z.object({
   char_count: z.number().int().nonnegative(),
   status: z.enum(['pending', 'parsed', 'failed']),
   week: z.number().int().positive().nullable(),
-  kind: z.enum(['lecture', 'lab', 'tutorial']).nullable(),
+  kind: z.string().nullable(),
   error_message: z.string().nullable().optional(),
   created_at: count,
   updated_at: count,
 })
+
+export async function readCourseMaterialKinds(
+  signal?: AbortSignal,
+): Promise<CourseMaterialKindOption[]> {
+  const timeout = AbortSignal.timeout(30_000)
+  const response = await apiFetch(`${apiBase}/admin/material-kinds`, {
+    credentials: 'include',
+    signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
+  })
+  const parsed = z
+    .array(z.object({ code: z.string().min(1), label: z.string().min(1) }))
+    .safeParse(await readResponse(response))
+  if (!parsed.success) throw new Error(i18n.t('competencyMap.invalidResponse'))
+  return parsed.data
+}
 
 export async function readSubjectMaterials(
   subjectId: string,

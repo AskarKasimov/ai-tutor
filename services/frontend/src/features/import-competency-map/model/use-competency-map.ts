@@ -49,6 +49,39 @@ export function useSubjectMaterialsQuery(userId: string, subjectId: string) {
   })
 }
 
+export function useCourseMaterialKindsQuery(userId: string) {
+  const { competencyMap } = useCompetencyMapDependencies()
+  const cache = useQueryClient()
+  // eslint-disable-next-line @tanstack/query/exhaustive-deps
+  return useQuery({
+    queryKey: competencyMapQueryKeys.materialKinds(userId),
+    enabled: !!userId,
+    queryFn: async ({ signal }) => {
+      const token = captureSession(cache)
+      const controller = new AbortController()
+      const unregister = registerSessionRequest(cache, token, controller)
+      try {
+        const data = await competencyMap.readCourseMaterialKinds(
+          AbortSignal.any([signal, controller.signal]),
+        )
+        if (!isCurrentSession(cache, token) || token.userId !== userId)
+          throw new DOMException('Stale session', 'AbortError')
+        return data
+      } catch (error) {
+        if (
+          error instanceof CompetencyMapApiError &&
+          error.status === 401 &&
+          isCurrentSession(cache, token)
+        )
+          await replaceSession(cache, null)
+        throw error
+      } finally {
+        unregister()
+      }
+    },
+  })
+}
+
 export function useUploadCourseMaterialsMutation(
   userId: string,
   subjectId: string,

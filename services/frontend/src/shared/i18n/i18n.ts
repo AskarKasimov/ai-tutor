@@ -164,11 +164,8 @@ void i18n.init({
           weekLabel: 'Неделя',
           kindLabel: 'Тип материала',
           kindMissing: 'Выберите тип',
-          kinds: {
-            lecture: 'Лекция',
-            lab: 'Лабораторная',
-            tutorial: 'Практика',
-          },
+          kindsUnavailable: 'Не удалось загрузить виды материалов.',
+          kindsEmpty: 'В справочнике нет видов материалов.',
           metadataMissing: 'Нужно указать неделю и тип',
           blockNoMaterials: 'Загрузите хотя бы один материал курса.',
           blockNoParsed: 'Дождитесь распознавания хотя бы одного материала.',

@@ -1,5 +1,6 @@
 import { afterEach, expect, it, vi } from 'vitest'
 import {
+  readCourseMaterialKinds,
   readSubjectMaterials,
   replaceCourseMaterialFile,
   updateCourseMaterialMetadata,
@@ -7,6 +8,20 @@ import {
 } from '@/entities/competency-map'
 
 afterEach(() => vi.unstubAllGlobals())
+
+it('reads configurable material kinds without a client-side enum', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi
+      .fn()
+      .mockResolvedValue(
+        Response.json([{ code: 'seminar', label: 'Семинар' }]),
+      ),
+  )
+  await expect(readCourseMaterialKinds()).resolves.toEqual([
+    { code: 'seminar', label: 'Семинар' },
+  ])
+})
 
 const legacyMaterial = {
   id: 'material-1',

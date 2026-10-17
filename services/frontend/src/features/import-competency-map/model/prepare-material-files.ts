@@ -22,6 +22,16 @@ function isPdf(name: string, data: Uint8Array) {
     .includes('%PDF-')
 }
 
+function isHiddenOrServiceEntry(name: string) {
+  const segments = name.split('/')
+  return segments.some(
+    (segment) =>
+      segment.startsWith('.') ||
+      segment === '__MACOSX' ||
+      segment.toLowerCase() === 'thumbs.db',
+  )
+}
+
 export async function prepareMaterialFiles(file: File): Promise<File[]> {
   if (file.size > MATERIAL_ARCHIVE_LIMIT)
     throw new MaterialArchiveError('archive-too-large')
@@ -66,7 +76,10 @@ export async function prepareMaterialFiles(file: File): Promise<File[]> {
         entry.terminate()
         return
       }
-      if (!entry.name.toLowerCase().endsWith('.pdf')) {
+      if (
+        !entry.name.toLowerCase().endsWith('.pdf') ||
+        isHiddenOrServiceEntry(entry.name)
+      ) {
         invalid.push(entry.name)
         finish()
         return

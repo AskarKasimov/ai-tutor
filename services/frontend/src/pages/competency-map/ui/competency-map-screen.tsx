@@ -29,12 +29,14 @@ import { useTranslation } from 'react-i18next'
 import {
   downloadCourseMaterialRaw,
   type CourseMaterial,
+  type CourseMaterialKindOption,
 } from '@/entities/competency-map'
 import { CourseGraphApiError } from '@/entities/course-graph'
 import { AccountMenu, useAuth } from '@/features/auth'
 import {
   useDeleteCourseMaterialMutation,
   useSubjectMaterialsQuery,
+  useCourseMaterialKindsQuery,
   useUpdateCourseMaterialMetadataMutation,
   useUploadCourseMaterialsMutation,
   useReplaceCourseMaterialMutation,
@@ -90,6 +92,7 @@ function CompetencyMapAdmin({ userId }: { userId: string }) {
 
   // Course materials state and mutations
   const materialsQuery = useSubjectMaterialsQuery(userId, subjectId)
+  const materialKindsQuery = useCourseMaterialKindsQuery(userId)
   const uploadMaterials = useUploadCourseMaterialsMutation(userId, subjectId)
   const replaceMaterial = useReplaceCourseMaterialMutation(userId, subjectId)
   const deleteMaterial = useDeleteCourseMaterialMutation(userId, subjectId)
@@ -325,9 +328,31 @@ function CompetencyMapAdmin({ userId }: { userId: string }) {
                 </Heading>
               </div>
 
+              {materialKindsQuery.isError && (
+                <Flex gap="3" align="center" wrap="wrap">
+                  <Text role="alert" color="red">
+                    {t('courseGraph.kindsUnavailable')}
+                  </Text>
+                  <Button
+                    variant="ghost"
+                    size="1"
+                    onClick={() => void materialKindsQuery.refetch()}
+                  >
+                    {t('trainer.retry')}
+                  </Button>
+                </Flex>
+              )}
+              {materialKindsQuery.isSuccess &&
+                materialKindsQuery.data.length === 0 && (
+                  <Text role="alert" color="amber">
+                    {t('courseGraph.kindsEmpty')}
+                  </Text>
+                )}
+
               <MaterialUploadQueue
                 userId={userId}
                 subjectId={subjectId}
+                kinds={materialKindsQuery.data ?? []}
                 disabled={busy}
               />
             </section>
@@ -373,6 +398,7 @@ function CompetencyMapAdmin({ userId }: { userId: string }) {
                     <MaterialItemCard
                       key={mat.id}
                       material={mat}
+                      kinds={materialKindsQuery.data ?? []}
                       subjectId={subjectId}
                       previewOpen={previewId === mat.id}
                       onTogglePreview={() =>
@@ -575,6 +601,7 @@ function CompetencyMapAdmin({ userId }: { userId: string }) {
 
 function MaterialItemCard({
   material,
+  kinds,
   subjectId,
   previewOpen,
   onTogglePreview,
@@ -584,6 +611,7 @@ function MaterialItemCard({
   busy,
 }: {
   material: CourseMaterial
+  kinds: CourseMaterialKindOption[]
   subjectId: string
   previewOpen: boolean
   onTogglePreview: () => void
@@ -763,15 +791,11 @@ function MaterialItemCard({
               disabled={busy}
             />
             <Select.Content>
-              <Select.Item value="lecture">
-                {t('courseGraph.kinds.lecture')}
-              </Select.Item>
-              <Select.Item value="lab">
-                {t('courseGraph.kinds.lab')}
-              </Select.Item>
-              <Select.Item value="tutorial">
-                {t('courseGraph.kinds.tutorial')}
-              </Select.Item>
+              {kinds.map((kind) => (
+                <Select.Item key={kind.code} value={kind.code}>
+                  {kind.label}
+                </Select.Item>
+              ))}
             </Select.Content>
           </Select.Root>
         </label>

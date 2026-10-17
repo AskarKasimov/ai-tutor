@@ -1,7 +1,10 @@
 import { Button, Select, Text, TextField } from '@radix-ui/themes'
 import { useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import type { CourseMaterialKind } from '@/entities/competency-map'
+import type {
+  CourseMaterialKind,
+  CourseMaterialKindOption,
+} from '@/entities/competency-map'
 import { useUploadCourseMaterialsMutation } from '../model/use-competency-map'
 import {
   MaterialArchiveError,
@@ -19,10 +22,12 @@ type QueueItem = {
 export function MaterialUploadQueue({
   userId,
   subjectId,
+  kinds,
   disabled = false,
 }: {
   userId: string
   subjectId: string
+  kinds: CourseMaterialKindOption[]
   disabled?: boolean
 }) {
   const { t } = useTranslation()
@@ -52,7 +57,7 @@ export function MaterialUploadQueue({
           id: crypto.randomUUID(),
           file: item,
           week: '1',
-          kind: 'lecture' as const,
+          kind: kinds[0]?.code ?? '',
         })),
       ])
     } catch (cause) {
@@ -68,7 +73,12 @@ export function MaterialUploadQueue({
   }
   const valid =
     items.length > 0 &&
-    items.every((item) => /^\d+$/.test(item.week) && Number(item.week) > 0)
+    items.every(
+      (item) =>
+        /^\d+$/.test(item.week) &&
+        Number(item.week) > 0 &&
+        kinds.some((kind) => kind.code === item.kind),
+    )
   return (
     <div className={styles.queue}>
       <label className={styles.add}>
@@ -138,15 +148,11 @@ export function MaterialUploadQueue({
             >
               <Select.Trigger />
               <Select.Content>
-                <Select.Item value="lecture">
-                  {t('courseGraph.kinds.lecture')}
-                </Select.Item>
-                <Select.Item value="lab">
-                  {t('courseGraph.kinds.lab')}
-                </Select.Item>
-                <Select.Item value="tutorial">
-                  {t('courseGraph.kinds.tutorial')}
-                </Select.Item>
+                {kinds.map((kind) => (
+                  <Select.Item key={kind.code} value={kind.code}>
+                    {kind.label}
+                  </Select.Item>
+                ))}
               </Select.Content>
             </Select.Root>
           </label>

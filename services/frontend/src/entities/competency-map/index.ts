@@ -1,7 +1,12 @@
-export type { CourseMaterial, CourseMaterialKind } from './model/competency-map'
+export type {
+  CourseMaterial,
+  CourseMaterialKind,
+  CourseMaterialKindOption,
+} from './model/competency-map'
 export { CompetencyMapApiError } from './model/competency-map-error'
 export {
   readSubjectMaterials,
+  readCourseMaterialKinds,
   uploadCourseMaterials,
   updateCourseMaterialMetadata,
   deleteCourseMaterial,

@@ -26,6 +26,7 @@ export function createAppDependencies(): AppDependencies {
       logout: auth.logout,
     },
     competencyMap: {
+      readCourseMaterialKinds: competencyMap.readCourseMaterialKinds,
       readSubjectMaterials: competencyMap.readSubjectMaterials,
       uploadCourseMaterials: competencyMap.uploadCourseMaterials,
       replaceCourseMaterialFile: competencyMap.replaceCourseMaterialFile,

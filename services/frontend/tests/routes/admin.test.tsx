@@ -123,6 +123,12 @@ function backend(
     }
     if (url.endsWith('/subjects') && !init?.method)
       return new Response(JSON.stringify(activeSubjects))
+    if (url.endsWith('/admin/material-kinds'))
+      return Response.json([
+        { code: 'lecture', label: 'Лекция' },
+        { code: 'lab', label: 'Лабораторная' },
+        { code: 'tutorial', label: 'Практика' },
+      ])
     if (url.endsWith('/admin/subjects') && init?.method === 'POST') {
       const subject = { id: 'subject-c', name: 'Новый', ready: false }
       activeSubjects.push(subject)

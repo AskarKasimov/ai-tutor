@@ -77,7 +77,7 @@ void i18n.init({
           submit: 'Подтвердить',
           cancelEdit: 'Отменить',
           uploading: 'Создаём предмет…',
-          tooLarge: 'Размер файла не должен превышать 25 МиБ.',
+          tooLarge: 'Размер файла не должен превышать 50 МиБ.',
           emptyFile: 'Выбранный файл пуст.',
           cancel: 'Отмена',
           confirm: 'Подтвердить',
@@ -95,7 +95,7 @@ void i18n.init({
           queueInvalidArchive: 'Не удалось прочитать выбранный файл.',
           archiveErrors: {
             'archive-too-large': 'ZIP больше 250 МиБ.',
-            'file-too-large': 'PDF больше 25 МиБ.',
+            'file-too-large': 'PDF больше 50 МиБ.',
             'invalid-pdf': 'Файл не является корректным PDF.',
             'invalid-file-type': 'Выберите PDF или ZIP.',
             'contains-non-pdf': 'В ZIP есть файлы не в формате PDF.',

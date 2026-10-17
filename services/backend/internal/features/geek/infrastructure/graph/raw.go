@@ -33,7 +33,9 @@ func (r Raw) CurrentRaw(ctx context.Context, id string) (application.RawMaterial
 		return application.RawMaterial{}, fmt.Errorf("read raw material record: %w", err)
 	}
 	data, err := r.storage.Get(ctx, row.S3RawKey)
-	if errors.Is(err, s3.ErrNotFound) { return application.RawMaterial{}, nil }
+	if errors.Is(err, s3.ErrNotFound) {
+		return application.RawMaterial{}, nil
+	}
 	if err != nil {
 		return application.RawMaterial{}, fmt.Errorf("read raw material object: %w", err)
 	}

@@ -20,6 +20,14 @@ it('accepts one signed PDF', async () => {
   await expect(prepareMaterialFiles(file)).resolves.toEqual([file])
 })
 
+it('accepts a signed PDF larger than 25 MiB', async () => {
+  const file = new File(
+    ['%PDF-1.7', new Uint8Array(26 * 1024 * 1024)],
+    'large.pdf',
+  )
+  await expect(prepareMaterialFiles(file)).resolves.toEqual([file])
+})
+
 it('rejects an archive containing any non-PDF entry', async () => {
   const bytes = zipSync({
     'week.pdf': strToU8('%PDF-1.7'),

@@ -19,6 +19,11 @@ PROMPT = """Ты выделяешь учебные темы из лекции и
 Все названия, знания и вопросы — по-русски. Английский термин допустим в скобках
 после русского названия, но не вместо него. requires — знания, НЕ ID тем.
 Каждый пункт requires — одно знание: «производная» и «функция потерь» раздельно.
+В requires перечисли все знания, на которые опирается объяснение темы: понятия,
+определения и методы, которые в её блоках используются, но не объясняются, в том
+числе объяснённые раньше в курсе (например, в existing_topics). Называй их общими
+предметными терминами («производная», «пространство состояний»), а не фразами
+из слайда, чтобы их можно было найти в других темах. У вводной темы requires пуст.
 Выделяй отдельные проверяемые понятия/методы, а не тему на каждый абзац и не всю
 лекцию одной темой, если она объясняет несколько самостоятельных методов.
 Каждый входной block id должен быть либо в remove, либо хотя бы в одной теме.
@@ -194,6 +199,21 @@ def content_chars(text):
     return sum(len(line.strip()) for line in text.splitlines() if not _NOT_CONTENT.match(line))
 
 
+def join_topic(target, topic):
+    """Move the text, sources and knowledge of topic into target; target keeps
+    its id, title and question. Lists stay within the card contract."""
+    seen = {(s.material_id, s.material_revision, s.start, s.end) for s in target.sources}
+    target.sources.extend(s for s in topic.sources
+                          if (s.material_id, s.material_revision, s.start, s.end) not in seen)
+    target.sources.sort(key=lambda s: (s.week is None, s.week or 0, s.material_id, s.start))
+    own = set(target.provides)
+    target.provides = list(dict.fromkeys(target.provides + topic.provides))[:TOPIC_LIST_MAX]
+    # Knowledge the merged card now explains itself is no longer required.
+    target.requires = [r for r in dict.fromkeys(target.requires + topic.requires)
+                       if r not in own and r not in topic.provides][:TOPIC_LIST_MAX]
+    target.text = "\n\n".join(s.text for s in target.sources)
+
+
 def absorb_thin_topics(topics, min_chars):
     """Merge topics without explaining text into the nearest topic by position.
 
@@ -219,12 +239,7 @@ def absorb_thin_topics(topics, min_chars):
         if target is None:
             kept.append(topic)
             continue
-        seen = {(s.material_id, s.start, s.end) for s in target.sources}
-        target.sources.extend(s for s in topic.sources if (s.material_id, s.start, s.end) not in seen)
-        target.sources.sort(key=lambda s: (s.material_id, s.start))
-        target.requires = list(dict.fromkeys(target.requires + topic.requires))
-        target.provides = list(dict.fromkeys(target.provides + topic.provides))
-        target.text = "\n\n".join(s.text for s in target.sources)
+        join_topic(target, topic)
         merged.append({"title": topic.title, "into": target.title})
     # Keep the material order of the topics that stayed on their own.
     order = {id(t): i for i, t in enumerate(topics)}

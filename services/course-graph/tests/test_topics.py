@@ -16,6 +16,7 @@ from course_graph.topics.extract import (
     topic_blocks,
 )
 from course_graph.topics.graph import build_links, valid_evidence
+from course_graph.topics.structure import ATTACH_PROMPT, SYNONYM_PROMPT
 from course_graph.topics.models import Evidence, Source, Topic
 from course_graph.topics.retrieval import CandidateIndex
 
@@ -29,6 +30,17 @@ def make_topic(id, title, provides, requires=(), text=None):
     return Topic(id=id, title=title, provides=provides, requires=list(requires),
                  question="Объясните тему", text=text,
                  sources=[Source(material_id=id, block_id=0, start=0, end=len(text), text=text)])
+
+
+def links_only(judge):
+    """The structure passes get no decisions; judge answers the link prompt."""
+    async def complete(system, payload):
+        if system == SYNONYM_PROMPT:
+            return json.dumps({"pairs": []})
+        if system == ATTACH_PROMPT:
+            return json.dumps({"topics": []})
+        return await judge(system, payload)
+    return complete
 
 
 class Encoder:
@@ -300,7 +312,7 @@ def test_build_links_sanitizes_procedural_titles_and_filters_links_card():
                       "prerequisite_ids": [], "reason": "Нет связей"} for t in tasks]
         return json.dumps({"links": [], "requirements": decisions}, ensure_ascii=False)
 
-    graph = run(build_links([t_normal, t_hw, t_links], stub_judge, Encoder()))
+    graph = run(build_links([t_normal, t_hw, t_links], links_only(stub_judge), Encoder()))
     titles = [t["title"] for t in graph["topics"]]
     assert "Ссылки" not in titles
     assert "Упражнение 4: Домашнее задание" not in titles
@@ -318,7 +330,7 @@ def test_global_retrieval_finds_distant_topic_and_excludes_self():
     assert ids[0] == "T2" and "T20" not in ids
 
 
-async def grounded_judge(system, payload):
+async def grounded_links(system, payload):
     links, decisions = [], []
     for task in json.loads(payload)["tasks"]:
         candidate = task["candidates"][0]
@@ -331,6 +343,9 @@ async def grounded_judge(system, payload):
     return json.dumps({"links": links, "requirements": decisions}, ensure_ascii=False)
 
 
+grounded_judge = links_only(grounded_links)
+
+
 def test_links_have_direction_quotes_and_unresolved_requirements():
     topics = [make_topic("T2", "Производная", ["Вычисление производной"]),
               make_topic("T20", "Спуск", ["Обновление параметров"], ["Вычисление производной"])]
@@ -341,12 +356,12 @@ def test_links_have_direction_quotes_and_unresolved_requirements():
 
 def test_fabricated_quote_fails_instead_of_publishing_edge():
     async def bad(system, payload):
-        result = json.loads(await grounded_judge(system, payload))
+        result = json.loads(await grounded_links(system, payload))
         result["links"][0]["target_evidence"]["quote"] = "Невстречающаяся цитата"
         return json.dumps(result)
     topics = [make_topic("a", "Производная", ["Производная"]),
               make_topic("b", "Спуск", ["Обновление"], ["Производная"])]
-    graph = run(build_links(topics, bad, Encoder()))
+    graph = run(build_links(topics, links_only(bad), Encoder()))
     assert graph["prerequisites"] == []
     assert any(d["target_id"] == "b" and not d["prerequisite_ids"] for d in graph["requirements"])
 
@@ -400,7 +415,7 @@ def test_build_endpoint_reuses_cached_cards_and_validates_source_text(monkeypatc
 
     class Client:
         async def complete(self, system, payload):
-            assert "tasks" in json.loads(payload), "Cached cards must not be extracted again"
+            assert "blocks" not in json.loads(payload), "Cached cards must not be extracted again"
             return await grounded_judge(system, payload)
         def completer(self, complexity):
             return self.complete
@@ -497,27 +512,134 @@ def test_build_hierarchy_does_not_invent_parent_topic():
     async def stub_judge(system, payload):
         return json.dumps({"links": [], "requirements": []}, ensure_ascii=False)
 
-    graph = run(build_links([t1, t2], stub_judge, Encoder()))
+    graph = run(build_links([t1, t2], links_only(stub_judge), Encoder()))
     assert {t["id"] for t in graph["topics"]} == {"t1", "t2"}
     assert graph["hierarchy"] == []
 
 
-def test_independent_topic_remains_isolated_without_evidence():
+def placed(topic, week=None, kind=None):
+    for source in topic.sources:
+        source.week, source.kind = week, kind
+    return topic
+
+
+def pairs(graph):
+    return {(e["source"], e["target"]) for e in graph["prerequisites"]}
+
+
+def test_isolated_topic_is_merged_into_the_nearest_linked_topic():
     t1 = make_topic("t1", "Интеллектуальные агенты", ["понятие агента"])
     t2 = make_topic("t2", "Рациональность агента", ["критерий рациональности"], ["понятие агента"])
     t3 = make_topic("t3", "История искусственного интеллекта", ["исторические вехи"])
 
     graph = run(build_links([t1, t2, t3], grounded_judge, Encoder()))
-    adj_nodes = set()
-    for p in graph["prerequisites"]:
-        adj_nodes.add(p["source"])
-        adj_nodes.add(p["target"])
-    for h in graph["hierarchy"]:
-        adj_nodes.add(h["source"])
-        adj_nodes.add(h["target"])
+    assert pairs(graph) == {("t1", "t2")}
+    assert {t["id"] for t in graph["topics"]} == {"t1", "t2"}
+    host = graph["aliases"]["t3"]
+    assert "История искусственного интеллекта" in next(t["text"] for t in graph["topics"] if t["id"] == host)
+    assert graph["merged_isolated"] == [{"id": "t3", "title": "История искусственного интеллекта", "into": host}]
+    assert graph["quality"]["isolated"] == 0
 
-    assert "t3" not in adj_nodes
-    assert {t["id"] for t in graph["topics"]} == {"t1", "t2", "t3"}
+
+def test_course_without_links_keeps_its_topics():
+    topics = [make_topic("a", "Агенты", ["понятие агента"]), make_topic("b", "Среды", ["свойства среды"])]
+    graph = run(build_links(topics, links_only(grounded_links), Encoder()))
+    assert {t["id"] for t in graph["topics"]} == {"a", "b"}
+    assert graph["merged_isolated"] == []
+
+
+@pytest.mark.parametrize("same", [True, False])
+def test_synonyms_merge_only_when_the_model_confirms_them(same):
+    topics = [placed(make_topic("a", "Производная функции", ["Вычисление производной"]), week=1),
+              placed(make_topic("b", "Дифференцирование", ["Производная сложной функции"]), week=2)]
+    asked = []
+
+    async def complete(system, payload):
+        if system == SYNONYM_PROMPT:
+            asked.extend(json.loads(payload)["pairs"])
+            return json.dumps({"pairs": [{"a": "a", "b": "b", "same": same}]})
+        return await links_only(grounded_links)(system, payload)
+
+    graph = run(build_links(topics, complete, Encoder()))
+    assert [(p["a"], p["b"]) for p in asked] == [("a", "b")]
+    if same:
+        assert [t["id"] for t in graph["topics"]] == ["a"]
+        assert graph["aliases"] == {"b": "a"}
+        assert [s["week"] for s in graph["topics"][0]["sources"]] == [1, 2]
+    else:
+        assert len(graph["topics"]) == 2
+
+
+def test_later_week_topic_is_never_a_prerequisite():
+    early = placed(make_topic("early", "Спуск", ["Обновление параметров"], ["Вычисление производной"]), week=1)
+    late = placed(make_topic("late", "Производная", ["Вычисление производной"]), week=2)
+
+    async def links(system, payload):
+        raise AssertionError("No link check without candidates")
+
+    graph = run(build_links([early, late], links_only(links), Encoder()))
+    assert graph["prerequisites"] == []
+    assert graph["requirements"][0]["reason"] == "Нет кандидатов в материалах курса"
+
+
+def test_attach_links_practice_to_theory_and_keeps_week_order():
+    lecture = placed(make_topic("L", "Матрицы", ["Определение матрицы"]), week=1, kind="lecture")
+    lab = placed(make_topic("P", "Умножение матриц на практике", ["Перемножать матрицы"]), week=1, kind="lab")
+    later = placed(make_topic("L2", "Ранг матрицы", ["Вычисление ранга"]), week=2, kind="lecture")
+    seen = {}
+
+    async def complete(system, payload):
+        if system != ATTACH_PROMPT:
+            return await links_only(grounded_links)(system, payload)
+        for item in json.loads(payload)["topics"]:
+            seen[item["id"]] = [c["id"] for c in item["candidates"]]
+        return json.dumps({"topics": [
+            {"id": "P", "prerequisites": [{"id": "L", "reason": "Отрабатывает определение матрицы"}],
+             "dependents": [{"id": "L2", "reason": "Ранг считают по умножению"}]},
+            # A later week cannot come first; this answer is dropped.
+            {"id": "L", "prerequisites": [{"id": "L2", "reason": "Обратная связь"}]}]})
+
+    graph = run(build_links([lecture, lab, later], complete, Encoder()))
+    assert seen["P"][0] == "L"
+    assert pairs(graph) == {("L", "P"), ("P", "L2")}
+    assert all(e["via"] == "attach" for e in graph["prerequisites"])
+    assert graph["quality"]["attached_links"] == 2
+
+
+def test_redundant_edges_are_reduced_to_a_chain():
+    topics = [make_topic(i, title, [f"Знание {i}"]) for i, title in
+              [("A", "Множества"), ("B", "Отношения"), ("C", "Функции")]]
+
+    async def complete(system, payload):
+        if system != ATTACH_PROMPT:
+            return await links_only(grounded_links)(system, payload)
+        return json.dumps({"topics": [
+            {"id": "C", "prerequisites": [{"id": "B", "reason": "Функция — отношение"},
+                                          {"id": "A", "reason": "Область — множество"}]},
+            {"id": "B", "prerequisites": [{"id": "A", "reason": "Отношение на множестве"}]}]})
+
+    graph = run(build_links(topics, complete, Encoder()))
+    assert pairs(graph) == {("A", "B"), ("B", "C")}
+    assert [(e["source"], e["target"]) for e in graph["transitive_links"]] == [("A", "C")]
+    assert graph["quality"]["depth"] == 3
+
+
+def test_one_bad_quote_does_not_drop_the_other_links_of_the_batch():
+    topics = [make_topic("D", "Производная", ["Вычисление производной"]),
+              make_topic("M", "Матрицы", ["Операции с матрицами"]),
+              make_topic("T", "Обучение модели", ["Обновление весов"],
+                         ["Вычисление производной", "Операции с матрицами"])]
+
+    async def links(system, payload):
+        result = json.loads(await grounded_links(system, payload))
+        for link in result["links"]:
+            if link["requirement"] == "Операции с матрицами":
+                link["prerequisite_evidence"]["quote"] = "Невстречающаяся цитата"
+        return json.dumps(result)
+
+    graph = run(build_links(topics, links_only(links), Encoder()))
+    assert ("D", "T") in pairs(graph)
+    assert any(r["validation_error"] == "Недостоверная цитата связи" for r in graph["rejected_links"])
 
 
 def test_batch_sequential_reuse_passes_existing_topics():

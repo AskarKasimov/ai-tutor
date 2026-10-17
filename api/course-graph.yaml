@@ -470,9 +470,17 @@ components:
             $ref: "#/components/schemas/Topic"
           type: array
         prerequisites:
-          description: Рёбра «тема требует тему»; граф ацикличен
+          description: >-
+            Рёбра «тема опирается на тему»; граф ацикличен, без рёбер, повторяющих более длинный путь.
+            Рёбра второго прохода помечены via: attach и не имеют requirement.
           items:
             $ref: "#/components/schemas/Edge"
+          type: array
+        merged_isolated:
+          description: Темы без связей, слитые с ближайшей похожей темой (id, title, into)
+          type: array
+        transitive_links:
+          description: Рёбра, убранные транзитивной редукцией
           type: array
         hierarchy:
           description: Рёбра «раздел → тема» по parent_title; только для админки, Geek их не использует

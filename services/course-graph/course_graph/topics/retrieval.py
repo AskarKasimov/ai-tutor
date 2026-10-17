@@ -47,7 +47,8 @@ class CandidateIndex:
         self.entries = [(t.id, skill, t.title) for t in topics for skill in t.provides]
         self.vectors = encoder.encode([f"{title}. {skill}" for _, skill, title in self.entries]) if self.entries else None
 
-    def search_all(self, topics, per_requirement=5):
+    def search_all(self, topics, per_requirement=5, allowed=None):
+        """allowed(target_id, topic_id) filters candidates, e.g. by week order."""
         queries = [(t.id, r) for t in topics for r in t.requires]
         if not queries or not self.entries:
             return {}
@@ -56,7 +57,8 @@ class CandidateIndex:
         # Score one query at a time, not an N x N dense matrix in memory.
         for (target_id, requirement), vector in zip(queries, vectors):
             scores = np.asarray(self.vectors) @ vector
-            valid = [i for i, (topic_id, _, _) in enumerate(self.entries) if topic_id != target_id]
+            valid = [i for i, (topic_id, _, _) in enumerate(self.entries) if topic_id != target_id
+                     and (allowed is None or allowed(target_id, topic_id))]
             semantic = sorted(valid, key=lambda i: (-float(scores[i]), i))
             query_tokens = tokens(requirement)
             lexical = sorted(valid, key=lambda i: (-len(query_tokens & tokens(self.entries[i][1]+" "+self.entries[i][2])), i))

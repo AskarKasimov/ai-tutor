@@ -184,8 +184,9 @@ graph_slots = asyncio.Semaphore(1)
 
 
 async def encoder_for_topics(topics):
-    # A course without dependencies needs no embeddings or downloaded weights.
-    if len(topics) > 1 and any(t.requires for t in topics):
+    # A single topic needs no embeddings or downloaded weights; any other
+    # course is compared topic by topic for synonyms and isolated topics.
+    if len(topics) > 1:
         return await asyncio.to_thread(get_encoder)
     return None
 
@@ -197,7 +198,8 @@ async def link_topics(request: LinkRequest):
         try:
             encoder = await encoder_for_topics(request.topics)
             return await build_links(request.topics, client.completer("high"), encoder, request.per_requirement,
-                                     request.max_chars, request.evidence_chars)
+                                     request.max_chars, request.evidence_chars,
+                                     light_complete=client.completer("medium"))
         except Exception:
             logging.exception("Prerequisite generation failed")
             raise HTTPException(status_code=503, detail="Построение связей не завершено")
@@ -240,7 +242,8 @@ async def build_course(request: BuildRequest):
                     topics.extend(Topic.model_validate(t) for t in result["report"]["topics"])
                     reports.append({"material_id": material.id, **result["report"]})
             encoder = await encoder_for_topics(topics)
-            graph = await build_links(topics, client.completer("high"), encoder, request.per_requirement)
+            graph = await build_links(topics, client.completer("high"), encoder, request.per_requirement,
+                                      light_complete=client.completer("medium"))
             graph["extraction_reports"] = reports
             return graph
         except Exception:

@@ -5,7 +5,6 @@
 .items {
   display: grid;
   gap: var(--space-2);
-  padding-inline: 7.5rem;
 }
 .add {
   display: flex;
@@ -17,7 +16,10 @@
   max-width: 100%;
 }
 .item {
-  position: relative;
+  display: grid;
+  grid-template-columns: 5.5rem minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-2);
 }
 .row {
   display: grid;
@@ -29,27 +31,23 @@
   border-radius: var(--radius-3);
 }
 .reorderControls {
-  position: absolute;
-  top: 50%;
-  right: calc(100% + var(--space-2));
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: space-between;
   gap: var(--space-1);
-  transform: translateY(-50%);
 }
 .orderButtons {
   display: flex;
-  gap: var(--space-1);
+  gap: 0;
 }
 .orderButton {
-  width: 2.5rem;
+  width: 1.75rem;
   height: 2.5rem;
   padding: var(--space-1);
 }
 .dragHandle {
-  width: 2rem;
-  height: 2rem;
+  width: 1.75rem;
+  height: 2.5rem;
   padding: var(--space-1);
   cursor: grab;
   touch-action: none;
@@ -84,28 +82,19 @@
   white-space: nowrap;
 }
 @media (max-width: 720px) {
-  .items {
-    padding-inline: 0;
-  }
   .item {
-    display: grid;
-    grid-template-columns: 5rem minmax(0, 1fr);
+    grid-template-columns: 5.5rem minmax(0, 1fr);
     align-items: center;
     gap: var(--space-1);
   }
   .reorderControls {
-    position: static;
-    grid-column: 1;
-    grid-row: 1;
     flex-direction: column;
-    transform: none;
+    justify-content: center;
   }
   .orderButtons {
     flex-direction: column;
   }
   .row {
-    grid-column: 2;
-    grid-row: 1;
     grid-template-columns: minmax(0, 1fr);
     align-items: stretch;
   }

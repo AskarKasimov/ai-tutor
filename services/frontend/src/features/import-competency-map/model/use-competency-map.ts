@@ -249,16 +249,10 @@ export function useDeleteCourseMaterialMutation(
       if (!isCurrentSession(cache, tokenRef.current)) return
       const targetId = variables.subjectId || subjectId
       await cache.invalidateQueries({
-        queryKey: competencyMapQueryKeys.subjectMaterials(
-          userId,
-          targetId,
-        ),
+        queryKey: competencyMapQueryKeys.subjectMaterials(userId, targetId),
       })
       await cache.invalidateQueries({
-        queryKey: competencyMapQueryKeys.courseGraph(
-          userId,
-          targetId,
-        ),
+        queryKey: competencyMapQueryKeys.courseGraph(userId, targetId),
       })
     },
     retry: false,
@@ -268,6 +262,7 @@ export function useDeleteCourseMaterialMutation(
 export function useCourseGraphQuery(userId: string, subjectId: string) {
   const { competencyMap } = useCompetencyMapDependencies()
   const cache = useQueryClient()
+  // eslint-disable-next-line @tanstack/query/exhaustive-deps
   return useQuery({
     queryKey: competencyMapQueryKeys.courseGraph(userId, subjectId),
     enabled: !!userId && !!subjectId,
@@ -304,4 +299,3 @@ export function useCourseGraphQuery(userId: string, subjectId: string) {
     },
   })
 }
-

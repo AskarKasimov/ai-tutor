@@ -117,6 +117,7 @@ function renderApp(path = '/admin') {
     history: createMemoryHistory({ initialEntries: [path] }),
     routeTree,
   })
+  void router.load()
   render(<RouterProvider router={router} />)
   return router
 }
@@ -251,6 +252,16 @@ function backend(
     ) {
       return new Response(null, { status: 204 })
     }
+    if (url.includes('/admin/subjects/') && url.endsWith('/graph')) {
+      return Response.json({
+        status: 'waiting_materials',
+        attempts: 0,
+        error_message: '',
+        graph: null,
+        stale: false,
+        updated_at: 0,
+      })
+    }
     throw new Error(`Unexpected request: ${url}`)
   })
   vi.stubGlobal('fetch', fetch)
@@ -372,6 +383,7 @@ it('switches to editing with the error when the first map import fails', async (
 it('keeps the student site free of the admin panel even for an admin account', async () => {
   backend()
   const router = renderApp('/')
+  await router.load()
   expect(await screen.findByRole('heading', { name: 'Курсы' })).toBeVisible()
   expect(router.state.location.pathname).toBe('/')
   expect(
@@ -770,6 +782,15 @@ it('enters again after an expired map refresh without reusing the cached 401', a
     }
     if (url.endsWith('/subjects')) return Response.json(subjects)
     if (url.endsWith('/materials')) return Response.json([])
+    if (url.endsWith('/graph'))
+      return Response.json({
+        status: 'waiting_materials',
+        attempts: 0,
+        error_message: '',
+        graph: null,
+        stale: false,
+        updated_at: 0,
+      })
     // The first map read finds the session expired; after entering again
     // the map is read afresh.
     if (!expired) {

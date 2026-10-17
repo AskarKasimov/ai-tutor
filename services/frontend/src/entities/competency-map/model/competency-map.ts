@@ -69,4 +69,3 @@ export type CourseGraphSnapshot = {
   stale: boolean
   updatedAt: number
 }
-

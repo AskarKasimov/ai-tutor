@@ -330,7 +330,13 @@ const courseGraphHierarchySchema = z.object({
 })
 
 const courseGraphSnapshotSchema = z.object({
-  status: z.enum(['waiting_materials', 'pending', 'processing', 'ready', 'failed']),
+  status: z.enum([
+    'waiting_materials',
+    'pending',
+    'processing',
+    'ready',
+    'failed',
+  ]),
   attempts: z.number().int().nonnegative(),
   error_message: z.string(),
   graph: z

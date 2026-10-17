@@ -21,10 +21,9 @@ function SessionGate() {
   const { t } = useTranslation()
   const { user, checkingSession, sessionError, retrySession, authenticate } =
     useAuth()
-  const { path, renderedPath } = useRouterState({
+  const { path } = useRouterState({
     select: (state) => ({
       path: state.location.pathname,
-      renderedPath: state.matches[state.matches.length - 1]?.pathname,
     }),
   })
   // The admin panel under /admin is a separate site with its own session; the
@@ -78,15 +77,7 @@ function SessionGate() {
       return <Navigate to="/admin/competency-map" replace />
   } else {
     if (!user)
-      return path === '/login' ? (
-        renderedPath === path ? (
-          <Outlet />
-        ) : (
-          loading
-        )
-      ) : (
-        <Navigate to="/login" replace />
-      )
+      return path === '/login' ? <Outlet /> : <Navigate to="/login" replace />
     if (path === '/login') return <Navigate to="/" replace />
   }
   return <Outlet />

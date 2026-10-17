@@ -1076,7 +1076,7 @@ function CourseGraphCard({
         </Text>
       ) : error ? (
         <Flex gap="3" align="center" wrap="wrap">
-          <Text as="p" role="alert" color="red" size="2">
+          <Text as="p" color="red" size="2">
             {t('competencyMap.loadError')}
           </Text>
           <Button variant="ghost" size="1" onClick={onRetry}>
@@ -1089,7 +1089,11 @@ function CourseGraphCard({
             <span className={styles.graphBadge} data-status={status}>
               {isBuilding ? (
                 <>
-                  <Clock size={14} className={styles.spinIcon} aria-hidden="true" />
+                  <Clock
+                    size={14}
+                    className={styles.spinIcon}
+                    aria-hidden="true"
+                  />
                   {t('competencyMap.graphBuilding')}
                 </>
               ) : status === 'ready' ? (
@@ -1181,7 +1185,9 @@ function CourseGraphCard({
                     {t('competencyMap.graphSections')}
                   </Text>
                   {(() => {
-                    const topicsById = new Map(graph.topics.map((t) => [t.id, t]))
+                    const topicsById = new Map(
+                      graph.topics.map((t) => [t.id, t]),
+                    )
                     const childrenByParent = new Map<string, string[]>()
                     const childIds = new Set<string>()
 
@@ -1192,14 +1198,19 @@ function CourseGraphCard({
                       childIds.add(h.target)
                     }
 
-                    const roots = graph.topics.filter((t) => !childIds.has(t.id))
+                    const roots = graph.topics.filter(
+                      (t) => !childIds.has(t.id),
+                    )
 
                     return (
                       <div style={{ display: 'grid', gap: 'var(--space-2)' }}>
                         {roots.map((root) => {
                           const children = childrenByParent.get(root.id) || []
                           return (
-                            <div key={root.id} className={styles.graphSectionItem}>
+                            <div
+                              key={root.id}
+                              className={styles.graphSectionItem}
+                            >
                               <Text weight="bold" size="2">
                                 📁 {root.title}
                               </Text>
@@ -1234,14 +1245,23 @@ function CourseGraphCard({
                         {t('competencyMap.graphDependencies')}
                       </Text>
                       {(() => {
-                        const topicsById = new Map(graph.topics.map((t) => [t.id, t]))
+                        const topicsById = new Map(
+                          graph.topics.map((t) => [t.id, t]),
+                        )
                         return (
-                          <div style={{ display: 'grid', gap: 'var(--space-1)' }}>
+                          <div
+                            style={{ display: 'grid', gap: 'var(--space-1)' }}
+                          >
                             {graph.prerequisites.map((p, idx) => {
-                              const src = topicsById.get(p.source)?.title || p.source
-                              const tgt = topicsById.get(p.target)?.title || p.target
+                              const src =
+                                topicsById.get(p.source)?.title || p.source
+                              const tgt =
+                                topicsById.get(p.target)?.title || p.target
                               return (
-                                <div key={idx} className={styles.graphPrereqItem}>
+                                <div
+                                  key={idx}
+                                  className={styles.graphPrereqItem}
+                                >
                                   <Text size="2" weight="bold">
                                     {src}
                                   </Text>
@@ -1271,4 +1291,3 @@ function CourseGraphCard({
     </section>
   )
 }
-

@@ -5,6 +5,7 @@ import { RootShell } from '@/bootstrap/root-shell'
 export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
   {
     component: RootComponent,
+    notFoundComponent: () => null,
   },
 )
 

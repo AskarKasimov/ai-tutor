@@ -5,6 +5,7 @@ import type {
   CompetencyMapSummary,
   CourseMaterial,
   CourseMaterialUploadResult,
+  CourseGraphSnapshot,
 } from '@/entities/competency-map'
 
 export type CompetencyMapDependencies = {
@@ -29,6 +30,10 @@ export type CompetencyMapDependencies = {
       materialId: string,
       signal?: AbortSignal,
     ): Promise<void>
+    readCourseGraph(
+      subjectId: string,
+      signal?: AbortSignal,
+    ): Promise<CourseGraphSnapshot>
   }
 }
 

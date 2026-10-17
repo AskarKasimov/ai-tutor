@@ -27,3 +27,46 @@ export type CourseMaterial = {
   createdAt: number
   updatedAt: number
 }
+
+export type CourseGraphTopic = {
+  id: string
+  title: string
+  question?: string
+  provides?: string[]
+  requires?: string[]
+  parent_title?: string | null
+}
+
+export type CourseGraphPrerequisite = {
+  source: string
+  target: string
+  requirement?: string
+  reason?: string
+}
+
+export type CourseGraphHierarchyEdge = {
+  source: string
+  target: string
+}
+
+export type CourseGraph = {
+  topics: CourseGraphTopic[]
+  prerequisites: CourseGraphPrerequisite[]
+  hierarchy: CourseGraphHierarchyEdge[]
+  quality?: {
+    acyclic: boolean
+    topics?: number
+    requirements?: number
+    unresolved_requirements?: number
+  }
+}
+
+export type CourseGraphSnapshot = {
+  status: 'waiting_materials' | 'pending' | 'processing' | 'ready' | 'failed'
+  attempts: number
+  errorMessage: string
+  graph: CourseGraph | null
+  stale: boolean
+  updatedAt: number
+}
+

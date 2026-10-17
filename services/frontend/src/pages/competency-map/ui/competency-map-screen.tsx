@@ -24,6 +24,7 @@ import {
   History,
   Layers,
   ListChecks,
+  Network,
   Shapes,
   ShieldCheck,
   Sparkles,
@@ -40,6 +41,7 @@ import {
   downloadCourseMaterialRaw,
   type CompetencyMapSummary,
   type CourseMaterial,
+  type CourseGraphSnapshot,
 } from '@/entities/competency-map'
 import { AccountMenu, useAuth } from '@/features/auth'
 import {
@@ -48,6 +50,7 @@ import {
   useImportCompetencyMapMutation,
   useSubjectMaterialsQuery,
   useUploadCourseMaterialsMutation,
+  useCourseGraphQuery,
 } from '@/features/import-competency-map'
 import {
   useCreateSubjectMutation,
@@ -94,6 +97,7 @@ function CompetencyMapAdmin({ userId }: { userId: string }) {
   const materialsQuery = useSubjectMaterialsQuery(userId, subjectId)
   const uploadMaterials = useUploadCourseMaterialsMutation(userId, subjectId)
   const deleteMaterial = useDeleteCourseMaterialMutation(userId, subjectId)
+  const courseGraphQuery = useCourseGraphQuery(userId, subjectId)
   const [lectureFiles, setLectureFiles] = useState<File[]>([])
   const [materialsFileError, setMaterialsFileError] = useState<string | null>(
     null,
@@ -164,7 +168,13 @@ function CompetencyMapAdmin({ userId }: { userId: string }) {
       }
       validFiles.push(f)
     }
-    setLectureFiles((prev) => [...prev, ...validFiles])
+    setLectureFiles((prev) => {
+      const existingNames = new Set(prev.map((f) => f.name.toLowerCase()))
+      const unique = validFiles.filter(
+        (f) => !existingNames.has(f.name.toLowerCase()),
+      )
+      return [...prev, ...unique]
+    })
   }
 
   function removeLectureFile(index: number) {
@@ -623,6 +633,13 @@ function CompetencyMapAdmin({ userId }: { userId: string }) {
                 </Text>
               )}
             </section>
+
+            <CourseGraphCard
+              snapshot={courseGraphQuery.data}
+              loading={courseGraphQuery.isPending}
+              error={courseGraphQuery.isError}
+              onRetry={() => void courseGraphQuery.refetch()}
+            />
           </>
         )}
       </main>
@@ -1018,3 +1035,240 @@ function MaterialsUploadProgressBar({ filesCount }: { filesCount: number }) {
     </div>
   )
 }
+
+function CourseGraphCard({
+  snapshot,
+  loading,
+  error,
+  onRetry,
+}: {
+  snapshot?: CourseGraphSnapshot
+  loading: boolean
+  error: boolean
+  onRetry: () => void
+}) {
+  const { t } = useTranslation()
+  const [treeOpen, setTreeOpen] = useState(false)
+
+  const status = snapshot?.status ?? 'waiting_materials'
+  const isBuilding = status === 'processing' || status === 'pending'
+  const graph = snapshot?.graph
+  const topicsCount = graph?.topics?.length ?? 0
+  const prereqsCount = graph?.prerequisites?.length ?? 0
+  const hierarchyCount = graph?.hierarchy?.length ?? 0
+
+  return (
+    <section className={styles.card} aria-labelledby="course-graph-title">
+      <div className={styles.sectionHeading}>
+        <Network aria-hidden="true" />
+        <Heading as="h2" size="4" id="course-graph-title">
+          {t('competencyMap.graphTitle')}
+        </Heading>
+      </div>
+
+      <Text size="2" color="gray">
+        {t('competencyMap.graphSubtitle')}
+      </Text>
+
+      {loading ? (
+        <Text as="p" role="status" color="gray" size="2">
+          {t('competencyMap.loading')}
+        </Text>
+      ) : error ? (
+        <Flex gap="3" align="center" wrap="wrap">
+          <Text as="p" role="alert" color="red" size="2">
+            {t('competencyMap.loadError')}
+          </Text>
+          <Button variant="ghost" size="1" onClick={onRetry}>
+            {t('trainer.retry')}
+          </Button>
+        </Flex>
+      ) : (
+        <div style={{ display: 'grid', gap: 'var(--space-3)' }}>
+          <Flex align="center" gap="3" wrap="wrap">
+            <span className={styles.graphBadge} data-status={status}>
+              {isBuilding ? (
+                <>
+                  <Clock size={14} className={styles.spinIcon} aria-hidden="true" />
+                  {t('competencyMap.graphBuilding')}
+                </>
+              ) : status === 'ready' ? (
+                <>
+                  <CheckCircle2 size={14} aria-hidden="true" />
+                  {t('competencyMap.graphReady')}
+                </>
+              ) : status === 'failed' ? (
+                <>
+                  <TriangleAlert size={14} aria-hidden="true" />
+                  {t('competencyMap.graphFailed')}
+                </>
+              ) : (
+                t('competencyMap.graphWaiting')
+              )}
+            </span>
+
+            {snapshot?.stale && status === 'ready' && (
+              <Badge color="amber" size="1">
+                {t('competencyMap.graphStale')}
+              </Badge>
+            )}
+          </Flex>
+
+          {isBuilding && (
+            <Text size="2" color="gray">
+              {t('competencyMap.graphBuildingHint')}
+            </Text>
+          )}
+
+          {status === 'failed' && snapshot?.errorMessage && (
+            <Callout.Root color="red" size="1">
+              <Callout.Icon>
+                <TriangleAlert size={14} />
+              </Callout.Icon>
+              <Callout.Text>{snapshot.errorMessage}</Callout.Text>
+            </Callout.Root>
+          )}
+
+          {status === 'ready' && graph && (
+            <>
+              <dl className={styles.stats}>
+                <div className={styles.statRow} data-tone="blue">
+                  <span className={styles.statIcon} aria-hidden="true">
+                    <BookOpen size={16} />
+                  </span>
+                  <dt>{t('competencyMap.graphStats.topics')}</dt>
+                  <dd>{topicsCount}</dd>
+                </div>
+                <div className={styles.statRow} data-tone="green">
+                  <span className={styles.statIcon} aria-hidden="true">
+                    <Target size={16} />
+                  </span>
+                  <dt>{t('competencyMap.graphStats.prerequisites')}</dt>
+                  <dd>{prereqsCount}</dd>
+                </div>
+                <div className={styles.statRow} data-tone="violet">
+                  <span className={styles.statIcon} aria-hidden="true">
+                    <Layers size={16} />
+                  </span>
+                  <dt>{t('competencyMap.graphStats.hierarchy')}</dt>
+                  <dd>{hierarchyCount}</dd>
+                </div>
+              </dl>
+
+              <div>
+                <Button
+                  size="2"
+                  variant="soft"
+                  onClick={() => setTreeOpen((prev) => !prev)}
+                >
+                  {treeOpen ? (
+                    <>
+                      <EyeOff size={16} aria-hidden="true" />
+                      {t('competencyMap.graphHideView')}
+                    </>
+                  ) : (
+                    <>
+                      <Eye size={16} aria-hidden="true" />
+                      {t('competencyMap.graphToggleView')}
+                    </>
+                  )}
+                </Button>
+              </div>
+
+              {treeOpen && (
+                <div className={styles.graphTree}>
+                  <Text weight="bold" size="2">
+                    {t('competencyMap.graphSections')}
+                  </Text>
+                  {(() => {
+                    const topicsById = new Map(graph.topics.map((t) => [t.id, t]))
+                    const childrenByParent = new Map<string, string[]>()
+                    const childIds = new Set<string>()
+
+                    for (const h of graph.hierarchy) {
+                      const list = childrenByParent.get(h.source) || []
+                      list.push(h.target)
+                      childrenByParent.set(h.source, list)
+                      childIds.add(h.target)
+                    }
+
+                    const roots = graph.topics.filter((t) => !childIds.has(t.id))
+
+                    return (
+                      <div style={{ display: 'grid', gap: 'var(--space-2)' }}>
+                        {roots.map((root) => {
+                          const children = childrenByParent.get(root.id) || []
+                          return (
+                            <div key={root.id} className={styles.graphSectionItem}>
+                              <Text weight="bold" size="2">
+                                📁 {root.title}
+                              </Text>
+                              {children.length > 0 && (
+                                <ul className={styles.graphChildrenList}>
+                                  {children.map((childId) => {
+                                    const child = topicsById.get(childId)
+                                    return (
+                                      <li key={childId}>
+                                        <Text size="2" color="gray">
+                                          └─ {child?.title || childId}
+                                        </Text>
+                                      </li>
+                                    )
+                                  })}
+                                </ul>
+                              )}
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )
+                  })()}
+
+                  {graph.prerequisites.length > 0 && (
+                    <>
+                      <Text
+                        weight="bold"
+                        size="2"
+                        style={{ marginTop: 'var(--space-2)' }}
+                      >
+                        {t('competencyMap.graphDependencies')}
+                      </Text>
+                      {(() => {
+                        const topicsById = new Map(graph.topics.map((t) => [t.id, t]))
+                        return (
+                          <div style={{ display: 'grid', gap: 'var(--space-1)' }}>
+                            {graph.prerequisites.map((p, idx) => {
+                              const src = topicsById.get(p.source)?.title || p.source
+                              const tgt = topicsById.get(p.target)?.title || p.target
+                              return (
+                                <div key={idx} className={styles.graphPrereqItem}>
+                                  <Text size="2" weight="bold">
+                                    {src}
+                                  </Text>
+                                  <Text size="2" color="gray">
+                                    →
+                                  </Text>
+                                  <Text size="2">{tgt}</Text>
+                                  {p.reason && (
+                                    <Text size="1" color="gray">
+                                      ({p.reason})
+                                    </Text>
+                                  )}
+                                </div>
+                              )
+                            })}
+                          </div>
+                        )
+                      })()}
+                    </>
+                  )}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+    </section>
+  )
+}
+

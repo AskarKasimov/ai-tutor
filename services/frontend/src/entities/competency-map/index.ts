@@ -2,6 +2,11 @@ export type {
   CompetencyMapImport,
   CompetencyMapSummary,
   CourseMaterial,
+  CourseGraph,
+  CourseGraphTopic,
+  CourseGraphPrerequisite,
+  CourseGraphHierarchyEdge,
+  CourseGraphSnapshot,
 } from './model/competency-map'
 export { CompetencyMapApiError } from './model/competency-map-error'
 export {
@@ -11,6 +16,7 @@ export {
   uploadCourseMaterials,
   deleteCourseMaterial,
   downloadCourseMaterialRaw,
+  readCourseGraph,
 } from './api/competency-map-api'
 export type {
   CourseMaterialUploadFailedItem,

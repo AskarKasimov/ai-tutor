@@ -4,6 +4,7 @@ import type {
   CompetencyMapImport,
   CompetencyMapSummary,
   CourseMaterial,
+  CourseGraphSnapshot,
 } from '../model/competency-map'
 import { apiFetch } from '@/shared/api'
 
@@ -304,5 +305,87 @@ export async function downloadCourseMaterialRaw(
     setTimeout(() => {
       URL.revokeObjectURL(url)
     }, 10_000)
+  }
+}
+
+const courseGraphTopicSchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  question: z.string().optional(),
+  provides: z.array(z.string()).optional(),
+  requires: z.array(z.string()).optional(),
+  parent_title: z.string().nullable().optional(),
+})
+
+const courseGraphPrerequisiteSchema = z.object({
+  source: z.string(),
+  target: z.string(),
+  requirement: z.string().optional(),
+  reason: z.string().optional(),
+})
+
+const courseGraphHierarchySchema = z.object({
+  source: z.string(),
+  target: z.string(),
+})
+
+const courseGraphSnapshotSchema = z.object({
+  status: z.enum(['waiting_materials', 'pending', 'processing', 'ready', 'failed']),
+  attempts: z.number().int().nonnegative(),
+  error_message: z.string(),
+  graph: z
+    .object({
+      topics: z.array(courseGraphTopicSchema),
+      prerequisites: z.array(courseGraphPrerequisiteSchema),
+      hierarchy: z.array(courseGraphHierarchySchema),
+      quality: z
+        .object({
+          acyclic: z.boolean(),
+          topics: z.number().int().optional(),
+          requirements: z.number().int().optional(),
+          unresolved_requirements: z.number().int().optional(),
+        })
+        .passthrough()
+        .optional(),
+    })
+    .passthrough()
+    .nullable(),
+  stale: z.boolean(),
+  updated_at: z.number().int().nonnegative(),
+})
+
+export async function readCourseGraph(
+  subjectId: string,
+  signal?: AbortSignal,
+): Promise<CourseGraphSnapshot> {
+  const timeout = AbortSignal.timeout(30_000)
+  const response = await apiFetch(
+    `${apiBase}/admin/subjects/${encodeURIComponent(subjectId)}/graph`,
+    {
+      credentials: 'include',
+      signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
+    },
+  )
+  if (response.status === 404) {
+    return {
+      status: 'waiting_materials',
+      attempts: 0,
+      errorMessage: '',
+      graph: null,
+      stale: false,
+      updatedAt: 0,
+    }
+  }
+  const raw = await readResponse(response)
+  const parsed = courseGraphSnapshotSchema.safeParse(raw)
+  if (!parsed.success) throw new Error(i18n.t('competencyMap.invalidResponse'))
+  const data = parsed.data
+  return {
+    status: data.status,
+    attempts: data.attempts,
+    errorMessage: data.error_message,
+    graph: data.graph,
+    stale: data.stale,
+    updatedAt: data.updated_at,
   }
 }

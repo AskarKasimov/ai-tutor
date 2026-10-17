@@ -52,20 +52,21 @@ function backend() {
 }
 
 // The browser address decides the portal, as it does for the API transport.
-function renderApp(path: string) {
+async function renderApp(path: string) {
   window.history.replaceState({}, '', path)
   const router = createRouter({
     context: { queryClient: createQueryClient() },
     history: createMemoryHistory({ initialEntries: [path] }),
     routeTree,
   })
+  await router.load()
   render(<RouterProvider router={router} />)
   return router
 }
 
 it('opens the student site straight on sign-in and returns there on logout', async () => {
   backend()
-  const router = renderApp('/')
+  const router = await renderApp('/')
   expect(await screen.findByLabelText('Пароль')).toBeVisible()
   expect(router.state.location.pathname).toBe('/login')
   expect(
@@ -98,7 +99,7 @@ it('opens the student site straight on sign-in and returns there on logout', asy
 
 it('opens the admin panel through the backend without a sign-in step', async () => {
   const fetch = backend()
-  const router = renderApp('/admin')
+  const router = await renderApp('/admin')
   expect(
     await screen.findByRole('heading', { name: 'Карта компетенций' }),
   ).toBeVisible()
@@ -128,7 +129,7 @@ it('offers a retry when the admin panel cannot sign in', async () => {
       : new Response(null, { status: 401 }),
   )
   vi.stubGlobal('fetch', fetch)
-  renderApp('/admin')
+  await renderApp('/admin')
   expect(await screen.findByRole('alert')).toHaveTextContent(
     'Не удалось открыть админ-панель.',
   )

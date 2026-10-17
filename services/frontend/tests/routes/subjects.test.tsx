@@ -103,6 +103,7 @@ it('loads subjects without creating a variant, then starts only the chosen subje
     history: createMemoryHistory({ initialEntries: ['/'] }),
     routeTree,
   })
+  await router.load()
   const view = render(
     <StrictMode>
       <RouterProvider router={router} />

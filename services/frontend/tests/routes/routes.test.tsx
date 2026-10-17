@@ -15,12 +15,14 @@ vi.mock('@/shared/lib', async (importOriginal) => ({
   createVoiceWaveform: () => ({ setStream: () => {}, dispose: () => {} }),
 }))
 
-function renderHome(path = '/') {
+async function renderHome(path = '/') {
+  window.history.replaceState({}, '', path)
   const router = createRouter({
     context: { queryClient: createQueryClient() },
     history: createMemoryHistory({ initialEntries: [path] }),
     routeTree,
   })
+  await router.load()
   return render(<RouterProvider router={router} />)
 }
 
@@ -30,12 +32,18 @@ afterEach(() => {
 })
 
 function mockAuth(response: { ok: boolean; status?: number; body: unknown }) {
-  const fetchMock = vi.fn().mockImplementation(async (_url, init) => {
+  const fetchMock = vi.fn().mockImplementation(async (url: string, init) => {
     if (init?.method === 'POST')
       return {
         ok: response.ok,
         status: response.status,
         json: async () => response.body,
+      }
+    if (String(url).endsWith('/subjects'))
+      return {
+        ok: true,
+        status: 200,
+        json: async () => [],
       }
     return { ok: false, status: 401 }
   })
@@ -50,7 +58,7 @@ it('logs in through the separate screen and updates the header', async () => {
       user: { id: '1', email: 'student@example.com', display_name: 'Студент' },
     },
   })
-  renderHome('/login')
+  await renderHome()
   await screen.findByRole('heading', { name: 'Вход в AI Tutor' })
   await waitFor(() =>
     expect(screen.getByRole('button', { name: 'Войти' })).toBeEnabled(),
@@ -64,9 +72,7 @@ it('logs in through the separate screen and updates the header', async () => {
   fireEvent.change(screen.getByLabelText('Пароль'), {
     target: { value: 'my-password' },
   })
-  fireEvent.submit(
-    screen.getByRole('button', { name: 'Войти' }).closest('form')!,
-  )
+  fireEvent.click(screen.getByRole('button', { name: 'Войти' }))
   expect(await screen.findByText('Студент')).toBeVisible()
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   const [, init] = fetchMock.mock.calls.find(([url]) =>
@@ -86,7 +92,7 @@ it('registers with backend password rules and a required name', async () => {
       user: { id: '2', email: 'new@example.com', display_name: 'Новый' },
     },
   })
-  renderHome('/login')
+  await renderHome()
   await screen.findByRole('heading', { name: 'Вход в AI Tutor' })
   await waitFor(() =>
     expect(screen.getByRole('button', { name: 'Войти' })).toBeEnabled(),
@@ -103,9 +109,7 @@ it('registers with backend password rules and a required name', async () => {
   fireEvent.change(screen.getByLabelText('Имя'), {
     target: { value: 'Новый' },
   })
-  fireEvent.submit(
-    screen.getByRole('button', { name: 'Создать аккаунт' }).closest('form')!,
-  )
+  fireEvent.click(screen.getByRole('button', { name: 'Создать аккаунт' }))
   expect(await screen.findByText('Новый')).toBeVisible()
   const [, init] = fetchMock.mock.calls.find(([url]) =>
     url.endsWith('/auth/register'),
@@ -123,7 +127,7 @@ it('keeps the login screen visible after failed login, Escape and background cli
     status: 401,
     body: { message: 'Неверный email или пароль.' },
   })
-  renderHome('/login')
+  await renderHome()
   await screen.findByRole('heading', { name: 'Вход в AI Tutor' })
   await waitFor(() =>
     expect(screen.getByRole('button', { name: 'Войти' })).toBeEnabled(),
@@ -165,7 +169,7 @@ it('returns to the separate login screen after logout', async () => {
         },
   )
   vi.stubGlobal('fetch', fetchMock)
-  renderHome()
+  await renderHome()
   expect(await screen.findByText('Студент')).toBeVisible()
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   await logOut()

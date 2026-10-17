@@ -89,6 +89,5 @@ function SessionGate() {
       )
     if (path === '/login') return <Navigate to="/" replace />
   }
-  if (renderedPath !== path) return loading
   return <Outlet />
 }

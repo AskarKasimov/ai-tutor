@@ -58,6 +58,15 @@ it.each([
               updated_at: 1792180000,
             },
           ])
+        if (url.endsWith('/graph'))
+          return Response.json({
+            status: 'waiting_materials',
+            attempts: 0,
+            error_message: '',
+            graph: null,
+            stale: false,
+            updated_at: 0,
+          })
         throw new Error(`Unexpected request: ${url}`)
       }),
     )

@@ -33,6 +33,11 @@ import (
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/features/voice/infrastructure/modelapi"
 	voicepg "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/voice/infrastructure/postgres"
 	voicehttp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/voice/transport/http"
+	graphapp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/coursegraph/application"
+	graphapi "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/coursegraph/infrastructure/courseapi"
+	graphpg "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/coursegraph/infrastructure/postgres"
+	graphhttp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/coursegraph/transport/http"
+	"golang.org/x/sync/errgroup"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/fault"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/httpx"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/s3"
@@ -48,6 +53,9 @@ type App struct {
 	logger           *zap.Logger
 	storage          *s3.Client
 	materialsStorage materialsapp.S3Storage
+	ocrWorker        *materialsapp.OCRWorker
+	cleaningWorker   *materialsapp.CleaningWorker
+	graphWorker      *graphapp.Worker
 	// examiner is the LLM gateway over gRPC; the app owns its connection and
 	// closes it in Close.
 	examiner geekapp.Examiner
@@ -89,6 +97,13 @@ func New(cfg Config, pool *pgxpool.Pool, logger *zap.Logger) (*App, error) {
 		return nil, err
 	}
 	a.examiner, a.gateway = examiner, conn
+
+	materialRepository := materialspg.New(pool)
+	materialsOCR := materialsocr.New(cfg.CourseGraphURL, cfg.CourseGraphTimeout)
+	a.ocrWorker = materialsapp.NewOCRWorker(materialRepository, a.materialsStorage, materialsOCR, nil)
+	a.cleaningWorker = materialsapp.NewCleaningWorker(materialRepository, a.materialsStorage, materialsOCR)
+	a.graphWorker = graphapp.New(graphpg.New(pool), materialRepository, a.materialsStorage, graphapi.New(cfg.CourseGraphURL))
+
 	return a, nil
 }
 
@@ -119,6 +134,16 @@ func (a *App) RunStorageSetup(ctx context.Context) error {
 		}
 		backoff = min(2*backoff, 30*time.Second)
 	}
+}
+
+// RunBackground runs background workers and setup tasks.
+func (a *App) RunBackground(ctx context.Context) error {
+	group, ctx := errgroup.WithContext(ctx)
+	group.Go(func() error { return a.RunStorageSetup(ctx) })
+	group.Go(func() error { return a.ocrWorker.Run(ctx) })
+	group.Go(func() error { return a.cleaningWorker.Run(ctx) })
+	group.Go(func() error { return a.graphWorker.Run(ctx) })
+	return group.Wait()
 }
 
 type materialsStorageAdapter struct {
@@ -155,7 +180,7 @@ func (a *App) Handler() http.Handler {
 	materialsHandlers := materialshttp.NewHandler(materialsService, a.cfg.MaxUploadBytes)
 
 	// The stored graph of stream A goes first once it exists; the fixture is the fallback.
-	graphs := geekgraph.Chain{geekgraph.Fixture{Path: a.cfg.GeekGraphFixture}}
+	graphs := geekgraph.Chain{geekgraph.NewStored(a.pool), geekgraph.Fixture{Path: a.cfg.GeekGraphFixture}}
 	geekService := geekapp.New(graphs, geekpg.New(a.pool), geekpg.NewTranscriptions(a.pool), a.examiner, models,
 		geekstorage.NewAudio(a.storage, a.cfg.S3Bucket), security.IDGenerator{}, a.now, geekapp.Config{MaxQuestions: a.cfg.GeekMaxQuestions})
 	geekHandlers := geekhttp.New(geekService)
@@ -169,6 +194,7 @@ func (a *App) Handler() http.Handler {
 	mux.HandleFunc("GET /auth/me", authHandlers.Me)
 	mux.Handle("POST /admin/subjects/{subject_id}/materials", protect(auth, http.HandlerFunc(materialsHandlers.UploadMaterials)))
 	mux.Handle("GET /admin/subjects/{subject_id}/materials", protect(auth, http.HandlerFunc(materialsHandlers.ListMaterials)))
+	mux.Handle("GET /admin/subjects/{subject_id}/graph", protect(auth, http.HandlerFunc(graphhttp.New(a.graphWorker).Read)))
 	mux.Handle("DELETE /admin/subjects/{subject_id}/materials/{material_id}", protect(auth, http.HandlerFunc(materialsHandlers.DeleteMaterial)))
 	mux.Handle("GET /admin/subjects/{subject_id}/materials/{material_id}/raw", protect(auth, http.HandlerFunc(materialsHandlers.DownloadRaw)))
 	mux.Handle("POST /admin/subjects", protect(auth, http.HandlerFunc(subjectHandlers.Create)))

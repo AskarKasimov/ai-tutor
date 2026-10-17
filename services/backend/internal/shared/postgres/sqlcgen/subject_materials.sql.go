@@ -10,8 +10,7 @@ import (
 )
 
 const deleteSubjectMaterial = `-- name: DeleteSubjectMaterial :exec
-DELETE FROM subject_materials
-WHERE id = $1 AND subject_id = $2
+DELETE FROM subject_materials WHERE id=$1 AND subject_id=$2
 `
 
 type DeleteSubjectMaterialParams struct {
@@ -25,22 +24,8 @@ func (q *Queries) DeleteSubjectMaterial(ctx context.Context, arg DeleteSubjectMa
 }
 
 const getSubjectMaterialByID = `-- name: GetSubjectMaterialByID :one
-SELECT
-    id,
-    subject_id,
-    filename,
-    content_type,
-    file_size,
-    s3_raw_key,
-    s3_parsed_key,
-    parsed_text,
-    char_count,
-    status,
-    error_message,
-    created_at,
-    updated_at
-FROM subject_materials
-WHERE id = $1
+SELECT id, subject_id, filename, content_type, file_size, s3_raw_key, s3_parsed_key, parsed_text, char_count, status, error_message, created_at, updated_at, s3_ocr_key, ocr_report
+FROM subject_materials WHERE id=$1
 `
 
 func (q *Queries) GetSubjectMaterialByID(ctx context.Context, id string) (SubjectMaterial, error) {
@@ -60,42 +45,18 @@ func (q *Queries) GetSubjectMaterialByID(ctx context.Context, id string) (Subjec
 		&i.ErrorMessage,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.S3OcrKey,
+		&i.OcrReport,
 	)
 	return i, err
 }
 
 const insertSubjectMaterial = `-- name: InsertSubjectMaterial :one
 INSERT INTO subject_materials (
-    id,
-    subject_id,
-    filename,
-    content_type,
-    file_size,
-    s3_raw_key,
-    s3_parsed_key,
-    parsed_text,
-    char_count,
-    status,
-    error_message,
-    created_at,
-    updated_at
-) VALUES (
-    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13
-)
-RETURNING
-    id,
-    subject_id,
-    filename,
-    content_type,
-    file_size,
-    s3_raw_key,
-    s3_parsed_key,
-    parsed_text,
-    char_count,
-    status,
-    error_message,
-    created_at,
-    updated_at
+    id, subject_id, filename, content_type, file_size, s3_raw_key, s3_parsed_key,
+    parsed_text, char_count, status, error_message, created_at, updated_at
+) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+RETURNING id, subject_id, filename, content_type, file_size, s3_raw_key, s3_parsed_key, parsed_text, char_count, status, error_message, created_at, updated_at, s3_ocr_key, ocr_report
 `
 
 type InsertSubjectMaterialParams struct {
@@ -145,28 +106,15 @@ func (q *Queries) InsertSubjectMaterial(ctx context.Context, arg InsertSubjectMa
 		&i.ErrorMessage,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.S3OcrKey,
+		&i.OcrReport,
 	)
 	return i, err
 }
 
 const listSubjectMaterials = `-- name: ListSubjectMaterials :many
-SELECT
-    id,
-    subject_id,
-    filename,
-    content_type,
-    file_size,
-    s3_raw_key,
-    s3_parsed_key,
-    parsed_text,
-    char_count,
-    status,
-    error_message,
-    created_at,
-    updated_at
-FROM subject_materials
-WHERE subject_id = $1
-ORDER BY created_at DESC
+SELECT id, subject_id, filename, content_type, file_size, s3_raw_key, s3_parsed_key, parsed_text, char_count, status, error_message, created_at, updated_at, s3_ocr_key, ocr_report
+FROM subject_materials WHERE subject_id=$1 ORDER BY created_at DESC
 `
 
 func (q *Queries) ListSubjectMaterials(ctx context.Context, subjectID string) ([]SubjectMaterial, error) {
@@ -192,6 +140,8 @@ func (q *Queries) ListSubjectMaterials(ctx context.Context, subjectID string) ([
 			&i.ErrorMessage,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.S3OcrKey,
+			&i.OcrReport,
 		); err != nil {
 			return nil, err
 		}
@@ -201,4 +151,14 @@ func (q *Queries) ListSubjectMaterials(ctx context.Context, subjectID string) ([
 		return nil, err
 	}
 	return items, nil
+}
+
+const lockSubjectMaterial = `-- name: LockSubjectMaterial :one
+SELECT id FROM subject_materials WHERE id=$1 FOR UPDATE
+`
+
+func (q *Queries) LockSubjectMaterial(ctx context.Context, id string) (string, error) {
+	row := q.db.QueryRow(ctx, lockSubjectMaterial, id)
+	err := row.Scan(&id)
+	return id, err
 }

@@ -61,6 +61,10 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      s3:
+        condition: service_healthy
+      course-graph:
+        condition: service_healthy
   swagger:
     extends:
       file: ./services/backend/docker-compose.yaml
@@ -109,3 +113,5 @@ volumes:
   backend_go_build:
   backend_dev_bin:
   frontend_node_modules:
+  course_graph_models:
+  course_graph_data:

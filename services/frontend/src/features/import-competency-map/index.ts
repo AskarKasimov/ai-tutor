@@ -2,6 +2,7 @@ export {
   useSubjectMaterialsQuery,
   useUploadCourseMaterialsMutation,
   useDeleteCourseMaterialMutation,
+  useCourseGraphQuery,
 } from './model/use-competency-map'
 export {
   CompetencyMapDependenciesProvider,

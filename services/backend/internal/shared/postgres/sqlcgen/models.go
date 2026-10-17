@@ -17,6 +17,30 @@ type AuthSession struct {
 	RevokedAt *int64
 }
 
+type CourseGraph struct {
+	SubjectID   string
+	Fingerprint string
+	Graph       []byte
+	UpdatedAt   int64
+}
+
+type CourseGraphInput struct {
+	SubjectID   string
+	Fingerprint string
+}
+
+type CourseGraphJob struct {
+	SubjectID    string
+	Fingerprint  string
+	Status       string
+	Attempts     int32
+	AvailableAt  int64
+	LeaseUntil   int64
+	LeaseToken   string
+	ErrorMessage string
+	UpdatedAt    int64
+}
+
 type GeekRequest struct {
 	OwnerID     string
 	Key         string
@@ -37,6 +61,32 @@ type GeekSession struct {
 	CompletedAt *int64
 	UpdatedAt   int64
 	State       []byte
+}
+
+type MaterialCleaningJob struct {
+	MaterialID   string
+	Status       string
+	Attempts     int32
+	AvailableAt  int64
+	LeaseUntil   int64
+	LeaseToken   string
+	CleanedText  string
+	S3CleanedKey string
+	S3ReportKey  string
+	ErrorMessage string
+	UpdatedAt    int64
+}
+
+type MaterialOcrJob struct {
+	MaterialID   string
+	Status       string
+	Attempts     int32
+	AvailableAt  int64
+	LeaseUntil   int64
+	LeaseToken   string
+	ErrorMessage string
+	UpdatedAt    int64
+	Stage        string
 }
 
 type RefreshToken struct {
@@ -65,6 +115,8 @@ type SubjectMaterial struct {
 	ErrorMessage *string
 	CreatedAt    int64
 	UpdatedAt    int64
+	S3OcrKey     string
+	OcrReport    []byte
 }
 
 type Transcription struct {

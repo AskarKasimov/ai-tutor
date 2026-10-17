@@ -11,7 +11,6 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
-	"unicode/utf8"
 
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/material"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/user"
@@ -22,7 +21,7 @@ type Repository interface {
 	List(ctx context.Context, subjectID string) ([]material.Material, error)
 	Get(ctx context.Context, id string) (material.Material, error)
 	Insert(ctx context.Context, m material.Material) (material.Material, error)
-	Delete(ctx context.Context, subjectID, id string) error
+	Delete(ctx context.Context, subjectID, id string) (material.Material, error)
 }
 
 type S3Storage interface {
@@ -36,11 +35,16 @@ type OCRParser interface {
 	Convert(ctx context.Context, filename string, data []byte) (string, error)
 }
 
+type Translator interface {
+	Translate(ctx context.Context, markdown string) (string, error)
+}
+
 type Service struct {
-	repo Repository
-	s3   S3Storage
-	ocr  OCRParser
-	now  func() time.Time
+	repo       Repository
+	s3         S3Storage
+	ocr        OCRParser
+	translator Translator
+	now        func() time.Time
 }
 
 func New(repo Repository, s3 S3Storage, ocr OCRParser, now func() time.Time) *Service {
@@ -53,6 +57,11 @@ func New(repo Repository, s3 S3Storage, ocr OCRParser, now func() time.Time) *Se
 		ocr:  ocr,
 		now:  now,
 	}
+}
+
+func (s *Service) WithTranslator(translator Translator) *Service {
+	s.translator = translator
+	return s
 }
 
 // Authorize ensures only admin users can access materials operations.
@@ -89,7 +98,6 @@ func (s *Service) Upload(ctx context.Context, actor user.User, subjectID string,
 
 	s3RawKey := fmt.Sprintf("subjects/%s/raw/%s_%s", subjectID, materialID, cleanFilename)
 	s3ParsedKey := fmt.Sprintf("subjects/%s/parsed/%s_%s.md", subjectID, materialID, cleanFilename)
-
 	// 1. Store raw file in S3
 	contentType := input.ContentType
 	if contentType == "" {
@@ -100,27 +108,8 @@ func (s *Service) Upload(ctx context.Context, actor user.User, subjectID string,
 		return material.Material{}, fault.New(fault.Unavailable, "S3_UPLOAD_ERROR", "Хранилище недоступно, попробуйте позже.")
 	}
 
-	// 2. Parse text with course-graph OCR
-	parsedText, ocrErr := s.ocr.Convert(ctx, cleanFilename, input.Data)
-	status := material.StatusParsed
-	var errMsg *string
-	if ocrErr != nil {
-		log.Printf("OCR conversion error for %s: %v", cleanFilename, ocrErr)
-		errStr := ocrErr.Error()
-		errMsg = &errStr
-		if parsedText == "" {
-			status = material.StatusFailed
-		}
-	}
-
-	// 3. Store parsed markdown in S3 if non-empty
-	if len(parsedText) > 0 {
-		if err := s.s3.Put(ctx, s3ParsedKey, "text/markdown; charset=utf-8", []byte(parsedText)); err != nil {
-			log.Printf("Failed to upload parsed markdown to S3 for %s: %v", cleanFilename, err)
-		}
-	}
-
-	// 4. Save metadata and parsed text in PostgreSQL
+	// OCR and translation run in a durable background job so a long batch does
+	// not keep the browser and reverse proxy waiting for the entire pipeline.
 	matRecord := material.Material{
 		ID:           materialID,
 		SubjectID:    subjectID,
@@ -129,10 +118,10 @@ func (s *Service) Upload(ctx context.Context, actor user.User, subjectID string,
 		FileSize:     int64(len(input.Data)),
 		S3RawKey:     s3RawKey,
 		S3ParsedKey:  s3ParsedKey,
-		ParsedText:   parsedText,
-		CharCount:    utf8.RuneCountInString(parsedText),
-		Status:       status,
-		ErrorMessage: errMsg,
+		ParsedText:   "",
+		CharCount:    0,
+		Status:       material.StatusPending,
+		ErrorMessage: nil,
 		CreatedAt:    nowUnix,
 		UpdatedAt:    nowUnix,
 	}
@@ -145,9 +134,6 @@ func (s *Service) Upload(ctx context.Context, actor user.User, subjectID string,
 		if delErr := s.s3.Delete(cleanupCtx, s3RawKey); delErr != nil {
 			log.Printf("Failed to cleanup raw S3 object %s after DB error: %v", s3RawKey, delErr)
 		}
-		if delErr := s.s3.Delete(cleanupCtx, s3ParsedKey); delErr != nil {
-			log.Printf("Failed to cleanup parsed S3 object %s after DB error: %v", s3ParsedKey, delErr)
-		}
 		return material.Material{}, fault.New(fault.Unavailable, "DATABASE_ERROR", "Не удалось сохранить материал в базу данных, попробуйте позже.")
 	}
 
@@ -158,7 +144,27 @@ func (s *Service) List(ctx context.Context, actor user.User, subjectID string) (
 	if err := s.Authorize(actor); err != nil {
 		return nil, err
 	}
-	return s.repo.List(ctx, subjectID)
+	items, err := s.repo.List(ctx, subjectID)
+	if err != nil {
+		return nil, err
+	}
+	needsModels := false
+	for _, item := range items {
+		if item.Status == material.StatusPending && item.Processing != nil && item.Processing.Stage == "queued" && strings.HasSuffix(strings.ToLower(item.Filename), ".pdf") {
+			needsModels = true
+			break
+		}
+	}
+	if needsModels {
+		if readiness, ok := s.ocr.(interface{ Ready(context.Context) error }); ok && readiness.Ready(ctx) != nil {
+			for i := range items {
+				if items[i].Status == material.StatusPending && items[i].Processing != nil && items[i].Processing.Stage == "queued" && strings.HasSuffix(strings.ToLower(items[i].Filename), ".pdf") {
+					items[i].Processing.Stage = "waiting_models"
+				}
+			}
+		}
+	}
+	return items, nil
 }
 
 func (s *Service) Get(ctx context.Context, actor user.User, subjectID, materialID string) (material.Material, error) {
@@ -188,11 +194,13 @@ func (s *Service) Delete(ctx context.Context, actor user.User, subjectID, materi
 		return err
 	}
 
-	if err := s.repo.Delete(ctx, subjectID, materialID); err != nil {
+	deleted, err := s.repo.Delete(ctx, subjectID, materialID)
+	if err != nil {
 		log.Printf("Failed to delete material %s from repository: %v", materialID, err)
 		return fault.New(fault.Unavailable, "DATABASE_ERROR", "Не удалось удалить материал из базы данных.")
 	}
 
+	mat = deleted
 	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
 	defer cancel()
 	if delErr := s.s3.Delete(cleanupCtx, mat.S3RawKey); delErr != nil {
@@ -200,6 +208,28 @@ func (s *Service) Delete(ctx context.Context, actor user.User, subjectID, materi
 	}
 	if delErr := s.s3.Delete(cleanupCtx, mat.S3ParsedKey); delErr != nil {
 		log.Printf("Failed to delete parsed S3 object %s for material %s: %v", mat.S3ParsedKey, materialID, delErr)
+	}
+	if mat.S3OCRKey != "" {
+		if delErr := s.s3.Delete(cleanupCtx, mat.S3OCRKey); delErr != nil {
+			log.Printf("Failed to delete OCR S3 object for material %s: %v", materialID, delErr)
+		}
+	}
+	parsedKey := fmt.Sprintf("subjects/%s/parsed/%s_%s.md", mat.SubjectID, mat.ID, mat.Filename)
+	if parsedKey != mat.S3ParsedKey {
+		_ = s.s3.Delete(cleanupCtx, parsedKey)
+	}
+	translatedKey := fmt.Sprintf("subjects/%s/translated/%s_%s.md", mat.SubjectID, mat.ID, mat.Filename)
+	if translatedKey != mat.S3ParsedKey {
+		_ = s.s3.Delete(cleanupCtx, translatedKey)
+	}
+	if mat.Cleaning != nil {
+		for _, key := range []string{mat.Cleaning.S3CleanedKey, mat.Cleaning.S3ReportKey} {
+			if key != "" {
+				if err := s.s3.Delete(cleanupCtx, key); err != nil {
+					log.Printf("Failed to delete cleaning object for %s: %v", materialID, err)
+				}
+			}
+		}
 	}
 	return nil
 }

@@ -1,6 +1,7 @@
 import { createContext, useContext } from 'react'
 import type { PropsWithChildren } from 'react'
 import type {
+  CourseGraphSnapshot,
   CourseMaterial,
   CourseMaterialUploadResult,
 } from '@/entities/competency-map'
@@ -21,6 +22,10 @@ export type CompetencyMapDependencies = {
       materialId: string,
       signal?: AbortSignal,
     ): Promise<void>
+    readCourseGraph(
+      subjectId: string,
+      signal?: AbortSignal,
+    ): Promise<CourseGraphSnapshot>
   }
 }
 

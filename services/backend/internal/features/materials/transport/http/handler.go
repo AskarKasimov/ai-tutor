@@ -38,7 +38,12 @@ type Handler struct {
 	maxUploadBytes int64
 }
 
-func NewHandler(service *application.Service, maxUploadBytes int64) *Handler {
+const (
+	MaxUploadFileBytes = 50 * 1024 * 1024
+	MaxFilesPerRequest = 48
+)
+
+func NewHandler(service *application.Service, maxUploadBytes int64, _ ...time.Duration) *Handler {
 	return &Handler{
 		service:        service,
 		maxUploadBytes: maxUploadBytes,
@@ -81,7 +86,10 @@ func (h *Handler) UploadMaterials(w http.ResponseWriter, r *http.Request) {
 
 	rc := http.NewResponseController(w)
 	_ = rc.SetReadDeadline(time.Now().Add(15 * time.Minute))
-	_ = rc.SetWriteDeadline(time.Now().Add(15 * time.Minute))
+	// The server's global WriteTimeout also covers time spent receiving a large
+	// multipart body. Clear it for this upload; work after upload is durable and
+	// asynchronous, and the response itself is small.
+	_ = rc.SetWriteDeadline(time.Time{})
 
 	mr, err := r.MultipartReader()
 	if err != nil {
@@ -91,8 +99,12 @@ func (h *Handler) UploadMaterials(w http.ResponseWriter, r *http.Request) {
 
 	uploaded := make([]material.Material, 0)
 	failed := make([]UploadFailedItem, 0)
+	fileCount := 0
 
 	for {
+		// Renew the inactivity deadline for each part. OCR runs in a background
+		// worker after the raw file and queue record have been saved.
+		_ = rc.SetReadDeadline(time.Now().Add(15 * time.Minute))
 		part, err := mr.NextPart()
 		if err == io.EOF {
 			break
@@ -122,6 +134,17 @@ func (h *Handler) UploadMaterials(w http.ResponseWriter, r *http.Request) {
 		filename := part.FileName()
 		if filename == "" {
 			_ = part.Close()
+			continue
+		}
+		fileCount++
+		if fileCount > MaxFilesPerRequest {
+			_, _ = io.Copy(io.Discard, part)
+			_ = part.Close()
+			failed = append(failed, UploadFailedItem{
+				Filename: filename,
+				Code:     "TOO_MANY_FILES",
+				Message:  fmt.Sprintf("За один запрос можно загрузить не больше %d файлов.", MaxFilesPerRequest),
+			})
 			continue
 		}
 
@@ -183,6 +206,7 @@ func (h *Handler) UploadMaterials(w http.ResponseWriter, r *http.Request) {
 		uploaded = append(uploaded, mat)
 	}
 
+	_ = rc.SetWriteDeadline(time.Now().Add(30 * time.Second))
 	if len(uploaded) == 0 {
 		if len(failed) > 0 {
 			first := failed[0]

@@ -5,7 +5,7 @@ import { createQueryClient } from '@/bootstrap/providers'
 import { MaterialUploadQueue } from '@/features/import-competency-map/ui/material-upload-queue'
 import { createQueryWrapper } from '../../../support/query-wrapper'
 
-it('sorts by week and supports drag-and-drop and keyboard reordering', async () => {
+it('sorts by week and supports drag-and-drop and reorder buttons', async () => {
   const dependencies = createAppDependencies()
   dependencies.competencyMap.uploadCourseMaterials = vi
     .fn()
@@ -61,10 +61,11 @@ it('sorts by week and supports drag-and-drop and keyboard reordering', async () 
   rows = screen.getAllByRole('listitem')
   expect(rows[0]).toHaveTextContent('Lecture 2.pdf')
 
-  const lectureTwoHandle = screen.getByRole('button', {
-    name: 'Переместить Lecture 2.pdf. Используйте стрелки вверх и вниз или перетащите.',
-  })
-  fireEvent.keyDown(lectureTwoHandle, { key: 'ArrowDown' })
+  fireEvent.click(
+    screen.getByRole('button', {
+      name: 'Переместить Lecture 2.pdf ниже',
+    }),
+  )
   rows = screen.getAllByRole('listitem')
   expect(rows[0]).toHaveTextContent('Lecture 10.pdf')
   expect(rows[1]).toHaveTextContent('Lecture 2.pdf')

@@ -104,7 +104,7 @@ func (s *Service) Start(ctx context.Context, ownerID, subjectID, key string) (ex
 	}
 	ex, step := exam.NewExam(graph, s.cfg.MaxQuestions)
 	session := exam.Session{ID: id, OwnerID: ownerID, SubjectID: subjectID, Status: exam.SessionActive, StartedAt: s.now().Unix(), Version: 1, Exam: ex, Turns: []exam.Turn{}}
-	if err := s.say(ctx, &session, step); err != nil {
+	if err := s.say(ctx, &session, step, "", false); err != nil {
 		return exam.Session{}, false, err
 	}
 	request := Request{OwnerID: ownerID, Key: key, Fingerprint: fingerprint, SessionID: id, Created: true, Response: session, CreatedAt: s.now().Unix()}
@@ -198,17 +198,23 @@ func (s *Service) Answer(ctx context.Context, ownerID, id, key string, a Answer)
 	if err := s.append(&session, exam.SpeakerStudent, exam.KindAnswer, &step.NodeID, &source, text); err != nil {
 		return exam.Session{}, err
 	}
-	evaluation := exam.Evaluation{Verdict: exam.VerdictDontKnow}
+	evaluate := EvaluationRequest{Kind: step.Kind, Node: node, Prerequisites: prerequisiteTitles(session.Exam.Graph, node), Dialogue: session.Dialogue(node.ID)}
+	assessment := Assessment{Evaluation: exam.Evaluation{Verdict: exam.VerdictDontKnow}}
 	if source != exam.SourceDontKnow {
-		if evaluation, err = s.examiner.Evaluate(ctx, EvaluationRequest{Kind: step.Kind, Node: node, Dialogue: session.Dialogue(node.ID)}); err != nil {
+		if assessment, err = s.examiner.Evaluate(ctx, evaluate); err != nil {
 			return exam.Session{}, modelError(err)
 		}
-		if err := checkEvaluation(evaluation, session); err != nil {
+		if err := checkEvaluation(assessment.Evaluation, session); err != nil {
 			return exam.Session{}, modelError(err)
 		}
 	}
-	next := session.Exam.Apply(evaluation)
-	if err := s.say(ctx, &session, next); err != nil {
+	next := session.Exam.Apply(assessment.Evaluation)
+	closed := next.NodeID != step.NodeID
+	reply, err := s.reply(ctx, evaluate, assessment, source, closed)
+	if err != nil {
+		return exam.Session{}, err
+	}
+	if err := s.say(ctx, &session, next, reply, closed); err != nil {
 		return exam.Session{}, err
 	}
 	session.Version++
@@ -310,12 +316,45 @@ func (s *Service) refresh(ctx context.Context, session exam.Session) (exam.Sessi
 	return s.store.Session(ctx, session.OwnerID, session.ID)
 }
 
-// say appends the Geek turn for a step; the closing completes the session.
-func (s *Service) say(ctx context.Context, session *exam.Session, step exam.Step) error {
+// reply is what Geek says about the answer before the next turn: a reaction
+// while the topic goes on, the explanation of the correct answer once it is
+// closed. The "don't know" button is not evaluated, so its explanation is a
+// call of its own.
+func (s *Service) reply(ctx context.Context, r EvaluationRequest, a Assessment, source exam.Source, closed bool) (string, error) {
+	if !closed {
+		return strings.TrimSpace(a.Reaction), nil
+	}
+	if source == exam.SourceDontKnow {
+		text, err := s.examiner.Explain(ctx, r)
+		if err != nil {
+			return "", modelError(err)
+		}
+		return strings.TrimSpace(text), nil
+	}
+	if text := strings.TrimSpace(a.Explanation); text != "" {
+		return text, nil
+	}
+	return strings.TrimSpace(a.Reaction), nil
+}
+
+func prerequisiteTitles(g exam.Graph, n exam.Node) []string {
+	titles := []string{}
+	for _, id := range n.Prerequisites {
+		if p, ok := g.Node(id); ok {
+			titles = append(titles, p.Title)
+		}
+	}
+	return titles
+}
+
+// say appends the Geek turn for a step, led by the reply to the previous
+// answer; recap marks a reply on the previous, closed topic. The closing
+// completes the session.
+func (s *Service) say(ctx context.Context, session *exam.Session, step exam.Step, reply string, recap bool) error {
 	if step.Kind == exam.KindClosing {
 		now := s.now().Unix()
 		session.Status, session.CompletedAt = exam.SessionCompleted, &now
-		return s.append(session, exam.SpeakerGeek, exam.KindClosing, nil, nil, closingText)
+		return s.appendLed(session, exam.KindClosing, nil, reply, recap, closingText)
 	}
 	node, _ := session.Exam.Graph.Node(step.NodeID)
 	var text string
@@ -332,7 +371,21 @@ func (s *Service) say(ctx context.Context, session *exam.Session, step exam.Step
 		}
 	}
 	nodeID := step.NodeID
-	return s.append(session, exam.SpeakerGeek, step.Kind, &nodeID, nil, text)
+	return s.appendLed(session, step.Kind, &nodeID, reply, recap, text)
+}
+
+// appendLed appends a Geek turn whose text starts with the reply, if any.
+func (s *Service) appendLed(session *exam.Session, kind exam.TurnKind, nodeID *string, reply string, recap bool, text string) error {
+	if reply != "" {
+		text = reply + "\n\n" + text
+	}
+	if err := s.append(session, exam.SpeakerGeek, kind, nodeID, nil, text); err != nil {
+		return err
+	}
+	if recap && reply != "" {
+		session.Turns[len(session.Turns)-1].Recap = reply + "\n\n"
+	}
+	return nil
 }
 
 func (s *Service) append(session *exam.Session, speaker exam.Speaker, kind exam.TurnKind, nodeID *string, source *exam.Source, text string) error {

@@ -132,6 +132,45 @@ func TestGatewayEvaluatesAndRetriesAnInvalidAnswerOnce(t *testing.T) {
 	}
 }
 
+func TestGatewayReturnsTheReplyAndLeavesTheRecapOutOfTheDialogue(t *testing.T) {
+	f := &fakeGateway{answers: []string{
+		`{"verdict":"answered","criteria":{"k1":1,"k2":1,"k3":0,"k4":0},"evidence_lines":[2],"reaction":" Близко. ","explanation":"Близко. На самом деле f = g + h."}`,
+		`{"verdict":"answered","criteria":{"k1":1,"k2":1,"k3":0,"k4":0},"evidence_lines":[2]}`,
+	}}
+	g := serve(t, f, time.Second)
+	recap := "Разбор прошлой темы.\n\n"
+	dialogue := []exam.Turn{
+		{Line: 1, Speaker: exam.SpeakerGeek, Text: recap + "Вопрос?", Recap: recap},
+		{Line: 2, Speaker: exam.SpeakerStudent, Text: "Ответ."},
+	}
+	request := application.EvaluationRequest{Kind: exam.KindQuestion, Node: node, Prerequisites: []string{"Эвристика"}, Dialogue: dialogue}
+	a, err := g.Evaluate(context.Background(), request)
+	if err != nil || a.Reaction != "Близко." || a.Explanation != "Близко. На самом деле f = g + h." || a.Verdict != exam.VerdictAnswered {
+		t.Fatalf("assessment = %+v, %v", a, err)
+	}
+	prompt := f.requests[0].GetMessages()[1].GetContent()
+	if strings.Contains(prompt, "Разбор прошлой темы") || !strings.Contains(prompt, "[1] Geek: Вопрос?") || !strings.Contains(prompt, "Эвристика") {
+		t.Fatalf("prompt = %s", prompt)
+	}
+	// A reply is optional: without it Geek just asks on.
+	if a, err := g.Evaluate(context.Background(), request); err != nil || a.Reaction != "" || a.Explanation != "" {
+		t.Fatalf("assessment without a reply = %+v, %v", a, err)
+	}
+}
+
+func TestGatewayExplainsOnTheLowPool(t *testing.T) {
+	f := &fakeGateway{answers: []string{`{"text": "A* складывает g и h."}`}}
+	g := serve(t, f, time.Second)
+	text, err := g.Explain(context.Background(), application.EvaluationRequest{Node: node, Prerequisites: []string{"Эвристика"}, Dialogue: turns})
+	if err != nil || text != "A* складывает g и h." {
+		t.Fatalf("explanation = %q, %v", text, err)
+	}
+	r := f.requests[0]
+	if r.GetComplexity() != llmgatewayv1.Complexity_COMPLEXITY_LOW || !strings.Contains(r.GetMessages()[1].GetContent(), "Эвристика") {
+		t.Fatalf("complexity = %s prompt = %s", r.GetComplexity(), r.GetMessages()[1].GetContent())
+	}
+}
+
 func TestGatewayDoesNotReuseFieldsOfARejectedAnswer(t *testing.T) {
 	f := &fakeGateway{answers: []string{
 		`{"verdict":"answered","criteria":{"k1":2,"k2":2,"k3":2,"k4":3},"evidence_lines":[2]}`,

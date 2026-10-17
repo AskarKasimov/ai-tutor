@@ -4,6 +4,9 @@ package geek
 
 import (
 	"net/http"
+	"time"
+
+	"go.uber.org/zap"
 
 	domain "github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/exam"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/user"
@@ -41,6 +44,8 @@ type Turn struct {
 	Source  *string `json:"source" enums:"voice,text,dont_know" extensions:"x-nullable"`
 	Speaker string  `json:"speaker" enums:"geek,student"`
 	Text    string  `json:"text"`
+	// Начало text у реплики Geek — реакция на прошлый ответ студента; пусто, если реакции нет. Озвучивается отдельно: GET .../audio?part=reply, остальное — part=question
+	Reply string `json:"reply"`
 }
 
 type Session struct {
@@ -283,16 +288,18 @@ func (h *Handler) Result(w http.ResponseWriter, r *http.Request) {
 
 // TurnAudio handles GET /diagnostic-sessions/{id}/turns/{turn_id}/audio.
 // @Summary Голос реплики Geek
-// @Description Backend синтезирует реплику Geek через TTS и кэширует WAV в S3; длина реплики не ограничена лимитом /voice/syntheses. 404 — реплика студента или чужая сессия.
+// @Description Backend синтезирует реплику Geek через TTS и кэширует WAV в S3; длина реплики не ограничена лимитом /voice/syntheses. Без part — вся реплика; part=reply — только реакция на прошлый ответ (поле reply), part=question — вопрос или завершение после неё. Части кэшируются по тексту, поэтому заранее подготовленный вопрос синтезируется один раз для всех студентов. 404 — реплика студента, чужая сессия или пустая часть (TURN_PART_NOT_FOUND).
 // @ID getDiagnosticTurnAudio
 // @Tags Диагностика
 // @Security accessCookie
 // @Produce audio/wav
 // @Param id path string true "ID диагностики" minlength(1) maxlength(128)
 // @Param turn_id path string true "ID реплики Geek" minlength(1) maxlength(128)
+// @Param part query string false "Часть реплики" Enums(reply, question)
 // @Success 200 {file} file "WAV реплики"
 // @Failure 401 {object} fault.Error
 // @Failure 404 {object} fault.Error
+// @Failure 422 {object} fault.Error
 // @Failure 503 {object} fault.Error
 // @Router /diagnostic-sessions/{id}/turns/{turn_id}/audio [get]
 func (h *Handler) TurnAudio(w http.ResponseWriter, r *http.Request) {
@@ -300,11 +307,15 @@ func (h *Handler) TurnAudio(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	data, err := h.service.TurnAudio(r.Context(), u.ID, r.PathValue("id"), r.PathValue("turn_id"))
+	part := application.AudioPart(r.URL.Query().Get("part"))
+	started := time.Now()
+	data, err := h.service.TurnAudio(r.Context(), u.ID, r.PathValue("id"), r.PathValue("turn_id"), part)
 	if err != nil {
 		httpx.Error(r.Context(), w, err)
 		return
 	}
+	httpx.LoggerFromContext(r.Context()).Info("geek turn audio", zap.String("session_id", r.PathValue("id")), zap.String("turn_id", r.PathValue("turn_id")),
+		zap.String("part", string(part)), zap.Int("bytes", len(data)), zap.Duration("duration", time.Since(started)))
 	w.Header().Set("Content-Type", "audio/wav")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(data)
@@ -321,7 +332,7 @@ func toSession(s domain.Session) Session {
 			v := string(*t.Source)
 			source = &v
 		}
-		out.Turns = append(out.Turns, Turn{CreatedAt: t.CreatedAt, ID: t.ID, Kind: string(t.Kind), Line: t.Line, NodeID: t.NodeID, Source: source, Speaker: string(t.Speaker), Text: t.Text})
+		out.Turns = append(out.Turns, Turn{CreatedAt: t.CreatedAt, ID: t.ID, Kind: string(t.Kind), Line: t.Line, NodeID: t.NodeID, Source: source, Speaker: string(t.Speaker), Text: t.Text, Reply: t.Reply})
 	}
 	return out
 }

@@ -6,6 +6,7 @@ import type {
   DiagnosticResult,
   DiagnosticSession,
   DiagnosticSummary,
+  TurnAudioPart,
 } from '../model/diagnostic-session'
 
 const apiBase = (import.meta.env.VITE_API_BASE_URL || '/api/v1').replace(
@@ -41,6 +42,8 @@ const sessionSchema = z
         node_id: z.string().nullable(),
         source: z.enum(['voice', 'text', 'dont_know']).nullable(),
         text: z.string(),
+        // Older backends send no reply; the whole text is then the question.
+        reply: z.string().default(''),
         created_at: unix,
       }),
     ),
@@ -61,6 +64,7 @@ const sessionSchema = z
       nodeId: t.node_id,
       source: t.source,
       text: t.text,
+      reply: t.reply,
       createdAt: t.created_at,
     })),
   }))
@@ -267,14 +271,17 @@ export async function readDiagnosticResult(
   )
 }
 
-// The voice of a Geek turn as WAV.
+// The voice of a Geek turn as WAV: the whole turn or one of its parts, the
+// reply to the previous answer or the question after it.
 export async function fetchTurnAudio(
   sessionId: string,
   turnId: string,
   signal: AbortSignal,
+  part?: TurnAudioPart,
 ): Promise<Blob> {
+  const query = part ? `?part=${part}` : ''
   const response = await request(
-    `${session(sessionId)}/turns/${encodeURIComponent(turnId)}/audio`,
+    `${session(sessionId)}/turns/${encodeURIComponent(turnId)}/audio${query}`,
     signal,
     AUDIO_TIMEOUT,
   )

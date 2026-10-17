@@ -63,6 +63,20 @@ type App struct {
 	// closes it in Close.
 	examiner geekapp.Examiner
 	gateway  io.Closer
+	// speech voices Geek turns; one instance serves students and the warmer,
+	// so concurrent misses of one question are synthesized once.
+	speech *geekapp.SpeechCache
+	// warmer voices prepared questions before students ask for them.
+	warmer *geekapp.Warmer
+}
+
+// voiceName identifies the TTS settings in the keys of cached speech.
+func (a *App) voiceName() string {
+	return fmt.Sprintf("seed=%d cfg=%g steps=%d", a.cfg.TTSSeed, a.cfg.TTSCFGValue, a.cfg.TTSInferenceTimesteps)
+}
+
+func (a *App) models() *modelapi.Client {
+	return modelapi.New(a.client, a.cfg.STTURL, a.cfg.TTSURL, a.cfg.VoiceTimeout, modelapi.TTSOptions{Seed: a.cfg.TTSSeed, CFGValue: a.cfg.TTSCFGValue, InferenceTimesteps: a.cfg.TTSInferenceTimesteps})
 }
 
 func New(cfg Config, pool *pgxpool.Pool, logger *zap.Logger) (*App, error) {
@@ -107,7 +121,9 @@ func New(cfg Config, pool *pgxpool.Pool, logger *zap.Logger) (*App, error) {
 	translator := materialstranslator.NewWithCompleter(materialstranslator.NewGateway(llmgatewayv1.NewGatewayClient(conn), cfg.LLMTimeout), 4)
 	a.ocrWorker = materialsapp.NewOCRWorker(materialRepository, a.materialsStorage, materialsOCR, translator)
 	a.cleaningWorker = materialsapp.NewCleaningWorker(materialRepository, a.materialsStorage, materialsOCR)
-	a.graphWorker = graphapp.New(graphpg.New(pool), materialRepository, a.materialsStorage, graphapi.New(cfg.CourseGraphURL))
+	a.speech = geekapp.NewSpeechCache(a.models(), geekstorage.NewAudio(storage, cfg.S3Bucket), a.voiceName())
+	a.warmer = geekapp.NewWarmer(a.speech)
+	a.graphWorker = graphapp.New(graphpg.New(pool), materialRepository, a.materialsStorage, graphapi.New(cfg.CourseGraphURL), a.warmer)
 
 	return a, nil
 }
@@ -148,7 +164,25 @@ func (a *App) RunBackground(ctx context.Context) error {
 	group.Go(func() error { return a.ocrWorker.Run(ctx) })
 	group.Go(func() error { return a.cleaningWorker.Run(ctx) })
 	group.Go(func() error { return a.graphWorker.Run(ctx) })
+	warmCtx := httpx.WithLogger(ctx, a.logger.With(zap.String("worker", "speech_warmer")))
+	group.Go(func() error { return a.warmer.Run(warmCtx) })
+	group.Go(func() error { a.warmFixture(warmCtx); return nil })
 	return group.Wait()
+}
+
+// warmFixture queues the questions of the default graph: every course
+// without its own graph is examined on it.
+func (a *App) warmFixture(ctx context.Context) {
+	if a.cfg.GeekGraphFixture == "" {
+		return
+	}
+	g, ok, err := geekgraph.Fixture{Path: a.cfg.GeekGraphFixture}.Current(ctx, "")
+	if err != nil || !ok {
+		a.logger.Warn("graph fixture questions are not voiced ahead", zap.Error(err))
+		return
+	}
+	questions := geekapp.MainQuestions(g)
+	a.logger.Info("graph fixture questions queued for synthesis", zap.Int("queued", a.warmer.Prepare(questions)), zap.Int("questions", len(questions)))
 }
 
 type materialsStorageAdapter struct {
@@ -175,10 +209,10 @@ func (m *materialsStorageAdapter) Delete(ctx context.Context, key string) error 
 func (a *App) Handler() http.Handler {
 	auth := authapp.New(authpg.New(a.pool), a.hasher, a.now)
 	authHandlers := authhttp.New(auth, a.now)
-	models := modelapi.New(a.client, a.cfg.STTURL, a.cfg.TTSURL, a.cfg.VoiceTimeout, modelapi.TTSOptions{Seed: a.cfg.TTSSeed, CFGValue: a.cfg.TTSCFGValue, InferenceTimesteps: a.cfg.TTSInferenceTimesteps})
+	models := a.models()
 	voice := voiceapp.New(voicepg.New(a.pool), models, models, a.now)
 	voiceHandlers := voicehttp.New(voice, a.cfg.MaxUploadBytes)
-	subjectHandlers := subjecthttp.New(subjectapp.New(subjectpg.New(a.pool), security.IDGenerator{}, a.now))
+	subjectHandlers := subjecthttp.New(subjectapp.New(subjectpg.New(a.pool), security.IDGenerator{}, a.now, a.cfg.GeekGraphFixture != ""))
 
 	materialsOCR := materialsocr.New(a.cfg.CourseGraphURL, a.cfg.CourseGraphTimeout)
 	materialsService := materialsapp.New(materialspg.New(a.pool), a.materialsStorage, materialsOCR, a.now)
@@ -187,8 +221,8 @@ func (a *App) Handler() http.Handler {
 
 	// The stored graph of stream A goes first once it exists; the fixture is the fallback.
 	graphs := geekgraph.Chain{geekgraph.NewStored(a.pool), geekgraph.Fixture{Path: a.cfg.GeekGraphFixture}}
-	geekService := geekapp.New(graphs, geekpg.New(a.pool), geekpg.NewTranscriptions(a.pool), a.examiner, models,
-		geekstorage.NewAudio(a.storage, a.cfg.S3Bucket), security.IDGenerator{}, a.now, geekapp.Config{MaxQuestions: a.cfg.GeekMaxQuestions})
+	geekService := geekapp.New(graphs, geekpg.New(a.pool), geekpg.NewTranscriptions(a.pool), a.examiner, a.speech,
+		security.IDGenerator{}, a.now, geekapp.Config{MaxQuestions: a.cfg.GeekMaxQuestions})
 	geekHandlers := geekhttp.New(geekService)
 
 	mux := http.NewServeMux()

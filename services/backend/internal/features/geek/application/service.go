@@ -8,7 +8,6 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/audio"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/exam"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/fault"
 )
@@ -26,23 +25,33 @@ type Config struct {
 	MaxQuestions int
 }
 
+// AudioPart selects what of a Geek turn is voiced.
+type AudioPart string
+
+const (
+	AudioWhole    AudioPart = ""
+	AudioReply    AudioPart = "reply"
+	AudioQuestion AudioPart = "question"
+)
+
 type Service struct {
 	graphs   GraphSource
 	store    Store
 	texts    Transcriptions
 	examiner Examiner
-	voice    Synthesizer
-	audio    AudioStore
 	ids      IDGenerator
 	now      func() time.Time
 	cfg      Config
+	speech   *SpeechCache
 }
 
-func New(graphs GraphSource, store Store, texts Transcriptions, examiner Examiner, voice Synthesizer, audio AudioStore, ids IDGenerator, now func() time.Time, cfg Config) *Service {
+// New builds the Geek service. speech voices turns; the app shares one
+// instance with the warmer, so a question missed by both is synthesized once.
+func New(graphs GraphSource, store Store, texts Transcriptions, examiner Examiner, speech *SpeechCache, ids IDGenerator, now func() time.Time, cfg Config) *Service {
 	if now == nil {
 		now = time.Now
 	}
-	return &Service{graphs: graphs, store: store, texts: texts, examiner: examiner, voice: voice, audio: audio, ids: ids, now: now, cfg: cfg}
+	return &Service{graphs: graphs, store: store, texts: texts, examiner: examiner, ids: ids, now: now, cfg: cfg, speech: speech}
 }
 
 // Answer is the student's reply: exactly one of a confirmed transcription, a
@@ -243,9 +252,11 @@ func (s *Service) Result(ctx context.Context, ownerID, id string) (exam.Result, 
 	return session.Result(), nil
 }
 
-// TurnAudio voices a Geek turn. The WAV is synthesized once, by parts within
-// the TTS limit, and cached.
-func (s *Service) TurnAudio(ctx context.Context, ownerID, id, turnID string) ([]byte, error) {
+// TurnAudio voices a Geek turn: the whole turn, or only the reply to the
+// previous answer or only the question after it. The whole turn is cached per
+// turn; a part is cached by its text, so a prepared question that every
+// student hears is synthesized once.
+func (s *Service) TurnAudio(ctx context.Context, ownerID, id, turnID string, part AudioPart) ([]byte, error) {
 	session, err := s.load(ctx, ownerID, id)
 	if err != nil {
 		return nil, err
@@ -254,28 +265,21 @@ func (s *Service) TurnAudio(ctx context.Context, ownerID, id, turnID string) ([]
 	if !ok || turn.Speaker != exam.SpeakerGeek {
 		return nil, fault.New(fault.NotFound, "TURN_NOT_FOUND", "Реплика Geek не найдена.")
 	}
-	key := "geek/" + session.ID + "/" + turn.ID + ".wav"
-	if data, ok, err := s.audio.Get(ctx, key); err != nil {
-		return nil, err
-	} else if ok {
-		return data, nil
-	}
-	parts := [][]byte{}
-	for _, chunk := range SplitSpeech(turn.Text, speechLimit) {
-		data, err := s.voice.Synthesize(ctx, chunk)
-		if err != nil {
-			return nil, err
+	switch part {
+	case AudioWhole:
+		return s.speech.Get(ctx, "geek/"+session.ID+"/"+turn.ID+".wav", turn.Text)
+	case AudioReply, AudioQuestion:
+		reply, question := turn.Parts()
+		text := question
+		if part == AudioReply {
+			text = reply
 		}
-		parts = append(parts, data)
+		if strings.TrimSpace(text) == "" {
+			return nil, fault.New(fault.NotFound, "TURN_PART_NOT_FOUND", "У реплики Geek нет этой части.")
+		}
+		return s.speech.Part(ctx, text)
 	}
-	data, ok := audio.JoinWAV(parts)
-	if !ok {
-		return nil, fault.New(fault.Upstream, "SYNTHESIS_FAILED", "Сервис синтеза вернул несовместимые части.")
-	}
-	if err := s.audio.Put(ctx, key, data); err != nil {
-		return nil, err
-	}
-	return data, nil
+	return nil, fault.Validation("part", "Часть реплики: reply или question.")
 }
 
 func (s *Service) load(ctx context.Context, ownerID, id string) (exam.Session, error) {
@@ -316,8 +320,8 @@ func (s *Service) refresh(ctx context.Context, session exam.Session) (exam.Sessi
 	return s.store.Session(ctx, session.OwnerID, session.ID)
 }
 
-// reply is what Geek says about the answer before the next turn: a reaction
-// while the topic goes on, the explanation of the correct answer once it is
+// reply is what Geek says about the answer before the next turn: a short
+// reaction while the topic goes on, followed by the correct answer once it is
 // closed. The "don't know" button is not evaluated, so its explanation is a
 // call of its own.
 func (s *Service) reply(ctx context.Context, r EvaluationRequest, a Assessment, source exam.Source, closed bool) (string, error) {
@@ -331,10 +335,7 @@ func (s *Service) reply(ctx context.Context, r EvaluationRequest, a Assessment, 
 		}
 		return strings.TrimSpace(text), nil
 	}
-	if text := strings.TrimSpace(a.Explanation); text != "" {
-		return text, nil
-	}
-	return strings.TrimSpace(a.Reaction), nil
+	return strings.TrimSpace(strings.TrimSpace(a.Reaction) + " " + strings.TrimSpace(a.Explanation)), nil
 }
 
 // unaskedPrerequisites are the titles of the direct and transitive
@@ -385,6 +386,7 @@ func (s *Service) appendLed(session *exam.Session, kind exam.TurnKind, nodeID *s
 	if err := s.append(session, exam.SpeakerGeek, kind, nodeID, nil, text); err != nil {
 		return err
 	}
+	session.Turns[len(session.Turns)-1].Reply = reply
 	if recap && reply != "" {
 		session.Turns[len(session.Turns)-1].Recap = reply + "\n\n"
 	}

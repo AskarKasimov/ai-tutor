@@ -203,6 +203,16 @@ paths:
                         type: array
                       topics_version:
                         const: topics-v2
+                      merged_thin_topics:
+                        description: Темы без объясняющего текста (меньше 120 символов без заголовков, картинок и ссылок), присоединённые к ближайшей теме того же материала
+                        items:
+                          properties:
+                            title:
+                              type: string
+                            into:
+                              type: string
+                          type: object
+                        type: array
                     required: [topics, topics_version]
                     type: object
                 required: [markdown, report]

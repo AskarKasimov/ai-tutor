@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/coursegraph"
@@ -32,15 +33,43 @@ type Builder interface {
 	Build(context.Context, []coursegraph.Material) (json.RawMessage, error)
 }
 
+// Voices synthesizes prepared questions in the background; Prepare queues
+// them without waiting.
+type Voices interface {
+	Prepare(texts []string) int
+}
+
 type Worker struct {
 	repo      Repository
 	materials Materials
 	storage   Storage
 	builder   Builder
+	voices    Voices
 }
 
-func New(repo Repository, materials Materials, storage Storage, builder Builder) *Worker {
-	return &Worker{repo: repo, materials: materials, storage: storage, builder: builder}
+// New builds the graph worker; voices may be nil, then questions are voiced
+// only when a student first hears them.
+func New(repo Repository, materials Materials, storage Storage, builder Builder, voices Voices) *Worker {
+	return &Worker{repo: repo, materials: materials, storage: storage, builder: builder, voices: voices}
+}
+
+// TopicQuestions are the prepared questions of a built graph, one per topic.
+func TopicQuestions(graph json.RawMessage) []string {
+	var shape struct {
+		Topics []struct {
+			Question string `json:"question"`
+		} `json:"topics"`
+	}
+	out := []string{}
+	if json.Unmarshal(graph, &shape) != nil {
+		return out
+	}
+	for _, t := range shape.Topics {
+		if q := strings.TrimSpace(t.Question); q != "" {
+			out = append(out, q)
+		}
+	}
+	return out
 }
 
 func (w *Worker) Read(ctx context.Context, actor user.User, subjectID string) (coursegraph.Snapshot, error) {
@@ -222,6 +251,12 @@ func (w *Worker) process(ctx context.Context, job coursegraph.Job) error {
 	}
 	if json.Unmarshal(graph, &shape) != nil || shape.Version != "course-graph-v1" || !shape.Quality.Acyclic || len(shape.Topics) == 0 || shape.Prerequisites == nil {
 		return fmt.Errorf("invalid graph result")
+	}
+	// The questions are voiced in the background before the graph is
+	// published, so the first students already hear them from the cache.
+	if w.voices != nil {
+		questions := TopicQuestions(graph)
+		log.Printf("course graph %s: queued %d of %d questions for synthesis", job.SubjectID, w.voices.Prepare(questions), len(questions))
 	}
 	accepted, err := w.repo.Finish(ctx, job, graph, time.Now())
 	if err != nil || accepted {

@@ -62,6 +62,7 @@ void i18n.init({
           queueAdd: 'Добавить PDF или ZIP',
           queueMoveUp: 'Переместить {{name}} выше',
           queueMoveDown: 'Переместить {{name}} ниже',
+          queueDragItem: 'Перетащить {{name}}',
           queueRemove: 'Удалить из списка',
           queueSendAll: 'Отправить всё',
           queueInvalidArchive: 'Не удалось прочитать выбранный файл.',

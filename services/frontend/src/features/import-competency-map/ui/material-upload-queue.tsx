@@ -1,5 +1,5 @@
 import { Button, Select, Text, TextField } from '@radix-ui/themes'
-import { ChevronDown, ChevronUp } from 'lucide-react'
+import { ChevronDown, ChevronUp, GripVertical } from 'lucide-react'
 import { useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type {
@@ -122,7 +122,8 @@ export function MaterialUploadQueue({
               const target = event.target
               if (
                 target instanceof HTMLElement &&
-                target.closest('button, input, [role="combobox"]')
+                target.closest('button, input, [role="combobox"]') &&
+                !target.closest('[data-queue-drag-handle]')
               ) {
                 event.preventDefault()
                 return
@@ -153,20 +154,25 @@ export function MaterialUploadQueue({
               setDropTargetId(null)
             }}
           >
-            <div>
-              <Text className={styles.name}>{item.file.name}</Text>
-              {item.error && (
-                <Text as="p" role="alert" color="red" size="1">
-                  {item.error}
-                </Text>
-              )}
-            </div>
-            <div className={styles.weekControl}>
-              <div className={styles.orderControls}>
+            <div className={styles.reorderControls}>
+              <Button
+                type="button"
+                variant="ghost"
+                className={styles.dragHandle}
+                aria-label={t('competencyMap.queueDragItem', {
+                  name: item.file.name,
+                })}
+                disabled={disabled || upload.isPending || preparing}
+                draggable={!disabled && !upload.isPending && !preparing}
+                data-queue-drag-handle="true"
+              >
+                <GripVertical aria-hidden="true" size={20} />
+              </Button>
+              <div className={styles.orderButtons}>
                 <Button
                   type="button"
                   variant="ghost"
-                  size="1"
+                  size="2"
                   className={styles.orderButton}
                   aria-label={t('competencyMap.queueMoveUp', {
                     name: item.file.name,
@@ -190,12 +196,12 @@ export function MaterialUploadQueue({
                     })
                   }
                 >
-                  <ChevronUp aria-hidden="true" size={16} />
+                  <ChevronUp aria-hidden="true" size={20} />
                 </Button>
                 <Button
                   type="button"
                   variant="ghost"
-                  size="1"
+                  size="2"
                   className={styles.orderButton}
                   aria-label={t('competencyMap.queueMoveDown', {
                     name: item.file.name,
@@ -219,31 +225,39 @@ export function MaterialUploadQueue({
                     })
                   }
                 >
-                  <ChevronDown aria-hidden="true" size={16} />
+                  <ChevronDown aria-hidden="true" size={20} />
                 </Button>
               </div>
-              <label className={styles.weekField}>
-                <span>{t('courseGraph.weekLabel')}</span>
-                <TextField.Root
-                  className={styles.weekInput}
-                  type="number"
-                  min="1"
-                  value={item.week}
-                  disabled={disabled || upload.isPending || preparing}
-                  onChange={(event) =>
-                    setItems((current) =>
-                      sortMaterialsByWeek(
-                        current.map((row) =>
-                          row.id === item.id
-                            ? { ...row, week: event.target.value }
-                            : row,
-                        ),
-                      ),
-                    )
-                  }
-                />
-              </label>
             </div>
+            <div>
+              <Text className={styles.name}>{item.file.name}</Text>
+              {item.error && (
+                <Text as="p" role="alert" color="red" size="1">
+                  {item.error}
+                </Text>
+              )}
+            </div>
+            <label className={styles.weekField}>
+              <span>{t('courseGraph.weekLabel')}</span>
+              <TextField.Root
+                className={styles.weekInput}
+                type="number"
+                min="1"
+                value={item.week}
+                disabled={disabled || upload.isPending || preparing}
+                onChange={(event) =>
+                  setItems((current) =>
+                    sortMaterialsByWeek(
+                      current.map((row) =>
+                        row.id === item.id
+                          ? { ...row, week: event.target.value }
+                          : row,
+                      ),
+                    ),
+                  )
+                }
+              />
+            </label>
             <div className={styles.kindField}>
               <Select.Root
                 value={item.kind}

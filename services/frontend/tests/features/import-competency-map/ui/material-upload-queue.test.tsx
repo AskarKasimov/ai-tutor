@@ -47,7 +47,11 @@ it('sorts by week and supports drag-and-drop and reorder buttons', async () => {
     },
   }
   expect(rows[1]).toHaveAttribute('draggable', 'true')
-  fireEvent.dragStart(rows[1], { dataTransfer: transfer })
+  const lectureTenDragHandle = screen.getByRole('button', {
+    name: 'Перетащить Lecture 10.pdf',
+  })
+  expect(lectureTenDragHandle).toHaveAttribute('draggable', 'true')
+  fireEvent.dragStart(lectureTenDragHandle, { dataTransfer: transfer })
   fireEvent.dragOver(rows[0], { dataTransfer: transfer })
   fireEvent.drop(rows[0], { dataTransfer: transfer })
 

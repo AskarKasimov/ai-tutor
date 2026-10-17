@@ -3,6 +3,7 @@ import { AsyncUnzipInflate, Unzip } from 'fflate'
 export const MATERIAL_ARCHIVE_LIMIT = 250 * 1024 * 1024
 export const MATERIAL_FILE_LIMIT = 25 * 1024 * 1024
 export const MATERIAL_ENTRY_LIMIT = 500
+export const MATERIAL_QUEUE_ITEM_LIMIT = MATERIAL_ENTRY_LIMIT
 export const MATERIAL_QUEUE_LIMIT = 250 * 1024 * 1024
 
 export class MaterialArchiveError extends Error {

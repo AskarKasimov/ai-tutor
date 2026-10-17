@@ -10,6 +10,7 @@ import { useUploadCourseMaterialsMutation } from '../model/use-competency-map'
 import {
   MaterialArchiveError,
   MATERIAL_QUEUE_LIMIT,
+  MATERIAL_QUEUE_ITEM_LIMIT,
   prepareMaterialFiles,
 } from '../model/prepare-material-files'
 import {
@@ -54,6 +55,8 @@ export function MaterialUploadQueue({
     try {
       const prepared = await prepareMaterialFiles(file)
       const queued = items.reduce((sum, item) => sum + item.file.size, 0)
+      if (items.length + prepared.length > MATERIAL_QUEUE_ITEM_LIMIT)
+        throw new MaterialArchiveError('too-many-files')
       if (
         queued + prepared.reduce((sum, item) => sum + item.size, 0) >
         MATERIAL_QUEUE_LIMIT

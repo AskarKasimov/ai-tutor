@@ -21,16 +21,16 @@ import {
   EyeOff,
   FileText,
   ArrowRight,
-  LockKeyhole,
   ShieldCheck,
   Sparkles,
   Trash2,
 } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   downloadCourseMaterialRaw,
   type CourseMaterial,
+  type CourseMaterialMetadataPatch,
   type CourseMaterialKindOption,
 } from '@/entities/competency-map'
 import { CourseGraphApiError } from '@/entities/course-graph'
@@ -41,6 +41,7 @@ import {
   useCourseMaterialKindsQuery,
   useCourseMaterialsChanging,
   useReplaceCourseMaterialMutation,
+  useUpdateCourseMaterialMetadataMutation,
   MaterialUploadQueue,
 } from '@/features/import-competency-map'
 import {
@@ -94,6 +95,10 @@ function CompetencyMapAdmin({ userId }: { userId: string }) {
   const materialsQuery = useSubjectMaterialsQuery(userId, subjectId)
   const materialKindsQuery = useCourseMaterialKindsQuery(userId)
   const replaceMaterial = useReplaceCourseMaterialMutation(userId, subjectId)
+  const updateMetadata = useUpdateCourseMaterialMetadataMutation(
+    userId,
+    subjectId,
+  )
   const deleteMaterial = useDeleteCourseMaterialMutation(userId, subjectId)
   const latestBuild = useLatestCourseGraphBuildQuery(userId, subjectId)
   const courseGraph = useCourseGraphQuery(userId, subjectId)
@@ -216,6 +221,7 @@ function CompetencyMapAdmin({ userId }: { userId: string }) {
                 {(subjects.data?.length ?? 0) > 1 && (
                   <Select.Root
                     value={subjectId}
+                    disabled={busy}
                     onValueChange={setSelectedSubjectId}
                   >
                     <Select.Trigger
@@ -345,6 +351,7 @@ function CompetencyMapAdmin({ userId }: { userId: string }) {
                 )}
 
               <MaterialUploadQueue
+                key={subjectId}
                 userId={userId}
                 subjectId={subjectId}
                 kinds={materialKindsQuery.data ?? []}
@@ -409,6 +416,9 @@ function CompetencyMapAdmin({ userId }: { userId: string }) {
                       }
                       onReplace={(file) =>
                         replaceMaterial.mutate({ materialId: mat.id, file })
+                      }
+                      onUpdateMetadata={(patch) =>
+                        updateMetadata.mutate({ materialId: mat.id, patch })
                       }
                       busy={busy}
                     />
@@ -600,6 +610,7 @@ function MaterialItemCard({
   onTogglePreview,
   onDelete,
   onReplace,
+  onUpdateMetadata,
   busy,
 }: {
   material: CourseMaterial
@@ -609,11 +620,14 @@ function MaterialItemCard({
   onTogglePreview: () => void
   onDelete: () => void
   onReplace: (file: File) => void
+  onUpdateMetadata: (patch: CourseMaterialMetadataPatch) => void
   busy: boolean
 }) {
   const { t, i18n } = useTranslation()
   const [downloading, setDownloading] = useState(false)
   const [downloadError, setDownloadError] = useState<string | null>(null)
+  const [week, setWeek] = useState(material.week?.toString() ?? '')
+  useEffect(() => setWeek(material.week?.toString() ?? ''), [material.week])
   const formattedSize =
     material.fileSize > 1024 * 1024
       ? `${(material.fileSize / (1024 * 1024)).toFixed(1)} МБ`
@@ -630,11 +644,6 @@ function MaterialItemCard({
       : material.status === 'failed'
         ? 'red'
         : 'amber'
-  const materialKindLabel =
-    kinds.find((kind) => kind.code === material.kind)?.label ??
-    material.kind ??
-    t('courseGraph.kindNotSet')
-
   async function handleDownload() {
     setDownloading(true)
     setDownloadError(null)
@@ -746,18 +755,51 @@ function MaterialItemCard({
         />
       </label>
       <div className={styles.materialClassification}>
-        <Flex gap="2" align="center">
-          <LockKeyhole size={14} aria-hidden="true" />
-          <Text size="2">
-            {t('courseGraph.materialMetadataLocked', {
-              week: material.week || t('courseGraph.weekMissing'),
-              kind: materialKindLabel,
-            })}
+        <label>
+          <Text as="span" size="2">
+            {t('courseGraph.weekLabel')}
           </Text>
-        </Flex>
-        <Text size="1" color="gray">
-          {t('courseGraph.materialMetadataChangeHint')}
-        </Text>
+          <TextField.Root
+            aria-label={t('courseGraph.weekLabel')}
+            type="number"
+            min="1"
+            value={week}
+            disabled={busy}
+            onChange={(event) => setWeek(event.currentTarget.value)}
+            onBlur={(event) => {
+              const week = Number(event.currentTarget.value)
+              if (Number.isInteger(week) && week > 0 && week !== material.week)
+                onUpdateMetadata({ week })
+              else if (!Number.isInteger(week) || week < 1)
+                setWeek(material.week?.toString() ?? '')
+            }}
+          />
+        </label>
+        <label>
+          <Text as="span" size="2">
+            {t('courseGraph.kindLabel')}
+          </Text>
+          <Select.Root
+            value={material.kind ?? ''}
+            onValueChange={(kind) =>
+              onUpdateMetadata({
+                kind: kind as NonNullable<CourseMaterial['kind']>,
+              })
+            }
+            disabled={busy}
+          >
+            <Select.Trigger
+              aria-label={`${t('courseGraph.kindLabel')}: ${material.filename}`}
+            />
+            <Select.Content>
+              {kinds.map((kind) => (
+                <Select.Item key={kind.code} value={kind.code}>
+                  {kind.label}
+                </Select.Item>
+              ))}
+            </Select.Content>
+          </Select.Root>
+        </label>
         {(!material.week || !material.kind) && (
           <Badge color="amber">{t('courseGraph.metadataMissing')}</Badge>
         )}

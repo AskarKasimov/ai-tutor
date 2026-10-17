@@ -72,7 +72,8 @@ void i18n.init({
             'invalid-pdf': 'Файл не является корректным PDF.',
             'invalid-file-type': 'Выберите PDF или ZIP.',
             'contains-non-pdf': 'В ZIP есть файлы не в формате PDF.',
-            'too-many-files': 'В ZIP больше 500 файлов.',
+            'too-many-files':
+              'В очереди может быть не больше 500 PDF за одну загрузку.',
             'expanded-too-large': 'Распакованный объём превышает 250 МиБ.',
             'empty-archive': 'В ZIP не найдено PDF-файлов.',
             'queue-too-large': 'Общий размер очереди превышает 250 МиБ.',
@@ -169,9 +170,6 @@ void i18n.init({
           kindLabel: 'Тип материала',
           kindMissing: 'Выберите тип',
           kindNotSet: 'не указан',
-          materialMetadataLocked: 'Неделя {{week}} · {{kind}}',
-          materialMetadataChangeHint:
-            'Чтобы изменить неделю или тип, удалите PDF и добавьте его заново в очередь загрузки.',
           kindsUnavailable: 'Не удалось загрузить виды материалов.',
           kindsEmpty: 'В справочнике нет видов материалов.',
           metadataMissing: 'Нужно указать неделю и тип',

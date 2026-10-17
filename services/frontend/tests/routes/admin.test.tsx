@@ -515,33 +515,92 @@ it('uploads lecture files and shows success message', async () => {
 })
 
 it('blocks graph generation for legacy materials until their metadata is fixed', async () => {
-  backend({ materials: [{ ...sampleMaterials[0], week: null, kind: null }] })
+  const fetch = backend({
+    materials: [{ ...sampleMaterials[0], week: null, kind: null }],
+  })
   renderApp('/admin/competency-map')
   expect(
     await screen.findByText('У 1 материалов не указаны неделя или тип.'),
   ).toBeVisible()
+  const legacyWeek = screen.getByRole('spinbutton', { name: 'Неделя' })
+  expect(legacyWeek).toBeEnabled()
+  expect(
+    screen.getByRole('combobox', { name: 'Тип материала: lecture1.pdf' }),
+  ).toBeVisible()
   expect(
     screen.getByRole('button', { name: /Собрать граф тем/ }),
   ).toBeDisabled()
+  fireEvent.change(legacyWeek, { target: { value: '3' } })
+  fireEvent.blur(legacyWeek)
+  await waitFor(() =>
+    expect(
+      fetch.mock.calls.some(
+        ([url, request]) =>
+          url.endsWith('/materials/mat-1') && request?.method === 'PATCH',
+      ),
+    ).toBe(true),
+  )
 })
 
-it('keeps uploaded material metadata fixed and explains how to change it', async () => {
+it('clears staged PDFs when changing the selected course', async () => {
+  backend()
+  renderApp('/admin/competency-map')
+  fireEvent.change(await screen.findByLabelText('Добавить PDF или ZIP'), {
+    target: { files: [new File(['%PDF-1.7'], 'subject-a.pdf')] },
+  })
+  expect(await screen.findByText('subject-a.pdf')).toBeVisible()
+
+  const courseSelect = screen.getByRole('combobox', { name: 'Курс' })
+  fireEvent.click(courseSelect)
+  fireEvent.click(await screen.findByRole('option', { name: 'Статистика' }))
+
+  expect(
+    await screen.findByRole('heading', { name: 'Статистика', level: 2 }),
+  ).toBeVisible()
+  expect(screen.queryByText('subject-a.pdf')).not.toBeInTheDocument()
+})
+
+it('allows changing uploaded material metadata without re-uploading the PDF', async () => {
   const fetch = backend()
   renderApp('/admin/competency-map')
-  expect(await screen.findByText('Неделя 1 · Лекция')).toBeVisible()
-  expect(
-    screen.getByText(
-      'Чтобы изменить неделю или тип, удалите PDF и добавьте его заново в очередь загрузки.',
-    ),
-  ).toBeVisible()
-  expect(
-    screen.queryByRole('combobox', { name: 'Тип материала: lecture1.pdf' }),
-  ).not.toBeInTheDocument()
-  expect(screen.queryByRole('spinbutton', { name: 'Неделя' })).toBeNull()
+  expect(await screen.findByRole('spinbutton', { name: 'Неделя' })).toHaveValue(
+    1,
+  )
+  fireEvent.change(screen.getByRole('spinbutton', { name: 'Неделя' }), {
+    target: { value: '2' },
+  })
+  fireEvent.blur(screen.getByRole('spinbutton', { name: 'Неделя' }))
+  await waitFor(() =>
+    expect(
+      fetch.mock.calls.some(
+        ([url, request]) =>
+          url.endsWith('/materials/mat-1') && request?.method === 'PATCH',
+      ),
+    ).toBe(true),
+  )
+  const patchRequest = fetch.mock.calls.find(
+    ([url, request]) =>
+      url.endsWith('/materials/mat-1') && request?.method === 'PATCH',
+  )?.[1]
+  expect(JSON.parse(patchRequest?.body as string)).toEqual({ week: 2 })
+
+  fireEvent.click(
+    screen.getByRole('combobox', { name: 'Тип материала: lecture1.pdf' }),
+  )
+  fireEvent.click(await screen.findByRole('option', { name: 'Практика' }))
+  await waitFor(() =>
+    expect(
+      fetch.mock.calls.some(([url, request]) => {
+        if (!url.endsWith('/materials/mat-1') || request?.method !== 'PATCH')
+          return false
+        return JSON.parse(request.body as string).kind === 'tutorial'
+      }),
+    ).toBe(true),
+  )
   expect(
     fetch.mock.calls.some(
       ([url, request]) =>
-        url.endsWith('/materials/mat-1') && request?.method === 'PATCH',
+        url.endsWith('/materials') && request?.method === 'POST',
     ),
   ).toBe(false)
 })
@@ -567,6 +626,7 @@ it('blocks graph generation while a material upload is pending', async () => {
   })
   fireEvent.click(await screen.findByRole('button', { name: 'Отправить всё' }))
   await waitFor(() => expect(buildButton).toBeDisabled())
+  expect(screen.getByRole('combobox', { name: 'Курс' })).toBeDisabled()
   expect(
     screen.getByText('Дождитесь сохранения изменений материалов.'),
   ).toBeVisible()
@@ -735,7 +795,11 @@ it('expands a PDF-only ZIP into independently editable queue rows', async () => 
   fireEvent.change(input, { target: { files: [archive] } })
   expect(await screen.findByText('week-1.pdf')).toBeVisible()
   expect(await screen.findByText('week-2.pdf')).toBeVisible()
-  expect(screen.getAllByRole('spinbutton', { name: 'Неделя' })).toHaveLength(2)
+  expect(
+    within(screen.getByRole('list')).getAllByRole('spinbutton', {
+      name: 'Неделя',
+    }),
+  ).toHaveLength(2)
 })
 
 it('rejects a mixed ZIP without adding any PDFs to the queue', async () => {

@@ -1220,11 +1220,13 @@ function CourseGraphCard({
               )}
             </span>
 
-            {snapshot?.stale && topicsCount > 0 && status !== 'waiting_materials' && (
-              <Badge color="amber" size="1">
-                {t('competencyMap.graphStale')}
-              </Badge>
-            )}
+            {snapshot?.stale &&
+              topicsCount > 0 &&
+              status !== 'waiting_materials' && (
+                <Badge color="amber" size="1">
+                  {t('competencyMap.graphStale')}
+                </Badge>
+              )}
           </Flex>
 
           {isBuilding && (

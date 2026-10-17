@@ -472,12 +472,15 @@ components:
         prerequisites:
           description: >-
             Рёбра «тема опирается на тему»; граф ацикличен, без рёбер, повторяющих более длинный путь.
-            Рёбра второго прохода помечены via: attach и не имеют requirement.
+            Рёбра второго прохода помечены via: attach и не имеют requirement; у всех рёбер есть
+            target_evidence и prerequisite_evidence — проверенные дословные цитаты.
           items:
             $ref: "#/components/schemas/Edge"
           type: array
         merged_isolated:
-          description: Темы без связей, слитые с ближайшей похожей темой (id, title, into)
+          description: >-
+            Темы без связей, слитые с ближайшей похожей темой (id, title, into); у принявшей темы
+            новый основной вопрос
           type: array
         transitive_links:
           description: Рёбра, убранные транзитивной редукцией

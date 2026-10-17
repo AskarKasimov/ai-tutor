@@ -1,7 +1,6 @@
 """Bounded, evidence-grounded prerequisite judgment with explicit abstentions."""
 import asyncio
 import json
-import re
 
 from course_graph.topics.extract import (
     clean_topic_title,
@@ -9,13 +8,16 @@ from course_graph.topics.extract import (
     normalized_title,
     procedural_title,
 )
+from course_graph.topics.evidence import evidence_for, valid_evidence
 from course_graph.topics.models import LinkResponse, RequirementDecision, Topic
 from course_graph.topics.retrieval import CandidateIndex
 from course_graph.topics.structure import (
     attach_links,
     can_precede,
+    depth,
     merge_isolated,
     merge_synonyms,
+    refresh_questions,
     strip_fences,
     topic_kinds,
     topic_week,
@@ -68,46 +70,6 @@ def reachable(adjacency, start, target):
         if node not in seen:
             seen.add(node)
             stack.extend(adjacency.get(node, []))
-    return False
-
-
-def evidence_for(topic, query, limit, encoder=None):
-    from course_graph.topics.retrieval import tokens
-    terms = tokens(query)
-    windows = [(s, s.text[start:start+800]) for s in topic.sources for start in range(0, len(s.text), 650)]
-    if encoder and windows:
-        vectors = encoder.encode([text for _, text in windows])
-        query_vector = encoder.encode([query], query=True)[0]
-        scores = vectors @ query_vector
-        ranked = [windows[i] for i in sorted(range(len(windows)), key=lambda i: (-float(scores[i]), i))]
-    else:
-        ranked = sorted(windows, key=lambda item: (-len(terms & tokens(item[1])), item[0].material_id, item[0].start))
-    evidence, remaining = [], limit
-    for source, window in ranked:
-        if remaining <= 0:
-            break
-        # Visible excerpt is explicit; evidence is checked against this excerpt.
-        text = window[:remaining]
-        evidence.append({"material_id": source.material_id, "block_id": source.block_id, "text": text})
-        remaining -= len(text)
-    return evidence
-
-
-def valid_evidence(evidence, excerpts):
-    if not excerpts or not evidence or not evidence.quote or not evidence.quote.strip():
-        return False
-    raw_quote = evidence.quote.strip()
-    words = raw_quote.split()
-    if not words:
-        return False
-
-    pattern = r"\s+".join(re.escape(word) for word in words)
-    for source in excerpts:
-        if evidence.material_id == source["material_id"] and evidence.block_id == source["block_id"]:
-            match = re.search(pattern, source["text"])
-            if match:
-                evidence.quote = match.group()
-                return True
     return False
 
 
@@ -333,15 +295,19 @@ async def build_links(topics, complete, encoder, per_requirement=5, max_chars=16
             return [], [RequirementDecision(target_id=item["target_id"], requirement=item["requirement"],
                                            prerequisite_ids=[], reason=reason) for item in batch]
         if problems and correction is None:
-            # Ask again only for the requirements whose links failed the check.
+            # Ask again only for the requirements whose links failed the check;
+            # the links that passed stay whatever the second answer is.
             redo = [i for i in batch if (i["target_id"], i["requirement"]) in problems]
             note = "; ".join(f"{k[0]} «{k[1]}»: {', '.join(v)}" for k, v in problems.items())[:1500]
             again_links, again_decisions = await judge(redo, False, "Отклонены связи: " + note +
                                                        ". Цитаты копируй из evidence без изменения слов.")
-            for key in problems:
-                decisions.pop(key, None)
-            links = {k: v for k, v in links.items() if (k[0], k[1]) not in problems}
-            return list(links.values()) + again_links, list(decisions.values()) + again_decisions
+            for link in again_links:
+                links.setdefault((link.target_id, link.requirement, link.prerequisite_id), link)
+            for again in again_decisions:
+                key = (again.target_id, again.requirement)
+                ids = [p for t, r, p in links if (t, r) == key]
+                decisions[key] = RequirementDecision(target_id=key[0], requirement=key[1], prerequisite_ids=ids,
+                                                     reason=again.reason if again.prerequisite_ids else decisions[key].reason)
         return list(links.values()), list(decisions.values())
 
     jobs = [asyncio.create_task(judge(b)) for b in batches]
@@ -356,13 +322,14 @@ async def build_links(topics, complete, encoder, per_requirement=5, max_chars=16
              for links, _ in results for link in links]
     _, hierarchy, _ = build_hierarchy(topics, [], canonical, encoder)
     parents = {h["target"]: h["source"] for h in hierarchy}
-    attached, attach_requests = await attach_links(topics, found, parents, complete, encoder, concurrency=concurrency)
+    attached, attach_rejected, attach_requests = await attach_links(topics, found, parents, complete, encoder,
+                                                                    concurrency=concurrency)
 
     def week_order(edge):
         a, b = topic_week(by_id[edge["source"]]), topic_week(by_id[edge["target"]])
         return 0 if a is not None and b is not None and a < b else 1
     # Edges that follow the course order go first, so a cycle drops the reverse one.
-    adjacency, edges, rejected = {}, [], list(invalid)
+    adjacency, edges, rejected = {}, [], attach_rejected
     for edge in sorted(found, key=week_order) + sorted(attached, key=week_order):
         source, target = edge["source"], edge["target"]
         if reachable(adjacency, target, source):
@@ -371,12 +338,32 @@ async def build_links(topics, complete, encoder, per_requirement=5, max_chars=16
         adjacency.setdefault(source, set()).add(target)
         edges.append(edge)
     decisions = unavailable + [d.model_dump() for _, ds in results for d in ds]
-    accepted = {(e["target"], e["requirement"], e["source"]) for e in edges if "requirement" in e}
-    for decision in decisions:
-        decision["prerequisite_ids"] = [p for p in decision["prerequisite_ids"] if
-            (decision["target_id"], decision["requirement"], p) in accepted]
-    topics, isolated, merged_isolated = merge_isolated(topics, edges, encoder)
+
+    unmerged = list(topics)
+    topics, isolated, merged_isolated, originals = merge_isolated(topics, edges, encoder)
+    # A card that absorbed another topic gets a question about all of it.
+    hosts = [t for t in topics if t.id in originals]
+    failed, question_requests = await refresh_questions(hosts, light_complete or complete, concurrency=concurrency)
+    if failed:
+        # No question for the merged card: undo its merges, never keep the old one.
+        back = {old for old, host in isolated.items() if host in failed}
+        topics = [originals[t.id] if t.id in failed else t for t in unmerged
+                  if t.id not in isolated or t.id in back]
+        isolated = {old: host for old, host in isolated.items() if old not in back}
+        merged_isolated = [m for m in merged_isolated if m["id"] not in back]
     follow(isolated)
+    by_id = {t.id: t for t in topics}
+    # Merges change topic weeks; the published edges must still follow the course order.
+    ordered = []
+    for edge in edges:
+        if can_precede(by_id[edge["source"]], by_id[edge["target"]]):
+            ordered.append(edge)
+        else:
+            rejected.append({**edge, "validation_error": "week_order"})
+    edges = ordered
+    accepted = {(e["target"], e["requirement"], e["source"]) for e in edges if "requirement" in e}
+    rejected += [r for r in invalid if (r["target_id"], r["requirement"], r["prerequisite_id"]) not in accepted]
+    decisions = settle_requirements(decisions, topics, aliases, accepted)
     edges, transitive = transitive_reduction(edges)
     canonical = {normalized_title(t.title): t.id for t in topics}
     topics, hierarchy, hierarchy_adj = build_hierarchy(topics, edges, canonical, encoder)
@@ -385,28 +372,38 @@ async def build_links(topics, complete, encoder, per_requirement=5, max_chars=16
             "aliases": aliases, "prerequisites": edges, "hierarchy": hierarchy,
             "requirements": decisions, "rejected_links": rejected,
             "merged_isolated": merged_isolated, "transitive_links": transitive,
-            "quality": {"topics": len(topics), "requests": request_count + synonym_requests + attach_requests,
+            "quality": {"topics": len(topics),
+                        "requests": request_count + synonym_requests + attach_requests + question_requests,
                         "candidate_pairs": sum(len(i["candidates"]) for i in tasks_data),
                         "requirements": len(decisions), "unresolved_requirements": sum(not d["prerequisite_ids"] for d in decisions),
                         "synonyms_merged": len(synonyms), "attached_links": sum(e.get("via") == "attach" for e in edges),
                         "isolated_merged": len(merged_isolated), "isolated": sum(t.id not in linked for t in topics),
+                        "questions_refreshed": len(hosts) - len(failed),
                         "transitive_links": len(transitive), "depth": depth(edges),
                         "cycles_rejected": sum(r["validation_error"] == "cycle" for r in rejected), "acyclic": True,
                         "semantic_quality": "not_expert_validated"},
             "settings": {"per_requirement": per_requirement, "max_chars": max_chars, "evidence_chars": evidence_chars}}
 
 
-def depth(edges):
-    """Longest prerequisite chain, in topics; 0 for a graph without edges."""
-    if not edges:
-        return 0
-    adjacency = {}
-    for e in edges:
-        adjacency.setdefault(e["source"], set()).add(e["target"])
-    memo = {}
-
-    def longest(node):
-        if node not in memo:
-            memo[node] = 1 + max((longest(n) for n in adjacency.get(node, ())), default=0)
-        return memo[node]
-    return max(longest(n) for n in adjacency)
+def settle_requirements(decisions, topics, aliases, accepted):
+    """Decisions of the final graph: canonical ids, one per (topic, requirement)
+    still in the card, prerequisites only from published edges. A requirement
+    the merged card explains itself is no longer an open one."""
+    by_id = {t.id: t for t in topics}
+    settled = {}
+    for decision in decisions:
+        target = aliases.get(decision["target_id"], decision["target_id"])
+        topic = by_id.get(target)
+        if topic is None or decision["requirement"] not in topic.requires:
+            continue
+        ids = [p for p in dict.fromkeys(aliases.get(p, p) for p in decision["prerequisite_ids"])
+               if (target, decision["requirement"], p) in accepted]
+        key = (target, decision["requirement"])
+        if key in settled:
+            previous = settled[key]
+            if ids and not previous["prerequisite_ids"]:
+                previous["reason"] = decision["reason"]
+            previous["prerequisite_ids"] = list(dict.fromkeys(previous["prerequisite_ids"] + ids))
+        else:
+            settled[key] = {**decision, "target_id": target, "prerequisite_ids": ids}
+    return list(settled.values())

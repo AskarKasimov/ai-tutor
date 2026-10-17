@@ -16,7 +16,14 @@ from course_graph.topics.extract import (
     topic_blocks,
 )
 from course_graph.topics.graph import build_links, valid_evidence
-from course_graph.topics.structure import ATTACH_PROMPT, SYNONYM_PROMPT
+from course_graph.topics.extract import join_topic
+from course_graph.topics.structure import (
+    ATTACH_PROMPT,
+    QUESTION_PROMPT,
+    SYNONYM_PROMPT,
+    depth,
+    merge_isolated,
+)
 from course_graph.topics.models import Evidence, Source, Topic
 from course_graph.topics.retrieval import CandidateIndex
 
@@ -32,14 +39,52 @@ def make_topic(id, title, provides, requires=(), text=None):
                  sources=[Source(material_id=id, block_id=0, start=0, end=len(text), text=text)])
 
 
+def write_questions(payload):
+    return json.dumps({"questions": [{"id": t["id"], "question": "Почему верно: " + t["title"] + "?"}
+                                     for t in json.loads(payload)["topics"]]}, ensure_ascii=False)
+
+
 def links_only(judge):
-    """The structure passes get no decisions; judge answers the link prompt."""
+    """The structure passes get no decisions, merged cards get a question;
+    judge answers the link prompt."""
     async def complete(system, payload):
         if system == SYNONYM_PROMPT:
             return json.dumps({"pairs": []})
         if system == ATTACH_PROMPT:
             return json.dumps({"topics": []})
+        if system == QUESTION_PROMPT:
+            return write_questions(payload)
         return await judge(system, payload)
+    return complete
+
+
+def quote(evidence):
+    return {"material_id": evidence["material_id"], "block_id": evidence["block_id"], "quote": evidence["text"]}
+
+
+def attach_answer(payload, choose):
+    """choose maps a topic id to (prerequisite ids, dependent ids); every link
+    quotes the first shown evidence of each side."""
+    out = []
+    for item in json.loads(payload)["topics"]:
+        if item["id"] not in choose:
+            continue
+        candidates = {c["id"]: c for c in item["candidates"]}
+
+        def link(other):
+            return {"id": other, "reason": "Используется это знание", "topic_evidence": quote(item["evidence"][0]),
+                    "candidate_evidence": quote(candidates[other]["evidence"][0])}
+        before, after = choose[item["id"]]
+        out.append({"id": item["id"], "prerequisites": [link(c) for c in before if c in candidates],
+                    "dependents": [link(c) for c in after if c in candidates]})
+    return json.dumps({"topics": out}, ensure_ascii=False)
+
+
+def with_attach(choose):
+    async def complete(system, payload):
+        if system == ATTACH_PROMPT:
+            return attach_answer(payload, choose)
+        return await links_only(grounded_links)(system, payload)
     return complete
 
 
@@ -539,6 +584,11 @@ def test_isolated_topic_is_merged_into_the_nearest_linked_topic():
     assert "История искусственного интеллекта" in next(t["text"] for t in graph["topics"] if t["id"] == host)
     assert graph["merged_isolated"] == [{"id": "t3", "title": "История искусственного интеллекта", "into": host}]
     assert graph["quality"]["isolated"] == 0
+    merged = next(t for t in graph["topics"] if t["id"] == host)
+    other = next(t for t in graph["topics"] if t["id"] != host)
+    # The merged card is asked about as a whole; the untouched one keeps its question.
+    assert merged["question"] == "Почему верно: " + merged["title"] + "?"
+    assert other["question"] == "Объясните тему"
 
 
 def test_course_without_links_keeps_its_topics():
@@ -593,32 +643,23 @@ def test_attach_links_practice_to_theory_and_keeps_week_order():
             return await links_only(grounded_links)(system, payload)
         for item in json.loads(payload)["topics"]:
             seen[item["id"]] = [c["id"] for c in item["candidates"]]
-        return json.dumps({"topics": [
-            {"id": "P", "prerequisites": [{"id": "L", "reason": "Отрабатывает определение матрицы"}],
-             "dependents": [{"id": "L2", "reason": "Ранг считают по умножению"}]},
-            # A later week cannot come first; this answer is dropped.
-            {"id": "L", "prerequisites": [{"id": "L2", "reason": "Обратная связь"}]}]})
+        # A later week cannot come first: L2 -> L is dropped.
+        return attach_answer(payload, {"P": (["L"], ["L2"]), "L": (["L2"], [])})
 
     graph = run(build_links([lecture, lab, later], complete, Encoder()))
     assert seen["P"][0] == "L"
     assert pairs(graph) == {("L", "P"), ("P", "L2")}
     assert all(e["via"] == "attach" for e in graph["prerequisites"])
     assert graph["quality"]["attached_links"] == 2
+    assert {"source": "L2", "target": "L"}.items() <= next(
+        r for r in graph["rejected_links"] if r["validation_error"] == "week_order").items()
 
 
 def test_redundant_edges_are_reduced_to_a_chain():
     topics = [make_topic(i, title, [f"Знание {i}"]) for i, title in
               [("A", "Множества"), ("B", "Отношения"), ("C", "Функции")]]
 
-    async def complete(system, payload):
-        if system != ATTACH_PROMPT:
-            return await links_only(grounded_links)(system, payload)
-        return json.dumps({"topics": [
-            {"id": "C", "prerequisites": [{"id": "B", "reason": "Функция — отношение"},
-                                          {"id": "A", "reason": "Область — множество"}]},
-            {"id": "B", "prerequisites": [{"id": "A", "reason": "Отношение на множестве"}]}]})
-
-    graph = run(build_links(topics, complete, Encoder()))
+    graph = run(build_links(topics, with_attach({"C": (["B", "A"], []), "B": (["A"], [])}), Encoder()))
     assert pairs(graph) == {("A", "B"), ("B", "C")}
     assert [(e["source"], e["target"]) for e in graph["transitive_links"]] == [("A", "C")]
     assert graph["quality"]["depth"] == 3
@@ -778,3 +819,209 @@ def test_merging_thin_topics_keeps_cards_within_the_contract():
     for topic in kept:
         Topic.model_validate(topic.model_dump())
     assert len(kept[0].provides) == 120 and len(kept[0].requires) == 120
+
+
+class TitleEncoder:
+    """Vectors chosen per topic title; any text starting with the title gets them."""
+    def __init__(self, vectors):
+        self.vectors = vectors
+
+    def encode(self, texts, query=False):
+        return np.array([next((v for k, v in self.vectors.items() if t.startswith(k)), [0.0, 0.0]) for t in texts])
+
+
+def test_isolated_topic_never_moves_its_host_before_a_prerequisite():
+    # #113: merging the week 1 topic into B would put B before its prerequisite A.
+    a = placed(make_topic("A", "Базовая теория", ["Основа"]), week=3)
+    b = placed(make_topic("B", "Целевая тема", ["Применение"]), week=4)
+    i = placed(make_topic("I", "Ранняя тема", ["Введение"]), week=1)
+    encoder = TitleEncoder({"Базовая теория": [1.0, 0.0], "Целевая тема": [0.0, 1.0], "Ранняя тема": [0.0, 1.0]})
+
+    graph = run(build_links([a, b, i], with_attach({"B": (["A"], [])}), encoder))
+    assert pairs(graph) == {("A", "B")}
+    assert graph["aliases"]["I"] == "A"
+    weeks = {t["id"]: min(s["week"] for s in t["sources"]) for t in graph["topics"]}
+    assert all(weeks[e["source"]] <= weeks[e["target"]] for e in graph["prerequisites"])
+    assert "Ранняя тема" in next(t["text"] for t in graph["topics"] if t["id"] == "A")
+
+
+@pytest.mark.parametrize("weeks, host", [([1], "P"), ([5, 1], "P"), ([None], "H")])
+def test_isolated_merge_respects_the_earliest_week_of_its_sources(weeks, host):
+    prerequisite = placed(make_topic("P", "Другое понятие", ["Другое"]), week=2)
+    linked = make_topic("H", "Тема хоста", ["Хост"])
+    orphan = make_topic("O", "Тема хоста подробнее", ["Подробности"])
+    orphan.sources = [Source(material_id=f"o{n}", block_id=0, start=0, end=len(orphan.text), text=orphan.text, week=w)
+                      for n, w in enumerate(weeks)]
+    edges = [{"source": "P", "target": "H"}]
+
+    topics, aliases, merged, originals = merge_isolated([prerequisite, linked, orphan], edges, None)
+    assert aliases == {"O": host}
+    assert set(originals) == {host}
+    assert [t.id for t in topics] == ["P", "H"]
+
+
+@pytest.mark.parametrize("field", ["provides", "requires"])
+@pytest.mark.parametrize("size, fits", [(127, True), (128, False)])
+def test_join_topic_never_cuts_knowledge(field, size, fits):
+    # #114: one new item on top of 127 makes 128 and fits; on top of 128 it does not.
+    host = make_topic("host", "Основная тема", ["Основа"])
+    setattr(host, field, [f"Знание {n}" for n in range(size)])
+    extra = make_topic("extra", "Дополнительная тема", ["Дополнение"])
+    setattr(extra, field, ["Новое знание"])
+    before = host.model_copy(deep=True)
+
+    assert join_topic(host, extra) is fits
+    if fits:
+        assert "Новое знание" in getattr(host, field) and len(getattr(host, field)) == 128
+    else:
+        assert host == before
+
+
+def test_join_topic_counts_duplicates_and_explained_requirements_before_the_limit():
+    # 127 + a duplicate + one new item is 128; 128 + 1 requirements minus the
+    # one the extra card explains is 128.
+    host = make_topic("host", "Основная тема", [f"Знание {n}" for n in range(127)])
+    host.requires = [f"Основа {n}" for n in range(128)]
+    extra = make_topic("extra", "Дополнительная тема", ["Знание 0", "Основа 5"], ["Основа 200"])
+
+    assert join_topic(host, extra)
+    assert len(host.provides) == 128 and "Основа 5" in host.provides
+    assert "Основа 5" not in host.requires and "Основа 200" in host.requires
+    assert len(host.requires) == 128
+
+
+def test_merge_is_undone_when_no_question_can_be_written():
+    # #115: the old question must not stand for the merged card.
+    t1 = make_topic("t1", "Интеллектуальные агенты", ["понятие агента"])
+    t2 = make_topic("t2", "Рациональность агента", ["критерий рациональности"], ["понятие агента"])
+    t3 = make_topic("t3", "История искусственного интеллекта", ["исторические вехи"])
+
+    async def complete(system, payload):
+        if system == QUESTION_PROMPT:
+            return json.dumps({"questions": []})
+        return await grounded_judge(system, payload)
+
+    graph = run(build_links([t1, t2, t3], complete, Encoder()))
+    assert {t["id"] for t in graph["topics"]} == {"t1", "t2", "t3"}
+    assert "t3" not in graph["aliases"] and graph["merged_isolated"] == []
+    assert all(t["question"] == "Объясните тему" for t in graph["topics"])
+    assert "История" not in next(t["text"] for t in graph["topics"] if t["id"] == "t1")
+    assert graph["quality"]["isolated"] == 1
+
+
+def test_untouched_cards_ask_for_no_question():
+    asked = []
+
+    async def complete(system, payload):
+        if system == QUESTION_PROMPT:
+            asked.append(payload)
+        return await grounded_judge(system, payload)
+
+    topics = [make_topic("T2", "Производная", ["Вычисление производной"]),
+              make_topic("T20", "Спуск", ["Обновление параметров"], ["Вычисление производной"])]
+    run(build_links(topics, complete, Encoder()))
+    assert asked == []
+
+
+@pytest.mark.parametrize("second", ["empty", "fixed"])
+def test_a_confirmed_link_survives_the_retry_of_another_one(second):
+    # #116: D -> T is grounded, M -> T is not; the retry must not drop D -> T.
+    topics = [make_topic("D", "Производная", ["Вычисление производной"]),
+              make_topic("M", "Матрицы", ["Операции с матрицами"]),
+              make_topic("T", "Оптимизация", ["Обновление весов"], ["Производная матрицы"])]
+
+    async def judge(system, payload):
+        data = json.loads(payload)
+        task = data["tasks"][0]
+        links = []
+        for candidate in task["candidates"]:
+            evidence = quote(candidate["evidence"][0])
+            if candidate["id"] == "M" and ("correction" not in data or second == "empty"):
+                evidence["quote"] = "Невстречающаяся цитата"
+            links.append({"target_id": "T", "prerequisite_id": candidate["id"], "requirement": task["requirement"],
+                          "reason": "Использует это знание", "target_evidence": quote(task["evidence"][0]),
+                          "prerequisite_evidence": evidence})
+        if "correction" in data and second == "empty":
+            links = []
+        return json.dumps({"links": links, "requirements": []}, ensure_ascii=False)
+
+    graph = run(build_links(topics, links_only(judge), Encoder()))
+    edges = [(e["source"], e["target"]) for e in graph["prerequisites"]]
+    decision = next(d for d in graph["requirements"] if d["requirement"] == "Производная матрицы")
+    quote_errors = [r for r in graph["rejected_links"] if r.get("validation_error") == "Недостоверная цитата связи"]
+    if second == "empty":
+        assert edges == [("D", "T")]
+        assert decision["prerequisite_ids"] == ["D"]
+        assert [r["prerequisite_id"] for r in quote_errors] == ["M"]
+    else:
+        assert sorted(edges) == [("D", "T"), ("M", "T")]
+        assert sorted(decision["prerequisite_ids"]) == ["D", "M"]
+        assert quote_errors == []
+
+
+@pytest.mark.parametrize("answer, linked", [("missing", False), ("fabricated", False),
+                                            ("swapped", False), ("grounded", True)])
+def test_attach_links_need_quotes_from_both_sides(answer, linked):
+    # #117: a reason alone does not publish a link.
+    topics = [make_topic("A", "Множества", ["Понятие множества"]),
+              make_topic("B", "Отношения", ["Понятие отношения"])]
+
+    async def complete(system, payload):
+        if system != ATTACH_PROMPT:
+            return await links_only(grounded_links)(system, payload)
+        if answer == "missing":
+            return json.dumps({"topics": [{"id": "B", "prerequisites": [{"id": "A", "reason": "Модель так решила"}]}]})
+        result = json.loads(attach_answer(payload, {"B": (["A"], [])}))
+        for link in result["topics"][0]["prerequisites"]:
+            if answer == "fabricated":
+                link["candidate_evidence"]["quote"] = "Невстречающаяся цитата"
+            if answer == "swapped":
+                link["topic_evidence"], link["candidate_evidence"] = link["candidate_evidence"], link["topic_evidence"]
+        return json.dumps(result, ensure_ascii=False)
+
+    graph = run(build_links(topics, complete, Encoder()))
+    assert (pairs(graph) == {("A", "B")}) is linked
+    if linked:
+        edge = graph["prerequisites"][0]
+        assert edge["target_evidence"]["material_id"] == "B" and edge["prerequisite_evidence"]["material_id"] == "A"
+
+
+@pytest.mark.parametrize("explained", [False, True])
+def test_requirements_follow_the_merged_topics(explained):
+    # #118: decisions of merged topics move to their host, once per requirement.
+    a = make_topic("A", "Производная", ["Вычисление производной"])
+    b = make_topic("B", "Спуск", ["Обновление параметров"], ["Вычисление производной"])
+    i = make_topic("I", "История", ["Исторические вехи"], ["Недоступная основа"])
+    j = make_topic("J", "Хронология", ["Недоступная основа"] if explained else ["Хронология событий"],
+                   [] if explained else ["Недоступная основа"])
+
+    async def judge(system, payload):
+        result = json.loads(await grounded_links(system, payload))
+        result["links"] = [link for link in result["links"] if link["target_id"] == "B"]
+        result["requirements"] = []
+        return json.dumps(result, ensure_ascii=False)
+
+    graph = run(build_links([a, b, i, j], links_only(judge), Encoder()))
+    ids = {t["id"] for t in graph["topics"]}
+    assert ids == {"A", "B"} and graph["aliases"] == {"I": "A", "J": "A"}
+    for decision in graph["requirements"]:
+        assert decision["target_id"] in ids and set(decision["prerequisite_ids"]) <= ids
+    open_base = [d for d in graph["requirements"] if d["requirement"] == "Недоступная основа"]
+    assert open_base == ([] if explained else [{"target_id": "A", "requirement": "Недоступная основа",
+                                                 "prerequisite_ids": [], "reason": open_base[0]["reason"]}])
+    assert graph["quality"]["requirements"] == len(graph["requirements"])
+    assert graph["quality"]["unresolved_requirements"] == sum(not d["prerequisite_ids"] for d in graph["requirements"])
+
+
+def test_depth_is_counted_without_recursion():
+    # #119: long chains, branches, shared descendants, repeated edges and cycles.
+    def chain(n):
+        return [{"source": str(k), "target": str(k + 1)} for k in range(n - 1)]
+    assert depth(chain(1501)) == 1501
+    assert depth(chain(2000)) == 2000
+    assert depth([]) == 0
+    diamond = [{"source": s, "target": t} for s, t in
+               [("a", "b"), ("a", "c"), ("b", "d"), ("c", "d"), ("b", "d"), ("d", "e")]]
+    assert depth(diamond) == 4
+    with pytest.raises(ValueError):
+        depth([{"source": "a", "target": "b"}, {"source": "b", "target": "a"}])

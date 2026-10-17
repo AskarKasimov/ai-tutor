@@ -201,17 +201,21 @@ def content_chars(text):
 
 def join_topic(target, topic):
     """Move the text, sources and knowledge of topic into target; target keeps
-    its id, title and question. Lists stay within the card contract."""
+    its id and title. Returns False and leaves target unchanged when the merged
+    card would not fit the contract: knowledge is never cut to make it fit."""
+    provides = list(dict.fromkeys(target.provides + topic.provides))
+    explained = set(provides)
+    # Knowledge the merged card now explains itself is no longer required.
+    requires = [r for r in dict.fromkeys(target.requires + topic.requires) if r not in explained]
+    if len(provides) > TOPIC_LIST_MAX or len(requires) > TOPIC_LIST_MAX:
+        return False
     seen = {(s.material_id, s.material_revision, s.start, s.end) for s in target.sources}
     target.sources.extend(s for s in topic.sources
                           if (s.material_id, s.material_revision, s.start, s.end) not in seen)
     target.sources.sort(key=lambda s: (s.week is None, s.week or 0, s.material_id, s.start))
-    own = set(target.provides)
-    target.provides = list(dict.fromkeys(target.provides + topic.provides))[:TOPIC_LIST_MAX]
-    # Knowledge the merged card now explains itself is no longer required.
-    target.requires = [r for r in dict.fromkeys(target.requires + topic.requires)
-                       if r not in own and r not in topic.provides][:TOPIC_LIST_MAX]
+    target.provides, target.requires = provides, requires
     target.text = "\n\n".join(s.text for s in target.sources)
+    return True
 
 
 def absorb_thin_topics(topics, min_chars):
@@ -232,14 +236,11 @@ def absorb_thin_topics(topics, min_chars):
             return min((abs(a.start - b.start) for a in topic.sources for b in other.sources
                         if a.material_id == b.material_id), default=float("inf"))
 
-        def fits(other):
-            return all(len(dict.fromkeys(getattr(other, f) + getattr(topic, f))) <= TOPIC_LIST_MAX
-                       for f in ("requires", "provides"))
-        target = next((t for t in sorted(kept, key=distance) if fits(t)), None)
+        # join_topic merges into the nearest topic the card still fits.
+        target = next((t for t in sorted(kept, key=distance) if join_topic(t, topic)), None)
         if target is None:
             kept.append(topic)
             continue
-        join_topic(target, topic)
         merged.append({"title": topic.title, "into": target.title})
     # Keep the material order of the topics that stayed on their own.
     order = {id(t): i for i, t in enumerate(topics)}

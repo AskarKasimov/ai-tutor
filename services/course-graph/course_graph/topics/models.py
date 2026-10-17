@@ -109,6 +109,8 @@ class SynonymResponse(StrictModel):
 class AttachLink(StrictModel):
     id: Text
     reason: Text
+    topic_evidence: Evidence
+    candidate_evidence: Evidence
 
 
 class AttachDecision(StrictModel):
@@ -119,3 +121,12 @@ class AttachDecision(StrictModel):
 
 class AttachResponse(StrictModel):
     topics: list[AttachDecision]
+
+
+class TopicQuestion(StrictModel):
+    id: Text
+    question: Text
+
+
+class QuestionResponse(StrictModel):
+    questions: list[TopicQuestion]

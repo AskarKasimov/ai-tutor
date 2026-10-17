@@ -11,8 +11,6 @@
 
 В production разверните три Redpanda broker с replication factor 3. Создайте `llm.requests.v1` с одной partition, replication factor 3, retention не меньше 7 суток и `max.message.bytes` не меньше 2 MiB; `llm.state.v1` — с одной partition, replication factor 3, `cleanup.policy=compact`, без time retention актуальных записей и `max.message.bytes` не меньше 40 MiB. Топиковые пределы должны вместить payload запроса и полный ответ; Redpanda допускает задать `max.message.bytes` отдельно для topic. В каждый момент времени должен работать только один активный процесс gateway.
 
-Корневой `dev.sh` включает профиль `gateway` даже со старым `.env`; прямой Compose-запуск требует этого профиля явно. Останавливайте весь dev-стек командой `docker compose --profile gateway down` без удаления volumes. Одноброкерный Compose задаёт `redpanda:33145` как seed и advertised RPC address для регистрации с сохранённым volume. Healthcheck проверяет доступность Kafka API, затем здоровье кластера: одного ответа `Healthy: true` недостаточно, если брокер ещё не зарегистрирован.
-
 ## Контракт
 
 `POST /v1/chat/completions` требует `messages` и `complexity` (`low`, `medium`, `high`). Gateway не проверяет клиентский bearer-токен: в Compose он доступен сервисам внутренней сети, а опубликованный порт привязан к `127.0.0.1`. Необязательные поля и ошибки описаны в [openapi.yaml](openapi.yaml). `model` и streaming запрещены. `urgent` по умолчанию `false`; `Idempotency-Key` дедуплицируется в пределах внутреннего клиента gateway.

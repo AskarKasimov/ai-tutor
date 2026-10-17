@@ -606,3 +606,22 @@ def test_a_material_of_only_thin_topics_keeps_them():
 def test_extraction_asks_reasoning_questions_and_no_empty_topics():
     assert "на рассуждение" in PROMPT and "Кто и когда" in PROMPT
     assert "ТЕМА БЕЗ СОДЕРЖАНИЯ" in PROMPT
+
+
+def test_merging_thin_topics_keeps_cards_within_the_contract():
+    body = "Муравьи откладывают феромон на пройденном пути, и следующие муравьи чаще выбирают путь с большим следом. " * 2
+    def knowledge(prefix):
+        return [f"{prefix} {i}" for i in range(12)]
+    main = make_topic("main", "Феромоновые следы", knowledge("знание main"), requires=knowledge("основа main"), text=body)
+    thin = []
+    for n in range(10):
+        topic = make_topic(f"thin{n}", f"Пример {n}", knowledge(f"знание {n}"), requires=knowledge(f"основа {n}"), text="Пример.")
+        topic.sources[0].start = topic.sources[0].end = 10 + n
+        thin.append(topic)
+    kept, merged = absorb_thin_topics([main, *thin], 120)
+    # Nine thin topics fit into the 128 items of the card; the tenth stays on
+    # its own instead of losing knowledge.
+    assert len(merged) == 9 and len(kept) == 2
+    for topic in kept:
+        Topic.model_validate(topic.model_dump())
+    assert len(kept[0].provides) == 120 and len(kept[0].requires) == 120

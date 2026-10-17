@@ -5,6 +5,10 @@ from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 Text = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=600)]
 
 
+# Most requires and provides of one topic card, shared with the graph contract.
+TOPIC_LIST_MAX = 128
+
+
 class StrictModel(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
@@ -22,8 +26,8 @@ class Source(StrictModel):
 class Topic(StrictModel):
     id: Text
     title: Text
-    requires: list[Text] = Field(max_length=128)
-    provides: list[Text] = Field(min_length=1, max_length=128)
+    requires: list[Text] = Field(max_length=TOPIC_LIST_MAX)
+    provides: list[Text] = Field(min_length=1, max_length=TOPIC_LIST_MAX)
     question: Text
     text: str
     sources: list[Source] = Field(min_length=1)

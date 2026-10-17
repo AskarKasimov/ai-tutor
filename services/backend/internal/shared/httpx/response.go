@@ -16,12 +16,27 @@ func JSON(w http.ResponseWriter, status int, value any) {
 	_ = json.NewEncoder(w).Encode(value)
 }
 
+// StatusClientClosedRequest is logged when the client went away before the
+// response (nginx convention). It is not a server failure, so it is not
+// logged as an error and never reaches the client.
+const StatusClientClosedRequest = 499
+
 func Error(ctx context.Context, w http.ResponseWriter, err error) {
+	if errors.Is(ctx.Err(), context.Canceled) {
+		// The browser aborted the request, for example a voice request when
+		// the student starts recording: not an unavailable provider.
+		recordFailure(ctx, "CLIENT_CLOSED_REQUEST", err)
+		w.WriteHeader(StatusClientClosedRequest)
+		return
+	}
 	var e *fault.Error
-	var internalErr error
+	// The cause behind a fault (a provider status, a model failure) is logged
+	// with the request, while the client gets only the fault.
+	internalErr := err
 	if !errors.As(err, &e) {
-		internalErr = err
 		e = fault.New(fault.Unavailable, "PROCESSING_UNAVAILABLE", "Обработчик временно недоступен.")
+	} else if err == error(e) {
+		internalErr = nil
 	}
 	if !recordFailure(ctx, e.Code, internalErr) && internalErr != nil {
 		LoggerFromContext(ctx).Error("request failed", zap.Error(internalErr))

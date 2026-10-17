@@ -25,6 +25,7 @@ type ApiTurn = {
   node_id: string | null
   source: string | null
   text: string
+  reply?: string
   created_at: number
 }
 
@@ -33,6 +34,7 @@ const geekTurn = (
   line: number,
   kind: string,
   text: string,
+  reply = '',
 ): ApiTurn => ({
   id,
   line,
@@ -40,7 +42,8 @@ const geekTurn = (
   kind,
   node_id: kind === 'closing' ? null : 'a-star',
   source: null,
-  text,
+  text: reply ? `${reply}\n\n${text}` : text,
+  reply,
   created_at: line,
 })
 
@@ -60,7 +63,13 @@ function geekBackend(
       'question',
       'Что изменится в A*, если эвристика переоценивает путь?',
     ),
-    geekTurn('t3', 3, 'followup', 'А где допустимая эвристика не поможет?'),
+    geekTurn(
+      't3',
+      3,
+      'followup',
+      'А где допустимая эвристика не поможет?',
+      'Верно про оптимальность.',
+    ),
     geekTurn('t5', 5, 'question', 'Что такое **эвристическая функция**?'),
     geekTurn(
       't7',
@@ -70,7 +79,18 @@ function geekBackend(
     ),
   ]
   let failures = options.failAnswers ?? 0
-  const control = { failReads: 0, failStarts: 0 }
+  // cancelled: the course graph was rebuilt, so answers find no active turn.
+  // readGate and answerGate hold the responses until they resolve; a held
+  // read returns the session as it was when the request arrived.
+  const control = {
+    failReads: 0,
+    failStarts: 0,
+    cancelled: false,
+    readGate: null as Promise<void> | null,
+    answerGate: null as Promise<void> | null,
+    // Holds the response of an answer the backend has already accepted.
+    replyGate: null as Promise<void> | null,
+  }
   let session: {
     id: string
     subject_id: string
@@ -181,6 +201,8 @@ function geekBackend(
       }
       return Response.json(session, { status: 201 })
     }
+    if (control.cancelled && session?.status === 'active')
+      session = { ...session, status: 'cancelled', current_turn_id: null }
     if (url.endsWith('/diagnostic-sessions/d1') && session) {
       if (control.failReads > 0) {
         control.failReads--
@@ -189,9 +211,17 @@ function geekBackend(
           { status: 503 },
         )
       }
-      return Response.json(session)
+      const snapshot = session
+      if (control.readGate) await control.readGate
+      return Response.json(snapshot)
     }
     if (url.endsWith('/diagnostic-sessions/d1/answers') && session) {
+      if (control.answerGate) await control.answerGate
+      if (session.status === 'cancelled')
+        return Response.json(
+          { code: 'SESSION_NOT_ACTIVE', message: 'Диагностика уже завершена.' },
+          { status: 409 },
+        )
       const body = JSON.parse(String(init?.body)) as Record<string, unknown>
       answers.push({
         key: new Headers(init?.headers).get('Idempotency-Key') ?? '',
@@ -205,7 +235,9 @@ function geekBackend(
         )
       }
       session = accept(session, body)
-      return Response.json(session)
+      const accepted = session
+      if (control.replyGate) await control.replyGate
+      return Response.json(accepted)
     }
     if (url.endsWith('/diagnostic-sessions/d1/result'))
       return Response.json({
@@ -237,7 +269,11 @@ function geekBackend(
         ],
         gaps: [{ node_id: 'heuristic', title: 'Эвристическая функция' }],
       })
-    if (/\/diagnostic-sessions\/d1\/turns\/t\d+\/audio$/.test(url))
+    if (
+      /\/diagnostic-sessions\/d1\/turns\/t\d+\/audio\?part=(reply|question)$/.test(
+        url,
+      )
+    )
       return new Response(await validWavBlob().arrayBuffer(), {
         headers: { 'Content-Type': 'audio/wav' },
       })
@@ -256,10 +292,13 @@ function geekBackend(
 class FakeAudio {
   static played: string[] = []
   static paused = 0
+  static last: FakeAudio | null = null
   onended: (() => void) | null = null
   onerror: (() => void) | null = null
   error = null
-  constructor(readonly src: string) {}
+  constructor(readonly src: string) {
+    FakeAudio.last = this
+  }
   play() {
     FakeAudio.played.push(this.src)
     return Promise.resolve()
@@ -274,6 +313,7 @@ beforeEach(() => {
   sessionStorage.clear()
   FakeAudio.played = []
   FakeAudio.paused = 0
+  FakeAudio.last = null
   vi.stubGlobal('Audio', FakeAudio)
   vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:turn')
   vi.spyOn(URL, 'revokeObjectURL').mockReturnValue(undefined)
@@ -284,12 +324,20 @@ afterEach(() => {
 })
 
 function renderApp() {
+  const queryClient = createQueryClient()
   const router = createRouter({
-    context: { queryClient: createQueryClient() },
+    context: { queryClient },
     history: createMemoryHistory({ initialEntries: ['/'] }),
     routeTree,
   })
   render(<RouterProvider router={router} />)
+  return queryClient
+}
+
+function gate() {
+  let open = () => {}
+  const closed = new Promise<void>((resolve) => (open = resolve))
+  return { closed, open }
 }
 
 async function start() {
@@ -330,8 +378,16 @@ it('runs a diagnostic from the home page to the result and back to the history',
     await screen.findByRole('button', { name: 'Остановить озвучку' }),
   ).toBeVisible()
   expect(
-    fetch.mock.calls.some(([url]) => url.endsWith('/turns/t1/audio')),
+    fetch.mock.calls.some(([url]) =>
+      url.endsWith('/turns/t1/audio?part=question'),
+    ),
   ).toBe(true)
+  // The first question replies to nothing, so it has no reply part.
+  expect(
+    fetch.mock.calls.some(([url]) =>
+      url.endsWith('/turns/t1/audio?part=reply'),
+    ),
+  ).toBe(false)
 
   await answerByText('Перестанет быть оптимальным')
   expect(
@@ -642,3 +698,129 @@ it.each(['mediaDevices', 'MediaRecorder', 'permission'])(
     ).toBeEnabled()
   },
 )
+
+it('voices the reply to the answer first and the question after it in one turn', async () => {
+  const { fetch } = geekBackend()
+  renderApp()
+  await start()
+  await waitFor(() => expect(FakeAudio.played).toHaveLength(1))
+  await answerByText('Перестанет быть оптимальным')
+  // One Geek message holds both parts.
+  expect(await screen.findByText('Верно про оптимальность.')).toBeVisible()
+  expect(
+    screen.getByText('А где допустимая эвристика не поможет?'),
+  ).toBeVisible()
+  const audioUrls = () =>
+    fetch.mock.calls
+      .map(([url]) => url)
+      .filter((url) => url.includes('/turns/t3/audio'))
+  await waitFor(() => expect(FakeAudio.played).toHaveLength(2))
+  await waitFor(() =>
+    expect(audioUrls()).toEqual([
+      '/api/v1/diagnostic-sessions/d1/turns/t3/audio?part=reply',
+      '/api/v1/diagnostic-sessions/d1/turns/t3/audio?part=question',
+    ]),
+  )
+  // The question plays once the reply has ended.
+  act(() => FakeAudio.last?.onended?.())
+  await waitFor(() => expect(FakeAudio.played).toHaveLength(3))
+})
+
+it('pops up that the course was updated when the diagnostic is cancelled', async () => {
+  const { control } = geekBackend({ active: true })
+  renderApp()
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Продолжить диагностику' }),
+  )
+  await answerField()
+  control.cancelled = true
+  await answerByText('Перестанет быть оптимальным')
+  expect(
+    await screen.findByText('Курс обновлён: диагностику нужно начать заново.'),
+  ).toBeVisible()
+  fireEvent.click(screen.getByRole('button', { name: 'Закрыть уведомление' }))
+  await waitFor(() =>
+    expect(
+      screen.queryByText('Курс обновлён: диагностику нужно начать заново.'),
+    ).not.toBeInTheDocument(),
+  )
+  expect(
+    screen.getByText(
+      'Курс обновился, и эта диагностика прервана. Начните новую на главной.',
+    ),
+  ).toBeVisible()
+})
+
+it('keeps the accepted answer when a background read started before it lands late', async () => {
+  const { control, fetch } = geekBackend()
+  const queryClient = renderApp()
+  await start()
+  await answerField()
+  // The answer is being evaluated when the periodic read of the session
+  // goes out; the read sees the old turn and comes back after the answer.
+  const answer = gate()
+  control.answerGate = answer.closed
+  await answerByText('Перестанет быть оптимальным')
+  await waitFor(() =>
+    expect(fetch.mock.calls.some(([url]) => url.endsWith('/d1/answers'))).toBe(
+      true,
+    ),
+  )
+  const read = gate()
+  control.readGate = read.closed
+  const refetch = queryClient.refetchQueries({
+    queryKey: ['diagnostic-session'],
+  })
+  answer.open()
+  expect(
+    await screen.findByText('А где допустимая эвристика не поможет?'),
+  ).toBeVisible()
+  read.open()
+  await act(() => refetch)
+  const [[, cached]] = queryClient.getQueriesData<{ currentTurnId: string }>({
+    queryKey: ['diagnostic-session'],
+  })
+  expect(cached?.currentTurnId).toBe('t3')
+  expect(
+    screen.getByText('А где допустимая эвристика не поможет?'),
+  ).toBeVisible()
+  expect(screen.getByText('Перестанет быть оптимальным')).toBeVisible()
+})
+
+it('keeps a diagnostic cancelled when the response of an earlier answer lands late', async () => {
+  const { control, fetch } = geekBackend()
+  const queryClient = renderApp()
+  await start()
+  await answerField()
+  // The backend accepts the answer, but its response is slow; meanwhile the
+  // graph is rebuilt and the periodic read sees the diagnostic cancelled.
+  const reply = gate()
+  control.replyGate = reply.closed
+  await answerByText('Перестанет быть оптимальным')
+  await waitFor(() =>
+    expect(fetch.mock.calls.some(([url]) => url.endsWith('/d1/answers'))).toBe(
+      true,
+    ),
+  )
+  control.cancelled = true
+  await act(() =>
+    queryClient.refetchQueries({ queryKey: ['diagnostic-session'] }),
+  )
+  const status = () =>
+    queryClient.getQueriesData<{ status: string }>({
+      queryKey: ['diagnostic-session'],
+    })[0][1]?.status
+  expect(status()).toBe('cancelled')
+  reply.open()
+  await waitFor(() =>
+    expect(
+      queryClient.isMutating({ mutationKey: ['diagnostic', 'answer'] }),
+    ).toBe(0),
+  )
+  expect(status()).toBe('cancelled')
+  expect(
+    screen.getByText(
+      'Курс обновился, и эта диагностика прервана. Начните новую на главной.',
+    ),
+  ).toBeVisible()
+})

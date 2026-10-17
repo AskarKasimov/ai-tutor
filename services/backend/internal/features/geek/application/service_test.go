@@ -262,7 +262,7 @@ func loadGraph(t *testing.T) exam.Graph {
 func newFixture(t *testing.T) *fixture {
 	g := loadGraph(t)
 	f := &fixture{store: newMemoryStore(), graphs: &graphs{graph: &g}, examiner: &examiner{}, voice: &voice{}, audio: audioStore{}}
-	f.service = New(f.graphs, f.store, texts{"student/tr": "сильно отвечаю голосом"}, f.examiner, f.voice, f.audio, &ids{}, func() time.Time { return time.Unix(100, 0) }, Config{})
+	f.service = New(f.graphs, f.store, texts{"student/tr": "сильно отвечаю голосом"}, f.examiner, NewSpeechCache(f.voice, f.audio, ""), &ids{}, func() time.Time { return time.Unix(100, 0) }, Config{})
 	return f
 }
 
@@ -435,7 +435,7 @@ func TestGeekRepliesToTheAnswerBeforeTheNextQuestion(t *testing.T) {
 	// The topic is closed: the explanation leads the next question as a recap.
 	s = f.answer(t, s, Answer{Text: "частично"})
 	next := s.Turns[len(s.Turns)-1]
-	recap := "Разбор: " + first.Title + ".\n\n"
+	recap := "Реакция: " + first.Title + ". Разбор: " + first.Title + ".\n\n"
 	if *next.NodeID == first.ID || next.Recap != recap || !strings.HasPrefix(next.Text, recap) || len(next.Text) == len(recap) {
 		t.Fatalf("next question = %+v", next)
 	}
@@ -558,7 +558,7 @@ func TestTurnAudioIsSynthesizedByPartsAndCached(t *testing.T) {
 	f.graphs.graph = &g
 	s, _, _ := f.service.Start(ctx, "student", "subject", "start")
 	turn := s.Turns[0]
-	data, err := f.service.TurnAudio(ctx, "student", s.ID, turn.ID)
+	data, err := f.service.TurnAudio(ctx, "student", s.ID, turn.ID, AudioWhole)
 	if err != nil || !audio.ValidWAV(data) || len(f.voice.calls) < 2 {
 		t.Fatalf("audio: %v calls=%d", err, len(f.voice.calls))
 	}
@@ -568,11 +568,54 @@ func TestTurnAudioIsSynthesizedByPartsAndCached(t *testing.T) {
 		}
 	}
 	calls := len(f.voice.calls)
-	if _, err := f.service.TurnAudio(ctx, "student", s.ID, turn.ID); err != nil || len(f.voice.calls) != calls {
+	if _, err := f.service.TurnAudio(ctx, "student", s.ID, turn.ID, AudioWhole); err != nil || len(f.voice.calls) != calls {
 		t.Fatalf("cached audio synthesized again: %v", err)
 	}
 	next := f.answer(t, s, Answer{Text: "частично"})
-	if _, err := f.service.TurnAudio(ctx, "student", s.ID, next.Turns[1].ID); code(err) != "TURN_NOT_FOUND" {
+	if _, err := f.service.TurnAudio(ctx, "student", s.ID, next.Turns[1].ID, AudioWhole); code(err) != "TURN_NOT_FOUND" {
 		t.Fatalf("student turn audio: %v", err)
+	}
+}
+
+func TestTurnAudioVoicesTheReplyAndTheQuestionApart(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	s, _, _ := f.service.Start(ctx, "student", "subject", "start")
+	first := s.Turns[0]
+	if first.Reply != "" {
+		t.Fatalf("the first question has a reply: %+v", first)
+	}
+	if _, err := f.service.TurnAudio(ctx, "student", s.ID, first.ID, AudioReply); code(err) != "TURN_PART_NOT_FOUND" {
+		t.Fatalf("reply part of the first question: %v", err)
+	}
+	if _, err := f.service.TurnAudio(ctx, "student", s.ID, first.ID, "everything"); code(err) != "VALIDATION_ERROR" {
+		t.Fatalf("unknown part: %v", err)
+	}
+
+	s = f.answer(t, s, Answer{Text: "частично"})
+	led := s.Turns[len(s.Turns)-1]
+	reply, question := led.Parts()
+	if led.Reply == "" || reply != led.Reply || question == "" || led.Text != led.Reply+"\n\n"+question {
+		t.Fatalf("turn parts: reply=%q question=%q text=%q", reply, question, led.Text)
+	}
+	f.voice.calls = nil
+	if data, err := f.service.TurnAudio(ctx, "student", s.ID, led.ID, AudioReply); err != nil || !audio.ValidWAV(data) {
+		t.Fatalf("reply audio: %v", err)
+	}
+	if data, err := f.service.TurnAudio(ctx, "student", s.ID, led.ID, AudioQuestion); err != nil || !audio.ValidWAV(data) {
+		t.Fatalf("question audio: %v", err)
+	}
+	if len(f.voice.calls) != 2 || f.voice.calls[0] != reply || f.voice.calls[1] != question {
+		t.Fatalf("synthesized %q", f.voice.calls)
+	}
+
+	// A part is cached by its text: the same prepared question in another
+	// student's diagnostic is not synthesized again.
+	other, _, _ := f.service.Start(ctx, "other", "subject", "start-other")
+	if _, err := f.service.TurnAudio(ctx, "other", other.ID, other.Turns[0].ID, AudioQuestion); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.service.TurnAudio(ctx, "student", s.ID, s.Turns[0].ID, AudioQuestion); err != nil || len(f.voice.calls) != 3 {
+		t.Fatalf("the shared question was synthesized again: %v calls=%q", err, f.voice.calls)
 	}
 }

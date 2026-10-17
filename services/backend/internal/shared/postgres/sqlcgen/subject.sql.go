@@ -35,13 +35,13 @@ func (q *Queries) CreateSubject(ctx context.Context, arg CreateSubjectParams) (C
 
 const listSubjects = `-- name: ListSubjects :many
 SELECT subject.id, subject.name,
-       -- Interim until the course graph is stored: a course is ready once it
-       -- has a parsed material.
+       -- A course is ready once Geek can read its own published graph, under
+       -- the same condition as ReadPublishedCourseGraph.
        EXISTS (
            SELECT 1
-           FROM subject_materials material
-           WHERE material.subject_id = subject.id
-             AND material.status = 'parsed'
+           FROM course_graphs graph
+           WHERE graph.subject_id = subject.id
+             AND EXISTS (SELECT 1 FROM subject_materials material WHERE material.subject_id = subject.id)
        ) AS ready
 FROM subjects subject
 ORDER BY lower(subject.name), subject.id

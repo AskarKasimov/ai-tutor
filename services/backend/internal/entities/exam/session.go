@@ -1,6 +1,9 @@
 package exam
 
-import "slices"
+import (
+	"slices"
+	"strings"
+)
 
 // Session is one diagnostic of a student on a course. Version guards
 // concurrent updates.
@@ -32,6 +35,15 @@ func (s Session) Turn(id string) (Turn, bool) {
 		return Turn{}, false
 	}
 	return s.Turns[i], true
+}
+
+// Parts splits a Geek turn into the reply to the previous answer and the
+// question or closing after it. Turns saved before Reply existed have none.
+func (t Turn) Parts() (reply, question string) {
+	if t.Reply == "" || !strings.HasPrefix(t.Text, t.Reply) {
+		return "", strings.TrimSpace(t.Text)
+	}
+	return strings.TrimSpace(t.Reply), strings.TrimSpace(strings.TrimPrefix(t.Text, t.Reply))
 }
 
 // Dialogue returns the turns about one topic, in order.

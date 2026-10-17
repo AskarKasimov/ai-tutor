@@ -10,6 +10,7 @@ export type {
   TopicResult,
   TopicStatus,
   Turn,
+  TurnAudioPart,
   TurnKind,
 } from './model/diagnostic-session'
 export { DiagnosticApiError } from './model/diagnostic-error'

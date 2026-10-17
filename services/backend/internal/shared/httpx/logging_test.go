@@ -2,6 +2,7 @@ package httpx
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -10,6 +11,8 @@ import (
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
+
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/fault"
 )
 
 func TestRequestLoggerCarriesIDsAndLogsRequestAndFailure(t *testing.T) {
@@ -69,5 +72,38 @@ func TestRequestLoggerReplacesMalformedIDs(t *testing.T) {
 	}
 	if got := response.Header().Get("X-Trace-ID"); len(got) != 32 || got == "not-a-trace" {
 		t.Errorf("trace id = %q, want generated hex id", got)
+	}
+}
+
+func TestErrorLogsTheCauseBehindAFault(t *testing.T) {
+	var output bytes.Buffer
+	logger := zap.New(zapcore.NewCore(zapcore.NewJSONEncoder(zap.NewProductionEncoderConfig()), zapcore.AddSync(&output), zapcore.DebugLevel))
+	handler := RequestLogger(logger, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		Error(r.Context(), w, errors.Join(fault.New(fault.Unavailable, "MODEL_UNAVAILABLE", "Модель недоступна."), errors.New("gateway queue full")))
+	}))
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/answers", nil))
+	if response.Code != http.StatusServiceUnavailable || strings.Contains(response.Body.String(), "queue") {
+		t.Fatalf("response = %d %s", response.Code, response.Body.String())
+	}
+	if logs := output.String(); !strings.Contains(logs, `"error_code":"MODEL_UNAVAILABLE"`) || !strings.Contains(logs, "gateway queue full") {
+		t.Fatalf("logs miss the cause: %s", logs)
+	}
+}
+
+func TestErrorTreatsAClosedRequestAsTheClientsChoice(t *testing.T) {
+	var output bytes.Buffer
+	logger := zap.New(zapcore.NewCore(zapcore.NewJSONEncoder(zap.NewProductionEncoderConfig()), zapcore.AddSync(&output), zapcore.DebugLevel))
+	ctx, cancel := context.WithCancel(context.Background())
+	handler := RequestLogger(logger, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		cancel()
+		Error(r.Context(), w, fault.New(fault.Unavailable, "PROCESSING_UNAVAILABLE", "Голосовой сервис недоступен."))
+	}))
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/audio", nil).WithContext(ctx))
+	logs := output.String()
+	if response.Code != StatusClientClosedRequest || !strings.Contains(logs, `"error_code":"CLIENT_CLOSED_REQUEST"`) ||
+		!strings.Contains(logs, `"level":"info"`) {
+		t.Fatalf("response = %d, logs = %s", response.Code, logs)
 	}
 }

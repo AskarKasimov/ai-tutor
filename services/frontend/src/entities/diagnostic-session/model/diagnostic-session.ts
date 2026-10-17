@@ -14,8 +14,13 @@ export type Turn = {
   nodeId: string | null
   source: AnswerSource | null
   text: string
+  // The start of a Geek turn's text that replies to the previous answer; it
+  // is voiced apart from the question after it. Empty when there is none.
+  reply: string
   createdAt: number
 }
+
+export type TurnAudioPart = 'reply' | 'question'
 
 export type SessionStatus = 'active' | 'completed' | 'cancelled'
 

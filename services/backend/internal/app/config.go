@@ -85,11 +85,9 @@ func ConfigFromEnv() (Config, error) {
 	if err != nil {
 		return c, fmt.Errorf("BACKEND_TTS_CFG_VALUE: %w", err)
 	}
-	value, err = requiredEnv("BACKEND_TTS_INFERENCE_TIMESTEPS")
-	if err != nil {
-		return c, err
-	}
-	c.TTSInferenceTimesteps, err = strconv.Atoi(value)
+	// VoxCPM gets the steps in every request; 20 sounds like 50 at half the
+	// synthesis time (measured 17.10.2026), so an empty value means 20.
+	c.TTSInferenceTimesteps, err = strconv.Atoi(envOrDefault("BACKEND_TTS_INFERENCE_TIMESTEPS", strconv.Itoa(DefaultTTSInferenceTimesteps)))
 	if err != nil {
 		return c, fmt.Errorf("BACKEND_TTS_INFERENCE_TIMESTEPS: %w", err)
 	}
@@ -169,6 +167,9 @@ func ConfigFromEnv() (Config, error) {
 	}
 	return c, c.validate()
 }
+
+// DefaultTTSInferenceTimesteps is sent to VoxCPM when the env leaves it empty.
+const DefaultTTSInferenceTimesteps = 20
 
 func envOrDefault(key, fallback string) string {
 	value := strings.TrimSpace(os.Getenv(key))

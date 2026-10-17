@@ -14,10 +14,13 @@ import {
   useMaterialUploadQueue,
   type MaterialQueueItem,
 } from '../model/use-material-upload-queue'
+import type { CourseMaterialKindOption } from '@/entities/competency-map'
 import { CourseMaterialCard } from './course-material-card'
+import { MaterialMetadataFields } from './material-metadata-fields'
 import {
   moveMaterialQueueItem,
   moveMaterialQueueItemToIndex,
+  sortMaterialsByWeek,
 } from '../model/material-queue-order'
 
 type MaterialUploadQueueState = ReturnType<typeof useMaterialUploadQueue>
@@ -106,7 +109,7 @@ export function MaterialUploadQueueToolbar({
         <input
           className={styles.addInput}
           type="file"
-          accept=".pdf,.zip,.md,.txt,.markdown,application/pdf,application/zip,text/plain,text/markdown"
+          accept=".pdf,.zip,application/pdf,application/zip"
           disabled={disabled || queue.isPending || queue.preparing}
           aria-label={t('competencyMap.queueAdd')}
           onChange={(event) => {
@@ -137,19 +140,24 @@ export function MaterialUploadQueueToolbar({
 export function MaterialUploadQueue({
   userId,
   subjectId,
+  kinds,
   disabled = false,
 }: {
   userId: string
   subjectId: string
+  kinds: CourseMaterialKindOption[]
   disabled?: boolean
 }) {
-  const queue = useMaterialUploadQueue(userId, subjectId)
+  const queue = useMaterialUploadQueue(userId, subjectId, kinds)
   const [draggingId, setDraggingId] = useState<string | null>(null)
   const [dropTargetId, setDropTargetId] = useState<string | null>(null)
-  const orderedItems = queue.items
+  const orderedItems = sortMaterialsByWeek(queue.items)
 
   function moveItem(id: string, targetIndex: number) {
-    const current = orderedItems.map(({ id: itemId }) => ({ id: itemId }))
+    const current = orderedItems.map(({ id: itemId, week }) => ({
+      id: itemId,
+      week,
+    }))
     queue.updateItems(moveMaterialQueueItemToIndex(current, id, targetIndex))
   }
 
@@ -193,7 +201,10 @@ export function MaterialUploadQueue({
                 const sourceId =
                   event.dataTransfer.getData('text/plain') || draggingId
                 if (sourceId) {
-                  const current = orderedItems.map(({ id }) => ({ id }))
+                  const current = orderedItems.map(({ id, week }) => ({
+                    id,
+                    week,
+                  }))
                   queue.updateItems(
                     moveMaterialQueueItem(current, sourceId, item.id),
                   )
@@ -213,8 +224,11 @@ export function MaterialUploadQueue({
               />
               <MaterialQueueCard
                 item={item}
+                kinds={kinds}
                 disabled={disabled || queue.isPending || queue.preparing}
                 dropTarget={dropTargetId === item.id}
+                onWeekChange={(week) => queue.updateWeek(item.id, week)}
+                onKindChange={(kind) => queue.updateKind(item.id, kind)}
                 onRemove={() => queue.removeItem(item.id)}
                 onSend={() => queue.sendItem(item.id)}
                 sending={queue.sendingItemId === item.id}
@@ -253,15 +267,21 @@ export function MaterialUploadSubmit({
 
 export function MaterialQueueCard({
   item,
+  kinds,
   disabled,
   dropTarget,
+  onWeekChange,
+  onKindChange,
   onRemove,
   onSend,
   sending,
 }: {
   item: MaterialQueueItem
+  kinds: CourseMaterialKindOption[]
   disabled: boolean
   dropTarget: boolean
+  onWeekChange: (week: string) => void
+  onKindChange: (kind: MaterialQueueItem['kind']) => void
   onRemove: () => void
   onSend: () => void
   sending: boolean
@@ -271,6 +291,10 @@ export function MaterialQueueCard({
     item.file.size > 1024 * 1024
       ? `${(item.file.size / (1024 * 1024)).toFixed(1)} МБ`
       : `${Math.round(item.file.size / 1024)} КБ`
+  const canSend =
+    /^\d+$/.test(item.week) &&
+    Number(item.week) > 0 &&
+    kinds.some((kind) => kind.code === item.kind)
 
   return (
     <CourseMaterialCard
@@ -303,21 +327,31 @@ export function MaterialQueueCard({
           {item.error}
         </Text>
       )}
-      <Button
-        type="button"
-        size="2"
-        variant="soft"
-        color="green"
+      <MaterialMetadataFields
+        week={item.week}
+        kind={item.kind}
+        kinds={kinds}
         disabled={disabled}
-        onClick={onSend}
-        aria-label={t('competencyMap.queueSendOne')}
-        title={t('competencyMap.queueSendOne')}
-      >
-        <Send size={14} />
-        {sending
-          ? t('competencyMap.queueSending')
-          : t('competencyMap.queueSendOne')}
-      </Button>
+        onWeekChange={onWeekChange}
+        onKindChange={(kind) => onKindChange(kind as MaterialQueueItem['kind'])}
+        action={
+          <Button
+            type="button"
+            size="2"
+            variant="soft"
+            color="green"
+            disabled={disabled || !canSend}
+            onClick={onSend}
+            aria-label={t('competencyMap.queueSendOne')}
+            title={t('competencyMap.queueSendOne')}
+          >
+            <Send size={14} />
+            {sending
+              ? t('competencyMap.queueSending')
+              : t('competencyMap.queueSendOne')}
+          </Button>
+        }
+      />
     </CourseMaterialCard>
   )
 }

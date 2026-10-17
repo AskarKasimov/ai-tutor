@@ -6,6 +6,13 @@ import (
 
 var ErrNotFound = errors.New("material not found")
 
+type Kind string
+
+type KindOption struct {
+	Code  Kind   `json:"code"`
+	Label string `json:"label"`
+}
+
 type Status string
 
 const (
@@ -15,6 +22,8 @@ const (
 )
 
 type Material struct {
+	Week         *int32         `json:"week" extensions:"x-nullable"`
+	Kind         *Kind          `json:"kind" extensions:"x-nullable"`
 	Cleaning     *Cleaning      `json:"cleaning,omitempty" binding:"optional"`
 	Processing   *Processing    `json:"processing,omitempty" binding:"optional"`
 	ID           string         `json:"id"`
@@ -25,7 +34,7 @@ type Material struct {
 	S3RawKey     string         `json:"s3_raw_key"`
 	S3ParsedKey  string         `json:"s3_parsed_key"`
 	S3OCRKey     string         `json:"-"`
-	OCRReport    map[string]any `json:"ocr_report"`
+	OCRReport    map[string]any `json:"ocr_report" extensions:"x-nullable"`
 	ParsedText   string         `json:"parsed_text"`
 	CharCount    int            `json:"char_count"`
 	Status       Status         `json:"status"`

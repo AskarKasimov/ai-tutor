@@ -354,80 +354,6 @@ components:
         - started_at
         - status
       type: object
-    geek.Material:
-      additionalProperties: false
-      properties:
-        char_count:
-          type: integer
-        content_type:
-          type: string
-        created_at:
-          type: integer
-        error_message:
-          type: string
-        file_size:
-          type: integer
-        filename:
-          type: string
-        id:
-          type: string
-        kind:
-          anyOf:
-            - $ref: '#/components/schemas/geek.MaterialKind'
-            - type: "null"
-          description: Вид материала; null — у материалов, загруженных до появления поля
-        parsed_text:
-          type: string
-        s3_parsed_key:
-          type: string
-        s3_raw_key:
-          type: string
-        status:
-          $ref: '#/components/schemas/material.Status'
-        subject_id:
-          type: string
-        updated_at:
-          type: integer
-        week:
-          description: Неделя курса; null — у материалов, загруженных до появления поля
-          minimum: 1
-          type:
-            - integer
-            - "null"
-      required:
-        - char_count
-        - content_type
-        - created_at
-        - file_size
-        - filename
-        - id
-        - kind
-        - parsed_text
-        - s3_parsed_key
-        - s3_raw_key
-        - status
-        - subject_id
-        - updated_at
-        - week
-      type: object
-    geek.MaterialKind:
-      description: Вид материала
-      enum:
-        - lecture
-        - lab
-        - tutorial
-      type: string
-    geek.MaterialPatch:
-      additionalProperties: false
-      description: Правка недели и вида без повторного OCR; хотя бы одно поле
-      properties:
-        kind:
-          $ref: '#/components/schemas/geek.MaterialKind'
-        week:
-          minimum: 1
-          type: integer
-      required: []
-      type: object
     geek.NodeResult:
       additionalProperties: false
       properties:
@@ -738,21 +664,6 @@ components:
         - speaker
         - text
       type: object
-    geek.UploadResult:
-      additionalProperties: false
-      properties:
-        failed:
-          items:
-            $ref: '#/components/schemas/http.UploadFailedItem'
-          type: array
-        uploaded:
-          items:
-            $ref: '#/components/schemas/geek.Material'
-          type: array
-      required:
-        - failed
-        - uploaded
-      type: object
     http.DeleteResponse:
       additionalProperties: false
       properties:
@@ -760,6 +671,14 @@ components:
           type: string
       required:
         - status
+      type: object
+    http.UpdateMetadataRequest:
+      additionalProperties: false
+      properties:
+        kind:
+          type: string
+        week:
+          type: integer
       type: object
     http.UploadFailedItem:
       additionalProperties: false
@@ -774,6 +693,177 @@ components:
         - code
         - filename
         - message
+      type: object
+    http.UploadItemResult:
+      additionalProperties: false
+      properties:
+        client_id:
+          type: string
+        error:
+          $ref: '#/components/schemas/http.UploadFailedItem'
+        material:
+          $ref: '#/components/schemas/material.Material'
+      required:
+        - client_id
+      type: object
+    http.UploadResult:
+      additionalProperties: false
+      properties:
+        failed:
+          items:
+            $ref: '#/components/schemas/http.UploadFailedItem'
+          type: array
+          uniqueItems: false
+        results:
+          items:
+            $ref: '#/components/schemas/http.UploadItemResult'
+          type: array
+          uniqueItems: false
+        uploaded:
+          items:
+            $ref: '#/components/schemas/material.Material'
+          type: array
+          uniqueItems: false
+      required:
+        - failed
+        - results
+        - uploaded
+      type: object
+    material.Cleaning:
+      additionalProperties: false
+      properties:
+        attempts:
+          type: integer
+        cleaned_text:
+          type: string
+        error_message:
+          type: string
+        s3_cleaned_key:
+          type: string
+        s3_report_key:
+          type: string
+        status:
+          enum:
+            - pending
+            - processing
+            - ready
+            - failed
+          type: string
+        updated_at:
+          type: integer
+      required:
+        - attempts
+        - cleaned_text
+        - error_message
+        - s3_cleaned_key
+        - s3_report_key
+        - status
+        - updated_at
+      type: object
+    material.KindOption:
+      additionalProperties: false
+      properties:
+        code:
+          type: string
+        label:
+          type: string
+      required:
+        - code
+        - label
+      type: object
+    material.Material:
+      additionalProperties: false
+      properties:
+        char_count:
+          type: integer
+        cleaning:
+          $ref: '#/components/schemas/material.Cleaning'
+        content_type:
+          type: string
+        created_at:
+          type: integer
+        error_message:
+          type: string
+        file_size:
+          type: integer
+        filename:
+          type: string
+        id:
+          type: string
+        kind:
+          type:
+            - string
+            - "null"
+        ocr_report:
+          additionalProperties: {}
+          type:
+            - object
+            - "null"
+        parsed_text:
+          type: string
+        processing:
+          $ref: '#/components/schemas/material.Processing'
+        s3_parsed_key:
+          type: string
+        s3_raw_key:
+          type: string
+        status:
+          $ref: '#/components/schemas/material.Status'
+        subject_id:
+          type: string
+        updated_at:
+          type: integer
+        week:
+          type:
+            - integer
+            - "null"
+      required:
+        - char_count
+        - content_type
+        - created_at
+        - file_size
+        - filename
+        - id
+        - kind
+        - ocr_report
+        - parsed_text
+        - s3_parsed_key
+        - s3_raw_key
+        - status
+        - subject_id
+        - updated_at
+        - week
+      type: object
+    material.Processing:
+      additionalProperties: false
+      properties:
+        attempts:
+          type: integer
+        stage:
+          enum:
+            - queued
+            - waiting_models
+            - ocr
+            - translation
+            - cleaning
+            - graph
+            - ready
+            - failed
+          type: string
+        status:
+          enum:
+            - pending
+            - processing
+            - ready
+            - failed
+          type: string
+        updated_at:
+          type: integer
+      required:
+        - attempts
+        - stage
+        - status
+        - updated_at
       type: object
     material.Status:
       enum:
@@ -899,6 +989,42 @@ paths:
       tags:
         - Пакет для преподавателя
       x-implementation: planned
+  /admin/material-kinds:
+    get:
+      operationId: listMaterialKinds
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: '#/components/schemas/material.KindOption'
+                type: array
+          description: OK
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Forbidden
+        "503":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Service Unavailable
+      security:
+        - accessCookie: []
+      summary: Получить виды материалов
+      tags:
+        - Материалы
+      x-implementation: implemented
   /admin/subjects:
     post:
       description: Создать предмет без карты компетенций. Доступно только admin.
@@ -1159,7 +1285,7 @@ paths:
             application/json:
               schema:
                 items:
-                  $ref: '#/components/schemas/geek.Material'
+                  $ref: '#/components/schemas/material.Material'
                 type: array
           description: OK
         "400":
@@ -1191,9 +1317,9 @@ paths:
       summary: Список материалов курса
       tags:
         - Материалы
-      x-implementation: planned
+      x-implementation: implemented
     post:
-      description: Доступно только admin. Загружает файлы лекций/лаб, сохраняет их в S3, выполняет OCR и сохраняет извлеченный Markdown с формулами LaTeX.
+      description: Доступно только admin. Для новых клиентов передайте items (JSON-манифест с client_id, week и kind для каждого файла), затем повторяющиеся file в том же порядке. Legacy week/kind остаются совместимы.
       operationId: uploadSubjectMaterials
       parameters:
         - description: ID предмета
@@ -1209,28 +1335,31 @@ paths:
               additionalProperties: false
               properties:
                 file:
-                  description: Файл лекции или лабы (PDF, Markdown, текст)
-                  format: binary
+                  description: PDF-файлы в порядке манифеста
+                  items:
+                    format: binary
+                    type: string
+                  type: array
+                items:
+                  description: JSON-манифест файлов
                   type: string
                 kind:
-                  $ref: '#/components/schemas/geek.MaterialKind'
+                  description: Тип для legacy-клиентов
+                  type: string
                 week:
-                  description: Неделя курса; применяется ко всем файлам запроса
-                  minimum: 1
+                  description: Неделя для legacy-клиентов
                   type: integer
               required:
-                - week
-                - kind
                 - file
               type: object
-        description: Неделя, вид и файлы. Поля week и kind идут в форме до файлов и применяются ко всем файлам запроса.
+        description: JSON-манифест файлов
         required: true
       responses:
         "200":
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/geek.UploadResult'
+                $ref: '#/components/schemas/http.UploadResult'
           description: OK
         "400":
           content:
@@ -1273,7 +1402,7 @@ paths:
       summary: Загрузить материалы курса
       tags:
         - Материалы
-      x-implementation: planned
+      x-implementation: implemented
   /admin/subjects/{subject_id}/materials/{material_id}:
     delete:
       description: Доступно только admin. Удаляет материал из базы и S3.
@@ -1329,38 +1458,42 @@ paths:
         - Материалы
       x-implementation: implemented
     patch:
-      description: Доступно только admin. Меняет неделю и вид без повторного OCR.
+      operationId: updateSubjectMaterialMetadata
       parameters:
-        - description: ID курса (предмета)
+        - description: ID предмета
           in: path
           name: subject_id
           required: true
           schema:
-            maxLength: 128
-            minLength: 1
             type: string
         - description: ID материала
           in: path
           name: material_id
           required: true
           schema:
-            maxLength: 128
-            minLength: 1
             type: string
       requestBody:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/geek.MaterialPatch'
-        description: Новые неделя и/или вид
+              $ref: '#/components/schemas/http.UpdateMetadataRequest'
+              description: Метаданные материала
+              summary: request
+        description: Метаданные материала
         required: true
       responses:
         "200":
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/geek.Material'
+                $ref: '#/components/schemas/material.Material'
           description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Bad Request
         "401":
           content:
             application/json:
@@ -1385,12 +1518,18 @@ paths:
               schema:
                 $ref: '#/components/schemas/fault.Error'
           description: Unprocessable Entity
+        "503":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Service Unavailable
       security:
         - accessCookie: []
-      summary: Исправить неделю или вид материала
+      summary: Исправить метаданные материала
       tags:
         - Материалы
-      x-implementation: planned
+      x-implementation: implemented
   /admin/subjects/{subject_id}/materials/{material_id}/raw:
     get:
       description: Доступно только admin. Скачивание исходного файла материала.
@@ -1449,6 +1588,92 @@ paths:
       security:
         - accessCookie: []
       summary: Скачать исходный файл материала
+      tags:
+        - Материалы
+      x-implementation: implemented
+    put:
+      description: Сохраняет PDF и ставит новое durable OCR-задание; затем выполняются перевод, очистка и темы.
+      operationId: replaceSubjectMaterialRaw
+      parameters:
+        - description: ID предмета
+          in: path
+          name: subject_id
+          required: true
+          schema:
+            type: string
+        - description: ID материала
+          in: path
+          name: material_id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              additionalProperties: false
+              properties:
+                file:
+                  description: Новый PDF
+                  format: binary
+                  type: string
+              required:
+                - file
+              type: object
+        description: Новый PDF
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/material.Material'
+          description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Bad Request
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Forbidden
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Not Found
+        "413":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Request Entity Too Large
+        "422":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unprocessable Entity
+        "503":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Service Unavailable
+      security:
+        - accessCookie: []
+      summary: Заменить исходный PDF материала
       tags:
         - Материалы
       x-implementation: implemented

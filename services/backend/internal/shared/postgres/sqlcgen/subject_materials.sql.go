@@ -9,6 +9,24 @@ import (
 	"context"
 )
 
+const deleteMaterialCleaningJob = `-- name: DeleteMaterialCleaningJob :exec
+DELETE FROM material_cleaning_jobs WHERE material_id=$1
+`
+
+func (q *Queries) DeleteMaterialCleaningJob(ctx context.Context, materialID string) error {
+	_, err := q.db.Exec(ctx, deleteMaterialCleaningJob, materialID)
+	return err
+}
+
+const deleteMaterialOCRJob = `-- name: DeleteMaterialOCRJob :exec
+DELETE FROM material_ocr_jobs WHERE material_id=$1
+`
+
+func (q *Queries) DeleteMaterialOCRJob(ctx context.Context, materialID string) error {
+	_, err := q.db.Exec(ctx, deleteMaterialOCRJob, materialID)
+	return err
+}
+
 const deleteSubjectMaterial = `-- name: DeleteSubjectMaterial :exec
 DELETE FROM subject_materials WHERE id=$1 AND subject_id=$2
 `
@@ -24,7 +42,7 @@ func (q *Queries) DeleteSubjectMaterial(ctx context.Context, arg DeleteSubjectMa
 }
 
 const getSubjectMaterialByID = `-- name: GetSubjectMaterialByID :one
-SELECT id, subject_id, filename, content_type, file_size, s3_raw_key, s3_parsed_key, parsed_text, char_count, status, error_message, created_at, updated_at, s3_ocr_key, ocr_report
+SELECT id, subject_id, filename, content_type, file_size, s3_raw_key, s3_parsed_key, parsed_text, char_count, status, error_message, created_at, updated_at, s3_ocr_key, ocr_report, week, kind
 FROM subject_materials WHERE id=$1
 `
 
@@ -47,6 +65,8 @@ func (q *Queries) GetSubjectMaterialByID(ctx context.Context, id string) (Subjec
 		&i.UpdatedAt,
 		&i.S3OcrKey,
 		&i.OcrReport,
+		&i.Week,
+		&i.Kind,
 	)
 	return i, err
 }
@@ -54,9 +74,9 @@ func (q *Queries) GetSubjectMaterialByID(ctx context.Context, id string) (Subjec
 const insertSubjectMaterial = `-- name: InsertSubjectMaterial :one
 INSERT INTO subject_materials (
     id, subject_id, filename, content_type, file_size, s3_raw_key, s3_parsed_key,
-    parsed_text, char_count, status, error_message, created_at, updated_at
-) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
-RETURNING id, subject_id, filename, content_type, file_size, s3_raw_key, s3_parsed_key, parsed_text, char_count, status, error_message, created_at, updated_at, s3_ocr_key, ocr_report
+    parsed_text, char_count, status, error_message, created_at, updated_at, week, kind
+) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+RETURNING id, subject_id, filename, content_type, file_size, s3_raw_key, s3_parsed_key, parsed_text, char_count, status, error_message, created_at, updated_at, s3_ocr_key, ocr_report, week, kind
 `
 
 type InsertSubjectMaterialParams struct {
@@ -73,6 +93,8 @@ type InsertSubjectMaterialParams struct {
 	ErrorMessage *string
 	CreatedAt    int64
 	UpdatedAt    int64
+	Week         *int32
+	Kind         *string
 }
 
 func (q *Queries) InsertSubjectMaterial(ctx context.Context, arg InsertSubjectMaterialParams) (SubjectMaterial, error) {
@@ -90,6 +112,8 @@ func (q *Queries) InsertSubjectMaterial(ctx context.Context, arg InsertSubjectMa
 		arg.ErrorMessage,
 		arg.CreatedAt,
 		arg.UpdatedAt,
+		arg.Week,
+		arg.Kind,
 	)
 	var i SubjectMaterial
 	err := row.Scan(
@@ -108,12 +132,43 @@ func (q *Queries) InsertSubjectMaterial(ctx context.Context, arg InsertSubjectMa
 		&i.UpdatedAt,
 		&i.S3OcrKey,
 		&i.OcrReport,
+		&i.Week,
+		&i.Kind,
 	)
 	return i, err
 }
 
+const listMaterialKinds = `-- name: ListMaterialKinds :many
+SELECT code,label FROM material_kinds ORDER BY sort_order,code
+`
+
+type ListMaterialKindsRow struct {
+	Code  string
+	Label string
+}
+
+func (q *Queries) ListMaterialKinds(ctx context.Context) ([]ListMaterialKindsRow, error) {
+	rows, err := q.db.Query(ctx, listMaterialKinds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListMaterialKindsRow{}
+	for rows.Next() {
+		var i ListMaterialKindsRow
+		if err := rows.Scan(&i.Code, &i.Label); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listSubjectMaterials = `-- name: ListSubjectMaterials :many
-SELECT id, subject_id, filename, content_type, file_size, s3_raw_key, s3_parsed_key, parsed_text, char_count, status, error_message, created_at, updated_at, s3_ocr_key, ocr_report
+SELECT id, subject_id, filename, content_type, file_size, s3_raw_key, s3_parsed_key, parsed_text, char_count, status, error_message, created_at, updated_at, s3_ocr_key, ocr_report, week, kind
 FROM subject_materials WHERE subject_id=$1 ORDER BY created_at DESC
 `
 
@@ -142,6 +197,8 @@ func (q *Queries) ListSubjectMaterials(ctx context.Context, subjectID string) ([
 			&i.UpdatedAt,
 			&i.S3OcrKey,
 			&i.OcrReport,
+			&i.Week,
+			&i.Kind,
 		); err != nil {
 			return nil, err
 		}
@@ -161,4 +218,96 @@ func (q *Queries) LockSubjectMaterial(ctx context.Context, id string) (string, e
 	row := q.db.QueryRow(ctx, lockSubjectMaterial, id)
 	err := row.Scan(&id)
 	return id, err
+}
+
+const replaceSubjectMaterial = `-- name: ReplaceSubjectMaterial :one
+UPDATE subject_materials SET filename=$1,content_type=$2,file_size=$3,s3_raw_key=$4,s3_parsed_key=$5,s3_ocr_key='',ocr_report='{}'::jsonb,parsed_text='',char_count=0,status='pending',error_message=NULL,updated_at=$6
+WHERE id=$7 AND subject_id=$8 RETURNING id, subject_id, filename, content_type, file_size, s3_raw_key, s3_parsed_key, parsed_text, char_count, status, error_message, created_at, updated_at, s3_ocr_key, ocr_report, week, kind
+`
+
+type ReplaceSubjectMaterialParams struct {
+	Filename    string
+	ContentType string
+	FileSize    int64
+	S3RawKey    string
+	S3ParsedKey string
+	UpdatedAt   int64
+	ID          string
+	SubjectID   string
+}
+
+func (q *Queries) ReplaceSubjectMaterial(ctx context.Context, arg ReplaceSubjectMaterialParams) (SubjectMaterial, error) {
+	row := q.db.QueryRow(ctx, replaceSubjectMaterial,
+		arg.Filename,
+		arg.ContentType,
+		arg.FileSize,
+		arg.S3RawKey,
+		arg.S3ParsedKey,
+		arg.UpdatedAt,
+		arg.ID,
+		arg.SubjectID,
+	)
+	var i SubjectMaterial
+	err := row.Scan(
+		&i.ID,
+		&i.SubjectID,
+		&i.Filename,
+		&i.ContentType,
+		&i.FileSize,
+		&i.S3RawKey,
+		&i.S3ParsedKey,
+		&i.ParsedText,
+		&i.CharCount,
+		&i.Status,
+		&i.ErrorMessage,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.S3OcrKey,
+		&i.OcrReport,
+		&i.Week,
+		&i.Kind,
+	)
+	return i, err
+}
+
+const updateMaterialMetadata = `-- name: UpdateMaterialMetadata :one
+UPDATE subject_materials SET week=coalesce($1::integer,week), kind=coalesce($2::text,kind)
+WHERE id=$3 AND subject_id=$4 RETURNING id, subject_id, filename, content_type, file_size, s3_raw_key, s3_parsed_key, parsed_text, char_count, status, error_message, created_at, updated_at, s3_ocr_key, ocr_report, week, kind
+`
+
+type UpdateMaterialMetadataParams struct {
+	Week      *int32
+	Kind      *string
+	ID        string
+	SubjectID string
+}
+
+func (q *Queries) UpdateMaterialMetadata(ctx context.Context, arg UpdateMaterialMetadataParams) (SubjectMaterial, error) {
+	row := q.db.QueryRow(ctx, updateMaterialMetadata,
+		arg.Week,
+		arg.Kind,
+		arg.ID,
+		arg.SubjectID,
+	)
+	var i SubjectMaterial
+	err := row.Scan(
+		&i.ID,
+		&i.SubjectID,
+		&i.Filename,
+		&i.ContentType,
+		&i.FileSize,
+		&i.S3RawKey,
+		&i.S3ParsedKey,
+		&i.ParsedText,
+		&i.CharCount,
+		&i.Status,
+		&i.ErrorMessage,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.S3OcrKey,
+		&i.OcrReport,
+		&i.Week,
+		&i.Kind,
+	)
+	return i, err
 }

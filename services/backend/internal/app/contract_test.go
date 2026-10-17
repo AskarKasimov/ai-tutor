@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
@@ -191,8 +192,9 @@ func TestOpenAPIResponses(t *testing.T) {
 	check("POST", "/admin/subjects", f.request("POST", "/admin/subjects", `{"name":"Предмет контракта"}`, admin))
 	check("GET", "/subjects", f.request("GET", "/subjects", "", admin))
 	materialsUpload := upload(f, "/admin/subjects/subject:test/materials", "file", "lecture.md", "text/markdown", []byte("# Введение\nФормула $x=1$"), admin)
-	// Upload and list are planned with week and kind; the old handlers stay
-	// unchecked until stream A implements them.
+	check("POST", "/admin/subjects/{subject_id}/materials", materialsUpload)
+	check("GET", "/admin/material-kinds", f.request("GET", "/admin/material-kinds", "", admin))
+	check("GET", "/admin/subjects/{subject_id}/materials", f.request("GET", "/admin/subjects/subject:test/materials", "", admin))
 	var uploadResult struct {
 		Uploaded []struct {
 			ID string `json:"id"`
@@ -205,6 +207,7 @@ func TestOpenAPIResponses(t *testing.T) {
 		t.Fatalf("materials upload: %s (%v)", materialsUpload.Body.String(), err)
 	}
 	matID := uploadResult.Uploaded[0].ID
+	check("PATCH", "/admin/subjects/{subject_id}/materials/{material_id}", f.request("PATCH", "/admin/subjects/subject:test/materials/"+matID, `{ "week": 3, "kind": "lecture" }`, admin))
 	check("POST", "/admin/subjects/{subject_id}/graph/build", f.request("POST", "/admin/subjects/subject:test/graph/build", "", admin))
 	// Finish the material's processing as the OCR and cleaning workers would.
 	for _, q := range []string{
@@ -220,6 +223,21 @@ func TestOpenAPIResponses(t *testing.T) {
 	check("POST", "/admin/subjects/{subject_id}/graph/build", f.request("POST", "/admin/subjects/subject:test/graph/build", "", admin))
 	check("GET", "/admin/subjects/{subject_id}/graph", f.request("GET", "/admin/subjects/subject:test/graph", "", admin))
 	check("GET", "/admin/subjects/{subject_id}/materials/{material_id}/raw", f.request("GET", "/admin/subjects/subject:test/materials/"+matID+"/raw", "", admin))
+
+	var replacementBody bytes.Buffer
+	replacementWriter := multipart.NewWriter(&replacementBody)
+	replacementPart, err := replacementWriter.CreateFormFile("file", "replacement.pdf")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = replacementPart.Write([]byte("%PDF-1.7 replacement"))
+	_ = replacementWriter.Close()
+	replacementRequest := httptest.NewRequest("PUT", "https://api.example/admin/subjects/subject:test/materials/"+matID+"/raw", &replacementBody)
+	replacementRequest.Header.Set("Content-Type", replacementWriter.FormDataContentType())
+	replacementRequest.AddCookie(admin)
+	replacementResponse := httptest.NewRecorder()
+	f.app.Handler().ServeHTTP(replacementResponse, replacementRequest)
+	check("PUT", "/admin/subjects/{subject_id}/materials/{material_id}/raw", replacementResponse)
 	check("DELETE", "/admin/subjects/{subject_id}/materials/{material_id}", f.request("DELETE", "/admin/subjects/subject:test/materials/"+matID, "", admin))
 	geekFlow(t, f, access, check)
 	check("POST", "/auth/refresh", f.request("POST", "/auth/refresh", "", refresh))

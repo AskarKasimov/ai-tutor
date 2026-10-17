@@ -4,7 +4,10 @@ import { expect, it, vi } from 'vitest'
 import { createAppDependencies } from '@/bootstrap/dependencies'
 import { createQueryClient } from '@/bootstrap/providers'
 import { useMaterialUploadQueue } from '@/features/import-competency-map'
-import type { CourseMaterial } from '@/entities/competency-map'
+import type {
+  CourseMaterial,
+  CourseMaterialUploadItem,
+} from '@/entities/competency-map'
 import { createQueryWrapper } from '../../../support/query-wrapper'
 
 function saved(file: File): CourseMaterial {
@@ -19,6 +22,8 @@ function saved(file: File): CourseMaterial {
     parsedText: '',
     charCount: 0,
     status: 'pending',
+    week: 1,
+    kind: 'lecture',
     ocrWarnings: [],
     createdAt: 1,
     updatedAt: 1,
@@ -28,14 +33,24 @@ it('sends a 49-file ZIP in batches within the master 48-file limit', async () =>
   const dependencies = createAppDependencies()
   const batches: string[][] = []
   dependencies.competencyMap.uploadCourseMaterials = vi.fn(
-    async (_subjectId: string, files: File[]) => {
-      if (files.length > 48) throw new Error('Backend accepts at most 48 files')
-      batches.push(files.map((file) => file.name))
-      return { uploaded: files.map(saved), failed: [] }
+    async (_subjectId: string, items: CourseMaterialUploadItem[]) => {
+      if (items.length > 48) throw new Error('Backend accepts at most 48 files')
+      batches.push(items.map((item) => item.file.name))
+      return {
+        uploaded: items.map((item) => saved(item.file)),
+        failed: [],
+        results: items.map((item) => ({
+          clientId: item.clientId,
+          material: saved(item.file),
+        })),
+      }
     },
   )
   const { result } = renderHook(
-    () => useMaterialUploadQueue('user-1', 'subject-1'),
+    () =>
+      useMaterialUploadQueue('user-1', 'subject-1', [
+        { code: 'lecture', label: 'Лекция' },
+      ]),
     { wrapper: createQueryWrapper(createQueryClient(), dependencies) },
   )
   const archive = zipSync(
@@ -58,11 +73,22 @@ it('sends a 49-file ZIP in batches within the master 48-file limit', async () =>
 it('keeps failed files for retry after partial success', async () => {
   const dependencies = createAppDependencies()
   dependencies.competencyMap.uploadCourseMaterials = vi.fn(
-    async (_subjectId: string, files: File[]) => ({
-      uploaded: [saved(files[0])],
+    async (_subjectId: string, items: CourseMaterialUploadItem[]) => ({
+      uploaded: [saved(items[0].file)],
+      results: [
+        { clientId: items[0].clientId, material: saved(items[0].file) },
+        {
+          clientId: items[1].clientId,
+          error: {
+            filename: items[1].file.name,
+            code: 'UPLOAD_FAILED',
+            message: 'Ошибка загрузки',
+          },
+        },
+      ],
       failed: [
         {
-          filename: files[1].name,
+          filename: items[1].file.name,
           code: 'UPLOAD_FAILED',
           message: 'Ошибка загрузки',
         },
@@ -70,7 +96,10 @@ it('keeps failed files for retry after partial success', async () => {
     }),
   )
   const { result } = renderHook(
-    () => useMaterialUploadQueue('user-1', 'subject-1'),
+    () =>
+      useMaterialUploadQueue('user-1', 'subject-1', [
+        { code: 'lecture', label: 'Лекция' },
+      ]),
     { wrapper: createQueryWrapper(createQueryClient(), dependencies) },
   )
   await act(() => result.current.addFile(new File(['%PDF-1.4 a'], 'a.pdf')))

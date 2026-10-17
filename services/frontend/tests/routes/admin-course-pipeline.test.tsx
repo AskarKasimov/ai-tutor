@@ -29,23 +29,33 @@ const material = {
   file_size: 100,
   s3_raw_key: 'raw',
   s3_parsed_key: 'parsed',
-  parsed_text: 'Текст лекции',
+  parsed_text: '# Тема лекции\n\nФормула: $y = Wx + b$',
   char_count: 12,
   status: 'parsed',
+  week: 1,
+  kind: 'lecture',
   created_at: 1,
   updated_at: 1,
 }
 function setup({
   processing = false,
+  cleaningFailed = false,
   graphReady = false,
   uploadGate,
 }: {
   processing?: boolean
+  cleaningFailed?: boolean
   graphReady?: boolean
   uploadGate?: Promise<void>
 } = {}) {
+  let graphRequested = false
   const calls = vi.fn(async (url: string, init?: RequestInit) => {
     if (url.endsWith('/auth/me')) return Response.json(admin)
+    if (url.endsWith('/admin/material-kinds'))
+      return Response.json([
+        { code: 'lecture', label: 'Лекция' },
+        { code: 'lab', label: 'Лабораторная' },
+      ])
     if (url.endsWith('/subjects'))
       return Response.json([
         { id: 'subject-a', name: 'Первый курс', ready: false },
@@ -57,30 +67,46 @@ function setup({
       return Response.json({
         uploaded: files.map((file) => ({ ...material, filename: file.name })),
         failed: [],
+        results: JSON.parse((init.body as FormData).get('items') as string).map(
+          (item: { client_id: string }, index: number) => ({
+            client_id: item.client_id,
+            material: { ...material, filename: files[index].name },
+          }),
+        ),
       })
     }
     if (url.endsWith('/materials'))
       return Response.json([
-        processing
+        cleaningFailed
           ? {
               ...material,
-              processing: {
-                stage: 'translation',
-                status: 'processing',
-                updated_at: 1,
-                attempts: 1,
+              cleaning: {
+                status: 'failed',
+                updated_at: 2,
+                attempts: 3,
+                error_message: 'Очистка материала не удалась.',
               },
             }
-          : material,
+          : processing
+            ? {
+                ...material,
+                processing: {
+                  stage: 'translation',
+                  status: 'processing',
+                  updated_at: 1,
+                  attempts: 1,
+                },
+              }
+            : material,
       ])
-    if (url.endsWith('/graph') || url.endsWith('/graph/build'))
+    if (url.endsWith('/graph') || url.endsWith('/graph/build')) {
+      if (init?.method === 'POST') graphRequested = true
       return Response.json({
-        status:
-          init?.method === 'POST'
-            ? 'pending'
-            : graphReady
-              ? 'ready'
-              : 'not_requested',
+        status: graphRequested
+          ? 'pending'
+          : graphReady
+            ? 'ready'
+            : 'not_requested',
         attempts: 0,
         error_message: '',
         graph: graphReady
@@ -98,9 +124,10 @@ function setup({
             }
           : null,
         stale: false,
-        inputs_ready: !processing,
+        inputs_ready: !processing && !cleaningFailed,
         updated_at: 1,
       })
+    }
     throw new Error(`Unexpected API call: ${url}`)
   })
   vi.stubGlobal('fetch', calls)
@@ -121,7 +148,7 @@ function open(path = '/admin/competency-map/subject-b') {
 }
 afterEach(() => vi.unstubAllGlobals())
 
-it('opens the selected course with the master API without metadata or legacy build requests', async () => {
+it('opens the selected course with original metadata controls and master graph API', async () => {
   const calls = setup()
   open()
   expect(
@@ -133,16 +160,17 @@ it('opens the selected course with the master API without metadata or legacy bui
       url.endsWith('/admin/subjects/subject-b/materials'),
     ),
   ).toBe(true)
-  expect(
-    calls.mock.calls.some(([url]) => /material-kinds|graph-builds/.test(url)),
-  ).toBe(false)
-  expect(screen.queryByRole('combobox')).not.toBeInTheDocument()
+  expect(calls.mock.calls.some(([url]) => /graph-builds/.test(url))).toBe(false)
+  expect(screen.getByRole('combobox', { name: 'Тип материала' })).toBeVisible()
+  expect(screen.getByRole('spinbutton', { name: 'Неделя' })).toHaveValue(1)
 })
 
 it('shows the master pipeline stage while translation is running and blocks graph builds', async () => {
   setup({ processing: true })
   open()
-  expect(await screen.findByText('Переводит материал')).toBeInTheDocument()
+  expect(
+    await screen.findByText('Дождитесь завершения распознавания материалов.'),
+  ).toBeInTheDocument()
   expect(screen.getByRole('button', { name: /Собрать граф/ })).toBeDisabled()
 })
 
@@ -150,7 +178,7 @@ it('keeps the master graph viewer for a published graph', async () => {
   setup({ graphReady: true })
   open()
   expect(
-    await screen.findByText('Граф знаний готов к экзамену'),
+    await screen.findByText('Курс готов для студентов. В графе тем: 1.'),
   ).toBeInTheDocument()
   fireEvent.click(screen.getByRole('button', { name: /Показать/ }))
   expect(await screen.findByText('Линейная регрессия')).toBeInTheDocument()
@@ -179,7 +207,7 @@ it('uploads a queued PDF using the master multipart field', async () => {
   )?.[1]
   const body = request?.body as FormData
   expect(body.getAll('file')).toHaveLength(1)
-  expect(body.has('metadata')).toBe(false)
+  expect(body.has('items')).toBe(true)
   await waitFor(() =>
     expect(screen.queryByText('new.pdf')).not.toBeInTheDocument(),
   )
@@ -197,18 +225,24 @@ it('blocks building the graph while a queued upload is in flight', async () => {
   })
   fireEvent.click(await screen.findByRole('button', { name: 'Отправить всё' }))
   await waitFor(() =>
-    expect(screen.getByRole('button', { name: 'Собрать граф' })).toBeDisabled(),
+    expect(
+      screen.getByRole('button', { name: 'Собрать граф тем' }),
+    ).toBeDisabled(),
   )
   finish()
   await waitFor(() =>
-    expect(screen.getByRole('button', { name: 'Собрать граф' })).toBeEnabled(),
+    expect(
+      screen.getByRole('button', { name: 'Собрать граф тем' }),
+    ).toBeEnabled(),
   )
 })
 
 it('confirms a graph build before using the master build endpoint', async () => {
   const calls = setup()
   open()
-  fireEvent.click(await screen.findByRole('button', { name: 'Собрать граф' }))
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Собрать граф тем' }),
+  )
   const dialog = await screen.findByRole('alertdialog')
   expect(calls.mock.calls.some(([url]) => url.endsWith('/graph/build'))).toBe(
     false,
@@ -222,7 +256,82 @@ it('confirms a graph build before using the master build endpoint', async () => 
       ),
     ).toBe(true),
   )
+  expect(await screen.findByText('В очереди')).toBeInTheDocument()
+})
+
+it('preserves the three numbered preparation blocks and arrows in their original order', async () => {
+  setup()
+  open()
+  const pipeline = await screen.findByRole('navigation', {
+    name: 'Этапы подготовки курса',
+  })
   expect(
-    await screen.findByText('Построение графа знаний курса…'),
-  ).toBeInTheDocument()
+    [...pipeline.children].map((element) => element.tagName.toLowerCase()),
+  ).toEqual(['div', 'svg', 'div', 'svg', 'div'])
+  const blocks = [...pipeline.children].filter(
+    (element) => element.tagName === 'DIV',
+  )
+  expect(blocks.map((element) => element.textContent)).toEqual([
+    '1Материалы',
+    '2Граф тем',
+    '3Готов студентам',
+  ])
+})
+
+it('uses one card list for queued and saved materials and keeps reorder controls', async () => {
+  const calls = setup()
+  open()
+  fireEvent.change(await screen.findByLabelText('Добавить PDF или ZIP'), {
+    target: { files: [new File(['%PDF-1.4 new'], 'queued.pdf')] },
+  })
+  await screen.findByText('queued.pdf')
+  const list = screen.getByRole('list')
+  let rows = within(list).getAllByRole('listitem')
+  expect(rows).toHaveLength(2)
+  expect(within(rows[0]).getByRole('article')).toHaveTextContent('lecture.pdf')
+  expect(within(rows[1]).getByRole('article')).toHaveTextContent('queued.pdf')
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Переместить lecture.pdf ниже' }),
+  )
+  rows = within(list).getAllByRole('listitem')
+  expect(rows[0]).toHaveTextContent('queued.pdf')
+  expect(rows[1]).toHaveTextContent('lecture.pdf')
+  expect(calls.mock.calls.some(([, init]) => init?.method === 'PATCH')).toBe(
+    false,
+  )
+})
+
+it('opens rendered Markdown and formulas in a closable preview dialog', async () => {
+  setup()
+  open()
+  fireEvent.click(
+    await screen.findByRole('button', {
+      name: 'Предпросмотр',
+    }),
+  )
+  const dialog = await screen.findByRole('dialog')
+  expect(
+    within(dialog).getByRole('heading', { name: 'Тема лекции' }),
+  ).toBeVisible()
+  expect(dialog.querySelector('.katex')).toBeInTheDocument()
+  fireEvent.click(
+    within(dialog).getByRole('button', { name: 'Закрыть предпросмотр' }),
+  )
+  await waitFor(() =>
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument(),
+  )
+})
+
+it('shows terminal cleaning failure in the original card without a pending blocker', async () => {
+  setup({ cleaningFailed: true, graphReady: true })
+  open()
+  expect(await screen.findByText('Очистка материала не удалась.')).toBeVisible()
+  expect(
+    screen.getByText(
+      'У 1 материалов ошибка распознавания: удалите их или загрузите заново.',
+    ),
+  ).toBeVisible()
+  expect(
+    screen.queryByText('Дождитесь завершения распознавания материалов.'),
+  ).not.toBeInTheDocument()
 })

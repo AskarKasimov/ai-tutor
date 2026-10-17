@@ -125,10 +125,10 @@
       <h2>1. Курс <small></small></h2>
       <p>Содержание — только материалы курса.</p>
       <ul>
-        <li><label><input type="checkbox" data-id="course-upload" checked><span><span class="t">Загрузка материалов курса в админке</span><span class="d">Список курсов, подготовка выбранного курса и очередь PDF/текста/Markdown и ZIP с PDF; отправка пакетами до 48 файлов в конвейер master (#69, #104). Неделя и вид — отдельный пункт ниже.</span></span></label></li>
+        <li><label><input type="checkbox" data-id="course-upload" checked><span><span class="t">Загрузка материалов курса в админке</span><span class="d">Список курсов, подготовка выбранного курса, единый список PDF/ZIP с неделей и типом, замена PDF и Markdown-предпросмотр; отправка пакетами до 48 файлов в конвейер master (#69, #104).</span></span></label></li>
         <li><label><input type="checkbox" data-id="course-materials" checked><span><span class="t">Собраны PDF лекций, лаб и туториалов по неделям</span><span class="d">28 PDF за недели 1–14 в documents/materials/.</span></span></label></li>
-        <li><label><input type="checkbox" data-id="course-meta"><span><span class="t">Неделя и вид материала указываются при загрузке</span><span class="d">Лекция / лаба / туториал; хранятся у материала.</span></span></label></li>
-        <li><label><input type="checkbox" data-id="course-flex"><span><span class="t">Число недель и видов материалов не зашито в код</span><span class="d">Бывают курсы на 8 недель, без лаб/туториалов или только с лабами.</span></span></label></li>
+        <li><label><input type="checkbox" data-id="course-meta" checked><span><span class="t">Неделя и вид материала указываются при загрузке</span><span class="d">Неделя и вид хранятся у материала; справочник видов в БД, изменение без повторного OCR.</span></span></label></li>
+        <li><label><input type="checkbox" data-id="course-flex" checked><span><span class="t">Число недель и видов материалов не зашито в код</span><span class="d">Бывают курсы на 8 недель, без лаб/туториалов или только с лабами.</span></span></label></li>
         <li><label><input type="checkbox" data-id="course-ru"><span><span class="t">Всё на русском</span><span class="d">Материалы пока на английском; команда переведёт их вручную.</span></span></label></li>
       </ul>
     </section>
@@ -237,7 +237,7 @@
         <li><label><input type="checkbox" data-id="doc-readme" checked><span><span class="t">README описывает новое видение</span></span></label></li>
         <li><label><input type="checkbox" data-id="doc-legacy" checked><span><span class="t">Документы прежней модели удалены</span><span class="d">Остались в истории git.</span></span></label></li>
         <li><label><input type="checkbox" data-id="doc-open" checked><span><span class="t">Открытые вопросы фиксируются в README</span></span></label></li>
-        <li><label><input type="checkbox" data-id="doc-api" checked><span><span class="t">Контракт API Geek и course-graph в OpenAPI</span><span class="d">Диагностика — implemented; граф курса и кнопка сборки — implemented; материалы с неделей и видом и пакет — planned; course-graph — api/course-graph.yaml.</span></span></label></li>
+        <li><label><input type="checkbox" data-id="doc-api" checked><span><span class="t">Контракт API Geek и course-graph в OpenAPI</span><span class="d">Диагностика — implemented; граф курса и кнопка сборки — implemented; материалы с неделей и видом — implemented; пакет — planned; course-graph — api/course-graph.yaml.</span></span></label></li>
       </ul>
     </section>
 

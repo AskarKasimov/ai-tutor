@@ -1,10 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import type {
-  CourseGraphSnapshot,
-  CourseMaterial,
-} from '@/entities/competency-map'
+import type { CourseMaterial } from '@/entities/competency-map'
 import {
-  courseGraphRefetchInterval,
   materialInProgress,
   materialsRefetchInterval,
 } from '@/features/import-competency-map'
@@ -21,23 +17,10 @@ function material(overrides: Partial<CourseMaterial>): CourseMaterial {
     parsedText: '',
     charCount: 0,
     status: 'parsed',
+    week: null,
+    kind: null,
     ocrWarnings: [],
     createdAt: 1,
-    updatedAt: 1,
-    ...overrides,
-  }
-}
-
-function snapshot(
-  overrides: Partial<CourseGraphSnapshot>,
-): CourseGraphSnapshot {
-  return {
-    status: 'ready',
-    attempts: 1,
-    errorMessage: '',
-    graph: null,
-    stale: false,
-    inputsReady: true,
     updatedAt: 1,
     ...overrides,
   }
@@ -75,17 +58,5 @@ describe('admin polling', () => {
     expect(materialInProgress(material({ status: 'failed' }))).toBe(false)
     expect(materialsRefetchInterval([done, cleaning])).toBeGreaterThan(0)
     expect(materialsRefetchInterval([done])).toBe(false)
-  })
-
-  it('polls a stale ready graph while materials are processed', () => {
-    const stale = snapshot({ stale: true, inputsReady: false })
-    expect(courseGraphRefetchInterval(stale, true)).toBeGreaterThan(0)
-    expect(courseGraphRefetchInterval(stale, false)).toBe(false)
-    expect(
-      courseGraphRefetchInterval(snapshot({ status: 'pending' }), false),
-    ).toBeGreaterThan(0)
-    expect(
-      courseGraphRefetchInterval(snapshot({ status: 'processing' }), false),
-    ).toBeGreaterThan(0)
   })
 })

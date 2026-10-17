@@ -332,15 +332,18 @@ it('uses one card list for queued and saved materials and keeps reorder controls
     target: { files: [new File(['%PDF-1.4 new'], 'queued.pdf')] },
   })
   await screen.findByText('queued.pdf')
-  const list = screen.getByRole('list')
-  let rows = within(list).getAllByRole('listitem')
+  const list = screen
+    .getAllByRole('list')
+    .find((candidate) => within(candidate).queryByText('lecture.pdf'))
+  expect(list).toBeDefined()
+  let rows = within(list!).getAllByRole('listitem')
   expect(rows).toHaveLength(2)
   expect(within(rows[0]).getByRole('article')).toHaveTextContent('lecture.pdf')
   expect(within(rows[1]).getByRole('article')).toHaveTextContent('queued.pdf')
   fireEvent.click(
     screen.getByRole('button', { name: 'Переместить lecture.pdf ниже' }),
   )
-  rows = within(list).getAllByRole('listitem')
+  rows = within(list!).getAllByRole('listitem')
   expect(rows[0]).toHaveTextContent('queued.pdf')
   expect(rows[1]).toHaveTextContent('lecture.pdf')
   expect(calls.mock.calls.some(([, init]) => init?.method === 'PATCH')).toBe(

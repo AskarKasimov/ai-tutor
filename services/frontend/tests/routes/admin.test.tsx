@@ -564,11 +564,17 @@ it('clears staged PDFs when changing the selected course', async () => {
     target: { files: [new File(['%PDF-1.7 content'], 'subject-a.pdf')] },
   })
   expect(await screen.findByText('subject-a.pdf')).toBeVisible()
-  await act(() =>
-    router.navigate({
+  act(() => {
+    void router.navigate({
       to: '/admin/competency-map/$subjectId',
       params: { subjectId: 'subject-b' },
-    }),
+    })
+  })
+  const leaveDialog = await screen.findByRole('alertdialog', {
+    name: 'Материалы ещё не отправлены',
+  })
+  fireEvent.click(
+    within(leaveDialog).getByRole('button', { name: 'Уйти со страницы' }),
   )
   expect(
     await screen.findByRole('heading', { name: 'Статистика' }),
@@ -923,8 +929,12 @@ it('expands a PDF-only ZIP into independently editable queue rows', async () => 
   fireEvent.change(input, { target: { files: [archive] } })
   expect(await screen.findByText('week-1.pdf')).toBeVisible()
   expect(await screen.findByText('week-2.pdf')).toBeVisible()
+  const materialsList = screen
+    .getAllByRole('list')
+    .find((list) => within(list).queryByText('week-1.pdf'))
+  expect(materialsList).toBeDefined()
   expect(
-    within(screen.getByRole('list'))
+    within(materialsList!)
       .getAllByRole('listitem')
       .filter((row) => /week-[12]\.pdf/.test(row.textContent ?? ''))
       .map((row) => within(row).getByRole('spinbutton', { name: 'Неделя' })),

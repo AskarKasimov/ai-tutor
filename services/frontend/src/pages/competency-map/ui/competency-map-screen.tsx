@@ -38,6 +38,8 @@ import {
 } from '@/entities/competency-map'
 import { AccountMenu, useAuth } from '@/features/auth'
 import {
+  materialInProgress,
+  useBuildCourseGraphMutation,
   useCourseGraphQuery,
   useDeleteCourseMaterialMutation,
   useSubjectMaterialsQuery,
@@ -79,7 +81,14 @@ function CompetencyMapAdmin({ userId }: { userId: string }) {
 
   // Course materials state and mutations
   const materialsQuery = useSubjectMaterialsQuery(userId, subjectId)
-  const courseGraphQuery = useCourseGraphQuery(userId, subjectId)
+  const materialsBusy = materialsQuery.data?.some(materialInProgress) ?? false
+  const courseGraphQuery = useCourseGraphQuery(userId, subjectId, materialsBusy)
+  const buildGraph = useBuildCourseGraphMutation(userId, subjectId)
+  const refetchGraph = courseGraphQuery.refetch
+  // Once the last material finishes, read inputs_ready without waiting for focus.
+  useEffect(() => {
+    if (!materialsBusy && subjectId) void refetchGraph()
+  }, [materialsBusy, subjectId, refetchGraph])
   const uploadMaterials = useUploadCourseMaterialsMutation(userId, subjectId)
   const deleteMaterial = useDeleteCourseMaterialMutation(userId, subjectId)
   const [lectureFiles, setLectureFiles] = useState<File[]>([])
@@ -111,10 +120,14 @@ function CompetencyMapAdmin({ userId }: { userId: string }) {
       }
       validFiles.push(f)
     }
-    const existingNames = new Set(lectureFiles.map((f) => f.name.toLowerCase()))
-    const unique = validFiles.filter(
-      (f) => !existingNames.has(f.name.toLowerCase()),
-    )
+    // Skip names already chosen, in earlier picks and within this one.
+    const seenNames = new Set(lectureFiles.map((f) => f.name.toLowerCase()))
+    const unique = validFiles.filter((f) => {
+      const name = f.name.toLowerCase()
+      if (seenNames.has(name)) return false
+      seenNames.add(name)
+      return true
+    })
     if (lectureFiles.length + unique.length > 48) {
       setMaterialsFileError(t('competencyMap.materialsTooManyFiles'))
       return
@@ -373,6 +386,9 @@ function CompetencyMapAdmin({ userId }: { userId: string }) {
               loading={courseGraphQuery.isPending}
               error={courseGraphQuery.isError}
               onRetry={() => void courseGraphQuery.refetch()}
+              onBuild={() => buildGraph.mutate()}
+              buildPending={buildGraph.isPending}
+              buildError={buildGraph.error?.message}
             />
           </>
         )}
@@ -737,16 +753,22 @@ function CourseGraphCard({
   loading,
   error,
   onRetry,
+  onBuild,
+  buildPending,
+  buildError,
 }: {
   snapshot?: CourseGraphSnapshot
   loading: boolean
   error: boolean
   onRetry: () => void
+  onBuild: () => void
+  buildPending: boolean
+  buildError?: string
 }) {
   const { t } = useTranslation()
   const [treeOpen, setTreeOpen] = useState(false)
 
-  const status = snapshot?.status ?? 'waiting_materials'
+  const status = snapshot?.status ?? 'not_requested'
   const isBuilding = status === 'processing' || status === 'pending'
   const graph = snapshot?.graph
   const topicsCount = graph?.topics?.length ?? 0
@@ -780,7 +802,7 @@ function CourseGraphCard({
           </Button>
         </Flex>
       ) : (
-        <div style={{ display: 'grid', gap: 'var(--space-3)' }}>
+        <div className={styles.graphBody}>
           <Flex align="center" gap="3" wrap="wrap">
             <span className={styles.graphBadge} data-status={status}>
               {isBuilding ? (
@@ -803,18 +825,38 @@ function CourseGraphCard({
                   {t('competencyMap.graphFailed')}
                 </>
               ) : (
-                t('competencyMap.graphWaiting')
+                t('competencyMap.graphNotRequested')
               )}
             </span>
 
-            {snapshot?.stale &&
-              topicsCount > 0 &&
-              status !== 'waiting_materials' && (
-                <Badge color="amber" size="1">
-                  {t('competencyMap.graphStale')}
-                </Badge>
-              )}
+            {snapshot?.stale && topicsCount > 0 && (
+              <Badge color="amber" size="1">
+                {t('competencyMap.graphStale')}
+              </Badge>
+            )}
           </Flex>
+
+          <Flex align="center" gap="3" wrap="wrap">
+            <Button
+              size="2"
+              color="green"
+              disabled={!snapshot?.inputsReady || isBuilding || buildPending}
+              onClick={onBuild}
+            >
+              <Network size={16} aria-hidden="true" />
+              {t('competencyMap.graphBuild')}
+            </Button>
+            {!snapshot?.inputsReady && !isBuilding && (
+              <Text size="2" color="gray">
+                {t('competencyMap.graphInputsNotReady')}
+              </Text>
+            )}
+          </Flex>
+          {buildError && (
+            <Text as="p" role="alert" color="red" size="2">
+              {buildError}
+            </Text>
+          )}
 
           {isBuilding && (
             <Text size="2" color="gray">
@@ -936,7 +978,7 @@ function CourseGraphCard({
                     const primaryRoots = roots.length > 0 ? roots : graph.topics
 
                     return (
-                      <div style={{ display: 'grid', gap: 'var(--space-2)' }}>
+                      <div className={styles.graphSectionsList}>
                         {primaryRoots.map((root) => {
                           renderedIds.add(root.id)
                           return (
@@ -976,7 +1018,7 @@ function CourseGraphCard({
                       <Text
                         weight="bold"
                         size="2"
-                        style={{ marginTop: 'var(--space-2)' }}
+                        className={styles.graphDependenciesTitle}
                       >
                         {t('competencyMap.graphDependencies')}
                       </Text>
@@ -985,9 +1027,7 @@ function CourseGraphCard({
                           graph.topics.map((t) => [t.id, t]),
                         )
                         return (
-                          <div
-                            style={{ display: 'grid', gap: 'var(--space-1)' }}
-                          >
+                          <div className={styles.graphPrereqList}>
                             {graph.prerequisites.map((p, idx) => {
                               const src =
                                 topicsById.get(p.source)?.title || p.source

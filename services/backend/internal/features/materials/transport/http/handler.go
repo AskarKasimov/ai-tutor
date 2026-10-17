@@ -39,11 +39,12 @@ type Handler struct {
 }
 
 const (
+	// MaxUploadFileBytes is the per-file limit for course materials (decision 17.10.2026).
 	MaxUploadFileBytes = 50 * 1024 * 1024
 	MaxFilesPerRequest = 48
 )
 
-func NewHandler(service *application.Service, maxUploadBytes int64, _ ...time.Duration) *Handler {
+func NewHandler(service *application.Service, maxUploadBytes int64) *Handler {
 	return &Handler{
 		service:        service,
 		maxUploadBytes: maxUploadBytes,

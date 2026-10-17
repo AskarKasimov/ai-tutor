@@ -219,25 +219,6 @@ func (q *Queries) RenewMaterialOCR(ctx context.Context, arg RenewMaterialOCRPara
 	return result.RowsAffected(), nil
 }
 
-const retryFailedMaterialOCR = `-- name: RetryFailedMaterialOCR :execrows
-UPDATE material_ocr_jobs
-SET status = 'pending', attempts = 0, error_message = '', available_at = $2, lease_until = 0, updated_at = $2
-WHERE material_id = $1 AND status = 'failed'
-`
-
-type RetryFailedMaterialOCRParams struct {
-	MaterialID  string
-	AvailableAt int64
-}
-
-func (q *Queries) RetryFailedMaterialOCR(ctx context.Context, arg RetryFailedMaterialOCRParams) (int64, error) {
-	result, err := q.db.Exec(ctx, retryFailedMaterialOCR, arg.MaterialID, arg.AvailableAt)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected(), nil
-}
-
 const setMaterialOCRStage = `-- name: SetMaterialOCRStage :execrows
 UPDATE material_ocr_jobs SET stage=$1, updated_at=$2
 WHERE material_id=$3 AND lease_token=$4 AND status='processing'

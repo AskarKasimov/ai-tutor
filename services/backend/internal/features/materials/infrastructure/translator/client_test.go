@@ -4,13 +4,19 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net/http"
-	"net/http/httptest"
+	"net"
 	"regexp"
 	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/status"
+
+	llmgatewayv1 "github.com/AskarKasimov/ai-tutor/services/shared/gen/go/llmgateway/v1"
 
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/features/materials/infrastructure/translator"
 )
@@ -127,87 +133,76 @@ Consider the Python implementation:
 	}
 }
 
-func TestTranslateWithHTTPServer(t *testing.T) {
-	var receivedAuth string
-	var receivedSystemPrompt string
+type fakeGateway struct {
+	llmgatewayv1.UnimplementedGatewayServer
+	request *llmgatewayv1.CompleteRequest
+	content string
+	err     error
+}
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/chat/completions" {
-			http.NotFound(w, r)
-			return
-		}
-		receivedAuth = r.Header.Get("Authorization")
+func (f *fakeGateway) Complete(_ context.Context, r *llmgatewayv1.CompleteRequest) (*llmgatewayv1.CompleteResponse, error) {
+	f.request = r
+	if f.err != nil {
+		return nil, f.err
+	}
+	completion, _ := json.Marshal(map[string]any{
+		"choices": []any{map[string]any{"message": map[string]string{"role": "assistant", "content": f.content}, "finish_reason": "stop"}},
+	})
+	return &llmgatewayv1.CompleteResponse{RequestId: "req-1", CompletionJson: completion}, nil
+}
 
-		var req struct {
-			Model    string `json:"model"`
-			Messages []struct {
-				Role    string `json:"role"`
-				Content string `json:"content"`
-			} `json:"messages"`
-			ResponseFormat struct {
-				Type string `json:"type"`
-			} `json:"response_format"`
-		}
+func serveGateway(t *testing.T, f *fakeGateway) *translator.Gateway {
+	t.Helper()
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := grpc.NewServer()
+	llmgatewayv1.RegisterGatewayServer(server, f)
+	go func() { _ = server.Serve(listener) }()
+	t.Cleanup(server.Stop)
+	conn, err := grpc.NewClient(listener.Addr().String(), grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = conn.Close() })
+	return translator.NewGateway(llmgatewayv1.NewGatewayClient(conn), 5*time.Second)
+}
 
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-
-		if len(req.Messages) > 0 {
-			receivedSystemPrompt = req.Messages[0].Content
-		}
-
-		resp := map[string]any{
-			"choices": []map[string]any{
-				{
-					"finish_reason": "stop",
-					"message": map[string]string{
-						"role":    "assistant",
-						"content": "```json\n{\"translation\": \"## Слайд 1\\n\\nМашинное обучение — это область искусственного интеллекта.\"}\n```",
-					},
-				},
-			},
-		}
-
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(resp)
-	}))
-	defer server.Close()
-
-	client := translator.New(server.Client(), server.URL, "gpt-oss-120b", "secret-token", 2, 5*time.Second)
+func TestTranslateThroughGateway(t *testing.T) {
+	gateway := &fakeGateway{content: "```json\n{\"translation\": \"## Слайд 1\\n\\nМашинное обучение — это область искусственного интеллекта.\"}\n```"}
+	client := translator.NewWithCompleter(serveGateway(t, gateway), 2)
 
 	sampleEnglish := "## Slide 1\n\nMachine learning is a field of artificial intelligence and computer science."
 	result, err := client.Translate(context.Background(), sampleEnglish)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-
-	if receivedAuth != "Bearer secret-token" {
-		t.Errorf("expected Bearer secret-token, got %q", receivedAuth)
-	}
-	if !strings.Contains(receivedSystemPrompt, "ПРАВИЛА ПЕРЕВОДА") {
-		t.Errorf("expected translation system prompt, got %q", receivedSystemPrompt)
-	}
 	if !strings.Contains(result, "Машинное обучение") {
 		t.Errorf("expected translated content in result, got %q", result)
 	}
+	r := gateway.request
+	if r.GetComplexity() != llmgatewayv1.Complexity_COMPLEXITY_MEDIUM {
+		t.Errorf("complexity = %v, want medium", r.GetComplexity())
+	}
+	if len(r.GetMessages()) != 2 || r.GetMessages()[0].GetRole() != llmgatewayv1.Role_ROLE_SYSTEM ||
+		!strings.Contains(r.GetMessages()[0].GetContent(), "ПРАВИЛА ПЕРЕВОДА") || r.GetMessages()[1].GetRole() != llmgatewayv1.Role_ROLE_USER {
+		t.Errorf("unexpected messages: %v", r.GetMessages())
+	}
+	if r.GetParameters().GetResponseFormat() != llmgatewayv1.ResponseFormat_RESPONSE_FORMAT_JSON_OBJECT {
+		t.Errorf("response format = %v, want json_object", r.GetParameters().GetResponseFormat())
+	}
 }
 
-func TestTranslateHTTPError(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		http.Error(w, "internal server error", http.StatusInternalServerError)
-	}))
-	defer server.Close()
-
-	client := translator.New(server.Client(), server.URL, "test-model", "", 2, 5*time.Second)
+func TestTranslateGatewayError(t *testing.T) {
+	client := translator.NewWithCompleter(serveGateway(t, &fakeGateway{err: status.Error(codes.Unavailable, "no capacity")}), 2)
 
 	sampleEnglish := "## Slide 1\n\nSupervised learning maps an input to an output based on example input-output pairs."
 	_, err := client.Translate(context.Background(), sampleEnglish)
 	if err == nil {
-		t.Fatal("expected error on HTTP 500, got nil")
+		t.Fatal("expected error when the gateway fails, got nil")
 	}
-	if !strings.Contains(err.Error(), "500") {
-		t.Errorf("expected error message to mention 500, got: %v", err)
+	if !strings.Contains(err.Error(), "no capacity") {
+		t.Errorf("expected the gateway error, got: %v", err)
 	}
 }

@@ -3,6 +3,10 @@ export {
   useUploadCourseMaterialsMutation,
   useDeleteCourseMaterialMutation,
   useCourseGraphQuery,
+  useBuildCourseGraphMutation,
+  materialInProgress,
+  materialsRefetchInterval,
+  courseGraphRefetchInterval,
 } from './model/use-competency-map'
 export {
   CompetencyMapDependenciesProvider,

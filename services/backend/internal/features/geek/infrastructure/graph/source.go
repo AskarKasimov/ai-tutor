@@ -80,21 +80,29 @@ func NewStored(pool *pgxpool.Pool) Stored {
 	return Stored{pool: pool}
 }
 
+// Current is the published graph of the course. A database failure is an
+// error, not a missing graph, so the chain never hides it behind the fixture.
+// The version is the hash of the published graph: any rebuild that changes it
+// is a new version, which cancels active diagnostics. raw.Version is the
+// format of the course-graph result, not the build.
 func (s Stored) Current(ctx context.Context, subjectID string) (exam.Graph, bool, error) {
 	if s.pool == nil {
 		return exam.Graph{}, false, nil
 	}
-	row, err := db.New(s.pool).ReadCourseGraph(ctx, subjectID)
-	if errors.Is(err, pgx.ErrNoRows) || len(row.Graph) == 0 || string(row.Graph) == "null" {
+	data, err := db.New(s.pool).ReadPublishedCourseGraph(ctx, subjectID)
+	if errors.Is(err, pgx.ErrNoRows) {
 		return exam.Graph{}, false, nil
 	}
 	if err != nil {
-		return exam.Graph{}, false, err
+		return exam.Graph{}, false, fmt.Errorf("read stored graph: %w", err)
+	}
+	if len(data) == 0 || string(data) == "null" {
+		return exam.Graph{}, false, nil
 	}
 	var raw struct {
-		Version       string      `json:"version"`
-		Nodes         []exam.Node `json:"nodes"`
-		Topics        []struct {
+		Version string      `json:"version"`
+		Nodes   []exam.Node `json:"nodes"`
+		Topics  []struct {
 			ID       string   `json:"id"`
 			Title    string   `json:"title"`
 			Text     string   `json:"text"`
@@ -108,11 +116,10 @@ func (s Stored) Current(ctx context.Context, subjectID string) (exam.Graph, bool
 			Target string `json:"target"`
 		} `json:"prerequisites"`
 	}
-	if err := json.Unmarshal(row.Graph, &raw); err != nil {
+	if err := json.Unmarshal(data, &raw); err != nil {
 		return exam.Graph{}, false, fmt.Errorf("decode stored graph: %w", err)
 	}
 	var g exam.Graph
-	g.Version = raw.Version
 	if len(raw.Nodes) > 0 {
 		g.Nodes = raw.Nodes
 	} else if len(raw.Topics) > 0 {
@@ -150,9 +157,7 @@ func (s Stored) Current(ctx context.Context, subjectID string) (exam.Graph, bool
 		n := &g.Nodes[i]
 		n.Prerequisites, n.Outcomes, n.Questions = orEmpty(n.Prerequisites), orEmpty(n.Outcomes), orEmpty(n.Questions)
 	}
-	if g.Version == "" {
-		g.Version = "pg:" + row.ID
-	}
+	sum := sha256.Sum256(data)
+	g.Version = "pg:" + hex.EncodeToString(sum[:8])
 	return g, true, nil
 }
-

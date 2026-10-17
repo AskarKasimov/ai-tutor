@@ -12,5 +12,12 @@ CREATE TABLE material_ocr_jobs (
 
 CREATE INDEX material_ocr_pending_idx ON material_ocr_jobs(status, available_at, lease_until);
 
+-- Materials uploaded before this pipeline run through it again from their raw
+-- file in S3: OCR, translation, cleaning (decision 17.10.2026).
+INSERT INTO material_ocr_jobs(material_id, updated_at)
+SELECT id, extract(epoch FROM now())::bigint FROM subject_materials;
+UPDATE subject_materials SET status = 'pending', error_message = NULL;
+
 -- +goose Down
 DROP TABLE material_ocr_jobs;
+UPDATE subject_materials SET status = 'parsed' WHERE status = 'pending' AND parsed_text <> '';

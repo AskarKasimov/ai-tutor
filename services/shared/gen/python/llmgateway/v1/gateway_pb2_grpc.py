@@ -3,9 +3,9 @@
 import grpc
 import warnings
 
-from course_graph.llm import llm_pb2 as course__graph_dot_llm_dot_llm__pb2
+from llmgateway.v1 import gateway_pb2 as llmgateway_dot_v1_dot_gateway__pb2
 
-GRPC_GENERATED_VERSION = '1.70.0'
+GRPC_GENERATED_VERSION = '1.75.1'
 GRPC_VERSION = grpc.__version__
 _version_not_supported = False
 
@@ -18,16 +18,15 @@ except ImportError:
 if _version_not_supported:
     raise RuntimeError(
         f'The grpc package installed is at version {GRPC_VERSION},'
-        + f' but the generated code in course_graph/llm/llm_pb2_grpc.py depends on'
+        + f' but the generated code in llmgateway/v1/gateway_pb2_grpc.py depends on'
         + f' grpcio>={GRPC_GENERATED_VERSION}.'
         + f' Please upgrade your grpc module to grpcio>={GRPC_GENERATED_VERSION}'
         + f' or downgrade your generated code using grpcio-tools<={GRPC_VERSION}.'
     )
 
 
-class LLMStub(object):
-    """Internal only: course-graph uses the backend's single model pool.
-    """
+class GatewayStub(object):
+    """Missing associated documentation comment in .proto file."""
 
     def __init__(self, channel):
         """Constructor.
@@ -36,15 +35,14 @@ class LLMStub(object):
             channel: A grpc.Channel.
         """
         self.Complete = channel.unary_unary(
-                '/ai_tutor.llm.v1.LLM/Complete',
-                request_serializer=course__graph_dot_llm_dot_llm__pb2.CompleteRequest.SerializeToString,
-                response_deserializer=course__graph_dot_llm_dot_llm__pb2.CompleteResponse.FromString,
+                '/llmgateway.v1.Gateway/Complete',
+                request_serializer=llmgateway_dot_v1_dot_gateway__pb2.CompleteRequest.SerializeToString,
+                response_deserializer=llmgateway_dot_v1_dot_gateway__pb2.CompleteResponse.FromString,
                 _registered_method=True)
 
 
-class LLMServicer(object):
-    """Internal only: course-graph uses the backend's single model pool.
-    """
+class GatewayServicer(object):
+    """Missing associated documentation comment in .proto file."""
 
     def Complete(self, request, context):
         """Missing associated documentation comment in .proto file."""
@@ -53,24 +51,23 @@ class LLMServicer(object):
         raise NotImplementedError('Method not implemented!')
 
 
-def add_LLMServicer_to_server(servicer, server):
+def add_GatewayServicer_to_server(servicer, server):
     rpc_method_handlers = {
             'Complete': grpc.unary_unary_rpc_method_handler(
                     servicer.Complete,
-                    request_deserializer=course__graph_dot_llm_dot_llm__pb2.CompleteRequest.FromString,
-                    response_serializer=course__graph_dot_llm_dot_llm__pb2.CompleteResponse.SerializeToString,
+                    request_deserializer=llmgateway_dot_v1_dot_gateway__pb2.CompleteRequest.FromString,
+                    response_serializer=llmgateway_dot_v1_dot_gateway__pb2.CompleteResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
-            'ai_tutor.llm.v1.LLM', rpc_method_handlers)
+            'llmgateway.v1.Gateway', rpc_method_handlers)
     server.add_generic_rpc_handlers((generic_handler,))
-    server.add_registered_method_handlers('ai_tutor.llm.v1.LLM', rpc_method_handlers)
+    server.add_registered_method_handlers('llmgateway.v1.Gateway', rpc_method_handlers)
 
 
  # This class is part of an EXPERIMENTAL API.
-class LLM(object):
-    """Internal only: course-graph uses the backend's single model pool.
-    """
+class Gateway(object):
+    """Missing associated documentation comment in .proto file."""
 
     @staticmethod
     def Complete(request,
@@ -86,9 +83,9 @@ class LLM(object):
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/ai_tutor.llm.v1.LLM/Complete',
-            course__graph_dot_llm_dot_llm__pb2.CompleteRequest.SerializeToString,
-            course__graph_dot_llm_dot_llm__pb2.CompleteResponse.FromString,
+            '/llmgateway.v1.Gateway/Complete',
+            llmgateway_dot_v1_dot_gateway__pb2.CompleteRequest.SerializeToString,
+            llmgateway_dot_v1_dot_gateway__pb2.CompleteResponse.FromString,
             options,
             channel_credentials,
             insecure,

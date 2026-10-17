@@ -150,7 +150,7 @@ async def clean_document(request: CleanRequest):
     async with cleaning_slots:
         client = ModelClient()
         try:
-            return await clean_markdown(request.markdown, client.complete)
+            return await clean_markdown(request.markdown, client.completer("low"))
         except Exception:
             raise HTTPException(status_code=503, detail="Очистка временно недоступна")
         finally:
@@ -162,7 +162,7 @@ async def extract_document(request: ExtractRequest):
     async with cleaning_slots:
         client = ModelClient()
         try:
-            return await extract_topics(request.markdown, client.complete, request.material_id,
+            return await extract_topics(request.markdown, client.completer("high"), request.material_id,
                                         request.week, ExtractionSettings(request.max_chars, request.max_blocks))
         except Exception:
             logging.exception("Topic extraction failed")
@@ -187,7 +187,7 @@ async def link_topics(request: LinkRequest):
         client = ModelClient()
         try:
             encoder = await encoder_for_topics(request.topics)
-            return await build_links(request.topics, client.complete, encoder, request.per_requirement,
+            return await build_links(request.topics, client.completer("high"), encoder, request.per_requirement,
                                      request.max_chars, request.evidence_chars)
         except Exception:
             logging.exception("Prerequisite generation failed")
@@ -216,12 +216,12 @@ async def build_course(request: BuildRequest):
                             raise ValueError("Текст темы не соответствует источникам")
                     topics.extend(material.topics)
                 else:
-                    result = await extract_topics(material.markdown, client.complete, material.id,
+                    result = await extract_topics(material.markdown, client.completer("high"), material.id,
                                                   material.week, ExtractionSettings(max_chars=request.max_chars))
                     topics.extend(Topic.model_validate(t) for t in result["report"]["topics"])
                     reports.append({"material_id": material.id, **result["report"]})
             encoder = await encoder_for_topics(topics)
-            graph = await build_links(topics, client.complete, encoder, request.per_requirement)
+            graph = await build_links(topics, client.completer("high"), encoder, request.per_requirement)
             graph["extraction_reports"] = reports
             return graph
         except Exception:

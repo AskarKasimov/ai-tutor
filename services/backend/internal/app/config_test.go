@@ -82,6 +82,7 @@ func TestAudioConfigRejectsInvalidSettings(t *testing.T) {
 		"BACKEND_LLM_GATEWAY_ADDR":        {"gateway", ":8011", "http://gateway:8011", "gateway:abc", "gateway:0", "gateway:-1", "gateway:65536", "gateway:70000"},
 		"BACKEND_LLM_TIMEOUT":             {"bad", "0s", "-1s"},
 		"BACKEND_GEEK_MAX_QUESTIONS":      {"bad", "-1"},
+		"BACKEND_COURSE_GRAPH_TIMEOUT":    {"bad", "-1s"},
 	}
 	for key, values := range cases {
 		for _, value := range values {
@@ -180,5 +181,17 @@ func TestGatewayAddressAcceptsBoundaryPorts(t *testing.T) {
 		if _, err := ConfigFromEnv(); err != nil {
 			t.Fatalf("%s: %v", address, err)
 		}
+	}
+}
+
+func TestCourseGraphTimeoutDefaultsToNone(t *testing.T) {
+	configuredEnv(t)
+	cfg, err := ConfigFromEnv()
+	if err != nil || cfg.CourseGraphTimeout != 0 {
+		t.Fatalf("default course-graph timeout = %v, %v; want 0 (no overall timeout)", cfg.CourseGraphTimeout, err)
+	}
+	t.Setenv("BACKEND_COURSE_GRAPH_TIMEOUT", "15m")
+	if cfg, err = ConfigFromEnv(); err != nil || cfg.CourseGraphTimeout != 15*time.Minute {
+		t.Fatalf("course-graph timeout = %v, %v; want 15m", cfg.CourseGraphTimeout, err)
 	}
 }

@@ -218,22 +218,3 @@ func (q *Queries) RenewMaterialCleaning(ctx context.Context, arg RenewMaterialCl
 	}
 	return result.RowsAffected(), nil
 }
-
-const retryFailedMaterialCleaning = `-- name: RetryFailedMaterialCleaning :execrows
-UPDATE material_cleaning_jobs
-SET status = 'pending', attempts = 0, error_message = '', available_at = $2, lease_until = 0, updated_at = $2
-WHERE material_id = $1 AND status = 'failed'
-`
-
-type RetryFailedMaterialCleaningParams struct {
-	MaterialID  string
-	AvailableAt int64
-}
-
-func (q *Queries) RetryFailedMaterialCleaning(ctx context.Context, arg RetryFailedMaterialCleaningParams) (int64, error) {
-	result, err := q.db.Exec(ctx, retryFailedMaterialCleaning, arg.MaterialID, arg.AvailableAt)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected(), nil
-}

@@ -1,14 +1,10 @@
 package translator
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"strings"
-	"time"
 
 	"golang.org/x/sync/errgroup"
 )
@@ -28,40 +24,11 @@ type Completer interface {
 	Complete(ctx context.Context, system, prompt string) (string, error)
 }
 
-// Client translates educational Markdown materials using an OpenAI-compatible API or Completer.
+// Client translates educational Markdown materials through a Completer, in
+// production the LLM gateway (see Gateway).
 type Client struct {
-	httpClient *http.Client
-	baseURL    string
-	model      string
-	apiKey     string
-	workers    int
-	timeout    time.Duration
-	completer  Completer
-}
-
-// New creates a translator client connecting directly via HTTP.
-func New(httpClient *http.Client, baseURL, model, apiKey string, workers int, timeout time.Duration) *Client {
-	if httpClient == nil {
-		httpClient = http.DefaultClient
-	}
-	if workers <= 0 {
-		workers = 4
-	}
-	if timeout <= 0 {
-		timeout = 120 * time.Second
-	}
-	baseURL = strings.TrimRight(baseURL, "/")
-	if !strings.HasSuffix(baseURL, "/chat/completions") && baseURL != "" {
-		baseURL = baseURL + "/chat/completions"
-	}
-	return &Client{
-		httpClient: httpClient,
-		baseURL:    baseURL,
-		model:      model,
-		apiKey:     apiKey,
-		workers:    workers,
-		timeout:    timeout,
-	}
+	workers   int
+	completer Completer
 }
 
 // NewWithCompleter creates a translator client using a custom Completer.
@@ -180,83 +147,14 @@ func (c *Client) checkedChunk(ctx context.Context, text string) (string, error) 
 }
 
 func (c *Client) translateChunk(ctx context.Context, text string) (string, error) {
-	if c.completer != nil {
-		raw, err := c.completer.Complete(ctx, systemPrompt, text)
-		if err != nil {
-			return "", err
-		}
-		return parseTranslationResponse(raw)
+	if c.completer == nil {
+		return "", fmt.Errorf("translator completer is not configured")
 	}
-
-	if c.baseURL == "" {
-		return "", fmt.Errorf("translator baseURL is empty")
-	}
-
-	reqBody, err := json.Marshal(map[string]any{
-		"model": c.model,
-		"messages": []map[string]string{
-			{"role": "system", "content": systemPrompt},
-			{"role": "user", "content": text},
-		},
-		"response_format": map[string]string{"type": "json_object"},
-		"temperature":     0.2,
-		"max_tokens":      4096,
-	})
+	raw, err := c.completer.Complete(ctx, systemPrompt, text)
 	if err != nil {
-		return "", fmt.Errorf("marshal request: %w", err)
+		return "", err
 	}
-
-	reqCtx := ctx
-	if c.timeout > 0 {
-		var cancel context.CancelFunc
-		reqCtx, cancel = context.WithTimeout(ctx, c.timeout)
-		defer cancel()
-	}
-
-	req, err := http.NewRequestWithContext(reqCtx, http.MethodPost, c.baseURL, bytes.NewReader(reqBody))
-	if err != nil {
-		return "", fmt.Errorf("create request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-	if c.apiKey != "" {
-		req.Header.Set("Authorization", "Bearer "+c.apiKey)
-	}
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("model request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		bodySnippet, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
-		return "", fmt.Errorf("model returned HTTP %d: %s", resp.StatusCode, string(bodySnippet))
-	}
-
-	raw, err := io.ReadAll(io.LimitReader(resp.Body, 1024*1024))
-	if err != nil {
-		return "", fmt.Errorf("read response: %w", err)
-	}
-
-	var completion struct {
-		Choices []struct {
-			Message struct {
-				Content string `json:"content"`
-			} `json:"message"`
-			FinishReason string `json:"finish_reason"`
-		} `json:"choices"`
-	}
-	if err := json.Unmarshal(raw, &completion); err != nil {
-		return "", fmt.Errorf("decode model response: %w", err)
-	}
-	if len(completion.Choices) == 0 {
-		return "", fmt.Errorf("model returned no choices")
-	}
-	if reason := completion.Choices[0].FinishReason; reason != "" && reason != "stop" {
-		return "", fmt.Errorf("incomplete translation response: %s", reason)
-	}
-
-	return parseTranslationResponse(completion.Choices[0].Message.Content)
+	return parseTranslationResponse(raw)
 }
 
 func parseTranslationResponse(raw string) (string, error) {

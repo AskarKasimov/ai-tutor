@@ -15,6 +15,7 @@ export {
   deleteCourseMaterial,
   downloadCourseMaterialRaw,
   readCourseGraph,
+  requestCourseGraphBuild,
 } from './api/competency-map-api'
 export type {
   CourseMaterialUploadFailedItem,

@@ -62,8 +62,3 @@ SET s3_parsed_key = sqlc.arg(s3_parsed_key), s3_ocr_key=sqlc.arg(s3_ocr_key),
     char_count = sqlc.arg(char_count), status = 'parsed', error_message = sqlc.narg(error_message),
     updated_at = sqlc.arg(now)
 WHERE id = sqlc.arg(material_id);
-
--- name: RetryFailedMaterialOCR :execrows
-UPDATE material_ocr_jobs
-SET status = 'pending', attempts = 0, error_message = '', available_at = $2, lease_until = 0, updated_at = $2
-WHERE material_id = $1 AND status = 'failed';

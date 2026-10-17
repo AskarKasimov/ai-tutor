@@ -76,6 +76,8 @@ def test_clean_endpoint_uses_backend_model_client(monkeypatch):
     class StubClient:
         async def complete(self, system, payload):
             return '{"remove":[]}'
+        def completer(self, complexity):
+            return self.complete
         async def close(self):
             pass
 
@@ -93,6 +95,8 @@ def test_clean_endpoint_does_not_publish_partial_result(monkeypatch):
     class BrokenClient:
         async def complete(self, *args):
             raise RuntimeError("model unavailable")
+        def completer(self, complexity):
+            return self.complete
         async def close(self):
             pass
 

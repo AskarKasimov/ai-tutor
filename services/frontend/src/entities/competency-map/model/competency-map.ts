@@ -73,10 +73,12 @@ export type CourseGraph = {
 }
 
 export type CourseGraphSnapshot = {
-  status: 'waiting_materials' | 'pending' | 'processing' | 'ready' | 'failed'
+  status: 'not_requested' | 'pending' | 'processing' | 'ready' | 'failed'
   attempts: number
   errorMessage: string
   graph: CourseGraph | null
   stale: boolean
+  // Every material is processed, so a build can start.
+  inputsReady: boolean
   updatedAt: number
 }

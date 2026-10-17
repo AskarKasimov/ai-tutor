@@ -20,6 +20,7 @@ type Repository interface {
 	Finish(context.Context, coursegraph.Job, json.RawMessage, time.Time) (bool, error)
 	Fail(context.Context, coursegraph.Job, string, time.Time) error
 	Read(context.Context, string) (coursegraph.Snapshot, error)
+	Request(context.Context, string, time.Time) (bool, error)
 }
 type Materials interface {
 	List(context.Context, string) ([]material.Material, error)
@@ -47,6 +48,30 @@ func (w *Worker) Read(ctx context.Context, actor user.User, subjectID string) (c
 		return coursegraph.Snapshot{}, fault.New(fault.Forbidden, "FORBIDDEN", "Доступно только admin.")
 	}
 	return w.repo.Read(ctx, subjectID)
+}
+
+// Request starts a build of the course graph from the current materials (the
+// admin's "build graph" button).
+func (w *Worker) Request(ctx context.Context, actor user.User, subjectID string) (coursegraph.Snapshot, error) {
+	if actor.Role != user.Admin {
+		return coursegraph.Snapshot{}, fault.New(fault.Forbidden, "FORBIDDEN", "Доступно только admin.")
+	}
+	queued, err := w.repo.Request(ctx, subjectID, time.Now())
+	if err != nil {
+		return coursegraph.Snapshot{}, err
+	}
+	snapshot, err := w.repo.Read(ctx, subjectID)
+	switch {
+	case err != nil:
+		return coursegraph.Snapshot{}, err
+	case queued:
+		return snapshot, nil
+	case snapshot.Status == "pending" || snapshot.Status == "processing":
+		return coursegraph.Snapshot{}, fault.New(fault.Conflict, "GRAPH_BUILD_IN_PROGRESS", "Граф курса уже собирается.")
+	default:
+		return coursegraph.Snapshot{}, fault.New(fault.Invalid, "GRAPH_INPUTS_NOT_READY",
+			"Граф можно собрать, когда все материалы курса обработаны.")
+	}
 }
 
 func (w *Worker) Run(ctx context.Context) error {
@@ -198,6 +223,16 @@ func (w *Worker) process(ctx context.Context, job coursegraph.Job) error {
 	if json.Unmarshal(graph, &shape) != nil || shape.Version != "course-graph-v1" || !shape.Quality.Acyclic || len(shape.Topics) == 0 || shape.Prerequisites == nil {
 		return fmt.Errorf("invalid graph result")
 	}
-	_, err = w.repo.Finish(ctx, job, graph, time.Now())
-	return err
+	accepted, err := w.repo.Finish(ctx, job, graph, time.Now())
+	if err != nil || accepted {
+		return err
+	}
+	// The materials changed during the build: queue it again so the next
+	// claim takes the new set, without spending an attempt.
+	if owner, ok := w.repo.(interface {
+		Release(context.Context, coursegraph.Job, time.Time) error
+	}); ok {
+		return owner.Release(context.WithoutCancel(ctx), job, time.Now())
+	}
+	return nil
 }

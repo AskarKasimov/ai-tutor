@@ -3,274 +3,158 @@ package main
 import (
 	"bytes"
 	"context"
-	"encoding/json"
+	"crypto/rand"
+	"encoding/hex"
+	"os"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
-	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/jackc/pgx/v5/pgxpool"
+
+	shared "github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/postgres"
 )
 
-type mockDB struct {
-	queries []string
-	execs   []string
-	rowsMap map[string][]jobRecord
-	execRes map[string]int64
-}
-
-func (m *mockDB) Query(_ context.Context, sql string, _ ...any) (pgx.Rows, error) {
-	m.queries = append(m.queries, sql)
-	for key, rows := range m.rowsMap {
-		if strings.Contains(sql, key) {
-			return &mockRows{records: rows}, nil
-		}
+// recoveryPool is a migrated schema with two courses: material a1 of course A
+// and b1 of course B, each with failed OCR, cleaning and graph jobs, and a
+// stalled OCR job of a2 leased with token "t-a2".
+func recoveryPool(t *testing.T) *pgxpool.Pool {
+	t.Helper()
+	dsn := os.Getenv("TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("TEST_DATABASE_URL is required for PostgreSQL integration tests")
 	}
-	return &mockRows{}, nil
-}
-
-func (m *mockDB) Exec(_ context.Context, sql string, _ ...any) (pgconn.CommandTag, error) {
-	m.execs = append(m.execs, sql)
-	var count int64 = 1
-	for key, n := range m.execRes {
-		if strings.Contains(sql, key) {
-			count = n
-			break
-		}
-	}
-	return pgconn.NewCommandTag(strings.Fields(sql)[0] + " " + string(rune('0'+count))), nil
-}
-
-type mockRows struct {
-	records []jobRecord
-	idx     int
-	err     error
-}
-
-func (r *mockRows) Close()                                         {}
-func (r *mockRows) Err() error                                     { return r.err }
-func (r *mockRows) CommandTag() pgconn.CommandTag                  { return pgconn.CommandTag{} }
-func (r *mockRows) FieldDescriptions() []pgconn.FieldDescription   { return nil }
-func (r *mockRows) Next() bool                                     { return r.idx < len(r.records) }
-func (r *mockRows) RawValues() [][]byte                            { return nil }
-func (r *mockRows) Conn() *pgx.Conn                                { return nil }
-func (r *mockRows) Values() ([]any, error)                         { return nil, nil }
-func (r *mockRows) TypeMap() *pgtype.Map                           { return pgtype.NewMap() }
-
-func (r *mockRows) Scan(dest ...any) error {
-	rec := r.records[r.idx]
-	r.idx++
-	// Depending on destination length:
-	// OCR: 10 fields (id, subjectID, status, stage, attempts, availableAt, leaseUntil, leaseToken, errorMessage, updatedAt)
-	// Cleaning: 9 fields (id, subjectID, status, attempts, availableAt, leaseUntil, leaseToken, errorMessage, updatedAt)
-	// Graph: 8 fields (subjectID, status, attempts, availableAt, leaseUntil, leaseToken, errorMessage, updatedAt)
-	if len(dest) == 10 {
-		*dest[0].(*string) = rec.id
-		*dest[1].(*string) = rec.subjectID
-		*dest[2].(*string) = rec.status
-		*dest[3].(*string) = rec.stage
-		*dest[4].(*int) = rec.attempts
-		*dest[5].(*int64) = rec.availableAt
-		*dest[6].(*int64) = rec.leaseUntil
-		*dest[7].(*string) = rec.leaseToken
-		*dest[8].(*string) = rec.errorMessage
-		*dest[9].(*int64) = rec.updatedAt
-	} else if len(dest) == 9 {
-		*dest[0].(*string) = rec.id
-		*dest[1].(*string) = rec.subjectID
-		*dest[2].(*string) = rec.status
-		*dest[3].(*int) = rec.attempts
-		*dest[4].(*int64) = rec.availableAt
-		*dest[5].(*int64) = rec.leaseUntil
-		*dest[6].(*string) = rec.leaseToken
-		*dest[7].(*string) = rec.errorMessage
-		*dest[8].(*int64) = rec.updatedAt
-	} else if len(dest) == 8 {
-		*dest[0].(*string) = rec.subjectID
-		*dest[1].(*string) = rec.status
-		*dest[2].(*int) = rec.attempts
-		*dest[3].(*int64) = rec.availableAt
-		*dest[4].(*int64) = rec.leaseUntil
-		*dest[5].(*string) = rec.leaseToken
-		*dest[6].(*string) = rec.errorMessage
-		*dest[7].(*int64) = rec.updatedAt
-	}
-	return nil
-}
-
-func TestRecoverJobs_DryRun(t *testing.T) {
-	mock := &mockDB{
-		rowsMap: map[string][]jobRecord{
-			"material_ocr_jobs": {
-				{
-					id:           "mat_ocr_1",
-					subjectID:    "sub_1",
-					status:       "failed",
-					stage:        "ocr",
-					attempts:     3,
-					errorMessage: "timeout error",
-				},
-			},
-			"material_cleaning_jobs": {
-				{
-					id:           "mat_clean_1",
-					subjectID:    "sub_1",
-					status:       "failed",
-					attempts:     3,
-					errorMessage: "cleaning error",
-				},
-			},
-			"course_graph_jobs": {
-				{
-					id:           "sub_1",
-					subjectID:    "sub_1",
-					status:       "failed",
-					attempts:     3,
-					errorMessage: "graph build error",
-				},
-			},
-		},
-	}
-
-	var buf bytes.Buffer
-	opts := Options{
-		DryRun: true,
-		Stage:  "all",
-		Actor:  "test_admin",
-		Now:    time.Unix(1700000000, 0),
-	}
-
-	summary, err := RecoverJobs(context.Background(), mock, opts, &buf)
+	ctx := context.Background()
+	admin, err := pgxpool.New(ctx, dsn)
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatal(err)
 	}
+	suffix := make([]byte, 8)
+	_, _ = rand.Read(suffix)
+	schema := "recovery_test_" + hex.EncodeToString(suffix)
+	if _, err := admin.Exec(ctx, "CREATE SCHEMA "+schema); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := pgxpool.ParseConfig(dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.ConnConfig.RuntimeParams["search_path"] = schema
+	pool, err := pgxpool.NewWithConfig(ctx, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { pool.Close(); _, _ = admin.Exec(ctx, "DROP SCHEMA "+schema+" CASCADE"); admin.Close() })
+	if err := shared.Migrate(ctx, pool); err != nil {
+		t.Fatal(err)
+	}
+	for _, q := range []string{
+		`INSERT INTO subjects(id, name, created_at) VALUES ('A', 'Курс А', 1), ('B', 'Курс Б', 1)`,
+		`INSERT INTO subject_materials(id, subject_id, filename, content_type, s3_raw_key, s3_parsed_key, status, error_message, created_at, updated_at)
+		 VALUES ('a1','A','a1.pdf','application/pdf','r','p','failed','OCR failed',1,1),
+		        ('a2','A','a2.pdf','application/pdf','r','p','pending',NULL,1,1),
+		        ('b1','B','b1.pdf','application/pdf','r','p','failed','OCR failed',1,1)`,
+		`DELETE FROM material_ocr_jobs`,
+		`INSERT INTO material_ocr_jobs(material_id, status, attempts, error_message, updated_at)
+		 VALUES ('a1','failed',3,'boom',1), ('b1','failed',3,'boom',2)`,
+		`INSERT INTO material_ocr_jobs(material_id, status, attempts, lease_until, lease_token, updated_at)
+		 VALUES ('a2','processing',1,10,'t-a2',3)`,
+		`INSERT INTO material_cleaning_jobs(material_id, status, attempts, updated_at) VALUES ('a1','failed',3,1), ('b1','failed',3,2)`,
+		`INSERT INTO course_graph_jobs(subject_id, fingerprint, status, attempts, updated_at) VALUES ('A','fa','failed',3,1), ('B','fb','failed',3,2)`,
+	} {
+		if _, err := pool.Exec(ctx, q); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return pool
+}
 
-	if summary.CandidatesFound != 3 {
-		t.Errorf("got %d candidates, want 3", summary.CandidatesFound)
+func status(t *testing.T, pool *pgxpool.Pool, query, id string) string {
+	t.Helper()
+	var s string
+	if err := pool.QueryRow(context.Background(), query, id).Scan(&s); err != nil {
+		t.Fatal(err)
 	}
-	if summary.Recovered != 3 {
-		t.Errorf("got %d recovered, want 3", summary.Recovered)
-	}
-	// In DryRun, no UPDATE Exec calls must be made
-	if len(mock.execs) != 0 {
-		t.Errorf("expected 0 Exec calls in dry-run, got %d", len(mock.execs))
-	}
+	return s
+}
 
-	// Verify audit log JSON
-	lines := strings.Split(strings.TrimSpace(buf.String()), "\n")
-	if len(lines) != 3 {
-		t.Fatalf("expected 3 audit lines, got %d", len(lines))
+const (
+	ocrStatus      = `SELECT status FROM material_ocr_jobs WHERE material_id=$1`
+	cleaningStatus = `SELECT status FROM material_cleaning_jobs WHERE material_id=$1`
+	graphStatus    = `SELECT status FROM course_graph_jobs WHERE subject_id=$1`
+	materialStatus = `SELECT status FROM subject_materials WHERE id=$1`
+)
+
+func TestRecoverDryRunChangesNothing(t *testing.T) {
+	pool := recoveryPool(t)
+	var out bytes.Buffer
+	sum, err := RecoverJobs(context.Background(), pool, Options{DryRun: true, Now: time.Unix(100, 0)}, &out)
+	if err != nil {
+		t.Fatal(err)
 	}
-	for _, line := range lines {
-		var evt AuditEvent
-		if err := json.Unmarshal([]byte(line), &evt); err != nil {
-			t.Errorf("invalid json: %v", err)
-		}
-		if evt.Action != "dry_run_recover" {
-			t.Errorf("action = %s, want dry_run_recover", evt.Action)
-		}
-		if !evt.DryRun {
-			t.Errorf("dry_run = false, want true")
-		}
-		if evt.Actor != "test_admin" {
-			t.Errorf("actor = %s, want test_admin", evt.Actor)
+	// Two failed OCR, two cleaning and two graph jobs; the stalled one needs --stalled.
+	if sum.CandidatesFound != 6 || sum.Recovered != 6 || sum.Skipped != 0 {
+		t.Fatalf("summary = %+v", sum)
+	}
+	if got := status(t, pool, ocrStatus, "a1"); got != "failed" {
+		t.Fatalf("dry run changed OCR job: %s", got)
+	}
+	if !strings.Contains(out.String(), `"action":"dry_run_recover"`) {
+		t.Fatalf("audit log = %s", out.String())
+	}
+}
+
+func TestRecoverResetsFailedJobsAndMaterial(t *testing.T) {
+	pool := recoveryPool(t)
+	sum, err := RecoverJobs(context.Background(), pool, Options{Now: time.Unix(100, 0)}, nil)
+	if err != nil || sum.Recovered != 6 {
+		t.Fatalf("summary = %+v, %v", sum, err)
+	}
+	for _, check := range [][2]string{{ocrStatus, "a1"}, {cleaningStatus, "b1"}, {graphStatus, "A"}, {materialStatus, "a1"}} {
+		if got := status(t, pool, check[0], check[1]); got != "pending" {
+			t.Fatalf("%s %s = %s, want pending", check[0], check[1], got)
 		}
 	}
 }
 
-func TestRecoverJobs_ApplyExecution(t *testing.T) {
-	mock := &mockDB{
-		rowsMap: map[string][]jobRecord{
-			"material_ocr_jobs": {
-				{
-					id:           "mat_ocr_1",
-					subjectID:    "sub_1",
-					status:       "failed",
-					stage:        "ocr",
-					attempts:     3,
-					errorMessage: "ocr failure",
-				},
-			},
-		},
-	}
-
-	var buf bytes.Buffer
-	opts := Options{
-		DryRun: false,
-		Stage:  "ocr",
-		Actor:  "admin",
-		Now:    time.Unix(1700000000, 0),
-	}
-
-	summary, err := RecoverJobs(context.Background(), mock, opts, &buf)
+func TestRecoverMaterialFilterKeepsOtherCourses(t *testing.T) {
+	pool := recoveryPool(t)
+	sum, err := RecoverJobs(context.Background(), pool, Options{MaterialID: "a1", Now: time.Unix(100, 0)}, nil)
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatal(err)
 	}
-
-	if summary.CandidatesFound != 1 || summary.Recovered != 1 {
-		t.Fatalf("summary = %+v, want candidates=1, recovered=1", summary)
+	// OCR and cleaning of a1 and the graph of its course A only.
+	if sum.Recovered != 3 {
+		t.Fatalf("summary = %+v", sum)
 	}
-
-	// In apply execution, Exec must have been called
-	if len(mock.execs) == 0 {
-		t.Fatal("expected Exec calls, got 0")
+	if got := status(t, pool, graphStatus, "A"); got != "pending" {
+		t.Fatalf("graph of the material's course = %s, want pending", got)
 	}
-
-	// Verify audit log has job_recovered
-	var evt AuditEvent
-	if err := json.Unmarshal(buf.Bytes(), &evt); err != nil {
-		t.Fatalf("invalid json: %v", err)
-	}
-	if evt.Action != "job_recovered" {
-		t.Errorf("action = %s, want job_recovered", evt.Action)
-	}
-	if evt.NewStatus != "pending" {
-		t.Errorf("new_status = %s, want pending", evt.NewStatus)
+	for _, check := range [][2]string{{ocrStatus, "b1"}, {cleaningStatus, "b1"}, {graphStatus, "B"}, {materialStatus, "b1"}} {
+		if got := status(t, pool, check[0], check[1]); got != "failed" {
+			t.Fatalf("other course changed: %s %s = %s", check[0], check[1], got)
+		}
 	}
 }
 
-func TestRecoverJobs_StalledTokenCAS(t *testing.T) {
-	mock := &mockDB{
-		rowsMap: map[string][]jobRecord{
-			"material_cleaning_jobs": {
-				{
-					id:         "clean_1",
-					subjectID:  "sub_1",
-					status:     "processing",
-					attempts:   1,
-					leaseUntil: 1699999000, // expired lease
-					leaseToken: "tok_old",
-				},
-			},
-		},
+func TestRecoverStalledChecksToken(t *testing.T) {
+	pool := recoveryPool(t)
+	opts := Options{Stage: "ocr", MaterialID: "a2", Stalled: true, Token: "other", Now: time.Unix(100, 0)}
+	sum, err := RecoverJobs(context.Background(), pool, opts, nil)
+	if err != nil || sum.Skipped != 1 || sum.Recovered != 0 {
+		t.Fatalf("wrong token: %+v, %v", sum, err)
 	}
+	opts.Token = "t-a2"
+	if sum, err = RecoverJobs(context.Background(), pool, opts, nil); err != nil || sum.Recovered != 1 {
+		t.Fatalf("matching token: %+v, %v", sum, err)
+	}
+	if got := status(t, pool, ocrStatus, "a2"); got != "pending" {
+		t.Fatalf("stalled job = %s, want pending", got)
+	}
+}
 
-	var buf bytes.Buffer
-	// Try with wrong token
-	opts := Options{
-		DryRun:  false,
-		Stage:   "cleaning",
-		Stalled: true,
-		Token:   "tok_expected",
-		Now:     time.Unix(1700000000, 0),
-	}
-
-	summary, err := RecoverJobs(context.Background(), mock, opts, &buf)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	if summary.CandidatesFound != 1 || summary.Skipped != 1 || summary.Recovered != 0 {
-		t.Fatalf("summary = %+v, want candidate=1, skipped=1, recovered=0", summary)
-	}
-
-	// Verify skipped_token_mismatch was logged
-	var evt AuditEvent
-	if err := json.Unmarshal(buf.Bytes(), &evt); err != nil {
-		t.Fatalf("invalid json: %v", err)
-	}
-	if evt.Action != "skipped_token_mismatch" {
-		t.Errorf("action = %s, want skipped_token_mismatch", evt.Action)
+func TestRecoverRejectsUnknownStage(t *testing.T) {
+	if _, err := RecoverJobs(context.Background(), nil, Options{Stage: "translation"}, nil); err == nil {
+		t.Fatal("unknown stage accepted")
 	}
 }

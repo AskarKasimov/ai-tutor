@@ -14,7 +14,7 @@ RUN if ! dpkg-query -W poppler-utils libgomp1 libgl1 libglib2.0-0 curl >/dev/nul
 
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
-COPY requirements.txt pyproject.toml* ./
+COPY services/course-graph/requirements.txt services/course-graph/pyproject.toml ./
 ARG INSTALL_DOCLING=true
 RUN if [ "$INSTALL_DOCLING" = "true" ]; then \
       uv pip install --system --no-cache -r requirements.txt; \
@@ -26,7 +26,9 @@ ENV COURSE_GRAPH_WITH_DOCLING=${INSTALL_DOCLING}
 ENV HF_HUB_DISABLE_XET=1
 ENV HF_HUB_DOWNLOAD_TIMEOUT=30
 
-COPY course_graph/ course_graph/
+COPY services/course-graph/course_graph/ course_graph/
+# Stubs of llmgateway.v1, generated in services/shared (import llmgateway.v1).
+COPY services/shared/gen/python/ ./
 
 ENV PORT=8000
 EXPOSE 8000

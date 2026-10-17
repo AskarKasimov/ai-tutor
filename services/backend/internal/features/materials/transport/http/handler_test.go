@@ -129,7 +129,7 @@ func TestUploadQueuesMultipleFilesWithoutRunningOCRInRequest(t *testing.T) {
 	recorder := &deadlineRecorder{ResponseRecorder: httptest.NewRecorder()}
 	ocr := &deadlineOCR{t: t, recorder: recorder}
 	svc := application.New(&memoryRepo{}, &memoryS3{}, ocr, time.Now)
-	handler := materialshttp.NewHandler(svc, 1024, 2*time.Hour)
+	handler := materialshttp.NewHandler(svc, 1024)
 	var body bytes.Buffer
 	writer := multipart.NewWriter(&body)
 	for _, filename := range []string{"first.pdf", "second.pdf"} {
@@ -163,7 +163,7 @@ func TestUploadQueuesMultipleFilesWithoutRunningOCRInRequest(t *testing.T) {
 func TestUploadMaterialsCapsBatchAt48Files(t *testing.T) {
 	repo := &memoryRepo{}
 	svc := application.New(repo, &memoryS3{}, &stubOCR{}, time.Now)
-	handler := materialshttp.NewHandler(svc, 1024, 2*time.Hour)
+	handler := materialshttp.NewHandler(svc, 1024)
 	var body bytes.Buffer
 	writer := multipart.NewWriter(&body)
 	for i := 0; i < materialshttp.MaxFilesPerRequest+1; i++ {
@@ -201,7 +201,7 @@ func TestHandlerUploadAndList(t *testing.T) {
 	s3 := &memoryS3{}
 	ocr := &stubOCR{}
 	svc := application.New(repo, s3, ocr, time.Now)
-	handler := materialshttp.NewHandler(svc, 25*1024*1024, 2*time.Hour)
+	handler := materialshttp.NewHandler(svc, 25*1024*1024)
 
 	admin := user.User{ID: "adm-1", Role: user.Admin}
 	student := user.User{ID: "stu-1", Role: user.Student}

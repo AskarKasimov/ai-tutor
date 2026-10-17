@@ -10,14 +10,16 @@ import (
 )
 
 const claimCourseGraph = `-- name: ClaimCourseGraph :one
-UPDATE course_graph_jobs SET status='processing', attempts=attempts+CASE WHEN status='pending' THEN 1 ELSE 0 END,
+UPDATE course_graph_jobs j SET status='processing', fingerprint=i.fingerprint,
+    attempts=j.attempts+CASE WHEN j.status='pending' THEN 1 ELSE 0 END,
     lease_token=$1, lease_until=$2::bigint+60, updated_at=$2
-WHERE subject_id=(SELECT j.subject_id FROM course_graph_jobs j JOIN course_graph_inputs i
-    ON i.subject_id=j.subject_id AND i.fingerprint=j.fingerprint
-    WHERE (j.status='pending' AND j.available_at<=$2)
-       OR (j.status='processing' AND j.lease_until<=$2)
-    ORDER BY j.updated_at FOR UPDATE OF j SKIP LOCKED LIMIT 1)
-RETURNING subject_id, fingerprint, status, attempts, available_at, lease_until, lease_token, error_message, updated_at
+FROM course_graph_inputs i
+WHERE i.subject_id=j.subject_id AND j.subject_id=(SELECT c.subject_id FROM course_graph_jobs c
+    WHERE ((c.status='pending' AND c.available_at<=$2)
+       OR (c.status='processing' AND c.lease_until<=$2))
+      AND EXISTS(SELECT 1 FROM course_graph_inputs r WHERE r.subject_id=c.subject_id)
+    ORDER BY c.updated_at FOR UPDATE OF c SKIP LOCKED LIMIT 1)
+RETURNING j.subject_id, j.fingerprint, j.status, j.attempts, j.available_at, j.lease_until, j.lease_token, j.error_message, j.updated_at
 `
 
 type ClaimCourseGraphParams struct {
@@ -25,6 +27,8 @@ type ClaimCourseGraphParams struct {
 	Now   int64
 }
 
+// A requested build takes the materials as they are when it starts; it waits
+// while any material of the course is still being processed.
 func (q *Queries) ClaimCourseGraph(ctx context.Context, arg ClaimCourseGraphParams) (CourseGraphJob, error) {
 	row := q.db.QueryRow(ctx, claimCourseGraph, arg.Token, arg.Now)
 	var i CourseGraphJob
@@ -101,11 +105,12 @@ func (q *Queries) FinishCourseGraph(ctx context.Context, arg FinishCourseGraphPa
 }
 
 const readCourseGraph = `-- name: ReadCourseGraph :one
-SELECT s.id, coalesce(j.status,'waiting_materials')::text AS status,
+SELECT s.id, coalesce(j.status,'not_requested')::text AS status,
        coalesce(j.attempts,0)::integer AS attempts, coalesce(j.error_message,'')::text AS error_message,
        coalesce(g.graph,'null'::jsonb)::jsonb AS graph,
        coalesce(g.updated_at,0)::bigint AS updated_at,
-       (g.fingerprint IS NOT NULL AND g.fingerprint IS DISTINCT FROM i.fingerprint)::boolean AS stale
+       (g.fingerprint IS NOT NULL AND g.fingerprint IS DISTINCT FROM i.fingerprint)::boolean AS stale,
+       (i.subject_id IS NOT NULL)::boolean AS inputs_ready
 FROM subjects s LEFT JOIN course_graph_jobs j ON j.subject_id=s.id
 LEFT JOIN course_graphs g ON g.subject_id=s.id
 LEFT JOIN course_graph_inputs i ON i.subject_id=s.id WHERE s.id=$1
@@ -119,6 +124,7 @@ type ReadCourseGraphRow struct {
 	Graph        []byte
 	UpdatedAt    int64
 	Stale        bool
+	InputsReady  bool
 }
 
 func (q *Queries) ReadCourseGraph(ctx context.Context, id string) (ReadCourseGraphRow, error) {
@@ -132,8 +138,23 @@ func (q *Queries) ReadCourseGraph(ctx context.Context, id string) (ReadCourseGra
 		&i.Graph,
 		&i.UpdatedAt,
 		&i.Stale,
+		&i.InputsReady,
 	)
 	return i, err
+}
+
+const readPublishedCourseGraph = `-- name: ReadPublishedCourseGraph :one
+SELECT g.graph FROM course_graphs g
+WHERE g.subject_id=$1 AND EXISTS(SELECT 1 FROM subject_materials m WHERE m.subject_id=g.subject_id)
+`
+
+// The graph Geek examines by. It stays published while materials change
+// until the next build, but a course without materials has none.
+func (q *Queries) ReadPublishedCourseGraph(ctx context.Context, subjectID string) ([]byte, error) {
+	row := q.db.QueryRow(ctx, readPublishedCourseGraph, subjectID)
+	var graph []byte
+	err := row.Scan(&graph)
+	return graph, err
 }
 
 const releaseCourseGraph = `-- name: ReleaseCourseGraph :execrows
@@ -175,34 +196,27 @@ func (q *Queries) RenewCourseGraph(ctx context.Context, arg RenewCourseGraphPara
 	return result.RowsAffected(), nil
 }
 
-const retryFailedCourseGraphBuild = `-- name: RetryFailedCourseGraphBuild :execrows
-UPDATE course_graph_jobs
-SET status = 'pending', attempts = 0, error_message = '', available_at = $2, lease_until = 0, updated_at = $2
-WHERE subject_id = $1 AND status = 'failed'
-`
-
-type RetryFailedCourseGraphBuildParams struct {
-	SubjectID   string
-	AvailableAt int64
-}
-
-func (q *Queries) RetryFailedCourseGraphBuild(ctx context.Context, arg RetryFailedCourseGraphBuildParams) (int64, error) {
-	result, err := q.db.Exec(ctx, retryFailedCourseGraphBuild, arg.SubjectID, arg.AvailableAt)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected(), nil
-}
-
-const syncCourseGraphJobs = `-- name: SyncCourseGraphJobs :exec
+const requestCourseGraphBuild = `-- name: RequestCourseGraphBuild :one
 INSERT INTO course_graph_jobs(subject_id, fingerprint, updated_at)
-SELECT subject_id, fingerprint, $1::bigint FROM course_graph_inputs
+SELECT i.subject_id, i.fingerprint, $1::bigint FROM course_graph_inputs i WHERE i.subject_id = $2
 ON CONFLICT(subject_id) DO UPDATE SET fingerprint=excluded.fingerprint,
     status='pending', attempts=0, available_at=0, lease_until=0, lease_token='', error_message='', updated_at=excluded.updated_at
-WHERE course_graph_jobs.fingerprint <> excluded.fingerprint
+WHERE course_graph_jobs.status NOT IN ('pending', 'processing')
+RETURNING subject_id
 `
 
-func (q *Queries) SyncCourseGraphJobs(ctx context.Context, now int64) error {
-	_, err := q.db.Exec(ctx, syncCourseGraphJobs, now)
-	return err
+type RequestCourseGraphBuildParams struct {
+	Now       int64
+	SubjectID string
+}
+
+// The admin's "build graph" button: queue a build of the current materials
+// unless one is already queued or running. No row: inputs are not ready
+// (a material is still processing or failed, or the course has none) or a
+// build is already in progress.
+func (q *Queries) RequestCourseGraphBuild(ctx context.Context, arg RequestCourseGraphBuildParams) (string, error) {
+	row := q.db.QueryRow(ctx, requestCourseGraphBuild, arg.Now, arg.SubjectID)
+	var subject_id string
+	err := row.Scan(&subject_id)
+	return subject_id, err
 }

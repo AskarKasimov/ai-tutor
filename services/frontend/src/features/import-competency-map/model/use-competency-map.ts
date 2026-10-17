@@ -1,6 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef } from 'react'
-import { CompetencyMapApiError } from '@/entities/competency-map'
+import {
+  CompetencyMapApiError,
+  type CourseGraphSnapshot,
+  type CourseMaterial,
+} from '@/entities/competency-map'
 import { useCompetencyMapDependencies } from './dependencies-context'
 import {
   captureSession,
@@ -9,6 +13,39 @@ import {
   replaceSession,
 } from '@/entities/user'
 import { competencyMapQueryKeys } from './query-keys'
+
+const pollMs = 4000
+
+// A material is still moving through OCR, translation or cleaning.
+export function materialInProgress(material: CourseMaterial): boolean {
+  const active = (status?: string) =>
+    status === 'pending' || status === 'processing'
+  if (material.status === 'failed') return false
+  return (
+    material.status === 'pending' ||
+    active(material.processing?.status) ||
+    active(material.cleaning?.status)
+  )
+}
+
+// Materials are polled until each one reaches a terminal state.
+export function materialsRefetchInterval(
+  materials: CourseMaterial[] | undefined,
+): number | false {
+  return materials?.some(materialInProgress) ? pollMs : false
+}
+
+// The graph is polled while a build runs and while materials are processed,
+// so inputs_ready and stale follow them without a manual reload.
+export function courseGraphRefetchInterval(
+  snapshot: CourseGraphSnapshot | undefined,
+  materialsBusy: boolean,
+): number | false {
+  const status = snapshot?.status
+  return status === 'pending' || status === 'processing' || materialsBusy
+    ? pollMs
+    : false
+}
 
 export function useSubjectMaterialsQuery(userId: string, subjectId: string) {
   const { competencyMap } = useCompetencyMapDependencies()
@@ -42,6 +79,7 @@ export function useSubjectMaterialsQuery(userId: string, subjectId: string) {
         unregister()
       }
     },
+    refetchInterval: (query) => materialsRefetchInterval(query.state.data),
   })
 }
 
@@ -156,7 +194,11 @@ export function useDeleteCourseMaterialMutation(
   })
 }
 
-export function useCourseGraphQuery(userId: string, subjectId: string) {
+export function useCourseGraphQuery(
+  userId: string,
+  subjectId: string,
+  materialsBusy: boolean,
+) {
   const { competencyMap } = useCompetencyMapDependencies()
   const cache = useQueryClient()
   // eslint-disable-next-line @tanstack/query/exhaustive-deps
@@ -187,13 +229,51 @@ export function useCourseGraphQuery(userId: string, subjectId: string) {
         unregister()
       }
     },
-    refetchInterval: (query) => {
-      const status = query.state.data?.status
-      if (status === 'processing' || status === 'pending') {
-        return 4000
-      }
-      if (status === 'waiting_materials') return 4000
-      return false
+    refetchInterval: (query) =>
+      courseGraphRefetchInterval(query.state.data, materialsBusy),
+  })
+}
+
+export function useBuildCourseGraphMutation(userId: string, subjectId: string) {
+  const { competencyMap } = useCompetencyMapDependencies()
+  const cache = useQueryClient()
+  const tokenRef = useRef(captureSession(cache))
+  return useMutation({
+    gcTime: 0,
+    onMutate: () => {
+      tokenRef.current = captureSession(cache)
     },
+    mutationFn: async () => {
+      const controller = new AbortController()
+      const unregister = registerSessionRequest(
+        cache,
+        tokenRef.current,
+        controller,
+      )
+      try {
+        return await competencyMap.requestCourseGraphBuild(
+          subjectId,
+          controller.signal,
+        )
+      } finally {
+        unregister()
+      }
+    },
+    onSuccess: (snapshot) => {
+      if (!isCurrentSession(cache, tokenRef.current)) return
+      cache.setQueryData(
+        competencyMapQueryKeys.courseGraph(userId, subjectId),
+        snapshot,
+      )
+    },
+    onError: async (error) => {
+      if (!isCurrentSession(cache, tokenRef.current)) return
+      if (error instanceof CompetencyMapApiError && error.status === 401)
+        await replaceSession(cache, null)
+      await cache.invalidateQueries({
+        queryKey: competencyMapQueryKeys.courseGraph(userId, subjectId),
+      })
+    },
+    retry: false,
   })
 }

@@ -26,6 +26,10 @@ export type CompetencyMapDependencies = {
       subjectId: string,
       signal?: AbortSignal,
     ): Promise<CourseGraphSnapshot>
+    requestCourseGraphBuild(
+      subjectId: string,
+      signal?: AbortSignal,
+    ): Promise<CourseGraphSnapshot>
   }
 }
 

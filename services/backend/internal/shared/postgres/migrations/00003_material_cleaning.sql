@@ -13,7 +13,7 @@ CREATE TABLE material_cleaning_jobs (
     updated_at bigint NOT NULL
 );
 CREATE INDEX material_cleaning_pending_idx ON material_cleaning_jobs(status, available_at, lease_until);
--- Existing materials are deliberately not queued by a schema migration.
+-- Existing materials get cleaning after their OCR, queued by 00005.
 
 -- +goose Down
 DROP TABLE material_cleaning_jobs;

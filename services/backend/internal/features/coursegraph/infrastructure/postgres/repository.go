@@ -17,11 +17,7 @@ type Repository struct{ pool *pgxpool.Pool }
 
 func New(pool *pgxpool.Pool) *Repository { return &Repository{pool} }
 func (r *Repository) Claim(ctx context.Context, token string, now time.Time) (coursegraph.Job, error) {
-	q := db.New(r.pool)
-	if err := q.SyncCourseGraphJobs(ctx, now.Unix()); err != nil {
-		return coursegraph.Job{}, err
-	}
-	job, err := q.ClaimCourseGraph(ctx, db.ClaimCourseGraphParams{Token: token, Now: now.Unix()})
+	job, err := db.New(r.pool).ClaimCourseGraph(ctx, db.ClaimCourseGraphParams{Token: token, Now: now.Unix()})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return coursegraph.Job{}, nil
 	}
@@ -55,13 +51,15 @@ func (r *Repository) Read(ctx context.Context, subjectID string) (coursegraph.Sn
 	if err != nil {
 		return coursegraph.Snapshot{}, err
 	}
-	return coursegraph.Snapshot{Status: row.Status, Attempts: row.Attempts, ErrorMessage: row.ErrorMessage, Graph: row.Graph, UpdatedAt: row.UpdatedAt, Stale: row.Stale}, nil
+	return coursegraph.Snapshot{Status: row.Status, Attempts: row.Attempts, ErrorMessage: row.ErrorMessage, Graph: row.Graph, UpdatedAt: row.UpdatedAt, Stale: row.Stale, InputsReady: row.InputsReady}, nil
 }
 
-func (r *Repository) RetryFailedBuild(ctx context.Context, subjectID string, now time.Time) (bool, error) {
-	n, err := db.New(r.pool).RetryFailedCourseGraphBuild(ctx, db.RetryFailedCourseGraphBuildParams{
-		SubjectID:   subjectID,
-		AvailableAt: now.Unix(),
-	})
-	return n > 0, err
+// Request queues a build of the current materials; false when they are not
+// ready or a build is already queued or running.
+func (r *Repository) Request(ctx context.Context, subjectID string, now time.Time) (bool, error) {
+	_, err := db.New(r.pool).RequestCourseGraphBuild(ctx, db.RequestCourseGraphBuildParams{SubjectID: subjectID, Now: now.Unix()})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, nil
+	}
+	return err == nil, err
 }

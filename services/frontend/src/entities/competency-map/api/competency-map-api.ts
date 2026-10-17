@@ -309,13 +309,7 @@ const courseGraphHierarchySchema = z.object({
 })
 
 const courseGraphSnapshotSchema = z.object({
-  status: z.enum([
-    'waiting_materials',
-    'pending',
-    'processing',
-    'ready',
-    'failed',
-  ]),
+  status: z.enum(['not_requested', 'pending', 'processing', 'ready', 'failed']),
   attempts: z.number().int().nonnegative(),
   error_message: z.string(),
   graph: z
@@ -336,8 +330,24 @@ const courseGraphSnapshotSchema = z.object({
     .passthrough()
     .nullable(),
   stale: z.boolean(),
+  inputs_ready: z.boolean(),
   updated_at: z.number().int().nonnegative(),
 })
+
+function toSnapshot(raw: unknown): CourseGraphSnapshot {
+  const parsed = courseGraphSnapshotSchema.safeParse(raw)
+  if (!parsed.success) throw new Error(i18n.t('competencyMap.invalidResponse'))
+  const data = parsed.data
+  return {
+    status: data.status,
+    attempts: data.attempts,
+    errorMessage: data.error_message,
+    graph: data.graph,
+    stale: data.stale,
+    inputsReady: data.inputs_ready,
+    updatedAt: data.updated_at,
+  }
+}
 
 export async function readCourseGraph(
   subjectId: string,
@@ -351,26 +361,22 @@ export async function readCourseGraph(
       signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
     },
   )
-  if (response.status === 404) {
-    return {
-      status: 'waiting_materials',
-      attempts: 0,
-      errorMessage: '',
-      graph: null,
-      stale: false,
-      updatedAt: 0,
-    }
-  }
-  const raw = await readResponse(response)
-  const parsed = courseGraphSnapshotSchema.safeParse(raw)
-  if (!parsed.success) throw new Error(i18n.t('competencyMap.invalidResponse'))
-  const data = parsed.data
-  return {
-    status: data.status,
-    attempts: data.attempts,
-    errorMessage: data.error_message,
-    graph: data.graph,
-    stale: data.stale,
-    updatedAt: data.updated_at,
-  }
+  return toSnapshot(await readResponse(response))
+}
+
+// The admin's "build graph" button: starts a build of the current materials.
+export async function requestCourseGraphBuild(
+  subjectId: string,
+  signal?: AbortSignal,
+): Promise<CourseGraphSnapshot> {
+  const timeout = AbortSignal.timeout(30_000)
+  const response = await apiFetch(
+    `${apiBase}/admin/subjects/${encodeURIComponent(subjectId)}/graph/build`,
+    {
+      method: 'POST',
+      credentials: 'include',
+      signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
+    },
+  )
+  return toSnapshot(await readResponse(response))
 }

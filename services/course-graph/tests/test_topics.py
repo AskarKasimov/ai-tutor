@@ -399,6 +399,8 @@ def test_build_endpoint_reuses_cached_cards_and_validates_source_text(monkeypatc
         async def complete(self, system, payload):
             assert "tasks" in json.loads(payload), "Cached cards must not be extracted again"
             return await grounded_judge(system, payload)
+        def completer(self, complexity):
+            return self.complete
         async def close(self):
             pass
 
@@ -423,6 +425,8 @@ def test_joint_endpoint_returns_cards_and_cleaning_audit(monkeypatch):
     class Client:
         async def complete(self, system, payload):
             return await extraction_stub(system, payload)
+        def completer(self, complexity):
+            return self.complete
         async def close(self):
             pass
 

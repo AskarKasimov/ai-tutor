@@ -77,6 +77,7 @@ function backend(
     teacherFails?: boolean
     materials?: typeof sampleMaterials
     partialUpload?: boolean
+    uploadGate?: Promise<void>
     downloadFails?: boolean
     graph?: {
       version: string
@@ -156,6 +157,7 @@ function backend(
       url.endsWith('/materials') &&
       init?.method === 'POST'
     ) {
+      await options.uploadGate
       if (options.partialUpload) {
         return new Response(
           JSON.stringify({
@@ -542,6 +544,34 @@ it('keeps uploaded material metadata fixed and explains how to change it', async
         url.endsWith('/materials/mat-1') && request?.method === 'PATCH',
     ),
   ).toBe(false)
+})
+
+it('blocks graph generation while a material upload is pending', async () => {
+  let finishUpload!: () => void
+  backend({
+    uploadGate: new Promise<void>((resolve) => (finishUpload = resolve)),
+  })
+  renderApp('/admin/competency-map')
+  const buildButton = await screen.findByRole('button', {
+    name: /Собрать граф тем/,
+  })
+  await waitFor(() => expect(buildButton).toBeEnabled())
+  fireEvent.change(await screen.findByLabelText('Добавить PDF или ZIP'), {
+    target: {
+      files: [
+        new File(['%PDF-1.7 pdfcontent'], 'new_lecture.pdf', {
+          type: 'application/pdf',
+        }),
+      ],
+    },
+  })
+  fireEvent.click(await screen.findByRole('button', { name: 'Отправить всё' }))
+  await waitFor(() => expect(buildButton).toBeDisabled())
+  expect(
+    screen.getByText('Дождитесь сохранения изменений материалов.'),
+  ).toBeVisible()
+  await act(async () => finishUpload())
+  await waitFor(() => expect(buildButton).toBeEnabled())
 })
 
 it('shows the durable active build stage recovered from the server', async () => {

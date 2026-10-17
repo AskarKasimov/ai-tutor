@@ -39,7 +39,7 @@ import {
   useDeleteCourseMaterialMutation,
   useSubjectMaterialsQuery,
   useCourseMaterialKindsQuery,
-  useUploadCourseMaterialsMutation,
+  useCourseMaterialsChanging,
   useReplaceCourseMaterialMutation,
   MaterialUploadQueue,
 } from '@/features/import-competency-map'
@@ -93,7 +93,6 @@ function CompetencyMapAdmin({ userId }: { userId: string }) {
   // Course materials state and mutations
   const materialsQuery = useSubjectMaterialsQuery(userId, subjectId)
   const materialKindsQuery = useCourseMaterialKindsQuery(userId)
-  const uploadMaterials = useUploadCourseMaterialsMutation(userId, subjectId)
   const replaceMaterial = useReplaceCourseMaterialMutation(userId, subjectId)
   const deleteMaterial = useDeleteCourseMaterialMutation(userId, subjectId)
   const latestBuild = useLatestCourseGraphBuildQuery(userId, subjectId)
@@ -101,11 +100,9 @@ function CompetencyMapAdmin({ userId }: { userId: string }) {
   const startBuild = useStartCourseGraphBuildMutation(userId, subjectId)
   const [previewId, setPreviewId] = useState<string | null>(null)
 
-  const busy =
-    create.isPending ||
-    uploadMaterials.isPending ||
-    replaceMaterial.isPending ||
-    deleteMaterial.isPending
+  // Covers the upload queue too: its mutation lives inside MaterialUploadQueue.
+  const materialsChanging = useCourseMaterialsChanging(userId, subjectId)
+  const busy = create.isPending || materialsChanging
   const materials = materialsQuery.data ?? []
   const graphStateResolved =
     materialsQuery.isSuccess &&
@@ -136,6 +133,7 @@ function CompetencyMapAdmin({ userId }: { userId: string }) {
     ...(materials.some((material) => material.status === 'pending')
       ? [t('courseGraph.blockPending')]
       : []),
+    ...(materialsChanging ? [t('courseGraph.blockChanging')] : []),
   ]
   const hasGraph = courseGraph.data !== undefined
 
@@ -577,6 +575,7 @@ function CompetencyMapAdmin({ userId }: { userId: string }) {
                     <AlertDialog.Action>
                       <Button
                         color="green"
+                        disabled={materialsChanging}
                         onClick={() => startBuild.mutate(subjectId)}
                       >
                         {t('courseGraph.confirmBuild')}

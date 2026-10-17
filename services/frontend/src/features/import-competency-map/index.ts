@@ -5,11 +5,7 @@ export {
   useReplaceCourseMaterialMutation,
   useUpdateCourseMaterialMetadataMutation,
   useDeleteCourseMaterialMutation,
-  useCourseGraphQuery,
-  useBuildCourseGraphMutation,
-  materialInProgress,
-  materialsRefetchInterval,
-  courseGraphRefetchInterval,
+  useCourseMaterialsChanging,
 } from './model/use-competency-map'
 export {
   CompetencyMapDependenciesProvider,

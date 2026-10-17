@@ -1,4 +1,9 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import {
+  useIsMutating,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query'
 import { useEffect, useRef } from 'react'
 import { CompetencyMapApiError } from '@/entities/competency-map'
 import type {
@@ -159,6 +164,10 @@ export function useReplaceCourseMaterialMutation(
   const controllerRef = useRef<AbortController | null>(null)
   useEffect(() => () => controllerRef.current?.abort(), [subjectId])
   return useMutation({
+    mutationKey: [
+      ...competencyMapQueryKeys.changeSubjectMaterials(userId, subjectId),
+      'replace',
+    ],
     gcTime: 0,
     onMutate: () => {
       tokenRef.current = captureSession(cache)
@@ -215,6 +224,10 @@ export function useUpdateCourseMaterialMetadataMutation(
   const cache = useQueryClient()
   const tokenRef = useRef(captureSession(cache))
   return useMutation({
+    mutationKey: [
+      ...competencyMapQueryKeys.changeSubjectMaterials(userId, subjectId),
+      'metadata',
+    ],
     gcTime: 0,
     onMutate: () => {
       tokenRef.current = captureSession(cache)
@@ -265,6 +278,10 @@ export function useDeleteCourseMaterialMutation(
   const cache = useQueryClient()
   const tokenRef = useRef(captureSession(cache))
   return useMutation({
+    mutationKey: [
+      ...competencyMapQueryKeys.changeSubjectMaterials(userId, subjectId),
+      'delete',
+    ],
     gcTime: 0,
     onMutate: () => {
       tokenRef.current = captureSession(cache)
@@ -292,4 +309,16 @@ export function useDeleteCourseMaterialMutation(
     },
     retry: false,
   })
+}
+
+/** Reports whether any upload, replacement, metadata edit or deletion of the course's materials is in flight. */
+export function useCourseMaterialsChanging(userId: string, subjectId: string) {
+  return (
+    useIsMutating({
+      mutationKey: competencyMapQueryKeys.changeSubjectMaterials(
+        userId,
+        subjectId,
+      ),
+    }) > 0
+  )
 }

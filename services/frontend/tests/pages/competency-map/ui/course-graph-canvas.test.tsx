@@ -208,3 +208,23 @@ it('labels the built-in controls in Russian', () => {
     expect(screen.getByRole('button', { name })).toBeInTheDocument()
   expect(screen.queryByRole('button', { name: /Zoom|Fit View/ })).toBeNull()
 })
+
+it('lets a section chosen after a search win over the search', () => {
+  renderGraph(twoSections)
+  const search = screen.getByRole('textbox', { name: 'Поиск темы в графе' })
+  fireEvent.change(search, { target: { value: 'Среднее' } })
+  expect(state('Функция потерь')).toBe('dimmed')
+
+  const legend = screen.getByRole('group', { name: 'Разделы курса' })
+  const ml = within(legend).getByRole('button', { name: /Машинное обучение/ })
+  fireEvent.click(ml)
+  expect(ml).toHaveAttribute('aria-pressed', 'true')
+  expect(state('Функция потерь')).not.toBe('dimmed')
+  expect(state('Среднее значение')).toBe('dimmed')
+  expect(search).toHaveValue('')
+
+  // And a new search releases the section.
+  fireEvent.change(search, { target: { value: 'Среднее' } })
+  expect(ml).toHaveAttribute('aria-pressed', 'false')
+  expect(state('Среднее значение')).not.toBe('dimmed')
+})

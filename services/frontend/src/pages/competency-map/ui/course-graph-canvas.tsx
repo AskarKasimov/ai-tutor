@@ -200,12 +200,14 @@ function GraphExplorer({
     [flow],
   )
 
-  // A search or a section shows what the student asked for now, so it closes
-  // the topic picked before, whose neighbourhood would otherwise win.
+  // The last explicit action decides the highlight: a search or a section
+  // closes the topic picked before, and choosing a section clears the search
+  // (and a new search the section), which would otherwise win over it.
   const toggleSection = (section: GraphSection) => {
     const next = activeSection === section.id ? undefined : section.id
     setSectionId(next)
     setSelectedId(null)
+    if (next !== undefined) setQuery('')
     // fitView waits for the next node change; bounds move the camera now.
     const cluster = flow.getNode(clusterId(section))
     const bounds =
@@ -244,6 +246,7 @@ function GraphExplorer({
           onChange={(event) => {
             setQuery(event.target.value)
             setSelectedId(null)
+            setSectionId(undefined)
           }}
           onKeyDown={(event) => {
             if (event.key === 'Enter' && matches[0]) focusTopic(matches[0])

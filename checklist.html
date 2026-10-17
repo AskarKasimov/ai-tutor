@@ -169,6 +169,7 @@
         <li><label><input type="checkbox" data-id="g-evidence" checked><span><span class="t">Для темы сохраняются глубина понимания и фрагменты диалога</span></span></label></li>
         <li><label><input type="checkbox" data-id="g-gap" checked><span><span class="t">Пробел = самая глубокая неосвоенная вершина с освоенными пререквизитами</span></span></label></li>
         <li><label><input type="checkbox" data-id="g-io" checked><span><span class="t">Реплики Geek — текст + голос; ответ голосом или текстом</span></span></label></li>
+        <li><label><input type="checkbox" data-id="g-reply" checked><span><span class="t">Geek отвечает на реплику студента перед следующим вопросом</span><span class="d">Реакция без правильного ответа, пока тема открыта; объяснение — когда закрыта (решение 17.10).</span></span></label></li>
       </ul>
     </section>
 
@@ -211,7 +212,7 @@
         <li><label><input type="checkbox" data-id="l-client" checked><span><span class="t">LLM gateway готов и влит в master</span><span class="d">Отдельный сервис services/llm-gateway: HTTP API и protobuf gRPC, очередь и балансировка по четырём моделям.</span></span></label></li>
         <li><label><input type="checkbox" data-id="l-geek" checked><span><span class="t">Geek ходит в LLM через gateway</span><span class="d">По gRPC (llmgateway.v1.Gateway/Complete); мок удалён.</span></span></label></li>
         <li><label><input type="checkbox" data-id="l-python"><span><span class="t">course-graph подключён к gateway</span><span class="d">Пока не подключён; требуется адаптер для Python-сервиса.</span></span></label></li>
-        <li><label><input type="checkbox" data-id="l-roles" checked><span><span class="t">Сложность запроса задаёт вызывающий код</span><span class="d">Клиент указывает complexity (low / medium / high) и при необходимости urgent. Для Geek: оценка — high, основной вопрос — medium, дополнительный и переформулировка — low; модель выбирает gateway.</span></span></label></li>
+        <li><label><input type="checkbox" data-id="l-roles" checked><span><span class="t">Сложность запроса задаёт вызывающий код</span><span class="d">Клиент указывает complexity (low / medium / high) и при необходимости urgent. Для Geek: оценка с реакцией на ответ — high, основной вопрос — medium, дополнительный, переформулировка и объяснение после «Не знаю» — low; модель выбирает gateway.</span></span></label></li>
       </ul>
     </section>
 

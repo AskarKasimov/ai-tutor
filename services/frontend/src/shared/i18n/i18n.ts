@@ -165,8 +165,13 @@ void i18n.init({
           graphStep: 'Граф тем',
           readyStep: 'Готов студентам',
           weekLabel: 'Неделя',
+          weekMissing: 'не указана',
           kindLabel: 'Тип материала',
           kindMissing: 'Выберите тип',
+          kindNotSet: 'не указан',
+          materialMetadataLocked: 'Неделя {{week}} · {{kind}}',
+          materialMetadataChangeHint:
+            'Чтобы изменить неделю или тип, удалите PDF и добавьте его заново в очередь загрузки.',
           kindsUnavailable: 'Не удалось загрузить виды материалов.',
           kindsEmpty: 'В справочнике нет видов материалов.',
           metadataMissing: 'Нужно указать неделю и тип',

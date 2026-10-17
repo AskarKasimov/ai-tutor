@@ -148,6 +148,8 @@
   }
 }
 .materialClassification {
+  display: grid;
+  align-items: start;
   padding-top: var(--space-3);
   border-top: 1px solid var(--app-border);
 }

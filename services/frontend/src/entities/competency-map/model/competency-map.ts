@@ -1,10 +1,3 @@
-export type CourseMaterialKind = string
-
-export type CourseMaterialKindOption = {
-  code: CourseMaterialKind
-  label: string
-}
-
 export type CourseMaterial = {
   id: string
   subjectId: string
@@ -16,8 +9,6 @@ export type CourseMaterial = {
   parsedText: string
   charCount: number
   status: 'pending' | 'parsed' | 'failed'
-  week: number | null
-  kind: CourseMaterialKind | null
   errorMessage?: string | null
   processing?: MaterialProcessing
   cleaning?: MaterialCleaning

@@ -4,7 +4,6 @@ import { useState } from 'react'
 import type { PropsWithChildren } from 'react'
 import { AuthDependenciesProvider } from '@/features/auth'
 import { CompetencyMapDependenciesProvider } from '@/features/import-competency-map'
-import { CourseGraphBuildDependenciesProvider } from '@/features/course-graph-build'
 import { DiagnosticDependenciesProvider } from '@/features/diagnostic-session'
 import { SubjectSelectionDependenciesProvider } from '@/features/subject-selection'
 import { createAppDependencies } from './dependencies'
@@ -32,27 +31,23 @@ export function AppProviders({
       <CompetencyMapDependenciesProvider
         value={{ competencyMap: services.competencyMap }}
       >
-        <CourseGraphBuildDependenciesProvider
-          value={{ courseGraph: services.courseGraph }}
+        <SubjectSelectionDependenciesProvider
+          value={{ subjects: services.subjects }}
         >
-          <SubjectSelectionDependenciesProvider
-            value={{ subjects: services.subjects }}
+          <DiagnosticDependenciesProvider
+            value={{ diagnostic: services.diagnostic }}
           >
-            <DiagnosticDependenciesProvider
-              value={{ diagnostic: services.diagnostic }}
+            <Theme
+              className={styles.root}
+              accentColor="blue"
+              appearance="light"
             >
-              <Theme
-                className={styles.root}
-                accentColor="blue"
-                appearance="light"
-              >
-                <QueryClientProvider client={queryClient}>
-                  {children}
-                </QueryClientProvider>
-              </Theme>
-            </DiagnosticDependenciesProvider>
-          </SubjectSelectionDependenciesProvider>
-        </CourseGraphBuildDependenciesProvider>
+              <QueryClientProvider client={queryClient}>
+                {children}
+              </QueryClientProvider>
+            </Theme>
+          </DiagnosticDependenciesProvider>
+        </SubjectSelectionDependenciesProvider>
       </CompetencyMapDependenciesProvider>
     </AuthDependenciesProvider>
   )

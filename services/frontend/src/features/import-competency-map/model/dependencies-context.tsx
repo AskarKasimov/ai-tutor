@@ -4,37 +4,19 @@ import type {
   CourseGraphSnapshot,
   CourseMaterial,
   CourseMaterialUploadResult,
-  CourseMaterialMetadataPatch,
-  CourseMaterialUploadItem,
-  CourseMaterialKindOption,
 } from '@/entities/competency-map'
 
 export type CompetencyMapDependencies = {
   competencyMap: {
-    readCourseMaterialKinds(
-      signal?: AbortSignal,
-    ): Promise<CourseMaterialKindOption[]>
     readSubjectMaterials(
       subjectId: string,
       signal?: AbortSignal,
     ): Promise<CourseMaterial[]>
     uploadCourseMaterials(
       subjectId: string,
-      items: CourseMaterialUploadItem[],
+      files: File[],
       signal?: AbortSignal,
     ): Promise<CourseMaterialUploadResult>
-    replaceCourseMaterialFile(
-      subjectId: string,
-      materialId: string,
-      file: File,
-      signal?: AbortSignal,
-    ): Promise<CourseMaterial>
-    updateCourseMaterialMetadata(
-      subjectId: string,
-      materialId: string,
-      patch: CourseMaterialMetadataPatch,
-      signal?: AbortSignal,
-    ): Promise<CourseMaterial>
     deleteCourseMaterial(
       subjectId: string,
       materialId: string,

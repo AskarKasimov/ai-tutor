@@ -1,10 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import type {
-  CourseMaterialKind,
-  CourseMaterialKindOption,
-  CourseMaterialUploadResult,
-} from '@/entities/competency-map'
 import { useUploadCourseMaterialsMutation } from './use-competency-map'
 import {
   MaterialArchiveError,
@@ -16,21 +11,17 @@ import {
 export type MaterialQueueItem = {
   id: string
   file: File
-  week: string
-  kind: CourseMaterialKind
   error?: string
 }
 
-export function useMaterialUploadQueue(
-  userId: string,
-  subjectId: string,
-  kinds: CourseMaterialKindOption[],
-) {
+export function useMaterialUploadQueue(userId: string, subjectId: string) {
   const { t } = useTranslation()
   const upload = useUploadCourseMaterialsMutation(userId, subjectId)
   const [items, setItems] = useState<MaterialQueueItem[]>([])
   const [error, setError] = useState('')
   const [success, setSuccess] = useState(false)
+  const [sending, setSending] = useState(false)
+  const sendingRef = useRef(false)
   const [preparing, setPreparing] = useState(false)
   const [sendingItemId, setSendingItemId] = useState<string | null>(null)
   const preparingRef = useRef(false)
@@ -64,8 +55,6 @@ export function useMaterialUploadQueue(
         ...prepared.map((preparedFile) => ({
           id: crypto.randomUUID(),
           file: preparedFile,
-          week: '1',
-          kind: kinds[0]?.code ?? '',
         })),
       ])
     } catch (cause) {
@@ -88,147 +77,92 @@ export function useMaterialUploadQueue(
     setItems((current) => current.filter((item) => item.id !== id))
   }
 
-  function updateItems(next: Array<{ id: string; week: string }>) {
+  function updateItems(next: Array<{ id: string }>) {
     const positions = new Map(next.map((item, index) => [item.id, index]))
-    const weeks = new Map(next.map((item) => [item.id, item.week]))
     setItems((current) =>
-      [...current]
-        .sort(
-          (a, b) =>
-            (positions.get(a.id) ?? Number.MAX_SAFE_INTEGER) -
-            (positions.get(b.id) ?? Number.MAX_SAFE_INTEGER),
+      [...current].sort(
+        (a, b) =>
+          (positions.get(a.id) ?? Infinity) - (positions.get(b.id) ?? Infinity),
+      ),
+    )
+  }
+
+  async function send(selected: MaterialQueueItem[]) {
+    if (!selected.length || sendingRef.current) return
+    sendingRef.current = true
+    setSending(true)
+    setError('')
+    setSuccess(false)
+    setSendingItemId(selected.length === 1 ? selected[0].id : null)
+    let allSucceeded = true
+    try {
+      for (let offset = 0; offset < selected.length; offset += 48) {
+        const batch = selected.slice(offset, offset + 48)
+        const result = await upload.mutateAsync({
+          subjectId,
+          files: batch.map((item) => item.file),
+        })
+        // Keep ambiguous duplicate names for retry if the server reports a failure.
+        const uploadedNames = new Set(
+          result.uploaded.map((item) => item.filename),
         )
-        .map((item) => ({ ...item, week: weeks.get(item.id) ?? item.week })),
-    )
-  }
-
-  function updateWeek(id: string, week: string) {
-    setItems((current) =>
-      current.map((item) => (item.id === id ? { ...item, week } : item)),
-    )
-  }
-
-  function updateKind(id: string, kind: CourseMaterialKind) {
-    setItems((current) =>
-      current.map((item) => (item.id === id ? { ...item, kind } : item)),
-    )
-  }
-
-  function sendAll() {
-    if (
-      items.length === 0 ||
-      !items.every(
-        (item) =>
-          /^\d+$/.test(item.week) &&
-          Number(item.week) > 0 &&
-          kinds.some((kind) => kind.code === item.kind),
-      )
-    )
-      return
-    setSuccess(false)
-    upload.mutate(
-      {
-        subjectId,
-        items: items.map((item) => ({
-          clientId: item.id,
-          file: item.file,
-          week: Number(item.week),
-          kind: item.kind,
-        })),
-      },
-      {
-        onSuccess: (result: CourseMaterialUploadResult) => {
-          const persisted = new Set(
-            result.results
-              .filter((entry) => entry.material)
-              .map((entry) => entry.clientId),
-          )
-          setItems((current) =>
-            current
-              .filter((item) => !persisted.has(item.id))
-              .map((item) => ({
-                ...item,
-                error: result.results.find(
-                  (entry) => entry.clientId === item.id,
-                )?.error?.message,
-              })),
-          )
-          setSuccess(
-            persisted.size > 0 && persisted.size === result.results.length,
-          )
-        },
-      },
-    )
-  }
-
-  function sendItem(id: string) {
-    const item = items.find((candidate) => candidate.id === id)
-    if (
-      !item ||
-      upload.isPending ||
-      !/^\d+$/.test(item.week) ||
-      Number(item.week) <= 0 ||
-      !kinds.some((kind) => kind.code === item.kind)
-    )
-      return
-
-    setSuccess(false)
-    setSendingItemId(id)
-    upload.mutate(
-      {
-        subjectId,
-        items: [
-          {
-            clientId: item.id,
-            file: item.file,
-            week: Number(item.week),
-            kind: item.kind,
-          },
-        ],
-      },
-      {
-        onSuccess: (result: CourseMaterialUploadResult) => {
-          const entry = result.results.find(
-            (candidate) => candidate.clientId === item.id,
-          )
-          if (entry?.material) {
-            setItems((current) =>
-              current.filter(({ id: itemId }) => itemId !== id),
+        const failedNames = new Map(
+          result.failed.map((item) => [item.filename, item.message]),
+        )
+        const sentIds = new Set(batch.map((item) => item.id))
+        setItems((current) =>
+          current
+            .filter(
+              (item) =>
+                !sentIds.has(item.id) ||
+                !uploadedNames.has(item.file.name) ||
+                failedNames.has(item.file.name),
             )
-            setSuccess(true)
-          } else if (entry?.error) {
-            setItems((current) =>
-              current.map((candidate) =>
-                candidate.id === id
-                  ? { ...candidate, error: entry.error?.message }
-                  : candidate,
-              ),
-            )
-          }
-        },
-        onSettled: () => setSendingItemId(null),
-      },
-    )
+            .map((item) => ({
+              ...item,
+              error: sentIds.has(item.id)
+                ? failedNames.get(item.file.name)
+                : item.error,
+            })),
+        )
+        if (result.failed.length > 0) {
+          allSucceeded = false
+          setError(
+            result.failed
+              .map((item) => `${item.filename}: ${item.message}`)
+              .join('; '),
+          )
+        }
+        if (result.uploaded.length !== batch.length) allSucceeded = false
+      }
+      setSuccess(allSucceeded)
+    } catch {
+      // The mutation exposes the transport error; unsent files stay queued.
+    } finally {
+      sendingRef.current = false
+      setSending(false)
+      setSendingItemId(null)
+    }
   }
 
-  const valid =
-    items.length > 0 &&
-    items.every(
-      (item) =>
-        /^\d+$/.test(item.week) &&
-        Number(item.week) > 0 &&
-        kinds.some((kind) => kind.code === item.kind),
-    )
+  useEffect(() => {
+    if (!items.length && !sending) return
+    const warn = (event: BeforeUnloadEvent) => {
+      event.preventDefault()
+      event.returnValue = ''
+    }
+    window.addEventListener('beforeunload', warn)
+    return () => window.removeEventListener('beforeunload', warn)
+  }, [items.length, sending])
 
   return {
     items,
-    setItems,
     error,
     success,
     preparing,
-    isPending: upload.isPending,
+    isPending: sending,
     sendingItemId,
-    valid,
+    valid: items.length > 0,
     uploadError: upload.isError
       ? upload.error instanceof Error
         ? upload.error.message
@@ -237,9 +171,7 @@ export function useMaterialUploadQueue(
     addFile,
     removeItem,
     updateItems,
-    updateWeek,
-    updateKind,
-    sendAll,
-    sendItem,
+    sendAll: () => send(items),
+    sendItem: (id: string) => send(items.filter((item) => item.id === id)),
   }
 }

@@ -76,3 +76,16 @@ it('rejects a corrupt ZIP archive', async () => {
   )
   await expect(prepareMaterialFiles(archive)).rejects.toBeInstanceOf(Error)
 })
+
+it.each(['lecture.md', 'lecture.txt', 'lecture.markdown'])(
+  'keeps the master text input format %s',
+  async (name) => {
+    const file = new File(['Текст лекции'], name, { type: 'text/plain' })
+    await expect(prepareMaterialFiles(file)).resolves.toEqual([file])
+  },
+)
+it('accepts a signed PDF larger than 25 MiB under the master 50 MiB limit', async () => {
+  const file = new File(['%PDF-1.4 content'], 'large.pdf')
+  Object.defineProperty(file, 'size', { value: 26 * 1024 * 1024 })
+  await expect(prepareMaterialFiles(file)).resolves.toEqual([file])
+})

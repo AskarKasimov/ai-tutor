@@ -1,7 +1,7 @@
 import { AsyncUnzipInflate, Unzip } from 'fflate'
 
 export const MATERIAL_ARCHIVE_LIMIT = 250 * 1024 * 1024
-export const MATERIAL_FILE_LIMIT = 25 * 1024 * 1024
+export const MATERIAL_FILE_LIMIT = 50 * 1024 * 1024
 export const MATERIAL_ENTRY_LIMIT = 500
 export const MATERIAL_QUEUE_ITEM_LIMIT = MATERIAL_ENTRY_LIMIT
 export const MATERIAL_QUEUE_LIMIT = 250 * 1024 * 1024
@@ -49,6 +49,12 @@ function isMacOSMetadataEntry(name: string) {
 export async function prepareMaterialFiles(file: File): Promise<File[]> {
   if (file.size > MATERIAL_ARCHIVE_LIMIT)
     throw new MaterialArchiveError('archive-too-large')
+  if (/\.(md|txt|markdown)$/i.test(file.name)) {
+    if (file.size > MATERIAL_FILE_LIMIT)
+      throw new MaterialArchiveError('file-too-large', [file.name])
+    if (!file.size) throw new MaterialArchiveError('empty-file', [file.name])
+    return [file]
+  }
   if (file.name.toLowerCase().endsWith('.pdf')) {
     const data = new Uint8Array(await file.arrayBuffer())
     if (data.byteLength > MATERIAL_FILE_LIMIT)

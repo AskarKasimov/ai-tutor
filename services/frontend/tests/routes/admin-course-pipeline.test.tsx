@@ -44,6 +44,7 @@ function setup({
   cleaning = false,
   cleaningFailed = false,
   graphReady = false,
+  fixture = false,
   uploadGate,
 }: {
   processing?: boolean
@@ -51,9 +52,13 @@ function setup({
   cleaning?: boolean
   cleaningFailed?: boolean
   graphReady?: boolean
+  // Before the first build the backend serves the default (fixture) graph;
+  // a requested build then publishes the graph from the materials.
+  fixture?: boolean
   uploadGate?: Promise<void>
 } = {}) {
   let graphRequested = false
+  let graphReads = 0
   const calls = vi.fn(async (url: string, init?: RequestInit) => {
     if (url.endsWith('/auth/me')) return Response.json(admin)
     if (url.endsWith('/admin/material-kinds'))
@@ -116,6 +121,29 @@ function setup({
                   }
                 : material,
       ])
+    if (fixture && (url.endsWith('/graph') || url.endsWith('/graph/build'))) {
+      if (init?.method === 'POST') graphRequested = true
+      else if (graphRequested) graphReads += 1
+      const built = graphRequested && graphReads > 0
+      return Response.json({
+        status: built ? 'ready' : graphRequested ? 'pending' : 'not_requested',
+        attempts: 0,
+        error_message: '',
+        graph: {
+          topics: [
+            built
+              ? { id: 'ml', title: 'Тема из лекции' }
+              : { id: 'AI-01-01', title: 'Подходы к определению ИИ' },
+          ],
+          prerequisites: [],
+          hierarchy: [],
+        },
+        graph_source: built ? 'built' : 'fixture',
+        stale: false,
+        inputs_ready: true,
+        updated_at: built ? 2 : 0,
+      })
+    }
     if (url.endsWith('/graph') || url.endsWith('/graph/build')) {
       if (init?.method === 'POST') graphRequested = true
       return Response.json({
@@ -199,9 +227,49 @@ it('keeps the master graph viewer for a published graph', async () => {
   expect(
     await screen.findByText('Курс готов для студентов. В графе тем: 1.'),
   ).toBeInTheDocument()
-  fireEvent.click(screen.getByRole('button', { name: /Показать/ }))
-  expect(await screen.findByText('Линейная регрессия')).toBeInTheDocument()
+  // The graph opens as a map without an extra click.
+  const canvas = await screen.findByRole('region', {
+    name: 'Граф знаний курса',
+  })
+  expect(within(canvas).getByText('Линейная регрессия')).toBeInTheDocument()
+  expect(screen.queryByText('Демо-граф')).not.toBeInTheDocument()
 })
+
+it('draws the default graph without treating the course as built', async () => {
+  setup({ fixture: true })
+  open()
+  const canvas = await screen.findByRole('region', {
+    name: 'Граф знаний курса',
+  })
+  expect(
+    within(canvas).getByText('Подходы к определению ИИ'),
+  ).toBeInTheDocument()
+  expect(screen.getByText('Демо-граф')).toBeVisible()
+  // Everything else still waits for a graph built from the materials.
+  expect(screen.getByText('Не готов')).toBeVisible()
+  expect(
+    screen.getByRole('button', { name: 'Собрать граф тем' }),
+  ).toBeInTheDocument()
+  expect(screen.queryByText(/Курс готов для студентов/)).not.toBeInTheDocument()
+})
+
+it('replaces the default graph once a build from the materials succeeds', async () => {
+  setup({ fixture: true })
+  open()
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Собрать граф тем' }),
+  )
+  const dialog = await screen.findByRole('alertdialog')
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Начать сборку' }))
+  expect(
+    await screen.findByText('Тема из лекции', undefined, { timeout: 8000 }),
+  ).toBeInTheDocument()
+  expect(screen.queryByText('Подходы к определению ИИ')).not.toBeInTheDocument()
+  expect(screen.queryByText('Демо-граф')).not.toBeInTheDocument()
+  expect(
+    screen.getByText('Курс готов для студентов. В графе тем: 1.'),
+  ).toBeInTheDocument()
+}, 15000)
 
 it('uploads a queued PDF using the master multipart field', async () => {
   const calls = setup()

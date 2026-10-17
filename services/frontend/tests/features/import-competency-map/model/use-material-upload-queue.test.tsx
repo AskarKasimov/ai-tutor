@@ -3,7 +3,10 @@ import { zipSync, strToU8 } from 'fflate'
 import { expect, it, vi } from 'vitest'
 import { createAppDependencies } from '@/bootstrap/dependencies'
 import { createQueryClient } from '@/bootstrap/providers'
-import { useMaterialUploadQueue } from '@/features/import-competency-map'
+import {
+  useMaterialUploadQueue,
+  useSubjectMaterialsQuery,
+} from '@/features/import-competency-map'
 import type {
   CourseMaterial,
   CourseMaterialUploadItem,
@@ -112,4 +115,61 @@ it('keeps failed files for retry after partial success', async () => {
     file: { name: 'b.pdf' },
     error: 'Ошибка загрузки',
   })
+})
+
+it('does not start another batch when the queue unmounts during invalidation', async () => {
+  const dependencies = createAppDependencies()
+  let releaseReload!: () => void
+  const reloadGate = new Promise<void>((resolve) => {
+    releaseReload = resolve
+  })
+  let uploadCount = 0
+  let reloadCount = 0
+  dependencies.competencyMap.readSubjectMaterials = vi.fn(async () => {
+    reloadCount += 1
+    if (reloadCount > 1) await reloadGate
+    return []
+  })
+  dependencies.competencyMap.uploadCourseMaterials = vi.fn(
+    async (_subjectId: string, items: CourseMaterialUploadItem[]) => {
+      uploadCount += 1
+      return {
+        uploaded: items.map((item) => saved(item.file)),
+        failed: [],
+        results: items.map((item) => ({
+          clientId: item.clientId,
+          material: saved(item.file),
+        })),
+      }
+    },
+  )
+  const { result, unmount } = renderHook(
+    () => {
+      const queue = useMaterialUploadQueue('user-1', 'subject-1', [
+        { code: 'lecture', label: 'Лекция' },
+      ])
+      useSubjectMaterialsQuery('user-1', 'subject-1')
+      return queue
+    },
+    { wrapper: createQueryWrapper(createQueryClient(), dependencies) },
+  )
+  await waitFor(() => expect(reloadCount).toBe(1))
+  const archive = zipSync(
+    Object.fromEntries(
+      Array.from({ length: 49 }, (_, i) => [
+        `lecture-${i}.pdf`,
+        strToU8('%PDF-1.4 content'),
+      ]),
+    ),
+  )
+  await act(() => result.current.addFile(new File([archive], 'course.zip')))
+  let sending!: Promise<void>
+  act(() => {
+    sending = result.current.sendAll()
+  })
+  await waitFor(() => expect(reloadCount).toBe(2))
+  unmount()
+  releaseReload()
+  await sending
+  expect(uploadCount).toBe(1)
 })

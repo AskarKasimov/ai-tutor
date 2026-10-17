@@ -1,4 +1,5 @@
 import {
+  act,
   fireEvent,
   render,
   screen,
@@ -229,6 +230,33 @@ it('uploads a queued PDF using the master multipart field', async () => {
   await waitFor(() =>
     expect(screen.queryByText('new.pdf')).not.toBeInTheDocument(),
   )
+})
+
+it('asks before leaving a course with an unsent material in the queue', async () => {
+  setup()
+  const router = open()
+  fireEvent.change(await screen.findByLabelText('Добавить PDF или ZIP'), {
+    target: { files: [new File(['%PDF-1.4 content'], 'unsent.pdf')] },
+  })
+  expect(await screen.findByText('unsent.pdf')).toBeVisible()
+
+  act(() => {
+    void router.navigate({ to: '/admin/courses' })
+  })
+
+  expect(
+    await screen.findByRole('alertdialog', {
+      name: 'Материалы ещё не отправлены',
+    }),
+  ).toBeVisible()
+  fireEvent.click(screen.getByRole('button', { name: 'Остаться' }))
+  await waitFor(() =>
+    expect(router.state.location.pathname).toBe(
+      '/admin/competency-map/subject-b',
+    ),
+  )
+  expect(await screen.findByText('unsent.pdf')).toBeVisible()
+  expect(screen.getByRole('heading', { name: 'Второй курс' })).toBeVisible()
 })
 
 it('blocks building the graph while a queued upload is in flight', async () => {

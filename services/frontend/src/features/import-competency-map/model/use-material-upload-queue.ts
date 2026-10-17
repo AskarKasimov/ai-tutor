@@ -35,10 +35,21 @@ export function useMaterialUploadQueue(
   } | null>(null)
   const [sending, setSending] = useState(false)
   const sendingRef = useRef(false)
+  const sendRunRef = useRef<{ cancelled: boolean } | null>(null)
   const [preparing, setPreparing] = useState(false)
   const [sendingItemId, setSendingItemId] = useState<string | null>(null)
   const preparingRef = useRef(false)
   const subjectRef = useRef(subjectId)
+
+  useEffect(
+    () => () => {
+      if (sendRunRef.current) {
+        sendRunRef.current.cancelled = true
+        sendRunRef.current = null
+      }
+    },
+    [],
+  )
 
   useEffect(() => {
     if (subjectRef.current === subjectId) return
@@ -130,12 +141,15 @@ export function useMaterialUploadQueue(
     )
       return
     sendingRef.current = true
+    const run = { cancelled: false }
+    sendRunRef.current = run
     setSending(true)
     setNotification(null)
     setSendingItemId(selected.length === 1 ? selected[0].id : null)
     let complete = true
     try {
       for (let offset = 0; offset < selected.length; offset += 48) {
+        if (run.cancelled) return
         const batch = selected.slice(offset, offset + 48)
         const result: CourseMaterialUploadResult = await upload.mutateAsync({
           subjectId,
@@ -146,6 +160,7 @@ export function useMaterialUploadQueue(
             kind: item.kind,
           })),
         })
+        if (run.cancelled) return
         const persisted = new Set(
           result.results
             .filter((entry) => entry.material)
@@ -173,6 +188,7 @@ export function useMaterialUploadQueue(
         ),
       })
     } catch (cause) {
+      if (run.cancelled) return
       setNotification({
         type: 'error',
         message:
@@ -181,9 +197,12 @@ export function useMaterialUploadQueue(
             : t('competencyMap.requestError'),
       })
     } finally {
-      sendingRef.current = false
-      setSending(false)
-      setSendingItemId(null)
+      if (sendRunRef.current === run) {
+        sendRunRef.current = null
+        sendingRef.current = false
+        setSending(false)
+        setSendingItemId(null)
+      }
     }
   }
   function sendAll() {

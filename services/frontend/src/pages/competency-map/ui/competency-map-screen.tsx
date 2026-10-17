@@ -7,7 +7,7 @@ import {
   Heading,
   Text,
 } from '@radix-ui/themes'
-import { useNavigate } from '@tanstack/react-router'
+import { useBlocker, useNavigate } from '@tanstack/react-router'
 import {
   CheckCircle2,
   Clock,
@@ -27,7 +27,7 @@ import {
   EyeOff,
 } from 'lucide-react'
 import ReactModal from 'react-modal'
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   downloadCourseMaterialRaw,
@@ -155,7 +155,19 @@ function CompetencyMapAdmin({
     latestBuild.data?.status === 'queued' ||
     latestBuild.data?.status === 'running'
   const shouldWarnBeforeExit =
-    queue.items.length > 0 || materialsChanging || graphBuilding
+    queue.items.length > 0 ||
+    queue.preparing ||
+    materialsChanging ||
+    graphBuilding
+  const shouldBlockNavigation = useCallback(
+    () => shouldWarnBeforeExit,
+    [shouldWarnBeforeExit],
+  )
+  const navigationBlocker = useBlocker({
+    shouldBlockFn: shouldBlockNavigation,
+    withResolver: true,
+    enableBeforeUnload: false,
+  })
 
   useEffect(() => {
     if (!shouldWarnBeforeExit) return
@@ -710,6 +722,37 @@ function CompetencyMapAdmin({
             </section>
           </>
         )}
+        <AlertDialog.Root
+          open={navigationBlocker.status === 'blocked'}
+          onOpenChange={(open) => {
+            if (!open) navigationBlocker.reset?.()
+          }}
+        >
+          <AlertDialog.Content maxWidth="440px">
+            <AlertDialog.Title>
+              {t('competencyMap.leaveWithChangesTitle')}
+            </AlertDialog.Title>
+            <AlertDialog.Description>
+              {t('competencyMap.leaveWithChangesDescription')}
+            </AlertDialog.Description>
+            <Flex gap="3" mt="4" justify="end">
+              <AlertDialog.Cancel>
+                <Button
+                  variant="soft"
+                  color="gray"
+                  onClick={() => navigationBlocker.reset?.()}
+                >
+                  {t('competencyMap.stayOnCourse')}
+                </Button>
+              </AlertDialog.Cancel>
+              <AlertDialog.Action>
+                <Button onClick={() => navigationBlocker.proceed?.()}>
+                  {t('competencyMap.leaveCourse')}
+                </Button>
+              </AlertDialog.Action>
+            </Flex>
+          </AlertDialog.Content>
+        </AlertDialog.Root>
       </main>
     </div>
   )

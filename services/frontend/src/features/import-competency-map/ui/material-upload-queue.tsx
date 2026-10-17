@@ -5,6 +5,7 @@ import {
   GripVertical,
   Send,
   Trash2,
+  Upload,
 } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -89,12 +90,27 @@ export function MaterialUploadQueueToolbar({
   const { t } = useTranslation()
   return (
     <div className={styles.queue}>
-      <label className={styles.add}>
-        <span>{t('competencyMap.queueAdd')}</span>
+      <label
+        className={styles.add}
+        data-disabled={
+          disabled || queue.isPending || queue.preparing || undefined
+        }
+      >
+        <span className={styles.addIcon} aria-hidden="true">
+          <Upload size={22} />
+        </span>
+        <span className={styles.addText}>
+          <span className={styles.addTitle}>{t('competencyMap.queueAdd')}</span>
+          <span className={styles.addHint}>
+            {t('competencyMap.queueAddHint')}
+          </span>
+        </span>
         <input
+          className={styles.addInput}
           type="file"
           accept=".pdf,.zip,application/pdf,application/zip"
           disabled={disabled || queue.isPending || queue.preparing}
+          aria-label={t('competencyMap.queueAdd')}
           onChange={(event) => {
             void queue.addFile(event.currentTarget.files?.[0])
             event.currentTarget.value = ''

@@ -59,6 +59,7 @@ void i18n.init({
           cancel: 'Отмена',
           confirm: 'Подтвердить',
           queueAdd: 'Добавить PDF или ZIP',
+          queueAddHint: 'Выберите PDF или ZIP-архив для материалов курса',
           queueMoveUp: 'Переместить {{name}} выше',
           queueMoveDown: 'Переместить {{name}} ниже',
           queueDragItem: 'Перетащить {{name}}',

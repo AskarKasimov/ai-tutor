@@ -74,7 +74,8 @@
 }
 .pipeline {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
   gap: var(--space-3);
   > div {
     display: flex;
@@ -84,18 +85,39 @@
     padding: var(--space-3) var(--space-4);
     border: 1px solid var(--app-border);
     border-radius: var(--radius-4);
-    background: var(--color-panel-solid);
-    color: var(--app-muted);
-    &[data-active],
-    &[data-ready] {
+    background: var(--gray-2);
+    color: var(--gray-9);
+    opacity: 0.65;
+    &[data-active] {
+      background: var(--color-panel-solid);
       color: var(--app-ink);
       border-color: var(--blue-7);
+      opacity: 1;
       .stepNumber {
         background: var(--blue-3);
         color: var(--blue-11);
       }
     }
+    &[data-ready] {
+      background: var(--color-panel-solid);
+      color: var(--app-ink);
+      border-color: var(--green-7);
+      opacity: 1;
+      .stepNumber {
+        background: var(--green-3);
+        color: var(--green-11);
+      }
+    }
   }
+}
+.pipelineArrow {
+  color: var(--gray-8);
+}
+.pipeline > div[data-active] + .pipelineArrow {
+  color: var(--blue-9);
+}
+.pipeline > div[data-ready] + .pipelineArrow {
+  color: var(--green-9);
 }
 .stepNumber {
   display: grid;
@@ -286,6 +308,9 @@
 @media (max-width: 640px) {
   .pipeline {
     grid-template-columns: minmax(0, 1fr);
+  }
+  .pipelineArrow {
+    transform: rotate(90deg);
   }
   .header {
     padding: var(--space-4);

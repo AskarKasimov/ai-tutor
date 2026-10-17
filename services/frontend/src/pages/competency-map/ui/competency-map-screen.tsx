@@ -20,6 +20,7 @@ import {
   Eye,
   EyeOff,
   FileText,
+  ArrowRight,
   ShieldCheck,
   Sparkles,
   Trash2,
@@ -301,6 +302,7 @@ function CompetencyMapAdmin({ userId }: { userId: string }) {
                 <span className={styles.stepNumber}>1</span>
                 <Text weight="bold">{t('courseGraph.materialsStep')}</Text>
               </div>
+              <ArrowRight className={styles.pipelineArrow} aria-hidden="true" />
               <div
                 data-ready={
                   (parsedCount > 0 && graphBlockers.length === 0) ||
@@ -311,6 +313,7 @@ function CompetencyMapAdmin({ userId }: { userId: string }) {
                 <span className={styles.stepNumber}>2</span>
                 <Text weight="bold">{t('courseGraph.graphStep')}</Text>
               </div>
+              <ArrowRight className={styles.pipelineArrow} aria-hidden="true" />
               <div data-ready={hasGraph || undefined}>
                 <span className={styles.stepNumber}>3</span>
                 <Text weight="bold">{t('courseGraph.readyStep')}</Text>

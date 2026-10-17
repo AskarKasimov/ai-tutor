@@ -75,7 +75,7 @@ export function CompetencyMapAdminScreen() {
 }
 
 function CompetencyMapAdmin({ userId }: { userId: string }) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const subjects = useSubjectsQuery(userId)
   const create = useCreateSubjectMutation(userId)
   const [subjectName, setSubjectName] = useState('')
@@ -409,7 +409,7 @@ function CompetencyMapAdmin({ userId }: { userId: string }) {
                         )
                       }
                       onDelete={() =>
-                        deleteMaterial.mutate({
+                        deleteMaterial.mutateAsync({
                           materialId: mat.id,
                           subjectId,
                         })
@@ -418,7 +418,11 @@ function CompetencyMapAdmin({ userId }: { userId: string }) {
                         replaceMaterial.mutate({ materialId: mat.id, file })
                       }
                       onUpdateMetadata={(patch) =>
-                        updateMetadata.mutate({ materialId: mat.id, patch })
+                        updateMetadata.mutateAsync({
+                          materialId: mat.id,
+                          patch,
+                          subjectId,
+                        })
                       }
                       busy={busy}
                     />
@@ -454,9 +458,15 @@ function CompetencyMapAdmin({ userId }: { userId: string }) {
                   failed: failedCount,
                 })}
               </Text>
-              {graphBlockers.length > 0 && !hasGraph && (
+              {graphBlockers.length > 0 && (
                 <div className={styles.warning} role="status">
-                  <Text weight="bold">{t('courseGraph.blockedTitle')}</Text>
+                  <Text weight="bold">
+                    {t(
+                      hasGraph
+                        ? 'courseGraph.rebuildBlockedTitle'
+                        : 'courseGraph.blockedTitle',
+                    )}
+                  </Text>
                   <ul>
                     {graphBlockers.map((reason) => (
                       <li key={reason}>{reason}</li>
@@ -514,6 +524,30 @@ function CompetencyMapAdmin({ userId }: { userId: string }) {
                   </Text>
                 </div>
               )}
+              {latestBuild.data &&
+                (latestBuild.data.startedAt !== null ||
+                  latestBuild.data.completedAt !== null) && (
+                  <Flex gap="2" wrap="wrap" direction="column">
+                    {latestBuild.data.startedAt !== null && (
+                      <Text size="1" color="gray">
+                        {t('courseGraph.buildStartedAt', {
+                          date: new Date(
+                            latestBuild.data.startedAt * 1000,
+                          ).toLocaleString(i18n.language),
+                        })}
+                      </Text>
+                    )}
+                    {latestBuild.data.completedAt !== null && (
+                      <Text size="1" color="gray">
+                        {t('courseGraph.buildCompletedAt', {
+                          date: new Date(
+                            latestBuild.data.completedAt * 1000,
+                          ).toLocaleString(i18n.language),
+                        })}
+                      </Text>
+                    )}
+                  </Flex>
+                )}
               {courseGraph.isError &&
                 courseGraph.error instanceof CourseGraphApiError &&
                 courseGraph.error.status !== 404 && (
@@ -536,6 +570,15 @@ function CompetencyMapAdmin({ userId }: { userId: string }) {
                     {t('courseGraph.readyMessage', {
                       count: courseGraph.data.nodes.length,
                     })}
+                    {courseGraph.data.publishedAt !== null && (
+                      <span className={styles.graphPublishedAt}>
+                        {t('courseGraph.graphPublishedAt', {
+                          date: new Date(
+                            courseGraph.data.publishedAt * 1000,
+                          ).toLocaleString(i18n.language),
+                        })}
+                      </span>
+                    )}
                   </span>
                 </div>
               )}
@@ -618,16 +661,64 @@ function MaterialItemCard({
   subjectId: string
   previewOpen: boolean
   onTogglePreview: () => void
-  onDelete: () => void
+  onDelete: () => Promise<void>
   onReplace: (file: File) => void
-  onUpdateMetadata: (patch: CourseMaterialMetadataPatch) => void
+  onUpdateMetadata: (patch: CourseMaterialMetadataPatch) => Promise<unknown>
   busy: boolean
 }) {
   const { t, i18n } = useTranslation()
   const [downloading, setDownloading] = useState(false)
   const [downloadError, setDownloadError] = useState<string | null>(null)
   const [week, setWeek] = useState(material.week?.toString() ?? '')
+  const [actionError, setActionError] = useState<{
+    message: string
+    retry: () => Promise<unknown>
+  } | null>(null)
   useEffect(() => setWeek(material.week?.toString() ?? ''), [material.week])
+  async function runMetadata(patch: CourseMaterialMetadataPatch) {
+    try {
+      await onUpdateMetadata(patch)
+      setActionError(null)
+    } catch (error) {
+      setWeek(material.week?.toString() ?? '')
+      setActionError({
+        message:
+          error instanceof Error
+            ? error.message
+            : t('competencyMap.requestError'),
+        retry: () => onUpdateMetadata(patch),
+      })
+    }
+  }
+  async function runDelete() {
+    try {
+      await onDelete()
+      setActionError(null)
+    } catch (error) {
+      setActionError({
+        message:
+          error instanceof Error
+            ? error.message
+            : t('competencyMap.requestError'),
+        retry: onDelete,
+      })
+    }
+  }
+  async function retryAction() {
+    if (!actionError) return
+    try {
+      await actionError.retry()
+      setActionError(null)
+    } catch (error) {
+      setActionError({
+        ...actionError,
+        message:
+          error instanceof Error
+            ? error.message
+            : t('competencyMap.requestError'),
+      })
+    }
+  }
   const formattedSize =
     material.fileSize > 1024 * 1024
       ? `${(material.fileSize / (1024 * 1024)).toFixed(1)} МБ`
@@ -716,7 +807,7 @@ function MaterialItemCard({
                   </Button>
                 </AlertDialog.Cancel>
                 <AlertDialog.Action>
-                  <Button color="red" onClick={onDelete}>
+                  <Button color="red" onClick={() => void runDelete()}>
                     {t('competencyMap.confirm')}
                   </Button>
                 </AlertDialog.Action>
@@ -769,7 +860,7 @@ function MaterialItemCard({
             onBlur={(event) => {
               const week = Number(event.currentTarget.value)
               if (Number.isInteger(week) && week > 0 && week !== material.week)
-                onUpdateMetadata({ week })
+                void runMetadata({ week })
               else if (!Number.isInteger(week) || week < 1)
                 setWeek(material.week?.toString() ?? '')
             }}
@@ -782,7 +873,7 @@ function MaterialItemCard({
           <Select.Root
             value={material.kind ?? ''}
             onValueChange={(kind) =>
-              onUpdateMetadata({
+              void runMetadata({
                 kind: kind as NonNullable<CourseMaterial['kind']>,
               })
             }
@@ -814,6 +905,16 @@ function MaterialItemCard({
         <Text as="p" role="alert" color="red" size="2">
           {downloadError}
         </Text>
+      )}
+      {actionError && (
+        <Flex gap="2" align="center" wrap="wrap">
+          <Text as="p" role="alert" color="red" size="2">
+            {actionError.message}
+          </Text>
+          <Button size="1" variant="soft" onClick={() => void retryAction()}>
+            {t('trainer.retry')}
+          </Button>
+        </Flex>
       )}
 
       {previewOpen && (

@@ -87,6 +87,7 @@ it.each([
 it('reads the graph and rejects malformed success payloads', async () => {
   const graph = {
     version: 'build-1',
+    published_at: 42,
     nodes: [
       {
         id: 'topic-1',
@@ -99,7 +100,10 @@ it('reads the graph and rejects malformed success payloads', async () => {
     ],
   }
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json(graph)))
-  await expect(readCourseGraph('subject-1', signal())).resolves.toEqual(graph)
+  await expect(readCourseGraph('subject-1', signal())).resolves.toMatchObject({
+    version: 'build-1',
+    publishedAt: 42,
+  })
   vi.stubGlobal(
     'fetch',
     vi.fn().mockResolvedValue(Response.json({ version: 2, nodes: [] })),

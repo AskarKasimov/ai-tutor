@@ -79,8 +79,11 @@ function backend(
     partialUpload?: boolean
     uploadGate?: Promise<void>
     downloadFails?: boolean
+    metadataFailCount?: number
+    deleteFails?: boolean
     graph?: {
       version: string
+      published_at?: number | null
       nodes: Array<{
         id: string
         title: string
@@ -102,8 +105,11 @@ function backend(
   } = {},
 ) {
   const activeSubjects = [...(options.subjects ?? subjects)]
-  const activeMaterials = [...(options.materials ?? sampleMaterials)]
+  const activeMaterials = (options.materials ?? sampleMaterials).map(
+    (item) => ({ ...item }),
+  )
   let signedIn = options.user !== null
+  let metadataFailuresRemaining = options.metadataFailCount ?? 0
   const fetch = vi.fn(async (url: string, init?: RequestInit) => {
     if (url.endsWith('/auth/refresh'))
       return new Response(null, { status: 401 })
@@ -250,6 +256,16 @@ function backend(
       url.includes('/materials/') &&
       init?.method === 'PATCH'
     ) {
+      if (metadataFailuresRemaining > 0) {
+        metadataFailuresRemaining -= 1
+        return Response.json(
+          {
+            code: 'DATABASE_ERROR',
+            message: 'Не удалось сохранить метаданные.',
+          },
+          { status: 503 },
+        )
+      }
       const material =
         activeMaterials.find((item) => url.includes(item.id)) ??
         activeMaterials[0]
@@ -273,6 +289,11 @@ function backend(
       url.includes('/materials/') &&
       init?.method === 'DELETE'
     ) {
+      if (options.deleteFails)
+        return Response.json(
+          { code: 'DATABASE_ERROR', message: 'Не удалось удалить материал.' },
+          { status: 503 },
+        )
       return new Response(null, { status: 204 })
     }
     throw new Error(`Unexpected request: ${url}`)
@@ -603,6 +624,114 @@ it('allows changing uploaded material metadata without re-uploading the PDF', as
         url.endsWith('/materials') && request?.method === 'POST',
     ),
   ).toBe(false)
+})
+
+it('restores the confirmed week and retries a rejected metadata update', async () => {
+  const fetch = backend({ metadataFailCount: 1 })
+  renderApp('/admin/competency-map')
+  const week = await screen.findByRole('spinbutton', { name: 'Неделя' })
+  fireEvent.change(week, { target: { value: '2' } })
+  fireEvent.blur(week)
+  await waitFor(() =>
+    expect(
+      fetch.mock.calls.filter(
+        ([url, init]) =>
+          url.endsWith('/materials/mat-1') && init?.method === 'PATCH',
+      ),
+    ).toHaveLength(1),
+  )
+  const error = await screen.findByRole('alert')
+  expect(error).toHaveTextContent('Не удалось сохранить метаданные.')
+  expect(week).toHaveValue(1)
+  fireEvent.click(
+    within(error.parentElement!).getByRole('button', {
+      name: 'Попробовать снова',
+    }),
+  )
+  await waitFor(() => expect(week).toHaveValue(2))
+  expect(
+    fetch.mock.calls.filter(
+      ([url, init]) =>
+        url.endsWith('/materials/mat-1') && init?.method === 'PATCH',
+    ),
+  ).toHaveLength(2)
+})
+
+it('shows a rejected kind update and retries it', async () => {
+  const fetch = backend({ metadataFailCount: 1 })
+  renderApp('/admin/competency-map')
+  fireEvent.click(
+    await screen.findByRole('combobox', {
+      name: 'Тип материала: lecture1.pdf',
+    }),
+  )
+  fireEvent.click(await screen.findByRole('option', { name: 'Практика' }))
+  const error = await screen.findByRole('alert')
+  expect(error).toHaveTextContent('Не удалось сохранить метаданные.')
+  fireEvent.click(
+    within(error.parentElement!).getByRole('button', {
+      name: 'Попробовать снова',
+    }),
+  )
+  await waitFor(() =>
+    expect(
+      fetch.mock.calls.filter(
+        ([url, init]) =>
+          url.endsWith('/materials/mat-1') && init?.method === 'PATCH',
+      ),
+    ).toHaveLength(2),
+  )
+})
+
+it('shows material blockers when an existing graph cannot be rebuilt', async () => {
+  backend({
+    materials: [{ ...sampleMaterials[0], week: null, kind: null }],
+    graph: { version: 'v1', nodes: [] },
+  })
+  renderApp('/admin/competency-map')
+  expect(
+    await screen.findByText('Пересборка недоступна из-за материалов'),
+  ).toBeVisible()
+  expect(
+    screen.getByText('У 1 материалов не указаны неделя или тип.'),
+  ).toBeVisible()
+  expect(
+    screen.getByRole('button', { name: 'Пересобрать граф' }),
+  ).toBeDisabled()
+})
+
+it('keeps the last successful publication date visible after a failed rebuild', async () => {
+  backend({
+    graph: {
+      version: 'v1',
+      published_at: 1791356400,
+      nodes: [
+        {
+          id: 'topic-1',
+          title: 'Матрицы',
+          content: 'Основы',
+          prerequisites: [],
+          outcomes: [],
+          questions: [],
+        },
+      ],
+    },
+    build: {
+      id: 'build-2',
+      subject_id: 'subject-a',
+      status: 'failed',
+      stage: null,
+      started_at: 1791360000,
+      completed_at: 1791363600,
+      error: { code: 'GRAPH_BUILD_FAILED', message: 'Сборка не удалась.' },
+    },
+  })
+  renderApp('/admin/competency-map')
+  expect(await screen.findByText('Сборка не удалась.')).toBeVisible()
+  expect(screen.getByText(/Последняя успешная публикация: /)).toHaveTextContent(
+    '2026',
+  )
+  expect(screen.getByText(/Завершение сборки: /)).toBeVisible()
 })
 
 it('blocks graph generation while a material upload is pending', async () => {

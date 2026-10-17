@@ -181,6 +181,10 @@ void i18n.init({
           blockPending: 'Дождитесь завершения распознавания материалов.',
           blockChanging: 'Дождитесь сохранения изменений материалов.',
           blockedTitle: 'Пока нельзя собрать граф',
+          rebuildBlockedTitle: 'Пересборка недоступна из-за материалов',
+          buildStartedAt: 'Начало сборки: {{date}}',
+          buildCompletedAt: 'Завершение сборки: {{date}}',
+          graphPublishedAt: 'Последняя успешная публикация: {{date}}',
           materialSummary:
             'Материалов: {{total}} · распознано: {{parsed}} · с ошибкой: {{failed}}',
           graphTitle: 'Граф тем курса',

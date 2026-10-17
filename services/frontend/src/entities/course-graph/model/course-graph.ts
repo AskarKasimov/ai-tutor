@@ -30,5 +30,6 @@ export type CourseGraphNode = {
 
 export type CourseGraph = {
   version: string
+  publishedAt: number | null
   nodes: CourseGraphNode[]
 }

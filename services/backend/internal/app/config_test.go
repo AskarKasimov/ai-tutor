@@ -36,7 +36,7 @@ func configuredEnv(t *testing.T) map[string]string {
 
 func TestAudioConfigRequiresEverySetting(t *testing.T) {
 	for key := range configuredEnv(t) {
-		if key == "BACKEND_S3_ENDPOINT" || key == "BACKEND_S3_REGION" || key == "BACKEND_S3_PATH_STYLE" || key == "BACKEND_S3_TIMEOUT" || key == "BACKEND_S3_CREATE_BUCKET" {
+		if key == "BACKEND_TTS_INFERENCE_TIMESTEPS" || key == "BACKEND_S3_ENDPOINT" || key == "BACKEND_S3_REGION" || key == "BACKEND_S3_PATH_STYLE" || key == "BACKEND_S3_TIMEOUT" || key == "BACKEND_S3_CREATE_BUCKET" {
 			continue
 		}
 		t.Run(key, func(t *testing.T) {
@@ -154,6 +154,14 @@ func TestConfigLoadsTTSSettings(t *testing.T) {
 	}
 	if cfg.TTSSeed != 0 || cfg.TTSCFGValue != 1.5 || cfg.TTSInferenceTimesteps != 20 {
 		t.Fatalf("TTS settings ignored: %+v", cfg)
+	}
+	t.Setenv("BACKEND_TTS_INFERENCE_TIMESTEPS", "30")
+	if cfg, err = ConfigFromEnv(); err != nil || cfg.TTSInferenceTimesteps != 30 {
+		t.Fatalf("explicit steps = %d, %v", cfg.TTSInferenceTimesteps, err)
+	}
+	t.Setenv("BACKEND_TTS_INFERENCE_TIMESTEPS", "")
+	if cfg, err = ConfigFromEnv(); err != nil || cfg.TTSInferenceTimesteps != DefaultTTSInferenceTimesteps {
+		t.Fatalf("default steps = %d, %v", cfg.TTSInferenceTimesteps, err)
 	}
 }
 

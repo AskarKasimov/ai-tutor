@@ -298,7 +298,7 @@ function CompetencyMapAdmin({ userId }: { userId: string }) {
               aria-label={t('courseGraph.pipeline')}
             >
               <div data-active="true">
-                <span>1</span>
+                <span className={styles.stepNumber}>1</span>
                 <Text weight="bold">{t('courseGraph.materialsStep')}</Text>
               </div>
               <div
@@ -308,11 +308,11 @@ function CompetencyMapAdmin({ userId }: { userId: string }) {
                   undefined
                 }
               >
-                <span>2</span>
+                <span className={styles.stepNumber}>2</span>
                 <Text weight="bold">{t('courseGraph.graphStep')}</Text>
               </div>
               <div data-ready={hasGraph || undefined}>
-                <span>3</span>
+                <span className={styles.stepNumber}>3</span>
                 <Text weight="bold">{t('courseGraph.readyStep')}</Text>
               </div>
             </nav>

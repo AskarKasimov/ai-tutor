@@ -86,30 +86,30 @@
     border-radius: var(--radius-4);
     background: var(--color-panel-solid);
     color: var(--app-muted);
-    > span {
-      display: grid;
-      place-items: center;
-      flex: none;
-      width: 28px;
-      height: 28px;
-      border-radius: 50%;
-      background: var(--gray-3);
-      font-weight: 700;
-    }
     &[data-active],
     &[data-ready] {
       color: var(--app-ink);
       border-color: var(--blue-7);
-      > span {
+      .stepNumber {
         background: var(--blue-3);
         color: var(--blue-11);
       }
     }
-    &[data-ready] > span {
-      background: var(--green-3);
-      color: var(--green-11);
-    }
   }
+}
+.stepNumber {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--gray-3);
+  font-weight: 700;
+}
+.pipeline > div[data-ready] .stepNumber {
+  background: var(--green-3);
+  color: var(--green-11);
 }
 .uploadMetadata,
 .materialClassification {

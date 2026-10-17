@@ -77,11 +77,19 @@ function backend(
     partialUpload?: boolean
     downloadFails?: boolean
     graph?: unknown
+    graphSource?: 'built' | 'fixture'
+    // The graph a build publishes; the first poll after the build sees it.
+    builtGraph?: unknown
   } = {},
 ) {
   const activeSubjects = [...(options.subjects ?? subjects)]
   const activeMaterials = [...(options.materials ?? sampleMaterials)]
   let signedIn = options.user !== null
+  let graphState = {
+    status: 'ready',
+    graph: options.graph,
+    source: options.graphSource ?? 'built',
+  }
   const fetch = vi.fn(async (url: string, init?: RequestInit) => {
     if (url.endsWith('/auth/refresh'))
       return new Response(null, { status: 401 })
@@ -117,16 +125,30 @@ function backend(
           training_available: false,
         }),
       )
-    if (url.endsWith('/graph') && options.graph)
-      return Response.json({
-        status: 'ready',
+    const graphSnapshot = () =>
+      Response.json({
+        status: graphState.status,
         attempts: 1,
         error_message: '',
-        graph: options.graph,
+        graph: graphState.graph,
+        graph_source: graphState.source,
         stale: false,
         inputs_ready: true,
         updated_at: 1791356400,
       })
+    if (url.endsWith('/graph/build') && init?.method === 'POST') {
+      const queued = graphSnapshot()
+      graphState = {
+        status: 'ready',
+        graph: options.builtGraph,
+        source: 'built',
+      }
+      return new Response(
+        JSON.stringify({ ...(await queued.json()), status: 'pending' }),
+        { status: 202 },
+      )
+    }
+    if (url.endsWith('/graph') && options.graph) return graphSnapshot()
     if (
       url.includes('/admin/subjects/') &&
       url.endsWith('/materials') &&
@@ -508,9 +530,11 @@ it('shows the built course graph as an interactive map and as a list', async () 
     },
   })
   renderApp('/admin/competency-map')
-  fireEvent.click(
-    await screen.findByRole('button', { name: 'Показать структуру графа' }),
-  )
+  expect(await screen.findByText('Собран из материалов')).toBeVisible()
+  expect(
+    screen.getByRole('button', { name: 'Пересобрать граф по материалам' }),
+  ).toBeVisible()
+  // The graph is open without an extra click.
   const canvas = await screen.findByRole('region', {
     name: 'Граф знаний курса',
   })
@@ -529,3 +553,38 @@ it('shows the built course graph as an interactive map and as a list', async () 
   expect(screen.getByText('Разделы и темы курса')).toBeVisible()
   expect(screen.getByText(/Градиентный спуск/)).toBeVisible()
 })
+
+it('shows the default graph until a build from the materials replaces it', async () => {
+  backend({
+    graphSource: 'fixture',
+    graph: {
+      topics: [{ id: 'AI-01-01', title: 'Подходы к определению ИИ' }],
+      hierarchy: [],
+      prerequisites: [],
+    },
+    builtGraph: {
+      topics: [{ id: 'ml', title: 'Тема из лекции' }],
+      hierarchy: [],
+      prerequisites: [],
+    },
+  })
+  renderApp('/admin/competency-map')
+  expect(await screen.findByText('Демо-граф')).toBeVisible()
+  const canvas = await screen.findByRole('region', {
+    name: 'Граф знаний курса',
+  })
+  expect(
+    within(canvas).getByText('Подходы к определению ИИ'),
+  ).toBeInTheDocument()
+
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Собрать граф из материалов' }),
+  )
+  // The build runs in the background; the next poll shows its graph.
+  expect(
+    await screen.findByText('Тема из лекции', undefined, { timeout: 8000 }),
+  ).toBeInTheDocument()
+  expect(screen.getByText('Собран из материалов')).toBeVisible()
+  expect(screen.queryByText('Демо-граф')).not.toBeInTheDocument()
+  expect(screen.queryByText('Подходы к определению ИИ')).not.toBeInTheDocument()
+}, 15000)

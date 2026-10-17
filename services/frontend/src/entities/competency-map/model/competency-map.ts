@@ -87,6 +87,9 @@ export type CourseGraphSnapshot = {
   attempts: number
   errorMessage: string
   graph: CourseGraph | null
+  // built: from the course materials; fixture: the default graph Geek
+  // examines by until the first build.
+  graphSource: 'built' | 'fixture' | 'none'
   stale: boolean
   // Every material is processed, so a build can start.
   inputsReady: boolean

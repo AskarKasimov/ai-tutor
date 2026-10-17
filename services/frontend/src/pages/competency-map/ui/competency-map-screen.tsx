@@ -773,7 +773,8 @@ function CourseGraphCard({
   buildError?: string
 }) {
   const { t } = useTranslation()
-  const [treeOpen, setTreeOpen] = useState(false)
+  // The graph Geek examines by is the point of this card, so it starts open.
+  const [treeOpen, setTreeOpen] = useState(true)
   const [mode, setMode] = useState<'canvas' | 'outline'>('canvas')
   const materialNames = useMemo(
     () => new Map((materials ?? []).map((m) => [m.id, m.filename])),
@@ -841,6 +842,17 @@ function CourseGraphCard({
               )}
             </span>
 
+            {snapshot?.graphSource === 'fixture' && (
+              <Badge color="violet" size="1">
+                {t('competencyMap.graphSourceFixture')}
+              </Badge>
+            )}
+            {snapshot?.graphSource === 'built' && (
+              <Badge color="green" size="1">
+                {t('competencyMap.graphSourceBuilt')}
+              </Badge>
+            )}
+
             {snapshot?.stale && topicsCount > 0 && (
               <Badge color="amber" size="1">
                 {t('competencyMap.graphStale')}
@@ -856,7 +868,9 @@ function CourseGraphCard({
               onClick={onBuild}
             >
               <Network size={16} aria-hidden="true" />
-              {t('competencyMap.graphBuild')}
+              {snapshot?.graphSource === 'built'
+                ? t('competencyMap.graphRebuild')
+                : t('competencyMap.graphBuild')}
             </Button>
             {!snapshot?.inputsReady && !isBuilding && (
               <Text size="2" color="gray">
@@ -876,6 +890,12 @@ function CourseGraphCard({
             </Text>
           )}
 
+          {snapshot?.graphSource === 'fixture' && (
+            <Text size="2" color="gray">
+              {t('competencyMap.graphFixtureHint')}
+            </Text>
+          )}
+
           {status === 'failed' && snapshot?.errorMessage && (
             <Callout.Root color="red" size="1">
               <Callout.Icon>
@@ -885,7 +905,7 @@ function CourseGraphCard({
             </Callout.Root>
           )}
 
-          {graph && (status === 'ready' || snapshot?.stale) && (
+          {graph && (
             <>
               <dl className={styles.stats}>
                 <div className={styles.statRow} data-tone="blue">

@@ -36,6 +36,7 @@ function snapshot(
     attempts: 1,
     errorMessage: '',
     graph: null,
+    graphSource: 'none',
     stale: false,
     inputsReady: true,
     updatedAt: 1,

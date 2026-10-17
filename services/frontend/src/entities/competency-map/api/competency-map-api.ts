@@ -337,6 +337,7 @@ const courseGraphSnapshotSchema = z.object({
     })
     .passthrough()
     .nullable(),
+  graph_source: z.enum(['built', 'fixture', 'none']),
   stale: z.boolean(),
   inputs_ready: z.boolean(),
   updated_at: z.number().int().nonnegative(),
@@ -351,6 +352,7 @@ function toSnapshot(raw: unknown): CourseGraphSnapshot {
     attempts: data.attempts,
     errorMessage: data.error_message,
     graph: data.graph,
+    graphSource: data.graph_source,
     stale: data.stale,
     inputsReady: data.inputs_ready,
     updatedAt: data.updated_at,

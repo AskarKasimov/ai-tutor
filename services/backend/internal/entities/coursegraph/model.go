@@ -13,6 +13,14 @@ type Material struct {
 	Topics   json.RawMessage `json:"topics,omitempty"`
 }
 
+// Where the graph of a snapshot comes from: a build from the course
+// materials, the fixture Geek examines by until the first build, or nothing.
+const (
+	SourceBuilt   = "built"
+	SourceFixture = "fixture"
+	SourceNone    = "none"
+)
+
 // Snapshot is the published graph of a course and the state of its build.
 // Status is that of the last requested build; InputsReady means every
 // material of the course is processed, so a build can start.
@@ -21,6 +29,7 @@ type Snapshot struct {
 	Attempts     int32           `json:"attempts"`
 	ErrorMessage string          `json:"error_message"`
 	Graph        json.RawMessage `json:"graph" swaggertype:"object" extensions:"x-nullable"`
+	GraphSource  string          `json:"graph_source" enums:"built,fixture,none"`
 	UpdatedAt    int64           `json:"updated_at"`
 	Stale        bool            `json:"stale"`
 	InputsReady  bool            `json:"inputs_ready"`

@@ -111,7 +111,12 @@ void i18n.init({
           graphReady: 'Граф знаний готов к экзамену',
           graphFailed: 'Не удалось построить граф',
           graphNotRequested: 'Граф ещё не собирался',
-          graphBuild: 'Собрать граф',
+          graphBuild: 'Собрать граф из материалов',
+          graphRebuild: 'Пересобрать граф по материалам',
+          graphSourceFixture: 'Демо-граф',
+          graphSourceBuilt: 'Собран из материалов',
+          graphFixtureHint:
+            'Пока граф не собран из материалов, Geek экзаменует по этому демонстрационному графу. После сборки здесь появится граф курса.',
           graphInputsNotReady:
             'Собрать граф можно, когда все материалы курса обработаны.',
           graphStale:

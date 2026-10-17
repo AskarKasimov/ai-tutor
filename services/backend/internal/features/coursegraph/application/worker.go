@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/coursegraph"
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/exam"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/material"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/user"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/fault"
@@ -39,18 +40,25 @@ type Voices interface {
 	Prepare(texts []string) int
 }
 
+// DefaultGraph is the graph Geek examines a course by before its first build.
+type DefaultGraph interface {
+	Current(context.Context, string) (exam.Graph, bool, error)
+}
+
 type Worker struct {
 	repo      Repository
 	materials Materials
 	storage   Storage
 	builder   Builder
 	voices    Voices
+	fallback  DefaultGraph
 }
 
 // New builds the graph worker; voices may be nil, then questions are voiced
-// only when a student first hears them.
-func New(repo Repository, materials Materials, storage Storage, builder Builder, voices Voices) *Worker {
-	return &Worker{repo: repo, materials: materials, storage: storage, builder: builder, voices: voices}
+// only when a student first hears them. fallback may be nil, then a course
+// without a build has no graph.
+func New(repo Repository, materials Materials, storage Storage, builder Builder, voices Voices, fallback DefaultGraph) *Worker {
+	return &Worker{repo: repo, materials: materials, storage: storage, builder: builder, voices: voices, fallback: fallback}
 }
 
 // TopicQuestions are the prepared questions of a built graph, one per topic.
@@ -76,7 +84,74 @@ func (w *Worker) Read(ctx context.Context, actor user.User, subjectID string) (c
 	if actor.Role != user.Admin {
 		return coursegraph.Snapshot{}, fault.New(fault.Forbidden, "FORBIDDEN", "Доступно только admin.")
 	}
-	return w.repo.Read(ctx, subjectID)
+	return w.snapshot(ctx, subjectID)
+}
+
+// snapshot shows the admin the graph Geek uses: the build once there is one,
+// otherwise the default graph in the shape of a build.
+func (w *Worker) snapshot(ctx context.Context, subjectID string) (coursegraph.Snapshot, error) {
+	snapshot, err := w.repo.Read(ctx, subjectID)
+	if err != nil {
+		return coursegraph.Snapshot{}, err
+	}
+	snapshot.GraphSource = coursegraph.SourceNone
+	if len(snapshot.Graph) > 0 && string(snapshot.Graph) != "null" {
+		snapshot.GraphSource = coursegraph.SourceBuilt
+		return snapshot, nil
+	}
+	if w.fallback == nil {
+		return snapshot, nil
+	}
+	g, ok, err := w.fallback.Current(ctx, subjectID)
+	if err != nil {
+		return coursegraph.Snapshot{}, err
+	}
+	if !ok {
+		return snapshot, nil
+	}
+	if snapshot.Graph, err = BuildShape(g); err != nil {
+		return coursegraph.Snapshot{}, err
+	}
+	snapshot.GraphSource = coursegraph.SourceFixture
+	return snapshot, nil
+}
+
+// BuildShape writes an examined graph as course-graph writes a build:
+// topics, prerequisite edges from the prerequisite to the topic, and an empty
+// hierarchy, since the examined graph has no sections.
+func BuildShape(g exam.Graph) (json.RawMessage, error) {
+	type topic struct {
+		ID       string   `json:"id"`
+		Title    string   `json:"title"`
+		Question string   `json:"question,omitempty"`
+		Text     string   `json:"text,omitempty"`
+		Provides []string `json:"provides"`
+		Requires []string `json:"requires"`
+	}
+	type edge struct {
+		Source string `json:"source"`
+		Target string `json:"target"`
+	}
+	shape := struct {
+		Version       string  `json:"version"`
+		Topics        []topic `json:"topics"`
+		Prerequisites []edge  `json:"prerequisites"`
+		Hierarchy     []edge  `json:"hierarchy"`
+	}{Version: g.Version, Topics: []topic{}, Prerequisites: []edge{}, Hierarchy: []edge{}}
+	for _, n := range g.Nodes {
+		t := topic{ID: n.ID, Title: n.Title, Text: n.Content, Provides: n.Outcomes, Requires: []string{}}
+		if len(n.Questions) > 0 {
+			t.Question = n.Questions[0]
+		}
+		if t.Provides == nil {
+			t.Provides = []string{}
+		}
+		shape.Topics = append(shape.Topics, t)
+		for _, p := range n.Prerequisites {
+			shape.Prerequisites = append(shape.Prerequisites, edge{Source: p, Target: n.ID})
+		}
+	}
+	return json.Marshal(shape)
 }
 
 // Request starts a build of the course graph from the current materials (the
@@ -89,7 +164,7 @@ func (w *Worker) Request(ctx context.Context, actor user.User, subjectID string)
 	if err != nil {
 		return coursegraph.Snapshot{}, err
 	}
-	snapshot, err := w.repo.Read(ctx, subjectID)
+	snapshot, err := w.snapshot(ctx, subjectID)
 	switch {
 	case err != nil:
 		return coursegraph.Snapshot{}, err

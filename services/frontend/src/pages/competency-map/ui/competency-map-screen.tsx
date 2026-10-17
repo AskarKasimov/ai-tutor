@@ -5,6 +5,7 @@ import {
   Flex,
   Progress,
   Heading,
+  SegmentedControl,
   Text,
 } from '@radix-ui/themes'
 import { useBlocker, useNavigate } from '@tanstack/react-router'
@@ -27,7 +28,15 @@ import {
   EyeOff,
 } from 'lucide-react'
 import ReactModal from 'react-modal'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   downloadCourseMaterialRaw,
@@ -68,6 +77,9 @@ import {
 import { useSubjectsQuery } from '@/features/subject-selection'
 import { MarkdownContent } from '@/shared/ui'
 import styles from '@/pages/competency-map/ui/competency-map.module.scss'
+
+// React Flow and the layout load only when the graph is shown.
+const CourseGraphCanvas = lazy(() => import('./course-graph-canvas'))
 
 type MaterialListRow =
   | { id: string; week: string; queued: MaterialQueueItem }
@@ -276,7 +288,10 @@ function CompetencyMapAdmin({
       ? [t('courseGraph.blockPending')]
       : []),
   ]
-  const hasGraph = courseGraph.data !== undefined
+  // The default graph Geek uses before the first build is only drawn below;
+  // the build flow still treats the course as having no graph of its own.
+  const hasGraph =
+    courseGraph.data !== undefined && courseGraph.data.source !== 'fixture'
   const graphIsOutdated = courseGraph.data?.stale ?? false
 
   return (
@@ -728,7 +743,11 @@ function CompetencyMapAdmin({
                   </Flex>
                 </AlertDialog.Content>
               </AlertDialog.Root>
-              <CourseGraphViewer graph={courseGraph.data?.view} />
+              <CourseGraphViewer
+                graph={courseGraph.data?.view}
+                demo={courseGraph.data?.source === 'fixture'}
+                materials={materials}
+              />
             </section>
           </>
         )}
@@ -1111,11 +1130,21 @@ function MaterialItemCard({
 
 function CourseGraphViewer({
   graph,
+  demo,
+  materials,
 }: {
   graph: CourseGraphView | null | undefined
+  demo: boolean
+  materials: CourseMaterial[]
 }) {
   const { t } = useTranslation()
-  const [treeOpen, setTreeOpen] = useState(false)
+  // The graph is the point of this card, so it starts open as a map.
+  const [treeOpen, setTreeOpen] = useState(true)
+  const [mode, setMode] = useState<'canvas' | 'outline'>('canvas')
+  const materialNames = useMemo(
+    () => new Map(materials.map((m) => [m.id, m.filename])),
+    [materials],
+  )
   if (!graph) return null
   const topicsCount = graph.topics.length
   const prereqsCount = graph.prerequisites.length
@@ -1123,6 +1152,16 @@ function CourseGraphViewer({
   return (
     <div className={styles.graphBody}>
       <>
+        {demo && (
+          <Flex align="center" gap="2" wrap="wrap">
+            <Badge color="violet" size="1">
+              {t('competencyMap.graphSourceFixture')}
+            </Badge>
+            <Text size="2" color="gray">
+              {t('competencyMap.graphFixtureHint')}
+            </Text>
+          </Flex>
+        )}
         <dl className={styles.stats}>
           <div className={styles.statRow} data-tone="blue">
             <span className={styles.statIcon} aria-hidden="true">
@@ -1168,6 +1207,34 @@ function CourseGraphViewer({
         </div>
 
         {treeOpen && (
+          <SegmentedControl.Root
+            size="2"
+            value={mode}
+            onValueChange={(value) => setMode(value as 'canvas' | 'outline')}
+            className={styles.graphMode}
+          >
+            <SegmentedControl.Item value="canvas">
+              {t('competencyMap.graphView.modeCanvas')}
+            </SegmentedControl.Item>
+            <SegmentedControl.Item value="outline">
+              {t('competencyMap.graphView.modeOutline')}
+            </SegmentedControl.Item>
+          </SegmentedControl.Root>
+        )}
+
+        {treeOpen && mode === 'canvas' && (
+          <Suspense
+            fallback={
+              <Text as="p" role="status" color="gray" size="2">
+                {t('competencyMap.graphView.loading')}
+              </Text>
+            }
+          >
+            <CourseGraphCanvas graph={graph} materialNames={materialNames} />
+          </Suspense>
+        )}
+
+        {treeOpen && mode === 'outline' && (
           <div className={styles.graphTree}>
             <Text weight="bold" size="2">
               {t('competencyMap.graphSections')}

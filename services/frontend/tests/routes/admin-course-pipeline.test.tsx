@@ -39,11 +39,15 @@ const material = {
 }
 function setup({
   processing = false,
+  pending = false,
+  cleaning = false,
   cleaningFailed = false,
   graphReady = false,
   uploadGate,
 }: {
   processing?: boolean
+  pending?: boolean
+  cleaning?: boolean
   cleaningFailed?: boolean
   graphReady?: boolean
   uploadGate?: Promise<void>
@@ -87,17 +91,29 @@ function setup({
                 error_message: 'Очистка материала не удалась.',
               },
             }
-          : processing
-            ? {
-                ...material,
-                processing: {
-                  stage: 'translation',
-                  status: 'processing',
-                  updated_at: 1,
-                  attempts: 1,
-                },
-              }
-            : material,
+          : pending
+            ? { ...material, status: 'pending' }
+            : cleaning
+              ? {
+                  ...material,
+                  cleaning: {
+                    status: 'processing',
+                    updated_at: 1,
+                    attempts: 1,
+                    error_message: '',
+                  },
+                }
+              : processing
+                ? {
+                    ...material,
+                    processing: {
+                      stage: 'translation',
+                      status: 'processing',
+                      updated_at: 1,
+                      attempts: 1,
+                    },
+                  }
+                : material,
       ])
     if (url.endsWith('/graph') || url.endsWith('/graph/build')) {
       if (init?.method === 'POST') graphRequested = true
@@ -335,3 +351,30 @@ it('shows terminal cleaning failure in the original card without a pending block
     screen.queryByText('Дождитесь завершения распознавания материалов.'),
   ).not.toBeInTheDocument()
 })
+
+it.each([{ pending: true }, { processing: true }, { cleaning: true }])(
+  'hides replacement and deletion while a document is being processed (%j)',
+  async (state) => {
+    setup(state)
+    open()
+    expect(await screen.findByText('lecture.pdf')).toBeVisible()
+    expect(
+      screen.queryByRole('button', { name: 'Заменить PDF' }),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: 'Удалить' }),
+    ).not.toBeInTheDocument()
+  },
+)
+
+it.each([{}, { cleaningFailed: true }])(
+  'keeps replacement and deletion available after processing (%j)',
+  async (state) => {
+    setup(state)
+    open()
+    expect(
+      await screen.findByRole('button', { name: 'Заменить PDF' }),
+    ).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Удалить' })).toBeVisible()
+  },
+)

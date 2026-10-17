@@ -784,6 +784,7 @@ function MaterialItemCard({
     { dateStyle: 'medium', timeStyle: 'short' },
   )
 
+  const processing = materialInProgress(material)
   const statusTone =
     material.status === 'parsed'
       ? 'green'
@@ -867,32 +868,36 @@ function MaterialItemCard({
               {t('competencyMap.materialsPreview')}
             </Button>
           )}
-          <Button
-            size="1"
-            variant="soft"
-            color="gray"
-            className={styles.previewButton}
-            disabled={busy}
-            onClick={() => replaceInputRef.current?.click()}
-            aria-label={t('competencyMap.materialReplace')}
-            title={t('competencyMap.materialReplace')}
-          >
-            <Replace size={14} />
-            {t('competencyMap.materialReplaceAction')}
-          </Button>
-          <input
-            ref={replaceInputRef}
-            type="file"
-            accept=".pdf,application/pdf"
-            disabled={busy}
-            className={styles.hiddenReplaceInput}
-            aria-label={t('competencyMap.materialReplace')}
-            onChange={(event) => {
-              const file = event.currentTarget.files?.[0]
-              if (file) onReplace(file)
-              event.currentTarget.value = ''
-            }}
-          />
+          {!processing && (
+            <>
+              <Button
+                size="1"
+                variant="soft"
+                color="gray"
+                className={styles.previewButton}
+                disabled={busy}
+                onClick={() => replaceInputRef.current?.click()}
+                aria-label={t('competencyMap.materialReplace')}
+                title={t('competencyMap.materialReplace')}
+              >
+                <Replace size={14} />
+                {t('competencyMap.materialReplaceAction')}
+              </Button>
+              <input
+                ref={replaceInputRef}
+                type="file"
+                accept=".pdf,application/pdf"
+                disabled={busy}
+                className={styles.hiddenReplaceInput}
+                aria-label={t('competencyMap.materialReplace')}
+                onChange={(event) => {
+                  const file = event.currentTarget.files?.[0]
+                  if (file) onReplace(file)
+                  event.currentTarget.value = ''
+                }}
+              />
+            </>
+          )}
         </>
       }
       dropTarget={dropTarget}
@@ -915,42 +920,44 @@ function MaterialItemCard({
         </>
       }
       actions={
-        <Flex gap="2" align="center">
-          <AlertDialog.Root>
-            <AlertDialog.Trigger>
-              <Button
-                size="1"
-                color="red"
-                variant="soft"
-                disabled={busy}
-                aria-label={t('competencyMap.materialsDelete')}
-                title={t('competencyMap.materialsDelete')}
-              >
-                <Trash2 size={14} />
-              </Button>
-            </AlertDialog.Trigger>
-            <AlertDialog.Content maxWidth="400px">
-              <AlertDialog.Title>
-                {t('competencyMap.materialsDelete')}
-              </AlertDialog.Title>
-              <AlertDialog.Description>
-                {t('competencyMap.materialsDeleteConfirm')}
-              </AlertDialog.Description>
-              <Flex gap="3" mt="4" justify="end">
-                <AlertDialog.Cancel>
-                  <Button variant="soft" color="gray">
-                    {t('competencyMap.cancel')}
-                  </Button>
-                </AlertDialog.Cancel>
-                <AlertDialog.Action>
-                  <Button color="red" onClick={() => void runDelete()}>
-                    {t('competencyMap.confirm')}
-                  </Button>
-                </AlertDialog.Action>
-              </Flex>
-            </AlertDialog.Content>
-          </AlertDialog.Root>
-        </Flex>
+        !processing ? (
+          <Flex gap="2" align="center">
+            <AlertDialog.Root>
+              <AlertDialog.Trigger>
+                <Button
+                  size="1"
+                  color="red"
+                  variant="soft"
+                  disabled={busy}
+                  aria-label={t('competencyMap.materialsDelete')}
+                  title={t('competencyMap.materialsDelete')}
+                >
+                  <Trash2 size={14} />
+                </Button>
+              </AlertDialog.Trigger>
+              <AlertDialog.Content maxWidth="400px">
+                <AlertDialog.Title>
+                  {t('competencyMap.materialsDelete')}
+                </AlertDialog.Title>
+                <AlertDialog.Description>
+                  {t('competencyMap.materialsDeleteConfirm')}
+                </AlertDialog.Description>
+                <Flex gap="3" mt="4" justify="end">
+                  <AlertDialog.Cancel>
+                    <Button variant="soft" color="gray">
+                      {t('competencyMap.cancel')}
+                    </Button>
+                  </AlertDialog.Cancel>
+                  <AlertDialog.Action>
+                    <Button color="red" onClick={() => void runDelete()}>
+                      {t('competencyMap.confirm')}
+                    </Button>
+                  </AlertDialog.Action>
+                </Flex>
+              </AlertDialog.Content>
+            </AlertDialog.Root>
+          </Flex>
+        ) : undefined
       }
     >
       <MaterialMetadataFields

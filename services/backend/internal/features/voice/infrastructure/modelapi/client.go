@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"mime"
 	"mime/multipart"
@@ -17,6 +18,8 @@ import (
 
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/audio"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/fault"
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/httpx"
+	"go.uber.org/zap"
 )
 
 type TTSOptions struct {
@@ -39,12 +42,37 @@ func New(client *http.Client, sttURL, ttsURL string, timeout time.Duration, ttsO
 	return &Client{client: client, sttURL: sttURL, ttsURL: ttsURL, timeout: timeout, ttsOptions: ttsOptions}
 }
 
+// providerError keeps the transport cause next to the fault, so the request
+// log tells a refused connection from a reset or a timeout.
 func providerError(err error) error {
 	var netErr net.Error
 	if errors.Is(err, context.DeadlineExceeded) || (errors.As(err, &netErr) && netErr.Timeout()) {
-		return fault.New(fault.Timeout, "PROCESSING_TIMEOUT", "Превышено время ожидания голосового сервиса.")
+		return errors.Join(fault.New(fault.Timeout, "PROCESSING_TIMEOUT", "Превышено время ожидания голосового сервиса."), err)
 	}
-	return fault.New(fault.Unavailable, "PROCESSING_UNAVAILABLE", "Голосовой сервис недоступен.")
+	return errors.Join(fault.New(fault.Unavailable, "PROCESSING_UNAVAILABLE", "Голосовой сервис недоступен."), err)
+}
+
+// statusError is the fault for a provider status with the start of its body.
+func statusError(resp *http.Response, failureCode string, stt bool) error {
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+	return errors.Join(providerStatus(resp.StatusCode, failureCode, stt),
+		fmt.Errorf("provider answered %d: %s", resp.StatusCode, strings.TrimSpace(string(body))))
+}
+
+// logCall records one provider request: how long it took, how much was sent
+// and received, and why it failed. Slow synthesis is the usual reason a Geek
+// turn is voiced late.
+func logCall(ctx context.Context, operation string, started time.Time, fields []zap.Field, err error) {
+	fields = append(fields, zap.String("voice_operation", operation), zap.Duration("duration", time.Since(started)))
+	logger := httpx.LoggerFromContext(ctx)
+	switch {
+	case err == nil:
+		logger.Info("voice call", fields...)
+	case errors.Is(err, context.Canceled):
+		logger.Info("voice call cancelled by the client", fields...)
+	default:
+		logger.Warn("voice call failed", append(fields, zap.Error(err))...)
+	}
 }
 func providerStatus(status int, failureCode string, stt bool) error {
 	switch {
@@ -93,7 +121,14 @@ func (c *Client) Recognize(ctx context.Context, data []byte, media string) (stri
 	return strings.Join(texts, " "), nil
 }
 
-func (c *Client) recognize(ctx context.Context, data []byte, media string) (string, error) {
+func (c *Client) recognize(ctx context.Context, data []byte, media string) (text string, err error) {
+	defer func(started time.Time) {
+		logCall(ctx, "stt", started, []zap.Field{zap.String("media", media), zap.Int("audio_bytes", len(data)), zap.Int("text_chars", utf8.RuneCountInString(text))}, err)
+	}(time.Now())
+	return c.recognizeOnce(ctx, data, media)
+}
+
+func (c *Client) recognizeOnce(ctx context.Context, data []byte, media string) (string, error) {
 	var body bytes.Buffer
 	writer := multipart.NewWriter(&body)
 	h := make(textproto.MIMEHeader)
@@ -122,7 +157,7 @@ func (c *Client) recognize(ctx context.Context, data []byte, media string) (stri
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != 200 {
-		return "", providerStatus(resp.StatusCode, "TRANSCRIPTION_FAILED", true)
+		return "", statusError(resp, "TRANSCRIPTION_FAILED", true)
 	}
 	content, err := io.ReadAll(io.LimitReader(resp.Body, 8*1024*1024+1))
 	if err != nil {
@@ -137,7 +172,15 @@ func (c *Client) recognize(ctx context.Context, data []byte, media string) (stri
 	return strings.TrimSpace(*result.Text), nil
 }
 
-func (c *Client) Synthesize(ctx context.Context, text string) ([]byte, error) {
+func (c *Client) Synthesize(ctx context.Context, text string) (data []byte, err error) {
+	defer func(started time.Time) {
+		logCall(ctx, "tts", started, []zap.Field{zap.Int("text_chars", utf8.RuneCountInString(text)), zap.Int("audio_bytes", len(data)),
+			zap.Int("inference_timesteps", c.ttsOptions.InferenceTimesteps)}, err)
+	}(time.Now())
+	return c.synthesize(ctx, text)
+}
+
+func (c *Client) synthesize(ctx context.Context, text string) ([]byte, error) {
 	// VoxCPM can cut off the last word; append the completion cue only upstream.
 	const completionSuffix = "!!!..."
 	if !strings.HasSuffix(text, completionSuffix) {
@@ -163,7 +206,7 @@ func (c *Client) Synthesize(ctx context.Context, text string) ([]byte, error) {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != 200 {
-		return nil, providerStatus(resp.StatusCode, "SYNTHESIS_FAILED", false)
+		return nil, statusError(resp, "SYNTHESIS_FAILED", false)
 	}
 	// Bound unexpected provider responses; 64 MiB exceeds a 500-character WAV.
 	data, err := io.ReadAll(io.LimitReader(resp.Body, 64*1024*1024+1))

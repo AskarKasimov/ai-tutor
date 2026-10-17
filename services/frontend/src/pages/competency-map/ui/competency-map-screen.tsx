@@ -12,7 +12,6 @@ import {
 } from '@radix-ui/themes'
 import { useNavigate } from '@tanstack/react-router'
 import {
-  BookOpen,
   Check,
   CheckCircle2,
   Clock,
@@ -25,12 +24,11 @@ import {
   Sparkles,
   Trash2,
 } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   downloadCourseMaterialRaw,
   type CourseMaterial,
-  type CourseMaterialMetadataPatch,
   type CourseMaterialKindOption,
 } from '@/entities/competency-map'
 import { CourseGraphApiError } from '@/entities/course-graph'
@@ -42,8 +40,17 @@ import {
   useCourseMaterialsChanging,
   useReplaceCourseMaterialMutation,
   useUpdateCourseMaterialMetadataMutation,
-  MaterialUploadQueue,
+  MaterialReorderControls,
+  MaterialUploadQueueToolbar,
+  MaterialUploadSubmit,
+  MaterialQueueCard,
+  CourseMaterialCard,
+  useMaterialUploadQueue,
+  moveMaterialQueueItem,
+  moveMaterialQueueItemToIndex,
+  sortMaterialsByWeek,
 } from '@/features/import-competency-map'
+import type { MaterialQueueItem } from '@/features/import-competency-map'
 import {
   useCourseGraphQuery,
   useLatestCourseGraphBuildQuery,
@@ -54,6 +61,10 @@ import {
   useSubjectsQuery,
 } from '@/features/subject-selection'
 import styles from '@/pages/competency-map/ui/competency-map.module.scss'
+
+type MaterialListRow =
+  | { id: string; week: string; queued: MaterialQueueItem }
+  | { id: string; week: string; saved: CourseMaterial }
 
 export function CompetencyMapAdminScreen() {
   const { t } = useTranslation()
@@ -94,6 +105,8 @@ function CompetencyMapAdmin({ userId }: { userId: string }) {
   // Course materials state and mutations
   const materialsQuery = useSubjectMaterialsQuery(userId, subjectId)
   const materialKindsQuery = useCourseMaterialKindsQuery(userId)
+  const materialKinds = materialKindsQuery.data ?? []
+  const queue = useMaterialUploadQueue(userId, subjectId, materialKinds)
   const replaceMaterial = useReplaceCourseMaterialMutation(userId, subjectId)
   const updateMetadata = useUpdateCourseMaterialMetadataMutation(
     userId,
@@ -104,11 +117,67 @@ function CompetencyMapAdmin({ userId }: { userId: string }) {
   const courseGraph = useCourseGraphQuery(userId, subjectId)
   const startBuild = useStartCourseGraphBuildMutation(userId, subjectId)
   const [previewId, setPreviewId] = useState<string | null>(null)
+  const [materialOrder, setMaterialOrder] = useState<string[]>([])
+  const [draggingMaterialId, setDraggingMaterialId] = useState<string | null>(
+    null,
+  )
+  const [dropTargetMaterialId, setDropTargetMaterialId] = useState<
+    string | null
+  >(null)
 
-  // Covers the upload queue too: its mutation lives inside MaterialUploadQueue.
+  // Covers queue uploads and saved-material operations.
   const materialsChanging = useCourseMaterialsChanging(userId, subjectId)
   const busy = create.isPending || materialsChanging
   const materials = materialsQuery.data ?? []
+  const materialRows: MaterialListRow[] = [
+    ...materials.map((saved) => ({
+      id: saved.id,
+      week: saved.week?.toString() ?? '',
+      saved,
+    })),
+    ...queue.items.map((queued) => ({
+      id: queued.id,
+      week: queued.week,
+      queued,
+    })),
+  ]
+  const orderedMaterialRows = sortMaterialsByWeek(
+    materialRows
+      .map((row, index) => ({ ...row, index }))
+      .sort((a, b) => {
+        const aOrder = materialOrder.indexOf(a.id)
+        const bOrder = materialOrder.indexOf(b.id)
+        if (aOrder < 0 && bOrder < 0) return a.index - b.index
+        if (aOrder < 0) return 1
+        if (bOrder < 0) return -1
+        return aOrder - bOrder
+      }),
+  )
+
+  function applyMaterialOrder(
+    next: Array<{ id: string; week: string }>,
+    movedId: string,
+  ) {
+    setMaterialOrder(next.map((item) => item.id))
+    queue.updateItems(next)
+    const moved = next.find((item) => item.id === movedId)
+    const previous = materials.find((item) => item.id === movedId)
+    const week = Number(moved?.week)
+    if (moved && previous && week > 0 && week !== previous.week)
+      updateMetadata.mutate({
+        materialId: movedId,
+        patch: { week },
+        subjectId,
+      })
+  }
+
+  function moveMaterial(movedId: string, targetIndex: number) {
+    const current = orderedMaterialRows.map(({ id, week }) => ({ id, week }))
+    applyMaterialOrder(
+      moveMaterialQueueItemToIndex(current, movedId, targetIndex),
+      movedId,
+    )
+  }
   const graphStateResolved =
     materialsQuery.isSuccess &&
     latestBuild.isSuccess &&
@@ -320,12 +389,12 @@ function CompetencyMapAdmin({ userId }: { userId: string }) {
 
             <section
               className={styles.card}
-              aria-labelledby="materials-drop-title"
+              aria-labelledby="materials-list-title"
             >
               <div className={styles.sectionHeading}>
-                <BookOpen aria-hidden="true" />
-                <Heading as="h2" size="4" id="materials-drop-title">
-                  {t('competencyMap.materialsTitle')}
+                <FileText aria-hidden="true" />
+                <Heading as="h2" size="4" id="materials-list-title">
+                  {t('competencyMap.materialsListTitle')}
                 </Heading>
               </div>
 
@@ -350,25 +419,7 @@ function CompetencyMapAdmin({ userId }: { userId: string }) {
                   </Text>
                 )}
 
-              <MaterialUploadQueue
-                key={subjectId}
-                userId={userId}
-                subjectId={subjectId}
-                kinds={materialKindsQuery.data ?? []}
-                disabled={busy}
-              />
-            </section>
-
-            <section
-              className={styles.card}
-              aria-labelledby="materials-list-title"
-            >
-              <div className={styles.sectionHeading}>
-                <FileText aria-hidden="true" />
-                <Heading as="h2" size="4" id="materials-list-title">
-                  {t('competencyMap.materialsListTitle')}
-                </Heading>
-              </div>
+              <MaterialUploadQueueToolbar queue={queue} disabled={busy} />
 
               {replaceMaterial.isError && (
                 <Text as="p" role="alert" color="red">
@@ -377,11 +428,12 @@ function CompetencyMapAdmin({ userId }: { userId: string }) {
                     : t('competencyMap.requestError')}
                 </Text>
               )}
-              {materialsQuery.isPending ? (
+              {materialsQuery.isPending && (
                 <Text as="p" role="status" color="gray" size="2">
                   {t('competencyMap.loading')}
                 </Text>
-              ) : materialsQuery.isError ? (
+              )}
+              {materialsQuery.isError && (
                 <Flex gap="3" align="center" wrap="wrap">
                   <Text as="p" role="alert" color="red" size="2">
                     {t('competencyMap.loadError')}
@@ -394,45 +446,130 @@ function CompetencyMapAdmin({ userId }: { userId: string }) {
                     {t('trainer.retry')}
                   </Button>
                 </Flex>
-              ) : materialsQuery.data && materialsQuery.data.length > 0 ? (
-                <div className={styles.materialsList}>
-                  {materialsQuery.data.map((mat) => (
-                    <MaterialItemCard
-                      key={mat.id}
-                      material={mat}
-                      kinds={materialKindsQuery.data ?? []}
-                      subjectId={subjectId}
-                      previewOpen={previewId === mat.id}
-                      onTogglePreview={() =>
-                        setPreviewId((current) =>
-                          current === mat.id ? null : mat.id,
-                        )
-                      }
-                      onDelete={() =>
-                        deleteMaterial.mutateAsync({
-                          materialId: mat.id,
-                          subjectId,
-                        })
-                      }
-                      onReplace={(file) =>
-                        replaceMaterial.mutate({ materialId: mat.id, file })
-                      }
-                      onUpdateMetadata={(patch) =>
-                        updateMetadata.mutateAsync({
-                          materialId: mat.id,
-                          patch,
-                          subjectId,
-                        })
-                      }
-                      busy={busy}
-                    />
-                  ))}
-                </div>
-              ) : (
+              )}
+              {materialsQuery.isSuccess && orderedMaterialRows.length === 0 && (
                 <Text as="p" color="gray" size="2">
                   {t('competencyMap.materialsEmpty')}
                 </Text>
               )}
+              {orderedMaterialRows.length > 0 && (
+                <div className={styles.materialsList} role="list">
+                  {orderedMaterialRows.map((row, index) => {
+                    const name =
+                      'queued' in row
+                        ? row.queued.file.name
+                        : row.saved.filename
+                    return (
+                      <div
+                        className={styles.materialListItem}
+                        key={row.id}
+                        role="listitem"
+                        draggable={!busy && !queue.preparing}
+                        data-dragging={
+                          draggingMaterialId === row.id || undefined
+                        }
+                        data-drop-target={
+                          dropTargetMaterialId === row.id || undefined
+                        }
+                        onDragStart={(event) => {
+                          const target = event.target
+                          if (
+                            target instanceof HTMLElement &&
+                            target.closest(
+                              'button, input, [role="combobox"]',
+                            ) &&
+                            !target.closest('[data-queue-drag-handle]')
+                          ) {
+                            event.preventDefault()
+                            return
+                          }
+                          setDraggingMaterialId(row.id)
+                          event.dataTransfer.effectAllowed = 'move'
+                          event.dataTransfer.setData('text/plain', row.id)
+                        }}
+                        onDragEnd={() => {
+                          setDraggingMaterialId(null)
+                          setDropTargetMaterialId(null)
+                        }}
+                        onDragOver={(event) => {
+                          event.preventDefault()
+                          setDropTargetMaterialId(row.id)
+                          event.dataTransfer.dropEffect = 'move'
+                        }}
+                        onDragLeave={() => setDropTargetMaterialId(null)}
+                        onDrop={(event) => {
+                          event.preventDefault()
+                          const sourceId =
+                            event.dataTransfer.getData('text/plain') ||
+                            draggingMaterialId
+                          if (sourceId) {
+                            const current = orderedMaterialRows.map(
+                              ({ id, week }) => ({ id, week }),
+                            )
+                            applyMaterialOrder(
+                              moveMaterialQueueItem(current, sourceId, row.id),
+                              sourceId,
+                            )
+                          }
+                          setDraggingMaterialId(null)
+                          setDropTargetMaterialId(null)
+                        }}
+                      >
+                        <MaterialReorderControls
+                          name={name}
+                          disabled={busy || queue.preparing}
+                          isFirst={index === 0}
+                          isLast={index === orderedMaterialRows.length - 1}
+                          onMoveUp={() => moveMaterial(row.id, index - 1)}
+                          onMoveDown={() => moveMaterial(row.id, index + 1)}
+                        />
+                        {'queued' in row ? (
+                          <MaterialQueueCard
+                            item={row.queued}
+                            kinds={materialKinds}
+                            disabled={busy || queue.preparing}
+                            dropTarget={dropTargetMaterialId === row.id}
+                            onWeekChange={(week) =>
+                              queue.updateWeek(row.id, week)
+                            }
+                            onKindChange={(kind) =>
+                              queue.updateKind(row.id, kind)
+                            }
+                            onRemove={() => queue.removeItem(row.id)}
+                          />
+                        ) : (
+                          <MaterialItemCard
+                            material={row.saved}
+                            kinds={materialKinds}
+                            subjectId={subjectId}
+                            dropTarget={dropTargetMaterialId === row.id}
+                            previewOpen={previewId === row.id}
+                            onTogglePreview={() =>
+                              setPreviewId((current) =>
+                                current === row.id ? null : row.id,
+                              )
+                            }
+                            onDelete={() =>
+                              deleteMaterial.mutateAsync({
+                                materialId: row.id,
+                                subjectId,
+                              })
+                            }
+                            onReplace={(file) =>
+                              replaceMaterial.mutate({
+                                materialId: row.id,
+                                file,
+                              })
+                            }
+                            busy={busy}
+                          />
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+              <MaterialUploadSubmit queue={queue} disabled={busy} />
             </section>
 
             <section className={styles.card} aria-labelledby="graph-title">
@@ -649,47 +786,30 @@ function MaterialItemCard({
   material,
   kinds,
   subjectId,
+  dropTarget,
   previewOpen,
   onTogglePreview,
   onDelete,
   onReplace,
-  onUpdateMetadata,
   busy,
 }: {
   material: CourseMaterial
   kinds: CourseMaterialKindOption[]
   subjectId: string
+  dropTarget: boolean
   previewOpen: boolean
   onTogglePreview: () => void
   onDelete: () => Promise<void>
   onReplace: (file: File) => void
-  onUpdateMetadata: (patch: CourseMaterialMetadataPatch) => Promise<unknown>
   busy: boolean
 }) {
   const { t, i18n } = useTranslation()
   const [downloading, setDownloading] = useState(false)
   const [downloadError, setDownloadError] = useState<string | null>(null)
-  const [week, setWeek] = useState(material.week?.toString() ?? '')
   const [actionError, setActionError] = useState<{
     message: string
     retry: () => Promise<unknown>
   } | null>(null)
-  useEffect(() => setWeek(material.week?.toString() ?? ''), [material.week])
-  async function runMetadata(patch: CourseMaterialMetadataPatch) {
-    try {
-      await onUpdateMetadata(patch)
-      setActionError(null)
-    } catch (error) {
-      setWeek(material.week?.toString() ?? '')
-      setActionError({
-        message:
-          error instanceof Error
-            ? error.message
-            : t('competencyMap.requestError'),
-        retry: () => onUpdateMetadata(patch),
-      })
-    }
-  }
   async function runDelete() {
     try {
       await onDelete()
@@ -752,18 +872,30 @@ function MaterialItemCard({
   }
 
   return (
-    <div className={styles.materialCard}>
-      <div className={styles.materialHeader}>
-        <Flex gap="2" align="center">
-          <FileText size={18} color="var(--accent-9)" />
-          <Text weight="bold" size="3">
-            {material.filename}
-          </Text>
-          <Badge color={statusTone} size="1">
-            {t(`competencyMap.materialsStatus.${material.status}`)}
-          </Badge>
-        </Flex>
-
+    <CourseMaterialCard
+      name={material.filename}
+      status={t(`competencyMap.materialsStatus.${material.status}`)}
+      statusColor={statusTone}
+      dropTarget={dropTarget}
+      meta={
+        <>
+          <span>
+            {t('competencyMap.materialsSize', { size: formattedSize })}
+          </span>
+          <span>•</span>
+          <span>
+            {t('competencyMap.materialsCharCount', {
+              count: material.charCount.toLocaleString(i18n.language),
+            })}
+          </span>
+          <span>•</span>
+          <Flex gap="1" align="center">
+            <Clock size={12} />
+            <span>{dateStr}</span>
+          </Flex>
+        </>
+      }
+      actions={
         <Flex gap="2" align="center">
           <Button
             size="1"
@@ -815,23 +947,8 @@ function MaterialItemCard({
             </AlertDialog.Content>
           </AlertDialog.Root>
         </Flex>
-      </div>
-
-      <div className={styles.materialMeta}>
-        <span>{t('competencyMap.materialsSize', { size: formattedSize })}</span>
-        <span>•</span>
-        <span>
-          {t('competencyMap.materialsCharCount', {
-            count: material.charCount.toLocaleString(i18n.language),
-          })}
-        </span>
-        <span>•</span>
-        <Flex gap="1" align="center">
-          <Clock size={12} />
-          <span>{dateStr}</span>
-        </Flex>
-      </div>
-
+      }
+    >
       <label className={styles.replaceMaterial}>
         <span>{t('competencyMap.materialReplace')}</span>
         <input
@@ -850,47 +967,16 @@ function MaterialItemCard({
           <Text as="span" size="2">
             {t('courseGraph.weekLabel')}
           </Text>
-          <TextField.Root
-            aria-label={t('courseGraph.weekLabel')}
-            type="number"
-            min="1"
-            value={week}
-            disabled={busy}
-            onChange={(event) => setWeek(event.currentTarget.value)}
-            onBlur={(event) => {
-              const week = Number(event.currentTarget.value)
-              if (Number.isInteger(week) && week > 0 && week !== material.week)
-                void runMetadata({ week })
-              else if (!Number.isInteger(week) || week < 1)
-                setWeek(material.week?.toString() ?? '')
-            }}
-          />
-        </label>
-        <label>
-          <Text as="span" size="2">
-            {t('courseGraph.kindLabel')}
+          <Text as="span" size="2" weight="medium">
+            {material.week ?? '—'}
           </Text>
-          <Select.Root
-            value={material.kind ?? ''}
-            onValueChange={(kind) =>
-              void runMetadata({
-                kind: kind as NonNullable<CourseMaterial['kind']>,
-              })
-            }
-            disabled={busy}
-          >
-            <Select.Trigger
-              aria-label={`${t('courseGraph.kindLabel')}: ${material.filename}`}
-            />
-            <Select.Content>
-              {kinds.map((kind) => (
-                <Select.Item key={kind.code} value={kind.code}>
-                  {kind.label}
-                </Select.Item>
-              ))}
-            </Select.Content>
-          </Select.Root>
         </label>
+        {material.kind && (
+          <Badge color="gray" size="2">
+            {kinds.find((kind) => kind.code === material.kind)?.label ??
+              material.kind}
+          </Badge>
+        )}
         {(!material.week || !material.kind) && (
           <Badge color="amber">{t('courseGraph.metadataMissing')}</Badge>
         )}
@@ -922,6 +1008,6 @@ function MaterialItemCard({
           {material.parsedText || '(текст отсутствует)'}
         </div>
       )}
-    </div>
+    </CourseMaterialCard>
   )
 }

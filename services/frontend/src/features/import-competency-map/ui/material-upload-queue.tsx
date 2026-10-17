@@ -1,31 +1,119 @@
 import { Button, Select, Text, TextField } from '@radix-ui/themes'
 import { ChevronDown, ChevronUp, GripVertical } from 'lucide-react'
-import { useRef, useState } from 'react'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import type {
-  CourseMaterialKind,
-  CourseMaterialKindOption,
-} from '@/entities/competency-map'
-import { useUploadCourseMaterialsMutation } from '../model/use-competency-map'
+import styles from './material-upload-queue.module.scss'
 import {
-  MaterialArchiveError,
-  MATERIAL_QUEUE_LIMIT,
-  assertMaterialQueueCapacity,
-  prepareMaterialFiles,
-} from '../model/prepare-material-files'
+  useMaterialUploadQueue,
+  type MaterialQueueItem,
+} from '../model/use-material-upload-queue'
+import type { CourseMaterialKindOption } from '@/entities/competency-map'
+import { CourseMaterialCard } from './course-material-card'
 import {
   moveMaterialQueueItem,
   moveMaterialQueueItemToIndex,
   sortMaterialsByWeek,
 } from '../model/material-queue-order'
-import styles from './material-upload-queue.module.scss'
-type QueueItem = {
-  id: string
-  file: File
-  week: string
-  kind: CourseMaterialKind
-  error?: string
+
+type MaterialUploadQueueState = ReturnType<typeof useMaterialUploadQueue>
+
+export function MaterialReorderControls({
+  name,
+  disabled,
+  isFirst,
+  isLast,
+  onMoveUp,
+  onMoveDown,
+}: {
+  name: string
+  disabled: boolean
+  isFirst: boolean
+  isLast: boolean
+  onMoveUp: () => void
+  onMoveDown: () => void
+}) {
+  const { t } = useTranslation()
+  return (
+    <div className={styles.reorderControls}>
+      <Button
+        type="button"
+        variant="ghost"
+        size="1"
+        className={styles.orderButton}
+        aria-label={t('competencyMap.queueMoveUp', { name })}
+        disabled={disabled || isFirst}
+        onClick={onMoveUp}
+      >
+        <ChevronUp aria-hidden="true" size={16} />
+      </Button>
+      <Button
+        type="button"
+        variant="ghost"
+        size="1"
+        className={styles.dragHandle}
+        aria-label={t('competencyMap.queueDragItem', { name })}
+        disabled={disabled}
+        draggable={!disabled}
+        data-queue-drag-handle="true"
+      >
+        <GripVertical aria-hidden="true" size={16} />
+      </Button>
+      <Button
+        type="button"
+        variant="ghost"
+        size="1"
+        className={styles.orderButton}
+        aria-label={t('competencyMap.queueMoveDown', { name })}
+        disabled={disabled || isLast}
+        onClick={onMoveDown}
+      >
+        <ChevronDown aria-hidden="true" size={16} />
+      </Button>
+    </div>
+  )
 }
+
+export function MaterialUploadQueueToolbar({
+  queue,
+  disabled = false,
+}: {
+  queue: MaterialUploadQueueState
+  disabled?: boolean
+}) {
+  const { t } = useTranslation()
+  return (
+    <div className={styles.queue}>
+      <label className={styles.add}>
+        <span>{t('competencyMap.queueAdd')}</span>
+        <input
+          type="file"
+          accept=".pdf,.zip,application/pdf,application/zip"
+          disabled={disabled || queue.isPending || queue.preparing}
+          onChange={(event) => {
+            void queue.addFile(event.currentTarget.files?.[0])
+            event.currentTarget.value = ''
+          }}
+        />
+      </label>
+      {queue.error && (
+        <Text role="alert" color="red">
+          {queue.error}
+        </Text>
+      )}
+      {queue.uploadError && (
+        <Text role="alert" color="red">
+          {queue.uploadError}
+        </Text>
+      )}
+      {queue.success && (
+        <Text role="status" color="green">
+          {t('competencyMap.materialsSuccess')}
+        </Text>
+      )}
+    </div>
+  )
+}
+
 export function MaterialUploadQueue({
   userId,
   subjectId,
@@ -37,327 +125,203 @@ export function MaterialUploadQueue({
   kinds: CourseMaterialKindOption[]
   disabled?: boolean
 }) {
-  const { t } = useTranslation()
-  const upload = useUploadCourseMaterialsMutation(userId, subjectId)
-  const [items, setItems] = useState<QueueItem[]>([])
-  const [error, setError] = useState('')
-  const [success, setSuccess] = useState(false)
-  const [preparing, setPreparing] = useState(false)
+  const queue = useMaterialUploadQueue(userId, subjectId, kinds)
   const [draggingId, setDraggingId] = useState<string | null>(null)
   const [dropTargetId, setDropTargetId] = useState<string | null>(null)
-  const preparingRef = useRef(false)
-  const add = async (file?: File) => {
-    if (!file || preparingRef.current) return
-    preparingRef.current = true
-    setPreparing(true)
-    setError('')
-    setSuccess(false)
-    try {
-      const prepared = await prepareMaterialFiles(file)
-      const queued = items.reduce((sum, item) => sum + item.file.size, 0)
-      assertMaterialQueueCapacity(items.length, prepared.length)
-      if (
-        queued + prepared.reduce((sum, item) => sum + item.size, 0) >
-        MATERIAL_QUEUE_LIMIT
-      )
-        throw new MaterialArchiveError('queue-too-large')
-      setItems((current) => [
-        ...current,
-        ...prepared.map((item) => ({
-          id: crypto.randomUUID(),
-          file: item,
-          week: '1',
-          kind: kinds[0]?.code ?? '',
-        })),
-      ])
-    } catch (cause) {
-      const e = cause as MaterialArchiveError
-      const message = t(`competencyMap.archiveErrors.${e.message}`, {
-        defaultValue: t('competencyMap.queueInvalidArchive'),
-      })
-      setError(e.paths?.length ? `${message}: ${e.paths.join(', ')}` : message)
-    } finally {
-      preparingRef.current = false
-      setPreparing(false)
-    }
+  const orderedItems = sortMaterialsByWeek(queue.items)
+
+  function moveItem(id: string, targetIndex: number) {
+    const current = orderedItems.map(({ id: itemId, week }) => ({
+      id: itemId,
+      week,
+    }))
+    queue.updateItems(moveMaterialQueueItemToIndex(current, id, targetIndex))
   }
-  const valid =
-    items.length > 0 &&
-    items.every(
-      (item) =>
-        /^\d+$/.test(item.week) &&
-        Number(item.week) > 0 &&
-        kinds.some((kind) => kind.code === item.kind),
-    )
+
   return (
-    <div className={styles.queue}>
-      <label className={styles.add}>
-        <span>{t('competencyMap.queueAdd')}</span>
-        <input
-          type="file"
-          accept=".pdf,.zip,application/pdf,application/zip"
-          disabled={disabled || upload.isPending || preparing}
-          onChange={(event) => {
-            void add(event.currentTarget.files?.[0])
-            event.currentTarget.value = ''
-          }}
-        />
-      </label>
-      {error && (
-        <Text role="alert" color="red">
-          {error}
-        </Text>
-      )}
-      {success && (
-        <Text role="status" color="green">
-          {t('competencyMap.materialsSuccess')}
-        </Text>
-      )}
-      <div className={styles.items} role="list">
-        {items.map((item) => (
-          <div
-            className={`${styles.item}${draggingId === item.id ? ` ${styles.dragging}` : ''}`}
-            key={item.id}
-            role="listitem"
-            draggable={!disabled && !upload.isPending && !preparing}
-            onDragStart={(event) => {
-              const target = event.target
-              if (
-                target instanceof HTMLElement &&
-                target.closest('button, input, [role="combobox"]') &&
-                !target.closest('[data-queue-drag-handle]')
-              ) {
-                event.preventDefault()
-                return
-              }
-              setDraggingId(item.id)
-              event.dataTransfer.effectAllowed = 'move'
-              event.dataTransfer.setData('text/plain', item.id)
-            }}
-            onDragEnd={() => {
-              setDraggingId(null)
-              setDropTargetId(null)
-            }}
-            onDragOver={(event) => {
-              event.preventDefault()
-              setDropTargetId(item.id)
-              event.dataTransfer.dropEffect = 'move'
-            }}
-            onDragLeave={() => setDropTargetId(null)}
-            onDrop={(event) => {
-              event.preventDefault()
-              const sourceId =
-                event.dataTransfer.getData('text/plain') || draggingId
-              if (sourceId)
-                setItems((current) =>
-                  moveMaterialQueueItem(current, sourceId, item.id),
-                )
-              setDraggingId(null)
-              setDropTargetId(null)
-            }}
-          >
-            <div className={styles.reorderControls}>
-              <Button
-                type="button"
-                variant="ghost"
-                className={styles.dragHandle}
-                aria-label={t('competencyMap.queueDragItem', {
-                  name: item.file.name,
-                })}
-                disabled={disabled || upload.isPending || preparing}
-                draggable={!disabled && !upload.isPending && !preparing}
-                data-queue-drag-handle="true"
-              >
-                <GripVertical aria-hidden="true" size={20} />
-              </Button>
-              <div className={styles.orderButtons}>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="1"
-                  className={styles.orderButton}
-                  aria-label={t('competencyMap.queueMoveUp', {
-                    name: item.file.name,
-                  })}
-                  disabled={
-                    disabled ||
-                    upload.isPending ||
-                    preparing ||
-                    items[0]?.id === item.id
-                  }
-                  onClick={() =>
-                    setItems((current) => {
-                      const index = current.findIndex(
-                        (row) => row.id === item.id,
-                      )
-                      return moveMaterialQueueItemToIndex(
-                        current,
-                        item.id,
-                        index - 1,
-                      )
-                    })
-                  }
-                >
-                  <ChevronUp aria-hidden="true" size={16} />
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="1"
-                  className={styles.orderButton}
-                  aria-label={t('competencyMap.queueMoveDown', {
-                    name: item.file.name,
-                  })}
-                  disabled={
-                    disabled ||
-                    upload.isPending ||
-                    preparing ||
-                    items.at(-1)?.id === item.id
-                  }
-                  onClick={() =>
-                    setItems((current) => {
-                      const index = current.findIndex(
-                        (row) => row.id === item.id,
-                      )
-                      return moveMaterialQueueItemToIndex(
-                        current,
-                        item.id,
-                        index + 1,
-                      )
-                    })
-                  }
-                >
-                  <ChevronDown aria-hidden="true" size={16} />
-                </Button>
-              </div>
-            </div>
+    <>
+      <MaterialUploadQueueToolbar queue={queue} disabled={disabled} />
+      {orderedItems.length > 0 && (
+        <div className={styles.items} role="list">
+          {orderedItems.map((item, index) => (
             <div
-              className={`${styles.row}${dropTargetId === item.id ? ` ${styles.dropTarget}` : ''}`}
-            >
-              <div>
-                <Text className={styles.name}>{item.file.name}</Text>
-                {item.error && (
-                  <Text as="p" role="alert" color="red" size="1">
-                    {item.error}
-                  </Text>
-                )}
-              </div>
-              <label className={styles.weekField}>
-                <span>{t('courseGraph.weekLabel')}</span>
-                <TextField.Root
-                  className={styles.weekInput}
-                  type="number"
-                  min="1"
-                  value={item.week}
-                  disabled={disabled || upload.isPending || preparing}
-                  onChange={(event) =>
-                    setItems((current) =>
-                      sortMaterialsByWeek(
-                        current.map((row) =>
-                          row.id === item.id
-                            ? { ...row, week: event.target.value }
-                            : row,
-                        ),
-                      ),
-                    )
-                  }
-                />
-              </label>
-              <div className={styles.kindField}>
-                <Select.Root
-                  value={item.kind}
-                  disabled={disabled || upload.isPending || preparing}
-                  onValueChange={(kind) =>
-                    setItems((current) =>
-                      current.map((row) =>
-                        row.id === item.id
-                          ? { ...row, kind: kind as CourseMaterialKind }
-                          : row,
-                      ),
-                    )
-                  }
-                >
-                  <Select.Trigger aria-label={t('courseGraph.kindLabel')} />
-                  <Select.Content>
-                    {kinds.map((kind) => (
-                      <Select.Item key={kind.code} value={kind.code}>
-                        {kind.label}
-                      </Select.Item>
-                    ))}
-                  </Select.Content>
-                </Select.Root>
-              </div>
-              <Button
-                type="button"
-                variant="soft"
-                color="red"
-                disabled={disabled || upload.isPending || preparing}
-                onClick={() =>
-                  setItems((current) =>
-                    current.filter((row) => row.id !== item.id),
+              className={styles.item}
+              key={item.id}
+              role="listitem"
+              draggable={!disabled && !queue.isPending && !queue.preparing}
+              data-dragging={draggingId === item.id || undefined}
+              onDragStart={(event) => {
+                const target = event.target
+                if (
+                  target instanceof HTMLElement &&
+                  target.closest('button, input, [role="combobox"]') &&
+                  !target.closest('[data-queue-drag-handle]')
+                ) {
+                  event.preventDefault()
+                  return
+                }
+                setDraggingId(item.id)
+                event.dataTransfer.effectAllowed = 'move'
+                event.dataTransfer.setData('text/plain', item.id)
+              }}
+              onDragEnd={() => {
+                setDraggingId(null)
+                setDropTargetId(null)
+              }}
+              onDragOver={(event) => {
+                event.preventDefault()
+                setDropTargetId(item.id)
+                event.dataTransfer.dropEffect = 'move'
+              }}
+              onDrop={(event) => {
+                event.preventDefault()
+                const sourceId =
+                  event.dataTransfer.getData('text/plain') || draggingId
+                if (sourceId) {
+                  const current = orderedItems.map(({ id, week }) => ({
+                    id,
+                    week,
+                  }))
+                  queue.updateItems(
+                    moveMaterialQueueItem(current, sourceId, item.id),
                   )
                 }
-              >
-                {t('competencyMap.queueRemove')}
-              </Button>
+                setDraggingId(null)
+                setDropTargetId(null)
+              }}
+              onDragLeave={() => setDropTargetId(null)}
+            >
+              <MaterialReorderControls
+                name={item.file.name}
+                disabled={disabled || queue.isPending || queue.preparing}
+                isFirst={index === 0}
+                isLast={index === orderedItems.length - 1}
+                onMoveUp={() => moveItem(item.id, index - 1)}
+                onMoveDown={() => moveItem(item.id, index + 1)}
+              />
+              <MaterialQueueCard
+                item={item}
+                kinds={kinds}
+                disabled={disabled || queue.isPending || queue.preparing}
+                dropTarget={dropTargetId === item.id}
+                onWeekChange={(week) => queue.updateWeek(item.id, week)}
+                onKindChange={(kind) => queue.updateKind(item.id, kind)}
+                onRemove={() => queue.removeItem(item.id)}
+              />
             </div>
-          </div>
-        ))}
-      </div>
-      {upload.isError && (
-        <Text role="alert" color="red">
-          {upload.error instanceof Error
-            ? upload.error.message
-            : t('competencyMap.requestError')}
-        </Text>
+          ))}
+        </div>
       )}
-      {items.length > 0 && (
+      <MaterialUploadSubmit queue={queue} disabled={disabled} />
+    </>
+  )
+}
+
+export function MaterialUploadSubmit({
+  queue,
+  disabled = false,
+}: {
+  queue: MaterialUploadQueueState
+  disabled?: boolean
+}) {
+  const { t } = useTranslation()
+  if (queue.items.length === 0) return null
+  return (
+    <Button
+      type="button"
+      color="green"
+      disabled={disabled || queue.isPending || !queue.valid}
+      onClick={queue.sendAll}
+    >
+      {queue.isPending
+        ? t('competencyMap.uploading')
+        : t('competencyMap.queueSendAll')}
+    </Button>
+  )
+}
+
+export function MaterialQueueCard({
+  item,
+  kinds,
+  disabled,
+  dropTarget,
+  onWeekChange,
+  onKindChange,
+  onRemove,
+}: {
+  item: MaterialQueueItem
+  kinds: CourseMaterialKindOption[]
+  disabled: boolean
+  dropTarget: boolean
+  onWeekChange: (week: string) => void
+  onKindChange: (kind: MaterialQueueItem['kind']) => void
+  onRemove: () => void
+}) {
+  const { t } = useTranslation()
+  const formattedSize =
+    item.file.size > 1024 * 1024
+      ? `${(item.file.size / (1024 * 1024)).toFixed(1)} МБ`
+      : `${Math.round(item.file.size / 1024)} КБ`
+
+  return (
+    <CourseMaterialCard
+      name={item.file.name}
+      status={t(
+        item.error
+          ? 'competencyMap.queueItemError'
+          : 'competencyMap.queueItemReady',
+      )}
+      statusColor={item.error ? 'red' : 'blue'}
+      dropTarget={dropTarget}
+      meta={t('competencyMap.materialsSize', { size: formattedSize })}
+      actions={
         <Button
           type="button"
-          color="green"
-          disabled={disabled || upload.isPending || !valid}
-          onClick={() =>
-            upload.mutate(
-              {
-                subjectId,
-                items: items.map((item) => ({
-                  clientId: item.id,
-                  file: item.file,
-                  week: Number(item.week),
-                  kind: item.kind,
-                })),
-              },
-              {
-                onSuccess: (result) => {
-                  const persisted = new Set(
-                    result.results
-                      .filter((entry) => entry.material)
-                      .map((entry) => entry.clientId),
-                  )
-                  setItems((current) =>
-                    current
-                      .filter((item) => !persisted.has(item.id))
-                      .map((item) => ({
-                        ...item,
-                        error: result.results.find(
-                          (entry) => entry.clientId === item.id,
-                        )?.error?.message,
-                      })),
-                  )
-                  setSuccess(
-                    persisted.size > 0 &&
-                      persisted.size === result.results.length,
-                  )
-                },
-              },
-            )
-          }
+          variant="soft"
+          color="red"
+          disabled={disabled}
+          onClick={onRemove}
         >
-          {upload.isPending
-            ? t('competencyMap.uploading')
-            : t('competencyMap.queueSendAll')}
+          {t('competencyMap.queueRemove')}
         </Button>
+      }
+    >
+      {item.error && (
+        <Text as="p" role="alert" color="red" size="1">
+          {item.error}
+        </Text>
       )}
-    </div>
+      <div className={styles.cardFields}>
+        <label className={styles.weekField}>
+          <span>{t('courseGraph.weekLabel')}</span>
+          <TextField.Root
+            className={styles.weekInput}
+            type="number"
+            min="1"
+            value={item.week}
+            disabled={disabled}
+            onChange={(event) => onWeekChange(event.target.value)}
+          />
+        </label>
+        <div className={styles.kindField}>
+          <Select.Root
+            value={item.kind}
+            disabled={disabled}
+            onValueChange={(kind) =>
+              onKindChange(kind as MaterialQueueItem['kind'])
+            }
+          >
+            <Select.Trigger aria-label={t('courseGraph.kindLabel')} />
+            <Select.Content>
+              {kinds.map((kind) => (
+                <Select.Item key={kind.code} value={kind.code}>
+                  {kind.label}
+                </Select.Item>
+              ))}
+            </Select.Content>
+          </Select.Root>
+        </div>
+      </div>
+    </CourseMaterialCard>
   )
 }

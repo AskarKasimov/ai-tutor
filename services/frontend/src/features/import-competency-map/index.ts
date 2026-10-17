@@ -13,4 +13,18 @@ export {
 } from './model/dependencies-context'
 export type { CompetencyMapDependencies } from './model/dependencies-context'
 
-export { MaterialUploadQueue } from './ui/material-upload-queue'
+export {
+  MaterialReorderControls,
+  MaterialUploadQueue,
+  MaterialUploadQueueToolbar,
+  MaterialUploadSubmit,
+  MaterialQueueCard,
+} from './ui/material-upload-queue'
+export { CourseMaterialCard } from './ui/course-material-card'
+export { useMaterialUploadQueue } from './model/use-material-upload-queue'
+export type { MaterialQueueItem } from './model/use-material-upload-queue'
+export {
+  moveMaterialQueueItem,
+  moveMaterialQueueItemToIndex,
+  sortMaterialsByWeek,
+} from './model/material-queue-order'

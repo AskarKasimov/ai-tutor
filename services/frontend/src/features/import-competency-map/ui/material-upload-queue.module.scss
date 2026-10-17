@@ -16,42 +16,45 @@
   max-width: 100%;
 }
 .item {
+  position: relative;
+}
+.cardFields {
   display: grid;
-  grid-template-columns: 5.5rem minmax(0, 1fr);
+  grid-template-columns: auto minmax(10rem, 1fr);
   align-items: center;
   gap: var(--space-2);
-}
-.row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto 10rem max-content;
-  align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-3);
-  border: 1px solid var(--gray-a6);
-  border-radius: var(--radius-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--app-border);
 }
 .reorderControls {
+  position: absolute;
+  z-index: 1;
+  top: 50%;
+  left: -2.5rem;
   display: flex;
-  align-items: center;
-  justify-content: space-between;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: center;
+  box-sizing: border-box;
   gap: var(--space-1);
-}
-.orderButtons {
-  display: flex;
-  gap: var(--space-1);
-}
-.orderButtons :global(.rt-Button.rt-variant-ghost) {
-  margin: 0;
+  width: 2.5rem;
+  padding-right: var(--space-1);
+  transform: translateY(-50%);
 }
 .orderButton {
   width: 1.5rem;
   height: 1.5rem;
   padding: 0;
 }
+.reorderControls :global(.rt-Button.rt-variant-ghost) {
+  margin: 0;
+}
 .dragHandle {
-  width: 1.75rem;
-  height: 2.5rem;
-  padding: var(--space-1);
+  box-sizing: border-box;
+  width: 1.5rem;
+  min-width: 1.5rem;
+  height: 1.75rem;
+  padding: 0;
   cursor: grab;
   touch-action: none;
 }
@@ -61,53 +64,30 @@
 .dragging {
   opacity: 0.55;
 }
-.dropTarget {
-  border-color: var(--accent-9);
-}
 .weekField {
   display: flex;
   align-items: center;
   gap: var(--space-2);
+  min-width: 0;
   white-space: nowrap;
+  color: var(--app-muted);
+  font-size: var(--font-size-2);
 }
 .weekInput {
   width: 5rem;
 }
 .kindField {
-  display: grid;
-  gap: var(--space-1);
-  min-width: 10rem;
+  min-width: 0;
 }
-.name {
-  overflow-wrap: anywhere;
-}
-.row > button {
-  white-space: nowrap;
+.kindField :global(.rt-SelectTrigger) {
+  width: 100%;
 }
 @media (max-width: 720px) {
-  .item {
-    grid-template-columns: 5.5rem minmax(0, 1fr);
-    align-items: center;
-    gap: var(--space-1);
-  }
-  .reorderControls {
-    flex-direction: column;
-    justify-content: center;
-  }
-  .orderButtons {
-    flex-direction: column;
-  }
-  .row {
+  .cardFields {
     grid-template-columns: minmax(0, 1fr);
     align-items: stretch;
   }
   .name {
     grid-column: auto;
-  }
-  .kindField {
-    min-width: 0;
-  }
-  .row > button {
-    justify-self: start;
   }
 }

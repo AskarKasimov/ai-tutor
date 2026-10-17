@@ -148,10 +148,16 @@
   }
 }
 .materialClassification {
-  display: grid;
-  align-items: start;
+  display: flex;
+  align-items: center;
   padding-top: var(--space-3);
   border-top: 1px solid var(--app-border);
+  label {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    min-width: 0;
+  }
 }
 .buildProgress {
   display: grid;
@@ -368,30 +374,11 @@
   gap: var(--space-3);
 }
 
-.materialCard {
-  display: grid;
-  gap: var(--space-2);
-  padding: var(--space-4);
-  border: 1px solid var(--app-border);
-  border-radius: var(--radius-3);
-  background: var(--app-soft);
-}
-
-.materialHeader {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
-  flex-wrap: wrap;
-}
-
-.materialMeta {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  font-size: 0.825rem;
-  color: var(--gray-10);
-  flex-wrap: wrap;
+.materialListItem {
+  position: relative;
+  &[data-dragging] {
+    opacity: 0.55;
+  }
 }
 
 .materialPreview {

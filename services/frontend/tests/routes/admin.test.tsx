@@ -679,6 +679,8 @@ it('shows warning alert when some files fail during upload', async () => {
   const submitBtn = screen.getByRole('button', { name: 'Отправить всё' })
   fireEvent.click(submitBtn)
   expect(await screen.findByText(/Ошибка распознавания/)).toBeVisible()
+  expect(screen.getByText('corrupted.pdf')).toBeVisible()
+  expect(screen.getByRole('button', { name: 'Отправить всё' })).toBeEnabled()
 })
 
 it('shows download error alert when downloading raw material fails', async () => {

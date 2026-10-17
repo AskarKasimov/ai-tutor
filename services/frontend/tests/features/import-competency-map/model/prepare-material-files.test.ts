@@ -39,3 +39,18 @@ it('extracts PDF entries from a ZIP while preserving only client-side files', as
   const result = await prepareMaterialFiles(new File([bytes], 'materials.zip'))
   expect(result.map((item) => item.name)).toEqual(['week-1.pdf', 'week-2.pdf'])
 })
+
+it('rejects an empty ZIP archive', async () => {
+  const archive = new File([zipSync({})], 'empty.zip')
+  await expect(prepareMaterialFiles(archive)).rejects.toMatchObject({
+    message: 'empty-archive',
+  })
+})
+
+it('rejects a corrupt ZIP archive', async () => {
+  const archive = new File(
+    [new Uint8Array([0x50, 0x4b, 0x03, 0x04])],
+    'broken.zip',
+  )
+  await expect(prepareMaterialFiles(archive)).rejects.toBeInstanceOf(Error)
+})

@@ -89,8 +89,10 @@ func (w *Worker) Read(ctx context.Context, actor user.User, subjectID string) (c
 	return w.snapshot(ctx, subjectID)
 }
 
-// snapshot shows the admin the graph Geek uses: the build once there is one,
-// otherwise the default graph in the shape of a build.
+// snapshot shows the admin the graph Geek uses: the build while Geek reads
+// it, otherwise the default graph in the shape of a build. The default graph
+// only enriches the answer, so its failure leaves the snapshot without a
+// graph instead of failing a read or a build request already accepted.
 func (w *Worker) snapshot(ctx context.Context, subjectID string) (coursegraph.Snapshot, error) {
 	snapshot, err := w.repo.Read(ctx, subjectID)
 	if err != nil {
@@ -98,23 +100,31 @@ func (w *Worker) snapshot(ctx context.Context, subjectID string) (coursegraph.Sn
 	}
 	snapshot.GraphSource = coursegraph.SourceNone
 	if len(snapshot.Graph) > 0 && string(snapshot.Graph) != "null" {
-		snapshot.GraphSource = coursegraph.SourceBuilt
-		return snapshot, nil
+		// Geek reads a published graph only while the course has materials
+		// (ReadPublishedCourseGraph); without them it falls back as well.
+		items, err := w.materials.List(ctx, subjectID)
+		if err != nil {
+			return coursegraph.Snapshot{}, err
+		}
+		if len(items) > 0 {
+			snapshot.GraphSource = coursegraph.SourceBuilt
+			return snapshot, nil
+		}
+		snapshot.Graph = nil
 	}
 	if w.fallback == nil {
 		return snapshot, nil
 	}
 	g, ok, err := w.fallback.Current(ctx, subjectID)
+	if err == nil && ok {
+		var shape json.RawMessage
+		if shape, err = BuildShape(g); err == nil {
+			snapshot.Graph, snapshot.GraphSource = shape, coursegraph.SourceFixture
+		}
+	}
 	if err != nil {
-		return coursegraph.Snapshot{}, err
+		log.Printf("course graph %s: the default graph is not shown: %v", subjectID, err)
 	}
-	if !ok {
-		return snapshot, nil
-	}
-	if snapshot.Graph, err = BuildShape(g); err != nil {
-		return coursegraph.Snapshot{}, err
-	}
-	snapshot.GraphSource = coursegraph.SourceFixture
 	return snapshot, nil
 }
 

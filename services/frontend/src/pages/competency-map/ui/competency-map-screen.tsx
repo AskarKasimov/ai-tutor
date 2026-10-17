@@ -992,11 +992,12 @@ function MaterialItemCard({
             <TriangleAlert size={16} aria-hidden="true" />
           </Callout.Icon>
           <Callout.Text>
-            <ul className={styles.materialWarnings}>
-              {material.ocrWarnings.map((warning, index) => (
-                <li key={`${index}-${warning}`}>{warning}</li>
-              ))}
-            </ul>
+            {material.ocrWarnings.map((warning, index) => (
+              <span key={`${index}-${warning}`}>
+                {index > 0 && <br />}
+                {warning}
+              </span>
+            ))}
           </Callout.Text>
         </Callout.Root>
       )}
@@ -1320,7 +1321,7 @@ function CourseGraphCard({
                               className={styles.graphSectionItem}
                             >
                               <Text weight="bold" size="2">
-                                📁 {root.title}
+                                {root.title}
                               </Text>
                               {children.length > 0 && (
                                 <ul className={styles.graphChildrenList}>

@@ -15,21 +15,7 @@ if [ ! -f .env ]; then
 fi
 
 docker compose version >/dev/null
-# Geek and material processing require the gateway, including with an older .env.
-compose() {
-    docker compose --env-file .env -f docker-compose.yaml --profile gateway "$@"
-}
-compose config --quiet
-
-# Diagnose a host PostgreSQL conflict before certificates, builds and containers.
-db_host_port=$(compose config --environment | sed -n 's/^DB_PORT=//p')
-if command -v ss >/dev/null 2>&1 && [ -n "$db_host_port" ] && \
-    [ -z "$(compose ps -q db)" ] && \
-    [ -n "$(ss -H -ltn "sport = :$db_host_port")" ]; then
-    printf '%s\n' \
-        "Host port $db_host_port is already in use. Stop the local PostgreSQL service or change DB_PORT in .env." >&2
-    exit 1
-fi
+docker compose --env-file .env -f docker-compose.yaml config --quiet
 
 mkcert -install
 mkdir -p certs
@@ -64,4 +50,4 @@ if [ "${DEV_OPEN_BROWSER:-true}" != false ] && [ -n "$opener" ]; then
 fi
 
 # The root Compose creates its managed dev network before starting containers.
-exec docker compose --env-file .env -f docker-compose.yaml --profile gateway up --build "$@"
+exec docker compose --env-file .env -f docker-compose.yaml up --build "$@"

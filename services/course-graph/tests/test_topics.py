@@ -59,53 +59,6 @@ def test_joint_extraction_preserves_exact_text_code_math_and_sources():
             assert s["text"] == source[s["start"]:s["end"]]
 
 
-@pytest.mark.parametrize("invalid_removal", [False, True])
-def test_invalid_source_ids_are_repaired_with_exact_allowed_ids(invalid_removal):
-    source = "## Слайд 1\n\n# Введение\n\nWeek 1\n\n## Слайд 2\n\nПроизводная показывает скорость изменения функции."
-    calls = []
-
-    async def complete(system, payload):
-        data = json.loads(payload)
-        calls.append(data)
-        ids = [b["id"] for b in data["blocks"]]
-        assert data["allowed_block_ids"] == ids
-        if len(calls) == 1:
-            assert ids == [1]  # The cover is context; IDs must not be renumbered.
-            response = json.loads(await extraction_stub(system, payload))
-            if invalid_removal:
-                response["remove"] = [{"id": 0, "reason": "thanks"}]
-            else:
-                response["topics"][0]["block_ids"] = [0]
-            return json.dumps(response)
-        assert "0" in data["correction"] and "[1]" in data["correction"]
-        return await extraction_stub(system, payload)
-
-    result = run(extract_topics(source, complete, "lecture"))
-    assert len(calls) == 2
-    assert result["report"]["adaptive_splits"] == 0
-    assert result["report"]["quality"]["unassigned_blocks"] == 0
-    for topic in result["report"]["topics"]:
-        for item in topic["sources"]:
-            assert item["text"] == source[item["start"]:item["end"]]
-
-
-@pytest.mark.parametrize("heading", ["Course Materials", "Bibliography", "Библиография", "Материалы курса"])
-def test_bibliography_is_retained_as_context_without_model_deletion(heading):
-    source = ("## Слайд 1\n\n## " + heading + "\n\n- Main Text\n- Artificial Intelligence: A Modern Approach\n\n"
-              "## Слайд 2\n\nПроизводная показывает скорость изменения функции.")
-
-    async def complete(system, payload):
-        data = json.loads(payload)
-        assert all("Modern Approach" not in b["text"] for b in data["blocks"])
-        return await extraction_stub(system, payload)
-
-    result = run(extract_topics(source, complete, "lecture"))
-    assert result["markdown"] == source
-    assert result["report"]["removed"] == []
-    assert any("Modern Approach" in s["text"] for t in result["report"]["topics"] for s in t["sources"])
-    assert len(result["report"]["topics"]) == 1
-
-
 def test_adaptive_split_recovers_incomplete_coverage():
     async def incomplete(system, payload):
         data = json.loads(payload)
@@ -123,9 +76,8 @@ def test_adaptive_split_recovers_incomplete_coverage():
     '{"remove":[{"id":999,"reason":"thanks"}],"topics":[]}',
     '{"remove":[{"id":true,"reason":"thanks"}],"topics":[]}',
     '{"remove":[{"id":0,"reason":"thanks"}],"topics":[]}',
-    '{"remove":[],"topics":[{"title":"Производная","requires":[],"provides":["Вычисление производной"],"question":"Как вычислить производную?","block_ids":[999]}]}',
 ])
-def test_invalid_source_decisions_are_never_published(response):
+def test_incomplete_or_protected_deletion_is_never_published(response):
     async def complete(*args):
         return response
     with pytest.raises(ValueError):

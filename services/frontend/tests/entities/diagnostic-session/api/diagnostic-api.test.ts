@@ -84,6 +84,7 @@ it('starts a diagnostic with the idempotency key and maps the session', async ()
     nodeId: 'a-star',
     source: 'text',
     text: 'Поиск',
+    reply: '',
     createdAt: 2,
   })
 })
@@ -211,6 +212,15 @@ it('fetches the WAV of a Geek turn', async () => {
     '/api/v1/diagnostic-sessions/d1/turns/t%201/audio',
   )
   expect(audio.type).toBe('audio/wav')
+  const partMock = stub(
+    new Response(new Uint8Array([82, 73, 70, 70]), {
+      headers: { 'Content-Type': 'audio/wav' },
+    }),
+  )
+  await fetchTurnAudio('d1', 't1', signal(), 'reply')
+  expect(partMock.mock.calls[0][0]).toBe(
+    '/api/v1/diagnostic-sessions/d1/turns/t1/audio?part=reply',
+  )
   stub(Response.json({ code: 'X' }))
   await expect(fetchTurnAudio('d1', 't1', signal())).rejects.toMatchObject({
     code: 'INVALID_RESPONSE',

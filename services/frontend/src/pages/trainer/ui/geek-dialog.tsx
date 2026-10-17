@@ -130,7 +130,7 @@ function Dialogue({
       !capturing
     ) {
       voiced.current = lastTurn.id
-      void play(lastTurn.id)
+      void play(lastTurn)
     }
   }, [lastTurn, play, capturing])
   useEffect(() => {
@@ -252,7 +252,7 @@ function TurnItem({
           </Text>
         )}
         <ListenButton
-          turnId={turn.id}
+          turn={turn}
           state={audio.state}
           audio={audio}
           disabled={muted}
@@ -264,18 +264,18 @@ function TurnItem({
 }
 
 function ListenButton({
-  turnId,
+  turn,
   state,
   audio,
   disabled,
 }: {
-  turnId: string
+  turn: Turn
   state: TurnAudioState
   audio: ReturnType<typeof useTurnAudio>
   disabled: boolean
 }) {
   const { t } = useTranslation()
-  const mine = state.turnId === turnId ? state.status : 'idle'
+  const mine = state.turnId === turn.id ? state.status : 'idle'
   const label =
     mine === 'playing'
       ? t('geek.stopListening')
@@ -295,7 +295,7 @@ function ListenButton({
       onClick={() =>
         mine === 'playing' || mine === 'loading'
           ? audio.stop()
-          : void audio.play(turnId)
+          : void audio.play(turn)
       }
     >
       {mine === 'loading' ? (

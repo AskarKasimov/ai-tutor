@@ -25,6 +25,7 @@ type ApiTurn = {
   node_id: string | null
   source: string | null
   text: string
+  reply?: string
   created_at: number
 }
 
@@ -33,6 +34,7 @@ const geekTurn = (
   line: number,
   kind: string,
   text: string,
+  reply = '',
 ): ApiTurn => ({
   id,
   line,
@@ -40,7 +42,8 @@ const geekTurn = (
   kind,
   node_id: kind === 'closing' ? null : 'a-star',
   source: null,
-  text,
+  text: reply ? `${reply}\n\n${text}` : text,
+  reply,
   created_at: line,
 })
 
@@ -60,7 +63,13 @@ function geekBackend(
       'question',
       'Что изменится в A*, если эвристика переоценивает путь?',
     ),
-    geekTurn('t3', 3, 'followup', 'А где допустимая эвристика не поможет?'),
+    geekTurn(
+      't3',
+      3,
+      'followup',
+      'А где допустимая эвристика не поможет?',
+      'Верно про оптимальность.',
+    ),
     geekTurn('t5', 5, 'question', 'Что такое **эвристическая функция**?'),
     geekTurn(
       't7',
@@ -237,7 +246,11 @@ function geekBackend(
         ],
         gaps: [{ node_id: 'heuristic', title: 'Эвристическая функция' }],
       })
-    if (/\/diagnostic-sessions\/d1\/turns\/t\d+\/audio$/.test(url))
+    if (
+      /\/diagnostic-sessions\/d1\/turns\/t\d+\/audio\?part=(reply|question)$/.test(
+        url,
+      )
+    )
       return new Response(await validWavBlob().arrayBuffer(), {
         headers: { 'Content-Type': 'audio/wav' },
       })
@@ -256,10 +269,13 @@ function geekBackend(
 class FakeAudio {
   static played: string[] = []
   static paused = 0
+  static last: FakeAudio | null = null
   onended: (() => void) | null = null
   onerror: (() => void) | null = null
   error = null
-  constructor(readonly src: string) {}
+  constructor(readonly src: string) {
+    FakeAudio.last = this
+  }
   play() {
     FakeAudio.played.push(this.src)
     return Promise.resolve()
@@ -274,6 +290,7 @@ beforeEach(() => {
   sessionStorage.clear()
   FakeAudio.played = []
   FakeAudio.paused = 0
+  FakeAudio.last = null
   vi.stubGlobal('Audio', FakeAudio)
   vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:turn')
   vi.spyOn(URL, 'revokeObjectURL').mockReturnValue(undefined)
@@ -330,8 +347,16 @@ it('runs a diagnostic from the home page to the result and back to the history',
     await screen.findByRole('button', { name: 'Остановить озвучку' }),
   ).toBeVisible()
   expect(
-    fetch.mock.calls.some(([url]) => url.endsWith('/turns/t1/audio')),
+    fetch.mock.calls.some(([url]) =>
+      url.endsWith('/turns/t1/audio?part=question'),
+    ),
   ).toBe(true)
+  // The first question replies to nothing, so it has no reply part.
+  expect(
+    fetch.mock.calls.some(([url]) =>
+      url.endsWith('/turns/t1/audio?part=reply'),
+    ),
+  ).toBe(false)
 
   await answerByText('Перестанет быть оптимальным')
   expect(
@@ -642,3 +667,30 @@ it.each(['mediaDevices', 'MediaRecorder', 'permission'])(
     ).toBeEnabled()
   },
 )
+
+it('voices the reply to the answer first and the question after it in one turn', async () => {
+  const { fetch } = geekBackend()
+  renderApp()
+  await start()
+  await waitFor(() => expect(FakeAudio.played).toHaveLength(1))
+  await answerByText('Перестанет быть оптимальным')
+  // One Geek message holds both parts.
+  expect(await screen.findByText('Верно про оптимальность.')).toBeVisible()
+  expect(
+    screen.getByText('А где допустимая эвристика не поможет?'),
+  ).toBeVisible()
+  const audioUrls = () =>
+    fetch.mock.calls
+      .map(([url]) => url)
+      .filter((url) => url.includes('/turns/t3/audio'))
+  await waitFor(() => expect(FakeAudio.played).toHaveLength(2))
+  await waitFor(() =>
+    expect(audioUrls()).toEqual([
+      '/api/v1/diagnostic-sessions/d1/turns/t3/audio?part=reply',
+      '/api/v1/diagnostic-sessions/d1/turns/t3/audio?part=question',
+    ]),
+  )
+  // The question plays once the reply has ended.
+  act(() => FakeAudio.last?.onended?.())
+  await waitFor(() => expect(FakeAudio.played).toHaveLength(3))
+})

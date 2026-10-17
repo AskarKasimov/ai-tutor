@@ -111,14 +111,6 @@
 .item {
   position: relative;
 }
-.cardFields {
-  display: grid;
-  grid-template-columns: auto minmax(10rem, 1fr);
-  align-items: center;
-  gap: var(--space-2);
-  padding-top: var(--space-3);
-  border-top: 1px solid var(--app-border);
-}
 .reorderControls {
   position: absolute;
   z-index: 1;
@@ -157,40 +149,7 @@
 .dragging {
   opacity: 0.55;
 }
-.weekField {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  min-width: 0;
-  white-space: nowrap;
-  color: var(--app-muted);
-  font-size: var(--font-size-2);
-}
-.weekInput {
-  width: 5rem;
-}
-.kindField {
-  flex: 1;
-  min-width: 0;
-}
-.kindControls {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  min-width: 0;
-}
-.sendOne {
-  flex: 0 0 auto;
-  white-space: nowrap;
-}
-.kindField :global(.rt-SelectTrigger) {
-  width: 100%;
-}
 @media (max-width: 720px) {
-  .cardFields {
-    grid-template-columns: minmax(0, 1fr);
-    align-items: stretch;
-  }
   .name {
     grid-column: auto;
   }

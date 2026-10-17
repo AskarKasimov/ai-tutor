@@ -2,17 +2,13 @@ import {
   AlertDialog,
   Badge,
   Button,
-  Dialog,
   Flex,
   Progress,
   Heading,
-  Select,
   Text,
-  TextField,
 } from '@radix-ui/themes'
 import { useNavigate } from '@tanstack/react-router'
 import {
-  Check,
   CheckCircle2,
   Clock,
   Download,
@@ -20,6 +16,7 @@ import {
   FileText,
   ArrowRight,
   Replace,
+  Save,
   ShieldCheck,
   Sparkles,
   Trash2,
@@ -47,6 +44,7 @@ import {
   MaterialUploadSubmit,
   MaterialQueueCard,
   CourseMaterialCard,
+  MaterialMetadataFields,
   useMaterialUploadQueue,
   moveMaterialQueueItem,
   moveMaterialQueueItemToIndex,
@@ -58,10 +56,7 @@ import {
   useLatestCourseGraphBuildQuery,
   useStartCourseGraphBuildMutation,
 } from '@/features/course-graph-build'
-import {
-  useCreateSubjectMutation,
-  useSubjectsQuery,
-} from '@/features/subject-selection'
+import { useSubjectsQuery } from '@/features/subject-selection'
 import { MarkdownContent } from '@/shared/ui'
 import styles from '@/pages/competency-map/ui/competency-map.module.scss'
 
@@ -71,7 +66,7 @@ type MaterialListRow =
   | { id: string; week: string; queued: MaterialQueueItem }
   | { id: string; week: string; saved: CourseMaterial }
 
-export function CompetencyMapAdminScreen() {
+export function CompetencyMapAdminScreen({ subjectId }: { subjectId: string }) {
   const { t } = useTranslation()
   const { user } = useAuth()
   const navigate = useNavigate()
@@ -87,25 +82,20 @@ export function CompetencyMapAdminScreen() {
         </Button>
       </main>
     )
-  return <CompetencyMapAdmin userId={user.id} />
+  return <CompetencyMapAdmin userId={user.id} subjectId={subjectId} />
 }
 
-function CompetencyMapAdmin({ userId }: { userId: string }) {
+function CompetencyMapAdmin({
+  userId,
+  subjectId,
+}: {
+  userId: string
+  subjectId: string
+}) {
   const { t, i18n } = useTranslation()
+  const navigate = useNavigate()
   const subjects = useSubjectsQuery(userId)
-  const create = useCreateSubjectMutation(userId)
-  const [subjectName, setSubjectName] = useState('')
-  // Keep the newly created course visible while the catalogue query refreshes.
-  const [createdId, setCreatedId] = useState('')
-  const [createCourseOpen, setCreateCourseOpen] = useState(false)
-  const [selectedSubjectId, setSelectedSubjectId] = useState('')
-  const subject =
-    subjects.data?.find((candidate) => candidate.id === selectedSubjectId) ??
-    subjects.data?.[0]
-  const subjectId = selectedSubjectId || subject?.id || createdId
-  const subjectDisplayName =
-    subjects.data?.find((candidate) => candidate.id === subjectId)?.name ??
-    (createdId === subjectId ? subjectName.trim() : subject?.name)
+  const subject = subjects.data?.find((candidate) => candidate.id === subjectId)
 
   // Course materials state and mutations
   const materialsQuery = useSubjectMaterialsQuery(userId, subjectId)
@@ -132,7 +122,7 @@ function CompetencyMapAdmin({ userId }: { userId: string }) {
 
   // Covers queue uploads and saved-material operations.
   const materialsChanging = useCourseMaterialsChanging(userId, subjectId)
-  const busy = create.isPending || materialsChanging
+  const busy = materialsChanging
   const graphBuilding =
     startBuild.isPending ||
     latestBuild.data?.status === 'queued' ||
@@ -232,6 +222,20 @@ function CompetencyMapAdmin({ userId }: { userId: string }) {
     ...(materialsChanging ? [t('courseGraph.blockChanging')] : []),
   ]
   const hasGraph = courseGraph.data !== undefined
+  const sourceMaterialIds = courseGraph.data?.sourceMaterialIds
+  const graphPublishedAt = courseGraph.data?.publishedAt
+  const currentMaterialIds = new Set(materials.map((material) => material.id))
+  const graphIsOutdated =
+    hasGraph &&
+    materialsQuery.isSuccess &&
+    sourceMaterialIds !== undefined &&
+    (sourceMaterialIds.length !== materials.length ||
+      sourceMaterialIds.some(
+        (materialId) => !currentMaterialIds.has(materialId),
+      ) ||
+      (graphPublishedAt !== null &&
+        graphPublishedAt !== undefined &&
+        materials.some((material) => material.updatedAt > graphPublishedAt)))
 
   return (
     <div className={styles.page} data-admin-screen>
@@ -248,7 +252,7 @@ function CompetencyMapAdmin({ userId }: { userId: string }) {
             {t('courseGraph.title')}
           </Heading>
           <Text as="p" color="gray">
-            {t(subjectId ? 'courseGraph.subtitle' : 'competencyMap.subtitle')}
+            {t('courseGraph.subtitle')}
           </Text>
         </div>
         {subjects.isPending ? (
@@ -264,39 +268,13 @@ function CompetencyMapAdmin({ userId }: { userId: string }) {
               {t('trainer.retry')}
             </Button>
           </div>
-        ) : !subjectId ? (
-          <section className={styles.card} aria-labelledby="subject-form-title">
-            <Heading as="h2" size="5" id="subject-form-title">
-              {t('competencyMap.createSubject')}
-            </Heading>
-            <TextField.Root
-              size="3"
-              aria-label={t('competencyMap.subjectName')}
-              value={subjectName}
-              placeholder={t('competencyMap.subjectPlaceholder')}
-              disabled={busy}
-              onChange={(event) => setSubjectName(event.target.value)}
-            />
-            {create.isError && (
-              <Text as="p" role="alert" color="red" size="2">
-                {t('competencyMap.createSubjectError')}
-              </Text>
-            )}
-            <Button
-              size="3"
-              color="green"
-              className={styles.submit}
-              disabled={!subjectName.trim() || busy}
-              onClick={() => {
-                const name = subjectName.trim()
-                if (!name) return
-                create.mutate(name, {
-                  onSuccess: (created) => setCreatedId(created.id),
-                })
-              }}
-            >
-              <Check size={18} aria-hidden="true" />
-              {t(busy ? 'competencyMap.uploading' : 'competencyMap.submit')}
+        ) : !subject ? (
+          <section className={styles.card}>
+            <Text as="p" role="alert">
+              {t('courseGraph.courseNotFound')}
+            </Text>
+            <Button onClick={() => void navigate({ to: '/admin/courses' })}>
+              {t('courseGraph.backToCourses')}
             </Button>
           </section>
         ) : (
@@ -307,79 +285,8 @@ function CompetencyMapAdmin({ userId }: { userId: string }) {
                   {t('competencyMap.subject')}
                 </Text>
                 <Heading as="h2" size="6" id="subject-title">
-                  {subjectDisplayName}
+                  {subject.name}
                 </Heading>
-                {(subjects.data?.length ?? 0) > 1 && (
-                  <Select.Root
-                    value={subjectId}
-                    disabled={busy}
-                    onValueChange={setSelectedSubjectId}
-                  >
-                    <Select.Trigger
-                      aria-label={t('courseGraph.selectCourse')}
-                    />
-                    <Select.Content>
-                      {subjects.data?.map((candidate) => (
-                        <Select.Item key={candidate.id} value={candidate.id}>
-                          {candidate.name}
-                        </Select.Item>
-                      ))}
-                    </Select.Content>
-                  </Select.Root>
-                )}
-                <Dialog.Root
-                  open={createCourseOpen}
-                  onOpenChange={setCreateCourseOpen}
-                >
-                  <Dialog.Trigger>
-                    <Button
-                      variant="soft"
-                      size="2"
-                      onClick={() => setCreateCourseOpen(true)}
-                    >
-                      {t('courseGraph.createAnotherCourse')}
-                    </Button>
-                  </Dialog.Trigger>
-                  <Dialog.Content maxWidth="420px">
-                    <Dialog.Title>
-                      {t('courseGraph.createCourseTitle')}
-                    </Dialog.Title>
-                    <TextField.Root
-                      aria-label={t('competencyMap.subjectName')}
-                      placeholder={t('competencyMap.subjectPlaceholder')}
-                      value={subjectName}
-                      onChange={(event) => setSubjectName(event.target.value)}
-                    />
-                    {create.isError && (
-                      <Text as="p" role="alert" color="red" size="2">
-                        {t('competencyMap.createSubjectError')}
-                      </Text>
-                    )}
-                    <Flex gap="3" mt="4" justify="end">
-                      <Dialog.Close>
-                        <Button variant="soft" color="gray">
-                          {t('competencyMap.cancel')}
-                        </Button>
-                      </Dialog.Close>
-                      <Button
-                        disabled={!subjectName.trim() || create.isPending}
-                        onClick={() => {
-                          const name = subjectName.trim()
-                          if (!name) return
-                          create.mutate(name, {
-                            onSuccess: (created) => {
-                              setCreatedId(created.id)
-                              setSelectedSubjectId(created.id)
-                              setCreateCourseOpen(false)
-                            },
-                          })
-                        }}
-                      >
-                        {t('courseGraph.createCourseAction')}
-                      </Button>
-                    </Flex>
-                  </Dialog.Content>
-                </Dialog.Root>
               </div>
             </section>
 
@@ -566,6 +473,13 @@ function CompetencyMapAdmin({ userId }: { userId: string }) {
                             material={row.saved}
                             kinds={materialKinds}
                             subjectId={subjectId}
+                            onUpdateMetadata={(patch) =>
+                              updateMetadata.mutateAsync({
+                                materialId: row.saved.id,
+                                patch,
+                                subjectId,
+                              })
+                            }
                             dropTarget={dropTargetMaterialId === row.id}
                             previewOpen={previewId === row.id}
                             onTogglePreview={() =>
@@ -613,6 +527,11 @@ function CompetencyMapAdmin({ userId }: { userId: string }) {
                     ? t('courseGraph.graphStored')
                     : t('courseGraph.graphNotReady')}
                 </Badge>
+                {graphIsOutdated && (
+                  <Badge size="1" color="amber" className={styles.materialTag}>
+                    {t('courseGraph.graphOutdated')}
+                  </Badge>
+                )}
               </div>
               <Text as="p" color="gray" size="2">
                 {t('courseGraph.materialSummary', {
@@ -687,30 +606,6 @@ function CompetencyMapAdmin({ userId }: { userId: string }) {
                   </Text>
                 </div>
               )}
-              {latestBuild.data &&
-                (latestBuild.data.startedAt !== null ||
-                  latestBuild.data.completedAt !== null) && (
-                  <Flex gap="2" wrap="wrap" direction="column">
-                    {latestBuild.data.startedAt !== null && (
-                      <Text size="1" color="gray">
-                        {t('courseGraph.buildStartedAt', {
-                          date: new Date(
-                            latestBuild.data.startedAt * 1000,
-                          ).toLocaleString(i18n.language),
-                        })}
-                      </Text>
-                    )}
-                    {latestBuild.data.completedAt !== null && (
-                      <Text size="1" color="gray">
-                        {t('courseGraph.buildCompletedAt', {
-                          date: new Date(
-                            latestBuild.data.completedAt * 1000,
-                          ).toLocaleString(i18n.language),
-                        })}
-                      </Text>
-                    )}
-                  </Flex>
-                )}
               {courseGraph.isError &&
                 courseGraph.error instanceof CourseGraphApiError &&
                 courseGraph.error.status !== 404 && (
@@ -812,6 +707,7 @@ function MaterialItemCard({
   material,
   kinds,
   subjectId,
+  onUpdateMetadata,
   dropTarget,
   previewOpen,
   onTogglePreview,
@@ -822,6 +718,7 @@ function MaterialItemCard({
   material: CourseMaterial
   kinds: CourseMaterialKindOption[]
   subjectId: string
+  onUpdateMetadata: (patch: { week: number; kind: string }) => Promise<unknown>
   dropTarget: boolean
   previewOpen: boolean
   onTogglePreview: () => void
@@ -833,6 +730,10 @@ function MaterialItemCard({
   const replaceInputRef = useRef<HTMLInputElement>(null)
   const [downloading, setDownloading] = useState(false)
   const [downloadError, setDownloadError] = useState<string | null>(null)
+  const [week, setWeek] = useState(material.week?.toString() ?? '')
+  const [kind, setKind] = useState(material.kind ?? '')
+  const [metadataError, setMetadataError] = useState<string | null>(null)
+  const [savingMetadata, setSavingMetadata] = useState(false)
   const [actionError, setActionError] = useState<{
     message: string
     retry: () => Promise<unknown>
@@ -882,6 +783,35 @@ function MaterialItemCard({
       : material.status === 'failed'
         ? 'red'
         : 'amber'
+  const metadataIsValid =
+    /^\d+$/.test(week) &&
+    Number(week) > 0 &&
+    kinds.some((option) => option.code === kind)
+  const metadataChanged =
+    Number(week) !== material.week || kind !== material.kind
+
+  useEffect(() => {
+    setWeek(material.week?.toString() ?? '')
+    setKind(material.kind ?? '')
+    setMetadataError(null)
+  }, [material.week, material.kind])
+
+  async function saveMetadata() {
+    if (!metadataIsValid || !metadataChanged || savingMetadata) return
+    setSavingMetadata(true)
+    setMetadataError(null)
+    try {
+      await onUpdateMetadata({ week: Number(week), kind })
+    } catch (error) {
+      setMetadataError(
+        error instanceof Error
+          ? error.message
+          : t('competencyMap.requestError'),
+      )
+    } finally {
+      setSavingMetadata(false)
+    }
+  }
   async function handleDownload() {
     setDownloading(true)
     setDownloadError(null)
@@ -1016,32 +946,48 @@ function MaterialItemCard({
         </Flex>
       }
     >
-      <div className={styles.materialClassification}>
-        <label>
-          <Text as="span" size="2">
-            {t('courseGraph.weekLabel')}
-          </Text>
-          <Text as="span" size="2" weight="medium">
-            {material.week ?? '—'}
-          </Text>
-        </label>
-        {material.kind && (
-          <Badge color="gray" size="1" className={styles.materialTag}>
-            {kinds.find((kind) => kind.code === material.kind)?.label ??
-              material.kind}
-          </Badge>
-        )}
-        {(!material.week || !material.kind) && (
-          <Badge color="amber" size="1" className={styles.materialTag}>
-            {t('courseGraph.metadataMissing')}
-          </Badge>
-        )}
-        {material.status === 'failed' && material.errorMessage && (
-          <Text color="red" size="2">
-            {material.errorMessage}
-          </Text>
-        )}
-      </div>
+      <MaterialMetadataFields
+        week={week}
+        kind={kind}
+        kinds={kinds}
+        disabled={busy || savingMetadata}
+        onWeekChange={setWeek}
+        onKindChange={setKind}
+        action={
+          <Flex gap="2" align="center" wrap="wrap">
+            <Button
+              type="button"
+              size="2"
+              variant="soft"
+              color="green"
+              disabled={
+                busy || savingMetadata || !metadataIsValid || !metadataChanged
+              }
+              onClick={() => void saveMetadata()}
+            >
+              <Save size={14} aria-hidden="true" />
+              {savingMetadata
+                ? t('competencyMap.metadataSaving')
+                : t('competencyMap.metadataSave')}
+            </Button>
+            {(!material.week || !material.kind) && (
+              <Badge color="amber" size="1" className={styles.materialTag}>
+                {t('courseGraph.metadataMissing')}
+              </Badge>
+            )}
+          </Flex>
+        }
+      />
+      {metadataError && (
+        <Text role="alert" color="red" size="1">
+          {metadataError}
+        </Text>
+      )}
+      {material.status === 'failed' && material.errorMessage && (
+        <Text color="red" size="2">
+          {material.errorMessage}
+        </Text>
+      )}
 
       {downloadError && (
         <Text as="p" role="alert" color="red" size="2">

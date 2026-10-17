@@ -1,4 +1,4 @@
-import { Button, Select, Text, TextField } from '@radix-ui/themes'
+import { Button, Text } from '@radix-ui/themes'
 import {
   ChevronDown,
   ChevronUp,
@@ -16,6 +16,7 @@ import {
 } from '../model/use-material-upload-queue'
 import type { CourseMaterialKindOption } from '@/entities/competency-map'
 import { CourseMaterialCard } from './course-material-card'
+import { MaterialMetadataFields } from './material-metadata-fields'
 import {
   moveMaterialQueueItem,
   moveMaterialQueueItemToIndex,
@@ -326,43 +327,19 @@ export function MaterialQueueCard({
           {item.error}
         </Text>
       )}
-      <div className={styles.cardFields}>
-        <label className={styles.weekField}>
-          <span>{t('courseGraph.weekLabel')}</span>
-          <TextField.Root
-            className={styles.weekInput}
-            type="number"
-            min="1"
-            value={item.week}
-            disabled={disabled}
-            onChange={(event) => onWeekChange(event.target.value)}
-          />
-        </label>
-        <div className={styles.kindControls}>
-          <div className={styles.kindField}>
-            <Select.Root
-              value={item.kind}
-              disabled={disabled}
-              onValueChange={(kind) =>
-                onKindChange(kind as MaterialQueueItem['kind'])
-              }
-            >
-              <Select.Trigger aria-label={t('courseGraph.kindLabel')} />
-              <Select.Content>
-                {kinds.map((kind) => (
-                  <Select.Item key={kind.code} value={kind.code}>
-                    {kind.label}
-                  </Select.Item>
-                ))}
-              </Select.Content>
-            </Select.Root>
-          </div>
+      <MaterialMetadataFields
+        week={item.week}
+        kind={item.kind}
+        kinds={kinds}
+        disabled={disabled}
+        onWeekChange={onWeekChange}
+        onKindChange={(kind) => onKindChange(kind as MaterialQueueItem['kind'])}
+        action={
           <Button
             type="button"
             size="2"
             variant="soft"
             color="green"
-            className={styles.sendOne}
             disabled={disabled || !canSend}
             onClick={onSend}
             aria-label={t('competencyMap.queueSendOne')}
@@ -373,8 +350,8 @@ export function MaterialQueueCard({
               ? t('competencyMap.queueSending')
               : t('competencyMap.queueSendOne')}
           </Button>
-        </div>
-      </div>
+        }
+      />
     </CourseMaterialCard>
   )
 }

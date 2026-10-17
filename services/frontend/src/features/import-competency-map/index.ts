@@ -21,6 +21,7 @@ export {
   MaterialQueueCard,
 } from './ui/material-upload-queue'
 export { CourseMaterialCard } from './ui/course-material-card'
+export { MaterialMetadataFields } from './ui/material-metadata-fields'
 export { useMaterialUploadQueue } from './model/use-material-upload-queue'
 export type { MaterialQueueItem } from './model/use-material-upload-queue'
 export {

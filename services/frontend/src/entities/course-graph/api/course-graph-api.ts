@@ -24,6 +24,7 @@ const buildSchema = z.object({
 const graphSchema = z.object({
   version: z.string().min(1),
   published_at: z.number().int().nonnegative().nullable().optional(),
+  source_material_ids: z.array(z.string().min(1)).optional(),
   nodes: z.array(
     z.object({
       id: z.string().min(1),
@@ -142,6 +143,7 @@ export async function readCourseGraph(
   return {
     version: parsed.data.version,
     publishedAt: parsed.data.published_at ?? null,
+    sourceMaterialIds: parsed.data.source_material_ids,
     nodes: parsed.data.nodes,
   }
 }

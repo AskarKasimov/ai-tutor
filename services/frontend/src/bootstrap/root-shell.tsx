@@ -75,7 +75,7 @@ function SessionGate() {
         </main>
       )
     if (path === '/admin' || path === '/admin/')
-      return <Navigate to="/admin/competency-map" replace />
+      return <Navigate to="/admin/courses" replace />
   } else {
     if (!user)
       return path === '/login' ? (

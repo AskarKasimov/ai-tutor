@@ -523,28 +523,23 @@ it('blocks graph generation for legacy materials until their metadata is fixed',
   ).toBeDisabled()
 })
 
-it('persists corrected metadata without uploading the source again', async () => {
-  const fetch = backend({
-    materials: [{ ...sampleMaterials[0], week: null, kind: null }],
-  })
+it('keeps uploaded material metadata fixed and explains how to change it', async () => {
+  const fetch = backend()
   renderApp('/admin/competency-map')
-  const typeSelect = await screen.findByRole('combobox', {
-    name: 'Тип материала: lecture1.pdf',
-  })
-  fireEvent.click(typeSelect)
-  fireEvent.click(await screen.findByRole('option', { name: 'Лабораторная' }))
-  await waitFor(() =>
-    expect(
-      fetch.mock.calls.some(
-        ([url, request]) =>
-          url.endsWith('/materials/mat-1') && request?.method === 'PATCH',
-      ),
-    ).toBe(true),
-  )
+  expect(await screen.findByText('Неделя 1 · Лекция')).toBeVisible()
+  expect(
+    screen.getByText(
+      'Чтобы изменить неделю или тип, удалите PDF и добавьте его заново в очередь загрузки.',
+    ),
+  ).toBeVisible()
+  expect(
+    screen.queryByRole('combobox', { name: 'Тип материала: lecture1.pdf' }),
+  ).not.toBeInTheDocument()
+  expect(screen.queryByRole('spinbutton', { name: 'Неделя' })).toBeNull()
   expect(
     fetch.mock.calls.some(
       ([url, request]) =>
-        url.endsWith('/materials') && request?.method === 'POST',
+        url.endsWith('/materials/mat-1') && request?.method === 'PATCH',
     ),
   ).toBe(false)
 })

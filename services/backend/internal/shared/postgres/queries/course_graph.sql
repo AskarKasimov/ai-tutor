@@ -47,7 +47,7 @@ SELECT s.id, coalesce(j.status,'waiting_materials')::text AS status,
        coalesce(j.attempts,0)::integer AS attempts, coalesce(j.error_message,'')::text AS error_message,
        coalesce(g.graph,'null'::jsonb)::jsonb AS graph,
        coalesce(g.updated_at,0)::bigint AS updated_at,
-       (g.fingerprint IS DISTINCT FROM i.fingerprint OR i.fingerprint IS NULL)::boolean AS stale
+       (g.fingerprint IS NOT NULL AND g.fingerprint IS DISTINCT FROM i.fingerprint)::boolean AS stale
 FROM subjects s LEFT JOIN course_graph_jobs j ON j.subject_id=s.id
 LEFT JOIN course_graphs g ON g.subject_id=s.id
 LEFT JOIN course_graph_inputs i ON i.subject_id=s.id WHERE s.id=$1;

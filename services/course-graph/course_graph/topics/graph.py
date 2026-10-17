@@ -104,6 +104,60 @@ def resolve_parent_topic(parent_title: str, topics: list[Topic], by_norm: dict[s
         return None
     if norm_p in by_norm:
         return by_norm[norm_p]
+
+    words_p = norm_p.split()
+    meaningful_p = {w for w in words_p if len(w) > 2}
+    if not meaningful_p:
+        meaningful_p = set(words_p)
+
+    best_topic = None
+    best_score = 0.0
+
+    for t in topics:
+        norm_t = normalized_title(t.title)
+        if not norm_t:
+            continue
+        words_t = norm_t.split()
+        meaningful_t = {w for w in words_t if len(w) > 2}
+        if not meaningful_t:
+            meaningful_t = set(words_t)
+
+        inter = len(meaningful_p & meaningful_t)
+        union = len(meaningful_p | meaningful_t)
+        jaccard = inter / union if union else 0.0
+
+        is_sub = (norm_p in norm_t or norm_t in norm_p) and min(len(norm_p), len(norm_t)) >= 6
+        is_p_in_t = meaningful_p.issubset(meaningful_t) and len(meaningful_p) >= 1
+        is_t_in_p = meaningful_t.issubset(meaningful_p) and len(meaningful_t) >= 1
+
+        if is_p_in_t:
+            score = 0.55 + 0.45 * (len(meaningful_p) / len(meaningful_t))
+        elif is_t_in_p:
+            score = 0.50 + 0.40 * (len(meaningful_t) / len(meaningful_p))
+        elif is_sub:
+            score = 0.45 + 0.35 * jaccard
+        else:
+            score = jaccard
+
+        if score > best_score:
+            best_score = score
+            best_topic = t
+
+    if best_score >= 0.5 and best_topic is not None:
+        return best_topic
+
+    if encoder is not None and topics:
+        try:
+            import numpy as np
+            p_vec = encoder.encode([parent_title], query=True)[0]
+            t_vecs = encoder.encode([t.title for t in topics], query=False)
+            sims = np.asarray(t_vecs) @ p_vec
+            best_idx = int(np.argmax(sims))
+            if float(sims[best_idx]) >= 0.85:
+                return topics[best_idx]
+        except Exception:
+            pass
+
     return None
 
 

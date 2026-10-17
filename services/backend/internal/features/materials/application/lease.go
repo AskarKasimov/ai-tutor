@@ -22,6 +22,12 @@ func runLeased(ctx context.Context, callbacks leaseCallbacks, process func(conte
 	defer cancel()
 	done := make(chan error, 1)
 	go func() { done <- process(workCtx) }()
+	waitDone := func() {
+		select {
+		case <-done:
+		case <-time.After(10 * time.Second):
+		}
+	}
 	ticker := time.NewTicker(10 * time.Second)
 	defer ticker.Stop()
 	for {
@@ -38,7 +44,7 @@ func runLeased(ctx context.Context, callbacks leaseCallbacks, process func(conte
 			return err
 		case <-ctx.Done():
 			cancel()
-			<-done
+			waitDone()
 			if callbacks.release != nil {
 				releaseCtx, stop := context.WithTimeout(context.Background(), 10*time.Second)
 				_ = callbacks.release(releaseCtx, time.Now())
@@ -46,12 +52,20 @@ func runLeased(ctx context.Context, callbacks leaseCallbacks, process func(conte
 			}
 			return ctx.Err()
 		case <-ticker.C:
-			heartbeatCtx, stop := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
-			owned, err := callbacks.renew(heartbeatCtx, time.Now())
-			stop()
+			var owned bool
+			var err error
+			for attempt := 0; attempt < 3; attempt++ {
+				heartbeatCtx, stop := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+				owned, err = callbacks.renew(heartbeatCtx, time.Now())
+				stop()
+				if err == nil {
+					break
+				}
+				time.Sleep(500 * time.Millisecond)
+			}
 			if err != nil || !owned {
 				cancel()
-				<-done
+				waitDone()
 				if err != nil {
 					return err
 				}

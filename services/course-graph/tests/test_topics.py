@@ -512,4 +512,66 @@ def test_batch_sequential_reuse_passes_existing_topics():
     assert result["report"]["topics"][0]["title"] == "Свойства среды"
 
 
+def test_resolve_parent_topic_fuzzy_and_containment():
+    from course_graph.topics.extract import normalized_title
+    from course_graph.topics.graph import build_hierarchy, resolve_parent_topic
+    from course_graph.topics.models import Source, Topic
+
+    src = [Source(material_id="m", block_id=0, start=0, end=10, text="sample text")]
+    t_parent = Topic(
+        id="t_parent",
+        title="Линейные модели в машинном обучении",
+        requires=[],
+        provides=["Основы линейных моделей"],
+        question="Что такое линейные модели?",
+        text="text",
+        sources=src,
+        parent_title=None,
+    )
+    t_child = Topic(
+        id="t_child",
+        title="Линейная регрессия",
+        requires=["Линейные модели"],
+        provides=["Метод МНК"],
+        question="Как работает линейная регрессия?",
+        text="text",
+        sources=src,
+        parent_title="Линейные модели",
+    )
+    t_unrelated = Topic(
+        id="t_unrelated",
+        title="Деревья решений",
+        requires=[],
+        provides=["Жадное построение деревьев"],
+        question="Что такое деревья решений?",
+        text="text",
+        sources=src,
+        parent_title=None,
+    )
+
+    topics = [t_parent, t_child, t_unrelated]
+    by_norm = {normalized_title(t.title): t for t in topics}
+
+    # 1. Fuzzy match where parent_title is a subset of parent topic title
+    matched = resolve_parent_topic("Линейные модели", topics, by_norm)
+    assert matched is not None
+    assert matched.id == t_parent.id
+
+    # 2. Match where parent topic title is a subset of parent_title
+    matched2 = resolve_parent_topic("Линейные модели в машинном обучении и анализе данных", topics, by_norm)
+    assert matched2 is not None
+    assert matched2.id == t_parent.id
+
+    # 3. Unrelated parent title returns None
+    matched_none = resolve_parent_topic("Нейронные сети и глубокое обучение", topics, by_norm)
+    assert matched_none is None
+
+    # 4. build_hierarchy builds the link from t_parent to t_child
+    _, hierarchy, hierarchy_adj = build_hierarchy(topics, [], {})
+    assert len(hierarchy) == 1
+    assert hierarchy[0]["source"] == "t_parent"
+    assert hierarchy[0]["target"] == "t_child"
+    assert "t_child" in hierarchy_adj.get("t_parent", set())
+
+
 

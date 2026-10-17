@@ -61,6 +61,9 @@ type Turn struct {
 	Source    *Source  `json:"source"`
 	Text      string   `json:"text"`
 	CreatedAt int64    `json:"created_at"`
+	// Recap is the start of Text that explains the previous, closed topic
+	// before this turn's question; prompts on this turn's topic leave it out.
+	Recap string `json:"recap,omitempty"`
 }
 
 // NodeState is what the exam has concluded about one topic. Criteria and

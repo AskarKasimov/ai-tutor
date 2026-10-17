@@ -10,8 +10,8 @@ import (
 )
 
 const systemPrompt = `Ты — Geek, экзаменатор устного экзамена по университетскому курсу. Говоришь только по-русски.
-Опирайся только на текст темы из материалов курса; не добавляй сведений вне него и не подсказывай ответ.
-Отвечай одним JSON-объектом без Markdown вокруг.`
+Опирайся только на текст темы из материалов курса; не добавляй сведений вне него. В вопросах не подсказывай ответ.
+Обращайся к студенту на «ты». Отвечай одним JSON-объектом без Markdown вокруг.`
 
 func topic(n exam.Node) string {
 	var b strings.Builder
@@ -36,7 +36,8 @@ func dialogue(turns []exam.Turn) string {
 		if t.Speaker == exam.SpeakerStudent {
 			who = "Студент"
 		}
-		fmt.Fprintf(&b, "[%d] %s: %s\n", t.Line, who, t.Text)
+		// The recap is about the previous topic, not this one.
+		fmt.Fprintf(&b, "[%d] %s: %s\n", t.Line, who, strings.TrimPrefix(t.Text, t.Recap))
 	}
 	return b.String()
 }
@@ -83,5 +84,27 @@ verdict:
 - "insufficient" — последняя реплика не по теме или неразборчива, вывод сделать нельзя;
 - "answered" — во всех остальных случаях.
 evidence_lines — номера строк реплик студента, на которых основана оценка.
-Верни JSON: {"verdict": "answered", "criteria": {"k1": 0, "k2": 0, "k3": 0, "k4": 0}, "evidence_lines": [1], "rationale": "кратко, почему"}`
+` + replyRules(r.Prerequisites) + `
+reaction — живая реакция экзаменатора на последнюю реплику студента, одно-два предложения: что верно, чего не хватает или где ошибка. Правильный ответ не раскрывай: по теме ещё могут быть вопросы.
+explanation — реакция и затем кратко, в два-четыре предложения, как правильно по тексту темы.
+Верни JSON: {"verdict": "answered", "criteria": {"k1": 0, "k2": 0, "k3": 0, "k4": 0}, "evidence_lines": [1], "rationale": "кратко, почему", "reaction": "реплика", "explanation": "реплика"}`
+}
+
+// explanationPrompt asks for the correct answer after the student gave up.
+func explanationPrompt(r application.EvaluationRequest) string {
+	return topic(r.Node) + "\n" + dialogue(r.Dialogue) + `
+Студент не знает ответа. Без упрёка кратко, в два-четыре предложения, объясни, как правильно по тексту темы.
+` + replyRules(r.Prerequisites) + `
+Верни JSON: {"text": "реплика"}`
+}
+
+// replyRules are the rules of Geek's reply to an answer. The next question is
+// added after the reply, so the reply asks nothing; the prerequisites may be
+// asked next, so the reply does not explain them.
+func replyRules(prerequisites []string) string {
+	rules := `Реплика обращена к студенту, без вопросов в конце: следующий вопрос Geek добавит сам. Не называй оценку и критерии. Студент не видит текст темы: не ссылайся на него.`
+	if len(prerequisites) > 0 {
+		rules += "\nНе объясняй эти темы: о них Geek может спросить следующими — " + strings.Join(prerequisites, "; ") + "."
+	}
+	return rules
 }

@@ -71,8 +71,8 @@ func (g *Gateway) Question(ctx context.Context, r application.QuestionRequest) (
 	return text, err
 }
 
-func (g *Gateway) Evaluate(ctx context.Context, r application.EvaluationRequest) (exam.Evaluation, error) {
-	var result exam.Evaluation
+func (g *Gateway) Evaluate(ctx context.Context, r application.EvaluationRequest) (application.Assessment, error) {
+	var result application.Assessment
 	err := g.complete(ctx, "evaluate:"+string(r.Kind), llmgatewayv1.Complexity_COMPLEXITY_HIGH, evaluationPrompt(r), func(content []byte) error {
 		var out struct {
 			Verdict  exam.Verdict `json:"verdict"`
@@ -82,7 +82,9 @@ func (g *Gateway) Evaluate(ctx context.Context, r application.EvaluationRequest)
 				K3 *int `json:"k3"`
 				K4 *int `json:"k4"`
 			} `json:"criteria"`
-			Evidence []int `json:"evidence_lines"`
+			Evidence    []int  `json:"evidence_lines"`
+			Reaction    string `json:"reaction"`
+			Explanation string `json:"explanation"`
 		}
 		if err := json.Unmarshal(content, &out); err != nil {
 			return err
@@ -102,13 +104,32 @@ func (g *Gateway) Evaluate(ctx context.Context, r application.EvaluationRequest)
 		default:
 			return fmt.Errorf("unknown verdict %q", out.Verdict)
 		}
-		result = e
+		// Without a reply Geek just asks on, so a missing one is not an error.
+		result = application.Assessment{Evaluation: e, Reaction: strings.TrimSpace(out.Reaction), Explanation: strings.TrimSpace(out.Explanation)}
 		return nil
 	})
 	if err != nil {
-		return exam.Evaluation{}, err
+		return application.Assessment{}, err
 	}
 	return result, nil
+}
+
+// Explain is asked live after the "don't know" button, so it uses the fast low pool.
+func (g *Gateway) Explain(ctx context.Context, r application.EvaluationRequest) (string, error) {
+	var text string
+	err := g.complete(ctx, "explain", llmgatewayv1.Complexity_COMPLEXITY_LOW, explanationPrompt(r), func(content []byte) error {
+		var out struct {
+			Text string `json:"text"`
+		}
+		if err := json.Unmarshal(content, &out); err != nil {
+			return err
+		}
+		if text = strings.TrimSpace(out.Text); text == "" {
+			return errors.New("empty text")
+		}
+		return nil
+	})
+	return text, err
 }
 
 // complete asks for a JSON object and hands each answer to parse, which

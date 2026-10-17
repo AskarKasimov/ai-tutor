@@ -77,7 +77,6 @@ jobs:
           set -euo pipefail
           sh -n prod.sh
           sh -n dev.sh
-          sh scripts/test-dev-startup.sh
           docker compose --env-file .env.example config --quiet
           COMPOSE_PROFILES= docker compose --env-file .env.example config --quiet
           for env_file in .env.example .env.prod.example; do

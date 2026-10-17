@@ -70,7 +70,7 @@ class LinkDecision(StrictModel):
     target_id: Text
     prerequisite_id: Text
     requirement: Text
-    reason: str = Field(default="", max_length=4000)
+    reason: Text
     target_evidence: Evidence
     prerequisite_evidence: Evidence
 
@@ -79,7 +79,7 @@ class RequirementDecision(StrictModel):
     target_id: Text
     requirement: Text
     prerequisite_ids: list[Text]
-    reason: str = Field(default="", max_length=4000)
+    reason: Text
 
 
 class LinkResponse(StrictModel):

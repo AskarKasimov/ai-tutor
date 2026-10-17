@@ -90,6 +90,9 @@ function geekBackend(
     answerGate: null as Promise<void> | null,
     // Holds the response of an answer the backend has already accepted.
     replyGate: null as Promise<void> | null,
+    // Holds Geek's voice; failVoice answers it with 503.
+    voiceGate: null as Promise<void> | null,
+    failVoice: false,
   }
   let session: {
     id: string
@@ -273,10 +276,17 @@ function geekBackend(
       /\/diagnostic-sessions\/d1\/turns\/t\d+\/audio\?part=(reply|question)$/.test(
         url,
       )
-    )
+    ) {
+      if (control.voiceGate) await control.voiceGate
+      if (control.failVoice)
+        return Response.json(
+          { code: 'PROCESSING_UNAVAILABLE', message: 'Недоступно.' },
+          { status: 503 },
+        )
       return new Response(await validWavBlob().arrayBuffer(), {
         headers: { 'Content-Type': 'audio/wav' },
       })
+    }
     if (url.endsWith('/voice/transcriptions') && method === 'POST')
       return Response.json({
         id: 'tr-1',
@@ -472,7 +482,7 @@ it('says the course is not ready when its graph is not built', async () => {
   )
 })
 
-it('answers by voice after the student checks the transcript', async () => {
+it('sends a spoken answer as soon as it is transcribed', async () => {
   const { answers } = geekBackend()
   let recorder:
     | {
@@ -519,20 +529,11 @@ it('answers by voice after the student checks the transcript', async () => {
     await screen.findByRole('button', { name: 'Остановить запись' }),
   )
   expect(recorder).toBeDefined()
-  const transcript = await screen.findByRole('region', {
-    name: 'Проверьте расшифровку',
-  })
-  expect(
-    within(transcript).getByText('Эвристика оценивает путь до цели'),
-  ).toBeVisible()
-  await act(async () => {
-    fireEvent.click(
-      within(transcript).getByRole('button', { name: 'Отправить' }),
-    )
-  })
+  // The transcript is sent at once: no check or re-recording step.
   expect(
     await screen.findByText('А где допустимая эвристика не поможет?'),
   ).toBeVisible()
+  expect(screen.queryByRole('button', { name: 'Записать заново' })).toBeNull()
   expect(answers[0].body).toEqual({ turn_id: 't1', transcription_id: 'tr-1' })
 })
 
@@ -823,4 +824,42 @@ it('keeps a diagnostic cancelled when the response of an earlier answer lands la
       'Курс обновился, и эта диагностика прервана. Начните новую на главной.',
     ),
   ).toBeVisible()
+})
+
+it('keeps the reply hidden behind the thinking animation until its voice starts', async () => {
+  const { control, fetch } = geekBackend()
+  renderApp()
+  await start()
+  await waitFor(() => expect(FakeAudio.played).toHaveLength(1))
+  const voice = gate()
+  control.voiceGate = voice.closed
+  await answerByText('Перестанет быть оптимальным')
+  // The answer is accepted, but the reaction is not voiced yet.
+  await waitFor(() =>
+    expect(
+      fetch.mock.calls.some(([url]) => url.endsWith('/t3/audio?part=reply')),
+    ).toBe(true),
+  )
+  expect(screen.getByText('Geek думает…')).toBeVisible()
+  expect(screen.queryByText('Верно про оптимальность.')).toBeNull()
+  expect(screen.getByRole('textbox', { name: 'Ваш ответ' })).toBeDisabled()
+
+  voice.open()
+  expect(await screen.findByText('Верно про оптимальность.')).toBeVisible()
+  expect(
+    screen.getByText('А где допустимая эвристика не поможет?'),
+  ).toBeVisible()
+  expect(screen.queryByText('Geek думает…')).toBeNull()
+  expect(screen.getByRole('textbox', { name: 'Ваш ответ' })).toBeEnabled()
+})
+
+it('shows the reply when its voice fails instead of thinking forever', async () => {
+  const { control } = geekBackend()
+  renderApp()
+  await start()
+  await waitFor(() => expect(FakeAudio.played).toHaveLength(1))
+  control.failVoice = true
+  await answerByText('Перестанет быть оптимальным')
+  expect(await screen.findByText('Верно про оптимальность.')).toBeVisible()
+  expect(screen.queryByText('Geek думает…')).toBeNull()
 })

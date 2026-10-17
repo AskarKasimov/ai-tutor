@@ -28,6 +28,9 @@ import { LiveWaveform } from './trainer-answer'
 import { TrainerProgress, TrainerShell } from './trainer-shared'
 import styles from './geek.module.scss'
 
+// The longest a reply to an answer stays hidden while its voice is coming.
+const REVEAL_TIMEOUT_MS = 20_000
+
 type Props = {
   userId: string
   sessionId: string
@@ -127,6 +130,23 @@ function Dialogue({
   const currentTurnId = session.currentTurnId
   const lastTurn = session.turns[session.turns.length - 1]
 
+  // The Geek turn that replies to an answer stays hidden behind the thinking
+  // animation until its voice starts, so the text and the reaction arrive
+  // together instead of the text waiting seconds for synthesis. answered is
+  // the turn the student replied to; the turn after it is the hidden one.
+  const [answered, setAnswered] = useState<string | null>(null)
+  const hiddenId =
+    answered && lastTurn?.speaker === 'geek' && lastTurn.id !== answered
+      ? lastTurn.id
+      : null
+  const reveal = useCallback(() => setAnswered(null), [])
+  useEffect(() => {
+    if (!hiddenId) return
+    // The voice may never come (a slow or failing speech service).
+    const timer = setTimeout(reveal, REVEAL_TIMEOUT_MS)
+    return () => clearTimeout(timer)
+  }, [hiddenId, reveal])
+
   // A new Geek turn is voiced at once; the first one after loading too, since
   // the student has just pressed start or continue.
   const voiced = useRef('')
@@ -138,17 +158,21 @@ function Dialogue({
       !capturing
     ) {
       voiced.current = lastTurn.id
-      void play(lastTurn)
+      void play(lastTurn, lastTurn.id === hiddenId ? reveal : undefined)
     }
-  }, [lastTurn, play, capturing])
+  }, [lastTurn, play, capturing, hiddenId, reveal])
   useEffect(() => {
     end.current?.scrollIntoView?.({ block: 'end' })
-  }, [session.turns.length, answer.isPending])
+  }, [session.turns.length, answer.isPending, hiddenId])
 
+  const submit = (variables: NonNullable<typeof answer.variables>) => {
+    setAnswered(variables.turnId)
+    answer.mutate(variables)
+  }
   const send = (reply: DiagnosticAnswer, display: string) => {
     if (!currentTurnId || answer.isPending) return
     audio.stop()
-    answer.mutate({ turnId: currentTurnId, answer: reply, display })
+    submit({ turnId: currentTurnId, answer: reply, display })
   }
   const pending = answer.isPending ? answer.variables : undefined
   // A failed answer belongs to its own turn: once the session moved on, the
@@ -171,27 +195,27 @@ function Dialogue({
         {t('geek.title')}
       </Heading>
       <ol className={styles.turns}>
-        {session.turns.map((turn) => (
-          <TurnItem key={turn.id} turn={turn} audio={audio} muted={capturing} />
-        ))}
+        {session.turns
+          .filter((turn) => turn.id !== hiddenId)
+          .map((turn) => (
+            <TurnItem
+              key={turn.id}
+              turn={turn}
+              audio={audio}
+              muted={capturing}
+            />
+          ))}
         {pending && (
-          <>
-            <li className={styles.student}>
-              <Text as="p" className={styles.bubble}>
-                {pending.display}
-              </Text>
-            </li>
-            <li className={styles.geek}>
-              <Text role="status" className={styles.thinking}>
-                <LoaderCircle
-                  size={16}
-                  className={styles.spin}
-                  aria-hidden="true"
-                />
-                {t('geek.thinking')}
-              </Text>
-            </li>
-          </>
+          <li className={styles.student}>
+            <Text as="p" className={styles.bubble}>
+              {pending.display}
+            </Text>
+          </li>
+        )}
+        {(pending || hiddenId) && (
+          <li className={styles.geek}>
+            <Thinking label={t('geek.thinking')} />
+          </li>
         )}
       </ol>
       {refreshFailed && (
@@ -220,13 +244,12 @@ function Dialogue({
         <Composer
           key={currentTurnId}
           turnId={currentTurnId ?? ''}
-          busy={answer.isPending}
+          busy={answer.isPending || !!hiddenId}
           error={failed}
           onSend={send}
           // The retry repeats the failed request exactly: its turn and key.
           onRetry={() => {
-            if (answer.variables && !answer.isPending)
-              answer.mutate(answer.variables)
+            if (answer.variables && !answer.isPending) submit(answer.variables)
           }}
           onBeforeRecord={audio.stop}
           onCapture={setCapturing}
@@ -336,8 +359,8 @@ function errorText(error: Error | null, t: (key: string) => string) {
   return t('geek.answerError')
 }
 
-// The answer field: text, a spoken answer checked as a transcript before
-// sending, or "don't know".
+// The answer field: text, a spoken answer sent as soon as it is transcribed,
+// or "don't know".
 function Composer({
   turnId,
   busy,
@@ -359,10 +382,11 @@ function Composer({
 }) {
   const { t } = useTranslation()
   const [text, setText] = useState('')
-  const voice = useVoiceAnswer(turnId)
+  const voice = useVoiceAnswer(turnId, (transcript) =>
+    onSend({ kind: 'voice', transcriptionId: transcript.id }, transcript.text),
+  )
   const recording = voice.recording || voice.requesting
-  const capturing =
-    recording || voice.preparing || voice.transcribing || !!voice.transcript
+  const capturing = recording || voice.preparing || voice.transcribing
   useEffect(() => {
     onCapture(capturing)
   }, [capturing, onCapture])
@@ -409,35 +433,7 @@ function Composer({
           )}
         </div>
       )}
-      {voice.transcript ? (
-        <section
-          className={styles.transcript}
-          aria-labelledby="transcript-title"
-        >
-          <Text as="p" size="2" weight="bold" id="transcript-title">
-            {t('geek.transcriptTitle')}
-          </Text>
-          <Text as="p" className={styles.transcriptText}>
-            {voice.transcript.text}
-          </Text>
-          <div className={styles.transcriptActions}>
-            <Button
-              disabled={busy}
-              onClick={() =>
-                onSend(
-                  { kind: 'voice', transcriptionId: voice.transcript!.id },
-                  voice.transcript!.text,
-                )
-              }
-            >
-              {t('geek.sendTranscript')}
-            </Button>
-            <Button variant="soft" disabled={busy} onClick={voice.discard}>
-              {t('geek.rerecord')}
-            </Button>
-          </div>
-        </section>
-      ) : recording || voice.preparing || voice.transcribing ? (
+      {recording || voice.preparing || voice.transcribing ? (
         <div className={styles.recording}>
           {recording ? (
             <>
@@ -461,14 +457,7 @@ function Composer({
               </button>
             </>
           ) : (
-            <Text role="status" className={styles.thinking}>
-              <LoaderCircle
-                size={16}
-                className={styles.spin}
-                aria-hidden="true"
-              />
-              {t('geek.transcribing')}
-            </Text>
+            <Thinking label={t('geek.transcribing')} />
           )}
         </div>
       ) : (
@@ -537,5 +526,20 @@ function Composer({
         </Button>
       </div>
     </div>
+  )
+}
+
+// Geek's typing: three dots in a bubble, with the label for screen readers
+// and as a hint next to it.
+function Thinking({ label }: { label: string }) {
+  return (
+    <Text role="status" className={styles.thinking}>
+      <span className={styles.dots} aria-hidden="true">
+        <span />
+        <span />
+        <span />
+      </span>
+      {label}
+    </Text>
   )
 }

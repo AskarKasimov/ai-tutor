@@ -164,3 +164,30 @@ def test_three_node_model_cycle_is_rejected_across_separate_batches():
     assert graph["quality"]["cycles_rejected"] == 1
     assert graph["quality"]["unresolved_requirements"] == 1
     validate_topology(topics, graph["prerequisites"], [])
+
+
+def test_long_reason_over_600_chars_is_accepted():
+    topics = [make_topic("a", "Производная", ["Вычисление производной"]),
+              make_topic("b", "Оптимизация", ["Обновление"], ["Вычисление производной"])]
+
+    async def judge_with_long_reason(system, payload):
+        decision = json.loads(await grounded_judge(system, payload))
+        decision["requirements"][0]["reason"] = "Подробное объяснение " * 50  # ~1100 chars (>600)
+        return json.dumps(decision)
+
+    graph = asyncio.run(build_links(topics, judge_with_long_reason, Encoder()))
+    assert len(graph["prerequisites"]) == 1
+    assert graph["prerequisites"][0]["source"] == "a"
+    assert graph["prerequisites"][0]["target"] == "b"
+    assert len(graph["requirements"][0]["reason"]) > 600
+
+
+def test_siblings_requesting_same_unresolved_parent_do_not_become_parent_of_each_other():
+    a = make_topic("a", "Риски автоматизации для рынка труда", ["Знание 1"])
+    a.parent_title = "Почему нам стоит волноваться об ИИ?"
+    b = make_topic("b", "Эмпирические данные о влиянии ИИ на занятость", ["Знание 2"])
+    b.parent_title = "Почему нам стоит волноваться об ИИ?"
+
+    _, edges, _ = build_hierarchy([a, b], [], {})
+    assert edges == []
+

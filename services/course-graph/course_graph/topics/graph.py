@@ -120,7 +120,7 @@ def evidence_for(topic, query, limit, encoder=None):
 def valid_evidence(evidence, excerpts):
     if not excerpts or not evidence or not evidence.quote or not evidence.quote.strip():
         return False
-    raw_quote = evidence.quote.strip()
+    raw_quote = evidence.quote.strip().strip("\"'«»“”`")
     words = raw_quote.split()
     if not words:
         return False
@@ -212,7 +212,10 @@ def build_hierarchy(topics: list[Topic], edges: list[dict], canonical: dict[str,
     # unresolved. Creating a synthetic assessable topic would invent content.
     hierarchy, hierarchy_adj, seen = [], {}, set()
     for p_title, children in parent_requests.items():
-        parent = resolve_parent_topic(p_title, topics, by_norm, encoder)
+        child_ids = {c.id for c in children}
+        valid_candidates = [t for t in topics if t.id not in child_ids]
+        candidate_by_norm = {normalized_title(t.title): t for t in valid_candidates}
+        parent = resolve_parent_topic(p_title, valid_candidates, candidate_by_norm, encoder)
         if parent:
             for c in children:
                 if ((parent.id, c.id) not in seen and c.id != parent.id
@@ -334,7 +337,7 @@ async def build_links(topics, complete, encoder, per_requirement=5, max_chars=16
                 left = await judge(batch[:midpoint], False)
                 right = await judge(batch[midpoint:], False)
                 return left[0]+right[0], left[1]+right[1]
-            reason = f"Отклонено: {' '.join(str(error).split())}"[:500]
+            reason = f"Отклонено: {' '.join(str(error).split())}"[:3000]
             return [], [RequirementDecision(target_id=item["target_id"], requirement=item["requirement"],
                                            prerequisite_ids=[], reason=reason) for item in batch]
 

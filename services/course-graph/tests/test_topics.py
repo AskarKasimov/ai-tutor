@@ -5,7 +5,10 @@ import numpy as np
 import pytest
 
 from course_graph.topics.extract import (
+    PROMPT,
     ExtractionSettings,
+    absorb_thin_topics,
+    content_chars,
     administrative_question,
     clean_topic_title,
     extract_topics,
@@ -577,3 +580,29 @@ def test_resolve_parent_topic_fuzzy_and_containment():
     assert hierarchy[0]["source"] == "t_parent"
     assert hierarchy[0]["target"] == "t_child"
     assert "t_child" in hierarchy_adj.get("t_parent", set())
+
+
+def test_thin_topics_are_merged_into_the_nearest_topic_without_losing_text():
+    body = "Муравьи откладывают феромон на пройденном пути, и следующие муравьи чаще выбирают путь с большим следом. " * 2
+    demo = "## Демонстрация\n\nДемонстрация алгоритма на Python."
+    near = make_topic("near", "Феромоновые следы", ["Объяснять роль феромона"], text=body)
+    thin = make_topic("thin", "Демонстрация ACO", ["Видеть работу ACO"], requires=["Python"], text=demo)
+    thin.sources[0].start, thin.sources[0].end = 10, 10 + len(demo)
+    far = make_topic("far", "Задача коммивояжёра", ["Формулировать TSP"], text=body)
+    far.sources[0].material_id = "other"
+    kept, merged = absorb_thin_topics([near, thin, far], 120)
+    assert [t.id for t in kept] == ["near", "far"]
+    assert merged == [{"title": "Демонстрация ACO", "into": "Феромоновые следы"}]
+    assert demo in kept[0].text and "Видеть работу ACO" in kept[0].provides and "Python" in kept[0].requires
+    assert content_chars(demo) < 120 <= content_chars(body)
+
+
+def test_a_material_of_only_thin_topics_keeps_them():
+    a = make_topic("a", "Заголовок", ["Знание"], text="# Заголовок")
+    kept, merged = absorb_thin_topics([a], 120)
+    assert kept == [a] and merged == []
+
+
+def test_extraction_asks_reasoning_questions_and_no_empty_topics():
+    assert "на рассуждение" in PROMPT and "Кто и когда" in PROMPT
+    assert "ТЕМА БЕЗ СОДЕРЖАНИЯ" in PROMPT

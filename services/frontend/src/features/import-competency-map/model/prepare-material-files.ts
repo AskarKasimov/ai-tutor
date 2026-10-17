@@ -26,9 +26,14 @@ function isHiddenOrServiceEntry(name: string) {
   const segments = name.split('/')
   return segments.some(
     (segment) =>
-      segment.startsWith('.') ||
-      segment === '__MACOSX' ||
-      segment.toLowerCase() === 'thumbs.db',
+      segment.startsWith('.') || segment.toLowerCase() === 'thumbs.db',
+  )
+}
+
+function isMacOSMetadataEntry(name: string) {
+  const segments = name.split('/')
+  return (
+    segments.includes('__MACOSX') || segments.at(-1)?.startsWith('._') === true
   )
 }
 
@@ -50,6 +55,7 @@ export async function prepareMaterialFiles(file: File): Promise<File[]> {
   unzip.register(AsyncUnzipInflate)
   const entries: { name: string; chunks: Uint8Array[]; bytes: number }[] = []
   const invalid: string[] = []
+  let fileEntryCount = 0
   let totalBytes = 0
   let failure: Error | undefined
   let inputDone = false
@@ -71,11 +77,13 @@ export async function prepareMaterialFiles(file: File): Promise<File[]> {
     finishCallback = finish
     unzip.onfile = (entry) => {
       if (entry.name.endsWith('/')) return
-      if (entries.length + invalid.length >= MATERIAL_ENTRY_LIMIT) {
+      fileEntryCount++
+      if (fileEntryCount > MATERIAL_ENTRY_LIMIT) {
         fail(new MaterialArchiveError('too-many-files'))
         entry.terminate()
         return
       }
+      if (isMacOSMetadataEntry(entry.name)) return
       if (
         !entry.name.toLowerCase().endsWith('.pdf') ||
         isHiddenOrServiceEntry(entry.name)

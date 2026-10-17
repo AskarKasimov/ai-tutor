@@ -172,7 +172,7 @@ export function MaterialUploadQueue({
                 <Button
                   type="button"
                   variant="ghost"
-                  size="2"
+                  size="1"
                   className={styles.orderButton}
                   aria-label={t('competencyMap.queueMoveUp', {
                     name: item.file.name,
@@ -196,12 +196,12 @@ export function MaterialUploadQueue({
                     })
                   }
                 >
-                  <ChevronUp aria-hidden="true" size={20} />
+                  <ChevronUp aria-hidden="true" size={16} />
                 </Button>
                 <Button
                   type="button"
                   variant="ghost"
-                  size="2"
+                  size="1"
                   className={styles.orderButton}
                   aria-label={t('competencyMap.queueMoveDown', {
                     name: item.file.name,
@@ -225,7 +225,7 @@ export function MaterialUploadQueue({
                     })
                   }
                 >
-                  <ChevronDown aria-hidden="true" size={20} />
+                  <ChevronDown aria-hidden="true" size={16} />
                 </Button>
               </div>
             </div>

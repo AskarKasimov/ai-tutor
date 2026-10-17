@@ -38,12 +38,15 @@
 }
 .orderButtons {
   display: flex;
-  gap: 0;
+  gap: var(--space-1);
+}
+.orderButtons :global(.rt-Button.rt-variant-ghost) {
+  margin: 0;
 }
 .orderButton {
-  width: 1.75rem;
-  height: 2.5rem;
-  padding: var(--space-1);
+  width: 1.5rem;
+  height: 1.5rem;
+  padding: 0;
 }
 .dragHandle {
   width: 1.75rem;

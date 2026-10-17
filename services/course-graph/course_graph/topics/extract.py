@@ -357,7 +357,8 @@ async def extract_topics(text, complete, material_id="material", week=None, sett
     results = []
     known_topics = []
     for batch in batches:
-        batch_results = await classify(batch, existing_topics=known_topics if known_topics else None)
+        recent_topics = known_topics[-15:] if known_topics else None
+        batch_results = await classify(batch, existing_topics=recent_topics)
         results.extend(batch_results)
         for decision, _ in batch_results:
             for item in decision.topics:

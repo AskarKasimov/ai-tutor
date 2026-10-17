@@ -57,6 +57,7 @@ import {
   moveMaterialQueueItemToIndex,
   sortMaterialsByWeek,
   materialInProgress,
+  materialPreparationStatus,
 } from '@/features/import-competency-map'
 import type { MaterialQueueItem } from '@/features/import-competency-map'
 import {
@@ -225,6 +226,10 @@ function CompetencyMapAdmin({
   const parsedCount = materials.filter(
     (material) => material.status === 'parsed',
   ).length
+  const processingCount = materials.filter(materialInProgress).length
+  const readyCount = materials.filter(
+    (material) => materialPreparationStatus(material) === 'ready',
+  ).length
   const failedCount = materials.filter(
     (material) => material.status === 'failed',
   ).length
@@ -233,9 +238,6 @@ function CompetencyMapAdmin({
   ).length
   const graphBlockers = [
     ...(materials.length === 0 ? [t('courseGraph.blockNoMaterials')] : []),
-    ...(parsedCount === 0 && materials.length > 0
-      ? [t('courseGraph.blockNoParsed')]
-      : []),
     ...(missingMetadataCount > 0
       ? [t('courseGraph.blockMetadata', { count: missingMetadataCount })]
       : []),
@@ -552,7 +554,8 @@ function CompetencyMapAdmin({
               <Text as="p" color="gray" size="2">
                 {t('courseGraph.materialSummary', {
                   total: materials.length,
-                  parsed: parsedCount,
+                  ready: readyCount,
+                  processing: processingCount,
                   failed: failedCount,
                 })}
               </Text>
@@ -785,12 +788,9 @@ function MaterialItemCard({
   )
 
   const processing = materialInProgress(material)
+  const preparationStatus = materialPreparationStatus(material)
   const statusTone =
-    material.status === 'parsed'
-      ? 'green'
-      : material.status === 'failed'
-        ? 'red'
-        : 'amber'
+    preparationStatus === 'failed' ? 'red' : processing ? 'amber' : 'green'
   const metadataIsValid =
     /^\d+$/.test(week) &&
     Number(week) > 0 &&
@@ -839,7 +839,7 @@ function MaterialItemCard({
   return (
     <CourseMaterialCard
       name={material.filename}
-      status={t(`competencyMap.materialsStatus.${material.status}`)}
+      status={t(`competencyMap.materialPreparation.${preparationStatus}`)}
       statusColor={statusTone}
       nameAction={
         <Button

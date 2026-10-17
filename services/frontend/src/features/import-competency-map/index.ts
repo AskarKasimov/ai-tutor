@@ -32,5 +32,6 @@ export {
 
 export {
   materialInProgress,
+  materialPreparationStatus,
   materialsRefetchInterval,
 } from './model/material-processing'

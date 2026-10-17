@@ -185,7 +185,9 @@ it('shows the master pipeline stage while translation is running and blocks grap
   setup({ processing: true })
   open()
   expect(
-    await screen.findByText('Дождитесь завершения распознавания материалов.'),
+    await screen.findByText(
+      'Дождитесь завершения обработки материалов: распознавания, перевода и очистки текста.',
+    ),
   ).toBeInTheDocument()
   expect(screen.getByRole('button', { name: /Собрать граф/ })).toBeDisabled()
 })
@@ -345,11 +347,13 @@ it('shows terminal cleaning failure in the original card without a pending block
   expect(await screen.findByText('Очистка материала не удалась.')).toBeVisible()
   expect(
     screen.getByText(
-      'У 1 материалов ошибка распознавания: удалите их или загрузите заново.',
+      'У 1 материалов ошибка обработки. Подробности — в карточках; замените файл или удалите его.',
     ),
   ).toBeVisible()
   expect(
-    screen.queryByText('Дождитесь завершения распознавания материалов.'),
+    screen.queryByText(
+      'Дождитесь завершения обработки материалов: распознавания, перевода и очистки текста.',
+    ),
   ).not.toBeInTheDocument()
 })
 
@@ -379,3 +383,33 @@ it.each([{}, { cleaningFailed: true }])(
     expect(screen.getByRole('button', { name: 'Удалить' })).toBeVisible()
   },
 )
+
+it.each([
+  [{ processing: true }, 'Переводится на русский'],
+  [{ cleaning: true }, 'Очищается текст'],
+  [{ pending: true }, 'В очереди на распознавание'],
+] as const)(
+  'shows the active processing stage and counts only ready materials (%j)',
+  async (state, label) => {
+    setup(state)
+    open()
+    expect(await screen.findByText(label)).toBeVisible()
+    expect(
+      screen.getByText(
+        'Материалов: 1 · готово к графу: 0 · в обработке: 1 · с ошибкой: 0',
+      ),
+    ).toBeVisible()
+    expect(screen.queryByText('Готов к графу')).not.toBeInTheDocument()
+  },
+)
+
+it('marks completed materials ready for the graph', async () => {
+  setup()
+  open()
+  expect(await screen.findByText('Готов к графу')).toBeVisible()
+  expect(
+    screen.getByText(
+      'Материалов: 1 · готово к графу: 1 · в обработке: 0 · с ошибкой: 0',
+    ),
+  ).toBeVisible()
+})

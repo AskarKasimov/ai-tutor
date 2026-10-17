@@ -1,6 +1,19 @@
 import { zipSync, strToU8 } from 'fflate'
 import { expect, it } from 'vitest'
-import { prepareMaterialFiles } from '@/features/import-competency-map/model/prepare-material-files'
+import {
+  assertMaterialQueueCapacity,
+  MATERIAL_QUEUE_ITEM_LIMIT,
+  prepareMaterialFiles,
+} from '@/features/import-competency-map/model/prepare-material-files'
+
+it('allows a 500-item queue and rejects the 501st item', () => {
+  expect(() =>
+    assertMaterialQueueCapacity(MATERIAL_QUEUE_ITEM_LIMIT - 1, 1),
+  ).not.toThrow()
+  expect(() =>
+    assertMaterialQueueCapacity(MATERIAL_QUEUE_ITEM_LIMIT, 1),
+  ).toThrow(expect.objectContaining({ message: 'too-many-files' }))
+})
 
 it('accepts one signed PDF', async () => {
   const file = new File(['%PDF-1.7 body'], 'week.pdf')

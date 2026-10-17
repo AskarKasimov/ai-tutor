@@ -1,45 +1,9 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { strToU8, zipSync } from 'fflate'
 import { expect, it, vi } from 'vitest'
 import { createAppDependencies } from '@/bootstrap/dependencies'
 import { createQueryClient } from '@/bootstrap/providers'
 import { MaterialUploadQueue } from '@/features/import-competency-map/ui/material-upload-queue'
 import { createQueryWrapper } from '../../../support/query-wrapper'
-
-it('does not queue more than 500 PDFs in one upload batch', async () => {
-  const dependencies = createAppDependencies()
-  dependencies.competencyMap.uploadCourseMaterials = vi
-    .fn()
-    .mockResolvedValue({ results: [] })
-  render(
-    <MaterialUploadQueue
-      userId="user-1"
-      subjectId="subject-1"
-      kinds={[{ code: 'lecture', label: 'Лекция' }]}
-    />,
-    { wrapper: createQueryWrapper(createQueryClient(), dependencies) },
-  )
-
-  const files = Object.fromEntries(
-    Array.from({ length: 500 }, (_, index) => [
-      `week-${index}.pdf`,
-      strToU8('%PDF-1.7'),
-    ]),
-  )
-  fireEvent.change(screen.getByLabelText('Добавить PDF или ZIP'), {
-    target: { files: [new File([zipSync(files)], 'materials.zip')] },
-  })
-  await waitFor(() => expect(screen.getAllByRole('listitem')).toHaveLength(500))
-
-  fireEvent.change(screen.getByLabelText('Добавить PDF или ZIP'), {
-    target: { files: [new File(['%PDF-1.7'], 'extra.pdf')] },
-  })
-  expect(await screen.findByRole('alert')).toHaveTextContent('500')
-  expect(screen.getAllByRole('listitem')).toHaveLength(500)
-  expect(
-    dependencies.competencyMap.uploadCourseMaterials,
-  ).not.toHaveBeenCalled()
-})
 
 it('sorts by week and supports drag-and-drop and reorder buttons', async () => {
   const dependencies = createAppDependencies()

@@ -6,6 +6,14 @@ export const MATERIAL_ENTRY_LIMIT = 500
 export const MATERIAL_QUEUE_ITEM_LIMIT = MATERIAL_ENTRY_LIMIT
 export const MATERIAL_QUEUE_LIMIT = 250 * 1024 * 1024
 
+export function assertMaterialQueueCapacity(
+  currentCount: number,
+  incomingCount: number,
+) {
+  if (currentCount + incomingCount > MATERIAL_QUEUE_ITEM_LIMIT)
+    throw new MaterialArchiveError('too-many-files')
+}
+
 export class MaterialArchiveError extends Error {
   constructor(
     message: string,

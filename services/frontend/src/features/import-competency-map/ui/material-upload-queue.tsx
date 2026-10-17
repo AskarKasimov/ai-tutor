@@ -193,9 +193,10 @@ export function MaterialUploadQueue({
                 </Text>
               )}
             </div>
-            <label>
-              {t('courseGraph.weekLabel')}
+            <label className={styles.weekField}>
+              <span>{t('courseGraph.weekLabel')}</span>
               <TextField.Root
+                className={styles.weekInput}
                 type="number"
                 min="1"
                 value={item.week}
@@ -213,8 +214,7 @@ export function MaterialUploadQueue({
                 }
               />
             </label>
-            <label>
-              {t('courseGraph.kindLabel')}
+            <div className={styles.kindField}>
               <Select.Root
                 value={item.kind}
                 disabled={disabled || upload.isPending || preparing}
@@ -228,7 +228,7 @@ export function MaterialUploadQueue({
                   )
                 }
               >
-                <Select.Trigger />
+                <Select.Trigger aria-label={t('courseGraph.kindLabel')} />
                 <Select.Content>
                   {kinds.map((kind) => (
                     <Select.Item key={kind.code} value={kind.code}>
@@ -237,7 +237,7 @@ export function MaterialUploadQueue({
                   ))}
                 </Select.Content>
               </Select.Root>
-            </label>
+            </div>
             <Button
               type="button"
               variant="soft"

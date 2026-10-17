@@ -79,6 +79,44 @@ def test_text_ocr_cache_records_exact_source_digest(monkeypatch, tmp_path):
     assert second["report"]["source_sha256"] == hashlib.sha256(content).hexdigest()
 
 
+def test_docling_ocr_caches_result_with_undecoded_formulas(monkeypatch, tmp_path):
+    import course_graph.ocr.converter as converter
+    from types import SimpleNamespace as S
+
+    monkeypatch.setenv("COURSE_GRAPH_OCR_CACHE_DIR", str(tmp_path))
+    monkeypatch.setenv("COURSE_GRAPH_WITH_DOCLING", "true")
+
+    class DummyDoc:
+        pages = {1: None}
+        texts = []
+        def export_to_markdown(self, page_no=None):
+            return "Определение: <!-- formula-not-decoded --> в формуле."
+
+    class DummyConverter:
+        initialized_pipelines = {}
+        def initialize_pipeline(self, *args, **kwargs):
+            return S(enrichment_pipe=[])
+        def convert(self, path):
+            return S(document=DummyDoc(), status="success")
+
+    monkeypatch.setattr(converter, "get_converter", lambda: DummyConverter())
+    import io
+    from pypdf import PdfWriter
+    writer = PdfWriter()
+    writer.add_blank_page(width=72, height=72)
+    stream = io.BytesIO()
+    writer.write(stream)
+    content = stream.getvalue()
+
+    first = converter.convert_document("lecture.pdf", content)
+    assert not first["report"]["cache_hit"]
+    assert first["report"]["undecoded_formulas"] == 1
+
+    second = converter.convert_document("lecture.pdf", content)
+    assert second["report"]["cache_hit"]
+    assert second["report"]["undecoded_formulas"] == 1
+
+
 def test_cpu_enrichment_uses_native_precision(monkeypatch):
     import docling.document_converter as docling
     import course_graph.ocr.converter as converter

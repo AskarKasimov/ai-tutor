@@ -107,8 +107,9 @@ def convert_document(filename: str, content: bytes) -> dict:
             report["warnings"].append("Часть формул не распознана; такие маркеры не являются учебным содержанием")
         data = {"markdown": markdown, "report": report}
         # Do not permanently cache a degraded fallback after transient model errors.
-        degraded = (report["undecoded_formulas"] > 0 or bool(picture_ocr and picture_ocr.get("failed_regions"))
-                    or any("частично" in w for w in report["warnings"]))
+        degraded = bool(picture_ocr and picture_ocr.get("failed_regions")) or any(
+            "частично" in w for w in report["warnings"]
+        )
         if cache_path and engine in {"docling", "text"} and not degraded:
             cache_path.parent.mkdir(parents=True, exist_ok=True)
             with tempfile.NamedTemporaryFile(mode="w", dir=cache_path.parent, delete=False) as f:

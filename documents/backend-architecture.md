@@ -1,6 +1,6 @@
 # Архитектура backend
 
-Код находится в `services/backend`, Go-модуль — `github.com/AskarKasimov/ai-tutor/services/backend`. Прежняя модель (карта компетенций, варианты, assessment, taskgen, тренировка, озвучка заданий) удалена 16.10.2026. Geek — модуль `features/geek`; оркестрация course-graph будет отдельным модулем с теми же слоями; LLM вызываются через отдельный LLM gateway (`services/llm-gateway`) с HTTP-контрактом в `openapi.yaml` и gRPC-контрактом в `services/shared/proto/llmgateway/v1/gateway.proto`; этапы обработки course-graph выполняет Python-сервис `services/course-graph`. Видение — в [README](../README.md).
+Код находится в `services/backend`, Go-модуль — `github.com/AskarKasimov/ai-tutor/services/backend`. Прежняя модель (карта компетенций, варианты, assessment, taskgen, тренировка, озвучка заданий) удалена 16.10.2026. Geek — модуль `features/geek`; оркестрация сборки графа — модуль `features/coursegraph` с теми же слоями; LLM вызываются через отдельный LLM gateway (`services/llm-gateway`) с HTTP-контрактом в `openapi.yaml` и gRPC-контрактом в `services/shared/proto/llmgateway/v1/gateway.proto`; этапы обработки course-graph выполняет Python-сервис `services/course-graph`. Видение — в [README](../README.md).
 
 ## Реализованные части
 
@@ -11,7 +11,8 @@
 | `features/auth` | Регистрация/вход, refresh/logout/me, общий аккаунт админки, PostgreSQL и Argon2id. |
 | `features/voice` | STT/TTS, проверка входа, сохранение расшифровки владельца. |
 | `features/subject` | Каталог предметов (курсов) и создание предмета admin. |
-| `features/materials` | Загрузка материалов курса, OCR через course-graph, хранение в S3 и PostgreSQL, список, удаление и выдача исходника. |
+| `features/materials` | Загрузка материалов курса, фоновые OCR через course-graph, перевод через LLM gateway и очистка с темами, хранение в S3 и PostgreSQL, список, удаление и выдача исходника. |
+| `features/coursegraph` | Сборка графа курса по кнопке (очередь с lease в PostgreSQL, вызов `/graph/build`), публикация и чтение снимка графа для админки. |
 | `features/geek` | Диагностика Geek: сценарии старта, ответа, итога и озвучки реплик; порты графа, хранилища, расшифровок, модели (Examiner), TTS и кэша аудио. Адаптеры: PostgreSQL, цепочка источников графа (БД, затем фикстура), gRPC-клиент LLM gateway, кэш WAV в S3. |
 | `entities/exam` | Граф курса (проверка ацикличности, верхний уровень, замыкание пререквизитов), таблица оценок A–D, обход экзамена, прогресс, пробелы и итог. Чистый код без IO. |
 | `entities` | Пользователь, auth-сессия, аудио (проверка, разбиение и склейка WAV), расшифровка, предмет, материал и экзамен. |

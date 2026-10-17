@@ -36,7 +36,7 @@ func configuredEnv(t *testing.T) map[string]string {
 
 func TestAudioConfigRequiresEverySetting(t *testing.T) {
 	for key := range configuredEnv(t) {
-		if key == "BACKEND_S3_ENDPOINT" || key == "BACKEND_S3_REGION" || key == "BACKEND_S3_PATH_STYLE" || key == "BACKEND_S3_TIMEOUT" || key == "BACKEND_S3_CREATE_BUCKET" {
+		if key == "BACKEND_TTS_INFERENCE_TIMESTEPS" || key == "BACKEND_S3_ENDPOINT" || key == "BACKEND_S3_REGION" || key == "BACKEND_S3_PATH_STYLE" || key == "BACKEND_S3_TIMEOUT" || key == "BACKEND_S3_CREATE_BUCKET" {
 			continue
 		}
 		t.Run(key, func(t *testing.T) {
@@ -82,6 +82,7 @@ func TestAudioConfigRejectsInvalidSettings(t *testing.T) {
 		"BACKEND_LLM_GATEWAY_ADDR":        {"gateway", ":8011", "http://gateway:8011", "gateway:abc", "gateway:0", "gateway:-1", "gateway:65536", "gateway:70000"},
 		"BACKEND_LLM_TIMEOUT":             {"bad", "0s", "-1s"},
 		"BACKEND_GEEK_MAX_QUESTIONS":      {"bad", "-1"},
+		"BACKEND_COURSE_GRAPH_TIMEOUT":    {"bad", "-1s"},
 	}
 	for key, values := range cases {
 		for _, value := range values {
@@ -154,6 +155,14 @@ func TestConfigLoadsTTSSettings(t *testing.T) {
 	if cfg.TTSSeed != 0 || cfg.TTSCFGValue != 1.5 || cfg.TTSInferenceTimesteps != 20 {
 		t.Fatalf("TTS settings ignored: %+v", cfg)
 	}
+	t.Setenv("BACKEND_TTS_INFERENCE_TIMESTEPS", "30")
+	if cfg, err = ConfigFromEnv(); err != nil || cfg.TTSInferenceTimesteps != 30 {
+		t.Fatalf("explicit steps = %d, %v", cfg.TTSInferenceTimesteps, err)
+	}
+	t.Setenv("BACKEND_TTS_INFERENCE_TIMESTEPS", "")
+	if cfg, err = ConfigFromEnv(); err != nil || cfg.TTSInferenceTimesteps != DefaultTTSInferenceTimesteps {
+		t.Fatalf("default steps = %d, %v", cfg.TTSInferenceTimesteps, err)
+	}
 }
 
 func TestGeekConfigRequiresTheGatewayAndHasNoLimits(t *testing.T) {
@@ -180,5 +189,17 @@ func TestGatewayAddressAcceptsBoundaryPorts(t *testing.T) {
 		if _, err := ConfigFromEnv(); err != nil {
 			t.Fatalf("%s: %v", address, err)
 		}
+	}
+}
+
+func TestCourseGraphTimeoutDefaultsToNone(t *testing.T) {
+	configuredEnv(t)
+	cfg, err := ConfigFromEnv()
+	if err != nil || cfg.CourseGraphTimeout != 0 {
+		t.Fatalf("default course-graph timeout = %v, %v; want 0 (no overall timeout)", cfg.CourseGraphTimeout, err)
+	}
+	t.Setenv("BACKEND_COURSE_GRAPH_TIMEOUT", "15m")
+	if cfg, err = ConfigFromEnv(); err != nil || cfg.CourseGraphTimeout != 15*time.Minute {
+		t.Fatalf("course-graph timeout = %v, %v; want 15m", cfg.CourseGraphTimeout, err)
 	}
 }

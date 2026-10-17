@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -138,12 +139,14 @@ func (t texts) Text(_ context.Context, owner, id string) (string, bool, error) {
 }
 
 // examiner grades by the answer text: "сильно" is 2/2/2/2, "частично"
-// 2/2/1/1, anything else 0/1/0/0.
+// 2/2/1/1, anything else 0/1/0/0. Its reaction and explanation name the topic.
 type examiner struct {
 	mu        sync.Mutex
 	fail      error
 	questions []QuestionRequest
 	evals     int
+	evaluated []EvaluationRequest
+	explained []EvaluationRequest
 }
 
 func (e *examiner) Question(_ context.Context, r QuestionRequest) (string, error) {
@@ -156,23 +159,37 @@ func (e *examiner) Question(_ context.Context, r QuestionRequest) (string, error
 	return fmt.Sprintf("%s: %s?", r.Kind, r.Node.Title), nil
 }
 
-func (e *examiner) Evaluate(_ context.Context, r EvaluationRequest) (exam.Evaluation, error) {
+func (e *examiner) Evaluate(_ context.Context, r EvaluationRequest) (Assessment, error) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	if e.fail != nil {
-		return exam.Evaluation{}, e.fail
+		return Assessment{}, e.fail
 	}
 	e.evals++
+	e.evaluated = append(e.evaluated, r)
 	last := r.Dialogue[len(r.Dialogue)-1]
+	a := Assessment{Reaction: "Реакция: " + r.Node.Title + ".", Explanation: "Разбор: " + r.Node.Title + "."}
 	switch {
 	case strings.Contains(last.Text, "не знаю"):
-		return exam.Evaluation{Verdict: exam.VerdictDontKnow}, nil
+		a.Evaluation = exam.Evaluation{Verdict: exam.VerdictDontKnow}
 	case strings.Contains(last.Text, "сильно"):
-		return exam.Evaluation{Verdict: exam.VerdictAnswered, Criteria: exam.Criteria{K1: 2, K2: 2, K3: 2, K4: 2}, Evidence: []int{last.Line}}, nil
+		a.Evaluation = exam.Evaluation{Verdict: exam.VerdictAnswered, Criteria: exam.Criteria{K1: 2, K2: 2, K3: 2, K4: 2}, Evidence: []int{last.Line}}
 	case strings.Contains(last.Text, "частично"):
-		return exam.Evaluation{Verdict: exam.VerdictAnswered, Criteria: exam.Criteria{K1: 2, K2: 2, K3: 1, K4: 1}, Evidence: []int{last.Line}}, nil
+		a.Evaluation = exam.Evaluation{Verdict: exam.VerdictAnswered, Criteria: exam.Criteria{K1: 2, K2: 2, K3: 1, K4: 1}, Evidence: []int{last.Line}}
+	default:
+		a.Evaluation = exam.Evaluation{Verdict: exam.VerdictAnswered, Criteria: exam.Criteria{K2: 1}, Evidence: []int{last.Line}}
 	}
-	return exam.Evaluation{Verdict: exam.VerdictAnswered, Criteria: exam.Criteria{K2: 1}, Evidence: []int{last.Line}}, nil
+	return a, nil
+}
+
+func (e *examiner) Explain(_ context.Context, r EvaluationRequest) (string, error) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.fail != nil {
+		return "", e.fail
+	}
+	e.explained = append(e.explained, r)
+	return "Объяснение: " + r.Node.Title + ".", nil
 }
 
 func wav(samples int) []byte {
@@ -245,7 +262,7 @@ func loadGraph(t *testing.T) exam.Graph {
 func newFixture(t *testing.T) *fixture {
 	g := loadGraph(t)
 	f := &fixture{store: newMemoryStore(), graphs: &graphs{graph: &g}, examiner: &examiner{}, voice: &voice{}, audio: audioStore{}}
-	f.service = New(f.graphs, f.store, texts{"student/tr": "сильно отвечаю голосом"}, f.examiner, f.voice, f.audio, &ids{}, func() time.Time { return time.Unix(100, 0) }, Config{})
+	f.service = New(f.graphs, f.store, texts{"student/tr": "сильно отвечаю голосом"}, f.examiner, NewSpeechCache(f.voice, f.audio, ""), &ids{}, func() time.Time { return time.Unix(100, 0) }, Config{})
 	return f
 }
 
@@ -366,7 +383,7 @@ func TestDiagnosticRunsToTheResult(t *testing.T) {
 	// answered fully by voice or text.
 	s = f.answer(t, s, Answer{DontKnow: true})
 	if f.examiner.evals != 0 {
-		t.Fatal("the don't know button must not call the model")
+		t.Fatal("the don't know button must not be evaluated by the model")
 	}
 	for s.Status == exam.SessionActive {
 		turn, _ := s.CurrentTurn()
@@ -395,6 +412,75 @@ func TestDiagnosticRunsToTheResult(t *testing.T) {
 	}
 	if _, err := f.service.Answer(ctx, "student", s.ID, "late", Answer{TurnID: last.ID, Text: "ещё"}); code(err) != "SESSION_NOT_ACTIVE" {
 		t.Fatalf("answer after completion: %v", err)
+	}
+}
+
+func TestGeekRepliesToTheAnswerBeforeTheNextQuestion(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	s, _, _ := f.service.Start(ctx, "student", "subject", "start")
+	if s.Turns[0].Recap != "" || strings.HasPrefix(s.Turns[0].Text, "Реакция") {
+		t.Fatalf("the first question has a reply: %+v", s.Turns[0])
+	}
+	first, _ := s.Exam.Graph.Node(*s.Turns[0].NodeID)
+
+	// The topic goes on with the followup: a reaction without the answer.
+	s = f.answer(t, s, Answer{Text: "частично"})
+	followup := s.Turns[len(s.Turns)-1]
+	if followup.Kind != exam.KindFollowup || followup.Recap != "" ||
+		!strings.HasPrefix(followup.Text, "Реакция: "+first.Title+".\n\n") {
+		t.Fatalf("followup = %+v", followup)
+	}
+
+	// The topic is closed: the explanation leads the next question as a recap.
+	s = f.answer(t, s, Answer{Text: "частично"})
+	next := s.Turns[len(s.Turns)-1]
+	recap := "Реакция: " + first.Title + ". Разбор: " + first.Title + ".\n\n"
+	if *next.NodeID == first.ID || next.Recap != recap || !strings.HasPrefix(next.Text, recap) || len(next.Text) == len(recap) {
+		t.Fatalf("next question = %+v", next)
+	}
+
+	// The button is not evaluated; its explanation is asked on its own and
+	// must keep the prerequisites that Geek may ask next.
+	node, _ := s.Exam.Graph.Node(*next.NodeID)
+	s = f.answer(t, s, Answer{DontKnow: true})
+	if len(f.examiner.explained) != 1 || f.examiner.explained[0].Node.ID != node.ID ||
+		len(f.examiner.explained[0].Prerequisites) != len(node.Prerequisites) {
+		t.Fatalf("explained = %+v", f.examiner.explained)
+	}
+	after := s.Turns[len(s.Turns)-1]
+	if after.Recap != "Объяснение: "+node.Title+".\n\n" || !strings.HasPrefix(after.Text, after.Recap) {
+		t.Fatalf("turn after the button = %+v", after)
+	}
+}
+
+func TestRepliesKeepEveryUncheckedPrerequisiteOfTheChain(t *testing.T) {
+	f := newFixture(t)
+	*f.graphs.graph = exam.Graph{Version: "chain", Nodes: []exam.Node{
+		{ID: "leaf", Title: "Лист", Content: "Лист."},
+		{ID: "middle", Title: "Середина", Content: "Середина.", Prerequisites: []string{"leaf"}},
+		{ID: "top", Title: "Верх", Content: "Верх.", Prerequisites: []string{"middle"}},
+	}}
+	ctx := context.Background()
+	s, _, _ := f.service.Start(ctx, "student", "subject", "start")
+	// Evaluated answers send the chain to the model too.
+	s = f.answer(t, s, Answer{Text: "слабо"})
+	s = f.answer(t, s, Answer{DontKnow: true})
+	s = f.answer(t, s, Answer{DontKnow: true})
+	if turn, _ := s.CurrentTurn(); *turn.NodeID != "leaf" {
+		t.Fatalf("current topic = %s", *turn.NodeID)
+	}
+	want := [][]string{{"Середина", "Лист"}, {"Лист"}}
+	if len(f.examiner.explained) != 2 {
+		t.Fatalf("explained = %+v", f.examiner.explained)
+	}
+	for i, r := range f.examiner.explained {
+		if !slices.Equal(r.Prerequisites, want[i]) {
+			t.Fatalf("explanation %d of %s keeps %v, want %v", i, r.Node.ID, r.Prerequisites, want[i])
+		}
+	}
+	if !slices.Equal(f.examiner.evaluated[0].Prerequisites, want[0]) {
+		t.Fatalf("evaluation keeps %v", f.examiner.evaluated[0].Prerequisites)
 	}
 }
 
@@ -472,7 +558,7 @@ func TestTurnAudioIsSynthesizedByPartsAndCached(t *testing.T) {
 	f.graphs.graph = &g
 	s, _, _ := f.service.Start(ctx, "student", "subject", "start")
 	turn := s.Turns[0]
-	data, err := f.service.TurnAudio(ctx, "student", s.ID, turn.ID)
+	data, err := f.service.TurnAudio(ctx, "student", s.ID, turn.ID, AudioWhole)
 	if err != nil || !audio.ValidWAV(data) || len(f.voice.calls) < 2 {
 		t.Fatalf("audio: %v calls=%d", err, len(f.voice.calls))
 	}
@@ -482,11 +568,54 @@ func TestTurnAudioIsSynthesizedByPartsAndCached(t *testing.T) {
 		}
 	}
 	calls := len(f.voice.calls)
-	if _, err := f.service.TurnAudio(ctx, "student", s.ID, turn.ID); err != nil || len(f.voice.calls) != calls {
+	if _, err := f.service.TurnAudio(ctx, "student", s.ID, turn.ID, AudioWhole); err != nil || len(f.voice.calls) != calls {
 		t.Fatalf("cached audio synthesized again: %v", err)
 	}
 	next := f.answer(t, s, Answer{Text: "частично"})
-	if _, err := f.service.TurnAudio(ctx, "student", s.ID, next.Turns[1].ID); code(err) != "TURN_NOT_FOUND" {
+	if _, err := f.service.TurnAudio(ctx, "student", s.ID, next.Turns[1].ID, AudioWhole); code(err) != "TURN_NOT_FOUND" {
 		t.Fatalf("student turn audio: %v", err)
+	}
+}
+
+func TestTurnAudioVoicesTheReplyAndTheQuestionApart(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	s, _, _ := f.service.Start(ctx, "student", "subject", "start")
+	first := s.Turns[0]
+	if first.Reply != "" {
+		t.Fatalf("the first question has a reply: %+v", first)
+	}
+	if _, err := f.service.TurnAudio(ctx, "student", s.ID, first.ID, AudioReply); code(err) != "TURN_PART_NOT_FOUND" {
+		t.Fatalf("reply part of the first question: %v", err)
+	}
+	if _, err := f.service.TurnAudio(ctx, "student", s.ID, first.ID, "everything"); code(err) != "VALIDATION_ERROR" {
+		t.Fatalf("unknown part: %v", err)
+	}
+
+	s = f.answer(t, s, Answer{Text: "частично"})
+	led := s.Turns[len(s.Turns)-1]
+	reply, question := led.Parts()
+	if led.Reply == "" || reply != led.Reply || question == "" || led.Text != led.Reply+"\n\n"+question {
+		t.Fatalf("turn parts: reply=%q question=%q text=%q", reply, question, led.Text)
+	}
+	f.voice.calls = nil
+	if data, err := f.service.TurnAudio(ctx, "student", s.ID, led.ID, AudioReply); err != nil || !audio.ValidWAV(data) {
+		t.Fatalf("reply audio: %v", err)
+	}
+	if data, err := f.service.TurnAudio(ctx, "student", s.ID, led.ID, AudioQuestion); err != nil || !audio.ValidWAV(data) {
+		t.Fatalf("question audio: %v", err)
+	}
+	if len(f.voice.calls) != 2 || f.voice.calls[0] != reply || f.voice.calls[1] != question {
+		t.Fatalf("synthesized %q", f.voice.calls)
+	}
+
+	// A part is cached by its text: the same prepared question in another
+	// student's diagnostic is not synthesized again.
+	other, _, _ := f.service.Start(ctx, "other", "subject", "start-other")
+	if _, err := f.service.TurnAudio(ctx, "other", other.ID, other.Turns[0].ID, AudioQuestion); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.service.TurnAudio(ctx, "student", s.ID, s.Turns[0].ID, AudioQuestion); err != nil || len(f.voice.calls) != 3 {
+		t.Fatalf("the shared question was synthesized again: %v calls=%q", err, f.voice.calls)
 	}
 }

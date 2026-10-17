@@ -28,6 +28,8 @@ jobs:
           go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.10
           go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.5.1
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+          . services/shared/tools/versions.env
+          python3 -m pip install --user "grpcio-tools==$PYTHON_GRPCIO_TOOLS_VERSION" "protobuf==$PYTHON_PROTOBUF_VERSION"
       - name: Check generated shared code
         working-directory: .
         run: services/shared/tools/generate.sh --check

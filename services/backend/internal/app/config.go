@@ -85,11 +85,9 @@ func ConfigFromEnv() (Config, error) {
 	if err != nil {
 		return c, fmt.Errorf("BACKEND_TTS_CFG_VALUE: %w", err)
 	}
-	value, err = requiredEnv("BACKEND_TTS_INFERENCE_TIMESTEPS")
-	if err != nil {
-		return c, err
-	}
-	c.TTSInferenceTimesteps, err = strconv.Atoi(value)
+	// VoxCPM gets the steps in every request; 20 sounds like 50 at half the
+	// synthesis time (measured 17.10.2026), so an empty value means 20.
+	c.TTSInferenceTimesteps, err = strconv.Atoi(envOrDefault("BACKEND_TTS_INFERENCE_TIMESTEPS", strconv.Itoa(DefaultTTSInferenceTimesteps)))
 	if err != nil {
 		return c, fmt.Errorf("BACKEND_TTS_INFERENCE_TIMESTEPS: %w", err)
 	}
@@ -140,12 +138,14 @@ func ConfigFromEnv() (Config, error) {
 	if c.CourseGraphURL == "" {
 		c.CourseGraphURL = strings.TrimSpace(os.Getenv("BACKEND_OCR_URL"))
 	}
-	c.CourseGraphTimeout, err = envDuration("BACKEND_COURSE_GRAPH_TIMEOUT", 120*time.Second)
+	// 0 means no overall HTTP timeout: OCR of a long PDF and topic extraction
+	// are bounded by the worker lease and context instead.
+	c.CourseGraphTimeout, err = envDuration("BACKEND_COURSE_GRAPH_TIMEOUT", 0)
 	if err != nil {
 		return c, err
 	}
 	if os.Getenv("BACKEND_COURSE_GRAPH_TIMEOUT") == "" && os.Getenv("BACKEND_OCR_TIMEOUT") != "" {
-		c.CourseGraphTimeout, err = envDuration("BACKEND_OCR_TIMEOUT", 120*time.Second)
+		c.CourseGraphTimeout, err = envDuration("BACKEND_OCR_TIMEOUT", 0)
 		if err != nil {
 			return c, err
 		}
@@ -167,6 +167,9 @@ func ConfigFromEnv() (Config, error) {
 	}
 	return c, c.validate()
 }
+
+// DefaultTTSInferenceTimesteps is sent to VoxCPM when the env leaves it empty.
+const DefaultTTSInferenceTimesteps = 20
 
 func envOrDefault(key, fallback string) string {
 	value := strings.TrimSpace(os.Getenv(key))
@@ -259,6 +262,9 @@ func (c Config) validate() error {
 	}
 	if c.LLMTimeout <= 0 {
 		return fmt.Errorf("BACKEND_LLM_TIMEOUT must be positive")
+	}
+	if c.CourseGraphTimeout < 0 {
+		return fmt.Errorf("BACKEND_COURSE_GRAPH_TIMEOUT must not be negative")
 	}
 	if c.GeekMaxQuestions < 0 {
 		return fmt.Errorf("BACKEND_GEEK_MAX_QUESTIONS must not be negative")

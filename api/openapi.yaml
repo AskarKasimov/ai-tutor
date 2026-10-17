@@ -91,6 +91,40 @@ components:
         - id
         - role
       type: object
+    coursegraph.Snapshot:
+      additionalProperties: false
+      properties:
+        attempts:
+          type: integer
+        error_message:
+          type: string
+        graph:
+          type:
+            - object
+            - "null"
+        inputs_ready:
+          type: boolean
+        stale:
+          type: boolean
+        status:
+          enum:
+            - not_requested
+            - pending
+            - processing
+            - ready
+            - failed
+          type: string
+        updated_at:
+          type: integer
+      required:
+        - attempts
+        - error_message
+        - graph
+        - inputs_ready
+        - stale
+        - status
+        - updated_at
+      type: object
     fault.Detail:
       additionalProperties: false
       properties:
@@ -221,23 +255,6 @@ components:
         - node_id
         - title
       type: object
-    geek.Graph:
-      additionalProperties: false
-      description: 'Граф курса: одна версия на курс, пересборка заменяет его целиком'
-      properties:
-        built_at:
-          type: integer
-        nodes:
-          items:
-            $ref: '#/components/schemas/geek.GraphNode'
-          type: array
-        subject_id:
-          type: string
-      required:
-        - built_at
-        - nodes
-        - subject_id
-      type: object
     geek.GraphBuild:
       additionalProperties: false
       description: Последняя сборка графа курса. Даты — Unix seconds.
@@ -279,41 +296,6 @@ components:
         - prerequisites
         - validation
       type: string
-    geek.GraphNode:
-      additionalProperties: false
-      description: Вершина графа курса. Граф пререквизитов ацикличен; плоский граф без рёбер — частный случай. Порядок вершин в массиве — порядок изучения.
-      properties:
-        content:
-          description: Текст вершины из материалов, на русском
-          type: string
-        id:
-          type: string
-        outcomes:
-          description: Образовательные результаты; пока могут быть пустыми
-          items:
-            type: string
-          type: array
-        prerequisites:
-          description: ID вершин, которые нужно знать до этой; у пререквизитов могут быть свои пререквизиты
-          items:
-            type: string
-          type: array
-        questions:
-          description: Вопросы к вершине; пока могут быть пустыми, недостающие Geek генерирует в рантайме
-          items:
-            type: string
-          type: array
-        title:
-          description: Название на русском
-          type: string
-      required:
-        - id
-        - title
-        - content
-        - prerequisites
-        - outcomes
-        - questions
-      type: object
     geek.History:
       additionalProperties: false
       properties:
@@ -725,6 +707,9 @@ components:
           type:
             - string
             - "null"
+        reply:
+          description: 'Начало text у реплики Geek — реакция на прошлый ответ студента; пусто, если реакции нет. Озвучивается отдельно: GET .../audio?part=reply, остальное — part=question'
+          type: string
         source:
           description: 'Только у реплик студента: голос после подтверждения, текст или кнопка «Не знаю»'
           enum:
@@ -748,6 +733,7 @@ components:
         - kind
         - line
         - node_id
+        - reply
         - source
         - speaker
         - text
@@ -1008,22 +994,21 @@ paths:
       x-implementation: planned
   /admin/subjects/{subject_id}/graph:
     get:
-      description: Доступно только admin. Темы → подтемы с пререквизитами и источниками; 404 — граф ещё не собран.
+      description: Доступно только admin. Сборку запускает POST .../graph/build. stale — материалы изменились после публикации графа; inputs_ready — все материалы обработаны и сборку можно запустить.
+      operationId: getCourseGraph
       parameters:
-        - description: ID курса (предмета)
+        - description: ID предмета
           in: path
           name: subject_id
           required: true
           schema:
-            maxLength: 128
-            minLength: 1
             type: string
       responses:
         "200":
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/geek.Graph'
+                $ref: '#/components/schemas/coursegraph.Snapshot'
           description: OK
         "401":
           content:
@@ -1043,12 +1028,18 @@ paths:
               schema:
                 $ref: '#/components/schemas/fault.Error'
           description: Not Found
+        "503":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Service Unavailable
       security:
         - accessCookie: []
-      summary: Граф курса
+      summary: Граф курса и состояние построения
       tags:
-        - Граф курса
-      x-implementation: planned
+        - Материалы
+      x-implementation: implemented
   /admin/subjects/{subject_id}/graph/build:
     get:
       description: Доступно только admin. Последняя сборка; 404 — сборок не было.
@@ -1093,22 +1084,21 @@ paths:
         - Граф курса
       x-implementation: planned
     post:
-      description: 'Доступно только admin. Кнопка «Собрать граф»: запускает сборку по всем распознанным материалам курса. 409 — сборка уже идёт; 422 — нет распознанных материалов или у материала нет недели или вида. Успешная сборка заменяет граф целиком и переводит активные диагностики курса в cancelled.'
+      description: 'Доступно только admin. Кнопка «Собрать граф»: ставит сборку из текущих материалов курса. Опубликованный граф остаётся у Geek до успешной сборки; успешная сборка с другим графом переводит активные диагностики курса в cancelled.'
+      operationId: buildCourseGraph
       parameters:
-        - description: ID курса (предмета)
+        - description: ID предмета
           in: path
           name: subject_id
           required: true
           schema:
-            maxLength: 128
-            minLength: 1
             type: string
       responses:
         "202":
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/geek.GraphBuild'
+                $ref: '#/components/schemas/coursegraph.Snapshot'
           description: Accepted
         "401":
           content:
@@ -1133,13 +1123,13 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/fault.Error'
-          description: Conflict
+          description: 'GRAPH_BUILD_IN_PROGRESS: сборка уже идёт'
         "422":
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/fault.Error'
-          description: Unprocessable Entity
+          description: 'GRAPH_INPUTS_NOT_READY: материалы ещё обрабатываются, не обработаны или их нет'
         "503":
           content:
             application/json:
@@ -1150,8 +1140,8 @@ paths:
         - accessCookie: []
       summary: Собрать граф курса
       tags:
-        - Граф курса
-      x-implementation: planned
+        - Материалы
+      x-implementation: implemented
   /admin/subjects/{subject_id}/materials:
     get:
       description: Доступно только admin. Возвращает список загруженных материалов курса с извлеченным текстом.
@@ -1973,7 +1963,7 @@ paths:
       x-implementation: implemented
   /diagnostic-sessions/{id}/turns/{turn_id}/audio:
     get:
-      description: Backend синтезирует реплику Geek через TTS и кэширует WAV в S3; длина реплики не ограничена лимитом /voice/syntheses. 404 — реплика студента или чужая сессия.
+      description: Backend синтезирует реплику Geek через TTS и кэширует WAV в S3; длина реплики не ограничена лимитом /voice/syntheses. Без part — вся реплика; part=reply — только реакция на прошлый ответ (поле reply), part=question — вопрос или завершение после неё. Части кэшируются по тексту, поэтому заранее подготовленный вопрос синтезируется один раз для всех студентов. 404 — реплика студента, чужая сессия или пустая часть (TURN_PART_NOT_FOUND).
       operationId: getDiagnosticTurnAudio
       parameters:
         - description: ID диагностики
@@ -1991,6 +1981,14 @@ paths:
           schema:
             maxLength: 128
             minLength: 1
+            type: string
+        - description: Часть реплики
+          in: query
+          name: part
+          schema:
+            enum:
+              - reply
+              - question
             type: string
       responses:
         "200":
@@ -2012,6 +2010,12 @@ paths:
               schema:
                 $ref: '#/components/schemas/fault.Error'
           description: Not Found
+        "422":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unprocessable Entity
         "503":
           content:
             application/json:
@@ -2046,7 +2050,7 @@ paths:
       x-implementation: implemented
   /subjects:
     get:
-      description: 'Студентам возвращаются только готовые курсы: пока граф курса не хранится, готов курс с распознанным материалом. Admin видит все предметы и признак готовности.'
+      description: 'Студентам возвращаются только готовые курсы: с фикстурой графа — сразу после создания, без неё — с опубликованным графом курса. Admin видит все предметы и признак готовности.'
       operationId: listSubjects
       responses:
         "200":

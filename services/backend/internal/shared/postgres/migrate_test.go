@@ -97,8 +97,8 @@ func TestMigrateFreshAndRepeat(t *testing.T) {
 		t.Fatalf("fresh subjects=%d err=%v", subjects, err)
 	}
 	var versions int
-	if err := pool.QueryRow(ctx, "SELECT count(*) FROM goose_db_version WHERE is_applied AND version_id > 0").Scan(&versions); err != nil || versions != 2 {
-		t.Fatalf("applied migrations=%d err=%v, want 2", versions, err)
+	if err := pool.QueryRow(ctx, "SELECT count(*) FROM goose_db_version WHERE is_applied AND version_id > 0").Scan(&versions); err != nil || versions != migrationCount(t) {
+		t.Fatalf("applied migrations=%d err=%v, want %d", versions, err, migrationCount(t))
 	}
 }
 
@@ -129,7 +129,8 @@ func TestMigrateDownRemovesSchema(t *testing.T) {
 	var remaining int
 	if err := pool.QueryRow(ctx, `SELECT count(*) FROM information_schema.tables
 WHERE table_schema=current_schema() AND table_name IN
-('users','auth_sessions','transcriptions','subjects','subject_materials','geek_sessions','geek_requests')`).Scan(&remaining); err != nil {
+('users','auth_sessions','transcriptions','subjects','subject_materials','geek_sessions','geek_requests',
+ 'material_cleaning_jobs','course_graph_jobs','course_graphs','material_ocr_jobs')`).Scan(&remaining); err != nil {
 		t.Fatal(err)
 	}
 	if remaining != 0 {
@@ -199,4 +200,52 @@ func TestMigrateWaitsForLockAndCanRetryAfterCancellation(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertGooseVersion(t, pool)
+}
+
+// migrationCount is the number of embedded migrations, so adding one does not
+// need this test to change.
+func migrationCount(t *testing.T) int {
+	t.Helper()
+	files, err := fs.Glob(migrations, "migrations/*.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return len(files)
+}
+
+func TestMigrateQueuesExistingMaterialsForOCR(t *testing.T) {
+	pool := migrationPool(t)
+	ctx := context.Background()
+	db := stdlib.OpenDB(*pool.Config().ConnConfig)
+	defer db.Close()
+	files, err := fs.Sub(migrations, "migrations")
+	if err != nil {
+		t.Fatal(err)
+	}
+	provider, err := goose.NewProvider(goose.DialectPostgres, db, files, goose.WithDisableGlobalRegistry(true))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := provider.UpTo(ctx, 4); err != nil {
+		t.Fatal(err)
+	}
+	for _, q := range []string{
+		`INSERT INTO subjects(id, name, created_at) VALUES ('s', 'Курс', 1)`,
+		`INSERT INTO subject_materials(id, subject_id, filename, content_type, s3_raw_key, s3_parsed_key, parsed_text, status, created_at, updated_at)
+		 VALUES ('m', 's', 'week1.pdf', 'application/pdf', 'raw', 'parsed', 'Old OCR', 'parsed', 1, 1)`,
+	} {
+		if _, err := pool.Exec(ctx, q); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := Migrate(ctx, pool); err != nil {
+		t.Fatal(err)
+	}
+	var job, material string
+	if err := pool.QueryRow(ctx, `SELECT j.status, m.status FROM material_ocr_jobs j JOIN subject_materials m ON m.id = j.material_id WHERE m.id = 'm'`).Scan(&job, &material); err != nil {
+		t.Fatalf("existing material was not queued for OCR: %v", err)
+	}
+	if job != "pending" || material != "pending" {
+		t.Fatalf("job=%s material=%s, want pending", job, material)
+	}
 }

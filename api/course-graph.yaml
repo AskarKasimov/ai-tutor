@@ -5,9 +5,10 @@ info:
   description: >-
     Внутренний API Python-сервиса services/course-graph. Его вызывает только backend из сети Compose;
     через Caddy он не публикуется. implemented — подключённые операции, planned — проект.
-    Backend передаёт тексты распознанных материалов, создаёт задание на сборку графа, опрашивает его
-    и сам сохраняет готовый граф. LLM сервис вызывает через LLM gateway.
-x-design-date: "2026-10-16"
+    Backend передаёт исходники и распознанные тексты, вызывает этапы синхронно из своих фоновых
+    workers (очередь, lease и повторы — в PostgreSQL backend) и сам сохраняет готовый граф. LLM сервис
+    вызывает только через LLM gateway по gRPC (llmgateway.v1.Gateway/Complete, COURSE_GRAPH_LLM_GATEWAY_ADDR).
+x-design-date: "2026-10-17"
 servers:
   - description: Сеть Docker Compose
     url: http://course-graph:8000
@@ -33,7 +34,18 @@ paths:
   /ocr/convert:
     post:
       summary: Распознать документ в Markdown
-      description: OCR — этап 1. PDF, Markdown или текст → Markdown с формулами LaTeX. Алиас — POST /convert.
+      description: >-
+        OCR — этап 1. PDF, Markdown или текст → Markdown с формулами LaTeX и отчёт распознавания. Алиас —
+        POST /convert. Повтор с тем же X-Job-ID и тем же файлом присоединяется к идущему распознаванию.
+      parameters:
+        - in: header
+          name: X-Job-ID
+          required: false
+          description: Устойчивый ID распознавания; тот же ID с другим файлом — 409
+          schema:
+            maxLength: 200
+            pattern: "^[A-Za-z0-9._:-]+$"
+            type: string
       requestBody:
         required: true
         content:
@@ -56,10 +68,12 @@ paths:
                 properties:
                   markdown:
                     type: string
-                required: [markdown]
+                  report:
+                    $ref: "#/components/schemas/OcrReport"
+                required: [markdown, report]
                 type: object
         "400":
-          description: Пустой файл
+          description: Пустой файл или некорректный X-Job-ID
           content:
             application/json:
               schema:
@@ -67,46 +81,39 @@ paths:
                   detail:
                     type: string
                 type: object
+        "409":
+          $ref: "#/components/responses/Detail"
         "500":
-          description: Ошибка распознавания
+          $ref: "#/components/responses/Detail"
+      x-implementation: implemented
+  /ready/models:
+    get:
+      summary: Готовность моделей OCR
+      description: Веса Docling загружаются в фоне после старта; пока они не готовы, backend не берёт PDF в OCR.
+      responses:
+        "200":
+          description: OK
           content:
             application/json:
               schema:
                 properties:
-                  error:
+                  ready:
+                    type: boolean
+                  state:
                     type: string
+                  stage:
+                    type: string
+                  updated_at:
+                    type: string
+                  progress: {}
+                  detail:
+                    type: string
+                required: [ready, state, stage, updated_at, progress]
                 type: object
       x-implementation: implemented
-  /graph/jobs:
-    post:
-      summary: Создать задание на сборку графа
-      description: >-
-        Этапы 2–6: очистка, подтемы, дедупликация внутри недели и между неделями, пререквизиты, валидация.
-        Названия и тексты вершин — на русском, даже если материалы на английском. Сервис выполняет одно
-        задание на курс за раз.
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/JobRequest"
-      responses:
-        "202":
-          description: Задание принято
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Job"
-        "422":
-          description: Некорректный запрос
-      x-implementation: planned
-  /graph/jobs/{job_id}:
+  /ocr/jobs/{job_id}:
     get:
-      summary: Статус задания и готовый граф
-      description: >-
-        Backend опрашивает задание до succeeded или failed. Готовый граф отдаётся в поле graph;
-        сохраняет его backend. 404 — задание неизвестно, например после перезапуска сервиса:
-        backend тогда помечает сборку failed.
+      summary: Состояние распознавания по X-Job-ID
       parameters:
         - in: path
           name: job_id
@@ -119,111 +126,346 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Job"
+                properties:
+                  job_id:
+                    type: string
+                  state:
+                    enum: [queued, running, succeeded, failed]
+                    type: string
+                  stage:
+                    type: string
+                  progress:
+                    properties:
+                      pages_done:
+                        type: [integer, "null"]
+                      pages_total:
+                        type: [integer, "null"]
+                    type: object
+                  updated_at:
+                    type: string
+                  result:
+                    description: Только при succeeded, пока результат в памяти процесса
+                  error:
+                    type: string
+                required: [job_id, state, stage, progress, updated_at]
+                type: object
         "404":
-          description: Задание неизвестно
-      x-implementation: planned
+          $ref: "#/components/responses/Detail"
+      x-implementation: implemented
+  /topics/extract:
+    post:
+      summary: Очистить материал и выделить темы
+      description: >-
+        Этапы 2–3 для одного материала: LLM (complexity high) удаляет организационные блоки и выделяет темы
+        с источниками-цитатами. Названия тем, знания и вопросы — на русском; text темы — дословные фрагменты
+        материала. Отчёт backend кэширует и передаёт в /graph/build.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              additionalProperties: false
+              properties:
+                markdown:
+                  maxLength: 2000000
+                  minLength: 1
+                  type: string
+                material_id:
+                  type: string
+                week:
+                  type: [integer, "null"]
+                max_chars:
+                  maximum: 20000
+                  minimum: 1500
+                  type: integer
+                max_blocks:
+                  maximum: 100
+                  minimum: 1
+                  type: integer
+              required: [markdown]
+              type: object
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                properties:
+                  markdown:
+                    description: Очищенный Markdown
+                    type: string
+                  report:
+                    description: Отчёт очистки (version material-cleaning-v1) с темами (topics_version topics-v2)
+                    properties:
+                      topics:
+                        items:
+                          $ref: "#/components/schemas/Topic"
+                        type: array
+                      topics_version:
+                        const: topics-v2
+                      merged_thin_topics:
+                        description: Темы без объясняющего текста (меньше 120 символов без заголовков, картинок и ссылок), присоединённые к ближайшей теме того же материала
+                        items:
+                          properties:
+                            title:
+                              type: string
+                            into:
+                              type: string
+                          type: object
+                        type: array
+                    required: [topics, topics_version]
+                    type: object
+                required: [markdown, report]
+                type: object
+        "503":
+          $ref: "#/components/responses/Detail"
+      x-implementation: implemented
+  /clean:
+    post:
+      summary: Только очистка материала
+      description: Этап 2 без выделения тем (complexity low). Backend сейчас использует /topics/extract.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              properties:
+                markdown:
+                  maxLength: 2000000
+                  minLength: 1
+                  type: string
+              required: [markdown]
+              type: object
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                properties:
+                  markdown:
+                    type: string
+                  report:
+                    type: object
+                required: [markdown, report]
+                type: object
+        "503":
+          $ref: "#/components/responses/Detail"
+      x-implementation: implemented
+  /graph/links:
+    post:
+      summary: Построить пререквизиты по готовым темам
+      description: Этапы 5–6 без извлечения тем; отладочная операция, backend вызывает /graph/build.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              properties:
+                topics:
+                  items:
+                    $ref: "#/components/schemas/Topic"
+                  maxItems: 2000
+                  type: array
+                per_requirement:
+                  type: integer
+                max_chars:
+                  type: integer
+                evidence_chars:
+                  type: integer
+              required: [topics]
+              type: object
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Graph"
+        "503":
+          $ref: "#/components/responses/Detail"
+      x-implementation: implemented
+  /graph/build:
+    post:
+      summary: Собрать граф курса
+      description: >-
+        Этапы 3–6 по всем материалам курса: темы берутся из кэша /topics/extract (topics у материала) или
+        выделяются заново, затем LLM (complexity high) строит и проверяет пререквизиты; циклы отбрасываются.
+        Вызов синхронный и долгий; backend вызывает его из worker с продлеваемым lease, публикует результат
+        сам. Одна сборка на сервис одновременно.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              additionalProperties: false
+              properties:
+                materials:
+                  items:
+                    $ref: "#/components/schemas/Material"
+                  maxItems: 500
+                  minItems: 1
+                  type: array
+                max_chars:
+                  type: integer
+                per_requirement:
+                  type: integer
+              required: [materials]
+              type: object
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Graph"
+        "413":
+          $ref: "#/components/responses/Detail"
+        "422":
+          $ref: "#/components/responses/Detail"
+        "503":
+          $ref: "#/components/responses/Detail"
+      x-implementation: implemented
 components:
+  responses:
+    Detail:
+      description: Ошибка с текстом для журнала
+      content:
+        application/json:
+          schema:
+            properties:
+              detail: {}
+            type: object
   schemas:
-    MaterialKind:
-      enum: [lecture, lab, tutorial]
-      type: string
-    Material:
-      additionalProperties: false
-      description: Распознанный материал курса
+    OcrReport:
+      description: Отчёт распознавания (движок, предупреждения, нераспознанные формулы, кэш)
       properties:
-        id:
-          description: ID материала в backend
+        engine:
           type: string
-        week:
-          minimum: 1
-          type: integer
-        kind:
-          $ref: "#/components/schemas/MaterialKind"
-        filename:
-          type: string
-        text:
-          description: Markdown после OCR
-          type: string
-      required: [id, week, kind, filename, text]
-      type: object
-    JobRequest:
-      additionalProperties: false
-      properties:
-        subject_id:
-          type: string
-        course_title:
-          type: string
-        materials:
+        warnings:
           items:
-            $ref: "#/components/schemas/Material"
-          minItems: 1
+            type: string
           type: array
-      required: [subject_id, course_title, materials]
+      required: [engine, warnings]
       type: object
-    Job:
+    Source:
       additionalProperties: false
+      description: Дословный фрагмент материала, из которого взята тема
       properties:
-        job_id:
+        material_id:
           type: string
-        subject_id:
+        block_id:
+          type: integer
+        start:
+          type: integer
+        end:
+          type: integer
+        text:
           type: string
-        status:
-          enum: [queued, running, succeeded, failed]
-          type: string
-        stage:
-          description: Текущий этап; null до начала и после завершения
-          enum: [cleaning, units, dedup, prerequisites, validation, null]
-          type: [string, "null"]
-        error:
-          description: Причина failed
-          type: [string, "null"]
-        graph:
-          anyOf:
-            - $ref: "#/components/schemas/Graph"
-            - type: "null"
-          description: Только при succeeded
-      required: [job_id, subject_id, status, stage, error, graph]
+        page:
+          type: [integer, "null"]
+        week:
+          type: [integer, "null"]
+      required: [material_id, block_id, start, end, text]
       type: object
-    Node:
+    Topic:
       additionalProperties: false
       description: >-
-        Вершина графа курса. Граф пререквизитов ацикличен; плоский граф без рёбер — частный случай.
-        Неделя и источники у вершины пока не хранятся.
+        Тема (вершина). В Geek попадают id, title, text (текст вершины), provides (ОР), question (вопрос)
+        и пререквизиты из Graph.prerequisites. sources и parent_title хранятся в сборке и показываются только
+        в админке.
       properties:
         id:
-          description: ID вершины, уникальный внутри графа
           type: string
         title:
           description: Название на русском
           type: string
-        content:
-          description: Текст вершины из материалов, на русском
+        requires:
+          description: Знания, нужные для темы (не ID тем)
+          items:
+            type: string
+          type: array
+        provides:
+          items:
+            type: string
+          minItems: 1
+          type: array
+        question:
           type: string
-        prerequisites:
-          description: ID вершин, которые нужно знать до этой; у пререквизитов могут быть свои пререквизиты
+        text:
+          type: string
+        sources:
           items:
-            type: string
+            $ref: "#/components/schemas/Source"
+          minItems: 1
           type: array
-        outcomes:
-          description: Образовательные результаты; сервис пока возвращает пустой список, их заполнят позже
-          items:
-            type: string
-          type: array
-        questions:
-          description: Вопросы к вершине; сервис может вернуть пустой список. Автоматическое заполнение основного вопроса backend перед сохранением графа запланировано; сейчас доступна CLI-подготовка api prepare-questions.
-          items:
-            type: string
-          type: array
-      required: [id, title, content, prerequisites, outcomes, questions]
+        parent_title:
+          type: [string, "null"]
+      required: [id, title, requires, provides, question, text, sources]
       type: object
-    Graph:
+    Material:
       additionalProperties: false
       properties:
-        nodes:
-          description: Вершины в порядке изучения
+        id:
+          type: string
+        markdown:
+          description: Распознанный и переведённый Markdown материала
+          maxLength: 2000000
+          minLength: 1
+          type: string
+        week:
+          type: [integer, "null"]
+        topics:
+          description: Кэш тем из /topics/extract; null — выделить заново
           items:
-            $ref: "#/components/schemas/Node"
+            $ref: "#/components/schemas/Topic"
+          type: [array, "null"]
+      required: [id, markdown]
+      type: object
+    Edge:
+      properties:
+        source:
+          description: ID пререквизита
+          type: string
+        target:
+          description: ID темы, которой он нужен
+          type: string
+      required: [source, target]
+      type: object
+    Graph:
+      description: >-
+        Результат сборки. version — версия формата (course-graph-v1), а не сборки: версию графа для Geek
+        backend считает по хешу опубликованного содержимого.
+      properties:
+        version:
+          const: course-graph-v1
+        topics:
+          items:
+            $ref: "#/components/schemas/Topic"
           type: array
-      required: [nodes]
+        prerequisites:
+          description: Рёбра «тема требует тему»; граф ацикличен
+          items:
+            $ref: "#/components/schemas/Edge"
+          type: array
+        hierarchy:
+          description: Рёбра «раздел → тема» по parent_title; только для админки, Geek их не использует
+          items:
+            $ref: "#/components/schemas/Edge"
+          type: array
+        aliases:
+          type: object
+        requirements:
+          type: array
+        rejected_links:
+          type: array
+        quality:
+          properties:
+            acyclic:
+              const: true
+          required: [acyclic]
+          type: object
+        extraction_reports:
+          type: array
+      required: [version, topics, prerequisites, quality]
       type: object

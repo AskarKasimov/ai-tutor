@@ -8,7 +8,7 @@ import {
   Square,
   Volume2,
 } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   DiagnosticApiError,
@@ -23,7 +23,7 @@ import {
   useVoiceAnswer,
   type TurnAudioState,
 } from '@/features/diagnostic-session'
-import { MarkdownContent } from '@/shared/ui'
+import { MarkdownContent, Toast } from '@/shared/ui'
 import { LiveWaveform } from './trainer-answer'
 import { TrainerProgress, TrainerShell } from './trainer-shared'
 import styles from './geek.module.scss'
@@ -116,6 +116,14 @@ function Dialogue({
   // While the student records or checks a spoken answer, Geek stays silent.
   const [capturing, setCapturing] = useState(false)
   const end = useRef<HTMLDivElement>(null)
+  // A rebuilt course graph cancels the diagnostic; the student learns it from
+  // a pop-up the moment the dialogue sees it, not from a failed answer.
+  const [courseUpdated, setCourseUpdated] = useState(false)
+  const cancelled = session.status === 'cancelled'
+  useEffect(() => {
+    if (cancelled) setCourseUpdated(true)
+  }, [cancelled])
+  const closeNotice = useCallback(() => setCourseUpdated(false), [])
   const currentTurnId = session.currentTurnId
   const lastTurn = session.turns[session.turns.length - 1]
 
@@ -130,7 +138,7 @@ function Dialogue({
       !capturing
     ) {
       voiced.current = lastTurn.id
-      void play(lastTurn.id)
+      void play(lastTurn)
     }
   }, [lastTurn, play, capturing])
   useEffect(() => {
@@ -152,6 +160,13 @@ function Dialogue({
 
   return (
     <main className={styles.dialog} aria-labelledby="dialog-title">
+      {courseUpdated && (
+        <Toast
+          message={t('geek.courseUpdated')}
+          closeLabel={t('geek.closeNotice')}
+          onClose={closeNotice}
+        />
+      )}
       <Heading as="h1" id="dialog-title" className={styles.visuallyHidden}>
         {t('geek.title')}
       </Heading>
@@ -252,7 +267,7 @@ function TurnItem({
           </Text>
         )}
         <ListenButton
-          turnId={turn.id}
+          turn={turn}
           state={audio.state}
           audio={audio}
           disabled={muted}
@@ -264,18 +279,18 @@ function TurnItem({
 }
 
 function ListenButton({
-  turnId,
+  turn,
   state,
   audio,
   disabled,
 }: {
-  turnId: string
+  turn: Turn
   state: TurnAudioState
   audio: ReturnType<typeof useTurnAudio>
   disabled: boolean
 }) {
   const { t } = useTranslation()
-  const mine = state.turnId === turnId ? state.status : 'idle'
+  const mine = state.turnId === turn.id ? state.status : 'idle'
   const label =
     mine === 'playing'
       ? t('geek.stopListening')
@@ -295,7 +310,7 @@ function ListenButton({
       onClick={() =>
         mine === 'playing' || mine === 'loading'
           ? audio.stop()
-          : void audio.play(turnId)
+          : void audio.play(turn)
       }
     >
       {mine === 'loading' ? (

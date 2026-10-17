@@ -43,4 +43,4 @@ Consumer транзакционно сохраняет `queued` вместе с 
 
 `COMPOSE_PROFILES=gateway docker compose up --build` включает оба маршрута gateway в Caddy, `COMPOSE_PROFILES= docker compose up --build` — отключает; после смены значения пересоздайте proxy. `COMPOSE_PROFILES=swagger,gateway` дополнительно включает документацию. У gRPC-порта нет проброса на хост; gRPC health доступен внутри Docker, Caddy публикует только путь сервиса Gateway.
 
-Backend (Geek) ходит в gateway по gRPC (`BACKEND_LLM_GATEWAY_ADDR`); `services/course-graph` к gateway пока не подключён.
+Backend (Geek, перевод OCR) ходит в gateway по gRPC (`BACKEND_LLM_GATEWAY_ADDR`), `services/course-graph` — тоже по gRPC (`COURSE_GRAPH_LLM_GATEWAY_ADDR`).

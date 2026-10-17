@@ -205,6 +205,20 @@ func TestOpenAPIResponses(t *testing.T) {
 		t.Fatalf("materials upload: %s (%v)", materialsUpload.Body.String(), err)
 	}
 	matID := uploadResult.Uploaded[0].ID
+	check("POST", "/admin/subjects/{subject_id}/graph/build", f.request("POST", "/admin/subjects/subject:test/graph/build", "", admin))
+	// Finish the material's processing as the OCR and cleaning workers would.
+	for _, q := range []string{
+		`UPDATE subject_materials SET status = 'parsed' WHERE id = $1`,
+		`INSERT INTO material_cleaning_jobs(material_id, status, s3_report_key, updated_at) VALUES ($1, 'ready', 'report', 1)
+		 ON CONFLICT (material_id) DO UPDATE SET status = 'ready', s3_report_key = 'report'`,
+	} {
+		if _, err := f.app.pool.Exec(t.Context(), q, matID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	check("POST", "/admin/subjects/{subject_id}/graph/build", f.request("POST", "/admin/subjects/subject:test/graph/build", "", admin))
+	check("POST", "/admin/subjects/{subject_id}/graph/build", f.request("POST", "/admin/subjects/subject:test/graph/build", "", admin))
+	check("GET", "/admin/subjects/{subject_id}/graph", f.request("GET", "/admin/subjects/subject:test/graph", "", admin))
 	check("GET", "/admin/subjects/{subject_id}/materials/{material_id}/raw", f.request("GET", "/admin/subjects/subject:test/materials/"+matID+"/raw", "", admin))
 	check("DELETE", "/admin/subjects/{subject_id}/materials/{material_id}", f.request("DELETE", "/admin/subjects/subject:test/materials/"+matID, "", admin))
 	geekFlow(t, f, access, check)

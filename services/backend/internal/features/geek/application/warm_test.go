@@ -93,3 +93,46 @@ func TestMainQuestionsAreThePreparedFirstQuestions(t *testing.T) {
 		t.Fatalf("questions = %q", got)
 	}
 }
+
+// gatedVoice holds every synthesis until release is closed.
+type gatedVoice struct {
+	countingVoice
+	release chan struct{}
+}
+
+func (v *gatedVoice) Synthesize(ctx context.Context, text string) ([]byte, error) {
+	data, err := v.countingVoice.Synthesize(ctx, text)
+	<-v.release
+	return data, err
+}
+
+func TestConcurrentMissesOfOneQuestionSynthesizeOnce(t *testing.T) {
+	voice := &gatedVoice{countingVoice: countingVoice{called: make(chan struct{}, 8)}, release: make(chan struct{})}
+	speech := NewSpeechCache(voice, &syncAudio{data: map[string][]byte{}}, "steps=20")
+	// The warmer starts the synthesis, then a student leaves while waiting
+	// and another one asks for the same question.
+	warmer := make(chan error, 1)
+	go func() { _, err := speech.Part(context.Background(), "Зачем эвристика?"); warmer <- err }()
+	<-voice.called
+	leaving, leave := context.WithCancel(context.Background())
+	left := make(chan error, 1)
+	go func() { _, err := speech.Part(leaving, "Зачем эвристика?"); left <- err }()
+	staying := make(chan error, 1)
+	go func() { _, err := speech.Part(context.Background(), "Зачем эвристика?"); staying <- err }()
+	leave()
+	if err := <-left; err == nil {
+		t.Fatal("the student who left still waited for the synthesis")
+	}
+	close(voice.release)
+	if err := <-warmer; err != nil {
+		t.Fatal(err)
+	}
+	if err := <-staying; err != nil {
+		t.Fatal(err)
+	}
+	voice.mu.Lock()
+	defer voice.mu.Unlock()
+	if len(voice.calls) != 1 {
+		t.Fatalf("the same question was synthesized %d times", len(voice.calls))
+	}
+}

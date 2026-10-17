@@ -23,9 +23,6 @@ const (
 type Config struct {
 	// MaxQuestions stops a diagnostic after that many questions; 0 means no limit.
 	MaxQuestions int
-	// Voice names the TTS settings. Turn parts are cached by their text and
-	// voice, so a prepared question is synthesized once for all students.
-	Voice string
 }
 
 // AudioPart selects what of a Geek turn is voiced.
@@ -48,12 +45,13 @@ type Service struct {
 	speech   *SpeechCache
 }
 
-func New(graphs GraphSource, store Store, texts Transcriptions, examiner Examiner, voice Synthesizer, audio AudioStore, ids IDGenerator, now func() time.Time, cfg Config) *Service {
+// New builds the Geek service. speech voices turns; the app shares one
+// instance with the warmer, so a question missed by both is synthesized once.
+func New(graphs GraphSource, store Store, texts Transcriptions, examiner Examiner, speech *SpeechCache, ids IDGenerator, now func() time.Time, cfg Config) *Service {
 	if now == nil {
 		now = time.Now
 	}
-	return &Service{graphs: graphs, store: store, texts: texts, examiner: examiner, ids: ids, now: now, cfg: cfg,
-		speech: NewSpeechCache(voice, audio, cfg.Voice)}
+	return &Service{graphs: graphs, store: store, texts: texts, examiner: examiner, ids: ids, now: now, cfg: cfg, speech: speech}
 }
 
 // Answer is the student's reply: exactly one of a confirmed transcription, a

@@ -63,6 +63,9 @@ type App struct {
 	// closes it in Close.
 	examiner geekapp.Examiner
 	gateway  io.Closer
+	// speech voices Geek turns; one instance serves students and the warmer,
+	// so concurrent misses of one question are synthesized once.
+	speech *geekapp.SpeechCache
 	// warmer voices prepared questions before students ask for them.
 	warmer *geekapp.Warmer
 }
@@ -118,7 +121,8 @@ func New(cfg Config, pool *pgxpool.Pool, logger *zap.Logger) (*App, error) {
 	translator := materialstranslator.NewWithCompleter(materialstranslator.NewGateway(llmgatewayv1.NewGatewayClient(conn), cfg.LLMTimeout), 4)
 	a.ocrWorker = materialsapp.NewOCRWorker(materialRepository, a.materialsStorage, materialsOCR, translator)
 	a.cleaningWorker = materialsapp.NewCleaningWorker(materialRepository, a.materialsStorage, materialsOCR)
-	a.warmer = geekapp.NewWarmer(geekapp.NewSpeechCache(a.models(), geekstorage.NewAudio(storage, cfg.S3Bucket), a.voiceName()))
+	a.speech = geekapp.NewSpeechCache(a.models(), geekstorage.NewAudio(storage, cfg.S3Bucket), a.voiceName())
+	a.warmer = geekapp.NewWarmer(a.speech)
 	a.graphWorker = graphapp.New(graphpg.New(pool), materialRepository, a.materialsStorage, graphapi.New(cfg.CourseGraphURL), a.warmer)
 
 	return a, nil
@@ -217,8 +221,8 @@ func (a *App) Handler() http.Handler {
 
 	// The stored graph of stream A goes first once it exists; the fixture is the fallback.
 	graphs := geekgraph.Chain{geekgraph.NewStored(a.pool), geekgraph.Fixture{Path: a.cfg.GeekGraphFixture}}
-	geekService := geekapp.New(graphs, geekpg.New(a.pool), geekpg.NewTranscriptions(a.pool), a.examiner, models,
-		geekstorage.NewAudio(a.storage, a.cfg.S3Bucket), security.IDGenerator{}, a.now, geekapp.Config{MaxQuestions: a.cfg.GeekMaxQuestions, Voice: a.voiceName()})
+	geekService := geekapp.New(graphs, geekpg.New(a.pool), geekpg.NewTranscriptions(a.pool), a.examiner, a.speech,
+		security.IDGenerator{}, a.now, geekapp.Config{MaxQuestions: a.cfg.GeekMaxQuestions})
 	geekHandlers := geekhttp.New(geekService)
 
 	mux := http.NewServeMux()

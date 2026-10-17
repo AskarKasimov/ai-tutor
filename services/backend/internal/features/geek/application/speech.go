@@ -9,6 +9,7 @@ import (
 
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/audio"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/fault"
+	"golang.org/x/sync/singleflight"
 )
 
 // SplitSpeech cuts text into parts of at most limit runes for synthesis,
@@ -54,6 +55,10 @@ type SpeechCache struct {
 	// name identifies the TTS settings; a part's key depends on it, so new
 	// settings never return audio made with the old ones.
 	name string
+	// flights joins concurrent misses of one key into one synthesis: the
+	// speech service works through requests one by one, so a duplicate costs
+	// a whole request in its queue.
+	flights singleflight.Group
 }
 
 func NewSpeechCache(voice Synthesizer, audio AudioStore, name string) *SpeechCache {
@@ -69,8 +74,26 @@ func (c *SpeechCache) Part(ctx context.Context, text string) ([]byte, error) {
 }
 
 // Get returns the WAV cached under key or synthesizes text by parts within
-// the TTS limit, joins and caches it.
+// the TTS limit, joins and caches it. Callers that miss the same key at once
+// wait for one synthesis. It runs detached from the caller that started it,
+// so a listener who leaves does not fail the others; each caller still stops
+// waiting when its own context ends.
 func (c *SpeechCache) Get(ctx context.Context, key, text string) ([]byte, error) {
+	result := c.flights.DoChan(key, func() (any, error) {
+		return c.load(context.WithoutCancel(ctx), key, text)
+	})
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case r := <-result:
+		if r.Err != nil {
+			return nil, r.Err
+		}
+		return r.Val.([]byte), nil
+	}
+}
+
+func (c *SpeechCache) load(ctx context.Context, key, text string) ([]byte, error) {
 	if data, ok, err := c.audio.Get(ctx, key); err != nil {
 		return nil, err
 	} else if ok {

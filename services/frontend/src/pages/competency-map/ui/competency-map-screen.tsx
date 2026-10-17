@@ -1313,10 +1313,45 @@ function CourseGraphCard({
                       (t) => !childIds.has(t.id),
                     )
 
+                    const renderedIds = new Set<string>()
+
+                    const renderSubtree = (
+                      topicId: string,
+                      visitedInBranch: Set<string>,
+                    ): React.ReactNode => {
+                      renderedIds.add(topicId)
+                      const children = childrenByParent.get(topicId) || []
+                      if (children.length === 0) return null
+
+                      return (
+                        <ul className={styles.graphChildrenList}>
+                          {children.map((childId) => {
+                            if (visitedInBranch.has(childId)) {
+                              return null
+                            }
+                            const child = topicsById.get(childId)
+                            const nextVisited = new Set(visitedInBranch).add(
+                              childId,
+                            )
+                            return (
+                              <li key={childId}>
+                                <Text size="2" color="gray">
+                                  └─ {child?.title || childId}
+                                </Text>
+                                {renderSubtree(childId, nextVisited)}
+                              </li>
+                            )
+                          })}
+                        </ul>
+                      )
+                    }
+
+                    const primaryRoots = roots.length > 0 ? roots : graph.topics
+
                     return (
                       <div style={{ display: 'grid', gap: 'var(--space-2)' }}>
-                        {roots.map((root) => {
-                          const children = childrenByParent.get(root.id) || []
+                        {primaryRoots.map((root) => {
+                          renderedIds.add(root.id)
                           return (
                             <div
                               key={root.id}
@@ -1325,23 +1360,26 @@ function CourseGraphCard({
                               <Text weight="bold" size="2">
                                 {root.title}
                               </Text>
-                              {children.length > 0 && (
-                                <ul className={styles.graphChildrenList}>
-                                  {children.map((childId) => {
-                                    const child = topicsById.get(childId)
-                                    return (
-                                      <li key={childId}>
-                                        <Text size="2" color="gray">
-                                          └─ {child?.title || childId}
-                                        </Text>
-                                      </li>
-                                    )
-                                  })}
-                                </ul>
-                              )}
+                              {renderSubtree(root.id, new Set([root.id]))}
                             </div>
                           )
                         })}
+                        {graph.topics
+                          .filter((t) => !renderedIds.has(t.id))
+                          .map((orphan) => {
+                            renderedIds.add(orphan.id)
+                            return (
+                              <div
+                                key={orphan.id}
+                                className={styles.graphSectionItem}
+                              >
+                                <Text weight="bold" size="2">
+                                  {orphan.title}
+                                </Text>
+                                {renderSubtree(orphan.id, new Set([orphan.id]))}
+                              </div>
+                            )
+                          })}
                       </div>
                     )
                   })()}

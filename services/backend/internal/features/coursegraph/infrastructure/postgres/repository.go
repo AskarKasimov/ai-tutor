@@ -57,3 +57,11 @@ func (r *Repository) Read(ctx context.Context, subjectID string) (coursegraph.Sn
 	}
 	return coursegraph.Snapshot{Status: row.Status, Attempts: row.Attempts, ErrorMessage: row.ErrorMessage, Graph: row.Graph, UpdatedAt: row.UpdatedAt, Stale: row.Stale}, nil
 }
+
+func (r *Repository) RetryFailedBuild(ctx context.Context, subjectID string, now time.Time) (bool, error) {
+	n, err := db.New(r.pool).RetryFailedCourseGraphBuild(ctx, db.RetryFailedCourseGraphBuildParams{
+		SubjectID:   subjectID,
+		AvailableAt: now.Unix(),
+	})
+	return n > 0, err
+}

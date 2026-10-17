@@ -51,3 +51,8 @@ SELECT s.id, coalesce(j.status,'waiting_materials')::text AS status,
 FROM subjects s LEFT JOIN course_graph_jobs j ON j.subject_id=s.id
 LEFT JOIN course_graphs g ON g.subject_id=s.id
 LEFT JOIN course_graph_inputs i ON i.subject_id=s.id WHERE s.id=$1;
+
+-- name: RetryFailedCourseGraphBuild :execrows
+UPDATE course_graph_jobs
+SET status = 'pending', attempts = 0, error_message = '', available_at = $2, lease_until = 0, updated_at = $2
+WHERE subject_id = $1 AND status = 'failed';

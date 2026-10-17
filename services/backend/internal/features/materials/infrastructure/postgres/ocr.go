@@ -97,4 +97,27 @@ func (r *Repository) FailOCR(ctx context.Context, job application.OCRJob, messag
 	})
 }
 
+func (r *Repository) RetryFailedOCR(ctx context.Context, materialID string, now time.Time) (bool, error) {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return false, err
+	}
+	defer tx.Rollback(ctx)
+	q := db.New(tx)
+	n, err := q.RetryFailedMaterialOCR(ctx, db.RetryFailedMaterialOCRParams{
+		MaterialID:  materialID,
+		AvailableAt: now.Unix(),
+	})
+	if err != nil {
+		return false, err
+	}
+	if n > 0 {
+		_, _ = tx.Exec(ctx, "UPDATE subject_materials SET status = 'pending', error_message = NULL, updated_at = $1 WHERE id = $2 AND status = 'failed'", now.Unix(), materialID)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return false, err
+	}
+	return n > 0, nil
+}
+
 var _ application.OCRQueue = (*Repository)(nil)

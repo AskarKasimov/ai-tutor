@@ -175,6 +175,25 @@ func (q *Queries) RenewCourseGraph(ctx context.Context, arg RenewCourseGraphPara
 	return result.RowsAffected(), nil
 }
 
+const retryFailedCourseGraphBuild = `-- name: RetryFailedCourseGraphBuild :execrows
+UPDATE course_graph_jobs
+SET status = 'pending', attempts = 0, error_message = '', available_at = $2, lease_until = 0, updated_at = $2
+WHERE subject_id = $1 AND status = 'failed'
+`
+
+type RetryFailedCourseGraphBuildParams struct {
+	SubjectID   string
+	AvailableAt int64
+}
+
+func (q *Queries) RetryFailedCourseGraphBuild(ctx context.Context, arg RetryFailedCourseGraphBuildParams) (int64, error) {
+	result, err := q.db.Exec(ctx, retryFailedCourseGraphBuild, arg.SubjectID, arg.AvailableAt)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const syncCourseGraphJobs = `-- name: SyncCourseGraphJobs :exec
 INSERT INTO course_graph_jobs(subject_id, fingerprint, updated_at)
 SELECT subject_id, fingerprint, $1::bigint FROM course_graph_inputs

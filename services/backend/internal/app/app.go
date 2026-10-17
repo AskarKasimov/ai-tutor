@@ -153,7 +153,7 @@ func New(cfg Config, pool *pgxpool.Pool, logger *zap.Logger) (*App, error) {
 	materialsOCR := materialsocr.New(cfg.CourseGraphURL, cfg.CourseGraphTimeout)
 	materialsTranslator := materialstranslator.NewWithCompleter(a.modelClient, cfg.TranslatorWorkers)
 	a.ocrWorker = materialsapp.NewOCRWorker(materialRepository, a.materialsStorage, materialsOCR, materialsTranslator)
-	a.cleaningWorker = materialsapp.NewCleaningWorker(materialRepository, a.materialsStorage, materialsocr.New(cfg.CourseGraphURL, 330*time.Second))
+	a.cleaningWorker = materialsapp.NewCleaningWorker(materialRepository, a.materialsStorage, materialsocr.New(cfg.CourseGraphURL, cfg.CourseGraphTimeout))
 	a.graphWorker = graphapp.New(graphpg.New(pool), materialspg.New(pool), a.materialsStorage, graphapi.New(cfg.CourseGraphURL))
 	return a, nil
 }

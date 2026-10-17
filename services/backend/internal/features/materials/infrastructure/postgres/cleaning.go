@@ -57,3 +57,11 @@ func (r *Repository) FailCleaning(ctx context.Context, job material.CleaningJob,
 	_, err := db.New(r.pool).FailMaterialCleaning(ctx, db.FailMaterialCleaningParams{MaterialID: job.MaterialID, LeaseToken: job.Token, ErrorMessage: message, AvailableAt: now.Add(time.Duration(job.Attempts) * 30 * time.Second).Unix(), UpdatedAt: now.Unix()})
 	return err
 }
+
+func (r *Repository) RetryFailedCleaning(ctx context.Context, materialID string, now time.Time) (bool, error) {
+	n, err := db.New(r.pool).RetryFailedMaterialCleaning(ctx, db.RetryFailedMaterialCleaningParams{
+		MaterialID:  materialID,
+		AvailableAt: now.Unix(),
+	})
+	return n > 0, err
+}

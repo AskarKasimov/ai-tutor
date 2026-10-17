@@ -24,7 +24,13 @@ type ConvertResponse struct {
 	Report   json.RawMessage `json:"report"`
 }
 
+// New creates an OCR/cleaner client for course-graph.
+// If timeout <= 0, no global HTTP client timeout is imposed on the Client Do,
+// relying instead on the operation context cancellation (ctx) from the worker.
 func New(courseGraphURL string, timeout time.Duration) *Client {
+	if timeout < 0 {
+		timeout = 0
+	}
 	return &Client{
 		courseGraphURL: strings.TrimRight(courseGraphURL, "/"),
 		httpClient: &http.Client{

@@ -40,3 +40,8 @@ UPDATE material_cleaning_jobs
 SET status = CASE WHEN attempts >= 3 THEN 'failed' ELSE 'pending' END,
     error_message = $3, available_at = $4, lease_until = 0, updated_at = $5
 WHERE material_id = $1 AND lease_token = $2 AND status = 'processing';
+
+-- name: RetryFailedMaterialCleaning :execrows
+UPDATE material_cleaning_jobs
+SET status = 'pending', attempts = 0, error_message = '', available_at = $2, lease_until = 0, updated_at = $2
+WHERE material_id = $1 AND status = 'failed';

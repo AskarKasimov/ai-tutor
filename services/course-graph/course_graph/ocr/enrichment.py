@@ -70,30 +70,26 @@ class NativeSyntaxGuard:
         from docling_core.types.doc import DocItemLabel
 
         elements = list(element_batch)
-        native_by_element = {}
         preserved = []
         for element in elements:
             item = element.item
             if item.label not in (DocItemLabel.CODE, DocItemLabel.FORMULA) or not item.text.strip():
                 continue
             matches, native = self._matches_native_pdf(item)
-            native_by_element[id(element)] = native
             if matches:
-                preserved.append(element)
+                if item.label == DocItemLabel.CODE:
+                    preserved.append(element)
+                elif item.label == DocItemLabel.FORMULA and native is not None and ":-" in native:
+                    item.text = native
+                    item.label = DocItemLabel.TEXT
+                    self.warnings.append("Правило Prolog ошибочно размечено как формула; сохранён исходный синтаксис")
+                    preserved.append(element)
         preserved_ids = {id(element) for element in preserved}
         enrich = [element for element in elements if id(element) not in preserved_ids]
         output = list(self.stage(doc, enrich)) if enrich else []
         output_by_id = {id(item): item for item in output}
         for element in elements:
             item = element.item if id(element) in preserved_ids else output_by_id.get(id(element.item), element.item)
-            native = native_by_element.get(id(element))
-            if (id(element) in preserved_ids and element.item.label == DocItemLabel.FORMULA
-                    and native is not None and ":-" in native):
-                # Logic-program rules are code, even if layout classified them
-                # as mathematics. A LaTeX colon cannot replace Prolog's ':-'.
-                item.text = native
-                item.label = DocItemLabel.TEXT
-                self.warnings.append("Правило Prolog ошибочно размечено как формула; сохранён исходный синтаксис")
             yield item
 
 

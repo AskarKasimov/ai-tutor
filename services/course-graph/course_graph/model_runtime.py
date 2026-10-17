@@ -144,50 +144,64 @@ class ModelRuntime:
         )
         progress_thread.start()
         try:
-            attempts = max(1, min(5, int(os.environ.get("COURSE_GRAPH_MODEL_BOOTSTRAP_ATTEMPTS", "3"))))
-        except ValueError:
-            attempts = 3
-        for attempt in range(1, attempts + 1):
             try:
-                self._prepare_models()
-                break
-            except Exception as error:
-                logger.error(
-                    "model_bootstrap_attempt_failed attempt=%d attempts=%d error_type=%s",
-                    attempt, attempts, type(error).__name__,
-                )
-                if attempt < attempts:
-                    with self._lock:
-                        self._stage = "retry_wait"
-                        self._updated_at = self._now()
-                    time.sleep(min(10 * attempt, 30))
-                    with self._lock:
-                        self._stage = "loading_models"
-                        self._updated_at = self._now()
-                    continue
+                attempts = max(1, min(5, int(os.environ.get("COURSE_GRAPH_MODEL_BOOTSTRAP_ATTEMPTS", "3"))))
+            except ValueError:
+                attempts = 3
+            last_error: Exception | None = None
+            for attempt in range(1, attempts + 1):
+                try:
+                    self._prepare_models()
+                    last_error = None
+                    break
+                except Exception as error:
+                    last_error = error
+                    logger.error(
+                        "model_bootstrap_attempt_failed attempt=%d attempts=%d error_type=%s",
+                        attempt, attempts, type(error).__name__,
+                    )
+                    if attempt < attempts:
+                        with self._lock:
+                            self._stage = "retry_wait"
+                            self._updated_at = self._now()
+                        time.sleep(min(10 * attempt, 30))
+                        with self._lock:
+                            self._stage = "loading_models"
+                            self._updated_at = self._now()
+                        continue
 
-            stop_progress.set()
-            detail = f"OCR model preparation failed ({type(error).__name__})"
+            if last_error is not None:
+                detail = f"OCR model preparation failed ({type(last_error).__name__})"
+                with self._lock:
+                    self._state = "failed"
+                    self._stage = "failed"
+                    self._detail = detail
+                    self._updated_at = self._now()
+                    self._done.set()
+                logger.error(
+                    "model_bootstrap_failed error_type=%s elapsed_seconds=%.1f",
+                    type(last_error).__name__, time.monotonic() - started,
+                )
+                return
+
+            with self._lock:
+                self._state = "ready"
+                self._stage = "ready"
+                self._detail = None
+                self._updated_at = self._now()
+                self._done.set()
+            logger.info("model_bootstrap_completed elapsed_seconds=%.1f", time.monotonic() - started)
+        except Exception as exc:
             with self._lock:
                 self._state = "failed"
                 self._stage = "failed"
-                self._detail = detail
+                self._detail = f"OCR model bootstrap crashed ({type(exc).__name__})"
                 self._updated_at = self._now()
                 self._done.set()
-            logger.error(
-                "model_bootstrap_failed error_type=%s elapsed_seconds=%.1f",
-                type(error).__name__, time.monotonic() - started,
-            )
-            return
-
-        stop_progress.set()
-        with self._lock:
-            self._state = "ready"
-            self._stage = "ready"
-            self._detail = None
-            self._updated_at = self._now()
+            logger.exception("model_bootstrap_crashed elapsed_seconds=%.1f", time.monotonic() - started)
+        finally:
+            stop_progress.set()
             self._done.set()
-        logger.info("model_bootstrap_completed elapsed_seconds=%.1f", time.monotonic() - started)
 
     def _prepare_models(self) -> None:
         # Import the heavyweight stack only in this one-time bootstrap worker.

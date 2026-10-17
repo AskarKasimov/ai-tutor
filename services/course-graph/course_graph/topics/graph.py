@@ -292,7 +292,9 @@ async def build_links(topics, complete, encoder, per_requirement=5, max_chars=16
                 left = await judge(batch[:midpoint], False)
                 right = await judge(batch[midpoint:], False)
                 return left[0]+right[0], left[1]+right[1]
-            raise
+            reason = f"Отклонено: {' '.join(str(error).split())}"[:500]
+            return [], [RequirementDecision(target_id=item["target_id"], requirement=item["requirement"],
+                                           prerequisite_ids=[], reason=reason) for item in batch]
 
     jobs = [asyncio.create_task(judge(b)) for b in batches]
     try:

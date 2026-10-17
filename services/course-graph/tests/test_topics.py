@@ -343,8 +343,9 @@ def test_fabricated_quote_fails_instead_of_publishing_edge():
         return json.dumps(result)
     topics = [make_topic("a", "Производная", ["Производная"]),
               make_topic("b", "Спуск", ["Обновление"], ["Производная"])]
-    with pytest.raises(ValueError, match="цитата"):
-        run(build_links(topics, bad, Encoder()))
+    graph = run(build_links(topics, bad, Encoder()))
+    assert graph["prerequisites"] == []
+    assert any(d["target_id"] == "b" and not d["prerequisite_ids"] for d in graph["requirements"])
 
 
 def test_ocr_line_wrapping_is_canonicalized_but_words_cannot_change():
@@ -572,6 +573,3 @@ def test_resolve_parent_topic_fuzzy_and_containment():
     assert hierarchy[0]["source"] == "t_parent"
     assert hierarchy[0]["target"] == "t_child"
     assert "t_child" in hierarchy_adj.get("t_parent", set())
-
-
-

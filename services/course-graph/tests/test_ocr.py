@@ -163,6 +163,25 @@ def test_model_bootstrap_runs_once_and_readiness_does_not_reinitialize(monkeypat
     assert calls == ["prepared"]
 
 
+def test_model_bootstrap_failure_records_error_and_unblocks_wait(monkeypatch):
+    from course_graph.model_runtime import ModelRuntime
+
+    monkeypatch.setenv("COURSE_GRAPH_WITH_DOCLING", "true")
+    monkeypatch.setenv("COURSE_GRAPH_MODEL_BOOTSTRAP", "true")
+    monkeypatch.setenv("COURSE_GRAPH_MODEL_BOOTSTRAP_ATTEMPTS", "1")
+    runtime = ModelRuntime()
+    def fail():
+        raise RuntimeError("download failed")
+    runtime._prepare_models = fail
+    runtime.start()
+    assert not runtime.wait()
+    status = runtime.status()
+    assert status["ready"] is False
+    assert status["state"] == "failed"
+    assert status["stage"] == "failed"
+    assert status["detail"] == "OCR model preparation failed (RuntimeError)"
+
+
 def test_remote_url_log_redaction_removes_signed_query():
     import logging
     from course_graph.model_runtime import RedactRemoteURLs
@@ -329,6 +348,43 @@ def test_code_enrichment_is_bypassed_only_for_exact_native_pdf_text():
     assert result[2].text == source
     assert result[3].text == "enriched result"
     assert [entry.item for entry in stage_impl.seen] == [scanned, mismatch, missing_provenance]
+
+
+def test_formula_enrichment_not_bypassed_unless_confirmed_prolog():
+    from types import SimpleNamespace as S
+    from docling_core.types.doc import DocItemLabel
+    from course_graph.ocr.enrichment import NativeSyntaxGuard
+
+    formula = S(text="x^2 + y^2 = z^2", label=DocItemLabel.FORMULA)
+    prolog_formula = S(text="cat(X) :- feline(X).", label=DocItemLabel.FORMULA)
+
+    class Stage:
+        engine = object()
+        def __init__(self):
+            self.seen = []
+        def __call__(self, _, elements):
+            self.seen.extend(elements)
+            for element in elements:
+                element.item.text = "enriched formula"
+                yield element.item
+
+    stage_impl = Stage()
+    native = {
+        id(formula): "x^2 + y^2 = z^2",
+        id(prolog_formula): "cat(X) :- feline(X).",
+    }
+    guard = NativeSyntaxGuard(stage_impl, native_text_for=lambda item: native[id(item)])
+    result = list(guard(None, [S(item=formula), S(item=prolog_formula)]))
+
+    # Standard formula goes through enrichment despite matching native text
+    assert result[0].text == "enriched formula"
+    assert result[0].label == DocItemLabel.FORMULA
+    assert [e.item for e in stage_impl.seen] == [formula]
+
+    # Prolog rule classified as formula bypasses enrichment and is relabeled as TEXT
+    assert result[1].text == "cat(X) :- feline(X)."
+    assert result[1].label == DocItemLabel.TEXT
+    assert len(guard.warnings) == 1
 
 
 def test_enrichment_sets_model_cache_and_rejects_truncation():

@@ -46,10 +46,8 @@ it('sorts by week and supports drag-and-drop and keyboard reordering', async () 
       return this.data[type] ?? ''
     },
   }
-  const dragHandle = screen.getByRole('button', {
-    name: 'Переместить Lecture 10.pdf. Используйте стрелки вверх и вниз или перетащите.',
-  })
-  fireEvent.dragStart(dragHandle, { dataTransfer: transfer })
+  expect(rows[1]).toHaveAttribute('draggable', 'true')
+  fireEvent.dragStart(rows[1], { dataTransfer: transfer })
   fireEvent.dragOver(rows[0], { dataTransfer: transfer })
   fireEvent.drop(rows[0], { dataTransfer: transfer })
 

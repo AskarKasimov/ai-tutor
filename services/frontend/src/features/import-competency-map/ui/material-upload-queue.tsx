@@ -117,6 +117,25 @@ export function MaterialUploadQueue({
             className={`${styles.row}${draggingId === item.id ? ` ${styles.dragging}` : ''}${dropTargetId === item.id ? ` ${styles.dropTarget}` : ''}`}
             key={item.id}
             role="listitem"
+            draggable={!disabled && !upload.isPending && !preparing}
+            onDragStart={(event) => {
+              const target = event.target
+              if (
+                target instanceof HTMLElement &&
+                target.closest('button, input, [role="combobox"]') &&
+                !target.closest('[data-queue-drag-handle]')
+              ) {
+                event.preventDefault()
+                return
+              }
+              setDraggingId(item.id)
+              event.dataTransfer.effectAllowed = 'move'
+              event.dataTransfer.setData('text/plain', item.id)
+            }}
+            onDragEnd={() => {
+              setDraggingId(null)
+              setDropTargetId(null)
+            }}
             onDragOver={(event) => {
               event.preventDefault()
               setDropTargetId(item.id)
@@ -144,6 +163,7 @@ export function MaterialUploadQueue({
               })}
               disabled={disabled || upload.isPending || preparing}
               draggable={!disabled && !upload.isPending && !preparing}
+              data-queue-drag-handle="true"
               onKeyDown={(event) => {
                 const direction =
                   event.key === 'ArrowUp'
@@ -161,15 +181,6 @@ export function MaterialUploadQueue({
                     index + direction,
                   )
                 })
-              }}
-              onDragStart={(event) => {
-                setDraggingId(item.id)
-                event.dataTransfer.effectAllowed = 'move'
-                event.dataTransfer.setData('text/plain', item.id)
-              }}
-              onDragEnd={() => {
-                setDraggingId(null)
-                setDropTargetId(null)
               }}
             >
               <GripVertical aria-hidden="true" size={18} />

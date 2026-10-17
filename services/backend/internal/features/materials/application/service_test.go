@@ -392,7 +392,7 @@ func TestMetadataAndReplacementPreserveDurablePipeline(t *testing.T) {
 }
 
 func (m *memoryRepo) ListKinds(context.Context) ([]material.KindOption, error) {
-	return []material.KindOption{{Code: "lecture", Label: "Лекция"}, {Code: "lab", Label: "Лабораторная работа"}, {Code: "tutorial", Label: "Семинар"}}, nil
+	return []material.KindOption{{Code: "lecture", Label: "Лекция"}, {Code: "lab", Label: "Лабораторная"}, {Code: "tutorial", Label: "Туториал"}}, nil
 }
 func (m *memoryRepo) UpdateMetadata(_ context.Context, subjectID, id string, week *int32, kind *material.Kind) (material.Material, error) {
 	v := m.items[id]

@@ -135,7 +135,7 @@ function backend(
       return Response.json([
         { code: 'lecture', label: 'Лекция' },
         { code: 'lab', label: 'Лабораторная' },
-        { code: 'tutorial', label: 'Практика' },
+        { code: 'tutorial', label: 'Туториал' },
       ])
     if (url.endsWith('/admin/subjects') && init?.method === 'POST') {
       const subject = { id: 'subject-c', name: 'Новый', ready: false }
@@ -610,7 +610,7 @@ it('allows changing uploaded material metadata without re-uploading the PDF', as
   })
 
   fireEvent.click(screen.getByRole('combobox', { name: 'Тип материала' }))
-  fireEvent.click(await screen.findByRole('option', { name: 'Практика' }))
+  fireEvent.click(await screen.findByRole('option', { name: 'Туториал' }))
   fireEvent.click(screen.getByRole('button', { name: 'Сохранить' }))
   await waitFor(() =>
     expect(
@@ -664,7 +664,7 @@ it('shows a rejected kind update and retries it', async () => {
       name: 'Тип материала',
     }),
   )
-  fireEvent.click(await screen.findByRole('option', { name: 'Практика' }))
+  fireEvent.click(await screen.findByRole('option', { name: 'Туториал' }))
   fireEvent.click(screen.getByRole('button', { name: 'Сохранить' }))
   const error = await screen.findByRole('alert')
   expect(error).toHaveTextContent('Не удалось сохранить метаданные.')

@@ -59,6 +59,8 @@ export function useDiagnosticHistoryQuery(userId: string, subjectId: string) {
   })
 }
 
+const ACTIVE_REFRESH_MS = 20_000
+
 export function useDiagnosticQuery(userId: string, sessionId: string) {
   const { diagnostic } = useDiagnosticDependencies()
   const client = useQueryClient()
@@ -70,6 +72,10 @@ export function useDiagnosticQuery(userId: string, sessionId: string) {
       scoped(client, userId, signal, (s) =>
         diagnostic.readDiagnostic(sessionId, s),
       ),
+    // Reading an active diagnostic is what notices a rebuilt course graph,
+    // so the student learns it while thinking, not after answering.
+    refetchInterval: (query) =>
+      query.state.data?.status === 'active' ? ACTIVE_REFRESH_MS : false,
   })
 }
 

@@ -79,7 +79,8 @@ function geekBackend(
     ),
   ]
   let failures = options.failAnswers ?? 0
-  const control = { failReads: 0, failStarts: 0 }
+  // cancelled: the course graph was rebuilt, so answers find no active turn.
+  const control = { failReads: 0, failStarts: 0, cancelled: false }
   let session: {
     id: string
     subject_id: string
@@ -190,6 +191,8 @@ function geekBackend(
       }
       return Response.json(session, { status: 201 })
     }
+    if (control.cancelled && session?.status === 'active')
+      session = { ...session, status: 'cancelled', current_turn_id: null }
     if (url.endsWith('/diagnostic-sessions/d1') && session) {
       if (control.failReads > 0) {
         control.failReads--
@@ -201,6 +204,11 @@ function geekBackend(
       return Response.json(session)
     }
     if (url.endsWith('/diagnostic-sessions/d1/answers') && session) {
+      if (session.status === 'cancelled')
+        return Response.json(
+          { code: 'SESSION_NOT_ACTIVE', message: 'Диагностика уже завершена.' },
+          { status: 409 },
+        )
       const body = JSON.parse(String(init?.body)) as Record<string, unknown>
       answers.push({
         key: new Headers(init?.headers).get('Idempotency-Key') ?? '',
@@ -693,4 +701,29 @@ it('voices the reply to the answer first and the question after it in one turn',
   // The question plays once the reply has ended.
   act(() => FakeAudio.last?.onended?.())
   await waitFor(() => expect(FakeAudio.played).toHaveLength(3))
+})
+
+it('pops up that the course was updated when the diagnostic is cancelled', async () => {
+  const { control } = geekBackend({ active: true })
+  renderApp()
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Продолжить диагностику' }),
+  )
+  await answerField()
+  control.cancelled = true
+  await answerByText('Перестанет быть оптимальным')
+  expect(
+    await screen.findByText('Курс обновлён: диагностику нужно начать заново.'),
+  ).toBeVisible()
+  fireEvent.click(screen.getByRole('button', { name: 'Закрыть уведомление' }))
+  await waitFor(() =>
+    expect(
+      screen.queryByText('Курс обновлён: диагностику нужно начать заново.'),
+    ).not.toBeInTheDocument(),
+  )
+  expect(
+    screen.getByText(
+      'Курс обновился, и эта диагностика прервана. Начните новую на главной.',
+    ),
+  ).toBeVisible()
 })

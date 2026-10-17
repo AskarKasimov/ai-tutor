@@ -23,6 +23,21 @@ const id = z.string().min(1)
 const unix = z.number().int().nonnegative()
 const grade = z.enum(['A', 'B', 'C', 'D']).nullable()
 const status = z.enum(['active', 'completed', 'cancelled'])
+const materialReferenceSchema = z.object({
+  material_id: id,
+  filename: z.string().nullable().optional().default(null),
+  kind: z.string().nullable().optional().default(null),
+  kind_label: z.string().nullable().optional().default(null),
+  week: z.number().int().positive().nullable().optional().default(null),
+  material_revision: z.string().nullable().optional().default(null),
+})
+const sourceCitationSchema = materialReferenceSchema.extend({
+  block_id: z.number().int(),
+  start: z.number().int(),
+  end: z.number().int(),
+  text: z.string(),
+  page: z.number().int().nullable().optional().default(null),
+})
 
 const sessionSchema = z
   .object({
@@ -90,7 +105,22 @@ const resultSchema = z
         top_level: z.boolean(),
       }),
     ),
-    gaps: z.array(z.object({ node_id: id, title: z.string() })),
+    gaps: z.array(
+      z.object({
+        node_id: id,
+        title: z.string(),
+        weeks: z.array(z.number().int().positive()).optional().default([]),
+        sources: z.array(sourceCitationSchema).optional().default([]),
+        learning_materials: z
+          .object({
+            theory: z.array(materialReferenceSchema).optional().default([]),
+            practice: z.array(materialReferenceSchema).optional().default([]),
+            additional: z.array(materialReferenceSchema).optional().default([]),
+          })
+          .optional()
+          .default({ theory: [], practice: [], additional: [] }),
+      }),
+    ),
   })
   .transform((r): DiagnosticResult => ({
     sessionId: r.session_id,
@@ -103,8 +133,41 @@ const resultSchema = z
       grade: n.grade,
       topLevel: n.top_level,
     })),
-    gaps: r.gaps.map((g) => ({ nodeId: g.node_id, title: g.title })),
+    gaps: r.gaps.map((g) => ({
+      nodeId: g.node_id,
+      title: g.title,
+      weeks: g.weeks,
+      sources: g.sources.map((s) => ({
+        materialId: s.material_id,
+        filename: s.filename,
+        kind: s.kind,
+        kindLabel: s.kind_label,
+        week: s.week,
+        revision: s.material_revision,
+        blockId: s.block_id,
+        start: s.start,
+        end: s.end,
+        text: s.text,
+        page: s.page,
+      })),
+      learningMaterials: {
+        theory: g.learning_materials.theory.map(toMaterialReference),
+        practice: g.learning_materials.practice.map(toMaterialReference),
+        additional: g.learning_materials.additional.map(toMaterialReference),
+      },
+    })),
   }))
+
+function toMaterialReference(s: z.infer<typeof materialReferenceSchema>) {
+  return {
+    materialId: s.material_id,
+    filename: s.filename,
+    kind: s.kind,
+    kindLabel: s.kind_label,
+    week: s.week,
+    revision: s.material_revision,
+  }
+}
 
 const historySchema = z
   .object({
@@ -269,6 +332,19 @@ export async function readDiagnosticResult(
     resultSchema,
     signal,
   )
+}
+
+export async function fetchDiagnosticMaterialRaw(
+  sessionId: string,
+  materialId: string,
+  signal: AbortSignal,
+): Promise<Blob> {
+  const response = await request(
+    `${session(sessionId)}/materials/${encodeURIComponent(materialId)}/raw`,
+    signal,
+    READ_TIMEOUT,
+  )
+  return response.blob()
 }
 
 // The voice of a Geek turn as WAV: the whole turn or one of its parts, the

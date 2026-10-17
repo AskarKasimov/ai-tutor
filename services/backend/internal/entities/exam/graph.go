@@ -11,12 +11,28 @@ import (
 // Node is a topic of the course graph. Prerequisites reference other nodes;
 // outcomes and questions may be empty until they are prepared.
 type Node struct {
-	ID            string   `json:"id"`
-	Title         string   `json:"title"`
-	Content       string   `json:"content"`
-	Prerequisites []string `json:"prerequisites"`
-	Outcomes      []string `json:"outcomes"`
-	Questions     []string `json:"questions"`
+	ID            string           `json:"id"`
+	Title         string           `json:"title"`
+	Content       string           `json:"content"`
+	Prerequisites []string         `json:"prerequisites"`
+	Outcomes      []string         `json:"outcomes"`
+	Questions     []string         `json:"questions"`
+	Sources       []SourceCitation `json:"sources"`
+}
+
+// Source is a provenance citation from a particular source revision.
+type SourceCitation struct {
+	MaterialID       string  `json:"material_id"`
+	BlockID          int     `json:"block_id"`
+	Start            int     `json:"start"`
+	End              int     `json:"end"`
+	Text             string  `json:"text"`
+	Page             *int    `json:"page,omitempty"`
+	Week             *int32  `json:"week"`
+	Kind             *string `json:"kind"`
+	Filename         *string `json:"filename"`
+	KindLabel        *string `json:"kind_label"`
+	MaterialRevision *string `json:"material_revision"`
 }
 
 // Graph is the course graph: nodes in study order and acyclic prerequisite

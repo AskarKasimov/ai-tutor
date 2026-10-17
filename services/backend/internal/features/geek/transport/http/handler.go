@@ -3,7 +3,9 @@
 package geek
 
 import (
+	"mime"
 	"net/http"
+	"strconv"
 	"time"
 
 	"go.uber.org/zap"
@@ -64,8 +66,40 @@ type Session struct {
 
 // Gap is the deepest unmastered topic whose prerequisites are all mastered.
 type Gap struct {
-	NodeID string `json:"node_id"`
-	Title  string `json:"title"`
+	NodeID            string            `json:"node_id"`
+	Title             string            `json:"title"`
+	Weeks             []int32           `json:"weeks"`
+	Sources           []SourceCitation  `json:"sources"`
+	LearningMaterials LearningMaterials `json:"learning_materials"`
+}
+
+type SourceCitation struct {
+	MaterialID       string  `json:"material_id"`
+	BlockID          int     `json:"block_id"`
+	Start            int     `json:"start"`
+	End              int     `json:"end"`
+	Text             string  `json:"text"`
+	Page             *int    `json:"page" extensions:"x-nullable"`
+	Week             *int32  `json:"week" extensions:"x-nullable"`
+	Kind             *string `json:"kind" extensions:"x-nullable"`
+	Filename         *string `json:"filename" extensions:"x-nullable"`
+	KindLabel        *string `json:"kind_label" extensions:"x-nullable"`
+	MaterialRevision *string `json:"material_revision" extensions:"x-nullable"`
+}
+
+type MaterialReference struct {
+	MaterialID       string  `json:"material_id"`
+	Filename         *string `json:"filename" extensions:"x-nullable"`
+	Kind             *string `json:"kind" extensions:"x-nullable"`
+	KindLabel        *string `json:"kind_label" extensions:"x-nullable"`
+	Week             *int32  `json:"week" extensions:"x-nullable"`
+	MaterialRevision *string `json:"material_revision" extensions:"x-nullable"`
+}
+
+type LearningMaterials struct {
+	Theory     []MaterialReference `json:"theory"`
+	Practice   []MaterialReference `json:"practice"`
+	Additional []MaterialReference `json:"additional"`
 }
 
 type NodeResult struct {
@@ -286,6 +320,36 @@ func (h *Handler) Result(w http.ResponseWriter, r *http.Request) {
 	httpx.JSON(w, http.StatusOK, toResult(result))
 }
 
+// RawMaterial serves a source file linked by the diagnostic snapshot.
+// @Summary Исходный материал пробела
+// @Description Выдаёт исходный PDF только если он связан со snapshot диагностики и не заменён.
+// @ID getDiagnosticMaterial
+// @Tags Диагностика
+// @Security accessCookie
+// @Produce application/pdf
+// @Param id path string true "ID диагностики"
+// @Param material_id path string true "ID материала"
+// @Success 200 {file} binary
+// @Failure 404 {object} fault.Error
+// @Failure 410 {object} fault.Error
+// @Router /diagnostic-sessions/{id}/materials/{material_id}/raw [get]
+func (h *Handler) RawMaterial(w http.ResponseWriter, r *http.Request) {
+	u, ok := principal(w, r)
+	if !ok {
+		return
+	}
+	result, err := h.service.RawMaterial(r.Context(), u.ID, r.PathValue("id"), r.PathValue("material_id"))
+	if err != nil {
+		httpx.Error(r.Context(), w, err)
+		return
+	}
+	w.Header().Set("Content-Type", "application/pdf")
+	w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": result.Filename}))
+	w.Header().Set("Content-Length", strconv.Itoa(len(result.Data)))
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(result.Data)
+}
+
 // TurnAudio handles GET /diagnostic-sessions/{id}/turns/{turn_id}/audio.
 // @Summary Голос реплики Geek
 // @Description Backend синтезирует реплику Geek через TTS и кэширует WAV в S3; длина реплики не ограничена лимитом /voice/syntheses. Без part — вся реплика; part=reply — только реакция на прошлый ответ (поле reply), part=question — вопрос или завершение после неё. Части кэшируются по тексту, поэтому заранее подготовленный вопрос синтезируется один раз для всех студентов. 404 — реплика студента, чужая сессия или пустая часть (TURN_PART_NOT_FOUND).
@@ -348,10 +412,50 @@ func grade(g *domain.Grade) *string {
 func toResult(r domain.Result) Result {
 	out := Result{Gaps: []Gap{}, Grade: grade(r.Grade), Nodes: []NodeResult{}, ScorePercent: r.ScorePercent, SessionID: r.SessionID}
 	for _, g := range r.Gaps {
-		out.Gaps = append(out.Gaps, Gap{NodeID: g.NodeID, Title: g.Title})
+		weeks, sources := g.Weeks, g.Sources
+		if weeks == nil {
+			weeks = []int32{}
+		}
+		if sources == nil {
+			sources = []domain.SourceCitation{}
+		}
+		learning := g.LearningMaterials
+		if learning.Theory == nil {
+			learning.Theory = []domain.MaterialReference{}
+		}
+		if learning.Practice == nil {
+			learning.Practice = []domain.MaterialReference{}
+		}
+		if learning.Additional == nil {
+			learning.Additional = []domain.MaterialReference{}
+		}
+		out.Gaps = append(out.Gaps, Gap{NodeID: g.NodeID, Title: g.Title, Weeks: weeks,
+			Sources: sourceDTOs(sources), LearningMaterials: learningDTO(learning)})
 	}
 	for _, n := range r.Nodes {
 		out.Nodes = append(out.Nodes, NodeResult{Grade: grade(n.Grade), NodeID: n.NodeID, Status: string(n.Status), Title: n.Title, TopLevel: n.TopLevel})
 	}
 	return out
+}
+
+func sourceDTOs(sources []domain.SourceCitation) []SourceCitation {
+	out := make([]SourceCitation, 0, len(sources))
+	for _, source := range sources {
+		out = append(out, SourceCitation{MaterialID: source.MaterialID, BlockID: source.BlockID,
+			Start: source.Start, End: source.End, Text: source.Text, Page: source.Page, Week: source.Week,
+			Kind: source.Kind, Filename: source.Filename, KindLabel: source.KindLabel, MaterialRevision: source.MaterialRevision})
+	}
+	return out
+}
+
+func learningDTO(value domain.LearningMaterials) LearningMaterials {
+	convert := func(items []domain.MaterialReference) []MaterialReference {
+		out := make([]MaterialReference, 0, len(items))
+		for _, item := range items {
+			out = append(out, MaterialReference{MaterialID: item.MaterialID, Filename: item.Filename,
+				Kind: item.Kind, KindLabel: item.KindLabel, Week: item.Week, MaterialRevision: item.Revision})
+		}
+		return out
+	}
+	return LearningMaterials{Theory: convert(value.Theory), Practice: convert(value.Practice), Additional: convert(value.Additional)}
 }

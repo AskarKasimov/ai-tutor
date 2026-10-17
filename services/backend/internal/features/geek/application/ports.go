@@ -21,6 +21,15 @@ type GraphSource interface {
 	Current(ctx context.Context, subjectID string) (g exam.Graph, ok bool, err error)
 }
 
+type RawMaterial struct {
+	Filename, Revision string
+	Data               []byte
+	Found              bool
+}
+type RawMaterials interface {
+	CurrentRaw(context.Context, string) (RawMaterial, error)
+}
+
 // Request is a stored idempotent request and the session it produced.
 type Request struct {
 	OwnerID     string

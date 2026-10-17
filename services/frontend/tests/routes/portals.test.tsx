@@ -99,11 +99,9 @@ it('opens the student site straight on sign-in and returns there on logout', asy
 it('opens the admin panel through the backend without a sign-in step', async () => {
   const fetch = backend()
   const router = renderApp('/admin')
-  expect(
-    await screen.findByRole('heading', { name: 'Материалы курса' }),
-  ).toBeVisible()
+  expect(await screen.findByRole('heading', { name: 'Курсы' })).toBeVisible()
   expect(screen.getByText('Учитель')).toBeVisible()
-  expect(router.state.location.pathname).toBe('/admin/competency-map')
+  expect(router.state.location.pathname).toBe('/admin/courses')
   expect(screen.queryByLabelText('Пароль')).not.toBeInTheDocument()
   {
     const call = fetch.mock.calls.find(([url]) =>

@@ -158,7 +158,7 @@ paths:
       description: >-
         Этапы 2–3 для одного материала: LLM (complexity high) удаляет организационные блоки и выделяет темы
         с источниками-цитатами. Названия тем, знания и вопросы — на русском; text темы — дословные фрагменты
-        материала. Отчёт backend кэширует и передаёт в /graph/build.
+        материала. Backend кэширует цитаты; метаданные provenance задаются snapshot при /graph/build.
       requestBody:
         required: true
         content:
@@ -173,7 +173,16 @@ paths:
                 material_id:
                   type: string
                 week:
+                  minimum: 1
                   type: [integer, "null"]
+                kind:
+                  type: [string, "null"]
+                filename:
+                  type: [string, "null"]
+                kind_label:
+                  type: [string, "null"]
+                material_revision:
+                  type: [string, "null"]
                 max_chars:
                   maximum: 20000
                   minimum: 1500
@@ -365,15 +374,24 @@ components:
         page:
           type: [integer, "null"]
         week:
+          minimum: 1
           type: [integer, "null"]
+        kind:
+          type: [string, "null"]
+        filename:
+          type: [string, "null"]
+        kind_label:
+          type: [string, "null"]
+        material_revision:
+          type: [string, "null"]
       required: [material_id, block_id, start, end, text]
       type: object
     Topic:
       additionalProperties: false
       description: >-
         Тема (вершина). В Geek попадают id, title, text (текст вершины), provides (ОР), question (вопрос)
-        и пререквизиты из Graph.prerequisites. sources и parent_title хранятся в сборке и показываются только
-        в админке.
+        и пререквизиты из Graph.prerequisites. sources хранят цитаты, редакцию, неделю и вид материала;
+        backend переносит их в snapshot Geek для результата диагностики.
       properties:
         id:
           type: string
@@ -415,6 +433,14 @@ components:
           type: string
         week:
           type: [integer, "null"]
+        kind:
+          type: [string, "null"]
+        filename:
+          type: [string, "null"]
+        kind_label:
+          type: [string, "null"]
+        material_revision:
+          type: [string, "null"]
         topics:
           description: Кэш тем из /topics/extract; null — выделить заново
           items:

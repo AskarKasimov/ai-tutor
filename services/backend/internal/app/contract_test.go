@@ -2,13 +2,17 @@ package app
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -16,6 +20,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/audio"
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/exam"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/httpx"
 )
 
@@ -122,6 +127,13 @@ func TestOpenAPIResponses(t *testing.T) {
 			checked[path] = true
 			return
 		}
+		if _, ok := content["application/pdf"]; ok {
+			if w.Header().Get("Content-Type") != "application/pdf" || !bytes.HasPrefix(w.Body.Bytes(), []byte("%PDF-")) {
+				t.Fatal("invalid PDF response")
+			}
+			checked[path] = true
+			return
+		}
 		schemaNode := content["application/json"].(map[string]any)["schema"].(map[string]any)
 		ref, ok := schemaNode["$ref"].(string)
 		if !ok {
@@ -190,12 +202,15 @@ func TestOpenAPIResponses(t *testing.T) {
 	admin := f.admin(t)
 	check("POST", "/admin/subjects", f.request("POST", "/admin/subjects", `{"name":"Предмет контракта"}`, admin))
 	check("GET", "/subjects", f.request("GET", "/subjects", "", admin))
-	materialsUpload := upload(f, "/admin/subjects/subject:test/materials", "file", "lecture.md", "text/markdown", []byte("# Введение\nФормула $x=1$"), admin)
-	// Upload and list are planned with week and kind; the old handlers stay
-	// unchecked until stream A implements them.
+	materialData := []byte("%PDF-1.7 lecture")
+	materialsUpload := upload(f, "/admin/subjects/subject:test/materials", "file", "lecture.pdf", "application/pdf", materialData, admin)
+	check("POST", "/admin/subjects/{subject_id}/materials", materialsUpload)
+	check("GET", "/admin/material-kinds", f.request("GET", "/admin/material-kinds", "", admin))
+	check("GET", "/admin/subjects/{subject_id}/materials", f.request("GET", "/admin/subjects/subject:test/materials", "", admin))
 	var uploadResult struct {
 		Uploaded []struct {
-			ID string `json:"id"`
+			ID       string `json:"id"`
+			S3RawKey string `json:"s3_raw_key"`
 		} `json:"uploaded"`
 		Failed []struct {
 			Filename string `json:"filename"`
@@ -205,6 +220,7 @@ func TestOpenAPIResponses(t *testing.T) {
 		t.Fatalf("materials upload: %s (%v)", materialsUpload.Body.String(), err)
 	}
 	matID := uploadResult.Uploaded[0].ID
+	check("PATCH", "/admin/subjects/{subject_id}/materials/{material_id}", f.request("PATCH", "/admin/subjects/subject:test/materials/"+matID, `{ "week": 3, "kind": "lecture" }`, admin))
 	check("POST", "/admin/subjects/{subject_id}/graph/build", f.request("POST", "/admin/subjects/subject:test/graph/build", "", admin))
 	// Finish the material's processing as the OCR and cleaning workers would.
 	for _, q := range []string{
@@ -220,8 +236,67 @@ func TestOpenAPIResponses(t *testing.T) {
 	check("POST", "/admin/subjects/{subject_id}/graph/build", f.request("POST", "/admin/subjects/subject:test/graph/build", "", admin))
 	check("GET", "/admin/subjects/{subject_id}/graph", f.request("GET", "/admin/subjects/subject:test/graph", "", admin))
 	check("GET", "/admin/subjects/{subject_id}/materials/{material_id}/raw", f.request("GET", "/admin/subjects/subject:test/materials/"+matID+"/raw", "", admin))
+
+	// Publish the source citation through the graph fixture so the diagnostic
+	// captures it in its own snapshot before the original file is replaced.
+	graphData, err := os.ReadFile(geekFixture)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var graph exam.Graph
+	if err := json.Unmarshal(graphData, &graph); err != nil {
+		t.Fatal(err)
+	}
+	revisionHash := sha256.Sum256([]byte(uploadResult.Uploaded[0].S3RawKey))
+	revision := hex.EncodeToString(revisionHash[:])
+	graph.Nodes[0].Sources = []exam.SourceCitation{{MaterialID: matID, MaterialRevision: &revision}}
+	graphData, err = json.Marshal(graph)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.app.cfg.GeekGraphFixture = filepath.Join(t.TempDir(), "graph.json")
+	if err := os.WriteFile(f.app.cfg.GeekGraphFixture, graphData, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	diagnosticID := geekFlow(t, f, access, check)
+	sourcePath := "/diagnostic-sessions/" + diagnosticID + "/materials/" + matID + "/raw"
+	sourceContract := "/diagnostic-sessions/{id}/materials/{material_id}/raw"
+	source := f.request("GET", sourcePath, "", access)
+	if source.Code != http.StatusOK || !bytes.Equal(source.Body.Bytes(), materialData) {
+		t.Fatalf("diagnostic source: %d %s", source.Code, source.Body.String())
+	}
+	check("GET", sourceContract, source)
+	foreignSource := f.request("GET", sourcePath, "", admin)
+	if foreignSource.Code != http.StatusNotFound {
+		t.Fatalf("foreign diagnostic source: %d %s", foreignSource.Code, foreignSource.Body.String())
+	}
+	check("GET", sourceContract, foreignSource)
+
+	var replacementBody bytes.Buffer
+	replacementWriter := multipart.NewWriter(&replacementBody)
+	replacementPart, err := replacementWriter.CreateFormFile("file", "replacement.pdf")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = replacementPart.Write([]byte("%PDF-1.7 replacement"))
+	_ = replacementWriter.Close()
+	replacementRequest := httptest.NewRequest("PUT", "https://api.example/admin/subjects/subject:test/materials/"+matID+"/raw", &replacementBody)
+	replacementRequest.Header.Set("Content-Type", replacementWriter.FormDataContentType())
+	replacementRequest.AddCookie(admin)
+	replacementResponse := httptest.NewRecorder()
+	f.app.Handler().ServeHTTP(replacementResponse, replacementRequest)
+	check("PUT", "/admin/subjects/{subject_id}/materials/{material_id}/raw", replacementResponse)
+	replacedSource := f.request("GET", sourcePath, "", access)
+	if replacedSource.Code != http.StatusGone {
+		t.Fatalf("replaced diagnostic source: %d %s", replacedSource.Code, replacedSource.Body.String())
+	}
+	check("GET", sourceContract, replacedSource)
 	check("DELETE", "/admin/subjects/{subject_id}/materials/{material_id}", f.request("DELETE", "/admin/subjects/subject:test/materials/"+matID, "", admin))
-	geekFlow(t, f, access, check)
+	deletedSource := f.request("GET", sourcePath, "", access)
+	if deletedSource.Code != http.StatusGone {
+		t.Fatalf("deleted diagnostic source: %d %s", deletedSource.Code, deletedSource.Body.String())
+	}
+	check("GET", sourceContract, deletedSource)
 	check("POST", "/auth/refresh", f.request("POST", "/auth/refresh", "", refresh))
 	check("POST", "/auth/logout", f.request("POST", "/auth/logout", "", refresh))
 	check("GET", "/health", f.request("GET", "/health", ""))

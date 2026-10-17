@@ -1,0 +1,203 @@
+import { afterEach, expect, it, vi } from 'vitest'
+import {
+  readCourseGraph,
+  readLatestCourseGraphBuild,
+  startCourseGraphBuild,
+} from '@/entities/course-graph'
+
+afterEach(() => vi.unstubAllGlobals())
+const signal = () => new AbortController().signal
+const graph = {
+  topics: [
+    { id: 'intro', title: 'Основы', provides: ['Определения'] },
+    {
+      id: 'matrix',
+      title: 'Матрицы',
+      question: 'Что такое матрица?',
+      requires: ['Определения'],
+      parent_title: 'Алгебра',
+    },
+  ],
+  prerequisites: [
+    {
+      source: 'intro',
+      target: 'matrix',
+      requirement: 'Определения',
+      reason: 'Основа темы',
+    },
+  ],
+  hierarchy: [{ source: 'intro', target: 'matrix' }],
+  quality: {
+    acyclic: true,
+    topics: 2,
+    unresolved_requirements: 0,
+    semantic_quality: 'not_expert_validated',
+  },
+}
+const snapshot = (status = 'ready', overrides = {}) => ({
+  status,
+  attempts: 1,
+  error_message: '',
+  graph,
+  stale: false,
+  inputs_ready: true,
+  updated_at: 42,
+  ...overrides,
+})
+function respond(value: unknown, status = 200) {
+  const fetchMock = vi.fn().mockResolvedValue(Response.json(value, { status }))
+  vi.stubGlobal('fetch', fetchMock)
+  return fetchMock
+}
+
+it.each([
+  ['not_requested', null],
+  ['pending', 'queued'],
+  ['processing', 'running'],
+  ['ready', 'succeeded'],
+  ['failed', 'failed'],
+])(
+  'reads the master %s snapshot from GET /graph as %s',
+  async (wireStatus, status) => {
+    const fetchMock = respond(
+      snapshot(wireStatus, {
+        error_message: wireStatus === 'failed' ? 'Ошибка сборки' : '',
+      }),
+    )
+    const build = await readLatestCourseGraphBuild('subject:one', signal())
+    expect(fetchMock.mock.calls[0][0]).toBe(
+      '/api/v1/admin/subjects/subject%3Aone/graph',
+    )
+    expect(fetchMock.mock.calls[0][1]).toMatchObject({ credentials: 'include' })
+    if (status === null) expect(build).toBeNull()
+    else
+      expect(build).toMatchObject({
+        subjectId: 'subject:one',
+        status,
+        stage: null,
+        startedAt: null,
+        completedAt: null,
+        inputsReady: true,
+        stale: false,
+        error:
+          status === 'failed'
+            ? { code: 'GRAPH_BUILD_FAILED', message: 'Ошибка сборки' }
+            : null,
+      })
+  },
+)
+
+it('starts with POST /graph/build and parses the returned snapshot', async () => {
+  const fetchMock = respond(
+    snapshot('pending', { graph: null, updated_at: 0 }),
+    202,
+  )
+  await expect(
+    startCourseGraphBuild('subject:one', signal()),
+  ).resolves.toMatchObject({ status: 'queued', stage: null })
+  expect(fetchMock.mock.calls[0][0]).toBe(
+    '/api/v1/admin/subjects/subject%3Aone/graph/build',
+  )
+  expect(fetchMock.mock.calls[0][1]).toMatchObject({
+    method: 'POST',
+    credentials: 'include',
+  })
+})
+
+it('maps native topics and prerequisite direction while preserving the complete graph view', async () => {
+  respond(snapshot('ready', { stale: true, inputs_ready: false }))
+  await expect(readCourseGraph('subject-1', signal())).resolves.toMatchObject({
+    version: 'subject-1:ready:42',
+    publishedAt: 42,
+    stale: true,
+    inputsReady: false,
+    view: graph,
+    nodes: [
+      {
+        id: 'intro',
+        title: 'Основы',
+        content: '',
+        prerequisites: [],
+        outcomes: ['Определения'],
+        questions: [],
+      },
+      {
+        id: 'matrix',
+        title: 'Матрицы',
+        content: '',
+        prerequisites: ['intro'],
+        outcomes: [],
+        questions: ['Что такое матрица?'],
+      },
+    ],
+  })
+})
+
+it('treats a valid snapshot with null graph as the existing empty graph state', async () => {
+  respond(snapshot('not_requested', { graph: null, updated_at: 0 }))
+  await expect(readCourseGraph('subject-1', signal())).rejects.toMatchObject({
+    status: 404,
+    code: 'NOT_FOUND',
+  })
+})
+
+it('does not invent a publication timestamp when master has no persisted graph date', async () => {
+  respond(snapshot('ready', { updated_at: 0 }))
+  await expect(readCourseGraph('subject-1', signal())).resolves.toMatchObject({
+    publishedAt: null,
+  })
+})
+
+it('changes snapshot identity when the persisted graph changes', async () => {
+  respond(snapshot())
+  const first = await readLatestCourseGraphBuild('subject-1', signal())
+  respond(snapshot('ready', { updated_at: 43 }))
+  const second = await readLatestCourseGraphBuild('subject-1', signal())
+  expect(second?.id).not.toBe(first?.id)
+})
+
+it.each([
+  [401, 'UNAUTHORIZED'],
+  [403, 'FORBIDDEN'],
+  [409, 'GRAPH_BUILD_ACTIVE'],
+  [422, 'VALIDATION_ERROR'],
+])('preserves structured %i HTTP errors', async (status, code) => {
+  respond({ code, message: 'Backend error' }, Number(status))
+  await expect(
+    startCourseGraphBuild('subject-1', signal()),
+  ).rejects.toMatchObject({ status, code, message: 'Backend error' })
+})
+
+it('does not mask missing-subject HTTP errors as no prior build', async () => {
+  respond({ code: 'NOT_FOUND', message: 'Subject missing' }, 404)
+  await expect(
+    readLatestCourseGraphBuild('missing', signal()),
+  ).rejects.toMatchObject({ status: 404, message: 'Subject missing' })
+})
+
+it.each([
+  { status: 'ready' },
+  snapshot('queued'),
+  snapshot('ready', { graph: { topics: [] } }),
+])('rejects a malformed master snapshot', async (body) => {
+  respond(body)
+  await expect(readCourseGraph('subject-1', signal())).rejects.toMatchObject({
+    code: 'INVALID_RESPONSE',
+  })
+})
+
+it('rejects invalid JSON as a typed parsing error', async () => {
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('{')))
+  await expect(
+    readLatestCourseGraphBuild('subject-1', signal()),
+  ).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
+})
+
+it('preserves cancellation even when fetch has already resolved', async () => {
+  const controller = new AbortController()
+  respond(snapshot())
+  controller.abort()
+  await expect(
+    readCourseGraph('subject-1', controller.signal),
+  ).rejects.toMatchObject({ name: 'AbortError' })
+})

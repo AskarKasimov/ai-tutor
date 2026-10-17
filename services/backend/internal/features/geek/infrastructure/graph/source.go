@@ -103,13 +103,14 @@ func (s Stored) Current(ctx context.Context, subjectID string) (exam.Graph, bool
 		Version string      `json:"version"`
 		Nodes   []exam.Node `json:"nodes"`
 		Topics  []struct {
-			ID       string   `json:"id"`
-			Title    string   `json:"title"`
-			Text     string   `json:"text"`
-			Content  string   `json:"content"`
-			Question string   `json:"question"`
-			Provides []string `json:"provides"`
-			Requires []string `json:"requires"`
+			ID       string                `json:"id"`
+			Title    string                `json:"title"`
+			Text     string                `json:"text"`
+			Content  string                `json:"content"`
+			Question string                `json:"question"`
+			Provides []string              `json:"provides"`
+			Requires []string              `json:"requires"`
+			Sources  []exam.SourceCitation `json:"sources"`
 		} `json:"topics"`
 		Prerequisites []struct {
 			Source string `json:"source"`
@@ -144,6 +145,7 @@ func (s Stored) Current(ctx context.Context, subjectID string) (exam.Graph, bool
 				Prerequisites: prereqsByTarget[t.ID],
 				Outcomes:      t.Provides,
 				Questions:     questions,
+				Sources:       t.Sources,
 			}
 		}
 	} else {

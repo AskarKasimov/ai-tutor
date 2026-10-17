@@ -8,9 +8,14 @@ type Job struct {
 }
 
 type Material struct {
-	ID       string          `json:"id"`
-	Markdown string          `json:"markdown"`
-	Topics   json.RawMessage `json:"topics,omitempty"`
+	ID               string          `json:"id"`
+	Markdown         string          `json:"markdown"`
+	Week             *int32          `json:"week"`
+	Kind             *string         `json:"kind"`
+	Filename         string          `json:"filename"`
+	KindLabel        string          `json:"kind_label"`
+	MaterialRevision string          `json:"material_revision"`
+	Topics           json.RawMessage `json:"topics,omitempty"`
 }
 
 // Snapshot is the published graph of a course and the state of its build.

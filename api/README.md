@@ -2,17 +2,23 @@
 
 Контракт: [openapi.yaml](openapi.yaml), OpenAPI 3.1. Все пути относительны к `/api/v1`.
 
-- `x-implementation: implemented` — подключённая операция: auth, предметы, voice, удаление и скачивание материалов, диагностика Geek (`POST`/`GET /diagnostic-sessions` — старт и свои диагностики курса, `/{id}`, `/{id}/answers`, `/{id}/result`, `/{id}/turns/{turn_id}/audio`), health. Операции прежней модели (карта, банк заданий, assessment, taskgen, variantgen, план обучения, тренировка, озвучка заданий) удалены 16.10.2026 вместе с кодом.
-- `x-implementation: planned` — проект до реализации; наличие planned-операции в Swagger не означает наличие handler.
+- `x-implementation: implemented` — подключённая операция: auth, предметы, voice, материалы и диагностика Geek, граф курса и health. Операции прежней модели удалены 16.10.2026 вместе с кодом.
+- `x-implementation: planned` — проект до реализации; наличие planned-операции не означает наличие handler.
 
-Контракт Geek согласован 16.10.2026 и описан как planned, схемы — с префиксом `geek.`:
+Материалы реализованы: `GET /admin/material-kinds`, загрузка `POST` и список `GET /admin/subjects/{subject_id}/materials`, правка недели/вида `PATCH .../materials/{material_id}`,
+замена PDF `PUT .../materials/{material_id}/raw`, скачивание и удаление. Загрузка
+принимает до 48 файлов; manifest `items` задаёт `client_id`, неделю и вид каждого
+файла, а `results` связывает ответ с записью очереди. Старый multipart без manifest
+сохраняет совместимость. Метаданные не запускают OCR; замена файла ставит новое
+фоновое задание и отменяет устаревшие результаты предыдущего исходника.
 
-- материалы: загрузка с неделей и видом, список, правка `PATCH /admin/subjects/{subject_id}/materials/{material_id}`;
-- граф курса: `POST`/`GET /admin/subjects/{subject_id}/graph/build`, `GET /admin/subjects/{subject_id}/graph`;
-- диагностика — реализована 16.10.2026. Ограничение «ровно одно из `transcription_id`, `text`, `dont_know`» в `geek.AnswerRequest` проверяет код: генератор не выражает `oneOf`;
-- пакет для преподавателя: `GET /admin/subjects/{subject_id}/diagnostic-sessions`, `GET /admin/diagnostic-sessions/{id}/report`.
-
-Загрузка и список материалов уже подключены прежними handler без недели и вида; контрактный тест `TestOpenAPIResponses` проверяет только implemented-операции, поэтому их ответы не сверяются, пока операции не переведут в implemented.
+Граф master: `GET /admin/subjects/{subject_id}/graph` возвращает snapshot со статусом,
+сохранённым графом, `stale` и `inputs_ready`; `POST .../graph/build` запускает сборку.
+Отдельный GET статуса по `/graph/build` не используется интерфейсом.
+Диагностика реализована: `POST`/`GET /diagnostic-sessions`, чтение сессии,
+`/{id}/answers`, `/{id}/result`, `/{id}/turns/{turn_id}/audio`. Ограничение «ровно одно
+из `transcription_id`, `text`, `dont_know`» проверяет код: генератор не выражает `oneOf`.
+Пакет для преподавателя остаётся planned: список диагностик курса и отчёт.
 
 Внутренний API Python-сервиса course-graph — отдельный контракт [course-graph.yaml](course-graph.yaml): OCR, задание на сборку графа и его статус. Он не публикуется через Caddy.
 

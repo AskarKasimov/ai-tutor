@@ -369,3 +369,44 @@ func TestUntranslatedOCRKeepsSourceWithWarning(t *testing.T) {
 		t.Fatalf("untranslated OCR passed as translated: calls=%d warning=%v report=%v", model.calls, mat.ErrorMessage, mat.OCRReport)
 	}
 }
+
+func TestMetadataAndReplacementPreserveDurablePipeline(t *testing.T) {
+	ctx := context.Background()
+	admin := user.User{Role: user.Admin}
+	week, kind := int32(2), material.Kind("lecture")
+	repo := &memoryRepo{items: map[string]material.Material{"m": {ID: "m", SubjectID: "s", Status: material.StatusParsed, ParsedText: "old", S3RawKey: "old-raw", S3ParsedKey: "old-parsed", Week: &week, Kind: &kind, UpdatedAt: 7}}}
+	storage := &memoryS3{objects: map[string][]byte{"old-raw": []byte("old")}}
+	svc := application.New(repo, storage, &stubOCR{err: io.ErrUnexpectedEOF}, func() time.Time { return time.Unix(10, 0) })
+	nextWeek := int32(4)
+	updated, err := svc.UpdateMetadata(ctx, admin, "s", "m", &nextWeek, nil)
+	if err != nil || updated.UpdatedAt != 7 || updated.ParsedText != "old" || len(repo.jobs) != 0 {
+		t.Fatalf("metadata reprocessed material: %+v %v", updated, err)
+	}
+	replaced, err := svc.Replace(ctx, admin, "s", "m", application.ReplaceInput{Filename: "new.pdf", Data: []byte("%PDF-1.7 new")})
+	if err != nil || replaced.Status != material.StatusPending || replaced.ParsedText != "" || replaced.Week == nil || *replaced.Week != 4 || len(repo.jobs) != 1 {
+		t.Fatalf("replacement must enqueue without synchronous OCR: %+v %v", replaced, err)
+	}
+	if _, err = svc.Replace(ctx, admin, "other", "m", application.ReplaceInput{Filename: "new.pdf", Data: []byte("%PDF-")}); err == nil {
+		t.Fatal("replacement crossed subject boundary")
+	}
+}
+
+func (m *memoryRepo) ListKinds(context.Context) ([]material.KindOption, error) {
+	return []material.KindOption{{Code: "lecture", Label: "Лекция"}, {Code: "lab", Label: "Лабораторная"}, {Code: "tutorial", Label: "Туториал"}}, nil
+}
+func (m *memoryRepo) UpdateMetadata(_ context.Context, subjectID, id string, week *int32, kind *material.Kind) (material.Material, error) {
+	v := m.items[id]
+	if week != nil {
+		v.Week = week
+	}
+	if kind != nil {
+		v.Kind = kind
+	}
+	m.items[id] = v
+	return v, nil
+}
+func (m *memoryRepo) ReplaceMaterial(_ context.Context, subjectID, id string, v material.Material) (material.Material, error) {
+	m.items[id] = v
+	m.jobs = append(m.jobs, application.OCRJob{MaterialID: id, Token: "new-lease", Attempts: 1})
+	return v, nil
+}

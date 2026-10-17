@@ -421,6 +421,37 @@ def test_build_endpoint_reuses_cached_cards_and_validates_source_text(monkeypatc
     assert "topics" not in response.json()
 
 
+def test_build_updates_cached_source_metadata_and_merges_across_weeks(monkeypatch):
+    from fastapi.testclient import TestClient
+    import course_graph.api as api
+
+    class Client:
+        async def complete(self, system, payload):
+            return await grounded_judge(system, payload)
+        def completer(self, complexity): return self.complete
+        async def close(self): pass
+
+    monkeypatch.setattr(api, "ModelClient", Client)
+    monkeypatch.setattr(api, "get_encoder", Encoder)
+    text = "Матрица описывает преобразование векторов."
+    materials = []
+    for mid, week, kind, revision in [("z", 2, "lab", "r2"), ("a", 1, "lecture", "r1")]:
+        card = make_topic(mid, "Матрица", ["Преобразование векторов"])
+        card.text = text
+        card.sources[0].start = 0
+        card.sources[0].end = len(text)
+        card.sources[0].text = text
+        materials.append({"id": mid, "markdown": text, "week": week, "kind": kind,
+                          "filename": f"{mid}.pdf", "kind_label": kind, "material_revision": revision,
+                          "topics": [card.model_dump()]})
+    response = TestClient(api.app).post("/graph/build", json={"materials": materials})
+    assert response.status_code == 200
+    topic = response.json()["topics"][0]
+    assert [s["week"] for s in topic["sources"]] == [1, 2]
+    assert {s["kind"] for s in topic["sources"]} == {"lecture", "lab"}
+    assert {s["material_revision"] for s in topic["sources"]} == {"r1", "r2"}
+
+
 def test_joint_endpoint_returns_cards_and_cleaning_audit(monkeypatch):
     from fastapi.testclient import TestClient
     import course_graph.api as api

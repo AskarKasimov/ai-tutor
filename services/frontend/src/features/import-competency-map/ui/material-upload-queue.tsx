@@ -114,7 +114,7 @@ export function MaterialUploadQueue({
       <div className={styles.items} role="list">
         {items.map((item) => (
           <div
-            className={`${styles.row}${draggingId === item.id ? ` ${styles.dragging}` : ''}${dropTargetId === item.id ? ` ${styles.dropTarget}` : ''}`}
+            className={`${styles.item}${draggingId === item.id ? ` ${styles.dragging}` : ''}`}
             key={item.id}
             role="listitem"
             draggable={!disabled && !upload.isPending && !preparing}
@@ -229,72 +229,76 @@ export function MaterialUploadQueue({
                 </Button>
               </div>
             </div>
-            <div>
-              <Text className={styles.name}>{item.file.name}</Text>
-              {item.error && (
-                <Text as="p" role="alert" color="red" size="1">
-                  {item.error}
-                </Text>
-              )}
-            </div>
-            <label className={styles.weekField}>
-              <span>{t('courseGraph.weekLabel')}</span>
-              <TextField.Root
-                className={styles.weekInput}
-                type="number"
-                min="1"
-                value={item.week}
-                disabled={disabled || upload.isPending || preparing}
-                onChange={(event) =>
-                  setItems((current) =>
-                    sortMaterialsByWeek(
+            <div
+              className={`${styles.row}${dropTargetId === item.id ? ` ${styles.dropTarget}` : ''}`}
+            >
+              <div>
+                <Text className={styles.name}>{item.file.name}</Text>
+                {item.error && (
+                  <Text as="p" role="alert" color="red" size="1">
+                    {item.error}
+                  </Text>
+                )}
+              </div>
+              <label className={styles.weekField}>
+                <span>{t('courseGraph.weekLabel')}</span>
+                <TextField.Root
+                  className={styles.weekInput}
+                  type="number"
+                  min="1"
+                  value={item.week}
+                  disabled={disabled || upload.isPending || preparing}
+                  onChange={(event) =>
+                    setItems((current) =>
+                      sortMaterialsByWeek(
+                        current.map((row) =>
+                          row.id === item.id
+                            ? { ...row, week: event.target.value }
+                            : row,
+                        ),
+                      ),
+                    )
+                  }
+                />
+              </label>
+              <div className={styles.kindField}>
+                <Select.Root
+                  value={item.kind}
+                  disabled={disabled || upload.isPending || preparing}
+                  onValueChange={(kind) =>
+                    setItems((current) =>
                       current.map((row) =>
                         row.id === item.id
-                          ? { ...row, week: event.target.value }
+                          ? { ...row, kind: kind as CourseMaterialKind }
                           : row,
                       ),
-                    ),
-                  )
-                }
-              />
-            </label>
-            <div className={styles.kindField}>
-              <Select.Root
-                value={item.kind}
+                    )
+                  }
+                >
+                  <Select.Trigger aria-label={t('courseGraph.kindLabel')} />
+                  <Select.Content>
+                    {kinds.map((kind) => (
+                      <Select.Item key={kind.code} value={kind.code}>
+                        {kind.label}
+                      </Select.Item>
+                    ))}
+                  </Select.Content>
+                </Select.Root>
+              </div>
+              <Button
+                type="button"
+                variant="soft"
+                color="red"
                 disabled={disabled || upload.isPending || preparing}
-                onValueChange={(kind) =>
+                onClick={() =>
                   setItems((current) =>
-                    current.map((row) =>
-                      row.id === item.id
-                        ? { ...row, kind: kind as CourseMaterialKind }
-                        : row,
-                    ),
+                    current.filter((row) => row.id !== item.id),
                   )
                 }
               >
-                <Select.Trigger aria-label={t('courseGraph.kindLabel')} />
-                <Select.Content>
-                  {kinds.map((kind) => (
-                    <Select.Item key={kind.code} value={kind.code}>
-                      {kind.label}
-                    </Select.Item>
-                  ))}
-                </Select.Content>
-              </Select.Root>
+                {t('competencyMap.queueRemove')}
+              </Button>
             </div>
-            <Button
-              type="button"
-              variant="soft"
-              color="red"
-              disabled={disabled || upload.isPending || preparing}
-              onClick={() =>
-                setItems((current) =>
-                  current.filter((row) => row.id !== item.id),
-                )
-              }
-            >
-              {t('competencyMap.queueRemove')}
-            </Button>
           </div>
         ))}
       </div>

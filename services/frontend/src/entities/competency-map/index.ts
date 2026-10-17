@@ -1,10 +1,21 @@
-export type { CourseMaterial } from './model/competency-map'
+export type {
+  CourseMaterial,
+  MaterialProcessing,
+  MaterialCleaning,
+  CourseGraphTopic,
+  CourseGraphPrerequisite,
+  CourseGraphHierarchyEdge,
+  CourseGraph,
+  CourseGraphSnapshot,
+} from './model/competency-map'
 export { CompetencyMapApiError } from './model/competency-map-error'
 export {
   readSubjectMaterials,
   uploadCourseMaterials,
   deleteCourseMaterial,
   downloadCourseMaterialRaw,
+  readCourseGraph,
+  requestCourseGraphBuild,
 } from './api/competency-map-api'
 export type {
   CourseMaterialUploadFailedItem,

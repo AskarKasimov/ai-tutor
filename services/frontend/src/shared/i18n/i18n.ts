@@ -83,10 +83,48 @@ void i18n.init({
           },
           materialsPreview: 'Предпросмотр распознанного текста',
           materialsDownloadError: 'Не удалось скачать файл.',
+          materialWarnings: 'Предупреждения OCR',
+          materialStage: {
+            queued: 'В очереди',
+            waiting_models: 'Ожидает загрузки моделей',
+            ocr: 'Распознаёт материал',
+            translation: 'Переводит материал',
+            cleaning: 'Очищает текст и выделяет темы',
+            graph: 'Строит граф курса',
+            ready: 'Обработка завершена',
+            failed: 'Ошибка обработки',
+          },
+          materialLastSignal: 'Активность: {{date}}',
           materialsPartialWarning:
             'Часть файлов не удалось загрузить: {{failed}}',
           materialsInvalidType: 'Поддерживаются файлы PDF и Markdown.',
           materialsEmptyFiles: 'Выберите хотя бы один файл.',
+          materialsTooLarge: 'Размер одного файла не должен превышать 50 МиБ.',
+          materialsTooManyFiles:
+            'За один запрос можно загрузить не больше 48 файлов.',
+          graphTitle: 'Граф знаний курса (Geek)',
+          graphSubtitle:
+            'Собирается по кнопке из обработанных материалов; по нему Geek проводит устный экзамен',
+          graphBuilding: 'Построение графа знаний курса…',
+          graphBuildingHint:
+            'Модель сопоставляет требования тем, проверяет цитаты и выстраивает пререквизиты',
+          graphReady: 'Граф знаний готов к экзамену',
+          graphFailed: 'Не удалось построить граф',
+          graphNotRequested: 'Граф ещё не собирался',
+          graphBuild: 'Собрать граф',
+          graphInputsNotReady:
+            'Собрать граф можно, когда все материалы курса обработаны.',
+          graphStale:
+            'Материалы изменились — Geek работает по прежнему графу до новой сборки',
+          graphStats: {
+            topics: 'Тем курса',
+            prerequisites: 'Пререквизитов',
+            hierarchy: 'Связей в разделах',
+          },
+          graphToggleView: 'Показать структуру графа',
+          graphHideView: 'Скрыть структуру графа',
+          graphSections: 'Разделы и темы курса',
+          graphDependencies: 'Выявленные зависимости (пререквизиты)',
           forbidden: 'Доступно только администраторам.',
           unauthorized: 'Сессия завершилась. Войдите снова.',
           toLesson: 'Перейти к уроку',

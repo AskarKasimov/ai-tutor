@@ -4,14 +4,14 @@ Go API и PostgreSQL. Команды выполняются из `services/backe
 
 ## Реализовано и запланировано
 
-Реализованы auth с cookies, каталог и создание предметов (курсов), синхронные STT/TTS, загрузка материалов курса с OCR через `services/course-graph` и хранением в S3 и PostgreSQL. Прежняя модель (карта компетенций, variantgen, assessment, taskgen, диагностика по варианту, фидбэк, план обучения, тренировка, озвучка заданий) удалена 16.10.2026; её код остался в истории git и в выпущенном релизе.
+Реализованы auth с cookies, каталог и создание предметов (курсов), синхронные STT/TTS, загрузка материалов курса с фоновым конвейером (OCR через `services/course-graph`, перевод через LLM gateway, очистка и темы) и хранением в S3 и PostgreSQL, сборка графа курса по кнопке. Прежняя модель (карта компетенций, variantgen, assessment, taskgen, диагностика по варианту, фидбэк, план обучения, тренировка, озвучка заданий) удалена 16.10.2026; её код остался в истории git и в выпущенном релизе.
 
 Реализована диагностика Geek — устный экзамен по графу курса (раздел ниже).
 
 Запланированы (planned в [OpenAPI](../../api/openapi.yaml)):
 
 - материалы с неделей и видом, правка материала;
-- сборка и чтение графа курса (`/admin/subjects/{subject_id}/graph`);
+- статус сборки отдельной ручкой (`GET /admin/subjects/{subject_id}/graph/build`): пока он входит в `GET .../graph`;
 - пакет для преподавателя в админке (данные для него уже хранятся).
 
 ## Диагностика Geek
@@ -63,11 +63,11 @@ docker compose --env-file ../../.env up -d --build
 
 Уже должны работать db и внешняя сеть. BACKEND_DATABASE_URL переопределяет подключение; по умолчанию db:5432 и DB_PASSWORD. API слушает :8002 за Caddy HTTPS. Публичный префикс /api/v1 удаляется proxy. Secure cookies требуют HTTPS.
 
-Обязательны BACKEND_STT_URL, BACKEND_TTS_* (URL и параметры голоса), BACKEND_VOICE_TIMEOUT, адрес прослушивания, лимит загрузки и настройки S3 из корневого шаблона. BACKEND_COURSE_GRAPH_URL — адрес сервиса course-graph для OCR. Geek: BACKEND_LLM_GATEWAY_ADDR (обязателен, gRPC host:port; в Compose — `llm-gateway:8011`, gateway запускается профилем `gateway`), BACKEND_LLM_TIMEOUT (по умолчанию 120s), BACKEND_GEEK_GRAPH_FIXTURE (Compose монтирует `api/fixtures` в `/fixtures` и по умолчанию берёт граф показа `/fixtures/intro-to-ai.weeks-1-2.ru.graph.json`), BACKEND_GEEK_MAX_QUESTIONS (0 — без ограничения). После изменения env пересоздайте API.
+Обязательны BACKEND_STT_URL, BACKEND_TTS_* (URL и параметры голоса), BACKEND_VOICE_TIMEOUT, адрес прослушивания, лимит загрузки и настройки S3 из корневого шаблона. BACKEND_COURSE_GRAPH_URL — адрес сервиса course-graph; BACKEND_COURSE_GRAPH_TIMEOUT — общий HTTP timeout вызовов course-graph, по умолчанию 0s (без общего timeout: долгий OCR и выделение тем ограничены lease worker'а), отрицательный отклоняется. Перевод OCR идёт через тот же BACKEND_LLM_GATEWAY_ADDR с BACKEND_LLM_TIMEOUT на порцию. Geek: BACKEND_LLM_GATEWAY_ADDR (обязателен, gRPC host:port; в Compose — `llm-gateway:8011`, gateway запускается профилем `gateway`), BACKEND_LLM_TIMEOUT (по умолчанию 120s), BACKEND_GEEK_GRAPH_FIXTURE (Compose монтирует `api/fixtures` в `/fixtures` и по умолчанию берёт граф показа `/fixtures/intro-to-ai.weeks-1-2.ru.graph.json`), BACKEND_GEEK_MAX_QUESTIONS (0 — без ограничения). После изменения env пересоздайте API.
 
 Запросы VoxCPM передают `BACKEND_TTS_SEED`, `BACKEND_TTS_CFG_VALUE` (0–5) и `BACKEND_TTS_INFERENCE_TIMESTEPS` (1–50); шаблоны env задают 510, 2 и 20. Перед отправкой текста backend добавляет `!!!...`, чтобы озвучка завершала последнее слово. По решению встречи 10.10.2026 голос наставника — мужской, взрослый, низкий; сервис VoxCPM клонирует его по референсу, сохранённому в своём volume.
 
-При старте API в фоне проверяет S3-бакет и создаёт его при `BACKEND_S3_CREATE_BUCKET=true`, повторяя попытки до успеха. HTTP write timeout — максимум из STT с записью в S3, OCR загруженного материала, ответа Geek (оценка и следующий вопрос, каждый с одним повтором) и синтеза длинной реплики плюс 30 секунд. Health проверяет API и БД, не модели и не S3.
+При старте API в фоне проверяет S3-бакет и создаёт его при `BACKEND_S3_CREATE_BUCKET=true`, повторяя попытки до успеха. HTTP write timeout — максимум из STT с записью в S3, BACKEND_COURSE_GRAPH_TIMEOUT, ответа Geek (оценка и следующий вопрос, каждый с одним повтором) и синтеза длинной реплики плюс 30 секунд. Health проверяет API и БД, не модели и не S3.
 
 COMPOSE_PROFILES=swagger включает Swagger под /docs/. После обновления YAML пересоздайте swagger, потому что образ копирует спецификацию при старте.
 
@@ -86,7 +86,7 @@ STT принимает multipart audio (WAV/Ogg/WebM) до 25 МиБ, сохра
 
 ## БД и импорт
 
-Goose применяет встроенные SQL-миграции при старте или migrate; запуск сериализован advisory lock. `00001_initial.sql` создаёт пользователей, auth-сессии и токены, расшифровки, предметы и материалы курса (`subject_materials`: файл, S3-ключи исходника и распознанного текста, статус OCR). `00002_geek.sql` — диагностики Geek (`geek_sessions`, одна активная на студента и курс) и ключи повтора (`geek_requests`). Номер новой миграции — следующий свободный на момент мержа: goose не применяет миграцию с номером меньше уже применённого.
+Goose применяет встроенные SQL-миграции при старте или migrate; запуск сериализован advisory lock. `00001_initial.sql` создаёт пользователей, auth-сессии и токены, расшифровки, предметы и материалы курса (`subject_materials`: файл, S3-ключи исходника и распознанного текста, статус OCR). `00002_geek.sql` — диагностики Geek (`geek_sessions`, одна активная на студента и курс) и ключи повтора (`geek_requests`). `00003_material_cleaning.sql` — задания очистки и тем (`material_cleaning_jobs`: lease, попытки, очищенный текст и S3-ключи отчёта). `00004_course_graph.sql` — view `course_graph_inputs` (fingerprint набора материалов курса, если все обработаны), задания сборки (`course_graph_jobs`) и опубликованный граф (`course_graphs`, один на курс, JSON сборки). `00005_material_ocr.sql` — OCR-задания (`material_ocr_jobs`); ставит их и ранее загруженным материалам, чтобы те прошли новый конвейер из исходного файла. `00006_material_ocr_report.sql` — S3-ключ сырого OCR, отчёт OCR у материала и стадия задания. Номер новой миграции — следующий свободный на момент мержа: goose не применяет миграцию с номером меньше уже применённого.
 
 Схема собрана заново 16.10.2026 при удалении прежней модели. С БД, где применена прежняя история из десяти миграций, она несовместима: dev-БД и БД стенда нужно сбросить (`docker compose down -v` удаляет volumes PostgreSQL и S3). Для БД с настоящими данными новые изменения оформляются следующими миграциями.
 
@@ -99,7 +99,11 @@ docker compose -f ../../docker-compose.yaml exec db psql -U ai_tutor -d ai_tutor
   -c "UPDATE users SET role='admin' WHERE email='teacher@example.edu';"
 ```
 
-Admin создаёт предмет через `POST /admin/subjects` с JSON-телом `{"name":"..."}`; устойчивый ID создаёт backend. Материалы загружаются `POST /admin/subjects/{subject_id}/materials` (multipart, поле `file`, несколько файлов): исходник сохраняется в S3, OCR выполняет `services/course-graph`, распознанный Markdown сохраняется в S3 и PostgreSQL. `GET` на тот же путь возвращает список, `DELETE .../materials/{material_id}` удаляет материал, `GET .../materials/{material_id}/raw` отдаёт исходный файл.
+Admin создаёт предмет через `POST /admin/subjects` с JSON-телом `{"name":"..."}`; устойчивый ID создаёт backend. Материалы загружаются `POST /admin/subjects/{subject_id}/materials` (multipart, поле `file`, до 48 файлов по 50 МиБ): исходник сохраняется в S3, материал получает статус `pending` и OCR-задание. Дальше фоновые workers с lease в PostgreSQL (60 с, продление каждые 10 с, до 3 попыток): `OCRWorker` распознаёт файл в `services/course-graph` и переводит английский текст на русский через LLM gateway (ошибка перевода — предупреждение, остаётся исходный OCR), `CleaningWorker` вызывает `/topics/extract` (очистка и темы, отчёт кэшируется в S3). Стадии видны в `processing` и `cleaning` у материала.
+
+Граф курса: `GET /admin/subjects/{subject_id}/graph` — опубликованный граф и состояние сборки (`status`, `stale` — материалы изменились после публикации, `inputs_ready` — все материалы обработаны). Кнопка «Собрать граф» — `POST .../graph/build`: 202 ставит сборку, 409 — сборка уже идёт, 422 — материалы не готовы. `graph.Worker` берёт сборку с текущим набором материалов, вызывает `/graph/build` и публикует граф, только если материалы за время сборки не изменились (иначе повторяет без расхода попытки). Geek читает опубликованный граф (`geekgraph.Stored`): версия — хеш содержимого, курс без материалов графа не отдаёт, ошибка БД возвращается как ошибка, а не подменяется фикстурой.
+
+Восстановление упавших заданий: `bash scripts/recover-failed-jobs.sh [--dry-run] [--stage all|ocr|cleaning|graph] [--material-id ID] [--subject-id ID] [--stalled --token T]` (из корня — `scripts/recover-failed-jobs.sh`). `--material-id` ограничивает и граф — курсом этого материала. Каждое действие пишется JSON-строкой аудита в stdout. `GET` на тот же путь возвращает список, `DELETE .../materials/{material_id}` удаляет материал, `GET .../materials/{material_id}/raw` отдаёт исходный файл.
 
 ## Проверки
 

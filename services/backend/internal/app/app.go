@@ -11,11 +11,18 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"go.uber.org/zap"
+	"golang.org/x/sync/errgroup"
+
+	llmgatewayv1 "github.com/AskarKasimov/ai-tutor/services/shared/gen/go/llmgateway/v1"
 
 	authapp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/auth/application"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/features/auth/infrastructure/argon2"
 	authpg "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/auth/infrastructure/postgres"
 	authhttp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/auth/transport/http"
+	graphapp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/coursegraph/application"
+	graphapi "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/coursegraph/infrastructure/courseapi"
+	graphpg "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/coursegraph/infrastructure/postgres"
+	graphhttp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/coursegraph/transport/http"
 	geekapp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/geek/application"
 	geekgraph "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/geek/infrastructure/graph"
 	geekllm "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/geek/infrastructure/llm"
@@ -25,6 +32,7 @@ import (
 	materialsapp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/materials/application"
 	materialsocr "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/materials/infrastructure/ocr"
 	materialspg "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/materials/infrastructure/postgres"
+	materialstranslator "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/materials/infrastructure/translator"
 	materialshttp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/materials/transport/http"
 	subjectapp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/subject/application"
 	subjectpg "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/subject/infrastructure/postgres"
@@ -48,6 +56,9 @@ type App struct {
 	logger           *zap.Logger
 	storage          *s3.Client
 	materialsStorage materialsapp.S3Storage
+	ocrWorker        *materialsapp.OCRWorker
+	cleaningWorker   *materialsapp.CleaningWorker
+	graphWorker      *graphapp.Worker
 	// examiner is the LLM gateway over gRPC; the app owns its connection and
 	// closes it in Close.
 	examiner geekapp.Examiner
@@ -89,6 +100,15 @@ func New(cfg Config, pool *pgxpool.Pool, logger *zap.Logger) (*App, error) {
 		return nil, err
 	}
 	a.examiner, a.gateway = examiner, conn
+
+	materialRepository := materialspg.New(pool)
+	materialsOCR := materialsocr.New(cfg.CourseGraphURL, cfg.CourseGraphTimeout)
+	// OCR text is translated to Russian through the same LLM gateway as Geek.
+	translator := materialstranslator.NewWithCompleter(materialstranslator.NewGateway(llmgatewayv1.NewGatewayClient(conn), cfg.LLMTimeout), 4)
+	a.ocrWorker = materialsapp.NewOCRWorker(materialRepository, a.materialsStorage, materialsOCR, translator)
+	a.cleaningWorker = materialsapp.NewCleaningWorker(materialRepository, a.materialsStorage, materialsOCR)
+	a.graphWorker = graphapp.New(graphpg.New(pool), materialRepository, a.materialsStorage, graphapi.New(cfg.CourseGraphURL))
+
 	return a, nil
 }
 
@@ -119,6 +139,16 @@ func (a *App) RunStorageSetup(ctx context.Context) error {
 		}
 		backoff = min(2*backoff, 30*time.Second)
 	}
+}
+
+// RunBackground runs background workers and setup tasks.
+func (a *App) RunBackground(ctx context.Context) error {
+	group, ctx := errgroup.WithContext(ctx)
+	group.Go(func() error { return a.RunStorageSetup(ctx) })
+	group.Go(func() error { return a.ocrWorker.Run(ctx) })
+	group.Go(func() error { return a.cleaningWorker.Run(ctx) })
+	group.Go(func() error { return a.graphWorker.Run(ctx) })
+	return group.Wait()
 }
 
 type materialsStorageAdapter struct {
@@ -152,10 +182,11 @@ func (a *App) Handler() http.Handler {
 
 	materialsOCR := materialsocr.New(a.cfg.CourseGraphURL, a.cfg.CourseGraphTimeout)
 	materialsService := materialsapp.New(materialspg.New(a.pool), a.materialsStorage, materialsOCR, a.now)
-	materialsHandlers := materialshttp.NewHandler(materialsService, a.cfg.MaxUploadBytes)
+	// Course materials have their own per-file limit; BACKEND_MAX_UPLOAD_BYTES is the STT limit.
+	materialsHandlers := materialshttp.NewHandler(materialsService, materialshttp.MaxUploadFileBytes)
 
 	// The stored graph of stream A goes first once it exists; the fixture is the fallback.
-	graphs := geekgraph.Chain{geekgraph.Fixture{Path: a.cfg.GeekGraphFixture}}
+	graphs := geekgraph.Chain{geekgraph.NewStored(a.pool), geekgraph.Fixture{Path: a.cfg.GeekGraphFixture}}
 	geekService := geekapp.New(graphs, geekpg.New(a.pool), geekpg.NewTranscriptions(a.pool), a.examiner, models,
 		geekstorage.NewAudio(a.storage, a.cfg.S3Bucket), security.IDGenerator{}, a.now, geekapp.Config{MaxQuestions: a.cfg.GeekMaxQuestions})
 	geekHandlers := geekhttp.New(geekService)
@@ -169,6 +200,9 @@ func (a *App) Handler() http.Handler {
 	mux.HandleFunc("GET /auth/me", authHandlers.Me)
 	mux.Handle("POST /admin/subjects/{subject_id}/materials", protect(auth, http.HandlerFunc(materialsHandlers.UploadMaterials)))
 	mux.Handle("GET /admin/subjects/{subject_id}/materials", protect(auth, http.HandlerFunc(materialsHandlers.ListMaterials)))
+	graphHandlers := graphhttp.New(a.graphWorker)
+	mux.Handle("GET /admin/subjects/{subject_id}/graph", protect(auth, http.HandlerFunc(graphHandlers.Read)))
+	mux.Handle("POST /admin/subjects/{subject_id}/graph/build", protect(auth, http.HandlerFunc(graphHandlers.Build)))
 	mux.Handle("DELETE /admin/subjects/{subject_id}/materials/{material_id}", protect(auth, http.HandlerFunc(materialsHandlers.DeleteMaterial)))
 	mux.Handle("GET /admin/subjects/{subject_id}/materials/{material_id}/raw", protect(auth, http.HandlerFunc(materialsHandlers.DownloadRaw)))
 	mux.Handle("POST /admin/subjects", protect(auth, http.HandlerFunc(subjectHandlers.Create)))

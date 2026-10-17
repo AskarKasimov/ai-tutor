@@ -1,0 +1,63 @@
+"""Client of the LLM gateway (llmgateway.v1.Gateway/Complete over gRPC).
+
+The service never names a model: every call states only its complexity, and the
+gateway picks the pool. Generated stubs come from services/shared/gen/python.
+"""
+import json
+import os
+
+import grpc
+from llmgateway.v1 import gateway_pb2, gateway_pb2_grpc
+
+COMPLEXITY = {
+    "low": gateway_pb2.COMPLEXITY_LOW,
+    "medium": gateway_pb2.COMPLEXITY_MEDIUM,
+    "high": gateway_pb2.COMPLEXITY_HIGH,
+}
+
+
+class GatewayError(RuntimeError):
+    pass
+
+
+class ModelClient:
+    def __init__(self, address: str | None = None, timeout: float | None = None):
+        self.address = address or os.environ.get("COURSE_GRAPH_LLM_GATEWAY_ADDR", "llm-gateway:8011")
+        self.timeout = timeout if timeout is not None else float(os.environ.get("COURSE_GRAPH_LLM_TIMEOUT", "300"))
+        self.channel = grpc.aio.insecure_channel(
+            self.address, options=[("grpc.max_receive_message_length", 40 * 1024 * 1024)],
+        )
+        self.stub = gateway_pb2_grpc.GatewayStub(self.channel)
+
+    async def complete(self, system: str, text: str, complexity: str = "high") -> str:
+        request = gateway_pb2.CompleteRequest(
+            messages=[
+                gateway_pb2.Message(role=gateway_pb2.ROLE_SYSTEM, content=system),
+                gateway_pb2.Message(role=gateway_pb2.ROLE_USER, content=text),
+            ],
+            complexity=COMPLEXITY[complexity],
+            parameters=gateway_pb2.GenerationParameters(
+                temperature=0.2, response_format=gateway_pb2.RESPONSE_FORMAT_JSON_OBJECT,
+            ),
+        )
+        response = await self.stub.Complete(request, timeout=self.timeout)
+        try:
+            choice = json.loads(response.completion_json)["choices"][0]
+            content = choice["message"]["content"]
+        except (ValueError, KeyError, IndexError, TypeError) as error:
+            raise GatewayError(f"LLM gateway returned no choices (request {response.request_id})") from error
+        if choice.get("finish_reason") == "length":
+            raise GatewayError(f"LLM answer was cut by the token limit (request {response.request_id})")
+        return content or ""
+
+    def completer(self, complexity: str):
+        """complete bound to one complexity, in the (system, text) shape the stages call."""
+        if complexity not in COMPLEXITY:
+            raise ValueError(f"unknown complexity {complexity!r}")
+
+        async def complete(system: str, text: str) -> str:
+            return await self.complete(system, text, complexity)
+        return complete
+
+    async def close(self):
+        await self.channel.close()

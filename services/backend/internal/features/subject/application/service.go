@@ -24,13 +24,16 @@ type Service struct {
 	repo Repository
 	ids  IDGenerator
 	now  func() time.Time
+	// defaultGraph is set when Geek serves the graph fixture to every course
+	// without its own graph, so a course is ready as soon as it is created.
+	defaultGraph bool
 }
 
-func New(repo Repository, ids IDGenerator, now func() time.Time) *Service {
+func New(repo Repository, ids IDGenerator, now func() time.Time, defaultGraph bool) *Service {
 	if now == nil {
 		now = time.Now
 	}
-	return &Service{repo: repo, ids: ids, now: now}
+	return &Service{repo: repo, ids: ids, now: now, defaultGraph: defaultGraph}
 }
 
 func (s *Service) Create(ctx context.Context, actor user.User, name string) (subject.Subject, error) {
@@ -45,13 +48,21 @@ func (s *Service) Create(ctx context.Context, actor user.User, name string) (sub
 	if err != nil {
 		return subject.Subject{}, err
 	}
-	return s.repo.Create(ctx, id, name, s.now().Unix())
+	created, err := s.repo.Create(ctx, id, name, s.now().Unix())
+	if err != nil {
+		return subject.Subject{}, err
+	}
+	created.Ready = created.Ready || s.defaultGraph
+	return created, nil
 }
 
 func (s *Service) Catalog(ctx context.Context, actor user.User) ([]subject.Subject, error) {
 	items, err := s.repo.List(ctx)
 	if err != nil {
 		return nil, err
+	}
+	for i := range items {
+		items[i].Ready = items[i].Ready || s.defaultGraph
 	}
 	if actor.Role == user.Admin {
 		return items, nil

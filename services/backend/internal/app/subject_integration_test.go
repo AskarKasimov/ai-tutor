@@ -59,6 +59,7 @@ func TestSubjectCatalogPermissionsAndEmptySubjects(t *testing.T) {
 	}
 }
 
+// Without the graph fixture a course is ready only with its own published graph.
 func TestSubjectCatalogShowsOnlyReadySubjectsToStudents(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
@@ -99,8 +100,14 @@ ON CONFLICT (id) DO UPDATE SET status = EXCLUDED.status`, status); err != nil {
 		t.Fatalf("a failed material does not make a subject ready: %+v", items)
 	}
 	setStatus("parsed")
+	if items := studentCatalog(); len(items) != 0 {
+		t.Fatalf("a parsed material without a graph does not make a subject ready: %+v", items)
+	}
+	if _, err := f.pool.Exec(context.Background(), `INSERT INTO course_graphs(subject_id, fingerprint, graph, updated_at) VALUES ('subject:test', 'f', '{}', 1)`); err != nil {
+		t.Fatal(err)
+	}
 	if items := studentCatalog(); len(items) != 1 || items[0].ID != "subject:test" || !items[0].Ready {
-		t.Fatalf("student catalog should contain only the subject with a parsed material: %+v", items)
+		t.Fatalf("student catalog should contain only the subject with a published graph: %+v", items)
 	}
 	adminCatalog := f.request(http.MethodGet, "/subjects", "", admin)
 	var adminItems []struct {
@@ -109,5 +116,36 @@ ON CONFLICT (id) DO UPDATE SET status = EXCLUDED.status`, status); err != nil {
 	}
 	if adminCatalog.Code != http.StatusOK || json.Unmarshal(adminCatalog.Body.Bytes(), &adminItems) != nil || len(adminItems) != 2 {
 		t.Fatalf("admin catalog: %d %s", adminCatalog.Code, adminCatalog.Body.String())
+	}
+}
+
+func TestSubjectCatalogShowsNewSubjectsWithTheGraphFixture(t *testing.T) {
+	t.Parallel()
+	cfg := testConfig()
+	cfg.GeekGraphFixture = geekFixture
+	f := newFixtureWithConfig(t, cfg)
+	if _, err := f.pool.Exec(context.Background(), `DELETE FROM subjects WHERE id='subject:test'`); err != nil {
+		t.Fatal(err)
+	}
+	student, _, _ := f.register(t, "subject-fixture-student@example.edu")
+	admin := f.admin(t)
+	created := f.request(http.MethodPost, "/admin/subjects", `{"name":"Только название"}`, admin)
+	var value struct {
+		ID    string `json:"id"`
+		Ready bool   `json:"ready"`
+	}
+	if created.Code != http.StatusCreated || json.Unmarshal(created.Body.Bytes(), &value) != nil || !value.Ready {
+		t.Fatalf("a subject is ready on creation with the fixture: %d %s", created.Code, created.Body.String())
+	}
+	response := f.request(http.MethodGet, "/subjects", "", student)
+	var items []struct {
+		ID    string `json:"id"`
+		Ready bool   `json:"ready"`
+	}
+	if response.Code != http.StatusOK || json.Unmarshal(response.Body.Bytes(), &items) != nil {
+		t.Fatalf("student catalog: %d %s", response.Code, response.Body.String())
+	}
+	if len(items) != 1 || items[0].ID != value.ID || !items[0].Ready {
+		t.Fatalf("student catalog should contain the subject without materials: %+v", items)
 	}
 }

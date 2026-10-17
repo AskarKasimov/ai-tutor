@@ -62,9 +62,10 @@ export function useDiagnosticHistoryQuery(userId: string, subjectId: string) {
 const ACTIVE_REFRESH_MS = 20_000
 
 // A diagnostic only moves forward: turns are appended and a completed or
-// cancelled session stays so. A read that started before an accepted answer
-// and finished after it would roll the dialogue back to the old turn, so the
-// older of the two snapshots is dropped.
+// cancelled session stays so. Every snapshot written to the cache goes
+// through this check: a read that started before an accepted answer must not
+// roll the dialogue back, and a late answer response must not make a session
+// that a read already saw cancelled active again.
 function newerSession(
   current: DiagnosticSession | undefined,
   fetched: DiagnosticSession,
@@ -126,9 +127,9 @@ function remember(
   userId: string,
   session: DiagnosticSession,
 ) {
-  client.setQueryData(
+  client.setQueryData<DiagnosticSession>(
     diagnosticSessionQueryKeys.session(userId, session.id),
-    session,
+    (current) => newerSession(current, session),
   )
   return client.invalidateQueries({
     queryKey: diagnosticSessionQueryKeys.history(userId, session.subjectId),

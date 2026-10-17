@@ -88,6 +88,8 @@ function geekBackend(
     cancelled: false,
     readGate: null as Promise<void> | null,
     answerGate: null as Promise<void> | null,
+    // Holds the response of an answer the backend has already accepted.
+    replyGate: null as Promise<void> | null,
   }
   let session: {
     id: string
@@ -233,7 +235,9 @@ function geekBackend(
         )
       }
       session = accept(session, body)
-      return Response.json(session)
+      const accepted = session
+      if (control.replyGate) await control.replyGate
+      return Response.json(accepted)
     }
     if (url.endsWith('/diagnostic-sessions/d1/result'))
       return Response.json({
@@ -781,4 +785,42 @@ it('keeps the accepted answer when a background read started before it lands lat
     screen.getByText('А где допустимая эвристика не поможет?'),
   ).toBeVisible()
   expect(screen.getByText('Перестанет быть оптимальным')).toBeVisible()
+})
+
+it('keeps a diagnostic cancelled when the response of an earlier answer lands late', async () => {
+  const { control, fetch } = geekBackend()
+  const queryClient = renderApp()
+  await start()
+  await answerField()
+  // The backend accepts the answer, but its response is slow; meanwhile the
+  // graph is rebuilt and the periodic read sees the diagnostic cancelled.
+  const reply = gate()
+  control.replyGate = reply.closed
+  await answerByText('Перестанет быть оптимальным')
+  await waitFor(() =>
+    expect(fetch.mock.calls.some(([url]) => url.endsWith('/d1/answers'))).toBe(
+      true,
+    ),
+  )
+  control.cancelled = true
+  await act(() =>
+    queryClient.refetchQueries({ queryKey: ['diagnostic-session'] }),
+  )
+  const status = () =>
+    queryClient.getQueriesData<{ status: string }>({
+      queryKey: ['diagnostic-session'],
+    })[0][1]?.status
+  expect(status()).toBe('cancelled')
+  reply.open()
+  await waitFor(() =>
+    expect(
+      queryClient.isMutating({ mutationKey: ['diagnostic', 'answer'] }),
+    ).toBe(0),
+  )
+  expect(status()).toBe('cancelled')
+  expect(
+    screen.getByText(
+      'Курс обновился, и эта диагностика прервана. Начните новую на главной.',
+    ),
+  ).toBeVisible()
 })

@@ -11,6 +11,7 @@ import (
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/material"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/user"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/features/materials/application"
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/features/materials/infrastructure/translator"
 )
 
 type memoryRepo struct {
@@ -330,5 +331,41 @@ func TestUploadMaterialTranslationFailureFallback(t *testing.T) {
 	mat, _ = repo.Get(context.Background(), mat.ID)
 	if mat.ParsedText != "# Lecture 1\n\nOriginal English text." || !strings.Contains(mat.S3ParsedKey, "/parsed/") || mat.Status != material.StatusParsed || mat.ErrorMessage == nil {
 		t.Fatalf("translation fallback incorrect: %#v", mat)
+	}
+}
+
+type echoCompleter struct{ calls int }
+
+// Complete answers with the untranslated source, as a model that ignored the task.
+func (e *echoCompleter) Complete(_ context.Context, _, prompt string) (string, error) {
+	e.calls++
+	if i := strings.LastIndex(prompt, "Исходник:\n\n"); i >= 0 {
+		prompt = prompt[i+len("Исходник:\n\n"):]
+	}
+	body, _ := json.Marshal(map[string]string{"translation": prompt})
+	return string(body), nil
+}
+
+func TestUntranslatedOCRKeepsSourceWithWarning(t *testing.T) {
+	repo := &memoryRepo{}
+	s3 := &memoryS3{}
+	ocr := &stubOCR{markdown: "# Lecture 1\n\nSupervised learning maps an input to an output based on example input-output pairs."}
+	admin := user.User{ID: "usr-admin", Role: user.Admin}
+	svc := application.New(repo, s3, ocr, func() time.Time { return time.Unix(1700000000, 0) })
+	mat, err := svc.Upload(context.Background(), admin, "sub-cs", application.UploadInput{
+		Filename: "lecture.pdf", ContentType: "application/pdf", Data: []byte("%PDF-dummy"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	model := &echoCompleter{}
+	worker := application.NewOCRWorker(repo, s3, ocr, translator.NewWithCompleter(model, 1))
+	if worked, err := worker.ProcessOne(context.Background()); !worked || err != nil {
+		t.Fatalf("worker: worked=%v err=%v", worked, err)
+	}
+	mat, _ = repo.Get(context.Background(), mat.ID)
+	warnings, _ := mat.OCRReport["pipeline_warnings"].([]any)
+	if model.calls != 2 || mat.ParsedText != ocr.markdown || mat.ErrorMessage == nil || len(warnings) == 0 {
+		t.Fatalf("untranslated OCR passed as translated: calls=%d warning=%v report=%v", model.calls, mat.ErrorMessage, mat.OCRReport)
 	}
 }

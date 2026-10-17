@@ -120,3 +120,17 @@ func TestTranslationSoftValidationAcceptsPartiallyEnglishChunks(t *testing.T) {
 		t.Fatalf("expected translated Russian content, got: %q", got)
 	}
 }
+
+func TestUntranslatedAnswerIsAnError(t *testing.T) {
+	text := "Supervised learning maps an input to an output based on example input-output pairs."
+	calls := 0
+	client := NewWithCompleter(translationFunc(func(_ context.Context, _, _ string) (string, error) {
+		calls++
+		body, _ := json.Marshal(map[string]string{"translation": text})
+		return string(body), nil
+	}), 1)
+	got, err := client.Translate(context.Background(), text)
+	if err == nil || calls != 2 {
+		t.Fatalf("untranslated answer accepted: calls=%d err=%v output=%q", calls, err, got)
+	}
+}

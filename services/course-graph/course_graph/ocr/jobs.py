@@ -92,10 +92,11 @@ class OcrJobs:
             job.state, job.stage, job.error = "succeeded", "completed", None
             job.future = None
             job.updated_at = _now()
-            job.result_bytes = encoded_size
+            # Only a retained result counts against the budget; an oversized one
+            # is returned to the caller but not kept.
             job.result = result if encoded_size <= self._max_result_bytes else None
-            if job.result is not None:
-                self._result_bytes += encoded_size
+            job.result_bytes = encoded_size if job.result is not None else 0
+            self._result_bytes += job.result_bytes
             future.set_result((True, result))
             self._evict_results()
             self._prune()

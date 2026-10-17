@@ -94,7 +94,6 @@ func (c *Client) Translate(ctx context.Context, markdown string) (string, error)
 
 func (c *Client) checkedChunk(ctx context.Context, text string) (string, error) {
 	var lastErr error
-	var bestResult string
 
 	for attempt := 0; attempt < 2; attempt++ {
 		input := text
@@ -128,19 +127,15 @@ func (c *Client) checkedChunk(ctx context.Context, text string) (string, error) 
 			continue
 		}
 
+		// A mostly Russian chunk passes; an answer that is still English
+		// (for example the source returned unchanged) is a failed translation,
+		// so the OCR worker keeps the source with a warning.
 		if hasSignificantEnglish(translated) {
 			lastErr = fmt.Errorf("часть обычного текста осталась на английском")
-			bestResult = translated
-			if attempt == 0 {
-				continue
-			}
+			continue
 		}
 
 		return translated, nil
-	}
-
-	if bestResult != "" {
-		return bestResult, nil
 	}
 
 	return "", fmt.Errorf("translation validation: %w", lastErr)

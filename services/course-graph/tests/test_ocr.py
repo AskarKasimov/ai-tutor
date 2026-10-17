@@ -147,6 +147,22 @@ def test_ocr_jobs_are_singleflight_and_reject_changed_content():
         jobs.reserve("material-1", "source.pdf", b"different source")
 
 
+def test_oversized_ocr_result_is_not_counted_in_cache_budget():
+    from course_graph.ocr.jobs import OcrJobs
+
+    jobs = OcrJobs(max_jobs=2, max_result_bytes=40)
+    a, _, future = jobs.reserve("a", "a.md", b"a")
+    jobs.finish(a, future, {"text": "x" * 100})
+    assert future.result() == (True, {"text": "x" * 100})
+    b, _, fb = jobs.reserve("b", "b.md", b"b")
+    c, _, fc = jobs.reserve("c", "c.md", b"c")  # evicts a
+    jobs.finish(b, fb, {"text": "b" * 20})
+    jobs.finish(c, fc, {"text": "c" * 20})
+    retained = sum(j.result_bytes for j in jobs._jobs.values() if j.result is not None)
+    assert jobs._result_bytes == retained >= 0
+    assert retained <= 40
+
+
 def test_model_bootstrap_runs_once_and_readiness_does_not_reinitialize(monkeypatch):
     from course_graph.model_runtime import ModelRuntime
 

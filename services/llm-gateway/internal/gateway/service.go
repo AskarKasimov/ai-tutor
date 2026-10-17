@@ -63,6 +63,11 @@ type submitResult struct {
 	body   []byte
 }
 
+type routeSelection struct {
+	complexity string
+	instance   string
+}
+
 type Service struct {
 	cfg               Config
 	submitter         *kgo.Client
@@ -79,6 +84,7 @@ type Service struct {
 	waiters           map[string]chan struct{}
 	activeWaiters     map[string]int
 	transportCalls    map[string]map[int]uint64
+	routeSelections   map[routeSelection]uint64
 	cancelled         map[string]bool
 	jobCancels        map[string]context.CancelFunc
 	ephemeral         map[string]submitResult
@@ -99,7 +105,7 @@ type Service struct {
 
 func NewService(cfg Config) (*Service, error) {
 	cfg.defaults()
-	s := &Service{cfg: cfg, jobs: map[string]*durableJob{}, keys: map[string]string{}, accepted: map[string]*durableRequest{}, stateIDs: map[string]string{}, waiters: map[string]chan struct{}{}, activeWaiters: map[string]int{}, cancelled: map[string]bool{}, jobCancels: map[string]context.CancelFunc{}, ephemeral: map[string]submitResult{}, inFlight: map[string]int{}, connections: make(chan struct{}, cfg.MaxConnections), wake: make(chan struct{}, 1), roundRobin: map[string]int{}, started: time.Now()}
+	s := &Service{cfg: cfg, jobs: map[string]*durableJob{}, keys: map[string]string{}, accepted: map[string]*durableRequest{}, stateIDs: map[string]string{}, waiters: map[string]chan struct{}{}, activeWaiters: map[string]int{}, cancelled: map[string]bool{}, jobCancels: map[string]context.CancelFunc{}, ephemeral: map[string]submitResult{}, inFlight: map[string]int{}, routeSelections: map[routeSelection]uint64{}, connections: make(chan struct{}, cfg.MaxConnections), wake: make(chan struct{}, 1), roundRobin: map[string]int{}, started: time.Now()}
 	brokers := cfg.KafkaBrokers
 	var err error
 	s.submitter, err = kgo.NewClient(kgo.SeedBrokers(brokers...), kgo.RequiredAcks(kgo.AllISRAcks()), kgo.RecordRetries(3), kgo.ProducerLinger(5*time.Millisecond), kgo.MaxBufferedRecords(cfg.MaxConnections), kgo.ProducerBatchMaxBytes(2<<20))
@@ -652,6 +658,10 @@ func (s *Service) next() (*durableJob, InstanceConfig, bool) {
 				continue
 			}
 			s.inFlight[selected.ID]++
+			if s.routeSelections == nil {
+				s.routeSelections = make(map[routeSelection]uint64)
+			}
+			s.routeSelections[routeSelection{complexity: job.Request.Complexity, instance: selected.ID}]++
 			job.Status = "running"
 			job.Instance = selected.ID
 			job.SlotHeld = true
@@ -1366,6 +1376,21 @@ func (s *Service) writeMetrics(w http.ResponseWriter) {
 			open = 1
 		}
 		fmt.Fprintf(w, "gateway_instance_in_flight{instance=%q} %d\ngateway_instance_capacity{instance=%q} %d\ngateway_circuit_open{instance=%q} %d\n", in.ID, s.inFlight[in.ID], in.ID, in.MaxInFlight, in.ID, open)
+	}
+	fmt.Fprintln(w, "# HELP gateway_route_eligible Whether an instance can serve requests at the given complexity under the configured pools.")
+	fmt.Fprintln(w, "# TYPE gateway_route_eligible gauge")
+	for _, complexity := range complexityLevels {
+		for _, in := range s.eligibleInstances(complexity) {
+			fmt.Fprintf(w, "gateway_route_eligible{complexity=%q,instance=%q,model=%q,tier=%q} 1\n", complexity, in.ID, in.Model, complexityLevels[s.instanceTier(in.ID)])
+		}
+	}
+	fmt.Fprintln(w, "# HELP gateway_route_selections_total Requests assigned by the scheduler to an upstream instance, including retries.")
+	fmt.Fprintln(w, "# TYPE gateway_route_selections_total counter")
+	for _, complexity := range complexityLevels {
+		for _, in := range s.eligibleInstances(complexity) {
+			key := routeSelection{complexity: complexity, instance: in.ID}
+			fmt.Fprintf(w, "gateway_route_selections_total{complexity=%q,instance=%q,model=%q,tier=%q} %d\n", complexity, in.ID, in.Model, complexityLevels[s.instanceTier(in.ID)], s.routeSelections[key])
+		}
 	}
 	fmt.Fprintln(w, "# TYPE gateway_calls_total counter")
 	for _, transport := range []string{"http", "grpc"} {

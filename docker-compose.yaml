@@ -43,6 +43,23 @@ services:
       redpanda-init:
         condition: service_completed_successfully
 
+  prometheus:
+    extends:
+      file: ./services/llm-gateway/docker-compose.yaml
+      service: prometheus
+    profiles: [gateway]
+    volumes:
+      - ./services/llm-gateway/observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+
+  grafana:
+    extends:
+      file: ./services/llm-gateway/docker-compose.yaml
+      service: grafana
+    profiles: [gateway]
+    volumes:
+      - ./services/llm-gateway/observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./services/llm-gateway/observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+
   api:
     extends:
       file: ./services/backend/docker-compose.yaml

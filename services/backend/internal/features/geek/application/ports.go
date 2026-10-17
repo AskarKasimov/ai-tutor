@@ -64,8 +64,9 @@ type QuestionRequest struct {
 type EvaluationRequest struct {
 	Kind exam.TurnKind // the step that was answered
 	Node exam.Node
-	// Prerequisites are the titles of the topic's prerequisites. Geek may ask
-	// them next, so the explanation must not give them away.
+	// Prerequisites are the titles of the topic's direct and transitive
+	// prerequisites that are still unchecked. Geek may ask them later, so the
+	// explanation must not give them away.
 	Prerequisites []string
 	Dialogue      []exam.Turn // turns on the topic, ending with the answer
 }

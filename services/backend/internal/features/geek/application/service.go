@@ -198,7 +198,7 @@ func (s *Service) Answer(ctx context.Context, ownerID, id, key string, a Answer)
 	if err := s.append(&session, exam.SpeakerStudent, exam.KindAnswer, &step.NodeID, &source, text); err != nil {
 		return exam.Session{}, err
 	}
-	evaluate := EvaluationRequest{Kind: step.Kind, Node: node, Prerequisites: prerequisiteTitles(session.Exam.Graph, node), Dialogue: session.Dialogue(node.ID)}
+	evaluate := EvaluationRequest{Kind: step.Kind, Node: node, Prerequisites: unaskedPrerequisites(session.Exam, node.ID), Dialogue: session.Dialogue(node.ID)}
 	assessment := Assessment{Evaluation: exam.Evaluation{Verdict: exam.VerdictDontKnow}}
 	if source != exam.SourceDontKnow {
 		if assessment, err = s.examiner.Evaluate(ctx, evaluate); err != nil {
@@ -337,11 +337,14 @@ func (s *Service) reply(ctx context.Context, r EvaluationRequest, a Assessment, 
 	return strings.TrimSpace(a.Reaction), nil
 }
 
-func prerequisiteTitles(g exam.Graph, n exam.Node) []string {
+// unaskedPrerequisites are the titles of the direct and transitive
+// prerequisites of a topic that are still unchecked: the descent may reach
+// any of them.
+func unaskedPrerequisites(e *exam.Exam, id string) []string {
 	titles := []string{}
-	for _, id := range n.Prerequisites {
-		if p, ok := g.Node(id); ok {
-			titles = append(titles, p.Title)
+	for _, p := range e.Graph.Closure(id) {
+		if n, ok := e.Graph.Node(p); ok && e.Nodes[p].Status == exam.StatusUnchecked {
+			titles = append(titles, n.Title)
 		}
 	}
 	return titles

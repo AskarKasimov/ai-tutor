@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -144,6 +145,7 @@ type examiner struct {
 	fail      error
 	questions []QuestionRequest
 	evals     int
+	evaluated []EvaluationRequest
 	explained []EvaluationRequest
 }
 
@@ -164,6 +166,7 @@ func (e *examiner) Evaluate(_ context.Context, r EvaluationRequest) (Assessment,
 		return Assessment{}, e.fail
 	}
 	e.evals++
+	e.evaluated = append(e.evaluated, r)
 	last := r.Dialogue[len(r.Dialogue)-1]
 	a := Assessment{Reaction: "Реакция: " + r.Node.Title + ".", Explanation: "Разбор: " + r.Node.Title + "."}
 	switch {
@@ -448,6 +451,36 @@ func TestGeekRepliesToTheAnswerBeforeTheNextQuestion(t *testing.T) {
 	after := s.Turns[len(s.Turns)-1]
 	if after.Recap != "Объяснение: "+node.Title+".\n\n" || !strings.HasPrefix(after.Text, after.Recap) {
 		t.Fatalf("turn after the button = %+v", after)
+	}
+}
+
+func TestRepliesKeepEveryUncheckedPrerequisiteOfTheChain(t *testing.T) {
+	f := newFixture(t)
+	*f.graphs.graph = exam.Graph{Version: "chain", Nodes: []exam.Node{
+		{ID: "leaf", Title: "Лист", Content: "Лист."},
+		{ID: "middle", Title: "Середина", Content: "Середина.", Prerequisites: []string{"leaf"}},
+		{ID: "top", Title: "Верх", Content: "Верх.", Prerequisites: []string{"middle"}},
+	}}
+	ctx := context.Background()
+	s, _, _ := f.service.Start(ctx, "student", "subject", "start")
+	// Evaluated answers send the chain to the model too.
+	s = f.answer(t, s, Answer{Text: "слабо"})
+	s = f.answer(t, s, Answer{DontKnow: true})
+	s = f.answer(t, s, Answer{DontKnow: true})
+	if turn, _ := s.CurrentTurn(); *turn.NodeID != "leaf" {
+		t.Fatalf("current topic = %s", *turn.NodeID)
+	}
+	want := [][]string{{"Середина", "Лист"}, {"Лист"}}
+	if len(f.examiner.explained) != 2 {
+		t.Fatalf("explained = %+v", f.examiner.explained)
+	}
+	for i, r := range f.examiner.explained {
+		if !slices.Equal(r.Prerequisites, want[i]) {
+			t.Fatalf("explanation %d of %s keeps %v, want %v", i, r.Node.ID, r.Prerequisites, want[i])
+		}
+	}
+	if !slices.Equal(f.examiner.evaluated[0].Prerequisites, want[0]) {
+		t.Fatalf("evaluation keeps %v", f.examiner.evaluated[0].Prerequisites)
 	}
 }
 

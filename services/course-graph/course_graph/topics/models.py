@@ -20,7 +20,11 @@ class Source(StrictModel):
     end: int
     text: str
     page: int | None = None
-    week: int | None = None
+    week: int | None = Field(default=None, gt=0)
+    kind: str | None = None
+    filename: str | None = None
+    kind_label: str | None = None
+    material_revision: str | None = None
 
 
 class Topic(StrictModel):
@@ -38,6 +42,10 @@ class Material(StrictModel):
     id: Text
     markdown: str = Field(min_length=1, max_length=2_000_000)
     week: int | None = None
+    kind: str | None = None
+    filename: str | None = None
+    kind_label: str | None = None
+    material_revision: str | None = None
     topics: list[Topic] | None = None
 
 

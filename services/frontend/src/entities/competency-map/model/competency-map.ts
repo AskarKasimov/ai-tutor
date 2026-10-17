@@ -1,3 +1,10 @@
+export type CourseMaterialKind = string
+
+export type CourseMaterialKindOption = {
+  code: CourseMaterialKind
+  label: string
+}
+
 export type CourseMaterial = {
   id: string
   subjectId: string
@@ -9,10 +16,13 @@ export type CourseMaterial = {
   parsedText: string
   charCount: number
   status: 'pending' | 'parsed' | 'failed'
-  errorMessage?: string | null
+  week: number | null
+  kind: CourseMaterialKind | null
+  kindLabel?: string
   processing?: MaterialProcessing
   cleaning?: MaterialCleaning
-  ocrWarnings: string[]
+  ocrWarnings?: string[]
+  errorMessage?: string | null
   createdAt: number
   updatedAt: number
 }
@@ -37,48 +47,4 @@ export type MaterialCleaning = {
   updatedAt: number
   attempts: number
   errorMessage: string
-}
-
-export type CourseGraphTopic = {
-  id: string
-  title: string
-  question?: string
-  provides?: string[]
-  requires?: string[]
-  parent_title?: string | null
-}
-
-export type CourseGraphPrerequisite = {
-  source: string
-  target: string
-  requirement?: string
-  reason?: string
-}
-
-export type CourseGraphHierarchyEdge = {
-  source: string
-  target: string
-}
-
-export type CourseGraph = {
-  topics: CourseGraphTopic[]
-  prerequisites: CourseGraphPrerequisite[]
-  hierarchy: CourseGraphHierarchyEdge[]
-  quality?: {
-    acyclic: boolean
-    topics?: number
-    requirements?: number
-    unresolved_requirements?: number
-  }
-}
-
-export type CourseGraphSnapshot = {
-  status: 'not_requested' | 'pending' | 'processing' | 'ready' | 'failed'
-  attempts: number
-  errorMessage: string
-  graph: CourseGraph | null
-  stale: boolean
-  // Every material is processed, so a build can start.
-  inputsReady: boolean
-  updatedAt: number
 }

@@ -36,6 +36,7 @@ const (
 
 type Service struct {
 	graphs   GraphSource
+	raw      RawMaterials
 	store    Store
 	texts    Transcriptions
 	examiner Examiner
@@ -43,6 +44,52 @@ type Service struct {
 	now      func() time.Time
 	cfg      Config
 	speech   *SpeechCache
+}
+
+func (s *Service) SetRawMaterials(raw RawMaterials) { s.raw = raw }
+
+func (s *Service) RawMaterial(ctx context.Context, ownerID, sessionID, materialID string) (RawMaterial, error) {
+	session, err := s.store.Session(ctx, ownerID, sessionID)
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			return RawMaterial{}, fault.New(fault.NotFound, "NOT_FOUND", "Диагностика не найдена.")
+		}
+		return RawMaterial{}, err
+	}
+	if session.Exam == nil {
+		return RawMaterial{}, fault.New(fault.NotFound, "NOT_FOUND", "Диагностика не найдена.")
+	}
+	var expected *string
+	linked := false
+	for _, node := range session.Exam.Graph.Nodes {
+		for _, source := range node.Sources {
+			if source.MaterialID == materialID {
+				linked = true
+				expected = source.MaterialRevision
+				break
+			}
+		}
+		if linked {
+			break
+		}
+	}
+	if !linked {
+		return RawMaterial{}, fault.New(fault.NotFound, "NOT_FOUND", "Материал не найден.")
+	}
+	if expected == nil || *expected == "" {
+		return RawMaterial{}, fault.New(fault.Gone, "SOURCE_UNAVAILABLE", "Исходный материал больше недоступен.")
+	}
+	if s.raw == nil {
+		return RawMaterial{}, fault.New(fault.Gone, "SOURCE_UNAVAILABLE", "Исходный материал больше недоступен.")
+	}
+	current, err := s.raw.CurrentRaw(ctx, materialID)
+	if err != nil {
+		return RawMaterial{}, err
+	}
+	if !current.Found || current.Revision == "" || current.Revision != *expected {
+		return RawMaterial{}, fault.New(fault.Gone, "SOURCE_UNAVAILABLE", "Исходный материал больше недоступен.")
+	}
+	return current, nil
 }
 
 // New builds the Geek service. speech voices turns; the app shares one

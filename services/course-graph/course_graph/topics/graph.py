@@ -207,7 +207,22 @@ async def build_links(topics, complete, encoder, per_requirement=5, max_chars=16
         raise ValueError("Повторный ID темы")
     # Exact title dedup only: do not silently merge merely similar concepts.
     original_ids = {t.id: normalized_title(t.title) for t in topics}
-    topics = merge_topics(topics)
+    # Stable input order makes the canonical ID independent of upload order.
+    def topic_order(topic):
+        source = min(topic.sources, key=lambda s: (s.week is None, s.week or 0, s.filename or "", s.material_id))
+        return (source.week is None, source.week or 0, source.filename or "", source.material_id,
+                normalized_title(topic.title), topic.id)
+    topics.sort(key=topic_order)
+    # First merge repeats within each known week; unknown-week legacy topics are
+    # their own group. The final pass joins repeats across course weeks.
+    weekly, groups = [], {}
+    for topic in topics:
+        weeks = {source.week for source in topic.sources}
+        group = next(iter(weeks)) if len(weeks) == 1 else None
+        groups.setdefault(group, []).append(topic)
+    for week in sorted((w for w in groups if w is not None)) + ([None] if None in groups else []):
+        weekly.extend(merge_topics(groups[week]))
+    topics = merge_topics(weekly)
     by_id = {t.id: t for t in topics}
     canonical = {normalized_title(t.title): t.id for t in topics}
     aliases = {old: canonical[title] for old, title in original_ids.items() if old != canonical[title]}

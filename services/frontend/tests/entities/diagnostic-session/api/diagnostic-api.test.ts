@@ -3,6 +3,7 @@ import {
   answerDiagnostic,
   DiagnosticApiError,
   fetchTurnAudio,
+  fetchDiagnosticMaterialRaw,
   listDiagnostics,
   readDiagnostic,
   readDiagnosticResult,
@@ -176,8 +177,64 @@ it('reads the session, history and result by encoded URLs', async () => {
         topLevel: true,
       },
     ],
-    gaps: [{ nodeId: 'b', title: 'Эвристика' }],
+    gaps: [
+      {
+        nodeId: 'b',
+        title: 'Эвристика',
+        weeks: [],
+        sources: [],
+        learningMaterials: { theory: [], practice: [], additional: [] },
+      },
+    ],
   })
+})
+
+it('maps provenance snapshots and downloads only through the diagnostic route', async () => {
+  const ref = {
+    material_id: 'm1',
+    filename: 'lecture.pdf',
+    kind: 'lecture',
+    kind_label: 'Лекция',
+    week: 2,
+    material_revision: 'r1',
+  }
+  stub(
+    Response.json({
+      session_id: 'd1',
+      grade: null,
+      score_percent: null,
+      nodes: [],
+      gaps: [
+        {
+          node_id: 'n',
+          title: 'Матрицы',
+          weeks: [2],
+          sources: [
+            {
+              ...ref,
+              block_id: 1,
+              start: 0,
+              end: 5,
+              text: 'Матрица',
+              page: null,
+            },
+          ],
+          learning_materials: { theory: [ref], practice: [], additional: [] },
+        },
+      ],
+    }),
+  )
+  const result = await readDiagnosticResult('d1', signal())
+  expect(result.gaps[0]).toMatchObject({
+    weeks: [2],
+    sources: [{ materialId: 'm1', kindLabel: 'Лекция' }],
+    learningMaterials: { theory: [{ materialId: 'm1' }] },
+  })
+  const fetchMock = stub(new Response('%PDF'))
+  await fetchDiagnosticMaterialRaw('d1', 'm1', signal())
+  expect(fetchMock.mock.calls[0][0]).toBe(
+    '/api/v1/diagnostic-sessions/d1/materials/m1/raw',
+  )
 })
 
 it('keeps the error code and rejects responses outside the contract', async () => {

@@ -2,63 +2,85 @@ import {
   AlertDialog,
   Badge,
   Button,
-  Callout,
   Flex,
-  Heading,
   Progress,
+  Heading,
   Text,
-  TextField,
 } from '@radix-ui/themes'
-import { useNavigate } from '@tanstack/react-router'
+import { useBlocker, useNavigate } from '@tanstack/react-router'
 import {
-  BookOpen,
-  Check,
   CheckCircle2,
   Clock,
   Download,
   Eye,
-  EyeOff,
   FileText,
-  Layers,
-  Network,
+  ArrowRight,
+  Replace,
+  Save,
   ShieldCheck,
   Sparkles,
-  Target,
   Trash2,
-  TriangleAlert,
-  Upload,
   X,
+  BookOpen,
+  Target,
+  Layers,
+  EyeOff,
 } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import ReactModal from 'react-modal'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   downloadCourseMaterialRaw,
-  type CourseGraphSnapshot,
   type CourseMaterial,
+  type CourseMaterialKindOption,
 } from '@/entities/competency-map'
+import {
+  type CourseGraphView,
+  CourseGraphApiError,
+} from '@/entities/course-graph'
 import { AccountMenu, useAuth } from '@/features/auth'
 import {
-  materialInProgress,
-  useBuildCourseGraphMutation,
-  useCourseGraphQuery,
   useDeleteCourseMaterialMutation,
   useSubjectMaterialsQuery,
-  useUploadCourseMaterialsMutation,
+  useCourseMaterialKindsQuery,
+  useCourseMaterialsChanging,
+  useReplaceCourseMaterialMutation,
+  useUpdateCourseMaterialMetadataMutation,
+  MaterialReorderControls,
+  MaterialUploadQueueToolbar,
+  MaterialUploadSubmit,
+  MaterialQueueCard,
+  CourseMaterialCard,
+  MaterialMetadataFields,
+  useMaterialUploadQueue,
+  moveMaterialQueueItem,
+  moveMaterialQueueItemToIndex,
+  sortMaterialsByWeek,
+  materialInProgress,
+  materialPreparationStatus,
 } from '@/features/import-competency-map'
+import type { MaterialQueueItem } from '@/features/import-competency-map'
 import {
-  useCreateSubjectMutation,
-  useSubjectsQuery,
-} from '@/features/subject-selection'
+  useCourseGraphQuery,
+  useLatestCourseGraphBuildQuery,
+  useStartCourseGraphBuildMutation,
+} from '@/features/course-graph-build'
+import { useSubjectsQuery } from '@/features/subject-selection'
+import { MarkdownContent } from '@/shared/ui'
 import styles from '@/pages/competency-map/ui/competency-map.module.scss'
 
-export function CompetencyMapAdminScreen() {
+type MaterialListRow =
+  | { id: string; week: string; queued: MaterialQueueItem }
+  | { id: string; week: string; saved: CourseMaterial }
+
+export function CompetencyMapAdminScreen({ subjectId }: { subjectId: string }) {
   const { t } = useTranslation()
   const { user } = useAuth()
   const navigate = useNavigate()
   if (user?.role !== 'admin')
     return (
-      <main className={styles.denied}>
-        <Heading as="h1">{t('competencyMap.title')}</Heading>
+      <main className={styles.denied} data-admin-screen>
+        <Heading as="h1">{t('courseGraph.title')}</Heading>
         <Text as="p" role="alert">
           {t('competencyMap.forbidden')}
         </Text>
@@ -67,84 +89,198 @@ export function CompetencyMapAdminScreen() {
         </Button>
       </main>
     )
-  return <CompetencyMapAdmin userId={user.id} />
+  return (
+    <CompetencyMapAdmin
+      key={subjectId}
+      userId={user.id}
+      subjectId={subjectId}
+    />
+  )
 }
 
-function CompetencyMapAdmin({ userId }: { userId: string }) {
-  const { t } = useTranslation()
+function CompetencyMapAdmin({
+  userId,
+  subjectId,
+}: {
+  userId: string
+  subjectId: string
+}) {
+  const { t, i18n } = useTranslation()
+  const navigate = useNavigate()
   const subjects = useSubjectsQuery(userId)
-  const create = useCreateSubjectMutation(userId)
-  // The teacher manages one subject; a new one is used until the list refetches.
-  const [createdId, setCreatedId] = useState('')
-  const subject = subjects.data?.[0]
-  const subjectId = subject?.id ?? createdId
+  const subject = subjects.data?.find((candidate) => candidate.id === subjectId)
 
   // Course materials state and mutations
   const materialsQuery = useSubjectMaterialsQuery(userId, subjectId)
-  const materialsBusy = materialsQuery.data?.some(materialInProgress) ?? false
-  const courseGraphQuery = useCourseGraphQuery(userId, subjectId, materialsBusy)
-  const buildGraph = useBuildCourseGraphMutation(userId, subjectId)
-  const refetchGraph = courseGraphQuery.refetch
-  // Once the last material finishes, read inputs_ready without waiting for focus.
-  useEffect(() => {
-    if (!materialsBusy && subjectId) void refetchGraph()
-  }, [materialsBusy, subjectId, refetchGraph])
-  const uploadMaterials = useUploadCourseMaterialsMutation(userId, subjectId)
+  const materialKindsQuery = useCourseMaterialKindsQuery(userId)
+  const materialKinds = materialKindsQuery.data ?? []
+  const queue = useMaterialUploadQueue(userId, subjectId, materialKinds)
+  const replaceMaterial = useReplaceCourseMaterialMutation(userId, subjectId)
+  const updateMetadata = useUpdateCourseMaterialMetadataMutation(
+    userId,
+    subjectId,
+  )
   const deleteMaterial = useDeleteCourseMaterialMutation(userId, subjectId)
-  const [lectureFiles, setLectureFiles] = useState<File[]>([])
-  const [materialsFileError, setMaterialsFileError] = useState<string | null>(
+  const materialsBusy = materialsQuery.data?.some(materialInProgress) ?? false
+  const metadataIncomplete =
+    materialsQuery.data?.some((material) => !material.week || !material.kind) ??
+    false
+  const latestBuild = useLatestCourseGraphBuildQuery(
+    userId,
+    subjectId,
+    materialsBusy,
+    metadataIncomplete,
+  )
+  const courseGraph = useCourseGraphQuery(
+    userId,
+    subjectId,
+    materialsBusy,
+    metadataIncomplete,
+  )
+  const refetchBuild = latestBuild.refetch
+  const refetchGraph = courseGraph.refetch
+  useEffect(() => {
+    if (!materialsBusy) {
+      void refetchBuild()
+      void refetchGraph()
+    }
+  }, [materialsBusy, materialsQuery.dataUpdatedAt, refetchBuild, refetchGraph])
+  const startBuild = useStartCourseGraphBuildMutation(userId, subjectId)
+  const [previewId, setPreviewId] = useState<string | null>(null)
+  const [materialOrder, setMaterialOrder] = useState<string[]>([])
+  const [draggingMaterialId, setDraggingMaterialId] = useState<string | null>(
     null,
   )
-  const [previewId, setPreviewId] = useState<string | null>(null)
-  const [uploadWarning, setUploadWarning] = useState<string | null>(null)
+  const [dropTargetMaterialId, setDropTargetMaterialId] = useState<
+    string | null
+  >(null)
 
-  function selectLectureFiles(selected: FileList | null) {
-    uploadMaterials.reset()
-    setMaterialsFileError(null)
-    setUploadWarning(null)
-    if (!selected || selected.length === 0) return
-    const validFiles: File[] = []
-    for (let i = 0; i < selected.length; i++) {
-      const f = selected[i]
-      if (!/\.(pdf|md|txt|markdown)$/i.test(f.name)) {
-        setMaterialsFileError(t('competencyMap.materialsInvalidType'))
-        return
-      }
-      if (f.size > 50 * 1024 * 1024) {
-        setMaterialsFileError(t('competencyMap.materialsTooLarge'))
-        return
-      }
-      if (f.size === 0) {
-        setMaterialsFileError(t('competencyMap.emptyFile'))
-        return
-      }
-      validFiles.push(f)
+  // Covers queue uploads and saved-material operations.
+  const materialsChanging =
+    useCourseMaterialsChanging(userId, subjectId) || queue.isPending
+  const busy = materialsChanging
+  const graphBuilding =
+    startBuild.isPending ||
+    latestBuild.data?.status === 'queued' ||
+    latestBuild.data?.status === 'running'
+  const shouldWarnBeforeExit =
+    queue.items.length > 0 ||
+    queue.preparing ||
+    materialsChanging ||
+    graphBuilding
+  const shouldBlockNavigation = useCallback(
+    () => shouldWarnBeforeExit,
+    [shouldWarnBeforeExit],
+  )
+  const navigationBlocker = useBlocker({
+    shouldBlockFn: shouldBlockNavigation,
+    withResolver: true,
+    enableBeforeUnload: false,
+  })
+
+  useEffect(() => {
+    if (!shouldWarnBeforeExit) return
+    const warnBeforeExit = (event: BeforeUnloadEvent) => {
+      event.preventDefault()
+      event.returnValue = ''
     }
-    // Skip names already chosen, in earlier picks and within this one.
-    const seenNames = new Set(lectureFiles.map((f) => f.name.toLowerCase()))
-    const unique = validFiles.filter((f) => {
-      const name = f.name.toLowerCase()
-      if (seenNames.has(name)) return false
-      seenNames.add(name)
-      return true
-    })
-    if (lectureFiles.length + unique.length > 48) {
-      setMaterialsFileError(t('competencyMap.materialsTooManyFiles'))
-      return
-    }
-    setLectureFiles((prev) => [...prev, ...unique])
+    window.addEventListener('beforeunload', warnBeforeExit)
+    return () => window.removeEventListener('beforeunload', warnBeforeExit)
+  }, [shouldWarnBeforeExit])
+
+  const materials = materialsQuery.data ?? []
+  const materialRows: MaterialListRow[] = [
+    ...materials.map((saved) => ({
+      id: saved.id,
+      week: saved.week?.toString() ?? '',
+      saved,
+    })),
+    ...queue.items.map((queued) => ({
+      id: queued.id,
+      week: queued.week,
+      queued,
+    })),
+  ]
+  const orderedMaterialRows = sortMaterialsByWeek(
+    materialRows
+      .map((row, index) => ({ ...row, index }))
+      .sort((a, b) => {
+        const aOrder = materialOrder.indexOf(a.id)
+        const bOrder = materialOrder.indexOf(b.id)
+        if (aOrder < 0 && bOrder < 0) return a.index - b.index
+        if (aOrder < 0) return 1
+        if (bOrder < 0) return -1
+        return aOrder - bOrder
+      }),
+  )
+
+  function applyMaterialOrder(
+    next: Array<{ id: string; week: string }>,
+    movedId: string,
+  ) {
+    setMaterialOrder(next.map((item) => item.id))
+    queue.updateItems(next)
+    const moved = next.find((item) => item.id === movedId)
+    const previous = materials.find((item) => item.id === movedId)
+    const week = Number(moved?.week)
+    if (moved && previous && week > 0 && week !== previous.week)
+      updateMetadata.mutate({
+        materialId: movedId,
+        patch: { week },
+        subjectId,
+      })
   }
 
-  function removeLectureFile(index: number) {
-    setLectureFiles((prev) => prev.filter((_, i) => i !== index))
+  function moveMaterial(movedId: string, targetIndex: number) {
+    const current = orderedMaterialRows.map(({ id, week }) => ({ id, week }))
+    applyMaterialOrder(
+      moveMaterialQueueItemToIndex(current, movedId, targetIndex),
+      movedId,
+    )
   }
-
-  const [subjectName, setSubjectName] = useState('')
-  const busy =
-    create.isPending || uploadMaterials.isPending || deleteMaterial.isPending
+  const graphStateResolved =
+    materialsQuery.isSuccess &&
+    latestBuild.isSuccess &&
+    (courseGraph.isSuccess ||
+      (courseGraph.error instanceof CourseGraphApiError &&
+        courseGraph.error.status === 404))
+  const parsedCount = materials.filter(
+    (material) => material.status === 'parsed',
+  ).length
+  const processingCount = materials.filter(materialInProgress).length
+  const readyCount = materials.filter(
+    (material) => materialPreparationStatus(material) === 'ready',
+  ).length
+  const failedCount = materials.filter(
+    (material) => material.status === 'failed',
+  ).length
+  const missingMetadataCount = materials.filter(
+    (material) => !material.week || !material.kind,
+  ).length
+  const graphBlockers = [
+    ...(materials.length === 0 ? [t('courseGraph.blockNoMaterials')] : []),
+    ...(missingMetadataCount > 0
+      ? [t('courseGraph.blockMetadata', { count: missingMetadataCount })]
+      : []),
+    ...(failedCount > 0
+      ? [t('courseGraph.blockFailed', { count: failedCount })]
+      : []),
+    ...(materialsBusy ? [t('courseGraph.blockPending')] : []),
+    ...(materialsChanging || queue.items.length > 0 || queue.preparing
+      ? [t('courseGraph.blockChanging')]
+      : []),
+    ...(latestBuild.data?.inputsReady === false &&
+    !materialsBusy &&
+    !metadataIncomplete &&
+    failedCount === 0
+      ? [t('courseGraph.blockPending')]
+      : []),
+  ]
+  const hasGraph = courseGraph.data !== undefined
+  const graphIsOutdated = courseGraph.data?.stale ?? false
 
   return (
-    <div className={styles.page}>
+    <div className={styles.page} data-admin-screen>
       <header className={styles.header}>
         <div className={styles.brand}>
           <ShieldCheck size={24} aria-hidden="true" />
@@ -155,14 +291,10 @@ function CompetencyMapAdmin({ userId }: { userId: string }) {
       <main className={styles.content}>
         <div className={styles.intro}>
           <Heading as="h1" size="8">
-            {t('competencyMap.title')}
+            {t('courseGraph.title')}
           </Heading>
           <Text as="p" color="gray">
-            {t(
-              subjectId
-                ? 'competencyMap.editSubtitle'
-                : 'competencyMap.subtitle',
-            )}
+            {t('courseGraph.subtitle')}
           </Text>
         </div>
         {subjects.isPending ? (
@@ -178,39 +310,13 @@ function CompetencyMapAdmin({ userId }: { userId: string }) {
               {t('trainer.retry')}
             </Button>
           </div>
-        ) : !subjectId ? (
-          <section className={styles.card} aria-labelledby="subject-form-title">
-            <Heading as="h2" size="5" id="subject-form-title">
-              {t('competencyMap.createSubject')}
-            </Heading>
-            <TextField.Root
-              size="3"
-              aria-label={t('competencyMap.subjectName')}
-              value={subjectName}
-              placeholder={t('competencyMap.subjectPlaceholder')}
-              disabled={busy}
-              onChange={(event) => setSubjectName(event.target.value)}
-            />
-            {create.isError && (
-              <Text as="p" role="alert" color="red" size="2">
-                {t('competencyMap.createSubjectError')}
-              </Text>
-            )}
-            <Button
-              size="3"
-              color="green"
-              className={styles.submit}
-              disabled={!subjectName.trim() || busy}
-              onClick={() => {
-                const name = subjectName.trim()
-                if (!name) return
-                create.mutate(name, {
-                  onSuccess: (created) => setCreatedId(created.id),
-                })
-              }}
-            >
-              <Check size={18} aria-hidden="true" />
-              {t(busy ? 'competencyMap.uploading' : 'competencyMap.submit')}
+        ) : !subject ? (
+          <section className={styles.card}>
+            <Text as="p" role="alert">
+              {t('courseGraph.courseNotFound')}
+            </Text>
+            <Button onClick={() => void navigate({ to: '/admin/courses' })}>
+              {t('courseGraph.backToCourses')}
             </Button>
           </section>
         ) : (
@@ -221,107 +327,36 @@ function CompetencyMapAdmin({ userId }: { userId: string }) {
                   {t('competencyMap.subject')}
                 </Text>
                 <Heading as="h2" size="6" id="subject-title">
-                  {subject?.name ?? subjectName.trim()}
+                  {subject.name}
                 </Heading>
               </div>
             </section>
 
-            <section
-              className={styles.card}
-              aria-labelledby="materials-drop-title"
+            <nav
+              className={styles.pipeline}
+              aria-label={t('courseGraph.pipeline')}
             >
-              <div className={styles.sectionHeading}>
-                <BookOpen aria-hidden="true" />
-                <Heading as="h2" size="4" id="materials-drop-title">
-                  {t('competencyMap.materialsTitle')}
-                </Heading>
+              <div data-active="true">
+                <span className={styles.stepNumber}>1</span>
+                <Text weight="bold">{t('courseGraph.materialsStep')}</Text>
               </div>
-
-              <LectureFilesZone
-                files={lectureFiles}
-                disabled={busy}
-                onSelect={selectLectureFiles}
-                onRemove={removeLectureFile}
-              />
-
-              {materialsFileError && (
-                <Text as="p" role="alert" color="red" size="2">
-                  {materialsFileError}
-                </Text>
-              )}
-
-              {uploadMaterials.isPending && (
-                <MaterialsUploadProgressBar filesCount={lectureFiles.length} />
-              )}
-
-              {uploadMaterials.isError && (
-                <div role="alert" className={styles.error}>
-                  <Text as="p">
-                    {uploadMaterials.error instanceof Error
-                      ? uploadMaterials.error.message
-                      : t('competencyMap.unknownResult')}
-                  </Text>
-                </div>
-              )}
-
-              {uploadMaterials.isSuccess && (
-                <Text as="p" role="status" className={styles.success}>
-                  <CheckCircle2 size={20} aria-hidden="true" />
-                  {t('competencyMap.materialsSuccess')}
-                </Text>
-              )}
-
-              {uploadWarning && (
-                <div role="alert" className={styles.warning}>
-                  <Text as="p">{uploadWarning}</Text>
-                </div>
-              )}
-
-              {lectureFiles.length > 0 && (
-                <div className={styles.actions}>
-                  <Button
-                    size="3"
-                    color="green"
-                    className={styles.submit}
-                    disabled={lectureFiles.length === 0 || busy}
-                    onClick={() => {
-                      setUploadWarning(null)
-                      uploadMaterials.mutate(
-                        { files: lectureFiles, subjectId },
-                        {
-                          onSuccess: (result) => {
-                            setLectureFiles([])
-                            if (result.failed && result.failed.length > 0) {
-                              const failedMsg = result.failed
-                                .map((f) => `${f.filename}: ${f.message}`)
-                                .join('; ')
-                              setUploadWarning(
-                                t('competencyMap.materialsPartialWarning', {
-                                  failed: failedMsg,
-                                }),
-                              )
-                            }
-                          },
-                        },
-                      )
-                    }}
-                  >
-                    <Check size={18} aria-hidden="true" />
-                    {t('competencyMap.materialsSubmit')} ({lectureFiles.length})
-                  </Button>
-                  <Button
-                    size="3"
-                    color="red"
-                    variant="soft"
-                    disabled={busy}
-                    onClick={() => setLectureFiles([])}
-                  >
-                    <X size={18} aria-hidden="true" />
-                    {t('competencyMap.cancelEdit')}
-                  </Button>
-                </div>
-              )}
-            </section>
+              <ArrowRight className={styles.pipelineArrow} aria-hidden="true" />
+              <div
+                data-ready={
+                  (parsedCount > 0 && graphBlockers.length === 0) ||
+                  hasGraph ||
+                  undefined
+                }
+              >
+                <span className={styles.stepNumber}>2</span>
+                <Text weight="bold">{t('courseGraph.graphStep')}</Text>
+              </div>
+              <ArrowRight className={styles.pipelineArrow} aria-hidden="true" />
+              <div data-ready={hasGraph || undefined}>
+                <span className={styles.stepNumber}>3</span>
+                <Text weight="bold">{t('courseGraph.readyStep')}</Text>
+              </div>
+            </nav>
 
             <section
               className={styles.card}
@@ -334,11 +369,42 @@ function CompetencyMapAdmin({ userId }: { userId: string }) {
                 </Heading>
               </div>
 
-              {materialsQuery.isPending ? (
+              {materialKindsQuery.isError && (
+                <Flex gap="3" align="center" wrap="wrap">
+                  <Text role="alert" color="red">
+                    {t('courseGraph.kindsUnavailable')}
+                  </Text>
+                  <Button
+                    variant="ghost"
+                    size="1"
+                    onClick={() => void materialKindsQuery.refetch()}
+                  >
+                    {t('trainer.retry')}
+                  </Button>
+                </Flex>
+              )}
+              {materialKindsQuery.isSuccess &&
+                materialKindsQuery.data.length === 0 && (
+                  <Text role="alert" color="amber">
+                    {t('courseGraph.kindsEmpty')}
+                  </Text>
+                )}
+
+              <MaterialUploadQueueToolbar queue={queue} disabled={busy} />
+
+              {replaceMaterial.isError && (
+                <Text as="p" role="alert" color="red">
+                  {replaceMaterial.error instanceof Error
+                    ? replaceMaterial.error.message
+                    : t('competencyMap.requestError')}
+                </Text>
+              )}
+              {materialsQuery.isPending && (
                 <Text as="p" role="status" color="gray" size="2">
                   {t('competencyMap.loading')}
                 </Text>
-              ) : materialsQuery.isError ? (
+              )}
+              {materialsQuery.isError && (
                 <Flex gap="3" align="center" wrap="wrap">
                   <Text as="p" role="alert" color="red" size="2">
                     {t('competencyMap.loadError')}
@@ -351,47 +417,352 @@ function CompetencyMapAdmin({ userId }: { userId: string }) {
                     {t('trainer.retry')}
                   </Button>
                 </Flex>
-              ) : materialsQuery.data && materialsQuery.data.length > 0 ? (
-                <div className={styles.materialsList}>
-                  {materialsQuery.data.map((mat) => (
-                    <MaterialItemCard
-                      key={mat.id}
-                      material={mat}
-                      subjectId={subjectId}
-                      previewOpen={previewId === mat.id}
-                      onTogglePreview={() =>
-                        setPreviewId((current) =>
-                          current === mat.id ? null : mat.id,
-                        )
-                      }
-                      onDelete={() =>
-                        deleteMaterial.mutate({
-                          materialId: mat.id,
-                          subjectId,
-                        })
-                      }
-                      busy={busy}
-                    />
-                  ))}
-                </div>
-              ) : (
+              )}
+              {materialsQuery.isSuccess && orderedMaterialRows.length === 0 && (
                 <Text as="p" color="gray" size="2">
                   {t('competencyMap.materialsEmpty')}
                 </Text>
               )}
+              {orderedMaterialRows.length > 0 && (
+                <div className={styles.materialsList} role="list">
+                  {orderedMaterialRows.map((row, index) => {
+                    const name =
+                      'queued' in row
+                        ? row.queued.file.name
+                        : row.saved.filename
+                    return (
+                      <div
+                        className={styles.materialListItem}
+                        key={row.id}
+                        role="listitem"
+                        draggable={!busy && !queue.preparing}
+                        data-dragging={
+                          draggingMaterialId === row.id || undefined
+                        }
+                        data-drop-target={
+                          dropTargetMaterialId === row.id || undefined
+                        }
+                        onDragStart={(event) => {
+                          const target = event.target
+                          if (
+                            target instanceof HTMLElement &&
+                            target.closest(
+                              'button, input, [role="combobox"]',
+                            ) &&
+                            !target.closest('[data-queue-drag-handle]')
+                          ) {
+                            event.preventDefault()
+                            return
+                          }
+                          setDraggingMaterialId(row.id)
+                          event.dataTransfer.effectAllowed = 'move'
+                          event.dataTransfer.setData('text/plain', row.id)
+                        }}
+                        onDragEnd={() => {
+                          setDraggingMaterialId(null)
+                          setDropTargetMaterialId(null)
+                        }}
+                        onDragOver={(event) => {
+                          event.preventDefault()
+                          setDropTargetMaterialId(row.id)
+                          event.dataTransfer.dropEffect = 'move'
+                        }}
+                        onDragLeave={() => setDropTargetMaterialId(null)}
+                        onDrop={(event) => {
+                          event.preventDefault()
+                          const sourceId =
+                            event.dataTransfer.getData('text/plain') ||
+                            draggingMaterialId
+                          if (sourceId) {
+                            const current = orderedMaterialRows.map(
+                              ({ id, week }) => ({ id, week }),
+                            )
+                            applyMaterialOrder(
+                              moveMaterialQueueItem(current, sourceId, row.id),
+                              sourceId,
+                            )
+                          }
+                          setDraggingMaterialId(null)
+                          setDropTargetMaterialId(null)
+                        }}
+                      >
+                        <MaterialReorderControls
+                          name={name}
+                          disabled={busy || queue.preparing}
+                          isFirst={index === 0}
+                          isLast={index === orderedMaterialRows.length - 1}
+                          onMoveUp={() => moveMaterial(row.id, index - 1)}
+                          onMoveDown={() => moveMaterial(row.id, index + 1)}
+                        />
+                        {'queued' in row ? (
+                          <MaterialQueueCard
+                            item={row.queued}
+                            kinds={materialKinds}
+                            disabled={busy || queue.preparing}
+                            dropTarget={dropTargetMaterialId === row.id}
+                            onWeekChange={(week) =>
+                              queue.updateWeek(row.id, week)
+                            }
+                            onKindChange={(kind) =>
+                              queue.updateKind(row.id, kind)
+                            }
+                            onRemove={() => queue.removeItem(row.id)}
+                            onSend={() => queue.sendItem(row.id)}
+                            sending={queue.sendingItemId === row.id}
+                          />
+                        ) : (
+                          <MaterialItemCard
+                            material={row.saved}
+                            kinds={materialKinds}
+                            subjectId={subjectId}
+                            onUpdateMetadata={(patch) =>
+                              updateMetadata.mutateAsync({
+                                materialId: row.saved.id,
+                                patch,
+                                subjectId,
+                              })
+                            }
+                            dropTarget={dropTargetMaterialId === row.id}
+                            previewOpen={previewId === row.id}
+                            onTogglePreview={() =>
+                              setPreviewId((current) =>
+                                current === row.id ? null : row.id,
+                              )
+                            }
+                            onDelete={() =>
+                              deleteMaterial.mutateAsync({
+                                materialId: row.id,
+                                subjectId,
+                              })
+                            }
+                            onReplace={(file) =>
+                              replaceMaterial.mutate({
+                                materialId: row.id,
+                                file,
+                              })
+                            }
+                            busy={busy}
+                          />
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+              <MaterialUploadSubmit queue={queue} disabled={busy} />
             </section>
 
-            <CourseGraphCard
-              snapshot={courseGraphQuery.data}
-              loading={courseGraphQuery.isPending}
-              error={courseGraphQuery.isError}
-              onRetry={() => void courseGraphQuery.refetch()}
-              onBuild={() => buildGraph.mutate()}
-              buildPending={buildGraph.isPending}
-              buildError={buildGraph.error?.message}
-            />
+            <section className={styles.card} aria-labelledby="graph-title">
+              <div className={styles.sectionHeading}>
+                <Sparkles aria-hidden="true" />
+                <Heading as="h2" size="4" id="graph-title">
+                  {t('courseGraph.graphTitle')}
+                </Heading>
+                <Badge
+                  size="1"
+                  color={
+                    hasGraph ? 'green' : graphBlockers.length ? 'amber' : 'blue'
+                  }
+                  className={styles.materialTag}
+                >
+                  {hasGraph
+                    ? t('courseGraph.graphStored')
+                    : t('courseGraph.graphNotReady')}
+                </Badge>
+                {graphIsOutdated && (
+                  <Badge size="1" color="amber" className={styles.materialTag}>
+                    {t('courseGraph.graphOutdated')}
+                  </Badge>
+                )}
+              </div>
+              <Text as="p" color="gray" size="2">
+                {t('courseGraph.materialSummary', {
+                  total: materials.length,
+                  ready: readyCount,
+                  processing: processingCount,
+                  failed: failedCount,
+                })}
+              </Text>
+              {graphBlockers.length > 0 && (
+                <div className={styles.warning} role="status">
+                  <Text weight="bold">
+                    {t(
+                      hasGraph
+                        ? 'courseGraph.rebuildBlockedTitle'
+                        : 'courseGraph.blockedTitle',
+                    )}
+                  </Text>
+                  <ul>
+                    {graphBlockers.map((reason) => (
+                      <li key={reason}>{reason}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {latestBuild.isError && (
+                <div>
+                  <Text as="p" role="alert" color="red">
+                    {t('courseGraph.statusError')}
+                  </Text>
+                  <Button
+                    variant="ghost"
+                    onClick={() => void latestBuild.refetch()}
+                  >
+                    {t('trainer.retry')}
+                  </Button>
+                </div>
+              )}
+              {(latestBuild.data?.status === 'queued' ||
+                latestBuild.data?.status === 'running') && (
+                <div role="status" className={styles.buildProgress}>
+                  <Text weight="bold">
+                    {t(`courseGraph.status.${latestBuild.data.status}`)}
+                  </Text>
+                  <Text size="2" color="gray">
+                    {latestBuild.data.stage
+                      ? t(`courseGraph.stages.${latestBuild.data.stage}`)
+                      : t('courseGraph.stagePreparing')}
+                  </Text>
+                  <Progress aria-label={t('courseGraph.status.running')} />
+                </div>
+              )}
+              {latestBuild.data?.status === 'failed' && (
+                <div className={styles.error} role="alert">
+                  <Text weight="bold">{t('courseGraph.buildFailed')}</Text>
+                  <Text as="p">
+                    {latestBuild.data.error?.message ??
+                      t('courseGraph.buildFailedHint')}
+                  </Text>
+                </div>
+              )}
+              {courseGraph.isError &&
+                courseGraph.error instanceof CourseGraphApiError &&
+                courseGraph.error.status !== 404 && (
+                  <div>
+                    <Text as="p" role="alert" color="red">
+                      {t('courseGraph.graphReadError')}
+                    </Text>
+                    <Button
+                      variant="ghost"
+                      onClick={() => void courseGraph.refetch()}
+                    >
+                      {t('trainer.retry')}
+                    </Button>
+                  </div>
+                )}
+              {hasGraph && (
+                <div className={styles.success} role="status">
+                  <CheckCircle2 aria-hidden="true" />
+                  <span>
+                    {t('courseGraph.readyMessage', {
+                      count: courseGraph.data.nodes.length,
+                    })}
+                    {courseGraph.data.publishedAt !== null && (
+                      <span className={styles.graphPublishedAt}>
+                        {t('courseGraph.graphPublishedAt', {
+                          date: new Date(
+                            courseGraph.data.publishedAt * 1000,
+                          ).toLocaleString(i18n.language),
+                        })}
+                      </span>
+                    )}
+                  </span>
+                </div>
+              )}
+              {startBuild.isError && (
+                <Text as="p" role="alert" color="red">
+                  {startBuild.error instanceof Error
+                    ? startBuild.error.message
+                    : t('courseGraph.buildFailedHint')}
+                </Text>
+              )}
+              <AlertDialog.Root>
+                <AlertDialog.Trigger>
+                  <Button
+                    size="3"
+                    color="green"
+                    disabled={
+                      !graphStateResolved ||
+                      graphBlockers.length > 0 ||
+                      latestBuild.data?.status === 'queued' ||
+                      latestBuild.data?.status === 'running' ||
+                      startBuild.isPending
+                    }
+                  >
+                    <Sparkles size={17} aria-hidden="true" />
+                    {hasGraph
+                      ? t('courseGraph.rebuild')
+                      : t('courseGraph.build')}
+                  </Button>
+                </AlertDialog.Trigger>
+                <AlertDialog.Content maxWidth="440px">
+                  <AlertDialog.Title>
+                    {hasGraph
+                      ? t('courseGraph.rebuildTitle')
+                      : t('courseGraph.buildTitle')}
+                  </AlertDialog.Title>
+                  <AlertDialog.Description>
+                    {hasGraph
+                      ? t('courseGraph.rebuildWarning')
+                      : t('courseGraph.buildConfirm')}
+                  </AlertDialog.Description>
+                  <Flex gap="3" mt="4" justify="end">
+                    <AlertDialog.Cancel>
+                      <Button variant="soft" color="gray">
+                        {t('competencyMap.cancel')}
+                      </Button>
+                    </AlertDialog.Cancel>
+                    <AlertDialog.Action>
+                      <Button
+                        color="green"
+                        disabled={
+                          !graphStateResolved ||
+                          graphBlockers.length > 0 ||
+                          graphBuilding
+                        }
+                        onClick={() => startBuild.mutate(subjectId)}
+                      >
+                        {t('courseGraph.confirmBuild')}
+                      </Button>
+                    </AlertDialog.Action>
+                  </Flex>
+                </AlertDialog.Content>
+              </AlertDialog.Root>
+              <CourseGraphViewer graph={courseGraph.data?.view} />
+            </section>
           </>
         )}
+        <AlertDialog.Root
+          open={navigationBlocker.status === 'blocked'}
+          onOpenChange={(open) => {
+            if (!open) navigationBlocker.reset?.()
+          }}
+        >
+          <AlertDialog.Content maxWidth="440px">
+            <AlertDialog.Title>
+              {t('competencyMap.leaveWithChangesTitle')}
+            </AlertDialog.Title>
+            <AlertDialog.Description>
+              {t('competencyMap.leaveWithChangesDescription')}
+            </AlertDialog.Description>
+            <Flex gap="3" mt="4" justify="end">
+              <AlertDialog.Cancel>
+                <Button
+                  variant="soft"
+                  color="gray"
+                  onClick={() => navigationBlocker.reset?.()}
+                >
+                  {t('competencyMap.stayOnCourse')}
+                </Button>
+              </AlertDialog.Cancel>
+              <AlertDialog.Action>
+                <Button onClick={() => navigationBlocker.proceed?.()}>
+                  {t('competencyMap.leaveCourse')}
+                </Button>
+              </AlertDialog.Action>
+            </Flex>
+          </AlertDialog.Content>
+        </AlertDialog.Root>
       </main>
     </div>
   )
@@ -399,22 +770,68 @@ function CompetencyMapAdmin({ userId }: { userId: string }) {
 
 function MaterialItemCard({
   material,
+  kinds,
   subjectId,
+  onUpdateMetadata,
+  dropTarget,
   previewOpen,
   onTogglePreview,
   onDelete,
+  onReplace,
   busy,
 }: {
   material: CourseMaterial
+  kinds: CourseMaterialKindOption[]
   subjectId: string
+  onUpdateMetadata: (patch: { week: number; kind: string }) => Promise<unknown>
+  dropTarget: boolean
   previewOpen: boolean
   onTogglePreview: () => void
-  onDelete: () => void
+  onDelete: () => Promise<void>
+  onReplace: (file: File) => void
   busy: boolean
 }) {
   const { t, i18n } = useTranslation()
+  const replaceInputRef = useRef<HTMLInputElement>(null)
   const [downloading, setDownloading] = useState(false)
   const [downloadError, setDownloadError] = useState<string | null>(null)
+  const [week, setWeek] = useState(material.week?.toString() ?? '')
+  const [kind, setKind] = useState(material.kind ?? '')
+  const [metadataError, setMetadataError] = useState<string | null>(null)
+  const [savingMetadata, setSavingMetadata] = useState(false)
+  const [actionError, setActionError] = useState<{
+    message: string
+    retry: () => Promise<unknown>
+  } | null>(null)
+  async function runDelete() {
+    try {
+      await onDelete()
+      setActionError(null)
+    } catch (error) {
+      setActionError({
+        message:
+          error instanceof Error
+            ? error.message
+            : t('competencyMap.requestError'),
+        retry: onDelete,
+      })
+    }
+  }
+  async function retryAction() {
+    if (!actionError) return
+    try {
+      await actionError.retry()
+      setActionError(null)
+    } catch (error) {
+      setActionError({
+        ...actionError,
+        message:
+          error instanceof Error
+            ? error.message
+            : t('competencyMap.requestError'),
+      })
+    }
+  }
   const formattedSize =
     material.fileSize > 1024 * 1024
       ? `${(material.fileSize / (1024 * 1024)).toFixed(1)} МБ`
@@ -425,31 +842,39 @@ function MaterialItemCard({
     { dateStyle: 'medium', timeStyle: 'short' },
   )
 
+  const processing = materialInProgress(material)
+  const preparationStatus = materialPreparationStatus(material)
   const statusTone =
-    material.processing?.status === 'failed' ||
-    material.cleaning?.status === 'failed'
-      ? 'red'
-      : material.status === 'parsed'
-        ? 'green'
-        : material.status === 'failed'
-          ? 'red'
-          : 'amber'
-  const cleaningActive =
-    material.cleaning?.status === 'pending' ||
-    material.cleaning?.status === 'processing'
-  const processingStage = cleaningActive
-    ? 'cleaning'
-    : material.processing?.stage
-  const lastSignalAt = cleaningActive
-    ? material.cleaning?.updatedAt
-    : material.processing?.updatedAt
-  const errorCoveredByReport =
-    material.errorMessage &&
-    material.ocrWarnings?.some((warning) =>
-      material.errorMessage?.includes(warning),
-    )
-  const showErrorMessage = material.errorMessage && !errorCoveredByReport
+    preparationStatus === 'failed' ? 'red' : processing ? 'amber' : 'green'
+  const metadataIsValid =
+    /^\d+$/.test(week) &&
+    Number(week) > 0 &&
+    kinds.some((option) => option.code === kind)
+  const metadataChanged =
+    Number(week) !== material.week || kind !== material.kind
 
+  useEffect(() => {
+    setWeek(material.week?.toString() ?? '')
+    setKind(material.kind ?? '')
+    setMetadataError(null)
+  }, [material.week, material.kind])
+
+  async function saveMetadata() {
+    if (!metadataIsValid || !metadataChanged || savingMetadata) return
+    setSavingMetadata(true)
+    setMetadataError(null)
+    try {
+      await onUpdateMetadata({ week: Number(week), kind })
+    } catch (error) {
+      setMetadataError(
+        error instanceof Error
+          ? error.message
+          : t('competencyMap.requestError'),
+      )
+    } finally {
+      setSavingMetadata(false)
+    }
+  }
   async function handleDownload() {
     setDownloading(true)
     setDownloadError(null)
@@ -467,603 +892,407 @@ function MaterialItemCard({
   }
 
   return (
-    <div className={styles.materialCard}>
-      <div className={styles.materialHeader}>
-        <Flex gap="2" align="center">
-          <FileText size={18} color="var(--accent-9)" />
-          <Text weight="bold" size="3">
-            {material.filename}
-          </Text>
-          <Badge color={statusTone} size="1">
-            {t(`competencyMap.materialsStatus.${material.status}`)}
-          </Badge>
-        </Flex>
-
-        <Flex gap="2" align="center">
-          <Button
-            size="1"
-            variant="soft"
-            color="gray"
-            onClick={onTogglePreview}
-          >
-            {previewOpen ? <EyeOff size={14} /> : <Eye size={14} />}
-            {t('competencyMap.materialsPreview')}
-          </Button>
-
-          <Button
-            size="1"
-            variant="ghost"
-            color="gray"
-            disabled={downloading}
-            onClick={() => void handleDownload()}
-            aria-label={`Скачать ${material.filename}`}
-          >
-            <Download size={14} />
-          </Button>
-
-          <AlertDialog.Root>
-            <AlertDialog.Trigger>
-              <Button size="1" color="red" variant="soft" disabled={busy}>
-                <Trash2 size={14} />
-                {t('competencyMap.materialsDelete')}
-              </Button>
-            </AlertDialog.Trigger>
-            <AlertDialog.Content maxWidth="400px">
-              <AlertDialog.Title>
-                {t('competencyMap.materialsDelete')}
-              </AlertDialog.Title>
-              <AlertDialog.Description>
-                {t('competencyMap.materialsDeleteConfirm')}
-              </AlertDialog.Description>
-              <Flex gap="3" mt="4" justify="end">
-                <AlertDialog.Cancel>
-                  <Button variant="soft" color="gray">
-                    {t('competencyMap.cancel')}
-                  </Button>
-                </AlertDialog.Cancel>
-                <AlertDialog.Action>
-                  <Button color="red" onClick={onDelete}>
-                    {t('competencyMap.confirm')}
-                  </Button>
-                </AlertDialog.Action>
-              </Flex>
-            </AlertDialog.Content>
-          </AlertDialog.Root>
-        </Flex>
-      </div>
-
-      {processingStage && (
-        <Flex gap="2" align="center" wrap="wrap" role="status">
-          <Badge
-            color={
-              material.processing?.status === 'failed' ||
-              material.processing?.status === 'ready'
-                ? material.processing.status === 'failed'
-                  ? 'red'
-                  : 'green'
-                : 'blue'
-            }
-            size="1"
-          >
-            {t(`competencyMap.materialStage.${processingStage}`)}
-          </Badge>
-          {lastSignalAt !== undefined && lastSignalAt > 0 && (
-            <Text size="1" color="gray">
-              {t('competencyMap.materialLastSignal', {
-                date: new Date(lastSignalAt * 1000).toLocaleString(
-                  i18n.language,
-                  { dateStyle: 'medium', timeStyle: 'short' },
-                ),
-              })}
-            </Text>
-          )}
-        </Flex>
-      )}
-
-      {showErrorMessage && (
-        <Callout.Root
-          role={
-            material.status === 'failed' ||
-            material.processing?.status === 'failed' ||
-            material.cleaning?.status === 'failed'
-              ? 'alert'
-              : 'status'
-          }
-          color={
-            material.status === 'failed' ||
-            material.processing?.status === 'failed' ||
-            material.cleaning?.status === 'failed'
-              ? 'red'
-              : 'amber'
-          }
+    <CourseMaterialCard
+      name={material.filename}
+      status={t(`competencyMap.materialPreparation.${preparationStatus}`)}
+      statusColor={statusTone}
+      nameAction={
+        <Button
           size="1"
+          variant="ghost"
+          color="gray"
+          disabled={downloading}
+          onClick={() => void handleDownload()}
+          aria-label={`Скачать ${material.filename}`}
+          title={`Скачать ${material.filename}`}
         >
-          <Callout.Icon>
-            <TriangleAlert size={14} />
-          </Callout.Icon>
-          <Callout.Text>{material.errorMessage}</Callout.Text>
-        </Callout.Root>
+          <Download size={14} />
+        </Button>
+      }
+      statusAction={
+        <>
+          {material.status === 'parsed' && (
+            <Button
+              size="1"
+              variant="soft"
+              color="gray"
+              className={styles.previewButton}
+              onClick={onTogglePreview}
+            >
+              <Eye size={14} />
+              {t('competencyMap.materialsPreview')}
+            </Button>
+          )}
+          {!processing && (
+            <>
+              <Button
+                size="1"
+                variant="soft"
+                color="gray"
+                className={styles.previewButton}
+                disabled={busy}
+                onClick={() => replaceInputRef.current?.click()}
+                aria-label={t('competencyMap.materialReplace')}
+                title={t('competencyMap.materialReplace')}
+              >
+                <Replace size={14} />
+                {t('competencyMap.materialReplaceAction')}
+              </Button>
+              <input
+                ref={replaceInputRef}
+                type="file"
+                accept=".pdf,application/pdf"
+                disabled={busy}
+                className={styles.hiddenReplaceInput}
+                aria-label={t('competencyMap.materialReplace')}
+                onChange={(event) => {
+                  const file = event.currentTarget.files?.[0]
+                  if (file) onReplace(file)
+                  event.currentTarget.value = ''
+                }}
+              />
+            </>
+          )}
+        </>
+      }
+      dropTarget={dropTarget}
+      meta={
+        <>
+          <span>
+            {t('competencyMap.materialsSize', { size: formattedSize })}
+          </span>
+          <span>•</span>
+          <span>
+            {t('competencyMap.materialsCharCount', {
+              count: material.charCount.toLocaleString(i18n.language),
+            })}
+          </span>
+          <span>•</span>
+          <Flex gap="1" align="center">
+            <Clock size={12} />
+            <span>{dateStr}</span>
+          </Flex>
+        </>
+      }
+      actions={
+        !processing ? (
+          <Flex gap="2" align="center">
+            <AlertDialog.Root>
+              <AlertDialog.Trigger>
+                <Button
+                  size="1"
+                  color="red"
+                  variant="soft"
+                  disabled={busy}
+                  aria-label={t('competencyMap.materialsDelete')}
+                  title={t('competencyMap.materialsDelete')}
+                >
+                  <Trash2 size={14} />
+                </Button>
+              </AlertDialog.Trigger>
+              <AlertDialog.Content maxWidth="400px">
+                <AlertDialog.Title>
+                  {t('competencyMap.materialsDelete')}
+                </AlertDialog.Title>
+                <AlertDialog.Description>
+                  {t('competencyMap.materialsDeleteConfirm')}
+                </AlertDialog.Description>
+                <Flex gap="3" mt="4" justify="end">
+                  <AlertDialog.Cancel>
+                    <Button variant="soft" color="gray">
+                      {t('competencyMap.cancel')}
+                    </Button>
+                  </AlertDialog.Cancel>
+                  <AlertDialog.Action>
+                    <Button color="red" onClick={() => void runDelete()}>
+                      {t('competencyMap.confirm')}
+                    </Button>
+                  </AlertDialog.Action>
+                </Flex>
+              </AlertDialog.Content>
+            </AlertDialog.Root>
+          </Flex>
+        ) : undefined
+      }
+    >
+      <MaterialMetadataFields
+        week={week}
+        kind={kind}
+        kinds={kinds}
+        disabled={busy || savingMetadata}
+        onWeekChange={setWeek}
+        onKindChange={setKind}
+        action={
+          <Flex gap="2" align="center" wrap="wrap">
+            <Button
+              type="button"
+              size="2"
+              variant="soft"
+              color="green"
+              disabled={
+                busy || savingMetadata || !metadataIsValid || !metadataChanged
+              }
+              onClick={() => void saveMetadata()}
+            >
+              <Save size={14} aria-hidden="true" />
+              {savingMetadata
+                ? t('competencyMap.metadataSaving')
+                : t('competencyMap.metadataSave')}
+            </Button>
+            {(!material.week || !material.kind) && (
+              <Badge color="amber" size="1" className={styles.materialTag}>
+                {t('courseGraph.metadataMissing')}
+              </Badge>
+            )}
+          </Flex>
+        }
+      />
+      {metadataError && (
+        <Text role="alert" color="red" size="1">
+          {metadataError}
+        </Text>
       )}
-
-      {material.ocrWarnings && material.ocrWarnings.length > 0 && (
-        <Callout.Root color="amber" size="1">
-          <Callout.Icon>
-            <TriangleAlert size={14} />
-          </Callout.Icon>
-          <Callout.Text>
-            <Text size="1" weight="bold">
-              {t('competencyMap.materialWarnings')}:
-            </Text>
-            <ul className={styles.materialWarnings}>
-              {material.ocrWarnings.map((warning, index) => (
-                <li key={index}>
-                  <Text size="1">{warning}</Text>
-                </li>
-              ))}
-            </ul>
-          </Callout.Text>
-        </Callout.Root>
+      {material.status === 'failed' && material.errorMessage && (
+        <Text color="red" size="2">
+          {material.errorMessage}
+        </Text>
       )}
-
-      <div className={styles.materialMeta}>
-        <span>{t('competencyMap.materialsSize', { size: formattedSize })}</span>
-        <span>•</span>
-        <span>
-          {t('competencyMap.materialsCharCount', {
-            count: material.charCount.toLocaleString(i18n.language),
-          })}
-        </span>
-        <span>•</span>
-        <Flex gap="1" align="center">
-          <Clock size={12} />
-          <span>{dateStr}</span>
-        </Flex>
-      </div>
 
       {downloadError && (
         <Text as="p" role="alert" color="red" size="2">
           {downloadError}
         </Text>
       )}
-
-      {previewOpen && (
-        <div className={styles.materialPreview}>
-          {material.parsedText || '(текст отсутствует)'}
-        </div>
-      )}
-    </div>
-  )
-}
-
-function LectureFilesZone({
-  files,
-  disabled,
-  onSelect,
-  onRemove,
-}: {
-  files: File[]
-  disabled: boolean
-  onSelect: (files: FileList | null) => void
-  onRemove: (index: number) => void
-}) {
-  const { t } = useTranslation()
-  const [dragging, setDragging] = useState(false)
-  return (
-    <div>
-      <label
-        className={styles.dropzone}
-        data-dragging={dragging || undefined}
-        data-disabled={disabled || undefined}
-        onDragOver={(event) => {
-          event.preventDefault()
-          if (!disabled) setDragging(true)
-        }}
-        onDragLeave={() => setDragging(false)}
-        onDrop={(event) => {
-          event.preventDefault()
-          setDragging(false)
-          if (!disabled) onSelect(event.dataTransfer.files)
-        }}
-      >
-        <input
-          type="file"
-          multiple
-          className={styles.fileInput}
-          aria-label={t('competencyMap.materialsDropTitle')}
-          accept=".pdf,.md,.txt,.markdown"
-          disabled={disabled}
-          onChange={(event) => {
-            onSelect(event.target.files)
-            event.target.value = ''
-          }}
-        />
-        <span className={styles.dropzoneIcon} aria-hidden="true">
-          <Upload size={22} />
-        </span>
-        <span className={styles.dropzoneText}>
-          <Text weight="bold">{t('competencyMap.materialsDropTitle')}</Text>
-          <Text size="2" color="gray">
-            {t('competencyMap.materialsDropHint')}
+      {actionError && (
+        <Flex gap="2" align="center" wrap="wrap">
+          <Text as="p" role="alert" color="red" size="2">
+            {actionError.message}
           </Text>
-        </span>
-      </label>
-
-      {files.length > 0 && (
-        <div className={styles.fileChips}>
-          {files.map((f, idx) => (
-            <span key={idx} className={styles.fileChip}>
-              <FileText size={14} aria-hidden="true" />
-              <span>
-                {f.name} ({(f.size / 1024).toFixed(0)} КБ)
-              </span>
-              {!disabled && (
-                <button
-                  type="button"
-                  aria-label={`Удалить ${f.name}`}
-                  onClick={() => onRemove(idx)}
-                >
-                  <X size={12} />
-                </button>
-              )}
-            </span>
-          ))}
-        </div>
-      )}
-    </div>
-  )
-}
-
-function MaterialsUploadProgressBar({ filesCount }: { filesCount: number }) {
-  const { t } = useTranslation()
-  const [percent, setPercent] = useState(10)
-
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setPercent((prev) => {
-        if (prev >= 95) return prev
-        const remaining = 95 - prev
-        const step = Math.max(1, Math.floor(remaining / 8))
-        return Math.min(95, prev + step)
-      })
-    }, 600)
-    return () => clearInterval(timer)
-  }, [])
-
-  return (
-    <div className={styles.uploadProgressBox} role="status" aria-live="polite">
-      <div className={styles.uploadProgressHeader}>
-        <Flex gap="2" align="center">
-          <Sparkles size={16} aria-hidden="true" className={styles.spinIcon} />
-          <Text size="2" weight="medium">
-            {t('competencyMap.materialsUploading')}
-            {filesCount > 1 ? ` (${filesCount})` : ''}
-          </Text>
-        </Flex>
-        <Text size="2" color="gray" weight="bold">
-          {percent}%
-        </Text>
-      </div>
-      <Progress value={percent} size="2" color="blue" />
-    </div>
-  )
-}
-
-function CourseGraphCard({
-  snapshot,
-  loading,
-  error,
-  onRetry,
-  onBuild,
-  buildPending,
-  buildError,
-}: {
-  snapshot?: CourseGraphSnapshot
-  loading: boolean
-  error: boolean
-  onRetry: () => void
-  onBuild: () => void
-  buildPending: boolean
-  buildError?: string
-}) {
-  const { t } = useTranslation()
-  const [treeOpen, setTreeOpen] = useState(false)
-
-  const status = snapshot?.status ?? 'not_requested'
-  const isBuilding = status === 'processing' || status === 'pending'
-  const graph = snapshot?.graph
-  const topicsCount = graph?.topics?.length ?? 0
-  const prereqsCount = graph?.prerequisites?.length ?? 0
-  const hierarchyCount = graph?.hierarchy?.length ?? 0
-
-  return (
-    <section className={styles.card} aria-labelledby="course-graph-title">
-      <div className={styles.sectionHeading}>
-        <Network aria-hidden="true" />
-        <Heading as="h2" size="4" id="course-graph-title">
-          {t('competencyMap.graphTitle')}
-        </Heading>
-      </div>
-
-      <Text size="2" color="gray">
-        {t('competencyMap.graphSubtitle')}
-      </Text>
-
-      {loading ? (
-        <Text as="p" role="status" color="gray" size="2">
-          {t('competencyMap.loading')}
-        </Text>
-      ) : error ? (
-        <Flex gap="3" align="center" wrap="wrap">
-          <Text as="p" color="red" size="2">
-            {t('competencyMap.loadError')}
-          </Text>
-          <Button variant="ghost" size="1" onClick={onRetry}>
+          <Button size="1" variant="soft" onClick={() => void retryAction()}>
             {t('trainer.retry')}
           </Button>
         </Flex>
-      ) : (
-        <div className={styles.graphBody}>
-          <Flex align="center" gap="3" wrap="wrap">
-            <span className={styles.graphBadge} data-status={status}>
-              {isBuilding ? (
-                <>
-                  <Clock
-                    size={14}
-                    className={styles.spinIcon}
-                    aria-hidden="true"
-                  />
-                  {t('competencyMap.graphBuilding')}
-                </>
-              ) : status === 'ready' ? (
-                <>
-                  <CheckCircle2 size={14} aria-hidden="true" />
-                  {t('competencyMap.graphReady')}
-                </>
-              ) : status === 'failed' ? (
-                <>
-                  <TriangleAlert size={14} aria-hidden="true" />
-                  {t('competencyMap.graphFailed')}
-                </>
-              ) : (
-                t('competencyMap.graphNotRequested')
-              )}
+      )}
+
+      <ReactModal
+        isOpen={previewOpen}
+        appElement={
+          document.getElementById('root') ??
+          document.querySelector<HTMLElement>('[data-admin-screen]') ??
+          undefined
+        }
+        onRequestClose={onTogglePreview}
+        contentLabel={`${t('competencyMap.materialsPreview')}: ${material.filename}`}
+        className={styles.previewModal}
+        overlayClassName={styles.previewModalOverlay}
+      >
+        <div className={styles.previewModalHeader}>
+          <Heading as="h2" size="4">
+            {material.filename}
+          </Heading>
+          <Button
+            type="button"
+            variant="ghost"
+            color="gray"
+            aria-label={t('competencyMap.closePreview')}
+            onClick={onTogglePreview}
+          >
+            <X size={18} />
+          </Button>
+        </div>
+        <MarkdownContent
+          text={material.parsedText || '(текст отсутствует)'}
+          className={styles.previewMarkdown}
+        />
+      </ReactModal>
+    </CourseMaterialCard>
+  )
+}
+
+function CourseGraphViewer({
+  graph,
+}: {
+  graph: CourseGraphView | null | undefined
+}) {
+  const { t } = useTranslation()
+  const [treeOpen, setTreeOpen] = useState(false)
+  if (!graph) return null
+  const topicsCount = graph.topics.length
+  const prereqsCount = graph.prerequisites.length
+  const hierarchyCount = graph.hierarchy.length
+  return (
+    <div className={styles.graphBody}>
+      <>
+        <dl className={styles.stats}>
+          <div className={styles.statRow} data-tone="blue">
+            <span className={styles.statIcon} aria-hidden="true">
+              <BookOpen size={16} />
             </span>
+            <dt>{t('competencyMap.graphStats.topics')}</dt>
+            <dd>{topicsCount}</dd>
+          </div>
+          <div className={styles.statRow} data-tone="green">
+            <span className={styles.statIcon} aria-hidden="true">
+              <Target size={16} />
+            </span>
+            <dt>{t('competencyMap.graphStats.prerequisites')}</dt>
+            <dd>{prereqsCount}</dd>
+          </div>
+          <div className={styles.statRow} data-tone="violet">
+            <span className={styles.statIcon} aria-hidden="true">
+              <Layers size={16} />
+            </span>
+            <dt>{t('competencyMap.graphStats.hierarchy')}</dt>
+            <dd>{hierarchyCount}</dd>
+          </div>
+        </dl>
 
-            {snapshot?.stale && topicsCount > 0 && (
-              <Badge color="amber" size="1">
-                {t('competencyMap.graphStale')}
-              </Badge>
+        <div>
+          <Button
+            size="2"
+            variant="soft"
+            onClick={() => setTreeOpen((prev) => !prev)}
+          >
+            {treeOpen ? (
+              <>
+                <EyeOff size={16} aria-hidden="true" />
+                {t('competencyMap.graphHideView')}
+              </>
+            ) : (
+              <>
+                <Eye size={16} aria-hidden="true" />
+                {t('competencyMap.graphToggleView')}
+              </>
             )}
-          </Flex>
+          </Button>
+        </div>
 
-          <Flex align="center" gap="3" wrap="wrap">
-            <Button
-              size="2"
-              color="green"
-              disabled={!snapshot?.inputsReady || isBuilding || buildPending}
-              onClick={onBuild}
-            >
-              <Network size={16} aria-hidden="true" />
-              {t('competencyMap.graphBuild')}
-            </Button>
-            {!snapshot?.inputsReady && !isBuilding && (
-              <Text size="2" color="gray">
-                {t('competencyMap.graphInputsNotReady')}
-              </Text>
-            )}
-          </Flex>
-          {buildError && (
-            <Text as="p" role="alert" color="red" size="2">
-              {buildError}
+        {treeOpen && (
+          <div className={styles.graphTree}>
+            <Text weight="bold" size="2">
+              {t('competencyMap.graphSections')}
             </Text>
-          )}
+            {(() => {
+              const topicsById = new Map(graph.topics.map((t) => [t.id, t]))
+              const childrenByParent = new Map<string, string[]>()
+              const childIds = new Set<string>()
 
-          {isBuilding && (
-            <Text size="2" color="gray">
-              {t('competencyMap.graphBuildingHint')}
-            </Text>
-          )}
+              for (const h of graph.hierarchy) {
+                const list = childrenByParent.get(h.source) || []
+                list.push(h.target)
+                childrenByParent.set(h.source, list)
+                childIds.add(h.target)
+              }
 
-          {status === 'failed' && snapshot?.errorMessage && (
-            <Callout.Root color="red" size="1">
-              <Callout.Icon>
-                <TriangleAlert size={14} />
-              </Callout.Icon>
-              <Callout.Text>{snapshot.errorMessage}</Callout.Text>
-            </Callout.Root>
-          )}
+              const roots = graph.topics.filter((t) => !childIds.has(t.id))
 
-          {graph && (status === 'ready' || snapshot?.stale) && (
-            <>
-              <dl className={styles.stats}>
-                <div className={styles.statRow} data-tone="blue">
-                  <span className={styles.statIcon} aria-hidden="true">
-                    <BookOpen size={16} />
-                  </span>
-                  <dt>{t('competencyMap.graphStats.topics')}</dt>
-                  <dd>{topicsCount}</dd>
-                </div>
-                <div className={styles.statRow} data-tone="green">
-                  <span className={styles.statIcon} aria-hidden="true">
-                    <Target size={16} />
-                  </span>
-                  <dt>{t('competencyMap.graphStats.prerequisites')}</dt>
-                  <dd>{prereqsCount}</dd>
-                </div>
-                <div className={styles.statRow} data-tone="violet">
-                  <span className={styles.statIcon} aria-hidden="true">
-                    <Layers size={16} />
-                  </span>
-                  <dt>{t('competencyMap.graphStats.hierarchy')}</dt>
-                  <dd>{hierarchyCount}</dd>
-                </div>
-              </dl>
+              const renderedIds = new Set<string>()
 
-              <div>
-                <Button
-                  size="2"
-                  variant="soft"
-                  onClick={() => setTreeOpen((prev) => !prev)}
-                >
-                  {treeOpen ? (
-                    <>
-                      <EyeOff size={16} aria-hidden="true" />
-                      {t('competencyMap.graphHideView')}
-                    </>
-                  ) : (
-                    <>
-                      <Eye size={16} aria-hidden="true" />
-                      {t('competencyMap.graphToggleView')}
-                    </>
-                  )}
-                </Button>
-              </div>
+              const renderSubtree = (
+                topicId: string,
+                visitedInBranch: Set<string>,
+              ): React.ReactNode => {
+                renderedIds.add(topicId)
+                const children = childrenByParent.get(topicId) || []
+                if (children.length === 0) return null
 
-              {treeOpen && (
-                <div className={styles.graphTree}>
-                  <Text weight="bold" size="2">
-                    {t('competencyMap.graphSections')}
-                  </Text>
-                  {(() => {
-                    const topicsById = new Map(
-                      graph.topics.map((t) => [t.id, t]),
-                    )
-                    const childrenByParent = new Map<string, string[]>()
-                    const childIds = new Set<string>()
-
-                    for (const h of graph.hierarchy) {
-                      const list = childrenByParent.get(h.source) || []
-                      list.push(h.target)
-                      childrenByParent.set(h.source, list)
-                      childIds.add(h.target)
-                    }
-
-                    const roots = graph.topics.filter(
-                      (t) => !childIds.has(t.id),
-                    )
-
-                    const renderedIds = new Set<string>()
-
-                    const renderSubtree = (
-                      topicId: string,
-                      visitedInBranch: Set<string>,
-                    ): React.ReactNode => {
-                      renderedIds.add(topicId)
-                      const children = childrenByParent.get(topicId) || []
-                      if (children.length === 0) return null
-
+                return (
+                  <ul className={styles.graphChildrenList}>
+                    {children.map((childId) => {
+                      if (visitedInBranch.has(childId)) {
+                        return null
+                      }
+                      const child = topicsById.get(childId)
+                      const nextVisited = new Set(visitedInBranch).add(childId)
                       return (
-                        <ul className={styles.graphChildrenList}>
-                          {children.map((childId) => {
-                            if (visitedInBranch.has(childId)) {
-                              return null
-                            }
-                            const child = topicsById.get(childId)
-                            const nextVisited = new Set(visitedInBranch).add(
-                              childId,
-                            )
-                            return (
-                              <li key={childId}>
-                                <Text size="2" color="gray">
-                                  └─ {child?.title || childId}
-                                </Text>
-                                {renderSubtree(childId, nextVisited)}
-                              </li>
-                            )
-                          })}
-                        </ul>
+                        <li key={childId}>
+                          <Text size="2" color="gray">
+                            └─ {child?.title || childId}
+                          </Text>
+                          {renderSubtree(childId, nextVisited)}
+                        </li>
                       )
-                    }
+                    })}
+                  </ul>
+                )
+              }
 
-                    const primaryRoots = roots.length > 0 ? roots : graph.topics
+              const primaryRoots = roots.length > 0 ? roots : graph.topics
 
+              return (
+                <div className={styles.graphSectionsList}>
+                  {primaryRoots.map((root) => {
+                    renderedIds.add(root.id)
                     return (
-                      <div className={styles.graphSectionsList}>
-                        {primaryRoots.map((root) => {
-                          renderedIds.add(root.id)
-                          return (
-                            <div
-                              key={root.id}
-                              className={styles.graphSectionItem}
-                            >
-                              <Text weight="bold" size="2">
-                                {root.title}
-                              </Text>
-                              {renderSubtree(root.id, new Set([root.id]))}
-                            </div>
-                          )
-                        })}
-                        {graph.topics
-                          .filter((t) => !renderedIds.has(t.id))
-                          .map((orphan) => {
-                            renderedIds.add(orphan.id)
-                            return (
-                              <div
-                                key={orphan.id}
-                                className={styles.graphSectionItem}
-                              >
-                                <Text weight="bold" size="2">
-                                  {orphan.title}
-                                </Text>
-                                {renderSubtree(orphan.id, new Set([orphan.id]))}
-                              </div>
-                            )
-                          })}
+                      <div key={root.id} className={styles.graphSectionItem}>
+                        <Text weight="bold" size="2">
+                          {root.title}
+                        </Text>
+                        {renderSubtree(root.id, new Set([root.id]))}
                       </div>
                     )
-                  })()}
+                  })}
+                  {graph.topics
+                    .filter((t) => !renderedIds.has(t.id))
+                    .map((orphan) => {
+                      renderedIds.add(orphan.id)
+                      return (
+                        <div
+                          key={orphan.id}
+                          className={styles.graphSectionItem}
+                        >
+                          <Text weight="bold" size="2">
+                            {orphan.title}
+                          </Text>
+                          {renderSubtree(orphan.id, new Set([orphan.id]))}
+                        </div>
+                      )
+                    })}
+                </div>
+              )
+            })()}
 
-                  {graph.prerequisites.length > 0 && (
-                    <>
-                      <Text
-                        weight="bold"
-                        size="2"
-                        className={styles.graphDependenciesTitle}
-                      >
-                        {t('competencyMap.graphDependencies')}
-                      </Text>
-                      {(() => {
-                        const topicsById = new Map(
-                          graph.topics.map((t) => [t.id, t]),
-                        )
+            {graph.prerequisites.length > 0 && (
+              <>
+                <Text
+                  weight="bold"
+                  size="2"
+                  className={styles.graphDependenciesTitle}
+                >
+                  {t('competencyMap.graphDependencies')}
+                </Text>
+                {(() => {
+                  const topicsById = new Map(graph.topics.map((t) => [t.id, t]))
+                  return (
+                    <div className={styles.graphPrereqList}>
+                      {graph.prerequisites.map((p, idx) => {
+                        const src = topicsById.get(p.source)?.title || p.source
+                        const tgt = topicsById.get(p.target)?.title || p.target
                         return (
-                          <div className={styles.graphPrereqList}>
-                            {graph.prerequisites.map((p, idx) => {
-                              const src =
-                                topicsById.get(p.source)?.title || p.source
-                              const tgt =
-                                topicsById.get(p.target)?.title || p.target
-                              return (
-                                <div
-                                  key={idx}
-                                  className={styles.graphPrereqItem}
-                                >
-                                  <Text size="2" weight="bold">
-                                    {src}
-                                  </Text>
-                                  <Text size="2" color="gray">
-                                    →
-                                  </Text>
-                                  <Text size="2">{tgt}</Text>
-                                  {p.reason && (
-                                    <Text size="1" color="gray">
-                                      ({p.reason})
-                                    </Text>
-                                  )}
-                                </div>
-                              )
-                            })}
+                          <div key={idx} className={styles.graphPrereqItem}>
+                            <Text size="2" weight="bold">
+                              {src}
+                            </Text>
+                            <Text size="2" color="gray">
+                              →
+                            </Text>
+                            <Text size="2">{tgt}</Text>
+                            {p.reason && (
+                              <Text size="1" color="gray">
+                                ({p.reason})
+                              </Text>
+                            )}
                           </div>
                         )
-                      })()}
-                    </>
-                  )}
-                </div>
-              )}
-            </>
-          )}
-        </div>
-      )}
-    </section>
+                      })}
+                    </div>
+                  )
+                })()}
+              </>
+            )}
+          </div>
+        )}
+      </>
+    </div>
   )
 }

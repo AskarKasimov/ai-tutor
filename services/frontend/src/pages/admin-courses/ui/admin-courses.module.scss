@@ -1,0 +1,88 @@
+.page {
+  min-height: 100dvh;
+  background: var(--app-soft);
+  color: var(--app-ink);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-5) max(var(--space-5), calc((100% - 960px) / 2));
+  border-bottom: 1px solid var(--app-border);
+  background: var(--color-panel-solid);
+}
+
+.brand,
+.courseName {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  color: var(--app-accent);
+}
+
+.content {
+  box-sizing: border-box;
+  max-width: 1000px;
+  margin: auto;
+  padding: var(--space-7) var(--space-5);
+  display: grid;
+  gap: var(--space-5);
+}
+
+.intro {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+}
+
+.intro p {
+  margin: var(--space-2) 0 0;
+}
+
+.card,
+.course {
+  min-width: 0;
+  display: grid;
+  gap: var(--space-4);
+  padding: var(--space-6);
+  border: 1px solid var(--app-border);
+  border-radius: var(--radius-5);
+  background: var(--color-panel-solid);
+}
+
+.list {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.course {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  color: inherit;
+  text-decoration: none;
+  transition: border-color 0.15s ease;
+}
+
+.course:hover,
+.course:focus-visible {
+  border-color: var(--app-accent);
+}
+
+.course h2 {
+  color: var(--app-ink);
+}
+
+.denied {
+  max-width: 1000px;
+  margin: auto;
+  padding: var(--space-7) var(--space-5);
+}
+
+@media (max-width: 600px) {
+  .course {
+    grid-template-columns: 1fr;
+  }
+}

@@ -63,6 +63,8 @@ func Error(ctx context.Context, w http.ResponseWriter, err error) {
 		status = 504
 	case fault.NotFound:
 		status = 404
+	case fault.Gone:
+		status = 410
 	}
 	JSON(w, status, e)
 }

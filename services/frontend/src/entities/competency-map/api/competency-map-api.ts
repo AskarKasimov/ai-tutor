@@ -1,8 +1,9 @@
 import { z } from 'zod'
 import { i18n } from '@/shared/i18n'
 import type {
-  CourseGraphSnapshot,
   CourseMaterial,
+  CourseMaterialKind,
+  CourseMaterialKindOption,
 } from '../model/competency-map'
 import { apiFetch } from '@/shared/api'
 
@@ -14,8 +15,15 @@ const count = z.number().int().nonnegative()
 const errorSchema = z.object({
   message: z.string(),
   details: z
-    .array(z.object({ path: z.string().optional(), message: z.string() }))
+    .array(
+      z.object({
+        path: z.string().optional(),
+        message: z.string(),
+        code: z.string().optional(),
+      }),
+    )
     .optional(),
+  code: z.string().optional(),
 })
 
 import { CompetencyMapApiError } from '../model/competency-map-error'
@@ -39,6 +47,7 @@ async function readResponse(response: Response): Promise<unknown> {
       response.status,
       parsed.success ? parsed.data.message : i18n.t(`competencyMap.${key}`),
       parsed.success ? parsed.data.details : undefined,
+      parsed.success ? parsed.data.code : '',
     )
   }
   return data
@@ -55,7 +64,6 @@ const courseMaterialSchema = z.object({
   parsed_text: z.string(),
   char_count: z.number().int().nonnegative(),
   status: z.enum(['pending', 'parsed', 'failed']),
-  error_message: z.string().nullable().optional(),
   processing: z
     .object({
       stage: z.enum([
@@ -84,24 +92,74 @@ const courseMaterialSchema = z.object({
     .nullable()
     .optional(),
   ocr_report: z.unknown().optional(),
+  week: z.number().int().positive().nullable(),
+  kind: z.string().nullable(),
+  kind_label: z.string().optional().default(''),
+  error_message: z.string().nullable().optional(),
   created_at: count,
   updated_at: count,
 })
 
-function getOcrWarnings(report: unknown): string[] {
-  if (!report || typeof report !== 'object' || Array.isArray(report)) return []
-  const record = report as Record<string, unknown>
-  const warnings = [record.warnings, record.pipeline_warnings].flatMap(
-    (value) =>
+function pipelineFields(
+  item: z.infer<typeof courseMaterialSchema>,
+): Pick<
+  CourseMaterial,
+  'status' | 'errorMessage' | 'processing' | 'cleaning' | 'ocrWarnings'
+> {
+  const report =
+    item.ocr_report &&
+    typeof item.ocr_report === 'object' &&
+    !Array.isArray(item.ocr_report)
+      ? (item.ocr_report as Record<string, unknown>)
+      : {}
+  const failed =
+    item.cleaning?.status === 'failed' || item.processing?.status === 'failed'
+  return {
+    status: failed ? 'failed' : item.status,
+    errorMessage: failed
+      ? item.cleaning?.error_message ||
+        item.error_message ||
+        i18n.t('competencyMap.requestError')
+      : item.error_message,
+    processing: item.processing
+      ? {
+          stage: item.processing.stage,
+          status: item.processing.status,
+          updatedAt: item.processing.updated_at,
+          attempts: item.processing.attempts,
+        }
+      : undefined,
+    cleaning: item.cleaning
+      ? {
+          status: item.cleaning.status,
+          updatedAt: item.cleaning.updated_at,
+          attempts: item.cleaning.attempts,
+          errorMessage: item.cleaning.error_message,
+        }
+      : undefined,
+    ocrWarnings: [report.warnings, report.pipeline_warnings].flatMap((value) =>
       Array.isArray(value)
         ? value.filter(
             (warning): warning is string => typeof warning === 'string',
           )
         : [],
-  )
-  return warnings.filter(
-    (warning, index) => warnings.indexOf(warning) === index,
-  )
+    ),
+  }
+}
+
+export async function readCourseMaterialKinds(
+  signal?: AbortSignal,
+): Promise<CourseMaterialKindOption[]> {
+  const timeout = AbortSignal.timeout(30_000)
+  const response = await apiFetch(`${apiBase}/admin/material-kinds`, {
+    credentials: 'include',
+    signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
+  })
+  const parsed = z
+    .array(z.object({ code: z.string().min(1), label: z.string().min(1) }))
+    .safeParse(await readResponse(response))
+  if (!parsed.success) throw new Error(i18n.t('competencyMap.invalidResponse'))
+  return parsed.data
 }
 
 export async function readSubjectMaterials(
@@ -130,25 +188,10 @@ export async function readSubjectMaterials(
     s3ParsedKey: item.s3_parsed_key,
     parsedText: item.parsed_text,
     charCount: item.char_count,
-    status: item.status,
-    errorMessage: item.error_message,
-    processing: item.processing
-      ? {
-          stage: item.processing.stage,
-          status: item.processing.status,
-          updatedAt: item.processing.updated_at,
-          attempts: item.processing.attempts,
-        }
-      : undefined,
-    cleaning: item.cleaning
-      ? {
-          status: item.cleaning.status,
-          updatedAt: item.cleaning.updated_at,
-          attempts: item.cleaning.attempts,
-          errorMessage: item.cleaning.error_message,
-        }
-      : undefined,
-    ocrWarnings: getOcrWarnings(item.ocr_report),
+    week: item.week,
+    kind: item.kind,
+    kindLabel: item.kind_label,
+    ...pipelineFields(item),
     createdAt: item.created_at,
     updatedAt: item.updated_at,
   }))
@@ -160,9 +203,21 @@ export interface CourseMaterialUploadFailedItem {
   message: string
 }
 
+export interface CourseMaterialUploadItem {
+  clientId: string
+  file: File
+  week: number
+  kind: CourseMaterialKind
+}
+export interface CourseMaterialUploadItemResult {
+  clientId: string
+  material?: CourseMaterial
+  error?: CourseMaterialUploadFailedItem
+}
 export interface CourseMaterialUploadResult {
   uploaded: CourseMaterial[]
   failed: CourseMaterialUploadFailedItem[]
+  results: CourseMaterialUploadItemResult[]
 }
 
 const courseMaterialUploadFailedItemSchema = z.object({
@@ -174,17 +229,32 @@ const courseMaterialUploadFailedItemSchema = z.object({
 const courseMaterialUploadResultSchema = z.object({
   uploaded: z.array(courseMaterialSchema),
   failed: z.array(courseMaterialUploadFailedItemSchema),
+  results: z.array(
+    z.object({
+      client_id: z.string(),
+      material: courseMaterialSchema.optional(),
+      error: courseMaterialUploadFailedItemSchema.optional(),
+    }),
+  ),
 })
 
 export async function uploadCourseMaterials(
   subjectId: string,
-  files: File[],
+  items: CourseMaterialUploadItem[],
   signal?: AbortSignal,
 ): Promise<CourseMaterialUploadResult> {
   const body = new FormData()
-  for (const file of files) {
-    body.append('file', file, file.name)
-  }
+  body.append(
+    'items',
+    JSON.stringify(
+      items.map(({ clientId, week, kind }) => ({
+        client_id: clientId,
+        week,
+        kind,
+      })),
+    ),
+  )
+  for (const { file } of items) body.append('file', file, file.name)
   const timeout = AbortSignal.timeout(900_000)
   const response = await apiFetch(
     `${apiBase}/admin/subjects/${encodeURIComponent(subjectId)}/materials`,
@@ -210,29 +280,117 @@ export async function uploadCourseMaterials(
       s3ParsedKey: item.s3_parsed_key,
       parsedText: item.parsed_text,
       charCount: item.char_count,
-      status: item.status,
-      errorMessage: item.error_message,
-      processing: item.processing
-        ? {
-            stage: item.processing.stage,
-            status: item.processing.status,
-            updatedAt: item.processing.updated_at,
-            attempts: item.processing.attempts,
-          }
-        : undefined,
-      cleaning: item.cleaning
-        ? {
-            status: item.cleaning.status,
-            updatedAt: item.cleaning.updated_at,
-            attempts: item.cleaning.attempts,
-            errorMessage: item.cleaning.error_message,
-          }
-        : undefined,
-      ocrWarnings: getOcrWarnings(item.ocr_report),
+      week: item.week,
+      kind: item.kind,
+      ...pipelineFields(item),
       createdAt: item.created_at,
       updatedAt: item.updated_at,
     })),
     failed: parsed.data.failed,
+    results: parsed.data.results.map((item) => ({
+      clientId: item.client_id,
+      material: item.material
+        ? {
+            id: item.material.id,
+            subjectId: item.material.subject_id,
+            filename: item.material.filename,
+            contentType: item.material.content_type,
+            fileSize: item.material.file_size,
+            s3RawKey: item.material.s3_raw_key,
+            s3ParsedKey: item.material.s3_parsed_key,
+            parsedText: item.material.parsed_text,
+            charCount: item.material.char_count,
+            week: item.material.week,
+            kind: item.material.kind,
+            ...pipelineFields(item.material),
+            createdAt: item.material.created_at,
+            updatedAt: item.material.updated_at,
+          }
+        : undefined,
+      error: item.error,
+    })),
+  }
+}
+
+export type CourseMaterialMetadataPatch = {
+  week?: number
+  kind?: CourseMaterialKind
+}
+
+export async function updateCourseMaterialMetadata(
+  subjectId: string,
+  materialId: string,
+  patch: CourseMaterialMetadataPatch,
+  signal?: AbortSignal,
+): Promise<CourseMaterial> {
+  const timeout = AbortSignal.timeout(30_000)
+  const response = await apiFetch(
+    `${apiBase}/admin/subjects/${encodeURIComponent(subjectId)}/materials/${encodeURIComponent(materialId)}`,
+    {
+      method: 'PATCH',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(patch),
+      signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
+    },
+  )
+  const parsed = courseMaterialSchema.safeParse(await readResponse(response))
+  if (!parsed.success) throw new Error(i18n.t('competencyMap.invalidResponse'))
+  const item = parsed.data
+  return {
+    id: item.id,
+    subjectId: item.subject_id,
+    filename: item.filename,
+    contentType: item.content_type,
+    fileSize: item.file_size,
+    s3RawKey: item.s3_raw_key,
+    s3ParsedKey: item.s3_parsed_key,
+    parsedText: item.parsed_text,
+    charCount: item.char_count,
+    week: item.week,
+    kind: item.kind,
+    ...pipelineFields(item),
+    createdAt: item.created_at,
+    updatedAt: item.updated_at,
+  }
+}
+
+export async function replaceCourseMaterialFile(
+  subjectId: string,
+  materialId: string,
+  file: File,
+  signal?: AbortSignal,
+): Promise<CourseMaterial> {
+  const body = new FormData()
+  body.append('file', file, file.name)
+  const timeout = AbortSignal.timeout(900_000)
+  const response = await apiFetch(
+    `${apiBase}/admin/subjects/${encodeURIComponent(subjectId)}/materials/${encodeURIComponent(materialId)}/raw`,
+    {
+      method: 'PUT',
+      credentials: 'include',
+      body,
+      signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
+    },
+  )
+  const parsed = courseMaterialSchema.safeParse(await readResponse(response))
+  if (!parsed.success) throw new Error(i18n.t('competencyMap.invalidResponse'))
+  const item = parsed.data
+  return {
+    id: item.id,
+    subjectId: item.subject_id,
+    filename: item.filename,
+    contentType: item.content_type,
+    fileSize: item.file_size,
+    s3RawKey: item.s3_raw_key,
+    s3ParsedKey: item.s3_parsed_key,
+    parsedText: item.parsed_text,
+    charCount: item.char_count,
+    week: item.week,
+    kind: item.kind,
+    ...pipelineFields(item),
+    createdAt: item.created_at,
+    updatedAt: item.updated_at,
   }
 }
 
@@ -285,98 +443,4 @@ export async function downloadCourseMaterialRaw(
       URL.revokeObjectURL(url)
     }, 10_000)
   }
-}
-
-const courseGraphTopicSchema = z.object({
-  id: z.string(),
-  title: z.string(),
-  question: z.string().optional(),
-  provides: z.array(z.string()).optional(),
-  requires: z.array(z.string()).optional(),
-  parent_title: z.string().nullable().optional(),
-})
-
-const courseGraphPrerequisiteSchema = z.object({
-  source: z.string(),
-  target: z.string(),
-  requirement: z.string().optional(),
-  reason: z.string().optional(),
-})
-
-const courseGraphHierarchySchema = z.object({
-  source: z.string(),
-  target: z.string(),
-})
-
-const courseGraphSnapshotSchema = z.object({
-  status: z.enum(['not_requested', 'pending', 'processing', 'ready', 'failed']),
-  attempts: z.number().int().nonnegative(),
-  error_message: z.string(),
-  graph: z
-    .object({
-      topics: z.array(courseGraphTopicSchema),
-      prerequisites: z.array(courseGraphPrerequisiteSchema),
-      hierarchy: z.array(courseGraphHierarchySchema),
-      quality: z
-        .object({
-          acyclic: z.boolean(),
-          topics: z.number().int().optional(),
-          requirements: z.number().int().optional(),
-          unresolved_requirements: z.number().int().optional(),
-        })
-        .passthrough()
-        .optional(),
-    })
-    .passthrough()
-    .nullable(),
-  stale: z.boolean(),
-  inputs_ready: z.boolean(),
-  updated_at: z.number().int().nonnegative(),
-})
-
-function toSnapshot(raw: unknown): CourseGraphSnapshot {
-  const parsed = courseGraphSnapshotSchema.safeParse(raw)
-  if (!parsed.success) throw new Error(i18n.t('competencyMap.invalidResponse'))
-  const data = parsed.data
-  return {
-    status: data.status,
-    attempts: data.attempts,
-    errorMessage: data.error_message,
-    graph: data.graph,
-    stale: data.stale,
-    inputsReady: data.inputs_ready,
-    updatedAt: data.updated_at,
-  }
-}
-
-export async function readCourseGraph(
-  subjectId: string,
-  signal?: AbortSignal,
-): Promise<CourseGraphSnapshot> {
-  const timeout = AbortSignal.timeout(30_000)
-  const response = await apiFetch(
-    `${apiBase}/admin/subjects/${encodeURIComponent(subjectId)}/graph`,
-    {
-      credentials: 'include',
-      signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
-    },
-  )
-  return toSnapshot(await readResponse(response))
-}
-
-// The admin's "build graph" button: starts a build of the current materials.
-export async function requestCourseGraphBuild(
-  subjectId: string,
-  signal?: AbortSignal,
-): Promise<CourseGraphSnapshot> {
-  const timeout = AbortSignal.timeout(30_000)
-  const response = await apiFetch(
-    `${apiBase}/admin/subjects/${encodeURIComponent(subjectId)}/graph/build`,
-    {
-      method: 'POST',
-      credentials: 'include',
-      signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
-    },
-  )
-  return toSnapshot(await readResponse(response))
 }

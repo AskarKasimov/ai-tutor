@@ -47,8 +47,8 @@ func repositoryPool(t *testing.T) *pgxpool.Pool {
 	}
 	exec(t, pool,
 		`INSERT INTO subjects(id, name, created_at) VALUES ('s', 'Курс', 1)`,
-		`INSERT INTO subject_materials(id, subject_id, filename, content_type, s3_raw_key, s3_parsed_key, status, created_at, updated_at)
-		 VALUES ('m', 's', 'week1.md', 'text/markdown', 'raw', 'parsed', 'parsed', 1, 1)`,
+		`INSERT INTO subject_materials(id, subject_id, filename, content_type, s3_raw_key, s3_parsed_key, status, created_at, updated_at, week, kind)
+		 VALUES ('m', 's', 'week1.md', 'text/markdown', 'raw', 'parsed', 'parsed', 1, 1, 1, 'lecture')`,
 		`INSERT INTO material_cleaning_jobs(material_id, status, updated_at) VALUES ('m', 'pending', 1)`)
 	return pool
 }
@@ -115,7 +115,7 @@ func TestBuildChangedDuringRunIsNotPublished(t *testing.T) {
 	if err != nil || job.SubjectID != "s" {
 		t.Fatalf("claim: %+v %v", job, err)
 	}
-	exec(t, pool, `UPDATE material_cleaning_jobs SET s3_report_key='r2'`)
+	exec(t, pool, `UPDATE material_cleaning_jobs SET s3_report_key='r2'`, `UPDATE subject_materials SET week=2 WHERE id='m'`)
 	if accepted, err := repo.Finish(ctx, job, json.RawMessage(`{}`), now); err != nil || accepted {
 		t.Fatalf("finish with stale inputs: %v %v", accepted, err)
 	}
@@ -125,5 +125,19 @@ func TestBuildChangedDuringRunIsNotPublished(t *testing.T) {
 	again, err := repo.Claim(ctx, "w2", now)
 	if err != nil || again.SubjectID != "s" || again.Fingerprint == job.Fingerprint || again.Attempts != job.Attempts {
 		t.Fatalf("reclaim: %+v (was %+v) %v", again, job, err)
+	}
+}
+
+func TestInputsAreNotReadyUntilMaterialMetadataIsComplete(t *testing.T) {
+	pool := repositoryPool(t)
+	ctx := context.Background()
+	exec(t, pool, `UPDATE material_cleaning_jobs SET status='ready', s3_report_key='r1'`,
+		`UPDATE subject_materials SET week=NULL WHERE id='m'`)
+	snapshot, err := New(pool).Read(ctx, "s")
+	if err != nil || snapshot.InputsReady {
+		t.Fatalf("snapshot = %+v err=%v", snapshot, err)
+	}
+	if queued, err := New(pool).Request(ctx, "s", time.Unix(100, 0)); err != nil || queued {
+		t.Fatalf("queued incomplete material: %v err=%v", queued, err)
 	}
 }

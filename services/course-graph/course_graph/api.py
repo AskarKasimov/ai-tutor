@@ -139,7 +139,11 @@ class CleanRequest(BaseModel):
 
 class ExtractRequest(CleanRequest):
     material_id: str = Field(default="material", min_length=1, max_length=600)
-    week: int | None = None
+    week: int | None = Field(default=None, gt=0)
+    kind: str | None = None
+    filename: str | None = None
+    kind_label: str | None = None
+    material_revision: str | None = None
     max_chars: int = Field(default=ExtractionSettings().max_chars, ge=1500, le=20000)
     max_blocks: int = Field(default=45, ge=1, le=100)
 
@@ -178,8 +182,13 @@ async def extract_document(request: ExtractRequest):
     async with cleaning_slots:
         client = ModelClient()
         try:
-            return await extract_topics(request.markdown, client.completer("high"), request.material_id,
-                                        request.week, ExtractionSettings(request.max_chars, request.max_blocks))
+            result = await extract_topics(request.markdown, client.completer("high"), request.material_id,
+                                         request.week, ExtractionSettings(request.max_chars, request.max_blocks))
+            for topic in result["report"]["topics"]:
+                for source in topic["sources"]:
+                    source.update(kind=request.kind, filename=request.filename, kind_label=request.kind_label,
+                                  material_revision=request.material_revision)
+            return result
         except Exception:
             logging.exception("Topic extraction failed")
             raise HTTPException(status_code=503, detail="Выделение тем не завершено; исходный текст сохранён")
@@ -222,18 +231,28 @@ async def build_course(request: BuildRequest):
         client = ModelClient()
         try:
             topics, reports = [], []
-            for material in request.materials:
+            materials = sorted(request.materials, key=lambda m: (m.week is None, m.week or 0, m.filename or "", m.id))
+            for material in materials:
                 if material.topics is not None:
                     for topic in material.topics:
                         for source in topic.sources:
                             if source.material_id != material.id or not 0 <= source.start < source.end <= len(material.markdown) or material.markdown[source.start:source.end] != source.text:
                                 raise ValueError("Карточка не соответствует исходнику")
+                            source.week = material.week
+                            source.kind = material.kind
+                            source.filename = material.filename
+                            source.kind_label = material.kind_label
+                            source.material_revision = material.material_revision
                         if topic.text != "\n\n".join(s.text for s in topic.sources):
                             raise ValueError("Текст темы не соответствует источникам")
                     topics.extend(material.topics)
                 else:
                     result = await extract_topics(material.markdown, client.completer("high"), material.id,
                                                   material.week, ExtractionSettings(max_chars=request.max_chars))
+                    for item in result["report"]["topics"]:
+                        for source in item["sources"]:
+                            source.update(kind=material.kind, filename=material.filename,
+                                          kind_label=material.kind_label, material_revision=material.material_revision)
                     topics.extend(Topic.model_validate(t) for t in result["report"]["topics"])
                     reports.append({"material_id": material.id, **result["report"]})
             encoder = await encoder_for_topics(topics)

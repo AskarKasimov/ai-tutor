@@ -1,9 +1,11 @@
 import * as auth from '@/entities/user'
 import * as competencyMap from '@/entities/competency-map'
+import * as courseGraph from '@/entities/course-graph'
 import * as subjects from '@/entities/subject'
 import * as diagnostic from '@/entities/diagnostic-session'
 import type { AuthDependencies } from '@/features/auth'
 import type { CompetencyMapDependencies } from '@/features/import-competency-map'
+import type { CourseGraphBuildDependencies } from '@/features/course-graph-build'
 import type { DiagnosticDependencies } from '@/features/diagnostic-session'
 import type { SubjectSelectionDependencies } from '@/features/subject-selection'
 import { transcribeRecording } from '@/shared/api'
@@ -11,6 +13,7 @@ import { transcribeRecording } from '@/shared/api'
 export type AppDependencies = {
   auth: AuthDependencies['auth']
   competencyMap: CompetencyMapDependencies['competencyMap']
+  courseGraph: CourseGraphBuildDependencies['courseGraph']
   subjects: SubjectSelectionDependencies['subjects']
   diagnostic: DiagnosticDependencies['diagnostic']
 }
@@ -23,11 +26,17 @@ export function createAppDependencies(): AppDependencies {
       logout: auth.logout,
     },
     competencyMap: {
+      readCourseMaterialKinds: competencyMap.readCourseMaterialKinds,
       readSubjectMaterials: competencyMap.readSubjectMaterials,
       uploadCourseMaterials: competencyMap.uploadCourseMaterials,
+      replaceCourseMaterialFile: competencyMap.replaceCourseMaterialFile,
+      updateCourseMaterialMetadata: competencyMap.updateCourseMaterialMetadata,
       deleteCourseMaterial: competencyMap.deleteCourseMaterial,
-      readCourseGraph: competencyMap.readCourseGraph,
-      requestCourseGraphBuild: competencyMap.requestCourseGraphBuild,
+    },
+    courseGraph: {
+      readLatestCourseGraphBuild: courseGraph.readLatestCourseGraphBuild,
+      startCourseGraphBuild: courseGraph.startCourseGraphBuild,
+      readCourseGraph: courseGraph.readCourseGraph,
     },
     subjects: {
       listSubjects: subjects.listSubjects,

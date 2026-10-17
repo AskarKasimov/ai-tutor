@@ -81,7 +81,7 @@ logger = logging.getLogger(__name__)
 
 def get_ocr_configuration() -> dict:
     return {
-        "version": "ocr-v7-visual-audit",
+        "version": "ocr-v8-content-cache",
         "with_docling": os.environ.get("COURSE_GRAPH_WITH_DOCLING", "true"),
         "picture_text": os.environ.get("COURSE_GRAPH_OCR_PICTURE_TEXT", "true"),
         "document_timeout": os.environ.get("COURSE_GRAPH_OCR_DOCUMENT_TIMEOUT", "0"),
@@ -91,40 +91,54 @@ def get_ocr_configuration() -> dict:
     }
 
 
-def get_document_cache_path(content: bytes) -> Optional[Path]:
+def document_key(content: bytes, filename: str = "document.pdf") -> str:
+    # Extensions select different parsers even for identical bytes. Markdown
+    # and TXT share the same literal UTF-8 path; PDF names only affect the title.
+    suffix = Path(filename).suffix.lower()
+    parser = "text" if suffix in {".txt", ".md", ".markdown"} else suffix or ".pdf"
+    source_hash = hashlib.sha256(content).hexdigest()
+    configuration = get_ocr_configuration()
+    return hashlib.sha256((parser + source_hash + json.dumps(configuration, sort_keys=True)).encode()).hexdigest()
+
+
+def get_document_cache_path(content: bytes, filename: str = "document.pdf") -> Optional[Path]:
     cache_dir = os.environ.get("COURSE_GRAPH_OCR_CACHE_DIR")
     if not cache_dir:
         return None
-    source_hash = hashlib.sha256(content).hexdigest()
-    configuration = get_ocr_configuration()
-    key = hashlib.sha256((source_hash + json.dumps(configuration, sort_keys=True)).encode()).hexdigest()
-    return Path(cache_dir) / f"{key}.json"
+    return Path(cache_dir) / f"{document_key(content, filename)}.json"
+
+
+def document_for_filename(data: dict, filename: str) -> dict:
+    from copy import deepcopy
+    data = deepcopy(data)
+    if data["report"].get("engine") in {"docling", "pypdf"} and data["markdown"].startswith("# "):
+        _, separator, body = data["markdown"].partition("\n")
+        data["markdown"] = f"# {os.path.splitext(filename)[0]}" + separator + body
+    return data
 
 
 def get_cached_document(filename: str, content: bytes) -> Optional[dict]:
-    cache_path = get_document_cache_path(content)
+    cache_path = get_document_cache_path(content, filename)
     if not cache_path or not cache_path.exists():
         return None
     try:
         cached = json.loads(cache_path.read_text(encoding="utf-8"))
-        if not isinstance(cached, dict) or "markdown" not in cached or "report" not in cached:
+        if not isinstance(cached, dict) or not isinstance(cached.get("markdown"), str) or not isinstance(cached.get("report"), dict):
             return None
-        # F02: Adapt markdown lecture title to current filename if needed for converted PDFs
-        if cached.get("report", {}).get("engine") in ("docling", "pypdf"):
-            lecture_title = os.path.splitext(filename)[0]
-            md = cached["markdown"]
-            if md.startswith("# "):
-                lines = md.splitlines(True)
-                lines[0] = f"# {lecture_title}\n"
-                cached["markdown"] = "".join(lines)
+        report = cached["report"]
+        if report.get("source_sha256") != hashlib.sha256(content).hexdigest() or report.get("work_complete") is not True:
+            return None
+        if any(report.get(key) != value for key, value in get_ocr_configuration().items()):
+            return None
+        cached = document_for_filename(cached, filename)
         cached["report"]["cache_hit"] = True
         return cached
     except Exception:
         return None
 
 
-def cache_document_result(content: bytes, data: dict) -> None:
-    cache_path = get_document_cache_path(content)
+def cache_document_result(content: bytes, data: dict, filename: str = "document.pdf") -> None:
+    cache_path = get_document_cache_path(content, filename)
     if not cache_path:
         return
     try:
@@ -178,9 +192,19 @@ def convert_document(filename: str, content: bytes) -> dict:
         }
         if report["undecoded_formulas"]:
             report["warnings"].append("Часть формул не распознана; такие маркеры не являются учебным содержанием")
+        from .enrichment import CODE_MISMATCH_WARNING
+        if CODE_MISMATCH_WARNING in report["warnings"]:
+            report["content_complete"] = False
         data = {"markdown": markdown, "report": report}
-        if engine in {"docling", "text", "pypdf"}:
-            cache_document_result(content, data)
+        # Stable unresolved formulas are reusable; transient engine failures and
+        # partial documents must get another opportunity on the next request.
+        transient = any("частично" in warning.lower() for warning in report["warnings"])
+        fallback = engine == "pypdf" and configuration["with_docling"].lower() != "false"
+        if transient or fallback:
+            report["work_complete"] = False
+            report["content_complete"] = False
+        if report["work_complete"] and engine in {"docling", "text", "pypdf"}:
+            cache_document_result(content, data, filename)
         return data
 
 
@@ -215,9 +239,11 @@ def convert_document(filename: str, content: bytes) -> dict:
             if lower.endswith(".pdf"):
                 from docling.datamodel.base_models import InputFormat
 
-                pipeline = converter.initialize_pipeline(InputFormat.PDF)
+                # Docling 2.139 initializes in place and returns None.
+                converter.initialize_pipeline(InputFormat.PDF)
                 reader = NativePdfTextReader(content)
-                guards = [stage for stage in getattr(pipeline, "enrichment_pipe", [])
+                guards = [stage for pipeline in converter.initialized_pipelines.values()
+                          for stage in getattr(pipeline, "enrichment_pipe", [])
                           if isinstance(stage, NativeSyntaxGuard)]
                 for guard in guards:
                     guard.native_text_for = reader

@@ -1,0 +1,79 @@
+{
+  "source": "Week 6 Tutorial_Covered.pdf",
+  "source_sha256": "df2116d64e14740a05f11e27744ea4de44671f9269db648b272925262b3c6271",
+  "pages": [
+    16
+  ],
+  "cold_seconds": 20.375215260000914,
+  "cache_read_seconds": [
+    0.00024318299983860925,
+    0.00020856900118815247,
+    0.00020111499907216057,
+    0.00020531299924186897,
+    0.00020936099826940335
+  ],
+  "cold_inference_batches": 1,
+  "warm_inference_batches": 0,
+  "cache_hit": true,
+  "markdown_sha256": "af59e25b6e96b1d872ff34ef30767024471847d4004d7064420701d2d1daa828",
+  "peak_rss_kib": 3000508,
+  "environment": {
+    "python": "3.11.17",
+    "packages": {
+      "docling": "2.139.0",
+      "torch": "2.14.1+cpu",
+      "pypdfium2": "5.14.0",
+      "pypdf": "6.21.1"
+    },
+    "configuration": {
+      "version": "ocr-v8-content-cache",
+      "with_docling": "true",
+      "picture_text": "true",
+      "document_timeout": "0",
+      "enrich_code": "true",
+      "enrich_formula": "true",
+      "full_page_ocr": "false"
+    },
+    "ocr_threads": "4"
+  },
+  "report": {
+    "schema_version": "ocr-report-v2",
+    "engine": "docling",
+    "source_sha256": "128c415da017e5073007c730c4da5d6f930c60b49dc0bc4b1279498df6ea562f",
+    "cache_hit": false,
+    "seconds": 20.375,
+    "pages": 1,
+    "exported_pages": [
+      1
+    ],
+    "warnings": [
+      "Распознанный код отличается от текстового слоя PDF; проверьте исходник"
+    ],
+    "picture_ocr": {
+      "regions": 0,
+      "lines": 0,
+      "failed_regions": 0
+    },
+    "code_blocks": 2,
+    "undecoded_formulas": 0,
+    "image_placeholders": 0,
+    "formula_regions": [],
+    "formula_summary": {
+      "detected": 0,
+      "recognized": 0,
+      "unresolved": 0,
+      "suspect": 0,
+      "failed_transient": 0,
+      "marker_count": 0
+    },
+    "work_complete": true,
+    "content_complete": false,
+    "version": "ocr-v8-content-cache",
+    "with_docling": "true",
+    "picture_text": "true",
+    "document_timeout": "0",
+    "enrich_code": "true",
+    "enrich_formula": "true",
+    "full_page_ocr": "false"
+  }
+}

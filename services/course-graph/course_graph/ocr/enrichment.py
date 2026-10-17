@@ -1,6 +1,15 @@
 """Keep native program syntax and make Docling enrichment failures observable."""
 
 import threading
+import re
+from collections import OrderedDict
+
+CODE_MISMATCH_WARNING = "Распознанный код отличается от текстового слоя PDF; проверьте исходник"
+
+
+def _code_tokens(text):
+    # Keep quoted literals intact while ignoring layout whitespace outside them.
+    return re.findall(r"'(?:\\.|[^'\\])*'|\"(?:\\.|[^\"\\])*\"|\w+|[^\w\s]", text)
 
 
 class AuditedEngine:
@@ -56,7 +65,22 @@ class NativeSyntaxGuard:
     def _matches_native_pdf(self, item):
         native_text = self._native_pdf_text(item)
         item_text = self._normalized_native(getattr(item, "text", None))
-        return native_text is not None and item_text is not None and native_text == item_text, native_text
+        exact = native_text is not None and item_text is not None and native_text == item_text
+        return exact or self._prolog_layout_matches(native_text, item_text), native_text
+
+    @staticmethod
+    def _prolog_layout_matches(native, extracted):
+        # Docling joins native PDF lines with spaces. Limit this exception to
+        # complete, single-line Prolog rules and their numbered solution labels.
+        # Operators, quoted text and intra-line whitespace must match exactly;
+        # indentation-sensitive languages and wrapped clauses keep visual OCR.
+        if not native or not extracted or ":-" not in native:
+            return False
+        lines = [line.strip() for line in native.splitlines() if line.strip()]
+        if not all(re.fullmatch(r"Solution\s+\d+\.", line) or
+                   re.fullmatch(r"[a-z]\w*\([^\n]*\)\s*:-\s*.+\.", line) for line in lines):
+            return False
+        return " ".join(lines) == extracted
 
     def _native_pdf_text(self, item):
         if self.native_text_for is None:
@@ -71,13 +95,18 @@ class NativeSyntaxGuard:
 
         elements = list(element_batch)
         preserved = []
+        native_code = {}
         for element in elements:
             item = element.item
             if item.label not in (DocItemLabel.CODE, DocItemLabel.FORMULA) or not item.text.strip():
                 continue
             matches, native = self._matches_native_pdf(item)
+            if item.label == DocItemLabel.CODE and native is not None:
+                native_code[id(item)] = native
             if matches:
                 if item.label == DocItemLabel.CODE:
+                    if self._prolog_layout_matches(native, self._normalized_native(item.text)):
+                        item.text = native
                     preserved.append(element)
                 elif item.label == DocItemLabel.FORMULA and native is not None and ":-" in native:
                     item.text = native
@@ -90,6 +119,9 @@ class NativeSyntaxGuard:
         output_by_id = {id(item): item for item in output}
         for element in elements:
             item = element.item if id(element) in preserved_ids else output_by_id.get(id(element.item), element.item)
+            native = native_code.get(id(element.item))
+            if native is not None and _code_tokens(native) != _code_tokens(item.text):
+                self.warnings.append(CODE_MISMATCH_WARNING)
             yield item
 
 
@@ -100,6 +132,7 @@ class NativePdfTextReader:
         import pypdfium2 as pdfium
         self._pdf = pdfium.PdfDocument(pdf_content)
         self._lock = threading.Lock()
+        self._pages = OrderedDict()
 
     def __call__(self, item):
         provenance = getattr(item, "prov", None)
@@ -109,22 +142,35 @@ class NativePdfTextReader:
         if not 1 <= proof.page_no <= len(self._pdf):
             return None
         with self._lock:
-            page = self._pdf[proof.page_no - 1]
-            try:
-                bbox = proof.bbox.to_bottom_left_origin(page.get_height())
-                textpage = page.get_textpage()
+            cached = self._pages.get(proof.page_no)
+            if cached is None:
+                page = self._pdf[proof.page_no - 1]
                 try:
-                    return textpage.get_text_bounded(
-                        left=bbox.l - 0.5, bottom=bbox.b - 0.5,
-                        right=bbox.r + 0.5, top=bbox.t + 0.5,
-                    )
-                finally:
-                    textpage.close()
-            finally:
-                page.close()
+                    textpage = page.get_textpage()
+                except Exception:
+                    page.close()
+                    raise
+                cached = (page, textpage)
+                self._pages[proof.page_no] = cached
+                # Docling may interleave pages; keep a bounded working set.
+                if len(self._pages) > 4:
+                    _, (old_page, old_text) = self._pages.popitem(last=False)
+                    old_text.close()
+                    old_page.close()
+            self._pages.move_to_end(proof.page_no)
+            page, textpage = cached
+            bbox = proof.bbox.to_bottom_left_origin(page.get_height())
+            return textpage.get_text_bounded(
+                left=bbox.l - 0.5, bottom=bbox.b - 0.5,
+                right=bbox.r + 0.5, top=bbox.t + 0.5,
+            )
 
     def close(self):
         with self._lock:
+            while self._pages:
+                _, (page, textpage) = self._pages.popitem()
+                textpage.close()
+                page.close()
             self._pdf.close()
 
 
@@ -249,7 +295,10 @@ def audit_and_retry_formulas(document, pdf_content: bytes, converter=None):
         if pdf and 1 <= page_no <= len(pdf):
             try:
                 page = pdf[page_no - 1]
-                page_w, page_h = page.get_size()
+                try:
+                    page_w, page_h = page.get_size()
+                finally:
+                    page.close()
             except Exception:
                 pass
 
@@ -285,16 +334,28 @@ def audit_and_retry_formulas(document, pdf_content: bytes, converter=None):
 
         # Attempt visual retry on a higher-DPI crop with 4 pt margin if PDF & model available
         retry_img = None
-        if pdf and prov and prov.bbox and 1 <= page_no <= len(pdf):
+        retry_failed = False
+        retry_attempted = False
+        if vlm_stage is not None and pdf and prov and prov.bbox and 1 <= page_no <= len(pdf):
+            retry_attempted = True
             try:
                 page = pdf[page_no - 1]
-                l = max(0.0, prov.bbox.l - 4.0)
-                b = max(0.0, prov.bbox.b - 4.0)
-                r = min(page_w, prov.bbox.r + 4.0)
-                t = min(page_h, prov.bbox.t + 4.0)
-                crop = (l, b, page_w - r, page_h - t)
-                retry_img = page.render(scale=3.0, crop=crop).to_pil()
+                try:
+                    # PDFium crop is removed margins (left, bottom, right, top).
+                    # Docling provenance may use either coordinate origin.
+                    crop = (max(0.0, cbbox.left - 4.0),
+                            max(0.0, page_h - cbbox.bottom - 4.0),
+                            max(0.0, page_w - cbbox.right - 4.0),
+                            max(0.0, cbbox.top - 4.0))
+                    bitmap = page.render(scale=3.0, crop=crop)
+                    try:
+                        retry_img = bitmap.to_pil().copy()
+                    finally:
+                        bitmap.close()
+                finally:
+                    page.close()
             except Exception as err:
+                retry_failed = True
                 warnings.append(f"Не удалось подготовить кроп региона {region_id}: {err}")
 
         if retry_img is not None and vlm_stage is not None:
@@ -382,7 +443,10 @@ def audit_and_retry_formulas(document, pdf_content: bytes, converter=None):
                         ))
                         continue
             except Exception as err:
+                retry_failed = True
                 warnings.append(f"Ошибка повторного визуального OCR {region_id}: {err}")
+            finally:
+                retry_img.close()
 
         # Fallback when retry was not performed or failed
         item.text = ""
@@ -393,12 +457,12 @@ def audit_and_retry_formulas(document, pdf_content: bytes, converter=None):
             page=page_no,
             bbox=asdict(cbbox),
             kind=kind,
-            status="unresolved",
+            status="failed_transient" if retry_failed else "unresolved",
             method="visual_ocr",
-            reason_code=primary_reason,
+            reason_code="visual_retry_failed" if retry_failed else primary_reason,
             latex=None,
             candidate=raw_text if raw_text else None,
-            attempts=1,
+            attempts=2 if retry_attempted else 1,
         ))
 
     if pdf:

@@ -544,7 +544,7 @@ def test_run_ocr_job_caches_result_without_llm_completer(monkeypatch, tmp_path):
     assert result["report"]["content_complete"] is False
 
     # Verify cache was written
-    cache_path = converter.get_document_cache_path(content)
+    cache_path = converter.get_document_cache_path(content, "lecture.md")
     assert cache_path.exists()
     cached = json.loads(cache_path.read_text())
     assert "<!-- formula-not-decoded -->" in cached["markdown"]

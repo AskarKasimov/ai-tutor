@@ -4,6 +4,7 @@ import { useState } from 'react'
 import type { PropsWithChildren } from 'react'
 import { AuthDependenciesProvider } from '@/features/auth'
 import { CompetencyMapDependenciesProvider } from '@/features/import-competency-map'
+import { CourseGraphBuildDependenciesProvider } from '@/features/course-graph-build'
 import { DiagnosticDependenciesProvider } from '@/features/diagnostic-session'
 import { SubjectSelectionDependenciesProvider } from '@/features/subject-selection'
 import { createAppDependencies } from './dependencies'
@@ -31,23 +32,27 @@ export function AppProviders({
       <CompetencyMapDependenciesProvider
         value={{ competencyMap: services.competencyMap }}
       >
-        <SubjectSelectionDependenciesProvider
-          value={{ subjects: services.subjects }}
+        <CourseGraphBuildDependenciesProvider
+          value={{ courseGraph: services.courseGraph }}
         >
-          <DiagnosticDependenciesProvider
-            value={{ diagnostic: services.diagnostic }}
+          <SubjectSelectionDependenciesProvider
+            value={{ subjects: services.subjects }}
           >
-            <Theme
-              className={styles.root}
-              accentColor="blue"
-              appearance="light"
+            <DiagnosticDependenciesProvider
+              value={{ diagnostic: services.diagnostic }}
             >
-              <QueryClientProvider client={queryClient}>
-                {children}
-              </QueryClientProvider>
-            </Theme>
-          </DiagnosticDependenciesProvider>
-        </SubjectSelectionDependenciesProvider>
+              <Theme
+                className={styles.root}
+                accentColor="blue"
+                appearance="light"
+              >
+                <QueryClientProvider client={queryClient}>
+                  {children}
+                </QueryClientProvider>
+              </Theme>
+            </DiagnosticDependenciesProvider>
+          </SubjectSelectionDependenciesProvider>
+        </CourseGraphBuildDependenciesProvider>
       </CompetencyMapDependenciesProvider>
     </AuthDependenciesProvider>
   )

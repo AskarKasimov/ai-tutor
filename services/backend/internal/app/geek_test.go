@@ -43,11 +43,10 @@ func decodeSession(t *testing.T, w *httptest.ResponseRecorder) geekSession {
 	return s
 }
 
-// geekFlow runs a whole diagnostic over HTTP on the graph fixture with the mock
-// examiner and checks every response against the contract.
-func geekFlow(t *testing.T, f *fixture, access *http.Cookie, check func(method, path string, w *httptest.ResponseRecorder)) {
+// geekFlow runs a whole diagnostic over HTTP on the configured graph fixture
+// with the mock examiner and checks every response against the contract.
+func geekFlow(t *testing.T, f *fixture, access *http.Cookie, check func(method, path string, w *httptest.ResponseRecorder)) string {
 	t.Helper()
-	f.app.cfg.GeekGraphFixture = geekFixture
 	start := `{"subject_id":"subject:test"}`
 	created := f.keyed("POST", "/diagnostic-sessions", "geek-start", start, access)
 	if created.Code != http.StatusCreated {
@@ -109,4 +108,5 @@ func geekFlow(t *testing.T, f *fixture, access *http.Cookie, check func(method, 
 		}
 	}
 	check("GET", "/diagnostic-sessions/{id}/turns/{turn_id}/audio", f.request("GET", path+"/turns/"+studentTurn+"/audio", "", access))
+	return session.ID
 }

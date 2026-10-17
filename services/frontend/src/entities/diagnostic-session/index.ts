@@ -4,6 +4,10 @@ export type {
   DiagnosticResult,
   DiagnosticSession,
   DiagnosticSummary,
+  MaterialReference,
+  SourceCitation,
+  LearningMaterials,
+  DiagnosticGap,
   Grade,
   SessionStatus,
   Speaker,
@@ -20,6 +24,7 @@ export {
   listDiagnostics,
   readDiagnostic,
   readDiagnosticResult,
+  fetchDiagnosticMaterialRaw,
   startDiagnostic,
 } from './api/diagnostic-api'
 export type { DiagnosticApi } from './api/diagnostic-api'

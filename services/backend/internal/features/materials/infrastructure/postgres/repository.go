@@ -28,8 +28,19 @@ func (r *Repository) List(ctx context.Context, subjectID string) ([]material.Mat
 	}
 
 	result := make([]material.Material, len(rows))
+	kinds, err := q.ListMaterialKinds(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list material kinds: %w", err)
+	}
+	labels := make(map[string]string, len(kinds))
+	for _, kind := range kinds {
+		labels[kind.Code] = kind.Label
+	}
 	for i, row := range rows {
 		result[i] = toMaterial(row)
+		if result[i].Kind != nil {
+			result[i].KindLabel = labels[string(*result[i].Kind)]
+		}
 	}
 	ocrRows, err := q.ListMaterialOCRProgress(ctx, subjectID)
 	if err != nil {
@@ -98,6 +109,8 @@ func (r *Repository) Insert(ctx context.Context, m material.Material) (material.
 	defer tx.Rollback(ctx)
 	q := db.New(tx)
 	row, err := q.InsertSubjectMaterial(ctx, db.InsertSubjectMaterialParams{
+		Week:         m.Week,
+		Kind:         kindString(m.Kind),
 		ID:           m.ID,
 		SubjectID:    m.SubjectID,
 		Filename:     m.Filename,
@@ -172,6 +185,7 @@ func (r *Repository) Delete(ctx context.Context, subjectID, id string) (material
 
 func toMaterial(row db.SubjectMaterial) material.Material {
 	result := material.Material{
+		Week:         row.Week,
 		ID:           row.ID,
 		SubjectID:    row.SubjectID,
 		Filename:     row.Filename,
@@ -186,6 +200,10 @@ func toMaterial(row db.SubjectMaterial) material.Material {
 		ErrorMessage: row.ErrorMessage,
 		CreatedAt:    row.CreatedAt,
 		UpdatedAt:    row.UpdatedAt,
+	}
+	if row.Kind != nil {
+		kind := material.Kind(*row.Kind)
+		result.Kind = &kind
 	}
 	if len(row.OcrReport) > 0 {
 		_ = json.Unmarshal(row.OcrReport, &result.OCRReport)
@@ -204,4 +222,71 @@ func ocrStage(status, stage string) string {
 	default:
 		return "queued"
 	}
+}
+
+func (r *Repository) ListKinds(ctx context.Context) ([]material.KindOption, error) {
+	rows, err := db.New(r.pool).ListMaterialKinds(ctx)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]material.KindOption, 0, len(rows))
+	for _, row := range rows {
+		result = append(result, material.KindOption{Code: material.Kind(row.Code), Label: row.Label})
+	}
+	return result, nil
+}
+func kindString(kind *material.Kind) *string {
+	if kind == nil {
+		return nil
+	}
+	value := string(*kind)
+	return &value
+}
+func (r *Repository) UpdateMetadata(ctx context.Context, subjectID, id string, week *int32, kind *material.Kind) (material.Material, error) {
+	_, err := db.New(r.pool).UpdateMaterialMetadata(ctx, db.UpdateMaterialMetadataParams{SubjectID: subjectID, ID: id, Week: week, Kind: kindString(kind)})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return material.Material{}, material.ErrNotFound
+	}
+	if err != nil {
+		return material.Material{}, err
+	}
+	return r.Get(ctx, id)
+}
+
+// Replacing the input cancels existing leases under the same material lock used
+// by worker completion. Old OCR/cleaning results cannot publish into the new job.
+func (r *Repository) ReplaceMaterial(ctx context.Context, subjectID, id string, m material.Material) (material.Material, error) {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return material.Material{}, err
+	}
+	defer tx.Rollback(ctx)
+	q := db.New(tx)
+	if _, err = q.LockSubjectMaterial(ctx, id); errors.Is(err, pgx.ErrNoRows) {
+		return material.Material{}, material.ErrNotFound
+	} else if err != nil {
+		return material.Material{}, err
+	}
+	row, err := q.ReplaceSubjectMaterial(ctx, db.ReplaceSubjectMaterialParams{SubjectID: subjectID, ID: id, Filename: m.Filename, ContentType: m.ContentType, FileSize: m.FileSize, S3RawKey: m.S3RawKey, S3ParsedKey: m.S3ParsedKey, UpdatedAt: m.UpdatedAt})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return material.Material{}, material.ErrNotFound
+	}
+	if err != nil {
+		return material.Material{}, err
+	}
+	if err = q.DeleteMaterialCleaningJob(ctx, id); err != nil {
+		return material.Material{}, err
+	}
+	if err = q.DeleteMaterialOCRJob(ctx, id); err != nil {
+		return material.Material{}, err
+	}
+	if err = q.EnqueueMaterialOCR(ctx, db.EnqueueMaterialOCRParams{MaterialID: id, UpdatedAt: m.UpdatedAt}); err != nil {
+		return material.Material{}, err
+	}
+	if err = tx.Commit(ctx); err != nil {
+		return material.Material{}, err
+	}
+	result := toMaterial(row)
+	result.Processing = &material.Processing{Stage: "queued", Status: "pending", UpdatedAt: m.UpdatedAt}
+	return result, nil
 }

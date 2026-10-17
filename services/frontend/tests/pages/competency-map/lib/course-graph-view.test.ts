@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest'
-import type { CourseGraph } from '@/entities/competency-map'
+import type { CourseGraphView as CourseGraph } from '@/entities/course-graph'
 import {
   NODE_WIDTH,
   buildCourseGraphView,

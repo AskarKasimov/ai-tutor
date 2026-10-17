@@ -18,6 +18,9 @@ import (
 )
 
 type Repository interface {
+	ListKinds(context.Context) ([]material.KindOption, error)
+	UpdateMetadata(context.Context, string, string, *int32, *material.Kind) (material.Material, error)
+	ReplaceMaterial(context.Context, string, string, material.Material) (material.Material, error)
 	List(ctx context.Context, subjectID string) ([]material.Material, error)
 	Get(ctx context.Context, id string) (material.Material, error)
 	Insert(ctx context.Context, m material.Material) (material.Material, error)
@@ -73,14 +76,72 @@ func (s *Service) Authorize(actor user.User) error {
 }
 
 type UploadInput struct {
+	Week        int32
+	Kind        material.Kind
 	Filename    string
 	ContentType string
 	Data        []byte
 }
 
+func ValidateWeek(week int32) error {
+	if week < 1 {
+		return fault.Validation("week", "Неделя должна быть положительным числом.")
+	}
+	return nil
+}
+
+func (s *Service) MaterialKinds(ctx context.Context, actor user.User) ([]material.KindOption, error) {
+	if err := s.Authorize(actor); err != nil {
+		return nil, err
+	}
+	kinds, err := s.repo.ListKinds(ctx)
+	if err != nil {
+		return nil, fault.New(fault.Unavailable, "DATABASE_ERROR", "Не удалось загрузить виды материалов.")
+	}
+	return kinds, nil
+}
+
+func (s *Service) ValidateMetadata(ctx context.Context, week int32, kind material.Kind) error {
+	if err := ValidateWeek(week); err != nil {
+		return err
+	}
+	kinds, err := s.repo.ListKinds(ctx)
+	if err != nil {
+		return fault.New(fault.Unavailable, "DATABASE_ERROR", "Не удалось проверить вид материала.")
+	}
+	for _, option := range kinds {
+		if option.Code == kind {
+			return nil
+		}
+	}
+	return fault.Validation("kind", "Выберите доступный вид материала.")
+}
+
+func ValidatePDF(filename string, data []byte) error {
+	if !strings.EqualFold(filepath.Ext(filename), ".pdf") {
+		return fault.Validation("file", "Допускаются только файлы PDF.")
+	}
+	header := data
+	if len(header) > 1024 {
+		header = header[:1024]
+	}
+	if !strings.Contains(string(header), "%PDF-") {
+		return fault.Validation("file", "Файл не имеет сигнатуры PDF.")
+	}
+	return nil
+}
+
 func (s *Service) Upload(ctx context.Context, actor user.User, subjectID string, input UploadInput) (material.Material, error) {
 	if err := s.Authorize(actor); err != nil {
 		return material.Material{}, err
+	}
+	if input.Week != 0 || input.Kind != "" {
+		if err := s.ValidateMetadata(ctx, input.Week, input.Kind); err != nil {
+			return material.Material{}, err
+		}
+		if err := ValidatePDF(input.Filename, input.Data); err != nil {
+			return material.Material{}, err
+		}
 	}
 	if strings.TrimSpace(subjectID) == "" {
 		return material.Material{}, fault.New(fault.Invalid, "BAD_REQUEST", "ID предмета обязателен.")
@@ -100,6 +161,9 @@ func (s *Service) Upload(ctx context.Context, actor user.User, subjectID string,
 	s3ParsedKey := fmt.Sprintf("subjects/%s/parsed/%s_%s.md", subjectID, materialID, cleanFilename)
 	// 1. Store raw file in S3
 	contentType := input.ContentType
+	if input.Week != 0 || input.Kind != "" {
+		contentType = "application/pdf"
+	}
 	if contentType == "" {
 		contentType = "application/octet-stream"
 	}
@@ -126,6 +190,10 @@ func (s *Service) Upload(ctx context.Context, actor user.User, subjectID string,
 		UpdatedAt:    nowUnix,
 	}
 
+	if input.Week != 0 || input.Kind != "" {
+		matRecord.Week = &input.Week
+		matRecord.Kind = &input.Kind
+	}
 	created, err := s.repo.Insert(ctx, matRecord)
 	if err != nil {
 		log.Printf("Failed to save material %s to database: %v", cleanFilename, err)
@@ -138,6 +206,104 @@ func (s *Service) Upload(ctx context.Context, actor user.User, subjectID string,
 	}
 
 	return created, nil
+}
+
+type ReplaceInput struct {
+	Filename string
+	Data     []byte
+}
+
+func (s *Service) Replace(ctx context.Context, actor user.User, subjectID, materialID string, input ReplaceInput) (material.Material, error) {
+	current, err := s.Get(ctx, actor, subjectID, materialID)
+	if err != nil {
+		return material.Material{}, err
+	}
+	filename := filepath.Base(input.Filename)
+	if err := ValidatePDF(filename, input.Data); err != nil {
+		return material.Material{}, err
+	}
+	token := generateID("replace_")
+	rawKey := fmt.Sprintf("subjects/%s/raw/%s_%s_%s", subjectID, materialID, token, filename)
+	parsedKey := fmt.Sprintf("subjects/%s/parsed/%s_%s_%s.md", subjectID, materialID, token, filename)
+	if err = s.s3.Put(ctx, rawKey, "application/pdf", input.Data); err != nil {
+		return material.Material{}, fault.New(fault.Unavailable, "S3_UPLOAD_ERROR", "Не удалось сохранить новый PDF.")
+	}
+	cleanup := func() {
+		cctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
+		defer cancel()
+		_ = s.s3.Delete(cctx, rawKey)
+		_ = s.s3.Delete(cctx, parsedKey)
+	}
+	updated := current
+	updated.Filename = filename
+	updated.ContentType = "application/pdf"
+	updated.FileSize = int64(len(input.Data))
+	updated.S3RawKey = rawKey
+	updated.S3ParsedKey = parsedKey
+	updated.ParsedText = ""
+	updated.S3OCRKey = ""
+	updated.OCRReport = nil
+	updated.Cleaning = nil
+	updated.Processing = &material.Processing{Stage: "queued", Status: "pending", UpdatedAt: s.now().Unix()}
+	updated.CharCount = 0
+	updated.Status = material.StatusPending
+	updated.ErrorMessage = nil
+	updated.UpdatedAt = s.now().Unix()
+	result, err := s.repo.ReplaceMaterial(ctx, subjectID, materialID, updated)
+	if err != nil {
+		cleanup()
+		if errors.Is(err, material.ErrNotFound) {
+			return material.Material{}, fault.New(fault.NotFound, "NOT_FOUND", "Материал не найден.")
+		}
+		return material.Material{}, fault.New(fault.Unavailable, "DATABASE_ERROR", "Не удалось заменить материал.")
+	}
+	cctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
+	defer cancel()
+	keys := []string{current.S3RawKey, current.S3ParsedKey, current.S3OCRKey}
+	if current.Cleaning != nil {
+		keys = append(keys, current.Cleaning.S3CleanedKey, current.Cleaning.S3ReportKey)
+	}
+	for _, key := range keys {
+		if key != "" {
+			if err := s.s3.Delete(cctx, key); err != nil {
+				log.Printf("Failed to clean replaced material object for %s: %v", materialID, err)
+			}
+		}
+	}
+	return result, nil
+}
+
+func (s *Service) UpdateMetadata(ctx context.Context, actor user.User, subjectID, materialID string, week *int32, kind *material.Kind) (material.Material, error) {
+	if err := s.Authorize(actor); err != nil {
+		return material.Material{}, err
+	}
+	if week == nil && kind == nil {
+		return material.Material{}, fault.Validation("body", "Укажите week и/или kind.")
+	}
+	if _, err := s.Get(ctx, actor, subjectID, materialID); err != nil {
+		return material.Material{}, err
+	}
+	if week != nil && kind != nil {
+		if err := s.ValidateMetadata(ctx, *week, *kind); err != nil {
+			return material.Material{}, err
+		}
+	} else if week != nil {
+		if err := ValidateWeek(*week); err != nil {
+			return material.Material{}, err
+		}
+	} else if kind != nil {
+		if err := s.ValidateMetadata(ctx, 1, *kind); err != nil {
+			return material.Material{}, err
+		}
+	}
+	updated, err := s.repo.UpdateMetadata(ctx, subjectID, materialID, week, kind)
+	if err != nil {
+		if errors.Is(err, material.ErrNotFound) {
+			return material.Material{}, fault.New(fault.NotFound, "NOT_FOUND", "Материал не найден.")
+		}
+		return material.Material{}, fault.New(fault.Unavailable, "DATABASE_ERROR", "Не удалось обновить материал.")
+	}
+	return updated, nil
 }
 
 func (s *Service) List(ctx context.Context, actor user.User, subjectID string) ([]material.Material, error) {

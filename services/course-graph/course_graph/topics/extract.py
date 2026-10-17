@@ -176,8 +176,12 @@ def merge_topics(topics):
         previous = by_title[key]
         previous.requires = list(dict.fromkeys(previous.requires + topic.requires))
         previous.provides = list(dict.fromkeys(previous.provides + topic.provides))
-        seen = {(s.material_id, s.start, s.end) for s in previous.sources}
-        previous.sources.extend(s for s in topic.sources if (s.material_id, s.start, s.end) not in seen)
+        seen = {(s.material_id, s.material_revision, s.start, s.end) for s in previous.sources}
+        for source in topic.sources:
+            key = (source.material_id, source.material_revision, source.start, source.end)
+            if key not in seen:
+                previous.sources.append(source)
+                seen.add(key)
         previous.text = "\n\n".join(s.text for s in previous.sources)
     return list(by_title.values())
 

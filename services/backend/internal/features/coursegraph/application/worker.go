@@ -2,6 +2,8 @@ package application
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -160,6 +162,34 @@ func (w *Worker) Request(ctx context.Context, actor user.User, subjectID string)
 	if actor.Role != user.Admin {
 		return coursegraph.Snapshot{}, fault.New(fault.Forbidden, "FORBIDDEN", "Доступно только admin.")
 	}
+	current, err := w.repo.Read(ctx, subjectID)
+	if err != nil {
+		return coursegraph.Snapshot{}, err
+	}
+	if current.Status == "pending" || current.Status == "processing" {
+		return coursegraph.Snapshot{}, fault.New(fault.Conflict, "GRAPH_BUILD_IN_PROGRESS", "Граф курса уже собирается.")
+	}
+	items, err := w.materials.List(ctx, subjectID)
+	if err != nil {
+		return coursegraph.Snapshot{}, err
+	}
+	missing := []string{}
+	allProcessed := len(items) > 0
+	for _, item := range items {
+		if item.Status != material.StatusParsed || item.Cleaning == nil || item.Cleaning.Status != "ready" {
+			allProcessed = false
+		}
+		if item.Week == nil || *item.Week <= 0 || item.Kind == nil {
+			missing = append(missing, item.ID)
+		}
+	}
+	if allProcessed && len(missing) > 0 {
+		f := fault.New(fault.Invalid, "MATERIAL_METADATA_INCOMPLETE", "Классифицируйте неделю и вид у каждого материала перед сборкой графа.")
+		for _, id := range missing {
+			f.Details = append(f.Details, fault.Detail{Path: "materials", Code: "MATERIAL_METADATA_INCOMPLETE", Message: id})
+		}
+		return coursegraph.Snapshot{}, f
+	}
 	queued, err := w.repo.Request(ctx, subjectID, time.Now())
 	if err != nil {
 		return coursegraph.Snapshot{}, err
@@ -303,7 +333,14 @@ func (w *Worker) process(ctx context.Context, job coursegraph.Job) error {
 		if err = json.Unmarshal(report, &cached); err != nil {
 			return err
 		}
-		input := coursegraph.Material{ID: m.ID, Markdown: string(source)}
+		var kind *string
+		if m.Kind != nil {
+			value := string(*m.Kind)
+			kind = &value
+		}
+		revision := sha256.Sum256([]byte(m.S3RawKey))
+		input := coursegraph.Material{ID: m.ID, Markdown: string(source), Week: m.Week, Kind: kind,
+			Filename: m.Filename, KindLabel: m.KindLabel, MaterialRevision: hex.EncodeToString(revision[:])}
 		if cached.TopicsVersion == "topics-v2" {
 			input.Topics = cached.Topics
 		}

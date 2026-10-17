@@ -324,3 +324,98 @@ func TestHandlerUploadAndList(t *testing.T) {
 		}
 	}
 }
+
+func (m *memoryRepo) ListKinds(context.Context) ([]material.KindOption, error) {
+	return []material.KindOption{{Code: "lecture", Label: "Лекция"}, {Code: "lab", Label: "Лабораторная"}}, nil
+}
+func (m *memoryRepo) UpdateMetadata(_ context.Context, subjectID, id string, week *int32, kind *material.Kind) (material.Material, error) {
+	v := m.items[id]
+	if week != nil {
+		v.Week = week
+	}
+	if kind != nil {
+		v.Kind = kind
+	}
+	m.items[id] = v
+	return v, nil
+}
+func (m *memoryRepo) ReplaceMaterial(_ context.Context, subjectID, id string, v material.Material) (material.Material, error) {
+	m.items[id] = v
+	return v, nil
+}
+
+func TestManifestUploadCorrelatesPartialFailures(t *testing.T) {
+	repo := &memoryRepo{}
+	svc := application.New(repo, &memoryS3{}, &stubOCR{}, time.Now)
+	handler := materialshttp.NewHandler(svc, 1024)
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	_ = writer.WriteField("items", `[{"client_id":"good","week":3,"kind":"lecture"},{"client_id":"bad","week":4,"kind":"lab"}]`)
+	good, _ := writer.CreateFormFile("file", "first.pdf")
+	_, _ = good.Write([]byte("%PDF-1.7 test"))
+	bad, _ := writer.CreateFormFile("file", "second.pdf")
+	_, _ = bad.Write([]byte("invalid"))
+	_ = writer.Close()
+	req := httptest.NewRequest("POST", "/", &body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	req.SetPathValue("subject_id", "s")
+	req = httpx.WithPrincipal(req, user.User{Role: user.Admin})
+	response := httptest.NewRecorder()
+	handler.UploadMaterials(response, req)
+	if response.Code != 200 {
+		t.Fatal(response.Body.String())
+	}
+	var result materialshttp.UploadResult
+	if err := json.Unmarshal(response.Body.Bytes(), &result); err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Uploaded) != 1 || len(result.Failed) != 1 || len(result.Results) != 2 || result.Results[0].ClientID != "good" || result.Results[1].ClientID != "bad" || result.Results[1].Error == nil || result.Uploaded[0].Status != material.StatusPending || *result.Uploaded[0].Week != 3 {
+		t.Fatalf("unexpected manifest response %+v", result)
+	}
+}
+
+type replacementBody struct {
+	reader   io.Reader
+	recorder *deadlineRecorder
+	t        *testing.T
+	checked  bool
+}
+
+func (b *replacementBody) Read(p []byte) (int, error) {
+	if !b.checked {
+		b.checked = true
+		if len(b.recorder.readDeadlines) == 0 || time.Until(b.recorder.readDeadlines[len(b.recorder.readDeadlines)-1]) < 14*time.Minute {
+			b.t.Fatal("replacement body read without extending server's 30-second deadline")
+		}
+		if !b.recorder.writeDeadline.IsZero() {
+			b.t.Fatal("replacement body read with an active write deadline")
+		}
+	}
+	return b.reader.Read(p)
+}
+func TestReplacementExtendsDeadlinesBeforeReadingPDF(t *testing.T) {
+	recorder := &deadlineRecorder{ResponseRecorder: httptest.NewRecorder(), writeDeadline: time.Now().Add(30 * time.Second)}
+	repo := &memoryRepo{items: map[string]material.Material{"m": {ID: "m", SubjectID: "s", S3RawKey: "old", Status: material.StatusParsed}}}
+	handler := materialshttp.NewHandler(application.New(repo, &memoryS3{}, &stubOCR{}, time.Now), 1024)
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	part, err := writer.CreateFormFile("file", "replacement.pdf")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = part.Write([]byte("%PDF-1.7 replacement"))
+	_ = writer.Close()
+	guarded := &replacementBody{reader: &body, recorder: recorder, t: t}
+	request := httptest.NewRequest("PUT", "/", guarded)
+	request.Header.Set("Content-Type", writer.FormDataContentType())
+	request.SetPathValue("subject_id", "s")
+	request.SetPathValue("material_id", "m")
+	request = httpx.WithPrincipal(request, user.User{Role: user.Admin})
+	handler.ReplaceMaterial(recorder, request)
+	if !guarded.checked || recorder.Code != 200 {
+		t.Fatalf("replacement: read=%v status=%d body=%s", guarded.checked, recorder.Code, recorder.Body.String())
+	}
+	if remaining := time.Until(recorder.writeDeadline); remaining <= 0 || remaining > 30*time.Second {
+		t.Fatalf("replacement response deadline not bounded after processing: %v", remaining)
+	}
+}

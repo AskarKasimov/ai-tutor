@@ -44,7 +44,7 @@ import {
   type ReactNode,
 } from 'react'
 import { useTranslation } from 'react-i18next'
-import type { CourseGraph } from '@/entities/competency-map'
+import type { CourseGraphView as CourseGraph } from '@/entities/course-graph'
 import { MarkdownContent } from '@/shared/ui'
 import {
   NODE_WIDTH,
@@ -743,7 +743,9 @@ function TopicDetails({
             {uniqueSources(sources).map((source) => (
               <li key={source.key}>
                 {[
-                  materialNames.get(source.material_id) ?? source.material_id,
+                  source.filename ??
+                    materialNames.get(source.material_id) ??
+                    source.material_id,
                   source.week != null &&
                     t('competencyMap.graphView.week', { week: source.week }),
                   source.page != null &&

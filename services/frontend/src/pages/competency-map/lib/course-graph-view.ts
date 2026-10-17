@@ -1,4 +1,6 @@
-import type { CourseGraph, CourseGraphTopic } from '@/entities/competency-map'
+import type { CourseGraphView as CourseGraph } from '@/entities/course-graph'
+
+type CourseGraphTopic = CourseGraph['topics'][number]
 
 // Tones are Radix color scales; a section keeps its tone in nodes, edges,
 // the minimap and the legend.

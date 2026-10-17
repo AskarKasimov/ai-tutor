@@ -6,6 +6,6 @@
 - Изменили или добавили эндпоинт — обновите [api/course-graph.yaml](../../api/course-graph.yaml) и адаптер backend `internal/features/materials/infrastructure/ocr`. Сервис внутренний: не публикуйте его через Caddy.
 - Тяжёлые зависимости (Docling, PyTorch) держите только здесь; новую добавьте в `requirements.txt`.
 - LLM вызывайте только через LLM gateway с `complexity`, без `model`.
-- Граф на выходе — по `Graph` из контракта: названия и тексты вершин на русском, без циклов. Недели и источников у вершины нет, пока это не решено в README.
+- Граф на выходе — по `Graph` из контракта: названия и тексты вершин на русском, без циклов. Источники хранят точные цитаты и provenance snapshot материала (неделя, вид, подпись, имя, revision); при кэшированных темах Python сверяет цитаты с текущим Markdown и обновляет эти поля только из входного snapshot backend. Новые сборки backend запускает только для обработанных и классифицированных материалов.
 - Тесты кладите в `tests/` (pytest). Они не скачивают модели Docling: используйте Markdown или текст либо подменяйте конвертер.
 - Проверки: `python -m pytest tests`, `docker compose --env-file ../../.env.example config --quiet`.

@@ -619,3 +619,43 @@ func TestTurnAudioVoicesTheReplyAndTheQuestionApart(t *testing.T) {
 		t.Fatalf("the shared question was synthesized again: %v calls=%q", err, f.voice.calls)
 	}
 }
+
+type rawMaterialsFake struct{ current RawMaterial }
+
+func (f rawMaterialsFake) CurrentRaw(context.Context, string) (RawMaterial, error) {
+	return f.current, nil
+}
+
+func TestRawMaterialRequiresOwnerAndMatchingDiagnosticSourceRevision(t *testing.T) {
+	f := newFixture(t)
+	revision := "revision-1"
+	filename := "lecture.pdf"
+	node := f.graphs.graph.Nodes[0]
+	node.Sources = []exam.SourceCitation{{MaterialID: "material", MaterialRevision: &revision}}
+	session := exam.Session{ID: "diagnostic", OwnerID: "student", Status: exam.SessionCompleted,
+		Exam: &exam.Exam{Graph: exam.Graph{Version: "v1", Nodes: []exam.Node{node}}}}
+	data, _ := json.Marshal(session)
+	f.store.sessions[session.ID] = data
+	f.service.SetRawMaterials(rawMaterialsFake{RawMaterial{Filename: filename, Revision: revision, Data: []byte("%PDF"), Found: true}})
+	got, err := f.service.RawMaterial(context.Background(), "student", session.ID, "material")
+	if err != nil || string(got.Data) != "%PDF" {
+		t.Fatalf("raw material: %v %#v", err, got)
+	}
+	if _, err = f.service.RawMaterial(context.Background(), "other", session.ID, "material"); code(err) != "NOT_FOUND" {
+		t.Fatalf("foreign session: %v", err)
+	}
+	if _, err = f.service.RawMaterial(context.Background(), "student", session.ID, "unlinked"); code(err) != "NOT_FOUND" {
+		t.Fatalf("unlinked material: %v", err)
+	}
+	node.Sources = append(node.Sources, exam.SourceCitation{MaterialID: "legacy-source"})
+	session.Exam.Graph.Nodes[0] = node
+	data, _ = json.Marshal(session)
+	f.store.sessions[session.ID] = data
+	if _, err = f.service.RawMaterial(context.Background(), "student", session.ID, "legacy-source"); code(err) != "SOURCE_UNAVAILABLE" {
+		t.Fatalf("legacy source without revision: %v", err)
+	}
+	f.service.SetRawMaterials(rawMaterialsFake{RawMaterial{Filename: filename, Revision: "revision-2", Found: true}})
+	if _, err = f.service.RawMaterial(context.Background(), "student", session.ID, "material"); code(err) != "SOURCE_UNAVAILABLE" {
+		t.Fatalf("replaced material: %v", err)
+	}
+}

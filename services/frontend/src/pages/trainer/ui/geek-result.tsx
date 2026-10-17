@@ -1,6 +1,12 @@
 import { Badge, Button, Heading, Text } from '@radix-ui/themes'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import type { TopicStatus } from '@/entities/diagnostic-session'
+import {
+  DiagnosticApiError,
+  fetchDiagnosticMaterialRaw,
+  type MaterialReference,
+  type TopicStatus,
+} from '@/entities/diagnostic-session'
 import { useDiagnosticResultQuery } from '@/features/diagnostic-session'
 import { TrainerShell } from './trainer-shared'
 import styles from './geek.module.scss'
@@ -92,7 +98,45 @@ export function GeekResult({
                   </Text>
                   <ul className={styles.gaps}>
                     {result.gaps.map((gap) => (
-                      <li key={gap.nodeId}>{gap.title}</li>
+                      <li key={gap.nodeId}>
+                        <Text weight="bold">{gap.title}</Text>
+                        {gap.weeks.length > 0 && (
+                          <Text as="p" size="2" color="gray">
+                            {t('geek.weeks', { weeks: gap.weeks.join(', ') })}
+                          </Text>
+                        )}
+                        {gap.sources.length === 0 ? (
+                          <Text as="p" size="2" color="gray">
+                            {t('geek.materialsNone')}
+                          </Text>
+                        ) : (
+                          <div className={styles.gapMaterials}>
+                            {(
+                              ['theory', 'practice', 'additional'] as const
+                            ).map((group) => {
+                              const refs = gap.learningMaterials[group]
+                              if (refs.length === 0) return null
+                              return (
+                                <section key={group}>
+                                  <Text weight="medium">
+                                    {t(`geek.${group}`)}
+                                  </Text>
+                                  <ul>
+                                    {refs.map((ref) => (
+                                      <li key={ref.materialId}>
+                                        <MaterialDownload
+                                          sessionId={sessionId}
+                                          material={ref}
+                                        />
+                                      </li>
+                                    ))}
+                                  </ul>
+                                </section>
+                              )
+                            })}
+                          </div>
+                        )}
+                      </li>
                     ))}
                   </ul>
                 </>
@@ -142,5 +186,79 @@ export function GeekResult({
         </div>
       </main>
     </TrainerShell>
+  )
+}
+
+function MaterialDownload({
+  sessionId,
+  material,
+}: {
+  sessionId: string
+  material: MaterialReference
+}) {
+  const { t } = useTranslation()
+  const [state, setState] = useState<
+    'idle' | 'loading' | 'unavailable' | 'error'
+  >('idle')
+  const filename =
+    material.filename || material.kindLabel || material.materialId
+  async function open() {
+    setState('loading')
+    try {
+      const blob = await fetchDiagnosticMaterialRaw(
+        sessionId,
+        material.materialId,
+        new AbortController().signal,
+      )
+      const url = URL.createObjectURL(blob)
+      const anchor = document.createElement('a')
+      anchor.href = url
+      anchor.download = filename
+      document.body.append(anchor)
+      anchor.click()
+      anchor.remove()
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+      setState('idle')
+    } catch (error) {
+      setState(
+        error instanceof DiagnosticApiError && error.status === 410
+          ? 'unavailable'
+          : 'error',
+      )
+    }
+  }
+  return (
+    <span>
+      <Button
+        size="1"
+        variant="ghost"
+        disabled={state === 'loading'}
+        onClick={() => void open()}
+      >
+        {t('geek.openMaterial', { filename })}
+      </Button>
+      {material.kindLabel && (
+        <Text as="span" size="1">
+          {' '}
+          · {material.kindLabel}
+        </Text>
+      )}
+      {material.week && (
+        <Text as="span" size="1">
+          {' '}
+          · {t('geek.materialWeek', { week: material.week })}
+        </Text>
+      )}
+      {state === 'unavailable' && (
+        <Text as="span" size="1" color="gray" role="status">
+          {t('geek.materialUnavailable')}
+        </Text>
+      )}
+      {state === 'error' && (
+        <Text as="span" size="1" color="red" role="alert">
+          {t('geek.materialDownloadError')}
+        </Text>
+      )}
+    </span>
   )
 }

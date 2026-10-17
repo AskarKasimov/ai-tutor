@@ -77,6 +77,12 @@ type MaterialCleaningJob struct {
 	UpdatedAt    int64
 }
 
+type MaterialKind struct {
+	Code      string
+	Label     string
+	SortOrder int32
+}
+
 type MaterialOcrJob struct {
 	MaterialID   string
 	Status       string
@@ -117,6 +123,8 @@ type SubjectMaterial struct {
 	UpdatedAt    int64
 	S3OcrKey     string
 	OcrReport    []byte
+	Week         *int32
+	Kind         *string
 }
 
 type Transcription struct {

@@ -1,7 +1,7 @@
 import { Theme } from '@radix-ui/themes'
 import { fireEvent, render, screen, within } from '@testing-library/react'
 import { expect, it } from 'vitest'
-import type { CourseGraph } from '@/entities/competency-map'
+import type { CourseGraphView as CourseGraph } from '@/entities/course-graph'
 import '@/shared/i18n'
 import CourseGraphCanvas from '@/pages/competency-map/ui/course-graph-canvas'
 
@@ -16,7 +16,17 @@ const graph: CourseGraph = {
       id: 'loss',
       title: 'Функция потерь',
       provides: ['Оценка ошибки модели'],
-      sources: [{ material_id: 'mat-1', week: 2, page: 14 }],
+      sources: [
+        {
+          material_id: 'mat-1',
+          block_id: 1,
+          start: 0,
+          end: 10,
+          text: 'Функция потерь',
+          week: 2,
+          page: 14,
+        },
+      ],
     },
     {
       id: 'gd',

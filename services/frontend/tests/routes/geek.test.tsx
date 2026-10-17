@@ -80,7 +80,15 @@ function geekBackend(
   ]
   let failures = options.failAnswers ?? 0
   // cancelled: the course graph was rebuilt, so answers find no active turn.
-  const control = { failReads: 0, failStarts: 0, cancelled: false }
+  // readGate and answerGate hold the responses until they resolve; a held
+  // read returns the session as it was when the request arrived.
+  const control = {
+    failReads: 0,
+    failStarts: 0,
+    cancelled: false,
+    readGate: null as Promise<void> | null,
+    answerGate: null as Promise<void> | null,
+  }
   let session: {
     id: string
     subject_id: string
@@ -201,9 +209,12 @@ function geekBackend(
           { status: 503 },
         )
       }
-      return Response.json(session)
+      const snapshot = session
+      if (control.readGate) await control.readGate
+      return Response.json(snapshot)
     }
     if (url.endsWith('/diagnostic-sessions/d1/answers') && session) {
+      if (control.answerGate) await control.answerGate
       if (session.status === 'cancelled')
         return Response.json(
           { code: 'SESSION_NOT_ACTIVE', message: 'Диагностика уже завершена.' },
@@ -309,12 +320,20 @@ afterEach(() => {
 })
 
 function renderApp() {
+  const queryClient = createQueryClient()
   const router = createRouter({
-    context: { queryClient: createQueryClient() },
+    context: { queryClient },
     history: createMemoryHistory({ initialEntries: ['/'] }),
     routeTree,
   })
   render(<RouterProvider router={router} />)
+  return queryClient
+}
+
+function gate() {
+  let open = () => {}
+  const closed = new Promise<void>((resolve) => (open = resolve))
+  return { closed, open }
 }
 
 async function start() {
@@ -726,4 +745,40 @@ it('pops up that the course was updated when the diagnostic is cancelled', async
       'Курс обновился, и эта диагностика прервана. Начните новую на главной.',
     ),
   ).toBeVisible()
+})
+
+it('keeps the accepted answer when a background read started before it lands late', async () => {
+  const { control, fetch } = geekBackend()
+  const queryClient = renderApp()
+  await start()
+  await answerField()
+  // The answer is being evaluated when the periodic read of the session
+  // goes out; the read sees the old turn and comes back after the answer.
+  const answer = gate()
+  control.answerGate = answer.closed
+  await answerByText('Перестанет быть оптимальным')
+  await waitFor(() =>
+    expect(fetch.mock.calls.some(([url]) => url.endsWith('/d1/answers'))).toBe(
+      true,
+    ),
+  )
+  const read = gate()
+  control.readGate = read.closed
+  const refetch = queryClient.refetchQueries({
+    queryKey: ['diagnostic-session'],
+  })
+  answer.open()
+  expect(
+    await screen.findByText('А где допустимая эвристика не поможет?'),
+  ).toBeVisible()
+  read.open()
+  await act(() => refetch)
+  const [[, cached]] = queryClient.getQueriesData<{ currentTurnId: string }>({
+    queryKey: ['diagnostic-session'],
+  })
+  expect(cached?.currentTurnId).toBe('t3')
+  expect(
+    screen.getByText('А где допустимая эвристика не поможет?'),
+  ).toBeVisible()
+  expect(screen.getByText('Перестанет быть оптимальным')).toBeVisible()
 })

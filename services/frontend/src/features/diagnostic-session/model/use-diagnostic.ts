@@ -61,17 +61,41 @@ export function useDiagnosticHistoryQuery(userId: string, subjectId: string) {
 
 const ACTIVE_REFRESH_MS = 20_000
 
+// A diagnostic only moves forward: turns are appended and a completed or
+// cancelled session stays so. A read that started before an accepted answer
+// and finished after it would roll the dialogue back to the old turn, so the
+// older of the two snapshots is dropped.
+function newerSession(
+  current: DiagnosticSession | undefined,
+  fetched: DiagnosticSession,
+) {
+  if (!current || current.id !== fetched.id) return fetched
+  if (fetched.turns.length < current.turns.length) return current
+  if (
+    fetched.turns.length === current.turns.length &&
+    current.status !== 'active' &&
+    fetched.status === 'active'
+  )
+    return current
+  return fetched
+}
+
 export function useDiagnosticQuery(userId: string, sessionId: string) {
   const { diagnostic } = useDiagnosticDependencies()
   const client = useQueryClient()
+  const key = diagnosticSessionQueryKeys.session(userId, sessionId)
   // eslint-disable-next-line @tanstack/query/exhaustive-deps -- the API port and auth epoch are stable dependencies outside the resource key.
   return useQuery({
-    queryKey: diagnosticSessionQueryKeys.session(userId, sessionId),
+    queryKey: key,
     enabled: !!userId && !!sessionId,
-    queryFn: ({ signal }) =>
-      scoped(client, userId, signal, (s) =>
+    queryFn: async ({ signal }) => {
+      const fetched = await scoped(client, userId, signal, (s) =>
         diagnostic.readDiagnostic(sessionId, s),
-      ),
+      )
+      // Compared with the cache as it is when the read lands, not as it
+      // was when the read started.
+      return newerSession(client.getQueryData<DiagnosticSession>(key), fetched)
+    },
     // Reading an active diagnostic is what notices a rebuilt course graph,
     // so the student learns it while thinking, not after answering.
     refetchInterval: (query) =>
@@ -139,6 +163,12 @@ export function useAnswerMutation(userId: string, sessionId: string) {
   const keys = useRef(createAnswerKeys())
   return useMutation({
     mutationKey: diagnosticSessionQueryKeys.answer(userId, sessionId),
+    // A background read in flight holds the session before this answer; it
+    // is cancelled so it cannot land after the accepted result.
+    onMutate: () =>
+      client.cancelQueries({
+        queryKey: diagnosticSessionQueryKeys.session(userId, sessionId),
+      }),
     // display is what the dialogue shows while the answer is being sent.
     mutationFn: ({
       turnId,

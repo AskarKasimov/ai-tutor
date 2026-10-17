@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 import re
+import unicodedata
 from dataclasses import dataclass
 
 from course_graph.cleaning.cleaner import Block, REASONS, split_blocks
@@ -22,9 +23,18 @@ PROMPT = """Ты выделяешь учебные темы из лекции и
 Выделяй отдельные проверяемые понятия/методы, а не тему на каждый абзац и не всю
 лекцию одной темой, если она объясняет несколько самостоятельных методов.
 Каждый входной block id должен быть либо в remove, либо хотя бы в одной теме.
+allowed_block_ids содержит полный список допустимых ID этого запроса. Копируй
+числа из этого списка дословно: это ID, а не номера слайдов и не позиции блоков.
+Не перенумеровывай их и не используй числа из примера JSON, если их нет в списке.
+Удалённый блок нельзя одновременно включать в block_ids темы.
 Один блок можно отнести к нескольким темам; соседний context_only не присваивай.
 Не возвращай текст лекции: он будет точно собран по block_ids.
 Не создавай темы или знания, которым данный фрагмент не учит.
+ПРЕРЕКВИЗИТЫ (requires):
+requires — это понятия ИЗ ЭТОГО КУРСА, которые изучаются в других темах или лекциях.
+СТРОГО ЗАПРЕЩЕНО указывать в requires внешние дисциплины или общекультурные темы (мифология, древняя история, общая психология, макроэкономика), которым этот курс не учит.
+Для вводных или базовых тем лекции, не требующих предшествующих тем курса, указывай requires: [].
+Если тема опирается на понятия, введённые в курсе ранее, перечисли их точными краткими терминами.
 Сведения из context_only нельзя включать в provides или использовать как ответ:
 тема и её вопрос должны подтверждаться только назначенными ей blocks.
 ВОПРОС (question) — для устного экзамена: на рассуждение, с развёрнутым ответом.
@@ -48,6 +58,8 @@ PROMPT = """Ты выделяешь учебные темы из лекции и
 ИЕРАРХИЯ ТЕМ (parent_title):
 Каждая конкретная подтема (отдельный метод, частный алгоритм, отдельное свойство, правило, тип или практическая задача)
 ОБЯЗАТЕЛЬНО должна иметь parent_title — название более общей темы/раздела лекции, частью которого она является.
+ВАЖНО: Тема раздела (parent_title) должна существовать в материале как самостоятельная верхнеуровневая тема с parent_title: null!
+Если лекция начинается с вводного раздела (например, «Что такое искусственный интеллект?», «Интеллектуальные агенты»), выдели вводные слайды с постановкой и определениями в тему с этим названием и parent_title: null, а частные подтемы связывай с ней через parent_title.
 Примеры parent_title:
 - для тем «Агенты с целями», «Обучающие агенты» -> parent_title: «Типы интеллектуальных агентов»
 - для тем «Доступность среды», «Детерминированность» -> parent_title: «Свойства среды»
@@ -68,6 +80,14 @@ PROMPT = """Ты выделяешь учебные темы из лекции и
 сохраняй как контекст к содержательной теме, а не как изученное знание.
 Удаляй только целиком организационный мусор: organization (сдача, расписание),
 grading (правила оценки студентов), contacts, greeting, thanks.
+Правила именно этого курса или университета — административная информация:
+посещаемость, санкции за академическую нечестность, разрешённая помощь с заданиями,
+советы по успешной сдаче курса. Удаляй такие блоки как organization/grading,
+а не превращай их в учебные темы об академической нечестности, сотрудничестве
+или стратегиях успешного обучения. Отличай правила курса от предметного
+обсуждения этих явлений: определения и примеры в учебном разделе сохраняй.
+Вопросы задавай по существу темы, без ссылок на номера слайдов или блоков:
+например, «Почему интеллект зависит от ситуации?», а не «Что сказано на слайде 22?».
 Не удаляй определения, упражнения, условия задач, примеры и библиографию.
 Смешанный блок сохраняй целиком. Блоки protected нельзя удалять: код, формулы,
 таблицы и изображения должны быть привязаны к учебной теме.
@@ -99,7 +119,12 @@ class ExtractionSettings:
 
 
 def normalized_title(value):
-    return " ".join(re.findall(r"\w+", value.casefold().replace("ё", "е")))
+    value = unicodedata.normalize("NFC", value)
+    tokens = re.findall(r"\w+|[^\w\s]", value.casefold().replace("ё", "е"))
+    # C, C++ and C# (or x+y and x-y) must remain distinct concepts.
+    return " ".join(token for token in tokens if re.fullmatch(r"\w+", token)
+                    or unicodedata.category(token[0]) == "Sm"
+                    or token in {"#", "*", "/", "\\", "^", "-", "%"})
 
 
 def topic_id(material_id, title):
@@ -168,16 +193,33 @@ def pack_blocks(blocks, settings):
 def merge_topics(topics):
     """Merge only equal normalized titles; preserve all source fragments."""
     by_title = {}
+    source_blocks, source_ranges = {}, {}
     for topic in topics:
         key = normalized_title(topic.title)
+        if not key:
+            raise ValueError("Пустое название темы после нормализации")
         if key not in by_title:
             by_title[key] = topic.model_copy(deep=True)
-            continue
+            by_title[key].sources = []
         previous = by_title[key]
-        previous.requires = list(dict.fromkeys(previous.requires + topic.requires))
-        previous.provides = list(dict.fromkeys(previous.provides + topic.provides))
+        # Compare whitespace without conflating distinct formulas or code names.
+        for field in ("requires", "provides"):
+            unique = {}
+            for value in getattr(previous, field) + getattr(topic, field):
+                unique.setdefault(" ".join(value.split()), value)
+            setattr(previous, field, list(unique.values()))
         seen = {(s.material_id, s.start, s.end) for s in previous.sources}
-        previous.sources.extend(s for s in topic.sources if (s.material_id, s.start, s.end) not in seen)
+        for source in topic.sources:
+            block_key = (source.material_id, source.block_id)
+            range_key = (source.material_id, source.start, source.end)
+            data = source.model_dump()
+            if (block_key in source_blocks and source_blocks[block_key] != data or
+                    range_key in source_ranges and source_ranges[range_key] != data):
+                raise ValueError("Противоречивые источники одного блока материала")
+            source_blocks[block_key] = source_ranges[range_key] = data
+            if range_key not in seen:
+                previous.sources.append(source.model_copy(deep=True))
+                seen.add(range_key)
         previous.text = "\n\n".join(s.text for s in previous.sources)
     return list(by_title.values())
 
@@ -241,7 +283,7 @@ def context_block(text):
         return True
     if any(re.match(r"введение в|introduction to", h, re.I) for h in headings) and len(" ".join(body)) < 160 and re.search(r"(?:недел\w*|week)\s*\d+", " ".join(body), re.I):
         return True
-    if any(re.fullmatch(r"план|повестка(?: дня)?|оглавление|итоги(?: лекции)?|ссылки|литература|источники|ресурсы|agenda|summary|contents|references|links", h, re.I) for h in headings):
+    if any(re.fullmatch(r"план|повестка(?: дня)?|оглавление|итоги(?: лекции)?|ссылки|литература|библиография|материалы курса|источники|ресурсы|agenda|summary|contents|references|bibliography|course materials|(?:recommended|suggested) reading|links", h, re.I) for h in headings):
         return len(body) <= 20 and (all(len(line) <= 250 for line in body) or all(re.search(r"https?://|www\.", line) for line in body))
     # OCR labels alone do not explain relationships within a picture.
     if "<!-- image -->" in text and not any(re.match(r"[-*+]\s|\d+[.)]\s", line) for line in body):
@@ -327,7 +369,7 @@ async def extract_topics(text, complete, material_id="material", week=None, sett
     async def classify(batch, depth=0, repair=None, existing_topics=None):
         first, last = batch[0].id, batch[-1].id
         context = [b.text[:500] for b in blocks[max(0, first-1):first] + blocks[last+1:last+2]]
-        data = {"context_only": context, "blocks": [
+        data = {"allowed_block_ids": [b.id for b in batch], "context_only": context, "blocks": [
             {"id": b.id, "text": b.text, "protected": b.protected} for b in batch]}
         if existing_topics:
             data["existing_topics"] = existing_topics
@@ -346,7 +388,8 @@ async def extract_topics(text, complete, material_id="material", week=None, sett
             seen_removals = set()
             for item in decision.remove:
                 if item.id not in ids or item.id in seen_removals or item.reason not in REASONS:
-                    raise ValueError("Неверное удаление: неизвестный/повторный id или недопустимая причина")
+                    raise ValueError(f"Неверное удаление id={item.id}; допустимые ID: {sorted(ids)}; "
+                                     f"повторные удаления запрещены; причины: {sorted(REASONS)}")
                 seen_removals.add(item.id)
                 if item.id in protected:
                     continue
@@ -386,7 +429,8 @@ async def extract_topics(text, complete, material_id="material", week=None, sett
                     raise ValueError("Повторный блок темы")
                 for block_id in topic.block_ids:
                     if block_id not in ids or block_id in removed:
-                        raise ValueError("Тема ссылается на неизвестный/удалённый блок")
+                        raise ValueError(f"Тема ссылается на неизвестный/удалённый блок {block_id}; "
+                                         f"допустимые ID для тем: {sorted(ids - set(removed))}")
                     assigned.add(block_id)
             for block_id in sorted((ids - assigned - set(removed)) & protected):
                 if decision.topics:

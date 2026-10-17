@@ -6,6 +6,7 @@ os.environ.setdefault("HF_HUB_DOWNLOAD_TIMEOUT", "30")
 
 from fastapi import FastAPI, File, Header, HTTPException, UploadFile
 from pydantic import BaseModel, Field
+from contextlib import asynccontextmanager
 import asyncio
 import logging
 import re
@@ -23,13 +24,15 @@ from course_graph.topics.graph import build_links
 from course_graph.topics.models import Material, StrictModel, Topic
 from course_graph.topics.retrieval import get_encoder
 
-app = FastAPI(title="Course Graph Service", version="1.0.0")
-ocr_slots = asyncio.Semaphore(1)
 
-
-@app.on_event("startup")
-def start_model_bootstrap():
+@asynccontextmanager
+async def lifespan(app: FastAPI):
     model_runtime.start()
+    yield
+
+
+app = FastAPI(title="Course Graph Service", version="1.0.0", lifespan=lifespan)
+ocr_slots = asyncio.Semaphore(1)
 
 
 @app.get("/health")

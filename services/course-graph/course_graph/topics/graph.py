@@ -8,9 +8,8 @@ from course_graph.topics.extract import (
     merge_topics,
     normalized_title,
     procedural_title,
-    topic_id,
 )
-from course_graph.topics.models import LinkResponse, RequirementDecision, Source, Topic
+from course_graph.topics.models import LinkResponse, RequirementDecision, Topic
 from course_graph.topics.retrieval import CandidateIndex
 
 PROMPT = """Ты проверяешь пререквизиты учебных тем ТОЛЬКО по предоставленным материалам.
@@ -99,33 +98,6 @@ def valid_evidence(evidence, excerpts):
     return False
 
 
-COMMON_CLUSTERS = {
-    "вампус": "Мир Вампуса",
-    "мир вампуса": "Мир Вампуса",
-    "ферз": "Задача о размещении N ферзей",
-    "n ферзей": "Задача о размещении N ферзей",
-    "свойства сред": "Свойства среды",
-    "свойств среды": "Свойства среды",
-    "законы робототехники": "Законы робототехники",
-    "закон робототехники": "Законы робототехники",
-    "китайская комната": "Аргумент «Китайская комната»",
-    "китайской комнате": "Аргумент «Китайская комната»",
-    "логики первого порядка": "Логика первого порядка",
-    "логика первого порядка": "Логика первого порядка",
-    "предикат": "Логика первого порядка",
-    "этическ": "Этика и философия искусственного интеллекта",
-    "философск": "Этика и философия искусственного интеллекта",
-    "тьюринг": "Тест Тьюринга и философия ИИ",
-    "типы агентов": "Типы интеллектуальных агентов",
-    "рефлекторные агенты": "Типы интеллектуальных агентов",
-    "обучающие агенты": "Типы интеллектуальных агентов",
-    "модель peas": "Модель PEAS",
-    "peas-модель": "Модель PEAS",
-    "антагонистический поиск": "Антагонистический поиск в играх",
-    "минимакс": "Антагонистический поиск в играх",
-}
-
-
 def resolve_parent_topic(parent_title: str, topics: list[Topic], by_norm: dict[str, Topic], encoder=None) -> Topic | None:
     norm_p = normalized_title(parent_title)
     if not norm_p:
@@ -133,48 +105,6 @@ def resolve_parent_topic(parent_title: str, topics: list[Topic], by_norm: dict[s
     if norm_p in by_norm:
         return by_norm[norm_p]
     return None
-
-
-def synthesize_parent_topic(parent_title: str, children: list[Topic]) -> Topic:
-    clean_p = clean_topic_title(parent_title)
-    first_child = children[0]
-    mat_id = first_child.sources[0].material_id if first_child.sources else "course"
-    week = first_child.sources[0].week if first_child.sources else None
-
-    seen_sources = set()
-    aggregated_sources = []
-    for c in children:
-        for s in c.sources:
-            src_key = (s.material_id, s.start, s.end)
-            if src_key not in seen_sources:
-                seen_sources.add(src_key)
-                aggregated_sources.append(s)
-    aggregated_sources.sort(key=lambda s: s.start)
-
-    agg_provides = [f"Освоение концепции: {clean_p}"]
-    for c in children:
-        for p in c.provides:
-            if p not in agg_provides:
-                agg_provides.append(p)
-
-    agg_requires = []
-    for c in children:
-        for r in c.requires:
-            if r not in agg_requires and r not in agg_provides:
-                agg_requires.append(r)
-
-    return Topic(
-        id=topic_id(mat_id, clean_p),
-        title=clean_p,
-        requires=agg_requires[:12],
-        provides=agg_provides[:12],
-        question=f"Что представляет собой концепция «{clean_p}» и какие основные понятия или методы в неё входят?",
-        text="\n\n".join(s.text for s in aggregated_sources) if aggregated_sources else f"Раздел курса: {clean_p}",
-        sources=aggregated_sources if aggregated_sources else [
-            Source(material_id=mat_id, block_id=0, start=0, end=len(clean_p), text=clean_p, week=week)
-        ],
-        parent_title=None
-    )
 
 
 def build_hierarchy(topics: list[Topic], edges: list[dict], canonical: dict[str, str], encoder=None) -> tuple[list[Topic], list[dict], dict[str, set[str]]]:
@@ -187,11 +117,8 @@ def build_hierarchy(topics: list[Topic], edges: list[dict], canonical: dict[str,
             if normalized_title(p_title) != normalized_title(t.title):
                 parent_requests.setdefault(p_title, []).append(t)
 
-    for p_title, children in parent_requests.items():
-        matched = resolve_parent_topic(p_title, topics, by_norm, encoder)
-        # A declared parent that has no independently sourced topic remains
-        # unresolved. Creating a synthetic assessable topic would invent content.
-
+    # A declared parent that has no independently sourced topic remains
+    # unresolved. Creating a synthetic assessable topic would invent content.
     hierarchy, hierarchy_adj = [], {}
     for p_title, children in parent_requests.items():
         parent = resolve_parent_topic(p_title, topics, by_norm, encoder)

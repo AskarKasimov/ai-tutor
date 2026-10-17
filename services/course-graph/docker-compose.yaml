@@ -33,3 +33,12 @@ services:
       timeout: 5s
       retries: 5
     restart: unless-stopped
+
+volumes:
+  course_graph_models:
+  course_graph_data:
+
+networks:
+  default:
+    external: true
+    name: ai-tutor_default

@@ -2,6 +2,10 @@
   display: grid;
   gap: var(--space-3);
 }
+.items {
+  display: grid;
+  gap: var(--space-2);
+}
 .add {
   display: flex;
   align-items: center;
@@ -13,12 +17,26 @@
 }
 .row {
   display: grid;
-  grid-template-columns: minmax(12rem, 1fr) 8rem 10rem auto;
+  grid-template-columns: auto minmax(12rem, 1fr) 8rem 10rem auto;
   align-items: end;
   gap: var(--space-3);
   padding: var(--space-3);
   border: 1px solid var(--gray-a6);
   border-radius: var(--radius-3);
+}
+.dragHandle {
+  align-self: center;
+  cursor: grab;
+  touch-action: none;
+}
+.dragHandle:active {
+  cursor: grabbing;
+}
+.dragging {
+  opacity: 0.55;
+}
+.dropTarget {
+  border-color: var(--accent-9);
 }
 .row label {
   display: grid;
@@ -29,9 +47,9 @@
 }
 @media (max-width: 720px) {
   .row {
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: auto 1fr;
   }
   .name {
-    grid-column: 1 / -1;
+    grid-column: 2 / -1;
   }
 }

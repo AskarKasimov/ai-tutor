@@ -60,6 +60,8 @@ void i18n.init({
           confirm: 'Подтвердить',
           materialsTitle: 'Материалы и лекции курса',
           queueAdd: 'Добавить PDF или ZIP',
+          queueMoveItem:
+            'Переместить {{name}}. Используйте стрелки вверх и вниз или перетащите.',
           queueRemove: 'Удалить из списка',
           queueSendAll: 'Отправить всё',
           queueInvalidArchive: 'Не удалось прочитать выбранный файл.',

@@ -244,29 +244,52 @@ function layoutIsland(
   const inside = new Set(members)
   const incoming = new Map<string, string[]>()
   const outgoing = new Map<string, string[]>()
-  for (const edge of [...view.hierarchyEdges, ...view.prerequisiteEdges]) {
-    if (!inside.has(edge.source) || !inside.has(edge.target)) continue
-    incoming.set(edge.target, [
-      ...(incoming.get(edge.target) ?? []),
-      edge.source,
-    ])
-    outgoing.set(edge.source, [
-      ...(outgoing.get(edge.source) ?? []),
-      edge.target,
-    ])
+  const link = (source: string, target: string) => {
+    incoming.set(target, [...(incoming.get(target) ?? []), source])
+    outgoing.set(source, [...(outgoing.get(source) ?? []), target])
   }
+  const reaches = (from: string, to: string) => {
+    const seen = new Set<string>()
+    const stack = [from]
+    while (stack.length > 0) {
+      const id = stack.pop()!
+      if (id === to) return true
+      if (seen.has(id)) continue
+      seen.add(id)
+      stack.push(...(outgoing.get(id) ?? []))
+    }
+    return false
+  }
+  // The order of study follows the prerequisites. The service keeps them and
+  // the hierarchy acyclic apart, not together, so a parent is put before its
+  // subtopic only where that does not contradict a prerequisite.
+  for (const edge of view.prerequisiteEdges)
+    if (inside.has(edge.source) && inside.has(edge.target))
+      link(edge.source, edge.target)
+  for (const edge of view.hierarchyEdges)
+    if (
+      inside.has(edge.source) &&
+      inside.has(edge.target) &&
+      !reaches(edge.target, edge.source)
+    )
+      link(edge.source, edge.target)
 
-  // Longest path from the island's sources; the service keeps both relations
-  // acyclic, and a topic left on a cycle simply stays in the first column.
+  // Longest path from the island's sources. Should the data still hold a
+  // cycle, its first topic is released so the topics after it get ranks too.
   const rank = new Map<string, number>()
   const pending = new Map(
     members.map((id) => [id, incoming.get(id)?.length ?? 0]),
   )
   const queue = members.filter((id) => pending.get(id) === 0)
+  const done = new Set<string>()
   for (const id of members) rank.set(id, 0)
-  while (queue.length > 0) {
+  while (done.size < members.length) {
+    if (queue.length === 0) queue.push(members.find((id) => !done.has(id))!)
     const id = queue.shift()!
+    if (done.has(id)) continue
+    done.add(id)
     for (const next of outgoing.get(id) ?? []) {
+      if (done.has(next)) continue
       rank.set(next, Math.max(rank.get(next)!, rank.get(id)! + 1))
       pending.set(next, pending.get(next)! - 1)
       if (pending.get(next) === 0) queue.push(next)

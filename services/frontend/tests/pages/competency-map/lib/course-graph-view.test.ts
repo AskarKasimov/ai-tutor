@@ -119,3 +119,32 @@ it('finds topics by a case-insensitive part of the title', () => {
   expect(searchTopics(view, 'ПОТЕР')).toEqual(['loss'])
   expect(searchTopics(view, '  ')).toEqual([])
 })
+
+it('orders study by prerequisites when the hierarchy points the other way', () => {
+  // Valid on the backend: each relation is acyclic on its own, together they
+  // form base → parent → base.
+  const view = buildCourseGraphView({
+    topics: [
+      topic('parent', 'Раздел'),
+      topic('base', 'Основа'),
+      topic('advanced', 'Продолжение'),
+      topic('next', 'Следующая тема'),
+    ],
+    hierarchy: [
+      { source: 'parent', target: 'base' },
+      { source: 'parent', target: 'advanced' },
+      { source: 'parent', target: 'next' },
+    ],
+    prerequisites: [
+      { source: 'base', target: 'parent' },
+      { source: 'parent', target: 'advanced' },
+      { source: 'advanced', target: 'next' },
+    ],
+  })
+  const { positions } = layoutCourseGraph(view)
+  const x = (id: string) => positions.get(id)!.x
+  expect(x('base')).toBeLessThan(x('parent'))
+  expect(x('parent')).toBeLessThan(x('advanced'))
+  // A topic after the contradicting pair still gets its own column.
+  expect(x('advanced')).toBeLessThan(x('next'))
+})

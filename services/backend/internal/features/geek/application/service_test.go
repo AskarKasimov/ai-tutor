@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -138,12 +139,14 @@ func (t texts) Text(_ context.Context, owner, id string) (string, bool, error) {
 }
 
 // examiner grades by the answer text: "сильно" is 2/2/2/2, "частично"
-// 2/2/1/1, anything else 0/1/0/0.
+// 2/2/1/1, anything else 0/1/0/0. Its reaction and explanation name the topic.
 type examiner struct {
 	mu        sync.Mutex
 	fail      error
 	questions []QuestionRequest
 	evals     int
+	evaluated []EvaluationRequest
+	explained []EvaluationRequest
 }
 
 func (e *examiner) Question(_ context.Context, r QuestionRequest) (string, error) {
@@ -156,23 +159,37 @@ func (e *examiner) Question(_ context.Context, r QuestionRequest) (string, error
 	return fmt.Sprintf("%s: %s?", r.Kind, r.Node.Title), nil
 }
 
-func (e *examiner) Evaluate(_ context.Context, r EvaluationRequest) (exam.Evaluation, error) {
+func (e *examiner) Evaluate(_ context.Context, r EvaluationRequest) (Assessment, error) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	if e.fail != nil {
-		return exam.Evaluation{}, e.fail
+		return Assessment{}, e.fail
 	}
 	e.evals++
+	e.evaluated = append(e.evaluated, r)
 	last := r.Dialogue[len(r.Dialogue)-1]
+	a := Assessment{Reaction: "Реакция: " + r.Node.Title + ".", Explanation: "Разбор: " + r.Node.Title + "."}
 	switch {
 	case strings.Contains(last.Text, "не знаю"):
-		return exam.Evaluation{Verdict: exam.VerdictDontKnow}, nil
+		a.Evaluation = exam.Evaluation{Verdict: exam.VerdictDontKnow}
 	case strings.Contains(last.Text, "сильно"):
-		return exam.Evaluation{Verdict: exam.VerdictAnswered, Criteria: exam.Criteria{K1: 2, K2: 2, K3: 2, K4: 2}, Evidence: []int{last.Line}}, nil
+		a.Evaluation = exam.Evaluation{Verdict: exam.VerdictAnswered, Criteria: exam.Criteria{K1: 2, K2: 2, K3: 2, K4: 2}, Evidence: []int{last.Line}}
 	case strings.Contains(last.Text, "частично"):
-		return exam.Evaluation{Verdict: exam.VerdictAnswered, Criteria: exam.Criteria{K1: 2, K2: 2, K3: 1, K4: 1}, Evidence: []int{last.Line}}, nil
+		a.Evaluation = exam.Evaluation{Verdict: exam.VerdictAnswered, Criteria: exam.Criteria{K1: 2, K2: 2, K3: 1, K4: 1}, Evidence: []int{last.Line}}
+	default:
+		a.Evaluation = exam.Evaluation{Verdict: exam.VerdictAnswered, Criteria: exam.Criteria{K2: 1}, Evidence: []int{last.Line}}
 	}
-	return exam.Evaluation{Verdict: exam.VerdictAnswered, Criteria: exam.Criteria{K2: 1}, Evidence: []int{last.Line}}, nil
+	return a, nil
+}
+
+func (e *examiner) Explain(_ context.Context, r EvaluationRequest) (string, error) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.fail != nil {
+		return "", e.fail
+	}
+	e.explained = append(e.explained, r)
+	return "Объяснение: " + r.Node.Title + ".", nil
 }
 
 func wav(samples int) []byte {
@@ -366,7 +383,7 @@ func TestDiagnosticRunsToTheResult(t *testing.T) {
 	// answered fully by voice or text.
 	s = f.answer(t, s, Answer{DontKnow: true})
 	if f.examiner.evals != 0 {
-		t.Fatal("the don't know button must not call the model")
+		t.Fatal("the don't know button must not be evaluated by the model")
 	}
 	for s.Status == exam.SessionActive {
 		turn, _ := s.CurrentTurn()
@@ -395,6 +412,75 @@ func TestDiagnosticRunsToTheResult(t *testing.T) {
 	}
 	if _, err := f.service.Answer(ctx, "student", s.ID, "late", Answer{TurnID: last.ID, Text: "ещё"}); code(err) != "SESSION_NOT_ACTIVE" {
 		t.Fatalf("answer after completion: %v", err)
+	}
+}
+
+func TestGeekRepliesToTheAnswerBeforeTheNextQuestion(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	s, _, _ := f.service.Start(ctx, "student", "subject", "start")
+	if s.Turns[0].Recap != "" || strings.HasPrefix(s.Turns[0].Text, "Реакция") {
+		t.Fatalf("the first question has a reply: %+v", s.Turns[0])
+	}
+	first, _ := s.Exam.Graph.Node(*s.Turns[0].NodeID)
+
+	// The topic goes on with the followup: a reaction without the answer.
+	s = f.answer(t, s, Answer{Text: "частично"})
+	followup := s.Turns[len(s.Turns)-1]
+	if followup.Kind != exam.KindFollowup || followup.Recap != "" ||
+		!strings.HasPrefix(followup.Text, "Реакция: "+first.Title+".\n\n") {
+		t.Fatalf("followup = %+v", followup)
+	}
+
+	// The topic is closed: the explanation leads the next question as a recap.
+	s = f.answer(t, s, Answer{Text: "частично"})
+	next := s.Turns[len(s.Turns)-1]
+	recap := "Разбор: " + first.Title + ".\n\n"
+	if *next.NodeID == first.ID || next.Recap != recap || !strings.HasPrefix(next.Text, recap) || len(next.Text) == len(recap) {
+		t.Fatalf("next question = %+v", next)
+	}
+
+	// The button is not evaluated; its explanation is asked on its own and
+	// must keep the prerequisites that Geek may ask next.
+	node, _ := s.Exam.Graph.Node(*next.NodeID)
+	s = f.answer(t, s, Answer{DontKnow: true})
+	if len(f.examiner.explained) != 1 || f.examiner.explained[0].Node.ID != node.ID ||
+		len(f.examiner.explained[0].Prerequisites) != len(node.Prerequisites) {
+		t.Fatalf("explained = %+v", f.examiner.explained)
+	}
+	after := s.Turns[len(s.Turns)-1]
+	if after.Recap != "Объяснение: "+node.Title+".\n\n" || !strings.HasPrefix(after.Text, after.Recap) {
+		t.Fatalf("turn after the button = %+v", after)
+	}
+}
+
+func TestRepliesKeepEveryUncheckedPrerequisiteOfTheChain(t *testing.T) {
+	f := newFixture(t)
+	*f.graphs.graph = exam.Graph{Version: "chain", Nodes: []exam.Node{
+		{ID: "leaf", Title: "Лист", Content: "Лист."},
+		{ID: "middle", Title: "Середина", Content: "Середина.", Prerequisites: []string{"leaf"}},
+		{ID: "top", Title: "Верх", Content: "Верх.", Prerequisites: []string{"middle"}},
+	}}
+	ctx := context.Background()
+	s, _, _ := f.service.Start(ctx, "student", "subject", "start")
+	// Evaluated answers send the chain to the model too.
+	s = f.answer(t, s, Answer{Text: "слабо"})
+	s = f.answer(t, s, Answer{DontKnow: true})
+	s = f.answer(t, s, Answer{DontKnow: true})
+	if turn, _ := s.CurrentTurn(); *turn.NodeID != "leaf" {
+		t.Fatalf("current topic = %s", *turn.NodeID)
+	}
+	want := [][]string{{"Середина", "Лист"}, {"Лист"}}
+	if len(f.examiner.explained) != 2 {
+		t.Fatalf("explained = %+v", f.examiner.explained)
+	}
+	for i, r := range f.examiner.explained {
+		if !slices.Equal(r.Prerequisites, want[i]) {
+			t.Fatalf("explanation %d of %s keeps %v, want %v", i, r.Node.ID, r.Prerequisites, want[i])
+		}
+	}
+	if !slices.Equal(f.examiner.evaluated[0].Prerequisites, want[0]) {
+		t.Fatalf("evaluation keeps %v", f.examiner.evaluated[0].Prerequisites)
 	}
 }
 

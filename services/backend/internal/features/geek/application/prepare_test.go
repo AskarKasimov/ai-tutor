@@ -38,8 +38,12 @@ func (p *preparing) Question(_ context.Context, r QuestionRequest) (string, erro
 	return "Вопрос про «" + r.Node.Title + "»?", nil
 }
 
-func (p *preparing) Evaluate(context.Context, EvaluationRequest) (exam.Evaluation, error) {
-	return exam.Evaluation{}, errors.New("not used")
+func (p *preparing) Evaluate(context.Context, EvaluationRequest) (Assessment, error) {
+	return Assessment{}, errors.New("not used")
+}
+
+func (p *preparing) Explain(context.Context, EvaluationRequest) (string, error) {
+	return "", errors.New("not used")
 }
 
 func TestPrepareQuestionsFillsOnlyMissingMainQuestions(t *testing.T) {

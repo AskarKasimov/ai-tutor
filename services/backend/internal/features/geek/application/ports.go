@@ -62,15 +62,31 @@ type QuestionRequest struct {
 }
 
 type EvaluationRequest struct {
-	Kind     exam.TurnKind // the step that was answered
-	Node     exam.Node
-	Dialogue []exam.Turn // turns on the topic, ending with the answer
+	Kind exam.TurnKind // the step that was answered
+	Node exam.Node
+	// Prerequisites are the titles of the topic's direct and transitive
+	// prerequisites that are still unchecked. Geek may ask them later, so the
+	// explanation must not give them away.
+	Prerequisites []string
+	Dialogue      []exam.Turn // turns on the topic, ending with the answer
+}
+
+// Assessment is the evaluation of an answer with Geek's reply to it. The
+// reaction says what is right or missing without the correct answer; the
+// explanation adds the correct answer and is said once the topic is closed.
+type Assessment struct {
+	exam.Evaluation
+	Reaction    string
+	Explanation string
 }
 
 // Examiner is the language model behind Geek.
 type Examiner interface {
 	Question(ctx context.Context, r QuestionRequest) (string, error)
-	Evaluate(ctx context.Context, r EvaluationRequest) (exam.Evaluation, error)
+	Evaluate(ctx context.Context, r EvaluationRequest) (Assessment, error)
+	// Explain gives the correct answer on a topic the student gave up on with
+	// the "don't know" button, which is not evaluated.
+	Explain(ctx context.Context, r EvaluationRequest) (string, error)
 }
 
 type Synthesizer interface {

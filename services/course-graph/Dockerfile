@@ -16,11 +16,15 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
 COPY services/course-graph/requirements.txt services/course-graph/pyproject.toml ./
 ARG INSTALL_DOCLING=true
-RUN if [ "$INSTALL_DOCLING" = "true" ]; then \
-      uv pip install --system --no-cache -r requirements.txt; \
+# Models run on CPU only: CPU wheels of torch skip ~4 GB of CUDA and triton.
+# The uv cache lives in a BuildKit cache mount, so rebuilds reuse downloads.
+ENV UV_TORCH_BACKEND=cpu UV_LINK_MODE=copy
+RUN --mount=type=cache,target=/root/.cache/uv \
+    if [ "$INSTALL_DOCLING" = "true" ]; then \
+      uv pip install --system -r requirements.txt; \
     elif [ "$INSTALL_DOCLING" = "false" ]; then \
       sed '/^docling[<=>]/d' requirements.txt > /tmp/requirements-light.txt && \
-      uv pip install --system --no-cache -r /tmp/requirements-light.txt; \
+      uv pip install --system -r /tmp/requirements-light.txt; \
     else exit 1; fi
 ENV COURSE_GRAPH_WITH_DOCLING=${INSTALL_DOCLING}
 ENV HF_HUB_DISABLE_XET=1

@@ -82,6 +82,12 @@ func run(logger *zap.Logger) error {
 		return fmt.Errorf("connect PostgreSQL: %w", err)
 	}
 	defer pool.Close()
+	waitCtx, waitCancel := context.WithTimeout(ctx, 60*time.Second)
+	err = postgres.WaitReady(waitCtx, pool, time.Second)
+	waitCancel()
+	if err != nil {
+		return err
+	}
 	migrationCtx, migrationCancel := context.WithTimeout(ctx, 30*time.Second)
 	err = postgres.Migrate(migrationCtx, pool)
 	migrationCancel()

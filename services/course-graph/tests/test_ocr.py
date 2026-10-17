@@ -516,3 +516,47 @@ def test_formula_misclassification_recovers_native_pdf_rectangle():
     assert type(document.texts[1]) is TextItem
     assert document.texts[1].label == DocItemLabel.TEXT
     assert len(warnings) == 2
+
+
+def test_run_ocr_job_recovers_formulas_and_updates_cache(monkeypatch, tmp_path):
+    import asyncio
+    import json
+    from course_graph.api import run_ocr_job, ocr_jobs
+    import course_graph.ocr.converter as converter
+
+    monkeypatch.setenv("COURSE_GRAPH_OCR_CACHE_DIR", str(tmp_path))
+    content = "## Слайд 1\n\nMSE: <!-- formula-not-decoded -->".encode("utf-8")
+
+    class DummyModelClient:
+        def completer(self, complexity):
+            async def complete(system, payload):
+                data = json.loads(payload)
+                return json.dumps({
+                    "recovered_text": data["slide_text"].replace(
+                        "<!-- formula-not-decoded -->",
+                        r"$$MSE = \frac{1}{n}\sum(y-\hat{y})^2$$"
+                    )
+                })
+            return complete
+
+        async def close(self):
+            pass
+
+    monkeypatch.setattr("course_graph.api.ModelClient", DummyModelClient)
+
+    job, owner, future = ocr_jobs.reserve("test-job-formula", "lecture.md", content)
+    asyncio.run(run_ocr_job(job, future, "lecture.md", content, requires_models=False))
+
+    success, result = future.result()
+    assert success is True
+    assert r"$$MSE = \frac{1}{n}\sum(y-\hat{y})^2$$" in result["markdown"]
+    assert "<!-- formula-not-decoded -->" not in result["markdown"]
+    assert result["report"]["undecoded_formulas"] == 0
+    assert any("Нераспознанные формулы восстановлены" in w for w in result["report"]["warnings"])
+
+    # Verify cache was also written with the recovered markdown
+    cache_path = converter.get_document_cache_path("lecture.md", content)
+    assert cache_path.exists()
+    cached = json.loads(cache_path.read_text())
+    assert r"$$MSE = \frac{1}{n}\sum(y-\hat{y})^2$$" in cached["markdown"]
+

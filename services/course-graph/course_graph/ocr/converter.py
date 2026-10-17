@@ -74,27 +74,51 @@ def _extract_with_pypdf(tmp_path: str, lecture_title: str) -> Optional[str]:
     return None
 
 
+def get_ocr_configuration() -> dict:
+    return {
+        "version": "ocr-v6-native-syntax",
+        "with_docling": os.environ.get("COURSE_GRAPH_WITH_DOCLING", "true"),
+        "picture_text": os.environ.get("COURSE_GRAPH_OCR_PICTURE_TEXT", "true"),
+        "document_timeout": os.environ.get("COURSE_GRAPH_OCR_DOCUMENT_TIMEOUT", "0"),
+        "enrich_code": os.environ.get("COURSE_GRAPH_OCR_ENRICH_CODE", "true"),
+        "enrich_formula": os.environ.get("COURSE_GRAPH_OCR_ENRICH_FORMULA", "true"),
+        "full_page_ocr": os.environ.get("COURSE_GRAPH_OCR_FULL_PAGE", "false"),
+    }
+
+
+def get_document_cache_path(filename: str, content: bytes) -> Optional[Path]:
+    cache_dir = os.environ.get("COURSE_GRAPH_OCR_CACHE_DIR")
+    if not cache_dir:
+        return None
+    source_hash = hashlib.sha256(content).hexdigest()
+    configuration = get_ocr_configuration()
+    key = hashlib.sha256((source_hash + filename + json.dumps(configuration, sort_keys=True)).encode()).hexdigest()
+    return Path(cache_dir) / f"{key}.json"
+
+
+def cache_document_result(filename: str, content: bytes, data: dict) -> None:
+    cache_path = get_document_cache_path(filename, content)
+    if not cache_path:
+        return
+    cache_path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(mode="w", dir=cache_path.parent, delete=False) as f:
+        json.dump(data, f, ensure_ascii=False)
+        temporary = Path(f.name)
+    temporary.replace(cache_path)
+
+
 def convert_document(filename: str, content: bytes) -> dict:
     """Convert a document (PDF, Markdown, text) to Markdown with LaTeX math."""
     if not content:
         raise ValueError("Empty file content")
     started = time.monotonic()
     source_hash = hashlib.sha256(content).hexdigest()
-    configuration = {"version": "ocr-v6-native-syntax", "with_docling": os.environ.get("COURSE_GRAPH_WITH_DOCLING", "true"),
-                     "picture_text": os.environ.get("COURSE_GRAPH_OCR_PICTURE_TEXT", "true"),
-                     "document_timeout": os.environ.get("COURSE_GRAPH_OCR_DOCUMENT_TIMEOUT", "0"),
-                     "enrich_code": os.environ.get("COURSE_GRAPH_OCR_ENRICH_CODE", "true"),
-                     "enrich_formula": os.environ.get("COURSE_GRAPH_OCR_ENRICH_FORMULA", "true"),
-                     "full_page_ocr": os.environ.get("COURSE_GRAPH_OCR_FULL_PAGE", "false")}
-    cache_path = None
-    cache_dir = os.environ.get("COURSE_GRAPH_OCR_CACHE_DIR")
-    if cache_dir:
-        key = hashlib.sha256((source_hash+filename+json.dumps(configuration, sort_keys=True)).encode()).hexdigest()
-        cache_path = Path(cache_dir)/f"{key}.json"
-        if cache_path.exists():
-            cached = json.loads(cache_path.read_text())
-            cached["report"]["cache_hit"] = True
-            return cached
+    configuration = get_ocr_configuration()
+    cache_path = get_document_cache_path(filename, content)
+    if cache_path and cache_path.exists():
+        cached = json.loads(cache_path.read_text())
+        cached["report"]["cache_hit"] = True
+        return cached
 
     def result(markdown, engine, pages=None, exported_pages=None, warnings=None, picture_ocr=None):
         report = {"engine": engine, "source_sha256": source_hash, "cache_hit": False,
@@ -111,12 +135,9 @@ def convert_document(filename: str, content: bytes) -> dict:
             "частично" in w for w in report["warnings"]
         )
         if cache_path and engine in {"docling", "text"} and not degraded:
-            cache_path.parent.mkdir(parents=True, exist_ok=True)
-            with tempfile.NamedTemporaryFile(mode="w", dir=cache_path.parent, delete=False) as f:
-                json.dump(data, f, ensure_ascii=False)
-                temporary = Path(f.name)
-            temporary.replace(cache_path)
+            cache_document_result(filename, content, data)
         return data
+
 
     lower = filename.lower()
     if lower.endswith((".txt", ".md", ".markdown")):

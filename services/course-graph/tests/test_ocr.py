@@ -518,7 +518,7 @@ def test_formula_misclassification_recovers_native_pdf_rectangle():
     assert len(warnings) == 2
 
 
-def test_run_ocr_job_recovers_formulas_and_updates_cache(monkeypatch, tmp_path):
+def test_run_ocr_job_caches_result_without_llm_completer(monkeypatch, tmp_path):
     import asyncio
     import json
     from course_graph.api import run_ocr_job, ocr_jobs
@@ -527,36 +527,33 @@ def test_run_ocr_job_recovers_formulas_and_updates_cache(monkeypatch, tmp_path):
     monkeypatch.setenv("COURSE_GRAPH_OCR_CACHE_DIR", str(tmp_path))
     content = "## Слайд 1\n\nMSE: <!-- formula-not-decoded -->".encode("utf-8")
 
-    class DummyModelClient:
-        def completer(self, complexity):
-            async def complete(system, payload):
-                data = json.loads(payload)
-                return json.dumps({
-                    "recovered_text": data["slide_text"].replace(
-                        "<!-- formula-not-decoded -->",
-                        r"$$MSE = \frac{1}{n}\sum(y-\hat{y})^2$$"
-                    )
-                })
-            return complete
+    class ForbiddenClient:
+        def __init__(self, *args, **kwargs):
+            raise AssertionError("OCR must not call ModelClient")
 
-        async def close(self):
-            pass
+    monkeypatch.setattr("course_graph.api.ModelClient", ForbiddenClient)
 
-    monkeypatch.setattr("course_graph.api.ModelClient", DummyModelClient)
-
-    job, owner, future = ocr_jobs.reserve("test-job-formula", "lecture.md", content)
+    job, owner, future = ocr_jobs.reserve("test-job-formula-cache", "lecture.md", content)
     asyncio.run(run_ocr_job(job, future, "lecture.md", content, requires_models=False))
 
     success, result = future.result()
     assert success is True
-    assert r"$$MSE = \frac{1}{n}\sum(y-\hat{y})^2$$" in result["markdown"]
-    assert "<!-- formula-not-decoded -->" not in result["markdown"]
-    assert result["report"]["undecoded_formulas"] == 0
-    assert any("Нераспознанные формулы восстановлены" in w for w in result["report"]["warnings"])
+    assert "<!-- formula-not-decoded -->" in result["markdown"]
+    assert result["report"]["undecoded_formulas"] == 1
+    assert result["report"]["schema_version"] == "ocr-report-v2"
+    assert result["report"]["content_complete"] is False
 
-    # Verify cache was also written with the recovered markdown
-    cache_path = converter.get_document_cache_path("lecture.md", content)
+    # Verify cache was written
+    cache_path = converter.get_document_cache_path(content)
     assert cache_path.exists()
     cached = json.loads(cache_path.read_text())
-    assert r"$$MSE = \frac{1}{n}\sum(y-\hat{y})^2$$" in cached["markdown"]
+    assert "<!-- formula-not-decoded -->" in cached["markdown"]
+
+    # Verify second job hits the cache immediately
+    job2, owner2, future2 = ocr_jobs.reserve("test-job-formula-cache-2", "lecture.md", content)
+    asyncio.run(run_ocr_job(job2, future2, "lecture.md", content, requires_models=False))
+    success2, result2 = future2.result()
+    assert success2 is True
+    assert result2["report"]["cache_hit"] is True
+
 

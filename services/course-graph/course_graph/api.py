@@ -54,6 +54,13 @@ async def run_ocr_job(job: OcrJob, future, filename: str, content: bytes, requir
 
     heartbeat_task = asyncio.create_task(heartbeat())
     try:
+        from .ocr.converter import get_cached_document
+        cached = get_cached_document(filename, content)
+        if cached is not None:
+            ocr_jobs.finish(job, future, cached)
+            logging.info("ocr_job_cache_hit job_id=%s request_sha256=%s", job.job_id, job.request_sha256)
+            return
+
         if requires_models:
             status = model_runtime.status()
             if not status["ready"]:
@@ -64,23 +71,6 @@ async def run_ocr_job(job: OcrJob, future, filename: str, content: bytes, requir
         async with ocr_slots:
             ocr_jobs.update(job, state="running", stage="converting")
             result = await run_in_threadpool(convert_source_document, filename, content)
-            if "<!-- formula-not-decoded -->" in result.get("markdown", ""):
-                ocr_jobs.update(job, state="running", stage="recovering_formulas")
-                client = ModelClient()
-                try:
-                    from .ocr.formulas import recover_formulas
-                    from .ocr.converter import cache_document_result
-                    recovered = await recover_formulas(result["markdown"], client.completer("low"))
-                    if recovered != result["markdown"]:
-                        result["markdown"] = recovered
-                        report = result.setdefault("report", {})
-                        report["undecoded_formulas"] = recovered.count("<!-- formula-not-decoded -->")
-                        report.setdefault("warnings", []).append("Нераспознанные формулы восстановлены через языковую модель")
-                        cache_document_result(filename, content, result)
-                except Exception as err:
-                    logging.warning("Formula recovery failed: %s", err)
-                finally:
-                    await client.close()
         ocr_jobs.finish(job, future, result)
         logging.info("ocr_job_completed job_id=%s request_sha256=%s", job.job_id, job.request_sha256)
     except Exception as error:

@@ -74,9 +74,14 @@ def _extract_with_pypdf(tmp_path: str, lecture_title: str) -> Optional[str]:
     return None
 
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 def get_ocr_configuration() -> dict:
     return {
-        "version": "ocr-v6-native-syntax",
+        "version": "ocr-v7-visual-audit",
         "with_docling": os.environ.get("COURSE_GRAPH_WITH_DOCLING", "true"),
         "picture_text": os.environ.get("COURSE_GRAPH_OCR_PICTURE_TEXT", "true"),
         "document_timeout": os.environ.get("COURSE_GRAPH_OCR_DOCUMENT_TIMEOUT", "0"),
@@ -86,56 +91,96 @@ def get_ocr_configuration() -> dict:
     }
 
 
-def get_document_cache_path(filename: str, content: bytes) -> Optional[Path]:
+def get_document_cache_path(content: bytes) -> Optional[Path]:
     cache_dir = os.environ.get("COURSE_GRAPH_OCR_CACHE_DIR")
     if not cache_dir:
         return None
     source_hash = hashlib.sha256(content).hexdigest()
     configuration = get_ocr_configuration()
-    key = hashlib.sha256((source_hash + filename + json.dumps(configuration, sort_keys=True)).encode()).hexdigest()
+    key = hashlib.sha256((source_hash + json.dumps(configuration, sort_keys=True)).encode()).hexdigest()
     return Path(cache_dir) / f"{key}.json"
 
 
-def cache_document_result(filename: str, content: bytes, data: dict) -> None:
-    cache_path = get_document_cache_path(filename, content)
+def get_cached_document(filename: str, content: bytes) -> Optional[dict]:
+    cache_path = get_document_cache_path(content)
+    if not cache_path or not cache_path.exists():
+        return None
+    try:
+        cached = json.loads(cache_path.read_text(encoding="utf-8"))
+        if not isinstance(cached, dict) or "markdown" not in cached or "report" not in cached:
+            return None
+        # F02: Adapt markdown lecture title to current filename if needed for converted PDFs
+        if cached.get("report", {}).get("engine") in ("docling", "pypdf"):
+            lecture_title = os.path.splitext(filename)[0]
+            md = cached["markdown"]
+            if md.startswith("# "):
+                lines = md.splitlines(True)
+                lines[0] = f"# {lecture_title}\n"
+                cached["markdown"] = "".join(lines)
+        cached["report"]["cache_hit"] = True
+        return cached
+    except Exception:
+        return None
+
+
+def cache_document_result(content: bytes, data: dict) -> None:
+    cache_path = get_document_cache_path(content)
     if not cache_path:
         return
-    cache_path.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.NamedTemporaryFile(mode="w", dir=cache_path.parent, delete=False) as f:
-        json.dump(data, f, ensure_ascii=False)
-        temporary = Path(f.name)
-    temporary.replace(cache_path)
+    try:
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+        with tempfile.NamedTemporaryFile(mode="w", dir=cache_path.parent, delete=False, encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False)
+            temporary = Path(f.name)
+        temporary.replace(cache_path)
+    except Exception as err:
+        logger.warning("Failed to write document cache: %s", err)
 
 
 def convert_document(filename: str, content: bytes) -> dict:
     """Convert a document (PDF, Markdown, text) to Markdown with LaTeX math."""
     if not content:
         raise ValueError("Empty file content")
+
+    cached = get_cached_document(filename, content)
+    if cached is not None:
+        return cached
+
     started = time.monotonic()
     source_hash = hashlib.sha256(content).hexdigest()
     configuration = get_ocr_configuration()
-    cache_path = get_document_cache_path(filename, content)
-    if cache_path and cache_path.exists():
-        cached = json.loads(cache_path.read_text())
-        cached["report"]["cache_hit"] = True
-        return cached
 
-    def result(markdown, engine, pages=None, exported_pages=None, warnings=None, picture_ocr=None):
-        report = {"engine": engine, "source_sha256": source_hash, "cache_hit": False,
-                  "seconds": round(time.monotonic()-started, 3), "pages": pages,
-                  "exported_pages": exported_pages, "warnings": warnings or [], "picture_ocr": picture_ocr,
-                  "code_blocks": len(re.findall(r"^```", markdown, re.M))//2,
-                  "undecoded_formulas": markdown.count("<!-- formula-not-decoded -->"),
-                  "image_placeholders": markdown.count("<!-- image -->"), **configuration}
+    def result(markdown, engine, pages=None, exported_pages=None, warnings=None, picture_ocr=None, formula_regions=None):
+        from .regions import summarize_formula_regions
+        regions_list = formula_regions or []
+        summary = summarize_formula_regions(
+            regions_list,
+            marker_count=markdown.count("<!-- formula-not-decoded"),
+            warnings=warnings or [],
+            picture_ocr=picture_ocr,
+        )
+        report = {
+            "schema_version": "ocr-report-v2",
+            "engine": engine,
+            "source_sha256": source_hash,
+            "cache_hit": False,
+            "seconds": round(time.monotonic()-started, 3),
+            "pages": pages,
+            "exported_pages": exported_pages,
+            "warnings": warnings or [],
+            "picture_ocr": picture_ocr,
+            "code_blocks": len(re.findall(r"^```", markdown, re.M))//2,
+            "undecoded_formulas": markdown.count("<!-- formula-not-decoded"),
+            "image_placeholders": markdown.count("<!-- image -->"),
+            "formula_regions": [r.to_dict() for r in regions_list],
+            **summary,
+            **configuration,
+        }
         if report["undecoded_formulas"]:
             report["warnings"].append("Часть формул не распознана; такие маркеры не являются учебным содержанием")
         data = {"markdown": markdown, "report": report}
-        # Do not permanently cache a degraded fallback after transient model errors.
-        degraded = bool(picture_ocr and picture_ocr.get("failed_regions")) or any(
-            "частично" in w for w in report["warnings"]
-        )
-        if cache_path and engine in {"docling", "text"} and not degraded:
-            cache_document_result(filename, content, data)
+        if engine in {"docling", "text", "pypdf"}:
+            cache_document_result(content, data)
         return data
 
 
@@ -185,12 +230,19 @@ def convert_document(filename: str, content: bytes) -> dict:
             else:
                 conv_res = converter.convert(tmp_path)
             doc = conv_res.document
+            formula_regions = []
             if lower.endswith(".pdf"):
                 try:
                     from .enrichment import recover_native_programs
                     native_warnings = recover_native_programs(doc, content)
                 except Exception as error:
                     native_warnings = ["Проверка исходного синтаксиса PDF выполнена частично: " + str(error)[:200]]
+                try:
+                    from .enrichment import audit_and_retry_formulas
+                    formula_regions, audit_warnings = audit_and_retry_formulas(doc, content, converter)
+                    native_warnings.extend(audit_warnings)
+                except Exception as error:
+                    native_warnings.append("Проверка и повторное распознавание формул выполнены частично: " + str(error)[:200])
 
             slides_text = [f"# {lecture_title}\n"]
             exported_pages = []
@@ -223,7 +275,7 @@ def convert_document(filename: str, content: bytes) -> dict:
                     warnings.append("Подписи изображений извлечены отдельно, если распознаны; смысл и пространственная структура схем не восстановлены текстовым OCR")
                 if picture_ocr and picture_ocr["failed_regions"]:
                     warnings.append("Часть изображений не удалось обработать текстовым OCR")
-                return result(markdown_text, "docling", len(doc.pages) if hasattr(doc, "pages") else None, exported_pages, warnings, picture_ocr)
+                return result(markdown_text, "docling", len(doc.pages) if hasattr(doc, "pages") else None, exported_pages, warnings, picture_ocr, formula_regions=formula_regions)
         except Exception as error:
             fallback_reason = type(error).__name__ + ": " + str(error)[:300]
             traceback.print_exc()

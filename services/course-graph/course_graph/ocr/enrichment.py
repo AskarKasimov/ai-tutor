@@ -198,3 +198,214 @@ def recover_native_programs(document, pdf_content):
                     document.texts[index] = TextItem.model_validate(fields)
                 warnings.append("Правило Prolog восстановлено из текстового слоя PDF по координатам ошибочно размеченной формулы")
     return warnings
+
+
+def audit_and_retry_formulas(document, pdf_content: bytes, converter=None):
+    """Audit recognized formulas for syntax balance, track regions, and retry crops if needed.
+
+    Never guesses formulas from text context; only relies on native PDF text or visual VLM crops.
+    """
+    import hashlib
+    from dataclasses import asdict
+    import pypdfium2 as pdfium
+    from docling_core.types.doc import DocItemLabel, FormulaItem
+    from .regions import CanonicalBBox, FormulaRegionRecord
+    from .syntax import check_latex_syntax, normalize_formatting_only
+
+    regions = []
+    warnings = []
+
+    formula_items = []
+    for item in getattr(document, "texts", []):
+        if isinstance(item, FormulaItem) or getattr(item, "label", None) == DocItemLabel.FORMULA:
+            formula_items.append(item)
+
+    if not formula_items:
+        return regions, warnings
+
+    source_hash = hashlib.sha256(pdf_content).hexdigest()
+
+    pdf = None
+    try:
+        pdf = pdfium.PdfDocument(pdf_content)
+    except Exception as err:
+        pass
+
+    vlm_stage = None
+    if converter and hasattr(converter, "initialized_pipelines"):
+        for p in converter.initialized_pipelines.values():
+            for stage in getattr(p, "enrichment_pipe", []):
+                if getattr(stage, "engine", None) is not None and type(stage).__name__ in ("CodeFormulaVlmModel", "NativeSyntaxGuard"):
+                    vlm_stage = stage
+                    break
+            if vlm_stage:
+                break
+
+    for idx, item in enumerate(formula_items):
+        prov = item.prov[0] if getattr(item, "prov", None) else None
+        page_no = prov.page_no if prov else 1
+
+        page_w, page_h = 612.0, 792.0
+        if pdf and 1 <= page_no <= len(pdf):
+            try:
+                page = pdf[page_no - 1]
+                page_w, page_h = page.get_size()
+            except Exception:
+                pass
+
+        if prov and prov.bbox:
+            cbbox = CanonicalBBox.from_docling(prov.bbox, page_w, page_h)
+        else:
+            cbbox = CanonicalBBox(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, coord_origin="TOPLEFT", page_width=page_w, page_height=page_h)
+
+        region_id = f"p{page_no}_f{idx}"
+        kind = "inline" if getattr(item, "is_inline", False) else "display"
+        raw_text = (getattr(item, "text", "") or "").strip()
+
+        if raw_text:
+            is_valid, reason = check_latex_syntax(raw_text)
+            if is_valid:
+                regions.append(FormulaRegionRecord(
+                    region_id=region_id,
+                    source_sha256=source_hash,
+                    page=page_no,
+                    bbox=asdict(cbbox),
+                    kind=kind,
+                    status="recognized",
+                    method="visual_ocr",
+                    reason_code=None,
+                    latex=raw_text,
+                    candidate=None,
+                    attempts=1,
+                ))
+                continue
+            primary_reason = reason
+        else:
+            primary_reason = "empty_output"
+
+        # Attempt visual retry on a higher-DPI crop with 4 pt margin if PDF & model available
+        retry_img = None
+        if pdf and prov and prov.bbox and 1 <= page_no <= len(pdf):
+            try:
+                page = pdf[page_no - 1]
+                l = max(0.0, prov.bbox.l - 4.0)
+                b = max(0.0, prov.bbox.b - 4.0)
+                r = min(page_w, prov.bbox.r + 4.0)
+                t = min(page_h, prov.bbox.t + 4.0)
+                crop = (l, b, page_w - r, page_h - t)
+                retry_img = page.render(scale=3.0, crop=crop).to_pil()
+            except Exception as err:
+                warnings.append(f"Не удалось подготовить кроп региона {region_id}: {err}")
+
+        if retry_img is not None and vlm_stage is not None:
+            try:
+                from docling.models.stages.code_formula.code_formula_vlm_model import VlmEngineInput
+                input_item = VlmEngineInput(
+                    image=retry_img,
+                    prompt="<formula>",
+                    temperature=0.0,
+                    max_new_tokens=2048,
+                    extra_generation_config={"skip_special_tokens": False},
+                )
+                engine = getattr(vlm_stage, "engine", None)
+                if engine is not None:
+                    outputs = engine.predict_batch([input_item])
+                    post_proc = getattr(vlm_stage, "_post_process", lambda texts: texts)
+                    retry_raw = post_proc([outputs[0].text])[0].strip()
+                    is_valid, retry_reason = check_latex_syntax(retry_raw)
+                    if is_valid:
+                        if raw_text and check_latex_syntax(raw_text)[0]:
+                            if normalize_formatting_only(raw_text) == normalize_formatting_only(retry_raw):
+                                item.text = retry_raw
+                                regions.append(FormulaRegionRecord(
+                                    region_id=region_id,
+                                    source_sha256=source_hash,
+                                    page=page_no,
+                                    bbox=asdict(cbbox),
+                                    kind=kind,
+                                    status="recognized",
+                                    method="visual_retry",
+                                    reason_code=None,
+                                    latex=retry_raw,
+                                    candidate=None,
+                                    attempts=2,
+                                ))
+                                continue
+                            else:
+                                item.text = ""
+                                item.orig = "formula"
+                                regions.append(FormulaRegionRecord(
+                                    region_id=region_id,
+                                    source_sha256=source_hash,
+                                    page=page_no,
+                                    bbox=asdict(cbbox),
+                                    kind=kind,
+                                    status="suspect",
+                                    method="visual_retry",
+                                    reason_code="suspect_divergence",
+                                    latex=None,
+                                    candidate=retry_raw,
+                                    attempts=2,
+                                ))
+                                continue
+                        else:
+                            item.text = retry_raw
+                            regions.append(FormulaRegionRecord(
+                                region_id=region_id,
+                                source_sha256=source_hash,
+                                page=page_no,
+                                bbox=asdict(cbbox),
+                                kind=kind,
+                                status="recognized",
+                                method="visual_retry",
+                                reason_code=None,
+                                latex=retry_raw,
+                                candidate=None,
+                                attempts=2,
+                            ))
+                            continue
+                    else:
+                        item.text = ""
+                        item.orig = "formula"
+                        regions.append(FormulaRegionRecord(
+                            region_id=region_id,
+                            source_sha256=source_hash,
+                            page=page_no,
+                            bbox=asdict(cbbox),
+                            kind=kind,
+                            status="unresolved",
+                            method="visual_retry",
+                            reason_code=retry_reason,
+                            latex=None,
+                            candidate=retry_raw if retry_raw else None,
+                            attempts=2,
+                        ))
+                        continue
+            except Exception as err:
+                warnings.append(f"Ошибка повторного визуального OCR {region_id}: {err}")
+
+        # Fallback when retry was not performed or failed
+        item.text = ""
+        item.orig = "formula"
+        regions.append(FormulaRegionRecord(
+            region_id=region_id,
+            source_sha256=source_hash,
+            page=page_no,
+            bbox=asdict(cbbox),
+            kind=kind,
+            status="unresolved",
+            method="visual_ocr",
+            reason_code=primary_reason,
+            latex=None,
+            candidate=raw_text if raw_text else None,
+            attempts=1,
+        ))
+
+    if pdf:
+        try:
+            pdf.close()
+        except Exception:
+            pass
+
+    return regions, warnings
+

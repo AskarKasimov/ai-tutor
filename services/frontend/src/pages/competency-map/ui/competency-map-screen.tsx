@@ -245,7 +245,9 @@ function CompetencyMapAdmin({
       ? [t('courseGraph.blockFailed', { count: failedCount })]
       : []),
     ...(materialsBusy ? [t('courseGraph.blockPending')] : []),
-    ...(materialsChanging ? [t('courseGraph.blockChanging')] : []),
+    ...(materialsChanging || queue.items.length > 0 || queue.preparing
+      ? [t('courseGraph.blockChanging')]
+      : []),
     ...(latestBuild.data?.inputsReady === false &&
     !materialsBusy &&
     failedCount === 0

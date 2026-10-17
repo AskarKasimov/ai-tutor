@@ -42,14 +42,3 @@ audio:focus-visible {
   outline: 3px solid var(--app-accent);
   outline-offset: 4px;
 }
-body:has([data-admin-screen]) button:not(:disabled) {
-  cursor: pointer;
-}
-body:has([data-admin-screen])
-  :is(
-    [role='combobox']:not([aria-disabled='true']),
-    [role='option']:not([aria-disabled='true']),
-    select:not(:disabled)
-  ) {
-  cursor: pointer;
-}

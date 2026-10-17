@@ -2,8 +2,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef } from 'react'
 import { CompetencyMapApiError } from '@/entities/competency-map'
 import type {
-  CourseMaterialKind,
   CourseMaterialMetadataPatch,
+  CourseMaterialUploadItem,
 } from '@/entities/competency-map'
 import { useCompetencyMapDependencies } from './dependencies-context'
 import {
@@ -68,15 +68,11 @@ export function useUploadCourseMaterialsMutation(
       tokenRef.current = captureSession(cache)
     },
     mutationFn: async ({
-      files,
+      items,
       subjectId: targetSubjectId,
-      week,
-      kind,
     }: {
-      files: File[]
+      items: CourseMaterialUploadItem[]
       subjectId: string
-      week: number
-      kind: CourseMaterialKind
     }) => {
       const controller = new AbortController()
       controllerRef.current = controller
@@ -88,9 +84,7 @@ export function useUploadCourseMaterialsMutation(
       try {
         return await competencyMap.uploadCourseMaterials(
           targetSubjectId,
-          files,
-          week,
-          kind,
+          items,
           controller.signal,
         )
       } finally {
@@ -116,6 +110,64 @@ export function useUploadCourseMaterialsMutation(
           userId,
           variables.subjectId,
         ),
+      })
+    },
+    retry: false,
+  })
+}
+
+export function useReplaceCourseMaterialMutation(
+  userId: string,
+  subjectId: string,
+) {
+  const { competencyMap } = useCompetencyMapDependencies()
+  const cache = useQueryClient()
+  const tokenRef = useRef(captureSession(cache))
+  const controllerRef = useRef<AbortController | null>(null)
+  useEffect(() => () => controllerRef.current?.abort(), [subjectId])
+  return useMutation({
+    gcTime: 0,
+    onMutate: () => {
+      tokenRef.current = captureSession(cache)
+    },
+    mutationFn: async ({
+      materialId,
+      file,
+    }: {
+      materialId: string
+      file: File
+    }) => {
+      const controller = new AbortController()
+      controllerRef.current = controller
+      const unregister = registerSessionRequest(
+        cache,
+        tokenRef.current,
+        controller,
+      )
+      try {
+        return await competencyMap.replaceCourseMaterialFile(
+          subjectId,
+          materialId,
+          file,
+          controller.signal,
+        )
+      } finally {
+        unregister()
+        if (controllerRef.current === controller) controllerRef.current = null
+      }
+    },
+    onSuccess: async () => {
+      if (!isCurrentSession(cache, tokenRef.current)) return
+      await cache.invalidateQueries({
+        queryKey: competencyMapQueryKeys.subjectMaterials(userId, subjectId),
+      })
+    },
+    onError: async (error) => {
+      if (!isCurrentSession(cache, tokenRef.current)) return
+      if (error instanceof CompetencyMapApiError && error.status === 401)
+        await replaceSession(cache, null)
+      await cache.invalidateQueries({
+        queryKey: competencyMapQueryKeys.subjectMaterials(userId, subjectId),
       })
     },
     retry: false,

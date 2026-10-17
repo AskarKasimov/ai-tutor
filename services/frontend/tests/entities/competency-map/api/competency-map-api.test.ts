@@ -1,6 +1,7 @@
 import { afterEach, expect, it, vi } from 'vitest'
 import {
   readSubjectMaterials,
+  replaceCourseMaterialFile,
   updateCourseMaterialMetadata,
   uploadCourseMaterials,
 } from '@/entities/competency-map'
@@ -34,20 +35,27 @@ it('maps nullable legacy metadata without rejecting the material', async () => {
   ])
 })
 
-it('sends week and kind before repeated file fields', async () => {
-  const fetchMock = vi
-    .fn()
-    .mockResolvedValue(
-      Response.json({ uploaded: [legacyMaterial], failed: [] }),
-    )
+it('sends per-file manifest before repeated file fields', async () => {
+  const fetchMock = vi.fn().mockResolvedValue(
+    Response.json({
+      uploaded: [legacyMaterial],
+      failed: [],
+      results: [{ client_id: 'a', material: legacyMaterial }],
+    }),
+  )
   vi.stubGlobal('fetch', fetchMock)
-  const first = new File(['one'], 'one.pdf', { type: 'application/pdf' })
-  const second = new File(['two'], 'two.pdf', { type: 'application/pdf' })
-  await uploadCourseMaterials('subject-1', [first, second], 3, 'lab')
+  const first = new File(['%PDF-one'], 'one.pdf', { type: 'application/pdf' })
+  const second = new File(['%PDF-two'], 'two.pdf', { type: 'application/pdf' })
+  await uploadCourseMaterials('subject-1', [
+    { clientId: 'a', file: first, week: 3, kind: 'lab' },
+    { clientId: 'b', file: second, week: 6, kind: 'lecture' },
+  ])
   const body = fetchMock.mock.calls[0][1].body as FormData
-  expect([...body.keys()]).toEqual(['week', 'kind', 'file', 'file'])
-  expect(body.get('week')).toBe('3')
-  expect(body.get('kind')).toBe('lab')
+  expect([...body.keys()]).toEqual(['items', 'file', 'file'])
+  expect(JSON.parse(body.get('items') as string)).toEqual([
+    { client_id: 'a', week: 3, kind: 'lab' },
+    { client_id: 'b', week: 6, kind: 'lecture' },
+  ])
   expect(fetchMock.mock.calls[0][0]).toBe(
     '/api/v1/admin/subjects/subject-1/materials',
   )
@@ -90,4 +98,18 @@ it('rejects successful responses that omit the required nullable fields', async 
       ),
   )
   await expect(readSubjectMaterials('subject-1')).rejects.toBeInstanceOf(Error)
+})
+
+it('replaces one material source with a single PDF PUT', async () => {
+  const fetchMock = vi.fn().mockResolvedValue(Response.json(legacyMaterial))
+  vi.stubGlobal('fetch', fetchMock)
+  const pdf = new File(['%PDF-1.7 replacement'], 'replacement.pdf', {
+    type: 'application/pdf',
+  })
+  await replaceCourseMaterialFile('subject-1', 'material-1', pdf)
+  const [url, request] = fetchMock.mock.calls[0]
+  expect(url).toBe('/api/v1/admin/subjects/subject-1/materials/material-1/raw')
+  expect(request.method).toBe('PUT')
+  expect(request.body.getAll('file')).toHaveLength(1)
+  expect(request.body.get('file').name).toBe('replacement.pdf')
 })

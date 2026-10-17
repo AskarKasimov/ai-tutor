@@ -111,9 +111,21 @@ export interface CourseMaterialUploadFailedItem {
   message: string
 }
 
+export interface CourseMaterialUploadItem {
+  clientId: string
+  file: File
+  week: number
+  kind: CourseMaterialKind
+}
+export interface CourseMaterialUploadItemResult {
+  clientId: string
+  material?: CourseMaterial
+  error?: CourseMaterialUploadFailedItem
+}
 export interface CourseMaterialUploadResult {
   uploaded: CourseMaterial[]
   failed: CourseMaterialUploadFailedItem[]
+  results: CourseMaterialUploadItemResult[]
 }
 
 const courseMaterialUploadFailedItemSchema = z.object({
@@ -125,21 +137,32 @@ const courseMaterialUploadFailedItemSchema = z.object({
 const courseMaterialUploadResultSchema = z.object({
   uploaded: z.array(courseMaterialSchema),
   failed: z.array(courseMaterialUploadFailedItemSchema),
+  results: z.array(
+    z.object({
+      client_id: z.string(),
+      material: courseMaterialSchema.optional(),
+      error: courseMaterialUploadFailedItemSchema.optional(),
+    }),
+  ),
 })
 
 export async function uploadCourseMaterials(
   subjectId: string,
-  files: File[],
-  week: number,
-  kind: CourseMaterialKind,
+  items: CourseMaterialUploadItem[],
   signal?: AbortSignal,
 ): Promise<CourseMaterialUploadResult> {
   const body = new FormData()
-  body.append('week', String(week))
-  body.append('kind', kind)
-  for (const file of files) {
-    body.append('file', file, file.name)
-  }
+  body.append(
+    'items',
+    JSON.stringify(
+      items.map(({ clientId, week, kind }) => ({
+        client_id: clientId,
+        week,
+        kind,
+      })),
+    ),
+  )
+  for (const { file } of items) body.append('file', file, file.name)
   const timeout = AbortSignal.timeout(900_000)
   const response = await apiFetch(
     `${apiBase}/admin/subjects/${encodeURIComponent(subjectId)}/materials`,
@@ -173,6 +196,29 @@ export async function uploadCourseMaterials(
       updatedAt: item.updated_at,
     })),
     failed: parsed.data.failed,
+    results: parsed.data.results.map((item) => ({
+      clientId: item.client_id,
+      material: item.material
+        ? {
+            id: item.material.id,
+            subjectId: item.material.subject_id,
+            filename: item.material.filename,
+            contentType: item.material.content_type,
+            fileSize: item.material.file_size,
+            s3RawKey: item.material.s3_raw_key,
+            s3ParsedKey: item.material.s3_parsed_key,
+            parsedText: item.material.parsed_text,
+            charCount: item.material.char_count,
+            status: item.material.status,
+            week: item.material.week,
+            kind: item.material.kind,
+            errorMessage: item.material.error_message,
+            createdAt: item.material.created_at,
+            updatedAt: item.material.updated_at,
+          }
+        : undefined,
+      error: item.error,
+    })),
   }
 }
 
@@ -195,6 +241,46 @@ export async function updateCourseMaterialMetadata(
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(patch),
+      signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
+    },
+  )
+  const parsed = courseMaterialSchema.safeParse(await readResponse(response))
+  if (!parsed.success) throw new Error(i18n.t('competencyMap.invalidResponse'))
+  const item = parsed.data
+  return {
+    id: item.id,
+    subjectId: item.subject_id,
+    filename: item.filename,
+    contentType: item.content_type,
+    fileSize: item.file_size,
+    s3RawKey: item.s3_raw_key,
+    s3ParsedKey: item.s3_parsed_key,
+    parsedText: item.parsed_text,
+    charCount: item.char_count,
+    status: item.status,
+    week: item.week,
+    kind: item.kind,
+    errorMessage: item.error_message,
+    createdAt: item.created_at,
+    updatedAt: item.updated_at,
+  }
+}
+
+export async function replaceCourseMaterialFile(
+  subjectId: string,
+  materialId: string,
+  file: File,
+  signal?: AbortSignal,
+): Promise<CourseMaterial> {
+  const body = new FormData()
+  body.append('file', file, file.name)
+  const timeout = AbortSignal.timeout(900_000)
+  const response = await apiFetch(
+    `${apiBase}/admin/subjects/${encodeURIComponent(subjectId)}/materials/${encodeURIComponent(materialId)}/raw`,
+    {
+      method: 'PUT',
+      credentials: 'include',
+      body,
       signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
     },
   )

@@ -28,6 +28,7 @@ export function createAppDependencies(): AppDependencies {
     competencyMap: {
       readSubjectMaterials: competencyMap.readSubjectMaterials,
       uploadCourseMaterials: competencyMap.uploadCourseMaterials,
+      replaceCourseMaterialFile: competencyMap.replaceCourseMaterialFile,
       updateCourseMaterialMetadata: competencyMap.updateCourseMaterialMetadata,
       deleteCourseMaterial: competencyMap.deleteCourseMaterial,
       readCourseGraph: competencyMap.readCourseGraph,

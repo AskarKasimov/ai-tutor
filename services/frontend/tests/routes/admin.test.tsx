@@ -161,6 +161,18 @@ function backend(
                 message: 'Ошибка распознавания',
               },
             ],
+            results: [
+              {
+                client_id: JSON.parse(
+                  (init.body as FormData).get('items') as string,
+                )[0].client_id,
+                error: {
+                  filename: 'corrupted.pdf',
+                  code: 'OCR_FAILED',
+                  message: 'Ошибка распознавания',
+                },
+              },
+            ],
           }),
         )
       }
@@ -183,7 +195,16 @@ function backend(
         updated_at: 1791356400,
       }
       activeMaterials.push(newMat)
-      return new Response(JSON.stringify({ uploaded: [newMat], failed: [] }))
+      const clientId = JSON.parse(
+        (init.body as FormData).get('items') as string,
+      )[0].client_id
+      return new Response(
+        JSON.stringify({
+          uploaded: [newMat],
+          failed: [],
+          results: [{ client_id: clientId, material: newMat }],
+        }),
+      )
     }
     if (
       url.includes('/admin/subjects/') &&
@@ -455,20 +476,18 @@ it('retries a failed session check without exposing the lesson', async () => {
 it('uploads lecture files and shows success message', async () => {
   const fetch = backend()
   renderApp('/admin/competency-map')
-  const input = await screen.findByLabelText('Загрузить файлы материалов')
+  const input = await screen.findByLabelText('Добавить PDF или ZIP')
   fireEvent.change(input, {
     target: {
       files: [
-        new File(['pdfcontent'], 'new_lecture.pdf', {
+        new File(['%PDF-1.7 pdfcontent'], 'new_lecture.pdf', {
           type: 'application/pdf',
         }),
       ],
     },
   })
   expect(await screen.findByText(/new_lecture\.pdf/)).toBeVisible()
-  const submitBtn = screen.getByRole('button', {
-    name: /Загрузить и распознать материалы/,
-  })
+  const submitBtn = screen.getByRole('button', { name: 'Отправить всё' })
   fireEvent.click(submitBtn)
   expect(
     await screen.findByText(
@@ -484,8 +503,7 @@ it('uploads lecture files and shows success message', async () => {
     ([url, init]) => url.endsWith('/materials') && init?.method === 'POST',
   )!
   expect(request?.body).toBeInstanceOf(FormData)
-  expect((request?.body as FormData).get('week')).toBe('1')
-  expect((request?.body as FormData).get('kind')).toBe('lecture')
+  expect((request?.body as FormData).get('items')).toBeTruthy()
 })
 
 it('blocks graph generation for legacy materials until their metadata is fixed', async () => {
@@ -641,26 +659,20 @@ it('deletes an uploaded material after confirmation', async () => {
 it('shows warning alert when some files fail during upload', async () => {
   backend({ partialUpload: true })
   renderApp('/admin/competency-map')
-  const input = await screen.findByLabelText('Загрузить файлы материалов')
+  const input = await screen.findByLabelText('Добавить PDF или ZIP')
   fireEvent.change(input, {
     target: {
       files: [
-        new File(['bad'], 'corrupted.pdf', {
+        new File(['%PDF-1.7 bad'], 'corrupted.pdf', {
           type: 'application/pdf',
         }),
       ],
     },
   })
   expect(await screen.findByText(/corrupted\.pdf/)).toBeVisible()
-  const submitBtn = screen.getByRole('button', {
-    name: /Загрузить и распознать материалы/,
-  })
+  const submitBtn = screen.getByRole('button', { name: 'Отправить всё' })
   fireEvent.click(submitBtn)
-  expect(
-    await screen.findByText(
-      /Часть файлов не удалось загрузить: corrupted\.pdf: Ошибка распознавания/,
-    ),
-  ).toBeVisible()
+  expect(await screen.findByText(/Ошибка распознавания/)).toBeVisible()
 })
 
 it('shows download error alert when downloading raw material fails', async () => {
@@ -671,4 +683,46 @@ it('shows download error alert when downloading raw material fails', async () =>
   })
   fireEvent.click(downloadBtn)
   expect(await screen.findByRole('alert')).toBeVisible()
+})
+
+it('expands a PDF-only ZIP into independently editable queue rows', async () => {
+  const { zipSync, strToU8 } = await import('fflate')
+  backend()
+  renderApp('/admin/competency-map')
+  const input = await screen.findByLabelText('Добавить PDF или ZIP')
+  const archive = new File(
+    [
+      zipSync({
+        'week-1.pdf': strToU8('%PDF-1.7 one'),
+        'week-2.pdf': strToU8('%PDF-1.7 two'),
+      }),
+    ],
+    'materials.zip',
+  )
+  fireEvent.change(input, { target: { files: [archive] } })
+  expect(await screen.findByText('week-1.pdf')).toBeVisible()
+  expect(await screen.findByText('week-2.pdf')).toBeVisible()
+  expect(screen.getAllByRole('spinbutton', { name: 'Неделя' })).toHaveLength(2)
+})
+
+it('rejects a mixed ZIP without adding any PDFs to the queue', async () => {
+  const { zipSync, strToU8 } = await import('fflate')
+  backend()
+  renderApp('/admin/competency-map')
+  const input = await screen.findByLabelText('Добавить PDF или ZIP')
+  const archive = new File(
+    [
+      zipSync({
+        'week.pdf': strToU8('%PDF-1.7'),
+        'notes.txt': strToU8('not a PDF'),
+      }),
+    ],
+    'materials.zip',
+  )
+  fireEvent.change(input, { target: { files: [archive] } })
+  expect(await screen.findByRole('alert')).toHaveTextContent('notes.txt')
+  expect(screen.queryByText('week.pdf')).not.toBeInTheDocument()
+  expect(
+    screen.queryByRole('button', { name: 'Отправить всё' }),
+  ).not.toBeInTheDocument()
 })

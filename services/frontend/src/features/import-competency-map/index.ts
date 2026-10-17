@@ -1,6 +1,7 @@
 export {
   useSubjectMaterialsQuery,
   useUploadCourseMaterialsMutation,
+  useReplaceCourseMaterialMutation,
   useUpdateCourseMaterialMetadataMutation,
   useDeleteCourseMaterialMutation,
   useCourseGraphQuery,
@@ -14,3 +15,5 @@ export {
   useCompetencyMapDependencies,
 } from './model/dependencies-context'
 export type { CompetencyMapDependencies } from './model/dependencies-context'
+
+export { MaterialUploadQueue } from './ui/material-upload-queue'

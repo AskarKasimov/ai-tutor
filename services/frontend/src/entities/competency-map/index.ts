@@ -5,10 +5,13 @@ export {
   uploadCourseMaterials,
   updateCourseMaterialMetadata,
   deleteCourseMaterial,
+  replaceCourseMaterialFile,
   downloadCourseMaterialRaw,
 } from './api/competency-map-api'
 export type {
   CourseMaterialUploadFailedItem,
+  CourseMaterialUploadItem,
+  CourseMaterialUploadItemResult,
   CourseMaterialUploadResult,
   CourseMaterialMetadataPatch,
 } from './api/competency-map-api'

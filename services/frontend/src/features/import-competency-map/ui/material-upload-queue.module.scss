@@ -1,0 +1,37 @@
+.queue {
+  display: grid;
+  gap: var(--space-3);
+}
+.add {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  cursor: pointer;
+}
+.add input {
+  max-width: 100%;
+}
+.row {
+  display: grid;
+  grid-template-columns: minmax(12rem, 1fr) 8rem 10rem auto;
+  align-items: end;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--gray-a6);
+  border-radius: var(--radius-3);
+}
+.row label {
+  display: grid;
+  gap: var(--space-1);
+}
+.name {
+  overflow-wrap: anywhere;
+}
+@media (max-width: 720px) {
+  .row {
+    grid-template-columns: 1fr 1fr;
+  }
+  .name {
+    grid-column: 1 / -1;
+  }
+}

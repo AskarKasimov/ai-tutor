@@ -4,8 +4,8 @@ import {
   Button,
   Dialog,
   Flex,
-  Heading,
   Progress,
+  Heading,
   Select,
   Text,
   TextField,
@@ -23,8 +23,6 @@ import {
   ShieldCheck,
   Sparkles,
   Trash2,
-  Upload,
-  X,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -39,6 +37,8 @@ import {
   useSubjectMaterialsQuery,
   useUpdateCourseMaterialMetadataMutation,
   useUploadCourseMaterialsMutation,
+  useReplaceCourseMaterialMutation,
+  MaterialUploadQueue,
 } from '@/features/import-competency-map'
 import {
   useCourseGraphQuery,
@@ -91,6 +91,7 @@ function CompetencyMapAdmin({ userId }: { userId: string }) {
   // Course materials state and mutations
   const materialsQuery = useSubjectMaterialsQuery(userId, subjectId)
   const uploadMaterials = useUploadCourseMaterialsMutation(userId, subjectId)
+  const replaceMaterial = useReplaceCourseMaterialMutation(userId, subjectId)
   const deleteMaterial = useDeleteCourseMaterialMutation(userId, subjectId)
   const updateMetadata = useUpdateCourseMaterialMetadataMutation(
     userId,
@@ -99,47 +100,12 @@ function CompetencyMapAdmin({ userId }: { userId: string }) {
   const latestBuild = useLatestCourseGraphBuildQuery(userId, subjectId)
   const courseGraph = useCourseGraphQuery(userId, subjectId)
   const startBuild = useStartCourseGraphBuildMutation(userId, subjectId)
-  const [lectureFiles, setLectureFiles] = useState<File[]>([])
-  const [uploadWeek, setUploadWeek] = useState('1')
-  const [uploadKind, setUploadKind] = useState<CourseMaterialKind>('lecture')
-  const [materialsFileError, setMaterialsFileError] = useState<string | null>(
-    null,
-  )
   const [previewId, setPreviewId] = useState<string | null>(null)
-  const [uploadWarning, setUploadWarning] = useState<string | null>(null)
-
-  function selectLectureFiles(selected: FileList | null) {
-    uploadMaterials.reset()
-    setMaterialsFileError(null)
-    setUploadWarning(null)
-    if (!selected || selected.length === 0) return
-    const validFiles: File[] = []
-    for (let i = 0; i < selected.length; i++) {
-      const f = selected[i]
-      if (!/\.(pdf|md|txt|markdown)$/i.test(f.name)) {
-        setMaterialsFileError(t('competencyMap.materialsInvalidType'))
-        return
-      }
-      if (f.size > 50 * 1024 * 1024) {
-        setMaterialsFileError(t('competencyMap.tooLarge'))
-        return
-      }
-      if (f.size === 0) {
-        setMaterialsFileError(t('competencyMap.emptyFile'))
-        return
-      }
-      validFiles.push(f)
-    }
-    setLectureFiles((prev) => [...prev, ...validFiles])
-  }
-
-  function removeLectureFile(index: number) {
-    setLectureFiles((prev) => prev.filter((_, i) => i !== index))
-  }
 
   const busy =
     create.isPending ||
     uploadMaterials.isPending ||
+    replaceMaterial.isPending ||
     deleteMaterial.isPending ||
     updateMetadata.isPending
   const materials = materialsQuery.data ?? []
@@ -359,137 +325,11 @@ function CompetencyMapAdmin({ userId }: { userId: string }) {
                 </Heading>
               </div>
 
-              <LectureFilesZone
-                files={lectureFiles}
+              <MaterialUploadQueue
+                userId={userId}
+                subjectId={subjectId}
                 disabled={busy}
-                onSelect={selectLectureFiles}
-                onRemove={removeLectureFile}
               />
-
-              <div className={styles.uploadMetadata}>
-                <label>
-                  {t('courseGraph.weekLabel')}
-                  <TextField.Root
-                    type="number"
-                    min="1"
-                    step="1"
-                    value={uploadWeek}
-                    disabled={busy}
-                    onChange={(event) => setUploadWeek(event.target.value)}
-                    aria-label={t('courseGraph.weekLabel')}
-                  />
-                </label>
-                <label>
-                  {t('courseGraph.kindLabel')}
-                  <Select.Root
-                    value={uploadKind}
-                    onValueChange={(value) =>
-                      setUploadKind(value as CourseMaterialKind)
-                    }
-                  >
-                    <Select.Trigger aria-label={t('courseGraph.kindLabel')} />
-                    <Select.Content>
-                      <Select.Item value="lecture">
-                        {t('courseGraph.kinds.lecture')}
-                      </Select.Item>
-                      <Select.Item value="lab">
-                        {t('courseGraph.kinds.lab')}
-                      </Select.Item>
-                      <Select.Item value="tutorial">
-                        {t('courseGraph.kinds.tutorial')}
-                      </Select.Item>
-                    </Select.Content>
-                  </Select.Root>
-                </label>
-              </div>
-
-              {materialsFileError && (
-                <Text as="p" role="alert" color="red" size="2">
-                  {materialsFileError}
-                </Text>
-              )}
-
-              {uploadMaterials.isPending && (
-                <MaterialsUploadProgressBar filesCount={lectureFiles.length} />
-              )}
-
-              {uploadMaterials.isError && (
-                <div role="alert" className={styles.error}>
-                  <Text as="p">
-                    {uploadMaterials.error instanceof Error
-                      ? uploadMaterials.error.message
-                      : t('competencyMap.unknownResult')}
-                  </Text>
-                </div>
-              )}
-
-              {uploadMaterials.isSuccess && (
-                <Text as="p" role="status" className={styles.success}>
-                  <CheckCircle2 size={20} aria-hidden="true" />
-                  {t('competencyMap.materialsSuccess')}
-                </Text>
-              )}
-
-              {uploadWarning && (
-                <div role="alert" className={styles.warning}>
-                  <Text as="p">{uploadWarning}</Text>
-                </div>
-              )}
-
-              {lectureFiles.length > 0 && (
-                <div className={styles.actions}>
-                  <Button
-                    size="3"
-                    color="green"
-                    className={styles.submit}
-                    disabled={
-                      lectureFiles.length === 0 ||
-                      busy ||
-                      !/^\d+$/.test(uploadWeek) ||
-                      Number(uploadWeek) < 1
-                    }
-                    onClick={() => {
-                      setUploadWarning(null)
-                      uploadMaterials.mutate(
-                        {
-                          files: lectureFiles,
-                          subjectId,
-                          week: Number(uploadWeek),
-                          kind: uploadKind,
-                        },
-                        {
-                          onSuccess: (result) => {
-                            setLectureFiles([])
-                            if (result.failed && result.failed.length > 0) {
-                              const failedMsg = result.failed
-                                .map((f) => `${f.filename}: ${f.message}`)
-                                .join('; ')
-                              setUploadWarning(
-                                t('competencyMap.materialsPartialWarning', {
-                                  failed: failedMsg,
-                                }),
-                              )
-                            }
-                          },
-                        },
-                      )
-                    }}
-                  >
-                    <Check size={18} aria-hidden="true" />
-                    {t('competencyMap.materialsSubmit')} ({lectureFiles.length})
-                  </Button>
-                  <Button
-                    size="3"
-                    color="red"
-                    variant="soft"
-                    disabled={busy}
-                    onClick={() => setLectureFiles([])}
-                  >
-                    <X size={18} aria-hidden="true" />
-                    {t('competencyMap.cancelEdit')}
-                  </Button>
-                </div>
-              )}
             </section>
 
             <section
@@ -503,6 +343,13 @@ function CompetencyMapAdmin({ userId }: { userId: string }) {
                 </Heading>
               </div>
 
+              {replaceMaterial.isError && (
+                <Text as="p" role="alert" color="red">
+                  {replaceMaterial.error instanceof Error
+                    ? replaceMaterial.error.message
+                    : t('competencyMap.requestError')}
+                </Text>
+              )}
               {materialsQuery.isPending ? (
                 <Text as="p" role="status" color="gray" size="2">
                   {t('competencyMap.loading')}
@@ -541,6 +388,9 @@ function CompetencyMapAdmin({ userId }: { userId: string }) {
                       }
                       onMetadataChange={(patch) =>
                         updateMetadata.mutate({ materialId: mat.id, patch })
+                      }
+                      onReplace={(file) =>
+                        replaceMaterial.mutate({ materialId: mat.id, file })
                       }
                       busy={busy}
                     />
@@ -730,6 +580,7 @@ function MaterialItemCard({
   onTogglePreview,
   onDelete,
   onMetadataChange,
+  onReplace,
   busy,
 }: {
   material: CourseMaterial
@@ -741,6 +592,7 @@ function MaterialItemCard({
     week?: number
     kind?: CourseMaterialKind
   }) => void
+  onReplace: (file: File) => void
   busy: boolean
 }) {
   const { t, i18n } = useTranslation()
@@ -862,6 +714,19 @@ function MaterialItemCard({
         </Flex>
       </div>
 
+      <label className={styles.replaceMaterial}>
+        <span>{t('competencyMap.materialReplace')}</span>
+        <input
+          type="file"
+          accept=".pdf,application/pdf"
+          disabled={busy}
+          onChange={(event) => {
+            const file = event.currentTarget.files?.[0]
+            if (file) onReplace(file)
+            event.currentTarget.value = ''
+          }}
+        />
+      </label>
       <div className={styles.materialClassification}>
         <label>
           {t('courseGraph.weekLabel')}
@@ -931,119 +796,6 @@ function MaterialItemCard({
           {material.parsedText || '(текст отсутствует)'}
         </div>
       )}
-    </div>
-  )
-}
-
-function LectureFilesZone({
-  files,
-  disabled,
-  onSelect,
-  onRemove,
-}: {
-  files: File[]
-  disabled: boolean
-  onSelect: (files: FileList | null) => void
-  onRemove: (index: number) => void
-}) {
-  const { t } = useTranslation()
-  const [dragging, setDragging] = useState(false)
-  return (
-    <div>
-      <label
-        className={styles.dropzone}
-        data-dragging={dragging || undefined}
-        data-disabled={disabled || undefined}
-        onDragOver={(event) => {
-          event.preventDefault()
-          if (!disabled) setDragging(true)
-        }}
-        onDragLeave={() => setDragging(false)}
-        onDrop={(event) => {
-          event.preventDefault()
-          setDragging(false)
-          if (!disabled) onSelect(event.dataTransfer.files)
-        }}
-      >
-        <input
-          type="file"
-          multiple
-          className={styles.fileInput}
-          aria-label={t('competencyMap.materialsDropTitle')}
-          accept=".pdf,.md,.txt,.markdown"
-          disabled={disabled}
-          onChange={(event) => {
-            onSelect(event.target.files)
-            event.target.value = ''
-          }}
-        />
-        <span className={styles.dropzoneIcon} aria-hidden="true">
-          <Upload size={22} />
-        </span>
-        <span className={styles.dropzoneText}>
-          <Text weight="bold">{t('competencyMap.materialsDropTitle')}</Text>
-          <Text size="2" color="gray">
-            {t('competencyMap.materialsDropHint')}
-          </Text>
-        </span>
-      </label>
-
-      {files.length > 0 && (
-        <div className={styles.fileChips}>
-          {files.map((f, idx) => (
-            <span key={idx} className={styles.fileChip}>
-              <FileText size={14} aria-hidden="true" />
-              <span>
-                {f.name} ({(f.size / 1024).toFixed(0)} КБ)
-              </span>
-              {!disabled && (
-                <button
-                  type="button"
-                  aria-label={`Удалить ${f.name}`}
-                  onClick={() => onRemove(idx)}
-                >
-                  <X size={12} />
-                </button>
-              )}
-            </span>
-          ))}
-        </div>
-      )}
-    </div>
-  )
-}
-
-function MaterialsUploadProgressBar({ filesCount }: { filesCount: number }) {
-  const { t } = useTranslation()
-  const [percent, setPercent] = useState(10)
-
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setPercent((prev) => {
-        if (prev >= 95) return prev
-        const remaining = 95 - prev
-        const step = Math.max(1, Math.floor(remaining / 8))
-        return Math.min(95, prev + step)
-      })
-    }, 600)
-    return () => clearInterval(timer)
-  }, [])
-
-  return (
-    <div className={styles.uploadProgressBox} role="status" aria-live="polite">
-      <div className={styles.uploadProgressHeader}>
-        <Flex gap="2" align="center">
-          <Sparkles size={16} aria-hidden="true" className={styles.spinIcon} />
-          <Text size="2" weight="medium">
-            {t('competencyMap.materialsUploading')}
-            {filesCount > 1 ? ` (${filesCount})` : ''}
-          </Text>
-        </Flex>
-        <Text size="2" color="gray" weight="bold">
-          {percent}%
-        </Text>
-      </div>
-      <Progress value={percent} size="2" color="blue" />
     </div>
   )
 }

@@ -5,7 +5,7 @@ import type {
   CourseMaterial,
   CourseMaterialUploadResult,
   CourseMaterialMetadataPatch,
-  CourseMaterialKind,
+  CourseMaterialUploadItem,
 } from '@/entities/competency-map'
 
 export type CompetencyMapDependencies = {
@@ -16,11 +16,15 @@ export type CompetencyMapDependencies = {
     ): Promise<CourseMaterial[]>
     uploadCourseMaterials(
       subjectId: string,
-      files: File[],
-      week: number,
-      kind: CourseMaterialKind,
+      items: CourseMaterialUploadItem[],
       signal?: AbortSignal,
     ): Promise<CourseMaterialUploadResult>
+    replaceCourseMaterialFile(
+      subjectId: string,
+      materialId: string,
+      file: File,
+      signal?: AbortSignal,
+    ): Promise<CourseMaterial>
     updateCourseMaterialMetadata(
       subjectId: string,
       materialId: string,

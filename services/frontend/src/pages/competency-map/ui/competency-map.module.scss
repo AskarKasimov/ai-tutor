@@ -86,7 +86,7 @@
     border-radius: var(--radius-4);
     background: var(--color-panel-solid);
     color: var(--app-muted);
-    span {
+    > span {
       display: grid;
       place-items: center;
       flex: none;
@@ -100,12 +100,12 @@
     &[data-ready] {
       color: var(--app-ink);
       border-color: var(--blue-7);
-      span {
+      > span {
         background: var(--blue-3);
         color: var(--blue-11);
       }
     }
-    &[data-ready] span {
+    &[data-ready] > span {
       background: var(--green-3);
       color: var(--green-11);
     }

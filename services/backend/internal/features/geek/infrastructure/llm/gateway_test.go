@@ -163,6 +163,32 @@ func TestGatewayReturnsTheReplyAndLeavesTheRecapOutOfTheDialogue(t *testing.T) {
 	}
 }
 
+func TestEvaluationGradesByOutcomesNotBySlides(t *testing.T) {
+	// Decision of 18.10.2026: the outcomes say what to check, the topic text is
+	// the reference by meaning, and slide details are never required.
+	n := node
+	n.Outcomes = []string{"объяснять, из чего складывается оценка f(n)"}
+	prompt := evaluationPrompt(application.EvaluationRequest{Kind: exam.KindQuestion, Node: n, Dialogue: turns})
+	for _, want := range []string{
+		"- объяснять, из чего складывается оценка f(n)",
+		"достиг ли студент образовательных результатов темы",
+		"по сути, не дословно",
+		"номер слайда или лекции",
+		"выбирай более высокий",
+		"одно предложение до 15 слов",
+	} {
+		if !strings.Contains(prompt, want) {
+			t.Errorf("evaluation prompt lacks %q", want)
+		}
+	}
+	if strings.Contains(prompt, "строго по тексту темы") || strings.Contains(prompt, "35 слов") {
+		t.Error("evaluation prompt still grades strictly by the topic text or allows 35 words")
+	}
+	if p := explanationPrompt(application.EvaluationRequest{Node: n, Dialogue: turns}); !strings.Contains(p, "одно предложение до 15 слов") {
+		t.Errorf("explanation prompt = %s", p)
+	}
+}
+
 func TestGatewayExplainsOnTheLowPool(t *testing.T) {
 	f := &fakeGateway{answers: []string{`{"text": "A* складывает g и h."}`}}
 	g := serve(t, f, time.Second)

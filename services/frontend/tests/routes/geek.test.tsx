@@ -277,7 +277,14 @@ function geekBackend(
         url,
       )
     ) {
-      if (control.voiceGate) await control.voiceGate
+      if (control.voiceGate)
+        await new Promise<void>((resolve, reject) => {
+          // Like a browser, an aborted request rejects at once.
+          init?.signal?.addEventListener('abort', () =>
+            reject(new DOMException('Aborted', 'AbortError')),
+          )
+          void control.voiceGate!.then(resolve)
+        })
       if (control.failVoice)
         return Response.json(
           { code: 'PROCESSING_UNAVAILABLE', message: 'Недоступно.' },
@@ -862,4 +869,63 @@ it('shows the reply when its voice fails instead of thinking forever', async () 
   await answerByText('Перестанет быть оптимальным')
   expect(await screen.findByText('Верно про оптимальность.')).toBeVisible()
   expect(screen.queryByText('Geek думает…')).toBeNull()
+})
+
+it('stops a voice that comes after the reply was shown without it', async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true })
+  try {
+    const { control, fetch } = geekBackend()
+    renderApp()
+    await start()
+    await waitFor(() => expect(FakeAudio.played).toHaveLength(1))
+    const voice = gate()
+    control.voiceGate = voice.closed
+    await answerByText('Перестанет быть оптимальным')
+    await waitFor(() =>
+      expect(
+        fetch.mock.calls.some(([url]) => url.endsWith('/t3/audio?part=reply')),
+      ).toBe(true),
+    )
+    await act(() => vi.advanceTimersByTimeAsync(20_000))
+    expect(screen.getByText('Верно про оптимальность.')).toBeVisible()
+    expect(screen.getByRole('textbox', { name: 'Ваш ответ' })).toBeEnabled()
+
+    voice.open()
+    await act(() => vi.advanceTimersByTimeAsync(100))
+    expect(FakeAudio.played).toHaveLength(1)
+  } finally {
+    vi.useRealTimers()
+  }
+})
+
+it('does not let a stopped voice of an older reply show the next one', async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true })
+  try {
+    const { control, fetch } = geekBackend()
+    renderApp()
+    await start()
+    await waitFor(() => expect(FakeAudio.played).toHaveLength(1))
+    control.voiceGate = gate().closed
+    await answerByText('Перестанет быть оптимальным')
+    await waitFor(() =>
+      expect(
+        fetch.mock.calls.some(([url]) => url.endsWith('/t3/audio?part=reply')),
+      ).toBe(true),
+    )
+    await act(() => vi.advanceTimersByTimeAsync(20_000))
+    expect(screen.getByText('Верно про оптимальность.')).toBeVisible()
+
+    // The next answer stops what is left of the old voice; the next reply
+    // still waits for its own.
+    await answerByText('Оценка расстояния')
+    await waitFor(() =>
+      expect(fetch.mock.calls.some(([url]) => url.includes('/t5/audio'))).toBe(
+        true,
+      ),
+    )
+    expect(screen.queryByText('эвристическая функция')).toBeNull()
+    expect(screen.getByText('Geek думает…')).toBeVisible()
+  } finally {
+    vi.useRealTimers()
+  }
 })

@@ -134,18 +134,29 @@ function Dialogue({
   // animation until its voice starts, so the text and the reaction arrive
   // together instead of the text waiting seconds for synthesis. answered is
   // the turn the student replied to; the turn after it is the hidden one.
+  // revealed is the last turn shown: a reveal names its turn, so a late
+  // callback of an older turn cannot show the next one before its voice.
   const [answered, setAnswered] = useState<string | null>(null)
+  const [revealed, setRevealed] = useState<string | null>(null)
   const hiddenId =
-    answered && lastTurn?.speaker === 'geek' && lastTurn.id !== answered
+    answered &&
+    lastTurn?.speaker === 'geek' &&
+    lastTurn.id !== answered &&
+    lastTurn.id !== revealed
       ? lastTurn.id
       : null
-  const reveal = useCallback(() => setAnswered(null), [])
+  const stopVoice = audio.stop
   useEffect(() => {
     if (!hiddenId) return
-    // The voice may never come (a slow or failing speech service).
-    const timer = setTimeout(reveal, REVEAL_TIMEOUT_MS)
+    // The voice may never come (a slow or failing speech service). The turn
+    // is then shown without it, and a voice arriving later must not start
+    // over the text the student is already reading.
+    const timer = setTimeout(() => {
+      stopVoice()
+      setRevealed(hiddenId)
+    }, REVEAL_TIMEOUT_MS)
     return () => clearTimeout(timer)
-  }, [hiddenId, reveal])
+  }, [hiddenId, stopVoice])
 
   // A new Geek turn is voiced at once; the first one after loading too, since
   // the student has just pressed start or continue.
@@ -158,9 +169,10 @@ function Dialogue({
       !capturing
     ) {
       voiced.current = lastTurn.id
-      void play(lastTurn, lastTurn.id === hiddenId ? reveal : undefined)
+      const id = lastTurn.id
+      void play(lastTurn, id === hiddenId ? () => setRevealed(id) : undefined)
     }
-  }, [lastTurn, play, capturing, hiddenId, reveal])
+  }, [lastTurn, play, capturing, hiddenId])
   useEffect(() => {
     end.current?.scrollIntoView?.({ block: 'end' })
   }, [session.turns.length, answer.isPending, hiddenId])

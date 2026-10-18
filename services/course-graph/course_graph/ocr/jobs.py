@@ -45,6 +45,12 @@ class OcrJobs:
         self._max_result_bytes = max_result_bytes
         self._result_bytes = 0
 
+    def _clear_job_result(self, job: OcrJob) -> None:
+        if job.result_bytes:
+            self._result_bytes = max(0, self._result_bytes - job.result_bytes)
+            job.result_bytes = 0
+        job.result = None
+
     def reserve(self, job_id: str, filename: str, content: bytes) -> tuple[OcrJob, bool, Future | None]:
         digest = hashlib.sha256(filename.lower().encode("utf-8") + b"\0" + content).hexdigest()
         with self._lock:
@@ -55,11 +61,12 @@ class OcrJobs:
                 self._jobs.move_to_end(job_id)
                 if job.future is not None:
                     return job, False, job.future
-                if job.state == "succeeded" and job.result is not None:
+                report = job.result.get("report", {}) if isinstance(job.result, dict) else {}
+                if job.state == "succeeded" and job.result is not None and report.get("work_complete", True) is not False:
                     return job, False, None
-                if job.state in {"failed", "succeeded"}:
-                    job.state, job.stage, job.error = "queued", "opening", None
-                    job.updated_at = _now()
+                job.state, job.stage, job.error = "queued", "opening", None
+                self._clear_job_result(job)
+                job.updated_at = _now()
             else:
                 job = OcrJob(job_id=job_id, request_sha256=digest)
                 self._jobs[job_id] = job
@@ -87,16 +94,22 @@ class OcrJobs:
             job.updated_at = _now()
 
     def finish(self, job: OcrJob, future: Future, result: dict) -> None:
+        report = result.get("report", {}) if isinstance(result, dict) else {}
+        work_complete = report.get("work_complete", True)
         encoded_size = len(json.dumps(result, ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
         with self._lock:
-            job.state, job.stage, job.error = "succeeded", "completed", None
+            job.state = "succeeded"
+            job.stage = "completed" if work_complete is not False else "incomplete"
+            job.error = None if work_complete is not False else ("; ".join(report.get("warnings", [])) or "Work incomplete")
             job.future = None
             job.updated_at = _now()
+            self._clear_job_result(job)
             # Only a retained result counts against the budget; an oversized one
             # is returned to the caller but not kept.
-            job.result = result if encoded_size <= self._max_result_bytes else None
-            job.result_bytes = encoded_size if job.result is not None else 0
-            self._result_bytes += job.result_bytes
+            if encoded_size <= self._max_result_bytes:
+                job.result = result
+                job.result_bytes = encoded_size
+                self._result_bytes += encoded_size
             future.set_result((True, result))
             self._evict_results()
             self._prune()
@@ -106,8 +119,7 @@ class OcrJobs:
             job.state, job.stage = "failed", "failed"
             job.error = safe_error
             job.future = None
-            job.result = None
-            job.result_bytes = 0
+            self._clear_job_result(job)
             job.updated_at = _now()
             future.set_result((False, safe_error))
             self._prune()
@@ -140,9 +152,7 @@ class OcrJobs:
             if self._result_bytes <= self._max_result_bytes:
                 break
             if job.result is not None and job.future is None:
-                self._result_bytes -= job.result_bytes
-                job.result = None
-                job.result_bytes = 0
+                self._clear_job_result(job)
 
     def _prune(self) -> None:
         while len(self._jobs) > self._max_jobs:
@@ -150,7 +160,7 @@ class OcrJobs:
             if removable is None:
                 return
             job = self._jobs.pop(removable)
-            self._result_bytes -= job.result_bytes
+            self._clear_job_result(job)
 
 
 ocr_jobs = OcrJobs()

@@ -347,16 +347,94 @@ components:
             type: object
   schemas:
     OcrReport:
-      description: Отчёт распознавания (движок, предупреждения, нераспознанные формулы, кэш)
+      description: Отчёт распознавания (движок, предупреждения, нераспознанные формулы, кэш, регионы формул)
       properties:
+        schema_version:
+          type: string
+          example: "ocr-report-v2"
         engine:
           type: string
+        source_sha256:
+          type: string
+        cache_hit:
+          type: boolean
+        seconds:
+          type: number
+        pages:
+          type: [integer, "null"]
+        exported_pages:
+          type: [array, "null"]
+          items:
+            type: integer
         warnings:
           items:
             type: string
           type: array
+        code_blocks:
+          type: integer
+        undecoded_formulas:
+          type: integer
+        image_placeholders:
+          type: integer
+        formula_regions:
+          type: array
+          items:
+            $ref: "#/components/schemas/FormulaRegion"
+        formula_summary:
+          $ref: "#/components/schemas/FormulaSummary"
+        work_complete:
+          type: boolean
+        content_complete:
+          type: boolean
       required: [engine, warnings]
       type: object
+    FormulaSummary:
+      type: object
+      properties:
+        detected:
+          type: integer
+        recognized:
+          type: integer
+        unresolved:
+          type: integer
+        suspect:
+          type: integer
+        failed_transient:
+          type: integer
+        marker_count:
+          type: integer
+      required: [detected, recognized, unresolved, suspect, failed_transient, marker_count]
+    FormulaRegion:
+      type: object
+      properties:
+        region_id:
+          type: string
+        source_sha256:
+          type: string
+        page:
+          type: integer
+        bbox:
+          type: object
+        kind:
+          type: string
+          enum: [display, inline]
+        status:
+          type: string
+          enum: [recognized, unresolved, suspect, failed_transient]
+        method:
+          type: string
+          enum: [native_pdf, visual_ocr, visual_retry]
+        reason_code:
+          type: [string, "null"]
+        verification:
+          type: string
+        latex:
+          type: [string, "null"]
+        candidate:
+          type: [string, "null"]
+        attempts:
+          type: integer
+      required: [region_id, source_sha256, page, bbox, kind, status, method, verification, attempts]
     Source:
       additionalProperties: false
       description: Дословный фрагмент материала, из которого взята тема

@@ -16,7 +16,7 @@ from course_graph.cleaning.cleaner import clean_markdown
 from course_graph.llm.client import ModelClient
 from starlette.concurrency import run_in_threadpool
 
-from course_graph.ocr.converter import convert_document as convert_source_document
+from course_graph.ocr.converter import convert_document as convert_source_document, document_parser
 from course_graph.ocr.jobs import JobConflict, OcrJob, ocr_jobs
 from course_graph.model_runtime import model_runtime
 from course_graph.topics.extract import ExtractionSettings, extract_topics
@@ -43,6 +43,27 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Course Graph Service", version="1.0.0", lifespan=lifespan)
 ocr_slots = asyncio.Semaphore(1)
+# In-flight computations only: results remain in the bounded job store/disk
+# cache. Each HTTP job keeps its own ID, status and filename.
+ocr_flights = {}
+
+
+async def compute_ocr(job, filename, content, requires_models):
+    from .ocr.converter import get_cached_document
+    if document_parser(filename) == "text":
+        ocr_jobs.update(job, state="running", stage="converting")
+        return await run_in_threadpool(convert_source_document, filename, content)
+    if requires_models and not model_runtime.status()["ready"]:
+        ocr_jobs.update(job, state="running", stage="waiting_models")
+        if not await run_in_threadpool(model_runtime.wait):
+            raise RuntimeError("OCR models are not ready")
+    async with ocr_slots:
+        # Another document may have populated the cache while we queued.
+        cached = await run_in_threadpool(get_cached_document, filename, content)
+        if cached is not None:
+            return cached
+        ocr_jobs.update(job, state="running", stage="converting")
+        return await run_in_threadpool(convert_source_document, filename, content)
 
 
 @app.get("/health")
@@ -64,17 +85,23 @@ async def run_ocr_job(job: OcrJob, future, filename: str, content: bytes, requir
 
     heartbeat_task = asyncio.create_task(heartbeat())
     try:
-        if requires_models:
-            status = model_runtime.status()
-            if not status["ready"]:
-                ocr_jobs.update(job, state="running", stage="waiting_models")
-                ready = await run_in_threadpool(model_runtime.wait)
-                if not ready:
-                    raise RuntimeError("OCR models are not ready")
-        ocr_jobs.update(job, state="running", stage="opening")
-        async with ocr_slots:
+        from .ocr.converter import document_for_filename, document_key, get_cached_document
+        cached = await run_in_threadpool(get_cached_document, filename, content)
+        if cached is not None:
+            ocr_jobs.finish(job, future, cached)
+            logging.info("ocr_job_cache_hit job_id=%s request_sha256=%s", job.job_id, job.request_sha256)
+            return
+
+        key = document_key(content, filename)
+        task = ocr_flights.get(key)
+        if task is None:
+            task = asyncio.create_task(compute_ocr(job, filename, content, requires_models))
+            ocr_flights[key] = task
+            task.add_done_callback(lambda done: ocr_flights.pop(key, None))
+        else:
             ocr_jobs.update(job, state="running", stage="converting")
-            result = await run_in_threadpool(convert_source_document, filename, content)
+        # One cancelled waiter must not cancel computation for other jobs.
+        result = document_for_filename(await asyncio.shield(task), filename)
         ocr_jobs.finish(job, future, result)
         logging.info("ocr_job_completed job_id=%s request_sha256=%s", job.job_id, job.request_sha256)
     except Exception as error:
@@ -105,7 +132,7 @@ async def convert_document(
 
     if owner:
         requires_models = (
-            filename.lower().endswith(".pdf")
+            document_parser(filename) == ".pdf"
             and os.environ.get("COURSE_GRAPH_WITH_DOCLING", "true").lower() != "false"
         )
         asyncio.create_task(run_ocr_job(job, future, filename, content, requires_models))

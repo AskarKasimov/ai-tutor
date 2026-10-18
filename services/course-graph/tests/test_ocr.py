@@ -79,6 +79,44 @@ def test_text_ocr_cache_records_exact_source_digest(monkeypatch, tmp_path):
     assert second["report"]["source_sha256"] == hashlib.sha256(content).hexdigest()
 
 
+def test_docling_ocr_caches_result_with_undecoded_formulas(monkeypatch, tmp_path):
+    import course_graph.ocr.converter as converter
+    from types import SimpleNamespace as S
+
+    monkeypatch.setenv("COURSE_GRAPH_OCR_CACHE_DIR", str(tmp_path))
+    monkeypatch.setenv("COURSE_GRAPH_WITH_DOCLING", "true")
+
+    class DummyDoc:
+        pages = {1: None}
+        texts = []
+        def export_to_markdown(self, page_no=None):
+            return "Определение: <!-- formula-not-decoded --> в формуле."
+
+    class DummyConverter:
+        initialized_pipelines = {}
+        def initialize_pipeline(self, *args, **kwargs):
+            return S(enrichment_pipe=[])
+        def convert(self, path):
+            return S(document=DummyDoc(), status="success")
+
+    monkeypatch.setattr(converter, "get_converter", lambda: DummyConverter())
+    import io
+    from pypdf import PdfWriter
+    writer = PdfWriter()
+    writer.add_blank_page(width=72, height=72)
+    stream = io.BytesIO()
+    writer.write(stream)
+    content = stream.getvalue()
+
+    first = converter.convert_document("lecture.pdf", content)
+    assert not first["report"]["cache_hit"]
+    assert first["report"]["undecoded_formulas"] == 1
+
+    second = converter.convert_document("lecture.pdf", content)
+    assert second["report"]["cache_hit"]
+    assert second["report"]["undecoded_formulas"] == 1
+
+
 def test_cpu_enrichment_uses_native_precision(monkeypatch):
     import docling.document_converter as docling
     import course_graph.ocr.converter as converter
@@ -93,6 +131,48 @@ def test_cpu_enrichment_uses_native_precision(monkeypatch):
     assert options.do_code_enrichment and options.do_formula_enrichment
     assert options.code_formula_options.engine_options.torch_dtype == "float32"
     assert options.code_formula_options.engine_options.use_kv_cache
+
+
+def test_ocr_device_follows_the_env_choice(monkeypatch):
+    import docling.document_converter as docling
+    import course_graph.ocr.converter as converter
+    import course_graph.model_runtime as runtime
+    from docling.datamodel.accelerator_options import AcceleratorDevice
+    captured = {}
+    def constructor(**kwargs):
+        captured.update(kwargs)
+        return object()
+    monkeypatch.setattr(docling, "DocumentConverter", constructor)
+    monkeypatch.setattr(runtime, "require_ocr_device", lambda: None)
+    for value, device in [(None, AcceleratorDevice.CPU), ("cpu", AcceleratorDevice.CPU), ("GPU", AcceleratorDevice.CUDA)]:
+        if value is None:
+            monkeypatch.delenv("COURSE_GRAPH_DEVICE", raising=False)
+        else:
+            monkeypatch.setenv("COURSE_GRAPH_DEVICE", value)
+        monkeypatch.setattr(converter, "_converter", None)
+        converter.get_converter()
+        options = next(iter(captured["format_options"].values())).pipeline_options
+        assert options.accelerator_options.device == device
+
+
+def test_unknown_ocr_device_is_invalid(monkeypatch):
+    import pytest
+    from course_graph.model_runtime import configured_ocr_device
+    monkeypatch.setenv("COURSE_GRAPH_DEVICE", "tpu")
+    with pytest.raises(ValueError, match="cpu or gpu"):
+        configured_ocr_device()
+
+
+def test_gpu_without_cuda_fails_instead_of_falling_back_to_cpu(monkeypatch):
+    import pytest
+    import torch
+    from course_graph.model_runtime import require_ocr_device
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: False)
+    monkeypatch.setenv("COURSE_GRAPH_DEVICE", "cpu")
+    require_ocr_device()
+    monkeypatch.setenv("COURSE_GRAPH_DEVICE", "gpu")
+    with pytest.raises(RuntimeError, match="CUDA is not available"):
+        require_ocr_device()
 
 
 def test_zero_document_timeout_means_unlimited_and_negative_is_invalid(monkeypatch):
@@ -404,7 +484,6 @@ def test_formula_enrichment_not_bypassed_unless_confirmed_prolog():
 
 
 def test_enrichment_sets_model_cache_and_rejects_truncation():
-    import pytest
     from types import SimpleNamespace as S
     from course_graph.ocr.enrichment import AuditedEngine
     class Engine:
@@ -416,9 +495,12 @@ def test_enrichment_sets_model_cache_and_rejects_truncation():
             assert self.vlm_model.generation_config.use_cache
             return [S(text="truncated", metadata={"num_tokens":2048})]
     warnings = []
-    with pytest.raises(ValueError, match="token limit"):
-        AuditedEngine(Engine(), warnings).predict_batch([S(max_new_tokens=2048)])
-    assert warnings and "частично" in warnings[0]
+    engine = AuditedEngine(Engine(), warnings)
+    engine.predict_batch([S(max_new_tokens=2048)])
+    # The truncated answer is rejected on its own instead of failing the whole batch.
+    assert engine.rejected == [0]
+    assert warnings and "достигнут лимит токенов" in warnings[0]
+    assert not any("частично" in w for w in warnings)
 
 
 def test_bootstrap_can_initialize_the_guarded_enrichment_engine():
@@ -446,6 +528,32 @@ def test_bootstrap_can_initialize_the_guarded_enrichment_engine():
     stage.engine.initialize()
     assert stage.engine.engine.calls == 1
     assert stage.engine.engine.vlm_model.generation_config.use_cache is True
+
+
+def test_bootstrap_warms_the_enrichment_engine_when_initialize_pipeline_returns_none(monkeypatch):
+    from types import SimpleNamespace as S
+    import course_graph.ocr.converter as converter
+    import course_graph.model_runtime as runtime
+    from course_graph.ocr.enrichment import NativeSyntaxGuard
+
+    class Engine:
+        options = S(use_kv_cache=False)
+        calls = 0
+        def initialize(self):
+            Engine.calls += 1
+
+    guard = NativeSyntaxGuard(S(engine=Engine()))
+
+    class Converter:
+        initialized_pipelines = {}
+        def initialize_pipeline(self, _):
+            # Docling 2.139 keeps the pipeline and returns None.
+            self.initialized_pipelines[1] = S(enrichment_pipe=[guard])
+
+    monkeypatch.setattr(converter, "get_converter", lambda: Converter())
+    monkeypatch.setenv("COURSE_GRAPH_DEVICE", "cpu")
+    runtime.ModelRuntime()._prepare_models()
+    assert Engine.calls == 1
 
 
 def test_formula_misclassification_recovers_native_pdf_rectangle():
@@ -478,3 +586,42 @@ def test_formula_misclassification_recovers_native_pdf_rectangle():
     assert type(document.texts[1]) is TextItem
     assert document.texts[1].label == DocItemLabel.TEXT
     assert len(warnings) == 2
+
+
+def test_run_ocr_job_caches_result_without_llm_completer(monkeypatch, tmp_path):
+    import asyncio
+    import json
+    from course_graph.api import run_ocr_job, ocr_jobs
+    import course_graph.ocr.converter as converter
+
+    monkeypatch.setenv("COURSE_GRAPH_OCR_CACHE_DIR", str(tmp_path))
+    content = "## Слайд 1\n\nMSE: <!-- formula-not-decoded -->".encode("utf-8")
+
+    class ForbiddenClient:
+        def __init__(self, *args, **kwargs):
+            raise AssertionError("OCR must not call ModelClient")
+
+    monkeypatch.setattr("course_graph.api.ModelClient", ForbiddenClient)
+
+    job, owner, future = ocr_jobs.reserve("test-job-formula-cache", "lecture.md", content)
+    asyncio.run(run_ocr_job(job, future, "lecture.md", content, requires_models=False))
+
+    success, result = future.result()
+    assert success is True
+    assert "<!-- formula-not-decoded -->" in result["markdown"]
+    assert result["report"]["undecoded_formulas"] == 1
+    assert result["report"]["schema_version"] == "ocr-report-v2"
+    assert result["report"]["content_complete"] is False
+
+    # Verify cache was written
+    cache_path = converter.get_document_cache_path(content, "lecture.md")
+    assert cache_path.exists()
+    cached = json.loads(cache_path.read_text())
+    assert "<!-- formula-not-decoded -->" in cached["markdown"]
+
+    # Verify second job hits the cache immediately
+    job2, owner2, future2 = ocr_jobs.reserve("test-job-formula-cache-2", "lecture.md", content)
+    asyncio.run(run_ocr_job(job2, future2, "lecture.md", content, requires_models=False))
+    success2, result2 = future2.result()
+    assert success2 is True
+    assert result2["report"]["cache_hit"] is True

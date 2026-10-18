@@ -24,6 +24,24 @@ def configured_ocr_threads() -> int:
     return value
 
 
+def configured_ocr_device() -> str:
+    """OCR device chosen in .env: cpu or gpu (CUDA)."""
+    value = os.environ.get("COURSE_GRAPH_DEVICE", "cpu").strip().lower()
+    if value not in ("cpu", "gpu"):
+        raise ValueError("COURSE_GRAPH_DEVICE must be cpu or gpu")
+    return value
+
+
+def require_ocr_device() -> None:
+    # Docling silently falls back to CPU without CUDA; a chosen GPU must fail loudly.
+    if configured_ocr_device() != "gpu":
+        return
+    import torch
+    if not torch.cuda.is_available():
+        raise RuntimeError("COURSE_GRAPH_DEVICE=gpu, but CUDA is not available: build the image with "
+                           "the gpu service and give the container a GPU")
+
+
 # These variables are read when torch / BLAS libraries are imported. Set the
 # defaults before any Docling imports; operators can still provide overrides.
 os.environ.setdefault("OMP_NUM_THREADS", os.environ.get("COURSE_GRAPH_OCR_THREADS", "4"))
@@ -211,17 +229,21 @@ class ModelRuntime:
         from course_graph.ocr.enrichment import NativeSyntaxGuard
 
         torch.set_num_threads(configured_ocr_threads())
+        require_ocr_device()
 
         converter = get_converter()
         # StandardPdfPipeline initializes layout/OCR models in its
         # constructor. The VLM engine is lazy, so initialize it explicitly
         # here instead of making the first uploaded lecture pay cold-start.
-        pipeline = converter.initialize_pipeline(InputFormat.PDF)
+        # initialize_pipeline returns None in Docling 2.139; the pipeline is kept
+        # in initialized_pipelines.
+        converter.initialize_pipeline(InputFormat.PDF)
         if (os.environ.get("COURSE_GRAPH_OCR_ENRICH_CODE", "true").lower() == "true"
                 or os.environ.get("COURSE_GRAPH_OCR_ENRICH_FORMULA", "true").lower() == "true"):
-            for stage in getattr(pipeline, "enrichment_pipe", []):
-                if isinstance(stage, NativeSyntaxGuard):
-                    stage.engine.initialize()
+            for pipeline in converter.initialized_pipelines.values():
+                for stage in getattr(pipeline, "enrichment_pipe", []):
+                    if isinstance(stage, NativeSyntaxGuard):
+                        stage.engine.initialize()
 
     def status(self) -> dict:
         self.start()

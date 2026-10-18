@@ -1,0 +1,77 @@
+{
+  "source": "Tutorial 4. Prolog.pdf",
+  "source_sha256": "db2ac5f1194165fab518d1a71e66853dc15c7872cdf89ec5322935bfb95e6873",
+  "pages": [
+    21
+  ],
+  "cold_seconds": 24.6326413099996,
+  "cache_read_seconds": [
+    0.00018106799871020485,
+    0.00011419300062698312,
+    9.121000039158389e-05,
+    8.753300062380731e-05,
+    8.875599996827077e-05
+  ],
+  "cold_inference_batches": 1,
+  "warm_inference_batches": 0,
+  "cache_hit": true,
+  "markdown_sha256": "ef2e5a17dc0280d8002c796c9fc7509720c299aa86bb3806fafd028599659abb",
+  "peak_rss_kib": 2966792,
+  "environment": {
+    "python": "3.11.17",
+    "packages": {
+      "docling": "2.139.0",
+      "torch": "2.14.1+cpu",
+      "pypdfium2": "5.14.0",
+      "pypdf": "6.21.1"
+    },
+    "configuration": {
+      "version": "ocr-v7-visual-audit",
+      "with_docling": "true",
+      "picture_text": "true",
+      "document_timeout": "0",
+      "enrich_code": "true",
+      "enrich_formula": "true",
+      "full_page_ocr": "false"
+    },
+    "ocr_threads": "4"
+  },
+  "report": {
+    "schema_version": "ocr-report-v2",
+    "engine": "docling",
+    "source_sha256": "68df87e6b64e1e03cba2e545b1e16a97183e4462f43fe7cd5f3d306a48afd82b",
+    "cache_hit": false,
+    "seconds": 24.632,
+    "pages": 1,
+    "exported_pages": [
+      1
+    ],
+    "warnings": [],
+    "picture_ocr": {
+      "regions": 0,
+      "lines": 0,
+      "failed_regions": 0
+    },
+    "code_blocks": 1,
+    "undecoded_formulas": 0,
+    "image_placeholders": 0,
+    "formula_regions": [],
+    "formula_summary": {
+      "detected": 0,
+      "recognized": 0,
+      "unresolved": 0,
+      "suspect": 0,
+      "failed_transient": 0,
+      "marker_count": 0
+    },
+    "work_complete": true,
+    "content_complete": true,
+    "version": "ocr-v7-visual-audit",
+    "with_docling": "true",
+    "picture_text": "true",
+    "document_timeout": "0",
+    "enrich_code": "true",
+    "enrich_formula": "true",
+    "full_page_ocr": "false"
+  }
+}

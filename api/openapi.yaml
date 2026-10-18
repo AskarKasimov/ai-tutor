@@ -40,7 +40,7 @@ components:
         password:
           format: password
           maxLength: 128
-          minLength: 15
+          minLength: 4
           type: string
       required:
         - display_name

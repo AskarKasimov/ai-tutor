@@ -249,7 +249,9 @@
 }
 .resultLead {
   margin: 0;
-  color: var(--app-muted);
+  // Darker than --app-muted (3.6:1 here): at least 5.8:1 on the card gradient,
+  // the same color as the explanatory text of the result page.
+  color: #536175;
 }
 .resultButton {
   gap: var(--space-2);

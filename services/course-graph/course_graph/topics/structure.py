@@ -158,13 +158,33 @@ async def ask(complete, prompt, data, model, semaphore, counter, check=None):
     return None
 
 
+def synonym_check(batch):
+    """Every asked pair, in either order, decided exactly once: a duplicate or
+    contradictory answer is corrected or dropped, never merged."""
+    asked = {frozenset((item["a"], item["b"])) for item in batch}
+
+    def check(answer):
+        seen = set()
+        for pair in answer.pairs:
+            key = frozenset((pair.a, pair.b))
+            if key not in asked:
+                raise ValueError(f"Пара {pair.a}–{pair.b} не передавалась")
+            if key in seen:
+                raise ValueError(f"Пара {pair.a}–{pair.b} решена повторно")
+            seen.add(key)
+        if seen != asked:
+            raise ValueError("Отрази каждую переданную пару ровно один раз")
+    return check
+
+
 async def merge_synonyms(topics, complete, encoder, order, threshold=0.9, neighbours=3,
                          max_chars=12000, concurrency=2):
     """Merge topics the model confirms as one concept; the earliest keeps its id
     and question. A synonym that does not fit the card stays on its own."""
     if len(topics) < 2:
         return topics, {}, 0
-    scores = similarity(topics, encoder)
+    # Embeddings and the similarity matrix are computed off the event loop.
+    scores = await asyncio.to_thread(similarity, topics, encoder)
     pairs = set()
     for i in range(len(topics)):
         ranked = [j for j in np.argsort(-scores[i], kind="stable") if j != i][:neighbours]
@@ -179,9 +199,9 @@ async def merge_synonyms(topics, complete, encoder, order, threshold=0.9, neighb
     items = [{"a": topics[i].id, "b": topics[j].id, "a_topic": card(topics[i]), "b_topic": card(topics[j])}
              for i, j in sorted(pairs)]
     semaphore, counter = asyncio.Semaphore(concurrency), [0]
-    answers = await asyncio.gather(*(ask(complete, SYNONYM_PROMPT, {"pairs": batch}, SynonymResponse, semaphore, counter)
+    answers = await asyncio.gather(*(ask(complete, SYNONYM_PROMPT, {"pairs": batch}, SynonymResponse, semaphore, counter,
+                                         synonym_check(batch))
                                      for batch in batches_of(items, max_chars, 20)))
-    asked = {(item["a"], item["b"]) for item in items}
     parent = {t.id: t.id for t in topics}
 
     def root(x):
@@ -192,7 +212,7 @@ async def merge_synonyms(topics, complete, encoder, order, threshold=0.9, neighb
     rank = {t.id: order(t) for t in topics}
     for answer in answers:
         for pair in answer.pairs if answer else []:
-            if pair.same and ((pair.a, pair.b) in asked or (pair.b, pair.a) in asked):
+            if pair.same:
                 a, b = root(pair.a), root(pair.b)
                 if a != b:
                     first, second = sorted((a, b), key=lambda x: rank[x])
@@ -241,7 +261,7 @@ async def attach_links(topics, edges, parents, complete, encoder, limit=8, max_c
         return [], [], 0
     index = {t.id: i for i, t in enumerate(topics)}
     by_id = {t.id: t for t in topics}
-    scores = similarity(topics, encoder)
+    scores = await asyncio.to_thread(similarity, topics, encoder)
 
     def brief(t):
         return {"id": t.id, "title": t.title, "week": topic_week(t), "kind": sorted(topic_kinds(t))}
@@ -369,6 +389,25 @@ def merge_isolated(topics, edges, encoder):
     return [t for t in topics if t.id not in aliases], aliases, merged, originals
 
 
+def question_text(topic, budget=6000, floor=200):
+    """Text the question of a merged card is written from: every source gets a
+    share of the budget, so an absorbed fragment is never cut off at the end.
+    None when the budget cannot give each source at least floor characters."""
+    texts = [s.text for s in topic.sources]
+    if len(topic.text) <= budget:
+        return topic.text
+    room = budget - 2 * (len(texts) - 1)
+    if room // len(texts) < floor:
+        return None
+    # Short sources go whole; what they leave is shared among the longer ones.
+    shares, left = {}, room
+    order = sorted(range(len(texts)), key=lambda i: len(texts[i]))
+    for n, i in enumerate(order):
+        shares[i] = min(len(texts[i]), left // (len(order) - n))
+        left -= shares[i]
+    return "\n\n".join(texts[i][:shares[i]] for i in range(len(texts)))
+
+
 async def refresh_questions(hosts, complete, max_chars=20000, concurrency=2):
     """Write the main question of each card that absorbed another topic.
 
@@ -376,7 +415,10 @@ async def refresh_questions(hosts, complete, max_chars=20000, concurrency=2):
     those cards keep no merge rather than publish a question about part of them."""
     if not hosts:
         return set(), 0
-    items = [{"id": t.id, "title": t.title, "provides": t.provides, "text": t.text[:6000]} for t in hosts]
+    texts = {t.id: question_text(t) for t in hosts}
+    failed = {i for i, text in texts.items() if text is None}
+    items = [{"id": t.id, "title": t.title, "provides": t.provides, "text": texts[t.id]}
+             for t in hosts if t.id not in failed]
     semaphore, counter = asyncio.Semaphore(concurrency), [0]
 
     def checker(batch):
@@ -394,7 +436,6 @@ async def refresh_questions(hosts, complete, max_chars=20000, concurrency=2):
     answers = await asyncio.gather(*(ask(complete, QUESTION_PROMPT, {"topics": batch}, QuestionResponse,
                                          semaphore, counter, checker(batch)) for batch in batches))
     by_id = {t.id: t for t in hosts}
-    failed = set()
     for batch, answer in zip(batches, answers):
         if answer is None:
             failed |= {i["id"] for i in batch}

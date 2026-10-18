@@ -1,5 +1,6 @@
 import asyncio
 import json
+import time
 
 import numpy as np
 import pytest
@@ -23,6 +24,7 @@ from course_graph.topics.structure import (
     SYNONYM_PROMPT,
     depth,
     merge_isolated,
+    refresh_questions,
 )
 from course_graph.topics.models import Evidence, Source, Topic
 from course_graph.topics.retrieval import CandidateIndex
@@ -49,7 +51,8 @@ def links_only(judge):
     judge answers the link prompt."""
     async def complete(system, payload):
         if system == SYNONYM_PROMPT:
-            return json.dumps({"pairs": []})
+            return json.dumps({"pairs": [{"a": p["a"], "b": p["b"], "same": False}
+                                         for p in json.loads(payload)["pairs"]]})
         if system == ATTACH_PROMPT:
             return json.dumps({"topics": []})
         if system == QUESTION_PROMPT:
@@ -1025,3 +1028,116 @@ def test_depth_is_counted_without_recursion():
     assert depth(diamond) == 4
     with pytest.raises(ValueError):
         depth([{"source": "a", "target": "b"}, {"source": "b", "target": "a"}])
+
+
+def test_question_of_a_merged_card_sees_a_source_added_after_the_budget():
+    # Re-review 1: the absorbed fragment comes after 6000 characters of the host.
+    old = "Старое объяснение темы. " * 334
+    added = "Коэффициент новой теоремы равен 137."
+    host = make_topic("H", "Основная тема", ["Основа"], text=old)
+    host.sources.append(Source(material_id="I", block_id=0, start=0, end=len(added), text=added))
+    host.text = old + "\n\n" + added
+    sent = []
+
+    async def complete(system, payload):
+        sent.extend(json.loads(payload)["topics"])
+        return write_questions(payload)
+
+    failed, _ = run(refresh_questions([host], complete))
+    assert failed == set()
+    assert added in sent[0]["text"] and len(sent[0]["text"]) <= 6000
+    assert host.question == "Почему верно: Основная тема?"
+
+
+def test_question_is_not_confirmed_when_the_sources_do_not_fit_the_budget():
+    host = make_topic("H", "Основная тема", ["Основа"], text="x" * 300)
+    host.sources = [Source(material_id=f"m{n}", block_id=0, start=0, end=300, text="x" * 300) for n in range(40)]
+    host.text = "\n\n".join(s.text for s in host.sources)
+
+    async def never(system, payload):
+        raise AssertionError("No question without enough of every source")
+
+    failed, requests = run(refresh_questions([host], never))
+    assert failed == {"H"} and requests == 0
+    assert host.question == "Объясните тему"
+
+
+@pytest.mark.parametrize("damage", ["empty_quote", "missing_field", "wrong_type"])
+def test_a_malformed_link_does_not_take_the_valid_ones_with_it(damage):
+    # Re-review 2: a schema error in M -> T must not drop the grounded D -> T.
+    topics = [make_topic("D", "Производная", ["Вычисление производной"]),
+              make_topic("M", "Матрицы", ["Операции с матрицами"]),
+              make_topic("T", "Оптимизация", ["Обновление весов"], ["Производная матрицы"])]
+
+    async def judge(system, payload):
+        data = json.loads(payload)
+        if "correction" in data:
+            return json.dumps({"links": [], "requirements": []})
+        task = data["tasks"][0]
+        links = []
+        for candidate in task["candidates"]:
+            link = {"target_id": "T", "prerequisite_id": candidate["id"], "requirement": task["requirement"],
+                    "reason": "Использует это знание", "target_evidence": quote(task["evidence"][0]),
+                    "prerequisite_evidence": quote(candidate["evidence"][0])}
+            if candidate["id"] == "M":
+                if damage == "empty_quote":
+                    link["prerequisite_evidence"]["quote"] = ""
+                elif damage == "missing_field":
+                    del link["prerequisite_evidence"]
+                else:
+                    link["prerequisite_evidence"]["block_id"] = "0"
+            links.append(link)
+        return json.dumps({"links": links, "requirements": []}, ensure_ascii=False)
+
+    graph = run(build_links(topics, links_only(judge), Encoder()))
+    assert [(e["source"], e["target"]) for e in graph["prerequisites"]] == [("D", "T")]
+    assert any(r["validation_error"].startswith("Неверная запись связи") and r["prerequisite_id"] == "M"
+               for r in graph["rejected_links"])
+
+
+@pytest.mark.parametrize("pairs_answer, merged", [
+    ([{"a": "a", "b": "b", "same": True}, {"a": "a", "b": "b", "same": False}], False),
+    ([{"a": "a", "b": "b", "same": True}, {"a": "b", "b": "a", "same": True}], False),
+    ([{"a": "a", "b": "b", "same": True}, {"a": "a", "b": "x", "same": True}], False),
+    ([{"a": "b", "b": "a", "same": True}], True),
+])
+def test_synonym_answers_must_decide_each_pair_once(pairs_answer, merged):
+    # Re-review 3: duplicate, contradictory or unknown decisions never merge.
+    topics = [make_topic("a", "Производная функции", ["Вычисление производной"]),
+              make_topic("b", "Дифференцирование", ["Производная сложной функции"])]
+
+    async def complete(system, payload):
+        if system == SYNONYM_PROMPT:
+            return json.dumps({"pairs": pairs_answer})
+        return await links_only(grounded_links)(system, payload)
+
+    graph = run(build_links(topics, complete, Encoder()))
+    assert (len(graph["topics"]) == 1) is merged
+
+
+class SlowEncoder(Encoder):
+    def encode(self, texts, query=False):
+        time.sleep(0.2)
+        return super().encode(texts, query)
+
+
+def test_embeddings_do_not_block_the_event_loop():
+    # Re-review 4: a slow encoder must not stall other requests of the service.
+    topics = [make_topic("D", "Производная", ["Вычисление производной"]),
+              make_topic("T", "Спуск", ["Обновление параметров"], ["Вычисление производной"]),
+              make_topic("I", "История", ["Исторические вехи"])]
+
+    async def scenario():
+        delays, done = [], False
+
+        async def ticker():
+            while not done:
+                started = time.perf_counter()
+                await asyncio.sleep(0.01)
+                delays.append(time.perf_counter() - started)
+        task = asyncio.create_task(ticker())
+        await build_links(topics, grounded_judge, SlowEncoder())
+        done = True
+        await task
+        return max(delays)
+    assert run(scenario()) < 0.15

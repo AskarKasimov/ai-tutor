@@ -2,6 +2,8 @@
 import asyncio
 import json
 
+from pydantic import ValidationError
+
 from course_graph.topics.extract import (
     clean_topic_title,
     merge_topics,
@@ -9,7 +11,7 @@ from course_graph.topics.extract import (
     procedural_title,
 )
 from course_graph.topics.evidence import evidence_for, valid_evidence
-from course_graph.topics.models import LinkResponse, RequirementDecision, Topic
+from course_graph.topics.models import LinkDecision, RequirementDecision, Topic
 from course_graph.topics.retrieval import CandidateIndex
 from course_graph.topics.structure import (
     attach_links,
@@ -71,6 +73,28 @@ def reachable(adjacency, start, target):
             seen.add(node)
             stack.extend(adjacency.get(node, []))
     return False
+
+
+def parse_links(raw):
+    """Validate the answer entry by entry: a malformed link is rejected alone
+    and never takes the well-formed links of the same answer with it."""
+    data = json.loads(strip_fences(raw))
+    if not isinstance(data, dict) or not isinstance(data.get("links"), list) \
+            or not isinstance(data.get("requirements", []), list):
+        raise ValueError("Ответ должен быть объектом со списками links и requirements")
+    links, broken = [], []
+    for entry in data["links"]:
+        try:
+            links.append(LinkDecision.model_validate(entry))
+        except ValidationError as error:
+            broken.append((entry if isinstance(entry, dict) else {}, " ".join(str(error).split())[:300]))
+    decisions = []
+    for entry in data.get("requirements", []):
+        try:
+            decisions.append(RequirementDecision.model_validate(entry))
+        except ValidationError:
+            pass
+    return links, decisions, broken
 
 
 def resolve_parent_topic(parent_title: str, topics: list[Topic], by_norm: dict[str, Topic], encoder=None) -> Topic | None:
@@ -249,9 +273,16 @@ async def build_links(topics, complete, encoder, per_requirement=5, max_chars=16
 
     def check(batch, result):
         """Accept every grounded link; a bad link is dropped alone, not with its batch."""
+        parsed, requirements, broken = result
         allowed = {(i["target_id"], i["requirement"]): i for i in batch}
         links, problems = {}, {}
-        for link in result.links:
+        for entry, error in broken:
+            record = {k: entry.get(k) for k in ("target_id", "requirement", "prerequisite_id")}
+            key = (record["target_id"], record["requirement"])
+            if key in allowed:
+                problems.setdefault(key, []).append(f"{record['prerequisite_id']}: неверная запись связи")
+            invalid.append({**record, "validation_error": "Неверная запись связи: " + error})
+        for link in parsed:
             key = (link.target_id, link.requirement)
             item = allowed.get(key)
             options = {c["id"]: c for c in item["candidates"]} if item else {}
@@ -265,7 +296,7 @@ async def build_links(topics, complete, encoder, per_requirement=5, max_chars=16
             if item:
                 problems.setdefault(key, []).append(f"{link.prerequisite_id}: {error}")
             invalid.append({**link.model_dump(), "validation_error": error})
-        reasons = {(d.target_id, d.requirement): d.reason for d in result.requirements}
+        reasons = {(d.target_id, d.requirement): d.reason for d in requirements}
         decisions = {}
         for key in allowed:
             found = [p for t, r, p in links if (t, r) == key]
@@ -282,7 +313,7 @@ async def build_links(topics, complete, encoder, per_requirement=5, max_chars=16
                 data["correction"] = correction
             raw = await complete(PROMPT, json.dumps(data, ensure_ascii=False))
         try:
-            links, decisions, problems = check(batch, LinkResponse.model_validate_json(strip_fences(raw)))
+            links, decisions, problems = check(batch, parse_links(raw))
         except ValueError as error:
             if correction is None:
                 return await judge(batch, retry, str(error) + ". Исправь ответ. Цитаты копируй из evidence без изменения слов; отрази каждое требование.")
@@ -320,7 +351,7 @@ async def build_links(topics, complete, encoder, per_requirement=5, max_chars=16
         raise
     found = [{"source": link.prerequisite_id, "target": link.target_id, **link.model_dump()}
              for links, _ in results for link in links]
-    _, hierarchy, _ = build_hierarchy(topics, [], canonical, encoder)
+    _, hierarchy, _ = await asyncio.to_thread(build_hierarchy, topics, [], canonical, encoder)
     parents = {h["target"]: h["source"] for h in hierarchy}
     attached, attach_rejected, attach_requests = await attach_links(topics, found, parents, complete, encoder,
                                                                     concurrency=concurrency)
@@ -340,7 +371,7 @@ async def build_links(topics, complete, encoder, per_requirement=5, max_chars=16
     decisions = unavailable + [d.model_dump() for _, ds in results for d in ds]
 
     unmerged = list(topics)
-    topics, isolated, merged_isolated, originals = merge_isolated(topics, edges, encoder)
+    topics, isolated, merged_isolated, originals = await asyncio.to_thread(merge_isolated, topics, edges, encoder)
     # A card that absorbed another topic gets a question about all of it.
     hosts = [t for t in topics if t.id in originals]
     failed, question_requests = await refresh_questions(hosts, light_complete or complete, concurrency=concurrency)
@@ -362,11 +393,11 @@ async def build_links(topics, complete, encoder, per_requirement=5, max_chars=16
             rejected.append({**edge, "validation_error": "week_order"})
     edges = ordered
     accepted = {(e["target"], e["requirement"], e["source"]) for e in edges if "requirement" in e}
-    rejected += [r for r in invalid if (r["target_id"], r["requirement"], r["prerequisite_id"]) not in accepted]
+    rejected += [r for r in invalid if (r.get("target_id"), r.get("requirement"), r.get("prerequisite_id")) not in accepted]
     decisions = settle_requirements(decisions, topics, aliases, accepted)
     edges, transitive = transitive_reduction(edges)
     canonical = {normalized_title(t.title): t.id for t in topics}
-    topics, hierarchy, hierarchy_adj = build_hierarchy(topics, edges, canonical, encoder)
+    topics, hierarchy, hierarchy_adj = await asyncio.to_thread(build_hierarchy, topics, edges, canonical, encoder)
     linked = {e["source"] for e in edges} | {e["target"] for e in edges}
     return {"version": "course-graph-v1", "topics": [t.model_dump() for t in topics],
             "aliases": aliases, "prerequisites": edges, "hierarchy": hierarchy,

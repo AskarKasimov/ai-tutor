@@ -1,5 +1,6 @@
-import { Badge, Button, Heading, Text } from '@radix-ui/themes'
-import { useState } from 'react'
+import { Button, Heading, Text } from '@radix-ui/themes'
+import { FileText } from 'lucide-react'
+import { type CSSProperties, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   DiagnosticApiError,
@@ -9,19 +10,20 @@ import {
 } from '@/entities/diagnostic-session'
 import { useDiagnosticResultQuery } from '@/features/diagnostic-session'
 import { TrainerShell } from './trainer-shared'
-import styles from './geek.module.scss'
+import styles from './geek-result.module.scss'
 
-const statusTone: Record<TopicStatus, 'green' | 'blue' | 'red' | 'gray'> = {
-  independent: 'green',
-  assisted: 'blue',
-  gap: 'red',
-  insufficient: 'gray',
-  credited_by_parent: 'green',
-  unchecked: 'gray',
-}
+// The order of the status summary: from mastered to unclear. Topics the
+// diagnostic never reached (unchecked) are not part of the feedback.
+const statusOrder: TopicStatus[] = [
+  'independent',
+  'credited_by_parent',
+  'assisted',
+  'gap',
+  'insufficient',
+]
 
 // The outcome of a completed diagnostic: the preliminary course grade, the
-// gaps to work on and every topic with its status.
+// gaps to work on and every checked topic with its status.
 export function GeekResult({
   userId,
   sessionId,
@@ -43,6 +45,14 @@ export function GeekResult({
   const { t } = useTranslation()
   const query = useDiagnosticResultQuery(userId, sessionId)
   const result = query.data
+  const checked =
+    result?.topics.filter((topic) => topic.status !== 'unchecked') ?? []
+  const counts = statusOrder
+    .map((status) => ({
+      status,
+      count: checked.filter((topic) => topic.status === status).length,
+    }))
+    .filter(({ count }) => count)
   return (
     <TrainerShell
       title={t('geek.resultTitle')}
@@ -51,11 +61,18 @@ export function GeekResult({
       onBack={onBack}
     >
       <main className={styles.result}>
-        <Heading as="h1" size="7">
-          {t('geek.resultTitle')}
-        </Heading>
+        <header className={styles.intro}>
+          <Text as="p" className={styles.eyebrow}>
+            {subjectName}
+          </Text>
+          <Heading as="h1" size="7" className={styles.title}>
+            {t('geek.resultTitle')}
+          </Heading>
+        </header>
         {query.isPending ? (
-          <Text role="status">{t('geek.resultLoading')}</Text>
+          <Text role="status" className={styles.muted}>
+            {t('geek.resultLoading')}
+          </Text>
         ) : query.isError || !result ? (
           <div className={styles.error} role="alert">
             <Text as="p">{t('geek.resultError')}</Text>
@@ -66,109 +83,168 @@ export function GeekResult({
         ) : (
           <>
             <section
-              className={styles.grade}
+              className={styles.hero}
               data-grade={result.grade ?? 'none'}
               aria-labelledby="grade-title"
             >
-              <Text as="p" id="grade-title" className={styles.gradeLabel}>
-                {t('geek.gradeLabel')}
-              </Text>
-              <Text as="p" className={styles.gradeValue}>
-                {result.grade ?? '—'}
-              </Text>
-              <Text as="p" color="gray">
-                {result.scorePercent === null
-                  ? t('geek.gradeNoneHint')
-                  : t('geek.score', { percent: result.scorePercent })}
-              </Text>
-              <Text as="p" size="2" color="gray">
-                {t('geek.gradeNote')}
-              </Text>
+              {/* The ring fills with the share of the maximum score. */}
+              <div
+                className={styles.ring}
+                style={{ '--score': result.scorePercent ?? 0 } as CSSProperties}
+              >
+                <Text as="p" className={styles.gradeValue}>
+                  {result.grade ?? '—'}
+                </Text>
+              </div>
+              <div className={styles.gradeCopy}>
+                <Text as="p" id="grade-title" className={styles.eyebrow}>
+                  {t('geek.gradeLabel')}
+                </Text>
+                <Text as="p" className={styles.score}>
+                  {result.scorePercent === null
+                    ? t('geek.gradeNoneHint')
+                    : t('geek.score', { percent: result.scorePercent })}
+                </Text>
+                <Text as="p" className={styles.note}>
+                  {t('geek.gradeNote')}
+                </Text>
+              </div>
+              {counts.length > 0 && (
+                <ul
+                  className={styles.stats}
+                  aria-label={t('geek.statusSummary')}
+                >
+                  {counts.map(({ status, count }) => (
+                    <li key={status} data-status={status}>
+                      <span className={styles.statValue}>{count}</span>
+                      <span className={styles.statLabel}>
+                        {t(`geek.status.${status}`)}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </section>
-            <section aria-labelledby="gaps-title" className={styles.section}>
-              <Heading as="h2" size="5" id="gaps-title">
-                {t('geek.gapsTitle')}
-              </Heading>
-              {result.gaps.length === 0 ? (
-                <Text as="p">{t('geek.gapsEmpty')}</Text>
-              ) : (
-                <>
-                  <Text as="p" color="gray" size="2">
-                    {t('geek.gapsHint')}
+            <div className={styles.columns}>
+              <section aria-labelledby="gaps-title" className={styles.panel}>
+                <Heading as="h2" size="5" id="gaps-title">
+                  {t('geek.gapsTitle')}
+                </Heading>
+                {result.gaps.length === 0 ? (
+                  <Text as="p" className={styles.lead}>
+                    {t('geek.gapsEmpty')}
                   </Text>
-                  <ul className={styles.gaps}>
-                    {result.gaps.map((gap) => (
-                      <li key={gap.nodeId}>
-                        <Text weight="bold">{gap.title}</Text>
-                        {gap.weeks.length > 0 && (
-                          <Text as="p" size="2" color="gray">
-                            {t('geek.weeks', { weeks: gap.weeks.join(', ') })}
-                          </Text>
-                        )}
-                        {gap.sources.length === 0 ? (
-                          <Text as="p" size="2" color="gray">
-                            {t('geek.materialsNone')}
-                          </Text>
-                        ) : (
-                          <div className={styles.gapMaterials}>
-                            {(
-                              ['theory', 'practice', 'additional'] as const
-                            ).map((group) => {
-                              const refs = gap.learningMaterials[group]
-                              if (refs.length === 0) return null
-                              return (
-                                <section key={group}>
-                                  <Text weight="medium">
-                                    {t(`geek.${group}`)}
-                                  </Text>
-                                  <ul>
-                                    {refs.map((ref) => (
-                                      <li key={ref.materialId}>
-                                        <MaterialDownload
-                                          sessionId={sessionId}
-                                          material={ref}
-                                        />
-                                      </li>
-                                    ))}
-                                  </ul>
-                                </section>
-                              )
-                            })}
+                ) : (
+                  <>
+                    <Text as="p" className={styles.lead}>
+                      {t('geek.gapsHint')}
+                    </Text>
+                    <ol className={styles.gaps}>
+                      {result.gaps.map((gap, index) => (
+                        <li key={gap.nodeId} className={styles.gap}>
+                          <span className={styles.gapIndex} aria-hidden="true">
+                            {String(index + 1).padStart(2, '0')}
+                          </span>
+                          <div className={styles.gapBody}>
+                            <Heading
+                              as="h3"
+                              size="4"
+                              className={styles.gapTitle}
+                            >
+                              {gap.title}
+                            </Heading>
+                            {gap.weeks.length > 0 && (
+                              <Text as="p" className={styles.chip}>
+                                {t('geek.weeks', {
+                                  weeks: gap.weeks.join(', '),
+                                })}
+                              </Text>
+                            )}
+                            {gap.sources.length === 0 ? (
+                              <Text as="p" className={styles.muted}>
+                                {t('geek.materialsNone')}
+                              </Text>
+                            ) : (
+                              <div className={styles.materials}>
+                                {(
+                                  ['theory', 'practice', 'additional'] as const
+                                ).map((group) => {
+                                  const refs = gap.learningMaterials[group]
+                                  if (refs.length === 0) return null
+                                  return (
+                                    <section
+                                      key={group}
+                                      className={styles.materialGroup}
+                                    >
+                                      <Text
+                                        as="p"
+                                        className={styles.groupLabel}
+                                      >
+                                        {t(`geek.${group}`)}
+                                      </Text>
+                                      <ul>
+                                        {refs.map((ref) => (
+                                          <li key={ref.materialId}>
+                                            <MaterialDownload
+                                              sessionId={sessionId}
+                                              material={ref}
+                                            />
+                                          </li>
+                                        ))}
+                                      </ul>
+                                    </section>
+                                  )
+                                })}
+                              </div>
+                            )}
                           </div>
-                        )}
+                        </li>
+                      ))}
+                    </ol>
+                  </>
+                )}
+              </section>
+              <section aria-labelledby="topics-title" className={styles.panel}>
+                <Heading as="h2" size="5" id="topics-title">
+                  {t('geek.topicsTitle')}
+                </Heading>
+                {checked.length === 0 ? (
+                  <Text as="p" className={styles.lead}>
+                    {t('geek.topicsEmpty')}
+                  </Text>
+                ) : (
+                  <ul className={styles.topics}>
+                    {checked.map((topic) => (
+                      <li
+                        key={topic.nodeId}
+                        className={styles.topic}
+                        data-status={topic.status}
+                        data-top={topic.topLevel || undefined}
+                      >
+                        <span className={styles.topicTitle}>
+                          <Text className={styles.topicName}>
+                            {topic.title}
+                          </Text>
+                          <span className={styles.topicMeta}>
+                            <span className={styles.status}>
+                              {t(`geek.status.${topic.status}`)}
+                            </span>
+                            {topic.topLevel && (
+                              <Text className={styles.topLevel}>
+                                {t('geek.topLevel')}
+                              </Text>
+                            )}
+                          </span>
+                        </span>
+                        <span className={styles.topicGrade}>
+                          {topic.grade ?? '—'}
+                        </span>
                       </li>
                     ))}
                   </ul>
-                </>
-              )}
-            </section>
-            <section aria-labelledby="topics-title" className={styles.section}>
-              <Heading as="h2" size="5" id="topics-title">
-                {t('geek.topicsTitle')}
-              </Heading>
-              <ul className={styles.topics}>
-                {result.topics.map((topic) => (
-                  <li key={topic.nodeId} className={styles.topic}>
-                    <span className={styles.topicTitle}>
-                      <Text weight={topic.topLevel ? 'bold' : 'regular'}>
-                        {topic.title}
-                      </Text>
-                      {topic.topLevel && (
-                        <Text size="1" color="gray">
-                          {t('geek.topLevel')}
-                        </Text>
-                      )}
-                    </span>
-                    <Badge color={statusTone[topic.status]}>
-                      {t(`geek.status.${topic.status}`)}
-                    </Badge>
-                    <Text className={styles.topicGrade}>
-                      {topic.grade ?? '—'}
-                    </Text>
-                  </li>
-                ))}
-              </ul>
-            </section>
+                )}
+              </section>
+            </div>
           </>
         )}
         {startError && (
@@ -176,11 +252,16 @@ export function GeekResult({
             {startError}
           </Text>
         )}
-        <div className={styles.resultActions}>
-          <Button size="3" disabled={starting} onClick={onAgain}>
+        <div className={styles.actions}>
+          <Button
+            size="3"
+            className={styles.primary}
+            disabled={starting}
+            onClick={onAgain}
+          >
             {t(starting ? 'home.starting' : 'geek.again')}
           </Button>
-          <Button size="3" variant="soft" onClick={onBack}>
+          <Button size="3" variant="soft" color="gray" onClick={onBack}>
             {t('home.back')}
           </Button>
         </div>
@@ -227,30 +308,29 @@ function MaterialDownload({
       )
     }
   }
+  const meta = [
+    material.kindLabel,
+    material.week && t('geek.materialWeek', { week: material.week }),
+  ].filter(Boolean)
   return (
-    <span>
-      <Button
-        size="1"
-        variant="ghost"
+    <span className={styles.material}>
+      <button
+        type="button"
+        className={styles.materialButton}
         disabled={state === 'loading'}
+        aria-label={t('geek.openMaterial', { filename })}
         onClick={() => void open()}
       >
-        {t('geek.openMaterial', { filename })}
-      </Button>
-      {material.kindLabel && (
-        <Text as="span" size="1">
-          {' '}
-          · {material.kindLabel}
-        </Text>
-      )}
-      {material.week && (
-        <Text as="span" size="1">
-          {' '}
-          · {t('geek.materialWeek', { week: material.week })}
+        <FileText size={16} aria-hidden="true" />
+        <span className={styles.materialName}>{filename}</span>
+      </button>
+      {meta.length > 0 && (
+        <Text as="span" className={styles.materialMeta}>
+          {meta.join(' · ')}
         </Text>
       )}
       {state === 'unavailable' && (
-        <Text as="span" size="1" color="gray" role="status">
+        <Text as="span" className={styles.materialMeta} role="status">
           {t('geek.materialUnavailable')}
         </Text>
       )}

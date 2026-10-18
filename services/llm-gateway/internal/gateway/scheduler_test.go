@@ -145,6 +145,20 @@ func TestRestoreKeepsInterruptedSlotsWithoutServerLimit(t *testing.T) {
 	}
 }
 
+func TestRestoreReleasesInterruptedSlotsForVerifiedDisconnectAbort(t *testing.T) {
+	instance := schedulerInstance("model-a")
+	instance.AbortOnDisconnect = true
+	s := schedulerFixture([]InstanceConfig{instance}, []string{"model-a"})
+	s.stateIDs = make(map[string]string)
+	s.keys = make(map[string]string)
+	now := time.Now()
+	s.install(&durableJob{ID: "running", Status: "running", Instance: "model-a", SlotHeld: true, SubmittedAt: now, StartedAt: now.Add(-time.Minute)})
+	s.install(&durableJob{ID: "timed-out", Status: "failed", Instance: "model-a", SlotHeld: true, SubmittedAt: now, FinishedAt: now, Error: &storedError{Code: "upstream_timeout"}})
+	if got := s.inFlight["model-a"]; got != 0 {
+		t.Fatalf("in-flight = %d, want restored disconnected requests released", got)
+	}
+}
+
 func TestRestoreRunningStartsFullServerReservationAtRestart(t *testing.T) {
 	s := schedulerFixture([]InstanceConfig{schedulerInstance("model-a")}, []string{"model-a"})
 	setServerExecutionLimit(t, s, "2m")

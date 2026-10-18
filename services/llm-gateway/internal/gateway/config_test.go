@@ -154,7 +154,7 @@ func TestLoadConfigRejectsInvalidServerExecutionLimit(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			data = []byte(strings.Replace(string(data), `"server_execution_limit": "0s"`, `"server_execution_limit": "`+limit+`"`, 1))
+			data = []byte(strings.Replace(string(data), `"server_execution_limit": "120s"`, `"server_execution_limit": "`+limit+`"`, 1))
 			path := filepath.Join(t.TempDir(), "config.json")
 			if err := os.WriteFile(path, data, 0600); err != nil {
 				t.Fatal(err)

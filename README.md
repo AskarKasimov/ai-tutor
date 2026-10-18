@@ -444,6 +444,9 @@ LLM gateway — отдельный HTTP/gRPC-сервис `services/llm-gateway`
 требуют отдельного прогона. [Измерения и ограничения](documents/ocr-performance-2026-10-18.md).
 Устройство OCR выбирает `COURSE_GRAPH_DEVICE=cpu|gpu` в `.env` (по умолчанию `cpu`);
 `gpu` собирает CUDA-образ и на RTX 5060 распознаёт целые PDF в 5–8 раз быстрее.
+Зависимости course-graph и Docker-сборка переведены на `uv`: единый
+`pyproject.toml` и `uv.lock`, отдельные extras CPU/GPU и Docling;
+[команды разработки](services/course-graph/README.md#проверки).
 
 Номер миграции берётся следующим свободным в момент мержа, а не заранее: goose не применяет миграцию с номером меньше уже применённого. Кто мержит позже, переименовывает свою миграцию.
 

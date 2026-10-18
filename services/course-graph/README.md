@@ -311,7 +311,7 @@ encoder сериализует свои вызовы: сборка графа н
 Из контейнера в сети Compose с доступом к LLM gateway:
 
 ```bash
-python -m course_graph.evaluate --dataset /path/topics_reviewed_v2.json --output /tmp/eval --sweep 4000,6000 --materials 2 --targets 8
+uv run --no-sync python -m course_graph.evaluate --dataset /path/topics_reviewed_v2.json --output /tmp/eval --sweep 4000,6000 --materials 2 --targets 8
 ```
 
 Скрипт сохраняет исходные запросы/ответы без секретов, карточки, кандидатов,
@@ -325,11 +325,29 @@ precision/recall без отдельной разметки не заявляю�
 ## Проверки
 
 ```bash
-uv venv .venv
-. .venv/bin/activate
-uv pip install -r requirements.txt
-python -m pytest tests
+uv sync --locked --extra cpu --extra ocr
+uv run --locked --extra cpu --extra ocr python -m pytest tests
 ```
+
+Python 3.11 выбран в `.python-version`; `uv` создаёт `.venv` автоматически.
+`pyproject.toml` — единственный список зависимостей, `uv.lock` фиксирует версии
+для локального окружения и Docker. `pytest` находится в группе `dev`, которая
+локально включена по умолчанию; Docker исключает её через `--no-dev`.
+`ocr` включает Docling, `cpu` и `gpu` — взаимоисключающие extras PyTorch.
+На macOS `cpu` использует PyPI; на Linux/Windows — CPU-индекс PyTorch.
+`gpu` выбирает CUDA 12.8 на Linux x86_64 (контейнер NVIDIA).
+Для лёгкого окружения уберите `--extra ocr` и задайте
+`COURSE_GRAPH_WITH_DOCLING=false`; полный набор тестов требует `ocr`.
+
+Локальный API с Python stubs gateway:
+
+```bash
+PYTHONPATH=../shared/gen/python uv run --locked --extra cpu --extra ocr python -m course_graph.api
+```
+
+Добавление зависимостей: `uv add <package>`, для тестов — `uv add --dev <package>`,
+для OCR — `uv add --optional ocr <package>`. Обновление версий: `uv lock --upgrade`;
+коммитьте `pyproject.toml` вместе с `uv.lock`. Проверка актуальности: `uv lock --check`.
 
 pytest добавляет в `sys.path` `../shared/gen/python` (см. `pyproject.toml`). Stubs
 перегенерируются из корня `services/shared/tools/generate.sh services/shared/gen`
@@ -343,7 +361,7 @@ backend с `TEST_DATABASE_URL` (HTTP-фикстура S3, изолированн
 изменений S3, БД и запущенного API:
 
 ```bash
-PYTHONPATH=. python scripts/benchmark_ocr.py '../../documents/materials/Tutorial 4. Prolog.pdf' --pages 21 --output /tmp/ocr-benchmark/prolog.json
+uv run --locked --extra cpu --extra ocr python scripts/benchmark_ocr.py '../../documents/materials/Tutorial 4. Prolog.pdf' --pages 21 --output /tmp/ocr-benchmark/prolog.json
 ```
 
 Скрипт использует отдельный временный кеш и сохраняет Markdown, SHA-256 исходника,
@@ -367,7 +385,7 @@ PYTHONPATH=. python scripts/benchmark_ocr.py '../../documents/materials/Tutorial
 `gpu`. Сервис по-прежнему называется `course-graph`, compose подставляет вариант
 `course-graph-cpu` или `course-graph-gpu`:
 
-- `cpu` — PyTorch ставится CPU-сборкой (`UV_TORCH_BACKEND=cpu`, без CUDA и triton);
+- `cpu` — PyTorch ставится CPU-сборкой (`--extra cpu`, без CUDA и triton);
 - `gpu` — CUDA-сборка `cu128` (CUDA 12.8 — первая с поддержкой RTX 50xx), контейнер
   получает `gpus: all`. Layout, RapidOCR и модель формул и кода работают на CUDA.
   Нужны NVIDIA GPU с драйвером 570+ и NVIDIA Container Toolkit (на Windows —
@@ -382,21 +400,22 @@ RapidOCR может отличаться отдельными словами. Н
 ([замеры](../../documents/ocr-performance-2026-10-18.md#cpu-и-gpu)).
 
 Загрузки uv хранятся в кеше BuildKit
-(`--mount=type=cache`): при изменении `requirements.txt` пакеты берутся из кеша,
+(`--mount=type=cache`): при изменении `uv.lock` пакеты берутся из кеша,
 а не скачиваются заново. Кеш очищает `docker builder prune`.
 
 ### Повторное использование готового OCR-образа
 
-Если локально уже есть образ OCR с Docling, его можно использовать как базовый,
-чтобы не скачивать PyTorch и остальные тяжёлые пакеты заново:
+Если локально уже есть образ OCR с Docling, его можно использовать
+как базовый системный слой:
 
 ```bash
 COURSE_GRAPH_BASE_IMAGE=ai_tutor-ocr:latest docker compose build course-graph
 ```
 
-Зависимости проверяются из `requirements.txt`. Если в базовом образе torch другой
-сборки (CPU вместо CUDA или наоборот), он переустанавливается под выбранный
-`COURSE_GRAPH_DEVICE`, а сборка проверяет итоговый вариант. Затем в образ копируется актуальный
+Зависимости устанавливаются командой `uv sync --frozen` из `uv.lock` в отдельную
+`/app/.venv`: системные пакеты базового образа в неё не попадают. Выбранный
+`COURSE_GRAPH_DEVICE` задаёт extra `cpu` или `gpu`; сборка проверяет вариант torch.
+Установка повторно использует кеш uv BuildKit, а не системный PyTorch базового образа. Затем в образ копируется актуальный
 код `course_graph` и stubs gateway из `services/shared/gen/python`; контекст сборки —
 корень репозитория (`Dockerfile.dockerignore` пропускает только нужные каталоги). По умолчанию базовый образ —
 `python:3.11-slim`; повторное использование локального образа необязательно.
@@ -404,7 +423,7 @@ COURSE_GRAPH_BASE_IMAGE=ai_tutor-ocr:latest docker compose build course-graph
 Сквозной smoke-тест на фрагментах репозиторного датасета (создаёт отдельный курс):
 
 ```bash
-python services/course-graph/scripts/validate_upload.py --dataset notebooks/Dataset_100%__topics+pr+oc__v4.1.pdf/topics_reviewed_v2.json --output /tmp/course-graph-upload
+uv run --project services/course-graph --locked --extra cpu python services/course-graph/scripts/validate_upload.py --dataset notebooks/Dataset_100%__topics+pr+oc__v4.1.pdf/topics_reviewed_v2.json --output /tmp/course-graph-upload
 ```
 
 Команда выполняется из корня, обращается только к localhost, использует dev TLS

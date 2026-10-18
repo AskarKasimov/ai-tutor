@@ -12,7 +12,7 @@
 | `services/frontend` | [AGENTS.md](services/frontend/AGENTS.md), [README](services/frontend/README.md) | `npm run format:check`, `npm run lint`, `npm run typecheck`, `npm test -- --run`, `npm run build` |
 | `services/llm-gateway` | [AGENTS.md](services/llm-gateway/AGENTS.md), [README](services/llm-gateway/README.md), спецификации [HTTP](documents/llm-gateway-spec.md) и [gRPC](documents/llm-gateway-grpc-spec.md) | `GOWORK=off go test -race ./... -count=1`, `GOWORK=off go vet ./...`, `GOWORK=off go build ./cmd/llm-gateway`, `bash scripts/generate-openapi.sh` без изменений |
 | `services/shared` | [AGENTS.md](services/shared/AGENTS.md), [README](services/shared/README.md) | Из корня: `services/shared/tools/generate.sh --check`, `services/shared/tools/check-compat.sh <base-sha>` |
-| `services/course-graph` | [AGENTS.md](services/course-graph/AGENTS.md), [README](services/course-graph/README.md), [api/course-graph.yaml](api/course-graph.yaml) | `python -m pytest tests` |
+| `services/course-graph` | [AGENTS.md](services/course-graph/AGENTS.md), [README](services/course-graph/README.md), [api/course-graph.yaml](api/course-graph.yaml) | `uv run --locked --extra cpu --extra ocr python -m pytest tests` |
 | `api` | [api/README](api/README.md) | Из `services/backend`: `bash scripts/generate-openapi.sh` без лишних изменений |
 | Compose, `prod.sh`, `dev.sh`, `.env*.example` | [README, «Запуск»](README.md#запуск), README сервиса | Из корня: `sh -n prod.sh`, `docker compose --env-file .env.example config --quiet`, `config --quiet` каждого изменённого `services/*/docker-compose.yaml` с `.env.example` и `.env.prod.example` |
 

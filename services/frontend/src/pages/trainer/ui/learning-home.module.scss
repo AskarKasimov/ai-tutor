@@ -43,6 +43,18 @@
   display: grid;
   gap: var(--space-5);
 }
+.courseSelector {
+  display: grid;
+  gap: var(--space-2);
+}
+.courseChoices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  button {
+    cursor: pointer;
+  }
+}
 .course {
   display: grid;
   gap: var(--space-6);

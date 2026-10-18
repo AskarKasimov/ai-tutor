@@ -82,6 +82,8 @@ func TestConfigValidationGuardsTheReasoningEffortBody(t *testing.T) {
 		"stream":             {"low": {"stream": json.RawMessage(`true`)}},
 		"a client parameter": {"low": {"temperature": json.RawMessage(`0`)}},
 		"the effort itself":  {"low": {"reasoning_effort": json.RawMessage(`"high"`)}},
+		"complexity":         {"low": {"complexity": json.RawMessage(`"high"`)}},
+		"urgent":             {"low": {"urgent": json.RawMessage(`true`)}},
 	} {
 		c := valid(body)
 		if err := c.Validate(); err == nil || !strings.Contains(err.Error(), "reasoning_effort_body") {

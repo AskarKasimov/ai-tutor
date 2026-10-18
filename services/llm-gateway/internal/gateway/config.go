@@ -206,8 +206,9 @@ func (c Config) Validate() error {
 				return fmt.Errorf("instance %q: reasoning_effort_body.%s is not low, medium, or high", in.ID, level)
 			}
 			for field := range body {
-				// The extra fields never replace what the request decides.
-				if field == "model" || field == "messages" || field == "stream" || allowedParameters[field] {
+				// The extra fields never replace what the request decides, nor
+				// carry the gateway's own fields, which never go upstream.
+				if reservedRequestFields[field] || allowedParameters[field] {
 					return fmt.Errorf("instance %q: reasoning_effort_body.%s cannot set %q", in.ID, level, field)
 				}
 			}
@@ -227,6 +228,10 @@ func (c Config) Validate() error {
 	}
 	return nil
 }
+
+// reservedRequestFields are the request fields the gateway owns: the routing
+// metadata it strips and the ones it sets itself for the upstream.
+var reservedRequestFields = map[string]bool{"model": true, "messages": true, "stream": true, "complexity": true, "urgent": true}
 
 func validInstanceID(id string) bool {
 	if id == "" {

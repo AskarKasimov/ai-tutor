@@ -98,11 +98,9 @@ class OcrJobs:
         work_complete = report.get("work_complete", True)
         encoded_size = len(json.dumps(result, ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
         with self._lock:
-            if work_complete is False:
-                job.state, job.stage = "failed", "incomplete"
-                job.error = "; ".join(report.get("warnings", [])) or "Work incomplete"
-            else:
-                job.state, job.stage, job.error = "succeeded", "completed", None
+            job.state = "succeeded"
+            job.stage = "completed" if work_complete is not False else "incomplete"
+            job.error = None if work_complete is not False else ("; ".join(report.get("warnings", [])) or "Work incomplete")
             job.future = None
             job.updated_at = _now()
             self._clear_job_result(job)

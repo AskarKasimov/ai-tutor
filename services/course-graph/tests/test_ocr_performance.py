@@ -302,7 +302,8 @@ def test_incomplete_job_allows_retry_with_same_job_id():
         "report": {"engine": "pypdf", "work_complete": False, "warnings": ["partial fallback"]}
     }
     jobs.finish(job, future, incomplete_result)
-    assert job.state == "failed"
+    assert job.state == "succeeded"
+    assert job.stage == "incomplete"
 
     # Repeat reserve with the same job_id must grant a new attempt (owner=True)
     job2, owner2, future2 = jobs.reserve("job-1", "doc.pdf", content)
@@ -462,3 +463,84 @@ def test_legacy_cache_prior_to_formula_audit_fix_is_a_cache_miss(monkeypatch, tm
     assert new_result["report"]["version"] == "ocr-v9-content-cache"
     assert new_result["report"]["audit_version"] == "formula-audit-v2"
     assert converter.get_cached_document("source.md", content) is not None
+
+
+def test_deterministic_crop_retry_failure_is_unresolved_and_allows_caching(monkeypatch, tmp_path):
+    """P2: Deterministic empty output or token limit during crop retry must be marked unresolved,
+    must NOT pollute warnings with transient 'частично', and must keep work_complete=True so it caches to disk.
+    """
+    import pypdfium2
+    from PIL import Image
+    from docling_core.types.doc import BoundingBox, CoordOrigin, FormulaItem, ProvenanceItem
+    from course_graph.ocr.enrichment import audit_and_retry_formulas, AuditedEngine
+    import course_graph.ocr.converter as converter
+
+    monkeypatch.setenv("COURSE_GRAPH_OCR_CACHE_DIR", str(tmp_path))
+
+    class Bitmap:
+        def to_pil(self): return Image.new("RGB", (20, 20))
+        def close(self): pass
+
+    class Page:
+        def get_size(self): return 200, 300
+        def close(self): pass
+        def render(self, **options): return Bitmap()
+
+    class Pdf:
+        def __len__(self): return 1
+        def __getitem__(self, index): return Page()
+        def close(self): pass
+
+    monkeypatch.setattr(pypdfium2, "PdfDocument", lambda _: Pdf())
+
+    class CodeFormulaVlmModel:
+        def __init__(self, engine):
+            self.engine = engine
+            self._post_process = lambda texts: texts
+
+    # Case 1: Empty output on retry crop
+    class EmptyEngine:
+        def initialize(self): pass
+        def predict_batch(self, inputs):
+            return [S(text="", metadata={"num_tokens": 5})]
+
+    global_warnings = []
+    audited = AuditedEngine(EmptyEngine(), global_warnings)
+
+    bbox = BoundingBox(l=20, r=80, t=40, b=80, coord_origin=CoordOrigin.TOPLEFT)
+    item1 = FormulaItem(self_ref="#/texts/0", orig="", text="",
+                        prov=[ProvenanceItem(page_no=1, charspan=(0, 0), bbox=bbox)])
+    document1 = S(texts=[item1])
+    vlm_stage1 = CodeFormulaVlmModel(audited)
+    model1 = S(initialized_pipelines={1: S(enrichment_pipe=[vlm_stage1])})
+
+    regions1, warnings1 = audit_and_retry_formulas(document1, b"dummy_pdf", model1)
+
+    assert len(regions1) == 1
+    assert regions1[0].status == "unresolved"
+    assert regions1[0].reason_code == "empty_output"
+    assert regions1[0].attempts == 2
+    assert not any("частично" in w for w in global_warnings)
+    assert not any("частично" in w for w in warnings1)
+
+    # Case 2: Token limit reached on retry crop
+    class TokenLimitEngine:
+        def initialize(self): pass
+        def predict_batch(self, inputs):
+            return [S(text=r"\frac{1}{x} + ...", metadata={"num_tokens": 2048})]
+
+    audited2 = AuditedEngine(TokenLimitEngine(), global_warnings)
+    item2 = FormulaItem(self_ref="#/texts/0", orig="", text="",
+                        prov=[ProvenanceItem(page_no=1, charspan=(0, 0), bbox=bbox)])
+    document2 = S(texts=[item2])
+    vlm_stage2 = CodeFormulaVlmModel(audited2)
+    model2 = S(initialized_pipelines={1: S(enrichment_pipe=[vlm_stage2])})
+
+    regions2, warnings2 = audit_and_retry_formulas(document2, b"dummy_pdf", model2)
+
+    assert len(regions2) == 1
+    assert regions2[0].status == "unresolved"
+    assert regions2[0].reason_code == "token_limit"
+    assert regions2[0].attempts == 2
+    assert not any("частично" in w for w in global_warnings)
+    assert not any("частично" in w for w in warnings2)

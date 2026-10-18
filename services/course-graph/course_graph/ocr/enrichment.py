@@ -292,11 +292,33 @@ def audit_and_retry_formulas(document, pdf_content: bytes, converter=None):
         page_no = prov.page_no if prov else 1
 
         page_w, page_h = 612.0, 792.0
+        native_text = None
         if pdf and 1 <= page_no <= len(pdf):
             try:
                 page = pdf[page_no - 1]
                 try:
                     page_w, page_h = page.get_size()
+                    if prov and prov.bbox and hasattr(page, "get_textpage"):
+                        try:
+                            textpage = page.get_textpage()
+                            try:
+                                page_height = page.get_height() if hasattr(page, "get_height") else page_h
+                                bbox = prov.bbox.to_bottom_left_origin(page_height) if hasattr(prov.bbox, "to_bottom_left_origin") else prov.bbox
+                                if hasattr(textpage, "get_text_bounded"):
+                                    l = getattr(bbox, "l", getattr(bbox, "left", 0.0))
+                                    b = getattr(bbox, "b", getattr(bbox, "bottom", 0.0))
+                                    r = getattr(bbox, "r", getattr(bbox, "right", 0.0))
+                                    t = getattr(bbox, "t", getattr(bbox, "top", 0.0))
+                                    native_raw = textpage.get_text_bounded(
+                                        left=l - 0.5, bottom=b - 0.5,
+                                        right=r + 0.5, top=t + 0.5,
+                                    ).strip()
+                                    if native_raw:
+                                        native_text = native_raw
+                            finally:
+                                textpage.close()
+                        except Exception:
+                            pass
                 finally:
                     page.close()
             except Exception:
@@ -314,21 +336,29 @@ def audit_and_retry_formulas(document, pdf_content: bytes, converter=None):
         if raw_text:
             is_valid, reason = check_latex_syntax(raw_text)
             if is_valid:
-                regions.append(FormulaRegionRecord(
-                    region_id=region_id,
-                    source_sha256=source_hash,
-                    page=page_no,
-                    bbox=asdict(cbbox),
-                    kind=kind,
-                    status="recognized",
-                    method="visual_ocr",
-                    reason_code=None,
-                    latex=raw_text,
-                    candidate=None,
-                    attempts=1,
-                ))
-                continue
-            primary_reason = reason
+                has_native_divergence = (
+                    native_text is not None
+                    and check_latex_syntax(native_text)[0]
+                    and normalize_formatting_only(native_text) != normalize_formatting_only(raw_text)
+                )
+                if not has_native_divergence:
+                    regions.append(FormulaRegionRecord(
+                        region_id=region_id,
+                        source_sha256=source_hash,
+                        page=page_no,
+                        bbox=asdict(cbbox),
+                        kind=kind,
+                        status="recognized",
+                        method="visual_ocr",
+                        reason_code=None,
+                        latex=raw_text,
+                        candidate=None,
+                        attempts=1,
+                    ))
+                    continue
+                primary_reason = "suspect_native_divergence"
+            else:
+                primary_reason = reason
         else:
             primary_reason = "empty_output"
 
@@ -370,9 +400,54 @@ def audit_and_retry_formulas(document, pdf_content: bytes, converter=None):
                 )
                 engine = getattr(vlm_stage, "engine", None)
                 if engine is not None:
-                    outputs = engine.predict_batch([input_item])
+                    # Unwrap AuditedEngine to avoid polluting global warnings on deterministic empty output / token limit
+                    real_engine = getattr(engine, "engine", engine)
+                    if hasattr(real_engine, "initialize"):
+                        real_engine.initialize()
+                    outputs = real_engine.predict_batch([input_item])
                     post_proc = getattr(vlm_stage, "_post_process", lambda texts: texts)
-                    retry_raw = post_proc([outputs[0].text])[0].strip()
+                    raw_pred = outputs[0].text if outputs else ""
+                    retry_raw = post_proc([raw_pred])[0].strip() if raw_pred else ""
+                    num_tokens = (getattr(outputs[0], "metadata", None) or {}).get("num_tokens", 0) if outputs else 0
+
+                    if not retry_raw:
+                        # Deterministic empty model output on this crop is a stable unresolved state, not a transient crash
+                        item.text = ""
+                        item.orig = "formula"
+                        regions.append(FormulaRegionRecord(
+                            region_id=region_id,
+                            source_sha256=source_hash,
+                            page=page_no,
+                            bbox=asdict(cbbox),
+                            kind=kind,
+                            status="unresolved",
+                            method="visual_retry",
+                            reason_code="empty_output",
+                            latex=None,
+                            candidate=None,
+                            attempts=2,
+                        ))
+                        continue
+
+                    if num_tokens >= input_item.max_new_tokens:
+                        # Deterministic token limit on this crop is a stable unresolved state
+                        item.text = ""
+                        item.orig = "formula"
+                        regions.append(FormulaRegionRecord(
+                            region_id=region_id,
+                            source_sha256=source_hash,
+                            page=page_no,
+                            bbox=asdict(cbbox),
+                            kind=kind,
+                            status="unresolved",
+                            method="visual_retry",
+                            reason_code="token_limit",
+                            latex=None,
+                            candidate=retry_raw,
+                            attempts=2,
+                        ))
+                        continue
+
                     is_valid, retry_reason = check_latex_syntax(retry_raw)
                     if is_valid:
                         if raw_text and check_latex_syntax(raw_text)[0]:
@@ -442,6 +517,7 @@ def audit_and_retry_formulas(document, pdf_content: bytes, converter=None):
                             attempts=2,
                         ))
                         continue
+
             except Exception as err:
                 retry_failed = True
                 warnings.append(f"Ошибка повторного визуального OCR {region_id}: {err}")

@@ -371,6 +371,33 @@ export async function fetchTurnAudio(
   return new Blob([audio], { type: 'audio/wav' })
 }
 
+export async function fetchTurnAudioStream(
+  sessionId: string,
+  turnId: string,
+  signal: AbortSignal,
+  part?: TurnAudioPart,
+): Promise<ReadableStream<Uint8Array>> {
+  const query = part ? `?part=${part}` : ''
+  const response = await request(
+    `${session(sessionId)}/turns/${encodeURIComponent(turnId)}/audio/stream${query}`,
+    signal,
+    AUDIO_TIMEOUT,
+    { headers: { Accept: 'application/x-ndjson' } },
+  )
+  if (
+    response.headers
+      .get('Content-Type')
+      ?.split(';', 1)[0]
+      .trim()
+      .toLowerCase() !== 'application/x-ndjson' ||
+    !response.body
+  ) {
+    await response.body?.cancel().catch(() => undefined)
+    throw new DiagnosticApiError(0, 'INVALID_RESPONSE')
+  }
+  return response.body
+}
+
 export type DiagnosticApi = {
   startDiagnostic: typeof startDiagnostic
   readDiagnostic: typeof readDiagnostic
@@ -378,4 +405,5 @@ export type DiagnosticApi = {
   answerDiagnostic: typeof answerDiagnostic
   readDiagnosticResult: typeof readDiagnosticResult
   fetchTurnAudio: typeof fetchTurnAudio
+  fetchTurnAudioStream?: typeof fetchTurnAudioStream
 }

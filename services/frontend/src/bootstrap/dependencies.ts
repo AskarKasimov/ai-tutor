@@ -50,6 +50,7 @@ export function createAppDependencies(): AppDependencies {
       answerDiagnostic: diagnostic.answerDiagnostic,
       readDiagnosticResult: diagnostic.readDiagnosticResult,
       fetchTurnAudio: diagnostic.fetchTurnAudio,
+      fetchTurnAudioStream: diagnostic.fetchTurnAudioStream,
     },
   }
 }

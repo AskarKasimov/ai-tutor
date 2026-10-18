@@ -203,3 +203,39 @@ func TestCourseGraphTimeoutDefaultsToNone(t *testing.T) {
 		t.Fatalf("course-graph timeout = %v, %v; want 15m", cfg.CourseGraphTimeout, err)
 	}
 }
+
+func TestStreamingGateAndPinnedIdentity(t *testing.T) {
+	configuredEnv(t)
+	t.Setenv("BACKEND_TTS_STREAMING_ENABLED", "")
+	t.Setenv("BACKEND_TTS_MODEL_REVISION", "")
+	t.Setenv("BACKEND_TTS_REFERENCE_SHA256", "")
+	c, err := ConfigFromEnv()
+	if err != nil || c.TTSStreamingEnabled {
+		t.Fatalf("default %v", err)
+	}
+	t.Setenv("BACKEND_TTS_STREAMING_ENABLED", "true")
+	if _, err = ConfigFromEnv(); err == nil {
+		t.Fatal("streaming accepts unpinned voice")
+	}
+	t.Setenv("BACKEND_TTS_MODEL_REVISION", "OpenBMB/VoxCPM2@immutable-commit")
+	t.Setenv("BACKEND_TTS_REFERENCE_SHA256", strings.Repeat("ab", 32))
+	c, err = ConfigFromEnv()
+	if err != nil || !c.TTSStreamingEnabled {
+		t.Fatalf("pinned %v", err)
+	}
+	a := &App{cfg: c}
+	first := a.voiceName()
+	a.cfg.TTSReferenceSHA256 = strings.Repeat("cd", 32)
+	if first == a.voiceName() {
+		t.Fatal("voice bytes absent from profile")
+	}
+	a.cfg = c
+	a.cfg.TTSModelRevision = "different"
+	if first == a.voiceName() {
+		t.Fatal("revision absent from profile")
+	}
+	t.Setenv("BACKEND_TTS_REFERENCE_SHA256", "bad")
+	if _, err = ConfigFromEnv(); err == nil {
+		t.Fatal("bad digest")
+	}
+}

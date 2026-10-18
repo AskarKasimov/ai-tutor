@@ -9,6 +9,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/audio"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/exam"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/fault"
 )
@@ -23,7 +24,8 @@ const (
 
 type Config struct {
 	// MaxQuestions stops a diagnostic after that many questions; 0 means no limit.
-	MaxQuestions int
+	MaxQuestions     int
+	StreamingEnabled bool
 }
 
 // AudioPart selects what of a Geek turn is voiced.
@@ -308,17 +310,34 @@ func (s *Service) Result(ctx context.Context, ownerID, id string) (exam.Result, 
 // turn; a part is cached by its text, so a prepared question that every
 // student hears is synthesized once.
 func (s *Service) TurnAudio(ctx context.Context, ownerID, id, turnID string, part AudioPart) ([]byte, error) {
-	session, err := s.load(ctx, ownerID, id)
+	key, text, err := s.turnSpeech(ctx, ownerID, id, turnID, part)
 	if err != nil {
 		return nil, err
 	}
+	return s.speech.Get(ctx, key, text)
+}
+func (s *Service) TurnAudioStream(ctx context.Context, ownerID, id, turnID string, part AudioPart, emit func(audio.StreamEvent) error) error {
+	key, text, err := s.turnSpeech(ctx, ownerID, id, turnID, part)
+	if err != nil {
+		return err
+	}
+	if !s.cfg.StreamingEnabled {
+		return fault.New(fault.NotAcceptable, "STREAMING_DISABLED", "Потоковая озвучка отключена.")
+	}
+	return s.speech.Stream(ctx, key, text, emit)
+}
+func (s *Service) turnSpeech(ctx context.Context, ownerID, id, turnID string, part AudioPart) (string, string, error) {
+	session, err := s.load(ctx, ownerID, id)
+	if err != nil {
+		return "", "", err
+	}
 	turn, ok := session.Turn(turnID)
 	if !ok || turn.Speaker != exam.SpeakerGeek {
-		return nil, fault.New(fault.NotFound, "TURN_NOT_FOUND", "Реплика Geek не найдена.")
+		return "", "", fault.New(fault.NotFound, "TURN_NOT_FOUND", "Реплика Geek не найдена.")
 	}
 	switch part {
 	case AudioWhole:
-		return s.speech.Get(ctx, "geek/"+session.ID+"/"+turn.ID+".wav", turn.Text)
+		return "geek/" + session.ID + "/" + turn.ID + ".wav", turn.Text, nil
 	case AudioReply, AudioQuestion:
 		reply, question := turn.Parts()
 		text := question
@@ -326,11 +345,12 @@ func (s *Service) TurnAudio(ctx context.Context, ownerID, id, turnID string, par
 			text = reply
 		}
 		if strings.TrimSpace(text) == "" {
-			return nil, fault.New(fault.NotFound, "TURN_PART_NOT_FOUND", "У реплики Geek нет этой части.")
+			return "", "", fault.New(fault.NotFound, "TURN_PART_NOT_FOUND", "У реплики Geek нет этой части.")
 		}
-		return s.speech.Part(ctx, text)
+		return s.speech.partKey(text), strings.TrimSpace(text), nil
+	default:
+		return "", "", fault.Validation("part", "Часть реплики: reply или question.")
 	}
-	return nil, fault.Validation("part", "Часть реплики: reply или question.")
 }
 
 func (s *Service) load(ctx context.Context, ownerID, id string) (exam.Session, error) {

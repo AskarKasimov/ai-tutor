@@ -53,6 +53,8 @@ func Error(ctx context.Context, w http.ResponseWriter, err error) {
 		status = 409
 	case fault.TooLarge:
 		status = 413
+	case fault.NotAcceptable:
+		status = http.StatusNotAcceptable
 	case fault.Unsupported:
 		status = 415
 	case fault.Unavailable:

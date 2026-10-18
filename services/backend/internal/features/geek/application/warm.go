@@ -94,7 +94,7 @@ func (w *Warmer) Run(ctx context.Context) error {
 				continue
 			}
 		}
-		_, err := w.speech.Part(ctx, text)
+		_, err := w.speech.WarmPart(ctx, text)
 		if ctx.Err() != nil {
 			return nil
 		}

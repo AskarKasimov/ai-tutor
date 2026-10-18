@@ -3,9 +3,11 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/audio"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -83,6 +85,19 @@ func geekFlow(t *testing.T, f *fixture, access *http.Cookie, check func(method, 
 		t.Fatalf("turn audio: %d %s", audio.Code, audio.Body.String())
 	}
 	check("GET", "/diagnostic-sessions/{id}/turns/{turn_id}/audio", audio)
+	streamPath := path + "/turns/" + *session.CurrentTurnID + "/audio/stream"
+	streamContract := "/diagnostic-sessions/{id}/turns/{turn_id}/audio/stream"
+	disabled := f.request("GET", streamPath, "", access)
+	if disabled.Code != 406 {
+		t.Fatalf("stream gate %d", disabled.Code)
+	}
+	check("GET", streamContract, disabled)
+	check("GET", streamContract, f.request("GET", streamPath, ""))
+	check("GET", streamContract, f.request("GET", path+"/turns/missing/audio/stream", "", access))
+	f.app.cfg.TTSStreamingEnabled = true
+	check("GET", streamContract, f.request("GET", streamPath, "", access))
+	f.app.cfg.TTSStreamingEnabled = false
+
 	check("GET", "/diagnostic-sessions/{id}/turns/{turn_id}/audio", f.request("GET", path+"/turns/unknown/audio", "", access))
 	check("POST", "/diagnostic-sessions/{id}/answers", f.keyed("POST", path+"/answers", "geek-stale", `{"turn_id":"unknown","text":"ответ"}`, access))
 	check("POST", "/diagnostic-sessions/{id}/answers", f.keyed("POST", path+"/answers", "geek-two", `{"turn_id":"x","text":"ответ","dont_know":true}`, access))
@@ -171,4 +186,89 @@ func prepareFixture(t *testing.T, f *fixture) {
 			t.Fatal("the fixture was not prepared")
 		}
 	}
+}
+
+// Real network hop plus the app's authentication/logging middleware must flush
+// PCM while the fake provider is still generating, rather than at handler return.
+func TestGeekStreamFlushesThroughAppMiddleware(t *testing.T) {
+	release := make(chan struct{})
+	var releaseOnce sync.Once
+	defer releaseOnce.Do(func() { close(release) })
+	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/synthesize/stream" {
+			t.Errorf("unexpected provider %s", r.URL.Path)
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/x-ndjson")
+		enc := json.NewEncoder(w)
+		_ = enc.Encode(audio.StartEvent(24000))
+		_ = enc.Encode(audio.StreamEvent{Type: "audio", Seq: 0, PCM: []byte{1, 0, 2, 0}})
+		w.(http.Flusher).Flush()
+		select {
+		case <-r.Context().Done():
+			return
+		case <-release:
+		}
+		_ = enc.Encode(audio.StreamEvent{Type: "end", Chunks: 1, Samples: 2})
+	}))
+	defer provider.Close()
+	cfg := testConfig()
+	cfg.TTSURL = provider.URL + "/synthesize"
+	cfg.GeekGraphFixture = geekFixture
+	cfg.TTSStreamingEnabled = true
+	cfg.TTSModelRevision = "fake@revision"
+	cfg.TTSReferenceSHA256 = strings.Repeat("a", 64)
+	f := newFixtureWithConfig(t, cfg)
+	f.app.speech = geekapp.NewSpeechCache(f.app.models(), &streamTestAudio{}, f.app.voiceName(), time.Second*5)
+	prepareFixture(t, f)
+	register := f.request("POST", "/auth/register", `{"email":"stream@example.edu","password":"`+password+`","display_name":"Поток"}`)
+	if register.Code != 201 {
+		t.Fatal(register.Body.String())
+	}
+	access := register.Result().Cookies()[0]
+	s := decodeSession(t, f.keyed("POST", "/diagnostic-sessions", "stream-start", `{"subject_id":"subject:test"}`, access))
+	server := httptest.NewServer(f.app.Handler())
+	defer server.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*3)
+	defer cancel()
+	req, _ := http.NewRequestWithContext(ctx, "GET", server.URL+"/diagnostic-sessions/"+s.ID+"/turns/"+*s.CurrentTurnID+"/audio/stream", nil)
+	req.AddCookie(access)
+	resp, err := server.Client().Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 || resp.ContentLength != -1 || resp.Header.Get("Cache-Control") != "no-store" {
+		t.Fatalf("stream headers %d %v", resp.StatusCode, resp.Header)
+	}
+	decoder := json.NewDecoder(resp.Body)
+	var event audio.StreamEvent
+	if err = decoder.Decode(&event); err != nil || event.Type != "start" {
+		t.Fatalf("start %v %v", event, err)
+	}
+	if err = decoder.Decode(&event); err != nil || event.Type != "audio" {
+		t.Fatalf("early PCM %v %v", event, err)
+	}
+	releaseOnce.Do(func() { close(release) })
+	if err = decoder.Decode(&event); err != nil || event.Type != "end" {
+		t.Fatalf("end %v %v", event, err)
+	}
+}
+
+type streamTestAudio struct {
+	mu   sync.Mutex
+	data []byte
+}
+
+func (s *streamTestAudio) Get(context.Context, string) ([]byte, bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.data, s.data != nil, nil
+}
+func (s *streamTestAudio) Put(_ context.Context, _ string, data []byte) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.data = data
+	return nil
 }

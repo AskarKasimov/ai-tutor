@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/audio"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -25,6 +26,12 @@ func configureFixtureModels(t *testing.T, cfg *Config) {
 		switch r.URL.Path {
 		case "/transcribe":
 			_ = json.NewEncoder(w).Encode(map[string]string{"text": "Ответ ученика."})
+		case "/synthesize/stream":
+			w.Header().Set("Content-Type", "application/x-ndjson")
+			encoder := json.NewEncoder(w)
+			if err := audio.StreamWAV(wavBytes(), func(e audio.StreamEvent) error { return encoder.Encode(e) }); err != nil {
+				t.Error(err)
+			}
 		case "/synthesize":
 			w.Header().Set("Content-Type", "audio/wav")
 			_, _ = w.Write(wavBytes())

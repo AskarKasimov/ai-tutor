@@ -3,6 +3,7 @@ import {
   answerDiagnostic,
   DiagnosticApiError,
   fetchTurnAudio,
+  fetchTurnAudioStream,
   fetchDiagnosticMaterialRaw,
   listDiagnostics,
   readDiagnostic,
@@ -300,4 +301,56 @@ it('fetches the WAV of a Geek turn', async () => {
   await expect(fetchTurnAudio('d1', 't1', signal())).rejects.toMatchObject({
     code: 'INVALID_RESPONSE',
   })
+})
+
+it('opens authenticated incremental turn audio without reading a complete body', async () => {
+  const body = new ReadableStream<Uint8Array>()
+  const fetch = vi.fn(
+    async () =>
+      new Response(body, {
+        headers: { 'Content-Type': 'application/x-ndjson; charset=utf-8' },
+      }),
+  )
+  vi.stubGlobal('fetch', fetch)
+  const result = await fetchTurnAudioStream('d 1', 't 1', signal(), 'question')
+  expect(result).toBe(body)
+  expect(fetch).toHaveBeenCalledWith(
+    '/api/v1/diagnostic-sessions/d%201/turns/t%201/audio/stream?part=question',
+    expect.objectContaining({
+      credentials: 'include',
+      signal: expect.any(AbortSignal),
+    }),
+  )
+  await result.cancel()
+})
+it.each([404, 406, 501, 500])(
+  'preserves HTTP %s for the stream fallback policy',
+  async (status) => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response('{}', { status })),
+    )
+    await expect(
+      fetchTurnAudioStream('d1', 't1', signal()),
+    ).rejects.toMatchObject({ status })
+  },
+)
+it('rejects and cancels an unexpected stream content type', async () => {
+  let cancelled = false
+  const body = new ReadableStream<Uint8Array>({
+    cancel() {
+      cancelled = true
+    },
+  })
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(
+      async () =>
+        new Response(body, { headers: { 'Content-Type': 'audio/wav' } }),
+    ),
+  )
+  await expect(
+    fetchTurnAudioStream('d1', 't1', signal()),
+  ).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
+  expect(cancelled).toBe(true)
 })

@@ -1,0 +1,82 @@
+{
+  "annotations": {"list": []},
+  "description": "Configured route eligibility and runtime model selection for the LLM Gateway. The scheduler prefers the lowest configured eligible tier, balances by available capacity, and rotates ties; it can fall back to higher tiers when lower tiers cannot serve a request.",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"color": {"mode": "palette-classic"}, "unit": "reqps"}, "overrides": []},
+      "gridPos": {"h": 9, "w": 14, "x": 0, "y": 0},
+      "id": 1,
+      "options": {"legend": {"displayMode": "table", "placement": "bottom", "showLegend": true}, "tooltip": {"mode": "multi", "sort": "desc"}},
+      "targets": [{"datasource": {"type": "prometheus", "uid": "prometheus"}, "editorMode": "code", "expr": "sum by (complexity, tier, model) (rate(gateway_route_selections_total[$__rate_interval]))", "legendFormat": "{{complexity}} → {{tier}} · {{model}}", "refId": "A"}],
+      "title": "Фактическая маршрутизация по моделям",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"color": {"mode": "palette-classic"}, "unit": "short"}, "overrides": []},
+      "gridPos": {"h": 9, "w": 10, "x": 14, "y": 0},
+      "id": 2,
+      "options": {"displayMode": "gradient", "legend": {"showLegend": false}, "orientation": "horizontal", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "showUnfilled": true},
+      "targets": [{"datasource": {"type": "prometheus", "uid": "prometheus"}, "editorMode": "code", "expr": "sum by (model, tier) (increase(gateway_route_selections_total[$__range]))", "instant": true, "legendFormat": "{{tier}} · {{model}}", "refId": "A"}],
+      "title": "Назначения за выбранный период",
+      "type": "bargauge"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "custom": {"align": "auto", "cellOptions": {"type": "auto"}, "inspect": false}, "mappings": [], "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]}}, "overrides": []},
+      "gridPos": {"h": 9, "w": 12, "x": 0, "y": 9},
+      "id": 3,
+      "options": {"cellHeight": "sm", "showHeader": true},
+      "targets": [{"datasource": {"type": "prometheus", "uid": "prometheus"}, "editorMode": "code", "expr": "gateway_route_eligible", "format": "table", "instant": true, "refId": "A"}],
+      "title": "Настроенные маршруты: сложность → уровень → модель",
+      "transformations": [{"id": "organize", "options": {"excludeByName": {"Time": true, "__name__": true}, "indexByName": {"complexity": 0, "tier": 1, "model": 2, "instance": 3, "Value": 4}, "renameByName": {"Value": "Доступен", "complexity": "Сложность запроса", "instance": "Инстанс", "model": "Модель", "tier": "Уровень пула"}}}],
+      "type": "table"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"color": {"mode": "palette-classic"}, "unit": "short"}, "overrides": []},
+      "gridPos": {"h": 9, "w": 12, "x": 12, "y": 9},
+      "id": 4,
+      "options": {"legend": {"displayMode": "list", "placement": "bottom", "showLegend": true}, "tooltip": {"mode": "multi", "sort": "desc"}},
+      "targets": [{"datasource": {"type": "prometheus", "uid": "prometheus"}, "editorMode": "code", "expr": "sum by (complexity, urgent) (gateway_queue_depth)", "legendFormat": "{{complexity}} · urgent={{urgent}}", "refId": "A"}],
+      "title": "Ожидающие запросы по сложности",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"color": {"mode": "palette-classic"}, "unit": "short"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 18},
+      "id": 5,
+      "options": {"legend": {"displayMode": "list", "placement": "bottom", "showLegend": true}, "tooltip": {"mode": "multi", "sort": "desc"}},
+      "targets": [{"datasource": {"type": "prometheus", "uid": "prometheus"}, "editorMode": "code", "expr": "gateway_instance_in_flight", "legendFormat": "{{instance}}", "refId": "A"}],
+      "title": "Занятые слоты upstream-инстансов",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"color": {"mode": "palette-classic"}, "unit": "reqps"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 18},
+      "id": 6,
+      "options": {"legend": {"displayMode": "list", "placement": "bottom", "showLegend": true}, "tooltip": {"mode": "multi", "sort": "desc"}},
+      "targets": [{"datasource": {"type": "prometheus", "uid": "prometheus"}, "editorMode": "code", "expr": "sum by (status, transport) (rate(gateway_calls_total{status=~\"4..|5..\"}[$__rate_interval]))", "legendFormat": "{{transport}} · {{status}}", "refId": "A"}],
+      "title": "Ошибки ответов (4xx/5xx)",
+      "type": "timeseries"
+    }
+  ],
+  "refresh": "15s",
+  "schemaVersion": 39,
+  "tags": ["llm-gateway", "routing"],
+  "templating": {"list": []},
+  "time": {"from": "now-6h", "to": "now"},
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "LLM Gateway · Routing",
+  "uid": "llm-gateway-routing",
+  "version": 1
+}

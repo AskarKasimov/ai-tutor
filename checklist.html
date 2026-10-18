@@ -139,7 +139,7 @@
       <ul>
         <li><label><input type="checkbox" data-id="cg-ocr" checked><span><span class="t">Этап 1. OCR</span><span class="d">PDF → текст: по документу на лекцию, лабу и туториал недели.</span></span></label></li>
         <li><label><input type="checkbox" data-id="cg-clean" checked><span><span class="t">Этап 2. Очистка LLM</span><span class="d">Убрать лектора, команду курса, office hours, объявления, «спасибо за внимание». #104: /topics/extract вместе с темами, после OCR и машинного перевода.</span></span></label></li>
-        <li><label><input type="checkbox" data-id="cg-units" checked><span><span class="t">Этап 3. Извлечение атомарных тем</span><span class="d">Каждый документ недели отдельно; лекция «Матрицы» → умножение, обратная, транспонирование. #104: с цитатами-источниками.</span></span></label></li>
+        <li><label><input type="checkbox" data-id="cg-units" checked><span><span class="t">Этап 3. Извлечение атомарных тем</span><span class="d">Каждый документ недели отдельно; лекция «Матрицы» → умножение, обратная, транспонирование. #104: с цитатами-источниками. #129: модель рассуждает (reasoning_effort не передаётся); механические ошибки ответа исправляются кодом в сторону сохранения текста (чужой ID игнорируется, блок с неизвестной причиной удаления — при любом порядке повторов — или использованный темой остаётся), счётчики tolerated_* в отчёте. Проверено живым прогоном: Week 2 Lecture.pdf прошёл с первой попытки.</span></span></label></li>
         <li><label><input type="checkbox" data-id="cg-dedup-week"><span><span class="t">Этап 4а. Дедупликация внутри недели</span><span class="d">Один проход по лекции, лабе и туториалу недели.</span></span></label></li>
         <li><label><input type="checkbox" data-id="cg-dedup-all"><span><span class="t">Этап 4б. Дедупликация между неделями</span><span class="d">Второй проход по всем темам курса. #104: объединяются только одинаковые нормализованные названия; синонимы — нет.</span></span></label></li>
         <li><label><input type="checkbox" data-id="cg-edges" checked><span><span class="t">Этап 5. Стрелки-пререквизиты</span><span class="d">«Что нужно знать, чтобы понять эту тему»: ранг → Гаусс, определение матрицы, миноры.</span></span></label></li>
@@ -214,8 +214,8 @@
       <ul>
         <li><label><input type="checkbox" data-id="l-client" checked><span><span class="t">LLM gateway готов и влит в master</span><span class="d">Отдельный сервис services/llm-gateway: HTTP API и protobuf gRPC, очередь и балансировка по четырём моделям.</span></span></label></li>
         <li><label><input type="checkbox" data-id="l-geek" checked><span><span class="t">Geek ходит в LLM через gateway</span><span class="d">По gRPC (llmgateway.v1.Gateway/Complete); мок удалён.</span></span></label></li>
-        <li><label><input type="checkbox" data-id="l-python" checked><span><span class="t">course-graph подключён к gateway</span><span class="d">По gRPC (llmgateway.v1.Gateway/Complete), stubs из services/shared/gen/python; очистка — low, темы и пререквизиты — high.</span></span></label></li>
-        <li><label><input type="checkbox" data-id="l-roles" checked><span><span class="t">Сложность запроса задаёт вызывающий код</span><span class="d">Клиент указывает complexity (low / medium / high) и при необходимости urgent. Для Geek: оценка с реакцией на ответ — high, основной вопрос — medium, дополнительный, переформулировка и объяснение после «Не знаю» — low; модель выбирает gateway.</span></span></label></li>
+        <li><label><input type="checkbox" data-id="l-python" checked><span><span class="t">course-graph подключён к gateway</span><span class="d">По gRPC (llmgateway.v1.Gateway/Complete), stubs из services/shared/gen/python; все этапы — low (решение 18.10.2026). Очистка передаёт reasoning_effort: low, выделение тем и проверка пререквизитов — нет: модель рассуждает по умолчанию (#129).</span></span></label></li>
+        <li><label><input type="checkbox" data-id="l-roles" checked><span><span class="t">Сложность запроса задаёт вызывающий код</span><span class="d">Клиент указывает complexity (low / medium / high) и при необходимости urgent. Для Geek всё во время сессии — low и urgent (оценка с реакцией, вопросы, переформулировка, объяснение после «Не знаю»); заранее подготовленные основные вопросы — medium (решение 18.10.2026); модель выбирает gateway.</span></span></label></li>
       </ul>
     </section>
 
@@ -257,7 +257,7 @@
     </section>
   </div>
 
-  <footer>Отмечено по состоянию репозитория на 17.10.2026 (backend и экраны Geek, конвейер course-graph и админка графа; пакета — нет). Свои отметки хранятся только в этом браузере.</footer>
+  <footer>Отмечено по состоянию репозитория на 18.10.2026 (backend и экраны Geek, конвейер course-graph и админка графа; пакета — нет). Свои отметки хранятся только в этом браузере.</footer>
 </main>
 <script>
 (function () {

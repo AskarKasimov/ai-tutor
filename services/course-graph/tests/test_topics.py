@@ -711,6 +711,24 @@ def test_mechanical_slips_are_fixed_without_losing_text():
     assert report["tolerated_used_removals"] == 1
 
 
+@pytest.mark.parametrize("reasons", [("thanks", "unknown"), ("unknown", "thanks")])
+def test_an_unknown_reason_among_repeats_keeps_the_block_in_any_order(reasons):
+    # Review of PR #129: a valid reason listed first used to win and drop the
+    # block silently, while the reverse order kept it.
+    source = "Производная показывает скорость изменения функции.\n\nГрадиент задаёт направление наибольшего роста функции."
+    async def contradictory(system, payload):
+        first, second = [b["id"] for b in json.loads(payload)["blocks"]]
+        return json.dumps({"remove": [{"id": second, "reason": r} for r in reasons], "topics": [
+            {"title": "Производная", "requires": [], "provides": ["Смысл производной"],
+             "question": "Почему производная показывает локальную скорость изменения?", "block_ids": [first]},
+        ]})
+    result = run(extract_topics(source, contradictory, "m"))
+    report = result["report"]
+    assert "Градиент задаёт направление" in report["topics"][0]["text"]
+    assert result["markdown"] == source and report["removed"] == []
+    assert report["tolerated_invalid_reasons"] == 1
+
+
 def test_an_answer_without_topics_is_still_rejected():
     async def empty(system, payload):
         return '{"remove":[],"topics":[]}'

@@ -355,18 +355,18 @@ async def extract_topics(text, complete, material_id="material", week=None, sett
             # an id outside the batch belongs to another batch and is ignored,
             # a removal with an unknown reason keeps its block, and a block a
             # topic uses is not removed (the model itself treats it as content).
+            # An unknown reason among repeats of an id keeps the block whatever
+            # their order, so the kept set is collected before any removal.
             kept = set()
             for item in decision.remove:
                 if item.id not in ids:
                     metrics["tolerated_foreign_ids"] += 1
-                    continue
-                if item.id in removed or item.id in kept or item.id in protected:
-                    continue
-                if item.reason not in REASONS:
+                elif item.reason not in REASONS and item.id not in kept | protected:
                     metrics["tolerated_invalid_reasons"] += 1
                     kept.add(item.id)
-                    continue
-                removed[item.id] = item.reason
+            for item in decision.remove:
+                if item.id in ids and item.id not in removed and item.id not in kept | protected:
+                    removed[item.id] = item.reason
             for topic in decision.topics:
                 foreign = [b for b in topic.block_ids if b not in ids]
                 metrics["tolerated_foreign_ids"] += len(foreign)

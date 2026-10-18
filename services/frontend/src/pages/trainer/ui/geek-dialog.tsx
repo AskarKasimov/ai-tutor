@@ -198,7 +198,13 @@ function Dialogue({
     const container = dialog.current
     if (container && followEnd.current)
       container.scrollTop = container.scrollHeight
-  }, [session.turns.length, answer.isPending, hiddenId, resultReady, transcribing])
+  }, [
+    session.turns.length,
+    answer.isPending,
+    hiddenId,
+    resultReady,
+    transcribing,
+  ])
 
   const submit = (variables: NonNullable<typeof answer.variables>) => {
     setAnswered(variables.turnId)
@@ -225,7 +231,9 @@ function Dialogue({
       onScroll={(event) => {
         const container = event.currentTarget
         followEnd.current =
-          container.scrollHeight - container.scrollTop - container.clientHeight <
+          container.scrollHeight -
+            container.scrollTop -
+            container.clientHeight <
           96
       }}
     >

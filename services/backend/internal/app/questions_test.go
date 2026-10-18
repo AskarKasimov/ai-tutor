@@ -41,7 +41,7 @@ func (e *buildExaminer) Evaluate(context.Context, geekapp.EvaluationRequest) (ge
 	return geekapp.Assessment{}, errors.New("not used")
 }
 
-func (e *buildExaminer) Explain(context.Context, geekapp.EvaluationRequest) (string, error) {
+func (e *buildExaminer) Feedback(context.Context, geekapp.FeedbackRequest) (string, error) {
 	return "", errors.New("not used")
 }
 

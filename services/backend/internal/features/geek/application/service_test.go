@@ -142,12 +142,14 @@ func (t texts) Text(_ context.Context, owner, id string) (string, bool, error) {
 // examiner grades by the answer text: "сильно" is 2/2/2/2, "частично"
 // 2/2/1/1, anything else 0/1/0/0. Its reaction and explanation name the topic.
 type examiner struct {
-	mu        sync.Mutex
-	fail      error
-	questions []QuestionRequest
-	evals     int
-	evaluated []EvaluationRequest
-	explained []EvaluationRequest
+	mu           sync.Mutex
+	fail         error
+	questions    []QuestionRequest
+	evals        int
+	evaluated    []EvaluationRequest
+	explained    []EvaluationRequest
+	feedbacks    []FeedbackRequest
+	feedbackFail error
 }
 
 func (e *examiner) Question(_ context.Context, r QuestionRequest) (string, error) {
@@ -169,7 +171,7 @@ func (e *examiner) Evaluate(_ context.Context, r EvaluationRequest) (Assessment,
 	e.evals++
 	e.evaluated = append(e.evaluated, r)
 	last := r.Dialogue[len(r.Dialogue)-1]
-	a := Assessment{Reaction: "Реакция: " + r.Node.Title + ".", Explanation: "Разбор: " + r.Node.Title + "."}
+	a := Assessment{}
 	switch {
 	case strings.Contains(last.Text, "не знаю"):
 		a.Evaluation = exam.Evaluation{Verdict: exam.VerdictDontKnow}
@@ -183,14 +185,25 @@ func (e *examiner) Evaluate(_ context.Context, r EvaluationRequest) (Assessment,
 	return a, nil
 }
 
-func (e *examiner) Explain(_ context.Context, r EvaluationRequest) (string, error) {
+func (e *examiner) Feedback(_ context.Context, r FeedbackRequest) (string, error) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	if e.fail != nil {
 		return "", e.fail
 	}
-	e.explained = append(e.explained, r)
-	return "Объяснение: " + r.Node.Title + ".", nil
+	e.feedbacks = append(e.feedbacks, r)
+	if e.feedbackFail != nil {
+		return "", e.feedbackFail
+	}
+	if r.Verdict == exam.VerdictDontKnow {
+		e.explained = append(e.explained, r.EvaluationRequest)
+		return "Объяснение: " + r.Node.Title + ".", nil
+	}
+	text := "Реакция: " + r.Node.Title + "."
+	if r.Closed {
+		text += " Разбор: " + r.Node.Title + "."
+	}
+	return text, nil
 }
 
 func wav(samples int) []byte {
@@ -514,6 +527,59 @@ func TestModelFailureLeavesTheSessionAndTheRetrySucceeds(t *testing.T) {
 	}
 	if _, err := f.service.Answer(ctx, "student", s.ID, "stale", Answer{TurnID: turn.ID, Text: "ещё раз"}); code(err) != "TURN_NOT_CURRENT" {
 		t.Fatalf("stale turn: %v", err)
+	}
+}
+
+func TestFeedbackReceivesTheEngineOutcome(t *testing.T) {
+	for _, tc := range []struct {
+		name, answer string
+		closed       bool
+		next         exam.TurnKind
+		grade        exam.Grade
+	}{
+		{"complete", "сильно", true, exam.KindQuestion, exam.GradeA},
+		{"partial", "частично", false, exam.KindFollowup, ""},
+		{"weak", "слабо", false, exam.KindRephrase, ""},
+		{"give-up", "не знаю", true, exam.KindQuestion, exam.GradeD},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newFixture(t)
+			s, _, err := f.service.Start(context.Background(), "student", "subject", "start")
+			if err != nil {
+				t.Fatal(err)
+			}
+			s = f.answer(t, s, Answer{Text: tc.answer})
+			r := f.examiner.feedbacks[0]
+			if r.Closed != tc.closed || r.Next != tc.next {
+				t.Fatalf("feedback decision = %+v", r)
+			}
+			if tc.grade != "" && (r.Result.Grade == nil || *r.Result.Grade != tc.grade) {
+				t.Fatalf("feedback grade = %v, want %s", r.Result.Grade, tc.grade)
+			}
+			if tc.grade == exam.GradeA && len(r.Prerequisites) != 0 {
+				t.Fatalf("already credited prerequisites still protected: %v", r.Prerequisites)
+			}
+		})
+	}
+}
+
+func TestFeedbackFailureDoesNotCommitTheEvaluation(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	s, _, _ := f.service.Start(ctx, "student", "subject", "start")
+	a := Answer{TurnID: s.Turns[0].ID, Text: "сильно"}
+	f.examiner.feedbackFail = errors.New("feedback unavailable")
+	_, err := f.service.Answer(ctx, "student", s.ID, "answer", a)
+	if code(err) != "MODEL_UNAVAILABLE" {
+		t.Fatalf("err = %v", err)
+	}
+	stored, _ := f.service.Get(ctx, "student", s.ID)
+	if stored.Version != s.Version || len(stored.Turns) != 1 || stored.Exam.Nodes[*s.Turns[0].NodeID].Grade != nil {
+		t.Fatal("feedback failure committed grading or dialogue")
+	}
+	f.examiner.feedbackFail = nil
+	if _, err := f.service.Answer(ctx, "student", s.ID, "answer", a); err != nil {
+		t.Fatal(err)
 	}
 }
 

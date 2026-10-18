@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math/rand/v2"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -44,6 +45,8 @@ type Service struct {
 	now      func() time.Time
 	cfg      Config
 	speech   *SpeechCache
+	// rng shuffles top-level topics of equal coverage for each new diagnostic.
+	rng func() *rand.Rand
 }
 
 func (s *Service) SetRawMaterials(raw RawMaterials) { s.raw = raw }
@@ -98,7 +101,8 @@ func New(graphs GraphSource, store Store, texts Transcriptions, examiner Examine
 	if now == nil {
 		now = time.Now
 	}
-	return &Service{graphs: graphs, store: store, texts: texts, examiner: examiner, ids: ids, now: now, cfg: cfg, speech: speech}
+	rng := func() *rand.Rand { return rand.New(rand.NewPCG(rand.Uint64(), rand.Uint64())) }
+	return &Service{graphs: graphs, store: store, texts: texts, examiner: examiner, ids: ids, now: now, cfg: cfg, speech: speech, rng: rng}
 }
 
 // Answer is the student's reply: exactly one of a confirmed transcription, a
@@ -158,7 +162,7 @@ func (s *Service) Start(ctx context.Context, ownerID, subjectID, key string) (ex
 	if err != nil {
 		return exam.Session{}, false, err
 	}
-	ex, step := exam.NewExam(graph, s.cfg.MaxQuestions)
+	ex, step := exam.NewExam(graph, s.cfg.MaxQuestions, s.rng())
 	session := exam.Session{ID: id, OwnerID: ownerID, SubjectID: subjectID, Status: exam.SessionActive, StartedAt: s.now().Unix(), Version: 1, Exam: ex, Turns: []exam.Turn{}}
 	if err := s.say(ctx, &session, step, "", false); err != nil {
 		return exam.Session{}, false, err

@@ -3,8 +3,10 @@ package exam
 import (
 	"encoding/json"
 	"errors"
+	"math/rand/v2"
 	"os"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -81,7 +83,7 @@ func TestTopLevelAndClosure(t *testing.T) {
 }
 
 func TestStrongStudentIsAskedOnlyTopLevelTopics(t *testing.T) {
-	e, first := NewExam(fixture(t), 0)
+	e, first := NewExam(fixture(t), 0, nil)
 	steps := run(t, e, first, func(s Step) Evaluation {
 		if s.Kind == KindFollowup {
 			return strong
@@ -106,7 +108,7 @@ func TestStrongStudentIsAskedOnlyTopLevelTopics(t *testing.T) {
 }
 
 func TestGapDescendsToTheDeepestUnmasteredTopic(t *testing.T) {
-	e, first := NewExam(fixture(t), 0)
+	e, first := NewExam(fixture(t), 0, nil)
 	steps := run(t, e, first, func(s Step) Evaluation {
 		switch s.NodeID {
 		case "a-star":
@@ -144,7 +146,7 @@ func TestGapDescendsToTheDeepestUnmasteredTopic(t *testing.T) {
 }
 
 func TestCreditedSharedPrerequisiteIsNotAskedAgain(t *testing.T) {
-	e, first := NewExam(fixture(t), 0)
+	e, first := NewExam(fixture(t), 0, nil)
 	steps := run(t, e, first, func(s Step) Evaluation {
 		if s.NodeID == "simulated-annealing" {
 			return unknown
@@ -174,7 +176,7 @@ func TestAskedTopicKeepsItsOwnResult(t *testing.T) {
 		{ID: "left", Title: "Левая", Prerequisites: []string{"base"}},
 		{ID: "right", Title: "Правая", Prerequisites: []string{"base"}},
 	}}
-	e, first := NewExam(g, 0)
+	e, first := NewExam(g, 0, nil)
 	run(t, e, first, func(s Step) Evaluation {
 		switch {
 		case s.NodeID == "left", s.NodeID == "base":
@@ -191,7 +193,7 @@ func TestAskedTopicKeepsItsOwnResult(t *testing.T) {
 }
 
 func TestAnswerAfterRephraseIsAssistedAndCappedAtB(t *testing.T) {
-	e, first := NewExam(fixture(t), 0)
+	e, first := NewExam(fixture(t), 0, nil)
 	run(t, e, first, func(s Step) Evaluation {
 		if s.NodeID == "agents-peas" && s.Kind == KindQuestion {
 			return weak
@@ -205,7 +207,7 @@ func TestAnswerAfterRephraseIsAssistedAndCappedAtB(t *testing.T) {
 }
 
 func TestInsufficientAfterRephraseIsExcludedFromTheGrade(t *testing.T) {
-	e, first := NewExam(fixture(t), 0)
+	e, first := NewExam(fixture(t), 0, nil)
 	steps := run(t, e, first, func(s Step) Evaluation {
 		if s.NodeID == "mcts" && s.Kind != KindFollowup {
 			return vague
@@ -228,8 +230,8 @@ func TestInsufficientAfterRephraseIsExcludedFromTheGrade(t *testing.T) {
 }
 
 func TestMaxQuestionsEndsTheExam(t *testing.T) {
-	e, first := NewExam(fixture(t), 3)
-	steps := run(t, e, first, func(s Step) Evaluation { return strong })
+	e, first := NewExam(fixture(t), 3, nil)
+	steps := run(t, e, first, func(s Step) Evaluation { return partial })
 	// a-star: question + followup, simulated-annealing: question + followup
 	// would be four, so the exam closes after the second followup is due.
 	if q := len(asked(steps, KindQuestion)) + len(asked(steps, KindFollowup)); q > 4 {
@@ -237,6 +239,99 @@ func TestMaxQuestionsEndsTheExam(t *testing.T) {
 	}
 	if e.Nodes["agents-peas"].Status != StatusUnchecked {
 		t.Fatal("topics beyond the limit stay unchecked")
+	}
+}
+
+func TestAnswerShowingK3AndK4SkipsTheFollowup(t *testing.T) {
+	e, first := NewExam(fixture(t), 0, nil)
+	steps := run(t, e, first, func(s Step) Evaluation {
+		if s.NodeID == "mcts" {
+			return partial
+		}
+		return strong
+	})
+	if got := asked(steps, KindFollowup); !slices.Equal(got, []string{"mcts"}) {
+		t.Fatalf("followups = %v: only an answer below 2 on K3 or K4 gets one", got)
+	}
+	if got := asked(steps, KindQuestion); !slices.Equal(got, []string{"a-star", "simulated-annealing", "mcts", "agents-peas"}) {
+		t.Fatalf("questions = %v", got)
+	}
+	if *e.Nodes["a-star"].Grade != GradeA || e.Nodes["heuristic"].Status != StatusCredited {
+		t.Fatalf("a-star=%+v heuristic=%s", e.Nodes["a-star"], e.Nodes["heuristic"].Status)
+	}
+
+	// After a rephrase the same answer is assisted and capped at B, still
+	// without a followup.
+	e, first = NewExam(pair(), 0, nil)
+	steps = run(t, e, first, func(s Step) Evaluation {
+		if s.Kind == KindQuestion {
+			return weak
+		}
+		return strong
+	})
+	if got := asked(steps, KindFollowup); len(got) != 0 {
+		t.Fatalf("followups = %v", got)
+	}
+	if top := e.Nodes["top"]; top.Status != StatusAssisted || *top.Grade != GradeB {
+		t.Fatalf("top = %+v", top)
+	}
+}
+
+func showGraph(t *testing.T) Graph {
+	t.Helper()
+	data, err := os.ReadFile("../../../../../api/fixtures/intro-to-ai.weeks-1-2.ru.graph.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var g Graph
+	if err := json.Unmarshal(data, &g); err != nil {
+		t.Fatal(err)
+	}
+	return g
+}
+
+func TestTopLevelTopicsCoveringMoreOfTheGraphComeFirst(t *testing.T) {
+	g := showGraph(t)
+	// AI-01-18 covers 15, 14 and 13; AI-01-08 covers 07 and 01; AI-01-17 adds
+	// 16 (13 is covered). The rest add only themselves and keep study order.
+	want := []string{"AI-01-18", "AI-01-08", "AI-01-17", "AI-01-02", "AI-01-03", "AI-01-04", "AI-01-06", "AI-01-09", "AI-01-10", "AI-01-19"}
+	if got := coverageOrder(g, nil); !slices.Equal(got, want) {
+		t.Fatalf("order = %v", got)
+	}
+	// A shuffle changes only the order among ties.
+	tails := map[string]bool{}
+	for seed := range uint64(20) {
+		got := coverageOrder(g, rand.New(rand.NewPCG(seed, seed)))
+		if !slices.Equal(got[:3], want[:3]) {
+			t.Fatalf("seed %d: order = %v", seed, got)
+		}
+		tail := slices.Clone(got[3:])
+		key := strings.Join(tail, ",")
+		slices.Sort(tail)
+		if !slices.Equal(tail, slices.Sorted(slices.Values(want[3:]))) {
+			t.Fatalf("seed %d: tail = %v", seed, got[3:])
+		}
+		tails[key] = true
+	}
+	if len(tails) < 2 {
+		t.Fatal("ties are never shuffled")
+	}
+	// The exam asks in this order, and a limit stops it after the topics that
+	// cover the most: a strong student checks 18, 08, 17 and their
+	// prerequisites (9 of 16 topics) within 3 questions.
+	e, first := NewExam(g, 3, nil)
+	steps := run(t, e, first, func(Step) Evaluation { return strong })
+	if got := asked(steps, KindQuestion); !slices.Equal(got, want[:3]) {
+		t.Fatalf("questions = %v", got)
+	}
+	checked := 0
+	for _, s := range e.Nodes {
+		if s.Status != StatusUnchecked {
+			checked++
+		}
+	}
+	if checked != 9 {
+		t.Fatalf("checked %d topics", checked)
 	}
 }
 
@@ -303,13 +398,13 @@ func pair() Graph {
 }
 
 func TestDontKnowOnTheFollowupZeroesK3AndK4(t *testing.T) {
-	// A strong main answer keeps C: K1 and K2 on 2, K3 and K4 on 0.
-	e, first := NewExam(pair(), 0)
+	// A main answer with K1 and K2 on 2 keeps C: K3 and K4 drop to 0.
+	e, first := NewExam(pair(), 0, nil)
 	steps := run(t, e, first, func(s Step) Evaluation {
 		if s.Kind == KindFollowup {
 			return unknown
 		}
-		return strong
+		return partial
 	})
 	if e.Nodes["top"].Status != StatusIndependent || *e.Nodes["top"].Grade != GradeC {
 		t.Fatalf("top = %+v", e.Nodes["top"])
@@ -325,7 +420,7 @@ func TestDontKnowOnTheFollowupZeroesK3AndK4(t *testing.T) {
 	}
 
 	// A main answer on C that relied on K3 or K4 falls to D and descends.
-	e, first = NewExam(pair(), 0)
+	e, first = NewExam(pair(), 0, nil)
 	steps = run(t, e, first, func(s Step) Evaluation {
 		switch {
 		case s.NodeID == "top" && s.Kind == KindQuestion:
@@ -349,7 +444,7 @@ func TestDontKnowOnTheFollowupZeroesK3AndK4(t *testing.T) {
 }
 
 func TestGapOverAnUnknownPrerequisiteIsNotListed(t *testing.T) {
-	e, first := NewExam(pair(), 0)
+	e, first := NewExam(pair(), 0, nil)
 	run(t, e, first, func(s Step) Evaluation {
 		if s.NodeID == "top" {
 			return unknown
@@ -363,7 +458,7 @@ func TestGapOverAnUnknownPrerequisiteIsNotListed(t *testing.T) {
 		t.Fatalf("gaps = %v: the mastery of top's prerequisite is unknown", got)
 	}
 	// The same holds for a prerequisite left unchecked by the question limit.
-	e, first = NewExam(pair(), 1)
+	e, first = NewExam(pair(), 1, nil)
 	run(t, e, first, func(Step) Evaluation { return unknown })
 	if e.Nodes["base"].Status != StatusUnchecked || len(e.Gaps()) != 0 {
 		t.Fatalf("base = %s gaps = %v", e.Nodes["base"].Status, e.Gaps())

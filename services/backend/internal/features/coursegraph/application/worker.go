@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -412,9 +411,15 @@ func (w *Worker) process(ctx context.Context, job coursegraph.Job) error {
 	if len(inputs) == 0 {
 		return fmt.Errorf("empty course")
 	}
-	// The build ID tells course-graph's progress of this build from another;
-	// the lease token stays private.
-	buildID := job.SubjectID + "#" + strconv.Itoa(job.Attempts)
+	// The build ID tells course-graph's progress of this call from another:
+	// a reclaimed lease keeps the attempt number while the previous call may
+	// still run there, so each call gets its own random ID, never the lease
+	// token.
+	random, err := security.Token()
+	if err != nil {
+		return err
+	}
+	buildID := job.SubjectID + "#" + random
 	defer w.setProgress(job.SubjectID, nil)
 	graph, err := w.builder.Build(ctx, buildID, inputs, func(p coursegraph.BuildProgress) { w.setProgress(job.SubjectID, &p) })
 	if err != nil {

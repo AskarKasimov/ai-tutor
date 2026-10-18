@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -68,11 +69,21 @@ func TestSnapshotShowsBuildProgressOnlyWhileTheBuildRuns(t *testing.T) {
 	builder := &progressBuilder{t: t}
 	w := New(requestRepo{snapshot: coursegraph.Snapshot{Status: "processing"}}, items, progressStorage{}, builder, nil, nil)
 	builder.worker = w
-	if err := w.process(context.Background(), coursegraph.Job{SubjectID: "subject", Token: "secret", Attempts: 2}); err != nil {
-		t.Fatal(err)
+	// Review of #135: a reclaimed lease keeps the attempt number while the
+	// previous call may still run in course-graph, so two calls of the same
+	// course and attempt must not share a build ID.
+	ids := map[string]bool{}
+	for _, token := range []string{"lease-1", "lease-2"} {
+		if err := w.process(context.Background(), coursegraph.Job{SubjectID: "subject", Token: token, Attempts: 2}); err != nil {
+			t.Fatal(err)
+		}
+		if !strings.HasPrefix(builder.id, "subject#") || strings.Contains(builder.id, token) {
+			t.Fatalf("build ID = %q: the lease token must not leave the API", builder.id)
+		}
+		ids[builder.id] = true
 	}
-	if builder.id != "subject#2" {
-		t.Fatalf("build ID = %q: the lease token must not leave the API", builder.id)
+	if len(ids) != 2 {
+		t.Fatalf("build IDs = %v: each call needs its own", ids)
 	}
 	snapshot, err := w.Read(context.Background(), user.User{Role: user.Admin}, "subject")
 	if err != nil || snapshot.Progress != nil {

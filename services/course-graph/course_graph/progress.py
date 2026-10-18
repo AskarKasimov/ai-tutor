@@ -3,7 +3,9 @@
 The service runs one build at a time (graph_slots), so one tracker is enough.
 A pass reports its stage with the number of model batches it will run and
 advances when each batch finishes, retries included; the admin sees
-"stage i of n, step k of m". Stages without work keep total 0.
+"stage i of n, step k of m". Stages without work keep total 0. On the
+topics stage a step is a whole material: how many batches the materials need
+is known only while each one is extracted.
 """
 import asyncio
 

@@ -269,7 +269,8 @@ async def build_course(request: BuildRequest,
         build_progress.current = tracker
         try:
             topics, reports = [], []
-            # Materials without cached cards are extracted first, one step each.
+            # Materials without cached cards are extracted first; a step here is a
+            # whole material, not a model batch (documented in the contract).
             tracker.start("topics", sum(m.topics is None for m in request.materials))
             materials = sorted(request.materials, key=lambda m: (m.week is None, m.week or 0, m.filename or "", m.id))
             for material in materials:

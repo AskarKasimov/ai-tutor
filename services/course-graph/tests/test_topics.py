@@ -1678,3 +1678,35 @@ def test_build_progress_endpoint_shows_the_running_build_only(monkeypatch):
     assert seen and all(p["build_id"] == "subject-1:token" for p in seen)
     assert any(p["stage"] == "prerequisites" and p["total"] == 1 for p in seen)
     assert client.get("/graph/build/progress").status_code == 404
+
+
+def test_topics_stage_counts_a_whole_material_per_step(monkeypatch):
+    # Review of #135: on the topics stage a step is a material, since how many
+    # batches the materials need is known only while each is extracted.
+    from fastapi.testclient import TestClient
+    import course_graph.api as api
+    seen = []
+
+    class Client:
+        retries = 0
+        async def complete(self, system, payload):
+            data = json.loads(payload)
+            if "blocks" not in data:
+                return await grounded_judge(system, payload)
+            seen.append(api.build_progress.current.as_dict())
+            title = data["blocks"][0]["text"].split()[0]
+            return json.dumps({"remove": [], "topics": [{
+                "title": title, "requires": [], "provides": [f"Понятие {title}"],
+                "question": f"Почему {title} устроена именно так?",
+                "block_ids": [b["id"] for b in data["blocks"]]}]}, ensure_ascii=False)
+        def completer(self, complexity, reasoning=False): return self.complete
+        async def close(self): pass
+
+    monkeypatch.setattr(api, "ModelClient", Client)
+    monkeypatch.setattr(api, "get_encoder", Encoder)
+    materials = [{"id": mid, "markdown": f"{word} — " + "объяснение понятия. " * 12}
+                 for mid, word in [("a", "Матрица"), ("b", "Производная")]]
+    response = TestClient(api.app).post("/graph/build", json={"materials": materials})
+    assert response.status_code == 200, response.text
+    topics = [(p["stage"], p["done"], p["total"]) for p in seen]
+    assert topics == [("topics", 0, 2), ("topics", 1, 2)]

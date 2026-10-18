@@ -5,14 +5,18 @@ import { useVoiceRecorder } from './use-voice-recorder'
 
 export type VoiceAnswerError = 'no_speech' | 'transcription'
 
-// A spoken answer: the recording is transcribed and shown to the student, who
-// sends it or records again. identity resets everything for a new Geek turn.
-export function useVoiceAnswer(identity: string) {
+// A spoken answer: the recording is transcribed and handed to onTranscribed,
+// which sends it at once; there is no check or re-recording step. identity
+// resets everything for a new Geek turn.
+export function useVoiceAnswer(
+  identity: string,
+  onTranscribed: (transcript: { id: string; text: string }) => void,
+) {
   const { diagnostic } = useDiagnosticDependencies()
-  const [transcript, setTranscript] = useState<{
-    id: string
-    text: string
-  } | null>(null)
+  const transcribed = useRef(onTranscribed)
+  useEffect(() => {
+    transcribed.current = onTranscribed
+  })
   const [transcribing, setTranscribing] = useState(false)
   const [error, setError] = useState<VoiceAnswerError | null>(null)
   const request = useRef<AbortController | null>(null)
@@ -24,7 +28,6 @@ export function useVoiceAnswer(identity: string) {
       const controller = new AbortController()
       request.current = controller
       lastAudio.current = audio
-      setTranscript(null)
       setError(null)
       setTranscribing(true)
       try {
@@ -32,7 +35,7 @@ export function useVoiceAnswer(identity: string) {
           audio,
           controller.signal,
         )
-        if (!controller.signal.aborted) setTranscript(result)
+        if (!controller.signal.aborted) transcribed.current(result)
       } catch (cause) {
         if (!controller.signal.aborted)
           setError(
@@ -56,7 +59,6 @@ export function useVoiceAnswer(identity: string) {
     request.current?.abort()
     request.current = null
     lastAudio.current = null
-    setTranscript(null)
     setTranscribing(false)
     setError(null)
   }, [])
@@ -64,7 +66,6 @@ export function useVoiceAnswer(identity: string) {
 
   return {
     ...recorder,
-    transcript,
     transcribing,
     transcriptionError: error,
     discard,

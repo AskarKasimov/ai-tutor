@@ -21,6 +21,7 @@ export { DiagnosticApiError } from './model/diagnostic-error'
 export {
   answerDiagnostic,
   fetchTurnAudio,
+  fetchTurnAudioStream,
   listDiagnostics,
   readDiagnostic,
   readDiagnosticResult,

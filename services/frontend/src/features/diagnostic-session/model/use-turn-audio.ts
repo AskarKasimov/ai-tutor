@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { DiagnosticApiError } from '@/entities/diagnostic-session'
 import type { Turn, TurnAudioPart } from '@/entities/diagnostic-session'
-import { playQuestion } from '@/shared/lib'
+import { playPcmStream, playQuestion, supportsPcmStreaming } from '@/shared/lib'
 import { useDiagnosticDependencies } from './dependencies-context'
 
 export type TurnAudioState = {
@@ -8,11 +9,11 @@ export type TurnAudioState = {
   status: 'idle' | 'loading' | 'playing' | 'error'
 }
 
-// Plays the voice of Geek turns, one at a time; fetched WAVs are kept for
-// replays while the dialogue is open. A turn is voiced in two parts: the short
-// reply to the previous answer plays first, while the question after it is
-// still being synthesized. The question is requested only once the reply has
-// arrived, because the speech service works through requests one by one.
+type ActivePlayback = { controller: AbortController; release: () => void }
+type TurnAudio = Blob | ReadableStream<Uint8Array>
+
+// A reply is received before requesting the question. The question can then
+// synthesize while the bounded reply queue finishes playing.
 export function useTurnAudio(sessionId: string) {
   const { diagnostic } = useDiagnosticDependencies()
   const [state, setState] = useState<TurnAudioState>({
@@ -20,76 +21,106 @@ export function useTurnAudio(sessionId: string) {
     status: 'idle',
   })
   const cache = useRef(new Map<string, Blob>())
-  const current = useRef<AbortController | null>(null)
-
+  const current = useRef<ActivePlayback | null>(null)
   const stop = useCallback(() => {
-    current.current?.abort()
+    current.current?.release()
+    current.current?.controller.abort()
     current.current = null
     setState({ turnId: null, status: 'idle' })
   }, [])
 
-  // onStart runs once, when the first part starts to play or when the turn
-  // cannot be voiced (a failure, a blocked autoplay, a stop), so a caller
-  // waiting for the voice is never left waiting.
   const play = useCallback(
     async (turn: Pick<Turn, 'id' | 'reply'>, onStart?: () => void) => {
-      current.current?.abort()
+      current.current?.release()
+      current.current?.controller.abort()
       const controller = new AbortController()
-      current.current = controller
       const { signal } = controller
-      const mine = () => current.current === controller
       let started = false
       const start = () => {
-        if (started) return
-        started = true
-        onStart?.()
-      }
-      setState({ turnId: turn.id, status: 'loading' })
-
-      const load = async (part: TurnAudioPart) => {
-        const key = `${turn.id}:${part}`
-        let audio = cache.current.get(key)
-        if (!audio) {
-          audio = await diagnostic.fetchTurnAudio(
-            sessionId,
-            turn.id,
-            signal,
-            part,
-          )
-          cache.current.set(key, audio)
+        if (!started) {
+          started = true
+          onStart?.()
         }
+      }
+      const active = { controller, release: start }
+      current.current = active
+      const mine = () => current.current === active
+      setState({ turnId: turn.id, status: 'loading' })
+      const streams = new Set<ReadableStream<Uint8Array>>()
+      const key = (part: TurnAudioPart) => `${sessionId}:${turn.id}:${part}`
+      const load = async (part: TurnAudioPart): Promise<TurnAudio> => {
+        signal.throwIfAborted()
+        const cached = cache.current.get(key(part))
+        if (cached) return cached
+        if (diagnostic.fetchTurnAudioStream && supportsPcmStreaming()) {
+          try {
+            const stream = await diagnostic.fetchTurnAudioStream(
+              sessionId,
+              turn.id,
+              signal,
+              part,
+            )
+            if (signal.aborted) {
+              await stream.cancel().catch(() => undefined)
+              signal.throwIfAborted()
+            }
+            streams.add(stream)
+            return stream
+          } catch (error) {
+            signal.throwIfAborted()
+            if (
+              !(error instanceof DiagnosticApiError) ||
+              ![404, 406, 501].includes(error.status)
+            )
+              throw error
+          }
+        }
+        const audio = await diagnostic.fetchTurnAudio(
+          sessionId,
+          turn.id,
+          signal,
+          part,
+        )
+        signal.throwIfAborted()
+        cache.current.set(key(part), audio)
         return audio
       }
-
-      try {
-        const reply = turn.reply.trim() ? await load('reply') : null
-        const question = load('question')
-        // The question is awaited after the reply has played; until then its
-        // failure must not surface as an unhandled rejection.
-        question.catch(() => undefined)
-        if (reply) {
-          signal.throwIfAborted()
-          await playToEnd(reply, signal, () => {
-            start()
-            if (mine()) setState({ turnId: turn.id, status: 'playing' })
-          })
-          if (mine()) setState({ turnId: turn.id, status: 'loading' })
-        }
-        const audio = await question
+      const voice = async (
+        audio: TurnAudio,
+        part: TurnAudioPart,
+        received?: () => void,
+      ) => {
         signal.throwIfAborted()
-        await playToEnd(audio, signal, () => {
+        const playing = () => {
           start()
           if (mine()) setState({ turnId: turn.id, status: 'playing' })
-        })
-        if (mine()) {
-          current.current = null
-          setState({ turnId: null, status: 'idle' })
         }
+        if (audio instanceof Blob) {
+          received?.()
+          await playToEnd(audio, signal, playing)
+        } else {
+          const result = await playPcmStream(audio, signal, playing, received)
+          signal.throwIfAborted()
+          cache.current.set(key(part), result.audio)
+        }
+      }
+      let question: Promise<TurnAudio> | undefined
+      const requestQuestion = () => {
+        question ??= load('question')
+        // Its error belongs to the question's playback, after the reply.
+        void question.catch(() => undefined)
+      }
+      try {
+        if (turn.reply.trim()) {
+          await voice(await load('reply'), 'reply', requestQuestion)
+          if (mine()) setState({ turnId: turn.id, status: 'loading' })
+        }
+        requestQuestion()
+        await voice(await question!, 'question')
+        if (mine()) setState({ turnId: null, status: 'idle' })
       } catch (error) {
         start()
         if (signal.aborted) return
-        // A browser that blocks autoplay is not an error: the student can
-        // press play.
         const blocked =
           error instanceof DOMException && error.name === 'NotAllowedError'
         if (mine())
@@ -97,16 +128,29 @@ export function useTurnAudio(sessionId: string) {
             turnId: blocked ? null : turn.id,
             status: blocked ? 'idle' : 'error',
           })
+      } finally {
+        controller.abort()
+        for (const stream of streams)
+          if (!stream.locked) void stream.cancel().catch(() => undefined)
+        if (mine()) current.current = null
       }
     },
     [diagnostic, sessionId],
   )
 
-  useEffect(() => () => current.current?.abort(), [])
+  useEffect(() => {
+    setState({ turnId: null, status: 'idle' })
+    const entries = cache.current
+    return () => {
+      current.current?.release()
+      current.current?.controller.abort()
+      current.current = null
+      entries.clear()
+    }
+  }, [sessionId])
   return { state, play, stop }
 }
 
-// Plays one WAV and settles when it ends, fails or is aborted.
 function playToEnd(audio: Blob, signal: AbortSignal, onStart: () => void) {
   return new Promise<void>((resolve, reject) => {
     const abort = () => reject(signal.reason)

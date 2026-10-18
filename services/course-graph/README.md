@@ -86,7 +86,7 @@ Python не обращается к моделям напрямую: `course_gra
 LLM gateway по gRPC (`llmgateway.v1.Gateway/Complete`) по адресу
 `COURSE_GRAPH_LLM_GATEWAY_ADDR` (по умолчанию `llm-gateway:8011`, gateway — профиль
 Compose `gateway`) с timeout `COURSE_GRAPH_LLM_TIMEOUT` (300 с на запрос). Модель не
-передаётся: только `complexity` — `low` для всех этапов (`STAGE_COMPLEXITY` в `api.py`, решение 18.10.2026). Gateway исполняет `low` на наименее мощном свободном инстансе и при занятом `low` переносит его на свободный `medium` или `high`, поэтому сборка использует все модели сразу.
+передаётся: только `complexity` — `low` для всех этапов (`STAGE_COMPLEXITY` в `api.py`, решение 18.10.2026). Gateway исполняет `low` на наименее мощном свободном инстансе и при занятом `low` переносит его на свободный `medium` или `high`, поэтому сборка использует все модели сразу. Все вызовы передают `reasoning_effort: low`: этапам не нужно рассуждение модели, а думающие модели (gpt-oss) с ним отвечали в разы дольше.
 Stubs генерируются в `services/shared/gen/python` (`services/shared/tools/generate.sh`)
 и в образ копируются из корневого контекста сборки; proto в сервис не копируется.
 Адреса моделей и ключи хранятся только в конфигурации gateway.

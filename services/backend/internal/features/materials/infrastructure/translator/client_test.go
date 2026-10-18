@@ -192,6 +192,9 @@ func TestTranslateThroughGateway(t *testing.T) {
 	if r.GetParameters().GetResponseFormat() != llmgatewayv1.ResponseFormat_RESPONSE_FORMAT_JSON_OBJECT {
 		t.Errorf("response format = %v, want json_object", r.GetParameters().GetResponseFormat())
 	}
+	if r.GetParameters().GetReasoningEffort() != llmgatewayv1.ReasoningEffort_REASONING_EFFORT_LOW {
+		t.Errorf("reasoning effort = %v, want low", r.GetParameters().GetReasoningEffort())
+	}
 }
 
 func TestTranslateGatewayError(t *testing.T) {

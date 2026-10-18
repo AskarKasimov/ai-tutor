@@ -149,6 +149,9 @@ func (g *Gateway) complete(ctx context.Context, operation string, level llmgatew
 		Parameters: &llmgatewayv1.GenerationParameters{
 			Temperature:    proto.Float64(0.2),
 			ResponseFormat: llmgatewayv1.ResponseFormat_RESPONSE_FORMAT_JSON_OBJECT.Enum(),
+			// Models that think first (gpt-oss) spend most of a call reasoning;
+			// low cut a translation chunk from 13.7 s to 2.1 s (18.10.2026).
+			ReasoningEffort: llmgatewayv1.ReasoningEffort_REASONING_EFFORT_LOW.Enum(),
 		},
 	}
 	var last error

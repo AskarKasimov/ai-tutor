@@ -24,6 +24,19 @@
   --app-warning-soft: #fff4df;
   --app-error: #b44338;
   --app-error-soft: #fff0ed;
+  // Progress bars in deep space: a starry track and a violet-to-teal comet.
+  // The track stays dark in both themes, so the tokens need no dark variant.
+  --app-cosmos-space: #0a0f2c;
+  --app-cosmos-space-edge: #1d1757;
+  --app-cosmos-gradient: linear-gradient(
+    90deg,
+    #8b5cf6 0%,
+    #4f6bff 40%,
+    #22d3ee 78%,
+    #34e0a1 100%
+  );
+  --app-cosmos-glow: rgb(96 120 255 / 0.55);
+  --app-cosmos-star: rgb(255 255 255 / 0.85);
 }
 body {
   margin: 0;

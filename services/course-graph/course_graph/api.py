@@ -19,6 +19,7 @@ from starlette.concurrency import run_in_threadpool
 from course_graph.ocr.converter import convert_document as convert_source_document, document_parser
 from course_graph.ocr.jobs import JobConflict, OcrJob, ocr_jobs
 from course_graph.model_runtime import model_runtime
+from course_graph import progress as build_progress
 from course_graph.topics.extract import ExtractionSettings, extract_topics
 from course_graph.topics.graph import build_links
 from course_graph.topics.models import Material, StrictModel, Topic
@@ -247,16 +248,29 @@ async def link_topics(request: LinkRequest):
             await client.close()
 
 
+@app.get("/graph/build/progress")
+async def graph_build_progress():
+    """Stage and finished batches of the build that runs now; 404 when none runs."""
+    if build_progress.current is None:
+        raise HTTPException(status_code=404, detail="Сборка не идёт")
+    return build_progress.current.as_dict()
+
+
 @app.post("/graph/build")
-async def build_course(request: BuildRequest):
+async def build_course(request: BuildRequest,
+                       build_id: str | None = Header(default=None, alias="X-Build-ID", max_length=200)):
     if len({m.id for m in request.materials}) != len(request.materials):
         raise HTTPException(status_code=422, detail="Повторный ID материала")
     if sum(len(m.markdown) for m in request.materials) > 8_000_000:
         raise HTTPException(status_code=413, detail="Суммарный размер курса превышает лимит")
     async with graph_slots:
         client = ModelClient()
+        tracker = build_progress.BuildProgress(build_id or "")
+        build_progress.current = tracker
         try:
             topics, reports = [], []
+            # Materials without cached cards are extracted first, one step each.
+            tracker.start("topics", sum(m.topics is None for m in request.materials))
             materials = sorted(request.materials, key=lambda m: (m.week is None, m.week or 0, m.filename or "", m.id))
             for material in materials:
                 if material.topics is not None:
@@ -281,9 +295,10 @@ async def build_course(request: BuildRequest):
                                           kind_label=material.kind_label, material_revision=material.material_revision)
                     topics.extend(Topic.model_validate(t) for t in result["report"]["topics"])
                     reports.append({"material_id": material.id, **result["report"]})
+                    tracker.done += 1
             encoder = await encoder_for_topics(topics)
             graph = await build_links(topics, client.completer(STAGE_COMPLEXITY, reasoning=True), encoder, request.per_requirement,
-                                      light_complete=client.completer(STAGE_COMPLEXITY))
+                                      light_complete=client.completer(STAGE_COMPLEXITY), progress=tracker)
             graph["extraction_reports"] = reports
             # Repeats of every call this build made, extraction of old reports included.
             graph["quality"]["retried_requests"] = client.retries
@@ -292,6 +307,7 @@ async def build_course(request: BuildRequest):
             logging.exception("Course build failed")
             raise HTTPException(status_code=503, detail="Граф не опубликован: этап не завершён")
         finally:
+            build_progress.current = None
             await client.close()
 
 

@@ -39,6 +39,47 @@ type requestMaterials []material.Material
 
 func (m requestMaterials) List(context.Context, string) ([]material.Material, error) { return m, nil }
 
+type progressStorage struct{}
+
+func (progressStorage) Get(context.Context, string) ([]byte, error) { return []byte(`{}`), nil }
+
+// progressBuilder reports progress and checks the snapshot shows it while
+// the build runs.
+type progressBuilder struct {
+	t      *testing.T
+	worker *Worker
+	id     string
+}
+
+func (b *progressBuilder) Build(ctx context.Context, buildID string, _ []coursegraph.Material, report func(coursegraph.BuildProgress)) (json.RawMessage, error) {
+	b.id = buildID
+	report(coursegraph.BuildProgress{Stage: "attach", StageIndex: 4, StageCount: 5, Done: 1, Total: 3})
+	snapshot, err := b.worker.Read(ctx, user.User{Role: user.Admin}, "subject")
+	if err != nil || snapshot.Progress == nil || snapshot.Progress.Stage != "attach" || snapshot.Progress.Done != 1 {
+		b.t.Errorf("snapshot during the build = %+v, %v", snapshot.Progress, err)
+	}
+	return json.RawMessage(`{"version":"course-graph-v1","topics":[{}],"prerequisites":[],"quality":{"acyclic":true}}`), nil
+}
+
+func TestSnapshotShowsBuildProgressOnlyWhileTheBuildRuns(t *testing.T) {
+	week := int32(1)
+	kind := material.Kind("lecture")
+	items := requestMaterials{{ID: "m", Week: &week, Kind: &kind, S3ParsedKey: "parsed", Cleaning: &material.Cleaning{Status: "ready", S3ReportKey: "report"}}}
+	builder := &progressBuilder{t: t}
+	w := New(requestRepo{snapshot: coursegraph.Snapshot{Status: "processing"}}, items, progressStorage{}, builder, nil, nil)
+	builder.worker = w
+	if err := w.process(context.Background(), coursegraph.Job{SubjectID: "subject", Token: "secret", Attempts: 2}); err != nil {
+		t.Fatal(err)
+	}
+	if builder.id != "subject#2" {
+		t.Fatalf("build ID = %q: the lease token must not leave the API", builder.id)
+	}
+	snapshot, err := w.Read(context.Background(), user.User{Role: user.Admin}, "subject")
+	if err != nil || snapshot.Progress != nil {
+		t.Fatalf("snapshot after the build = %+v, %v", snapshot.Progress, err)
+	}
+}
+
 func TestRequestReportsClassifiedMaterialIDsWithoutPollingAsProcessing(t *testing.T) {
 	week := int32(1)
 	items := requestMaterials{{ID: "needs-classification", Status: material.StatusParsed,

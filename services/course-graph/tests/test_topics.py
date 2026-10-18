@@ -1623,3 +1623,58 @@ def test_graph_passes_keep_four_model_calls_in_flight():
     graph = run(build_links(topics, links_only(slow), Encoder(), per_requirement=1, max_chars=3500))
     assert graph["quality"]["requests"] >= 8
     assert flight["max"] == GRAPH_CONCURRENCY == 4
+
+
+def test_build_progress_reports_each_pass_and_its_finished_batches():
+    from course_graph.progress import BuildProgress
+
+    class Recording(BuildProgress):
+        def __init__(self):
+            super().__init__("build-1")
+            self.seen = []
+
+        def start(self, stage, total):
+            if self.seen and self.seen[-1][0] != stage:
+                assert self.done == self.total, f"{self.seen[-1][0]} left {self.done}/{self.total}"
+            super().start(stage, total)
+            self.seen.append((stage, total))
+    topics = [make_topic(f"t{i}", f"Тема {i}", [f"Знание {i}"], [f"Знание {i - 1}"] if i else [],
+                         text=f"Тема {i}. " + "слово " * 160)
+              for i in range(5)]
+    progress = Recording()
+    run(build_links(topics, grounded_judge, Encoder(), per_requirement=1, max_chars=3500, progress=progress))
+    stages = [stage for stage, _ in progress.seen]
+    assert "prerequisites" in stages and stages == sorted(stages, key=["synonyms", "prerequisites", "attach", "questions"].index)
+    assert dict(progress.seen)["prerequisites"] == 4  # one batch per requirement
+    assert progress.done == progress.total
+    report = progress.as_dict()
+    assert report["build_id"] == "build-1" and report["stage_count"] == 5 and 1 <= report["stage_index"] <= 5
+
+
+def test_build_progress_endpoint_shows_the_running_build_only(monkeypatch):
+    from fastapi.testclient import TestClient
+    import course_graph.api as api
+    seen = []
+
+    class Client:
+        retries = 0
+        async def complete(self, system, payload):
+            seen.append(api.build_progress.current.as_dict())
+            return await grounded_judge(system, payload)
+        def completer(self, complexity, reasoning=False):
+            return self.complete
+        async def close(self):
+            pass
+
+    monkeypatch.setattr(api, "ModelClient", Client)
+    monkeypatch.setattr(api, "get_encoder", Encoder)
+    client = TestClient(api.app)
+    assert client.get("/graph/build/progress").status_code == 404
+    topics = [make_topic("a", "Производная", ["Вычисление производной"]),
+              make_topic("b", "Оптимизация", ["Обновление параметров"], ["Вычисление производной"])]
+    materials = [{"id": t.id, "markdown": t.text, "topics": [t.model_dump()]} for t in topics]
+    response = client.post("/graph/build", json={"materials": materials}, headers={"X-Build-ID": "subject-1:token"})
+    assert response.status_code == 200
+    assert seen and all(p["build_id"] == "subject-1:token" for p in seen)
+    assert any(p["stage"] == "prerequisites" and p["total"] == 1 for p in seen)
+    assert client.get("/graph/build/progress").status_code == 404

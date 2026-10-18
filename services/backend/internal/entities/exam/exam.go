@@ -356,7 +356,13 @@ func (e *Exam) Progress() int {
 	}
 	progress := int(sum / float64(len(top)) * 100)
 	if e.MaxQuestions > 0 {
-		progress = max(progress, e.Asked*100/e.MaxQuestions)
+		// Asked already counts the question on screen; only answered ones
+		// count, so a diagnostic starts at 0.
+		answered := e.Asked
+		if e.Current != nil && (e.Current.Kind == KindQuestion || e.Current.Kind == KindFollowup) {
+			answered--
+		}
+		progress = max(progress, answered*100/e.MaxQuestions)
 	}
 	return min(99, progress)
 }

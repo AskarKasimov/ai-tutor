@@ -1,5 +1,6 @@
 import { afterEach, expect, it, vi } from 'vitest'
 import {
+  buildProgressPercent,
   readCourseGraph,
   readLatestCourseGraphBuild,
   startCourseGraphBuild,
@@ -200,4 +201,49 @@ it('preserves cancellation even when fetch has already resolved', async () => {
   await expect(
     readCourseGraph('subject-1', controller.signal),
   ).rejects.toMatchObject({ name: 'AbortError' })
+})
+
+it('parses the progress of a running build and its share done', async () => {
+  respond(
+    snapshot('processing', {
+      progress: {
+        stage: 'prerequisites',
+        stage_index: 3,
+        stage_count: 5,
+        done: 2,
+        total: 8,
+      },
+    }),
+  )
+  const build = await readLatestCourseGraphBuild('subject:one', signal())
+  expect(build).toMatchObject({
+    status: 'running',
+    stage: 'prerequisites',
+    progress: {
+      stage: 'prerequisites',
+      stageIndex: 3,
+      stageCount: 5,
+      done: 2,
+      total: 8,
+    },
+  })
+  // Two stages done and a quarter of the third: (2 + 0.25) / 5.
+  expect(buildProgressPercent(build!.progress!)).toBeCloseTo(45)
+  // A stage without counted work adds nothing until it ends.
+  expect(
+    buildProgressPercent({
+      stage: 'topics',
+      stageIndex: 1,
+      stageCount: 5,
+      done: 0,
+      total: 0,
+    }),
+  ).toBe(0)
+})
+
+it('reads a snapshot without progress as no progress', async () => {
+  respond(snapshot('processing', { progress: null }))
+  await expect(
+    readLatestCourseGraphBuild('subject:one', signal()),
+  ).resolves.toMatchObject({ stage: null, progress: null })
 })

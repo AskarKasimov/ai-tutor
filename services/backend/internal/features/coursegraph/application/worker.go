@@ -8,7 +8,9 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/coursegraph"
@@ -34,8 +36,11 @@ type Materials interface {
 type Storage interface {
 	Get(context.Context, string) ([]byte, error)
 }
+
+// Builder runs a build synchronously; report receives its progress while it
+// runs and is not called after Build returns.
 type Builder interface {
-	Build(context.Context, []coursegraph.Material) (json.RawMessage, error)
+	Build(ctx context.Context, buildID string, materials []coursegraph.Material, report func(coursegraph.BuildProgress)) (json.RawMessage, error)
 }
 
 // Voices synthesizes prepared questions in the background; Prepare queues
@@ -56,13 +61,34 @@ type Worker struct {
 	builder   Builder
 	voices    Voices
 	fallback  DefaultGraph
+	// progress of running builds by subject, shown in snapshots.
+	mu       sync.Mutex
+	progress map[string]coursegraph.BuildProgress
 }
 
 // New builds the graph worker; voices may be nil, then questions are voiced
 // only when a student first hears them. fallback may be nil, then a course
 // without a build has no graph.
 func New(repo Repository, materials Materials, storage Storage, builder Builder, voices Voices, fallback DefaultGraph) *Worker {
-	return &Worker{repo: repo, materials: materials, storage: storage, builder: builder, voices: voices, fallback: fallback}
+	return &Worker{repo: repo, materials: materials, storage: storage, builder: builder, voices: voices, fallback: fallback,
+		progress: map[string]coursegraph.BuildProgress{}}
+}
+
+func (w *Worker) setProgress(subjectID string, p *coursegraph.BuildProgress) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if p == nil {
+		delete(w.progress, subjectID)
+		return
+	}
+	w.progress[subjectID] = *p
+}
+
+func (w *Worker) progressOf(subjectID string) (coursegraph.BuildProgress, bool) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	p, ok := w.progress[subjectID]
+	return p, ok
 }
 
 // PrepareVoices queues the questions of every published graph for synthesis.
@@ -121,6 +147,9 @@ func (w *Worker) snapshot(ctx context.Context, subjectID string) (coursegraph.Sn
 	snapshot, err := w.repo.Read(ctx, subjectID)
 	if err != nil {
 		return coursegraph.Snapshot{}, err
+	}
+	if p, ok := w.progressOf(subjectID); ok && snapshot.Status == "processing" {
+		snapshot.Progress = &p
 	}
 	snapshot.GraphSource = coursegraph.SourceNone
 	if len(snapshot.Graph) > 0 && string(snapshot.Graph) != "null" {
@@ -383,7 +412,11 @@ func (w *Worker) process(ctx context.Context, job coursegraph.Job) error {
 	if len(inputs) == 0 {
 		return fmt.Errorf("empty course")
 	}
-	graph, err := w.builder.Build(ctx, inputs)
+	// The build ID tells course-graph's progress of this build from another;
+	// the lease token stays private.
+	buildID := job.SubjectID + "#" + strconv.Itoa(job.Attempts)
+	defer w.setProgress(job.SubjectID, nil)
+	graph, err := w.builder.Build(ctx, buildID, inputs, func(p coursegraph.BuildProgress) { w.setProgress(job.SubjectID, &p) })
 	if err != nil {
 		return err
 	}

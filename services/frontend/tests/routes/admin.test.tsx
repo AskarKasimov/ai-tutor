@@ -101,6 +101,13 @@ function backend(
       started_at: number | null
       completed_at: number | null
       error: { code: string; message: string } | null
+      progress?: {
+        stage: string
+        stage_index: number
+        stage_count: number
+        done: number
+        total: number
+      }
     }
   } = {},
 ) {
@@ -264,6 +271,7 @@ function backend(
           activeMaterials.length > 0 &&
           activeMaterials.every((item) => item.status === 'parsed'),
         updated_at: options.graph?.published_at ?? 0,
+        progress: graphRequested ? null : (options.build?.progress ?? null),
       })
     }
     if (
@@ -778,6 +786,36 @@ it('shows the durable active build stage recovered from the server', async () =>
   expect(
     screen.getByRole('button', { name: /Собрать граф тем/ }),
   ).toBeDisabled()
+})
+
+it('shows the stage, its steps and the share done of a running build', async () => {
+  backend({
+    build: {
+      id: 'build-1',
+      subject_id: 'subject-a',
+      status: 'running',
+      stage: null,
+      started_at: null,
+      completed_at: null,
+      error: null,
+      progress: {
+        stage: 'prerequisites',
+        stage_index: 3,
+        stage_count: 5,
+        done: 2,
+        total: 8,
+      },
+    },
+  })
+  renderApp('/admin/competency-map/subject-a')
+  expect(
+    await screen.findByText(
+      'Проверка пререквизитов · этап 3 из 5 · шаг 2 из 8',
+    ),
+  ).toBeVisible()
+  const bar = screen.getByRole('progressbar', { name: 'Собираем граф тем' })
+  expect(bar).toHaveAttribute('aria-valuenow', '45')
+  expect(screen.getByText('45%')).toBeVisible()
 })
 
 it('requires confirmation before replacing an existing graph', async () => {

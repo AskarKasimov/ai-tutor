@@ -2,11 +2,13 @@ export type {
   CourseGraph,
   CourseGraphBuild,
   CourseGraphBuildError,
+  CourseGraphBuildProgress,
   CourseGraphBuildStage,
   CourseGraphBuildStatus,
   CourseGraphNode,
   CourseGraphView,
 } from './model/course-graph'
+export { buildProgressPercent } from './model/course-graph'
 export { CourseGraphApiError } from './model/course-graph-api-error'
 export {
   readCourseGraph,

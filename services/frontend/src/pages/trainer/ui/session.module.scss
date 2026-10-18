@@ -70,18 +70,6 @@
   font-variant-numeric: tabular-nums;
   color: var(--app-accent);
 }
-.progressTrack {
-  height: 8px;
-  overflow: hidden;
-  border-radius: 999px;
-  background: #e6eefd;
-}
-.progressFill {
-  height: 100%;
-  border-radius: inherit;
-  background: linear-gradient(90deg, #4f8cf5, #2867e1);
-  transition: width 0.4s ease;
-}
 .header {
   composes: block;
   display: grid;
@@ -902,8 +890,5 @@ button.mic {
   .spinner,
   .mic::after {
     animation: none !important;
-  }
-  .progressFill {
-    transition: none;
   }
 }

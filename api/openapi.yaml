@@ -91,6 +91,32 @@ components:
         - id
         - role
       type: object
+    coursegraph.BuildProgress:
+      additionalProperties: false
+      properties:
+        done:
+          type: integer
+        stage:
+          enum:
+            - topics
+            - synonyms
+            - prerequisites
+            - attach
+            - questions
+          type: string
+        stage_count:
+          type: integer
+        stage_index:
+          type: integer
+        total:
+          type: integer
+      required:
+        - done
+        - stage
+        - stage_count
+        - stage_index
+        - total
+      type: object
     coursegraph.Snapshot:
       additionalProperties: false
       properties:
@@ -110,6 +136,13 @@ components:
           type: string
         inputs_ready:
           type: boolean
+        progress:
+          anyOf:
+            - $ref: '#/components/schemas/coursegraph.BuildProgress'
+            - type: "null"
+          description: |-
+            Progress is where a running build is; only while Status is processing.
+            It lives in API memory, so after a restart it returns with the next poll.
         stale:
           type: boolean
         status:
@@ -128,6 +161,7 @@ components:
         - graph
         - graph_source
         - inputs_ready
+        - progress
         - stale
         - status
         - updated_at

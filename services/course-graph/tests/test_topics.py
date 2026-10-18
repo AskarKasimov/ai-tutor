@@ -402,7 +402,7 @@ def test_build_endpoint_reuses_cached_cards_and_validates_source_text(monkeypatc
         async def complete(self, system, payload):
             assert "tasks" in json.loads(payload), "Cached cards must not be extracted again"
             return await grounded_judge(system, payload)
-        def completer(self, complexity):
+        def completer(self, complexity, reasoning=False):
             return self.complete
         async def close(self):
             pass
@@ -428,7 +428,7 @@ def test_build_updates_cached_source_metadata_and_merges_across_weeks(monkeypatc
     class Client:
         async def complete(self, system, payload):
             return await grounded_judge(system, payload)
-        def completer(self, complexity): return self.complete
+        def completer(self, complexity, reasoning=False): return self.complete
         async def close(self): pass
 
     monkeypatch.setattr(api, "ModelClient", Client)
@@ -459,7 +459,7 @@ def test_joint_endpoint_returns_cards_and_cleaning_audit(monkeypatch):
     class Client:
         async def complete(self, system, payload):
             return await extraction_stub(system, payload)
-        def completer(self, complexity):
+        def completer(self, complexity, reasoning=False):
             return self.complete
         async def close(self):
             pass
@@ -667,8 +667,8 @@ def test_every_stage_asks_for_the_low_complexity(monkeypatch):
     class Client:
         async def complete(self, system, payload):
             return await extraction_stub(system, payload)
-        def completer(self, complexity):
-            asked.append(complexity)
+        def completer(self, complexity, reasoning=False):
+            asked.append((complexity, reasoning))
             return self.complete
         async def close(self):
             pass
@@ -676,4 +676,6 @@ def test_every_stage_asks_for_the_low_complexity(monkeypatch):
     monkeypatch.setattr(api, "ModelClient", Client)
     response = TestClient(api.app).post("/topics/extract", json={"markdown": "Производная показывает скорость изменения функции.", "material_id": "m"})
     assert response.status_code == 200
-    assert asked and set(asked) == {"low"}
+    # Topic extraction keeps the model's reasoning: without it Qwen3.6 broke
+    # the strict removal format.
+    assert asked and set(asked) == {("low", True)}

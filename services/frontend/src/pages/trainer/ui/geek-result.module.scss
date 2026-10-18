@@ -9,6 +9,9 @@
   --cosmos-ink: #12233a;
   --result-radius: 24px;
   --result-track: #e4ebf3;
+  --result-line: #dfe9f2;
+  --result-chip: #f2f5f9;
+  --gap-red: #e5533d;
   // Darker than --app-muted: 6.3:1 on white and at least 5.3:1 on the hero
   // gradient and its tiles, so small explanatory text stays readable.
   --result-muted: #536175;
@@ -63,7 +66,7 @@
   gap: 32px;
   padding: 36px 40px;
   border-radius: var(--result-radius);
-  border: 1px solid #dfe9f2;
+  border: 1px solid var(--result-line);
   background:
     radial-gradient(circle at 12% 18%, rgb(33 160 56 / 0.14), transparent 42%),
     radial-gradient(circle at 88% 12%, rgb(122 98 240 / 0.12), transparent 40%),
@@ -215,7 +218,7 @@
   --status-ink: #2453c4;
 }
 .result [data-status='gap'] {
-  --status-color: #e5533d;
+  --status-color: var(--gap-red);
   --status-soft: var(--app-error-soft);
   --status-ink: var(--app-error);
 }
@@ -446,7 +449,7 @@
   height: 32px;
   border-radius: 10px;
   color: var(--cosmos-ink);
-  background: #f2f5f9;
+  background: var(--result-chip);
   font-weight: 800;
 }
 
@@ -478,6 +481,161 @@
   &:disabled {
     opacity: 0.6;
   }
+}
+
+// The map of checked topics: cards on the same light nebula as the grade.
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  li {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--result-muted);
+    font-size: 13px;
+    &::before {
+      content: '';
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--status-color);
+      box-shadow: 0 0 0 3px var(--status-soft);
+    }
+  }
+}
+.graphScroll {
+  overflow-x: auto;
+  border-radius: 20px;
+  border: 1px solid var(--result-line);
+  background:
+    radial-gradient(circle at 8% 20%, rgb(33 160 56 / 0.12), transparent 38%),
+    radial-gradient(circle at 92% 15%, rgb(122 98 240 / 0.1), transparent 36%),
+    radial-gradient(circle at 60% 110%, rgb(58 111 242 / 0.1), transparent 45%),
+    linear-gradient(135deg, #f6fcf8 0%, #f3f7ff 55%, #f7f5ff 100%);
+  &:focus-visible {
+    outline: 3px solid var(--app-accent);
+    outline-offset: 3px;
+  }
+}
+.graphCanvas {
+  position: relative;
+  // A small map stays centred instead of hugging the left edge.
+  margin: 0 auto;
+  // Stars, as on the grade card.
+  background-image:
+    radial-gradient(circle, rgb(58 111 242 / 0.45) 1.2px, transparent 1.6px),
+    radial-gradient(circle, rgb(33 160 56 / 0.4) 1px, transparent 1.4px),
+    radial-gradient(circle, rgb(122 98 240 / 0.35) 1.4px, transparent 1.8px);
+  background-size:
+    150px 130px,
+    210px 170px,
+    280px 230px;
+  background-position:
+    30px 20px,
+    100px 80px,
+    180px 40px;
+}
+.graphEdges {
+  position: absolute;
+  inset: 0;
+  overflow: visible;
+}
+.graphEdge {
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+  opacity: 0.85;
+  // The prerequisite was not mastered: the reliance is broken here.
+  &[data-gap] {
+    stroke: var(--gap-red);
+    stroke-dasharray: 6 5;
+  }
+}
+.edgeStart {
+  stop-color: var(--sber-green);
+}
+.edgeMiddle {
+  stop-color: var(--sber-teal);
+}
+.edgeEnd {
+  stop-color: var(--cosmos-blue);
+}
+.graphArrow {
+  fill: var(--cosmos-blue);
+}
+.graphNodes {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.graphNode {
+  position: absolute;
+  box-sizing: border-box;
+  display: grid;
+  align-content: space-between;
+  gap: 6px;
+  padding: 10px 12px 10px 14px;
+  border-radius: 14px;
+  background: rgb(255 255 255 / 0.92);
+  box-shadow:
+    inset 0 0 0 1px rgb(222 231 241 / 0.95),
+    0 6px 18px rgb(18 35 58 / 0.07);
+  border-left: 4px solid var(--status-color);
+}
+// Top-level topics carry the course grade: a soft glow marks them.
+.graphNode[data-top] {
+  box-shadow:
+    inset 0 0 0 1px rgb(33 160 56 / 0.35),
+    0 0 0 4px rgb(33 160 56 / 0.08),
+    0 8px 22px rgb(18 35 58 / 0.08);
+  .graphNodeTitle {
+    font-weight: 700;
+  }
+}
+.graphNodeTitle {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  color: var(--cosmos-ink);
+  font-size: 14px;
+  line-height: 1.35;
+}
+.graphNodeMeta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+  .status {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+.graphGrade {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  color: var(--cosmos-ink);
+  background: var(--result-chip);
+  font-size: 13px;
+  font-weight: 800;
+}
+.visuallyHidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
 }
 
 // Narrow laptops: the status tiles move under the grade.

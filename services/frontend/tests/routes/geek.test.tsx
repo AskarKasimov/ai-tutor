@@ -261,6 +261,7 @@ function geekBackend(
             status: 'gap',
             grade: 'D',
             top_level: false,
+            requires: ['search-space'],
           },
           {
             node_id: 'a-star',
@@ -268,6 +269,7 @@ function geekBackend(
             status: 'assisted',
             grade: 'B',
             top_level: true,
+            requires: ['heuristic', 'annealing'],
           },
           {
             node_id: 'annealing',
@@ -479,6 +481,19 @@ it('runs a diagnostic from the home page to the result and back to the history',
   // Topics the diagnostic never reached are not part of the feedback.
   expect(within(topics).queryByText('Имитация отжига')).not.toBeInTheDocument()
   expect(screen.queryByText('Не проверялась')).not.toBeInTheDocument()
+  // The map shows the checked subgraph and says what each topic relies on.
+  const map = screen.getByRole('list', { name: 'Темы на карте' })
+  expect(
+    within(map)
+      .getAllByRole('listitem')
+      .map((item) => item.firstChild?.textContent),
+  ).toEqual(['Пространство состояний', 'Эвристическая функция', 'Алгоритм A*'])
+  expect(
+    within(map).getByText('Опирается на: Эвристическая функция'),
+  ).toBeInTheDocument()
+  expect(
+    within(map).getByText('Опирается на: Пространство состояний'),
+  ).toBeInTheDocument()
 
   fireEvent.click(screen.getAllByRole('button', { name: 'На главную' })[0])
   expect(await screen.findByText('Оценка B · 81%')).toBeVisible()

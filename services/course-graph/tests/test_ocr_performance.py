@@ -405,3 +405,60 @@ def test_job_retry_clears_memory_and_tracks_actual_stored_bytes():
     assert jobs._result_bytes == complete_size * 2
     assert jobs.get("job-retry")["result"] is not None
     assert jobs.get("job-b")["result"] is not None
+
+
+def test_legacy_cache_prior_to_formula_audit_fix_is_a_cache_miss(monkeypatch, tmp_path):
+    """P2: Cache entries created before formula audit fixes (e.g. ocr-v8) must result in a cache miss.
+
+    Simulates the exact scenario:
+    1. A legacy version (ocr-v8-content-cache) created a cache file where a valid formula
+       was stripped to empty or marker.
+    2. The old cache file was stored with work_complete=True and version="ocr-v8-content-cache".
+    3. The updated system must NOT serve this stale entry (get_cached_document returns None).
+    4. Old cache files are safely ignored without needing deletion.
+    """
+    monkeypatch.setenv("COURSE_GRAPH_OCR_CACHE_DIR", str(tmp_path))
+    content = b"# Document\n\n$$\\left. x \\right)$$"
+    source_sha = hashlib.sha256(content).hexdigest()
+
+    # Calculate the old key under ocr-v8 configuration
+    legacy_config = {
+        "version": "ocr-v8-content-cache",
+        "with_docling": "true",
+        "picture_text": "true",
+        "document_timeout": "0",
+        "enrich_code": "true",
+        "enrich_formula": "true",
+        "full_page_ocr": "false",
+    }
+    legacy_key = hashlib.sha256(("text" + source_sha + json.dumps(legacy_config, sort_keys=True)).encode()).hexdigest()
+    legacy_path = tmp_path / f"{legacy_key}.json"
+
+    # Write legacy cached document where formula was mistakenly marked unresolved / erased
+    legacy_data = {
+        "markdown": "# Document\n\n<!-- formula-not-decoded -->",
+        "report": {
+            "source_sha256": source_sha,
+            "work_complete": True,
+            "content_complete": False,
+            "engine": "text",
+            "warnings": [],
+            "undecoded_formulas": 1,
+            **legacy_config,
+        }
+    }
+    legacy_path.write_text(json.dumps(legacy_data), encoding="utf-8")
+
+    # 1. get_cached_document must return None (cache miss, old file ignored)
+    assert converter.get_cached_document("source.md", content) is None
+
+    # 2. Even if legacy file was copied to current path, version mismatch triggers cache miss
+    current_path = converter.get_document_cache_path(content, "source.md")
+    current_path.write_text(json.dumps(legacy_data), encoding="utf-8")
+    assert converter.get_cached_document("source.md", content) is None
+
+    # 3. New conversion produces fresh result and writes to the updated cache version
+    new_result = converter.convert_document("source.md", content)
+    assert new_result["report"]["version"] == "ocr-v9-content-cache"
+    assert new_result["report"]["audit_version"] == "formula-audit-v2"
+    assert converter.get_cached_document("source.md", content) is not None

@@ -81,7 +81,8 @@ logger = logging.getLogger(__name__)
 
 def get_ocr_configuration() -> dict:
     return {
-        "version": "ocr-v8-content-cache",
+        "version": "ocr-v9-content-cache",
+        "audit_version": "formula-audit-v2",
         "with_docling": os.environ.get("COURSE_GRAPH_WITH_DOCLING", "true"),
         "picture_text": os.environ.get("COURSE_GRAPH_OCR_PICTURE_TEXT", "true"),
         "document_timeout": os.environ.get("COURSE_GRAPH_OCR_DOCUMENT_TIMEOUT", "0"),

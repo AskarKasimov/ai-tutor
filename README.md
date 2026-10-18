@@ -123,7 +123,7 @@ Geek проводит диагностику и тренировку тольк�
 
 ## LLM gateway
 
-LLM gateway — отдельный HTTP/gRPC-сервис `services/llm-gateway` со спецификациями [HTTP](documents/llm-gateway-spec.md) и [gRPC](documents/llm-gateway-grpc-spec.md), контрактами [OpenAPI](services/llm-gateway/openapi.yaml) и [protobuf](services/shared/proto/llmgateway/v1/gateway.proto). Он принимает OpenAI-совместимый `POST /v1/chat/completions` без выбора модели клиентом: обязательная сложность `complexity` (low / medium / high) и необязательная срочность `urgent`. Очередь — Redpanda, балансировка по четырём моделям — в gateway. Dev Compose запускает его с Redpanda, Prometheus и Grafana под профилем `gateway`; Grafana доступна на порту 3000 без аутентификации для прототипа, а её дашборд показывает настроенные и фактические маршруты по моделям. `prod.sh` — всегда (проект `services/llm-gateway` вместе с одноброкерной Redpanda и созданием топиков); локальный `services/llm-gateway/config.json` содержит настройки моделей. HTTP и gRPC доступны клиентам доверенной сети. Backend (Geek) обязательно ходит в gateway по gRPC: без него вопросы и оценки отвечают 503 `MODEL_UNAVAILABLE`. `services/course-graph` к gateway ещё не подключён. CORS настроен в Caddy.
+LLM gateway — отдельный HTTP/gRPC-сервис `services/llm-gateway` со спецификациями [HTTP](documents/llm-gateway-spec.md) и [gRPC](documents/llm-gateway-grpc-spec.md), контрактами [OpenAPI](services/llm-gateway/openapi.yaml) и [protobuf](services/shared/proto/llmgateway/v1/gateway.proto). Он принимает OpenAI-совместимый `POST /v1/chat/completions` без выбора модели клиентом: обязательная сложность `complexity` (low / medium / high) и необязательная срочность `urgent`. Очередь — Redpanda, балансировка по четырём моделям — в gateway. Dev Compose запускает его с Redpanda, Prometheus и Grafana под профилем `gateway`; Grafana доступна на порту 3000 без аутентификации для прототипа, а её дашборд показывает настроенные и фактические маршруты по моделям. `prod.sh` — всегда (проект `services/llm-gateway` вместе с одноброкерной Redpanda и созданием топиков); локальный `services/llm-gateway/config.json` содержит настройки моделей. HTTP и gRPC доступны клиентам доверенной сети. Backend (Geek, перевод OCR) обязательно ходит в gateway по gRPC: без него вопросы и оценки отвечают 503 `MODEL_UNAVAILABLE`. `services/course-graph` (очистка, темы, пререквизиты) тоже ходит в gateway по gRPC. CORS настроен в Caddy.
 
 ## Переход с прежней системы
 
@@ -174,7 +174,7 @@ LLM gateway — отдельный HTTP/gRPC-сервис `services/llm-gateway`
 | Пакет для преподавателя | Транскрипт, карта покрытия, наблюдения по критериям со ссылками на строки транскрипта; доступен в админке. |
 | Человек в контуре | Не нужен: граф и границы проверки определяются автоматически. |
 | Частично верный ответ | Засчитывание пререквизита — в будущем. |
-| Язык | Всё на русском; материалы курса команда переведёт на русский вручную. |
+| Язык | Всё на русском; материалы курса команда переведёт на русский вручную. Заменено решением 17.10.2026: OCR-текст переводится машинно через LLM gateway. |
 | Роли моделей | Не распределяются по задачам: вызывающий код указывает сложность запроса, модель выбирает LLM gateway; запросы идут параллельно. |
 | Размещение | Geek — модуль backend; LLM gateway — отдельный сервис. course-graph: этапы обработки — отдельный Python-сервис `services/course-graph` (OCR — его первый этап), оркестрация, хранение графа и админка — модуль backend. |
 
@@ -388,7 +388,7 @@ LLM gateway — отдельный HTTP/gRPC-сервис `services/llm-gateway`
 | `documents/` | Концепция, архитектура, авторизация и материалы демокурса. |
 | `checklist.html` | Чек-лист перехода на новое видение. |
 
-Geek — модуль backend `features/geek`; оркестрация course-graph будет отдельным модулем backend. LLM gateway — отдельный сервис `services/llm-gateway`. Этапы обработки course-graph выполняет Python-сервис `services/course-graph`; к gateway он пока не подключён.
+Geek — модуль backend `features/geek`; оркестрация сборки графа — модуль backend `features/coursegraph`. LLM gateway — отдельный сервис `services/llm-gateway`. Этапы обработки course-graph выполняет Python-сервис `services/course-graph`; в gateway он ходит по gRPC.
 
 Правила изменения кода — [AGENTS.md](AGENTS.md). Каждый сервис имеет свой Compose; корневой Compose объединяет dev-стек через extends.
 

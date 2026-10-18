@@ -1141,3 +1141,32 @@ def test_embeddings_do_not_block_the_event_loop():
         await task
         return max(delays)
     assert run(scenario()) < 0.15
+
+
+@pytest.mark.parametrize("field", ["target_id", "requirement", "prerequisite_id"])
+@pytest.mark.parametrize("value", [[], ["bad"], {"bad": 1}])
+def test_a_link_with_non_string_ids_is_rejected_alone(field, value):
+    # Third review: a list or object in an id field is not a key and must not fail the build.
+    topics = [make_topic("D", "Производная", ["Вычисление производной"]),
+              make_topic("M", "Матрицы", ["Операции с матрицами"]),
+              make_topic("T", "Оптимизация", ["Обновление весов"], ["Производная матрицы"])]
+
+    async def judge(system, payload):
+        data = json.loads(payload)
+        if "correction" in data:
+            return json.dumps({"links": [], "requirements": []})
+        task = data["tasks"][0]
+        links = []
+        for candidate in task["candidates"]:
+            link = {"target_id": "T", "prerequisite_id": candidate["id"], "requirement": task["requirement"],
+                    "reason": "Использует это знание", "target_evidence": quote(task["evidence"][0]),
+                    "prerequisite_evidence": quote(candidate["evidence"][0])}
+            if candidate["id"] == "M":
+                link[field] = value
+            links.append(link)
+        return json.dumps({"links": links, "requirements": []}, ensure_ascii=False)
+
+    graph = run(build_links(topics, links_only(judge), Encoder()))
+    assert [(e["source"], e["target"]) for e in graph["prerequisites"]] == [("D", "T")]
+    broken = [r for r in graph["rejected_links"] if r["validation_error"].startswith("Неверная запись связи")]
+    assert len(broken) == 1 and broken[0][field] is None and broken[0]["raw"][field] == value

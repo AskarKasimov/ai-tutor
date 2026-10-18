@@ -277,11 +277,14 @@ async def build_links(topics, complete, encoder, per_requirement=5, max_chars=16
         allowed = {(i["target_id"], i["requirement"]): i for i in batch}
         links, problems = {}, {}
         for entry, error in broken:
-            record = {k: entry.get(k) for k in ("target_id", "requirement", "prerequisite_id")}
+            # Only string fields can address a requirement; anything else stays
+            # in the raw entry for diagnostics and is never used as a key.
+            record = {k: entry.get(k) if isinstance(entry.get(k), str) else None
+                      for k in ("target_id", "requirement", "prerequisite_id")}
             key = (record["target_id"], record["requirement"])
             if key in allowed:
                 problems.setdefault(key, []).append(f"{record['prerequisite_id']}: неверная запись связи")
-            invalid.append({**record, "validation_error": "Неверная запись связи: " + error})
+            invalid.append({**record, "raw": entry, "validation_error": "Неверная запись связи: " + error})
         for link in parsed:
             key = (link.target_id, link.requirement)
             item = allowed.get(key)

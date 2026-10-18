@@ -32,8 +32,11 @@ def check_latex_syntax(latex: str) -> Tuple[bool, Optional[str]]:
     if brace_stack:
         return False, "unbalanced_braces"
 
-    # 2. Check \left and \right balance
-    if text.count(r"\left") != text.count(r"\right"):
+    # 2. Check \left and \right delimiter sizing balance
+    # Use negative lookahead to match only the \left and \right macros, avoiding arrows like \rightarrow, \leftarrow, \leftrightarrow
+    left_count = len(re.findall(r"\\left(?![a-zA-Z])", text))
+    right_count = len(re.findall(r"\\right(?![a-zA-Z])", text))
+    if left_count != right_count:
         return False, "unbalanced_left_right"
 
     # 3. Check parentheses and brackets () and []

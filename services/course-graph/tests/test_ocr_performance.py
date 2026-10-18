@@ -365,3 +365,43 @@ def test_failed_picture_ocr_marks_work_incomplete_and_prevents_cache(monkeypatch
     assert result["report"]["picture_ocr"]["failed_regions"] == 1
     # Ensure it was NOT cached
     assert converter.get_cached_document("picture_fail.pdf", content) is None
+
+
+def test_job_retry_clears_memory_and_tracks_actual_stored_bytes():
+    from course_graph.ocr.jobs import OcrJobs
+
+    jobs = OcrJobs(max_jobs=10, max_result_bytes=500)
+    content = b"sample pdf content"
+    incomplete_result = {
+        "markdown": "# A",
+        "report": {"work_complete": False, "warnings": ["temp"]},
+    }
+    encoded_size = len(json.dumps(incomplete_result, ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
+
+    # 6 retry attempts of the same incomplete job
+    for _ in range(6):
+        job, owner, future = jobs.reserve("job-retry", "doc.pdf", content)
+        assert owner is True
+        jobs.finish(job, future, incomplete_result)
+        # Invariant: tracked _result_bytes must always match the sum of bytes of jobs currently holding results
+        assert jobs._result_bytes == sum(j.result_bytes for j in jobs._jobs.values() if j.result is not None)
+        assert jobs._result_bytes == encoded_size
+
+    # Complete attempt
+    job, owner, future = jobs.reserve("job-retry", "doc.pdf", content)
+    complete_result = {
+        "markdown": "# A",
+        "report": {"work_complete": True, "warnings": []},
+    }
+    complete_size = len(json.dumps(complete_result, ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
+    jobs.finish(job, future, complete_result)
+    assert jobs._result_bytes == sum(j.result_bytes for j in jobs._jobs.values() if j.result is not None)
+    assert jobs._result_bytes == complete_size
+    assert job.result is not None
+
+    # New distinct job also fits in memory without premature eviction
+    job_b, owner_b, future_b = jobs.reserve("job-b", "b.pdf", b"other content")
+    jobs.finish(job_b, future_b, complete_result)
+    assert jobs._result_bytes == complete_size * 2
+    assert jobs.get("job-retry")["result"] is not None
+    assert jobs.get("job-b")["result"] is not None

@@ -211,3 +211,36 @@ def test_audit_preserves_valid_interval_and_nested_aligned():
     assert regions[1].status == "recognized"
     assert "aligned" in regions[1].latex
     assert "aligned" in item2.text
+
+
+def test_syntax_allows_arrows_and_audit_preserves_them():
+    from docling_core.types.doc import BoundingBox, CoordOrigin, FormulaItem, ProvenanceItem
+    from course_graph.ocr.enrichment import audit_and_retry_formulas
+
+    # LaTeX arrow commands should not collide with \left or \right delimiter sizing
+    for arrow_expr in [
+        r"A \rightarrow B",
+        r"A \leftarrow B",
+        r"A \leftrightarrow B",
+        r"\left( A \rightarrow B \right)",
+        r"\left[ A \leftarrow B \right]",
+        r"f(x) \rightharpoonup g(x)",
+        r"X \longrightarrow Y",
+        r"X \longleftarrow Y",
+    ]:
+        ok, err = check_latex_syntax(arrow_expr)
+        assert ok is True, f"Failed on {arrow_expr}: {err}"
+        assert err is None
+
+    # Verify audit does not clear formulas with arrows
+    bbox = BoundingBox(l=10, r=50, t=10, b=50, coord_origin=CoordOrigin.TOPLEFT)
+    item = FormulaItem(self_ref="#/texts/0", orig="", text=r"A \rightarrow B",
+                       prov=[ProvenanceItem(page_no=1, charspan=(0, 0), bbox=bbox)])
+    document = S(texts=[item])
+    regions, warnings = audit_and_retry_formulas(document, b"", None)
+
+    assert len(regions) == 1
+    assert regions[0].status == "recognized"
+    assert regions[0].latex == r"A \rightarrow B"
+    assert item.text == r"A \rightarrow B"
+    assert not warnings

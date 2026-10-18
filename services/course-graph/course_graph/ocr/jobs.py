@@ -45,6 +45,12 @@ class OcrJobs:
         self._max_result_bytes = max_result_bytes
         self._result_bytes = 0
 
+    def _clear_job_result(self, job: OcrJob) -> None:
+        if job.result_bytes:
+            self._result_bytes = max(0, self._result_bytes - job.result_bytes)
+            job.result_bytes = 0
+        job.result = None
+
     def reserve(self, job_id: str, filename: str, content: bytes) -> tuple[OcrJob, bool, Future | None]:
         digest = hashlib.sha256(filename.lower().encode("utf-8") + b"\0" + content).hexdigest()
         with self._lock:
@@ -59,7 +65,7 @@ class OcrJobs:
                 if job.state == "succeeded" and job.result is not None and report.get("work_complete", True) is not False:
                     return job, False, None
                 job.state, job.stage, job.error = "queued", "opening", None
-                job.result = None
+                self._clear_job_result(job)
                 job.updated_at = _now()
             else:
                 job = OcrJob(job_id=job_id, request_sha256=digest)
@@ -99,11 +105,13 @@ class OcrJobs:
                 job.state, job.stage, job.error = "succeeded", "completed", None
             job.future = None
             job.updated_at = _now()
+            self._clear_job_result(job)
             # Only a retained result counts against the budget; an oversized one
             # is returned to the caller but not kept.
-            job.result = result if encoded_size <= self._max_result_bytes else None
-            job.result_bytes = encoded_size if job.result is not None else 0
-            self._result_bytes += job.result_bytes
+            if encoded_size <= self._max_result_bytes:
+                job.result = result
+                job.result_bytes = encoded_size
+                self._result_bytes += encoded_size
             future.set_result((True, result))
             self._evict_results()
             self._prune()
@@ -113,8 +121,7 @@ class OcrJobs:
             job.state, job.stage = "failed", "failed"
             job.error = safe_error
             job.future = None
-            job.result = None
-            job.result_bytes = 0
+            self._clear_job_result(job)
             job.updated_at = _now()
             future.set_result((False, safe_error))
             self._prune()
@@ -147,9 +154,7 @@ class OcrJobs:
             if self._result_bytes <= self._max_result_bytes:
                 break
             if job.result is not None and job.future is None:
-                self._result_bytes -= job.result_bytes
-                job.result = None
-                job.result_bytes = 0
+                self._clear_job_result(job)
 
     def _prune(self) -> None:
         while len(self._jobs) > self._max_jobs:
@@ -157,7 +162,7 @@ class OcrJobs:
             if removable is None:
                 return
             job = self._jobs.pop(removable)
-            self._result_bytes -= job.result_bytes
+            self._clear_job_result(job)
 
 
 ocr_jobs = OcrJobs()

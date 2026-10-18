@@ -26,12 +26,12 @@ from course_graph.topics.retrieval import get_encoder
 
 # Every stage asks for the low complexity (decision of 18.10.2026): every
 # instance can serve low, and the gateway gives a low request to the free
-# instance expected to answer soonest, so a build uses every model at once
-# instead of waiting for the high pool.
+# instance expected to answer soonest. Each pass still limits concurrency;
+# low keeps all compatible instances eligible instead of only the high pool.
 # Topic extraction and prerequisite checks keep the model's reasoning
 # (reasoning=True): without it Qwen3.6 broke the strict removal format
-# (invented reasons, foreign block ids) and materials failed. Cleaning alone
-# asks for low effort.
+# (invented reasons, foreign block ids) and materials failed. Cleaning,
+# synonym checks and question refreshes ask for low effort.
 STAGE_COMPLEXITY = "low"
 
 
@@ -194,8 +194,9 @@ graph_slots = asyncio.Semaphore(1)
 
 
 async def encoder_for_topics(topics):
-    # A course without dependencies needs no embeddings or downloaded weights.
-    if len(topics) > 1 and any(t.requires for t in topics):
+    # A single topic needs no embeddings or downloaded weights; any other
+    # course is compared topic by topic for synonyms and isolated topics.
+    if len(topics) > 1:
         return await asyncio.to_thread(get_encoder)
     return None
 
@@ -207,7 +208,8 @@ async def link_topics(request: LinkRequest):
         try:
             encoder = await encoder_for_topics(request.topics)
             return await build_links(request.topics, client.completer(STAGE_COMPLEXITY, reasoning=True), encoder, request.per_requirement,
-                                     request.max_chars, request.evidence_chars)
+                                     request.max_chars, request.evidence_chars,
+                                     light_complete=client.completer(STAGE_COMPLEXITY))
         except Exception:
             logging.exception("Prerequisite generation failed")
             raise HTTPException(status_code=503, detail="Построение связей не завершено")
@@ -250,7 +252,8 @@ async def build_course(request: BuildRequest):
                     topics.extend(Topic.model_validate(t) for t in result["report"]["topics"])
                     reports.append({"material_id": material.id, **result["report"]})
             encoder = await encoder_for_topics(topics)
-            graph = await build_links(topics, client.completer(STAGE_COMPLEXITY, reasoning=True), encoder, request.per_requirement)
+            graph = await build_links(topics, client.completer(STAGE_COMPLEXITY, reasoning=True), encoder, request.per_requirement,
+                                      light_complete=client.completer(STAGE_COMPLEXITY))
             graph["extraction_reports"] = reports
             return graph
         except Exception:

@@ -3,6 +3,11 @@ import re
 from typing import Optional, Tuple
 
 
+LEFT_RIGHT_RE = re.compile(
+    r"\\(left|right)(?![a-zA-Z])(?:\s*(\\[a-zA-Z]+|\\[^a-zA-Z]|[^\\a-zA-Z\s]))?"
+)
+
+
 def check_latex_syntax(latex: str) -> Tuple[bool, Optional[str]]:
     """Validate LaTeX syntax balance and completeness without altering characters.
 
@@ -14,13 +19,15 @@ def check_latex_syntax(latex: str) -> Tuple[bool, Optional[str]]:
     text = latex.strip()
 
     # Check for trailing truncated tokens (e.g. ends with bare backslash or open script)
-    if text.endswith("\\") and not text.endswith("\\\\"):
+    trailing_backslashes = len(text) - len(text.rstrip("\\"))
+    if trailing_backslashes % 2 == 1:
         return False, "truncated_trailing_escape"
     if re.search(r"[_^]\{[^}]*$", text):
         return False, "truncated_subscript"
 
     # 1. Check curly braces {} balance and nesting
-    cleaned_braces = re.sub(r"\\[\{\}]", "", text)
+    # Escaped literal braces \{ and \} are ignored; \\{ is a newline followed by a grouping brace.
+    cleaned_braces = re.sub(r"(?<!\\)\\[\{\}]", "", text)
     brace_stack = []
     for ch in cleaned_braces:
         if ch == "{":
@@ -32,19 +39,44 @@ def check_latex_syntax(latex: str) -> Tuple[bool, Optional[str]]:
     if brace_stack:
         return False, "unbalanced_braces"
 
-    # 2. Check \left and \right delimiter sizing balance
-    # Use negative lookahead to match only the \left and \right macros, avoiding arrows like \rightarrow, \leftarrow, \leftrightarrow
-    left_count = len(re.findall(r"\\left(?![a-zA-Z])", text))
-    right_count = len(re.findall(r"\\right(?![a-zA-Z])", text))
-    if left_count != right_count:
+    # 2. Check \left and \right delimiter sizing balance and nesting
+    # Matches \left and \right commands with their delimiter arguments (including the invisible delimiter '.').
+    # Negative lookahead (?![a-zA-Z]) prevents matching arrow commands like \rightarrow, \leftarrow, \leftrightarrow.
+    left_stack = []
+    for match in LEFT_RIGHT_RE.finditer(text):
+        cmd = match.group(1)
+        delim = match.group(2)
+        if not delim or not delim.strip():
+            return False, "unbalanced_left_right"
+        delim = delim.strip()
+        if cmd == "left":
+            left_stack.append(delim)
+        else:
+            if not left_stack:
+                return False, "unbalanced_left_right"
+            left_stack.pop()
+    if left_stack:
         return False, "unbalanced_left_right"
 
-    # 3. Check parentheses and brackets () and []
+    # 3. Check standalone parentheses and brackets () and []
     # Mathematical intervals [a, b), (a, b], [a, b], (a, b) are all valid.
     # Therefore, '(' and '[' can be closed by either ')' or ']'.
-    # Delimiters must be properly paired without underflow or trailing open delimiters.
-    # Escaped delimiters \[ and \] (LaTeX display math) and \( and \) (inline math) are ignored.
-    cleaned_delims = re.sub(r"\\[\[\]\(\)]", "", text)
+    # Delimiters bound to \left and \right (including invisible delimiters \left. and \right.),
+    # newlines with optional vertical spacing arguments (e.g. \\[2pt] in matrix/cases),
+    # optional command arguments (e.g. \sqrt[3]{x}), and escaped delimiters \[ and \]
+    # are stripped beforehand so they do not pollute the standalone delimiter stack.
+    cleaned_delims = text
+    # Strip newline command \\ with optional * and optional bracket dimension argument \\[2pt]
+    cleaned_delims = re.sub(r"\\\\(?:\*|\s*\[[^\]]*\])?", " ", cleaned_delims)
+    # Strip LaTeX commands with optional bracket arguments (e.g. \sqrt[3], \xrightarrow[sub])
+    cleaned_delims = re.sub(r"\\(?!left|right)[a-zA-Z]+\s*\[[^\]]*\]", " ", cleaned_delims)
+    # Strip \begin{name}[opt] optional environment arguments (e.g. \begin{array}[t]{c})
+    cleaned_delims = re.sub(r"\\begin\{[^}]+\}\s*\[[^\]]*\]", " ", cleaned_delims)
+    # Strip \left <delim> and \right <delim> constructs (delimiters are consumed by the pair)
+    cleaned_delims = LEFT_RIGHT_RE.sub(" ", cleaned_delims)
+    # Strip escaped math delimiters: \[ and \] (display math) and \( and \) (inline math)
+    cleaned_delims = re.sub(r"(?<!\\)\\[\[\]\(\)]", " ", cleaned_delims)
+
     delim_stack = []
     for ch in cleaned_delims:
         if ch in "([":
@@ -85,12 +117,18 @@ def normalize_formatting_only(latex: str) -> str:
         return ""
     s = latex.strip()
     s = re.sub(r"\s+", " ", s)
-    s = s.replace(r"\left(", "(").replace(r"\right)", ")")
-    s = s.replace(r"\left[", "[").replace(r"\right]", "]")
-    s = s.replace(r"\left)", ")").replace(r"\right[", "[")
-    s = s.replace(r"\left\{", "{").replace(r"\right\}", "}")
-    s = s.replace(r"\left|", "|").replace(r"\right|", "|")
-    s = s.replace(r"\left.", "").replace(r"\right.", "")
+    s = re.sub(r"\\left\s*\(", "(", s)
+    s = re.sub(r"\\right\s*\)", ")", s)
+    s = re.sub(r"\\left\s*\[", "[", s)
+    s = re.sub(r"\\right\s*\]", "]", s)
+    s = re.sub(r"\\left\s*\)", ")", s)
+    s = re.sub(r"\\right\s*\[", "[", s)
+    s = re.sub(r"\\left\s*\\\{", "{", s)
+    s = re.sub(r"\\right\s*\\\}", "}", s)
+    s = re.sub(r"\\left\s*\|", "|", s)
+    s = re.sub(r"\\right\s*\|", "|", s)
+    s = re.sub(r"\\left\s*\.", "", s)
+    s = re.sub(r"\\right\s*\.", "", s)
     # Remove whitespace inside parentheses, brackets and braces
     s = re.sub(r"([(\[{|])\s+", r"\1", s)
     s = re.sub(r"\s+([)\]}|])", r"\1", s)

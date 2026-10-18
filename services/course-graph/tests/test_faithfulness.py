@@ -244,3 +244,64 @@ def test_syntax_allows_arrows_and_audit_preserves_them():
     assert regions[0].latex == r"A \rightarrow B"
     assert item.text == r"A \rightarrow B"
     assert not warnings
+
+
+def test_syntax_allows_newline_arguments_and_invisible_delimiters():
+    # Valid newline spacing in matrix and cases
+    valid_expressions = [
+        r"\begin{matrix} a \\[2pt] b \end{matrix}",
+        r"\begin{cases} a & b \\[6pt] c & d \end{cases}",
+        r"\left. x \right)",
+        r"\left( x \right.",
+        r"\left\{ \begin{aligned} x &= 1 \\[2pt] y &= 2 \end{aligned} \right.",
+        r"\left. \frac{df}{dx} \right|_{x=0}",
+        r"\left. (a + b) \right)",
+        r"\left[ 0, 1 \right.",
+        r"\left. [0, 1) \right.",
+        r"\sqrt[3]{x + y}",
+        r"\begin{array}[t]{c} x \\ y \end{array}",
+    ]
+    for expr in valid_expressions:
+        ok, err = check_latex_syntax(expr)
+        assert ok is True, f"Failed on {expr}: {err}"
+        assert err is None
+
+    # Invalid expressions with delimiter imbalance
+    invalid_expressions = [
+        (r"\left. (a + b \right)", "unbalanced_delimiters"),
+        (r"\left( a + b) \right.", "unbalanced_delimiters"),
+        (r"\right) \left(", "unbalanced_left_right"),
+        (r"\left( x", "unbalanced_left_right"),
+        (r"x \right)", "unbalanced_left_right"),
+        (r"x + \left", "unbalanced_left_right"),
+    ]
+    for expr, expected_err in invalid_expressions:
+        ok, err = check_latex_syntax(expr)
+        assert ok is False, f"Expected invalid for {expr}"
+        assert err == expected_err
+
+
+def test_audit_preserves_newline_spacing_and_invisible_delimiters():
+    from docling_core.types.doc import BoundingBox, CoordOrigin, FormulaItem, ProvenanceItem
+    from course_graph.ocr.enrichment import audit_and_retry_formulas
+
+    bbox = BoundingBox(l=10, r=50, t=10, b=50, coord_origin=CoordOrigin.TOPLEFT)
+    f1 = r"\begin{matrix} a \\[2pt] b \end{matrix}"
+    f2 = r"\left. x \right)"
+    f3 = r"\left( x \right."
+    f4 = r"\left\{ \begin{aligned} x &= 1 \\[2pt] y &= 2 \end{aligned} \right."
+
+    items = [
+        FormulaItem(self_ref=f"#/texts/{i}", orig="", text=expr,
+                    prov=[ProvenanceItem(page_no=1, charspan=(0, 0), bbox=bbox)])
+        for i, expr in enumerate([f1, f2, f3, f4])
+    ]
+    document = S(texts=items)
+    regions, warnings = audit_and_retry_formulas(document, b"", None)
+
+    assert len(regions) == 4
+    for i, expr in enumerate([f1, f2, f3, f4]):
+        assert regions[i].status == "recognized"
+        assert regions[i].latex == expr
+        assert items[i].text == expr
+    assert not warnings

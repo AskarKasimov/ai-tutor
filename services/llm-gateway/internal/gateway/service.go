@@ -95,7 +95,8 @@ type Service struct {
 	connections       chan struct{}
 	wake              chan struct{}
 	roundRobin        map[string]int
-	expected          map[string]float64 // moving average of each instance's upstream call time (spec, section 5)
+	expected          map[string]float64   // moving average of each instance's upstream call time (spec, section 5)
+	cooling           map[string]time.Time // until when an instance that failed goes after healthy ones
 	ready             bool
 	brokerAvailable   bool
 	stateUncertain    bool
@@ -627,12 +628,19 @@ func (s *Service) next() (*durableJob, InstanceConfig, bool) {
 			// The free instance that answers soonest: least loaded, then the
 			// shortest expected call (an instance without samples first, so
 			// every one is tried), then the less capable tier, then round-robin.
-			rank := func(in InstanceConfig) (float64, float64, int) {
-				return float64(s.inFlight[in.ID]) / float64(in.MaxInFlight), s.expected[in.ID], s.instanceTier(in.ID)
+			// An instance cooling down after a failure goes after the healthy
+			// ones, so a model that keeps answering 429 cannot keep the "not
+			// measured yet" priority.
+			now := time.Now()
+			rank := func(in InstanceConfig) (bool, float64, float64, int) {
+				return now.Before(s.cooling[in.ID]), float64(s.inFlight[in.ID]) / float64(in.MaxInFlight), s.expected[in.ID], s.instanceTier(in.ID)
 			}
 			sort.SliceStable(candidates, func(a, b int) bool {
-				ra, ea, ta := rank(candidates[a])
-				rb, eb, tb := rank(candidates[b])
+				ca, ra, ea, ta := rank(candidates[a])
+				cb, rb, eb, tb := rank(candidates[b])
+				if ca != cb {
+					return !ca
+				}
 				if ra != rb {
 					return ra < rb
 				}
@@ -641,10 +649,10 @@ func (s *Service) next() (*durableJob, InstanceConfig, bool) {
 				}
 				return ta < tb
 			})
-			bestRatio, bestExpected, bestTier := rank(candidates[0])
+			bestCooling, bestRatio, bestExpected, bestTier := rank(candidates[0])
 			ties := make([]InstanceConfig, 0, len(candidates))
 			for _, candidate := range candidates {
-				if r, e, t := rank(candidate); r == bestRatio && e == bestExpected && t == bestTier {
+				if c, r, e, t := rank(candidate); c == bestCooling && r == bestRatio && e == bestExpected && t == bestTier {
 					ties = append(ties, candidate)
 				}
 			}
@@ -897,24 +905,48 @@ func (s *Service) execute(ctx context.Context, j *durableJob, in InstanceConfig)
 // expectedAlpha weighs the newest call in an instance's expected duration.
 const expectedAlpha = 0.3
 
-// observeCall updates the expected duration of an instance with a finished
-// call. A success and an upstream timeout are samples (a timeout marks a slow
-// instance); a failure before sending, a 429, another upstream error and a
-// cancelled request say nothing about speed.
+// failureCooldown is how long a failed instance goes after healthy ones when
+// the upstream gave no Retry-After; it matches the breaker pause.
+const failureCooldown = 15 * time.Second
+
+// observeCall learns from a finished call. A success and an upstream timeout
+// are duration samples (a timeout marks a slow instance). A 429, a 5xx or a
+// transport failure puts the instance on cooldown instead: they say nothing
+// about speed, but without it an unmeasured instance that keeps failing would
+// keep the first place. A cancelled request and an open breaker change nothing.
 func (s *Service) observeCall(j *durableJob, in InstanceConfig, failure *UpstreamFailure, elapsed time.Duration) {
-	if failure != nil && (failure.BeforeSend || failure.Status == 429 || !errors.Is(failure.Err, context.DeadlineExceeded) || s.isCanceled(j.ID)) {
+	if s.isCanceled(j.ID) || failure != nil && (failure.Code == "request_canceled" || failure.Code == "upstream_circuit_open") {
 		return
 	}
-	seconds := elapsed.Seconds()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.expected == nil {
 		s.expected = make(map[string]float64)
 	}
-	if previous, ok := s.expected[in.ID]; ok {
-		seconds = expectedAlpha*seconds + (1-expectedAlpha)*previous
+	if s.cooling == nil {
+		s.cooling = make(map[string]time.Time)
 	}
-	s.expected[in.ID] = seconds
+	sample := func() {
+		seconds := elapsed.Seconds()
+		if previous, ok := s.expected[in.ID]; ok {
+			seconds = expectedAlpha*seconds + (1-expectedAlpha)*previous
+		}
+		s.expected[in.ID] = seconds
+	}
+	timedOut := failure != nil && errors.Is(failure.Err, context.DeadlineExceeded)
+	switch {
+	case failure == nil:
+		sample()
+		delete(s.cooling, in.ID)
+	case failure.BeforeSend || failure.Status == 429 || failure.Status >= 500 || failure.Status == 0 && !timedOut:
+		cooldown := failure.RetryAfter
+		if cooldown <= 0 {
+			cooldown = failureCooldown
+		}
+		s.cooling[in.ID] = time.Now().Add(cooldown)
+	case timedOut:
+		sample()
+	}
 }
 
 func uncertainUpstreamOutcome(failure *UpstreamFailure) bool {

@@ -255,3 +255,55 @@ func TestObserveCallAveragesSuccessesAndTimeoutsOnly(t *testing.T) {
 		t.Fatalf("a timeout counts as a slow call: %v, want 45.1", got)
 	}
 }
+
+func TestAnInstanceThatFailedGoesAfterAHealthyOne(t *testing.T) {
+	// The reviewed case: "fast" was never measured, so it has the first
+	// place, and keeps answering 429 while "slow" is healthy and free.
+	s := tieredFixture()
+	s.expected = map[string]float64{"slow": 2}
+	job := schedulerJob("low", 1, false)
+	s.jobs["low"] = job
+	if picked, _, ok := s.next(); !ok || picked.Instance != "fast" {
+		t.Fatalf("the unmeasured instance is tried first, got %v", picked)
+	}
+	s.inFlight["fast"]--
+	s.observeCall(job, schedulerInstance("fast"), &UpstreamFailure{Status: 429, Err: errors.New("rate limited")}, time.Millisecond)
+	s.jobs["low"].Status = "queued"
+	if picked, _, ok := s.next(); !ok || picked.Instance != "slow" {
+		t.Fatalf("after a 429 the healthy instance goes first, got %v", picked)
+	}
+	// With the healthy one busy, the cooling one still serves: no stall.
+	s.jobs["next"] = schedulerJob("next", 2, false)
+	if picked, _, ok := s.next(); !ok || picked.Instance != "fast" {
+		t.Fatalf("a cooling instance still takes work when it is the only free one, got %v", picked)
+	}
+}
+
+func TestCooldownFollowsRetryAfterAndASuccessEndsIt(t *testing.T) {
+	s := tieredFixture()
+	in := schedulerInstance("fast")
+	job := schedulerJob("j", 1, false)
+	before := time.Now()
+	s.observeCall(job, in, &UpstreamFailure{Status: 503, Err: errors.New("down"), RetryAfter: time.Minute}, time.Millisecond)
+	if until := s.cooling["fast"]; until.Before(before.Add(59 * time.Second)) {
+		t.Fatalf("cooldown until %v, want Retry-After", until)
+	}
+	s.observeCall(job, in, nil, time.Second)
+	if _, cooling := s.cooling["fast"]; cooling {
+		t.Fatal("a successful call ends the cooldown")
+	}
+	for _, failure := range []*UpstreamFailure{
+		{Code: "request_canceled", Err: context.Canceled},
+		{Code: "upstream_circuit_open", Err: errors.New("open"), BeforeSend: true},
+		{Status: 400, Err: errors.New("bad request")},
+	} {
+		s.observeCall(job, in, failure, time.Millisecond)
+		if _, cooling := s.cooling["fast"]; cooling {
+			t.Fatalf("%+v must not put the instance on cooldown", failure)
+		}
+	}
+	s.observeCall(job, in, &UpstreamFailure{Code: "upstream_transport_error", Err: context.DeadlineExceeded, BeforeSend: true}, time.Millisecond)
+	if _, cooling := s.cooling["fast"]; !cooling || s.expected["fast"] != 1 {
+		t.Fatalf("a connect timeout is a failure, not a fast call: cooling=%v expected=%v", s.cooling["fast"], s.expected["fast"])
+	}
+}

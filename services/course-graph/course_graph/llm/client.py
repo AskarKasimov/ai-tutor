@@ -4,6 +4,7 @@ The service never names a model: every call states only its complexity, and the
 gateway picks the pool. Generated stubs come from services/shared/gen/python.
 """
 import json
+import logging
 import os
 
 import grpc
@@ -20,6 +21,13 @@ class GatewayError(RuntimeError):
     pass
 
 
+# A timed-out or unavailable call is repeated once: the gateway puts the
+# instance that failed after healthy ones, so the repeat usually goes to
+# another model. One slow call used to fail a whole graph build after
+# 15 minutes of finished passes.
+RETRIED = {grpc.StatusCode.DEADLINE_EXCEEDED, grpc.StatusCode.UNAVAILABLE}
+
+
 class ModelClient:
     def __init__(self, address: str | None = None, timeout: float | None = None):
         self.address = address or os.environ.get("COURSE_GRAPH_LLM_GATEWAY_ADDR", "llm-gateway:8011")
@@ -28,6 +36,9 @@ class ModelClient:
             self.address, options=[("grpc.max_receive_message_length", 40 * 1024 * 1024)],
         )
         self.stub = gateway_pb2_grpc.GatewayStub(self.channel)
+        # Repeated calls; stage counters see one logical call per complete, so
+        # the endpoints report repeats next to them as retried_requests.
+        self.retries = 0
 
     async def complete(self, system: str, text: str, complexity: str = "high", reasoning: bool = False) -> str:
         # Without reasoning a call asks for low effort, which keeps thinking
@@ -45,7 +56,14 @@ class ModelClient:
             complexity=COMPLEXITY[complexity],
             parameters=parameters,
         )
-        response = await self.stub.Complete(request, timeout=self.timeout)
+        try:
+            response = await self.stub.Complete(request, timeout=self.timeout)
+        except grpc.aio.AioRpcError as error:
+            if error.code() not in RETRIED:
+                raise
+            self.retries += 1
+            logging.warning("LLM gateway call ended with %s; repeating it once", error.code().name)
+            response = await self.stub.Complete(request, timeout=self.timeout)
         try:
             choice = json.loads(response.completion_json)["choices"][0]
             content = choice["message"]["content"]

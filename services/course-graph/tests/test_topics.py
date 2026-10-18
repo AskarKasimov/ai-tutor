@@ -462,6 +462,7 @@ def test_build_endpoint_reuses_cached_cards_and_validates_source_text(monkeypatc
     import course_graph.api as api
 
     class Client:
+        retries = 0
         async def complete(self, system, payload):
             assert "blocks" not in json.loads(payload), "Cached cards must not be extracted again"
             return await grounded_judge(system, payload)
@@ -489,6 +490,7 @@ def test_build_updates_cached_source_metadata_and_merges_across_weeks(monkeypatc
     import course_graph.api as api
 
     class Client:
+        retries = 0
         async def complete(self, system, payload):
             return await grounded_judge(system, payload)
         def completer(self, complexity, reasoning=False): return self.complete
@@ -520,6 +522,7 @@ def test_joint_endpoint_returns_cards_and_cleaning_audit(monkeypatch):
     import course_graph.api as api
 
     class Client:
+        retries = 0
         async def complete(self, system, payload):
             return await extraction_stub(system, payload)
         def completer(self, complexity, reasoning=False):
@@ -1224,6 +1227,7 @@ def test_every_stage_asks_for_the_low_complexity(monkeypatch, endpoint):
     asked = []
 
     class Client:
+        retries = 0
         async def complete(self, system, payload):
             if "blocks" in json.loads(payload):
                 return await extraction_stub(system, payload)

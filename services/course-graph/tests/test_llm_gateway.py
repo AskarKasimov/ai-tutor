@@ -64,6 +64,38 @@ def test_client_rejects_cut_answer():
         call(Gateway(finish_reason="length"))
 
 
+class FailingGateway(Gateway):
+    """Fails the first calls with the given codes, then answers."""
+    def __init__(self, codes):
+        super().__init__()
+        self.codes = list(codes)
+
+    async def Complete(self, request, context):
+        if self.codes:
+            self.requests.append(request)
+            await context.abort(self.codes.pop(0), "The upstream LLM request timed out.")
+        return await super().Complete(request, context)
+
+
+def test_a_timed_out_or_unavailable_call_is_repeated_once():
+    for code in (grpc.StatusCode.DEADLINE_EXCEEDED, grpc.StatusCode.UNAVAILABLE):
+        gateway = FailingGateway([code])
+        assert call(gateway, "low") == '{"remove":[]}'
+        assert len(gateway.requests) == 2
+    # A second failure in a row is not hidden.
+    gateway = FailingGateway([grpc.StatusCode.DEADLINE_EXCEEDED] * 2)
+    with pytest.raises(grpc.aio.AioRpcError) as failure:
+        call(gateway, "low")
+    assert failure.value.code() == grpc.StatusCode.DEADLINE_EXCEEDED and len(gateway.requests) == 2
+
+
+def test_other_gateway_errors_are_not_repeated():
+    gateway = FailingGateway([grpc.StatusCode.INVALID_ARGUMENT])
+    with pytest.raises(grpc.aio.AioRpcError):
+        call(gateway, "low")
+    assert len(gateway.requests) == 1
+
+
 def test_client_rejects_unknown_complexity():
     async def run():
         client = ModelClient("127.0.0.1:1")
@@ -94,6 +126,53 @@ def test_clean_endpoint_reaches_gateway(monkeypatch):
         assert response.status_code == 200
         assert response.json()["markdown"] == "# Теория\n\nМатрица — таблица чисел."
         assert gateway.requests and all(r.complexity == gateway_pb2.COMPLEXITY_LOW for r in gateway.requests)
+    finally:
+        asyncio.run_coroutine_threadsafe(server.stop(None), loop).result(5)
+        loop.call_soon_threadsafe(loop.stop)
+        thread.join(5)
+
+
+def test_client_counts_its_repeats():
+    async def run(gateway):
+        server, address = await serve(gateway)
+        client = ModelClient(address, timeout=5)
+        try:
+            await client.completer("low")("Системный промпт", "{}")
+            return client.retries
+        finally:
+            await client.close()
+            await server.stop(None)
+    assert asyncio.run(run(Gateway())) == 0
+    assert asyncio.run(run(FailingGateway([grpc.StatusCode.DEADLINE_EXCEEDED]))) == 1
+
+
+def test_extraction_report_shows_repeats_next_to_logical_requests(monkeypatch):
+    # Review of #132: a repeat inside complete was invisible to the stage
+    # counter. requests stays the number of logical calls; retried_requests
+    # shows the repeats the gateway received on top of them.
+    from fastapi.testclient import TestClient
+    import threading
+    import course_graph.api as api
+
+    answer = {"remove": [], "topics": [{"title": "Матрица", "requires": [], "provides": ["Понятие матрицы"],
+                                        "question": "Почему матрицу задают таблицей чисел?", "block_ids": [0]}]}
+    gateway = FailingGateway([grpc.StatusCode.DEADLINE_EXCEEDED])
+    gateway.content = json.dumps(answer, ensure_ascii=False)
+
+    async def start():
+        return await serve(gateway)
+    loop = asyncio.new_event_loop()
+    server, address = loop.run_until_complete(start())
+    thread = threading.Thread(target=loop.run_forever, daemon=True)
+    thread.start()
+    try:
+        monkeypatch.setenv("COURSE_GRAPH_LLM_GATEWAY_ADDR", address)
+        text = "Матрица — прямоугольная таблица чисел, которую складывают и умножают по своим правилам. " * 3
+        response = TestClient(api.app).post("/topics/extract", json={"markdown": text, "material_id": "m"})
+        assert response.status_code == 200, response.text
+        report = response.json()["report"]
+        assert report["requests"] == 1 and report["retried_requests"] == 1
+        assert len(gateway.requests) == 2
     finally:
         asyncio.run_coroutine_threadsafe(server.stop(None), loop).result(5)
         loop.call_soon_threadsafe(loop.stop)

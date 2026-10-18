@@ -63,6 +63,8 @@ type NodeResult struct {
 	Status   Status
 	Grade    *Grade
 	TopLevel bool
+	// Requires lists the node's direct prerequisites in this graph snapshot.
+	Requires []string
 }
 
 type Gap struct {
@@ -119,7 +121,8 @@ func (s Session) Result() Result {
 	r.Grade, r.ScorePercent = e.CourseGrade()
 	for _, n := range e.Graph.Nodes {
 		state := e.Nodes[n.ID]
-		r.Nodes = append(r.Nodes, NodeResult{NodeID: n.ID, Title: n.Title, Status: state.Status, Grade: state.Grade, TopLevel: slices.Contains(top, n.ID)})
+		r.Nodes = append(r.Nodes, NodeResult{NodeID: n.ID, Title: n.Title, Status: state.Status, Grade: state.Grade, TopLevel: slices.Contains(top, n.ID),
+			Requires: append([]string{}, n.Prerequisites...)})
 	}
 	for _, id := range e.Gaps() {
 		n, _ := e.Graph.Node(id)

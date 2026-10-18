@@ -18,6 +18,8 @@ $compose = @('compose', '--env-file', '.env', '-f', 'docker-compose.yaml')
 $appUrl = 'https://localhost:8443'
 # The admin panel is a separate site on the same address with its own session.
 $adminUrl = "$appUrl/admin"
+# Grafana runs with the gateway profile (COMPOSE_PROFILES from the environment, else .env).
+$grafanaUrl = 'http://localhost:3000/d/llm-gateway-routing'
 
 function Step($text) { Write-Host "==> $text" -ForegroundColor Cyan }
 function Fail($text) { Write-Host "Ошибка: $text" -ForegroundColor Red; exit 1 }
@@ -95,7 +97,16 @@ if ($health -ne '200') {
     Fail "health вернул '$health'. Логи: .\up.ps1 -Logs"
 }
 
+$profiles = $env:COMPOSE_PROFILES
+if ($null -eq $profiles) {
+    $line = Get-Content .env -Encoding UTF8 | Where-Object { $_ -match '^COMPOSE_PROFILES=' } | Select-Object -Last 1
+    $profiles = if ($line) { $line.Substring('COMPOSE_PROFILES='.Length) } else { '' }
+}
+$withGrafana = ($profiles -split ',' | ForEach-Object { $_.Trim() }) -contains 'gateway'
+
 Write-Host "Готово. Ученик: $appUrl" -ForegroundColor Green
 Write-Host "       Админка: $adminUrl" -ForegroundColor Green
+if ($withGrafana) { Write-Host "       Grafana: $grafanaUrl" -ForegroundColor Green }
 Start-Process $appUrl
 Start-Process $adminUrl
+if ($withGrafana) { Start-Process $grafanaUrl }

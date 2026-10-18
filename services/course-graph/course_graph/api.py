@@ -24,6 +24,12 @@ from course_graph.topics.graph import build_links
 from course_graph.topics.models import Material, StrictModel, Topic
 from course_graph.topics.retrieval import get_encoder
 
+# Every stage asks for the low complexity (decision of 18.10.2026): every
+# instance can serve low, and the gateway gives a low request to the free
+# instance expected to answer soonest. Each pass still limits concurrency;
+# low keeps all compatible instances eligible instead of only the high pool.
+STAGE_COMPLEXITY = "low"
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -154,7 +160,7 @@ async def clean_document(request: CleanRequest):
     async with cleaning_slots:
         client = ModelClient()
         try:
-            return await clean_markdown(request.markdown, client.completer("low"))
+            return await clean_markdown(request.markdown, client.completer(STAGE_COMPLEXITY))
         except Exception:
             raise HTTPException(status_code=503, detail="Очистка временно недоступна")
         finally:
@@ -166,7 +172,7 @@ async def extract_document(request: ExtractRequest):
     async with cleaning_slots:
         client = ModelClient()
         try:
-            result = await extract_topics(request.markdown, client.completer("high"), request.material_id,
+            result = await extract_topics(request.markdown, client.completer(STAGE_COMPLEXITY), request.material_id,
                                          request.week, ExtractionSettings(request.max_chars, request.max_blocks))
             for topic in result["report"]["topics"]:
                 for source in topic["sources"]:
@@ -197,9 +203,9 @@ async def link_topics(request: LinkRequest):
         client = ModelClient()
         try:
             encoder = await encoder_for_topics(request.topics)
-            return await build_links(request.topics, client.completer("high"), encoder, request.per_requirement,
+            return await build_links(request.topics, client.completer(STAGE_COMPLEXITY), encoder, request.per_requirement,
                                      request.max_chars, request.evidence_chars,
-                                     light_complete=client.completer("medium"))
+                                     light_complete=client.completer(STAGE_COMPLEXITY))
         except Exception:
             logging.exception("Prerequisite generation failed")
             raise HTTPException(status_code=503, detail="Построение связей не завершено")
@@ -233,7 +239,7 @@ async def build_course(request: BuildRequest):
                             raise ValueError("Текст темы не соответствует источникам")
                     topics.extend(material.topics)
                 else:
-                    result = await extract_topics(material.markdown, client.completer("high"), material.id,
+                    result = await extract_topics(material.markdown, client.completer(STAGE_COMPLEXITY), material.id,
                                                   material.week, ExtractionSettings(max_chars=request.max_chars))
                     for item in result["report"]["topics"]:
                         for source in item["sources"]:
@@ -242,8 +248,8 @@ async def build_course(request: BuildRequest):
                     topics.extend(Topic.model_validate(t) for t in result["report"]["topics"])
                     reports.append({"material_id": material.id, **result["report"]})
             encoder = await encoder_for_topics(topics)
-            graph = await build_links(topics, client.completer("high"), encoder, request.per_requirement,
-                                      light_complete=client.completer("medium"))
+            graph = await build_links(topics, client.completer(STAGE_COMPLEXITY), encoder, request.per_requirement,
+                                      light_complete=client.completer(STAGE_COMPLEXITY))
             graph["extraction_reports"] = reports
             return graph
         except Exception:

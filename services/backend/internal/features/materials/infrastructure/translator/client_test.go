@@ -182,8 +182,8 @@ func TestTranslateThroughGateway(t *testing.T) {
 		t.Errorf("expected translated content in result, got %q", result)
 	}
 	r := gateway.request
-	if r.GetComplexity() != llmgatewayv1.Complexity_COMPLEXITY_MEDIUM {
-		t.Errorf("complexity = %v, want medium", r.GetComplexity())
+	if r.GetComplexity() != llmgatewayv1.Complexity_COMPLEXITY_LOW {
+		t.Errorf("complexity = %v, want low", r.GetComplexity())
 	}
 	if len(r.GetMessages()) != 2 || r.GetMessages()[0].GetRole() != llmgatewayv1.Role_ROLE_SYSTEM ||
 		!strings.Contains(r.GetMessages()[0].GetContent(), "ПРАВИЛА ПЕРЕВОДА") || r.GetMessages()[1].GetRole() != llmgatewayv1.Role_ROLE_USER {
@@ -191,6 +191,9 @@ func TestTranslateThroughGateway(t *testing.T) {
 	}
 	if r.GetParameters().GetResponseFormat() != llmgatewayv1.ResponseFormat_RESPONSE_FORMAT_JSON_OBJECT {
 		t.Errorf("response format = %v, want json_object", r.GetParameters().GetResponseFormat())
+	}
+	if r.GetParameters().GetReasoningEffort() != llmgatewayv1.ReasoningEffort_REASONING_EFFORT_LOW {
+		t.Errorf("reasoning effort = %v, want low", r.GetParameters().GetReasoningEffort())
 	}
 }
 

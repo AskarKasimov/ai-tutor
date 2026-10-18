@@ -67,3 +67,10 @@ LEFT JOIN course_graph_inputs i ON i.subject_id=s.id WHERE s.id=$1;
 -- until the next build, but a course without materials has none.
 SELECT g.graph FROM course_graphs g
 WHERE g.subject_id=$1 AND EXISTS(SELECT 1 FROM subject_materials m WHERE m.subject_id=g.subject_id);
+
+-- name: ListPublishedCourseGraphs :many
+-- Every graph Geek examines by, under the condition of ReadPublishedCourseGraph;
+-- the newest first, so their questions are voiced first.
+SELECT g.graph FROM course_graphs g
+WHERE EXISTS(SELECT 1 FROM subject_materials m WHERE m.subject_id=g.subject_id)
+ORDER BY g.updated_at DESC, g.subject_id;

@@ -1214,3 +1214,36 @@ def test_a_consistent_synonym_chain_still_merges():
     assert [t.id for t in kept] == ["A"] and aliases == {"B": "A", "C": "A"}
     assert {s.text for s in kept[0].sources} == {"Альфа", "Бета", "Гамма"}
     assert set(kept[0].provides) == {"Знание альфа", "Знание бета", "Знание гамма"}
+
+
+@pytest.mark.parametrize("endpoint", ["/topics/extract", "/graph/links", "/graph/build"])
+def test_every_stage_asks_for_the_low_complexity(monkeypatch, endpoint):
+    from fastapi.testclient import TestClient
+    import course_graph.api as api
+
+    asked = []
+
+    class Client:
+        async def complete(self, system, payload):
+            if "blocks" in json.loads(payload):
+                return await extraction_stub(system, payload)
+            return await grounded_judge(system, payload)
+        def completer(self, complexity):
+            asked.append(complexity)
+            return self.complete
+        async def close(self):
+            pass
+
+    monkeypatch.setattr(api, "ModelClient", Client)
+    monkeypatch.setattr(api, "get_encoder", Encoder)
+    topics = [make_topic("a", "Производная", ["Вычисление производной"]),
+              make_topic("b", "Оптимизация", ["Обновление параметров"], ["Вычисление производной"])]
+    if endpoint == "/topics/extract":
+        body = {"markdown": "Производная показывает скорость изменения функции.", "material_id": "m"}
+    elif endpoint == "/graph/links":
+        body = {"topics": [t.model_dump() for t in topics]}
+    else:
+        body = {"materials": [{"id": t.id, "markdown": t.text, "topics": [t.model_dump()]} for t in topics]}
+    response = TestClient(api.app).post(endpoint, json=body)
+    assert response.status_code == 200
+    assert asked and set(asked) == {"low"}

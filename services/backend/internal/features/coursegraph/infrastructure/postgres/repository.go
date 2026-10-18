@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/coursegraph"
@@ -52,6 +53,19 @@ func (r *Repository) Read(ctx context.Context, subjectID string) (coursegraph.Sn
 		return coursegraph.Snapshot{}, err
 	}
 	return coursegraph.Snapshot{Status: row.Status, Attempts: row.Attempts, ErrorMessage: row.ErrorMessage, Graph: row.Graph, UpdatedAt: row.UpdatedAt, Stale: row.Stale, InputsReady: row.InputsReady}, nil
+}
+
+// Published lists the graphs Geek examines by, newest first.
+func (r *Repository) Published(ctx context.Context) ([]json.RawMessage, error) {
+	rows, err := db.New(r.pool).ListPublishedCourseGraphs(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list published course graphs: %w", err)
+	}
+	graphs := make([]json.RawMessage, len(rows))
+	for i, row := range rows {
+		graphs[i] = row
+	}
+	return graphs, nil
 }
 
 // Request queues a build of the current materials; false when they are not

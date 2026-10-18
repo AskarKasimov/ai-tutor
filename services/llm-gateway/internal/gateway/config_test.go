@@ -1,6 +1,7 @@
 package gateway
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -56,5 +57,35 @@ func TestConfigValidationRejectsUnknownPoolInstance(t *testing.T) {
 	c.defaults()
 	if err := c.Validate(); err == nil || !strings.Contains(err.Error(), `pools.medium references unknown instance "missing"`) {
 		t.Fatalf("Validate() error = %v, want unknown pool instance", err)
+	}
+}
+
+func TestConfigValidationGuardsTheReasoningEffortBody(t *testing.T) {
+	valid := func(body map[string]map[string]json.RawMessage) Config {
+		c := Config{
+			KafkaBrokers: []string{"localhost:9092"},
+			Pools:        map[string][]string{"low": {"model-a"}, "medium": {"model-a"}, "high": {"model-a"}},
+			Instances: []InstanceConfig{{ID: "model-a", BaseURL: "http://localhost:8000/v1", Model: "served-model", MaxInFlight: 1, ContextWindow: 8192,
+				ReasoningEffortBody: body}},
+		}
+		c.defaults()
+		return c
+	}
+	ok := valid(map[string]map[string]json.RawMessage{"low": {"chat_template_kwargs": json.RawMessage(`{"enable_thinking":false}`)}})
+	if err := ok.Validate(); err != nil {
+		t.Fatalf("valid body rejected: %v", err)
+	}
+	for name, body := range map[string]map[string]map[string]json.RawMessage{
+		"unknown level":      {"extreme": {"x": json.RawMessage(`1`)}},
+		"model":              {"low": {"model": json.RawMessage(`"other"`)}},
+		"messages":           {"low": {"messages": json.RawMessage(`[]`)}},
+		"stream":             {"low": {"stream": json.RawMessage(`true`)}},
+		"a client parameter": {"low": {"temperature": json.RawMessage(`0`)}},
+		"the effort itself":  {"low": {"reasoning_effort": json.RawMessage(`"high"`)}},
+	} {
+		c := valid(body)
+		if err := c.Validate(); err == nil || !strings.Contains(err.Error(), "reasoning_effort_body") {
+			t.Fatalf("%s: Validate() error = %v", name, err)
+		}
 	}
 }

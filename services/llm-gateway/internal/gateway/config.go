@@ -43,6 +43,10 @@ type InstanceConfig struct {
 	SupportedResponseFormats []string      `json:"supported_response_formats"`
 	ContextWindow            int           `json:"context_window"`
 	Timeout                  time.Duration `json:"timeout"`
+	// ReasoningEffortBody adds upstream request fields for a requested
+	// reasoning_effort, for a model that honours another knob: Qwen3 turns its
+	// thinking off with chat_template_kwargs.enable_thinking, not the effort.
+	ReasoningEffortBody map[string]map[string]json.RawMessage `json:"reasoning_effort_body"`
 }
 
 func (i *InstanceConfig) UnmarshalJSON(data []byte) error {
@@ -196,6 +200,17 @@ func (c Config) Validate() error {
 		}
 		if _, exists := instances[in.ID]; exists {
 			return fmt.Errorf("duplicate instance id %q", in.ID)
+		}
+		for level, body := range in.ReasoningEffortBody {
+			if level != "low" && level != "medium" && level != "high" {
+				return fmt.Errorf("instance %q: reasoning_effort_body.%s is not low, medium, or high", in.ID, level)
+			}
+			for field := range body {
+				// The extra fields never replace what the request decides.
+				if field == "model" || field == "messages" || field == "stream" || allowedParameters[field] {
+					return fmt.Errorf("instance %q: reasoning_effort_body.%s cannot set %q", in.ID, level, field)
+				}
+			}
 		}
 		instances[in.ID] = in
 	}

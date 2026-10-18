@@ -102,6 +102,15 @@ func (c *Caller) call(ctx context.Context, in InstanceConfig, req Request, reque
 	for key, value := range params {
 		fields[key] = append(json.RawMessage(nil), value...)
 	}
+	var effort string
+	if raw, ok := params["reasoning_effort"]; ok {
+		_ = json.Unmarshal(raw, &effort)
+	}
+	for key, value := range in.ReasoningEffortBody[effort] {
+		if _, set := fields[key]; !set {
+			fields[key] = append(json.RawMessage(nil), value...)
+		}
+	}
 	model, _ := json.Marshal(in.Model)
 	messages, _ := json.Marshal(req.Messages)
 	fields["model"] = model

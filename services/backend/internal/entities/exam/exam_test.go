@@ -476,14 +476,14 @@ func TestTopicGradeTable(t *testing.T) {
 		{Criteria{2, 2, 2, 2}, false, GradeA},
 		{Criteria{2, 2, 2, 2}, true, GradeB},
 		{Criteria{2, 2, 1, 1}, false, GradeB},
-		{Criteria{1, 1, 1, 1}, true, GradeB},
-		{Criteria{1, 1, 1, 1}, false, GradeD},
+		{Criteria{1, 1, 1, 1}, true, GradeC},
+		{Criteria{1, 1, 1, 1}, false, GradeC},
 		{Criteria{1, 2, 0, 0}, false, GradeC},
 		{Criteria{2, 1, 0, 1}, true, GradeC},
 		{Criteria{0, 2, 2, 2}, false, GradeD},
 		{Criteria{1, 0, 0, 1}, true, GradeD},
 	} {
-		if got := TopicGrade(tc.c, tc.assisted); got != tc.want {
+		if got := TopicGrade(tc.c, tc.assisted, UnassessedCriteria{}); got != tc.want {
 			t.Errorf("TopicGrade(%v, %v) = %s, want %s", tc.c, tc.assisted, got, tc.want)
 		}
 	}
@@ -518,49 +518,176 @@ func pair() Graph {
 	}}
 }
 
-func TestDontKnowOnTheFollowupZeroesK3AndK4(t *testing.T) {
-	// A main answer with K1 and K2 on 2 keeps C: K3 and K4 drop to 0.
-	e, first := NewExam(pair(), 0, nil)
-	steps := run(t, e, first, func(s Step) Evaluation {
-		if s.Kind == KindFollowup {
-			return unknown
+func TestUnclearFollowupKeepsPreviouslyObservedSkills(t *testing.T) {
+	for _, verdict := range []Verdict{VerdictDontKnow, VerdictInsufficient} {
+		e, first := NewExam(pair(), 0, nil)
+		steps := run(t, e, first, func(s Step) Evaluation {
+			if s.Kind == KindFollowup {
+				return Evaluation{Verdict: verdict}
+			}
+			return partial
+		})
+		state := e.Nodes["top"]
+		if state.Status != StatusIndependent || *state.Grade != GradeB || *state.Criteria != partial.Criteria {
+			t.Fatalf("%s: state = %+v", verdict, state)
 		}
-		return partial
-	})
-	if e.Nodes["top"].Status != StatusIndependent || *e.Nodes["top"].Grade != GradeC {
-		t.Fatalf("top = %+v", e.Nodes["top"])
+		if got := asked(steps, KindQuestion); !slices.Equal(got, []string{"top"}) {
+			t.Fatalf("questions = %v", got)
+		}
+		if e.Nodes["base"].Status != StatusCredited {
+			t.Fatal("base is not credited")
+		}
 	}
-	if c := *e.Nodes["top"].Criteria; c != (Criteria{2, 2, 0, 0}) {
-		t.Fatalf("top criteria = %+v", c)
-	}
-	if got := asked(steps, KindQuestion); !slices.Equal(got, []string{"top"}) {
-		t.Fatalf("questions = %v (base is credited)", got)
-	}
-	if e.Nodes["base"].Status != StatusCredited {
-		t.Fatalf("base = %s", e.Nodes["base"].Status)
-	}
+}
 
-	// A main answer on C that relied on K3 or K4 falls to D and descends.
-	e, first = NewExam(pair(), 0, nil)
-	steps = run(t, e, first, func(s Step) Evaluation {
-		switch {
-		case s.NodeID == "top" && s.Kind == KindQuestion:
-			return Evaluation{Verdict: VerdictAnswered, Criteria: Criteria{1, 1, 2, 0}}
-		case s.NodeID == "top":
-			return unknown
-		case s.Kind == KindFollowup:
-			return strong
+func TestGoodAnswerToOneConceptClosesTopic(t *testing.T) {
+	for _, assisted := range []bool{false, true} {
+		e, first := NewExam(pair(), 0, nil)
+		steps := run(t, e, first, func(s Step) Evaluation {
+			if assisted && s.Kind == KindQuestion {
+				return weak
+			}
+			return Evaluation{Verdict: VerdictAnswered, Criteria: Criteria{K1: 2, K2: 2},
+				Unassessed: UnassessedCriteria{K3: true, K4: true}, Evidence: []int{2}}
+		})
+		want := GradeA
+		if assisted {
+			want = GradeB
 		}
-		return partial
-	})
-	if e.Nodes["top"].Status != StatusGap || *e.Nodes["top"].Grade != GradeD {
-		t.Fatalf("top = %+v", e.Nodes["top"])
+		state := e.Nodes["top"]
+		if *state.Grade != want || len(asked(steps, KindFollowup)) != 0 {
+			t.Fatalf("assisted=%v state=%+v steps=%v", assisted, state, steps)
+		}
+		if !state.Unassessed.K3 || !state.Unassessed.K4 || e.Nodes["base"].Status != StatusCredited {
+			t.Fatalf("scope or credit lost: %+v", state)
+		}
+		// Scope must survive saving and resuming a diagnostic.
+		data, err := json.Marshal(e)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var restored Exam
+		if err := json.Unmarshal(data, &restored); err != nil {
+			t.Fatal(err)
+		}
+		if restored.Nodes["top"].Unassessed != state.Unassessed {
+			t.Fatal("scope lost on round trip")
+		}
 	}
-	if got := asked(steps, KindQuestion); !slices.Equal(got, []string{"top", "base"}) {
-		t.Fatalf("questions = %v (the gap descends to base, which is not credited)", got)
+}
+
+func TestFollowupCompletesPartialUnderstandingOfSameConcept(t *testing.T) {
+	e, _ := NewExam(pair(), 0, nil)
+	scope := UnassessedCriteria{K3: true, K4: true}
+	step := e.Apply(Evaluation{Verdict: VerdictAnswered, Criteria: Criteria{K1: 1, K2: 1}, Unassessed: scope})
+	if step.Kind != KindFollowup {
+		t.Fatalf("partial answer got %+v", step)
 	}
-	if e.Nodes["base"].Status != StatusIndependent {
-		t.Fatalf("base = %s", e.Nodes["base"].Status)
+	step = e.Apply(Evaluation{Verdict: VerdictAnswered, Criteria: Criteria{K1: 2, K2: 2}, Unassessed: scope})
+	if step.Kind != KindClosing || *e.Nodes["top"].Grade != GradeA {
+		t.Fatalf("result = %+v", e.Nodes["top"])
+	}
+}
+
+func TestUntestedSkillsDifferFromFailedSkills(t *testing.T) {
+	c := Criteria{K1: 2, K2: 2}
+	if TopicGrade(c, false, UnassessedCriteria{}) != GradeC {
+		t.Fatal("tested skills on 0 must count")
+	}
+	if TopicGrade(c, false, UnassessedCriteria{K3: true, K4: true}) != GradeA {
+		t.Fatal("untested skills must not lower the grade")
+	}
+	if TopicGrade(Criteria{2, 2, 0, 2}, false, UnassessedCriteria{K3: true}) != GradeA {
+		t.Fatal("one untested skill must be excluded")
+	}
+	// Help may cap a grade, but must never increase it for identical observations.
+	rank := map[Grade]int{GradeA: 4, GradeB: 3, GradeC: 2, GradeD: 1}
+	for k1 := range 3 {
+		for k2 := range 3 {
+			for k3 := range 3 {
+				for k4 := range 3 {
+					c := Criteria{k1, k2, k3, k4}
+					for _, scope := range []UnassessedCriteria{{}, {K3: true}, {K4: true}, {K3: true, K4: true}} {
+						if rank[TopicGrade(c, true, scope)] > rank[TopicGrade(c, false, scope)] {
+							t.Fatalf("help raised %v in %v", c, scope)
+						}
+					}
+				}
+			}
+		}
+	}
+}
+
+func TestFollowupCannotErasePreviouslyAssessedCriteria(t *testing.T) {
+	e, _ := NewExam(pair(), 0, nil)
+	e.Apply(Evaluation{Verdict: VerdictAnswered, Criteria: Criteria{2, 2, 0, 1}})
+	e.Apply(Evaluation{Verdict: VerdictAnswered, Criteria: Criteria{K1: 2, K2: 2}, Unassessed: UnassessedCriteria{K3: true, K4: true}})
+	s := e.Nodes["top"]
+	if s.Unassessed != (UnassessedCriteria{}) || *s.Criteria != (Criteria{2, 2, 0, 1}) || *s.Grade != GradeC {
+		t.Fatalf("followup erased an observed skill: %+v", s)
+	}
+}
+
+func TestFollowupCanImprovePartlyDemonstratedApplication(t *testing.T) {
+	for _, complete := range []bool{false, true} {
+		e, _ := NewExam(pair(), 0, nil)
+		scope := UnassessedCriteria{K3: true}
+		main := Criteria{K1: 2, K2: 2, K4: 1}
+		if grade := TopicGrade(main, false, scope); grade != GradeB {
+			t.Fatalf("partly demonstrated application = %s", grade)
+		}
+		step := e.Apply(Evaluation{Verdict: VerdictAnswered, Criteria: main, Unassessed: scope})
+		if step.Kind != KindFollowup {
+			t.Fatalf("missing example got %v", step.Kind)
+		}
+		answer := Evaluation{Verdict: VerdictDontKnow}
+		want := GradeB
+		if complete {
+			answer = Evaluation{Verdict: VerdictAnswered, Criteria: Criteria{K1: 2, K2: 2, K4: 2}, Unassessed: scope}
+			want = GradeA
+		}
+		e.Apply(answer)
+		if !e.Completed() || *e.Nodes["top"].Grade != want || e.Nodes["top"].Assisted {
+			t.Fatalf("complete=%v: state=%+v", complete, e.Nodes["top"])
+		}
+	}
+}
+
+func TestIncompleteCoverageNeverGetsAEvenWithFullCriteria(t *testing.T) {
+	for _, limit := range []int{1, 3} {
+		for _, finish := range []bool{false, true} {
+			e, _ := NewExam(pair(), limit, nil)
+			incomplete := false
+			step := e.Apply(Evaluation{Verdict: VerdictAnswered, Criteria: strong.Criteria, AnswerComplete: &incomplete})
+			want := GradeB
+			if limit == 3 {
+				if step.Kind != KindFollowup {
+					t.Fatalf("incomplete answer got %v", step.Kind)
+				}
+				if finish {
+					complete := true
+					e.Apply(Evaluation{Verdict: VerdictAnswered, Criteria: strong.Criteria, AnswerComplete: &complete})
+					want = GradeA
+				} else {
+					e.Apply(unknown)
+				}
+			}
+			state := e.Nodes["top"]
+			if !e.Completed() || *state.Grade != want || state.Assisted {
+				t.Fatalf("limit=%d finish=%v: %+v", limit, finish, state)
+			}
+			data, err := json.Marshal(e)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var restored Exam
+			if err := json.Unmarshal(data, &restored); err != nil {
+				t.Fatal(err)
+			}
+			if restored.Nodes["top"].complete() != state.complete() {
+				t.Fatal("coverage lost after resume")
+			}
+		}
 	}
 }
 

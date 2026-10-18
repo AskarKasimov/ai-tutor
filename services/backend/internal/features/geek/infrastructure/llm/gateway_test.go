@@ -123,7 +123,7 @@ func TestGatewayAsksWithComplexityAndJSONFormat(t *testing.T) {
 }
 
 func TestGatewayEvaluatesAndRetriesAnInvalidAnswerOnce(t *testing.T) {
-	f := &fakeGateway{answers: []string{"не JSON", "```json\n{\"verdict\":\"answered\",\"criteria\":{\"k1\":2,\"k2\":1,\"k3\":0,\"k4\":1},\"evidence_lines\":[2]}\n```"}}
+	f := &fakeGateway{answers: []string{"не JSON", "```json\n{\"verdict\":\"answered\",\"answer_complete\":true,\"criteria\":{\"k1\":2,\"k2\":1,\"k3\":0,\"k4\":1},\"evidence_lines\":[2]}\n```"}}
 	g := serve(t, f, time.Second)
 	e, err := g.Evaluate(context.Background(), application.EvaluationRequest{Kind: exam.KindQuestion, Node: node, Dialogue: turns})
 	if err != nil || e.Verdict != exam.VerdictAnswered || e.Criteria != (exam.Criteria{K1: 2, K2: 1, K4: 1}) || e.Evidence[0] != 2 {
@@ -132,6 +132,11 @@ func TestGatewayEvaluatesAndRetriesAnInvalidAnswerOnce(t *testing.T) {
 	if len(f.requests) != 2 || f.requests[0].GetComplexity() != llmgatewayv1.Complexity_COMPLEXITY_LOW || !f.requests[0].GetUrgent() {
 		t.Fatalf("requests = %d", len(f.requests))
 	}
+	for _, r := range f.requests {
+		if r.GetParameters().GetReasoningEffort() != llmgatewayv1.ReasoningEffort_REASONING_EFFORT_LOW {
+			t.Fatalf("grading reasoning = %v", r.GetParameters().GetReasoningEffort())
+		}
+	}
 	if !strings.Contains(f.requests[0].GetMessages()[1].GetContent(), "[2] Студент: Ответ.") {
 		t.Fatal("prompt lacks the numbered dialogue")
 	}
@@ -139,8 +144,8 @@ func TestGatewayEvaluatesAndRetriesAnInvalidAnswerOnce(t *testing.T) {
 
 func TestGatewayReturnsTheReplyAndLeavesTheRecapOutOfTheDialogue(t *testing.T) {
 	f := &fakeGateway{answers: []string{
-		`{"verdict":"answered","criteria":{"k1":1,"k2":1,"k3":0,"k4":0},"evidence_lines":[2],"reaction":" Близко. ","explanation":"Близко. На самом деле f = g + h."}`,
-		`{"verdict":"answered","criteria":{"k1":1,"k2":1,"k3":0,"k4":0},"evidence_lines":[2]}`,
+		`{"verdict":"answered","answer_complete":true,"criteria":{"k1":1,"k2":1,"k3":0,"k4":0},"evidence_lines":[2],"reaction":" Близко. ","explanation":"Близко. На самом деле f = g + h."}`,
+		`{"verdict":"answered","answer_complete":true,"criteria":{"k1":1,"k2":1,"k3":0,"k4":0},"evidence_lines":[2]}`,
 	}}
 	g := serve(t, f, time.Second)
 	recap := "Разбор прошлой темы.\n\n"
@@ -163,17 +168,23 @@ func TestGatewayReturnsTheReplyAndLeavesTheRecapOutOfTheDialogue(t *testing.T) {
 	}
 }
 
-func TestEvaluationGradesByOutcomesNotBySlides(t *testing.T) {
-	// Decision of 18.10.2026: the outcomes say what to check, the topic text is
-	// the reference by meaning, and slide details are never required.
+func TestEvaluationGradesTheQuestionNotAllOutcomes(t *testing.T) {
+	// A correct answer to the selected concept must not be compared to every outcome.
 	n := node
 	n.Outcomes = []string{"объяснять, из чего складывается оценка f(n)"}
 	prompt := evaluationPrompt(application.EvaluationRequest{Kind: exam.KindQuestion, Node: n, Dialogue: turns})
 	for _, want := range []string{
-		"- объяснять, из чего складывается оценка f(n)",
-		"достиг ли студент образовательных результатов темы",
-		"по сути, не дословно",
-		"номер слайда или лекции",
+		"на заданный вопрос",
+		"К3/К4 — null без материала",
+		"verdict определи по последней реплике",
+		"Не приписывай студенту знания",
+		"Принимай разумные примеры вне теории",
+		"Не принимай выдуманные факты",
+		"покрыты ли все явно запрошенные части",
+		"которых не спрашивали",
+		"Пропуск части фиксируй в answer_complete, не штрафуй повторно правильные знания",
+		"в том числе ошибочная, неполная или тавтологичная",
+		"не требуй конкретных примеров",
 		"выбирай более высокий",
 		"одно предложение до 15 слов",
 	} {
@@ -181,11 +192,26 @@ func TestEvaluationGradesByOutcomesNotBySlides(t *testing.T) {
 			t.Errorf("evaluation prompt lacks %q", want)
 		}
 	}
-	if strings.Contains(prompt, "строго по тексту темы") || strings.Contains(prompt, "35 слов") {
+	if strings.Contains(prompt, n.Outcomes[0]) || strings.Contains(prompt, "образовательных результатов") || strings.Contains(prompt, "35 слов") {
 		t.Error("evaluation prompt still grades strictly by the topic text or allows 35 words")
+	}
+	if strings.Contains(prompt, `Верни JSON: {"verdict":"answered"`) {
+		t.Fatal("output instructions force the answered verdict")
 	}
 	if p := explanationPrompt(application.EvaluationRequest{Node: n, Dialogue: turns}); !strings.Contains(p, "одно предложение до 15 слов") {
 		t.Errorf("explanation prompt = %s", p)
+	}
+}
+
+func TestEvaluationIncludesOnlyExplicitInstructorGuidance(t *testing.T) {
+	n := node
+	n.AssessmentGuidance = "Оцени объяснение по смыслу, без совпадения с текстом темы."
+	p := evaluationPrompt(application.EvaluationRequest{Node: n, Kind: exam.KindQuestion})
+	if !strings.Contains(p, n.AssessmentGuidance) || !strings.Contains(p, "Отдельное правило преподавателя") {
+		t.Fatal("evaluation lost the instructor's scope")
+	}
+	if strings.Contains(questionPrompt(application.QuestionRequest{Node: n}), n.AssessmentGuidance) {
+		t.Fatal("grading guidance leaked into question generation")
 	}
 }
 
@@ -203,7 +229,7 @@ func TestOralExamPromptsAskForReasoningAndStayNeutral(t *testing.T) {
 		t.Error("follow-up prompt still asks to change the conditions of a problem")
 	}
 	p := evaluationPrompt(application.EvaluationRequest{Kind: exam.KindQuestion, Node: node, Dialogue: turns})
-	for _, want := range []string{"Не требуй вычислений, формул, кода, схем", "ошибки распознавания", "К3 и К4 засчитывай за любое разумное рассуждение", "нейтральная", "Не критикуй"} {
+	for _, want := range []string{"не требуй вычислений, формул, кода, схем", "ошибки распознавания", "К3 — возражения и контрпримеры", "нейтральное", "Без упрёков"} {
 		if !strings.Contains(p, want) {
 			t.Errorf("evaluation prompt lacks %q", want)
 		}
@@ -224,12 +250,86 @@ func TestGatewayExplainsOnTheLowPool(t *testing.T) {
 	if r.GetComplexity() != llmgatewayv1.Complexity_COMPLEXITY_LOW || !r.GetUrgent() || !strings.Contains(r.GetMessages()[1].GetContent(), "Эвристика") {
 		t.Fatalf("complexity = %s prompt = %s", r.GetComplexity(), r.GetMessages()[1].GetContent())
 	}
+	if r.GetParameters().GetReasoningEffort() != llmgatewayv1.ReasoningEffort_REASONING_EFFORT_LOW {
+		t.Fatalf("explanation reasoning = %v", r.GetParameters().GetReasoningEffort())
+	}
+}
+
+func TestExaminerPromptsLeaveOutOutcomes(t *testing.T) {
+	n := node
+	n.Outcomes = []string{"UNRELATED_OUTCOME_SHOULD_NOT_BE_SENT"}
+	for _, kind := range []exam.TurnKind{exam.KindQuestion, exam.KindFollowup, exam.KindRephrase} {
+		p := questionPrompt(application.QuestionRequest{Kind: kind, Node: n, Dialogue: turns})
+		if strings.Contains(p, n.Outcomes[0]) || !strings.Contains(p, n.Content) {
+			t.Fatalf("question prompt has the wrong source: %s", p)
+		}
+	}
+	if p := explanationPrompt(application.EvaluationRequest{Node: n, Dialogue: turns}); strings.Contains(p, n.Outcomes[0]) {
+		t.Fatal("explanation contains outcomes")
+	}
+}
+
+func TestGatewayDistinguishesUntestedSkillsFromZeroAndMissingFields(t *testing.T) {
+	for _, tc := range []struct {
+		criteria string
+		valid    bool
+		scope    exam.UnassessedCriteria
+	}{
+		{`{"k1":2,"k2":2,"k3":null,"k4":null}`, true, exam.UnassessedCriteria{K3: true, K4: true}},
+		{`{"k1":2,"k2":2,"k3":0,"k4":null}`, true, exam.UnassessedCriteria{K4: true}},
+		{`{"k1":2,"k2":2,"k4":null}`, false, exam.UnassessedCriteria{}},
+		{`{"k1":null,"k2":2,"k3":null,"k4":null}`, false, exam.UnassessedCriteria{}},
+		{`{"k1":2,"k2":2,"k3":1.5,"k4":null}`, false, exam.UnassessedCriteria{}},
+		{`{"k1":2,"k2":2,"k3":3,"k4":null}`, false, exam.UnassessedCriteria{}},
+	} {
+		t.Run(tc.criteria, func(t *testing.T) {
+			f := &fakeGateway{answers: []string{`{"verdict":"answered","answer_complete":true,"criteria":` + tc.criteria + `,"evidence_lines":[2]}`}}
+			g := serve(t, f, time.Second)
+			a, err := g.Evaluate(context.Background(), application.EvaluationRequest{Node: node, Dialogue: turns})
+			if (err == nil) != tc.valid {
+				t.Fatalf("valid=%v got %v", tc.valid, err)
+			}
+			if tc.valid && a.Unassessed != tc.scope {
+				t.Fatalf("scope = %+v", a.Unassessed)
+			}
+			if !tc.valid && f.count() != 2 {
+				t.Fatal("invalid criteria were not retried")
+			}
+		})
+	}
+}
+
+func TestGatewayRequiresExplicitAnswerCompleteness(t *testing.T) {
+	for _, tc := range []struct {
+		field    string
+		valid    bool
+		complete bool
+	}{
+		{``, false, false},
+		{`,"answer_complete":null`, false, false},
+		{`,"answer_complete":"false"`, false, false},
+		{`,"answer_complete":false`, true, false},
+		{`,"answer_complete":true`, true, true},
+	} {
+		t.Run(tc.field, func(t *testing.T) {
+			content := `{"verdict":"answered"` + tc.field + `,"criteria":{"k1":2,"k2":2,"k3":null,"k4":null},"evidence_lines":[2]}`
+			f := &fakeGateway{answers: []string{content}}
+			g := serve(t, f, time.Second)
+			a, err := g.Evaluate(context.Background(), application.EvaluationRequest{Node: node, Dialogue: turns})
+			if (err == nil) != tc.valid {
+				t.Fatalf("valid=%v got %v", tc.valid, err)
+			}
+			if tc.valid && (a.AnswerComplete == nil || *a.AnswerComplete != tc.complete) {
+				t.Fatalf("coverage = %v", a.AnswerComplete)
+			}
+		})
+	}
 }
 
 func TestGatewayDoesNotReuseFieldsOfARejectedAnswer(t *testing.T) {
 	f := &fakeGateway{answers: []string{
-		`{"verdict":"answered","criteria":{"k1":2,"k2":2,"k3":2,"k4":3},"evidence_lines":[2]}`,
-		`{"verdict":"answered","criteria":{"k4":2},"evidence_lines":[2]}`,
+		`{"verdict":"answered","answer_complete":true,"criteria":{"k1":2,"k2":2,"k3":2,"k4":3},"evidence_lines":[2]}`,
+		`{"verdict":"answered","answer_complete":true,"criteria":{"k4":2},"evidence_lines":[2]}`,
 	}}
 	g := serve(t, f, time.Second)
 	if e, err := g.Evaluate(context.Background(), application.EvaluationRequest{Node: node, Dialogue: turns}); err == nil {

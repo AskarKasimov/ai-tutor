@@ -77,12 +77,13 @@ func (g *Gateway) Evaluate(ctx context.Context, r application.EvaluationRequest)
 	// The student waits for the evaluation, so it uses the fast low pool too.
 	err := g.complete(ctx, "evaluate:"+string(r.Kind), llmgatewayv1.Complexity_COMPLEXITY_LOW, true, evaluationPrompt(r), func(content []byte) error {
 		var out struct {
-			Verdict  exam.Verdict `json:"verdict"`
-			Criteria *struct {
-				K1 *int `json:"k1"`
-				K2 *int `json:"k2"`
-				K3 *int `json:"k3"`
-				K4 *int `json:"k4"`
+			AnswerComplete *bool        `json:"answer_complete"`
+			Verdict        exam.Verdict `json:"verdict"`
+			Criteria       *struct {
+				K1 *int            `json:"k1"`
+				K2 *int            `json:"k2"`
+				K3 json.RawMessage `json:"k3"`
+				K4 json.RawMessage `json:"k4"`
 			} `json:"criteria"`
 			Evidence    []int  `json:"evidence_lines"`
 			Reaction    string `json:"reaction"`
@@ -94,11 +95,29 @@ func (g *Gateway) Evaluate(ctx context.Context, r application.EvaluationRequest)
 		e := exam.Evaluation{Verdict: out.Verdict, Evidence: out.Evidence}
 		switch out.Verdict {
 		case exam.VerdictAnswered:
+			if out.AnswerComplete == nil {
+				return errors.New("missing answer_complete")
+			}
+			e.AnswerComplete = out.AnswerComplete
 			k := out.Criteria
-			if k == nil || k.K1 == nil || k.K2 == nil || k.K3 == nil || k.K4 == nil {
+			if k == nil || k.K1 == nil || k.K2 == nil || len(k.K3) == 0 || len(k.K4) == 0 {
 				return errors.New("missing criteria")
 			}
-			e.Criteria = exam.Criteria{K1: *k.K1, K2: *k.K2, K3: *k.K3, K4: *k.K4}
+			e.Criteria = exam.Criteria{K1: *k.K1, K2: *k.K2}
+			for _, field := range []struct {
+				raw        json.RawMessage
+				value      *int
+				unassessed *bool
+			}{
+				{k.K3, &e.Criteria.K3, &e.Unassessed.K3},
+				{k.K4, &e.Criteria.K4, &e.Unassessed.K4},
+			} {
+				if string(field.raw) == "null" {
+					*field.unassessed = true
+				} else if err := json.Unmarshal(field.raw, field.value); err != nil {
+					return err
+				}
+			}
 			if !e.Criteria.Valid() {
 				return fmt.Errorf("criteria out of range: %+v", e.Criteria)
 			}
@@ -148,10 +167,8 @@ func (g *Gateway) complete(ctx context.Context, operation string, level llmgatew
 		Complexity: level,
 		Urgent:     urgent,
 		Parameters: &llmgatewayv1.GenerationParameters{
-			Temperature:    proto.Float64(0.2),
-			ResponseFormat: llmgatewayv1.ResponseFormat_RESPONSE_FORMAT_JSON_OBJECT.Enum(),
-			// Models that think first (gpt-oss) spend most of a call reasoning;
-			// low cut a translation chunk from 13.7 s to 2.1 s (18.10.2026).
+			Temperature:     proto.Float64(0.2),
+			ResponseFormat:  llmgatewayv1.ResponseFormat_RESPONSE_FORMAT_JSON_OBJECT.Enum(),
 			ReasoningEffort: llmgatewayv1.ReasoningEffort_REASONING_EFFORT_LOW.Enum(),
 		},
 	}

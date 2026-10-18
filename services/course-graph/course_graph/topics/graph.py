@@ -400,7 +400,7 @@ async def build_links(topics, complete, encoder, per_requirement=5, max_chars=16
 
     unmerged = list(topics)
     topics, isolated, merged_isolated, originals = await asyncio.to_thread(merge_isolated, topics, edges, encoder)
-    # A card that absorbed another topic gets a question about all of it.
+    # After merging, choose the question's central concept from the combined text.
     hosts = [t for t in topics if t.id in originals]
     failed, question_requests = await refresh_questions(hosts, light_complete or complete, concurrency=concurrency,
                                                         progress=progress)

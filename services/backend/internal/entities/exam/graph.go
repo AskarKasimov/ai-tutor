@@ -19,8 +19,10 @@ type Node struct {
 	Questions     []string `json:"questions"`
 	// Rephrase is the prepared rephrase of Questions[0]; empty until prepared,
 	// then Geek generates it at runtime as before.
-	Rephrase string           `json:"rephrase,omitempty"`
-	Sources  []SourceCitation `json:"sources"`
+	Rephrase string `json:"rephrase,omitempty"`
+	// AssessmentGuidance is an instructor's explicit scope for this topic's question.
+	AssessmentGuidance string           `json:"assessment_guidance,omitempty"`
+	Sources            []SourceCitation `json:"sources"`
 }
 
 // MainQuestion is the prepared main question, or "" when Geek generates it at

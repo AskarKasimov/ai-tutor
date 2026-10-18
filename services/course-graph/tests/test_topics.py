@@ -534,7 +534,7 @@ def test_joint_endpoint_returns_cards_and_cleaning_audit(monkeypatch):
     response = TestClient(api.app).post("/topics/extract", json={"markdown": "Производная показывает скорость изменения функции.\n\nСпасибо за внимание!", "material_id": "m"})
     assert response.status_code == 200
     report = response.json()["report"]
-    assert report["topics_version"] == "topics-v3"
+    assert report["topics_version"] == "topics-v4"
     assert report["topics"][0]["sources"][0]["material_id"] == "m"
 @pytest.mark.parametrize("text",["", "   ", "\n\r\n\t"])
 def test_blank_material_cannot_publish_empty_graph(text):
@@ -808,11 +808,12 @@ def test_extraction_asks_reasoning_questions_and_no_empty_topics():
     assert "ТЕМА БЕЗ СОДЕРЖАНИЯ" in PROMPT
 
 
-def test_questions_follow_provides_not_slide_details():
-    # Decision of 18.10.2026: a student who understood the topic answers the
-    # question without having seen the slides.
+def test_questions_select_one_main_concept_from_the_topic_text():
     for prompt in (PROMPT, QUESTION_PROMPT):
-        assert "вокруг provides" in prompt and "не видя этих слайдов" in prompt
+        assert "одну центральную концепцию" in prompt
+        assert "не требуй длинного ответа" in prompt
+        assert "вокруг provides" not in prompt
+        assert "не видя этих слайдов" in prompt
 
 
 def test_questions_ask_for_spoken_reasoning_only():
@@ -1064,6 +1065,8 @@ def test_question_of_a_merged_card_sees_a_source_added_after_the_budget():
     failed, _ = run(refresh_questions([host], complete))
     assert failed == set()
     assert added in sent[0]["text"] and len(sent[0]["text"]) <= 6000
+    assert "provides" not in sent[0]
+    assert host.provides == ["Основа"]
     assert host.question == "Почему верно: Основная тема?"
 
 
@@ -1531,7 +1534,7 @@ def long_knowledge(count):
     return [f"Знание {i:03d}: " + "я" * (600 - len(f"Знание {i:03d}: ")) for i in range(count)]
 
 
-def test_question_refresh_skips_oversized_host_but_processes_small_neighbor():
+def test_question_refresh_does_not_spend_budget_on_provides():
     large = make_topic("L", "Большая тема", long_knowledge(128))
     small = make_topic("S", "Малая тема", ["Малое знание"])
     before = large.model_dump()
@@ -1540,12 +1543,15 @@ def test_question_refresh_skips_oversized_host_but_processes_small_neighbor():
     async def complete(system, payload):
         calls.append(payload)
         assert len(payload) <= 20000
-        assert [t["id"] for t in json.loads(payload)["topics"]] == ["S"]
+        items = json.loads(payload)["topics"]
+        assert [t["id"] for t in items] == ["L", "S"]
+        assert all("provides" not in t for t in items)
         return write_questions(payload)
 
     failed, requests = run(refresh_questions([large, small], complete))
-    assert failed == {"L"} and requests == len(calls) == 1
-    assert large.model_dump() == before
+    assert failed == set() and requests == len(calls) == 1
+    assert large.provides == before["provides"]
+    assert large.question.startswith("Почему верно:")
     assert small.question.startswith("Почему верно:")
 
 
@@ -1585,7 +1591,7 @@ def test_attach_processes_a_small_neighbor_when_a_large_item_cannot_fit():
 def test_question_correction_respects_the_budget_including_json_wrapper():
     from course_graph.topics.structure import question_text
     host = make_topic("H", "Тема", ["Знание"])
-    item = {"id": host.id, "title": host.title, "provides": host.provides, "text": question_text(host)}
+    item = {"id": host.id, "title": host.title, "text": question_text(host)}
     budget = len(json.dumps({"topics": [item]}, ensure_ascii=False))
     calls = []
 

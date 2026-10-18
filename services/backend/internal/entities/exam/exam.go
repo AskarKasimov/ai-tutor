@@ -76,12 +76,15 @@ type Turn struct {
 // NodeState is what the exam has concluded about one topic. Criteria and
 // evidence lines are kept for the teacher package.
 type NodeState struct {
-	Status   Status    `json:"status"`
-	Grade    *Grade    `json:"grade"`
-	Criteria *Criteria `json:"criteria"`
-	Evidence []int     `json:"evidence"`
-	Assisted bool      `json:"assisted"`
-	Asked    bool      `json:"asked"`
+	// nil is a legacy session; new model evaluations always state completeness.
+	AnswerComplete *bool              `json:"answer_complete,omitempty"`
+	Unassessed     UnassessedCriteria `json:"unassessed,omitempty"`
+	Status         Status             `json:"status"`
+	Grade          *Grade             `json:"grade"`
+	Criteria       *Criteria          `json:"criteria"`
+	Evidence       []int              `json:"evidence"`
+	Assisted       bool               `json:"assisted"`
+	Asked          bool               `json:"asked"`
 }
 
 // Verdict is the model's reading of a student's answer.
@@ -95,9 +98,11 @@ const (
 
 // Evaluation is the model's assessment of the dialogue on the current topic.
 type Evaluation struct {
-	Verdict  Verdict
-	Criteria Criteria
-	Evidence []int
+	AnswerComplete *bool
+	Unassessed     UnassessedCriteria
+	Verdict        Verdict
+	Criteria       Criteria
+	Evidence       []int
 }
 
 // Step is what Geek asks next.
@@ -223,11 +228,11 @@ func (e *Exam) finishTop() {
 // topic a gap at once. A main answer on D or with insufficient data is
 // rephrased once; an answer after the rephrase is assisted. Without room in
 // the question limit for the rephrase, the main answer decides: D is a gap,
-// insufficient data stays insufficient. A non-D answer that already shows K3
-// and K4 on 2, or that leaves no room in the question limit, is graded at
-// once; otherwise it gets one followup on K3 and K4, and the grade is set
-// after it; "don't know" or an unclear answer on the followup sets K3 and K4
-// to 0 and grades by the table. A gap leads to its prerequisites; a
+// insufficient data stays insufficient. A non-D answer that fully demonstrates
+// the assessed criteria, or leaves no room in the limit, is graded at once.
+// Otherwise one followup clarifies the same concept; an unclear answer or
+// "don't know" keeps the skills already observed. Untested K3/K4 are excluded
+// from grading, not treated as failed. A gap leads to its prerequisites; a
 // mastered topic credits all of its unchecked prerequisites.
 func (e *Exam) Apply(ev Evaluation) Step {
 	cur := *e.Current
@@ -251,17 +256,19 @@ func (e *Exam) Apply(ev Evaluation) Step {
 		}
 		c := ev.Criteria
 		state.Criteria = &c
+		state.AnswerComplete = ev.AnswerComplete
+		state.Unassessed = ev.Unassessed
 		state.Assisted = assisted
-		if TopicGrade(c, assisted) == GradeD {
+		if state.topicGrade() == GradeD {
 			if !assisted && !e.limitReached() {
 				e.Asked++
 				return e.step(KindRephrase, cur.NodeID)
 			}
 			return e.gap(cur.NodeID, c, assisted)
 		}
-		// No followup when the answer already shows K3 and K4, or when the
-		// limit has no room for it: the topic is graded by this answer.
-		if c.K3 == 2 && c.K4 == 2 || e.limitReached() {
+		// A good answer to the selected concept is enough; untested skills
+		// do not force another question. The question limit remains strict.
+		if state.Unassessed.Complete(c) && state.complete() || e.limitReached() {
 			return e.conclude(cur.NodeID, c)
 		}
 		e.Asked++
@@ -270,7 +277,19 @@ func (e *Exam) Apply(ev Evaluation) Step {
 		c := ev.Criteria
 		if ev.Verdict != VerdictAnswered {
 			c = *state.Criteria
-			c.K3, c.K4 = 0, 0
+		} else {
+			state.AnswerComplete = ev.AnswerComplete
+			// A skill observed earlier cannot become untested on a followup.
+			if ev.Unassessed.K3 && !state.Unassessed.K3 {
+				c.K3 = state.Criteria.K3
+			}
+			if ev.Unassessed.K4 && !state.Unassessed.K4 {
+				c.K4 = state.Criteria.K4
+			}
+			state.Unassessed = UnassessedCriteria{
+				K3: state.Unassessed.K3 && ev.Unassessed.K3,
+				K4: state.Unassessed.K4 && ev.Unassessed.K4,
+			}
 		}
 		return e.conclude(cur.NodeID, c)
 	}
@@ -282,7 +301,7 @@ func (e *Exam) Apply(ev Evaluation) Step {
 func (e *Exam) conclude(id string, c Criteria) Step {
 	state := e.Nodes[id]
 	state.Criteria = &c
-	grade := TopicGrade(c, state.Assisted)
+	grade := state.topicGrade()
 	if grade == GradeD {
 		return e.gap(id, c, state.Assisted)
 	}
@@ -297,6 +316,18 @@ func (e *Exam) conclude(id string, c Criteria) Step {
 		}
 	}
 	return e.next()
+}
+
+func (s NodeState) complete() bool {
+	return s.AnswerComplete == nil || *s.AnswerComplete
+}
+
+func (s NodeState) topicGrade() Grade {
+	grade := TopicGrade(*s.Criteria, s.Assisted, s.Unassessed)
+	if grade == GradeA && !s.complete() {
+		return GradeB
+	}
+	return grade
 }
 
 func (e *Exam) step(kind TurnKind, id string) Step {

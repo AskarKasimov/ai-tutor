@@ -534,7 +534,7 @@ def test_joint_endpoint_returns_cards_and_cleaning_audit(monkeypatch):
     response = TestClient(api.app).post("/topics/extract", json={"markdown": "Производная показывает скорость изменения функции.\n\nСпасибо за внимание!", "material_id": "m"})
     assert response.status_code == 200
     report = response.json()["report"]
-    assert report["topics_version"] == "topics-v2"
+    assert report["topics_version"] == "topics-v3"
     assert report["topics"][0]["sources"][0]["material_id"] == "m"
 @pytest.mark.parametrize("text",["", "   ", "\n\r\n\t"])
 def test_blank_material_cannot_publish_empty_graph(text):

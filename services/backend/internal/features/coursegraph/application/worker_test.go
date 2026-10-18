@@ -91,6 +91,38 @@ func TestSnapshotShowsBuildProgressOnlyWhileTheBuildRuns(t *testing.T) {
 	}
 }
 
+type reportStorage map[string]string
+
+func (s reportStorage) Get(_ context.Context, key string) ([]byte, error) { return []byte(s[key]), nil }
+
+type capturingBuilder struct{ materials []coursegraph.Material }
+
+func (b *capturingBuilder) Build(_ context.Context, _ string, materials []coursegraph.Material, _ func(coursegraph.BuildProgress)) (json.RawMessage, error) {
+	b.materials = materials
+	return json.RawMessage(`{"version":"course-graph-v1","topics":[{}],"prerequisites":[],"quality":{"acyclic":true}}`), nil
+}
+
+func TestBuildReusesOnlyCardsOfTheCurrentQuestionPolicy(t *testing.T) {
+	// Review of #138: topics-v2 cards keep questions that ask to solve or
+	// draw, so a rebuild must extract them again under the oral policy.
+	items := requestMaterials{
+		{ID: "old", S3ParsedKey: "parsed", Cleaning: &material.Cleaning{Status: "ready", S3ReportKey: "old"}},
+		{ID: "new", S3ParsedKey: "parsed", Cleaning: &material.Cleaning{Status: "ready", S3ReportKey: "new"}},
+	}
+	storage := reportStorage{
+		"old": `{"topics_version":"topics-v2","topics":[{"question":"Нарисуй график функции и вычисли производную."}]}`,
+		"new": `{"topics_version":"topics-v3","topics":[{"question":"Объясни, зачем нужна производная."}]}`,
+	}
+	builder := &capturingBuilder{}
+	w := New(requestRepo{}, items, storage, builder, nil, nil)
+	if err := w.process(context.Background(), coursegraph.Job{SubjectID: "subject"}); err != nil {
+		t.Fatal(err)
+	}
+	if len(builder.materials) != 2 || builder.materials[0].Topics != nil || builder.materials[1].Topics == nil {
+		t.Fatalf("materials = %+v: only topics-v3 cards may be reused", builder.materials)
+	}
+}
+
 func TestRequestReportsClassifiedMaterialIDsWithoutPollingAsProcessing(t *testing.T) {
 	week := int32(1)
 	items := requestMaterials{{ID: "needs-classification", Status: material.StatusParsed,

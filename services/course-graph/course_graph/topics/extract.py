@@ -522,7 +522,7 @@ async def extract_topics(text, complete, material_id="material", week=None, sett
         # that breaks the contract would only fail later in /graph/build.
         Topic.model_validate(topic.model_dump())
     return {"markdown": "".join(parts), "report": {
-        "version": "material-cleaning-v1", "topics_version": "topics-v2",
+        "version": "material-cleaning-v1", "topics_version": "topics-v3",
         "source_sha256": hashlib.sha256(text.encode()).hexdigest(),
         "blocks": len(blocks), "warnings": [], **metrics,
         "removed": [{"id": b.id, "start": b.start, "end": b.end, "text": b.text, "reason": removed[b.id]} for b in spans],

@@ -403,7 +403,9 @@ func (w *Worker) process(ctx context.Context, job coursegraph.Job) error {
 		revision := sha256.Sum256([]byte(m.S3RawKey))
 		input := coursegraph.Material{ID: m.ID, Markdown: string(source), Week: m.Week, Kind: kind,
 			Filename: m.Filename, KindLabel: m.KindLabel, MaterialRevision: hex.EncodeToString(revision[:])}
-		if cached.TopicsVersion == "topics-v2" {
+		// Older cards carry questions of an earlier policy (topics-v2 could
+		// ask to solve or draw): course-graph extracts them again instead.
+		if cached.TopicsVersion == "topics-v3" {
 			input.Topics = cached.Topics
 		}
 		inputs = append(inputs, input)

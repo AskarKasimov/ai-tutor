@@ -307,7 +307,7 @@ func TestAuthLoginAndValidation(t *testing.T) {
 	} {
 		requireCode(t, f.request("POST", "/auth/register", body), 422, "VALIDATION_ERROR")
 	}
-	for _, p := range []string{"short", strings.Repeat("a", 20), "passwordpassword", strings.Repeat("я", 129)} {
+	for _, p := range []string{"abc", strings.Repeat("a", 20), "passwordpassword", strings.Repeat("я", 129)} {
 		b, _ := json.Marshal(map[string]string{"email": "weak@example.edu", "password": p, "display_name": "Иван"})
 		requireCode(t, f.request("POST", "/auth/register", string(b)), 422, "PASSWORD_TOO_WEAK")
 	}

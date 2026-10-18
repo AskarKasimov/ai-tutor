@@ -29,7 +29,7 @@ void i18n.init({
           name: 'Имя',
           accountMenu: 'Меню профиля',
           account: 'Профиль',
-          passwordHelp: 'От 15 до 128 символов.',
+          passwordHelp: 'От 4 до 128 символов.',
           create: 'Создать аккаунт',
           pending: 'Подождите…',
           checkingSession: 'Проверяем сессию…',

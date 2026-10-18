@@ -37,7 +37,7 @@ export function ResultGraph({ topics }: { topics: TopicResult[] }) {
   )
 
   return (
-    <section aria-labelledby="graph-title" className={styles.graphPanel}>
+    <section aria-labelledby="graph-title" className={styles.panel}>
       <Heading as="h2" size="5" id="graph-title">
         {t('geek.graphTitle')}
       </Heading>

@@ -9,6 +9,9 @@
   --cosmos-ink: #12233a;
   --result-radius: 24px;
   --result-track: #e4ebf3;
+  --result-line: #dfe9f2;
+  --result-chip: #f2f5f9;
+  --gap-red: #e5533d;
   // Darker than --app-muted: 6.3:1 on white and at least 5.3:1 on the hero
   // gradient and its tiles, so small explanatory text stays readable.
   --result-muted: #536175;
@@ -63,7 +66,7 @@
   gap: 32px;
   padding: 36px 40px;
   border-radius: var(--result-radius);
-  border: 1px solid #dfe9f2;
+  border: 1px solid var(--result-line);
   background:
     radial-gradient(circle at 12% 18%, rgb(33 160 56 / 0.14), transparent 42%),
     radial-gradient(circle at 88% 12%, rgb(122 98 240 / 0.12), transparent 40%),
@@ -215,7 +218,7 @@
   --status-ink: #2453c4;
 }
 .result [data-status='gap'] {
-  --status-color: #e5533d;
+  --status-color: var(--gap-red);
   --status-soft: var(--app-error-soft);
   --status-ink: var(--app-error);
 }
@@ -446,7 +449,7 @@
   height: 32px;
   border-radius: 10px;
   color: var(--cosmos-ink);
-  background: #f2f5f9;
+  background: var(--result-chip);
   font-weight: 800;
 }
 
@@ -481,22 +484,6 @@
 }
 
 // The map of checked topics: cards on the same light nebula as the grade.
-.graphPanel {
-  display: grid;
-  gap: 14px;
-  min-width: 0;
-  padding: 28px;
-  border-radius: var(--result-radius);
-  background: white;
-  box-shadow:
-    0 0 0 1px var(--app-border),
-    0 10px 30px rgb(18 35 58 / 0.05);
-  h2 {
-    margin: 0;
-    color: var(--cosmos-ink);
-    letter-spacing: -0.01em;
-  }
-}
 .legend {
   display: flex;
   flex-wrap: wrap;
@@ -523,7 +510,7 @@
 .graphScroll {
   overflow-x: auto;
   border-radius: 20px;
-  border: 1px solid #dfe9f2;
+  border: 1px solid var(--result-line);
   background:
     radial-gradient(circle at 8% 20%, rgb(33 160 56 / 0.12), transparent 38%),
     radial-gradient(circle at 92% 15%, rgb(122 98 240 / 0.1), transparent 36%),
@@ -564,7 +551,7 @@
   opacity: 0.85;
   // The prerequisite was not mastered: the reliance is broken here.
   &[data-gap] {
-    stroke: #e5533d;
+    stroke: var(--gap-red);
     stroke-dasharray: 6 5;
   }
 }
@@ -638,7 +625,7 @@
   height: 26px;
   border-radius: 8px;
   color: var(--cosmos-ink);
-  background: #f2f5f9;
+  background: var(--result-chip);
   font-size: 13px;
   font-weight: 800;
 }
@@ -678,8 +665,7 @@
   .ring {
     --ring-size: 120px;
   }
-  .panel,
-  .graphPanel {
+  .panel {
     padding: 20px;
   }
   .gap {

@@ -78,7 +78,7 @@ const materialWorkers = 2
 
 // voiceName identifies the TTS settings in the keys of cached speech.
 func (a *App) voiceName() string {
-	return fmt.Sprintf("seed=%d cfg=%g steps=%d", a.cfg.TTSSeed, a.cfg.TTSCFGValue, a.cfg.TTSInferenceTimesteps)
+	return fmt.Sprintf("model=%s reference=%s seed=%d cfg=%g steps=%d pipeline=completion-v1-split500-pause150", a.cfg.TTSModelRevision, a.cfg.TTSReferenceSHA256, a.cfg.TTSSeed, a.cfg.TTSCFGValue, a.cfg.TTSInferenceTimesteps)
 }
 
 func (a *App) models() *modelapi.Client {
@@ -127,7 +127,7 @@ func New(cfg Config, pool *pgxpool.Pool, logger *zap.Logger) (*App, error) {
 	translator := materialstranslator.NewWithCompleter(materialstranslator.NewGateway(llmgatewayv1.NewGatewayClient(conn), cfg.LLMTimeout), 4)
 	a.ocrWorker = materialsapp.NewOCRWorker(materialRepository, a.materialsStorage, materialsOCR, translator)
 	a.cleaningWorker = materialsapp.NewCleaningWorker(materialRepository, a.materialsStorage, materialsOCR)
-	a.speech = geekapp.NewSpeechCache(a.models(), geekstorage.NewAudio(storage, cfg.S3Bucket), a.voiceName())
+	a.speech = geekapp.NewSpeechCache(a.models(), geekstorage.NewAudio(storage, cfg.S3Bucket), a.voiceName(), cfg.VoiceTimeout).WithLogger(logger)
 	a.warmer = geekapp.NewWarmer(a.speech, logger.With(zap.String("worker", "speech_warmer")))
 	a.fixture = geekapp.NewPreparedGraph(geekgraph.Fixture{Path: cfg.GeekGraphFixture}, examiner, geekstorage.NewPrepared(storage, cfg.S3Bucket), a.warmer, logger.With(zap.String("worker", "fixture_questions")))
 	// The admin sees the default graph as Geek serves it: with its rephrases,
@@ -237,7 +237,7 @@ func (a *App) Handler() http.Handler {
 	// The stored graph of stream A goes first once it exists; the fixture is the fallback.
 	graphs := geekgraph.Chain{geekgraph.NewStored(a.pool), a.fixture}
 	geekService := geekapp.New(graphs, geekpg.New(a.pool), geekpg.NewTranscriptions(a.pool), a.examiner, a.speech,
-		security.IDGenerator{}, a.now, geekapp.Config{MaxQuestions: a.cfg.GeekMaxQuestions})
+		security.IDGenerator{}, a.now, geekapp.Config{MaxQuestions: a.cfg.GeekMaxQuestions, StreamingEnabled: a.cfg.TTSStreamingEnabled})
 	geekService.SetRawMaterials(geekgraph.NewRaw(a.pool, a.materialsStorage))
 	geekHandlers := geekhttp.New(geekService)
 
@@ -268,6 +268,7 @@ func (a *App) Handler() http.Handler {
 	mux.Handle("POST /diagnostic-sessions/{id}/answers", protect(auth, http.HandlerFunc(geekHandlers.Answer)))
 	mux.Handle("GET /diagnostic-sessions/{id}/result", protect(auth, http.HandlerFunc(geekHandlers.Result)))
 	mux.Handle("GET /diagnostic-sessions/{id}/materials/{material_id}/raw", protect(auth, http.HandlerFunc(geekHandlers.RawMaterial)))
+	mux.Handle("GET /diagnostic-sessions/{id}/turns/{turn_id}/audio/stream", protect(auth, http.HandlerFunc(geekHandlers.TurnAudioStream)))
 	mux.Handle("GET /diagnostic-sessions/{id}/turns/{turn_id}/audio", protect(auth, http.HandlerFunc(geekHandlers.TurnAudio)))
 	mux.HandleFunc("GET /health", a.health)
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {

@@ -2468,6 +2468,78 @@ paths:
       tags:
         - Диагностика
       x-implementation: implemented
+  /diagnostic-sessions/{id}/turns/{turn_id}/audio/stream:
+    get:
+      description: 'NDJSON: start(version=1,sample_rate,channels=1,encoding=pcm_s16le), audio(seq с 0,data base64), end(chunks,samples) или error(code). Максимум 64 МиБ PCM и 256 КиБ на строку. Без part — вся реплика. Отключённый поток возвращает 406. Авторизация и проверка части выполняются до кеша/TTS. Ошибка после открытия — error и закрытие без end.'
+      operationId: getDiagnosticTurnAudioStream
+      parameters:
+        - description: ID диагностики
+          in: path
+          name: id
+          required: true
+          schema:
+            maxLength: 128
+            minLength: 1
+            type: string
+        - description: ID реплики Geek
+          in: path
+          name: turn_id
+          required: true
+          schema:
+            maxLength: 128
+            minLength: 1
+            type: string
+        - description: Часть реплики
+          in: query
+          name: part
+          schema:
+            enum:
+              - reply
+              - question
+            type: string
+      responses:
+        "200":
+          content:
+            application/x-ndjson:
+              schema:
+                type: string
+          description: NDJSON PCM stream
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unauthorized
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Not Found
+        "406":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Not Acceptable
+        "422":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unprocessable Entity
+        "503":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Service Unavailable
+      security:
+        - accessCookie: []
+      summary: Поток голоса реплики Geek
+      tags:
+        - Диагностика
+      x-implementation: implemented
   /health:
     get:
       operationId: health

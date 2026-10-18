@@ -4,6 +4,8 @@ package storage
 import (
 	"context"
 	"errors"
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/audio"
+	"io"
 
 	"go.uber.org/zap"
 
@@ -19,19 +21,39 @@ type Audio struct {
 func NewAudio(client *s3.Client, bucket string) *Audio { return &Audio{client: client, bucket: bucket} }
 
 func (a *Audio) Get(ctx context.Context, key string) ([]byte, bool, error) {
-	data, err := a.client.GetObject(ctx, a.bucket, key)
+	rc, _, size, err := a.client.OpenObject(ctx, a.bucket, key)
 	if errors.Is(err, s3.ErrNotFound) {
-		httpx.LoggerFromContext(ctx).Info("geek audio cache miss", zap.String("key", key))
+		httpx.LoggerFromContext(ctx).Info("geek audio cache miss")
 		return nil, false, nil
 	}
 	if err != nil {
 		return nil, false, err
 	}
+	defer rc.Close()
+	if size > audio.MaxStreamBytes+44 {
+		httpx.LoggerFromContext(ctx).Warn("oversize geek audio cache object")
+		return nil, false, nil
+	}
+	data, err := io.ReadAll(io.LimitReader(rc, audio.MaxStreamBytes+45))
+	if err != nil {
+		return nil, false, err
+	}
+	if len(data) > audio.MaxStreamBytes+44 {
+		return nil, false, nil
+	}
+	if _, _, err = audio.PCMFromWAV(data); err != nil {
+		httpx.LoggerFromContext(ctx).Warn("invalid geek audio cache object")
+		return nil, false, nil
+	}
+
 	httpx.LoggerFromContext(ctx).Info("geek audio cache hit", zap.String("key", key), zap.Int("bytes", len(data)))
 	return data, true, nil
 }
 
 func (a *Audio) Put(ctx context.Context, key string, data []byte) error {
+	if _, _, err := audio.PCMFromWAV(data); err != nil {
+		return err
+	}
 	if err := a.client.PutObject(ctx, a.bucket, key, "audio/wav", data); err != nil {
 		return err
 	}

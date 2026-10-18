@@ -2,6 +2,7 @@ package app
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -116,6 +117,16 @@ func TestOpenAPIResponses(t *testing.T) {
 		if _, ok := content["audio/wav"]; ok {
 			if w.Header().Get("Content-Type") != "audio/wav" || !audio.ValidWAV(w.Body.Bytes()) {
 				t.Fatal("invalid WAV response")
+			}
+			checked[path] = true
+			return
+		}
+		if _, ok := content["application/x-ndjson"]; ok {
+			if w.Header().Get("Content-Type") != "application/x-ndjson" {
+				t.Fatal("wrong stream media")
+			}
+			if err := audio.ParseStream(context.Background(), bytes.NewReader(w.Body.Bytes()), func(audio.StreamEvent) error { return nil }); err != nil {
+				t.Fatal(err)
 			}
 			checked[path] = true
 			return
@@ -357,5 +368,28 @@ func TestHTTPSCookieLifecycle(t *testing.T) {
 		if resp.StatusCode != step.status {
 			t.Fatalf("cookie lifecycle %s: %d %s", step.path, resp.StatusCode, data)
 		}
+	}
+}
+
+func TestStreamingOpenAPIContract(t *testing.T) {
+	data, err := os.ReadFile("../../../../api/openapi.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var spec map[string]any
+	if err = yaml.Unmarshal(data, &spec); err != nil {
+		t.Fatal(err)
+	}
+	path, ok := spec["paths"].(map[string]any)["/diagnostic-sessions/{id}/turns/{turn_id}/audio/stream"].(map[string]any)
+	if !ok {
+		t.Fatal("stream route absent")
+	}
+	op := path["get"].(map[string]any)
+	if op["x-implementation"] != "implemented" {
+		t.Fatal("stream route not implemented")
+	}
+	responses := op["responses"].(map[string]any)
+	if responses["406"] == nil || responses["200"].(map[string]any)["content"].(map[string]any)["application/x-ndjson"] == nil {
+		t.Fatal("missing streaming/gate contract")
 	}
 }

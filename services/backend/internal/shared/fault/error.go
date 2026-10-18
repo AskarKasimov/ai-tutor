@@ -15,6 +15,7 @@ const (
 	Timeout
 	NotFound
 	Gone
+	NotAcceptable
 )
 
 type Detail struct {

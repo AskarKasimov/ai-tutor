@@ -17,6 +17,7 @@ go run github.com/mikefarah/yq/v4@v4.54.1 -P -o=yaml '
   (.. | select(has("properties") and .type == "object")).additionalProperties = false |
   (.. | select(has("content") and .content.["audio/wav"].schema.["$ref"] == "#/components/schemas/fault.Error")).content |= {"application/json": .["audio/wav"]} |
   (.. | select(has("content") and .content.["application/octet-stream"].schema.["$ref"] == "#/components/schemas/fault.Error")).content |= {"application/json": .["application/octet-stream"]} |
+  (.. | select(has("content") and .content.["application/x-ndjson"].schema.["$ref"] == "#/components/schemas/fault.Error")).content |= {"application/json": .["application/x-ndjson"]} |
   (.. | select(has("content") and .content.["application/pdf"].schema.["$ref"] == "#/components/schemas/fault.Error")).content |= {"application/json": .["application/pdf"]}
 ' "$openapi_tmp/swagger.json" > "$openapi_tmp/implemented.yaml"
 

@@ -1,6 +1,7 @@
 package app
 
 import (
+	"encoding/hex"
 	"fmt"
 	"math"
 	"net"
@@ -19,6 +20,9 @@ type Config struct {
 	TTSSeed               int64
 	TTSCFGValue           float64
 	TTSInferenceTimesteps int
+	TTSStreamingEnabled   bool
+	TTSModelRevision      string
+	TTSReferenceSHA256    string
 	VoiceTimeout          time.Duration
 	MaxUploadBytes        int64
 	S3Endpoint            string
@@ -70,6 +74,12 @@ func ConfigFromEnv() (Config, error) {
 		}
 		*setting.dst = value
 	}
+	c.TTSStreamingEnabled, err = envBool("BACKEND_TTS_STREAMING_ENABLED", false)
+	if err != nil {
+		return c, err
+	}
+	c.TTSModelRevision = strings.TrimSpace(os.Getenv("BACKEND_TTS_MODEL_REVISION"))
+	c.TTSReferenceSHA256 = strings.ToLower(strings.TrimSpace(os.Getenv("BACKEND_TTS_REFERENCE_SHA256")))
 	value, err := requiredEnv("BACKEND_TTS_SEED")
 	if err != nil {
 		return c, err
@@ -86,8 +96,8 @@ func ConfigFromEnv() (Config, error) {
 	if err != nil {
 		return c, fmt.Errorf("BACKEND_TTS_CFG_VALUE: %w", err)
 	}
-	// VoxCPM gets the steps in every request; 20 sounds like 50 at half the
-	// synthesis time (measured 17.10.2026), so an empty value means 20.
+	// Preserve the explicit deployment default until benchmark and listening
+	// gates approve another value. VoxCPM receives steps in every request.
 	c.TTSInferenceTimesteps, err = strconv.Atoi(envOrDefault("BACKEND_TTS_INFERENCE_TIMESTEPS", strconv.Itoa(DefaultTTSInferenceTimesteps)))
 	if err != nil {
 		return c, fmt.Errorf("BACKEND_TTS_INFERENCE_TIMESTEPS: %w", err)
@@ -237,6 +247,18 @@ func (c Config) validate() error {
 	}
 	if c.TTSInferenceTimesteps < 1 || c.TTSInferenceTimesteps > 50 {
 		return fmt.Errorf("BACKEND_TTS_INFERENCE_TIMESTEPS must be from 1 to 50")
+	}
+	if c.TTSStreamingEnabled && (c.TTSModelRevision == "" || c.TTSReferenceSHA256 == "") {
+		return fmt.Errorf("BACKEND_TTS_MODEL_REVISION and BACKEND_TTS_REFERENCE_SHA256 are required for streaming")
+	}
+	if (c.TTSModelRevision == "") != (c.TTSReferenceSHA256 == "") {
+		return fmt.Errorf("BACKEND_TTS_MODEL_REVISION and BACKEND_TTS_REFERENCE_SHA256 must be set together")
+	}
+	if c.TTSReferenceSHA256 != "" {
+		digest, err := hex.DecodeString(c.TTSReferenceSHA256)
+		if err != nil || len(digest) != 32 {
+			return fmt.Errorf("BACKEND_TTS_REFERENCE_SHA256 must be a SHA-256 hex digest")
+		}
 	}
 	if c.VoiceTimeout <= 0 {
 		return fmt.Errorf("BACKEND_VOICE_TIMEOUT must be positive")

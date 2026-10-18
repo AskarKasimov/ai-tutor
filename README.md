@@ -421,6 +421,8 @@ LLM gateway — отдельный HTTP/gRPC-сервис `services/llm-gateway`
 
 Три потока, у каждого свой слой. До готовности соседнего потока работа идёт на фикстурах и моках по контракту.
 
+Оптимизация голоса: реализованы опциональный `torch.compile` с прогревом, кеш признаков закреплённого референса и PCM-стриминг через backend в AudioWorklet. Выпуск включённых режимов и смена default с 20 на 10 шагов допускаются после CUDA-замеров и прослушивания по [спецификации](documents/voxcpm-performance-spec.md); набор реплик и команды — в [приёмке](documents/benchmarks/voxcpm-acceptance.md).
+
 Приоритеты показа (MoSCoW):
 
 | Приоритет | Что входит |
@@ -479,6 +481,8 @@ LLM gateway — отдельный HTTP/gRPC-сервис `services/llm-gateway`
 | Инфраструктура | PostgreSQL, локальный RustFS S3, Caddy HTTPS и Swagger UI через Docker Compose. |
 
 Подробности: [backend](services/backend/README.md), [frontend](services/frontend/README.md), [course-graph](services/course-graph/README.md).
+
+Озвучка поддерживает опциональный поток PCM через backend и AudioWorklet, с WAV fallback и единым producer для кеша/слушателей/прогрева. По умолчанию поток выключен, 20 шагов сохранены. Проверки кода, Chrome/proxy smoke и границы готовности — в [отчёте по VoxCPM2](documents/voxcpm-performance-implementation.md); фактическое ускорение на целевом CUDA-сервере ещё не подтверждено.
 
 ## Структура проекта
 

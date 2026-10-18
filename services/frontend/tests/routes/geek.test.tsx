@@ -436,9 +436,12 @@ it('runs a diagnostic from the home page to the result and back to the history',
   })
   expect(answers[0].key).toMatch(/^answer:/)
 
-  fireEvent.click(screen.getByRole('button', { name: 'Не знаю' }))
+  await answerByText('Эвристическая функция')
   expect(await screen.findByText('эвристическая функция')).toBeVisible()
-  expect(answers[1].body).toEqual({ turn_id: 't3', dont_know: true })
+  expect(answers[1].body).toEqual({
+    turn_id: 't3',
+    text: 'Эвристическая функция',
+  })
 
   await finishDiagnostic('Оценка расстояния до цели')
   expect(
@@ -698,7 +701,7 @@ it('reports a failed start again on the result screen', async () => {
   renderApp()
   await start()
   await answerByText('Перестанет быть оптимальным')
-  fireEvent.click(await screen.findByRole('button', { name: 'Не знаю' }))
+  await answerByText('Эвристическая функция')
   await screen.findByText('эвристическая функция')
   await finishDiagnostic('Оценка расстояния до цели')
   fireEvent.click(
@@ -718,7 +721,7 @@ it('offers the result only after Geek has voiced the closing reply', async () =>
   renderApp()
   await start()
   await answerByText('Перестанет быть оптимальным')
-  fireEvent.click(await screen.findByRole('button', { name: 'Не знаю' }))
+  await answerByText('Эвристическая функция')
   await screen.findByText('эвристическая функция')
   const played = FakeAudio.played.length
   await answerByText('Оценка расстояния до цели')
@@ -741,7 +744,7 @@ it('offers the result when the closing reply cannot be voiced', async () => {
   renderApp()
   await start()
   await answerByText('Перестанет быть оптимальным')
-  fireEvent.click(await screen.findByRole('button', { name: 'Не знаю' }))
+  await answerByText('Эвристическая функция')
   await screen.findByText('эвристическая функция')
   control.failVoice = true
   await answerByText('Оценка расстояния до цели')

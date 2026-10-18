@@ -377,7 +377,6 @@ void i18n.init({
           answerLabel: 'Ваш ответ',
           answerPlaceholder: 'Ответить на вопрос',
           send: 'Отправить ответ',
-          dontKnow: 'Не знаю',
           record: 'Ответить голосом',
           stopRecording: 'Остановить запись',
           recording: 'Идёт запись',

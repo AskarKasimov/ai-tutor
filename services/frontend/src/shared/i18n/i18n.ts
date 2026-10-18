@@ -420,6 +420,8 @@ void i18n.init({
           materialUnavailable: 'Исходный файл больше недоступен.',
           materialDownloadError: 'Не удалось открыть материал.',
           topicsTitle: 'Все темы',
+          statusSummary: 'Темы по статусам',
+          topicsEmpty: 'Geek не успел проверить ни одной темы.',
           topLevel: 'Основная тема',
           status: {
             independent: 'Самостоятельно',

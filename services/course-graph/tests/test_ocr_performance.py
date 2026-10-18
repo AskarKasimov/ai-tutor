@@ -544,3 +544,85 @@ def test_deterministic_crop_retry_failure_is_unresolved_and_allows_caching(monke
     assert regions2[0].attempts == 2
     assert not any("частично" in w for w in global_warnings)
     assert not any("частично" in w for w in warnings2)
+
+
+def test_main_pass_token_limit_caches_document_and_second_call_hits_cache(monkeypatch, tmp_path):
+    """P2: Token limit reached during Docling's main enrichment pass must not mark the document transient.
+    The document must be completed with work_complete=True, saved to disk cache, and subsequent calls
+    must return a 0-inference cache hit.
+    """
+    from types import SimpleNamespace as S
+    from docling_core.types.doc import BoundingBox, CoordOrigin, FormulaItem, ProvenanceItem
+    from course_graph.ocr.enrichment import NativeSyntaxGuard
+    import course_graph.ocr.converter as converter
+
+    monkeypatch.setenv("COURSE_GRAPH_OCR_CACHE_DIR", str(tmp_path))
+    monkeypatch.setenv("COURSE_GRAPH_WITH_DOCLING", "true")
+
+    inference_calls = 0
+
+    class MainEngine:
+        options = S(use_kv_cache=True)
+        vlm_model = S(generation_config=S(use_cache=False))
+        def initialize(self): pass
+        def predict_batch(self, inputs):
+            nonlocal inference_calls
+            inference_calls += len(inputs)
+            # Reached token limit in main pass
+            return [S(text="truncated formula...", metadata={"num_tokens": 2048})]
+
+    bbox = BoundingBox(l=20, r=80, t=40, b=80, coord_origin=CoordOrigin.TOPLEFT)
+    item = FormulaItem(self_ref="#/texts/0", orig="", text="",
+                       prov=[ProvenanceItem(page_no=1, charspan=(0, 0), bbox=bbox)])
+
+    class DummyDoc:
+        pages = {1: None}
+        texts = [item]
+        def export_to_markdown(self, page_no=None):
+            return "# Lecture\n\n$$\\frac{1}{2}$$"
+
+    class MockPipeline:
+        def __init__(self):
+            raw_stage = S(engine=MainEngine(), _post_process=lambda texts: texts,
+                          options=S(engine_options=S(engine_type="local")),
+                          _repetition_stopper=None, enabled=True)
+            self.enrichment_pipe = [NativeSyntaxGuard(raw_stage)]
+
+    class MockConverter:
+        initialized_pipelines = {}
+        def initialize_pipeline(self, *args, **kwargs):
+            return None
+        def convert(self, path):
+            stage = self.initialized_pipelines[1].enrichment_pipe[0]
+            try:
+                stage.engine.predict_batch([S(max_new_tokens=2048)])
+            except ValueError:
+                pass
+            return S(document=DummyDoc(), status="success")
+
+    mock_converter = MockConverter()
+    mock_converter.initialized_pipelines = {1: MockPipeline()}
+
+    monkeypatch.setattr("course_graph.ocr.converter.get_converter", lambda: mock_converter)
+
+    from pypdf import PdfWriter
+    import io
+    writer = PdfWriter()
+    writer.add_blank_page(width=72, height=72)
+    stream = io.BytesIO()
+    writer.write(stream)
+    pdf_content = stream.getvalue()
+
+    # First run: executes OCR main pass + 1 targeted crop retry
+    first = converter.convert_document("lecture_token_limit.pdf", pdf_content)
+    assert first["report"]["cache_hit"] is False
+    assert first["report"]["work_complete"] is True
+    # The warning from token limit must NOT contain "частично"
+    assert not any("частично" in w.lower() for w in first["report"]["warnings"])
+    assert inference_calls == 2
+
+    # Second run: must hit disk cache with ZERO additional inference calls
+    second = converter.convert_document("lecture_token_limit.pdf", pdf_content)
+    assert second["report"]["cache_hit"] is True
+    assert second["report"]["work_complete"] is True
+    assert inference_calls == 2

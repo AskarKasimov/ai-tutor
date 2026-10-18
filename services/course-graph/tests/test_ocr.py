@@ -456,7 +456,8 @@ def test_enrichment_sets_model_cache_and_rejects_truncation():
     warnings = []
     with pytest.raises(ValueError, match="token limit"):
         AuditedEngine(Engine(), warnings).predict_batch([S(max_new_tokens=2048)])
-    assert warnings and "частично" in warnings[0]
+    assert warnings and "достигнут лимит токенов" in warnings[0]
+    assert not any("частично" in w for w in warnings)
 
 
 def test_bootstrap_can_initialize_the_guarded_enrichment_engine():

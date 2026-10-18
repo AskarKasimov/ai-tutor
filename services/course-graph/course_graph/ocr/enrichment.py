@@ -24,24 +24,26 @@ class AuditedEngine:
             model.generation_config.use_cache = True
 
     def predict_batch(self, inputs):
+        self.initialize()
         try:
-            # Transformers >=4.50 replaces global GenerationConfig defaults with
-            # model defaults. CodeFormulaV2 ships use_cache=False, overriding the
-            # True requested by Docling unless the model config is corrected too.
-            self.initialize()
             outputs = self.engine.predict_batch(inputs)
-            if len(outputs) != len(inputs):
-                raise ValueError("enrichment output count mismatch")
-            for request, output in zip(inputs, outputs):
-                if not output.text.strip():
-                    raise ValueError("empty enrichment output")
-                if (output.metadata or {}).get("num_tokens", 0) >= request.max_new_tokens:
-                    raise ValueError("enrichment token limit reached")
-            return outputs
         except Exception as error:
             self.warnings.append("Код/формулы обработаны частично: " + type(error).__name__ + ": " + str(error)[:200])
             # Docling retains original items when its inference engine raises.
             raise
+
+        if len(outputs) != len(inputs):
+            self.warnings.append("Код/формулы обработаны частично: ValueError: enrichment output count mismatch")
+            raise ValueError("enrichment output count mismatch")
+
+        for request, output in zip(inputs, outputs):
+            if not output.text.strip():
+                self.warnings.append("Код/формулы: пустой ответ модели")
+                raise ValueError("empty enrichment output")
+            if (output.metadata or {}).get("num_tokens", 0) >= request.max_new_tokens:
+                self.warnings.append("Код/формулы: достигнут лимит токенов модели")
+                raise ValueError("enrichment token limit reached")
+        return outputs
 
 
 class NativeSyntaxGuard:
@@ -256,7 +258,7 @@ def audit_and_retry_formulas(document, pdf_content: bytes, converter=None):
     import pypdfium2 as pdfium
     from docling_core.types.doc import DocItemLabel, FormulaItem
     from .regions import CanonicalBBox, FormulaRegionRecord
-    from .syntax import check_latex_syntax, normalize_formatting_only
+    from .syntax import check_latex_syntax, normalize_formatting_only, has_substantive_conflict
 
     regions = []
     warnings = []
@@ -338,8 +340,7 @@ def audit_and_retry_formulas(document, pdf_content: bytes, converter=None):
             if is_valid:
                 has_native_divergence = (
                     native_text is not None
-                    and check_latex_syntax(native_text)[0]
-                    and normalize_formatting_only(native_text) != normalize_formatting_only(raw_text)
+                    and has_substantive_conflict(raw_text, native_text)
                 )
                 if not has_native_divergence:
                     regions.append(FormulaRegionRecord(

@@ -322,7 +322,7 @@ def test_native_formula_divergence_triggers_visual_retry_and_sets_suspect(monkey
 
     class MockTextPage:
         def get_text_bounded(self, **kwargs):
-            return r"x_i^2"
+            return "xi2"
         def close(self): pass
 
     class Page:
@@ -339,7 +339,7 @@ def test_native_formula_divergence_triggers_visual_retry_and_sets_suspect(monkey
 
     monkeypatch.setattr(pypdfium2, "PdfDocument", lambda _: Pdf())
 
-    # Raw OCR text has damaged index ordering x_2^i (syntactically valid LaTeX, but diverges from native x_i^2)
+    # Raw OCR text has damaged index ordering x_2^i (syntactically valid LaTeX, but diverges from native xi2)
     raw_formula = r"x_2^i"
     bbox = BoundingBox(l=20, r=80, t=40, b=80, coord_origin=CoordOrigin.TOPLEFT)
     item = FormulaItem(self_ref="#/texts/0", orig="", text=raw_formula,
@@ -371,14 +371,14 @@ def test_native_formula_divergence_triggers_visual_retry_and_sets_suspect(monkey
     assert regions[0].attempts == 2
     assert item.text == ""
 
-    # Case 2: Visual retry confirms raw_formula -> recognized
+    # Case 2: Visual retry confirms raw_formula (even with formatting variant x_{2}^{i}) -> recognized
     item2 = FormulaItem(self_ref="#/texts/0", orig="", text=raw_formula,
                         prov=[ProvenanceItem(page_no=1, charspan=(0, 0), bbox=bbox)])
     document2 = S(texts=[item2])
     class MatchingEngine:
         def initialize(self): pass
         def predict_batch(self, inputs):
-            return [S(text=raw_formula, metadata={"num_tokens": 10})]
+            return [S(text=r"x_{2}^{i}", metadata={"num_tokens": 10})]
 
     vlm_stage2 = CodeFormulaVlmModel(MatchingEngine())
     model2 = S(initialized_pipelines={1: S(enrichment_pipe=[vlm_stage2])})
@@ -386,6 +386,136 @@ def test_native_formula_divergence_triggers_visual_retry_and_sets_suspect(monkey
     regions2, warnings2 = audit_and_retry_formulas(document2, b"dummy_pdf", model2)
     assert len(regions2) == 1
     assert regions2[0].status == "recognized"
-    assert regions2[0].latex == raw_formula
+    assert regions2[0].latex == r"x_{2}^{i}"
     assert regions2[0].attempts == 2
-    assert item2.text == raw_formula
+    assert item2.text == r"x_{2}^{i}"
+
+
+def test_realistic_native_text_layer_does_not_trigger_unneeded_retry(monkeypatch):
+    """P2: Realistic flattened PDF text layers ('x1 + 2', '∑i=1n xi', 'α2') must NOT cause false divergence.
+    They must be recognized on attempt 1 with zero retry inference calls.
+    """
+    import pypdfium2
+    from docling_core.types.doc import BoundingBox, CoordOrigin, FormulaItem, ProvenanceItem
+    from course_graph.ocr.enrichment import audit_and_retry_formulas
+
+    class MockTextPage:
+        def __init__(self, text):
+            self._text = text
+        def get_text_bounded(self, **kwargs):
+            return self._text
+        def close(self): pass
+
+    class Page:
+        def __init__(self, text):
+            self._text = text
+        def get_size(self): return 200, 300
+        def get_height(self): return 300
+        def get_textpage(self): return MockTextPage(self._text)
+        def close(self): pass
+
+    class Pdf:
+        def __init__(self, text):
+            self._text = text
+        def __len__(self): return 1
+        def __getitem__(self, index): return Page(self._text)
+        def close(self): pass
+
+    class UncalledEngine:
+        def initialize(self): pass
+        def predict_batch(self, inputs):
+            raise AssertionError("Retry inference must NOT be called for matching realistic native text!")
+
+    class CodeFormulaVlmModel:
+        def __init__(self, engine):
+            self.engine = engine
+            self._post_process = lambda texts: texts
+
+    bbox = BoundingBox(l=20, r=80, t=40, b=80, coord_origin=CoordOrigin.TOPLEFT)
+    cases = [
+        ("x_1 + 2", "x1 + 2"),
+        (r"\sum_{i=1}^n x_i", "∑i=1n xi"),
+        (r"\alpha^2", "α2"),
+    ]
+
+    for raw_latex, native_text in cases:
+        monkeypatch.setattr(pypdfium2, "PdfDocument", lambda _, t=native_text: Pdf(t))
+        item = FormulaItem(self_ref="#/texts/0", orig="", text=raw_latex,
+                           prov=[ProvenanceItem(page_no=1, charspan=(0, 0), bbox=bbox)])
+        document = S(texts=[item])
+        vlm_stage = CodeFormulaVlmModel(UncalledEngine())
+        model = S(initialized_pipelines={1: S(enrichment_pipe=[vlm_stage])})
+
+        regions, warnings = audit_and_retry_formulas(document, b"dummy_pdf", model)
+        assert len(regions) == 1
+        assert regions[0].status == "recognized"
+        assert regions[0].attempts == 1
+        assert regions[0].latex == raw_latex
+        assert item.text == raw_latex
+        assert not warnings
+
+
+def test_cosmetic_retry_formatting_differences_are_preserved_not_suspect(monkeypatch):
+    """P2: If visual retry produces cosmetically different LaTeX (e.g. x_{1} vs x_1, \\dfrac vs \\frac,
+    or inverted script order x^2_i vs x_i^2), the formula must NOT be discarded as suspect.
+    """
+    import pypdfium2
+    from PIL import Image
+    from docling_core.types.doc import BoundingBox, CoordOrigin, FormulaItem, ProvenanceItem
+    from course_graph.ocr.enrichment import audit_and_retry_formulas
+
+    class Bitmap:
+        def to_pil(self): return Image.new("RGB", (20, 20))
+        def close(self): pass
+
+    class MockTextPage:
+        def get_text_bounded(self, **kwargs):
+            return ""
+        def close(self): pass
+
+    class Page:
+        def get_size(self): return 200, 300
+        def get_height(self): return 300
+        def get_textpage(self): return MockTextPage()
+        def close(self): pass
+        def render(self, **options): return Bitmap()
+
+    class Pdf:
+        def __len__(self): return 1
+        def __getitem__(self, index): return Page()
+        def close(self): pass
+
+    monkeypatch.setattr(pypdfium2, "PdfDocument", lambda _: Pdf())
+
+    bbox = BoundingBox(l=20, r=80, t=40, b=80, coord_origin=CoordOrigin.TOPLEFT)
+
+    class CodeFormulaVlmModel:
+        def __init__(self, engine):
+            self.engine = engine
+            self._post_process = lambda texts: texts
+
+    cases = [
+        ("x_1 + 2", "x_{1} + 2"),
+        (r"\frac{a}{b}", r"\dfrac{a}{b}"),
+        ("x_i^2", "x^2_i"),
+    ]
+
+    for raw, retry_variant in cases:
+        item = FormulaItem(self_ref="#/texts/0", orig="", text="",
+                           prov=[ProvenanceItem(page_no=1, charspan=(0, 0), bbox=bbox)])
+        document = S(texts=[item])
+
+        class VariantEngine:
+            def initialize(self): pass
+            def predict_batch(self, inputs):
+                return [S(text=retry_variant, metadata={"num_tokens": 10})]
+
+        vlm_stage = CodeFormulaVlmModel(VariantEngine())
+        model = S(initialized_pipelines={1: S(enrichment_pipe=[vlm_stage])})
+
+        regions, warnings = audit_and_retry_formulas(document, b"dummy_pdf", model)
+        assert len(regions) == 1
+        assert regions[0].status == "recognized"
+        assert regions[0].attempts == 2
+        assert regions[0].latex == retry_variant
+        assert item.text == retry_variant

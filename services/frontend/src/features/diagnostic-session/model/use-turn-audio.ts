@@ -31,6 +31,7 @@ export function useTurnAudio(sessionId: string) {
 
   const play = useCallback(
     async (turn: Pick<Turn, 'id' | 'reply'>, onStart?: () => void) => {
+      const playStartedAt = performance.now()
       current.current?.release()
       current.current?.controller.abort()
       const controller = new AbortController()
@@ -99,7 +100,13 @@ export function useTurnAudio(sessionId: string) {
           received?.()
           await playToEnd(audio, signal, playing)
         } else {
-          const result = await playPcmStream(audio, signal, playing, received)
+          const result = await playPcmStream(
+            audio,
+            signal,
+            playing,
+            received,
+            playStartedAt,
+          )
           signal.throwIfAborted()
           cache.current.set(key(part), result.audio)
         }

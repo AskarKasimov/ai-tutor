@@ -2,6 +2,7 @@ import { act, renderHook, waitFor } from '@testing-library/react'
 import type { PropsWithChildren } from 'react'
 import { afterEach, expect, it, vi } from 'vitest'
 import { DiagnosticApiError } from '@/entities/diagnostic-session'
+import * as browserAudio from '@/shared/lib'
 import {
   DiagnosticDependenciesProvider,
   useTurnAudio,
@@ -283,4 +284,33 @@ it('cancels old session playback and resets the available audio state', async ()
   expect(TestAudioContext.instances[0].closed).toBe(true)
   expect(started).toHaveBeenCalledOnce()
   expect(view.result.current.state).toEqual({ turnId: null, status: 'idle' })
+})
+
+it('measures first output from the play action including delayed response headers', async () => {
+  let respond!: (body: ReadableStream<Uint8Array>) => void
+  const response = new Promise<ReadableStream<Uint8Array>>((resolve) => {
+    respond = resolve
+  })
+  const view = setup(vi.fn(async () => response))
+  const player = vi.spyOn(browserAudio, 'playPcmStream')
+  const clock = vi.spyOn(performance, 'now').mockReturnValue(100)
+  let playback!: Promise<void>
+  act(() => {
+    playback = view.result.current.play({ id: 'turn', reply: '' })
+  })
+  expect(player).not.toHaveBeenCalled()
+  // Response headers arrive 500ms after the play action. Keep the real
+  // reader/resampler/player: only the browser clock and network are controlled.
+  clock.mockReturnValue(600)
+  await act(async () => {
+    respond(pcmBody())
+  })
+  await waitFor(() => expect(TestWorkletNode.instances).toHaveLength(1))
+  clock.mockReturnValue(800)
+  await act(async () => {
+    TestWorkletNode.instances[0].render(10000)
+    await playback
+  })
+  const result = await player.mock.results[0].value
+  expect(result.metrics.ttfaMs).toBe(700)
 })

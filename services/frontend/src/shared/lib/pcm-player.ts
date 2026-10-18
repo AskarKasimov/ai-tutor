@@ -13,15 +13,17 @@ export function supportsPcmStreaming() {
 
 type PlaybackMetrics = { ttfaMs: number; underruns: number }
 
+// Pass the action timestamp captured before fetch so TTFA includes headers,
+// transport and player setup. Direct stream callers default to invocation time.
 export async function playPcmStream(
   body: ReadableStream<Uint8Array>,
   signal: AbortSignal,
   onStart: () => void,
   onReceived?: () => void,
+  playStartedAt = performance.now(),
 ): Promise<{ audio: Blob; metrics: PlaybackMetrics }> {
   const transport = new AbortController()
   const readSignal = AbortSignal.any([signal, transport.signal])
-  const began = performance.now()
   const context = new AudioContext()
   let node: AudioWorkletNode | undefined
   let queued = 0
@@ -88,7 +90,7 @@ export async function playPcmStream(
       queued -= value.consumed
       if (value.started && !started) {
         started = true
-        metrics.ttfaMs = performance.now() - began
+        metrics.ttfaMs = performance.now() - playStartedAt
         onStart()
       }
       if (value.underrun) metrics.underruns++

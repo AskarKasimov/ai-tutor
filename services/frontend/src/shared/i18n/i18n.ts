@@ -379,9 +379,6 @@ void i18n.init({
           stopRecording: 'Остановить запись',
           recording: 'Идёт запись',
           transcribing: 'Распознаём речь…',
-          transcriptTitle: 'Проверьте расшифровку',
-          sendTranscript: 'Отправить',
-          rerecord: 'Записать заново',
           micDenied:
             'Нет доступа к микрофону. Разрешите его в браузере или ответьте текстом.',
           micUnavailable:

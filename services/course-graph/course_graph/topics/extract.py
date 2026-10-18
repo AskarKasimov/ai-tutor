@@ -326,7 +326,10 @@ async def extract_topics(text, complete, material_id="material", week=None, sett
     context_ids = {b.id for b in context_blocks}
     batches = list(pack_blocks([b for b in blocks if b.id not in context_ids], settings))
     semaphore = asyncio.Semaphore(settings.concurrency)
-    metrics = {"requests": 0, "adaptive_splits": 0, "input_chars": 0}
+    # tolerated_*: mechanical slips of the model fixed in code instead of
+    # rejecting the whole answer (see classify).
+    metrics = {"requests": 0, "adaptive_splits": 0, "input_chars": 0,
+               "tolerated_foreign_ids": 0, "tolerated_invalid_reasons": 0, "tolerated_used_removals": 0}
 
     async def classify(batch, depth=0, repair=None, existing_topics=None):
         first, last = batch[0].id, batch[-1].id
@@ -347,17 +350,38 @@ async def extract_topics(text, complete, material_id="material", week=None, sett
             ids = {b.id for b in batch}
             removed = {}
             protected = {b.id for b in batch if b.protected}
-            seen_removals = set()
+            # Weak models slip mechanically; each slip is fixed in the
+            # direction that keeps text instead of rejecting the whole answer:
+            # an id outside the batch belongs to another batch and is ignored,
+            # a removal with an unknown reason keeps its block, and a block a
+            # topic uses is not removed (the model itself treats it as content).
+            kept = set()
             for item in decision.remove:
-                if item.id not in ids or item.id in seen_removals or item.reason not in REASONS:
-                    raise ValueError("Неверное удаление: неизвестный/повторный id или недопустимая причина")
-                seen_removals.add(item.id)
-                if item.id in protected:
+                if item.id not in ids:
+                    metrics["tolerated_foreign_ids"] += 1
+                    continue
+                if item.id in removed or item.id in kept or item.id in protected:
+                    continue
+                if item.reason not in REASONS:
+                    metrics["tolerated_invalid_reasons"] += 1
+                    kept.add(item.id)
                     continue
                 removed[item.id] = item.reason
+            for topic in decision.topics:
+                foreign = [b for b in topic.block_ids if b not in ids]
+                metrics["tolerated_foreign_ids"] += len(foreign)
+                topic.block_ids = sorted(set(b for b in topic.block_ids if b in ids))
+            decision.topics = [t for t in decision.topics if t.block_ids]
+            for block_id in {b for t in decision.topics for b in t.block_ids} & set(removed):
+                metrics["tolerated_used_removals"] += 1
+                del removed[block_id]
             # Persist only accepted removals. The aggregate audit consumes this
             # decision later, so filtering a local lookup alone would delete code.
-            decision.remove = [item for item in decision.remove if item.id in removed]
+            accepted = []
+            for item in decision.remove:
+                if removed.get(item.id) == item.reason and item.id not in {a.id for a in accepted}:
+                    accepted.append(item)
+            decision.remove = accepted
             assigned = set()
             for topic in decision.topics:
                 cleaned = clean_topic_title(topic.title)
@@ -386,13 +410,10 @@ async def extract_topics(text, complete, material_id="material", week=None, sett
                     raise ValueError("Вопрос проверяет метаданные или оглавление, а не учебное содержание")
                 if administrative_question(topic.question):
                     raise ValueError("Вопрос проверяет организацию работы (команды или сроки). Сохрани упражнение, но проверяй его учебное содержание")
-                if len(set(topic.block_ids)) != len(topic.block_ids):
-                    raise ValueError("Повторный блок темы")
-                for block_id in topic.block_ids:
-                    if block_id not in ids or block_id in removed:
-                        raise ValueError("Тема ссылается на неизвестный/удалённый блок")
-                    assigned.add(block_id)
-            for block_id in sorted((ids - assigned - set(removed)) & protected):
+                assigned.update(topic.block_ids)
+            # Protected blocks and blocks whose removal was not accepted stay
+            # in the material, attached to the nearest topic.
+            for block_id in sorted((ids - assigned - set(removed)) & (protected | kept)):
                 if decision.topics:
                     nearest = min(decision.topics, key=lambda t: min(abs(block_id - bid) for bid in t.block_ids))
                     nearest.block_ids.append(block_id)

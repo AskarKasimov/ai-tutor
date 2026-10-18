@@ -679,3 +679,40 @@ def test_every_stage_asks_for_the_low_complexity(monkeypatch):
     # Topic extraction keeps the model's reasoning: without it Qwen3.6 broke
     # the strict removal format.
     assert asked and set(asked) == {("low", True)}
+
+
+def test_mechanical_slips_are_fixed_without_losing_text():
+    # Three blocks; the model slips the way weak models do: a foreign id in a
+    # removal and in a topic, an invented reason, a block both removed and
+    # used, a repeated block and a topic of foreign blocks only.
+    source = "Производная показывает скорость изменения функции.\n\nГрадиент обобщает производную.\n\nСлайд 3"
+    async def sloppy(system, payload):
+        ids = [b["id"] for b in json.loads(payload)["blocks"]]
+        first, second, third = ids
+        return json.dumps({"remove": [
+            {"id": 99, "reason": "thanks"},
+            {"id": second, "reason": "thanks"},
+            {"id": third, "reason": "slide_number"},
+        ], "topics": [
+            {"title": "Производная", "requires": [], "provides": ["Вычислять производную"],
+             "question": "Почему производная описывает скорость изменения?", "block_ids": [first, second, second, 42]},
+            {"title": "Чужая тема", "requires": [], "provides": ["Ничего"],
+             "question": "Почему?", "block_ids": [77]},
+        ]})
+    result = run(extract_topics(source, sloppy, "m"))
+    report = result["report"]
+    assert [t["title"] for t in report["topics"]] == ["Производная"]
+    text = report["topics"][0]["text"]
+    for part in ("Производная показывает", "Градиент обобщает", "Слайд 3"):
+        assert part in text
+    assert result["markdown"] == source and report["removed"] == []
+    assert report["tolerated_foreign_ids"] == 3
+    assert report["tolerated_invalid_reasons"] == 1
+    assert report["tolerated_used_removals"] == 1
+
+
+def test_an_answer_without_topics_is_still_rejected():
+    async def empty(system, payload):
+        return '{"remove":[],"topics":[]}'
+    with pytest.raises(ValueError):
+        run(extract_topics("Производная\n\nГрадиент", empty))

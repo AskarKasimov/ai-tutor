@@ -1,7 +1,6 @@
 import { Button, Heading, Text, TextArea } from '@radix-ui/themes'
 import {
   ArrowRight,
-  AudioLines,
   CircleAlert,
   LoaderCircle,
   Mic,
@@ -9,7 +8,13 @@ import {
   Square,
   Volume2,
 } from 'lucide-react'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   DiagnosticApiError,
@@ -119,7 +124,11 @@ function Dialogue({
   const audio = useTurnAudio(session.id)
   // While the student records or checks a spoken answer, Geek stays silent.
   const [capturing, setCapturing] = useState(false)
+  const dialog = useRef<HTMLElement>(null)
   const end = useRef<HTMLDivElement>(null)
+  const followEnd = useRef(true)
+  const scrollInitialized = useRef(false)
+  const autoScrolling = useRef(false)
   // A rebuilt course graph cancels the diagnostic; the student learns it from
   // a pop-up the moment the dialogue sees it, not from a failed answer.
   const [courseUpdated, setCourseUpdated] = useState(false)
@@ -145,6 +154,7 @@ function Dialogue({
   // callback of an older turn cannot show the next one before its voice.
   const [answered, setAnswered] = useState<string | null>(null)
   const [revealed, setRevealed] = useState<string | null>(null)
+  const [transcribing, setTranscribing] = useState(false)
   const hiddenId =
     answered &&
     lastTurn?.speaker === 'geek' &&
@@ -188,8 +198,56 @@ function Dialogue({
     !hiddenId &&
     (lastTurn?.speaker !== 'geek' || spoken === lastTurn.id)
   useEffect(() => {
-    end.current?.scrollIntoView?.({ block: 'end' })
-  }, [session.turns.length, answer.isPending, hiddenId, resultReady])
+    // On mobile the card grows with its contents and the document scrolls.
+    const trackPageScroll = () => {
+      const container = dialog.current
+      if (
+        autoScrolling.current ||
+        !container ||
+        container.scrollHeight > container.clientHeight
+      )
+        return
+      const page = document.scrollingElement ?? document.documentElement
+      followEnd.current =
+        page.scrollHeight - page.scrollTop - page.clientHeight < 96
+    }
+    // Animation scroll events are not a request to stop following the chat.
+    // The next user interaction hands control back to their scroll position.
+    const resumeUserScroll = () => {
+      autoScrolling.current = false
+    }
+    const inputEvents = [
+      'wheel',
+      'touchstart',
+      'pointerdown',
+      'keydown',
+    ] as const
+    for (const event of inputEvents)
+      window.addEventListener(event, resumeUserScroll, { passive: true })
+    window.addEventListener('scroll', trackPageScroll, { passive: true })
+    return () => {
+      window.removeEventListener('scroll', trackPageScroll)
+      for (const event of inputEvents)
+        window.removeEventListener(event, resumeUserScroll)
+    }
+  }, [])
+  useLayoutEffect(() => {
+    if (!followEnd.current) return
+    const reducedMotion = window.matchMedia(
+      '(prefers-reduced-motion: reduce)',
+    ).matches
+    const behavior =
+      scrollInitialized.current && !reducedMotion ? 'smooth' : 'auto'
+    autoScrolling.current = behavior === 'smooth'
+    end.current?.scrollIntoView({ block: 'end', behavior })
+    scrollInitialized.current = true
+  }, [
+    session.turns.length,
+    answer.isPending,
+    hiddenId,
+    resultReady,
+    transcribing,
+  ])
 
   const submit = (variables: NonNullable<typeof answer.variables>) => {
     setAnswered(variables.turnId)
@@ -200,7 +258,13 @@ function Dialogue({
     audio.stop()
     submit({ turnId: currentTurnId, answer: reply, display })
   }
-  const pending = answer.isPending ? answer.variables : undefined
+  // A session refresh can already contain the accepted student turn while
+  // the submission is still pending. Only show its optimistic bubble until
+  // the session moves past the question being answered.
+  const pending =
+    answer.isPending && answer.variables?.turnId === currentTurnId
+      ? answer.variables
+      : undefined
   // A failed answer belongs to its own turn: once the session moved on, the
   // old error and its retry are not offered for the new question.
   const failed =
@@ -209,7 +273,20 @@ function Dialogue({
       : null
 
   return (
-    <main className={styles.dialog} aria-labelledby="dialog-title">
+    <main
+      ref={dialog}
+      className={styles.dialog}
+      aria-labelledby="dialog-title"
+      onScroll={(event) => {
+        if (autoScrolling.current) return
+        const container = event.currentTarget
+        followEnd.current =
+          container.scrollHeight -
+            container.scrollTop -
+            container.clientHeight <
+          96
+      }}
+    >
       {courseUpdated && (
         <Toast
           message={t('geek.courseUpdated')}
@@ -238,6 +315,11 @@ function Dialogue({
             </Text>
           </li>
         )}
+        {transcribing && (
+          <li className={styles.student}>
+            <Thinking label={t('geek.transcribing')} student />
+          </li>
+        )}
         {(pending || hiddenId) && (
           <li className={styles.geek}>
             <Thinking label={t('geek.thinking')} />
@@ -253,14 +335,22 @@ function Dialogue({
         </div>
       )}
       {session.status === 'completed' ? (
-        resultReady && <ResultCard turns={session.turns} onResult={onResult} />
+        <>
+          {resultReady && (
+            <ResultCard turns={session.turns} onResult={onResult} />
+          )}
+          <ComposerSpacer />
+        </>
       ) : session.status === 'cancelled' ? (
-        <div className={styles.footer} role="alert">
-          <Text as="p">{t('geek.cancelled')}</Text>
-          <Button size="3" variant="soft" onClick={onBack}>
-            {t('home.back')}
-          </Button>
-        </div>
+        <>
+          <div className={styles.footer} role="alert">
+            <Text as="p">{t('geek.cancelled')}</Text>
+            <Button size="3" variant="soft" onClick={onBack}>
+              {t('home.back')}
+            </Button>
+          </div>
+          <ComposerSpacer />
+        </>
       ) : (
         <Composer
           key={currentTurnId}
@@ -274,12 +364,26 @@ function Dialogue({
           }}
           onBeforeRecord={audio.stop}
           onCapture={setCapturing}
+          onTranscription={setTranscribing}
         />
       )}
-      {/* The scroll anchor sits under the answer field, so the latest turn is
-          never hidden behind it. */}
-      <div ref={end} />
+      <div ref={end} aria-hidden="true" />
     </main>
+  )
+}
+
+// Keep the conversation's bottom spacing when the answer field is gone.
+function ComposerSpacer() {
+  return (
+    <div
+      className={`${styles.composer} ${styles.composerSpacer}`}
+      aria-hidden="true"
+    >
+      <div className={styles.field}>
+        <div className={styles.input} />
+        <span className={styles.round} />
+      </div>
+    </div>
   )
 }
 
@@ -428,8 +532,7 @@ function errorText(error: Error | null, t: (key: string) => string) {
   return t('geek.answerError')
 }
 
-// The answer field: text, a spoken answer sent as soon as it is transcribed,
-// or "don't know".
+// The answer field: text or a spoken answer sent as soon as it is transcribed.
 function Composer({
   turnId,
   busy,
@@ -438,6 +541,7 @@ function Composer({
   onRetry,
   onBeforeRecord,
   onCapture,
+  onTranscription,
 }: {
   turnId: string
   busy: boolean
@@ -448,6 +552,7 @@ function Composer({
   onBeforeRecord: () => void
   // Reports actual microphone or transcript activity, including failed starts.
   onCapture: (active: boolean) => void
+  onTranscription: (active: boolean) => void
 }) {
   const { t } = useTranslation()
   const [text, setText] = useState('')
@@ -460,6 +565,10 @@ function Composer({
     onCapture(capturing)
   }, [capturing, onCapture])
   useEffect(() => () => onCapture(false), [onCapture])
+  useEffect(() => {
+    onTranscription(voice.transcribing)
+  }, [voice.transcribing, onTranscription])
+  useEffect(() => () => onTranscription(false), [onTranscription])
   const stale = error instanceof DiagnosticApiError && error.status === 409
   const seconds = `${Math.floor(voice.elapsedSeconds / 60)}:${String(voice.elapsedSeconds % 60).padStart(2, '0')}`
   const sendText = () => {
@@ -502,32 +611,26 @@ function Composer({
           )}
         </div>
       )}
-      {recording || voice.preparing || voice.transcribing ? (
+      {recording ? (
         <div className={styles.recording}>
-          {recording ? (
-            <>
-              <Text role="timer" className={styles.timer}>
-                {seconds}
-              </Text>
-              <div className={styles.wave} aria-hidden="true">
-                <LiveWaveform stream={voice.stream} height={32} />
-              </div>
-              <Text className={styles.visuallyHidden} role="status">
-                {t('geek.recording')}
-              </Text>
-              <button
-                type="button"
-                className={styles.round}
-                data-tone="stop"
-                aria-label={t('geek.stopRecording')}
-                onClick={voice.stop}
-              >
-                <Square size={16} fill="currentColor" aria-hidden="true" />
-              </button>
-            </>
-          ) : (
-            <Thinking label={t('geek.transcribing')} />
-          )}
+          <Text role="timer" className={styles.timer}>
+            {seconds}
+          </Text>
+          <div className={styles.wave} aria-hidden="true">
+            <LiveWaveform stream={voice.stream} height={32} />
+          </div>
+          <Text className={styles.visuallyHidden} role="status">
+            {t('geek.recording')}
+          </Text>
+          <button
+            type="button"
+            className={styles.round}
+            data-tone="stop"
+            aria-label={t('geek.stopRecording')}
+            onClick={voice.stop}
+          >
+            <Square size={16} fill="currentColor" aria-hidden="true" />
+          </button>
         </div>
       ) : (
         <form
@@ -542,7 +645,7 @@ function Composer({
             aria-label={t('geek.answerLabel')}
             placeholder={t('geek.answerPlaceholder')}
             value={text}
-            disabled={busy}
+            disabled={busy || voice.preparing || voice.transcribing}
             maxLength={4000}
             rows={1}
             onChange={(event) => setText(event.target.value)}
@@ -554,55 +657,51 @@ function Composer({
             }}
           />
           <button
-            type="button"
-            className={styles.icon}
-            aria-label={t('geek.record')}
-            title={t('geek.record')}
-            disabled={busy}
-            onClick={() => {
-              // Geek's voice must not end up in the recording.
-              onBeforeRecord()
-              void voice.start()
-            }}
-          >
-            <Mic size={20} aria-hidden="true" />
-          </button>
-          <button
-            type="submit"
+            type={text.trim() ? 'submit' : 'button'}
             className={styles.round}
-            aria-label={t('geek.send')}
-            title={t('geek.send')}
-            disabled={busy || !text.trim()}
+            aria-label={text.trim() ? t('geek.send') : t('geek.record')}
+            title={text.trim() ? t('geek.send') : t('geek.record')}
+            disabled={busy || voice.preparing || voice.transcribing}
+            onClick={
+              text.trim()
+                ? undefined
+                : () => {
+                    // Geek's voice must not end up in the recording.
+                    onBeforeRecord()
+                    void voice.start()
+                  }
+            }
           >
             {text.trim() ? (
               <Send size={18} aria-hidden="true" />
             ) : (
-              <AudioLines size={18} aria-hidden="true" />
+              <Mic size={20} aria-hidden="true" />
             )}
           </button>
         </form>
       )}
-      <div className={styles.secondary}>
-        <Button
-          variant="ghost"
-          color="gray"
-          disabled={busy || recording || voice.transcribing}
-          onClick={() =>
-            onSend({ kind: 'dont_know' }, t('geek.dontKnowAnswer'))
-          }
-        >
-          {t('geek.dontKnow')}
-        </Button>
-      </div>
     </div>
   )
 }
 
 // Geek's typing: three dots in a bubble. Keep the status label for screen readers.
-function Thinking({ label }: { label: string }) {
+function Thinking({
+  label,
+  student = false,
+}: {
+  label: string
+  student?: boolean
+}) {
   return (
-    <Text role="status" className={styles.thinking}>
-      <span className={styles.dots} aria-hidden="true">
+    <Text
+      role="status"
+      className={student ? styles.studentThinking : styles.thinking}
+    >
+      <span
+        className={styles.dots}
+        data-tone={student ? 'student' : undefined}
+        aria-hidden="true"
+      >
         <span />
         <span />
         <span />

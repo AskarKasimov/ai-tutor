@@ -328,6 +328,11 @@ func (s *Service) install(j *durableJob) {
 		copy.Status = "failed"
 		copy.Error = &storedError{Status: 502, Type: "server_error", Code: "execution_interrupted", Message: "LLM execution was interrupted by gateway restart."}
 		copy.SlotHeld = true
+		copy.FinishedAt = time.Now()
+	}
+	if !isPending(copy.Status) && copy.SlotHeld && s.uncertainSlotExpired(&copy, time.Now()) {
+		// Only a verified server bound can release an uncertain upstream slot.
+		copy.SlotHeld = false
 	}
 	s.jobs[j.ID] = &copy
 	s.stateIDs[string(stateKey(&copy))] = copy.ID
@@ -494,6 +499,7 @@ func (s *Service) dispatch(ctx, workCtx context.Context) {
 		case <-time.After(time.Second):
 		}
 		for {
+			s.releaseExpiredUncertainSlots(time.Now())
 			s.expireQueued(time.Now())
 			j, in, ok := s.next()
 			if !ok {
@@ -1102,6 +1108,49 @@ func (s *Service) releaseSlot(j *durableJob) {
 	}
 	s.mu.Unlock()
 	s.signal()
+}
+
+func (s *Service) uncertainSlotExpired(j *durableJob, now time.Time) bool {
+	if j == nil || !j.SlotHeld || j.FinishedAt.IsZero() {
+		return false
+	}
+	for _, in := range s.cfg.Instances {
+		if in.ID == j.Instance {
+			if in.ServerExecutionLimit > 0 {
+				// Reserve a full server window after the last uncertain outcome. The
+				// first attempt's StartedAt cannot bound a later retry or time in IO.
+				return !now.Before(j.FinishedAt.Add(in.ServerExecutionLimit))
+			}
+			return false
+		}
+	}
+	return false
+}
+
+func (s *Service) releaseExpiredUncertainSlots(now time.Time) {
+	s.mu.Lock()
+	var expired []*durableJob
+	for _, job := range s.jobs {
+		if !isPending(job.Status) && s.uncertainSlotExpired(job, now) {
+			copy := *job
+			copy.SlotHeld = false
+			expired = append(expired, &copy)
+		}
+	}
+	s.mu.Unlock()
+
+	for _, job := range expired {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		err := s.save(ctx, job)
+		cancel()
+		if err != nil {
+			if !errors.Is(err, errCanceledJob) {
+				s.markStateUncertain()
+			}
+			continue
+		}
+		s.releaseSlot(job)
+	}
 }
 
 func (s *Service) save(ctx context.Context, j *durableJob) error {

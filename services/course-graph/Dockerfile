@@ -12,27 +12,21 @@ RUN if ! dpkg-query -W poppler-utils libgomp1 libgl1 libglib2.0-0 curl >/dev/nul
     curl \
     && rm -rf /var/lib/apt/lists/*; fi
 
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+COPY --from=ghcr.io/astral-sh/uv:0.12.17 /uv /uvx /bin/
 
-COPY services/course-graph/requirements.txt services/course-graph/pyproject.toml ./
+COPY services/course-graph/pyproject.toml services/course-graph/uv.lock services/course-graph/.python-version ./
 ARG INSTALL_DOCLING=true
 # cpu: CPU wheels of torch skip ~4 GB of CUDA and triton. cu128: CUDA 12.8 wheels
 # for COURSE_GRAPH_DEVICE=gpu; 12.8 is the first that supports RTX 50xx (sm_120).
 # The uv cache lives in a BuildKit cache mount, so rebuilds reuse downloads.
 ARG TORCH_BACKEND=cpu
-ENV UV_TORCH_BACKEND=${TORCH_BACKEND} UV_LINK_MODE=copy
-# A reused base image (COURSE_GRAPH_BASE_IMAGE) may hold torch of the other backend,
-# which uv keeps as satisfying the requirements: replace it when the build differs.
+ENV UV_LINK_MODE=copy UV_PYTHON_DOWNLOADS=never
+ENV PATH="/app/.venv/bin:$PATH"
+# A private environment also isolates dependencies from reused OCR base images.
 RUN --mount=type=cache,target=/root/.cache/uv \
-    if [ "$INSTALL_DOCLING" = "true" ]; then \
-      cp requirements.txt /tmp/requirements-build.txt; \
-    elif [ "$INSTALL_DOCLING" = "false" ]; then \
-      sed '/^docling[<=>]/d' requirements.txt > /tmp/requirements-build.txt; \
-    else exit 1; fi && \
-    uv pip install --system -r /tmp/requirements-build.txt && \
-    if ! python -c "import sys, torch; sys.exit((torch.version.cuda is None) != ('$TORCH_BACKEND' == 'cpu'))"; then \
-      uv pip install --system --reinstall-package torch --reinstall-package torchvision -r /tmp/requirements-build.txt; \
-    fi && \
+    case "$TORCH_BACKEND" in cpu) torch_extra=cpu ;; cu128) torch_extra=gpu ;; *) exit 1 ;; esac && \
+    case "$INSTALL_DOCLING" in true) ocr_extra="--extra ocr" ;; false) ocr_extra="" ;; *) exit 1 ;; esac && \
+    uv sync --frozen --no-dev --no-install-project --extra "$torch_extra" $ocr_extra && \
     python -c "import sys, torch; print('torch', torch.__version__); sys.exit((torch.version.cuda is None) != ('$TORCH_BACKEND' == 'cpu'))"
 ENV COURSE_GRAPH_WITH_DOCLING=${INSTALL_DOCLING}
 ENV HF_HUB_DISABLE_XET=1
@@ -48,4 +42,4 @@ EXPOSE 8000
 HEALTHCHECK --interval=15s --timeout=5s --retries=5 \
     CMD curl -f http://localhost:8000/health || exit 1
 
-CMD ["python", "-m", "course_graph.api"]
+CMD ["uv", "run", "--no-sync", "python", "-m", "course_graph.api"]

@@ -1,7 +1,8 @@
 # course-graph builds from the repository root; only its own sources and the
 # generated Python stubs of the LLM gateway contract are sent to the builder.
 *
-!services/course-graph/requirements.txt
+!services/course-graph/uv.lock
+!services/course-graph/.python-version
 !services/course-graph/pyproject.toml
 !services/course-graph/course_graph
 !services/shared/gen/python

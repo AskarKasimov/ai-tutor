@@ -2,6 +2,8 @@
 // answers as dark bubbles on the right and the answer field at the bottom; and
 // the result card.
 .dialog {
+  // The chat follows its own end; native anchoring would jump before animation.
+  overflow-anchor: none;
   display: flex;
   flex-direction: column;
   padding-bottom: 0 !important;
@@ -77,6 +79,15 @@
   gap: var(--space-3);
   color: var(--app-muted);
 }
+.studentThinking {
+  display: inline-flex;
+  align-items: center;
+  max-width: min(80%, 560px);
+  padding: var(--space-3) var(--space-4);
+  border-radius: 18px 18px 4px 18px;
+  background: #2b2f36;
+  color: white;
+}
 .visuallyHidden {
   position: absolute;
   width: 1px;
@@ -110,6 +121,13 @@
   span:nth-child(3) {
     animation-delay: 0.3s;
   }
+  &[data-tone='student'] {
+    padding: 0;
+    background: transparent;
+    span {
+      background: white;
+    }
+  }
 }
 @keyframes typing {
   0%,
@@ -141,6 +159,10 @@
 .composer {
   position: sticky;
   bottom: 0;
+}
+.composerSpacer {
+  visibility: hidden;
+  pointer-events: none;
 }
 .composer,
 .footer {
@@ -342,11 +364,14 @@
     resize: none;
   }
 }
-.icon,
 .round {
   flex: none;
-  display: grid;
-  place-items: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  padding: 0;
+  line-height: 0;
   border: 0;
   cursor: pointer;
   &:disabled {
@@ -358,19 +383,15 @@
     outline-offset: 2px;
   }
 }
-.icon {
-  width: 36px;
-  height: 36px;
-  border-radius: 999px;
-  background: transparent;
-  color: var(--app-ink);
-}
 .round {
   width: 40px;
   height: 40px;
   border-radius: 999px;
   background: var(--app-accent);
   color: white;
+  svg {
+    display: block;
+  }
   &[data-tone='stop'] {
     background: var(--app-error);
   }
@@ -384,10 +405,6 @@
   min-width: 0;
   height: 32px;
   overflow: hidden;
-}
-.secondary {
-  display: flex;
-  justify-content: flex-end;
 }
 .error {
   display: flex;

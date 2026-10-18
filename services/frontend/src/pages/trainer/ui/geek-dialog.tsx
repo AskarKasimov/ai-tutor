@@ -556,6 +556,7 @@ function Composer({
 }) {
   const { t } = useTranslation()
   const [text, setText] = useState('')
+  const submittedText = useRef<string | null>(null)
   const voice = useVoiceAnswer(turnId, (transcript) =>
     onSend({ kind: 'voice', transcriptionId: transcript.id }, transcript.text),
   )
@@ -569,11 +570,21 @@ function Composer({
     onTranscription(voice.transcribing)
   }, [voice.transcribing, onTranscription])
   useEffect(() => () => onTranscription(false), [onTranscription])
+  useEffect(() => {
+    if (error && submittedText.current !== null) {
+      setText(submittedText.current)
+      submittedText.current = null
+    }
+  }, [error])
   const stale = error instanceof DiagnosticApiError && error.status === 409
   const seconds = `${Math.floor(voice.elapsedSeconds / 60)}:${String(voice.elapsedSeconds % 60).padStart(2, '0')}`
   const sendText = () => {
     const value = text.trim()
-    if (value) onSend({ kind: 'text', text: value }, value)
+    if (value) {
+      submittedText.current = value
+      setText('')
+      onSend({ kind: 'text', text: value }, value)
+    }
   }
 
   return (

@@ -435,7 +435,7 @@ func (w *Worker) process(ctx context.Context, job coursegraph.Job) error {
 			Filename: m.Filename, KindLabel: m.KindLabel, MaterialRevision: hex.EncodeToString(revision[:])}
 		// Older cards carry questions of an earlier policy (topics-v2 could
 		// ask to solve or draw): course-graph extracts them again instead.
-		if cached.TopicsVersion == "topics-v3" {
+		if cached.TopicsVersion == "topics-v4" {
 			input.Topics = cached.Topics
 		}
 		inputs = append(inputs, input)

@@ -330,8 +330,8 @@ func (s *Service) install(j *durableJob) {
 		copy.SlotHeld = true
 		copy.FinishedAt = time.Now()
 	}
-	if !isPending(copy.Status) && copy.SlotHeld && s.uncertainSlotExpired(&copy, time.Now()) {
-		// Only a verified server bound can release an uncertain upstream slot.
+	if !isPending(copy.Status) && copy.SlotHeld && (s.upstreamAbortsOnDisconnect(copy.Instance) || s.uncertainSlotExpired(&copy, time.Now())) {
+		// A verified disconnect-abort contract or server bound can release it.
 		copy.SlotHeld = false
 	}
 	s.jobs[j.ID] = &copy
@@ -881,7 +881,7 @@ func (s *Service) execute(ctx context.Context, j *durableJob, in InstanceConfig)
 			msg = "The upstream LLM request timed out."
 		}
 		body := errorBody(typ, code, msg)
-		uncertain := uncertainUpstreamOutcome(failure)
+		uncertain := uncertainUpstreamOutcomeForInstance(in, failure)
 		if !uncertain {
 			j.SlotHeld = false
 		}
@@ -960,6 +960,15 @@ func uncertainUpstreamOutcome(failure *UpstreamFailure) bool {
 		return false
 	}
 	return errors.Is(failure.Err, context.DeadlineExceeded) || failure.Code == "upstream_response_error" || (failure.Code == "upstream_transport_error" && !failure.BeforeSend)
+}
+
+func uncertainUpstreamOutcomeForInstance(in InstanceConfig, failure *UpstreamFailure) bool {
+	if !uncertainUpstreamOutcome(failure) {
+		return false
+	}
+	// The HTTP transport closes its request when its deadline fires. Only trust
+	// this as a completed upstream cancellation for explicitly verified models.
+	return !(in.AbortOnDisconnect && errors.Is(failure.Err, context.DeadlineExceeded))
 }
 
 func (s *Service) persistResult(ctx context.Context, j *durableJob, status int, body []byte, state string, retryAfter ...time.Duration) error {
@@ -1122,6 +1131,15 @@ func (s *Service) uncertainSlotExpired(j *durableJob, now time.Time) bool {
 				return !now.Before(j.FinishedAt.Add(in.ServerExecutionLimit))
 			}
 			return false
+		}
+	}
+	return false
+}
+
+func (s *Service) upstreamAbortsOnDisconnect(instanceID string) bool {
+	for _, in := range s.cfg.Instances {
+		if in.ID == instanceID {
+			return in.AbortOnDisconnect
 		}
 	}
 	return false

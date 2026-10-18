@@ -103,15 +103,15 @@ func (b *capturingBuilder) Build(_ context.Context, _ string, materials []course
 }
 
 func TestBuildReusesOnlyCardsOfTheCurrentQuestionPolicy(t *testing.T) {
-	// Review of #138: topics-v2 cards keep questions that ask to solve or
-	// draw, so a rebuild must extract them again under the oral policy.
+	// Old cards may ask about all outcomes; rebuild them under the
+	// single-concept question policy.
 	items := requestMaterials{
 		{ID: "old", S3ParsedKey: "parsed", Cleaning: &material.Cleaning{Status: "ready", S3ReportKey: "old"}},
 		{ID: "new", S3ParsedKey: "parsed", Cleaning: &material.Cleaning{Status: "ready", S3ReportKey: "new"}},
 	}
 	storage := reportStorage{
-		"old": `{"topics_version":"topics-v2","topics":[{"question":"Нарисуй график функции и вычисли производную."}]}`,
-		"new": `{"topics_version":"topics-v3","topics":[{"question":"Объясни, зачем нужна производная."}]}`,
+		"old": `{"topics_version":"topics-v3","topics":[{"question":"Нарисуй график функции и вычисли производную."}]}`,
+		"new": `{"topics_version":"topics-v4","topics":[{"question":"Объясни, зачем нужна производная."}]}`,
 	}
 	builder := &capturingBuilder{}
 	w := New(requestRepo{}, items, storage, builder, nil, nil)
@@ -119,7 +119,7 @@ func TestBuildReusesOnlyCardsOfTheCurrentQuestionPolicy(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(builder.materials) != 2 || builder.materials[0].Topics != nil || builder.materials[1].Topics == nil {
-		t.Fatalf("materials = %+v: only topics-v3 cards may be reused", builder.materials)
+		t.Fatalf("materials = %+v: only topics-v4 cards may be reused", builder.materials)
 	}
 }
 

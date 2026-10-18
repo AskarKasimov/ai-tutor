@@ -73,7 +73,7 @@ var (
 func (fixtureGateway) Complete(_ context.Context, r *llmgatewayv1.CompleteRequest) (*llmgatewayv1.CompleteResponse, error) {
 	prompt := r.GetMessages()[len(r.GetMessages())-1].GetContent()
 	var answer any
-	if !strings.Contains(prompt, `"verdict"`) {
+	if !strings.Contains(prompt, "Оцени ответ на заданный вопрос") {
 		topic := topicLine.FindStringSubmatch(prompt)
 		answer = map[string]string{"text": "Расскажите про тему «" + topic[1] + "»?"}
 	} else {
@@ -92,7 +92,7 @@ func (fixtureGateway) Complete(_ context.Context, r *llmgatewayv1.CompleteReques
 				k[0], k[1], k[2], k[3] = max(k[0], c[0]), max(k[1], c[1]), c[2], c[3]
 				evidence = append(evidence, json.Number(line[1]))
 			}
-			answer = map[string]any{"verdict": "answered", "criteria": map[string]int{"k1": k[0], "k2": k[1], "k3": k[2], "k4": k[3]}, "evidence_lines": evidence}
+			answer = map[string]any{"verdict": "answered", "answer_complete": true, "criteria": map[string]int{"k1": k[0], "k2": k[1], "k3": k[2], "k4": k[3]}, "evidence_lines": evidence}
 		}
 	}
 	content, _ := json.Marshal(answer)

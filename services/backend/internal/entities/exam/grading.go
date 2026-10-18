@@ -12,6 +12,34 @@ type Criteria struct {
 	K4 int `json:"k4"`
 }
 
+// UnassessedCriteria distinguishes an untested skill from a failed test (0).
+// K1 and K2 are always assessed; K3 and K4 may be outside the question's scope.
+type UnassessedCriteria struct {
+	K3 bool `json:"k3,omitempty"`
+	K4 bool `json:"k4,omitempty"`
+}
+
+func (u UnassessedCriteria) values(c Criteria) []int {
+	v := []int{c.K1, c.K2}
+	if !u.K3 {
+		v = append(v, c.K3)
+	}
+	if !u.K4 {
+		v = append(v, c.K4)
+	}
+	return v
+}
+
+// Complete reports whether every assessed criterion is fully demonstrated.
+func (u UnassessedCriteria) Complete(c Criteria) bool {
+	for _, v := range u.values(c) {
+		if v != 2 {
+			return false
+		}
+	}
+	return true
+}
+
 // Valid reports whether every criterion is 0, 1 or 2.
 func (c Criteria) Valid() bool {
 	for _, v := range c.values() {
@@ -45,10 +73,10 @@ func (g Grade) points() int {
 	return 1
 }
 
-// TopicGrade applies the README table. An assisted answer (after a rephrase)
-// can only be B or C, or D when it still falls short.
-func TopicGrade(c Criteria, assisted bool) Grade {
-	v := c.values()
+// TopicGrade applies the README table to the assessed criteria. An assisted
+// answer is capped at B; help never raises identical observed scores.
+func TopicGrade(c Criteria, assisted bool, unassessed UnassessedCriteria) Grade {
+	v := unassessed.values(c)
 	all := func(min int) bool {
 		for _, x := range v {
 			if x < min {
@@ -57,16 +85,17 @@ func TopicGrade(c Criteria, assisted bool) Grade {
 		}
 		return true
 	}
-	anyTwo := v[0] == 2 || v[1] == 2 || v[2] == 2 || v[3] == 2
+	anyTwo := false
+	for _, x := range v {
+		anyTwo = anyTwo || x == 2
+	}
 	grade := GradeD
 	switch {
 	case !assisted && all(2):
 		grade = GradeA
-	case c.K1 == 2 && c.K2 == 2 && c.K3 >= 1 && c.K4 >= 1:
+	case c.K1 == 2 && c.K2 == 2 && all(1):
 		grade = GradeB
-	case assisted && all(1):
-		grade = GradeB
-	case c.K1 >= 1 && anyTwo:
+	case c.K1 >= 1 && (c.K2 >= 1 || anyTwo):
 		grade = GradeC
 	}
 	return grade

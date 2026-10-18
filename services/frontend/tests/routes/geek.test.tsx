@@ -380,6 +380,15 @@ async function answerByText(text: string) {
   fireEvent.click(screen.getByRole('button', { name: 'Отправить ответ' }))
 }
 
+// Answers the last question and lets Geek's closing voice play to its end,
+// as a browser does; the result card waits for it.
+async function finishDiagnostic(text: string) {
+  const played = FakeAudio.played.length
+  await answerByText(text)
+  await waitFor(() => expect(FakeAudio.played).toHaveLength(played + 1))
+  act(() => FakeAudio.last!.onended!())
+}
+
 it('runs a diagnostic from the home page to the result and back to the history', async () => {
   const { answers, fetch } = geekBackend()
   renderApp()
@@ -429,8 +438,14 @@ it('runs a diagnostic from the home page to the result and back to the history',
   expect(await screen.findByText('эвристическая функция')).toBeVisible()
   expect(answers[1].body).toEqual({ turn_id: 't3', dont_know: true })
 
-  await answerByText('Оценка расстояния до цели')
-  expect(await screen.findByText('Диагностика завершена.')).toBeVisible()
+  await finishDiagnostic('Оценка расстояния до цели')
+  expect(
+    await screen.findByRole('heading', {
+      name: 'Диагностика завершена',
+      level: 2,
+    }),
+  ).toBeVisible()
+  expect(screen.getByText('Geek разобрал 1 тему — итог готов')).toBeVisible()
   expect(
     screen.queryByRole('textbox', { name: 'Ваш ответ' }),
   ).not.toBeInTheDocument()
@@ -438,7 +453,9 @@ it('runs a diagnostic from the home page to the result and back to the history',
     screen.getByRole('progressbar', { name: 'Диагностика' }),
   ).toHaveAttribute('aria-valuenow', '100')
 
-  fireEvent.click(screen.getByRole('button', { name: 'Перейти к итогу' }))
+  const toResult = screen.getByRole('button', { name: 'Посмотреть итог' })
+  expect(toResult).toHaveFocus()
+  fireEvent.click(toResult)
   expect(
     await screen.findByRole('heading', { name: 'Итог диагностики', level: 1 }),
   ).toBeVisible()
@@ -668,9 +685,9 @@ it('reports a failed start again on the result screen', async () => {
   await answerByText('Перестанет быть оптимальным')
   fireEvent.click(await screen.findByRole('button', { name: 'Не знаю' }))
   await screen.findByText('эвристическая функция')
-  await answerByText('Оценка расстояния до цели')
+  await finishDiagnostic('Оценка расстояния до цели')
   fireEvent.click(
-    await screen.findByRole('button', { name: 'Перейти к итогу' }),
+    await screen.findByRole('button', { name: 'Посмотреть итог' }),
   )
   await screen.findByText('81% от максимума')
   control.failStarts = 1
@@ -679,6 +696,46 @@ it('reports a failed start again on the result screen', async () => {
     'Не удалось начать диагностику.',
   )
   expect(screen.getByRole('button', { name: 'Пройти заново' })).toBeEnabled()
+})
+
+it('offers the result only after Geek has voiced the closing reply', async () => {
+  geekBackend()
+  renderApp()
+  await start()
+  await answerByText('Перестанет быть оптимальным')
+  fireEvent.click(await screen.findByRole('button', { name: 'Не знаю' }))
+  await screen.findByText('эвристическая функция')
+  const played = FakeAudio.played.length
+  await answerByText('Оценка расстояния до цели')
+  expect(
+    await screen.findByText('Спасибо! Диагностика завершена, итог уже готов.'),
+  ).toBeVisible()
+  await waitFor(() => expect(FakeAudio.played).toHaveLength(played + 1))
+  // The closing reply is still being voiced: the result waits for it.
+  expect(
+    screen.queryByRole('button', { name: 'Посмотреть итог' }),
+  ).not.toBeInTheDocument()
+  act(() => FakeAudio.last!.onended!())
+  expect(
+    await screen.findByRole('button', { name: 'Посмотреть итог' }),
+  ).toBeVisible()
+})
+
+it('offers the result when the closing reply cannot be voiced', async () => {
+  const { control } = geekBackend()
+  renderApp()
+  await start()
+  await answerByText('Перестанет быть оптимальным')
+  fireEvent.click(await screen.findByRole('button', { name: 'Не знаю' }))
+  await screen.findByText('эвристическая функция')
+  control.failVoice = true
+  await answerByText('Оценка расстояния до цели')
+  expect(
+    await screen.findByText('Спасибо! Диагностика завершена, итог уже готов.'),
+  ).toBeVisible()
+  expect(
+    await screen.findByRole('button', { name: 'Посмотреть итог' }),
+  ).toBeVisible()
 })
 
 it('gives the dialogue a level-one heading', async () => {

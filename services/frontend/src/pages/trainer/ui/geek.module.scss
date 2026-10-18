@@ -154,6 +154,166 @@
 .footer {
   justify-items: start;
 }
+
+// The result card appears once Geek's last reply has been voiced: it rises in,
+// a comet in the colours of the progress bars runs once around its border and
+// the check mark draws itself.
+@property --comet-angle {
+  syntax: '<angle>';
+  inherits: false;
+  initial-value: 0deg;
+}
+.resultCard {
+  position: relative;
+  box-sizing: border-box;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-3) var(--space-4);
+  width: min(100%, 760px);
+  margin: var(--space-5) auto;
+  padding: var(--space-5);
+  border-radius: 24px;
+  background:
+    radial-gradient(circle, rgb(58 111 242 / 0.4) 1.2px, transparent 1.6px) 30px
+      20px / 150px 110px,
+    radial-gradient(circle, rgb(33 160 56 / 0.35) 1px, transparent 1.4px) 90px
+      60px / 210px 130px,
+    radial-gradient(circle at 6% 20%, rgb(33 160 56 / 0.14), transparent 40%),
+    radial-gradient(circle at 96% 10%, rgb(122 98 240 / 0.12), transparent 40%),
+    linear-gradient(135deg, #f6fcf8 0%, #f3f7ff 55%, #f7f5ff 100%);
+  box-shadow:
+    0 0 0 1px var(--app-border),
+    0 14px 36px rgb(18 35 58 / 0.08);
+  animation: result-rise 420ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  &::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    padding: 2px;
+    border-radius: inherit;
+    background: conic-gradient(
+      from var(--comet-angle),
+      transparent 0 68%,
+      #34e0a1 80%,
+      #22d3ee 88%,
+      #4f6bff 95%,
+      transparent 100%
+    );
+    mask:
+      linear-gradient(#000 0 0) content-box exclude,
+      linear-gradient(#000 0 0);
+    pointer-events: none;
+    animation: result-comet 1.6s ease-in-out 0.3s both;
+  }
+}
+.resultBadge {
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #21a038, #12b5a5 55%, #3a6ff2);
+  box-shadow: 0 8px 22px rgb(33 160 56 / 0.28);
+  animation: result-pop 480ms cubic-bezier(0.3, 1.4, 0.5, 1) 120ms both;
+  svg {
+    width: 52px;
+    height: 52px;
+    fill: none;
+    stroke: white;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+}
+.resultRing {
+  stroke-width: 2;
+  opacity: 0.55;
+  stroke-dasharray: 145;
+  stroke-dashoffset: 145;
+  animation: result-draw 600ms ease-out 250ms forwards;
+}
+.resultCheck {
+  stroke-width: 4;
+  stroke-dasharray: 32;
+  stroke-dashoffset: 32;
+  animation: result-draw 360ms ease-out 650ms forwards;
+}
+.resultText {
+  display: grid;
+  gap: var(--space-1);
+  min-width: 0;
+  h2 {
+    margin: 0;
+    color: var(--app-ink);
+  }
+}
+.resultLead {
+  margin: 0;
+  color: var(--app-muted);
+}
+.resultButton {
+  gap: var(--space-2);
+}
+@keyframes result-rise {
+  from {
+    opacity: 0;
+    transform: translateY(16px) scale(0.98);
+  }
+}
+@keyframes result-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+}
+@keyframes result-draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+@keyframes result-comet {
+  from {
+    --comet-angle: 0deg;
+    opacity: 0;
+  }
+  15%,
+  80% {
+    opacity: 1;
+  }
+  to {
+    --comet-angle: 360deg;
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .resultCard,
+  .resultBadge {
+    animation: result-fade 200ms ease-out both;
+  }
+  .resultCard::before {
+    display: none;
+  }
+  .resultRing,
+  .resultCheck {
+    animation: none;
+    stroke-dashoffset: 0;
+  }
+}
+@keyframes result-fade {
+  from {
+    opacity: 0;
+  }
+}
+// Phones: the text and the button go under the check mark.
+@media (max-width: 560px) {
+  .resultCard {
+    grid-template-columns: auto minmax(0, 1fr);
+    padding: var(--space-4);
+  }
+  .resultButton {
+    grid-column: 1 / -1;
+  }
+}
 .field,
 .recording {
   display: flex;

@@ -25,7 +25,16 @@ app_url=https://localhost:8443
 admin_url="$app_url/admin"
 printf '%s\n' "Student site: $app_url" "Admin panel:  $admin_url"
 
-# Open both sites once health answers; DEV_OPEN_BROWSER=false skips it.
+# Grafana runs with the gateway profile; Compose takes COMPOSE_PROFILES from
+# the environment first, then from .env.
+grafana_url=http://localhost:3000/d/llm-gateway-routing
+profiles=${COMPOSE_PROFILES-$(sed -n 's/^COMPOSE_PROFILES=//p' .env | tail -n 1)}
+case ",$profiles," in
+*,gateway,*) printf '%s\n' "Grafana:      $grafana_url" ;;
+*) grafana_url= ;;
+esac
+
+# Open the sites and Grafana once health answers; DEV_OPEN_BROWSER=false skips it.
 opener=
 if command -v xdg-open >/dev/null 2>&1; then
     opener=xdg-open
@@ -46,6 +55,18 @@ if [ "${DEV_OPEN_BROWSER:-true}" != false ] && [ -n "$opener" ]; then
         done
         "$opener" "$app_url" >/dev/null 2>&1
         "$opener" "$admin_url" >/dev/null 2>&1
+        if [ -n "$grafana_url" ]; then
+            attempts=24
+            until curl -fs -o /dev/null http://localhost:3000/api/health; do
+                attempts=$((attempts - 1))
+                if [ "$attempts" -le 0 ]; then
+                    printf '%s\n' "Grafana did not answer; open $grafana_url manually." >&2
+                    exit 0
+                fi
+                sleep 5
+            done
+            "$opener" "$grafana_url" >/dev/null 2>&1
+        fi
     ) &
 fi
 

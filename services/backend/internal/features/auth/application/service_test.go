@@ -161,10 +161,18 @@ func code(t *testing.T, err error, want string) {
 		t.Fatalf("got %v, want %s", err, want)
 	}
 }
+func TestFourCharactersAreAPassword(t *testing.T) {
+	// Decision of 18.10.2026: the minimum is 4 characters, not 15.
+	s, m, _ := fixture()
+	if _, err := s.Register(context.Background(), RegisterInput{Email: "four@example.edu", Password: "k9#q", DisplayName: ptr("Иван")}); err != nil || len(m.users) != 1 {
+		t.Fatalf("four-character password: %v", err)
+	}
+}
+
 func TestRegistrationPolicyAndNormalization(t *testing.T) {
 	s, m, _ := fixture()
 	ctx := context.Background()
-	for _, p := range []string{"short", strings.Repeat("a", 20), "passwordpassword", strings.Repeat("я", 129)} {
+	for _, p := range []string{"abc", strings.Repeat("a", 20), "passwordpassword", strings.Repeat("я", 129)} {
 		_, err := s.Register(ctx, RegisterInput{Email: "x@example.edu", Password: p, DisplayName: ptr("Иван")})
 		code(t, err, "PASSWORD_TOO_WEAK")
 	}

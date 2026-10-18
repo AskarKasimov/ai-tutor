@@ -88,7 +88,7 @@ export function AuthForm() {
               value={password}
               onChange={(event) => setPassword(event.target.value)}
               required
-              minLength={mode === 'register' ? 15 : 1}
+              minLength={mode === 'register' ? 4 : 1}
               maxLength={128}
               aria-describedby={
                 mode === 'register' ? 'password-help' : undefined

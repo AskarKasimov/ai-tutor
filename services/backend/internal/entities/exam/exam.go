@@ -1,6 +1,9 @@
 package exam
 
-import "slices"
+import (
+	"math/rand/v2"
+	"slices"
+)
 
 type Status string
 
@@ -117,27 +120,74 @@ type Exam struct {
 	MaxQuestions int `json:"max_questions"`
 }
 
-// NewExam starts the traversal from the top-level topics in study order and
-// returns the first step.
-func NewExam(g Graph, maxQuestions int) (*Exam, Step) {
+// NewExam starts the traversal from the top-level topics in coverage order and
+// returns the first step. rng breaks ties of equal coverage; nil keeps study
+// order.
+func NewExam(g Graph, maxQuestions int, rng *rand.Rand) (*Exam, Step) {
 	e := &Exam{Graph: g, Nodes: map[string]*NodeState{}, MaxQuestions: maxQuestions}
 	for _, n := range g.Nodes {
 		e.Nodes[n.ID] = &NodeState{Status: StatusUnchecked, Evidence: []int{}}
 	}
-	top := g.TopLevel()
+	top := coverageOrder(g, rng)
 	for i := len(top) - 1; i >= 0; i-- {
 		e.Stack = append(e.Stack, top[i])
 	}
 	return e, e.next()
 }
 
+// coverageOrder orders the top-level topics greedily: next is the one whose
+// topic and prerequisites add the most topics not covered by those before it,
+// since a mastered topic credits all of its prerequisites. Under a question
+// limit the exam thus checks as much of the graph as it can. Ties (such as
+// topics without prerequisites) are shuffled by rng, so different students
+// get different ones.
+func coverageOrder(g Graph, rng *rand.Rand) []string {
+	left := g.TopLevel()
+	if rng != nil {
+		rng.Shuffle(len(left), func(i, j int) { left[i], left[j] = left[j], left[i] })
+	}
+	// Each scope is computed once: recomputing closures inside the greedy loop
+	// made the order cubic in the number of topics.
+	index := g.prerequisites()
+	scope := make(map[string][]string, len(left))
+	for _, id := range left {
+		scope[id] = append([]string{id}, closure(index, id)...)
+	}
+	covered := map[string]bool{}
+	order := make([]string, 0, len(left))
+	for len(left) > 0 {
+		best, bestGain := 0, -1
+		for i, id := range left {
+			gain := 0
+			for _, n := range scope[id] {
+				if !covered[n] {
+					gain++
+				}
+			}
+			if gain > bestGain {
+				best, bestGain = i, gain
+			}
+		}
+		for _, n := range scope[left[best]] {
+			covered[n] = true
+		}
+		order = append(order, left[best])
+		left = slices.Delete(left, best, best+1)
+	}
+	return order
+}
+
 func (e *Exam) isTop(id string) bool { return slices.Contains(e.Graph.TopLevel(), id) }
+
+// limitReached reports whether the question limit leaves no room for another
+// question or followup.
+func (e *Exam) limitReached() bool { return e.MaxQuestions > 0 && e.Asked >= e.MaxQuestions }
 
 // next pops the next unchecked topic depth-first. Popping a new top-level topic
 // finishes the previous one; an empty stack completes the exam.
 func (e *Exam) next() Step {
 	for len(e.Stack) > 0 {
-		if e.MaxQuestions > 0 && e.Asked >= e.MaxQuestions {
+		if e.limitReached() {
 			break
 		}
 		id := e.Stack[len(e.Stack)-1]
@@ -171,10 +221,12 @@ func (e *Exam) finishTop() {
 // Apply records the evaluation of the answer to the current step and returns
 // the next step. A "don't know" on the main question or the rephrase makes the
 // topic a gap at once. A main answer on D is rephrased once; an answer after
-// the rephrase is assisted. A non-D answer gets one followup on K3 and K4, and
-// the grade is set after it; "don't know" or an unclear answer on the followup
-// sets K3 and K4 to 0 and grades by the table. A gap leads to its prerequisites; a mastered
-// topic credits all of its unchecked prerequisites.
+// the rephrase is assisted. A non-D answer that already shows K3 and K4 on 2,
+// or that leaves no room in the question limit, is graded at once; otherwise
+// it gets one followup on K3 and K4, and the grade
+// is set after it; "don't know" or an unclear answer on the followup sets K3
+// and K4 to 0 and grades by the table. A gap leads to its prerequisites; a
+// mastered topic credits all of its unchecked prerequisites.
 func (e *Exam) Apply(ev Evaluation) Step {
 	cur := *e.Current
 	state := e.Nodes[cur.NodeID]
@@ -203,6 +255,11 @@ func (e *Exam) Apply(ev Evaluation) Step {
 			}
 			return e.gap(cur.NodeID, c, true)
 		}
+		// No followup when the answer already shows K3 and K4, or when the
+		// limit has no room for it: the topic is graded by this answer.
+		if c.K3 == 2 && c.K4 == 2 || e.limitReached() {
+			return e.conclude(cur.NodeID, c)
+		}
 		e.Asked++
 		return e.step(KindFollowup, cur.NodeID)
 	case KindFollowup:
@@ -211,22 +268,29 @@ func (e *Exam) Apply(ev Evaluation) Step {
 			c = *state.Criteria
 			c.K3, c.K4 = 0, 0
 		}
-		state.Criteria = &c
-		grade := TopicGrade(c, state.Assisted)
-		if grade == GradeD {
-			return e.gap(cur.NodeID, c, state.Assisted)
+		return e.conclude(cur.NodeID, c)
+	}
+	return e.next()
+}
+
+// conclude grades a topic by its final criteria: D makes it a gap, any other
+// grade masters it and credits its unchecked prerequisites.
+func (e *Exam) conclude(id string, c Criteria) Step {
+	state := e.Nodes[id]
+	state.Criteria = &c
+	grade := TopicGrade(c, state.Assisted)
+	if grade == GradeD {
+		return e.gap(id, c, state.Assisted)
+	}
+	state.Grade = &grade
+	state.Status = StatusIndependent
+	if state.Assisted {
+		state.Status = StatusAssisted
+	}
+	for _, p := range e.Graph.Closure(id) {
+		if e.Nodes[p].Status == StatusUnchecked {
+			e.Nodes[p].Status = StatusCredited
 		}
-		state.Grade = &grade
-		state.Status = StatusIndependent
-		if state.Assisted {
-			state.Status = StatusAssisted
-		}
-		for _, p := range e.Graph.Closure(cur.NodeID) {
-			if e.Nodes[p].Status == StatusUnchecked {
-				e.Nodes[p].Status = StatusCredited
-			}
-		}
-		return e.next()
 	}
 	return e.next()
 }
@@ -266,18 +330,21 @@ func (e *Exam) Completed() bool { return e.Current != nil && e.Current.Kind == K
 // Progress is the share of top-level topics concluded, in percent. Each
 // top-level topic has an equal share; while it is in progress its share grows
 // with the concluded topics among it and its prerequisites, but never fills.
+// Under a question limit the exam may close before all top-level topics, so
+// the share of the limit already asked counts too.
 func (e *Exam) Progress() int {
 	top := e.Graph.TopLevel()
 	if len(top) == 0 || e.Completed() {
 		return 100
 	}
+	index := e.Graph.prerequisites()
 	var sum float64
 	for _, t := range top {
 		if slices.Contains(e.Done, t) {
 			sum++
 			continue
 		}
-		scope := append([]string{t}, e.Graph.Closure(t)...)
+		scope := append([]string{t}, closure(index, t)...)
 		concluded := 0
 		for _, id := range scope {
 			if e.Nodes[id].Status != StatusUnchecked {
@@ -287,7 +354,11 @@ func (e *Exam) Progress() int {
 		share := float64(concluded) / float64(len(scope))
 		sum += min(share, 0.99)
 	}
-	return min(99, int(sum/float64(len(top))*100))
+	progress := int(sum / float64(len(top)) * 100)
+	if e.MaxQuestions > 0 {
+		progress = max(progress, e.Asked*100/e.MaxQuestions)
+	}
+	return min(99, progress)
 }
 
 // Gaps are the deepest unmastered topics: gaps all of whose prerequisites are

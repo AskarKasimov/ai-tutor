@@ -26,7 +26,7 @@ services:
       BACKEND_LLM_GATEWAY_ADDR: ${BACKEND_LLM_GATEWAY_ADDR:-llm-gateway:8011}
       BACKEND_LLM_TIMEOUT: ${BACKEND_LLM_TIMEOUT:-120s}
       BACKEND_GEEK_GRAPH_FIXTURE: ${BACKEND_GEEK_GRAPH_FIXTURE:-/fixtures/intro-to-ai.weeks-1-2.ru.graph.json}
-      BACKEND_GEEK_MAX_QUESTIONS: ${BACKEND_GEEK_MAX_QUESTIONS:-0}
+      BACKEND_GEEK_QUESTION_LIMIT: ${BACKEND_GEEK_QUESTION_LIMIT:-8}
     volumes:
       - ../../api/fixtures:/fixtures:ro
     ports:

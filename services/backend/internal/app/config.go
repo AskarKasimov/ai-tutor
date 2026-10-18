@@ -38,7 +38,8 @@ type Config struct {
 	LLMTimeout        time.Duration
 	// GeekGraphFixture is a graph file used for courses without a stored graph.
 	GeekGraphFixture string
-	// GeekMaxQuestions stops a diagnostic after that many questions; 0 is no limit.
+	// GeekMaxQuestions stops a diagnostic after that many questions and
+	// followups; 0 is no limit.
 	GeekMaxQuestions int
 }
 
@@ -161,15 +162,19 @@ func ConfigFromEnv() (Config, error) {
 		return c, err
 	}
 	c.GeekGraphFixture = strings.TrimSpace(os.Getenv("BACKEND_GEEK_GRAPH_FIXTURE"))
-	value = envOrDefault("BACKEND_GEEK_MAX_QUESTIONS", "0")
+	value = envOrDefault("BACKEND_GEEK_QUESTION_LIMIT", strconv.Itoa(DefaultGeekQuestionLimit))
 	if c.GeekMaxQuestions, err = strconv.Atoi(value); err != nil {
-		return c, fmt.Errorf("BACKEND_GEEK_MAX_QUESTIONS: %w", err)
+		return c, fmt.Errorf("BACKEND_GEEK_QUESTION_LIMIT: %w", err)
 	}
 	return c, c.validate()
 }
 
 // DefaultTTSInferenceTimesteps is sent to VoxCPM when the env leaves it empty.
 const DefaultTTSInferenceTimesteps = 20
+
+// DefaultGeekQuestionLimit stops a diagnostic when the env leaves the limit
+// empty (decision of 18.10.2026).
+const DefaultGeekQuestionLimit = 8
 
 func envOrDefault(key, fallback string) string {
 	value := strings.TrimSpace(os.Getenv(key))
@@ -267,7 +272,7 @@ func (c Config) validate() error {
 		return fmt.Errorf("BACKEND_COURSE_GRAPH_TIMEOUT must not be negative")
 	}
 	if c.GeekMaxQuestions < 0 {
-		return fmt.Errorf("BACKEND_GEEK_MAX_QUESTIONS must not be negative")
+		return fmt.Errorf("BACKEND_GEEK_QUESTION_LIMIT must not be negative")
 	}
 	if c.MaxUploadBytes < 1 || c.MaxUploadBytes > 25*1024*1024 {
 		return fmt.Errorf("BACKEND_MAX_UPLOAD_BYTES must be positive and cannot exceed 25 MiB")

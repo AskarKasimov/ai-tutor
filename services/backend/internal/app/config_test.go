@@ -81,7 +81,7 @@ func TestAudioConfigRejectsInvalidSettings(t *testing.T) {
 		"BACKEND_S3_TIMEOUT":              {"bad", "0s", "-1s"},
 		"BACKEND_LLM_GATEWAY_ADDR":        {"gateway", ":8011", "http://gateway:8011", "gateway:abc", "gateway:0", "gateway:-1", "gateway:65536", "gateway:70000"},
 		"BACKEND_LLM_TIMEOUT":             {"bad", "0s", "-1s"},
-		"BACKEND_GEEK_MAX_QUESTIONS":      {"bad", "-1"},
+		"BACKEND_GEEK_QUESTION_LIMIT":     {"bad", "-1"},
 		"BACKEND_COURSE_GRAPH_TIMEOUT":    {"bad", "-1s"},
 	}
 	for key, values := range cases {
@@ -165,18 +165,18 @@ func TestConfigLoadsTTSSettings(t *testing.T) {
 	}
 }
 
-func TestGeekConfigRequiresTheGatewayAndHasNoLimits(t *testing.T) {
+func TestGeekConfigRequiresTheGatewayAndLimitsQuestions(t *testing.T) {
 	configuredEnv(t)
 	cfg, err := ConfigFromEnv()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.LLMGatewayAddress != "gateway.test:8011" || cfg.LLMTimeout != 120*time.Second || cfg.GeekGraphFixture != "" || cfg.GeekMaxQuestions != 0 {
+	if cfg.LLMGatewayAddress != "gateway.test:8011" || cfg.LLMTimeout != 120*time.Second || cfg.GeekGraphFixture != "" || cfg.GeekMaxQuestions != DefaultGeekQuestionLimit {
 		t.Fatalf("geek defaults = %+v", cfg)
 	}
 	t.Setenv("BACKEND_LLM_GATEWAY_ADDR", "llm-gateway:8011")
 	t.Setenv("BACKEND_GEEK_GRAPH_FIXTURE", "/fixtures/course-graph.json")
-	t.Setenv("BACKEND_GEEK_MAX_QUESTIONS", "12")
+	t.Setenv("BACKEND_GEEK_QUESTION_LIMIT", "12")
 	if cfg, err = ConfigFromEnv(); err != nil || cfg.LLMGatewayAddress != "llm-gateway:8011" || cfg.GeekGraphFixture != "/fixtures/course-graph.json" || cfg.GeekMaxQuestions != 12 {
 		t.Fatalf("geek settings = %+v, %v", cfg, err)
 	}

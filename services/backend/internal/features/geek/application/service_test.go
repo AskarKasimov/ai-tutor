@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math/rand/v2"
 	"os"
 	"slices"
 	"sort"
@@ -263,6 +264,8 @@ func newFixture(t *testing.T) *fixture {
 	g := loadGraph(t)
 	f := &fixture{store: newMemoryStore(), graphs: &graphs{graph: &g}, examiner: &examiner{}, voice: &voice{}, audio: audioStore{}}
 	f.service = New(f.graphs, f.store, texts{"student/tr": "сильно отвечаю голосом"}, f.examiner, NewSpeechCache(f.voice, f.audio, ""), &ids{}, func() time.Time { return time.Unix(100, 0) }, Config{})
+	// Ties of coverage keep study order, so the tests know the next topic.
+	f.service.rng = func() *rand.Rand { return nil }
 	return f
 }
 

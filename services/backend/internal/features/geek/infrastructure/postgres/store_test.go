@@ -59,7 +59,7 @@ func storePool(t *testing.T) *pgxpool.Pool {
 
 func session(id string) exam.Session {
 	g := exam.Graph{Version: "v1", Nodes: []exam.Node{{ID: "n", Title: "Тема"}}}
-	e, _ := exam.NewExam(g, 0)
+	e, _ := exam.NewExam(g, 0, nil)
 	return exam.Session{ID: id, OwnerID: "u", SubjectID: "s", Status: exam.SessionActive, StartedAt: 1, Version: 1, Exam: e, Turns: []exam.Turn{}}
 }
 

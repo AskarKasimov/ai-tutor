@@ -55,7 +55,8 @@ def links_only(judge):
             return json.dumps({"pairs": [{"a": p["a"], "b": p["b"], "same": False}
                                          for p in json.loads(payload)["pairs"]]})
         if system == ATTACH_PROMPT:
-            return json.dumps({"topics": []})
+            return json.dumps({"topics": [{"id": t["id"], "prerequisites": [], "dependents": []}
+                                         for t in json.loads(payload)["topics"]]})
         if system == QUESTION_PROMPT:
             return write_questions(payload)
         return await judge(system, payload)
@@ -71,14 +72,12 @@ def attach_answer(payload, choose):
     quotes the first shown evidence of each side."""
     out = []
     for item in json.loads(payload)["topics"]:
-        if item["id"] not in choose:
-            continue
         candidates = {c["id"]: c for c in item["candidates"]}
 
         def link(other):
             return {"id": other, "reason": "Используется это знание", "topic_evidence": quote(item["evidence"][0]),
                     "candidate_evidence": quote(candidates[other]["evidence"][0])}
-        before, after = choose[item["id"]]
+        before, after = choose.get(item["id"], ([], []))
         out.append({"id": item["id"], "prerequisites": [link(c) for c in before if c in candidates],
                     "dependents": [link(c) for c in after if c in candidates]})
     return json.dumps({"topics": out}, ensure_ascii=False)
@@ -976,7 +975,8 @@ def test_attach_links_need_quotes_from_both_sides(answer, linked):
         if answer == "missing":
             return json.dumps({"topics": [{"id": "B", "prerequisites": [{"id": "A", "reason": "Модель так решила"}]}]})
         result = json.loads(attach_answer(payload, {"B": (["A"], [])}))
-        for link in result["topics"][0]["prerequisites"]:
+        decision = next(item for item in result["topics"] if item["id"] == "B")
+        for link in decision["prerequisites"]:
             if answer == "fabricated":
                 link["candidate_evidence"]["quote"] = "Невстречающаяся цитата"
             if answer == "swapped":
@@ -1188,9 +1188,9 @@ def synonym_answers(decisions, batches):
     return complete
 
 
-@pytest.mark.parametrize("max_chars", [12000, 10])
+@pytest.mark.parametrize("max_chars", [12000, 300])
 def test_contradictory_synonym_decisions_never_merge_their_group(max_chars):
-    # A=B, B=C, A≠C — in one batch, or one pair per batch with max_chars=10.
+    # A=B, B=C, A≠C — in one batch, or one pair per batch with max_chars=300.
     encoder = TitleEncoder({"Альфа": [1.0, 0.0], "Бета": [1.0, 0.0], "Гамма": [1.0, 0.0]})
     decisions = {frozenset("AB"): True, frozenset("BC"): True, frozenset("AC"): False}
     batches = []
@@ -1451,3 +1451,144 @@ def test_an_answer_without_topics_is_still_rejected():
         return '{"remove":[],"topics":[]}'
     with pytest.raises(ValueError):
         run(extract_topics("Производная\n\nГрадиент", empty))
+
+
+@pytest.mark.parametrize("missing", ["partial", "empty", "unknown", "list_id", "dict_id", "duplicate", "missing_field"])
+def test_attach_retries_only_topics_without_one_complete_decision(missing):
+    from course_graph.topics.structure import attach_links
+    topics = [make_topic("A", "Множества", ["Понятие множества"]),
+              make_topic("B", "Отношения", ["Понятие отношения"]),
+              make_topic("C", "Композиция", ["Композиция отношений"])]
+    calls = []
+    choose = {"A": ([], []), "B": (["A"], []), "C": (["B"], [])}
+
+    async def complete(system, payload):
+        data = json.loads(payload)
+        calls.append(data)
+        if len(calls) == 2:
+            expected = {"A", "C"} if missing == "partial" else {"A", "B", "C"} if missing == "empty" else {"C"}
+            assert {t["id"] for t in data["topics"]} == expected
+            assert "correction" in data
+            return attach_answer(payload, choose)
+        result = json.loads(attach_answer(payload, choose))
+        if missing == "partial":
+            result["topics"] = [t for t in result["topics"] if t["id"] == "B"]
+        elif missing == "empty":
+            result["topics"] = []
+        else:
+            target = next(t for t in result["topics"] if t["id"] == "C")
+            if missing in ("unknown", "list_id", "dict_id"):
+                target["id"] = "X" if missing == "unknown" else ["C"] if missing == "list_id" else {"id": "C"}
+            elif missing == "duplicate":
+                result["topics"].append(dict(target))
+            else:
+                del target["dependents"]
+        return json.dumps(result)
+
+    links, rejected, requests = run(attach_links(topics, [], {}, complete, Encoder()))
+    assert requests == len(calls) == 2
+    assert {(e["source"], e["target"]) for e in links} == {("A", "B"), ("B", "C")}
+    assert not any(r["validation_error"] == "incomplete_topic_decision" for r in rejected)
+
+
+@pytest.mark.parametrize("answered", [False, True])
+def test_attach_distinguishes_explicit_empty_decisions_from_missing_ones(answered):
+    from course_graph.topics.structure import attach_links
+    topics = [make_topic("A", "Множества", ["Понятие множества"]),
+              make_topic("B", "Отношения", ["Понятие отношения"])]
+    calls = []
+
+    async def complete(system, payload):
+        calls.append(payload)
+        return attach_answer(payload, {t.id: ([], []) for t in topics}) if answered else '{"topics":[]}'
+
+    links, rejected, requests = run(attach_links(topics, [], {}, complete, Encoder()))
+    assert links == []
+    assert requests == len(calls) == (1 if answered else 2)
+    incomplete = [r for r in rejected if r["validation_error"] == "incomplete_topic_decision"]
+    assert {r["topic_id"] for r in incomplete} == (set() if answered else {"A", "B"})
+
+
+def long_knowledge(count):
+    return [f"Знание {i:03d}: " + "я" * (600 - len(f"Знание {i:03d}: ")) for i in range(count)]
+
+
+def test_question_refresh_skips_oversized_host_but_processes_small_neighbor():
+    large = make_topic("L", "Большая тема", long_knowledge(128))
+    small = make_topic("S", "Малая тема", ["Малое знание"])
+    before = large.model_dump()
+    calls = []
+
+    async def complete(system, payload):
+        calls.append(payload)
+        assert len(payload) <= 20000
+        assert [t["id"] for t in json.loads(payload)["topics"]] == ["S"]
+        return write_questions(payload)
+
+    failed, requests = run(refresh_questions([large, small], complete))
+    assert failed == {"L"} and requests == len(calls) == 1
+    assert large.model_dump() == before
+    assert small.question.startswith("Почему верно:")
+
+
+def test_attach_never_sends_the_oversized_valid_cards_from_the_review():
+    from course_graph.topics.structure import attach_links
+    topics = [make_topic(f"T{i}", f"Тема {i}", long_knowledge(8), long_knowledge(8)) for i in range(9)]
+    before = [t.model_dump() for t in topics]
+
+    async def never(*args):
+        raise AssertionError("An oversized card must not reach the LLM")
+
+    links, rejected, requests = run(attach_links(topics, [], {}, never, Encoder()))
+    assert links == [] and requests == 0
+    assert {r["topic_id"] for r in rejected if r["validation_error"] == "budget_exceeded"} == {t.id for t in topics}
+    assert [t.model_dump() for t in topics] == before
+
+
+def test_attach_processes_a_small_neighbor_when_a_large_item_cannot_fit():
+    from course_graph.topics.structure import attach_links
+    topics = [make_topic("L", "Большая тема", long_knowledge(128), long_knowledge(8)),
+              make_topic("S", "Малая тема", ["Малое знание"])]
+    calls = []
+
+    async def complete(system, payload):
+        calls.append(payload)
+        assert len(payload) <= 6000
+        assert [t["id"] for t in json.loads(payload)["topics"]] == ["S"]
+        return attach_answer(payload, {"S": (["L"], [])})
+
+    links, rejected, requests = run(attach_links(topics, [], {}, complete, Encoder(), max_chars=6000))
+    assert [(e["source"], e["target"]) for e in links] == [("L", "S")]
+    assert requests == len(calls) == 1
+    assert any(r.get("topic_id") == "L" and r["validation_error"] == "budget_exceeded" for r in rejected)
+    assert len(topics[0].provides) == 128
+
+
+def test_question_correction_respects_the_budget_including_json_wrapper():
+    from course_graph.topics.structure import question_text
+    host = make_topic("H", "Тема", ["Знание"])
+    item = {"id": host.id, "title": host.title, "provides": host.provides, "text": question_text(host)}
+    budget = len(json.dumps({"topics": [item]}, ensure_ascii=False))
+    calls = []
+
+    async def complete(system, payload):
+        calls.append(payload)
+        assert len(payload) <= budget
+        return '{"questions":[]}'
+
+    failed, requests = run(refresh_questions([host], complete, max_chars=budget))
+    assert failed == {"H"}
+    assert requests == len(calls) == 1
+
+
+def test_synonym_pass_does_not_send_a_pair_over_its_budget():
+    topics = synonym_topics()
+    before = [t.model_dump() for t in topics]
+
+    async def never(*args):
+        raise AssertionError("An oversized synonym pair must not reach the LLM")
+
+    encoder = TitleEncoder({t.title: [1, 0] for t in topics})
+    kept, aliases, requests = run(merge_synonyms(topics, never, encoder, lambda t: t.id, max_chars=1))
+    assert aliases == {} and requests == 0
+    assert [t.model_dump() for t in kept] == before

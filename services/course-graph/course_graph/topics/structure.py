@@ -127,27 +127,34 @@ def titles_overlap(a, b):
     return bool(x and y) and len(x & y) / len(x | y) >= 0.6
 
 
-def batches_of(items, max_chars, max_items):
-    result, batch = [], []
+def batches_of(items, max_chars, max_items, field="topics"):
+    """Pack complete JSON payloads; an oversized item is returned separately."""
+    result, oversized, batch = [], [], []
     for item in items:
-        if batch and (len(batch) >= max_items or len(json.dumps(batch + [item], ensure_ascii=False)) > max_chars):
+        if len(json.dumps({field: [item]}, ensure_ascii=False)) > max_chars:
+            oversized.append(item)
+            continue
+        if batch and (len(batch) >= max_items or len(json.dumps({field: batch + [item]}, ensure_ascii=False)) > max_chars):
             result.append(batch)
             batch = []
         batch.append(item)
     if batch:
         result.append(batch)
-    return result
+    return result, oversized
 
 
-async def ask(complete, prompt, data, model, semaphore, counter, check=None):
+async def ask(complete, prompt, data, model, semaphore, counter, check=None, max_chars=None):
     """One model call with one correction; an answer that still breaks the
     format or check is no decision, never a guessed one."""
     correction = None
     for _ in range(2):
         payload = dict(data, correction=correction) if correction else data
+        text = json.dumps(payload, ensure_ascii=False)
+        if max_chars is not None and len(text) > max_chars:
+            return None
         async with semaphore:
             counter[0] += 1
-            raw = await complete(prompt, json.dumps(payload, ensure_ascii=False))
+            raw = await complete(prompt, text)
         try:
             answer = model.model_validate_json(strip_fences(raw))
             if check:
@@ -199,9 +206,10 @@ async def merge_synonyms(topics, complete, encoder, order, threshold=0.9, neighb
     items = [{"a": topics[i].id, "b": topics[j].id, "a_topic": card(topics[i]), "b_topic": card(topics[j])}
              for i, j in sorted(pairs)]
     semaphore, counter = asyncio.Semaphore(concurrency), [0]
+    batches, _ = batches_of(items, max_chars, 20, field="pairs")
     answers = await asyncio.gather(*(ask(complete, SYNONYM_PROMPT, {"pairs": batch}, SynonymResponse, semaphore, counter,
-                                         synonym_check(batch))
-                                     for batch in batches_of(items, max_chars, 20)))
+                                         synonym_check(batch), max_chars=max_chars)
+                                     for batch in batches))
     parent = {t.id: t.id for t in topics}
 
     def root(x):
@@ -316,16 +324,17 @@ async def attach_links(topics, edges, parents, complete, encoder, limit=8, max_c
         if not isinstance(data, dict) or not isinstance(data.get("topics"), list):
             raise ValueError("Ответ должен быть объектом со списком topics")
         allowed = {item["id"] for item in batch}
-        found, rejected, problems = {}, [], set()
+        found, rejected, problems, seen = {}, [], set(), {}
         for decision in data["topics"]:
             topic_id = decision.get("id") if isinstance(decision, dict) else None
             if not isinstance(topic_id, str) or topic_id not in allowed:
                 rejected.append(broken_record(None, True, decision, "Неизвестная тема"))
                 continue
+            seen[topic_id] = seen.get(topic_id, 0) + 1
             own, options = shown[topic_id]
             topic = by_id[topic_id]
             for field, before in (("prerequisites", True), ("dependents", False)):
-                entries = decision.get(field, [])
+                entries = decision.get(field)
                 if not isinstance(entries, list):
                     problems.add(topic_id)
                     rejected.append(broken_record(topic_id, before, entries, f"{field} должен быть списком"))
@@ -360,24 +369,32 @@ async def attach_links(topics, edges, parents, complete, encoder, limit=8, max_c
                         problems.add(topic_id)
                     else:
                         found.setdefault((source.id, target.id), record)
+        problems.update(topic_id for topic_id in allowed if seen.get(topic_id) != 1)
         return found, rejected, problems
 
     async def judge(batch):
         # A correction sees only damaged topics; confirmed links survive even
         # an empty or malformed second answer. Every record is checked alone.
-        found, rejected, correction = {}, [], None
+        found, rejected, correction, problems = {}, [], None, set()
         current = batch
         for attempt in range(2):
             payload = {"topics": current}
             if correction:
                 payload["correction"] = correction
+            text = json.dumps(payload, ensure_ascii=False)
+            if len(text) > max_chars:
+                problems = {item["id"] for item in current}
+                rejected.extend({"topic_id": topic_id, "via": "attach", "validation_error": "budget_exceeded",
+                                 "reason": "Исправление превышает max_chars; запрос не отправлен"} for topic_id in sorted(problems))
+                break
             async with semaphore:
                 counter[0] += 1
-                raw = await complete(ATTACH_PROMPT, json.dumps(payload, ensure_ascii=False))
+                raw = await complete(ATTACH_PROMPT, text)
             try:
                 accepted, broken, problems = check(current, raw)
             except (ValueError, TypeError) as error:
                 rejected.append(broken_record(None, True, raw, error))
+                problems = {item["id"] for item in current}
                 correction = "Верни только JSON со списком topics: " + " ".join(str(error).split())[:300]
                 continue
             for pair, record in accepted.items():
@@ -386,11 +403,17 @@ async def attach_links(topics, edges, parents, complete, encoder, limit=8, max_c
             if not problems or attempt:
                 break
             current = [item for item in batch if item["id"] in problems]
-            correction = "Исправь повреждённые связи только для переданных тем; приведи обе дословные цитаты из evidence."
+            correction = "Отрази каждую переданную тему ровно один раз с prerequisites и dependents; для связей приведи обе дословные цитаты из evidence."
+        rejected.extend({"topic_id": topic_id, "via": "attach", "validation_error": "incomplete_topic_decision",
+                         "reason": "Модель не вернула единственное полное решение темы после обработки и исправления"}
+                        for topic_id in sorted(problems))
         return found, rejected
 
-    answers = await asyncio.gather(*(judge(batch) for batch in batches_of(items, max_chars, 8)))
-    found, rejected = {}, []
+    batches, oversized = batches_of(items, max_chars, 8)
+    answers = await asyncio.gather(*(judge(batch) for batch in batches))
+    found = {}
+    rejected = [{"topic_id": item["id"], "via": "attach", "validation_error": "budget_exceeded",
+                 "reason": "Карточка превышает max_chars; запрос не отправлен"} for item in oversized]
     for accepted, broken in answers:
         for pair, record in accepted.items():
             found.setdefault(pair, record)
@@ -500,9 +523,10 @@ async def refresh_questions(hosts, complete, max_chars=20000, concurrency=2):
                 if administrative_question(q.question):
                     raise ValueError(f"Вопрос темы {q.id} проверяет организацию работы, а не содержание")
         return check
-    batches = batches_of(items, max_chars, 6)
+    batches, oversized = batches_of(items, max_chars, 6)
+    failed.update(item["id"] for item in oversized)
     answers = await asyncio.gather(*(ask(complete, QUESTION_PROMPT, {"topics": batch}, QuestionResponse,
-                                         semaphore, counter, checker(batch)) for batch in batches))
+                                         semaphore, counter, checker(batch), max_chars=max_chars) for batch in batches))
     by_id = {t.id: t for t in hosts}
     for batch, answer in zip(batches, answers):
         if answer is None:

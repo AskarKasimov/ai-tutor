@@ -1,6 +1,8 @@
 package gateway
 
 import (
+	"context"
+	"errors"
 	"testing"
 	"time"
 )
@@ -177,5 +179,79 @@ func TestExpiredJobClearsCancellationForReusedKey(t *testing.T) {
 	}
 	if len(s.jobs) != 0 || len(s.keys) != 0 || len(s.stateIDs) != 0 {
 		t.Fatalf("expired job indexes remain: jobs=%v keys=%v stateIDs=%v", s.jobs, s.keys, s.stateIDs)
+	}
+}
+
+// tieredFixture has a low "slow" instance and a high "fast" one.
+func tieredFixture() *Service {
+	s := schedulerFixture([]InstanceConfig{schedulerInstance("slow"), schedulerInstance("fast")}, nil)
+	s.cfg.Pools = map[string][]string{"low": {"slow"}, "medium": {"fast"}, "high": {"fast"}}
+	s.caller = NewCaller(s.cfg)
+	return s
+}
+
+func TestNextPrefersTheFreeInstanceThatAnswersSooner(t *testing.T) {
+	s := tieredFixture()
+	s.expected = map[string]float64{"slow": 10, "fast": 2}
+	s.jobs["low"] = schedulerJob("low", 1, false)
+	job, _, ok := s.next()
+	if !ok || job.Instance != "fast" {
+		t.Fatalf("a low request goes to the faster free instance, got %v", job)
+	}
+}
+
+func TestNextTriesAnInstanceWithoutSamplesFirst(t *testing.T) {
+	s := tieredFixture()
+	s.expected = map[string]float64{"fast": 1}
+	s.jobs["low"] = schedulerJob("low", 1, false)
+	if job, _, ok := s.next(); !ok || job.Instance != "slow" {
+		t.Fatalf("an unmeasured instance is tried first, got %v", job)
+	}
+}
+
+func TestNextUsesTheSlowerInstanceWhenTheFasterIsBusy(t *testing.T) {
+	s := tieredFixture()
+	s.expected = map[string]float64{"slow": 10, "fast": 2}
+	s.inFlight["fast"] = 1
+	s.jobs["low"] = schedulerJob("low", 1, false)
+	if job, _, ok := s.next(); !ok || job.Instance != "slow" {
+		t.Fatalf("load comes before speed, got %v", job)
+	}
+}
+
+func TestNextKeepsTheLessCapableTierOnEqualEstimates(t *testing.T) {
+	s := tieredFixture()
+	s.jobs["low"] = schedulerJob("low", 1, false)
+	if job, _, ok := s.next(); !ok || job.Instance != "slow" {
+		t.Fatalf("with no estimates the less capable tier goes first, got %v", job)
+	}
+}
+
+func TestObserveCallAveragesSuccessesAndTimeoutsOnly(t *testing.T) {
+	s := tieredFixture()
+	in := schedulerInstance("fast")
+	job := schedulerJob("j", 1, false)
+	s.observeCall(job, in, nil, 10*time.Second)
+	if s.expected["fast"] != 10 {
+		t.Fatalf("first sample = %v", s.expected["fast"])
+	}
+	s.observeCall(job, in, nil, 20*time.Second)
+	if got := s.expected["fast"]; got < 12.99 || got > 13.01 {
+		t.Fatalf("moving average = %v, want 13", got)
+	}
+	ignored := []*UpstreamFailure{
+		{BeforeSend: true, Err: context.DeadlineExceeded},
+		{Status: 429, Err: context.DeadlineExceeded},
+		{Status: 500, Err: errors.New("upstream 500")},
+	}
+	for _, failure := range ignored {
+		s.observeCall(job, in, failure, time.Millisecond)
+	}
+	if got := s.expected["fast"]; got < 12.99 || got > 13.01 {
+		t.Fatalf("failures that say nothing about speed changed the estimate: %v", got)
+	}
+	s.observeCall(job, in, &UpstreamFailure{Err: context.DeadlineExceeded}, 120*time.Second)
+	if got := s.expected["fast"]; got < 45.09 || got > 45.11 {
+		t.Fatalf("a timeout counts as a slow call: %v, want 45.1", got)
 	}
 }

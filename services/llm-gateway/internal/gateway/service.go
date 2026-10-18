@@ -95,6 +95,7 @@ type Service struct {
 	connections       chan struct{}
 	wake              chan struct{}
 	roundRobin        map[string]int
+	expected          map[string]float64 // moving average of each instance's upstream call time (spec, section 5)
 	ready             bool
 	brokerAvailable   bool
 	stateUncertain    bool
@@ -105,7 +106,7 @@ type Service struct {
 
 func NewService(cfg Config) (*Service, error) {
 	cfg.defaults()
-	s := &Service{cfg: cfg, jobs: map[string]*durableJob{}, keys: map[string]string{}, accepted: map[string]*durableRequest{}, stateIDs: map[string]string{}, waiters: map[string]chan struct{}{}, activeWaiters: map[string]int{}, cancelled: map[string]bool{}, jobCancels: map[string]context.CancelFunc{}, ephemeral: map[string]submitResult{}, inFlight: map[string]int{}, routeSelections: map[routeSelection]uint64{}, connections: make(chan struct{}, cfg.MaxConnections), wake: make(chan struct{}, 1), roundRobin: map[string]int{}, started: time.Now()}
+	s := &Service{cfg: cfg, jobs: map[string]*durableJob{}, keys: map[string]string{}, accepted: map[string]*durableRequest{}, stateIDs: map[string]string{}, waiters: map[string]chan struct{}{}, activeWaiters: map[string]int{}, cancelled: map[string]bool{}, jobCancels: map[string]context.CancelFunc{}, ephemeral: map[string]submitResult{}, inFlight: map[string]int{}, expected: map[string]float64{}, routeSelections: map[routeSelection]uint64{}, connections: make(chan struct{}, cfg.MaxConnections), wake: make(chan struct{}, 1), roundRobin: map[string]int{}, started: time.Now()}
 	brokers := cfg.KafkaBrokers
 	var err error
 	s.submitter, err = kgo.NewClient(kgo.SeedBrokers(brokers...), kgo.RequiredAcks(kgo.AllISRAcks()), kgo.RecordRetries(3), kgo.ProducerLinger(5*time.Millisecond), kgo.MaxBufferedRecords(cfg.MaxConnections), kgo.ProducerBatchMaxBytes(2<<20))
@@ -623,21 +624,27 @@ func (s *Service) next() (*durableJob, InstanceConfig, bool) {
 			if len(candidates) == 0 {
 				continue
 			}
+			// The free instance that answers soonest: least loaded, then the
+			// shortest expected call (an instance without samples first, so
+			// every one is tried), then the less capable tier, then round-robin.
+			rank := func(in InstanceConfig) (float64, float64, int) {
+				return float64(s.inFlight[in.ID]) / float64(in.MaxInFlight), s.expected[in.ID], s.instanceTier(in.ID)
+			}
 			sort.SliceStable(candidates, func(a, b int) bool {
-				ia, ib := candidates[a].ID, candidates[b].ID
-				ta, tb := s.instanceTier(ia), s.instanceTier(ib)
-				if ta != tb {
-					return ta < tb
+				ra, ea, ta := rank(candidates[a])
+				rb, eb, tb := rank(candidates[b])
+				if ra != rb {
+					return ra < rb
 				}
-				ra := float64(s.inFlight[ia]) / float64(candidates[a].MaxInFlight)
-				rb := float64(s.inFlight[ib]) / float64(candidates[b].MaxInFlight)
-				return ra < rb
+				if ea != eb {
+					return ea < eb
+				}
+				return ta < tb
 			})
-			bestTier := s.instanceTier(candidates[0].ID)
-			best := float64(s.inFlight[candidates[0].ID]) / float64(candidates[0].MaxInFlight)
+			bestRatio, bestExpected, bestTier := rank(candidates[0])
 			ties := make([]InstanceConfig, 0, len(candidates))
 			for _, candidate := range candidates {
-				if s.instanceTier(candidate.ID) == bestTier && float64(s.inFlight[candidate.ID])/float64(candidate.MaxInFlight) == best {
+				if r, e, t := rank(candidate); r == bestRatio && e == bestExpected && t == bestTier {
 					ties = append(ties, candidate)
 				}
 			}
@@ -817,8 +824,10 @@ func (s *Service) execute(ctx context.Context, j *durableJob, in InstanceConfig)
 		return
 	}
 	callCtx, cancel := context.WithDeadline(ctx, j.Deadline)
+	started := time.Now()
 	result, failure := s.caller.call(callCtx, in, j.Request, j.ID, j.ProbeReserved)
 	cancel()
+	s.observeCall(j, in, failure, time.Since(started))
 	if failure != nil {
 		if s.isCanceled(j.ID) {
 			s.releaseSlot(j)
@@ -883,6 +892,29 @@ func (s *Service) execute(ctx context.Context, j *durableJob, in InstanceConfig)
 	if err := s.persistResult(ctx, j, 200, result.Body, "succeeded"); err == nil || errors.Is(err, errCanceledJob) {
 		s.releaseSlot(j)
 	}
+}
+
+// expectedAlpha weighs the newest call in an instance's expected duration.
+const expectedAlpha = 0.3
+
+// observeCall updates the expected duration of an instance with a finished
+// call. A success and an upstream timeout are samples (a timeout marks a slow
+// instance); a failure before sending, a 429, another upstream error and a
+// cancelled request say nothing about speed.
+func (s *Service) observeCall(j *durableJob, in InstanceConfig, failure *UpstreamFailure, elapsed time.Duration) {
+	if failure != nil && (failure.BeforeSend || failure.Status == 429 || !errors.Is(failure.Err, context.DeadlineExceeded) || s.isCanceled(j.ID)) {
+		return
+	}
+	seconds := elapsed.Seconds()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.expected == nil {
+		s.expected = make(map[string]float64)
+	}
+	if previous, ok := s.expected[in.ID]; ok {
+		seconds = expectedAlpha*seconds + (1-expectedAlpha)*previous
+	}
+	s.expected[in.ID] = seconds
 }
 
 func uncertainUpstreamOutcome(failure *UpstreamFailure) bool {
@@ -1376,6 +1408,13 @@ func (s *Service) writeMetrics(w http.ResponseWriter) {
 			open = 1
 		}
 		fmt.Fprintf(w, "gateway_instance_in_flight{instance=%q} %d\ngateway_instance_capacity{instance=%q} %d\ngateway_circuit_open{instance=%q} %d\n", in.ID, s.inFlight[in.ID], in.ID, in.MaxInFlight, in.ID, open)
+	}
+	fmt.Fprintln(w, "# HELP gateway_instance_expected_seconds Moving average of an instance's upstream call time; the scheduler prefers the free instance that answers sooner.")
+	fmt.Fprintln(w, "# TYPE gateway_instance_expected_seconds gauge")
+	for _, in := range s.cfg.Instances {
+		if seconds, ok := s.expected[in.ID]; ok {
+			fmt.Fprintf(w, "gateway_instance_expected_seconds{instance=%q} %.3f\n", in.ID, seconds)
+		}
 	}
 	fmt.Fprintln(w, "# HELP gateway_route_eligible Whether an instance can serve requests at the given complexity under the configured pools.")
 	fmt.Fprintln(w, "# TYPE gateway_route_eligible gauge")

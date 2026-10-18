@@ -12,18 +12,18 @@ import { useDiagnosticResultQuery } from '@/features/diagnostic-session'
 import { TrainerShell } from './trainer-shared'
 import styles from './geek-result.module.scss'
 
-// The order of the status summary: from mastered to not checked.
+// The order of the status summary: from mastered to unclear. Topics the
+// diagnostic never reached (unchecked) are not part of the feedback.
 const statusOrder: TopicStatus[] = [
   'independent',
   'credited_by_parent',
   'assisted',
   'gap',
   'insufficient',
-  'unchecked',
 ]
 
 // The outcome of a completed diagnostic: the preliminary course grade, the
-// gaps to work on and every topic with its status.
+// gaps to work on and every checked topic with its status.
 export function GeekResult({
   userId,
   sessionId,
@@ -45,10 +45,12 @@ export function GeekResult({
   const { t } = useTranslation()
   const query = useDiagnosticResultQuery(userId, sessionId)
   const result = query.data
+  const checked =
+    result?.topics.filter((topic) => topic.status !== 'unchecked') ?? []
   const counts = statusOrder
     .map((status) => ({
       status,
-      count: result?.topics.filter((topic) => topic.status === status).length,
+      count: checked.filter((topic) => topic.status === status).length,
     }))
     .filter(({ count }) => count)
   return (
@@ -206,33 +208,41 @@ export function GeekResult({
                 <Heading as="h2" size="5" id="topics-title">
                   {t('geek.topicsTitle')}
                 </Heading>
-                <ul className={styles.topics}>
-                  {result.topics.map((topic) => (
-                    <li
-                      key={topic.nodeId}
-                      className={styles.topic}
-                      data-status={topic.status}
-                      data-top={topic.topLevel || undefined}
-                    >
-                      <span className={styles.topicTitle}>
-                        <Text className={styles.topicName}>{topic.title}</Text>
-                        <span className={styles.topicMeta}>
-                          <span className={styles.status}>
-                            {t(`geek.status.${topic.status}`)}
+                {checked.length === 0 ? (
+                  <Text as="p" className={styles.lead}>
+                    {t('geek.topicsEmpty')}
+                  </Text>
+                ) : (
+                  <ul className={styles.topics}>
+                    {checked.map((topic) => (
+                      <li
+                        key={topic.nodeId}
+                        className={styles.topic}
+                        data-status={topic.status}
+                        data-top={topic.topLevel || undefined}
+                      >
+                        <span className={styles.topicTitle}>
+                          <Text className={styles.topicName}>
+                            {topic.title}
+                          </Text>
+                          <span className={styles.topicMeta}>
+                            <span className={styles.status}>
+                              {t(`geek.status.${topic.status}`)}
+                            </span>
+                            {topic.topLevel && (
+                              <Text className={styles.topLevel}>
+                                {t('geek.topLevel')}
+                              </Text>
+                            )}
                           </span>
-                          {topic.topLevel && (
-                            <Text className={styles.topLevel}>
-                              {t('geek.topLevel')}
-                            </Text>
-                          )}
                         </span>
-                      </span>
-                      <span className={styles.topicGrade}>
-                        {topic.grade ?? '—'}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
+                        <span className={styles.topicGrade}>
+                          {topic.grade ?? '—'}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </section>
             </div>
           </>

@@ -9,6 +9,9 @@
   --cosmos-ink: #12233a;
   --result-radius: 24px;
   --result-track: #e4ebf3;
+  // Darker than --app-muted: 6.3:1 on white and at least 5.3:1 on the hero
+  // gradient and its tiles, so small explanatory text stays readable.
+  --result-muted: #536175;
 
   display: grid;
   align-content: start;
@@ -27,7 +30,7 @@
 }
 .eyebrow {
   margin: 0;
-  color: var(--app-muted);
+  color: var(--result-muted);
   font-size: 13px;
   font-weight: 700;
   line-height: 1.4;
@@ -41,12 +44,12 @@
 }
 .muted {
   margin: 0;
-  color: var(--app-muted);
+  color: var(--result-muted);
 }
 .lead {
   margin: 0;
   max-width: 62ch;
-  color: var(--app-muted);
+  color: var(--result-muted);
 }
 
 // The grade: a soft nebula with stars and orbits behind the score ring.
@@ -161,7 +164,7 @@
 .note {
   margin: 0;
   max-width: 46ch;
-  color: var(--app-muted);
+  color: var(--result-muted);
   font-size: 14px;
 }
 
@@ -190,7 +193,7 @@
   line-height: 1.1;
 }
 .statLabel {
-  color: var(--app-muted);
+  color: var(--result-muted);
   font-size: 13px;
   line-height: 1.3;
 }
@@ -301,12 +304,14 @@
 }
 .materials {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  // A column never asks for more than the card has on a narrow phone.
+  grid-template-columns: repeat(auto-fit, minmax(min(200px, 100%), 1fr));
   gap: 12px 20px;
   padding-top: 4px;
 }
 .materialGroup {
   display: grid;
+  min-width: 0;
   align-content: start;
   gap: 8px;
   ul {
@@ -319,7 +324,7 @@
 }
 .groupLabel {
   margin: 0;
-  color: var(--app-muted);
+  color: var(--result-muted);
   font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.05em;
@@ -327,6 +332,7 @@
 }
 .material {
   display: grid;
+  min-width: 0;
   gap: 2px;
 }
 .materialButton {
@@ -362,7 +368,7 @@
 }
 .materialMeta {
   padding-left: 12px;
-  color: var(--app-muted);
+  color: var(--result-muted);
   font-size: 13px;
 }
 
@@ -397,10 +403,12 @@
 }
 .topicTitle {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 6px;
   min-width: 0;
 }
 .topicMeta {
+  min-width: 0;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -415,19 +423,21 @@
   font-weight: 700;
 }
 .topLevel {
-  color: var(--app-muted);
+  color: var(--result-muted);
   font-size: 12px;
   line-height: 1.4;
 }
 .status {
   padding: 3px 10px;
-  border-radius: 999px;
+  border-radius: 10px;
   color: var(--status-ink);
   background: var(--status-soft);
   font-size: 12px;
   font-weight: 600;
   line-height: 1.4;
-  white-space: nowrap;
+  // A long status wraps inside the title column instead of reaching the grade.
+  max-width: 100%;
+  overflow-wrap: break-word;
 }
 .topicGrade {
   display: grid;

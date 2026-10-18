@@ -269,6 +269,13 @@ function geekBackend(
             grade: 'B',
             top_level: true,
           },
+          {
+            node_id: 'annealing',
+            title: 'Имитация отжига',
+            status: 'unchecked',
+            grade: null,
+            top_level: true,
+          },
         ],
         gaps: [{ node_id: 'heuristic', title: 'Эвристическая функция' }],
       })
@@ -452,6 +459,9 @@ it('runs a diagnostic from the home page to the result and back to the history',
   const topics = screen.getByRole('region', { name: 'Все темы' })
   expect(within(topics).getByText('С помощью')).toBeVisible()
   expect(within(topics).getByText('Засчитано по основной теме')).toBeVisible()
+  // Topics the diagnostic never reached are not part of the feedback.
+  expect(within(topics).queryByText('Имитация отжига')).not.toBeInTheDocument()
+  expect(screen.queryByText('Не проверялась')).not.toBeInTheDocument()
 
   fireEvent.click(screen.getAllByRole('button', { name: 'На главную' })[0])
   expect(await screen.findByText('Оценка B · 81%')).toBeVisible()

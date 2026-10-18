@@ -585,3 +585,26 @@ func TestGapOverAnUnknownPrerequisiteIsNotListed(t *testing.T) {
 		t.Fatalf("base = %s gaps = %v", e.Nodes["base"].Status, e.Gaps())
 	}
 }
+
+func TestNodePreparedQuestionsBelongToTheMainQuestion(t *testing.T) {
+	cases := []struct {
+		name           string
+		node           Node
+		main, rephrase string
+		prepared       bool
+	}{
+		{"both", Node{Questions: []string{" Почему? ", "Ещё"}, Rephrase: " Отчего? "}, "Почему?", "Отчего?", true},
+		{"no rephrase", Node{Questions: []string{"Почему?"}}, "Почему?", "", false},
+		// A main question generated at runtime is rephrased at runtime too.
+		{"no main question", Node{Rephrase: "Отчего?"}, "", "", false},
+		{"blank main question", Node{Questions: []string{"  "}, Rephrase: "Отчего?"}, "", "", false},
+		{"blank rephrase", Node{Questions: []string{"Почему?"}, Rephrase: " "}, "Почему?", "", false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if c.node.MainQuestion() != c.main || c.node.PreparedRephrase() != c.rephrase || c.node.Prepared() != c.prepared {
+				t.Fatalf("main=%q rephrase=%q prepared=%v", c.node.MainQuestion(), c.node.PreparedRephrase(), c.node.Prepared())
+			}
+		})
+	}
+}

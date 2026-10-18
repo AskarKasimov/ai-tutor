@@ -1,4 +1,4 @@
-// Package storage caches synthesized Geek turns in S3.
+// Package storage keeps synthesized Geek turns and prepared graph texts in S3.
 package storage
 
 import (
@@ -37,4 +37,29 @@ func (a *Audio) Put(ctx context.Context, key string, data []byte) error {
 	}
 	httpx.LoggerFromContext(ctx).Info("geek audio cached", zap.String("key", key), zap.Int("bytes", len(data)))
 	return nil
+}
+
+// Prepared keeps the texts prepared for a graph version in S3.
+type Prepared struct {
+	client *s3.Client
+	bucket string
+}
+
+func NewPrepared(client *s3.Client, bucket string) *Prepared {
+	return &Prepared{client: client, bucket: bucket}
+}
+
+func (p *Prepared) Get(ctx context.Context, key string) ([]byte, bool, error) {
+	data, err := p.client.GetObject(ctx, p.bucket, key)
+	if errors.Is(err, s3.ErrNotFound) {
+		return nil, false, nil
+	}
+	if err != nil {
+		return nil, false, err
+	}
+	return data, true, nil
+}
+
+func (p *Prepared) Put(ctx context.Context, key string, data []byte) error {
+	return p.client.PutObject(ctx, p.bucket, key, "application/json", data)
 }

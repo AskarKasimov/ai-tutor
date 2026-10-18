@@ -1,11 +1,16 @@
 package app
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
+
+	geekapp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/geek/application"
+	geekgraph "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/geek/infrastructure/graph"
 )
 
 const geekFixture = "../../../../api/fixtures/course-graph.json"
@@ -48,6 +53,15 @@ func decodeSession(t *testing.T, w *httptest.ResponseRecorder) geekSession {
 func geekFlow(t *testing.T, f *fixture, access *http.Cookie, check func(method, path string, w *httptest.ResponseRecorder)) string {
 	t.Helper()
 	start := `{"subject_id":"subject:test"}`
+	// The fixture is served once its rephrases are prepared (decision of
+	// 18.10.2026); until then a diagnostic does not start.
+	f.app.fixture = geekapp.NewPreparedGraph(geekgraph.Fixture{Path: f.app.cfg.GeekGraphFixture}, f.app.examiner, nil, f.app.warmer, nil)
+	notReady := f.keyed("POST", "/diagnostic-sessions", "geek-not-ready", start, access)
+	if notReady.Code != http.StatusConflict || !strings.Contains(notReady.Body.String(), "GRAPH_NOT_READY") {
+		t.Fatalf("start before the fixture is prepared: %d %s", notReady.Code, notReady.Body.String())
+	}
+	check("POST", "/diagnostic-sessions", notReady)
+	prepareFixture(t, f)
 	created := f.keyed("POST", "/diagnostic-sessions", "geek-start", start, access)
 	if created.Code != http.StatusCreated {
 		t.Fatalf("start: %d %s", created.Code, created.Body.String())
@@ -133,4 +147,28 @@ func geekFlow(t *testing.T, f *fixture, access *http.Cookie, check func(method, 
 	}
 	check("GET", "/diagnostic-sessions/{id}/turns/{turn_id}/audio", f.request("GET", path+"/turns/"+studentTurn+"/audio", "", access))
 	return session.ID
+}
+
+// prepareFixture runs the preparation of the fixture until it is served.
+func prepareFixture(t *testing.T, f *fixture) {
+	t.Helper()
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() { _ = f.app.fixture.Run(ctx); close(done) }()
+	t.Cleanup(func() { cancel(); <-done })
+	for deadline := time.Now().Add(10 * time.Second); ; time.Sleep(5 * time.Millisecond) {
+		g, ok, err := f.app.fixture.Current(ctx, "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if ok {
+			if left := geekapp.Unprepared(g); len(left) != 0 {
+				t.Fatalf("served with unprepared nodes %v", left)
+			}
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the fixture was not prepared")
+		}
+	}
 }

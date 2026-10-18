@@ -156,7 +156,7 @@ func principal(w http.ResponseWriter, r *http.Request) (user.User, bool) {
 
 // Start handles POST /diagnostic-sessions.
 // @Summary Начать или продолжить диагностику
-// @Description Устный экзамен Geek по графу курса. У студента одна активная диагностика на курс: если она есть, возвращается она (200), иначе создаётся новая с первым вопросом (201). 409 GRAPH_NOT_READY — граф курса не собран.
+// @Description Устный экзамен Geek по графу курса. У студента одна активная диагностика на курс: если она есть, возвращается она (200), иначе создаётся новая с первым вопросом (201). 409 GRAPH_NOT_READY — граф курса не собран или его вопросы ещё готовятся.
 // @ID startDiagnosticSession
 // @Tags Диагностика
 // @Security accessCookie

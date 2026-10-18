@@ -34,7 +34,9 @@ func (g *Gateway) Complete(ctx context.Context, system, prompt string) (string, 
 			{Role: llmgatewayv1.Role_ROLE_SYSTEM, Content: proto.String(system)},
 			{Role: llmgatewayv1.Role_ROLE_USER, Content: proto.String(prompt)},
 		},
-		Complexity: llmgatewayv1.Complexity_COMPLEXITY_MEDIUM,
+		// Low runs on any free instance: the gateway moves a low request up to
+		// medium or high when low is busy (decision of 18.10.2026).
+		Complexity: llmgatewayv1.Complexity_COMPLEXITY_LOW,
 		Parameters: &llmgatewayv1.GenerationParameters{
 			Temperature:    proto.Float64(0.2),
 			ResponseFormat: llmgatewayv1.ResponseFormat_RESPONSE_FORMAT_JSON_OBJECT.Enum(),

@@ -182,8 +182,8 @@ func TestTranslateThroughGateway(t *testing.T) {
 		t.Errorf("expected translated content in result, got %q", result)
 	}
 	r := gateway.request
-	if r.GetComplexity() != llmgatewayv1.Complexity_COMPLEXITY_MEDIUM {
-		t.Errorf("complexity = %v, want medium", r.GetComplexity())
+	if r.GetComplexity() != llmgatewayv1.Complexity_COMPLEXITY_LOW {
+		t.Errorf("complexity = %v, want low", r.GetComplexity())
 	}
 	if len(r.GetMessages()) != 2 || r.GetMessages()[0].GetRole() != llmgatewayv1.Role_ROLE_SYSTEM ||
 		!strings.Contains(r.GetMessages()[0].GetContent(), "ПРАВИЛА ПЕРЕВОДА") || r.GetMessages()[1].GetRole() != llmgatewayv1.Role_ROLE_USER {

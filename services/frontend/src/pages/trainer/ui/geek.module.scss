@@ -2,6 +2,8 @@
 // answers as dark bubbles on the right and the answer field at the bottom; and
 // the result card.
 .dialog {
+  // The chat follows its own end; native anchoring would jump before animation.
+  overflow-anchor: none;
   display: flex;
   flex-direction: column;
   padding-bottom: 0 !important;

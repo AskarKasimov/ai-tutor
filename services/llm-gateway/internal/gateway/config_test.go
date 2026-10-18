@@ -146,3 +146,22 @@ func TestModelRulesGoThroughTheSameFieldCheck(t *testing.T) {
 		t.Fatalf("a rule with a gateway field was accepted: %v", err)
 	}
 }
+
+func TestLoadConfigRejectsInvalidServerExecutionLimit(t *testing.T) {
+	for _, limit := range []string{"soon", "-1s"} {
+		t.Run(limit, func(t *testing.T) {
+			data, err := os.ReadFile(filepath.Join("..", "..", "config.example.json"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			data = []byte(strings.Replace(string(data), `"server_execution_limit": "0s"`, `"server_execution_limit": "`+limit+`"`, 1))
+			path := filepath.Join(t.TempDir(), "config.json")
+			if err := os.WriteFile(path, data, 0600); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := LoadConfig(path); err == nil || !strings.Contains(err.Error(), "server_execution_limit") {
+				t.Fatalf("error = %v, want invalid server_execution_limit", err)
+			}
+		})
+	}
+}

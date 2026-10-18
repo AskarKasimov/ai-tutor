@@ -328,10 +328,10 @@ func (s *Service) install(j *durableJob) {
 		copy.Status = "failed"
 		copy.Error = &storedError{Status: 502, Type: "server_error", Code: "execution_interrupted", Message: "LLM execution was interrupted by gateway restart."}
 		copy.SlotHeld = true
+		copy.FinishedAt = time.Now()
 	}
 	if !isPending(copy.Status) && copy.SlotHeld && s.uncertainSlotExpired(&copy, time.Now()) {
-		// Keep uncertain upstream attempts reserved only until their configured
-		// maximum execution time from the start of the attempt.
+		// Only a verified server bound can release an uncertain upstream slot.
 		copy.SlotHeld = false
 	}
 	s.jobs[j.ID] = &copy
@@ -1111,17 +1111,15 @@ func (s *Service) releaseSlot(j *durableJob) {
 }
 
 func (s *Service) uncertainSlotExpired(j *durableJob, now time.Time) bool {
-	if j == nil || !j.SlotHeld || j.StartedAt.IsZero() {
+	if j == nil || !j.SlotHeld || j.FinishedAt.IsZero() {
 		return false
 	}
 	for _, in := range s.cfg.Instances {
 		if in.ID == j.Instance {
-			timeout := in.Timeout
-			if timeout <= 0 {
-				timeout = s.cfg.UpstreamTimeout
-			}
-			if timeout > 0 {
-				return !now.Before(j.StartedAt.Add(timeout))
+			if in.ServerExecutionLimit > 0 {
+				// Reserve a full server window after the last uncertain outcome. The
+				// first attempt's StartedAt cannot bound a later retry or time in IO.
+				return !now.Before(j.FinishedAt.Add(in.ServerExecutionLimit))
 			}
 			return false
 		}

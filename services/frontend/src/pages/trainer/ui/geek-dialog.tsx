@@ -125,7 +125,10 @@ function Dialogue({
   // While the student records or checks a spoken answer, Geek stays silent.
   const [capturing, setCapturing] = useState(false)
   const dialog = useRef<HTMLElement>(null)
+  const end = useRef<HTMLDivElement>(null)
   const followEnd = useRef(true)
+  const scrollInitialized = useRef(false)
+  const autoScrolling = useRef(false)
   // A rebuilt course graph cancels the diagnostic; the student learns it from
   // a pop-up the moment the dialogue sees it, not from a failed answer.
   const [courseUpdated, setCourseUpdated] = useState(false)
@@ -194,10 +197,50 @@ function Dialogue({
     session.status === 'completed' &&
     !hiddenId &&
     (lastTurn?.speaker !== 'geek' || spoken === lastTurn.id)
+  useEffect(() => {
+    // On mobile the card grows with its contents and the document scrolls.
+    const trackPageScroll = () => {
+      const container = dialog.current
+      if (
+        autoScrolling.current ||
+        !container ||
+        container.scrollHeight > container.clientHeight
+      )
+        return
+      const page = document.scrollingElement ?? document.documentElement
+      followEnd.current =
+        page.scrollHeight - page.scrollTop - page.clientHeight < 96
+    }
+    // Animation scroll events are not a request to stop following the chat.
+    // The next user interaction hands control back to their scroll position.
+    const resumeUserScroll = () => {
+      autoScrolling.current = false
+    }
+    const inputEvents = [
+      'wheel',
+      'touchstart',
+      'pointerdown',
+      'keydown',
+    ] as const
+    for (const event of inputEvents)
+      window.addEventListener(event, resumeUserScroll, { passive: true })
+    window.addEventListener('scroll', trackPageScroll, { passive: true })
+    return () => {
+      window.removeEventListener('scroll', trackPageScroll)
+      for (const event of inputEvents)
+        window.removeEventListener(event, resumeUserScroll)
+    }
+  }, [])
   useLayoutEffect(() => {
-    const container = dialog.current
-    if (container && followEnd.current)
-      container.scrollTop = container.scrollHeight
+    if (!followEnd.current) return
+    const reducedMotion = window.matchMedia(
+      '(prefers-reduced-motion: reduce)',
+    ).matches
+    const behavior =
+      scrollInitialized.current && !reducedMotion ? 'smooth' : 'auto'
+    autoScrolling.current = behavior === 'smooth'
+    end.current?.scrollIntoView({ block: 'end', behavior })
+    scrollInitialized.current = true
   }, [
     session.turns.length,
     answer.isPending,
@@ -235,6 +278,7 @@ function Dialogue({
       className={styles.dialog}
       aria-labelledby="dialog-title"
       onScroll={(event) => {
+        if (autoScrolling.current) return
         const container = event.currentTarget
         followEnd.current =
           container.scrollHeight -
@@ -323,6 +367,7 @@ function Dialogue({
           onTranscription={setTranscribing}
         />
       )}
+      <div ref={end} aria-hidden="true" />
     </main>
   )
 }

@@ -1022,6 +1022,136 @@ it('does not let a stopped voice of an older reply show the next one', async () 
   }
 })
 
+it('keeps the newest reply in view when the document scrolls on mobile', async () => {
+  const { fetch } = geekBackend()
+  vi.stubGlobal('fetch', fetch)
+  const page = document.documentElement
+  Object.defineProperty(page, 'scrollHeight', {
+    configurable: true,
+    value: 2200,
+  })
+  Object.defineProperty(page, 'clientHeight', {
+    configurable: true,
+    value: 800,
+  })
+  const scroll = vi
+    .spyOn(Element.prototype, 'scrollIntoView')
+    .mockImplementation(function (this: Element) {
+      if (this.closest('main[aria-labelledby="dialog-title"]'))
+        page.scrollTop = 1400
+    })
+  try {
+    renderApp()
+    await start()
+    await answerField()
+    page.scrollTop = 1000
+    await answerByText('Перестанет быть оптимальным')
+    await screen.findByText('А где допустимая эвристика не поможет?')
+    expect(page.scrollTop).toBe(1400)
+    expect(scroll).toHaveBeenLastCalledWith({
+      block: 'end',
+      behavior: 'smooth',
+    })
+  } finally {
+    scroll.mockRestore()
+    Reflect.deleteProperty(page, 'scrollHeight')
+    Reflect.deleteProperty(page, 'clientHeight')
+    page.scrollTop = 0
+  }
+})
+
+it('does not pull a mobile reader away from older replies', async () => {
+  const { fetch } = geekBackend()
+  vi.stubGlobal('fetch', fetch)
+  const page = document.documentElement
+  Object.defineProperty(page, 'scrollHeight', {
+    configurable: true,
+    value: 2200,
+  })
+  Object.defineProperty(page, 'clientHeight', {
+    configurable: true,
+    value: 800,
+  })
+  vi.spyOn(Element.prototype, 'scrollIntoView').mockImplementation(function (
+    this: Element,
+  ) {
+    if (this.closest('main[aria-labelledby="dialog-title"]'))
+      page.scrollTop = 1400
+  })
+  try {
+    renderApp()
+    await start()
+    await answerField()
+    page.scrollTop = 0
+    fireEvent.wheel(window)
+    fireEvent.scroll(window)
+    await answerByText('Перестанет быть оптимальным')
+    await screen.findByText('А где допустимая эвристика не поможет?')
+    expect(page.scrollTop).toBe(0)
+    page.scrollTop = 1400
+    fireEvent.wheel(window)
+    fireEvent.scroll(window)
+    page.scrollTop = 1200
+    await answerByText('Эвристическая функция')
+    await screen.findByText('Что такое', { exact: false })
+    expect(page.scrollTop).toBe(1400)
+  } finally {
+    Reflect.deleteProperty(page, 'scrollHeight')
+    Reflect.deleteProperty(page, 'clientHeight')
+    page.scrollTop = 0
+  }
+})
+
+it('keeps following a reply arriving during automatic scrolling', async () => {
+  geekBackend()
+  const page = document.documentElement
+  Object.defineProperty(page, 'scrollHeight', {
+    configurable: true,
+    value: 2200,
+  })
+  Object.defineProperty(page, 'clientHeight', {
+    configurable: true,
+    value: 800,
+  })
+  const scroll = vi
+    .spyOn(Element.prototype, 'scrollIntoView')
+    .mockImplementation(() => {})
+  try {
+    renderApp()
+    await start()
+    await answerField()
+    await answerByText('Перестанет быть оптимальным')
+    await screen.findByText('А где допустимая эвристика не поможет?')
+    // An animation emits scroll events before reaching its destination.
+    page.scrollTop = 1000
+    fireEvent.scroll(window)
+    const previousCalls = scroll.mock.calls.length
+    await answerByText('Эвристическая функция')
+    await screen.findByText('Что такое', { exact: false })
+    expect(scroll.mock.calls.length).toBeGreaterThan(previousCalls)
+  } finally {
+    Reflect.deleteProperty(page, 'scrollHeight')
+    Reflect.deleteProperty(page, 'clientHeight')
+    page.scrollTop = 0
+  }
+})
+
+it('honors reduced motion when following new messages', async () => {
+  geekBackend()
+  const matchMedia = window.matchMedia
+  vi.spyOn(window, 'matchMedia').mockImplementation((query) => ({
+    ...matchMedia(query),
+    matches: query === '(prefers-reduced-motion: reduce)',
+  }))
+  const scroll = vi.spyOn(Element.prototype, 'scrollIntoView')
+  renderApp()
+  await start()
+  await answerField()
+  await answerByText('Перестанет быть оптимальным')
+  await screen.findByText('А где допустимая эвристика не поможет?')
+  expect(scroll).toHaveBeenLastCalledWith({ block: 'end', behavior: 'auto' })
+})
+
 it('shows an accepted answer once while its submission is still pending', async () => {
   const { control, fetch } = geekBackend()
   const queryClient = renderApp()

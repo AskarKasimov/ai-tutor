@@ -91,3 +91,58 @@ func TestConfigValidationGuardsTheReasoningEffortBody(t *testing.T) {
 		}
 	}
 }
+
+func TestLoadAppliesTheModelRulesFromGit(t *testing.T) {
+	example := filepath.Join("..", "..", "config.example.json")
+	rules := filepath.Join("..", "..", "models.json")
+	c, err := Load(example, rules, true)
+	if err != nil {
+		t.Fatalf("Load(example, models.json) error = %v", err)
+	}
+	for _, in := range c.Instances {
+		if in.ID == "qwen-3-6" {
+			var kwargs struct {
+				EnableThinking *bool `json:"enable_thinking"`
+			}
+			if err := json.Unmarshal(in.ReasoningEffortBody["low"]["chat_template_kwargs"], &kwargs); err != nil || kwargs.EnableThinking == nil || *kwargs.EnableThinking {
+				t.Fatalf("qwen-3-6 low body = %v, %v", in.ReasoningEffortBody, err)
+			}
+		}
+		if in.ID != "qwen-3-6" && len(in.ReasoningEffortBody) != 0 {
+			t.Fatalf("%s got a rule of another model: %v", in.ID, in.ReasoningEffortBody)
+		}
+	}
+	// A missing file is fine at the default path, an error when it was asked for.
+	missing := filepath.Join(t.TempDir(), "models.json")
+	if _, err := Load(example, missing, false); err != nil {
+		t.Fatalf("missing default rules: %v", err)
+	}
+	if _, err := Load(example, missing, true); err == nil {
+		t.Fatal("missing required rules were accepted")
+	}
+}
+
+func TestTheInstanceConfigWinsOverTheModelRule(t *testing.T) {
+	c := Config{Instances: []InstanceConfig{{ID: "a", Model: "m",
+		ReasoningEffortBody: map[string]map[string]json.RawMessage{"low": {"x": json.RawMessage(`"instance"`)}}}}}
+	var rules ModelRules
+	if err := json.Unmarshal([]byte(`{"models":{"m":{"reasoning_effort_body":{"low":{"x":"rule"},"medium":{"y":"rule"}}}}}`), &rules); err != nil {
+		t.Fatal(err)
+	}
+	c.applyModelRules(rules)
+	body := c.Instances[0].ReasoningEffortBody
+	if string(body["low"]["x"]) != `"instance"` || string(body["medium"]["y"]) != `"rule"` {
+		t.Fatalf("merged body = %v", body)
+	}
+}
+
+func TestModelRulesGoThroughTheSameFieldCheck(t *testing.T) {
+	dir := t.TempDir()
+	rules := filepath.Join(dir, "models.json")
+	if err := os.WriteFile(rules, []byte(`{"models":{"Qwen/Qwen3.6-35B-A3B":{"reasoning_effort_body":{"low":{"urgent":true}}}}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(filepath.Join("..", "..", "config.example.json"), rules, true); err == nil || !strings.Contains(err.Error(), "reasoning_effort_body") {
+		t.Fatalf("a rule with a gateway field was accepted: %v", err)
+	}
+}

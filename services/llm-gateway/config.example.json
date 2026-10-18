@@ -52,14 +52,7 @@
         "json_object"
       ],
       "context_window": 128000,
-      "timeout": "120s",
-      "reasoning_effort_body": {
-        "low": {
-          "chat_template_kwargs": {
-            "enable_thinking": false
-          }
-        }
-      }
+      "timeout": "120s"
     },
     {
       "id": "gemma",

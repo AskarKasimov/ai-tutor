@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"net/url"
 	"os"
 	"time"
@@ -69,7 +70,62 @@ func (i *InstanceConfig) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+// ModelRules are upstream behaviours of a model, kept in Git (models.json) and
+// baked into the image: how a model turns its reasoning off is a property of
+// the model, not of one deployment's config.json. They apply to every
+// instance serving the model; the instance's own config wins per level.
+type ModelRules struct {
+	Models map[string]struct {
+		ReasoningEffortBody map[string]map[string]json.RawMessage `json:"reasoning_effort_body"`
+	} `json:"models"`
+}
+
+// Load reads config.json and the model rules and checks the result. A rules
+// file that is missing is no error unless its path was given explicitly.
+func Load(configPath, rulesPath string, rulesRequired bool) (Config, error) {
+	c, err := readConfig(configPath)
+	if err != nil {
+		return c, err
+	}
+	var rules ModelRules
+	b, err := os.ReadFile(rulesPath)
+	switch {
+	case errors.Is(err, fs.ErrNotExist) && !rulesRequired:
+	case err != nil:
+		return c, fmt.Errorf("read model rules: %w", err)
+	default:
+		if err := json.Unmarshal(b, &rules); err != nil {
+			return c, fmt.Errorf("decode model rules: %w", err)
+		}
+	}
+	c.applyModelRules(rules)
+	return c, c.Validate()
+}
+
+func (c *Config) applyModelRules(rules ModelRules) {
+	for i := range c.Instances {
+		in := &c.Instances[i]
+		for level, body := range rules.Models[in.Model].ReasoningEffortBody {
+			if _, set := in.ReasoningEffortBody[level]; set {
+				continue
+			}
+			if in.ReasoningEffortBody == nil {
+				in.ReasoningEffortBody = map[string]map[string]json.RawMessage{}
+			}
+			in.ReasoningEffortBody[level] = body
+		}
+	}
+}
+
 func LoadConfig(path string) (Config, error) {
+	c, err := readConfig(path)
+	if err != nil {
+		return c, err
+	}
+	return c, c.Validate()
+}
+
+func readConfig(path string) (Config, error) {
 	var c Config
 	b, err := os.ReadFile(path)
 	if err != nil {
@@ -79,7 +135,7 @@ func LoadConfig(path string) (Config, error) {
 		return c, fmt.Errorf("decode gateway config: %w", err)
 	}
 	c.defaults()
-	return c, c.Validate()
+	return c, nil
 }
 
 func (c *Config) UnmarshalJSON(data []byte) error {

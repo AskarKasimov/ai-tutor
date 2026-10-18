@@ -6,6 +6,11 @@
           "chat_template_kwargs": {
             "enable_thinking": false
           }
+        },
+        "medium": {
+          "chat_template_kwargs": {
+            "enable_thinking": false
+          }
         }
       }
     }

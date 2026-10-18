@@ -79,9 +79,8 @@ def parse_links(raw):
     """Validate the answer entry by entry: a malformed link is rejected alone
     and never takes the well-formed links of the same answer with it."""
     data = json.loads(strip_fences(raw))
-    if not isinstance(data, dict) or not isinstance(data.get("links"), list) \
-            or not isinstance(data.get("requirements", []), list):
-        raise ValueError("Ответ должен быть объектом со списками links и requirements")
+    if not isinstance(data, dict) or not isinstance(data.get("links"), list):
+        raise ValueError("Ответ должен быть объектом со списком links")
     links, broken = [], []
     for entry in data["links"]:
         try:
@@ -89,7 +88,8 @@ def parse_links(raw):
         except ValidationError as error:
             broken.append((entry if isinstance(entry, dict) else {}, " ".join(str(error).split())[:300]))
     decisions = []
-    for entry in data.get("requirements", []):
+    requirements = data.get("requirements", [])
+    for entry in requirements if isinstance(requirements, list) else []:
         try:
             decisions.append(RequirementDecision.model_validate(entry))
         except ValidationError:
@@ -299,12 +299,25 @@ async def build_links(topics, complete, encoder, per_requirement=5, max_chars=16
             if item:
                 problems.setdefault(key, []).append(f"{link.prerequisite_id}: {error}")
             invalid.append({**link.model_dump(), "validation_error": error})
-        reasons = {(d.target_id, d.requirement): d.reason for d in requirements}
+        answers = {}
+        for decision in requirements:
+            key = (decision.target_id, decision.requirement)
+            if key in allowed:
+                answers.setdefault(key, []).append(decision)
         decisions = {}
         for key in allowed:
             found = [p for t, r, p in links if (t, r) == key]
+            answered = answers.get(key, [])
+            if len(answered) != 1:
+                problems.setdefault(key, []).append("Нет единственного корректного решения требования")
+                reason = "Модель не вернула корректное решение требования"
+            else:
+                answer = answered[0]
+                reason = answer.reason
+                if len(set(answer.prerequisite_ids)) != len(answer.prerequisite_ids) or set(answer.prerequisite_ids) != set(found):
+                    problems.setdefault(key, []).append("Решение требования не совпадает с подтверждёнными связями")
             decisions[key] = RequirementDecision(target_id=key[0], requirement=key[1], prerequisite_ids=found,
-                                                 reason=reasons.get(key) or ("Подтверждено" if found else "Связь не подтверждена"))
+                                                 reason=reason)
         return links, decisions, problems
 
     async def judge(batch, retry=True, correction=None):
@@ -341,7 +354,10 @@ async def build_links(topics, complete, encoder, per_requirement=5, max_chars=16
                 key = (again.target_id, again.requirement)
                 ids = [p for t, r, p in links if (t, r) == key]
                 decisions[key] = RequirementDecision(target_id=key[0], requirement=key[1], prerequisite_ids=ids,
-                                                     reason=again.reason if again.prerequisite_ids else decisions[key].reason)
+                                                     reason=again.reason)
+        elif problems:
+            for key, errors in problems.items():
+                decisions[key].reason = ("Нет полного решения модели после исправления: " + "; ".join(errors))[:600]
         return list(links.values()), list(decisions.values())
 
     jobs = [asyncio.create_task(judge(b)) for b in batches]
@@ -397,8 +413,13 @@ async def build_links(topics, complete, encoder, per_requirement=5, max_chars=16
     edges = ordered
     accepted = {(e["target"], e["requirement"], e["source"]) for e in edges if "requirement" in e}
     rejected += [r for r in invalid if (r.get("target_id"), r.get("requirement"), r.get("prerequisite_id")) not in accepted]
-    decisions = settle_requirements(decisions, topics, aliases, accepted)
     edges, transitive = transitive_reduction(edges)
+    published = {(e["target"], e["requirement"], e["source"]) for e in edges if "requirement" in e}
+    decisions = settle_requirements(decisions, topics, aliases, published)
+    pruned = {(e["target"], e["requirement"]) for e in transitive if "requirement" in e}
+    for decision in decisions:
+        if not decision["prerequisite_ids"] and (decision["target_id"], decision["requirement"]) in pruned:
+            decision["reason"] = "Прямая связь удалена как транзитивно избыточная; обоснование сохранено в transitive_links."
     canonical = {normalized_title(t.title): t.id for t in topics}
     topics, hierarchy, hierarchy_adj = await asyncio.to_thread(build_hierarchy, topics, edges, canonical, encoder)
     linked = {e["source"] for e in edges} | {e["target"] for e in edges}

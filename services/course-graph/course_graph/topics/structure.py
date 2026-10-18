@@ -16,7 +16,7 @@ from pydantic import ValidationError
 
 from course_graph.topics.evidence import evidence_for, valid_evidence
 from course_graph.topics.extract import administrative_question, join_topic, normalized_title
-from course_graph.topics.models import AttachResponse, QuestionResponse, SynonymResponse
+from course_graph.topics.models import AttachLink, QuestionResponse, SynonymResponse
 
 PRACTICE_KINDS = {"lab", "tutorial"}
 
@@ -303,18 +303,43 @@ async def attach_links(topics, edges, parents, complete, encoder, limit=8, max_c
         return items, shown
     items, shown = await asyncio.to_thread(prepare)
     semaphore, counter = asyncio.Semaphore(concurrency), [0]
-    answers = await asyncio.gather(*(ask(complete, ATTACH_PROMPT, {"topics": batch}, AttachResponse, semaphore, counter)
-                                     for batch in batches_of(items, max_chars, 8)))
-    found, rejected = {}, []
-    for answer in answers:
-        for decision in answer.topics if answer else []:
-            if decision.id not in shown:
+
+    def broken_record(topic_id, before, entry, error):
+        candidate = entry.get("id") if isinstance(entry, dict) else None
+        candidate = candidate if isinstance(candidate, str) else None
+        source, target = (candidate, topic_id) if before else (topic_id, candidate)
+        return {"source": source, "target": target, "via": "attach", "raw": entry,
+                "validation_error": "Неверная запись связи: " + " ".join(str(error).split())[:300]}
+
+    def check(batch, raw):
+        data = json.loads(strip_fences(raw))
+        if not isinstance(data, dict) or not isinstance(data.get("topics"), list):
+            raise ValueError("Ответ должен быть объектом со списком topics")
+        allowed = {item["id"] for item in batch}
+        found, rejected, problems = {}, [], set()
+        for decision in data["topics"]:
+            topic_id = decision.get("id") if isinstance(decision, dict) else None
+            if not isinstance(topic_id, str) or topic_id not in allowed:
+                rejected.append(broken_record(None, True, decision, "Неизвестная тема"))
                 continue
-            own, options = shown[decision.id]
-            topic = by_id[decision.id]
-            for links, before in ((decision.prerequisites, True), (decision.dependents, False)):
-                for link in links:
+            own, options = shown[topic_id]
+            topic = by_id[topic_id]
+            for field, before in (("prerequisites", True), ("dependents", False)):
+                entries = decision.get(field, [])
+                if not isinstance(entries, list):
+                    problems.add(topic_id)
+                    rejected.append(broken_record(topic_id, before, entries, f"{field} должен быть списком"))
+                    continue
+                for entry in entries:
+                    try:
+                        link = AttachLink.model_validate(entry)
+                    except ValidationError as error:
+                        rejected.append(broken_record(topic_id, before, entry, error))
+                        problems.add(topic_id)
+                        continue
                     if link.id not in options:
+                        rejected.append(broken_record(topic_id, before, entry, "Связь вне найденных кандидатов"))
+                        problems.add(topic_id)
                         continue
                     other = by_id[link.id]
                     source, target = (other, topic) if before else (topic, other)
@@ -332,8 +357,45 @@ async def attach_links(topics, edges, parents, complete, encoder, limit=8, max_c
                               "prerequisite_evidence": source_side.model_dump()}
                     if error:
                         rejected.append({**record, "validation_error": error})
+                        problems.add(topic_id)
                     else:
                         found.setdefault((source.id, target.id), record)
+        return found, rejected, problems
+
+    async def judge(batch):
+        # A correction sees only damaged topics; confirmed links survive even
+        # an empty or malformed second answer. Every record is checked alone.
+        found, rejected, correction = {}, [], None
+        current = batch
+        for attempt in range(2):
+            payload = {"topics": current}
+            if correction:
+                payload["correction"] = correction
+            async with semaphore:
+                counter[0] += 1
+                raw = await complete(ATTACH_PROMPT, json.dumps(payload, ensure_ascii=False))
+            try:
+                accepted, broken, problems = check(current, raw)
+            except (ValueError, TypeError) as error:
+                rejected.append(broken_record(None, True, raw, error))
+                correction = "Верни только JSON со списком topics: " + " ".join(str(error).split())[:300]
+                continue
+            for pair, record in accepted.items():
+                found.setdefault(pair, record)
+            rejected.extend(broken)
+            if not problems or attempt:
+                break
+            current = [item for item in batch if item["id"] in problems]
+            correction = "Исправь повреждённые связи только для переданных тем; приведи обе дословные цитаты из evidence."
+        return found, rejected
+
+    answers = await asyncio.gather(*(judge(batch) for batch in batches_of(items, max_chars, 8)))
+    found, rejected = {}, []
+    for accepted, broken in answers:
+        for pair, record in accepted.items():
+            found.setdefault(pair, record)
+        rejected.extend(broken)
+    rejected = [r for r in rejected if (r.get("source"), r.get("target")) not in found]
     # A pair chosen in both directions has no reliable direction.
     links = []
     for (s, t), record in found.items():

@@ -1247,3 +1247,149 @@ def test_every_stage_asks_for_the_low_complexity(monkeypatch, endpoint):
     response = TestClient(api.app).post(endpoint, json=body)
     assert response.status_code == 200
     assert asked and set(asked) == {"low"}
+
+
+def test_requirements_use_only_edges_left_after_transitive_reduction():
+    topics = [make_topic("A", "Множества", ["Понятие множества"]),
+              make_topic("B", "Отношения", ["Понятие отношения"], ["Понятие множества"]),
+              make_topic("C", "Композиция", ["Композиция отношений"],
+                         ["Понятие множества", "Понятие отношения"])]
+
+    async def complete(system, payload):
+        data = json.loads(payload)
+        for task in data["tasks"]:
+            task["candidates"].sort(key=lambda c: task["requirement"] not in c["provides"])
+        return await grounded_links(system, json.dumps(data))
+
+    graph = run(build_links(topics, links_only(complete), Encoder()))
+    assert {(e["source"], e["target"]) for e in graph["prerequisites"]} == {("A", "B"), ("B", "C")}
+    assert [(e["source"], e["target"]) for e in graph["transitive_links"]] == [("A", "C")]
+    decisions = {(d["target_id"], d["requirement"]): d for d in graph["requirements"]}
+    assert decisions[("C", "Понятие множества")]["prerequisite_ids"] == []
+    assert "transitive_links" in decisions[("C", "Понятие множества")]["reason"]
+    assert decisions[("C", "Понятие отношения")]["prerequisite_ids"] == ["B"]
+    assert decisions[("B", "Понятие множества")]["prerequisite_ids"] == ["A"]
+    assert graph["quality"]["requirements"] == 3
+    assert graph["quality"]["unresolved_requirements"] == 1
+
+
+@pytest.mark.parametrize("damage", ["missing_quote", "empty_quote", "list_id", "dict_id", "missing_reason", "not_object", "not_list"])
+@pytest.mark.parametrize("second", ["empty", "invalid", "repeated", "fixed"])
+def test_attach_preserves_good_neighbors_when_one_record_is_malformed(damage, second):
+    from course_graph.topics.structure import attach_links
+    topics = [make_topic("A", "Множества", ["Понятие множества"]),
+              make_topic("B", "Отношения", ["Понятие отношения"]),
+              make_topic("C", "Композиция", ["Композиция отношений"])]
+    calls = []
+
+    async def complete(system, payload):
+        data = json.loads(payload)
+        calls.append(data)
+        if len(calls) == 2:
+            assert [t["id"] for t in data["topics"]] == ["C"]
+            assert "correction" in data
+            if second == "empty":
+                return '{"topics":[]}'
+            if second == "invalid":
+                return '{"topics":'
+            if second == "fixed":
+                return attach_answer(payload, {"C": (["B"], [])})
+        result = json.loads(attach_answer(payload, {"B": (["A"], []), "C": (["B"], [])}))
+        target = next(t for t in result["topics"] if t["id"] == "C")
+        broken = target["prerequisites"][0]
+        if damage == "missing_quote":
+            del broken["candidate_evidence"]
+        elif damage == "empty_quote":
+            broken["candidate_evidence"]["quote"] = ""
+        elif damage in ("list_id", "dict_id"):
+            broken["id"] = ["B"] if damage == "list_id" else {"id": "B"}
+        elif damage == "missing_reason":
+            del broken["reason"]
+        elif damage == "not_object":
+            target["prerequisites"][0] = "broken"
+        else:
+            target["prerequisites"] = "broken"
+        return json.dumps(result)
+
+    links, rejected, requests = run(attach_links(topics, [], {}, complete, Encoder()))
+    pairs = {(e["source"], e["target"]) for e in links}
+    assert ("A", "B") in pairs
+    assert (("B", "C") in pairs) == (second == "fixed")
+    assert requests == len(calls) == 2
+    if second != "fixed":
+        assert any("raw" in r and "запись" in r["validation_error"].lower() for r in rejected)
+
+
+@pytest.mark.parametrize("missing", ["absent", "omitted", "invalid", "null", "object"])
+def test_missing_requirement_decisions_are_retried_without_losing_neighbors(missing):
+    topics = [make_topic("A", "Основа", ["Первое знание", "Второе знание"]),
+              make_topic("B", "Применение", ["Практическое применение"], ["Первое знание", "Второе знание"])]
+    calls = []
+
+    async def complete(system, payload):
+        data = json.loads(payload)
+        calls.append(data)
+        if len(calls) == 2:
+            expected = {"Первое знание", "Второе знание"} if missing in ("absent", "null", "object") else {"Второе знание"}
+            assert {t["requirement"] for t in data["tasks"]} == expected
+            assert "correction" in data
+            return await grounded_links(system, payload)
+        if missing == "absent":
+            return '{"links":[]}'
+        result = json.loads(await grounded_links(system, payload))
+        result["links"] = [l for l in result["links"] if l["requirement"] == "Первое знание"]
+        if missing in ("null", "object"):
+            result["requirements"] = None if missing == "null" else {}
+        elif missing == "omitted":
+            result["requirements"] = [d for d in result["requirements"] if d["requirement"] == "Первое знание"]
+        else:
+            next(d for d in result["requirements"] if d["requirement"] == "Второе знание")["prerequisite_ids"] = "bad"
+        return json.dumps(result)
+
+    graph = run(build_links(topics, links_only(complete), Encoder()))
+    assert len(calls) == 2
+    assert {d["requirement"] for d in graph["requirements"]} == {"Первое знание", "Второе знание"}
+    assert all(d["prerequisite_ids"] == ["A"] for d in graph["requirements"])
+    assert graph["quality"]["unresolved_requirements"] == 0
+
+
+@pytest.mark.parametrize("answered", [False, True])
+def test_explicit_refusal_is_distinct_from_missing_requirement_decisions(answered):
+    topics = [make_topic("A", "Основа", ["Первое знание"]),
+              make_topic("B", "Применение", ["Практическое применение"], ["Первое знание"])]
+    calls = []
+
+    async def complete(system, payload):
+        tasks = json.loads(payload)["tasks"]
+        calls.append(tasks)
+        decisions = [{"target_id": t["target_id"], "requirement": t["requirement"],
+                      "prerequisite_ids": [], "reason": "В источнике знание только упомянуто"} for t in tasks]
+        return json.dumps({"links": [], "requirements": decisions} if answered else {"links": []})
+
+    graph = run(build_links(topics, links_only(complete), Encoder()))
+    assert len(calls) == (1 if answered else 2)
+    reason = graph["requirements"][0]["reason"]
+    assert reason == "В источнике знание только упомянуто" if answered else "после исправления" in reason
+    assert graph["quality"]["unresolved_requirements"] == 1
+
+
+@pytest.mark.parametrize("second", ["empty", "invalid"])
+def test_grounded_links_survive_a_missing_decision_and_failed_correction(second):
+    topics = [make_topic("A", "Основа", ["Первое знание"]),
+              make_topic("B", "Применение", ["Практическое применение"], ["Первое знание"])]
+    calls = []
+
+    async def complete(system, payload):
+        data = json.loads(payload)
+        calls.append(data)
+        if len(calls) == 1:
+            answer = json.loads(await grounded_links(system, payload))
+            answer["requirements"] = None
+            return json.dumps(answer)
+        return '{"links":[]}' if second == "empty" else '{"links":'
+
+    graph = run(build_links(topics, links_only(complete), Encoder()))
+    assert len(calls) == 2
+    assert [(e["source"], e["target"]) for e in graph["prerequisites"]] == [("A", "B")]
+    assert graph["requirements"][0]["prerequisite_ids"] == ["A"]
+    assert graph["quality"]["unresolved_requirements"] == 0

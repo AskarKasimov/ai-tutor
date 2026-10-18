@@ -49,11 +49,11 @@ func Dial(address string, timeout time.Duration) (*Gateway, *grpc.ClientConn, er
 }
 
 func (g *Gateway) Question(ctx context.Context, r application.QuestionRequest) (string, error) {
-	// The main question is usually prepared with the graph; the followup and
-	// the rephrase are asked live, so they use the fast low pool.
-	level := llmgatewayv1.Complexity_COMPLEXITY_MEDIUM
-	if r.Kind == exam.KindRephrase || r.Kind == exam.KindFollowup {
-		level = llmgatewayv1.Complexity_COMPLEXITY_LOW
+	// Everything asked during a session uses the fast low pool (decision of
+	// 18.10.2026); only a main question prepared ahead may take medium.
+	level := llmgatewayv1.Complexity_COMPLEXITY_LOW
+	if r.Ahead {
+		level = llmgatewayv1.Complexity_COMPLEXITY_MEDIUM
 	}
 	var text string
 	err := g.complete(ctx, "question:"+string(r.Kind), level, questionPrompt(r), func(content []byte) error {
@@ -73,7 +73,8 @@ func (g *Gateway) Question(ctx context.Context, r application.QuestionRequest) (
 
 func (g *Gateway) Evaluate(ctx context.Context, r application.EvaluationRequest) (application.Assessment, error) {
 	var result application.Assessment
-	err := g.complete(ctx, "evaluate:"+string(r.Kind), llmgatewayv1.Complexity_COMPLEXITY_HIGH, evaluationPrompt(r), func(content []byte) error {
+	// The student waits for the evaluation, so it uses the fast low pool too.
+	err := g.complete(ctx, "evaluate:"+string(r.Kind), llmgatewayv1.Complexity_COMPLEXITY_LOW, evaluationPrompt(r), func(content []byte) error {
 		var out struct {
 			Verdict  exam.Verdict `json:"verdict"`
 			Criteria *struct {

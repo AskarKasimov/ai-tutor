@@ -112,8 +112,12 @@ func TestGatewayAsksWithComplexityAndJSONFormat(t *testing.T) {
 		t.Fatalf("followup complexity = %s, %v", f.requests[1].GetComplexity(), err)
 	}
 	if _, err := g.Question(context.Background(), application.QuestionRequest{Kind: exam.KindQuestion, Node: node}); err != nil ||
-		f.requests[2].GetComplexity() != llmgatewayv1.Complexity_COMPLEXITY_MEDIUM {
-		t.Fatalf("main question complexity = %s, %v", f.requests[2].GetComplexity(), err)
+		f.requests[2].GetComplexity() != llmgatewayv1.Complexity_COMPLEXITY_LOW {
+		t.Fatalf("main question asked in a session: complexity = %s, %v", f.requests[2].GetComplexity(), err)
+	}
+	if _, err := g.Question(context.Background(), application.QuestionRequest{Kind: exam.KindQuestion, Node: node, Ahead: true}); err != nil ||
+		f.requests[3].GetComplexity() != llmgatewayv1.Complexity_COMPLEXITY_MEDIUM {
+		t.Fatalf("main question prepared ahead: complexity = %s, %v", f.requests[3].GetComplexity(), err)
 	}
 }
 
@@ -124,7 +128,7 @@ func TestGatewayEvaluatesAndRetriesAnInvalidAnswerOnce(t *testing.T) {
 	if err != nil || e.Verdict != exam.VerdictAnswered || e.Criteria != (exam.Criteria{K1: 2, K2: 1, K4: 1}) || e.Evidence[0] != 2 {
 		t.Fatalf("evaluation = %+v, %v", e, err)
 	}
-	if len(f.requests) != 2 || f.requests[0].GetComplexity() != llmgatewayv1.Complexity_COMPLEXITY_HIGH {
+	if len(f.requests) != 2 || f.requests[0].GetComplexity() != llmgatewayv1.Complexity_COMPLEXITY_LOW {
 		t.Fatalf("requests = %d", len(f.requests))
 	}
 	if !strings.Contains(f.requests[0].GetMessages()[1].GetContent(), "[2] Студент: Ответ.") {

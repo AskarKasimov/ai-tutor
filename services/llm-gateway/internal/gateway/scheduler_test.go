@@ -114,6 +114,52 @@ func TestRestoreKeepsUncertainSlotPastResultRetention(t *testing.T) {
 	}
 }
 
+func TestRestoreReleasesSlotForInterruptedExecution(t *testing.T) {
+	s := schedulerFixture([]InstanceConfig{schedulerInstance("model-a")}, []string{"model-a"})
+	s.cfg.Retention = 24 * time.Hour
+	s.stateIDs = make(map[string]string)
+	s.keys = make(map[string]string)
+
+	now := time.Now()
+	for _, job := range []*durableJob{
+		{ID: "running-at-restart", Status: "running", Instance: "model-a", SlotHeld: true, SubmittedAt: now, StartedAt: now.Add(-2 * time.Second)},
+		{ID: "interrupted-before-restart", Status: "failed", Instance: "model-a", SlotHeld: true, SubmittedAt: now, StartedAt: now.Add(-2 * time.Second), FinishedAt: now, Error: &storedError{Code: "execution_interrupted"}},
+	} {
+		s.install(job)
+	}
+
+	if got := s.inFlight["model-a"]; got != 0 {
+		t.Fatalf("restored in-flight count = %d, want 0 after interrupted jobs release their slots", got)
+	}
+}
+
+func TestRestoreKeepsInterruptedSlotUntilUpstreamTimeout(t *testing.T) {
+	s := schedulerFixture([]InstanceConfig{schedulerInstance("model-a")}, []string{"model-a"})
+	s.cfg.Instances[0].Timeout = time.Second
+	s.stateIDs = make(map[string]string)
+	s.keys = make(map[string]string)
+	now := time.Now()
+	s.install(&durableJob{ID: "recent-interruption", Status: "running", Instance: "model-a", SlotHeld: true, SubmittedAt: now, StartedAt: now.Add(-500 * time.Millisecond)})
+
+	if got := s.inFlight["model-a"]; got != 1 {
+		t.Fatalf("restored in-flight count = %d, want 1 until upstream timeout", got)
+	}
+}
+
+func TestUncertainSlotExpiresAtConfiguredUpstreamTimeout(t *testing.T) {
+	s := schedulerFixture([]InstanceConfig{schedulerInstance("model-a")}, []string{"model-a"})
+	s.cfg.Instances[0].Timeout = time.Second
+	now := time.Now()
+	job := &durableJob{ID: "uncertain", Status: "failed", Instance: "model-a", SlotHeld: true, StartedAt: now.Add(-time.Second)}
+	if !s.uncertainSlotExpired(job, now) {
+		t.Fatal("slot should expire at the configured upstream timeout")
+	}
+	job.StartedAt = now.Add(-time.Millisecond)
+	if s.uncertainSlotExpired(job, now) {
+		t.Fatal("slot expired before the configured upstream timeout")
+	}
+}
+
 func TestRestoreRetainsResultFor24HoursAfterCompletion(t *testing.T) {
 	s := schedulerFixture([]InstanceConfig{schedulerInstance("model-a")}, []string{"model-a"})
 	s.cfg.Retention = 24 * time.Hour
@@ -134,8 +180,8 @@ func TestExpiredTerminalReplacesRestoredRunningJob(t *testing.T) {
 	now := time.Now()
 	running := &durableJob{ID: "expired-terminal", ClientID: "client", IdempotencyKey: "key", Status: "running", Instance: "model-a", SlotHeld: true, SubmittedAt: now.Add(-48 * time.Hour), StartedAt: now.Add(-47 * time.Hour)}
 	s.install(running)
-	if s.inFlight["model-a"] != 1 {
-		t.Fatalf("restored running slot count = %d, want 1", s.inFlight["model-a"])
+	if s.inFlight["model-a"] != 0 {
+		t.Fatalf("restored running slot count = %d, want 0 after interruption", s.inFlight["model-a"])
 	}
 
 	terminal := &durableJob{ID: running.ID, ClientID: running.ClientID, IdempotencyKey: running.IdempotencyKey, Status: "succeeded", SubmittedAt: now.Add(-48 * time.Hour), FinishedAt: now.Add(-25 * time.Hour)}

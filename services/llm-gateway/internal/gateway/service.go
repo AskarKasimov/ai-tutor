@@ -329,6 +329,11 @@ func (s *Service) install(j *durableJob) {
 		copy.Error = &storedError{Status: 502, Type: "server_error", Code: "execution_interrupted", Message: "LLM execution was interrupted by gateway restart."}
 		copy.SlotHeld = true
 	}
+	if !isPending(copy.Status) && copy.SlotHeld && s.uncertainSlotExpired(&copy, time.Now()) {
+		// Keep uncertain upstream attempts reserved only until their configured
+		// maximum execution time from the start of the attempt.
+		copy.SlotHeld = false
+	}
 	s.jobs[j.ID] = &copy
 	s.stateIDs[string(stateKey(&copy))] = copy.ID
 	if isPending(copy.Status) {
@@ -494,6 +499,7 @@ func (s *Service) dispatch(ctx, workCtx context.Context) {
 		case <-time.After(time.Second):
 		}
 		for {
+			s.releaseExpiredUncertainSlots(time.Now())
 			s.expireQueued(time.Now())
 			j, in, ok := s.next()
 			if !ok {
@@ -1102,6 +1108,51 @@ func (s *Service) releaseSlot(j *durableJob) {
 	}
 	s.mu.Unlock()
 	s.signal()
+}
+
+func (s *Service) uncertainSlotExpired(j *durableJob, now time.Time) bool {
+	if j == nil || !j.SlotHeld || j.StartedAt.IsZero() {
+		return false
+	}
+	for _, in := range s.cfg.Instances {
+		if in.ID == j.Instance {
+			timeout := in.Timeout
+			if timeout <= 0 {
+				timeout = s.cfg.UpstreamTimeout
+			}
+			if timeout > 0 {
+				return !now.Before(j.StartedAt.Add(timeout))
+			}
+			return false
+		}
+	}
+	return false
+}
+
+func (s *Service) releaseExpiredUncertainSlots(now time.Time) {
+	s.mu.Lock()
+	var expired []*durableJob
+	for _, job := range s.jobs {
+		if !isPending(job.Status) && s.uncertainSlotExpired(job, now) {
+			copy := *job
+			copy.SlotHeld = false
+			expired = append(expired, &copy)
+		}
+	}
+	s.mu.Unlock()
+
+	for _, job := range expired {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		err := s.save(ctx, job)
+		cancel()
+		if err != nil {
+			if !errors.Is(err, errCanceledJob) {
+				s.markStateUncertain()
+			}
+			continue
+		}
+		s.releaseSlot(job)
+	}
 }
 
 func (s *Service) save(ctx context.Context, j *durableJob) error {

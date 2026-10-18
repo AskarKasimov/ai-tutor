@@ -803,3 +803,26 @@ def test_failed_engine_initialization_is_not_cached_and_recovers(monkeypatch, tm
     assert "print(42)" in second["markdown"]
     assert second["report"]["work_complete"] is True
     assert len(calls) == 2
+
+
+@pytest.mark.parametrize("answer", ["<_Python_></code><end_of_utterance>", "</code><end_of_utterance>"])
+def test_answer_of_only_special_tokens_is_rejected(answer):
+    from course_graph.ocr.enrichment import CODE_LOST_WARNING
+    guard = _real_code_stage([answer, "print(42)"])
+    items = list(guard(None, _code_elements(["pr1nt(1)", ""])))
+    assert [item.text for item in items] == ["pr1nt(1)", "print(42)"]
+    assert CODE_LOST_WARNING in guard.warnings
+
+
+def test_failed_inference_leaves_items_to_docling_without_code_loss():
+    from course_graph.ocr.enrichment import CODE_LOST_WARNING
+
+    class Engine:
+        def initialize(self): pass
+        def predict_batch(self, inputs): raise RuntimeError("CUDA out of memory")
+
+    guard = _real_code_stage([], Engine())
+    items = list(guard(None, _code_elements(["pr1nt(1)"])))
+    assert [item.text for item in items] == ["pr1nt(1)"]
+    assert CODE_LOST_WARNING not in guard.warnings
+    assert any("частично" in warning for warning in guard.warnings)

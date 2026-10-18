@@ -101,6 +101,7 @@ def test_native_reader_reuses_pages_and_closes_evicted_resources(monkeypatch):
             events.append("close_text")
 
     class Page:
+        def get_size(self): return 100, 100
         def get_height(self): return 100
         def get_textpage(self):
             events.append("open_text")
@@ -116,7 +117,8 @@ def test_native_reader_reuses_pages_and_closes_evicted_resources(monkeypatch):
 
     monkeypatch.setattr(pypdfium2, "PdfDocument", lambda _: Pdf())
     reader = NativePdfTextReader(b"pdf")
-    box = S(to_bottom_left_origin=lambda _: S(l=1, b=2, r=3, t=4))
+    from docling_core.types.doc import BoundingBox, CoordOrigin
+    box = BoundingBox(l=1, b=2, r=3, t=4, coord_origin=CoordOrigin.BOTTOMLEFT)
     for page_no in [1, 1, 2, 3, 4, 5]:
         assert reader(S(prov=[S(page_no=page_no, bbox=box)])) == "p(X) :- q(X)."
     assert len(reader._pages) == 4
@@ -461,7 +463,7 @@ def test_legacy_cache_prior_to_formula_audit_fix_is_a_cache_miss(monkeypatch, tm
     # 3. New conversion produces fresh result and writes to the updated cache version
     new_result = converter.convert_document("source.md", content)
     assert new_result["report"]["version"] == "ocr-v9-content-cache"
-    assert new_result["report"]["audit_version"] == "formula-audit-v3"
+    assert new_result["report"]["audit_version"] == "formula-audit-v4"
     assert converter.get_cached_document("source.md", content) is not None
 
 
@@ -626,3 +628,25 @@ def test_main_pass_token_limit_caches_document_and_second_call_hits_cache(monkey
     assert second["report"]["cache_hit"] is True
     assert second["report"]["work_complete"] is True
     assert inference_calls == 2
+
+
+def test_cache_of_the_previous_audit_version_is_not_reused(monkeypatch, tmp_path):
+    """Results cached by formula-audit-v3 may have lost code with content_complete=true."""
+    import course_graph.ocr.converter as converter
+
+    monkeypatch.setenv("COURSE_GRAPH_OCR_CACHE_DIR", str(tmp_path))
+    content = "# Document\n\nprint(42)".encode()
+    current = converter.get_ocr_configuration
+    monkeypatch.setattr(converter, "get_ocr_configuration", lambda: {**current(), "audit_version": "formula-audit-v3"})
+    stale = converter.convert_document("source.md", content)
+    assert converter.get_cached_document("source.md", content) is not None
+    stale_path = converter.get_document_cache_path(content, "source.md")
+    monkeypatch.setattr(converter, "get_ocr_configuration", current)
+
+    assert converter.get_cached_document("source.md", content) is None
+    # Even a stale entry copied to the current key is rejected by its own fingerprint.
+    converter.get_document_cache_path(content, "source.md").write_text(stale_path.read_text(encoding="utf-8"), encoding="utf-8")
+    assert converter.get_cached_document("source.md", content) is None
+    fresh = converter.convert_document("source.md", content)
+    assert fresh["report"]["cache_hit"] is False and fresh["report"]["audit_version"] == "formula-audit-v4"
+    assert stale["report"]["audit_version"] == "formula-audit-v3"

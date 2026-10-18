@@ -21,13 +21,19 @@ ARG INSTALL_DOCLING=true
 # The uv cache lives in a BuildKit cache mount, so rebuilds reuse downloads.
 ARG TORCH_BACKEND=cpu
 ENV UV_TORCH_BACKEND=${TORCH_BACKEND} UV_LINK_MODE=copy
+# A reused base image (COURSE_GRAPH_BASE_IMAGE) may hold torch of the other backend,
+# which uv keeps as satisfying the requirements: replace it when the build differs.
 RUN --mount=type=cache,target=/root/.cache/uv \
     if [ "$INSTALL_DOCLING" = "true" ]; then \
-      uv pip install --system -r requirements.txt; \
+      cp requirements.txt /tmp/requirements-build.txt; \
     elif [ "$INSTALL_DOCLING" = "false" ]; then \
-      sed '/^docling[<=>]/d' requirements.txt > /tmp/requirements-light.txt && \
-      uv pip install --system -r /tmp/requirements-light.txt; \
-    else exit 1; fi
+      sed '/^docling[<=>]/d' requirements.txt > /tmp/requirements-build.txt; \
+    else exit 1; fi && \
+    uv pip install --system -r /tmp/requirements-build.txt && \
+    if ! python -c "import sys, torch; sys.exit((torch.version.cuda is None) != ('$TORCH_BACKEND' == 'cpu'))"; then \
+      uv pip install --system --reinstall-package torch --reinstall-package torchvision -r /tmp/requirements-build.txt; \
+    fi && \
+    python -c "import sys, torch; print('torch', torch.__version__); sys.exit((torch.version.cuda is None) != ('$TORCH_BACKEND' == 'cpu'))"
 ENV COURSE_GRAPH_WITH_DOCLING=${INSTALL_DOCLING}
 ENV HF_HUB_DISABLE_XET=1
 ENV HF_HUB_DOWNLOAD_TIMEOUT=30

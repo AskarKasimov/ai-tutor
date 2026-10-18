@@ -128,11 +128,18 @@ class NativeSyntaxGuard:
         enrich = [element for element in elements if id(element) not in preserved_ids]
         before = {id(element.item): (element.item.text, getattr(element.item, "code_language", None))
                   for element in enrich}
-        self.stage.engine.rejected = []
+        # None until inference returns: after a failed call Docling keeps the items itself.
+        self.stage.engine.rejected = None
         output = list(self.stage(doc, enrich)) if enrich else []
+        rejected = self.stage.engine.rejected
+        if rejected is not None:
+            # An answer of only special tokens or a language tag is empty after the
+            # stage strips them; it is rejected like an empty answer.
+            rejected = sorted(set(rejected) | {index for index, element in enumerate(enrich)
+                                               if not element.item.text.strip()})
         # A rejected answer keeps the text Docling had before enrichment. Formulas get
         # a crop retry in the audit; code has none, so its loss marks the content incomplete.
-        for index in self.stage.engine.rejected:
+        for index in rejected or []:
             item = enrich[index].item
             item.text, language = before[id(item)]
             if item.label == DocItemLabel.CODE:
@@ -146,6 +153,40 @@ class NativeSyntaxGuard:
             if native is not None and _code_tokens(native) != _code_tokens(item.text):
                 self.warnings.append(CODE_MISMATCH_WARNING)
             yield item
+
+
+def native_pdf_rect(page, bbox):
+    """Map a Docling bbox to the rectangle PDFium reads text from: (left, bottom, right, top).
+
+    Docling places boxes on the displayed page: rotated by /Rotate, with the CropBox
+    corner as origin. get_text_bounded expects unrotated PDF user space.
+    """
+    from docling_core.types.doc import CoordOrigin
+
+    width, height = page.get_size()
+    if bbox.coord_origin != CoordOrigin.BOTTOMLEFT:
+        bbox = bbox.to_bottom_left_origin(height)
+    rotation = page.get_rotation() if hasattr(page, "get_rotation") else 0
+    left, bottom, right, top = page.get_bbox() if hasattr(page, "get_bbox") else (0, 0, width, height)
+    w, h = right - left, top - bottom
+
+    def unrotate(x, y):
+        if rotation == 90:
+            x, y = w - y, x
+        elif rotation == 180:
+            x, y = w - x, h - y
+        elif rotation == 270:
+            x, y = y, h - x
+        return left + x, bottom + y
+
+    corners = [unrotate(bbox.l, bbox.b), unrotate(bbox.r, bbox.t)]
+    xs, ys = [x for x, _ in corners], [y for _, y in corners]
+    return min(xs), min(ys), max(xs), max(ys)
+
+
+def read_native_text(textpage, page, bbox, margin=0.5):
+    l, b, r, t = native_pdf_rect(page, bbox)
+    return textpage.get_text_bounded(left=l - margin, bottom=b - margin, right=r + margin, top=t + margin)
 
 
 class NativePdfTextReader:
@@ -182,11 +223,7 @@ class NativePdfTextReader:
                     old_page.close()
             self._pages.move_to_end(proof.page_no)
             page, textpage = cached
-            bbox = proof.bbox.to_bottom_left_origin(page.get_height())
-            return textpage.get_text_bounded(
-                left=bbox.l - 0.5, bottom=bbox.b - 0.5,
-                right=bbox.r + 0.5, top=bbox.t + 0.5,
-            )
+            return read_native_text(textpage, page, proof.bbox)
 
     def close(self):
         with self._lock:
@@ -241,12 +278,9 @@ def recover_native_programs(document, pdf_content):
                 continue
             page = pdf[prov.page_no - 1]
             try:
-                bbox = prov.bbox.to_bottom_left_origin(page.get_height())
                 textpage = page.get_textpage()
                 try:
-                    native = textpage.get_text_bounded(
-                        left=bbox.l-.5, bottom=bbox.b-.5,
-                        right=bbox.r+.5, top=bbox.t+.5).strip().replace("\r\n", "\n")
+                    native = read_native_text(textpage, page, prov.bbox).strip().replace("\r\n", "\n")
                 finally:
                     textpage.close()
             finally:
@@ -325,17 +359,8 @@ def audit_and_retry_formulas(document, pdf_content: bytes, converter=None):
                         try:
                             textpage = page.get_textpage()
                             try:
-                                page_height = page.get_height() if hasattr(page, "get_height") else page_h
-                                bbox = prov.bbox.to_bottom_left_origin(page_height) if hasattr(prov.bbox, "to_bottom_left_origin") else prov.bbox
                                 if hasattr(textpage, "get_text_bounded"):
-                                    l = getattr(bbox, "l", getattr(bbox, "left", 0.0))
-                                    b = getattr(bbox, "b", getattr(bbox, "bottom", 0.0))
-                                    r = getattr(bbox, "r", getattr(bbox, "right", 0.0))
-                                    t = getattr(bbox, "t", getattr(bbox, "top", 0.0))
-                                    native_raw = textpage.get_text_bounded(
-                                        left=l - 0.5, bottom=b - 0.5,
-                                        right=r + 0.5, top=t + 0.5,
-                                    ).strip()
+                                    native_raw = read_native_text(textpage, page, prov.bbox).strip()
                                     if native_raw:
                                         native_text = native_raw
                             finally:

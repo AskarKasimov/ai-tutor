@@ -149,12 +149,14 @@ func servedGraph(t *testing.T, p *PreparedGraph, version string) exam.Graph {
 	return g
 }
 
-// memoryPrepared is a PreparedStore whose reads fail while failing is set.
+// memoryPrepared is a PreparedStore whose reads fail while failing is set
+// and whose writes fail while putFailing is set.
 type memoryPrepared struct {
-	mu      sync.Mutex
-	data    map[string][]byte
-	failing atomic.Bool
-	reads   atomic.Int32
+	mu         sync.Mutex
+	data       map[string][]byte
+	failing    atomic.Bool
+	putFailing atomic.Bool
+	reads      atomic.Int32
 }
 
 func (m *memoryPrepared) Get(_ context.Context, key string) ([]byte, bool, error) {
@@ -169,6 +171,9 @@ func (m *memoryPrepared) Get(_ context.Context, key string) ([]byte, bool, error
 }
 
 func (m *memoryPrepared) Put(_ context.Context, key string, data []byte) error {
+	if m.putFailing.Load() {
+		return errors.New("S3 is down")
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.data[key] = data
@@ -209,6 +214,37 @@ func TestPreparedGraphTextsSurviveARestart(t *testing.T) {
 		if !voices.has(text) {
 			t.Fatalf("%q is not voiced ahead", text)
 		}
+	}
+}
+
+func (m *memoryPrepared) has(key string) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	_, ok := m.data[key]
+	return ok
+}
+
+func TestPreparedGraphStoresTheTextsOnceTheStoreRecovers(t *testing.T) {
+	store := &memoryPrepared{data: map[string][]byte{}}
+	store.putFailing.Store(true)
+	first := &preparing{}
+	p := NewPreparedGraph(fixtureSource(), first, store, nil, nil)
+	runPrepared(t, p)
+	want := servedGraph(t, p, "fixture:1")
+
+	// The texts already served are stored once S3 is back, without the model.
+	store.putFailing.Store(false)
+	waitFor(t, "texts were not stored after the store recovered", func() bool { return store.has(storeKey("fixture:1")) })
+	if first.requests.Load() != 3 {
+		t.Fatalf("storing took %d model calls", first.requests.Load())
+	}
+
+	second := &preparing{}
+	restarted := NewPreparedGraph(fixtureSource(), second, store, nil, nil)
+	runPrepared(t, restarted)
+	got := servedGraph(t, restarted, "fixture:1")
+	if second.requests.Load() != 0 || !slices.Equal(PreparedQuestions(got), PreparedQuestions(want)) {
+		t.Fatalf("the restart took %d model calls, texts %q, want %q", second.requests.Load(), PreparedQuestions(got), PreparedQuestions(want))
 	}
 }
 

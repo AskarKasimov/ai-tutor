@@ -57,6 +57,8 @@ type PreparedGraph struct {
 	graph *exam.Graph
 	// stale wakes Run when the source has a version other than the graph's.
 	stale chan struct{}
+	// saving tracks the texts of a served graph still being stored.
+	saving sync.WaitGroup
 }
 
 // NewPreparedGraph prepares the graph of source; store may be nil, then
@@ -97,6 +99,7 @@ func (p *PreparedGraph) Run(ctx context.Context) error {
 		p.prepare(ctx)
 		select {
 		case <-ctx.Done():
+			p.saving.Wait()
 			return nil
 		case <-p.stale:
 		}
@@ -108,11 +111,13 @@ func (p *PreparedGraph) Run(ctx context.Context) error {
 // unprepared nodes after a growing pause. The source is read again every
 // round, so a new version replaces one that cannot be prepared. The main
 // questions already in the source are voiced at once, the rest once
-// prepared. It returns when the graph is served, when the source has none, or
-// when ctx ends.
+// prepared. Texts that are not stored are stored again in the background once
+// the graph is served. It returns when the graph is served, when the source
+// has none, or when ctx ends.
 func (p *PreparedGraph) prepare(ctx context.Context) {
 	pause := p.retryMin
 	var g exam.Graph
+	saved := true
 	for loaded := false; ctx.Err() == nil; {
 		source, ok, err := p.source.Current(ctx, "")
 		switch {
@@ -126,20 +131,23 @@ func (p *PreparedGraph) prepare(ctx context.Context) {
 				return
 			}
 			if !loaded || g.Version != source.Version {
-				g, loaded = p.restore(ctx, source), true
+				g, loaded, saved = p.restore(ctx, source), true, true
 				p.voice(g)
 			}
 			started := time.Now()
 			prepared, count, failures := PrepareQuestions(ctx, p.examiner, g, p.parallel)
 			g = prepared
 			if count > 0 {
-				p.keep(ctx, g)
+				saved = p.keep(ctx, g) == nil
 				p.voice(g)
 			}
 			left := Unprepared(g)
 			if len(left) == 0 {
 				p.set(&g)
 				p.logger.Info("graph questions prepared", zap.String("version", g.Version), zap.Int("prepared", count), zap.Int("nodes", len(g.Nodes)), zap.Duration("duration", time.Since(started)))
+				if !saved {
+					p.saving.Go(func() { p.keepUntilSaved(ctx, g) })
+				}
 				return
 			}
 			if ctx.Err() != nil {
@@ -224,11 +232,10 @@ func (p *PreparedGraph) restore(ctx context.Context, g exam.Graph) exam.Graph {
 	return out
 }
 
-// keep stores the prepared texts of g; a failure is logged, and the next
-// start prepares them again.
-func (p *PreparedGraph) keep(ctx context.Context, g exam.Graph) {
+// keep stores the prepared texts of g; a failure is logged and returned.
+func (p *PreparedGraph) keep(ctx context.Context, g exam.Graph) error {
 	if p.store == nil {
-		return
+		return nil
 	}
 	kept := preparedTexts{Version: g.Version, Nodes: map[string]struct {
 		Question string `json:"question"`
@@ -248,6 +255,30 @@ func (p *PreparedGraph) keep(ctx context.Context, g exam.Graph) {
 	}
 	if err != nil {
 		p.logger.Warn("prepared graph texts are not kept", zap.Error(err), zap.String("version", g.Version))
+	}
+	return err
+}
+
+// keepUntilSaved stores the texts of the served g, which keep failed to
+// store, after a growing pause, without asking the model again: otherwise a
+// restart would prepare new wording and voice it again. It stops once they
+// are stored, when another version is served or when ctx ends.
+func (p *PreparedGraph) keepUntilSaved(ctx context.Context, g exam.Graph) {
+	pause := p.storePause
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(pause):
+		}
+		if served := p.prepared(); served == nil || served.Version != g.Version {
+			return
+		}
+		if p.keep(ctx, g) == nil {
+			p.logger.Info("prepared graph texts kept", zap.String("version", g.Version))
+			return
+		}
+		pause = min(2*pause, p.retryMax)
 	}
 }
 

@@ -15,6 +15,7 @@ import threading
 import time
 import unittest
 import urllib.request
+import urllib.error
 
 
 @unittest.skipUnless(os.getenv("RUN_CADDY_SMOKE") == "1", "set RUN_CADDY_SMOKE=1 for local Docker proxy smoke")
@@ -99,6 +100,14 @@ class ProxySmoke(unittest.TestCase):
                     self.assertIn(b'"type":"audio"', response.readline())
                     received_pcm.set()
                 self.assertTrue(cancelled.wait(5), "downstream disconnect did not reach upstream")
+                # Metrics is scraped directly inside the Docker network and
+                # must not become public through the blanket API proxy.
+                metrics_url = f"https://127.0.0.1:{port}/api/v1/metrics"
+                with self.assertRaises(urllib.error.HTTPError) as rejection:
+                    with urllib.request.urlopen(metrics_url, context=context, timeout=5) as unexpected:
+                        unexpected.read(1)
+                self.assertEqual(rejection.exception.code, 404)
+                rejection.exception.close()
                 self.assertEqual(paths, ["/diagnostic-sessions/s/turns/t/audio/stream?part=question"])
         finally:
             received_pcm.set()

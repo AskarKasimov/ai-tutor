@@ -131,6 +131,13 @@ func TestOpenAPIResponses(t *testing.T) {
 			checked[path] = true
 			return
 		}
+		if _, ok := content["text/plain"]; ok {
+			if !strings.HasPrefix(w.Header().Get("Content-Type"), "text/plain") || !strings.Contains(w.Body.String(), "backend_tts_stream_requests_total") {
+				t.Fatal("invalid metrics response")
+			}
+			checked[path] = true
+			return
+		}
 		if _, ok := content["application/octet-stream"]; ok {
 			if w.Body.Len() == 0 {
 				t.Fatal("empty octet-stream response")
@@ -311,6 +318,7 @@ func TestOpenAPIResponses(t *testing.T) {
 	check("POST", "/auth/refresh", f.request("POST", "/auth/refresh", "", refresh))
 	check("POST", "/auth/logout", f.request("POST", "/auth/logout", "", refresh))
 	check("GET", "/health", f.request("GET", "/health", ""))
+	check("GET", "/metrics", f.request("GET", "/metrics", ""))
 
 	for path, node := range paths {
 		implemented := false

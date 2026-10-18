@@ -2560,6 +2560,22 @@ paths:
       tags:
         - Сервис
       x-implementation: implemented
+  /metrics:
+    get:
+      description: Prometheus text. Доступен внутри backend-сети; Caddy не публикует эту операцию. Метки только из фиксированных перечислений, без текста, seed, session ID и хешей.
+      operationId: getVoiceMetrics
+      responses:
+        "200":
+          content:
+            text/plain:
+              schema:
+                type: string
+          description: Prometheus metrics
+      summary: Внутренние метрики голоса
+      tags:
+        - Система
+      x-implementation: implemented
+      x-internal: true
   /subjects:
     get:
       description: 'Студентам возвращаются только готовые курсы: с фикстурой графа — сразу после создания, без неё — с опубликованным графом курса. Admin видит все предметы и признак готовности.'

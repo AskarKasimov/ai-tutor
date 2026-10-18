@@ -43,11 +43,13 @@ import (
 	voicehttp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/voice/transport/http"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/fault"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/httpx"
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/metrics"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/s3"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/security"
 )
 
 type App struct {
+	voiceMetrics     *metrics.Voice
 	cfg              Config
 	pool             *pgxpool.Pool
 	client           *http.Client
@@ -82,7 +84,16 @@ func (a *App) voiceName() string {
 }
 
 func (a *App) models() *modelapi.Client {
-	return modelapi.New(a.client, a.cfg.STTURL, a.cfg.TTSURL, a.cfg.VoiceTimeout, modelapi.TTSOptions{Seed: a.cfg.TTSSeed, CFGValue: a.cfg.TTSCFGValue, InferenceTimesteps: a.cfg.TTSInferenceTimesteps})
+	return modelapi.New(a.client, a.cfg.STTURL, a.cfg.TTSURL, a.cfg.VoiceTimeout, modelapi.TTSOptions{Seed: a.cfg.TTSSeed, CFGValue: a.cfg.TTSCFGValue, InferenceTimesteps: a.cfg.TTSInferenceTimesteps}).WithMetrics(a.voiceMetrics)
+}
+
+// newSpeechCache permits old disabled-stream configurations to synthesize but
+// never persists or reads audio under an unknown model/reference identity.
+func (a *App) newSpeechCache(store geekapp.AudioStore) *geekapp.SpeechCache {
+	if a.cfg.TTSModelRevision == "" || a.cfg.TTSReferenceSHA256 == "" {
+		store = nil
+	}
+	return geekapp.NewSpeechCache(a.models(), store, a.voiceName(), a.cfg.VoiceTimeout).WithLogger(a.logger).WithMetrics(a.voiceMetrics)
 }
 
 func New(cfg Config, pool *pgxpool.Pool, logger *zap.Logger) (*App, error) {
@@ -95,7 +106,7 @@ func New(cfg Config, pool *pgxpool.Pool, logger *zap.Logger) (*App, error) {
 	if logger == nil {
 		logger = zap.NewNop()
 	}
-	a := &App{
+	a := &App{voiceMetrics: metrics.NewVoice(),
 		cfg:    cfg,
 		pool:   pool,
 		now:    time.Now,
@@ -127,7 +138,7 @@ func New(cfg Config, pool *pgxpool.Pool, logger *zap.Logger) (*App, error) {
 	translator := materialstranslator.NewWithCompleter(materialstranslator.NewGateway(llmgatewayv1.NewGatewayClient(conn), cfg.LLMTimeout), 4)
 	a.ocrWorker = materialsapp.NewOCRWorker(materialRepository, a.materialsStorage, materialsOCR, translator)
 	a.cleaningWorker = materialsapp.NewCleaningWorker(materialRepository, a.materialsStorage, materialsOCR)
-	a.speech = geekapp.NewSpeechCache(a.models(), geekstorage.NewAudio(storage, cfg.S3Bucket), a.voiceName(), cfg.VoiceTimeout).WithLogger(logger)
+	a.speech = a.newSpeechCache(geekstorage.NewAudio(storage, cfg.S3Bucket))
 	a.warmer = geekapp.NewWarmer(a.speech, logger.With(zap.String("worker", "speech_warmer")))
 	a.fixture = geekapp.NewPreparedGraph(geekgraph.Fixture{Path: cfg.GeekGraphFixture}, examiner, geekstorage.NewPrepared(storage, cfg.S3Bucket), a.warmer, logger.With(zap.String("worker", "fixture_questions")))
 	// The admin sees the default graph as Geek serves it: with its rephrases,
@@ -271,6 +282,7 @@ func (a *App) Handler() http.Handler {
 	mux.Handle("GET /diagnostic-sessions/{id}/turns/{turn_id}/audio/stream", protect(auth, http.HandlerFunc(geekHandlers.TurnAudioStream)))
 	mux.Handle("GET /diagnostic-sessions/{id}/turns/{turn_id}/audio", protect(auth, http.HandlerFunc(geekHandlers.TurnAudio)))
 	mux.HandleFunc("GET /health", a.health)
+	mux.HandleFunc("GET /metrics", a.metrics)
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(r.Context(), w, fault.New(fault.NotFound, "NOT_FOUND", "Ресурс не найден."))
 	})

@@ -1,9 +1,12 @@
 package application
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/audio"
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/metrics"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -246,5 +249,45 @@ func TestSlowStreamReaderHasEightBlockQueueAndCancelsProducer(t *testing.T) {
 	// The same service remains available for another request after drain timeout.
 	if err := c.StreamPart(context.Background(), "next", func(audio.StreamEvent) error { return nil }); err != nil {
 		t.Fatal(err)
+	}
+}
+
+type timeoutWriteAudio struct{ syncAudio }
+
+func (a *timeoutWriteAudio) Put(ctx context.Context, _ string, _ []byte) error {
+	<-ctx.Done()
+	return ctx.Err()
+}
+
+type completedStreamVoice struct{}
+
+func (completedStreamVoice) Synthesize(context.Context, string) ([]byte, error) { return wav(10), nil }
+func (completedStreamVoice) SynthesizeStream(_ context.Context, _ string, emit func(audio.StreamEvent) error) error {
+	return audio.StreamWAV(wav(10), emit)
+}
+func TestCacheWriteTimeoutDoesNotInvalidateCompletedStream(t *testing.T) {
+	for range 16 {
+		c := NewSpeechCache(completedStreamVoice{}, &timeoutWriteAudio{syncAudio{data: map[string][]byte{}}}, "profile", 50*time.Millisecond)
+		ended := false
+		if err := c.StreamPart(context.Background(), "Вопрос?", func(e audio.StreamEvent) error { ended = ended || e.Type == "end"; return nil }); err != nil || !ended {
+			t.Fatalf("complete audio lost after cache timeout: end=%v err=%v", ended, err)
+		}
+	}
+}
+
+func TestStreamMetricsRecordCacheAndCompletion(t *testing.T) {
+	m := metrics.NewVoice()
+	c := NewSpeechCache(completedStreamVoice{}, &syncAudio{data: map[string][]byte{}}, "profile").WithMetrics(m)
+	for range 2 {
+		if err := c.StreamPart(context.Background(), "Вопрос?", func(audio.StreamEvent) error { return nil }); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var b bytes.Buffer
+	_ = m.WritePrometheus(&b)
+	for _, want := range []string{`backend_tts_cache_total{result="miss"} 1`, `backend_tts_cache_total{result="written"} 1`, `backend_tts_cache_total{result="hit"} 1`, `backend_tts_stream_requests_total{source="leader",outcome="success"} 2`, `backend_tts_stream_ttfa_seconds_count{source="leader"} 2`} {
+		if !strings.Contains(b.String(), want) {
+			t.Fatalf("missing %s", want)
+		}
 	}
 }

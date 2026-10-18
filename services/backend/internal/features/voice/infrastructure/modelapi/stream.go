@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/audio"
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/metrics"
 	"go.uber.org/zap"
 	"mime"
 	"net/http"
@@ -21,6 +22,7 @@ func (c *Client) SynthesizeStream(ctx context.Context, text string, emit func(au
 	started := time.Now()
 	first := true
 	defer func() {
+		c.metrics.Provider(metrics.Stream, metrics.Result(err), time.Since(started))
 		logCall(ctx, "tts_stream", started, []zap.Field{zap.Int("text_chars", utf8.RuneCountInString(text)), zap.Int("inference_timesteps", c.ttsOptions.InferenceTimesteps)}, err)
 	}()
 	ctx, cancel := context.WithTimeout(ctx, c.timeout)
@@ -54,6 +56,7 @@ func (c *Client) SynthesizeStream(ctx context.Context, text string, emit func(au
 	}
 	if resp.StatusCode == 404 || resp.StatusCode == 406 || resp.StatusCode == 501 {
 		resp.Body.Close()
+		c.metrics.Fallback()
 		wav, err := c.synthesize(ctx, text)
 		if err != nil {
 			return err

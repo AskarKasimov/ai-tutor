@@ -1,12 +1,15 @@
 package modelapi
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/audio"
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/metrics"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -101,5 +104,28 @@ func TestStreamDisconnectCancelsProviderWithoutWAVRetry(t *testing.T) {
 	}
 	if calls.Load() != 1 {
 		t.Fatal("stream retried")
+	}
+}
+
+func TestProviderFallbackMetricsCountOneLogicalRequest(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/synthesize/stream" {
+			w.WriteHeader(404)
+			return
+		}
+		_, _ = w.Write(testWAV())
+	}))
+	defer server.Close()
+	m := metrics.NewVoice()
+	c := New(server.Client(), "", server.URL+"/synthesize", time.Second, TTSOptions{}).WithMetrics(m)
+	if err := c.SynthesizeStream(context.Background(), "Вопрос?", func(audio.StreamEvent) error { return nil }); err != nil {
+		t.Fatal(err)
+	}
+	var b bytes.Buffer
+	_ = m.WritePrometheus(&b)
+	for _, want := range []string{`backend_tts_provider_requests_total{mode="stream",outcome="success"} 1`, `backend_tts_provider_requests_total{mode="wav",outcome="success"} 0`, `backend_tts_provider_fallback_total 1`} {
+		if !strings.Contains(b.String(), want) {
+			t.Fatalf("missing %s", want)
+		}
 	}
 }

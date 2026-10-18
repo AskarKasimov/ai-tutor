@@ -45,6 +45,12 @@
 		respond 404
 	}
 
+	# Operational metrics are scraped directly from api:8002 inside Docker.
+	@private_metrics path /api/v1/metrics /api/v1/metrics/*
+	handle @private_metrics {
+		respond 404
+	}
+
 	@api path /api/v1 /api/v1/*
 	handle @api {
 		@vscode_origin header_regexp Origin ^(vscode-webview://[a-zA-Z0-9-]+|https://[a-zA-Z0-9-]+\.vscode-cdn\.net)$

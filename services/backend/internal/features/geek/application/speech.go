@@ -5,7 +5,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
-
 	"strings"
 	"sync"
 	"time"
@@ -15,6 +14,7 @@ import (
 
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/audio"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/fault"
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/metrics"
 )
 
 // SplitSpeech cuts text into parts of at most limit runes for synthesis,
@@ -53,6 +53,7 @@ func SplitSpeech(text string, limit int) []string {
 
 // SpeechCache shares one bounded producer among WAV, streaming and warmer consumers.
 type SpeechCache struct {
+	metrics *metrics.Voice
 	logger  *zap.Logger
 	voice   Synthesizer
 	audio   AudioStore
@@ -80,6 +81,9 @@ func NewSpeechCache(voice Synthesizer, store AudioStore, name string, timeout ..
 	}
 	return &SpeechCache{logger: zap.NewNop(), voice: voice, audio: store, name: name, timeout: limit, flights: map[string]*speechFlight{}}
 }
+
+// WithMetrics injects bounded operational counters before use.
+func (c *SpeechCache) WithMetrics(m *metrics.Voice) *SpeechCache { c.metrics = m; return c }
 
 // WithLogger sets the producer logger before the cache is used.
 func (c *SpeechCache) WithLogger(logger *zap.Logger) *SpeechCache {
@@ -138,6 +142,13 @@ func (c *SpeechCache) acquire(ctx context.Context, key, text string, live bool) 
 				return nil
 			default:
 			}
+			// Once synthesis is complete, cache failure/timeout cannot revoke
+			// valid audio. Terminal delivery still honors the listener and
+			// the independent five-second drain budget.
+			producerDone := producer.Done()
+			if e.Type == "end" {
+				producerDone = nil
+			}
 			timer := time.NewTimer(5 * time.Second)
 			defer timer.Stop()
 			select {
@@ -145,7 +156,7 @@ func (c *SpeechCache) acquire(ctx context.Context, key, text string, live bool) 
 				return nil
 			case <-ctx.Done():
 				return nil
-			case <-producer.Done():
+			case <-producerDone:
 				return producer.Err()
 			case <-timer.C:
 				cancel()
@@ -190,7 +201,17 @@ func (c *SpeechCache) Get(ctx context.Context, key, text string) ([]byte, error)
 		return p.data, p.err
 	}
 }
-func (c *SpeechCache) Stream(ctx context.Context, key, text string, emit func(audio.StreamEvent) error) error {
+func (c *SpeechCache) Stream(ctx context.Context, key, text string, emit func(audio.StreamEvent) error) (err error) {
+	started := time.Now()
+	var ttfa time.Duration
+	consumer := emit
+	emit = func(e audio.StreamEvent) error {
+		err := consumer(e)
+		if err == nil && e.Type == "audio" && ttfa == 0 {
+			ttfa = time.Since(started)
+		}
+		return err
+	}
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -199,6 +220,13 @@ func (c *SpeechCache) Stream(ctx context.Context, key, text string, emit func(au
 	defer stopLive()
 	p, live := c.acquire(liveCtx, key, text, true)
 	defer c.release(key, p)
+	defer func() {
+		source := metrics.Leader
+		if !live {
+			source = metrics.Joined
+		}
+		c.metrics.Stream(source, metrics.Result(err), ttfa, time.Since(started))
+	}()
 	c.logger.Info("geek stream producer", zap.Bool("live", live))
 	if !live {
 		select {
@@ -227,13 +255,20 @@ func (c *SpeechCache) Stream(ctx context.Context, key, text string, emit func(au
 	}
 }
 func (c *SpeechCache) load(ctx context.Context, key, text string, live bool, emit func(audio.StreamEvent) error) ([]byte, error) {
-	if data, ok, err := c.audio.Get(ctx, key); err != nil {
-		return nil, err
-	} else if ok {
-		if _, _, err = audio.PCMFromWAV(data); err == nil {
-			return data, audio.StreamWAV(data, emit)
+	if c.audio != nil {
+		if data, ok, err := c.audio.Get(ctx, key); err != nil {
+			c.metrics.Cache(metrics.CacheReadError)
+			return nil, err
+		} else if ok {
+			if _, _, err = audio.PCMFromWAV(data); err == nil {
+				c.metrics.Cache(metrics.CacheHit)
+				return data, audio.StreamWAV(data, emit)
+			}
+			c.logger.Warn("invalid geek audio cache object")
 		}
-		c.logger.Warn("invalid geek audio cache object")
+		c.metrics.Cache(metrics.CacheMiss)
+	} else {
+		c.metrics.Cache(metrics.CacheBypass)
 	}
 	rate, seq := 0, 0
 	pcm := audio.NewPCMBuffer()
@@ -312,8 +347,13 @@ func (c *SpeechCache) load(ctx context.Context, key, text string, live bool, emi
 	if err = ctx.Err(); err != nil {
 		return nil, err
 	}
-	if err = c.audio.Put(ctx, key, data); err != nil {
-		c.logger.Warn("geek audio cache write failure", zap.Error(err))
+	if c.audio != nil {
+		if err = c.audio.Put(ctx, key, data); err != nil {
+			c.metrics.Cache(metrics.CacheWriteError)
+			c.logger.Warn("geek audio cache write failure", zap.Error(err))
+		} else {
+			c.metrics.Cache(metrics.CacheWritten)
+		}
 	}
 	if err = emit(audio.StreamEvent{Type: "end", Chunks: seq, Samples: pcm.Samples()}); err != nil {
 		return nil, err

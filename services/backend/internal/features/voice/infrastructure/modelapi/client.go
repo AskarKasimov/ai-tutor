@@ -19,6 +19,7 @@ import (
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/audio"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/fault"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/httpx"
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/metrics"
 	"go.uber.org/zap"
 )
 
@@ -29,6 +30,7 @@ type TTSOptions struct {
 }
 
 type Client struct {
+	metrics        *metrics.Voice
 	client         *http.Client
 	sttURL, ttsURL string
 	timeout        time.Duration
@@ -41,6 +43,9 @@ func New(client *http.Client, sttURL, ttsURL string, timeout time.Duration, ttsO
 	}
 	return &Client{client: client, sttURL: sttURL, ttsURL: ttsURL, timeout: timeout, ttsOptions: ttsOptions}
 }
+
+// WithMetrics injects the process registry before this client is used.
+func (c *Client) WithMetrics(m *metrics.Voice) *Client { c.metrics = m; return c }
 
 // providerError keeps the transport cause next to the fault, so the request
 // log tells a refused connection from a reset or a timeout.
@@ -174,6 +179,7 @@ func (c *Client) recognizeOnce(ctx context.Context, data []byte, media string) (
 
 func (c *Client) Synthesize(ctx context.Context, text string) (data []byte, err error) {
 	defer func(started time.Time) {
+		c.metrics.Provider(metrics.WAV, metrics.Result(err), time.Since(started))
 		logCall(ctx, "tts", started, []zap.Field{zap.Int("text_chars", utf8.RuneCountInString(text)), zap.Int("audio_bytes", len(data)),
 			zap.Int("inference_timesteps", c.ttsOptions.InferenceTimesteps)}, err)
 	}(time.Now())

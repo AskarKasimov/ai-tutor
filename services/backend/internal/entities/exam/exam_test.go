@@ -299,10 +299,12 @@ func TestProgressStartsAtZeroAndCountsAnsweredQuestions(t *testing.T) {
 	}
 }
 
-func TestFollowupNeverExceedsTheLimit(t *testing.T) {
+func TestFollowupsAndRephrasesNeverExceedTheLimit(t *testing.T) {
 	// Every answer needs a followup; with "rephrased" the main answer is D
-	// and the rephrase is partial. The followup due at the last slot does not
-	// fit: the topic is graded by the answer instead.
+	// and the rephrase is partial. Rephrases count in the limit (decision of
+	// 18.10.2026): a student saw 8 counted questions and 5 rephrases. A
+	// followup or rephrase due at the last slot does not fit: the topic is
+	// graded by the answer instead, and a D main answer is a gap.
 	for _, rephrased := range []bool{false, true} {
 		for _, limit := range []int{1, 3, 8} {
 			e, first := NewExam(independent(10), limit, nil)
@@ -312,20 +314,34 @@ func TestFollowupNeverExceedsTheLimit(t *testing.T) {
 				}
 				return partial
 			})
-			counted := len(asked(steps, KindQuestion)) + len(asked(steps, KindFollowup))
-			if counted != limit || e.Asked != limit {
-				t.Fatalf("rephrased=%v limit=%d: asked %d (Asked=%d)", rephrased, limit, counted, e.Asked)
+			if len(steps) != limit || e.Asked != limit {
+				t.Fatalf("rephrased=%v limit=%d: asked %d (Asked=%d)", rephrased, limit, len(steps), e.Asked)
 			}
-			if rephrased && len(asked(steps, KindRephrase)) == 0 {
+			if rephrased && limit > 1 && len(asked(steps, KindRephrase)) == 0 {
 				t.Fatalf("limit=%d: no rephrase", limit)
 			}
 			for _, id := range asked(steps, KindQuestion) {
 				s := e.Nodes[id]
-				if s.Grade == nil || *s.Grade != GradeB || (s.Status == StatusAssisted) != rephrased {
+				switch {
+				case rephrased && !slices.Contains(asked(steps, KindRephrase), id):
+					if s.Status != StatusGap || s.Assisted {
+						t.Fatalf("limit=%d: %s without room for a rephrase = %+v", limit, id, s)
+					}
+				case s.Grade == nil || *s.Grade != GradeB || (s.Status == StatusAssisted) != rephrased:
 					t.Fatalf("rephrased=%v limit=%d: %s = %+v", rephrased, limit, id, s)
 				}
 			}
 		}
+	}
+}
+
+func TestUnclearAnswerWithoutRoomForARephraseIsInsufficient(t *testing.T) {
+	e, _ := NewExam(independent(3), 1, nil)
+	if next := e.Apply(vague); next.Kind != KindClosing {
+		t.Fatalf("next = %+v", next)
+	}
+	if s := e.Nodes["n00000"]; s.Status != StatusInsufficient || s.Assisted {
+		t.Fatalf("n00000 = %+v", s)
 	}
 }
 

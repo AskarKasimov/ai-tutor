@@ -114,7 +114,7 @@ type Exam struct {
 	Top     string                `json:"top"`
 	Done    []string              `json:"done"`
 	Current *Step                 `json:"current"`
-	// Asked counts questions and followups; rephrases do not count.
+	// Asked counts questions, followups and rephrases (decision of 18.10.2026).
 	Asked int `json:"asked"`
 	// MaxQuestions stops the exam once reached; 0 means no limit.
 	MaxQuestions int `json:"max_questions"`
@@ -180,7 +180,7 @@ func coverageOrder(g Graph, rng *rand.Rand) []string {
 func (e *Exam) isTop(id string) bool { return slices.Contains(e.Graph.TopLevel(), id) }
 
 // limitReached reports whether the question limit leaves no room for another
-// question or followup.
+// question, followup or rephrase.
 func (e *Exam) limitReached() bool { return e.MaxQuestions > 0 && e.Asked >= e.MaxQuestions }
 
 // next pops the next unchecked topic depth-first. Popping a new top-level topic
@@ -220,12 +220,14 @@ func (e *Exam) finishTop() {
 
 // Apply records the evaluation of the answer to the current step and returns
 // the next step. A "don't know" on the main question or the rephrase makes the
-// topic a gap at once. A main answer on D is rephrased once; an answer after
-// the rephrase is assisted. A non-D answer that already shows K3 and K4 on 2,
-// or that leaves no room in the question limit, is graded at once; otherwise
-// it gets one followup on K3 and K4, and the grade
-// is set after it; "don't know" or an unclear answer on the followup sets K3
-// and K4 to 0 and grades by the table. A gap leads to its prerequisites; a
+// topic a gap at once. A main answer on D or with insufficient data is
+// rephrased once; an answer after the rephrase is assisted. Without room in
+// the question limit for the rephrase, the main answer decides: D is a gap,
+// insufficient data stays insufficient. A non-D answer that already shows K3
+// and K4 on 2, or that leaves no room in the question limit, is graded at
+// once; otherwise it gets one followup on K3 and K4, and the grade is set
+// after it; "don't know" or an unclear answer on the followup sets K3 and K4
+// to 0 and grades by the table. A gap leads to its prerequisites; a
 // mastered topic credits all of its unchecked prerequisites.
 func (e *Exam) Apply(ev Evaluation) Step {
 	cur := *e.Current
@@ -239,21 +241,23 @@ func (e *Exam) Apply(ev Evaluation) Step {
 		case VerdictDontKnow:
 			return e.gap(cur.NodeID, Criteria{}, assisted)
 		case VerdictInsufficient:
-			if !assisted {
+			if !assisted && !e.limitReached() {
+				e.Asked++
 				return e.step(KindRephrase, cur.NodeID)
 			}
 			state.Status = StatusInsufficient
-			state.Assisted = true
+			state.Assisted = assisted
 			return e.next()
 		}
 		c := ev.Criteria
 		state.Criteria = &c
 		state.Assisted = assisted
 		if TopicGrade(c, assisted) == GradeD {
-			if !assisted {
+			if !assisted && !e.limitReached() {
+				e.Asked++
 				return e.step(KindRephrase, cur.NodeID)
 			}
-			return e.gap(cur.NodeID, c, true)
+			return e.gap(cur.NodeID, c, assisted)
 		}
 		// No followup when the answer already shows K3 and K4, or when the
 		// limit has no room for it: the topic is graded by this answer.
@@ -359,7 +363,7 @@ func (e *Exam) Progress() int {
 		// Asked already counts the question on screen; only answered ones
 		// count, so a diagnostic starts at 0.
 		answered := e.Asked
-		if e.Current != nil && (e.Current.Kind == KindQuestion || e.Current.Kind == KindFollowup) {
+		if e.Current != nil && e.Current.Kind != KindClosing {
 			answered--
 		}
 		progress = max(progress, answered*100/e.MaxQuestions)

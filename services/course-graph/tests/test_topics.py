@@ -24,6 +24,7 @@ from course_graph.topics.structure import (
     SYNONYM_PROMPT,
     depth,
     merge_isolated,
+    merge_synonyms,
     refresh_questions,
 )
 from course_graph.topics.models import Evidence, Source, Topic
@@ -1170,3 +1171,46 @@ def test_a_link_with_non_string_ids_is_rejected_alone(field, value):
     assert [(e["source"], e["target"]) for e in graph["prerequisites"]] == [("D", "T")]
     broken = [r for r in graph["rejected_links"] if r["validation_error"].startswith("Неверная запись связи")]
     assert len(broken) == 1 and broken[0][field] is None and broken[0]["raw"][field] == value
+
+
+def synonym_topics():
+    return [make_topic("A", "Альфа", ["Знание альфа"]), make_topic("B", "Бета", ["Знание бета"]),
+            make_topic("C", "Гамма", ["Знание гамма"])]
+
+
+def synonym_answers(decisions, batches):
+    """Answers each asked pair from decisions; records the pairs of every call."""
+    async def complete(system, payload):
+        asked = json.loads(payload)["pairs"]
+        batches.append({frozenset((p["a"], p["b"])) for p in asked})
+        return json.dumps({"pairs": [{"a": p["a"], "b": p["b"], "same": decisions[frozenset((p["a"], p["b"]))]}
+                                     for p in asked]})
+    return complete
+
+
+@pytest.mark.parametrize("max_chars", [12000, 10])
+def test_contradictory_synonym_decisions_never_merge_their_group(max_chars):
+    # A=B, B=C, A≠C — in one batch, or one pair per batch with max_chars=10.
+    encoder = TitleEncoder({"Альфа": [1.0, 0.0], "Бета": [1.0, 0.0], "Гамма": [1.0, 0.0]})
+    decisions = {frozenset("AB"): True, frozenset("BC"): True, frozenset("AC"): False}
+    batches = []
+
+    kept, aliases, requests = run(merge_synonyms(synonym_topics(), synonym_answers(decisions, batches),
+                                                 encoder, lambda t: t.id, max_chars=max_chars))
+    assert [t.id for t in kept] == ["A", "B", "C"] and aliases == {}
+    assert len(batches) == (1 if max_chars == 12000 else 3) and set().union(*batches) == set(decisions)
+
+
+def test_a_consistent_synonym_chain_still_merges():
+    # A~B and B~C are close, A and C are not asked: the chain is one concept.
+    angle = {"Альфа": 0.0, "Бета": 0.38, "Гамма": 0.76}
+    encoder = TitleEncoder({k: [np.cos(a), np.sin(a)] for k, a in angle.items()})
+    decisions = {frozenset("AB"): True, frozenset("BC"): True}
+    batches = []
+
+    kept, aliases, _ = run(merge_synonyms(synonym_topics(), synonym_answers(decisions, batches),
+                                          encoder, lambda t: t.id))
+    assert set().union(*batches) == set(decisions)
+    assert [t.id for t in kept] == ["A"] and aliases == {"B": "A", "C": "A"}
+    assert {s.text for s in kept[0].sources} == {"Альфа", "Бета", "Гамма"}
+    assert set(kept[0].provides) == {"Знание альфа", "Знание бета", "Знание гамма"}

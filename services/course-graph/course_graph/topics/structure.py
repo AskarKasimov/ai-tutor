@@ -210,18 +210,24 @@ async def merge_synonyms(topics, complete, encoder, order, threshold=0.9, neighb
             x = parent[x]
         return x
     rank = {t.id: order(t) for t in topics}
+    different = []
     for answer in answers:
         for pair in answer.pairs if answer else []:
-            if pair.same:
-                a, b = root(pair.a), root(pair.b)
-                if a != b:
-                    first, second = sorted((a, b), key=lambda x: rank[x])
-                    parent[second] = first
+            if not pair.same:
+                different.append((pair.a, pair.b))
+                continue
+            a, b = root(pair.a), root(pair.b)
+            if a != b:
+                first, second = sorted((a, b), key=lambda x: rank[x])
+                parent[second] = first
+    # A=B and B=C with A≠C, in one batch or across batches, is no confirmed
+    # equivalence: such a group is left unmerged rather than picking a side.
+    conflicted = {root(a) for a, b in different if root(a) == root(b)}
     by_id = {t.id: t for t in topics}
     aliases, kept = {}, []
     for topic in sorted(topics, key=order):
         canonical = root(topic.id)
-        if canonical != topic.id and join_topic(by_id[canonical], topic):
+        if canonical != topic.id and canonical not in conflicted and join_topic(by_id[canonical], topic):
             aliases[topic.id] = canonical
         else:
             kept.append(topic)

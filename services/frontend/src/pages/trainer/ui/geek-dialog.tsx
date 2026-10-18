@@ -215,7 +215,13 @@ function Dialogue({
     audio.stop()
     submit({ turnId: currentTurnId, answer: reply, display })
   }
-  const pending = answer.isPending ? answer.variables : undefined
+  // A session refresh can already contain the accepted student turn while
+  // the submission is still pending. Only show its optimistic bubble until
+  // the session moves past the question being answered.
+  const pending =
+    answer.isPending && answer.variables?.turnId === currentTurnId
+      ? answer.variables
+      : undefined
   // A failed answer belongs to its own turn: once the session moved on, the
   // old error and its retry are not offered for the new question.
   const failed =

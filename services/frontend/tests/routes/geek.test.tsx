@@ -1021,3 +1021,37 @@ it('does not let a stopped voice of an older reply show the next one', async () 
     vi.useRealTimers()
   }
 })
+
+it('shows an accepted answer once while its submission is still pending', async () => {
+  const { control, fetch } = geekBackend()
+  const queryClient = renderApp()
+  await start()
+  await answerField()
+  const reply = gate()
+  control.replyGate = reply.closed
+  const text = 'Перестанет быть оптимальным'
+  try {
+    await answerByText(text)
+    await waitFor(() =>
+      expect(
+        fetch.mock.calls.some(([url]) => url.endsWith('/d1/answers')),
+      ).toBe(true),
+    )
+    expect(within(screen.getByRole('list')).getAllByText(text)).toHaveLength(1)
+    // A background read can publish the accepted session before the answer
+    // request finishes. The persisted and optimistic bubbles must not coexist.
+    await act(() =>
+      queryClient.refetchQueries({ queryKey: ['diagnostic-session'] }),
+    )
+    await waitFor(() =>
+      expect(screen.getByRole('textbox', { name: 'Ваш ответ' })).toHaveValue(
+        '',
+      ),
+    )
+    expect(within(screen.getByRole('list')).getAllByText(text)).toHaveLength(1)
+  } finally {
+    reply.open()
+  }
+  await waitFor(() => expect(queryClient.isMutating()).toBe(0))
+  expect(within(screen.getByRole('list')).getAllByText(text)).toHaveLength(1)
+})

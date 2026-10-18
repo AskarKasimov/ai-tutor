@@ -28,6 +28,10 @@ from course_graph.topics.retrieval import get_encoder
 # instance can serve low, and the gateway gives a low request to the free
 # instance expected to answer soonest, so a build uses every model at once
 # instead of waiting for the high pool.
+# Topic extraction and prerequisite checks keep the model's reasoning
+# (reasoning=True): without it Qwen3.6 broke the strict removal format
+# (invented reasons, foreign block ids) and materials failed. Cleaning alone
+# asks for low effort.
 STAGE_COMPLEXITY = "low"
 
 
@@ -172,7 +176,7 @@ async def extract_document(request: ExtractRequest):
     async with cleaning_slots:
         client = ModelClient()
         try:
-            result = await extract_topics(request.markdown, client.completer(STAGE_COMPLEXITY), request.material_id,
+            result = await extract_topics(request.markdown, client.completer(STAGE_COMPLEXITY, reasoning=True), request.material_id,
                                          request.week, ExtractionSettings(request.max_chars, request.max_blocks))
             for topic in result["report"]["topics"]:
                 for source in topic["sources"]:
@@ -202,7 +206,7 @@ async def link_topics(request: LinkRequest):
         client = ModelClient()
         try:
             encoder = await encoder_for_topics(request.topics)
-            return await build_links(request.topics, client.completer(STAGE_COMPLEXITY), encoder, request.per_requirement,
+            return await build_links(request.topics, client.completer(STAGE_COMPLEXITY, reasoning=True), encoder, request.per_requirement,
                                      request.max_chars, request.evidence_chars)
         except Exception:
             logging.exception("Prerequisite generation failed")
@@ -237,7 +241,7 @@ async def build_course(request: BuildRequest):
                             raise ValueError("Текст темы не соответствует источникам")
                     topics.extend(material.topics)
                 else:
-                    result = await extract_topics(material.markdown, client.completer(STAGE_COMPLEXITY), material.id,
+                    result = await extract_topics(material.markdown, client.completer(STAGE_COMPLEXITY, reasoning=True), material.id,
                                                   material.week, ExtractionSettings(max_chars=request.max_chars))
                     for item in result["report"]["topics"]:
                         for source in item["sources"]:
@@ -246,7 +250,7 @@ async def build_course(request: BuildRequest):
                     topics.extend(Topic.model_validate(t) for t in result["report"]["topics"])
                     reports.append({"material_id": material.id, **result["report"]})
             encoder = await encoder_for_topics(topics)
-            graph = await build_links(topics, client.completer(STAGE_COMPLEXITY), encoder, request.per_requirement)
+            graph = await build_links(topics, client.completer(STAGE_COMPLEXITY, reasoning=True), encoder, request.per_requirement)
             graph["extraction_reports"] = reports
             return graph
         except Exception:

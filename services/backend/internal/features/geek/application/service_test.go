@@ -662,3 +662,56 @@ func TestRawMaterialRequiresOwnerAndMatchingDiagnosticSourceRevision(t *testing.
 		t.Fatalf("replaced material: %v", err)
 	}
 }
+
+func TestPreparedRephraseIsAskedWithoutTheModel(t *testing.T) {
+	f := newFixture(t)
+	for i := range f.graphs.graph.Nodes {
+		f.graphs.graph.Nodes[i].Rephrase = "Проще про «" + f.graphs.graph.Nodes[i].Title + "»?"
+	}
+	ctx := context.Background()
+	s, _, _ := f.service.Start(ctx, "student", "subject", "start")
+	node, _ := s.Exam.Graph.Node(*s.Turns[0].NodeID)
+	if node.MainQuestion() == "" || s.Turns[0].Text != node.Questions[0] {
+		t.Fatalf("the first topic needs a prepared main question: %+v", s.Turns[0])
+	}
+	// A weak answer is graded D, so Geek rephrases the main question.
+	s = f.answer(t, s, Answer{Text: "слабо"})
+	turn := s.Turns[len(s.Turns)-1]
+	if turn.Kind != exam.KindRephrase || !strings.HasSuffix(turn.Text, "\n\nПроще про «"+node.Title+"»?") {
+		t.Fatalf("rephrase = %+v", turn)
+	}
+	if _, question := turn.Parts(); question != "Проще про «"+node.Title+"»?" {
+		t.Fatalf("voiced question part = %q", question)
+	}
+	for _, r := range f.examiner.questions {
+		if r.Kind == exam.KindRephrase {
+			t.Fatal("a prepared rephrase was generated again")
+		}
+	}
+}
+
+func TestRephraseIsGeneratedWhenItIsNotPrepared(t *testing.T) {
+	for name, edit := range map[string]func(*exam.Node){
+		// Graphs and diagnostics from before the decision of 18.10.2026.
+		"no rephrase": func(n *exam.Node) { n.Rephrase = "" },
+		// The main question is generated at runtime, so a stored rephrase
+		// rephrases another question.
+		"no main question": func(n *exam.Node) { n.Questions, n.Rephrase = nil, "Чужая переформулировка?" },
+	} {
+		t.Run(name, func(t *testing.T) {
+			f := newFixture(t)
+			for i := range f.graphs.graph.Nodes {
+				edit(&f.graphs.graph.Nodes[i])
+			}
+			s, _, _ := f.service.Start(context.Background(), "student", "subject", "start")
+			node, _ := s.Exam.Graph.Node(*s.Turns[0].NodeID)
+			s = f.answer(t, s, Answer{Text: "слабо"})
+			turn := s.Turns[len(s.Turns)-1]
+			last := f.examiner.questions[len(f.examiner.questions)-1]
+			if turn.Kind != exam.KindRephrase || last.Kind != exam.KindRephrase || last.Ahead ||
+				!strings.HasSuffix(turn.Text, "rephrase: "+node.Title+"?") {
+				t.Fatalf("rephrase = %+v, request = %+v", turn, last)
+			}
+		})
+	}
+}

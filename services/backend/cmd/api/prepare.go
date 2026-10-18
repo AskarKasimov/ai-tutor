@@ -17,9 +17,10 @@ import (
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/httpx"
 )
 
-// prepareQuestions fills the missing main questions of a graph file through
-// the LLM gateway (BACKEND_LLM_GATEWAY_ADDR, BACKEND_LLM_TIMEOUT) and writes
-// the result. Nodes that failed are written without a question and reported.
+// prepareQuestions fills the missing main questions and rephrases of a graph
+// file through the LLM gateway (BACKEND_LLM_GATEWAY_ADDR, BACKEND_LLM_TIMEOUT)
+// and writes the result. Failures are reported; a node keeps what was
+// prepared, so one whose rephrase failed is written with its new main question.
 func prepareQuestions(ctx context.Context, logger *zap.Logger, args []string) error {
 	if len(args) != 2 {
 		return fmt.Errorf("usage: api prepare-questions <graph.json> <out.json>")

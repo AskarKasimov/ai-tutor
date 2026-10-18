@@ -156,7 +156,7 @@ func (s *Service) Start(ctx context.Context, ownerID, subjectID, key string) (ex
 		return exam.Session{}, false, err
 	}
 	if !ok {
-		return exam.Session{}, false, fault.New(fault.Conflict, "GRAPH_NOT_READY", "Граф курса ещё не собран.")
+		return exam.Session{}, false, fault.New(fault.Conflict, "GRAPH_NOT_READY", "Граф курса ещё не собран или готовится.")
 	}
 	id, err := s.ids.New("diagnostic")
 	if err != nil {
@@ -413,8 +413,10 @@ func (s *Service) say(ctx context.Context, session *exam.Session, step exam.Step
 	}
 	node, _ := session.Exam.Graph.Node(step.NodeID)
 	var text string
-	if step.Kind == exam.KindQuestion && len(node.Questions) > 0 && strings.TrimSpace(node.Questions[0]) != "" {
+	if step.Kind == exam.KindQuestion && node.MainQuestion() != "" {
 		text = node.Questions[0]
+	} else if step.Kind == exam.KindRephrase && node.PreparedRephrase() != "" {
+		text = node.PreparedRephrase()
 	} else {
 		var err error
 		text, err = s.examiner.Question(ctx, QuestionRequest{Kind: step.Kind, Node: node, Dialogue: session.Dialogue(node.ID)})

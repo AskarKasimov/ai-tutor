@@ -50,7 +50,8 @@ func Dial(address string, timeout time.Duration) (*Gateway, *grpc.ClientConn, er
 
 func (g *Gateway) Question(ctx context.Context, r application.QuestionRequest) (string, error) {
 	// Everything asked during a session uses the fast low pool (decision of
-	// 18.10.2026); only a main question prepared ahead may take medium.
+	// 18.10.2026); only a main question or rephrase prepared ahead may take
+	// medium, and it is not urgent.
 	level := llmgatewayv1.Complexity_COMPLEXITY_LOW
 	if r.Ahead {
 		level = llmgatewayv1.Complexity_COMPLEXITY_MEDIUM

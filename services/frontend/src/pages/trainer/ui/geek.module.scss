@@ -158,6 +158,10 @@
   position: sticky;
   bottom: 0;
 }
+.composerSpacer {
+  visibility: hidden;
+  pointer-events: none;
+}
 .composer,
 .footer {
   display: grid;

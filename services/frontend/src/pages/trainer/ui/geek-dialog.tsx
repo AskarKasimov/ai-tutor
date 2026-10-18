@@ -285,14 +285,22 @@ function Dialogue({
         </div>
       )}
       {session.status === 'completed' ? (
-        resultReady && <ResultCard turns={session.turns} onResult={onResult} />
+        <>
+          {resultReady && (
+            <ResultCard turns={session.turns} onResult={onResult} />
+          )}
+          <ComposerSpacer />
+        </>
       ) : session.status === 'cancelled' ? (
-        <div className={styles.footer} role="alert">
-          <Text as="p">{t('geek.cancelled')}</Text>
-          <Button size="3" variant="soft" onClick={onBack}>
-            {t('home.back')}
-          </Button>
-        </div>
+        <>
+          <div className={styles.footer} role="alert">
+            <Text as="p">{t('geek.cancelled')}</Text>
+            <Button size="3" variant="soft" onClick={onBack}>
+              {t('home.back')}
+            </Button>
+          </div>
+          <ComposerSpacer />
+        </>
       ) : (
         <Composer
           key={currentTurnId}
@@ -310,6 +318,21 @@ function Dialogue({
         />
       )}
     </main>
+  )
+}
+
+// Keep the conversation's bottom spacing when the answer field is gone.
+function ComposerSpacer() {
+  return (
+    <div
+      className={`${styles.composer} ${styles.composerSpacer}`}
+      aria-hidden="true"
+    >
+      <div className={styles.field}>
+        <div className={styles.input} />
+        <span className={styles.round} />
+      </div>
+    </div>
   )
 }
 

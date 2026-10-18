@@ -16,6 +16,7 @@ const snapshotSchema = z.object({
   stale: z.boolean(),
   inputs_ready: z.boolean(),
   updated_at: z.number().int().nonnegative(),
+  graph_source: z.enum(['built', 'fixture', 'none']).optional(),
   graph: z
     .object({
       topics: z.array(
@@ -23,6 +24,7 @@ const snapshotSchema = z.object({
           id: z.string(),
           title: z.string(),
           question: z.string().optional(),
+          text: z.string().optional(),
           provides: z.array(z.string()).optional(),
           requires: z.array(z.string()).optional(),
           parent_title: z.string().nullable().optional(),
@@ -211,6 +213,7 @@ export async function readCourseGraph(
     stale: snapshot.stale,
     inputsReady: snapshot.inputs_ready,
     view,
+    source: snapshot.graph_source === 'fixture' ? 'fixture' : 'built',
     nodes: view.topics.map((topic) => ({
       id: topic.id,
       title: topic.title,

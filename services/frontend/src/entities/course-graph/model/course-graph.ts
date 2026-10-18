@@ -38,6 +38,9 @@ export type CourseGraph = {
   stale?: boolean
   inputsReady?: boolean
   view?: CourseGraphView
+  // built: from the course materials; fixture: the default graph Geek
+  // examines by until the first build.
+  source?: 'built' | 'fixture'
 }
 
 // Native graph payload supplied by the course-graph service.
@@ -46,6 +49,8 @@ export type CourseGraphView = {
     id: string
     title: string
     question?: string
+    // The topic's theory assembled from the materials (Markdown).
+    text?: string
     provides?: string[]
     requires?: string[]
     parent_title?: string | null

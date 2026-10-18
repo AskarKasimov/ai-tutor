@@ -15,7 +15,7 @@ func New(service *application.Worker) *Handler { return &Handler{service} }
 
 // Read returns the latest successful graph and current build status.
 // @Summary Граф курса и состояние построения
-// @Description Доступно только admin. Сборку запускает POST .../graph/build. stale — материалы изменились после публикации графа; inputs_ready — все материалы обработаны и сборку можно запустить.
+// @Description Доступно только admin. Сборку запускает POST .../graph/build. stale — материалы изменились после публикации графа; inputs_ready — все материалы обработаны и сборку можно запустить. graph_source — откуда граф - built (собран из материалов), fixture (граф по умолчанию, по которому Geek экзаменует курс до первой сборки) или none.
 // @ID getCourseGraph
 // @Tags Материалы
 // @Security accessCookie

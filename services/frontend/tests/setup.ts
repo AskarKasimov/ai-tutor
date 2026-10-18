@@ -7,6 +7,19 @@ if (!globalThis.ResizeObserver) {
     disconnect() {}
   } as unknown as typeof ResizeObserver
 }
+// React Flow reads the viewport transform through DOMMatrixReadOnly.
+if (!('DOMMatrixReadOnly' in window)) {
+  Object.defineProperty(window, 'DOMMatrixReadOnly', {
+    configurable: true,
+    value: class {
+      m22: number
+      constructor(transform?: string) {
+        const scale = transform?.match(/scale\(([0-9.]+)\)/)?.[1]
+        this.m22 = scale ? Number(scale) : 1
+      }
+    },
+  })
+}
 if (!Element.prototype.scrollIntoView) {
   Element.prototype.scrollIntoView = () => undefined
 }

@@ -74,8 +74,49 @@
 .thinking {
   display: inline-flex;
   align-items: center;
-  gap: var(--space-2);
+  gap: var(--space-3);
   color: var(--app-muted);
+}
+// Geek's typing: three dots rising one after another in a soft bubble.
+.dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 10px 14px;
+  border-radius: 16px;
+  background: var(--app-soft);
+  span {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--app-accent);
+    opacity: 0.35;
+    animation: typing 1.2s ease-in-out infinite;
+  }
+  span:nth-child(2) {
+    animation-delay: 0.15s;
+  }
+  span:nth-child(3) {
+    animation-delay: 0.3s;
+  }
+}
+@keyframes typing {
+  0%,
+  60%,
+  100% {
+    opacity: 0.35;
+    transform: translateY(0);
+  }
+  30% {
+    opacity: 1;
+    transform: translateY(-5px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dots span {
+    animation: none;
+    opacity: 0.7;
+  }
 }
 .spin {
   animation: spin 1s linear infinite;
@@ -171,21 +212,6 @@
 .secondary {
   display: flex;
   justify-content: flex-end;
-}
-.transcript {
-  display: grid;
-  gap: var(--space-2);
-  padding: var(--space-3) var(--space-4);
-  border-radius: 16px;
-  background: var(--app-soft);
-}
-.transcriptText {
-  white-space: pre-wrap;
-}
-.transcriptActions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
 }
 .error {
   display: flex;

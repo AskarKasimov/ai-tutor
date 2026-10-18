@@ -28,13 +28,22 @@ export function useTurnAudio(sessionId: string) {
     setState({ turnId: null, status: 'idle' })
   }, [])
 
+  // onStart runs once, when the first part starts to play or when the turn
+  // cannot be voiced (a failure, a blocked autoplay, a stop), so a caller
+  // waiting for the voice is never left waiting.
   const play = useCallback(
-    async (turn: Pick<Turn, 'id' | 'reply'>) => {
+    async (turn: Pick<Turn, 'id' | 'reply'>, onStart?: () => void) => {
       current.current?.abort()
       const controller = new AbortController()
       current.current = controller
       const { signal } = controller
       const mine = () => current.current === controller
+      let started = false
+      const start = () => {
+        if (started) return
+        started = true
+        onStart?.()
+      }
       setState({ turnId: turn.id, status: 'loading' })
 
       const load = async (part: TurnAudioPart) => {
@@ -61,6 +70,7 @@ export function useTurnAudio(sessionId: string) {
         if (reply) {
           signal.throwIfAborted()
           await playToEnd(reply, signal, () => {
+            start()
             if (mine()) setState({ turnId: turn.id, status: 'playing' })
           })
           if (mine()) setState({ turnId: turn.id, status: 'loading' })
@@ -68,6 +78,7 @@ export function useTurnAudio(sessionId: string) {
         const audio = await question
         signal.throwIfAborted()
         await playToEnd(audio, signal, () => {
+          start()
           if (mine()) setState({ turnId: turn.id, status: 'playing' })
         })
         if (mine()) {
@@ -75,6 +86,7 @@ export function useTurnAudio(sessionId: string) {
           setState({ turnId: null, status: 'idle' })
         }
       } catch (error) {
+        start()
         if (signal.aborted) return
         // A browser that blocks autoplay is not an error: the student can
         // press play.

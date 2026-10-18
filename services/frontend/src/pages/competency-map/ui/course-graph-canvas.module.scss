@@ -1,0 +1,443 @@
+$tones:
+  'blue', 'green', 'violet', 'orange', 'cyan', 'crimson', 'amber', 'teal',
+  'indigo', 'pink', 'grass', 'brown', 'gray';
+
+// A section tone is a Radix scale; every themed element reads these variables.
+.chip,
+.node,
+.cluster {
+  --tone-solid: var(--gray-9);
+  --tone-soft: var(--gray-3);
+  --tone-line: var(--gray-6);
+  --tone-text: var(--gray-11);
+}
+@each $tone in $tones {
+  .chip[data-tone='#{$tone}'],
+  .node[data-tone='#{$tone}'],
+  .cluster[data-tone='#{$tone}'] {
+    --tone-solid: var(--#{$tone}-9);
+    --tone-soft: var(--#{$tone}-3);
+    --tone-line: var(--#{$tone}-6);
+    --tone-text: var(--#{$tone}-11);
+    --tone-wash: var(--#{$tone}-a2);
+  }
+  .minimap-#{$tone} {
+    fill: var(--#{$tone}-9);
+  }
+}
+
+.explorer {
+  display: grid;
+  gap: var(--space-3);
+  min-width: 0;
+
+  &[data-expanded='true'] {
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+    display: flex;
+    flex-direction: column;
+    padding: var(--space-4);
+    background: var(--color-panel-solid);
+  }
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.search {
+  flex: 1 1 260px;
+  max-width: 420px;
+}
+
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--gray-11);
+  cursor: pointer;
+}
+
+.searchResults,
+.legend,
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  max-width: 100%;
+  padding: 2px var(--space-2);
+  border: 1px solid var(--tone-line);
+  border-radius: var(--radius-full);
+  background: var(--color-panel-solid);
+  color: var(--tone-text);
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1.3;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background-color 120ms ease,
+    border-color 120ms ease;
+
+  &:hover {
+    background: var(--tone-soft);
+  }
+  &:focus-visible {
+    outline: 2px solid var(--tone-solid);
+    outline-offset: 2px;
+  }
+  &[aria-pressed='true'] {
+    border-color: var(--tone-solid);
+    background: var(--tone-soft);
+  }
+}
+
+.swatch {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-full);
+  background: var(--tone-solid);
+}
+
+.chipCount {
+  color: var(--gray-10);
+  font-weight: 400;
+}
+
+.stage {
+  position: relative;
+  flex: 1 1 auto;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid var(--app-border);
+  border-radius: var(--radius-4);
+  background: var(--gray-1);
+}
+
+.canvas {
+  height: min(70vh, 640px);
+  min-height: 420px;
+
+  .explorer[data-expanded='true'] & {
+    height: 100%;
+    min-height: 0;
+  }
+
+  :global(.react-flow__node-topic) {
+    border-radius: var(--radius-3);
+    &:focus-visible {
+      outline: 3px solid var(--app-accent);
+      outline-offset: 3px;
+    }
+  }
+  :global(.react-flow__controls) {
+    overflow: hidden;
+    border-radius: var(--radius-3);
+    box-shadow: var(--shadow-3);
+  }
+  :global(.react-flow__controls-button) {
+    width: 28px;
+    height: 28px;
+    color: var(--gray-12);
+  }
+}
+
+.minimapCluster {
+  fill: var(--gray-a3);
+}
+
+.cluster {
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  border-radius: var(--radius-5);
+  transition: opacity 160ms ease;
+
+  &[data-framed='true'] {
+    border: 1.5px dashed var(--tone-line);
+    background: var(--tone-wash);
+  }
+  &[data-dimmed='true'] {
+    opacity: 0.35;
+  }
+}
+
+.clusterTitle {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4) 0;
+  overflow: hidden;
+  color: var(--tone-text);
+  font-size: 0.85rem;
+  font-weight: 700;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.minimap {
+  @media (max-width: 720px) {
+    display: none;
+  }
+  overflow: hidden;
+  border: 1px solid var(--app-border);
+  border-radius: var(--radius-3);
+  background: var(--color-panel-solid);
+}
+
+.node {
+  box-sizing: border-box;
+  width: 248px;
+  display: grid;
+  gap: var(--space-1);
+  padding: var(--space-3) var(--space-3) var(--space-2) var(--space-4);
+  border: 1px solid var(--tone-line);
+  border-left: 5px solid var(--tone-solid);
+  border-radius: var(--radius-3);
+  background: var(--color-panel-solid);
+  box-shadow: var(--shadow-2);
+  color: var(--app-ink);
+  cursor: pointer;
+  transition:
+    opacity 160ms ease,
+    box-shadow 160ms ease,
+    transform 160ms ease;
+
+  &:hover {
+    box-shadow: var(--shadow-4);
+  }
+
+  &[data-kind='section'] {
+    border-width: 2px 2px 2px 6px;
+    background: var(--tone-soft);
+  }
+  &[data-state='dimmed'] {
+    opacity: 0.22;
+  }
+  &[data-state='related'] {
+    box-shadow:
+      0 0 0 2px var(--tone-line),
+      var(--shadow-3);
+  }
+  &[data-state='focus'],
+  &[data-state='selected'] {
+    box-shadow:
+      0 0 0 3px var(--tone-solid),
+      var(--shadow-5);
+    transform: translateY(-1px);
+  }
+}
+
+.nodeEyebrow {
+  color: var(--tone-text);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.nodeTitle {
+  display: -webkit-box;
+  overflow: hidden;
+  font-size: 0.86rem;
+  font-weight: 600;
+  line-height: 1.35;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+
+  .node[data-kind='section'] & {
+    font-size: 0.95rem;
+    font-weight: 700;
+  }
+}
+
+.nodeMeta {
+  display: flex;
+  gap: var(--space-3);
+  min-height: 16px;
+  color: var(--gray-10);
+  font-size: 0.72rem;
+}
+
+.metaItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.handle {
+  width: 6px;
+  height: 6px;
+  min-width: 0;
+  min-height: 0;
+  border: none;
+  background: var(--tone-solid);
+  opacity: 0;
+}
+
+.prerequisiteEdge :global(.react-flow__edge-path) {
+  stroke: var(--gray-8);
+  stroke-width: 1.6;
+  transition:
+    stroke 160ms ease,
+    opacity 160ms ease;
+}
+
+.crossEdge.edge-idle {
+  opacity: 0.4;
+}
+
+.hierarchyEdge :global(.react-flow__edge-path) {
+  stroke: var(--gray-7);
+  stroke-width: 1.2;
+  stroke-dasharray: 4 5;
+}
+
+.edge-active :global(.react-flow__edge-path) {
+  stroke: var(--accent-9);
+  stroke-width: 2.4;
+}
+
+.hierarchyEdge.edge-active :global(.react-flow__edge-path) {
+  stroke: var(--accent-8);
+  stroke-width: 1.6;
+}
+
+.edge-dimmed {
+  opacity: 0.12;
+}
+
+.details {
+  position: absolute;
+  top: var(--space-3);
+  right: var(--space-3);
+  bottom: var(--space-3);
+  z-index: 5;
+  box-sizing: border-box;
+  width: min(360px, calc(100% - 2 * var(--space-3)));
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  overflow-y: auto;
+  padding: var(--space-4);
+  border: 1px solid var(--app-border);
+  border-radius: var(--radius-4);
+  background: var(--color-panel-solid);
+  box-shadow: var(--shadow-5);
+
+  @media (max-width: 720px) {
+    position: static;
+    width: auto;
+    max-height: 60vh;
+    border-width: 1px 0 0;
+    border-radius: 0;
+    box-shadow: none;
+  }
+}
+
+.detailsHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.detailsSection {
+  max-width: 85%;
+  white-space: normal;
+}
+
+.detailsBlock {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.detailsLabel {
+  margin: 0;
+  color: var(--gray-10);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.question {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border-left: 3px solid var(--accent-8);
+  border-radius: var(--radius-2);
+  background: var(--accent-a2);
+}
+
+.theory {
+  position: relative;
+  max-height: 180px;
+  overflow: hidden;
+  font-size: 0.86rem;
+
+  &::after {
+    content: '';
+    position: absolute;
+    inset: auto 0 0;
+    height: 48px;
+    background: linear-gradient(transparent, var(--color-panel-solid));
+  }
+  &[data-open='true'] {
+    max-height: none;
+    &::after {
+      display: none;
+    }
+  }
+}
+
+.linkList {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+
+  li {
+    display: grid;
+    justify-items: start;
+    gap: var(--space-1);
+  }
+  p {
+    margin: 0;
+  }
+}
+
+.linkList .chip {
+  border-radius: var(--radius-3);
+}
+
+.bullets {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0;
+  padding-left: var(--space-4);
+  font-size: 0.86rem;
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}

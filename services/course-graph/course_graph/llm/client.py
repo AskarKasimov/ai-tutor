@@ -20,6 +20,13 @@ class GatewayError(RuntimeError):
     pass
 
 
+# A timed-out or unavailable call is repeated once: the gateway puts the
+# instance that failed after healthy ones, so the repeat usually goes to
+# another model. One slow call used to fail a whole graph build after
+# 15 minutes of finished passes.
+RETRIED = {grpc.StatusCode.DEADLINE_EXCEEDED, grpc.StatusCode.UNAVAILABLE}
+
+
 class ModelClient:
     def __init__(self, address: str | None = None, timeout: float | None = None):
         self.address = address or os.environ.get("COURSE_GRAPH_LLM_GATEWAY_ADDR", "llm-gateway:8011")
@@ -45,7 +52,12 @@ class ModelClient:
             complexity=COMPLEXITY[complexity],
             parameters=parameters,
         )
-        response = await self.stub.Complete(request, timeout=self.timeout)
+        try:
+            response = await self.stub.Complete(request, timeout=self.timeout)
+        except grpc.aio.AioRpcError as error:
+            if error.code() not in RETRIED:
+                raise
+            response = await self.stub.Complete(request, timeout=self.timeout)
         try:
             choice = json.loads(response.completion_json)["choices"][0]
             content = choice["message"]["content"]

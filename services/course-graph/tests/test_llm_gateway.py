@@ -64,6 +64,38 @@ def test_client_rejects_cut_answer():
         call(Gateway(finish_reason="length"))
 
 
+class FailingGateway(Gateway):
+    """Fails the first calls with the given codes, then answers."""
+    def __init__(self, codes):
+        super().__init__()
+        self.codes = list(codes)
+
+    async def Complete(self, request, context):
+        if self.codes:
+            self.requests.append(request)
+            await context.abort(self.codes.pop(0), "The upstream LLM request timed out.")
+        return await super().Complete(request, context)
+
+
+def test_a_timed_out_or_unavailable_call_is_repeated_once():
+    for code in (grpc.StatusCode.DEADLINE_EXCEEDED, grpc.StatusCode.UNAVAILABLE):
+        gateway = FailingGateway([code])
+        assert call(gateway, "low") == '{"remove":[]}'
+        assert len(gateway.requests) == 2
+    # A second failure in a row is not hidden.
+    gateway = FailingGateway([grpc.StatusCode.DEADLINE_EXCEEDED] * 2)
+    with pytest.raises(grpc.aio.AioRpcError) as failure:
+        call(gateway, "low")
+    assert failure.value.code() == grpc.StatusCode.DEADLINE_EXCEEDED and len(gateway.requests) == 2
+
+
+def test_other_gateway_errors_are_not_repeated():
+    gateway = FailingGateway([grpc.StatusCode.INVALID_ARGUMENT])
+    with pytest.raises(grpc.aio.AioRpcError):
+        call(gateway, "low")
+    assert len(gateway.requests) == 1
+
+
 def test_client_rejects_unknown_complexity():
     async def run():
         client = ModelClient("127.0.0.1:1")

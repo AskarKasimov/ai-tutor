@@ -25,6 +25,7 @@ type View = {
   screen: 'dialog' | 'result'
 }
 const viewKey = 'ai-tutor:geek-view'
+const selectedSubjectKey = 'ai-tutor:selected-subject'
 
 function readView(userId: string): View | null {
   try {
@@ -48,6 +49,22 @@ function saveView(view: View | null) {
   }
 }
 
+function readSelectedSubject(userId: string) {
+  try {
+    return localStorage.getItem(`${selectedSubjectKey}:${userId}`) ?? ''
+  } catch {
+    return ''
+  }
+}
+
+function saveSelectedSubject(userId: string, subjectId: string) {
+  try {
+    localStorage.setItem(`${selectedSubjectKey}:${userId}`, subjectId)
+  } catch {
+    // The selection still works for this page when storage is unavailable.
+  }
+}
+
 export function LearningHome() {
   const { t } = useTranslation()
   const { user } = useAuth()
@@ -57,9 +74,13 @@ export function LearningHome() {
   const [view, setView] = useState<View | null>(() =>
     userId ? readView(userId) : null,
   )
-  // Students study the single course the teacher manages: the first one.
+  const [savedSubjectId, setSavedSubjectId] = useState(() =>
+    userId ? readSelectedSubject(userId) : '',
+  )
   const selected =
-    subjects.find((subject) => subject.id === view?.subjectId) ?? subjects[0]
+    subjects.find((subject) => subject.id === view?.subjectId) ??
+    subjects.find((subject) => subject.id === savedSubjectId) ??
+    subjects[0]
   const history = useDiagnosticHistoryQuery(userId, selected?.id ?? '')
   const start = useStartDiagnosticMutation(userId, selected?.id ?? '')
 
@@ -152,6 +173,33 @@ export function LearningHome() {
           </Card>
         ) : (
           <section className={styles.courses} aria-labelledby="courses-title">
+            {subjects.length > 1 && !view && (
+              <div className={styles.courseSelector}>
+                <Text as="span" weight="medium">
+                  {t('home.selectCourse')}
+                </Text>
+                <div
+                  className={styles.courseChoices}
+                  aria-label={t('home.selectCourse')}
+                >
+                  {subjects.map((subject) => (
+                    <Button
+                      key={subject.id}
+                      type="button"
+                      size="3"
+                      variant={selected.id === subject.id ? 'solid' : 'soft'}
+                      aria-pressed={selected.id === subject.id}
+                      onClick={() => {
+                        setSavedSubjectId(subject.id)
+                        saveSelectedSubject(userId, subject.id)
+                      }}
+                    >
+                      {subject.name}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+            )}
             <article className={styles.course} aria-labelledby="course-title">
               <div className={styles.courseHeader}>
                 <Heading as="h2" size="7" id="course-title">

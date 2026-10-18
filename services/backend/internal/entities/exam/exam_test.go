@@ -3,6 +3,7 @@ package exam
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"math/rand/v2"
 	"os"
 	"slices"
@@ -232,13 +233,72 @@ func TestInsufficientAfterRephraseIsExcludedFromTheGrade(t *testing.T) {
 func TestMaxQuestionsEndsTheExam(t *testing.T) {
 	e, first := NewExam(fixture(t), 3, nil)
 	steps := run(t, e, first, func(s Step) Evaluation { return partial })
-	// a-star: question + followup, simulated-annealing: question + followup
-	// would be four, so the exam closes after the second followup is due.
-	if q := len(asked(steps, KindQuestion)) + len(asked(steps, KindFollowup)); q > 4 {
+	// a-star: question + followup; simulated-annealing: question, and its
+	// followup does not fit, so it is graded by the main answer.
+	if q := len(asked(steps, KindQuestion)) + len(asked(steps, KindFollowup)); q != 3 {
 		t.Fatalf("asked %d times with a limit of 3", q)
+	}
+	if s := e.Nodes["simulated-annealing"]; s.Status != StatusIndependent || *s.Grade != GradeB {
+		t.Fatalf("simulated-annealing = %+v", s)
 	}
 	if e.Nodes["agents-peas"].Status != StatusUnchecked {
 		t.Fatal("topics beyond the limit stay unchecked")
+	}
+}
+
+func independent(n int) Graph {
+	g := Graph{}
+	for i := range n {
+		g.Nodes = append(g.Nodes, Node{ID: fmt.Sprintf("n%05d", i), Title: "Тема"})
+	}
+	return g
+}
+
+func TestFollowupNeverExceedsTheLimit(t *testing.T) {
+	// Every answer needs a followup; with "rephrased" the main answer is D
+	// and the rephrase is partial. The followup due at the last slot does not
+	// fit: the topic is graded by the answer instead.
+	for _, rephrased := range []bool{false, true} {
+		for _, limit := range []int{1, 3, 8} {
+			e, first := NewExam(independent(10), limit, nil)
+			steps := run(t, e, first, func(s Step) Evaluation {
+				if rephrased && s.Kind == KindQuestion {
+					return weak
+				}
+				return partial
+			})
+			counted := len(asked(steps, KindQuestion)) + len(asked(steps, KindFollowup))
+			if counted != limit || e.Asked != limit {
+				t.Fatalf("rephrased=%v limit=%d: asked %d (Asked=%d)", rephrased, limit, counted, e.Asked)
+			}
+			if rephrased && len(asked(steps, KindRephrase)) == 0 {
+				t.Fatalf("limit=%d: no rephrase", limit)
+			}
+			for _, id := range asked(steps, KindQuestion) {
+				s := e.Nodes[id]
+				if s.Grade == nil || *s.Grade != GradeB || (s.Status == StatusAssisted) != rephrased {
+					t.Fatalf("rephrased=%v limit=%d: %s = %+v", rephrased, limit, id, s)
+				}
+			}
+		}
+	}
+}
+
+func BenchmarkNewExam(b *testing.B) {
+	shared := Graph{}
+	for i := range 200 {
+		shared.Nodes = append(shared.Nodes, Node{ID: fmt.Sprintf("b%03d", i), Title: "База"})
+	}
+	for i := range 2000 {
+		shared.Nodes = append(shared.Nodes, Node{ID: fmt.Sprintf("t%04d", i), Title: "Тема",
+			Prerequisites: []string{fmt.Sprintf("b%03d", i%200), fmt.Sprintf("b%03d", (i*7)%200)}})
+	}
+	for name, g := range map[string]Graph{"isolated-2000": independent(2000), "shared-2000": shared} {
+		b.Run(name, func(b *testing.B) {
+			for b.Loop() {
+				NewExam(g, 8, nil)
+			}
+		})
 	}
 }
 

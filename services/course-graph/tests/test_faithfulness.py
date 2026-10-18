@@ -7,7 +7,7 @@ from types import SimpleNamespace as S
 
 from course_graph.ocr.converter import convert_document, get_cached_document
 from course_graph.ocr.regions import CanonicalBBox, FormulaRegionRecord, summarize_formula_regions
-from course_graph.ocr.syntax import check_latex_syntax, normalize_formatting_only
+from course_graph.ocr.syntax import check_latex_syntax, has_substantive_conflict, normalize_formatting_only
 
 
 def test_syntax_checker_catches_unbalanced_and_truncated_latex():
@@ -519,3 +519,47 @@ def test_cosmetic_retry_formatting_differences_are_preserved_not_suspect(monkeyp
         assert regions[0].attempts == 2
         assert regions[0].latex == retry_variant
         assert item.text == retry_variant
+
+
+@pytest.mark.parametrize("raw, native", [
+    (r"x_1 + 2", "x1 + 2"),
+    (r"\alpha^2", "α2"),
+    (r"a - b = c", "a − b = c"),
+    (r"f(x) = x^2 - 1", "f(x) = x2 − 1"),
+    (r"x \leq y", "x ≤ y"),
+    (r"x \le y", "x ≤ y"),
+    (r"a \neq b", "a ≠ b"),
+    (r"\mu \pm \sigma", "μ ± σ"),
+    (r"\varepsilon > 0", "ε > 0"),
+    (r"\epsilon > 0", "ϵ > 0"),
+    (r"\Sigma = 1", "Σ = 1"),
+    (r"\sum_{i=1}^{n} x_i", "n ∑ i=1 xi"),
+    (r"\frac{a}{b} = c", "a b = c"),
+    (r"\left( x \right) \leq 1", "(x) ≤ 1"),
+])
+def test_text_layer_of_a_correct_formula_is_not_a_conflict(raw, native):
+    # A PDF text layer flattens scripts, uses U+2212 for minus, Unicode relations and
+    # Greek glyphs, and does not keep the order of stacked limits.
+    assert not has_substantive_conflict(raw, native)
+
+
+@pytest.mark.parametrize("raw, native", [
+    (r"a + b", "a − b"),          # different operator
+    (r"x + y = 1", "x = 1"),      # dropped term
+    (r"x^2", "x3"),               # different digit
+    (r"x \leq y", "x ≥ y"),       # different relation
+    (r"\alpha + 1", "β + 1"),     # different letter
+    (r"x_2^i", "x_i^2"),          # LaTeX-like text layer keeps structure: inverted indices
+])
+def test_text_layer_contradiction_is_still_a_conflict(raw, native):
+    assert has_substantive_conflict(raw, native)
+
+
+@pytest.mark.parametrize("a, b", [(r"x \le y", r"x \leq y"), (r"a \ne b", r"a \neq b"),
+                                  (r"f: A \to B", r"f: A \rightarrow B")])
+def test_command_spellings_are_formatting_only(a, b):
+    assert normalize_formatting_only(a) == normalize_formatting_only(b)
+
+
+def test_left_is_not_read_as_le():
+    assert normalize_formatting_only(r"\left( x \right)") == "(x)"

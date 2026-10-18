@@ -107,12 +107,23 @@ def check_latex_syntax(latex: str) -> Tuple[bool, Optional[str]]:
 
 GREEK_AND_MATH_MAP = {
     r"\alpha": "α", r"\beta": "β", r"\gamma": "γ", r"\delta": "δ",
-    r"\epsilon": "ε", r"\zeta": "ζ", r"\eta": "η", r"\theta": "θ",
-    r"\iota": "ι", r"\kappa": "κ", r"\lambda": "λ", r"\mu": "μ",
-    r"\nu": "ν", r"\xi": "ξ", r"\pi": "π", r"\rho": "ρ",
-    r"\sigma": "σ", r"\tau": "τ", r"\upsilon": "υ", r"\phi": "φ",
-    r"\chi": "χ", r"\psi": "ψ", r"\omega": "ω",
+    r"\epsilon": "ε", r"\varepsilon": "ε", r"\zeta": "ζ", r"\eta": "η",
+    r"\theta": "θ", r"\vartheta": "θ", r"\iota": "ι", r"\kappa": "κ",
+    r"\lambda": "λ", r"\mu": "μ", r"\nu": "ν", r"\xi": "ξ",
+    r"\pi": "π", r"\varpi": "π", r"\rho": "ρ", r"\varrho": "ρ",
+    r"\sigma": "σ", r"\varsigma": "σ", r"\tau": "τ", r"\upsilon": "υ",
+    r"\phi": "φ", r"\varphi": "φ", r"\chi": "χ", r"\psi": "ψ", r"\omega": "ω",
+    r"\Gamma": "Γ", r"\Delta": "Δ", r"\Theta": "Θ", r"\Lambda": "Λ",
+    r"\Xi": "Ξ", r"\Pi": "Π", r"\Sigma": "Σ", r"\Upsilon": "Υ",
+    r"\Phi": "Φ", r"\Psi": "Ψ", r"\Omega": "Ω",
     r"\sum": "∑", r"\prod": "∏", r"\int": "∫",
+    # Relations and signs that a PDF text layer keeps as single glyphs.
+    r"\leq": "≤", r"\le": "≤", r"\geq": "≥", r"\ge": "≥",
+    r"\neq": "≠", r"\ne": "≠", r"\pm": "±", r"\mp": "∓", r"\ast": "*",
+}
+# Glyph variants that PDF text layers use for the same symbol.
+NATIVE_GLYPH_MAP = {
+    "−": "-", "–": "-", "∗": "*", "ϵ": "ε", "ϑ": "θ", "ϕ": "φ", "ϖ": "π", "ϱ": "ρ", "ς": "σ",
 }
 UNICODE_SUBS_SUPER_MAP = {
     "⁰": "0", "¹": "1", "²": "2", "³": "3", "⁴": "4",
@@ -121,6 +132,17 @@ UNICODE_SUBS_SUPER_MAP = {
     "₅": "5", "₆": "6", "₇": "7", "₈": "8", "₉": "9",
     "ⁱ": "i", "ⁿ": "n",
 }
+OPERATORS = "+-=<>*/≤≥≠±∓"
+TOKEN_RE = re.compile(r"[a-zA-Zа-яА-Яα-ωΑ-Ω0-9]|[+\-=<>*/≤≥≠±∓]")
+# Longest commands first, and never inside a longer name: \le must not match \left.
+_COMMANDS = sorted(GREEK_AND_MATH_MAP, key=len, reverse=True)
+_COMMAND_RE = re.compile("(?:" + "|".join(re.escape(c) for c in _COMMANDS) + r")(?![a-zA-Z])")
+# Constructs whose parts a PDF text layer stores in no reliable order.
+_STACKED_RE = re.compile(r"\\(?:sum|prod|int|iint|oint|lim|frac|dfrac|tfrac|binom|sqrt|overset|underset|stackrel|substack)"
+                         r"(?![a-zA-Z])|\\begin\{")
+# Spellings of one command that a retry may choose differently.
+_COMMAND_SYNONYMS = [(r"\\le(?![a-zA-Z])", r"\\leq"), (r"\\ge(?![a-zA-Z])", r"\\geq"),
+                     (r"\\ne(?![a-zA-Z])", r"\\neq"), (r"\\to(?![a-zA-Z])", r"\\rightarrow")]
 
 
 def normalize_formatting_only(latex: str) -> str:
@@ -129,6 +151,7 @@ def normalize_formatting_only(latex: str) -> str:
     Specifically:
     - Collapses consecutive whitespace
     - Normalizes fraction commands (\\dfrac, \\tfrac -> \\frac)
+    - Normalizes spellings of one command (\\le -> \\leq, \\ne -> \\neq, \\to -> \\rightarrow)
     - Normalizes braces around single tokens in sub/superscripts (_{1} -> _1, ^{2} -> ^2)
     - Standardizes relative order of adjacent subscript and superscript on same base (x^2_1 -> x_1^2)
     - Normalizes \\left and \\right sizing prefixes (or optional space after macros)
@@ -139,6 +162,8 @@ def normalize_formatting_only(latex: str) -> str:
     s = latex.strip()
     # Normalize fraction variants
     s = re.sub(r"\\[dt]frac\b", r"\\frac", s)
+    for pattern, replacement in _COMMAND_SYNONYMS:
+        s = re.sub(pattern, replacement, s)
     # Remove single-token braces around subscripts and superscripts
     s = re.sub(r"([_~^])\{([a-zA-Z0-9])\}", r"\1\2", s)
     s = re.sub(r"\s*([_~^])\s*", r"\1", s)
@@ -165,50 +190,57 @@ def normalize_formatting_only(latex: str) -> str:
     return s.strip()
 
 
+def _symbols(text: str, latex: bool) -> str:
+    """Map both sides to one alphabet: LaTeX commands and PDF glyph variants
+    become the same Unicode symbols, sub/superscript digits become digits."""
+    if latex:
+        text = _COMMAND_RE.sub(lambda m: GREEK_AND_MATH_MAP[m.group(0)], text)
+        text = re.sub(r"\\begin\{[^}]+\}|\\end\{[^}]+\}", "", text)
+        text = re.sub(r"\\[a-zA-Z]+", "", text)
+    for glyph, symbol in NATIVE_GLYPH_MAP.items():
+        text = text.replace(glyph, symbol)
+    for script, digit in UNICODE_SUBS_SUPER_MAP.items():
+        text = text.replace(script, digit)
+    return text
+
+
 def has_substantive_conflict(raw_latex: str, native_text: str) -> bool:
     """Check if native PDF text layer explicitly contradicts the OCR LaTeX candidate.
 
-    Digital PDF text layers contain flattened glyphs (e.g. 'x1 + 2' or 'α2' or '∑i=1n xi'),
-    which naturally differ in syntax from LaTeX ('x_1 + 2', '\\alpha^2', '\\sum_{i=1}^n x_i').
-    This function detects TRUE substantive contradictions (e.g. inverted index order 'x_2^i' vs 'x_i^2'/'xi2',
-    mismatched operators '+' vs '-', or missing/extra terms) rather than ordinary syntax differences.
+    Digital PDF text layers contain flattened glyphs (e.g. 'x1 − 2', 'α2', 'x ≤ y' or
+    'n ∑ i=1 xi'), which differ in syntax and often in symbol order from LaTeX
+    ('x_1 - 2', '\\alpha^2', 'x \\leq y', '\\sum_{i=1}^n x_i'). Both sides are mapped to
+    one alphabet: a different operator, digit or letter, a dropped or an extra term is a
+    contradiction. The order of letters and digits is compared only for formulas without
+    stacked constructs (sums, integrals, limits, fractions, roots, environments), whose
+    parts a text layer does not keep in reading order; so inverted indices ('x_2^i'
+    against 'xi2') are caught while '\\sum_{i=1}^n x_i' against 'n ∑ i=1 xi' is not a
+    conflict. A text layer that itself carries LaTeX scripts ('x_i^2') is compared with
+    its structure.
     """
     if not raw_latex or not native_text:
         return False
+    if "_" in native_text or "^" in native_text:
+        return normalize_formatting_only(_symbols(raw_latex, True)) != normalize_formatting_only(_symbols(native_text, True))
 
-    raw_clean = raw_latex
-    for cmd, sym in GREEK_AND_MATH_MAP.items():
-        raw_clean = re.sub(re.escape(cmd) + r"\b", sym, raw_clean)
-    raw_clean = re.sub(r"\\begin\{[^}]+\}|\\end\{[^}]+\}", "", raw_clean)
-    raw_clean = re.sub(r"\\[a-zA-Z]+", "", raw_clean)
-
-    nat_clean = native_text
-    for u, a in UNICODE_SUBS_SUPER_MAP.items():
-        raw_clean = raw_clean.replace(u, a)
-        nat_clean = nat_clean.replace(u, a)
-
-    raw_tokens = re.findall(r"[a-zA-Zа-яА-Яα-ωΑ-Ω0-9]|[+\-=<>*/≤≥≠±]", raw_clean)
-    native_tokens = re.findall(r"[a-zA-Zа-яА-Яα-ωΑ-Ω0-9]|[+\-=<>*/≤≥≠±]", nat_clean)
+    raw_tokens = TOKEN_RE.findall(_symbols(raw_latex, True))
+    native_tokens = TOKEN_RE.findall(_symbols(native_text, False))
     if not raw_tokens or not native_tokens:
         return False
 
     from collections import Counter
 
-    # 1. Operators must match in counts if native layer has operators
-    raw_ops = [t for t in raw_tokens if t in "+-=<>*/≤≥≠±"]
-    nat_ops = [t for t in native_tokens if t in "+-=<>*/≤≥≠±"]
+    # Operators must match in counts if native layer has operators
+    raw_ops = [t for t in raw_tokens if t in OPERATORS]
+    nat_ops = [t for t in native_tokens if t in OPERATORS]
     if nat_ops and Counter(raw_ops) != Counter(nat_ops):
         return True
 
-    # 2. Alphanumeric sequence order
-    raw_alpha = [t.lower() for t in raw_tokens if t not in "+-=<>*/≤≥≠±"]
-    nat_alpha = [t.lower() for t in native_tokens if t not in "+-=<>*/≤≥≠±"]
-    if raw_alpha and nat_alpha:
-        # If lengths are equal and sequences differ -> clear contradiction (e.g. inverted indices x2i vs xi2)
-        if len(raw_alpha) == len(nat_alpha) and raw_alpha != nat_alpha:
-            return True
-        # If multiset of alphanumerics differs -> clear contradiction (e.g. dropped term or different digit)
-        if Counter(raw_alpha) != Counter(nat_alpha):
-            return True
-
-    return False
+    raw_alpha = [t.lower() for t in raw_tokens if t not in OPERATORS]
+    nat_alpha = [t.lower() for t in native_tokens if t not in OPERATORS]
+    if not raw_alpha or not nat_alpha:
+        return False
+    if Counter(raw_alpha) != Counter(nat_alpha):
+        return True
+    # Same symbols: the order counts only where the text layer keeps reading order.
+    return not _STACKED_RE.search(raw_latex) and raw_alpha != nat_alpha

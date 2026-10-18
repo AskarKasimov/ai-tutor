@@ -1,0 +1,507 @@
+// The result screen: a light page with Sber green and cosmic accents.
+// The palette is local to this screen; shared colours come from --app-*.
+.result {
+  --sber-green: #21a038;
+  --sber-green-ink: #107f3a;
+  --sber-teal: #12b5a5;
+  --cosmos-blue: #3a6ff2;
+  --cosmos-violet: #7a62f0;
+  --cosmos-ink: #12233a;
+  --result-radius: 24px;
+  --result-track: #e4ebf3;
+
+  display: grid;
+  align-content: start;
+  // The screen scrolls inside a fixed-height card: rows keep their content
+  // height instead of shrinking the clipped grade card.
+  grid-auto-rows: max-content;
+  gap: 28px;
+  color: var(--app-ink);
+  font-size: 16px;
+  line-height: 1.6;
+}
+
+.intro {
+  display: grid;
+  gap: 4px;
+}
+.eyebrow {
+  margin: 0;
+  color: var(--app-muted);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.4;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.title {
+  margin: 0;
+  color: var(--cosmos-ink);
+  letter-spacing: -0.02em;
+}
+.muted {
+  margin: 0;
+  color: var(--app-muted);
+}
+.lead {
+  margin: 0;
+  max-width: 62ch;
+  color: var(--app-muted);
+}
+
+// The grade: a soft nebula with stars and orbits behind the score ring.
+.hero {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 32px;
+  padding: 36px 40px;
+  border-radius: var(--result-radius);
+  border: 1px solid #dfe9f2;
+  background:
+    radial-gradient(circle at 12% 18%, rgb(33 160 56 / 0.14), transparent 42%),
+    radial-gradient(circle at 88% 12%, rgb(122 98 240 / 0.12), transparent 40%),
+    radial-gradient(
+      circle at 70% 100%,
+      rgb(58 111 242 / 0.12),
+      transparent 45%
+    ),
+    linear-gradient(135deg, #f4fbf6 0%, #f1f6ff 55%, #f6f3ff 100%);
+
+  // Stars: a few fixed points of light.
+  &::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    background-image:
+      radial-gradient(circle, rgb(58 111 242 / 0.5) 1.2px, transparent 1.6px),
+      radial-gradient(circle, rgb(33 160 56 / 0.45) 1px, transparent 1.4px),
+      radial-gradient(circle, rgb(122 98 240 / 0.4) 1.4px, transparent 1.8px);
+    background-size:
+      140px 120px,
+      190px 160px,
+      260px 210px;
+    background-position:
+      20px 30px,
+      90px 70px,
+      160px 10px;
+    opacity: 0.7;
+  }
+  // Orbits around the ring.
+  &::after {
+    content: '';
+    position: absolute;
+    z-index: -1;
+    left: -60px;
+    top: 50%;
+    width: 360px;
+    height: 360px;
+    border-radius: 50%;
+    border: 1px dashed rgb(33 160 56 / 0.25);
+    outline: 1px solid rgb(58 111 242 / 0.16);
+    outline-offset: 46px;
+    translate: 0 -50%;
+  }
+}
+
+.ring {
+  --ring-size: 148px;
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: var(--ring-size);
+  height: var(--ring-size);
+  border-radius: 50%;
+  background:
+    radial-gradient(closest-side, white 79%, transparent 80%),
+    conic-gradient(
+      from -90deg,
+      var(--sber-green) 0%,
+      var(--sber-teal) calc(var(--score) * 0.5%),
+      var(--cosmos-blue) calc(var(--score) * 1%),
+      var(--result-track) 0
+    );
+  box-shadow:
+    0 12px 32px rgb(33 160 56 / 0.18),
+    0 0 0 8px rgb(255 255 255 / 0.6);
+}
+.gradeValue {
+  margin: 0;
+  font-size: 64px;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -0.03em;
+  color: var(--cosmos-ink);
+}
+.hero[data-grade='A'] .gradeValue {
+  color: var(--sber-green-ink);
+}
+.hero[data-grade='D'] .gradeValue {
+  color: var(--app-error);
+}
+.hero[data-grade='none'] .gradeValue {
+  color: var(--app-faint);
+}
+.gradeCopy {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+.score {
+  margin: 0;
+  color: var(--cosmos-ink);
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+.note {
+  margin: 0;
+  max-width: 46ch;
+  color: var(--app-muted);
+  font-size: 14px;
+}
+
+// Topic counts by status, as small glass tiles.
+.stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(118px, auto));
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  li {
+    display: grid;
+    gap: 2px;
+    padding: 12px 16px;
+    border-radius: 16px;
+    background: rgb(255 255 255 / 0.72);
+    box-shadow: inset 0 0 0 1px rgb(222 231 241 / 0.9);
+    border-left: 4px solid var(--status-color);
+  }
+}
+.statValue {
+  color: var(--cosmos-ink);
+  font-size: 24px;
+  font-weight: 800;
+  line-height: 1.1;
+}
+.statLabel {
+  color: var(--app-muted);
+  font-size: 13px;
+  line-height: 1.3;
+}
+
+// Status colours shared by the summary tiles and the topic list.
+.result [data-status='independent'] {
+  --status-color: var(--sber-green);
+  --status-soft: #e6f6ea;
+  --status-ink: var(--sber-green-ink);
+}
+.result [data-status='credited_by_parent'] {
+  --status-color: var(--sber-teal);
+  --status-soft: #e3f6f3;
+  --status-ink: #0b7469;
+}
+.result [data-status='assisted'] {
+  --status-color: var(--cosmos-blue);
+  --status-soft: #eaf0ff;
+  --status-ink: #2453c4;
+}
+.result [data-status='gap'] {
+  --status-color: #e5533d;
+  --status-soft: var(--app-error-soft);
+  --status-ink: var(--app-error);
+}
+.result [data-status='insufficient'],
+.result [data-status='unchecked'] {
+  --status-color: var(--app-faint);
+  --status-soft: #f0f3f7;
+  --status-ink: #5d6b79;
+}
+
+// Laptop first: gaps take the wider column, all topics sit next to them.
+.columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(320px, 1fr);
+  align-items: start;
+  gap: 24px;
+}
+.panel {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+  padding: 28px;
+  border-radius: var(--result-radius);
+  background: white;
+  box-shadow:
+    0 0 0 1px var(--app-border),
+    0 10px 30px rgb(18 35 58 / 0.05);
+  h2 {
+    margin: 0;
+    color: var(--cosmos-ink);
+    letter-spacing: -0.01em;
+  }
+}
+
+.gaps {
+  display: grid;
+  gap: 14px;
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.gap {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr);
+  gap: 16px;
+  padding: 20px;
+  border-radius: 18px;
+  background: linear-gradient(135deg, #fbfdfc, #f7f9ff);
+  box-shadow: inset 0 0 0 1px var(--app-border);
+}
+.gapIndex {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  color: white;
+  font-size: 15px;
+  font-weight: 800;
+  background: linear-gradient(
+    135deg,
+    var(--sber-green),
+    var(--sber-teal) 55%,
+    var(--cosmos-blue)
+  );
+}
+.gapBody {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+.gapTitle {
+  margin: 0;
+  color: var(--cosmos-ink);
+  line-height: 1.35;
+}
+.chip {
+  justify-self: start;
+  margin: 0;
+  padding: 2px 10px;
+  border-radius: 999px;
+  color: #2453c4;
+  background: #eaf0ff;
+  font-size: 13px;
+  font-weight: 600;
+}
+.materials {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px 20px;
+  padding-top: 4px;
+}
+.materialGroup {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  ul {
+    display: grid;
+    gap: 8px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+}
+.groupLabel {
+  margin: 0;
+  color: var(--app-muted);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.material {
+  display: grid;
+  gap: 2px;
+}
+.materialButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  justify-self: start;
+  max-width: 100%;
+  padding: 7px 12px;
+  border: 0;
+  border-radius: 12px;
+  color: var(--sber-green-ink);
+  background: #eaf7ee;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.3;
+  text-align: left;
+  cursor: pointer;
+  &:hover {
+    background: #dcf2e2;
+  }
+  &:disabled {
+    cursor: progress;
+    opacity: 0.6;
+  }
+  svg {
+    flex: none;
+  }
+}
+.materialName {
+  overflow-wrap: anywhere;
+}
+.materialMeta {
+  padding-left: 12px;
+  color: var(--app-muted);
+  font-size: 13px;
+}
+
+.topics {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.topic {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 32px;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 0 14px 18px;
+  border-top: 1px solid var(--app-border);
+  position: relative;
+  &:first-child {
+    border-top: 0;
+  }
+  // The status dot in front of the title.
+  &::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 22px;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--status-color);
+  }
+}
+.topicTitle {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+.topicMeta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+}
+.topicName {
+  line-height: 1.4;
+  overflow-wrap: break-word;
+}
+.topic[data-top] .topicName {
+  color: var(--cosmos-ink);
+  font-weight: 700;
+}
+.topLevel {
+  color: var(--app-muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+.status {
+  padding: 3px 10px;
+  border-radius: 999px;
+  color: var(--status-ink);
+  background: var(--status-soft);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+.topicGrade {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  color: var(--cosmos-ink);
+  background: #f2f5f9;
+  font-weight: 800;
+}
+
+.error {
+  display: grid;
+  justify-items: start;
+  gap: 12px;
+  padding: 20px;
+  border-radius: 18px;
+  color: var(--app-error);
+  background: var(--app-error-soft);
+  p {
+    margin: 0;
+  }
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+// Darker greens keep white text readable (contrast above 4.5:1).
+.result .actions .primary {
+  color: white;
+  background: linear-gradient(135deg, var(--sber-green-ink), #0b7469);
+  &:hover {
+    background: linear-gradient(135deg, #0d6e32, #09635a);
+  }
+  &:disabled {
+    opacity: 0.6;
+  }
+}
+
+// Narrow laptops: the status tiles move under the grade.
+@media (max-width: 1180px) {
+  .hero {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+  .stats {
+    grid-column: 1 / -1;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  }
+}
+// Tablets: one column.
+@media (max-width: 960px) {
+  .columns {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+// Phones: the ring above the text, the gap number above its card.
+@media (max-width: 560px) {
+  .hero {
+    grid-template-columns: minmax(0, 1fr);
+    justify-items: start;
+    padding: 24px;
+    gap: 20px;
+  }
+  .ring {
+    --ring-size: 120px;
+  }
+  .panel {
+    padding: 20px;
+  }
+  .gap {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 16px;
+  }
+}

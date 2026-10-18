@@ -440,6 +440,13 @@ it('runs a diagnostic from the home page to the result and back to the history',
   })
   expect(within(grade).getByText('B')).toBeVisible()
   expect(screen.getByText('81% от максимума')).toBeVisible()
+  // The summary counts topics by status and skips statuses with no topics.
+  const summary = within(grade).getByRole('list', { name: 'Темы по статусам' })
+  expect(
+    within(summary)
+      .getAllByRole('listitem')
+      .map((item) => item.textContent),
+  ).toEqual(['1Засчитано по основной теме', '1С помощью', '1Пробел'])
   const gaps = screen.getByRole('region', { name: 'Что подтянуть' })
   expect(within(gaps).getByText('Эвристическая функция')).toBeVisible()
   const topics = screen.getByRole('region', { name: 'Все темы' })

@@ -181,8 +181,7 @@ func (c *Client) Synthesize(ctx context.Context, text string) (data []byte, err 
 }
 
 func (c *Client) synthesize(ctx context.Context, text string) ([]byte, error) {
-	// VoxCPM can cut off the last word; append the completion cue only upstream.
-	const completionSuffix = "!!!..."
+	const completionSuffix = "!!!"
 	if !strings.HasSuffix(text, completionSuffix) {
 		text += completionSuffix
 	}

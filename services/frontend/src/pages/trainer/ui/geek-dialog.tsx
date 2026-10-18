@@ -541,8 +541,7 @@ function Composer({
   )
 }
 
-// Geek's typing: three dots in a bubble, with the label for screen readers
-// and as a hint next to it.
+// Geek's typing: three dots in a bubble. Keep the status label for screen readers.
 function Thinking({ label }: { label: string }) {
   return (
     <Text role="status" className={styles.thinking}>
@@ -551,7 +550,7 @@ function Thinking({ label }: { label: string }) {
         <span />
         <span />
       </span>
-      {label}
+      <span className={styles.visuallyHidden}>{label}</span>
     </Text>
   )
 }

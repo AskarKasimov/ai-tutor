@@ -55,11 +55,12 @@ class OcrJobs:
                 self._jobs.move_to_end(job_id)
                 if job.future is not None:
                     return job, False, job.future
-                if job.state == "succeeded" and job.result is not None:
+                report = job.result.get("report", {}) if isinstance(job.result, dict) else {}
+                if job.state == "succeeded" and job.result is not None and report.get("work_complete", True) is not False:
                     return job, False, None
-                if job.state in {"failed", "succeeded"}:
-                    job.state, job.stage, job.error = "queued", "opening", None
-                    job.updated_at = _now()
+                job.state, job.stage, job.error = "queued", "opening", None
+                job.result = None
+                job.updated_at = _now()
             else:
                 job = OcrJob(job_id=job_id, request_sha256=digest)
                 self._jobs[job_id] = job
@@ -87,9 +88,15 @@ class OcrJobs:
             job.updated_at = _now()
 
     def finish(self, job: OcrJob, future: Future, result: dict) -> None:
+        report = result.get("report", {}) if isinstance(result, dict) else {}
+        work_complete = report.get("work_complete", True)
         encoded_size = len(json.dumps(result, ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
         with self._lock:
-            job.state, job.stage, job.error = "succeeded", "completed", None
+            if work_complete is False:
+                job.state, job.stage = "failed", "incomplete"
+                job.error = "; ".join(report.get("warnings", [])) or "Work incomplete"
+            else:
+                job.state, job.stage, job.error = "succeeded", "completed", None
             job.future = None
             job.updated_at = _now()
             # Only a retained result counts against the budget; an oversized one

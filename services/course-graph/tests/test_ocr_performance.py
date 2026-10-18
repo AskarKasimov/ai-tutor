@@ -286,3 +286,82 @@ def test_converter_attaches_reader_when_initialize_pipeline_returns_none(monkeyp
     assert result["report"]["engine"] == "docling"
     assert "p(X) :- q(X)." in result["markdown"]
     assert guard.native_text_for is None
+
+
+def test_incomplete_job_allows_retry_with_same_job_id():
+    from course_graph.ocr.jobs import OcrJobs
+
+    jobs = OcrJobs()
+    content = b"content"
+    job, owner, future = jobs.reserve("job-1", "doc.pdf", content)
+    assert owner is True
+
+    # Finish with incomplete work (work_complete=False)
+    incomplete_result = {
+        "markdown": "# doc\n\nPartial",
+        "report": {"engine": "pypdf", "work_complete": False, "warnings": ["partial fallback"]}
+    }
+    jobs.finish(job, future, incomplete_result)
+    assert job.state == "failed"
+
+    # Repeat reserve with the same job_id must grant a new attempt (owner=True)
+    job2, owner2, future2 = jobs.reserve("job-1", "doc.pdf", content)
+    assert owner2 is True
+    assert future2 is not None
+    assert job2.state == "queued"
+
+    # Now finish job2 with complete work (work_complete=True)
+    complete_result = {
+        "markdown": "# doc\n\nComplete",
+        "report": {"engine": "docling", "work_complete": True, "warnings": []}
+    }
+    jobs.finish(job2, future2, complete_result)
+    assert job2.state == "succeeded"
+
+    # Third call: now that work is complete, reserve returns idempotent cached result
+    job3, owner3, future3 = jobs.reserve("job-1", "doc.pdf", content)
+    assert owner3 is False
+    assert future3 is None
+    assert job3.result["markdown"] == "# doc\n\nComplete"
+
+
+def test_failed_picture_ocr_marks_work_incomplete_and_prevents_cache(monkeypatch, tmp_path):
+    from pypdf import PdfWriter
+    import io
+    monkeypatch.setenv("COURSE_GRAPH_OCR_CACHE_DIR", str(tmp_path))
+    monkeypatch.setenv("COURSE_GRAPH_WITH_DOCLING", "true")
+
+    writer = PdfWriter()
+    writer.add_blank_page(width=100, height=100)
+    stream = io.BytesIO()
+    writer.write(stream)
+    content = stream.getvalue()
+
+    class DummyDoc:
+        pages = {1: None}
+        texts = []
+        pictures = [S(prov=[S(page_no=1)])]
+        def export_to_markdown(self, page_no=None):
+            return "Some slide text"
+
+    class DummyConverter:
+        initialized_pipelines = {}
+        def initialize_pipeline(self, *args, **kwargs):
+            return S(enrichment_pipe=[])
+        def convert(self, path):
+            return S(document=DummyDoc(), status="success")
+
+    monkeypatch.setattr(converter, "get_converter", lambda: DummyConverter())
+    # Mock picture_texts to simulate image OCR failure
+    def mock_picture_texts(*args, **kwargs):
+        return {}, {"regions": 1, "lines": 0, "failed_regions": 1}
+
+    import course_graph.ocr.pictures as pictures
+    monkeypatch.setattr(pictures, "picture_texts", mock_picture_texts)
+
+    result = converter.convert_document("picture_fail.pdf", content)
+    assert result["report"]["work_complete"] is False
+    assert result["report"]["content_complete"] is False
+    assert result["report"]["picture_ocr"]["failed_regions"] == 1
+    # Ensure it was NOT cached
+    assert converter.get_cached_document("picture_fail.pdf", content) is None

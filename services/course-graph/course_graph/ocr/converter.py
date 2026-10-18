@@ -196,9 +196,16 @@ def convert_document(filename: str, content: bytes) -> dict:
         if CODE_MISMATCH_WARNING in report["warnings"]:
             report["content_complete"] = False
         data = {"markdown": markdown, "report": report}
-        # Stable unresolved formulas are reusable; transient engine failures and
-        # partial documents must get another opportunity on the next request.
-        transient = any("частично" in warning.lower() for warning in report["warnings"])
+        # Stable unresolved formulas are reusable; transient engine failures, picture OCR failures,
+        # and partial documents must get another opportunity on the next request.
+        has_failed_pictures = bool(picture_ocr and picture_ocr.get("failed_regions", 0) > 0)
+        has_failed_transient = any(r.get("status") == "failed_transient" for r in report.get("formula_regions", []))
+        transient = (
+            any("частично" in warning.lower() for warning in report["warnings"])
+            or has_failed_pictures
+            or has_failed_transient
+            or not report.get("work_complete", True)
+        )
         fallback = engine == "pypdf" and configuration["with_docling"].lower() != "false"
         if transient or fallback:
             report["work_complete"] = False

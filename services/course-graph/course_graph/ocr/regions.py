@@ -96,11 +96,12 @@ def summarize_formula_regions(
         "marker_count": marker_count,
     }
 
-    # work_complete: All planned pipeline operations finished (no transient crashes)
-    work_complete = failed_transient == 0
+    has_failed_pictures = bool(picture_ocr and picture_ocr.get("failed_regions", 0) > 0)
+
+    # work_complete: All planned pipeline operations finished (no transient crashes, no picture failures)
+    work_complete = failed_transient == 0 and not has_failed_pictures
 
     # content_complete: Zero unresolved/suspect regions, no picture failures, no partial warnings
-    has_failed_pictures = bool(picture_ocr and picture_ocr.get("failed_regions"))
     has_partial_warnings = any("частично" in w.lower() for w in warnings)
     content_complete = (
         unresolved == 0

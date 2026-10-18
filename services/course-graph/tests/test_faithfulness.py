@@ -163,3 +163,51 @@ def test_stable_incomplete_result_is_cached_and_served_fast(monkeypatch, tmp_pat
     pdf_second = convert_document("lecture_renamed.pdf", pdf_content)
     assert pdf_second["report"]["cache_hit"] is True
     assert "# lecture_renamed" in pdf_second["markdown"]
+
+
+def test_syntax_allows_half_open_intervals_and_nested_environments():
+    # Half-open intervals: [a, b), (a, b], \left[ 0, 1 \right)
+    ok, err = check_latex_syntax(r"x \in [0, 1)")
+    assert ok is True and err is None
+
+    ok, err = check_latex_syntax(r"x \in (0, 1]")
+    assert ok is True and err is None
+
+    ok, err = check_latex_syntax(r"\left[ 0, 1 \right)")
+    assert ok is True and err is None
+
+    ok, err = check_latex_syntax(r"x \in [0, f(y))")
+    assert ok is True and err is None
+
+    # Nested environments
+    nested = r"\begin{equation}\begin{aligned} x &= 1 \\ y &= 2 \end{aligned}\end{equation}"
+    ok, err = check_latex_syntax(nested)
+    assert ok is True and err is None
+
+    # Mismatched environment
+    mismatched = r"\begin{equation}\begin{aligned} x &= 1 \end{equation}"
+    ok, err = check_latex_syntax(mismatched)
+    assert ok is False and err == "unbalanced_environments"
+
+
+def test_audit_preserves_valid_interval_and_nested_aligned():
+    from docling_core.types.doc import BoundingBox, CoordOrigin, FormulaItem, ProvenanceItem
+    from course_graph.ocr.enrichment import audit_and_retry_formulas
+
+    bbox = BoundingBox(l=10, r=50, t=10, b=50, coord_origin=CoordOrigin.TOPLEFT)
+    item1 = FormulaItem(self_ref="#/texts/0", orig="", text=r"x \in [0, 1)",
+                        prov=[ProvenanceItem(page_no=1, charspan=(0, 0), bbox=bbox)])
+    item2 = FormulaItem(self_ref="#/texts/1", orig="",
+                        text=r"\begin{equation}\begin{aligned} x &= 1 \end{aligned}\end{equation}",
+                        prov=[ProvenanceItem(page_no=1, charspan=(0, 0), bbox=bbox)])
+    document = S(texts=[item1, item2])
+    regions, warnings = audit_and_retry_formulas(document, b"", None)
+
+    assert len(regions) == 2
+    assert regions[0].status == "recognized"
+    assert regions[0].latex == r"x \in [0, 1)"
+    assert item1.text == r"x \in [0, 1)"
+
+    assert regions[1].status == "recognized"
+    assert "aligned" in regions[1].latex
+    assert "aligned" in item2.text

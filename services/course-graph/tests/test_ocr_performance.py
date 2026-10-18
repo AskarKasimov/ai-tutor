@@ -463,7 +463,7 @@ def test_legacy_cache_prior_to_formula_audit_fix_is_a_cache_miss(monkeypatch, tm
     # 3. New conversion produces fresh result and writes to the updated cache version
     new_result = converter.convert_document("source.md", content)
     assert new_result["report"]["version"] == "ocr-v9-content-cache"
-    assert new_result["report"]["audit_version"] == "formula-audit-v4"
+    assert new_result["report"]["audit_version"] == "formula-audit-v5"
     assert converter.get_cached_document("source.md", content) is not None
 
 
@@ -631,13 +631,13 @@ def test_main_pass_token_limit_caches_document_and_second_call_hits_cache(monkey
 
 
 def test_cache_of_the_previous_audit_version_is_not_reused(monkeypatch, tmp_path):
-    """Results cached by formula-audit-v3 may have lost code with content_complete=true."""
+    """Results cached by formula-audit-v4 may miss contradictions with the text layer."""
     import course_graph.ocr.converter as converter
 
     monkeypatch.setenv("COURSE_GRAPH_OCR_CACHE_DIR", str(tmp_path))
     content = "# Document\n\nprint(42)".encode()
     current = converter.get_ocr_configuration
-    monkeypatch.setattr(converter, "get_ocr_configuration", lambda: {**current(), "audit_version": "formula-audit-v3"})
+    monkeypatch.setattr(converter, "get_ocr_configuration", lambda: {**current(), "audit_version": "formula-audit-v4"})
     stale = converter.convert_document("source.md", content)
     assert converter.get_cached_document("source.md", content) is not None
     stale_path = converter.get_document_cache_path(content, "source.md")
@@ -648,5 +648,5 @@ def test_cache_of_the_previous_audit_version_is_not_reused(monkeypatch, tmp_path
     converter.get_document_cache_path(content, "source.md").write_text(stale_path.read_text(encoding="utf-8"), encoding="utf-8")
     assert converter.get_cached_document("source.md", content) is None
     fresh = converter.convert_document("source.md", content)
-    assert fresh["report"]["cache_hit"] is False and fresh["report"]["audit_version"] == "formula-audit-v4"
-    assert stale["report"]["audit_version"] == "formula-audit-v3"
+    assert fresh["report"]["cache_hit"] is False and fresh["report"]["audit_version"] == "formula-audit-v5"
+    assert stale["report"]["audit_version"] == "formula-audit-v4"

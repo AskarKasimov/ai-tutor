@@ -123,10 +123,20 @@ GREEK_AND_MATH_MAP = {
     # Relations and signs that a PDF text layer keeps as single glyphs.
     r"\leq": "≤", r"\le": "≤", r"\geq": "≥", r"\ge": "≥",
     r"\neq": "≠", r"\ne": "≠", r"\pm": "±", r"\mp": "∓", r"\ast": "*",
+    r"\times": "×", r"\cdot": "·", r"\approx": "≈", r"\equiv": "≡", r"\sim": "∼",
+    # Logic and sets: dropping them would hide a contradiction such as ∀ against ∃.
+    r"\forall": "∀", r"\exists": "∃", r"\nexists": "∄", r"\neg": "¬", r"\lnot": "¬",
+    r"\land": "∧", r"\wedge": "∧", r"\lor": "∨", r"\vee": "∨",
+    r"\in": "∈", r"\notin": "∉", r"\not\in": "∉", r"\ni": "∋",
+    r"\subset": "⊂", r"\subseteq": "⊆", r"\supset": "⊃", r"\supseteq": "⊇",
+    r"\cup": "∪", r"\cap": "∩", r"\setminus": "∖", r"\emptyset": "∅", r"\varnothing": "∅",
+    r"\to": "→", r"\rightarrow": "→", r"\leftarrow": "←", r"\Rightarrow": "⇒", r"\implies": "⇒",
+    r"\Leftarrow": "⇐", r"\Leftrightarrow": "⇔", r"\iff": "⇔", r"\leftrightarrow": "↔",
+    r"\infty": "∞", r"\partial": "∂", r"\nabla": "∇",
 }
 # Glyph variants that PDF text layers use for the same symbol.
 NATIVE_GLYPH_MAP = {
-    "−": "-", "–": "-", "∗": "*", "ϵ": "ε", "ϑ": "θ", "ϕ": "φ", "ϖ": "π", "ϱ": "ρ", "ς": "σ",
+    "−": "-", "–": "-", "∗": "*", "⋅": "·", "∙": "·", "Ø": "∅", "ϵ": "ε", "ϑ": "θ", "ϕ": "φ", "ϖ": "π", "ϱ": "ρ", "ς": "σ",
 }
 UNICODE_SUBS_SUPER_MAP = {
     "⁰": "0", "¹": "1", "²": "2", "³": "3", "⁴": "4",
@@ -135,8 +145,9 @@ UNICODE_SUBS_SUPER_MAP = {
     "₅": "5", "₆": "6", "₇": "7", "₈": "8", "₉": "9",
     "ⁱ": "i", "ⁿ": "n",
 }
-OPERATORS = "+-=<>*/≤≥≠±∓"
-TOKEN_RE = re.compile(r"[a-zA-Zа-яА-Яα-ωΑ-Ω0-9]|[+\-=<>*/≤≥≠±∓]")
+OPERATORS = "+-=<>*/≤≥≠±∓×·≈≡∼∀∃∄¬∧∨∈∉∋⊂⊆⊃⊇∪∩∖→←⇒⇐⇔↔"
+# Operands: letters, digits and the symbols ∅ ∞ ∂ ∇.
+TOKEN_RE = re.compile(r"[a-zA-Zа-яА-Яα-ωΑ-Ω0-9∅∞∂∇]|[" + re.escape(OPERATORS) + "]")
 # Longest commands first, and never inside a longer name: \le must not match \left.
 _COMMANDS = sorted(GREEK_AND_MATH_MAP, key=len, reverse=True)
 _COMMAND_RE = re.compile("(?:" + "|".join(re.escape(c) for c in _COMMANDS) + r")(?![a-zA-Z])")
@@ -250,11 +261,15 @@ def has_substantive_conflict(raw_latex: str, native_text: str) -> bool:
     if nat_ops and Counter(raw_ops) != Counter(nat_ops):
         return True
 
-    raw_alpha = [t.lower() for t in raw_tokens if t not in OPERATORS]
-    nat_alpha = [t.lower() for t in native_tokens if t not in OPERATORS]
+    # Case is kept: x and X are different variables.
+    raw_alpha = [t for t in raw_tokens if t not in OPERATORS]
+    nat_alpha = [t for t in native_tokens if t not in OPERATORS]
     if not raw_alpha or not nat_alpha:
         return False
     if Counter(raw_alpha) != Counter(nat_alpha):
         return True
-    # Same symbols: the order counts only where the text layer keeps reading order.
-    return not _STACKED_RE.search(raw_latex) and raw_alpha != nat_alpha
+    if _STACKED_RE.search(raw_latex):
+        return False
+    # A linear formula keeps reading order in the text layer, so the place of each
+    # operator counts too: x+y=z against x=y+z.
+    return (raw_tokens if nat_ops else raw_alpha) != (native_tokens if nat_ops else nat_alpha)

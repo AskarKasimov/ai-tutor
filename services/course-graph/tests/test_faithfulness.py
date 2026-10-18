@@ -536,6 +536,13 @@ def test_cosmetic_retry_formatting_differences_are_preserved_not_suspect(monkeyp
     (r"\sum_{i=1}^{n} x_i", "n ∑ i=1 xi"),
     (r"\frac{a}{b} = c", "a b = c"),
     (r"\left( x \right) \leq 1", "(x) ≤ 1"),
+    (r"\forall x \in A", "∀x ∈ A"),
+    (r"x \notin \emptyset", "x ∉ ∅"),
+    (r"A \cup B \subseteq C", "A ∪ B ⊆ C"),
+    (r"p \Rightarrow q", "p ⇒ q"),
+    (r"f: A \to B", "f: A → B"),
+    (r"a \cdot b = c", "a ⋅ b = c"),
+    (r"X_1 + Y", "X1 + Y"),
 ])
 def test_text_layer_of_a_correct_formula_is_not_a_conflict(raw, native):
     # A PDF text layer flattens scripts, uses U+2212 for minus, Unicode relations and
@@ -550,6 +557,12 @@ def test_text_layer_of_a_correct_formula_is_not_a_conflict(raw, native):
     (r"x \leq y", "x ≥ y"),       # different relation
     (r"\alpha + 1", "β + 1"),     # different letter
     (r"x_2^i", "x_i^2"),          # LaTeX-like text layer keeps structure: inverted indices
+    (r"x+y=z", "x=y+z"),          # same symbols, operators elsewhere
+    (r"x+1", "X+1"),              # case is a different variable
+    (r"\forall x P(x)", "∃x P(x)"),
+    (r"x\in A", "x∉A"),
+    (r"A \subseteq B", "A ⊇ B"),
+    (r"p \land q", "p ∨ q"),
 ])
 def test_text_layer_contradiction_is_still_a_conflict(raw, native):
     assert has_substantive_conflict(raw, native)
@@ -826,3 +839,10 @@ def test_failed_inference_leaves_items_to_docling_without_code_loss():
     assert [item.text for item in items] == ["pr1nt(1)"]
     assert CODE_LOST_WARNING not in guard.warnings
     assert any("частично" in warning for warning in guard.warnings)
+
+
+@pytest.mark.parametrize("raw, native", [("x+y=z", "x=y+z"), ("x+1", "X+1"), ("P(x)=1", "p(x)=1")])
+def test_text_layer_contradiction_sends_the_formula_to_a_retry(monkeypatch, raw, native):
+    regions, calls, item = _formula_audit(monkeypatch, raw, native, raw)
+    assert calls == [1]
+    assert regions[0].attempts == 2

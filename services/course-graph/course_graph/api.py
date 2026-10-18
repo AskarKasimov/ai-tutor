@@ -16,7 +16,7 @@ from course_graph.cleaning.cleaner import clean_markdown
 from course_graph.llm.client import ModelClient
 from starlette.concurrency import run_in_threadpool
 
-from course_graph.ocr.converter import convert_document as convert_source_document
+from course_graph.ocr.converter import convert_document as convert_source_document, document_parser
 from course_graph.ocr.jobs import JobConflict, OcrJob, ocr_jobs
 from course_graph.model_runtime import model_runtime
 from course_graph.topics.extract import ExtractionSettings, extract_topics
@@ -50,7 +50,7 @@ ocr_flights = {}
 
 async def compute_ocr(job, filename, content, requires_models):
     from .ocr.converter import get_cached_document
-    if filename.lower().endswith((".txt", ".md", ".markdown")):
+    if document_parser(filename) == "text":
         ocr_jobs.update(job, state="running", stage="converting")
         return await run_in_threadpool(convert_source_document, filename, content)
     if requires_models and not model_runtime.status()["ready"]:
@@ -132,7 +132,7 @@ async def convert_document(
 
     if owner:
         requires_models = (
-            filename.lower().endswith(".pdf")
+            document_parser(filename) == ".pdf"
             and os.environ.get("COURSE_GRAPH_WITH_DOCLING", "true").lower() != "false"
         )
         asyncio.create_task(run_ocr_job(job, future, filename, content, requires_models))

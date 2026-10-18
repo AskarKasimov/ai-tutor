@@ -87,7 +87,7 @@ logger = logging.getLogger(__name__)
 def get_ocr_configuration() -> dict:
     return {
         "version": "ocr-v9-content-cache",
-        "audit_version": "formula-audit-v4",
+        "audit_version": "formula-audit-v5",
         "with_docling": os.environ.get("COURSE_GRAPH_WITH_DOCLING", "true"),
         "picture_text": os.environ.get("COURSE_GRAPH_OCR_PICTURE_TEXT", "true"),
         "document_timeout": os.environ.get("COURSE_GRAPH_OCR_DOCUMENT_TIMEOUT", "0"),
@@ -97,11 +97,21 @@ def get_ocr_configuration() -> dict:
     }
 
 
-def document_key(content: bytes, filename: str = "document.pdf") -> str:
-    # Extensions select different parsers even for identical bytes. Markdown
-    # and TXT share the same literal UTF-8 path; PDF names only affect the title.
+def document_parser(filename: str) -> str:
+    """The one parser choice used by the cache key and the whole pipeline.
+
+    Markdown and TXT share the literal UTF-8 path; a name without an extension
+    is a PDF, exactly like a .pdf name.
+    """
     suffix = Path(filename).suffix.lower()
-    parser = "text" if suffix in {".txt", ".md", ".markdown"} else suffix or ".pdf"
+    if suffix in {".txt", ".md", ".markdown"}:
+        return "text"
+    return suffix or ".pdf"
+
+
+def document_key(content: bytes, filename: str = "document.pdf") -> str:
+    # Extensions select different parsers even for identical bytes; PDF names only affect the title.
+    parser = document_parser(filename)
     source_hash = hashlib.sha256(content).hexdigest()
     configuration = get_ocr_configuration()
     return hashlib.sha256((parser + source_hash + json.dumps(configuration, sort_keys=True)).encode()).hexdigest()
@@ -123,6 +133,48 @@ def document_for_filename(data: dict, filename: str) -> dict:
     return data
 
 
+_INT = "int"
+_REPORT_FIELDS = {
+    "engine": str, "source_sha256": str, "warnings": list, "work_complete": bool,
+    "content_complete": bool, "schema_version": str, "cache_hit": bool, "seconds": (int, float),
+    "pages": (_INT, None), "exported_pages": (list, None), "code_blocks": _INT,
+    "undecoded_formulas": _INT, "image_placeholders": _INT, "formula_regions": list, "formula_summary": dict,
+}
+_REQUIRED_REPORT_FIELDS = ("engine", "source_sha256", "warnings", "work_complete", "content_complete")
+_SUMMARY_FIELDS = ("detected", "recognized", "unresolved", "suspect", "failed_transient", "marker_count")
+_REGION_FIELDS = {"region_id": str, "source_sha256": str, "page": _INT, "bbox": dict, "kind": str,
+                  "status": str, "method": str, "verification": str, "attempts": _INT}
+
+
+def _is(value, kinds) -> bool:
+    for kind in kinds if isinstance(kinds, tuple) else (kinds,):
+        if kind is None and value is None:
+            return True
+        # bool is an int in Python; counters and pages must not accept it.
+        if kind == _INT and isinstance(value, int) and not isinstance(value, bool):
+            return True
+        if isinstance(kind, type) and isinstance(value, kind):
+            return True
+    return False
+
+
+def valid_cached_report(report: dict) -> bool:
+    """A cache hit must satisfy the OcrReport contract; otherwise it is a miss."""
+    if any(key not in report for key in _REQUIRED_REPORT_FIELDS):
+        return False
+    if any(key in report and not _is(report[key], kind) for key, kind in _REPORT_FIELDS.items()):
+        return False
+    if not all(isinstance(warning, str) for warning in report["warnings"]):
+        return False
+    if report.get("exported_pages") is not None and not all(_is(page, _INT) for page in report["exported_pages"]):
+        return False
+    summary = report.get("formula_summary")
+    if summary is not None and not all(_is(summary.get(key), _INT) for key in _SUMMARY_FIELDS):
+        return False
+    return all(isinstance(region, dict) and all(_is(region.get(key), kind) for key, kind in _REGION_FIELDS.items())
+               for region in report.get("formula_regions", []))
+
+
 def get_cached_document(filename: str, content: bytes) -> Optional[dict]:
     cache_path = get_document_cache_path(content, filename)
     if not cache_path or not cache_path.exists():
@@ -136,6 +188,8 @@ def get_cached_document(filename: str, content: bytes) -> Optional[dict]:
             return None
         if any(report.get(key) != value for key, value in get_ocr_configuration().items()):
             return None
+        if not valid_cached_report(report):
+            return None
         cached = document_for_filename(cached, filename)
         cached["report"]["cache_hit"] = True
         return cached
@@ -147,14 +201,21 @@ def cache_document_result(content: bytes, data: dict, filename: str = "document.
     cache_path = get_document_cache_path(content, filename)
     if not cache_path:
         return
+    temporary = None
     try:
         cache_path.parent.mkdir(parents=True, exist_ok=True)
         with tempfile.NamedTemporaryFile(mode="w", dir=cache_path.parent, delete=False, encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False)
+            # Remember the path first: a failing dump must not leave an orphan either.
             temporary = Path(f.name)
+            json.dump(data, f, ensure_ascii=False)
+        # The rename is atomic: readers see the whole old or the whole new entry.
         temporary.replace(cache_path)
+        temporary = None
     except Exception as err:
         logger.warning("Failed to write document cache: %s", err)
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
 
 
 def convert_document(filename: str, content: bytes) -> dict:
@@ -221,8 +282,9 @@ def convert_document(filename: str, content: bytes) -> dict:
         return data
 
 
-    lower = filename.lower()
-    if lower.endswith((".txt", ".md", ".markdown")):
+    parser = document_parser(filename)
+    is_pdf = parser == ".pdf"
+    if parser == "text":
         try:
             return result(content.decode("utf-8"), "text")
         except Exception:
@@ -249,7 +311,7 @@ def convert_document(filename: str, content: bytes) -> dict:
             from .enrichment import NativePdfTextReader, NativeSyntaxGuard, enrichment_warnings
             enrichment_warnings(converter, reset=True)
             native_warnings = []
-            if lower.endswith(".pdf"):
+            if is_pdf:
                 from docling.datamodel.base_models import InputFormat
 
                 # Docling 2.139 initializes in place and returns None.
@@ -270,7 +332,7 @@ def convert_document(filename: str, content: bytes) -> dict:
                 conv_res = converter.convert(tmp_path)
             doc = conv_res.document
             formula_regions = []
-            if lower.endswith(".pdf"):
+            if is_pdf:
                 try:
                     from .enrichment import recover_native_programs
                     native_warnings = recover_native_programs(doc, content)

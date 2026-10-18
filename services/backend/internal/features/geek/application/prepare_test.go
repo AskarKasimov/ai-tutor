@@ -29,8 +29,8 @@ func (p *preparing) Question(_ context.Context, r QuestionRequest) (string, erro
 		}
 	}
 	time.Sleep(10 * time.Millisecond)
-	if r.Kind != exam.KindQuestion {
-		return "", errors.New("not a main question")
+	if r.Kind != exam.KindQuestion || !r.Ahead {
+		return "", errors.New("not a main question prepared ahead")
 	}
 	if r.Node.ID == p.failOn {
 		return "", errors.New("gateway down")

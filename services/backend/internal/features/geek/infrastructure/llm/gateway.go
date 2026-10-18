@@ -49,14 +49,14 @@ func Dial(address string, timeout time.Duration) (*Gateway, *grpc.ClientConn, er
 }
 
 func (g *Gateway) Question(ctx context.Context, r application.QuestionRequest) (string, error) {
-	// The main question is usually prepared with the graph; the followup and
-	// the rephrase are asked live, so they use the fast low pool.
-	level := llmgatewayv1.Complexity_COMPLEXITY_MEDIUM
-	if r.Kind == exam.KindRephrase || r.Kind == exam.KindFollowup {
-		level = llmgatewayv1.Complexity_COMPLEXITY_LOW
+	// Everything asked during a session uses the fast low pool (decision of
+	// 18.10.2026); only a main question prepared ahead may take medium.
+	level := llmgatewayv1.Complexity_COMPLEXITY_LOW
+	if r.Ahead {
+		level = llmgatewayv1.Complexity_COMPLEXITY_MEDIUM
 	}
 	var text string
-	err := g.complete(ctx, "question:"+string(r.Kind), level, questionPrompt(r), func(content []byte) error {
+	err := g.complete(ctx, "question:"+string(r.Kind), level, !r.Ahead, questionPrompt(r), func(content []byte) error {
 		var out struct {
 			Text string `json:"text"`
 		}
@@ -73,7 +73,8 @@ func (g *Gateway) Question(ctx context.Context, r application.QuestionRequest) (
 
 func (g *Gateway) Evaluate(ctx context.Context, r application.EvaluationRequest) (application.Assessment, error) {
 	var result application.Assessment
-	err := g.complete(ctx, "evaluate:"+string(r.Kind), llmgatewayv1.Complexity_COMPLEXITY_HIGH, evaluationPrompt(r), func(content []byte) error {
+	// The student waits for the evaluation, so it uses the fast low pool too.
+	err := g.complete(ctx, "evaluate:"+string(r.Kind), llmgatewayv1.Complexity_COMPLEXITY_LOW, true, evaluationPrompt(r), func(content []byte) error {
 		var out struct {
 			Verdict  exam.Verdict `json:"verdict"`
 			Criteria *struct {
@@ -117,7 +118,7 @@ func (g *Gateway) Evaluate(ctx context.Context, r application.EvaluationRequest)
 // Explain is asked live after the "don't know" button, so it uses the fast low pool.
 func (g *Gateway) Explain(ctx context.Context, r application.EvaluationRequest) (string, error) {
 	var text string
-	err := g.complete(ctx, "explain", llmgatewayv1.Complexity_COMPLEXITY_LOW, explanationPrompt(r), func(content []byte) error {
+	err := g.complete(ctx, "explain", llmgatewayv1.Complexity_COMPLEXITY_LOW, true, explanationPrompt(r), func(content []byte) error {
 		var out struct {
 			Text string `json:"text"`
 		}
@@ -134,14 +135,17 @@ func (g *Gateway) Explain(ctx context.Context, r application.EvaluationRequest) 
 
 // complete asks for a JSON object and hands each answer to parse, which
 // decodes it into a fresh value and checks it; an invalid answer is retried once.
-func (g *Gateway) complete(ctx context.Context, operation string, level llmgatewayv1.Complexity, prompt string, parse func([]byte) error) error {
-	logger := httpx.LoggerFromContext(ctx).With(zap.String("llm_operation", operation), zap.String("complexity", level.String()))
+// A call the student waits for is urgent: the gateway runs it before queued
+// background work (graph building, translation) on any free compatible instance.
+func (g *Gateway) complete(ctx context.Context, operation string, level llmgatewayv1.Complexity, urgent bool, prompt string, parse func([]byte) error) error {
+	logger := httpx.LoggerFromContext(ctx).With(zap.String("llm_operation", operation), zap.String("complexity", level.String()), zap.Bool("urgent", urgent))
 	request := &llmgatewayv1.CompleteRequest{
 		Messages: []*llmgatewayv1.Message{
 			{Role: llmgatewayv1.Role_ROLE_SYSTEM, Content: proto.String(systemPrompt)},
 			{Role: llmgatewayv1.Role_ROLE_USER, Content: proto.String(prompt)},
 		},
 		Complexity: level,
+		Urgent:     urgent,
 		Parameters: &llmgatewayv1.GenerationParameters{
 			Temperature:    proto.Float64(0.2),
 			ResponseFormat: llmgatewayv1.ResponseFormat_RESPONSE_FORMAT_JSON_OBJECT.Enum(),

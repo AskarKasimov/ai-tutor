@@ -40,3 +40,34 @@ done
 for service in $services_order; do
     compose "$service" up --build --wait "$@"
 done
+
+# On a machine with a desktop, open the sites and, with the gateway profile,
+# Grafana; a headless server has no opener. PROD_OPEN_BROWSER=false skips it.
+https_port=$(sed -n 's/^PROXY_HTTPS_PORT=//p' .env | tail -n 1)
+app_url=https://localhost
+if [ -n "$https_port" ] && [ "$https_port" != 443 ]; then
+    app_url="$app_url:$https_port"
+fi
+grafana_url=http://localhost:3000/d/llm-gateway-routing
+profiles=${COMPOSE_PROFILES-$(sed -n 's/^COMPOSE_PROFILES=//p' .env | tail -n 1)}
+case ",$profiles," in
+*,gateway,*) ;;
+*) grafana_url= ;;
+esac
+printf '%s\n' "Student site: $app_url" "Admin panel:  $app_url/admin"
+if [ -n "$grafana_url" ]; then
+    printf '%s\n' "Grafana:      $grafana_url"
+fi
+opener=
+if command -v xdg-open >/dev/null 2>&1; then
+    opener=xdg-open
+elif command -v open >/dev/null 2>&1; then
+    opener=open
+fi
+if [ "${PROD_OPEN_BROWSER:-true}" != false ] && [ -n "$opener" ]; then
+    "$opener" "$app_url" >/dev/null 2>&1 || true
+    "$opener" "$app_url/admin" >/dev/null 2>&1 || true
+    if [ -n "$grafana_url" ]; then
+        "$opener" "$grafana_url" >/dev/null 2>&1 || true
+    fi
+fi

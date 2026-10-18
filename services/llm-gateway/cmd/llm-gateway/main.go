@@ -29,7 +29,14 @@ func main() {
 	if configPath == "" {
 		configPath = "/etc/llm-gateway/config.json"
 	}
-	cfg, err := gateway.LoadConfig(configPath)
+	// Model rules (models.json) are baked into the image next to config.json;
+	// GATEWAY_MODELS points elsewhere and then the file must exist.
+	rulesPath := os.Getenv("GATEWAY_MODELS")
+	rulesRequired := rulesPath != ""
+	if !rulesRequired {
+		rulesPath = "/etc/llm-gateway/models.json"
+	}
+	cfg, err := gateway.Load(configPath, rulesPath, rulesRequired)
 	if err != nil {
 		slog.Error("invalid gateway configuration", "error", err)
 		os.Exit(1)

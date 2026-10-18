@@ -24,10 +24,10 @@ from course_graph.topics.graph import build_links
 from course_graph.topics.models import Material, StrictModel, Topic
 from course_graph.topics.retrieval import get_encoder
 
-# Every stage asks for the low complexity (decision of 18.10.2026): the
-# gateway runs a low request on the least capable free instance and moves it
-# up to a free medium or high one when low is busy, so a build uses every
-# model at once instead of waiting for the high pool.
+# Every stage asks for the low complexity (decision of 18.10.2026): every
+# instance can serve low, and the gateway gives a low request to the free
+# instance expected to answer soonest, so a build uses every model at once
+# instead of waiting for the high pool.
 STAGE_COMPLEXITY = "low"
 
 

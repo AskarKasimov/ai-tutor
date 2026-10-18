@@ -34,12 +34,14 @@ func (g *Gateway) Complete(ctx context.Context, system, prompt string) (string, 
 			{Role: llmgatewayv1.Role_ROLE_SYSTEM, Content: proto.String(system)},
 			{Role: llmgatewayv1.Role_ROLE_USER, Content: proto.String(prompt)},
 		},
-		// Low runs on any free instance: the gateway moves a low request up to
-		// medium or high when low is busy (decision of 18.10.2026).
+		// Every instance serves low, and the gateway gives it to the free one
+		// expected to answer soonest (decision of 18.10.2026).
 		Complexity: llmgatewayv1.Complexity_COMPLEXITY_LOW,
 		Parameters: &llmgatewayv1.GenerationParameters{
 			Temperature:    proto.Float64(0.2),
 			ResponseFormat: llmgatewayv1.ResponseFormat_RESPONSE_FORMAT_JSON_OBJECT.Enum(),
+			// A translation needs no reasoning; it only slows thinking models.
+			ReasoningEffort: llmgatewayv1.ReasoningEffort_REASONING_EFFORT_LOW.Enum(),
 		},
 	})
 	if err != nil {

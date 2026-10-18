@@ -50,6 +50,7 @@ def test_client_calls_gateway_contract():
     assert [(m.role, m.content) for m in request.messages] == [
         (gateway_pb2.ROLE_SYSTEM, "Системный промпт"), (gateway_pb2.ROLE_USER, '{"blocks":[]}')]
     assert request.parameters.response_format == gateway_pb2.RESPONSE_FORMAT_JSON_OBJECT
+    assert request.parameters.reasoning_effort == gateway_pb2.REASONING_EFFORT_LOW
 
 
 def test_client_rejects_cut_answer():

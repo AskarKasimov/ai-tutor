@@ -92,4 +92,41 @@ class RequirementDecision(StrictModel):
 
 class LinkResponse(StrictModel):
     links: list[LinkDecision]
-    requirements: list[RequirementDecision]
+    # Decisions explain the links; the accepted links themselves are the result.
+    requirements: list[RequirementDecision] = Field(default_factory=list)
+
+
+class SynonymDecision(StrictModel):
+    a: Text
+    b: Text
+    same: bool
+
+
+class SynonymResponse(StrictModel):
+    pairs: list[SynonymDecision]
+
+
+class AttachLink(StrictModel):
+    id: Text
+    reason: Text
+    topic_evidence: Evidence
+    candidate_evidence: Evidence
+
+
+class AttachDecision(StrictModel):
+    id: Text
+    prerequisites: list[AttachLink] = Field(default_factory=list)
+    dependents: list[AttachLink] = Field(default_factory=list)
+
+
+class AttachResponse(StrictModel):
+    topics: list[AttachDecision]
+
+
+class TopicQuestion(StrictModel):
+    id: Text
+    question: Text
+
+
+class QuestionResponse(StrictModel):
+    questions: list[TopicQuestion]

@@ -14,8 +14,13 @@ import (
 )
 
 type requestRepo struct {
-	snapshot coursegraph.Snapshot
-	queued   bool
+	snapshot  coursegraph.Snapshot
+	queued    bool
+	published []json.RawMessage
+}
+
+func (r requestRepo) Published(context.Context) ([]json.RawMessage, error) {
+	return r.published, nil
 }
 
 func (r requestRepo) Claim(context.Context, string, time.Time) (coursegraph.Job, error) {
@@ -164,5 +169,30 @@ func TestABrokenFixtureDoesNotFailAnAcceptedBuildRequest(t *testing.T) {
 	}
 	if got, err = w.Read(context.Background(), admin, "subject"); err != nil || got.GraphSource != coursegraph.SourceNone {
 		t.Fatalf("read with a broken fixture = %+v, %v", got, err)
+	}
+}
+
+type queuedVoices struct{ texts []string }
+
+func (v *queuedVoices) Prepare(texts []string) int {
+	v.texts = append(v.texts, texts...)
+	return len(texts)
+}
+
+func TestPrepareVoicesQueuesTheQuestionsOfEveryPublishedGraph(t *testing.T) {
+	voices := &queuedVoices{}
+	repo := requestRepo{published: []json.RawMessage{
+		json.RawMessage(`{"topics":[{"question":"Почему A?"},{"question":"Почему B?"}]}`),
+		json.RawMessage(`{"topics":[{"question":"Почему C?"}]}`),
+	}}
+	if err := New(repo, nil, nil, nil, voices, nil).PrepareVoices(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if len(voices.texts) != 3 || voices.texts[0] != "Почему A?" || voices.texts[2] != "Почему C?" {
+		t.Fatalf("queued %q", voices.texts)
+	}
+	// Without a queue there is nothing to prepare.
+	if err := New(repo, nil, nil, nil, nil, nil).PrepareVoices(context.Background()); err != nil {
+		t.Fatal(err)
 	}
 }

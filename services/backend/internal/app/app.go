@@ -166,7 +166,15 @@ func (a *App) RunBackground(ctx context.Context) error {
 	group.Go(func() error { return a.graphWorker.Run(ctx) })
 	warmCtx := httpx.WithLogger(ctx, a.logger.With(zap.String("worker", "speech_warmer")))
 	group.Go(func() error { return a.warmer.Run(warmCtx) })
-	group.Go(func() error { a.warmFixture(warmCtx); return nil })
+	group.Go(func() error {
+		// The queue does not survive a restart: questions of graphs built
+		// before it go first, then the default graph's.
+		if err := a.graphWorker.PrepareVoices(warmCtx); err != nil {
+			a.logger.Warn("questions of published graphs are not voiced ahead", zap.Error(err))
+		}
+		a.warmFixture(warmCtx)
+		return nil
+	})
 	return group.Wait()
 }
 

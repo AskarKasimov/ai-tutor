@@ -104,6 +104,34 @@ func (q *Queries) FinishCourseGraph(ctx context.Context, arg FinishCourseGraphPa
 	return subject_id, err
 }
 
+const listPublishedCourseGraphs = `-- name: ListPublishedCourseGraphs :many
+SELECT g.graph FROM course_graphs g
+WHERE EXISTS(SELECT 1 FROM subject_materials m WHERE m.subject_id=g.subject_id)
+ORDER BY g.updated_at DESC, g.subject_id
+`
+
+// Every graph Geek examines by, under the condition of ReadPublishedCourseGraph;
+// the newest first, so their questions are voiced first.
+func (q *Queries) ListPublishedCourseGraphs(ctx context.Context) ([][]byte, error) {
+	rows, err := q.db.Query(ctx, listPublishedCourseGraphs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := [][]byte{}
+	for rows.Next() {
+		var graph []byte
+		if err := rows.Scan(&graph); err != nil {
+			return nil, err
+		}
+		items = append(items, graph)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const readCourseGraph = `-- name: ReadCourseGraph :one
 SELECT s.id, coalesce(j.status,'not_requested')::text AS status,
        coalesce(j.attempts,0)::integer AS attempts, coalesce(j.error_message,'')::text AS error_message,

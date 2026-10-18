@@ -141,3 +141,23 @@ func TestInputsAreNotReadyUntilMaterialMetadataIsComplete(t *testing.T) {
 		t.Fatalf("queued incomplete material: %v err=%v", queued, err)
 	}
 }
+
+func TestPublishedListsTheGraphsGeekExaminesBy(t *testing.T) {
+	pool := repositoryPool(t)
+	exec(t, pool,
+		`INSERT INTO subjects(id, name, created_at) VALUES ('empty', 'Без материалов', 1)`,
+		`INSERT INTO course_graphs(subject_id, fingerprint, graph, updated_at) VALUES ('s', 'f', '{"topics":[{"question":"Почему?"}]}', 2)`,
+		`INSERT INTO course_graphs(subject_id, fingerprint, graph, updated_at) VALUES ('empty', 'f', '{"topics":[{"question":"Лишний?"}]}', 3)`)
+	graphs, err := New(pool).Published(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A course without materials is examined by the fixture, not its graph.
+	if len(graphs) != 1 {
+		t.Fatalf("published graphs = %d", len(graphs))
+	}
+	var g struct{ Topics []struct{ Question string } }
+	if err := json.Unmarshal(graphs[0], &g); err != nil || len(g.Topics) != 1 || g.Topics[0].Question != "Почему?" {
+		t.Fatalf("graph = %s, %v", graphs[0], err)
+	}
+}

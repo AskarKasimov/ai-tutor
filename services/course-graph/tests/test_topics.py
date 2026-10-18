@@ -534,7 +534,7 @@ def test_joint_endpoint_returns_cards_and_cleaning_audit(monkeypatch):
     response = TestClient(api.app).post("/topics/extract", json={"markdown": "Производная показывает скорость изменения функции.\n\nСпасибо за внимание!", "material_id": "m"})
     assert response.status_code == 200
     report = response.json()["report"]
-    assert report["topics_version"] == "topics-v2"
+    assert report["topics_version"] == "topics-v3"
     assert report["topics"][0]["sources"][0]["material_id"] == "m"
 @pytest.mark.parametrize("text",["", "   ", "\n\r\n\t"])
 def test_blank_material_cannot_publish_empty_graph(text):
@@ -813,6 +813,13 @@ def test_questions_follow_provides_not_slide_details():
     # question without having seen the slides.
     for prompt in (PROMPT, QUESTION_PROMPT):
         assert "вокруг provides" in prompt and "не видя этих слайдов" in prompt
+
+
+def test_questions_ask_for_spoken_reasoning_only():
+    # Decision of 18.10.2026: the exam is oral, so a question never asks to
+    # solve, write or draw anything.
+    for prompt in (PROMPT, QUESTION_PROMPT):
+        assert "Экзамен устный" in prompt and "нарисовать схему" in prompt and "написать код" in prompt
 
 
 def test_merging_thin_topics_keeps_cards_within_the_contract():

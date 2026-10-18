@@ -1,5 +1,6 @@
 import { Button, Heading, Text, TextArea } from '@radix-ui/themes'
 import {
+  ArrowRight,
   AudioLines,
   CircleAlert,
   LoaderCircle,
@@ -129,6 +130,12 @@ function Dialogue({
   const closeNotice = useCallback(() => setCourseUpdated(false), [])
   const currentTurnId = session.currentTurnId
   const lastTurn = session.turns[session.turns.length - 1]
+  // spoken is the last Geek turn whose voice ended, failed or was stopped.
+  // The result card waits for it, so it never cuts off Geek's last reply; a
+  // diagnostic completed before the dialogue opened has nothing to wait for.
+  const [spoken, setSpoken] = useState<string | null>(() =>
+    session.status === 'completed' ? (lastTurn?.id ?? null) : null,
+  )
 
   // The Geek turn that replies to an answer stays hidden behind the thinking
   // animation until its voice starts, so the text and the reaction arrive
@@ -170,12 +177,19 @@ function Dialogue({
     ) {
       voiced.current = lastTurn.id
       const id = lastTurn.id
-      void play(lastTurn, id === hiddenId ? () => setRevealed(id) : undefined)
+      void play(
+        lastTurn,
+        id === hiddenId ? () => setRevealed(id) : undefined,
+      ).finally(() => setSpoken(id))
     }
   }, [lastTurn, play, capturing, hiddenId])
+  const resultReady =
+    session.status === 'completed' &&
+    !hiddenId &&
+    (lastTurn?.speaker !== 'geek' || spoken === lastTurn.id)
   useEffect(() => {
     end.current?.scrollIntoView?.({ block: 'end' })
-  }, [session.turns.length, answer.isPending, hiddenId])
+  }, [session.turns.length, answer.isPending, hiddenId, resultReady])
 
   const submit = (variables: NonNullable<typeof answer.variables>) => {
     setAnswered(variables.turnId)
@@ -239,12 +253,7 @@ function Dialogue({
         </div>
       )}
       {session.status === 'completed' ? (
-        <div className={styles.footer}>
-          <Text as="p">{t('geek.completed')}</Text>
-          <Button size="3" onClick={onResult}>
-            {t('geek.toResult')}
-          </Button>
-        </div>
+        resultReady && <ResultCard turns={session.turns} onResult={onResult} />
       ) : session.status === 'cancelled' ? (
         <div className={styles.footer} role="alert">
           <Text as="p">{t('geek.cancelled')}</Text>
@@ -271,6 +280,54 @@ function Dialogue({
           never hidden behind it. */}
       <div ref={end} />
     </main>
+  )
+}
+
+// The way to the result: rises in with a comet running once around its border.
+// The button takes the focus, so the keyboard and screen readers land on it.
+function ResultCard({
+  turns,
+  onResult,
+}: {
+  turns: Turn[]
+  onResult: () => void
+}) {
+  const { t } = useTranslation()
+  const button = useRef<HTMLButtonElement>(null)
+  useEffect(() => button.current?.focus({ preventScroll: true }), [])
+  const topics = new Set(
+    turns
+      .filter((turn) => turn.kind === 'question' && turn.nodeId)
+      .map((turn) => turn.nodeId),
+  ).size
+  return (
+    <section className={styles.resultCard} aria-labelledby="result-card-title">
+      <span className={styles.resultBadge} aria-hidden="true">
+        <svg viewBox="0 0 52 52">
+          <circle className={styles.resultRing} cx="26" cy="26" r="23" />
+          <path className={styles.resultCheck} d="M16 27l7 7 13-15" />
+        </svg>
+      </span>
+      <div className={styles.resultText}>
+        <Heading as="h2" size="5" id="result-card-title">
+          {t('geek.resultCard.title')}
+        </Heading>
+        <Text as="p" className={styles.resultLead}>
+          {topics
+            ? t('geek.resultCard.topics', { count: topics })
+            : t('geek.resultCard.ready')}
+        </Text>
+      </div>
+      <Button
+        ref={button}
+        size="3"
+        className={styles.resultButton}
+        onClick={onResult}
+      >
+        {t('geek.resultCard.open')}
+        <ArrowRight size={18} aria-hidden="true" />
+      </Button>
+    </section>
   )
 }
 

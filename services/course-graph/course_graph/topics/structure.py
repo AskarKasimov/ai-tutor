@@ -14,6 +14,7 @@ from collections import deque
 import numpy as np
 from pydantic import ValidationError
 
+from course_graph.progress import tracked
 from course_graph.topics.evidence import evidence_for, valid_evidence
 from course_graph.topics.extract import administrative_question, join_topic, normalized_title
 from course_graph.topics.models import AttachLink, QuestionResponse, SynonymResponse
@@ -189,7 +190,7 @@ def synonym_check(batch):
 
 
 async def merge_synonyms(topics, complete, encoder, order, threshold=0.9, neighbours=3,
-                         max_chars=12000, concurrency=2):
+                         max_chars=12000, concurrency=2, progress=None):
     """Merge topics the model confirms as one concept; the earliest keeps its id
     and question. A synonym that does not fit the card stays on its own."""
     if len(topics) < 2:
@@ -211,9 +212,9 @@ async def merge_synonyms(topics, complete, encoder, order, threshold=0.9, neighb
              for i, j in sorted(pairs)]
     semaphore, counter = asyncio.Semaphore(concurrency), [0]
     batches, _ = batches_of(items, max_chars, 20, field="pairs")
-    answers = await asyncio.gather(*(ask(complete, SYNONYM_PROMPT, {"pairs": batch}, SynonymResponse, semaphore, counter,
-                                         synonym_check(batch), max_chars=max_chars)
-                                     for batch in batches))
+    answers = await tracked(progress, "synonyms", [ask(complete, SYNONYM_PROMPT, {"pairs": batch}, SynonymResponse,
+                                                       semaphore, counter, synonym_check(batch), max_chars=max_chars)
+                                                   for batch in batches])
     parent = {t.id: t.id for t in topics}
 
     def root(x):
@@ -269,7 +270,7 @@ def weak_topics(topics, edges, parents):
 
 
 async def attach_links(topics, edges, parents, complete, encoder, limit=8, max_chars=24000,
-                       concurrency=2):
+                       concurrency=2, progress=None):
     """Ask the model to place weakly linked topics among their nearest topics.
 
     Every link is grounded like a retrieval link: a verbatim quote from the
@@ -414,7 +415,7 @@ async def attach_links(topics, edges, parents, complete, encoder, limit=8, max_c
         return found, rejected
 
     batches, oversized = batches_of(items, max_chars, 8)
-    answers = await asyncio.gather(*(judge(batch) for batch in batches))
+    answers = await tracked(progress, "attach", [judge(batch) for batch in batches])
     found = {}
     rejected = [{"topic_id": item["id"], "via": "attach", "validation_error": "budget_exceeded",
                  "reason": "Карточка превышает max_chars; запрос не отправлен"} for item in oversized]
@@ -503,7 +504,7 @@ def question_text(topic, budget=6000, floor=200):
     return "\n\n".join(texts[i][:shares[i]] for i in range(len(texts)))
 
 
-async def refresh_questions(hosts, complete, max_chars=20000, concurrency=2):
+async def refresh_questions(hosts, complete, max_chars=20000, concurrency=2, progress=None):
     """Write the main question of each card that absorbed another topic.
 
     Returns the ids whose question could not be prepared and the requests;
@@ -529,8 +530,9 @@ async def refresh_questions(hosts, complete, max_chars=20000, concurrency=2):
         return check
     batches, oversized = batches_of(items, max_chars, 6)
     failed.update(item["id"] for item in oversized)
-    answers = await asyncio.gather(*(ask(complete, QUESTION_PROMPT, {"topics": batch}, QuestionResponse,
-                                         semaphore, counter, checker(batch), max_chars=max_chars) for batch in batches))
+    answers = await tracked(progress, "questions", [ask(complete, QUESTION_PROMPT, {"topics": batch}, QuestionResponse,
+                                                        semaphore, counter, checker(batch), max_chars=max_chars)
+                                                    for batch in batches])
     by_id = {t.id: t for t in hosts}
     for batch, answer in zip(batches, answers):
         if answer is None:

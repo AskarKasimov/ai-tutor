@@ -254,6 +254,25 @@ func independent(n int) Graph {
 	return g
 }
 
+func TestProgressStartsAtZeroAndCountsAnsweredQuestions(t *testing.T) {
+	// The first question on screen used to show 1 of 8 asked as 12%.
+	for _, limit := range []int{0, 8} {
+		e, first := NewExam(independent(10), limit, nil)
+		if first.Kind != KindQuestion || e.Progress() != 0 {
+			t.Fatalf("limit=%d: progress at the first question = %d", limit, e.Progress())
+		}
+	}
+	// Under the limit an answer moves the bar even before its topic closes:
+	// the followup is on screen, one question of 8 is answered.
+	e, _ := NewExam(independent(10), 8, nil)
+	if next := e.Apply(partial); next.Kind != KindFollowup {
+		t.Fatalf("next = %+v", next)
+	}
+	if p := e.Progress(); p != 12 {
+		t.Fatalf("progress after 1 of 8 answered = %d", p)
+	}
+}
+
 func TestFollowupNeverExceedsTheLimit(t *testing.T) {
 	// Every answer needs a followup; with "rephrased" the main answer is D
 	// and the rephrase is partial. The followup due at the last slot does not

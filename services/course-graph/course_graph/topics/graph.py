@@ -4,6 +4,7 @@ import json
 
 from pydantic import ValidationError
 
+from course_graph.progress import NoProgress
 from course_graph.topics.extract import (
     clean_topic_title,
     merge_topics,
@@ -190,8 +191,10 @@ def build_hierarchy(topics: list[Topic], edges: list[dict], canonical: dict[str,
 
 
 async def build_links(topics, complete, encoder, per_requirement=5, max_chars=16000, evidence_chars=1400, concurrency=GRAPH_CONCURRENCY,
-                      light_complete=None):
-    """light_complete answers the simpler synonym check; it defaults to complete."""
+                      light_complete=None, progress=None):
+    """light_complete answers the simpler synonym check; it defaults to complete.
+    progress reports each pass and its finished batches."""
+    progress = progress or NoProgress()
     valid_topics = []
     for t in topics:
         cleaned = clean_topic_title(t.title)
@@ -232,7 +235,7 @@ async def build_links(topics, complete, encoder, per_requirement=5, max_chars=16
     canonical = {normalized_title(t.title): t.id for t in topics}
     aliases = {old: canonical[title] for old, title in original_ids.items() if old != canonical[title]}
     topics, synonyms, synonym_requests = await merge_synonyms(topics, light_complete or complete, encoder,
-                                                               topic_order, concurrency=concurrency)
+                                                               topic_order, concurrency=concurrency, progress=progress)
 
     def follow(merges):
         for old, new in list(aliases.items()):
@@ -365,7 +368,8 @@ async def build_links(topics, complete, encoder, per_requirement=5, max_chars=16
                 decisions[key].reason = ("Нет полного решения модели после исправления: " + "; ".join(errors))[:600]
         return list(links.values()), list(decisions.values())
 
-    jobs = [asyncio.create_task(judge(b)) for b in batches]
+    progress.start("prerequisites", len(batches))
+    jobs = [asyncio.create_task(progress.after(judge(b))) for b in batches]
     try:
         results = await asyncio.gather(*jobs)
     except BaseException:
@@ -378,7 +382,7 @@ async def build_links(topics, complete, encoder, per_requirement=5, max_chars=16
     _, hierarchy, _ = await asyncio.to_thread(build_hierarchy, topics, [], canonical, encoder)
     parents = {h["target"]: h["source"] for h in hierarchy}
     attached, attach_rejected, attach_requests = await attach_links(topics, found, parents, complete, encoder,
-                                                                    concurrency=concurrency)
+                                                                    concurrency=concurrency, progress=progress)
 
     def week_order(edge):
         a, b = topic_week(by_id[edge["source"]]), topic_week(by_id[edge["target"]])
@@ -398,7 +402,8 @@ async def build_links(topics, complete, encoder, per_requirement=5, max_chars=16
     topics, isolated, merged_isolated, originals = await asyncio.to_thread(merge_isolated, topics, edges, encoder)
     # A card that absorbed another topic gets a question about all of it.
     hosts = [t for t in topics if t.id in originals]
-    failed, question_requests = await refresh_questions(hosts, light_complete or complete, concurrency=concurrency)
+    failed, question_requests = await refresh_questions(hosts, light_complete or complete, concurrency=concurrency,
+                                                        progress=progress)
     if failed:
         # No question for the merged card: undo its merges, never keep the old one.
         back = {old for old, host in isolated.items() if host in failed}

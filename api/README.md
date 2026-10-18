@@ -13,7 +13,7 @@
 фоновое задание и отменяет устаревшие результаты предыдущего исходника.
 
 Граф master: `GET /admin/subjects/{subject_id}/graph` возвращает snapshot со статусом,
-сохранённым графом, `stale` и `inputs_ready`; `POST .../graph/build` запускает сборку.
+сохранённым графом, `stale`, `inputs_ready` и `progress` идущей сборки (этап и шаги); `POST .../graph/build` запускает сборку.
 Отдельный GET статуса по `/graph/build` не используется интерфейсом.
 Диагностика реализована: `POST`/`GET /diagnostic-sessions`, чтение сессии,
 `/{id}/answers`, `/{id}/result`, `/{id}/turns/{turn_id}/audio`. Ограничение «ровно одно

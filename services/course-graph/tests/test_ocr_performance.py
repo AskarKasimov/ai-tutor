@@ -461,7 +461,7 @@ def test_legacy_cache_prior_to_formula_audit_fix_is_a_cache_miss(monkeypatch, tm
     # 3. New conversion produces fresh result and writes to the updated cache version
     new_result = converter.convert_document("source.md", content)
     assert new_result["report"]["version"] == "ocr-v9-content-cache"
-    assert new_result["report"]["audit_version"] == "formula-audit-v2"
+    assert new_result["report"]["audit_version"] == "formula-audit-v3"
     assert converter.get_cached_document("source.md", content) is not None
 
 

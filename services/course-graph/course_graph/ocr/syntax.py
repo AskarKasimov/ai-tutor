@@ -24,6 +24,9 @@ def check_latex_syntax(latex: str) -> Tuple[bool, Optional[str]]:
         return False, "truncated_trailing_escape"
     if re.search(r"[_^]\{[^}]*$", text):
         return False, "truncated_subscript"
+    # An unescaped script with no argument: 'x^', 'x_}', 'x_^2', 'a_ & b', 'x_ \\'.
+    if re.search(r"(?<!\\)[_^]\s*(?:$|[}_^&]|\\\\)", text):
+        return False, "truncated_subscript"
 
     # 1. Check curly braces {} balance and nesting
     # Escaped literal braces \{ and \} are ignored; \\{ is a newline followed by a grouping brace.
@@ -138,8 +141,14 @@ TOKEN_RE = re.compile(r"[a-zA-Zа-яА-Яα-ωΑ-Ω0-9]|[+\-=<>*/≤≥≠±∓]
 _COMMANDS = sorted(GREEK_AND_MATH_MAP, key=len, reverse=True)
 _COMMAND_RE = re.compile("(?:" + "|".join(re.escape(c) for c in _COMMANDS) + r")(?![a-zA-Z])")
 # Constructs whose parts a PDF text layer stores in no reliable order.
-_STACKED_RE = re.compile(r"\\(?:sum|prod|int|iint|oint|lim|frac|dfrac|tfrac|binom|sqrt|overset|underset|stackrel|substack)"
+_STACKED_RE = re.compile(r"\\(?:sum|prod|int|iint|oint|lim|limsup|liminf|max|min|sup|inf|argmax|argmin|frac|dfrac|tfrac|binom|sqrt|overset|underset|stackrel|substack)"
                          r"(?![a-zA-Z])|\\begin\{")
+# Operator names that LaTeX prints upright as their own letters.
+_OPERATOR_NAMES = ["arcsin", "arccos", "arctan", "sinh", "cosh", "tanh", "coth", "sin", "cos", "tan", "cot",
+                   "sec", "csc", "log", "ln", "lg", "exp", "min", "max", "sup", "inf", "lim", "det", "dim",
+                   "ker", "deg", "gcd", "arg", "Pr", "hom", "bmod", "pmod"]
+_OPERATOR_PRINTED = {"bmod": "mod", "pmod": "mod"}
+_OPERATOR_NAME_RE = re.compile(r"\\(" + "|".join(_OPERATOR_NAMES) + r")(?![a-zA-Z])")
 # Spellings of one command that a retry may choose differently.
 _COMMAND_SYNONYMS = [(r"\\le(?![a-zA-Z])", r"\\leq"), (r"\\ge(?![a-zA-Z])", r"\\geq"),
                      (r"\\ne(?![a-zA-Z])", r"\\neq"), (r"\\to(?![a-zA-Z])", r"\\rightarrow")]
@@ -152,6 +161,7 @@ def normalize_formatting_only(latex: str) -> str:
     - Collapses consecutive whitespace
     - Normalizes fraction commands (\\dfrac, \\tfrac -> \\frac)
     - Normalizes spellings of one command (\\le -> \\leq, \\ne -> \\neq, \\to -> \\rightarrow)
+    - Normalizes braces around a one-token argument of an operator name (\\sin{x} -> \\sin x)
     - Normalizes braces around single tokens in sub/superscripts (_{1} -> _1, ^{2} -> ^2)
     - Standardizes relative order of adjacent subscript and superscript on same base (x^2_1 -> x_1^2)
     - Normalizes \\left and \\right sizing prefixes (or optional space after macros)
@@ -164,6 +174,8 @@ def normalize_formatting_only(latex: str) -> str:
     s = re.sub(r"\\[dt]frac\b", r"\\frac", s)
     for pattern, replacement in _COMMAND_SYNONYMS:
         s = re.sub(pattern, replacement, s)
+    # A one-token argument of an operator name may be braced: \sin{x} -> \sin x
+    s = re.sub(r"\\(" + "|".join(_OPERATOR_NAMES) + r")\s*\{([a-zA-Z0-9])\}", r"\\\1 \2", s)
     # Remove single-token braces around subscripts and superscripts
     s = re.sub(r"([_~^])\{([a-zA-Z0-9])\}", r"\1\2", s)
     s = re.sub(r"\s*([_~^])\s*", r"\1", s)
@@ -196,6 +208,8 @@ def _symbols(text: str, latex: bool) -> str:
     if latex:
         text = _COMMAND_RE.sub(lambda m: GREEK_AND_MATH_MAP[m.group(0)], text)
         text = re.sub(r"\\begin\{[^}]+\}|\\end\{[^}]+\}", "", text)
+        # Operator names are printed as plain letters in the text layer.
+        text = _OPERATOR_NAME_RE.sub(lambda m: " " + _OPERATOR_PRINTED.get(m.group(1), m.group(1)) + " ", text)
         text = re.sub(r"\\[a-zA-Z]+", "", text)
     for glyph, symbol in NATIVE_GLYPH_MAP.items():
         text = text.replace(glyph, symbol)

@@ -484,7 +484,6 @@ def test_formula_enrichment_not_bypassed_unless_confirmed_prolog():
 
 
 def test_enrichment_sets_model_cache_and_rejects_truncation():
-    import pytest
     from types import SimpleNamespace as S
     from course_graph.ocr.enrichment import AuditedEngine
     class Engine:
@@ -496,8 +495,10 @@ def test_enrichment_sets_model_cache_and_rejects_truncation():
             assert self.vlm_model.generation_config.use_cache
             return [S(text="truncated", metadata={"num_tokens":2048})]
     warnings = []
-    with pytest.raises(ValueError, match="token limit"):
-        AuditedEngine(Engine(), warnings).predict_batch([S(max_new_tokens=2048)])
+    engine = AuditedEngine(Engine(), warnings)
+    engine.predict_batch([S(max_new_tokens=2048)])
+    # The truncated answer is rejected on its own instead of failing the whole batch.
+    assert engine.rejected == [0]
     assert warnings and "достигнут лимит токенов" in warnings[0]
     assert not any("частично" in w for w in warnings)
 

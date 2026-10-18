@@ -563,3 +563,184 @@ def test_command_spellings_are_formatting_only(a, b):
 
 def test_left_is_not_read_as_le():
     assert normalize_formatting_only(r"\left( x \right)") == "(x)"
+
+
+@pytest.mark.parametrize("raw, native", [
+    (r"\sin x = 0", "sin x = 0"),
+    (r"\log x = 1", "log x = 1"),
+    (r"\ln(x) + 1", "ln(x) + 1"),
+    (r"\max_i x_i", "max i xi"),
+    (r"a \bmod n", "a mod n"),
+])
+def test_operator_names_match_the_letters_of_the_text_layer(raw, native):
+    assert not has_substantive_conflict(raw, native)
+
+
+def test_operator_name_contradiction_is_still_a_conflict():
+    assert has_substantive_conflict(r"\sin x = 0", "cos x = 0")
+    assert has_substantive_conflict(r"\log x = 1", "log x = 2")
+
+
+def test_braced_operator_argument_is_formatting_only():
+    assert normalize_formatting_only(r"\sin{x}=0") == normalize_formatting_only(r"\sin x = 0")
+    assert normalize_formatting_only(r"\sin{xy}") != normalize_formatting_only(r"\sin x y")
+
+
+@pytest.mark.parametrize("latex", ["x^", "x_", "x_ ", "x_}", "{x_}", "a_ & b", r"x_ \\ y", "x_^2"])
+def test_script_without_argument_is_truncated(latex):
+    assert check_latex_syntax(latex) == (False, "truncated_subscript")
+
+
+@pytest.mark.parametrize("latex", [r"x_1^2", r"a\_", r"\hat{x}^{2}", r"x'^2", r"\text{a\_b}"])
+def test_script_with_argument_or_escaped_is_valid(latex):
+    assert check_latex_syntax(latex)[0]
+
+
+def _formula_audit(monkeypatch, raw, native, retry):
+    import pypdfium2
+    from PIL import Image
+    from docling_core.types.doc import BoundingBox, CoordOrigin, FormulaItem, ProvenanceItem
+    from course_graph.ocr.enrichment import audit_and_retry_formulas
+
+    class Bitmap:
+        def to_pil(self): return Image.new("RGB", (20, 20))
+        def close(self): pass
+
+    class TextPage:
+        def get_text_bounded(self, **kwargs): return native
+        def close(self): pass
+
+    class Page:
+        def get_size(self): return 200, 300
+        def get_height(self): return 300
+        def get_textpage(self): return TextPage()
+        def close(self): pass
+        def render(self, **options): return Bitmap()
+
+    class Pdf:
+        def __len__(self): return 1
+        def __getitem__(self, index): return Page()
+        def close(self): pass
+
+    monkeypatch.setattr(pypdfium2, "PdfDocument", lambda _: Pdf())
+    calls = []
+
+    class Engine:
+        def initialize(self): pass
+        def predict_batch(self, inputs):
+            calls.append(len(inputs))
+            return [S(text=retry, metadata={"num_tokens": 10})]
+
+    class CodeFormulaVlmModel:
+        def __init__(self, engine):
+            self.engine = engine
+            self._post_process = lambda texts: texts
+
+    bbox = BoundingBox(l=20, r=80, t=40, b=80, coord_origin=CoordOrigin.TOPLEFT)
+    item = FormulaItem(self_ref="#/texts/0", orig="", text=raw,
+                       prov=[ProvenanceItem(page_no=1, charspan=(0, 0), bbox=bbox)])
+    model = S(initialized_pipelines={1: S(enrichment_pipe=[CodeFormulaVlmModel(Engine())])})
+    regions, _ = audit_and_retry_formulas(S(texts=[item]), b"dummy_pdf", model)
+    return regions, calls, item
+
+
+def test_formula_matching_the_text_layer_with_an_operator_name_needs_no_retry(monkeypatch):
+    regions, calls, item = _formula_audit(monkeypatch, r"\sin x = 0", "sin x = 0", r"\sin{x}=0")
+    assert calls == []
+    assert regions[0].status == "recognized" and regions[0].attempts == 1
+    assert item.text == r"\sin x = 0"
+
+
+@pytest.mark.parametrize("raw", ["x^", "x_"])
+def test_dangling_script_is_retried_and_unresolved_when_the_retry_fails(monkeypatch, raw):
+    regions, calls, item = _formula_audit(monkeypatch, raw, "", raw)
+    assert calls == [1]
+    assert regions[0].status == "unresolved" and regions[0].attempts == 2
+    assert item.text == ""
+
+
+def test_dangling_script_is_recognized_after_a_valid_retry(monkeypatch):
+    regions, calls, item = _formula_audit(monkeypatch, "x^", "", "x^2")
+    assert calls == [1]
+    assert regions[0].status == "recognized" and item.text == "x^2"
+
+
+def _real_code_stage(answers):
+    from docling.models.stages.code_formula.code_formula_vlm_model import CodeFormulaVlmModel
+    from course_graph.ocr.enrichment import NativeSyntaxGuard
+
+    class Engine:
+        def initialize(self): pass
+        def predict_batch(self, inputs):
+            return [S(text=text, metadata={"num_tokens": 5}) for text in answers[:len(inputs)]]
+
+    stage = CodeFormulaVlmModel.__new__(CodeFormulaVlmModel)
+    stage.enabled = True
+    stage.engine = Engine()
+    stage.options = S(engine_options=S(engine_type="transformers"))
+    stage._repetition_stopper = None
+    return NativeSyntaxGuard(stage)
+
+
+def _code_elements(texts):
+    from PIL import Image
+    from docling.datamodel.base_models import ItemAndImageEnrichmentElement
+    from docling_core.types.doc import CodeItem, DocItemLabel
+    return [ItemAndImageEnrichmentElement(item=CodeItem(self_ref=f"#/texts/{i}", label=DocItemLabel.CODE, orig=text, text=text),
+                                          image=Image.new("RGB", (20, 20))) for i, text in enumerate(texts)]
+
+
+def test_one_empty_code_answer_keeps_its_neighbours_answers():
+    from course_graph.ocr.enrichment import CODE_LOST_WARNING
+    guard = _real_code_stage(["", "print(42)"])
+    items = list(guard(None, _code_elements(["", ""])))
+    assert [item.text for item in items] == ["", "print(42)"]
+    assert CODE_LOST_WARNING in guard.warnings
+    assert not any("частично" in warning for warning in guard.warnings)
+
+
+def test_rejected_code_answer_keeps_the_text_docling_had():
+    guard = _real_code_stage(["", "print(42)"])
+    items = list(guard(None, _code_elements(["pr1nt(1)", ""])))
+    assert [item.text for item in items] == ["pr1nt(1)", "print(42)"]
+
+
+def test_lost_code_is_cached_as_incomplete_content(monkeypatch, tmp_path):
+    import course_graph.ocr.converter as converter
+    from pypdf import PdfWriter
+
+    monkeypatch.setenv("COURSE_GRAPH_OCR_CACHE_DIR", str(tmp_path))
+    monkeypatch.setenv("COURSE_GRAPH_WITH_DOCLING", "true")
+    guard = _real_code_stage(["", "print(42)"])
+    calls = []
+
+    class Doc:
+        pages = {1: None}
+        texts = []
+        def export_to_markdown(self, page_no=None):
+            return "\n\n".join(f"```\n{item.text}\n```" for item in self.texts)
+
+    class Converter:
+        initialized_pipelines = {1: S(enrichment_pipe=[guard])}
+        def initialize_pipeline(self, *args, **kwargs): return None
+        def convert(self, path):
+            calls.append(path)
+            doc = Doc()
+            doc.texts = list(guard(doc, _code_elements(["", ""])))
+            return S(document=doc, status="success")
+
+    monkeypatch.setattr(converter, "get_converter", lambda: Converter())
+    monkeypatch.setattr("course_graph.ocr.enrichment.recover_native_programs", lambda document, content: [])
+    monkeypatch.setattr("course_graph.ocr.enrichment.audit_and_retry_formulas", lambda document, content, model=None: ([], []))
+    writer = PdfWriter()
+    writer.add_blank_page(width=72, height=72)
+    stream = io.BytesIO()
+    writer.write(stream)
+
+    first = converter.convert_document("code.pdf", stream.getvalue())
+    assert "print(42)" in first["markdown"]
+    assert first["report"]["work_complete"] is True
+    assert first["report"]["content_complete"] is False
+    second = converter.convert_document("code.pdf", stream.getvalue())
+    assert second["report"]["cache_hit"] and second["report"]["content_complete"] is False
+    assert len(calls) == 1

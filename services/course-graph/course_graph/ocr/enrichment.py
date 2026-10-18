@@ -12,10 +12,15 @@ def _code_tokens(text):
     return re.findall(r"'(?:\\.|[^'\\])*'|\"(?:\\.|[^\"\\])*\"|\w+|[^\w\s]", text)
 
 
+CODE_LOST_WARNING = "Часть кода не распознана моделью; оставлен исходный текст Docling, проверьте исходник"
+
+
 class AuditedEngine:
     def __init__(self, engine, warnings):
         self.engine = engine
         self.warnings = warnings
+        # Indices of the last batch whose answers were rejected.
+        self.rejected = []
 
     def initialize(self):
         self.engine.initialize()
@@ -36,13 +41,16 @@ class AuditedEngine:
             self.warnings.append("Код/формулы обработаны частично: ValueError: enrichment output count mismatch")
             raise ValueError("enrichment output count mismatch")
 
-        for request, output in zip(inputs, outputs):
+        # A bad answer rejects only its own element: raising here would make Docling
+        # drop the whole batch, including the correct answers of its neighbours.
+        self.rejected = []
+        for index, (request, output) in enumerate(zip(inputs, outputs)):
             if not output.text.strip():
                 self.warnings.append("Код/формулы: пустой ответ модели")
-                raise ValueError("empty enrichment output")
-            if (output.metadata or {}).get("num_tokens", 0) >= request.max_new_tokens:
+                self.rejected.append(index)
+            elif (output.metadata or {}).get("num_tokens", 0) >= request.max_new_tokens:
                 self.warnings.append("Код/формулы: достигнут лимит токенов модели")
-                raise ValueError("enrichment token limit reached")
+                self.rejected.append(index)
         return outputs
 
 
@@ -117,7 +125,19 @@ class NativeSyntaxGuard:
                     preserved.append(element)
         preserved_ids = {id(element) for element in preserved}
         enrich = [element for element in elements if id(element) not in preserved_ids]
+        before = {id(element.item): (element.item.text, getattr(element.item, "code_language", None))
+                  for element in enrich}
+        self.stage.engine.rejected = []
         output = list(self.stage(doc, enrich)) if enrich else []
+        # A rejected answer keeps the text Docling had before enrichment. Formulas get
+        # a crop retry in the audit; code has none, so its loss marks the content incomplete.
+        for index in self.stage.engine.rejected:
+            item = enrich[index].item
+            item.text, language = before[id(item)]
+            if item.label == DocItemLabel.CODE:
+                if language is not None:
+                    item.code_language = language
+                self.warnings.append(CODE_LOST_WARNING)
         output_by_id = {id(item): item for item in output}
         for element in elements:
             item = element.item if id(element) in preserved_ids else output_by_id.get(id(element.item), element.item)

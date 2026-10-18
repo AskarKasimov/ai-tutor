@@ -87,7 +87,7 @@ logger = logging.getLogger(__name__)
 def get_ocr_configuration() -> dict:
     return {
         "version": "ocr-v9-content-cache",
-        "audit_version": "formula-audit-v2",
+        "audit_version": "formula-audit-v3",
         "with_docling": os.environ.get("COURSE_GRAPH_WITH_DOCLING", "true"),
         "picture_text": os.environ.get("COURSE_GRAPH_OCR_PICTURE_TEXT", "true"),
         "document_timeout": os.environ.get("COURSE_GRAPH_OCR_DOCUMENT_TIMEOUT", "0"),
@@ -198,8 +198,8 @@ def convert_document(filename: str, content: bytes) -> dict:
         }
         if report["undecoded_formulas"]:
             report["warnings"].append("Часть формул не распознана; такие маркеры не являются учебным содержанием")
-        from .enrichment import CODE_MISMATCH_WARNING
-        if CODE_MISMATCH_WARNING in report["warnings"]:
+        from .enrichment import CODE_LOST_WARNING, CODE_MISMATCH_WARNING
+        if CODE_MISMATCH_WARNING in report["warnings"] or CODE_LOST_WARNING in report["warnings"]:
             report["content_complete"] = False
         data = {"markdown": markdown, "report": report}
         # Stable unresolved formulas are reusable; transient engine failures, picture OCR failures,

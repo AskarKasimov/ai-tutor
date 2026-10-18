@@ -77,6 +77,17 @@
   gap: var(--space-3);
   color: var(--app-muted);
 }
+.visuallyHidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
 // Geek's typing: three dots rising one after another in a soft bubble.
 .dots {
   display: inline-flex;
@@ -159,6 +170,9 @@
   --text-area-border-width: 0;
   background: transparent;
   box-shadow: none;
+  &:focus-within {
+    outline: none;
+  }
   textarea {
     min-height: 24px;
     max-height: 160px;

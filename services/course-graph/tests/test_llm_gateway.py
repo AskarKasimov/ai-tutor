@@ -30,12 +30,12 @@ async def serve(gateway):
     return server, f"127.0.0.1:{port}"
 
 
-def call(gateway, complexity="high"):
+def call(gateway, complexity="high", reasoning=False):
     async def run():
         server, address = await serve(gateway)
         client = ModelClient(address, timeout=5)
         try:
-            return await client.completer(complexity)("Системный промпт", '{"blocks":[]}')
+            return await client.completer(complexity, reasoning)("Системный промпт", '{"blocks":[]}')
         finally:
             await client.close()
             await server.stop(None)
@@ -50,6 +50,13 @@ def test_client_calls_gateway_contract():
     assert [(m.role, m.content) for m in request.messages] == [
         (gateway_pb2.ROLE_SYSTEM, "Системный промпт"), (gateway_pb2.ROLE_USER, '{"blocks":[]}')]
     assert request.parameters.response_format == gateway_pb2.RESPONSE_FORMAT_JSON_OBJECT
+    assert request.parameters.reasoning_effort == gateway_pb2.REASONING_EFFORT_LOW
+
+
+def test_a_reasoning_stage_leaves_the_effort_to_the_model():
+    gateway = Gateway()
+    call(gateway, "low", reasoning=True)
+    assert not gateway.requests[0].parameters.HasField("reasoning_effort")
 
 
 def test_client_rejects_cut_answer():

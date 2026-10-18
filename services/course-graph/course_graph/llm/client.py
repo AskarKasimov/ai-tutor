@@ -29,16 +29,21 @@ class ModelClient:
         )
         self.stub = gateway_pb2_grpc.GatewayStub(self.channel)
 
-    async def complete(self, system: str, text: str, complexity: str = "high") -> str:
+    async def complete(self, system: str, text: str, complexity: str = "high", reasoning: bool = False) -> str:
+        # Without reasoning a call asks for low effort, which keeps thinking
+        # models fast; with it the model reasons as it does by default.
+        parameters = gateway_pb2.GenerationParameters(
+            temperature=0.2, response_format=gateway_pb2.RESPONSE_FORMAT_JSON_OBJECT,
+        )
+        if not reasoning:
+            parameters.reasoning_effort = gateway_pb2.REASONING_EFFORT_LOW
         request = gateway_pb2.CompleteRequest(
             messages=[
                 gateway_pb2.Message(role=gateway_pb2.ROLE_SYSTEM, content=system),
                 gateway_pb2.Message(role=gateway_pb2.ROLE_USER, content=text),
             ],
             complexity=COMPLEXITY[complexity],
-            parameters=gateway_pb2.GenerationParameters(
-                temperature=0.2, response_format=gateway_pb2.RESPONSE_FORMAT_JSON_OBJECT,
-            ),
+            parameters=parameters,
         )
         response = await self.stub.Complete(request, timeout=self.timeout)
         try:
@@ -50,13 +55,13 @@ class ModelClient:
             raise GatewayError(f"LLM answer was cut by the token limit (request {response.request_id})")
         return content or ""
 
-    def completer(self, complexity: str):
+    def completer(self, complexity: str, reasoning: bool = False):
         """complete bound to one complexity, in the (system, text) shape the stages call."""
         if complexity not in COMPLEXITY:
             raise ValueError(f"unknown complexity {complexity!r}")
 
         async def complete(system: str, text: str) -> str:
-            return await self.complete(system, text, complexity)
+            return await self.complete(system, text, complexity, reasoning)
         return complete
 
     async def close(self):

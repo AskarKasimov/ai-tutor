@@ -99,7 +99,8 @@ func TestGatewayAsksWithComplexityAndJSONFormat(t *testing.T) {
 	if r.GetComplexity() != llmgatewayv1.Complexity_COMPLEXITY_LOW || !r.GetUrgent() {
 		t.Fatalf("complexity = %s urgent = %v", r.GetComplexity(), r.GetUrgent())
 	}
-	if r.GetParameters().GetResponseFormat() != llmgatewayv1.ResponseFormat_RESPONSE_FORMAT_JSON_OBJECT || r.GetParameters().GetTemperature() != 0.2 {
+	if r.GetParameters().GetResponseFormat() != llmgatewayv1.ResponseFormat_RESPONSE_FORMAT_JSON_OBJECT || r.GetParameters().GetTemperature() != 0.2 ||
+		r.GetParameters().GetReasoningEffort() != llmgatewayv1.ReasoningEffort_REASONING_EFFORT_LOW {
 		t.Fatalf("parameters = %v", r.GetParameters())
 	}
 	messages := r.GetMessages()

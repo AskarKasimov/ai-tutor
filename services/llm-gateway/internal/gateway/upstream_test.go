@@ -142,3 +142,43 @@ func TestCircuitBreakerOpensAndAllowsOneHalfOpenProbe(t *testing.T) {
 		t.Fatal("successful probe did not close circuit")
 	}
 }
+
+func TestCallerAddsTheInstanceBodyForTheRequestedReasoningEffort(t *testing.T) {
+	var bodies []map[string]json.RawMessage
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]json.RawMessage
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		bodies = append(bodies, body)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"id":"c","object":"chat.completion","created":1,"model":"m","choices":[{"index":0,"message":{"role":"assistant","content":"ok"}}]}`))
+	}))
+	defer server.Close()
+	caller := NewCaller(Config{UpstreamTimeout: 2 * time.Second})
+	defer caller.client.CloseIdleConnections()
+	in := InstanceConfig{ID: "qwen", BaseURL: server.URL + "/v1", Model: "qwen", Timeout: 2 * time.Second,
+		ReasoningEffortBody: map[string]map[string]json.RawMessage{"low": {"chat_template_kwargs": json.RawMessage(`{"enable_thinking":false}`)}}}
+	for _, raw := range []string{
+		`{"messages":[{"role":"user","content":"hi"}],"complexity":"low","reasoning_effort":"low"}`,
+		`{"messages":[{"role":"user","content":"hi"}],"complexity":"low","reasoning_effort":"high"}`,
+		`{"messages":[{"role":"user","content":"hi"}],"complexity":"low"}`,
+	} {
+		request, err := ParseRequest([]byte(raw))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, failure := caller.call(context.Background(), in, request, "r", false); failure != nil {
+			t.Fatal(failure)
+		}
+	}
+	if got := string(bodies[0]["chat_template_kwargs"]); got != `{"enable_thinking":false}` {
+		t.Fatalf("low effort body = %q", got)
+	}
+	if _, ok := bodies[0]["reasoning_effort"]; !ok {
+		t.Fatal("the requested effort itself is still sent")
+	}
+	for i, body := range bodies[1:] {
+		if _, ok := body["chat_template_kwargs"]; ok {
+			t.Fatalf("request %d without low effort got the low body", i+1)
+		}
+	}
+}

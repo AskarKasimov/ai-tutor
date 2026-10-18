@@ -164,9 +164,9 @@ Regular/Bold и их лицензия. Фоны, рамки, кнопки, пр�
 
 - `src/bootstrap/` — app-layer alias и composition root: entrypoint, providers, HTTP DI и router shell. Имя `bootstrap` выбрано вместо стандартного `app`; `src/app/` и `src/application/` не создаются.
 - `src/routes/` — тонкий технический реестр TanStack Router с неизменными URL; `src/routeTree.gen.ts` генерируется автоматически.
-- `src/pages/trainer/`, `src/pages/login/`, `src/pages/competency-map/` — уникальные экраны и их композиция. Trainer page содержит главную с историей, диалог Geek и итог без импорта другого page slice.
-- `src/features/` — сценарии `auth`, `diagnostic-session` (данные диагностики, ответ голосом, озвучка реплик), `subject-selection` и `import-competency-map` (сейчас — только материалы курса), включая локальные hooks, порты и UI действий.
-- `src/entities/` — модели и API владельцев `user`, `diagnostic-session` (контракт Geek), `subject` и `competency-map` (сейчас — только API материалов курса).
+- `src/pages/trainer/`, `src/pages/login/`, `src/pages/admin-courses/`, `src/pages/competency-map/` — уникальные экраны и их композиция. Trainer page содержит главную с историей, диалог Geek и итог без импорта другого page slice.
+- `src/features/` — сценарии `auth`, `diagnostic-session` (данные диагностики, ответ голосом, озвучка реплик), `subject-selection`, `import-competency-map` (сейчас — только материалы курса) и `course-graph-build` (граф курса и его сборка), включая локальные hooks, порты и UI действий.
+- `src/entities/` — модели и API владельцев `user`, `diagnostic-session` (контракт Geek), `subject`, `competency-map` (сейчас — только API материалов курса) и `course-graph` (граф и состояние сборки).
 - `src/shared/api/` — HTTP transport и auth refresh; `src/shared/lib/` — браузерные audio/waveform adapters; `src/shared/i18n/` — локализация.
 - Слои импортируют только вниз; slices одного слоя изолированы. Межслайсовые импорты используют `index.ts`; внутренние импорты slice относительные. Для взаимных entity типов разрешены только минимальные `@x/<consumer>` APIs.
 - Чистые сценарии находятся в `model`/`lib` owning slice. `bootstrap` собирает per-slice providers и HTTP-адаптеры; предметные контракты не агрегируются в `shared`.

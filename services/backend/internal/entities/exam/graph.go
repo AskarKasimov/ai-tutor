@@ -127,13 +127,24 @@ func (g Graph) TopLevel() []string {
 
 // Closure returns the transitive prerequisites of a node, without the node,
 // in depth-first order.
-func (g Graph) Closure(id string) []string {
+func (g Graph) Closure(id string) []string { return closure(g.prerequisites(), id) }
+
+// prerequisites indexes the prerequisites of every node by its ID, so that
+// many closures share one index instead of a linear search per node.
+func (g Graph) prerequisites() map[string][]string {
+	index := make(map[string][]string, len(g.Nodes))
+	for _, n := range g.Nodes {
+		index[n.ID] = n.Prerequisites
+	}
+	return index
+}
+
+func closure(prerequisites map[string][]string, id string) []string {
 	seen := map[string]bool{id: true}
 	out := []string{}
 	var walk func(string)
 	walk = func(id string) {
-		n, _ := g.Node(id)
-		for _, p := range n.Prerequisites {
+		for _, p := range prerequisites[id] {
 			if !seen[p] {
 				seen[p] = true
 				out = append(out, p)

@@ -204,14 +204,14 @@ paths:
                     description: Очищенный Markdown
                     type: string
                   report:
-                    description: Отчёт очистки (version material-cleaning-v1) с темами (topics_version topics-v2)
+                    description: Отчёт очистки (version material-cleaning-v1) с темами (topics_version topics-v3)
                     properties:
                       topics:
                         items:
                           $ref: "#/components/schemas/Topic"
                         type: array
                       topics_version:
-                        const: topics-v2
+                        const: topics-v3
                       merged_thin_topics:
                         description: Темы без объясняющего текста (меньше 120 символов без заголовков, картинок и ссылок), присоединённые к ближайшей теме того же материала
                         items:

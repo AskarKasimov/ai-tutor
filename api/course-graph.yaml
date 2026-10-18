@@ -156,7 +156,7 @@ paths:
     post:
       summary: Очистить материал и выделить темы
       description: >-
-        Этапы 2–3 для одного материала: LLM (complexity high) удаляет организационные блоки и выделяет темы
+        Этапы 2–3 для одного материала: LLM (complexity low) удаляет организационные блоки и выделяет темы
         с источниками-цитатами. Названия тем, знания и вопросы — на русском; text темы — дословные фрагменты
         материала. Backend кэширует цитаты; метаданные provenance задаются snapshot при /graph/build.
       requestBody:
@@ -299,7 +299,7 @@ paths:
       summary: Собрать граф курса
       description: >-
         Этапы 3–6 по всем материалам курса: темы берутся из кэша /topics/extract (topics у материала) или
-        выделяются заново, затем LLM (complexity high) строит и проверяет пререквизиты; циклы отбрасываются.
+        выделяются заново, затем LLM (complexity low) строит и проверяет пререквизиты; циклы отбрасываются.
         Вызов синхронный и долгий; backend вызывает его из worker с продлеваемым lease, публикует результат
         сам. Одна сборка на сервис одновременно.
       requestBody:
@@ -470,9 +470,20 @@ components:
             $ref: "#/components/schemas/Topic"
           type: array
         prerequisites:
-          description: Рёбра «тема требует тему»; граф ацикличен
+          description: >-
+            Рёбра «тема опирается на тему»; граф ацикличен, без рёбер, повторяющих более длинный путь.
+            Рёбра второго прохода помечены via: attach и не имеют requirement; у всех рёбер есть
+            target_evidence и prerequisite_evidence — проверенные дословные цитаты.
           items:
             $ref: "#/components/schemas/Edge"
+          type: array
+        merged_isolated:
+          description: >-
+            Темы без связей, слитые с ближайшей похожей темой (id, title, into); у принявшей темы
+            новый основной вопрос
+          type: array
+        transitive_links:
+          description: Рёбра, убранные транзитивной редукцией
           type: array
         hierarchy:
           description: Рёбра «раздел → тема» по parent_title; только для админки, Geek их не использует

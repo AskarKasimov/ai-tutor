@@ -19,6 +19,11 @@ PROMPT = """Ты выделяешь учебные темы из лекции и
 Все названия, знания и вопросы — по-русски. Английский термин допустим в скобках
 после русского названия, но не вместо него. requires — знания, НЕ ID тем.
 Каждый пункт requires — одно знание: «производная» и «функция потерь» раздельно.
+В requires перечисли все знания, на которые опирается объяснение темы: понятия,
+определения и методы, которые в её блоках используются, но не объясняются, в том
+числе объяснённые раньше в курсе (например, в existing_topics). Называй их общими
+предметными терминами («производная», «пространство состояний»), а не фразами
+из слайда, чтобы их можно было найти в других темах. У вводной темы requires пуст.
 Выделяй отдельные проверяемые понятия/методы, а не тему на каждый абзац и не всю
 лекцию одной темой, если она объясняет несколько самостоятельных методов.
 Каждый входной block id должен быть либо в remove, либо хотя бы в одной теме.
@@ -194,6 +199,25 @@ def content_chars(text):
     return sum(len(line.strip()) for line in text.splitlines() if not _NOT_CONTENT.match(line))
 
 
+def join_topic(target, topic):
+    """Move the text, sources and knowledge of topic into target; target keeps
+    its id and title. Returns False and leaves target unchanged when the merged
+    card would not fit the contract: knowledge is never cut to make it fit."""
+    provides = list(dict.fromkeys(target.provides + topic.provides))
+    explained = set(provides)
+    # Knowledge the merged card now explains itself is no longer required.
+    requires = [r for r in dict.fromkeys(target.requires + topic.requires) if r not in explained]
+    if len(provides) > TOPIC_LIST_MAX or len(requires) > TOPIC_LIST_MAX:
+        return False
+    seen = {(s.material_id, s.material_revision, s.start, s.end) for s in target.sources}
+    target.sources.extend(s for s in topic.sources
+                          if (s.material_id, s.material_revision, s.start, s.end) not in seen)
+    target.sources.sort(key=lambda s: (s.week is None, s.week or 0, s.material_id, s.start))
+    target.provides, target.requires = provides, requires
+    target.text = "\n\n".join(s.text for s in target.sources)
+    return True
+
+
 def absorb_thin_topics(topics, min_chars):
     """Merge topics without explaining text into the nearest topic by position.
 
@@ -212,19 +236,11 @@ def absorb_thin_topics(topics, min_chars):
             return min((abs(a.start - b.start) for a in topic.sources for b in other.sources
                         if a.material_id == b.material_id), default=float("inf"))
 
-        def fits(other):
-            return all(len(dict.fromkeys(getattr(other, f) + getattr(topic, f))) <= TOPIC_LIST_MAX
-                       for f in ("requires", "provides"))
-        target = next((t for t in sorted(kept, key=distance) if fits(t)), None)
+        # join_topic merges into the nearest topic the card still fits.
+        target = next((t for t in sorted(kept, key=distance) if join_topic(t, topic)), None)
         if target is None:
             kept.append(topic)
             continue
-        seen = {(s.material_id, s.start, s.end) for s in target.sources}
-        target.sources.extend(s for s in topic.sources if (s.material_id, s.start, s.end) not in seen)
-        target.sources.sort(key=lambda s: (s.material_id, s.start))
-        target.requires = list(dict.fromkeys(target.requires + topic.requires))
-        target.provides = list(dict.fromkeys(target.provides + topic.provides))
-        target.text = "\n\n".join(s.text for s in target.sources)
         merged.append({"title": topic.title, "into": target.title})
     # Keep the material order of the topics that stayed on their own.
     order = {id(t): i for i, t in enumerate(topics)}
@@ -326,7 +342,10 @@ async def extract_topics(text, complete, material_id="material", week=None, sett
     context_ids = {b.id for b in context_blocks}
     batches = list(pack_blocks([b for b in blocks if b.id not in context_ids], settings))
     semaphore = asyncio.Semaphore(settings.concurrency)
-    metrics = {"requests": 0, "adaptive_splits": 0, "input_chars": 0}
+    # tolerated_*: mechanical slips of the model fixed in code instead of
+    # rejecting the whole answer (see classify).
+    metrics = {"requests": 0, "adaptive_splits": 0, "input_chars": 0,
+               "tolerated_foreign_ids": 0, "tolerated_invalid_reasons": 0, "tolerated_used_removals": 0}
 
     async def classify(batch, depth=0, repair=None, existing_topics=None):
         first, last = batch[0].id, batch[-1].id
@@ -347,17 +366,38 @@ async def extract_topics(text, complete, material_id="material", week=None, sett
             ids = {b.id for b in batch}
             removed = {}
             protected = {b.id for b in batch if b.protected}
-            seen_removals = set()
+            # Weak models slip mechanically; each slip is fixed in the
+            # direction that keeps text instead of rejecting the whole answer:
+            # an id outside the batch belongs to another batch and is ignored,
+            # a removal with an unknown reason keeps its block, and a block a
+            # topic uses is not removed (the model itself treats it as content).
+            # An unknown reason among repeats of an id keeps the block whatever
+            # their order, so the kept set is collected before any removal.
+            kept = set()
             for item in decision.remove:
-                if item.id not in ids or item.id in seen_removals or item.reason not in REASONS:
-                    raise ValueError("Неверное удаление: неизвестный/повторный id или недопустимая причина")
-                seen_removals.add(item.id)
-                if item.id in protected:
-                    continue
-                removed[item.id] = item.reason
+                if item.id not in ids:
+                    metrics["tolerated_foreign_ids"] += 1
+                elif item.reason not in REASONS and item.id not in kept | protected:
+                    metrics["tolerated_invalid_reasons"] += 1
+                    kept.add(item.id)
+            for item in decision.remove:
+                if item.id in ids and item.id not in removed and item.id not in kept | protected:
+                    removed[item.id] = item.reason
+            for topic in decision.topics:
+                foreign = [b for b in topic.block_ids if b not in ids]
+                metrics["tolerated_foreign_ids"] += len(foreign)
+                topic.block_ids = sorted(set(b for b in topic.block_ids if b in ids))
+            decision.topics = [t for t in decision.topics if t.block_ids]
+            for block_id in {b for t in decision.topics for b in t.block_ids} & set(removed):
+                metrics["tolerated_used_removals"] += 1
+                del removed[block_id]
             # Persist only accepted removals. The aggregate audit consumes this
             # decision later, so filtering a local lookup alone would delete code.
-            decision.remove = [item for item in decision.remove if item.id in removed]
+            accepted = []
+            for item in decision.remove:
+                if removed.get(item.id) == item.reason and item.id not in {a.id for a in accepted}:
+                    accepted.append(item)
+            decision.remove = accepted
             assigned = set()
             for topic in decision.topics:
                 cleaned = clean_topic_title(topic.title)
@@ -386,13 +426,10 @@ async def extract_topics(text, complete, material_id="material", week=None, sett
                     raise ValueError("Вопрос проверяет метаданные или оглавление, а не учебное содержание")
                 if administrative_question(topic.question):
                     raise ValueError("Вопрос проверяет организацию работы (команды или сроки). Сохрани упражнение, но проверяй его учебное содержание")
-                if len(set(topic.block_ids)) != len(topic.block_ids):
-                    raise ValueError("Повторный блок темы")
-                for block_id in topic.block_ids:
-                    if block_id not in ids or block_id in removed:
-                        raise ValueError("Тема ссылается на неизвестный/удалённый блок")
-                    assigned.add(block_id)
-            for block_id in sorted((ids - assigned - set(removed)) & protected):
+                assigned.update(topic.block_ids)
+            # Protected blocks and blocks whose removal was not accepted stay
+            # in the material, attached to the nearest topic.
+            for block_id in sorted((ids - assigned - set(removed)) & (protected | kept)):
                 if decision.topics:
                     nearest = min(decision.topics, key=lambda t: min(abs(block_id - bid) for bid in t.block_ids))
                     nearest.block_ids.append(block_id)

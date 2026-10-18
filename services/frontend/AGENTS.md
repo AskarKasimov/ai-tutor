@@ -13,14 +13,14 @@
 `src/application/`. `src/routes/` остаётся тонким техническим реестром TanStack
 Router вне FSD layers, а сгенерированный `src/routeTree.gen.ts` не редактируется.
 
-| Путь             | Ответственность                                                                                                      |
-| ---------------- | -------------------------------------------------------------------------------------------------------------------- |
-| `src/bootstrap/` | Entrypoint, composition root, providers и глобальные стили.                                                          |
-| `src/pages/`     | Страницы с уникальной экранной композицией; widgets добавляются, когда блок страницы действительно переиспользуется. |
-| `src/features/`  | Пользовательские действия: auth, diagnostic-session, subject-selection и import-competency-map.                      |
-| `src/entities/`  | Предметные модели и принадлежащие им API: user, diagnostic-session, subject и competency-map.                        |
-| `src/shared/`    | Общий транспорт, браузерные адаптеры, локализация и UI без предметной ответственности.                               |
-| `src/routes/`    | Тонкая регистрация URL и подключение page API; `__root.tsx` передаёт управление bootstrap shell.                     |
+| Путь             | Ответственность                                                                                                                                                      |
+| ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/bootstrap/` | Entrypoint, composition root, providers и глобальные стили.                                                                                                          |
+| `src/pages/`     | Страницы с уникальной экранной композицией: trainer, login, admin-courses и competency-map; widgets добавляются, когда блок страницы действительно переиспользуется. |
+| `src/features/`  | Пользовательские действия: auth, diagnostic-session, subject-selection, import-competency-map (материалы курса) и course-graph-build.                                |
+| `src/entities/`  | Предметные модели и принадлежащие им API: user, diagnostic-session, subject, competency-map (материалы курса) и course-graph.                                        |
+| `src/shared/`    | Общий транспорт, браузерные адаптеры, локализация и UI без предметной ответственности.                                                                               |
+| `src/routes/`    | Тонкая регистрация URL и подключение page API; `__root.tsx` передаёт управление bootstrap shell.                                                                     |
 
 - Слои импортируют только нижние слои: `bootstrap → pages → widgets → features → entities → shared` (отсутствующий `widgets` пропускается).
 - Slices одного слоя изолированы. Исключение для взаимных entity типов — только минимальный `@x/<consumer>` API. Публичный API slice находится в `index.ts`; глубокие импорты между слайсами запрещены. Внутри slice используйте относительные импорты.

@@ -466,7 +466,7 @@ def test_build_endpoint_reuses_cached_cards_and_validates_source_text(monkeypatc
         async def complete(self, system, payload):
             assert "blocks" not in json.loads(payload), "Cached cards must not be extracted again"
             return await grounded_judge(system, payload)
-        def completer(self, complexity):
+        def completer(self, complexity, reasoning=False):
             return self.complete
         async def close(self):
             pass
@@ -492,7 +492,7 @@ def test_build_updates_cached_source_metadata_and_merges_across_weeks(monkeypatc
     class Client:
         async def complete(self, system, payload):
             return await grounded_judge(system, payload)
-        def completer(self, complexity): return self.complete
+        def completer(self, complexity, reasoning=False): return self.complete
         async def close(self): pass
 
     monkeypatch.setattr(api, "ModelClient", Client)
@@ -523,7 +523,7 @@ def test_joint_endpoint_returns_cards_and_cleaning_audit(monkeypatch):
     class Client:
         async def complete(self, system, payload):
             return await extraction_stub(system, payload)
-        def completer(self, complexity):
+        def completer(self, complexity, reasoning=False):
             return self.complete
         async def close(self):
             pass
@@ -1228,8 +1228,8 @@ def test_every_stage_asks_for_the_low_complexity(monkeypatch, endpoint):
             if "blocks" in json.loads(payload):
                 return await extraction_stub(system, payload)
             return await grounded_judge(system, payload)
-        def completer(self, complexity):
-            asked.append(complexity)
+        def completer(self, complexity, reasoning=False):
+            asked.append((complexity, reasoning))
             return self.complete
         async def close(self):
             pass
@@ -1246,7 +1246,10 @@ def test_every_stage_asks_for_the_low_complexity(monkeypatch, endpoint):
         body = {"materials": [{"id": t.id, "markdown": t.text, "topics": [t.model_dump()]} for t in topics]}
     response = TestClient(api.app).post(endpoint, json=body)
     assert response.status_code == 200
-    assert asked and set(asked) == {"low"}
+    assert asked and {complexity for complexity, _ in asked} == {"low"}
+    assert ("low", True) in asked
+    if endpoint != "/topics/extract":
+        assert ("low", False) in asked
 
 
 def test_requirements_use_only_edges_left_after_transitive_reduction():
@@ -1393,3 +1396,58 @@ def test_grounded_links_survive_a_missing_decision_and_failed_correction(second)
     assert [(e["source"], e["target"]) for e in graph["prerequisites"]] == [("A", "B")]
     assert graph["requirements"][0]["prerequisite_ids"] == ["A"]
     assert graph["quality"]["unresolved_requirements"] == 0
+
+
+def test_mechanical_slips_are_fixed_without_losing_text():
+    # Three blocks; the model slips the way weak models do: a foreign id in a
+    # removal and in a topic, an invented reason, a block both removed and
+    # used, a repeated block and a topic of foreign blocks only.
+    source = "Производная показывает скорость изменения функции.\n\nГрадиент обобщает производную.\n\nСлайд 3"
+    async def sloppy(system, payload):
+        ids = [b["id"] for b in json.loads(payload)["blocks"]]
+        first, second, third = ids
+        return json.dumps({"remove": [
+            {"id": 99, "reason": "thanks"},
+            {"id": second, "reason": "thanks"},
+            {"id": third, "reason": "slide_number"},
+        ], "topics": [
+            {"title": "Производная", "requires": [], "provides": ["Вычислять производную"],
+             "question": "Почему производная описывает скорость изменения?", "block_ids": [first, second, second, 42]},
+            {"title": "Чужая тема", "requires": [], "provides": ["Ничего"],
+             "question": "Почему?", "block_ids": [77]},
+        ]})
+    result = run(extract_topics(source, sloppy, "m"))
+    report = result["report"]
+    assert [t["title"] for t in report["topics"]] == ["Производная"]
+    text = report["topics"][0]["text"]
+    for part in ("Производная показывает", "Градиент обобщает", "Слайд 3"):
+        assert part in text
+    assert result["markdown"] == source and report["removed"] == []
+    assert report["tolerated_foreign_ids"] == 3
+    assert report["tolerated_invalid_reasons"] == 1
+    assert report["tolerated_used_removals"] == 1
+
+
+@pytest.mark.parametrize("reasons", [("thanks", "unknown"), ("unknown", "thanks")])
+def test_an_unknown_reason_among_repeats_keeps_the_block_in_any_order(reasons):
+    # Review of PR #129: a valid reason listed first used to win and drop the
+    # block silently, while the reverse order kept it.
+    source = "Производная показывает скорость изменения функции.\n\nГрадиент задаёт направление наибольшего роста функции."
+    async def contradictory(system, payload):
+        first, second = [b["id"] for b in json.loads(payload)["blocks"]]
+        return json.dumps({"remove": [{"id": second, "reason": r} for r in reasons], "topics": [
+            {"title": "Производная", "requires": [], "provides": ["Смысл производной"],
+             "question": "Почему производная показывает локальную скорость изменения?", "block_ids": [first]},
+        ]})
+    result = run(extract_topics(source, contradictory, "m"))
+    report = result["report"]
+    assert "Градиент задаёт направление" in report["topics"][0]["text"]
+    assert result["markdown"] == source and report["removed"] == []
+    assert report["tolerated_invalid_reasons"] == 1
+
+
+def test_an_answer_without_topics_is_still_rejected():
+    async def empty(system, payload):
+        return '{"remove":[],"topics":[]}'
+    with pytest.raises(ValueError):
+        run(extract_topics("Производная\n\nГрадиент", empty))

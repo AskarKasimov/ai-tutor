@@ -1,13 +1,24 @@
 services:
+  # COURSE_GRAPH_DEVICE=cpu|gpu in .env selects the variant below; the service
+  # name, and so the backend address http://course-graph:8000, stays the same.
   course-graph:
+    extends:
+      service: course-graph-${COURSE_GRAPH_DEVICE:-cpu}
+    profiles: !reset []
+
+  # Variants are only bases of course-graph and never start on their own.
+  course-graph-cpu:
+    profiles: [course-graph-variant]
     build:
       context: ../..
       dockerfile: services/course-graph/Dockerfile
       args:
         PYTHON_BASE_IMAGE: ${COURSE_GRAPH_BASE_IMAGE:-python:3.11-slim}
         INSTALL_DOCLING: ${COURSE_GRAPH_INSTALL_DOCLING:-true}
+        TORCH_BACKEND: cpu
     environment:
       PORT: 8000
+      COURSE_GRAPH_DEVICE: cpu
       COURSE_GRAPH_LLM_GATEWAY_ADDR: ${COURSE_GRAPH_LLM_GATEWAY_ADDR:-llm-gateway:8011}
       COURSE_GRAPH_LLM_TIMEOUT: ${COURSE_GRAPH_LLM_TIMEOUT:-300}
       COURSE_GRAPH_EMBEDDING_MODEL: ${COURSE_GRAPH_EMBEDDING_MODEL:-intfloat/multilingual-e5-small}
@@ -39,6 +50,18 @@ services:
         limits:
           memory: ${COURSE_GRAPH_MEMORY_LIMIT:-8G}
     restart: unless-stopped
+
+  # Needs an NVIDIA GPU with driver 570+ and the NVIDIA Container Toolkit
+  # (Docker Desktop with WSL 2 on Windows).
+  course-graph-gpu:
+    extends:
+      service: course-graph-cpu
+    build:
+      args:
+        TORCH_BACKEND: cu128
+    environment:
+      COURSE_GRAPH_DEVICE: gpu
+    gpus: all
 
 volumes:
   course_graph_models:

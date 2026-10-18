@@ -31,8 +31,13 @@ def get_converter():
         from docling.datamodel.base_models import InputFormat
         from docling.datamodel.pipeline_options import PdfPipelineOptions
         options = PdfPipelineOptions()
-        from ..model_runtime import configured_ocr_threads
+        from docling.datamodel.accelerator_options import AcceleratorDevice
+        from ..model_runtime import configured_ocr_device, configured_ocr_threads, require_ocr_device
+        require_ocr_device()
         options.accelerator_options.num_threads = configured_ocr_threads()
+        # Layout, RapidOCR and the formula/code model all follow this device.
+        options.accelerator_options.device = (AcceleratorDevice.CUDA if configured_ocr_device() == "gpu"
+                                              else AcceleratorDevice.CPU)
         options.do_code_enrichment = os.environ.get("COURSE_GRAPH_OCR_ENRICH_CODE", "true").lower() == "true"
         options.do_formula_enrichment = os.environ.get("COURSE_GRAPH_OCR_ENRICH_FORMULA", "true").lower() == "true"
         options.generate_picture_images = os.environ.get("COURSE_GRAPH_OCR_PICTURE_TEXT", "true").lower() == "true"

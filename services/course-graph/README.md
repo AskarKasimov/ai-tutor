@@ -246,8 +246,27 @@ PYTHONPATH=. python scripts/benchmark_ocr.py '../../documents/materials/Tutorial
 сохраняет Docling: `docker compose build course-graph`.
 Собранный образ можно запустить командой `docker compose up -d --no-build course-graph api`.
 
-Модели работают только на CPU, поэтому PyTorch ставится CPU-сборкой
-(`UV_TORCH_BACKEND=cpu`, без CUDA и triton). Загрузки uv хранятся в кеше BuildKit
+### CPU или GPU
+
+Устройство OCR выбирает `COURSE_GRAPH_DEVICE` в `.env`: `cpu` (по умолчанию) или
+`gpu`. Сервис по-прежнему называется `course-graph`, compose подставляет вариант
+`course-graph-cpu` или `course-graph-gpu`:
+
+- `cpu` — PyTorch ставится CPU-сборкой (`UV_TORCH_BACKEND=cpu`, без CUDA и triton);
+- `gpu` — CUDA-сборка `cu128` (CUDA 12.8 — первая с поддержкой RTX 50xx), контейнер
+  получает `gpus: all`. Layout, RapidOCR и модель формул и кода работают на CUDA.
+  Нужны NVIDIA GPU с драйвером 570+ и NVIDIA Container Toolkit (на Windows —
+  Docker Desktop с WSL 2). Если CUDA недоступна, загрузка моделей завершается
+  ошибкой, а не молча переходит на CPU.
+
+После смены значения пересоберите образ: `docker compose up -d --build course-graph`.
+Embeddings поиска остаются на CPU в обоих вариантах. Кеш OCR от устройства не зависит:
+на цифровых PDF результат CPU и GPU совпадает побайтно, на рукописных сканах
+RapidOCR может отличаться отдельными словами. На RTX 5060 Laptop целые PDF
+распознаются в 5–8 раз быстрее CPU, пик памяти CUDA — 3,5 ГБ
+([замеры](../../documents/ocr-performance-2026-10-18.md#cpu-и-gpu)).
+
+Загрузки uv хранятся в кеше BuildKit
 (`--mount=type=cache`): при изменении `requirements.txt` пакеты берутся из кеша,
 а не скачиваются заново. Кеш очищает `docker builder prune`.
 

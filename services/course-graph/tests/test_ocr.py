@@ -133,6 +133,48 @@ def test_cpu_enrichment_uses_native_precision(monkeypatch):
     assert options.code_formula_options.engine_options.use_kv_cache
 
 
+def test_ocr_device_follows_the_env_choice(monkeypatch):
+    import docling.document_converter as docling
+    import course_graph.ocr.converter as converter
+    import course_graph.model_runtime as runtime
+    from docling.datamodel.accelerator_options import AcceleratorDevice
+    captured = {}
+    def constructor(**kwargs):
+        captured.update(kwargs)
+        return object()
+    monkeypatch.setattr(docling, "DocumentConverter", constructor)
+    monkeypatch.setattr(runtime, "require_ocr_device", lambda: None)
+    for value, device in [(None, AcceleratorDevice.CPU), ("cpu", AcceleratorDevice.CPU), ("GPU", AcceleratorDevice.CUDA)]:
+        if value is None:
+            monkeypatch.delenv("COURSE_GRAPH_DEVICE", raising=False)
+        else:
+            monkeypatch.setenv("COURSE_GRAPH_DEVICE", value)
+        monkeypatch.setattr(converter, "_converter", None)
+        converter.get_converter()
+        options = next(iter(captured["format_options"].values())).pipeline_options
+        assert options.accelerator_options.device == device
+
+
+def test_unknown_ocr_device_is_invalid(monkeypatch):
+    import pytest
+    from course_graph.model_runtime import configured_ocr_device
+    monkeypatch.setenv("COURSE_GRAPH_DEVICE", "tpu")
+    with pytest.raises(ValueError, match="cpu or gpu"):
+        configured_ocr_device()
+
+
+def test_gpu_without_cuda_fails_instead_of_falling_back_to_cpu(monkeypatch):
+    import pytest
+    import torch
+    from course_graph.model_runtime import require_ocr_device
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: False)
+    monkeypatch.setenv("COURSE_GRAPH_DEVICE", "cpu")
+    require_ocr_device()
+    monkeypatch.setenv("COURSE_GRAPH_DEVICE", "gpu")
+    with pytest.raises(RuntimeError, match="CUDA is not available"):
+        require_ocr_device()
+
+
 def test_zero_document_timeout_means_unlimited_and_negative_is_invalid(monkeypatch):
     import pytest
     from course_graph.ocr.converter import configured_document_timeout

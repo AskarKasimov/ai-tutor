@@ -16,9 +16,11 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
 COPY services/course-graph/requirements.txt services/course-graph/pyproject.toml ./
 ARG INSTALL_DOCLING=true
-# Models run on CPU only: CPU wheels of torch skip ~4 GB of CUDA and triton.
+# cpu: CPU wheels of torch skip ~4 GB of CUDA and triton. cu128: CUDA 12.8 wheels
+# for COURSE_GRAPH_DEVICE=gpu; 12.8 is the first that supports RTX 50xx (sm_120).
 # The uv cache lives in a BuildKit cache mount, so rebuilds reuse downloads.
-ENV UV_TORCH_BACKEND=cpu UV_LINK_MODE=copy
+ARG TORCH_BACKEND=cpu
+ENV UV_TORCH_BACKEND=${TORCH_BACKEND} UV_LINK_MODE=copy
 RUN --mount=type=cache,target=/root/.cache/uv \
     if [ "$INSTALL_DOCLING" = "true" ]; then \
       uv pip install --system -r requirements.txt; \

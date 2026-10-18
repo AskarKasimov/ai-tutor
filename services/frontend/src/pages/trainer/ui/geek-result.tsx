@@ -9,6 +9,7 @@ import {
   type TopicStatus,
 } from '@/entities/diagnostic-session'
 import { useDiagnosticResultQuery } from '@/features/diagnostic-session'
+import { ResultGraph } from './result-graph'
 import { TrainerShell } from './trainer-shared'
 import styles from './geek-result.module.scss'
 
@@ -245,6 +246,7 @@ export function GeekResult({
                 )}
               </section>
             </div>
+            <ResultGraph topics={result.topics} />
           </>
         )}
         {startError && (

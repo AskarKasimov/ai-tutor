@@ -109,6 +109,8 @@ type NodeResult struct {
 	// independent — самостоятельный ответ, assisted — ответ с помощью, gap — пробел, insufficient — недостаточно данных, credited_by_parent — засчитано по вышестоящей вершине (для неё это пререквизит), unchecked — не спрашивалась
 	Status string `json:"status" enums:"independent,assisted,gap,insufficient,credited_by_parent,unchecked"`
 	Title  string `json:"title"`
+	// Прямые пререквизиты вершины (node_id) в графе диагностики: из них строится подграф на странице итога
+	Requires []string `json:"requires"`
 	// Вершина верхнего уровня: не пререквизит ни одной другой; по ним считается оценка курса
 	TopLevel bool `json:"top_level"`
 }
@@ -433,7 +435,11 @@ func toResult(r domain.Result) Result {
 			Sources: sourceDTOs(sources), LearningMaterials: learningDTO(learning)})
 	}
 	for _, n := range r.Nodes {
-		out.Nodes = append(out.Nodes, NodeResult{Grade: grade(n.Grade), NodeID: n.NodeID, Status: string(n.Status), Title: n.Title, TopLevel: n.TopLevel})
+		requires := n.Requires
+		if requires == nil {
+			requires = []string{}
+		}
+		out.Nodes = append(out.Nodes, NodeResult{Grade: grade(n.Grade), NodeID: n.NodeID, Requires: requires, Status: string(n.Status), Title: n.Title, TopLevel: n.TopLevel})
 	}
 	return out
 }

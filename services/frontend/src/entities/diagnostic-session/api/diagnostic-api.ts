@@ -103,6 +103,8 @@ const resultSchema = z
         ]),
         grade,
         top_level: z.boolean(),
+        // Older backends do not send prerequisites; the graph then has no edges.
+        requires: z.array(id).optional().default([]),
       }),
     ),
     gaps: z.array(
@@ -132,6 +134,7 @@ const resultSchema = z
       status: n.status,
       grade: n.grade,
       topLevel: n.top_level,
+      requires: n.requires,
     })),
     gaps: r.gaps.map((g) => ({
       nodeId: g.node_id,

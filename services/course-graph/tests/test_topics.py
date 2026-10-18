@@ -656,3 +656,24 @@ def test_merging_thin_topics_keeps_cards_within_the_contract():
     for topic in kept:
         Topic.model_validate(topic.model_dump())
     assert len(kept[0].provides) == 120 and len(kept[0].requires) == 120
+
+
+def test_every_stage_asks_for_the_low_complexity(monkeypatch):
+    from fastapi.testclient import TestClient
+    import course_graph.api as api
+
+    asked = []
+
+    class Client:
+        async def complete(self, system, payload):
+            return await extraction_stub(system, payload)
+        def completer(self, complexity):
+            asked.append(complexity)
+            return self.complete
+        async def close(self):
+            pass
+
+    monkeypatch.setattr(api, "ModelClient", Client)
+    response = TestClient(api.app).post("/topics/extract", json={"markdown": "Производная показывает скорость изменения функции.", "material_id": "m"})
+    assert response.status_code == 200
+    assert asked and set(asked) == {"low"}

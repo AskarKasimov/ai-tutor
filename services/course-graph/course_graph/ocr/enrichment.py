@@ -472,4 +472,3 @@ def audit_and_retry_formulas(document, pdf_content: bytes, converter=None):
             pass
 
     return regions, warnings
-

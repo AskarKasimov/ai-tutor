@@ -135,4 +135,3 @@ def normalize_formatting_only(latex: str) -> str:
     # Remove whitespace around operators like =, +, -
     s = re.sub(r"\s*([=+\-*/])\s*", r"\1", s)
     return s.strip()
-

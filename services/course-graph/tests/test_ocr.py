@@ -555,5 +555,3 @@ def test_run_ocr_job_caches_result_without_llm_completer(monkeypatch, tmp_path):
     success2, result2 = future2.result()
     assert success2 is True
     assert result2["report"]["cache_hit"] is True
-
-

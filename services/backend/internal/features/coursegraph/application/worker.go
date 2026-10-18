@@ -25,6 +25,8 @@ type Repository interface {
 	Fail(context.Context, coursegraph.Job, string, time.Time) error
 	Read(context.Context, string) (coursegraph.Snapshot, error)
 	Request(context.Context, string, time.Time) (bool, error)
+	// Published lists the graphs Geek examines by.
+	Published(context.Context) ([]json.RawMessage, error)
 }
 type Materials interface {
 	List(context.Context, string) ([]material.Material, error)
@@ -61,6 +63,28 @@ type Worker struct {
 // without a build has no graph.
 func New(repo Repository, materials Materials, storage Storage, builder Builder, voices Voices, fallback DefaultGraph) *Worker {
 	return &Worker{repo: repo, materials: materials, storage: storage, builder: builder, voices: voices, fallback: fallback}
+}
+
+// PrepareVoices queues the questions of every published graph for synthesis.
+// The queue lives in memory, so after a restart the questions of a graph
+// built before it would otherwise be voiced only when a student reaches them.
+// Questions already cached cost one cache read.
+func (w *Worker) PrepareVoices(ctx context.Context) error {
+	if w.voices == nil {
+		return nil
+	}
+	graphs, err := w.repo.Published(ctx)
+	if err != nil {
+		return err
+	}
+	queued, total := 0, 0
+	for _, graph := range graphs {
+		questions := TopicQuestions(graph)
+		total += len(questions)
+		queued += w.voices.Prepare(questions)
+	}
+	log.Printf("course graphs: queued %d of %d questions of %d published graphs for synthesis", queued, total, len(graphs))
+	return nil
 }
 
 // TopicQuestions are the prepared questions of a built graph, one per topic.

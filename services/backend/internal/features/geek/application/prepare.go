@@ -43,7 +43,7 @@ func PrepareQuestions(ctx context.Context, examiner Examiner, g exam.Graph, para
 				return
 			}
 			defer func() { <-slots }()
-			question, err := examiner.Question(ctx, QuestionRequest{Kind: exam.KindQuestion, Node: node})
+			question, err := examiner.Question(ctx, QuestionRequest{Kind: exam.KindQuestion, Node: node, Ahead: true})
 			question = strings.TrimSpace(question)
 			if err == nil && question == "" {
 				err = errors.New("empty question")

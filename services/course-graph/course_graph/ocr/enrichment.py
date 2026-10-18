@@ -29,8 +29,9 @@ class AuditedEngine:
             model.generation_config.use_cache = True
 
     def predict_batch(self, inputs):
-        self.initialize()
         try:
+            # Lazy loading of the weights is a transient failure too: it must not be cached.
+            self.initialize()
             outputs = self.engine.predict_batch(inputs)
         except Exception as error:
             self.warnings.append("Код/формулы обработаны частично: " + type(error).__name__ + ": " + str(error)[:200])

@@ -235,12 +235,15 @@ class ModelRuntime:
         # StandardPdfPipeline initializes layout/OCR models in its
         # constructor. The VLM engine is lazy, so initialize it explicitly
         # here instead of making the first uploaded lecture pay cold-start.
-        pipeline = converter.initialize_pipeline(InputFormat.PDF)
+        # initialize_pipeline returns None in Docling 2.139; the pipeline is kept
+        # in initialized_pipelines.
+        converter.initialize_pipeline(InputFormat.PDF)
         if (os.environ.get("COURSE_GRAPH_OCR_ENRICH_CODE", "true").lower() == "true"
                 or os.environ.get("COURSE_GRAPH_OCR_ENRICH_FORMULA", "true").lower() == "true"):
-            for stage in getattr(pipeline, "enrichment_pipe", []):
-                if isinstance(stage, NativeSyntaxGuard):
-                    stage.engine.initialize()
+            for pipeline in converter.initialized_pipelines.values():
+                for stage in getattr(pipeline, "enrichment_pipe", []):
+                    if isinstance(stage, NativeSyntaxGuard):
+                        stage.engine.initialize()
 
     def status(self) -> dict:
         self.start()

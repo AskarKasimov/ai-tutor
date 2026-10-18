@@ -530,6 +530,32 @@ def test_bootstrap_can_initialize_the_guarded_enrichment_engine():
     assert stage.engine.engine.vlm_model.generation_config.use_cache is True
 
 
+def test_bootstrap_warms_the_enrichment_engine_when_initialize_pipeline_returns_none(monkeypatch):
+    from types import SimpleNamespace as S
+    import course_graph.ocr.converter as converter
+    import course_graph.model_runtime as runtime
+    from course_graph.ocr.enrichment import NativeSyntaxGuard
+
+    class Engine:
+        options = S(use_kv_cache=False)
+        calls = 0
+        def initialize(self):
+            Engine.calls += 1
+
+    guard = NativeSyntaxGuard(S(engine=Engine()))
+
+    class Converter:
+        initialized_pipelines = {}
+        def initialize_pipeline(self, _):
+            # Docling 2.139 keeps the pipeline and returns None.
+            self.initialized_pipelines[1] = S(enrichment_pipe=[guard])
+
+    monkeypatch.setattr(converter, "get_converter", lambda: Converter())
+    monkeypatch.setenv("COURSE_GRAPH_DEVICE", "cpu")
+    runtime.ModelRuntime()._prepare_models()
+    assert Engine.calls == 1
+
+
 def test_formula_misclassification_recovers_native_pdf_rectangle():
     import io
     from types import SimpleNamespace as S

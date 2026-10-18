@@ -665,7 +665,7 @@ def test_dangling_script_is_recognized_after_a_valid_retry(monkeypatch):
     assert regions[0].status == "recognized" and item.text == "x^2"
 
 
-def _real_code_stage(answers):
+def _real_code_stage(answers, engine=None):
     from docling.models.stages.code_formula.code_formula_vlm_model import CodeFormulaVlmModel
     from course_graph.ocr.enrichment import NativeSyntaxGuard
 
@@ -676,7 +676,7 @@ def _real_code_stage(answers):
 
     stage = CodeFormulaVlmModel.__new__(CodeFormulaVlmModel)
     stage.enabled = True
-    stage.engine = Engine()
+    stage.engine = engine or Engine()
     stage.options = S(engine_options=S(engine_type="transformers"))
     stage._repetition_stopper = None
     return NativeSyntaxGuard(stage)
@@ -744,3 +744,62 @@ def test_lost_code_is_cached_as_incomplete_content(monkeypatch, tmp_path):
     second = converter.convert_document("code.pdf", stream.getvalue())
     assert second["report"]["cache_hit"] and second["report"]["content_complete"] is False
     assert len(calls) == 1
+
+
+def test_failed_engine_initialization_is_not_cached_and_recovers(monkeypatch, tmp_path):
+    import course_graph.ocr.converter as converter
+    from pypdf import PdfWriter
+
+    monkeypatch.setenv("COURSE_GRAPH_OCR_CACHE_DIR", str(tmp_path))
+    monkeypatch.setenv("COURSE_GRAPH_WITH_DOCLING", "true")
+    inference = []
+
+    class Engine:
+        # Loading the weights fails on the first request and works afterwards.
+        loads = 0
+        def initialize(self):
+            Engine.loads += 1
+            if Engine.loads == 1:
+                raise RuntimeError("weights are not readable")
+        def predict_batch(self, inputs):
+            inference.append(len(inputs))
+            return [S(text="print(42)", metadata={"num_tokens": 5}) for _ in inputs]
+
+    guard = _real_code_stage([], Engine())
+    calls = []
+
+    class Doc:
+        pages = {1: None}
+        texts = []
+        def export_to_markdown(self, page_no=None):
+            return "\n\n".join(f"```\n{item.text}\n```" for item in self.texts)
+
+    class Converter:
+        initialized_pipelines = {1: S(enrichment_pipe=[guard])}
+        def initialize_pipeline(self, *args, **kwargs): return None
+        def convert(self, path):
+            calls.append(path)
+            doc = Doc()
+            doc.texts = list(guard(doc, _code_elements([""])))
+            return S(document=doc, status="success")
+
+    monkeypatch.setattr(converter, "get_converter", lambda: Converter())
+    monkeypatch.setattr("course_graph.ocr.enrichment.recover_native_programs", lambda document, content: [])
+    monkeypatch.setattr("course_graph.ocr.enrichment.audit_and_retry_formulas", lambda document, content, model=None: ([], []))
+    writer = PdfWriter()
+    writer.add_blank_page(width=72, height=72)
+    stream = io.BytesIO()
+    writer.write(stream)
+
+    first = converter.convert_document("code.pdf", stream.getvalue())
+    assert any("частично" in warning for warning in first["report"]["warnings"])
+    assert first["report"]["work_complete"] is False
+    assert first["report"]["content_complete"] is False
+    assert inference == []
+
+    second = converter.convert_document("code.pdf", stream.getvalue())
+    assert second["report"]["cache_hit"] is False
+    assert inference == [1]
+    assert "print(42)" in second["markdown"]
+    assert second["report"]["work_complete"] is True
+    assert len(calls) == 2

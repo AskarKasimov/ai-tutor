@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -38,6 +39,57 @@ func (r requestRepo) Request(context.Context, string, time.Time) (bool, error) {
 type requestMaterials []material.Material
 
 func (m requestMaterials) List(context.Context, string) ([]material.Material, error) { return m, nil }
+
+type progressStorage struct{}
+
+func (progressStorage) Get(context.Context, string) ([]byte, error) { return []byte(`{}`), nil }
+
+// progressBuilder reports progress and checks the snapshot shows it while
+// the build runs.
+type progressBuilder struct {
+	t      *testing.T
+	worker *Worker
+	id     string
+}
+
+func (b *progressBuilder) Build(ctx context.Context, buildID string, _ []coursegraph.Material, report func(coursegraph.BuildProgress)) (json.RawMessage, error) {
+	b.id = buildID
+	report(coursegraph.BuildProgress{Stage: "attach", StageIndex: 4, StageCount: 5, Done: 1, Total: 3})
+	snapshot, err := b.worker.Read(ctx, user.User{Role: user.Admin}, "subject")
+	if err != nil || snapshot.Progress == nil || snapshot.Progress.Stage != "attach" || snapshot.Progress.Done != 1 {
+		b.t.Errorf("snapshot during the build = %+v, %v", snapshot.Progress, err)
+	}
+	return json.RawMessage(`{"version":"course-graph-v1","topics":[{}],"prerequisites":[],"quality":{"acyclic":true}}`), nil
+}
+
+func TestSnapshotShowsBuildProgressOnlyWhileTheBuildRuns(t *testing.T) {
+	week := int32(1)
+	kind := material.Kind("lecture")
+	items := requestMaterials{{ID: "m", Week: &week, Kind: &kind, S3ParsedKey: "parsed", Cleaning: &material.Cleaning{Status: "ready", S3ReportKey: "report"}}}
+	builder := &progressBuilder{t: t}
+	w := New(requestRepo{snapshot: coursegraph.Snapshot{Status: "processing"}}, items, progressStorage{}, builder, nil, nil)
+	builder.worker = w
+	// Review of #135: a reclaimed lease keeps the attempt number while the
+	// previous call may still run in course-graph, so two calls of the same
+	// course and attempt must not share a build ID.
+	ids := map[string]bool{}
+	for _, token := range []string{"lease-1", "lease-2"} {
+		if err := w.process(context.Background(), coursegraph.Job{SubjectID: "subject", Token: token, Attempts: 2}); err != nil {
+			t.Fatal(err)
+		}
+		if !strings.HasPrefix(builder.id, "subject#") || strings.Contains(builder.id, token) {
+			t.Fatalf("build ID = %q: the lease token must not leave the API", builder.id)
+		}
+		ids[builder.id] = true
+	}
+	if len(ids) != 2 {
+		t.Fatalf("build IDs = %v: each call needs its own", ids)
+	}
+	snapshot, err := w.Read(context.Background(), user.User{Role: user.Admin}, "subject")
+	if err != nil || snapshot.Progress != nil {
+		t.Fatalf("snapshot after the build = %+v, %v", snapshot.Progress, err)
+	}
+}
 
 func TestRequestReportsClassifiedMaterialIDsWithoutPollingAsProcessing(t *testing.T) {
 	week := int32(1)

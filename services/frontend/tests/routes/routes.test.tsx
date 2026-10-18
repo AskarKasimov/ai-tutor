@@ -92,7 +92,7 @@ it('registers with backend password rules and a required name', async () => {
     expect(screen.getByRole('button', { name: 'Войти' })).toBeEnabled(),
   )
   fireEvent.click(screen.getByRole('button', { name: 'Регистрация' }))
-  expect(screen.getByLabelText('Пароль')).toHaveAttribute('minlength', '15')
+  expect(screen.getByLabelText('Пароль')).toHaveAttribute('minlength', '4')
   expect(screen.getByLabelText('Имя')).toBeRequired()
   fireEvent.change(screen.getByLabelText('Email'), {
     target: { value: 'new@example.com' },

@@ -3,7 +3,6 @@ import {
   Badge,
   Button,
   Flex,
-  Progress,
   Heading,
   SegmentedControl,
   Text,
@@ -44,6 +43,8 @@ import {
   type CourseMaterialKindOption,
 } from '@/entities/competency-map'
 import {
+  buildProgressPercent,
+  type CourseGraphBuild,
   type CourseGraphView,
   CourseGraphApiError,
 } from '@/entities/course-graph'
@@ -75,7 +76,7 @@ import {
   useStartCourseGraphBuildMutation,
 } from '@/features/course-graph-build'
 import { useSubjectsQuery } from '@/features/subject-selection'
-import { MarkdownContent } from '@/shared/ui'
+import { CosmicProgress, MarkdownContent } from '@/shared/ui'
 import styles from '@/pages/competency-map/ui/competency-map.module.scss'
 
 // React Flow and the layout load only when the graph is shown.
@@ -629,17 +630,7 @@ function CompetencyMapAdmin({
               )}
               {(latestBuild.data?.status === 'queued' ||
                 latestBuild.data?.status === 'running') && (
-                <div role="status" className={styles.buildProgress}>
-                  <Text weight="bold">
-                    {t(`courseGraph.status.${latestBuild.data.status}`)}
-                  </Text>
-                  <Text size="2" color="gray">
-                    {latestBuild.data.stage
-                      ? t(`courseGraph.stages.${latestBuild.data.stage}`)
-                      : t('courseGraph.stagePreparing')}
-                  </Text>
-                  <Progress aria-label={t('courseGraph.status.running')} />
-                </div>
+                <BuildProgressCard build={latestBuild.data} />
               )}
               {latestBuild.data?.status === 'failed' && (
                 <div className={styles.error} role="alert">
@@ -1125,6 +1116,54 @@ function MaterialItemCard({
         />
       </ReactModal>
     </CourseMaterialCard>
+  )
+}
+
+// The running build: its stage, stage i of n and step k of m on it, and a bar
+// of the share done. Before course-graph reports a stage the bar sweeps.
+function BuildProgressCard({ build }: { build: CourseGraphBuild }) {
+  const { t } = useTranslation()
+  const progress = build.progress
+  const percent = progress ? Math.round(buildProgressPercent(progress)) : null
+  return (
+    <div role="status" className={styles.buildProgress}>
+      <Flex justify="between" align="baseline" gap="3">
+        <Text weight="bold">{t(`courseGraph.status.${build.status}`)}</Text>
+        {percent !== null && (
+          <Text className={styles.buildPercent}>
+            {t('session.percent', { value: percent })}
+          </Text>
+        )}
+      </Flex>
+      <Text size="2" color="gray">
+        {progress
+          ? [
+              t(`courseGraph.stages.${progress.stage}`),
+              t('courseGraph.stageOf', {
+                index: progress.stageIndex,
+                count: progress.stageCount,
+              }),
+              progress.total > 0
+                ? t('courseGraph.stepOf', {
+                    done: progress.done,
+                    total: progress.total,
+                  })
+                : null,
+            ]
+              .filter(Boolean)
+              .join(' · ')
+          : t('courseGraph.stagePreparing')}
+      </Text>
+      <CosmicProgress
+        value={percent}
+        label={t('courseGraph.status.running')}
+        valueText={
+          percent === null
+            ? t('courseGraph.stagePreparing')
+            : t('session.percent', { value: percent })
+        }
+      />
+    </div>
   )
 }
 

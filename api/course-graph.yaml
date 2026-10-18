@@ -301,7 +301,15 @@ paths:
         Этапы 3–6 по всем материалам курса: темы берутся из кэша /topics/extract (topics у материала) или
         выделяются заново, затем LLM (complexity low) строит и проверяет пререквизиты; циклы отбрасываются.
         Вызов синхронный и долгий; backend вызывает его из worker с продлеваемым lease, публикует результат
-        сам. Одна сборка на сервис одновременно.
+        сам. Одна сборка на сервис одновременно. Ход сборки отдаёт GET /graph/build/progress.
+      parameters:
+        - in: header
+          name: X-Build-ID
+          required: false
+          description: ID сборки; GET /graph/build/progress возвращает его, чтобы backend узнал свою сборку
+          schema:
+            maxLength: 200
+            type: string
       requestBody:
         required: true
         content:
@@ -335,6 +343,44 @@ paths:
         "503":
           $ref: "#/components/responses/Detail"
       x-implementation: implemented
+  /graph/build/progress:
+    get:
+      summary: Ход идущей сборки графа
+      description: >-
+        Этап идущей POST /graph/build и число готовых порций вызовов модели на нём («этап i из n, шаг k из m»);
+        на этапе topics шаг — целый материал без кэша карточек: сколько порций понадобится, известно только
+        во время его выделения.
+        Этапы: topics (выделение тем материалов без кэша), synonyms, prerequisites, attach, questions; этап без
+        работы имеет total 0. Состояние живёт в памяти процесса.
+      responses:
+        "200":
+          description: Сборка идёт
+          content:
+            application/json:
+              schema:
+                additionalProperties: false
+                properties:
+                  build_id:
+                    description: X-Build-ID сборки; пустая строка, если заголовок не передан
+                    type: string
+                  stage:
+                    enum: [topics, synonyms, prerequisites, attach, questions]
+                    type: string
+                  stage_index:
+                    minimum: 1
+                    type: integer
+                  stage_count:
+                    type: integer
+                  done:
+                    minimum: 0
+                    type: integer
+                  total:
+                    minimum: 0
+                    type: integer
+                required: [build_id, stage, stage_index, stage_count, done, total]
+                type: object
+        "404":
+          $ref: "#/components/responses/Detail"
 components:
   responses:
     Detail:

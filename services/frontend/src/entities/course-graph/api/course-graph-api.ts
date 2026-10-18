@@ -17,6 +17,22 @@ const snapshotSchema = z.object({
   inputs_ready: z.boolean(),
   updated_at: z.number().int().nonnegative(),
   graph_source: z.enum(['built', 'fixture', 'none']).optional(),
+  progress: z
+    .object({
+      stage: z.enum([
+        'topics',
+        'synonyms',
+        'prerequisites',
+        'attach',
+        'questions',
+      ]),
+      stage_index: z.number().int().positive(),
+      stage_count: z.number().int().positive(),
+      done: z.number().int().nonnegative(),
+      total: z.number().int().nonnegative(),
+    })
+    .nullable()
+    .optional(),
   graph: z
     .object({
       topics: z.array(
@@ -145,7 +161,16 @@ function toBuild(
     id: snapshotId(subjectId, snapshot),
     subjectId,
     status: statuses[snapshot.status],
-    stage: null,
+    stage: snapshot.progress?.stage ?? null,
+    progress: snapshot.progress
+      ? {
+          stage: snapshot.progress.stage,
+          stageIndex: snapshot.progress.stage_index,
+          stageCount: snapshot.progress.stage_count,
+          done: snapshot.progress.done,
+          total: snapshot.progress.total,
+        }
+      : null,
     startedAt: null,
     completedAt: null,
     error:

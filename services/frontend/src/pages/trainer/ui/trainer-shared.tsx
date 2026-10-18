@@ -3,6 +3,7 @@ import { ChevronRight, GraduationCap } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { AccountMenu } from '@/features/auth'
+import { CosmicProgress } from '@/shared/ui'
 import styles from './session.module.scss'
 
 // The progress bar under the header: a label on the left, whole percent on
@@ -23,17 +24,11 @@ export function TrainerProgress({
           {t('session.percent', { value: percent })}
         </Text>
       </div>
-      <div
-        className={styles.progressTrack}
-        role="progressbar"
-        aria-label={label}
-        aria-valuemin={0}
-        aria-valuemax={100}
-        aria-valuenow={percent}
-        aria-valuetext={t('session.percent', { value: percent })}
-      >
-        <div className={styles.progressFill} style={{ width: `${percent}%` }} />
-      </div>
+      <CosmicProgress
+        value={percent}
+        label={label}
+        valueText={t('session.percent', { value: percent })}
+      />
     </div>
   )
 }

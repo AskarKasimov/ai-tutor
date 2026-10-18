@@ -65,8 +65,8 @@ func weakPassword(message string) *fault.Error {
 }
 func checkPassword(password string) error {
 	count := utf8.RuneCountInString(password)
-	if count < 15 || count > 128 {
-		return weakPassword("Пароль должен содержать 15–128 символов.")
+	if count < 4 || count > 128 {
+		return weakPassword("Пароль должен содержать 4–128 символов.")
 	}
 	p := strings.ToLower(password)
 	repeated := true

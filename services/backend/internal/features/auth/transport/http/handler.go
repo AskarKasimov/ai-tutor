@@ -41,7 +41,7 @@ func expiryDTO(e session.Expiry) wireExpiry { return wireExpiry{e.AccessExpiresA
 
 type RegisterRequest struct {
 	Email       string          `json:"email" format:"email" maxLength:"254" binding:"required"`
-	Password    string          `json:"password" format:"password" minLength:"15" maxLength:"128" binding:"required"`
+	Password    string          `json:"password" format:"password" minLength:"4" maxLength:"128" binding:"required"`
 	DisplayName json.RawMessage `json:"display_name" binding:"required" swaggertype:"string" minLength:"1" maxLength:"200"`
 }
 

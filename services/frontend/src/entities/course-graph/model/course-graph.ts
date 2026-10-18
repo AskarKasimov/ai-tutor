@@ -2,7 +2,24 @@ export type CourseGraphBuildStatus =
   'queued' | 'running' | 'succeeded' | 'failed'
 
 export type CourseGraphBuildStage =
-  'cleaning' | 'units' | 'dedup' | 'prerequisites' | 'validation'
+  'topics' | 'synonyms' | 'prerequisites' | 'attach' | 'questions'
+
+// Where a running build is: stage stageIndex of stageCount and the model
+// batches of that stage finished so far; a stage without work has total 0.
+export type CourseGraphBuildProgress = {
+  stage: CourseGraphBuildStage
+  stageIndex: number
+  stageCount: number
+  done: number
+  total: number
+}
+
+// The share of a build done: finished stages plus the finished part of the
+// current one. A stage without counted work adds nothing until it ends.
+export function buildProgressPercent(progress: CourseGraphBuildProgress) {
+  const stage = progress.total > 0 ? progress.done / progress.total : 0
+  return ((progress.stageIndex - 1 + stage) / progress.stageCount) * 100
+}
 
 export type CourseGraphBuildError = {
   code: string
@@ -14,6 +31,7 @@ export type CourseGraphBuild = {
   subjectId: string
   status: CourseGraphBuildStatus
   stage: CourseGraphBuildStage | null
+  progress: CourseGraphBuildProgress | null
   startedAt: number | null
   completedAt: number | null
   error: CourseGraphBuildError | null

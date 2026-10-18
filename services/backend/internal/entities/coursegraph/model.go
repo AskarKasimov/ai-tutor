@@ -38,4 +38,18 @@ type Snapshot struct {
 	UpdatedAt    int64           `json:"updated_at"`
 	Stale        bool            `json:"stale"`
 	InputsReady  bool            `json:"inputs_ready"`
+	// Progress is where a running build is; only while Status is processing.
+	// It lives in API memory, so after a restart it returns with the next poll.
+	Progress *BuildProgress `json:"progress" extensions:"x-nullable"`
+}
+
+// BuildProgress is stage StageIndex of StageCount of a running build and the
+// model batches of that stage finished so far; a stage without work has
+// Total 0.
+type BuildProgress struct {
+	Stage      string `json:"stage" enums:"topics,synonyms,prerequisites,attach,questions"`
+	StageIndex int    `json:"stage_index"`
+	StageCount int    `json:"stage_count"`
+	Done       int    `json:"done"`
+	Total      int    `json:"total"`
 }

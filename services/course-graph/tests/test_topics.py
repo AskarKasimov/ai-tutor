@@ -815,6 +815,13 @@ def test_questions_follow_provides_not_slide_details():
         assert "вокруг provides" in prompt and "не видя этих слайдов" in prompt
 
 
+def test_questions_ask_for_spoken_reasoning_only():
+    # Decision of 18.10.2026: the exam is oral, so a question never asks to
+    # solve, write or draw anything.
+    for prompt in (PROMPT, QUESTION_PROMPT):
+        assert "Экзамен устный" in prompt and "нарисовать схему" in prompt and "написать код" in prompt
+
+
 def test_merging_thin_topics_keeps_cards_within_the_contract():
     body = "Муравьи откладывают феромон на пройденном пути, и следующие муравьи чаще выбирают путь с большим следом. " * 2
     def knowledge(prefix):

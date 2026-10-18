@@ -189,6 +189,30 @@ func TestEvaluationGradesByOutcomesNotBySlides(t *testing.T) {
 	}
 }
 
+func TestOralExamPromptsAskForReasoningAndStayNeutral(t *testing.T) {
+	// Decision of 18.10.2026: the exam is oral, so questions ask only for
+	// spoken reasoning, grading does not require written work, and the
+	// reaction never criticises the student.
+	for _, kind := range []exam.TurnKind{exam.KindQuestion, exam.KindFollowup, exam.KindRephrase} {
+		p := questionPrompt(application.QuestionRequest{Kind: kind, Node: node, Dialogue: turns})
+		if !strings.Contains(p, "Экзамен устный") || !strings.Contains(p, "нарисовать схему") || !strings.Contains(p, "написать код") {
+			t.Errorf("%s question prompt lacks the oral format: %s", kind, p)
+		}
+	}
+	if p := questionPrompt(application.QuestionRequest{Kind: exam.KindFollowup, Node: node, Dialogue: turns}); strings.Contains(p, "измени условия задачи") {
+		t.Error("follow-up prompt still asks to change the conditions of a problem")
+	}
+	p := evaluationPrompt(application.EvaluationRequest{Kind: exam.KindQuestion, Node: node, Dialogue: turns})
+	for _, want := range []string{"Не требуй вычислений, формул, кода, схем", "ошибки распознавания", "К3 и К4 засчитывай за любое разумное рассуждение", "нейтральная", "Не критикуй"} {
+		if !strings.Contains(p, want) {
+			t.Errorf("evaluation prompt lacks %q", want)
+		}
+	}
+	if strings.Contains(p, "где ошибка") {
+		t.Error("reaction still points out the student's mistake")
+	}
+}
+
 func TestGatewayExplainsOnTheLowPool(t *testing.T) {
 	f := &fakeGateway{answers: []string{`{"text": "A* складывает g и h."}`}}
 	g := serve(t, f, time.Second)

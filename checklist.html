@@ -157,7 +157,7 @@
       <h2>3. Geek: устный экзамен <small></small></h2>
       <p>Диалог ведёт LLM; цель — найти пробелы по материалам курса.</p>
       <ul>
-        <li><label><input type="checkbox" data-id="g-oral" checked><span><span class="t">Вопросы на рассуждение с развёрнутым ответом</span><span class="d">Тестовых вопросов по возможности нет.</span></span></label></li>
+        <li><label><input type="checkbox" data-id="g-oral" checked><span><span class="t">Вопросы на рассуждение с развёрнутым ответом</span><span class="d">Тестовых вопросов по возможности нет. Только устное рассуждение: без задач на решение, формул, кода и рисунков (решение 18.10).</span></span></label></li>
         <li><label><input type="checkbox" data-id="g-start-top" checked><span><span class="t">Обход начинается с верхних вершин</span><span class="d">По покрытию графа: раньше тема, которая с пререквизитами покрывает больше; ничьи — случайно на диагностику. Лимит 8 по умолчанию (переопределяет BACKEND_GEEK_QUESTION_LIMIT) задаёт выборку (решение 18.10.2026).</span></span></label></li>
         <li><label><input type="checkbox" data-id="g-correct" checked><span><span class="t">Тема на A / B / C → её пререквизиты засчитаны со статусом «засчитано по вышестоящей теме»</span></span></label></li>
         <li><label><input type="checkbox" data-id="g-wrong" checked><span><span class="t">Тема на D → её пререквизиты</span><span class="d">Дальше рекурсивно, к более простым темам.</span></span></label></li>
@@ -171,7 +171,7 @@
         <li><label><input type="checkbox" data-id="g-io" checked><span><span class="t">Реплики Geek — текст + голос; ответ голосом или текстом</span><span class="d">Голосовой ответ уходит сразу после распознавания; реплика на ответ показывается вместе с озвучкой, до неё — «Geek думает…», через 20 секунд без голоса (решение 18.10).</span></span></label></li>
         <li><label><input type="checkbox" data-id="g-warm" checked><span><span class="t">Вопросы графа озвучиваются заранее</span><span class="d">Перед публикацией графа и для фикстуры при старте; фоновая очередь без приоритета (решение 17.10).</span></span></label></li>
         <li><label><input type="checkbox" data-id="g-course-updated" checked><span><span class="t">Плашка «Курс обновлён» при отмене диагностики</span><span class="d">Открытый диалог перечитывает сессию раз в 20 секунд (решение 17.10).</span></span></label></li>
-        <li><label><input type="checkbox" data-id="g-reply" checked><span><span class="t">Geek отвечает на реплику студента перед следующим вопросом</span><span class="d">Реакция без правильного ответа, пока тема открыта; объяснение — когда закрыта (решение 17.10). Реакция — одно короткое предложение; озвучивается до вопроса, на экране — одно сообщение.</span></span></label></li>
+        <li><label><input type="checkbox" data-id="g-reply" checked><span><span class="t">Geek отвечает на реплику студента перед следующим вопросом</span><span class="d">Реакция нейтральная, без критики и без правильного ответа, пока тема открыта; объяснение — когда закрыта (решение 17.10). Реакция — одно короткое предложение; озвучивается до вопроса, на экране — одно сообщение.</span></span></label></li>
       </ul>
     </section>
 

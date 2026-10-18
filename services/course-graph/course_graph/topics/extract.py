@@ -38,6 +38,10 @@ PROMPT = """Ты выделяешь учебные темы из лекции и
 предложения. Не задавай вопросов на воспроизведение фактов: даты, имени, числа,
 названия, языка или инструмента («Как называется…», «Кто и когда…», «Какой
 язык…»), вопросов да/нет и с выбором варианта.
+Экзамен устный: студент только говорит, без бумаги, доски и экрана. Вопрос требует
+рассуждения или высказывания своими словами. Не проси решить или посчитать задачу,
+вывести или записать формулу, написать код или псевдокод, нарисовать схему, граф,
+график или таблицу, выполнить алгоритм по шагам на данных.
 Строй вопрос вокруг provides — того, что студент должен уметь объяснить или
 применить, — а не вокруг деталей слайда: не спрашивай о конкретном примере,
 формулировке, порядке перечисления или о том, что показано на слайде. На вопрос
@@ -518,7 +522,7 @@ async def extract_topics(text, complete, material_id="material", week=None, sett
         # that breaks the contract would only fail later in /graph/build.
         Topic.model_validate(topic.model_dump())
     return {"markdown": "".join(parts), "report": {
-        "version": "material-cleaning-v1", "topics_version": "topics-v2",
+        "version": "material-cleaning-v1", "topics_version": "topics-v3",
         "source_sha256": hashlib.sha256(text.encode()).hexdigest(),
         "blocks": len(blocks), "warnings": [], **metrics,
         "removed": [{"id": b.id, "start": b.start, "end": b.end, "text": b.text, "reason": removed[b.id]} for b in spans],

@@ -1,0 +1,13 @@
+{
+  "models": {
+    "Qwen/Qwen3.6-35B-A3B": {
+      "reasoning_effort_body": {
+        "low": {
+          "chat_template_kwargs": {
+            "enable_thinking": false
+          }
+        }
+      }
+    }
+  }
+}

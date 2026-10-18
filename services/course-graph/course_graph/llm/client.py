@@ -36,8 +36,11 @@ class ModelClient:
                 gateway_pb2.Message(role=gateway_pb2.ROLE_USER, content=text),
             ],
             complexity=COMPLEXITY[complexity],
+            # Thinking models spend most of a call reasoning; low keeps the
+            # stages fast (decision of 18.10.2026).
             parameters=gateway_pb2.GenerationParameters(
                 temperature=0.2, response_format=gateway_pb2.RESPONSE_FORMAT_JSON_OBJECT,
+                reasoning_effort=gateway_pb2.REASONING_EFFORT_LOW,
             ),
         )
         response = await self.stub.Complete(request, timeout=self.timeout)

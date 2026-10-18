@@ -5,7 +5,9 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"os"
+	"sync"
 	"testing"
 	"time"
 
@@ -130,4 +132,69 @@ func TestMetadataAndReplacementInvalidateOnlyChangedGraphInputs(t *testing.T) {
 	if err = pool.QueryRow(ctx, `SELECT fingerprint FROM course_graph_inputs WHERE subject_id='s'`).Scan(&after); err != nil || before == after {
 		t.Fatalf("replacement fingerprint unchanged: %s %s %v", before, after, err)
 	}
+}
+
+// Parallel workers claim at once: each pending job goes to exactly one of
+// them, and the claims beyond the queue get nothing.
+func TestConcurrentClaimsTakeEachJobOnce(t *testing.T) {
+	pool := repositoryPool(t)
+	for _, id := range []string{"a", "b", "c"} {
+		exec(t, pool,
+			`INSERT INTO subject_materials(id, subject_id, filename, content_type, s3_raw_key, s3_parsed_key, status, created_at, updated_at, week, kind)
+			 VALUES ('`+id+`', 's', '`+id+`.md', 'text/markdown', 'raw', 'parsed', 'parsed', 1, 1, 1, 'lecture')`,
+			`INSERT INTO material_ocr_jobs(material_id, status, updated_at) VALUES ('`+id+`', 'pending', 1)`,
+			`INSERT INTO material_cleaning_jobs(material_id, status, updated_at) VALUES ('`+id+`', 'pending', 1)`)
+	}
+	repo := New(pool)
+	claim := func(name string, take func(i int) (string, error), jobs int) {
+		t.Helper()
+		const workers = 8
+		ids := make(chan string, workers)
+		errs := make(chan error, workers)
+		start := make(chan struct{})
+		var wg sync.WaitGroup
+		for i := 0; i < workers; i++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				<-start
+				id, err := take(i)
+				errs <- err
+				ids <- id
+			}()
+		}
+		close(start)
+		wg.Wait()
+		close(ids)
+		close(errs)
+		for err := range errs {
+			if err != nil {
+				t.Fatalf("%s claim: %v", name, err)
+			}
+		}
+		seen := map[string]int{}
+		for id := range ids {
+			if id != "" {
+				seen[id]++
+			}
+		}
+		if len(seen) != jobs {
+			t.Fatalf("%s: claimed %v, want %d distinct jobs", name, seen, jobs)
+		}
+		for id, n := range seen {
+			if n != 1 {
+				t.Fatalf("%s: job %s claimed %d times", name, id, n)
+			}
+		}
+	}
+	now := time.Unix(10, 0)
+	claim("OCR", func(i int) (string, error) {
+		job, err := repo.ClaimOCR(context.Background(), fmt.Sprintf("ocr-%d", i), now)
+		return job.MaterialID, err
+	}, 3)
+	// m from the fixture has a cleaning job too.
+	claim("cleaning", func(i int) (string, error) {
+		job, err := repo.ClaimCleaning(context.Background(), fmt.Sprintf("clean-%d", i), now)
+		return job.MaterialID, err
+	}, 4)
 }

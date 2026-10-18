@@ -12,6 +12,7 @@ RUN GOWORK=off CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /llm-gateway
 FROM alpine:3.24
 RUN apk add --no-cache ca-certificates tzdata && addgroup -S -g 65532 nonroot && adduser -S -D -H -u 65532 -G nonroot nonroot
 COPY --from=build /llm-gateway /llm-gateway
+COPY services/llm-gateway/models.json /etc/llm-gateway/models.json
 USER nonroot:nonroot
 EXPOSE 8010 8011
 ENTRYPOINT ["/llm-gateway"]

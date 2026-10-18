@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"net/url"
 	"os"
 	"time"
@@ -43,6 +44,10 @@ type InstanceConfig struct {
 	SupportedResponseFormats []string      `json:"supported_response_formats"`
 	ContextWindow            int           `json:"context_window"`
 	Timeout                  time.Duration `json:"timeout"`
+	// ReasoningEffortBody adds upstream request fields for a requested
+	// reasoning_effort, for a model that honours another knob: Qwen3 turns its
+	// thinking off with chat_template_kwargs.enable_thinking, not the effort.
+	ReasoningEffortBody map[string]map[string]json.RawMessage `json:"reasoning_effort_body"`
 }
 
 func (i *InstanceConfig) UnmarshalJSON(data []byte) error {
@@ -65,7 +70,62 @@ func (i *InstanceConfig) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+// ModelRules are upstream behaviours of a model, kept in Git (models.json) and
+// baked into the image: how a model turns its reasoning off is a property of
+// the model, not of one deployment's config.json. They apply to every
+// instance serving the model; the instance's own config wins per level.
+type ModelRules struct {
+	Models map[string]struct {
+		ReasoningEffortBody map[string]map[string]json.RawMessage `json:"reasoning_effort_body"`
+	} `json:"models"`
+}
+
+// Load reads config.json and the model rules and checks the result. A rules
+// file that is missing is no error unless its path was given explicitly.
+func Load(configPath, rulesPath string, rulesRequired bool) (Config, error) {
+	c, err := readConfig(configPath)
+	if err != nil {
+		return c, err
+	}
+	var rules ModelRules
+	b, err := os.ReadFile(rulesPath)
+	switch {
+	case errors.Is(err, fs.ErrNotExist) && !rulesRequired:
+	case err != nil:
+		return c, fmt.Errorf("read model rules: %w", err)
+	default:
+		if err := json.Unmarshal(b, &rules); err != nil {
+			return c, fmt.Errorf("decode model rules: %w", err)
+		}
+	}
+	c.applyModelRules(rules)
+	return c, c.Validate()
+}
+
+func (c *Config) applyModelRules(rules ModelRules) {
+	for i := range c.Instances {
+		in := &c.Instances[i]
+		for level, body := range rules.Models[in.Model].ReasoningEffortBody {
+			if _, set := in.ReasoningEffortBody[level]; set {
+				continue
+			}
+			if in.ReasoningEffortBody == nil {
+				in.ReasoningEffortBody = map[string]map[string]json.RawMessage{}
+			}
+			in.ReasoningEffortBody[level] = body
+		}
+	}
+}
+
 func LoadConfig(path string) (Config, error) {
+	c, err := readConfig(path)
+	if err != nil {
+		return c, err
+	}
+	return c, c.Validate()
+}
+
+func readConfig(path string) (Config, error) {
 	var c Config
 	b, err := os.ReadFile(path)
 	if err != nil {
@@ -75,7 +135,7 @@ func LoadConfig(path string) (Config, error) {
 		return c, fmt.Errorf("decode gateway config: %w", err)
 	}
 	c.defaults()
-	return c, c.Validate()
+	return c, nil
 }
 
 func (c *Config) UnmarshalJSON(data []byte) error {
@@ -197,6 +257,18 @@ func (c Config) Validate() error {
 		if _, exists := instances[in.ID]; exists {
 			return fmt.Errorf("duplicate instance id %q", in.ID)
 		}
+		for level, body := range in.ReasoningEffortBody {
+			if level != "low" && level != "medium" && level != "high" {
+				return fmt.Errorf("instance %q: reasoning_effort_body.%s is not low, medium, or high", in.ID, level)
+			}
+			for field := range body {
+				// The extra fields never replace what the request decides, nor
+				// carry the gateway's own fields, which never go upstream.
+				if reservedRequestFields[field] || allowedParameters[field] {
+					return fmt.Errorf("instance %q: reasoning_effort_body.%s cannot set %q", in.ID, level, field)
+				}
+			}
+		}
 		instances[in.ID] = in
 	}
 	for _, level := range []string{"low", "medium", "high"} {
@@ -212,6 +284,10 @@ func (c Config) Validate() error {
 	}
 	return nil
 }
+
+// reservedRequestFields are the request fields the gateway owns: the routing
+// metadata it strips and the ones it sets itself for the upstream.
+var reservedRequestFields = map[string]bool{"model": true, "messages": true, "stream": true, "complexity": true, "urgent": true}
 
 func validInstanceID(id string) bool {
 	if id == "" {

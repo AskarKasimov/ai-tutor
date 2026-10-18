@@ -448,6 +448,12 @@ components:
             - "null"
         node_id:
           type: string
+        requires:
+          description: 'Прямые пререквизиты вершины (node_id) в графе диагностики: из них строится подграф на странице итога'
+          items:
+            type: string
+          type: array
+          uniqueItems: false
         status:
           description: independent — самостоятельный ответ, assisted — ответ с помощью, gap — пробел, insufficient — недостаточно данных, credited_by_parent — засчитано по вышестоящей вершине (для неё это пререквизит), unchecked — не спрашивалась
           enum:
@@ -466,6 +472,7 @@ components:
       required:
         - grade
         - node_id
+        - requires
         - status
         - title
         - top_level

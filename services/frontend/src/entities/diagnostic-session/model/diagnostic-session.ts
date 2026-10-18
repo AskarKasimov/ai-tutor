@@ -51,6 +51,8 @@ export type TopicResult = {
   status: TopicStatus
   grade: Grade | null
   topLevel: boolean
+  // Direct prerequisites of the topic (node ids) in the diagnostic graph.
+  requires: string[]
 }
 
 export type DiagnosticResult = {

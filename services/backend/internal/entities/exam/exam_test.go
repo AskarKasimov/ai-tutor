@@ -108,6 +108,32 @@ func TestStrongStudentIsAskedOnlyTopLevelTopics(t *testing.T) {
 	}
 }
 
+func TestResultNodesCarryTheirPrerequisites(t *testing.T) {
+	g := fixture(t)
+	e, _ := NewExam(g, 0, nil)
+	r := Session{ID: "s", Exam: e}.Result()
+	for i, n := range r.Nodes {
+		if !slices.Equal(n.Requires, g.Nodes[i].Prerequisites) {
+			t.Fatalf("%s requires = %v, want %v", n.NodeID, n.Requires, g.Nodes[i].Prerequisites)
+		}
+		if n.Requires == nil {
+			t.Fatalf("%s requires is nil", n.NodeID)
+		}
+	}
+	// The result is a copy: changing it does not touch the graph snapshot.
+	for _, n := range r.Nodes {
+		if len(n.Requires) > 0 {
+			n.Requires[0] = "changed"
+			break
+		}
+	}
+	for _, n := range e.Graph.Nodes {
+		if slices.Contains(n.Prerequisites, "changed") {
+			t.Fatal("result shares prerequisites with the graph")
+		}
+	}
+}
+
 func TestGapDescendsToTheDeepestUnmasteredTopic(t *testing.T) {
 	e, first := NewExam(fixture(t), 0, nil)
 	steps := run(t, e, first, func(s Step) Evaluation {

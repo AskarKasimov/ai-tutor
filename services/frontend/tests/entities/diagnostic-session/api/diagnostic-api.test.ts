@@ -160,6 +160,14 @@ it('reads the session, history and result by encoded URLs', async () => {
           grade: null,
           top_level: true,
         },
+        {
+          node_id: 'b',
+          title: 'Эвристика',
+          status: 'gap',
+          grade: 'D',
+          top_level: false,
+          requires: ['c'],
+        },
       ],
       gaps: [{ node_id: 'b', title: 'Эвристика' }],
     }),
@@ -175,6 +183,16 @@ it('reads the session, history and result by encoded URLs', async () => {
         status: 'insufficient',
         grade: null,
         topLevel: true,
+        // An older backend sends no prerequisites.
+        requires: [],
+      },
+      {
+        nodeId: 'b',
+        title: 'Эвристика',
+        status: 'gap',
+        grade: 'D',
+        topLevel: false,
+        requires: ['c'],
       },
     ],
     gaps: [

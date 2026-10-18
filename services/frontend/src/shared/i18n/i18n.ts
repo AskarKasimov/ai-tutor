@@ -422,6 +422,13 @@ void i18n.init({
           topicsTitle: 'Все темы',
           statusSummary: 'Темы по статусам',
           topicsEmpty: 'Geek не успел проверить ни одной темы.',
+          graphTitle: 'Карта проверенных тем',
+          graphHint:
+            'Стрелка ведёт от основы к теме, которая на неё опирается. Подсвечены темы верхнего уровня — по ним считается оценка; красный пунктир — опора, которую нужно подтянуть.',
+          graphLegend: 'Обозначения статусов',
+          graphScroll: 'Карта тем',
+          graphNodes: 'Темы на карте',
+          graphRequires: 'Опирается на: {{titles}}',
           topLevel: 'Основная тема',
           status: {
             independent: 'Самостоятельно',
@@ -429,6 +436,15 @@ void i18n.init({
             gap: 'Пробел',
             insufficient: 'Недостаточно данных',
             credited_by_parent: 'Засчитано по основной теме',
+            unchecked: 'Не проверялась',
+          },
+          // Short labels for the map cards; the legend keeps the full ones.
+          statusShort: {
+            independent: 'Самостоятельно',
+            assisted: 'С помощью',
+            gap: 'Пробел',
+            insufficient: 'Мало данных',
+            credited_by_parent: 'Засчитано',
             unchecked: 'Не проверялась',
           },
           again: 'Пройти заново',

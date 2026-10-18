@@ -97,9 +97,33 @@ func geekFlow(t *testing.T, f *fixture, access *http.Cookie, check func(method, 
 		Gaps  []struct {
 			NodeID string `json:"node_id"`
 		} `json:"gaps"`
+		Nodes []struct {
+			NodeID   string   `json:"node_id"`
+			Requires []string `json:"requires"`
+		} `json:"nodes"`
 	}
 	if err := json.Unmarshal(result.Body.Bytes(), &r); err != nil || r.Grade == nil || *r.Grade != "D" || len(r.Gaps) != 3 {
 		t.Fatalf("result: %s", result.Body.String())
+	}
+	// Every node carries its prerequisites, and they reference result nodes.
+	ids := map[string]bool{}
+	edges := 0
+	for _, n := range r.Nodes {
+		ids[n.NodeID] = true
+	}
+	for _, n := range r.Nodes {
+		if n.Requires == nil {
+			t.Fatalf("node %s has no requires array: %s", n.NodeID, result.Body.String())
+		}
+		for _, p := range n.Requires {
+			if !ids[p] {
+				t.Fatalf("node %s requires unknown %s", n.NodeID, p)
+			}
+			edges++
+		}
+	}
+	if edges == 0 {
+		t.Fatalf("result has no prerequisite edges: %s", result.Body.String())
 	}
 	studentTurn := ""
 	for _, turn := range session.Turns {

@@ -1717,3 +1717,58 @@ def test_topics_stage_counts_a_whole_material_per_step(monkeypatch):
     assert response.status_code == 200, response.text
     topics = [(p["stage"], p["done"], p["total"]) for p in seen]
     assert topics == [("topics", 0, 2), ("topics", 1, 2)]
+
+
+def test_attach_drops_a_batch_the_model_did_not_answer():
+    from course_graph.llm.client import GatewayError
+    from course_graph.topics.structure import attach_links
+    topics = [make_topic(f"T{i}", f"Тема {i}", [f"Знание {i}"]) for i in range(10)]
+    failed = set()
+
+    async def complete(system, payload):
+        ids = [t["id"] for t in json.loads(payload)["topics"]]
+        if "T0" in ids:
+            failed.update(ids)
+            raise GatewayError("LLM request deadline exceeded")
+        first = {t["id"]: ([t["candidates"][0]["id"]], []) for t in json.loads(payload)["topics"]}
+        return attach_answer(payload, first)
+
+    links, rejected, requests = run(attach_links(topics, [], {}, complete, Encoder()))
+    answered = {t.id for t in topics} - failed
+    assert failed and answered and requests == 2
+    assert links and all(e["target"] in answered for e in links)
+    assert {r["topic_id"] for r in rejected if r["validation_error"] == "model_unavailable"} == failed
+
+
+def test_attach_fails_the_build_when_no_batch_was_answered():
+    from course_graph.llm.client import GatewayError
+    from course_graph.topics.structure import attach_links
+    topics = [make_topic(f"T{i}", f"Тема {i}", [f"Знание {i}"]) for i in range(10)]
+
+    async def complete(system, payload):
+        raise GatewayError("LLM request deadline exceeded")
+
+    with pytest.raises(GatewayError):
+        run(attach_links(topics, [], {}, complete, Encoder()))
+
+
+def test_attach_keeps_confirmed_links_when_the_correction_gets_no_answer():
+    from course_graph.llm.client import GatewayError
+    from course_graph.topics.structure import attach_links
+    topics = [make_topic("A", "Множества", ["Понятие множества"]),
+              make_topic("B", "Отношения", ["Понятие отношения"]),
+              make_topic("C", "Композиция", ["Композиция отношений"])]
+    calls = []
+
+    async def complete(system, payload):
+        calls.append(payload)
+        if len(calls) == 2:
+            raise GatewayError("LLM request deadline exceeded")
+        result = json.loads(attach_answer(payload, {"B": (["A"], []), "C": (["B"], [])}))
+        del next(t for t in result["topics"] if t["id"] == "C")["prerequisites"][0]["candidate_evidence"]
+        return json.dumps(result)
+
+    links, rejected, requests = run(attach_links(topics, [], {}, complete, Encoder()))
+    assert ("A", "B") in {(e["source"], e["target"]) for e in links}
+    assert requests == 2
+    assert {r["topic_id"] for r in rejected if r["validation_error"] == "model_unavailable"} == {"C"}

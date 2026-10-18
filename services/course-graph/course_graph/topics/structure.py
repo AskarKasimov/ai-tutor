@@ -8,12 +8,14 @@ topic and drop edges implied by longer paths.
 """
 import asyncio
 import json
+import logging
 import re
 from collections import deque
 
 import numpy as np
 from pydantic import ValidationError
 
+from course_graph.llm.client import MODEL_CALL_ERRORS
 from course_graph.progress import tracked
 from course_graph.topics.evidence import evidence_for, valid_evidence
 from course_graph.topics.extract import administrative_question, join_topic, normalized_title
@@ -384,6 +386,7 @@ async def attach_links(topics, edges, parents, complete, encoder, limit=8, max_c
     async def judge(batch):
         # A correction sees only damaged topics; confirmed links survive even
         # an empty or malformed second answer. Every record is checked alone.
+        # The third value is the error when the model never answered this batch.
         found, rejected, correction, problems = {}, [], None, set()
         current = batch
         for attempt in range(2):
@@ -398,7 +401,17 @@ async def attach_links(topics, edges, parents, complete, encoder, limit=8, max_c
                 break
             async with semaphore:
                 counter[0] += 1
-                raw = await complete(ATTACH_PROMPT, text)
+                try:
+                    raw = await complete(ATTACH_PROMPT, text)
+                except MODEL_CALL_ERRORS as error:
+                    # Attach only adds links to weak topics: a batch without an
+                    # answer leaves them weak instead of failing the whole build.
+                    logging.warning("Attach batch dropped after a failed model call: %s", error)
+                    unanswered = {item["id"] for item in current}
+                    rejected.extend({"topic_id": topic_id, "via": "attach", "validation_error": "model_unavailable",
+                                     "reason": "Модель не ответила; связи темы не проверены"}
+                                    for topic_id in sorted(unanswered))
+                    return found, rejected, None if attempt else error
             try:
                 accepted, broken, problems = check(current, raw)
             except (ValueError, TypeError) as error:
@@ -416,14 +429,18 @@ async def attach_links(topics, edges, parents, complete, encoder, limit=8, max_c
         rejected.extend({"topic_id": topic_id, "via": "attach", "validation_error": "incomplete_topic_decision",
                          "reason": "Модель не вернула единственное полное решение темы после обработки и исправления"}
                         for topic_id in sorted(problems))
-        return found, rejected
+        return found, rejected, None
 
     batches, oversized = batches_of(items, max_chars, 8)
     answers = await tracked(progress, "attach", [judge(batch) for batch in batches])
+    failures = [error for _, _, error in answers if error is not None]
+    # No batch answered at all: the gateway is down, not one call slow.
+    if failures and len(failures) == len(answers):
+        raise failures[0]
     found = {}
     rejected = [{"topic_id": item["id"], "via": "attach", "validation_error": "budget_exceeded",
                  "reason": "Карточка превышает max_chars; запрос не отправлен"} for item in oversized]
-    for accepted, broken in answers:
+    for accepted, broken, _ in answers:
         for pair, record in accepted.items():
             found.setdefault(pair, record)
         rejected.extend(broken)

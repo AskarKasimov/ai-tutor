@@ -27,6 +27,9 @@ class GatewayError(RuntimeError):
 # 15 minutes of finished passes.
 RETRIED = {grpc.StatusCode.DEADLINE_EXCEEDED, grpc.StatusCode.UNAVAILABLE}
 
+# A model call that gave no usable answer, even after the repeat.
+MODEL_CALL_ERRORS = (grpc.aio.AioRpcError, GatewayError)
+
 
 class ModelClient:
     def __init__(self, address: str | None = None, timeout: float | None = None):

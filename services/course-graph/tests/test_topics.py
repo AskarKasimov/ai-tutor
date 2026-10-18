@@ -16,7 +16,7 @@ from course_graph.topics.extract import (
     procedural_title,
     topic_blocks,
 )
-from course_graph.topics.graph import build_links, valid_evidence
+from course_graph.topics.graph import GRAPH_CONCURRENCY, build_links, valid_evidence
 from course_graph.topics.extract import join_topic
 from course_graph.topics.structure import (
     ATTACH_PROMPT,
@@ -1592,3 +1592,23 @@ def test_synonym_pass_does_not_send_a_pair_over_its_budget():
     kept, aliases, requests = run(merge_synonyms(topics, never, encoder, lambda t: t.id, max_chars=1))
     assert aliases == {} and requests == 0
     assert [t.model_dump() for t in kept] == before
+
+
+def test_graph_passes_keep_four_model_calls_in_flight():
+    # One link batch per requirement: with two calls in flight half of the
+    # gateway's four instances stayed idle during a build.
+    # Long texts make each requirement fill most of a batch on its own.
+    topics = [make_topic(f"t{i}", f"Тема {i}", [f"Знание {i}"], [f"Знание {i - 1}"] if i else [],
+                         text=f"Тема {i}. " + "слово " * 160)
+              for i in range(9)]
+    flight = {"now": 0, "max": 0}
+
+    async def slow(system, payload):
+        flight["now"] += 1
+        flight["max"] = max(flight["max"], flight["now"])
+        await asyncio.sleep(0.01)
+        flight["now"] -= 1
+        return await grounded_links(system, payload)
+    graph = run(build_links(topics, links_only(slow), Encoder(), per_requirement=1, max_chars=3500))
+    assert graph["quality"]["requests"] >= 8
+    assert flight["max"] == GRAPH_CONCURRENCY == 4

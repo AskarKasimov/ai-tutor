@@ -4,6 +4,7 @@ The service never names a model: every call states only its complexity, and the
 gateway picks the pool. Generated stubs come from services/shared/gen/python.
 """
 import json
+import logging
 import os
 
 import grpc
@@ -35,6 +36,9 @@ class ModelClient:
             self.address, options=[("grpc.max_receive_message_length", 40 * 1024 * 1024)],
         )
         self.stub = gateway_pb2_grpc.GatewayStub(self.channel)
+        # Repeated calls; stage counters see one logical call per complete, so
+        # the endpoints report repeats next to them as retried_requests.
+        self.retries = 0
 
     async def complete(self, system: str, text: str, complexity: str = "high", reasoning: bool = False) -> str:
         # Without reasoning a call asks for low effort, which keeps thinking
@@ -57,6 +61,8 @@ class ModelClient:
         except grpc.aio.AioRpcError as error:
             if error.code() not in RETRIED:
                 raise
+            self.retries += 1
+            logging.warning("LLM gateway call ended with %s; repeating it once", error.code().name)
             response = await self.stub.Complete(request, timeout=self.timeout)
         try:
             choice = json.loads(response.completion_json)["choices"][0]

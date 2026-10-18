@@ -209,6 +209,7 @@ async def extract_document(request: ExtractRequest):
                 for source in topic["sources"]:
                     source.update(kind=request.kind, filename=request.filename, kind_label=request.kind_label,
                                   material_revision=request.material_revision)
+            result["report"]["retried_requests"] = client.retries
             return result
         except Exception:
             logging.exception("Topic extraction failed")
@@ -234,9 +235,11 @@ async def link_topics(request: LinkRequest):
         client = ModelClient()
         try:
             encoder = await encoder_for_topics(request.topics)
-            return await build_links(request.topics, client.completer(STAGE_COMPLEXITY, reasoning=True), encoder, request.per_requirement,
-                                     request.max_chars, request.evidence_chars,
-                                     light_complete=client.completer(STAGE_COMPLEXITY))
+            graph = await build_links(request.topics, client.completer(STAGE_COMPLEXITY, reasoning=True), encoder, request.per_requirement,
+                                      request.max_chars, request.evidence_chars,
+                                      light_complete=client.completer(STAGE_COMPLEXITY))
+            graph["quality"]["retried_requests"] = client.retries
+            return graph
         except Exception:
             logging.exception("Prerequisite generation failed")
             raise HTTPException(status_code=503, detail="Построение связей не завершено")
@@ -282,6 +285,8 @@ async def build_course(request: BuildRequest):
             graph = await build_links(topics, client.completer(STAGE_COMPLEXITY, reasoning=True), encoder, request.per_requirement,
                                       light_complete=client.completer(STAGE_COMPLEXITY))
             graph["extraction_reports"] = reports
+            # Repeats of every call this build made, extraction of old reports included.
+            graph["quality"]["retried_requests"] = client.retries
             return graph
         except Exception:
             logging.exception("Course build failed")

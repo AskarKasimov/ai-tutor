@@ -66,16 +66,21 @@
   h1 { margin: 0 0 4px; font-size: 24px; }
   .lead { margin: 0 0 20px; color: var(--app-muted); }
 
-  .modes { display: grid; gap: 12px; }
+  /* The mode choice is the main content of the page: wider and roomier than the login card. */
+  .card.choice { max-width: 760px; padding: 40px; }
+  .choice h1 { font-size: 30px; }
+  .choice .lead { font-size: 17px; margin-bottom: 28px; }
+  .modes { display: grid; gap: 16px; }
   .mode {
-    display: flex; align-items: center; gap: 16px; padding: 18px 20px; text-decoration: none; color: inherit;
-    border: 1px solid var(--app-border); border-radius: 16px; transition: border-color .15s ease, box-shadow .15s ease;
+    display: flex; align-items: center; gap: 22px; padding: 28px 28px; text-decoration: none; color: inherit;
+    border: 1px solid var(--app-border); border-radius: 20px; transition: border-color .15s ease, box-shadow .15s ease;
   }
   .mode:hover { border-color: var(--app-accent); box-shadow: 0 0 0 3px var(--app-soft); }
-  .mode .icon { flex: none; display: grid; place-items: center; width: 48px; height: 48px; border-radius: 14px; background: var(--app-soft); color: var(--app-accent); }
+  .mode .icon { flex: none; display: grid; place-items: center; width: 68px; height: 68px; border-radius: 18px; background: var(--app-soft); color: var(--app-accent); }
+  .mode .icon svg { width: 32px; height: 32px; }
   .mode.exam .icon { background: var(--app-success-soft); color: var(--app-success); }
-  .mode b { display: block; font-size: 18px; }
-  .mode span { color: var(--app-muted); }
+  .mode b { display: block; font-size: 22px; margin-bottom: 2px; color: var(--app-ink); }
+  .mode span { color: var(--app-muted); font-size: 17px; }
   .mode .go { margin-left: auto; color: var(--app-muted); flex: none; }
 
   .tabs { display: flex; gap: 8px; margin-bottom: 8px; }
@@ -104,7 +109,13 @@
     .avatar { width: 36px; height: 36px; }
     .profile { padding-right: 8px; }
     main { padding: 24px 16px; }
-    .card { padding: 20px; }
+    .card, .card.choice { padding: 20px; }
+    .choice h1 { font-size: 24px; }
+    .mode { padding: 18px; gap: 16px; }
+    .mode .icon { width: 52px; height: 52px; }
+    .mode .icon svg { width: 26px; height: 26px; }
+    .mode b { font-size: 19px; }
+    .mode span { font-size: 15px; }
   }
 </style>
 </head>
@@ -127,7 +138,7 @@
 </header>
 
 <main>
-  <section class="card" id="choice" hidden>
+  <section class="card choice" id="choice" hidden>
     <h1>Выберите режим</h1>
     <p class="lead">Можно вернуться сюда из меню профиля в любом режиме.</p>
     <div class="modes">

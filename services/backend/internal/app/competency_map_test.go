@@ -3,8 +3,10 @@ package app
 import (
 	"archive/zip"
 	"bytes"
+	"crypto/rand"
 	"encoding/xml"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"testing"
@@ -68,5 +70,40 @@ func TestImportMapAnswersTooLargeForAnOversizedBody(t *testing.T) {
 	w := upload(f, "/admin/subjects/subject:test/graph/competency-map", "file", "map.xlsx", "application/octet-stream", big, admin)
 	if w.Code != http.StatusRequestEntityTooLarge || !strings.Contains(w.Body.String(), "PAYLOAD_TOO_LARGE") {
 		t.Fatalf("27 MiB map: %d %s", w.Code, w.Body.String())
+	}
+}
+
+// A real book weighs hundreds of KiB, far above the 32 KiB the API allows a
+// JSON body; the map route lifts that limit up to the book's own.
+func TestImportMapAcceptsABookLargerThanAJSONBody(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	admin := f.admin(t)
+	book := mapBook(t)
+	archive, err := zip.NewReader(bytes.NewReader(book), int64(len(book)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var buf bytes.Buffer
+	w := zip.NewWriter(&buf)
+	for _, part := range archive.File {
+		if err := w.Copy(part); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// A picture of the book: stored as is and never read by the importer.
+	picture, err := w.CreateHeader(&zip.FileHeader{Name: "xl/media/image1.png", Method: zip.Store})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := io.CopyN(picture, rand.Reader, 1<<20); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+	res := upload(f, "/admin/subjects/subject:test/graph/competency-map", "file", "map.xlsx", "application/octet-stream", buf.Bytes(), admin)
+	if res.Code != http.StatusAccepted {
+		t.Fatalf("1 MiB map: %d %s", res.Code, res.Body.String())
 	}
 }

@@ -9,15 +9,16 @@ import (
 	"time"
 
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/coursegraph"
-	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/exam"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/material"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/user"
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/fault"
 )
 
 type requestRepo struct {
 	snapshot  coursegraph.Snapshot
 	queued    bool
 	published []json.RawMessage
+	mapGraph  json.RawMessage
 }
 
 func (r requestRepo) Published(context.Context) ([]json.RawMessage, error) {
@@ -35,6 +36,12 @@ func (r requestRepo) Read(context.Context, string) (coursegraph.Snapshot, error)
 	return r.snapshot, nil
 }
 func (r requestRepo) Request(context.Context, string, time.Time) (bool, error) { return r.queued, nil }
+func (r requestRepo) SaveMap(context.Context, string, string, string, json.RawMessage, time.Time) (bool, error) {
+	return r.queued, nil
+}
+func (r requestRepo) MapGraph(context.Context, string) (json.RawMessage, error) {
+	return r.mapGraph, nil
+}
 
 type requestMaterials []material.Material
 
@@ -165,95 +172,139 @@ func (r snapshotRepo) Read(context.Context, string) (coursegraph.Snapshot, error
 	return r.snapshot, nil
 }
 
-type defaultGraph struct {
-	graph exam.Graph
-	ok    bool
-	err   error
-}
-
-func (d defaultGraph) Current(context.Context, string) (exam.Graph, bool, error) {
-	return d.graph, d.ok, d.err
-}
-
 var admin = user.User{ID: "admin", Role: user.Admin}
-
-func TestReadShowsTheFixtureUntilTheFirstBuild(t *testing.T) {
-	fixture := defaultGraph{ok: true, graph: exam.Graph{Version: "fixture:1", Nodes: []exam.Node{
-		{ID: "a", Title: "Агент", Content: "Теория", Outcomes: []string{"различать агентов"}, Questions: []string{"Что такое агент?"}},
-		{ID: "b", Title: "Среда", Prerequisites: []string{"a"}},
-	}}}
-	w := New(snapshotRepo{snapshot: coursegraph.Snapshot{Status: "not_requested", Graph: json.RawMessage("null")}}, nil, nil, nil, nil, fixture)
-	got, err := w.Read(context.Background(), admin, "subject")
-	if err != nil || got.GraphSource != coursegraph.SourceFixture {
-		t.Fatalf("snapshot = %+v, %v", got, err)
-	}
-	var shape struct {
-		Topics []struct {
-			ID, Title, Question, Text string
-			Provides                  []string
-		}
-		Prerequisites []struct{ Source, Target string }
-		Hierarchy     []struct{ Source, Target string }
-	}
-	if err := json.Unmarshal(got.Graph, &shape); err != nil {
-		t.Fatal(err)
-	}
-	if len(shape.Topics) != 2 || shape.Topics[0].Question != "Что такое агент?" || shape.Topics[0].Text != "Теория" ||
-		len(shape.Topics[0].Provides) != 1 || shape.Hierarchy == nil {
-		t.Fatalf("topics = %+v", shape)
-	}
-	if len(shape.Prerequisites) != 1 || shape.Prerequisites[0].Source != "a" || shape.Prerequisites[0].Target != "b" {
-		t.Fatalf("prerequisites = %+v", shape.Prerequisites)
-	}
-}
 
 func TestReadShowsTheBuildOnceItIsPublished(t *testing.T) {
 	built := json.RawMessage(`{"topics":[{"id":"x","title":"Собранная тема"}]}`)
-	w := New(snapshotRepo{snapshot: coursegraph.Snapshot{Status: "ready", Graph: built}}, requestMaterials{{ID: "m"}}, nil, nil, nil,
-		defaultGraph{err: errors.New("the fixture must not be read")})
+	w := New(snapshotRepo{snapshot: coursegraph.Snapshot{Status: "ready", Graph: built, GraphSource: coursegraph.SourceMaterials}}, requestMaterials{{ID: "m"}}, nil, nil, nil, nil)
 	got, err := w.Read(context.Background(), admin, "subject")
 	if err != nil || got.GraphSource != coursegraph.SourceBuilt || string(got.Graph) != string(built) {
 		t.Fatalf("snapshot = %+v, %v", got, err)
 	}
 }
 
-func TestReadWithoutAFixtureHasNoGraph(t *testing.T) {
-	w := New(snapshotRepo{snapshot: coursegraph.Snapshot{Status: "not_requested", Graph: json.RawMessage("null")}}, nil, nil, nil, nil, defaultGraph{})
+func TestReadWithoutAGraphHasNone(t *testing.T) {
+	w := New(snapshotRepo{snapshot: coursegraph.Snapshot{Status: "not_requested", Graph: json.RawMessage("null")}}, nil, nil, nil, nil, nil)
 	got, err := w.Read(context.Background(), admin, "subject")
-	if err != nil || got.GraphSource != coursegraph.SourceNone || string(got.Graph) != "null" {
+	if err != nil || got.GraphSource != coursegraph.SourceNone || got.Graph != nil {
 		t.Fatalf("snapshot = %+v, %v", got, err)
 	}
 }
 
-func TestReadShowsTheFixtureWhenTheBuiltCourseLostItsMaterials(t *testing.T) {
-	// Geek ignores a published graph of a course without materials, so the
-	// admin must see the fixture Geek examines by, not the stored build.
+func TestReadDropsABuildWhoseCourseLostItsMaterials(t *testing.T) {
+	// Geek ignores a published graph of materials once the course has none.
 	built := json.RawMessage(`{"topics":[{"id":"x","title":"Собранная тема"}]}`)
-	fixture := defaultGraph{ok: true, graph: exam.Graph{Version: "fixture:1", Nodes: []exam.Node{{ID: "a", Title: "Агент"}}}}
-	w := New(snapshotRepo{snapshot: coursegraph.Snapshot{Status: "ready", Graph: built}}, requestMaterials{}, nil, nil, nil, fixture)
+	w := New(snapshotRepo{snapshot: coursegraph.Snapshot{Status: "ready", Graph: built, GraphSource: coursegraph.SourceMaterials}}, requestMaterials{}, nil, nil, nil, nil)
 	got, err := w.Read(context.Background(), admin, "subject")
-	if err != nil || got.GraphSource != coursegraph.SourceFixture || string(got.Graph) == string(built) {
+	if err != nil || got.GraphSource != coursegraph.SourceNone || got.Graph != nil {
 		t.Fatalf("snapshot = %+v, %v", got, err)
-	}
-	w = New(snapshotRepo{snapshot: coursegraph.Snapshot{Status: "ready", Graph: built}}, requestMaterials{}, nil, nil, nil, nil)
-	if got, err = w.Read(context.Background(), admin, "subject"); err != nil || got.GraphSource != coursegraph.SourceNone || got.Graph != nil {
-		t.Fatalf("snapshot without a fixture = %+v, %v", got, err)
 	}
 }
 
-func TestABrokenFixtureDoesNotFailAnAcceptedBuildRequest(t *testing.T) {
-	week := int32(1)
-	kind := material.Kind("lecture")
-	items := requestMaterials{{ID: "m", Status: material.StatusParsed, Week: &week, Kind: &kind, Cleaning: &material.Cleaning{Status: "ready"}}}
-	repo := requestRepo{snapshot: coursegraph.Snapshot{Status: "not_requested", Graph: json.RawMessage("null")}, queued: true}
-	w := New(repo, items, nil, nil, nil, defaultGraph{err: errors.New("fixture unreadable")})
-	got, err := w.Request(context.Background(), admin, "subject")
-	if err != nil || got.GraphSource != coursegraph.SourceNone {
-		t.Fatalf("accepted request = %+v, %v", got, err)
+func TestReadShowsAGraphOfACompetencyMapWithoutMaterials(t *testing.T) {
+	built := json.RawMessage(`{"version":"competency-map-v1","topics":[{"id":"x","title":"ОР"}]}`)
+	w := New(snapshotRepo{snapshot: coursegraph.Snapshot{Status: "ready", Graph: built, GraphSource: coursegraph.SourceMap}}, requestMaterials{}, nil, nil, nil, nil)
+	got, err := w.Read(context.Background(), admin, "subject")
+	if err != nil || got.GraphSource != coursegraph.SourceMap || string(got.Graph) != string(built) {
+		t.Fatalf("snapshot = %+v, %v", got, err)
 	}
-	if got, err = w.Read(context.Background(), admin, "subject"); err != nil || got.GraphSource != coursegraph.SourceNone {
-		t.Fatalf("read with a broken fixture = %+v, %v", got, err)
+}
+
+// mapRepo records an imported map.
+type mapRepo struct {
+	requestRepo
+	saved  *json.RawMessage
+	sheet  *string
+	queued bool
+}
+
+func (r mapRepo) SaveMap(_ context.Context, _, _, sheet string, graph json.RawMessage, _ time.Time) (bool, error) {
+	if !r.queued {
+		return false, nil
 	}
+	*r.saved, *r.sheet = graph, sheet
+	return true, nil
+}
+
+func mapRows(competencies ...string) [][]string {
+	rows := [][]string{{"№", "Субкомпетенция (Proficiency)", "Составляющая (Observe)", "Образовательный результат (Observe Behaviour)",
+		"Уровень по Блуму", "Важность (1–5)", "Что должно войти в тест", "Задание (устная инструкция)", "Критерии оценивания"}}
+	for _, c := range competencies {
+		rows = append(rows,
+			[]string{"1", c, "1.1 Составляющая", "Называет", "Помнить", "3", "TRUE", "Назовите.", "Эталон: имя.\nБалл (макс. 1): 1 — назвал."},
+			[]string{"2", "", "", "Объясняет", "Понимать", "4", "TRUE", "Объясните.", "Эталон: причина."},
+			[]string{"3", "", "", "Анализирует", "Анализировать", "5", "TRUE", "Сравните.", "Эталон: сравнение.\nАналитическая рубрика (макс. 2):\nК1 «Сравнение»: 1 — есть."},
+		)
+	}
+	return rows
+}
+
+func TestImportMapQueuesTheGraphOfTheMap(t *testing.T) {
+	var saved json.RawMessage
+	var sheet string
+	read := func([]byte) ([]coursegraph.MapSheet, error) {
+		return []coursegraph.MapSheet{{Name: "Карта", Rows: mapRows("К1. Агенты")}, {Name: "Легенда", Rows: [][]string{{"Поле"}}}}, nil
+	}
+	repo := mapRepo{requestRepo: requestRepo{snapshot: coursegraph.Snapshot{Status: "ready"}}, saved: &saved, sheet: &sheet, queued: true}
+	w := New(repo, nil, nil, nil, nil, read)
+	if _, err := w.ImportMap(context.Background(), user.User{ID: "s", Role: user.Student}, "subject", "map.xlsx", nil, ""); !isFault(err, "FORBIDDEN") {
+		t.Fatalf("student import: %v", err)
+	}
+	if _, err := w.ImportMap(context.Background(), admin, "subject", "map.xlsx", nil, ""); err != nil {
+		t.Fatal(err)
+	}
+	if sheet != "Карта" || !strings.Contains(string(saved), `"version":"competency-map-v1"`) {
+		t.Fatalf("saved sheet %q graph %s", sheet, saved)
+	}
+	busy := New(mapRepo{requestRepo: requestRepo{snapshot: coursegraph.Snapshot{Status: "processing"}}, saved: &saved, sheet: &sheet}, nil, nil, nil, nil, read)
+	if _, err := busy.ImportMap(context.Background(), admin, "subject", "map.xlsx", nil, ""); !isFault(err, "GRAPH_BUILD_IN_PROGRESS") {
+		t.Fatalf("import during a build: %v", err)
+	}
+}
+
+func TestImportMapAsksForTheSheetAndNamesBadCells(t *testing.T) {
+	bad := mapRows("К1. Агенты")
+	bad[2][4] = "Вспоминать"
+	read := func([]byte) ([]coursegraph.MapSheet, error) {
+		return []coursegraph.MapSheet{{Name: "Карта", Rows: bad}, {Name: "Карта_ВСЯ", Rows: mapRows("К1. Агенты")}}, nil
+	}
+	w := New(mapRepo{requestRepo: requestRepo{snapshot: coursegraph.Snapshot{Status: "ready"}}}, nil, nil, nil, nil, read)
+	_, err := w.ImportMap(context.Background(), admin, "subject", "map.xlsx", nil, "")
+	var f *fault.Error
+	if !errors.As(err, &f) || f.Code != "COMPETENCY_MAP_SHEET_REQUIRED" || len(f.Details) != 2 || f.Details[1].Message != "Карта_ВСЯ" {
+		t.Fatalf("several sheets: %+v", err)
+	}
+	_, err = w.ImportMap(context.Background(), admin, "subject", "map.xlsx", nil, "Карта")
+	if !errors.As(err, &f) || f.Code != "COMPETENCY_MAP_INVALID" || len(f.Details) != 1 || !strings.Contains(f.Details[0].Message, "Строка 3, «Уровень по Блуму»") {
+		t.Fatalf("bad cell: %+v", err)
+	}
+	unreadable := New(mapRepo{requestRepo: requestRepo{snapshot: coursegraph.Snapshot{Status: "ready"}}}, nil, nil, nil, nil,
+		func([]byte) ([]coursegraph.MapSheet, error) { return nil, errors.New("zip") })
+	if _, err := unreadable.ImportMap(context.Background(), admin, "subject", "map.pdf", nil, ""); !isFault(err, "COMPETENCY_MAP_INVALID") {
+		t.Fatalf("unreadable book: %v", err)
+	}
+}
+
+func TestBuildOfAMapPublishesItsGraphWithPreparedQuestions(t *testing.T) {
+	graph, err := coursegraph.BuildMapGraph([]coursegraph.MapSheet{{Name: "Карта", Rows: mapRows("К1. Агенты")}}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	repo := &publishingRepo{requestRepo: requestRepo{mapGraph: graph.Graph}}
+	questions := &stubQuestions{}
+	w := New(repo, nil, nil, nil, nil, nil)
+	w.SetQuestions(questions)
+	if err := w.process(context.Background(), coursegraph.Job{SubjectID: "subject", Source: coursegraph.SourceMap, Attempts: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if string(questions.seen) != string(graph.Graph) || len(repo.finished) != 1 {
+		t.Fatalf("prepared %s, published %d graphs", questions.seen, len(repo.finished))
+	}
+}
+
+func isFault(err error, code string) bool {
+	var f *fault.Error
+	return errors.As(err, &f) && f.Code == code
 }
 
 type queuedVoices struct{ texts []string }

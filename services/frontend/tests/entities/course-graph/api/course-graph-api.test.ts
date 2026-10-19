@@ -1,6 +1,8 @@
 import { afterEach, expect, it, vi } from 'vitest'
 import {
   buildProgressPercent,
+  CourseGraphApiError,
+  importCompetencyMap,
   readCourseGraph,
   readLatestCourseGraphBuild,
   startCourseGraphBuild,
@@ -246,4 +248,61 @@ it('reads a snapshot without progress as no progress', async () => {
   await expect(
     readLatestCourseGraphBuild('subject:one', signal()),
   ).resolves.toMatchObject({ stage: null, progress: null })
+})
+
+it('imports a competency map as multipart and reads the graph of the map', async () => {
+  const fetchMock = respond(
+    snapshot('pending', {
+      graph: null,
+      graph_source: 'none',
+      build_source: 'competency_map',
+      map: { filename: 'map.xlsx', sheet: 'Карта' },
+    }),
+    202,
+  )
+  const file = new File(['PK'], 'map.xlsx')
+  const build = await importCompetencyMap('course/1', file, 'Карта', signal())
+  expect(build.status).toBe('queued')
+  expect(build.source).toBe('competency_map')
+  const [url, init] = fetchMock.mock.calls[0]
+  expect(url).toBe('/api/v1/admin/subjects/course%2F1/graph/competency-map')
+  expect(init.method).toBe('POST')
+  expect((init.body as FormData).get('file')).toBe(file)
+  expect((init.body as FormData).get('sheet')).toBe('Карта')
+
+  respond(
+    snapshot('ready', {
+      graph_source: 'competency_map',
+      map: { filename: 'map.xlsx', sheet: 'Карта' },
+    }),
+  )
+  const read = await readCourseGraph('course/1', signal())
+  expect(read.source).toBe('competency_map')
+  expect(read.map).toEqual({ filename: 'map.xlsx', sheet: 'Карта' })
+})
+
+it('keeps the details of a rejected competency map', async () => {
+  respond(
+    {
+      code: 'COMPETENCY_MAP_SHEET_REQUIRED',
+      message: 'Выберите лист.',
+      details: [
+        { path: 'sheet', code: 'COMPETENCY_MAP_SHEET', message: 'Карта' },
+      ],
+    },
+    422,
+  )
+  const error = await importCompetencyMap(
+    's',
+    new File(['PK'], 'map.xlsx'),
+    null,
+    signal(),
+  ).catch((e: unknown) => e)
+  expect(error).toBeInstanceOf(CourseGraphApiError)
+  expect((error as CourseGraphApiError).code).toBe(
+    'COMPETENCY_MAP_SHEET_REQUIRED',
+  )
+  expect((error as CourseGraphApiError).details).toEqual([
+    { path: 'sheet', code: 'COMPETENCY_MAP_SHEET', message: 'Карта' },
+  ])
 })

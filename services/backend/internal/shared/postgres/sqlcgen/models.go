@@ -22,6 +22,7 @@ type CourseGraph struct {
 	Fingerprint string
 	Graph       []byte
 	UpdatedAt   int64
+	Source      string
 }
 
 type CourseGraphInput struct {
@@ -39,6 +40,22 @@ type CourseGraphJob struct {
 	LeaseToken   string
 	ErrorMessage string
 	UpdatedAt    int64
+	Source       string
+}
+
+type CourseGraphJobInput struct {
+	SubjectID   string
+	Source      string
+	Fingerprint string
+}
+
+type CourseGraphMap struct {
+	SubjectID   string
+	Filename    string
+	Sheet       string
+	Fingerprint string
+	Graph       []byte
+	UploadedAt  int64
 }
 
 type GeekRequest struct {

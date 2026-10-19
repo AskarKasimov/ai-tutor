@@ -1,45 +1,32 @@
 package graph
 
 import (
-	"context"
 	"os"
-	"path/filepath"
 	"testing"
-
-	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/exam"
 )
 
-type stored struct{ g *exam.Graph }
-
-func (s stored) Current(context.Context, string) (exam.Graph, bool, error) {
-	if s.g == nil {
-		return exam.Graph{}, false, nil
-	}
-	return *s.g, true, nil
-}
-
-func TestChainPrefersTheStoredGraphOverTheFixture(t *testing.T) {
-	ctx := context.Background()
-	fixture := Fixture{Path: "../../../../../../../api/fixtures/course-graph.json"}
-	g, ok, err := Chain{stored{}, fixture}.Current(ctx, "s")
-	if err != nil || !ok || len(g.Nodes) != 10 || g.Version == "" || g.Nodes[0].Outcomes == nil {
-		t.Fatalf("fixture fallback: %v %v %d", ok, err, len(g.Nodes))
-	}
-	db := exam.Graph{Version: "db", Nodes: []exam.Node{{ID: "n", Title: "Тема"}}}
-	if g, _, _ := (Chain{stored{&db}, fixture}).Current(ctx, "s"); g.Version != "db" {
-		t.Fatalf("stored graph not preferred: %s", g.Version)
-	}
-	if _, ok, err := (Chain{stored{}, Fixture{}}).Current(ctx, "s"); ok || err != nil {
-		t.Fatalf("no graph: %v %v", ok, err)
+func TestDecodeRejectsAnInvalidGraph(t *testing.T) {
+	if _, _, err := Decode([]byte(`{"nodes":[{"id":"a","title":"A","prerequisites":["a"]}]}`)); err == nil {
+		t.Fatal("cyclic graph accepted")
 	}
 }
 
-func TestFixtureRejectsAnInvalidGraph(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "graph.json")
-	if err := os.WriteFile(path, []byte(`{"nodes":[{"id":"a","title":"A","prerequisites":["a"]}]}`), 0o600); err != nil {
+func TestDecodeReadsAGraphOfACompetencyMap(t *testing.T) {
+	data, err := os.ReadFile("../../../../../../../api/fixtures/course-graph.json")
+	if err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := (Fixture{Path: path}).Current(context.Background(), "s"); err == nil {
-		t.Fatal("cyclic fixture accepted")
+	if g, ok, err := Decode(data); err != nil || !ok || len(g.Nodes) != 10 || g.Nodes[0].Outcomes == nil {
+		t.Fatalf("nodes: ok=%v err=%v", ok, err)
+	}
+	g, ok, err := Decode([]byte(`{"version":"competency-map-v1","source":"competency_map","topics":[` +
+		`{"id":"b","title":"Базовое","text":"Эталон","question":"Задание Б","assessment_guidance":"Балл (макс. 1)"},` +
+		`{"id":"m","title":"Основное","text":"Эталон","question":"Задание М"}],` +
+		`"prerequisites":[{"source":"b","target":"m"}],"hierarchy":[{"source":"m","target":"b"}]}`))
+	if err != nil || !ok || g.Source != "competency_map" {
+		t.Fatalf("map graph: ok=%v err=%v source=%q", ok, err, g.Source)
+	}
+	if g.Nodes[0].AssessmentGuidance != "Балл (макс. 1)" || g.Nodes[1].MainQuestion() != "Задание М" || g.Nodes[1].Prerequisites[0] != "b" {
+		t.Fatalf("nodes = %+v", g.Nodes)
 	}
 }

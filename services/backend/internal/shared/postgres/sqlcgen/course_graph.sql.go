@@ -13,13 +13,13 @@ const claimCourseGraph = `-- name: ClaimCourseGraph :one
 UPDATE course_graph_jobs j SET status='processing', fingerprint=i.fingerprint,
     attempts=j.attempts+CASE WHEN j.status='pending' THEN 1 ELSE 0 END,
     lease_token=$1, lease_until=$2::bigint+60, updated_at=$2
-FROM course_graph_inputs i
-WHERE i.subject_id=j.subject_id AND j.subject_id=(SELECT c.subject_id FROM course_graph_jobs c
+FROM course_graph_job_inputs i
+WHERE i.subject_id=j.subject_id AND i.source=j.source AND j.subject_id=(SELECT c.subject_id FROM course_graph_jobs c
     WHERE ((c.status='pending' AND c.available_at<=$2)
        OR (c.status='processing' AND c.lease_until<=$2))
-      AND EXISTS(SELECT 1 FROM course_graph_inputs r WHERE r.subject_id=c.subject_id)
+      AND EXISTS(SELECT 1 FROM course_graph_job_inputs r WHERE r.subject_id=c.subject_id AND r.source=c.source)
     ORDER BY c.updated_at FOR UPDATE OF c SKIP LOCKED LIMIT 1)
-RETURNING j.subject_id, j.fingerprint, j.status, j.attempts, j.available_at, j.lease_until, j.lease_token, j.error_message, j.updated_at
+RETURNING j.subject_id, j.fingerprint, j.status, j.attempts, j.available_at, j.lease_until, j.lease_token, j.error_message, j.updated_at, j.source
 `
 
 type ClaimCourseGraphParams struct {
@@ -27,8 +27,8 @@ type ClaimCourseGraphParams struct {
 	Now   int64
 }
 
-// A requested build takes the materials as they are when it starts; it waits
-// while any material of the course is still being processed.
+// A requested build takes its source as it is when it starts: the materials
+// (it waits while any of them is still being processed) or the imported map.
 func (q *Queries) ClaimCourseGraph(ctx context.Context, arg ClaimCourseGraphParams) (CourseGraphJob, error) {
 	row := q.db.QueryRow(ctx, claimCourseGraph, arg.Token, arg.Now)
 	var i CourseGraphJob
@@ -42,6 +42,7 @@ func (q *Queries) ClaimCourseGraph(ctx context.Context, arg ClaimCourseGraphPara
 		&i.LeaseToken,
 		&i.ErrorMessage,
 		&i.UpdatedAt,
+		&i.Source,
 	)
 	return i, err
 }
@@ -74,12 +75,13 @@ WITH accepted AS (
     UPDATE course_graph_jobs j SET status='ready', lease_until=0, error_message='', updated_at=$2
     WHERE j.subject_id=$3 AND j.lease_token=$4 AND j.status='processing'
       AND j.fingerprint=$5
-      AND EXISTS(SELECT 1 FROM course_graph_inputs i WHERE i.subject_id=$3 AND i.fingerprint=$5)
-    RETURNING j.subject_id, j.fingerprint
+      AND EXISTS(SELECT 1 FROM course_graph_job_inputs i WHERE i.subject_id=$3
+                 AND i.source=j.source AND i.fingerprint=$5)
+    RETURNING j.subject_id, j.source, j.fingerprint
 )
-INSERT INTO course_graphs(subject_id,fingerprint,graph,updated_at)
-SELECT accepted.subject_id,accepted.fingerprint,$1::jsonb,$2::bigint FROM accepted
-ON CONFLICT(subject_id) DO UPDATE SET fingerprint=excluded.fingerprint,graph=excluded.graph,updated_at=excluded.updated_at
+INSERT INTO course_graphs(subject_id,source,fingerprint,graph,updated_at)
+SELECT accepted.subject_id,accepted.source,accepted.fingerprint,$1::jsonb,$2::bigint FROM accepted
+ON CONFLICT(subject_id) DO UPDATE SET source=excluded.source,fingerprint=excluded.fingerprint,graph=excluded.graph,updated_at=excluded.updated_at
 RETURNING subject_id
 `
 
@@ -106,7 +108,7 @@ func (q *Queries) FinishCourseGraph(ctx context.Context, arg FinishCourseGraphPa
 
 const listPublishedCourseGraphs = `-- name: ListPublishedCourseGraphs :many
 SELECT g.graph FROM course_graphs g
-WHERE EXISTS(SELECT 1 FROM subject_materials m WHERE m.subject_id=g.subject_id)
+WHERE g.source='competency_map' OR EXISTS(SELECT 1 FROM subject_materials m WHERE m.subject_id=g.subject_id)
 ORDER BY g.updated_at DESC, g.subject_id
 `
 
@@ -137,11 +139,17 @@ SELECT s.id, coalesce(j.status,'not_requested')::text AS status,
        coalesce(j.attempts,0)::integer AS attempts, coalesce(j.error_message,'')::text AS error_message,
        coalesce(g.graph,'null'::jsonb)::jsonb AS graph,
        coalesce(g.updated_at,0)::bigint AS updated_at,
-       (g.fingerprint IS NOT NULL AND g.fingerprint IS DISTINCT FROM i.fingerprint)::boolean AS stale,
-       (i.subject_id IS NOT NULL)::boolean AS inputs_ready
+       coalesce(g.source,'')::text AS graph_source,
+       -- Stale: the source the graph was built from changed since.
+       (g.fingerprint IS NOT NULL AND g.fingerprint IS DISTINCT FROM
+           CASE g.source WHEN 'competency_map' THEN m.fingerprint ELSE i.fingerprint END)::boolean AS stale,
+       (i.subject_id IS NOT NULL)::boolean AS inputs_ready,
+       coalesce(j.source,'')::text AS job_source,
+       coalesce(m.filename,'')::text AS map_filename, coalesce(m.sheet,'')::text AS map_sheet
 FROM subjects s LEFT JOIN course_graph_jobs j ON j.subject_id=s.id
 LEFT JOIN course_graphs g ON g.subject_id=s.id
-LEFT JOIN course_graph_inputs i ON i.subject_id=s.id WHERE s.id=$1
+LEFT JOIN course_graph_inputs i ON i.subject_id=s.id
+LEFT JOIN course_graph_maps m ON m.subject_id=s.id WHERE s.id=$1
 `
 
 type ReadCourseGraphRow struct {
@@ -151,8 +159,12 @@ type ReadCourseGraphRow struct {
 	ErrorMessage string
 	Graph        []byte
 	UpdatedAt    int64
+	GraphSource  string
 	Stale        bool
 	InputsReady  bool
+	JobSource    string
+	MapFilename  string
+	MapSheet     string
 }
 
 func (q *Queries) ReadCourseGraph(ctx context.Context, id string) (ReadCourseGraphRow, error) {
@@ -165,19 +177,35 @@ func (q *Queries) ReadCourseGraph(ctx context.Context, id string) (ReadCourseGra
 		&i.ErrorMessage,
 		&i.Graph,
 		&i.UpdatedAt,
+		&i.GraphSource,
 		&i.Stale,
 		&i.InputsReady,
+		&i.JobSource,
+		&i.MapFilename,
+		&i.MapSheet,
 	)
 	return i, err
 }
 
-const readPublishedCourseGraph = `-- name: ReadPublishedCourseGraph :one
-SELECT g.graph FROM course_graphs g
-WHERE g.subject_id=$1 AND EXISTS(SELECT 1 FROM subject_materials m WHERE m.subject_id=g.subject_id)
+const readCourseGraphMap = `-- name: ReadCourseGraphMap :one
+SELECT graph FROM course_graph_maps WHERE subject_id = $1
 `
 
-// The graph Geek examines by. It stays published while materials change
-// until the next build, but a course without materials has none.
+func (q *Queries) ReadCourseGraphMap(ctx context.Context, subjectID string) ([]byte, error) {
+	row := q.db.QueryRow(ctx, readCourseGraphMap, subjectID)
+	var graph []byte
+	err := row.Scan(&graph)
+	return graph, err
+}
+
+const readPublishedCourseGraph = `-- name: ReadPublishedCourseGraph :one
+SELECT g.graph FROM course_graphs g
+WHERE g.subject_id=$1 AND (g.source='competency_map' OR EXISTS(SELECT 1 FROM subject_materials m WHERE m.subject_id=g.subject_id))
+`
+
+// The graph Geek examines by. It stays published while its source changes
+// until the next build; a graph of materials goes with the last of them, a
+// graph of a competency map needs none.
 func (q *Queries) ReadPublishedCourseGraph(ctx context.Context, subjectID string) ([]byte, error) {
 	row := q.db.QueryRow(ctx, readPublishedCourseGraph, subjectID)
 	var graph []byte
@@ -225,9 +253,9 @@ func (q *Queries) RenewCourseGraph(ctx context.Context, arg RenewCourseGraphPara
 }
 
 const requestCourseGraphBuild = `-- name: RequestCourseGraphBuild :one
-INSERT INTO course_graph_jobs(subject_id, fingerprint, updated_at)
-SELECT i.subject_id, i.fingerprint, $1::bigint FROM course_graph_inputs i WHERE i.subject_id = $2
-ON CONFLICT(subject_id) DO UPDATE SET fingerprint=excluded.fingerprint,
+INSERT INTO course_graph_jobs(subject_id, source, fingerprint, updated_at)
+SELECT i.subject_id, 'materials', i.fingerprint, $1::bigint FROM course_graph_inputs i WHERE i.subject_id = $2
+ON CONFLICT(subject_id) DO UPDATE SET source=excluded.source, fingerprint=excluded.fingerprint,
     status='pending', attempts=0, available_at=0, lease_until=0, lease_token='', error_message='', updated_at=excluded.updated_at
 WHERE course_graph_jobs.status NOT IN ('pending', 'processing')
 RETURNING subject_id
@@ -247,4 +275,55 @@ func (q *Queries) RequestCourseGraphBuild(ctx context.Context, arg RequestCourse
 	var subject_id string
 	err := row.Scan(&subject_id)
 	return subject_id, err
+}
+
+const requestCourseGraphMapBuild = `-- name: RequestCourseGraphMapBuild :one
+INSERT INTO course_graph_jobs(subject_id, source, fingerprint, updated_at)
+SELECT m.subject_id, 'competency_map', m.fingerprint, $1::bigint FROM course_graph_maps m WHERE m.subject_id = $2
+ON CONFLICT(subject_id) DO UPDATE SET source=excluded.source, fingerprint=excluded.fingerprint,
+    status='pending', attempts=0, available_at=0, lease_until=0, lease_token='', error_message='', updated_at=excluded.updated_at
+WHERE course_graph_jobs.status NOT IN ('pending', 'processing')
+RETURNING subject_id
+`
+
+type RequestCourseGraphMapBuildParams struct {
+	Now       int64
+	SubjectID string
+}
+
+// The admin imported a competency map: queue a build of it unless a build of
+// either source is already queued or running.
+func (q *Queries) RequestCourseGraphMapBuild(ctx context.Context, arg RequestCourseGraphMapBuildParams) (string, error) {
+	row := q.db.QueryRow(ctx, requestCourseGraphMapBuild, arg.Now, arg.SubjectID)
+	var subject_id string
+	err := row.Scan(&subject_id)
+	return subject_id, err
+}
+
+const saveCourseGraphMap = `-- name: SaveCourseGraphMap :exec
+INSERT INTO course_graph_maps(subject_id, filename, sheet, fingerprint, graph, uploaded_at)
+VALUES ($1, $2, $3, $4, $5::jsonb, $6::bigint)
+ON CONFLICT(subject_id) DO UPDATE SET filename=excluded.filename, sheet=excluded.sheet,
+    fingerprint=excluded.fingerprint, graph=excluded.graph, uploaded_at=excluded.uploaded_at
+`
+
+type SaveCourseGraphMapParams struct {
+	SubjectID   string
+	Filename    string
+	Sheet       string
+	Fingerprint string
+	Graph       []byte
+	Now         int64
+}
+
+func (q *Queries) SaveCourseGraphMap(ctx context.Context, arg SaveCourseGraphMapParams) error {
+	_, err := q.db.Exec(ctx, saveCourseGraphMap,
+		arg.SubjectID,
+		arg.Filename,
+		arg.Sheet,
+		arg.Fingerprint,
+		arg.Graph,
+		arg.Now,
+	)
+	return err
 }

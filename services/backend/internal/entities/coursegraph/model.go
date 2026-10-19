@@ -2,10 +2,16 @@ package coursegraph
 
 import "encoding/json"
 
+// Job is a claimed build; Source is SourceMaterials or SourceMap.
 type Job struct {
 	SubjectID, Fingerprint, Token string
+	Source                        string
 	Attempts                      int
 }
+
+// SourceMaterials marks a build of the course materials; SourceMap (in
+// competency_map.go) marks a build of an imported competency map.
+const SourceMaterials = "materials"
 
 type Material struct {
 	ID               string          `json:"id"`
@@ -19,11 +25,10 @@ type Material struct {
 }
 
 // Where the graph of a snapshot comes from: a build from the course
-// materials, the fixture Geek examines by until the first build, or nothing.
+// materials, a build from a competency map, or nothing.
 const (
-	SourceBuilt   = "built"
-	SourceFixture = "fixture"
-	SourceNone    = "none"
+	SourceBuilt = "built"
+	SourceNone  = "none"
 )
 
 // Snapshot is the published graph of a course and the state of its build.
@@ -34,13 +39,24 @@ type Snapshot struct {
 	Attempts     int32           `json:"attempts"`
 	ErrorMessage string          `json:"error_message"`
 	Graph        json.RawMessage `json:"graph" swaggertype:"object" extensions:"x-nullable"`
-	GraphSource  string          `json:"graph_source" enums:"built,fixture,none"`
-	UpdatedAt    int64           `json:"updated_at"`
-	Stale        bool            `json:"stale"`
-	InputsReady  bool            `json:"inputs_ready"`
+	GraphSource  string          `json:"graph_source" enums:"built,competency_map,none"`
+	// BuildSource is what the last requested build reads: materials or
+	// competency_map; null before the first request.
+	BuildSource *string `json:"build_source" enums:"materials,competency_map" extensions:"x-nullable"`
+	// Map is the imported competency map, if any.
+	Map         *MapFile `json:"map" extensions:"x-nullable"`
+	UpdatedAt   int64    `json:"updated_at"`
+	Stale       bool     `json:"stale"`
+	InputsReady bool     `json:"inputs_ready"`
 	// Progress is where a running build is; only while Status is processing.
 	// It lives in API memory, so after a restart it returns with the next poll.
 	Progress *BuildProgress `json:"progress" extensions:"x-nullable"`
+}
+
+// MapFile is the competency map imported last and the sheet it was read from.
+type MapFile struct {
+	Filename string `json:"filename"`
+	Sheet    string `json:"sheet"`
 }
 
 // BuildProgress is stage StageIndex of StageCount of a running build and the

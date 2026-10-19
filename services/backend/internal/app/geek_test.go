@@ -7,10 +7,6 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
-	"time"
-
-	geekapp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/geek/application"
-	geekgraph "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/geek/infrastructure/graph"
 )
 
 const geekFixture = "../../../../api/fixtures/course-graph.json"
@@ -48,20 +44,19 @@ func decodeSession(t *testing.T, w *httptest.ResponseRecorder) geekSession {
 	return s
 }
 
-// geekFlow runs a whole diagnostic over HTTP on the configured graph fixture
-// with the mock examiner and checks every response against the contract.
-func geekFlow(t *testing.T, f *fixture, access *http.Cookie, check func(method, path string, w *httptest.ResponseRecorder)) string {
+// geekFlow runs a whole diagnostic over HTTP on graph, published for
+// subject:test, with the mock examiner and checks every response against the
+// contract.
+func geekFlow(t *testing.T, f *fixture, access *http.Cookie, graph []byte, check func(method, path string, w *httptest.ResponseRecorder)) string {
 	t.Helper()
 	start := `{"subject_id":"subject:test"}`
-	// The fixture is served once its rephrases are prepared (decision of
-	// 18.10.2026); until then a diagnostic does not start.
-	f.app.fixture = geekapp.NewPreparedGraph(geekgraph.Fixture{Path: f.app.cfg.GeekGraphFixture}, f.app.examiner, nil, f.app.warmer, nil)
+	// A course without a published graph has none to examine by.
 	notReady := f.keyed("POST", "/diagnostic-sessions", "geek-not-ready", start, access)
 	if notReady.Code != http.StatusConflict || !strings.Contains(notReady.Body.String(), "GRAPH_NOT_READY") {
-		t.Fatalf("start before the fixture is prepared: %d %s", notReady.Code, notReady.Body.String())
+		t.Fatalf("start before the graph is published: %d %s", notReady.Code, notReady.Body.String())
 	}
 	check("POST", "/diagnostic-sessions", notReady)
-	prepareFixture(t, f)
+	publishGraph(t, f, "subject:test", graph)
 	created := f.keyed("POST", "/diagnostic-sessions", "geek-start", start, access)
 	if created.Code != http.StatusCreated {
 		t.Fatalf("start: %d %s", created.Code, created.Body.String())
@@ -149,26 +144,13 @@ func geekFlow(t *testing.T, f *fixture, access *http.Cookie, check func(method, 
 	return session.ID
 }
 
-// prepareFixture runs the preparation of the fixture until it is served.
-func prepareFixture(t *testing.T, f *fixture) {
+// publishGraph publishes graph for a course as a build of a competency map
+// would, so the course needs no materials.
+func publishGraph(t *testing.T, f *fixture, subjectID string, graph []byte) {
 	t.Helper()
-	ctx, cancel := context.WithCancel(context.Background())
-	done := make(chan struct{})
-	go func() { _ = f.app.fixture.Run(ctx); close(done) }()
-	t.Cleanup(func() { cancel(); <-done })
-	for deadline := time.Now().Add(10 * time.Second); ; time.Sleep(5 * time.Millisecond) {
-		g, ok, err := f.app.fixture.Current(ctx, "")
-		if err != nil {
-			t.Fatal(err)
-		}
-		if ok {
-			if left := geekapp.Unprepared(g); len(left) != 0 {
-				t.Fatalf("served with unprepared nodes %v", left)
-			}
-			return
-		}
-		if time.Now().After(deadline) {
-			t.Fatal("the fixture was not prepared")
-		}
+	if _, err := f.pool.Exec(context.Background(), `INSERT INTO course_graphs(subject_id, source, fingerprint, graph, updated_at)
+		VALUES ($1, 'competency_map', 'test', $2, 1)
+		ON CONFLICT(subject_id) DO UPDATE SET graph=excluded.graph, updated_at=2`, subjectID, graph); err != nil {
+		t.Fatal(err)
 	}
 }

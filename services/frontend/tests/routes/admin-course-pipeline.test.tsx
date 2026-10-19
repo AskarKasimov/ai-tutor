@@ -44,7 +44,7 @@ function setup({
   cleaning = false,
   cleaningFailed = false,
   graphReady = false,
-  fixture = false,
+  competencyMap,
   uploadGate,
 }: {
   processing?: boolean
@@ -52,13 +52,13 @@ function setup({
   cleaning?: boolean
   cleaningFailed?: boolean
   graphReady?: boolean
-  // Before the first build the backend serves the default (fixture) graph;
-  // a requested build then publishes the graph from the materials.
-  fixture?: boolean
+  // The import of a competency map: a book of several sheets asks for one,
+  // a bad map names its cells; the build then publishes the graph of the map.
+  competencyMap?: 'sheets' | 'invalid'
   uploadGate?: Promise<void>
 } = {}) {
   let graphRequested = false
-  let graphReads = 0
+  let mapImported = false
   const calls = vi.fn(async (url: string, init?: RequestInit) => {
     if (url.endsWith('/auth/me')) return Response.json(admin)
     if (url.endsWith('/admin/material-kinds'))
@@ -121,29 +121,74 @@ function setup({
                   }
                 : material,
       ])
-    if (fixture && (url.endsWith('/graph') || url.endsWith('/graph/build'))) {
-      if (init?.method === 'POST') graphRequested = true
-      else if (graphRequested) graphReads += 1
-      const built = graphRequested && graphReads > 0
+    if (url.endsWith('/graph/competency-map')) {
+      const body = init?.body as FormData
+      if (competencyMap === 'invalid')
+        return Response.json(
+          {
+            code: 'COMPETENCY_MAP_INVALID',
+            message: 'Карта на листе «Карта» содержит ошибки.',
+            details: [
+              {
+                path: 'file',
+                code: 'COMPETENCY_MAP_CELL',
+                message:
+                  'Строка 3, «Уровень по Блуму»: Неизвестный уровень по Блуму.',
+              },
+            ],
+          },
+          { status: 422 },
+        )
+      if (!body.get('sheet'))
+        return Response.json(
+          {
+            code: 'COMPETENCY_MAP_SHEET_REQUIRED',
+            message: 'В книге несколько листов с картой; выберите лист.',
+            details: ['Карта', 'Карта_ВСЯ'].map((sheet) => ({
+              path: 'sheet',
+              code: 'COMPETENCY_MAP_SHEET',
+              message: sheet,
+            })),
+          },
+          { status: 422 },
+        )
+      mapImported = true
+      return Response.json(
+        {
+          status: 'pending',
+          attempts: 0,
+          error_message: '',
+          graph: null,
+          graph_source: 'none',
+          build_source: 'competency_map',
+          map: { filename: 'map.xlsx', sheet: body.get('sheet') },
+          stale: false,
+          inputs_ready: true,
+          updated_at: 0,
+        },
+        { status: 202 },
+      )
+    }
+    if (mapImported && url.endsWith('/graph'))
       return Response.json({
-        status: built ? 'ready' : graphRequested ? 'pending' : 'not_requested',
+        status: 'ready',
         attempts: 0,
         error_message: '',
         graph: {
           topics: [
-            built
-              ? { id: 'ml', title: 'Тема из лекции' }
-              : { id: 'AI-01-01', title: 'Подходы к определению ИИ' },
+            { id: 'basic', title: 'Называет части агента' },
+            { id: 'main', title: 'Выбирает тип агента' },
           ],
-          prerequisites: [],
-          hierarchy: [],
+          prerequisites: [{ source: 'basic', target: 'main' }],
+          hierarchy: [{ source: 'main', target: 'basic' }],
         },
-        graph_source: built ? 'built' : 'fixture',
+        graph_source: 'competency_map',
+        build_source: 'competency_map',
+        map: { filename: 'map.xlsx', sheet: 'Карта_ВСЯ' },
         stale: false,
         inputs_ready: true,
-        updated_at: built ? 2 : 0,
+        updated_at: 2,
       })
-    }
     if (url.endsWith('/graph') || url.endsWith('/graph/build')) {
       if (init?.method === 'POST') graphRequested = true
       return Response.json({
@@ -232,44 +277,64 @@ it('keeps the master graph viewer for a published graph', async () => {
     name: 'Граф знаний курса',
   })
   expect(within(canvas).getByText('Линейная регрессия')).toBeInTheDocument()
-  expect(screen.queryByText('Демо-граф')).not.toBeInTheDocument()
+  expect(screen.queryByText('По карте компетенций')).not.toBeInTheDocument()
 })
 
-it('draws the default graph without treating the course as built', async () => {
-  setup({ fixture: true })
-  open()
-  const canvas = await screen.findByRole('region', {
-    name: 'Граф знаний курса',
-  })
-  expect(
-    within(canvas).getByText('Подходы к определению ИИ'),
-  ).toBeInTheDocument()
-  expect(screen.getByText('Демо-граф')).toBeVisible()
-  // Everything else still waits for a graph built from the materials.
-  expect(screen.getByText('Не готов')).toBeVisible()
-  expect(
-    screen.getByRole('button', { name: 'Собрать граф тем' }),
-  ).toBeInTheDocument()
-  expect(screen.queryByText(/Курс готов для студентов/)).not.toBeInTheDocument()
-})
+function chooseMap() {
+  return screen
+    .findByLabelText('Импортировать карту компетенций', { selector: 'input' })
+    .then((input) =>
+      fireEvent.change(input, {
+        target: {
+          files: [new File(['PK'], 'map.xlsx', { type: 'application/zip' })],
+        },
+      }),
+    )
+}
 
-it('replaces the default graph once a build from the materials succeeds', async () => {
-  setup({ fixture: true })
+it('builds the graph from a competency map once a sheet is chosen', async () => {
+  const calls = setup({ competencyMap: 'sheets' })
   open()
-  fireEvent.click(
-    await screen.findByRole('button', { name: 'Собрать граф тем' }),
-  )
+  await chooseMap()
   const dialog = await screen.findByRole('alertdialog')
-  fireEvent.click(within(dialog).getByRole('button', { name: 'Начать сборку' }))
+  expect(within(dialog).getByText(/по карте «map\.xlsx»/)).toBeVisible()
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Импортировать' }))
+  expect(await screen.findByLabelText('Лист карты')).toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: 'Импортировать лист' }))
   expect(
-    await screen.findByText('Тема из лекции', undefined, { timeout: 8000 }),
-  ).toBeInTheDocument()
-  expect(screen.queryByText('Подходы к определению ИИ')).not.toBeInTheDocument()
-  expect(screen.queryByText('Демо-граф')).not.toBeInTheDocument()
+    await screen.findByText('По карте компетенций', undefined, {
+      timeout: 8000,
+    }),
+  ).toBeVisible()
   expect(
-    screen.getByText('Курс готов для студентов. В графе тем: 1.'),
+    screen.getByText('Последняя карта: map.xlsx, лист «Карта_ВСЯ».'),
+  ).toBeVisible()
+  expect(
+    screen.getByText('Курс готов для студентов. В графе тем: 2.'),
   ).toBeInTheDocument()
+  const imports = calls.mock.calls.filter(([url]) =>
+    String(url).endsWith('/graph/competency-map'),
+  )
+  expect(imports).toHaveLength(2)
+  // The first send has no sheet; the second sends the first one offered.
+  expect((imports[0][1]?.body as FormData).get('sheet')).toBeNull()
+  expect((imports[1][1]?.body as FormData).get('sheet')).toBe('Карта')
 }, 15000)
+
+it('names the bad cells of a rejected competency map', async () => {
+  setup({ competencyMap: 'invalid' })
+  open()
+  await chooseMap()
+  const dialog = await screen.findByRole('alertdialog')
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Импортировать' }))
+  const alert = await screen.findByText(
+    'Строка 3, «Уровень по Блуму»: Неизвестный уровень по Блуму.',
+  )
+  expect(alert).toBeVisible()
+  expect(
+    screen.getByText('Карта на листе «Карта» содержит ошибки.'),
+  ).toBeVisible()
+})
 
 it('uploads a queued PDF using the master multipart field', async () => {
   const calls = setup()

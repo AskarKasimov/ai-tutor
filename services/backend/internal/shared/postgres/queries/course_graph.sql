@@ -3,24 +3,43 @@
 -- unless one is already queued or running. No row: inputs are not ready
 -- (a material is still processing or failed, or the course has none) or a
 -- build is already in progress.
-INSERT INTO course_graph_jobs(subject_id, fingerprint, updated_at)
-SELECT i.subject_id, i.fingerprint, sqlc.arg(now)::bigint FROM course_graph_inputs i WHERE i.subject_id = sqlc.arg(subject_id)
-ON CONFLICT(subject_id) DO UPDATE SET fingerprint=excluded.fingerprint,
+INSERT INTO course_graph_jobs(subject_id, source, fingerprint, updated_at)
+SELECT i.subject_id, 'materials', i.fingerprint, sqlc.arg(now)::bigint FROM course_graph_inputs i WHERE i.subject_id = sqlc.arg(subject_id)
+ON CONFLICT(subject_id) DO UPDATE SET source=excluded.source, fingerprint=excluded.fingerprint,
     status='pending', attempts=0, available_at=0, lease_until=0, lease_token='', error_message='', updated_at=excluded.updated_at
 WHERE course_graph_jobs.status NOT IN ('pending', 'processing')
 RETURNING subject_id;
 
+-- name: RequestCourseGraphMapBuild :one
+-- The admin imported a competency map: queue a build of it unless a build of
+-- either source is already queued or running.
+INSERT INTO course_graph_jobs(subject_id, source, fingerprint, updated_at)
+SELECT m.subject_id, 'competency_map', m.fingerprint, sqlc.arg(now)::bigint FROM course_graph_maps m WHERE m.subject_id = sqlc.arg(subject_id)
+ON CONFLICT(subject_id) DO UPDATE SET source=excluded.source, fingerprint=excluded.fingerprint,
+    status='pending', attempts=0, available_at=0, lease_until=0, lease_token='', error_message='', updated_at=excluded.updated_at
+WHERE course_graph_jobs.status NOT IN ('pending', 'processing')
+RETURNING subject_id;
+
+-- name: SaveCourseGraphMap :exec
+INSERT INTO course_graph_maps(subject_id, filename, sheet, fingerprint, graph, uploaded_at)
+VALUES (sqlc.arg(subject_id), sqlc.arg(filename), sqlc.arg(sheet), sqlc.arg(fingerprint), sqlc.arg(graph)::jsonb, sqlc.arg(now)::bigint)
+ON CONFLICT(subject_id) DO UPDATE SET filename=excluded.filename, sheet=excluded.sheet,
+    fingerprint=excluded.fingerprint, graph=excluded.graph, uploaded_at=excluded.uploaded_at;
+
+-- name: ReadCourseGraphMap :one
+SELECT graph FROM course_graph_maps WHERE subject_id = $1;
+
 -- name: ClaimCourseGraph :one
--- A requested build takes the materials as they are when it starts; it waits
--- while any material of the course is still being processed.
+-- A requested build takes its source as it is when it starts: the materials
+-- (it waits while any of them is still being processed) or the imported map.
 UPDATE course_graph_jobs j SET status='processing', fingerprint=i.fingerprint,
     attempts=j.attempts+CASE WHEN j.status='pending' THEN 1 ELSE 0 END,
     lease_token=sqlc.arg(token), lease_until=sqlc.arg(now)::bigint+60, updated_at=sqlc.arg(now)
-FROM course_graph_inputs i
-WHERE i.subject_id=j.subject_id AND j.subject_id=(SELECT c.subject_id FROM course_graph_jobs c
+FROM course_graph_job_inputs i
+WHERE i.subject_id=j.subject_id AND i.source=j.source AND j.subject_id=(SELECT c.subject_id FROM course_graph_jobs c
     WHERE ((c.status='pending' AND c.available_at<=sqlc.arg(now))
        OR (c.status='processing' AND c.lease_until<=sqlc.arg(now)))
-      AND EXISTS(SELECT 1 FROM course_graph_inputs r WHERE r.subject_id=c.subject_id)
+      AND EXISTS(SELECT 1 FROM course_graph_job_inputs r WHERE r.subject_id=c.subject_id AND r.source=c.source)
     ORDER BY c.updated_at FOR UPDATE OF c SKIP LOCKED LIMIT 1)
 RETURNING j.*;
 
@@ -38,12 +57,13 @@ WITH accepted AS (
     UPDATE course_graph_jobs j SET status='ready', lease_until=0, error_message='', updated_at=sqlc.arg(now)
     WHERE j.subject_id=sqlc.arg(subject_id) AND j.lease_token=sqlc.arg(token) AND j.status='processing'
       AND j.fingerprint=sqlc.arg(fingerprint)
-      AND EXISTS(SELECT 1 FROM course_graph_inputs i WHERE i.subject_id=sqlc.arg(subject_id) AND i.fingerprint=sqlc.arg(fingerprint))
-    RETURNING j.subject_id, j.fingerprint
+      AND EXISTS(SELECT 1 FROM course_graph_job_inputs i WHERE i.subject_id=sqlc.arg(subject_id)
+                 AND i.source=j.source AND i.fingerprint=sqlc.arg(fingerprint))
+    RETURNING j.subject_id, j.source, j.fingerprint
 )
-INSERT INTO course_graphs(subject_id,fingerprint,graph,updated_at)
-SELECT accepted.subject_id,accepted.fingerprint,sqlc.arg(graph)::jsonb,sqlc.arg(now)::bigint FROM accepted
-ON CONFLICT(subject_id) DO UPDATE SET fingerprint=excluded.fingerprint,graph=excluded.graph,updated_at=excluded.updated_at
+INSERT INTO course_graphs(subject_id,source,fingerprint,graph,updated_at)
+SELECT accepted.subject_id,accepted.source,accepted.fingerprint,sqlc.arg(graph)::jsonb,sqlc.arg(now)::bigint FROM accepted
+ON CONFLICT(subject_id) DO UPDATE SET source=excluded.source,fingerprint=excluded.fingerprint,graph=excluded.graph,updated_at=excluded.updated_at
 RETURNING subject_id;
 
 -- name: FailCourseGraph :exec
@@ -56,21 +76,28 @@ SELECT s.id, coalesce(j.status,'not_requested')::text AS status,
        coalesce(j.attempts,0)::integer AS attempts, coalesce(j.error_message,'')::text AS error_message,
        coalesce(g.graph,'null'::jsonb)::jsonb AS graph,
        coalesce(g.updated_at,0)::bigint AS updated_at,
-       (g.fingerprint IS NOT NULL AND g.fingerprint IS DISTINCT FROM i.fingerprint)::boolean AS stale,
-       (i.subject_id IS NOT NULL)::boolean AS inputs_ready
+       coalesce(g.source,'')::text AS graph_source,
+       -- Stale: the source the graph was built from changed since.
+       (g.fingerprint IS NOT NULL AND g.fingerprint IS DISTINCT FROM
+           CASE g.source WHEN 'competency_map' THEN m.fingerprint ELSE i.fingerprint END)::boolean AS stale,
+       (i.subject_id IS NOT NULL)::boolean AS inputs_ready,
+       coalesce(j.source,'')::text AS job_source,
+       coalesce(m.filename,'')::text AS map_filename, coalesce(m.sheet,'')::text AS map_sheet
 FROM subjects s LEFT JOIN course_graph_jobs j ON j.subject_id=s.id
 LEFT JOIN course_graphs g ON g.subject_id=s.id
-LEFT JOIN course_graph_inputs i ON i.subject_id=s.id WHERE s.id=$1;
+LEFT JOIN course_graph_inputs i ON i.subject_id=s.id
+LEFT JOIN course_graph_maps m ON m.subject_id=s.id WHERE s.id=$1;
 
 -- name: ReadPublishedCourseGraph :one
--- The graph Geek examines by. It stays published while materials change
--- until the next build, but a course without materials has none.
+-- The graph Geek examines by. It stays published while its source changes
+-- until the next build; a graph of materials goes with the last of them, a
+-- graph of a competency map needs none.
 SELECT g.graph FROM course_graphs g
-WHERE g.subject_id=$1 AND EXISTS(SELECT 1 FROM subject_materials m WHERE m.subject_id=g.subject_id);
+WHERE g.subject_id=$1 AND (g.source='competency_map' OR EXISTS(SELECT 1 FROM subject_materials m WHERE m.subject_id=g.subject_id));
 
 -- name: ListPublishedCourseGraphs :many
 -- Every graph Geek examines by, under the condition of ReadPublishedCourseGraph;
 -- the newest first, so their questions are voiced first.
 SELECT g.graph FROM course_graphs g
-WHERE EXISTS(SELECT 1 FROM subject_materials m WHERE m.subject_id=g.subject_id)
+WHERE g.source='competency_map' OR EXISTS(SELECT 1 FROM subject_materials m WHERE m.subject_id=g.subject_id)
 ORDER BY g.updated_at DESC, g.subject_id;

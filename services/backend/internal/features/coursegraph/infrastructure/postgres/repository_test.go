@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -159,5 +160,42 @@ func TestPublishedListsTheGraphsGeekExaminesBy(t *testing.T) {
 	var g struct{ Topics []struct{ Question string } }
 	if err := json.Unmarshal(graphs[0], &g); err != nil || len(g.Topics) != 1 || g.Topics[0].Question != "Почему?" {
 		t.Fatalf("graph = %s, %v", graphs[0], err)
+	}
+}
+
+func TestAMapIsBuiltWithoutMaterialsAndReplacesTheGraph(t *testing.T) {
+	pool := repositoryPool(t)
+	repo := New(pool)
+	ctx, now := context.Background(), time.Unix(100, 0)
+	graph := json.RawMessage(`{"version":"competency-map-v1","source":"competency_map","topics":[{"id":"a","title":"ОР"}]}`)
+	// The materials of s are still being cleaned: a map does not wait for them.
+	if queued, err := repo.SaveMap(ctx, "s", "map.xlsx", "Карта", graph, now); err != nil || !queued {
+		t.Fatalf("save map: %v %v", queued, err)
+	}
+	if queued, err := repo.SaveMap(ctx, "s", "other.xlsx", "Карта", graph, now); err != nil || queued {
+		t.Fatalf("a second map during the build: %v %v", queued, err)
+	}
+	job, err := repo.Claim(ctx, "w1", now)
+	if err != nil || job.SubjectID != "s" || job.Source != "competency_map" {
+		t.Fatalf("claim: %+v %v", job, err)
+	}
+	stored, err := repo.MapGraph(ctx, "s")
+	// jsonb keeps the content, not the key order.
+	if err != nil || !strings.Contains(string(stored), `"version": "competency-map-v1"`) {
+		t.Fatalf("map graph: %s %v", stored, err)
+	}
+	if accepted, err := repo.Finish(ctx, job, graph, now); err != nil || !accepted {
+		t.Fatalf("finish: %v %v", accepted, err)
+	}
+	snapshot, err := repo.Read(ctx, "s")
+	if err != nil || snapshot.GraphSource != "competency_map" || snapshot.Stale || snapshot.Map == nil ||
+		snapshot.Map.Filename != "map.xlsx" || snapshot.BuildSource == nil || *snapshot.BuildSource != "competency_map" {
+		t.Fatalf("snapshot = %+v %v", snapshot, err)
+	}
+	// Geek reads a graph of a map after the last material is gone.
+	exec(t, pool, `DELETE FROM subject_materials`)
+	published, err := repo.Published(ctx)
+	if err != nil || len(published) != 1 {
+		t.Fatalf("published: %d %v", len(published), err)
 	}
 }

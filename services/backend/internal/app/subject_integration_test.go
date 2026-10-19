@@ -119,33 +119,42 @@ ON CONFLICT (id) DO UPDATE SET status = EXCLUDED.status`, status); err != nil {
 	}
 }
 
-func TestSubjectCatalogShowsNewSubjectsWithTheGraphFixture(t *testing.T) {
+func TestSubjectWithAGraphOfACompetencyMapIsReadyWithoutMaterials(t *testing.T) {
 	t.Parallel()
-	cfg := testConfig()
-	cfg.GeekGraphFixture = geekFixture
-	f := newFixtureWithConfig(t, cfg)
+	f := newFixtureWithConfig(t, testConfig())
 	if _, err := f.pool.Exec(context.Background(), `DELETE FROM subjects WHERE id='subject:test'`); err != nil {
 		t.Fatal(err)
 	}
-	student, _, _ := f.register(t, "subject-fixture-student@example.edu")
+	student, _, _ := f.register(t, "subject-map-student@example.edu")
 	admin := f.admin(t)
-	created := f.request(http.MethodPost, "/admin/subjects", `{"name":"Только название"}`, admin)
+	created := f.request(http.MethodPost, "/admin/subjects", `{"name":"Только карта"}`, admin)
 	var value struct {
 		ID    string `json:"id"`
 		Ready bool   `json:"ready"`
 	}
-	if created.Code != http.StatusCreated || json.Unmarshal(created.Body.Bytes(), &value) != nil || !value.Ready {
-		t.Fatalf("a subject is ready on creation with the fixture: %d %s", created.Code, created.Body.String())
+	// Without a default graph a new course has nothing to examine by.
+	if created.Code != http.StatusCreated || json.Unmarshal(created.Body.Bytes(), &value) != nil || value.Ready {
+		t.Fatalf("a new subject is not ready: %d %s", created.Code, created.Body.String())
 	}
-	response := f.request(http.MethodGet, "/subjects", "", student)
-	var items []struct {
+	catalog := func() []struct {
 		ID    string `json:"id"`
 		Ready bool   `json:"ready"`
+	} {
+		response := f.request(http.MethodGet, "/subjects", "", student)
+		var items []struct {
+			ID    string `json:"id"`
+			Ready bool   `json:"ready"`
+		}
+		if response.Code != http.StatusOK || json.Unmarshal(response.Body.Bytes(), &items) != nil {
+			t.Fatalf("student catalog: %d %s", response.Code, response.Body.String())
+		}
+		return items
 	}
-	if response.Code != http.StatusOK || json.Unmarshal(response.Body.Bytes(), &items) != nil {
-		t.Fatalf("student catalog: %d %s", response.Code, response.Body.String())
+	if items := catalog(); len(items) != 0 {
+		t.Fatalf("student catalog before the graph: %+v", items)
 	}
-	if len(items) != 1 || items[0].ID != value.ID || !items[0].Ready {
-		t.Fatalf("student catalog should contain the subject without materials: %+v", items)
+	publishGraph(t, f, value.ID, []byte(`{"nodes":[{"id":"a","title":"Агент"}]}`))
+	if items := catalog(); len(items) != 1 || items[0].ID != value.ID || !items[0].Ready {
+		t.Fatalf("student catalog should contain the subject of the map without materials: %+v", items)
 	}
 }

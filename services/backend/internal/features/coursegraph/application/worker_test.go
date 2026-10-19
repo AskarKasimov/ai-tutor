@@ -158,6 +158,10 @@ func TestTopicQuestionsAreThePreparedQuestionsOfTheGraph(t *testing.T) {
 	if got := TopicQuestions(graph); len(got) != 2 || got[0] != "Почему ACO находит короткий путь?" || got[1] != "Как муравьи находят путь?" {
 		t.Fatalf("questions = %q", got)
 	}
+	variants := json.RawMessage(`{"topics":[{"question":"Устно?","rephrase":"Проще?","variants":[{"question":"Устно?","rephrase":"Проще?"},{"question":"Академически?","rephrase":"Проще академически?"}]}]}`)
+	if got := TopicQuestions(variants); strings.Join(got, "|") != "Устно?|Проще?|Академически?|Проще академически?" {
+		t.Fatalf("questions of the variants = %q", got)
+	}
 	if got := TopicQuestions(json.RawMessage(`not json`)); len(got) != 0 {
 		t.Fatalf("questions of an invalid graph = %q", got)
 	}
@@ -243,56 +247,52 @@ func TestImportMapQueuesTheGraphOfTheMap(t *testing.T) {
 	var saved json.RawMessage
 	var sheet string
 	read := func([]byte) ([]coursegraph.MapSheet, error) {
-		return []coursegraph.MapSheet{{Name: "Карта", Rows: mapRows("К1. Агенты")}, {Name: "Легенда", Rows: [][]string{{"Поле"}}}}, nil
+		return []coursegraph.MapSheet{{Name: "Карта", Rows: mapRows("К1. Агенты")}, {Name: "ДИАГ", Rows: [][]string{{"Поле"}}}}, nil
 	}
 	repo := mapRepo{requestRepo: requestRepo{snapshot: coursegraph.Snapshot{Status: "ready"}}, saved: &saved, sheet: &sheet, queued: true}
 	w := New(repo, nil, nil, nil, nil, read)
-	if _, err := w.ImportMap(context.Background(), user.User{ID: "s", Role: user.Student}, "subject", "map.xlsx", nil, ""); !isFault(err, "FORBIDDEN") {
+	if _, err := w.ImportMap(context.Background(), user.User{ID: "s", Role: user.Student}, "subject", "map.xlsx", nil); !isFault(err, "FORBIDDEN") {
 		t.Fatalf("student import: %v", err)
 	}
-	if _, err := w.ImportMap(context.Background(), admin, "subject", "map.xlsx", nil, ""); err != nil {
+	if _, err := w.ImportMap(context.Background(), admin, "subject", "map.xlsx", nil); err != nil {
 		t.Fatal(err)
 	}
 	if sheet != "Карта" || !strings.Contains(string(saved), `"version":"competency-map-v1"`) {
 		t.Fatalf("saved sheet %q graph %s", sheet, saved)
 	}
 	busy := New(mapRepo{requestRepo: requestRepo{snapshot: coursegraph.Snapshot{Status: "processing"}}, saved: &saved, sheet: &sheet}, nil, nil, nil, nil, read)
-	if _, err := busy.ImportMap(context.Background(), admin, "subject", "map.xlsx", nil, ""); !isFault(err, "GRAPH_BUILD_IN_PROGRESS") {
+	if _, err := busy.ImportMap(context.Background(), admin, "subject", "map.xlsx", nil); !isFault(err, "GRAPH_BUILD_IN_PROGRESS") {
 		t.Fatalf("import during a build: %v", err)
 	}
 }
 
-func TestImportMapAsksForTheSheetAndNamesBadCells(t *testing.T) {
+func TestImportMapReadsTheFirstSheetAndNamesBadCells(t *testing.T) {
 	bad := mapRows("К1. Агенты")
 	bad[2][4] = "Вспоминать"
 	read := func([]byte) ([]coursegraph.MapSheet, error) {
 		return []coursegraph.MapSheet{{Name: "Карта", Rows: bad}, {Name: "Карта_ВСЯ", Rows: mapRows("К1. Агенты")}}, nil
 	}
 	w := New(mapRepo{requestRepo: requestRepo{snapshot: coursegraph.Snapshot{Status: "ready"}}}, nil, nil, nil, nil, read)
-	_, err := w.ImportMap(context.Background(), admin, "subject", "map.xlsx", nil, "")
+	_, err := w.ImportMap(context.Background(), admin, "subject", "map.xlsx", nil)
 	var f *fault.Error
-	if !errors.As(err, &f) || f.Code != "COMPETENCY_MAP_SHEET_REQUIRED" || len(f.Details) != 2 || f.Details[1].Message != "Карта_ВСЯ" {
-		t.Fatalf("several sheets: %+v", err)
-	}
-	_, err = w.ImportMap(context.Background(), admin, "subject", "map.xlsx", nil, "Карта")
 	if !errors.As(err, &f) || f.Code != "COMPETENCY_MAP_INVALID" || len(f.Details) != 1 || !strings.Contains(f.Details[0].Message, "Строка 3, «Уровень по Блуму»") {
 		t.Fatalf("bad cell: %+v", err)
 	}
 	unreadable := New(mapRepo{requestRepo: requestRepo{snapshot: coursegraph.Snapshot{Status: "ready"}}}, nil, nil, nil, nil,
 		func([]byte) ([]coursegraph.MapSheet, error) { return nil, errors.New("zip") })
-	if _, err := unreadable.ImportMap(context.Background(), admin, "subject", "map.pdf", nil, ""); !isFault(err, "COMPETENCY_MAP_INVALID") {
+	if _, err := unreadable.ImportMap(context.Background(), admin, "subject", "map.pdf", nil); !isFault(err, "COMPETENCY_MAP_INVALID") {
 		t.Fatalf("unreadable book: %v", err)
 	}
 }
 
-func TestImportMapTakesTheSheetByItsExactName(t *testing.T) {
+func TestImportMapKeepsTheExactNameOfTheFirstSheet(t *testing.T) {
 	var saved json.RawMessage
 	var sheet string
 	read := func([]byte) ([]coursegraph.MapSheet, error) {
 		return []coursegraph.MapSheet{{Name: "Карта ", Rows: mapRows("К1. Агенты")}, {Name: "Карта_ВСЯ", Rows: mapRows("К2. Логика")}}, nil
 	}
 	repo := mapRepo{requestRepo: requestRepo{snapshot: coursegraph.Snapshot{Status: "ready"}}, saved: &saved, sheet: &sheet, queued: true}
-	if _, err := New(repo, nil, nil, nil, nil, read).ImportMap(context.Background(), admin, "subject", "map.xlsx", nil, "Карта "); err != nil {
+	if _, err := New(repo, nil, nil, nil, nil, read).ImportMap(context.Background(), admin, "subject", "map.xlsx", nil); err != nil {
 		t.Fatal(err)
 	}
 	if sheet != "Карта " || !strings.Contains(string(saved), "К1. Агенты") {
@@ -301,7 +301,7 @@ func TestImportMapTakesTheSheetByItsExactName(t *testing.T) {
 }
 
 func TestBuildOfAMapPublishesItsGraphWithPreparedQuestions(t *testing.T) {
-	graph, err := coursegraph.BuildMapGraph([]coursegraph.MapSheet{{Name: "Карта", Rows: mapRows("К1. Агенты")}}, "")
+	graph, err := coursegraph.BuildMapGraph([]coursegraph.MapSheet{{Name: "Карта", Rows: mapRows("К1. Агенты")}})
 	if err != nil {
 		t.Fatal(err)
 	}

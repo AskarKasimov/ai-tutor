@@ -3,6 +3,8 @@ package graph
 import (
 	"os"
 	"testing"
+
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/exam"
 )
 
 func TestDecodeRejectsAnInvalidGraph(t *testing.T) {
@@ -21,12 +23,14 @@ func TestDecodeReadsAGraphOfACompetencyMap(t *testing.T) {
 	}
 	g, ok, err := Decode([]byte(`{"version":"competency-map-v1","source":"competency_map","topics":[` +
 		`{"id":"b","title":"Базовое","text":"Эталон","question":"Задание Б","assessment_guidance":"Балл (макс. 1)"},` +
-		`{"id":"m","title":"Основное","text":"Эталон","question":"Задание М"}],` +
+		`{"id":"m","title":"Основное","text":"Эталон","question":"Задание М","variants":[` +
+		`{"question":"Задание М","content":"Эталон"},{"question":"Задание М2","rephrase":"Проще","content":"Эталон 2","assessment_guidance":"Рубрика"}]}],` +
 		`"prerequisites":[{"source":"b","target":"m"}],"hierarchy":[{"source":"m","target":"b"}]}`))
 	if err != nil || !ok || g.Source != "competency_map" {
 		t.Fatalf("map graph: ok=%v err=%v source=%q", ok, err, g.Source)
 	}
-	if g.Nodes[0].AssessmentGuidance != "Балл (макс. 1)" || g.Nodes[1].MainQuestion() != "Задание М" || g.Nodes[1].Prerequisites[0] != "b" {
+	if g.Nodes[0].AssessmentGuidance != "Балл (макс. 1)" || g.Nodes[1].MainQuestion() != "Задание М" || g.Nodes[1].Prerequisites[0] != "b" ||
+		len(g.Nodes[1].Variants) != 2 || g.Nodes[1].Variants[1] != (exam.Variant{Question: "Задание М2", Rephrase: "Проще", Content: "Эталон 2", AssessmentGuidance: "Рубрика"}) {
 		t.Fatalf("nodes = %+v", g.Nodes)
 	}
 }

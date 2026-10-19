@@ -138,10 +138,16 @@ func (w *Warmer) retry(text string) {
 }
 
 // PreparedQuestions are the prepared texts of a graph that Geek asks as is:
-// the main question of each topic and its rephrase.
+// the main question of each topic and its rephrase, or those of each variant.
 func PreparedQuestions(g exam.Graph) []string {
 	out := []string{}
 	for _, n := range g.Nodes {
+		if len(n.Variants) > 0 {
+			for _, v := range n.Variants {
+				out = append(out, PreparedQuestions(exam.Graph{Nodes: []exam.Node{n.WithVariant(v)}})...)
+			}
+			continue
+		}
 		if q := n.MainQuestion(); q != "" {
 			out = append(out, q)
 		}

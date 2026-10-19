@@ -52,9 +52,9 @@ function setup({
   cleaning?: boolean
   cleaningFailed?: boolean
   graphReady?: boolean
-  // The import of a competency map: a book of several sheets asks for one,
-  // a bad map names its cells; the build then publishes the graph of the map.
-  competencyMap?: 'sheets' | 'invalid' | 'invalidSheet'
+  // The import of a competency map: a bad map names its cells; a good one is
+  // built from its first sheet and the build publishes the graph of the map.
+  competencyMap?: 'valid' | 'invalid'
   uploadGate?: Promise<void>
 } = {}) {
   let graphRequested = false
@@ -122,11 +122,7 @@ function setup({
                 : material,
       ])
     if (url.endsWith('/graph/competency-map')) {
-      const body = init?.body as FormData
-      if (
-        competencyMap === 'invalid' ||
-        (competencyMap === 'invalidSheet' && body.get('sheet') === 'Карта')
-      )
+      if (competencyMap === 'invalid')
         return Response.json(
           {
             code: 'COMPETENCY_MAP_INVALID',
@@ -142,19 +138,6 @@ function setup({
           },
           { status: 422 },
         )
-      if (!body.get('sheet'))
-        return Response.json(
-          {
-            code: 'COMPETENCY_MAP_SHEET_REQUIRED',
-            message: 'В книге несколько листов с картой; выберите лист.',
-            details: ['Карта', 'Карта_ВСЯ'].map((sheet) => ({
-              path: 'sheet',
-              code: 'COMPETENCY_MAP_SHEET',
-              message: sheet,
-            })),
-          },
-          { status: 422 },
-        )
       mapImported = true
       return Response.json(
         {
@@ -164,7 +147,7 @@ function setup({
           graph: null,
           graph_source: 'none',
           build_source: 'competency_map',
-          map: { filename: 'map.xlsx', sheet: body.get('sheet') },
+          map: { filename: 'map.xlsx', sheet: 'Карта компетенций v2' },
           stale: false,
           inputs_ready: true,
           updated_at: 0,
@@ -187,7 +170,7 @@ function setup({
         },
         graph_source: 'competency_map',
         build_source: 'competency_map',
-        map: { filename: 'map.xlsx', sheet: 'Карта_ВСЯ' },
+        map: { filename: 'map.xlsx', sheet: 'Карта компетенций v2' },
         stale: false,
         inputs_ready: true,
         updated_at: 2,
@@ -295,22 +278,20 @@ function chooseMap() {
     )
 }
 
-it('builds the graph from a competency map once a sheet is chosen', async () => {
-  const calls = setup({ competencyMap: 'sheets' })
+it('builds the graph from the first sheet of a competency map', async () => {
+  const calls = setup({ competencyMap: 'valid' })
   open()
   await chooseMap()
   const dialog = await screen.findByRole('alertdialog')
   expect(within(dialog).getByText(/по карте «map\.xlsx»/)).toBeVisible()
   fireEvent.click(within(dialog).getByRole('button', { name: 'Импортировать' }))
-  expect(await screen.findByLabelText('Лист карты')).toBeInTheDocument()
-  fireEvent.click(screen.getByRole('button', { name: 'Импортировать лист' }))
   expect(
     await screen.findByText('По карте компетенций', undefined, {
       timeout: 8000,
     }),
   ).toBeVisible()
   expect(
-    screen.getByText('Последняя карта: map.xlsx, лист «Карта_ВСЯ».'),
+    screen.getByText('Последняя карта: map.xlsx, лист «Карта компетенций v2».'),
   ).toBeVisible()
   expect(
     screen.getByText('Курс готов для студентов. В графе тем: 2.'),
@@ -318,40 +299,10 @@ it('builds the graph from a competency map once a sheet is chosen', async () => 
   const imports = calls.mock.calls.filter(([url]) =>
     String(url).endsWith('/graph/competency-map'),
   )
-  expect(imports).toHaveLength(2)
-  // The first send has no sheet; the second sends the first one offered.
-  expect((imports[0][1]?.body as FormData).get('sheet')).toBeNull()
-  expect((imports[1][1]?.body as FormData).get('sheet')).toBe('Карта')
-}, 15000)
-
-it('keeps the sheets offered after a chosen sheet is rejected', async () => {
-  const calls = setup({ competencyMap: 'invalidSheet' })
-  open()
-  await chooseMap()
-  const dialog = await screen.findByRole('alertdialog')
-  fireEvent.click(within(dialog).getByRole('button', { name: 'Импортировать' }))
-  expect(await screen.findByLabelText('Лист карты')).toBeInTheDocument()
-  // The first sheet offered has bad cells.
-  fireEvent.click(screen.getByRole('button', { name: 'Импортировать лист' }))
-  expect(
-    await screen.findByText(
-      'Строка 3, «Уровень по Блуму»: Неизвестный уровень по Блуму.',
-    ),
-  ).toBeVisible()
-  // The choice stays: another sheet is sent without choosing the file again.
-  expect(screen.getByLabelText('Лист карты')).toBeInTheDocument()
-  fireEvent.click(screen.getByRole('combobox', { name: 'Лист карты' }))
-  fireEvent.click(await screen.findByRole('option', { name: 'Карта_ВСЯ' }))
-  fireEvent.click(screen.getByRole('button', { name: 'Импортировать лист' }))
-  expect(
-    await screen.findByText('По карте компетенций', undefined, {
-      timeout: 8000,
-    }),
-  ).toBeVisible()
-  const sent = calls.mock.calls
-    .filter(([url]) => String(url).endsWith('/graph/competency-map'))
-    .map(([, init]) => (init?.body as FormData).get('sheet'))
-  expect(sent).toEqual([null, 'Карта', 'Карта_ВСЯ'])
+  // One send, with the file only: the server reads the first sheet.
+  expect(imports).toHaveLength(1)
+  expect((imports[0][1]?.body as FormData).has('sheet')).toBe(false)
+  expect(screen.queryByLabelText('Лист карты')).not.toBeInTheDocument()
 }, 15000)
 
 it('names the bad cells of a rejected competency map', async () => {

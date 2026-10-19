@@ -79,6 +79,7 @@ func Decode(data []byte) (exam.Graph, bool, error) {
 			Question string                `json:"question"`
 			Rephrase string                `json:"rephrase"`
 			Guidance string                `json:"assessment_guidance"`
+			Variants []exam.Variant        `json:"variants"`
 			Provides []string              `json:"provides"`
 			Requires []string              `json:"requires"`
 			Sources  []exam.SourceCitation `json:"sources"`
@@ -121,6 +122,8 @@ func Decode(data []byte) (exam.Graph, bool, error) {
 				// its task as the teacher's rule for the grader.
 				AssessmentGuidance: strings.TrimSpace(t.Guidance),
 				Sources:            t.Sources,
+				// Its tasks, one of which the exam asks.
+				Variants: t.Variants,
 			}
 		}
 	} else {

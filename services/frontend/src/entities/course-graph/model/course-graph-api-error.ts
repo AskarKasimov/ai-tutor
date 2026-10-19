@@ -1,5 +1,5 @@
-// A detail of a rejected request: for a competency map, path "sheet" names a
-// sheet to choose from and path "file" a cell of the map with its problem.
+// A detail of a rejected request: for a competency map, path "file" names a
+// cell of the map with its problem.
 export type CourseGraphApiErrorDetail = {
   path?: string
   code: string

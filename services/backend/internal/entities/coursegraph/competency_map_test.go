@@ -25,6 +25,10 @@ type mapShape struct {
 		ParentTitle                     string   `json:"parent_title"`
 		Guidance                        string   `json:"assessment_guidance"`
 		Requires                        []string `json:"requires"`
+		Variants                        []struct {
+			Question, Content string
+			Guidance          string `json:"assessment_guidance"`
+		} `json:"variants"`
 	} `json:"topics"`
 	Prerequisites []struct{ Source, Target string } `json:"prerequisites"`
 	Hierarchy     []struct{ Source, Target string } `json:"hierarchy"`
@@ -32,7 +36,7 @@ type mapShape struct {
 
 func buildShape(t *testing.T, rows [][]string) (MapGraph, mapShape) {
 	t.Helper()
-	g, err := BuildMapGraph([]MapSheet{{Name: "Карта", Rows: rows}}, "")
+	g, err := BuildMapGraph([]MapSheet{{Name: "Карта", Rows: rows}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -92,13 +96,13 @@ func TestMapGraphSkipsACompetencyWithoutThreeOutcomes(t *testing.T) {
 	if g.Topics != 3 || len(g.Skipped) != 1 || g.Skipped[0].Name != "К2. Логика" || !strings.Contains(g.Skipped[0].Reason, "— 1,") {
 		t.Fatalf("graph = %+v", g)
 	}
-	_, err := BuildMapGraph([]MapSheet{{Name: "Карта", Rows: rows[3:]}}, "")
+	_, err := BuildMapGraph([]MapSheet{{Name: "Карта", Rows: rows[3:]}})
 	var mapErr *MapError
 	if !errors.As(err, &mapErr) {
 		t.Fatalf("map without a header: %v", err)
 	}
 	only := append([][]string{mapHeaderRow}, rows[4:]...)
-	if _, err = BuildMapGraph([]MapSheet{{Name: "Карта", Rows: only}}, ""); !errors.As(err, &mapErr) || mapErr.Code != "COMPETENCY_MAP_EMPTY" {
+	if _, err = BuildMapGraph([]MapSheet{{Name: "Карта", Rows: only}}); !errors.As(err, &mapErr) || mapErr.Code != "COMPETENCY_MAP_EMPTY" {
 		t.Fatalf("map with no complete competency: %v", err)
 	}
 }
@@ -124,21 +128,19 @@ func TestMapGraphNamesTheSheetAndTheBadCells(t *testing.T) {
 		mapRow("", "Б", "Понимать", "7", "TRUE", "Задание Б"),
 		mapRow("", "В", "Применять", "5", "да", "Задание В"),
 	}
-	book := []MapSheet{{Name: "Карта", Rows: bad}, {Name: "Карта_ВСЯ", Rows: good}, {Name: "Легенда", Rows: [][]string{{"Поле", "Пояснение"}}}}
-	if got := TemplateSheets(book); !slices.Equal(got, []string{"Карта", "Карта_ВСЯ"}) {
-		t.Fatalf("template sheets = %v", got)
+	legend := MapSheet{Name: "Легенда", Rows: [][]string{{"Поле", "Пояснение"}}}
+	// The first sheet is the simulation's; the others are never read.
+	if g, err := BuildMapGraph([]MapSheet{{Name: "Карта", Rows: good}, {Name: "ДИАГ", Rows: bad}, legend}); err != nil || g.Sheet != "Карта" {
+		t.Fatalf("first sheet: %+v %v", g, err)
 	}
 	var mapErr *MapError
-	if _, err := BuildMapGraph(book, ""); !errors.As(err, &mapErr) || mapErr.Code != "COMPETENCY_MAP_SHEET_REQUIRED" || len(mapErr.Sheets) != 2 {
-		t.Fatalf("several sheets: %v", err)
+	if _, err := BuildMapGraph([]MapSheet{legend, {Name: "Карта", Rows: good}}); !errors.As(err, &mapErr) || mapErr.Code != "COMPETENCY_MAP_INVALID" || !strings.Contains(mapErr.Message, "«Легенда»") {
+		t.Fatalf("first sheet without the template: %v", err)
 	}
-	if g, err := BuildMapGraph(book, "Карта_ВСЯ"); err != nil || g.Sheet != "Карта_ВСЯ" {
-		t.Fatalf("chosen sheet: %+v %v", g, err)
+	if _, err := BuildMapGraph(nil); !errors.As(err, &mapErr) {
+		t.Fatalf("book without sheets: %v", err)
 	}
-	if _, err := BuildMapGraph(book, "Легенда"); !errors.As(err, &mapErr) || mapErr.Code != "COMPETENCY_MAP_INVALID" {
-		t.Fatalf("sheet without the template: %v", err)
-	}
-	_, err := BuildMapGraph(book, "Карта")
+	_, err := BuildMapGraph([]MapSheet{{Name: "Карта", Rows: bad}, {Name: "Карта_ВСЯ", Rows: good}})
 	if !errors.As(err, &mapErr) || len(mapErr.Issues) != 3 {
 		t.Fatalf("bad cells: %v", err)
 	}
@@ -146,5 +148,53 @@ func TestMapGraphNamesTheSheetAndTheBadCells(t *testing.T) {
 		if got := mapErr.Issues[i]; got.Row != want.Row || got.Column != want.Column {
 			t.Fatalf("issue %d = %+v, want %+v", i, got, want)
 		}
+	}
+}
+
+// The sheet of the map «Введение в ИИ4»: «Компетенция» and «Таксономия»,
+// tasks and criteria in several columns paired by position, an empty third
+// task and a duplicate criteria column.
+func TestMapGraphReadsTheTasksOfEveryColumnAsVariants(t *testing.T) {
+	header := []string{"", "Компетенция", "Уровень темы", "Составляющая", "Образовательный результат", "Свидетельство (продукт работы)",
+		"Уровень по DOK", "Что должно войти в тест", "Таксономия", "Уровень ALDs", "Важность", "Задание 1", "Задание 2", "Задание 3",
+		"Критерии оценивания", "Код", "Критерии оценивания для академической версия", "Критерии оценивания для академической версия"}
+	row := func(competency, outcome, bloom, importance string) []string {
+		return []string{"", competency, "", "1.1 Составляющая", outcome, "Ответ", "1", "TRUE", bloom, "базовый", importance,
+			"Устно: " + outcome + "?", "Академически: " + outcome + ".", "",
+			"Эталон: устный " + outcome + ".\nБалл (макс. 1): 1 — верно.", "1.1",
+			"Эталонные элементы: академический " + outcome + ".\nАналитическая рубрика (макс. 6):\nК1 «Полнота»: 2 — полно.", "дубль"}
+	}
+	_, shape := buildShape(t, [][]string{header,
+		row("К1. Агент", "А", "Помнить", "4"),
+		row("", "Б", "Понимать", "3"),
+		row("", "В", "Анализировать", "5"),
+	})
+	if len(shape.Topics) != 3 {
+		t.Fatalf("topics = %+v", shape.Topics)
+	}
+	main := shape.Topics[2]
+	if main.Title != "В" || main.ParentTitle != "К1. Агент" || len(main.Variants) != 2 {
+		t.Fatalf("main = %+v", main)
+	}
+	oral, academic := main.Variants[0], main.Variants[1]
+	if oral.Question != "Устно: В?" || !strings.Contains(oral.Content, "Эталон: устный В.") || !strings.Contains(oral.Guidance, "Балл (макс. 1)") {
+		t.Fatalf("first variant = %+v", oral)
+	}
+	if academic.Question != "Академически: В." || !strings.Contains(academic.Content, "академический В") || !strings.Contains(academic.Guidance, "Пункт рубрики 1 «Полнота»") {
+		t.Fatalf("second variant = %+v", academic)
+	}
+	if main.Question != oral.Question || main.Text != oral.Content || main.Guidance != oral.Guidance {
+		t.Fatalf("the topic is not its first variant: %+v", main)
+	}
+}
+
+func TestMapGraphNeedsTheCriteriaOfEveryTask(t *testing.T) {
+	header := []string{"Субкомпетенция", "Составляющая", "Образовательный результат", "Уровень по Блуму", "Важность",
+		"Что должно войти в тест", "Задание 1", "Задание 2", "Критерии оценивания"}
+	rows := [][]string{header, {"К1", "С", "А", "Помнить", "3", "TRUE", "Задание А", "Второе задание без критериев", "Эталон: а."}}
+	var mapErr *MapError
+	_, err := BuildMapGraph([]MapSheet{{Name: "Карта", Rows: rows}})
+	if !errors.As(err, &mapErr) || len(mapErr.Issues) != 1 || mapErr.Issues[0].Row != 2 || mapErr.Issues[0].Column != "Критерии оценивания" {
+		t.Fatalf("task without criteria: %v %+v", err, mapErr)
 	}
 }

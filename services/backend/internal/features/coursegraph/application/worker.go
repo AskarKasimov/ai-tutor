@@ -129,12 +129,17 @@ func (w *Worker) PrepareVoices(ctx context.Context) error {
 }
 
 // TopicQuestions are the prepared texts of a built graph that Geek asks as
-// is: the question of each topic and, with it, its rephrase.
+// is: the question of each topic and, with it, its rephrase, or those of each
+// variant of a topic of a competency map.
 func TopicQuestions(graph json.RawMessage) []string {
+	type asked struct {
+		Question string `json:"question"`
+		Rephrase string `json:"rephrase"`
+	}
 	var shape struct {
 		Topics []struct {
-			Question string `json:"question"`
-			Rephrase string `json:"rephrase"`
+			asked
+			Variants []asked `json:"variants"`
 		} `json:"topics"`
 	}
 	out := []string{}
@@ -142,13 +147,19 @@ func TopicQuestions(graph json.RawMessage) []string {
 		return out
 	}
 	for _, t := range shape.Topics {
-		q := strings.TrimSpace(t.Question)
-		if q == "" {
-			continue
+		texts := t.Variants
+		if len(texts) == 0 {
+			texts = []asked{t.asked}
 		}
-		out = append(out, q)
-		if r := strings.TrimSpace(t.Rephrase); r != "" {
-			out = append(out, r)
+		for _, a := range texts {
+			q := strings.TrimSpace(a.Question)
+			if q == "" {
+				continue
+			}
+			out = append(out, q)
+			if r := strings.TrimSpace(a.Rephrase); r != "" {
+				out = append(out, r)
+			}
 		}
 	}
 	return out
@@ -197,9 +208,9 @@ func (w *Worker) snapshot(ctx context.Context, subjectID string) (coursegraph.Sn
 // ImportMap builds the course graph from a competency map instead of the
 // materials (the admin's "import competency map" button): the map is read
 // and checked at once, its questions are prepared and published by the
-// worker like those of a build. sheet may be empty when the book has one
-// sheet of the template.
-func (w *Worker) ImportMap(ctx context.Context, actor user.User, subjectID, filename string, data []byte, sheet string) (coursegraph.Snapshot, error) {
+// worker like those of a build. The graph is read from the first sheet of
+// the book; the second one is the diagnostic's.
+func (w *Worker) ImportMap(ctx context.Context, actor user.User, subjectID, filename string, data []byte) (coursegraph.Snapshot, error) {
 	if actor.Role != user.Admin {
 		return coursegraph.Snapshot{}, fault.New(fault.Forbidden, "FORBIDDEN", "Доступно только admin.")
 	}
@@ -217,9 +228,7 @@ func (w *Worker) ImportMap(ctx context.Context, actor user.User, subjectID, file
 	if err != nil {
 		return coursegraph.Snapshot{}, fault.New(fault.Invalid, "COMPETENCY_MAP_INVALID", "Не удалось прочитать книгу Excel (.xlsx).")
 	}
-	// The sheet is taken by its exact name: Excel allows names with outer
-	// spaces, and the admin chooses among the names the server returned.
-	built, err := coursegraph.BuildMapGraph(sheets, sheet)
+	built, err := coursegraph.BuildMapGraph(sheets)
 	var mapErr *coursegraph.MapError
 	if errors.As(err, &mapErr) {
 		return coursegraph.Snapshot{}, mapFault(mapErr)
@@ -237,12 +246,9 @@ func (w *Worker) ImportMap(ctx context.Context, actor user.User, subjectID, file
 	return w.snapshot(ctx, subjectID)
 }
 
-// mapFault names the cells of a rejected map, or the sheets to choose from.
+// mapFault names the cells of a rejected map.
 func mapFault(e *coursegraph.MapError) *fault.Error {
 	f := fault.New(fault.Invalid, e.Code, e.Message)
-	for _, s := range e.Sheets {
-		f.Details = append(f.Details, fault.Detail{Path: "sheet", Code: "COMPETENCY_MAP_SHEET", Message: s})
-	}
 	for _, issue := range e.Issues {
 		message := issue.Message
 		if issue.Row > 0 {
@@ -258,13 +264,14 @@ func mapFault(e *coursegraph.MapError) *fault.Error {
 // hierarchy, since the examined graph has no sections.
 func BuildShape(g exam.Graph) (json.RawMessage, error) {
 	type topic struct {
-		ID       string   `json:"id"`
-		Title    string   `json:"title"`
-		Question string   `json:"question,omitempty"`
-		Rephrase string   `json:"rephrase,omitempty"`
-		Text     string   `json:"text,omitempty"`
-		Provides []string `json:"provides"`
-		Requires []string `json:"requires"`
+		ID       string         `json:"id"`
+		Title    string         `json:"title"`
+		Question string         `json:"question,omitempty"`
+		Rephrase string         `json:"rephrase,omitempty"`
+		Text     string         `json:"text,omitempty"`
+		Variants []exam.Variant `json:"variants,omitempty"`
+		Provides []string       `json:"provides"`
+		Requires []string       `json:"requires"`
 	}
 	type edge struct {
 		Source string `json:"source"`
@@ -277,7 +284,7 @@ func BuildShape(g exam.Graph) (json.RawMessage, error) {
 		Hierarchy     []edge  `json:"hierarchy"`
 	}{Version: g.Version, Topics: []topic{}, Prerequisites: []edge{}, Hierarchy: []edge{}}
 	for _, n := range g.Nodes {
-		t := topic{ID: n.ID, Title: n.Title, Text: n.Content, Provides: n.Outcomes, Requires: []string{}}
+		t := topic{ID: n.ID, Title: n.Title, Text: n.Content, Variants: n.Variants, Provides: n.Outcomes, Requires: []string{}}
 		if len(n.Questions) > 0 {
 			t.Question = n.Questions[0]
 		}

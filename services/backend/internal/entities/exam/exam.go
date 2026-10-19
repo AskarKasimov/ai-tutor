@@ -126,9 +126,11 @@ type Exam struct {
 }
 
 // NewExam starts the traversal from the top-level topics in coverage order and
-// returns the first step. rng breaks ties of equal coverage; nil keeps study
-// order.
+// returns the first step. rng breaks ties of equal coverage and picks the
+// task of every topic with variants, which the exam then keeps; nil keeps
+// study order and the first variant.
 func NewExam(g Graph, maxQuestions int, rng *rand.Rand) (*Exam, Step) {
+	g = g.pickVariants(rng)
 	e := &Exam{Graph: g, Nodes: map[string]*NodeState{}, MaxQuestions: maxQuestions}
 	for _, n := range g.Nodes {
 		e.Nodes[n.ID] = &NodeState{Status: StatusUnchecked, Evidence: []int{}}

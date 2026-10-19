@@ -96,3 +96,21 @@ func TestBuiltQuestionsFailWhenATopicStaysUnprepared(t *testing.T) {
 		t.Fatalf("asked %d times", examiner.asked.Load())
 	}
 }
+
+func TestBuiltQuestionsRephraseEveryVariantOfAMapTopic(t *testing.T) {
+	data := `{"version":"competency-map-v1","source":"competency_map","topics":[{"id":"m","title":"ОР","text":"Эталон 1","question":"Устно?",` +
+		`"variants":[{"question":"Устно?","content":"Эталон 1"},{"question":"Академически?","content":"Эталон 2","assessment_guidance":"Рубрика"}],` +
+		`"provides":["ОР"],"requires":[]}],"prerequisites":[]}`
+	out, err := builtQuestions{examiner: &buildExaminer{}, logger: zap.NewNop(), pause: time.Millisecond}.Prepare(context.Background(), json.RawMessage(data))
+	if err != nil {
+		t.Fatal(err)
+	}
+	g, _, err := geekgraph.Decode(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := g.Nodes[0]
+	if m.Rephrase != "Проще: Устно?" || len(m.Variants) != 2 || m.Variants[1].Rephrase != "Проще: Академически?" || m.Variants[1].AssessmentGuidance != "Рубрика" {
+		t.Fatalf("node = %+v", m)
+	}
+}

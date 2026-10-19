@@ -1,6 +1,7 @@
 import { DropdownMenu } from '@radix-ui/themes'
-import { ChevronDown, LogOut } from 'lucide-react'
+import { ChevronDown, LayoutGrid, LogOut } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { modeSelectUrl, openModeSelect } from '../model/mode-select'
 import { useAuth } from '../model/use-auth'
 import styles from './auth-modal.module.scss'
 
@@ -25,6 +26,20 @@ export function AccountMenu({ canLogout = true }: { canLogout?: boolean }) {
   const { user, logout } = useAuth()
   // Accounts created before the name became required fall back to email.
   const name = user?.display_name || user?.email || ''
+  const modeSelect = modeSelectUrl() !== ''
+  // On the two-mode stand the start page signs out of the other mode too.
+  // The menu may unmount once the session is gone, so the redirect follows
+  // mutateAsync rather than a mutate callback; errors show below the menu.
+  const signOut = () => {
+    if (!modeSelect) {
+      logout.mutate()
+      return
+    }
+    logout
+      .mutateAsync()
+      .then(() => openModeSelect('?logout'))
+      .catch(() => {})
+  }
   if (!canLogout)
     return (
       <div className={styles.account}>
@@ -56,10 +71,16 @@ export function AccountMenu({ canLogout = true }: { canLogout?: boolean }) {
           </button>
         </DropdownMenu.Trigger>
         <DropdownMenu.Content align="end" sideOffset={6}>
+          {modeSelect && (
+            <DropdownMenu.Item onSelect={() => openModeSelect()}>
+              <LayoutGrid size={16} aria-hidden="true" />
+              {t('auth.modeSelect')}
+            </DropdownMenu.Item>
+          )}
           <DropdownMenu.Item
             color="red"
             disabled={logout.isPending}
-            onSelect={() => logout.mutate()}
+            onSelect={signOut}
           >
             <LogOut size={16} aria-hidden="true" />
             {t('auth.logout')}

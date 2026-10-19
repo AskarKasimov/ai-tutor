@@ -1,0 +1,61 @@
+{
+	auto_https disable_redirects
+}
+
+# Each release keeps its own Caddy (API, admin, gateway routes); the front
+# proxy only picks the release by host. Host is rewritten to localhost so the
+# Vite dev server of DUAL_MODE=dev accepts the request.
+(release) {
+	reverse_proxy https://tutor-{args[0]}-proxy-1:443 {
+		header_up Host localhost
+		transport http {
+			tls_insecure_skip_verify
+			tls_server_name localhost
+		}
+	}
+}
+
+# The start page logs in to both releases with fetch: only auth requests from
+# the start page get CORS headers.
+(release_site) {
+	tls {$DUAL_TLS}
+	log {
+		output stdout
+		format console
+	}
+
+	@start_auth {
+		path /api/v1/auth/*
+		header Origin {$DUAL_ORIGIN}
+	}
+	handle @start_auth {
+		header {
+			Access-Control-Allow-Origin {$DUAL_ORIGIN}
+			Access-Control-Allow-Credentials true
+			Access-Control-Allow-Methods "GET, POST, OPTIONS"
+			Access-Control-Allow-Headers Content-Type
+			Vary Origin
+		}
+		@preflight method OPTIONS
+		respond @preflight 204
+		import release {args[0]}
+	}
+
+	handle {
+		import release {args[0]}
+	}
+}
+
+{$DUAL_HOST} {
+	tls {$DUAL_TLS}
+	root * /srv
+	file_server
+}
+
+learn.{$DUAL_HOST} {
+	import release_site learn
+}
+
+exam.{$DUAL_HOST} {
+	import release_site exam
+}

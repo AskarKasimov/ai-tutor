@@ -42,10 +42,13 @@ esac
 [ "${DUAL_RESET_TLS:-false}" = true ] && projects="$projects tutor-dual"
 
 # The volumes to delete: every volume of the chosen projects, but the models
-# unless asked.
+# unless asked. The list is read once, before anything stops: a failed read
+# deletes nothing.
+all_volumes=$(docker volume ls -q) || { printf '%s
+' 'Could not list the Docker volumes; nothing deleted.' >&2; exit 1; }
 volumes=
 for project in $projects; do
-    for volume in $(docker volume ls -q); do
+    for volume in $all_volumes; do
         case "$volume" in
         "${project}"_course_graph_models) [ "${DUAL_RESET_MODELS:-false}" = true ] || continue ;;
         "${project}"_*) ;;

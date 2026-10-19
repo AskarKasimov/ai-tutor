@@ -42,10 +42,16 @@ if ($target -eq 'all') { $projects = @('tutor-learn', 'tutor-exam') } else { $pr
 if ($env:DUAL_RESET_TLS -eq 'true') { $projects += 'tutor-dual' }
 
 # The volumes to delete: every volume of the chosen projects, but the models
-# unless asked.
+# unless asked. The list is read once, before anything stops: a failed read
+# deletes nothing.
+$allVolumes = @(docker volume ls -q)
+if ($LASTEXITCODE -ne 0) {
+    [Console]::Error.WriteLine('Could not list the Docker volumes; nothing deleted.')
+    exit 1
+}
 $volumes = @()
 foreach ($project in $projects) {
-    foreach ($volume in @(docker volume ls -q)) {
+    foreach ($volume in $allVolumes) {
         if ($volume -notlike "${project}_*") { continue }
         if ($volume -like '*_course_graph_models' -and $env:DUAL_RESET_MODELS -ne 'true') { continue }
         $volumes += $volume

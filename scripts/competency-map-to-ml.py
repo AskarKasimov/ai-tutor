@@ -10,6 +10,7 @@ Standard library only. The mapping and its losses are listed in the --help text.
 
 import argparse
 import csv
+import math
 import re
 import sys
 import zipfile
@@ -147,7 +148,8 @@ def importance(value):
         number = float(value.replace(",", "."))
     except ValueError:
         return None
-    if number != int(number) or not 1 <= number <= 5:
+    # NaN, Infinity and 1e999 parse as floats but are no importance.
+    if not math.isfinite(number) or not 1 <= number <= 5 or number != int(number):
         return None
     return str(int(number))
 

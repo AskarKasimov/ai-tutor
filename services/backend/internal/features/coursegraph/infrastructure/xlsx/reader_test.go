@@ -4,6 +4,8 @@ import (
 	"archive/zip"
 	"bytes"
 	"errors"
+	"fmt"
+	"strings"
 	"testing"
 )
 
@@ -62,5 +64,57 @@ func TestReadRejectsWhatIsNotABook(t *testing.T) {
 	}
 	if _, err := Read(book(t, map[string]string{"word/document.xml": "<document/>"})); !errors.Is(err, ErrNotWorkbook) {
 		t.Fatalf("docx: %v", err)
+	}
+}
+
+func TestReadRefusesALongCellReference(t *testing.T) {
+	for _, ref := range []string{"ZZZZZZZZZZZZZZ1", "HZ1", "A", "1A", "A1B"} {
+		data := book(t, map[string]string{
+			"xl/workbook.xml":            `<workbook ` + ns + `><sheets><sheet name="Карта" sheetId="1" r:id="rId1"/></sheets></workbook>`,
+			"xl/_rels/workbook.xml.rels": `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Target="worksheets/sheet1.xml"/></Relationships>`,
+			"xl/worksheets/sheet1.xml":   `<worksheet ` + ns + `><sheetData><row r="1"><c r="` + ref + `"><v>1</v></c></row></sheetData></worksheet>`,
+		})
+		if _, err := Read(data); err == nil {
+			t.Fatalf("cell %s accepted", ref)
+		}
+	}
+}
+
+func TestReadRefusesABookThatMultipliesItsParts(t *testing.T) {
+	var sheets, rels strings.Builder
+	for i := 1; i <= 20; i++ {
+		fmt.Fprintf(&sheets, `<sheet name="Лист %d" sheetId="%d" r:id="rId%d"/>`, i, i, i)
+		// Every entry points at the same part.
+		fmt.Fprintf(&rels, `<Relationship Id="rId%d" Target="worksheets/sheet1.xml"/>`, i)
+	}
+	parts := map[string]string{
+		"xl/workbook.xml":            `<workbook ` + ns + `><sheets>` + sheets.String() + `</sheets></workbook>`,
+		"xl/_rels/workbook.xml.rels": `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">` + rels.String() + `</Relationships>`,
+		"xl/worksheets/sheet1.xml":   `<worksheet ` + ns + `><sheetData><row r="1"><c r="A1" t="inlineStr"><is><t>` + strings.Repeat("x", 1<<20) + `</t></is></c></row></sheetData></worksheet>`,
+	}
+	if _, err := Read(book(t, parts)); err == nil || !strings.Contains(err.Error(), "repeats part") {
+		t.Fatalf("a part read through many sheets: %v", err)
+	}
+	sheets.Reset()
+	for i := 1; i <= maxSheets+1; i++ {
+		fmt.Fprintf(&sheets, `<sheet name="Лист %d" sheetId="%d" r:id="rId1"/>`, i, i)
+	}
+	parts["xl/workbook.xml"] = `<workbook ` + ns + `><sheets>` + sheets.String() + `</sheets></workbook>`
+	if _, err := Read(book(t, parts)); err == nil || !strings.Contains(err.Error(), "sheets") {
+		t.Fatalf("too many sheets: %v", err)
+	}
+}
+
+func TestReadSpendsOneBudgetForTheWholeBook(t *testing.T) {
+	r := &reader{cells: 2, text: 6}
+	if r.spend("абв") != nil || r.spend("") != nil {
+		t.Fatal("cells within the budget refused")
+	}
+	if r.spend("") == nil {
+		t.Fatal("a cell past the budget accepted")
+	}
+	r = &reader{cells: 10, text: 3}
+	if r.spend("abcd") == nil {
+		t.Fatal("text past the budget accepted")
 	}
 }

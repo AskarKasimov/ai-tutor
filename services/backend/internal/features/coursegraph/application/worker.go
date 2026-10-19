@@ -217,7 +217,9 @@ func (w *Worker) ImportMap(ctx context.Context, actor user.User, subjectID, file
 	if err != nil {
 		return coursegraph.Snapshot{}, fault.New(fault.Invalid, "COMPETENCY_MAP_INVALID", "Не удалось прочитать книгу Excel (.xlsx).")
 	}
-	built, err := coursegraph.BuildMapGraph(sheets, strings.TrimSpace(sheet))
+	// The sheet is taken by its exact name: Excel allows names with outer
+	// spaces, and the admin chooses among the names the server returned.
+	built, err := coursegraph.BuildMapGraph(sheets, sheet)
 	var mapErr *coursegraph.MapError
 	if errors.As(err, &mapErr) {
 		return coursegraph.Snapshot{}, mapFault(mapErr)

@@ -153,7 +153,7 @@ func TestPublishedListsTheGraphsGeekExaminesBy(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// A course without materials is examined by the fixture, not its graph.
+	// A graph of materials is not examined once the course has none.
 	if len(graphs) != 1 {
 		t.Fatalf("published graphs = %d", len(graphs))
 	}

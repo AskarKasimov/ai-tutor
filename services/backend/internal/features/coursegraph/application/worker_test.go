@@ -285,6 +285,21 @@ func TestImportMapAsksForTheSheetAndNamesBadCells(t *testing.T) {
 	}
 }
 
+func TestImportMapTakesTheSheetByItsExactName(t *testing.T) {
+	var saved json.RawMessage
+	var sheet string
+	read := func([]byte) ([]coursegraph.MapSheet, error) {
+		return []coursegraph.MapSheet{{Name: "Карта ", Rows: mapRows("К1. Агенты")}, {Name: "Карта_ВСЯ", Rows: mapRows("К2. Логика")}}, nil
+	}
+	repo := mapRepo{requestRepo: requestRepo{snapshot: coursegraph.Snapshot{Status: "ready"}}, saved: &saved, sheet: &sheet, queued: true}
+	if _, err := New(repo, nil, nil, nil, nil, read).ImportMap(context.Background(), admin, "subject", "map.xlsx", nil, "Карта "); err != nil {
+		t.Fatal(err)
+	}
+	if sheet != "Карта " || !strings.Contains(string(saved), "К1. Агенты") {
+		t.Fatalf("sheet %q graph %s", sheet, saved)
+	}
+}
+
 func TestBuildOfAMapPublishesItsGraphWithPreparedQuestions(t *testing.T) {
 	graph, err := coursegraph.BuildMapGraph([]coursegraph.MapSheet{{Name: "Карта", Rows: mapRows("К1. Агенты")}}, "")
 	if err != nil {

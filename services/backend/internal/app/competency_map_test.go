@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"encoding/xml"
 	"fmt"
+	"net/http"
 	"strings"
 	"testing"
 )
@@ -57,4 +58,15 @@ func mapBook(t *testing.T) []byte {
 		t.Fatal(err)
 	}
 	return buf.Bytes()
+}
+
+func TestImportMapAnswersTooLargeForAnOversizedBody(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	admin := f.admin(t)
+	big := bytes.Repeat([]byte{'x'}, 27<<20)
+	w := upload(f, "/admin/subjects/subject:test/graph/competency-map", "file", "map.xlsx", "application/octet-stream", big, admin)
+	if w.Code != http.StatusRequestEntityTooLarge || !strings.Contains(w.Body.String(), "PAYLOAD_TOO_LARGE") {
+		t.Fatalf("27 MiB map: %d %s", w.Code, w.Body.String())
+	}
 }

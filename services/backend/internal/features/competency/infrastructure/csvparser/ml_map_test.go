@@ -273,3 +273,48 @@ func TestMLMapReadsTheDiagnosticSheetOfMap4(t *testing.T) {
 		t.Fatalf("task = %+v", parsed.Tasks[0])
 	}
 }
+
+const map4Header = "Компетенция;Уровень темы;Составляющая;Образовательный результат;Что должно войти в тест;Таксономия;Уровень ALDs;Важность;Раздел РПД · компетенции РПД;ОС;Задание 1\n"
+
+// A constituent met again keeps its own level; only a new one without a level
+// takes that of its competency.
+func TestMLMapKeepsTheLevelOfAConstituentMetAgain(t *testing.T) {
+	data := map4Header +
+		"К;базовый;С1;О1;TRUE;Знание;базовый;3;;;\n" +
+		";продвинутый;С2;О2;TRUE;Знание;базовый;3;;;\n" +
+		";;С1;О3;TRUE;Знание;базовый;3;;;\n" +
+		";;С2;О4;TRUE;Знание;базовый;3;;;\n" +
+		";;С3;О5;TRUE;Знание;базовый;3;;;\n"
+	parsed, err := Parse([]byte(data))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, want := range []string{"basic", "advanced", "basic"} {
+		if got := parsed.Constituents[i].TopicLevelCode; got != want {
+			t.Fatalf("constituent %d level = %q, want %q", i, got, want)
+		}
+	}
+}
+
+// Only a cell that does not start as «Р.N …» is a lecture; a section with a
+// wrong competency code is still an error.
+func TestMLMapRejectsAWrongSectionInsteadOfTakingItForALecture(t *testing.T) {
+	_, err := Parse([]byte(map4Header + "К;базовый;С;О;TRUE;Знание;базовый;3;\"Р.1 Введение\nОПК-X\";;\n"))
+	failure, ok := err.(*fault.Error)
+	if !ok || failure.Code != "CSV_INVALID" || !strings.Contains(failure.Details[0].Message, "Раздел РПД") {
+		t.Fatalf("wrong section: %#v", err)
+	}
+}
+
+// The provenance of a task keeps its header as written, outer spaces too.
+func TestMLMapKeepsTheHeaderOfATaskAsWritten(t *testing.T) {
+	header := strings.Replace(map4Header, "Задание 1", " Задание 1 ", 1)
+	task := "\"Вопрос?\n\n\n- да\n- нет\n\n\nОтветьте.\n\n\nда\""
+	parsed, err := Parse([]byte(header + "К;базовый;С;О;TRUE;Знание;базовый;3;;;" + task + "\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(parsed.Tasks) != 1 || parsed.Tasks[0].Column != " Задание 1 " || parsed.SourceHeaders[parsed.Tasks[0].SourceColumnIndex-1] != parsed.Tasks[0].Column {
+		t.Fatalf("task = %+v, headers %q", parsed.Tasks, parsed.SourceHeaders)
+	}
+}

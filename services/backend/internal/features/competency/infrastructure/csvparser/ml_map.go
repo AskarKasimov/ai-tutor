@@ -138,9 +138,6 @@ func parseMLMap(reader *csv.Reader, headers []string, headerLine int, restoreCel
 				competencyLevel = canonical
 			}
 		}
-		if topicLevel == "" {
-			topicLevel = competencyLevel
-		}
 		if competency == "" || constituent == "" {
 			return result, csvError(line, "Компетенция/Составляющая", "Для ОР отсутствует родительская запись.")
 		}
@@ -153,6 +150,11 @@ func parseMLMap(reader *csv.Reader, headers []string, headerLine int, restoreCel
 		}
 		constituentIndex, constituentExists := constituentIndexes[sKey]
 		if !constituentExists {
+			// Only a new constituent takes the level of its competency; one
+			// met before keeps its own.
+			if topicLevel == "" {
+				topicLevel = competencyLevel
+			}
 			if topicLevel == "" {
 				return result, csvError(line, "Уровень темы", "Для новой составляющей не задан уровень.")
 			}
@@ -162,16 +164,20 @@ func parseMLMap(reader *csv.Reader, headers []string, headerLine int, restoreCel
 		} else if topicLevel != "" && result.Constituents[constituentIndex].TopicLevelCode != topicLevel {
 			return result, csvError(line, "Уровень темы", "Внутри составляющей указаны разные уровни.")
 		}
-		// A cell that is not a section of the curriculum («Р.N …») holds the
-		// text of the lecture: it becomes the educational content of the
-		// outcome instead of the ОС column, which then holds the authors'
-		// notes (decision of 19.10.2026, map «Введение в ИИ4»).
+		// A cell that does not start as a section of the curriculum («Р.N …»)
+		// holds the text of the lecture: it becomes the educational content
+		// of the outcome instead of the ОС column, which then holds the
+		// authors' notes (decision of 19.10.2026, map «Введение в ИИ4»). A
+		// cell that does start so is a section, and its errors stay errors.
 		lecture := ""
 		if rawSection := strings.TrimSpace(row[columns["Раздел РПД · компетенции РПД"]]); rawSection != "" {
-			section, ok := parseCurriculumSection(rawSection)
-			if !ok {
+			if !curriculumSectionHeading(rawSection) {
 				lecture = rawSection
 			} else {
+				section, ok := parseCurriculumSection(rawSection)
+				if !ok {
+					return result, csvError(line, "Раздел РПД · компетенции РПД", "Ожидается раздел РПД и список компетенций через точку с запятой.")
+				}
 				if title, exists := sectionTitles[section.Code]; exists && title != section.Title {
 					return result, csvError(line, "Раздел РПД · компетенции РПД", "Для одного кода раздела указаны разные названия.")
 				}
@@ -201,14 +207,16 @@ func parseMLMap(reader *csv.Reader, headers []string, headerLine int, restoreCel
 		for _, i := range taskColumns {
 			if task, ok := parseMLTask(row[i]); ok {
 				task.OutcomeKey = oKey
-				task.Column = headers[i]
+				// The provenance keeps the header as written; only its
+				// recognition ignores the outer spaces.
+				task.Column = result.SourceHeaders[i]
 				task.Row = line
 				task.SourceRowIndex = sourceIndex
 				task.SourceColumnIndex = i + 1
 				result.Tasks = append(result.Tasks, task)
 			} else if strings.TrimSpace(row[i]) != "" {
 				result.UnparsedTaskCells++
-				result.Warnings = append(result.Warnings, competencymap.ImportWarning{Row: line, ColumnIndex: i + 1, Column: headers[i], Code: taskFragmentCode(row[i])})
+				result.Warnings = append(result.Warnings, competencymap.ImportWarning{Row: line, ColumnIndex: i + 1, Column: result.SourceHeaders[i], Code: taskFragmentCode(row[i])})
 			}
 		}
 	}
@@ -247,6 +255,13 @@ func taxonomyCode(value string) (string, bool) {
 	default:
 		return "", false
 	}
+}
+
+// curriculumSectionHeading reports whether the cell starts as a section of
+// the curriculum, «Р.N Название».
+func curriculumSectionHeading(value string) bool {
+	first, _, _ := strings.Cut(strings.ReplaceAll(value, "\r\n", "\n"), "\n")
+	return rpdSection.MatchString(strings.TrimSpace(first))
 }
 
 func parseCurriculumSection(value string) (competencymap.CurriculumSection, bool) {

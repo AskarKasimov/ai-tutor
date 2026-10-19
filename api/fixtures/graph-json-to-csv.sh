@@ -6,7 +6,7 @@ usage() {
 Использование:
   api/fixtures/graph-json-to-csv.sh INPUT.json
 
-CSV создаётся в текущем каталоге (./) с тем же именем, что и JSON.
+CSV создаётся рядом с JSON, с тем же именем и расширением .csv.
 Нужна утилита jq.
 EOF
 }
@@ -18,7 +18,7 @@ fi
 
 input=$1
 input_name=$(basename -- "$input")
-output="./${input_name%.*}.csv"
+output="$(dirname -- "$input")/${input_name%.*}.csv"
 
 if ! command -v jq >/dev/null 2>&1; then
   echo "Ошибка: установите jq." >&2
@@ -59,8 +59,8 @@ write_csv() {
         | ([
             ($node.prerequisites // [])[]
             | $titles[.] // .
-          ] | if length == 0 then "Не указаны в исходнике" else join("\n") end) as $prerequisites
-        | ($node.outcomes // [""])[] as $outcome
+          ] | if length == 0 then "Нет" else join("\n") end) as $prerequisites
+        | (($node.outcomes // []) | if length == 0 then [""] else . end)[] as $outcome
         | [
             ($node.title // ""),
             ($node.content // ""),

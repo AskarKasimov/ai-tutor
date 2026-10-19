@@ -24,6 +24,19 @@ deploy/linux-dual.sh down      # остановить; данные остают
 $env:DUAL_MODE = 'dev'; .\deploy\windows-dual.ps1 up   # переменные — через $env:
 ```
 
+### Сброс данных
+
+`deploy/linux-dual-reset.sh` (Windows: `.\deploy\windows-dual-reset.ps1`) останавливает стенд и безвозвратно удаляет volumes режима: базу, S3, состояние Caddy, у симуляции — ещё Redpanda и данные course-graph. Пользователи, курсы, карты и диагностики пропадают; `.env` и worktree остаются. Перед удалением скрипт показывает список и просит ввести `yes`. Модели course-graph (`course_graph_models`, долго качаются) и сертификаты стартовой (`tutor-dual_*`) остаются, если не задать `DUAL_RESET_MODELS=true` или `DUAL_RESET_TLS=true`. Основной стенд (`ai-tutor_*`) не затрагивается. Затем — обычный `up`.
+
+```bash
+deploy/linux-dual-reset.sh           # оба режима; learn | exam — один
+deploy/linux-dual-reset.sh learn --yes   # без подтверждения
+```
+
+```powershell
+.\deploy\windows-dual-reset.ps1 exam   # и all, --yes
+```
+
 curl на Windows не проверяет отзыв сертификата mkcert — для проверки из консоли нужен `--ssl-no-revoke`, браузеру это не мешает.
 
 Локально `<host>` — `127-0-0-1.sslip.io` (резолвится в 127.0.0.1, нужен интернет для DNS). На ВМ:

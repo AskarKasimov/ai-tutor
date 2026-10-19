@@ -204,6 +204,8 @@ it('reads the session, history and result by encoded URLs', async () => {
         learningMaterials: { theory: [], practice: [], additional: [] },
       },
     ],
+    // An older backend sends no weak spots.
+    weakSpots: [],
   })
 })
 

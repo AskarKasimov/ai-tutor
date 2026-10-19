@@ -80,6 +80,9 @@ export type CourseGraphView = {
     question?: string
     // The topic's theory assembled from the materials (Markdown).
     text?: string
+    // The tasks of a topic of a competency map; the exam asks one of them.
+    // question and text above are those of the first.
+    variants?: TopicVariant[]
     provides?: string[]
     requires?: string[]
     parent_title?: string | null
@@ -99,6 +102,13 @@ export type CourseGraphView = {
     unresolved_requirements?: number
     [key: string]: unknown
   }
+}
+
+// A task of a topic with its reference answer and rubric from the map.
+export type TopicVariant = {
+  question: string
+  content: string
+  assessment_guidance?: string
 }
 
 export type TopicSource = {

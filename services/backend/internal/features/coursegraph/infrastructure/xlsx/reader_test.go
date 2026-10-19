@@ -215,3 +215,20 @@ func FuzzRead(f *testing.F) {
 		_, _ = Read(book(t, parts))
 	})
 }
+
+// The simulation reads only the first sheet: what the other sheets hold, even
+// a cell past the column limit or more rows than the budget, does not stop it.
+func TestFirstReadsOnlyTheFirstSheet(t *testing.T) {
+	first := `<row r="1"><c r="A1" t="inlineStr"><is><t>Карта</t></is></c></row>`
+	huge := strings.Repeat(`<row><c><v>1</v></c></row>`, maxRows+1)
+	for name, second := range map[string]string{"column out of range": `<row r="1"><c r="GS1"><v>1</v></c></row>`, "rows over the budget": huge} {
+		data := sheetBook(t, first, second)
+		if _, err := Read(data); err == nil {
+			t.Fatalf("%s: the whole book is read", name)
+		}
+		sheets, err := First(data)
+		if err != nil || len(sheets) != 1 || sheets[0].Name != "Лист 1" || sheets[0].Rows[0][0] != "Карта" {
+			t.Fatalf("%s: first sheet = %+v, %v", name, sheets, err)
+		}
+	}
+}

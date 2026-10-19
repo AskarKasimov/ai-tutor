@@ -62,7 +62,16 @@ type reader struct {
 type sheetRef struct{ name, id string }
 
 // Read returns the worksheets in book order.
-func Read(data []byte) ([]coursegraph.MapSheet, error) {
+func Read(data []byte) ([]coursegraph.MapSheet, error) { return read(data, 0) }
+
+// First returns only the first worksheet of the book, the simulation's: the
+// parts of the other sheets are never read, so they can neither fail the
+// import nor spend its budget. The shared strings are common to the book and
+// are still read whole.
+func First(data []byte) ([]coursegraph.MapSheet, error) { return read(data, 1) }
+
+// read returns the first limit worksheets, or all of them for 0.
+func read(data []byte, limit int) ([]coursegraph.MapSheet, error) {
 	archive, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
 	if err != nil {
 		return nil, ErrNotWorkbook
@@ -74,6 +83,9 @@ func Read(data []byte) ([]coursegraph.MapSheet, error) {
 	refs, err := r.workbook()
 	if err != nil {
 		return nil, err
+	}
+	if limit > 0 && len(refs) > limit {
+		refs = refs[:limit]
 	}
 	targets, err := r.relationships()
 	if err != nil {

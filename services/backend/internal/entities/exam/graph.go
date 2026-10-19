@@ -5,6 +5,7 @@ package exam
 import (
 	"errors"
 	"fmt"
+	"math/rand/v2"
 	"strings"
 )
 
@@ -23,6 +24,48 @@ type Node struct {
 	// AssessmentGuidance is an instructor's explicit scope for this topic's question.
 	AssessmentGuidance string           `json:"assessment_guidance,omitempty"`
 	Sources            []SourceCitation `json:"sources"`
+	// Variants are the tasks of a topic built from a competency map; the
+	// exam asks one of them, picked when it starts (decision of 19.10.2026).
+	// The question, rephrase, content and guidance of the node are those of
+	// the first variant.
+	Variants []Variant `json:"variants,omitempty"`
+}
+
+// Variant is one task of a topic with what grading it needs.
+type Variant struct {
+	Question string `json:"question"`
+	// Rephrase is the prepared rephrase of Question; empty until prepared.
+	Rephrase           string `json:"rephrase,omitempty"`
+	Content            string `json:"content"`
+	AssessmentGuidance string `json:"assessment_guidance,omitempty"`
+}
+
+// WithVariant is the node that asks v as its only question.
+func (n Node) WithVariant(v Variant) Node {
+	n.Questions = []string{v.Question}
+	n.Rephrase = v.Rephrase
+	n.Content = v.Content
+	n.AssessmentGuidance = v.AssessmentGuidance
+	n.Variants = nil
+	return n
+}
+
+// pickVariants gives every node with variants one of them at random; nil rng
+// takes the first.
+func (g Graph) pickVariants(rng *rand.Rand) Graph {
+	nodes := make([]Node, len(g.Nodes))
+	for i, n := range g.Nodes {
+		if len(n.Variants) > 0 {
+			v := n.Variants[0]
+			if rng != nil {
+				v = n.Variants[rng.IntN(len(n.Variants))]
+			}
+			n = n.WithVariant(v)
+		}
+		nodes[i] = n
+	}
+	g.Nodes = nodes
+	return g
 }
 
 // MainQuestion is the prepared main question, or "" when Geek generates it at
@@ -45,8 +88,18 @@ func (n Node) PreparedRephrase() string {
 }
 
 // Prepared reports whether both the main question and its rephrase are
-// prepared, so a student waits for neither.
-func (n Node) Prepared() bool { return n.PreparedRephrase() != "" }
+// prepared, so a student waits for neither; with variants, those of each.
+func (n Node) Prepared() bool {
+	if len(n.Variants) == 0 {
+		return n.PreparedRephrase() != ""
+	}
+	for _, v := range n.Variants {
+		if !n.WithVariant(v).Prepared() {
+			return false
+		}
+	}
+	return true
+}
 
 // Source is a provenance citation from a particular source revision.
 type SourceCitation struct {

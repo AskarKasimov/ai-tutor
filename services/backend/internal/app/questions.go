@@ -89,6 +89,11 @@ func (b builtQuestions) Prepare(ctx context.Context, data json.RawMessage) (json
 				return nil, err
 			}
 		}
+		if len(g.Nodes[i].Variants) > 0 {
+			if topic["variants"], err = json.Marshal(g.Nodes[i].Variants); err != nil {
+				return nil, err
+			}
+		}
 	}
 	if shape["topics"], err = json.Marshal(topics); err != nil {
 		return nil, err

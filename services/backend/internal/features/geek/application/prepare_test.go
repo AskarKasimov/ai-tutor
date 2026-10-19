@@ -160,3 +160,31 @@ func TestPrepareQuestionsLeavesPreparedNodesAndDropsARephraseOfNoQuestion(t *tes
 		t.Fatalf("nodes = %+v", out.Nodes)
 	}
 }
+
+func TestPrepareQuestionsRephrasesEveryVariant(t *testing.T) {
+	g := exam.Graph{Nodes: []exam.Node{{ID: "a", Title: "А", Questions: []string{"Первое?"}, Variants: []exam.Variant{
+		{Question: "Первое?", Content: "Эталон 1"},
+		{Question: "Второе?", Rephrase: "Уже есть", Content: "Эталон 2"},
+		{Question: "Третье?", Content: "Эталон 3"},
+	}}}}
+	p := &preparing{}
+	out, prepared, err := PrepareQuestions(context.Background(), p, g, 2)
+	if err != nil || prepared != 1 || p.requests.Load() != 2 {
+		t.Fatalf("prepared=%d requests=%d err=%v", prepared, p.requests.Load(), err)
+	}
+	n := out.Nodes[0]
+	got := []string{n.Variants[0].Rephrase, n.Variants[1].Rephrase, n.Variants[2].Rephrase}
+	if !slices.Equal(got, []string{"Проще: Первое?", "Уже есть", "Проще: Третье?"}) || n.Rephrase != "Проще: Первое?" || !n.Prepared() {
+		t.Fatalf("node = %+v", n)
+	}
+	if g.Nodes[0].Variants[0].Rephrase != "" {
+		t.Fatal("the input graph is not changed")
+	}
+	if texts := PreparedQuestions(out); !slices.Equal(texts, []string{"Первое?", "Проще: Первое?", "Второе?", "Уже есть", "Третье?", "Проще: Третье?"}) {
+		t.Fatalf("prepared texts = %v", texts)
+	}
+	p = &preparing{failRephraseOn: "a"}
+	if out, _, err = PrepareQuestions(context.Background(), p, g, 1); err == nil || out.Nodes[0].Prepared() || len(Unprepared(out)) != 1 {
+		t.Fatalf("failed rephrase: %v", err)
+	}
+}

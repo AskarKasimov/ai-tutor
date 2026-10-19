@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 
@@ -21,6 +22,9 @@ func PrepareQuestions(ctx context.Context, examiner Examiner, g exam.Graph, para
 	out := g
 	out.Nodes = make([]exam.Node, len(g.Nodes))
 	copy(out.Nodes, g.Nodes)
+	for i := range out.Nodes {
+		out.Nodes[i].Variants = slices.Clone(out.Nodes[i].Variants)
+	}
 	var (
 		mu       sync.Mutex
 		wg       sync.WaitGroup
@@ -48,6 +52,30 @@ func PrepareQuestions(ctx context.Context, examiner Examiner, g exam.Graph, para
 				return
 			}
 			defer func() { <-slots }()
+			if len(node.Variants) > 0 {
+				// Every task of a map topic is asked as given; each gets its
+				// own rephrase, and the node keeps those of the first.
+				for j, v := range node.Variants {
+					if node.WithVariant(v).Prepared() {
+						continue
+					}
+					rephrase, err := rephraseOf(ctx, examiner, node.WithVariant(v), v.Question)
+					if err != nil {
+						fail(node.ID, err)
+						return
+					}
+					mu.Lock()
+					out.Nodes[i].Variants[j].Rephrase = rephrase
+					if j == 0 {
+						out.Nodes[i].Rephrase = rephrase
+					}
+					mu.Unlock()
+				}
+				mu.Lock()
+				prepared++
+				mu.Unlock()
+				return
+			}
 			main := node.MainQuestion()
 			if main == "" {
 				question, err := prepare(ctx, examiner, QuestionRequest{Kind: exam.KindQuestion, Node: node, Ahead: true})
@@ -68,10 +96,7 @@ func PrepareQuestions(ctx context.Context, examiner Examiner, g exam.Graph, para
 				out.Nodes[i].Rephrase = ""
 				mu.Unlock()
 			}
-			// The rephrase prompt reads the question it rephrases from the
-			// dialogue, as at runtime, but without a student's answer.
-			asked := []exam.Turn{{Line: 1, Speaker: exam.SpeakerGeek, Kind: exam.KindQuestion, NodeID: &node.ID, Text: main}}
-			rephrase, err := prepare(ctx, examiner, QuestionRequest{Kind: exam.KindRephrase, Node: node, Dialogue: asked, Ahead: true})
+			rephrase, err := rephraseOf(ctx, examiner, node, main)
 			if err != nil {
 				fail(node.ID, err)
 				return
@@ -84,6 +109,14 @@ func PrepareQuestions(ctx context.Context, examiner Examiner, g exam.Graph, para
 	}
 	wg.Wait()
 	return out, prepared, errors.Join(failures...)
+}
+
+// rephraseOf prepares the rephrase of the question main of node. The prompt
+// reads the question it rephrases from the dialogue, as at runtime, but
+// without a student's answer.
+func rephraseOf(ctx context.Context, examiner Examiner, node exam.Node, main string) (string, error) {
+	asked := []exam.Turn{{Line: 1, Speaker: exam.SpeakerGeek, Kind: exam.KindQuestion, NodeID: &node.ID, Text: main}}
+	return prepare(ctx, examiner, QuestionRequest{Kind: exam.KindRephrase, Node: node, Dialogue: asked, Ahead: true})
 }
 
 func prepare(ctx context.Context, examiner Examiner, r QuestionRequest) (string, error) {

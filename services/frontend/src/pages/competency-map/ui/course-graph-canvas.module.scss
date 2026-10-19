@@ -383,6 +383,25 @@ $tones:
   background: var(--accent-a2);
 }
 
+.variants {
+  display: grid;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.variant {
+  display: grid;
+  gap: var(--space-1);
+  font-size: 0.86rem;
+}
+
+.rubric {
+  margin: 0;
+  white-space: pre-line;
+}
+
 .theory {
   position: relative;
   max-height: 180px;

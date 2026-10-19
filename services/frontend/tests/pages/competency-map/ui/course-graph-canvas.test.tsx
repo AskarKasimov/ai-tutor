@@ -228,3 +228,45 @@ it('lets a section chosen after a search win over the search', () => {
   expect(ml).toHaveAttribute('aria-pressed', 'false')
   expect(state('Среднее значение')).not.toBe('dimmed')
 })
+
+it('shows every task variant of a topic of a competency map', () => {
+  renderGraph({
+    topics: [
+      {
+        id: 'peas',
+        title: 'Составляет PEAS',
+        question: 'Опишите такси по PEAS.',
+        text: 'Эталон: P — безопасность.',
+        variants: [
+          {
+            question: 'Опишите такси по PEAS.',
+            content: 'Эталон: P — безопасность.',
+            assessment_guidance: 'Балл (макс. 2)',
+          },
+          {
+            question: 'Раскройте назначение компонентов PEAS.',
+            content: 'Эталонные элементы: мера задаёт сенсоры.',
+            assessment_guidance: 'Пункт рубрики 1 «Назначение»: 2 — полно.',
+          },
+        ],
+      },
+    ],
+    hierarchy: [],
+    prerequisites: [],
+  })
+  fireEvent.click(node('Составляет PEAS'))
+  const details = screen.getByRole('complementary', { name: 'Составляет PEAS' })
+  expect(
+    within(details).getByText('Варианты задания: экзамен выбирает один'),
+  ).toBeVisible()
+  expect(within(details).getByText('Вариант 2')).toBeVisible()
+  expect(
+    within(details).getByText('Раскройте назначение компонентов PEAS.'),
+  ).toBeVisible()
+  expect(
+    within(details).getByText('Эталонные элементы: мера задаёт сенсоры.'),
+  ).toBeInTheDocument()
+  expect(
+    within(details).getByText('Пункт рубрики 1 «Назначение»: 2 — полно.'),
+  ).toBeVisible()
+})

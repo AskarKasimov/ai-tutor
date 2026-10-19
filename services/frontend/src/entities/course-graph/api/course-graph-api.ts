@@ -46,6 +46,15 @@ const snapshotSchema = z.object({
           title: z.string(),
           question: z.string().optional(),
           text: z.string().optional(),
+          variants: z
+            .array(
+              z.object({
+                question: z.string(),
+                content: z.string(),
+                assessment_guidance: z.string().optional(),
+              }),
+            )
+            .optional(),
           provides: z.array(z.string()).optional(),
           requires: z.array(z.string()).optional(),
           parent_title: z.string().nullable().optional(),
@@ -295,7 +304,11 @@ export async function readCourseGraph(
         ),
       ],
       outcomes: topic.provides ?? [],
-      questions: topic.question ? [topic.question] : [],
+      questions: topic.variants?.length
+        ? topic.variants.map((variant) => variant.question)
+        : topic.question
+          ? [topic.question]
+          : [],
     })),
   }
 }

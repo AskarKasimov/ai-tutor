@@ -270,13 +270,24 @@ it('imports a competency map as multipart and reads the graph of the map', async
   expect((init.body as FormData).get('file')).toBe(file)
   expect((init.body as FormData).has('sheet')).toBe(false)
 
+  const variants = [
+    { question: 'Устно?', content: 'Эталон 1', assessment_guidance: 'Балл' },
+    { question: 'Академически?', content: 'Эталон 2' },
+  ]
   respond(
     snapshot('ready', {
       graph_source: 'competency_map',
       map: { filename: 'map.xlsx', sheet: 'Карта' },
+      graph: {
+        topics: [{ id: 'm', title: 'ОР', question: 'Устно?', variants }],
+        prerequisites: [],
+        hierarchy: [],
+      },
     }),
   )
   const read = await readCourseGraph('course/1', signal())
+  expect(read.view?.topics[0].variants).toEqual(variants)
+  expect(read.nodes[0].questions).toEqual(['Устно?', 'Академически?'])
   expect(read.source).toBe('competency_map')
   expect(read.map).toEqual({ filename: 'map.xlsx', sheet: 'Карта' })
 })

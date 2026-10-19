@@ -634,7 +634,12 @@ function TopicDetails({
   useEffect(() => setTheoryOpen(false), [topic])
   const titleOf = (id: string) => view.topics.get(id)?.topic.title ?? id
   const toneOf = (id: string) => view.topics.get(id)?.section.tone ?? 'gray'
-  const { provides = [], requires = [], sources = [] } = topic.topic
+  const {
+    provides = [],
+    requires = [],
+    sources = [],
+    variants = [],
+  } = topic.topic
   const parent = topic.parentId
 
   const topicButton = (id: string) => (
@@ -677,15 +682,46 @@ function TopicDetails({
         {topic.topic.title}
       </Heading>
 
-      {topic.topic.question && (
-        <DetailsBlock title={t('competencyMap.graphView.question')}>
-          <Text as="p" size="2" className={styles.question}>
-            {topic.topic.question}
-          </Text>
+      {variants.length > 1 ? (
+        <DetailsBlock title={t('competencyMap.graphView.variants')}>
+          <ol className={styles.variants}>
+            {variants.map((variant, index) => (
+              <li key={index} className={styles.variant}>
+                <Text as="p" size="1" weight="bold">
+                  {t('competencyMap.graphView.variant', { number: index + 1 })}
+                </Text>
+                <Text as="p" size="2" className={styles.question}>
+                  {variant.question}
+                </Text>
+                <Text as="p" size="1" color="gray">
+                  {t('competencyMap.graphView.reference')}
+                </Text>
+                <MarkdownContent text={variant.content} />
+                {variant.assessment_guidance && (
+                  <>
+                    <Text as="p" size="1" color="gray">
+                      {t('competencyMap.graphView.rubric')}
+                    </Text>
+                    <Text as="p" size="2" className={styles.rubric}>
+                      {variant.assessment_guidance}
+                    </Text>
+                  </>
+                )}
+              </li>
+            ))}
+          </ol>
         </DetailsBlock>
+      ) : (
+        topic.topic.question && (
+          <DetailsBlock title={t('competencyMap.graphView.question')}>
+            <Text as="p" size="2" className={styles.question}>
+              {topic.topic.question}
+            </Text>
+          </DetailsBlock>
+        )
       )}
 
-      {topic.topic.text?.trim() && (
+      {variants.length <= 1 && topic.topic.text?.trim() && (
         <DetailsBlock title={t('competencyMap.graphView.theory')}>
           <div className={styles.theory} data-open={theoryOpen}>
             <MarkdownContent text={topic.topic.text} />

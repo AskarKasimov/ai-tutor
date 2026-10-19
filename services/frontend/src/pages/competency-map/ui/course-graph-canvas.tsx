@@ -738,6 +738,14 @@ function TopicDetails({
         </DetailsBlock>
       )}
 
+      {variants.length === 1 && variants[0].assessment_guidance && (
+        <DetailsBlock title={t('competencyMap.graphView.rubric')}>
+          <Text as="p" size="2" className={styles.rubric}>
+            {variants[0].assessment_guidance}
+          </Text>
+        </DetailsBlock>
+      )}
+
       {topic.prerequisites.length > 0 && (
         <DetailsBlock title={t('competencyMap.graphView.prerequisites')}>
           <ul className={styles.linkList}>

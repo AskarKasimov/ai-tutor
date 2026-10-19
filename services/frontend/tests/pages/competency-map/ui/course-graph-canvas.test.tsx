@@ -270,3 +270,32 @@ it('shows every task variant of a topic of a competency map', () => {
     within(details).getByText('Пункт рубрики 1 «Назначение»: 2 — полно.'),
   ).toBeVisible()
 })
+
+it('shows the rubric of the only task variant of a topic', () => {
+  renderGraph({
+    topics: [
+      {
+        id: 'peas',
+        title: 'Составляет PEAS',
+        question: 'Опишите такси по PEAS.',
+        text: 'Эталон: P — безопасность.',
+        variants: [
+          {
+            question: 'Опишите такси по PEAS.',
+            content: 'Эталон: P — безопасность.',
+            assessment_guidance: 'Балл (макс. 2): 2 — все четыре компонента.',
+          },
+        ],
+      },
+    ],
+    hierarchy: [],
+    prerequisites: [],
+  })
+  fireEvent.click(node('Составляет PEAS'))
+  const details = screen.getByRole('complementary', { name: 'Составляет PEAS' })
+  expect(within(details).getByText('Опишите такси по PEAS.')).toBeVisible()
+  expect(within(details).getByText('Рубрика')).toBeVisible()
+  expect(
+    within(details).getByText('Балл (макс. 2): 2 — все четыре компонента.'),
+  ).toBeVisible()
+})

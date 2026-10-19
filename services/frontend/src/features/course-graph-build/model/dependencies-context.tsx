@@ -19,7 +19,6 @@ export type CourseGraphBuildDependencies = {
     importCompetencyMap(
       subjectId: string,
       file: File,
-      sheet: string | null,
       signal: AbortSignal,
     ): Promise<CourseGraphBuild>
   }

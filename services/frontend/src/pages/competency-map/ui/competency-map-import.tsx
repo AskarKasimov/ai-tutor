@@ -1,4 +1,4 @@
-import { AlertDialog, Button, Flex, Select, Text } from '@radix-ui/themes'
+import { AlertDialog, Button, Flex, Text } from '@radix-ui/themes'
 import { FileSpreadsheet } from 'lucide-react'
 import { useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -29,33 +29,9 @@ export function CompetencyMapImport({
   const input = useRef<HTMLInputElement>(null)
   const [file, setFile] = useState<File | null>(null)
   const [confirming, setConfirming] = useState(false)
-  // The sheets to choose from once the server asks for one.
-  const [sheets, setSheets] = useState<string[]>([])
-  const [sheet, setSheet] = useState<string | null>(null)
 
-  function send(chosen: File, chosenSheet: string | null) {
-    importMap.mutate(
-      { file: chosen, sheet: chosenSheet },
-      {
-        onSuccess: () => {
-          setFile(null)
-          setSheets([])
-          setSheet(null)
-        },
-        onError: (error) => {
-          if (
-            error instanceof CourseGraphApiError &&
-            error.code === 'COMPETENCY_MAP_SHEET_REQUIRED'
-          ) {
-            const names = error.details
-              .filter((detail) => detail.path === 'sheet')
-              .map((detail) => detail.message)
-            setSheets(names)
-            setSheet(names[0] ?? null)
-          }
-        },
-      },
-    )
+  function send(chosen: File) {
+    importMap.mutate({ file: chosen }, { onSuccess: () => setFile(null) })
   }
 
   const error = importMap.error
@@ -63,12 +39,6 @@ export function CompetencyMapImport({
     error instanceof CourseGraphApiError
       ? error.details.filter((detail) => detail.path === 'file')
       : []
-  // The sheets stay offered until the import succeeds or another file is
-  // chosen, so a failed sheet can be retried or another one chosen.
-  const askingSheet = file !== null && sheets.length > 0
-  const sheetRequired =
-    error instanceof CourseGraphApiError &&
-    error.code === 'COMPETENCY_MAP_SHEET_REQUIRED'
 
   return (
     <div className={styles.mapImport}>
@@ -94,8 +64,6 @@ export function CompetencyMapImport({
           event.target.value = ''
           if (!chosen) return
           importMap.reset()
-          setSheets([])
-          setSheet(null)
           setFile(chosen)
           setConfirming(true)
         }}
@@ -113,39 +81,7 @@ export function CompetencyMapImport({
             : t('courseGraph.mapImport')}
         </Button>
       </Flex>
-      {askingSheet && (
-        <Flex gap="3" align="end" wrap="wrap" role="group">
-          <label className={styles.mapSheetField}>
-            <Text as="span" size="2">
-              {t('courseGraph.mapSheet')}
-            </Text>
-            <Select.Root
-              size="3"
-              value={sheet ?? undefined}
-              disabled={importMap.isPending}
-              onValueChange={setSheet}
-            >
-              <Select.Trigger aria-label={t('courseGraph.mapSheet')} />
-              <Select.Content>
-                {sheets.map((name) => (
-                  <Select.Item key={name} value={name}>
-                    {name}
-                  </Select.Item>
-                ))}
-              </Select.Content>
-            </Select.Root>
-          </label>
-          <Button
-            size="3"
-            color="green"
-            disabled={disabled || importMap.isPending || !sheet}
-            onClick={() => send(file, sheet)}
-          >
-            {t('courseGraph.mapImportSheet')}
-          </Button>
-        </Flex>
-      )}
-      {error && !sheetRequired && (
+      {error && (
         <div className={styles.error} role="alert">
           <Text weight="bold">
             {error instanceof Error
@@ -184,7 +120,7 @@ export function CompetencyMapImport({
               <Button
                 color="green"
                 disabled={!file || disabled}
-                onClick={() => file && send(file, null)}
+                onClick={() => file && send(file)}
               >
                 {t('courseGraph.mapImportStart')}
               </Button>

@@ -765,3 +765,44 @@ func TestNodePreparedQuestionsBelongToTheMainQuestion(t *testing.T) {
 		})
 	}
 }
+
+// A topic of a competency map has several tasks; the exam picks one when it
+// starts and asks and grades only it (decision of 19.10.2026).
+func TestExamPicksOneVariantOfEveryTopic(t *testing.T) {
+	variants := []Variant{
+		{Question: "Устно?", Rephrase: "Проще устно?", Content: "Эталон устный", AssessmentGuidance: "Балл 1"},
+		{Question: "Академически?", Rephrase: "Проще академически?", Content: "Эталон академический", AssessmentGuidance: "Рубрика"},
+	}
+	g := Graph{Version: "v", Nodes: []Node{{ID: "a", Title: "А", Questions: []string{"Устно?"}, Content: "Эталон устный", Variants: variants}}}
+	if !g.Nodes[0].Prepared() {
+		t.Fatal("every variant is prepared")
+	}
+	unprepared := g.Nodes[0]
+	unprepared.Variants = []Variant{variants[0], {Question: "Академически?"}}
+	if unprepared.Prepared() {
+		t.Fatal("a variant without its rephrase is not prepared")
+	}
+	e, _ := NewExam(g, 0, nil)
+	if n, _ := e.Graph.Node("a"); n.MainQuestion() != "Устно?" || len(n.Variants) != 0 {
+		t.Fatalf("without rng = %+v", n)
+	}
+	seen := map[string]bool{}
+	for seed := range uint64(32) {
+		e, _ := NewExam(g, 0, rand.New(rand.NewPCG(seed, seed)))
+		n, _ := e.Graph.Node("a")
+		v := variants[0]
+		if n.MainQuestion() == variants[1].Question {
+			v = variants[1]
+		}
+		if n.PreparedRephrase() != v.Rephrase || n.Content != v.Content || n.AssessmentGuidance != v.AssessmentGuidance || len(n.Variants) != 0 {
+			t.Fatalf("picked node = %+v", n)
+		}
+		seen[n.MainQuestion()] = true
+	}
+	if len(seen) != 2 {
+		t.Fatalf("variants asked = %v", seen)
+	}
+	if len(g.Nodes[0].Variants) != 2 {
+		t.Fatal("the course graph keeps its variants")
+	}
+}

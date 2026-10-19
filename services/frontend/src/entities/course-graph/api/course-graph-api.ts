@@ -234,17 +234,15 @@ export async function startCourseGraphBuild(
   return build
 }
 
-// Builds the course graph from a competency map instead of the materials.
-// sheet is null until the server asks to choose one of several sheets.
+// Builds the course graph from a competency map instead of the materials;
+// the server reads the first sheet of the book.
 export async function importCompetencyMap(
   subjectId: string,
   file: File,
-  sheet: string | null,
   signal: AbortSignal,
 ): Promise<CourseGraphBuild> {
   const body = new FormData()
   body.append('file', file)
-  if (sheet) body.append('sheet', sheet)
   const build = toBuild(
     subjectId,
     parseSnapshot(

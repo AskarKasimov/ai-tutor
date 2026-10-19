@@ -79,7 +79,7 @@ func (h *Handler) Build(w http.ResponseWriter, r *http.Request) {
 
 // ImportMap builds the course graph from a competency map.
 // @Summary Импортировать карту компетенций
-// @Description Доступно только admin. Кнопка «Импортировать карту компетенций»: граф курса собирается по карте вместо материалов — на каждую субкомпетенцию с тремя и более ОР с TRUE и заданием основное задание (наивысший Блум, затем важность) становится темой верхнего уровня, два самых простых — её пререквизитами; вопрос — задание карты без изменений. Карта проверяется сразу, затем вопросы готовятся и граф публикуется так же, как сборка из материалов, и заменяет прежний граф курса. Если в книге несколько листов карты, а sheet не указан, — 422 COMPETENCY_MAP_SHEET_REQUIRED с листами в details.
+// @Description Доступно только admin. Кнопка «Импортировать карту компетенций»: граф курса собирается по карте вместо материалов — на каждую субкомпетенцию с тремя и более ОР с TRUE и заданием основное задание (наивысший Блум, затем важность) становится темой верхнего уровня, два самых простых — её пререквизитами; вопрос — задание карты без изменений. Карта проверяется сразу, затем вопросы готовятся и граф публикуется так же, как сборка из материалов, и заменяет прежний граф курса. Граф строится по первому листу книги (второй — для диагностики режима «Обучение»); колонки «Компетенция» и «Таксономия» принимаются вместо «Субкомпетенция» и «Уровень по Блуму». Все колонки «Задание N» ОР становятся вариантами темы с критериями из колонки «Критерии оценивания…» того же номера по порядку; экзамен при старте выбирает один вариант случайно.
 // @ID importCourseGraphCompetencyMap
 // @Tags Материалы
 // @Security accessCookie
@@ -87,7 +87,6 @@ func (h *Handler) Build(w http.ResponseWriter, r *http.Request) {
 // @Produce json
 // @Param subject_id path string true "ID предмета"
 // @Param file formData file true "Карта компетенций .xlsx, до 25 МиБ"
-// @Param sheet formData string false "Лист карты, если их в книге несколько"
 // @Success 202 {object} coursegraph.Snapshot
 // @Failure 400 {object} fault.Error
 // @Failure 401 {object} fault.Error
@@ -95,7 +94,7 @@ func (h *Handler) Build(w http.ResponseWriter, r *http.Request) {
 // @Failure 404 {object} fault.Error
 // @Failure 409 {object} fault.Error "GRAPH_BUILD_IN_PROGRESS: сборка уже идёт"
 // @Failure 413 {object} fault.Error
-// @Failure 422 {object} fault.Error "COMPETENCY_MAP_INVALID, COMPETENCY_MAP_EMPTY или COMPETENCY_MAP_SHEET_REQUIRED"
+// @Failure 422 {object} fault.Error "COMPETENCY_MAP_INVALID или COMPETENCY_MAP_EMPTY"
 // @Failure 503 {object} fault.Error
 // @Router /admin/subjects/{subject_id}/graph/competency-map [post]
 func (h *Handler) ImportMap(w http.ResponseWriter, r *http.Request) {
@@ -139,7 +138,7 @@ func (h *Handler) ImportMap(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(r.Context(), w, fault.New(fault.TooLarge, "PAYLOAD_TOO_LARGE", "Файл карты больше 25 МиБ."))
 		return
 	}
-	result, err := h.service.ImportMap(r.Context(), actor, r.PathValue("subject_id"), files[0].Filename, data, r.FormValue("sheet"))
+	result, err := h.service.ImportMap(r.Context(), actor, r.PathValue("subject_id"), files[0].Filename, data)
 	if err != nil {
 		httpx.Error(r.Context(), w, err)
 		return

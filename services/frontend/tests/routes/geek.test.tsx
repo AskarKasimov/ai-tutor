@@ -280,6 +280,7 @@ function geekBackend(
           },
         ],
         gaps: [{ node_id: 'heuristic', title: 'Эвристическая функция' }],
+        weak_spots: [{ node_id: 'search-space', title: 'Слабая тема' }],
       })
     if (
       /\/diagnostic-sessions\/d1\/turns\/t\d+\/audio\?part=(reply|question)$/.test(
@@ -478,6 +479,10 @@ it('runs a diagnostic from the home page to the result and back to the history',
   ).toEqual(['1Засчитано по основной теме', '1С помощью', '1Пробел'])
   const gaps = screen.getByRole('region', { name: 'Что подтянуть' })
   expect(within(gaps).getByText('Эвристическая функция')).toBeVisible()
+  // Topics on C are listed apart from the gaps.
+  const weak = within(gaps).getByRole('region', { name: 'Слабые места' })
+  expect(within(weak).getByText('Слабая тема')).toBeVisible()
+  expect(within(weak).queryByText('Эвристическая функция')).toBeNull()
   const topics = screen.getByRole('region', { name: 'Все темы' })
   expect(within(topics).getByText('С помощью')).toBeVisible()
   expect(within(topics).getByText('Засчитано по основной теме')).toBeVisible()

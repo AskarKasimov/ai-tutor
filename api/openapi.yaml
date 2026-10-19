@@ -612,7 +612,7 @@ components:
           type: array
           uniqueItems: false
         grade:
-          description: Предварительная оценка курса A–D по среднему баллу вершин верхнего уровня; null — ни одной такой вершины с оценкой
+          description: Предварительная оценка курса A–D по среднему баллу вершин верхнего уровня (от 3,5 — A, от 2,5 — B, от 1,5 — C); null — ни одной такой вершины с оценкой
           enum:
             - A
             - B
@@ -636,12 +636,19 @@ components:
             - "null"
         session_id:
           type: string
+        weak_spots:
+          description: 'Слабые места — темы на C: засчитаны, но ответ неполный; источники и материалы — как у пробела'
+          items:
+            $ref: '#/components/schemas/geek.Gap'
+          type: array
+          uniqueItems: false
       required:
         - gaps
         - grade
         - nodes
         - score_percent
         - session_id
+        - weak_spots
       type: object
     geek.Session:
       additionalProperties: false

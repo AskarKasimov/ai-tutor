@@ -70,7 +70,7 @@
       <input id="email" type="email" autocomplete="email" required>
       <label for="password">Пароль</label>
       <input id="password" type="password" autocomplete="current-password" required>
-      <p class="hint" id="password-hint" hidden>Не короче 15 символов: так требует версия обучения.</p>
+      <p class="hint" id="password-hint" hidden>От 4 до 128 символов.</p>
       <button class="submit" id="submit" type="submit">Войти</button>
       <p class="error" id="error" role="alert"></p>
     </form>
@@ -193,8 +193,8 @@
     $('error').textContent = '';
     let results = [];
     if (mode === 'register') {
-      // Learning first: its password rule is stricter, so a weak password
-      // fails before an account exists in only one release.
+      // One release at a time: a rejected registration stops before the
+      // account exists in the other one.
       for (const release of releases) {
         const result = await register(release, credentials, name);
         results.push(result);

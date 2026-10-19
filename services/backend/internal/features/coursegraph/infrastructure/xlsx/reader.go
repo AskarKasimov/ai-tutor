@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"path"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -297,15 +298,27 @@ func (r *reader) rows(name string, shared []string) ([][]string, error) {
 		value  strings.Builder
 		inV    bool
 		inT    bool
-		inIs   bool
-		// open holds the elements of the main namespace now open, so each
-		// one is checked against its parent before it changes any state,
-		// and a closing tag of another namespace changes none.
+		// open holds the role of every element now open, any namespace, and
+		// unknown for elements without one. An element takes a role only at
+		// its one place in the document, and a closing tag acts by the role
+		// of what it closes, never by its name, so no element can open a row
+		// or a cell inside another one.
 		open []string
 	)
-	// parents are the elements a sheet element may appear in; others are
-	// read through without effect.
-	parents := map[string]string{"sheetData": "worksheet", "row": "sheetData", "c": "row", "v": "c", "is": "c", "r": "is", "t": "is|r"}
+	const unknown = "?"
+	// places are where the elements that change the state may stand, as
+	// the roles from the root down. t and r inside an element without a
+	// role (phonetic hints in rPh) are read through.
+	places := map[string][]string{
+		"worksheet": {""},
+		"sheetData": {"worksheet"},
+		"row":       {"worksheet/sheetData"},
+		"c":         {"worksheet/sheetData/row"},
+		"v":         {"worksheet/sheetData/row/c"},
+		"is":        {"worksheet/sheetData/row/c"},
+		"r":         {"worksheet/sheetData/row/c/is"},
+		"t":         {"worksheet/sheetData/row/c/is", "worksheet/sheetData/row/c/is/r"},
+	}
 	// setCell stores the value read for the current cell; the text of the
 	// file was spent while read, a shared string is spent at every cell.
 	setCell := func() error {
@@ -327,18 +340,18 @@ func (r *reader) rows(name string, shared []string) ([][]string, error) {
 		return nil
 	}
 	err := r.walk(name, func(e xml.StartElement) error {
-		if e.Name.Space != "" && e.Name.Space != mainNS {
-			return nil
+		role := unknown
+		if allowed, ok := places[e.Name.Local]; ok && (e.Name.Space == "" || e.Name.Space == mainNS) {
+			switch {
+			case slices.Contains(allowed, strings.Join(open, "/")):
+				role = e.Name.Local
+			case (e.Name.Local == "t" || e.Name.Local == "r") && slices.Contains(open, unknown):
+			default:
+				return fmt.Errorf("<%s> out of place in the sheet", e.Name.Local)
+			}
 		}
-		parent := ""
-		if len(open) > 0 {
-			parent = open[len(open)-1]
-		}
-		open = append(open, e.Name.Local)
-		if allowed, ok := parents[e.Name.Local]; ok && !strings.Contains("|"+allowed+"|", "|"+parent+"|") {
-			return fmt.Errorf("<%s> inside <%s>", e.Name.Local, parent)
-		}
-		switch e.Name.Local {
+		open = append(open, role)
+		switch role {
 		case "row":
 			number := len(rows) + 1
 			if ref := attr(e, "", "r"); ref != "" {
@@ -386,27 +399,22 @@ func (r *reader) rows(name string, shared []string) ([][]string, error) {
 			kind = attr(e, "", "t")
 			value.Reset()
 		case "v":
-			inV = column >= 0
-		case "is":
-			inIs = column >= 0
+			inV = true
 		case "t":
-			inT = inIs
+			inT = true
 		}
 		return nil
-	}, func(e xml.EndElement) error {
-		if e.Name.Space != "" && e.Name.Space != mainNS {
-			return nil
+	}, func(xml.EndElement) error {
+		if len(open) == 0 {
+			return fmt.Errorf("a closing tag without an element")
 		}
-		if len(open) > 0 {
-			open = open[:len(open)-1]
-		}
-		switch e.Name.Local {
+		role := open[len(open)-1]
+		open = open[:len(open)-1]
+		switch role {
 		case "v":
 			inV = false
 		case "t":
 			inT = false
-		case "is":
-			inIs = false
 		case "c":
 			if column < 0 {
 				return nil

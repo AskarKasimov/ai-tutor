@@ -162,6 +162,11 @@ func TestReadRefusesAMisplacedElement(t *testing.T) {
 		`<row r="1"><c r="A1"><c r="B1"/></c></row>`,
 		`<row r="1"><v>1</v></row>`,
 		`<row r="1"><c r="A1" t="inlineStr"><t>x</t></c></row>`,
+		// The places are checked from the root, not by the parent alone.
+		`<row r="1"><c r="A1"><worksheet><sheetData><row r="2"/></sheetData></worksheet></c></row>`,
+		`<row r="1"><c r="A1"><sheetData><row r="2"/></sheetData></c></row>`,
+		`<row r="1"><c r="A1"><x:w xmlns:x="urn:other"><row r="2"/></x:w></c></row>`,
+		`<row r="1"><c r="A1"><extLst><row r="2"><c r="B2"/></row></extLst></c></row>`,
 	} {
 		if _, err := Read(sheetBook(t, data)); err == nil {
 			t.Fatalf("%s accepted", data)
@@ -192,15 +197,20 @@ func FuzzRead(f *testing.F) {
 		`<row r="1"><c r="A1" t="s"><v>0</v></c><c r="B1" t="inlineStr"><is><r><t>x</t></r></is></c></row>`,
 		`<row r="1"><c r="A1"><row r="2"/></c></row>`,
 		`<row r="2"><c r="GR2"/></row><row r="3"><c t="b"><v>1</v></c></row>`,
+		`<row r="1"><c r="A1"><worksheet><sheetData><row r="2"/></sheetData></worksheet></c></row>`,
+		`</sheetData><sheetData><row r="1"><c r="A1"><v>1</v></c></row></sheetData><sheetData>`,
+		`<row r="1"><c r="A1" t="inlineStr"><is><rPh><t>ふ</t></rPh><r><t>x</t></r></is></c></row>`,
 	} {
-		f.Add(seed)
+		f.Add(`<worksheet ` + ns + `><sheetData>` + seed + `</sheetData></worksheet>`)
 	}
+	f.Add(`<worksheet ` + ns + `><sheetData><row r="1"><c r="A1"><v>1</v></c></row></sheetData><worksheet><sheetData><row r="2"/></sheetData></worksheet></worksheet>`)
 	f.Fuzz(func(t *testing.T, data string) {
 		parts := map[string]string{
 			"xl/workbook.xml":            `<workbook ` + ns + `><sheets><sheet name="Карта" sheetId="1" r:id="rId1"/></sheets></workbook>`,
 			"xl/_rels/workbook.xml.rels": `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Target="worksheets/sheet1.xml"/></Relationships>`,
 			"xl/sharedStrings.xml":       `<sst ` + ns + `><si><t>Субкомпетенция</t></si></sst>`,
-			"xl/worksheets/sheet1.xml":   `<worksheet ` + ns + `><sheetData>` + data + `</sheetData></worksheet>`,
+			// The whole part is fuzzed, root and sheetData included.
+			"xl/worksheets/sheet1.xml": data,
 		}
 		_, _ = Read(book(t, parts))
 	})

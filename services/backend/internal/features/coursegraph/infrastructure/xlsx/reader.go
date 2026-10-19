@@ -10,35 +10,55 @@ import (
 	"fmt"
 	"io"
 	"path"
+	"strconv"
 	"strings"
 
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/coursegraph"
 )
 
 // Limits guard against a crafted book that unpacks into far more than it
-// weighs. They bound the whole book, not one part: every XML part read
-// spends the same budget, so neither many sheets nor one part read through
-// many sheet entries can grow past it.
+// weighs. They bound the whole book, not one part, and are checked token by
+// token while the XML is read, before anything grows: every XML part read
+// spends one byte budget, every element one element budget, and every row
+// and cell position held in the result (empty positions of a sparse row
+// included) one slot budget.
 const (
 	maxBookBytes = 64 << 20
 	maxSheets    = 64
 	maxRows      = 20000
 	maxColumns   = 200
-	maxCells     = 1_000_000
-	// maxTextBytes bounds the cell text returned, shared strings counted
-	// at every cell that refers to them.
+	// maxElements bounds the XML elements of the book, empty ones included.
+	maxElements = 2_000_000
+	// maxSlots bounds the rows and cell positions returned, so a sparse sheet
+	// cannot widen into dense rows.
+	maxSlots = 1_000_000
+	// maxTextBytes bounds the text read from the book and returned, shared
+	// strings counted at every cell that refers to them.
 	maxTextBytes = 64 << 20
+	// maxRelationships bounds the relationships of the workbook part.
+	maxRelationships = 4 * maxSheets
 )
 
 // ErrNotWorkbook means the file is not an .xlsx book.
 var ErrNotWorkbook = errors.New("not an xlsx workbook")
 
+var (
+	errTooLarge      = errors.New("the book is larger than a competency map may be")
+	errTooManySheets = fmt.Errorf("the book has more than %d sheets", maxSheets)
+)
+
+const (
+	mainNS = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+	relNS  = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+)
+
 type reader struct {
 	files map[string]*zip.File
-	// left is what the book may still unpack, cells and text what it may
-	// still return.
-	left, cells, text int64
+	// What the book may still unpack, contain and return.
+	bytes, elements, slots, text int64
 }
+
+type sheetRef struct{ name, id string }
 
 // Read returns the worksheets in book order.
 func Read(data []byte) ([]coursegraph.MapSheet, error) {
@@ -46,197 +66,352 @@ func Read(data []byte) ([]coursegraph.MapSheet, error) {
 	if err != nil {
 		return nil, ErrNotWorkbook
 	}
-	r := &reader{files: map[string]*zip.File{}, left: maxBookBytes, cells: maxCells, text: maxTextBytes}
+	r := &reader{files: map[string]*zip.File{}, bytes: maxBookBytes, elements: maxElements, slots: maxSlots, text: maxTextBytes}
 	for _, f := range archive.File {
 		r.files[f.Name] = f
 	}
-	var book struct {
-		Sheets []struct {
-			Name string `xml:"name,attr"`
-			ID   string `xml:"http://schemas.openxmlformats.org/officeDocument/2006/relationships id,attr"`
-		} `xml:"sheets>sheet"`
+	refs, err := r.workbook()
+	if err != nil {
+		return nil, err
 	}
-	if err := r.decode("xl/workbook.xml", &book); err != nil {
-		return nil, ErrNotWorkbook
-	}
-	var rels struct {
-		Items []struct {
-			ID     string `xml:"Id,attr"`
-			Target string `xml:"Target,attr"`
-		} `xml:"Relationship"`
-	}
-	if err := r.decode("xl/_rels/workbook.xml.rels", &rels); err != nil {
-		return nil, ErrNotWorkbook
-	}
-	targets := map[string]string{}
-	for _, rel := range rels.Items {
-		target := strings.TrimPrefix(rel.Target, "/")
-		if !strings.HasPrefix(target, "xl/") {
-			target = path.Join("xl", target)
-		}
-		targets[rel.ID] = target
-	}
-	if len(book.Sheets) > maxSheets {
-		return nil, fmt.Errorf("the book has more than %d sheets", maxSheets)
+	targets, err := r.relationships()
+	if err != nil {
+		return nil, err
 	}
 	shared, err := r.sharedStrings()
 	if err != nil {
 		return nil, err
 	}
-	sheets := make([]coursegraph.MapSheet, 0, len(book.Sheets))
+	sheets := make([]coursegraph.MapSheet, 0, len(refs))
 	read := map[string]bool{}
-	for _, s := range book.Sheets {
-		target, ok := targets[s.ID]
+	for _, s := range refs {
+		target, ok := targets[s.id]
 		if !ok {
 			continue
 		}
 		// A sheet part belongs to one sheet; reading it again would only
 		// multiply what the book returns.
 		if read[target] {
-			return nil, fmt.Errorf("sheet %q repeats part %s", s.Name, target)
+			return nil, fmt.Errorf("sheet %q repeats part %s", s.name, target)
 		}
 		read[target] = true
 		rows, err := r.rows(target, shared)
 		if err != nil {
-			return nil, fmt.Errorf("sheet %q: %w", s.Name, err)
+			return nil, fmt.Errorf("sheet %q: %w", s.name, err)
 		}
-		sheets = append(sheets, coursegraph.MapSheet{Name: s.Name, Rows: rows})
+		sheets = append(sheets, coursegraph.MapSheet{Name: s.name, Rows: rows})
 	}
 	return sheets, nil
 }
 
-// open spends the declared size of a part from the budget of the book; the
-// reader stops there even if the archive understates the size.
-func (r *reader) open(name string) (io.Reader, io.Closer, error) {
+// walk streams a part, spending the budgets as it goes, and calls start for
+// every element, end for every closing tag and text for character data.
+func (r *reader) walk(name string, start func(xml.StartElement) error, end func(xml.EndElement) error, text func([]byte) error) error {
 	f, ok := r.files[name]
 	if !ok {
-		return nil, nil, fmt.Errorf("%s is missing", name)
+		return fmt.Errorf("%s is missing", name)
 	}
-	if f.UncompressedSize64 > uint64(r.left) {
-		return nil, nil, fmt.Errorf("the book unpacks into more than %d bytes", maxBookBytes)
+	// The declared size is spent at once and also bounds the reading, so an
+	// archive that understates it gains nothing.
+	if f.UncompressedSize64 > uint64(r.bytes) {
+		return errTooLarge
 	}
 	size := int64(f.UncompressedSize64)
-	r.left -= size
+	r.bytes -= size
 	rc, err := f.Open()
-	if err != nil {
-		return nil, nil, err
-	}
-	return io.LimitReader(rc, size), rc, nil
-}
-
-func (r *reader) decode(name string, v any) error {
-	body, closer, err := r.open(name)
 	if err != nil {
 		return err
 	}
-	defer closer.Close()
-	return xml.NewDecoder(body).Decode(v)
+	defer rc.Close()
+	dec := xml.NewDecoder(io.LimitReader(rc, size))
+	for {
+		token, err := dec.Token()
+		if errors.Is(err, io.EOF) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		switch t := token.(type) {
+		case xml.StartElement:
+			if r.elements--; r.elements < 0 {
+				return errTooLarge
+			}
+			if start != nil {
+				if err := start(t); err != nil {
+					return err
+				}
+			}
+		case xml.EndElement:
+			if end != nil {
+				if err := end(t); err != nil {
+					return err
+				}
+			}
+		case xml.CharData:
+			if text != nil {
+				if err := text(t); err != nil {
+					return err
+				}
+			}
+		}
+	}
 }
 
-// spend takes a cell and its text from the budget of the book.
-func (r *reader) spend(text string) error {
-	r.cells--
-	r.text -= int64(len(text))
-	if r.cells < 0 || r.text < 0 {
-		return fmt.Errorf("the book has more than %d cells or %d bytes of text", maxCells, maxTextBytes)
+func attr(e xml.StartElement, space, local string) string {
+	for _, a := range e.Attr {
+		if a.Name.Local == local && (space == "" || a.Name.Space == space) {
+			return a.Value
+		}
+	}
+	return ""
+}
+
+func (r *reader) workbook() ([]sheetRef, error) {
+	refs := []sheetRef{}
+	err := r.walk("xl/workbook.xml", func(e xml.StartElement) error {
+		if e.Name.Local != "sheet" {
+			return nil
+		}
+		if len(refs) == maxSheets {
+			return errTooManySheets
+		}
+		refs = append(refs, sheetRef{name: attr(e, "", "name"), id: attr(e, relNS, "id")})
+		return nil
+	}, nil, nil)
+	if errors.Is(err, errTooLarge) || errors.Is(err, errTooManySheets) {
+		return nil, err
+	}
+	if err != nil {
+		return nil, ErrNotWorkbook
+	}
+	return refs, nil
+}
+
+func (r *reader) relationships() (map[string]string, error) {
+	targets := map[string]string{}
+	err := r.walk("xl/_rels/workbook.xml.rels", func(e xml.StartElement) error {
+		if e.Name.Local != "Relationship" {
+			return nil
+		}
+		if len(targets) == maxRelationships {
+			return errTooLarge
+		}
+		target := strings.TrimPrefix(attr(e, "", "Target"), "/")
+		if !strings.HasPrefix(target, "xl/") {
+			target = path.Join("xl", target)
+		}
+		targets[attr(e, "", "Id")] = target
+		return nil
+	}, nil, nil)
+	if errors.Is(err, errTooLarge) {
+		return nil, err
+	}
+	if err != nil {
+		return nil, ErrNotWorkbook
+	}
+	return targets, nil
+}
+
+// spendText takes text from the budget of the book.
+func (r *reader) spendText(n int) error {
+	if r.text -= int64(n); r.text < 0 {
+		return errTooLarge
 	}
 	return nil
 }
 
-// text joins the runs of a string item, rich text included.
-type text struct {
-	Plain string `xml:"t"`
-	Runs  []struct {
-		Text string `xml:"t"`
-	} `xml:"r"`
+// spendSlots takes rows or cell positions from the budget of the book.
+func (r *reader) spendSlots(n int) error {
+	if r.slots -= int64(n); r.slots < 0 {
+		return errTooLarge
+	}
+	return nil
 }
 
-func (t text) String() string {
-	if len(t.Runs) == 0 {
-		return t.Plain
-	}
-	var b strings.Builder
-	for _, run := range t.Runs {
-		b.WriteString(run.Text)
-	}
-	return b.String()
-}
-
+// sharedStrings reads the string table: the text of each item, rich text
+// runs joined, phonetic hints left out.
 func (r *reader) sharedStrings() ([]string, error) {
 	if _, ok := r.files["xl/sharedStrings.xml"]; !ok {
 		return nil, nil
 	}
-	var table struct {
-		Items []text `xml:"si"`
-	}
-	if err := r.decode("xl/sharedStrings.xml", &table); err != nil {
+	var (
+		out     []string
+		current strings.Builder
+		inItem  bool
+		inText  bool
+		// Phonetic runs (rPh) carry readings, not the cell text.
+		phonetic int
+	)
+	err := r.walk("xl/sharedStrings.xml", func(e xml.StartElement) error {
+		switch e.Name.Local {
+		case "si":
+			if err := r.spendSlots(1); err != nil {
+				return err
+			}
+			inItem = true
+			current.Reset()
+		case "rPh":
+			phonetic++
+		case "t":
+			inText = inItem && phonetic == 0
+		}
+		return nil
+	}, func(e xml.EndElement) error {
+		switch e.Name.Local {
+		case "si":
+			out = append(out, current.String())
+			inItem = false
+		case "rPh":
+			phonetic--
+		case "t":
+			inText = false
+		}
+		return nil
+	}, func(data []byte) error {
+		if !inText {
+			return nil
+		}
+		if err := r.spendText(len(data)); err != nil {
+			return err
+		}
+		current.Write(data)
+		return nil
+	})
+	if err != nil {
 		return nil, fmt.Errorf("shared strings: %w", err)
-	}
-	out := make([]string, len(table.Items))
-	for i, item := range table.Items {
-		out[i] = item.String()
 	}
 	return out, nil
 }
 
+// rows reads a worksheet. Each row and cell position is spent before the
+// row grows to it, so a sparse sheet is bounded like a dense one.
 func (r *reader) rows(name string, shared []string) ([][]string, error) {
-	var sheet struct {
-		Rows []struct {
-			Number int `xml:"r,attr"`
-			Cells  []struct {
-				Ref    string `xml:"r,attr"`
-				Type   string `xml:"t,attr"`
-				Value  string `xml:"v"`
-				Inline text   `xml:"is"`
-			} `xml:"c"`
-		} `xml:"sheetData>row"`
-	}
-	if err := r.decode(name, &sheet); err != nil {
-		return nil, err
-	}
 	rows := [][]string{}
-	for _, row := range sheet.Rows {
-		if row.Number < 1 || row.Number > maxRows {
-			return nil, fmt.Errorf("row %d is out of range", row.Number)
+	var (
+		row    []string
+		inRow  bool
+		next   int // column of a cell without a reference
+		column = -1
+		kind   string
+		value  strings.Builder
+		inV    bool
+		inT    bool
+		inIs   bool
+	)
+	// setCell stores the value read for the current cell; the text of the
+	// file was spent while read, a shared string is spent at every cell.
+	setCell := func() error {
+		cell := value.String()
+		switch kind {
+		case "s":
+			index, err := strconv.Atoi(strings.TrimSpace(cell))
+			if err != nil || index < 0 || index >= len(shared) {
+				return fmt.Errorf("a cell refers to an unknown string")
+			}
+			cell = shared[index]
+			if err := r.spendText(len(cell)); err != nil {
+				return err
+			}
+		case "b":
+			cell = map[string]string{"1": "TRUE", "0": "FALSE"}[cell]
 		}
-		// Rows are numbered in the file; missing ones are empty.
-		for len(rows) < row.Number {
-			rows = append(rows, nil)
+		row[column] = cell
+		return nil
+	}
+	err := r.walk(name, func(e xml.StartElement) error {
+		if e.Name.Space != "" && e.Name.Space != mainNS {
+			return nil
 		}
-		cells := []string{}
-		for i, c := range row.Cells {
-			column := i
-			if c.Ref != "" {
+		switch e.Name.Local {
+		case "row":
+			number := len(rows) + 1
+			if ref := attr(e, "", "r"); ref != "" {
+				n, err := strconv.Atoi(ref)
+				if err != nil || n < number {
+					return fmt.Errorf("row %q is out of order", ref)
+				}
+				number = n
+			}
+			if number > maxRows {
+				return fmt.Errorf("row %d is out of range", number)
+			}
+			// Missing rows are empty; each one is a slot of the result.
+			if err := r.spendSlots(number - len(rows)); err != nil {
+				return err
+			}
+			for len(rows) < number-1 {
+				rows = append(rows, nil)
+			}
+			row, inRow, next = nil, true, 0
+		case "c":
+			if !inRow {
+				return fmt.Errorf("a cell outside a row")
+			}
+			column = next
+			if ref := attr(e, "", "r"); ref != "" {
 				var err error
-				if column, err = columnIndex(c.Ref); err != nil {
-					return nil, err
+				if column, err = columnIndex(ref); err != nil {
+					return err
 				}
 			}
 			if column < 0 || column >= maxColumns {
-				return nil, fmt.Errorf("column %d is out of range", column+1)
+				return fmt.Errorf("column %d is out of range", column+1)
 			}
-			for len(cells) <= column {
-				cells = append(cells, "")
+			if column < len(row) && row[column] != "" {
+				return fmt.Errorf("cell in column %d repeats", column+1)
 			}
-			switch c.Type {
-			case "s":
-				var index int
-				if _, err := fmt.Sscan(c.Value, &index); err != nil || index < 0 || index >= len(shared) {
-					return nil, fmt.Errorf("cell %s refers to an unknown string", c.Ref)
+			if column >= len(row) {
+				if err := r.spendSlots(column + 1 - len(row)); err != nil {
+					return err
 				}
-				cells[column] = shared[index]
-			case "inlineStr":
-				cells[column] = c.Inline.String()
-			case "b":
-				cells[column] = map[string]string{"1": "TRUE", "0": "FALSE"}[c.Value]
-			default:
-				cells[column] = c.Value
+				row = append(row, make([]string, column+1-len(row))...)
 			}
-			if err := r.spend(cells[column]); err != nil {
-				return nil, err
-			}
+			next = column + 1
+			kind = attr(e, "", "t")
+			value.Reset()
+		case "v":
+			inV = column >= 0
+		case "is":
+			inIs = column >= 0
+		case "t":
+			inT = inIs
 		}
-		rows[row.Number-1] = cells
+		return nil
+	}, func(e xml.EndElement) error {
+		switch e.Name.Local {
+		case "v":
+			inV = false
+		case "t":
+			inT = false
+		case "is":
+			inIs = false
+		case "c":
+			if column < 0 {
+				return nil
+			}
+			err := setCell()
+			column = -1
+			return err
+		case "row":
+			if inRow {
+				rows = append(rows, row)
+			}
+			inRow = false
+		}
+		return nil
+	}, func(data []byte) error {
+		if column < 0 || !inV && !inT {
+			return nil
+		}
+		if err := r.spendText(len(data)); err != nil {
+			return err
+		}
+		value.Write(data)
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
 	return rows, nil
 }

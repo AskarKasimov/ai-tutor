@@ -63,9 +63,10 @@ export function CompetencyMapImport({
     error instanceof CourseGraphApiError
       ? error.details.filter((detail) => detail.path === 'file')
       : []
-  const askingSheet =
-    file !== null &&
-    sheets.length > 0 &&
+  // The sheets stay offered until the import succeeds or another file is
+  // chosen, so a failed sheet can be retried or another one chosen.
+  const askingSheet = file !== null && sheets.length > 0
+  const sheetRequired =
     error instanceof CourseGraphApiError &&
     error.code === 'COMPETENCY_MAP_SHEET_REQUIRED'
 
@@ -144,7 +145,7 @@ export function CompetencyMapImport({
           </Button>
         </Flex>
       )}
-      {error && !askingSheet && (
+      {error && !sheetRequired && (
         <div className={styles.error} role="alert">
           <Text weight="bold">
             {error instanceof Error

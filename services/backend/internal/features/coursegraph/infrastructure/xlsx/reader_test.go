@@ -106,15 +106,60 @@ func TestReadRefusesABookThatMultipliesItsParts(t *testing.T) {
 }
 
 func TestReadSpendsOneBudgetForTheWholeBook(t *testing.T) {
-	r := &reader{cells: 2, text: 6}
-	if r.spend("абв") != nil || r.spend("") != nil {
-		t.Fatal("cells within the budget refused")
+	r := &reader{slots: 2, text: 6}
+	if r.spendText(len("абв")) != nil || r.spendSlots(2) != nil {
+		t.Fatal("within the budget refused")
 	}
-	if r.spend("") == nil {
-		t.Fatal("a cell past the budget accepted")
+	if r.spendSlots(1) == nil || r.spendText(1) == nil {
+		t.Fatal("past the budget accepted")
 	}
-	r = &reader{cells: 10, text: 3}
-	if r.spend("abcd") == nil {
-		t.Fatal("text past the budget accepted")
+}
+
+// sheetBook is a book of sheets with the given sheetData XML each.
+func sheetBook(t *testing.T, data ...string) []byte {
+	t.Helper()
+	var sheets, rels strings.Builder
+	parts := map[string]string{}
+	for i, d := range data {
+		fmt.Fprintf(&sheets, `<sheet name="Лист %d" sheetId="%d" r:id="rId%d"/>`, i+1, i+1, i+1)
+		fmt.Fprintf(&rels, `<Relationship Id="rId%d" Target="worksheets/sheet%d.xml"/>`, i+1, i+1)
+		parts[fmt.Sprintf("xl/worksheets/sheet%d.xml", i+1)] = `<worksheet ` + ns + `><sheetData>` + d + `</sheetData></worksheet>`
+	}
+	parts["xl/workbook.xml"] = `<workbook ` + ns + `><sheets>` + sheets.String() + `</sheets></workbook>`
+	parts["xl/_rels/workbook.xml.rels"] = `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">` + rels.String() + `</Relationships>`
+	return book(t, parts)
+}
+
+func TestReadStopsAtTheLimitWhileReading(t *testing.T) {
+	// 250 000 empty cells in one row: refused at column 201, while read.
+	wide := `<row r="1">` + strings.Repeat(`<c/>`, 250000) + `</row>`
+	if _, err := Read(sheetBook(t, wide)); err == nil || !strings.Contains(err.Error(), "column 201") {
+		t.Fatalf("a row of 250 000 cells: %v", err)
+	}
+	// Sparse rows: one empty cell in column 200 per row widens every row to
+	// 200 positions; the positions are spent, so the book is refused before
+	// the slots of the result exceed maxSlots.
+	var sparse strings.Builder
+	for i := 1; i <= maxRows; i++ {
+		fmt.Fprintf(&sparse, `<row r="%d"><c r="GR%d"/></row>`, i, i)
+	}
+	if _, err := Read(sheetBook(t, sparse.String())); !errors.Is(err, errTooLarge) {
+		t.Fatalf("sparse rows: %v", err)
+	}
+	// Every element counts, kept or not.
+	many := `<row r="1"><c r="A1"><v>1</v></c></row>` + strings.Repeat(`<x/>`, maxElements)
+	if _, err := Read(sheetBook(t, many)); !errors.Is(err, errTooLarge) {
+		t.Fatalf("elements past the budget: %v", err)
+	}
+}
+
+func TestReadKeepsTheTextOfEveryKindOfCell(t *testing.T) {
+	data := sheetBook(t, `<row r="2"><c r="B2" t="inlineStr"><is><r><t>Назовите </t></r><r><t>агента.</t></r></is></c><c r="C2"><v>4.0</v></c></row>`)
+	sheets, err := Read(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rows := sheets[0].Rows; len(rows) != 2 || rows[0] != nil || len(rows[1]) != 3 || rows[1][1] != "Назовите агента." || rows[1][2] != "4.0" {
+		t.Fatalf("rows = %q", rows)
 	}
 }

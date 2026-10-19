@@ -54,7 +54,7 @@ function setup({
   graphReady?: boolean
   // The import of a competency map: a book of several sheets asks for one,
   // a bad map names its cells; the build then publishes the graph of the map.
-  competencyMap?: 'sheets' | 'invalid'
+  competencyMap?: 'sheets' | 'invalid' | 'invalidSheet'
   uploadGate?: Promise<void>
 } = {}) {
   let graphRequested = false
@@ -123,7 +123,10 @@ function setup({
       ])
     if (url.endsWith('/graph/competency-map')) {
       const body = init?.body as FormData
-      if (competencyMap === 'invalid')
+      if (
+        competencyMap === 'invalid' ||
+        (competencyMap === 'invalidSheet' && body.get('sheet') === 'Карта')
+      )
         return Response.json(
           {
             code: 'COMPETENCY_MAP_INVALID',
@@ -319,6 +322,36 @@ it('builds the graph from a competency map once a sheet is chosen', async () => 
   // The first send has no sheet; the second sends the first one offered.
   expect((imports[0][1]?.body as FormData).get('sheet')).toBeNull()
   expect((imports[1][1]?.body as FormData).get('sheet')).toBe('Карта')
+}, 15000)
+
+it('keeps the sheets offered after a chosen sheet is rejected', async () => {
+  const calls = setup({ competencyMap: 'invalidSheet' })
+  open()
+  await chooseMap()
+  const dialog = await screen.findByRole('alertdialog')
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Импортировать' }))
+  expect(await screen.findByLabelText('Лист карты')).toBeInTheDocument()
+  // The first sheet offered has bad cells.
+  fireEvent.click(screen.getByRole('button', { name: 'Импортировать лист' }))
+  expect(
+    await screen.findByText(
+      'Строка 3, «Уровень по Блуму»: Неизвестный уровень по Блуму.',
+    ),
+  ).toBeVisible()
+  // The choice stays: another sheet is sent without choosing the file again.
+  expect(screen.getByLabelText('Лист карты')).toBeInTheDocument()
+  fireEvent.click(screen.getByRole('combobox', { name: 'Лист карты' }))
+  fireEvent.click(await screen.findByRole('option', { name: 'Карта_ВСЯ' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Импортировать лист' }))
+  expect(
+    await screen.findByText('По карте компетенций', undefined, {
+      timeout: 8000,
+    }),
+  ).toBeVisible()
+  const sent = calls.mock.calls
+    .filter(([url]) => String(url).endsWith('/graph/competency-map'))
+    .map(([, init]) => (init?.body as FormData).get('sheet'))
+  expect(sent).toEqual([null, 'Карта', 'Карта_ВСЯ'])
 }, 15000)
 
 it('names the bad cells of a rejected competency map', async () => {

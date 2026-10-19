@@ -101,10 +101,12 @@ func TopicGrade(c Criteria, assisted bool, unassessed UnassessedCriteria) Grade 
 	return grade
 }
 
-// CourseGrade averages the graded top-level topics (A = 4 … D = 1) as a share
-// of the maximum 4: at least 90% is A, 75% B, 60% C, otherwise D. Topics
-// without a grade ("insufficient data" or unchecked) are excluded; with none
-// left both results are nil.
+// CourseGrade averages the graded top-level topics (A = 4 … D = 1) and rounds
+// the mean to the nearest grade: at least 3.5 is A, 2.5 B, 1.5 C, otherwise D,
+// so topics all on one grade give that grade (decision of 20.10.2026). The
+// percent is the mean as a share of the maximum 4. Topics without a grade
+// ("insufficient data" or unchecked) are excluded; with none left both
+// results are nil.
 func CourseGrade(grades []Grade) (*Grade, *int) {
 	if len(grades) == 0 {
 		return nil, nil
@@ -113,15 +115,17 @@ func CourseGrade(grades []Grade) (*Grade, *int) {
 	for _, g := range grades {
 		sum += g.points()
 	}
-	share := float64(sum) / float64(4*len(grades)) * 100
-	percent := int(math.Floor(share + 1e-9))
+	// Twice the mean compared with whole thresholds keeps the halves exact.
+	twice := 2 * sum
+	n := len(grades)
+	percent := int(math.Floor(float64(sum)/float64(4*n)*100 + 1e-9))
 	grade := GradeD
 	switch {
-	case share >= 90:
+	case twice >= 7*n:
 		grade = GradeA
-	case share >= 75:
+	case twice >= 5*n:
 		grade = GradeB
-	case share >= 60:
+	case twice >= 3*n:
 		grade = GradeC
 	}
 	return &grade, &percent

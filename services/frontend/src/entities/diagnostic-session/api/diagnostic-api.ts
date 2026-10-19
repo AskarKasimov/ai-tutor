@@ -3,6 +3,7 @@ import { apiFetch } from '@/shared/api'
 import { DiagnosticApiError } from '../model/diagnostic-error'
 import type {
   DiagnosticAnswer,
+  DiagnosticGap,
   DiagnosticResult,
   DiagnosticSession,
   DiagnosticSummary,
@@ -84,6 +85,21 @@ const sessionSchema = z
     })),
   }))
 
+const gapSchema = z.object({
+  node_id: id,
+  title: z.string(),
+  weeks: z.array(z.number().int().positive()).optional().default([]),
+  sources: z.array(sourceCitationSchema).optional().default([]),
+  learning_materials: z
+    .object({
+      theory: z.array(materialReferenceSchema).optional().default([]),
+      practice: z.array(materialReferenceSchema).optional().default([]),
+      additional: z.array(materialReferenceSchema).optional().default([]),
+    })
+    .optional()
+    .default({ theory: [], practice: [], additional: [] }),
+})
+
 const resultSchema = z
   .object({
     session_id: id,
@@ -107,22 +123,9 @@ const resultSchema = z
         requires: z.array(id).optional().default([]),
       }),
     ),
-    gaps: z.array(
-      z.object({
-        node_id: id,
-        title: z.string(),
-        weeks: z.array(z.number().int().positive()).optional().default([]),
-        sources: z.array(sourceCitationSchema).optional().default([]),
-        learning_materials: z
-          .object({
-            theory: z.array(materialReferenceSchema).optional().default([]),
-            practice: z.array(materialReferenceSchema).optional().default([]),
-            additional: z.array(materialReferenceSchema).optional().default([]),
-          })
-          .optional()
-          .default({ theory: [], practice: [], additional: [] }),
-      }),
-    ),
+    gaps: z.array(gapSchema),
+    // Older backends send no weak spots.
+    weak_spots: z.array(gapSchema).optional().default([]),
   })
   .transform((r): DiagnosticResult => ({
     sessionId: r.session_id,
@@ -136,30 +139,35 @@ const resultSchema = z
       topLevel: n.top_level,
       requires: n.requires,
     })),
-    gaps: r.gaps.map((g) => ({
-      nodeId: g.node_id,
-      title: g.title,
-      weeks: g.weeks,
-      sources: g.sources.map((s) => ({
-        materialId: s.material_id,
-        filename: s.filename,
-        kind: s.kind,
-        kindLabel: s.kind_label,
-        week: s.week,
-        revision: s.material_revision,
-        blockId: s.block_id,
-        start: s.start,
-        end: s.end,
-        text: s.text,
-        page: s.page,
-      })),
-      learningMaterials: {
-        theory: g.learning_materials.theory.map(toMaterialReference),
-        practice: g.learning_materials.practice.map(toMaterialReference),
-        additional: g.learning_materials.additional.map(toMaterialReference),
-      },
-    })),
+    gaps: r.gaps.map(toGap),
+    weakSpots: r.weak_spots.map(toGap),
   }))
+
+function toGap(g: z.infer<typeof gapSchema>): DiagnosticGap {
+  return {
+    nodeId: g.node_id,
+    title: g.title,
+    weeks: g.weeks,
+    sources: g.sources.map((s) => ({
+      materialId: s.material_id,
+      filename: s.filename,
+      kind: s.kind,
+      kindLabel: s.kind_label,
+      week: s.week,
+      revision: s.material_revision,
+      blockId: s.block_id,
+      start: s.start,
+      end: s.end,
+      text: s.text,
+      page: s.page,
+    })),
+    learningMaterials: {
+      theory: g.learning_materials.theory.map(toMaterialReference),
+      practice: g.learning_materials.practice.map(toMaterialReference),
+      additional: g.learning_materials.additional.map(toMaterialReference),
+    },
+  }
+}
 
 function toMaterialReference(s: z.infer<typeof materialReferenceSchema>) {
   return {

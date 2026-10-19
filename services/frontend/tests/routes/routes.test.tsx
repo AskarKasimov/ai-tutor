@@ -7,12 +7,21 @@ import {
 import { afterEach, expect, it, vi } from 'vitest'
 
 import { createQueryClient } from '@/bootstrap/providers'
+import { openModeSelect } from '@/features/auth/model/mode-select'
 import { routeTree } from '@/routeTree.gen'
 import { logOut } from '../support/account-menu'
 
 vi.mock('@/shared/lib', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/shared/lib')>()),
   createVoiceWaveform: () => ({ setStream: () => {}, dispose: () => {} }),
+}))
+
+// jsdom cannot leave the page; the start page is another site.
+vi.mock('@/features/auth/model/mode-select', async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import('@/features/auth/model/mode-select')
+  >()),
+  openModeSelect: vi.fn(),
 }))
 
 function renderHome(path = '/') {
@@ -27,6 +36,8 @@ function renderHome(path = '/') {
 afterEach(() => {
   vi.restoreAllMocks()
   vi.unstubAllGlobals()
+  vi.unstubAllEnvs()
+  vi.mocked(openModeSelect).mockClear()
 })
 
 function mockAuth(response: { ok: boolean; status?: number; body: unknown }) {
@@ -172,4 +183,63 @@ it('returns to the separate login screen after logout', async () => {
   expect(
     await screen.findByRole('heading', { name: 'Вход в AI Tutor' }),
   ).toBeVisible()
+  expect(
+    screen.queryByRole('menuitem', { name: 'К выбору режима' }),
+  ).not.toBeInTheDocument()
+  expect(openModeSelect).not.toHaveBeenCalled()
+})
+
+function mockSignedIn() {
+  const fetchMock = vi.fn().mockImplementation(async (_url, init) =>
+    init?.method === 'POST'
+      ? { ok: true, status: 204 }
+      : {
+          ok: true,
+          json: async () => ({
+            id: '1',
+            email: 'student@example.com',
+            display_name: 'Студент',
+          }),
+        },
+  )
+  vi.stubGlobal('fetch', fetchMock)
+  return fetchMock
+}
+
+async function openAccountMenu() {
+  const trigger = await screen.findByRole('button', { name: /Меню профиля/ })
+  fireEvent.keyDown(trigger, { key: 'Enter' })
+}
+
+it('leads back to the mode choice on the two-mode stand', async () => {
+  vi.stubEnv('VITE_MODE_SELECT_URL', 'https://modes.example/')
+  mockSignedIn()
+  renderHome()
+  await openAccountMenu()
+  fireEvent.click(
+    await screen.findByRole('menuitem', { name: 'К выбору режима' }),
+  )
+  expect(openModeSelect).toHaveBeenCalledWith()
+})
+
+it('sends visitors without a session to the start page of the two-mode stand', async () => {
+  vi.stubEnv('VITE_MODE_SELECT_URL', 'https://modes.example')
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 401 }))
+  renderHome('/login')
+  await waitFor(() => expect(openModeSelect).toHaveBeenCalledWith('?logout'))
+  expect(
+    screen.queryByRole('heading', { name: 'Вход в AI Tutor' }),
+  ).not.toBeInTheDocument()
+})
+
+it('signs out here first, then on the start page of the two-mode stand', async () => {
+  vi.stubEnv('VITE_MODE_SELECT_URL', 'https://modes.example')
+  const fetchMock = mockSignedIn()
+  renderHome()
+  await logOut()
+  await waitFor(() => expect(openModeSelect).toHaveBeenCalledWith('?logout'))
+  expect(fetchMock).toHaveBeenCalledWith(
+    expect.stringMatching(/\/auth\/logout$/),
+    expect.objectContaining({ method: 'POST' }),
+  )
 })

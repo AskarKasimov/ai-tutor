@@ -19,6 +19,7 @@ void i18n.init({
           loginTab: 'Вход',
           register: 'Регистрация',
           logout: 'Выйти',
+          modeSelect: 'К выбору режима',
           close: 'Закрыть',
           loginTitle: 'Вход в AI Tutor',
           registerTitle: 'Создать аккаунт',

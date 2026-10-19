@@ -1,6 +1,6 @@
 # Runs two releases side by side behind one HTTPS entry point (Windows):
 #   https://$DUAL_HOST        start page with one login for both
-#   https://learn.$DUAL_HOST  learning (DUAL_LEARN_REF, v0.0.2.3)
+#   https://learn.$DUAL_HOST  learning (DUAL_LEARN_REF, v0.0.2.4)
 #   https://exam.$DUAL_HOST   exam simulation (DUAL_EXAM_REF, latest master)
 # Each release runs from its own git worktree with its own .env, volumes and
 # network. Linux and macOS use linux-dual.sh. See dual/README.md.
@@ -22,7 +22,7 @@ $DualHost = Get-Setting 'DUAL_HOST' '127-0-0-1.sslip.io'
 $HttpsBind = Get-Setting 'DUAL_HTTPS_BIND' '127.0.0.1'
 $HttpsPort = Get-Setting 'DUAL_HTTPS_PORT' '443'
 $Mode = Get-Setting 'DUAL_MODE' 'prod'
-$LearnRef = Get-Setting 'DUAL_LEARN_REF' 'v0.0.2.3'
+$LearnRef = Get-Setting 'DUAL_LEARN_REF' 'v0.0.2.4'
 $ExamRef = Get-Setting 'DUAL_EXAM_REF' 'master'
 $Worktrees = Get-Setting 'DUAL_WORKTREES' (Split-Path $repoDir)
 $OpenBrowser = Get-Setting 'DUAL_OPEN_BROWSER' 'true'
@@ -36,7 +36,7 @@ Environment, set with $env:NAME = 'value' (defaults in brackets):
   DUAL_HTTPS_BIND  address to publish HTTPS on [127.0.0.1]; on a VM: 0.0.0.0
   DUAL_HTTPS_PORT  HTTPS port [443]
   DUAL_MODE        prod (built frontend and binary) or dev (Vite and Air) [prod]
-  DUAL_LEARN_REF   git ref of the learning release [v0.0.2.3]
+  DUAL_LEARN_REF   git ref of the learning release [v0.0.2.4]
   DUAL_EXAM_REF    git ref of the exam simulation: a tag before the show [master]
   DUAL_WORKTREES   directory for the release worktrees [parent of the repository]
   DUAL_OPEN_BROWSER=false skips opening the browser

@@ -85,9 +85,7 @@ func (g *Gateway) Evaluate(ctx context.Context, r application.EvaluationRequest)
 				K3 json.RawMessage `json:"k3"`
 				K4 json.RawMessage `json:"k4"`
 			} `json:"criteria"`
-			Evidence    []int  `json:"evidence_lines"`
-			Reaction    string `json:"reaction"`
-			Explanation string `json:"explanation"`
+			Evidence []int `json:"evidence_lines"`
 		}
 		if err := json.Unmarshal(content, &out); err != nil {
 			return err
@@ -125,8 +123,7 @@ func (g *Gateway) Evaluate(ctx context.Context, r application.EvaluationRequest)
 		default:
 			return fmt.Errorf("unknown verdict %q", out.Verdict)
 		}
-		// Without a reply Geek just asks on, so a missing one is not an error.
-		result = application.Assessment{Evaluation: e, Reaction: strings.TrimSpace(out.Reaction), Explanation: strings.TrimSpace(out.Explanation)}
+		result = application.Assessment{Evaluation: e}
 		return nil
 	})
 	if err != nil {
@@ -135,10 +132,26 @@ func (g *Gateway) Evaluate(ctx context.Context, r application.EvaluationRequest)
 	return result, nil
 }
 
-// Explain is asked live after the "don't know" button, so it uses the fast low pool.
-func (g *Gateway) Explain(ctx context.Context, r application.EvaluationRequest) (string, error) {
+// Feedback is generated only after the engine has chosen the next step.
+func (g *Gateway) Feedback(ctx context.Context, r application.FeedbackRequest) (string, error) {
+	// A rephrase needs a transition, not another model-generated question or
+	// hints. Keep this branch deterministic, including the speaker's agency.
+	if !r.Closed && r.Next == exam.KindRephrase {
+		if r.Verdict == exam.VerdictInsufficient {
+			return transition(r, offTopicTransitions), nil
+		}
+		return transition(r, rephraseTransitions), nil
+	}
+	if !r.Closed {
+		// Only the actual followup asks for the missing knowledge. Generating
+		// a second reaction with the same model repeatedly leaked that answer.
+		if k := r.Result.Criteria; k != nil && k.K1 == 2 && k.K2 == 2 {
+			return transition(r, soundFollowupTransitions), nil
+		}
+		return transition(r, partialFollowupTransitions), nil
+	}
 	var text string
-	err := g.complete(ctx, "explain", llmgatewayv1.Complexity_COMPLEXITY_LOW, true, explanationPrompt(r), func(content []byte) error {
+	err := g.complete(ctx, "feedback", llmgatewayv1.Complexity_COMPLEXITY_LOW, true, feedbackPrompt(r), func(content []byte) error {
 		var out struct {
 			Text string `json:"text"`
 		}
@@ -147,6 +160,10 @@ func (g *Gateway) Explain(ctx context.Context, r application.EvaluationRequest) 
 		}
 		if text = strings.TrimSpace(out.Text); text == "" {
 			return errors.New("empty text")
+		}
+		limit := 80
+		if len(strings.Fields(text)) > limit {
+			return fmt.Errorf("feedback exceeds %d words", limit)
 		}
 		return nil
 	})
@@ -159,9 +176,13 @@ func (g *Gateway) Explain(ctx context.Context, r application.EvaluationRequest) 
 // background work (graph building, translation) on any free compatible instance.
 func (g *Gateway) complete(ctx context.Context, operation string, level llmgatewayv1.Complexity, urgent bool, prompt string, parse func([]byte) error) error {
 	logger := httpx.LoggerFromContext(ctx).With(zap.String("llm_operation", operation), zap.String("complexity", level.String()), zap.Bool("urgent", urgent))
+	system := systemPrompt
+	if operation == "feedback" {
+		system = feedbackSystemPrompt
+	}
 	request := &llmgatewayv1.CompleteRequest{
 		Messages: []*llmgatewayv1.Message{
-			{Role: llmgatewayv1.Role_ROLE_SYSTEM, Content: proto.String(systemPrompt)},
+			{Role: llmgatewayv1.Role_ROLE_SYSTEM, Content: proto.String(system)},
 			{Role: llmgatewayv1.Role_ROLE_USER, Content: proto.String(prompt)},
 		},
 		Complexity: level,
@@ -185,6 +206,12 @@ func (g *Gateway) complete(ctx context.Context, operation string, level llmgatew
 			return nil
 		}
 		last = fmt.Errorf("invalid model answer: %w", err)
+		if operation == "feedback" && attempt == 1 {
+			request.Messages = append(request.Messages,
+				&llmgatewayv1.Message{Role: llmgatewayv1.Role_ROLE_ASSISTANT, Content: proto.String(content)},
+				&llmgatewayv1.Message{Role: llmgatewayv1.Role_ROLE_USER, Content: proto.String("Исправь формат предыдущей реплики: " + err.Error() + ". Верни только JSON с text; при открытой теме — реакция без вопроса или задания, затем приложение добавит вопрос.")},
+			)
+		}
 	}
 	return last
 }

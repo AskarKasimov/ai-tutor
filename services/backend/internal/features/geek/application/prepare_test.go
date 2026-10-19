@@ -56,7 +56,7 @@ func (p *preparing) Evaluate(context.Context, EvaluationRequest) (Assessment, er
 	return Assessment{}, errors.New("not used")
 }
 
-func (p *preparing) Explain(context.Context, EvaluationRequest) (string, error) {
+func (p *preparing) Feedback(context.Context, FeedbackRequest) (string, error) {
 	return "", errors.New("not used")
 }
 

@@ -270,9 +270,14 @@ func (s *Service) Answer(ctx context.Context, ownerID, id, key string, a Answer)
 	}
 	next := session.Exam.Apply(assessment.Evaluation)
 	closed := next.NodeID != step.NodeID
-	reply, err := s.reply(ctx, evaluate, assessment, source, closed)
+	feedback := FeedbackRequest{EvaluationRequest: evaluate, Verdict: assessment.Verdict,
+		Closed: closed, Next: next.Kind, Result: *session.Exam.Nodes[node.ID]}
+	// Apply may have credited prerequisites or closed the topic. Only protect
+	// prerequisites that can still be asked after that decision.
+	feedback.Prerequisites = unaskedPrerequisites(session.Exam, node.ID)
+	reply, err := s.examiner.Feedback(ctx, feedback)
 	if err != nil {
-		return exam.Session{}, err
+		return exam.Session{}, modelError(err)
 	}
 	if err := s.say(ctx, &session, next, reply, closed); err != nil {
 		return exam.Session{}, err
@@ -369,24 +374,6 @@ func (s *Service) refresh(ctx context.Context, session exam.Session) (exam.Sessi
 		return exam.Session{}, err
 	}
 	return s.store.Session(ctx, session.OwnerID, session.ID)
-}
-
-// reply is what Geek says about the answer before the next turn: a short
-// reaction while the topic goes on, followed by the correct answer once it is
-// closed. The "don't know" button is not evaluated, so its explanation is a
-// call of its own.
-func (s *Service) reply(ctx context.Context, r EvaluationRequest, a Assessment, source exam.Source, closed bool) (string, error) {
-	if !closed {
-		return strings.TrimSpace(a.Reaction), nil
-	}
-	if source == exam.SourceDontKnow {
-		text, err := s.examiner.Explain(ctx, r)
-		if err != nil {
-			return "", modelError(err)
-		}
-		return strings.TrimSpace(text), nil
-	}
-	return strings.TrimSpace(strings.TrimSpace(a.Reaction) + " " + strings.TrimSpace(a.Explanation)), nil
 }
 
 // unaskedPrerequisites are the titles of the direct and transitive

@@ -12,7 +12,6 @@ import (
 	"net/http/cookiejar"
 	"net/http/httptest"
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -200,7 +199,27 @@ func TestOpenAPIResponses(t *testing.T) {
 	check("POST", "/voice/syntheses", f.request("POST", "/voice/syntheses", `{"text":"Вопрос?"}`, access))
 	check("POST", "/voice/syntheses", f.request("POST", "/voice/syntheses", `{"text":""}`, access))
 	admin := f.admin(t)
-	check("POST", "/admin/subjects", f.request("POST", "/admin/subjects", `{"name":"Предмет контракта"}`, admin))
+	createdSubject := f.request("POST", "/admin/subjects", `{"name":"Предмет контракта"}`, admin)
+	check("POST", "/admin/subjects", createdSubject)
+	var contractSubject struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(createdSubject.Body.Bytes(), &contractSubject); err != nil || contractSubject.ID == "" {
+		t.Fatalf("created subject: %s", createdSubject.Body.String())
+	}
+	mapPath := "/admin/subjects/" + contractSubject.ID + "/graph/competency-map"
+	const mapContract = "/admin/subjects/{subject_id}/graph/competency-map"
+	notABook := upload(f, mapPath, "file", "map.pdf", "application/pdf", []byte("%PDF-1.7"), admin)
+	if notABook.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("map that is not a book: %d %s", notABook.Code, notABook.Body.String())
+	}
+	check("POST", mapContract, notABook)
+	imported := upload(f, mapPath, "file", "map.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", mapBook(t), admin)
+	if imported.Code != http.StatusAccepted || !strings.Contains(imported.Body.String(), `"build_source":"competency_map"`) {
+		t.Fatalf("map import: %d %s", imported.Code, imported.Body.String())
+	}
+	check("POST", mapContract, imported)
+	check("POST", mapContract, upload(f, mapPath, "file", "map.xlsx", "application/octet-stream", mapBook(t), admin))
 	check("GET", "/subjects", f.request("GET", "/subjects", "", admin))
 	materialData := []byte("%PDF-1.7 lecture")
 	materialsUpload := upload(f, "/admin/subjects/subject:test/materials", "file", "lecture.pdf", "application/pdf", materialData, admin)
@@ -237,8 +256,8 @@ func TestOpenAPIResponses(t *testing.T) {
 	check("GET", "/admin/subjects/{subject_id}/graph", f.request("GET", "/admin/subjects/subject:test/graph", "", admin))
 	check("GET", "/admin/subjects/{subject_id}/materials/{material_id}/raw", f.request("GET", "/admin/subjects/subject:test/materials/"+matID+"/raw", "", admin))
 
-	// Publish the source citation through the graph fixture so the diagnostic
-	// captures it in its own snapshot before the original file is replaced.
+	// Publish the source citation with the graph so the diagnostic captures it
+	// in its own snapshot before the original file is replaced.
 	graphData, err := os.ReadFile(geekFixture)
 	if err != nil {
 		t.Fatal(err)
@@ -254,11 +273,7 @@ func TestOpenAPIResponses(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	f.app.cfg.GeekGraphFixture = filepath.Join(t.TempDir(), "graph.json")
-	if err := os.WriteFile(f.app.cfg.GeekGraphFixture, graphData, 0o600); err != nil {
-		t.Fatal(err)
-	}
-	diagnosticID := geekFlow(t, f, access, check)
+	diagnosticID := geekFlow(t, f, access, graphData, check)
 	sourcePath := "/diagnostic-sessions/" + diagnosticID + "/materials/" + matID + "/raw"
 	sourceContract := "/diagnostic-sessions/{id}/materials/{material_id}/raw"
 	source := f.request("GET", sourcePath, "", access)

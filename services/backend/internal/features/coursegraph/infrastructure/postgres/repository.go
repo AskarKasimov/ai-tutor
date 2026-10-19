@@ -2,6 +2,8 @@ package postgres
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -22,7 +24,7 @@ func (r *Repository) Claim(ctx context.Context, token string, now time.Time) (co
 	if errors.Is(err, pgx.ErrNoRows) {
 		return coursegraph.Job{}, nil
 	}
-	return coursegraph.Job{SubjectID: job.SubjectID, Fingerprint: job.Fingerprint, Token: job.LeaseToken, Attempts: int(job.Attempts)}, err
+	return coursegraph.Job{SubjectID: job.SubjectID, Fingerprint: job.Fingerprint, Token: job.LeaseToken, Source: job.Source, Attempts: int(job.Attempts)}, err
 }
 
 func (r *Repository) Renew(ctx context.Context, job coursegraph.Job, now time.Time) (bool, error) {
@@ -52,7 +54,49 @@ func (r *Repository) Read(ctx context.Context, subjectID string) (coursegraph.Sn
 	if err != nil {
 		return coursegraph.Snapshot{}, err
 	}
-	return coursegraph.Snapshot{Status: row.Status, Attempts: row.Attempts, ErrorMessage: row.ErrorMessage, Graph: row.Graph, UpdatedAt: row.UpdatedAt, Stale: row.Stale, InputsReady: row.InputsReady}, nil
+	snapshot := coursegraph.Snapshot{Status: row.Status, Attempts: row.Attempts, ErrorMessage: row.ErrorMessage, Graph: row.Graph,
+		GraphSource: row.GraphSource, UpdatedAt: row.UpdatedAt, Stale: row.Stale, InputsReady: row.InputsReady}
+	if row.JobSource != "" {
+		snapshot.BuildSource = &row.JobSource
+	}
+	if row.MapFilename != "" {
+		snapshot.Map = &coursegraph.MapFile{Filename: row.MapFilename, Sheet: row.MapSheet}
+	}
+	return snapshot, nil
+}
+
+// SaveMap stores an imported competency map and queues a build of it in one
+// transaction; false, with nothing stored, when a build is already queued or
+// running.
+func (r *Repository) SaveMap(ctx context.Context, subjectID, filename, sheet string, graph json.RawMessage, now time.Time) (bool, error) {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return false, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	sum := sha256.Sum256(graph)
+	q := db.New(tx)
+	if err = q.SaveCourseGraphMap(ctx, db.SaveCourseGraphMapParams{SubjectID: subjectID, Filename: filename, Sheet: sheet,
+		Fingerprint: hex.EncodeToString(sum[:]), Graph: graph, Now: now.Unix()}); err != nil {
+		return false, err
+	}
+	_, err = q.RequestCourseGraphMapBuild(ctx, db.RequestCourseGraphMapBuildParams{SubjectID: subjectID, Now: now.Unix()})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return true, tx.Commit(ctx)
+}
+
+// MapGraph is the graph of the imported competency map of a course.
+func (r *Repository) MapGraph(ctx context.Context, subjectID string) (json.RawMessage, error) {
+	graph, err := db.New(r.pool).ReadCourseGraphMap(ctx, subjectID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, fmt.Errorf("course %s has no competency map", subjectID)
+	}
+	return graph, err
 }
 
 // Published lists the graphs Geek examines by, newest first.

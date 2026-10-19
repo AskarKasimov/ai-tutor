@@ -9,6 +9,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/coursegraph"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/exam"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/fault"
 )
@@ -162,7 +163,13 @@ func (s *Service) Start(ctx context.Context, ownerID, subjectID, key string) (ex
 	if err != nil {
 		return exam.Session{}, false, err
 	}
-	ex, step := exam.NewExam(graph, s.cfg.MaxQuestions, s.rng())
+	limit := s.cfg.MaxQuestions
+	if graph.Source == coursegraph.SourceMap {
+		// A competency map is examined in full, as the variant of v0.0.2 was
+		// (decision of 19.10.2026).
+		limit = 0
+	}
+	ex, step := exam.NewExam(graph, limit, s.rng())
 	session := exam.Session{ID: id, OwnerID: ownerID, SubjectID: subjectID, Status: exam.SessionActive, StartedAt: s.now().Unix(), Version: 1, Exam: ex, Turns: []exam.Turn{}}
 	if err := s.say(ctx, &session, step, "", false); err != nil {
 		return exam.Session{}, false, err

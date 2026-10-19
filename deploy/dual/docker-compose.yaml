@@ -1,11 +1,11 @@
-# Front proxy for deploy/dual/dual.sh: start page and both releases by host name.
+# Front proxy for deploy/linux-dual.sh or deploy/windows-dual.ps1: start page and both releases by host name.
 services:
   front:
     image: caddy:2-alpine
     environment:
-      DUAL_HOST: ${DUAL_HOST:?Run through deploy/dual/dual.sh}
-      DUAL_ORIGIN: ${DUAL_ORIGIN:?Run through deploy/dual/dual.sh}
-      DUAL_TLS: ${DUAL_TLS:?Run through deploy/dual/dual.sh}
+      DUAL_HOST: ${DUAL_HOST:?Run through deploy/linux-dual.sh or deploy/windows-dual.ps1}
+      DUAL_ORIGIN: ${DUAL_ORIGIN:?Run through deploy/linux-dual.sh or deploy/windows-dual.ps1}
+      DUAL_TLS: ${DUAL_TLS:?Run through deploy/linux-dual.sh or deploy/windows-dual.ps1}
     ports:
       - "${DUAL_HTTPS_BIND:-127.0.0.1}:${DUAL_HTTPS_PORT:-443}:443"
     volumes:

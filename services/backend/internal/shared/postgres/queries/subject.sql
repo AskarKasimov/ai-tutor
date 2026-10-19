@@ -11,7 +11,8 @@ SELECT subject.id, subject.name,
            SELECT 1
            FROM course_graphs graph
            WHERE graph.subject_id = subject.id
-             AND EXISTS (SELECT 1 FROM subject_materials material WHERE material.subject_id = subject.id)
+             AND (graph.source = 'competency_map'
+                  OR EXISTS (SELECT 1 FROM subject_materials material WHERE material.subject_id = subject.id))
        ) AS ready
 FROM subjects subject
 ORDER BY lower(subject.name), subject.id;

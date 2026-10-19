@@ -67,7 +67,10 @@ type SourceCitation struct {
 // edges. Version changes whenever the graph is rebuilt.
 type Graph struct {
 	Version string `json:"version"`
-	Nodes   []Node `json:"nodes"`
+	// Source is "competency_map" for a graph built from a competency map,
+	// otherwise empty.
+	Source string `json:"source,omitempty"`
+	Nodes  []Node `json:"nodes"`
 }
 
 var ErrInvalidGraph = errors.New("invalid course graph")

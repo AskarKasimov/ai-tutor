@@ -37,6 +37,16 @@ export type CourseGraphBuild = {
   error: CourseGraphBuildError | null
   stale?: boolean
   inputsReady?: boolean
+  // What the build reads: the course materials or an imported competency map.
+  source?: CourseGraphSource | null
+}
+
+export type CourseGraphSource = 'materials' | 'competency_map'
+
+// The competency map imported last and the sheet it was read from.
+export type CourseGraphMapFile = {
+  filename: string
+  sheet: string
 }
 
 export type CourseGraphNode = {
@@ -56,9 +66,10 @@ export type CourseGraph = {
   stale?: boolean
   inputsReady?: boolean
   view?: CourseGraphView
-  // built: from the course materials; fixture: the default graph Geek
-  // examines by until the first build.
-  source?: 'built' | 'fixture'
+  // built: from the course materials; competency_map: from an imported
+  // competency map.
+  source?: 'built' | 'competency_map'
+  map?: CourseGraphMapFile | null
 }
 
 // Native graph payload supplied by the course-graph service.

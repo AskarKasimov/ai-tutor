@@ -172,6 +172,36 @@ func TestGapDescendsToTheDeepestUnmasteredTopic(t *testing.T) {
 	}
 }
 
+func TestPartialAnswerKeepsCAndChecksPrerequisites(t *testing.T) {
+	fair := Evaluation{Verdict: VerdictAnswered, Criteria: Criteria{1, 1, 1, 1}}
+	e, first := NewExam(fixture(t), 0, nil)
+	steps := run(t, e, first, func(s Step) Evaluation {
+		if s.NodeID == "a-star" {
+			return fair
+		}
+		if s.Kind == KindFollowup {
+			return strong
+		}
+		return partial
+	})
+	// a-star ends on C after its followup; its prerequisites are asked, as
+	// after a gap, instead of being credited.
+	if got := asked(steps, KindQuestion); !slices.Equal(got[:4], []string{"a-star", "uninformed-search", "heuristic-admissibility", "simulated-annealing"}) {
+		t.Fatalf("questions = %v", got)
+	}
+	state := e.Nodes["a-star"]
+	if *state.Grade != GradeC || state.Status != StatusIndependent {
+		t.Fatalf("a-star = %+v", state)
+	}
+	// The asked prerequisites answered on B credit theirs as usual.
+	if e.Nodes["uninformed-search"].Status != StatusIndependent || e.Nodes["heuristic"].Status != StatusCredited {
+		t.Fatalf("uninformed-search = %s, heuristic = %s", e.Nodes["uninformed-search"].Status, e.Nodes["heuristic"].Status)
+	}
+	if got := e.Gaps(); len(got) != 0 {
+		t.Fatalf("gaps = %v: C is not a gap", got)
+	}
+}
+
 func TestCreditedSharedPrerequisiteIsNotAskedAgain(t *testing.T) {
 	e, first := NewExam(fixture(t), 0, nil)
 	steps := run(t, e, first, func(s Step) Evaluation {

@@ -28,6 +28,11 @@ type Repository interface {
 	Request(context.Context, string, time.Time) (bool, error)
 	// Published lists the graphs Geek examines by.
 	Published(context.Context) ([]json.RawMessage, error)
+	// SaveMap stores an imported competency map and queues its build; false
+	// when a build is already queued or running.
+	SaveMap(ctx context.Context, subjectID, filename, sheet string, graph json.RawMessage, now time.Time) (bool, error)
+	// MapGraph is the graph of the imported competency map.
+	MapGraph(context.Context, string) (json.RawMessage, error)
 }
 type Materials interface {
 	List(context.Context, string) ([]material.Material, error)
@@ -56,10 +61,8 @@ type Questions interface {
 	Prepare(ctx context.Context, graph json.RawMessage) (json.RawMessage, error)
 }
 
-// DefaultGraph is the graph Geek examines a course by before its first build.
-type DefaultGraph interface {
-	Current(context.Context, string) (exam.Graph, bool, error)
-}
+// MapReader reads the worksheets of an imported competency map book.
+type MapReader func(data []byte) ([]coursegraph.MapSheet, error)
 
 type Worker struct {
 	repo      Repository
@@ -68,17 +71,17 @@ type Worker struct {
 	builder   Builder
 	voices    Voices
 	questions Questions
-	fallback  DefaultGraph
+	maps      MapReader
 	// progress of running builds by subject, shown in snapshots.
 	mu       sync.Mutex
 	progress map[string]coursegraph.BuildProgress
 }
 
 // New builds the graph worker; voices may be nil, then questions are voiced
-// only when a student first hears them. fallback may be nil, then a course
-// without a build has no graph.
-func New(repo Repository, materials Materials, storage Storage, builder Builder, voices Voices, fallback DefaultGraph) *Worker {
-	return &Worker{repo: repo, materials: materials, storage: storage, builder: builder, voices: voices, fallback: fallback,
+// only when a student first hears them. maps may be nil, then a competency
+// map cannot be imported.
+func New(repo Repository, materials Materials, storage Storage, builder Builder, voices Voices, maps MapReader) *Worker {
+	return &Worker{repo: repo, materials: materials, storage: storage, builder: builder, voices: voices, maps: maps,
 		progress: map[string]coursegraph.BuildProgress{}}
 }
 
@@ -158,10 +161,7 @@ func (w *Worker) Read(ctx context.Context, actor user.User, subjectID string) (c
 	return w.snapshot(ctx, subjectID)
 }
 
-// snapshot shows the admin the graph Geek uses: the build while Geek reads
-// it, otherwise the default graph in the shape of a build. The default graph
-// only enriches the answer, so its failure leaves the snapshot without a
-// graph instead of failing a read or a build request already accepted.
+// snapshot shows the admin the graph Geek uses, or none.
 func (w *Worker) snapshot(ctx context.Context, subjectID string) (coursegraph.Snapshot, error) {
 	snapshot, err := w.repo.Read(ctx, subjectID)
 	if err != nil {
@@ -170,34 +170,87 @@ func (w *Worker) snapshot(ctx context.Context, subjectID string) (coursegraph.Sn
 	if p, ok := w.progressOf(subjectID); ok && snapshot.Status == "processing" {
 		snapshot.Progress = &p
 	}
+	source := snapshot.GraphSource
 	snapshot.GraphSource = coursegraph.SourceNone
-	if len(snapshot.Graph) > 0 && string(snapshot.Graph) != "null" {
-		// Geek reads a published graph only while the course has materials
-		// (ReadPublishedCourseGraph); without them it falls back as well.
-		items, err := w.materials.List(ctx, subjectID)
-		if err != nil {
-			return coursegraph.Snapshot{}, err
-		}
-		if len(items) > 0 {
-			snapshot.GraphSource = coursegraph.SourceBuilt
-			return snapshot, nil
-		}
+	if len(snapshot.Graph) == 0 || string(snapshot.Graph) == "null" {
 		snapshot.Graph = nil
-	}
-	if w.fallback == nil {
 		return snapshot, nil
 	}
-	g, ok, err := w.fallback.Current(ctx, subjectID)
-	if err == nil && ok {
-		var shape json.RawMessage
-		if shape, err = BuildShape(g); err == nil {
-			snapshot.Graph, snapshot.GraphSource = shape, coursegraph.SourceFixture
-		}
+	if source == coursegraph.SourceMap {
+		snapshot.GraphSource = coursegraph.SourceMap
+		return snapshot, nil
+	}
+	// Geek reads a graph of materials only while the course has materials
+	// (ReadPublishedCourseGraph).
+	items, err := w.materials.List(ctx, subjectID)
+	if err != nil {
+		return coursegraph.Snapshot{}, err
+	}
+	if len(items) == 0 {
+		snapshot.Graph = nil
+		return snapshot, nil
+	}
+	snapshot.GraphSource = coursegraph.SourceBuilt
+	return snapshot, nil
+}
+
+// ImportMap builds the course graph from a competency map instead of the
+// materials (the admin's "import competency map" button): the map is read
+// and checked at once, its questions are prepared and published by the
+// worker like those of a build. sheet may be empty when the book has one
+// sheet of the template.
+func (w *Worker) ImportMap(ctx context.Context, actor user.User, subjectID, filename string, data []byte, sheet string) (coursegraph.Snapshot, error) {
+	if actor.Role != user.Admin {
+		return coursegraph.Snapshot{}, fault.New(fault.Forbidden, "FORBIDDEN", "Доступно только admin.")
+	}
+	if w.maps == nil {
+		return coursegraph.Snapshot{}, fault.New(fault.Unavailable, "COMPETENCY_MAP_UNAVAILABLE", "Импорт карты компетенций не настроен.")
+	}
+	current, err := w.repo.Read(ctx, subjectID)
+	if err != nil {
+		return coursegraph.Snapshot{}, err
+	}
+	if current.Status == "pending" || current.Status == "processing" {
+		return coursegraph.Snapshot{}, fault.New(fault.Conflict, "GRAPH_BUILD_IN_PROGRESS", "Граф курса уже собирается.")
+	}
+	sheets, err := w.maps(data)
+	if err != nil {
+		return coursegraph.Snapshot{}, fault.New(fault.Invalid, "COMPETENCY_MAP_INVALID", "Не удалось прочитать книгу Excel (.xlsx).")
+	}
+	// The sheet is taken by its exact name: Excel allows names with outer
+	// spaces, and the admin chooses among the names the server returned.
+	built, err := coursegraph.BuildMapGraph(sheets, sheet)
+	var mapErr *coursegraph.MapError
+	if errors.As(err, &mapErr) {
+		return coursegraph.Snapshot{}, mapFault(mapErr)
 	}
 	if err != nil {
-		log.Printf("course graph %s: the default graph is not shown: %v", subjectID, err)
+		return coursegraph.Snapshot{}, err
 	}
-	return snapshot, nil
+	queued, err := w.repo.SaveMap(ctx, subjectID, filename, built.Sheet, built.Graph, time.Now())
+	if err != nil {
+		return coursegraph.Snapshot{}, err
+	}
+	if !queued {
+		return coursegraph.Snapshot{}, fault.New(fault.Conflict, "GRAPH_BUILD_IN_PROGRESS", "Граф курса уже собирается.")
+	}
+	return w.snapshot(ctx, subjectID)
+}
+
+// mapFault names the cells of a rejected map, or the sheets to choose from.
+func mapFault(e *coursegraph.MapError) *fault.Error {
+	f := fault.New(fault.Invalid, e.Code, e.Message)
+	for _, s := range e.Sheets {
+		f.Details = append(f.Details, fault.Detail{Path: "sheet", Code: "COMPETENCY_MAP_SHEET", Message: s})
+	}
+	for _, issue := range e.Issues {
+		message := issue.Message
+		if issue.Row > 0 {
+			message = fmt.Sprintf("Строка %d, «%s»: %s", issue.Row, issue.Column, issue.Message)
+		}
+		f.Details = append(f.Details, fault.Detail{Path: "file", Code: "COMPETENCY_MAP_CELL", Message: message})
+	}
+	return f
 }
 
 // BuildShape writes an examined graph as course-graph writes a build:
@@ -401,29 +454,52 @@ func (w *Worker) process(ctx context.Context, job coursegraph.Job) error {
 	if job.Attempts > 3 {
 		return fmt.Errorf("graph attempt limit reached")
 	}
+	var (
+		graph json.RawMessage
+		err   error
+	)
+	if job.Source == coursegraph.SourceMap {
+		// The map was read and checked on import; only its questions remain.
+		if graph, err = w.repo.MapGraph(ctx, job.SubjectID); err != nil {
+			return err
+		}
+		var shape struct {
+			Version string `json:"version"`
+		}
+		if json.Unmarshal(graph, &shape) != nil || shape.Version != coursegraph.MapVersion {
+			return fmt.Errorf("invalid competency map graph")
+		}
+	} else if graph, err = w.buildMaterials(ctx, job); err != nil {
+		return err
+	}
+	return w.publish(ctx, job, graph)
+}
+
+// buildMaterials builds the graph of the course materials with course-graph.
+func (w *Worker) buildMaterials(ctx context.Context, job coursegraph.Job) (json.RawMessage, error) {
 	items, err := w.materials.List(ctx, job.SubjectID)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	inputs := make([]coursegraph.Material, 0, len(items))
 	for _, m := range items {
 		if m.Cleaning == nil || m.Cleaning.Status != "ready" {
-			return fmt.Errorf("material %s is not ready", m.ID)
+			return nil, fmt.Errorf("material %s is not ready", m.ID)
 		}
 		source, err := w.storage.Get(ctx, m.S3ParsedKey)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		report, err := w.storage.Get(ctx, m.Cleaning.S3ReportKey)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		var cached struct {
 			Topics        json.RawMessage `json:"topics"`
 			TopicsVersion string          `json:"topics_version"`
 		}
 		if err = json.Unmarshal(report, &cached); err != nil {
-			return err
+			return nil, err
 		}
 		var kind *string
 		if m.Kind != nil {
@@ -441,7 +517,7 @@ func (w *Worker) process(ctx context.Context, job coursegraph.Job) error {
 		inputs = append(inputs, input)
 	}
 	if len(inputs) == 0 {
-		return fmt.Errorf("empty course")
+		return nil, fmt.Errorf("empty course")
 	}
 	// The build ID tells course-graph's progress of this call from another:
 	// a reclaimed lease keeps the attempt number while the previous call may
@@ -449,13 +525,13 @@ func (w *Worker) process(ctx context.Context, job coursegraph.Job) error {
 	// token.
 	random, err := security.Token()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	buildID := job.SubjectID + "#" + random
 	defer w.setProgress(job.SubjectID, nil)
 	graph, err := w.builder.Build(ctx, buildID, inputs, func(p coursegraph.BuildProgress) { w.setProgress(job.SubjectID, &p) })
 	if err != nil {
-		return err
+		return nil, err
 	}
 	var shape struct {
 		Version       string            `json:"version"`
@@ -466,8 +542,15 @@ func (w *Worker) process(ctx context.Context, job coursegraph.Job) error {
 		} `json:"quality"`
 	}
 	if json.Unmarshal(graph, &shape) != nil || shape.Version != "course-graph-v1" || !shape.Quality.Acyclic || len(shape.Topics) == 0 || shape.Prerequisites == nil {
-		return fmt.Errorf("invalid graph result")
+		return nil, fmt.Errorf("invalid graph result")
 	}
+	return graph, nil
+}
+
+// publish prepares the questions of a graph of either source and publishes
+// it unless its source changed meanwhile.
+func (w *Worker) publish(ctx context.Context, job coursegraph.Job, graph json.RawMessage) error {
+	var err error
 	if w.questions != nil {
 		if graph, err = w.questions.Prepare(ctx, graph); err != nil {
 			return fmt.Errorf("%w: %w", errQuestionsNotPrepared, err)
@@ -483,8 +566,8 @@ func (w *Worker) process(ctx context.Context, job coursegraph.Job) error {
 	if err != nil || accepted {
 		return err
 	}
-	// The materials changed during the build: queue it again so the next
-	// claim takes the new set, without spending an attempt.
+	// The source changed during the build (materials, or a new map): queue
+	// it again so the next claim takes it, without spending an attempt.
 	if owner, ok := w.repo.(interface {
 		Release(context.Context, coursegraph.Job, time.Time) error
 	}); ok {

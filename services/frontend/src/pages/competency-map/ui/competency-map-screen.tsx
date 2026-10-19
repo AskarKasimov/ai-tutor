@@ -78,6 +78,7 @@ import {
 import { useSubjectsQuery } from '@/features/subject-selection'
 import { CosmicProgress, MarkdownContent } from '@/shared/ui'
 import styles from '@/pages/competency-map/ui/competency-map.module.scss'
+import { CompetencyMapImport } from './competency-map-import'
 
 // React Flow and the layout load only when the graph is shown.
 const CourseGraphCanvas = lazy(() => import('./course-graph-canvas'))
@@ -289,10 +290,7 @@ function CompetencyMapAdmin({
       ? [t('courseGraph.blockPending')]
       : []),
   ]
-  // The default graph Geek uses before the first build is only drawn below;
-  // the build flow still treats the course as having no graph of its own.
-  const hasGraph =
-    courseGraph.data !== undefined && courseGraph.data.source !== 'fixture'
+  const hasGraph = courseGraph.data !== undefined
   const graphIsOutdated = courseGraph.data?.stale ?? false
 
   return (
@@ -734,9 +732,16 @@ function CompetencyMapAdmin({
                   </Flex>
                 </AlertDialog.Content>
               </AlertDialog.Root>
+              <CompetencyMapImport
+                userId={userId}
+                subjectId={subjectId}
+                hasGraph={hasGraph}
+                disabled={!graphStateResolved || graphBuilding}
+                map={courseGraph.data?.map}
+              />
               <CourseGraphViewer
                 graph={courseGraph.data?.view}
-                demo={courseGraph.data?.source === 'fixture'}
+                fromMap={courseGraph.data?.source === 'competency_map'}
                 materials={materials}
               />
             </section>
@@ -1169,11 +1174,11 @@ function BuildProgressCard({ build }: { build: CourseGraphBuild }) {
 
 function CourseGraphViewer({
   graph,
-  demo,
+  fromMap,
   materials,
 }: {
   graph: CourseGraphView | null | undefined
-  demo: boolean
+  fromMap: boolean
   materials: CourseMaterial[]
 }) {
   const { t } = useTranslation()
@@ -1191,13 +1196,13 @@ function CourseGraphViewer({
   return (
     <div className={styles.graphBody}>
       <>
-        {demo && (
+        {fromMap && (
           <Flex align="center" gap="2" wrap="wrap">
             <Badge color="violet" size="1">
-              {t('competencyMap.graphSourceFixture')}
+              {t('competencyMap.graphSourceMap')}
             </Badge>
             <Text size="2" color="gray">
-              {t('competencyMap.graphFixtureHint')}
+              {t('competencyMap.graphMapHint')}
             </Text>
           </Flex>
         )}

@@ -22,6 +22,7 @@ import (
 	graphapp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/coursegraph/application"
 	graphapi "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/coursegraph/infrastructure/courseapi"
 	graphpg "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/coursegraph/infrastructure/postgres"
+	graphxlsx "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/coursegraph/infrastructure/xlsx"
 	graphhttp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/coursegraph/transport/http"
 	geekapp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/geek/application"
 	geekgraph "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/geek/infrastructure/graph"
@@ -68,8 +69,6 @@ type App struct {
 	speech *geekapp.SpeechCache
 	// warmer voices prepared questions before students ask for them.
 	warmer *geekapp.Warmer
-	// fixture is the default graph with its rephrases prepared at startup.
-	fixture *geekapp.PreparedGraph
 }
 
 // materialWorkers is how many materials each processing stage handles at
@@ -129,10 +128,8 @@ func New(cfg Config, pool *pgxpool.Pool, logger *zap.Logger) (*App, error) {
 	a.cleaningWorker = materialsapp.NewCleaningWorker(materialRepository, a.materialsStorage, materialsOCR)
 	a.speech = geekapp.NewSpeechCache(a.models(), geekstorage.NewAudio(storage, cfg.S3Bucket), a.voiceName())
 	a.warmer = geekapp.NewWarmer(a.speech, logger.With(zap.String("worker", "speech_warmer")))
-	a.fixture = geekapp.NewPreparedGraph(geekgraph.Fixture{Path: cfg.GeekGraphFixture}, examiner, geekstorage.NewPrepared(storage, cfg.S3Bucket), a.warmer, logger.With(zap.String("worker", "fixture_questions")))
-	// The admin sees the default graph as Geek serves it: with its rephrases,
-	// and none while they are being prepared.
-	a.graphWorker = graphapp.New(graphpg.New(pool), materialRepository, a.materialsStorage, graphapi.New(cfg.CourseGraphURL), a.warmer, a.fixture)
+	// A course graph is built from the materials or from a competency map.
+	a.graphWorker = graphapp.New(graphpg.New(pool), materialRepository, a.materialsStorage, graphapi.New(cfg.CourseGraphURL), a.warmer, graphxlsx.Read)
 	a.graphWorker.SetQuestions(builtQuestions{examiner: examiner, logger: logger.With(zap.String("worker", "graph_questions"))})
 
 	return a, nil
@@ -185,17 +182,11 @@ func (a *App) RunBackground(ctx context.Context) error {
 	group.Go(func() error { return a.warmer.Run(warmCtx) })
 	group.Go(func() error {
 		// The queue does not survive a restart: the questions of published
-		// graphs are queued again. Those of the default graph, which every
-		// course without its own graph is examined on, are queued while it
-		// is prepared.
+		// graphs are queued again.
 		if err := a.graphWorker.PrepareVoices(warmCtx); err != nil {
 			a.logger.Warn("questions of published graphs are not voiced ahead", zap.Error(err))
 		}
 		return nil
-	})
-	// The model calls of the preparation are logged under its worker.
-	group.Go(func() error {
-		return a.fixture.Run(httpx.WithLogger(ctx, a.logger.With(zap.String("worker", "fixture_questions"))))
 	})
 	return group.Wait()
 }
@@ -227,16 +218,15 @@ func (a *App) Handler() http.Handler {
 	models := a.models()
 	voice := voiceapp.New(voicepg.New(a.pool), models, models, a.now)
 	voiceHandlers := voicehttp.New(voice, a.cfg.MaxUploadBytes)
-	subjectHandlers := subjecthttp.New(subjectapp.New(subjectpg.New(a.pool), security.IDGenerator{}, a.now, a.cfg.GeekGraphFixture != ""))
+	subjectHandlers := subjecthttp.New(subjectapp.New(subjectpg.New(a.pool), security.IDGenerator{}, a.now))
 
 	materialsOCR := materialsocr.New(a.cfg.CourseGraphURL, a.cfg.CourseGraphTimeout)
 	materialsService := materialsapp.New(materialspg.New(a.pool), a.materialsStorage, materialsOCR, a.now)
 	// Course materials have their own per-file limit; BACKEND_MAX_UPLOAD_BYTES is the STT limit.
 	materialsHandlers := materialshttp.NewHandler(materialsService, materialshttp.MaxUploadFileBytes)
 
-	// The stored graph of stream A goes first once it exists; the fixture is the fallback.
-	graphs := geekgraph.Chain{geekgraph.NewStored(a.pool), a.fixture}
-	geekService := geekapp.New(graphs, geekpg.New(a.pool), geekpg.NewTranscriptions(a.pool), a.examiner, a.speech,
+	// Geek examines a course by its published graph only.
+	geekService := geekapp.New(geekgraph.NewStored(a.pool), geekpg.New(a.pool), geekpg.NewTranscriptions(a.pool), a.examiner, a.speech,
 		security.IDGenerator{}, a.now, geekapp.Config{MaxQuestions: a.cfg.GeekMaxQuestions})
 	geekService.SetRawMaterials(geekgraph.NewRaw(a.pool, a.materialsStorage))
 	geekHandlers := geekhttp.New(geekService)
@@ -256,6 +246,7 @@ func (a *App) Handler() http.Handler {
 	graphHandlers := graphhttp.New(a.graphWorker)
 	mux.Handle("GET /admin/subjects/{subject_id}/graph", protect(auth, http.HandlerFunc(graphHandlers.Read)))
 	mux.Handle("POST /admin/subjects/{subject_id}/graph/build", protect(auth, http.HandlerFunc(graphHandlers.Build)))
+	mux.Handle("POST /admin/subjects/{subject_id}/graph/competency-map", protect(auth, http.HandlerFunc(graphHandlers.ImportMap)))
 	mux.Handle("DELETE /admin/subjects/{subject_id}/materials/{material_id}", protect(auth, http.HandlerFunc(materialsHandlers.DeleteMaterial)))
 	mux.Handle("GET /admin/subjects/{subject_id}/materials/{material_id}/raw", protect(auth, http.HandlerFunc(materialsHandlers.DownloadRaw)))
 	mux.Handle("POST /admin/subjects", protect(auth, http.HandlerFunc(subjectHandlers.Create)))

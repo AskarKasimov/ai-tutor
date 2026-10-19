@@ -93,9 +93,8 @@ func TestStoredGraphReturnsDatabaseErrors(t *testing.T) {
 	pool := storedPool(t)
 	publish(t, pool, "one", "Производная")
 	pool.Close()
-	fixture := Fixture{Path: "../../../../../../../api/fixtures/course-graph.json"}
-	if _, ok, err := (Chain{NewStored(pool), fixture}).Current(context.Background(), "s"); err == nil || ok {
-		t.Fatalf("closed pool: ok=%v err=%v, want the database error instead of the fixture", ok, err)
+	if _, ok, err := NewStored(pool).Current(context.Background(), "s"); err == nil || ok {
+		t.Fatalf("closed pool: ok=%v err=%v, want the database error", ok, err)
 	}
 }
 
@@ -109,8 +108,11 @@ func TestStoredGraphOfCourseWithoutMaterialsIsNotServed(t *testing.T) {
 	if _, ok, err := NewStored(pool).Current(ctx, "s"); ok || err != nil {
 		t.Fatalf("course without materials: ok=%v err=%v", ok, err)
 	}
-	fixture := Fixture{Path: "../../../../../../../api/fixtures/course-graph.json"}
-	if g, ok, err := (Chain{NewStored(pool), fixture}).Current(ctx, "s"); err != nil || !ok || len(g.Nodes) != 10 {
-		t.Fatalf("default graph: ok=%v err=%v nodes=%d", ok, err, len(g.Nodes))
+	// A graph of a competency map needs no materials.
+	if _, err := pool.Exec(ctx, `UPDATE course_graphs SET source='competency_map'`); err != nil {
+		t.Fatal(err)
+	}
+	if g, ok, err := NewStored(pool).Current(ctx, "s"); err != nil || !ok || len(g.Nodes) != 2 {
+		t.Fatalf("map graph without materials: ok=%v err=%v nodes=%d", ok, err, len(g.Nodes))
 	}
 }

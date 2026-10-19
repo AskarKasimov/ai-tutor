@@ -61,7 +61,9 @@ export function useLatestCourseGraphBuildQuery(
       materialsBusy ||
       (!metadataIncomplete && current.state.data?.inputsReady === false) ||
       current.state.data?.status === 'running' ||
-      (!metadataIncomplete && current.state.data?.status === 'queued')
+      (current.state.data?.status === 'queued' &&
+        // A map does not wait for the materials.
+        (!metadataIncomplete || current.state.data.source === 'competency_map'))
         ? 2000
         : false,
   })
@@ -179,6 +181,64 @@ export function useStartCourseGraphBuildMutation(
       await cache.invalidateQueries({
         queryKey: courseGraphQueryKeys.build(userId, targetSubjectId),
       })
+    },
+    retry: false,
+  })
+}
+
+export type ImportCompetencyMapInput = {
+  file: File
+  // null until the server asks to choose one of several sheets.
+  sheet: string | null
+}
+
+// Builds the course graph from a competency map instead of the materials.
+export function useImportCompetencyMapMutation(
+  userId: string,
+  subjectId: string,
+) {
+  const { courseGraph } = useCourseGraphBuildDependencies()
+  const cache = useQueryClient()
+  const tokenRef = useRef(captureSession(cache))
+  return useMutation({
+    mutationKey: ['course-graph-build', 'import-map', userId, subjectId],
+    gcTime: 0,
+    onMutate: () => {
+      tokenRef.current = captureSession(cache)
+    },
+    mutationFn: async ({ file, sheet }: ImportCompetencyMapInput) => {
+      const controller = new AbortController()
+      const unregister = registerSessionRequest(
+        cache,
+        tokenRef.current,
+        controller,
+      )
+      try {
+        return await courseGraph.importCompetencyMap(
+          subjectId,
+          file,
+          sheet,
+          controller.signal,
+        )
+      } finally {
+        unregister()
+      }
+    },
+    onSuccess: async () => {
+      if (!isCurrentSession(cache, tokenRef.current)) return
+      await Promise.all([
+        cache.invalidateQueries({
+          queryKey: courseGraphQueryKeys.build(userId, subjectId),
+        }),
+        cache.invalidateQueries({
+          queryKey: subjectQueryKeys.subjects(userId),
+        }),
+      ])
+    },
+    onError: async (error) => {
+      if (!isCurrentSession(cache, tokenRef.current)) return
+      if (error instanceof CourseGraphApiError && error.status === 401)
+        await replaceSession(cache, null)
     },
     retry: false,
   })

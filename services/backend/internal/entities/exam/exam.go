@@ -297,7 +297,9 @@ func (e *Exam) Apply(ev Evaluation) Step {
 }
 
 // conclude grades a topic by its final criteria: D makes it a gap, any other
-// grade masters it and credits its unchecked prerequisites.
+// grade masters it. A and B credit its unchecked prerequisites; C, a partial
+// answer, keeps the grade but checks its prerequisites as a gap does
+// (decision of 19.10.2026, as main 0/1 led to the basic tasks in v0.0.2).
 func (e *Exam) conclude(id string, c Criteria) Step {
 	state := e.Nodes[id]
 	state.Criteria = &c
@@ -309,6 +311,10 @@ func (e *Exam) conclude(id string, c Criteria) Step {
 	state.Status = StatusIndependent
 	if state.Assisted {
 		state.Status = StatusAssisted
+	}
+	if grade == GradeC {
+		e.descend(id)
+		return e.next()
 	}
 	for _, p := range e.Graph.Closure(id) {
 		if e.Nodes[p].Status == StatusUnchecked {
@@ -341,11 +347,16 @@ func (e *Exam) gap(id string, c Criteria, assisted bool) Step {
 	state := e.Nodes[id]
 	d := GradeD
 	state.Status, state.Grade, state.Criteria, state.Assisted = StatusGap, &d, &c, assisted
+	e.descend(id)
+	return e.next()
+}
+
+// descend asks the prerequisites of a topic next, in study order.
+func (e *Exam) descend(id string) {
 	n, _ := e.Graph.Node(id)
 	for i := len(n.Prerequisites) - 1; i >= 0; i-- {
 		e.Stack = append(e.Stack, n.Prerequisites[i])
 	}
-	return e.next()
 }
 
 func mergeLines(a, b []int) []int {

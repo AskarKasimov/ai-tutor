@@ -16,7 +16,12 @@ const snapshotSchema = z.object({
   stale: z.boolean(),
   inputs_ready: z.boolean(),
   updated_at: z.number().int().nonnegative(),
-  graph_source: z.enum(['built', 'fixture', 'none']).optional(),
+  graph_source: z.enum(['built', 'competency_map', 'none']).optional(),
+  build_source: z.enum(['materials', 'competency_map']).nullable().optional(),
+  map: z
+    .object({ filename: z.string(), sheet: z.string() })
+    .nullable()
+    .optional(),
   progress: z
     .object({
       stage: z.enum([
@@ -109,7 +114,19 @@ function snapshotId(subjectId: string, snapshot: Snapshot): string {
 async function responseError(response: Response): Promise<CourseGraphApiError> {
   const body: unknown = await response.json().catch(() => null)
   const parsed = z
-    .object({ code: z.string().optional(), message: z.string().optional() })
+    .object({
+      code: z.string().optional(),
+      message: z.string().optional(),
+      details: z
+        .array(
+          z.object({
+            path: z.string().optional(),
+            code: z.string(),
+            message: z.string(),
+          }),
+        )
+        .optional(),
+    })
     .safeParse(body)
   return new CourseGraphApiError(
     response.status,
@@ -117,6 +134,7 @@ async function responseError(response: Response): Promise<CourseGraphApiError> {
     parsed.success
       ? (parsed.data.message ?? i18n.t('courseGraph.requestError'))
       : i18n.t('courseGraph.requestError'),
+    parsed.success ? (parsed.data.details ?? []) : [],
   )
 }
 
@@ -179,6 +197,7 @@ function toBuild(
         : null,
     stale: snapshot.stale,
     inputsReady: snapshot.inputs_ready,
+    source: snapshot.build_source ?? null,
   }
 }
 
@@ -215,6 +234,31 @@ export async function startCourseGraphBuild(
   return build
 }
 
+// Builds the course graph from a competency map instead of the materials.
+// sheet is null until the server asks to choose one of several sheets.
+export async function importCompetencyMap(
+  subjectId: string,
+  file: File,
+  sheet: string | null,
+  signal: AbortSignal,
+): Promise<CourseGraphBuild> {
+  const body = new FormData()
+  body.append('file', file)
+  if (sheet) body.append('sheet', sheet)
+  const build = toBuild(
+    subjectId,
+    parseSnapshot(
+      await fetchJSON(
+        `/admin/subjects/${encodeURIComponent(subjectId)}/graph/competency-map`,
+        signal,
+        { method: 'POST', body },
+      ),
+    ),
+  )
+  if (!build) throw invalidResponse()
+  return build
+}
+
 export async function readCourseGraph(
   subjectId: string,
   signal: AbortSignal,
@@ -238,7 +282,9 @@ export async function readCourseGraph(
     stale: snapshot.stale,
     inputsReady: snapshot.inputs_ready,
     view,
-    source: snapshot.graph_source === 'fixture' ? 'fixture' : 'built',
+    source:
+      snapshot.graph_source === 'competency_map' ? 'competency_map' : 'built',
+    map: snapshot.map ?? null,
     nodes: view.topics.map((topic) => ({
       id: topic.id,
       title: topic.title,

@@ -1,8 +1,10 @@
 export {
   useCourseGraphQuery,
+  useImportCompetencyMapMutation,
   useLatestCourseGraphBuildQuery,
   useStartCourseGraphBuildMutation,
 } from './model/use-course-graph-build'
+export type { ImportCompetencyMapInput } from './model/use-course-graph-build'
 export {
   CourseGraphBuildDependenciesProvider,
   useCourseGraphBuildDependencies,

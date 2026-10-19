@@ -36,8 +36,6 @@ type Config struct {
 	// LLMGatewayAddress is the gRPC address (host:port) of the LLM gateway.
 	LLMGatewayAddress string
 	LLMTimeout        time.Duration
-	// GeekGraphFixture is a graph file used for courses without a stored graph.
-	GeekGraphFixture string
 	// GeekMaxQuestions stops a diagnostic after that many questions and
 	// followups; 0 is no limit.
 	GeekMaxQuestions int
@@ -161,7 +159,6 @@ func ConfigFromEnv() (Config, error) {
 	if err != nil {
 		return c, err
 	}
-	c.GeekGraphFixture = strings.TrimSpace(os.Getenv("BACKEND_GEEK_GRAPH_FIXTURE"))
 	value = envOrDefault("BACKEND_GEEK_QUESTION_LIMIT", strconv.Itoa(DefaultGeekQuestionLimit))
 	if c.GeekMaxQuestions, err = strconv.Atoi(value); err != nil {
 		return c, fmt.Errorf("BACKEND_GEEK_QUESTION_LIMIT: %w", err)

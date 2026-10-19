@@ -2,7 +2,7 @@
 # Runs two releases side by side behind one HTTPS entry point:
 #   https://$DUAL_HOST        start page with one login for both
 #   https://learn.$DUAL_HOST  learning (DUAL_LEARN_REF, v0.0.2.1)
-#   https://exam.$DUAL_HOST   exam simulation (DUAL_EXAM_REF, v0.0.3)
+#   https://exam.$DUAL_HOST   exam simulation (DUAL_EXAM_REF, latest master)
 # Each release runs from its own git worktree with its own .env, volumes and
 # network. See deploy/dual/README.md.
 set -eu
@@ -15,7 +15,7 @@ repo_dir=$(CDPATH= cd -- "$dual_dir/../.." && pwd)
 : "${DUAL_HTTPS_PORT:=443}"
 : "${DUAL_MODE:=prod}"
 : "${DUAL_LEARN_REF:=v0.0.2.1}"
-: "${DUAL_EXAM_REF:=v0.0.3}"
+: "${DUAL_EXAM_REF:=master}"
 : "${DUAL_WORKTREES:=$(dirname -- "$repo_dir")}"
 
 usage() {
@@ -28,7 +28,7 @@ Environment (defaults in brackets):
   DUAL_HTTPS_PORT  HTTPS port [443]
   DUAL_MODE        prod (built frontend and binary) or dev (Vite and Air) [prod]
   DUAL_LEARN_REF   git ref of the learning release [v0.0.2.1]
-  DUAL_EXAM_REF    git ref of the exam simulation release [v0.0.3]
+  DUAL_EXAM_REF    git ref of the exam simulation: a tag before the show [master]
   DUAL_WORKTREES   directory for the release worktrees [parent of the repository]
   DUAL_OPEN_BROWSER=false skips opening the browser
 EOF
@@ -95,16 +95,27 @@ random_hex() {
 
 prepare_worktree() {
     release "$1"
-    if [ ! -d "$tree" ]; then
-        git -C "$repo_dir" fetch --tags --quiet origin || true
-        git -C "$repo_dir" worktree add --detach "$tree" "$ref"
+    # A branch name follows origin (master is the latest master on every up),
+    # a tag stays where it is.
+    git -C "$repo_dir" fetch --tags --quiet origin ||
+        printf '%s\n' "Warning: git fetch failed; using local refs." >&2
+    if git -C "$repo_dir" rev-parse --verify --quiet "refs/remotes/origin/$ref" >/dev/null; then
+        want=$(git -C "$repo_dir" rev-parse "refs/remotes/origin/$ref^{commit}")
+    else
+        want=$(git -C "$repo_dir" rev-parse --verify "$ref^{commit}")
     fi
-    want=$(git -C "$repo_dir" rev-parse "$ref^{commit}")
+    if [ ! -d "$tree" ]; then
+        git -C "$repo_dir" worktree add --detach "$tree" "$want"
+    fi
     have=$(git -C "$tree" rev-parse HEAD)
     if [ "$want" != "$have" ]; then
-        printf '%s\n' "$tree is at $have, expected $ref ($want)." \
-            "Switch it: git -C $tree switch --detach $ref" >&2
-        exit 1
+        if [ -n "$(git -C "$tree" status --porcelain --untracked-files=no)" ]; then
+            printf '%s\n' "$tree has uncommitted changes; commit or discard them to switch to $ref." >&2
+            exit 1
+        fi
+        git -C "$tree" switch --quiet --detach "$want"
+        printf '%s\n' "Switched $tree to $ref ($(git -C "$tree" log --oneline -1))." \
+            "New settings of $ref go to $tree/.env by hand; compare it with .env.example."
     fi
 
     if [ ! -f "$tree/.env" ]; then

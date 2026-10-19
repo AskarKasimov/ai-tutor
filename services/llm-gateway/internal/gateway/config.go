@@ -44,6 +44,12 @@ type InstanceConfig struct {
 	SupportedResponseFormats []string      `json:"supported_response_formats"`
 	ContextWindow            int           `json:"context_window"`
 	Timeout                  time.Duration `json:"timeout"`
+	// AbortOnDisconnect allows releasing an uncertain slot after closing the
+	// upstream HTTP request. Set only after verifying this endpoint's behavior.
+	AbortOnDisconnect bool `json:"abort_on_disconnect"`
+	// ServerExecutionLimit is a verified upstream bound, including its queue.
+	// Zero leaves uncertain slots reserved until completion is confirmed.
+	ServerExecutionLimit time.Duration `json:"server_execution_limit"`
 	// ReasoningEffortBody adds upstream request fields for a requested
 	// reasoning_effort, for a model that honours another knob: Qwen3 turns its
 	// thinking off with chat_template_kwargs.enable_thinking, not the effort.
@@ -54,19 +60,29 @@ func (i *InstanceConfig) UnmarshalJSON(data []byte) error {
 	type plain InstanceConfig
 	var raw struct {
 		*plain
-		Timeout string `json:"timeout"`
+		Timeout              string `json:"timeout"`
+		ServerExecutionLimit string `json:"server_execution_limit"`
 	}
 	raw.plain = (*plain)(i)
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return err
 	}
-	if raw.Timeout != "" {
-		d, err := time.ParseDuration(raw.Timeout)
-		if err != nil {
-			return fmt.Errorf("timeout: %w", err)
+	for _, value := range []struct {
+		name, raw string
+		out       *time.Duration
+	}{
+		{"timeout", raw.Timeout, &i.Timeout},
+		{"server_execution_limit", raw.ServerExecutionLimit, &i.ServerExecutionLimit},
+	} {
+		if value.raw != "" {
+			d, err := time.ParseDuration(value.raw)
+			if err != nil {
+				return fmt.Errorf("%s: %w", value.name, err)
+			}
+			*value.out = d
 		}
-		i.Timeout = d
 	}
+
 	return nil
 }
 
@@ -247,6 +263,9 @@ func (c Config) Validate() error {
 	}
 	instances := make(map[string]InstanceConfig, len(c.Instances))
 	for _, in := range c.Instances {
+		if in.ServerExecutionLimit < 0 {
+			return fmt.Errorf("instance %q: server_execution_limit must not be negative", in.ID)
+		}
 		if !validInstanceID(in.ID) || in.Model == "" || in.MaxInFlight < 1 || in.ContextWindow < 1 {
 			return fmt.Errorf("instance %q has invalid id, model, max_in_flight, or context_window", in.ID)
 		}

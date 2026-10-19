@@ -68,8 +68,9 @@ type QuestionRequest struct {
 	Kind     exam.TurnKind // question, followup or rephrase
 	Node     exam.Node
 	Dialogue []exam.Turn
-	// Ahead marks a main question prepared before any session; a question
-	// asked during a session waits for no one but the student.
+	// Ahead marks a main question or its rephrase prepared before any
+	// session (decision of 18.10.2026); nobody waits for it, while a question
+	// asked during a session keeps the student waiting.
 	Ahead bool
 }
 

@@ -7,7 +7,7 @@
 Обработка объединена в два основных LLM-прохода после OCR:
 
 1. **OCR и конвертация** (`course_graph/ocr/converter.py`): извлечение структурированного Markdown с LaTeX-формулами из PDF/Markdown/TXT через Docling с резервным извлечением текста через pypdf. — **Реализован**.
-2. **Очистка + темы** (`course_graph/topics/extract.py`): один основной проход по порциям возвращает удаления, темы, `requires`, `provides`, вопрос и привязку к исходным блокам. Текст не переписывается. Вопрос — на рассуждение с развёрнутым ответом, без вопросов на факты, да/нет и с выбором; он строится вокруг `provides`, а не деталей слайда, — на него отвечает студент, который понял тему, не видя слайдов (так же для обновлённого вопроса объединённой темы). Экзамен устный: вопрос не просит решить задачу, записать формулу или код, нарисовать схему или график — только рассуждение своими словами. Тема с объясняющим текстом короче 120 символов (без заголовков, картинок и ссылок) присоединяется к ближайшей теме того же материала без вызова модели (`merged_thin_topics` в отчёте) — к той, где объединённые `requires` и `provides` укладываются в 128 пунктов карточки; если такой нет, тема остаётся отдельной. Итоговые карточки проверяются по контракту `Topic`. — **Реализован**.
+2. **Очистка + темы** (`course_graph/topics/extract.py`): один основной проход по порциям возвращает удаления, темы, `requires`, `provides`, вопрос и привязку к исходным блокам. Текст не переписывается. Вопрос — на рассуждение с развёрнутым ответом, без вопросов на факты, да/нет и с выбором; он выбирает одну центральную концепцию из текста темы, не требует пересказа всей темы и деталей слайда. При обновлении вопроса объединённой темы модель получает только id, title и text; provides сохраняется для связей графа. Политика карточек — `topics-v4`: для обновления ранее подготовленных вопросов граф нужно пересобрать. Экзамен устный: вопрос не просит решить задачу, записать формулу или код, нарисовать схему или график — только рассуждение своими словами. Тема с объясняющим текстом короче 120 символов (без заголовков, картинок и ссылок) присоединяется к ближайшей теме того же материала без вызова модели (`merged_thin_topics` в отчёте) — к той, где объединённые `requires` и `provides` укладываются в 128 пунктов карточки; если такой нет, тема остаётся отдельной. Итоговые карточки проверяются по контракту `Topic`. — **Реализован**.
 3. **Поиск + пререквизиты** (`course_graph/topics/retrieval.py`, `graph.py`): поиск отдельных знаний по всем темам курса; LLM проверяет небольшой список кандидатов с цитатами. Стрелка значит «тема опирается на тему», кандидаты более поздних недель исключены. Связь с неверной цитатой отбрасывается одна, а не вместе с пачкой: модель один раз переспрашивается только по её требованию. — **Реализован**.
 4. **Структура** (`course_graph/topics/structure.py`): синонимы, достраивание слабо связанных тем, слияние одиночных, транзитивная редукция — см. «Структура графа» ниже. — **Реализован**.
 5. **Проверки и сохранение**: Python проверяет покрытие, ID, цитаты, ацикличность; backend по кнопке «Собрать граф» оркестрирует сборку и хранит один JSONB-снимок графа в PostgreSQL. — **Реализован**.
@@ -316,7 +316,7 @@ encoder сериализует свои вызовы: сборка графа н
 Из контейнера в сети Compose с доступом к LLM gateway:
 
 ```bash
-python -m course_graph.evaluate --dataset /path/topics_reviewed_v2.json --output /tmp/eval --sweep 4000,6000 --materials 2 --targets 8
+uv run --no-sync python -m course_graph.evaluate --dataset /path/topics_reviewed_v2.json --output /tmp/eval --sweep 4000,6000 --materials 2 --targets 8
 ```
 
 Скрипт сохраняет исходные запросы/ответы без секретов, карточки, кандидатов,
@@ -330,11 +330,29 @@ precision/recall без отдельной разметки не заявляю�
 ## Проверки
 
 ```bash
-uv venv .venv
-. .venv/bin/activate
-uv pip install -r requirements.txt
-python -m pytest tests
+uv sync --locked --extra cpu --extra ocr
+uv run --locked --extra cpu --extra ocr python -m pytest tests
 ```
+
+Python 3.11 выбран в `.python-version`; `uv` создаёт `.venv` автоматически.
+`pyproject.toml` — единственный список зависимостей, `uv.lock` фиксирует версии
+для локального окружения и Docker. `pytest` находится в группе `dev`, которая
+локально включена по умолчанию; Docker исключает её через `--no-dev`.
+`ocr` включает Docling, `cpu` и `gpu` — взаимоисключающие extras PyTorch.
+На macOS `cpu` использует PyPI; на Linux/Windows — CPU-индекс PyTorch.
+`gpu` выбирает CUDA 12.8 на Linux x86_64 (контейнер NVIDIA).
+Для лёгкого окружения уберите `--extra ocr` и задайте
+`COURSE_GRAPH_WITH_DOCLING=false`; полный набор тестов требует `ocr`.
+
+Локальный API с Python stubs gateway:
+
+```bash
+PYTHONPATH=../shared/gen/python uv run --locked --extra cpu --extra ocr python -m course_graph.api
+```
+
+Добавление зависимостей: `uv add <package>`, для тестов — `uv add --dev <package>`,
+для OCR — `uv add --optional ocr <package>`. Обновление версий: `uv lock --upgrade`;
+коммитьте `pyproject.toml` вместе с `uv.lock`. Проверка актуальности: `uv lock --check`.
 
 pytest добавляет в `sys.path` `../shared/gen/python` (см. `pyproject.toml`). Stubs
 перегенерируются из корня `services/shared/tools/generate.sh services/shared/gen`
@@ -348,7 +366,7 @@ backend с `TEST_DATABASE_URL` (HTTP-фикстура S3, изолированн
 изменений S3, БД и запущенного API:
 
 ```bash
-PYTHONPATH=. python scripts/benchmark_ocr.py '../../documents/materials/Tutorial 4. Prolog.pdf' --pages 21 --output /tmp/ocr-benchmark/prolog.json
+uv run --locked --extra cpu --extra ocr python scripts/benchmark_ocr.py '../../documents/materials/Tutorial 4. Prolog.pdf' --pages 21 --output /tmp/ocr-benchmark/prolog.json
 ```
 
 Скрипт использует отдельный временный кеш и сохраняет Markdown, SHA-256 исходника,
@@ -372,7 +390,7 @@ PYTHONPATH=. python scripts/benchmark_ocr.py '../../documents/materials/Tutorial
 `gpu`. Сервис по-прежнему называется `course-graph`, compose подставляет вариант
 `course-graph-cpu` или `course-graph-gpu`:
 
-- `cpu` — PyTorch ставится CPU-сборкой (`UV_TORCH_BACKEND=cpu`, без CUDA и triton);
+- `cpu` — PyTorch ставится CPU-сборкой (`--extra cpu`, без CUDA и triton);
 - `gpu` — CUDA-сборка `cu128` (CUDA 12.8 — первая с поддержкой RTX 50xx), контейнер
   получает `gpus: all`. Layout, RapidOCR и модель формул и кода работают на CUDA.
   Нужны NVIDIA GPU с драйвером 570+ и NVIDIA Container Toolkit (на Windows —
@@ -387,21 +405,22 @@ RapidOCR может отличаться отдельными словами. Н
 ([замеры](../../documents/ocr-performance-2026-10-18.md#cpu-и-gpu)).
 
 Загрузки uv хранятся в кеше BuildKit
-(`--mount=type=cache`): при изменении `requirements.txt` пакеты берутся из кеша,
+(`--mount=type=cache`): при изменении `uv.lock` пакеты берутся из кеша,
 а не скачиваются заново. Кеш очищает `docker builder prune`.
 
 ### Повторное использование готового OCR-образа
 
-Если локально уже есть образ OCR с Docling, его можно использовать как базовый,
-чтобы не скачивать PyTorch и остальные тяжёлые пакеты заново:
+Если локально уже есть образ OCR с Docling, его можно использовать
+как базовый системный слой:
 
 ```bash
 COURSE_GRAPH_BASE_IMAGE=ai_tutor-ocr:latest docker compose build course-graph
 ```
 
-Зависимости проверяются из `requirements.txt`. Если в базовом образе torch другой
-сборки (CPU вместо CUDA или наоборот), он переустанавливается под выбранный
-`COURSE_GRAPH_DEVICE`, а сборка проверяет итоговый вариант. Затем в образ копируется актуальный
+Зависимости устанавливаются командой `uv sync --frozen` из `uv.lock` в отдельную
+`/app/.venv`: системные пакеты базового образа в неё не попадают. Выбранный
+`COURSE_GRAPH_DEVICE` задаёт extra `cpu` или `gpu`; сборка проверяет вариант torch.
+Установка повторно использует кеш uv BuildKit, а не системный PyTorch базового образа. Затем в образ копируется актуальный
 код `course_graph` и stubs gateway из `services/shared/gen/python`; контекст сборки —
 корень репозитория (`Dockerfile.dockerignore` пропускает только нужные каталоги). По умолчанию базовый образ —
 `python:3.11-slim`; повторное использование локального образа необязательно.
@@ -409,7 +428,7 @@ COURSE_GRAPH_BASE_IMAGE=ai_tutor-ocr:latest docker compose build course-graph
 Сквозной smoke-тест на фрагментах репозиторного датасета (создаёт отдельный курс):
 
 ```bash
-python services/course-graph/scripts/validate_upload.py --dataset notebooks/Dataset_100%__topics+pr+oc__v4.1.pdf/topics_reviewed_v2.json --output /tmp/course-graph-upload
+uv run --project services/course-graph --locked --extra cpu python services/course-graph/scripts/validate_upload.py --dataset notebooks/Dataset_100%__topics+pr+oc__v4.1.pdf/topics_reviewed_v2.json --output /tmp/course-graph-upload
 ```
 
 Команда выполняется из корня, обращается только к localhost, использует dev TLS

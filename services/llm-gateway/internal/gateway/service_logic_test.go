@@ -1,6 +1,7 @@
 package gateway
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -34,6 +35,20 @@ func TestUpstreamReadFailureRetainsUncertainSlot(t *testing.T) {
 	}
 	if !uncertainUpstreamOutcome(&UpstreamFailure{Code: "upstream_transport_error"}) {
 		t.Fatal("transport failure after an unknown send outcome was treated as certain")
+	}
+}
+
+func TestOnlyVerifiedDisconnectAbortMakesGatewayTimeoutCertain(t *testing.T) {
+	timeout := &UpstreamFailure{Code: "upstream_transport_error", Err: context.DeadlineExceeded}
+	if uncertainUpstreamOutcomeForInstance(InstanceConfig{}, timeout) != true {
+		t.Fatal("unverified upstream timeout did not retain its slot")
+	}
+	if uncertainUpstreamOutcomeForInstance(InstanceConfig{AbortOnDisconnect: true}, timeout) {
+		t.Fatal("verified abort-on-disconnect timeout retained its slot")
+	}
+	readFailure := &UpstreamFailure{Code: "upstream_response_error", Err: io.ErrUnexpectedEOF}
+	if !uncertainUpstreamOutcomeForInstance(InstanceConfig{AbortOnDisconnect: true}, readFailure) {
+		t.Fatal("ordinary response read failure was treated as a confirmed cancellation")
 	}
 }
 

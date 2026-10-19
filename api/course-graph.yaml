@@ -516,6 +516,8 @@ components:
         Тема (вершина). В Geek попадают id, title, text (текст вершины), provides (ОР), question (вопрос)
         и пререквизиты из Graph.prerequisites. sources хранят цитаты, редакцию, неделю и вид материала;
         backend переносит их в snapshot Geek для результата диагностики.
+        Перед публикацией backend дописывает в сохранённую сборку заранее подготовленный question
+        и rephrase (переформулировку) каждой темы (решение 18.10.2026); в ответе course-graph rephrase нет.
       properties:
         id:
           type: string

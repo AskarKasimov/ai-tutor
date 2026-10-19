@@ -11,14 +11,42 @@ import (
 // Node is a topic of the course graph. Prerequisites reference other nodes;
 // outcomes and questions may be empty until they are prepared.
 type Node struct {
-	ID            string           `json:"id"`
-	Title         string           `json:"title"`
-	Content       string           `json:"content"`
-	Prerequisites []string         `json:"prerequisites"`
-	Outcomes      []string         `json:"outcomes"`
-	Questions     []string         `json:"questions"`
-	Sources       []SourceCitation `json:"sources"`
+	ID            string   `json:"id"`
+	Title         string   `json:"title"`
+	Content       string   `json:"content"`
+	Prerequisites []string `json:"prerequisites"`
+	Outcomes      []string `json:"outcomes"`
+	Questions     []string `json:"questions"`
+	// Rephrase is the prepared rephrase of Questions[0]; empty until prepared,
+	// then Geek generates it at runtime as before.
+	Rephrase string `json:"rephrase,omitempty"`
+	// AssessmentGuidance is an instructor's explicit scope for this topic's question.
+	AssessmentGuidance string           `json:"assessment_guidance,omitempty"`
+	Sources            []SourceCitation `json:"sources"`
 }
+
+// MainQuestion is the prepared main question, or "" when Geek generates it at
+// runtime.
+func (n Node) MainQuestion() string {
+	if len(n.Questions) == 0 {
+		return ""
+	}
+	return strings.TrimSpace(n.Questions[0])
+}
+
+// PreparedRephrase is the prepared rephrase of the main question. It belongs
+// to the prepared main question only: a main question generated at runtime is
+// rephrased at runtime too.
+func (n Node) PreparedRephrase() string {
+	if n.MainQuestion() == "" {
+		return ""
+	}
+	return strings.TrimSpace(n.Rephrase)
+}
+
+// Prepared reports whether both the main question and its rephrase are
+// prepared, so a student waits for neither.
+func (n Node) Prepared() bool { return n.PreparedRephrase() != "" }
 
 // Source is a provenance citation from a particular source revision.
 type SourceCitation struct {

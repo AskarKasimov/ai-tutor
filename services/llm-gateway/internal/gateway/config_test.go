@@ -32,8 +32,17 @@ func TestLoadConfigParsesDurationsAndAppliesDefaults(t *testing.T) {
 }
 
 func TestExampleConfigIsValid(t *testing.T) {
-	if _, err := LoadConfig(filepath.Join("..", "..", "config.example.json")); err != nil {
+	config, err := LoadConfig(filepath.Join("..", "..", "config.example.json"))
+	if err != nil {
 		t.Fatalf("LoadConfig(config.example.json) error = %v", err)
+	}
+	for _, in := range config.Instances {
+		if !in.AbortOnDisconnect {
+			t.Errorf("instance %q must declare its verified disconnect behavior", in.ID)
+		}
+		if in.ServerExecutionLimit != 0 {
+			t.Errorf("instance %q has unverified server_execution_limit %s", in.ID, in.ServerExecutionLimit)
+		}
 	}
 }
 
@@ -144,5 +153,37 @@ func TestModelRulesGoThroughTheSameFieldCheck(t *testing.T) {
 	}
 	if _, err := Load(filepath.Join("..", "..", "config.example.json"), rules, true); err == nil || !strings.Contains(err.Error(), "reasoning_effort_body") {
 		t.Fatalf("a rule with a gateway field was accepted: %v", err)
+	}
+}
+
+func TestLoadConfigRejectsInvalidServerExecutionLimit(t *testing.T) {
+	for _, limit := range []string{"soon", "-1s"} {
+		t.Run(limit, func(t *testing.T) {
+			data, err := os.ReadFile(filepath.Join("..", "..", "config.example.json"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			var config map[string]json.RawMessage
+			if err := json.Unmarshal(data, &config); err != nil {
+				t.Fatal(err)
+			}
+			var instances []map[string]json.RawMessage
+			if err := json.Unmarshal(config["instances"], &instances); err != nil {
+				t.Fatal(err)
+			}
+			instances[0]["server_execution_limit"], _ = json.Marshal(limit)
+			config["instances"], _ = json.Marshal(instances)
+			data, err = json.Marshal(config)
+			if err != nil {
+				t.Fatal(err)
+			}
+			path := filepath.Join(t.TempDir(), "config.json")
+			if err := os.WriteFile(path, data, 0600); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := LoadConfig(path); err == nil || !strings.Contains(err.Error(), "server_execution_limit") {
+				t.Fatalf("error = %v, want invalid server_execution_limit", err)
+			}
+		})
 	}
 }

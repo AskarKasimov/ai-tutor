@@ -29,7 +29,7 @@ func TestSynthesizeSendsConfiguredVoiceSettings(t *testing.T) {
 			if err := json.NewDecoder(r.Body).Decode(&got); err != nil {
 				t.Error(err)
 			}
-			want := map[string]any{"text": "Привет.!!!", "seed": float64(options.Seed), "cfg_value": options.CFGValue, "inference_timesteps": float64(options.InferenceTimesteps)}
+			want := map[string]any{"text": "(calm, composed, friendly tone; speak evenly, without irritation or anger) Привет.!!!", "seed": float64(options.Seed), "cfg_value": options.CFGValue, "inference_timesteps": float64(options.InferenceTimesteps)}
 			if !reflect.DeepEqual(got, want) {
 				t.Errorf("payload = %v, want %v", got, want)
 			}
@@ -50,8 +50,9 @@ func TestSynthesizeSendsConfiguredVoiceSettings(t *testing.T) {
 
 func TestSynthesizeAddsCompletionSuffix(t *testing.T) {
 	wav := testWAV()
-	instruction := "Не произносите формулу. Объясните, почему аналитическое решение в обычном виде неприменимо"
-	for _, text := range []string{instruction, instruction + "!!!"} {
+	spokenText := "Не произносите формулу. Объясните, почему аналитическое решение в обычном виде неприменимо"
+	want := "(calm, composed, friendly tone; speak evenly, without irritation or anger) " + spokenText + "!!!"
+	for _, text := range []string{spokenText, spokenText + "!!!"} {
 		t.Run(text, func(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				var payload struct {
@@ -60,8 +61,8 @@ func TestSynthesizeAddsCompletionSuffix(t *testing.T) {
 				if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 					t.Error(err)
 				}
-				if payload.Text != instruction+"!!!" {
-					t.Errorf("text = %q, want %q", payload.Text, instruction+"!!!")
+				if payload.Text != want {
+					t.Errorf("text = %q, want %q", payload.Text, want)
 				}
 				w.Header().Set("Content-Type", "audio/wav")
 				_, _ = w.Write(wav)

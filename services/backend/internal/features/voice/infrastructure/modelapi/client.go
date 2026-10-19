@@ -181,7 +181,9 @@ func (c *Client) Synthesize(ctx context.Context, text string) (data []byte, err 
 }
 
 func (c *Client) synthesize(ctx context.Context, text string) ([]byte, error) {
+	const calmnessPrefix = "(calm, composed, friendly tone; speak evenly, without irritation or anger) "
 	const completionSuffix = "!!!"
+	text = calmnessPrefix + text
 	if !strings.HasSuffix(text, completionSuffix) {
 		text += completionSuffix
 	}

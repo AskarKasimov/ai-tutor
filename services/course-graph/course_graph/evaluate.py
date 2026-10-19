@@ -1,6 +1,6 @@
 """Reproducible live evaluation; all generative calls use the backend gRPC pool.
 
-python -m course_graph.evaluate --dataset topics_reviewed_v2.json --output /tmp/eval
+uv run --locked --extra cpu --extra ocr python -m course_graph.evaluate --dataset topics_reviewed_v2.json --output /tmp/eval
 Only source-backed cards are imported; RPD-only topics are excluded.
 """
 import argparse

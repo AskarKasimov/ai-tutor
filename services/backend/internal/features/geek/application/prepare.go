@@ -10,11 +10,13 @@ import (
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/exam"
 )
 
-// PrepareQuestions fills the main question of every node that has none, so
-// the exam asks it at once instead of waiting for the model. Existing
-// questions are kept. A node whose question could not be generated stays
-// empty, and the exam generates its question at runtime as before; the
-// failures are returned joined. parallel bounds the concurrent model calls.
+// PrepareQuestions fills the main question and its rephrase of every node
+// that lacks them, so the exam asks them at once instead of waiting for the
+// model. Existing texts are kept; a main question generated here gets a new
+// rephrase. A node that could not be prepared keeps what it had, and the exam
+// generates the rest at runtime as before; the failures are returned joined.
+// prepared counts the nodes completed by this call. parallel bounds the
+// concurrent nodes.
 func PrepareQuestions(ctx context.Context, examiner Examiner, g exam.Graph, parallel int) (exam.Graph, int, error) {
 	out := g
 	out.Nodes = make([]exam.Node, len(g.Nodes))
@@ -25,10 +27,15 @@ func PrepareQuestions(ctx context.Context, examiner Examiner, g exam.Graph, para
 		failures []error
 		prepared int
 	)
+	fail := func(id string, err error) {
+		mu.Lock()
+		defer mu.Unlock()
+		failures = append(failures, fmt.Errorf("%s: %w", id, err))
+	}
 	slots := make(chan struct{}, max(1, parallel))
 	for i := range out.Nodes {
 		node := out.Nodes[i]
-		if len(node.Questions) > 0 && strings.TrimSpace(node.Questions[0]) != "" {
+		if node.Prepared() {
 			continue
 		}
 		wg.Add(1)
@@ -37,31 +44,64 @@ func PrepareQuestions(ctx context.Context, examiner Examiner, g exam.Graph, para
 			select {
 			case slots <- struct{}{}:
 			case <-ctx.Done():
-				mu.Lock()
-				failures = append(failures, fmt.Errorf("%s: %w", node.ID, ctx.Err()))
-				mu.Unlock()
+				fail(node.ID, ctx.Err())
 				return
 			}
 			defer func() { <-slots }()
-			question, err := examiner.Question(ctx, QuestionRequest{Kind: exam.KindQuestion, Node: node, Ahead: true})
-			question = strings.TrimSpace(question)
-			if err == nil && question == "" {
-				err = errors.New("empty question")
+			main := node.MainQuestion()
+			if main == "" {
+				question, err := prepare(ctx, examiner, QuestionRequest{Kind: exam.KindQuestion, Node: node, Ahead: true})
+				if err != nil {
+					fail(node.ID, err)
+					return
+				}
+				main = question
+				questions := []string{main}
+				if len(node.Questions) > 1 {
+					questions = append(questions, node.Questions[1:]...)
+				}
+				node.Questions = questions
+				node.Rephrase = ""
+				// The main question is kept even if its rephrase fails.
+				mu.Lock()
+				out.Nodes[i].Questions = questions
+				out.Nodes[i].Rephrase = ""
+				mu.Unlock()
+			}
+			// The rephrase prompt reads the question it rephrases from the
+			// dialogue, as at runtime, but without a student's answer.
+			asked := []exam.Turn{{Line: 1, Speaker: exam.SpeakerGeek, Kind: exam.KindQuestion, NodeID: &node.ID, Text: main}}
+			rephrase, err := prepare(ctx, examiner, QuestionRequest{Kind: exam.KindRephrase, Node: node, Dialogue: asked, Ahead: true})
+			if err != nil {
+				fail(node.ID, err)
+				return
 			}
 			mu.Lock()
 			defer mu.Unlock()
-			if err != nil {
-				failures = append(failures, fmt.Errorf("%s: %w", node.ID, err))
-				return
-			}
-			questions := []string{question}
-			if len(node.Questions) > 1 {
-				questions = append(questions, node.Questions[1:]...)
-			}
-			out.Nodes[i].Questions = questions
+			out.Nodes[i].Rephrase = rephrase
 			prepared++
 		}()
 	}
 	wg.Wait()
 	return out, prepared, errors.Join(failures...)
+}
+
+func prepare(ctx context.Context, examiner Examiner, r QuestionRequest) (string, error) {
+	text, err := examiner.Question(ctx, r)
+	text = strings.TrimSpace(text)
+	if err == nil && text == "" {
+		err = errors.New("empty " + string(r.Kind))
+	}
+	return text, err
+}
+
+// Unprepared lists the nodes without a prepared main question or rephrase.
+func Unprepared(g exam.Graph) []string {
+	out := []string{}
+	for _, n := range g.Nodes {
+		if !n.Prepared() {
+			out = append(out, n.ID)
+		}
+	}
+	return out
 }

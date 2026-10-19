@@ -103,15 +103,15 @@ func (b *capturingBuilder) Build(_ context.Context, _ string, materials []course
 }
 
 func TestBuildReusesOnlyCardsOfTheCurrentQuestionPolicy(t *testing.T) {
-	// Review of #138: topics-v2 cards keep questions that ask to solve or
-	// draw, so a rebuild must extract them again under the oral policy.
+	// Old cards may ask about all outcomes; rebuild them under the
+	// single-concept question policy.
 	items := requestMaterials{
 		{ID: "old", S3ParsedKey: "parsed", Cleaning: &material.Cleaning{Status: "ready", S3ReportKey: "old"}},
 		{ID: "new", S3ParsedKey: "parsed", Cleaning: &material.Cleaning{Status: "ready", S3ReportKey: "new"}},
 	}
 	storage := reportStorage{
-		"old": `{"topics_version":"topics-v2","topics":[{"question":"Нарисуй график функции и вычисли производную."}]}`,
-		"new": `{"topics_version":"topics-v3","topics":[{"question":"Объясни, зачем нужна производная."}]}`,
+		"old": `{"topics_version":"topics-v3","topics":[{"question":"Нарисуй график функции и вычисли производную."}]}`,
+		"new": `{"topics_version":"topics-v4","topics":[{"question":"Объясни, зачем нужна производная."}]}`,
 	}
 	builder := &capturingBuilder{}
 	w := New(requestRepo{}, items, storage, builder, nil, nil)
@@ -119,7 +119,7 @@ func TestBuildReusesOnlyCardsOfTheCurrentQuestionPolicy(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(builder.materials) != 2 || builder.materials[0].Topics != nil || builder.materials[1].Topics == nil {
-		t.Fatalf("materials = %+v: only topics-v3 cards may be reused", builder.materials)
+		t.Fatalf("materials = %+v: only topics-v4 cards may be reused", builder.materials)
 	}
 }
 
@@ -147,8 +147,8 @@ func TestRequestKeepsConflictPrecedenceDuringActiveBuild(t *testing.T) {
 }
 
 func TestTopicQuestionsAreThePreparedQuestionsOfTheGraph(t *testing.T) {
-	graph := json.RawMessage(`{"topics":[{"question":" Почему ACO находит короткий путь? "},{"question":""},{"title":"без вопроса"}]}`)
-	if got := TopicQuestions(graph); len(got) != 1 || got[0] != "Почему ACO находит короткий путь?" {
+	graph := json.RawMessage(`{"topics":[{"question":" Почему ACO находит короткий путь? ","rephrase":" Как муравьи находят путь? "},{"question":""},{"title":"без вопроса","rephrase":"Сирота?"}]}`)
+	if got := TopicQuestions(graph); len(got) != 2 || got[0] != "Почему ACO находит короткий путь?" || got[1] != "Как муравьи находят путь?" {
 		t.Fatalf("questions = %q", got)
 	}
 	if got := TopicQuestions(json.RawMessage(`not json`)); len(got) != 0 {
@@ -278,5 +278,92 @@ func TestPrepareVoicesQueuesTheQuestionsOfEveryPublishedGraph(t *testing.T) {
 	// Without a queue there is nothing to prepare.
 	if err := New(repo, nil, nil, nil, nil, nil).PrepareVoices(context.Background()); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// publishingRepo records the graph a build publishes.
+type publishingRepo struct {
+	requestRepo
+	finished []json.RawMessage
+}
+
+func (r *publishingRepo) Finish(_ context.Context, _ coursegraph.Job, graph json.RawMessage, _ time.Time) (bool, error) {
+	r.finished = append(r.finished, graph)
+	return true, nil
+}
+
+type stubQuestions struct {
+	err  error
+	seen json.RawMessage
+}
+
+func (q *stubQuestions) Prepare(_ context.Context, graph json.RawMessage) (json.RawMessage, error) {
+	q.seen = graph
+	if q.err != nil {
+		return nil, q.err
+	}
+	return json.RawMessage(`{"version":"course-graph-v1","topics":[{"question":"Почему?","rephrase":"Отчего?"}],"prerequisites":[],"quality":{"acyclic":true}}`), nil
+}
+
+func TestBuildPublishesOnlyAGraphWithPreparedQuestions(t *testing.T) {
+	items := requestMaterials{{ID: "m", S3ParsedKey: "parsed", Cleaning: &material.Cleaning{Status: "ready", S3ReportKey: "report"}}}
+	for name, prepareErr := range map[string]error{"prepared": nil, "not prepared": errors.New("gateway down")} {
+		t.Run(name, func(t *testing.T) {
+			repo := &publishingRepo{}
+			voices := &queuedVoices{}
+			questions := &stubQuestions{err: prepareErr}
+			w := New(repo, items, progressStorage{}, &capturingBuilder{}, voices, nil)
+			w.SetQuestions(questions)
+			err := w.process(context.Background(), coursegraph.Job{SubjectID: "subject"})
+			if questions.seen == nil {
+				t.Fatal("the build was not prepared")
+			}
+			if prepareErr != nil {
+				// The previous graph stays published.
+				if err == nil || len(repo.finished) != 0 || len(voices.texts) != 0 {
+					t.Fatalf("err=%v published=%d voiced=%q", err, len(repo.finished), voices.texts)
+				}
+				return
+			}
+			if err != nil || len(repo.finished) != 1 || !strings.Contains(string(repo.finished[0]), `"rephrase":"Отчего?"`) {
+				t.Fatalf("err=%v published=%s", err, repo.finished)
+			}
+			if len(voices.texts) != 2 || voices.texts[0] != "Почему?" || voices.texts[1] != "Отчего?" {
+				t.Fatalf("voiced %q", voices.texts)
+			}
+		})
+	}
+}
+
+// failingRepo hands out one job and records why it failed.
+type failingRepo struct {
+	publishingRepo
+	claimed bool
+	failed  []string
+}
+
+func (r *failingRepo) Claim(context.Context, string, time.Time) (coursegraph.Job, error) {
+	if r.claimed {
+		return coursegraph.Job{}, nil
+	}
+	r.claimed = true
+	return coursegraph.Job{SubjectID: "subject", Token: "lease"}, nil
+}
+
+func (r *failingRepo) Fail(_ context.Context, _ coursegraph.Job, message string, _ time.Time) error {
+	r.failed = append(r.failed, message)
+	return nil
+}
+
+func TestAFailureToPrepareQuestionsIsReportedAsSuch(t *testing.T) {
+	items := requestMaterials{{ID: "m", S3ParsedKey: "parsed", Cleaning: &material.Cleaning{Status: "ready", S3ReportKey: "report"}}}
+	repo := &failingRepo{}
+	w := New(repo, items, progressStorage{}, &capturingBuilder{}, nil, nil)
+	w.SetQuestions(&stubQuestions{err: errors.New("gateway down")})
+	if worked, err := w.ProcessOne(context.Background()); !worked || err == nil {
+		t.Fatalf("worked=%v err=%v", worked, err)
+	}
+	if len(repo.failed) != 1 || !strings.Contains(repo.failed[0], "вопросы к темам не подготовлены") || len(repo.finished) != 0 {
+		t.Fatalf("failed=%q published=%d", repo.failed, len(repo.finished))
 	}
 }

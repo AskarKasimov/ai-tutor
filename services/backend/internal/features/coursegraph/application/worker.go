@@ -48,6 +48,14 @@ type Voices interface {
 	Prepare(texts []string) int
 }
 
+// Questions prepares the main question and its rephrase of every topic of a
+// build before it is published, so Geek asks them without waiting for the
+// model; an error means some topic is still unprepared and the build is not
+// published (decision of 18.10.2026).
+type Questions interface {
+	Prepare(ctx context.Context, graph json.RawMessage) (json.RawMessage, error)
+}
+
 // DefaultGraph is the graph Geek examines a course by before its first build.
 type DefaultGraph interface {
 	Current(context.Context, string) (exam.Graph, bool, error)
@@ -59,6 +67,7 @@ type Worker struct {
 	storage   Storage
 	builder   Builder
 	voices    Voices
+	questions Questions
 	fallback  DefaultGraph
 	// progress of running builds by subject, shown in snapshots.
 	mu       sync.Mutex
@@ -72,6 +81,10 @@ func New(repo Repository, materials Materials, storage Storage, builder Builder,
 	return &Worker{repo: repo, materials: materials, storage: storage, builder: builder, voices: voices, fallback: fallback,
 		progress: map[string]coursegraph.BuildProgress{}}
 }
+
+// SetQuestions makes builds prepare their questions before publication;
+// without it a build is published with the questions course-graph wrote.
+func (w *Worker) SetQuestions(q Questions) { w.questions = q }
 
 func (w *Worker) setProgress(subjectID string, p *coursegraph.BuildProgress) {
 	w.mu.Lock()
@@ -112,11 +125,13 @@ func (w *Worker) PrepareVoices(ctx context.Context) error {
 	return nil
 }
 
-// TopicQuestions are the prepared questions of a built graph, one per topic.
+// TopicQuestions are the prepared texts of a built graph that Geek asks as
+// is: the question of each topic and, with it, its rephrase.
 func TopicQuestions(graph json.RawMessage) []string {
 	var shape struct {
 		Topics []struct {
 			Question string `json:"question"`
+			Rephrase string `json:"rephrase"`
 		} `json:"topics"`
 	}
 	out := []string{}
@@ -124,8 +139,13 @@ func TopicQuestions(graph json.RawMessage) []string {
 		return out
 	}
 	for _, t := range shape.Topics {
-		if q := strings.TrimSpace(t.Question); q != "" {
-			out = append(out, q)
+		q := strings.TrimSpace(t.Question)
+		if q == "" {
+			continue
+		}
+		out = append(out, q)
+		if r := strings.TrimSpace(t.Rephrase); r != "" {
+			out = append(out, r)
 		}
 	}
 	return out
@@ -188,6 +208,7 @@ func BuildShape(g exam.Graph) (json.RawMessage, error) {
 		ID       string   `json:"id"`
 		Title    string   `json:"title"`
 		Question string   `json:"question,omitempty"`
+		Rephrase string   `json:"rephrase,omitempty"`
 		Text     string   `json:"text,omitempty"`
 		Provides []string `json:"provides"`
 		Requires []string `json:"requires"`
@@ -207,6 +228,7 @@ func BuildShape(g exam.Graph) (json.RawMessage, error) {
 		if len(n.Questions) > 0 {
 			t.Question = n.Questions[0]
 		}
+		t.Rephrase = n.PreparedRephrase()
 		if t.Provides == nil {
 			t.Provides = []string{}
 		}
@@ -315,7 +337,11 @@ func (w *Worker) ProcessOne(ctx context.Context) (bool, error) {
 		}
 		failureCtx, stop := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
 		defer stop()
-		if failure := w.repo.Fail(failureCtx, job, "Не удалось построить граф; предыдущий граф сохранён.", time.Now()); failure != nil {
+		message := "Не удалось построить граф; предыдущий граф сохранён."
+		if errors.Is(err, errQuestionsNotPrepared) {
+			message = "Граф собран, но вопросы к темам не подготовлены (LLM недоступна); предыдущий граф сохранён."
+		}
+		if failure := w.repo.Fail(failureCtx, job, message, time.Now()); failure != nil {
 			return true, fmt.Errorf("%v; record failure: %w", err, failure)
 		}
 	}
@@ -323,6 +349,10 @@ func (w *Worker) ProcessOne(ctx context.Context) (bool, error) {
 }
 
 var errGraphLeaseLost = errors.New("course graph lease lost")
+
+// errQuestionsNotPrepared marks a build whose graph is ready but whose
+// questions are not, so the admin learns that only that step failed.
+var errQuestionsNotPrepared = errors.New("graph questions not prepared")
 
 func runWithLease(ctx context.Context, job coursegraph.Job,
 	renew func(context.Context, coursegraph.Job, time.Time) (bool, error),
@@ -405,7 +435,7 @@ func (w *Worker) process(ctx context.Context, job coursegraph.Job) error {
 			Filename: m.Filename, KindLabel: m.KindLabel, MaterialRevision: hex.EncodeToString(revision[:])}
 		// Older cards carry questions of an earlier policy (topics-v2 could
 		// ask to solve or draw): course-graph extracts them again instead.
-		if cached.TopicsVersion == "topics-v3" {
+		if cached.TopicsVersion == "topics-v4" {
 			input.Topics = cached.Topics
 		}
 		inputs = append(inputs, input)
@@ -437,6 +467,11 @@ func (w *Worker) process(ctx context.Context, job coursegraph.Job) error {
 	}
 	if json.Unmarshal(graph, &shape) != nil || shape.Version != "course-graph-v1" || !shape.Quality.Acyclic || len(shape.Topics) == 0 || shape.Prerequisites == nil {
 		return fmt.Errorf("invalid graph result")
+	}
+	if w.questions != nil {
+		if graph, err = w.questions.Prepare(ctx, graph); err != nil {
+			return fmt.Errorf("%w: %w", errQuestionsNotPrepared, err)
+		}
 	}
 	// The questions are voiced in the background before the graph is
 	// published, so the first students already hear them from the cache.

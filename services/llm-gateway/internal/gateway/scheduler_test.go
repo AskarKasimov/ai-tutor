@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 	"time"
@@ -114,6 +115,105 @@ func TestRestoreKeepsUncertainSlotPastResultRetention(t *testing.T) {
 	}
 }
 
+// Config uses the public JSON format so these cases cover the opt-in limit.
+func setServerExecutionLimit(t *testing.T, s *Service, limit string) {
+	t.Helper()
+	raw := []byte(`{"server_execution_limit":"` + limit + `"}`)
+	if err := json.Unmarshal(raw, &s.cfg.Instances[0]); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestRestoreKeepsInterruptedSlotsWithoutServerLimit(t *testing.T) {
+	s := schedulerFixture([]InstanceConfig{schedulerInstance("model-a")}, []string{"model-a"})
+	s.cfg.Retention = 24 * time.Hour
+	s.stateIDs = make(map[string]string)
+	s.keys = make(map[string]string)
+	now := time.Now()
+	for _, job := range []*durableJob{
+		{ID: "running", Status: "running", Instance: "model-a", SlotHeld: true, SubmittedAt: now, StartedAt: now.Add(-time.Hour)},
+		{ID: "failed", Status: "failed", Instance: "model-a", SlotHeld: true, SubmittedAt: now, StartedAt: now.Add(-time.Hour), FinishedAt: now.Add(-time.Minute), Error: &storedError{Code: "execution_interrupted"}},
+	} {
+		s.install(job)
+	}
+	if got := s.inFlight["model-a"]; got != 2 {
+		t.Fatalf("in-flight = %d, want both uncertain slots retained without a server limit", got)
+	}
+	s.jobs["queued"] = schedulerJob("queued", 1, false)
+	if _, _, ok := s.next(); ok {
+		t.Fatal("dispatched while upstream might still be running")
+	}
+}
+
+func TestRestoreReleasesInterruptedSlotsForVerifiedDisconnectAbort(t *testing.T) {
+	instance := schedulerInstance("model-a")
+	instance.AbortOnDisconnect = true
+	s := schedulerFixture([]InstanceConfig{instance}, []string{"model-a"})
+	s.stateIDs = make(map[string]string)
+	s.keys = make(map[string]string)
+	now := time.Now()
+	s.install(&durableJob{ID: "running", Status: "running", Instance: "model-a", SlotHeld: true, SubmittedAt: now, StartedAt: now.Add(-time.Minute)})
+	s.install(&durableJob{ID: "timed-out", Status: "failed", Instance: "model-a", SlotHeld: true, SubmittedAt: now, FinishedAt: now, Error: &storedError{Code: "upstream_timeout"}})
+	if got := s.inFlight["model-a"]; got != 0 {
+		t.Fatalf("in-flight = %d, want restored disconnected requests released", got)
+	}
+}
+
+func TestRestoreRunningStartsFullServerReservationAtRestart(t *testing.T) {
+	s := schedulerFixture([]InstanceConfig{schedulerInstance("model-a")}, []string{"model-a"})
+	setServerExecutionLimit(t, s, "2m")
+	s.stateIDs = make(map[string]string)
+	s.keys = make(map[string]string)
+	now := time.Now()
+	s.install(&durableJob{ID: "retry-at-restart", Status: "running", Instance: "model-a", SlotHeld: true, SubmittedAt: now, StartedAt: now.Add(-time.Hour), Attempt: 2})
+	if s.inFlight["model-a"] != 1 {
+		t.Fatal("released a restored attempt using the first attempt's old start")
+	}
+	job := s.jobs["retry-at-restart"]
+	if job.FinishedAt.Before(now) {
+		t.Fatal("interruption time was not recorded")
+	}
+}
+
+func TestUncertainSlotRequiresServerLimitAndFullWindowAfterFailure(t *testing.T) {
+	for _, tt := range []struct {
+		name, limit string
+		finishedAgo time.Duration
+		want        bool
+	}{
+		{"client timeout is not a server limit", "", time.Hour, false},
+		{"retry has its full server window", "2m", 30 * time.Second, false},
+		{"at server limit", "2m", 2 * time.Minute, true},
+		{"after server limit", "2m", 3 * time.Minute, true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			s := schedulerFixture([]InstanceConfig{schedulerInstance("model-a")}, []string{"model-a"})
+			s.cfg.Instances[0].Timeout = time.Second
+			if tt.limit != "" {
+				setServerExecutionLimit(t, s, tt.limit)
+			}
+			now := time.Now()
+			job := &durableJob{ID: "retry", Status: "failed", Instance: "model-a", SlotHeld: true, Attempt: 2, StartedAt: now.Add(-time.Hour), FinishedAt: now.Add(-tt.finishedAgo)}
+			if got := s.uncertainSlotExpired(job, now); got != tt.want {
+				t.Fatalf("expired = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestRestoreReleasesOnlyExpiredTerminalServerReservation(t *testing.T) {
+	s := schedulerFixture([]InstanceConfig{schedulerInstance("model-a")}, []string{"model-a"})
+	setServerExecutionLimit(t, s, "2m")
+	s.cfg.Retention = 24 * time.Hour
+	s.stateIDs = make(map[string]string)
+	s.keys = make(map[string]string)
+	now := time.Now()
+	s.install(&durableJob{ID: "expired", Status: "failed", Instance: "model-a", SlotHeld: true, SubmittedAt: now, StartedAt: now.Add(-time.Hour), FinishedAt: now.Add(-3 * time.Minute), Error: &storedError{Code: "execution_interrupted"}})
+	if s.inFlight["model-a"] != 0 {
+		t.Fatal("expired server reservation was retained")
+	}
+}
+
 func TestRestoreRetainsResultFor24HoursAfterCompletion(t *testing.T) {
 	s := schedulerFixture([]InstanceConfig{schedulerInstance("model-a")}, []string{"model-a"})
 	s.cfg.Retention = 24 * time.Hour
@@ -135,7 +235,7 @@ func TestExpiredTerminalReplacesRestoredRunningJob(t *testing.T) {
 	running := &durableJob{ID: "expired-terminal", ClientID: "client", IdempotencyKey: "key", Status: "running", Instance: "model-a", SlotHeld: true, SubmittedAt: now.Add(-48 * time.Hour), StartedAt: now.Add(-47 * time.Hour)}
 	s.install(running)
 	if s.inFlight["model-a"] != 1 {
-		t.Fatalf("restored running slot count = %d, want 1", s.inFlight["model-a"])
+		t.Fatalf("restored running slot count = %d, want 1 without server limit", s.inFlight["model-a"])
 	}
 
 	terminal := &durableJob{ID: running.ID, ClientID: running.ClientID, IdempotencyKey: running.IdempotencyKey, Status: "succeeded", SubmittedAt: now.Add(-48 * time.Hour), FinishedAt: now.Add(-25 * time.Hour)}

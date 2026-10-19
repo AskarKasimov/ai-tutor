@@ -96,6 +96,19 @@ func (s Stored) Current(ctx context.Context, subjectID string) (exam.Graph, bool
 	if err != nil {
 		return exam.Graph{}, false, fmt.Errorf("read stored graph: %w", err)
 	}
+	g, ok, err := Decode(data)
+	if err != nil || !ok {
+		return exam.Graph{}, false, err
+	}
+	sum := sha256.Sum256(data)
+	g.Version = "pg:" + hex.EncodeToString(sum[:8])
+	return g, true, nil
+}
+
+// Decode reads a graph as it is stored: the examined graph (nodes) or a
+// course-graph build (topics and prerequisite edges). ok is false when there
+// is no graph. The version is left empty.
+func Decode(data []byte) (exam.Graph, bool, error) {
 	if len(data) == 0 || string(data) == "null" {
 		return exam.Graph{}, false, nil
 	}
@@ -108,6 +121,7 @@ func (s Stored) Current(ctx context.Context, subjectID string) (exam.Graph, bool
 			Text     string                `json:"text"`
 			Content  string                `json:"content"`
 			Question string                `json:"question"`
+			Rephrase string                `json:"rephrase"`
 			Provides []string              `json:"provides"`
 			Requires []string              `json:"requires"`
 			Sources  []exam.SourceCitation `json:"sources"`
@@ -145,6 +159,7 @@ func (s Stored) Current(ctx context.Context, subjectID string) (exam.Graph, bool
 				Prerequisites: prereqsByTarget[t.ID],
 				Outcomes:      t.Provides,
 				Questions:     questions,
+				Rephrase:      strings.TrimSpace(t.Rephrase),
 				Sources:       t.Sources,
 			}
 		}
@@ -159,7 +174,5 @@ func (s Stored) Current(ctx context.Context, subjectID string) (exam.Graph, bool
 		n := &g.Nodes[i]
 		n.Prerequisites, n.Outcomes, n.Questions = orEmpty(n.Prerequisites), orEmpty(n.Outcomes), orEmpty(n.Questions)
 	}
-	sum := sha256.Sum256(data)
-	g.Version = "pg:" + hex.EncodeToString(sum[:8])
 	return g, true, nil
 }

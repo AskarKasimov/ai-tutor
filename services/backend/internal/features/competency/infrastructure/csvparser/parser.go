@@ -117,7 +117,7 @@ func parseCSV(data []byte, restoreCell func(string) string) (competencymap.Map, 
 			}
 			found := map[string]bool{}
 			for _, h := range row {
-				found[h] = true
+				found[strings.TrimSpace(h)] = true
 			}
 			if found["Ком"] && found["Сост"] && found["ОР"] {
 				reader = candidate

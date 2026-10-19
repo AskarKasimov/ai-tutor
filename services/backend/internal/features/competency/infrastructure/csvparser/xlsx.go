@@ -27,25 +27,28 @@ func parseXLSX(data []byte) (competencymap.Map, error) {
 	}
 	defer workbook.Close()
 
-	var selected [][]string
-	var selectedHeader int
-	for _, sheet := range workbook.GetSheetList() {
-		rows, err := worksheetRows(workbook, sheet)
-		if err != nil {
-			return competencymap.Map{}, csvError(1, "XLSX", "Размер листа превышает предел или лист повреждён.")
-		}
-		header := headerIndex(rows)
-		if header < 0 {
-			continue
-		}
-		if selected != nil {
-			return competencymap.Map{}, csvError(1, "XLSX", "Книга должна содержать ровно один лист с картой компетенций.")
-		}
-		selected = rows
-		selectedHeader = header
+	// One book serves both modes of the stand: the exam simulation reads its
+	// first sheet and the diagnostic its second; a book of one sheet is read
+	// as before.
+	sheets := workbook.GetSheetList()
+	if len(sheets) == 0 {
+		return competencymap.Map{}, csvError(1, "XLSX", "В книге нет листов.")
 	}
-	if selected == nil {
-		return competencymap.Map{}, csvError(1, "XLSX", "Не найден лист с заголовками карты компетенций.")
+	sheet := sheets[0]
+	if len(sheets) > 1 {
+		sheet = sheets[1]
+	}
+	selected, err := worksheetRows(workbook, sheet)
+	if err != nil {
+		return competencymap.Map{}, csvError(1, "XLSX", "Размер листа превышает предел или лист повреждён.")
+	}
+	selectedHeader := headerIndex(selected)
+	if selectedHeader < 0 {
+		message := "Не найдены заголовки карты компетенций на листе «" + sheet + "»."
+		if len(sheets) > 1 {
+			message = "Не найдены заголовки карты компетенций на втором листе «" + sheet + "»: диагностика читает второй лист книги, первый — для симуляции экзамена."
+		}
+		return competencymap.Map{}, csvError(1, "XLSX", message)
 	}
 
 	var encoded bytes.Buffer
@@ -116,7 +119,7 @@ func headerIndex(rows [][]string) int {
 		}
 		found := make(map[string]bool, len(row))
 		for _, value := range row {
-			found[value] = true
+			found[strings.TrimSpace(value)] = true
 		}
 		if found["Ком"] && found["Сост"] && found["ОР"] ||
 			found["Компетенция"] && found["Составляющая"] && found["Образовательный результат"] {

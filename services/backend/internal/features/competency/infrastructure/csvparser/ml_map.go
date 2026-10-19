@@ -19,8 +19,14 @@ var rpdCompetency = regexp.MustCompile(`(?:ОПК|ПК)-[0-9]+`)
 // parseMLMap accepts the ML spreadsheet export. Its
 // task columns contain both complete assignments and fragments of assignments.
 // Every source cell is archived; only self-contained assignments become tasks.
+// Columns it does not know (№, DOK, ALDs notes, criteria of the simulation…)
+// are archived but not read; the outer spaces of a header are ignored.
 func parseMLMap(reader *csv.Reader, headers []string, headerLine int, restoreCell func(string) string) (competencymap.Map, error) {
 	result := competencymap.Map{SourceFormat: "ml-map", SourceHeaders: append([]string(nil), headers...)}
+	headers = append([]string(nil), headers...)
+	for i := range headers {
+		headers[i] = strings.TrimSpace(headers[i])
+	}
 	columns := make(map[string]int, len(headers))
 	taskColumns := []int{}
 	allowed := map[string]bool{
@@ -33,20 +39,20 @@ func parseMLMap(reader *csv.Reader, headers []string, headerLine int, restoreCel
 		theoryMinutesColumn: true, practiceMinutesColumn: true,
 	}
 	for i, header := range headers {
+		match := taskColumn.FindStringSubmatch(header)
+		if match == nil && (!allowed[header] || header == "" && i != 0) {
+			// An unknown column, or an unnamed one after the first.
+			continue
+		}
 		if _, exists := columns[header]; exists {
 			return result, csvError(headerLine, header, "Повторный заголовок.")
 		}
 		columns[header] = i
-		if header == "" && i != 0 {
-			return result, csvError(headerLine, "CSV", "Пустой заголовок допустим только для первого столбца.")
-		}
-		if match := taskColumn.FindStringSubmatch(header); match != nil {
+		if match != nil {
 			if match[1] != "Задание" {
 				return result, csvError(headerLine, header, "В этом формате нет парных критериев; требования к ОР находятся в ОС.")
 			}
 			taskColumns = append(taskColumns, i)
-		} else if !allowed[header] {
-			return result, csvError(headerLine, header, "Неизвестная колонка карты ML.")
 		}
 	}
 	for _, header := range []string{"Компетенция", "Уровень темы", "Составляющая", "Образовательный результат", "Что должно войти в тест", "Таксономия", "Уровень ALDs", "Важность", "Раздел РПД · компетенции РПД", "ОС"} {
@@ -62,7 +68,9 @@ func parseMLMap(reader *csv.Reader, headers []string, headerLine int, restoreCel
 	seenOutcomes := map[string]int{}
 	sectionTitles := map[string]string{}
 	competency, constituent := "", ""
-	topicLevel := ""
+	// A topic level given once for a competency holds for its constituents
+	// without their own.
+	topicLevel, competencyLevel := "", ""
 	firstData := true
 	for {
 		row, err := reader.Read()
@@ -107,6 +115,7 @@ func parseMLMap(reader *csv.Reader, headers []string, headerLine int, restoreCel
 			if value != competency {
 				constituent = ""
 				topicLevel = ""
+				competencyLevel = ""
 			}
 			competency = value
 		}
@@ -125,6 +134,12 @@ func parseMLMap(reader *csv.Reader, headers []string, headerLine int, restoreCel
 				return result, csvError(line, "Уровень темы", "Внутри составляющей указаны разные уровни.")
 			}
 			topicLevel = canonical
+			if competencyLevel == "" {
+				competencyLevel = canonical
+			}
+		}
+		if topicLevel == "" {
+			topicLevel = competencyLevel
 		}
 		if competency == "" || constituent == "" {
 			return result, csvError(line, "Компетенция/Составляющая", "Для ОР отсутствует родительская запись.")
@@ -147,17 +162,23 @@ func parseMLMap(reader *csv.Reader, headers []string, headerLine int, restoreCel
 		} else if topicLevel != "" && result.Constituents[constituentIndex].TopicLevelCode != topicLevel {
 			return result, csvError(line, "Уровень темы", "Внутри составляющей указаны разные уровни.")
 		}
+		// A cell that is not a section of the curriculum («Р.N …») holds the
+		// text of the lecture: it becomes the educational content of the
+		// outcome instead of the ОС column, which then holds the authors'
+		// notes (decision of 19.10.2026, map «Введение в ИИ4»).
+		lecture := ""
 		if rawSection := strings.TrimSpace(row[columns["Раздел РПД · компетенции РПД"]]); rawSection != "" {
 			section, ok := parseCurriculumSection(rawSection)
 			if !ok {
-				return result, csvError(line, "Раздел РПД · компетенции РПД", "Ожидается раздел РПД и список компетенций через точку с запятой.")
-			}
-			if title, exists := sectionTitles[section.Code]; exists && title != section.Title {
-				return result, csvError(line, "Раздел РПД · компетенции РПД", "Для одного кода раздела указаны разные названия.")
-			}
-			sectionTitles[section.Code] = section.Title
-			if !mergeCurriculumSection(&result.Constituents[constituentIndex], section) {
-				return result, csvError(line, "Раздел РПД · компетенции РПД", "Для одной составляющей раздел указан с разными наборами компетенций.")
+				lecture = rawSection
+			} else {
+				if title, exists := sectionTitles[section.Code]; exists && title != section.Title {
+					return result, csvError(line, "Раздел РПД · компетенции РПД", "Для одного кода раздела указаны разные названия.")
+				}
+				sectionTitles[section.Code] = section.Title
+				if !mergeCurriculumSection(&result.Constituents[constituentIndex], section) {
+					return result, csvError(line, "Раздел РПД · компетенции РПД", "Для одной составляющей раздел указан с разными наборами компетенций.")
+				}
 			}
 		}
 		index, exists := seenOutcomes[oKey]
@@ -169,6 +190,9 @@ func parseMLMap(reader *csv.Reader, headers []string, headerLine int, restoreCel
 		properties, err := parseOutcomeProperties(row, columns, line)
 		if err != nil {
 			return result, err
+		}
+		if lecture != "" {
+			properties.educationalContent = &lecture
 		}
 		if err := mergeOutcomeProperties(&result.Outcomes[index], properties, line); err != nil {
 			return result, err
@@ -208,14 +232,17 @@ func levelCode(value string) (string, bool) {
 }
 
 func taxonomyCode(value string) (string, bool) {
+	// The nouns of the ML map and the Bloom verbs of the course template;
+	// the two highest levels of Bloom count as analysis, the highest here
+	// (decision of 19.10.2026).
 	switch strings.ToLower(strings.TrimSpace(value)) {
-	case "знание":
+	case "знание", "помнить":
 		return "knowledge", true
-	case "понимание":
+	case "понимание", "понимать":
 		return "understanding", true
-	case "применение":
+	case "применение", "применять":
 		return "application", true
-	case "анализ":
+	case "анализ", "анализировать", "оценивать", "создавать":
 		return "analysis", true
 	default:
 		return "", false

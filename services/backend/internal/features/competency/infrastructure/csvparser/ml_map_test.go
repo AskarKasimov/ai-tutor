@@ -224,3 +224,52 @@ func TestMLMapParsesOptionsWithInternalSemicolons(t *testing.T) {
 		}
 	}
 }
+
+// The diagnostic sheet of the map «Введение в ИИ4»: a numbered first column,
+// a header with outer spaces, columns of the simulation the parser does not
+// know, Bloom verbs, the topic level on the first row of a competency only,
+// and the lecture in «Раздел РПД» with the authors' notes in ОС.
+func TestMLMapReadsTheDiagnosticSheetOfMap4(t *testing.T) {
+	task := "\"Через что агент действует на среду?\n\n\n- сенсоры\n- исполнительные механизмы\n\n\nВыберите один ответ.\n\n\nисполнительные механизмы\""
+	data := "№;Компетенция;Уровень темы;Составляющая ;Образовательный результат;Что должно войти в тест;Таксономия;Уровень ALDs;Важность;Раздел РПД · компетенции РПД;Задание 1;ОС;;Уровень по DOK;Свидетельство (продукт работы);Соответствие целям дисциплины\n" +
+		"7;К1. Агент;средний;1.2 PEAS;Даёт определение агента;TRUE;Понимать;базовый;4.0;Нед. 3, лекция «Agents». Агент воспринимает среду сенсорами.;" + task + ";;;1.0;Ответ;✓\n" +
+		"8;;;;Составляет PEAS;TRUE;Применять;средний;5.0;Нед. 3, лекция «Agents».;;перегенерить задание;;2.0;Описание;✓\n" +
+		"9;;;1.3 Среда;Определяет свойства среды;TRUE;Анализировать;средний;3.0;\"Р.1 Введение\nОПК-2\";;Учебный контекст;;3.0;Таблица;\n" +
+		"10;К6. ИНС;продвинутый;6.1 Перцептрон;Строит перцептрон;TRUE;Помнить;базовый;4;;;;;1.0;Схема;✓\n" +
+		"11;;;;Проектирует сеть;TRUE;Создавать;продвинутый;3;;;;;3.0;Схема;\n"
+	parsed, err := Parse([]byte(data))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(parsed.Constituents) != 3 || len(parsed.Outcomes) != 5 || len(parsed.Tasks) != 1 {
+		t.Fatalf("map = %+v", parsed)
+	}
+	// The level of the competency holds for its constituents without one.
+	for i, want := range []string{"intermediate", "intermediate", "advanced"} {
+		if got := parsed.Constituents[i].TopicLevelCode; got != want {
+			t.Fatalf("constituent %d level = %q, want %q", i, got, want)
+		}
+	}
+	for i, want := range []string{"understanding", "application", "analysis", "knowledge", "analysis"} {
+		if got := parsed.Outcomes[i].TaxonomyCode; got != want {
+			t.Fatalf("outcome %d taxonomy = %q, want %q", i, got, want)
+		}
+	}
+	// The lecture becomes the educational content; the notes in ОС do not.
+	content := func(i int) string {
+		if parsed.Outcomes[i].EducationalContent == nil {
+			return ""
+		}
+		return *parsed.Outcomes[i].EducationalContent
+	}
+	if content(0) != "Нед. 3, лекция «Agents». Агент воспринимает среду сенсорами." || content(1) != "Нед. 3, лекция «Agents»." {
+		t.Fatalf("contents = %q, %q", content(0), content(1))
+	}
+	// A section of the curriculum is still read as one, with ОС as before.
+	if content(2) != "Учебный контекст" || len(parsed.Constituents[1].Sections) != 1 || parsed.Constituents[1].Sections[0].Code != "Р.1" {
+		t.Fatalf("section = %+v, content %q", parsed.Constituents[1], content(2))
+	}
+	if parsed.Tasks[0].ReferenceAnswer != "исполнительные механизмы" || len(parsed.Tasks[0].Options) != 2 {
+		t.Fatalf("task = %+v", parsed.Tasks[0])
+	}
+}

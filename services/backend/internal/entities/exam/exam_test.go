@@ -200,6 +200,13 @@ func TestPartialAnswerKeepsCAndChecksPrerequisites(t *testing.T) {
 	if got := e.Gaps(); len(got) != 0 {
 		t.Fatalf("gaps = %v: C is not a gap", got)
 	}
+	// It is a weak spot instead, with the sources a gap would have.
+	if got := e.WeakSpots(); !slices.Equal(got, []string{"a-star"}) {
+		t.Fatalf("weak spots = %v", got)
+	}
+	if r := (Session{Exam: e}).Result(); len(r.WeakSpots) != 1 || r.WeakSpots[0].NodeID != "a-star" || r.WeakSpots[0].Title == "" {
+		t.Fatalf("result weak spots = %+v", r.WeakSpots)
+	}
 }
 
 func TestCreditedSharedPrerequisiteIsNotAskedAgain(t *testing.T) {
@@ -526,10 +533,16 @@ func TestCourseGradeThresholds(t *testing.T) {
 		percent int
 	}{
 		{[]Grade{GradeA, GradeA, GradeA, GradeB}, GradeA, 93},
-		{[]Grade{GradeA, GradeB}, GradeB, 87},
+		{[]Grade{GradeA, GradeB}, GradeA, 87},
+		{[]Grade{GradeA, GradeB, GradeB}, GradeB, 83},
 		{[]Grade{GradeB, GradeB}, GradeB, 75},
-		{[]Grade{GradeB, GradeC}, GradeC, 62},
-		{[]Grade{GradeC, GradeD}, GradeD, 37},
+		{[]Grade{GradeB, GradeC}, GradeB, 62},
+		{[]Grade{GradeB, GradeC, GradeC}, GradeC, 58},
+		// Five topics on C and one on B: 13/6 ≈ 2.17 is C, not D.
+		{[]Grade{GradeC, GradeC, GradeC, GradeC, GradeC, GradeB}, GradeC, 54},
+		{[]Grade{GradeC, GradeC}, GradeC, 50},
+		{[]Grade{GradeC, GradeD}, GradeC, 37},
+		{[]Grade{GradeC, GradeD, GradeD}, GradeD, 33},
 	} {
 		grade, percent := CourseGrade(tc.grades)
 		if *grade != tc.want || *percent != tc.percent {

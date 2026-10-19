@@ -120,3 +120,24 @@ func TestImportConcurrentRevisions(t *testing.T) {
 		t.Fatalf("revision race: %v", seen)
 	}
 }
+
+// A full task under a header with outer spaces is imported, not only parsed:
+// the stored provenance matches the source header.
+func TestImportKeepsATaskUnderAHeaderWithSpaces(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	admin := f.admin(t)
+	csv := "Компетенция;Уровень темы;Составляющая ;Образовательный результат;Что должно войти в тест;Таксономия;Уровень ALDs;Важность;Раздел РПД · компетенции РПД;ОС; Задание 1 \n" +
+		"К;базовый;С;О;TRUE;Понимать;базовый;3;Лекция об агентах.;;\"Вопрос?\n\n\n- да\n- нет\n\n\nОтветьте.\n\n\nда\"\n"
+	w := upload(f, "/admin/subjects/subject:test/competency-map/import", "file", "map.csv", "text/csv", []byte(csv), admin)
+	if w.Code != 200 {
+		t.Fatalf("import: %d %s", w.Code, w.Body.String())
+	}
+	var result competencyhttp.ImportResult
+	if err := json.Unmarshal(w.Body.Bytes(), &result); err != nil {
+		t.Fatal(err)
+	}
+	if result.TaskCount != 1 || result.OutcomeCount != 1 {
+		t.Fatalf("counts: %+v", result)
+	}
+}

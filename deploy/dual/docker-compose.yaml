@@ -1,0 +1,32 @@
+# Front proxy for deploy/dual/dual.sh: start page and both releases by host name.
+services:
+  front:
+    image: caddy:2-alpine
+    environment:
+      DUAL_HOST: ${DUAL_HOST:?Run through deploy/dual/dual.sh}
+      DUAL_ORIGIN: ${DUAL_ORIGIN:?Run through deploy/dual/dual.sh}
+      DUAL_TLS: ${DUAL_TLS:?Run through deploy/dual/dual.sh}
+    ports:
+      - "${DUAL_HTTPS_BIND:-127.0.0.1}:${DUAL_HTTPS_PORT:-443}:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./start:/srv:ro
+      - ./certs:/certs:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - learn
+      - exam
+    restart: unless-stopped
+
+networks:
+  learn:
+    external: true
+    name: tutor-learn
+  exam:
+    external: true
+    name: tutor-exam
+
+volumes:
+  caddy_data:
+  caddy_config:

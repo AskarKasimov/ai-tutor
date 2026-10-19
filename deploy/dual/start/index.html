@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI-репетитор</title>
+<style>
+  :root {
+    --bg: #f4f6fb; --card: #fff; --text: #1b2333; --muted: #5d6a82;
+    --line: #dde3ee; --accent: #2f6fed; --accent-2: #0f9d76; --danger: #c43c3c;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #11151d; --card: #1a202b; --text: #e8edf6; --muted: #9aa7bd;
+      --line: #2c3545; --accent: #5b8cff; --accent-2: #2fc59a; --danger: #ff7b7b;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 24px 16px;
+    background: var(--bg); color: var(--text);
+    font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  main { width: 100%; max-width: 560px; }
+  h1 { font-size: 28px; margin: 0 0 4px; }
+  .lead { color: var(--muted); margin: 0 0 24px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 24px; }
+  .tabs { display: flex; gap: 8px; margin-bottom: 16px; }
+  .tabs button { flex: 1; padding: 8px; border-radius: 10px; border: 1px solid var(--line);
+    background: transparent; color: var(--muted); font: inherit; cursor: pointer; }
+  .tabs button[aria-selected="true"] { border-color: var(--accent); color: var(--accent); font-weight: 600; }
+  label { display: block; font-size: 14px; color: var(--muted); margin: 12px 0 4px; }
+  input { width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line);
+    background: transparent; color: var(--text); font: inherit; }
+  .hint { font-size: 13px; color: var(--muted); margin-top: 4px; }
+  .submit { width: 100%; margin-top: 20px; padding: 12px; border: 0; border-radius: 10px;
+    background: var(--accent); color: #fff; font: inherit; font-weight: 600; cursor: pointer; }
+  .submit:disabled { opacity: .6; cursor: wait; }
+  .error { color: var(--danger); margin-top: 12px; white-space: pre-line; }
+  .modes { display: grid; gap: 16px; }
+  .mode { display: block; text-decoration: none; color: inherit; background: var(--card);
+    border: 1px solid var(--line); border-left: 6px solid var(--accent); border-radius: 16px; padding: 20px 24px; }
+  .mode.exam { border-left-color: var(--accent-2); }
+  .mode:hover { border-color: var(--accent); }
+  .mode.exam:hover { border-color: var(--accent-2); }
+  .mode b { display: block; font-size: 20px; margin-bottom: 4px; }
+  .mode span { color: var(--muted); }
+  .who { display: flex; justify-content: space-between; align-items: center; gap: 12px;
+    margin-top: 16px; color: var(--muted); font-size: 14px; }
+  .link { background: none; border: 0; color: var(--accent); font: inherit; cursor: pointer; padding: 0; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+  <h1>AI-репетитор</h1>
+  <p class="lead">Один вход для обучения и для симуляции экзамена.</p>
+
+  <section id="auth" class="card" hidden>
+    <div class="tabs" role="tablist">
+      <button type="button" role="tab" id="tab-login" aria-selected="true">Вход</button>
+      <button type="button" role="tab" id="tab-register" aria-selected="false">Регистрация</button>
+    </div>
+    <form id="form" novalidate>
+      <div id="name-field" hidden>
+        <label for="name">Имя</label>
+        <input id="name" autocomplete="name" maxlength="200">
+      </div>
+      <label for="email">Email</label>
+      <input id="email" type="email" autocomplete="email" required>
+      <label for="password">Пароль</label>
+      <input id="password" type="password" autocomplete="current-password" required>
+      <p class="hint" id="password-hint" hidden>Не короче 15 символов: так требует версия обучения.</p>
+      <button class="submit" id="submit" type="submit">Войти</button>
+      <p class="error" id="error" role="alert"></p>
+    </form>
+  </section>
+
+  <section id="choice" hidden>
+    <div class="modes">
+      <a class="mode" id="go-learn"><b>Обучение</b><span>Диагностика, план и тренировка по шагам.</span></a>
+      <a class="mode exam" id="go-exam"><b>Симуляция экзамена</b><span>Устный экзамен с Geek.</span></a>
+    </div>
+    <div class="who">
+      <span id="who"></span>
+      <button class="link" type="button" id="logout">Выйти</button>
+    </div>
+  </section>
+</main>
+<script>
+  const releases = [
+    { key: 'learn', title: 'Обучение', base: `https://learn.${location.host}` },
+    { key: 'exam', title: 'Симуляция экзамена', base: `https://exam.${location.host}` },
+  ];
+  const $ = (id) => document.getElementById(id);
+  let mode = 'login';
+
+  document.getElementById('go-learn').href = releases[0].base + '/';
+  document.getElementById('go-exam').href = releases[1].base + '/';
+
+  // body: undefined — GET, null — POST without a body (logout rejects one).
+  async function call(release, path, body) {
+    const json = body !== undefined && body !== null;
+    let response;
+    try {
+      response = await fetch(`${release.base}/api/v1/auth/${path}`, {
+        method: body === undefined ? 'GET' : 'POST',
+        credentials: 'include',
+        headers: json ? { 'Content-Type': 'application/json' } : {},
+        body: json ? JSON.stringify(body) : undefined,
+      });
+    } catch {
+      return { ok: false, status: 0, code: 'NETWORK', message: `${release.title}: сервис недоступен.` };
+    }
+    let data = null;
+    try { data = await response.json(); } catch { /* empty body */ }
+    const fault = data && (data.error || data);
+    return {
+      ok: response.ok, status: response.status, data,
+      code: fault && fault.code,
+      message: (fault && (fault.details?.[0]?.message || fault.message)) || `ошибка ${response.status}`,
+    };
+  }
+
+  // Logs in to every release. Only once the password is confirmed by one of
+  // them, an account missing elsewhere is created with the same credentials,
+  // so a user registered in one release gets into both and a wrong password
+  // never creates an account.
+  async function enter(credentials) {
+    const results = [];
+    for (const release of releases) results.push(await call(release, 'login', credentials));
+    const confirmed = results.find((result) => result.ok);
+    if (!confirmed) {
+      const failed = results.find((result) => result.status !== 401);
+      return [failed || { ok: false, message: 'Неверный email или пароль.' }];
+    }
+    const name = confirmed.data?.user?.display_name || credentials.email.split('@')[0];
+    for (const [index, release] of releases.entries()) {
+      if (results[index].ok || results[index].status !== 401) continue;
+      const created = await call(release, 'register', { ...credentials, display_name: name });
+      results[index] = created.code === 'EMAIL_ALREADY_REGISTERED'
+        ? { ...created, message: `${release.title}: пароль не подходит. Пароли в версиях различаются.` }
+        : created;
+    }
+    return results;
+  }
+
+  async function register(release, credentials, name) {
+    const created = await call(release, 'register', { ...credentials, display_name: name });
+    if (created.code !== 'EMAIL_ALREADY_REGISTERED') return created;
+    const login = await call(release, 'login', credentials);
+    return login.ok ? login : { ...login, message: `${release.title}: этот email уже занят.` };
+  }
+
+  function setMode(next) {
+    mode = next;
+    $('tab-login').setAttribute('aria-selected', String(next === 'login'));
+    $('tab-register').setAttribute('aria-selected', String(next === 'register'));
+    $('name-field').hidden = next !== 'register';
+    $('password-hint').hidden = next !== 'register';
+    $('password').autocomplete = next === 'register' ? 'new-password' : 'current-password';
+    $('submit').textContent = next === 'register' ? 'Зарегистрироваться' : 'Войти';
+    $('error').textContent = '';
+  }
+
+  function showChoice(user) {
+    $('auth').hidden = true;
+    $('choice').hidden = false;
+    $('who').textContent = user ? `Вы вошли как ${user.display_name || user.email}` : '';
+  }
+
+  function showAuth() {
+    $('choice').hidden = true;
+    $('auth').hidden = false;
+  }
+
+  $('tab-login').onclick = () => setMode('login');
+  $('tab-register').onclick = () => setMode('register');
+
+  $('form').onsubmit = async (event) => {
+    event.preventDefault();
+    const credentials = { email: $('email').value.trim().toLowerCase(), password: $('password').value };
+    const name = $('name').value.trim();
+    if (!credentials.email || !credentials.password) {
+      $('error').textContent = 'Укажите email и пароль.';
+      return;
+    }
+    if (mode === 'register' && !name) {
+      $('error').textContent = 'Укажите имя.';
+      return;
+    }
+    $('submit').disabled = true;
+    $('error').textContent = '';
+    let results = [];
+    if (mode === 'register') {
+      // Learning first: its password rule is stricter, so a weak password
+      // fails before an account exists in only one release.
+      for (const release of releases) {
+        const result = await register(release, credentials, name);
+        results.push(result);
+        if (!result.ok) break;
+      }
+    } else {
+      results = await enter(credentials);
+    }
+    $('submit').disabled = false;
+    const failed = results.find((result) => !result.ok);
+    if (failed) {
+      $('error').textContent = failed.message;
+      return;
+    }
+    showChoice(results.find((result) => result.data?.user)?.data.user);
+  };
+
+  $('logout').onclick = async () => {
+    const results = await Promise.all(releases.map((release) => call(release, 'logout', null)));
+    showAuth();
+    const failed = results.find((result) => !result.ok && result.status !== 401);
+    if (failed) $('error').textContent = failed.message;
+  };
+
+  (async () => {
+    const sessions = await Promise.all(releases.map((release) => call(release, 'me')));
+    if (sessions.every((session) => session.ok)) showChoice(sessions[0].data);
+    else showAuth();
+  })();
+</script>
+</body>
+</html>

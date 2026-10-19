@@ -153,6 +153,27 @@ func TestReadStopsAtTheLimitWhileReading(t *testing.T) {
 	}
 }
 
+func TestReadRefusesAMisplacedElement(t *testing.T) {
+	for _, data := range []string{
+		`<row r="1"><c r="A1"><row r="2"/></c></row>`,
+		`<row r="1"><c r="A1"><row r="2"></row></c></row>`,
+		`<row r="1"><row r="2"/></row>`,
+		`<c r="A1"><v>1</v></c>`,
+		`<row r="1"><c r="A1"><c r="B1"/></c></row>`,
+		`<row r="1"><v>1</v></row>`,
+		`<row r="1"><c r="A1" t="inlineStr"><t>x</t></c></row>`,
+	} {
+		if _, err := Read(sheetBook(t, data)); err == nil {
+			t.Fatalf("%s accepted", data)
+		}
+	}
+	// An element of another namespace changes nothing, opening or closing.
+	other := `<row r="1"><x:row xmlns:x="urn:other" r="5"/><c r="A1"><v>1</v></c></row>`
+	if sheets, err := Read(sheetBook(t, other)); err != nil || len(sheets[0].Rows) != 1 || sheets[0].Rows[0][0] != "1" {
+		t.Fatalf("foreign element: %v %+v", err, sheets)
+	}
+}
+
 func TestReadKeepsTheTextOfEveryKindOfCell(t *testing.T) {
 	data := sheetBook(t, `<row r="2"><c r="B2" t="inlineStr"><is><r><t>Назовите </t></r><r><t>агента.</t></r></is></c><c r="C2"><v>4.0</v></c></row>`)
 	sheets, err := Read(data)
@@ -162,4 +183,25 @@ func TestReadKeepsTheTextOfEveryKindOfCell(t *testing.T) {
 	if rows := sheets[0].Rows; len(rows) != 2 || rows[0] != nil || len(rows[1]) != 3 || rows[1][1] != "Назовите агента." || rows[1][2] != "4.0" {
 		t.Fatalf("rows = %q", rows)
 	}
+}
+
+// FuzzRead checks that no sheet content makes the reader panic: a bad book
+// is an error, never a crash of the request.
+func FuzzRead(f *testing.F) {
+	for _, seed := range []string{
+		`<row r="1"><c r="A1" t="s"><v>0</v></c><c r="B1" t="inlineStr"><is><r><t>x</t></r></is></c></row>`,
+		`<row r="1"><c r="A1"><row r="2"/></c></row>`,
+		`<row r="2"><c r="GR2"/></row><row r="3"><c t="b"><v>1</v></c></row>`,
+	} {
+		f.Add(seed)
+	}
+	f.Fuzz(func(t *testing.T, data string) {
+		parts := map[string]string{
+			"xl/workbook.xml":            `<workbook ` + ns + `><sheets><sheet name="Карта" sheetId="1" r:id="rId1"/></sheets></workbook>`,
+			"xl/_rels/workbook.xml.rels": `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Target="worksheets/sheet1.xml"/></Relationships>`,
+			"xl/sharedStrings.xml":       `<sst ` + ns + `><si><t>Субкомпетенция</t></si></sst>`,
+			"xl/worksheets/sheet1.xml":   `<worksheet ` + ns + `><sheetData>` + data + `</sheetData></worksheet>`,
+		}
+		_, _ = Read(book(t, parts))
+	})
 }

@@ -298,7 +298,14 @@ func (r *reader) rows(name string, shared []string) ([][]string, error) {
 		inV    bool
 		inT    bool
 		inIs   bool
+		// open holds the elements of the main namespace now open, so each
+		// one is checked against its parent before it changes any state,
+		// and a closing tag of another namespace changes none.
+		open []string
 	)
+	// parents are the elements a sheet element may appear in; others are
+	// read through without effect.
+	parents := map[string]string{"sheetData": "worksheet", "row": "sheetData", "c": "row", "v": "c", "is": "c", "r": "is", "t": "is|r"}
 	// setCell stores the value read for the current cell; the text of the
 	// file was spent while read, a shared string is spent at every cell.
 	setCell := func() error {
@@ -322,6 +329,14 @@ func (r *reader) rows(name string, shared []string) ([][]string, error) {
 	err := r.walk(name, func(e xml.StartElement) error {
 		if e.Name.Space != "" && e.Name.Space != mainNS {
 			return nil
+		}
+		parent := ""
+		if len(open) > 0 {
+			parent = open[len(open)-1]
+		}
+		open = append(open, e.Name.Local)
+		if allowed, ok := parents[e.Name.Local]; ok && !strings.Contains("|"+allowed+"|", "|"+parent+"|") {
+			return fmt.Errorf("<%s> inside <%s>", e.Name.Local, parent)
 		}
 		switch e.Name.Local {
 		case "row":
@@ -379,6 +394,12 @@ func (r *reader) rows(name string, shared []string) ([][]string, error) {
 		}
 		return nil
 	}, func(e xml.EndElement) error {
+		if e.Name.Space != "" && e.Name.Space != mainNS {
+			return nil
+		}
+		if len(open) > 0 {
+			open = open[:len(open)-1]
+		}
 		switch e.Name.Local {
 		case "v":
 			inV = false

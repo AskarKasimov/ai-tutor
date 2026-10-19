@@ -1,0 +1,7 @@
+build:postgresql,0.5
+build:s3,0.5
+build:course-graph,1389.4
+build:llm-gateway,50.8
+build:backend,52.8
+build:frontend,35.9
+build:caddy,0.5

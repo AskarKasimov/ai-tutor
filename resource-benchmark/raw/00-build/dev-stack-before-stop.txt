@@ -1,0 +1,11 @@
+ai-tutor-api-1	Up 23 hours (healthy)
+ai-tutor-course-graph-1	Up 23 hours (healthy)
+ai-tutor-db-1	Up 23 hours (healthy)
+ai-tutor-frontend-1	Up 23 hours (healthy)
+ai-tutor-grafana-1	Up 23 hours
+ai-tutor-llm-gateway-1	Up 23 hours (healthy)
+ai-tutor-prometheus-1	Up 23 hours
+ai-tutor-proxy-1	Up 23 hours
+ai-tutor-redpanda-1	Up 23 hours (healthy)
+ai-tutor-s3-1	Up 23 hours (healthy)
+ai-tutor-swagger-1	Up 23 hours

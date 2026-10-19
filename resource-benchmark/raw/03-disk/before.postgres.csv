@@ -1,0 +1,12 @@
+db_total,8697535
+transcriptions,49152
+users,49152
+auth_sessions,49152
+access_tokens,49152
+refresh_tokens,49152
+geek_sessions,32768
+material_kinds,32768
+material_cleaning_jobs,24576
+subject_materials,24576
+material_ocr_jobs,24576
+goose_db_version,24576

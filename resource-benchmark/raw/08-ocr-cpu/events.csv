@@ -1,0 +1,5 @@
+ts,event,detail
+1792412431.466235700,ocr_run_start,cpu-1
+1792413264.200606100,ocr_run_end,cpu-1
+1792413264.233375600,ocr_run_start,cpu-2
+1792413306.467792900,ocr_run_aborted,cpu-2 stopped: host memory pressure

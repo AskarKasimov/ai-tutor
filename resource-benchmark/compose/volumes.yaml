@@ -1,0 +1,15 @@
+# The service Compose files name their volumes ai-tutor_*, the same volumes as
+# the dev stack. The bench stand renames them so that real data stays untouched.
+# Only the volumes of the given service exist in its project; Compose ignores
+# volumes no service of the project mounts.
+volumes:
+  postgres_data:
+    name: aitbench_postgres_data
+  task_audio_data:
+    name: aitbench_task_audio_data
+  caddy_data:
+    name: aitbench_caddy_data
+  caddy_config:
+    name: aitbench_caddy_config
+  redpanda_data:
+    name: aitbench_redpanda_data

@@ -1,0 +1,38 @@
+﻿{
+    "captured_at":  "2026-10-19T15:57:15.2476704+03:00",
+    "commit":  "e5890ed04ff482b8f431b076d80d2a1461e394fb",
+    "branch":  "master",
+    "uncommitted":  [
+                        " M services/frontend/src/routeTree.gen.ts",
+                        "?? design-refs/",
+                        "?? resource-benchmark/"
+                    ],
+    "uncommitted_note":  "routeTree.gen.ts differs only in line endings (CRLF); resource-benchmark/ is this benchmark itself; design-refs/ is unrelated and git-ignored by convention",
+    "cpu":  "AMD Ryzen 7 260 w/ Radeon 780M Graphics",
+    "cpu_physical_cores":  8,
+    "cpu_logical":  16,
+    "cpu_max_mhz":  3801,
+    "ram_total_gib":  15.29,
+    "ram_modules":  [
+                        "8 GiB 5600 MT/s",
+                        "8 GiB 5600 MT/s"
+                    ],
+    "machine":  "ASUSTeK COMPUTER INC. ASUS TUF Gaming A18 FA808UM_FA808UM",
+    "os":  "Microsoft Windows 11 Pro 10.0.26200 build 26200",
+    "disk":  [
+                 "WD PC SN5000S SDEQNSJ-512G-1002 SSD 477 GB"
+             ],
+    "gpu":  "NVIDIA GeForce RTX 5060 Laptop GPU",
+    "gpu_vram_mib":  "8151 MiB",
+    "gpu_driver":  "610.71",
+    "gpu_compute_capability":  "12.0",
+    "wsl":  "WSL version: 2.6.3.0\n\nKernel version: 6.6.87.2-1\n\nWSLg version: 1.0.71\n\nMSRDC version: 1.2.6353\n\nDirect3D version: 1.611.1-81528511\n\nDXCore version: 10.0.26100.1-240331-1435.ge-release\n\nWindows version: 10.0.26200.9711\n\n",
+    "wslconfig":  "[wsl2]\n# Docker Desktop VM: OCR of large PDFs needs more than the default half of RAM.\nmemory=10GB\nswap=8GB\n",
+    "docker_server":  "29.2.1",
+    "docker_compose":  "5.0.2",
+    "docker_vm_cpus":  16,
+    "docker_vm_mem_gib":  9.71,
+    "docker_kernel":  "6.6.87.2-microsoft-standard-WSL2",
+    "docker_cgroup":  "2",
+    "docker_storage":  "overlayfs"
+}

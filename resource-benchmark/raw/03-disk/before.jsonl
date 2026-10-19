@@ -1,0 +1,18 @@
+{"item":"sources (git ls-files)","apparent_bytes":484321}
+{"item":".git","apparent_bytes":90930241}
+{"item":"documents/materials (course PDFs)","apparent_bytes":63725842}
+{"item":"volume aitbench_postgres_data","path":"volumes/aitbench_postgres_data/_data","apparent_bytes":66517285,"allocated_bytes":66584576}
+{"item":"volume aitbench_task_audio_data","path":"volumes/aitbench_task_audio_data/_data","apparent_bytes":17639618,"allocated_bytes":17874944}
+{"item":"volume aitbench-course-graph_course_graph_models","path":"volumes/aitbench-course-graph_course_graph_models/_data","apparent_bytes":1169904955,"allocated_bytes":1170022400}
+{"item":"volume aitbench-course-graph_course_graph_data","path":"volumes/aitbench-course-graph_course_graph_data/_data","apparent_bytes":4096,"allocated_bytes":4096}
+{"item":"volume aitbench_redpanda_data","path":"volumes/aitbench_redpanda_data/_data","apparent_bytes":1896148174,"allocated_bytes":1896611840}
+{"item":"volume aitbench_caddy_data","path":"volumes/aitbench_caddy_data/_data","apparent_bytes":12431,"allocated_bytes":20480}
+{"item":"log aitbench-caddy-proxy-1","path":"containers/5912f3fee7bbeeb388a7b3ff11c88c8f0bf537014186866ae50a2c6e2a1d67e8/5912f3fee7bbeeb388a7b3ff11c88c8f0bf537014186866ae50a2c6e2a1d67e8-json.log","apparent_bytes":8704,"allocated_bytes":12288}
+{"item":"log aitbench-frontend-frontend-1","path":"containers/dc56a29c969dff9dff0f325904d51880c2cb657787b1aa668fb90ce02e4998d1/dc56a29c969dff9dff0f325904d51880c2cb657787b1aa668fb90ce02e4998d1-json.log","apparent_bytes":4252,"allocated_bytes":8192}
+{"item":"log aitbench-backend-api-1","path":"containers/065036961c96f902b2bed8e047c25a58ed02583c397f4c5c51133252f049c6ca/065036961c96f902b2bed8e047c25a58ed02583c397f4c5c51133252f049c6ca-json.log","apparent_bytes":110121,"allocated_bytes":110592}
+{"item":"log aitbench-llm-gateway-llm-gateway-1","path":"containers/f726e79d11d7d16d7935f5c1b1bed90b2d8466c14a9feeac8e93def9a49c848c/f726e79d11d7d16d7935f5c1b1bed90b2d8466c14a9feeac8e93def9a49c848c-json.log","apparent_bytes":0,"allocated_bytes":0}
+{"item":"log aitbench-llm-gateway-redpanda-init-1","path":"containers/3621d2a62852a2bbb5f1d28810334ffb860d4e2a8aeb5b79ae93d202592134b2/3621d2a62852a2bbb5f1d28810334ffb860d4e2a8aeb5b79ae93d202592134b2-json.log","apparent_bytes":724,"allocated_bytes":4096}
+{"item":"log aitbench-llm-gateway-redpanda-1","path":"containers/32440c4bc4a535ba4526871cb16ef350641bd7a626183d963344b1b70837c75a/32440c4bc4a535ba4526871cb16ef350641bd7a626183d963344b1b70837c75a-json.log","apparent_bytes":502112,"allocated_bytes":503808}
+{"item":"log aitbench-course-graph-course-graph-1","path":"containers/8bfb8af44875f2e0810715ca83ade067028d34e73b881caac19ae3c7681bb407/8bfb8af44875f2e0810715ca83ade067028d34e73b881caac19ae3c7681bb407-json.log","apparent_bytes":95003,"allocated_bytes":102400}
+{"item":"log aitbench-s3-s3-1","path":"containers/9866bc282e41df653ed265d1b12d5a436c09592467cb739d1a31f57e6f0b1e48/9866bc282e41df653ed265d1b12d5a436c09592467cb739d1a31f57e6f0b1e48-json.log","apparent_bytes":313,"allocated_bytes":4096}
+{"item":"log aitbench-postgresql-db-1","path":"containers/13762df379b21d2cfd5a56d7e59e730dcd09622da38ca40850b4d0e3bd56e106/13762df379b21d2cfd5a56d7e59e730dcd09622da38ca40850b4d0e3bd56e106-json.log","apparent_bytes":7863,"allocated_bytes":8192}

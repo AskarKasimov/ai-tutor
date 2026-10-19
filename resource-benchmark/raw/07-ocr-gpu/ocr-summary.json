@@ -1,0 +1,236 @@
+{
+ "runs": 3,
+ "device": "gpu",
+ "torch": "2.11.0+cu128",
+ "cuda_device": "NVIDIA GeForce RTX 5060 Laptop GPU",
+ "configuration": {
+  "version": "ocr-v9-content-cache",
+  "audit_version": "formula-audit-v5",
+  "with_docling": "true",
+  "picture_text": "true",
+  "document_timeout": "0",
+  "enrich_code": "true",
+  "enrich_formula": "true",
+  "full_page_ocr": "false"
+ },
+ "threads": "4",
+ "init_seconds": {
+  "mean": 61.29,
+  "min": 52.8,
+  "max": 72.94
+ },
+ "first_conversion_seconds": {
+  "mean": 40.07,
+  "min": 14.7,
+  "max": 81.14
+ },
+ "process_peak_rss_mib": {
+  "mean": 4135.05,
+  "min": 4111.82,
+  "max": 4149.77
+ },
+ "cgroup_peak_mib": {
+  "mean": 3895.72,
+  "min": 3838.28,
+  "max": 4000.05
+ },
+ "documents": {
+  "Week 3 Lecture.pdf": {
+   "pages": 27,
+   "sha256": "08c27485ec620300cfa20f9aaf6f2050d2403ed5d11f954eb4a052a2d0c31afa",
+   "bytes": 1514109,
+   "cold_seconds": {
+    "mean": 12.53,
+    "min": 8.14,
+    "max": 20.0
+   },
+   "seconds_per_page": {
+    "mean": 0.46,
+    "min": 0.3,
+    "max": 0.74
+   },
+   "cached_ms": {
+    "mean": 1.82,
+    "min": 1.74,
+    "max": 1.95
+   },
+   "peak_rss_mib": {
+    "mean": 3050.23,
+    "min": 3022.25,
+    "max": 3086.63
+   },
+   "markdown_identical_across_runs": true,
+   "content_complete": [
+    true,
+    true,
+    true
+   ],
+   "warnings": [
+    1,
+    1,
+    1
+   ],
+   "cuda_max_allocated_mib": {
+    "mean": 2304.24,
+    "min": 2121.68,
+    "max": 2428.69
+   },
+   "cuda_max_reserved_mib": {
+    "mean": 2623.33,
+    "min": 2590.0,
+    "max": 2688.0
+   }
+  },
+  "Tutorial 2.pdf": {
+   "pages": 50,
+   "sha256": "a5356b8d7baab61c870e41b876aab9162a6d5350f0c5e5686ab194329410e00c",
+   "bytes": 698809,
+   "cold_seconds": {
+    "mean": 91.06,
+    "min": 65.27,
+    "max": 117.05
+   },
+   "seconds_per_page": {
+    "mean": 1.82,
+    "min": 1.31,
+    "max": 2.34
+   },
+   "cached_ms": {
+    "mean": 1.11,
+    "min": 0.97,
+    "max": 1.18
+   },
+   "peak_rss_mib": {
+    "mean": 4015.63,
+    "min": 4005.12,
+    "max": 4030.45
+   },
+   "markdown_identical_across_runs": true,
+   "content_complete": [
+    false,
+    false,
+    false
+   ],
+   "warnings": [
+    3,
+    3,
+    3
+   ],
+   "cuda_max_allocated_mib": {
+    "mean": 4024.91,
+    "min": 4024.69,
+    "max": 4025.34
+   },
+   "cuda_max_reserved_mib": {
+    "mean": 5719.33,
+    "min": 5716.0,
+    "max": 5724.0
+   }
+  },
+  "Tutorial 4. Prolog.pdf": {
+   "pages": 28,
+   "sha256": "db2ac5f1194165fab518d1a71e66853dc15c7872cdf89ec5322935bfb95e6873",
+   "bytes": 1217087,
+   "cold_seconds": {
+    "mean": 11.84,
+    "min": 11.25,
+    "max": 12.14
+   },
+   "seconds_per_page": {
+    "mean": 0.42,
+    "min": 0.4,
+    "max": 0.43
+   },
+   "cached_ms": {
+    "mean": 1.5,
+    "min": 1.43,
+    "max": 1.58
+   },
+   "peak_rss_mib": {
+    "mean": 3773.86,
+    "min": 3722.91,
+    "max": 3842.76
+   },
+   "markdown_identical_across_runs": true,
+   "content_complete": [
+    false,
+    false,
+    false
+   ],
+   "warnings": [
+    2,
+    2,
+    2
+   ],
+   "cuda_max_allocated_mib": {
+    "mean": 3468.69,
+    "min": 3468.48,
+    "max": 3469.13
+   },
+   "cuda_max_reserved_mib": {
+    "mean": 5719.33,
+    "min": 5716.0,
+    "max": 5724.0
+   }
+  },
+  "Week 1 Tutorial_2025.pdf": {
+   "pages": 35,
+   "sha256": "ad0dba6b0463935fe7165e56408f1538fcfb6b4d7bb8f188a68ec30b953e3497",
+   "bytes": 19788621,
+   "cold_seconds": {
+    "mean": 23.01,
+    "min": 20.2,
+    "max": 24.5
+   },
+   "seconds_per_page": {
+    "mean": 0.66,
+    "min": 0.58,
+    "max": 0.7
+   },
+   "cached_ms": {
+    "mean": 19.18,
+    "min": 18.85,
+    "max": 19.64
+   },
+   "peak_rss_mib": {
+    "mean": 4135.05,
+    "min": 4111.82,
+    "max": 4149.77
+   },
+   "markdown_identical_across_runs": true,
+   "content_complete": [
+    true,
+    true,
+    true
+   ],
+   "warnings": [
+    1,
+    1,
+    1
+   ],
+   "cuda_max_allocated_mib": {
+    "mean": 2293.63,
+    "min": 2286.1,
+    "max": 2308.05
+   },
+   "cuda_max_reserved_mib": {
+    "mean": 5719.33,
+    "min": 5716.0,
+    "max": 5724.0
+   }
+  }
+ },
+ "all_documents": {
+  "pages": 140,
+  "cold_seconds": {
+   "mean": 138.43,
+   "min": 109.16,
+   "max": 169.38
+  },
+  "seconds_per_page": {
+   "mean": 0.99,
+   "min": 0.78,
+   "max": 1.21
+  }
+ }
+}

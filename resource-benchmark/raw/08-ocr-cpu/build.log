@@ -1,0 +1,193 @@
+ Image aitbench-course-graph-cpu-course-graph Building 
+#1 [internal] load local bake definitions
+#1 reading from stdin 729B 0.0s done
+#1 DONE 0.0s
+
+#2 [internal] load build definition from Dockerfile
+#2 transferring dockerfile: 2.44kB 0.0s done
+#2 DONE 0.1s
+
+#3 [internal] load metadata for docker.io/library/python:3.11-slim
+#3 DONE 1.4s
+
+#4 [internal] load metadata for ghcr.io/astral-sh/uv:0.12.17
+#4 DONE 2.3s
+
+#5 [stage-0 1/8] FROM docker.io/library/python:3.11-slim@sha256:e88e9763f943ec1834f992a4b51e0f24500486803e8bc534e5767af9ea65f6ce
+#5 resolve docker.io/library/python:3.11-slim@sha256:e88e9763f943ec1834f992a4b51e0f24500486803e8bc534e5767af9ea65f6ce 0.0s done
+#5 DONE 0.0s
+
+#6 FROM ghcr.io/astral-sh/uv:0.12.17@sha256:10787c682e4184e4f290de1171fd4703dc63de99221f10fe1c99002ce7fa9acc
+#6 resolve ghcr.io/astral-sh/uv:0.12.17@sha256:10787c682e4184e4f290de1171fd4703dc63de99221f10fe1c99002ce7fa9acc 0.0s done
+#6 DONE 0.0s
+
+#7 [internal] load build context
+#7 transferring context: 595.61kB 0.1s
+#7 transferring context: 1.11MB 0.1s done
+#7 DONE 0.1s
+
+#8 [stage-0 3/8] RUN if ! dpkg-query -W poppler-utils libgomp1 libgl1 libglib2.0-0 curl >/dev/null 2>&1; then     apt-get update && apt-get install -y --no-install-recommends     poppler-utils     libgomp1     libgl1     libglib2.0-0     curl     && rm -rf /var/lib/apt/lists/*; fi
+#8 CACHED
+
+#9 [stage-0 4/8] COPY --from=ghcr.io/astral-sh/uv:0.12.17 /uv /uvx /bin/
+#9 CACHED
+
+#10 [stage-0 2/8] WORKDIR /app
+#10 CACHED
+
+#11 [stage-0 5/8] COPY services/course-graph/pyproject.toml services/course-graph/uv.lock services/course-graph/.python-version ./
+#11 CACHED
+
+#12 [stage-0 6/8] RUN --mount=type=cache,target=/root/.cache/uv     case "cpu" in cpu) torch_extra=cpu ;; cu128) torch_extra=gpu ;; *) exit 1 ;; esac &&     case "true" in true) ocr_extra="--extra ocr" ;; false) ocr_extra="" ;; *) exit 1 ;; esac &&     uv sync --frozen --no-dev --no-install-project --extra "$torch_extra" $ocr_extra &&     python -c "import sys, torch; print('torch', torch.__version__); sys.exit((torch.version.cuda is None) != ('cpu' == 'cpu'))"
+#12 2.029 Using CPython 3.11.17 interpreter at: /usr/local/bin/python3.11
+#12 2.029 Creating virtual environment at: .venv
+#12 2.634 Downloading torch (187.1MiB)
+#12 2.886 Downloading torchvision (1.6MiB)
+#12 3.355  Downloaded torchvision
+#12 15.94  Downloaded torch
+#12 15.94 Prepared 2 packages in 13.71s
+#12 121.2 Installed 119 packages in 1m 45s
+#12 121.2  + accelerate==1.15.0
+#12 121.2  + annotated-doc==0.0.5
+#12 121.2  + annotated-types==0.8.0
+#12 121.2  + anyio==4.15.1
+#12 121.2  + attrs==26.1.0
+#12 121.2  + beautifulsoup4==4.15.0
+#12 121.2  + certifi==2026.7.22
+#12 121.2  + charset-normalizer==3.5.2
+#12 121.2  + click==8.5.0
+#12 121.2  + cloudpickle==3.1.2
+#12 121.2  + colorlog==6.12.0
+#12 121.2  + defusedxml==0.7.1
+#12 121.2  + dill==0.4.1
+#12 121.2  + doclang==0.7.3
+#12 121.2  + docling==2.139.0
+#12 121.2  + docling-core==2.102.0
+#12 121.2  + docling-ibm-models==4.0.3
+#12 121.2  + docling-parse==7.22.3
+#12 121.2  + docling-slim==2.139.0
+#12 121.2  + et-xmlfile==2.0.0
+#12 121.2  + faker==40.43.0
+#12 121.2  + fastapi==0.145.0
+#12 121.2  + filelock==4.2.2
+#12 121.2  + filetype==1.2.0
+#12 121.2  + fsspec==2026.9.0
+#12 121.2  + grpcio==1.84.0
+#12 121.2  + h11==0.16.0
+#12 121.2  + hf-xet==1.7.0
+#12 121.2  + httpcore==1.0.9
+#12 121.2  + httptools==0.9.0
+#12 121.2  + httpx==0.28.1
+#12 121.2  + huggingface-hub==0.36.2
+#12 121.2  + idna==3.20
+#12 121.2  + jinja2==3.1.6
+#12 121.2  + joblib==1.6.0
+#12 121.2  + jsonref==1.1.0
+#12 121.2  + jsonschema==4.26.0
+#12 121.2  + jsonschema-specifications==2025.9.1
+#12 121.2  + langcodes==3.5.1
+#12 121.2  + latex2mathml==3.81.1
+#12 121.2  + lxml==6.1.3
+#12 121.2  + mail-parser==4.8.0
+#12 121.2  + markdown-it-py==4.2.0
+#12 121.2  + marko==2.2.4
+#12 121.2  + markupsafe==3.0.4
+#12 121.2  + mdurl==0.1.2
+#12 121.2  + mpire==2.10.2
+#12 121.2  + mpmath==1.3.0
+#12 121.2  + multiprocess==0.70.19
+#12 121.2  + narwhals==2.27.1
+#12 121.2  + networkx==3.6.1
+#12 121.2  + numpy==2.4.6
+#12 121.2  + olefile==0.47
+#12 121.2  + omegaconf==2.4.0
+#12 121.2  + opencv-python-headless==5.0.0.93
+#12 121.2  + openpyxl==3.1.5
+#12 121.2  + opentelemetry-api==1.45.1
+#12 121.2  + packaging==26.3
+#12 121.2  + pandas==3.0.6
+#12 121.2  + pillow==12.3.0
+#12 121.2  + pluggy==1.7.0
+#12 121.2  + polyfactory==3.3.0
+#12 121.2  + protobuf==6.33.6
+#12 121.2  + psutil==7.2.2
+#12 121.2  + pyclipper==1.4.0
+#12 121.2  + pydantic==2.14.1
+#12 121.2  + pydantic-core==2.50.1
+#12 121.2  + pydantic-settings==2.16.0
+#12 121.2  + pygments==2.21.0
+#12 121.2  + pylatexenc==2.11
+#12 121.2  + pypdf==6.21.1
+#12 121.2  + pypdfium2==5.14.0
+#12 121.2  + python-dateutil==2.9.0.post0
+#12 121.2  + python-docx==1.2.0
+#12 121.2  + python-dotenv==1.2.4
+#12 121.2  + python-multipart==0.0.32
+#12 121.2  + python-oxmsg==0.0.2
+#12 121.2  + python-pptx==1.0.2
+#12 121.2  + pyyaml==6.0.3
+#12 121.2  + rapidocr==3.10.0
+#12 121.2  + referencing==0.37.0
+#12 121.2  + regex==2026.9.29
+#12 121.2  + requests==2.34.2
+#12 121.2  + rich==15.0.0
+#12 121.2  + rpds-py==2026.9.1
+#12 121.2  + rtree==1.4.1
+#12 121.2  + safetensors==0.8.0
+#12 121.2  + scikit-learn==1.9.1
+#12 121.2  + scipy==1.17.1
+#12 121.2  + semchunk==3.2.5
+#12 121.2  + sentence-transformers==3.4.1
+#12 121.2  + setuptools==81.0.0
+#12 121.2  + shapely==2.2.0
+#12 121.2  + shellingham==1.5.4
+#12 121.2  + six==1.17.0
+#12 121.2  + soupsieve==3.0.3
+#12 121.2  + starlette==1.8.0
+#12 121.2  + sympy==1.14.0
+#12 121.2  + tabulate==0.10.0
+#12 121.2  + threadpoolctl==3.7.0
+#12 121.2  + tokenizers==0.22.2
+#12 121.2  + torch==2.14.1+cpu
+#12 121.2  + torchvision==0.29.1+cpu
+#12 121.2  + tqdm==4.70.1
+#12 121.2  + transformers==4.57.6
+#12 121.2  + tree-sitter==0.26.0
+#12 121.2  + tree-sitter-c==0.24.2
+#12 121.2  + tree-sitter-javascript==0.25.0
+#12 121.2  + tree-sitter-python==0.25.0
+#12 121.2  + tree-sitter-typescript==0.23.2
+#12 121.2  + typer==0.26.8
+#12 121.2  + typing-extensions==4.16.0
+#12 121.2  + typing-inspection==0.4.4
+#12 121.2  + urllib3==2.8.0
+#12 121.2  + uvicorn==0.54.0
+#12 121.2  + uvloop==0.23.0
+#12 121.2  + watchfiles==1.3.0
+#12 121.2  + websockets==16.1.1
+#12 121.2  + xlsxwriter==3.2.9
+#12 126.3 torch 2.14.1+cpu
+#12 DONE 128.4s
+
+#13 [stage-0 7/8] COPY services/course-graph/course_graph/ course_graph/
+#13 DONE 0.8s
+
+#14 [stage-0 8/8] COPY services/shared/gen/python/ ./
+#14 DONE 0.1s
+
+#15 exporting to image
+#15 exporting layers
+#15 exporting layers 57.8s done
+#15 exporting manifest sha256:5f45041d258a553f961753a51ba314ae2b5c4f341fa2c40b77860db2bdccdaee 0.0s done
+#15 exporting config sha256:63ee45d68f80ac061a03e0a0dd63f449a026c17f9640d39e5023a1c3d5e4b3f1 0.1s done
+#15 exporting attestation manifest sha256:bc2afb05f686b5f74b5da3defb25bcf8dc96be1ba23d40ff1acc67d0ad342d93 0.1s done
+#15 exporting manifest list sha256:98f64a9d1ed07cf33f494dea4a8399bd4ad61b80704ce775ea2d002b52aaddf7
+#15 exporting manifest list sha256:98f64a9d1ed07cf33f494dea4a8399bd4ad61b80704ce775ea2d002b52aaddf7 0.0s done
+#15 naming to docker.io/library/aitbench-course-graph-cpu-course-graph:latest done
+#15 unpacking to docker.io/library/aitbench-course-graph-cpu-course-graph:latest
+#15 unpacking to docker.io/library/aitbench-course-graph-cpu-course-graph:latest 122.8s done
+#15 DONE 181.5s
+
+#16 resolving provenance for metadata file
+#16 DONE 0.1s
+ Image aitbench-course-graph-cpu-course-graph Built 

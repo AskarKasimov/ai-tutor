@@ -1,0 +1,188 @@
+== docker system df -v (images and build cache)
+Images space usage:
+
+REPOSITORY                                  TAG           IMAGE ID       CREATED          SIZE      SHARED SIZE   UNIQUE SIZE   CONTAINERS
+aitbench-frontend-frontend                  latest        94354609fc43   7 minutes ago    108MB     9.081MB       99.28MB       1
+aitbench-backend-api                        latest        37b797dceb15   8 minutes ago    49.9MB    9.081MB       40.85MB       1
+aitbench-llm-gateway-llm-gateway            latest        2cfd277437c6   9 minutes ago    41.7MB    11.94MB       29.75MB       1
+aitbench-course-graph-course-graph          latest        81a43ef6deea   19 minutes ago   12.6GB    404.4MB       12.16GB       1
+ai-tutor-course-graph                       latest        b0ffed249475   23 hours ago     12.5GB    448MB         12.1GB        1
+ai-tutor-llm-gateway                        latest        d2a029164684   25 hours ago     41.7MB    11.94MB       29.74MB       1
+ai-tutor-frontend                           latest        13e5f4322b24   25 hours ago     733MB     9.081MB       724.1MB       1
+ai-tutor-api                                latest        6073e7e6d2bb   27 hours ago     941MB     9.081MB       932.1MB       1
+cgreuse2-course-graph                       latest        5a64027e84dd   32 hours ago     13.5GB    8.132GB       5.365GB       0
+cgreuse1-course-graph                       latest        d39a458e445b   32 hours ago     13.5GB    448MB         13.05GB       0
+cggpu-course-graph                          latest        6172c8cbe090   33 hours ago     12.5GB    8.132GB       4.378GB       0
+golang                                      1.26          37cfcca63222   10 days ago      1.29GB    0B            1.294GB       0
+docker.redpanda.com/redpandadata/redpanda   v26.2.4       c98c2f04a751   12 days ago      468MB     87.67MB       380.2MB       4
+caddy                                       2-alpine      d8542f48d34a   13 days ago      93.1MB    0B            93.15MB       2
+<none>                                      <none>        1803faef5762   2 weeks ago      405MB     0B            404.8MB       2
+python                                      3.12-alpine   1b668429b351   2 weeks ago      83.6MB    9.081MB       74.56MB       0
+postgres                                    18-alpine     77f585114c32   4 weeks ago      433MB     9.081MB       424.3MB       2
+alpine                                      latest        294b683cb724   4 weeks ago      13MB      9.081MB       3.938MB       0
+swaggerapi/swagger-ui                       v5.32.0       641afb45f0f1   7 months ago     197MB     0B            197.3MB       1
+prom/prometheus                             v3.2.1        6927e0919a14   20 months ago    415MB     0B            414.9MB       1
+grafana/grafana                             11.4.0        d8ea37798ccc   22 months ago    647MB     0B            646.7MB       1
+curlimages/curl                             8.10.1        d9b4541e214b   2 years ago      32MB      0B            31.97MB       0
+
+Containers space usage:
+
+CONTAINER ID   IMAGE                                               COMMAND                  LOCAL VOLUMES   SIZE      CREATED         STATUS                       NAMES
+5912f3fee7bb   caddy:2-alpine                                      "caddy run --config …"   2               8.19kB    5 minutes ago   Up 4 minutes                 aitbench-caddy-proxy-1
+dc56a29c969d   aitbench-frontend-frontend                          "/docker-entrypoint.…"   0               81.9kB    5 minutes ago   Up 5 minutes (healthy)       aitbench-frontend-frontend-1
+065036961c96   aitbench-backend-api                                "/api"                   0               8.19kB    5 minutes ago   Up 5 minutes (healthy)       aitbench-backend-api-1
+f726e79d11d7   aitbench-llm-gateway-llm-gateway                    "/llm-gateway"           0               16.4kB    5 minutes ago   Up 5 minutes (healthy)       aitbench-llm-gateway-llm-gateway-1
+3621d2a62852   docker.redpanda.com/redpandadata/redpanda:v26.2.4   "/bin/sh -c 'rpk top…"   1               4.1kB     5 minutes ago   Exited (0) 5 minutes ago     aitbench-llm-gateway-redpanda-init-1
+32440c4bc4a5   docker.redpanda.com/redpandadata/redpanda:v26.2.4   "/entrypoint.sh redp…"   1               20.5kB    5 minutes ago   Up 5 minutes (healthy)       aitbench-llm-gateway-redpanda-1
+8bfb8af44875   aitbench-course-graph-course-graph                  "uv run --no-sync py…"   2               102MB     6 minutes ago   Up 6 minutes (healthy)       aitbench-course-graph-course-graph-1
+9866bc282e41   1803faef5762                                        "/entrypoint.sh /data"   1               16.4kB    6 minutes ago   Up 6 minutes (healthy)       aitbench-s3-s3-1
+13762df379b2   postgres:18-alpine                                  "docker-entrypoint.s…"   1               20.5kB    6 minutes ago   Up 6 minutes (healthy)       aitbench-postgresql-db-1
+e80f401c867e   caddy:2-alpine                                      "caddy run --config …"   2               8.19kB    23 hours ago    Exited (0) 7 minutes ago     ai-tutor-proxy-1
+72ae3fbeee58   grafana/grafana:11.4.0                              "/run.sh"                0               14.7MB    23 hours ago    Exited (0) 7 minutes ago     ai-tutor-grafana-1
+70a78dd02c6c   prom/prometheus:v3.2.1                              "/bin/prometheus --c…"   1               4.1kB     23 hours ago    Exited (0) 7 minutes ago     ai-tutor-prometheus-1
+dfc339a2277e   ai-tutor-llm-gateway                                "/llm-gateway"           0               16.4kB    23 hours ago    Exited (0) 6 minutes ago     ai-tutor-llm-gateway-1
+61359196ba33   ai-tutor-api                                        "air -c .air.toml"       3               127kB     23 hours ago    Exited (0) 7 minutes ago     ai-tutor-api-1
+127e382c233c   docker.redpanda.com/redpandadata/redpanda:v26.2.4   "/bin/sh -c 'rpk top…"   1               4.1kB     23 hours ago    Exited (0) 23 hours ago      ai-tutor-redpanda-init-1
+eb60eab7e80d   postgres:18-alpine                                  "docker-entrypoint.s…"   1               16.4kB    23 hours ago    Exited (0) 6 minutes ago     ai-tutor-db-1
+365b9ddf2b17   ai-tutor-frontend                                   "docker-entrypoint.s…"   1               5.62MB    23 hours ago    Exited (137) 6 minutes ago   ai-tutor-frontend-1
+14ecf7a9a23c   swaggerapi/swagger-ui:v5.32.0                       "/docker-entrypoint.…"   0               1.29MB    23 hours ago    Exited (0) 7 minutes ago     ai-tutor-swagger-1
+31469a7ef77d   ai-tutor-course-graph                               "python -m course_gr…"   2               102MB     23 hours ago    Exited (137) 6 minutes ago   ai-tutor-course-graph-1
+4be59b322d1d   1803faef5762                                        "/entrypoint.sh /data"   1               32.8kB    23 hours ago    Exited (0) 6 minutes ago     ai-tutor-s3-1
+e4bda8088e2a   docker.redpanda.com/redpandadata/redpanda:v26.2.4   "/entrypoint.sh redp…"   1               20.5kB    23 hours ago    Exited (137) 6 minutes ago   ai-tutor-redpanda-1
+
+Local Volumes space usage:
+
+VOLUME NAME                                                        LINKS     SIZE
+ai-tutor_backend_dev_bin                                           1         35.73MB
+ef08e18333d26baae53082edcca86ce6c22ea06110caf1686c1831e36ab6109e   0         408.5MB
+aitbench-course-graph_course_graph_data                            1         0B
+aitbench_task_audio_data                                           1         18.91MB
+aitbench_caddy_config                                              1         3.546kB
+0d114832284dd7b9c8eee4ea0733c9b195eab92b360a2178fbec5fae1cdce970   0         436.1MB
+2bf516cadcf07b593cabfe1c9a1f23e60912372f15820819120b12e5072df533   1         1.014MB
+51874d307d83205dcecf275f4c45575a4f6740802b87c431391c2cc325b144f1   0         0B
+ai-tutor_caddy_config                                              1         3.546kB
+ai-tutor_backend_go_build                                          1         326.4MB
+fcf813b1d501aebc0a9a00e3774f0374f5fc50d6c7b80781102edc8f3e208853   0         419.8MB
+55e6c357d3a6a672a0e42464b7493163b77653a67bb92fa1542751359d0dddbd   0         52.77kB
+0cc77058ce59acba3cd5ccdc0786d40222b1cd31738327ddda0b6fc68bfb2d7f   0         85.54kB
+8474e41d224b9f51a654e07ba5d4cb1a64aa4b45701f66a30fe412bb44911489   0         715.4MB
+4c47fb1fdfdc0df68aa5f4331385884885e149601fa6d72801eb19aeb82c9caa   0         0B
+6930cc022775ef9ffdb4830ab9e58cf59933d960183294decedca8fe363637e8   0         0B
+aitbench_redpanda_data                                             1         1.896GB
+acbe28ac2a69e774765cd29015d6a69669e203fe172e04ae658b14ba30db5e23   1         0B
+6bbdbff9eb7fa66b094202835e3f1b73c7564b007c4fcf3d8b4af3820a744942   0         445.8MB
+8d2dc68dbeab42352e3416b15d99fffdd562db2d0a0d5a79ed5d6a41e5a5e317   0         93.56MB
+ai-tutor_course_graph_models                                       1         1.17GB
+ai-tutor_course_graph_data                                         1         0B
+176305844f3621112fcd4178751f33c4980f2072511c8a91ce98d101bb28d044   1         0B
+aitbench_postgres_data                                             1         66.39MB
+aitbench_caddy_data                                                1         143B
+ai-tutor-gocache                                                   0         760.4MB
+ai-tutor-gomod                                                     0         243MB
+ai-tutor_caddy_data                                                1         143B
+ai-tutor_postgres_data                                             1         66.51MB
+9591a332e0f63c2775b54aa76e10774a8d4cfe7ccf832a7078ba7ddbf97205f1   0         380.4kB
+1896bff4e562be7f8c819206e79eb792314acc5ef2dc01896f727db0d189471b   0         915.4MB
+2f7b0f536831991e39e8fb54006e418c626862e3cceee9792286a54561194283   0         418.2MB
+ai-tutor_backend_go_modules                                        1         232.3MB
+ai-tutor_frontend_node_modules                                     1         264.9MB
+aitbench-course-graph_course_graph_models                          1         1.17GB
+ai-tutor_task_audio_data                                           1         22.2MB
+ai-tutor_redpanda_data                                             1         424.2kB
+
+Build cache usage: 56.79GB
+
+CACHE ID       CACHE TYPE        SIZE      CREATED          LAST USED        USAGE     SHARED
+n0eohu3xvhxs   regular           3.85MB    5 days ago       5 days ago       1         true
+ytjmcgzw4of4   regular           218MB     5 days ago       5 days ago       1         true
+ctr40u3wrh77   regular           6.74MB    5 days ago       5 days ago       1         true
+ljv4kceuu4qr   regular           1.5MB     5 days ago       5 days ago       1         true
+m40v2j44z86p   regular           350MB     5 days ago       5 days ago       1         true
+dwrv5gt1gxre   regular           16.5kB    5 days ago       5 days ago       1         true
+5nt2fg6e6sp9   regular           20.9kB    5 days ago       5 days ago       1         true
+x6kbve35o92l   regular           4.13kB    5 days ago       5 days ago       1         true
+o6qigrr4wx82   regular           12.4kB    37 hours ago     37 hours ago     1         true
+nvowa2zs31a9   regular           1.99GB    37 hours ago     32 hours ago     2         true
+u3e4ul2whwtd   regular           234kB     37 hours ago     32 hours ago     2         true
+swks0edzxc7j   regular           43.5MB    32 hours ago     32 hours ago     1         true
+l6a2n15h1w8z   regular           10.9GB    32 hours ago     32 hours ago     1         true
+lzgt1snou96h   regular           36.9kB    32 hours ago     32 hours ago     1         true
+nggr7arnnajr   regular           4.13kB    32 hours ago     32 hours ago     1         true
+l9irjvt13iej   regular           299kB     32 hours ago     32 hours ago     1         true
+qxdwo278eljm   regular           8.22kB    32 hours ago     32 hours ago     1         true
+niogkm9ekdkh   regular           16.4kB    32 hours ago     32 hours ago     1         true
+mkgmv8nbma6v   regular           31.5kB    37 hours ago     32 hours ago     2         true
+luif28k6677e   regular           118MB     37 hours ago     32 hours ago     3         true
+7871m11dwgzb   regular           6.24MB    37 hours ago     32 hours ago     3         true
+cdd6ib0rlwcw   regular           63.3MB    37 hours ago     32 hours ago     3         true
+wfhp8a2jfxo3   regular           16.6kB    37 hours ago     32 hours ago     3         true
+f5nkybk4kd6w   regular           8.29kB    37 hours ago     32 hours ago     3         true
+y9a4b6zelnnw   regular           354MB     37 hours ago     32 hours ago     3         true
+hg4fqukae3en   regular           62.6MB    37 hours ago     32 hours ago     3         true
+z64qx5quky6p   regular           11.9GB    33 hours ago     32 hours ago     2         true
+lnr836oklifd   regular           290kB     33 hours ago     32 hours ago     2         true
+g5u3ebl5ykii   regular           395MB     37 hours ago     27 hours ago     2         true
+ym9skm5wwm3z   regular           182MB     27 hours ago     27 hours ago     1         true
+qbuzd7s0p29u   regular           38.2kB    27 hours ago     27 hours ago     1         true
+o3cc171llsd4   regular           201kB     27 hours ago     27 hours ago     1         true
+1cz9u0xrb6bx   regular           17kB      37 hours ago     27 hours ago     5         true
+o11r662op8tc   regular           31.5kB    33 hours ago     25 hours ago     3         true
+xza76gqo5ekp   regular           156kB     25 hours ago     25 hours ago     1         false
+49o7bbibpgcq   regular           12.3kB    25 hours ago     25 hours ago     1         false
+yqdh0vlx5hj9   regular           289MB     25 hours ago     25 hours ago     1         false
+gh6w35v6a3f5   regular           28.7kB    25 hours ago     25 hours ago     1         false
+q7zw7xrgt6xy   regular           4.1kB     25 hours ago     25 hours ago     1         false
+mjd3lqfeb5ly   regular           28.7kB    25 hours ago     25 hours ago     1         false
+xe15qcsskgng   regular           4.1kB     25 hours ago     25 hours ago     1         false
+ah6khz0ji60f   regular           409kB     25 hours ago     25 hours ago     1         true
+ny7viwh4rxuj   regular           8.29kB    5 days ago       25 hours ago     2         true
+jjnjwjc5ugw8   regular           492MB     25 hours ago     25 hours ago     1         true
+58r0zw95fkeg   regular           11.9GB    26 hours ago     25 hours ago     1         true
+ox87mp2u190g   regular           25.5MB    25 hours ago     25 hours ago     1         true
+s0xt2w1v07b7   regular           374kB     23 hours ago     23 hours ago     1         true
+ttt9c166skyl   regular           3.08MB    25 hours ago     23 hours ago     5         true
+ahi7ip87rpkq   regular           21kB      27 hours ago     23 hours ago     7         true
+6jvkhvylsgkd   regular           31.5kB    23 hours ago     23 hours ago     4         true
+mhg991bd2jn5   regular           16.7kB    25 hours ago     23 hours ago     4         true
+6d6o29sny0wv   exec.cachemount   16.2GB    37 hours ago     16 minutes ago   14        false
+u092yilhd5hn   regular           78.8MB    32 minutes ago   9 minutes ago    1         false
+mvdqvwvpjhid   regular           1.12MB    32 minutes ago   9 minutes ago    1         false
+l1gou06x9hej   regular           356kB     25 hours ago     9 minutes ago    2         false
+l6h37d8q4hm8   regular           369kB     26 hours ago     9 minutes ago    2         false
+v35nnq5cypqk   regular           25.5MB    9 minutes ago    9 minutes ago    1         true
+emtrc3m4o33i   regular           369kB     9 minutes ago    9 minutes ago    1         false
+h07tpqdbfl5h   source.local      8.19kB    9 minutes ago    9 minutes ago    1         false
+w2aqhmr3gcpz   regular           242MB     9 minutes ago    9 minutes ago    1         false
+3ug7a88pkw88   regular           3.34MB    26 hours ago     9 minutes ago    4         true
+z1n1ywtzmvbs   regular           4.1kB     9 minutes ago    9 minutes ago    1         false
+nwxl49nh6x2e   regular           16.7kB    9 minutes ago    9 minutes ago    1         true
+9l8eetmuwlc2   source.local      12.3kB    26 hours ago     8 minutes ago    10        false
+h446nvkxykyt   regular           24.6kB    8 minutes ago    8 minutes ago    1         false
+ig064p7nsa4d   regular           45.1kB    8 minutes ago    8 minutes ago    1         false
+377bpf06bj30   regular           8.19kB    8 minutes ago    8 minutes ago    1         false
+wu40m8jhhnq6   regular           176kB     8 minutes ago    8 minutes ago    1         false
+x3xmprpi4edb   regular           3.34MB    8 minutes ago    8 minutes ago    1         true
+lgtzs3dv205l   regular           303MB     8 minutes ago    8 minutes ago    1         false
+9f7nqqdvixmk   source.local      1.2MB     25 hours ago     8 minutes ago    11        false
+5c1thzbxtat1   regular           967kB     8 minutes ago    8 minutes ago    1         false
+at62bnixdvua   regular           33.7MB    8 minutes ago    8 minutes ago    1         false
+dev8fph2shbx   regular           141MB     8 minutes ago    8 minutes ago    1         false
+noq1ejseey0d   regular           16.3MB    8 minutes ago    8 minutes ago    1         true
+m1bv9sbsgke6   regular           8.82kB    8 minutes ago    8 minutes ago    1         true
+lld7uzvfbe5i   regular           13.3kB    8 minutes ago    8 minutes ago    1         true
+evts4pkniqm8   regular           12.7kB    8 minutes ago    8 minutes ago    1         true
+ooulzef0b9rs   regular           13.5kB    8 minutes ago    8 minutes ago    1         true
+iketxy2c02ma   regular           17.8kB    8 minutes ago    8 minutes ago    1         true
+9mfxxqs4vkfn   regular           6.15MB    7 minutes ago    7 minutes ago    1         true
+r7jva6nb3i7k   regular           29kB      7 minutes ago    7 minutes ago    1         true
+9hhuqrhc2zsq   regular           11.7MB    7 minutes ago    7 minutes ago    1         false
+szke3xa27ty9   regular           324MB     7 minutes ago    7 minutes ago    1         false
+icxkyll1aqid   source.local      8.19kB    5 days ago       7 minutes ago    17        false
+nunvkvfc54ll   regular           72.9MB    8 minutes ago    7 minutes ago    1         true
+y3b8kwsdd34l   regular           2.58MB    7 minutes ago    7 minutes ago    1         false
+et303ipic0zu   source.local      8.19kB    5 days ago       7 minutes ago    17        false
+zdsiccweotj6   source.local      2.58MB    5 days ago       7 minutes ago    17        false
+== host disk
+Filesystem      Size  Used Avail Use% Mounted on
+C:              476G  452G   25G  95% /c

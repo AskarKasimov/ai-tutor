@@ -1,0 +1,180 @@
+{
+ "runs": 1,
+ "device": "cpu",
+ "torch": "2.14.1+cpu",
+ "cuda_device": null,
+ "configuration": {
+  "version": "ocr-v9-content-cache",
+  "audit_version": "formula-audit-v5",
+  "with_docling": "true",
+  "picture_text": "true",
+  "document_timeout": "0",
+  "enrich_code": "true",
+  "enrich_formula": "true",
+  "full_page_ocr": "false"
+ },
+ "threads": "4",
+ "init_seconds": {
+  "mean": 77.37,
+  "min": 77.37,
+  "max": 77.37
+ },
+ "first_conversion_seconds": {
+  "mean": 46.65,
+  "min": 46.65,
+  "max": 46.65
+ },
+ "process_peak_rss_mib": {
+  "mean": 5947.45,
+  "min": 5947.45,
+  "max": 5947.45
+ },
+ "cgroup_peak_mib": {
+  "mean": 5777.76,
+  "min": 5777.76,
+  "max": 5777.76
+ },
+ "documents": {
+  "Week 3 Lecture.pdf": {
+   "pages": 27,
+   "sha256": "08c27485ec620300cfa20f9aaf6f2050d2403ed5d11f954eb4a052a2d0c31afa",
+   "bytes": 1514109,
+   "cold_seconds": {
+    "mean": 60.67,
+    "min": 60.67,
+    "max": 60.67
+   },
+   "seconds_per_page": {
+    "mean": 2.25,
+    "min": 2.25,
+    "max": 2.25
+   },
+   "cached_ms": {
+    "mean": 1.9,
+    "min": 1.9,
+    "max": 1.9
+   },
+   "peak_rss_mib": {
+    "mean": 3655.7,
+    "min": 3655.7,
+    "max": 3655.7
+   },
+   "markdown_identical_across_runs": true,
+   "content_complete": [
+    true
+   ],
+   "warnings": [
+    1
+   ]
+  },
+  "Tutorial 2.pdf": {
+   "pages": 50,
+   "sha256": "a5356b8d7baab61c870e41b876aab9162a6d5350f0c5e5686ab194329410e00c",
+   "bytes": 698809,
+   "cold_seconds": {
+    "mean": 418.78,
+    "min": 418.78,
+    "max": 418.78
+   },
+   "seconds_per_page": {
+    "mean": 8.38,
+    "min": 8.38,
+    "max": 8.38
+   },
+   "cached_ms": {
+    "mean": 3.59,
+    "min": 3.59,
+    "max": 3.59
+   },
+   "peak_rss_mib": {
+    "mean": 5947.45,
+    "min": 5947.45,
+    "max": 5947.45
+   },
+   "markdown_identical_across_runs": true,
+   "content_complete": [
+    false
+   ],
+   "warnings": [
+    3
+   ]
+  },
+  "Tutorial 4. Prolog.pdf": {
+   "pages": 28,
+   "sha256": "db2ac5f1194165fab518d1a71e66853dc15c7872cdf89ec5322935bfb95e6873",
+   "bytes": 1217087,
+   "cold_seconds": {
+    "mean": 114.91,
+    "min": 114.91,
+    "max": 114.91
+   },
+   "seconds_per_page": {
+    "mean": 4.1,
+    "min": 4.1,
+    "max": 4.1
+   },
+   "cached_ms": {
+    "mean": 1.82,
+    "min": 1.82,
+    "max": 1.82
+   },
+   "peak_rss_mib": {
+    "mean": 5688.89,
+    "min": 5688.89,
+    "max": 5688.89
+   },
+   "markdown_identical_across_runs": true,
+   "content_complete": [
+    false
+   ],
+   "warnings": [
+    2
+   ]
+  },
+  "Week 1 Tutorial_2025.pdf": {
+   "pages": 35,
+   "sha256": "ad0dba6b0463935fe7165e56408f1538fcfb6b4d7bb8f188a68ec30b953e3497",
+   "bytes": 19788621,
+   "cold_seconds": {
+    "mean": 102.19,
+    "min": 102.19,
+    "max": 102.19
+   },
+   "seconds_per_page": {
+    "mean": 2.92,
+    "min": 2.92,
+    "max": 2.92
+   },
+   "cached_ms": {
+    "mean": 18.45,
+    "min": 18.45,
+    "max": 18.45
+   },
+   "peak_rss_mib": {
+    "mean": 4990.26,
+    "min": 4990.26,
+    "max": 4990.26
+   },
+   "markdown_identical_across_runs": true,
+   "content_complete": [
+    true
+   ],
+   "warnings": [
+    1
+   ]
+  }
+ },
+ "all_documents": {
+  "pages": 140,
+  "cold_seconds": {
+   "mean": 696.56,
+   "min": 696.56,
+   "max": 696.56
+  },
+  "seconds_per_page": {
+   "mean": 4.98,
+   "min": 4.98,
+   "max": 4.98
+  }
+ }
+}

@@ -1,0 +1,13 @@
+{"ts": 1792410570.675, "session": "deps", "op": "health", "seconds": 0.099, "status": 200, "bytes": 16, "error": null, "body": null}
+{"ts": 1792410570.674, "session": "deps", "op": "check_backend_health", "ok": true, "seconds": 0.1, "detail": {"status": "ok"}}
+{"ts": 1792410570.774, "session": "deps", "op": "check_postgres_migrations", "ok": true, "seconds": 0.371, "detail": "10|9"}
+{"ts": 1792410571.145, "session": "deps", "op": "register", "seconds": 0.421, "status": 201, "bytes": 255, "error": null, "body": null}
+{"ts": 1792410571.145, "session": "deps", "op": "check_postgres_write_register", "ok": true, "seconds": 0.421, "detail": "user_CUtb6VT-qrkv1berX14ZdznR7fc8Zlzs_KCKuq3jU0Q"}
+{"ts": 1792410571.566, "session": "deps", "op": "check_llm_low", "ok": true, "seconds": 0.345, "detail": {"answer": "Москва", "usage": {"prompt_tokens": 30, "total_tokens": 32, "completion_tokens": 2, "prompt_tokens_details": null}}}
+{"ts": 1792410571.912, "session": "deps", "op": "check_llm_medium", "ok": true, "seconds": 0.38, "detail": {"answer": "Москва", "usage": {"prompt_tokens": 82, "total_tokens": 135, "completion_tokens": 53, "prompt_tokens_details": null}}}
+{"ts": 1792410572.292, "session": "deps", "op": "check_llm_high", "ok": true, "seconds": 0.389, "detail": {"answer": "Москва", "usage": {"prompt_tokens": 82, "total_tokens": 140, "completion_tokens": 58, "prompt_tokens_details": null}}}
+{"ts": 1792410572.681, "session": "deps", "op": "tts", "seconds": 15.083, "status": 200, "bytes": 230444, "error": null, "body": null}
+{"ts": 1792410572.681, "session": "deps", "op": "check_tts", "ok": true, "seconds": 15.083, "detail": {"wav_bytes": 230444}}
+{"ts": 1792410587.771, "session": "deps", "op": "stt", "seconds": 0.838, "status": 200, "bytes": 181, "error": null, "body": null}
+{"ts": 1792410587.765, "session": "deps", "op": "check_stt", "ok": true, "seconds": 0.844, "detail": "Эвристика оценивает стоимость пути до цели."}
+{"ts": 1792410588.609, "session": "deps", "op": "check_ocr_models_ready", "ok": true, "seconds": 0.025, "detail": {"ready": true, "state": "ready", "stage": "ready", "updated_at": "2026-10-19T11:48:05.875070+00:00", "progress": {"cached_bytes": 1165040747, "cached_models_seen": ["docling-project--CodeFormulaV2", "docling-project--docling-layout-heron", "docling-project--docling-models"]}}}

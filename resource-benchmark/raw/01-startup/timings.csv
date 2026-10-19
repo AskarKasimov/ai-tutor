@@ -1,0 +1,7 @@
+up:postgresql,6.6
+up:s3,11.5
+up:course-graph,25.7
+up:llm-gateway,21.9
+up:backend,12.1
+up:frontend,10.4
+up:caddy,6.5

@@ -1,0 +1,77 @@
+Using a slow image processor as `use_fast` is unset and a slow processor was saved with this model. `use_fast=True` will be the default behavior in v4.52, even if the model was saved with a slow processor. This will result in minor differences in outputs. You'll still be able to use a slow processor with `use_fast=False`.
+`torch_dtype` is deprecated! Use `dtype` instead!
+Ignoring wrong pointing object 22 0 (offset 0)
+Ignoring wrong pointing object 40 0 (offset 0)
+Ignoring wrong pointing object 108 0 (offset 0)
+[32m[INFO] 2026-10-19 12:22:14,383 [RapidOCR] base.py:23: Using engine_name: torch[0m
+[32m[INFO] 2026-10-19 12:22:14,482 [RapidOCR] device_config.py:57: Using CPU device[0m
+[32m[INFO] 2026-10-19 12:22:14,492 [RapidOCR] download_file.py:68: Initiating download: https://www.modelscope.cn/models/RapidAI/RapidOCR/resolve/v3.10.0/torch/PP-OCRv6/det/PP-OCRv6_det_small.pth[0m
+[32m[INFO] 2026-10-19 12:22:16,734 [RapidOCR] download_file.py:82: Download size: 9.77MB[0m
+[32m[INFO] 2026-10-19 12:22:17,767 [RapidOCR] download_file.py:95: Successfully saved to: /app/.venv/lib/python3.11/site-packages/rapidocr/models/PP-OCRv6_det_small.pth[0m
+[32m[INFO] 2026-10-19 12:22:17,770 [RapidOCR] main.py:50: Using /app/.venv/lib/python3.11/site-packages/rapidocr/models/PP-OCRv6_det_small.pth[0m
+/app/.venv/lib/python3.11/site-packages/torch/nn/modules/conv.py:560: UserWarning: Using padding='same' with even kernel lengths and odd dilation may require a zero-padded copy of the input be created (Triggered internally at /__w/pytorch/pytorch/aten/src/ATen/native/Convolution.cpp:1104.)
+  return F.conv2d(
+[32m[INFO] 2026-10-19 12:22:28,561 [RapidOCR] base.py:23: Using engine_name: torch[0m
+[32m[INFO] 2026-10-19 12:22:28,561 [RapidOCR] device_config.py:57: Using CPU device[0m
+[32m[INFO] 2026-10-19 12:22:28,565 [RapidOCR] download_file.py:68: Initiating download: https://www.modelscope.cn/models/RapidAI/RapidOCR/resolve/v3.10.0/torch/PP-OCRv4/cls/ch_ppocr_mobile_v2.0_cls_mobile.pth[0m
+[32m[INFO] 2026-10-19 12:22:30,068 [RapidOCR] download_file.py:82: Download size: 0.56MB[0m
+[32m[INFO] 2026-10-19 12:22:30,381 [RapidOCR] download_file.py:95: Successfully saved to: /app/.venv/lib/python3.11/site-packages/rapidocr/models/ch_ppocr_mobile_v2.0_cls_mobile.pth[0m
+[32m[INFO] 2026-10-19 12:22:30,383 [RapidOCR] main.py:50: Using /app/.venv/lib/python3.11/site-packages/rapidocr/models/ch_ppocr_mobile_v2.0_cls_mobile.pth[0m
+[32m[INFO] 2026-10-19 12:22:33,314 [RapidOCR] base.py:23: Using engine_name: torch[0m
+[32m[INFO] 2026-10-19 12:22:33,314 [RapidOCR] device_config.py:57: Using CPU device[0m
+[32m[INFO] 2026-10-19 12:22:33,315 [RapidOCR] download_file.py:68: Initiating download: https://www.modelscope.cn/models/RapidAI/RapidOCR/resolve/v3.10.0/torch/PP-OCRv6/rec/PP-OCRv6_rec_small.pth[0m
+[32m[INFO] 2026-10-19 12:22:34,939 [RapidOCR] download_file.py:82: Download size: 20.34MB[0m
+[32m[INFO] 2026-10-19 12:22:37,702 [RapidOCR] download_file.py:95: Successfully saved to: /app/.venv/lib/python3.11/site-packages/rapidocr/models/PP-OCRv6_rec_small.pth[0m
+[32m[INFO] 2026-10-19 12:22:37,706 [RapidOCR] main.py:50: Using /app/.venv/lib/python3.11/site-packages/rapidocr/models/PP-OCRv6_rec_small.pth[0m
+[32m[INFO] 2026-10-19 12:22:37,829 [RapidOCR] download_file.py:68: Initiating download: https://www.modelscope.cn/models/RapidAI/RapidOCR/resolve/v3.10.0/paddle/PP-OCRv6/rec/PP-OCRv6_rec_small/ppocrv6_dict.txt[0m
+[32m[INFO] 2026-10-19 12:22:38,874 [RapidOCR] download_file.py:82: Download size: 0.00MB[0m
+[32m[INFO] 2026-10-19 12:22:39,303 [RapidOCR] download_file.py:95: Successfully saved to: /app/.venv/lib/python3.11/site-packages/rapidocr/models/ppocrv6_dict.txt[0m
+RapidOCR returned empty result!
+RapidOCR returned empty result!
+RapidOCR returned empty result!
+RapidOCR returned empty result!
+[33m[WARNING] 2026-10-19 12:23:06,653 [RapidOCR] main.py:164: The text detection result is empty[0m
+RapidOCR returned empty result!
+RapidOCR returned empty result!
+[33m[WARNING] 2026-10-19 12:23:08,708 [RapidOCR] main.py:164: The text detection result is empty[0m
+RapidOCR returned empty result!
+RapidOCR returned empty result!
+RapidOCR returned empty result!
+RapidOCR returned empty result!
+[33m[WARNING] 2026-10-19 12:23:29,877 [RapidOCR] main.py:164: The text detection result is empty[0m
+Ignoring wrong pointing object 22 0 (offset 0)
+Ignoring wrong pointing object 40 0 (offset 0)
+Ignoring wrong pointing object 108 0 (offset 0)
+[33m[WARNING] 2026-10-19 12:31:01,172 [RapidOCR] main.py:164: The text detection result is empty[0m
+RapidOCR returned empty result!
+[33m[WARNING] 2026-10-19 12:32:29,093 [RapidOCR] main.py:164: The text detection result is empty[0m
+RapidOCR returned empty result!
+RapidOCR returned empty result!
+RapidOCR returned empty result!
+RapidOCR returned empty result!
+[33m[WARNING] 2026-10-19 12:33:08,836 [RapidOCR] main.py:164: The text detection result is empty[0m
+RapidOCR returned empty result!
+[33m[WARNING] 2026-10-19 12:33:35,547 [RapidOCR] main.py:164: The text detection result is empty[0m
+RapidOCR returned empty result!
+[33m[WARNING] 2026-10-19 12:33:42,660 [RapidOCR] main.py:164: The text detection result is empty[0m
+RapidOCR returned empty result!
+[33m[WARNING] 2026-10-19 12:33:56,708 [RapidOCR] main.py:164: The text detection result is empty[0m
+[33m[WARNING] 2026-10-19 12:34:02,050 [RapidOCR] main.py:164: The text detection result is empty[0m
+[33m[WARNING] 2026-10-19 12:34:11,810 [RapidOCR] main.py:164: The text detection result is empty[0m
+[33m[WARNING] 2026-10-19 12:34:15,718 [RapidOCR] main.py:164: The text detection result is empty[0m
+Ignoring wrong pointing object 14 0 (offset 0)
+Ignoring wrong pointing object 16 0 (offset 0)
+Ignoring wrong pointing object 18 0 (offset 0)
+Ignoring wrong pointing object 23 0 (offset 0)
+Ignoring wrong pointing object 25 0 (offset 0)
+Ignoring wrong pointing object 27 0 (offset 0)
+Ignoring wrong pointing object 36 0 (offset 0)
+Ignoring wrong pointing object 39 0 (offset 0)
+Ignoring wrong pointing object 64 0 (offset 0)
+Ignoring wrong pointing object 77 0 (offset 0)
+Ignoring wrong pointing object 93 0 (offset 0)
+Ignoring wrong pointing object 102 0 (offset 0)
+Ignoring wrong pointing object 220 0 (offset 0)
+Ignoring wrong pointing object 222 0 (offset 0)
+Ignoring wrong pointing object 247 0 (offset 0)
+Error cleaning up engine: 'AuditedEngine' object has no attribute 'cleanup'

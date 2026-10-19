@@ -1,0 +1,4 @@
+# Secrets of the test stand.
+bench.env
+bench-cpu.env
+__pycache__/

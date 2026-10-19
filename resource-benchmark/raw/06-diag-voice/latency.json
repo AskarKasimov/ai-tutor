@@ -1,0 +1,93 @@
+{
+ "answer_dont_know": {
+  "n": 2,
+  "median": 0.583,
+  "p95": 0.596,
+  "max": 0.596,
+  "errors": []
+ },
+ "answer_strong": {
+  "n": 3,
+  "median": 0.983,
+  "p95": 1.774,
+  "max": 1.774,
+  "errors": []
+ },
+ "answer_weak": {
+  "n": 3,
+  "median": 0.769,
+  "p95": 0.851,
+  "max": 0.851,
+  "errors": []
+ },
+ "create_subject": {
+  "n": 1,
+  "median": 0.027,
+  "p95": 0.027,
+  "max": 0.027,
+  "errors": []
+ },
+ "register": {
+  "n": 2,
+  "median": 0.481,
+  "p95": 0.833,
+  "max": 0.833,
+  "errors": []
+ },
+ "result": {
+  "n": 1,
+  "median": 0.009,
+  "p95": 0.009,
+  "max": 0.009,
+  "errors": []
+ },
+ "start": {
+  "n": 1,
+  "median": 0.058,
+  "p95": 0.058,
+  "max": 0.058,
+  "errors": []
+ },
+ "subjects": {
+  "n": 1,
+  "median": 0.034,
+  "p95": 0.034,
+  "max": 0.034,
+  "errors": []
+ },
+ "synthesize_tts_strong": {
+  "n": 1,
+  "median": 12.057,
+  "p95": 12.057,
+  "max": 12.057,
+  "errors": []
+ },
+ "synthesize_tts_weak": {
+  "n": 1,
+  "median": 1.656,
+  "p95": 1.656,
+  "max": 1.656,
+  "errors": []
+ },
+ "teacher_login": {
+  "n": 1,
+  "median": 0.032,
+  "p95": 0.032,
+  "max": 0.032,
+  "errors": []
+ },
+ "transcribe_stt": {
+  "n": 6,
+  "median": 0.387,
+  "p95": 0.734,
+  "max": 0.734,
+  "errors": []
+ },
+ "turn_audio_tts": {
+  "n": 8,
+  "median": 18.18,
+  "p95": 21.652,
+  "max": 21.652,
+  "errors": []
+ }
+}

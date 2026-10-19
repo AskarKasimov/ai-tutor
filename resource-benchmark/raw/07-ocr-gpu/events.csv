@@ -1,0 +1,7 @@
+ts,event,detail
+1792411280.116080200,ocr_run_start,gpu-1
+1792411614.186825500,ocr_run_end,gpu-1
+1792411614.216278800,ocr_run_start,gpu-2
+1792411842.707475700,ocr_run_end,gpu-2
+1792411842.732727800,ocr_run_start,gpu-3
+1792412036.191369600,ocr_run_end,gpu-3

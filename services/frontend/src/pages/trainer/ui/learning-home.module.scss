@@ -43,6 +43,12 @@
   display: grid;
   gap: var(--space-5);
 }
+// The courses to choose from when there are several.
+.subjects {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
 .course {
   display: grid;
   gap: var(--space-6);

@@ -191,10 +191,14 @@ it.each(['/admin', '/admin/'])(
     expect(
       screen.getByRole('heading', { name: 'Машинное обучение', level: 2 }),
     ).toBeVisible()
-    expect(screen.queryByText('Статистика')).not.toBeInTheDocument()
+    // Every subject is listed; the first is open by default.
+    const list = screen.getByRole('navigation', { name: 'Предметы' })
     expect(
-      screen.queryByRole('combobox', { name: 'Предмет' }),
-    ).not.toBeInTheDocument()
+      within(list).getByRole('button', { name: 'Машинное обучение' }),
+    ).toHaveAttribute('aria-pressed', 'true')
+    expect(
+      within(list).getByRole('button', { name: 'Статистика' }),
+    ).toHaveAttribute('aria-pressed', 'false')
   },
 )
 
@@ -716,4 +720,44 @@ it('enters again after an expired map refresh without reusing the cached 401', a
     await screen.findByRole('heading', { name: 'Карта компетенций' }),
   ).toBeVisible()
   expect(await screen.findByText('Карта ещё не загружена.')).toBeVisible()
+})
+
+it('opens another subject and adds a new one next to the existing', async () => {
+  const fetch = backend()
+  renderApp('/admin/competency-map')
+  const list = await screen.findByRole('navigation', { name: 'Предметы' })
+  fireEvent.click(within(list).getByRole('button', { name: 'Статистика' }))
+  expect(
+    await screen.findByRole('heading', { name: 'Статистика', level: 2 }),
+  ).toBeVisible()
+  await waitFor(() =>
+    expect(
+      fetch.mock.calls.some(([url]) =>
+        url.endsWith('/subjects/subject-b/competency-map'),
+      ),
+    ).toBe(true),
+  )
+  // A new subject takes any name and its map in one step.
+  fireEvent.click(within(list).getByRole('button', { name: 'Новый предмет' }))
+  fireEvent.change(screen.getByLabelText('Название предмета'), {
+    target: { value: 'Новый' },
+  })
+  fireEvent.change(screen.getByLabelText('Файл карты компетенций'), {
+    target: { files: [new File(['map'], 'map.csv')] },
+  })
+  fireEvent.click(screen.getByRole('button', { name: 'Подтвердить' }))
+  expect(
+    await screen.findByRole('heading', { name: 'Новый', level: 2 }),
+  ).toBeVisible()
+  expect(
+    fetch.mock.calls.some(([url]) =>
+      url.endsWith('/admin/subjects/subject-c/competency-map/import'),
+    ),
+  ).toBe(true)
+  await waitFor(() =>
+    expect(within(list).getByRole('button', { name: 'Новый' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    ),
+  )
 })

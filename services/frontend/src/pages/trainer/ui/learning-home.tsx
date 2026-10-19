@@ -65,9 +65,20 @@ export function LearningHome() {
     userId ? readIntent(userId) : null,
   )
   const subjects = subjectsQuery.data ?? []
-  // Students study the single subject the teacher manages: the first one.
+  // The course the student opened; the first one until they choose.
+  const [chosenId, setChosenId] = useState(() => readChosen(userId))
   const selected =
-    subjects.find((subject) => subject.id === intent?.subjectId) ?? subjects[0]
+    subjects.find((subject) => subject.id === intent?.subjectId) ??
+    subjects.find((subject) => subject.id === chosenId) ??
+    subjects[0]
+  function choose(id: string) {
+    setChosenId(id)
+    try {
+      sessionStorage.setItem(chosenKey, JSON.stringify({ userId, id }))
+    } catch {
+      // Without storage the choice lasts until reload.
+    }
+  }
   const learning = useLearningStateQuery(userId, selected?.id ?? '')
 
   useEffect(() => {
@@ -199,8 +210,23 @@ export function LearningHome() {
             <Text>{t('home.empty')}</Text>
           </Card>
         ) : (
-          // One course today; the list layout is ready for several.
           <section className={styles.courses} aria-labelledby="courses-title">
+            {subjects.length > 1 && (
+              <nav className={styles.subjects} aria-label={t('home.choose')}>
+                {subjects.map((subject) => (
+                  <Button
+                    key={subject.id}
+                    size="3"
+                    variant={subject.id === selected.id ? 'solid' : 'soft'}
+                    color={subject.id === selected.id ? undefined : 'gray'}
+                    aria-pressed={subject.id === selected.id}
+                    onClick={() => choose(subject.id)}
+                  >
+                    {subject.name}
+                  </Button>
+                ))}
+              </nav>
+            )}
             <article className={styles.course} aria-labelledby="course-title">
               <div className={styles.courseHeader}>
                 <Heading as="h2" size="7" id="course-title">
@@ -300,6 +326,21 @@ export function LearningHome() {
       </main>
     </div>
   )
+}
+
+const chosenKey = 'ai-tutor:learning-subject'
+
+// The course the student chose last in this tab, if it is theirs.
+function readChosen(userId: string) {
+  try {
+    const saved = JSON.parse(sessionStorage.getItem(chosenKey) ?? 'null') as {
+      userId?: string
+      id?: string
+    } | null
+    return saved?.userId === userId && saved.id ? saved.id : ''
+  } catch {
+    return ''
+  }
 }
 
 // A large course action: icon, title and a line explaining what happens. The

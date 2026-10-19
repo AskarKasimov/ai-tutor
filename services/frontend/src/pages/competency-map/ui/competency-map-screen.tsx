@@ -16,6 +16,7 @@ import {
   History,
   Layers,
   ListChecks,
+  Plus,
   Shapes,
   ShieldCheck,
   Target,
@@ -63,10 +64,16 @@ function CompetencyMapAdmin({ userId }: { userId: string }) {
   const { t } = useTranslation()
   const subjects = useSubjectsQuery(userId)
   const create = useCreateSubjectMutation(userId)
-  // The teacher manages one subject; a new one is used until the list refetches.
-  const [createdId, setCreatedId] = useState('')
-  const subject = subjects.data?.[0]
-  const subjectId = subject?.id ?? createdId
+  // The teacher picks a subject or adds a new one; the first is open by
+  // default. A created subject stays chosen until the list refetches it.
+  const [chosenId, setChosenId] = useState('')
+  const [adding, setAdding] = useState(false)
+  const list = subjects.data ?? []
+  const subject = adding
+    ? undefined
+    : (list.find((item) => item.id === chosenId) ??
+      (chosenId ? undefined : list[0]))
+  const subjectId = adding ? '' : (subject?.id ?? chosenId)
   const query = useCompetencyMapQuery(userId, subjectId)
   const upload = useImportCompetencyMapMutation(userId, subjectId)
   const [subjectName, setSubjectName] = useState('')
@@ -81,6 +88,15 @@ function CompetencyMapAdmin({ userId }: { userId: string }) {
     setQueuedImport(false)
     upload.mutate({ file, subjectId }, settleFile)
   }, [queuedImport, subjectId, file, upload])
+
+  function choose(id: string, add = false) {
+    if (busy) return
+    selectFile(undefined)
+    create.reset()
+    setSubjectName('')
+    setChosenId(id)
+    setAdding(add)
+  }
 
   // A file the server rejected (format or size) is dropped, so there is
   // nothing left to confirm; technical failures keep it for a retry.
@@ -153,7 +169,39 @@ function CompetencyMapAdmin({ userId }: { userId: string }) {
               {t('trainer.retry')}
             </Button>
           </div>
-        ) : !subjectId ? (
+        ) : (
+          <>
+            {list.length > 0 && (
+              <nav
+                className={styles.subjects}
+                aria-label={t('competencyMap.subjects')}
+              >
+                {list.map((item) => (
+                  <Button
+                    key={item.id}
+                    variant={item.id === subjectId ? 'solid' : 'soft'}
+                    color={item.id === subjectId ? undefined : 'gray'}
+                    aria-pressed={item.id === subjectId}
+                    disabled={busy}
+                    onClick={() => choose(item.id)}
+                  >
+                    {item.name}
+                  </Button>
+                ))}
+                <Button
+                  variant={adding ? 'solid' : 'outline'}
+                  aria-pressed={adding}
+                  disabled={busy}
+                  onClick={() => choose('', true)}
+                >
+                  <Plus size={16} aria-hidden="true" />
+                  {t('competencyMap.newSubject')}
+                </Button>
+              </nav>
+            )}
+          </>
+        )}
+        {subjects.isPending || subjects.isError ? null : !subjectId ? (
           <section className={styles.card} aria-labelledby="subject-form-title">
             <Heading as="h2" size="5" id="subject-form-title">
               {t('competencyMap.createSubject')}
@@ -187,7 +235,8 @@ function CompetencyMapAdmin({ userId }: { userId: string }) {
                 if (!name || !file) return
                 create.mutate(name, {
                   onSuccess: (created) => {
-                    setCreatedId(created.id)
+                    setChosenId(created.id)
+                    setAdding(false)
                     setQueuedImport(true)
                   },
                 })

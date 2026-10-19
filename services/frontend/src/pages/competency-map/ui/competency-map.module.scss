@@ -231,3 +231,10 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+// The subjects of the panel and the action that adds one.
+.subjects {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}

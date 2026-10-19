@@ -240,3 +240,47 @@ it('returns to subject selection after refresh during a pending start and reuses
   expect(variantRequests).toHaveLength(2)
   expect(variantRequests[1].key).toBe(variantRequests[0].key)
 })
+
+it('lets the student choose among several courses', async () => {
+  const api = vi.mocked(fetch).mockImplementation(async (url, init) => {
+    const path = String(url)
+    if (path.endsWith('/subjects'))
+      return Response.json([
+        { id: 'subject-1', name: 'Предмет A', ready: true },
+        { id: 'subject-2', name: 'Предмет B', ready: true },
+      ])
+    if (path.endsWith('/subjects/subject-2/learning-state'))
+      return Response.json({
+        subject_id: 'subject-2',
+        subject_name: 'Предмет B',
+        diagnostic_status: 'not_started',
+        diagnostic_completed: false,
+        training_available: false,
+      })
+    return backendResponse(path, init)
+  })
+  const router = createRouter({
+    context: { queryClient: createQueryClient() },
+    history: createMemoryHistory({ initialEntries: ['/'] }),
+    routeTree,
+  })
+  render(<RouterProvider router={router} />)
+  const choice = await screen.findByRole('navigation', { name: 'Выбор курса' })
+  expect(screen.getByRole('article', { name: 'Предмет A' })).toBeVisible()
+  fireEvent.click(screen.getByRole('button', { name: 'Предмет B' }))
+  expect(
+    await screen.findByRole('article', { name: 'Предмет B' }),
+  ).toBeVisible()
+  expect(screen.getByRole('button', { name: 'Предмет B' })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  )
+  expect(choice).toBeVisible()
+  await waitFor(() =>
+    expect(
+      api.mock.calls.some(([url]) =>
+        String(url).endsWith('/subjects/subject-2/learning-state'),
+      ),
+    ).toBe(true),
+  )
+})

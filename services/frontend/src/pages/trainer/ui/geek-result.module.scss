@@ -253,6 +253,15 @@
   }
 }
 
+// Weak spots follow the gaps in their panel, set apart by a rule.
+.weak {
+  display: grid;
+  gap: 14px;
+  margin-top: 10px;
+  padding-top: 24px;
+  border-top: 1px solid var(--app-border);
+}
+
 .gaps {
   display: grid;
   gap: 14px;

@@ -280,6 +280,7 @@ function geekBackend(
           },
         ],
         gaps: [{ node_id: 'heuristic', title: 'Эвристическая функция' }],
+        weak_spots: [{ node_id: 'search-space', title: 'Слабая тема' }],
       })
     if (
       /\/diagnostic-sessions\/d1\/turns\/t\d+\/audio\?part=(reply|question)$/.test(
@@ -368,7 +369,7 @@ function gate() {
 
 async function start() {
   const button = await screen.findByRole('button', {
-    name: 'Начать диагностику',
+    name: 'Начать проверку знаний',
   })
   await waitFor(() => expect(button).toBeEnabled())
   fireEvent.click(button)
@@ -395,7 +396,9 @@ it('runs a diagnostic from the home page to the result and back to the history',
   const { answers, fetch } = geekBackend()
   renderApp()
   expect(
-    await screen.findByText('Вы ещё не проходили диагностику по этому курсу.'),
+    await screen.findByText(
+      'Вы ещё не проходили проверку знаний по этому курсу.',
+    ),
   ).toBeVisible()
   await start()
 
@@ -478,6 +481,10 @@ it('runs a diagnostic from the home page to the result and back to the history',
   ).toEqual(['1Засчитано по основной теме', '1С помощью', '1Пробел'])
   const gaps = screen.getByRole('region', { name: 'Что подтянуть' })
   expect(within(gaps).getByText('Эвристическая функция')).toBeVisible()
+  // Topics on C are listed apart from the gaps.
+  const weak = within(gaps).getByRole('region', { name: 'Слабые места' })
+  expect(within(weak).getByText('Слабая тема')).toBeVisible()
+  expect(within(weak).queryByText('Эвристическая функция')).toBeNull()
   const topics = screen.getByRole('region', { name: 'Все темы' })
   expect(within(topics).getByText('С помощью')).toBeVisible()
   expect(within(topics).getByText('Засчитано по основной теме')).toBeVisible()
@@ -508,7 +515,7 @@ it('resumes the active diagnostic from the history', async () => {
   geekBackend({ active: true })
   renderApp()
   fireEvent.click(
-    await screen.findByRole('button', { name: 'Продолжить диагностику' }),
+    await screen.findByRole('button', { name: 'Продолжить проверку знаний' }),
   )
   expect(
     await screen.findByText(
@@ -711,7 +718,7 @@ it('reports a failed start again on the result screen', async () => {
   control.failStarts = 1
   fireEvent.click(screen.getByRole('button', { name: 'Пройти заново' }))
   expect(await screen.findByRole('alert')).toHaveTextContent(
-    'Не удалось начать диагностику.',
+    'Не удалось начать проверку знаний.',
   )
   expect(screen.getByRole('button', { name: 'Пройти заново' })).toBeEnabled()
 })
@@ -830,7 +837,7 @@ it('pops up that the course was updated when the diagnostic is cancelled', async
   const { control } = geekBackend({ active: true })
   renderApp()
   fireEvent.click(
-    await screen.findByRole('button', { name: 'Продолжить диагностику' }),
+    await screen.findByRole('button', { name: 'Продолжить проверку знаний' }),
   )
   await answerField()
   control.cancelled = true

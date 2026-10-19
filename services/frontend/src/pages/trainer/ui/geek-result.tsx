@@ -4,6 +4,7 @@ import { type CSSProperties, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   DiagnosticApiError,
+  type DiagnosticGap,
   fetchDiagnosticMaterialRaw,
   type MaterialReference,
   type TopicStatus,
@@ -24,7 +25,7 @@ const statusOrder: TopicStatus[] = [
 ]
 
 // The outcome of a completed diagnostic: the preliminary course grade, the
-// gaps to work on and every checked topic with its status.
+// gaps and weak spots to work on and every checked topic with its status.
 export function GeekResult({
   userId,
   sessionId,
@@ -140,69 +141,19 @@ export function GeekResult({
                     <Text as="p" className={styles.lead}>
                       {t('geek.gapsHint')}
                     </Text>
-                    <ol className={styles.gaps}>
-                      {result.gaps.map((gap, index) => (
-                        <li key={gap.nodeId} className={styles.gap}>
-                          <span className={styles.gapIndex} aria-hidden="true">
-                            {String(index + 1).padStart(2, '0')}
-                          </span>
-                          <div className={styles.gapBody}>
-                            <Heading
-                              as="h3"
-                              size="4"
-                              className={styles.gapTitle}
-                            >
-                              {gap.title}
-                            </Heading>
-                            {gap.weeks.length > 0 && (
-                              <Text as="p" className={styles.chip}>
-                                {t('geek.weeks', {
-                                  weeks: gap.weeks.join(', '),
-                                })}
-                              </Text>
-                            )}
-                            {gap.sources.length === 0 ? (
-                              <Text as="p" className={styles.muted}>
-                                {t('geek.materialsNone')}
-                              </Text>
-                            ) : (
-                              <div className={styles.materials}>
-                                {(
-                                  ['theory', 'practice', 'additional'] as const
-                                ).map((group) => {
-                                  const refs = gap.learningMaterials[group]
-                                  if (refs.length === 0) return null
-                                  return (
-                                    <section
-                                      key={group}
-                                      className={styles.materialGroup}
-                                    >
-                                      <Text
-                                        as="p"
-                                        className={styles.groupLabel}
-                                      >
-                                        {t(`geek.${group}`)}
-                                      </Text>
-                                      <ul>
-                                        {refs.map((ref) => (
-                                          <li key={ref.materialId}>
-                                            <MaterialDownload
-                                              sessionId={sessionId}
-                                              material={ref}
-                                            />
-                                          </li>
-                                        ))}
-                                      </ul>
-                                    </section>
-                                  )
-                                })}
-                              </div>
-                            )}
-                          </div>
-                        </li>
-                      ))}
-                    </ol>
+                    <GapList gaps={result.gaps} sessionId={sessionId} />
                   </>
+                )}
+                {result.weakSpots.length > 0 && (
+                  <section aria-labelledby="weak-title" className={styles.weak}>
+                    <Heading as="h2" size="5" id="weak-title">
+                      {t('geek.weakTitle')}
+                    </Heading>
+                    <Text as="p" className={styles.lead}>
+                      {t('geek.weakHint')}
+                    </Text>
+                    <GapList gaps={result.weakSpots} sessionId={sessionId} />
+                  </section>
                 )}
               </section>
               <section aria-labelledby="topics-title" className={styles.panel}>
@@ -269,6 +220,69 @@ export function GeekResult({
         </div>
       </main>
     </TrainerShell>
+  )
+}
+
+// Topics to work on, each with its weeks and the materials to learn it from.
+function GapList({
+  gaps,
+  sessionId,
+}: {
+  gaps: DiagnosticGap[]
+  sessionId: string
+}) {
+  const { t } = useTranslation()
+  return (
+    <ol className={styles.gaps}>
+      {gaps.map((gap, index) => (
+        <li key={gap.nodeId} className={styles.gap}>
+          <span className={styles.gapIndex} aria-hidden="true">
+            {String(index + 1).padStart(2, '0')}
+          </span>
+          <div className={styles.gapBody}>
+            <Heading as="h3" size="4" className={styles.gapTitle}>
+              {gap.title}
+            </Heading>
+            {gap.weeks.length > 0 && (
+              <Text as="p" className={styles.chip}>
+                {t('geek.weeks', { weeks: gap.weeks.join(', ') })}
+              </Text>
+            )}
+            {gap.sources.length === 0 ? (
+              <Text as="p" className={styles.muted}>
+                {t('geek.materialsNone')}
+              </Text>
+            ) : (
+              <div className={styles.materials}>
+                {(['theory', 'practice', 'additional'] as const).map(
+                  (group) => {
+                    const refs = gap.learningMaterials[group]
+                    if (refs.length === 0) return null
+                    return (
+                      <section key={group} className={styles.materialGroup}>
+                        <Text as="p" className={styles.groupLabel}>
+                          {t(`geek.${group}`)}
+                        </Text>
+                        <ul>
+                          {refs.map((ref) => (
+                            <li key={ref.materialId}>
+                              <MaterialDownload
+                                sessionId={sessionId}
+                                material={ref}
+                              />
+                            </li>
+                          ))}
+                        </ul>
+                      </section>
+                    )
+                  },
+                )}
+              </div>
+            )}
+          </div>
+        </li>
+      ))}
+    </ol>
   )
 }
 

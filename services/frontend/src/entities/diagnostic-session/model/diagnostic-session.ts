@@ -61,6 +61,8 @@ export type DiagnosticResult = {
   scorePercent: number | null
   topics: TopicResult[]
   gaps: DiagnosticGap[]
+  // Topics passed on C: credited, but answered only in part.
+  weakSpots: DiagnosticGap[]
 }
 
 export type MaterialReference = {

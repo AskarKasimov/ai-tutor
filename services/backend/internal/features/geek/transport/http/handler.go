@@ -118,9 +118,11 @@ type NodeResult struct {
 // Result is the student's outcome; criteria and evidence stay in the teacher package.
 type Result struct {
 	Gaps []Gap `json:"gaps"`
-	// Предварительная оценка курса A–D по среднему баллу вершин верхнего уровня; null — ни одной такой вершины с оценкой
+	// Предварительная оценка курса A–D по среднему баллу вершин верхнего уровня (от 3,5 — A, от 2,5 — B, от 1,5 — C); null — ни одной такой вершины с оценкой
 	Grade *string      `json:"grade" enums:"A,B,C,D" extensions:"x-nullable"`
 	Nodes []NodeResult `json:"nodes"`
+	// Слабые места — темы на C: засчитаны, но ответ неполный; источники и материалы — как у пробела
+	WeakSpots []Gap `json:"weak_spots"`
 	// Средний балл вершин верхнего уровня (A=4…D=1) в процентах от 4; вершины «недостаточно данных» исключены
 	ScorePercent *int   `json:"score_percent" minimum:"0" maximum:"100" extensions:"x-nullable"`
 	SessionID    string `json:"session_id"`
@@ -412,8 +414,21 @@ func grade(g *domain.Grade) *string {
 }
 
 func toResult(r domain.Result) Result {
-	out := Result{Gaps: []Gap{}, Grade: grade(r.Grade), Nodes: []NodeResult{}, ScorePercent: r.ScorePercent, SessionID: r.SessionID}
-	for _, g := range r.Gaps {
+	out := Result{Gaps: gapDTOs(r.Gaps), Grade: grade(r.Grade), Nodes: []NodeResult{}, ScorePercent: r.ScorePercent, SessionID: r.SessionID,
+		WeakSpots: gapDTOs(r.WeakSpots)}
+	for _, n := range r.Nodes {
+		requires := n.Requires
+		if requires == nil {
+			requires = []string{}
+		}
+		out.Nodes = append(out.Nodes, NodeResult{Grade: grade(n.Grade), NodeID: n.NodeID, Requires: requires, Status: string(n.Status), Title: n.Title, TopLevel: n.TopLevel})
+	}
+	return out
+}
+
+func gapDTOs(gaps []domain.Gap) []Gap {
+	out := make([]Gap, 0, len(gaps))
+	for _, g := range gaps {
 		weeks, sources := g.Weeks, g.Sources
 		if weeks == nil {
 			weeks = []int32{}
@@ -431,15 +446,8 @@ func toResult(r domain.Result) Result {
 		if learning.Additional == nil {
 			learning.Additional = []domain.MaterialReference{}
 		}
-		out.Gaps = append(out.Gaps, Gap{NodeID: g.NodeID, Title: g.Title, Weeks: weeks,
+		out = append(out, Gap{NodeID: g.NodeID, Title: g.Title, Weeks: weeks,
 			Sources: sourceDTOs(sources), LearningMaterials: learningDTO(learning)})
-	}
-	for _, n := range r.Nodes {
-		requires := n.Requires
-		if requires == nil {
-			requires = []string{}
-		}
-		out.Nodes = append(out.Nodes, NodeResult{Grade: grade(n.Grade), NodeID: n.NodeID, Requires: requires, Status: string(n.Status), Title: n.Title, TopLevel: n.TopLevel})
 	}
 	return out
 }

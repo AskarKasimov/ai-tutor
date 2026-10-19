@@ -112,12 +112,14 @@ type Result struct {
 	ScorePercent *int
 	Nodes        []NodeResult
 	Gaps         []Gap
+	// WeakSpots are the topics on C, with the same sources as a gap.
+	WeakSpots []Gap
 }
 
 func (s Session) Result() Result {
 	e := s.Exam
 	top := e.Graph.TopLevel()
-	r := Result{SessionID: s.ID, Nodes: []NodeResult{}, Gaps: []Gap{}}
+	r := Result{SessionID: s.ID, Nodes: []NodeResult{}, Gaps: []Gap{}, WeakSpots: []Gap{}}
 	r.Grade, r.ScorePercent = e.CourseGrade()
 	for _, n := range e.Graph.Nodes {
 		state := e.Nodes[n.ID]
@@ -127,6 +129,10 @@ func (s Session) Result() Result {
 	for _, id := range e.Gaps() {
 		n, _ := e.Graph.Node(id)
 		r.Gaps = append(r.Gaps, NewGap(id, n.Title, n.Sources))
+	}
+	for _, id := range e.WeakSpots() {
+		n, _ := e.Graph.Node(id)
+		r.WeakSpots = append(r.WeakSpots, NewGap(id, n.Title, n.Sources))
 	}
 	return r
 }

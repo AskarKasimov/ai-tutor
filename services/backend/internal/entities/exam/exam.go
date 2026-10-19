@@ -437,6 +437,18 @@ func (e *Exam) Gaps() []string {
 	return out
 }
 
+// WeakSpots are the topics passed on C: credited, but answered only in part,
+// so the student sees what to strengthen besides the gaps.
+func (e *Exam) WeakSpots() []string {
+	out := []string{}
+	for _, n := range e.Graph.Nodes {
+		if g := e.Nodes[n.ID].Grade; g != nil && *g == GradeC {
+			out = append(out, n.ID)
+		}
+	}
+	return out
+}
+
 // CourseGrade grades the course by its top-level topics.
 func (e *Exam) CourseGrade() (*Grade, *int) {
 	grades := []Grade{}

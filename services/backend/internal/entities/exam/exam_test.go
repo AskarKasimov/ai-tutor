@@ -554,6 +554,28 @@ func TestCourseGradeThresholds(t *testing.T) {
 	}
 }
 
+// The course grade is not stored: a diagnostic completed under the earlier
+// thresholds is graded by the current rule when read (decision of
+// 20.10.2026). A and B on the top level were B (87%) and are A now.
+func TestCompletedSessionIsGradedByTheCurrentRule(t *testing.T) {
+	e, _ := NewExam(Graph{Nodes: []Node{{ID: "a", Title: "А"}, {ID: "b", Title: "Б"}}}, 0, nil)
+	for id, g := range map[string]Grade{"a": GradeA, "b": GradeB} {
+		e.Nodes[id].Status, e.Nodes[id].Grade = StatusIndependent, &g
+	}
+	completed := int64(1792400000)
+	stored, err := json.Marshal(Session{ID: "s", Status: SessionCompleted, CompletedAt: &completed, Exam: e})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var read Session
+	if err := json.Unmarshal(stored, &read); err != nil {
+		t.Fatal(err)
+	}
+	if r := read.Result(); r.Grade == nil || *r.Grade != GradeA || *r.ScorePercent != 87 {
+		t.Fatalf("result = %+v", r)
+	}
+}
+
 func pair() Graph {
 	return Graph{Nodes: []Node{
 		{ID: "base", Title: "База"},

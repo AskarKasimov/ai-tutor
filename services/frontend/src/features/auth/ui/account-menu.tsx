@@ -26,20 +26,8 @@ export function AccountMenu({ canLogout = true }: { canLogout?: boolean }) {
   const { user, logout } = useAuth()
   // Accounts created before the name became required fall back to email.
   const name = user?.display_name || user?.email || ''
+  // After logout the session gate sends the two-mode stand to its start page.
   const modeSelect = modeSelectUrl() !== ''
-  // On the two-mode stand the start page signs out of the other mode too.
-  // The menu may unmount once the session is gone, so the redirect follows
-  // mutateAsync rather than a mutate callback; errors show below the menu.
-  const signOut = () => {
-    if (!modeSelect) {
-      logout.mutate()
-      return
-    }
-    logout
-      .mutateAsync()
-      .then(() => openModeSelect('?logout'))
-      .catch(() => {})
-  }
   if (!canLogout)
     return (
       <div className={styles.account}>
@@ -80,7 +68,7 @@ export function AccountMenu({ canLogout = true }: { canLogout?: boolean }) {
           <DropdownMenu.Item
             color="red"
             disabled={logout.isPending}
-            onSelect={signOut}
+            onSelect={() => logout.mutate()}
           >
             <LogOut size={16} aria-hidden="true" />
             {t('auth.logout')}

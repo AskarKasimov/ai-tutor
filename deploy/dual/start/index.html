@@ -236,9 +236,15 @@
     return results;
   }
 
-  async function register(release, credentials, name) {
+  // A taken email in the first release is an existing user: registration
+  // stops instead of signing in under the old name. A taken email only in a
+  // later release is an account made there before; the same password joins it.
+  async function register(release, credentials, name, first) {
     const created = await call(release, 'register', { ...credentials, display_name: name });
     if (created.code !== 'EMAIL_ALREADY_REGISTERED') return created;
+    if (first) {
+      return { ...created, message: 'Этот email уже зарегистрирован. Войдите на вкладке «Вход».' };
+    }
     const login = await call(release, 'login', credentials);
     return login.ok ? login : { ...login, message: `${release.title}: этот email уже занят.` };
   }
@@ -328,8 +334,8 @@
     if (mode === 'register') {
       // One release at a time: a rejected registration stops before the
       // account exists in the other one.
-      for (const release of releases) {
-        const result = await register(release, credentials, name);
+      for (const [index, release] of releases.entries()) {
+        const result = await register(release, credentials, name, index === 0);
         results.push(result);
         if (!result.ok) break;
       }

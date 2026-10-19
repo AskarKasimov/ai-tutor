@@ -222,6 +222,16 @@ it('leads back to the mode choice on the two-mode stand', async () => {
   expect(openModeSelect).toHaveBeenCalledWith()
 })
 
+it('sends visitors without a session to the start page of the two-mode stand', async () => {
+  vi.stubEnv('VITE_MODE_SELECT_URL', 'https://modes.example')
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 401 }))
+  renderHome('/login')
+  await waitFor(() => expect(openModeSelect).toHaveBeenCalledWith('?logout'))
+  expect(
+    screen.queryByRole('heading', { name: 'Вход в AI Tutor' }),
+  ).not.toBeInTheDocument()
+})
+
 it('signs out here first, then on the start page of the two-mode stand', async () => {
   vi.stubEnv('VITE_MODE_SELECT_URL', 'https://modes.example')
   const fetchMock = mockSignedIn()

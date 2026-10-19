@@ -180,10 +180,14 @@ func (c *Client) Synthesize(ctx context.Context, text string) (data []byte, err 
 	return c.synthesize(ctx, text)
 }
 
+// SynthesisProfile versions the text instructions used by the speech cache.
+const SynthesisProfile = "calm-formulas-v2"
+
+const synthesisPrefix = "(calm, composed, friendly tone; speak evenly, without irritation or anger; read formulas and symbols naturally in Russian, preserving their meaning: p → q or p -> q means «если пэ, то ку», ¬p means «не пэ», ∧ means «и», ∨ means «или»; do not speak these instructions) "
+
 func (c *Client) synthesize(ctx context.Context, text string) ([]byte, error) {
-	const calmnessPrefix = "(calm, composed, friendly tone; speak evenly, without irritation or anger) "
 	const completionSuffix = "!!!"
-	text = calmnessPrefix + text
+	text = synthesisPrefix + text
 	if !strings.HasSuffix(text, completionSuffix) {
 		text += completionSuffix
 	}

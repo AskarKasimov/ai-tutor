@@ -1,7 +1,7 @@
 #!/bin/sh
 # Runs two releases side by side behind one HTTPS entry point:
 #   https://$DUAL_HOST        start page with one login for both
-#   https://learn.$DUAL_HOST  learning (DUAL_LEARN_REF, v0.0.2.2)
+#   https://learn.$DUAL_HOST  learning (DUAL_LEARN_REF, v0.0.2.3)
 #   https://exam.$DUAL_HOST   exam simulation (DUAL_EXAM_REF, latest master)
 # Each release runs from its own git worktree with its own .env, volumes and
 # network. See deploy/dual/README.md.
@@ -14,7 +14,7 @@ repo_dir=$(CDPATH= cd -- "$dual_dir/../.." && pwd)
 : "${DUAL_HTTPS_BIND:=127.0.0.1}"
 : "${DUAL_HTTPS_PORT:=443}"
 : "${DUAL_MODE:=prod}"
-: "${DUAL_LEARN_REF:=v0.0.2.2}"
+: "${DUAL_LEARN_REF:=v0.0.2.3}"
 : "${DUAL_EXAM_REF:=master}"
 : "${DUAL_WORKTREES:=$(dirname -- "$repo_dir")}"
 
@@ -27,7 +27,7 @@ Environment (defaults in brackets):
   DUAL_HTTPS_BIND  address to publish HTTPS on [127.0.0.1]; on a VM: 0.0.0.0
   DUAL_HTTPS_PORT  HTTPS port [443]
   DUAL_MODE        prod (built frontend and binary) or dev (Vite and Air) [prod]
-  DUAL_LEARN_REF   git ref of the learning release [v0.0.2.2]
+  DUAL_LEARN_REF   git ref of the learning release [v0.0.2.3]
   DUAL_EXAM_REF    git ref of the exam simulation: a tag before the show [master]
   DUAL_WORKTREES   directory for the release worktrees [parent of the repository]
   DUAL_OPEN_BROWSER=false skips opening the browser

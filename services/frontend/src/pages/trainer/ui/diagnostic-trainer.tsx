@@ -808,29 +808,24 @@ function OverallFeedbackContent({ value }: { value: OverallFeedback }) {
   const work =
     workGroups.size > 0 ? (
       <ul className={styles.summaryExplanations}>
-        {[...workGroups].map(([id, details]) => (
-          <li key={id}>
-            {groupFeedbackDetails(details).map((detail, index) => (
-              <div key={index}>
-                {detail.heading && <MarkdownContent text={detail.heading} />}
-                {detail.heading && (
-                  <p>{t('diagnostic.feedbackSkillsToImprove')}</p>
-                )}
-                {detail.items.length === 1 ? (
-                  <MarkdownContent text={detail.items[0]} />
-                ) : (
-                  <ul>
-                    {detail.items.map((text, itemIndex) => (
-                      <li key={itemIndex}>
-                        <MarkdownContent text={text} />
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            ))}
-          </li>
-        ))}
+        {[...workGroups].flatMap(([id, details]) =>
+          groupFeedbackDetails(details).map((detail, index) => (
+            <li key={`${id}:${index}`}>
+              {detail.heading && (
+                <Heading as="h4" size="3" className={styles.feedbackTopicTitle}>
+                  {detail.heading}
+                </Heading>
+              )}
+              <ul className={styles.feedbackDetails}>
+                {detail.items.map((text, itemIndex) => (
+                  <li key={itemIndex}>
+                    <MarkdownContent text={text} />
+                  </li>
+                ))}
+              </ul>
+            </li>
+          )),
+        )}
       </ul>
     ) : null
   return (

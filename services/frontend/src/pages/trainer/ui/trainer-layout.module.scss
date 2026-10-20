@@ -922,6 +922,10 @@
     display: grid;
     gap: var(--space-2);
     min-width: 0;
+    padding: var(--space-3);
+    border: 1px solid var(--gray-6);
+    border-radius: var(--radius-3);
+    background: var(--gray-2);
   }
 
   p {
@@ -931,6 +935,20 @@
   ul,
   ol {
     padding-left: var(--space-4);
+  }
+}
+.feedbackTopicTitle {
+  margin: 0;
+  color: var(--gray-12);
+}
+.feedbackDetails {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  list-style: disc;
+
+  > li {
+    min-width: 0;
   }
 }
 .feedbackGroup {

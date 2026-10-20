@@ -244,7 +244,8 @@ function server(
             taxonomy_code: 'apply',
             importance: 3,
             failed_criteria: [],
-            advice: 'Повторный совет к рекомендации.',
+            advice:
+              'Дополнительно изучить. Составляющая «1.3 Умеет различать модели», результат «Выбирает модель». Повторный совет к рекомендации.',
           },
           {
             competency_id: 'c1',
@@ -254,7 +255,8 @@ function server(
             taxonomy_code: 'apply',
             importance: 3,
             failed_criteria: [],
-            advice: 'Сравните метрики на двух задачах.',
+            advice:
+              'Дополнительно изучить. Составляющая «6.1 Описывает метрики», результат «Выбирает метрику». Сравните метрики на двух задачах.',
           },
         ],
         partial_competencies: [],
@@ -429,6 +431,23 @@ it('runs real diagnostic audio, obeys skipped basics and displays the server tot
   expect(within(work).queryByText(/К6 — Выбор модели/)).not.toBeInTheDocument()
   expect(work).toHaveTextContent('Повторный совет к рекомендации.')
   expect(work).toHaveTextContent('Сравните метрики на двух задачах.')
+  const modelTopic = within(work).getByRole('heading', {
+    name: 'Повторите тему: различать модели.',
+    level: 4,
+  }).parentElement!
+  const metricTopic = within(work).getByRole('heading', {
+    name: 'Повторите тему: Описывает метрики.',
+    level: 4,
+  }).parentElement!
+  expect(modelTopic).not.toBe(metricTopic)
+  expect(within(modelTopic).getByRole('listitem')).toHaveTextContent(
+    'Выбирает модель. Повторный совет к рекомендации.',
+  )
+  expect(within(metricTopic).getByRole('listitem')).toHaveTextContent(
+    'Выбирает метрику. Сравните метрики на двух задачах.',
+  )
+  expect(work).not.toHaveTextContent('1.3')
+  expect(work).not.toHaveTextContent('6.1')
   expect(screen.queryByText(/Критических пробелов нет/)).not.toBeInTheDocument()
   expect(
     screen.queryByRole('heading', { name: 'Рекомендации' }),

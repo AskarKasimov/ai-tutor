@@ -16,7 +16,11 @@ export function groupFeedbackDetails(details: string[]) {
             : match[1].startsWith('Вопрос пропущен')
               ? 'diagnostic.feedbackSkippedTopic'
               : 'diagnostic.feedbackReviewTopic',
-          { topic: topic.replace(/^Умеет\s+/i, '') },
+          {
+            topic: topic
+              .replace(/^\d+(?:\.\d+)*[.)]?\s+/, '')
+              .replace(/^Умеет\s+/i, ''),
+          },
         )
       : ''
     const body = match

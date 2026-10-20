@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest'
 import { AppProviders, createQueryClient } from '@/bootstrap/providers'
 import { createAppDependencies } from '@/bootstrap/dependencies'
@@ -155,17 +161,18 @@ function setup(
     created_at: 0,
   })
   configure?.(api)
+  const onBack = vi.fn()
   const { container } = render(
     <AppProviders queryClient={queryClient} dependencies={dependencies}>
       <LearningPlanEntry
         userId="u1"
         diagnosticId="d1"
         subjectName="ML"
-        onBack={() => {}}
+        onBack={onBack}
       />
     </AppProviders>,
   )
-  return { create, open, answer, container }
+  return { create, open, answer, container, onBack }
 }
 
 it('asks for the hours once and builds the plan with one click', async () => {
@@ -242,7 +249,7 @@ it('teaches the current topic in the chat and moves on after a voice answer', as
 })
 
 it('shows the finished plan with topics to review', async () => {
-  setup(
+  const { onBack, create, open } = setup(
     plan({
       status: 'completed',
       current_index: null,
@@ -252,6 +259,11 @@ it('shows the finished plan with topics to review', async () => {
   )
   expect(await screen.findByText('План пройден!')).toBeInTheDocument()
   expect(screen.getByText(/1 тему стоит повторить/)).toBeInTheDocument()
+  const done = screen.getByRole('region', { name: 'План пройден!' })
+  fireEvent.click(within(done).getByRole('button', { name: 'На главную' }))
+  expect(onBack).toHaveBeenCalledTimes(1)
+  expect(create).not.toHaveBeenCalled()
+  expect(open).not.toHaveBeenCalled()
 })
 
 it('shows theory while practice is pending and enables recording after it arrives', async () => {

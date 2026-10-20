@@ -1,7 +1,9 @@
 package csvparser
 
 import (
+	"regexp"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/competencymap"
 	"github.com/yuin/goldmark"
@@ -12,12 +14,24 @@ import (
 
 const taskBlockSeparator = "\n\n\n"
 
-// Four positional blocks: question, options, voice instruction, reference answer.
+// maxVoiceInstruction is the longest instruction TTS and the diagnostic take.
+const maxVoiceInstruction = 500
+
+// The instructions a three-block task is voiced with when its question is
+// too long to be read out.
+const (
+	optionsInstruction = "Назовите вариант ответа и кратко объясните свой выбор."
+	openInstruction    = "Ответьте на вопрос и кратко объясните ответ."
+)
+
+// Four positional blocks: question, options, voice instruction, reference
+// answer. Three blocks leave the instruction out: the question is voiced as
+// on the screen, or a standard instruction when it is longer than TTS takes.
 // Two blank lines are reserved for the separator, including inside code blocks.
 func parseMLTask(raw string) (competencymap.Task, bool) {
 	var task competencymap.Task
-	blocks := strings.Split(strings.TrimSpace(strings.ReplaceAll(raw, "\r\n", "\n")), taskBlockSeparator)
-	if len(blocks) != 4 {
+	blocks := splitTaskBlocks(raw)
+	if len(blocks) != 3 && len(blocks) != 4 {
 		return task, false
 	}
 	for i := range blocks {
@@ -26,12 +40,57 @@ func parseMLTask(raw string) (competencymap.Task, bool) {
 			return task, false
 		}
 	}
-	options, ok := parseMarkdownOptions(blocks[1])
+	options, ok := parseTaskOptions(blocks[1])
 	if !ok {
 		return task, false
 	}
-	task.Question, task.Options, task.VoiceInstruction, task.ReferenceAnswer = blocks[0], options, blocks[2], blocks[3]
+	task.Question, task.Options, task.ReferenceAnswer = blocks[0], options, blocks[len(blocks)-1]
+	if len(blocks) == 4 {
+		task.VoiceInstruction = blocks[2]
+	} else {
+		task.VoiceInstruction = spokenQuestion(task.Question, len(options) > 0)
+	}
 	return task, true
+}
+
+func splitTaskBlocks(raw string) []string {
+	return strings.Split(strings.TrimSpace(strings.ReplaceAll(raw, "\r\n", "\n")), taskBlockSeparator)
+}
+
+// spokenQuestion is the instruction of a task without one: the question
+// itself, or a standard instruction when TTS cannot take the question.
+func spokenQuestion(question string, withOptions bool) string {
+	if utf8.RuneCountInString(question) <= maxVoiceInstruction {
+		return question
+	}
+	if withOptions {
+		return optionsInstruction
+	}
+	return openInstruction
+}
+
+// letterOption is a line of a lettered option list: «A. …», «b) …», «Б. …».
+var letterOption = regexp.MustCompile(`^[A-Za-zА-ЯЁа-яё][.)][ \t]+(\S.*)$`)
+
+// parseTaskOptions reads a Markdown list or, failing that, options written
+// one per line after a Latin or Cyrillic letter.
+func parseTaskOptions(raw string) ([]string, bool) {
+	if options, ok := parseMarkdownOptions(raw); ok {
+		return options, true
+	}
+	return parseLetterOptions(raw)
+}
+
+func parseLetterOptions(raw string) ([]string, bool) {
+	var options []string
+	for _, line := range strings.Split(raw, "\n") {
+		match := letterOption.FindStringSubmatch(strings.TrimSpace(line))
+		if match == nil {
+			return nil, false
+		}
+		options = append(options, strings.TrimSpace(match[1]))
+	}
+	return options, len(options) > 0
 }
 
 // Goldmark determines list item boundaries. Slice the original source rather
@@ -90,8 +149,8 @@ func parseMarkdownOptions(raw string) ([]string, bool) {
 
 // taskFragmentCode explains why a nonempty cell was not imported as a task.
 func taskFragmentCode(raw string) string {
-	blocks := strings.Split(strings.TrimSpace(strings.ReplaceAll(raw, "\r\n", "\n")), taskBlockSeparator)
-	if len(blocks) != 4 {
+	blocks := splitTaskBlocks(raw)
+	if len(blocks) != 3 && len(blocks) != 4 {
 		return "TASK_INVALID_BLOCK_COUNT"
 	}
 	for _, block := range blocks {
@@ -99,7 +158,7 @@ func taskFragmentCode(raw string) string {
 			return "TASK_EMPTY_PART"
 		}
 	}
-	if _, ok := parseMarkdownOptions(strings.TrimSpace(blocks[1])); !ok {
+	if _, ok := parseTaskOptions(strings.TrimSpace(blocks[1])); !ok {
 		return "TASK_INVALID_OPTIONS"
 	}
 	return "TASK_CELL_FRAGMENT"

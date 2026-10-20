@@ -76,6 +76,12 @@ if (-not $yes) {
 # Containers hold their volumes; stop the whole stand first.
 & (Join-Path $PSScriptRoot 'windows-dual.ps1') down
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+# A release started from other worktrees is not stopped by down; its
+# containers are found by the project name.
+foreach ($project in $projects) {
+    $ids = @(docker ps -aq --filter "label=com.docker.compose.project=$project")
+    if ($ids.Count -gt 0) { docker rm -f @ids | Out-Null }
+}
 docker volume rm @volumes
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 Write-Output 'Deleted. Start the stand again with: .\deploy\windows-dual.ps1 up'

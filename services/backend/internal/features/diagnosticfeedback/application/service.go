@@ -17,7 +17,7 @@ type Service struct {
 	now         func() time.Time
 }
 
-const analysisVersion = 3
+const analysisVersion = 4
 
 func New(reader ResultReader, synthesizer FeedbackSynthesizer, store FeedbackStore, now func() time.Time) *Service {
 	if now == nil {
@@ -59,8 +59,11 @@ func (s *Service) GetFeedback(ctx context.Context, ownerID, sessionID string) (d
 
 	report := AnalyzeResult(result)
 
-	summary, err := s.synthesizer.Synthesize(ctx, report)
+	written, err := s.synthesizer.Synthesize(ctx, report)
 	if err != nil {
+		return diagnostic.OverallFeedback{}, err
+	}
+	if err := applyWrittenFeedback(&report, written); err != nil {
 		return diagnostic.OverallFeedback{}, err
 	}
 
@@ -70,7 +73,7 @@ func (s *Service) GetFeedback(ctx context.Context, ownerID, sessionID string) (d
 		DiagnosticScore:         report.DiagnosticScore,
 		MaximumScore:            report.MaximumScore,
 		ScorePercentage:         report.ScorePercentage,
-		Summary:                 summary,
+		Summary:                 written.Summary,
 		Strengths:               report.Strengths,
 		ConfirmedGaps:           report.ConfirmedGaps,
 		PartialCompetencies:     report.PartialCompetencies,

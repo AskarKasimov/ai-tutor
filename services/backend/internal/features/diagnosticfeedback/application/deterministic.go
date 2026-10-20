@@ -17,6 +17,21 @@ type DeterministicReport struct {
 	PartialCompetencies     []diagnostic.PartialCompetency
 	UnverifiedCompetencies  []diagnostic.SkippedCompetency
 	TrainingRecommendations []diagnostic.TrainingRecommendation
+	Evidence                []FeedbackEvidence
+}
+
+// Evidence ties each piece of model-written prose to a deterministic finding.
+type FeedbackEvidence struct {
+	ID           string                       `json:"id"`
+	Topic        string                       `json:"topic"`
+	Outcome      string                       `json:"outcome"`
+	Observations []string                     `json:"observations"`
+	Criteria     []diagnostic.CriterionResult `json:"criteria"`
+	FullStudy    bool                         `json:"full_study"`
+	Skipped      bool                         `json:"skipped"`
+	Prefix       string                       `json:"-"`
+	CompetencyID string                       `json:"-"`
+	OutcomeID    string                       `json:"-"`
 }
 
 var bloomOrder = map[string]int{

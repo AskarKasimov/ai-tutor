@@ -751,18 +751,15 @@ type OverallFeedback = NonNullable<
   ReturnType<typeof useDiagnosticFeedbackQuery>['data']
 >
 
-// The model summary splits into a general paragraph, "what is good" and "what
-// to work on". Cards are filled from the report when the model leaves a part
-// out and are hidden when there is nothing to say: no invented praise.
+// The backend stores model-written prose for the summary and every confirmed
+// finding. Empty cards stay hidden; topic grouping belongs to presentation.
 function OverallFeedbackContent({ value }: { value: OverallFeedback }) {
   const { t } = useTranslation()
-  // The model writes only the general paragraph; headings of older texts
-  // are cut off.
+  // Keep older summaries with embedded card headings readable.
   const generalText =
     parseStructuredSummary(value.summary || '').generalText ||
     normalizeText(value.summary || '')
-  // The cards come only from the stored per-answer reviews: no invented
-  // praise. An empty card is not shown.
+  // The backend validates model prose against deterministic diagnostic findings.
   const priority = new Map(
     value.training_recommendations.map((item) => [
       item.outcome_id,

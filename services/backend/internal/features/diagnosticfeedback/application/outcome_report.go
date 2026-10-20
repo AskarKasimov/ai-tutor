@@ -27,7 +27,19 @@ func AnalyzeResult(result diagnostic.Result) DeterministicReport {
 	for _, finding := range diagnostic.OutcomeFindings(result.Answers) {
 		a := finding.Answer
 		label := outcomeLabel(a.Task)
+		evidence := FeedbackEvidence{Topic: a.Task.ConstituentName, Outcome: a.Task.OutcomeName,
+			FullStudy: finding.FullStudy, Skipped: a.Skipped, CompetencyID: a.CompetencyID,
+			OutcomeID: a.Task.OutcomeID, Observations: []string{}, Criteria: a.CriterionResults}
+		if evidence.OutcomeID == "" {
+			evidence.OutcomeID = a.OutcomeID
+		}
+		// The third feedback sentence is a task action, not evidence of learning.
+		if !a.Skipped {
+			evidence.Observations = append(evidence.Observations, a.Feedback[:min(2, len(a.Feedback))]...)
+		}
 		if finding.Mastered {
+			evidence.ID = fmt.Sprintf("strength:%d", len(report.Strengths))
+			report.Evidence = append(report.Evidence, evidence)
 			report.Strengths = append(report.Strengths, label+": продемонстрированы хорошие знания по проверенному заданию.")
 			continue
 		}
@@ -39,6 +51,15 @@ func AnalyzeResult(result diagnostic.Result) DeterministicReport {
 		}
 		if a.Skipped {
 			advice = "Вопрос пропущен: необходимо проверить и отработать результат. " + label + "."
+		}
+		if strings.TrimSpace(a.Task.ConstituentName) != "" {
+			evidence.Prefix = "Дополнительно изучить. Составляющая «" + a.Task.ConstituentName + "», "
+			if finding.FullStudy {
+				evidence.Prefix = "Необходимо изучить полностью составляющую «" + a.Task.ConstituentName + "». "
+			}
+			if a.Skipped {
+				evidence.Prefix = "Вопрос пропущен: необходимо проверить и отработать результат. Составляющая «" + a.Task.ConstituentName + "», "
+			}
 		}
 		failed := []string{}
 		for _, cr := range a.CriterionResults {
@@ -53,14 +74,17 @@ func AnalyzeResult(result diagnostic.Result) DeterministicReport {
 		// Keep the existing wire shape: partial main answers use details;
 		// zero answers use gaps. Both carry an explicit result and constituent.
 		if a.Role == "main" && a.Score == 1 && !a.Skipped {
+			evidence.ID = fmt.Sprintf("partial:%d", len(report.PartialCompetencies))
 			report.PartialCompetencies = append(report.PartialCompetencies, diagnostic.PartialCompetency{
 				CompetencyID: a.CompetencyID, CompetencyName: a.Task.CompetencyName, Details: advice})
 		} else {
+			evidence.ID = fmt.Sprintf("gap:%d", len(report.ConfirmedGaps))
 			report.ConfirmedGaps = append(report.ConfirmedGaps, diagnostic.ConfirmedGap{
 				CompetencyID: a.CompetencyID, CompetencyName: a.Task.CompetencyName, OutcomeID: id,
 				OutcomeName: a.Task.OutcomeName, TaxonomyCode: a.Task.TaxonomyCode, Importance: a.Task.Importance,
 				FailedCriteria: failed, Advice: advice})
 		}
+		report.Evidence = append(report.Evidence, evidence)
 		report.TrainingRecommendations = append(report.TrainingRecommendations, diagnostic.TrainingRecommendation{
 			CompetencyID: a.CompetencyID, CompetencyName: a.Task.CompetencyName,
 			OutcomeID: id, OutcomeName: a.Task.OutcomeName, Rationale: advice})

@@ -65,7 +65,21 @@ func serveFixtureCompletion(t *testing.T, w http.ResponseWriter, r *http.Request
 	case strings.Contains(system, "last_attempt"), strings.Contains(system, "Проверь устный ответ на ТЕКУЩИЙ"):
 		result = map[string]any{"correct": true, "feedback": "Вы правильно объяснили пример.", "question": ""}
 	case strings.Contains(system, "summary"):
-		result = map[string]any{"summary": "Вы освоили основные темы. Закрепите их на практике."}
+		var payload struct {
+			Evidence []struct {
+				ID string `json:"id"`
+			} `json:"evidence"`
+		}
+		if err := json.Unmarshal([]byte(request.Messages[1].Content), &payload); err != nil {
+			t.Error(err)
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		details := make([]map[string]string, 0, len(payload.Evidence))
+		for _, e := range payload.Evidence {
+			details = append(details, map[string]string{"id": e.ID, "text": "Разберите признаки задачи и связь с целевой переменной."})
+		}
+		result = map[string]any{"summary": "Вы освоили основные темы. Закрепите их на практике.", "details": details}
 	case strings.Contains(system, "Ты создаёшь одно учебное задание"):
 		result = map[string]any{"question": "Новое задание", "options": []string{}, "voice_instruction": "Ответьте.", "reference_answer": "Ответ", "criteria": ""}
 	case strings.Contains(system, "criterion_results"):

@@ -245,7 +245,7 @@ function server(
             importance: 3,
             failed_criteria: [],
             advice:
-              'Дополнительно изучить. Составляющая «1.3 Умеет различать модели», результат «Выбирает модель». Повторный совет к рекомендации.',
+              'Дополнительно изучить. Составляющая «1.3 Умеет различать модели», Вы пока путаете тип модели и тип задачи. Повторите различие классификации и регрессии.',
           },
           {
             competency_id: 'c1',
@@ -256,7 +256,7 @@ function server(
             importance: 3,
             failed_criteria: [],
             advice:
-              'Дополнительно изучить. Составляющая «6.1 Описывает метрики», результат «Выбирает метрику». Сравните метрики на двух задачах.',
+              'Дополнительно изучить. Составляющая «6.1 Описывает метрики», Вы пока не связываете метрику с целью задачи. Сравните метрики на двух задачах.',
           },
         ],
         partial_competencies: [],
@@ -429,7 +429,9 @@ it('runs real diagnostic audio, obeys skipped basics and displays the server tot
     .getByRole('heading', { name: 'Что доработать' })
     .closest('section')!
   expect(within(work).queryByText(/К6 — Выбор модели/)).not.toBeInTheDocument()
-  expect(work).toHaveTextContent('Повторный совет к рекомендации.')
+  expect(work).toHaveTextContent(
+    'Повторите различие классификации и регрессии.',
+  )
   expect(work).toHaveTextContent('Сравните метрики на двух задачах.')
   const modelTopic = within(work).getByRole('heading', {
     name: 'Повторите тему: различать модели.',
@@ -441,10 +443,10 @@ it('runs real diagnostic audio, obeys skipped basics and displays the server tot
   }).parentElement!
   expect(modelTopic).not.toBe(metricTopic)
   expect(within(modelTopic).getByRole('listitem')).toHaveTextContent(
-    'Выбирает модель. Повторный совет к рекомендации.',
+    'Вы пока путаете тип модели и тип задачи. Повторите различие классификации и регрессии.',
   )
   expect(within(metricTopic).getByRole('listitem')).toHaveTextContent(
-    'Выбирает метрику. Сравните метрики на двух задачах.',
+    'Вы пока не связываете метрику с целью задачи. Сравните метрики на двух задачах.',
   )
   expect(work).not.toHaveTextContent('1.3')
   expect(work).not.toHaveTextContent('6.1')

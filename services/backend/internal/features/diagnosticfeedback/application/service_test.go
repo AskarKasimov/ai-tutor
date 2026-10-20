@@ -28,11 +28,15 @@ type mockSynthesizer struct {
 	err     error
 }
 
-func (m *mockSynthesizer) Synthesize(ctx context.Context, report DeterministicReport) (string, error) {
+func (m *mockSynthesizer) Synthesize(ctx context.Context, report DeterministicReport) (WrittenFeedback, error) {
 	if m.err != nil {
-		return "", m.err
+		return WrittenFeedback{}, m.err
 	}
-	return m.summary, nil
+	written := WrittenFeedback{Summary: m.summary, Details: []WrittenDetail{}}
+	for _, evidence := range report.Evidence {
+		written.Details = append(written.Details, WrittenDetail{ID: evidence.ID, Text: "Вы разобрались с проверенной темой."})
+	}
+	return written, nil
 }
 
 func (m *mockSynthesizer) SynthesizeAnswers(ctx context.Context, report SessionFeedbackReport) (string, error) {

@@ -178,12 +178,22 @@ function Initialize-Worktree([string]$name) {
     # Mode choice in the profile menu and logout through the start page.
     Set-EnvValue $envFile VITE_MODE_SELECT_URL $DualOrigin
 
-    $gatewayConfig = "$tree\services\llm-gateway\config.json"
-    if ((Test-Path "$tree\services\llm-gateway\config.example.json") -and -not (Test-Path $gatewayConfig)) {
-        if (Test-Path "$repoDir\services\llm-gateway\config.json") {
-            Copy-Item "$repoDir\services\llm-gateway\config.json" $gatewayConfig
-        } else {
-            Copy-Item "$tree\services\llm-gateway\config.example.json" $gatewayConfig
+    # The gateway's models and tokens are not in git: the release takes them
+    # from the main checkout. Without them every model call fails, so stop;
+    # a copy of the example left by an earlier run is replaced.
+    $gatewayDir = "$tree\services\llm-gateway"
+    if (Test-Path "$gatewayDir\config.example.json") {
+        if ((Test-Path "$gatewayDir\config.json") -and
+            ((Get-FileHash "$gatewayDir\config.json").Hash -eq (Get-FileHash "$gatewayDir\config.example.json").Hash)) {
+            Remove-Item -Force "$gatewayDir\config.json"
+        }
+        if (-not (Test-Path "$gatewayDir\config.json") -and (Test-Path "$repoDir\services\llm-gateway\config.json")) {
+            Copy-Item "$repoDir\services\llm-gateway\config.json" "$gatewayDir\config.json"
+        }
+        if (-not (Test-Path "$gatewayDir\config.json") -or
+            ((Get-FileHash "$gatewayDir\config.json").Hash -eq (Get-FileHash "$gatewayDir\config.example.json").Hash)) {
+            Remove-Item -Force -ErrorAction SilentlyContinue "$gatewayDir\config.json"
+            Fail "No gateway models: put config.json with the models and their tokens into $repoDir\services\llm-gateway\config.json and run up again."
         }
     }
 

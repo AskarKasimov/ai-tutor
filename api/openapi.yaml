@@ -779,7 +779,20 @@ components:
           type: string
         outcome_name:
           type: string
+        study_scope:
+          enum:
+            - review
+            - full
+            - skipped
+          type: string
         taxonomy_code:
+          type: string
+        topic:
+          description: |-
+            Topic is the constituent the advice is written for; findings with the
+            same topic_id share one text.
+          type: string
+        topic_id:
           type: string
       required:
         - advice
@@ -789,7 +802,10 @@ components:
         - importance
         - outcome_id
         - outcome_name
+        - study_scope
         - taxonomy_code
+        - topic
+        - topic_id
       type: object
     http.OverallFeedbackResponse:
       additionalProperties: false
@@ -857,10 +873,23 @@ components:
           type: string
         details:
           type: string
+        study_scope:
+          enum:
+            - review
+            - full
+            - skipped
+          type: string
+        topic:
+          type: string
+        topic_id:
+          type: string
       required:
         - competency_id
         - competency_name
         - details
+        - study_scope
+        - topic
+        - topic_id
       type: object
     http.TrainingRecommendationResponse:
       additionalProperties: false

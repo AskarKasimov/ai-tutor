@@ -12,12 +12,30 @@ type DeterministicReport struct {
 	DiagnosticScore         int
 	MaximumScore            int
 	ScorePercentage         int
+	Summary                 string
 	Strengths               []string
 	ConfirmedGaps           []diagnostic.ConfirmedGap
 	PartialCompetencies     []diagnostic.PartialCompetency
 	UnverifiedCompetencies  []diagnostic.SkippedCompetency
 	TrainingRecommendations []diagnostic.TrainingRecommendation
+	Evidence                []FeedbackEvidence
 }
+
+// Evidence ties each piece of model-written prose to a deterministic finding:
+// a mastered outcome (strength:N) or a topic with gaps (topic:N).
+type FeedbackEvidence struct {
+	ID                 string   `json:"id"`
+	Topic              string   `json:"topic"`
+	Outcomes           []string `json:"outcomes"`
+	EducationalContent []string `json:"educational_content,omitempty"`
+	Observations       []string `json:"observations"`
+	FailedCriteria     []string `json:"failed_criteria,omitempty"`
+	FullStudy          bool     `json:"full_study"`
+	Skipped            bool     `json:"skipped"`
+	targets            []outcomeRef
+}
+
+type outcomeRef struct{ competencyID, outcomeID string }
 
 var bloomOrder = map[string]int{
 	"knowledge":     1,

@@ -274,7 +274,7 @@ func (s *Service) answerRequest(ctx context.Context, ownerID, sessionID, taskID,
 			Task: *current, TranscriptionID: id, Text: "Я не знаю. Пропустить",
 			GraderMaxScore: maxScore, Verdict: "incorrect",
 			CriterionResults: []diagnostic.CriterionResult{{Key: "skipped", Satisfied: false, Explanation: "Вопрос пропущен."}},
-			Feedback:         []string{"Вопрос пропущен.", "Ответ оценён в 0 баллов.", "Продолжите со следующим вопросом."},
+			Feedback:         []string{"Вопрос пропущен.", "Ответ оценён в 0 баллов.", "Проверка этого результата не выполнена."},
 			CreatedAt:        s.now().Unix(),
 		}
 		return s.store.Accept(ctx, ownerID, sessionID, token, key, fingerprint, answer, nextTransition(value, answer))

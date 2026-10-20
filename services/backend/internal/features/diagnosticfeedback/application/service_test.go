@@ -28,11 +28,15 @@ type mockSynthesizer struct {
 	err     error
 }
 
-func (m *mockSynthesizer) Synthesize(ctx context.Context, report DeterministicReport) (string, error) {
+func (m *mockSynthesizer) Synthesize(ctx context.Context, report DeterministicReport) (WrittenFeedback, error) {
 	if m.err != nil {
-		return "", m.err
+		return WrittenFeedback{}, m.err
 	}
-	return m.summary, nil
+	written := WrittenFeedback{Summary: m.summary, Details: []WrittenDetail{}}
+	for _, evidence := range report.Evidence {
+		written.Details = append(written.Details, WrittenDetail{ID: evidence.ID, Text: "Вы разобрались с проверенной темой."})
+	}
+	return written, nil
 }
 
 func (m *mockSynthesizer) SynthesizeAnswers(ctx context.Context, report SessionFeedbackReport) (string, error) {
@@ -369,5 +373,102 @@ func TestAnalyzeAnswersFormatting(t *testing.T) {
 
 	if len(report.Recommendations) != 3 {
 		t.Fatalf("Recommendations count = %d, want 3", len(report.Recommendations))
+	}
+}
+
+type scriptedSynthesizer struct {
+	replies []WrittenFeedback
+	errs    []error
+	calls   int
+}
+
+func (s *scriptedSynthesizer) Synthesize(context.Context, DeterministicReport) (WrittenFeedback, error) {
+	i := s.calls
+	s.calls++
+	if i < len(s.errs) && s.errs[i] != nil {
+		return WrittenFeedback{}, s.errs[i]
+	}
+	if i < len(s.replies) {
+		return s.replies[i], nil
+	}
+	return WrittenFeedback{}, fault.New(fault.Upstream, "INVALID_MODEL_RESPONSE", "test")
+}
+
+func (s *scriptedSynthesizer) SynthesizeAnswers(context.Context, SessionFeedbackReport) (string, error) {
+	return "", nil
+}
+
+func gapResult() diagnostic.Result {
+	return diagnostic.Result{SessionID: "s", Answers: []diagnostic.Answer{{CompetencyID: "c", Role: "basic", Score: 0,
+		Task: diagnostic.TaskSnapshot{OutcomeID: "o", OutcomeName: "Различает типы задач", ConstituentName: "Постановка задачи"}}}}
+}
+
+func TestFeedbackRetriesOnceAndKeepsFallbackText(t *testing.T) {
+	synth := &scriptedSynthesizer{replies: []WrittenFeedback{
+		{Summary: "Итог.", Details: []WrittenDetail{{ID: "topic:0", Text: "Повторите типы задач."}}},
+		{Summary: "Итог после повтора.", Details: []WrittenDetail{{ID: "topic:0", Text: "Что такое регрессия?"}}},
+	}}
+	got, err := New(&mockReader{result: gapResult()}, synth, nil, nil).GetFeedback(t.Context(), "u", "s")
+	if err != nil || synth.calls != 2 {
+		t.Fatalf("calls=%d err=%v", synth.calls, err)
+	}
+	if got.Summary != "Итог после повтора." || got.ConfirmedGaps[0].Advice != fallbackTopicText("Постановка задачи", StudyReview) ||
+		got.ConfirmedGaps[0].Topic != "Постановка задачи" || got.ConfirmedGaps[0].StudyScope != StudyReview {
+		t.Fatalf("feedback: %+v", got)
+	}
+}
+
+func TestFeedbackRetriesABrokenResponseButNotAnOutage(t *testing.T) {
+	synth := &scriptedSynthesizer{errs: []error{fault.New(fault.Upstream, "INVALID_MODEL_RESPONSE", "broken")},
+		replies: []WrittenFeedback{{}, {Summary: "Итог.", Details: []WrittenDetail{{ID: "topic:0", Text: "Полезно повторить типы задач."}}}}}
+	got, err := New(&mockReader{result: gapResult()}, synth, nil, nil).GetFeedback(t.Context(), "u", "s")
+	if err != nil || got.ConfirmedGaps[0].Advice != "Полезно повторить типы задач." {
+		t.Fatalf("broken response not retried: %+v %v", got, err)
+	}
+	outage := &scriptedSynthesizer{errs: []error{fault.New(fault.Unavailable, "MODEL_UNAVAILABLE", "down")}}
+	if _, err := New(&mockReader{result: gapResult()}, outage, nil, nil).GetFeedback(t.Context(), "u", "s"); err == nil || outage.calls != 1 {
+		t.Fatalf("outage retried or hidden: calls=%d err=%v", outage.calls, err)
+	}
+	empty := &scriptedSynthesizer{}
+	if _, err := New(&mockReader{result: gapResult()}, empty, nil, nil).GetFeedback(t.Context(), "u", "s"); err == nil || empty.calls != 2 {
+		t.Fatalf("missing summary accepted: calls=%d err=%v", empty.calls, err)
+	}
+}
+
+// Requests the old word list missed must be retried and then replaced by the
+// fallback text, not stored as advice.
+func TestFeedbackRejectsCommonRequests(t *testing.T) {
+	for _, text := range []string{
+		"Поясните выбор метрики.",
+		"Рассмотрите пример классификации.",
+		"Объясни выбор метрики.",
+		"Вам нужно сначала объяснить выбор.",
+	} {
+		t.Run(text, func(t *testing.T) {
+			reply := WrittenFeedback{Summary: "Итог.", Details: []WrittenDetail{{ID: "topic:0", Text: text}}}
+			synth := &scriptedSynthesizer{replies: []WrittenFeedback{reply, reply}}
+			got, err := New(&mockReader{result: gapResult()}, synth, nil, nil).GetFeedback(t.Context(), "u", "s")
+			if err != nil || synth.calls != 2 || got.ConfirmedGaps[0].Advice != fallbackTopicText("Постановка задачи", StudyReview) {
+				t.Fatalf("request kept as advice: calls=%d %+v %v", synth.calls, got.ConfirmedGaps, err)
+			}
+		})
+	}
+}
+
+// Without usable prose each mastered outcome stays recognisable.
+func TestFallbackStrengthsKeepTheCheckedOutcome(t *testing.T) {
+	task := func(id, name string) diagnostic.TaskSnapshot {
+		return diagnostic.TaskSnapshot{OutcomeID: id, OutcomeName: name, ConstituentID: "p", ConstituentName: "Постановка задачи"}
+	}
+	result := diagnostic.Result{SessionID: "s", Answers: []diagnostic.Answer{
+		{CompetencyID: "c", Role: "basic", Score: 1, Task: task("b1", "Различает классификацию и регрессию")},
+		{CompetencyID: "c", Role: "basic", Score: 1, Task: task("b2", "Определяет целевую переменную")},
+	}}
+	synth := &scriptedSynthesizer{replies: []WrittenFeedback{{Summary: "Итог."}, {Summary: "Итог."}}}
+	got, err := New(&mockReader{result: result}, synth, nil, nil).GetFeedback(t.Context(), "u", "s")
+	if err != nil || len(got.Strengths) != 2 || got.Strengths[0] == got.Strengths[1] ||
+		!strings.Contains(got.Strengths[0], "«Различает классификацию и регрессию»") ||
+		!strings.Contains(got.Strengths[1], "«Определяет целевую переменную»") {
+		t.Fatalf("strengths: %q %v", got.Strengths, err)
 	}
 }

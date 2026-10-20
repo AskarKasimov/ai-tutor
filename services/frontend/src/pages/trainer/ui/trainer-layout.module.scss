@@ -911,6 +911,42 @@
     gap: 6px;
   }
 }
+.summaryExplanations {
+  display: grid;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+
+  > li {
+    display: grid;
+    gap: var(--space-2);
+    min-width: 0;
+  }
+
+  p {
+    margin-block: 0;
+  }
+
+  ul,
+  ol {
+    padding-left: var(--space-4);
+  }
+}
+.feedbackTopicTitle {
+  margin: 0;
+  color: var(--gray-12);
+}
+.feedbackDetails {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  list-style: disc;
+
+  > li {
+    min-width: 0;
+  }
+}
 .feedbackGroup {
   display: grid;
   gap: 8px;

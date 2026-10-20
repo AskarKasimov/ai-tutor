@@ -25,8 +25,12 @@ func (s *stubReader) Result(_ context.Context, _, _ string) (diagnostic.Result, 
 
 type stubSynthesizer struct{}
 
-func (s *stubSynthesizer) Synthesize(_ context.Context, _ application.DeterministicReport) (string, error) {
-	return "Тестовое резюме.", nil
+func (s *stubSynthesizer) Synthesize(_ context.Context, report application.DeterministicReport) (application.WrittenFeedback, error) {
+	written := application.WrittenFeedback{Summary: "Тестовое резюме.", Details: []application.WrittenDetail{}}
+	for _, e := range report.Evidence {
+		written.Details = append(written.Details, application.WrittenDetail{ID: e.ID, Text: "Вы понимаете различия проверенных моделей."})
+	}
+	return written, nil
 }
 
 func (s *stubSynthesizer) SynthesizeAnswers(_ context.Context, _ application.SessionFeedbackReport) (string, error) {

@@ -11,8 +11,18 @@ type ResultReader interface {
 }
 
 type FeedbackSynthesizer interface {
-	Synthesize(ctx context.Context, report DeterministicReport) (string, error)
+	Synthesize(ctx context.Context, report DeterministicReport) (WrittenFeedback, error)
 	SynthesizeAnswers(ctx context.Context, report SessionFeedbackReport) (string, error)
+}
+
+type WrittenFeedback struct {
+	Summary string          `json:"summary"`
+	Details []WrittenDetail `json:"details"`
+}
+
+type WrittenDetail struct {
+	ID   string `json:"id"`
+	Text string `json:"text"`
 }
 
 // FeedbackStore keeps the overall feedback of a diagnostic once it is

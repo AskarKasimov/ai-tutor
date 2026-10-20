@@ -2,6 +2,7 @@ package application
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"time"
 
@@ -17,7 +18,7 @@ type Service struct {
 	now         func() time.Time
 }
 
-const analysisVersion = 2
+const analysisVersion = 7
 
 func New(reader ResultReader, synthesizer FeedbackSynthesizer, store FeedbackStore, now func() time.Time) *Service {
 	if now == nil {
@@ -59,9 +60,20 @@ func (s *Service) GetFeedback(ctx context.Context, ownerID, sessionID string) (d
 
 	report := AnalyzeResult(result)
 
-	summary, err := s.synthesizer.Synthesize(ctx, report)
-	if err != nil {
+	written, err := s.synthesizer.Synthesize(ctx, report)
+	var invalid *fault.Error
+	if err != nil && !(errors.As(err, &invalid) && invalid.Code == "INVALID_MODEL_RESPONSE") {
 		return diagnostic.OverallFeedback{}, err
+	}
+	// One more attempt when the model broke the format, left something out or
+	// wrote a task; what is still missing keeps the text built from the map.
+	if err != nil || !applyWrittenFeedback(&report, written) {
+		if retry, err := s.synthesizer.Synthesize(ctx, report); err == nil {
+			applyWrittenFeedback(&report, retry)
+		}
+	}
+	if report.Summary == "" {
+		return diagnostic.OverallFeedback{}, fault.New(fault.Upstream, "INVALID_MODEL_RESPONSE", "Модель не сформировала полный разбор диагностики. Попробуйте ещё раз.")
 	}
 
 	feedback := diagnostic.OverallFeedback{
@@ -70,7 +82,7 @@ func (s *Service) GetFeedback(ctx context.Context, ownerID, sessionID string) (d
 		DiagnosticScore:         report.DiagnosticScore,
 		MaximumScore:            report.MaximumScore,
 		ScorePercentage:         report.ScorePercentage,
-		Summary:                 summary,
+		Summary:                 report.Summary,
 		Strengths:               report.Strengths,
 		ConfirmedGaps:           report.ConfirmedGaps,
 		PartialCompetencies:     report.PartialCompetencies,

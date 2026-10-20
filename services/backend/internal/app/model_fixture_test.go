@@ -65,7 +65,21 @@ func serveFixtureCompletion(t *testing.T, w http.ResponseWriter, r *http.Request
 	case strings.Contains(system, "last_attempt"), strings.Contains(system, "Проверь устный ответ на ТЕКУЩИЙ"):
 		result = map[string]any{"correct": true, "feedback": "Вы правильно объяснили пример.", "question": ""}
 	case strings.Contains(system, "summary"):
-		result = map[string]any{"summary": "Вы освоили основные темы. Закрепите их на практике."}
+		var payload struct {
+			Evidence []struct {
+				ID string `json:"id"`
+			} `json:"evidence"`
+		}
+		if err := json.Unmarshal([]byte(request.Messages[1].Content), &payload); err != nil {
+			t.Error(err)
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		details := make([]map[string]string, 0, len(payload.Evidence))
+		for _, e := range payload.Evidence {
+			details = append(details, map[string]string{"id": e.ID, "text": "Полезно повторить признаки задачи и их связь с целевой переменной."})
+		}
+		result = map[string]any{"summary": "Вы освоили основные темы. Их полезно закрепить на практике.", "details": details}
 	case strings.Contains(system, "Ты создаёшь одно учебное задание"):
 		result = map[string]any{"question": "Новое задание", "options": []string{}, "voice_instruction": "Ответьте.", "reference_answer": "Ответ", "criteria": ""}
 	case strings.Contains(system, "criterion_results"):
@@ -84,7 +98,7 @@ func serveFixtureCompletion(t *testing.T, w http.ResponseWriter, r *http.Request
 		for _, criterion := range payload.Criteria {
 			criteria = append(criteria, map[string]any{"key": criterion.Key, "satisfied": true, "explanation": "Критерий выполнен."})
 		}
-		result = map[string]any{"score": payload.MaxScore, "verdict": "correct", "criterion_results": criteria, "feedback": []string{"Ответ верный.", "Критерии выполнены.", "Закрепите тему."}}
+		result = map[string]any{"score": payload.MaxScore, "verdict": "correct", "criterion_results": criteria, "feedback": []string{"Ответ верный.", "Критерии выполнены.", "Полезно повторение темы."}}
 	default:
 		t.Errorf("unexpected completion prompt: %s", system)
 		w.WriteHeader(http.StatusBadRequest)

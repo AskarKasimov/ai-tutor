@@ -69,7 +69,7 @@ func validEvaluation() Evaluation {
 			{Key: "answer_correctness", Satisfied: true, Explanation: "Ответ соответствует эталону."},
 			{Key: "instruction_following", Satisfied: true, Explanation: "Тип назван и выбор объяснён."},
 		},
-		Feedback: []string{"Верно.", "Оба критерия выполнены.", "Закрепите тему."},
+		Feedback: []string{"Верно.", "Оба критерия выполнены.", "Полезно повторение темы."},
 	}
 }
 func TestTrustedTrainingSnapshotUsesTwoPointScale(t *testing.T) {
@@ -301,15 +301,15 @@ func TestEvaluateVariantFeedbackTotalLength(t *testing.T) {
 		feedback  []string
 		shortened bool
 	}{
-		{name: "brief feedback", feedback: []string{"Названы два класса.", "Но тип задачи не указан.", "Добавьте слово «классификация»."}},
+		{name: "brief feedback", feedback: []string{"Названы два класса.", "Но тип задачи не указан.", "Не хватает слова «классификация»."}},
 		{name: "exactly 180 runes", feedback: []string{strings.Repeat("а", 174), "б.", "в."}},
 		{name: "181 runes stays untouched", feedback: []string{strings.Repeat("а", 175), "б.", "в."}},
 		{name: "exactly 228 runes stays untouched", feedback: []string{strings.Repeat("а", 222), "б.", "в."}},
 		{name: "229 runes gets shortened", feedback: []string{strings.Repeat("а", 223), "б.", "в."}, shortened: true},
 		{name: "emoji unicode count", feedback: []string{strings.Repeat("🙂", 223), "б.", "в."}, shortened: true},
 		{name: "500 unicode runes", feedback: []string{strings.Repeat("я🙂", 247), "б.", "в."}, shortened: true},
-		{name: "single oversized sentence", feedback: []string{strings.Repeat("Ответ охватывает несколько деталей задания. ", 10), "Есть неточность.", "Уточните правило."}, shortened: true},
-		{name: "three oversized sentences", feedback: []string{strings.Repeat("Назван правильный механизм. ", 12), strings.Repeat("Причина оценки подробно разобрана. ", 12), strings.Repeat("Проверьте отдельные примеры. ", 12)}, shortened: true},
+		{name: "single oversized sentence", feedback: []string{strings.Repeat("Ответ охватывает несколько деталей задания. ", 10), "Есть неточность.", "Правило требует уточнения."}, shortened: true},
+		{name: "three oversized sentences", feedback: []string{strings.Repeat("Назван правильный механизм. ", 12), strings.Repeat("Причина оценки подробно разобрана. ", 12), strings.Repeat("Отдельные примеры требуют проверки. ", 12)}, shortened: true},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -347,7 +347,7 @@ func TestEvaluateVariantFeedbackTotalLength(t *testing.T) {
 }
 
 func TestShortenFeedbackUsesWordBoundaries(t *testing.T) {
-	feedback := []string{strings.Repeat("Правильно названа классификация. ", 12), "Причина верна.", "Повторите определение."}
+	feedback := []string{strings.Repeat("Правильно названа классификация. ", 12), "Причина верна.", "Полезно повторение определения."}
 	original := feedback[0]
 	shortenFeedback(feedback)
 	prefix := strings.TrimSuffix(feedback[0], "…")
@@ -360,8 +360,8 @@ func TestEvaluateTrustedTrainingOversizedFeedback(t *testing.T) {
 	result := validEvaluation()
 	result.Feedback = []string{
 		strings.Repeat("Правильный пример приведён. ", 15),
-		strings.Repeat("Уточните формулировку. ", 15),
-		strings.Repeat("Сравните с эталоном. ", 15),
+		strings.Repeat("Формулировка требует уточнения. ", 15),
+		strings.Repeat("Полезно сравнение с эталоном. ", 15),
 	}
 	got, err := New(
 		&transcriptionStub{text: "Пример ответа"}, nil, &graderStub{result: result},
@@ -472,8 +472,8 @@ func TestEvaluateVariantNormalizesFeedbackLineBreaks(t *testing.T) {
 
 func TestEvaluateVariantSplitsPackedFeedback(t *testing.T) {
 	for _, feedback := range [][]string{
-		{"Ответ не содержит признака. Назовите признак с утечкой! Почему он недоступен?"},
-		{"Ответ не содержит признака. Назовите признак с утечкой!", "Почему он недоступен?"},
+		{"Ответ не содержит признака. Признак с утечкой не назван! Его недоступность не объяснена."},
+		{"Ответ не содержит признака. Признак с утечкой не назван!", "Его недоступность не объяснена."},
 	} {
 		calls := 0
 		grader := gradingFunc(func(context.Context, GradingContext, string) (Evaluation, error) {
@@ -483,7 +483,7 @@ func TestEvaluateVariantSplitsPackedFeedback(t *testing.T) {
 			return result, nil
 		})
 		got, err := New(&transcriptionStub{text: "ответ"}, &variantTaskStub{result: validVariantTask("main")}, grader).EvaluateVariant(context.Background(), "owner", "tr", "variant", "task")
-		want := []string{"Ответ не содержит признака.", "Назовите признак с утечкой!", "Почему он недоступен?"}
+		want := []string{"Ответ не содержит признака.", "Признак с утечкой не назван!", "Его недоступность не объяснена."}
 		if err != nil || !reflect.DeepEqual(got.Feedback, want) || calls != 1 {
 			t.Fatalf("expected packed feedback to be split without retry, got %+v, %v (%d calls)", got, err, calls)
 		}
@@ -538,6 +538,36 @@ func TestEvaluateVariantRetryIsBounded(t *testing.T) {
 	var f *fault.Error
 	if !errors.As(err, &f) || f.Code != "INVALID_MODEL_RESPONSE" || calls != 2 || got.Verdict != "" {
 		t.Fatalf("expected two failed attempts and no fabricated grade, got %+v, %v (%d calls)", got, err, calls)
+	}
+}
+
+// A review that asks the student something is retried; a valid grade
+// survives a second such answer, restated from the criteria and the verdict.
+func TestEvaluateVariantKeepsFeedbackNarrative(t *testing.T) {
+	asking := []string{"Тип задачи определён верно.", "Ответ соответствует эталону.", "Почему это классификация? Объясните выбор."}
+	for _, tc := range []struct {
+		name  string
+		fixed bool
+		want  []string
+	}{
+		{"retried", true, []string{"Верно.", "Оба критерия выполнены.", "Полезно повторение темы."}},
+		{"restated", false, []string{"Тип задачи определён верно.", "Ответ соответствует эталону.", "Тип назван и выбор объяснён."}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			calls := 0
+			grader := gradingFunc(func(context.Context, GradingContext, string) (Evaluation, error) {
+				calls++
+				result := validMainEvaluation()
+				if calls == 1 || !tc.fixed {
+					result.Feedback = append([]string(nil), asking...)
+				}
+				return result, nil
+			})
+			got, err := New(&transcriptionStub{text: "ответ"}, &variantTaskStub{result: validVariantTask("main")}, grader).EvaluateVariant(context.Background(), "owner", "tr", "variant", "task")
+			if err != nil || got.Score != 3 || got.Verdict != "correct" || calls != 2 || !reflect.DeepEqual(got.Feedback, tc.want) {
+				t.Fatalf("got %+v, %v (%d calls)", got, err, calls)
+			}
+		})
 	}
 }
 

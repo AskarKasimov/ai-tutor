@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react'
 import {
   createMemoryHistory,
   createRouter,
@@ -119,7 +125,9 @@ function server(
   answerStatus = 200,
   totalTasks = 3,
   feedbackStatus = 200,
-  strengths: string[] | null = ['Вы уверенно различаете модели.'],
+  strengths: string[] | null = [
+    '**К1 — Модели**\n\nВы уверенно различаете модели.',
+  ],
   summary = 'Итоговое педагогическое резюме.',
 ) {
   const sessionProgress = { ...progress, total_tasks: totalTasks }
@@ -230,23 +238,28 @@ function server(
         confirmed_gaps: [
           {
             competency_id: 'c1',
-            competency_name: 'Модели',
+            competency_name: 'К6 — Выбор модели',
             outcome_id: 'o1',
             outcome_name: 'Различать модели',
             taxonomy_code: 'apply',
             importance: 3,
             failed_criteria: [],
-            advice: 'Повторный совет к рекомендации.',
+            advice:
+              'Для закрепления полезно повторение различий классификации и регрессии.',
+            topic: '1.3 Умеет различать модели',
+            study_scope: 'review',
           },
           {
             competency_id: 'c1',
-            competency_name: 'Модели',
+            competency_name: 'К6 — Выбор модели',
             outcome_id: 'o2',
             outcome_name: 'Выбирать метрику',
             taxonomy_code: 'apply',
             importance: 3,
             failed_criteria: [],
-            advice: 'Сравните метрики на двух задачах.',
+            advice: 'Полезно повторение связи метрик с целью задачи.',
+            topic: '6.1 Описывает метрики',
+            study_scope: 'review',
           },
         ],
         partial_competencies: [],
@@ -408,19 +421,39 @@ it('runs real diagnostic audio, obeys skipped basics and displays the server tot
     await screen.findByText('Итоговое педагогическое резюме.'),
   ).toBeVisible()
   expect(screen.getByText('Вы уверенно различаете модели.')).toBeVisible()
-  // The cards come from the stored per-answer reviews only: mastered
-  // competencies, then every gap with the advice from its review.
+  // The cards show the stored texts: strengths, then one text per topic.
   const good = screen
     .getByRole('heading', { name: 'Что хорошо' })
     .closest('section')!
   expect(good).toHaveTextContent('Вы уверенно различаете модели.')
+  expect(within(good).queryByText('К1 — Модели')).not.toBeInTheDocument()
   const work = screen
     .getByRole('heading', { name: 'Что доработать' })
     .closest('section')!
-  expect(work.querySelectorAll('strong')).toHaveLength(1)
-  expect(work.querySelector('strong')).toHaveTextContent('Модели.')
-  expect(work).toHaveTextContent('Повторный совет к рекомендации.')
-  expect(work).toHaveTextContent('Сравните метрики на двух задачах.')
+  expect(within(work).queryByText(/К6 — Выбор модели/)).not.toBeInTheDocument()
+  expect(work).toHaveTextContent(
+    'Для закрепления полезно повторение различий классификации и регрессии.',
+  )
+  expect(work).toHaveTextContent(
+    'Полезно повторение связи метрик с целью задачи.',
+  )
+  const modelTopic = within(work).getByRole('heading', {
+    name: 'Тема для повторения: различать модели.',
+    level: 4,
+  }).parentElement!
+  const metricTopic = within(work).getByRole('heading', {
+    name: 'Тема для повторения: Описывает метрики.',
+    level: 4,
+  }).parentElement!
+  expect(modelTopic).not.toBe(metricTopic)
+  expect(modelTopic).toHaveTextContent(
+    'Для закрепления полезно повторение различий классификации и регрессии.',
+  )
+  expect(metricTopic).toHaveTextContent(
+    'Полезно повторение связи метрик с целью задачи.',
+  )
+  expect(work).not.toHaveTextContent('1.3')
+  expect(work).not.toHaveTextContent('6.1')
   expect(screen.queryByText(/Критических пробелов нет/)).not.toBeInTheDocument()
   expect(
     screen.queryByRole('heading', { name: 'Рекомендации' }),

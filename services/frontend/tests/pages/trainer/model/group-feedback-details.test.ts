@@ -71,3 +71,21 @@ it('hides map numbering in topic headings and preserves numbers in explanations'
     },
   ])
 })
+
+it('preserves a meaningful leading number in an unnumbered topic name', () => {
+  expect(
+    groupFeedbackDetails([
+      'Дополнительно изучить. Составляющая «2 типа обучения», результат «Различает обучение с учителем и без учителя».',
+      'Необходимо изучить полностью составляющую «3 закона робототехники». Проверенный результат: «Объясняет ограничения».',
+    ]),
+  ).toEqual([
+    {
+      heading: 'Повторите тему: 2 типа обучения.',
+      items: ['Различает обучение с учителем и без учителя.'],
+    },
+    {
+      heading: 'Изучите тему: 3 закона робототехники.',
+      items: ['Объясняет ограничения.'],
+    },
+  ])
+})

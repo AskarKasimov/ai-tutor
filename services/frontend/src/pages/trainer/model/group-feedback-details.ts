@@ -18,7 +18,7 @@ export function groupFeedbackDetails(details: string[]) {
               : 'diagnostic.feedbackReviewTopic',
           {
             topic: topic
-              .replace(/^\d+(?:\.\d+)*[.)]?\s+/, '')
+              .replace(/^\d+(?:\.\d+)+[.)]?\s+/, '')
               .replace(/^Умеет\s+/i, ''),
           },
         )

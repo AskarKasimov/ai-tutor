@@ -33,7 +33,7 @@ func AnalyzeResult(result diagnostic.Result) DeterministicReport {
 		if evidence.OutcomeID == "" {
 			evidence.OutcomeID = a.OutcomeID
 		}
-		// The third feedback sentence is a task action, not evidence of learning.
+		// Use the observed answer and clarification, not the closing recommendation.
 		if !a.Skipped {
 			evidence.Observations = append(evidence.Observations, a.Feedback[:min(2, len(a.Feedback))]...)
 		}

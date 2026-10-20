@@ -17,7 +17,7 @@ type Service struct {
 	now         func() time.Time
 }
 
-const analysisVersion = 4
+const analysisVersion = 5
 
 func New(reader ResultReader, synthesizer FeedbackSynthesizer, store FeedbackStore, now func() time.Time) *Service {
 	if now == nil {

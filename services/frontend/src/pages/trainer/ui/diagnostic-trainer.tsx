@@ -41,6 +41,7 @@ import { normalizeText, parseStructuredSummary } from '@/entities/assessment'
 import { diagnosticPercent } from '../model/diagnostic-percent'
 import { groupFeedbackDetails } from '../model/group-feedback-details'
 import { feedbackExplanation } from '../model/feedback-explanation'
+import { feedbackNarrative } from '../model/feedback-narrative'
 import { ConfirmVoiceAnswer } from './trainer-answer'
 import styles from '@/pages/trainer/ui/trainer-layout.module.scss'
 import diagnosticStyles from '@/pages/trainer/ui/diagnostic.module.scss'
@@ -464,7 +465,7 @@ function Feedback({
         {t('trainer.feedback')}
       </Heading>
       <MarkdownContent
-        text={feedback.join(' ')}
+        text={feedbackNarrative(feedback.join(' '))}
         className={styles.feedbackLine}
       />
     </>
@@ -756,9 +757,10 @@ type OverallFeedback = NonNullable<
 function OverallFeedbackContent({ value }: { value: OverallFeedback }) {
   const { t } = useTranslation()
   // Keep older summaries with embedded card headings readable.
-  const generalText =
+  const generalText = feedbackNarrative(
     parseStructuredSummary(value.summary || '').generalText ||
-    normalizeText(value.summary || '')
+      normalizeText(value.summary || ''),
+  )
   // The backend validates model prose against deterministic diagnostic findings.
   const priority = new Map(
     value.training_recommendations.map((item) => [
@@ -771,7 +773,10 @@ function OverallFeedbackContent({ value }: { value: OverallFeedback }) {
       (priority.get(a.outcome_id) ?? Infinity) -
       (priority.get(b.outcome_id) ?? Infinity),
   )
-  const strengths = value.strengths.map(feedbackExplanation).filter(Boolean)
+  const strengths = value.strengths
+    .map(feedbackExplanation)
+    .map(feedbackNarrative)
+    .filter(Boolean)
   const workGroups = new Map<string, string[]>()
   for (const item of [
     ...gaps.map((gap) => ({
@@ -802,27 +807,31 @@ function OverallFeedbackContent({ value }: { value: OverallFeedback }) {
         ))}
       </ul>
     ) : null
+  const workDetails = [...workGroups].flatMap(([id, details]) =>
+    groupFeedbackDetails(details).map((detail, index) => ({
+      ...detail,
+      key: `${id}:${index}`,
+    })),
+  )
   const work =
-    workGroups.size > 0 ? (
+    workDetails.length > 0 ? (
       <ul className={styles.summaryExplanations}>
-        {[...workGroups].flatMap(([id, details]) =>
-          groupFeedbackDetails(details).map((detail, index) => (
-            <li key={`${id}:${index}`}>
-              {detail.heading && (
-                <Heading as="h4" size="3" className={styles.feedbackTopicTitle}>
-                  {detail.heading}
-                </Heading>
-              )}
-              <ul className={styles.feedbackDetails}>
-                {detail.items.map((text, itemIndex) => (
-                  <li key={itemIndex}>
-                    <MarkdownContent text={text} />
-                  </li>
-                ))}
-              </ul>
-            </li>
-          )),
-        )}
+        {workDetails.map((detail) => (
+          <li key={detail.key}>
+            {detail.heading && (
+              <Heading as="h4" size="3" className={styles.feedbackTopicTitle}>
+                {detail.heading}
+              </Heading>
+            )}
+            <ul className={styles.feedbackDetails}>
+              {detail.items.map((text, itemIndex) => (
+                <li key={itemIndex}>
+                  <MarkdownContent text={text} />
+                </li>
+              ))}
+            </ul>
+          </li>
+        ))}
       </ul>
     ) : null
   return (

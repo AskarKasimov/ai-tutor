@@ -96,7 +96,10 @@ const resultBody = {
       score: 3,
       verdict: 'correct',
       criterion_results: criteria,
-      feedback,
+      feedback: [
+        ...feedback.slice(0, 2),
+        `${feedback[2]} Объясните ход решения.`,
+      ],
       created_at: 1791200000,
     },
   ],
@@ -126,9 +129,9 @@ function server(
   totalTasks = 3,
   feedbackStatus = 200,
   strengths: string[] | null = [
-    '**К1 — Модели**\n\nВы уверенно различаете модели.',
+    '**К1 — Модели**\n\nВы уверенно различаете модели. Почему это верно?',
   ],
-  summary = 'Итоговое педагогическое резюме.',
+  summary = 'Итоговое педагогическое резюме. Объясните ход решения.',
 ) {
   const sessionProgress = { ...progress, total_tasks: totalTasks }
   let answered = false
@@ -245,7 +248,7 @@ function server(
             importance: 3,
             failed_criteria: [],
             advice:
-              'Дополнительно изучить. Составляющая «1.3 Умеет различать модели», Вы пока путаете тип модели и тип задачи. Повторите различие классификации и регрессии.',
+              'Дополнительно изучить. Составляющая «1.3 Умеет различать модели», Вы пока путаете тип модели и тип задачи. Для закрепления полезно повторение различий классификации и регрессии. Повторите и объясните различие.',
           },
           {
             competency_id: 'c1',
@@ -256,7 +259,7 @@ function server(
             importance: 3,
             failed_criteria: [],
             advice:
-              'Дополнительно изучить. Составляющая «6.1 Описывает метрики», Вы пока не связываете метрику с целью задачи. Сравните метрики на двух задачах.',
+              'Дополнительно изучить. Составляющая «6.1 Описывает метрики», Вы пока не связываете метрику с целью задачи. Полезно повторение связи метрик с целью задачи.',
           },
         ],
         partial_competencies: [],
@@ -413,6 +416,9 @@ it('runs real diagnostic audio, obeys skipped basics and displays the server tot
   )
   expect(screen.getByText('Настоящая расшифровка')).toBeVisible()
   expect(screen.getByText(feedback.join(' '))).toBeVisible()
+  expect(screen.queryByText(/Объясните ход решения/)).not.toBeInTheDocument()
+  expect(screen.queryByText(/Почему это верно/)).not.toBeInTheDocument()
+  expect(screen.queryByText(/Повторите и объясните/)).not.toBeInTheDocument()
   expect(screen.queryByText('Модель названа.')).not.toBeInTheDocument()
   expect(
     await screen.findByText('Итоговое педагогическое резюме.'),
@@ -430,23 +436,25 @@ it('runs real diagnostic audio, obeys skipped basics and displays the server tot
     .closest('section')!
   expect(within(work).queryByText(/К6 — Выбор модели/)).not.toBeInTheDocument()
   expect(work).toHaveTextContent(
-    'Повторите различие классификации и регрессии.',
+    'Для закрепления полезно повторение различий классификации и регрессии.',
   )
-  expect(work).toHaveTextContent('Сравните метрики на двух задачах.')
+  expect(work).toHaveTextContent(
+    'Полезно повторение связи метрик с целью задачи.',
+  )
   const modelTopic = within(work).getByRole('heading', {
-    name: 'Повторите тему: различать модели.',
+    name: 'Тема для повторения: различать модели.',
     level: 4,
   }).parentElement!
   const metricTopic = within(work).getByRole('heading', {
-    name: 'Повторите тему: Описывает метрики.',
+    name: 'Тема для повторения: Описывает метрики.',
     level: 4,
   }).parentElement!
   expect(modelTopic).not.toBe(metricTopic)
   expect(within(modelTopic).getByRole('listitem')).toHaveTextContent(
-    'Вы пока путаете тип модели и тип задачи. Повторите различие классификации и регрессии.',
+    'Вы пока путаете тип модели и тип задачи. Для закрепления полезно повторение различий классификации и регрессии.',
   )
   expect(within(metricTopic).getByRole('listitem')).toHaveTextContent(
-    'Вы пока не связываете метрику с целью задачи. Сравните метрики на двух задачах.',
+    'Вы пока не связываете метрику с целью задачи. Полезно повторение связи метрик с целью задачи.',
   )
   expect(work).not.toHaveTextContent('1.3')
   expect(work).not.toHaveTextContent('6.1')

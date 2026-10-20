@@ -353,10 +353,10 @@ void i18n.init({
           feedbackGood: 'Что хорошо',
           feedbackWork: 'Что доработать',
           feedbackSkillsToImprove: 'Что нужно подтянуть:',
-          feedbackStudyTopic: 'Изучите тему: {{topic}}.',
-          feedbackReviewTopic: 'Повторите тему: {{topic}}.',
+          feedbackStudyTopic: 'Тема для изучения: {{topic}}.',
+          feedbackReviewTopic: 'Тема для повторения: {{topic}}.',
           feedbackSkippedTopic:
-            'Вы пропустили вопрос. Разберите тему: {{topic}}.',
+            'Пропущенный вопрос. Тема для изучения: {{topic}}.',
           criterionMet: 'Критерий выполнен',
           criterionUnmet: 'Критерий не выполнен',
           verdict: {

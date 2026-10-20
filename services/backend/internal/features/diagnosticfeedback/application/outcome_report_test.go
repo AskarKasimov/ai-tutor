@@ -95,7 +95,7 @@ func TestReportLimitsClaimsToCheckedOutcomes(t *testing.T) {
 }
 
 func TestHistoricalFeedbackIsUpgradedOnce(t *testing.T) {
-	for _, version := range []int{0, 2, 3} {
+	for _, version := range []int{0, 2, 3, 4} {
 		store := &mockStore{data: map[string]diagnostic.OverallFeedback{"u/s": {SessionID: "s", AnalysisVersion: version, Summary: "Выберите правильный ответ."}}}
 		synth := &mockSynthesizer{summary: "new scoped summary"}
 		svc := New(&mockReader{result: diagnostic.Result{SessionID: "s"}}, synth, store, nil)

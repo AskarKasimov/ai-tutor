@@ -98,6 +98,7 @@ export type DiagnosticOverallFeedback = {
     failed_criteria: string[]
     advice: string
     topic: string
+    topic_id: string
     study_scope: 'review' | 'full' | 'skipped'
   }[]
   partial_competencies: {
@@ -105,6 +106,7 @@ export type DiagnosticOverallFeedback = {
     competency_name: string
     details: string
     topic: string
+    topic_id: string
     study_scope: 'review' | 'full' | 'skipped'
   }[]
   unverified_competencies: {

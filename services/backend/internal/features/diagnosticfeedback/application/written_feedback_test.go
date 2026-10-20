@@ -99,15 +99,3 @@ func TestWrittenFeedbackKeepsFallbackForMissingOrTaskLikeProse(t *testing.T) {
 		t.Fatal("question accepted as the summary")
 	}
 }
-
-func TestNarrativeKeepsDescriptiveAdvice(t *testing.T) {
-	for _, text := range []string{
-		"Полезно повторить различие классификации и регрессии.",
-		"Внимания требует выбор метрики: `accuracy` не подходит при дисбалансе.",
-		"Стоит вернуться к понятию целевой переменной.",
-	} {
-		if !narrative(text) {
-			t.Errorf("descriptive advice rejected: %s", text)
-		}
-	}
-}

@@ -2,6 +2,8 @@ import { i18n } from '@/shared/i18n'
 
 export type FeedbackTopicItem = {
   topic: string
+  // Same-named constituents of different competencies have different IDs.
+  topic_id?: string
   study_scope: 'review' | 'full' | 'skipped'
   text: string
 }
@@ -13,14 +15,16 @@ const headings = {
 } as const
 
 // The backend writes one text per topic and repeats it on every finding of
-// the topic: show each topic once, in the order of its first finding.
+// the topic: show each topic once, in the order of its first finding. Older
+// reports without topic IDs are grouped by name.
 export function groupFeedbackDetails(items: FeedbackTopicItem[]) {
   const groups = new Map<string, { heading: string; items: string[] }>()
   for (const item of items) {
     const text = item.text.trim()
     if (!text) continue
     const topic = item.topic.trim()
-    let group = groups.get(topic)
+    const key = item.topic_id ? `id\0${item.topic_id}` : `name\0${topic}`
+    let group = groups.get(key)
     if (!group) {
       group = {
         heading: topic
@@ -28,7 +32,7 @@ export function groupFeedbackDetails(items: FeedbackTopicItem[]) {
           : '',
         items: [],
       }
-      groups.set(topic, group)
+      groups.set(key, group)
     }
     if (!group.items.includes(text)) group.items.push(text)
   }

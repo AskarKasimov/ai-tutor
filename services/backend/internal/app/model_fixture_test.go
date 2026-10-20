@@ -98,7 +98,7 @@ func serveFixtureCompletion(t *testing.T, w http.ResponseWriter, r *http.Request
 		for _, criterion := range payload.Criteria {
 			criteria = append(criteria, map[string]any{"key": criterion.Key, "satisfied": true, "explanation": "Критерий выполнен."})
 		}
-		result = map[string]any{"score": payload.MaxScore, "verdict": "correct", "criterion_results": criteria, "feedback": []string{"Ответ верный.", "Критерии выполнены.", "Закрепите тему."}}
+		result = map[string]any{"score": payload.MaxScore, "verdict": "correct", "criterion_results": criteria, "feedback": []string{"Ответ верный.", "Критерии выполнены.", "Полезно повторение темы."}}
 	default:
 		t.Errorf("unexpected completion prompt: %s", system)
 		w.WriteHeader(http.StatusBadRequest)

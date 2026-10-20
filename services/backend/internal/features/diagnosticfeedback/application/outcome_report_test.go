@@ -113,3 +113,35 @@ func TestHistoricalFeedbackIsUpgradedOnce(t *testing.T) {
 type assertionError struct{}
 
 func (assertionError) Error() string { return "must use cache" }
+
+// Constituent names are unique only within a competency: findings and their
+// study scope are kept per constituent, not per name.
+func TestSameNamedConstituentsStaySeparate(t *testing.T) {
+	answer := func(competency, constituent, role, outcome string, score int) diagnostic.Answer {
+		return diagnostic.Answer{CompetencyID: competency, Role: role, Score: score, Task: diagnostic.TaskSnapshot{
+			OutcomeID: outcome, OutcomeName: outcome, ConstituentID: constituent, ConstituentName: "Основные понятия"}}
+	}
+	report := AnalyzeResult(diagnostic.Result{Answers: []diagnostic.Answer{
+		answer("c1", "p1", "main", "m1", 0), answer("c1", "p1", "basic", "b1", 0), answer("c1", "p1", "basic", "b2", 0),
+		answer("c2", "p2", "main", "m2", 1), answer("c2", "p2", "basic", "b3", 1), answer("c2", "p2", "basic", "b4", 1),
+	}})
+	if len(report.PartialCompetencies) != 1 || report.PartialCompetencies[0].StudyScope != StudyReview ||
+		report.PartialCompetencies[0].Details != fallbackTopicText("Основные понятия", StudyReview) {
+		t.Fatalf("partial constituent took the other scope: %+v", report.PartialCompetencies)
+	}
+	topics := map[string]bool{}
+	for _, gap := range report.ConfirmedGaps {
+		if gap.StudyScope != StudyFull || gap.TopicID == report.PartialCompetencies[0].TopicID {
+			t.Fatalf("gap: %+v", gap)
+		}
+		topics[gap.TopicID] = true
+	}
+	if len(topics) != 1 {
+		t.Fatalf("one constituent split into several topics: %+v", report.ConfirmedGaps)
+	}
+	for _, rec := range report.TrainingRecommendations {
+		if want := strings.HasPrefix(rec.CompetencyID, "c1"); want != strings.Contains(rec.Rationale, "изучить полностью") {
+			t.Fatalf("plan rationale crossed constituents: %+v", rec)
+		}
+	}
+}

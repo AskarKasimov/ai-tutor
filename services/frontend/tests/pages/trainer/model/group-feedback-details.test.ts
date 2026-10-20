@@ -55,3 +55,31 @@ it('shows advice without a topic as is and skips empty texts', () => {
     ]),
   ).toEqual([{ heading: '', items: ['**Совет** из старого отчёта.'] }])
 })
+
+it('keeps same-named topics of different competencies apart', () => {
+  expect(
+    groupFeedbackDetails([
+      {
+        ...item('Основные понятия', 'Полезно изучить тему.', 'full'),
+        topic_id: 'topic:0',
+      },
+      {
+        ...item('Основные понятия', 'Полезно повторение.'),
+        topic_id: 'topic:1',
+      },
+      {
+        ...item('Основные понятия', 'Полезно изучить тему.', 'full'),
+        topic_id: 'topic:0',
+      },
+    ]),
+  ).toEqual([
+    {
+      heading: 'Тема для изучения: Основные понятия.',
+      items: ['Полезно изучить тему.'],
+    },
+    {
+      heading: 'Тема для повторения: Основные понятия.',
+      items: ['Полезно повторение.'],
+    },
+  ])
+})

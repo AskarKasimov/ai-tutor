@@ -28,9 +28,21 @@ func feedbackTopic(task diagnostic.TaskSnapshot) string {
 	return strings.TrimSpace(task.OutcomeName)
 }
 
+// topicKey separates same-named constituents of different competencies;
+// legacy snapshots without a constituent fall back to the topic name.
+func topicKey(a diagnostic.Answer, topic string) string {
+	if a.Task.ConstituentID != "" {
+		return a.CompetencyID + "\x00" + a.Task.ConstituentID
+	}
+	return a.CompetencyID + "\x00\x00" + topic
+}
+
 // The texts a finding keeps when the model leaves it out or writes it as a task.
-func fallbackStrength(topic string) string {
-	return "По теме «" + topic + "» дан полный ответ на проверенное задание."
+func fallbackStrength(topic, outcome string) string {
+	if outcome = strings.TrimSpace(outcome); outcome == "" || outcome == topic {
+		return "По теме «" + topic + "» дан полный ответ на проверенное задание."
+	}
+	return "По теме «" + topic + "» дан полный ответ на проверенное задание по результату «" + outcome + "»."
 }
 
 func fallbackTopicText(topic, scope string) string {
@@ -104,13 +116,14 @@ func AnalyzeResult(result diagnostic.Result) DeterministicReport {
 			report.Evidence = append(report.Evidence, FeedbackEvidence{
 				ID: fmt.Sprintf("strength:%d", len(report.Strengths)), Topic: topic,
 				Outcomes: []string{a.Task.OutcomeName}, Observations: observations})
-			report.Strengths = append(report.Strengths, fallbackStrength(topic))
+			report.Strengths = append(report.Strengths, fallbackStrength(topic, a.Task.OutcomeName))
 			continue
 		}
-		index, ok := topics[topic]
+		key := topicKey(a, topic)
+		index, ok := topics[key]
 		if !ok {
 			index = len(report.Evidence)
-			topics[topic] = index
+			topics[key] = index
 			report.Evidence = append(report.Evidence, FeedbackEvidence{
 				ID: fmt.Sprintf("topic:%d", len(topics)-1), Topic: topic,
 				Outcomes: []string{}, Observations: []string{}, Skipped: true})
@@ -135,12 +148,12 @@ func AnalyzeResult(result diagnostic.Result) DeterministicReport {
 		// zero answers use gaps. The text is set per topic below.
 		if a.Role == "main" && a.Score == 1 && !a.Skipped {
 			report.PartialCompetencies = append(report.PartialCompetencies, diagnostic.PartialCompetency{
-				CompetencyID: a.CompetencyID, CompetencyName: a.Task.CompetencyName, Topic: topic})
+				CompetencyID: a.CompetencyID, CompetencyName: a.Task.CompetencyName, Topic: topic, TopicID: evidence.ID})
 		} else {
 			report.ConfirmedGaps = append(report.ConfirmedGaps, diagnostic.ConfirmedGap{
 				CompetencyID: a.CompetencyID, CompetencyName: a.Task.CompetencyName, OutcomeID: id,
 				OutcomeName: a.Task.OutcomeName, TaxonomyCode: a.Task.TaxonomyCode, Importance: a.Task.Importance,
-				FailedCriteria: failed, Topic: topic})
+				FailedCriteria: failed, Topic: topic, TopicID: evidence.ID})
 		}
 		report.TrainingRecommendations = append(report.TrainingRecommendations, diagnostic.TrainingRecommendation{
 			CompetencyID: a.CompetencyID, CompetencyName: a.Task.CompetencyName,
@@ -170,16 +183,16 @@ func AnalyzeResult(result diagnostic.Result) DeterministicReport {
 }
 
 // setTopicText gives every finding of the topic, and its plan targets, the
-// same text and study scope.
+// same text and study scope. Findings are matched by topic ID, not by name.
 func setTopicText(report *DeterministicReport, evidence FeedbackEvidence, text string) {
 	scope := topicScope(evidence)
 	for i := range report.ConfirmedGaps {
-		if gap := &report.ConfirmedGaps[i]; gap.Topic == evidence.Topic {
+		if gap := &report.ConfirmedGaps[i]; gap.TopicID == evidence.ID {
 			gap.Advice, gap.StudyScope = text, scope
 		}
 	}
 	for i := range report.PartialCompetencies {
-		if part := &report.PartialCompetencies[i]; part.Topic == evidence.Topic {
+		if part := &report.PartialCompetencies[i]; part.TopicID == evidence.ID {
 			part.Details, part.StudyScope = text, scope
 		}
 	}

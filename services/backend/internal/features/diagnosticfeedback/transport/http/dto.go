@@ -11,8 +11,10 @@ type ConfirmedGapResponse struct {
 	Importance     int16    `json:"importance" binding:"required"`
 	FailedCriteria []string `json:"failed_criteria" binding:"required"`
 	Advice         string   `json:"advice" binding:"required"`
-	// Topic is the constituent the advice is written for.
+	// Topic is the constituent the advice is written for; findings with the
+	// same topic_id share one text.
 	Topic      string `json:"topic" binding:"required"`
+	TopicID    string `json:"topic_id" binding:"required"`
 	StudyScope string `json:"study_scope" enums:"review,full,skipped" binding:"required"`
 }
 
@@ -21,6 +23,7 @@ type PartialCompetencyResponse struct {
 	CompetencyName string `json:"competency_name" binding:"required"`
 	Details        string `json:"details" binding:"required"`
 	Topic          string `json:"topic" binding:"required"`
+	TopicID        string `json:"topic_id" binding:"required"`
 	StudyScope     string `json:"study_scope" enums:"review,full,skipped" binding:"required"`
 }
 
@@ -66,6 +69,7 @@ func feedbackResponse(fb diagnostic.OverallFeedback) OverallFeedbackResponse {
 			FailedCriteria: append([]string(nil), g.FailedCriteria...),
 			Advice:         g.Advice,
 			Topic:          g.Topic,
+			TopicID:        g.TopicID,
 			StudyScope:     g.StudyScope,
 		})
 	}
@@ -77,6 +81,7 @@ func feedbackResponse(fb diagnostic.OverallFeedback) OverallFeedbackResponse {
 			CompetencyName: p.CompetencyName,
 			Details:        p.Details,
 			Topic:          p.Topic,
+			TopicID:        p.TopicID,
 			StudyScope:     p.StudyScope,
 		})
 	}

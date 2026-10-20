@@ -218,6 +218,60 @@ func validateEvaluation(result *Evaluation, gradingContext GradingContext) error
 	return nil
 }
 
+// verdictStatements restate a grade when the model feedback is not usable.
+var verdictStatements = map[string]string{
+	"correct":   "Ответ соответствует критериям задания.",
+	"partial":   "Ответ выполняет критерии задания частично.",
+	"incorrect": "Ответ не соответствует критериям задания.",
+}
+
+func narrativeFeedback(feedback []string) bool {
+	for _, line := range feedback {
+		if !assessment.Narrative(line) {
+			return false
+		}
+	}
+	return true
+}
+
+// narrateFeedback replaces questions and requests to the student with
+// statements from the criterion explanations, then with the verdict, so a
+// completed review never continues the task.
+func narrateFeedback(result Evaluation) Evaluation {
+	if narrativeFeedback(result.Feedback) {
+		return result
+	}
+	feedback := append([]string(nil), result.Feedback...)
+	used := map[string]bool{}
+	for _, line := range feedback {
+		used[line] = true
+	}
+	statements := []string{}
+	for _, item := range result.CriterionResults {
+		statement := strings.TrimRight(strings.TrimSpace(item.Explanation), " .!…")
+		if statement != "" && assessment.Narrative(statement) {
+			statement += "."
+			statements = append(statements, statement)
+		}
+	}
+	statements = append(statements, verdictStatements[result.Verdict])
+	for i, line := range feedback {
+		if assessment.Narrative(line) {
+			continue
+		}
+		feedback[i] = verdictStatements[result.Verdict]
+		for _, statement := range statements {
+			if !used[statement] {
+				feedback[i], used[statement] = statement, true
+				break
+			}
+		}
+	}
+	shortenFeedback(feedback)
+	result.Feedback = feedback
+	return result
+}
+
 func (s *Service) gradeAndValidate(ctx context.Context, gradingContext GradingContext, answer string) (Evaluation, error) {
 	maxScore, err := gradingMaxScore(gradingContext)
 	if err != nil {
@@ -228,6 +282,9 @@ func (s *Service) gradeAndValidate(ctx context.Context, gradingContext GradingCo
 	}
 	// Retry malformed model output once, including JSON rejected by the adapter.
 	// Every attempt is validated; technical failures never become a student score.
+	// Feedback that asks the student something is retried too, but a valid
+	// grade is kept: its lines are then restated from the grade itself.
+	var graded *Evaluation
 	for attempt := 0; ; attempt++ {
 		if err := ctx.Err(); err != nil {
 			return Evaluation{}, err
@@ -238,7 +295,14 @@ func (s *Service) gradeAndValidate(ctx context.Context, gradingContext GradingCo
 		}
 		if err == nil {
 			result.MaxScore = maxScore
-			return result, nil
+			if attempt == 1 || narrativeFeedback(result.Feedback) {
+				return narrateFeedback(result), nil
+			}
+			graded = &result
+			continue
+		}
+		if graded != nil {
+			return narrateFeedback(*graded), nil
 		}
 		var modelErr *fault.Error
 		if attempt == 1 || !errors.As(err, &modelErr) || modelErr.Code != "INVALID_MODEL_RESPONSE" {

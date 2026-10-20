@@ -788,7 +788,11 @@ components:
         taxonomy_code:
           type: string
         topic:
-          description: Topic is the constituent the advice is written for.
+          description: |-
+            Topic is the constituent the advice is written for; findings with the
+            same topic_id share one text.
+          type: string
+        topic_id:
           type: string
       required:
         - advice
@@ -801,6 +805,7 @@ components:
         - study_scope
         - taxonomy_code
         - topic
+        - topic_id
       type: object
     http.OverallFeedbackResponse:
       additionalProperties: false
@@ -876,12 +881,15 @@ components:
           type: string
         topic:
           type: string
+        topic_id:
+          type: string
       required:
         - competency_id
         - competency_name
         - details
         - study_scope
         - topic
+        - topic_id
       type: object
     http.TrainingRecommendationResponse:
       additionalProperties: false

@@ -434,3 +434,41 @@ func TestFeedbackRetriesABrokenResponseButNotAnOutage(t *testing.T) {
 		t.Fatalf("missing summary accepted: calls=%d err=%v", empty.calls, err)
 	}
 }
+
+// Requests the old word list missed must be retried and then replaced by the
+// fallback text, not stored as advice.
+func TestFeedbackRejectsCommonRequests(t *testing.T) {
+	for _, text := range []string{
+		"Поясните выбор метрики.",
+		"Рассмотрите пример классификации.",
+		"Объясни выбор метрики.",
+		"Вам нужно сначала объяснить выбор.",
+	} {
+		t.Run(text, func(t *testing.T) {
+			reply := WrittenFeedback{Summary: "Итог.", Details: []WrittenDetail{{ID: "topic:0", Text: text}}}
+			synth := &scriptedSynthesizer{replies: []WrittenFeedback{reply, reply}}
+			got, err := New(&mockReader{result: gapResult()}, synth, nil, nil).GetFeedback(t.Context(), "u", "s")
+			if err != nil || synth.calls != 2 || got.ConfirmedGaps[0].Advice != fallbackTopicText("Постановка задачи", StudyReview) {
+				t.Fatalf("request kept as advice: calls=%d %+v %v", synth.calls, got.ConfirmedGaps, err)
+			}
+		})
+	}
+}
+
+// Without usable prose each mastered outcome stays recognisable.
+func TestFallbackStrengthsKeepTheCheckedOutcome(t *testing.T) {
+	task := func(id, name string) diagnostic.TaskSnapshot {
+		return diagnostic.TaskSnapshot{OutcomeID: id, OutcomeName: name, ConstituentID: "p", ConstituentName: "Постановка задачи"}
+	}
+	result := diagnostic.Result{SessionID: "s", Answers: []diagnostic.Answer{
+		{CompetencyID: "c", Role: "basic", Score: 1, Task: task("b1", "Различает классификацию и регрессию")},
+		{CompetencyID: "c", Role: "basic", Score: 1, Task: task("b2", "Определяет целевую переменную")},
+	}}
+	synth := &scriptedSynthesizer{replies: []WrittenFeedback{{Summary: "Итог."}, {Summary: "Итог."}}}
+	got, err := New(&mockReader{result: result}, synth, nil, nil).GetFeedback(t.Context(), "u", "s")
+	if err != nil || len(got.Strengths) != 2 || got.Strengths[0] == got.Strengths[1] ||
+		!strings.Contains(got.Strengths[0], "«Различает классификацию и регрессию»") ||
+		!strings.Contains(got.Strengths[1], "«Определяет целевую переменную»") {
+		t.Fatalf("strengths: %q %v", got.Strengths, err)
+	}
+}

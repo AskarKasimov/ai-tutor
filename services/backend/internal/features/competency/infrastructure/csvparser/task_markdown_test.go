@@ -80,3 +80,46 @@ func TestMarkdownNumberedOptionsPreserveCode(t *testing.T) {
 		t.Fatalf("options = %#v, %v; want %#v", got, ok, want)
 	}
 }
+
+// Without an instruction block the question is voiced as on the screen;
+// options may be lettered, as in competency map 4.
+func TestThreeBlockTaskVoicesTheQuestion(t *testing.T) {
+	raw := "Выберите один правильный ответ. Через что агент действует на среду?\n\n\n" +
+		"A. сенсоры и датчики\nB. история восприятий\nC. исполнительные механизмы\nD. мера эффективности агента\n\n\n" +
+		"исполнительные механизмы"
+	task, ok := parseMLTask(raw)
+	if !ok {
+		t.Fatalf("three-block task rejected: %s", taskFragmentCode(raw))
+	}
+	want := []string{"сенсоры и датчики", "история восприятий", "исполнительные механизмы", "мера эффективности агента"}
+	if task.VoiceInstruction != task.Question || task.ReferenceAnswer != "исполнительные механизмы" || !reflect.DeepEqual(task.Options, want) {
+		t.Fatalf("task = %#v", task)
+	}
+}
+
+// A question longer than TTS takes is voiced with a standard instruction.
+func TestThreeBlockTaskWithALongQuestionVoicesAStandardInstruction(t *testing.T) {
+	long := strings.Repeat("слово ", 100)
+	task, ok := parseMLTask(long + "\n\n\n- да\n- нет\n\n\nда")
+	if !ok || task.VoiceInstruction != optionsInstruction {
+		t.Fatalf("task = %#v, %v", task.VoiceInstruction, ok)
+	}
+	task, ok = parseMLTask(long + "\n\n\n[]\n\n\nэталон")
+	if !ok || task.VoiceInstruction != openInstruction {
+		t.Fatalf("open task = %#v, %v", task.VoiceInstruction, ok)
+	}
+}
+
+func TestLetterOptions(t *testing.T) {
+	for _, raw := range []string{"A. один\nB. два", "a) один\nb) два", "А. один\nБ. два"} {
+		got, ok := parseTaskOptions(raw)
+		if !ok || !reflect.DeepEqual(got, []string{"один", "два"}) {
+			t.Errorf("%q: %#v, %v", raw, got, ok)
+		}
+	}
+	for _, raw := range []string{"A. один\nпросто текст", "AB. один", "A.один"} {
+		if _, ok := parseTaskOptions(raw); ok {
+			t.Errorf("accepted %q", raw)
+		}
+	}
+}

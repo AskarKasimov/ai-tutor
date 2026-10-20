@@ -230,7 +230,8 @@ func (e *Exam) finishTop() {
 // topic a gap at once. A main answer on D or with insufficient data is
 // rephrased once; an answer after the rephrase is assisted. Without room in
 // the question limit for the rephrase, the main answer decides: D is a gap,
-// insufficient data stays insufficient. A non-D answer that fully demonstrates
+// insufficient data stays insufficient. Insufficient data after the rephrase
+// is D and a gap. A non-D answer that fully demonstrates
 // the assessed criteria, or leaves no room in the limit, is graded at once.
 // Otherwise one followup clarifies the same concept; an unclear answer or
 // "don't know" keeps the skills already observed. Untested K3/K4 are excluded
@@ -248,7 +249,10 @@ func (e *Exam) Apply(ev Evaluation) Step {
 		case VerdictDontKnow:
 			return e.gap(cur.NodeID, Criteria{}, assisted)
 		case VerdictInsufficient:
-			if !assisted && !e.limitReached() {
+			if assisted {
+				return e.gap(cur.NodeID, Criteria{}, true)
+			}
+			if !e.limitReached() {
 				e.Asked++
 				return e.step(KindRephrase, cur.NodeID)
 			}

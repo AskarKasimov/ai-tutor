@@ -270,7 +270,7 @@ func TestAnswerAfterRephraseIsAssistedAndCappedAtB(t *testing.T) {
 	}
 }
 
-func TestInsufficientAfterRephraseIsExcludedFromTheGrade(t *testing.T) {
+func TestInsufficientAfterRephraseIsDAndIncludedInTheGrade(t *testing.T) {
 	e, first := NewExam(fixture(t), 0, nil)
 	steps := run(t, e, first, func(s Step) Evaluation {
 		if s.NodeID == "mcts" && s.Kind != KindFollowup {
@@ -281,15 +281,52 @@ func TestInsufficientAfterRephraseIsExcludedFromTheGrade(t *testing.T) {
 	if got := asked(steps, KindRephrase); !slices.Equal(got, []string{"mcts"}) {
 		t.Fatalf("rephrases = %v", got)
 	}
-	if e.Nodes["mcts"].Status != StatusInsufficient || e.Nodes["mcts"].Grade != nil {
+	if state := e.Nodes["mcts"]; state.Status != StatusGap || state.Grade == nil || *state.Grade != GradeD || !state.Assisted {
 		t.Fatalf("mcts = %+v", e.Nodes["mcts"])
 	}
 	if e.Nodes["exploration-exploitation"].Status != StatusCredited {
 		t.Fatalf("exploration credited by simulated-annealing: %s", e.Nodes["exploration-exploitation"].Status)
 	}
 	grade, percent := e.CourseGrade()
-	if *grade != GradeA || *percent != 100 {
+	if *grade != GradeB || *percent != 81 {
 		t.Fatalf("grade=%s percent=%d", *grade, *percent)
+	}
+}
+
+func TestInsufficientRephraseIsDWithOrWithoutRoomForMoreQuestions(t *testing.T) {
+	for _, limit := range []int{0, 2} {
+		for _, first := range []Evaluation{vague, weak} {
+			t.Run(fmt.Sprintf("limit=%d/first=%s", limit, first.Verdict), func(t *testing.T) {
+				e, _ := NewExam(pair(), limit, nil)
+				if step := e.Apply(first); step.Kind != KindRephrase {
+					t.Fatalf("step = %+v", step)
+				}
+				// The result is the same when the student resumes the rephrase.
+				data, err := json.Marshal(e)
+				if err != nil {
+					t.Fatal(err)
+				}
+				var restored Exam
+				if err := json.Unmarshal(data, &restored); err != nil {
+					t.Fatal(err)
+				}
+				next := restored.Apply(vague)
+				state := restored.Nodes["top"]
+				if state.Status != StatusGap || state.Grade == nil || *state.Grade != GradeD || !state.Assisted {
+					t.Fatalf("state = %+v", state)
+				}
+				grade, percent := restored.CourseGrade()
+				if grade == nil || *grade != GradeD || percent == nil || *percent != 25 {
+					t.Fatalf("grade=%v percent=%v", grade, percent)
+				}
+				if limit == 2 && (restored.Asked != limit || next.Kind != KindClosing) {
+					t.Fatalf("asked=%d next=%+v", restored.Asked, next)
+				}
+				if limit == 0 && (next.Kind != KindQuestion || next.NodeID != "base") {
+					t.Fatalf("next = %+v", next)
+				}
+			})
+		}
 	}
 }
 
@@ -757,7 +794,7 @@ func TestIncompleteCoverageNeverGetsAEvenWithFullCriteria(t *testing.T) {
 }
 
 func TestGapOverAnUnknownPrerequisiteIsNotListed(t *testing.T) {
-	e, first := NewExam(pair(), 0, nil)
+	e, first := NewExam(pair(), 2, nil)
 	run(t, e, first, func(s Step) Evaluation {
 		if s.NodeID == "top" {
 			return unknown

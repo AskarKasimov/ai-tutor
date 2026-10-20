@@ -24,12 +24,18 @@ type ConfirmedGap struct {
 	Importance     int16    `json:"importance"`
 	FailedCriteria []string `json:"failed_criteria"`
 	Advice         string   `json:"advice"`
+	// Topic is the constituent the advice is written for; StudyScope is
+	// review, full or skipped.
+	Topic      string `json:"topic,omitempty"`
+	StudyScope string `json:"study_scope,omitempty"`
 }
 
 type PartialCompetency struct {
 	CompetencyID   string `json:"competency_id"`
 	CompetencyName string `json:"competency_name"`
 	Details        string `json:"details"`
+	Topic          string `json:"topic,omitempty"`
+	StudyScope     string `json:"study_scope,omitempty"`
 }
 
 type TrainingRecommendation struct {

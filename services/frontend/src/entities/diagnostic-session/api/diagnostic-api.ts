@@ -152,6 +152,8 @@ const overallFeedbackSchema: z.ZodType<DiagnosticOverallFeedback> = z.object({
       importance: z.number().int(),
       failed_criteria: z.array(id),
       advice: id,
+      topic: z.string().default(''),
+      study_scope: z.enum(['review', 'full', 'skipped']).default('review'),
     }),
   ),
   partial_competencies: z.array(
@@ -159,6 +161,8 @@ const overallFeedbackSchema: z.ZodType<DiagnosticOverallFeedback> = z.object({
       competency_id: id,
       competency_name: id,
       details: id,
+      topic: z.string().default(''),
+      study_scope: z.enum(['review', 'full', 'skipped']).default('review'),
     }),
   ),
   unverified_competencies: z.array(

@@ -1,93 +1,57 @@
 import { expect, it } from 'vitest'
-import { groupFeedbackDetails } from '@/pages/trainer/model/group-feedback-details'
+import {
+  groupFeedbackDetails,
+  type FeedbackTopicItem,
+} from '@/pages/trainer/model/group-feedback-details'
 
-it('shows the full-study constituent once and retains every outcome and advice', () => {
-  const heading =
-    'Необходимо изучить полностью составляющую «Постановка задачи».'
+const item = (
+  topic: string,
+  text: string,
+  study_scope: FeedbackTopicItem['study_scope'] = 'review',
+): FeedbackTopicItem => ({ topic, text, study_scope })
+
+it('shows each topic once with its shared text', () => {
+  const text = 'Полезно повторить, как тип задачи связан с целевой переменной.'
   expect(
     groupFeedbackDetails([
-      `${heading} Проверенный результат: «Определяет тип». Повторите регрессию.`,
-      `${heading} Проверенный результат: «Выделяет признаки». Укажите признаки.`,
-      `${heading} Проверенный результат: «Находит ошибки». Проверьте утечки.`,
+      item('Постановка задачи', text, 'full'),
+      item('Постановка задачи', text, 'full'),
+      item('Признаки', 'Внимания требует масштабирование.'),
     ]),
   ).toEqual([
+    { heading: 'Тема для изучения: Постановка задачи.', items: [text] },
     {
-      heading: 'Тема для изучения: Постановка задачи.',
-      items: ['Определяет тип.', 'Выделяет признаки.', 'Находит ошибки.'],
+      heading: 'Тема для повторения: Признаки.',
+      items: ['Внимания требует масштабирование.'],
     },
   ])
 })
 
-it('keeps different constituents and study instructions separate', () => {
+it('keeps the whole text, including questions quoted from the task', () => {
+  const text =
+    'Вопрос «Выберите один правильный ответ. Через что агент действует на среду?» требует различать сенсоры и исполнительные механизмы.'
+  expect(groupFeedbackDetails([item('Агенты', text)])[0].items).toEqual([text])
+})
+
+it('hides map numbering in topic headings and keeps meaningful numbers', () => {
   expect(
     groupFeedbackDetails([
-      'Дополнительно изучить. Составляющая «Модели», результат «Регрессия».',
-      'Дополнительно изучить. Составляющая «Модели», результат «Метрики».',
-      'Необходимо изучить полностью составляющую «Признаки». Проверенный результат: «Масштаб».',
-    ]),
+      item('1.3 Умеет выбирать архитектуру агента', 'Текст.'),
+      item('6.2 Описывает обучение', 'Текст.', 'skipped'),
+      item('2 типа обучения', 'Текст.'),
+    ]).map((group) => group.heading),
   ).toEqual([
-    {
-      heading: 'Тема для повторения: Модели.',
-      items: ['Регрессия.', 'Метрики.'],
-    },
-    {
-      heading: 'Тема для изучения: Признаки.',
-      items: ['Масштаб.'],
-    },
+    'Тема для повторения: выбирать архитектуру агента.',
+    'Пропущенный вопрос. Тема для изучения: Описывает обучение.',
+    'Тема для повторения: 2 типа обучения.',
   ])
 })
 
-it('preserves arbitrary advice and Markdown without guessing its structure', () => {
-  expect(
-    groupFeedbackDetails(['**Повторите** тему. Пример.', 'Другой совет.']),
-  ).toEqual([{ heading: '', items: ['Пример.', 'Другой совет.'] }])
-})
-
-it('hides map numbering in topic headings and preserves numbers in explanations', () => {
+it('shows advice without a topic as is and skips empty texts', () => {
   expect(
     groupFeedbackDetails([
-      'Дополнительно изучить. Составляющая «1.3 Умеет выбирать архитектуру агента», результат «Сравнивает 2 типа агентов». В ответе не хватает 3 примеров.',
-      'Необходимо изучить полностью составляющую «6.1 Строит перцептрон». Проверенный результат: «Описывает XOR».',
-      'Вопрос пропущен: необходимо проверить и отработать результат. Составляющая «6.2 Описывает обучение», результат «Объясняет обратное распространение».',
+      item('', '**Совет** из старого отчёта.'),
+      item('Модели', ' '),
     ]),
-  ).toEqual([
-    {
-      heading: 'Тема для повторения: выбирать архитектуру агента.',
-      items: ['Сравнивает 2 типа агентов. В ответе не хватает 3 примеров.'],
-    },
-    {
-      heading: 'Тема для изучения: Строит перцептрон.',
-      items: ['Описывает XOR.'],
-    },
-    {
-      heading: 'Пропущенный вопрос. Тема для изучения: Описывает обучение.',
-      items: ['Объясняет обратное распространение.'],
-    },
-  ])
-})
-
-it('preserves a meaningful leading number in an unnumbered topic name', () => {
-  expect(
-    groupFeedbackDetails([
-      'Дополнительно изучить. Составляющая «2 типа обучения», результат «Различает обучение с учителем и без учителя».',
-      'Необходимо изучить полностью составляющую «3 закона робототехники». Проверенный результат: «Объясняет ограничения».',
-    ]),
-  ).toEqual([
-    {
-      heading: 'Тема для повторения: 2 типа обучения.',
-      items: ['Различает обучение с учителем и без учителя.'],
-    },
-    {
-      heading: 'Тема для изучения: 3 закона робототехники.',
-      items: ['Объясняет ограничения.'],
-    },
-  ])
-})
-
-it('omits command-only advice without leaving an empty topic', () => {
-  expect(
-    groupFeedbackDetails([
-      'Дополнительно изучить. Составляющая «Модели», Повторите тему и объясните выбор.',
-    ]),
-  ).toEqual([])
+  ).toEqual([{ heading: '', items: ['**Совет** из старого отчёта.'] }])
 })

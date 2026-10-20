@@ -375,3 +375,62 @@ func TestAnalyzeAnswersFormatting(t *testing.T) {
 		t.Fatalf("Recommendations count = %d, want 3", len(report.Recommendations))
 	}
 }
+
+type scriptedSynthesizer struct {
+	replies []WrittenFeedback
+	errs    []error
+	calls   int
+}
+
+func (s *scriptedSynthesizer) Synthesize(context.Context, DeterministicReport) (WrittenFeedback, error) {
+	i := s.calls
+	s.calls++
+	if i < len(s.errs) && s.errs[i] != nil {
+		return WrittenFeedback{}, s.errs[i]
+	}
+	if i < len(s.replies) {
+		return s.replies[i], nil
+	}
+	return WrittenFeedback{}, fault.New(fault.Upstream, "INVALID_MODEL_RESPONSE", "test")
+}
+
+func (s *scriptedSynthesizer) SynthesizeAnswers(context.Context, SessionFeedbackReport) (string, error) {
+	return "", nil
+}
+
+func gapResult() diagnostic.Result {
+	return diagnostic.Result{SessionID: "s", Answers: []diagnostic.Answer{{CompetencyID: "c", Role: "basic", Score: 0,
+		Task: diagnostic.TaskSnapshot{OutcomeID: "o", OutcomeName: "Различает типы задач", ConstituentName: "Постановка задачи"}}}}
+}
+
+func TestFeedbackRetriesOnceAndKeepsFallbackText(t *testing.T) {
+	synth := &scriptedSynthesizer{replies: []WrittenFeedback{
+		{Summary: "Итог.", Details: []WrittenDetail{{ID: "topic:0", Text: "Повторите типы задач."}}},
+		{Summary: "Итог после повтора.", Details: []WrittenDetail{{ID: "topic:0", Text: "Что такое регрессия?"}}},
+	}}
+	got, err := New(&mockReader{result: gapResult()}, synth, nil, nil).GetFeedback(t.Context(), "u", "s")
+	if err != nil || synth.calls != 2 {
+		t.Fatalf("calls=%d err=%v", synth.calls, err)
+	}
+	if got.Summary != "Итог после повтора." || got.ConfirmedGaps[0].Advice != fallbackTopicText("Постановка задачи", StudyReview) ||
+		got.ConfirmedGaps[0].Topic != "Постановка задачи" || got.ConfirmedGaps[0].StudyScope != StudyReview {
+		t.Fatalf("feedback: %+v", got)
+	}
+}
+
+func TestFeedbackRetriesABrokenResponseButNotAnOutage(t *testing.T) {
+	synth := &scriptedSynthesizer{errs: []error{fault.New(fault.Upstream, "INVALID_MODEL_RESPONSE", "broken")},
+		replies: []WrittenFeedback{{}, {Summary: "Итог.", Details: []WrittenDetail{{ID: "topic:0", Text: "Полезно повторить типы задач."}}}}}
+	got, err := New(&mockReader{result: gapResult()}, synth, nil, nil).GetFeedback(t.Context(), "u", "s")
+	if err != nil || got.ConfirmedGaps[0].Advice != "Полезно повторить типы задач." {
+		t.Fatalf("broken response not retried: %+v %v", got, err)
+	}
+	outage := &scriptedSynthesizer{errs: []error{fault.New(fault.Unavailable, "MODEL_UNAVAILABLE", "down")}}
+	if _, err := New(&mockReader{result: gapResult()}, outage, nil, nil).GetFeedback(t.Context(), "u", "s"); err == nil || outage.calls != 1 {
+		t.Fatalf("outage retried or hidden: calls=%d err=%v", outage.calls, err)
+	}
+	empty := &scriptedSynthesizer{}
+	if _, err := New(&mockReader{result: gapResult()}, empty, nil, nil).GetFeedback(t.Context(), "u", "s"); err == nil || empty.calls != 2 {
+		t.Fatalf("missing summary accepted: calls=%d err=%v", empty.calls, err)
+	}
+}

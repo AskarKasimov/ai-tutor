@@ -96,10 +96,7 @@ const resultBody = {
       score: 3,
       verdict: 'correct',
       criterion_results: criteria,
-      feedback: [
-        ...feedback.slice(0, 2),
-        `${feedback[2]} Объясните ход решения.`,
-      ],
+      feedback,
       created_at: 1791200000,
     },
   ],
@@ -129,9 +126,9 @@ function server(
   totalTasks = 3,
   feedbackStatus = 200,
   strengths: string[] | null = [
-    '**К1 — Модели**\n\nВы уверенно различаете модели. Почему это верно?',
+    '**К1 — Модели**\n\nВы уверенно различаете модели.',
   ],
-  summary = 'Итоговое педагогическое резюме. Объясните ход решения.',
+  summary = 'Итоговое педагогическое резюме.',
 ) {
   const sessionProgress = { ...progress, total_tasks: totalTasks }
   let answered = false
@@ -248,7 +245,9 @@ function server(
             importance: 3,
             failed_criteria: [],
             advice:
-              'Дополнительно изучить. Составляющая «1.3 Умеет различать модели», Вы пока путаете тип модели и тип задачи. Для закрепления полезно повторение различий классификации и регрессии. Повторите и объясните различие.',
+              'Для закрепления полезно повторение различий классификации и регрессии.',
+            topic: '1.3 Умеет различать модели',
+            study_scope: 'review',
           },
           {
             competency_id: 'c1',
@@ -258,8 +257,9 @@ function server(
             taxonomy_code: 'apply',
             importance: 3,
             failed_criteria: [],
-            advice:
-              'Дополнительно изучить. Составляющая «6.1 Описывает метрики», Вы пока не связываете метрику с целью задачи. Полезно повторение связи метрик с целью задачи.',
+            advice: 'Полезно повторение связи метрик с целью задачи.',
+            topic: '6.1 Описывает метрики',
+            study_scope: 'review',
           },
         ],
         partial_competencies: [],
@@ -416,16 +416,12 @@ it('runs real diagnostic audio, obeys skipped basics and displays the server tot
   )
   expect(screen.getByText('Настоящая расшифровка')).toBeVisible()
   expect(screen.getByText(feedback.join(' '))).toBeVisible()
-  expect(screen.queryByText(/Объясните ход решения/)).not.toBeInTheDocument()
-  expect(screen.queryByText(/Почему это верно/)).not.toBeInTheDocument()
-  expect(screen.queryByText(/Повторите и объясните/)).not.toBeInTheDocument()
   expect(screen.queryByText('Модель названа.')).not.toBeInTheDocument()
   expect(
     await screen.findByText('Итоговое педагогическое резюме.'),
   ).toBeVisible()
   expect(screen.getByText('Вы уверенно различаете модели.')).toBeVisible()
-  // The cards come from the stored per-answer reviews only: mastered
-  // competencies, then every gap with the advice from its review.
+  // The cards show the stored texts: strengths, then one text per topic.
   const good = screen
     .getByRole('heading', { name: 'Что хорошо' })
     .closest('section')!
@@ -450,11 +446,11 @@ it('runs real diagnostic audio, obeys skipped basics and displays the server tot
     level: 4,
   }).parentElement!
   expect(modelTopic).not.toBe(metricTopic)
-  expect(within(modelTopic).getByRole('listitem')).toHaveTextContent(
-    'Вы пока путаете тип модели и тип задачи. Для закрепления полезно повторение различий классификации и регрессии.',
+  expect(modelTopic).toHaveTextContent(
+    'Для закрепления полезно повторение различий классификации и регрессии.',
   )
-  expect(within(metricTopic).getByRole('listitem')).toHaveTextContent(
-    'Вы пока не связываете метрику с целью задачи. Полезно повторение связи метрик с целью задачи.',
+  expect(metricTopic).toHaveTextContent(
+    'Полезно повторение связи метрик с целью задачи.',
   )
   expect(work).not.toHaveTextContent('1.3')
   expect(work).not.toHaveTextContent('6.1')

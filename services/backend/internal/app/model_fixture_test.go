@@ -77,9 +77,9 @@ func serveFixtureCompletion(t *testing.T, w http.ResponseWriter, r *http.Request
 		}
 		details := make([]map[string]string, 0, len(payload.Evidence))
 		for _, e := range payload.Evidence {
-			details = append(details, map[string]string{"id": e.ID, "text": "Разберите признаки задачи и связь с целевой переменной."})
+			details = append(details, map[string]string{"id": e.ID, "text": "Полезно повторить признаки задачи и их связь с целевой переменной."})
 		}
-		result = map[string]any{"summary": "Вы освоили основные темы. Закрепите их на практике.", "details": details}
+		result = map[string]any{"summary": "Вы освоили основные темы. Их полезно закрепить на практике.", "details": details}
 	case strings.Contains(system, "Ты создаёшь одно учебное задание"):
 		result = map[string]any{"question": "Новое задание", "options": []string{}, "voice_instruction": "Ответьте.", "reference_answer": "Ответ", "criteria": ""}
 	case strings.Contains(system, "criterion_results"):

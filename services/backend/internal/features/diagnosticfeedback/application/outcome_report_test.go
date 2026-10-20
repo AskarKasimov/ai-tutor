@@ -32,7 +32,7 @@ func TestReportDoesNotAppendTaskActions(t *testing.T) {
 					},
 				}}}
 				report := AnalyzeResult(result)
-				want := "Дополнительно изучить. Составляющая «Постановка задачи», результат «Различает классификацию и регрессию»."
+				want := fallbackTopicText("Постановка задачи", StudyReview)
 				if answer.score == 1 {
 					if len(report.PartialCompetencies) != 1 || report.PartialCompetencies[0].Details != want {
 						t.Fatalf("partial advice contains task actions: %+v", report.PartialCompetencies)
@@ -78,12 +78,12 @@ func TestReportLimitsClaimsToCheckedOutcomes(t *testing.T) {
 			}
 			r := AnalyzeResult(diagnostic.Result{Answers: answers})
 			for _, gap := range r.ConfirmedGaps {
-				if strings.Contains(gap.Advice, "изучить полностью") != tc.full {
+				if (gap.StudyScope == StudyFull) != tc.full || strings.Contains(gap.Advice, "изучить полностью") != tc.full {
 					t.Fatalf("wrong scope: %+v", gap)
 				}
 			}
 			for _, strength := range r.Strengths {
-				if strings.Contains(strength, "высокий уровень владения") || !strings.Contains(strength, "результат") {
+				if strings.Contains(strength, "высокий уровень владения") || !strings.Contains(strength, "проверенное задание") {
 					t.Fatalf("overbroad strength: %s", strength)
 				}
 			}
@@ -95,7 +95,7 @@ func TestReportLimitsClaimsToCheckedOutcomes(t *testing.T) {
 }
 
 func TestHistoricalFeedbackIsUpgradedOnce(t *testing.T) {
-	for _, version := range []int{0, 2, 3, 4} {
+	for _, version := range []int{0, 2, 3, 4, 5} {
 		store := &mockStore{data: map[string]diagnostic.OverallFeedback{"u/s": {SessionID: "s", AnalysisVersion: version, Summary: "Выберите правильный ответ."}}}
 		synth := &mockSynthesizer{summary: "new scoped summary"}
 		svc := New(&mockReader{result: diagnostic.Result{SessionID: "s"}}, synth, store, nil)

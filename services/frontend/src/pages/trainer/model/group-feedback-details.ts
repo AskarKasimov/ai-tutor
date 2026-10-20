@@ -1,39 +1,42 @@
 import { i18n } from '@/shared/i18n'
-import { feedbackNarrative } from './feedback-narrative'
 
-// Stored reports include the constituent in every outcome's advice. Only split
-// the known report prefixes; omit follow-up requests from completed reviews.
-export function groupFeedbackDetails(details: string[]) {
-  const groups = new Map<string, string[]>()
-  for (const text of details) {
-    const match = text.match(
-      /^(Необходимо изучить полностью составляющую «[^»]+»\.|Дополнительно изучить\. Составляющая «[^»]+»,|Вопрос пропущен: необходимо проверить и отработать результат\. Составляющая «[^»]+»,)\s*/,
-    )
-    const topic = match?.[1].match(/«([^»]+)»/)?.[1] ?? ''
-    const heading = match
-      ? i18n.t(
-          match[1].startsWith('Необходимо')
-            ? 'diagnostic.feedbackStudyTopic'
-            : match[1].startsWith('Вопрос пропущен')
-              ? 'diagnostic.feedbackSkippedTopic'
-              : 'diagnostic.feedbackReviewTopic',
-          {
-            topic: topic
-              .replace(/^\d+(?:\.\d+)+[.)]?\s+/, '')
-              .replace(/^Умеет\s+/i, ''),
-          },
-        )
-      : ''
-    const rawBody = match
-      ? text
-          .slice(match[0].length)
-          .replace(/^(?:Проверенный результат:\s*|результат\s*)«([^»]+)»/, '$1')
-      : text
-    const body = feedbackNarrative(rawBody)
-    if (!body) continue
-    const items = groups.get(heading)
-    if (items) items.push(body)
-    else groups.set(heading, [body])
+export type FeedbackTopicItem = {
+  topic: string
+  study_scope: 'review' | 'full' | 'skipped'
+  text: string
+}
+
+const headings = {
+  review: 'diagnostic.feedbackReviewTopic',
+  full: 'diagnostic.feedbackStudyTopic',
+  skipped: 'diagnostic.feedbackSkippedTopic',
+} as const
+
+// The backend writes one text per topic and repeats it on every finding of
+// the topic: show each topic once, in the order of its first finding.
+export function groupFeedbackDetails(items: FeedbackTopicItem[]) {
+  const groups = new Map<string, { heading: string; items: string[] }>()
+  for (const item of items) {
+    const text = item.text.trim()
+    if (!text) continue
+    const topic = item.topic.trim()
+    let group = groups.get(topic)
+    if (!group) {
+      group = {
+        heading: topic
+          ? i18n.t(headings[item.study_scope], { topic: topicName(topic) })
+          : '',
+        items: [],
+      }
+      groups.set(topic, group)
+    }
+    if (!group.items.includes(text)) group.items.push(text)
   }
-  return [...groups].map(([heading, items]) => ({ heading, items }))
+  return [...groups.values()]
+}
+
+// Map numbers such as «1.3» prefix constituent names; meaningful leading
+// numbers like «2 типа обучения» stay.
+function topicName(topic: string) {
+  return topic.replace(/^\d+(?:\.\d+)+[.)]?\s+/, '').replace(/^Умеет\s+/i, '')
 }

@@ -97,11 +97,15 @@ export type DiagnosticOverallFeedback = {
     importance: number
     failed_criteria: string[]
     advice: string
+    topic: string
+    study_scope: 'review' | 'full' | 'skipped'
   }[]
   partial_competencies: {
     competency_id: string
     competency_name: string
     details: string
+    topic: string
+    study_scope: 'review' | 'full' | 'skipped'
   }[]
   unverified_competencies: {
     competency_id: string

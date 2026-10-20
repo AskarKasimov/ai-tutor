@@ -19,7 +19,7 @@ func TestFeedbackUpgradePersistsAndKeepsFirstTextOfNewVersion(t *testing.T) {
 		t.Fatal(w.Body.String())
 	}
 	upgraded, ok, err := store.Get(t.Context(), owner, d.ID)
-	if err != nil || !ok || upgraded.AnalysisVersion != 5 || upgraded.Summary == "Выберите правильный ответ." {
+	if err != nil || !ok || upgraded.AnalysisVersion != 6 || upgraded.Summary == "Выберите правильный ответ." {
 		t.Fatalf("upgrade not persisted: %+v %v", upgraded, err)
 	}
 	other := upgraded

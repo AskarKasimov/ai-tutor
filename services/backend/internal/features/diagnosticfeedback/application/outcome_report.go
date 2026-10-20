@@ -4,15 +4,76 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/diagnostic"
 )
 
-func outcomeLabel(task diagnostic.TaskSnapshot) string {
-	if strings.TrimSpace(task.ConstituentName) != "" {
-		return fmt.Sprintf("Составляющая «%s», результат «%s»", task.ConstituentName, task.OutcomeName)
+// Study scopes of a topic in «Что доработать».
+const (
+	StudyReview  = "review"
+	StudyFull    = "full"
+	StudySkipped = "skipped"
+)
+
+// maxContentRunes bounds each educational content excerpt sent to the model.
+const maxContentRunes = 400
+
+// feedbackTopic is the constituent of the task; legacy snapshots without one
+// fall back to the outcome.
+func feedbackTopic(task diagnostic.TaskSnapshot) string {
+	if topic := strings.TrimSpace(task.ConstituentName); topic != "" {
+		return topic
 	}
-	return fmt.Sprintf("Проверенный результат «%s»", task.OutcomeName)
+	return strings.TrimSpace(task.OutcomeName)
+}
+
+// The texts a finding keeps when the model leaves it out or writes it as a task.
+func fallbackStrength(topic string) string {
+	return "По теме «" + topic + "» дан полный ответ на проверенное задание."
+}
+
+func fallbackTopicText(topic, scope string) string {
+	switch scope {
+	case StudyFull:
+		return "Ответы показали, что тему «" + topic + "» полезно изучить полностью, начиная с основных понятий."
+	case StudySkipped:
+		return "Вопросы по теме «" + topic + "» пропущены, поэтому её освоение пока не проверено."
+	default:
+		return "Ответы по теме «" + topic + "» показали пробелы; полезно повторение её основных понятий."
+	}
+}
+
+func topicScope(e FeedbackEvidence) string {
+	switch {
+	case e.Skipped:
+		return StudySkipped
+	case e.FullStudy:
+		return StudyFull
+	default:
+		return StudyReview
+	}
+}
+
+func appendUnique(items []string, value string) []string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return items
+	}
+	for _, item := range items {
+		if item == value {
+			return items
+		}
+	}
+	return append(items, value)
+}
+
+func excerpt(text string) string {
+	text = strings.TrimSpace(text)
+	if utf8.RuneCountInString(text) <= maxContentRunes {
+		return text
+	}
+	return string([]rune(text)[:maxContentRunes]) + "…"
 }
 
 func AnalyzeResult(result diagnostic.Result) DeterministicReport {
@@ -20,74 +81,75 @@ func AnalyzeResult(result diagnostic.Result) DeterministicReport {
 		MaximumScore: result.MaximumScore, Strengths: []string{}, ConfirmedGaps: []diagnostic.ConfirmedGap{},
 		PartialCompetencies:     []diagnostic.PartialCompetency{},
 		UnverifiedCompetencies:  append([]diagnostic.SkippedCompetency(nil), result.SkippedCompetencies...),
-		TrainingRecommendations: []diagnostic.TrainingRecommendation{}}
+		TrainingRecommendations: []diagnostic.TrainingRecommendation{}, Evidence: []FeedbackEvidence{}}
 	if result.MaximumScore > 0 {
 		report.ScorePercentage = result.DiagnosticScore * 100 / result.MaximumScore
 	}
+	// «Что доработать» speaks about topics: every outcome with a gap joins the
+	// evidence of its topic, and the model writes one text per topic.
+	topics := map[string]int{}
 	for _, finding := range diagnostic.OutcomeFindings(result.Answers) {
 		a := finding.Answer
-		label := outcomeLabel(a.Task)
-		evidence := FeedbackEvidence{Topic: a.Task.ConstituentName, Outcome: a.Task.OutcomeName,
-			FullStudy: finding.FullStudy, Skipped: a.Skipped, CompetencyID: a.CompetencyID,
-			OutcomeID: a.Task.OutcomeID, Observations: []string{}, Criteria: a.CriterionResults}
-		if evidence.OutcomeID == "" {
-			evidence.OutcomeID = a.OutcomeID
-		}
-		// Use the observed answer and clarification, not the closing recommendation.
-		if !a.Skipped {
-			evidence.Observations = append(evidence.Observations, a.Feedback[:min(2, len(a.Feedback))]...)
-		}
-		if finding.Mastered {
-			evidence.ID = fmt.Sprintf("strength:%d", len(report.Strengths))
-			report.Evidence = append(report.Evidence, evidence)
-			report.Strengths = append(report.Strengths, label+": продемонстрированы хорошие знания по проверенному заданию.")
-			continue
-		}
-		// Per-answer feedback may ask the student to select or explain an answer.
-		// The completed diagnostic recommends outcomes to study, not task actions.
-		advice := "Дополнительно изучить. " + label + "."
-		if finding.FullStudy {
-			advice = "Необходимо изучить полностью составляющую «" + a.Task.ConstituentName + "». Проверенный результат: «" + a.Task.OutcomeName + "»."
-		}
-		if a.Skipped {
-			advice = "Вопрос пропущен: необходимо проверить и отработать результат. " + label + "."
-		}
-		if strings.TrimSpace(a.Task.ConstituentName) != "" {
-			evidence.Prefix = "Дополнительно изучить. Составляющая «" + a.Task.ConstituentName + "», "
-			if finding.FullStudy {
-				evidence.Prefix = "Необходимо изучить полностью составляющую «" + a.Task.ConstituentName + "». "
-			}
-			if a.Skipped {
-				evidence.Prefix = "Вопрос пропущен: необходимо проверить и отработать результат. Составляющая «" + a.Task.ConstituentName + "», "
-			}
-		}
-		failed := []string{}
-		for _, cr := range a.CriterionResults {
-			if !cr.Satisfied && strings.TrimSpace(cr.Explanation) != "" {
-				failed = append(failed, cr.Explanation)
-			}
-		}
+		topic := feedbackTopic(a.Task)
 		id := a.Task.OutcomeID
 		if id == "" {
 			id = a.OutcomeID
 		}
+		// Use the observed answer and clarification, not the closing recommendation.
+		observations := []string{}
+		if !a.Skipped {
+			observations = append(observations, a.Feedback[:min(2, len(a.Feedback))]...)
+		}
+		if finding.Mastered {
+			report.Evidence = append(report.Evidence, FeedbackEvidence{
+				ID: fmt.Sprintf("strength:%d", len(report.Strengths)), Topic: topic,
+				Outcomes: []string{a.Task.OutcomeName}, Observations: observations})
+			report.Strengths = append(report.Strengths, fallbackStrength(topic))
+			continue
+		}
+		index, ok := topics[topic]
+		if !ok {
+			index = len(report.Evidence)
+			topics[topic] = index
+			report.Evidence = append(report.Evidence, FeedbackEvidence{
+				ID: fmt.Sprintf("topic:%d", len(topics)-1), Topic: topic,
+				Outcomes: []string{}, Observations: []string{}, Skipped: true})
+		}
+		evidence := &report.Evidence[index]
+		evidence.Outcomes = appendUnique(evidence.Outcomes, a.Task.OutcomeName)
+		evidence.EducationalContent = appendUnique(evidence.EducationalContent, excerpt(a.Task.EducationalContent))
+		evidence.Observations = append(evidence.Observations, observations...)
+		evidence.FullStudy = evidence.FullStudy || finding.FullStudy
+		evidence.Skipped = evidence.Skipped && a.Skipped
+		evidence.targets = append(evidence.targets, outcomeRef{a.CompetencyID, id})
+		failed := []string{}
+		for _, cr := range a.CriterionResults {
+			if !cr.Satisfied && strings.TrimSpace(cr.Explanation) != "" {
+				failed = append(failed, cr.Explanation)
+				if !a.Skipped {
+					evidence.FailedCriteria = appendUnique(evidence.FailedCriteria, cr.Explanation)
+				}
+			}
+		}
 		// Keep the existing wire shape: partial main answers use details;
-		// zero answers use gaps. Both carry an explicit result and constituent.
+		// zero answers use gaps. The text is set per topic below.
 		if a.Role == "main" && a.Score == 1 && !a.Skipped {
-			evidence.ID = fmt.Sprintf("partial:%d", len(report.PartialCompetencies))
 			report.PartialCompetencies = append(report.PartialCompetencies, diagnostic.PartialCompetency{
-				CompetencyID: a.CompetencyID, CompetencyName: a.Task.CompetencyName, Details: advice})
+				CompetencyID: a.CompetencyID, CompetencyName: a.Task.CompetencyName, Topic: topic})
 		} else {
-			evidence.ID = fmt.Sprintf("gap:%d", len(report.ConfirmedGaps))
 			report.ConfirmedGaps = append(report.ConfirmedGaps, diagnostic.ConfirmedGap{
 				CompetencyID: a.CompetencyID, CompetencyName: a.Task.CompetencyName, OutcomeID: id,
 				OutcomeName: a.Task.OutcomeName, TaxonomyCode: a.Task.TaxonomyCode, Importance: a.Task.Importance,
-				FailedCriteria: failed, Advice: advice})
+				FailedCriteria: failed, Topic: topic})
 		}
-		report.Evidence = append(report.Evidence, evidence)
 		report.TrainingRecommendations = append(report.TrainingRecommendations, diagnostic.TrainingRecommendation{
 			CompetencyID: a.CompetencyID, CompetencyName: a.Task.CompetencyName,
-			OutcomeID: id, OutcomeName: a.Task.OutcomeName, Rationale: advice})
+			OutcomeID: id, OutcomeName: a.Task.OutcomeName})
+	}
+	for _, evidence := range report.Evidence {
+		if strings.HasPrefix(evidence.ID, "topic:") {
+			setTopicText(&report, evidence, fallbackTopicText(evidence.Topic, topicScope(evidence)))
+		}
 	}
 	// Legacy snapshots keep the outcome ID on the answer, as the items above.
 	importance := map[string]int16{}
@@ -105,4 +167,27 @@ func AnalyzeResult(result diagnostic.Result) DeterministicReport {
 		report.TrainingRecommendations[i].Priority = i + 1
 	}
 	return report
+}
+
+// setTopicText gives every finding of the topic, and its plan targets, the
+// same text and study scope.
+func setTopicText(report *DeterministicReport, evidence FeedbackEvidence, text string) {
+	scope := topicScope(evidence)
+	for i := range report.ConfirmedGaps {
+		if gap := &report.ConfirmedGaps[i]; gap.Topic == evidence.Topic {
+			gap.Advice, gap.StudyScope = text, scope
+		}
+	}
+	for i := range report.PartialCompetencies {
+		if part := &report.PartialCompetencies[i]; part.Topic == evidence.Topic {
+			part.Details, part.StudyScope = text, scope
+		}
+	}
+	for _, target := range evidence.targets {
+		for i := range report.TrainingRecommendations {
+			if rec := &report.TrainingRecommendations[i]; rec.CompetencyID == target.competencyID && rec.OutcomeID == target.outcomeID {
+				rec.Rationale = text
+			}
+		}
+	}
 }

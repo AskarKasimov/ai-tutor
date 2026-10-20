@@ -41,7 +41,6 @@ import { normalizeText, parseStructuredSummary } from '@/entities/assessment'
 import { diagnosticPercent } from '../model/diagnostic-percent'
 import { groupFeedbackDetails } from '../model/group-feedback-details'
 import { feedbackExplanation } from '../model/feedback-explanation'
-import { feedbackNarrative } from '../model/feedback-narrative'
 import { ConfirmVoiceAnswer } from './trainer-answer'
 import styles from '@/pages/trainer/ui/trainer-layout.module.scss'
 import diagnosticStyles from '@/pages/trainer/ui/diagnostic.module.scss'
@@ -465,7 +464,7 @@ function Feedback({
         {t('trainer.feedback')}
       </Heading>
       <MarkdownContent
-        text={feedbackNarrative(feedback.join(' '))}
+        text={feedback.join(' ')}
         className={styles.feedbackLine}
       />
     </>
@@ -757,11 +756,10 @@ type OverallFeedback = NonNullable<
 function OverallFeedbackContent({ value }: { value: OverallFeedback }) {
   const { t } = useTranslation()
   // Keep older summaries with embedded card headings readable.
-  const generalText = feedbackNarrative(
+  const generalText =
     parseStructuredSummary(value.summary || '').generalText ||
-      normalizeText(value.summary || ''),
-  )
-  // The backend validates model prose against deterministic diagnostic findings.
+    normalizeText(value.summary || '')
+  // The backend checks the model prose and keeps a text from the map otherwise.
   const priority = new Map(
     value.training_recommendations.map((item) => [
       item.outcome_id,
@@ -773,30 +771,14 @@ function OverallFeedbackContent({ value }: { value: OverallFeedback }) {
       (priority.get(a.outcome_id) ?? Infinity) -
       (priority.get(b.outcome_id) ?? Infinity),
   )
-  const strengths = value.strengths
-    .map(feedbackExplanation)
-    .map(feedbackNarrative)
-    .filter(Boolean)
-  const workGroups = new Map<string, string[]>()
-  for (const item of [
-    ...gaps.map((gap) => ({
-      id: gap.competency_id,
-      text: gap.advice,
-    })),
+  const strengths = value.strengths.map(feedbackExplanation).filter(Boolean)
+  const workDetails = groupFeedbackDetails([
+    ...gaps.map((gap) => ({ ...gap, text: gap.advice })),
     ...value.partial_competencies.map((part) => ({
-      id: part.competency_id,
+      ...part,
       text: part.details,
     })),
-  ]) {
-    const text = feedbackExplanation(item.text)
-    if (!text) continue
-    const group = workGroups.get(item.id)
-    if (group) {
-      group.push(text)
-    } else {
-      workGroups.set(item.id, [text])
-    }
-  }
+  ])
   const good =
     strengths.length > 0 ? (
       <ul className={styles.summaryExplanations}>
@@ -807,29 +789,27 @@ function OverallFeedbackContent({ value }: { value: OverallFeedback }) {
         ))}
       </ul>
     ) : null
-  const workDetails = [...workGroups].flatMap(([id, details]) =>
-    groupFeedbackDetails(details).map((detail, index) => ({
-      ...detail,
-      key: `${id}:${index}`,
-    })),
-  )
   const work =
     workDetails.length > 0 ? (
       <ul className={styles.summaryExplanations}>
-        {workDetails.map((detail) => (
-          <li key={detail.key}>
+        {workDetails.map((detail, index) => (
+          <li key={index}>
             {detail.heading && (
               <Heading as="h4" size="3" className={styles.feedbackTopicTitle}>
                 {detail.heading}
               </Heading>
             )}
-            <ul className={styles.feedbackDetails}>
-              {detail.items.map((text, itemIndex) => (
-                <li key={itemIndex}>
-                  <MarkdownContent text={text} />
-                </li>
-              ))}
-            </ul>
+            {detail.items.length === 1 ? (
+              <MarkdownContent text={detail.items[0]} />
+            ) : (
+              <ul className={styles.feedbackDetails}>
+                {detail.items.map((text, itemIndex) => (
+                  <li key={itemIndex}>
+                    <MarkdownContent text={text} />
+                  </li>
+                ))}
+              </ul>
+            )}
           </li>
         ))}
       </ul>

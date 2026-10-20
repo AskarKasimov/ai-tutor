@@ -31,18 +31,14 @@ func AnalyzeResult(result diagnostic.Result) DeterministicReport {
 			report.Strengths = append(report.Strengths, label+": продемонстрированы хорошие знания по проверенному заданию.")
 			continue
 		}
+		// Per-answer feedback may ask the student to select or explain an answer.
+		// The completed diagnostic recommends outcomes to study, not task actions.
 		advice := "Дополнительно изучить. " + label + "."
 		if finding.FullStudy {
 			advice = "Необходимо изучить полностью составляющую «" + a.Task.ConstituentName + "». Проверенный результат: «" + a.Task.OutcomeName + "»."
 		}
 		if a.Skipped {
 			advice = "Вопрос пропущен: необходимо проверить и отработать результат. " + label + "."
-		}
-		if len(a.Feedback) >= 3 && !a.Skipped {
-			next := cleanSentence(a.Feedback[2])
-			if next != "" && !strings.Contains(strings.ToLower(next), "следующ") {
-				advice += " " + next + "."
-			}
 		}
 		failed := []string{}
 		for _, cr := range a.CriterionResults {

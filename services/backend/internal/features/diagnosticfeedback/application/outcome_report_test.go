@@ -1,10 +1,55 @@
 package application
 
 import (
-	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/diagnostic"
 	"strings"
 	"testing"
+
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/diagnostic"
 )
+
+func TestReportDoesNotAppendTaskActions(t *testing.T) {
+	for _, answer := range []struct {
+		name  string
+		role  string
+		score int
+	}{
+		{"incorrect main", "main", 0},
+		{"partial main", "main", 1},
+		{"incorrect basic", "basic", 0},
+	} {
+		for _, next := range []string{
+			"Выберите правильный ответ.",
+			"Назовите вариант словами и объясните свой выбор.",
+			"Повторите типы задач. Выберите один из предложенных вариантов.",
+		} {
+			t.Run(answer.name+"/"+next, func(t *testing.T) {
+				result := diagnostic.Result{Answers: []diagnostic.Answer{{
+					CompetencyID: "c", Role: answer.role, Score: answer.score,
+					Feedback: []string{"Ответ неполный.", "Не указан тип целевой переменной.", next},
+					Task: diagnostic.TaskSnapshot{
+						OutcomeID: "o", OutcomeName: "Различает классификацию и регрессию",
+						ConstituentID: "part", ConstituentName: "Постановка задачи",
+					},
+				}}}
+				report := AnalyzeResult(result)
+				want := "Дополнительно изучить. Составляющая «Постановка задачи», результат «Различает классификацию и регрессию»."
+				if answer.score == 1 {
+					if len(report.PartialCompetencies) != 1 || report.PartialCompetencies[0].Details != want {
+						t.Fatalf("partial advice contains task actions: %+v", report.PartialCompetencies)
+					}
+				} else if len(report.ConfirmedGaps) != 1 || report.ConfirmedGaps[0].Advice != want {
+					t.Fatalf("gap advice contains task actions: %+v", report.ConfirmedGaps)
+				}
+				if len(report.TrainingRecommendations) != 1 || report.TrainingRecommendations[0].Rationale != want {
+					t.Fatalf("training rationale contains task actions: %+v", report.TrainingRecommendations)
+				}
+				if result.Answers[0].Feedback[2] != next {
+					t.Fatal("original answer feedback was changed")
+				}
+			})
+		}
+	}
+}
 
 func TestReportLimitsClaimsToCheckedOutcomes(t *testing.T) {
 	for _, tc := range []struct {
@@ -50,16 +95,18 @@ func TestReportLimitsClaimsToCheckedOutcomes(t *testing.T) {
 }
 
 func TestHistoricalFeedbackIsUpgradedOnce(t *testing.T) {
-	store := &mockStore{data: map[string]diagnostic.OverallFeedback{"u/s": {SessionID: "s", Summary: "old overbroad summary"}}}
-	synth := &mockSynthesizer{summary: "new scoped summary"}
-	svc := New(&mockReader{result: diagnostic.Result{SessionID: "s"}}, synth, store, nil)
-	got, err := svc.GetFeedback(t.Context(), "u", "s")
-	if err != nil || got.Summary != "new scoped summary" || got.AnalysisVersion != analysisVersion {
-		t.Fatalf("upgrade: %+v %v", got, err)
-	}
-	synth.err = assertionError{}
-	if _, err := svc.GetFeedback(t.Context(), "u", "s"); err != nil {
-		t.Fatalf("same version regenerated: %v", err)
+	for _, version := range []int{0, 2} {
+		store := &mockStore{data: map[string]diagnostic.OverallFeedback{"u/s": {SessionID: "s", AnalysisVersion: version, Summary: "Выберите правильный ответ."}}}
+		synth := &mockSynthesizer{summary: "new scoped summary"}
+		svc := New(&mockReader{result: diagnostic.Result{SessionID: "s"}}, synth, store, nil)
+		got, err := svc.GetFeedback(t.Context(), "u", "s")
+		if err != nil || got.Summary != "new scoped summary" || got.AnalysisVersion != analysisVersion {
+			t.Fatalf("upgrade: %+v %v", got, err)
+		}
+		synth.err = assertionError{}
+		if _, err := svc.GetFeedback(t.Context(), "u", "s"); err != nil {
+			t.Fatalf("same version regenerated: %v", err)
+		}
 	}
 }
 

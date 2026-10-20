@@ -7,7 +7,7 @@ import styles from './geek-result.module.scss'
 
 // Card and spacing sizes of the map, in pixels.
 const NODE_WIDTH = 208
-const NODE_HEIGHT = 92
+const NODE_HEIGHT = 128
 const COLUMN_GAP = 64
 const ROW_GAP = 20
 const PADDING = 28

@@ -84,22 +84,27 @@ type EvaluationRequest struct {
 	Dialogue      []exam.Turn // turns on the topic, ending with the answer
 }
 
-// Assessment is the evaluation of an answer with Geek's reply to it. The
-// reaction says what is right or missing without the correct answer; the
-// explanation adds the correct answer and is said once the topic is closed.
+// Assessment contains only grading; feedback follows the exam engine's decision.
 type Assessment struct {
 	exam.Evaluation
-	Reaction    string
-	Explanation string
+}
+
+// FeedbackRequest describes the actual outcome, not a model's prediction of it.
+// Next is meaningful while the topic stays open; Result contains accumulated
+// knowledge, including earlier answers when the last reply was "don't know".
+type FeedbackRequest struct {
+	EvaluationRequest
+	Verdict exam.Verdict
+	Closed  bool
+	Next    exam.TurnKind
+	Result  exam.NodeState
 }
 
 // Examiner is the language model behind Geek.
 type Examiner interface {
 	Question(ctx context.Context, r QuestionRequest) (string, error)
 	Evaluate(ctx context.Context, r EvaluationRequest) (Assessment, error)
-	// Explain gives the correct answer on a topic the student gave up on with
-	// the "don't know" button, which is not evaluated.
-	Explain(ctx context.Context, r EvaluationRequest) (string, error)
+	Feedback(ctx context.Context, r FeedbackRequest) (string, error)
 }
 
 type Synthesizer interface {

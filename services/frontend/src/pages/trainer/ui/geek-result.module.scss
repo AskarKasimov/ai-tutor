@@ -621,9 +621,8 @@
   gap: 8px;
   min-width: 0;
   .status {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    min-width: 0;
+    white-space: normal;
   }
 }
 .graphGrade {

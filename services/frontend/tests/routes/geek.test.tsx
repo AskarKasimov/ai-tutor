@@ -478,7 +478,11 @@ it('runs a diagnostic from the home page to the result and back to the history',
     within(summary)
       .getAllByRole('listitem')
       .map((item) => item.textContent),
-  ).toEqual(['1Засчитано по основной теме', '1С помощью', '1Нужно повторить'])
+  ).toEqual([
+    '1Подтверждено другим ответом',
+    '1Ответил после уточнения',
+    '1Стоит повторить',
+  ])
   const gaps = screen.getByRole('region', { name: 'Что подтянуть' })
   expect(within(gaps).getByText('Эвристическая функция')).toBeVisible()
   // Topics on C are listed apart from the gaps.
@@ -486,11 +490,11 @@ it('runs a diagnostic from the home page to the result and back to the history',
   expect(within(weak).getByText('Слабая тема')).toBeVisible()
   expect(within(weak).queryByText('Эвристическая функция')).toBeNull()
   const topics = screen.getByRole('region', { name: 'Все темы' })
-  expect(within(topics).getByText('С помощью')).toBeVisible()
-  expect(within(topics).getByText('Засчитано по основной теме')).toBeVisible()
+  expect(within(topics).getByText('Ответил после уточнения')).toBeVisible()
+  expect(within(topics).getByText('Подтверждено другим ответом')).toBeVisible()
   // Topics the diagnostic never reached are not part of the feedback.
   expect(within(topics).queryByText('Имитация отжига')).not.toBeInTheDocument()
-  expect(screen.queryByText('Не проверялась')).not.toBeInTheDocument()
+  expect(screen.queryByText('Тема не проверена')).not.toBeInTheDocument()
   // The map shows the checked subgraph and says what each topic relies on.
   const map = screen.getByRole('list', { name: 'Темы на карте' })
   expect(

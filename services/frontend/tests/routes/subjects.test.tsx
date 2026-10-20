@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react'
 import { StrictMode } from 'react'
 import {
   createMemoryHistory,
@@ -87,6 +93,100 @@ beforeEach(() => {
 afterEach(() => {
   vi.restoreAllMocks()
   vi.unstubAllGlobals()
+})
+
+it('returns from a completed learning plan to the course before restarting the diagnostic', async () => {
+  const apiBase = (import.meta.env.VITE_API_BASE_URL || '/api/v1').replace(
+    /\/$/,
+    '',
+  )
+  sessionStorage.setItem(
+    'ai-tutor:learning-home',
+    JSON.stringify({
+      apiBase,
+      userId: 'student-1',
+      subjectId: 'subject-1',
+      sessionId: '',
+      diagnosticId: 'diagnostic-done',
+      mode: 'training',
+    }),
+  )
+  let stateReads = 0
+  const requests = vi.mocked(fetch).mockImplementation(async (input, init) => {
+    const url = String(input)
+    if (url.endsWith('/learning-state')) {
+      stateReads++
+      return Response.json({
+        subject_id: 'subject-1',
+        subject_name: 'Предмет A',
+        diagnostic_status: 'completed',
+        diagnostic_completed: true,
+        training_available: true,
+        diagnostic_session_id: 'diagnostic-done',
+      })
+    }
+    if (url.endsWith('/diagnostic-sessions/diagnostic-done/learning-plan'))
+      return Response.json({
+        id: 'finished-plan',
+        diagnostic_session_id: 'diagnostic-done',
+        subject_id: 'subject-1',
+        subject_name: 'Предмет A',
+        hours: 1,
+        detail: 'brief',
+        status: 'completed',
+        current_index: null,
+        progress_percent: 100,
+        planned_minutes: 30,
+        pending_answer: null,
+        items: [
+          {
+            index: 0,
+            competency_id: 'c1',
+            competency_name: 'Модели',
+            outcome_id: 'o1',
+            outcome_name: 'Различать модели',
+            theory_minutes: 15,
+            practice_minutes: 15,
+            in_plan: true,
+            status: 'passed',
+            attempts: 1,
+          },
+        ],
+      })
+    return backendResponse(url, init)
+  })
+  const router = createRouter({
+    context: { queryClient: createQueryClient() },
+    history: createMemoryHistory({ initialEntries: ['/'] }),
+    routeTree,
+  })
+  render(<RouterProvider router={router} />)
+  expect(await screen.findByText('План пройден!')).toBeVisible()
+
+  const done = screen.getByRole('region', { name: 'План пройден!' })
+  fireEvent.click(within(done).getByRole('button', { name: 'На главную' }))
+
+  expect(
+    await screen.findByRole('heading', { name: 'Курсы', level: 1 }),
+  ).toBeVisible()
+  const restart = await screen.findByRole('button', {
+    name: 'Пройти проверку заново',
+  })
+  expect(sessionStorage.getItem('ai-tutor:learning-home')).toBeNull()
+  await waitFor(() => expect(stateReads).toBeGreaterThan(1))
+  expect(requests.mock.calls.some(([, init]) => init?.method === 'POST')).toBe(
+    false,
+  )
+
+  fireEvent.click(restart)
+  await waitFor(() =>
+    expect(
+      requests.mock.calls.some(
+        ([url, init]) =>
+          String(url).endsWith('/variants') && init?.method === 'POST',
+      ),
+    ).toBe(true),
+  )
 })
 
 it('loads subjects without creating a variant, then starts only the chosen subject on explicit action', async () => {

@@ -5,6 +5,7 @@ import {
   CircleAlert,
   Clock,
   Flame,
+  House,
   Lock,
   LoaderCircle,
   Mic,
@@ -341,9 +342,9 @@ function LearningPlanScreen({
         />
         <section className={styles.chatPanel} aria-label={item?.outcome_name}>
           {plan.items.length === 0 ? (
-            <Done plan={plan} />
+            <Done plan={plan} onHome={onBack} />
           ) : !item ? (
-            <Done plan={plan} />
+            <Done plan={plan} onHome={onBack} />
           ) : (
             <>
               <Chat
@@ -827,15 +828,16 @@ function LessonControls({
   )
 }
 
-function Done({ plan }: { plan: LearningPlan }) {
+function Done({ plan, onHome }: { plan: LearningPlan; onHome: () => void }) {
   const { t } = useTranslation()
+  const titleId = useId()
   const review = plan.items.filter((item) => item.status === 'review').length
   return (
-    <div className={styles.done}>
+    <section className={styles.done} aria-labelledby={titleId}>
       <span className={styles.doneIcon} aria-hidden="true">
         <Trophy size={34} />
       </span>
-      <Heading as="h2" size="6">
+      <Heading as="h2" size="6" id={titleId}>
         {plan.items.length ? t('learning.doneTitle') : t('learning.title')}
       </Heading>
       <Text as="p">
@@ -846,7 +848,11 @@ function Done({ plan }: { plan: LearningPlan }) {
           {t('learning.doneReview', { count: review })}
         </Text>
       )}
-    </div>
+      <Button size="3" className={styles.doneAction} onClick={onHome}>
+        <House size={18} aria-hidden="true" />
+        {t('learning.home')}
+      </Button>
+    </section>
   )
 }
 

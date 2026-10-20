@@ -304,6 +304,7 @@ void i18n.init({
           toResult: 'К итогам плана',
           doneTitle: 'План пройден!',
           doneText: 'Вы прошли все темы плана.',
+          home: 'На главную',
           doneReview_one:
             '{{count}} тему стоит повторить — она отмечена в оглавлении.',
           doneReview_few:

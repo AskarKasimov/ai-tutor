@@ -583,6 +583,9 @@
 .doneReview {
   color: #b45309;
 }
+.doneAction {
+  margin-top: var(--space-3);
+}
 @media (prefers-reduced-motion: reduce) {
   .messages > [data-enter='true'],
   .dots > span,

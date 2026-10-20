@@ -478,7 +478,7 @@ it('runs a diagnostic from the home page to the result and back to the history',
     within(summary)
       .getAllByRole('listitem')
       .map((item) => item.textContent),
-  ).toEqual(['1Засчитано по основной теме', '1С помощью', '1Пробел'])
+  ).toEqual(['1Засчитано по основной теме', '1С помощью', '1Нужно повторить'])
   const gaps = screen.getByRole('region', { name: 'Что подтянуть' })
   expect(within(gaps).getByText('Эвристическая функция')).toBeVisible()
   // Topics on C are listed apart from the gaps.

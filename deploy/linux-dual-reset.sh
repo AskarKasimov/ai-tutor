@@ -72,6 +72,13 @@ fi
 
 # Containers hold their volumes; stop the whole stand first.
 "$deploy_dir/linux-dual.sh" down
+# A release started from other worktrees is not stopped by down; its
+# containers are found by the project name.
+for project in $projects; do
+    ids=$(docker ps -aq --filter "label=com.docker.compose.project=$project")
+    # shellcheck disable=SC2086 # one id per word
+    [ -z "$ids" ] || docker rm -f $ids >/dev/null
+done
 # shellcheck disable=SC2086 # the list is split on purpose
 docker volume rm $volumes
 printf '%s\n' 'Deleted. Start the stand again with: deploy/linux-dual.sh up'

@@ -139,12 +139,22 @@ prepare_worktree() {
     # «К выбору режима» in the profile menu and logout through the start page.
     set_env "$tree/.env" VITE_MODE_SELECT_URL "$DUAL_ORIGIN"
 
-    gateway_config="$tree/services/llm-gateway/config.json"
-    if [ -f "$tree/services/llm-gateway/config.example.json" ] && [ ! -f "$gateway_config" ]; then
-        if [ -f "$repo_dir/services/llm-gateway/config.json" ]; then
-            cp "$repo_dir/services/llm-gateway/config.json" "$gateway_config"
-        else
-            cp "$tree/services/llm-gateway/config.example.json" "$gateway_config"
+    # The gateway's models and tokens are not in git: the release takes them
+    # from the main checkout. Without them every model call fails, so stop;
+    # a copy of the example left by an earlier run is replaced.
+    gateway_dir="$tree/services/llm-gateway"
+    if [ -f "$gateway_dir/config.example.json" ]; then
+        if [ -f "$gateway_dir/config.json" ] && cmp -s "$gateway_dir/config.json" "$gateway_dir/config.example.json"; then
+            rm -f -- "$gateway_dir/config.json"
+        fi
+        if [ ! -f "$gateway_dir/config.json" ] && [ -f "$repo_dir/services/llm-gateway/config.json" ]; then
+            cp "$repo_dir/services/llm-gateway/config.json" "$gateway_dir/config.json"
+        fi
+        if [ ! -f "$gateway_dir/config.json" ] || cmp -s "$gateway_dir/config.json" "$gateway_dir/config.example.json"; then
+            rm -f -- "$gateway_dir/config.json"
+            printf '%s\n' "No gateway models: put config.json with the models and their tokens" \
+                "into $repo_dir/services/llm-gateway/config.json and run up again." >&2
+            exit 1
         fi
     fi
 

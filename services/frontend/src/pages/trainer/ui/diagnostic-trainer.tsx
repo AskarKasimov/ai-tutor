@@ -40,6 +40,7 @@ import {
 import { normalizeText, parseStructuredSummary } from '@/entities/assessment'
 import { diagnosticPercent } from '../model/diagnostic-percent'
 import { groupFeedbackDetails } from '../model/group-feedback-details'
+import { feedbackExplanation } from '../model/feedback-explanation'
 import { ConfirmVoiceAnswer } from './trainer-answer'
 import styles from '@/pages/trainer/ui/trainer-layout.module.scss'
 import diagnosticStyles from '@/pages/trainer/ui/diagnostic.module.scss'
@@ -773,30 +774,31 @@ function OverallFeedbackContent({ value }: { value: OverallFeedback }) {
       (priority.get(a.outcome_id) ?? Infinity) -
       (priority.get(b.outcome_id) ?? Infinity),
   )
-  const workGroups = new Map<string, { name: string; details: string[] }>()
+  const strengths = value.strengths.map(feedbackExplanation).filter(Boolean)
+  const workGroups = new Map<string, string[]>()
   for (const item of [
     ...gaps.map((gap) => ({
       id: gap.competency_id,
-      name: gap.competency_name,
       text: gap.advice,
     })),
     ...value.partial_competencies.map((part) => ({
       id: part.competency_id,
-      name: part.competency_name,
       text: part.details,
     })),
   ]) {
+    const text = feedbackExplanation(item.text)
+    if (!text) continue
     const group = workGroups.get(item.id)
     if (group) {
-      group.details.push(item.text)
+      group.push(text)
     } else {
-      workGroups.set(item.id, { name: item.name, details: [item.text] })
+      workGroups.set(item.id, [text])
     }
   }
   const good =
-    value.strengths.length > 0 ? (
-      <ul className={styles.summaryCardList}>
-        {value.strengths.map((item, index) => (
+    strengths.length > 0 ? (
+      <ul className={styles.summaryExplanations}>
+        {strengths.map((item, index) => (
           <li key={index}>
             <MarkdownContent text={item} />
           </li>
@@ -804,12 +806,11 @@ function OverallFeedbackContent({ value }: { value: OverallFeedback }) {
       </ul>
     ) : null
   const work =
-    gaps.length + value.partial_competencies.length > 0 ? (
-      <ul className={`${styles.summaryCardList} ${styles.feedbackGroups}`}>
-        {[...workGroups].map(([id, group]) => (
+    workGroups.size > 0 ? (
+      <ul className={styles.summaryExplanations}>
+        {[...workGroups].map(([id, details]) => (
           <li key={id}>
-            <strong>{group.name}.</strong>
-            {groupFeedbackDetails(group.details).map((detail, index) => (
+            {groupFeedbackDetails(details).map((detail, index) => (
               <div key={index}>
                 {detail.heading && <MarkdownContent text={detail.heading} />}
                 {detail.heading && (

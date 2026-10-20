@@ -911,6 +911,28 @@
     gap: 6px;
   }
 }
+.summaryExplanations {
+  display: grid;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+
+  > li {
+    display: grid;
+    gap: var(--space-2);
+    min-width: 0;
+  }
+
+  p {
+    margin-block: 0;
+  }
+
+  ul,
+  ol {
+    padding-left: var(--space-4);
+  }
+}
 .feedbackGroup {
   display: grid;
   gap: 8px;

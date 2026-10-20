@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react'
 import {
   createMemoryHistory,
   createRouter,
@@ -119,7 +125,9 @@ function server(
   answerStatus = 200,
   totalTasks = 3,
   feedbackStatus = 200,
-  strengths: string[] | null = ['Вы уверенно различаете модели.'],
+  strengths: string[] | null = [
+    '**К1 — Модели**\n\nВы уверенно различаете модели.',
+  ],
   summary = 'Итоговое педагогическое резюме.',
 ) {
   const sessionProgress = { ...progress, total_tasks: totalTasks }
@@ -230,7 +238,7 @@ function server(
         confirmed_gaps: [
           {
             competency_id: 'c1',
-            competency_name: 'Модели',
+            competency_name: 'К6 — Выбор модели',
             outcome_id: 'o1',
             outcome_name: 'Различать модели',
             taxonomy_code: 'apply',
@@ -240,7 +248,7 @@ function server(
           },
           {
             competency_id: 'c1',
-            competency_name: 'Модели',
+            competency_name: 'К6 — Выбор модели',
             outcome_id: 'o2',
             outcome_name: 'Выбирать метрику',
             taxonomy_code: 'apply',
@@ -414,11 +422,11 @@ it('runs real diagnostic audio, obeys skipped basics and displays the server tot
     .getByRole('heading', { name: 'Что хорошо' })
     .closest('section')!
   expect(good).toHaveTextContent('Вы уверенно различаете модели.')
+  expect(within(good).queryByText('К1 — Модели')).not.toBeInTheDocument()
   const work = screen
     .getByRole('heading', { name: 'Что доработать' })
     .closest('section')!
-  expect(work.querySelectorAll('strong')).toHaveLength(1)
-  expect(work.querySelector('strong')).toHaveTextContent('Модели.')
+  expect(within(work).queryByText(/К6 — Выбор модели/)).not.toBeInTheDocument()
   expect(work).toHaveTextContent('Повторный совет к рекомендации.')
   expect(work).toHaveTextContent('Сравните метрики на двух задачах.')
   expect(screen.queryByText(/Критических пробелов нет/)).not.toBeInTheDocument()

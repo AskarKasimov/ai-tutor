@@ -97,10 +97,11 @@ func TestMigrateFreshAndRepeat(t *testing.T) {
 	if err := pool.QueryRow(ctx, "SELECT count(*) FROM subjects").Scan(&subjects); err != nil || subjects != 0 {
 		t.Fatalf("fresh subjects=%d err=%v", subjects, err)
 	}
-	var modes int
-	if err := pool.QueryRow(ctx, `SELECT count(*) FROM information_schema.columns
-WHERE table_schema=current_schema() AND table_name='subjects' AND column_name IN ('mode','active_revision')`).Scan(&modes); err != nil || modes != 2 {
-		t.Fatalf("learning subject columns=%d err=%v, want 2", modes, err)
+	var modeColumn, stateTable bool
+	if err := pool.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM information_schema.columns
+WHERE table_schema=current_schema() AND table_name='subjects' AND column_name='mode'),
+to_regclass('learning_subject_state') IS NOT NULL`).Scan(&modeColumn, &stateTable); err != nil || !modeColumn || !stateTable {
+		t.Fatalf("learning scope schema: mode column=%t state table=%t err=%v", modeColumn, stateTable, err)
 	}
 	if _, err := pool.Exec(ctx, `INSERT INTO subjects(id, name, created_at, mode) VALUES
 ('exam:duplicate-name', 'Одинаковый курс', 1, 'exam'),

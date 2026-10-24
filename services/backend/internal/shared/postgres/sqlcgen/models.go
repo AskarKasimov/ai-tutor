@@ -14,103 +14,11 @@ type AccessToken struct {
 	ExpiresAt int64
 }
 
-type AldLevel struct {
-	ID    string
-	Code  string
-	Label string
-}
-
-type AssignmentResponse struct {
-	ID              string
-	AssignmentID    string
-	TranscriptionID *string
-	AnswerText      string
-	Score           *int16
-	Feedback        []byte
-	CreatedAt       int64
-}
-
-type AudioAsset struct {
-	ID                  string
-	Instruction         string
-	ObjectKey           string
-	Status              string
-	Bucket              *string
-	StorageUri          *string
-	AudioUrl            *string
-	Attempts            int32
-	NextAttemptAt       pgtype.Timestamptz
-	LeaseUntil          pgtype.Timestamptz
-	ClaimToken          *string
-	LastErrorCode       *string
-	CreatedAt           pgtype.Timestamptz
-	UpdatedAt           pgtype.Timestamptz
-	PriorityRequestedAt pgtype.Timestamptz
-}
-
 type AuthSession struct {
 	ID        string
 	UserID    string
 	ExpiresAt int64
 	RevokedAt *int64
-}
-
-type Competency struct {
-	ID       string
-	Name     string
-	Revision int64
-}
-
-type CompetencyMapImport struct {
-	Revision              int64
-	Singleton             bool
-	ImportedAt            int64
-	ImportedBy            string
-	CompetencyCount       int32
-	ConstituentCount      int32
-	OutcomeCount          int32
-	TaskCount             int32
-	SourceFormat          string
-	SourceHeaders         []byte
-	UnparsedTaskCellCount int32
-	SubjectID             string
-}
-
-type CompetencyMapSourceRow struct {
-	Revision   int64
-	RowIndex   int32
-	SourceLine int32
-	Cells      []byte
-}
-
-type CompetencyMapState struct {
-	Singleton bool
-	Revision  int64
-}
-
-type Constituent struct {
-	ID           string
-	CompetencyID string
-	Name         string
-	TopicLevelID *string
-}
-
-type ConstituentCurriculumProfile struct {
-	ConstituentID      string
-	CurriculumSections string
-}
-
-type ConstituentSection struct {
-	ID            string
-	Revision      int64
-	ConstituentID string
-	SectionID     string
-}
-
-type ConstituentSectionCompetency struct {
-	Revision               int64
-	ConstituentSectionID   string
-	CurriculumCompetencyID string
 }
 
 type CourseGraph struct {
@@ -154,20 +62,107 @@ type CourseGraphMap struct {
 	UploadedAt  int64
 }
 
-type CurriculumCompetency struct {
+type GeekRequest struct {
+	OwnerID     string
+	Key         string
+	Fingerprint string
+	SessionID   string
+	Created     bool
+	Response    []byte
+	CreatedAt   int64
+}
+
+type GeekSession struct {
+	ID          string
+	OwnerID     string
+	SubjectID   string
+	Status      string
+	Version     int32
+	StartedAt   int64
+	CompletedAt *int64
+	UpdatedAt   int64
+	State       []byte
+}
+
+type LearningAldLevel struct {
+	ID    string
+	Code  string
+	Label string
+}
+
+type LearningAssignmentResponse struct {
+	ID              string
+	AssignmentID    string
+	TranscriptionID *string
+	AnswerText      string
+	Score           *int16
+	Feedback        []byte
+	CreatedAt       int64
+}
+
+type LearningAudioAsset struct {
+	ID                  string
+	Instruction         string
+	ObjectKey           string
+	Status              string
+	Bucket              *string
+	StorageUri          *string
+	AudioUrl            *string
+	Attempts            int32
+	NextAttemptAt       pgtype.Timestamptz
+	LeaseUntil          pgtype.Timestamptz
+	ClaimToken          *string
+	LastErrorCode       *string
+	CreatedAt           pgtype.Timestamptz
+	UpdatedAt           pgtype.Timestamptz
+	PriorityRequestedAt pgtype.Timestamptz
+}
+
+type LearningCompetency struct {
+	ID       string
+	Name     string
+	Revision int64
+}
+
+type LearningConstituent struct {
+	ID           string
+	CompetencyID string
+	Name         string
+	TopicLevelID *string
+}
+
+type LearningConstituentCurriculumProfile struct {
+	ConstituentID      string
+	CurriculumSections string
+}
+
+type LearningConstituentSection struct {
+	ID            string
+	Revision      int64
+	ConstituentID string
+	SectionID     string
+}
+
+type LearningConstituentSectionCompetency struct {
+	Revision               int64
+	ConstituentSectionID   string
+	CurriculumCompetencyID string
+}
+
+type LearningCurriculumCompetency struct {
 	ID       string
 	Revision int64
 	Code     string
 }
 
-type CurriculumSection struct {
+type LearningCurriculumSection struct {
 	ID       string
 	Revision int64
 	Code     string
 	Title    string
 }
 
-type DiagnosticAnswer struct {
+type LearningDiagnosticAnswer struct {
 	SessionID      string
 	AnswerOrder    int32
 	IdempotencyKey string
@@ -178,14 +173,14 @@ type DiagnosticAnswer struct {
 	CreatedAt      pgtype.Timestamptz
 }
 
-type DiagnosticFeedback struct {
+type LearningDiagnosticFeedback struct {
 	SessionID    string
 	OwnerID      string
 	FeedbackData []byte
 	CreatedAt    pgtype.Timestamptz
 }
 
-type DiagnosticSession struct {
+type LearningDiagnosticSession struct {
 	ID                    string
 	OwnerID               string
 	VariantID             string
@@ -210,29 +205,7 @@ type DiagnosticSession struct {
 	CompletedAt           pgtype.Timestamptz
 }
 
-type GeekRequest struct {
-	OwnerID     string
-	Key         string
-	Fingerprint string
-	SessionID   string
-	Created     bool
-	Response    []byte
-	CreatedAt   int64
-}
-
-type GeekSession struct {
-	ID          string
-	OwnerID     string
-	SubjectID   string
-	Status      string
-	Version     int32
-	StartedAt   int64
-	CompletedAt *int64
-	UpdatedAt   int64
-	State       []byte
-}
-
-type GenerationRun struct {
+type LearningGenerationRun struct {
 	ID               string
 	OutcomeID        string
 	MapRevision      int64
@@ -243,45 +216,44 @@ type GenerationRun struct {
 	CreatedAt        int64
 }
 
-type GenerationRunChunk struct {
+type LearningGenerationRunChunk struct {
 	GenerationRunID string
 	ChunkID         string
 }
 
-type GenerationRunExample struct {
+type LearningGenerationRunExample struct {
 	GenerationRunID string
 	TaskID          string
 }
 
-type LearningMessage struct {
-	PlanID    string
-	Sequence  int64
-	ItemIndex int32
-	Role      string
-	Kind      string
-	Body      string
-	CreatedAt int64
+type LearningMapImport struct {
+	Revision              int64
+	Singleton             bool
+	ImportedAt            int64
+	ImportedBy            string
+	CompetencyCount       int32
+	ConstituentCount      int32
+	OutcomeCount          int32
+	TaskCount             int32
+	SourceFormat          string
+	SourceHeaders         []byte
+	UnparsedTaskCellCount int32
+	SubjectID             string
 }
 
-type LearningPlan struct {
-	ID           string
-	OwnerID      string
-	DiagnosticID string
-	PlanData     []byte
-	CreatedAt    pgtype.Timestamptz
+type LearningMapSourceRow struct {
+	Revision   int64
+	RowIndex   int32
+	SourceLine int32
+	Cells      []byte
 }
 
-type LearningSession struct {
-	ID          string
-	UserID      string
-	MapRevision int64
-	MapSnapshot []byte
-	Status      string
-	CreatedAt   int64
-	CompletedAt *int64
+type LearningMapState struct {
+	Singleton bool
+	Revision  int64
 }
 
-type MaterialChunk struct {
+type LearningMaterialChunk struct {
 	ID           string
 	SubjectID    string
 	MaterialName string
@@ -291,26 +263,12 @@ type MaterialChunk struct {
 	SearchVector interface{}
 }
 
-type MaterialChunkOutcome struct {
+type LearningMaterialChunkOutcome struct {
 	ChunkID   string
 	OutcomeID string
 }
 
-type MaterialCleaningJob struct {
-	MaterialID   string
-	Status       string
-	Attempts     int32
-	AvailableAt  int64
-	LeaseUntil   int64
-	LeaseToken   string
-	CleanedText  string
-	S3CleanedKey string
-	S3ReportKey  string
-	ErrorMessage string
-	UpdatedAt    int64
-}
-
-type MaterialEmbedding struct {
+type LearningMaterialEmbedding struct {
 	ChunkID     string
 	Model       string
 	Dimensions  int32
@@ -318,25 +276,7 @@ type MaterialEmbedding struct {
 	Embedding   []float64
 }
 
-type MaterialKind struct {
-	Code      string
-	Label     string
-	SortOrder int32
-}
-
-type MaterialOcrJob struct {
-	MaterialID   string
-	Status       string
-	Attempts     int32
-	AvailableAt  int64
-	LeaseUntil   int64
-	LeaseToken   string
-	ErrorMessage string
-	UpdatedAt    int64
-	Stage        string
-}
-
-type Outcome struct {
+type LearningOutcome struct {
 	ID                 string
 	ConstituentID      string
 	Name               string
@@ -349,47 +289,46 @@ type Outcome struct {
 	PracticeMinutes    *int16
 }
 
-type OutcomeSourceRow struct {
+type LearningOutcomeSourceRow struct {
 	OutcomeID      string
 	SourceRevision int64
 	SourceRowIndex int32
 }
 
-type RefreshToken struct {
-	TokenHash []byte
-	SessionID string
-	UsedAt    *int64
+type LearningPlan struct {
+	ID           string
+	OwnerID      string
+	DiagnosticID string
+	PlanData     []byte
+	CreatedAt    pgtype.Timestamptz
 }
 
-type Subject struct {
-	ID             string
-	Name           string
-	CreatedAt      int64
-	Mode           string
+type LearningPlanMessage struct {
+	PlanID    string
+	Sequence  int64
+	ItemIndex int32
+	Role      string
+	Kind      string
+	Body      string
+	CreatedAt int64
+}
+
+type LearningSession struct {
+	ID          string
+	UserID      string
+	MapRevision int64
+	MapSnapshot []byte
+	Status      string
+	CreatedAt   int64
+	CompletedAt *int64
+}
+
+type LearningSubjectState struct {
+	SubjectID      string
 	ActiveRevision *int64
 }
 
-type SubjectMaterial struct {
-	ID           string
-	SubjectID    string
-	Filename     string
-	ContentType  string
-	FileSize     int64
-	S3RawKey     string
-	S3ParsedKey  string
-	ParsedText   string
-	CharCount    int32
-	Status       string
-	ErrorMessage *string
-	CreatedAt    int64
-	UpdatedAt    int64
-	S3OcrKey     string
-	OcrReport    []byte
-	Week         *int32
-	Kind         *string
-}
-
-type Task struct {
+type LearningTask struct {
 	ID                string
 	OutcomeID         string
 	Question          string
@@ -408,7 +347,7 @@ type Task struct {
 	AudioAssetID      *string
 }
 
-type TaskAssignment struct {
+type LearningTaskAssignment struct {
 	ID              string
 	SessionID       string
 	TaskID          *string
@@ -419,19 +358,19 @@ type TaskAssignment struct {
 	CreatedAt       int64
 }
 
-type Taxonomy struct {
+type LearningTaxonomy struct {
 	ID    string
 	Code  string
 	Label string
 }
 
-type TopicLevel struct {
+type LearningTopicLevel struct {
 	ID    string
 	Code  string
 	Label string
 }
 
-type TrainingAttempt struct {
+type LearningTrainingAttempt struct {
 	SessionID    string
 	Sequence     int64
 	RequestKey   string
@@ -441,7 +380,7 @@ type TrainingAttempt struct {
 	ResponseData []byte
 }
 
-type TrainingChat struct {
+type LearningTrainingChat struct {
 	ExerciseID      string
 	SessionID       string
 	Revision        int64
@@ -450,7 +389,7 @@ type TrainingChat struct {
 	CreatedAt       pgtype.Timestamptz
 }
 
-type TrainingChatMessage struct {
+type LearningTrainingChatMessage struct {
 	ID         string
 	ExerciseID string
 	Sequence   int64
@@ -461,7 +400,7 @@ type TrainingChatMessage struct {
 	CreatedAt  pgtype.Timestamptz
 }
 
-type TrainingChatTurn struct {
+type LearningTrainingChatTurn struct {
 	ID                string
 	SessionID         string
 	ExerciseID        string
@@ -484,7 +423,7 @@ type TrainingChatTurn struct {
 	UpdatedAt         pgtype.Timestamptz
 }
 
-type TrainingExercise struct {
+type LearningTrainingExercise struct {
 	ID           string
 	SessionID    string
 	Round        int64
@@ -493,7 +432,7 @@ type TrainingExercise struct {
 	AudioAssetID *string
 }
 
-type TrainingSession struct {
+type LearningTrainingSession struct {
 	ID              string
 	OwnerID         string
 	DiagnosticID    string
@@ -504,17 +443,108 @@ type TrainingSession struct {
 	CreatedAt       pgtype.Timestamptz
 }
 
-type TrainingStartRequest struct {
+type LearningTrainingStartRequest struct {
 	OwnerID      string
 	RequestKey   string
 	DiagnosticID string
 	SessionID    string
 }
 
-type TrainingTarget struct {
+type LearningTrainingTarget struct {
 	SessionID  string
 	Position   int32
 	TargetData []byte
+}
+
+type LearningVariant struct {
+	ID                      string
+	UserID                  string
+	CreateRequestKey        string
+	MapRevision             int64
+	AlgorithmVersion        string
+	IncludedCompetencyCount int32
+	SkippedCompetencies     []byte
+	CreatedAt               int64
+	SubjectID               string
+	SubjectNameSnapshot     string
+}
+
+type LearningVariantTask struct {
+	ID                   string
+	VariantID            string
+	LiveTaskID           *string
+	SourceTaskIDSnapshot string
+	CompetencyPosition   int32
+	Slot                 int16
+	Role                 string
+	TaskSnapshot         []byte
+	ProfileSnapshot      []byte
+	AudioAssetID         *string
+}
+
+type MaterialCleaningJob struct {
+	MaterialID   string
+	Status       string
+	Attempts     int32
+	AvailableAt  int64
+	LeaseUntil   int64
+	LeaseToken   string
+	CleanedText  string
+	S3CleanedKey string
+	S3ReportKey  string
+	ErrorMessage string
+	UpdatedAt    int64
+}
+
+type MaterialKind struct {
+	Code      string
+	Label     string
+	SortOrder int32
+}
+
+type MaterialOcrJob struct {
+	MaterialID   string
+	Status       string
+	Attempts     int32
+	AvailableAt  int64
+	LeaseUntil   int64
+	LeaseToken   string
+	ErrorMessage string
+	UpdatedAt    int64
+	Stage        string
+}
+
+type RefreshToken struct {
+	TokenHash []byte
+	SessionID string
+	UsedAt    *int64
+}
+
+type Subject struct {
+	ID        string
+	Name      string
+	CreatedAt int64
+	Mode      string
+}
+
+type SubjectMaterial struct {
+	ID           string
+	SubjectID    string
+	Filename     string
+	ContentType  string
+	FileSize     int64
+	S3RawKey     string
+	S3ParsedKey  string
+	ParsedText   string
+	CharCount    int32
+	Status       string
+	ErrorMessage *string
+	CreatedAt    int64
+	UpdatedAt    int64
+	S3OcrKey     string
+	OcrReport    []byte
+	Week         *int32
+	Kind         *string
 }
 
 type Transcription struct {
@@ -531,30 +561,4 @@ type User struct {
 	PasswordHash string
 	Role         string
 	CreatedAt    int64
-}
-
-type Variant struct {
-	ID                      string
-	UserID                  string
-	CreateRequestKey        string
-	MapRevision             int64
-	AlgorithmVersion        string
-	IncludedCompetencyCount int32
-	SkippedCompetencies     []byte
-	CreatedAt               int64
-	SubjectID               string
-	SubjectNameSnapshot     string
-}
-
-type VariantTask struct {
-	ID                   string
-	VariantID            string
-	LiveTaskID           *string
-	SourceTaskIDSnapshot string
-	CompetencyPosition   int32
-	Slot                 int16
-	Role                 string
-	TaskSnapshot         []byte
-	ProfileSnapshot      []byte
-	AudioAssetID         *string
 }

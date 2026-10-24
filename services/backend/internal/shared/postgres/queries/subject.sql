@@ -15,4 +15,5 @@ SELECT subject.id, subject.name,
                   OR EXISTS (SELECT 1 FROM subject_materials material WHERE material.subject_id = subject.id))
        ) AS ready
 FROM subjects subject
+WHERE subject.mode = 'exam'
 ORDER BY lower(subject.name), subject.id;

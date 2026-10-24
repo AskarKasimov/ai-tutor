@@ -4,10 +4,48 @@
 
 package db
 
+import (
+	"github.com/jackc/pgx/v5/pgtype"
+)
+
 type AccessToken struct {
 	TokenHash []byte
 	SessionID string
 	ExpiresAt int64
+}
+
+type AldLevel struct {
+	ID    string
+	Code  string
+	Label string
+}
+
+type AssignmentResponse struct {
+	ID              string
+	AssignmentID    string
+	TranscriptionID *string
+	AnswerText      string
+	Score           *int16
+	Feedback        []byte
+	CreatedAt       int64
+}
+
+type AudioAsset struct {
+	ID                  string
+	Instruction         string
+	ObjectKey           string
+	Status              string
+	Bucket              *string
+	StorageUri          *string
+	AudioUrl            *string
+	Attempts            int32
+	NextAttemptAt       pgtype.Timestamptz
+	LeaseUntil          pgtype.Timestamptz
+	ClaimToken          *string
+	LastErrorCode       *string
+	CreatedAt           pgtype.Timestamptz
+	UpdatedAt           pgtype.Timestamptz
+	PriorityRequestedAt pgtype.Timestamptz
 }
 
 type AuthSession struct {
@@ -15,6 +53,64 @@ type AuthSession struct {
 	UserID    string
 	ExpiresAt int64
 	RevokedAt *int64
+}
+
+type Competency struct {
+	ID       string
+	Name     string
+	Revision int64
+}
+
+type CompetencyMapImport struct {
+	Revision              int64
+	Singleton             bool
+	ImportedAt            int64
+	ImportedBy            string
+	CompetencyCount       int32
+	ConstituentCount      int32
+	OutcomeCount          int32
+	TaskCount             int32
+	SourceFormat          string
+	SourceHeaders         []byte
+	UnparsedTaskCellCount int32
+	SubjectID             string
+}
+
+type CompetencyMapSourceRow struct {
+	Revision   int64
+	RowIndex   int32
+	SourceLine int32
+	Cells      []byte
+}
+
+type CompetencyMapState struct {
+	Singleton bool
+	Revision  int64
+}
+
+type Constituent struct {
+	ID           string
+	CompetencyID string
+	Name         string
+	TopicLevelID *string
+}
+
+type ConstituentCurriculumProfile struct {
+	ConstituentID      string
+	CurriculumSections string
+}
+
+type ConstituentSection struct {
+	ID            string
+	Revision      int64
+	ConstituentID string
+	SectionID     string
+}
+
+type ConstituentSectionCompetency struct {
+	Revision               int64
+	ConstituentSectionID   string
+	CurriculumCompetencyID string
 }
 
 type CourseGraph struct {
@@ -58,6 +154,62 @@ type CourseGraphMap struct {
 	UploadedAt  int64
 }
 
+type CurriculumCompetency struct {
+	ID       string
+	Revision int64
+	Code     string
+}
+
+type CurriculumSection struct {
+	ID       string
+	Revision int64
+	Code     string
+	Title    string
+}
+
+type DiagnosticAnswer struct {
+	SessionID      string
+	AnswerOrder    int32
+	IdempotencyKey string
+	RequestDigest  string
+	VariantTaskID  string
+	AnswerData     []byte
+	ProgressData   []byte
+	CreatedAt      pgtype.Timestamptz
+}
+
+type DiagnosticFeedback struct {
+	SessionID    string
+	OwnerID      string
+	FeedbackData []byte
+	CreatedAt    pgtype.Timestamptz
+}
+
+type DiagnosticSession struct {
+	ID                    string
+	OwnerID               string
+	VariantID             string
+	SubjectID             string
+	SubjectNameSnapshot   string
+	MapRevision           int64
+	Status                string
+	CurrentCompetency     int32
+	CurrentTask           int32
+	StartRequestKey       string
+	StartRequestDigest    string
+	SessionData           []byte
+	InFlightKey           *string
+	InFlightFingerprint   *string
+	InFlightVariantTaskID *string
+	InFlightToken         *string
+	LeaseUntil            pgtype.Timestamptz
+	TranscriptionID       *string
+	TranscriptionText     *string
+	CreatedAt             pgtype.Timestamptz
+	UpdatedAt             pgtype.Timestamptz
+	CompletedAt           pgtype.Timestamptz
+}
+
 type GeekRequest struct {
 	OwnerID     string
 	Key         string
@@ -80,6 +232,70 @@ type GeekSession struct {
 	State       []byte
 }
 
+type GenerationRun struct {
+	ID               string
+	OutcomeID        string
+	MapRevision      int64
+	Model            string
+	PromptVersion    string
+	RequestKey       string
+	RequestedProfile []byte
+	CreatedAt        int64
+}
+
+type GenerationRunChunk struct {
+	GenerationRunID string
+	ChunkID         string
+}
+
+type GenerationRunExample struct {
+	GenerationRunID string
+	TaskID          string
+}
+
+type LearningMessage struct {
+	PlanID    string
+	Sequence  int64
+	ItemIndex int32
+	Role      string
+	Kind      string
+	Body      string
+	CreatedAt int64
+}
+
+type LearningPlan struct {
+	ID           string
+	OwnerID      string
+	DiagnosticID string
+	PlanData     []byte
+	CreatedAt    pgtype.Timestamptz
+}
+
+type LearningSession struct {
+	ID          string
+	UserID      string
+	MapRevision int64
+	MapSnapshot []byte
+	Status      string
+	CreatedAt   int64
+	CompletedAt *int64
+}
+
+type MaterialChunk struct {
+	ID           string
+	SubjectID    string
+	MaterialName string
+	Ordinal      int32
+	Content      string
+	CreatedAt    int64
+	SearchVector interface{}
+}
+
+type MaterialChunkOutcome struct {
+	ChunkID   string
+	OutcomeID string
+}
+
 type MaterialCleaningJob struct {
 	MaterialID   string
 	Status       string
@@ -92,6 +308,14 @@ type MaterialCleaningJob struct {
 	S3ReportKey  string
 	ErrorMessage string
 	UpdatedAt    int64
+}
+
+type MaterialEmbedding struct {
+	ChunkID     string
+	Model       string
+	Dimensions  int32
+	MapRevision int64
+	Embedding   []float64
 }
 
 type MaterialKind struct {
@@ -112,6 +336,25 @@ type MaterialOcrJob struct {
 	Stage        string
 }
 
+type Outcome struct {
+	ID                 string
+	ConstituentID      string
+	Name               string
+	IncludeInTest      *bool
+	TaxonomyID         *string
+	AldLevelID         *string
+	Importance         *int16
+	EducationalContent *string
+	TheoryMinutes      *int16
+	PracticeMinutes    *int16
+}
+
+type OutcomeSourceRow struct {
+	OutcomeID      string
+	SourceRevision int64
+	SourceRowIndex int32
+}
+
 type RefreshToken struct {
 	TokenHash []byte
 	SessionID string
@@ -119,9 +362,11 @@ type RefreshToken struct {
 }
 
 type Subject struct {
-	ID        string
-	Name      string
-	CreatedAt int64
+	ID             string
+	Name           string
+	CreatedAt      int64
+	Mode           string
+	ActiveRevision *int64
 }
 
 type SubjectMaterial struct {
@@ -144,6 +389,134 @@ type SubjectMaterial struct {
 	Kind         *string
 }
 
+type Task struct {
+	ID                string
+	OutcomeID         string
+	Question          string
+	Criteria          *string
+	SourceRow         *int32
+	SourceColumn      *string
+	Options           []byte
+	VoiceInstruction  *string
+	ReferenceAnswer   *string
+	Origin            string
+	GenerationRunID   *string
+	SourceRevision    *int64
+	SourceRowIndex    *int32
+	SourceColumnIndex *int32
+	CreatedAt         int64
+	AudioAssetID      *string
+}
+
+type TaskAssignment struct {
+	ID              string
+	SessionID       string
+	TaskID          *string
+	Sequence        int32
+	Role            string
+	TaskSnapshot    []byte
+	ProfileSnapshot []byte
+	CreatedAt       int64
+}
+
+type Taxonomy struct {
+	ID    string
+	Code  string
+	Label string
+}
+
+type TopicLevel struct {
+	ID    string
+	Code  string
+	Label string
+}
+
+type TrainingAttempt struct {
+	SessionID    string
+	Sequence     int64
+	RequestKey   string
+	Fingerprint  string
+	ExerciseID   string
+	AttemptData  []byte
+	ResponseData []byte
+}
+
+type TrainingChat struct {
+	ExerciseID      string
+	SessionID       string
+	Revision        int64
+	Status          string
+	LatestCheckData []byte
+	CreatedAt       pgtype.Timestamptz
+}
+
+type TrainingChatMessage struct {
+	ID         string
+	ExerciseID string
+	Sequence   int64
+	Role       string
+	Kind       string
+	Source     *string
+	Text       string
+	CreatedAt  pgtype.Timestamptz
+}
+
+type TrainingChatTurn struct {
+	ID                string
+	SessionID         string
+	ExerciseID        string
+	RequestKey        string
+	Operation         string
+	Fingerprint       string
+	ExpectedRevision  int64
+	Token             string
+	LeaseUntil        pgtype.Timestamptz
+	Status            string
+	RequestData       []byte
+	PendingAudio      []byte
+	TranscriptionID   *string
+	TranscriptionText *string
+	CheckData         []byte
+	ResponseData      []byte
+	ErrorCode         *string
+	PromptVersion     *string
+	CreatedAt         pgtype.Timestamptz
+	UpdatedAt         pgtype.Timestamptz
+}
+
+type TrainingExercise struct {
+	ID           string
+	SessionID    string
+	Round        int64
+	TargetIndex  int32
+	ExerciseData []byte
+	AudioAssetID *string
+}
+
+type TrainingSession struct {
+	ID              string
+	OwnerID         string
+	DiagnosticID    string
+	SubjectID       string
+	StateData       []byte
+	ReservationData []byte
+	LeaseUntil      pgtype.Timestamptz
+	CreatedAt       pgtype.Timestamptz
+}
+
+type TrainingStartRequest struct {
+	OwnerID      string
+	RequestKey   string
+	DiagnosticID string
+	SessionID    string
+}
+
+type TrainingTarget struct {
+	SessionID  string
+	Position   int32
+	TargetData []byte
+}
+
 type Transcription struct {
 	ID        string
 	UserID    string
@@ -158,4 +531,30 @@ type User struct {
 	PasswordHash string
 	Role         string
 	CreatedAt    int64
+}
+
+type Variant struct {
+	ID                      string
+	UserID                  string
+	CreateRequestKey        string
+	MapRevision             int64
+	AlgorithmVersion        string
+	IncludedCompetencyCount int32
+	SkippedCompetencies     []byte
+	CreatedAt               int64
+	SubjectID               string
+	SubjectNameSnapshot     string
+}
+
+type VariantTask struct {
+	ID                   string
+	VariantID            string
+	LiveTaskID           *string
+	SourceTaskIDSnapshot string
+	CompetencyPosition   int32
+	Slot                 int16
+	Role                 string
+	TaskSnapshot         []byte
+	ProfileSnapshot      []byte
+	AudioAssetID         *string
 }

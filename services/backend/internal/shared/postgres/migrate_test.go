@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"sync"
@@ -96,10 +97,76 @@ func TestMigrateFreshAndRepeat(t *testing.T) {
 	if err := pool.QueryRow(ctx, "SELECT count(*) FROM subjects").Scan(&subjects); err != nil || subjects != 0 {
 		t.Fatalf("fresh subjects=%d err=%v", subjects, err)
 	}
+	var modes int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM information_schema.columns
+WHERE table_schema=current_schema() AND table_name='subjects' AND column_name IN ('mode','active_revision')`).Scan(&modes); err != nil || modes != 2 {
+		t.Fatalf("learning subject columns=%d err=%v, want 2", modes, err)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO subjects(id, name, created_at, mode) VALUES
+('exam:duplicate-name', 'Одинаковый курс', 1, 'exam'),
+('learn:duplicate-name', 'Одинаковый курс', 1, 'learn')`); err != nil {
+		t.Fatalf("mode-scoped catalogs rejected equal names: %v", err)
+	}
 	var versions int
 	if err := pool.QueryRow(ctx, "SELECT count(*) FROM goose_db_version WHERE is_applied AND version_id > 0").Scan(&versions); err != nil || versions != migrationCount(t) {
 		t.Fatalf("applied migrations=%d err=%v, want %d", versions, err, migrationCount(t))
 	}
+}
+
+func TestCurrentExamSchemaUpgradesWithoutChangingExamData(t *testing.T) {
+	pool := migrationPool(t)
+	ctx := context.Background()
+	if err := migrate(ctx, pool, migrationsUpTo(t, 10)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO users(id,email,password_hash,created_at)
+VALUES ('user:exam','exam@example.test','hash',1)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO subjects(id,name,created_at)
+VALUES ('subject:exam','Экзамен',1)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO geek_sessions(id,owner_id,subject_id,status,version,started_at,updated_at,state)
+VALUES ('session:exam','user:exam','subject:exam','completed',1,1,2,'{}')`); err != nil {
+		t.Fatal(err)
+	}
+	if err := Migrate(ctx, pool); err != nil {
+		t.Fatal(err)
+	}
+	var email, mode, status string
+	if err := pool.QueryRow(ctx, `SELECT u.email, s.mode, g.status
+FROM users u JOIN geek_sessions g ON g.owner_id=u.id
+JOIN subjects s ON s.id=g.subject_id WHERE g.id='session:exam'`).Scan(&email, &mode, &status); err != nil {
+		t.Fatal(err)
+	}
+	if email != "exam@example.test" || mode != "exam" || status != "completed" {
+		t.Fatalf("exam data changed after learning migration: email=%q mode=%q status=%q", email, mode, status)
+	}
+}
+
+func migrationsUpTo(t *testing.T, max int) fstest.MapFS {
+	t.Helper()
+	files := fstest.MapFS{}
+	entries, err := fs.ReadDir(migrations, "migrations")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range entries {
+		var version int
+		if _, err := fmt.Sscanf(entry.Name(), "%5d_", &version); err != nil {
+			continue
+		}
+		if version > max {
+			continue
+		}
+		data, err := fs.ReadFile(migrations, "migrations/"+entry.Name())
+		if err != nil {
+			t.Fatal(err)
+		}
+		files[entry.Name()] = &fstest.MapFile{Data: data}
+	}
+	return files
 }
 
 func TestMigrateDownRemovesSchema(t *testing.T) {

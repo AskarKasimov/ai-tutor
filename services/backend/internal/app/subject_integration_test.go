@@ -13,6 +13,10 @@ func TestSubjectCatalogPermissionsAndEmptySubjects(t *testing.T) {
 	if _, err := f.pool.Exec(context.Background(), `DELETE FROM subjects WHERE id='subject:test'`); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := f.pool.Exec(context.Background(), `INSERT INTO subjects(id, name, created_at, mode)
+VALUES ('subject:learn', 'Предмет обучения', 1, 'learn')`); err != nil {
+		t.Fatal(err)
+	}
 	student, _, _ := f.register(t, "subject-student@example.edu")
 	admin := f.admin(t)
 

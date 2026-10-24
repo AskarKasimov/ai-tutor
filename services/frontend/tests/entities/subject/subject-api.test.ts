@@ -43,7 +43,7 @@ it('lists subjects with cookie credentials and rejects malformed success bodies'
   await expect(listSubjects(new AbortController().signal)).resolves.toEqual([
     { id: 'subject:ml', name: 'ML', ready: true },
   ])
-  expect(fetchMock.mock.calls[0][0]).toBe('/api/v1/subjects')
+  expect(fetchMock.mock.calls[0][0]).toBe('/api/v1/exam/subjects')
   expect(fetchMock.mock.calls[0][1].credentials).toBe('include')
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json([{ id: 1 }])))
   await expect(
@@ -64,7 +64,7 @@ it('creates a subject as JSON and carries backend error codes', async () => {
   await expect(
     createSubject('Физика', new AbortController().signal),
   ).resolves.toMatchObject({ id: 's1', ready: false })
-  expect(fetchMock.mock.calls[0][0]).toBe('/api/v1/admin/subjects')
+  expect(fetchMock.mock.calls[0][0]).toBe('/api/v1/exam/admin/subjects')
   expect(fetchMock.mock.calls[0][1].method).toBe('POST')
   expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({
     name: 'Физика',

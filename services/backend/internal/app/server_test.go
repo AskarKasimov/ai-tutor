@@ -1,9 +1,24 @@
 package app
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 )
+
+func TestExamRoutesUseTheirOwnNamespace(t *testing.T) {
+	f := newFixture(t)
+	if got := f.request(http.MethodGet, "/exam/subjects", ""); got.Code != http.StatusUnauthorized {
+		t.Fatalf("namespaced exam catalog: got %d, want 401", got.Code)
+	}
+	req := httptest.NewRequest(http.MethodGet, "https://api.example/subjects", nil)
+	response := httptest.NewRecorder()
+	f.app.Handler().ServeHTTP(response, req)
+	if response.Code != http.StatusNotFound {
+		t.Fatalf("unscoped catalog route still registered: got %d, want 404", response.Code)
+	}
+}
 
 func TestHTTPWriteTimeoutAllowsSlowOperationsToFinish(t *testing.T) {
 	for _, tc := range []struct {

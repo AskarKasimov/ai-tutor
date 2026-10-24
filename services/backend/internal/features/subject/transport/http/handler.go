@@ -32,7 +32,7 @@ type CreateRequest struct {
 // @Failure 403 {object} fault.Error
 // @Failure 422 {object} fault.Error
 // @Failure 503 {object} fault.Error
-// @Router /admin/subjects [post]
+// @Router /exam/admin/subjects [post]
 func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 	actor, ok := httpx.Principal[user.User](r)
 	if !ok {
@@ -62,7 +62,7 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 // @Success 200 {array} subject.Subject
 // @Failure 401 {object} fault.Error
 // @Failure 503 {object} fault.Error
-// @Router /subjects [get]
+// @Router /exam/subjects [get]
 func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 	actor, ok := httpx.Principal[user.User](r)
 	if !ok {

@@ -12,11 +12,11 @@ func (a *App) middleware(next http.Handler) http.Handler {
 		w.Header().Set("Cache-Control", "no-store")
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		limit := int64(32 * 1024)
-		if strings.HasPrefix(r.URL.Path, "/admin/subjects/") && strings.HasSuffix(r.URL.Path, "/materials") {
+		if strings.HasPrefix(r.URL.Path, "/exam/admin/subjects/") && strings.HasSuffix(r.URL.Path, "/materials") {
 			limit = 2500 * 1024 * 1024
-		} else if r.Method == http.MethodPut && strings.HasPrefix(r.URL.Path, "/admin/subjects/") && strings.HasSuffix(r.URL.Path, "/raw") {
+		} else if r.Method == http.MethodPut && strings.HasPrefix(r.URL.Path, "/exam/admin/subjects/") && strings.HasSuffix(r.URL.Path, "/raw") {
 			limit = 51 * 1024 * 1024
-		} else if r.Method == http.MethodPost && strings.HasPrefix(r.URL.Path, "/admin/subjects/") && strings.HasSuffix(r.URL.Path, "/graph/competency-map") {
+		} else if r.Method == http.MethodPost && strings.HasPrefix(r.URL.Path, "/exam/admin/subjects/") && strings.HasSuffix(r.URL.Path, "/graph/competency-map") {
 			// The handler bounds the book itself and answers 413 above it.
 			limit = graphhttp.MaxMapBytes + 2<<20
 		} else if r.URL.Path == "/voice/transcriptions" {

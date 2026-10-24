@@ -219,6 +219,7 @@ func migrateFixture(t *testing.T, ctx context.Context, pool *pgxpool.Pool) {
 }
 
 func (f *fixture) request(method, path, body string, cookies ...*http.Cookie) *httptest.ResponseRecorder {
+	path = examTestPath(path)
 	req := httptest.NewRequest(method, "https://api.example"+path, strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	for _, c := range cookies {
@@ -227,6 +228,13 @@ func (f *fixture) request(method, path, body string, cookies ...*http.Cookie) *h
 	w := httptest.NewRecorder()
 	f.app.Handler().ServeHTTP(w, req)
 	return w
+}
+
+func examTestPath(path string) string {
+	if strings.HasPrefix(path, "/admin/") || path == "/subjects" || strings.HasPrefix(path, "/subjects/") || strings.HasPrefix(path, "/diagnostic-sessions") {
+		return "/exam" + path
+	}
+	return path
 }
 
 func (f *fixture) register(t *testing.T, email string) (*http.Cookie, *http.Cookie, string) {
@@ -468,7 +476,7 @@ func upload(f *fixture, path, field, filename, media string, data []byte, cookie
 	p, _ := mw.CreatePart(h)
 	_, _ = p.Write(data)
 	_ = mw.Close()
-	r := httptest.NewRequest("POST", "https://api.example"+path, &body)
+	r := httptest.NewRequest("POST", "https://api.example"+examTestPath(path), &body)
 	r.Header.Set("Content-Type", mw.FormDataContentType())
 	if cookie != nil {
 		r.AddCookie(cookie)

@@ -32,7 +32,7 @@ func New(service *application.Worker) *Handler { return &Handler{service} }
 // @Failure 403 {object} fault.Error
 // @Failure 404 {object} fault.Error
 // @Failure 503 {object} fault.Error
-// @Router /admin/subjects/{subject_id}/graph [get]
+// @Router /exam/admin/subjects/{subject_id}/graph [get]
 func (h *Handler) Read(w http.ResponseWriter, r *http.Request) {
 	actor, ok := httpx.Principal[user.User](r)
 	if !ok {
@@ -62,7 +62,7 @@ func (h *Handler) Read(w http.ResponseWriter, r *http.Request) {
 // @Failure 409 {object} fault.Error "GRAPH_BUILD_IN_PROGRESS: сборка уже идёт"
 // @Failure 422 {object} fault.Error "GRAPH_INPUTS_NOT_READY: материалы ещё обрабатываются, не обработаны или их нет"
 // @Failure 503 {object} fault.Error
-// @Router /admin/subjects/{subject_id}/graph/build [post]
+// @Router /exam/admin/subjects/{subject_id}/graph/build [post]
 func (h *Handler) Build(w http.ResponseWriter, r *http.Request) {
 	actor, ok := httpx.Principal[user.User](r)
 	if !ok {
@@ -96,7 +96,7 @@ func (h *Handler) Build(w http.ResponseWriter, r *http.Request) {
 // @Failure 413 {object} fault.Error
 // @Failure 422 {object} fault.Error "COMPETENCY_MAP_INVALID или COMPETENCY_MAP_EMPTY"
 // @Failure 503 {object} fault.Error
-// @Router /admin/subjects/{subject_id}/graph/competency-map [post]
+// @Router /exam/admin/subjects/{subject_id}/graph/competency-map [post]
 func (h *Handler) ImportMap(w http.ResponseWriter, r *http.Request) {
 	actor, ok := httpx.Principal[user.User](r)
 	if !ok {

@@ -824,8 +824,8 @@ it('voices the reply to the answer first and the question after it in one turn',
   await waitFor(() => expect(FakeAudio.played).toHaveLength(2))
   await waitFor(() =>
     expect(audioUrls()).toEqual([
-      '/api/v1/diagnostic-sessions/d1/turns/t3/audio?part=reply',
-      '/api/v1/diagnostic-sessions/d1/turns/t3/audio?part=question',
+      '/api/v1/exam/diagnostic-sessions/d1/turns/t3/audio?part=reply',
+      '/api/v1/exam/diagnostic-sessions/d1/turns/t3/audio?part=question',
     ]),
   )
   // The question plays once the reply has ended.

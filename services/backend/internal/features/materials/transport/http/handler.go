@@ -70,7 +70,7 @@ type Handler struct {
 // @Failure 401 {object} fault.Error
 // @Failure 403 {object} fault.Error
 // @Failure 503 {object} fault.Error
-// @Router /admin/material-kinds [get]
+// @Router /exam/admin/material-kinds [get]
 func (h *Handler) ListKinds(w http.ResponseWriter, r *http.Request) {
 	actor, ok := httpx.Principal[user.User](r)
 	if !ok {
@@ -112,7 +112,7 @@ func NewHandler(service *application.Service, maxUploadBytes int64) *Handler {
 // @Failure 413 {object} fault.Error
 // @Failure 422 {object} fault.Error
 // @Failure 500 {object} fault.Error
-// @Router /admin/subjects/{subject_id}/materials [post]
+// @Router /exam/admin/subjects/{subject_id}/materials [post]
 func (h *Handler) UploadMaterials(w http.ResponseWriter, r *http.Request) {
 	actor, ok := httpx.Principal[user.User](r)
 	if !ok {
@@ -297,7 +297,7 @@ func (h *Handler) UploadMaterials(w http.ResponseWriter, r *http.Request) {
 // @Failure 401 {object} fault.Error
 // @Failure 403 {object} fault.Error
 // @Failure 500 {object} fault.Error
-// @Router /admin/subjects/{subject_id}/materials [get]
+// @Router /exam/admin/subjects/{subject_id}/materials [get]
 func (h *Handler) ListMaterials(w http.ResponseWriter, r *http.Request) {
 	actor, ok := httpx.Principal[user.User](r)
 	if !ok {
@@ -343,7 +343,7 @@ func (h *Handler) ListMaterials(w http.ResponseWriter, r *http.Request) {
 // @Failure 422 {object} fault.Error
 // @Failure 404 {object} fault.Error
 // @Failure 503 {object} fault.Error
-// @Router /admin/subjects/{subject_id}/materials/{material_id} [patch]
+// @Router /exam/admin/subjects/{subject_id}/materials/{material_id} [patch]
 func (h *Handler) UpdateMaterialMetadata(w http.ResponseWriter, r *http.Request) {
 	actor, ok := httpx.Principal[user.User](r)
 	if !ok {
@@ -377,7 +377,7 @@ func (h *Handler) UpdateMaterialMetadata(w http.ResponseWriter, r *http.Request)
 // @Failure 401 {object} fault.Error
 // @Failure 403 {object} fault.Error
 // @Failure 500 {object} fault.Error
-// @Router /admin/subjects/{subject_id}/materials/{material_id} [delete]
+// @Router /exam/admin/subjects/{subject_id}/materials/{material_id} [delete]
 func (h *Handler) DeleteMaterial(w http.ResponseWriter, r *http.Request) {
 	actor, ok := httpx.Principal[user.User](r)
 	if !ok {
@@ -418,7 +418,7 @@ func (h *Handler) DeleteMaterial(w http.ResponseWriter, r *http.Request) {
 // @Failure 403 {object} fault.Error
 // @Failure 404 {object} fault.Error
 // @Failure 500 {object} fault.Error
-// @Router /admin/subjects/{subject_id}/materials/{material_id}/raw [get]
+// @Router /exam/admin/subjects/{subject_id}/materials/{material_id}/raw [get]
 func (h *Handler) DownloadRaw(w http.ResponseWriter, r *http.Request) {
 	actor, ok := httpx.Principal[user.User](r)
 	if !ok {
@@ -504,7 +504,7 @@ func sanitizeASCIIFilename(filename string) string {
 // @Failure 413 {object} fault.Error
 // @Failure 422 {object} fault.Error
 // @Failure 503 {object} fault.Error
-// @Router /admin/subjects/{subject_id}/materials/{material_id}/raw [put]
+// @Router /exam/admin/subjects/{subject_id}/materials/{material_id}/raw [put]
 func (h *Handler) ReplaceMaterial(w http.ResponseWriter, r *http.Request) {
 	actor, ok := httpx.Principal[user.User](r)
 	if !ok {

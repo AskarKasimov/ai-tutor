@@ -18,6 +18,11 @@ export const learningTranslations = {
     subjectsLoading: 'Загружаем предмет…',
     subjectsError: 'Не удалось загрузить предмет.',
     noSharedCourses: 'Сначала создайте общий курс',
+    chooseSharedCourse: 'Выберите курс для подготовки материалов',
+    chooseSharedCourseHelp:
+      'Выберите общий курс. Карта будет привязана только к выбранному курсу.',
+    selectedCourseMissing:
+      'Курс из ссылки недоступен. Выберите существующий курс из списка.',
     createSharedCourseHelp:
       'Один курс доступен для материалов обучения и экзамена. Создание курса выполняется в общем каталоге.',
     goToSharedCourses: 'Открыть общий каталог курсов',

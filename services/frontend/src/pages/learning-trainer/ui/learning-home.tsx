@@ -54,7 +54,11 @@ function readIntent(userId: string): Intent | null {
   }
 }
 
-export function LearningHome() {
+export function LearningHome({
+  requestedSubjectId,
+}: {
+  requestedSubjectId?: string
+}) {
   const { t } = useTranslation()
   const { user } = useAuth()
   const queryClient = useQueryClient()
@@ -65,8 +69,10 @@ export function LearningHome() {
   )
   const subjects = subjectsQuery.data ?? []
   // Students study the single subject the teacher manages: the first one.
-  const selected =
-    subjects.find((subject) => subject.id === intent?.subjectId) ?? subjects[0]
+  const selected = requestedSubjectId
+    ? subjects.find((subject) => subject.id === requestedSubjectId)
+    : (subjects.find((subject) => subject.id === intent?.subjectId) ??
+      subjects[0])
   const learning = useLearningStateQuery(userId, selected?.id ?? '')
 
   useEffect(() => {
@@ -181,7 +187,11 @@ export function LearningHome() {
         <AccountMenu />
       </header>
       <main className={styles.content}>
-        <DirectionNav audience="student" active="learn" />
+        <DirectionNav
+          audience="student"
+          active="learn"
+          subjectId={selected?.id}
+        />
         <Heading as="h1" size="8" id="courses-title">
           {t('learningHome.courses')}
         </Heading>

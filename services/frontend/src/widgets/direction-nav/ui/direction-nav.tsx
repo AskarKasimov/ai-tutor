@@ -7,38 +7,13 @@ type Direction = 'learn' | 'exam'
 export function DirectionNav({
   active,
   audience,
+  subjectId,
 }: {
   active: Direction
   audience: 'admin' | 'student'
+  subjectId?: string
 }) {
   const { t } = useTranslation()
-  const items =
-    audience === 'admin'
-      ? [
-          {
-            direction: 'learn' as const,
-            label: t('directionNav.learnMaterials'),
-            to: '/admin/learn/competency-map' as const,
-          },
-          {
-            direction: 'exam' as const,
-            label: t('directionNav.examMaterials'),
-            to: '/admin/courses' as const,
-          },
-        ]
-      : [
-          {
-            direction: 'learn' as const,
-            label: t('directionNav.learn'),
-            to: '/learn' as const,
-          },
-          {
-            direction: 'exam' as const,
-            label: t('directionNav.exam'),
-            to: '/exam' as const,
-          },
-        ]
-
   return (
     <nav
       className={styles.nav}
@@ -48,16 +23,51 @@ export function DirectionNav({
           : 'directionNav.studentLabel',
       )}
     >
-      {items.map((item) => (
-        <Link
-          key={item.direction}
-          to={item.to}
-          className={styles.link}
-          aria-current={item.direction === active ? 'page' : undefined}
-        >
-          {item.label}
-        </Link>
-      ))}
+      {audience === 'admin' ? (
+        <>
+          <Link
+            to={
+              subjectId
+                ? '/admin/learn/competency-map/$subjectId'
+                : '/admin/learn/competency-map'
+            }
+            params={subjectId ? { subjectId } : undefined}
+            className={styles.link}
+            aria-current={active === 'learn' ? 'page' : undefined}
+          >
+            {t('directionNav.learnMaterials')}
+          </Link>
+          <Link
+            to={
+              subjectId ? '/admin/competency-map/$subjectId' : '/admin/courses'
+            }
+            params={subjectId ? { subjectId } : undefined}
+            className={styles.link}
+            aria-current={active === 'exam' ? 'page' : undefined}
+          >
+            {t('directionNav.examMaterials')}
+          </Link>
+        </>
+      ) : (
+        <>
+          <Link
+            to="/learn"
+            search={subjectId ? { subject_id: subjectId } : {}}
+            className={styles.link}
+            aria-current={active === 'learn' ? 'page' : undefined}
+          >
+            {t('directionNav.learn')}
+          </Link>
+          <Link
+            to="/exam"
+            search={subjectId ? { subject_id: subjectId } : {}}
+            className={styles.link}
+            aria-current={active === 'exam' ? 'page' : undefined}
+          >
+            {t('directionNav.exam')}
+          </Link>
+        </>
+      )}
     </nav>
   )
 }

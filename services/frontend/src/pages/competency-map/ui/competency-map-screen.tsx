@@ -304,7 +304,7 @@ function CompetencyMapAdmin({
         <AccountMenu canLogout={false} />
       </header>
       <main className={styles.content}>
-        <DirectionNav audience="admin" active="exam" />
+        <DirectionNav audience="admin" active="exam" subjectId={subjectId} />
         <div className={styles.intro}>
           <Heading as="h1" size="8">
             {t('courseGraph.title')}

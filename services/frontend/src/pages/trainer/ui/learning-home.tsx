@@ -66,7 +66,11 @@ function saveSelectedSubject(userId: string, subjectId: string) {
   }
 }
 
-export function LearningHome() {
+export function LearningHome({
+  requestedSubjectId,
+}: {
+  requestedSubjectId?: string
+}) {
   const { t } = useTranslation()
   const { user } = useAuth()
   const userId = user?.id ?? ''
@@ -78,10 +82,11 @@ export function LearningHome() {
   const [savedSubjectId, setSavedSubjectId] = useState(() =>
     userId ? readSelectedSubject(userId) : '',
   )
-  const selected =
-    subjects.find((subject) => subject.id === view?.subjectId) ??
-    subjects.find((subject) => subject.id === savedSubjectId) ??
-    subjects[0]
+  const selected = requestedSubjectId
+    ? subjects.find((subject) => subject.id === requestedSubjectId)
+    : (subjects.find((subject) => subject.id === view?.subjectId) ??
+      subjects.find((subject) => subject.id === savedSubjectId) ??
+      subjects[0])
   const history = useDiagnosticHistoryQuery(userId, selected?.id ?? '')
   const start = useStartDiagnosticMutation(userId, selected?.id ?? '')
 
@@ -156,7 +161,11 @@ export function LearningHome() {
         <AccountMenu />
       </header>
       <main className={styles.content}>
-        <DirectionNav audience="student" active="exam" />
+        <DirectionNav
+          audience="student"
+          active="exam"
+          subjectId={selected?.id}
+        />
         <Heading as="h1" size="8" id="courses-title">
           {t('home.courses')}
         </Heading>

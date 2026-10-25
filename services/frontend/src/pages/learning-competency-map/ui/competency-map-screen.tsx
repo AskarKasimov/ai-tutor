@@ -72,7 +72,9 @@ function CompetencyMapAdmin({
   const subjects = useSubjectsQuery(userId)
   const subject = selectedSubjectId
     ? subjects.data?.find((candidate) => candidate.id === selectedSubjectId)
-    : subjects.data?.[0]
+    : subjects.data?.length === 1
+      ? subjects.data[0]
+      : undefined
   const subjectId = subject?.id ?? ''
   const query = useCompetencyMapQuery(userId, subjectId)
   const upload = useImportCompetencyMapMutation(userId, subjectId)
@@ -125,7 +127,11 @@ function CompetencyMapAdmin({
         <AccountMenu canLogout={false} />
       </header>
       <main className={styles.content}>
-        <DirectionNav audience="admin" active="learn" />
+        <DirectionNav
+          audience="admin"
+          active="learn"
+          subjectId={subjectId || undefined}
+        />
         <div className={styles.intro}>
           <Heading as="h1" size="8">
             {t('learningCompetencyMap.title')}
@@ -155,16 +161,48 @@ function CompetencyMapAdmin({
         ) : !subjectId ? (
           <section className={styles.card} aria-labelledby="subject-title">
             <Heading as="h2" size="5" id="subject-title">
-              {t('learningCompetencyMap.noSharedCourses')}
+              {subjects.data?.length
+                ? t('learningCompetencyMap.chooseSharedCourse')
+                : t('learningCompetencyMap.noSharedCourses')}
             </Heading>
             <Text as="p" color="gray">
-              {t('learningCompetencyMap.createSharedCourseHelp')}
+              {subjects.data?.length
+                ? t(
+                    selectedSubjectId
+                      ? 'learningCompetencyMap.selectedCourseMissing'
+                      : 'learningCompetencyMap.chooseSharedCourseHelp',
+                  )
+                : t('learningCompetencyMap.createSharedCourseHelp')}
             </Text>
-            <Button asChild>
-              <Link to="/admin/courses">
-                {t('learningCompetencyMap.goToSharedCourses')}
-              </Link>
-            </Button>
+            {subjects.data?.length ? (
+              <Flex gap="2" wrap="wrap">
+                {subjects.data.map((item) => (
+                  <Flex key={item.id} gap="2" align="center">
+                    <Button asChild variant="soft">
+                      <Link
+                        to="/admin/learn/competency-map/$subjectId"
+                        params={{ subjectId: item.id }}
+                      >
+                        {item.name}
+                      </Link>
+                    </Button>
+                    <Badge color={item.learning_ready ? 'green' : 'gray'}>
+                      {t(
+                        item.learning_ready
+                          ? 'sharedCourse.ready'
+                          : 'sharedCourse.preparing',
+                      )}
+                    </Badge>
+                  </Flex>
+                ))}
+              </Flex>
+            ) : (
+              <Button asChild>
+                <Link to="/admin/courses">
+                  {t('learningCompetencyMap.goToSharedCourses')}
+                </Link>
+              </Button>
+            )}
           </section>
         ) : (
           <>

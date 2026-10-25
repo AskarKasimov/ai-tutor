@@ -116,6 +116,12 @@ VALUES ($1,'exam.xlsx','Экзамен','exam-v1','{"marker":"exam-before-learni
 	if err != nil {
 		t.Fatal(err)
 	}
+	missingImport := upload(f, "/learn/admin/subjects/subject-does-not-exist/competency-map/import", "file", "ml_map.csv", "text/csv", mapCSV, admin)
+	requireCode(t, missingImport, http.StatusNotFound, "SUBJECT_NOT_FOUND")
+	var missingMapCount int
+	if err := f.pool.QueryRow(context.Background(), `SELECT count(*) FROM learning_map_imports WHERE subject_id='subject-does-not-exist'`).Scan(&missingMapCount); err != nil || missingMapCount != 0 {
+		t.Fatalf("import for missing course created global learning data: count=%d err=%v", missingMapCount, err)
+	}
 	imported := upload(f, "/learn/admin/subjects/"+course.ID+"/competency-map/import", "file", "ml_map.csv", "text/csv", mapCSV, admin)
 	if imported.Code != http.StatusOK {
 		t.Fatalf("learning map upload for common course: %d %s", imported.Code, imported.Body.String())

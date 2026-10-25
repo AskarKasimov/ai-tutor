@@ -4,7 +4,7 @@ test.skip(!process.env.E2E_STACK_URL, 'requires the unified production stack')
 
 test('real production stack keeps student and admin sessions isolated', async ({
   page,
-}) => {
+}, testInfo) => {
   const requests: Array<{ path: string; portal: string | undefined }> = []
   page.on('request', (request) => {
     const url = new URL(request.url())
@@ -29,19 +29,32 @@ test('real production stack keeps student and admin sessions isolated', async ({
   await page.getByRole('link', { name: /Обучение/ }).click()
   await expect(page).toHaveURL(/\/learn$/)
   await expect(page.getByRole('heading', { name: 'Обучение' })).toBeVisible()
+  await expect(
+    page.getByRole('link', { name: 'К выбору режима' }),
+  ).toBeVisible()
+  await page.screenshot({ path: testInfo.outputPath('real-learn-home.png') })
   await page.reload()
   await expect(page.getByRole('heading', { name: 'Обучение' })).toBeVisible()
   await page.getByRole('button', { name: /Меню профиля/ }).click()
   await page.getByRole('menuitem', { name: 'К выбору режима' }).click()
   await page.getByRole('link', { name: /Симуляция экзамена/ }).click()
   await expect(page).toHaveURL(/\/exam$/)
-  await expect(page.getByRole('heading', { name: 'Курсы' })).toBeVisible()
+  await expect(
+    page.getByRole('heading', { name: 'Симуляция экзамена' }),
+  ).toBeVisible()
+  await expect(
+    page.getByRole('link', { name: 'К выбору режима' }),
+  ).toBeVisible()
+  await page.screenshot({ path: testInfo.outputPath('real-exam-home.png') })
   await page.reload()
-  await expect(page.getByRole('heading', { name: 'Курсы' })).toBeVisible()
+  await expect(
+    page.getByRole('heading', { name: 'Симуляция экзамена' }),
+  ).toBeVisible()
 
   await page.goto('/admin/courses')
   await expect(page).toHaveURL(/\/admin\/courses$/)
   await expect(page.getByRole('heading', { name: 'Курсы' })).toBeVisible()
+  await page.screenshot({ path: testInfo.outputPath('real-admin-courses.png') })
   await expect
     .poll(() =>
       requests.some(
@@ -55,6 +68,9 @@ test('real production stack keeps student and admin sessions isolated', async ({
   await page.getByRole('button', { name: /Меню профиля/ }).click()
   await page.getByRole('menuitem', { name: 'Выйти' }).click()
   await expect(page.getByLabel('Пароль')).toBeVisible()
+  await page.screenshot({
+    path: testInfo.outputPath('real-student-logged-out.png'),
+  })
 
   await page.goto('/admin/courses')
   await expect(page).toHaveURL(/\/admin\/courses$/)

@@ -125,6 +125,28 @@ test('one browser context switches modes while student and admin sessions stay s
       })
       return
     }
+    if (path.endsWith('/competency-map') && request.method() === 'GET') {
+      if (!path.includes('/subject-1/')) {
+        await route.fulfill({
+          json: { revision: 0, imported_at: null, competencies: [] },
+        })
+        return
+      }
+      await route.fulfill({
+        json: {
+          revision: 1,
+          imported_at: 1791158400,
+          competencies: [
+            {
+              constituents: [
+                { outcomes: [{ tasks: [{ question: 'Что такое ИИ?' }] }] },
+              ],
+            },
+          ],
+        },
+      })
+      return
+    }
     if (path.endsWith('/material-kinds')) {
       await route.fulfill({ json: [] })
       return
@@ -134,6 +156,43 @@ test('one browser context switches modes while student and admin sessions stay s
       return
     }
     if (path.endsWith('/graph') && request.method() === 'GET') {
+      if (path.includes('/subject-1/')) {
+        await route.fulfill({
+          json: {
+            status: 'ready',
+            attempts: 1,
+            error_message: '',
+            stale: false,
+            inputs_ready: true,
+            updated_at: 1791158400,
+            graph_source: 'competency_map',
+            build_source: 'competency_map',
+            map: { filename: 'ai-map.xlsx', sheet: 'Карта' },
+            progress: null,
+            graph: {
+              topics: [
+                {
+                  id: 'topic-1',
+                  title: 'Искусственный интеллект',
+                  question: 'Что такое искусственный интеллект?',
+                  variants: [
+                    {
+                      question: 'Что такое ИИ?',
+                      content: 'Эталонный ответ',
+                    },
+                  ],
+                  provides: [],
+                  requires: [],
+                },
+              ],
+              prerequisites: [],
+              hierarchy: [],
+              quality: { acyclic: true, topics: 1, requirements: 0 },
+            },
+          },
+        })
+        return
+      }
       await route.fulfill({
         json: {
           status: 'not_requested',
@@ -367,6 +426,9 @@ test('one browser context switches modes while student and admin sessions stay s
   await expect(page.getByRole('heading', { name: subject.name })).toBeVisible()
   await expect(page.getByText('Обучение готово').last()).toBeVisible()
   await expect(page.getByLabel('Файл карты компетенций')).toBeVisible()
+  await expect(
+    page.getByText('Карта компетенций успешно загружена'),
+  ).toBeVisible()
   await expect(page.getByLabel('Добавить PDF или ZIP')).toHaveCount(0)
   await expect(
     page.getByRole('navigation', { name: 'Разделы администрирования' }),
@@ -434,6 +496,8 @@ test('one browser context switches modes while student and admin sessions stay s
   await expect(graphCard).toContainText(
     'Вместо материалов граф можно собрать по карте компетенций',
   )
+  await expect(graphCard).toContainText('Курс готов для студентов.')
+  await expect(graphCard).toContainText('Искусственный интеллект')
   await expect(
     graphCard.getByRole('button', { name: 'Импортировать карту компетенций' }),
   ).toBeVisible()

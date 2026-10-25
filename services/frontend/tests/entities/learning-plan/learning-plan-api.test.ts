@@ -4,6 +4,8 @@ import {
   createLearningPlan,
   findLearningPlan,
   LearningPlanApiError,
+  openLesson,
+  retryLessonAnswer,
 } from '@/entities/learning-plan'
 
 afterEach(() => vi.unstubAllGlobals())
@@ -36,6 +38,92 @@ const plan = {
   ],
 }
 const signal = () => new AbortController().signal
+
+it('allows a retry to finish three sequential teacher calls', async () => {
+  vi.useFakeTimers()
+  const timeout = vi.spyOn(AbortSignal, 'timeout').mockImplementation((ms) => {
+    const controller = new AbortController()
+    setTimeout(
+      () => controller.abort(new DOMException('Timed out', 'TimeoutError')),
+      ms,
+    )
+    return controller.signal
+  })
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(
+      () =>
+        new Promise((resolve) => {
+          setTimeout(() => resolve(Response.json(plan)), 210_000)
+        }),
+    ),
+  )
+
+  const request = retryLessonAnswer('p1', signal())
+  await vi.advanceTimersByTimeAsync(210_000)
+  await expect(request).resolves.toEqual(plan)
+  expect(timeout).toHaveBeenCalledWith(expect.any(Number))
+  expect(timeout.mock.calls[0][0]).toBeGreaterThanOrEqual(210_000)
+  vi.useRealTimers()
+})
+
+it('gives opening theory and practice a complete operation budget', async () => {
+  vi.useFakeTimers()
+  const timeout = vi.spyOn(AbortSignal, 'timeout').mockImplementation((ms) => {
+    const controller = new AbortController()
+    setTimeout(
+      () => controller.abort(new DOMException('Timed out', 'TimeoutError')),
+      ms,
+    )
+    return controller.signal
+  })
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(
+      () =>
+        new Promise((resolve) => {
+          setTimeout(() => resolve(Response.json(plan)), 300_000)
+        }),
+    ),
+  )
+
+  const request = openLesson('p1', signal())
+  await vi.advanceTimersByTimeAsync(300_000)
+  await expect(request).resolves.toEqual(plan)
+  expect(timeout.mock.calls[0][0]).toBeGreaterThanOrEqual(300_000)
+  vi.useRealTimers()
+})
+
+it('allows legacy voice upload plus teacher evaluation to finish', async () => {
+  vi.useFakeTimers()
+  const timeout = vi.spyOn(AbortSignal, 'timeout').mockImplementation((ms) => {
+    const controller = new AbortController()
+    setTimeout(
+      () => controller.abort(new DOMException('Timed out', 'TimeoutError')),
+      ms,
+    )
+    return controller.signal
+  })
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(
+      () =>
+        new Promise((resolve) => {
+          setTimeout(() => resolve(Response.json(plan)), 570_000)
+        }),
+    ),
+  )
+
+  const request = answerLesson(
+    'p1',
+    new Blob(['voice'], { type: 'audio/webm' }),
+    signal(),
+  )
+  await vi.advanceTimersByTimeAsync(570_000)
+  await expect(request).resolves.toEqual(plan)
+  expect(timeout.mock.calls[0][0]).toBeGreaterThanOrEqual(570_000)
+  vi.useRealTimers()
+})
 
 it('reads no plan before the hours are chosen', async () => {
   vi.stubGlobal(

@@ -344,8 +344,7 @@ func (r *ChatRepository) Read(ctx context.Context, ownerID, sessionID, exerciseI
 	}
 	page := training.ChatPage{SessionID: sessionID, ExerciseID: exerciseID, Revision: chat.Revision, Status: training.ChatStatus(chat.Status), Items: make([]training.ChatMessage, 0, min(limit, len(rows))), LatestCheck: checkView(check)}
 	if len(rows) > limit {
-		cursor := fmt.Sprint(rows[limit].Sequence)
-		page.NextCursor = &cursor
+		page.NextCursor = chatPageCursor(rows, limit)
 		rows = rows[:limit]
 	}
 	for i := len(rows) - 1; i >= 0; i-- {
@@ -373,6 +372,14 @@ func (r *ChatRepository) Read(ctx context.Context, ownerID, sessionID, exerciseI
 		return training.ChatPage{}, err
 	}
 	return page, nil
+}
+
+func chatPageCursor(rows []db.LearningReadTrainingChatPageRow, limit int) *string {
+	if len(rows) <= limit {
+		return nil
+	}
+	cursor := fmt.Sprint(rows[limit-1].Sequence)
+	return &cursor
 }
 
 func decodeLatestCheck(data []byte, revision int64) (*training.Check, error) {

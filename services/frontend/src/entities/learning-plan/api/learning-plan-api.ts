@@ -46,8 +46,9 @@ const messagesSchema: z.ZodType<{ items: LearningMessage[] }> = z.object({
   ),
 })
 
-// The teacher answers in tens of seconds; speech recognition adds more.
-const modelTimeout = 180_000
+// Cover the backend's longest voice + sequential teacher operation, including
+// time spent waiting in the model gateway queue (570s server budget + margin).
+const learningOperationTimeout = 600_000
 
 async function request<T>(
   path: string,
@@ -137,7 +138,7 @@ export function openLesson(planId: string, signal: AbortSignal) {
     planSchema,
     signal,
     { method: 'POST' },
-    modelTimeout,
+    learningOperationTimeout,
   )
 }
 
@@ -163,7 +164,7 @@ export function answerLesson(
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(audio),
       },
-      modelTimeout,
+      learningOperationTimeout,
     )
   const extension = audio.type.includes('ogg')
     ? 'ogg'
@@ -177,7 +178,7 @@ export function answerLesson(
     planSchema,
     signal,
     { method: 'POST', body: form },
-    modelTimeout,
+    learningOperationTimeout,
   )
 }
 
@@ -187,7 +188,7 @@ export function retryLessonAnswer(planId: string, signal: AbortSignal) {
     planSchema,
     signal,
     { method: 'POST' },
-    modelTimeout,
+    learningOperationTimeout,
   )
 }
 

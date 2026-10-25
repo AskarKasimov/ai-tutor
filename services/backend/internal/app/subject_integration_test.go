@@ -117,12 +117,22 @@ func TestLearningAndExamSubjectCatalogsAreModeScoped(t *testing.T) {
 	}
 	checkCatalog("/learn/subjects", learning.ID, exam.ID)
 	checkCatalog("/subjects", exam.ID, learning.ID)
-	for _, path := range []string{
-		"/admin/subjects/" + learning.ID + "/materials",
-		"/admin/subjects/" + learning.ID + "/graph",
+	for _, route := range []struct {
+		method string
+		path   string
+		body   string
+	}{
+		{http.MethodGet, "/admin/subjects/" + learning.ID + "/materials", ""},
+		{http.MethodPost, "/admin/subjects/" + learning.ID + "/materials", "malformed multipart"},
+		{http.MethodPatch, "/admin/subjects/" + learning.ID + "/materials/material:any", "{}"},
+		{http.MethodPut, "/admin/subjects/" + learning.ID + "/materials/material:any/raw", "malformed upload"},
+		{http.MethodDelete, "/admin/subjects/" + learning.ID + "/materials/material:any", ""},
+		{http.MethodGet, "/admin/subjects/" + learning.ID + "/materials/material:any/raw", ""},
+		{http.MethodGet, "/admin/subjects/" + learning.ID + "/graph", ""},
+		{http.MethodPost, "/admin/subjects/" + learning.ID + "/graph/build", "{}"},
 	} {
-		if response := f.request(http.MethodGet, path, "", admin); response.Code != http.StatusNotFound {
-			t.Fatalf("exam endpoint accepted learning subject %s: %d %s", path, response.Code, response.Body.String())
+		if response := f.request(route.method, route.path, route.body, admin); response.Code != http.StatusNotFound {
+			t.Fatalf("exam %s %s accepted learning subject: %d %s", route.method, route.path, response.Code, response.Body.String())
 		}
 	}
 	wrongModeGraphImport := upload(f, "/admin/subjects/"+learning.ID+"/graph/competency-map", "file", "map.xlsx", "application/octet-stream", []byte("not an xlsx"), admin)
@@ -137,6 +147,10 @@ func TestLearningAndExamSubjectCatalogsAreModeScoped(t *testing.T) {
 	wrongModeStart := f.keyed(http.MethodPost, "/learn/variants", "wrong-mode", `{"subject_id":"`+exam.ID+`"}`, admin)
 	if wrongModeStart.Code != http.StatusNotFound {
 		t.Fatalf("learning variant accepted exam subject: %d %s", wrongModeStart.Code, wrongModeStart.Body.String())
+	}
+	examStart := f.keyed(http.MethodPost, "/diagnostic-sessions", "exam-wrong-mode", `{"subject_id":"`+learning.ID+`"}`, admin)
+	if examStart.Code != http.StatusNotFound {
+		t.Fatalf("exam start accepted learning subject: %d %s", examStart.Code, examStart.Body.String())
 	}
 }
 

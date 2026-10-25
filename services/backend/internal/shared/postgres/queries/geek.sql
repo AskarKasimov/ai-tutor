@@ -1,5 +1,5 @@
 -- name: GeekSubjectExists :one
-SELECT EXISTS (SELECT 1 FROM subjects WHERE id = $1);
+SELECT EXISTS (SELECT 1 FROM subjects WHERE id = $1 AND mode = 'exam');
 
 -- name: GetGeekSession :one
 SELECT state FROM geek_sessions WHERE id = $1 AND owner_id = $2;

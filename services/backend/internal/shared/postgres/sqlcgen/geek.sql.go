@@ -10,7 +10,7 @@ import (
 )
 
 const geekSubjectExists = `-- name: GeekSubjectExists :one
-SELECT EXISTS (SELECT 1 FROM subjects WHERE id = $1)
+SELECT EXISTS (SELECT 1 FROM subjects WHERE id = $1 AND mode = 'exam')
 `
 
 func (q *Queries) GeekSubjectExists(ctx context.Context, id string) (bool, error) {

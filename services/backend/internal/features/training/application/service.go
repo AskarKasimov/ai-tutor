@@ -395,10 +395,11 @@ func (s *Service) CurrentAudio(ctx context.Context, owner, id, exerciseID string
 	}
 	m.Status = asset.Status
 	if asset.Status == audioasset.Ready {
-		if asset.AudioURL == nil || *asset.AudioURL != "/task-audio/"+asset.ID+"/file" {
+		canonicalURL, ok := audioasset.NormalizeFileURL(*state.Current.Task.AudioAssetID, asset.AudioURL)
+		if asset.ID != *state.Current.Task.AudioAssetID || !ok {
 			return m, fault.New(fault.Unavailable, "AUDIO_STORAGE_UNAVAILABLE", "Озвучка временно недоступна.")
 		}
-		m.AudioURL = asset.AudioURL
+		m.AudioURL = canonicalURL
 	}
 	return m, nil
 }
@@ -418,10 +419,11 @@ func (s *Service) RegenerateCurrentAudio(ctx context.Context, owner, id, exercis
 	if err != nil {
 		return audioasset.Metadata{}, fault.New(fault.Unavailable, "AUDIO_STORAGE_UNAVAILABLE", "Озвучка временно недоступна.")
 	}
-	if asset.Status != audioasset.Ready || asset.AudioURL == nil {
+	canonicalURL, ok := audioasset.NormalizeFileURL(*state.Current.Task.AudioAssetID, asset.AudioURL)
+	if asset.Status != audioasset.Ready || asset.ID != *state.Current.Task.AudioAssetID || !ok {
 		return audioasset.Metadata{}, fault.New(fault.Unavailable, "AUDIO_STORAGE_UNAVAILABLE", "Озвучка временно недоступна.")
 	}
-	return audioasset.Metadata{Status: asset.Status, AudioURL: asset.AudioURL}, nil
+	return audioasset.Metadata{Status: asset.Status, AudioURL: canonicalURL}, nil
 }
 
 // Retain the original scale for historical diagnostic answers.

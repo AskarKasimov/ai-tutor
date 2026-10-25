@@ -10,6 +10,7 @@ import {
 import { useEffect, useId, useState } from 'react'
 import type { ReactNode } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
+import { useNavigate } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/features/auth'
 import {
@@ -75,6 +76,7 @@ export function LearningHome({
   requestedSubjectId?: string
 }) {
   const { t } = useTranslation()
+  const navigate = useNavigate({ from: '/learn' })
   const { user } = useAuth()
   const queryClient = useQueryClient()
   const userId = user?.id ?? ''
@@ -229,6 +231,9 @@ export function LearningHome({
           onCourseChange={(subjectId) => {
             setSavedSubjectId(subjectId)
             saveSelectedSubject(userId, subjectId)
+            void navigate({
+              search: (previous) => ({ ...previous, subject_id: subjectId }),
+            })
           }}
         />
         <Heading as="h1" size="8" id="courses-title">

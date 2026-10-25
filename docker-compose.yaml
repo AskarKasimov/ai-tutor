@@ -29,6 +29,8 @@ services:
       service: llm-gateway
     volumes:
       - ./services/llm-gateway/config.json:/etc/llm-gateway/config.json:ro
+    environment:
+      GATEWAY_REQUIRED_ROUTING_PROFILES: learning-assessment,learning-tutor,learning-taskgen
     depends_on:
       redpanda:
         condition: service_healthy

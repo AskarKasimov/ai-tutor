@@ -317,6 +317,33 @@ func (c Config) Validate() error {
 	return nil
 }
 
+// ValidateRequiredRoutingProfiles ensures deployment-required workflows have
+// a configured route that can serve high-complexity requests. An empty
+// required list keeps standalone gateway deployments backwards compatible.
+func ValidateRequiredRoutingProfiles(c Config, required []string) error {
+	for _, profile := range required {
+		ids, ok := c.RoutingProfiles[profile]
+		if !ok || len(ids) == 0 {
+			return fmt.Errorf("required routing profile %q is missing; configure routing_profiles.%s with verified instance IDs", profile, profile)
+		}
+		high := make(map[string]bool, len(c.Pools["high"]))
+		for _, id := range c.Pools["high"] {
+			high[id] = true
+		}
+		eligible := false
+		for _, id := range ids {
+			if high[id] {
+				eligible = true
+				break
+			}
+		}
+		if !eligible {
+			return fmt.Errorf("required routing profile %q has no instance eligible for high complexity; include a verified instance ID from pools.high", profile)
+		}
+	}
+	return nil
+}
+
 // reservedRequestFields are the request fields the gateway owns: the routing
 // metadata it strips and the ones it sets itself for the upstream.
 var reservedRequestFields = map[string]bool{"model": true, "messages": true, "stream": true, "complexity": true, "urgent": true}

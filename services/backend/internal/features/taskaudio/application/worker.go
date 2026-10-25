@@ -134,7 +134,7 @@ func (w *Worker) Regenerate(ctx context.Context, assetID string) (audioasset.Ass
 		return audioasset.Asset{}, err
 	}
 	uri := "s3://" + bucket + "/" + claim.Asset.ObjectKey
-	url := "/task-audio/" + claim.Asset.ID + "/file"
+	url := audioasset.FileURL(claim.Asset.ID)
 	claim.Asset.Bucket, claim.Asset.StorageURI, claim.Asset.AudioURL = &bucket, &uri, &url
 	claim.Asset.Status = audioasset.Ready
 	return claim.Asset, nil
@@ -243,7 +243,7 @@ func (w *Worker) ensureRepairBucket(ctx context.Context, claim Claim) error {
 
 func (w *Worker) completeRepair(ctx context.Context, claim Claim, bucket string) error {
 	uri := "s3://" + bucket + "/" + claim.Asset.ObjectKey
-	url := "/task-audio/" + claim.Asset.ID + "/file"
+	url := audioasset.FileURL(claim.Asset.ID)
 	ok, err := w.queue.Complete(ctx, claim, bucket, uri, url)
 	if err != nil {
 		return fmt.Errorf("complete task audio repair: %w", err)
@@ -359,7 +359,7 @@ func validObject(info ObjectInfo, assetID string) bool {
 
 func (w *Worker) complete(ctx context.Context, claim Claim) error {
 	storageURI := "s3://" + w.config.Bucket + "/" + claim.Asset.ObjectKey
-	audioURL := "/task-audio/" + claim.Asset.ID + "/file"
+	audioURL := audioasset.FileURL(claim.Asset.ID)
 	_, err := w.queue.Complete(ctx, claim, w.config.Bucket, storageURI, audioURL)
 	if err != nil {
 		// Leaving processing state lets the next lease recover by checking HEAD.

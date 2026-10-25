@@ -34,8 +34,7 @@ if [ -n "$https_port" ] && [ "$https_port" != 443 ]; then
 fi
 printf '%s\n' \
     "Start page:   $app_url" \
-    "Learning admin: $app_url/admin/learn/competency-map" \
-    "Exam admin:   $app_url/admin/courses"
+    "Course admin: $app_url/admin/courses"
 
 profiles=${COMPOSE_PROFILES-$(sed -n 's/^COMPOSE_PROFILES=//p' .env | tail -n 1)}
 case ",$profiles," in
@@ -50,6 +49,5 @@ elif command -v open >/dev/null 2>&1; then
 fi
 if [ "${PROD_OPEN_BROWSER:-true}" != false ] && [ -n "$opener" ]; then
     "$opener" "$app_url" >/dev/null 2>&1 || true
-    "$opener" "$app_url/admin/learn/competency-map" >/dev/null 2>&1 || true
     "$opener" "$app_url/admin/courses" >/dev/null 2>&1 || true
 fi

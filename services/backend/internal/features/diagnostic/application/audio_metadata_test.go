@@ -61,7 +61,7 @@ func TestCurrentAudioReturnsStoredMetadataWithoutSynthesis(t *testing.T) {
 					t.Fatalf("metadata = %#v", metadata)
 				}
 				if status == audioasset.Ready {
-					if metadata.AudioURL == nil || *metadata.AudioURL != audioURL {
+					if metadata.AudioURL == nil || *metadata.AudioURL != "/learn/task-audio/"+assetID+"/file" {
 						t.Fatalf("ready URL = %v", metadata.AudioURL)
 					}
 				} else if metadata.AudioURL != nil {
@@ -133,7 +133,7 @@ func TestRegenerateCurrentAudioChecksSessionPositionAndReturnsReadyMetadata(t *t
 	service.WithAudioRegenerator(regenerator)
 	progress := service.start(t)
 	got, err := service.RegenerateCurrentAudio(context.Background(), "owner-1", progress.SessionID, progress.Current.ID)
-	if err != nil || got.Status != audioasset.Ready || got.AudioURL == nil || *got.AudioURL != audioURL || got.VariantTaskID != progress.Current.ID {
+	if err != nil || got.Status != audioasset.Ready || got.AudioURL == nil || *got.AudioURL != "/learn/task-audio/"+assetID+"/file" || got.VariantTaskID != progress.Current.ID {
 		t.Fatalf("regenerated metadata=%#v err=%v", got, err)
 	}
 	if regenerator.calls != 1 || regenerator.id != assetID {
@@ -155,5 +155,16 @@ func TestRegenerateCurrentAudioRejectsWrongTaskAndForeignSessionBeforeRepair(t *
 	}
 	if regenerator.calls != 0 {
 		t.Fatalf("invalid request called regenerator %d times", regenerator.calls)
+	}
+}
+
+func TestRegenerateCurrentAudioRejectsWrongReturnedAssetID(t *testing.T) {
+	service, _, _, variants := newTestService()
+	assetID, wrongURL := "audio-1", "/learn/task-audio/other-audio/file"
+	variants.value.Competencies[0].Tasks[0].Task.AudioAssetID = &assetID
+	service.WithAudioRegenerator(&audioRegeneratorStub{asset: audioasset.Asset{ID: "other-audio", Status: audioasset.Ready, AudioURL: &wrongURL}})
+	progress := service.start(t)
+	if _, err := service.RegenerateCurrentAudio(context.Background(), "owner-1", progress.SessionID, progress.Current.ID); err == nil {
+		t.Fatal("accepted metadata for a different audio asset")
 	}
 }

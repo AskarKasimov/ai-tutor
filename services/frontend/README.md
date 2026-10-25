@@ -278,7 +278,10 @@ Polling включён только в контейнерном dev-стеке �
 Student routes `/learn` and `/exam` share a course header with a selector when
 the active direction has multiple available courses and a «К выбору режима»
 link to `/`. The selected course is user-scoped and shared across both modes;
-an explicit `subject_id` URL takes precedence. The student screens have no
-direction tabs. Mode-specific title, intro, history and session content stay
-below the shared header. Returning to mode selection leaves active Geek and
-learning intents in `sessionStorage`, so reopening a mode resumes its session.
+an explicit `subject_id` URL takes precedence. Explicit selection updates that
+URL, so reload and browser Back/Forward restore the matching course and scoped
+history/state. Ready task audio uses `/learn/task-audio/{id}/file` through the
+shared authenticated audio adapter. The student screens have no direction tabs.
+Mode-specific title, intro, history and session content stay below the shared
+header. Returning to mode selection leaves active Geek and learning intents in
+`sessionStorage`, so reopening a mode resumes its session.

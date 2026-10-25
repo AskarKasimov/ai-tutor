@@ -101,6 +101,33 @@ func TestConfigValidationGuardsTheReasoningEffortBody(t *testing.T) {
 	}
 }
 
+func TestRequiredRoutingProfilesValidatePresenceAndHighEligibility(t *testing.T) {
+	c := Config{
+		Pools: map[string][]string{"high": {"strong"}, "low": {"cheap"}},
+		RoutingProfiles: map[string][]string{
+			"optional":            {"cheap"},
+			"learning-assessment": {"strong"},
+			"learning-tutor":      {"strong", "cheap"},
+			"learning-taskgen":    {"strong"},
+		},
+	}
+	if err := ValidateRequiredRoutingProfiles(c, nil); err != nil {
+		t.Fatalf("standalone config rejected: %v", err)
+	}
+	required := []string{"learning-assessment", "learning-tutor", "learning-taskgen"}
+	if err := ValidateRequiredRoutingProfiles(c, required); err != nil {
+		t.Fatalf("configured profiles rejected: %v", err)
+	}
+
+	if err := ValidateRequiredRoutingProfiles(Config{Pools: c.Pools, RoutingProfiles: map[string][]string{}}, required); err == nil || !strings.Contains(err.Error(), "learning-assessment") || !strings.Contains(err.Error(), "routing_profiles.learning-assessment") {
+		t.Fatalf("missing profile error = %v", err)
+	}
+	c.RoutingProfiles["learning-assessment"] = []string{"cheap"}
+	if err := ValidateRequiredRoutingProfiles(c, required); err == nil || !strings.Contains(err.Error(), "high complexity") {
+		t.Fatalf("low-only profile error = %v", err)
+	}
+}
+
 func TestLoadAppliesTheModelRulesFromGit(t *testing.T) {
 	example := filepath.Join("..", "..", "config.example.json")
 	rules := filepath.Join("..", "..", "models.json")

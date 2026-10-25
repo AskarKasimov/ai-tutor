@@ -310,7 +310,7 @@ func TestProcessOneSynthesizesOnceAndPersistsStableReferences(t *testing.T) {
 		t.Fatalf("completed asset=%q", claim.Asset.ID)
 	}
 	details := queue.completeDetails[0]
-	if details.bucket != "task-audio" || details.uri != "s3://task-audio/task-audio/v1/asset-00.wav" || details.url != "/task-audio/asset-00/file" {
+	if details.bucket != "task-audio" || details.uri != "s3://task-audio/task-audio/v1/asset-00.wav" || details.url != "/learn/task-audio/asset-00/file" {
 		t.Fatalf("persisted object references = %#v", details)
 	}
 }

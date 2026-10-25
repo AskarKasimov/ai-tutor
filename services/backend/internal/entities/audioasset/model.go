@@ -49,6 +49,19 @@ type Metadata struct {
 	AudioURL      *string
 }
 
+// FileURL is the canonical frontend resource URL for a task audio asset.
+func FileURL(assetID string) string { return "/learn/task-audio/" + assetID + "/file" }
+
+// NormalizeFileURL accepts current metadata and the exact legacy URL for the
+// same asset. It never accepts a URL for another asset or another route.
+func NormalizeFileURL(assetID string, stored *string) (*string, bool) {
+	if stored == nil || (*stored != FileURL(assetID) && *stored != "/task-audio/"+assetID+"/file") {
+		return nil, false
+	}
+	canonical := FileURL(assetID)
+	return &canonical, true
+}
+
 func IDForTask(taskID string) string { return "taskaudio_" + taskID }
 
 func ObjectKey(assetID string) string { return "task-audio/v1/" + assetID + ".wav" }

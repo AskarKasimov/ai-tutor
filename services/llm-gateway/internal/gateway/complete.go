@@ -348,6 +348,9 @@ func (s *Service) markStateUncertain() {
 
 func canonicalRequestJSON(req Request) []byte {
 	fields := map[string]any{"messages": req.Messages, "complexity": req.Complexity, "urgent": req.IsUrgent()}
+	if req.RoutingProfile != "" {
+		fields["routing_profile"] = req.RoutingProfile
+	}
 	for name, raw := range req.Parameters {
 		fields[name] = raw
 	}

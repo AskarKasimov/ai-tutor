@@ -31,6 +31,7 @@ type Config struct {
 	MaxInputLag              time.Duration       `json:"max_input_lag"`
 	GracePeriod              time.Duration       `json:"grace_period"`
 	Pools                    map[string][]string `json:"pools"`
+	RoutingProfiles          map[string][]string `json:"routing_profiles,omitempty"`
 	Instances                []InstanceConfig    `json:"instances"`
 }
 
@@ -299,6 +300,18 @@ func (c Config) Validate() error {
 			if _, ok := instances[id]; !ok {
 				return fmt.Errorf("pools.%s references unknown instance %q", level, id)
 			}
+		}
+	}
+	for profile, ids := range c.RoutingProfiles {
+		if profile == "" || len(ids) == 0 {
+			return fmt.Errorf("routing_profiles.%q must contain at least one instance", profile)
+		}
+		seen := map[string]bool{}
+		for _, id := range ids {
+			if _, ok := instances[id]; !ok || seen[id] {
+				return fmt.Errorf("routing_profiles.%s references unknown or duplicate instance %q", profile, id)
+			}
+			seen[id] = true
 		}
 	}
 	return nil

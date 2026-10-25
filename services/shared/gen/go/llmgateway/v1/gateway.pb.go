@@ -227,13 +227,16 @@ func (ReasoningEffort) EnumDescriptor() ([]byte, []int) {
 }
 
 type CompleteRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Messages      []*Message             `protobuf:"bytes,1,rep,name=messages,proto3" json:"messages,omitempty"`
-	Complexity    Complexity             `protobuf:"varint,2,opt,name=complexity,proto3,enum=llmgateway.v1.Complexity" json:"complexity,omitempty"`
-	Urgent        bool                   `protobuf:"varint,3,opt,name=urgent,proto3" json:"urgent,omitempty"`
-	Parameters    *GenerationParameters  `protobuf:"bytes,4,opt,name=parameters,proto3" json:"parameters,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state      protoimpl.MessageState `protogen:"open.v1"`
+	Messages   []*Message             `protobuf:"bytes,1,rep,name=messages,proto3" json:"messages,omitempty"`
+	Complexity Complexity             `protobuf:"varint,2,opt,name=complexity,proto3,enum=llmgateway.v1.Complexity" json:"complexity,omitempty"`
+	Urgent     bool                   `protobuf:"varint,3,opt,name=urgent,proto3" json:"urgent,omitempty"`
+	Parameters *GenerationParameters  `protobuf:"bytes,4,opt,name=parameters,proto3" json:"parameters,omitempty"`
+	// routing_profile restricts model selection to a gateway-owned allowlist.
+	// Empty preserves the legacy default routing behavior and hash.
+	RoutingProfile string `protobuf:"bytes,5,opt,name=routing_profile,json=routingProfile,proto3" json:"routing_profile,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *CompleteRequest) Reset() {
@@ -292,6 +295,13 @@ func (x *CompleteRequest) GetParameters() *GenerationParameters {
 		return x.Parameters
 	}
 	return nil
+}
+
+func (x *CompleteRequest) GetRoutingProfile() string {
+	if x != nil {
+		return x.RoutingProfile
+	}
+	return ""
 }
 
 type Message struct {
@@ -562,7 +572,7 @@ var File_llmgateway_v1_gateway_proto protoreflect.FileDescriptor
 
 const file_llmgateway_v1_gateway_proto_rawDesc = "" +
 	"\n" +
-	"\x1bllmgateway/v1/gateway.proto\x12\rllmgateway.v1\"\xdd\x01\n" +
+	"\x1bllmgateway/v1/gateway.proto\x12\rllmgateway.v1\"\x86\x02\n" +
 	"\x0fCompleteRequest\x122\n" +
 	"\bmessages\x18\x01 \x03(\v2\x16.llmgateway.v1.MessageR\bmessages\x129\n" +
 	"\n" +
@@ -571,7 +581,8 @@ const file_llmgateway_v1_gateway_proto_rawDesc = "" +
 	"\x06urgent\x18\x03 \x01(\bR\x06urgent\x12C\n" +
 	"\n" +
 	"parameters\x18\x04 \x01(\v2#.llmgateway.v1.GenerationParametersR\n" +
-	"parameters\"]\n" +
+	"parameters\x12'\n" +
+	"\x0frouting_profile\x18\x05 \x01(\tR\x0eroutingProfile\"]\n" +
 	"\aMessage\x12'\n" +
 	"\x04role\x18\x01 \x01(\x0e2\x13.llmgateway.v1.RoleR\x04role\x12\x1d\n" +
 	"\acontent\x18\x02 \x01(\tH\x00R\acontent\x88\x01\x01B\n" +

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"strings"
 )
 
 type Message struct {
@@ -14,17 +15,21 @@ type Message struct {
 	Content string `json:"content" binding:"required"`
 }
 type Request struct {
-	Messages   []Message                  `json:"messages"`
-	Complexity string                     `json:"complexity"`
-	Urgent     *bool                      `json:"urgent,omitempty"`
-	Model      *string                    `json:"model,omitempty"`
-	Stream     *bool                      `json:"stream,omitempty"`
-	Parameters map[string]json.RawMessage `json:"-"`
+	Messages       []Message                  `json:"messages"`
+	Complexity     string                     `json:"complexity"`
+	RoutingProfile string                     `json:"routing_profile,omitempty"`
+	Urgent         *bool                      `json:"urgent,omitempty"`
+	Model          *string                    `json:"model,omitempty"`
+	Stream         *bool                      `json:"stream,omitempty"`
+	Parameters     map[string]json.RawMessage `json:"-"`
 }
 
 // MarshalJSON keeps validated generation parameters in the durable JSON job.
 func (r Request) MarshalJSON() ([]byte, error) {
 	fields := map[string]any{"messages": r.Messages, "complexity": r.Complexity}
+	if r.RoutingProfile != "" {
+		fields["routing_profile"] = r.RoutingProfile
+	}
 	if r.Urgent != nil {
 		fields["urgent"] = *r.Urgent
 	}
@@ -66,7 +71,7 @@ func ParseRequest(body []byte) (Request, error) {
 		return Request{}, apiErr(400, "invalid_request_error", "invalid_json", "request body must be a JSON object")
 	}
 	for key := range fields {
-		if key != "messages" && key != "complexity" && key != "urgent" && key != "model" && key != "stream" && !allowedParameters[key] {
+		if key != "messages" && key != "complexity" && key != "routing_profile" && key != "urgent" && key != "model" && key != "stream" && !allowedParameters[key] {
 			return Request{}, apiErr(400, "invalid_request_error", "unsupported_parameter", "unsupported parameter: "+key)
 		}
 	}
@@ -97,6 +102,11 @@ func ParseRequest(body []byte) (Request, error) {
 	}
 	if raw, ok := fields["complexity"]; !ok || json.Unmarshal(raw, &req.Complexity) != nil || (req.Complexity != "low" && req.Complexity != "medium" && req.Complexity != "high") {
 		return req, apiErr(400, "invalid_request_error", "invalid_complexity", "complexity must be low, medium, or high")
+	}
+	if raw, ok := fields["routing_profile"]; ok {
+		if json.Unmarshal(raw, &req.RoutingProfile) != nil || strings.TrimSpace(req.RoutingProfile) != req.RoutingProfile {
+			return req, apiErr(400, "invalid_request_error", "invalid_routing_profile", "routing_profile must be a string without surrounding whitespace")
+		}
 	}
 	if raw, ok := fields["urgent"]; ok {
 		if err := json.Unmarshal(raw, &req.Urgent); err != nil || req.Urgent == nil {
@@ -196,6 +206,7 @@ func ParseRequest(body []byte) (Request, error) {
 	}
 	delete(fields, "messages")
 	delete(fields, "complexity")
+	delete(fields, "routing_profile")
 	delete(fields, "urgent")
 	delete(fields, "model")
 	delete(fields, "stream")
@@ -237,11 +248,12 @@ func (r Request) CanonicalHash() string {
 		params["response_format"] = map[string]string{"type": "text"}
 	}
 	b, _ := json.Marshal(struct {
-		Messages   []Message      `json:"messages"`
-		Complexity string         `json:"complexity"`
-		Urgent     bool           `json:"urgent"`
-		Parameters map[string]any `json:"parameters"`
-	}{r.Messages, r.Complexity, r.IsUrgent(), params})
+		Messages       []Message      `json:"messages"`
+		Complexity     string         `json:"complexity"`
+		RoutingProfile string         `json:"routing_profile,omitempty"`
+		Urgent         bool           `json:"urgent"`
+		Parameters     map[string]any `json:"parameters"`
+	}{r.Messages, r.Complexity, r.RoutingProfile, r.IsUrgent(), params})
 	var out bytes.Buffer
 	_ = json.Compact(&out, b)
 	h := sha256.Sum256(out.Bytes())
@@ -261,6 +273,9 @@ func (e statusError) Error() string { return e.body.Error.Message }
 // legacyHashes recognizes v1 records whose Request JSON omitted Parameters.
 // Those records retained the pre-normalization hash but cannot recover their parameters.
 func (r Request) legacyHashes() []string {
+	if r.RoutingProfile != "" {
+		return nil
+	}
 	hashes := []string{r.legacyHash(false)}
 	if raw, ok := r.Parameters["stop"]; ok {
 		var values []string

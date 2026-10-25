@@ -26,7 +26,7 @@ Consumer транзакционно сохраняет `queued` вместе с 
 
 ## Grafana и Prometheus
 
-При профиле `gateway` вместе с gateway запускаются Prometheus и Grafana. Prometheus каждые 15 секунд собирает `/metrics`; Grafana автоматически подключает источник и дашборд `LLM Gateway · Routing`. Дашборд показывает настроенные маршруты, фактические назначения по моделям и сложности, очередь, занятые слоты, ожидаемую длительность вызова каждого инстанса (`gateway_instance_expected_seconds`) и ошибки.
+В standalone service compose профиль `gateway` запускает Prometheus и Grafana вместе с gateway. В корневом едином Compose мониторинг включается профилем `observability`; сам LLM gateway запускается всегда как обязательная зависимость приложения. Prometheus каждые 15 секунд собирает `/metrics`; Grafana автоматически подключает источник и дашборд `LLM Gateway · Routing`. Дашборд показывает настроенные маршруты, фактические назначения по моделям и сложности, очередь, занятые слоты, ожидаемую длительность вызова каждого инстанса (`gateway_instance_expected_seconds`) и ошибки.
 
 Среди свободных совместимых инстансов планировщик выбирает тот, что ответит быстрее: сначала наименьшая загрузка, затем наименьшее скользящее среднее длительности upstream-вызовов (успехи и таймауты, α = 0,3; инстанс без замеров пробуется первым), затем менее мощный уровень и round-robin. Инстанс, ответивший `429`, `5xx` или упавший на транспорте, на `Retry-After` (без него — 15 с) уходит после исправных. Запрос `low` поэтому идёт на быструю свободную модель, а не всегда на самую слабую. Оценки живут в памяти и после перезапуска собираются заново. Подробности — в [спецификации](../../documents/llm-gateway-spec.md), раздел 5. Grafana опубликована на `3000:3000` для доступа по IP хоста; в прототипе включён анонимный доступ с ролью Admin. Prometheus доступен только внутри Compose-сети.
 
@@ -51,3 +51,6 @@ Consumer транзакционно сохраняет `queued` вместе с 
 `COMPOSE_PROFILES=gateway docker compose up --build` включает оба маршрута gateway в Caddy, `COMPOSE_PROFILES= docker compose up --build` — отключает; после смены значения пересоздайте proxy. `COMPOSE_PROFILES=swagger,gateway` дополнительно включает документацию. У gRPC-порта нет проброса на хост; gRPC health доступен внутри Docker, Caddy публикует только путь сервиса Gateway.
 
 Backend (Geek, перевод OCR) ходит в gateway по gRPC (`BACKEND_LLM_GATEWAY_ADDR`), `services/course-graph` — тоже по gRPC (`COURSE_GRAPH_LLM_GATEWAY_ADDR`).
+
+
+`routing_profiles` в `config.json` связывает client profile IDs с разрешёнными instance IDs. Профиль фильтрует complexity pools, включая urgent; неизвестное имя отклоняется. Пустой профиль сохраняет прежнюю маршрутизацию и idempotency fingerprint.

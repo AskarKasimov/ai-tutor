@@ -28,6 +28,11 @@
       "qwen3-coder-next"
     ]
   },
+  "routing_profiles": {
+    "learning-assessment": ["gpt-oss-120b"],
+    "learning-tutor": ["gpt-oss-120b"],
+    "learning-taskgen": ["gpt-oss-120b"]
+  },
   "instances": [
     {
       "id": "qwen-3-6",

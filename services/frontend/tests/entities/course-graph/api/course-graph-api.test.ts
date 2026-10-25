@@ -265,7 +265,9 @@ it('imports a competency map as multipart and reads the graph of the map', async
   expect(build.status).toBe('queued')
   expect(build.source).toBe('competency_map')
   const [url, init] = fetchMock.mock.calls[0]
-  expect(url).toBe('/api/v1/exam/admin/subjects/course%2F1/graph/competency-map')
+  expect(url).toBe(
+    '/api/v1/exam/admin/subjects/course%2F1/graph/competency-map',
+  )
   expect(init.method).toBe('POST')
   expect((init.body as FormData).get('file')).toBe(file)
   expect((init.body as FormData).has('sheet')).toBe(false)

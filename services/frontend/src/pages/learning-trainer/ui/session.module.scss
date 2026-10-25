@@ -1,0 +1,909 @@
+// Shared diagnostic/training session layout: header, progress bar (diagnostic)
+// or question navigator (training), question card and voice panel.
+// Long content scrolls inside its own block on desktop.
+.shell {
+  --session-gap: 16px;
+  --session-radius: 20px;
+  --session-block: var(--color-panel-solid);
+  --session-correct: #40a113;
+  --session-correct-fill: rgb(64 161 19 / 0.7);
+  --session-partial: #ffae00;
+  --session-partial-fill: rgb(255 174 0 / 0.7);
+  --session-incorrect: #cf2020;
+  --session-incorrect-fill: rgb(207 32 32 / 0.7);
+  --session-neutral: #c5c5c5;
+  --session-neutral-fill: rgb(197 197 197 / 0.7);
+  --session-neutral-text: #747474;
+  box-sizing: border-box;
+  flex: none;
+  height: 100dvh;
+  max-height: 900px;
+  min-height: 0;
+  min-width: 0;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr);
+  justify-items: center;
+  overflow: hidden;
+  background: var(--app-soft);
+  color: var(--app-ink);
+}
+// The shell is capped at 900px; panels scroll within it.
+.frame {
+  box-sizing: border-box;
+  width: min(100%, 1280px);
+  height: 100%;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: var(--space-2) var(--session-gap);
+  padding: var(--space-2) var(--session-gap);
+}
+.frameWithProgress {
+  grid-template-rows: auto auto minmax(0, 1fr);
+}
+.block {
+  min-height: 0;
+  box-sizing: border-box;
+  border-radius: var(--session-radius);
+  background: var(--session-block);
+  box-shadow: 0 0 0 1px var(--app-border);
+}
+// The progress bar under the header: label and percent above a slim bar.
+.progress {
+  composes: block;
+  display: grid;
+  gap: 8px;
+  padding: 12px 24px 14px;
+}
+.progressText {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--app-muted);
+}
+.progressPercent {
+  font-size: 16px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: var(--app-accent);
+}
+.progressTrack {
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #e6eefd;
+}
+.progressFill {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #4f8cf5, #2867e1);
+  transition: width 0.4s ease;
+}
+.header {
+  composes: block;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 16px;
+  min-height: 52px;
+  padding: 8px 16px 8px 24px;
+}
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  font-weight: 700;
+}
+.logo {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  background: linear-gradient(135deg, #18a89a, #3466e8);
+  color: white;
+}
+.brandLink {
+  justify-self: start;
+  padding: 4px 8px 4px 4px;
+  margin-left: -4px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  &:hover {
+    background: var(--app-soft);
+  }
+  &:focus-visible {
+    outline: 3px solid var(--app-accent);
+    outline-offset: 2px;
+  }
+}
+.crumbs {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  white-space: nowrap;
+  font-size: 15px;
+}
+.crumbLink,
+.crumbText,
+.crumbCurrent {
+  padding: 5px 12px;
+  border-radius: 999px;
+  font: inherit;
+  font-size: 15px;
+  line-height: 20px;
+}
+.crumbLink {
+  border: 0;
+  background: transparent;
+  color: var(--app-muted);
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease;
+  &:hover {
+    background: var(--app-soft);
+    color: var(--app-accent);
+  }
+  &:focus-visible {
+    outline: 3px solid var(--app-accent);
+    outline-offset: 2px;
+  }
+}
+.crumbText {
+  color: var(--app-muted);
+  font-weight: 600;
+}
+.crumbCurrent {
+  background: var(--app-soft);
+  color: var(--app-accent);
+  font-weight: 700;
+  cursor: default;
+}
+.crumbDivider {
+  flex: none;
+  color: var(--app-faint);
+}
+.account {
+  justify-self: end;
+}
+.body {
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr);
+  gap: var(--session-gap);
+}
+.bodyWide {
+  grid-template-columns: minmax(0, 1fr);
+}
+.stage {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  // Previews, summaries and notices become scrollable cards.
+  > main:not(.workspace) {
+    flex: 1;
+    max-width: none;
+    min-height: 0;
+    overflow: auto;
+    padding: 32px;
+    box-sizing: border-box;
+    border-radius: var(--session-radius);
+    background: var(--session-block);
+    box-shadow: 0 0 0 1px var(--app-border);
+  }
+}
+.workspace {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 272px;
+  gap: var(--session-gap);
+}
+.workspace[data-variant='training'] {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+}
+
+// Question navigator: 64px block, 32px items, arrows 24px from the list.
+.navigator {
+  composes: block;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 24px;
+  padding: 16px 0;
+}
+.navArrow {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--app-muted);
+  cursor: pointer;
+  &:disabled {
+    cursor: default;
+    opacity: 0.35;
+  }
+  &:focus-visible {
+    outline: 2px solid var(--app-accent);
+  }
+}
+.navList {
+  min-height: 0;
+  margin: 0;
+  padding: 0 0 2px;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow-y: auto;
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+.navGroup {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+// Clarifying (basic) questions of a topic: small squares under its number.
+.navBasics {
+  display: flex;
+  gap: 4px;
+}
+.navBasic {
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+}
+.navItem {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1;
+}
+.navItem,
+.navBasic {
+  flex: none;
+  box-sizing: border-box;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--session-neutral);
+  background: var(--session-neutral-fill);
+  color: var(--session-neutral-text);
+  &[data-state='current'] {
+    background: white;
+  }
+  &[data-state='correct'] {
+    border-color: var(--session-correct);
+    background: var(--session-correct-fill);
+    color: white;
+  }
+  &[data-state='partial'] {
+    border-color: var(--session-partial);
+    background: var(--session-partial-fill);
+    color: white;
+  }
+  &[data-state='incorrect'] {
+    border-color: var(--session-incorrect);
+    background: var(--session-incorrect-fill);
+    color: white;
+  }
+}
+.visuallyHidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+// Question card.
+.question {
+  composes: block;
+  overflow-y: auto;
+  padding: 32px 28px 32px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  p {
+    margin: 0;
+  }
+}
+.workspace[data-variant='training'] > .question {
+  grid-column: 1 / -1;
+  justify-self: stretch;
+  width: 100%;
+  min-width: 0;
+  max-width: none;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+}
+.eyebrowRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  margin-bottom: -12px;
+}
+.badge {
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--app-soft);
+  color: var(--app-accent);
+  font-size: 12px;
+  font-weight: 700;
+}
+.eyebrow {
+  margin: 0;
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--app-muted);
+}
+.questionTitle {
+  margin: 0;
+  font-family: inherit;
+  font-size: 28px;
+  line-height: 34px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  color: var(--app-ink);
+}
+.longQuestion {
+  font-size: 22px;
+  line-height: 30px;
+}
+.questionParagraph {
+  margin: 0;
+  font-size: 16px;
+  line-height: 24px;
+  color: var(--app-ink);
+  background: var(--app-soft);
+  padding: 12px 16px;
+  border-radius: 10px;
+  border-left: 3px solid var(--app-accent);
+}
+// The spoken instruction under the task text; when options follow, a divider
+// and their title separate them from it.
+.instruction {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: -8px;
+  .listen {
+    align-self: flex-start;
+  }
+}
+.options {
+  display: grid;
+  gap: 12px;
+}
+.instruction + .options {
+  padding-top: 20px;
+  border-top: 1px solid var(--app-border);
+}
+.optionList {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 12px;
+}
+.option {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  min-height: 58px;
+  padding: 10px 18px;
+  box-sizing: border-box;
+  border-radius: 14px;
+  border: 1px solid var(--app-border);
+  background: var(--color-panel-solid);
+  font-size: 18px;
+}
+.optionLetter {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  background: var(--gray-3);
+  color: var(--app-muted);
+  font-size: 15px;
+  font-weight: 700;
+}
+.note {
+  color: var(--app-muted);
+  font-size: 14px;
+}
+.transcript {
+  padding: 16px 20px;
+  border-radius: 14px;
+  border: 1px solid var(--app-border);
+  box-shadow: inset 4px 0 0 #a9c4ff;
+  display: grid;
+  gap: 8px;
+}
+.transcriptText {
+  font-size: 16px;
+  line-height: 22px;
+  white-space: pre-line;
+}
+.extra {
+  display: grid;
+  gap: 16px;
+  padding-top: 8px;
+  border-top: 1px solid var(--app-border);
+  h2 {
+    margin: 0;
+    font-size: 16px;
+  }
+  ul {
+    margin: 0;
+    padding-left: 20px;
+    display: grid;
+    gap: 6px;
+  }
+}
+
+.trainingDetails {
+  display: grid;
+  gap: 14px;
+  padding-top: 18px;
+  border-top: 1px solid var(--app-border);
+  .primary {
+    width: auto;
+    justify-self: start;
+  }
+  h2 {
+    margin: 0;
+    font-size: 18px;
+  }
+  ul {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 18px;
+    margin: 0;
+    padding-left: 20px;
+  }
+}
+
+// Answer score in the navigator colors: the score on its own line and the
+// verdict below, so the narrow panel never wraps "0 / 2".
+.score {
+  display: grid;
+  gap: 2px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  border: 1px solid var(--session-correct);
+  background: rgb(64 161 19 / 0.12);
+  color: #2c7a09;
+  > :first-child {
+    white-space: nowrap;
+    font-size: 30px;
+    line-height: 36px;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+  }
+  &[data-tone='partial'] {
+    border-color: var(--session-partial);
+    background: rgb(255 174 0 / 0.14);
+    color: #9a6400;
+  }
+  &[data-tone='incorrect'] {
+    border-color: var(--session-incorrect);
+    background: rgb(207 32 32 / 0.1);
+    color: var(--session-incorrect);
+  }
+  &[data-tone='skipped'] {
+    border-color: var(--session-neutral);
+    background: var(--session-neutral-fill);
+    color: var(--session-neutral-text);
+  }
+}
+.verdict {
+  font-size: 15px;
+  line-height: 20px;
+  font-weight: 700;
+}
+
+// Voice panel.
+.panel {
+  composes: block;
+  overflow-y: auto;
+  padding: 24px 16px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  p {
+    margin: 0;
+  }
+  // Result headings sit in the panel's own 16px rhythm.
+  > h2:not(.panelTitle),
+  > h4 {
+    margin: 0;
+    font-size: 16px;
+    line-height: 22px;
+  }
+}
+.panelTitle {
+  margin: 0;
+  font-family: inherit;
+  font-size: 22px;
+  line-height: 28px;
+  font-weight: 800;
+}
+.panelHelp {
+  margin-top: -8px;
+  color: var(--app-muted);
+  font-size: 15px;
+  line-height: 20px;
+}
+.listen {
+  align-self: stretch;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 40px;
+  padding: 6px 14px 6px 6px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--app-soft);
+  color: var(--app-accent);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  &:disabled {
+    cursor: default;
+    opacity: 0.6;
+  }
+  &:focus-visible {
+    outline: 3px solid var(--app-accent);
+    outline-offset: 2px;
+  }
+}
+.listenIcon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--app-accent);
+  color: white;
+}
+.hint {
+  color: var(--app-muted);
+  font-size: 13px;
+  line-height: 18px;
+}
+.voice {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 36px 0 8px;
+  text-align: center;
+}
+// The tallest content under the circle is the recording state: timer,
+// waveform and hint. Every state uses this height, so the circle stays put.
+.voiceBelow {
+  width: 100%;
+  height: 124px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 10px;
+  .alert {
+    justify-content: center;
+    text-align: left;
+  }
+}
+// The microphone circle; only a recording gets two soft halo rings, which
+// pulse, and a deeper colour.
+.mic {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 112px;
+  height: 112px;
+  margin-bottom: 18px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  color: white;
+  background: #86a9f4;
+  font: inherit;
+  transition:
+    background 0.2s ease,
+    box-shadow 0.2s ease;
+  &::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    pointer-events: none;
+  }
+  &[data-state='recording'] {
+    background: #4a84f0;
+    box-shadow:
+      0 0 0 16px #e6eefd,
+      0 0 0 32px #f3f7ff;
+    &::after {
+      animation: micPulse 1.6s ease-out infinite;
+    }
+  }
+  &[data-state='busy'] {
+    background: #a9c1f6;
+  }
+  &[data-state='accepted'] {
+    background: linear-gradient(160deg, #4f8cf5, #2867e1);
+  }
+  &[data-state='skipped'] {
+    background: #a3acb9;
+  }
+}
+// Before recording the circle is a raised, saturated record button; it lifts
+// on hover.
+button.mic {
+  cursor: pointer;
+  &[data-state='ready'],
+  &[data-state='error'] {
+    background: linear-gradient(160deg, #4f8cf5, #2867e1);
+    box-shadow: 0 10px 24px rgba(40, 103, 225, 0.35);
+    transition:
+      transform 0.15s ease,
+      box-shadow 0.2s ease;
+    &:hover {
+      transform: scale(1.05);
+    }
+    &:active {
+      transform: scale(0.97);
+    }
+  }
+  &[data-state='recording']:hover {
+    background: #3b76e6;
+  }
+  &:focus-visible {
+    outline: 3px solid var(--app-accent);
+    outline-offset: 6px;
+  }
+  &[data-state='recording']:focus-visible {
+    outline-offset: 36px;
+  }
+}
+@keyframes micPulse {
+  from {
+    box-shadow: 0 0 0 0 rgba(74, 132, 240, 0.35);
+  }
+  to {
+    box-shadow: 0 0 0 44px rgba(74, 132, 240, 0);
+  }
+}
+.voiceHint {
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--app-muted);
+}
+// A status pill, not an action: no border, no hover, muted text.
+.voicePill {
+  max-width: 100%;
+  padding: 8px 16px;
+  border-radius: 999px;
+  background: var(--gray-a3);
+  font-size: 13px;
+  line-height: 18px;
+  text-align: center;
+  color: var(--app-muted);
+}
+.voiceStatus {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--app-ink);
+}
+.timer {
+  font-size: 26px;
+  line-height: 30px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: var(--app-accent);
+}
+.voiceWave {
+  width: 100%;
+  max-width: 220px;
+  > div {
+    height: 44px;
+  }
+}
+.spinner {
+  animation: spin 1s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.micError {
+  flex: 1 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  text-align: center;
+  h3 {
+    margin: 8px 0 0;
+    font-size: 18px;
+    line-height: 24px;
+  }
+  p {
+    color: var(--app-muted);
+    font-size: 14px;
+    line-height: 20px;
+  }
+}
+.micErrorIcon {
+  display: grid;
+  place-items: center;
+  width: 104px;
+  height: 104px;
+  border-radius: 50%;
+  background: #fde8e6;
+  color: #e5483d;
+}
+.alert {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  color: var(--app-error);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 20px;
+  svg {
+    flex: none;
+    margin-top: 2px;
+  }
+}
+.actions {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+}
+// Under the voice circle the actions keep room for a main button and a
+// secondary one, so showing them does not move the circle.
+.voice ~ .actions {
+  min-height: 88px;
+}
+.primary,
+.skip {
+  width: 100%;
+  min-height: 44px;
+  border-radius: 12px;
+  font-weight: 700;
+  font-size: 15px;
+  cursor: pointer;
+}
+.secondary {
+  justify-self: center;
+  font-weight: 600;
+}
+.spacer {
+  flex: 1;
+}
+// The training chat keeps its skip button.
+.skip {
+  flex: none;
+}
+
+@media (max-width: 900px) {
+  .shell {
+    height: auto;
+    max-height: none;
+    display: block;
+    overflow: visible;
+  }
+  .frame {
+    width: 100%;
+    height: auto;
+    min-height: 100dvh;
+    max-height: none;
+    grid-template-rows: auto auto;
+  }
+  .frameWithProgress {
+    grid-template-rows: auto auto 1fr;
+  }
+  .progress {
+    padding: 10px 16px 12px;
+  }
+  .header {
+    grid-template-columns: minmax(0, 1fr) auto;
+    padding: 8px 12px;
+  }
+  .crumbs {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    overflow-x: auto;
+  }
+  .body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .navigator {
+    flex-direction: row;
+    padding: 0 12px;
+    min-height: 56px;
+  }
+  .navArrow {
+    transform: rotate(-90deg);
+  }
+  .navList {
+    flex-direction: row;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 0;
+  }
+  .workspace {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .workspace[data-variant='training'] {
+    grid-template-rows: auto;
+  }
+  .question,
+  .panel {
+    overflow: visible;
+  }
+  .workspace[data-variant='training'] > .question {
+    overflow: visible;
+  }
+  .voice {
+    padding: 28px 0 12px;
+  }
+  // Stacked blocks have no spare height: the microphone follows the text.
+  .spacer {
+    flex: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .spinner,
+  .mic::after {
+    animation: none !important;
+  }
+  .progressFill {
+    transition: none;
+  }
+}

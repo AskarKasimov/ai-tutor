@@ -1,5 +1,6 @@
 import i18next from 'i18next'
 import { initReactI18next } from 'react-i18next'
+import { learningTranslations } from './learning-translations'
 
 export const i18n = i18next.use(initReactI18next)
 
@@ -11,6 +12,15 @@ void i18n.init({
   resources: {
     ru: {
       translation: {
+        ...learningTranslations,
+        modeSelection: {
+          title: 'Выберите режим',
+          subtitle: 'Можно вернуться сюда из меню профиля в любом режиме.',
+          learn: 'Обучение',
+          learnDescription: 'Диагностика, план и тренировка по шагам',
+          exam: 'Симуляция экзамена',
+          examDescription: 'Устный экзамен с Geek',
+        },
         auth: {
           slogan: 'Подтянем до уверенного уровня в кратчайшие сроки',
           adminEntering: 'Открываем админ-панель…',
@@ -24,7 +34,7 @@ void i18n.init({
           loginTitle: 'Вход в AI Tutor',
           registerTitle: 'Создать аккаунт',
           subtitle:
-            'Войдите, чтобы озвучивать вопросы и распознавать свои ответы.',
+            'Войдите, чтобы использовать обучение и симуляцию экзамена.',
           email: 'Email',
           password: 'Пароль',
           name: 'Имя',

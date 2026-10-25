@@ -415,15 +415,23 @@ it('creates an additional course without replacing the existing course', async (
   expect(JSON.parse(init?.body as string)).toEqual({ name: 'Новый курс' })
 })
 
-it('keeps the student site free of the admin panel even for an admin account', async () => {
+it('shows the shared mode chooser to an admin account without entering admin', async () => {
   backend()
   const router = renderApp('/')
-  expect(await screen.findByRole('heading', { name: 'Курсы' })).toBeVisible()
+  expect(
+    await screen.findByRole('heading', { name: 'Выберите режим' }),
+  ).toBeVisible()
   expect(router.state.location.pathname).toBe('/')
   expect(
     screen.queryByRole('heading', { name: 'Подготовка курса' }),
   ).not.toBeInTheDocument()
-  expect(document.querySelector('a[href^="/admin"]')).toBeNull()
+  expect(screen.getByRole('link', { name: /Обучение/ })).toHaveAttribute(
+    'href',
+    '/learn',
+  )
+  expect(
+    screen.getByRole('link', { name: /Симуляция экзамена/ }),
+  ).toHaveAttribute('href', '/exam')
 })
 
 it('denies students direct access to the admin screen without fetching materials', async () => {

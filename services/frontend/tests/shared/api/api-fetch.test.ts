@@ -219,3 +219,37 @@ it('retries a protected request only once even if renewed access is rejected', a
   ).toBe(401)
   expect(rotations).toBe(1)
 })
+
+it('keeps concurrent refreshes and portal headers isolated by session portal', async () => {
+  let releaseStudent!: (response: Response) => void
+  const studentRead = new Promise<Response>((resolve) => {
+    releaseStudent = resolve
+  })
+  const calls: Array<{ url: string; portal: string | null }> = []
+  const fetchMock = vi.fn(async (url: string, options?: RequestInit) => {
+    const portal = new Headers(options?.headers).get('X-AI-Tutor-Portal')
+    calls.push({ url, portal })
+    if (url.endsWith('/auth/me'))
+      return portal === 'admin' ? Response.json({}) : studentRead
+    if (url.endsWith('/auth/refresh')) return Response.json({})
+    const attempts = calls.filter((call) => call.url === url).length
+    return new Response(null, { status: attempts === 1 ? 401 : 200 })
+  })
+  vi.stubGlobal('fetch', fetchMock)
+  window.history.replaceState({}, '', '/')
+  const student = apiFetch('/api/v1/learn/protected-student')
+  await vi.waitFor(() =>
+    expect(calls.some((call) => call.url.endsWith('/auth/me'))).toBe(true),
+  )
+  window.history.replaceState({}, '', '/admin/courses')
+  const admin = apiFetch('/api/v1/exam/protected-admin')
+  await expect(admin).resolves.toMatchObject({ status: 200 })
+  releaseStudent(Response.json({}))
+  await expect(student).resolves.toMatchObject({ status: 200 })
+  expect(
+    calls
+      .filter((call) => call.url.endsWith('/auth/me'))
+      .map((call) => call.portal)
+      .sort(),
+  ).toEqual(['admin', null])
+})

@@ -7,21 +7,12 @@ import {
 import { afterEach, expect, it, vi } from 'vitest'
 
 import { createQueryClient } from '@/bootstrap/providers'
-import { openModeSelect } from '@/features/auth/model/mode-select'
 import { routeTree } from '@/routeTree.gen'
 import { logOut } from '../support/account-menu'
 
 vi.mock('@/shared/lib', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/shared/lib')>()),
   createVoiceWaveform: () => ({ setStream: () => {}, dispose: () => {} }),
-}))
-
-// jsdom cannot leave the page; the start page is another site.
-vi.mock('@/features/auth/model/mode-select', async (importOriginal) => ({
-  ...(await importOriginal<
-    typeof import('@/features/auth/model/mode-select')
-  >()),
-  openModeSelect: vi.fn(),
 }))
 
 function renderHome(path = '/') {
@@ -37,7 +28,6 @@ afterEach(() => {
   vi.restoreAllMocks()
   vi.unstubAllGlobals()
   vi.unstubAllEnvs()
-  vi.mocked(openModeSelect).mockClear()
 })
 
 function mockAuth(response: { ok: boolean; status?: number; body: unknown }) {
@@ -186,7 +176,6 @@ it('returns to the separate login screen after logout', async () => {
   expect(
     screen.queryByRole('menuitem', { name: 'К выбору режима' }),
   ).not.toBeInTheDocument()
-  expect(openModeSelect).not.toHaveBeenCalled()
 })
 
 function mockSignedIn() {
@@ -211,33 +200,41 @@ async function openAccountMenu() {
   fireEvent.keyDown(trigger, { key: 'Enter' })
 }
 
-it('leads back to the mode choice on the two-mode stand', async () => {
-  vi.stubEnv('VITE_MODE_SELECT_URL', 'https://modes.example/')
+it('shows both in-app modes and returns to the mode choice from the menu', async () => {
   mockSignedIn()
-  renderHome()
+  renderHome('/exam')
   await openAccountMenu()
   fireEvent.click(
     await screen.findByRole('menuitem', { name: 'К выбору режима' }),
   )
-  expect(openModeSelect).toHaveBeenCalledWith()
+  expect(
+    await screen.findByRole('heading', { name: 'Выберите режим' }),
+  ).toBeVisible()
+  expect(screen.getByRole('link', { name: /Обучение/ })).toHaveAttribute(
+    'href',
+    '/learn',
+  )
+  expect(
+    screen.getByRole('link', { name: /Симуляция экзамена/ }),
+  ).toHaveAttribute('href', '/exam')
 })
 
-it('sends visitors without a session to the start page of the two-mode stand', async () => {
-  vi.stubEnv('VITE_MODE_SELECT_URL', 'https://modes.example')
+it('shows the shared sign-in form at the start page without a session', async () => {
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 401 }))
   renderHome('/login')
-  await waitFor(() => expect(openModeSelect).toHaveBeenCalledWith('?logout'))
   expect(
-    screen.queryByRole('heading', { name: 'Вход в AI Tutor' }),
-  ).not.toBeInTheDocument()
+    await screen.findByRole('heading', { name: 'Вход в AI Tutor' }),
+  ).toBeVisible()
+  expect(screen.getByLabelText('Email')).toBeVisible()
 })
 
-it('signs out here first, then on the start page of the two-mode stand', async () => {
-  vi.stubEnv('VITE_MODE_SELECT_URL', 'https://modes.example')
+it('logs out to the shared start page', async () => {
   const fetchMock = mockSignedIn()
-  renderHome()
+  renderHome('/exam')
   await logOut()
-  await waitFor(() => expect(openModeSelect).toHaveBeenCalledWith('?logout'))
+  expect(
+    await screen.findByRole('heading', { name: 'Вход в AI Tutor' }),
+  ).toBeVisible()
   expect(fetchMock).toHaveBeenCalledWith(
     expect.stringMatching(/\/auth\/logout$/),
     expect.objectContaining({ method: 'POST' }),

@@ -354,7 +354,7 @@ function renderApp() {
   const queryClient = createQueryClient()
   const router = createRouter({
     context: { queryClient },
-    history: createMemoryHistory({ initialEntries: ['/'] }),
+    history: createMemoryHistory({ initialEntries: ['/exam'] }),
     routeTree,
   })
   render(<RouterProvider router={router} />)

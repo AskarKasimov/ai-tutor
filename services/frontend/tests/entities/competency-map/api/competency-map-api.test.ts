@@ -123,7 +123,9 @@ it('replaces one material source with a single PDF PUT', async () => {
   })
   await replaceCourseMaterialFile('subject-1', 'material-1', pdf)
   const [url, request] = fetchMock.mock.calls[0]
-  expect(url).toBe('/api/v1/exam/admin/subjects/subject-1/materials/material-1/raw')
+  expect(url).toBe(
+    '/api/v1/exam/admin/subjects/subject-1/materials/material-1/raw',
+  )
   expect(request.method).toBe('PUT')
   expect(request.body.getAll('file')).toHaveLength(1)
   expect(request.body.get('file').name).toBe('replacement.pdf')

@@ -109,11 +109,12 @@ func (q *Queries) FinishCourseGraph(ctx context.Context, arg FinishCourseGraphPa
 
 const listPublishedCourseGraphs = `-- name: ListPublishedCourseGraphs :many
 SELECT g.graph FROM course_graphs g JOIN subjects s ON s.id=g.subject_id
-WHERE g.source='materials' AND EXISTS(SELECT 1 FROM subject_materials m WHERE m.subject_id=g.subject_id)
+WHERE g.source='competency_map' OR EXISTS(SELECT 1 FROM subject_materials m WHERE m.subject_id=g.subject_id)
 ORDER BY g.updated_at DESC, g.subject_id
 `
 
-// Every graph currently available to a new Geek exam; newest first.
+// Every graph Geek examines by, under the condition of ReadPublishedCourseGraph;
+// the newest first, so their questions are voiced first.
 func (q *Queries) ListPublishedCourseGraphs(ctx context.Context) ([][]byte, error) {
 	rows, err := q.db.Query(ctx, listPublishedCourseGraphs)
 	if err != nil {
@@ -200,10 +201,12 @@ func (q *Queries) ReadCourseGraphMap(ctx context.Context, subjectID string) ([]b
 
 const readPublishedCourseGraph = `-- name: ReadPublishedCourseGraph :one
 SELECT g.graph FROM course_graphs g JOIN subjects s ON s.id=g.subject_id
-WHERE g.subject_id=$1 AND g.source='materials' AND EXISTS(SELECT 1 FROM subject_materials m WHERE m.subject_id=g.subject_id)
+WHERE g.subject_id=$1 AND (g.source='competency_map' OR EXISTS(SELECT 1 FROM subject_materials m WHERE m.subject_id=g.subject_id))
 `
 
-// New exams use only a materials graph while the course still has materials.
+// The graph Geek examines by. It stays published while its source changes
+// until the next build; a graph of materials goes with the last of them, a
+// graph of a competency map needs none.
 func (q *Queries) ReadPublishedCourseGraph(ctx context.Context, subjectID string) ([]byte, error) {
 	row := q.db.QueryRow(ctx, readPublishedCourseGraph, subjectID)
 	var graph []byte
@@ -274,4 +277,57 @@ func (q *Queries) RequestCourseGraphBuild(ctx context.Context, arg RequestCourse
 	var subject_id string
 	err := row.Scan(&subject_id)
 	return subject_id, err
+}
+
+const requestCourseGraphMapBuild = `-- name: RequestCourseGraphMapBuild :one
+INSERT INTO course_graph_jobs(subject_id, source, fingerprint, updated_at)
+SELECT m.subject_id, 'competency_map', m.fingerprint, $1::bigint FROM course_graph_maps m
+WHERE m.subject_id = $2 AND EXISTS (SELECT 1 FROM subjects s WHERE s.id=m.subject_id)
+ON CONFLICT(subject_id) DO UPDATE SET source=excluded.source, fingerprint=excluded.fingerprint,
+    status='pending', attempts=0, available_at=0, lease_until=0, lease_token='', error_message='', updated_at=excluded.updated_at
+WHERE course_graph_jobs.status NOT IN ('pending', 'processing')
+RETURNING subject_id
+`
+
+type RequestCourseGraphMapBuildParams struct {
+	Now       int64
+	SubjectID string
+}
+
+// The admin imported a competency map: queue a build of it unless a build of
+// either source is already queued or running.
+func (q *Queries) RequestCourseGraphMapBuild(ctx context.Context, arg RequestCourseGraphMapBuildParams) (string, error) {
+	row := q.db.QueryRow(ctx, requestCourseGraphMapBuild, arg.Now, arg.SubjectID)
+	var subject_id string
+	err := row.Scan(&subject_id)
+	return subject_id, err
+}
+
+const saveCourseGraphMap = `-- name: SaveCourseGraphMap :exec
+INSERT INTO course_graph_maps(subject_id, filename, sheet, fingerprint, graph, uploaded_at)
+SELECT $1, $2, $3, $4, $5::jsonb, $6::bigint
+WHERE EXISTS (SELECT 1 FROM subjects s WHERE s.id=$1)
+ON CONFLICT(subject_id) DO UPDATE SET filename=excluded.filename, sheet=excluded.sheet,
+    fingerprint=excluded.fingerprint, graph=excluded.graph, uploaded_at=excluded.uploaded_at
+`
+
+type SaveCourseGraphMapParams struct {
+	SubjectID   string
+	Filename    string
+	Sheet       string
+	Fingerprint string
+	Graph       []byte
+	Now         int64
+}
+
+func (q *Queries) SaveCourseGraphMap(ctx context.Context, arg SaveCourseGraphMapParams) error {
+	_, err := q.db.Exec(ctx, saveCourseGraphMap,
+		arg.SubjectID,
+		arg.Filename,
+		arg.Sheet,
+		arg.Fingerprint,
+		arg.Graph,
+		arg.Now,
+	)
+	return err
 }

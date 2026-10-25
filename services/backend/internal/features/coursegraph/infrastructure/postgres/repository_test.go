@@ -163,37 +163,39 @@ func TestPublishedListsTheGraphsGeekExaminesBy(t *testing.T) {
 	}
 }
 
-func TestLegacyMapJobCanFinishButIsNotPublishedForNewExams(t *testing.T) {
+func TestAMapIsBuiltWithoutMaterialsAndReplacesTheGraph(t *testing.T) {
 	pool := repositoryPool(t)
 	repo := New(pool)
 	ctx, now := context.Background(), time.Unix(100, 0)
 	graph := json.RawMessage(`{"version":"competency-map-v1","source":"competency_map","topics":[{"id":"a","title":"ОР"}]}`)
-	// Seed historical data directly: new application code has no map-write path.
-	if _, err := pool.Exec(ctx, `INSERT INTO course_graph_maps(subject_id,filename,sheet,fingerprint,graph,uploaded_at)
-		VALUES ('s','map.xlsx','Карта','legacy-fingerprint',$1,1)`, graph); err != nil {
-		t.Fatal(err)
+	// The materials of s are still being cleaned: a map does not wait for them.
+	if queued, err := repo.SaveMap(ctx, "s", "map.xlsx", "Карта", graph, now); err != nil || !queued {
+		t.Fatalf("save map: %v %v", queued, err)
 	}
-	if _, err := pool.Exec(ctx, `INSERT INTO course_graph_jobs(subject_id,source,fingerprint,status,updated_at)
-		VALUES ('s','competency_map','legacy-fingerprint','pending',1)`); err != nil {
-		t.Fatal(err)
+	if queued, err := repo.SaveMap(ctx, "s", "other.xlsx", "Карта", graph, now); err != nil || queued {
+		t.Fatalf("a second map during the build: %v %v", queued, err)
 	}
 	job, err := repo.Claim(ctx, "w1", now)
 	if err != nil || job.SubjectID != "s" || job.Source != "competency_map" {
 		t.Fatalf("claim: %+v %v", job, err)
 	}
 	stored, err := repo.MapGraph(ctx, "s")
+	// jsonb keeps the content, not the key order.
 	if err != nil || !strings.Contains(string(stored), `"version": "competency-map-v1"`) {
 		t.Fatalf("map graph: %s %v", stored, err)
 	}
 	if accepted, err := repo.Finish(ctx, job, graph, now); err != nil || !accepted {
-		t.Fatalf("finish legacy job: %v %v", accepted, err)
+		t.Fatalf("finish: %v %v", accepted, err)
 	}
 	snapshot, err := repo.Read(ctx, "s")
-	if err != nil || snapshot.GraphSource != "competency_map" || snapshot.Map == nil || snapshot.Map.Filename != "map.xlsx" {
-		t.Fatalf("legacy snapshot = %+v %v", snapshot, err)
+	if err != nil || snapshot.GraphSource != "competency_map" || snapshot.Stale || snapshot.Map == nil ||
+		snapshot.Map.Filename != "map.xlsx" || snapshot.BuildSource == nil || *snapshot.BuildSource != "competency_map" {
+		t.Fatalf("snapshot = %+v %v", snapshot, err)
 	}
+	// Geek reads a graph of a map after the last material is gone.
+	exec(t, pool, `DELETE FROM subject_materials`)
 	published, err := repo.Published(ctx)
-	if err != nil || len(published) != 0 {
-		t.Fatalf("legacy map must not be published for new exams: %d %v", len(published), err)
+	if err != nil || len(published) != 1 {
+		t.Fatalf("published: %d %v", len(published), err)
 	}
 }

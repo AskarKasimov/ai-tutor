@@ -11,6 +11,24 @@ ON CONFLICT(subject_id) DO UPDATE SET source=excluded.source, fingerprint=exclud
 WHERE course_graph_jobs.status NOT IN ('pending', 'processing')
 RETURNING subject_id;
 
+-- name: RequestCourseGraphMapBuild :one
+-- The admin imported a competency map: queue a build of it unless a build of
+-- either source is already queued or running.
+INSERT INTO course_graph_jobs(subject_id, source, fingerprint, updated_at)
+SELECT m.subject_id, 'competency_map', m.fingerprint, sqlc.arg(now)::bigint FROM course_graph_maps m
+WHERE m.subject_id = sqlc.arg(subject_id) AND EXISTS (SELECT 1 FROM subjects s WHERE s.id=m.subject_id)
+ON CONFLICT(subject_id) DO UPDATE SET source=excluded.source, fingerprint=excluded.fingerprint,
+    status='pending', attempts=0, available_at=0, lease_until=0, lease_token='', error_message='', updated_at=excluded.updated_at
+WHERE course_graph_jobs.status NOT IN ('pending', 'processing')
+RETURNING subject_id;
+
+-- name: SaveCourseGraphMap :exec
+INSERT INTO course_graph_maps(subject_id, filename, sheet, fingerprint, graph, uploaded_at)
+SELECT sqlc.arg(subject_id), sqlc.arg(filename), sqlc.arg(sheet), sqlc.arg(fingerprint), sqlc.arg(graph)::jsonb, sqlc.arg(now)::bigint
+WHERE EXISTS (SELECT 1 FROM subjects s WHERE s.id=sqlc.arg(subject_id))
+ON CONFLICT(subject_id) DO UPDATE SET filename=excluded.filename, sheet=excluded.sheet,
+    fingerprint=excluded.fingerprint, graph=excluded.graph, uploaded_at=excluded.uploaded_at;
+
 -- name: ReadCourseGraphMap :one
 SELECT graph FROM course_graph_maps WHERE subject_id = $1;
 
@@ -75,12 +93,15 @@ LEFT JOIN course_graph_inputs i ON i.subject_id=s.id
 LEFT JOIN course_graph_maps m ON m.subject_id=s.id WHERE s.id=$1;
 
 -- name: ReadPublishedCourseGraph :one
--- New exams use only a materials graph while the course still has materials.
+-- The graph Geek examines by. It stays published while its source changes
+-- until the next build; a graph of materials goes with the last of them, a
+-- graph of a competency map needs none.
 SELECT g.graph FROM course_graphs g JOIN subjects s ON s.id=g.subject_id
-WHERE g.subject_id=$1 AND g.source='materials' AND EXISTS(SELECT 1 FROM subject_materials m WHERE m.subject_id=g.subject_id);
+WHERE g.subject_id=$1 AND (g.source='competency_map' OR EXISTS(SELECT 1 FROM subject_materials m WHERE m.subject_id=g.subject_id));
 
 -- name: ListPublishedCourseGraphs :many
--- Every graph currently available to a new Geek exam; newest first.
+-- Every graph Geek examines by, under the condition of ReadPublishedCourseGraph;
+-- the newest first, so their questions are voiced first.
 SELECT g.graph FROM course_graphs g JOIN subjects s ON s.id=g.subject_id
-WHERE g.source='materials' AND EXISTS(SELECT 1 FROM subject_materials m WHERE m.subject_id=g.subject_id)
+WHERE g.source='competency_map' OR EXISTS(SELECT 1 FROM subject_materials m WHERE m.subject_id=g.subject_id)
 ORDER BY g.updated_at DESC, g.subject_id;

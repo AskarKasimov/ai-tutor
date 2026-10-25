@@ -79,6 +79,7 @@ import { useSubjectsQuery } from '@/features/subject-selection'
 import { CosmicProgress, MarkdownContent } from '@/shared/ui'
 import styles from '@/pages/competency-map/ui/competency-map.module.scss'
 import { AdminCourseDetailShell } from '@/widgets/admin-course-detail-shell'
+import { CompetencyMapImport } from './competency-map-import'
 
 // React Flow and the layout load only when the graph is shown.
 const CourseGraphCanvas = lazy(() => import('./course-graph-canvas'))
@@ -713,8 +714,16 @@ function CompetencyMapAdmin({
                 </Flex>
               </AlertDialog.Content>
             </AlertDialog.Root>
+            <CompetencyMapImport
+              userId={userId}
+              subjectId={subjectId}
+              hasGraph={hasGraph}
+              disabled={!graphStateResolved || graphBuilding}
+              map={courseGraph.data?.map}
+            />
             <CourseGraphViewer
               graph={courseGraph.data?.view}
+              fromMap={courseGraph.data?.source === 'competency_map'}
               materials={materials}
             />
           </section>
@@ -1146,9 +1155,11 @@ function BuildProgressCard({ build }: { build: CourseGraphBuild }) {
 
 function CourseGraphViewer({
   graph,
+  fromMap,
   materials,
 }: {
   graph: CourseGraphView | null | undefined
+  fromMap: boolean
   materials: CourseMaterial[]
 }) {
   const { t } = useTranslation()
@@ -1166,6 +1177,16 @@ function CourseGraphViewer({
   return (
     <div className={styles.graphBody}>
       <>
+        {fromMap && (
+          <Flex align="center" gap="2" wrap="wrap">
+            <Badge color="violet" size="1">
+              {t('competencyMap.graphSourceMap')}
+            </Badge>
+            <Text size="2" color="gray">
+              {t('competencyMap.graphMapHint')}
+            </Text>
+          </Flex>
+        )}
         <dl className={styles.stats}>
           <div className={styles.statRow} data-tone="blue">
             <span className={styles.statIcon} aria-hidden="true">

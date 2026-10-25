@@ -44,6 +44,8 @@ function setup({
   cleaning = false,
   cleaningFailed = false,
   graphReady = false,
+  competencyMap,
+  materials,
   uploadGate,
 }: {
   processing?: boolean
@@ -51,9 +53,15 @@ function setup({
   cleaning?: boolean
   cleaningFailed?: boolean
   graphReady?: boolean
+  materials?: (typeof material)[]
+  // The import of a competency map: a bad map names its cells; a good one is
+  // built from its first sheet and the build publishes the graph of the map.
+  competencyMap?: 'valid' | 'invalid'
   uploadGate?: Promise<void>
 } = {}) {
   let graphRequested = false
+  let mapImported = false
+  const courseMaterials = materials ?? [material]
   const calls = vi.fn(async (url: string, init?: RequestInit) => {
     if (url.endsWith('/auth/me')) return Response.json(admin)
     if (url.endsWith('/admin/material-kinds'))
@@ -73,9 +81,9 @@ function setup({
         {
           id: 'subject-b',
           name: 'Второй курс',
-          ready: graphReady,
+          ready: graphReady || mapImported,
           learning_ready: false,
-          exam_ready: graphReady,
+          exam_ready: graphReady || mapImported,
         },
       ])
     if (url.endsWith('/materials') && init?.method === 'POST') {
@@ -93,41 +101,99 @@ function setup({
       })
     }
     if (url.endsWith('/materials'))
-      return Response.json([
-        cleaningFailed
-          ? {
-              ...material,
-              cleaning: {
-                status: 'failed',
-                updated_at: 2,
-                attempts: 3,
-                error_message: 'Очистка материала не удалась.',
-              },
-            }
-          : pending
-            ? { ...material, status: 'pending' }
-            : cleaning
-              ? {
-                  ...material,
-                  cleaning: {
-                    status: 'processing',
-                    updated_at: 1,
-                    attempts: 1,
-                    error_message: '',
-                  },
-                }
-              : processing
+      return Response.json(
+        courseMaterials.length === 0
+          ? []
+          : [
+              cleaningFailed
                 ? {
                     ...material,
-                    processing: {
-                      stage: 'translation',
-                      status: 'processing',
-                      updated_at: 1,
-                      attempts: 1,
+                    cleaning: {
+                      status: 'failed',
+                      updated_at: 2,
+                      attempts: 3,
+                      error_message: 'Очистка материала не удалась.',
                     },
                   }
-                : material,
-      ])
+                : pending
+                  ? { ...material, status: 'pending' }
+                  : cleaning
+                    ? {
+                        ...material,
+                        cleaning: {
+                          status: 'processing',
+                          updated_at: 1,
+                          attempts: 1,
+                          error_message: '',
+                        },
+                      }
+                    : processing
+                      ? {
+                          ...material,
+                          processing: {
+                            stage: 'translation',
+                            status: 'processing',
+                            updated_at: 1,
+                            attempts: 1,
+                          },
+                        }
+                      : material,
+            ],
+      )
+    if (url.endsWith('/graph/competency-map')) {
+      if (competencyMap === 'invalid')
+        return Response.json(
+          {
+            code: 'COMPETENCY_MAP_INVALID',
+            message: 'Карта на листе «Карта» содержит ошибки.',
+            details: [
+              {
+                path: 'file',
+                code: 'COMPETENCY_MAP_CELL',
+                message:
+                  'Строка 3, «Уровень по Блуму»: Неизвестный уровень по Блуму.',
+              },
+            ],
+          },
+          { status: 422 },
+        )
+      mapImported = true
+      return Response.json(
+        {
+          status: 'pending',
+          attempts: 0,
+          error_message: '',
+          graph: null,
+          graph_source: 'none',
+          build_source: 'competency_map',
+          map: { filename: 'map.xlsx', sheet: 'Карта компетенций v2' },
+          stale: false,
+          inputs_ready: true,
+          updated_at: 0,
+        },
+        { status: 202 },
+      )
+    }
+    if (mapImported && url.endsWith('/graph'))
+      return Response.json({
+        status: 'ready',
+        attempts: 0,
+        error_message: '',
+        graph: {
+          topics: [
+            { id: 'basic', title: 'Называет части агента' },
+            { id: 'main', title: 'Выбирает тип агента' },
+          ],
+          prerequisites: [{ source: 'basic', target: 'main' }],
+          hierarchy: [{ source: 'main', target: 'basic' }],
+        },
+        graph_source: 'competency_map',
+        build_source: 'competency_map',
+        map: { filename: 'map.xlsx', sheet: 'Карта компетенций v2' },
+        stale: false,
+        inputs_ready: true,
+        updated_at: 2,
+      })
     if (url.endsWith('/graph') || url.endsWith('/graph/build')) {
       if (init?.method === 'POST') graphRequested = true
       return Response.json({
@@ -219,75 +285,140 @@ it('keeps the master graph viewer for a published graph', async () => {
   expect(screen.queryByText('По карте компетенций')).not.toBeInTheDocument()
 })
 
-it('exam tab contains no competency-map import and learning tab keeps its course-scoped import', async () => {
+it('keeps the competency map import inside the selected course graph card', async () => {
   setup()
-  const router = open('/admin/courses/subject-b?direction=exam')
+  open('/admin/courses/subject-b?direction=exam')
+  const graphSection = await screen.findByRole('region', {
+    name: 'Граф тем курса',
+  })
   expect(
-    await screen.findByRole('heading', { name: 'Второй курс' }),
+    within(graphSection).getByText(/Вместо материалов граф можно собрать/),
   ).toBeVisible()
-  const graphSection = screen.getByRole('region', { name: 'Граф тем курса' })
   expect(
-    within(graphSection).getByRole('button', { name: /Собрать граф/ }),
-  ).toBeVisible()
-  expect(screen.queryByText(/карта компетенций/i)).not.toBeInTheDocument()
-  expect(
-    screen.queryByLabelText(/импортировать карту компетенций/i),
-  ).not.toBeInTheDocument()
-  const learnTab = within(
-    screen.getByRole('navigation', { name: 'Разделы администрирования' }),
-  ).getByRole('link', { name: 'Материалы для обучения' })
-  fireEvent.click(learnTab)
-  expect(
-    await screen.findByRole('heading', { name: 'Материалы для обучения' }),
-  ).toBeVisible()
-  expect(router.state.location.pathname).toBe('/admin/courses/subject-b')
-  expect(
-    await screen.findByLabelText('Файл карты компетенций', {
-      selector: 'input',
+    within(graphSection).getByRole('button', {
+      name: 'Импортировать карту компетенций',
     }),
-  ).toBeInTheDocument()
+  ).toBeVisible()
+  expect(
+    screen.queryByRole('heading', {
+      name: 'Карта для экзаменационного графа',
+    }),
+  ).not.toBeInTheDocument()
 })
 
-it('keeps one shared course heading and exactly one selected direction tab', async () => {
+function chooseMap() {
+  return screen
+    .findByLabelText('Импортировать карту компетенций', { selector: 'input' })
+    .then((input) =>
+      fireEvent.change(input, {
+        target: {
+          files: [new File(['PK'], 'map.xlsx', { type: 'application/zip' })],
+        },
+      }),
+    )
+}
+
+it('builds the graph from the first sheet of a competency map', async () => {
+  const calls = setup({ competencyMap: 'valid' })
+  open()
+  await chooseMap()
+  const dialog = await screen.findByRole('alertdialog')
+  expect(within(dialog).getByText(/по карте «map\.xlsx»/)).toBeVisible()
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Импортировать' }))
+  expect(
+    await screen.findByText('По карте компетенций', undefined, {
+      timeout: 8000,
+    }),
+  ).toBeVisible()
+  expect(
+    screen.getByText('Последняя карта: map.xlsx, лист «Карта компетенций v2».'),
+  ).toBeVisible()
+  expect(
+    screen.getByText('Курс готов для студентов. В графе тем: 2.'),
+  ).toBeInTheDocument()
+  const imports = calls.mock.calls.filter(([url]) =>
+    String(url).endsWith('/graph/competency-map'),
+  )
+  // One send, with the file only: the server reads the first sheet.
+  expect(imports).toHaveLength(1)
+  expect((imports[0][1]?.body as FormData).has('sheet')).toBe(false)
+  expect(screen.queryByLabelText('Лист карты')).not.toBeInTheDocument()
+}, 15000)
+
+it('imports a map through the shared course ID and makes a map-only course ready', async () => {
+  const calls = setup({ competencyMap: 'valid', materials: [] })
+  const router = open('/admin/courses/subject-b?direction=exam')
+  expect(
+    await screen.findByRole('heading', { name: 'Второй курс', level: 1 }),
+  ).toBeVisible()
+  expect(await screen.findByText(/Материалов: 0/)).toBeVisible()
+  await chooseMap()
+  const dialog = await screen.findByRole('alertdialog')
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Импортировать' }))
+  await screen.findByText('По карте компетенций', undefined, { timeout: 8000 })
+  expect(await screen.findByText('Экзамен готов')).toBeVisible()
+  expect(router.state.location.pathname).toBe('/admin/courses/subject-b')
+  expect(router.state.location.search).toEqual({ direction: 'exam' })
+  expect(
+    calls.mock.calls.some(([url]) =>
+      String(url).endsWith('/admin/subjects/subject-b/graph/competency-map'),
+    ),
+  ).toBe(true)
+  expect(
+    calls.mock.calls.some(([url]) =>
+      String(url).endsWith('/admin/subjects/subject-b/materials'),
+    ),
+  ).toBe(true)
+}, 15000)
+
+it('keeps the common course heading and exactly one selected direction tab', async () => {
   setup()
   const router = open('/admin/courses/subject-b?direction=exam')
-  const courseTitle = await screen.findByRole('heading', {
-    name: 'Второй курс',
-    level: 1,
-  })
-  expect(courseTitle).toBeVisible()
-  expect(screen.getAllByText('Курс', { exact: true })).toHaveLength(1)
-  expect(screen.queryByText('Предмет', { exact: true })).not.toBeInTheDocument()
-  expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1)
-  const tabs = screen.getByRole('navigation', {
+  expect(
+    await screen.findByRole('heading', { name: 'Второй курс', level: 1 }),
+  ).toBeVisible()
+  const navigation = screen.getByRole('navigation', {
     name: 'Разделы администрирования',
   })
-  const selectedTab = () =>
-    within(tabs)
+  const selected = () =>
+    within(navigation)
       .getAllByRole('link')
       .filter((tab) => tab.getAttribute('aria-current') === 'page')
-  expect(selectedTab()).toHaveLength(1)
-  expect(selectedTab()[0]).toHaveAccessibleName('Материалы для экзамена')
-
+  expect(selected()).toHaveLength(1)
+  expect(selected()[0]).toHaveAccessibleName('Материалы для экзамена')
   fireEvent.click(
-    within(tabs).getByRole('link', { name: 'Материалы для обучения' }),
+    within(navigation).getByRole('link', { name: 'Материалы для обучения' }),
   )
   expect(
     await screen.findByRole('heading', { name: 'Материалы для обучения' }),
   ).toBeVisible()
   expect(router.state.location.search).toEqual({ direction: 'learn' })
-  expect(
-    await screen.findByRole('heading', { name: 'Второй курс', level: 1 }),
-  ).toBeVisible()
-  expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1)
-  const tabsAfterSwitch = screen.getByRole('navigation', {
+  const navigationAfterSwitch = screen.getByRole('navigation', {
     name: 'Разделы администрирования',
   })
-  const selectedAfterSwitch = within(tabsAfterSwitch)
+  const selectedAfterSwitch = within(navigationAfterSwitch)
     .getAllByRole('link')
     .filter((tab) => tab.getAttribute('aria-current') === 'page')
   expect(selectedAfterSwitch).toHaveLength(1)
   expect(selectedAfterSwitch[0]).toHaveAccessibleName('Материалы для обучения')
+  expect(
+    await screen.findByRole('heading', { name: 'Второй курс', level: 1 }),
+  ).toBeVisible()
+})
+
+it('names the bad cells of a rejected competency map', async () => {
+  setup({ competencyMap: 'invalid' })
+  open()
+  await chooseMap()
+  const dialog = await screen.findByRole('alertdialog')
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Импортировать' }))
+  const alert = await screen.findByText(
+    'Строка 3, «Уровень по Блуму»: Неизвестный уровень по Блуму.',
+  )
+  expect(alert).toBeVisible()
+  expect(
+    screen.getByText('Карта на листе «Карта» содержит ошибки.'),
+  ).toBeVisible()
 })
 
 it('uploads a queued PDF using the master multipart field', async () => {

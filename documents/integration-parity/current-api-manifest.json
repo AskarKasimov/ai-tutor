@@ -1,13 +1,6 @@
 {
   "baseline_count": 76,
-  "implemented_count": 75,
-  "withdrawn": [
-    {
-      "method": "POST",
-      "target_path": "/api/v1/exam/admin/subjects/{subject_id}/graph/competency-map",
-      "reason": "Пользовательское решение 2026-10-25: карта компетенций используется только для обучения; exam граф строится из материалов."
-    }
-  ],
+  "implemented_count": 76,
   "routes": [
     {
       "mode": "common",
@@ -404,6 +397,12 @@
       "method": "GET",
       "source_path": "/admin/subjects/{subject_id}/materials/{material_id}/raw",
       "target_path": "/api/v1/exam/admin/subjects/{subject_id}/materials/{material_id}/raw"
+    },
+    {
+      "mode": "exam",
+      "method": "POST",
+      "source_path": "/admin/subjects/{subject_id}/graph/competency-map",
+      "target_path": "/api/v1/exam/admin/subjects/{subject_id}/graph/competency-map"
     },
     {
       "mode": "exam",

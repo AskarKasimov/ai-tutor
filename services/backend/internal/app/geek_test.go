@@ -144,15 +144,12 @@ func geekFlow(t *testing.T, f *fixture, access *http.Cookie, graph []byte, check
 	return session.ID
 }
 
-// publishGraph publishes a material-source graph for a course with its input.
+// publishGraph publishes graph for a course as a build of a competency map
+// would, so the course needs no materials.
 func publishGraph(t *testing.T, f *fixture, subjectID string, graph []byte) {
 	t.Helper()
-	if _, err := f.pool.Exec(context.Background(), `INSERT INTO subject_materials(id, subject_id, filename, content_type, s3_raw_key, s3_parsed_key, status, created_at, updated_at)
-		VALUES ('test-graph-material-' || $1, $1, 'lecture.pdf', 'application/pdf', 'raw', 'parsed', 'parsed', 1, 1) ON CONFLICT (id) DO NOTHING`, subjectID); err != nil {
-		t.Fatal(err)
-	}
 	if _, err := f.pool.Exec(context.Background(), `INSERT INTO course_graphs(subject_id, source, fingerprint, graph, updated_at)
-		VALUES ($1, 'materials', 'test', $2, 1)
+		VALUES ($1, 'competency_map', 'test', $2, 1)
 		ON CONFLICT(subject_id) DO UPDATE SET graph=excluded.graph, updated_at=2`, subjectID, graph); err != nil {
 		t.Fatal(err)
 	}

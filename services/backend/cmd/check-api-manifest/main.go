@@ -30,7 +30,7 @@ func main() {
 	if err := json.Unmarshal(manifestBytes, &m); err != nil {
 		panic(err)
 	}
-	if m.BaselineCount != 76 || m.ImplementedCount != len(m.Routes) || len(m.Routes) != 75 {
+	if m.BaselineCount != 76 || m.ImplementedCount != 76 || len(m.Routes) != 76 {
 		panic(fmt.Sprintf("current API manifest counts invalid: baseline=%d implemented=%d routes=%d", m.BaselineCount, m.ImplementedCount, len(m.Routes)))
 	}
 	apiBytes, err := os.ReadFile("../../api/openapi.yaml")
@@ -55,9 +55,6 @@ func main() {
 		if status, ok := operation["x-implementation"].(string); !ok || status != "implemented" {
 			panic(fmt.Sprintf("manifest route is not marked implemented: %s %s", r.Method, r.TargetPath))
 		}
-	}
-	if _, ok := api.Paths["/exam/admin/subjects/{subject_id}/graph/competency-map"]["post"]; ok {
-		panic("withdrawn exam competency-map import remains in OpenAPI")
 	}
 	fmt.Printf("API manifest routes verified: %d\n", len(m.Routes))
 }

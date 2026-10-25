@@ -109,6 +109,28 @@ test('one browser context switches modes while student and admin sessions stay s
       await route.fulfill({ json: [] })
       return
     }
+    if (path.endsWith('/materials') && request.method() === 'GET') {
+      await route.fulfill({ json: [] })
+      return
+    }
+    if (path.endsWith('/graph') && request.method() === 'GET') {
+      await route.fulfill({
+        json: {
+          status: 'not_requested',
+          attempts: 0,
+          error_message: '',
+          stale: false,
+          inputs_ready: false,
+          updated_at: 0,
+          graph_source: 'none',
+          build_source: null,
+          map: null,
+          progress: null,
+          graph: null,
+        },
+      })
+      return
+    }
     if (path === '/exam/diagnostic-sessions' && request.method() === 'GET') {
       await route.fulfill({
         status: 503,
@@ -282,6 +304,16 @@ test('one browser context switches modes while student and admin sessions stay s
   ).toBeVisible()
   await expect(page.getByLabel('Добавить PDF или ZIP')).toBeVisible()
   await expect(page.getByLabel('Файл карты компетенций')).toHaveCount(0)
+  const graphCard = page.locator('section[aria-labelledby="graph-title"]')
+  await expect(graphCard).toContainText(
+    'Вместо материалов граф можно собрать по карте компетенций',
+  )
+  await expect(
+    graphCard.getByRole('button', { name: 'Импортировать карту компетенций' }),
+  ).toBeVisible()
+  await graphCard.screenshot({
+    path: testInfo.outputPath('exam-course-graph-card.png'),
+  })
   await page.reload()
   await expect(page).toHaveURL(
     new RegExp(`/admin/courses/${subject.id}\\?direction=exam$`),

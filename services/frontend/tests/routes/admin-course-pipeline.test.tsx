@@ -290,6 +290,40 @@ function chooseMap() {
     )
 }
 
+it('keeps the exam map importer outside the materials graph section', async () => {
+  setup()
+  const router = open('/admin/courses/subject-b?direction=exam')
+  expect(
+    await screen.findByRole('heading', { name: 'Второй курс' }),
+  ).toBeVisible()
+  const graphSection = screen.getByRole('region', { name: 'Граф тем курса' })
+  expect(
+    within(graphSection).queryByText(/Вместо материалов граф/),
+  ).not.toBeInTheDocument()
+  expect(
+    within(graphSection).queryByRole('button', {
+      name: 'Импортировать карту компетенций',
+    }),
+  ).not.toBeInTheDocument()
+  expect(
+    screen.getByRole('heading', { name: 'Карта для экзаменационного графа' }),
+  ).toBeVisible()
+  expect(
+    screen.getByLabelText('Импортировать карту компетенций', {
+      selector: 'input',
+    }),
+  ).toBeInTheDocument()
+  const learnTab = within(
+    screen.getByRole('navigation', { name: 'Разделы администрирования' }),
+  ).getByRole('link', { name: 'Материалы для обучения' })
+  expect(learnTab).toHaveAttribute('href', '/admin/courses/subject-b')
+  fireEvent.click(learnTab)
+  expect(
+    await screen.findByRole('heading', { name: 'Материалы для обучения' }),
+  ).toBeVisible()
+  expect(router.state.location.pathname).toBe('/admin/courses/subject-b')
+})
+
 it('builds the graph from the first sheet of a competency map', async () => {
   const calls = setup({ competencyMap: 'valid' })
   open()

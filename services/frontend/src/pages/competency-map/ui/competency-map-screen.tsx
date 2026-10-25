@@ -739,17 +739,26 @@ function CompetencyMapAdmin({
                   </Flex>
                 </AlertDialog.Content>
               </AlertDialog.Root>
+              <CourseGraphViewer
+                graph={courseGraph.data?.view}
+                fromMap={courseGraph.data?.source === 'competency_map'}
+                materials={materials}
+              />
+            </section>
+
+            <section className={styles.card} aria-labelledby="exam-map-title">
+              <div className={styles.sectionHeading}>
+                <FileText aria-hidden="true" />
+                <Heading as="h2" size="4" id="exam-map-title">
+                  {t('courseGraph.mapImportSectionTitle')}
+                </Heading>
+              </div>
               <CompetencyMapImport
                 userId={userId}
                 subjectId={subjectId}
                 hasGraph={hasGraph}
                 disabled={!graphStateResolved || graphBuilding}
                 map={courseGraph.data?.map}
-              />
-              <CourseGraphViewer
-                graph={courseGraph.data?.view}
-                fromMap={courseGraph.data?.source === 'competency_map'}
-                materials={materials}
               />
             </section>
           </>

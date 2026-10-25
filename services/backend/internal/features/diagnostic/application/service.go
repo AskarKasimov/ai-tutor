@@ -436,16 +436,10 @@ func snapshotVariant(value variant.Variant) (diagnostic.VariantSnapshot, error) 
 				!validID(item.Task.Competency.ID) || item.Task.Competency.ID != selection.Competency.ID ||
 				strings.TrimSpace(item.Task.Competency.Name) == "" || !validID(item.Task.Constituent.ID) ||
 				strings.TrimSpace(item.Task.Constituent.Name) == "" || !validID(item.Task.Outcome.ID) ||
-				strings.TrimSpace(item.Task.Outcome.Name) == "" || !validTaskText(item.Task.Question, 5000) ||
-				item.Task.ReferenceAnswer == nil || !validTaskText(*item.Task.ReferenceAnswer, 2000) ||
-				item.Task.VoiceInstruction == nil || !validTaskText(*item.Task.VoiceInstruction, 500) ||
-				len(item.Task.Options) > 12 {
+				strings.TrimSpace(item.Task.Outcome.Name) == "" ||
+				item.Task.ReferenceAnswer == nil || item.Task.VoiceInstruction == nil ||
+				!variant.ValidTaskContent(item.Task.Question, item.Task.Options, *item.Task.VoiceInstruction, *item.Task.ReferenceAnswer) {
 				return diagnostic.VariantSnapshot{}, fault.New(fault.Invalid, "VARIANT_INVALID", "Вариант содержит неполное или некорректное задание.")
-			}
-			for _, option := range item.Task.Options {
-				if !validTaskText(option, 500) {
-					return diagnostic.VariantSnapshot{}, fault.New(fault.Invalid, "VARIANT_INVALID", "Вариант содержит некорректный ответ.")
-				}
 			}
 			voiceInstruction, reference, criteria := "", "", ""
 			if item.Task.VoiceInstruction != nil {

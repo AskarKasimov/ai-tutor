@@ -347,7 +347,8 @@ func (s *Service) check(ctx context.Context, owner, id string) (learning.Plan, e
 	}
 	now := s.now().Unix()
 	return s.repo.Update(ctx, owner, id, func(plan *learning.Plan) ([]learning.Message, error) {
-		if plan.Current != index || plan.PendingAnswer == nil || *plan.PendingAnswer != answer {
+		if plan.Current != index || plan.PendingAnswer == nil || *plan.PendingAnswer != answer ||
+			plan.Items[index].Attempts != item.Attempts || plan.Items[index].Question != item.Question {
 			return nil, errAnswerPending
 		}
 		plan.PendingAnswer = nil

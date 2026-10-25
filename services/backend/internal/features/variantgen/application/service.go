@@ -201,10 +201,7 @@ func (s *Service) build(ownerID, subjectID, subjectName string, revision int64, 
 }
 
 func ready(p variant.TaskProfile) bool {
-	if strings.TrimSpace(p.Question) == "" || p.VoiceInstruction == nil || strings.TrimSpace(*p.VoiceInstruction) == "" || p.ReferenceAnswer == nil || strings.TrimSpace(*p.ReferenceAnswer) == "" {
-		return false
-	}
-	return true
+	return p.VoiceInstruction != nil && p.ReferenceAnswer != nil && variant.ValidTaskContent(p.Question, p.Options, *p.VoiceInstruction, *p.ReferenceAnswer)
 }
 
 func noEligible(skipped []variant.SkippedCompetency) *fault.Error {

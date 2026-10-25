@@ -55,8 +55,22 @@ SELECT subject.id, subject.name,
              AND outcome.importance BETWEEN 1 AND 5
              AND task.origin IN ('authored', 'ai_generated')
              AND task.question ~ '[^[:space:]]'
+             AND char_length(task.question) <= 5000
              AND task.voice_instruction ~ '[^[:space:]]'
+             AND char_length(task.voice_instruction) <= 500
              AND task.reference_answer ~ '[^[:space:]]'
+             AND char_length(task.reference_answer) <= 2000
+             AND CASE
+                   WHEN jsonb_typeof(task.options) = 'array' THEN
+                     jsonb_array_length(task.options) <= 12
+                     AND NOT EXISTS (
+                       SELECT 1
+                       FROM jsonb_array_elements_text(task.options) AS options(option_text)
+                       WHERE options.option_text !~ '[^[:space:]]'
+                          OR char_length(options.option_text) > 500
+                     )
+                   ELSE false
+                 END
            GROUP BY competency.id
            HAVING count(DISTINCT outcome.id) >= 3
        ) AS learning_ready

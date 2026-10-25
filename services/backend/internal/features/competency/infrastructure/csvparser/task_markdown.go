@@ -6,6 +6,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/competencymap"
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/variant"
 	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/text"
@@ -49,6 +50,9 @@ func parseMLTask(raw string) (competencymap.Task, bool) {
 		task.VoiceInstruction = blocks[2]
 	} else {
 		task.VoiceInstruction = spokenQuestion(task.Question, len(options) > 0)
+	}
+	if !variant.ValidTaskContent(task.Question, task.Options, task.VoiceInstruction, task.ReferenceAnswer) {
+		return competencymap.Task{}, false
 	}
 	return task, true
 }
@@ -160,6 +164,22 @@ func taskFragmentCode(raw string) string {
 	}
 	if _, ok := parseTaskOptions(strings.TrimSpace(blocks[1])); !ok {
 		return "TASK_INVALID_OPTIONS"
+	}
+	voiceInstruction := spokenQuestion(strings.TrimSpace(blocks[0]), len(blocks) > 1)
+	if len(blocks) == 4 {
+		voiceInstruction = strings.TrimSpace(blocks[2])
+	}
+	options, _ := parseTaskOptions(strings.TrimSpace(blocks[1]))
+	if len(options) > 12 {
+		return "TASK_OPTION_LIMIT_EXCEEDED"
+	}
+	for _, option := range options {
+		if !variant.ValidTaskText(option, 500) {
+			return "TASK_OPTION_LIMIT_EXCEEDED"
+		}
+	}
+	if !variant.ValidTaskContent(strings.TrimSpace(blocks[0]), options, voiceInstruction, strings.TrimSpace(blocks[len(blocks)-1])) {
+		return "TASK_TEXT_LIMIT_EXCEEDED"
 	}
 	return "TASK_CELL_FRAGMENT"
 }

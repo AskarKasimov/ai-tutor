@@ -20,12 +20,20 @@ if [ ! -f .env ]; then
     exit 1
 fi
 docker compose version >/dev/null
-docker compose --env-file .env -f docker-compose.yaml config --quiet
+s3_local_enabled=$(sed -n 's/^S3_LOCAL_ENABLED=//p' .env | tail -n 1)
+compose_files='-f docker-compose.yaml'
+if [ "${s3_local_enabled:-true}" = false ]; then
+    compose_files="$compose_files -f docker-compose.external-s3.yaml"
+fi
+docker compose --env-file .env $compose_files config --quiet
+if [ "${s3_local_enabled:-true}" = false ]; then
+    docker compose --env-file .env --profile external-s3-disabled $compose_files stop s3
+fi
 
 # Build and start the application as one Compose project. Persistent volume
 # names are declared in docker-compose.yaml so a project-name change cannot
 # silently switch the database or stored audio.
-docker compose --env-file .env -f docker-compose.yaml up --build --detach --wait "$@"
+docker compose --env-file .env $compose_files up --build --detach --wait "$@"
 
 https_port=$(sed -n 's/^PROXY_HTTPS_PORT=//p' .env | tail -n 1)
 app_url=https://localhost

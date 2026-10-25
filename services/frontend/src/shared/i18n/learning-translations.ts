@@ -67,6 +67,10 @@ export const learningTranslations = {
       TASK_MISSING_VOICE: 'нет «Голосовая инструкция:».',
       TASK_MISSING_ANSWER: 'нет «Ответ:» после голосовой инструкции.',
       TASK_EMPTY_PART: 'пустой вопрос, инструкция, ответ или вариант ответа.',
+      TASK_TEXT_LIMIT_EXCEEDED:
+        'вопрос, инструкция или эталон превышает допустимую длину.',
+      TASK_OPTION_LIMIT_EXCEEDED:
+        'допускается не более 12 вариантов длиной до 500 символов каждый.',
       LEGACY_IMPORTANCE_UNPARSED:
         'значение важности не распознано и сохранено в источнике.',
       unknown: 'предупреждение {{code}}.',

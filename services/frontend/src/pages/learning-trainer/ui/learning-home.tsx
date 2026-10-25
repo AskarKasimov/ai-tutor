@@ -89,24 +89,34 @@ export function LearningHome({
   )
   const subjects = subjectsQuery.data ?? []
   // A direct course URL wins; otherwise reuse the shared selection across modes.
-  const selected = requestedSubjectId
+  const catalogSelection = requestedSubjectId
     ? subjects.find((subject) => subject.id === requestedSubjectId)
-    : (subjects.find((subject) => subject.id === intent?.subjectId) ??
-      subjects.find((subject) => subject.id === savedSubjectId) ??
-      subjects[0])
-  const learning = useLearningStateQuery(userId, selected?.id ?? '')
-
-  useEffect(() => {
-    if (
-      intent &&
-      !subjectsQuery.isPending &&
-      subjects.length &&
-      !subjects.some((s) => s.id === intent.subjectId)
-    ) {
-      sessionStorage.removeItem('ai-tutor:learning-home')
-      setIntent(null)
-    }
-  }, [intent, subjects, subjectsQuery.isPending])
+    : intent
+      ? subjects.find((subject) => subject.id === intent.subjectId)
+      : (subjects.find((subject) => subject.id === savedSubjectId) ??
+        subjects[0])
+  const learningSubjectId =
+    catalogSelection?.id ??
+    requestedSubjectId ??
+    intent?.subjectId ??
+    savedSubjectId
+  const learning = useLearningStateQuery(userId, learningSubjectId)
+  const hasLearningHistory = Boolean(
+    learning.data?.active_session_id ||
+    learning.data?.training_available ||
+    learning.data?.diagnostic_completed,
+  )
+  const historicalSubject: Subject | undefined =
+    !catalogSelection && learning.data && hasLearningHistory
+      ? {
+          id: learning.data.subject_id,
+          name: learning.data.subject_name,
+          ready: false,
+          learning_ready: false,
+          exam_ready: false,
+        }
+      : undefined
+  const selected = catalogSelection ?? historicalSubject
 
   useEffect(() => {
     if (selected) {
@@ -312,28 +322,30 @@ export function LearningHome({
                     </Text>
                   )}
                   <div className={styles.actionRow}>
-                    <CourseAction
-                      kind="primary"
-                      icon={<Zap size={22} fill="currentColor" />}
-                      title={t(
-                        stage === 'start'
-                          ? 'learningHome.startLearning'
-                          : stage === 'completed'
-                            ? 'learningHome.restart'
-                            : 'learningHome.continueLearning',
-                      )}
-                      hint={t(
-                        stage === 'start'
-                          ? 'learningHome.startLearningHint'
-                          : stage === 'diagnostic'
-                            ? 'learningHome.continueDiagnosticHint'
+                    {(stage !== 'completed' || selected.learning_ready) && (
+                      <CourseAction
+                        kind="primary"
+                        icon={<Zap size={22} fill="currentColor" />}
+                        title={t(
+                          stage === 'start'
+                            ? 'learningHome.startLearning'
                             : stage === 'completed'
-                              ? 'learningHome.restartHint'
-                              : 'learningHome.continueTrainingHint',
-                      )}
-                      onClick={resume}
-                    />
-                    {stage === 'training' && (
+                              ? 'learningHome.restart'
+                              : 'learningHome.continueLearning',
+                        )}
+                        hint={t(
+                          stage === 'start'
+                            ? 'learningHome.startLearningHint'
+                            : stage === 'diagnostic'
+                              ? 'learningHome.continueDiagnosticHint'
+                              : stage === 'completed'
+                                ? 'learningHome.restartHint'
+                                : 'learningHome.continueTrainingHint',
+                        )}
+                        onClick={resume}
+                      />
+                    )}
+                    {stage === 'training' && selected.learning_ready && (
                       <CourseAction
                         kind="secondary"
                         icon={<RotateCcw size={22} />}

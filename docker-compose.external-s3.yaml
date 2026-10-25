@@ -1,0 +1,13 @@
+# Compose override for deployments that use BACKEND_S3_ENDPOINT outside this stack.
+services:
+  s3:
+    profiles: [external-s3-disabled]
+
+  api:
+    depends_on: !override
+      db:
+        condition: service_healthy
+      course-graph:
+        condition: service_healthy
+      llm-gateway:
+        condition: service_healthy

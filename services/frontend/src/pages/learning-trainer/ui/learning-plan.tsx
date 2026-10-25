@@ -26,6 +26,7 @@ import {
 } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
+import { StudentCourseShell } from '@/widgets/student-course-shell'
 import { splitLessonParagraphs } from '../model/lesson-paragraphs'
 import { useDiagnosticResultQuery } from '@/features/learning-diagnostic-session'
 import {
@@ -134,7 +135,7 @@ function EligibleHoursForm({
       (answer) =>
         answer.skipped || answer.score < (answer.role === 'basic' ? 1 : 2),
     )
-    if (gaps) return <HoursForm {...props} />
+    if (gaps) return <HoursForm {...props} subjectName={subjectName} />
     return (
       <TrainerShell
         title={t('learningSession.completed')}
@@ -166,11 +167,13 @@ function EligibleHoursForm({
 
 // A full-screen gradient question with large tiles: one click builds the plan.
 function HoursForm({
+  subjectName,
   pending,
   failed,
   onChoose,
   onBack,
 }: {
+  subjectName: string
   pending?: number
   failed: boolean
   onChoose: (hours: number) => void
@@ -179,6 +182,7 @@ function HoursForm({
   const { t } = useTranslation()
   return (
     <div className={styles.hours}>
+      <StudentCourseShell courseName={subjectName} />
       <button type="button" className={styles.hoursBack} onClick={onBack}>
         {t('learning.back')}
       </button>

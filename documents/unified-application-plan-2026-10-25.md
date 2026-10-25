@@ -686,7 +686,7 @@ Course detail на обеих вкладках использует один в�
 
 Для неизвестного или удалённого ID на course detail после проверки каталога выполняется replace redirect на `/`, одинаковый для обеих вкладок. Если course-scoped endpoint вернул 404, но каталог содержал курс, сначала обновить каталог; перенаправлять только если успешный ответ подтвердил удаление. 404 ресурса при существующем курсе (например, ещё не импортированная учебная карта) не означает отсутствующий курс. Пока каталог pending — не перенаправлять; сетевую/5xx ошибку оставить на экране с retry. Не показывать сырой ID как название курса.
 
-Regression и визуальная проверка: общий course heading, отсутствие повторной шапки, одна `aria-current`, Back/Forward/reload и равные геометрические рамки header/nav проверяются Playwright на desktop и 390×844; Playwright сохраняет реальные screenshots обоих направлений для сравнения. FSD границы сохранены: admin navigation находится внутри общего shell widget, student navigation остаётся отдельной.
+Regression и визуальная проверка: общий course heading, отсутствие повторной шапки, одна `aria-current`, Back/Forward/reload и равные геометрические рамки header/nav проверяются Playwright на desktop и 390×844; Playwright сохраняет реальные screenshots обоих admin направлений для сравнения. FSD границы сохранены: admin navigation находится внутри общего shell widget. Student navigation тогда ещё был отдельным `direction-nav`, это решение заменено последним требованием ниже.
 
 ## Последнее решение владельца 25.10.2026: восстановить exam-map import
 
@@ -695,3 +695,11 @@ Regression и визуальная проверка: общий course heading, 
 Вернуть API `POST /api/v1/exam/admin/subjects/{subject_id}/graph/competency-map`, handler/application/SQL writes and SQLC, XLSX first-sheet parser, graph/question preparation, source selection, publishing, readiness and Geek sessions. Materials и exam карта — альтернативные sources курса; map-only readiness и start без PDF восстанавливаются, последняя успешная публикация любого source заменяет graph. Сессии хранят snapshots; существующие таблицы/данные не удаляются. Learning XLSX parser остаётся вторым independent importer с собственными правилами и не подменяет exam flow.
 
 Current API manifest должен снова валидировать все 76/76 операций. Regression включает import выбранного общего course ID без материалов, map-source graph readiness/start, UI внутри graph card, sheet/questions/errors, и проверки единственного курса/tab navigation. Скриншот полного graph card снимается в browser E2E после восстановления.
+
+## Последнее решение владельца 25.10.2026: student course shell и возврат к выбору режима
+
+В `/learn` и `/exam` убрать student `direction-nav`. Вместо него показать общий course shell с названием выбранного курса и кнопкой «К выбору режима» на `/`. Не повторять имя курса в детском mode content и не показывать «Курсы» как заголовок, когда открыт один курс: ниже общего shell размещаются собственные заголовок, intro, шаги, действия, история и прогресс направления. Admin tabs и общий admin course shell остаются без изменений.
+
+Если в выбранном направлении есть несколько готовых курсов, переключение доступно через один общий course selector; выбор сохраняется между режимами в общем user-scoped состоянии. Direct `?subject_id=...` имеет приоритет и связывает экраны с конкретным общим курсом; не показывать ID как название и не менять выбранный курс неявно. Кнопка на `/` не очищает незавершённый Geek/learning intent; после выбора режима студент может продолжить ту же сессию. Существующие account menu и child back actions остаются отдельными функциями.
+
+Regression: student `/learn` и `/exam` без направленческого nav, одно имя курса в общем shell, mode title в содержимом, mode chooser action, доступный выбор нескольких курсов, direct URL/reload, переход mode chooser → тот же выбранный курс, и возврат к активной Geek-сессии. Admin tabs проверяются существующим E2E. Playwright сохраняет реальные desktop/narrow screenshots обоих student направлений.

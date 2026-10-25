@@ -117,16 +117,17 @@ it('loads subjects without creating a variant, then starts only the chosen subje
     </StrictMode>,
   )
   expect(
-    await screen.findByRole('heading', {
-      name: 'Предмет A',
-      level: 2,
-    }),
+    await screen.findByRole('heading', { name: 'Обучение', level: 1 }),
   ).toBeVisible()
+  await waitFor(() =>
+    expect(screen.getByRole('region', { name: 'Курс' })).toHaveTextContent(
+      'Предмет A',
+    ),
+  )
+  expect(screen.getAllByText('Предмет A', { exact: true })).toHaveLength(1)
   expect(
-    screen.queryByRole('combobox', { name: 'Предмет' }),
+    screen.queryByRole('navigation', { name: 'Направления' }),
   ).not.toBeInTheDocument()
-  expect(screen.getByRole('heading', { name: 'Курсы', level: 1 })).toBeVisible()
-  expect(screen.getByRole('article', { name: 'Предмет A' })).toBeVisible()
   // Diagnostic and training are one process: a single action, no training tile.
   // Four steps say what the student does, starting with a voice check.
   const steps = screen.getByRole('list', { name: 'Как проходит обучение' })
@@ -232,11 +233,13 @@ it('returns to subject selection after refresh during a pending start and reuses
   })
   render(<RouterProvider router={refreshedRouter} />)
   expect(
-    await screen.findByRole('heading', {
-      name: 'Предмет A',
-      level: 2,
-    }),
+    await screen.findByRole('heading', { name: 'Обучение', level: 1 }),
   ).toBeVisible()
+  await waitFor(() =>
+    expect(screen.getByRole('region', { name: 'Курс' })).toHaveTextContent(
+      'Предмет A',
+    ),
+  )
   await new Promise((resolve) => setTimeout(resolve, 150))
   expect(requests.filter((r) => r.path.endsWith('/variants'))).toHaveLength(1)
 

@@ -272,3 +272,13 @@ Polling включён только в контейнерном dev-стеке �
 Результат загрузки, ошибки выбора/отправки и предупреждение о частичной загрузке показываются в `react-modal`: закрытие кнопкой, Escape или кликом на фон. Успех подтверждает сохранение файлов; распознавание и обработка продолжаются в фоне. Ошибки отдельных файлов остаются в карточках для повторной отправки.
 
 Карточки материалов показывают текущий этап (очередь, ожидание моделей, OCR, перевод, очистка) и статус «Готов к графу» только после завершения обработки. Сводка графа отдельно считает готовые материалы, обрабатываемые и ошибки; текст блокировки относится ко всей обработке.
+
+## Student course shell
+
+Student routes `/learn` and `/exam` share a course header with a selector when
+the active direction has multiple available courses and a «К выбору режима»
+link to `/`. The selected course is user-scoped and shared across both modes;
+an explicit `subject_id` URL takes precedence. The student screens have no
+direction tabs. Mode-specific title, intro, history and session content stay
+below the shared header. Returning to mode selection leaves active Geek and
+learning intents in `sessionStorage`, so reopening a mode resumes its session.

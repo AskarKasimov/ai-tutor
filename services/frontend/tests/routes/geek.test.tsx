@@ -344,6 +344,11 @@ class FakeAudio {
 
 beforeEach(() => {
   sessionStorage.clear()
+  const saved = new Map<string, string>()
+  vi.stubGlobal('localStorage', {
+    getItem: (key: string) => saved.get(key) ?? null,
+    setItem: (key: string, value: string) => saved.set(key, value),
+  })
   FakeAudio.played = []
   FakeAudio.paused = 0
   FakeAudio.last = null
@@ -413,6 +418,7 @@ it('runs a diagnostic from the home page to the result and back to the history',
       'Что изменится в A*, если эвристика переоценивает путь?',
     ),
   ).toBeVisible()
+  expect(screen.getAllByText('Введение в ИИ', { exact: true })).toHaveLength(1)
   expect(
     screen.getByRole('progressbar', { name: 'Диагностика' }),
   ).toHaveAttribute('aria-valuenow', '0')
@@ -473,6 +479,7 @@ it('runs a diagnostic from the home page to the result and back to the history',
   expect(
     await screen.findByRole('heading', { name: 'Итог диагностики', level: 1 }),
   ).toBeVisible()
+  expect(screen.getAllByText('Введение в ИИ', { exact: true })).toHaveLength(1)
   const grade = await screen.findByRole('region', {
     name: 'Предварительная оценка',
   })
@@ -515,6 +522,45 @@ it('runs a diagnostic from the home page to the result and back to the history',
   expect(await screen.findByText('Оценка B · 81%')).toBeVisible()
   fireEvent.click(screen.getByRole('button', { name: 'Открыть итог' }))
   expect(await screen.findByText('81% от максимума')).toBeVisible()
+})
+
+it('shows one shared course in student shell without direction tabs', async () => {
+  geekBackend()
+  renderApp()
+  expect(
+    await screen.findByRole('heading', { name: 'Симуляция экзамена' }),
+  ).toBeVisible()
+  await waitFor(() =>
+    expect(screen.getByRole('region', { name: 'Курс' })).toHaveTextContent(
+      'Введение в ИИ',
+    ),
+  )
+  expect(screen.getAllByText('Введение в ИИ', { exact: true })).toHaveLength(1)
+  expect(
+    screen.queryByRole('navigation', { name: 'Направления' }),
+  ).not.toBeInTheDocument()
+  expect(screen.getByRole('link', { name: 'К выбору режима' })).toHaveAttribute(
+    'href',
+    '/',
+  )
+})
+
+it('offers a mode-selection link without clearing a resumable diagnostic', async () => {
+  geekBackend()
+  renderApp()
+  await start()
+  expect(
+    await screen.findByText(
+      'Что изменится в A*, если эвристика переоценивает путь?',
+    ),
+  ).toBeVisible()
+  const savedView = sessionStorage.getItem('ai-tutor:geek-view')
+  expect(savedView).not.toBeNull()
+  expect(screen.getByRole('link', { name: 'К выбору режима' })).toHaveAttribute(
+    'href',
+    '/',
+  )
+  expect(sessionStorage.getItem('ai-tutor:geek-view')).toBe(savedView)
 })
 
 it('resumes the active diagnostic from the history', async () => {

@@ -3,6 +3,7 @@ import { GraduationCap, Mic, Play, Sparkles, Target, Zap } from 'lucide-react'
 import { useEffect, useId, useState } from 'react'
 import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
+import { StudentCourseShell } from '@/widgets/student-course-shell'
 import { AccountMenu, useAuth } from '@/features/auth'
 import { useSubjectsQuery } from '@/features/subject-selection'
 import {
@@ -16,7 +17,6 @@ import {
 import { GeekDialog } from './geek-dialog'
 import { GeekResult } from './geek-result'
 import styles from './learning-home.module.scss'
-import { DirectionNav } from '@/widgets/direction-nav'
 
 // The open screen survives a reload of the tab.
 type View = {
@@ -102,6 +102,13 @@ export function LearningHome({
     }
   }, [view, subjects, subjectsQuery.isPending])
 
+  useEffect(() => {
+    if (selected) {
+      setSavedSubjectId(selected.id)
+      saveSelectedSubject(userId, selected.id)
+    }
+  }, [selected, userId])
+
   function open(sessionId: string, screen: View['screen']) {
     if (!selected) return
     const next = { userId, subjectId: selected.id, sessionId, screen }
@@ -126,7 +133,7 @@ export function LearningHome({
       : start.error
         ? t('home.startError')
         : ''
-  if (view && selected)
+  if (view && selected && view.subjectId === selected.id)
     return view.screen === 'dialog' ? (
       <GeekDialog
         key={view.sessionId}
@@ -161,13 +168,17 @@ export function LearningHome({
         <AccountMenu />
       </header>
       <main className={styles.content}>
-        <DirectionNav
-          audience="student"
-          active="exam"
-          subjectId={selected?.id}
+        <StudentCourseShell
+          courseName={selected?.name}
+          courses={subjects}
+          selectedCourseId={selected?.id}
+          onCourseChange={(subjectId) => {
+            setSavedSubjectId(subjectId)
+            saveSelectedSubject(userId, subjectId)
+          }}
         />
         <Heading as="h1" size="8" id="courses-title">
-          {t('home.courses')}
+          {t('home.title')}
         </Heading>
         {subjectsQuery.isPending ? (
           <Text role="status">{t('home.loading')}</Text>
@@ -184,38 +195,8 @@ export function LearningHome({
           </Card>
         ) : (
           <section className={styles.courses} aria-labelledby="courses-title">
-            {subjects.length > 1 && !view && (
-              <div className={styles.courseSelector}>
-                <Text as="span" weight="medium">
-                  {t('home.selectCourse')}
-                </Text>
-                <div
-                  className={styles.courseChoices}
-                  aria-label={t('home.selectCourse')}
-                >
-                  {subjects.map((subject) => (
-                    <Button
-                      key={subject.id}
-                      type="button"
-                      size="3"
-                      variant={selected.id === subject.id ? 'solid' : 'soft'}
-                      aria-pressed={selected.id === subject.id}
-                      onClick={() => {
-                        setSavedSubjectId(subject.id)
-                        saveSelectedSubject(userId, subject.id)
-                      }}
-                    >
-                      {subject.name}
-                    </Button>
-                  ))}
-                </div>
-              </div>
-            )}
-            <article className={styles.course} aria-labelledby="course-title">
+            <article className={styles.course} aria-labelledby="courses-title">
               <div className={styles.courseHeader}>
-                <Heading as="h2" size="7" id="course-title">
-                  {selected.name}
-                </Heading>
                 <Text as="p" size="3" color="gray">
                   {t('home.intro')}
                 </Text>

@@ -5,6 +5,25 @@ test('one browser context switches modes while student and admin sessions stay s
 }, testInfo) => {
   let studentSession = false
   let adminSession = false
+  let examSession: {
+    id: string
+    subject_id: string
+    status: string
+    progress_percent: number
+    current_turn_id: string
+    started_at: number
+    completed_at: number | null
+    turns: {
+      id: string
+      line: number
+      speaker: string
+      kind: string
+      node_id: string
+      source: string | null
+      text: string
+      created_at: number
+    }[]
+  } | null = null
   const calls: Array<{
     path: string
     method: string
@@ -132,10 +151,43 @@ test('one browser context switches modes while student and admin sessions stay s
       return
     }
     if (path === '/exam/diagnostic-sessions' && request.method() === 'GET') {
-      await route.fulfill({
-        status: 503,
-        json: { code: 'PROCESSING_UNAVAILABLE' },
-      })
+      await route.fulfill({ json: { items: [] } })
+      return
+    }
+    if (path === '/exam/diagnostic-sessions' && request.method() === 'POST') {
+      examSession = {
+        id: 'session-1',
+        subject_id: subject.id,
+        status: 'active',
+        progress_percent: 0,
+        current_turn_id: 'turn-1',
+        started_at: 1791158400,
+        completed_at: null,
+        turns: [
+          {
+            id: 'turn-1',
+            line: 1,
+            speaker: 'geek',
+            kind: 'question',
+            node_id: 'topic-1',
+            source: null,
+            text: 'Расскажите, как работает этот курс?',
+            created_at: 1791158400,
+          },
+        ],
+      }
+      await route.fulfill({ status: 201, json: examSession })
+      return
+    }
+    if (path === '/exam/diagnostic-sessions/session-1' && examSession) {
+      await route.fulfill({ json: examSession })
+      return
+    }
+    if (
+      path.startsWith('/exam/diagnostic-sessions/session-1/turns/') &&
+      path.endsWith('/audio')
+    ) {
+      await route.fulfill({ status: 503, body: '' })
       return
     }
     await route.fulfill({ status: 404, json: { code: 'NOT_FOUND' } })
@@ -156,51 +208,124 @@ test('one browser context switches modes while student and admin sessions stay s
 
   await page.getByRole('link', { name: /Обучение/ }).click()
   await expect(page).toHaveURL(/\/learn$/)
-  await expect(page.getByRole('heading', { name: 'Курсы' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Обучение' })).toBeVisible()
   await expect(
     page.getByRole('navigation', { name: 'Направления' }),
-  ).toContainText('Обучение')
+  ).toHaveCount(0)
+  await expect(page.getByRole('region', { name: 'Курс' })).toContainText(
+    subject.name,
+  )
+  await expect(page.getByText(subject.name, { exact: true })).toHaveCount(1)
   await expect(
-    page.getByRole('navigation', { name: 'Направления' }),
-  ).toContainText('Симуляция экзамена')
+    page.getByRole('link', { name: 'К выбору режима' }),
+  ).toBeVisible()
+  await expect(
+    page.getByRole('combobox', { name: 'Выберите курс' }),
+  ).toBeVisible()
   await page.reload()
-  await expect(
-    page
-      .getByRole('navigation', { name: 'Направления' })
-      .getByRole('link', { name: 'Обучение' }),
-  ).toHaveAttribute('aria-current', 'page')
-  await expect(
-    page
-      .getByRole('navigation', { name: 'Направления' })
-      .getByRole('link', { name: 'Симуляция экзамена' }),
-  ).toHaveAttribute('href', '/exam?subject_id=subject-1')
+  await expect(page.getByRole('region', { name: 'Курс' })).toContainText(
+    subject.name,
+  )
   await page.screenshot({ path: testInfo.outputPath('learn-home.png') })
-  await page
-    .getByRole('navigation', { name: 'Направления' })
-    .getByRole('link', { name: 'Симуляция экзамена' })
-    .click()
-  await expect(page).toHaveURL(/\/exam\?subject_id=subject-1$/)
-  await expect(page.getByRole('heading', { name: subject.name })).toBeVisible()
-  await page.reload()
-  await expect(page).toHaveURL(/\/exam\?subject_id=subject-1$/)
-  await expect(page.getByRole('heading', { name: subject.name })).toBeVisible()
-  await page.getByRole('button', { name: /Меню профиля/ }).click()
-  await page.getByRole('menuitem', { name: 'К выбору режима' }).click()
+  await page.getByRole('link', { name: 'К выбору режима' }).click()
+  await expect(
+    page.getByRole('heading', { name: 'Выберите режим' }),
+  ).toBeVisible()
   await page.getByRole('link', { name: /Симуляция экзамена/ }).click()
   await expect(page).toHaveURL(/\/exam$/)
-  await expect(page.getByRole('heading', { name: 'Курсы' })).toBeVisible()
   await expect(
-    page
-      .getByRole('navigation', { name: 'Направления' })
-      .getByRole('link', { name: 'Симуляция экзамена' }),
-  ).toHaveAttribute('aria-current', 'page')
+    page.getByRole('heading', { name: 'Симуляция экзамена' }),
+  ).toBeVisible()
+  await expect(
+    page.getByRole('navigation', { name: 'Направления' }),
+  ).toHaveCount(0)
+  await expect(page.getByText(subject.name, { exact: true })).toHaveCount(1)
+  await expect(page.getByRole('region', { name: 'Курс' })).toContainText(
+    subject.name,
+  )
   await page.reload()
-  await expect(
-    page
-      .getByRole('navigation', { name: 'Направления' })
-      .getByRole('link', { name: 'Симуляция экзамена' }),
-  ).toHaveAttribute('aria-current', 'page')
+  await expect(page.getByRole('region', { name: 'Курс' })).toContainText(
+    subject.name,
+  )
+  await expect(page.getByText(subject.name, { exact: true })).toHaveCount(1)
   await page.screenshot({ path: testInfo.outputPath('exam-home.png') })
+  await page.getByRole('combobox', { name: 'Выберите курс' }).click()
+  await expect(
+    page.getByRole('option', { name: otherSubject.name }),
+  ).toBeVisible()
+  await page.getByRole('option', { name: otherSubject.name }).click()
+  await expect(page.getByRole('region', { name: 'Курс' })).toContainText(
+    otherSubject.name,
+  )
+  await page.screenshot({
+    path: testInfo.outputPath('exam-home-second-course.png'),
+  })
+  await page.reload()
+  await expect(page.getByRole('region', { name: 'Курс' })).toContainText(
+    otherSubject.name,
+  )
+  await page.getByRole('link', { name: 'К выбору режима' }).click()
+  await page.getByRole('link', { name: /Симуляция экзамена/ }).click()
+  await expect(page).toHaveURL(/\/exam$/)
+  await expect(page.getByRole('region', { name: 'Курс' })).toContainText(
+    otherSubject.name,
+  )
+  await expect(
+    page.getByRole('navigation', { name: 'Направления' }),
+  ).toHaveCount(0)
+  await page.reload()
+  await expect(page.getByRole('region', { name: 'Курс' })).toContainText(
+    otherSubject.name,
+  )
+  await page.screenshot({
+    path: testInfo.outputPath('exam-home-second-course.png'),
+  })
+
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('/learn?subject_id=subject-1')
+  await expect(page.getByRole('region', { name: 'Курс' })).toContainText(
+    subject.name,
+  )
+  await page.screenshot({ path: testInfo.outputPath('learn-home-narrow.png') })
+  await page.goto('/exam?subject_id=subject-1')
+  await expect(page.getByRole('region', { name: 'Курс' })).toContainText(
+    subject.name,
+  )
+  await page.screenshot({ path: testInfo.outputPath('exam-home-narrow.png') })
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth > window.innerWidth,
+    ),
+  ).toBe(false)
+
+  await page.setViewportSize({ width: 1440, height: 1000 })
+  await page.getByRole('button', { name: 'Начать проверку знаний' }).click()
+  await expect(
+    page.getByText('Расскажите, как работает этот курс?'),
+  ).toBeVisible()
+  await page.getByRole('link', { name: 'К выбору режима' }).click()
+  await expect(
+    page.getByRole('heading', { name: 'Выберите режим' }),
+  ).toBeVisible()
+  await page.getByRole('link', { name: /Симуляция экзамена/ }).click()
+  await expect(
+    page.getByText('Расскажите, как работает этот курс?'),
+  ).toBeVisible()
+  await expect(
+    page.getByRole('link', { name: 'К выбору режима' }),
+  ).toBeVisible()
+  await page.goto('/exam?subject_id=subject-2')
+  await expect(page.getByRole('region', { name: 'Курс' })).toContainText(
+    otherSubject.name,
+  )
+  await expect(
+    page.getByText('Расскажите, как работает этот курс?'),
+  ).toHaveCount(0)
+  await page.goto('/exam')
+  await expect(
+    page.getByText('Расскажите, как работает этот курс?'),
+  ).toBeVisible()
+  await expect(page.getByText(subject.name, { exact: true })).toHaveCount(1)
 
   await page.goto('/admin/courses')
   await expect(page).toHaveURL(/\/admin\/courses$/)

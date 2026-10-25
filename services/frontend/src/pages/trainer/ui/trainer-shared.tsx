@@ -1,4 +1,4 @@
-import { Text } from '@radix-ui/themes'
+import { Button, Text } from '@radix-ui/themes'
 import { ChevronRight, GraduationCap } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -57,28 +57,12 @@ export function TrainerShell({
         className={`${styles.frame} ${progress ? styles.frameWithProgress : ''}`}
       >
         <header className={styles.header}>
-          {onBack ? (
-            // The product logo returns to the student home.
-            <button
-              type="button"
-              className={`${styles.brand} ${styles.brandLink}`}
-              aria-label={t('home.back')}
-              title={t('home.back')}
-              onClick={onBack}
-            >
-              <span className={styles.logo} aria-hidden="true">
-                <GraduationCap size={18} />
-              </span>
-              <Text>{t('trainer.title')}</Text>
-            </button>
-          ) : (
-            <div className={styles.brand}>
-              <span className={styles.logo} aria-hidden="true">
-                <GraduationCap size={18} />
-              </span>
-              <Text>{t('trainer.title')}</Text>
-            </div>
-          )}
+          <div className={styles.brand}>
+            <span className={styles.logo} aria-hidden="true">
+              <GraduationCap size={18} />
+            </span>
+            <Text>{t('trainer.title')}</Text>
+          </div>
           {/* The course leads home; the current step is a non-clickable pill. */}
           <nav className={styles.crumbs} aria-label={title}>
             {onBack ? (
@@ -106,6 +90,9 @@ export function TrainerShell({
             )}
           </nav>
           <div className={styles.account}>
+            <Button asChild size="2" variant="soft">
+              <a href="/">{t('studentShell.chooseMode')}</a>
+            </Button>
             <AccountMenu />
           </div>
         </header>

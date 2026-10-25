@@ -64,9 +64,6 @@ export function GeekResult({
     >
       <main className={styles.result}>
         <header className={styles.intro}>
-          <Text as="p" className={styles.eyebrow}>
-            {subjectName}
-          </Text>
           <Heading as="h1" size="7" className={styles.title}>
             {t('geek.resultTitle')}
           </Heading>

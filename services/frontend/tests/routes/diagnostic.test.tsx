@@ -115,6 +115,25 @@ async function home() {
   }
   return view
 }
+
+it('keeps the active learning intent when offering the mode-selection link', async () => {
+  server()
+  await home()
+  await waitFor(() =>
+    expect(
+      JSON.parse(sessionStorage.getItem('ai-tutor:learning-home') ?? 'null')
+        ?.sessionId,
+    ).toBe('session-real'),
+  )
+  const storedIntent = sessionStorage.getItem('ai-tutor:learning-home')
+  expect(storedIntent).not.toBeNull()
+  expect(
+    await screen.findByRole('link', { name: 'К выбору режима' }),
+  ).toHaveAttribute('href', '/')
+  expect(screen.getAllByText('Предмет теста', { exact: true })).toHaveLength(1)
+  expect(sessionStorage.getItem('ai-tutor:learning-home')).toBe(storedIntent)
+})
+
 function server(
   answerStatus = 200,
   totalTasks = 3,

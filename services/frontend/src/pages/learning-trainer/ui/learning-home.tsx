@@ -21,7 +21,7 @@ import { LearningPlanEntry } from './learning-plan'
 import { DiagnosticTrainer } from './diagnostic-trainer'
 import { AccountMenu } from '@/features/auth'
 import styles from './learning-home.module.scss'
-import { DirectionNav } from '@/widgets/direction-nav'
+import { StudentCourseShell } from '@/widgets/student-course-shell'
 
 type Intent = {
   apiBase: string
@@ -33,6 +33,21 @@ type Intent = {
 }
 const apiBase =
   (import.meta.env.VITE_API_BASE_URL || '/api/v1').replace(/\/$/, '') + '/learn'
+const selectedSubjectKey = 'ai-tutor:selected-subject'
+function readSelectedSubject(userId: string) {
+  try {
+    return localStorage.getItem(`${selectedSubjectKey}:${userId}`) ?? ''
+  } catch {
+    return ''
+  }
+}
+function saveSelectedSubject(userId: string, subjectId: string) {
+  try {
+    localStorage.setItem(`${selectedSubjectKey}:${userId}`, subjectId)
+  } catch {
+    // The selection still works for this page when storage is unavailable.
+  }
+}
 function readIntent(userId: string): Intent | null {
   try {
     const raw = sessionStorage.getItem('ai-tutor:learning-home')
@@ -64,14 +79,18 @@ export function LearningHome({
   const queryClient = useQueryClient()
   const userId = user?.id ?? ''
   const subjectsQuery = useSubjectsQuery(userId)
+  const [savedSubjectId, setSavedSubjectId] = useState(() =>
+    userId ? readSelectedSubject(userId) : '',
+  )
   const [intent, setIntent] = useState<Intent | null>(() =>
     userId ? readIntent(userId) : null,
   )
   const subjects = subjectsQuery.data ?? []
-  // Students study the single subject the teacher manages: the first one.
+  // A direct course URL wins; otherwise reuse the shared selection across modes.
   const selected = requestedSubjectId
     ? subjects.find((subject) => subject.id === requestedSubjectId)
     : (subjects.find((subject) => subject.id === intent?.subjectId) ??
+      subjects.find((subject) => subject.id === savedSubjectId) ??
       subjects[0])
   const learning = useLearningStateQuery(userId, selected?.id ?? '')
 
@@ -86,6 +105,13 @@ export function LearningHome({
       setIntent(null)
     }
   }, [intent, subjects, subjectsQuery.isPending])
+
+  useEffect(() => {
+    if (selected) {
+      setSavedSubjectId(selected.id)
+      saveSelectedSubject(userId, selected.id)
+    }
+  }, [selected, userId])
 
   function openDiagnostic(
     subject: Subject,
@@ -127,7 +153,12 @@ export function LearningHome({
     sessionStorage.setItem('ai-tutor:learning-home', JSON.stringify(next))
     setIntent(next)
   }
-  if (intent?.mode === 'training' && selected && userId)
+  if (
+    intent?.mode === 'training' &&
+    selected &&
+    selected.id === intent.subjectId &&
+    userId
+  )
     return (
       <LearningPlanEntry
         key={intent.diagnosticId}
@@ -139,7 +170,11 @@ export function LearningHome({
         onBack={back}
       />
     )
-  if (intent?.mode === 'diagnostic' && selected)
+  if (
+    intent?.mode === 'diagnostic' &&
+    selected &&
+    selected.id === intent.subjectId
+  )
     return (
       <DiagnosticTrainer
         subjectId={selected.id}
@@ -187,13 +222,17 @@ export function LearningHome({
         <AccountMenu />
       </header>
       <main className={styles.content}>
-        <DirectionNav
-          audience="student"
-          active="learn"
-          subjectId={selected?.id}
+        <StudentCourseShell
+          courseName={selected?.name}
+          courses={subjects}
+          selectedCourseId={selected?.id}
+          onCourseChange={(subjectId) => {
+            setSavedSubjectId(subjectId)
+            saveSelectedSubject(userId, subjectId)
+          }}
         />
         <Heading as="h1" size="8" id="courses-title">
-          {t('learningHome.courses')}
+          {t('learningHome.title')}
         </Heading>
         {subjectsQuery.isPending ? (
           <Text role="status">{t('learningHome.loading')}</Text>
@@ -209,13 +248,9 @@ export function LearningHome({
             <Text>{t('learningHome.empty')}</Text>
           </Card>
         ) : (
-          // One course today; the list layout is ready for several.
           <section className={styles.courses} aria-labelledby="courses-title">
-            <article className={styles.course} aria-labelledby="course-title">
+            <article className={styles.course} aria-labelledby="courses-title">
               <div className={styles.courseHeader}>
-                <Heading as="h2" size="7" id="course-title">
-                  {selected.name}
-                </Heading>
                 <Text as="p" size="3" color="gray">
                   {t('learningHome.intro')}
                 </Text>

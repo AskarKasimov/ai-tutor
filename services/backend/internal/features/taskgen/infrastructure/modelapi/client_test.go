@@ -12,6 +12,12 @@ import (
 
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/features/taskgen/application"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/fault"
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/httpx"
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/llmgateway"
+	pb "github.com/AskarKasimov/ai-tutor/services/shared/gen/go/llmgateway/v1"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 func TestGenerateSendsOpenAIJSONModeRequestAndDecodesDraft(t *testing.T) {
@@ -110,6 +116,45 @@ func TestGenerateRejectsMalformedCompletionResponse(t *testing.T) {
 			client := New(server.Client(), server.URL, "model", time.Second)
 			if _, err := client.Generate(context.Background(), application.Context{}); err == nil {
 				t.Fatal("malformed completion response was accepted")
+			}
+		})
+	}
+}
+
+type failingGateway struct{ err error }
+
+func (g failingGateway) Complete(context.Context, *pb.CompleteRequest, ...grpc.CallOption) (*pb.CompleteResponse, error) {
+	return nil, g.err
+}
+
+func TestGenerateMapsGatewayTemporaryFailuresThroughHTTPError(t *testing.T) {
+	tests := []struct {
+		name       string
+		grpcCode   codes.Code
+		statusCode int
+		kind       fault.Kind
+		code       string
+	}{
+		{name: "unavailable", grpcCode: codes.Unavailable, statusCode: http.StatusServiceUnavailable, kind: fault.Unavailable, code: "TASK_GENERATION_UNAVAILABLE"},
+		{name: "rate limited", grpcCode: codes.ResourceExhausted, statusCode: http.StatusServiceUnavailable, kind: fault.Unavailable, code: "TASK_GENERATION_UNAVAILABLE"},
+		{name: "deadline exceeded", grpcCode: codes.DeadlineExceeded, statusCode: http.StatusGatewayTimeout, kind: fault.Timeout, code: "TASK_GENERATION_TIMEOUT"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			transport := llmgateway.Transport{Gateway: failingGateway{err: status.Error(tt.grpcCode, "gateway failure")}}
+			client := New(&http.Client{Transport: transport}, "http://gateway/v1", "model", time.Second)
+			_, err := client.Generate(context.Background(), application.Context{})
+			if err == nil {
+				t.Fatal("Generate() error = nil")
+			}
+			var gotFault *fault.Error
+			if !errors.As(err, &gotFault) || gotFault.Kind != tt.kind || gotFault.Code != tt.code {
+				t.Fatalf("Generate() error = %#v, want kind=%v code=%s", err, tt.kind, tt.code)
+			}
+			response := httptest.NewRecorder()
+			httpx.Error(context.Background(), response, err)
+			if response.Code != tt.statusCode {
+				t.Fatalf("httpx.Error() status = %d, want %d", response.Code, tt.statusCode)
 			}
 		})
 	}

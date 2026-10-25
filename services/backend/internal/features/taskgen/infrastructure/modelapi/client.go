@@ -83,7 +83,14 @@ func (c *Client) Generate(ctx context.Context, input application.Context) (appli
 	}
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {
-		return application.Draft{}, fault.New(fault.Upstream, "TASK_GENERATION_FAILED", "Сервис генерации не принял запрос.")
+		switch response.StatusCode {
+		case http.StatusTooManyRequests, http.StatusServiceUnavailable:
+			return application.Draft{}, fault.New(fault.Unavailable, "TASK_GENERATION_UNAVAILABLE", "Сервис генерации заданий временно недоступен.")
+		case http.StatusRequestTimeout, http.StatusGatewayTimeout:
+			return application.Draft{}, fault.New(fault.Timeout, "TASK_GENERATION_TIMEOUT", "Превышено время ожидания генерации задания.")
+		default:
+			return application.Draft{}, fault.New(fault.Upstream, "TASK_GENERATION_FAILED", "Сервис генерации не принял запрос.")
+		}
 	}
 	content, err := io.ReadAll(io.LimitReader(response.Body, 64*1024+1))
 	if err != nil || len(content) > 64*1024 {

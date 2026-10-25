@@ -4,6 +4,7 @@ package gateway
 type OpenAPIRequest struct {
 	Messages            []Message      `json:"messages" binding:"required"`
 	Complexity          string         `json:"complexity" binding:"required" enums:"low,medium,high"`
+	RoutingProfile      string         `json:"routing_profile,omitempty"`
 	Urgent              *bool          `json:"urgent,omitempty"`
 	Temperature         *float64       `json:"temperature,omitempty"`
 	TopP                *float64       `json:"top_p,omitempty"`

@@ -49,6 +49,7 @@ type GeneratedTask struct {
 // @Failure 422 {object} fault.Error
 // @Failure 502 {object} fault.Error
 // @Failure 503 {object} fault.Error
+// @Failure 504 {object} fault.Error
 // @Router /learn/tasks/generate [post]
 func (h *Handler) Generate(w http.ResponseWriter, r *http.Request) {
 	principal, ok := httpx.Principal[user.User](r)

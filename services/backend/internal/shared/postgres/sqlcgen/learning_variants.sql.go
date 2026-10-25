@@ -221,7 +221,7 @@ SELECT $1::bigint AS revision,
                'id', constituent.id, 'name', constituent.name, 'topic_level_code', topic.code,
                'sections', COALESCE((SELECT jsonb_agg(jsonb_build_object(
                    'code', section.code, 'title', section.title,
-                   'learning_curriculum_competencies', COALESCE((SELECT jsonb_agg(curriculum.code ORDER BY curriculum.code)
+                   'curriculum_competencies', COALESCE((SELECT jsonb_agg(curriculum.code ORDER BY curriculum.code)
                        FROM learning_constituent_section_competencies mapped
                        JOIN learning_curriculum_competencies curriculum ON curriculum.id = mapped.curriculum_competency_id
                        WHERE mapped.constituent_section_id = link.id), '[]'::jsonb)

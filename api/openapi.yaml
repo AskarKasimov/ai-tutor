@@ -6524,6 +6524,12 @@ paths:
               schema:
                 $ref: '#/components/schemas/fault.Error'
           description: Service Unavailable
+        "504":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Gateway Timeout
       security:
         - accessCookie: []
       summary: Сгенерировать аналог задания

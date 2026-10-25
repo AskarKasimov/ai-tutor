@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"time"
 
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/diagnostic"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/fault"
@@ -14,11 +15,24 @@ import (
 )
 
 type Store struct {
-	pool *pgxpool.Pool
-	q    *db.Queries
+	pool         *pgxpool.Pool
+	q            *db.Queries
+	leaseSeconds int64
 }
 
-func New(pool *pgxpool.Pool) *Store { return &Store{pool: pool, q: db.New(pool)} }
+func New(pool *pgxpool.Pool) *Store {
+	return &Store{pool: pool, q: db.New(pool), leaseSeconds: 600}
+}
+
+func (s *Store) WithLease(lease time.Duration) *Store {
+	if lease > 0 {
+		s.leaseSeconds = int64(lease / time.Second)
+		if lease%time.Second != 0 {
+			s.leaseSeconds++
+		}
+	}
+	return s
+}
 
 func (s *Store) FindStart(ctx context.Context, ownerID, key, digest string) (diagnostic.Session, bool, error) {
 	row, err := s.q.LearningFindDiagnosticSessionByStart(ctx, db.LearningFindDiagnosticSessionByStartParams{OwnerID: ownerID, StartRequestKey: key})
@@ -151,7 +165,7 @@ func (s *Store) Reserve(ctx context.Context, ownerID, id, key, digest, taskID, t
 	} else {
 		value.InFlight = &diagnostic.Reservation{Key: key, Fingerprint: digest, VariantTaskID: taskID, Token: token}
 	}
-	if err = saveLocked(ctx, q, value); err != nil {
+	if err = s.saveLocked(ctx, q, value); err != nil {
 		return nil, nil, err
 	}
 	if err = tx.Commit(ctx); err != nil {
@@ -201,7 +215,7 @@ func (s *Store) Accept(ctx context.Context, ownerID, id, token, key, digest stri
 		value.AcceptedRequests = map[string]diagnostic.AcceptedRequest{}
 	}
 	value.AcceptedRequests[key] = diagnostic.AcceptedRequest{Fingerprint: digest, Response: progress}
-	if err = saveLocked(ctx, q, value); err != nil {
+	if err = s.saveLocked(ctx, q, value); err != nil {
 		return diagnostic.Progress{}, err
 	}
 	raw, err := json.Marshal(answer)
@@ -249,19 +263,22 @@ func (s *Store) Fail(ctx context.Context, ownerID, id, token, transcriptionID, t
 	} else {
 		value.InFlight = nil
 	}
-	if err = saveLocked(ctx, q, value); err != nil {
+	if err = s.saveLocked(ctx, q, value); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)
 }
 
-func saveLocked(ctx context.Context, q *db.Queries, value diagnostic.Session) error {
+func (s *Store) saveLocked(ctx context.Context, q *db.Queries, value diagnostic.Session) error {
 	raw, err := json.Marshal(value)
 	if err != nil {
 		return err
 	}
-	leased := value.InFlight != nil && value.InFlight.Token != ""
-	err = q.LearningSaveDiagnosticSession(ctx, db.LearningSaveDiagnosticSessionParams{ID: value.ID, SessionData: raw, Status: value.Status, CurrentCompetency: int32(value.CurrentCompetency), CurrentTask: int32(value.CurrentTask), Leased: leased})
+	leaseSeconds := int64(0)
+	if value.InFlight != nil && value.InFlight.Token != "" {
+		leaseSeconds = s.leaseSeconds
+	}
+	err = q.LearningSaveDiagnosticSession(ctx, db.LearningSaveDiagnosticSessionParams{ID: value.ID, SessionData: raw, Status: value.Status, CurrentCompetency: int32(value.CurrentCompetency), CurrentTask: int32(value.CurrentTask), LeaseSeconds: leaseSeconds})
 	return err
 }
 

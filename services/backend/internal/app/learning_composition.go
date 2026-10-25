@@ -3,7 +3,6 @@ package app
 import (
 	"context"
 	"net/http"
-	"time"
 
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/training"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/variant"
@@ -92,9 +91,10 @@ func (a *App) registerLearningRoutes(mux *http.ServeMux, auth *authapp.Service, 
 	taskGenRepository := taskgenpg.New(a.pool)
 	taskGenerator := taskgenmodel.New(a.learningModelHTTP("learning-taskgen"), "http://gateway.invalid/v1", "", a.cfg.LLMTimeout)
 	taskGen := taskgenhttp.New(taskgenapp.New(taskGenRepository, taskGenerator, "learning-taskgen", func() int64 { return a.now().Unix() }), taskgenapp.NewMaterialService(taskGenRepository, func() int64 { return a.now().Unix() }))
-	trainingService := trainingapp.New(trainingpg.New(a.pool), a.diagnosticStore, voice, trainingAssessment{assessment}, trainingsnapshot.Provider{}, security.IDGenerator{}, a.now).
+	trainingRepository := trainingpg.New(a.pool).WithLease(a.cfg.HTTPWriteTimeout())
+	trainingService := trainingapp.New(trainingRepository, a.diagnosticStore, voice, trainingAssessment{assessment}, trainingsnapshot.Provider{}, security.IDGenerator{}, a.now).
 		WithAudio(taskAudio).WithAudioRegenerator(a.audioWorker)
-	chatRepository := trainingpg.NewChatRepository(a.pool).WithLease(2*a.cfg.LLMTimeout + a.cfg.VoiceTimeout + 30*time.Second)
+	chatRepository := trainingpg.NewChatRepository(a.pool).WithLease(a.cfg.HTTPWriteTimeout())
 	trainingService = trainingService.WithCheckedNext(chatRepository)
 	var tutor trainingapp.Tutor
 	if a.cfg.LearningTutorEnabled {

@@ -20,7 +20,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-const chatLeaseSeconds = int64(300)
+const chatLeaseSeconds = int64(600)
 
 type ChatRepository struct {
 	pool         *pgxpool.Pool
@@ -34,7 +34,10 @@ func NewChatRepository(pool *pgxpool.Pool) *ChatRepository {
 
 func (r *ChatRepository) WithLease(lease time.Duration) *ChatRepository {
 	if lease > 0 {
-		r.leaseSeconds = int64(lease.Seconds())
+		r.leaseSeconds = int64(lease / time.Second)
+		if lease%time.Second != 0 {
+			r.leaseSeconds++
+		}
 	}
 	return r
 }
@@ -205,7 +208,7 @@ func (r *ChatRepository) FailNext(ctx context.Context, reservation training.Next
 	if len(row.ReservationData) == 0 || json.Unmarshal(row.ReservationData, &current) != nil || current.Token != reservation.Token {
 		return nil
 	}
-	if err = q.LearningSaveTrainingReservation(ctx, db.LearningSaveTrainingReservationParams{OwnerID: reservation.OwnerID, ID: reservation.SessionID, ReservationData: nil, Leased: false}); err != nil {
+	if err = q.LearningSaveTrainingReservation(ctx, db.LearningSaveTrainingReservationParams{OwnerID: reservation.OwnerID, ID: reservation.SessionID, ReservationData: nil}); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)

@@ -195,7 +195,7 @@ func (q *Queries) LearningReadSubjectLearningState(ctx context.Context, arg Lear
 
 const learningSaveDiagnosticSession = `-- name: LearningSaveDiagnosticSession :exec
 UPDATE learning_diagnostic_sessions SET session_data=$2,status=$3,current_competency=$4,current_task=$5,
-updated_at=now(),lease_until=CASE WHEN $6::boolean THEN now()+interval '5 minutes' ELSE NULL END,
+updated_at=now(),lease_until=CASE WHEN $6::bigint>0 THEN now()+$6::bigint*interval '1 second' ELSE NULL END,
 completed_at=CASE WHEN $3='completed' THEN COALESCE(completed_at,now()) ELSE completed_at END WHERE id=$1
 `
 
@@ -205,7 +205,7 @@ type LearningSaveDiagnosticSessionParams struct {
 	Status            string
 	CurrentCompetency int32
 	CurrentTask       int32
-	Leased            bool
+	LeaseSeconds      int64
 }
 
 func (q *Queries) LearningSaveDiagnosticSession(ctx context.Context, arg LearningSaveDiagnosticSessionParams) error {
@@ -215,7 +215,7 @@ func (q *Queries) LearningSaveDiagnosticSession(ctx context.Context, arg Learnin
 		arg.Status,
 		arg.CurrentCompetency,
 		arg.CurrentTask,
-		arg.Leased,
+		arg.LeaseSeconds,
 	)
 	return err
 }

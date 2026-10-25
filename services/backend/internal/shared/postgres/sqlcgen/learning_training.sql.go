@@ -292,23 +292,17 @@ func (q *Queries) LearningResetTrainingReservation(ctx context.Context, arg Lear
 }
 
 const learningSaveTrainingReservation = `-- name: LearningSaveTrainingReservation :exec
-UPDATE learning_training_sessions SET reservation_data=$3,lease_until=CASE WHEN $4::boolean THEN now()+interval '5 minutes' ELSE NULL END WHERE owner_id=$1 AND id=$2
+UPDATE learning_training_sessions SET reservation_data=$3,lease_until=NULL WHERE owner_id=$1 AND id=$2
 `
 
 type LearningSaveTrainingReservationParams struct {
 	OwnerID         string
 	ID              string
 	ReservationData []byte
-	Leased          bool
 }
 
 func (q *Queries) LearningSaveTrainingReservation(ctx context.Context, arg LearningSaveTrainingReservationParams) error {
-	_, err := q.db.Exec(ctx, learningSaveTrainingReservation,
-		arg.OwnerID,
-		arg.ID,
-		arg.ReservationData,
-		arg.Leased,
-	)
+	_, err := q.db.Exec(ctx, learningSaveTrainingReservation, arg.OwnerID, arg.ID, arg.ReservationData)
 	return err
 }
 

@@ -49,11 +49,11 @@ type Config struct {
 
 // HTTPWriteTimeout allows STT with S3 writes, OCR of an uploaded material, a
 // Geek answer (evaluation and the next question, each retried once), a long
-// Geek turn, or learning STT followed by up to three sequential tutor calls to
+// Geek turn, or learning STT followed by up to four sequential tutor calls to
 // finish, with time for request handling,
 // persistence and writing the response.
 func (c Config) HTTPWriteTimeout() time.Duration {
-	return max(c.VoiceTimeout+5*c.S3Timeout, c.CourseGraphTimeout, 4*c.LLMTimeout, 4*c.VoiceTimeout+2*c.S3Timeout) + 30*time.Second
+	return max(c.VoiceTimeout+5*c.S3Timeout, c.CourseGraphTimeout, 4*c.LLMTimeout, c.VoiceTimeout+4*c.LLMTimeout, 4*c.VoiceTimeout+2*c.S3Timeout) + 30*time.Second
 }
 
 func ConfigFromEnv() (Config, error) {

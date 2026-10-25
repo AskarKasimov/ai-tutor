@@ -3,6 +3,7 @@ package postgres
 import (
 	"strconv"
 	"testing"
+	"time"
 
 	db "github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/postgres/sqlcgen"
 )
@@ -41,5 +42,12 @@ func TestChatPagesUseLastReturnedSequenceAsExclusiveCursor(t *testing.T) {
 		if got[i] != want[i] {
 			t.Fatalf("read sequences %v, want %v", got, want)
 		}
+	}
+}
+
+func TestChatRepositoryWithLeaseRoundsUpToWholeSeconds(t *testing.T) {
+	repository := NewChatRepository(nil).WithLease(5*time.Second + time.Nanosecond)
+	if repository.leaseSeconds != 6 {
+		t.Fatalf("lease seconds = %d, want 6", repository.leaseSeconds)
 	}
 }

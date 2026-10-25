@@ -36,7 +36,7 @@ SELECT session_data FROM learning_diagnostic_sessions WHERE owner_id=$1 AND subj
 SELECT session_data,COALESCE(lease_until>now(),false)::boolean AS leased FROM learning_diagnostic_sessions WHERE owner_id=$1 AND id=$2 FOR UPDATE;
 -- name: LearningSaveDiagnosticSession :exec
 UPDATE learning_diagnostic_sessions SET session_data=$2,status=$3,current_competency=$4,current_task=$5,
-updated_at=now(),lease_until=CASE WHEN sqlc.arg(leased)::boolean THEN now()+interval '5 minutes' ELSE NULL END,
+updated_at=now(),lease_until=CASE WHEN sqlc.arg(lease_seconds)::bigint>0 THEN now()+sqlc.arg(lease_seconds)::bigint*interval '1 second' ELSE NULL END,
 completed_at=CASE WHEN $3='completed' THEN COALESCE(completed_at,now()) ELSE completed_at END WHERE id=$1;
 -- name: LearningInsertDiagnosticAnswer :exec
 INSERT INTO learning_diagnostic_answers(session_id,answer_order,idempotency_key,request_digest,variant_task_id,answer_data,progress_data) VALUES($1,$2,$3,$4,$5,$6,$7);

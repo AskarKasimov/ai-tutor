@@ -27,9 +27,9 @@ func TestHTTPWriteTimeoutAllowsSlowOperationsToFinish(t *testing.T) {
 	}{
 		{"transcription with storage", 30 * time.Second, 30 * time.Second, 60 * time.Second, 0, 210 * time.Second},
 		{"ocr", time.Second, time.Second, 180 * time.Second, 0, 210 * time.Second},
-		{"geek answer", time.Second, time.Second, time.Second, 120 * time.Second, 510 * time.Second},
+		{"geek answer", time.Second, time.Second, time.Second, 120 * time.Second, 511 * time.Second},
 		{"long geek turn", 120 * time.Second, 10 * time.Second, time.Second, time.Second, 530 * time.Second},
-		{"learning STT plus tutor", 120 * time.Second, 30 * time.Second, time.Second, 120 * time.Second, 570 * time.Second},
+		{"learning STT plus four tutor calls", 120 * time.Second, 30 * time.Second, time.Second, 120 * time.Second, 630 * time.Second},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			cfg := Config{VoiceTimeout: tc.voice, S3Timeout: tc.s3, CourseGraphTimeout: tc.ocr, LLMTimeout: tc.llm}

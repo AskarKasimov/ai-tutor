@@ -12,14 +12,30 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"strings"
+	"time"
 )
 
+const defaultTrainingLeaseSeconds = int64(600)
+
 type Repository struct {
-	pool *pgxpool.Pool
-	q    *db.Queries
+	pool         *pgxpool.Pool
+	q            *db.Queries
+	leaseSeconds int64
 }
 
-func New(pool *pgxpool.Pool) *Repository { return &Repository{pool: pool, q: db.New(pool)} }
+func New(pool *pgxpool.Pool) *Repository {
+	return &Repository{pool: pool, q: db.New(pool), leaseSeconds: defaultTrainingLeaseSeconds}
+}
+
+func (r *Repository) WithLease(lease time.Duration) *Repository {
+	if lease > 0 {
+		r.leaseSeconds = int64(lease / time.Second)
+		if lease%time.Second != 0 {
+			r.leaseSeconds++
+		}
+	}
+	return r
+}
 func notFound() error {
 	return fault.New(fault.NotFound, "TRAINING_SESSION_NOT_FOUND", "Тренировка не найдена.")
 }
@@ -269,7 +285,7 @@ func (r *Repository) Reserve(ctx context.Context, owner, id, key, fingerprint, e
 	if err != nil {
 		return nil, nil, s, err
 	}
-	if err = q.LearningSaveTrainingReservation(ctx, db.LearningSaveTrainingReservationParams{OwnerID: owner, ID: id, ReservationData: raw, Leased: true}); err != nil {
+	if err = q.LearningSaveTrainingReservationWithLease(ctx, db.LearningSaveTrainingReservationWithLeaseParams{OwnerID: owner, ID: id, ReservationData: raw, LeaseSeconds: r.leaseSeconds}); err != nil {
 		return nil, nil, s, err
 	}
 	if err = tx.Commit(ctx); err != nil {
@@ -376,7 +392,7 @@ func (r *Repository) Fail(ctx context.Context, owner, id string, reserved traini
 			return err
 		}
 	}
-	if err = q.LearningSaveTrainingReservation(ctx, db.LearningSaveTrainingReservationParams{OwnerID: owner, ID: id, ReservationData: raw, Leased: false}); err != nil {
+	if err = q.LearningSaveTrainingReservation(ctx, db.LearningSaveTrainingReservationParams{OwnerID: owner, ID: id, ReservationData: raw}); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)

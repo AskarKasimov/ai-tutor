@@ -10,6 +10,7 @@ import (
 	"reflect"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/diagnostic"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/fault"
@@ -136,7 +137,8 @@ func isKind(err error, kind fault.Kind) bool {
 
 func TestExpiredReservationCanRetryAfterRestartAndRejectsOldToken(t *testing.T) {
 	pool, ctx := setupStore(t)
-	s := New(pool)
+	lease := 7 * time.Minute
+	s := New(pool).WithLease(lease)
 	v := diagnostic.Session{ID: "lease-session", OwnerID: "diag-owner-a", VariantID: "variant-a", Status: diagnostic.StatusActive, AcceptedRequests: map[string]diagnostic.AcceptedRequest{}, Variant: diagnostic.VariantSnapshot{Competencies: []diagnostic.Competency{{Tasks: []diagnostic.TaskSnapshot{{ID: "task", Role: "main"}}}}}}
 	if _, _, err := s.Create(ctx, v.OwnerID, "lease-start", "digest", v); err != nil {
 		t.Fatal(err)
@@ -144,10 +146,17 @@ func TestExpiredReservationCanRetryAfterRestartAndRejectsOldToken(t *testing.T) 
 	if _, _, err := s.Reserve(ctx, v.OwnerID, v.ID, "answer", "audio", "task", "old-token"); err != nil {
 		t.Fatal(err)
 	}
+	var leaseRemaining float64
+	if err := pool.QueryRow(ctx, `SELECT EXTRACT(EPOCH FROM lease_until-now()) FROM learning_diagnostic_sessions WHERE id=$1`, v.ID).Scan(&leaseRemaining); err != nil {
+		t.Fatal(err)
+	}
+	if leaseRemaining <= float64(lease-time.Minute)/float64(time.Second) || leaseRemaining > float64(lease)/float64(time.Second) {
+		t.Fatalf("persisted lease has %.1f seconds remaining, want close to %s", leaseRemaining, lease)
+	}
 	if _, err := pool.Exec(ctx, `UPDATE learning_diagnostic_sessions SET lease_until=now()-interval '1 second' WHERE id=$1`, v.ID); err != nil {
 		t.Fatal(err)
 	}
-	_, reserved, err := New(pool).Reserve(ctx, v.OwnerID, v.ID, "answer", "audio", "task", "new-token")
+	_, reserved, err := New(pool).WithLease(lease).Reserve(ctx, v.OwnerID, v.ID, "answer", "audio", "task", "new-token")
 	if err != nil || reserved == nil || reserved.Token != "new-token" {
 		t.Fatalf("expired retry: %+v %v", reserved, err)
 	}
@@ -162,6 +171,13 @@ func TestExpiredReservationCanRetryAfterRestartAndRejectsOldToken(t *testing.T) 
 	replay, _, err := New(pool).Reserve(ctx, v.OwnerID, v.ID, "answer", "audio", "task", "again")
 	if err != nil || replay == nil || replay.Response.Score == nil || *replay.Response.Score != 2 {
 		t.Fatalf("replay: %+v %v", replay, err)
+	}
+}
+
+func TestStoreWithLeaseRoundsUpToWholeSeconds(t *testing.T) {
+	store := New(nil).WithLease(5*time.Second + time.Nanosecond)
+	if store.leaseSeconds != 6 {
+		t.Fatalf("lease seconds = %d, want 6", store.leaseSeconds)
 	}
 }
 

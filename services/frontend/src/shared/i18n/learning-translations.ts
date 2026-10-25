@@ -211,6 +211,7 @@ export const learningTranslations = {
     title: 'План обучения',
     loading: 'Загружаем план…',
     loadError: 'Не удалось загрузить план.',
+    messagesError: 'Не удалось загрузить историю темы.',
     hoursEyebrow: 'Персональный план',
     hoursTitle: 'Сколько у тебя часов?',
     hoursText:

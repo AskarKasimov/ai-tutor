@@ -71,6 +71,7 @@ function setup(
   ) => void,
   noGaps = false,
   messages = lesson,
+  failFirstMessageRead = false,
 ) {
   const dependencies = createAppDependencies()
   vi.spyOn(
@@ -129,8 +130,15 @@ function setup(
   vi.spyOn(api, 'findLearningPlan').mockResolvedValue(existing)
   const create = vi.spyOn(api, 'createLearningPlan').mockResolvedValue(plan())
   let opened = false
+  let firstMessageRead = true
   vi.spyOn(api, 'readLearningMessages').mockImplementation(
-    async (_id, index) => (index === 0 && opened ? messages : []),
+    async (_id, index) => {
+      if (failFirstMessageRead && firstMessageRead) {
+        firstMessageRead = false
+        throw new Error('temporary history failure')
+      }
+      return index === 0 && opened ? messages : []
+    },
   )
   let current = existing ?? plan()
   const open = vi.spyOn(api, 'openLesson').mockImplementation(async () => {
@@ -242,6 +250,21 @@ it('teaches the current topic in the chat and moves on after a voice answer', as
     ).toBeInTheDocument(),
   )
   expect(screen.queryByRole('button', { name: 'Записать ответ' })).toBeNull()
+})
+
+it('shows a history error and resumes opening the lesson after retry', async () => {
+  const { open } = setup(plan(), undefined, false, lesson, true)
+
+  expect(await screen.findByRole('alert')).toHaveTextContent(
+    'Не удалось загрузить историю темы.',
+  )
+  expect(open).not.toHaveBeenCalled()
+
+  fireEvent.click(screen.getByRole('button', { name: 'Попробовать снова' }))
+
+  expect(await screen.findByText('Теория по теме')).toBeInTheDocument()
+  expect(await screen.findByText('Практический вопрос?')).toBeInTheDocument()
+  await waitFor(() => expect(open).toHaveBeenCalledTimes(1))
 })
 
 it('shows the finished plan with topics to review', async () => {

@@ -350,10 +350,23 @@ function LearningPlanScreen({
             <Done plan={plan} />
           ) : (
             <>
+              {messages.isError && (
+                <div className={styles.notice}>
+                  <Text role="alert">{t('learning.messagesError')}</Text>
+                  <Button
+                    onClick={() => void messages.refetch()}
+                    disabled={messages.isFetching}
+                  >
+                    {t('learningTrainer.retry')}
+                  </Button>
+                </div>
+              )}
               <Chat
                 key={index}
                 messages={messages.data ?? []}
-                loading={messages.isPending}
+                loading={
+                  messages.isPending || (messages.isFetching && !messages.data)
+                }
                 pendingAnswer={isCurrent ? plan.pending_answer : null}
                 thinking={
                   isCurrent &&

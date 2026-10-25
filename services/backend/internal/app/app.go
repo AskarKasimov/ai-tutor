@@ -128,7 +128,7 @@ func New(cfg Config, pool *pgxpool.Pool, logger *zap.Logger) (*App, error) {
 		},
 	}
 	a.variantRepository = variantgenpg.New(pool)
-	a.diagnosticStore = diagnosticpg.New(pool)
+	a.diagnosticStore = diagnosticpg.New(pool).WithLease(cfg.HTTPWriteTimeout())
 	storage, err := s3.New(s3.Config{
 		Endpoint: cfg.S3Endpoint, Region: cfg.S3Region, Bucket: cfg.S3Bucket,
 		AccessKey: cfg.S3AccessKey, SecretKey: cfg.S3SecretKey,

@@ -28,4 +28,4 @@ jobs:
       - run: npm run test:e2e
       - name: Build production frontend image
         working-directory: .
-        run: docker build -f services/frontend/Dockerfile --build-arg VITE_API_BASE_URL=/api/v1 -t frontend-ci .
+        run: docker build -f services/frontend/Dockerfile --build-arg VITE_API_BASE_URL=/api/v1 -t frontend-ci services/frontend

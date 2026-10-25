@@ -128,11 +128,14 @@ Geek проводит диагностику и тренировку тольк�
 
 ## LLM gateway
 
-LLM gateway — отдельный HTTP/gRPC-сервис `services/llm-gateway` со спецификациями [HTTP](documents/llm-gateway-spec.md) и [gRPC](documents/llm-gateway-grpc-spec.md), контрактами [OpenAPI](services/llm-gateway/openapi.yaml) и [protobuf](services/shared/proto/llmgateway/v1/gateway.proto). Он принимает OpenAI-совместимый `POST /v1/chat/completions` без выбора модели клиентом: обязательная сложность `complexity` (low / medium / high) и необязательная срочность `urgent`. Очередь — Redpanda, балансировка по четырём моделям — в gateway. Dev Compose запускает его с Redpanda, Prometheus и Grafana под профилем `gateway`; Grafana доступна на порту 3000 без аутентификации для прототипа, а её дашборд показывает настроенные и фактические маршруты по моделям. `prod.sh` — всегда (проект `services/llm-gateway` вместе с одноброкерной Redpanda и созданием топиков); локальный `services/llm-gateway/config.json` содержит настройки моделей. HTTP и gRPC доступны клиентам доверенной сети. Backend (Geek, перевод OCR) обязательно ходит в gateway по gRPC: без него вопросы и оценки отвечают 503 `MODEL_UNAVAILABLE`. `services/course-graph` (очистка, темы, пререквизиты) тоже ходит в gateway по gRPC. CORS настроен в Caddy.
+LLM gateway — отдельный HTTP/gRPC-сервис `services/llm-gateway` со спецификациями [HTTP](documents/llm-gateway-spec.md) и [gRPC](documents/llm-gateway-grpc-spec.md), контрактами [OpenAPI](services/llm-gateway/openapi.yaml) и [protobuf](services/shared/proto/llmgateway/v1/gateway.proto). Он принимает OpenAI-совместимый `POST /v1/chat/completions` без выбора модели клиентом: обязательная сложность `complexity` (low / medium / high), необязательная срочность `urgent` и настроенный `routing_profile` для учебных workflows. Очередь — Redpanda; provider routing находится в gateway config. Корневой единый Compose всегда запускает gateway и Redpanda. Профиль `observability` включает Prometheus/Grafana; дашборд показывает настроенные и фактические маршруты. `swagger` включает backend Swagger. HTTP и gRPC доступны клиентам доверенной сети, CORS настроен в Caddy.
 
-## Переход с прежней системы
+## Историческая сводка на 19.10.2026
 
-16.10.2026 код прежней модели удалён; он остался в истории git и в выпущенном релизе. Для показа v0.0.2 запускается рядом с текущей версией из worktree ([deploy/dual](deploy/dual/README.md), решение 19.10.2026).
+Этот раздел описывает состояние репозитория на момент решения о запуске двух
+версий рядом; он заменён целевой архитектурой от 25.10.2026 ниже.
+
+16.10.2026 код прежней модели удалён; он остался в истории git и в выпущенном релизе. Для показа v0.0.2 запускался рядом с текущей версией из worktree (решение 19.10.2026; теперь исторически устарело).
 
 | Часть | Решение |
 | --- | --- |
@@ -165,7 +168,7 @@ LLM gateway — отдельный HTTP/gRPC-сервис `services/llm-gateway`
 
 ## Решения 19.10.2026: два режима на одном стенде
 
-Приняты владельцем продукта для показа. Обвязка — [deploy/dual](deploy/dual/README.md).
+Историческое решение для показа через два git worktree и отдельные frontend/backend релизы. 25.10.2026 владелец заменил эту техническую схему объединённой реализацией ниже; пользовательские потоки и два независимых набора учебных данных сохранены.
 
 | Вопрос | Решение |
 | --- | --- |
@@ -176,6 +179,12 @@ LLM gateway — отдельный HTTP/gRPC-сервис `services/llm-gateway`
 | Курсы | Разные курсы в режимах допустимы: обучение — по карте компетенций, симуляция — по графу. |
 | Режим запуска | `prod` (собранный frontend и бинарник backend) по умолчанию, `dev` — по выбору; после старта открываются стартовая и обе админ-панели. |
 | Версии | Обучение — тег v0.0.2.5 (v0.0.2.1, возврат к выбору режима, вход только через стартовую, чтение листа диагностики карты (4) с пропуском незнакомых колонок и задания из трёх блоков с вариантами «A.»). Симуляция по умолчанию — свежий master, `up` переключает на него сам; перед показом — тег релиза — значение по умолчанию `DUAL_EXAM_REF` в скриптах стенда. |
+
+## Решение 25.10.2026: одна реализация, два учебных режима
+
+Один React frontend, Go backend и PostgreSQL обслуживают оба потока. `/` показывает общий вход и выбор режима, `/learn` запускает обучение из v0.0.2.5, `/exam` — Geek из master. Один аккаунт и auth API доступны из обоих режимов; student и admin используют разные cookie sessions. Каталоги, карты компетенций, диагностические данные и тренировки обучения принадлежат `learning_*`, экзаменационные графы и сессии остаются в экзаменационных таблицах. Курсы и алгоритмы не объединяются.
+
+Старые учебные вызовы моделей проходят через общий LLM gateway с именованными routing profiles. Выбор provider/instance остаётся в gateway config. Обе админки находятся на одном origin: `/admin/learn/competency-map` и `/admin/courses`. Корневой Compose описывает production stack; `dev.sh` добавляет Vite/Air override, а `prod.sh` запускает тот же stack. Удалённые dual launch scripts не нужны объединённому приложению.
 
 ## Решения 19.10.2026: граф по карте компетенций
 
@@ -560,25 +569,21 @@ LLM gateway — отдельный HTTP/gRPC-сервис `services/llm-gateway`
 
 Geek — модуль backend `features/geek`; оркестрация сборки графа — модуль backend `features/coursegraph`. LLM gateway — отдельный сервис `services/llm-gateway`. Этапы обработки course-graph выполняет Python-сервис `services/course-graph`; в gateway он ходит по gRPC.
 
-Правила изменения кода — [AGENTS.md](AGENTS.md). Каждый сервис имеет свой Compose; корневой Compose объединяет dev-стек через extends.
+Правила изменения кода — [AGENTS.md](AGENTS.md). Сервисные Compose-файлы задают фрагменты, корневой Compose объединяет production stack через `extends`, а `docker-compose.dev.yaml` добавляет dev-сборки и исходники.
 
-Сайт ученика и админ-панель — два отдельных сайта на одном адресе. Ученик на `/` сразу видит вход и регистрацию; ссылок на админку там нет, выход возвращает ко входу. Админ-панель на `/admin` сама входит без пароля в общий аккаунт admin. У админки отдельная сессия (свои cookies), поэтому оба сайта можно держать открытыми в одном браузере.
+Стартовая страница, режимы и админки — страницы одной SPA на одном origin. `/` показывает форму входа или выбор режимов; учитель входит без пароля через `/auth/teacher`. Student и admin сессии имеют отдельные cookie names.
 
 ## Запуск
 
 ```bash
 cp .env.example .env
-# Задайте пароль БД и режимы API.
+# Задайте пароль БД и настройки gateway.
 ./dev.sh -d
 ```
 
-На Windows вместо `dev.sh` используйте `.\up.ps1` из PowerShell: скрипт запускает Docker Desktop, при отсутствии создаёт `.env` из `.env.example` в режиме real со случайными секретами, выпускает сертификаты, поднимает стек, ждёт health и открывает сайт ученика и админ-панель. `.\up.ps1 -Logs` показывает логи, `.\up.ps1 -Down` останавливает стек с сохранением данных. Если PowerShell блокирует скрипты, один раз выполните `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`.
+Локально нужны Docker Compose и mkcert. `dev.sh` поднимает единый stack с Vite/Air override и открывает `/`, обе админки и Grafana при профиле `observability`; `DEV_OPEN_BROWSER=false` отключает открытие. `prod.sh` собирает и запускает этот же stack; `PROD_OPEN_BROWSER=false` отключает открытие. API: `/api/v1`, health: `/api/v1/health`, HTTP gateway: `/llm-gateway`. Swagger включается профилем `swagger`, gateway всегда является частью приложения. Compose использует стабильные имена volumes и не удаляет их.
 
-Локально нужны Docker Compose и mkcert. Когда health ответит, `dev.sh` сам открывает в браузере сайт ученика, админ-панель и третьей вкладкой Grafana с дашбордом LLM gateway — если включён профиль `gateway` (`COMPOSE_PROFILES` из окружения или `.env`), после ответа `/api/health` Grafana; `DEV_OPEN_BROWSER=false` отключает. `up.ps1` открывает те же три вкладки. Grafana: http://localhost:3000/d/llm-gateway-routing. Сайт ученика: https://localhost:8443, админ-панель: https://localhost:8443/admin, публичный API: `/api/v1`, health: `/api/v1/health`. Swagger backend доступен на `/docs/`. В dev профиле по умолчанию запущен LLM Gateway. OpenAPI preview и Try it доступны через Caddy на `https://localhost:8443/llm-gateway` с CORS для VS Code webview.
-
-Обучение из v0.0.2 и симуляция экзамена из v0.0.3 на одном стенде, со стартовой страницей и общим входом: `deploy/linux-dual.sh up` (Windows: `.\deploy\windows-dual.ps1 up`), удалить его данные — `deploy/linux-dual-reset.sh` (Windows: `.\deploy\windows-dual-reset.ps1`) ([deploy/dual](deploy/dual/README.md)).
-
-Для сервера: `.env.prod.example` → `.env`, готовые `certs/server.pem`/`server-key.pem`, сеть `ai-tutor_default`, затем `./prod.sh`. Скрипт по очереди поднимает PostgreSQL, S3 (если он локальный), course-graph, LLM gateway, backend, frontend и Caddy, печатает адреса и на машине с рабочим столом (есть `xdg-open` или `open`) открывает сайт ученика, админ-панель и при профиле `gateway` Grafana (`PROD_OPEN_BROWSER=false` отключает; на сервере без рабочего стола ничего не открывается). Dev-стек и серверные Compose используют общие имена сети и volumes; одновременно их не запускают.
+Для сервера: `.env.prod.example` → `.env`, сертификаты `certs/server.pem`/`server-key.pem`, затем `./prod.sh`. Скрипт валидирует и запускает единый Compose project одной командой; перед запуском проверьте переменные backend, gateway, PostgreSQL и S3 в `.env`.
 
 - Frontend использует HTTP API для auth, предметов и материалов курса. Данные хранятся в PostgreSQL и переживают перезапуск backend. В dev VITE_* передаются контейнеру; после изменения .env пересоздайте frontend. В production значения применяются при сборке.
 - Backend всегда использует действующие модели; настройки STT/TTS из `.env.example` обязательны.

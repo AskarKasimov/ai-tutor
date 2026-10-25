@@ -1,4 +1,4 @@
-# Common dev stack; service definitions live beside their owners.
+# Single production stack. Development adds source mounts in docker-compose.dev.yaml.
 services:
   db:
     extends:
@@ -14,27 +14,19 @@ services:
     extends:
       file: ./services/llm-gateway/docker-compose.yaml
       service: redpanda
-    profiles: [gateway]
 
   redpanda-init:
     extends:
       file: ./services/llm-gateway/docker-compose.yaml
       service: redpanda-init
-    profiles: [gateway]
     depends_on:
       redpanda:
         condition: service_healthy
-
-  course-graph:
-    extends:
-      file: ./services/course-graph/docker-compose.yaml
-      service: course-graph
 
   llm-gateway:
     extends:
       file: ./services/llm-gateway/docker-compose.yaml
       service: llm-gateway
-    profiles: [gateway]
     volumes:
       - ./services/llm-gateway/config.json:/etc/llm-gateway/config.json:ro
     depends_on:
@@ -47,34 +39,37 @@ services:
     extends:
       file: ./services/llm-gateway/docker-compose.yaml
       service: prometheus
-    profiles: [gateway]
+    profiles: [observability]
     volumes:
       - ./services/llm-gateway/observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    depends_on:
+      llm-gateway:
+        condition: service_healthy
 
   grafana:
     extends:
       file: ./services/llm-gateway/docker-compose.yaml
       service: grafana
-    profiles: [gateway]
+    profiles: [observability]
     volumes:
       - ./services/llm-gateway/observability/grafana/provisioning:/etc/grafana/provisioning:ro
       - ./services/llm-gateway/observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      prometheus:
+        condition: service_started
+
+  course-graph:
+    extends:
+      file: ./services/course-graph/docker-compose.yaml
+      service: course-graph
+    depends_on:
+      llm-gateway:
+        condition: service_healthy
 
   api:
     extends:
       file: ./services/backend/docker-compose.yaml
       service: api
-    build:
-      target: dev
-    volumes:
-      - ./services/backend:/work/backend
-      - ./services/shared:/work/shared:ro
-      - backend_go_modules:/go/pkg/mod
-      - backend_go_build:/root/.cache/go-build
-      - backend_dev_bin:/work/backend/.air
-    healthcheck:
-      test: ["CMD", "/work/backend/.air/api", "healthcheck"]
-      start_period: 180s
     depends_on:
       db:
         condition: service_healthy
@@ -82,6 +77,9 @@ services:
         condition: service_healthy
       course-graph:
         condition: service_healthy
+      llm-gateway:
+        condition: service_healthy
+
   swagger:
     extends:
       file: ./services/backend/docker-compose.yaml
@@ -91,16 +89,6 @@ services:
     extends:
       file: ./services/frontend/docker-compose.yaml
       service: frontend
-    build:
-      target: dev
-    environment:
-      VITE_API_BASE_URL: ${VITE_API_BASE_URL:?Set VITE_API_BASE_URL in .env}
-      VITE_MODE_SELECT_URL: ${VITE_MODE_SELECT_URL:-}
-      VITE_API_PROXY_TARGET: http://api:8002
-      DEV_POLLING: "true"
-    volumes:
-      - ./services/frontend:/app
-      - frontend_node_modules:/app/node_modules
 
   proxy:
     extends:
@@ -127,9 +115,5 @@ volumes:
     name: ai-tutor_caddy_data
   caddy_config:
     name: ai-tutor_caddy_config
-  backend_go_modules:
-  backend_go_build:
-  backend_dev_bin:
-  frontend_node_modules:
   course_graph_models:
   course_graph_data:

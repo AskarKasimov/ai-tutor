@@ -72,13 +72,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Validate dev stack and standalone services
+      - name: Validate unified dev/prod stack and standalone services
         run: |
           set -euo pipefail
           sh -n prod.sh
           sh -n dev.sh
           docker compose --env-file .env.example config --quiet
-          COMPOSE_PROFILES= docker compose --env-file .env.example config --quiet
+          docker compose --env-file .env.example -f docker-compose.yaml -f docker-compose.dev.yaml config --quiet
+          docker compose --env-file .env.prod.example -f docker-compose.yaml config --quiet
           for env_file in .env.example .env.prod.example; do
             for file in services/postgresql/docker-compose.yaml services/s3/docker-compose.yaml services/backend/docker-compose.yaml services/frontend/docker-compose.yaml services/caddy/docker-compose.yaml services/course-graph/docker-compose.yaml services/llm-gateway/docker-compose.yaml; do
               docker compose --env-file "$env_file" -f "$file" config --quiet
@@ -103,9 +104,101 @@ jobs:
     if: ${{ needs.detect-changes.outputs.gateway == 'true' }}
     uses: ./.github/workflows/gateway-ci.yaml
 
+  course-graph:
+    name: Course graph CPU tests and image
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/course-graph
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: services/course-graph/uv.lock
+      - run: uv sync --locked --extra cpu --extra ocr
+      - run: uv run --locked --extra cpu --extra ocr python -m pytest tests
+      - name: Build course-graph CPU image
+        working-directory: .
+        run: docker build -f services/course-graph/Dockerfile --build-arg TORCH_BACKEND=cpu -t course-graph-ci .
+
+  stack-smoke:
+    name: Unified stack build and HTTPS smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: services/frontend/package-lock.json
+      - name: Install frontend dependencies for production-stack E2E
+        working-directory: services/frontend
+        run: npm ci
+      - name: Prepare isolated stack configuration
+        run: |
+          set -euo pipefail
+          cp services/llm-gateway/config.example.json services/llm-gateway/config.json
+          mkdir -p certs
+          openssl req -x509 -newkey rsa:2048 -nodes \
+            -keyout certs/server-key.pem -out certs/server.pem \
+            -subj /CN=localhost -days 1
+          cat > .env.smoke <<'EOF'
+          DB_PASSWORD=unified-stack-smoke-password
+          DB_PORT=15432
+          BACKEND_LISTEN_ADDRESS=:8002
+          BACKEND_STT_URL=http://127.0.0.1:9/transcribe
+          BACKEND_TTS_URL=http://127.0.0.1:9/synthesize
+          BACKEND_TTS_SEED=510
+          BACKEND_TTS_CFG_VALUE=2.0
+          BACKEND_TTS_INFERENCE_TIMESTEPS=20
+          BACKEND_VOICE_TIMEOUT=120s
+          BACKEND_MAX_UPLOAD_BYTES=26214400
+          BACKEND_S3_ENDPOINT=http://s3:9000
+          BACKEND_S3_REGION=us-east-1
+          BACKEND_S3_BUCKET=task-audio
+          BACKEND_S3_PATH_STYLE=true
+          BACKEND_S3_TIMEOUT=30s
+          BACKEND_S3_CREATE_BUCKET=true
+          BACKEND_AUDIO_WORKERS=1
+          BACKEND_AUDIO_POLL_INTERVAL=1s
+          BACKEND_TUTOR_ENABLED=false
+          BACKEND_COURSE_GRAPH_URL=http://course-graph:8000
+          BACKEND_COURSE_GRAPH_TIMEOUT=0s
+          BACKEND_LLM_GATEWAY_ADDR=llm-gateway:8011
+          BACKEND_LLM_TIMEOUT=30s
+          COURSE_GRAPH_LLM_GATEWAY_ADDR=llm-gateway:8011
+          COURSE_GRAPH_DEVICE=cpu
+          COURSE_GRAPH_MODEL_BOOTSTRAP=false
+          S3_ACCESS_KEY=tutor_test
+          S3_SECRET_KEY=tutor_test_secret
+          S3_PORT=19000
+          PROXY_HTTPS_BIND=127.0.0.1
+          PROXY_HTTPS_PORT=18443
+          COMPOSE_PROFILES=
+          EOF
+      - name: Build and start unified stack
+        run: docker compose --project-name ai-tutor-stack-smoke --env-file .env.smoke -f docker-compose.yaml up -d --build --wait --wait-timeout 900
+      - name: Verify shared auth, APIs, and independent portal sessions
+        run: APP_BASE_URL=https://localhost:18443 sh ./tests/integration/stack-smoke.sh
+      - name: Verify real browser navigation on the production stack
+        working-directory: services/frontend
+        env:
+          CI: true
+          E2E_STACK_URL: https://localhost:18443
+        run: |
+          npx playwright install --with-deps chromium
+          npm run test:e2e -- e2e/production-stack.spec.ts
+      - name: Stop smoke stack and remove generated local inputs
+        if: ${{ always() }}
+        run: |
+          docker compose --project-name ai-tutor-stack-smoke --env-file .env.smoke -f docker-compose.yaml down || true
+          rm -f .env.smoke services/llm-gateway/config.json
+          rm -rf certs
+
   ci-passed:
     name: CI passed
-    needs: [detect-changes, compose, backend, frontend, gateway]
+    needs: [detect-changes, compose, backend, frontend, gateway, course-graph, stack-smoke]
     if: ${{ always() }}
     runs-on: ubuntu-latest
     steps:
@@ -119,6 +212,8 @@ jobs:
           FRONTEND_RESULT: ${{ needs.frontend.result }}
           GATEWAY_SELECTED: ${{ needs.detect-changes.outputs.gateway }}
           GATEWAY_RESULT: ${{ needs.gateway.result }}
+          COURSE_GRAPH_RESULT: ${{ needs.course-graph.result }}
+          STACK_SMOKE_RESULT: ${{ needs.stack-smoke.result }}
         run: |
           set -euo pipefail
 
@@ -140,6 +235,14 @@ jobs:
 
           if [[ "$COMPOSE_RESULT" != success ]]; then
             echo "Compose validation did not succeed: $COMPOSE_RESULT" >&2
+            exit 1
+          fi
+          if [[ "$COURSE_GRAPH_RESULT" != success ]]; then
+            echo "Course-graph CI did not succeed: $COURSE_GRAPH_RESULT" >&2
+            exit 1
+          fi
+          if [[ "$STACK_SMOKE_RESULT" != success ]]; then
+            echo "Unified stack smoke did not succeed: $STACK_SMOKE_RESULT" >&2
             exit 1
           fi
 

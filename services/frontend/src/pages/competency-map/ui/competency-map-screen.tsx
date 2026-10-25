@@ -7,7 +7,7 @@ import {
   SegmentedControl,
   Text,
 } from '@radix-ui/themes'
-import { useBlocker, useNavigate } from '@tanstack/react-router'
+import { Link, useBlocker, useNavigate } from '@tanstack/react-router'
 import {
   CheckCircle2,
   Clock,
@@ -304,7 +304,12 @@ function CompetencyMapAdmin({
         <AccountMenu canLogout={false} />
       </header>
       <main className={styles.content}>
-        <DirectionNav audience="admin" active="exam" subjectId={subjectId} />
+        <Flex justify="between" align="center" wrap="wrap" gap="3">
+          <Button asChild variant="soft">
+            <Link to="/admin/courses">{t('adminCourses.backToCourses')}</Link>
+          </Button>
+          <DirectionNav audience="admin" active="exam" subjectId={subjectId} />
+        </Flex>
         <div className={styles.intro}>
           <Heading as="h1" size="8">
             {t('courseGraph.title')}

@@ -3,16 +3,15 @@ import { useTranslation } from 'react-i18next'
 import styles from './direction-nav.module.scss'
 
 type Direction = 'learn' | 'exam'
+type DirectionNavProps =
+  | { active: Direction; audience: 'admin'; subjectId: string }
+  | { active: Direction; audience: 'student'; subjectId?: string }
 
 export function DirectionNav({
   active,
   audience,
   subjectId,
-}: {
-  active: Direction
-  audience: 'admin' | 'student'
-  subjectId?: string
-}) {
+}: DirectionNavProps) {
   const { t } = useTranslation()
   return (
     <nav
@@ -26,22 +25,18 @@ export function DirectionNav({
       {audience === 'admin' ? (
         <>
           <Link
-            to={
-              subjectId
-                ? '/admin/learn/competency-map/$subjectId'
-                : '/admin/learn/competency-map'
-            }
-            params={subjectId ? { subjectId } : undefined}
+            to="/admin/courses/$subjectId"
+            params={{ subjectId }}
+            search={{}}
             className={styles.link}
             aria-current={active === 'learn' ? 'page' : undefined}
           >
             {t('directionNav.learnMaterials')}
           </Link>
           <Link
-            to={
-              subjectId ? '/admin/competency-map/$subjectId' : '/admin/courses'
-            }
-            params={subjectId ? { subjectId } : undefined}
+            to="/admin/courses/$subjectId"
+            params={{ subjectId }}
+            search={{ direction: 'exam' }}
             className={styles.link}
             aria-current={active === 'exam' ? 'page' : undefined}
           >

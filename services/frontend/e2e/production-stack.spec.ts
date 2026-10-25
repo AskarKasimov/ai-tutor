@@ -39,11 +39,9 @@ test('real production stack keeps student and admin sessions isolated', async ({
   await page.reload()
   await expect(page.getByRole('heading', { name: 'Курсы' })).toBeVisible()
 
-  await page.goto('/admin/learn/competency-map')
-  await expect(page).toHaveURL(/\/admin\/learn\/competency-map$/)
-  await expect(
-    page.getByRole('heading', { name: 'Карта компетенций' }),
-  ).toBeVisible()
+  await page.goto('/admin/courses')
+  await expect(page).toHaveURL(/\/admin\/courses$/)
+  await expect(page.getByRole('heading', { name: 'Курсы' })).toBeVisible()
   await expect
     .poll(() =>
       requests.some(

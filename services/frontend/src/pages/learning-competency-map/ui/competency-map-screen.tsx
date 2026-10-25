@@ -38,11 +38,7 @@ import styles from '@/pages/learning-competency-map/ui/competency-map.module.scs
 import { groupWarnings } from '../model/import-warnings'
 import { DirectionNav } from '@/widgets/direction-nav'
 
-export function CompetencyMapAdminScreen({
-  subjectId,
-}: {
-  subjectId?: string
-}) {
+export function CompetencyMapAdminScreen({ subjectId }: { subjectId: string }) {
   const { t } = useTranslation()
   const { user } = useAuth()
   const navigate = useNavigate()
@@ -66,16 +62,14 @@ function CompetencyMapAdmin({
   selectedSubjectId,
 }: {
   userId: string
-  selectedSubjectId?: string
+  selectedSubjectId: string
 }) {
   const { t } = useTranslation()
   const subjects = useSubjectsQuery(userId)
-  const subject = selectedSubjectId
-    ? subjects.data?.find((candidate) => candidate.id === selectedSubjectId)
-    : subjects.data?.length === 1
-      ? subjects.data[0]
-      : undefined
-  const subjectId = subject?.id ?? ''
+  const subject = subjects.data?.find(
+    (candidate) => candidate.id === selectedSubjectId,
+  )
+  const subjectId = selectedSubjectId
   const query = useCompetencyMapQuery(userId, subjectId)
   const upload = useImportCompetencyMapMutation(userId, subjectId)
   const [file, setFile] = useState<File | null>(null)
@@ -127,22 +121,13 @@ function CompetencyMapAdmin({
         <AccountMenu canLogout={false} />
       </header>
       <main className={styles.content}>
-        <DirectionNav
-          audience="admin"
-          active="learn"
-          subjectId={subjectId || undefined}
-        />
         <div className={styles.intro}>
           <Heading as="h1" size="8">
             {t('learningCompetencyMap.title')}
           </Heading>
           <Text as="p" color="gray">
             {t('learningCompetencyMap.importTitle')}.{' '}
-            {t(
-              subjectId
-                ? 'learningCompetencyMap.editSubtitle'
-                : 'learningCompetencyMap.subtitle',
-            )}
+            {t('learningCompetencyMap.editSubtitle')}
           </Text>
         </div>
         {subjects.isPending ? (
@@ -158,91 +143,29 @@ function CompetencyMapAdmin({
               {t('learningTrainer.retry')}
             </Button>
           </div>
-        ) : !subjectId ? (
-          <section className={styles.card} aria-labelledby="subject-title">
-            <Heading as="h2" size="5" id="subject-title">
-              {subjects.data?.length
-                ? t('learningCompetencyMap.chooseSharedCourse')
-                : t('learningCompetencyMap.noSharedCourses')}
-            </Heading>
-            <Text as="p" color="gray">
-              {subjects.data?.length
-                ? t(
-                    selectedSubjectId
-                      ? 'learningCompetencyMap.selectedCourseMissing'
-                      : 'learningCompetencyMap.chooseSharedCourseHelp',
-                  )
-                : t('learningCompetencyMap.createSharedCourseHelp')}
+        ) : !subject ? (
+          <section className={styles.card}>
+            <Text as="p" role="alert">
+              {t('learningCompetencyMap.selectedCourseMissing')}
             </Text>
-            {subjects.data?.length ? (
-              <Flex gap="2" wrap="wrap">
-                {subjects.data.map((item) => (
-                  <Flex key={item.id} gap="2" align="center">
-                    <Button asChild variant="soft">
-                      <Link
-                        to="/admin/learn/competency-map/$subjectId"
-                        params={{ subjectId: item.id }}
-                      >
-                        {item.name}
-                      </Link>
-                    </Button>
-                    <Badge color={item.learning_ready ? 'green' : 'gray'}>
-                      {t(
-                        item.learning_ready
-                          ? 'sharedCourse.ready'
-                          : 'sharedCourse.preparing',
-                      )}
-                    </Badge>
-                  </Flex>
-                ))}
-              </Flex>
-            ) : (
-              <Button asChild>
-                <Link to="/admin/courses">
-                  {t('learningCompetencyMap.goToSharedCourses')}
-                </Link>
-              </Button>
-            )}
+            <Button asChild>
+              <Link to="/admin/courses">{t('adminCourses.backToCourses')}</Link>
+            </Button>
           </section>
         ) : (
           <>
-            {subjects.data && subjects.data.length > 1 && (
-              <nav
-                className={styles.card}
-                aria-label={t('learningCompetencyMap.courseNavigation')}
-              >
-                <Heading as="h2" size="4">
-                  {t('learningCompetencyMap.courseNavigation')}
-                </Heading>
-                <Flex gap="2" wrap="wrap">
-                  {subjects.data.map((item) => (
-                    <Flex key={item.id} gap="2" align="center">
-                      <Button
-                        asChild
-                        variant={item.id === subjectId ? 'solid' : 'soft'}
-                      >
-                        <Link
-                          to="/admin/learn/competency-map/$subjectId"
-                          params={{ subjectId: item.id }}
-                          aria-current={
-                            item.id === subjectId ? 'page' : undefined
-                          }
-                        >
-                          {item.name}
-                        </Link>
-                      </Button>
-                      <Badge color={item.learning_ready ? 'green' : 'gray'}>
-                        {t(
-                          item.learning_ready
-                            ? 'sharedCourse.ready'
-                            : 'sharedCourse.preparing',
-                        )}
-                      </Badge>
-                    </Flex>
-                  ))}
-                </Flex>
-              </nav>
-            )}
+            <Flex justify="between" align="center" wrap="wrap" gap="3">
+              <Button asChild variant="soft">
+                <Link to="/admin/courses">
+                  {t('adminCourses.backToCourses')}
+                </Link>
+              </Button>
+              <DirectionNav
+                audience="admin"
+                active="learn"
+                subjectId={subjectId}
+              />
+            </Flex>
             <section className={styles.card} aria-labelledby="subject-title">
               <div className={styles.editHeading}>
                 <Text as="p" size="2" weight="medium" color="gray">

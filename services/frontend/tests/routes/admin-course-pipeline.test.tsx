@@ -221,7 +221,7 @@ function setup({
   vi.stubGlobal('fetch', calls)
   return calls
 }
-function open(path = '/admin/competency-map/subject-b') {
+function open(path = '/admin/courses/subject-b?direction=exam') {
   window.history.replaceState({}, '', path)
   const router = createRouter({
     context: { queryClient: createQueryClient() },
@@ -379,11 +379,10 @@ it('asks before leaving a course with an unsent material in the queue', async ()
     }),
   ).toBeVisible()
   fireEvent.click(screen.getByRole('button', { name: 'Остаться' }))
-  await waitFor(() =>
-    expect(router.state.location.pathname).toBe(
-      '/admin/competency-map/subject-b',
-    ),
-  )
+  await waitFor(() => {
+    expect(router.state.location.pathname).toBe('/admin/courses/subject-b')
+    expect(router.state.location.search).toEqual({ direction: 'exam' })
+  })
   expect(await screen.findByText('unsent.pdf')).toBeVisible()
   expect(screen.getByRole('heading', { name: 'Второй курс' })).toBeVisible()
 })

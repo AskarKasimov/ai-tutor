@@ -13,11 +13,8 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as ExamRouteImport } from './routes/exam'
 import { Route as LearnRouteImport } from './routes/learn'
 import { Route as LoginRouteImport } from './routes/login'
-import { Route as AdminCompetencyMapRouteImport } from './routes/admin.competency-map'
 import { Route as AdminCoursesRouteImport } from './routes/admin.courses'
-import { Route as AdminCompetencyMapSubjectIdRouteImport } from './routes/admin.competency-map.$subjectId'
-import { Route as AdminLearnCompetencyMapRouteImport } from './routes/admin.learn.competency-map'
-import { Route as AdminLearnCompetencyMapSubjectIdRouteImport } from './routes/admin.learn.competency-map.$subjectId'
+import { Route as AdminCoursesSubjectIdRouteImport } from './routes/admin.courses.$subjectId'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -39,55 +36,32 @@ const LoginRoute = LoginRouteImport.update({
   path: '/login',
   getParentRoute: () => rootRouteImport,
 } as any)
-const AdminCompetencyMapRoute = AdminCompetencyMapRouteImport.update({
-  id: '/admin/competency-map',
-  path: '/admin/competency-map',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const AdminCoursesRoute = AdminCoursesRouteImport.update({
   id: '/admin/courses',
   path: '/admin/courses',
   getParentRoute: () => rootRouteImport,
 } as any)
-const AdminCompetencyMapSubjectIdRoute =
-  AdminCompetencyMapSubjectIdRouteImport.update({
-    id: '/$subjectId',
-    path: '/$subjectId',
-    getParentRoute: () => AdminCompetencyMapRoute,
-  } as any)
-const AdminLearnCompetencyMapRoute = AdminLearnCompetencyMapRouteImport.update({
-  id: '/admin/learn/competency-map',
-  path: '/admin/learn/competency-map',
-  getParentRoute: () => rootRouteImport,
+const AdminCoursesSubjectIdRoute = AdminCoursesSubjectIdRouteImport.update({
+  id: '/$subjectId',
+  path: '/$subjectId',
+  getParentRoute: () => AdminCoursesRoute,
 } as any)
-const AdminLearnCompetencyMapSubjectIdRoute =
-  AdminLearnCompetencyMapSubjectIdRouteImport.update({
-    id: '/$subjectId',
-    path: '/$subjectId',
-    getParentRoute: () => AdminLearnCompetencyMapRoute,
-  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/exam': typeof ExamRoute
   '/learn': typeof LearnRoute
   '/login': typeof LoginRoute
-  '/admin/competency-map': typeof AdminCompetencyMapRouteWithChildren
-  '/admin/courses': typeof AdminCoursesRoute
-  '/admin/competency-map/$subjectId': typeof AdminCompetencyMapSubjectIdRoute
-  '/admin/learn/competency-map': typeof AdminLearnCompetencyMapRouteWithChildren
-  '/admin/learn/competency-map/$subjectId': typeof AdminLearnCompetencyMapSubjectIdRoute
+  '/admin/courses': typeof AdminCoursesRouteWithChildren
+  '/admin/courses/$subjectId': typeof AdminCoursesSubjectIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/exam': typeof ExamRoute
   '/learn': typeof LearnRoute
   '/login': typeof LoginRoute
-  '/admin/competency-map': typeof AdminCompetencyMapRouteWithChildren
-  '/admin/courses': typeof AdminCoursesRoute
-  '/admin/competency-map/$subjectId': typeof AdminCompetencyMapSubjectIdRoute
-  '/admin/learn/competency-map': typeof AdminLearnCompetencyMapRouteWithChildren
-  '/admin/learn/competency-map/$subjectId': typeof AdminLearnCompetencyMapSubjectIdRoute
+  '/admin/courses': typeof AdminCoursesRouteWithChildren
+  '/admin/courses/$subjectId': typeof AdminCoursesSubjectIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -95,11 +69,8 @@ export interface FileRoutesById {
   '/exam': typeof ExamRoute
   '/learn': typeof LearnRoute
   '/login': typeof LoginRoute
-  '/admin/competency-map': typeof AdminCompetencyMapRouteWithChildren
-  '/admin/courses': typeof AdminCoursesRoute
-  '/admin/competency-map/$subjectId': typeof AdminCompetencyMapSubjectIdRoute
-  '/admin/learn/competency-map': typeof AdminLearnCompetencyMapRouteWithChildren
-  '/admin/learn/competency-map/$subjectId': typeof AdminLearnCompetencyMapSubjectIdRoute
+  '/admin/courses': typeof AdminCoursesRouteWithChildren
+  '/admin/courses/$subjectId': typeof AdminCoursesSubjectIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -108,33 +79,24 @@ export interface FileRouteTypes {
     | '/exam'
     | '/learn'
     | '/login'
-    | '/admin/competency-map'
     | '/admin/courses'
-    | '/admin/competency-map/$subjectId'
-    | '/admin/learn/competency-map'
-    | '/admin/learn/competency-map/$subjectId'
+    | '/admin/courses/$subjectId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/exam'
     | '/learn'
     | '/login'
-    | '/admin/competency-map'
     | '/admin/courses'
-    | '/admin/competency-map/$subjectId'
-    | '/admin/learn/competency-map'
-    | '/admin/learn/competency-map/$subjectId'
+    | '/admin/courses/$subjectId'
   id:
     | '__root__'
     | '/'
     | '/exam'
     | '/learn'
     | '/login'
-    | '/admin/competency-map'
     | '/admin/courses'
-    | '/admin/competency-map/$subjectId'
-    | '/admin/learn/competency-map'
-    | '/admin/learn/competency-map/$subjectId'
+    | '/admin/courses/$subjectId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -142,9 +104,7 @@ export interface RootRouteChildren {
   ExamRoute: typeof ExamRoute
   LearnRoute: typeof LearnRoute
   LoginRoute: typeof LoginRoute
-  AdminCompetencyMapRoute: typeof AdminCompetencyMapRouteWithChildren
-  AdminCoursesRoute: typeof AdminCoursesRoute
-  AdminLearnCompetencyMapRoute: typeof AdminLearnCompetencyMapRouteWithChildren
+  AdminCoursesRoute: typeof AdminCoursesRouteWithChildren
 }
 
 declare module '@tanstack/react-router' {
@@ -177,13 +137,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LoginRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/admin/competency-map': {
-      id: '/admin/competency-map'
-      path: '/admin/competency-map'
-      fullPath: '/admin/competency-map'
-      preLoaderRoute: typeof AdminCompetencyMapRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/admin/courses': {
       id: '/admin/courses'
       path: '/admin/courses'
@@ -191,64 +144,34 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminCoursesRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/admin/competency-map/$subjectId': {
-      id: '/admin/competency-map/$subjectId'
+    '/admin/courses/$subjectId': {
+      id: '/admin/courses/$subjectId'
       path: '/$subjectId'
-      fullPath: '/admin/competency-map/$subjectId'
-      preLoaderRoute: typeof AdminCompetencyMapSubjectIdRouteImport
-      parentRoute: typeof AdminCompetencyMapRoute
-    }
-    '/admin/learn/competency-map': {
-      id: '/admin/learn/competency-map'
-      path: '/admin/learn/competency-map'
-      fullPath: '/admin/learn/competency-map'
-      preLoaderRoute: typeof AdminLearnCompetencyMapRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/admin/learn/competency-map/$subjectId': {
-      id: '/admin/learn/competency-map/$subjectId'
-      path: '/$subjectId'
-      fullPath: '/admin/learn/competency-map/$subjectId'
-      preLoaderRoute: typeof AdminLearnCompetencyMapSubjectIdRouteImport
-      parentRoute: typeof AdminLearnCompetencyMapRoute
+      fullPath: '/admin/courses/$subjectId'
+      preLoaderRoute: typeof AdminCoursesSubjectIdRouteImport
+      parentRoute: typeof AdminCoursesRoute
     }
   }
 }
 
-interface AdminCompetencyMapRouteChildren {
-  AdminCompetencyMapSubjectIdRoute: typeof AdminCompetencyMapSubjectIdRoute
+interface AdminCoursesRouteChildren {
+  AdminCoursesSubjectIdRoute: typeof AdminCoursesSubjectIdRoute
 }
 
-const AdminCompetencyMapRouteChildren: AdminCompetencyMapRouteChildren = {
-  AdminCompetencyMapSubjectIdRoute: AdminCompetencyMapSubjectIdRoute,
+const AdminCoursesRouteChildren: AdminCoursesRouteChildren = {
+  AdminCoursesSubjectIdRoute: AdminCoursesSubjectIdRoute,
 }
 
-const AdminCompetencyMapRouteWithChildren =
-  AdminCompetencyMapRoute._addFileChildren(AdminCompetencyMapRouteChildren)
-
-interface AdminLearnCompetencyMapRouteChildren {
-  AdminLearnCompetencyMapSubjectIdRoute: typeof AdminLearnCompetencyMapSubjectIdRoute
-}
-
-const AdminLearnCompetencyMapRouteChildren: AdminLearnCompetencyMapRouteChildren =
-  {
-    AdminLearnCompetencyMapSubjectIdRoute:
-      AdminLearnCompetencyMapSubjectIdRoute,
-  }
-
-const AdminLearnCompetencyMapRouteWithChildren =
-  AdminLearnCompetencyMapRoute._addFileChildren(
-    AdminLearnCompetencyMapRouteChildren,
-  )
+const AdminCoursesRouteWithChildren = AdminCoursesRoute._addFileChildren(
+  AdminCoursesRouteChildren,
+)
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ExamRoute: ExamRoute,
   LearnRoute: LearnRoute,
   LoginRoute: LoginRoute,
-  AdminCompetencyMapRoute: AdminCompetencyMapRouteWithChildren,
-  AdminCoursesRoute: AdminCoursesRoute,
-  AdminLearnCompetencyMapRoute: AdminLearnCompetencyMapRouteWithChildren,
+  AdminCoursesRoute: AdminCoursesRouteWithChildren,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

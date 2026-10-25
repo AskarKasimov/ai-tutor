@@ -9,7 +9,6 @@ import {
   useSubjectsQuery,
 } from '@/features/subject-selection'
 import styles from './admin-courses.module.scss'
-import { DirectionNav } from '@/widgets/direction-nav'
 
 export function AdminCoursesScreen() {
   const { t } = useTranslation()
@@ -40,7 +39,6 @@ export function AdminCoursesScreen() {
         <AccountMenu canLogout={false} />
       </header>
       <main className={styles.content}>
-        <DirectionNav audience="admin" active="exam" />
         <div className={styles.intro}>
           <div>
             <Heading as="h1" size="8">
@@ -121,7 +119,7 @@ export function AdminCoursesScreen() {
               <Link
                 className={styles.course}
                 key={course.id}
-                to="/admin/competency-map/$subjectId"
+                to="/admin/courses/$subjectId"
                 params={{ subjectId: course.id }}
               >
                 <div className={styles.courseName}>

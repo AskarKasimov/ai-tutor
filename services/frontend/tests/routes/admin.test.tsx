@@ -71,7 +71,7 @@ const sampleMaterials = [
 ]
 
 // The admin panel is the /admin site; the browser address decides the portal.
-function renderApp(path = '/admin/competency-map/subject-a') {
+function renderApp(path = '/admin/courses/subject-a?direction=exam') {
   window.history.replaceState({}, '', path)
   const router = createRouter({
     context: { queryClient: createQueryClient() },
@@ -150,6 +150,22 @@ function backend(
     }
     if (url.endsWith('/subjects') && !init?.method)
       return new Response(JSON.stringify(activeSubjects))
+    if (url.includes('/learn/subjects/') && url.endsWith('/competency-map'))
+      return Response.json({ revision: 0, imported_at: null, competencies: [] })
+    if (
+      url.includes('/learn/admin/subjects/') &&
+      url.endsWith('/competency-map/import')
+    )
+      return Response.json({
+        revision: 1,
+        imported_at: 2,
+        competency_count: 0,
+        constituent_count: 0,
+        outcome_count: 0,
+        task_count: 0,
+        unparsed_task_cell_count: 0,
+        warnings: [],
+      })
     if (url.endsWith('/admin/material-kinds'))
       return Response.json([
         { code: 'lecture', label: 'Лекция' },
@@ -354,7 +370,7 @@ it.each(['/admin', '/admin/'])('opens the course list at %s', async (path) => {
   const router = renderApp(path)
   expect(
     await screen.findByRole('heading', {
-      name: 'Материалы для экзамена',
+      name: 'Курсы',
       level: 1,
     }),
   ).toBeVisible()
@@ -366,8 +382,87 @@ it.each(['/admin', '/admin/'])('opens the course list at %s', async (path) => {
     screen.getByRole('heading', { name: 'Статистика', level: 2 }),
   ).toBeVisible()
   fireEvent.click(screen.getByRole('link', { name: /Машинное обучение/ }))
-  expect(await screen.findByText('lecture1.pdf')).toBeVisible()
-  expect(router.state.location.pathname).toBe('/admin/competency-map/subject-a')
+  expect(
+    await screen.findByRole('heading', { name: 'Материалы для обучения' }),
+  ).toBeVisible()
+  expect(router.state.location.pathname).toBe('/admin/courses/subject-a')
+})
+
+it('opens course preparation after the common course list and keeps its ID across tabs', async () => {
+  backend()
+  const router = renderApp('/admin/courses')
+  expect(
+    await screen.findByRole('heading', { name: 'Курсы', level: 1 }),
+  ).toBeVisible()
+  expect(
+    screen.queryByRole('navigation', { name: 'Разделы администрирования' }),
+  ).not.toBeInTheDocument()
+  fireEvent.click(
+    await screen.findByRole('link', { name: /Машинное обучение/ }),
+  )
+  expect(
+    await screen.findByRole('heading', {
+      name: 'Материалы для обучения',
+      level: 1,
+    }),
+  ).toBeVisible()
+  expect(router.state.location.pathname).toBe('/admin/courses/subject-a')
+  expect(
+    await screen.findByRole('heading', { name: 'Машинное обучение', level: 2 }),
+  ).toBeVisible()
+  const navigation = screen.getByRole('navigation', {
+    name: 'Разделы администрирования',
+  })
+  fireEvent.click(
+    within(navigation).getByRole('link', { name: 'Материалы для экзамена' }),
+  )
+  expect(
+    await screen.findByRole('heading', {
+      name: 'Материалы для экзамена',
+      level: 1,
+    }),
+  ).toBeVisible()
+  expect(
+    screen.getByRole('heading', { name: 'Машинное обучение', level: 2 }),
+  ).toBeVisible()
+  expect(router.state.location.pathname).toBe('/admin/courses/subject-a')
+  expect(router.state.location.search).toEqual({ direction: 'exam' })
+  fireEvent.click(screen.getByRole('link', { name: 'Ко всем курсам' }))
+  expect(
+    await screen.findByRole('heading', { name: 'Курсы', level: 1 }),
+  ).toBeVisible()
+  expect(router.state.location.pathname).toBe('/admin/courses')
+})
+
+it('imports a learning map only into the course selected in its route', async () => {
+  const fetch = backend()
+  renderApp('/admin/courses/subject-b')
+  expect(
+    await screen.findByRole('heading', { name: 'Статистика', level: 2 }),
+  ).toBeVisible()
+  const file = new File(['competency map'], 'map.csv', { type: 'text/csv' })
+  fireEvent.change(await screen.findByLabelText('Файл карты компетенций'), {
+    target: { files: [file] },
+  })
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Подтвердить изменения' }),
+  )
+  fireEvent.click(await screen.findByRole('button', { name: 'Перезаписать' }))
+  await waitFor(() =>
+    expect(
+      fetch.mock.calls.some(
+        ([url, request]) =>
+          url.endsWith(
+            '/learn/admin/subjects/subject-b/competency-map/import',
+          ) && request?.method === 'POST',
+      ),
+    ).toBe(true),
+  )
+  expect(
+    fetch.mock.calls.some(([url]) =>
+      url.endsWith('/learn/admin/subjects/subject-a/competency-map/import'),
+    ),
+  ).toBe(false)
 })
 
 it('does not mount the lesson while the current session is being checked', async () => {
@@ -457,7 +552,7 @@ it('shows the shared mode chooser to an admin account without entering admin', a
 
 it('denies students direct access to the admin screen without fetching materials', async () => {
   const fetch = backend({ user: { ...admin, role: 'student' } })
-  renderApp('/admin/competency-map/subject-a')
+  renderApp('/admin/courses/subject-a?direction=exam')
   expect(await screen.findByRole('alert')).toHaveTextContent(
     'Доступно только администраторам',
   )
@@ -483,7 +578,7 @@ it('shows the shared account without a logout in the admin panel', async () => {
 
 it('does not expose the upload form when the admin panel cannot sign in', async () => {
   const fetch = backend({ user: null, teacherFails: true })
-  renderApp('/admin/competency-map/subject-a')
+  renderApp('/admin/courses/subject-a?direction=exam')
   expect(await screen.findByRole('alert')).toHaveTextContent(
     'Не удалось открыть админ-панель.',
   )
@@ -515,7 +610,7 @@ it('restores the admin screen after reload with an expired access cookie', async
       throw new Error(`Unexpected request: ${url}`)
     }),
   )
-  renderApp('/admin/competency-map/subject-a')
+  renderApp('/admin/courses/subject-a?direction=exam')
   expect(
     await screen.findByRole('heading', { name: 'Материалы для экзамена' }),
   ).toBeVisible()
@@ -538,7 +633,7 @@ it('retries a failed session check without exposing the lesson', async () => {
 
 it('uploads lecture files and shows success message', async () => {
   const fetch = backend()
-  renderApp('/admin/competency-map/subject-a')
+  renderApp('/admin/courses/subject-a?direction=exam')
   const input = await screen.findByLabelText('Добавить PDF или ZIP')
   fireEvent.change(input, {
     target: {
@@ -573,7 +668,7 @@ it('blocks graph generation for legacy materials until their metadata is fixed',
   const fetch = backend({
     materials: [{ ...sampleMaterials[0], week: null, kind: null }],
   })
-  renderApp('/admin/competency-map/subject-a')
+  renderApp('/admin/courses/subject-a?direction=exam')
   expect(
     await screen.findByText('У 1 материалов не указаны неделя или тип.'),
   ).toBeVisible()
@@ -599,15 +694,16 @@ it('blocks graph generation for legacy materials until their metadata is fixed',
 
 it('clears staged PDFs when changing the selected course', async () => {
   backend()
-  const router = renderApp('/admin/competency-map/subject-a')
+  const router = renderApp('/admin/courses/subject-a?direction=exam')
   fireEvent.change(await screen.findByLabelText('Добавить PDF или ZIP'), {
     target: { files: [new File(['%PDF-1.7 content'], 'subject-a.pdf')] },
   })
   expect(await screen.findByText('subject-a.pdf')).toBeVisible()
   act(() => {
     void router.navigate({
-      to: '/admin/competency-map/$subjectId',
+      to: '/admin/courses/$subjectId',
       params: { subjectId: 'subject-b' },
+      search: { direction: 'exam' },
     })
   })
   const leaveDialog = await screen.findByRole('alertdialog', {
@@ -624,7 +720,7 @@ it('clears staged PDFs when changing the selected course', async () => {
 
 it('allows changing uploaded material metadata without re-uploading the PDF', async () => {
   const fetch = backend()
-  renderApp('/admin/competency-map/subject-a')
+  renderApp('/admin/courses/subject-a?direction=exam')
   expect(await screen.findByRole('spinbutton', { name: 'Неделя' })).toHaveValue(
     1,
   )
@@ -671,7 +767,7 @@ it('allows changing uploaded material metadata without re-uploading the PDF', as
 
 it('restores the confirmed week and retries a rejected metadata update', async () => {
   const fetch = backend({ metadataFailCount: 1 })
-  renderApp('/admin/competency-map/subject-a')
+  renderApp('/admin/courses/subject-a?direction=exam')
   const week = await screen.findByRole('spinbutton', { name: 'Неделя' })
   fireEvent.change(week, { target: { value: '2' } })
   fireEvent.click(screen.getByRole('button', { name: 'Сохранить' }))
@@ -698,7 +794,7 @@ it('restores the confirmed week and retries a rejected metadata update', async (
 
 it('shows a rejected kind update and retries it', async () => {
   const fetch = backend({ metadataFailCount: 1 })
-  renderApp('/admin/competency-map/subject-a')
+  renderApp('/admin/courses/subject-a?direction=exam')
   fireEvent.click(
     await screen.findByRole('combobox', {
       name: 'Тип материала',
@@ -724,7 +820,7 @@ it('shows material blockers when an existing graph cannot be rebuilt', async () 
     materials: [{ ...sampleMaterials[0], week: null, kind: null }],
     graph: { version: 'v1', nodes: [] },
   })
-  renderApp('/admin/competency-map/subject-a')
+  renderApp('/admin/courses/subject-a?direction=exam')
   expect(
     await screen.findByText('Пересборка недоступна из-за материалов'),
   ).toBeVisible()
@@ -762,7 +858,7 @@ it('keeps the last successful publication date visible after a failed rebuild', 
       error: { code: 'GRAPH_BUILD_FAILED', message: 'Сборка не удалась.' },
     },
   })
-  renderApp('/admin/competency-map/subject-a')
+  renderApp('/admin/courses/subject-a?direction=exam')
   expect(await screen.findByText('Сборка не удалась.')).toBeVisible()
   expect(screen.getByText(/Последняя успешная публикация: /)).toHaveTextContent(
     '2026',
@@ -775,7 +871,7 @@ it('blocks graph generation while a material upload is pending', async () => {
   backend({
     uploadGate: new Promise<void>((resolve) => (finishUpload = resolve)),
   })
-  renderApp('/admin/competency-map/subject-a')
+  renderApp('/admin/courses/subject-a?direction=exam')
   const buildButton = await screen.findByRole('button', {
     name: /Собрать граф тем/,
   })
@@ -812,7 +908,7 @@ it('shows the durable active build stage recovered from the server', async () =>
       error: null,
     },
   })
-  renderApp('/admin/competency-map/subject-a')
+  renderApp('/admin/courses/subject-a?direction=exam')
   expect(await screen.findByText('Подготовка задачи…')).toBeVisible()
   expect(screen.getByText('Собираем граф тем')).toBeVisible()
   expect(
@@ -839,7 +935,7 @@ it('shows the stage, its steps and the share done of a running build', async () 
       },
     },
   })
-  renderApp('/admin/competency-map/subject-a')
+  renderApp('/admin/courses/subject-a?direction=exam')
   expect(
     await screen.findByText(
       'Проверка пререквизитов · этап 3 из 5 · шаг 2 из 8',
@@ -866,7 +962,7 @@ it('requires confirmation before replacing an existing graph', async () => {
       ],
     },
   })
-  renderApp('/admin/competency-map/subject-a')
+  renderApp('/admin/courses/subject-a?direction=exam')
   expect(
     await screen.findByText('Курс готов для студентов. В графе тем: 1.'),
   ).toBeVisible()
@@ -894,7 +990,7 @@ it('requires confirmation before replacing an existing graph', async () => {
 
 it('toggles markdown text preview for an uploaded material', async () => {
   backend()
-  renderApp('/admin/competency-map/subject-a')
+  renderApp('/admin/courses/subject-a?direction=exam')
   const previewBtn = await screen.findByRole('button', {
     name: 'Предпросмотр',
   })
@@ -909,7 +1005,7 @@ it('toggles markdown text preview for an uploaded material', async () => {
 
 it('downloads raw material file using downloadCourseMaterialRaw', async () => {
   const fetch = backend()
-  renderApp('/admin/competency-map/subject-a')
+  renderApp('/admin/courses/subject-a?direction=exam')
   const downloadBtn = await screen.findByRole('button', {
     name: 'Скачать lecture1.pdf',
   })
@@ -923,7 +1019,7 @@ it('downloads raw material file using downloadCourseMaterialRaw', async () => {
 
 it('deletes an uploaded material after confirmation', async () => {
   const fetch = backend()
-  renderApp('/admin/competency-map/subject-a')
+  renderApp('/admin/courses/subject-a?direction=exam')
   const deleteBtn = await screen.findByRole('button', {
     name: 'Удалить',
   })
@@ -949,7 +1045,7 @@ it('deletes an uploaded material after confirmation', async () => {
 
 it('shows a warning dialog and keeps failed files available for retry', async () => {
   backend({ partialUpload: true })
-  renderApp('/admin/competency-map/subject-a')
+  renderApp('/admin/courses/subject-a?direction=exam')
   const input = await screen.findByLabelText('Добавить PDF или ZIP')
   fireEvent.change(input, {
     target: {
@@ -974,7 +1070,7 @@ it('shows a warning dialog and keeps failed files available for retry', async ()
 
 it('shows download error alert when downloading raw material fails', async () => {
   backend({ downloadFails: true })
-  renderApp('/admin/competency-map/subject-a')
+  renderApp('/admin/courses/subject-a?direction=exam')
   const downloadBtn = await screen.findByRole('button', {
     name: 'Скачать lecture1.pdf',
   })
@@ -985,7 +1081,7 @@ it('shows download error alert when downloading raw material fails', async () =>
 it('expands a PDF-only ZIP into independently editable queue rows', async () => {
   const { zipSync, strToU8 } = await import('fflate')
   backend()
-  renderApp('/admin/competency-map/subject-a')
+  renderApp('/admin/courses/subject-a?direction=exam')
   const input = await screen.findByLabelText('Добавить PDF или ZIP')
   const archive = new File(
     [
@@ -1014,7 +1110,7 @@ it('expands a PDF-only ZIP into independently editable queue rows', async () => 
 it('rejects a mixed ZIP without adding any PDFs to the queue', async () => {
   const { zipSync, strToU8 } = await import('fflate')
   backend()
-  renderApp('/admin/competency-map/subject-a')
+  renderApp('/admin/courses/subject-a?direction=exam')
   const input = await screen.findByLabelText('Добавить PDF или ZIP')
   const archive = new File(
     [

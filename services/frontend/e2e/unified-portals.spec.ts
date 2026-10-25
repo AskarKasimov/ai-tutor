@@ -180,67 +180,50 @@ test('one browser context switches modes while student and admin sessions stay s
   ).toHaveAttribute('aria-current', 'page')
   await page.screenshot({ path: testInfo.outputPath('exam-home.png') })
 
-  await page.goto('/admin/learn/competency-map')
-  await expect(page).toHaveURL(/\/admin\/learn\/competency-map$/)
+  await page.goto('/admin/courses')
+  await expect(page).toHaveURL(/\/admin\/courses$/)
   await expect(
-    page.getByRole('heading', { name: 'Материалы для обучения' }),
+    page.getByRole('heading', { name: 'Курсы', level: 1 }),
   ).toBeVisible()
-  const learnNav = page.getByRole('navigation', {
-    name: 'Разделы администрирования',
-  })
   await expect(
-    learnNav.getByRole('link', { name: 'Материалы для обучения' }),
-  ).toHaveAttribute('aria-current', 'page')
+    page.getByRole('navigation', { name: 'Разделы администрирования' }),
+  ).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Новый курс' })).toBeVisible()
+  await expect(page.getByRole('link', { name: subject.name })).toBeVisible()
   await expect(
-    learnNav.getByRole('link', { name: 'Материалы для экзамена' }),
-  ).toHaveAttribute('href', '/admin/courses')
-  await expect(
-    page.getByRole('heading', {
-      name: 'Выберите курс для подготовки материалов',
-    }),
+    page.getByRole('link', { name: otherSubject.name }),
   ).toBeVisible()
-  await expect(page.getByLabel('Файл карты компетенций')).toHaveCount(0)
-  await page.goto('/admin/learn/competency-map/missing-course')
+  await page.goto(`/admin/courses/missing-course`)
   await expect(
     page.getByText(
       'Курс из ссылки недоступен. Выберите существующий курс из списка.',
     ),
   ).toBeVisible()
   await expect(page.getByLabel('Файл карты компетенций')).toHaveCount(0)
-  await page.goto('/admin/learn/competency-map')
+  await page.goto('/admin/courses')
   await page.getByRole('link', { name: otherSubject.name }).click()
-  await expect(page).toHaveURL(
-    new RegExp(`/admin/learn/competency-map/${otherSubject.id}$`),
-  )
+  await expect(page).toHaveURL(new RegExp(`/admin/courses/${otherSubject.id}$`))
   await expect(
     page.getByRole('heading', { name: otherSubject.name }),
   ).toBeVisible()
   await expect(page.getByLabel('Файл карты компетенций')).toBeVisible()
-  await page.goto(`/admin/learn/competency-map/${subject.id}`)
+  await page.goto(`/admin/courses/${subject.id}`)
+  await expect(page).toHaveURL(new RegExp(`/admin/courses/${subject.id}$`))
   await expect(page.getByRole('heading', { name: subject.name })).toBeVisible()
   await expect(page.getByText('Материалы готовы').last()).toBeVisible()
-  await expect(
-    page.getByRole('button', {
-      name: /Создать курс|Добавление нового предмета/,
-    }),
-  ).toHaveCount(0)
-  expect(
-    calls.some(
-      (call) =>
-        call.method === 'POST' &&
-        ['/learn/admin/subjects', '/exam/admin/subjects'].includes(call.path),
-    ),
-  ).toBe(false)
-  await page.goto(`/admin/learn/competency-map/${subject.id}`)
-  await expect(page.getByRole('heading', { name: subject.name })).toBeVisible()
-  await page.reload()
-  await expect(page.getByRole('heading', { name: subject.name })).toBeVisible()
+  await expect(page.getByLabel('Файл карты компетенций')).toBeVisible()
   await expect(page.getByLabel('Добавить PDF или ZIP')).toHaveCount(0)
+  await expect(
+    page.getByRole('navigation', { name: 'Разделы администрирования' }),
+  ).toHaveCount(1)
   await expect(
     page
       .getByRole('navigation', { name: 'Разделы администрирования' })
       .getByRole('link', { name: 'Материалы для обучения' }),
   ).toHaveAttribute('aria-current', 'page')
+  await page.reload()
+  await expect(page.getByRole('heading', { name: subject.name })).toBeVisible()
+  await expect(page.getByLabel('Файл карты компетенций')).toBeVisible()
   await page.screenshot({ path: testInfo.outputPath('learn-admin.png') })
   await expect
     .poll(() =>
@@ -264,46 +247,52 @@ test('one browser context switches modes while student and admin sessions stay s
   await expect(page.getByLabel('Пароль')).toBeVisible()
 
   await page.goto('/admin/courses')
-  await expect(page).toHaveURL(/\/admin\/courses$/)
   await expect(
-    page.getByRole('heading', { name: 'Материалы для экзамена' }),
+    page.getByRole('heading', { name: 'Курсы', level: 1 }),
   ).toBeVisible()
+  await expect(
+    page.getByRole('navigation', { name: 'Разделы администрирования' }),
+  ).toHaveCount(0)
   await expect(page.getByText('Экзамен: готов')).toBeVisible()
   await expect(page.getByText('Обучение: готово')).toBeVisible()
-  const examNav = page.getByRole('navigation', {
-    name: 'Разделы администрирования',
-  })
-  await expect(
-    examNav.getByRole('link', { name: 'Материалы для экзамена' }),
-  ).toHaveAttribute('aria-current', 'page')
-  await expect(
-    examNav.getByRole('link', { name: 'Материалы для обучения' }),
-  ).toHaveAttribute('href', '/admin/learn/competency-map')
   await page.getByRole('link', { name: subject.name }).click()
-  await expect(page).toHaveURL(/\/admin\/competency-map\/subject-1$/)
+  await expect(page).toHaveURL(new RegExp(`/admin/courses/${subject.id}$`))
+  await expect(
+    page.getByRole('heading', { name: 'Материалы для обучения' }),
+  ).toBeVisible()
+  await expect(page.getByLabel('Файл карты компетенций')).toBeVisible()
+  await expect(page.getByLabel('Добавить PDF или ZIP')).toHaveCount(0)
+  await page
+    .getByRole('navigation', { name: 'Разделы администрирования' })
+    .getByRole('link', { name: 'Материалы для экзамена' })
+    .click()
+  await expect(page).toHaveURL(
+    new RegExp(`/admin/courses/${subject.id}\\?direction=exam$`),
+  )
+  await expect(page.getByRole('heading', { name: subject.name })).toBeVisible()
   await expect(
     page.getByRole('heading', { name: 'Материалы для экзамена' }),
   ).toBeVisible()
   await expect(page.getByLabel('Добавить PDF или ZIP')).toBeVisible()
   await expect(page.getByLabel('Файл карты компетенций')).toHaveCount(0)
-  await page
-    .getByRole('navigation', { name: 'Разделы администрирования' })
-    .getByRole('link', { name: 'Материалы для обучения' })
-    .click()
-  await expect(page).toHaveURL(/\/admin\/learn\/competency-map\/subject-1$/)
-  await expect(page.getByRole('heading', { name: subject.name })).toBeVisible()
-  await page
-    .getByRole('navigation', { name: 'Разделы администрирования' })
-    .getByRole('link', { name: 'Материалы для экзамена' })
-    .click()
-  await expect(page).toHaveURL(/\/admin\/competency-map\/subject-1$/)
   await page.reload()
+  await expect(page).toHaveURL(
+    new RegExp(`/admin/courses/${subject.id}\\?direction=exam$`),
+  )
   await expect(page.getByLabel('Добавить PDF или ZIP')).toBeVisible()
   await expect(
     page
       .getByRole('navigation', { name: 'Разделы администрирования' })
       .getByRole('link', { name: 'Материалы для экзамена' }),
   ).toHaveAttribute('aria-current', 'page')
+  await page.getByRole('link', { name: 'Ко всем курсам' }).click()
+  await expect(page).toHaveURL(/\/admin\/courses$/)
+  await expect(page.getByRole('heading', { name: 'Курсы' })).toBeVisible()
+  await page.getByRole('link', { name: subject.name }).click()
+  await expect(page).toHaveURL(new RegExp(`/admin/courses/${subject.id}$`))
+  await expect(
+    page.getByRole('heading', { name: 'Материалы для обучения' }),
+  ).toBeVisible()
   await page.screenshot({ path: testInfo.outputPath('exam-admin.png') })
   await expect
     .poll(() =>

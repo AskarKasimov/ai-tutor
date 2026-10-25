@@ -12,6 +12,7 @@ import (
 	"net/http/cookiejar"
 	"net/http/httptest"
 	"os"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -316,6 +317,31 @@ func TestOpenAPIResponses(t *testing.T) {
 		t.Fatalf("deleted diagnostic source: %d %s", deletedSource.Code, deletedSource.Body.String())
 	}
 	check("GET", sourceContract, deletedSource)
+
+	// Every learning operation is protected by the same real auth middleware.
+	// Hit each generated route without credentials so a misspelled/unregistered
+	// path fails as 404 instead of being mistaken for an implemented operation.
+	parameters := regexp.MustCompile(`\{[^}]+\}`)
+	for path, node := range paths {
+		if !strings.HasPrefix(path, "/learn/") {
+			continue
+		}
+		for method := range node.(map[string]any) {
+			if !strings.Contains(" get post put patch delete head options ", " "+method+" ") {
+				continue
+			}
+			requestPath := parameters.ReplaceAllString(path, "untrusted-id")
+			request := httptest.NewRequest(strings.ToUpper(method), "https://api.example"+requestPath, strings.NewReader("{}"))
+			response := httptest.NewRecorder()
+			f.app.Handler().ServeHTTP(response, request)
+			if response.Code != http.StatusUnauthorized {
+				t.Errorf("learning route must be registered and require auth: %s %s = %d %s", method, path, response.Code, response.Body.String())
+				continue
+			}
+			check(strings.ToUpper(method), path, response)
+			checked[path] = true
+		}
+	}
 	check("POST", "/auth/refresh", f.request("POST", "/auth/refresh", "", refresh))
 	check("POST", "/auth/logout", f.request("POST", "/auth/logout", "", refresh))
 	check("GET", "/health", f.request("GET", "/health", ""))
@@ -328,7 +354,7 @@ func TestOpenAPIResponses(t *testing.T) {
 			}
 		}
 		if implemented && !checked[path] {
-			t.Errorf("no verified successful response for %s", path)
+			t.Errorf("no verified handler response for %s", path)
 		}
 	}
 }

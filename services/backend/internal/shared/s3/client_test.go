@@ -81,6 +81,10 @@ func TestS3GenericObjectOperations(t *testing.T) {
 
 func TestS3OpenObjectReportsMissingObjects(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodHead && r.URL.Path == "/b" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
 		w.Header().Set("Content-Type", "application/xml")
 		w.WriteHeader(http.StatusNotFound)
 		_, _ = w.Write([]byte(`<Error><Code>NoSuchKey</Code><Message>missing</Message></Error>`))

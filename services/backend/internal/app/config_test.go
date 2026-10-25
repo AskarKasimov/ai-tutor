@@ -123,6 +123,7 @@ func testConfig() Config {
 		MaxUploadBytes: 25 * 1024 * 1024,
 		S3Region:       "us-east-1", S3Bucket: "task-audio-test", S3AccessKey: "test-access", S3SecretKey: "test-secret",
 		S3PathStyle: true, S3Timeout: 30 * time.Second, S3CreateBucket: true,
+		AudioWorkers: 1, AudioPollInterval: time.Second, LearningTutorEnabled: true, TutorTaskMaxChars: 16000, TutorHistoryMaxChars: 16000, TutorSummaryMaxChars: 4000,
 	}
 }
 

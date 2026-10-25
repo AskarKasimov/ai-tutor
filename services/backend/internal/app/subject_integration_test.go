@@ -63,6 +63,83 @@ VALUES ('subject:learn', 'Предмет обучения', 1, 'learn')`); err !
 	}
 }
 
+func TestLearningAndExamSubjectCatalogsAreModeScoped(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	admin := f.admin(t)
+	learnCreated := f.request(http.MethodPost, "/learn/admin/subjects", `{"name":"Курс только для обучения"}`, admin)
+	if learnCreated.Code != http.StatusCreated {
+		t.Fatalf("create learning subject: %d %s", learnCreated.Code, learnCreated.Body.String())
+	}
+	var learning struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(learnCreated.Body.Bytes(), &learning); err != nil || learning.ID == "" {
+		t.Fatalf("learning subject response: %s (%v)", learnCreated.Body.String(), err)
+	}
+	examCreated := f.request(http.MethodPost, "/admin/subjects", `{"name":"Курс только для экзамена"}`, admin)
+	if examCreated.Code != http.StatusCreated {
+		t.Fatalf("create exam subject: %d %s", examCreated.Code, examCreated.Body.String())
+	}
+	var exam struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(examCreated.Body.Bytes(), &exam); err != nil || exam.ID == "" {
+		t.Fatalf("exam subject response: %s (%v)", examCreated.Body.String(), err)
+	}
+	var persistedLearnMode, persistedExamMode string
+	if err := f.pool.QueryRow(context.Background(), "SELECT mode FROM subjects WHERE id=$1", learning.ID).Scan(&persistedLearnMode); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.pool.QueryRow(context.Background(), "SELECT mode FROM subjects WHERE id=$1", exam.ID).Scan(&persistedExamMode); err != nil {
+		t.Fatal(err)
+	}
+	if persistedLearnMode != "learn" || persistedExamMode != "exam" {
+		t.Fatalf("subject modes: learn=%q exam=%q", persistedLearnMode, persistedExamMode)
+	}
+	checkCatalog := func(path, expectedID, excludedID string) {
+		t.Helper()
+		response := f.request(http.MethodGet, path, "", admin)
+		var subjects []struct {
+			ID string `json:"id"`
+		}
+		if response.Code != http.StatusOK || json.Unmarshal(response.Body.Bytes(), &subjects) != nil {
+			t.Fatalf("catalog %s: %d %s", path, response.Code, response.Body.String())
+		}
+		seenExpected, seenExcluded := false, false
+		for _, item := range subjects {
+			seenExpected = seenExpected || item.ID == expectedID
+			seenExcluded = seenExcluded || item.ID == excludedID
+		}
+		if !seenExpected || seenExcluded {
+			t.Fatalf("catalog %s contains expected=%t excluded=%t: %+v", path, seenExpected, seenExcluded, subjects)
+		}
+	}
+	checkCatalog("/learn/subjects", learning.ID, exam.ID)
+	checkCatalog("/subjects", exam.ID, learning.ID)
+	for _, path := range []string{
+		"/admin/subjects/" + learning.ID + "/materials",
+		"/admin/subjects/" + learning.ID + "/graph",
+	} {
+		if response := f.request(http.MethodGet, path, "", admin); response.Code != http.StatusNotFound {
+			t.Fatalf("exam endpoint accepted learning subject %s: %d %s", path, response.Code, response.Body.String())
+		}
+	}
+	wrongModeGraphImport := upload(f, "/admin/subjects/"+learning.ID+"/graph/competency-map", "file", "map.xlsx", "application/octet-stream", []byte("not an xlsx"), admin)
+	if wrongModeGraphImport.Code != http.StatusNotFound {
+		t.Fatalf("exam graph import accepted learning subject: %d %s", wrongModeGraphImport.Code, wrongModeGraphImport.Body.String())
+	}
+	mapCSV := []byte("Ком;Сост;ОР;Задание 1;Критерии 1\nК;С;О;Вопрос;Критерии\n")
+	wrongModeImport := upload(f, "/learn/admin/subjects/"+exam.ID+"/competency-map/import", "file", "map.csv", "text/csv", mapCSV, admin)
+	if wrongModeImport.Code != http.StatusNotFound {
+		t.Fatalf("learning import accepted exam subject: %d %s", wrongModeImport.Code, wrongModeImport.Body.String())
+	}
+	wrongModeStart := f.keyed(http.MethodPost, "/learn/variants", "wrong-mode", `{"subject_id":"`+exam.ID+`"}`, admin)
+	if wrongModeStart.Code != http.StatusNotFound {
+		t.Fatalf("learning variant accepted exam subject: %d %s", wrongModeStart.Code, wrongModeStart.Body.String())
+	}
+}
+
 // Without the graph fixture a course is ready only with its own published graph.
 func TestSubjectCatalogShowsOnlyReadySubjectsToStudents(t *testing.T) {
 	t.Parallel()

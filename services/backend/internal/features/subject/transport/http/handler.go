@@ -52,6 +52,23 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 	httpx.JSON(w, http.StatusCreated, created)
 }
 
+// CreateLearning exposes the same subject operation in the learning namespace.
+// @Summary Создать предмет обучения
+// @Description Создать предмет в каталоге режима обучения. Доступно только admin.
+// @ID createLearningSubject
+// @Tags Предметы обучения
+// @Security accessCookie
+// @Accept json
+// @Produce json
+// @Param request body CreateRequest true "Название предмета"
+// @Success 201 {object} subject.Subject
+// @Failure 401 {object} fault.Error
+// @Failure 403 {object} fault.Error
+// @Failure 422 {object} fault.Error
+// @Failure 503 {object} fault.Error
+// @Router /learn/admin/subjects [post]
+func (h *Handler) CreateLearning(w http.ResponseWriter, r *http.Request) { h.Create(w, r) }
+
 // List handles GET /subjects.
 // @Summary Прочитать каталог предметов
 // @Description Студентам возвращаются только готовые курсы: с фикстурой графа — сразу после создания, без неё — с опубликованным графом курса. Admin видит все предметы и признак готовности.
@@ -79,3 +96,16 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 	}
 	httpx.JSON(w, http.StatusOK, items)
 }
+
+// ListLearning returns only learning-mode subjects.
+// @Summary Прочитать каталог обучения
+// @Description Прочитать каталог предметов режима обучения.
+// @ID listLearningSubjects
+// @Tags Предметы обучения
+// @Security accessCookie
+// @Produce json
+// @Success 200 {array} subject.Subject
+// @Failure 401 {object} fault.Error
+// @Failure 503 {object} fault.Error
+// @Router /learn/subjects [get]
+func (h *Handler) ListLearning(w http.ResponseWriter, r *http.Request) { h.List(w, r) }

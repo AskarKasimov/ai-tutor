@@ -4,7 +4,8 @@
 -- (a material is still processing or failed, or the course has none) or a
 -- build is already in progress.
 INSERT INTO course_graph_jobs(subject_id, source, fingerprint, updated_at)
-SELECT i.subject_id, 'materials', i.fingerprint, sqlc.arg(now)::bigint FROM course_graph_inputs i WHERE i.subject_id = sqlc.arg(subject_id)
+SELECT i.subject_id, 'materials', i.fingerprint, sqlc.arg(now)::bigint FROM course_graph_inputs i
+WHERE i.subject_id = sqlc.arg(subject_id) AND EXISTS (SELECT 1 FROM subjects s WHERE s.id=i.subject_id AND s.mode='exam')
 ON CONFLICT(subject_id) DO UPDATE SET source=excluded.source, fingerprint=excluded.fingerprint,
     status='pending', attempts=0, available_at=0, lease_until=0, lease_token='', error_message='', updated_at=excluded.updated_at
 WHERE course_graph_jobs.status NOT IN ('pending', 'processing')
@@ -14,7 +15,8 @@ RETURNING subject_id;
 -- The admin imported a competency map: queue a build of it unless a build of
 -- either source is already queued or running.
 INSERT INTO course_graph_jobs(subject_id, source, fingerprint, updated_at)
-SELECT m.subject_id, 'competency_map', m.fingerprint, sqlc.arg(now)::bigint FROM course_graph_maps m WHERE m.subject_id = sqlc.arg(subject_id)
+SELECT m.subject_id, 'competency_map', m.fingerprint, sqlc.arg(now)::bigint FROM course_graph_maps m
+WHERE m.subject_id = sqlc.arg(subject_id) AND EXISTS (SELECT 1 FROM subjects s WHERE s.id=m.subject_id AND s.mode='exam')
 ON CONFLICT(subject_id) DO UPDATE SET source=excluded.source, fingerprint=excluded.fingerprint,
     status='pending', attempts=0, available_at=0, lease_until=0, lease_token='', error_message='', updated_at=excluded.updated_at
 WHERE course_graph_jobs.status NOT IN ('pending', 'processing')
@@ -22,7 +24,8 @@ RETURNING subject_id;
 
 -- name: SaveCourseGraphMap :exec
 INSERT INTO course_graph_maps(subject_id, filename, sheet, fingerprint, graph, uploaded_at)
-VALUES (sqlc.arg(subject_id), sqlc.arg(filename), sqlc.arg(sheet), sqlc.arg(fingerprint), sqlc.arg(graph)::jsonb, sqlc.arg(now)::bigint)
+SELECT sqlc.arg(subject_id), sqlc.arg(filename), sqlc.arg(sheet), sqlc.arg(fingerprint), sqlc.arg(graph)::jsonb, sqlc.arg(now)::bigint
+WHERE EXISTS (SELECT 1 FROM subjects s WHERE s.id=sqlc.arg(subject_id) AND s.mode='exam')
 ON CONFLICT(subject_id) DO UPDATE SET filename=excluded.filename, sheet=excluded.sheet,
     fingerprint=excluded.fingerprint, graph=excluded.graph, uploaded_at=excluded.uploaded_at;
 
@@ -40,6 +43,7 @@ WHERE i.subject_id=j.subject_id AND i.source=j.source AND j.subject_id=(SELECT c
     WHERE ((c.status='pending' AND c.available_at<=sqlc.arg(now))
        OR (c.status='processing' AND c.lease_until<=sqlc.arg(now)))
       AND EXISTS(SELECT 1 FROM course_graph_job_inputs r WHERE r.subject_id=c.subject_id AND r.source=c.source)
+      AND EXISTS(SELECT 1 FROM subjects s WHERE s.id=c.subject_id AND s.mode='exam')
     ORDER BY c.updated_at FOR UPDATE OF c SKIP LOCKED LIMIT 1)
 RETURNING j.*;
 
@@ -86,18 +90,18 @@ SELECT s.id, coalesce(j.status,'not_requested')::text AS status,
 FROM subjects s LEFT JOIN course_graph_jobs j ON j.subject_id=s.id
 LEFT JOIN course_graphs g ON g.subject_id=s.id
 LEFT JOIN course_graph_inputs i ON i.subject_id=s.id
-LEFT JOIN course_graph_maps m ON m.subject_id=s.id WHERE s.id=$1;
+LEFT JOIN course_graph_maps m ON m.subject_id=s.id WHERE s.id=$1 AND s.mode='exam';
 
 -- name: ReadPublishedCourseGraph :one
 -- The graph Geek examines by. It stays published while its source changes
 -- until the next build; a graph of materials goes with the last of them, a
 -- graph of a competency map needs none.
-SELECT g.graph FROM course_graphs g
+SELECT g.graph FROM course_graphs g JOIN subjects s ON s.id=g.subject_id AND s.mode='exam'
 WHERE g.subject_id=$1 AND (g.source='competency_map' OR EXISTS(SELECT 1 FROM subject_materials m WHERE m.subject_id=g.subject_id));
 
 -- name: ListPublishedCourseGraphs :many
 -- Every graph Geek examines by, under the condition of ReadPublishedCourseGraph;
 -- the newest first, so their questions are voiced first.
-SELECT g.graph FROM course_graphs g
+SELECT g.graph FROM course_graphs g JOIN subjects s ON s.id=g.subject_id AND s.mode='exam'
 WHERE g.source='competency_map' OR EXISTS(SELECT 1 FROM subject_materials m WHERE m.subject_id=g.subject_id)
 ORDER BY g.updated_at DESC, g.subject_id;

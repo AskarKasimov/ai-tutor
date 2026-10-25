@@ -15,15 +15,21 @@ import (
 
 	llmgatewayv1 "github.com/AskarKasimov/ai-tutor/services/shared/gen/go/llmgateway/v1"
 
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/audioasset"
 	authapp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/auth/application"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/features/auth/infrastructure/argon2"
 	authpg "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/auth/infrastructure/postgres"
 	authhttp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/auth/transport/http"
+	competencyapp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/competency/application"
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/features/competency/infrastructure/csvparser"
+	competencypg "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/competency/infrastructure/postgres"
+	competencyhttp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/competency/transport/http"
 	graphapp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/coursegraph/application"
 	graphapi "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/coursegraph/infrastructure/courseapi"
 	graphpg "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/coursegraph/infrastructure/postgres"
 	graphxlsx "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/coursegraph/infrastructure/xlsx"
 	graphhttp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/coursegraph/transport/http"
+	diagnosticpg "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/diagnostic/infrastructure/postgres"
 	geekapp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/geek/application"
 	geekgraph "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/geek/infrastructure/graph"
 	geekllm "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/geek/infrastructure/llm"
@@ -38,6 +44,13 @@ import (
 	subjectapp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/subject/application"
 	subjectpg "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/subject/infrastructure/postgres"
 	subjecthttp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/subject/transport/http"
+	taskaudioapp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/taskaudio/application"
+	taskaudiopg "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/taskaudio/infrastructure/postgres"
+	taskaudios3 "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/taskaudio/infrastructure/s3"
+	variantgenapp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/variantgen/application"
+	variantgenpg "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/variantgen/infrastructure/postgres"
+	variantgenrandom "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/variantgen/infrastructure/random"
+	variantgenhttp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/variantgen/transport/http"
 	voiceapp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/voice/application"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/features/voice/infrastructure/modelapi"
 	voicepg "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/voice/infrastructure/postgres"
@@ -68,7 +81,17 @@ type App struct {
 	// so concurrent misses of one question are synthesized once.
 	speech *geekapp.SpeechCache
 	// warmer voices prepared questions before students ask for them.
-	warmer *geekapp.Warmer
+	warmer            *geekapp.Warmer
+	variantRepository *variantgenpg.Repository
+	diagnosticStore   *diagnosticpg.Store
+	audioWorker       interface {
+		Run(context.Context) error
+		ProcessOne(context.Context) (bool, error)
+		Regenerate(context.Context, string) (audioasset.Asset, error)
+		Prioritize(context.Context, string) error
+	}
+	audioStorage  taskaudioapp.Storage
+	gatewayClient llmgatewayv1.GatewayClient
 }
 
 // materialWorkers is how many materials each processing stage handles at
@@ -104,6 +127,8 @@ func New(cfg Config, pool *pgxpool.Pool, logger *zap.Logger) (*App, error) {
 			CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 		},
 	}
+	a.variantRepository = variantgenpg.New(pool)
+	a.diagnosticStore = diagnosticpg.New(pool)
 	storage, err := s3.New(s3.Config{
 		Endpoint: cfg.S3Endpoint, Region: cfg.S3Region, Bucket: cfg.S3Bucket,
 		AccessKey: cfg.S3AccessKey, SecretKey: cfg.S3SecretKey,
@@ -114,11 +139,15 @@ func New(cfg Config, pool *pgxpool.Pool, logger *zap.Logger) (*App, error) {
 	}
 	a.storage = storage
 	a.materialsStorage = &materialsStorageAdapter{storage: storage, bucket: cfg.S3Bucket}
+	audioStorage := taskaudios3.New(storage)
+	a.audioStorage = audioStorage
+	a.audioWorker = taskaudioapp.NewWorker(taskaudiopg.New(pool), audioStorage, a.models(), taskaudioapp.WorkerConfig{Concurrency: cfg.AudioWorkers, PollInterval: cfg.AudioPollInterval, VoiceTimeout: cfg.VoiceTimeout, S3Timeout: cfg.S3Timeout, Bucket: cfg.S3Bucket})
 	examiner, conn, err := geekllm.Dial(cfg.LLMGatewayAddress, cfg.LLMTimeout)
 	if err != nil {
 		return nil, err
 	}
 	a.examiner, a.gateway = examiner, conn
+	a.gatewayClient = llmgatewayv1.NewGatewayClient(conn)
 
 	materialRepository := materialspg.New(pool)
 	materialsOCR := materialsocr.New(cfg.CourseGraphURL, cfg.CourseGraphTimeout)
@@ -178,6 +207,7 @@ func (a *App) RunBackground(ctx context.Context) error {
 		group.Go(func() error { return a.cleaningWorker.Run(ctx) })
 	}
 	group.Go(func() error { return a.graphWorker.Run(ctx) })
+	group.Go(func() error { return a.audioWorker.Run(ctx) })
 	warmCtx := httpx.WithLogger(ctx, a.logger.With(zap.String("worker", "speech_warmer")))
 	group.Go(func() error { return a.warmer.Run(warmCtx) })
 	group.Go(func() error {
@@ -230,6 +260,9 @@ func (a *App) Handler() http.Handler {
 		security.IDGenerator{}, a.now, geekapp.Config{MaxQuestions: a.cfg.GeekMaxQuestions})
 	geekService.SetRawMaterials(geekgraph.NewRaw(a.pool, a.materialsStorage))
 	geekHandlers := geekhttp.New(geekService)
+	learningSubjects := subjecthttp.New(subjectapp.New(subjectpg.NewLearning(a.pool), security.IDGenerator{}, a.now))
+	competencyHandlers := competencyhttp.New(competencyapp.New(competencypg.New(a.pool), &csvparser.Parser{}, a.now), a.cfg.MaxUploadBytes)
+	variantHandlers := variantgenhttp.New(variantgenapp.New(a.variantRepository, variantgenrandom.Chooser{}, security.IDGenerator{}, a.now))
 
 	mux := http.NewServeMux()
 	examMux := http.NewServeMux()
@@ -240,16 +273,16 @@ func (a *App) Handler() http.Handler {
 	mux.HandleFunc("POST /auth/logout", authHandlers.Logout)
 	mux.HandleFunc("GET /auth/me", authHandlers.Me)
 	examMux.Handle("GET /admin/material-kinds", protect(auth, http.HandlerFunc(materialsHandlers.ListKinds)))
-	examMux.Handle("PATCH /admin/subjects/{subject_id}/materials/{material_id}", protect(auth, http.HandlerFunc(materialsHandlers.UpdateMaterialMetadata)))
-	examMux.Handle("PUT /admin/subjects/{subject_id}/materials/{material_id}/raw", protect(auth, http.HandlerFunc(materialsHandlers.ReplaceMaterial)))
-	examMux.Handle("POST /admin/subjects/{subject_id}/materials", protect(auth, http.HandlerFunc(materialsHandlers.UploadMaterials)))
-	examMux.Handle("GET /admin/subjects/{subject_id}/materials", protect(auth, http.HandlerFunc(materialsHandlers.ListMaterials)))
+	examMux.Handle("PATCH /admin/subjects/{subject_id}/materials/{material_id}", protect(auth, subjectpg.RequireMode(a.pool, "exam", http.HandlerFunc(materialsHandlers.UpdateMaterialMetadata))))
+	examMux.Handle("PUT /admin/subjects/{subject_id}/materials/{material_id}/raw", protect(auth, subjectpg.RequireMode(a.pool, "exam", http.HandlerFunc(materialsHandlers.ReplaceMaterial))))
+	examMux.Handle("POST /admin/subjects/{subject_id}/materials", protect(auth, subjectpg.RequireMode(a.pool, "exam", http.HandlerFunc(materialsHandlers.UploadMaterials))))
+	examMux.Handle("GET /admin/subjects/{subject_id}/materials", protect(auth, subjectpg.RequireMode(a.pool, "exam", http.HandlerFunc(materialsHandlers.ListMaterials))))
 	graphHandlers := graphhttp.New(a.graphWorker)
-	examMux.Handle("GET /admin/subjects/{subject_id}/graph", protect(auth, http.HandlerFunc(graphHandlers.Read)))
-	examMux.Handle("POST /admin/subjects/{subject_id}/graph/build", protect(auth, http.HandlerFunc(graphHandlers.Build)))
-	examMux.Handle("POST /admin/subjects/{subject_id}/graph/competency-map", protect(auth, http.HandlerFunc(graphHandlers.ImportMap)))
-	examMux.Handle("DELETE /admin/subjects/{subject_id}/materials/{material_id}", protect(auth, http.HandlerFunc(materialsHandlers.DeleteMaterial)))
-	examMux.Handle("GET /admin/subjects/{subject_id}/materials/{material_id}/raw", protect(auth, http.HandlerFunc(materialsHandlers.DownloadRaw)))
+	examMux.Handle("GET /admin/subjects/{subject_id}/graph", protect(auth, subjectpg.RequireMode(a.pool, "exam", http.HandlerFunc(graphHandlers.Read))))
+	examMux.Handle("POST /admin/subjects/{subject_id}/graph/build", protect(auth, subjectpg.RequireMode(a.pool, "exam", http.HandlerFunc(graphHandlers.Build))))
+	examMux.Handle("POST /admin/subjects/{subject_id}/graph/competency-map", protect(auth, subjectpg.RequireMode(a.pool, "exam", http.HandlerFunc(graphHandlers.ImportMap))))
+	examMux.Handle("DELETE /admin/subjects/{subject_id}/materials/{material_id}", protect(auth, subjectpg.RequireMode(a.pool, "exam", http.HandlerFunc(materialsHandlers.DeleteMaterial))))
+	examMux.Handle("GET /admin/subjects/{subject_id}/materials/{material_id}/raw", protect(auth, subjectpg.RequireMode(a.pool, "exam", http.HandlerFunc(materialsHandlers.DownloadRaw))))
 	examMux.Handle("POST /admin/subjects", protect(auth, http.HandlerFunc(subjectHandlers.Create)))
 	mux.Handle("POST /voice/transcriptions", protect(auth, http.HandlerFunc(voiceHandlers.Transcribe)))
 	mux.Handle("POST /voice/syntheses", protect(auth, http.HandlerFunc(voiceHandlers.Synthesize)))
@@ -262,6 +295,10 @@ func (a *App) Handler() http.Handler {
 	examMux.Handle("GET /diagnostic-sessions/{id}/materials/{material_id}/raw", protect(auth, http.HandlerFunc(geekHandlers.RawMaterial)))
 	examMux.Handle("GET /diagnostic-sessions/{id}/turns/{turn_id}/audio", protect(auth, http.HandlerFunc(geekHandlers.TurnAudio)))
 	mux.Handle("/exam/", http.StripPrefix("/exam", examMux))
+
+	learnMux := http.NewServeMux()
+	a.registerLearningRoutes(learnMux, auth, voice, learningSubjects, competencyHandlers, variantHandlers)
+	mux.Handle("/learn/", http.StripPrefix("/learn", learnMux))
 	mux.HandleFunc("GET /health", a.health)
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(r.Context(), w, fault.New(fault.NotFound, "NOT_FOUND", "Ресурс не найден."))

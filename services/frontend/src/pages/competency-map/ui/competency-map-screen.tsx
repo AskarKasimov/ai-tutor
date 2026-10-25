@@ -37,6 +37,7 @@ import {
 } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
+  CompetencyMapApiError,
   downloadCourseMaterialRaw,
   type CourseMaterial,
   type CourseMaterialKindOption,
@@ -121,10 +122,27 @@ function CompetencyMapAdmin({
   const { t, i18n } = useTranslation()
   const navigate = useNavigate()
   const subjects = useSubjectsQuery(userId)
+  const refetchSubjects = subjects.refetch
   const subject = subjects.data?.find((candidate) => candidate.id === subjectId)
 
   // Course materials state and mutations
   const materialsQuery = useSubjectMaterialsQuery(userId, subjectId)
+  const missingMaterialsCourse =
+    subject !== undefined &&
+    materialsQuery.error instanceof CompetencyMapApiError &&
+    materialsQuery.error.status === 404
+
+  useEffect(() => {
+    if (!missingMaterialsCourse) return
+    void refetchSubjects().then((result) => {
+      if (
+        result.isSuccess &&
+        !result.isError &&
+        !result.data.some((candidate) => candidate.id === subjectId)
+      )
+        void navigate({ to: '/', replace: true })
+    })
+  }, [missingMaterialsCourse, navigate, refetchSubjects, subjectId])
   const materialKindsQuery = useCourseMaterialKindsQuery(userId)
   const materialKinds = materialKindsQuery.data ?? []
   const queue = useMaterialUploadQueue(userId, subjectId, materialKinds)
@@ -297,6 +315,7 @@ function CompetencyMapAdmin({
       active="exam"
       subjectId={subjectId}
       subjectName={subject?.name}
+      courseMissing={subjects.isSuccess && !subjects.isError && !subject}
       ready={subject?.exam_ready}
       title={t('courseGraph.title')}
       description={t('courseGraph.subtitle')}
@@ -314,16 +333,7 @@ function CompetencyMapAdmin({
             {t('trainer.retry')}
           </Button>
         </div>
-      ) : !subject ? (
-        <section className={styles.card}>
-          <Text as="p" role="alert">
-            {t('courseGraph.courseNotFound')}
-          </Text>
-          <Button onClick={() => void navigate({ to: '/admin/courses' })}>
-            {t('courseGraph.backToCourses')}
-          </Button>
-        </section>
-      ) : (
+      ) : !subject ? null : (
         <>
           <nav
             className={styles.pipeline}

@@ -86,6 +86,11 @@ function backend(
   options: {
     user?: typeof admin | null
     subjects?: typeof subjects
+    subjectsGate?: Promise<void>
+    subjectsFail?: boolean
+    materials404?: boolean
+    removeCourseOnMaterials404?: boolean
+    learningMap404?: boolean
     teacherFails?: boolean
     materials?: typeof sampleMaterials
     partialUpload?: boolean
@@ -148,10 +153,17 @@ function backend(
       signedIn = false
       return new Response(null, { status: 204 })
     }
-    if (url.endsWith('/subjects') && !init?.method)
+    if (url.endsWith('/subjects') && !init?.method) {
+      await options.subjectsGate
+      if (options.subjectsFail)
+        return Response.json({ message: 'Сервер недоступен.' }, { status: 503 })
       return new Response(JSON.stringify(activeSubjects))
-    if (url.includes('/learn/subjects/') && url.endsWith('/competency-map'))
+    }
+    if (url.includes('/learn/subjects/') && url.endsWith('/competency-map')) {
+      if (options.learningMap404)
+        return Response.json({ message: 'Карта не найдена.' }, { status: 404 })
       return Response.json({ revision: 0, imported_at: null, competencies: [] })
+    }
     if (
       url.includes('/learn/admin/subjects/') &&
       url.endsWith('/competency-map/import')
@@ -198,6 +210,11 @@ function backend(
       url.endsWith('/materials') &&
       !init?.method
     ) {
+      if (options.materials404) {
+        if (options.removeCourseOnMaterials404)
+          activeSubjects.splice(0, activeSubjects.length)
+        return Response.json({ message: 'Курс не найден.' }, { status: 404 })
+      }
       return new Response(JSON.stringify(activeMaterials))
     }
     if (
@@ -432,6 +449,81 @@ it('opens course preparation after the common course list and keeps its ID acros
     await screen.findByRole('heading', { name: 'Курсы', level: 1 }),
   ).toBeVisible()
   expect(router.state.location.pathname).toBe('/admin/courses')
+})
+
+it.each([
+  ['/admin/courses/missing-course', 'learn'],
+  ['/admin/courses/missing-course?direction=exam', 'exam'],
+])('replaces an unavailable %s course with the home route', async (path) => {
+  backend({ subjects: [] })
+  const router = renderApp(path)
+  await waitFor(() => expect(router.state.location.pathname).toBe('/'))
+  expect(
+    screen.queryByRole('heading', { name: 'missing-course', level: 1 }),
+  ).not.toBeInTheDocument()
+  expect(
+    screen.queryByText(/курс из ссылки недоступен/i),
+  ).not.toBeInTheDocument()
+})
+
+it('does not redirect while checking a course or when catalog request fails', async () => {
+  let releaseCatalog!: () => void
+  const pendingCatalog = new Promise<void>((resolve) => {
+    releaseCatalog = resolve
+  })
+  backend({ subjectsGate: pendingCatalog })
+  const router = renderApp('/admin/courses/missing-course')
+  await screen.findByRole('heading', { name: 'Загружаем курс…', level: 1 })
+  expect(router.state.location.pathname).toBe('/admin/courses/missing-course')
+  releaseCatalog()
+  await screen.findByRole('heading', { name: 'Выберите режим', level: 1 })
+  expect(router.state.location.pathname).toBe('/')
+
+  backend({ subjectsFail: true })
+  const failedRouter = renderApp('/admin/courses/missing-course?direction=exam')
+  await screen.findByText('Не удалось загрузить предмет.')
+  expect(failedRouter.state.location.pathname).toBe(
+    '/admin/courses/missing-course',
+  )
+  expect(
+    screen.getByRole('button', { name: 'Попробовать снова' }),
+  ).toBeVisible()
+})
+
+it('replaces a missing detail with home so Back does not return to that detail', async () => {
+  backend({ subjects: [] })
+  const router = renderApp('/admin/courses')
+  await screen.findByRole('heading', { name: 'Курсы', level: 1 })
+  await act(async () => {
+    await router.navigate({
+      to: '/admin/courses/$subjectId',
+      params: { subjectId: 'missing-course' },
+    })
+  })
+  await waitFor(() => expect(router.state.location.pathname).toBe('/'))
+  await act(async () => router.history.back())
+  await waitFor(() =>
+    expect(router.state.location.pathname).toBe('/admin/courses'),
+  )
+  expect(router.state.location.pathname).not.toBe(
+    '/admin/courses/missing-course',
+  )
+})
+
+it('rechecks the common catalog when an exam materials endpoint reports a missing course', async () => {
+  backend({ materials404: true, removeCourseOnMaterials404: true })
+  const router = renderApp('/admin/courses/subject-a?direction=exam')
+  await waitFor(() => expect(router.state.location.pathname).toBe('/'))
+})
+
+it('does not redirect when a learning resource is missing but its course still exists', async () => {
+  backend({ learningMap404: true })
+  const router = renderApp('/admin/courses/subject-a')
+  await screen.findByText('Не удалось загрузить текущую карту.')
+  expect(router.state.location.pathname).toBe('/admin/courses/subject-a')
+  expect(
+    screen.getByRole('heading', { name: 'Машинное обучение', level: 1 }),
+  ).toBeVisible()
 })
 
 it('imports a learning map only into the course selected in its route', async () => {

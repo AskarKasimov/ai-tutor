@@ -194,13 +194,17 @@ test('one browser context switches modes while student and admin sessions stay s
     page.getByRole('link', { name: otherSubject.name }),
   ).toBeVisible()
   await page.goto(`/admin/courses/missing-course`)
+  await expect(page).toHaveURL(/\/$/)
   await expect(
-    page.getByText(
-      'Курс из ссылки недоступен. Выберите существующий курс из списка.',
-    ),
+    page.getByRole('heading', { name: 'Выберите режим' }),
   ).toBeVisible()
   await expect(page.getByLabel('Файл карты компетенций')).toHaveCount(0)
-  await page.goto('/admin/courses')
+  await page.goBack()
+  await expect(page).toHaveURL(/\/admin\/courses$/)
+  await page.goto('/admin/courses/missing-course?direction=exam')
+  await expect(page).toHaveURL(/\/$/)
+  await page.goBack()
+  await expect(page).toHaveURL(/\/admin\/courses$/)
   await page.getByRole('link', { name: otherSubject.name }).click()
   await expect(page).toHaveURL(new RegExp(`/admin/courses/${otherSubject.id}$`))
   await expect(

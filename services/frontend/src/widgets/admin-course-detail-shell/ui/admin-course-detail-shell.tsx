@@ -1,7 +1,9 @@
 import type { PropsWithChildren } from 'react'
 import { Badge, Button, Heading, Text } from '@radix-ui/themes'
 import { Link } from '@tanstack/react-router'
+import { useNavigate } from '@tanstack/react-router'
 import { ShieldCheck } from 'lucide-react'
+import { useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { AccountMenu } from '@/features/auth'
 import styles from './admin-course-detail-shell.module.scss'
@@ -12,6 +14,7 @@ type Props = PropsWithChildren<{
   active: Direction
   subjectId: string
   subjectName?: string
+  courseMissing?: boolean
   ready?: boolean
   title: string
   description: string
@@ -21,12 +24,21 @@ export function AdminCourseDetailShell({
   active,
   subjectId,
   subjectName,
+  courseMissing = false,
   ready,
   title,
   description,
   children,
 }: Props) {
   const { t } = useTranslation()
+  const navigate = useNavigate()
+
+  useEffect(() => {
+    if (courseMissing) void navigate({ to: '/', replace: true })
+  }, [courseMissing, navigate])
+
+  if (courseMissing) return null
+
   return (
     <div className={styles.page} data-admin-screen>
       <header className={styles.header}>
@@ -43,7 +55,7 @@ export function AdminCourseDetailShell({
               {t('adminCourses.courseLabel')}
             </Text>
             <Heading as="h1" size="7" id="course-name">
-              {subjectName ?? subjectId}
+              {subjectName ?? t('adminCourses.courseLoading')}
             </Heading>
           </div>
           <div className={styles.courseNavigation}>

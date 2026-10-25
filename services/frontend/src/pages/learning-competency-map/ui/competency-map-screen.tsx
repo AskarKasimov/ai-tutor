@@ -6,7 +6,7 @@ import {
   Table,
   Text,
 } from '@radix-ui/themes'
-import { Link, useNavigate } from '@tanstack/react-router'
+import { useNavigate } from '@tanstack/react-router'
 import {
   Check,
   CheckCircle2,
@@ -21,7 +21,7 @@ import {
   Upload,
   X,
 } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { CompetencyMapApiError } from '@/entities/learning-competency-map'
 import { useAuth } from '@/features/auth'
@@ -62,6 +62,7 @@ function CompetencyMapAdmin({
   selectedSubjectId: string
 }) {
   const { t } = useTranslation()
+  const navigate = useNavigate()
   const subjects = useSubjectsQuery(userId)
   const subject = subjects.data?.find(
     (candidate) => candidate.id === selectedSubjectId,
@@ -69,6 +70,23 @@ function CompetencyMapAdmin({
   const subjectId = selectedSubjectId
   const query = useCompetencyMapQuery(userId, subjectId)
   const upload = useImportCompetencyMapMutation(userId, subjectId)
+  const refetchSubjects = subjects.refetch
+  const missingMapCourse =
+    subject !== undefined &&
+    query.error instanceof CompetencyMapApiError &&
+    query.error.status === 404
+
+  useEffect(() => {
+    if (!missingMapCourse) return
+    void refetchSubjects().then((result) => {
+      if (
+        result.isSuccess &&
+        !result.isError &&
+        !result.data.some((candidate) => candidate.id === selectedSubjectId)
+      )
+        void navigate({ to: '/', replace: true })
+    })
+  }, [missingMapCourse, navigate, refetchSubjects, selectedSubjectId])
   const [file, setFile] = useState<File | null>(null)
   const [fileError, setFileError] = useState<string | null>(null)
 
@@ -113,6 +131,7 @@ function CompetencyMapAdmin({
       active="learn"
       subjectId={subjectId}
       subjectName={subject?.name}
+      courseMissing={subjects.isSuccess && !subjects.isError && !subject}
       ready={subject?.learning_ready}
       title={t('learningCompetencyMap.title')}
       description={`${t('learningCompetencyMap.importTitle')}. ${t('learningCompetencyMap.editSubtitle')}`}
@@ -130,16 +149,7 @@ function CompetencyMapAdmin({
             {t('learningTrainer.retry')}
           </Button>
         </div>
-      ) : !subject ? (
-        <section className={styles.card}>
-          <Text as="p" role="alert">
-            {t('learningCompetencyMap.selectedCourseMissing')}
-          </Text>
-          <Button asChild>
-            <Link to="/admin/courses">{t('adminCourses.backToCourses')}</Link>
-          </Button>
-        </section>
-      ) : (
+      ) : !subject ? null : (
         <>
           <section className={styles.card} aria-labelledby="learning-map-state">
             <Heading as="h3" size="4" id="learning-map-state">

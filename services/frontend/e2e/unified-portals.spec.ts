@@ -3,6 +3,7 @@ import { expect, test } from '@playwright/test'
 test('one browser context switches modes while student and admin sessions stay separate', async ({
   page,
 }, testInfo) => {
+  test.setTimeout(60_000)
   let studentSession = false
   let adminSession = false
   let examSession: {

@@ -29,7 +29,7 @@ func (q *Queries) DeleteMaterialOCRJob(ctx context.Context, materialID string) e
 
 const deleteSubjectMaterial = `-- name: DeleteSubjectMaterial :exec
 DELETE FROM subject_materials material WHERE material.id=$1 AND material.subject_id=$2
-AND EXISTS (SELECT 1 FROM subjects WHERE id=material.subject_id AND mode='exam')
+AND EXISTS (SELECT 1 FROM subjects WHERE id=material.subject_id)
 `
 
 type DeleteSubjectMaterialParams struct {
@@ -44,7 +44,7 @@ func (q *Queries) DeleteSubjectMaterial(ctx context.Context, arg DeleteSubjectMa
 
 const getRawSubjectMaterial = `-- name: GetRawSubjectMaterial :one
 SELECT material.s3_raw_key, material.filename FROM subject_materials material
-JOIN subjects subject ON subject.id=material.subject_id WHERE material.id=$1 AND subject.mode='exam'
+JOIN subjects subject ON subject.id=material.subject_id WHERE material.id=$1
 `
 
 type GetRawSubjectMaterialRow struct {
@@ -62,7 +62,7 @@ func (q *Queries) GetRawSubjectMaterial(ctx context.Context, id string) (GetRawS
 const getSubjectMaterialByID = `-- name: GetSubjectMaterialByID :one
 SELECT material.id, material.subject_id, material.filename, material.content_type, material.file_size, material.s3_raw_key, material.s3_parsed_key, material.parsed_text, material.char_count, material.status, material.error_message, material.created_at, material.updated_at, material.s3_ocr_key, material.ocr_report, material.week, material.kind
 FROM subject_materials material JOIN subjects subject ON subject.id=material.subject_id
-WHERE material.id=$1 AND subject.mode='exam'
+WHERE material.id=$1
 `
 
 func (q *Queries) GetSubjectMaterialByID(ctx context.Context, id string) (SubjectMaterial, error) {
@@ -95,7 +95,7 @@ INSERT INTO subject_materials (
     id, subject_id, filename, content_type, file_size, s3_raw_key, s3_parsed_key,
     parsed_text, char_count, status, error_message, created_at, updated_at, week, kind
 ) SELECT $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15
-WHERE EXISTS (SELECT 1 FROM subjects WHERE id=$2 AND mode='exam')
+WHERE EXISTS (SELECT 1 FROM subjects WHERE id=$2)
 RETURNING id, subject_id, filename, content_type, file_size, s3_raw_key, s3_parsed_key, parsed_text, char_count, status, error_message, created_at, updated_at, s3_ocr_key, ocr_report, week, kind
 `
 
@@ -190,7 +190,7 @@ func (q *Queries) ListMaterialKinds(ctx context.Context) ([]ListMaterialKindsRow
 const listSubjectMaterials = `-- name: ListSubjectMaterials :many
 SELECT material.id, material.subject_id, material.filename, material.content_type, material.file_size, material.s3_raw_key, material.s3_parsed_key, material.parsed_text, material.char_count, material.status, material.error_message, material.created_at, material.updated_at, material.s3_ocr_key, material.ocr_report, material.week, material.kind
 FROM subject_materials material JOIN subjects subject ON subject.id=material.subject_id
-WHERE material.subject_id=$1 AND subject.mode='exam' ORDER BY material.created_at DESC
+WHERE material.subject_id=$1 ORDER BY material.created_at DESC
 `
 
 func (q *Queries) ListSubjectMaterials(ctx context.Context, subjectID string) ([]SubjectMaterial, error) {
@@ -233,7 +233,7 @@ func (q *Queries) ListSubjectMaterials(ctx context.Context, subjectID string) ([
 
 const lockSubjectMaterial = `-- name: LockSubjectMaterial :one
 SELECT material.id FROM subject_materials material JOIN subjects subject ON subject.id=material.subject_id
-WHERE material.id=$1 AND subject.mode='exam' FOR UPDATE OF material
+WHERE material.id=$1 FOR UPDATE OF material
 `
 
 func (q *Queries) LockSubjectMaterial(ctx context.Context, id string) (string, error) {
@@ -245,7 +245,7 @@ func (q *Queries) LockSubjectMaterial(ctx context.Context, id string) (string, e
 const replaceSubjectMaterial = `-- name: ReplaceSubjectMaterial :one
 UPDATE subject_materials SET filename=$1,content_type=$2,file_size=$3,s3_raw_key=$4,s3_parsed_key=$5,s3_ocr_key='',ocr_report='{}'::jsonb,parsed_text='',char_count=0,status='pending',error_message=NULL,updated_at=$6
 WHERE subject_materials.id=$7 AND subject_materials.subject_id=$8
-  AND EXISTS (SELECT 1 FROM subjects WHERE id=subject_materials.subject_id AND mode='exam') RETURNING id, subject_id, filename, content_type, file_size, s3_raw_key, s3_parsed_key, parsed_text, char_count, status, error_message, created_at, updated_at, s3_ocr_key, ocr_report, week, kind
+  AND EXISTS (SELECT 1 FROM subjects WHERE id=subject_materials.subject_id) RETURNING id, subject_id, filename, content_type, file_size, s3_raw_key, s3_parsed_key, parsed_text, char_count, status, error_message, created_at, updated_at, s3_ocr_key, ocr_report, week, kind
 `
 
 type ReplaceSubjectMaterialParams struct {
@@ -296,7 +296,7 @@ func (q *Queries) ReplaceSubjectMaterial(ctx context.Context, arg ReplaceSubject
 const updateMaterialMetadata = `-- name: UpdateMaterialMetadata :one
 UPDATE subject_materials SET week=coalesce($1::integer,week), kind=coalesce($2::text,kind)
 WHERE subject_materials.id=$3 AND subject_materials.subject_id=$4
-  AND EXISTS (SELECT 1 FROM subjects WHERE id=subject_materials.subject_id AND mode='exam') RETURNING id, subject_id, filename, content_type, file_size, s3_raw_key, s3_parsed_key, parsed_text, char_count, status, error_message, created_at, updated_at, s3_ocr_key, ocr_report, week, kind
+  AND EXISTS (SELECT 1 FROM subjects WHERE id=subject_materials.subject_id) RETURNING id, subject_id, filename, content_type, file_size, s3_raw_key, s3_parsed_key, parsed_text, char_count, status, error_message, created_at, updated_at, s3_ocr_key, ocr_report, week, kind
 `
 
 type UpdateMaterialMetadataParams struct {

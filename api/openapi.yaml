@@ -2119,14 +2119,20 @@ components:
     subject.Subject:
       additionalProperties: false
       properties:
+        exam_ready:
+          type: boolean
         id:
           type: string
+        learning_ready:
+          type: boolean
         name:
           type: string
         ready:
           type: boolean
       required:
+        - exam_ready
         - id
+        - learning_ready
         - name
         - ready
       type: object
@@ -4702,7 +4708,7 @@ paths:
       x-implementation: implemented
   /learn/admin/subjects:
     post:
-      description: Создать предмет в каталоге режима обучения. Доступно только admin.
+      description: Совместимый адрес создания общей сущности курса. Новый интерфейс использует POST /exam/admin/subjects.
       operationId: createLearningSubject
       requestBody:
         content:
@@ -4746,7 +4752,7 @@ paths:
           description: Service Unavailable
       security:
         - accessCookie: []
-      summary: Создать предмет обучения
+      summary: Создать общий предмет
       tags:
         - Предметы обучения
       x-implementation: implemented

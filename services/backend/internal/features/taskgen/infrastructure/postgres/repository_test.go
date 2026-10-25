@@ -50,7 +50,7 @@ func setupTaskgenRepository(t *testing.T) (*Repository, *competencypostgres.Repo
 	if err := sharedpostgres.Migrate(ctx, pool); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := pool.Exec(ctx, `INSERT INTO subjects(id,name,created_at,mode) VALUES ('subject:test','Тестовый предмет',1,'learn')`); err != nil {
+	if _, err := pool.Exec(ctx, `INSERT INTO subjects(id,name,created_at) VALUES ('subject:test','Тестовый предмет',1)`); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := pool.Exec(ctx, `INSERT INTO users(id,email,password_hash,created_at) VALUES ('taskgen-test-user','taskgen-test@example.test','hash',1)`); err != nil {
@@ -226,7 +226,7 @@ func TestSubjectMaterialsWithSameNameAndGenerationContextStayIsolated(t *testing
 	if _, err := maps.Replace(ctx, "subject:test", userID, taskgenMap("A"), 10); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := pool.Exec(ctx, `INSERT INTO subjects(id,name,created_at,mode) VALUES ('subject:b','Subject B',1,'learn')`); err != nil {
+	if _, err := pool.Exec(ctx, `INSERT INTO subjects(id,name,created_at) VALUES ('subject:b','Subject B',1)`); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := maps.Replace(ctx, "subject:b", userID, taskgenMap("B"), 11); err != nil {

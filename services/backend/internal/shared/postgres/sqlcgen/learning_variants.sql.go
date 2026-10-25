@@ -10,7 +10,7 @@ import (
 )
 
 const learningFindSubjectForVariantList = `-- name: LearningFindSubjectForVariantList :one
-SELECT id FROM subjects WHERE id = $1 AND mode = 'learn'
+SELECT id FROM subjects WHERE id = $1
 `
 
 func (q *Queries) LearningFindSubjectForVariantList(ctx context.Context, id string) (string, error) {
@@ -185,7 +185,7 @@ func (q *Queries) LearningListVariantsByOwner(ctx context.Context, arg LearningL
 const learningLockSubjectForVariant = `-- name: LearningLockSubjectForVariant :one
 SELECT subject.id, subject.name, COALESCE(state.active_revision, 0)::bigint AS active_revision
 FROM subjects subject LEFT JOIN learning_subject_state state ON state.subject_id = subject.id
-WHERE subject.id = $1 AND subject.mode = 'learn' FOR SHARE OF subject
+WHERE subject.id = $1 FOR SHARE OF subject
 `
 
 type LearningLockSubjectForVariantRow struct {

@@ -49,7 +49,7 @@ func setupStore(t *testing.T) (*pgxpool.Pool, context.Context) {
 		t.Fatal(err)
 	}
 	if _, err := pool.Exec(ctx, `
-INSERT INTO subjects(id,name,created_at,mode) VALUES ('subject:test','Тестовый предмет',1,'learn');
+INSERT INTO subjects(id,name,created_at) VALUES ('subject:test','Тестовый предмет',1);
 INSERT INTO users(id,email,password_hash,created_at) VALUES
  ('diag-owner-a','diag-a@example.test','hash',1),
  ('diag-owner-b','diag-b@example.test','hash',1);

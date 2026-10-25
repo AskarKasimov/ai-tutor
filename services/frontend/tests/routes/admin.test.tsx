@@ -34,8 +34,20 @@ const admin = {
   created_at: 1791158400,
 }
 const subjects = [
-  { id: 'subject-a', name: 'Машинное обучение', ready: true },
-  { id: 'subject-b', name: 'Статистика', ready: false },
+  {
+    id: 'subject-a',
+    name: 'Машинное обучение',
+    ready: true,
+    learning_ready: true,
+    exam_ready: true,
+  },
+  {
+    id: 'subject-b',
+    name: 'Статистика',
+    ready: false,
+    learning_ready: false,
+    exam_ready: false,
+  },
 ]
 
 const sampleMaterials = [
@@ -145,7 +157,13 @@ function backend(
         { code: 'tutorial', label: 'Туториал' },
       ])
     if (url.endsWith('/admin/subjects') && init?.method === 'POST') {
-      const subject = { id: 'subject-c', name: 'Новый', ready: false }
+      const subject = {
+        id: 'subject-c',
+        name: 'Новый',
+        ready: false,
+        learning_ready: false,
+        exam_ready: false,
+      }
       activeSubjects.push(subject)
       return new Response(JSON.stringify(subject))
     }

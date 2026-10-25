@@ -68,8 +68,20 @@ function setup({
       ])
     if (url.endsWith('/subjects'))
       return Response.json([
-        { id: 'subject-a', name: 'Первый курс', ready: false },
-        { id: 'subject-b', name: 'Второй курс', ready: graphReady },
+        {
+          id: 'subject-a',
+          name: 'Первый курс',
+          ready: false,
+          learning_ready: false,
+          exam_ready: false,
+        },
+        {
+          id: 'subject-b',
+          name: 'Второй курс',
+          ready: graphReady,
+          learning_ready: false,
+          exam_ready: graphReady,
+        },
       ])
     if (url.endsWith('/materials') && init?.method === 'POST') {
       await uploadGate

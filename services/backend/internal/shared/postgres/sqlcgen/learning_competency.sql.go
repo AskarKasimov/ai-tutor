@@ -13,7 +13,7 @@ const learningCountExistingOutcomesForSubject = `-- name: LearningCountExistingO
 SELECT count(*)::integer FROM learning_outcomes outcome
 JOIN learning_constituents constituent ON constituent.id = outcome.constituent_id
 JOIN learning_competencies competency ON competency.id = constituent.competency_id
-JOIN subjects subject ON subject.id = $1::text AND subject.mode = 'learn'
+JOIN subjects subject ON subject.id = $1::text
 JOIN learning_subject_state state ON state.subject_id = subject.id AND state.active_revision = competency.revision
 WHERE outcome.id = ANY($2::text[])
 `
@@ -62,7 +62,7 @@ JOIN learning_tasks AS task ON task.generation_run_id = run.id
 JOIN learning_outcomes AS outcome ON outcome.id = run.outcome_id
 JOIN learning_constituents AS constituent ON constituent.id = outcome.constituent_id
 JOIN learning_competencies AS competency ON competency.id = constituent.competency_id
-JOIN subjects AS subject ON subject.id = $1::text AND subject.mode = 'learn'
+JOIN subjects AS subject ON subject.id = $1::text
 JOIN learning_subject_state state ON state.subject_id = subject.id AND state.active_revision = competency.revision
 WHERE run.outcome_id = $2::text AND run.request_key = $3::text
 `
@@ -110,7 +110,7 @@ FROM learning_outcomes AS outcome
 JOIN learning_constituents AS constituent ON constituent.id = outcome.constituent_id
 JOIN learning_constituent_curriculum_profiles AS curriculum_profile ON curriculum_profile.constituent_id = constituent.id
 JOIN learning_competencies AS competency ON competency.id = constituent.competency_id
-JOIN subjects AS subject ON subject.id = $1::text AND subject.mode = 'learn'
+JOIN subjects AS subject ON subject.id = $1::text
 JOIN learning_subject_state state ON state.subject_id = subject.id AND state.active_revision = competency.revision
 LEFT JOIN learning_taxonomies AS taxonomy ON taxonomy.id = outcome.taxonomy_id
 LEFT JOIN learning_ald_levels AS ald ON ald.id = outcome.ald_level_id
@@ -174,7 +174,7 @@ JOIN learning_outcomes AS outcome ON outcome.id = task.outcome_id
 JOIN learning_constituents AS constituent ON constituent.id = outcome.constituent_id
 JOIN learning_constituent_curriculum_profiles AS curriculum_profile ON curriculum_profile.constituent_id = constituent.id
 JOIN learning_competencies AS competency ON competency.id = constituent.competency_id
-JOIN subjects AS subject ON subject.id = $1::text AND subject.mode = 'learn'
+JOIN subjects AS subject ON subject.id = $1::text
 JOIN learning_subject_state state ON state.subject_id = subject.id AND state.active_revision = competency.revision
 LEFT JOIN learning_taxonomies AS taxonomy ON taxonomy.id = outcome.taxonomy_id
 LEFT JOIN learning_ald_levels AS ald ON ald.id = outcome.ald_level_id
@@ -716,7 +716,7 @@ func (q *Queries) LearningLockCompetencyMapRevision(ctx context.Context) (int64,
 }
 
 const learningLockSubjectForImport = `-- name: LearningLockSubjectForImport :one
-SELECT id FROM subjects WHERE id = $1 AND mode = 'learn' FOR UPDATE
+SELECT id FROM subjects WHERE id = $1 FOR UPDATE
 `
 
 func (q *Queries) LearningLockSubjectForImport(ctx context.Context, id string) (string, error) {
@@ -726,7 +726,7 @@ func (q *Queries) LearningLockSubjectForImport(ctx context.Context, id string) (
 }
 
 const learningLockSubjectForTaskgen = `-- name: LearningLockSubjectForTaskgen :one
-SELECT state.active_revision FROM subjects subject JOIN learning_subject_state state ON state.subject_id = subject.id WHERE subject.id = $1 AND subject.mode = 'learn' FOR SHARE OF subject
+SELECT state.active_revision FROM subjects subject JOIN learning_subject_state state ON state.subject_id = subject.id WHERE subject.id = $1 FOR SHARE OF subject
 `
 
 func (q *Queries) LearningLockSubjectForTaskgen(ctx context.Context, id string) (*int64, error) {
@@ -757,7 +757,7 @@ LEFT JOIN learning_outcomes AS outcome ON outcome.constituent_id = constituent.i
 LEFT JOIN learning_taxonomies AS taxonomy ON taxonomy.id = outcome.taxonomy_id
 LEFT JOIN learning_ald_levels AS ald ON ald.id = outcome.ald_level_id
 LEFT JOIN learning_tasks AS task ON task.outcome_id = outcome.id
-WHERE subject.id = $1 AND subject.mode = 'learn'
+WHERE subject.id = $1
 ORDER BY competency.name, competency.id, constituent.name, constituent.id,
          outcome.name, outcome.id, task.created_at, task.id
 `
@@ -893,7 +893,7 @@ FROM learning_tasks AS task
 JOIN learning_outcomes AS outcome ON outcome.id = task.outcome_id
 JOIN learning_constituents AS constituent ON constituent.id = outcome.constituent_id
 JOIN learning_competencies AS competency ON competency.id = constituent.competency_id
-JOIN subjects AS subject ON subject.id = $1::text AND subject.mode = 'learn'
+JOIN subjects AS subject ON subject.id = $1::text
 JOIN learning_subject_state state ON state.subject_id = subject.id AND state.active_revision = competency.revision
 LEFT JOIN learning_taxonomies AS taxonomy ON taxonomy.id = outcome.taxonomy_id
 LEFT JOIN learning_ald_levels AS ald ON ald.id = outcome.ald_level_id

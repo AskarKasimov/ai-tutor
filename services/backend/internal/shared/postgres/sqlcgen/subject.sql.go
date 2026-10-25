@@ -9,33 +9,9 @@ import (
 	"context"
 )
 
-const createLearningSubject = `-- name: CreateLearningSubject :one
-INSERT INTO subjects(id, name, created_at, mode)
-VALUES ($1, $2, $3, 'learn')
-RETURNING id, name
-`
-
-type CreateLearningSubjectParams struct {
-	ID        string
-	Name      string
-	CreatedAt int64
-}
-
-type CreateLearningSubjectRow struct {
-	ID   string
-	Name string
-}
-
-func (q *Queries) CreateLearningSubject(ctx context.Context, arg CreateLearningSubjectParams) (CreateLearningSubjectRow, error) {
-	row := q.db.QueryRow(ctx, createLearningSubject, arg.ID, arg.Name, arg.CreatedAt)
-	var i CreateLearningSubjectRow
-	err := row.Scan(&i.ID, &i.Name)
-	return i, err
-}
-
 const createSubject = `-- name: CreateSubject :one
-INSERT INTO subjects(id, name, created_at, mode)
-VALUES ($1, $2, $3, 'exam')
+INSERT INTO subjects(id, name, created_at)
+VALUES ($1, $2, $3)
 RETURNING id, name
 `
 
@@ -57,8 +33,14 @@ func (q *Queries) CreateSubject(ctx context.Context, arg CreateSubjectParams) (C
 	return i, err
 }
 
-const listLearningSubjects = `-- name: ListLearningSubjects :many
+const listSubjects = `-- name: ListSubjects :many
 SELECT subject.id, subject.name,
+       EXISTS (
+           SELECT 1 FROM course_graphs graph
+           WHERE graph.subject_id = subject.id
+             AND (graph.source = 'competency_map'
+                  OR EXISTS (SELECT 1 FROM subject_materials material WHERE material.subject_id = subject.id))
+       ) AS exam_ready,
        EXISTS (
            SELECT 1
            FROM learning_subject_state state
@@ -77,58 +59,16 @@ SELECT subject.id, subject.name,
              AND task.reference_answer ~ '[^[:space:]]'
            GROUP BY competency.id
            HAVING count(DISTINCT outcome.id) >= 3
-       ) AS ready
+       ) AS learning_ready
 FROM subjects subject
-WHERE subject.mode = 'learn'
-ORDER BY lower(subject.name), subject.id
-`
-
-type ListLearningSubjectsRow struct {
-	ID    string
-	Name  string
-	Ready bool
-}
-
-func (q *Queries) ListLearningSubjects(ctx context.Context) ([]ListLearningSubjectsRow, error) {
-	rows, err := q.db.Query(ctx, listLearningSubjects)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []ListLearningSubjectsRow{}
-	for rows.Next() {
-		var i ListLearningSubjectsRow
-		if err := rows.Scan(&i.ID, &i.Name, &i.Ready); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const listSubjects = `-- name: ListSubjects :many
-SELECT subject.id, subject.name,
-       -- A course is ready once Geek can read its own published graph, under
-       -- the same condition as ReadPublishedCourseGraph.
-       EXISTS (
-           SELECT 1
-           FROM course_graphs graph
-           WHERE graph.subject_id = subject.id
-             AND (graph.source = 'competency_map'
-                  OR EXISTS (SELECT 1 FROM subject_materials material WHERE material.subject_id = subject.id))
-       ) AS ready
-FROM subjects subject
-WHERE subject.mode = 'exam'
 ORDER BY lower(subject.name), subject.id
 `
 
 type ListSubjectsRow struct {
-	ID    string
-	Name  string
-	Ready bool
+	ID            string
+	Name          string
+	ExamReady     bool
+	LearningReady bool
 }
 
 func (q *Queries) ListSubjects(ctx context.Context) ([]ListSubjectsRow, error) {
@@ -140,7 +80,12 @@ func (q *Queries) ListSubjects(ctx context.Context) ([]ListSubjectsRow, error) {
 	items := []ListSubjectsRow{}
 	for rows.Next() {
 		var i ListSubjectsRow
-		if err := rows.Scan(&i.ID, &i.Name, &i.Ready); err != nil {
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.ExamReady,
+			&i.LearningReady,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

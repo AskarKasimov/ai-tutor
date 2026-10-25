@@ -1,7 +1,7 @@
 export const subjectQueryKeys = {
-  subjects: (userId: string) => ['learn', 'subjects', userId] as const,
+  subjects: (userId: string) => ['subjects', userId, 'learn'] as const,
   learningState: (userId: string, subjectId: string) =>
-    ['learn', 'subjects', userId, subjectId, 'learning-state'] as const,
+    ['subjects', userId, 'learn', subjectId, 'learning-state'] as const,
   createSubject: (userId: string) =>
-    ['learn', 'subjects', userId, 'create'] as const,
+    ['subjects', userId, 'learn', 'create'] as const,
 }

@@ -1,13 +1,13 @@
 import {
   AlertDialog,
+  Badge,
   Button,
   Flex,
   Heading,
   Table,
   Text,
-  TextField,
 } from '@radix-ui/themes'
-import { useNavigate } from '@tanstack/react-router'
+import { Link, useNavigate } from '@tanstack/react-router'
 import {
   Check,
   CheckCircle2,
@@ -23,7 +23,7 @@ import {
   Upload,
   X,
 } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { CompetencyMapApiError } from '@/entities/learning-competency-map'
 import { useAuth } from '@/features/auth'
@@ -33,15 +33,16 @@ import {
 } from '@/features/import-learning-competency-map'
 import type { CompetencyMapSummary } from '@/entities/learning-competency-map'
 import { AccountMenu } from '@/features/auth'
-import {
-  useCreateSubjectMutation,
-  useSubjectsQuery,
-} from '@/features/learning-subject-selection'
+import { useSubjectsQuery } from '@/features/learning-subject-selection'
 import styles from '@/pages/learning-competency-map/ui/competency-map.module.scss'
 import { groupWarnings } from '../model/import-warnings'
 import { DirectionNav } from '@/widgets/direction-nav'
 
-export function CompetencyMapAdminScreen() {
+export function CompetencyMapAdminScreen({
+  subjectId,
+}: {
+  subjectId?: string
+}) {
   const { t } = useTranslation()
   const { user } = useAuth()
   const navigate = useNavigate()
@@ -57,31 +58,26 @@ export function CompetencyMapAdminScreen() {
         </Button>
       </main>
     )
-  return <CompetencyMapAdmin userId={user.id} />
+  return <CompetencyMapAdmin userId={user.id} selectedSubjectId={subjectId} />
 }
 
-function CompetencyMapAdmin({ userId }: { userId: string }) {
+function CompetencyMapAdmin({
+  userId,
+  selectedSubjectId,
+}: {
+  userId: string
+  selectedSubjectId?: string
+}) {
   const { t } = useTranslation()
   const subjects = useSubjectsQuery(userId)
-  const create = useCreateSubjectMutation(userId)
-  // The teacher manages one subject; a new one is used until the list refetches.
-  const [createdId, setCreatedId] = useState('')
-  const subject = subjects.data?.[0]
-  const subjectId = subject?.id ?? createdId
+  const subject = selectedSubjectId
+    ? subjects.data?.find((candidate) => candidate.id === selectedSubjectId)
+    : subjects.data?.[0]
+  const subjectId = subject?.id ?? ''
   const query = useCompetencyMapQuery(userId, subjectId)
   const upload = useImportCompetencyMapMutation(userId, subjectId)
-  const [subjectName, setSubjectName] = useState('')
   const [file, setFile] = useState<File | null>(null)
   const [fileError, setFileError] = useState<string | null>(null)
-  const [queuedImport, setQueuedImport] = useState(false)
-
-  // The import hook aborts on subject change, so the first import starts only
-  // after the created subject ID is committed.
-  useEffect(() => {
-    if (!queuedImport || !subjectId || !file) return
-    setQueuedImport(false)
-    upload.mutate({ file, subjectId }, settleFile)
-  }, [queuedImport, subjectId, file, upload])
 
   // A file the server rejected (format or size) is dropped, so there is
   // nothing left to confirm; technical failures keep it for a retry.
@@ -116,7 +112,7 @@ function CompetencyMapAdmin({ userId }: { userId: string }) {
     setFile(selected)
   }
 
-  const busy = create.isPending || upload.isPending || queuedImport
+  const busy = upload.isPending
   const warningGroups = groupWarnings(upload.data?.warnings ?? [])
   const error = upload.error
   return (
@@ -157,63 +153,73 @@ function CompetencyMapAdmin({ userId }: { userId: string }) {
             </Button>
           </div>
         ) : !subjectId ? (
-          <section className={styles.card} aria-labelledby="subject-form-title">
-            <Heading as="h2" size="5" id="subject-form-title">
-              {t('learningCompetencyMap.createSubject')}
+          <section className={styles.card} aria-labelledby="subject-title">
+            <Heading as="h2" size="5" id="subject-title">
+              {t('learningCompetencyMap.noSharedCourses')}
             </Heading>
-            <TextField.Root
-              size="3"
-              aria-label={t('learningCompetencyMap.subjectName')}
-              value={subjectName}
-              placeholder={t('learningCompetencyMap.subjectPlaceholder')}
-              disabled={busy}
-              onChange={(event) => setSubjectName(event.target.value)}
-            />
-            <MapFileZone file={file} disabled={busy} onSelect={selectFile} />
-            {fileError && (
-              <Text as="p" role="alert" color="red" size="2">
-                {fileError}
-              </Text>
-            )}
-            {create.isError && (
-              <Text as="p" role="alert" color="red" size="2">
-                {t('learningCompetencyMap.createSubjectError')}
-              </Text>
-            )}
-            <Button
-              size="3"
-              color="green"
-              className={styles.submit}
-              disabled={!subjectName.trim() || !file || busy}
-              onClick={() => {
-                const name = subjectName.trim()
-                if (!name || !file) return
-                create.mutate(name, {
-                  onSuccess: (created) => {
-                    setCreatedId(created.id)
-                    setQueuedImport(true)
-                  },
-                })
-              }}
-            >
-              <Check size={18} aria-hidden="true" />
-              {t(
-                busy
-                  ? 'learningCompetencyMap.uploading'
-                  : 'learningCompetencyMap.submit',
-              )}
+            <Text as="p" color="gray">
+              {t('learningCompetencyMap.createSharedCourseHelp')}
+            </Text>
+            <Button asChild>
+              <Link to="/admin/courses">
+                {t('learningCompetencyMap.goToSharedCourses')}
+              </Link>
             </Button>
           </section>
         ) : (
           <>
+            {subjects.data && subjects.data.length > 1 && (
+              <nav
+                className={styles.card}
+                aria-label={t('learningCompetencyMap.courseNavigation')}
+              >
+                <Heading as="h2" size="4">
+                  {t('learningCompetencyMap.courseNavigation')}
+                </Heading>
+                <Flex gap="2" wrap="wrap">
+                  {subjects.data.map((item) => (
+                    <Flex key={item.id} gap="2" align="center">
+                      <Button
+                        asChild
+                        variant={item.id === subjectId ? 'solid' : 'soft'}
+                      >
+                        <Link
+                          to="/admin/learn/competency-map/$subjectId"
+                          params={{ subjectId: item.id }}
+                          aria-current={
+                            item.id === subjectId ? 'page' : undefined
+                          }
+                        >
+                          {item.name}
+                        </Link>
+                      </Button>
+                      <Badge color={item.learning_ready ? 'green' : 'gray'}>
+                        {t(
+                          item.learning_ready
+                            ? 'sharedCourse.ready'
+                            : 'sharedCourse.preparing',
+                        )}
+                      </Badge>
+                    </Flex>
+                  ))}
+                </Flex>
+              </nav>
+            )}
             <section className={styles.card} aria-labelledby="subject-title">
               <div className={styles.editHeading}>
                 <Text as="p" size="2" weight="medium" color="gray">
                   {t('learningCompetencyMap.subject')}
                 </Text>
                 <Heading as="h2" size="6" id="subject-title">
-                  {subject?.name ?? subjectName.trim()}
+                  {subject?.name}
                 </Heading>
+                <Badge color={subject?.learning_ready ? 'green' : 'gray'}>
+                  {t(
+                    subject?.learning_ready
+                      ? 'sharedCourse.ready'
+                      : 'sharedCourse.preparing',
+                  )}
+                </Badge>
               </div>
               {query.isPending ? (
                 <Text as="p" role="status" color="gray" size="2">

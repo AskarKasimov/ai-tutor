@@ -100,13 +100,16 @@ func TestMigrateFreshAndRepeat(t *testing.T) {
 	var modeColumn, stateTable bool
 	if err := pool.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM information_schema.columns
 WHERE table_schema=current_schema() AND table_name='subjects' AND column_name='mode'),
-to_regclass('learning_subject_state') IS NOT NULL`).Scan(&modeColumn, &stateTable); err != nil || !modeColumn || !stateTable {
-		t.Fatalf("learning scope schema: mode column=%t state table=%t err=%v", modeColumn, stateTable, err)
+	to_regclass('learning_subject_state') IS NOT NULL`).Scan(&modeColumn, &stateTable); err != nil {
+		t.Fatal(err)
 	}
-	if _, err := pool.Exec(ctx, `INSERT INTO subjects(id, name, created_at, mode) VALUES
-('exam:duplicate-name', 'Одинаковый курс', 1, 'exam'),
-('learn:duplicate-name', 'Одинаковый курс', 1, 'learn')`); err != nil {
-		t.Fatalf("mode-scoped catalogs rejected equal names: %v", err)
+	if modeColumn || !stateTable {
+		t.Fatalf("shared course schema: obsolete mode column=%t learning state table=%t", modeColumn, stateTable)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO subjects(id, name, created_at) VALUES
+('course:duplicate-name-a', 'Одинаковый курс', 1),
+('course:duplicate-name-b', 'Одинаковый курс', 1)`); err != nil {
+		t.Fatalf("distinct shared courses with equal names should remain distinct: %v", err)
 	}
 	var versions int
 	if err := pool.QueryRow(ctx, "SELECT count(*) FROM goose_db_version WHERE is_applied AND version_id > 0").Scan(&versions); err != nil || versions != migrationCount(t) {
@@ -135,14 +138,45 @@ VALUES ('session:exam','user:exam','subject:exam','completed',1,1,2,'{}')`); err
 	if err := Migrate(ctx, pool); err != nil {
 		t.Fatal(err)
 	}
-	var email, mode, status string
-	if err := pool.QueryRow(ctx, `SELECT u.email, s.mode, g.status
+	var email, status, archivedMode string
+	if err := pool.QueryRow(ctx, `SELECT u.email, g.status, rollback.mode
 FROM users u JOIN geek_sessions g ON g.owner_id=u.id
-JOIN subjects s ON s.id=g.subject_id WHERE g.id='session:exam'`).Scan(&email, &mode, &status); err != nil {
+	JOIN subjects s ON s.id=g.subject_id JOIN subject_mode_rollback rollback ON rollback.subject_id=s.id
+WHERE g.id='session:exam'`).Scan(&email, &status, &archivedMode); err != nil {
 		t.Fatal(err)
 	}
-	if email != "exam@example.test" || mode != "exam" || status != "completed" {
-		t.Fatalf("exam data changed after learning migration: email=%q mode=%q status=%q", email, mode, status)
+	if email != "exam@example.test" || archivedMode != "exam" || status != "completed" {
+		t.Fatalf("exam data changed after shared-course migration: email=%q prior_mode=%q status=%q", email, archivedMode, status)
+	}
+}
+
+func TestSharedCourseMigrationDoesNotMergeSameNamedDemoCourses(t *testing.T) {
+	pool := migrationPool(t)
+	ctx := context.Background()
+	if err := migrate(ctx, pool, migrationsUpTo(t, 12)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO subjects(id,name,created_at,mode) VALUES
+('demo:exam-course','Одинаковое имя',1,'exam'),
+('demo:learn-course','Одинаковое имя',1,'learn')`); err != nil {
+		t.Fatal(err)
+	}
+	if err := Migrate(ctx, pool); err != nil {
+		t.Fatal(err)
+	}
+	var count int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM subjects WHERE name='Одинаковое имя'`).Scan(&count); err != nil || count != 2 {
+		t.Fatalf("same-name legacy courses count=%d err=%v, want both IDs retained", count, err)
+	}
+	var learnID, examID string
+	if err := pool.QueryRow(ctx, `SELECT subject_id FROM subject_mode_rollback WHERE mode='learn'`).Scan(&learnID); err != nil {
+		t.Fatal(err)
+	}
+	if err := pool.QueryRow(ctx, `SELECT subject_id FROM subject_mode_rollback WHERE mode='exam'`).Scan(&examID); err != nil {
+		t.Fatal(err)
+	}
+	if learnID != "demo:learn-course" || examID != "demo:exam-course" {
+		t.Fatalf("rollback labels were reassigned: learn=%q exam=%q", learnID, examID)
 	}
 }
 

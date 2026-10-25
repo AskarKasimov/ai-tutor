@@ -34,14 +34,26 @@ it('preserves cancellation when the response body read is aborted', async () => 
 })
 
 it('lists subjects with cookie credentials and rejects malformed success bodies', async () => {
-  const fetchMock = vi
-    .fn()
-    .mockResolvedValue(
-      Response.json([{ id: 'subject:ml', name: 'ML', ready: true }]),
-    )
+  const fetchMock = vi.fn().mockResolvedValue(
+    Response.json([
+      {
+        id: 'subject:ml',
+        name: 'ML',
+        ready: true,
+        learning_ready: true,
+        exam_ready: true,
+      },
+    ]),
+  )
   vi.stubGlobal('fetch', fetchMock)
   await expect(listSubjects(new AbortController().signal)).resolves.toEqual([
-    { id: 'subject:ml', name: 'ML', ready: true },
+    {
+      id: 'subject:ml',
+      name: 'ML',
+      ready: true,
+      learning_ready: true,
+      exam_ready: true,
+    },
   ])
   expect(fetchMock.mock.calls[0][0]).toBe('/api/v1/exam/subjects')
   expect(fetchMock.mock.calls[0][1].credentials).toBe('include')
@@ -52,14 +64,18 @@ it('lists subjects with cookie credentials and rejects malformed success bodies'
 })
 
 it('creates a subject as JSON and carries backend error codes', async () => {
-  const fetchMock = vi
-    .fn()
-    .mockResolvedValue(
-      Response.json(
-        { id: 's1', name: 'Физика', ready: false },
-        { status: 201 },
-      ),
-    )
+  const fetchMock = vi.fn().mockResolvedValue(
+    Response.json(
+      {
+        id: 's1',
+        name: 'Физика',
+        ready: false,
+        learning_ready: false,
+        exam_ready: false,
+      },
+      { status: 201 },
+    ),
+  )
   vi.stubGlobal('fetch', fetchMock)
   await expect(
     createSubject('Физика', new AbortController().signal),

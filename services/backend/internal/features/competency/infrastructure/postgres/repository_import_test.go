@@ -46,7 +46,7 @@ func setupImportRepository(t *testing.T) (*Repository, context.Context, string) 
 	if err := sharedpostgres.Migrate(ctx, pool); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := pool.Exec(ctx, `INSERT INTO subjects(id,name,created_at,mode) VALUES ('subject:test','Тестовый предмет',1,'learn')`); err != nil {
+	if _, err := pool.Exec(ctx, `INSERT INTO subjects(id,name,created_at) VALUES ('subject:test','Тестовый предмет',1)`); err != nil {
 		t.Fatal(err)
 	}
 	userID := "import-test-user"
@@ -183,7 +183,7 @@ func TestSubjectReplacementRollbackRestoresSelectedAndOtherMaps(t *testing.T) {
 		t.Fatal(err)
 	}
 	const subjectB = "subject:rollback-b"
-	if _, err := pool.Exec(ctx, `INSERT INTO subjects(id,name,created_at,mode) VALUES ($1,'Предмет B',2,'learn')`, subjectB); err != nil {
+	if _, err := pool.Exec(ctx, `INSERT INTO subjects(id,name,created_at) VALUES ($1,'Предмет B',2)`, subjectB); err != nil {
 		t.Fatal(err)
 	}
 	firstB, err := repository.Replace(ctx, subjectB, userID, importMap("B-сохранён"), 20)
@@ -228,7 +228,7 @@ func TestSubjectReplacementRollbackRestoresSelectedAndOtherMaps(t *testing.T) {
 func TestConcurrentSubjectImportsAllocateUniqueGlobalRevisions(t *testing.T) {
 	repository, ctx, userID := setupImportRepository(t)
 	const subjectB = "subject:concurrent-b"
-	if _, err := repository.pool.Exec(ctx, `INSERT INTO subjects(id,name,created_at,mode) VALUES ($1,'Предмет B',2,'learn')`, subjectB); err != nil {
+	if _, err := repository.pool.Exec(ctx, `INSERT INTO subjects(id,name,created_at) VALUES ($1,'Предмет B',2)`, subjectB); err != nil {
 		t.Fatal(err)
 	}
 	type result struct {

@@ -161,7 +161,13 @@ function geekBackend(
       })
     if (url.endsWith('/subjects'))
       return Response.json([
-        { id: 'subject-1', name: 'Введение в ИИ', ready: true },
+        {
+          id: 'subject-1',
+          name: 'Введение в ИИ',
+          ready: true,
+          learning_ready: true,
+          exam_ready: true,
+        },
       ])
     if (url.includes('/diagnostic-sessions?subject_id=subject-1'))
       return Response.json({

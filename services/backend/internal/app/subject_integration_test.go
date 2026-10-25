@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"os"
 	"testing"
 )
 
@@ -11,10 +12,6 @@ func TestSubjectCatalogPermissionsAndEmptySubjects(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
 	if _, err := f.pool.Exec(context.Background(), `DELETE FROM subjects WHERE id='subject:test'`); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := f.pool.Exec(context.Background(), `INSERT INTO subjects(id, name, created_at, mode)
-VALUES ('subject:learn', 'Предмет обучения', 1, 'learn')`); err != nil {
 		t.Fatal(err)
 	}
 	student, _, _ := f.register(t, "subject-student@example.edu")
@@ -63,94 +60,104 @@ VALUES ('subject:learn', 'Предмет обучения', 1, 'learn')`); err !
 	}
 }
 
-func TestLearningAndExamSubjectCatalogsAreModeScoped(t *testing.T) {
+func TestCourseCreatedOnceAppearsInBothDirectionCatalogs(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
+	if _, err := f.pool.Exec(context.Background(), `DELETE FROM subjects WHERE id='subject:test'`); err != nil {
+		t.Fatal(err)
+	}
 	admin := f.admin(t)
-	learnCreated := f.request(http.MethodPost, "/learn/admin/subjects", `{"name":"Курс только для обучения"}`, admin)
-	if learnCreated.Code != http.StatusCreated {
-		t.Fatalf("create learning subject: %d %s", learnCreated.Code, learnCreated.Body.String())
+	student, _, _ := f.register(t, "shared-course-student@example.edu")
+	created := f.request(http.MethodPost, "/admin/subjects", `{"name":"Общий курс"}`, admin)
+	if created.Code != http.StatusCreated {
+		t.Fatalf("create common course: %d %s", created.Code, created.Body.String())
 	}
-	var learning struct {
+	var course struct {
 		ID string `json:"id"`
 	}
-	if err := json.Unmarshal(learnCreated.Body.Bytes(), &learning); err != nil || learning.ID == "" {
-		t.Fatalf("learning subject response: %s (%v)", learnCreated.Body.String(), err)
+	if err := json.Unmarshal(created.Body.Bytes(), &course); err != nil || course.ID == "" {
+		t.Fatalf("created course response: %s (%v)", created.Body.String(), err)
 	}
-	examCreated := f.request(http.MethodPost, "/admin/subjects", `{"name":"Курс только для экзамена"}`, admin)
-	if examCreated.Code != http.StatusCreated {
-		t.Fatalf("create exam subject: %d %s", examCreated.Code, examCreated.Body.String())
-	}
-	var exam struct {
-		ID string `json:"id"`
-	}
-	if err := json.Unmarshal(examCreated.Body.Bytes(), &exam); err != nil || exam.ID == "" {
-		t.Fatalf("exam subject response: %s (%v)", examCreated.Body.String(), err)
-	}
-	var persistedLearnMode, persistedExamMode string
-	if err := f.pool.QueryRow(context.Background(), "SELECT mode FROM subjects WHERE id=$1", learning.ID).Scan(&persistedLearnMode); err != nil {
+	if _, err := f.pool.Exec(context.Background(), `INSERT INTO course_graph_maps(subject_id,filename,sheet,fingerprint,graph,uploaded_at)
+VALUES ($1,'exam.xlsx','Экзамен','exam-v1','{"marker":"exam-before-learning-import"}',1)`, course.ID); err != nil {
 		t.Fatal(err)
 	}
-	if err := f.pool.QueryRow(context.Background(), "SELECT mode FROM subjects WHERE id=$1", exam.ID).Scan(&persistedExamMode); err != nil {
-		t.Fatal(err)
+	type catalogSubject struct {
+		ID            string `json:"id"`
+		Ready         bool   `json:"ready"`
+		LearningReady bool   `json:"learning_ready"`
+		ExamReady     bool   `json:"exam_ready"`
 	}
-	if persistedLearnMode != "learn" || persistedExamMode != "exam" {
-		t.Fatalf("subject modes: learn=%q exam=%q", persistedLearnMode, persistedExamMode)
-	}
-	checkCatalog := func(path, expectedID, excludedID string) {
+	readCatalog := func(path string, actor *http.Cookie) []catalogSubject {
 		t.Helper()
-		response := f.request(http.MethodGet, path, "", admin)
-		var subjects []struct {
-			ID string `json:"id"`
-		}
-		if response.Code != http.StatusOK || json.Unmarshal(response.Body.Bytes(), &subjects) != nil {
+		response := f.request(http.MethodGet, path, "", actor)
+		var items []catalogSubject
+		if response.Code != http.StatusOK || json.Unmarshal(response.Body.Bytes(), &items) != nil {
 			t.Fatalf("catalog %s: %d %s", path, response.Code, response.Body.String())
 		}
-		seenExpected, seenExcluded := false, false
-		for _, item := range subjects {
-			seenExpected = seenExpected || item.ID == expectedID
-			seenExcluded = seenExcluded || item.ID == excludedID
-		}
-		if !seenExpected || seenExcluded {
-			t.Fatalf("catalog %s contains expected=%t excluded=%t: %+v", path, seenExpected, seenExcluded, subjects)
-		}
+		return items
 	}
-	checkCatalog("/learn/subjects", learning.ID, exam.ID)
-	checkCatalog("/subjects", exam.ID, learning.ID)
-	for _, route := range []struct {
-		method string
-		path   string
-		body   string
-	}{
-		{http.MethodGet, "/admin/subjects/" + learning.ID + "/materials", ""},
-		{http.MethodPost, "/admin/subjects/" + learning.ID + "/materials", "malformed multipart"},
-		{http.MethodPatch, "/admin/subjects/" + learning.ID + "/materials/material:any", "{}"},
-		{http.MethodPut, "/admin/subjects/" + learning.ID + "/materials/material:any/raw", "malformed upload"},
-		{http.MethodDelete, "/admin/subjects/" + learning.ID + "/materials/material:any", ""},
-		{http.MethodGet, "/admin/subjects/" + learning.ID + "/materials/material:any/raw", ""},
-		{http.MethodGet, "/admin/subjects/" + learning.ID + "/graph", ""},
-		{http.MethodPost, "/admin/subjects/" + learning.ID + "/graph/build", "{}"},
-	} {
-		if response := f.request(route.method, route.path, route.body, admin); response.Code != http.StatusNotFound {
-			t.Fatalf("exam %s %s accepted learning subject: %d %s", route.method, route.path, response.Code, response.Body.String())
+	for _, path := range []string{"/subjects", "/learn/subjects"} {
+		items := readCatalog(path, admin)
+		if len(items) != 1 || items[0].ID != course.ID {
+			t.Fatalf("admin catalog %s should contain the single shared course %q: %+v", path, course.ID, items)
+		}
+		if items[0].LearningReady || items[0].ExamReady || items[0].Ready {
+			t.Fatalf("direction readiness is not independent in %s: %+v", path, items[0])
 		}
 	}
-	wrongModeGraphImport := upload(f, "/admin/subjects/"+learning.ID+"/graph/competency-map", "file", "map.xlsx", "application/octet-stream", []byte("not an xlsx"), admin)
-	if wrongModeGraphImport.Code != http.StatusNotFound {
-		t.Fatalf("exam graph import accepted learning subject: %d %s", wrongModeGraphImport.Code, wrongModeGraphImport.Body.String())
+	if items := readCatalog("/subjects", student); len(items) != 0 {
+		t.Fatalf("empty course must not appear in exam catalog: %+v", items)
 	}
-	mapCSV := []byte("Ком;Сост;ОР;Задание 1;Критерии 1\nК;С;О;Вопрос;Критерии\n")
-	wrongModeImport := upload(f, "/learn/admin/subjects/"+exam.ID+"/competency-map/import", "file", "map.csv", "text/csv", mapCSV, admin)
-	if wrongModeImport.Code != http.StatusNotFound {
-		t.Fatalf("learning import accepted exam subject: %d %s", wrongModeImport.Code, wrongModeImport.Body.String())
+	if items := readCatalog("/learn/subjects", student); len(items) != 0 {
+		t.Fatalf("empty course must not appear in learning catalog: %+v", items)
 	}
-	wrongModeStart := f.keyed(http.MethodPost, "/learn/variants", "wrong-mode", `{"subject_id":"`+exam.ID+`"}`, admin)
-	if wrongModeStart.Code != http.StatusNotFound {
-		t.Fatalf("learning variant accepted exam subject: %d %s", wrongModeStart.Code, wrongModeStart.Body.String())
+	mapCSV, err := os.ReadFile("../features/competency/infrastructure/csvparser/testdata/ml_map.csv")
+	if err != nil {
+		t.Fatal(err)
 	}
-	examStart := f.keyed(http.MethodPost, "/diagnostic-sessions", "exam-wrong-mode", `{"subject_id":"`+learning.ID+`"}`, admin)
-	if examStart.Code != http.StatusNotFound {
-		t.Fatalf("exam start accepted learning subject: %d %s", examStart.Code, examStart.Body.String())
+	imported := upload(f, "/learn/admin/subjects/"+course.ID+"/competency-map/import", "file", "ml_map.csv", "text/csv", mapCSV, admin)
+	if imported.Code != http.StatusOK {
+		t.Fatalf("learning map upload for common course: %d %s", imported.Code, imported.Body.String())
+	}
+	var importedCounts string
+	if err := f.pool.QueryRow(context.Background(), `SELECT format('c=%s k=%s o=%s t=%s', competency_count, constituent_count, outcome_count, task_count)
+FROM learning_map_imports WHERE subject_id=$1`, course.ID).Scan(&importedCounts); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, path := range []string{"/subjects", "/learn/subjects"} {
+		items := readCatalog(path, admin)
+		if len(items) != 1 || items[0].ID != course.ID || !items[0].LearningReady || items[0].ExamReady || items[0].Ready != (path == "/learn/subjects") {
+			t.Fatalf("both readiness states should be present after the learning import, %s: %+v", path, items)
+		}
+	}
+	if items := readCatalog("/learn/subjects", student); len(items) != 1 || items[0].ID != course.ID {
+		t.Fatalf("learning-ready shared course should appear in learning catalog: %+v", items)
+	}
+	if items := readCatalog("/subjects", student); len(items) != 0 {
+		t.Fatalf("learning readiness must not make exam course ready: %+v", items)
+	}
+	var examFilename string
+	if err := f.pool.QueryRow(context.Background(), `SELECT filename FROM course_graph_maps WHERE subject_id=$1`, course.ID).Scan(&examFilename); err != nil || examFilename != "exam.xlsx" {
+		t.Fatalf("learning import changed exam map filename=%q err=%v", examFilename, err)
+	}
+	if _, err := f.pool.Exec(context.Background(), `INSERT INTO course_graphs(subject_id,source,fingerprint,graph,updated_at)
+VALUES ($1,'competency_map','exam-v1','{"marker":"exam-after-learning-import"}',1)`, course.ID); err != nil {
+		t.Fatal(err)
+	}
+	if items := readCatalog("/subjects", student); len(items) != 1 || items[0].ID != course.ID {
+		t.Fatalf("published exam graph should independently enable exam catalog: %+v", items)
+	}
+	if items := readCatalog("/learn/subjects", student); len(items) != 1 || items[0].ID != course.ID {
+		t.Fatalf("exam graph change must not affect learning readiness: %+v", items)
+	}
+	var count int
+	if err := f.pool.QueryRow(context.Background(), `SELECT count(*) FROM learning_map_imports WHERE subject_id=$1`, course.ID).Scan(&count); err != nil || count != 1 {
+		t.Fatalf("exam graph change removed learning import count=%d err=%v", count, err)
+	}
+	if err := f.pool.QueryRow(context.Background(), "SELECT count(*) FROM subjects WHERE id=$1", course.ID).Scan(&count); err != nil || count != 1 {
+		t.Fatalf("shared course row count=%d err=%v", count, err)
 	}
 }
 

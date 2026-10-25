@@ -43,7 +43,15 @@ function backendResponse(url: string, init?: RequestInit): Promise<Response> {
     )
   if (url.endsWith('/subjects'))
     return Promise.resolve(
-      Response.json([{ id: 'subject-1', name: 'Предмет A', ready: true }]),
+      Response.json([
+        {
+          id: 'subject-1',
+          name: 'Предмет A',
+          ready: true,
+          learning_ready: true,
+          exam_ready: true,
+        },
+      ]),
     )
   if (url.endsWith('/learning-state'))
     return Promise.resolve(

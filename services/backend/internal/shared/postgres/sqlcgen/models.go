@@ -524,7 +524,6 @@ type Subject struct {
 	ID        string
 	Name      string
 	CreatedAt int64
-	Mode      string
 }
 
 type SubjectMaterial struct {
@@ -545,6 +544,11 @@ type SubjectMaterial struct {
 	OcrReport    []byte
 	Week         *int32
 	Kind         *string
+}
+
+type SubjectModeRollback struct {
+	SubjectID string
+	Mode      string
 }
 
 type Transcription struct {

@@ -130,13 +130,22 @@ export function AdminCoursesScreen() {
                     {course.name}
                   </Heading>
                 </div>
-                <Badge color={course.ready ? 'green' : 'gray'}>
-                  {t(
-                    course.ready
-                      ? 'adminCourses.ready'
-                      : 'adminCourses.preparing',
-                  )}
-                </Badge>
+                <div className={styles.statuses}>
+                  <Badge color={course.exam_ready ? 'green' : 'gray'}>
+                    {t(
+                      course.exam_ready
+                        ? 'sharedCourse.examReady'
+                        : 'sharedCourse.examPreparing',
+                    )}
+                  </Badge>
+                  <Badge color={course.learning_ready ? 'green' : 'gray'}>
+                    {t(
+                      course.learning_ready
+                        ? 'sharedCourse.learningReady'
+                        : 'sharedCourse.learningPreparing',
+                    )}
+                  </Badge>
+                </div>
               </Link>
             ))}
           </section>

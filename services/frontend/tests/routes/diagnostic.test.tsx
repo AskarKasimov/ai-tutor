@@ -127,7 +127,13 @@ function server(
   const requests = vi.fn(async (url: string, init?: RequestInit) => {
     if (url.endsWith('/subjects'))
       return Response.json([
-        { id: 'subject:test', name: 'Предмет теста', ready: true },
+        {
+          id: 'subject:test',
+          name: 'Предмет теста',
+          ready: true,
+          learning_ready: true,
+          exam_ready: true,
+        },
       ])
     if (url.endsWith('/subjects/subject%3Atest/learning-state'))
       return Response.json({

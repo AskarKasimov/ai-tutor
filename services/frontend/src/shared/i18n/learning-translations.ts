@@ -1,4 +1,12 @@
 export const learningTranslations = {
+  sharedCourse: {
+    ready: 'Материалы готовы',
+    preparing: 'Материалы не готовы',
+    examReady: 'Экзамен: готов',
+    examPreparing: 'Экзамен: подготовка',
+    learningReady: 'Обучение: готово',
+    learningPreparing: 'Обучение: подготовка',
+  },
   learningCompetencyMap: {
     title: 'Материалы для обучения',
     importTitle: 'Импорт карты компетенций',
@@ -9,6 +17,11 @@ export const learningTranslations = {
       'Здесь можно загрузить обновлённую карту компетенций предмета.',
     subjectsLoading: 'Загружаем предмет…',
     subjectsError: 'Не удалось загрузить предмет.',
+    noSharedCourses: 'Сначала создайте общий курс',
+    createSharedCourseHelp:
+      'Один курс доступен для материалов обучения и экзамена. Создание курса выполняется в общем каталоге.',
+    goToSharedCourses: 'Открыть общий каталог курсов',
+    courseNavigation: 'Курсы для обучения',
     createSubject: 'Добавление нового предмета',
     subjectName: 'Название предмета',
     subjectPlaceholder: 'Например, Машинное обучение',

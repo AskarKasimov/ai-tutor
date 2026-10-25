@@ -47,7 +47,7 @@ func setupAudioRepository(t *testing.T) (*Repository, *pgxpool.Pool, context.Con
 	if err := sharedpostgres.Migrate(ctx, pool); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := pool.Exec(ctx, `INSERT INTO subjects(id,name,created_at,mode) VALUES ('subject:test','Тестовый предмет',1,'learn')`); err != nil {
+	if _, err := pool.Exec(ctx, `INSERT INTO subjects(id,name,created_at) VALUES ('subject:test','Тестовый предмет',1)`); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
@@ -456,7 +456,7 @@ func TestAudioQueueUsesEachSubjectsActiveRevisionAcrossImportAndRepair(t *testin
 	if _, err := maps.Replace(ctx, "subject:test", ownerID, audioMap("A", 2), 1); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := pool.Exec(ctx, `INSERT INTO subjects(id,name,created_at,mode) VALUES ('subject:b','Subject B',1,'learn')`); err != nil {
+	if _, err := pool.Exec(ctx, `INSERT INTO subjects(id,name,created_at) VALUES ('subject:b','Subject B',1)`); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := maps.Replace(ctx, "subject:b", ownerID, audioMap("B", 1), 2); err != nil {

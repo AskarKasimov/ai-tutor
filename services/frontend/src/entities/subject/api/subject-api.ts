@@ -12,6 +12,8 @@ const subjectSchema: z.ZodType<Subject> = z.object({
   id,
   name: z.string().min(1),
   ready: z.boolean(),
+  learning_ready: z.boolean(),
+  exam_ready: z.boolean(),
 })
 async function request(
   path: string,

@@ -143,6 +143,11 @@ void i18n.init({
           editSubtitle: 'Здесь загружаются материалы курса.',
           subjectsLoading: 'Загружаем предмет…',
           subjectsError: 'Не удалось загрузить предмет.',
+          noSharedCourses: 'Сначала создайте общий курс',
+          createSharedCourseHelp:
+            'Один курс доступен для материалов обучения и экзамена. Создание курса выполняется в общем каталоге.',
+          goToSharedCourses: 'Открыть общий каталог курсов',
+          courseNavigation: 'Курсы для обучения',
           createSubject: 'Создать курс',
           subjectName: 'Название курса',
           subjectPlaceholder: 'Например, Машинное обучение',

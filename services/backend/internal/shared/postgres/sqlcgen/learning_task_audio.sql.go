@@ -21,7 +21,7 @@ WHERE learning_audio_assets.id = $1 AND status = 'processing' AND claim_token = 
       JOIN learning_constituents constituent ON constituent.id = outcome.constituent_id
       JOIN learning_competencies competency ON competency.id = constituent.competency_id
       JOIN learning_subject_state subject_state ON subject_state.active_revision = competency.revision
-      JOIN subjects subject ON subject.id = subject_state.subject_id AND subject.mode = 'learn'
+      JOIN subjects subject ON subject.id = subject_state.subject_id
       WHERE task.audio_asset_id = learning_audio_assets.id
   )
 `
@@ -50,7 +50,7 @@ WHERE asset.status = 'pending'
       JOIN learning_constituents constituent ON constituent.id = outcome.constituent_id
       JOIN learning_competencies competency ON competency.id = constituent.competency_id
       JOIN learning_subject_state subject_state ON subject_state.active_revision = competency.revision
-      JOIN subjects subject ON subject.id = subject_state.subject_id AND subject.mode = 'learn'
+      JOIN subjects subject ON subject.id = subject_state.subject_id
       WHERE task.audio_asset_id = asset.id AND subject.id = $1
   )
 `
@@ -74,7 +74,7 @@ WITH candidate AS (
           JOIN learning_constituents constituent ON constituent.id = outcome.constituent_id
           JOIN learning_competencies competency ON competency.id = constituent.competency_id
           JOIN learning_subject_state subject_state ON subject_state.active_revision = competency.revision
-      JOIN subjects subject ON subject.id = subject_state.subject_id AND subject.mode = 'learn'
+      JOIN subjects subject ON subject.id = subject_state.subject_id
           WHERE task.audio_asset_id = learning_audio_assets.id
       )
     -- Students hear audio first where they wait for it: current training
@@ -151,7 +151,7 @@ WITH candidate AS MATERIALIZED (
       JOIN learning_constituents constituent ON constituent.id = outcome.constituent_id
       JOIN learning_competencies competency ON competency.id = constituent.competency_id
       JOIN learning_subject_state subject_state ON subject_state.active_revision = competency.revision
-      JOIN subjects subject ON subject.id = subject_state.subject_id AND subject.mode = 'learn'
+      JOIN subjects subject ON subject.id = subject_state.subject_id
       WHERE task.audio_asset_id = asset.id
       )
     FOR UPDATE
@@ -264,7 +264,7 @@ SET status = CASE
             JOIN learning_constituents constituent ON constituent.id = outcome.constituent_id
             JOIN learning_competencies competency ON competency.id = constituent.competency_id
             JOIN learning_subject_state subject_state ON subject_state.active_revision = competency.revision
-      JOIN subjects subject ON subject.id = subject_state.subject_id AND subject.mode = 'learn'
+      JOIN subjects subject ON subject.id = subject_state.subject_id
             WHERE task.audio_asset_id = learning_audio_assets.id
         ) THEN 'cancelled'
         WHEN attempts >= 5 THEN 'failed'
@@ -278,7 +278,7 @@ SET status = CASE
             JOIN learning_constituents constituent ON constituent.id = outcome.constituent_id
             JOIN learning_competencies competency ON competency.id = constituent.competency_id
             JOIN learning_subject_state subject_state ON subject_state.active_revision = competency.revision
-      JOIN subjects subject ON subject.id = subject_state.subject_id AND subject.mode = 'learn'
+      JOIN subjects subject ON subject.id = subject_state.subject_id
             WHERE task.audio_asset_id = learning_audio_assets.id
         ) THEN next_attempt_at
         ELSE now() + $1::double precision * interval '1 second'
@@ -292,7 +292,7 @@ SET status = CASE
             JOIN learning_constituents constituent ON constituent.id = outcome.constituent_id
             JOIN learning_competencies competency ON competency.id = constituent.competency_id
             JOIN learning_subject_state subject_state ON subject_state.active_revision = competency.revision
-      JOIN subjects subject ON subject.id = subject_state.subject_id AND subject.mode = 'learn'
+      JOIN subjects subject ON subject.id = subject_state.subject_id
             WHERE task.audio_asset_id = learning_audio_assets.id
         ) THEN 'task_no_longer_current'
         ELSE $2
@@ -475,7 +475,7 @@ SELECT EXISTS (
     JOIN learning_constituents constituent ON constituent.id = outcome.constituent_id
     JOIN learning_competencies competency ON competency.id = constituent.competency_id
     JOIN learning_subject_state subject_state ON subject_state.active_revision = competency.revision
-      JOIN subjects subject ON subject.id = subject_state.subject_id AND subject.mode = 'learn'
+      JOIN subjects subject ON subject.id = subject_state.subject_id
     WHERE asset.id = $1
       AND asset.status = 'processing'
       AND asset.claim_token = $2
@@ -526,7 +526,7 @@ WHERE asset.id = $1 AND asset.status = 'pending'
       JOIN learning_constituents constituent ON constituent.id = outcome.constituent_id
       JOIN learning_competencies competency ON competency.id = constituent.competency_id
       JOIN learning_subject_state subject_state ON subject_state.active_revision = competency.revision
-      JOIN subjects subject ON subject.id = subject_state.subject_id AND subject.mode = 'learn'
+      JOIN subjects subject ON subject.id = subject_state.subject_id
       WHERE task.audio_asset_id = asset.id
   )
 `
@@ -549,7 +549,7 @@ SET status = CASE
             JOIN learning_constituents constituent ON constituent.id = outcome.constituent_id
             JOIN learning_competencies competency ON competency.id = constituent.competency_id
             JOIN learning_subject_state subject_state ON subject_state.active_revision = competency.revision
-      JOIN subjects subject ON subject.id = subject_state.subject_id AND subject.mode = 'learn'
+      JOIN subjects subject ON subject.id = subject_state.subject_id
             WHERE task.audio_asset_id = learning_audio_assets.id
         ) THEN 'cancelled'
         ELSE 'pending'
@@ -566,7 +566,7 @@ SET status = CASE
             JOIN learning_constituents constituent ON constituent.id = outcome.constituent_id
             JOIN learning_competencies competency ON competency.id = constituent.competency_id
             JOIN learning_subject_state subject_state ON subject_state.active_revision = competency.revision
-      JOIN subjects subject ON subject.id = subject_state.subject_id AND subject.mode = 'learn'
+      JOIN subjects subject ON subject.id = subject_state.subject_id
             WHERE task.audio_asset_id = learning_audio_assets.id
         ) THEN 'task_no_longer_current'
         ELSE 'worker_interrupted'
@@ -589,7 +589,7 @@ WITH current_task AS (
         JOIN learning_constituents constituent ON constituent.id = outcome.constituent_id
         JOIN learning_competencies competency ON competency.id = constituent.competency_id
         JOIN learning_subject_state subject_state ON subject_state.active_revision = competency.revision
-      JOIN subjects subject ON subject.id = subject_state.subject_id AND subject.mode = 'learn'
+      JOIN subjects subject ON subject.id = subject_state.subject_id
         WHERE task.audio_asset_id = $1
     ) AS is_current
 )

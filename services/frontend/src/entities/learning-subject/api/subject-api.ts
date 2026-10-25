@@ -10,6 +10,8 @@ const subjectSchema: z.ZodType<Subject> = z.object({
   id,
   name: z.string().min(1),
   ready: z.boolean(),
+  learning_ready: z.boolean(),
+  exam_ready: z.boolean(),
 })
 const learningStateSchema: z.ZodType<LearningState> = z.object({
   subject_id: id,

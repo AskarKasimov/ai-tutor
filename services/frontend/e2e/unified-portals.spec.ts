@@ -5,11 +5,17 @@ test('one browser context switches modes while student and admin sessions stay s
 }, testInfo) => {
   let studentSession = false
   let adminSession = false
-  const calls: Array<{ path: string; portal: string | undefined }> = []
+  const calls: Array<{
+    path: string
+    method: string
+    portal: string | undefined
+  }> = []
   const subject = {
     id: 'subject-1',
     name: 'Введение в искусственный интеллект',
     ready: true,
+    learning_ready: true,
+    exam_ready: true,
   }
 
   await page.route('**/api/v1/**', async (route) => {
@@ -17,7 +23,7 @@ test('one browser context switches modes while student and admin sessions stay s
     const url = new URL(request.url())
     const path = url.pathname.replace('/api/v1', '')
     const portal = request.headers()['x-ai-tutor-portal']
-    calls.push({ path, portal })
+    calls.push({ path, method: request.method(), portal })
 
     if (path === '/auth/me') {
       const user = portal === 'admin' ? adminSession : studentSession
@@ -168,7 +174,24 @@ test('one browser context switches modes while student and admin sessions stay s
     learnNav.getByRole('link', { name: 'Материалы для экзамена' }),
   ).toHaveAttribute('href', '/admin/courses')
   await expect(page.getByLabel('Файл карты компетенций')).toBeVisible()
+  await expect(page.getByRole('heading', { name: subject.name })).toBeVisible()
+  await expect(page.getByText('Материалы готовы')).toBeVisible()
+  await expect(
+    page.getByRole('button', {
+      name: /Создать курс|Добавление нового предмета/,
+    }),
+  ).toHaveCount(0)
+  expect(
+    calls.some(
+      (call) =>
+        call.method === 'POST' &&
+        ['/learn/admin/subjects', '/exam/admin/subjects'].includes(call.path),
+    ),
+  ).toBe(false)
+  await page.goto(`/admin/learn/competency-map/${subject.id}`)
+  await expect(page.getByRole('heading', { name: subject.name })).toBeVisible()
   await page.reload()
+  await expect(page.getByRole('heading', { name: subject.name })).toBeVisible()
   await expect(page.getByLabel('Добавить PDF или ZIP')).toHaveCount(0)
   await expect(
     page
@@ -202,6 +225,8 @@ test('one browser context switches modes while student and admin sessions stay s
   await expect(
     page.getByRole('heading', { name: 'Материалы для экзамена' }),
   ).toBeVisible()
+  await expect(page.getByText('Экзамен: готов')).toBeVisible()
+  await expect(page.getByText('Обучение: готово')).toBeVisible()
   const examNav = page.getByRole('navigation', {
     name: 'Разделы администрирования',
   })
@@ -212,6 +237,7 @@ test('one browser context switches modes while student and admin sessions stay s
     examNav.getByRole('link', { name: 'Материалы для обучения' }),
   ).toHaveAttribute('href', '/admin/learn/competency-map')
   await page.getByRole('link', { name: subject.name }).click()
+  await expect(page).toHaveURL(/\/admin\/competency-map\/subject-1$/)
   await expect(
     page.getByRole('heading', { name: 'Материалы для экзамена' }),
   ).toBeVisible()

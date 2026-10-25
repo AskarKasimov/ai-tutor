@@ -8,13 +8,12 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// RequireMode prevents an administrator from using a subject ID through the
-// other mode's API namespace. Query-level mode predicates remain the data-layer
-// defense; this middleware gives handlers a consistent not-found response.
-func RequireMode(pool *pgxpool.Pool, mode string, next http.Handler) http.Handler {
+// RequireSubject verifies the common course exists. Direction-specific data
+// ownership is enforced by each module's resource queries, not a course mode.
+func RequireSubject(pool *pgxpool.Pool, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var allowed bool
-		if err := pool.QueryRow(r.Context(), `SELECT EXISTS(SELECT 1 FROM subjects WHERE id=$1 AND mode=$2)`, r.PathValue("subject_id"), mode).Scan(&allowed); err != nil {
+		if err := pool.QueryRow(r.Context(), `SELECT EXISTS(SELECT 1 FROM subjects WHERE id=$1)`, r.PathValue("subject_id")).Scan(&allowed); err != nil {
 			httpx.Error(r.Context(), w, err)
 			return
 		}

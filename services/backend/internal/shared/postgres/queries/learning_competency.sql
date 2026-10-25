@@ -1,11 +1,11 @@
 -- name: LearningLockSubjectForImport :one
-SELECT id FROM subjects WHERE id = $1 AND mode = 'learn' FOR UPDATE;
+SELECT id FROM subjects WHERE id = $1 FOR UPDATE;
 
 -- name: LearningLockCompetencyMapRevision :one
 SELECT revision FROM learning_map_state WHERE singleton = true FOR UPDATE;
 
 -- name: LearningLockSubjectForTaskgen :one
-SELECT state.active_revision FROM subjects subject JOIN learning_subject_state state ON state.subject_id = subject.id WHERE subject.id = $1 AND subject.mode = 'learn' FOR SHARE OF subject;
+SELECT state.active_revision FROM subjects subject JOIN learning_subject_state state ON state.subject_id = subject.id WHERE subject.id = $1 FOR SHARE OF subject;
 
 -- name: LearningDeleteCompetencyMapImportsForSubject :exec
 DELETE FROM learning_map_imports WHERE subject_id = $1;
@@ -97,7 +97,7 @@ LEFT JOIN learning_outcomes AS outcome ON outcome.constituent_id = constituent.i
 LEFT JOIN learning_taxonomies AS taxonomy ON taxonomy.id = outcome.taxonomy_id
 LEFT JOIN learning_ald_levels AS ald ON ald.id = outcome.ald_level_id
 LEFT JOIN learning_tasks AS task ON task.outcome_id = outcome.id
-WHERE subject.id = $1 AND subject.mode = 'learn'
+WHERE subject.id = $1
 ORDER BY competency.name, competency.id, constituent.name, constituent.id,
          outcome.name, outcome.id, task.created_at, task.id;
 
@@ -117,7 +117,7 @@ JOIN learning_outcomes AS outcome ON outcome.id = task.outcome_id
 JOIN learning_constituents AS constituent ON constituent.id = outcome.constituent_id
 JOIN learning_constituent_curriculum_profiles AS curriculum_profile ON curriculum_profile.constituent_id = constituent.id
 JOIN learning_competencies AS competency ON competency.id = constituent.competency_id
-JOIN subjects AS subject ON subject.id = sqlc.arg(subject_id)::text AND subject.mode = 'learn'
+JOIN subjects AS subject ON subject.id = sqlc.arg(subject_id)::text
 JOIN learning_subject_state state ON state.subject_id = subject.id AND state.active_revision = competency.revision
 LEFT JOIN learning_taxonomies AS taxonomy ON taxonomy.id = outcome.taxonomy_id
 LEFT JOIN learning_ald_levels AS ald ON ald.id = outcome.ald_level_id
@@ -134,7 +134,7 @@ FROM learning_tasks AS task
 JOIN learning_outcomes AS outcome ON outcome.id = task.outcome_id
 JOIN learning_constituents AS constituent ON constituent.id = outcome.constituent_id
 JOIN learning_competencies AS competency ON competency.id = constituent.competency_id
-JOIN subjects AS subject ON subject.id = sqlc.arg(subject_id)::text AND subject.mode = 'learn'
+JOIN subjects AS subject ON subject.id = sqlc.arg(subject_id)::text
 JOIN learning_subject_state state ON state.subject_id = subject.id AND state.active_revision = competency.revision
 LEFT JOIN learning_taxonomies AS taxonomy ON taxonomy.id = outcome.taxonomy_id
 LEFT JOIN learning_ald_levels AS ald ON ald.id = outcome.ald_level_id
@@ -175,7 +175,7 @@ JOIN learning_tasks AS task ON task.generation_run_id = run.id
 JOIN learning_outcomes AS outcome ON outcome.id = run.outcome_id
 JOIN learning_constituents AS constituent ON constituent.id = outcome.constituent_id
 JOIN learning_competencies AS competency ON competency.id = constituent.competency_id
-JOIN subjects AS subject ON subject.id = sqlc.arg(subject_id)::text AND subject.mode = 'learn'
+JOIN subjects AS subject ON subject.id = sqlc.arg(subject_id)::text
 JOIN learning_subject_state state ON state.subject_id = subject.id AND state.active_revision = competency.revision
 WHERE run.outcome_id = sqlc.arg(outcome_id)::text AND run.request_key = sqlc.arg(request_key)::text;
 
@@ -200,7 +200,7 @@ FROM learning_outcomes AS outcome
 JOIN learning_constituents AS constituent ON constituent.id = outcome.constituent_id
 JOIN learning_constituent_curriculum_profiles AS curriculum_profile ON curriculum_profile.constituent_id = constituent.id
 JOIN learning_competencies AS competency ON competency.id = constituent.competency_id
-JOIN subjects AS subject ON subject.id = sqlc.arg(subject_id)::text AND subject.mode = 'learn'
+JOIN subjects AS subject ON subject.id = sqlc.arg(subject_id)::text
 JOIN learning_subject_state state ON state.subject_id = subject.id AND state.active_revision = competency.revision
 LEFT JOIN learning_taxonomies AS taxonomy ON taxonomy.id = outcome.taxonomy_id
 LEFT JOIN learning_ald_levels AS ald ON ald.id = outcome.ald_level_id
@@ -229,7 +229,7 @@ INSERT INTO learning_material_chunk_outcomes(chunk_id, outcome_id) VALUES ($1, $
 SELECT count(*)::integer FROM learning_outcomes outcome
 JOIN learning_constituents constituent ON constituent.id = outcome.constituent_id
 JOIN learning_competencies competency ON competency.id = constituent.competency_id
-JOIN subjects subject ON subject.id = sqlc.arg(subject_id)::text AND subject.mode = 'learn'
+JOIN subjects subject ON subject.id = sqlc.arg(subject_id)::text
 JOIN learning_subject_state state ON state.subject_id = subject.id AND state.active_revision = competency.revision
 WHERE outcome.id = ANY(sqlc.arg(outcome_ids)::text[]);
 

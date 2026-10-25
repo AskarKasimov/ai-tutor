@@ -36,9 +36,6 @@ func (r requestRepo) Read(context.Context, string) (coursegraph.Snapshot, error)
 	return r.snapshot, nil
 }
 func (r requestRepo) Request(context.Context, string, time.Time) (bool, error) { return r.queued, nil }
-func (r requestRepo) SaveMap(context.Context, string, string, string, json.RawMessage, time.Time) (bool, error) {
-	return r.queued, nil
-}
 func (r requestRepo) MapGraph(context.Context, string) (json.RawMessage, error) {
 	return r.mapGraph, nil
 }
@@ -74,7 +71,7 @@ func TestSnapshotShowsBuildProgressOnlyWhileTheBuildRuns(t *testing.T) {
 	kind := material.Kind("lecture")
 	items := requestMaterials{{ID: "m", Week: &week, Kind: &kind, S3ParsedKey: "parsed", Cleaning: &material.Cleaning{Status: "ready", S3ReportKey: "report"}}}
 	builder := &progressBuilder{t: t}
-	w := New(requestRepo{snapshot: coursegraph.Snapshot{Status: "processing"}}, items, progressStorage{}, builder, nil, nil)
+	w := New(requestRepo{snapshot: coursegraph.Snapshot{Status: "processing"}}, items, progressStorage{}, builder, nil)
 	builder.worker = w
 	// Review of #135: a reclaimed lease keeps the attempt number while the
 	// previous call may still run in course-graph, so two calls of the same
@@ -121,7 +118,7 @@ func TestBuildReusesOnlyCardsOfTheCurrentQuestionPolicy(t *testing.T) {
 		"new": `{"topics_version":"topics-v4","topics":[{"question":"Объясни, зачем нужна производная."}]}`,
 	}
 	builder := &capturingBuilder{}
-	w := New(requestRepo{}, items, storage, builder, nil, nil)
+	w := New(requestRepo{}, items, storage, builder, nil)
 	if err := w.process(context.Background(), coursegraph.Job{SubjectID: "subject"}); err != nil {
 		t.Fatal(err)
 	}
@@ -134,7 +131,7 @@ func TestRequestReportsClassifiedMaterialIDsWithoutPollingAsProcessing(t *testin
 	week := int32(1)
 	items := requestMaterials{{ID: "needs-classification", Status: material.StatusParsed,
 		Week: &week, Cleaning: &material.Cleaning{Status: "ready"}}}
-	w := New(requestRepo{snapshot: coursegraph.Snapshot{Status: "ready"}}, items, nil, nil, nil, nil)
+	w := New(requestRepo{snapshot: coursegraph.Snapshot{Status: "ready"}}, items, nil, nil, nil)
 	_, err := w.Request(context.Background(), user.User{Role: user.Admin}, "subject")
 	if err == nil {
 		t.Fatal("expected incomplete metadata error")
@@ -146,7 +143,7 @@ func TestRequestReportsClassifiedMaterialIDsWithoutPollingAsProcessing(t *testin
 }
 
 func TestRequestKeepsConflictPrecedenceDuringActiveBuild(t *testing.T) {
-	w := New(requestRepo{snapshot: coursegraph.Snapshot{Status: "processing"}}, nil, nil, nil, nil, nil)
+	w := New(requestRepo{snapshot: coursegraph.Snapshot{Status: "processing"}}, nil, nil, nil, nil)
 	_, err := w.Request(context.Background(), user.User{Role: user.Admin}, "subject")
 	if err == nil || err.Error() != "GRAPH_BUILD_IN_PROGRESS" {
 		t.Fatalf("error = %v", err)
@@ -180,7 +177,7 @@ var admin = user.User{ID: "admin", Role: user.Admin}
 
 func TestReadShowsTheBuildOnceItIsPublished(t *testing.T) {
 	built := json.RawMessage(`{"topics":[{"id":"x","title":"Собранная тема"}]}`)
-	w := New(snapshotRepo{snapshot: coursegraph.Snapshot{Status: "ready", Graph: built, GraphSource: coursegraph.SourceMaterials}}, requestMaterials{{ID: "m"}}, nil, nil, nil, nil)
+	w := New(snapshotRepo{snapshot: coursegraph.Snapshot{Status: "ready", Graph: built, GraphSource: coursegraph.SourceMaterials}}, requestMaterials{{ID: "m"}}, nil, nil, nil)
 	got, err := w.Read(context.Background(), admin, "subject")
 	if err != nil || got.GraphSource != coursegraph.SourceBuilt || string(got.Graph) != string(built) {
 		t.Fatalf("snapshot = %+v, %v", got, err)
@@ -188,7 +185,7 @@ func TestReadShowsTheBuildOnceItIsPublished(t *testing.T) {
 }
 
 func TestReadWithoutAGraphHasNone(t *testing.T) {
-	w := New(snapshotRepo{snapshot: coursegraph.Snapshot{Status: "not_requested", Graph: json.RawMessage("null")}}, nil, nil, nil, nil, nil)
+	w := New(snapshotRepo{snapshot: coursegraph.Snapshot{Status: "not_requested", Graph: json.RawMessage("null")}}, nil, nil, nil, nil)
 	got, err := w.Read(context.Background(), admin, "subject")
 	if err != nil || got.GraphSource != coursegraph.SourceNone || got.Graph != nil {
 		t.Fatalf("snapshot = %+v, %v", got, err)
@@ -198,7 +195,7 @@ func TestReadWithoutAGraphHasNone(t *testing.T) {
 func TestReadDropsABuildWhoseCourseLostItsMaterials(t *testing.T) {
 	// Geek ignores a published graph of materials once the course has none.
 	built := json.RawMessage(`{"topics":[{"id":"x","title":"Собранная тема"}]}`)
-	w := New(snapshotRepo{snapshot: coursegraph.Snapshot{Status: "ready", Graph: built, GraphSource: coursegraph.SourceMaterials}}, requestMaterials{}, nil, nil, nil, nil)
+	w := New(snapshotRepo{snapshot: coursegraph.Snapshot{Status: "ready", Graph: built, GraphSource: coursegraph.SourceMaterials}}, requestMaterials{}, nil, nil, nil)
 	got, err := w.Read(context.Background(), admin, "subject")
 	if err != nil || got.GraphSource != coursegraph.SourceNone || got.Graph != nil {
 		t.Fatalf("snapshot = %+v, %v", got, err)
@@ -207,112 +204,23 @@ func TestReadDropsABuildWhoseCourseLostItsMaterials(t *testing.T) {
 
 func TestReadShowsAGraphOfACompetencyMapWithoutMaterials(t *testing.T) {
 	built := json.RawMessage(`{"version":"competency-map-v1","topics":[{"id":"x","title":"ОР"}]}`)
-	w := New(snapshotRepo{snapshot: coursegraph.Snapshot{Status: "ready", Graph: built, GraphSource: coursegraph.SourceMap}}, requestMaterials{}, nil, nil, nil, nil)
+	w := New(snapshotRepo{snapshot: coursegraph.Snapshot{Status: "ready", Graph: built, GraphSource: coursegraph.SourceMap}}, requestMaterials{}, nil, nil, nil)
 	got, err := w.Read(context.Background(), admin, "subject")
 	if err != nil || got.GraphSource != coursegraph.SourceMap || string(got.Graph) != string(built) {
 		t.Fatalf("snapshot = %+v, %v", got, err)
 	}
 }
 
-// mapRepo records an imported map.
-type mapRepo struct {
-	requestRepo
-	saved  *json.RawMessage
-	sheet  *string
-	queued bool
-}
-
-func (r mapRepo) SaveMap(_ context.Context, _, _, sheet string, graph json.RawMessage, _ time.Time) (bool, error) {
-	if !r.queued {
-		return false, nil
-	}
-	*r.saved, *r.sheet = graph, sheet
-	return true, nil
-}
-
-func mapRows(competencies ...string) [][]string {
-	rows := [][]string{{"№", "Субкомпетенция (Proficiency)", "Составляющая (Observe)", "Образовательный результат (Observe Behaviour)",
-		"Уровень по Блуму", "Важность (1–5)", "Что должно войти в тест", "Задание (устная инструкция)", "Критерии оценивания"}}
-	for _, c := range competencies {
-		rows = append(rows,
-			[]string{"1", c, "1.1 Составляющая", "Называет", "Помнить", "3", "TRUE", "Назовите.", "Эталон: имя.\nБалл (макс. 1): 1 — назвал."},
-			[]string{"2", "", "", "Объясняет", "Понимать", "4", "TRUE", "Объясните.", "Эталон: причина."},
-			[]string{"3", "", "", "Анализирует", "Анализировать", "5", "TRUE", "Сравните.", "Эталон: сравнение.\nАналитическая рубрика (макс. 2):\nК1 «Сравнение»: 1 — есть."},
-		)
-	}
-	return rows
-}
-
-func TestImportMapQueuesTheGraphOfTheMap(t *testing.T) {
-	var saved json.RawMessage
-	var sheet string
-	read := func([]byte) ([]coursegraph.MapSheet, error) {
-		return []coursegraph.MapSheet{{Name: "Карта", Rows: mapRows("К1. Агенты")}, {Name: "ДИАГ", Rows: [][]string{{"Поле"}}}}, nil
-	}
-	repo := mapRepo{requestRepo: requestRepo{snapshot: coursegraph.Snapshot{Status: "ready"}}, saved: &saved, sheet: &sheet, queued: true}
-	w := New(repo, nil, nil, nil, nil, read)
-	if _, err := w.ImportMap(context.Background(), user.User{ID: "s", Role: user.Student}, "subject", "map.xlsx", nil); !isFault(err, "FORBIDDEN") {
-		t.Fatalf("student import: %v", err)
-	}
-	if _, err := w.ImportMap(context.Background(), admin, "subject", "map.xlsx", nil); err != nil {
-		t.Fatal(err)
-	}
-	if sheet != "Карта" || !strings.Contains(string(saved), `"version":"competency-map-v1"`) {
-		t.Fatalf("saved sheet %q graph %s", sheet, saved)
-	}
-	busy := New(mapRepo{requestRepo: requestRepo{snapshot: coursegraph.Snapshot{Status: "processing"}}, saved: &saved, sheet: &sheet}, nil, nil, nil, nil, read)
-	if _, err := busy.ImportMap(context.Background(), admin, "subject", "map.xlsx", nil); !isFault(err, "GRAPH_BUILD_IN_PROGRESS") {
-		t.Fatalf("import during a build: %v", err)
-	}
-}
-
-func TestImportMapReadsTheFirstSheetAndNamesBadCells(t *testing.T) {
-	bad := mapRows("К1. Агенты")
-	bad[2][4] = "Вспоминать"
-	read := func([]byte) ([]coursegraph.MapSheet, error) {
-		return []coursegraph.MapSheet{{Name: "Карта", Rows: bad}, {Name: "Карта_ВСЯ", Rows: mapRows("К1. Агенты")}}, nil
-	}
-	w := New(mapRepo{requestRepo: requestRepo{snapshot: coursegraph.Snapshot{Status: "ready"}}}, nil, nil, nil, nil, read)
-	_, err := w.ImportMap(context.Background(), admin, "subject", "map.xlsx", nil)
-	var f *fault.Error
-	if !errors.As(err, &f) || f.Code != "COMPETENCY_MAP_INVALID" || len(f.Details) != 1 || !strings.Contains(f.Details[0].Message, "Строка 3, «Уровень по Блуму»") {
-		t.Fatalf("bad cell: %+v", err)
-	}
-	unreadable := New(mapRepo{requestRepo: requestRepo{snapshot: coursegraph.Snapshot{Status: "ready"}}}, nil, nil, nil, nil,
-		func([]byte) ([]coursegraph.MapSheet, error) { return nil, errors.New("zip") })
-	if _, err := unreadable.ImportMap(context.Background(), admin, "subject", "map.pdf", nil); !isFault(err, "COMPETENCY_MAP_INVALID") {
-		t.Fatalf("unreadable book: %v", err)
-	}
-}
-
-func TestImportMapKeepsTheExactNameOfTheFirstSheet(t *testing.T) {
-	var saved json.RawMessage
-	var sheet string
-	read := func([]byte) ([]coursegraph.MapSheet, error) {
-		return []coursegraph.MapSheet{{Name: "Карта ", Rows: mapRows("К1. Агенты")}, {Name: "Карта_ВСЯ", Rows: mapRows("К2. Логика")}}, nil
-	}
-	repo := mapRepo{requestRepo: requestRepo{snapshot: coursegraph.Snapshot{Status: "ready"}}, saved: &saved, sheet: &sheet, queued: true}
-	if _, err := New(repo, nil, nil, nil, nil, read).ImportMap(context.Background(), admin, "subject", "map.xlsx", nil); err != nil {
-		t.Fatal(err)
-	}
-	if sheet != "Карта " || !strings.Contains(string(saved), "К1. Агенты") {
-		t.Fatalf("sheet %q graph %s", sheet, saved)
-	}
-}
-
 func TestBuildOfAMapPublishesItsGraphWithPreparedQuestions(t *testing.T) {
-	graph, err := coursegraph.BuildMapGraph([]coursegraph.MapSheet{{Name: "Карта", Rows: mapRows("К1. Агенты")}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	repo := &publishingRepo{requestRepo: requestRepo{mapGraph: graph.Graph}}
+	graph := json.RawMessage(`{"version":"competency-map-v1","topics":[{"id":"legacy","title":"Старый сохранённый граф"}]}`)
+	repo := &publishingRepo{requestRepo: requestRepo{mapGraph: graph}}
 	questions := &stubQuestions{}
-	w := New(repo, nil, nil, nil, nil, nil)
+	w := New(repo, nil, nil, nil, nil)
 	w.SetQuestions(questions)
 	if err := w.process(context.Background(), coursegraph.Job{SubjectID: "subject", Source: coursegraph.SourceMap, Attempts: 1}); err != nil {
 		t.Fatal(err)
 	}
-	if string(questions.seen) != string(graph.Graph) || len(repo.finished) != 1 {
+	if string(questions.seen) != string(graph) || len(repo.finished) != 1 {
 		t.Fatalf("prepared %s, published %d graphs", questions.seen, len(repo.finished))
 	}
 }
@@ -335,14 +243,14 @@ func TestPrepareVoicesQueuesTheQuestionsOfEveryPublishedGraph(t *testing.T) {
 		json.RawMessage(`{"topics":[{"question":"Почему A?"},{"question":"Почему B?"}]}`),
 		json.RawMessage(`{"topics":[{"question":"Почему C?"}]}`),
 	}}
-	if err := New(repo, nil, nil, nil, voices, nil).PrepareVoices(context.Background()); err != nil {
+	if err := New(repo, nil, nil, nil, voices).PrepareVoices(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	if len(voices.texts) != 3 || voices.texts[0] != "Почему A?" || voices.texts[2] != "Почему C?" {
 		t.Fatalf("queued %q", voices.texts)
 	}
 	// Without a queue there is nothing to prepare.
-	if err := New(repo, nil, nil, nil, nil, nil).PrepareVoices(context.Background()); err != nil {
+	if err := New(repo, nil, nil, nil, nil).PrepareVoices(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -378,7 +286,7 @@ func TestBuildPublishesOnlyAGraphWithPreparedQuestions(t *testing.T) {
 			repo := &publishingRepo{}
 			voices := &queuedVoices{}
 			questions := &stubQuestions{err: prepareErr}
-			w := New(repo, items, progressStorage{}, &capturingBuilder{}, voices, nil)
+			w := New(repo, items, progressStorage{}, &capturingBuilder{}, voices)
 			w.SetQuestions(questions)
 			err := w.process(context.Background(), coursegraph.Job{SubjectID: "subject"})
 			if questions.seen == nil {
@@ -424,7 +332,7 @@ func (r *failingRepo) Fail(_ context.Context, _ coursegraph.Job, message string,
 func TestAFailureToPrepareQuestionsIsReportedAsSuch(t *testing.T) {
 	items := requestMaterials{{ID: "m", S3ParsedKey: "parsed", Cleaning: &material.Cleaning{Status: "ready", S3ReportKey: "report"}}}
 	repo := &failingRepo{}
-	w := New(repo, items, progressStorage{}, &capturingBuilder{}, nil, nil)
+	w := New(repo, items, progressStorage{}, &capturingBuilder{}, nil)
 	w.SetQuestions(&stubQuestions{err: errors.New("gateway down")})
 	if worked, err := w.ProcessOne(context.Background()); !worked || err == nil {
 		t.Fatalf("worked=%v err=%v", worked, err)

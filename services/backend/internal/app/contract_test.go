@@ -212,19 +212,10 @@ func TestOpenAPIResponses(t *testing.T) {
 	if err := json.Unmarshal(createdSubject.Body.Bytes(), &contractSubject); err != nil || contractSubject.ID == "" {
 		t.Fatalf("created subject: %s", createdSubject.Body.String())
 	}
-	mapPath := "/admin/subjects/" + contractSubject.ID + "/graph/competency-map"
-	const mapContract = "/admin/subjects/{subject_id}/graph/competency-map"
-	notABook := upload(f, mapPath, "file", "map.pdf", "application/pdf", []byte("%PDF-1.7"), admin)
-	if notABook.Code != http.StatusUnprocessableEntity {
-		t.Fatalf("map that is not a book: %d %s", notABook.Code, notABook.Body.String())
+	unsupportedMap := upload(f, "/admin/subjects/"+contractSubject.ID+"/graph/competency-map", "file", "map.xlsx", "application/octet-stream", []byte("not an exam input"), admin)
+	if unsupportedMap.Code != http.StatusNotFound {
+		t.Fatalf("exam map import must not be supported: %d %s", unsupportedMap.Code, unsupportedMap.Body.String())
 	}
-	check("POST", mapContract, notABook)
-	imported := upload(f, mapPath, "file", "map.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", mapBook(t), admin)
-	if imported.Code != http.StatusAccepted || !strings.Contains(imported.Body.String(), `"build_source":"competency_map"`) {
-		t.Fatalf("map import: %d %s", imported.Code, imported.Body.String())
-	}
-	check("POST", mapContract, imported)
-	check("POST", mapContract, upload(f, mapPath, "file", "map.xlsx", "application/octet-stream", mapBook(t), admin))
 	check("GET", "/subjects", f.request("GET", "/subjects", "", admin))
 	materialData := []byte("%PDF-1.7 lecture")
 	materialsUpload := upload(f, "/admin/subjects/subject:test/materials", "file", "lecture.pdf", "application/pdf", materialData, admin)

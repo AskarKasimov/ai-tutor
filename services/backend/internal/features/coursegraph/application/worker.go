@@ -28,9 +28,6 @@ type Repository interface {
 	Request(context.Context, string, time.Time) (bool, error)
 	// Published lists the graphs Geek examines by.
 	Published(context.Context) ([]json.RawMessage, error)
-	// SaveMap stores an imported competency map and queues its build; false
-	// when a build is already queued or running.
-	SaveMap(ctx context.Context, subjectID, filename, sheet string, graph json.RawMessage, now time.Time) (bool, error)
 	// MapGraph is the graph of the imported competency map.
 	MapGraph(context.Context, string) (json.RawMessage, error)
 }
@@ -61,9 +58,6 @@ type Questions interface {
 	Prepare(ctx context.Context, graph json.RawMessage) (json.RawMessage, error)
 }
 
-// MapReader reads the worksheets of an imported competency map book.
-type MapReader func(data []byte) ([]coursegraph.MapSheet, error)
-
 type Worker struct {
 	repo      Repository
 	materials Materials
@@ -71,17 +65,15 @@ type Worker struct {
 	builder   Builder
 	voices    Voices
 	questions Questions
-	maps      MapReader
 	// progress of running builds by subject, shown in snapshots.
 	mu       sync.Mutex
 	progress map[string]coursegraph.BuildProgress
 }
 
 // New builds the graph worker; voices may be nil, then questions are voiced
-// only when a student first hears them. maps may be nil, then a competency
-// map cannot be imported.
-func New(repo Repository, materials Materials, storage Storage, builder Builder, voices Voices, maps MapReader) *Worker {
-	return &Worker{repo: repo, materials: materials, storage: storage, builder: builder, voices: voices, maps: maps,
+// only when a student first hears them.
+func New(repo Repository, materials Materials, storage Storage, builder Builder, voices Voices) *Worker {
+	return &Worker{repo: repo, materials: materials, storage: storage, builder: builder, voices: voices,
 		progress: map[string]coursegraph.BuildProgress{}}
 }
 
@@ -203,60 +195,6 @@ func (w *Worker) snapshot(ctx context.Context, subjectID string) (coursegraph.Sn
 	}
 	snapshot.GraphSource = coursegraph.SourceBuilt
 	return snapshot, nil
-}
-
-// ImportMap builds the course graph from a competency map instead of the
-// materials (the admin's "import competency map" button): the map is read
-// and checked at once, its questions are prepared and published by the
-// worker like those of a build. The graph is read from the first sheet of
-// the book; the second one is the diagnostic's.
-func (w *Worker) ImportMap(ctx context.Context, actor user.User, subjectID, filename string, data []byte) (coursegraph.Snapshot, error) {
-	if actor.Role != user.Admin {
-		return coursegraph.Snapshot{}, fault.New(fault.Forbidden, "FORBIDDEN", "Доступно только admin.")
-	}
-	if w.maps == nil {
-		return coursegraph.Snapshot{}, fault.New(fault.Unavailable, "COMPETENCY_MAP_UNAVAILABLE", "Импорт карты компетенций не настроен.")
-	}
-	current, err := w.repo.Read(ctx, subjectID)
-	if err != nil {
-		return coursegraph.Snapshot{}, err
-	}
-	if current.Status == "pending" || current.Status == "processing" {
-		return coursegraph.Snapshot{}, fault.New(fault.Conflict, "GRAPH_BUILD_IN_PROGRESS", "Граф курса уже собирается.")
-	}
-	sheets, err := w.maps(data)
-	if err != nil {
-		return coursegraph.Snapshot{}, fault.New(fault.Invalid, "COMPETENCY_MAP_INVALID", "Не удалось прочитать книгу Excel (.xlsx).")
-	}
-	built, err := coursegraph.BuildMapGraph(sheets)
-	var mapErr *coursegraph.MapError
-	if errors.As(err, &mapErr) {
-		return coursegraph.Snapshot{}, mapFault(mapErr)
-	}
-	if err != nil {
-		return coursegraph.Snapshot{}, err
-	}
-	queued, err := w.repo.SaveMap(ctx, subjectID, filename, built.Sheet, built.Graph, time.Now())
-	if err != nil {
-		return coursegraph.Snapshot{}, err
-	}
-	if !queued {
-		return coursegraph.Snapshot{}, fault.New(fault.Conflict, "GRAPH_BUILD_IN_PROGRESS", "Граф курса уже собирается.")
-	}
-	return w.snapshot(ctx, subjectID)
-}
-
-// mapFault names the cells of a rejected map.
-func mapFault(e *coursegraph.MapError) *fault.Error {
-	f := fault.New(fault.Invalid, e.Code, e.Message)
-	for _, issue := range e.Issues {
-		message := issue.Message
-		if issue.Row > 0 {
-			message = fmt.Sprintf("Строка %d, «%s»: %s", issue.Row, issue.Column, issue.Message)
-		}
-		f.Details = append(f.Details, fault.Detail{Path: "file", Code: "COMPETENCY_MAP_CELL", Message: message})
-	}
-	return f
 }
 
 // BuildShape writes an examined graph as course-graph writes a build:

@@ -2,8 +2,6 @@ package postgres
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -63,31 +61,6 @@ func (r *Repository) Read(ctx context.Context, subjectID string) (coursegraph.Sn
 		snapshot.Map = &coursegraph.MapFile{Filename: row.MapFilename, Sheet: row.MapSheet}
 	}
 	return snapshot, nil
-}
-
-// SaveMap stores an imported competency map and queues a build of it in one
-// transaction; false, with nothing stored, when a build is already queued or
-// running.
-func (r *Repository) SaveMap(ctx context.Context, subjectID, filename, sheet string, graph json.RawMessage, now time.Time) (bool, error) {
-	tx, err := r.pool.Begin(ctx)
-	if err != nil {
-		return false, err
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-	sum := sha256.Sum256(graph)
-	q := db.New(tx)
-	if err = q.SaveCourseGraphMap(ctx, db.SaveCourseGraphMapParams{SubjectID: subjectID, Filename: filename, Sheet: sheet,
-		Fingerprint: hex.EncodeToString(sum[:]), Graph: graph, Now: now.Unix()}); err != nil {
-		return false, err
-	}
-	_, err = q.RequestCourseGraphMapBuild(ctx, db.RequestCourseGraphMapBuildParams{SubjectID: subjectID, Now: now.Unix()})
-	if errors.Is(err, pgx.ErrNoRows) {
-		return false, nil
-	}
-	if err != nil {
-		return false, err
-	}
-	return true, tx.Commit(ctx)
 }
 
 // MapGraph is the graph of the imported competency map of a course.

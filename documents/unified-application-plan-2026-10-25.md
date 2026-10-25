@@ -658,7 +658,7 @@ docker compose --env-file .env.example -f docker-compose.yaml -f docker-compose.
 | POST | `/api/v1/voice/syntheses` |
 | GET | `/api/v1/health` |
 
-Контроль полноты: 48 learning + 19 exam + 9 common = **76 операций app API**. В задаче 2 закрепить этот manifest contract-тестом с явным списком; отсутствие хотя бы одного перенесённого implemented endpoint должно давать failure. Служебные Caddy gateway/docs routes проверяются дополнительно.
+Контроль полноты: 48 learning + 18 exam + 9 common = **75 текущих операций app API** (замороженный baseline до изменения scope содержал 76). В задаче 2 закрепить этот manifest contract-тестом с явным списком; отсутствие хотя бы одного перенесённого implemented endpoint должно давать failure. Служебные Caddy gateway/docs routes проверяются дополнительно.
 
 ## Решение владельца 25.10.2026: общий курс между направлениями
 
@@ -674,3 +674,8 @@ docker compose --env-file .env.example -f docker-compose.yaml -f docker-compose.
 Это решение уточняет предыдущий раздел об общем курсе и заменяет любые предложения показывать directional tabs над общим каталогом либо предлагать выбор курса на экранах материалов. `/admin/courses` — общий экран «Курсы», без вкладок направлений; создание курса выполняется один раз здесь. Клик по курсу открывает `/admin/courses/{subject_id}` на вкладке «Материалы для обучения» по умолчанию. На экране выбранного курса доступны вкладки «Материалы для обучения» и «Материалы для экзамена»; обе показывают выбранный курс и сохраняют его ID при переходе, reload и прямой ссылке. Ссылка возврата ведёт к общему каталогу.
 
 У экранов подготовки нет собственного создания или селектора курса. Невалидный `subject_id` не подставляет другой/первый курс и не показывает загрузку; backend получает только ID из конкретного маршрута. Учебный импорт остаётся CSV/XLSX и не затрагивает exam materials/graph; exam upload/build не меняет learning map. Отдельные данные, алгоритмы, готовность и прогресс сохраняются. Это разрешённое изменение UI относительно замороженных screenshot parity эталонов; никакой общий граф или изменение учебной диагностики не вводится.
+
+
+## Решение владельца 25.10.2026: карта компетенций только для обучения
+
+Последнее продуктовое решение отменяет exam-map flow, описанный ранее в плане. Компетентностная CSV/XLSX-карта используется только вкладкой обучения. Exam graph строится исключительно из загруженных материалов общего курса. Операция `POST /api/v1/exam/admin/subjects/{subject_id}/graph/competency-map` удалена из поддерживаемого API, frontend wiring и OpenAPI. Исторический исходный manifest из 76 операций сохранён как baseline; текущий `documents/integration-parity/current-api-manifest.json` фиксирует 75 реализованных маршрутов и withdrawn reason. Новые student readiness/catalog и сессии не используют map-only exam graphs. Старые строки `course_graph_maps`/`course_graphs` и session snapshots не удаляются; сохранено чтение истории. Learning parser, форматы, sheet behavior и diagnostic rules не изменяются.

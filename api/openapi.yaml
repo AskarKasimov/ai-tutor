@@ -3585,7 +3585,7 @@ paths:
       x-implementation: planned
   /exam/admin/subjects/{subject_id}/graph:
     get:
-      description: 'Доступно только admin. Сборку запускает POST .../graph/build. stale — источник графа (материалы или карта) изменился после публикации; inputs_ready — все материалы обработаны и сборку можно запустить. graph_source — откуда граф: built (собран из материалов), competency_map (собран по карте компетенций) или none — графа нет, курс студентам не виден. build_source — что читает последняя запрошенная сборка; map — последняя импортированная карта.'
+      description: Доступно только admin. Граф собирается из материалов кнопкой POST .../graph/build. graph_source — built (собран из материалов), competency_map (историческая запись) или none. Новая экзаменационная сборка доступна только при готовых материалах; прежние map snapshots сохраняются для совместимости чтения.
       operationId: getCourseGraph
       parameters:
         - description: ID предмета
@@ -3730,93 +3730,6 @@ paths:
       security:
         - accessCookie: []
       summary: Собрать граф курса
-      tags:
-        - Материалы
-      x-implementation: implemented
-  /exam/admin/subjects/{subject_id}/graph/competency-map:
-    post:
-      description: 'Доступно только admin. Кнопка «Импортировать карту компетенций»: граф курса собирается по карте вместо материалов — на каждую субкомпетенцию с тремя и более ОР с TRUE и заданием основное задание (наивысший Блум, затем важность) становится темой верхнего уровня, два самых простых — её пререквизитами; вопрос — задание карты без изменений. Карта проверяется сразу, затем вопросы готовятся и граф публикуется так же, как сборка из материалов, и заменяет прежний граф курса. Граф строится по первому листу книги (второй — для диагностики режима «Обучение»); колонки «Компетенция» и «Таксономия» принимаются вместо «Субкомпетенция» и «Уровень по Блуму». Все колонки «Задание N» ОР становятся вариантами темы с критериями из колонки «Критерии оценивания…» того же номера по порядку; экзамен при старте выбирает один вариант случайно.'
-      operationId: importCourseGraphCompetencyMap
-      parameters:
-        - description: ID предмета
-          in: path
-          name: subject_id
-          required: true
-          schema:
-            type: string
-      requestBody:
-        content:
-          multipart/form-data:
-            schema:
-              additionalProperties: false
-              properties:
-                file:
-                  description: Карта компетенций .xlsx, до 25 МиБ
-                  format: binary
-                  type: string
-              required:
-                - file
-              type: object
-        description: Карта компетенций .xlsx, до 25 МиБ
-        required: true
-      responses:
-        "202":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/coursegraph.Snapshot'
-          description: Accepted
-        "400":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Bad Request
-        "401":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Unauthorized
-        "403":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Forbidden
-        "404":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Not Found
-        "409":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: 'GRAPH_BUILD_IN_PROGRESS: сборка уже идёт'
-        "413":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Request Entity Too Large
-        "422":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: COMPETENCY_MAP_INVALID или COMPETENCY_MAP_EMPTY
-        "503":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Service Unavailable
-      security:
-        - accessCookie: []
-      summary: Импортировать карту компетенций
       tags:
         - Материалы
       x-implementation: implemented

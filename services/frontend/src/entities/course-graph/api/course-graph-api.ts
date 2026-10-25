@@ -243,29 +243,6 @@ export async function startCourseGraphBuild(
   return build
 }
 
-// Builds the course graph from a competency map instead of the materials;
-// the server reads the first sheet of the book.
-export async function importCompetencyMap(
-  subjectId: string,
-  file: File,
-  signal: AbortSignal,
-): Promise<CourseGraphBuild> {
-  const body = new FormData()
-  body.append('file', file)
-  const build = toBuild(
-    subjectId,
-    parseSnapshot(
-      await fetchJSON(
-        `/admin/subjects/${encodeURIComponent(subjectId)}/graph/competency-map`,
-        signal,
-        { method: 'POST', body },
-      ),
-    ),
-  )
-  if (!build) throw invalidResponse()
-  return build
-}
-
 export async function readCourseGraph(
   subjectId: string,
   signal: AbortSignal,
@@ -289,9 +266,6 @@ export async function readCourseGraph(
     stale: snapshot.stale,
     inputsReady: snapshot.inputs_ready,
     view,
-    source:
-      snapshot.graph_source === 'competency_map' ? 'competency_map' : 'built',
-    map: snapshot.map ?? null,
     nodes: view.topics.map((topic) => ({
       id: topic.id,
       title: topic.title,

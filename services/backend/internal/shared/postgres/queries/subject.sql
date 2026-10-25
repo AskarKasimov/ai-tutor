@@ -8,8 +8,8 @@ SELECT subject.id, subject.name,
        EXISTS (
            SELECT 1 FROM course_graphs graph
            WHERE graph.subject_id = subject.id
-             AND (graph.source = 'competency_map'
-                  OR EXISTS (SELECT 1 FROM subject_materials material WHERE material.subject_id = subject.id))
+             AND graph.source = 'materials'
+             AND EXISTS (SELECT 1 FROM subject_materials material WHERE material.subject_id = subject.id)
        ) AS exam_ready,
        EXISTS (
            SELECT 1

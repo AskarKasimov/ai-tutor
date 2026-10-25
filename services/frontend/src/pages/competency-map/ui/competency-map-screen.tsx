@@ -78,7 +78,6 @@ import {
 import { useSubjectsQuery } from '@/features/subject-selection'
 import { CosmicProgress, MarkdownContent } from '@/shared/ui'
 import styles from '@/pages/competency-map/ui/competency-map.module.scss'
-import { CompetencyMapImport } from './competency-map-import'
 import { DirectionNav } from '@/widgets/direction-nav'
 
 // React Flow and the layout load only when the graph is shown.
@@ -741,24 +740,7 @@ function CompetencyMapAdmin({
               </AlertDialog.Root>
               <CourseGraphViewer
                 graph={courseGraph.data?.view}
-                fromMap={courseGraph.data?.source === 'competency_map'}
                 materials={materials}
-              />
-            </section>
-
-            <section className={styles.card} aria-labelledby="exam-map-title">
-              <div className={styles.sectionHeading}>
-                <FileText aria-hidden="true" />
-                <Heading as="h2" size="4" id="exam-map-title">
-                  {t('courseGraph.mapImportSectionTitle')}
-                </Heading>
-              </div>
-              <CompetencyMapImport
-                userId={userId}
-                subjectId={subjectId}
-                hasGraph={hasGraph}
-                disabled={!graphStateResolved || graphBuilding}
-                map={courseGraph.data?.map}
               />
             </section>
           </>
@@ -1190,11 +1172,9 @@ function BuildProgressCard({ build }: { build: CourseGraphBuild }) {
 
 function CourseGraphViewer({
   graph,
-  fromMap,
   materials,
 }: {
   graph: CourseGraphView | null | undefined
-  fromMap: boolean
   materials: CourseMaterial[]
 }) {
   const { t } = useTranslation()
@@ -1212,16 +1192,6 @@ function CourseGraphViewer({
   return (
     <div className={styles.graphBody}>
       <>
-        {fromMap && (
-          <Flex align="center" gap="2" wrap="wrap">
-            <Badge color="violet" size="1">
-              {t('competencyMap.graphSourceMap')}
-            </Badge>
-            <Text size="2" color="gray">
-              {t('competencyMap.graphMapHint')}
-            </Text>
-          </Flex>
-        )}
         <dl className={styles.stats}>
           <div className={styles.statRow} data-tone="blue">
             <span className={styles.statIcon} aria-hidden="true">

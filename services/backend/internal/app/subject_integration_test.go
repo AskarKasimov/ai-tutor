@@ -152,8 +152,8 @@ FROM learning_map_imports WHERE subject_id=$1`, course.ID).Scan(&importedCounts)
 VALUES ($1,'competency_map','exam-v1','{"marker":"exam-after-learning-import"}',1)`, course.ID); err != nil {
 		t.Fatal(err)
 	}
-	if items := readCatalog("/subjects", student); len(items) != 1 || items[0].ID != course.ID {
-		t.Fatalf("published exam graph should independently enable exam catalog: %+v", items)
+	if items := readCatalog("/subjects", student); len(items) != 0 {
+		t.Fatalf("historical competency-map graph must not enable new exams: %+v", items)
 	}
 	if items := readCatalog("/learn/subjects", student); len(items) != 1 || items[0].ID != course.ID {
 		t.Fatalf("exam graph change must not affect learning readiness: %+v", items)
@@ -227,7 +227,7 @@ ON CONFLICT (id) DO UPDATE SET status = EXCLUDED.status`, status); err != nil {
 	}
 }
 
-func TestSubjectWithAGraphOfACompetencyMapIsReadyWithoutMaterials(t *testing.T) {
+func TestHistoricalCompetencyMapGraphDoesNotMakeSubjectExamReady(t *testing.T) {
 	t.Parallel()
 	f := newFixtureWithConfig(t, testConfig())
 	if _, err := f.pool.Exec(context.Background(), `DELETE FROM subjects WHERE id='subject:test'`); err != nil {
@@ -261,8 +261,11 @@ func TestSubjectWithAGraphOfACompetencyMapIsReadyWithoutMaterials(t *testing.T) 
 	if items := catalog(); len(items) != 0 {
 		t.Fatalf("student catalog before the graph: %+v", items)
 	}
-	publishGraph(t, f, value.ID, []byte(`{"nodes":[{"id":"a","title":"Агент"}]}`))
-	if items := catalog(); len(items) != 1 || items[0].ID != value.ID || !items[0].Ready {
-		t.Fatalf("student catalog should contain the subject of the map without materials: %+v", items)
+	if _, err := f.pool.Exec(context.Background(), `INSERT INTO course_graphs(subject_id, source, fingerprint, graph, updated_at)
+		VALUES ($1, 'competency_map', 'legacy', '{"nodes":[{"id":"a","title":"Агент"}]}', 1)`, value.ID); err != nil {
+		t.Fatal(err)
+	}
+	if items := catalog(); len(items) != 0 {
+		t.Fatalf("historical map graph must not enable an exam without materials: %+v", items)
 	}
 }

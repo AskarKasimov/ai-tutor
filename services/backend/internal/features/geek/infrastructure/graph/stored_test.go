@@ -108,11 +108,11 @@ func TestStoredGraphOfCourseWithoutMaterialsIsNotServed(t *testing.T) {
 	if _, ok, err := NewStored(pool).Current(ctx, "s"); ok || err != nil {
 		t.Fatalf("course without materials: ok=%v err=%v", ok, err)
 	}
-	// A graph of a competency map needs no materials.
+	// Historical map graphs remain stored, but cannot back a new exam.
 	if _, err := pool.Exec(ctx, `UPDATE course_graphs SET source='competency_map'`); err != nil {
 		t.Fatal(err)
 	}
-	if g, ok, err := NewStored(pool).Current(ctx, "s"); err != nil || !ok || len(g.Nodes) != 2 {
-		t.Fatalf("map graph without materials: ok=%v err=%v nodes=%d", ok, err, len(g.Nodes))
+	if g, ok, err := NewStored(pool).Current(ctx, "s"); err != nil || ok {
+		t.Fatalf("historical map graph without materials: ok=%v err=%v nodes=%d", ok, err, len(g.Nodes))
 	}
 }

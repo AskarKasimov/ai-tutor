@@ -27,7 +27,6 @@ import (
 	graphapp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/coursegraph/application"
 	graphapi "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/coursegraph/infrastructure/courseapi"
 	graphpg "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/coursegraph/infrastructure/postgres"
-	graphxlsx "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/coursegraph/infrastructure/xlsx"
 	graphhttp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/coursegraph/transport/http"
 	diagnosticpg "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/diagnostic/infrastructure/postgres"
 	geekapp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/geek/application"
@@ -158,7 +157,7 @@ func New(cfg Config, pool *pgxpool.Pool, logger *zap.Logger) (*App, error) {
 	a.speech = geekapp.NewSpeechCache(a.models(), geekstorage.NewAudio(storage, cfg.S3Bucket), a.voiceName())
 	a.warmer = geekapp.NewWarmer(a.speech, logger.With(zap.String("worker", "speech_warmer")))
 	// A course graph is built from the materials or from a competency map.
-	a.graphWorker = graphapp.New(graphpg.New(pool), materialRepository, a.materialsStorage, graphapi.New(cfg.CourseGraphURL), a.warmer, graphxlsx.First)
+	a.graphWorker = graphapp.New(graphpg.New(pool), materialRepository, a.materialsStorage, graphapi.New(cfg.CourseGraphURL), a.warmer)
 	a.graphWorker.SetQuestions(builtQuestions{examiner: examiner, logger: logger.With(zap.String("worker", "graph_questions"))})
 
 	return a, nil
@@ -280,7 +279,6 @@ func (a *App) Handler() http.Handler {
 	graphHandlers := graphhttp.New(a.graphWorker)
 	examMux.Handle("GET /admin/subjects/{subject_id}/graph", protect(auth, subjectpg.RequireSubject(a.pool, http.HandlerFunc(graphHandlers.Read))))
 	examMux.Handle("POST /admin/subjects/{subject_id}/graph/build", protect(auth, subjectpg.RequireSubject(a.pool, http.HandlerFunc(graphHandlers.Build))))
-	examMux.Handle("POST /admin/subjects/{subject_id}/graph/competency-map", protect(auth, subjectpg.RequireSubject(a.pool, http.HandlerFunc(graphHandlers.ImportMap))))
 	examMux.Handle("DELETE /admin/subjects/{subject_id}/materials/{material_id}", protect(auth, subjectpg.RequireSubject(a.pool, http.HandlerFunc(materialsHandlers.DeleteMaterial))))
 	examMux.Handle("GET /admin/subjects/{subject_id}/materials/{material_id}/raw", protect(auth, subjectpg.RequireSubject(a.pool, http.HandlerFunc(materialsHandlers.DownloadRaw))))
 	examMux.Handle("POST /admin/subjects", protect(auth, http.HandlerFunc(subjectHandlers.Create)))

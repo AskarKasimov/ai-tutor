@@ -25,7 +25,7 @@
   outline-offset: 2px;
 }
 
-.link[aria-current='page'] {
+.link[data-selected='true'] {
   background: var(--accent-3);
   color: var(--accent-11);
 }

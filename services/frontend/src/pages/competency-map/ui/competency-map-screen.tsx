@@ -7,7 +7,7 @@ import {
   SegmentedControl,
   Text,
 } from '@radix-ui/themes'
-import { Link, useBlocker, useNavigate } from '@tanstack/react-router'
+import { useBlocker, useNavigate } from '@tanstack/react-router'
 import {
   CheckCircle2,
   Clock,
@@ -17,7 +17,6 @@ import {
   ArrowRight,
   Replace,
   Save,
-  ShieldCheck,
   Sparkles,
   Trash2,
   X,
@@ -48,7 +47,7 @@ import {
   type CourseGraphView,
   CourseGraphApiError,
 } from '@/entities/course-graph'
-import { AccountMenu, useAuth } from '@/features/auth'
+import { useAuth } from '@/features/auth'
 import {
   useDeleteCourseMaterialMutation,
   useSubjectMaterialsQuery,
@@ -78,7 +77,7 @@ import {
 import { useSubjectsQuery } from '@/features/subject-selection'
 import { CosmicProgress, MarkdownContent } from '@/shared/ui'
 import styles from '@/pages/competency-map/ui/competency-map.module.scss'
-import { DirectionNav } from '@/widgets/direction-nav'
+import { AdminCourseDetailShell } from '@/widgets/admin-course-detail-shell'
 
 // React Flow and the layout load only when the graph is shown.
 const CourseGraphCanvas = lazy(() => import('./course-graph-canvas'))
@@ -294,490 +293,455 @@ function CompetencyMapAdmin({
   const graphIsOutdated = courseGraph.data?.stale ?? false
 
   return (
-    <div className={styles.page} data-admin-screen>
-      <header className={styles.header}>
-        <div className={styles.brand}>
-          <ShieldCheck size={24} aria-hidden="true" />
-          <Text weight="bold">{t('competencyMap.admin')}</Text>
-        </div>
-        <AccountMenu canLogout={false} />
-      </header>
-      <main className={styles.content}>
-        <Flex justify="between" align="center" wrap="wrap" gap="3">
-          <Button asChild variant="soft">
-            <Link to="/admin/courses">{t('adminCourses.backToCourses')}</Link>
+    <AdminCourseDetailShell
+      active="exam"
+      subjectId={subjectId}
+      subjectName={subject?.name}
+      ready={subject?.exam_ready}
+      title={t('courseGraph.title')}
+      description={t('courseGraph.subtitle')}
+    >
+      {subjects.isPending ? (
+        <Text as="p" role="status">
+          {t('competencyMap.subjectsLoading')}
+        </Text>
+      ) : subjects.isError ? (
+        <div className={styles.card}>
+          <Text as="p" role="alert">
+            {t('competencyMap.subjectsError')}
+          </Text>
+          <Button variant="soft" onClick={() => void subjects.refetch()}>
+            {t('trainer.retry')}
           </Button>
-          <DirectionNav audience="admin" active="exam" subjectId={subjectId} />
-        </Flex>
-        <div className={styles.intro}>
-          <Heading as="h1" size="8">
-            {t('courseGraph.title')}
-          </Heading>
-          <Text as="p" color="gray">
-            {t('courseGraph.subtitle')}
-          </Text>
         </div>
-        {subjects.isPending ? (
-          <Text as="p" role="status">
-            {t('competencyMap.subjectsLoading')}
+      ) : !subject ? (
+        <section className={styles.card}>
+          <Text as="p" role="alert">
+            {t('courseGraph.courseNotFound')}
           </Text>
-        ) : subjects.isError ? (
-          <div className={styles.card}>
-            <Text as="p" role="alert">
-              {t('competencyMap.subjectsError')}
-            </Text>
-            <Button variant="soft" onClick={() => void subjects.refetch()}>
-              {t('trainer.retry')}
-            </Button>
-          </div>
-        ) : !subject ? (
-          <section className={styles.card}>
-            <Text as="p" role="alert">
-              {t('courseGraph.courseNotFound')}
-            </Text>
-            <Button onClick={() => void navigate({ to: '/admin/courses' })}>
-              {t('courseGraph.backToCourses')}
-            </Button>
-          </section>
-        ) : (
-          <>
-            <section className={styles.card} aria-labelledby="subject-title">
-              <div className={styles.editHeading}>
-                <Text as="p" size="2" weight="medium" color="gray">
-                  {t('competencyMap.subject')}
-                </Text>
-                <Heading as="h2" size="6" id="subject-title">
-                  {subject.name}
-                </Heading>
-              </div>
-            </section>
-
-            <nav
-              className={styles.pipeline}
-              aria-label={t('courseGraph.pipeline')}
+          <Button onClick={() => void navigate({ to: '/admin/courses' })}>
+            {t('courseGraph.backToCourses')}
+          </Button>
+        </section>
+      ) : (
+        <>
+          <nav
+            className={styles.pipeline}
+            aria-label={t('courseGraph.pipeline')}
+          >
+            <div data-active="true">
+              <span className={styles.stepNumber}>1</span>
+              <Text weight="bold">{t('courseGraph.materialsStep')}</Text>
+            </div>
+            <ArrowRight className={styles.pipelineArrow} aria-hidden="true" />
+            <div
+              data-ready={
+                (parsedCount > 0 && graphBlockers.length === 0) ||
+                hasGraph ||
+                undefined
+              }
             >
-              <div data-active="true">
-                <span className={styles.stepNumber}>1</span>
-                <Text weight="bold">{t('courseGraph.materialsStep')}</Text>
-              </div>
-              <ArrowRight className={styles.pipelineArrow} aria-hidden="true" />
-              <div
-                data-ready={
-                  (parsedCount > 0 && graphBlockers.length === 0) ||
-                  hasGraph ||
-                  undefined
-                }
-              >
-                <span className={styles.stepNumber}>2</span>
-                <Text weight="bold">{t('courseGraph.graphStep')}</Text>
-              </div>
-              <ArrowRight className={styles.pipelineArrow} aria-hidden="true" />
-              <div data-ready={hasGraph || undefined}>
-                <span className={styles.stepNumber}>3</span>
-                <Text weight="bold">{t('courseGraph.readyStep')}</Text>
-              </div>
-            </nav>
+              <span className={styles.stepNumber}>2</span>
+              <Text weight="bold">{t('courseGraph.graphStep')}</Text>
+            </div>
+            <ArrowRight className={styles.pipelineArrow} aria-hidden="true" />
+            <div data-ready={hasGraph || undefined}>
+              <span className={styles.stepNumber}>3</span>
+              <Text weight="bold">{t('courseGraph.readyStep')}</Text>
+            </div>
+          </nav>
 
-            <section
-              className={styles.card}
-              aria-labelledby="materials-list-title"
-            >
-              <div className={styles.sectionHeading}>
-                <FileText aria-hidden="true" />
-                <Heading as="h2" size="4" id="materials-list-title">
-                  {t('competencyMap.materialsListTitle')}
-                </Heading>
-              </div>
+          <section
+            className={styles.card}
+            aria-labelledby="materials-list-title"
+          >
+            <div className={styles.sectionHeading}>
+              <FileText aria-hidden="true" />
+              <Heading as="h2" size="4" id="materials-list-title">
+                {t('competencyMap.materialsListTitle')}
+              </Heading>
+            </div>
 
-              {materialKindsQuery.isError && (
-                <Flex gap="3" align="center" wrap="wrap">
-                  <Text role="alert" color="red">
-                    {t('courseGraph.kindsUnavailable')}
-                  </Text>
-                  <Button
-                    variant="ghost"
-                    size="1"
-                    onClick={() => void materialKindsQuery.refetch()}
-                  >
-                    {t('trainer.retry')}
-                  </Button>
-                </Flex>
-              )}
-              {materialKindsQuery.isSuccess &&
-                materialKindsQuery.data.length === 0 && (
-                  <Text role="alert" color="amber">
-                    {t('courseGraph.kindsEmpty')}
-                  </Text>
-                )}
-
-              <MaterialUploadQueueToolbar queue={queue} disabled={busy} />
-
-              {replaceMaterial.isError && (
-                <Text as="p" role="alert" color="red">
-                  {replaceMaterial.error instanceof Error
-                    ? replaceMaterial.error.message
-                    : t('competencyMap.requestError')}
+            {materialKindsQuery.isError && (
+              <Flex gap="3" align="center" wrap="wrap">
+                <Text role="alert" color="red">
+                  {t('courseGraph.kindsUnavailable')}
                 </Text>
-              )}
-              {materialsQuery.isPending && (
-                <Text as="p" role="status" color="gray" size="2">
-                  {t('competencyMap.loading')}
-                </Text>
-              )}
-              {materialsQuery.isError && (
-                <Flex gap="3" align="center" wrap="wrap">
-                  <Text as="p" role="alert" color="red" size="2">
-                    {t('competencyMap.loadError')}
-                  </Text>
-                  <Button
-                    variant="ghost"
-                    size="1"
-                    onClick={() => void materialsQuery.refetch()}
-                  >
-                    {t('trainer.retry')}
-                  </Button>
-                </Flex>
-              )}
-              {materialsQuery.isSuccess && orderedMaterialRows.length === 0 && (
-                <Text as="p" color="gray" size="2">
-                  {t('competencyMap.materialsEmpty')}
-                </Text>
-              )}
-              {orderedMaterialRows.length > 0 && (
-                <div className={styles.materialsList} role="list">
-                  {orderedMaterialRows.map((row, index) => {
-                    const name =
-                      'queued' in row
-                        ? row.queued.file.name
-                        : row.saved.filename
-                    return (
-                      <div
-                        className={styles.materialListItem}
-                        key={row.id}
-                        role="listitem"
-                        draggable={!busy && !queue.preparing}
-                        data-dragging={
-                          draggingMaterialId === row.id || undefined
-                        }
-                        data-drop-target={
-                          dropTargetMaterialId === row.id || undefined
-                        }
-                        onDragStart={(event) => {
-                          const target = event.target
-                          if (
-                            target instanceof HTMLElement &&
-                            target.closest(
-                              'button, input, [role="combobox"]',
-                            ) &&
-                            !target.closest('[data-queue-drag-handle]')
-                          ) {
-                            event.preventDefault()
-                            return
-                          }
-                          setDraggingMaterialId(row.id)
-                          event.dataTransfer.effectAllowed = 'move'
-                          event.dataTransfer.setData('text/plain', row.id)
-                        }}
-                        onDragEnd={() => {
-                          setDraggingMaterialId(null)
-                          setDropTargetMaterialId(null)
-                        }}
-                        onDragOver={(event) => {
-                          event.preventDefault()
-                          setDropTargetMaterialId(row.id)
-                          event.dataTransfer.dropEffect = 'move'
-                        }}
-                        onDragLeave={() => setDropTargetMaterialId(null)}
-                        onDrop={(event) => {
-                          event.preventDefault()
-                          const sourceId =
-                            event.dataTransfer.getData('text/plain') ||
-                            draggingMaterialId
-                          if (sourceId) {
-                            const current = orderedMaterialRows.map(
-                              ({ id, week }) => ({ id, week }),
-                            )
-                            applyMaterialOrder(
-                              moveMaterialQueueItem(current, sourceId, row.id),
-                              sourceId,
-                            )
-                          }
-                          setDraggingMaterialId(null)
-                          setDropTargetMaterialId(null)
-                        }}
-                      >
-                        <MaterialReorderControls
-                          name={name}
-                          disabled={busy || queue.preparing}
-                          isFirst={index === 0}
-                          isLast={index === orderedMaterialRows.length - 1}
-                          onMoveUp={() => moveMaterial(row.id, index - 1)}
-                          onMoveDown={() => moveMaterial(row.id, index + 1)}
-                        />
-                        {'queued' in row ? (
-                          <MaterialQueueCard
-                            item={row.queued}
-                            kinds={materialKinds}
-                            disabled={busy || queue.preparing}
-                            dropTarget={dropTargetMaterialId === row.id}
-                            onWeekChange={(week) =>
-                              queue.updateWeek(row.id, week)
-                            }
-                            onKindChange={(kind) =>
-                              queue.updateKind(row.id, kind)
-                            }
-                            onRemove={() => queue.removeItem(row.id)}
-                            onSend={() => queue.sendItem(row.id)}
-                            sending={queue.sendingItemId === row.id}
-                          />
-                        ) : (
-                          <MaterialItemCard
-                            material={row.saved}
-                            kinds={materialKinds}
-                            subjectId={subjectId}
-                            onUpdateMetadata={(patch) =>
-                              updateMetadata.mutateAsync({
-                                materialId: row.saved.id,
-                                patch,
-                                subjectId,
-                              })
-                            }
-                            dropTarget={dropTargetMaterialId === row.id}
-                            previewOpen={previewId === row.id}
-                            onTogglePreview={() =>
-                              setPreviewId((current) =>
-                                current === row.id ? null : row.id,
-                              )
-                            }
-                            onDelete={() =>
-                              deleteMaterial.mutateAsync({
-                                materialId: row.id,
-                                subjectId,
-                              })
-                            }
-                            onReplace={(file) =>
-                              replaceMaterial.mutate({
-                                materialId: row.id,
-                                file,
-                              })
-                            }
-                            busy={busy}
-                          />
-                        )}
-                      </div>
-                    )
-                  })}
-                </div>
-              )}
-              <MaterialUploadSubmit queue={queue} disabled={busy} />
-            </section>
-
-            <section className={styles.card} aria-labelledby="graph-title">
-              <div className={styles.sectionHeading}>
-                <Sparkles aria-hidden="true" />
-                <Heading as="h2" size="4" id="graph-title">
-                  {t('courseGraph.graphTitle')}
-                </Heading>
-                <Badge
+                <Button
+                  variant="ghost"
                   size="1"
-                  color={
-                    hasGraph ? 'green' : graphBlockers.length ? 'amber' : 'blue'
-                  }
-                  className={styles.materialTag}
+                  onClick={() => void materialKindsQuery.refetch()}
                 >
-                  {hasGraph
-                    ? t('courseGraph.graphStored')
-                    : t('courseGraph.graphNotReady')}
-                </Badge>
-                {graphIsOutdated && (
-                  <Badge size="1" color="amber" className={styles.materialTag}>
-                    {t('courseGraph.graphOutdated')}
-                  </Badge>
-                )}
-              </div>
-              <Text as="p" color="gray" size="2">
-                {t('courseGraph.materialSummary', {
-                  total: materials.length,
-                  ready: readyCount,
-                  processing: processingCount,
-                  failed: failedCount,
-                })}
-              </Text>
-              {graphBlockers.length > 0 && (
-                <div className={styles.warning} role="status">
-                  <Text weight="bold">
-                    {t(
-                      hasGraph
-                        ? 'courseGraph.rebuildBlockedTitle'
-                        : 'courseGraph.blockedTitle',
-                    )}
-                  </Text>
-                  <ul>
-                    {graphBlockers.map((reason) => (
-                      <li key={reason}>{reason}</li>
-                    ))}
-                  </ul>
-                </div>
+                  {t('trainer.retry')}
+                </Button>
+              </Flex>
+            )}
+            {materialKindsQuery.isSuccess &&
+              materialKindsQuery.data.length === 0 && (
+                <Text role="alert" color="amber">
+                  {t('courseGraph.kindsEmpty')}
+                </Text>
               )}
-              {latestBuild.isError && (
+
+            <MaterialUploadQueueToolbar queue={queue} disabled={busy} />
+
+            {replaceMaterial.isError && (
+              <Text as="p" role="alert" color="red">
+                {replaceMaterial.error instanceof Error
+                  ? replaceMaterial.error.message
+                  : t('competencyMap.requestError')}
+              </Text>
+            )}
+            {materialsQuery.isPending && (
+              <Text as="p" role="status" color="gray" size="2">
+                {t('competencyMap.loading')}
+              </Text>
+            )}
+            {materialsQuery.isError && (
+              <Flex gap="3" align="center" wrap="wrap">
+                <Text as="p" role="alert" color="red" size="2">
+                  {t('competencyMap.loadError')}
+                </Text>
+                <Button
+                  variant="ghost"
+                  size="1"
+                  onClick={() => void materialsQuery.refetch()}
+                >
+                  {t('trainer.retry')}
+                </Button>
+              </Flex>
+            )}
+            {materialsQuery.isSuccess && orderedMaterialRows.length === 0 && (
+              <Text as="p" color="gray" size="2">
+                {t('competencyMap.materialsEmpty')}
+              </Text>
+            )}
+            {orderedMaterialRows.length > 0 && (
+              <div className={styles.materialsList} role="list">
+                {orderedMaterialRows.map((row, index) => {
+                  const name =
+                    'queued' in row ? row.queued.file.name : row.saved.filename
+                  return (
+                    <div
+                      className={styles.materialListItem}
+                      key={row.id}
+                      role="listitem"
+                      draggable={!busy && !queue.preparing}
+                      data-dragging={draggingMaterialId === row.id || undefined}
+                      data-drop-target={
+                        dropTargetMaterialId === row.id || undefined
+                      }
+                      onDragStart={(event) => {
+                        const target = event.target
+                        if (
+                          target instanceof HTMLElement &&
+                          target.closest('button, input, [role="combobox"]') &&
+                          !target.closest('[data-queue-drag-handle]')
+                        ) {
+                          event.preventDefault()
+                          return
+                        }
+                        setDraggingMaterialId(row.id)
+                        event.dataTransfer.effectAllowed = 'move'
+                        event.dataTransfer.setData('text/plain', row.id)
+                      }}
+                      onDragEnd={() => {
+                        setDraggingMaterialId(null)
+                        setDropTargetMaterialId(null)
+                      }}
+                      onDragOver={(event) => {
+                        event.preventDefault()
+                        setDropTargetMaterialId(row.id)
+                        event.dataTransfer.dropEffect = 'move'
+                      }}
+                      onDragLeave={() => setDropTargetMaterialId(null)}
+                      onDrop={(event) => {
+                        event.preventDefault()
+                        const sourceId =
+                          event.dataTransfer.getData('text/plain') ||
+                          draggingMaterialId
+                        if (sourceId) {
+                          const current = orderedMaterialRows.map(
+                            ({ id, week }) => ({ id, week }),
+                          )
+                          applyMaterialOrder(
+                            moveMaterialQueueItem(current, sourceId, row.id),
+                            sourceId,
+                          )
+                        }
+                        setDraggingMaterialId(null)
+                        setDropTargetMaterialId(null)
+                      }}
+                    >
+                      <MaterialReorderControls
+                        name={name}
+                        disabled={busy || queue.preparing}
+                        isFirst={index === 0}
+                        isLast={index === orderedMaterialRows.length - 1}
+                        onMoveUp={() => moveMaterial(row.id, index - 1)}
+                        onMoveDown={() => moveMaterial(row.id, index + 1)}
+                      />
+                      {'queued' in row ? (
+                        <MaterialQueueCard
+                          item={row.queued}
+                          kinds={materialKinds}
+                          disabled={busy || queue.preparing}
+                          dropTarget={dropTargetMaterialId === row.id}
+                          onWeekChange={(week) =>
+                            queue.updateWeek(row.id, week)
+                          }
+                          onKindChange={(kind) =>
+                            queue.updateKind(row.id, kind)
+                          }
+                          onRemove={() => queue.removeItem(row.id)}
+                          onSend={() => queue.sendItem(row.id)}
+                          sending={queue.sendingItemId === row.id}
+                        />
+                      ) : (
+                        <MaterialItemCard
+                          material={row.saved}
+                          kinds={materialKinds}
+                          subjectId={subjectId}
+                          onUpdateMetadata={(patch) =>
+                            updateMetadata.mutateAsync({
+                              materialId: row.saved.id,
+                              patch,
+                              subjectId,
+                            })
+                          }
+                          dropTarget={dropTargetMaterialId === row.id}
+                          previewOpen={previewId === row.id}
+                          onTogglePreview={() =>
+                            setPreviewId((current) =>
+                              current === row.id ? null : row.id,
+                            )
+                          }
+                          onDelete={() =>
+                            deleteMaterial.mutateAsync({
+                              materialId: row.id,
+                              subjectId,
+                            })
+                          }
+                          onReplace={(file) =>
+                            replaceMaterial.mutate({
+                              materialId: row.id,
+                              file,
+                            })
+                          }
+                          busy={busy}
+                        />
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+            <MaterialUploadSubmit queue={queue} disabled={busy} />
+          </section>
+
+          <section className={styles.card} aria-labelledby="graph-title">
+            <div className={styles.sectionHeading}>
+              <Sparkles aria-hidden="true" />
+              <Heading as="h2" size="4" id="graph-title">
+                {t('courseGraph.graphTitle')}
+              </Heading>
+              <Badge
+                size="1"
+                color={
+                  hasGraph ? 'green' : graphBlockers.length ? 'amber' : 'blue'
+                }
+                className={styles.materialTag}
+              >
+                {hasGraph
+                  ? t('courseGraph.graphStored')
+                  : t('courseGraph.graphNotReady')}
+              </Badge>
+              {graphIsOutdated && (
+                <Badge size="1" color="amber" className={styles.materialTag}>
+                  {t('courseGraph.graphOutdated')}
+                </Badge>
+              )}
+            </div>
+            <Text as="p" color="gray" size="2">
+              {t('courseGraph.materialSummary', {
+                total: materials.length,
+                ready: readyCount,
+                processing: processingCount,
+                failed: failedCount,
+              })}
+            </Text>
+            {graphBlockers.length > 0 && (
+              <div className={styles.warning} role="status">
+                <Text weight="bold">
+                  {t(
+                    hasGraph
+                      ? 'courseGraph.rebuildBlockedTitle'
+                      : 'courseGraph.blockedTitle',
+                  )}
+                </Text>
+                <ul>
+                  {graphBlockers.map((reason) => (
+                    <li key={reason}>{reason}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {latestBuild.isError && (
+              <div>
+                <Text as="p" role="alert" color="red">
+                  {t('courseGraph.statusError')}
+                </Text>
+                <Button
+                  variant="ghost"
+                  onClick={() => void latestBuild.refetch()}
+                >
+                  {t('trainer.retry')}
+                </Button>
+              </div>
+            )}
+            {(latestBuild.data?.status === 'queued' ||
+              latestBuild.data?.status === 'running') && (
+              <BuildProgressCard build={latestBuild.data} />
+            )}
+            {latestBuild.data?.status === 'failed' && (
+              <div className={styles.error} role="alert">
+                <Text weight="bold">{t('courseGraph.buildFailed')}</Text>
+                <Text as="p">
+                  {latestBuild.data.error?.message ??
+                    t('courseGraph.buildFailedHint')}
+                </Text>
+              </div>
+            )}
+            {courseGraph.isError &&
+              courseGraph.error instanceof CourseGraphApiError &&
+              courseGraph.error.status !== 404 && (
                 <div>
                   <Text as="p" role="alert" color="red">
-                    {t('courseGraph.statusError')}
+                    {t('courseGraph.graphReadError')}
                   </Text>
                   <Button
                     variant="ghost"
-                    onClick={() => void latestBuild.refetch()}
+                    onClick={() => void courseGraph.refetch()}
                   >
                     {t('trainer.retry')}
                   </Button>
                 </div>
               )}
-              {(latestBuild.data?.status === 'queued' ||
-                latestBuild.data?.status === 'running') && (
-                <BuildProgressCard build={latestBuild.data} />
-              )}
-              {latestBuild.data?.status === 'failed' && (
-                <div className={styles.error} role="alert">
-                  <Text weight="bold">{t('courseGraph.buildFailed')}</Text>
-                  <Text as="p">
-                    {latestBuild.data.error?.message ??
-                      t('courseGraph.buildFailedHint')}
-                  </Text>
-                </div>
-              )}
-              {courseGraph.isError &&
-                courseGraph.error instanceof CourseGraphApiError &&
-                courseGraph.error.status !== 404 && (
-                  <div>
-                    <Text as="p" role="alert" color="red">
-                      {t('courseGraph.graphReadError')}
-                    </Text>
-                    <Button
-                      variant="ghost"
-                      onClick={() => void courseGraph.refetch()}
-                    >
-                      {t('trainer.retry')}
-                    </Button>
-                  </div>
-                )}
-              {hasGraph && (
-                <div className={styles.success} role="status">
-                  <CheckCircle2 aria-hidden="true" />
-                  <span>
-                    {t('courseGraph.readyMessage', {
-                      count: courseGraph.data.nodes.length,
-                    })}
-                    {courseGraph.data.publishedAt !== null && (
-                      <span className={styles.graphPublishedAt}>
-                        {t('courseGraph.graphPublishedAt', {
-                          date: new Date(
-                            courseGraph.data.publishedAt * 1000,
-                          ).toLocaleString(i18n.language),
-                        })}
-                      </span>
-                    )}
-                  </span>
-                </div>
-              )}
-              {startBuild.isError && (
-                <Text as="p" role="alert" color="red">
-                  {startBuild.error instanceof Error
-                    ? startBuild.error.message
-                    : t('courseGraph.buildFailedHint')}
-                </Text>
-              )}
-              <AlertDialog.Root>
-                <AlertDialog.Trigger>
-                  <Button
-                    size="3"
-                    color="green"
-                    disabled={
-                      !graphStateResolved ||
-                      graphBlockers.length > 0 ||
-                      latestBuild.data?.status === 'queued' ||
-                      latestBuild.data?.status === 'running' ||
-                      startBuild.isPending
-                    }
-                  >
-                    <Sparkles size={17} aria-hidden="true" />
-                    {hasGraph
-                      ? t('courseGraph.rebuild')
-                      : t('courseGraph.build')}
-                  </Button>
-                </AlertDialog.Trigger>
-                <AlertDialog.Content maxWidth="440px">
-                  <AlertDialog.Title>
-                    {hasGraph
-                      ? t('courseGraph.rebuildTitle')
-                      : t('courseGraph.buildTitle')}
-                  </AlertDialog.Title>
-                  <AlertDialog.Description>
-                    {hasGraph
-                      ? t('courseGraph.rebuildWarning')
-                      : t('courseGraph.buildConfirm')}
-                  </AlertDialog.Description>
-                  <Flex gap="3" mt="4" justify="end">
-                    <AlertDialog.Cancel>
-                      <Button variant="soft" color="gray">
-                        {t('competencyMap.cancel')}
-                      </Button>
-                    </AlertDialog.Cancel>
-                    <AlertDialog.Action>
-                      <Button
-                        color="green"
-                        disabled={
-                          !graphStateResolved ||
-                          graphBlockers.length > 0 ||
-                          graphBuilding
-                        }
-                        onClick={() => startBuild.mutate(subjectId)}
-                      >
-                        {t('courseGraph.confirmBuild')}
-                      </Button>
-                    </AlertDialog.Action>
-                  </Flex>
-                </AlertDialog.Content>
-              </AlertDialog.Root>
-              <CourseGraphViewer
-                graph={courseGraph.data?.view}
-                materials={materials}
-              />
-            </section>
-          </>
-        )}
-        <AlertDialog.Root
-          open={navigationBlocker.status === 'blocked'}
-          onOpenChange={(open) => {
-            if (!open) navigationBlocker.reset?.()
-          }}
-        >
-          <AlertDialog.Content maxWidth="440px">
-            <AlertDialog.Title>
-              {t('competencyMap.leaveWithChangesTitle')}
-            </AlertDialog.Title>
-            <AlertDialog.Description>
-              {t('competencyMap.leaveWithChangesDescription')}
-            </AlertDialog.Description>
-            <Flex gap="3" mt="4" justify="end">
-              <AlertDialog.Cancel>
+            {hasGraph && (
+              <div className={styles.success} role="status">
+                <CheckCircle2 aria-hidden="true" />
+                <span>
+                  {t('courseGraph.readyMessage', {
+                    count: courseGraph.data.nodes.length,
+                  })}
+                  {courseGraph.data.publishedAt !== null && (
+                    <span className={styles.graphPublishedAt}>
+                      {t('courseGraph.graphPublishedAt', {
+                        date: new Date(
+                          courseGraph.data.publishedAt * 1000,
+                        ).toLocaleString(i18n.language),
+                      })}
+                    </span>
+                  )}
+                </span>
+              </div>
+            )}
+            {startBuild.isError && (
+              <Text as="p" role="alert" color="red">
+                {startBuild.error instanceof Error
+                  ? startBuild.error.message
+                  : t('courseGraph.buildFailedHint')}
+              </Text>
+            )}
+            <AlertDialog.Root>
+              <AlertDialog.Trigger>
                 <Button
-                  variant="soft"
-                  color="gray"
-                  onClick={() => navigationBlocker.reset?.()}
+                  size="3"
+                  color="green"
+                  disabled={
+                    !graphStateResolved ||
+                    graphBlockers.length > 0 ||
+                    latestBuild.data?.status === 'queued' ||
+                    latestBuild.data?.status === 'running' ||
+                    startBuild.isPending
+                  }
                 >
-                  {t('competencyMap.stayOnCourse')}
+                  <Sparkles size={17} aria-hidden="true" />
+                  {hasGraph ? t('courseGraph.rebuild') : t('courseGraph.build')}
                 </Button>
-              </AlertDialog.Cancel>
-              <AlertDialog.Action>
-                <Button onClick={() => navigationBlocker.proceed?.()}>
-                  {t('competencyMap.leaveCourse')}
-                </Button>
-              </AlertDialog.Action>
-            </Flex>
-          </AlertDialog.Content>
-        </AlertDialog.Root>
-      </main>
-    </div>
+              </AlertDialog.Trigger>
+              <AlertDialog.Content maxWidth="440px">
+                <AlertDialog.Title>
+                  {hasGraph
+                    ? t('courseGraph.rebuildTitle')
+                    : t('courseGraph.buildTitle')}
+                </AlertDialog.Title>
+                <AlertDialog.Description>
+                  {hasGraph
+                    ? t('courseGraph.rebuildWarning')
+                    : t('courseGraph.buildConfirm')}
+                </AlertDialog.Description>
+                <Flex gap="3" mt="4" justify="end">
+                  <AlertDialog.Cancel>
+                    <Button variant="soft" color="gray">
+                      {t('competencyMap.cancel')}
+                    </Button>
+                  </AlertDialog.Cancel>
+                  <AlertDialog.Action>
+                    <Button
+                      color="green"
+                      disabled={
+                        !graphStateResolved ||
+                        graphBlockers.length > 0 ||
+                        graphBuilding
+                      }
+                      onClick={() => startBuild.mutate(subjectId)}
+                    >
+                      {t('courseGraph.confirmBuild')}
+                    </Button>
+                  </AlertDialog.Action>
+                </Flex>
+              </AlertDialog.Content>
+            </AlertDialog.Root>
+            <CourseGraphViewer
+              graph={courseGraph.data?.view}
+              materials={materials}
+            />
+          </section>
+        </>
+      )}
+      <AlertDialog.Root
+        open={navigationBlocker.status === 'blocked'}
+        onOpenChange={(open) => {
+          if (!open) navigationBlocker.reset?.()
+        }}
+      >
+        <AlertDialog.Content maxWidth="440px">
+          <AlertDialog.Title>
+            {t('competencyMap.leaveWithChangesTitle')}
+          </AlertDialog.Title>
+          <AlertDialog.Description>
+            {t('competencyMap.leaveWithChangesDescription')}
+          </AlertDialog.Description>
+          <Flex gap="3" mt="4" justify="end">
+            <AlertDialog.Cancel>
+              <Button
+                variant="soft"
+                color="gray"
+                onClick={() => navigationBlocker.reset?.()}
+              >
+                {t('competencyMap.stayOnCourse')}
+              </Button>
+            </AlertDialog.Cancel>
+            <AlertDialog.Action>
+              <Button onClick={() => navigationBlocker.proceed?.()}>
+                {t('competencyMap.leaveCourse')}
+              </Button>
+            </AlertDialog.Action>
+          </Flex>
+        </AlertDialog.Content>
+      </AlertDialog.Root>
+    </AdminCourseDetailShell>
   )
 }
 

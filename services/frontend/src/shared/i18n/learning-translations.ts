@@ -8,12 +8,13 @@ export const learningTranslations = {
     learningPreparing: 'Обучение: подготовка',
   },
   learningCompetencyMap: {
+    currentMap: 'Текущее состояние карты',
     title: 'Материалы для обучения',
     importTitle: 'Импорт карты компетенций',
     admin: 'Администрирование',
     editSubtitle:
       'Здесь можно загрузить обновлённую карту компетенций предмета.',
-    subjectsLoading: 'Загружаем предмет…',
+    subjectsLoading: 'Загружаем курс…',
     subjectsError: 'Не удалось загрузить предмет.',
     selectedCourseMissing:
       'Курс из ссылки недоступен. Выберите существующий курс из списка.',

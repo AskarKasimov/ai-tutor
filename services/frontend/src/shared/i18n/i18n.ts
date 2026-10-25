@@ -141,7 +141,7 @@ void i18n.init({
           subtitle:
             'Создайте курс, затем загрузите материалы — из них строится граф тем.',
           editSubtitle: 'Здесь загружаются материалы курса.',
-          subjectsLoading: 'Загружаем предмет…',
+          subjectsLoading: 'Загружаем курс…',
           subjectsError: 'Не удалось загрузить предмет.',
           noSharedCourses: 'Сначала создайте общий курс',
           createSharedCourseHelp:
@@ -314,8 +314,10 @@ void i18n.init({
           readyMessage: 'Курс готов для студентов. В графе тем: {{count}}.',
         },
         adminCourses: {
+          admin: 'Администрирование',
           title: 'Курсы',
           coursesTitle: 'Курсы',
+          courseLabel: 'Курс',
           subtitle:
             'Создайте курс один раз, затем выберите его для подготовки материалов обучения или экзамена.',
           backToCourses: 'Ко всем курсам',
@@ -328,6 +330,10 @@ void i18n.init({
           createError: 'Не удалось создать курс. Попробуйте ещё раз.',
           ready: 'Готов',
           preparing: 'Подготавливается',
+          learnReady: 'Обучение готово',
+          learnPreparing: 'Обучение готовится',
+          examReady: 'Экзамен готов',
+          examPreparing: 'Экзамен готовится',
         },
         trainer: {
           title: 'Голосовой тренажёр',

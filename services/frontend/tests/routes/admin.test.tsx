@@ -403,12 +403,12 @@ it('opens course preparation after the common course list and keeps its ID acros
   expect(
     await screen.findByRole('heading', {
       name: 'Материалы для обучения',
-      level: 1,
+      level: 2,
     }),
   ).toBeVisible()
   expect(router.state.location.pathname).toBe('/admin/courses/subject-a')
   expect(
-    await screen.findByRole('heading', { name: 'Машинное обучение', level: 2 }),
+    await screen.findByRole('heading', { name: 'Машинное обучение', level: 1 }),
   ).toBeVisible()
   const navigation = screen.getByRole('navigation', {
     name: 'Разделы администрирования',
@@ -419,11 +419,11 @@ it('opens course preparation after the common course list and keeps its ID acros
   expect(
     await screen.findByRole('heading', {
       name: 'Материалы для экзамена',
-      level: 1,
+      level: 2,
     }),
   ).toBeVisible()
   expect(
-    screen.getByRole('heading', { name: 'Машинное обучение', level: 2 }),
+    screen.getByRole('heading', { name: 'Машинное обучение', level: 1 }),
   ).toBeVisible()
   expect(router.state.location.pathname).toBe('/admin/courses/subject-a')
   expect(router.state.location.search).toEqual({ direction: 'exam' })
@@ -438,7 +438,10 @@ it('imports a learning map only into the course selected in its route', async ()
   const fetch = backend()
   renderApp('/admin/courses/subject-b')
   expect(
-    await screen.findByRole('heading', { name: 'Статистика', level: 2 }),
+    await screen.findByRole('heading', {
+      name: 'Текущее состояние карты',
+      level: 3,
+    }),
   ).toBeVisible()
   const file = new File(['competency map'], 'map.csv', { type: 'text/csv' })
   fireEvent.change(await screen.findByLabelText('Файл карты компетенций'), {

@@ -27,9 +27,11 @@ export function DirectionNav({
           <Link
             to="/admin/courses/$subjectId"
             params={{ subjectId }}
-            search={{}}
+            search={{ direction: 'learn' }}
+            activeOptions={{ exact: true, includeSearch: true }}
             className={styles.link}
             aria-current={active === 'learn' ? 'page' : undefined}
+            data-selected={active === 'learn' ? 'true' : undefined}
           >
             {t('directionNav.learnMaterials')}
           </Link>
@@ -37,8 +39,14 @@ export function DirectionNav({
             to="/admin/courses/$subjectId"
             params={{ subjectId }}
             search={{ direction: 'exam' }}
+            activeOptions={{
+              exact: true,
+              includeSearch: true,
+              explicitUndefined: true,
+            }}
             className={styles.link}
             aria-current={active === 'exam' ? 'page' : undefined}
+            data-selected={active === 'exam' ? 'true' : undefined}
           >
             {t('directionNav.examMaterials')}
           </Link>
@@ -48,16 +56,20 @@ export function DirectionNav({
           <Link
             to="/learn"
             search={subjectId ? { subject_id: subjectId } : {}}
+            activeOptions={{ exact: true, includeSearch: true }}
             className={styles.link}
             aria-current={active === 'learn' ? 'page' : undefined}
+            data-selected={active === 'learn' ? 'true' : undefined}
           >
             {t('directionNav.learn')}
           </Link>
           <Link
             to="/exam"
             search={subjectId ? { subject_id: subjectId } : {}}
+            activeOptions={{ exact: true, includeSearch: true }}
             className={styles.link}
             aria-current={active === 'exam' ? 'page' : undefined}
+            data-selected={active === 'exam' ? 'true' : undefined}
           >
             {t('directionNav.exam')}
           </Link>

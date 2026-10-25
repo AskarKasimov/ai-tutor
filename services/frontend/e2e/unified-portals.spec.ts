@@ -206,11 +206,14 @@ test('one browser context switches modes while student and admin sessions stay s
   await expect(
     page.getByRole('heading', { name: otherSubject.name }),
   ).toBeVisible()
+  await expect(
+    page.getByRole('heading', { name: otherSubject.name, level: 1 }),
+  ).toBeVisible()
   await expect(page.getByLabel('Файл карты компетенций')).toBeVisible()
   await page.goto(`/admin/courses/${subject.id}`)
   await expect(page).toHaveURL(new RegExp(`/admin/courses/${subject.id}$`))
   await expect(page.getByRole('heading', { name: subject.name })).toBeVisible()
-  await expect(page.getByText('Материалы готовы').last()).toBeVisible()
+  await expect(page.getByText('Обучение готово').last()).toBeVisible()
   await expect(page.getByLabel('Файл карты компетенций')).toBeVisible()
   await expect(page.getByLabel('Добавить PDF или ZIP')).toHaveCount(0)
   await expect(
@@ -285,6 +288,91 @@ test('one browser context switches modes while student and admin sessions stay s
       .getByRole('navigation', { name: 'Разделы администрирования' })
       .getByRole('link', { name: 'Материалы для экзамена' }),
   ).toHaveAttribute('aria-current', 'page')
+  const nav = page.getByRole('navigation', {
+    name: 'Разделы администрирования',
+  })
+  await expect(nav.locator('[aria-current="page"]')).toHaveCount(1)
+  const desktopCourseHeader = await page
+    .locator('section[aria-labelledby="course-name"]')
+    .boundingBox()
+  const desktopDirectionNav = await nav.boundingBox()
+  expect(desktopCourseHeader).not.toBeNull()
+  expect(desktopDirectionNav).not.toBeNull()
+  await page.screenshot({ path: testInfo.outputPath('exam-admin.png') })
+
+  await page.goBack()
+  await expect(page).toHaveURL(new RegExp(`/admin/courses/${subject.id}$`))
+  await expect(nav.locator('[aria-current="page"]')).toHaveCount(1)
+  await expect(
+    page
+      .getByRole('navigation', { name: 'Разделы администрирования' })
+      .getByRole('link', { name: 'Материалы для обучения' }),
+  ).toHaveAttribute('aria-current', 'page')
+  await expect(
+    page.getByRole('heading', { name: subject.name, level: 1 }),
+  ).toBeVisible()
+  const learnCourseHeader = await page
+    .locator('section[aria-labelledby="course-name"]')
+    .boundingBox()
+  const learnDirectionNav = await page
+    .getByRole('navigation', { name: 'Разделы администрирования' })
+    .boundingBox()
+  expect(learnCourseHeader).toEqual(desktopCourseHeader)
+  expect(learnDirectionNav).toEqual(desktopDirectionNav)
+  await page.screenshot({ path: testInfo.outputPath('learn-admin.png') })
+  await page.goForward()
+  await expect(page).toHaveURL(
+    new RegExp(`/admin/courses/${subject.id}\\?direction=exam$`),
+  )
+  await expect(nav.locator('[aria-current="page"]')).toHaveCount(1)
+  await expect(
+    page.getByRole('heading', { name: 'Материалы для экзамена' }),
+  ).toBeVisible()
+  await page.reload()
+  await expect(nav.locator('[aria-current="page"]')).toHaveCount(1)
+  await expect(
+    page.getByRole('heading', { name: 'Материалы для экзамена' }),
+  ).toBeVisible()
+  await expect(
+    page.getByRole('heading', { name: subject.name, level: 1 }),
+  ).toBeVisible()
+
+  await page.setViewportSize({ width: 390, height: 844 })
+  const narrowExamHeader = await page
+    .locator('section[aria-labelledby="course-name"]')
+    .boundingBox()
+  const narrowExamNav = await page
+    .getByRole('navigation', { name: 'Разделы администрирования' })
+    .boundingBox()
+  await page.screenshot({ path: testInfo.outputPath('exam-admin-narrow.png') })
+  await page
+    .getByRole('navigation', { name: 'Разделы администрирования' })
+    .getByRole('link', { name: 'Материалы для обучения' })
+    .click()
+  await expect(page).toHaveURL(
+    new RegExp(`/admin/courses/${subject.id}\\?direction=learn$`),
+  )
+  await expect(
+    page
+      .getByRole('navigation', { name: 'Разделы администрирования' })
+      .locator('[aria-current="page"]'),
+  ).toHaveCount(1)
+  await expect(
+    page.getByRole('heading', { name: subject.name, level: 1 }),
+  ).toBeVisible()
+  const narrowLearnHeader = await page
+    .locator('section[aria-labelledby="course-name"]')
+    .boundingBox()
+  const narrowLearnNav = await page
+    .getByRole('navigation', { name: 'Разделы администрирования' })
+    .boundingBox()
+  await page.screenshot({ path: testInfo.outputPath('learn-admin-narrow.png') })
+  expect(narrowLearnHeader).toEqual(narrowExamHeader)
+  expect(narrowLearnNav).toEqual(narrowExamNav)
+  const horizontalOverflow = await page.evaluate(
+    () => document.documentElement.scrollWidth > window.innerWidth,
+  )
+  expect(horizontalOverflow).toBe(false)
   await page.getByRole('link', { name: 'Ко всем курсам' }).click()
   await expect(page).toHaveURL(/\/admin\/courses$/)
   await expect(page.getByRole('heading', { name: 'Курсы' })).toBeVisible()
@@ -293,7 +381,6 @@ test('one browser context switches modes while student and admin sessions stay s
   await expect(
     page.getByRole('heading', { name: 'Материалы для обучения' }),
   ).toBeVisible()
-  await page.screenshot({ path: testInfo.outputPath('exam-admin.png') })
   await expect
     .poll(() =>
       calls.some((call) => call.path === '/auth/me' && call.portal === 'admin'),

@@ -1,6 +1,5 @@
 import {
   AlertDialog,
-  Badge,
   Button,
   Flex,
   Heading,
@@ -17,7 +16,6 @@ import {
   Layers,
   ListChecks,
   Shapes,
-  ShieldCheck,
   Target,
   TriangleAlert,
   Upload,
@@ -32,11 +30,10 @@ import {
   useImportCompetencyMapMutation,
 } from '@/features/import-learning-competency-map'
 import type { CompetencyMapSummary } from '@/entities/learning-competency-map'
-import { AccountMenu } from '@/features/auth'
 import { useSubjectsQuery } from '@/features/learning-subject-selection'
 import styles from '@/pages/learning-competency-map/ui/competency-map.module.scss'
 import { groupWarnings } from '../model/import-warnings'
-import { DirectionNav } from '@/widgets/direction-nav'
+import { AdminCourseDetailShell } from '@/widgets/admin-course-detail-shell'
 
 export function CompetencyMapAdminScreen({ subjectId }: { subjectId: string }) {
   const { t } = useTranslation()
@@ -112,277 +109,239 @@ function CompetencyMapAdmin({
   const warningGroups = groupWarnings(upload.data?.warnings ?? [])
   const error = upload.error
   return (
-    <div className={styles.page}>
-      <header className={styles.header}>
-        <div className={styles.brand}>
-          <ShieldCheck size={24} aria-hidden="true" />
-          <Text weight="bold">{t('learningCompetencyMap.admin')}</Text>
-        </div>
-        <AccountMenu canLogout={false} />
-      </header>
-      <main className={styles.content}>
-        <div className={styles.intro}>
-          <Heading as="h1" size="8">
-            {t('learningCompetencyMap.title')}
-          </Heading>
-          <Text as="p" color="gray">
-            {t('learningCompetencyMap.importTitle')}.{' '}
-            {t('learningCompetencyMap.editSubtitle')}
+    <AdminCourseDetailShell
+      active="learn"
+      subjectId={subjectId}
+      subjectName={subject?.name}
+      ready={subject?.learning_ready}
+      title={t('learningCompetencyMap.title')}
+      description={`${t('learningCompetencyMap.importTitle')}. ${t('learningCompetencyMap.editSubtitle')}`}
+    >
+      {subjects.isPending ? (
+        <Text as="p" role="status">
+          {t('learningCompetencyMap.subjectsLoading')}
+        </Text>
+      ) : subjects.isError ? (
+        <div className={styles.card}>
+          <Text as="p" role="alert">
+            {t('learningCompetencyMap.subjectsError')}
           </Text>
+          <Button variant="soft" onClick={() => void subjects.refetch()}>
+            {t('learningTrainer.retry')}
+          </Button>
         </div>
-        {subjects.isPending ? (
-          <Text as="p" role="status">
-            {t('learningCompetencyMap.subjectsLoading')}
+      ) : !subject ? (
+        <section className={styles.card}>
+          <Text as="p" role="alert">
+            {t('learningCompetencyMap.selectedCourseMissing')}
           </Text>
-        ) : subjects.isError ? (
-          <div className={styles.card}>
-            <Text as="p" role="alert">
-              {t('learningCompetencyMap.subjectsError')}
-            </Text>
-            <Button variant="soft" onClick={() => void subjects.refetch()}>
-              {t('learningTrainer.retry')}
-            </Button>
-          </div>
-        ) : !subject ? (
-          <section className={styles.card}>
-            <Text as="p" role="alert">
-              {t('learningCompetencyMap.selectedCourseMissing')}
-            </Text>
-            <Button asChild>
-              <Link to="/admin/courses">{t('adminCourses.backToCourses')}</Link>
-            </Button>
-          </section>
-        ) : (
-          <>
-            <Flex justify="between" align="center" wrap="wrap" gap="3">
-              <Button asChild variant="soft">
-                <Link to="/admin/courses">
-                  {t('adminCourses.backToCourses')}
-                </Link>
-              </Button>
-              <DirectionNav
-                audience="admin"
-                active="learn"
-                subjectId={subjectId}
-              />
-            </Flex>
-            <section className={styles.card} aria-labelledby="subject-title">
-              <div className={styles.editHeading}>
-                <Text as="p" size="2" weight="medium" color="gray">
-                  {t('learningCompetencyMap.subject')}
-                </Text>
-                <Heading as="h2" size="6" id="subject-title">
-                  {subject?.name}
-                </Heading>
-                <Badge color={subject?.learning_ready ? 'green' : 'gray'}>
-                  {t(
-                    subject?.learning_ready
-                      ? 'sharedCourse.ready'
-                      : 'sharedCourse.preparing',
-                  )}
-                </Badge>
-              </div>
-              {query.isPending ? (
-                <Text as="p" role="status" color="gray" size="2">
-                  {t('learningCompetencyMap.loading')}
-                </Text>
-              ) : query.isError ? (
-                <Flex gap="3" align="center" wrap="wrap">
-                  <Text as="p" role="alert" color="red" size="2">
-                    {t('learningCompetencyMap.loadError')}
-                  </Text>
-                  <Button
-                    variant="ghost"
-                    size="1"
-                    onClick={() => void query.refetch()}
-                  >
-                    {t('learningTrainer.retry')}
-                  </Button>
-                </Flex>
-              ) : query.data.importedAt === null ? (
-                <Text as="p" color="gray" size="2">
-                  {t('learningCompetencyMap.empty')}
-                </Text>
-              ) : (
-                <>
-                  <Text as="p" role="status" className={styles.success}>
-                    <CheckCircle2 size={20} aria-hidden="true" />
-                    {t('learningCompetencyMap.success')}
-                  </Text>
-                  <MapSummary summary={query.data} />
-                </>
-              )}
-            </section>
-            <section
-              className={styles.card}
-              aria-labelledby="subject-form-title"
-            >
-              <Heading as="h2" size="4" id="subject-form-title">
-                {t('learningCompetencyMap.edit')}
-              </Heading>
-              <MapFileZone file={file} disabled={busy} onSelect={selectFile} />
-              {fileError && (
+          <Button asChild>
+            <Link to="/admin/courses">{t('adminCourses.backToCourses')}</Link>
+          </Button>
+        </section>
+      ) : (
+        <>
+          <section className={styles.card} aria-labelledby="learning-map-state">
+            <Heading as="h3" size="4" id="learning-map-state">
+              {t('learningCompetencyMap.currentMap')}
+            </Heading>
+            {query.isPending ? (
+              <Text as="p" role="status" color="gray" size="2">
+                {t('learningCompetencyMap.loading')}
+              </Text>
+            ) : query.isError ? (
+              <Flex gap="3" align="center" wrap="wrap">
                 <Text as="p" role="alert" color="red" size="2">
-                  {fileError}
+                  {t('learningCompetencyMap.loadError')}
                 </Text>
-              )}
-              {busy && (
-                <Text as="p" role="status" size="2">
-                  {t('learningCompetencyMap.uploading')}
+                <Button
+                  variant="ghost"
+                  size="1"
+                  onClick={() => void query.refetch()}
+                >
+                  {t('learningTrainer.retry')}
+                </Button>
+              </Flex>
+            ) : query.data.importedAt === null ? (
+              <Text as="p" color="gray" size="2">
+                {t('learningCompetencyMap.empty')}
+              </Text>
+            ) : (
+              <>
+                <Text as="p" role="status" className={styles.success}>
+                  <CheckCircle2 size={20} aria-hidden="true" />
+                  {t('learningCompetencyMap.success')}
                 </Text>
-              )}
-              {error && (
-                <div role="alert" className={styles.error}>
-                  <Text as="p">
-                    {error instanceof CompetencyMapApiError
-                      ? error.message
-                      : t('learningCompetencyMap.unknownResult')}
-                  </Text>
-                  {error instanceof CompetencyMapApiError &&
-                    error.details.length > 0 && (
-                      <ul>
-                        {error.details.map((detail, index) => (
-                          <li key={index}>
-                            {detail.path?.startsWith('row:')
-                              ? t('learningCompetencyMap.rowError', {
-                                  row: detail.path.slice(4),
-                                  message: detail.message,
-                                })
-                              : detail.message}
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                </div>
-              )}
-              {file && (
-                <div className={styles.actions}>
-                  <AlertDialog.Root>
-                    <AlertDialog.Trigger>
-                      <Button
-                        size="3"
-                        color="green"
-                        className={styles.submit}
-                        disabled={!file || busy}
-                      >
-                        <Check size={18} aria-hidden="true" />
-                        {t('learningCompetencyMap.submitEdit')}
-                      </Button>
-                    </AlertDialog.Trigger>
-                    <AlertDialog.Content maxWidth="440px">
-                      <AlertDialog.Title>
-                        {t('learningCompetencyMap.confirmTitle')}
-                      </AlertDialog.Title>
-                      <AlertDialog.Description>
-                        {t('learningCompetencyMap.confirmHelp')}
-                      </AlertDialog.Description>
-                      <Flex gap="3" mt="5" justify="end" wrap="wrap">
-                        <AlertDialog.Cancel>
-                          <Button variant="soft" color="gray">
-                            {t('learningCompetencyMap.cancel')}
-                          </Button>
-                        </AlertDialog.Cancel>
-                        <AlertDialog.Action>
-                          <Button
-                            color="red"
-                            onClick={() => {
-                              if (file && !busy)
-                                upload.mutate({ file, subjectId }, settleFile)
-                            }}
-                          >
-                            {t('learningCompetencyMap.confirm')}
-                          </Button>
-                        </AlertDialog.Action>
-                      </Flex>
-                    </AlertDialog.Content>
-                  </AlertDialog.Root>
-                  {file && !busy && (
+                <MapSummary summary={query.data} />
+              </>
+            )}
+          </section>
+          <section className={styles.card} aria-labelledby="subject-form-title">
+            <Heading as="h2" size="4" id="subject-form-title">
+              {t('learningCompetencyMap.edit')}
+            </Heading>
+            <MapFileZone file={file} disabled={busy} onSelect={selectFile} />
+            {fileError && (
+              <Text as="p" role="alert" color="red" size="2">
+                {fileError}
+              </Text>
+            )}
+            {busy && (
+              <Text as="p" role="status" size="2">
+                {t('learningCompetencyMap.uploading')}
+              </Text>
+            )}
+            {error && (
+              <div role="alert" className={styles.error}>
+                <Text as="p">
+                  {error instanceof CompetencyMapApiError
+                    ? error.message
+                    : t('learningCompetencyMap.unknownResult')}
+                </Text>
+                {error instanceof CompetencyMapApiError &&
+                  error.details.length > 0 && (
+                    <ul>
+                      {error.details.map((detail, index) => (
+                        <li key={index}>
+                          {detail.path?.startsWith('row:')
+                            ? t('learningCompetencyMap.rowError', {
+                                row: detail.path.slice(4),
+                                message: detail.message,
+                              })
+                            : detail.message}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+              </div>
+            )}
+            {file && (
+              <div className={styles.actions}>
+                <AlertDialog.Root>
+                  <AlertDialog.Trigger>
                     <Button
                       size="3"
-                      color="red"
-                      variant="soft"
+                      color="green"
                       className={styles.submit}
-                      onClick={() => selectFile(undefined)}
+                      disabled={!file || busy}
                     >
-                      <X size={18} aria-hidden="true" />
-                      {t('learningCompetencyMap.cancelEdit')}
+                      <Check size={18} aria-hidden="true" />
+                      {t('learningCompetencyMap.submitEdit')}
                     </Button>
-                  )}
-                </div>
-              )}
-            </section>
-          </>
-        )}
-        {upload.data &&
-          upload.variables?.subjectId === subjectId &&
-          (upload.data.unparsedTaskCellCount > 0 ||
-            upload.data.warnings.length > 0) && (
-            <section
-              className={styles.card}
-              aria-labelledby="import-warnings-title"
-            >
-              <div className={styles.sectionHeading} data-tone="warning">
-                <TriangleAlert aria-hidden="true" />
-                <Heading as="h2" size="4" id="import-warnings-title">
-                  {t('learningCompetencyMap.warnings')}
-                </Heading>
+                  </AlertDialog.Trigger>
+                  <AlertDialog.Content maxWidth="440px">
+                    <AlertDialog.Title>
+                      {t('learningCompetencyMap.confirmTitle')}
+                    </AlertDialog.Title>
+                    <AlertDialog.Description>
+                      {t('learningCompetencyMap.confirmHelp')}
+                    </AlertDialog.Description>
+                    <Flex gap="3" mt="5" justify="end" wrap="wrap">
+                      <AlertDialog.Cancel>
+                        <Button variant="soft" color="gray">
+                          {t('learningCompetencyMap.cancel')}
+                        </Button>
+                      </AlertDialog.Cancel>
+                      <AlertDialog.Action>
+                        <Button
+                          color="red"
+                          onClick={() => {
+                            if (file && !busy)
+                              upload.mutate({ file, subjectId }, settleFile)
+                          }}
+                        >
+                          {t('learningCompetencyMap.confirm')}
+                        </Button>
+                      </AlertDialog.Action>
+                    </Flex>
+                  </AlertDialog.Content>
+                </AlertDialog.Root>
+                {file && !busy && (
+                  <Button
+                    size="3"
+                    color="red"
+                    variant="soft"
+                    className={styles.submit}
+                    onClick={() => selectFile(undefined)}
+                  >
+                    <X size={18} aria-hidden="true" />
+                    {t('learningCompetencyMap.cancelEdit')}
+                  </Button>
+                )}
               </div>
-              {upload.data.unparsedTaskCellCount > 0 && (
-                <Text as="p" color="gray" size="2">
-                  {t('learningCompetencyMap.unparsed', {
-                    count: upload.data.unparsedTaskCellCount,
-                    rows: warningGroups.length,
-                  })}
-                </Text>
-              )}
-              {warningGroups.length > 0 && (
-                <div className={styles.tableScroll}>
-                  <Table.Root variant="surface">
-                    <Table.Header>
-                      <Table.Row>
-                        <Table.ColumnHeaderCell>
-                          {t('learningCompetencyMap.row')}
-                        </Table.ColumnHeaderCell>
-                        <Table.ColumnHeaderCell>
-                          {t('learningCompetencyMap.reason')}
-                        </Table.ColumnHeaderCell>
+            )}
+          </section>
+        </>
+      )}
+      {upload.data &&
+        upload.variables?.subjectId === subjectId &&
+        (upload.data.unparsedTaskCellCount > 0 ||
+          upload.data.warnings.length > 0) && (
+          <section
+            className={styles.card}
+            aria-labelledby="import-warnings-title"
+          >
+            <div className={styles.sectionHeading} data-tone="warning">
+              <TriangleAlert aria-hidden="true" />
+              <Heading as="h2" size="4" id="import-warnings-title">
+                {t('learningCompetencyMap.warnings')}
+              </Heading>
+            </div>
+            {upload.data.unparsedTaskCellCount > 0 && (
+              <Text as="p" color="gray" size="2">
+                {t('learningCompetencyMap.unparsed', {
+                  count: upload.data.unparsedTaskCellCount,
+                  rows: warningGroups.length,
+                })}
+              </Text>
+            )}
+            {warningGroups.length > 0 && (
+              <div className={styles.tableScroll}>
+                <Table.Root variant="surface">
+                  <Table.Header>
+                    <Table.Row>
+                      <Table.ColumnHeaderCell>
+                        {t('learningCompetencyMap.row')}
+                      </Table.ColumnHeaderCell>
+                      <Table.ColumnHeaderCell>
+                        {t('learningCompetencyMap.reason')}
+                      </Table.ColumnHeaderCell>
+                    </Table.Row>
+                  </Table.Header>
+                  <Table.Body>
+                    {warningGroups.map((group) => (
+                      <Table.Row key={group.row}>
+                        <Table.RowHeaderCell>{group.row}</Table.RowHeaderCell>
+                        <Table.Cell>
+                          {group.reasons.map((reason) => (
+                            <Text
+                              as="p"
+                              size="2"
+                              key={reason.code}
+                              className={styles.warningReason}
+                            >
+                              <strong>{reason.columns.join(', ')}:</strong>{' '}
+                              {t(
+                                `learningCompetencyMap.warning.${reason.code}`,
+                                {
+                                  defaultValue: t(
+                                    'learningCompetencyMap.warning.unknown',
+                                    { code: reason.code },
+                                  ),
+                                },
+                              )}
+                            </Text>
+                          ))}
+                        </Table.Cell>
                       </Table.Row>
-                    </Table.Header>
-                    <Table.Body>
-                      {warningGroups.map((group) => (
-                        <Table.Row key={group.row}>
-                          <Table.RowHeaderCell>{group.row}</Table.RowHeaderCell>
-                          <Table.Cell>
-                            {group.reasons.map((reason) => (
-                              <Text
-                                as="p"
-                                size="2"
-                                key={reason.code}
-                                className={styles.warningReason}
-                              >
-                                <strong>{reason.columns.join(', ')}:</strong>{' '}
-                                {t(
-                                  `learningCompetencyMap.warning.${reason.code}`,
-                                  {
-                                    defaultValue: t(
-                                      'learningCompetencyMap.warning.unknown',
-                                      { code: reason.code },
-                                    ),
-                                  },
-                                )}
-                              </Text>
-                            ))}
-                          </Table.Cell>
-                        </Table.Row>
-                      ))}
-                    </Table.Body>
-                  </Table.Root>
-                </div>
-              )}
-            </section>
-          )}
-      </main>
-    </div>
+                    ))}
+                  </Table.Body>
+                </Table.Root>
+              </div>
+            )}
+          </section>
+        )}
+    </AdminCourseDetailShell>
   )
 }
 

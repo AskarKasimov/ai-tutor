@@ -248,6 +248,48 @@ it('exam tab contains no competency-map import and learning tab keeps its course
   ).toBeInTheDocument()
 })
 
+it('keeps one shared course heading and exactly one selected direction tab', async () => {
+  setup()
+  const router = open('/admin/courses/subject-b?direction=exam')
+  const courseTitle = await screen.findByRole('heading', {
+    name: 'Второй курс',
+    level: 1,
+  })
+  expect(courseTitle).toBeVisible()
+  expect(screen.getAllByText('Курс', { exact: true })).toHaveLength(1)
+  expect(screen.queryByText('Предмет', { exact: true })).not.toBeInTheDocument()
+  expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1)
+  const tabs = screen.getByRole('navigation', {
+    name: 'Разделы администрирования',
+  })
+  const selectedTab = () =>
+    within(tabs)
+      .getAllByRole('link')
+      .filter((tab) => tab.getAttribute('aria-current') === 'page')
+  expect(selectedTab()).toHaveLength(1)
+  expect(selectedTab()[0]).toHaveAccessibleName('Материалы для экзамена')
+
+  fireEvent.click(
+    within(tabs).getByRole('link', { name: 'Материалы для обучения' }),
+  )
+  expect(
+    await screen.findByRole('heading', { name: 'Материалы для обучения' }),
+  ).toBeVisible()
+  expect(router.state.location.search).toEqual({ direction: 'learn' })
+  expect(
+    await screen.findByRole('heading', { name: 'Второй курс', level: 1 }),
+  ).toBeVisible()
+  expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1)
+  const tabsAfterSwitch = screen.getByRole('navigation', {
+    name: 'Разделы администрирования',
+  })
+  const selectedAfterSwitch = within(tabsAfterSwitch)
+    .getAllByRole('link')
+    .filter((tab) => tab.getAttribute('aria-current') === 'page')
+  expect(selectedAfterSwitch).toHaveLength(1)
+  expect(selectedAfterSwitch[0]).toHaveAccessibleName('Материалы для обучения')
+})
+
 it('uploads a queued PDF using the master multipart field', async () => {
   const calls = setup()
   open()

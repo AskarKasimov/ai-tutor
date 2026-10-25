@@ -122,19 +122,59 @@ test('one browser context switches modes while student and admin sessions stay s
   await page.getByRole('link', { name: /Обучение/ }).click()
   await expect(page).toHaveURL(/\/learn$/)
   await expect(page.getByRole('heading', { name: 'Курсы' })).toBeVisible()
+  await expect(
+    page.getByRole('navigation', { name: 'Направления' }),
+  ).toContainText('Обучение')
+  await expect(
+    page.getByRole('navigation', { name: 'Направления' }),
+  ).toContainText('Симуляция экзамена')
+  await page.reload()
+  await expect(
+    page
+      .getByRole('navigation', { name: 'Направления' })
+      .getByRole('link', { name: 'Обучение' }),
+  ).toHaveAttribute('aria-current', 'page')
   await page.screenshot({ path: testInfo.outputPath('learn-home.png') })
   await page.getByRole('button', { name: /Меню профиля/ }).click()
   await page.getByRole('menuitem', { name: 'К выбору режима' }).click()
   await page.getByRole('link', { name: /Симуляция экзамена/ }).click()
   await expect(page).toHaveURL(/\/exam$/)
   await expect(page.getByRole('heading', { name: 'Курсы' })).toBeVisible()
+  await expect(
+    page
+      .getByRole('navigation', { name: 'Направления' })
+      .getByRole('link', { name: 'Симуляция экзамена' }),
+  ).toHaveAttribute('aria-current', 'page')
+  await page.reload()
+  await expect(
+    page
+      .getByRole('navigation', { name: 'Направления' })
+      .getByRole('link', { name: 'Симуляция экзамена' }),
+  ).toHaveAttribute('aria-current', 'page')
   await page.screenshot({ path: testInfo.outputPath('exam-home.png') })
 
   await page.goto('/admin/learn/competency-map')
   await expect(page).toHaveURL(/\/admin\/learn\/competency-map$/)
   await expect(
-    page.getByRole('heading', { name: 'Карта компетенций' }),
+    page.getByRole('heading', { name: 'Материалы для обучения' }),
   ).toBeVisible()
+  const learnNav = page.getByRole('navigation', {
+    name: 'Разделы администрирования',
+  })
+  await expect(
+    learnNav.getByRole('link', { name: 'Материалы для обучения' }),
+  ).toHaveAttribute('aria-current', 'page')
+  await expect(
+    learnNav.getByRole('link', { name: 'Материалы для экзамена' }),
+  ).toHaveAttribute('href', '/admin/courses')
+  await expect(page.getByLabel('Файл карты компетенций')).toBeVisible()
+  await page.reload()
+  await expect(page.getByLabel('Добавить PDF или ZIP')).toHaveCount(0)
+  await expect(
+    page
+      .getByRole('navigation', { name: 'Разделы администрирования' })
+      .getByRole('link', { name: 'Материалы для обучения' }),
+  ).toHaveAttribute('aria-current', 'page')
   await page.screenshot({ path: testInfo.outputPath('learn-admin.png') })
   await expect
     .poll(() =>
@@ -159,7 +199,31 @@ test('one browser context switches modes while student and admin sessions stay s
 
   await page.goto('/admin/courses')
   await expect(page).toHaveURL(/\/admin\/courses$/)
-  await expect(page.getByRole('heading', { name: 'Курсы' })).toBeVisible()
+  await expect(
+    page.getByRole('heading', { name: 'Материалы для экзамена' }),
+  ).toBeVisible()
+  const examNav = page.getByRole('navigation', {
+    name: 'Разделы администрирования',
+  })
+  await expect(
+    examNav.getByRole('link', { name: 'Материалы для экзамена' }),
+  ).toHaveAttribute('aria-current', 'page')
+  await expect(
+    examNav.getByRole('link', { name: 'Материалы для обучения' }),
+  ).toHaveAttribute('href', '/admin/learn/competency-map')
+  await page.getByRole('link', { name: subject.name }).click()
+  await expect(
+    page.getByRole('heading', { name: 'Материалы для экзамена' }),
+  ).toBeVisible()
+  await expect(page.getByLabel('Добавить PDF или ZIP')).toBeVisible()
+  await expect(page.getByLabel('Файл карты компетенций')).toHaveCount(0)
+  await page.reload()
+  await expect(page.getByLabel('Добавить PDF или ZIP')).toBeVisible()
+  await expect(
+    page
+      .getByRole('navigation', { name: 'Разделы администрирования' })
+      .getByRole('link', { name: 'Материалы для экзамена' }),
+  ).toHaveAttribute('aria-current', 'page')
   await page.screenshot({ path: testInfo.outputPath('exam-admin.png') })
   await expect
     .poll(() =>

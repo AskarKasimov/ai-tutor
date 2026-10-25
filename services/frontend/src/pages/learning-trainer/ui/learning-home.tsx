@@ -21,6 +21,7 @@ import { LearningPlanEntry } from './learning-plan'
 import { DiagnosticTrainer } from './diagnostic-trainer'
 import { AccountMenu } from '@/features/auth'
 import styles from './learning-home.module.scss'
+import { DirectionNav } from '@/widgets/direction-nav'
 
 type Intent = {
   apiBase: string
@@ -180,6 +181,7 @@ export function LearningHome() {
         <AccountMenu />
       </header>
       <main className={styles.content}>
+        <DirectionNav audience="student" active="learn" />
         <Heading as="h1" size="8" id="courses-title">
           {t('learningHome.courses')}
         </Heading>

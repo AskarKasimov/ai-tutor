@@ -335,7 +335,10 @@ it.each(['/admin', '/admin/'])('opens the course list at %s', async (path) => {
   backend()
   const router = renderApp(path)
   expect(
-    await screen.findByRole('heading', { name: 'Курсы', level: 1 }),
+    await screen.findByRole('heading', {
+      name: 'Материалы для экзамена',
+      level: 1,
+    }),
   ).toBeVisible()
   expect(router.state.location.pathname).toBe('/admin/courses')
   expect(
@@ -423,7 +426,7 @@ it('shows the shared mode chooser to an admin account without entering admin', a
   ).toBeVisible()
   expect(router.state.location.pathname).toBe('/')
   expect(
-    screen.queryByRole('heading', { name: 'Подготовка курса' }),
+    screen.queryByRole('heading', { name: 'Материалы для экзамена' }),
   ).not.toBeInTheDocument()
   expect(screen.getByRole('link', { name: /Обучение/ })).toHaveAttribute(
     'href',
@@ -449,7 +452,10 @@ it('denies students direct access to the admin screen without fetching materials
 it('shows the shared account without a logout in the admin panel', async () => {
   backend()
   renderApp()
-  await screen.findByRole('heading', { name: 'Подготовка курса' })
+  await screen.findByRole('heading', { name: 'Материалы для экзамена' })
+  expect(
+    screen.getByRole('navigation', { name: 'Разделы администрирования' }),
+  ).toBeVisible()
   expect(screen.getByLabelText('Профиль: Администратор')).toBeVisible()
   expect(
     screen.queryByRole('button', { name: /Меню профиля/ }),
@@ -493,7 +499,7 @@ it('restores the admin screen after reload with an expired access cookie', async
   )
   renderApp('/admin/competency-map/subject-a')
   expect(
-    await screen.findByRole('heading', { name: 'Подготовка курса' }),
+    await screen.findByRole('heading', { name: 'Материалы для экзамена' }),
   ).toBeVisible()
   expect(screen.queryByText('Открываем админ-панель…')).not.toBeInTheDocument()
 })
@@ -508,7 +514,7 @@ it('retries a failed session check without exposing the lesson', async () => {
   expect(screen.queryByText('Машинное обучение')).not.toBeInTheDocument()
   fireEvent.click(screen.getByRole('button', { name: 'Попробовать снова' }))
   expect(
-    await screen.findByRole('heading', { name: 'Подготовка курса' }),
+    await screen.findByRole('heading', { name: 'Материалы для экзамена' }),
   ).toBeVisible()
 })
 

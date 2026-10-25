@@ -21,6 +21,14 @@ void i18n.init({
           exam: 'Симуляция экзамена',
           examDescription: 'Устный экзамен с Geek',
         },
+        directionNav: {
+          adminLabel: 'Разделы администрирования',
+          studentLabel: 'Направления',
+          learnMaterials: 'Материалы для обучения',
+          examMaterials: 'Материалы для экзамена',
+          learn: 'Обучение',
+          exam: 'Симуляция экзамена',
+        },
         auth: {
           slogan: 'Подтянем до уверенного уровня в кратчайшие сроки',
           adminEntering: 'Открываем админ-панель…',
@@ -240,7 +248,7 @@ void i18n.init({
           leaveCourse: 'Уйти со страницы',
         },
         courseGraph: {
-          title: 'Подготовка курса',
+          title: 'Материалы для экзамена',
           courseNotFound: 'Курс не найден.',
           backToCourses: 'К списку курсов',
           subtitle:
@@ -313,7 +321,8 @@ void i18n.init({
           mapImportFailed: 'Не удалось импортировать карту.',
         },
         adminCourses: {
-          title: 'Курсы',
+          title: 'Материалы для экзамена',
+          coursesTitle: 'Курсы',
           subtitle: 'Все курсы, добавленные в админ-панели.',
           newCourse: 'Новый курс',
           courseName: 'Название курса',

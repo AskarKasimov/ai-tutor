@@ -16,6 +16,7 @@ import {
 import { GeekDialog } from './geek-dialog'
 import { GeekResult } from './geek-result'
 import styles from './learning-home.module.scss'
+import { DirectionNav } from '@/widgets/direction-nav'
 
 // The open screen survives a reload of the tab.
 type View = {
@@ -155,6 +156,7 @@ export function LearningHome() {
         <AccountMenu />
       </header>
       <main className={styles.content}>
+        <DirectionNav audience="student" active="exam" />
         <Heading as="h1" size="8" id="courses-title">
           {t('home.courses')}
         </Heading>

@@ -39,6 +39,7 @@ import {
 } from '@/features/learning-subject-selection'
 import styles from '@/pages/learning-competency-map/ui/competency-map.module.scss'
 import { groupWarnings } from '../model/import-warnings'
+import { DirectionNav } from '@/widgets/direction-nav'
 
 export function CompetencyMapAdminScreen() {
   const { t } = useTranslation()
@@ -128,11 +129,13 @@ function CompetencyMapAdmin({ userId }: { userId: string }) {
         <AccountMenu canLogout={false} />
       </header>
       <main className={styles.content}>
+        <DirectionNav audience="admin" active="learn" />
         <div className={styles.intro}>
           <Heading as="h1" size="8">
             {t('learningCompetencyMap.title')}
           </Heading>
           <Text as="p" color="gray">
+            {t('learningCompetencyMap.importTitle')}.{' '}
             {t(
               subjectId
                 ? 'learningCompetencyMap.editSubtitle'

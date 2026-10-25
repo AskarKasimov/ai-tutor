@@ -79,6 +79,7 @@ import { useSubjectsQuery } from '@/features/subject-selection'
 import { CosmicProgress, MarkdownContent } from '@/shared/ui'
 import styles from '@/pages/competency-map/ui/competency-map.module.scss'
 import { CompetencyMapImport } from './competency-map-import'
+import { DirectionNav } from '@/widgets/direction-nav'
 
 // React Flow and the layout load only when the graph is shown.
 const CourseGraphCanvas = lazy(() => import('./course-graph-canvas'))
@@ -303,6 +304,7 @@ function CompetencyMapAdmin({
         <AccountMenu canLogout={false} />
       </header>
       <main className={styles.content}>
+        <DirectionNav audience="admin" active="exam" />
         <div className={styles.intro}>
           <Heading as="h1" size="8">
             {t('courseGraph.title')}

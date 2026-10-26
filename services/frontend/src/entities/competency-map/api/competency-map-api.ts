@@ -7,10 +7,10 @@ import type {
 } from '../model/competency-map'
 import { apiFetch } from '@/shared/api'
 
-const apiBase = (import.meta.env.VITE_API_BASE_URL || '/api/v1').replace(
+const apiBase = `${(import.meta.env.VITE_API_BASE_URL || '/api/v1').replace(
   /\/$/,
   '',
-)
+)}/exam`
 const count = z.number().int().nonnegative()
 const errorSchema = z.object({
   message: z.string(),

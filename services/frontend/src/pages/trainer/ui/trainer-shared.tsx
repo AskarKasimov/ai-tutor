@@ -57,28 +57,12 @@ export function TrainerShell({
         className={`${styles.frame} ${progress ? styles.frameWithProgress : ''}`}
       >
         <header className={styles.header}>
-          {onBack ? (
-            // The product logo returns to the student home.
-            <button
-              type="button"
-              className={`${styles.brand} ${styles.brandLink}`}
-              aria-label={t('home.back')}
-              title={t('home.back')}
-              onClick={onBack}
-            >
-              <span className={styles.logo} aria-hidden="true">
-                <GraduationCap size={18} />
-              </span>
-              <Text>{t('trainer.title')}</Text>
-            </button>
-          ) : (
-            <div className={styles.brand}>
-              <span className={styles.logo} aria-hidden="true">
-                <GraduationCap size={18} />
-              </span>
-              <Text>{t('trainer.title')}</Text>
-            </div>
-          )}
+          <div className={styles.brand}>
+            <span className={styles.logo} aria-hidden="true">
+              <GraduationCap size={18} />
+            </span>
+            <Text>{t('trainer.title')}</Text>
+          </div>
           {/* The course leads home; the current step is a non-clickable pill. */}
           <nav className={styles.crumbs} aria-label={title}>
             {onBack ? (

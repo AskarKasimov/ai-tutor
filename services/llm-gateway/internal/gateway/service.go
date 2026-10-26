@@ -620,7 +620,7 @@ func (s *Service) next() (*durableJob, InstanceConfig, bool) {
 			if (pass == 0) != job.Request.IsUrgent() {
 				continue
 			}
-			pool := s.eligibleInstances(job.Request.Complexity)
+			pool := s.eligibleInstancesFor(job.Request.Complexity, job.Request.RoutingProfile)
 			var candidates []InstanceConfig
 			for _, in := range pool {
 				if s.inFlight[in.ID] >= in.MaxInFlight || !supports(in, job.Request) || !s.caller.circuit(in.ID).available(time.Now()) {
@@ -747,6 +747,10 @@ func (s *Service) instanceTier(id string) int {
 }
 
 func (s *Service) eligibleInstances(complexity string) []InstanceConfig {
+	return s.eligibleInstancesFor(complexity, "")
+}
+
+func (s *Service) eligibleInstancesFor(complexity, profile string) []InstanceConfig {
 	rank := complexityRank(complexity)
 	if rank < 0 {
 		return nil
@@ -766,6 +770,19 @@ func (s *Service) eligibleInstances(complexity string) []InstanceConfig {
 				instances = append(instances, instance)
 			}
 		}
+	}
+	if profile != "" {
+		allowed := make(map[string]bool, len(s.cfg.RoutingProfiles[profile]))
+		for _, id := range s.cfg.RoutingProfiles[profile] {
+			allowed[id] = true
+		}
+		filtered := instances[:0]
+		for _, instance := range instances {
+			if allowed[instance.ID] {
+				filtered = append(filtered, instance)
+			}
+		}
+		instances = filtered
 	}
 	return instances
 }
@@ -1345,8 +1362,13 @@ func (s *Service) retryPublish(payload durableRequest, raw []byte, size int64) {
 }
 
 func (s *Service) validatePool(r Request) error {
+	if r.RoutingProfile != "" {
+		if _, ok := s.cfg.RoutingProfiles[r.RoutingProfile]; !ok {
+			return apiErr(400, "invalid_request_error", "unknown_routing_profile", "routing_profile is not configured")
+		}
+	}
 	parametersSupported := false
-	for _, in := range s.eligibleInstances(r.Complexity) {
+	for _, in := range s.eligibleInstancesFor(r.Complexity, r.RoutingProfile) {
 		if supportsParameters(in, r) {
 			parametersSupported = true
 		}

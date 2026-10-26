@@ -1,0 +1,318 @@
+.page {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  background: var(--app-soft);
+  color: var(--app-ink);
+}
+.header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-4) max(var(--space-5), calc((100% - 1120px) / 2));
+  border-bottom: 1px solid var(--app-border);
+  background: var(--color-panel-solid);
+}
+.brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  font-size: var(--font-size-4);
+}
+.brandIcon {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-3);
+  background: var(--app-accent);
+  color: white;
+}
+.content {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: var(--space-8) var(--space-5);
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-7);
+}
+.courses {
+  display: grid;
+  gap: var(--space-5);
+}
+.course {
+  display: grid;
+  gap: var(--space-6);
+  padding: var(--space-7);
+  border: 1px solid var(--app-border);
+  border-radius: var(--radius-6);
+  background: var(--color-panel-solid);
+  box-shadow: 0 16px 40px -28px var(--gray-a9);
+}
+.courseHeader {
+  display: grid;
+  gap: var(--space-2);
+  max-width: 720px;
+  p {
+    margin: 0;
+  }
+}
+// Four steps under the intro: what the student does in the course.
+.steps {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+// Steps are information, not controls: soft coloured tiles without border,
+// shadow or hover, each with a large faint number.
+.step {
+  --step-bg: var(--blue-3);
+  --step-ink: var(--blue-11);
+  --step-number: var(--blue-6);
+  position: relative;
+  overflow: hidden;
+  display: grid;
+  align-content: start;
+  gap: 4px;
+  padding: var(--space-4);
+  border-radius: 18px;
+  background: linear-gradient(160deg, var(--step-bg), var(--color-panel-solid));
+  &[data-step='1'] {
+    --step-bg: var(--amber-3);
+    --step-ink: var(--amber-11);
+    --step-number: var(--amber-7);
+  }
+  &[data-step='2'] {
+    --step-bg: var(--violet-4);
+    --step-ink: var(--violet-11);
+    --step-number: var(--violet-9);
+  }
+  // The last step is the result: a brighter green says it ends well.
+  &[data-step='3'] {
+    --step-bg: var(--grass-4);
+    --step-ink: var(--grass-11);
+    --step-number: var(--grass-9);
+  }
+}
+.stepNumber {
+  position: absolute;
+  top: 6px;
+  right: 14px;
+  font-size: 44px;
+  line-height: 1;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  color: var(--step-number);
+  font-variant-numeric: tabular-nums;
+}
+.stepIcon {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  margin-bottom: var(--space-2);
+  border-radius: 12px;
+  color: var(--step-ink);
+  background: color-mix(in srgb, var(--color-panel-solid) 70%, transparent);
+}
+.stepTitle {
+  margin: 0;
+  font-size: 16px;
+  line-height: 22px;
+  font-weight: 700;
+  color: var(--gray-12);
+}
+.stepText {
+  margin: 0;
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--gray-11);
+  text-wrap: balance;
+}
+.actions {
+  display: grid;
+  gap: var(--space-3);
+  padding-top: var(--space-5);
+  border-top: 1px solid var(--app-border);
+}
+.status {
+  margin: 0;
+  color: var(--gray-11);
+  font-weight: 600;
+}
+// Course actions are large cards that share the row: an icon, the action and
+// a line explaining it. The primary one is a gradient, the secondary one has a
+// gradient outline; both lift on hover.
+.actionRow {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: var(--space-4);
+}
+.courseAction {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  min-height: 88px;
+  padding: var(--space-4) var(--space-5);
+  border: 1.5px solid transparent;
+  border-radius: 18px;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    transform 0.15s ease,
+    box-shadow 0.2s ease,
+    background 0.2s ease,
+    background-position 0.6s ease;
+  &:hover {
+    transform: translateY(-2px);
+  }
+  &:active {
+    transform: translateY(0);
+  }
+  &:focus-visible {
+    outline: 3px solid var(--accent-8);
+    outline-offset: 3px;
+  }
+  // The main call to action: a blue → indigo → violet gradient that drifts on
+  // hover, a light top edge, a coloured glow and a sheen sweeping across.
+  &[data-kind='primary'] {
+    color: white;
+    background: linear-gradient(110deg, #3b82f6 0%, #6366f1 55%, #8b5cf6 100%);
+    background-size: 160% 100%;
+    background-position: 0% 50%;
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.35),
+      0 14px 30px -8px rgba(99, 102, 241, 0.6);
+    &::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      z-index: -1;
+      background: linear-gradient(
+        115deg,
+        transparent 35%,
+        rgba(255, 255, 255, 0.28) 50%,
+        transparent 65%
+      );
+      transform: translateX(-100%);
+      transition: transform 0.8s ease;
+    }
+    &:hover {
+      background-position: 100% 50%;
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.35),
+        0 18px 36px -8px rgba(99, 102, 241, 0.7);
+      &::before {
+        transform: translateX(100%);
+      }
+    }
+  }
+  &[data-kind='secondary'] {
+    color: var(--app-ink);
+    background:
+      linear-gradient(var(--color-panel-solid), var(--color-panel-solid))
+        padding-box,
+      linear-gradient(135deg, #4f8cf5, #8b6cf6) border-box;
+    box-shadow: 0 6px 16px rgba(40, 103, 225, 0.12);
+    &:hover {
+      background:
+        linear-gradient(var(--accent-2), var(--accent-2)) padding-box,
+        linear-gradient(135deg, #4f8cf5, #8b6cf6) border-box;
+      box-shadow: 0 10px 22px rgba(40, 103, 225, 0.2);
+    }
+  }
+}
+.courseActionIcon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  [data-kind='primary'] > & {
+    border-radius: 50%;
+    color: #4f46e5;
+    background: white;
+    box-shadow: 0 6px 16px rgba(30, 27, 75, 0.25);
+  }
+  [data-kind='secondary'] > & {
+    color: var(--app-accent);
+    background: var(--accent-3);
+  }
+}
+.courseActionText {
+  flex: 1;
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  text-wrap: balance;
+}
+.courseActionTitle {
+  font-size: 17px;
+  line-height: 22px;
+  font-weight: 700;
+}
+.courseActionHint {
+  font-size: 14px;
+  line-height: 20px;
+  opacity: 0.9;
+  [data-kind='secondary'] & {
+    color: var(--gray-11);
+    opacity: 1;
+  }
+}
+.notice {
+  display: grid;
+  justify-items: start;
+  gap: var(--space-3);
+  max-width: 560px;
+}
+// Four steps do not fit one row on mid widths: two by two.
+@media (max-width: 1100px) {
+  .steps {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 760px) {
+  .header {
+    padding: var(--space-3) var(--space-4);
+  }
+  .content {
+    padding: var(--space-6) var(--space-4);
+    gap: var(--space-5);
+  }
+  .course {
+    padding: var(--space-4);
+    gap: var(--space-4);
+  }
+  .actionRow {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .steps {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-2);
+  }
+  .step {
+    padding: var(--space-3) var(--space-4);
+  }
+  .courseAction {
+    min-height: 76px;
+    padding: var(--space-3) var(--space-4);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .courseAction,
+  .courseAction::before {
+    transition: none;
+  }
+}

@@ -9,9 +9,7 @@ import (
 	db "github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/postgres/sqlcgen"
 )
 
-type Repository struct {
-	queries *db.Queries
-}
+type Repository struct{ queries *db.Queries }
 
 func New(pool *pgxpool.Pool) *Repository { return &Repository{queries: db.New(pool)} }
 
@@ -30,7 +28,9 @@ func (r *Repository) List(ctx context.Context) ([]subject.Subject, error) {
 	}
 	items := make([]subject.Subject, 0, len(rows))
 	for _, row := range rows {
-		items = append(items, subject.Subject{ID: row.ID, Name: row.Name, Ready: row.Ready})
+		items = append(items, subject.Subject{
+			ID: row.ID, Name: row.Name, ExamReady: row.ExamReady, LearningReady: row.LearningReady,
+		})
 	}
 	return items, nil
 }

@@ -218,7 +218,7 @@ func FuzzRead(f *testing.F) {
 
 // The simulation reads only the first sheet: what the other sheets hold, even
 // a cell past the column limit or more rows than the budget, does not stop it.
-func TestFirstReadsOnlyTheFirstSheet(t *testing.T) {
+func TestExamStillReadsFirstSheet(t *testing.T) {
 	first := `<row r="1"><c r="A1" t="inlineStr"><is><t>Карта</t></is></c></row>`
 	huge := strings.Repeat(`<row><c><v>1</v></c></row>`, maxRows+1)
 	for name, second := range map[string]string{"column out of range": `<row r="1"><c r="GS1"><v>1</v></c></row>`, "rows over the budget": huge} {

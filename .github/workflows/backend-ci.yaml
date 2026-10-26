@@ -24,6 +24,9 @@ jobs:
           --health-interval 5s --health-timeout 3s --health-retries 12
     env:
       TEST_DATABASE_URL: postgres://postgres:test-only-password@localhost:5432/ai_tutor_test?sslmode=disable
+      TEST_S3_ENDPOINT: http://127.0.0.1:9000
+      TEST_S3_ACCESS_KEY: tutor_test
+      TEST_S3_SECRET_KEY: tutor_test_secret
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -36,6 +39,30 @@ jobs:
           expected=$(sha256sum ../../api/openapi.yaml)
           bash scripts/generate-openapi.sh
           test "$expected" = "$(sha256sum ../../api/openapi.yaml)"
+          go run ./cmd/check-api-manifest
+      - name: Start isolated RustFS for S3 tests
+        working-directory: .
+        run: |
+          docker run --detach --name ai-tutor-ci-rustfs \
+            -p 127.0.0.1:9000:9000 \
+            -e RUSTFS_ACCESS_KEY=tutor_test \
+            -e RUSTFS_SECRET_KEY=tutor_test_secret \
+            -e RUSTFS_ADDRESS=:9000 \
+            -e RUSTFS_CONSOLE_ENABLE=false \
+            rustfs/rustfs@sha256:1803faef57627e2d9c2e7d89d655d712ddded5389040054987163043fecb6a3c /data
+          for attempt in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:9000/health >/dev/null; then exit 0; fi
+            sleep 2
+          done
+          docker logs ai-tutor-ci-rustfs
+          exit 1
       - run: go test -race ./... -count=1
       - run: go vet ./...
       - run: go build -o bin/api ./cmd/api
+      - name: Build production backend image
+        working-directory: .
+        run: docker build -f services/backend/Dockerfile -t backend-ci .
+      - name: Stop isolated RustFS
+        if: ${{ always() }}
+        working-directory: .
+        run: docker rm -f ai-tutor-ci-rustfs || true

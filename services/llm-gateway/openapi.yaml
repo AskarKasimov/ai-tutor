@@ -118,6 +118,8 @@ components:
               enum:
                 - text
                 - json_object
+        routing_profile:
+          type: string
         seed:
           type: integer
         stop:

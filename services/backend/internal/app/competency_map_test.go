@@ -3,7 +3,9 @@ package app
 import (
 	"archive/zip"
 	"bytes"
+	"context"
 	"crypto/rand"
+	"encoding/json"
 	"encoding/xml"
 	"fmt"
 	"io"
@@ -70,6 +72,37 @@ func TestImportMapAnswersTooLargeForAnOversizedBody(t *testing.T) {
 	w := upload(f, "/admin/subjects/subject:test/graph/competency-map", "file", "map.xlsx", "application/octet-stream", big, admin)
 	if w.Code != http.StatusRequestEntityTooLarge || !strings.Contains(w.Body.String(), "PAYLOAD_TOO_LARGE") {
 		t.Fatalf("27 MiB map: %d %s", w.Code, w.Body.String())
+	}
+}
+
+func TestImportMapStartsForSharedCourseWithoutMaterials(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	admin := f.admin(t)
+	created := f.request(http.MethodPost, "/admin/subjects", `{"name":"Курс только с картой"}`, admin)
+	var course struct {
+		ID string `json:"id"`
+	}
+	if created.Code != http.StatusCreated || json.Unmarshal(created.Body.Bytes(), &course) != nil || course.ID == "" {
+		t.Fatalf("create shared course: %d %s", created.Code, created.Body.String())
+	}
+	var materialCount int
+	if err := f.pool.QueryRow(context.Background(), `SELECT count(*) FROM subject_materials WHERE subject_id=$1`, course.ID).Scan(&materialCount); err != nil || materialCount != 0 {
+		t.Fatalf("expected a new shared course without materials: count=%d err=%v", materialCount, err)
+	}
+	response := upload(f, "/admin/subjects/"+course.ID+"/graph/competency-map", "file", "map.xlsx", "application/octet-stream", mapBook(t), admin)
+	if response.Code != http.StatusAccepted {
+		t.Fatalf("map import for material-free course: %d %s", response.Code, response.Body.String())
+	}
+	var maps, builds int
+	if err := f.pool.QueryRow(context.Background(), `SELECT count(*) FROM course_graph_maps WHERE subject_id=$1`, course.ID).Scan(&maps); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.pool.QueryRow(context.Background(), `SELECT count(*) FROM course_graph_jobs WHERE subject_id=$1 AND source='competency_map'`, course.ID).Scan(&builds); err != nil {
+		t.Fatal(err)
+	}
+	if maps != 1 || builds != 1 {
+		t.Fatalf("map import should save its own input and queue map build: maps=%d builds=%d", maps, builds)
 	}
 }
 

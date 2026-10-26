@@ -4,10 +4,10 @@ import { i18n } from '@/shared/i18n'
 import type { CourseGraph, CourseGraphBuild } from '../model/course-graph'
 import { CourseGraphApiError } from '../model/course-graph-api-error'
 
-const apiBase = (import.meta.env.VITE_API_BASE_URL || '/api/v1').replace(
+const apiBase = `${(import.meta.env.VITE_API_BASE_URL || '/api/v1').replace(
   /\/$/,
   '',
-)
+)}/exam`
 
 const snapshotSchema = z.object({
   status: z.enum(['not_requested', 'pending', 'processing', 'ready', 'failed']),

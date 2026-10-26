@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"os"
+	"strings"
 	"testing"
 	"time"
 )
@@ -21,6 +23,30 @@ func TestParseRequestAcceptsSupportedCompletion(t *testing.T) {
 	}
 	if _, ok := got.Parameters["temperature"]; !ok {
 		t.Fatal("temperature was not preserved")
+	}
+}
+
+func TestGeneratedOpenAPIRequestDocumentsRoutingProfile(t *testing.T) {
+	openapi, err := os.ReadFile("../../openapi.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	contents := string(openapi)
+	const schema = "    gateway.OpenAPIRequest:\n"
+	start := strings.Index(contents, schema)
+	if start < 0 {
+		t.Fatalf("generated OpenAPI is missing schema %q", strings.TrimSpace(schema))
+	}
+	requestSchema := contents[start+len(schema):]
+	end := len(requestSchema)
+	for _, boundary := range []string{"\n    gateway.", "\ninfo:"} {
+		if index := strings.Index(requestSchema, boundary); index >= 0 && index < end {
+			end = index
+		}
+	}
+	requestSchema = requestSchema[:end]
+	if !strings.Contains(requestSchema, "\n        routing_profile:\n          type: string") {
+		t.Fatal("generated OpenAPI request schema does not document routing_profile")
 	}
 }
 

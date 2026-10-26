@@ -29,6 +29,12 @@ type Config struct {
 	S3PathStyle           bool
 	S3Timeout             time.Duration
 	S3CreateBucket        bool
+	AudioWorkers          int
+	AudioPollInterval     time.Duration
+	LearningTutorEnabled  bool
+	TutorTaskMaxChars     int
+	TutorHistoryMaxChars  int
+	TutorSummaryMaxChars  int
 	CourseGraphURL        string
 	CourseGraphTimeout    time.Duration
 	OCRURL                string
@@ -42,11 +48,12 @@ type Config struct {
 }
 
 // HTTPWriteTimeout allows STT with S3 writes, OCR of an uploaded material, a
-// Geek answer (evaluation and the next question, each retried once) or the
-// synthesis of a long Geek turn to finish, with time for request handling,
+// Geek answer (evaluation and the next question, each retried once), a long
+// Geek turn, or learning STT followed by up to four sequential tutor calls to
+// finish, with time for request handling,
 // persistence and writing the response.
 func (c Config) HTTPWriteTimeout() time.Duration {
-	return max(c.VoiceTimeout+5*c.S3Timeout, c.CourseGraphTimeout, 4*c.LLMTimeout, 4*c.VoiceTimeout+2*c.S3Timeout) + 30*time.Second
+	return max(c.VoiceTimeout+5*c.S3Timeout, c.CourseGraphTimeout, 4*c.LLMTimeout, c.VoiceTimeout+4*c.LLMTimeout, 4*c.VoiceTimeout+2*c.S3Timeout) + 30*time.Second
 }
 
 func ConfigFromEnv() (Config, error) {
@@ -133,6 +140,30 @@ func ConfigFromEnv() (Config, error) {
 	if err != nil {
 		return c, err
 	}
+	c.AudioWorkers, err = envInt("BACKEND_AUDIO_WORKERS", 1)
+	if err != nil {
+		return c, err
+	}
+	c.AudioPollInterval, err = envDuration("BACKEND_AUDIO_POLL_INTERVAL", time.Second)
+	if err != nil {
+		return c, err
+	}
+	c.LearningTutorEnabled, err = envBool("BACKEND_TUTOR_ENABLED", true)
+	if err != nil {
+		return c, err
+	}
+	c.TutorTaskMaxChars, err = envInt("BACKEND_TUTOR_TASK_MAX_CHARS", 16000)
+	if err != nil {
+		return c, err
+	}
+	c.TutorHistoryMaxChars, err = envInt("BACKEND_TUTOR_HISTORY_MAX_CHARS", 16000)
+	if err != nil {
+		return c, err
+	}
+	c.TutorSummaryMaxChars, err = envInt("BACKEND_TUTOR_SUMMARY_MAX_CHARS", 4000)
+	if err != nil {
+		return c, err
+	}
 	c.CourseGraphURL = strings.TrimSpace(os.Getenv("BACKEND_COURSE_GRAPH_URL"))
 	if c.CourseGraphURL == "" {
 		c.CourseGraphURL = strings.TrimSpace(os.Getenv("BACKEND_OCR_URL"))
@@ -188,6 +219,15 @@ func envDuration(key string, fallback time.Duration) (time.Duration, error) {
 		return 0, fmt.Errorf("%s: %w", key, err)
 	}
 	return duration, nil
+}
+
+func envInt(key string, fallback int) (int, error) {
+	value := envOrDefault(key, strconv.Itoa(fallback))
+	parsed, err := strconv.Atoi(value)
+	if err != nil {
+		return 0, fmt.Errorf("%s: %w", key, err)
+	}
+	return parsed, nil
 }
 
 func envBool(key string, fallback bool) (bool, error) {
@@ -258,6 +298,12 @@ func (c Config) validate() error {
 	}
 	if c.S3Timeout <= 0 {
 		return fmt.Errorf("BACKEND_S3_TIMEOUT must be positive")
+	}
+	if c.AudioWorkers < 1 || c.AudioPollInterval <= 0 {
+		return fmt.Errorf("BACKEND_AUDIO_WORKERS and BACKEND_AUDIO_POLL_INTERVAL must be positive")
+	}
+	if c.TutorTaskMaxChars < 1 || c.TutorHistoryMaxChars < 1 || c.TutorSummaryMaxChars < 1 {
+		return fmt.Errorf("learning tutor context limits must be positive")
 	}
 	if host, port, err := net.SplitHostPort(c.LLMGatewayAddress); err != nil || host == "" || !validPort(port) {
 		return fmt.Errorf("BACKEND_LLM_GATEWAY_ADDR must be a host:port gRPC address with a port from 1 to 65535")

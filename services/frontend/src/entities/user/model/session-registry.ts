@@ -1,16 +1,25 @@
-export type SessionToken = { epoch: number; userId: string | null }
+export type Portal = 'student' | 'admin'
+export type SessionToken = {
+  epoch: number
+  userId: string | null
+  portal: Portal
+}
 
 export class SessionRegistry {
   private epoch = 0
   private userId: string | null = null
   private readonly requests = new Map<number, Set<AbortController>>()
+  constructor(private readonly portal: Portal = 'student') {}
 
   capture(): SessionToken {
-    return { epoch: this.epoch, userId: this.userId }
+    return { epoch: this.epoch, userId: this.userId, portal: this.portal }
   }
-
   isCurrent(token: SessionToken): boolean {
-    return this.epoch === token.epoch && this.userId === token.userId
+    return (
+      token.portal === this.portal &&
+      this.epoch === token.epoch &&
+      this.userId === token.userId
+    )
   }
 
   register(token: SessionToken, controller: AbortController): () => void {

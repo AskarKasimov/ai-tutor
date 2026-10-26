@@ -22,15 +22,14 @@ mkdir -p certs
 mkcert -cert-file certs/server.pem -key-file certs/server-key.pem localhost 127.0.0.1 ::1
 
 app_url=https://localhost:8443
-admin_url="$app_url/admin"
-printf '%s\n' "Student site: $app_url" "Admin panel:  $admin_url"
+admin_url="$app_url/admin/courses"
+printf '%s\n' "Start page: $app_url" "Course admin: $admin_url"
 
-# Grafana runs with the gateway profile; Compose takes COMPOSE_PROFILES from
-# the environment first, then from .env.
+# Grafana is optional; the LLM gateway itself is always part of the app stack.
 grafana_url=http://localhost:3000/d/llm-gateway-routing
 profiles=${COMPOSE_PROFILES-$(sed -n 's/^COMPOSE_PROFILES=//p' .env | tail -n 1)}
 case ",$profiles," in
-*,gateway,*) printf '%s\n' "Grafana:      $grafana_url" ;;
+*,observability,*) printf '%s\n' "Grafana:      $grafana_url" ;;
 *) grafana_url= ;;
 esac
 
@@ -71,4 +70,4 @@ if [ "${DEV_OPEN_BROWSER:-true}" != false ] && [ -n "$opener" ]; then
 fi
 
 # The root Compose creates its managed dev network before starting containers.
-exec docker compose --env-file .env -f docker-compose.yaml up --build "$@"
+exec docker compose --env-file .env -f docker-compose.yaml -f docker-compose.dev.yaml up --build "$@"

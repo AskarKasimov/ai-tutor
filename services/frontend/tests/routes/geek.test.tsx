@@ -161,7 +161,13 @@ function geekBackend(
       })
     if (url.endsWith('/subjects'))
       return Response.json([
-        { id: 'subject-1', name: 'Введение в ИИ', ready: true },
+        {
+          id: 'subject-1',
+          name: 'Введение в ИИ',
+          ready: true,
+          learning_ready: true,
+          exam_ready: true,
+        },
       ])
     if (url.includes('/diagnostic-sessions?subject_id=subject-1'))
       return Response.json({
@@ -338,6 +344,11 @@ class FakeAudio {
 
 beforeEach(() => {
   sessionStorage.clear()
+  const saved = new Map<string, string>()
+  vi.stubGlobal('localStorage', {
+    getItem: (key: string) => saved.get(key) ?? null,
+    setItem: (key: string, value: string) => saved.set(key, value),
+  })
   FakeAudio.played = []
   FakeAudio.paused = 0
   FakeAudio.last = null
@@ -354,7 +365,7 @@ function renderApp() {
   const queryClient = createQueryClient()
   const router = createRouter({
     context: { queryClient },
-    history: createMemoryHistory({ initialEntries: ['/'] }),
+    history: createMemoryHistory({ initialEntries: ['/exam'] }),
     routeTree,
   })
   render(<RouterProvider router={router} />)
@@ -407,6 +418,7 @@ it('runs a diagnostic from the home page to the result and back to the history',
       'Что изменится в A*, если эвристика переоценивает путь?',
     ),
   ).toBeVisible()
+  expect(screen.getAllByText('Введение в ИИ', { exact: true })).toHaveLength(1)
   expect(
     screen.getByRole('progressbar', { name: 'Диагностика' }),
   ).toHaveAttribute('aria-valuenow', '0')
@@ -467,6 +479,7 @@ it('runs a diagnostic from the home page to the result and back to the history',
   expect(
     await screen.findByRole('heading', { name: 'Итог диагностики', level: 1 }),
   ).toBeVisible()
+  expect(screen.getAllByText('Введение в ИИ', { exact: true })).toHaveLength(1)
   const grade = await screen.findByRole('region', {
     name: 'Предварительная оценка',
   })
@@ -509,6 +522,47 @@ it('runs a diagnostic from the home page to the result and back to the history',
   expect(await screen.findByText('Оценка B · 81%')).toBeVisible()
   fireEvent.click(screen.getByRole('button', { name: 'Открыть итог' }))
   expect(await screen.findByText('81% от максимума')).toBeVisible()
+})
+
+it('shows one shared course in student shell without direction tabs', async () => {
+  geekBackend()
+  renderApp()
+  expect(
+    await screen.findByRole('heading', { name: 'Симуляция экзамена' }),
+  ).toBeVisible()
+  await waitFor(() =>
+    expect(screen.getByRole('region', { name: 'Курс' })).toHaveTextContent(
+      'Введение в ИИ',
+    ),
+  )
+  expect(screen.getAllByText('Введение в ИИ', { exact: true })).toHaveLength(1)
+  expect(
+    screen.queryByRole('navigation', { name: 'Направления' }),
+  ).not.toBeInTheDocument()
+  expect(screen.getByRole('link', { name: 'К выбору режима' })).toHaveAttribute(
+    'href',
+    '/',
+  )
+})
+
+it('keeps the active exam open and offers mode selection in the account menu', async () => {
+  geekBackend()
+  renderApp()
+  await start()
+  expect(
+    await screen.findByText(
+      'Что изменится в A*, если эвристика переоценивает путь?',
+    ),
+  ).toBeVisible()
+  expect(sessionStorage.getItem('ai-tutor:geek-view')).toBeNull()
+  fireEvent.keyDown(
+    screen.getByRole('button', { name: 'Меню профиля: Студент' }),
+    { key: 'Enter' },
+  )
+  expect(
+    await screen.findByRole('menuitem', { name: 'К выбору режима' }),
+  ).toBeVisible()
+  expect(sessionStorage.getItem('ai-tutor:geek-view')).toBeNull()
 })
 
 it('resumes the active diagnostic from the history', async () => {
@@ -824,8 +878,8 @@ it('voices the reply to the answer first and the question after it in one turn',
   await waitFor(() => expect(FakeAudio.played).toHaveLength(2))
   await waitFor(() =>
     expect(audioUrls()).toEqual([
-      '/api/v1/diagnostic-sessions/d1/turns/t3/audio?part=reply',
-      '/api/v1/diagnostic-sessions/d1/turns/t3/audio?part=question',
+      '/api/v1/exam/diagnostic-sessions/d1/turns/t3/audio?part=reply',
+      '/api/v1/exam/diagnostic-sessions/d1/turns/t3/audio?part=question',
     ]),
   )
   // The question plays once the reply has ended.

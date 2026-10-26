@@ -76,6 +76,23 @@ it('fetches stored WAV from an internal API path with cookie credentials', async
   ).rejects.toMatchObject({ kind: 'invalid' })
 })
 
+it('fetches canonical learning task audio from the registered learning route', async () => {
+  const wav = await validWavBlob().arrayBuffer()
+  const fetchMock = vi
+    .fn()
+    .mockResolvedValue(
+      new Response(wav, { headers: { 'Content-Type': 'audio/wav' } }),
+    )
+  vi.stubGlobal('fetch', fetchMock)
+  await fetchStoredAudio(
+    '/learn/task-audio/audio-1/file',
+    new AbortController().signal,
+  )
+  expect(fetchMock.mock.calls[0][0]).toBe(
+    '/api/v1/learn/task-audio/audio-1/file',
+  )
+})
+
 it('rejects a structurally broken WAV even when the response MIME is audio/wav', async () => {
   vi.stubGlobal(
     'fetch',

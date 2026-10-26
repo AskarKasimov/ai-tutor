@@ -9,6 +9,8 @@
 | [LLM gateway: HTTP](llm-gateway-spec.md) | HTTP API, очередь, конфигурация, балансировка и OpenAPI. |
 | [LLM gateway: gRPC](llm-gateway-grpc-spec.md) | gRPC-транспорт, общий protobuf-модуль `services/shared`, отмена и восстановление. |
 | [Авторизация](auth.md) | Cookies, роли и доступ к данным владельца. |
+| [План объединения](unified-application-plan-2026-10-25.md) | Согласованный перенос двух режимов в один React/Go/PostgreSQL stack. |
+| [Интеграционный baseline](integration-parity.md) | Эталонные backend/frontend проверки, browser screenshots и API manifest. |
 | [Backend: БД](../services/backend/README.md#бд-и-импорт) | Схема, миграции, админ-аккаунт и материалы курса. |
 | [Формат учебного текста](markdown-content.md) | Markdown и формулы в учебном тексте и ответах модели. |
 | [Материалы демокурса](materials/) | PDF лекций, лаб и туториалов Introduction to AI за недели 1–14. |

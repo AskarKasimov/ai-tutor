@@ -173,7 +173,7 @@ func principal(w http.ResponseWriter, r *http.Request) (user.User, bool) {
 // @Failure 409 {object} fault.Error
 // @Failure 422 {object} fault.Error
 // @Failure 503 {object} fault.Error
-// @Router /diagnostic-sessions [post]
+// @Router /exam/diagnostic-sessions [post]
 func (h *Handler) Start(w http.ResponseWriter, r *http.Request) {
 	u, ok := principal(w, r)
 	if !ok {
@@ -207,7 +207,7 @@ func (h *Handler) Start(w http.ResponseWriter, r *http.Request) {
 // @Success 200 {object} History
 // @Failure 401 {object} fault.Error
 // @Failure 422 {object} fault.Error
-// @Router /diagnostic-sessions [get]
+// @Router /exam/diagnostic-sessions [get]
 func (h *Handler) History(w http.ResponseWriter, r *http.Request) {
 	u, ok := principal(w, r)
 	if !ok {
@@ -246,7 +246,7 @@ func (h *Handler) History(w http.ResponseWriter, r *http.Request) {
 // @Success 200 {object} Session
 // @Failure 401 {object} fault.Error
 // @Failure 404 {object} fault.Error
-// @Router /diagnostic-sessions/{id} [get]
+// @Router /exam/diagnostic-sessions/{id} [get]
 func (h *Handler) Read(w http.ResponseWriter, r *http.Request) {
 	u, ok := principal(w, r)
 	if !ok {
@@ -277,7 +277,7 @@ func (h *Handler) Read(w http.ResponseWriter, r *http.Request) {
 // @Failure 409 {object} fault.Error
 // @Failure 422 {object} fault.Error
 // @Failure 503 {object} fault.Error
-// @Router /diagnostic-sessions/{id}/answers [post]
+// @Router /exam/diagnostic-sessions/{id}/answers [post]
 func (h *Handler) Answer(w http.ResponseWriter, r *http.Request) {
 	u, ok := principal(w, r)
 	if !ok {
@@ -310,7 +310,7 @@ func (h *Handler) Answer(w http.ResponseWriter, r *http.Request) {
 // @Failure 401 {object} fault.Error
 // @Failure 404 {object} fault.Error
 // @Failure 409 {object} fault.Error
-// @Router /diagnostic-sessions/{id}/result [get]
+// @Router /exam/diagnostic-sessions/{id}/result [get]
 func (h *Handler) Result(w http.ResponseWriter, r *http.Request) {
 	u, ok := principal(w, r)
 	if !ok {
@@ -336,7 +336,7 @@ func (h *Handler) Result(w http.ResponseWriter, r *http.Request) {
 // @Success 200 {file} binary
 // @Failure 404 {object} fault.Error
 // @Failure 410 {object} fault.Error
-// @Router /diagnostic-sessions/{id}/materials/{material_id}/raw [get]
+// @Router /exam/diagnostic-sessions/{id}/materials/{material_id}/raw [get]
 func (h *Handler) RawMaterial(w http.ResponseWriter, r *http.Request) {
 	u, ok := principal(w, r)
 	if !ok {
@@ -369,7 +369,7 @@ func (h *Handler) RawMaterial(w http.ResponseWriter, r *http.Request) {
 // @Failure 404 {object} fault.Error
 // @Failure 422 {object} fault.Error
 // @Failure 503 {object} fault.Error
-// @Router /diagnostic-sessions/{id}/turns/{turn_id}/audio [get]
+// @Router /exam/diagnostic-sessions/{id}/turns/{turn_id}/audio [get]
 func (h *Handler) TurnAudio(w http.ResponseWriter, r *http.Request) {
 	u, ok := principal(w, r)
 	if !ok {

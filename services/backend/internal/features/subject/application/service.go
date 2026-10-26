@@ -53,16 +53,25 @@ func (s *Service) Create(ctx context.Context, actor user.User, name string) (sub
 }
 
 func (s *Service) Catalog(ctx context.Context, actor user.User) ([]subject.Subject, error) {
+	return s.catalog(ctx, actor, false)
+}
+
+func (s *Service) LearningCatalog(ctx context.Context, actor user.User) ([]subject.Subject, error) {
+	return s.catalog(ctx, actor, true)
+}
+
+func (s *Service) catalog(ctx context.Context, actor user.User, learning bool) ([]subject.Subject, error) {
 	items, err := s.repo.List(ctx)
 	if err != nil {
 		return nil, err
 	}
-	if actor.Role == user.Admin {
-		return items, nil
-	}
 	ready := make([]subject.Subject, 0, len(items))
 	for _, item := range items {
-		if item.Ready {
+		item.Ready = item.ExamReady
+		if learning {
+			item.Ready = item.LearningReady
+		}
+		if actor.Role == user.Admin || item.Ready {
 			ready = append(ready, item)
 		}
 	}

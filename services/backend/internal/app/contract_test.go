@@ -12,6 +12,7 @@ import (
 	"net/http/cookiejar"
 	"net/http/httptest"
 	"os"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -95,7 +96,11 @@ func TestOpenAPIResponses(t *testing.T) {
 	checked := map[string]bool{}
 	check := func(method, path string, w *httptest.ResponseRecorder) {
 		t.Helper()
-		op := paths[path].(map[string]any)[strings.ToLower(method)].(map[string]any)
+		contractPath := path
+		if strings.HasPrefix(path, "/admin/") || path == "/subjects" || strings.HasPrefix(path, "/subjects/") || strings.HasPrefix(path, "/diagnostic-sessions") {
+			contractPath = "/exam" + path
+		}
+		op := paths[contractPath].(map[string]any)[strings.ToLower(method)].(map[string]any)
 		response, ok := op["responses"].(map[string]any)[fmt.Sprint(w.Code)]
 		if !ok {
 			t.Fatalf("response status not in contract: %s %s %d %s", method, path, w.Code, w.Body.String())
@@ -108,7 +113,7 @@ func TestOpenAPIResponses(t *testing.T) {
 			if w.Body.Len() != 0 {
 				t.Fatal("204 response has body")
 			}
-			checked[path] = true
+			checked[contractPath] = true
 			return
 		}
 		content := node["content"].(map[string]any)
@@ -116,28 +121,28 @@ func TestOpenAPIResponses(t *testing.T) {
 			if w.Header().Get("Content-Type") != "audio/wav" || !audio.ValidWAV(w.Body.Bytes()) {
 				t.Fatal("invalid WAV response")
 			}
-			checked[path] = true
+			checked[contractPath] = true
 			return
 		}
 		if _, ok := content["application/octet-stream"]; ok {
 			if w.Body.Len() == 0 {
 				t.Fatal("empty octet-stream response")
 			}
-			checked[path] = true
+			checked[contractPath] = true
 			return
 		}
 		if _, ok := content["application/pdf"]; ok {
 			if w.Header().Get("Content-Type") != "application/pdf" || !bytes.HasPrefix(w.Body.Bytes(), []byte("%PDF-")) {
 				t.Fatal("invalid PDF response")
 			}
-			checked[path] = true
+			checked[contractPath] = true
 			return
 		}
 		schemaNode := content["application/json"].(map[string]any)["schema"].(map[string]any)
 		ref, ok := schemaNode["$ref"].(string)
 		if !ok {
 			escape := strings.NewReplacer("~", "~0", "/", "~1")
-			ref = "#/paths/" + escape.Replace(path) + "/" + strings.ToLower(method) +
+			ref = "#/paths/" + escape.Replace(contractPath) + "/" + strings.ToLower(method) +
 				"/responses/" + fmt.Sprint(w.Code) + "/content/application~1json/schema"
 		}
 		schema, err := compiler.Compile(resource + ref)
@@ -155,7 +160,7 @@ func TestOpenAPIResponses(t *testing.T) {
 			t.Fatal("wrong response type")
 		}
 		if w.Code < 300 {
-			checked[path] = true
+			checked[contractPath] = true
 		}
 	}
 	register := f.request("POST", "/auth/register", `{"email":"contract@example.edu","password":"`+password+`","display_name":"Контракт"}`)
@@ -295,7 +300,7 @@ func TestOpenAPIResponses(t *testing.T) {
 	}
 	_, _ = replacementPart.Write([]byte("%PDF-1.7 replacement"))
 	_ = replacementWriter.Close()
-	replacementRequest := httptest.NewRequest("PUT", "https://api.example/admin/subjects/subject:test/materials/"+matID+"/raw", &replacementBody)
+	replacementRequest := httptest.NewRequest("PUT", "https://api.example/exam/admin/subjects/subject:test/materials/"+matID+"/raw", &replacementBody)
 	replacementRequest.Header.Set("Content-Type", replacementWriter.FormDataContentType())
 	replacementRequest.AddCookie(admin)
 	replacementResponse := httptest.NewRecorder()
@@ -312,6 +317,31 @@ func TestOpenAPIResponses(t *testing.T) {
 		t.Fatalf("deleted diagnostic source: %d %s", deletedSource.Code, deletedSource.Body.String())
 	}
 	check("GET", sourceContract, deletedSource)
+
+	// Every learning operation is protected by the same real auth middleware.
+	// Hit each generated route without credentials so a misspelled/unregistered
+	// path fails as 404 instead of being mistaken for an implemented operation.
+	parameters := regexp.MustCompile(`\{[^}]+\}`)
+	for path, node := range paths {
+		if !strings.HasPrefix(path, "/learn/") {
+			continue
+		}
+		for method := range node.(map[string]any) {
+			if !strings.Contains(" get post put patch delete head options ", " "+method+" ") {
+				continue
+			}
+			requestPath := parameters.ReplaceAllString(path, "untrusted-id")
+			request := httptest.NewRequest(strings.ToUpper(method), "https://api.example"+requestPath, strings.NewReader("{}"))
+			response := httptest.NewRecorder()
+			f.app.Handler().ServeHTTP(response, request)
+			if response.Code != http.StatusUnauthorized {
+				t.Errorf("learning route must be registered and require auth: %s %s = %d %s", method, path, response.Code, response.Body.String())
+				continue
+			}
+			check(strings.ToUpper(method), path, response)
+			checked[path] = true
+		}
+	}
 	check("POST", "/auth/refresh", f.request("POST", "/auth/refresh", "", refresh))
 	check("POST", "/auth/logout", f.request("POST", "/auth/logout", "", refresh))
 	check("GET", "/health", f.request("GET", "/health", ""))
@@ -324,7 +354,7 @@ func TestOpenAPIResponses(t *testing.T) {
 			}
 		}
 		if implemented && !checked[path] {
-			t.Errorf("no verified successful response for %s", path)
+			t.Errorf("no verified handler response for %s", path)
 		}
 	}
 }

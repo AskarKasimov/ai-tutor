@@ -71,7 +71,7 @@ func requestFromProto(in *pb.CompleteRequest) (Request, error) {
 	if complexity == "" {
 		return Request{}, apiErr(400, "invalid_request_error", "invalid_complexity", "complexity must be low, medium, or high")
 	}
-	fields := map[string]any{"complexity": complexity, "urgent": in.Urgent}
+	fields := map[string]any{"complexity": complexity, "urgent": in.Urgent, "routing_profile": in.RoutingProfile}
 	messages := make([]map[string]any, 0, len(in.Messages))
 	for _, m := range in.Messages {
 		if m == nil || m.Content == nil {

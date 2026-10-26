@@ -69,7 +69,7 @@ it.each([
     )
     const build = await readLatestCourseGraphBuild('subject:one', signal())
     expect(fetchMock.mock.calls[0][0]).toBe(
-      '/api/v1/admin/subjects/subject%3Aone/graph',
+      '/api/v1/exam/admin/subjects/subject%3Aone/graph',
     )
     expect(fetchMock.mock.calls[0][1]).toMatchObject({ credentials: 'include' })
     if (status === null) expect(build).toBeNull()
@@ -99,7 +99,7 @@ it('starts with POST /graph/build and parses the returned snapshot', async () =>
     startCourseGraphBuild('subject:one', signal()),
   ).resolves.toMatchObject({ status: 'queued', stage: null })
   expect(fetchMock.mock.calls[0][0]).toBe(
-    '/api/v1/admin/subjects/subject%3Aone/graph/build',
+    '/api/v1/exam/admin/subjects/subject%3Aone/graph/build',
   )
   expect(fetchMock.mock.calls[0][1]).toMatchObject({
     method: 'POST',
@@ -265,7 +265,9 @@ it('imports a competency map as multipart and reads the graph of the map', async
   expect(build.status).toBe('queued')
   expect(build.source).toBe('competency_map')
   const [url, init] = fetchMock.mock.calls[0]
-  expect(url).toBe('/api/v1/admin/subjects/course%2F1/graph/competency-map')
+  expect(url).toBe(
+    '/api/v1/exam/admin/subjects/course%2F1/graph/competency-map',
+  )
   expect(init.method).toBe('POST')
   expect((init.body as FormData).get('file')).toBe(file)
   expect((init.body as FormData).has('sheet')).toBe(false)

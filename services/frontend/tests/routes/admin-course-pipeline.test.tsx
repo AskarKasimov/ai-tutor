@@ -45,6 +45,7 @@ function setup({
   cleaningFailed = false,
   graphReady = false,
   competencyMap,
+  materials,
   uploadGate,
 }: {
   processing?: boolean
@@ -52,6 +53,7 @@ function setup({
   cleaning?: boolean
   cleaningFailed?: boolean
   graphReady?: boolean
+  materials?: (typeof material)[]
   // The import of a competency map: a bad map names its cells; a good one is
   // built from its first sheet and the build publishes the graph of the map.
   competencyMap?: 'valid' | 'invalid'
@@ -59,6 +61,7 @@ function setup({
 } = {}) {
   let graphRequested = false
   let mapImported = false
+  const courseMaterials = materials ?? [material]
   const calls = vi.fn(async (url: string, init?: RequestInit) => {
     if (url.endsWith('/auth/me')) return Response.json(admin)
     if (url.endsWith('/admin/material-kinds'))
@@ -68,8 +71,20 @@ function setup({
       ])
     if (url.endsWith('/subjects'))
       return Response.json([
-        { id: 'subject-a', name: 'Первый курс', ready: false },
-        { id: 'subject-b', name: 'Второй курс', ready: graphReady },
+        {
+          id: 'subject-a',
+          name: 'Первый курс',
+          ready: false,
+          learning_ready: false,
+          exam_ready: false,
+        },
+        {
+          id: 'subject-b',
+          name: 'Второй курс',
+          ready: graphReady || mapImported,
+          learning_ready: false,
+          exam_ready: graphReady || mapImported,
+        },
       ])
     if (url.endsWith('/materials') && init?.method === 'POST') {
       await uploadGate
@@ -86,41 +101,45 @@ function setup({
       })
     }
     if (url.endsWith('/materials'))
-      return Response.json([
-        cleaningFailed
-          ? {
-              ...material,
-              cleaning: {
-                status: 'failed',
-                updated_at: 2,
-                attempts: 3,
-                error_message: 'Очистка материала не удалась.',
-              },
-            }
-          : pending
-            ? { ...material, status: 'pending' }
-            : cleaning
-              ? {
-                  ...material,
-                  cleaning: {
-                    status: 'processing',
-                    updated_at: 1,
-                    attempts: 1,
-                    error_message: '',
-                  },
-                }
-              : processing
+      return Response.json(
+        courseMaterials.length === 0
+          ? []
+          : [
+              cleaningFailed
                 ? {
                     ...material,
-                    processing: {
-                      stage: 'translation',
-                      status: 'processing',
-                      updated_at: 1,
-                      attempts: 1,
+                    cleaning: {
+                      status: 'failed',
+                      updated_at: 2,
+                      attempts: 3,
+                      error_message: 'Очистка материала не удалась.',
                     },
                   }
-                : material,
-      ])
+                : pending
+                  ? { ...material, status: 'pending' }
+                  : cleaning
+                    ? {
+                        ...material,
+                        cleaning: {
+                          status: 'processing',
+                          updated_at: 1,
+                          attempts: 1,
+                          error_message: '',
+                        },
+                      }
+                    : processing
+                      ? {
+                          ...material,
+                          processing: {
+                            stage: 'translation',
+                            status: 'processing',
+                            updated_at: 1,
+                            attempts: 1,
+                          },
+                        }
+                      : material,
+            ],
+      )
     if (url.endsWith('/graph/competency-map')) {
       if (competencyMap === 'invalid')
         return Response.json(
@@ -209,7 +228,7 @@ function setup({
   vi.stubGlobal('fetch', calls)
   return calls
 }
-function open(path = '/admin/competency-map/subject-b') {
+function open(path = '/admin/courses/subject-b?direction=exam') {
   window.history.replaceState({}, '', path)
   const router = createRouter({
     context: { queryClient: createQueryClient() },
@@ -266,6 +285,27 @@ it('keeps the master graph viewer for a published graph', async () => {
   expect(screen.queryByText('По карте компетенций')).not.toBeInTheDocument()
 })
 
+it('keeps the competency map import inside the selected course graph card', async () => {
+  setup()
+  open('/admin/courses/subject-b?direction=exam')
+  const graphSection = await screen.findByRole('region', {
+    name: 'Граф тем курса',
+  })
+  expect(
+    within(graphSection).getByText(/Вместо материалов граф можно собрать/),
+  ).toBeVisible()
+  expect(
+    within(graphSection).getByRole('button', {
+      name: 'Импортировать карту компетенций',
+    }),
+  ).toBeVisible()
+  expect(
+    screen.queryByRole('heading', {
+      name: 'Карта для экзаменационного графа',
+    }),
+  ).not.toBeInTheDocument()
+})
+
 function chooseMap() {
   return screen
     .findByLabelText('Импортировать карту компетенций', { selector: 'input' })
@@ -304,6 +344,67 @@ it('builds the graph from the first sheet of a competency map', async () => {
   expect((imports[0][1]?.body as FormData).has('sheet')).toBe(false)
   expect(screen.queryByLabelText('Лист карты')).not.toBeInTheDocument()
 }, 15000)
+
+it('imports a map through the shared course ID and makes a map-only course ready', async () => {
+  const calls = setup({ competencyMap: 'valid', materials: [] })
+  const router = open('/admin/courses/subject-b?direction=exam')
+  expect(
+    await screen.findByRole('heading', { name: 'Второй курс', level: 1 }),
+  ).toBeVisible()
+  expect(await screen.findByText(/Материалов: 0/)).toBeVisible()
+  await chooseMap()
+  const dialog = await screen.findByRole('alertdialog')
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Импортировать' }))
+  await screen.findByText('По карте компетенций', undefined, { timeout: 8000 })
+  expect(await screen.findByText('Экзамен готов')).toBeVisible()
+  expect(router.state.location.pathname).toBe('/admin/courses/subject-b')
+  expect(router.state.location.search).toEqual({ direction: 'exam' })
+  expect(
+    calls.mock.calls.some(([url]) =>
+      String(url).endsWith('/admin/subjects/subject-b/graph/competency-map'),
+    ),
+  ).toBe(true)
+  expect(
+    calls.mock.calls.some(([url]) =>
+      String(url).endsWith('/admin/subjects/subject-b/materials'),
+    ),
+  ).toBe(true)
+}, 15000)
+
+it('keeps the common course heading and exactly one selected direction tab', async () => {
+  setup()
+  const router = open('/admin/courses/subject-b?direction=exam')
+  expect(
+    await screen.findByRole('heading', { name: 'Второй курс', level: 1 }),
+  ).toBeVisible()
+  const navigation = screen.getByRole('navigation', {
+    name: 'Разделы администрирования',
+  })
+  const selected = () =>
+    within(navigation)
+      .getAllByRole('link')
+      .filter((tab) => tab.getAttribute('aria-current') === 'page')
+  expect(selected()).toHaveLength(1)
+  expect(selected()[0]).toHaveAccessibleName('Материалы для экзамена')
+  fireEvent.click(
+    within(navigation).getByRole('link', { name: 'Материалы для обучения' }),
+  )
+  expect(
+    await screen.findByRole('heading', { name: 'Материалы для обучения' }),
+  ).toBeVisible()
+  expect(router.state.location.search).toEqual({ direction: 'learn' })
+  const navigationAfterSwitch = screen.getByRole('navigation', {
+    name: 'Разделы администрирования',
+  })
+  const selectedAfterSwitch = within(navigationAfterSwitch)
+    .getAllByRole('link')
+    .filter((tab) => tab.getAttribute('aria-current') === 'page')
+  expect(selectedAfterSwitch).toHaveLength(1)
+  expect(selectedAfterSwitch[0]).toHaveAccessibleName('Материалы для обучения')
+  expect(
+    await screen.findByRole('heading', { name: 'Второй курс', level: 1 }),
+  ).toBeVisible()
+})
 
 it('names the bad cells of a rejected competency map', async () => {
   setup({ competencyMap: 'invalid' })
@@ -367,11 +468,10 @@ it('asks before leaving a course with an unsent material in the queue', async ()
     }),
   ).toBeVisible()
   fireEvent.click(screen.getByRole('button', { name: 'Остаться' }))
-  await waitFor(() =>
-    expect(router.state.location.pathname).toBe(
-      '/admin/competency-map/subject-b',
-    ),
-  )
+  await waitFor(() => {
+    expect(router.state.location.pathname).toBe('/admin/courses/subject-b')
+    expect(router.state.location.search).toEqual({ direction: 'exam' })
+  })
   expect(await screen.findByText('unsent.pdf')).toBeVisible()
   expect(screen.getByRole('heading', { name: 'Второй курс' })).toBeVisible()
 })

@@ -13,8 +13,7 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 ARG VITE_API_BASE_URL=/api/v1
-ARG VITE_MODE_SELECT_URL=
-RUN VITE_API_BASE_URL="$VITE_API_BASE_URL" VITE_MODE_SELECT_URL="$VITE_MODE_SELECT_URL" npm run build
+RUN VITE_API_BASE_URL="$VITE_API_BASE_URL" npm run build
 
 FROM nginx:alpine AS runtime
 COPY --from=build /app/dist /usr/share/nginx/html

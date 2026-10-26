@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -40,6 +41,19 @@ func main() {
 	if err != nil {
 		slog.Error("invalid gateway configuration", "error", err)
 		os.Exit(1)
+	}
+	if raw := os.Getenv("GATEWAY_REQUIRED_ROUTING_PROFILES"); raw != "" {
+		var required []string
+		for _, name := range strings.Split(raw, ",") {
+			name = strings.TrimSpace(name)
+			if name != "" {
+				required = append(required, name)
+			}
+		}
+		if err := gateway.ValidateRequiredRoutingProfiles(cfg, required); err != nil {
+			slog.Error("gateway deployment requirements are not met", "error", err)
+			os.Exit(1)
+		}
 	}
 	service, err := gateway.NewService(cfg)
 	if err != nil {

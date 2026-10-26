@@ -7,6 +7,10 @@ import { CompetencyMapDependenciesProvider } from '@/features/import-competency-
 import { CourseGraphBuildDependenciesProvider } from '@/features/course-graph-build'
 import { DiagnosticDependenciesProvider } from '@/features/diagnostic-session'
 import { SubjectSelectionDependenciesProvider } from '@/features/subject-selection'
+import { CompetencyMapDependenciesProvider as LearningMapProvider } from '@/features/import-learning-competency-map'
+import { SubjectSelectionDependenciesProvider as LearningSubjectsProvider } from '@/features/learning-subject-selection'
+import { DiagnosticDependenciesProvider as LearningDiagnosticProvider } from '@/features/learning-diagnostic-session'
+import { LearningPlanDependenciesProvider } from '@/features/learning-plan'
 import { createAppDependencies } from './dependencies'
 import type { AppDependencies } from './dependencies'
 import '@/shared/i18n'
@@ -41,15 +45,37 @@ export function AppProviders({
             <DiagnosticDependenciesProvider
               value={{ diagnostic: services.diagnostic }}
             >
-              <Theme
-                className={styles.root}
-                accentColor="blue"
-                appearance="light"
+              <LearningMapProvider
+                value={{ competencyMap: services.learningMap }}
               >
-                <QueryClientProvider client={queryClient}>
-                  {children}
-                </QueryClientProvider>
-              </Theme>
+                <LearningSubjectsProvider
+                  value={{ subjects: services.learningSubjects }}
+                >
+                  <LearningDiagnosticProvider
+                    value={{
+                      apiBase: services.learningApiBase,
+                      createDiagnosticIdentity:
+                        services.createLearningDiagnosticIdentity,
+                      diagnosticStorage: services.learningDiagnosticStorage,
+                      diagnostic: services.learningDiagnostic,
+                    }}
+                  >
+                    <LearningPlanDependenciesProvider
+                      value={{ learningPlan: services.learningPlan }}
+                    >
+                      <Theme
+                        className={styles.root}
+                        accentColor="blue"
+                        appearance="light"
+                      >
+                        <QueryClientProvider client={queryClient}>
+                          {children}
+                        </QueryClientProvider>
+                      </Theme>
+                    </LearningPlanDependenciesProvider>
+                  </LearningDiagnosticProvider>
+                </LearningSubjectsProvider>
+              </LearningMapProvider>
             </DiagnosticDependenciesProvider>
           </SubjectSelectionDependenciesProvider>
         </CourseGraphBuildDependenciesProvider>

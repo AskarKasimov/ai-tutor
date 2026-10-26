@@ -35,8 +35,13 @@ jobs:
         run: services/shared/tools/generate.sh --check
       - name: Check protobuf compatibility
         working-directory: .
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
         run: |
-          services/shared/tools/check-compat.sh "${{ github.event.pull_request.base.sha }}"
+          if [[ -z "$BASE_SHA" || "$BASE_SHA" =~ ^0+$ ]]; then
+            BASE_SHA=c8f63935a8a80c0d890be70f46479c3bae343129
+          fi
+          services/shared/tools/check-compat.sh "$BASE_SHA"
           cd services/shared && GOWORK=off go test ./...
       - name: Check generated OpenAPI contract
         run: |
@@ -44,7 +49,7 @@ jobs:
           bash scripts/generate-openapi.sh
           test "$expected" = "$(sha256sum openapi.yaml)"
       - name: Start Redpanda for gateway integration tests
-        run: docker compose --profile gateway --env-file .env.example up -d --wait --wait-timeout 120 redpanda
+        run: docker compose --env-file .env.example up -d --wait --wait-timeout 120 redpanda
         working-directory: .
       - name: Run tests
         run: GOWORK=off go test -race ./... -count=1
@@ -63,5 +68,5 @@ jobs:
           docker run --rm -v "$PWD/services/caddy/Caddyfile:/etc/caddy/Caddyfile:ro" -v /tmp/llm-gateway-caddy-certs:/certs:ro caddy:2-alpine caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
       - name: Stop Redpanda
         if: ${{ always() }}
-        run: docker compose --profile gateway --env-file .env.example stop redpanda
+        run: docker compose --env-file .env.example stop redpanda
         working-directory: .

@@ -1,0 +1,127 @@
+.page {
+  min-height: 100dvh;
+  background: var(--app-soft);
+  color: var(--app-ink);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-5) max(var(--space-5), calc((100% - 960px) / 2));
+  border-bottom: 1px solid var(--app-border);
+  background: var(--color-panel-solid);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  color: var(--app-accent);
+}
+
+.content {
+  box-sizing: border-box;
+  display: grid;
+  gap: var(--space-5);
+  max-width: 1000px;
+  margin: auto;
+  padding: var(--space-7) var(--space-5);
+}
+
+.courseHeader {
+  display: grid;
+  gap: var(--space-4);
+  padding-bottom: var(--space-5);
+  border-bottom: 1px solid var(--app-border);
+}
+
+.courseIdentity {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.courseIdentity p,
+.directionIntro p {
+  margin: 0;
+}
+
+.courseNavigation {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.directionNav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  border: 1px solid var(--app-border);
+  border-radius: var(--radius-4);
+  background: var(--color-panel-solid);
+}
+
+.directionLink {
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
+  padding: 0 var(--space-4);
+  border-radius: var(--radius-3);
+  color: var(--app-ink);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.directionLink:hover,
+.directionLink:focus-visible {
+  outline: 2px solid var(--app-accent);
+  outline-offset: 2px;
+}
+
+.directionLink[data-selected='true'] {
+  background: var(--accent-3);
+  color: var(--accent-11);
+}
+
+.directionHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-2) 0;
+}
+
+.directionIntro {
+  display: grid;
+  justify-items: start;
+  gap: var(--space-3);
+}
+
+.directionHeader > span {
+  flex: none;
+  margin-top: var(--space-1);
+}
+
+@media (max-width: 640px) {
+  .header {
+    padding: var(--space-4);
+  }
+
+  .content {
+    gap: var(--space-4);
+    padding: var(--space-5) var(--space-4);
+  }
+
+  .courseNavigation {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .directionHeader {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}

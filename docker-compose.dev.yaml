@@ -1,0 +1,30 @@
+services:
+  api:
+    build:
+      target: dev
+    volumes:
+      - ./services/backend:/work/backend
+      - ./services/shared:/work/shared:ro
+      - backend_go_modules:/go/pkg/mod
+      - backend_go_build:/root/.cache/go-build
+      - backend_dev_bin:/work/backend/.air
+    healthcheck:
+      test: ["CMD", "/work/backend/.air/api", "healthcheck"]
+      start_period: 180s
+
+  frontend:
+    build:
+      target: dev
+    environment:
+      VITE_API_BASE_URL: ${VITE_API_BASE_URL:-/api/v1}
+      VITE_API_PROXY_TARGET: http://api:8002
+      DEV_POLLING: "true"
+    volumes:
+      - ./services/frontend:/app
+      - frontend_node_modules:/app/node_modules
+
+volumes:
+  backend_go_modules:
+  backend_go_build:
+  backend_dev_bin:
+  frontend_node_modules:

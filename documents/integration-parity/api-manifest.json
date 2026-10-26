@@ -1,0 +1,462 @@
+{
+  "learn_source": "f915c9cc79710d5d7b5c43ac82190f8ca86e9a15",
+  "exam_source": "c8f63935a8a80c0d890be70f46479c3bae343129",
+  "routes": [
+    {
+      "mode": "common",
+      "method": "POST",
+      "source_path": "/auth/register",
+      "target_path": "/api/v1/auth/register"
+    },
+    {
+      "mode": "common",
+      "method": "POST",
+      "source_path": "/auth/login",
+      "target_path": "/api/v1/auth/login"
+    },
+    {
+      "mode": "common",
+      "method": "POST",
+      "source_path": "/auth/teacher",
+      "target_path": "/api/v1/auth/teacher"
+    },
+    {
+      "mode": "common",
+      "method": "POST",
+      "source_path": "/auth/refresh",
+      "target_path": "/api/v1/auth/refresh"
+    },
+    {
+      "mode": "common",
+      "method": "POST",
+      "source_path": "/auth/logout",
+      "target_path": "/api/v1/auth/logout"
+    },
+    {
+      "mode": "common",
+      "method": "GET",
+      "source_path": "/auth/me",
+      "target_path": "/api/v1/auth/me"
+    },
+    {
+      "mode": "learn",
+      "method": "POST",
+      "source_path": "/admin/subjects/{subject_id}/competency-map/import",
+      "target_path": "/api/v1/learn/admin/subjects/{subject_id}/competency-map/import"
+    },
+    {
+      "mode": "learn",
+      "method": "POST",
+      "source_path": "/admin/subjects",
+      "target_path": "/api/v1/learn/admin/subjects"
+    },
+    {
+      "mode": "common",
+      "method": "POST",
+      "source_path": "/voice/transcriptions",
+      "target_path": "/api/v1/voice/transcriptions"
+    },
+    {
+      "mode": "common",
+      "method": "POST",
+      "source_path": "/voice/syntheses",
+      "target_path": "/api/v1/voice/syntheses"
+    },
+    {
+      "mode": "learn",
+      "method": "POST",
+      "source_path": "/assessments/evaluate",
+      "target_path": "/api/v1/learn/assessments/evaluate"
+    },
+    {
+      "mode": "learn",
+      "method": "POST",
+      "source_path": "/assessments/overall-feedback",
+      "target_path": "/api/v1/learn/assessments/overall-feedback"
+    },
+    {
+      "mode": "learn",
+      "method": "POST",
+      "source_path": "/diagnostic-sessions",
+      "target_path": "/api/v1/learn/diagnostic-sessions"
+    },
+    {
+      "mode": "learn",
+      "method": "GET",
+      "source_path": "/diagnostic-sessions/{id}",
+      "target_path": "/api/v1/learn/diagnostic-sessions/{id}"
+    },
+    {
+      "mode": "learn",
+      "method": "GET",
+      "source_path": "/subjects/{subject_id}/learning-state",
+      "target_path": "/api/v1/learn/subjects/{subject_id}/learning-state"
+    },
+    {
+      "mode": "learn",
+      "method": "GET",
+      "source_path": "/diagnostic-sessions/{id}/current/audio",
+      "target_path": "/api/v1/learn/diagnostic-sessions/{id}/current/audio"
+    },
+    {
+      "mode": "learn",
+      "method": "POST",
+      "source_path": "/diagnostic-sessions/{id}/current/audio/regenerate",
+      "target_path": "/api/v1/learn/diagnostic-sessions/{id}/current/audio/regenerate"
+    },
+    {
+      "mode": "learn",
+      "method": "GET",
+      "source_path": "/task-audio/{id}/file",
+      "target_path": "/api/v1/learn/task-audio/{id}/file"
+    },
+    {
+      "mode": "learn",
+      "method": "POST",
+      "source_path": "/diagnostic-sessions/{id}/answers/transcription",
+      "target_path": "/api/v1/learn/diagnostic-sessions/{id}/answers/transcription"
+    },
+    {
+      "mode": "learn",
+      "method": "POST",
+      "source_path": "/diagnostic-sessions/{id}/answers",
+      "target_path": "/api/v1/learn/diagnostic-sessions/{id}/answers"
+    },
+    {
+      "mode": "learn",
+      "method": "POST",
+      "source_path": "/diagnostic-sessions/{id}/skip",
+      "target_path": "/api/v1/learn/diagnostic-sessions/{id}/skip"
+    },
+    {
+      "mode": "learn",
+      "method": "GET",
+      "source_path": "/diagnostic-sessions/{id}/result",
+      "target_path": "/api/v1/learn/diagnostic-sessions/{id}/result"
+    },
+    {
+      "mode": "learn",
+      "method": "GET",
+      "source_path": "/diagnostic-sessions/{id}/feedback",
+      "target_path": "/api/v1/learn/diagnostic-sessions/{id}/feedback"
+    },
+    {
+      "mode": "learn",
+      "method": "GET",
+      "source_path": "/diagnostic-sessions/{id}/training/preview",
+      "target_path": "/api/v1/learn/diagnostic-sessions/{id}/training/preview"
+    },
+    {
+      "mode": "learn",
+      "method": "POST",
+      "source_path": "/diagnostic-sessions/{id}/training",
+      "target_path": "/api/v1/learn/diagnostic-sessions/{id}/training"
+    },
+    {
+      "mode": "learn",
+      "method": "GET",
+      "source_path": "/diagnostic-sessions/{id}/training",
+      "target_path": "/api/v1/learn/diagnostic-sessions/{id}/training"
+    },
+    {
+      "mode": "learn",
+      "method": "GET",
+      "source_path": "/training-sessions/{id}",
+      "target_path": "/api/v1/learn/training-sessions/{id}"
+    },
+    {
+      "mode": "learn",
+      "method": "POST",
+      "source_path": "/training-sessions/{id}/answers",
+      "target_path": "/api/v1/learn/training-sessions/{id}/answers"
+    },
+    {
+      "mode": "learn",
+      "method": "POST",
+      "source_path": "/training-sessions/{id}/skip",
+      "target_path": "/api/v1/learn/training-sessions/{id}/skip"
+    },
+    {
+      "mode": "learn",
+      "method": "POST",
+      "source_path": "/training-sessions/{id}/answers/reset",
+      "target_path": "/api/v1/learn/training-sessions/{id}/answers/reset"
+    },
+    {
+      "mode": "learn",
+      "method": "POST",
+      "source_path": "/training-sessions/{id}/exercises/{exercise_id}/next",
+      "target_path": "/api/v1/learn/training-sessions/{id}/exercises/{exercise_id}/next"
+    },
+    {
+      "mode": "learn",
+      "method": "GET",
+      "source_path": "/training-sessions/{id}/history",
+      "target_path": "/api/v1/learn/training-sessions/{id}/history"
+    },
+    {
+      "mode": "learn",
+      "method": "GET",
+      "source_path": "/training-sessions/{id}/current/audio",
+      "target_path": "/api/v1/learn/training-sessions/{id}/current/audio"
+    },
+    {
+      "mode": "learn",
+      "method": "POST",
+      "source_path": "/training-sessions/{id}/current/audio/regenerate",
+      "target_path": "/api/v1/learn/training-sessions/{id}/current/audio/regenerate"
+    },
+    {
+      "mode": "learn",
+      "method": "GET",
+      "source_path": "/training-sessions/{id}/exercises/{exercise_id}/chat",
+      "target_path": "/api/v1/learn/training-sessions/{id}/exercises/{exercise_id}/chat"
+    },
+    {
+      "mode": "learn",
+      "method": "POST",
+      "source_path": "/training-sessions/{id}/exercises/{exercise_id}/chat/turns",
+      "target_path": "/api/v1/learn/training-sessions/{id}/exercises/{exercise_id}/chat/turns"
+    },
+    {
+      "mode": "learn",
+      "method": "POST",
+      "source_path": "/training-sessions/{id}/exercises/{exercise_id}/chat/turns/{turn_id}/retry",
+      "target_path": "/api/v1/learn/training-sessions/{id}/exercises/{exercise_id}/chat/turns/{turn_id}/retry"
+    },
+    {
+      "mode": "learn",
+      "method": "POST",
+      "source_path": "/training-sessions/{id}/exercises/{exercise_id}/chat/turns/{turn_id}/cancel",
+      "target_path": "/api/v1/learn/training-sessions/{id}/exercises/{exercise_id}/chat/turns/{turn_id}/cancel"
+    },
+    {
+      "mode": "learn",
+      "method": "GET",
+      "source_path": "/tasks",
+      "target_path": "/api/v1/learn/tasks"
+    },
+    {
+      "mode": "learn",
+      "method": "GET",
+      "source_path": "/subjects/{subject_id}/competency-map",
+      "target_path": "/api/v1/learn/subjects/{subject_id}/competency-map"
+    },
+    {
+      "mode": "learn",
+      "method": "GET",
+      "source_path": "/subjects",
+      "target_path": "/api/v1/learn/subjects"
+    },
+    {
+      "mode": "learn",
+      "method": "GET",
+      "source_path": "/tasks/{id}",
+      "target_path": "/api/v1/learn/tasks/{id}"
+    },
+    {
+      "mode": "learn",
+      "method": "POST",
+      "source_path": "/tasks/generate",
+      "target_path": "/api/v1/learn/tasks/generate"
+    },
+    {
+      "mode": "learn",
+      "method": "POST",
+      "source_path": "/admin/materials",
+      "target_path": "/api/v1/learn/admin/materials"
+    },
+    {
+      "mode": "learn",
+      "method": "POST",
+      "source_path": "/variants",
+      "target_path": "/api/v1/learn/variants"
+    },
+    {
+      "mode": "learn",
+      "method": "GET",
+      "source_path": "/variants",
+      "target_path": "/api/v1/learn/variants"
+    },
+    {
+      "mode": "learn",
+      "method": "GET",
+      "source_path": "/variants/{id}",
+      "target_path": "/api/v1/learn/variants/{id}"
+    },
+    {
+      "mode": "learn",
+      "method": "GET",
+      "source_path": "/variants/{id}/tasks/{task_id}",
+      "target_path": "/api/v1/learn/variants/{id}/tasks/{task_id}"
+    },
+    {
+      "mode": "learn",
+      "method": "POST",
+      "source_path": "/diagnostic-sessions/{id}/learning-plan",
+      "target_path": "/api/v1/learn/diagnostic-sessions/{id}/learning-plan"
+    },
+    {
+      "mode": "learn",
+      "method": "GET",
+      "source_path": "/diagnostic-sessions/{id}/learning-plan",
+      "target_path": "/api/v1/learn/diagnostic-sessions/{id}/learning-plan"
+    },
+    {
+      "mode": "learn",
+      "method": "GET",
+      "source_path": "/learning-plans/{id}",
+      "target_path": "/api/v1/learn/learning-plans/{id}"
+    },
+    {
+      "mode": "learn",
+      "method": "GET",
+      "source_path": "/learning-plans/{id}/items/{index}/messages",
+      "target_path": "/api/v1/learn/learning-plans/{id}/items/{index}/messages"
+    },
+    {
+      "mode": "learn",
+      "method": "POST",
+      "source_path": "/learning-plans/{id}/open",
+      "target_path": "/api/v1/learn/learning-plans/{id}/open"
+    },
+    {
+      "mode": "learn",
+      "method": "POST",
+      "source_path": "/learning-plans/{id}/answers/transcription",
+      "target_path": "/api/v1/learn/learning-plans/{id}/answers/transcription"
+    },
+    {
+      "mode": "learn",
+      "method": "POST",
+      "source_path": "/learning-plans/{id}/answers",
+      "target_path": "/api/v1/learn/learning-plans/{id}/answers"
+    },
+    {
+      "mode": "learn",
+      "method": "POST",
+      "source_path": "/learning-plans/{id}/answers/retry",
+      "target_path": "/api/v1/learn/learning-plans/{id}/answers/retry"
+    },
+    {
+      "mode": "common",
+      "method": "GET",
+      "source_path": "/health",
+      "target_path": "/api/v1/health"
+    },
+    {
+      "mode": "exam",
+      "method": "GET",
+      "source_path": "/admin/material-kinds",
+      "target_path": "/api/v1/exam/admin/material-kinds"
+    },
+    {
+      "mode": "exam",
+      "method": "PATCH",
+      "source_path": "/admin/subjects/{subject_id}/materials/{material_id}",
+      "target_path": "/api/v1/exam/admin/subjects/{subject_id}/materials/{material_id}"
+    },
+    {
+      "mode": "exam",
+      "method": "PUT",
+      "source_path": "/admin/subjects/{subject_id}/materials/{material_id}/raw",
+      "target_path": "/api/v1/exam/admin/subjects/{subject_id}/materials/{material_id}/raw"
+    },
+    {
+      "mode": "exam",
+      "method": "POST",
+      "source_path": "/admin/subjects/{subject_id}/materials",
+      "target_path": "/api/v1/exam/admin/subjects/{subject_id}/materials"
+    },
+    {
+      "mode": "exam",
+      "method": "GET",
+      "source_path": "/admin/subjects/{subject_id}/materials",
+      "target_path": "/api/v1/exam/admin/subjects/{subject_id}/materials"
+    },
+    {
+      "mode": "exam",
+      "method": "GET",
+      "source_path": "/admin/subjects/{subject_id}/graph",
+      "target_path": "/api/v1/exam/admin/subjects/{subject_id}/graph"
+    },
+    {
+      "mode": "exam",
+      "method": "POST",
+      "source_path": "/admin/subjects/{subject_id}/graph/build",
+      "target_path": "/api/v1/exam/admin/subjects/{subject_id}/graph/build"
+    },
+    {
+      "mode": "exam",
+      "method": "POST",
+      "source_path": "/admin/subjects/{subject_id}/graph/competency-map",
+      "target_path": "/api/v1/exam/admin/subjects/{subject_id}/graph/competency-map"
+    },
+    {
+      "mode": "exam",
+      "method": "DELETE",
+      "source_path": "/admin/subjects/{subject_id}/materials/{material_id}",
+      "target_path": "/api/v1/exam/admin/subjects/{subject_id}/materials/{material_id}"
+    },
+    {
+      "mode": "exam",
+      "method": "GET",
+      "source_path": "/admin/subjects/{subject_id}/materials/{material_id}/raw",
+      "target_path": "/api/v1/exam/admin/subjects/{subject_id}/materials/{material_id}/raw"
+    },
+    {
+      "mode": "exam",
+      "method": "POST",
+      "source_path": "/admin/subjects",
+      "target_path": "/api/v1/exam/admin/subjects"
+    },
+    {
+      "mode": "exam",
+      "method": "GET",
+      "source_path": "/subjects",
+      "target_path": "/api/v1/exam/subjects"
+    },
+    {
+      "mode": "exam",
+      "method": "POST",
+      "source_path": "/diagnostic-sessions",
+      "target_path": "/api/v1/exam/diagnostic-sessions"
+    },
+    {
+      "mode": "exam",
+      "method": "GET",
+      "source_path": "/diagnostic-sessions",
+      "target_path": "/api/v1/exam/diagnostic-sessions"
+    },
+    {
+      "mode": "exam",
+      "method": "GET",
+      "source_path": "/diagnostic-sessions/{id}",
+      "target_path": "/api/v1/exam/diagnostic-sessions/{id}"
+    },
+    {
+      "mode": "exam",
+      "method": "POST",
+      "source_path": "/diagnostic-sessions/{id}/answers",
+      "target_path": "/api/v1/exam/diagnostic-sessions/{id}/answers"
+    },
+    {
+      "mode": "exam",
+      "method": "GET",
+      "source_path": "/diagnostic-sessions/{id}/result",
+      "target_path": "/api/v1/exam/diagnostic-sessions/{id}/result"
+    },
+    {
+      "mode": "exam",
+      "method": "GET",
+      "source_path": "/diagnostic-sessions/{id}/materials/{material_id}/raw",
+      "target_path": "/api/v1/exam/diagnostic-sessions/{id}/materials/{material_id}/raw"
+    },
+    {
+      "mode": "exam",
+      "method": "GET",
+      "source_path": "/diagnostic-sessions/{id}/turns/{turn_id}/audio",
+      "target_path": "/api/v1/exam/diagnostic-sessions/{id}/turns/{turn_id}/audio"
+    }
+  ]
+}

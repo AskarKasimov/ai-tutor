@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Чек-лист Geek</title>
+<title>Чек-лист AI Tutor</title>
 <style>
   :root {
     --bg: #f6f7f9;
@@ -105,8 +105,9 @@
 <body>
 <main>
   <header>
-    <h1>Чек-лист перехода на Geek</h1>
-    <p>Видение от 15.10.2026 по концепции проректора, решения 16.10.2026: устный экзамен и тренировка в диспуте по графу курса из материалов. Показ — 18.10.2026, курс Introduction to AI (DSAI). Подробности — README.md.</p>
+    <h1>Чек-лист AI Tutor</h1>
+    <p>Geek и обучение v0.0.2.5 работают в одном React frontend, Go backend и PostgreSQL. Их педагогические алгоритмы и каталоги данных остаются раздельными; стартовый экран и вход общие. Текущее устройство и решения — в README.md и documents/unified-application-plan-2026-10-25.md. Ниже сохранён исходный чек-лист Geek.</p>
+    <p>В student mode общая сохранённая selection и прямой <code>subject_id</code> имеют приоритет над старым intent/view; историческое состояние обучения доступно по сохранённому ID, а поздние мутации не восстанавливают прогресс после смены сессии.</p>
   </header>
 
   <div class="bar">
@@ -215,7 +216,7 @@
     <section>
       <h2>7. LLM gateway <small></small></h2>
       <ul>
-        <li><label><input type="checkbox" data-id="l-client" checked><span><span class="t">LLM gateway готов и влит в master</span><span class="d">Отдельный сервис services/llm-gateway: HTTP API и protobuf gRPC, очередь и балансировка по четырём моделям. Неопределённые слоты удерживаются без серверного предела; явный server_execution_limit отсчитывается от неоднозначного исхода/рестарта, независимо от retry и клиентского timeout.</span></span></label></li>
+        <li><label><input type="checkbox" data-id="l-client" checked><span><span class="t">LLM gateway готов и влит в master</span><span class="d">Отдельный сервис services/llm-gateway: HTTP API и protobuf gRPC, очередь и балансировка по четырём моделям. Root Compose требует learning-assessment, learning-tutor и learning-taskgen с инстансом, доступным для high; standalone остаётся обратно совместимым. Неопределённые слоты удерживаются без серверного предела; явный server_execution_limit отсчитывается от неоднозначного исхода/рестарта, независимо от retry и клиентского timeout.</span></span></label></li>
         <li><label><input type="checkbox" data-id="l-geek" checked><span><span class="t">Geek ходит в LLM через gateway</span><span class="d">По gRPC (llmgateway.v1.Gateway/Complete); мок удалён.</span></span></label></li>
         <li><label><input type="checkbox" data-id="l-python" checked><span><span class="t">course-graph подключён к gateway</span><span class="d">По gRPC (llmgateway.v1.Gateway/Complete), stubs из services/shared/gen/python; все этапы — low (решение 18.10.2026). Очистка передаёт reasoning_effort: low, выделение тем и проверка пререквизитов — нет: модель рассуждает по умолчанию (#129).</span></span></label></li>
         <li><label><input type="checkbox" data-id="l-roles" checked><span><span class="t">Сложность запроса задаёт вызывающий код</span><span class="d">Клиент указывает complexity (low / medium / high) и при необходимости urgent. Для Geek всё во время сессии — low и urgent (оценка с реакцией, вопросы, переформулировка, объяснение после «Не знаю»); заранее подготовленные основные вопросы — medium (решение 18.10.2026); модель выбирает gateway.</span></span></label></li>

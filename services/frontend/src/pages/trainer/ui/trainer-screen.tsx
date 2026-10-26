@@ -1,5 +1,5 @@
 import { LearningHome } from './learning-home'
 
-export function TrainerScreen() {
-  return <LearningHome />
+export function TrainerScreen({ subjectId }: { subjectId?: string }) {
+  return <LearningHome requestedSubjectId={subjectId} />
 }

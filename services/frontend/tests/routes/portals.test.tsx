@@ -63,15 +63,13 @@ function renderApp(path: string) {
   return router
 }
 
-it('opens the student site straight on sign-in and returns there on logout', async () => {
+it('opens the shared start page and returns there on logout', async () => {
   backend()
   const router = renderApp('/')
   expect(await screen.findByLabelText('Пароль')).toBeVisible()
-  expect(router.state.location.pathname).toBe('/login')
-  expect(
-    screen.getByText('Подтянем до уверенного уровня в кратчайшие сроки'),
-  ).toBeVisible()
-  // There is no role choice and no way into the teacher account.
+  expect(router.state.location.pathname).toBe('/')
+  expect(screen.getByText('AI-репетитор')).toBeVisible()
+  // One common sign-in is shared by the two product modes.
   expect(screen.queryByText(/учител/i)).not.toBeInTheDocument()
   fireEvent.click(screen.getByRole('button', { name: 'Регистрация' }))
   fireEvent.click(screen.getByRole('button', { name: 'Вход' }))
@@ -93,7 +91,7 @@ it('opens the student site straight on sign-in and returns there on logout', asy
   ).not.toBeInTheDocument()
   await logOut()
   expect(await screen.findByLabelText('Пароль')).toBeVisible()
-  expect(router.state.location.pathname).toBe('/login')
+  expect(router.state.location.pathname).toBe('/')
 })
 
 it('opens the admin panel through the backend without a sign-in step', async () => {

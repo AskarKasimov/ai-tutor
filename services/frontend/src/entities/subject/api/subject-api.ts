@@ -3,15 +3,17 @@ import { apiFetch } from '@/shared/api'
 import { SubjectApiError } from '../model/subject-api-error'
 import type { Subject } from '../model/subject'
 
-const apiBase = (import.meta.env.VITE_API_BASE_URL || '/api/v1').replace(
+const apiBase = `${(import.meta.env.VITE_API_BASE_URL || '/api/v1').replace(
   /\/$/,
   '',
-)
+)}/exam`
 const id = z.string().min(1)
 const subjectSchema: z.ZodType<Subject> = z.object({
   id,
   name: z.string().min(1),
   ready: z.boolean(),
+  learning_ready: z.boolean(),
+  exam_ready: z.boolean(),
 })
 async function request(
   path: string,

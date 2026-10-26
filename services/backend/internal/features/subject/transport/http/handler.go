@@ -32,7 +32,7 @@ type CreateRequest struct {
 // @Failure 403 {object} fault.Error
 // @Failure 422 {object} fault.Error
 // @Failure 503 {object} fault.Error
-// @Router /admin/subjects [post]
+// @Router /exam/admin/subjects [post]
 func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 	actor, ok := httpx.Principal[user.User](r)
 	if !ok {
@@ -52,6 +52,23 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 	httpx.JSON(w, http.StatusCreated, created)
 }
 
+// CreateLearning is a compatibility alias for common course creation.
+// @Summary Создать общий предмет
+// @Description Совместимый адрес создания общей сущности курса. Новый интерфейс использует POST /exam/admin/subjects.
+// @ID createLearningSubject
+// @Tags Предметы обучения
+// @Security accessCookie
+// @Accept json
+// @Produce json
+// @Param request body CreateRequest true "Название предмета"
+// @Success 201 {object} subject.Subject
+// @Failure 401 {object} fault.Error
+// @Failure 403 {object} fault.Error
+// @Failure 422 {object} fault.Error
+// @Failure 503 {object} fault.Error
+// @Router /learn/admin/subjects [post]
+func (h *Handler) CreateLearning(w http.ResponseWriter, r *http.Request) { h.Create(w, r) }
+
 // List handles GET /subjects.
 // @Summary Прочитать каталог предметов
 // @Description Студентам возвращаются только готовые курсы: с фикстурой графа — сразу после создания, без неё — с опубликованным графом курса. Admin видит все предметы и признак готовности.
@@ -62,14 +79,24 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 // @Success 200 {array} subject.Subject
 // @Failure 401 {object} fault.Error
 // @Failure 503 {object} fault.Error
-// @Router /subjects [get]
+// @Router /exam/subjects [get]
 func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
+	h.list(w, r, false)
+}
+
+func (h *Handler) list(w http.ResponseWriter, r *http.Request, learning bool) {
 	actor, ok := httpx.Principal[user.User](r)
 	if !ok {
 		httpx.Error(r.Context(), w, fault.New(fault.Unauthorized, "UNAUTHORIZED", "Требуется действующая сессия."))
 		return
 	}
-	items, err := h.service.Catalog(r.Context(), actor)
+	var items []subject.Subject
+	var err error
+	if learning {
+		items, err = h.service.LearningCatalog(r.Context(), actor)
+	} else {
+		items, err = h.service.Catalog(r.Context(), actor)
+	}
 	if err != nil {
 		httpx.Error(r.Context(), w, err)
 		return
@@ -78,4 +105,19 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 		items = []subject.Subject{}
 	}
 	httpx.JSON(w, http.StatusOK, items)
+}
+
+// ListLearning returns common courses with learning-specific readiness.
+// @Summary Прочитать каталог обучения
+// @Description Прочитать каталог предметов режима обучения.
+// @ID listLearningSubjects
+// @Tags Предметы обучения
+// @Security accessCookie
+// @Produce json
+// @Success 200 {array} subject.Subject
+// @Failure 401 {object} fault.Error
+// @Failure 503 {object} fault.Error
+// @Router /learn/subjects [get]
+func (h *Handler) ListLearning(w http.ResponseWriter, r *http.Request) {
+	h.list(w, r, true)
 }

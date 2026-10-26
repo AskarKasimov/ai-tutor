@@ -1,9 +1,9 @@
 import { Button, Text } from '@radix-ui/themes'
-import { useEffect, type ReactNode } from 'react'
+import { useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Navigate, Outlet, useRouterState } from '@tanstack/react-router'
 import type { QueryClient } from '@tanstack/react-query'
-import { modeSelectUrl, openModeSelect, useAuth } from '@/features/auth'
+import { useAuth } from '@/features/auth'
 import { AppProviders } from './providers'
 import styles from './root.module.scss'
 
@@ -80,25 +80,18 @@ function SessionGate() {
     // On the two-mode stand accounts live on the start page, so one account
     // and one session open both modes: without a session, including right
     // after logout, the start page signs out of both and asks to sign in.
-    if (!user && modeSelectUrl())
-      return <LeaveForModeSelect>{loading}</LeaveForModeSelect>
     if (!user)
-      return path === '/login' ? (
+      return path === '/' || path === '/login' ? (
         renderedPath === path ? (
           <Outlet />
         ) : (
           loading
         )
       ) : (
-        <Navigate to="/login" replace />
+        <Navigate to="/" replace />
       )
     if (path === '/login') return <Navigate to="/" replace />
   }
   if (renderedPath !== path) return loading
   return <Outlet />
-}
-
-function LeaveForModeSelect({ children }: { children: ReactNode }) {
-  useEffect(() => openModeSelect('?logout'), [])
-  return children
 }

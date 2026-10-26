@@ -90,7 +90,7 @@ export async function fetchStoredAudio(
   audioUrl: string,
   signal: AbortSignal,
 ): Promise<Blob> {
-  if (!/^\/task-audio\/[A-Za-z0-9_-]{1,256}\/file$/.test(audioUrl))
+  if (!/^\/(?:learn\/)?task-audio\/[A-Za-z0-9_-]{1,256}\/file$/.test(audioUrl))
     throw new StoredAudioError('invalid')
   let response: Response
   const fetchSignal = requestSignal(signal)

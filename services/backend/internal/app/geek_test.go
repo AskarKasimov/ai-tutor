@@ -12,7 +12,7 @@ import (
 const geekFixture = "../../../../api/fixtures/course-graph.json"
 
 func (f *fixture) keyed(method, path, key, body string, cookies ...*http.Cookie) *httptest.ResponseRecorder {
-	req := httptest.NewRequest(method, "https://api.example"+path, strings.NewReader(body))
+	req := httptest.NewRequest(method, "https://api.example"+examTestPath(path), strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Idempotency-Key", key)
 	for _, c := range cookies {

@@ -1,7 +1,7 @@
 import { DropdownMenu } from '@radix-ui/themes'
 import { ChevronDown, LayoutGrid, LogOut } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { modeSelectUrl, openModeSelect } from '../model/mode-select'
+import { useNavigate } from '@tanstack/react-router'
 import { useAuth } from '../model/use-auth'
 import styles from './auth-modal.module.scss'
 
@@ -23,11 +23,10 @@ function initials(name: string) {
 // is a shared account that enters by itself, so leaving it makes no sense.
 export function AccountMenu({ canLogout = true }: { canLogout?: boolean }) {
   const { t } = useTranslation()
+  const navigate = useNavigate()
   const { user, logout } = useAuth()
   // Accounts created before the name became required fall back to email.
   const name = user?.display_name || user?.email || ''
-  // After logout the session gate sends the two-mode stand to its start page.
-  const modeSelect = modeSelectUrl() !== ''
   if (!canLogout)
     return (
       <div className={styles.account}>
@@ -59,12 +58,10 @@ export function AccountMenu({ canLogout = true }: { canLogout?: boolean }) {
           </button>
         </DropdownMenu.Trigger>
         <DropdownMenu.Content align="end" sideOffset={6}>
-          {modeSelect && (
-            <DropdownMenu.Item onSelect={() => openModeSelect()}>
-              <LayoutGrid size={16} aria-hidden="true" />
-              {t('auth.modeSelect')}
-            </DropdownMenu.Item>
-          )}
+          <DropdownMenu.Item onSelect={() => void navigate({ to: '/' })}>
+            <LayoutGrid size={16} aria-hidden="true" />
+            {t('auth.modeSelect')}
+          </DropdownMenu.Item>
           <DropdownMenu.Item
             color="red"
             disabled={logout.isPending}

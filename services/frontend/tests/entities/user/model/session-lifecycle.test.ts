@@ -1,5 +1,6 @@
 import { MutationObserver, QueryClient } from '@tanstack/react-query'
 import { describe, expect, it } from 'vitest'
+import { userQueryKeys } from '@/entities/user'
 import {
   adoptCurrentUser,
   captureSession,
@@ -56,4 +57,32 @@ it('keeps the anonymous session epoch when the current user is still null', asyn
   const token = captureSession(client)
   await expect(adoptCurrentUser(client, null, token)).resolves.toBe(true)
   expect(captureSession(client)).toEqual(token)
+})
+
+it('keeps student and admin authentication sessions separate in one query client', async () => {
+  const client = new QueryClient()
+  window.history.replaceState({}, '', '/')
+  const student = {
+    id: 'shared',
+    email: 'a@example.com',
+    display_name: null,
+    role: 'student' as const,
+  }
+  await replaceSession(client, student)
+  const studentToken = captureSession(client)
+  window.history.replaceState({}, '', '/admin/courses')
+  const admin = {
+    id: 'shared',
+    email: 'a@example.com',
+    display_name: null,
+    role: 'admin' as const,
+  }
+  await replaceSession(client, admin)
+  const adminToken = captureSession(client)
+  expect(studentToken.portal).toBe('student')
+  expect(adminToken.portal).toBe('admin')
+  expect(client.getQueryData(userQueryKeys.auth)).toEqual(student)
+  expect(client.getQueryData(userQueryKeys.adminAuth)).toEqual(admin)
+  window.history.replaceState({}, '', '/')
+  expect(isCurrentSession(client, studentToken)).toBe(true)
 })

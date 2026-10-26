@@ -1,6 +1,8 @@
 node_modules/
 dist/
 coverage/
+test-results/
+playwright-report/
 src/routeTree.gen.ts
 package-lock.json
 public/assets/

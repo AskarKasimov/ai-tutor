@@ -66,7 +66,7 @@ it('starts a diagnostic with the idempotency key and maps the session', async ()
   const fetchMock = stub(Response.json(apiSession, { status: 201 }))
   const session = await startDiagnostic('subject:ml', 'start:k', signal())
   const [url, init] = fetchMock.mock.calls[0]
-  expect(url).toBe('/api/v1/diagnostic-sessions')
+  expect(url).toBe('/api/v1/exam/diagnostic-sessions')
   expect(init.method).toBe('POST')
   expect(new Headers(init.headers).get('Idempotency-Key')).toBe('start:k')
   expect(JSON.parse(init.body)).toEqual({ subject_id: 'subject:ml' })
@@ -106,7 +106,7 @@ it.each([
     const fetchMock = stub(Response.json(apiSession))
     await answerDiagnostic('d/1', 't3', answer, 'answer:k', signal())
     const [url, init] = fetchMock.mock.calls[0]
-    expect(url).toBe('/api/v1/diagnostic-sessions/d%2F1/answers')
+    expect(url).toBe('/api/v1/exam/diagnostic-sessions/d%2F1/answers')
     expect(JSON.parse(init.body)).toEqual(body)
     expect(new Headers(init.headers).get('Idempotency-Key')).toBe('answer:k')
   },
@@ -115,7 +115,7 @@ it.each([
 it('reads the session, history and result by encoded URLs', async () => {
   let fetchMock = stub(Response.json(apiSession))
   await readDiagnostic('d1', signal())
-  expect(fetchMock.mock.calls[0][0]).toBe('/api/v1/diagnostic-sessions/d1')
+  expect(fetchMock.mock.calls[0][0]).toBe('/api/v1/exam/diagnostic-sessions/d1')
 
   fetchMock = stub(
     Response.json({
@@ -144,7 +144,7 @@ it('reads the session, history and result by encoded URLs', async () => {
     },
   ])
   expect(fetchMock.mock.calls[0][0]).toBe(
-    '/api/v1/diagnostic-sessions?subject_id=subject%3Aml%2Fa',
+    '/api/v1/exam/diagnostic-sessions?subject_id=subject%3Aml%2Fa',
   )
 
   stub(
@@ -253,7 +253,7 @@ it('maps provenance snapshots and downloads only through the diagnostic route', 
   const fetchMock = stub(new Response('%PDF'))
   await fetchDiagnosticMaterialRaw('d1', 'm1', signal())
   expect(fetchMock.mock.calls[0][0]).toBe(
-    '/api/v1/diagnostic-sessions/d1/materials/m1/raw',
+    '/api/v1/exam/diagnostic-sessions/d1/materials/m1/raw',
   )
 })
 
@@ -286,7 +286,7 @@ it('fetches the WAV of a Geek turn', async () => {
   )
   const audio = await fetchTurnAudio('d1', 't 1', signal())
   expect(fetchMock.mock.calls[0][0]).toBe(
-    '/api/v1/diagnostic-sessions/d1/turns/t%201/audio',
+    '/api/v1/exam/diagnostic-sessions/d1/turns/t%201/audio',
   )
   expect(audio.type).toBe('audio/wav')
   const partMock = stub(
@@ -296,7 +296,7 @@ it('fetches the WAV of a Geek turn', async () => {
   )
   await fetchTurnAudio('d1', 't1', signal(), 'reply')
   expect(partMock.mock.calls[0][0]).toBe(
-    '/api/v1/diagnostic-sessions/d1/turns/t1/audio?part=reply',
+    '/api/v1/exam/diagnostic-sessions/d1/turns/t1/audio?part=reply',
   )
   stub(Response.json({ code: 'X' }))
   await expect(fetchTurnAudio('d1', 't1', signal())).rejects.toMatchObject({

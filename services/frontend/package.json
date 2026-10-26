@@ -9,6 +9,7 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "test": "vitest",
+    "test:e2e": "playwright test",
     "preview": "vite preview",
     "format": "prettier . --write",
     "format:check": "prettier . --check"
@@ -36,6 +37,7 @@
     "zod": "^4.6.5"
   },
   "devDependencies": {
+    "@playwright/test": "^1.64.1",
     "@tanstack/eslint-plugin-query": "^5.103.1",
     "@tanstack/router-plugin": "^1.168.40",
     "@testing-library/jest-dom": "^7.0.1",

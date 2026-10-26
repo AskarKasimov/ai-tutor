@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"os"
 	"testing"
 )
 
@@ -56,6 +57,113 @@ func TestSubjectCatalogPermissionsAndEmptySubjects(t *testing.T) {
 	}
 	if len(items) != 1 || items[0].Ready {
 		t.Fatalf("admin should see the created empty subject: %+v", items)
+	}
+}
+
+func TestCourseCreatedOnceAppearsInBothDirectionCatalogs(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	if _, err := f.pool.Exec(context.Background(), `DELETE FROM subjects WHERE id='subject:test'`); err != nil {
+		t.Fatal(err)
+	}
+	admin := f.admin(t)
+	student, _, _ := f.register(t, "shared-course-student@example.edu")
+	created := f.request(http.MethodPost, "/admin/subjects", `{"name":"Общий курс"}`, admin)
+	if created.Code != http.StatusCreated {
+		t.Fatalf("create common course: %d %s", created.Code, created.Body.String())
+	}
+	var course struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(created.Body.Bytes(), &course); err != nil || course.ID == "" {
+		t.Fatalf("created course response: %s (%v)", created.Body.String(), err)
+	}
+	if _, err := f.pool.Exec(context.Background(), `INSERT INTO course_graph_maps(subject_id,filename,sheet,fingerprint,graph,uploaded_at)
+VALUES ($1,'exam.xlsx','Экзамен','exam-v1','{"marker":"exam-before-learning-import"}',1)`, course.ID); err != nil {
+		t.Fatal(err)
+	}
+	type catalogSubject struct {
+		ID            string `json:"id"`
+		Ready         bool   `json:"ready"`
+		LearningReady bool   `json:"learning_ready"`
+		ExamReady     bool   `json:"exam_ready"`
+	}
+	readCatalog := func(path string, actor *http.Cookie) []catalogSubject {
+		t.Helper()
+		response := f.request(http.MethodGet, path, "", actor)
+		var items []catalogSubject
+		if response.Code != http.StatusOK || json.Unmarshal(response.Body.Bytes(), &items) != nil {
+			t.Fatalf("catalog %s: %d %s", path, response.Code, response.Body.String())
+		}
+		return items
+	}
+	for _, path := range []string{"/subjects", "/learn/subjects"} {
+		items := readCatalog(path, admin)
+		if len(items) != 1 || items[0].ID != course.ID {
+			t.Fatalf("admin catalog %s should contain the single shared course %q: %+v", path, course.ID, items)
+		}
+		if items[0].LearningReady || items[0].ExamReady || items[0].Ready {
+			t.Fatalf("direction readiness is not independent in %s: %+v", path, items[0])
+		}
+	}
+	if items := readCatalog("/subjects", student); len(items) != 0 {
+		t.Fatalf("empty course must not appear in exam catalog: %+v", items)
+	}
+	if items := readCatalog("/learn/subjects", student); len(items) != 0 {
+		t.Fatalf("empty course must not appear in learning catalog: %+v", items)
+	}
+	mapCSV, err := os.ReadFile("../features/competency/infrastructure/csvparser/testdata/ml_map.csv")
+	if err != nil {
+		t.Fatal(err)
+	}
+	missingImport := upload(f, "/learn/admin/subjects/subject-does-not-exist/competency-map/import", "file", "ml_map.csv", "text/csv", mapCSV, admin)
+	requireCode(t, missingImport, http.StatusNotFound, "SUBJECT_NOT_FOUND")
+	var missingMapCount int
+	if err := f.pool.QueryRow(context.Background(), `SELECT count(*) FROM learning_map_imports WHERE subject_id='subject-does-not-exist'`).Scan(&missingMapCount); err != nil || missingMapCount != 0 {
+		t.Fatalf("import for missing course created global learning data: count=%d err=%v", missingMapCount, err)
+	}
+	imported := upload(f, "/learn/admin/subjects/"+course.ID+"/competency-map/import", "file", "ml_map.csv", "text/csv", mapCSV, admin)
+	if imported.Code != http.StatusOK {
+		t.Fatalf("learning map upload for common course: %d %s", imported.Code, imported.Body.String())
+	}
+	var importedCounts string
+	if err := f.pool.QueryRow(context.Background(), `SELECT format('c=%s k=%s o=%s t=%s', competency_count, constituent_count, outcome_count, task_count)
+FROM learning_map_imports WHERE subject_id=$1`, course.ID).Scan(&importedCounts); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, path := range []string{"/subjects", "/learn/subjects"} {
+		items := readCatalog(path, admin)
+		if len(items) != 1 || items[0].ID != course.ID || !items[0].LearningReady || items[0].ExamReady || items[0].Ready != (path == "/learn/subjects") {
+			t.Fatalf("both readiness states should be present after the learning import, %s: %+v", path, items)
+		}
+	}
+	if items := readCatalog("/learn/subjects", student); len(items) != 1 || items[0].ID != course.ID {
+		t.Fatalf("learning-ready shared course should appear in learning catalog: %+v", items)
+	}
+	if items := readCatalog("/subjects", student); len(items) != 0 {
+		t.Fatalf("learning readiness must not make exam course ready: %+v", items)
+	}
+	var examFilename string
+	if err := f.pool.QueryRow(context.Background(), `SELECT filename FROM course_graph_maps WHERE subject_id=$1`, course.ID).Scan(&examFilename); err != nil || examFilename != "exam.xlsx" {
+		t.Fatalf("learning import changed exam map filename=%q err=%v", examFilename, err)
+	}
+	if _, err := f.pool.Exec(context.Background(), `INSERT INTO course_graphs(subject_id,source,fingerprint,graph,updated_at)
+VALUES ($1,'competency_map','exam-v1','{"marker":"exam-after-learning-import"}',1)`, course.ID); err != nil {
+		t.Fatal(err)
+	}
+	if items := readCatalog("/subjects", student); len(items) != 1 || items[0].ID != course.ID {
+		t.Fatalf("published exam graph should independently enable exam catalog: %+v", items)
+	}
+	if items := readCatalog("/learn/subjects", student); len(items) != 1 || items[0].ID != course.ID {
+		t.Fatalf("exam graph change must not affect learning readiness: %+v", items)
+	}
+	var count int
+	if err := f.pool.QueryRow(context.Background(), `SELECT count(*) FROM learning_map_imports WHERE subject_id=$1`, course.ID).Scan(&count); err != nil || count != 1 {
+		t.Fatalf("exam graph change removed learning import count=%d err=%v", count, err)
+	}
+	if err := f.pool.QueryRow(context.Background(), "SELECT count(*) FROM subjects WHERE id=$1", course.ID).Scan(&count); err != nil || count != 1 {
+		t.Fatalf("shared course row count=%d err=%v", count, err)
 	}
 }
 

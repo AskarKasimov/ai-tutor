@@ -31,6 +31,7 @@ type Config struct {
 	MaxInputLag              time.Duration       `json:"max_input_lag"`
 	GracePeriod              time.Duration       `json:"grace_period"`
 	Pools                    map[string][]string `json:"pools"`
+	RoutingProfiles          map[string][]string `json:"routing_profiles,omitempty"`
 	Instances                []InstanceConfig    `json:"instances"`
 }
 
@@ -299,6 +300,45 @@ func (c Config) Validate() error {
 			if _, ok := instances[id]; !ok {
 				return fmt.Errorf("pools.%s references unknown instance %q", level, id)
 			}
+		}
+	}
+	for profile, ids := range c.RoutingProfiles {
+		if profile == "" || len(ids) == 0 {
+			return fmt.Errorf("routing_profiles.%q must contain at least one instance", profile)
+		}
+		seen := map[string]bool{}
+		for _, id := range ids {
+			if _, ok := instances[id]; !ok || seen[id] {
+				return fmt.Errorf("routing_profiles.%s references unknown or duplicate instance %q", profile, id)
+			}
+			seen[id] = true
+		}
+	}
+	return nil
+}
+
+// ValidateRequiredRoutingProfiles ensures deployment-required workflows have
+// a configured route that can serve high-complexity requests. An empty
+// required list keeps standalone gateway deployments backwards compatible.
+func ValidateRequiredRoutingProfiles(c Config, required []string) error {
+	for _, profile := range required {
+		ids, ok := c.RoutingProfiles[profile]
+		if !ok || len(ids) == 0 {
+			return fmt.Errorf("required routing profile %q is missing; configure routing_profiles.%s with verified instance IDs", profile, profile)
+		}
+		high := make(map[string]bool, len(c.Pools["high"]))
+		for _, id := range c.Pools["high"] {
+			high[id] = true
+		}
+		eligible := false
+		for _, id := range ids {
+			if high[id] {
+				eligible = true
+				break
+			}
+		}
+		if !eligible {
+			return fmt.Errorf("required routing profile %q has no instance eligible for high complexity; include a verified instance ID from pools.high", profile)
 		}
 	}
 	return nil

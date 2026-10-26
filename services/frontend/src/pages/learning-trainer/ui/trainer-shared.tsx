@@ -1,0 +1,666 @@
+import { Heading, Text } from '@radix-ui/themes'
+import {
+  Check,
+  ChevronDown,
+  ChevronRight,
+  ChevronUp,
+  CircleAlert,
+  GraduationCap,
+  LoaderCircle,
+  Mic,
+  MicOff,
+  Play,
+  SkipForward,
+  Square,
+} from 'lucide-react'
+import {
+  createElement,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
+import type { ReactNode } from 'react'
+import { useTranslation } from 'react-i18next'
+import { AccountMenu } from '@/features/auth'
+import type { Components } from 'react-markdown'
+import { MarkdownContent } from '@/shared/ui'
+import { LiveWaveform } from './trainer-answer'
+import styles from './session.module.scss'
+
+export const sessionStyles = styles
+
+export type NavigatorState =
+  | 'correct'
+  | 'partial'
+  | 'incorrect'
+  | 'skipped'
+  | 'current'
+  | 'locked'
+  | 'done'
+
+// In topic mode `number` is the topic and `basics` lists the clarifying
+// questions that were actually asked (they appear only when needed).
+export type NavigatorItem = {
+  number: number
+  state: NavigatorState
+  basics?: NavigatorState[]
+}
+
+// The progress bar under the header: a label on the left, whole percent on
+// the right and a continuous bar.
+export function TrainerProgress({
+  label,
+  percent,
+}: {
+  label: string
+  percent: number
+}) {
+  const { t } = useTranslation()
+  return (
+    <div className={styles.progress}>
+      <div className={styles.progressText}>
+        <Text>{label}</Text>
+        <Text className={styles.progressPercent}>
+          {t('learningSession.percent', { value: percent })}
+        </Text>
+      </div>
+      <div
+        className={styles.progressTrack}
+        role="progressbar"
+        aria-label={label}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={percent}
+        aria-valuetext={t('learningSession.percent', { value: percent })}
+      >
+        <div className={styles.progressFill} style={{ width: `${percent}%` }} />
+      </div>
+    </div>
+  )
+}
+
+export function TrainerShell({
+  title,
+  subject,
+  crumb,
+  onBack,
+  navigator,
+  progress,
+  children,
+}: {
+  title: string
+  subject: string
+  crumb?: string
+  onBack?: () => void
+  navigator?: ReactNode
+  progress?: ReactNode
+  children: ReactNode
+}) {
+  const { t } = useTranslation()
+  return (
+    <div data-trainer-app className={styles.shell}>
+      <div
+        className={`${styles.frame} ${progress ? styles.frameWithProgress : ''}`}
+      >
+        <header className={styles.header}>
+          <div className={styles.brand}>
+            <span className={styles.logo} aria-hidden="true">
+              <GraduationCap size={18} />
+            </span>
+            <Text>{t('learningTrainer.title')}</Text>
+          </div>
+          {/* The course leads home; the current step is a non-clickable pill. */}
+          <nav className={styles.crumbs} aria-label={title}>
+            {onBack ? (
+              <button
+                type="button"
+                className={styles.crumbLink}
+                onClick={onBack}
+              >
+                {subject}
+              </button>
+            ) : (
+              <span className={styles.crumbText}>{subject}</span>
+            )}
+            {crumb && (
+              <>
+                <ChevronRight
+                  size={16}
+                  className={styles.crumbDivider}
+                  aria-hidden="true"
+                />
+                <strong className={styles.crumbCurrent} aria-current="page">
+                  {crumb}
+                </strong>
+              </>
+            )}
+          </nav>
+          <div className={styles.account}>
+            <AccountMenu />
+          </div>
+        </header>
+        {progress}
+        <div className={`${styles.body} ${navigator ? '' : styles.bodyWide}`}>
+          {navigator}
+          <div className={styles.stage}>{children}</div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+export function TrainerWorkspace({
+  children,
+  variant,
+}: {
+  children: ReactNode
+  variant?: 'training'
+}) {
+  return (
+    <main className={styles.workspace} data-variant={variant}>
+      {children}
+    </main>
+  )
+}
+
+// Numbers of the session questions; arrows scroll the list, it is not
+// interactive because the diagnostic order is fixed.
+export function QuestionNavigator({
+  label,
+  items,
+  progress,
+  kind = 'question',
+}: {
+  label: string
+  items: NavigatorItem[]
+  progress?: { current: number; total: number }
+  kind?: 'question' | 'topic'
+}) {
+  const { t } = useTranslation()
+  const list = useRef<HTMLOListElement>(null)
+  const [edges, setEdges] = useState({ start: true, end: true })
+  const measure = useCallback(() => {
+    const node = list.current
+    if (!node) return
+    const vertical = node.scrollHeight > node.clientHeight + 1
+    const scrolled = vertical ? node.scrollTop : node.scrollLeft
+    const extent = vertical
+      ? node.scrollHeight - node.clientHeight
+      : node.scrollWidth - node.clientWidth
+    setEdges({ start: scrolled <= 1, end: scrolled >= extent - 1 })
+  }, [])
+  const current = items.find((item) => item.state === 'current')?.number
+  useEffect(() => {
+    const node = list.current
+    node
+      ?.querySelector('[aria-current="step"]')
+      ?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' })
+    measure()
+  }, [current, items.length, measure])
+  useEffect(() => {
+    window.addEventListener('resize', measure)
+    return () => window.removeEventListener('resize', measure)
+  }, [measure])
+  const scroll = (direction: 1 | -1) => {
+    const node = list.current
+    if (!node) return
+    const vertical = node.scrollHeight > node.clientHeight + 1
+    node.scrollBy?.(
+      vertical ? { top: direction * 120 } : { left: direction * 120 },
+    )
+  }
+  return (
+    <nav className={styles.navigator} aria-label={label}>
+      <button
+        type="button"
+        className={styles.navArrow}
+        aria-label={t('learningSession.scrollBack')}
+        disabled={edges.start}
+        onClick={() => scroll(-1)}
+      >
+        <ChevronUp size={20} aria-hidden="true" />
+      </button>
+      <ol ref={list} className={styles.navList} onScroll={measure}>
+        {items.map((item) => (
+          <li key={item.number} className={styles.navGroup}>
+            <span
+              className={styles.navItem}
+              data-state={item.state}
+              aria-current={item.state === 'current' ? 'step' : undefined}
+              aria-label={t(
+                `learningSession.${kind === 'topic' ? 'topicNavigator' : 'navigator'}.${item.state}`,
+                { number: item.number },
+              )}
+            >
+              {item.number}
+            </span>
+            {item.basics && item.basics.length > 0 && (
+              <span className={styles.navBasics}>
+                {item.basics.map((state, index) => (
+                  <span
+                    key={index}
+                    className={styles.navBasic}
+                    data-state={state}
+                    aria-current={state === 'current' ? 'step' : undefined}
+                    aria-label={t(`learningSession.basicNavigator.${state}`, {
+                      number: item.number,
+                      basic: index + 1,
+                    })}
+                  />
+                ))}
+              </span>
+            )}
+          </li>
+        ))}
+      </ol>
+      <button
+        type="button"
+        className={styles.navArrow}
+        aria-label={t('learningSession.scrollForward')}
+        disabled={edges.end}
+        onClick={() => scroll(1)}
+      >
+        <ChevronDown size={20} aria-hidden="true" />
+      </button>
+      {progress && (
+        <div
+          className={styles.visuallyHidden}
+          role="progressbar"
+          aria-label={t('learningSession.progressLabel')}
+          aria-valuemin={0}
+          aria-valuemax={progress.total}
+          aria-valuenow={progress.current}
+        />
+      )}
+    </nav>
+  )
+}
+
+// The task text is Markdown: GFM tables and lists, and single line breaks are
+// kept. The first paragraph is the task heading; raw HTML is not rendered.
+export function FormattedQuestionContent({
+  question,
+  headingLevel = 'h1',
+  className,
+}: {
+  question: string
+  headingLevel?: 'h1' | 'h2' | 'h3'
+  className?: string
+}) {
+  const long = question.length > 300
+  // Stable element renderers: new ones on every render would remount the
+  // whole task text.
+  const components = useMemo<Components>(() => {
+    const title = (children: ReactNode) => (
+      <Heading
+        as={headingLevel}
+        className={`${styles.questionTitle} ${long ? styles.longQuestion : ''}`}
+      >
+        {children}
+      </Heading>
+    )
+    const subheading =
+      (depth: number) =>
+      ({ children }: { children?: ReactNode }) =>
+        createElement(
+          `h${Math.min(Number(headingLevel[1]) + depth, 6)}`,
+          null,
+          children,
+        )
+    return {
+      p: ({ node, children }) =>
+        node?.position?.start.line === 1 ? (
+          title(children)
+        ) : (
+          <p className={styles.questionParagraph}>{children}</p>
+        ),
+      h1: ({ children }) => title(children),
+      h2: subheading(1),
+      h3: subheading(2),
+      h4: subheading(3),
+      h5: subheading(4),
+      h6: subheading(5),
+    }
+  }, [headingLevel, long])
+  return (
+    <MarkdownContent
+      text={question}
+      className={className}
+      components={components}
+    />
+  )
+}
+
+export function TrainerQuestion({
+  badge,
+  eyebrow,
+  eyebrowHeading = false,
+  question,
+  options,
+  instruction,
+  children,
+}: {
+  badge: string
+  eyebrow?: string
+  eyebrowHeading?: boolean
+  question: string
+  options: string[]
+  instruction?: ReactNode
+  children?: ReactNode
+}) {
+  const { t } = useTranslation()
+  return (
+    <section className={styles.question}>
+      <div className={styles.eyebrowRow}>
+        <Text className={styles.badge}>{badge}</Text>
+        {eyebrow &&
+          (eyebrowHeading ? (
+            <Heading as="h2" className={styles.eyebrow}>
+              {eyebrow}
+            </Heading>
+          ) : (
+            <Text as="p" className={styles.eyebrow}>
+              {eyebrow}
+            </Text>
+          ))}
+      </div>
+      <FormattedQuestionContent question={question} headingLevel="h1" />
+      {/* The spoken instruction sits right under the task text; options
+          follow under their own title. */}
+      {instruction && <div className={styles.instruction}>{instruction}</div>}
+      {options.length > 0 && (
+        <section
+          aria-labelledby="answer-options-title"
+          className={styles.options}
+        >
+          <Heading as="h2" id="answer-options-title" className={styles.eyebrow}>
+            {t('learningTrainer.optionsTitle')}
+          </Heading>
+          <ol className={styles.optionList}>
+            {options.map((option, index) => (
+              <li key={index} className={styles.option}>
+                <span className={styles.optionLetter} aria-hidden="true">
+                  {String.fromCharCode(65 + index)}
+                </span>
+                <MarkdownContent text={option} />
+              </li>
+            ))}
+          </ol>
+        </section>
+      )}
+      {children}
+    </section>
+  )
+}
+
+export function TrainerTranscript({
+  id,
+  text,
+  autoReveal = false,
+}: {
+  id: string
+  text?: string
+  autoReveal?: boolean
+}) {
+  const { t } = useTranslation()
+  const transcript = useRef<HTMLElement>(null)
+  useEffect(() => {
+    if (autoReveal && text)
+      transcript.current?.scrollIntoView?.({ block: 'nearest' })
+  }, [autoReveal, text])
+  return (
+    <section
+      ref={transcript}
+      className={styles.transcript}
+      aria-labelledby={id}
+    >
+      <Heading as="h2" id={id} className={styles.eyebrow}>
+        {t('learningTrainer.yourAnswer')}
+      </Heading>
+      <Text as="p" className={styles.transcriptText}>
+        {text ?? t('learningDiagnostic.transcriptPending')}
+      </Text>
+    </section>
+  )
+}
+
+export function TrainerAnswerPanel({ children }: { children: ReactNode }) {
+  const { t } = useTranslation()
+  return (
+    <aside
+      className={styles.panel}
+      aria-label={t('learningTrainer.answerArea')}
+    >
+      {children}
+    </aside>
+  )
+}
+
+export function TrainerScore({
+  score,
+  maxScore,
+  verdict,
+  skipped = false,
+}: {
+  score: number
+  maxScore: number
+  verdict: string
+  skipped?: boolean
+}) {
+  const tone = skipped
+    ? 'skipped'
+    : score >= maxScore
+      ? 'correct'
+      : score === 0
+        ? 'incorrect'
+        : 'partial'
+  return (
+    <div className={styles.score} data-tone={tone}>
+      <Text>
+        {score} / {maxScore}
+      </Text>
+      <Text className={styles.verdict}>{verdict}</Text>
+    </div>
+  )
+}
+
+export function ListenButton({
+  state,
+  disabled,
+  onClick,
+}: {
+  state: 'idle' | 'loading' | 'playing'
+  disabled?: boolean
+  onClick: () => void
+}) {
+  const { t } = useTranslation()
+  return (
+    <button
+      type="button"
+      className={styles.listen}
+      disabled={disabled}
+      onClick={onClick}
+    >
+      <span className={styles.listenIcon} aria-hidden="true">
+        {state === 'loading' ? (
+          <LoaderCircle size={16} className={styles.spinner} />
+        ) : state === 'playing' ? (
+          <Square size={12} fill="currentColor" />
+        ) : (
+          <Play size={14} fill="currentColor" />
+        )}
+      </span>
+      {t(
+        state === 'loading'
+          ? 'learningTrainer.cancelSpeech'
+          : state === 'playing'
+            ? 'learningTrainer.stopSpeech'
+            : 'learningTrainer.playInstruction',
+      )}
+    </button>
+  )
+}
+
+// The voice panel: instruction playback, the microphone circle with its states
+// (record button, recording with a timer and live waveform, processing,
+// answered) and the recovery actions; a failed microphone shows the
+// crossed-out microphone.
+// Once an answer is accepted the panel only confirms it, without a score.
+export function TrainerCapturePanel({
+  stage,
+  seconds,
+  stream,
+  speech,
+  errorMessage,
+  micError,
+  answered,
+  onMic,
+  children,
+}: {
+  stage:
+    | 'ready'
+    | 'permission'
+    | 'recording'
+    | 'processing'
+    | 'recognizing'
+    | 'review'
+    | 'error'
+  seconds: string
+  stream?: MediaStream
+  speech?: ReactNode
+  errorMessage?: string
+  micError?: { title: string; help: string }
+  answered?: 'accepted' | 'skipped'
+  onMic?: () => void
+  children: ReactNode
+}) {
+  const { t } = useTranslation()
+  const busy =
+    stage === 'processing' || stage === 'permission' || stage === 'recognizing'
+  // A ready transcript shows a check: nothing runs until the student sends it.
+  const review = stage === 'review'
+  const micState = answered ?? (busy ? 'busy' : review ? 'accepted' : stage)
+  const micLabel = answered
+    ? undefined
+    : stage === 'ready'
+      ? t('learningTrainer.start')
+      : stage === 'recording'
+        ? t('learningTrainer.stopRecording')
+        : undefined
+  const micIcon = busy ? (
+    <LoaderCircle size={40} className={styles.spinner} />
+  ) : answered === 'accepted' || review ? (
+    <Check size={44} />
+  ) : answered === 'skipped' ? (
+    <SkipForward size={40} />
+  ) : stage === 'recording' ? (
+    <Square size={32} fill="currentColor" />
+  ) : (
+    <Mic size={48} />
+  )
+  return (
+    <TrainerAnswerPanel>
+      <Heading as="h2" className={styles.panelTitle}>
+        {t(
+          stage === 'review'
+            ? 'learningTrainer.reviewTitle'
+            : 'learningSession.answerByVoice',
+        )}
+      </Heading>
+      {stage !== 'review' && (
+        <Text as="p" className={styles.panelHelp}>
+          {t('learningDiagnostic.answerHelp')}
+        </Text>
+      )}
+      {speech}
+      {/* The microphone sits at the bottom of the panel, under the hand. */}
+      <div className={styles.spacer} />
+      {micError ? (
+        <div className={styles.micError} role="alert">
+          <span className={styles.micErrorIcon} aria-hidden="true">
+            <MicOff size={44} />
+          </span>
+          <Heading as="h3">{micError.title}</Heading>
+          <Text as="p">{micError.help}</Text>
+        </div>
+      ) : (
+        <div className={styles.voice}>
+          {/* The circle is the record button: it starts and stops recording.
+              After a failure it only duplicates the recovery button below. */}
+          {onMic && !review ? (
+            <button
+              type="button"
+              className={styles.mic}
+              data-state={micState}
+              onClick={onMic}
+              {...(micLabel
+                ? { 'aria-label': micLabel }
+                : { tabIndex: -1, 'aria-hidden': true })}
+            >
+              {micIcon}
+            </button>
+          ) : (
+            <span
+              className={styles.mic}
+              data-state={micState}
+              aria-hidden="true"
+            >
+              {micIcon}
+            </span>
+          )}
+          {/* Everything under the circle shares one fixed-height area and the
+              actions keep a reserved place, so the circle never moves. */}
+          <div className={styles.voiceBelow}>
+            {busy ? (
+              <Text className={styles.voiceStatus} role="status">
+                {t(
+                  stage === 'permission'
+                    ? 'learningTrainer.allow'
+                    : stage === 'recognizing'
+                      ? 'learningTrainer.transcribing'
+                      : 'learningSession.processingStatus',
+                )}
+              </Text>
+            ) : answered ? (
+              <Text className={styles.voiceStatus} role="status">
+                {t(
+                  answered === 'skipped'
+                    ? 'learningSession.answerSkipped'
+                    : 'learningSession.answerAccepted',
+                )}
+              </Text>
+            ) : review ? (
+              <Text className={styles.voicePill} role="status">
+                {t('learningTrainer.reviewTranscript')}
+              </Text>
+            ) : stage === 'recording' ? (
+              <>
+                <Text className={styles.timer} role="timer">
+                  {seconds}
+                </Text>
+                <div className={styles.voiceWave} aria-hidden="true">
+                  <LiveWaveform stream={stream} height={44} />
+                </div>
+                <Text className={styles.voiceHint}>
+                  {t('learningSession.tapToStop')}
+                </Text>
+              </>
+            ) : errorMessage ? (
+              <Text as="p" role="alert" className={styles.alert}>
+                <CircleAlert size={16} aria-hidden="true" />
+                {errorMessage}
+              </Text>
+            ) : onMic ? (
+              <Text className={styles.voiceHint}>
+                {t('learningSession.tapToRecord')}
+              </Text>
+            ) : null}
+          </div>
+        </div>
+      )}
+      <div className={styles.actions}>{children}</div>
+    </TrainerAnswerPanel>
+  )
+}

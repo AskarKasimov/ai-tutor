@@ -8,6 +8,9 @@ message CompleteRequest {
   Complexity complexity = 2;
   bool urgent = 3;
   GenerationParameters parameters = 4;
+  // routing_profile restricts model selection to a gateway-owned allowlist.
+  // Empty preserves the legacy default routing behavior and hash.
+  string routing_profile = 5;
 }
 message Message { Role role = 1; optional string content = 2; }
 enum Role { ROLE_UNSPECIFIED = 0; ROLE_SYSTEM = 1; ROLE_USER = 2; ROLE_ASSISTANT = 3; }

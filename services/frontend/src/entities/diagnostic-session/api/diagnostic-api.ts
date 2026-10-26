@@ -10,10 +10,10 @@ import type {
   TurnAudioPart,
 } from '../model/diagnostic-session'
 
-const apiBase = (import.meta.env.VITE_API_BASE_URL || '/api/v1').replace(
+const apiBase = `${(import.meta.env.VITE_API_BASE_URL || '/api/v1').replace(
   /\/$/,
   '',
-)
+)}/exam`
 
 // An answer waits for the model: evaluation and the next question.
 const ANSWER_TIMEOUT = 240_000

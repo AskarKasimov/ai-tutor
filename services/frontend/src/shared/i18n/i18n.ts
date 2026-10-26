@@ -1,5 +1,6 @@
 import i18next from 'i18next'
 import { initReactI18next } from 'react-i18next'
+import { learningTranslations } from './learning-translations'
 
 export const i18n = i18next.use(initReactI18next)
 
@@ -11,6 +12,28 @@ void i18n.init({
   resources: {
     ru: {
       translation: {
+        ...learningTranslations,
+        modeSelection: {
+          title: 'Выберите режим',
+          subtitle: 'Можно вернуться сюда из меню профиля в любом режиме.',
+          learn: 'Обучение',
+          learnDescription: 'Диагностика, план и тренировка по шагам',
+          exam: 'Симуляция экзамена',
+          examDescription: 'Устный экзамен с Geek',
+        },
+        directionNav: {
+          adminLabel: 'Разделы администрирования',
+          studentLabel: 'Направления',
+          learnMaterials: 'Материалы для обучения',
+          examMaterials: 'Материалы для экзамена',
+          learn: 'Обучение',
+          exam: 'Симуляция экзамена',
+        },
+        studentShell: {
+          course: 'Курс',
+          selectCourse: 'Выберите курс',
+          chooseMode: 'К выбору режима',
+        },
         auth: {
           slogan: 'Подтянем до уверенного уровня в кратчайшие сроки',
           adminEntering: 'Открываем админ-панель…',
@@ -24,7 +47,7 @@ void i18n.init({
           loginTitle: 'Вход в AI Tutor',
           registerTitle: 'Создать аккаунт',
           subtitle:
-            'Войдите, чтобы озвучивать вопросы и распознавать свои ответы.',
+            'Войдите, чтобы использовать обучение и симуляцию экзамена.',
           email: 'Email',
           password: 'Пароль',
           name: 'Имя',
@@ -123,8 +146,13 @@ void i18n.init({
           subtitle:
             'Создайте курс, затем загрузите материалы — из них строится граф тем.',
           editSubtitle: 'Здесь загружаются материалы курса.',
-          subjectsLoading: 'Загружаем предмет…',
+          subjectsLoading: 'Загружаем курс…',
           subjectsError: 'Не удалось загрузить предмет.',
+          noSharedCourses: 'Сначала создайте общий курс',
+          createSharedCourseHelp:
+            'Один курс доступен для материалов обучения и экзамена. Создание курса выполняется в общем каталоге.',
+          goToSharedCourses: 'Открыть общий каталог курсов',
+          courseNavigation: 'Курсы для обучения',
           createSubject: 'Создать курс',
           subjectName: 'Название курса',
           subjectPlaceholder: 'Например, Машинное обучение',
@@ -230,8 +258,7 @@ void i18n.init({
           leaveCourse: 'Уйти со страницы',
         },
         courseGraph: {
-          title: 'Подготовка курса',
-          courseNotFound: 'Курс не найден.',
+          title: 'Материалы для экзамена',
           backToCourses: 'К списку курсов',
           subtitle:
             'Загрузите и классифицируйте материалы и соберите граф тем для диагностики Geek — или соберите его по карте компетенций.',
@@ -303,8 +330,14 @@ void i18n.init({
           mapImportFailed: 'Не удалось импортировать карту.',
         },
         adminCourses: {
+          admin: 'Администрирование',
           title: 'Курсы',
-          subtitle: 'Все курсы, добавленные в админ-панели.',
+          coursesTitle: 'Курсы',
+          courseLabel: 'Курс',
+          courseLoading: 'Загружаем курс…',
+          subtitle:
+            'Создайте курс один раз, затем выберите его для подготовки материалов обучения или экзамена.',
+          backToCourses: 'Ко всем курсам',
           newCourse: 'Новый курс',
           courseName: 'Название курса',
           create: 'Создать курс',
@@ -314,6 +347,10 @@ void i18n.init({
           createError: 'Не удалось создать курс. Попробуйте ещё раз.',
           ready: 'Готов',
           preparing: 'Подготавливается',
+          learnReady: 'Обучение готово',
+          learnPreparing: 'Обучение готовится',
+          examReady: 'Экзамен готов',
+          examPreparing: 'Экзамен готовится',
         },
         trainer: {
           title: 'Голосовой тренажёр',
@@ -321,6 +358,7 @@ void i18n.init({
         },
         home: {
           courses: 'Курсы',
+          title: 'Симуляция экзамена',
           selectCourse: 'Выберите курс',
           intro:
             'Geek проведёт устный экзамен по материалам курса: задаст вопросы, найдёт, с какой темы начинается непонимание, и покажет, что подтянуть.',

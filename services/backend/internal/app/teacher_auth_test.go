@@ -14,7 +14,7 @@ import (
 
 // portal sends a request from the admin panel.
 func (f *fixture) portal(method, path, body string, cookies ...*http.Cookie) *httptest.ResponseRecorder {
-	req := httptest.NewRequest(method, "https://api.example"+path, strings.NewReader(body))
+	req := httptest.NewRequest(method, "https://api.example"+examTestPath(path), strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set(httpx.PortalHeader, "admin")
 	for _, c := range cookies {

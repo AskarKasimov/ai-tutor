@@ -26,6 +26,45 @@ func TestRestoreBarrierRecognizesOnlyCurrentMarker(t *testing.T) {
 	}
 }
 
+func TestRoutingProfileIsHashScopedAndFiltersUrgentRouting(t *testing.T) {
+	defaultReq, err := ParseRequest([]byte(`{"messages":[{"role":"user","content":"x"}],"complexity":"low"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	profiled, err := ParseRequest([]byte(`{"messages":[{"role":"user","content":"x"}],"complexity":"low","routing_profile":"learn"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if defaultReq.CanonicalHash() == profiled.CanonicalHash() || len(profiled.legacyHashes()) != 0 {
+		t.Fatal("profiled request can replay a request from the default routing pool")
+	}
+	profiledJSON, err := json.Marshal(profiled)
+	if err != nil {
+		t.Fatal(err)
+	}
+	parsed, err := ParseRequest(profiledJSON)
+	if err != nil || parsed.RoutingProfile != "learn" {
+		t.Fatalf("profile round trip: %+v, %v", parsed, err)
+	}
+
+	a := InstanceConfig{ID: "a", MaxInFlight: 1, ContextWindow: 4096}
+	b := InstanceConfig{ID: "b", MaxInFlight: 1, ContextWindow: 4096}
+	s := &Service{cfg: Config{Pools: map[string][]string{"low": {"a", "b"}, "medium": {"a", "b"}, "high": {"a", "b"}}, RoutingProfiles: map[string][]string{"learn": {"a"}}, Instances: []InstanceConfig{a, b}}}
+	got := s.eligibleInstancesFor("low", profiled.RoutingProfile)
+	if len(got) != 1 || got[0].ID != "a" {
+		t.Fatalf("profile pool = %+v", got)
+	}
+	urgent := true
+	profiled.Urgent = &urgent
+	if err := s.validatePool(profiled); err != nil {
+		t.Fatalf("valid urgent profile rejected: %v", err)
+	}
+	profiled.RoutingProfile = "missing"
+	if err := s.validatePool(profiled); err == nil {
+		t.Fatal("unknown routing profile accepted")
+	}
+}
+
 func TestUpstreamReadFailureRetainsUncertainSlot(t *testing.T) {
 	if !uncertainUpstreamOutcome(&UpstreamFailure{Code: "upstream_response_error", Err: io.ErrUnexpectedEOF}) {
 		t.Fatal("response read failure was treated as a confirmed upstream completion")

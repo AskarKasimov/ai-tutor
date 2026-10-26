@@ -19,37 +19,12 @@ import { GeekDialog } from './geek-dialog'
 import { GeekResult } from './geek-result'
 import styles from './learning-home.module.scss'
 
-// The open screen survives a reload of the tab.
 type View = {
-  userId: string
   subjectId: string
   sessionId: string
   screen: 'dialog' | 'result'
 }
-const viewKey = 'ai-tutor:geek-view'
 const selectedSubjectKey = 'ai-tutor:selected-subject'
-
-function readView(userId: string): View | null {
-  try {
-    const view = JSON.parse(sessionStorage.getItem(viewKey) ?? 'null') as View
-    return view?.userId === userId &&
-      view.sessionId &&
-      (view.screen === 'dialog' || view.screen === 'result')
-      ? view
-      : null
-  } catch {
-    return null
-  }
-}
-
-function saveView(view: View | null) {
-  try {
-    if (view) sessionStorage.setItem(viewKey, JSON.stringify(view))
-    else sessionStorage.removeItem(viewKey)
-  } catch {
-    // Without storage the screen is simply not restored after a reload.
-  }
-}
 
 function readSelectedSubject(userId: string) {
   try {
@@ -78,9 +53,8 @@ export function LearningHome({
   const userId = user?.id ?? ''
   const subjectsQuery = useSubjectsQuery(userId)
   const subjects = subjectsQuery.data ?? []
-  const [view, setView] = useState<View | null>(() =>
-    userId ? readView(userId) : null,
-  )
+  // On a fresh visit, show course progress first; resume only after an explicit click.
+  const [view, setView] = useState<View | null>(null)
   const [savedSubjectId, setSavedSubjectId] = useState(() =>
     userId ? readSelectedSubject(userId) : '',
   )
@@ -99,7 +73,6 @@ export function LearningHome({
       subjects.length &&
       !subjects.some((s) => s.id === view.subjectId)
     ) {
-      saveView(null)
       setView(null)
     }
   }, [view, subjects, subjectsQuery.isPending])
@@ -113,12 +86,10 @@ export function LearningHome({
 
   function open(sessionId: string, screen: View['screen']) {
     if (!selected) return
-    const next = { userId, subjectId: selected.id, sessionId, screen }
-    saveView(next)
+    const next = { subjectId: selected.id, sessionId, screen }
     setView(next)
   }
   function back() {
-    saveView(null)
     setView(null)
   }
   function begin() {

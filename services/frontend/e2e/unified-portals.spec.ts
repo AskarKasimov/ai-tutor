@@ -384,8 +384,33 @@ test('one browser context switches modes while student and admin sessions stay s
   await page.goto('/exam')
   await expect(
     page.getByText('Расскажите, как работает этот курс?'),
+  ).toHaveCount(0)
+  await expect(page.getByRole('region', { name: 'Курс' })).toContainText(
+    otherSubject.name,
+  )
+  await page.getByRole('combobox', { name: 'Выберите курс' }).click()
+  await page.getByRole('option', { name: subject.name }).click()
+  await expect(page).toHaveURL(/\/exam\?subject_id=subject-1$/)
+  await expect(page.getByRole('button', { name: subject.name })).toBeVisible()
+  await expect(
+    page.getByText('Расскажите, как работает этот курс?'),
   ).toBeVisible()
   await expect(page.getByText(subject.name, { exact: true })).toHaveCount(1)
+  await expect
+    .poll(() =>
+      calls.some(
+        (call) =>
+          call.path === '/exam/diagnostic-sessions/session-1' &&
+          call.method === 'GET',
+      ),
+    )
+    .toBe(true)
+  expect(
+    calls.filter(
+      (call) =>
+        call.path === '/exam/diagnostic-sessions' && call.method === 'POST',
+    ),
+  ).toHaveLength(1)
 
   await page.goto('/admin/courses')
   await expect(page).toHaveURL(/\/admin\/courses$/)

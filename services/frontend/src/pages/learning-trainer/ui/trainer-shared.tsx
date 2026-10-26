@@ -1,4 +1,4 @@
-import { Button, Heading, Text } from '@radix-ui/themes'
+import { Heading, Text } from '@radix-ui/themes'
 import {
   Check,
   ChevronDown,
@@ -138,9 +138,6 @@ export function TrainerShell({
             )}
           </nav>
           <div className={styles.account}>
-            <Button asChild size="2" variant="soft">
-              <a href="/">{t('studentShell.chooseMode')}</a>
-            </Button>
             <AccountMenu />
           </div>
         </header>

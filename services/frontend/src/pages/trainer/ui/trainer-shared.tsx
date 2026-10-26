@@ -1,4 +1,4 @@
-import { Button, Text } from '@radix-ui/themes'
+import { Text } from '@radix-ui/themes'
 import { ChevronRight, GraduationCap } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -90,9 +90,6 @@ export function TrainerShell({
             )}
           </nav>
           <div className={styles.account}>
-            <Button asChild size="2" variant="soft">
-              <a href="/">{t('studentShell.chooseMode')}</a>
-            </Button>
             <AccountMenu />
           </div>
         </header>

@@ -545,7 +545,7 @@ it('shows one shared course in student shell without direction tabs', async () =
   )
 })
 
-it('offers a mode-selection link without clearing a resumable diagnostic', async () => {
+it('keeps the active exam open and offers mode selection in the account menu', async () => {
   geekBackend()
   renderApp()
   await start()
@@ -554,13 +554,15 @@ it('offers a mode-selection link without clearing a resumable diagnostic', async
       'Что изменится в A*, если эвристика переоценивает путь?',
     ),
   ).toBeVisible()
-  const savedView = sessionStorage.getItem('ai-tutor:geek-view')
-  expect(savedView).not.toBeNull()
-  expect(screen.getByRole('link', { name: 'К выбору режима' })).toHaveAttribute(
-    'href',
-    '/',
+  expect(sessionStorage.getItem('ai-tutor:geek-view')).toBeNull()
+  fireEvent.keyDown(
+    screen.getByRole('button', { name: 'Меню профиля: Студент' }),
+    { key: 'Enter' },
   )
-  expect(sessionStorage.getItem('ai-tutor:geek-view')).toBe(savedView)
+  expect(
+    await screen.findByRole('menuitem', { name: 'К выбору режима' }),
+  ).toBeVisible()
+  expect(sessionStorage.getItem('ai-tutor:geek-view')).toBeNull()
 })
 
 it('resumes the active diagnostic from the history', async () => {

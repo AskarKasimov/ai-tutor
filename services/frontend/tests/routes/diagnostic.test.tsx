@@ -96,15 +96,14 @@ const resultBody = {
   ],
   untested_basics: [basic, basic2],
 }
-async function home() {
-  const continuing = !!sessionStorage.getItem('ai-tutor:learning-home')
+async function home({ start = true }: { start?: boolean } = {}) {
   const router = createRouter({
     context: { queryClient: createQueryClient() },
     history: createMemoryHistory({ initialEntries: ['/learn'] }),
     routeTree,
   })
   const view = render(<RouterProvider router={router} />)
-  if (!continuing) {
+  if (start) {
     fireEvent.click(
       await screen.findByRole(
         'button',
@@ -116,7 +115,26 @@ async function home() {
   return view
 }
 
-it('keeps the active learning intent when offering the mode-selection link', async () => {
+function reportActiveLearningSession(requests: ReturnType<typeof server>) {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      if (url.endsWith('/subjects/subject%3Atest/learning-state'))
+        return Response.json({
+          subject_id: 'subject:test',
+          subject_name: 'Предмет теста',
+          diagnostic_status: 'active',
+          diagnostic_completed: false,
+          training_available: false,
+          active_session_id: 'session-real',
+        })
+      return requests(url, init)
+    }),
+  )
+}
+
+it('keeps the active learning intent while the diagnostic is open', async () => {
   server()
   await home()
   await waitFor(() =>
@@ -127,9 +145,13 @@ it('keeps the active learning intent when offering the mode-selection link', asy
   )
   const storedIntent = sessionStorage.getItem('ai-tutor:learning-home')
   expect(storedIntent).not.toBeNull()
+  fireEvent.keyDown(
+    screen.getByRole('button', { name: 'Меню профиля: Студент' }),
+    { key: 'Enter' },
+  )
   expect(
-    await screen.findByRole('link', { name: 'К выбору режима' }),
-  ).toHaveAttribute('href', '/')
+    await screen.findByRole('menuitem', { name: 'К выбору режима' }),
+  ).toBeVisible()
   expect(screen.getAllByText('Предмет теста', { exact: true })).toHaveLength(1)
   expect(sessionStorage.getItem('ai-tutor:learning-home')).toBe(storedIntent)
 })
@@ -687,12 +709,20 @@ it('keeps the audio and idempotency key on a failed submission and retries witho
   expect(calls[0][1]?.body).toBe(calls[1][1]?.body)
   expect(audio.startRecording).toHaveBeenCalledTimes(1)
 })
-it('restores the existing session on remount without creating another variant', async () => {
+it('shows course progress after remount and resumes the existing session on click', async () => {
   const requests = server()
   const first = await home()
   await screen.findByRole('heading', { name: 'Настоящий вопрос из банка' })
   first.unmount()
-  await home()
+  reportActiveLearningSession(requests)
+  await home({ start: false })
+  expect(
+    await screen.findByRole('button', { name: 'Продолжить обучение' }),
+  ).toBeVisible()
+  expect(
+    screen.queryByRole('heading', { name: 'Настоящий вопрос из банка' }),
+  ).not.toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: 'Продолжить обучение' }))
   await screen.findByRole('heading', { name: 'Настоящий вопрос из банка' })
   expect(
     requests.mock.calls.filter(
@@ -825,7 +855,7 @@ it('shows progress by topic and adds clarifying questions only when asked', asyn
 })
 
 it('keeps answered positions after a page reload', async () => {
-  server()
+  const requests = server()
   const first = await home()
   fireEvent.click(await screen.findByRole('button', { name: 'Начать запись' }))
   fireEvent.click(
@@ -838,7 +868,11 @@ it('keeps answered positions after a page reload', async () => {
   const percent = screen.getByRole('progressbar').getAttribute('aria-valuenow')
   expect(percent).not.toBe('0')
   first.unmount()
-  await home()
+  reportActiveLearningSession(requests)
+  await home({ start: false })
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Продолжить обучение' }),
+  )
   await waitFor(() =>
     expect(screen.getByRole('progressbar')).toHaveAttribute(
       'aria-valuenow',
@@ -889,15 +923,27 @@ it('allows starting a fresh diagnostic after the backend has lost the stored ses
   vi.stubGlobal(
     'fetch',
     vi.fn(async (url: string, init?: RequestInit) =>
-      url.endsWith('/diagnostic-sessions/session-real')
-        ? Response.json(
-            { code: 'DIAGNOSTIC_SESSION_NOT_FOUND' },
-            { status: 404 },
-          )
-        : requests(url, init),
+      url.endsWith('/subjects/subject%3Atest/learning-state')
+        ? Response.json({
+            subject_id: 'subject:test',
+            subject_name: 'Предмет теста',
+            diagnostic_status: 'active',
+            diagnostic_completed: false,
+            training_available: false,
+            active_session_id: 'session-real',
+          })
+        : url.endsWith('/diagnostic-sessions/session-real')
+          ? Response.json(
+              { code: 'DIAGNOSTIC_SESSION_NOT_FOUND' },
+              { status: 404 },
+            )
+          : requests(url, init),
     ),
   )
-  await home()
+  await home({ start: false })
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Продолжить обучение' }),
+  )
   expect(await screen.findByRole('alert')).toHaveTextContent(
     'Сессия больше недоступна',
   )

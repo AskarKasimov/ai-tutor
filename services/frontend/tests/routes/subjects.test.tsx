@@ -170,6 +170,9 @@ it('loads subjects without creating a variant, then starts only the chosen subje
       requests.some((r) => r.endsWith('POST /api/v1/learn/variants')),
     ).toBe(true),
   )
+  const sessionReadsBeforeRefresh = requests.filter((r) =>
+    r.includes('GET /api/v1/learn/diagnostic-sessions/'),
+  ).length
   view.unmount()
   const refreshed = createRouter({
     context: { queryClient: createQueryClient() },
@@ -178,17 +181,19 @@ it('loads subjects without creating a variant, then starts only the chosen subje
   })
   render(<RouterProvider router={refreshed} />)
   expect(
-    await screen.findByRole('heading', {
-      name: 'Вопрос о классификации',
-    }),
+    await screen.findByRole('heading', { name: 'Обучение', level: 1 }),
   ).toBeVisible()
-  await waitFor(() =>
-    expect(
-      requests.some((r) =>
-        r.includes('GET /api/v1/learn/diagnostic-sessions/'),
-      ),
-    ).toBe(true),
-  )
+  expect(
+    screen.queryByRole('heading', { name: 'Вопрос о классификации' }),
+  ).not.toBeInTheDocument()
+  expect(
+    await screen.findByRole('button', { name: 'Начать обучение' }),
+  ).toBeVisible()
+  expect(
+    requests.filter((r) =>
+      r.includes('GET /api/v1/learn/diagnostic-sessions/'),
+    ),
+  ).toHaveLength(sessionReadsBeforeRefresh)
   expect(
     requests.filter((r) => r.endsWith('POST /api/v1/learn/variants')),
   ).toHaveLength(1)
@@ -241,67 +246,50 @@ it('shows a retryable learning-state error while restoring a historical subject'
   ).toBeEnabled()
 })
 
-it.each(['intent', 'shared selection'] as const)(
-  'shows loading and a retryable error for a historical subject restored from %s',
-  async (source) => {
-    if (source === 'intent')
-      sessionStorage.setItem(
-        'ai-tutor:learning-home',
-        JSON.stringify({
-          apiBase: '/api/v1/learn',
-          userId: 'student-1',
-          subjectId: 'historic-subject',
-          sessionId: 'diagnostic-1',
-          mode: 'diagnostic',
-        }),
-      )
-    else
-      localStorage.setItem(
-        'ai-tutor:selected-subject:student-1',
-        'historic-subject',
-      )
-    let finishFirst!: (response: Response) => void
-    let stateRequests = 0
-    vi.mocked(fetch).mockImplementation(async (input, init) => {
-      const url = String(input)
-      if (url.endsWith('/subjects')) return Response.json([])
-      if (url.includes('/learning-state')) {
-        stateRequests += 1
-        if (stateRequests === 1)
-          return new Promise<Response>((resolve) => {
-            finishFirst = resolve
-          })
-        if (stateRequests === 2) return new Response(null, { status: 503 })
-        return Response.json({
-          subject_id: 'historic-subject',
-          subject_name: 'Исторический курс',
-          diagnostic_status: 'not_started',
-          diagnostic_completed: false,
-          training_available: false,
+it('shows loading and a retryable error for the previously selected historical subject', async () => {
+  localStorage.setItem(
+    'ai-tutor:selected-subject:student-1',
+    'historic-subject',
+  )
+  let finishFirst!: (response: Response) => void
+  let stateRequests = 0
+  vi.mocked(fetch).mockImplementation(async (input, init) => {
+    const url = String(input)
+    if (url.endsWith('/subjects')) return Response.json([])
+    if (url.includes('/learning-state')) {
+      stateRequests += 1
+      if (stateRequests === 1)
+        return new Promise<Response>((resolve) => {
+          finishFirst = resolve
         })
-      }
-      return backendResponse(url, init)
-    })
-    const router = createRouter({
-      context: { queryClient: createQueryClient() },
-      history: createMemoryHistory({ initialEntries: ['/learn'] }),
-      routeTree,
-    })
-    render(<RouterProvider router={router} />)
+      if (stateRequests === 2) return new Response(null, { status: 503 })
+      return Response.json({
+        subject_id: 'historic-subject',
+        subject_name: 'Исторический курс',
+        diagnostic_status: 'not_started',
+        diagnostic_completed: false,
+        training_available: false,
+      })
+    }
+    return backendResponse(url, init)
+  })
+  const router = createRouter({
+    context: { queryClient: createQueryClient() },
+    history: createMemoryHistory({ initialEntries: ['/learn'] }),
+    routeTree,
+  })
+  render(<RouterProvider router={router} />)
 
-    await waitFor(() => expect(finishFirst).toBeDefined())
-    expect(
-      await screen.findByText('Загружаем состояние обучения…'),
-    ).toBeVisible()
-    finishFirst(new Response(null, { status: 503 }))
-    expect(await screen.findByRole('alert')).toHaveTextContent(
-      'Не удалось загрузить состояние обучения.',
-    )
-    expect(
-      screen.getByRole('button', { name: 'Попробовать снова' }),
-    ).toBeEnabled()
-  },
-)
+  await waitFor(() => expect(finishFirst).toBeDefined())
+  expect(await screen.findByText('Загружаем состояние обучения…')).toBeVisible()
+  finishFirst(new Response(null, { status: 503 }))
+  expect(await screen.findByRole('alert')).toHaveTextContent(
+    'Не удалось загрузить состояние обучения.',
+  )
+  expect(
+    screen.getByRole('button', { name: 'Попробовать снова' }),
+  ).toBeEnabled()
+})
 
 it('returns to subject selection after refresh during a pending start and reuses its key only after a new click', async () => {
   const requests: Array<{ method: string; path: string; key?: string }> = []

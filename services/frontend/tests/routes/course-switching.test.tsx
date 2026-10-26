@@ -135,9 +135,11 @@ it.each(['/learn', '/exam'] as const)(
     ).toBe(path === '/learn' ? savedIntent : savedView)
     fireEvent.click(courseSelect)
     fireEvent.click(await screen.findByRole('option', { name: 'Курс один' }))
-    expect(
-      await screen.findByRole('button', { name: 'Курс один' }),
-    ).toBeVisible()
+    await waitFor(() =>
+      expect(
+        screen.getByRole('combobox', { name: 'Выберите курс' }),
+      ).toHaveTextContent('Курс один'),
+    )
     expect(localStorage.getItem('ai-tutor:selected-subject:u1')).toBe(
       'course-1',
     )

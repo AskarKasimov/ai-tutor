@@ -86,8 +86,8 @@ export function LearningHome({
   )
   const selected = requestedSubjectId
     ? subjects.find((subject) => subject.id === requestedSubjectId)
-    : (subjects.find((subject) => subject.id === view?.subjectId) ??
-      subjects.find((subject) => subject.id === savedSubjectId) ??
+    : (subjects.find((subject) => subject.id === savedSubjectId) ??
+      subjects.find((subject) => subject.id === view?.subjectId) ??
       subjects[0])
   const history = useDiagnosticHistoryQuery(userId, selected?.id ?? '')
   const start = useStartDiagnosticMutation(userId, selected?.id ?? '')

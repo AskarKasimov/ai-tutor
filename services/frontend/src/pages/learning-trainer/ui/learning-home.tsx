@@ -105,15 +105,14 @@ export function LearningHome({
   // A direct course URL wins; otherwise reuse the shared selection across modes.
   const catalogSelection = requestedSubjectId
     ? subjects.find((subject) => subject.id === requestedSubjectId)
-    : intent
-      ? subjects.find((subject) => subject.id === intent.subjectId)
-      : (subjects.find((subject) => subject.id === savedSubjectId) ??
-        subjects[0])
+    : (subjects.find((subject) => subject.id === savedSubjectId) ??
+      (intent
+        ? subjects.find((subject) => subject.id === intent.subjectId)
+        : subjects[0]))
   const learningSubjectId =
     catalogSelection?.id ??
     requestedSubjectId ??
-    intent?.subjectId ??
-    savedSubjectId
+    (savedSubjectId || intent?.subjectId || '')
   const learning = useLearningStateQuery(userId, learningSubjectId)
   const hasLearningHistory = Boolean(
     learning.data?.active_session_id ||
@@ -272,9 +271,9 @@ export function LearningHome({
               {t('learningTrainer.retry')}
             </Button>
           </Card>
-        ) : !selected && requestedSubjectId && learning.isPending ? (
+        ) : !selected && learningSubjectId && learning.isPending ? (
           <Text role="status">{t('learningHome.learningLoading')}</Text>
-        ) : !selected && requestedSubjectId && learning.isError ? (
+        ) : !selected && learningSubjectId && learning.isError ? (
           <Card className={styles.notice}>
             <Text role="alert">{t('learningHome.learningError')}</Text>
             <Button onClick={() => void learning.refetch()}>

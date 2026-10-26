@@ -285,3 +285,9 @@ shared authenticated audio adapter. The student screens have no direction tabs.
 Mode-specific title, intro, history and session content stay below the shared
 header. Returning to mode selection leaves active Geek and learning intents in
 `sessionStorage`, so reopening a mode resumes its session.
+An explicit shared course selection or `subject_id` URL takes precedence over
+an older resumable session view; the session intent remains available when the
+student selects that course again. Historical learning state can be restored by
+the shared course ID or learning intent, with loading and retryable error states.
+Lesson mutations belong to the current auth session epoch, so late responses
+cannot replace progress after logout and login.

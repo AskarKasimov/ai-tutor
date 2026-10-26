@@ -81,6 +81,13 @@ function backendResponse(url: string, init?: RequestInit): Promise<Response> {
 }
 
 beforeEach(() => {
+  const localStore = new Map<string, string>()
+  vi.stubGlobal('localStorage', {
+    getItem: (key: string) => localStore.get(key) ?? null,
+    setItem: (key: string, value: string) => localStore.set(key, value),
+    removeItem: (key: string) => localStore.delete(key),
+    clear: () => localStore.clear(),
+  })
   vi.stubGlobal(
     'ResizeObserver',
     class {
@@ -90,6 +97,7 @@ beforeEach(() => {
     },
   )
   sessionStorage.clear()
+  localStorage.clear()
   vi.stubGlobal('fetch', vi.fn(backendResponse))
 })
 afterEach(() => {
@@ -232,6 +240,68 @@ it('shows a retryable learning-state error while restoring a historical subject'
     screen.getByRole('button', { name: 'Попробовать снова' }),
   ).toBeEnabled()
 })
+
+it.each(['intent', 'shared selection'] as const)(
+  'shows loading and a retryable error for a historical subject restored from %s',
+  async (source) => {
+    if (source === 'intent')
+      sessionStorage.setItem(
+        'ai-tutor:learning-home',
+        JSON.stringify({
+          apiBase: '/api/v1/learn',
+          userId: 'student-1',
+          subjectId: 'historic-subject',
+          sessionId: 'diagnostic-1',
+          mode: 'diagnostic',
+        }),
+      )
+    else
+      localStorage.setItem(
+        'ai-tutor:selected-subject:student-1',
+        'historic-subject',
+      )
+    let finishFirst!: (response: Response) => void
+    let stateRequests = 0
+    vi.mocked(fetch).mockImplementation(async (input, init) => {
+      const url = String(input)
+      if (url.endsWith('/subjects')) return Response.json([])
+      if (url.includes('/learning-state')) {
+        stateRequests += 1
+        if (stateRequests === 1)
+          return new Promise<Response>((resolve) => {
+            finishFirst = resolve
+          })
+        if (stateRequests === 2) return new Response(null, { status: 503 })
+        return Response.json({
+          subject_id: 'historic-subject',
+          subject_name: 'Исторический курс',
+          diagnostic_status: 'not_started',
+          diagnostic_completed: false,
+          training_available: false,
+        })
+      }
+      return backendResponse(url, init)
+    })
+    const router = createRouter({
+      context: { queryClient: createQueryClient() },
+      history: createMemoryHistory({ initialEntries: ['/learn'] }),
+      routeTree,
+    })
+    render(<RouterProvider router={router} />)
+
+    await waitFor(() => expect(finishFirst).toBeDefined())
+    expect(
+      await screen.findByText('Загружаем состояние обучения…'),
+    ).toBeVisible()
+    finishFirst(new Response(null, { status: 503 }))
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Не удалось загрузить состояние обучения.',
+    )
+    expect(
+      screen.getByRole('button', { name: 'Попробовать снова' }),
+    ).toBeEnabled()
+  },
+)
 
 it('returns to subject selection after refresh during a pending start and reuses its key only after a new click', async () => {
   const requests: Array<{ method: string; path: string; key?: string }> = []

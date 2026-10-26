@@ -3,7 +3,7 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { AppProviders, createQueryClient } from '@/bootstrap/providers'
 import { createAppDependencies } from '@/bootstrap/dependencies'
 import type { LearningMessage, LearningPlan } from '@/entities/learning-plan'
-import { userQueryKeys } from '@/entities/user'
+import { replaceSession } from '@/entities/user'
 import { LearningPlanEntry } from '@/pages/learning-trainer/ui/learning-plan'
 import { mockChatVoice } from '../support/mock-chat-voice'
 import * as browserAudio from '@/shared/lib'
@@ -64,7 +64,7 @@ const lesson: LearningMessage[] = [
   },
 ]
 
-function setup(
+async function setup(
   existing: LearningPlan | null,
   configure?: (
     api: ReturnType<typeof createAppDependencies>['learningPlan'],
@@ -158,12 +158,11 @@ function setup(
     return current
   })
   const queryClient = createQueryClient()
-  queryClient.setQueryData(userQueryKeys.auth, {
+  await replaceSession(queryClient, {
     id: 'u1',
     email: 'student@example.edu',
     display_name: 'Студент',
     role: 'student',
-    created_at: 0,
   })
   configure?.(api)
   const { container } = render(
@@ -180,7 +179,7 @@ function setup(
 }
 
 it('asks for the hours once and builds the plan with one click', async () => {
-  const { create } = setup(null)
+  const { create } = await setup(null)
   expect(
     await screen.findByRole('heading', { name: 'Сколько у тебя часов?' }),
   ).toBeInTheDocument()
@@ -194,7 +193,7 @@ it('asks for the hours once and builds the plan with one click', async () => {
 })
 
 it('does not ask for hours or create a plan when checked answers have no gaps', async () => {
-  const { create } = setup(null, undefined, true)
+  const { create } = await setup(null, undefined, true)
   expect(
     await screen.findByText(
       'По проверенным заданиям пробелов не выявлено. Дополнительная подготовка не требуется.',
@@ -212,7 +211,7 @@ it('teaches the current topic in the chat and moves on after a voice answer', as
     url: 'blob:preview',
     dispose: vi.fn(),
   })
-  const { open, answer } = setup(plan())
+  const { open, answer } = await setup(plan())
   expect(await screen.findByText('Теория по теме')).toBeInTheDocument()
   expect(open).toHaveBeenCalledTimes(1)
   expect(screen.getByText('Практический вопрос?')).toBeInTheDocument()
@@ -253,7 +252,7 @@ it('teaches the current topic in the chat and moves on after a voice answer', as
 })
 
 it('shows a history error and resumes opening the lesson after retry', async () => {
-  const { open } = setup(plan(), undefined, false, lesson, true)
+  const { open } = await setup(plan(), undefined, false, lesson, true)
 
   expect(await screen.findByRole('alert')).toHaveTextContent(
     'Не удалось загрузить историю темы.',
@@ -268,7 +267,7 @@ it('shows a history error and resumes opening the lesson after retry', async () 
 })
 
 it('shows the finished plan with topics to review', async () => {
-  setup(
+  await setup(
     plan({
       status: 'completed',
       current_index: null,
@@ -287,7 +286,7 @@ it('shows theory while practice is pending and enables recording after it arrive
   const pendingOpen = new Promise<LearningPlan>((resolve) => {
     finishOpen = resolve
   })
-  const { open } = setup(plan(), (api) => {
+  const { open } = await setup(plan(), (api) => {
     vi.mocked(api.readLearningMessages).mockImplementation(async () =>
       practiceReady ? lesson : theoryReady ? lesson.slice(0, 1) : [],
     )
@@ -315,7 +314,7 @@ it('shows theory while practice is pending and enables recording after it arrive
 it('keeps theory after a practice failure and lets the student retry', async () => {
   let theoryReady = false
   let practiceReady = false
-  const { open } = setup(plan(), (api) => {
+  const { open } = await setup(plan(), (api) => {
     vi.mocked(api.readLearningMessages).mockImplementation(async () =>
       practiceReady ? lesson : theoryReady ? lesson.slice(0, 1) : [],
     )
@@ -342,7 +341,7 @@ it('keeps theory after a practice failure and lets the student retry', async () 
 
 it('resumes an incomplete lesson after reopening the page', async () => {
   let practiceReady = false
-  const { open } = setup(plan(), (api) => {
+  const { open } = await setup(plan(), (api) => {
     vi.mocked(api.readLearningMessages).mockImplementation(async () =>
       practiceReady ? lesson : lesson.slice(0, 1),
     )
@@ -363,7 +362,7 @@ it('lets the learner replace a recording before explicitly sending it', async ()
     url: 'blob:preview',
     dispose,
   })
-  const { answer } = setup(plan())
+  const { answer } = await setup(plan())
   expect(await screen.findByText('Практический вопрос?')).toBeVisible()
   await waitFor(() =>
     expect(
@@ -394,7 +393,7 @@ it('lets the learner replace a recording before explicitly sending it', async ()
 
 it('reviews a recognized answer in the voice bar and sends it without a transcribing status', async () => {
   mockChatVoice()
-  const { answer } = setup(plan(), (api) => {
+  const { answer } = await setup(plan(), (api) => {
     vi.mocked(api.answerLesson).mockReturnValue(new Promise(() => {}))
   })
   expect(await screen.findByText('Практический вопрос?')).toBeVisible()
@@ -432,7 +431,7 @@ it('reviews a recognized answer in the voice bar and sends it without a transcri
 it('clears failed recognition when a new answer is recorded with the microphone', async () => {
   mockChatVoice()
   let preview!: ReturnType<typeof vi.spyOn>
-  const { answer } = setup(plan(), (api) => {
+  const { answer } = await setup(plan(), (api) => {
     preview = vi
       .mocked(api.previewAnswer)
       .mockRejectedValueOnce(new Error('STT unavailable'))
@@ -489,7 +488,7 @@ it('drops the local recording once the server owns a transcript awaiting a check
     dispose: vi.fn(),
   })
   let pending = false
-  setup(plan(), (api) => {
+  await setup(plan(), (api) => {
     vi.mocked(api.findLearningPlan).mockImplementation(async () =>
       plan({ pending_answer: pending ? 'Распознанный ответ' : null }),
     )
@@ -549,7 +548,7 @@ it('renders teacher Markdown while preserving code and literal student answers',
     '    print("a\\nb")',
     '```',
   ].join('\n')
-  const { container } = setup(plan(), undefined, false, [
+  const { container } = await setup(plan(), undefined, false, [
     { ...lesson[0], text: theory },
     { ...lesson[1], text: 'Объясните `grad_w`.' },
     {

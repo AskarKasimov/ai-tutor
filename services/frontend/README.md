@@ -1,5 +1,7 @@
 # Frontend AI Tutor
 
+Экран выбора часов персонального плана обучения показывает вопрос и варианты времени без отдельной карточки «Курс» сверху. Кнопка «К курсу» сохраняется.
+
 React 19, TypeScript, Vite 8,
 TanStack Router (файловые маршруты), TanStack Query, i18next / react-i18next,
 SCSS Modules, Vitest и Testing Library. Для UI используется Radix Themes.

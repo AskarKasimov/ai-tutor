@@ -196,6 +196,7 @@ it('asks for the hours once and builds the plan with one click', async () => {
   expect(
     await screen.findByRole('heading', { name: 'Сколько у тебя часов?' }),
   ).toBeInTheDocument()
+  expect(screen.queryByRole('region', { name: 'Курс' })).not.toBeInTheDocument()
   fireEvent.click(screen.getByRole('button', { name: /3 часа/ }))
   await waitFor(() =>
     expect(create).toHaveBeenCalledWith('d1', 3, expect.anything()),

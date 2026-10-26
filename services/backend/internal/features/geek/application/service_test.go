@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/audio"
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/coursegraph"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/exam"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/fault"
 )
@@ -142,12 +143,14 @@ func (t texts) Text(_ context.Context, owner, id string) (string, bool, error) {
 // examiner grades by the answer text: "сильно" is 2/2/2/2, "частично"
 // 2/2/1/1, anything else 0/1/0/0. Its reaction and explanation name the topic.
 type examiner struct {
-	mu        sync.Mutex
-	fail      error
-	questions []QuestionRequest
-	evals     int
-	evaluated []EvaluationRequest
-	explained []EvaluationRequest
+	mu           sync.Mutex
+	fail         error
+	questions    []QuestionRequest
+	evals        int
+	evaluated    []EvaluationRequest
+	explained    []EvaluationRequest
+	feedbacks    []FeedbackRequest
+	feedbackFail error
 }
 
 func (e *examiner) Question(_ context.Context, r QuestionRequest) (string, error) {
@@ -169,12 +172,14 @@ func (e *examiner) Evaluate(_ context.Context, r EvaluationRequest) (Assessment,
 	e.evals++
 	e.evaluated = append(e.evaluated, r)
 	last := r.Dialogue[len(r.Dialogue)-1]
-	a := Assessment{Reaction: "Реакция: " + r.Node.Title + ".", Explanation: "Разбор: " + r.Node.Title + "."}
+	a := Assessment{}
 	switch {
 	case strings.Contains(last.Text, "не знаю"):
 		a.Evaluation = exam.Evaluation{Verdict: exam.VerdictDontKnow}
 	case strings.Contains(last.Text, "сильно"):
 		a.Evaluation = exam.Evaluation{Verdict: exam.VerdictAnswered, Criteria: exam.Criteria{K1: 2, K2: 2, K3: 2, K4: 2}, Evidence: []int{last.Line}}
+	case strings.Contains(last.Text, "на C"):
+		a.Evaluation = exam.Evaluation{Verdict: exam.VerdictAnswered, Criteria: exam.Criteria{K1: 1, K2: 1, K3: 1, K4: 1}, Evidence: []int{last.Line}}
 	case strings.Contains(last.Text, "частично"):
 		a.Evaluation = exam.Evaluation{Verdict: exam.VerdictAnswered, Criteria: exam.Criteria{K1: 2, K2: 2, K3: 1, K4: 1}, Evidence: []int{last.Line}}
 	default:
@@ -183,14 +188,25 @@ func (e *examiner) Evaluate(_ context.Context, r EvaluationRequest) (Assessment,
 	return a, nil
 }
 
-func (e *examiner) Explain(_ context.Context, r EvaluationRequest) (string, error) {
+func (e *examiner) Feedback(_ context.Context, r FeedbackRequest) (string, error) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	if e.fail != nil {
 		return "", e.fail
 	}
-	e.explained = append(e.explained, r)
-	return "Объяснение: " + r.Node.Title + ".", nil
+	e.feedbacks = append(e.feedbacks, r)
+	if e.feedbackFail != nil {
+		return "", e.feedbackFail
+	}
+	if r.Verdict == exam.VerdictDontKnow {
+		e.explained = append(e.explained, r.EvaluationRequest)
+		return "Объяснение: " + r.Node.Title + ".", nil
+	}
+	text := "Реакция: " + r.Node.Title + "."
+	if r.Closed {
+		text += " Разбор: " + r.Node.Title + "."
+	}
+	return text, nil
 }
 
 func wav(samples int) []byte {
@@ -514,6 +530,121 @@ func TestModelFailureLeavesTheSessionAndTheRetrySucceeds(t *testing.T) {
 	}
 	if _, err := f.service.Answer(ctx, "student", s.ID, "stale", Answer{TurnID: turn.ID, Text: "ещё раз"}); code(err) != "TURN_NOT_CURRENT" {
 		t.Fatalf("stale turn: %v", err)
+	}
+}
+
+func TestFeedbackReceivesTheEngineOutcome(t *testing.T) {
+	for _, tc := range []struct {
+		name, answer string
+		closed       bool
+		next         exam.TurnKind
+		grade        exam.Grade
+	}{
+		{"complete", "сильно", true, exam.KindQuestion, exam.GradeA},
+		{"partial", "частично", false, exam.KindFollowup, ""},
+		{"weak", "слабо", false, exam.KindRephrase, ""},
+		{"give-up", "не знаю", true, exam.KindQuestion, exam.GradeD},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newFixture(t)
+			s, _, err := f.service.Start(context.Background(), "student", "subject", "start")
+			if err != nil {
+				t.Fatal(err)
+			}
+			s = f.answer(t, s, Answer{Text: tc.answer})
+			r := f.examiner.feedbacks[0]
+			if r.Closed != tc.closed || r.Next != tc.next {
+				t.Fatalf("feedback decision = %+v", r)
+			}
+			if tc.grade != "" && (r.Result.Grade == nil || *r.Result.Grade != tc.grade) {
+				t.Fatalf("feedback grade = %v, want %s", r.Result.Grade, tc.grade)
+			}
+			if tc.grade == exam.GradeA && len(r.Prerequisites) != 0 {
+				t.Fatalf("already credited prerequisites still protected: %v", r.Prerequisites)
+			}
+		})
+	}
+}
+
+func TestFeedbackFailureDoesNotCommitTheEvaluation(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	s, _, _ := f.service.Start(ctx, "student", "subject", "start")
+	a := Answer{TurnID: s.Turns[0].ID, Text: "сильно"}
+	f.examiner.feedbackFail = errors.New("feedback unavailable")
+	_, err := f.service.Answer(ctx, "student", s.ID, "answer", a)
+	if code(err) != "MODEL_UNAVAILABLE" {
+		t.Fatalf("err = %v", err)
+	}
+	stored, _ := f.service.Get(ctx, "student", s.ID)
+	if stored.Version != s.Version || len(stored.Turns) != 1 || stored.Exam.Nodes[*s.Turns[0].NodeID].Grade != nil {
+		t.Fatal("feedback failure committed grading or dialogue")
+	}
+	f.examiner.feedbackFail = nil
+	if _, err := f.service.Answer(ctx, "student", s.ID, "answer", a); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestMapFeedbackUsesTheSelectedVariantAndPreservesCurrentTraversal(t *testing.T) {
+	for _, answer := range []string{"сильно", "частично", "на C"} {
+		t.Run(answer, func(t *testing.T) {
+			f := newFixture(t)
+			variants := []exam.Variant{
+				{Question: "Первое задание?", Rephrase: "Проще первое?", Content: "Эталон первого", AssessmentGuidance: "Рубрика первого"},
+				{Question: "Второе задание?", Rephrase: "Проще второе?", Content: "Эталон второго", AssessmentGuidance: "Рубрика второго"},
+			}
+			main := exam.Node{ID: "main", Title: "Основная компетенция", Questions: []string{variants[0].Question},
+				Content: variants[0].Content, AssessmentGuidance: variants[0].AssessmentGuidance,
+				Variants: variants, Prerequisites: []string{"basic"}}
+			*f.graphs.graph = exam.Graph{Version: "map", Source: coursegraph.SourceMap, Nodes: []exam.Node{
+				{ID: "basic", Title: "Базовая компетенция", Content: "База", Questions: []string{"Базовое задание?"}}, main,
+			}}
+			// Exercise the second variant, rather than accidentally using fields
+			// of the first one retained on the published graph's node.
+			f.service.rng = func() *rand.Rand {
+				for seed := uint64(0); ; seed++ {
+					rng := rand.New(rand.NewPCG(seed, 1))
+					if rng.IntN(2) == 1 {
+						return rand.New(rand.NewPCG(seed, 1))
+					}
+				}
+			}
+			f.service.cfg.MaxQuestions = 1
+			s, _, err := f.service.Start(context.Background(), "student", "subject", "start")
+			if err != nil {
+				t.Fatal(err)
+			}
+			selected, _ := s.Exam.Graph.Node("main")
+			if selected.MainQuestion() != variants[1].Question || s.Exam.MaxQuestions != 0 {
+				t.Fatalf("map variant/limit = %+v, %d", selected, s.Exam.MaxQuestions)
+			}
+			s = f.answer(t, s, Answer{Text: answer})
+			if answer != "сильно" {
+				s = f.answer(t, s, Answer{Text: answer})
+			}
+			r := f.examiner.feedbacks[len(f.examiner.feedbacks)-1]
+			if !r.Closed || r.Node.Content != variants[1].Content || r.Node.AssessmentGuidance != variants[1].AssessmentGuidance ||
+				f.examiner.evaluated[0].Node.MainQuestion() != variants[1].Question {
+				t.Fatalf("feedback lost selected variant: %+v", r)
+			}
+			if answer == "на C" {
+				if *r.Result.Grade != exam.GradeC || s.Exam.Current.NodeID != "basic" ||
+					!slices.Equal(r.Prerequisites, []string{"Базовая компетенция"}) {
+					t.Fatalf("C must descend and protect the basic task: %+v", r)
+				}
+				return
+			} else if answer == "частично" {
+				if *r.Result.Grade != exam.GradeB {
+					t.Fatalf("grade = %v", r.Result.Grade)
+				}
+			} else if *r.Result.Grade != exam.GradeA {
+				t.Fatalf("grade = %v", r.Result.Grade)
+			}
+			if s.Exam.Nodes["basic"].Status != exam.StatusCredited || len(r.Prerequisites) != 0 {
+				t.Fatal("A/B no longer credits prerequisites")
+			}
+		})
 	}
 }
 

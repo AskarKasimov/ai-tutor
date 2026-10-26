@@ -1,4 +1,4 @@
-import { Button, Select, Text } from '@radix-ui/themes'
+import { Select, Text } from '@radix-ui/themes'
 import { useTranslation } from 'react-i18next'
 import styles from './student-course-shell.module.scss'
 
@@ -49,9 +49,6 @@ export function StudentCourseShell({
           </Text>
         )}
       </div>
-      <Button asChild variant="soft" className={styles.modeLink}>
-        <a href="/">{t('studentShell.chooseMode')}</a>
-      </Button>
     </section>
   )
 }

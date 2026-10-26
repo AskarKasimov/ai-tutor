@@ -21,9 +21,6 @@ export function StudentCourseShell({
   return (
     <section className={styles.shell} aria-label={t('studentShell.course')}>
       <div className={styles.course}>
-        <Text size="1" color="gray">
-          {t('studentShell.course')}
-        </Text>
         {canSelectCourse ? (
           <Select.Root
             value={selectedCourseId ?? ''}

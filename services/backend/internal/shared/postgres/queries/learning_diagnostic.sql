@@ -27,7 +27,7 @@ ON CONFLICT (owner_id, start_request_key) DO NOTHING;
 -- name: LearningReadSubjectLearningState :one
 SELECT subject.id,subject.name,
  COALESCE((SELECT id FROM learning_diagnostic_sessions d WHERE d.owner_id=sqlc.arg(owner_id)::text AND d.subject_id=subject.id AND d.status='completed' ORDER BY d.completed_at DESC NULLS LAST,d.id DESC LIMIT 1),'')::text AS completed_id,
- COALESCE((SELECT id FROM learning_diagnostic_sessions d WHERE d.owner_id=sqlc.arg(owner_id)::text AND d.subject_id=subject.id AND d.status='active' ORDER BY d.created_at DESC,d.id DESC LIMIT 1),'')::text AS active_id
+ COALESCE((SELECT active.id FROM learning_diagnostic_sessions active WHERE active.owner_id=sqlc.arg(owner_id)::text AND active.subject_id=subject.id AND active.status='active' AND NOT EXISTS (SELECT 1 FROM learning_diagnostic_sessions completed WHERE completed.owner_id=active.owner_id AND completed.subject_id=active.subject_id AND completed.status='completed' AND completed.completed_at>=active.created_at) ORDER BY active.created_at DESC,active.id DESC LIMIT 1),'')::text AS active_id
 FROM subjects subject WHERE subject.id=sqlc.arg(subject_id)::text;
 
 -- name: LearningLatestCompletedDiagnostic :one

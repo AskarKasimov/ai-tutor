@@ -106,9 +106,11 @@ export function LearningHome({
   const catalogSelection = requestedSubjectId
     ? subjects.find((subject) => subject.id === requestedSubjectId)
     : (subjects.find((subject) => subject.id === savedSubjectId) ??
-      (intent
-        ? subjects.find((subject) => subject.id === intent.subjectId)
-        : subjects[0]))
+      (savedSubjectId
+        ? undefined
+        : intent
+          ? subjects.find((subject) => subject.id === intent.subjectId)
+          : subjects[0]))
   const learningSubjectId =
     catalogSelection?.id ??
     requestedSubjectId ??

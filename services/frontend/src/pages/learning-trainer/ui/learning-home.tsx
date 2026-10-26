@@ -69,6 +69,20 @@ function readIntent(userId: string): Intent | null {
     return null
   }
 }
+function saveIntent(intent: Intent) {
+  try {
+    sessionStorage.setItem('ai-tutor:learning-home', JSON.stringify(intent))
+  } catch {
+    // The current page can continue from React state without persisted intent.
+  }
+}
+function clearIntent() {
+  try {
+    sessionStorage.removeItem('ai-tutor:learning-home')
+  } catch {
+    // Clearing persisted state is best-effort; the current page still resets.
+  }
+}
 
 export function LearningHome({
   requestedSubjectId,
@@ -139,11 +153,11 @@ export function LearningHome({
       mode: 'diagnostic',
     }
     if (startNew) next.sessionId = ''
-    sessionStorage.setItem('ai-tutor:learning-home', JSON.stringify(next))
+    saveIntent(next)
     setIntent(next)
   }
   function back() {
-    sessionStorage.removeItem('ai-tutor:learning-home')
+    clearIntent()
     setIntent(null)
     if (selected)
       void queryClient.invalidateQueries({
@@ -162,7 +176,7 @@ export function LearningHome({
       mode: 'training',
       diagnosticId,
     }
-    sessionStorage.setItem('ai-tutor:learning-home', JSON.stringify(next))
+    saveIntent(next)
     setIntent(next)
   }
   if (
@@ -255,6 +269,15 @@ export function LearningHome({
           <Card className={styles.notice}>
             <Text role="alert">{t('learningHome.loadError')}</Text>
             <Button onClick={() => void subjectsQuery.refetch()}>
+              {t('learningTrainer.retry')}
+            </Button>
+          </Card>
+        ) : !selected && requestedSubjectId && learning.isPending ? (
+          <Text role="status">{t('learningHome.learningLoading')}</Text>
+        ) : !selected && requestedSubjectId && learning.isError ? (
+          <Card className={styles.notice}>
+            <Text role="alert">{t('learningHome.learningError')}</Text>
+            <Button onClick={() => void learning.refetch()}>
               {t('learningTrainer.retry')}
             </Button>
           </Card>

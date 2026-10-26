@@ -187,6 +187,52 @@ it('loads subjects without creating a variant, then starts only the chosen subje
   expect(api).toHaveBeenCalled()
 })
 
+it('starts the diagnostic when saving the page intent to sessionStorage fails', async () => {
+  const router = createRouter({
+    context: { queryClient: createQueryClient() },
+    history: createMemoryHistory({ initialEntries: ['/learn'] }),
+    routeTree,
+  })
+  render(<RouterProvider router={router} />)
+  const startButton = await screen.findByRole('button', {
+    name: 'Начать обучение',
+  })
+  vi.spyOn(sessionStorage, 'setItem').mockImplementation(() => {
+    throw new DOMException('Storage disabled', 'SecurityError')
+  })
+
+  fireEvent.click(startButton)
+
+  expect(
+    await screen.findByRole('heading', { name: 'Вопрос о классификации' }),
+  ).toBeVisible()
+})
+
+it('shows a retryable learning-state error while restoring a historical subject', async () => {
+  vi.mocked(fetch).mockImplementation(async (input, init) => {
+    const url = String(input)
+    if (url.endsWith('/subjects')) return Response.json([])
+    if (url.includes('/learning-state'))
+      return new Response(null, { status: 503 })
+    return backendResponse(url, init)
+  })
+  const router = createRouter({
+    context: { queryClient: createQueryClient() },
+    history: createMemoryHistory({
+      initialEntries: ['/learn?subject_id=historic-subject'],
+    }),
+    routeTree,
+  })
+  render(<RouterProvider router={router} />)
+
+  expect(await screen.findByRole('alert')).toHaveTextContent(
+    'Не удалось загрузить состояние обучения.',
+  )
+  expect(
+    screen.getByRole('button', { name: 'Попробовать снова' }),
+  ).toBeEnabled()
+})
+
 it('returns to subject selection after refresh during a pending start and reuses its key only after a new click', async () => {
   const requests: Array<{ method: string; path: string; key?: string }> = []
   let deferFirstVariant = true

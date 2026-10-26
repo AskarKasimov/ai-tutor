@@ -49,26 +49,6 @@ function saveSelectedSubject(userId: string, subjectId: string) {
     // The selection still works for this page when storage is unavailable.
   }
 }
-function readIntent(userId: string): Intent | null {
-  try {
-    const raw = sessionStorage.getItem('ai-tutor:learning-home')
-    const value = JSON.parse(raw ?? 'null') as Intent | null
-    const valid =
-      value?.userId === userId &&
-      value.apiBase === apiBase &&
-      (value.mode === 'diagnostic' || value.mode === 'training')
-    if (!value || !valid) return null
-    if (value.mode === 'diagnostic' && !value.sessionId) {
-      // A pending create is not a resumable session. Require a new explicit
-      // start click, while diagnostic identity storage retains its idempotency keys.
-      sessionStorage.removeItem('ai-tutor:learning-home')
-      return null
-    }
-    return value
-  } catch {
-    return null
-  }
-}
 function saveIntent(intent: Intent) {
   try {
     sessionStorage.setItem('ai-tutor:learning-home', JSON.stringify(intent))
@@ -98,9 +78,9 @@ export function LearningHome({
   const [savedSubjectId, setSavedSubjectId] = useState(() =>
     userId ? readSelectedSubject(userId) : '',
   )
-  const [intent, setIntent] = useState<Intent | null>(() =>
-    userId ? readIntent(userId) : null,
-  )
+  // A persisted intent is only request metadata for the current visit. On a
+  // fresh visit, show course progress first and resume only after an explicit click.
+  const [intent, setIntent] = useState<Intent | null>(null)
   const subjects = subjectsQuery.data ?? []
   // A direct course URL wins; otherwise reuse the shared selection across modes.
   const catalogSelection = requestedSubjectId

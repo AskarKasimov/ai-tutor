@@ -118,7 +118,27 @@ func validateTypedYAML(data []byte) error {
 	if err := yaml.Unmarshal(data, &root); err != nil {
 		return fmt.Errorf("decode config: %w", err)
 	}
+	if err := rejectYAMLMerge(&root); err != nil {
+		return err
+	}
 	return validateYAMLNode(root.Content[0], reflect.TypeOf(backendYAML{}), "config")
+}
+
+// Merge keys can hide scalar coercions from the typed-node validator.
+func rejectYAMLMerge(node *yaml.Node) error {
+	if node.Kind == yaml.MappingNode {
+		for i := 0; i < len(node.Content); i += 2 {
+			if node.Content[i].Tag == "!!merge" {
+				return fmt.Errorf("YAML merge keys are not supported (line %d)", node.Content[i].Line)
+			}
+		}
+	}
+	for _, child := range node.Content {
+		if err := rejectYAMLMerge(child); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func validateYAMLNode(node *yaml.Node, typ reflect.Type, path string) error {

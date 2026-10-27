@@ -8,7 +8,7 @@
 
 Файл содержит routes, pools, routing_profiles, instances и model_rules. Для общего приложения обязательны профили learning-assessment, learning-tutor и learning-taskgen; каждый должен иметь маршрут на инстанс из pools.high. У standalone-конфигурации required_routing_profiles: [] сохраняет необязательность этих требований.
 
-По согласованному решению владельца upstream model tokens пока допустимы в YAML и предназначены для Git. Пустая строка отключает Bearer auth. Не печатайте содержимое токенов в логах, тестовых выводах и отчётах. Настройки gateway из прежних JSON файлов больше не загружаются. Loader проверяет типы YAML-скаляров: целые числа, строки и булевы значения не принимаются с coercion; свободные JSON body сохраняют свои типы.
+По согласованному решению владельца upstream model tokens пока допустимы в YAML и предназначены для Git. Пустая строка отключает Bearer auth. Не печатайте содержимое токенов в логах, тестовых выводах и отчётах. Настройки gateway из прежних JSON файлов больше не загружаются. Loader проверяет типы YAML-скаляров: целые числа, строки и булевы значения не принимаются с coercion; свободные JSON body сохраняют свои типы. YAML merge keys (`<<`) не поддерживаются.
 
 Правила модели находятся в model_rules.models.<model>.reasoning_effort_body того же YAML. Для Qwen3.6 reasoning отключён на low и medium через chat_template_kwargs.enable_thinking: false, поскольку Qwen игнорирует reasoning_effort. Правило инстанса имеет приоритет над правилом модели для того же уровня. Поля model, messages, stream, complexity, urgent и разрешённые клиентские параметры запрещены в extra body.
 

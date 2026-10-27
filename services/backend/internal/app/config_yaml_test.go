@@ -56,6 +56,7 @@ func TestLoadConfigRejectsInvalidYAML(t *testing.T) {
 		{"duplicate", strings.Replace(validBackendYAML, "server:\n", "server:\nserver:\n", 1)},
 		{"multiple documents", validBackendYAML + "---\n" + validBackendYAML},
 		{"wrong type", strings.Replace(validBackendYAML, "count: 1", "count: many", 1)},
+		{"merge fractional integer", strings.Replace(validBackendYAML, "count: 1", "<<: {count: 1.9}", 1)},
 		{"fractional integer", strings.Replace(validBackendYAML, "count: 1", "count: 1.9", 1)},
 		{"string boolean", strings.Replace(validBackendYAML, "enabled: false", "enabled: yes", 1)},
 		{"boolean string", strings.Replace(validBackendYAML, "bucket: audio", "bucket: false", 1)},

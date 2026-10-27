@@ -65,11 +65,12 @@ func TestLoadConfigYAMLStrictlyParsesDurationsTokensAndModelRules(t *testing.T) 
 
 func TestLoadConfigYAMLRejectsUnknownDuplicateMultipleAndBadDuration(t *testing.T) {
 	cases := map[string]string{
-		"unknown":        validGatewayYAML + "unknown: true\n",
-		"duplicate":      strings.Replace(validGatewayYAML, "listen_address:", "listen_address: \"x\"\nlisten_address:", 1),
-		"multiple":       validGatewayYAML + "---\n" + validGatewayYAML,
-		"duration type":  strings.Replace(validGatewayYAML, "request_deadline: 90s", "request_deadline: 0", 1),
-		"duration value": strings.Replace(validGatewayYAML, "request_deadline: 90s", "request_deadline: soon", 1),
+		"merge fractional integer": strings.Replace(validGatewayYAML, "max_in_flight: 1", "<<: {max_in_flight: 1.9}", 1),
+		"unknown":                  validGatewayYAML + "unknown: true\n",
+		"duplicate":                strings.Replace(validGatewayYAML, "listen_address:", "listen_address: \"x\"\nlisten_address:", 1),
+		"multiple":                 validGatewayYAML + "---\n" + validGatewayYAML,
+		"duration type":            strings.Replace(validGatewayYAML, "request_deadline: 90s", "request_deadline: 0", 1),
+		"duration value":           strings.Replace(validGatewayYAML, "request_deadline: 90s", "request_deadline: soon", 1),
 	}
 	for name, body := range cases {
 		t.Run(name, func(t *testing.T) {

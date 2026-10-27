@@ -22,13 +22,8 @@ mkcert -install
 mkdir -p certs
 mkcert -cert-file certs/server.pem -key-file certs/server-key.pem localhost 127.0.0.1 ::1
 
-https_port=$(printenv PROXY_HTTPS_PORT 2>/dev/null || true)
-if [ -z "$https_port" ]; then
-    https_port=$(sed -n 's/^PROXY_HTTPS_PORT=//p' .env | tail -n 1)
-fi
-if [ -z "$https_port" ]; then
-    https_port=$(sed -n 's/^PROXY_HTTPS_PORT=//p' .env.example | tail -n 1)
-fi
+# Compose resolves dotenv quoting, comments, interpolation, and shell overrides.
+https_port=$(docker compose --env-file .env -f docker-compose.yaml -f docker-compose.dev.yaml config --environment | sed -n 's/^PROXY_HTTPS_PORT=//p')
 case "$https_port" in
     ''|*[!0-9]*) printf '%s\n' 'PROXY_HTTPS_PORT must be numeric.' >&2; exit 1 ;;
 esac

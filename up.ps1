@@ -72,11 +72,12 @@ if (-not (Test-Path .env)) {
     [IO.File]::WriteAllText((Join-Path $PWD '.env'), $text, (New-Object Text.UTF8Encoding $false))
 }
 
-$portLine = Get-Content .env -Encoding UTF8 | Where-Object { $_ -match '^PROXY_HTTPS_PORT=' } | Select-Object -Last 1
-if (-not $portLine) {
-    $portLine = Get-Content .env.example -Encoding UTF8 | Where-Object { $_ -match '^PROXY_HTTPS_PORT=' } | Select-Object -Last 1
-}
-$httpsPort = if ($portLine) { $portLine.Substring('PROXY_HTTPS_PORT='.Length) } else { '8443' }
+# Let Compose resolve dotenv syntax and process environment overrides.
+$composeEnvironment = & docker @compose config --environment
+if ($LASTEXITCODE -ne 0) { Fail 'Не удалось прочитать окружение Compose.' }
+$portLine = $composeEnvironment | Where-Object { $_ -match '^PROXY_HTTPS_PORT=' } | Select-Object -Last 1
+$httpsPort = if ($portLine) { $portLine.Substring('PROXY_HTTPS_PORT='.Length) } else { '' }
+if ($httpsPort -notmatch '^\d+$') { Fail 'PROXY_HTTPS_PORT должен быть числом.' }
 $appUrl = "https://localhost:$httpsPort"
 $adminUrl = "$appUrl/admin/courses"
 

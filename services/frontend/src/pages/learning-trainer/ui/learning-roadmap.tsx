@@ -1,8 +1,13 @@
 import { Badge, Button, Heading, Text } from '@radix-ui/themes'
-import { BookOpen, ChevronDown, Flag, Route } from 'lucide-react'
+import { Flag, Route } from 'lucide-react'
+import { lazy, Suspense, useMemo } from 'react'
+import { buildDiagnosticGraph } from '../model/diagnostic-graph'
 import { useTranslation } from 'react-i18next'
 import { useCompetencyMapOutlineQuery } from '@/features/import-learning-competency-map'
 import styles from './learning-roadmap.module.scss'
+
+const CourseGraphCanvas = lazy(() => import('@/widgets/course-graph'))
+const materialNames = new Map<string, string>()
 
 export function LearningRoadmap({
   userId,
@@ -13,6 +18,10 @@ export function LearningRoadmap({
 }) {
   const { t } = useTranslation()
   const query = useCompetencyMapOutlineQuery(userId, subjectId)
+  const graph = useMemo(
+    () => (query.data ? buildDiagnosticGraph(query.data) : undefined),
+    [query.data],
+  )
   const competencies = query.data?.competencies ?? []
   const topics = competencies.flatMap((item) => item.constituents)
   const outcomes = topics.flatMap((item) => item.outcomes)
@@ -60,50 +69,17 @@ export function LearningRoadmap({
               outcomes: outcomes.length,
             })}
           </Text>
-          <ol
-            className={styles.path}
-            aria-label={t('learningRoadmap.pathLabel')}
+          <Suspense
+            fallback={<Text role="status">{t('learningRoadmap.loading')}</Text>}
           >
-            {competencies.map((competency, index) => (
-              <li key={competency.id} className={styles.step}>
-                <span className={styles.number} aria-hidden="true">
-                  {String(index + 1).padStart(2, '0')}
-                </span>
-                <details className={styles.competency} open={index === 0}>
-                  <summary className={styles.summary}>
-                    <span className={styles.summaryText}>
-                      <span className={styles.name}>{competency.name}</span>
-                      <Text as="span" size="2" color="gray">
-                        {t('learningRoadmap.topicCount', {
-                          count: competency.constituents.length,
-                        })}
-                      </Text>
-                    </span>
-                    <ChevronDown
-                      size={20}
-                      className={styles.chevron}
-                      aria-hidden="true"
-                    />
-                  </summary>
-                  <div className={styles.topics}>
-                    {competency.constituents.map((topic) => (
-                      <section key={topic.id} className={styles.topic}>
-                        <Heading as="h3" size="3" className={styles.topicTitle}>
-                          <BookOpen size={17} aria-hidden="true" />
-                          {topic.name}
-                        </Heading>
-                        <ul className={styles.outcomes}>
-                          {topic.outcomes.map((outcome) => (
-                            <li key={outcome.id}>{outcome.name}</li>
-                          ))}
-                        </ul>
-                      </section>
-                    ))}
-                  </div>
-                </details>
-              </li>
-            ))}
-          </ol>
+            {graph && (
+              <CourseGraphCanvas
+                key={subjectId}
+                graph={graph}
+                materialNames={materialNames}
+              />
+            )}
+          </Suspense>
           <div className={styles.destination}>
             <Flag size={20} aria-hidden="true" />
             <Text size="2">{t('learningRoadmap.next')}</Text>

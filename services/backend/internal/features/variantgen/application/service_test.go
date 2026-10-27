@@ -190,3 +190,37 @@ func TestBuildSkipsShortConstituentsWithinOneCompetency(t *testing.T) {
 		t.Fatalf("error = %v", err)
 	}
 }
+
+func TestPreviewSelectsExactlyThePersistedOutcomesWithoutChoosingTasksOrIDs(t *testing.T) {
+	chooser := &fixedChooser{index: 1}
+	ids := &fixedIDs{}
+	service := New(nil, chooser, ids, time.Now)
+	candidates := []variant.CandidateOutcome{
+		candidate("c1", "Comp", "low-a", "Low A", "knowledge", 3, 10, "low-a-task", 1),
+		candidate("c1", "Comp", "low-b", "Low B", "understanding", 2, 20, "low-b-task", 2),
+		candidate("c1", "Comp", "unused", "Unused", "application", 5, 30, "unused-task", 3),
+		candidate("c1", "Comp", "main", "Main", "analysis", 2, 40, "main-task-1", 4),
+		candidate("c1", "Comp", "main", "Main", "analysis", 2, 40, "main-task-2", 4),
+		candidate("short", "Not enough", "only", "Only", "knowledge", 1, 50, "only-task", 5),
+	}
+	preview, err := service.buildSelected("", "subject", "Subject", 7, candidates, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if chooser.calls != 0 || ids.n != 0 {
+		t.Fatalf("preview used randomness or IDs: %d %d", chooser.calls, ids.n)
+	}
+	created, err := service.build("user", "subject", "Subject", 7, candidates)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(preview.Competencies) != 1 || len(preview.SkippedCompetencies) != 1 {
+		t.Fatalf("preview includes an ineligible competency: %+v", preview)
+	}
+	for i, task := range preview.Competencies[0].Tasks {
+		actual := created.Competencies[0].Tasks[i]
+		if task.Role != actual.Role || task.Task.Outcome.ID != actual.Task.Outcome.ID || task.Task.Constituent.ID != actual.Task.Constituent.ID {
+			t.Fatalf("preview differs from saved selection: %+v vs %+v", task, actual)
+		}
+	}
+}

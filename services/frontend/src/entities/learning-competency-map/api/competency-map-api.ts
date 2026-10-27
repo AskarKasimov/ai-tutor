@@ -144,7 +144,7 @@ export async function importCompetencyMap(
   }
 }
 
-// The student outline retains only names and IDs, never questions or answer data.
+// The server applies the exact diagnostic selection and returns no task content.
 const outlineSchema = z.object({
   competencies: z.array(
     z.object({
@@ -154,13 +154,7 @@ const outlineSchema = z.object({
         z.object({
           id: z.string(),
           name: z.string(),
-          outcomes: z.array(
-            z.object({
-              id: z.string(),
-              name: z.string(),
-              include_in_test: z.boolean().nullable(),
-            }),
-          ),
+          outcomes: z.array(z.object({ id: z.string(), name: z.string() })),
         }),
       ),
     }),
@@ -172,7 +166,7 @@ export async function readCompetencyMapOutline(
   signal: AbortSignal,
 ): Promise<CompetencyMapOutline> {
   const response = await apiFetch(
-    `${apiBase}/subjects/${encodeURIComponent(subjectId)}/competency-map`,
+    `${apiBase}/subjects/${encodeURIComponent(subjectId)}/diagnostic-outline`,
     {
       credentials: 'include',
       signal: AbortSignal.any([signal, AbortSignal.timeout(30_000)]),
@@ -181,21 +175,5 @@ export async function readCompetencyMapOutline(
   const parsed = outlineSchema.safeParse(await readResponse(response))
   if (!parsed.success)
     throw new Error(i18n.t('learningCompetencyMap.invalidResponse'))
-  return {
-    competencies: parsed.data.competencies
-      .map((competency) => ({
-        id: competency.id,
-        name: competency.name,
-        constituents: competency.constituents
-          .map((topic) => ({
-            id: topic.id,
-            name: topic.name,
-            outcomes: topic.outcomes
-              .filter((outcome) => outcome.include_in_test === true)
-              .map(({ id, name }) => ({ id, name })),
-          }))
-          .filter((topic) => topic.outcomes.length > 0),
-      }))
-      .filter((competency) => competency.constituents.length > 0),
-  }
+  return parsed.data
 }

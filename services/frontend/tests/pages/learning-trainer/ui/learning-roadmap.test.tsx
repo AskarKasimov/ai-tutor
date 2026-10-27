@@ -39,7 +39,7 @@ it('shows a loading state, then allows retrying a failed outline without startin
   fireEvent.click(screen.getByRole('button', { name: 'Попробовать снова' }))
   expect(
     await screen.findByText(
-      'В карте пока нет образовательных результатов, включённых в обучение.',
+      'В карте пока нет блоков, подходящих для диагностики: на компетенцию нужны три готовых TRUE-ОР.',
     ),
   ).toBeVisible()
   expect(read).toHaveBeenCalledTimes(2)
@@ -76,12 +76,14 @@ it('replaces the outline when switching courses and preserves map order', async 
   const view = render(<LearningRoadmap userId="student" subjectId="one" />, {
     wrapper,
   })
+  fireEvent.click(await screen.findByLabelText('Тема one'))
   expect(await screen.findByText('Результат one')).toBeVisible()
-  expect(screen.getByText('Следующий результат')).not.toBeVisible()
+  expect(screen.queryByText('Следующий результат')).not.toBeInTheDocument()
   expect(
     screen.getByText('Компетенций: 2 · Тем: 2 · Результатов: 2'),
   ).toBeVisible()
   view.rerender(<LearningRoadmap userId="student" subjectId="two" />)
+  fireEvent.click(await screen.findByLabelText('Тема two'))
   expect(await screen.findByText('Результат two')).toBeVisible()
   expect(screen.queryByText('Результат one')).not.toBeInTheDocument()
   expect(read).toHaveBeenLastCalledWith('two', expect.any(AbortSignal))

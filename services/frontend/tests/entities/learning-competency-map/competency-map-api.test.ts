@@ -47,7 +47,7 @@ it('imports into the explicit encoded subject and preserves multipart file data'
   ).toMatchObject({ name: 'x.csv', type: 'text/csv' })
 })
 
-it('keeps only TRUE outcomes in map order and removes empty topics and competencies', async () => {
+it('reads the server-selected diagnostic blocks without exposing task content', async () => {
   vi.stubGlobal(
     'fetch',
     vi.fn().mockResolvedValue(
@@ -58,27 +58,20 @@ it('keeps only TRUE outcomes in map order and removes empty topics and competenc
             name: 'Первая',
             constituents: [
               {
-                id: 'empty',
-                name: 'Пустая',
-                outcomes: [{ id: 'no', name: 'Нет', include_in_test: false }],
-              },
-              {
                 id: 't1',
-                name: 'Тема',
+                name: 'Выбранная тема',
                 outcomes: [
                   {
                     id: 'o1',
-                    name: 'Первый',
-                    include_in_test: true,
-                    tasks: [{ question: 'Не показывать вопрос' }],
+                    name: 'Основной результат',
+                    role: 'main',
+                    question: 'Не показывать вопрос',
                   },
-                  { id: 'null', name: 'Не включён', include_in_test: null },
-                  { id: 'o2', name: 'Второй', include_in_test: true },
+                  { id: 'o2', name: 'Базовый результат', role: 'basic' },
                 ],
               },
             ],
           },
-          { id: 'c2', name: 'Пустая', constituents: [] },
         ],
       }),
     ),
@@ -93,10 +86,10 @@ it('keeps only TRUE outcomes in map order and removes empty topics and competenc
         constituents: [
           {
             id: 't1',
-            name: 'Тема',
+            name: 'Выбранная тема',
             outcomes: [
-              { id: 'o1', name: 'Первый' },
-              { id: 'o2', name: 'Второй' },
+              { id: 'o1', name: 'Основной результат' },
+              { id: 'o2', name: 'Базовый результат' },
             ],
           },
         ],
@@ -104,7 +97,7 @@ it('keeps only TRUE outcomes in map order and removes empty topics and competenc
     ],
   })
   expect(vi.mocked(fetch).mock.calls[0][0]).toBe(
-    '/api/v1/learn/subjects/course%2Fa/competency-map',
+    '/api/v1/learn/subjects/course%2Fa/diagnostic-outline',
   )
 })
 

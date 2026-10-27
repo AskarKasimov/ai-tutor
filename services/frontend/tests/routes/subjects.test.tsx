@@ -53,7 +53,7 @@ function backendResponse(url: string, init?: RequestInit): Promise<Response> {
         },
       ]),
     )
-  if (url.endsWith('/competency-map'))
+  if (url.endsWith('/diagnostic-outline'))
     return Promise.resolve(
       Response.json({
         competencies: [
@@ -69,11 +69,6 @@ function backendResponse(url: string, init?: RequestInit): Promise<Response> {
                     id: 'o1',
                     name: 'Различать классификацию и регрессию',
                     include_in_test: true,
-                  },
-                  {
-                    id: 'o2',
-                    name: 'Скрытый результат',
-                    include_in_test: false,
                   },
                 ],
               },
@@ -186,11 +181,14 @@ it('loads subjects without creating a variant, then starts only the chosen subje
   expect(
     await screen.findByRole('heading', { name: 'Ваш путь обучения' }),
   ).toBeVisible()
-  expect(await screen.findByText('Модели машинного обучения')).toBeVisible()
+  expect(
+    await screen.findByLabelText('Модели машинного обучения'),
+  ).toBeInTheDocument()
+  fireEvent.click(await screen.findByLabelText('Выбор модели'))
   expect(screen.getByText('Различать классификацию и регрессию')).toBeVisible()
   expect(screen.queryByText('Скрытый результат')).not.toBeInTheDocument()
   expect(requests).toContain(
-    'GET /api/v1/learn/subjects/subject-1/competency-map',
+    'GET /api/v1/learn/subjects/subject-1/diagnostic-outline',
   )
   const startButton = screen.getByRole('button', { name: 'Начать обучение' })
   expect(startButton).toHaveAccessibleDescription(

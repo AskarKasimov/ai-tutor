@@ -82,7 +82,7 @@ import { AdminCourseDetailShell } from '@/widgets/admin-course-detail-shell'
 import { CompetencyMapImport } from './competency-map-import'
 
 // React Flow and the layout load only when the graph is shown.
-const CourseGraphCanvas = lazy(() => import('./course-graph-canvas'))
+const CourseGraphCanvas = lazy(() => import('@/widgets/course-graph'))
 
 type MaterialListRow =
   | { id: string; week: string; queued: MaterialQueueItem }

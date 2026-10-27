@@ -304,13 +304,14 @@ export function LearningHome({
                   </li>
                 ))}
               </ol>
-              {selected.learning_ready && stage !== 'training' && (
-                <LearningRoadmap
-                  key={selected.id}
-                  userId={userId}
-                  subjectId={selected.id}
-                />
-              )}
+              {selected.learning_ready &&
+                (stage === 'start' || stage === 'completed') && (
+                  <LearningRoadmap
+                    key={selected.id}
+                    userId={userId}
+                    subjectId={selected.id}
+                  />
+                )}
               {learning.isPending ? (
                 <Text role="status">{t('learningHome.learningLoading')}</Text>
               ) : learning.isError ? (

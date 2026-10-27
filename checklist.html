@@ -136,7 +136,7 @@
 
     <section>
       <h2>2. course-graph: построение графа <small></small></h2>
-      <p>Этапы обработки — Python-сервис services/course-graph; запуск, хранение графа и админка — модуль backend. Зависимости и Docker-сборка — uv, pyproject.toml и uv.lock; extras CPU/GPU и Docling.</p>
+      <p>Этапы обработки — Python-сервис services/course-graph; запуск, хранение графа и админка — модуль backend. Зависимости и Docker-сборка — uv, pyproject.toml и uv.lock; extras CPU/GPU и Docling. В runtime YAML пустой cache.documents_dir отключает дисковый OCR-кеш; embedding.threads ограничен снизу значением 1.</p>
       <ul>
         <li><label><input type="checkbox" data-id="cg-ocr" checked><span><span class="t">Этап 1. OCR</span><span class="d">PDF → текст: по документу на лекцию, лабу и туториал недели. Кеш завершённых результатов, общее вычисление одинаковых загрузок, защита native-кода и корректный crop формул. Устройство — COURSE_GRAPH_DEVICE=cpu|gpu в .env; OMP_NUM_THREADS и MKL_NUM_THREADS могут переопределить потоки YAML. Бенчмарк OCR настраивает библиотечные потоки до импорта Docling и использует временный конфиг с изолированным кешем документов. Замеры и ограничения: documents/ocr-performance-2026-10-18.md.</span></span></label></li>
         <li><label><input type="checkbox" data-id="cg-clean" checked><span><span class="t">Этап 2. Очистка LLM</span><span class="d">Убрать лектора, команду курса, office hours, объявления, «спасибо за внимание». #104: /topics/extract вместе с темами, после OCR и машинного перевода.</span></span></label></li>

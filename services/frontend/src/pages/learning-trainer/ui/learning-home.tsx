@@ -310,6 +310,7 @@ export function LearningHome({
                     key={selected.id}
                     userId={userId}
                     subjectId={selected.id}
+                    subjectName={selected.name}
                   />
                 )}
               {learning.isPending ? (

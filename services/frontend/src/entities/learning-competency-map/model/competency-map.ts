@@ -19,7 +19,7 @@ export type CompetencyMapOutline = {
     constituents: {
       id: string
       name: string
-      outcomes: { id: string; name: string }[]
+      outcomes: { id: string; name: string; role?: 'main' | 'basic' }[]
     }[]
   }[]
 }

@@ -1,27 +1,25 @@
 import { Badge, Button, Heading, Text } from '@radix-ui/themes'
 import { Flag, Route } from 'lucide-react'
-import { lazy, Suspense, useMemo } from 'react'
-import { buildDiagnosticGraph } from '../model/diagnostic-graph'
+import { lazy, Suspense } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useCompetencyMapOutlineQuery } from '@/features/import-learning-competency-map'
 import styles from './learning-roadmap.module.scss'
 
-const CourseGraphCanvas = lazy(() => import('@/widgets/course-graph'))
-const materialNames = new Map<string, string>()
+const DiagnosticRoadmapCanvas = lazy(
+  () => import('./diagnostic-roadmap-canvas'),
+)
 
 export function LearningRoadmap({
   userId,
   subjectId,
+  subjectName,
 }: {
   userId: string
   subjectId: string
+  subjectName?: string
 }) {
   const { t } = useTranslation()
   const query = useCompetencyMapOutlineQuery(userId, subjectId)
-  const graph = useMemo(
-    () => (query.data ? buildDiagnosticGraph(query.data) : undefined),
-    [query.data],
-  )
   const competencies = query.data?.competencies ?? []
   const topics = competencies.flatMap((item) => item.constituents)
   const outcomes = topics.flatMap((item) => item.outcomes)
@@ -72,11 +70,11 @@ export function LearningRoadmap({
           <Suspense
             fallback={<Text role="status">{t('learningRoadmap.loading')}</Text>}
           >
-            {graph && (
-              <CourseGraphCanvas
+            {query.data && (
+              <DiagnosticRoadmapCanvas
                 key={subjectId}
-                graph={graph}
-                materialNames={materialNames}
+                outline={query.data}
+                subjectTitle={subjectName || subjectId}
               />
             )}
           </Suspense>

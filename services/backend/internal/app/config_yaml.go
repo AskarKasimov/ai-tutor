@@ -314,11 +314,40 @@ func LoadConfig(path string) (Config, error) {
 		return Config{}, fmt.Errorf("required secrets missing: %s", strings.Join(missing, ", "))
 	}
 	if err := c.validate(); err != nil {
-		return Config{}, err
+		return Config{}, yamlConfigValidationError(err)
 	}
 	c.OCRURL = c.CourseGraphURL
 	c.OCRTimeout = c.CourseGraphTimeout
 	return c, nil
+}
+
+// YAML-backed application settings use YAML paths in diagnostics. ConfigFromEnv
+// retains the legacy environment-variable diagnostics for existing callers.
+func yamlConfigValidationError(err error) error {
+	message := err.Error()
+	for _, field := range []struct{ env, path string }{
+		{"BACKEND_LISTEN_ADDRESS", "server.listen_address"},
+		{"BACKEND_STT_URL", "voice.stt.url"},
+		{"BACKEND_TTS_URL", "voice.tts.url"},
+		{"BACKEND_TTS_CFG_VALUE", "voice.tts.cfg_value"},
+		{"BACKEND_TTS_INFERENCE_TIMESTEPS", "voice.tts.inference_timesteps"},
+		{"BACKEND_VOICE_TIMEOUT", "voice.timeout"},
+		{"BACKEND_S3_BUCKET", "storage.s3.bucket"},
+		{"BACKEND_S3_REGION", "storage.s3.region"},
+		{"BACKEND_S3_ENDPOINT", "storage.s3.endpoint"},
+		{"BACKEND_S3_TIMEOUT", "storage.s3.timeout"},
+		{"BACKEND_AUDIO_WORKERS", "workers.audio.count"},
+		{"BACKEND_AUDIO_POLL_INTERVAL", "workers.audio.poll_interval"},
+		{"learning tutor context limits", "tutor.context limits"},
+		{"BACKEND_LLM_GATEWAY_ADDR", "llm_gateway.address"},
+		{"BACKEND_LLM_TIMEOUT", "llm_gateway.timeout"},
+		{"BACKEND_COURSE_GRAPH_TIMEOUT", "course_graph.timeout"},
+		{"BACKEND_GEEK_QUESTION_LIMIT", "geek.question_limit"},
+		{"BACKEND_MAX_UPLOAD_BYTES", "uploads.max_bytes"},
+	} {
+		message = strings.ReplaceAll(message, field.env, field.path)
+	}
+	return fmt.Errorf("invalid backend config: %s", message)
 }
 
 // LoadLLMGatewayConfig reads and validates the CLI-required gateway section

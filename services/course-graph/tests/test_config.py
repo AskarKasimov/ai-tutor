@@ -56,6 +56,22 @@ def test_load_config_checks_ranges_and_new_settings(tmp_path):
         load_config(write_config(tmp_path, valid_yaml().replace("attempts: 3", "attempts: 0")))
 
 
+def test_document_cache_can_be_disabled_with_empty_path_and_embedding_threads_above_64(tmp_path, monkeypatch):
+    from course_graph.ocr.converter import get_document_cache_path
+
+    yaml = valid_yaml().replace("threads: 4", "threads: 96", 1)
+    yaml = yaml.replace('documents_dir: "/tmp/ocr"', 'documents_dir: ""')
+    settings = load_config(write_config(tmp_path, yaml))
+    assert settings.embedding.threads == 96
+
+    # The production loader uses one cached snapshot; substitute the loaded settings
+    # to prove an explicitly empty documents_dir disables the disk cache.
+    from course_graph.ocr import converter
+
+    monkeypatch.setattr(converter, "get_settings", lambda: settings)
+    assert get_document_cache_path(b"same document", "source.pdf") is None
+
+
 def test_library_threads_use_yaml_when_environment_is_missing_or_empty(tmp_path, monkeypatch):
     settings = load_config(write_config(tmp_path, valid_yaml().replace("ocr: {threads: 4", "ocr: {threads: 7", 1)))
     monkeypatch.delenv("OMP_NUM_THREADS", raising=False)

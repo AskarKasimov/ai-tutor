@@ -46,7 +46,7 @@ class GatewaySettings(SettingsModel):
 
 class EmbeddingSettings(SettingsModel):
     model: StrictStr = Field(min_length=1)
-    threads: Annotated[StrictInt, Field(ge=1, le=64)]
+    threads: Annotated[StrictInt, Field(ge=1)]
 
 
 class TopicSettings(SettingsModel):
@@ -83,7 +83,7 @@ class OCRSettings(SettingsModel):
 
 
 class CacheSettings(SettingsModel):
-    documents_dir: StrictStr = Field(min_length=1)
+    documents_dir: StrictStr
     rapidocr_dir: StrictStr = Field(min_length=1)
 
 

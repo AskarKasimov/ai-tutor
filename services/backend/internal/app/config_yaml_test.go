@@ -83,6 +83,17 @@ func TestLoadConfigAllowsIntegerForFloatField(t *testing.T) {
 	}
 }
 
+func TestLoadConfigValidationErrorsUseYAMLPaths(t *testing.T) {
+	t.Setenv("BACKEND_DATABASE_URL", "postgres://example/db")
+	t.Setenv("BACKEND_S3_ACCESS_KEY", "private-access")
+	t.Setenv("BACKEND_S3_SECRET_KEY", "private-secret")
+	badYAML := strings.Replace(validBackendYAML, "timeout: 120s", "timeout: -1s", 1)
+	_, err := LoadConfig(writeYAML(t, badYAML))
+	if err == nil || !strings.Contains(err.Error(), "voice.timeout") || strings.Contains(err.Error(), "BACKEND_VOICE_TIMEOUT") || strings.Contains(err.Error(), "private-") {
+		t.Fatalf("validation error = %v, want safe YAML path", err)
+	}
+}
+
 func TestLoadConfigMissingBackendSecretsAreNamedWithoutValues(t *testing.T) {
 	t.Setenv("BACKEND_DATABASE_URL", "")
 	t.Setenv("BACKEND_S3_ACCESS_KEY", "")

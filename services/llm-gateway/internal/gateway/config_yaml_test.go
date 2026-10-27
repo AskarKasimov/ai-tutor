@@ -93,3 +93,32 @@ func TestLoadConfigYAMLRequiredProfilesIncludesStandaloneEmptyList(t *testing.T)
 		t.Fatalf("missing profile error = %v", err)
 	}
 }
+
+func TestLoadConfigYAMLRejectsExplicitZeroLimits(t *testing.T) {
+	for _, field := range []string{"max_body_bytes", "max_pending", "max_pending_bytes", "max_connections", "grpc_max_receive_bytes", "grpc_max_send_bytes", "grpc_max_concurrent_streams"} {
+		t.Run(field, func(t *testing.T) {
+			body := validGatewayYAML + field + ": 0\n"
+			if _, err := LoadConfig(writeGatewayYAML(t, body)); err == nil {
+				t.Fatal("explicit zero limit unexpectedly accepted")
+			}
+		})
+	}
+}
+
+func TestLoadConfigYAMLDefaultsAbsentLimitsAndPreservesInstanceZeroTimeoutInheritance(t *testing.T) {
+	c, err := LoadConfig(writeGatewayYAML(t, validGatewayYAML+""))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.MaxPending != 1000 || c.MaxBodyBytes != 1<<20 || c.GRPCMaxReceiveBytes != 2<<20 || c.Instances[0].Timeout != 45*time.Second {
+		t.Fatalf("defaults/inherited timeout = %#v", c)
+	}
+	body := strings.Replace(validGatewayYAML, "    max_in_flight: 1", "    timeout: 0s\n    max_in_flight: 1", 1)
+	c, err = LoadConfig(writeGatewayYAML(t, body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Instances[0].Timeout != 45*time.Second {
+		t.Fatalf("instance timeout = %s", c.Instances[0].Timeout)
+	}
+}

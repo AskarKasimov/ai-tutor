@@ -15,11 +15,20 @@ import resource
 import tempfile
 import time
 from types import SimpleNamespace
+import yaml
 
 from pypdf import PdfReader, PdfWriter
 
-from course_graph.ocr.converter import convert_document, get_ocr_configuration
-from course_graph.ocr.enrichment import AuditedEngine, NativePdfTextReader
+
+
+def prepare_benchmark_config(config_path: Path, cache_dir: Path) -> Path:
+    """Snapshot service settings with only the document cache redirected."""
+    config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+    config["cache"]["documents_dir"] = str(cache_dir)
+    benchmark_config = cache_dir / "course-graph-benchmark.yaml"
+    benchmark_config.write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
+    os.environ["COURSE_GRAPH_CONFIG"] = str(benchmark_config)
+    return benchmark_config
 
 
 def main():
@@ -41,6 +50,7 @@ def main():
     writer.write(stream)
     content = stream.getvalue()
     if args.native_only:
+        from course_graph.ocr.enrichment import NativePdfTextReader
         from docling_core.types.doc import BoundingBox, CoordOrigin
         native = NativePdfTextReader(content)
         started = time.perf_counter()
@@ -62,16 +72,24 @@ def main():
         args.output.write_text(json.dumps(report, indent=2))
         print(json.dumps(report), flush=True)
         return
-    calls = []
-    predict = AuditedEngine.predict_batch
-
-    def measured(self, inputs):
-        calls.append(len(inputs))
-        return predict(self, inputs)
-
-    AuditedEngine.predict_batch = measured
     with tempfile.TemporaryDirectory(prefix="ocr-benchmark-") as cache:
-        os.environ["COURSE_GRAPH_OCR_CACHE_DIR"] = cache
+        cache_path = Path(cache)
+        config_path = Path(os.environ.get("COURSE_GRAPH_CONFIG", "config/dev.yaml"))
+        prepare_benchmark_config(config_path, cache_path)
+        from course_graph.config import get_settings
+        get_settings.cache_clear()
+        from course_graph.ocr.converter import convert_document, get_ocr_configuration
+        from course_graph.ocr.enrichment import AuditedEngine
+        calls = []
+        predict = AuditedEngine.predict_batch
+
+        def measured(self, inputs):
+            calls.append(len(inputs))
+            return predict(self, inputs)
+
+        AuditedEngine.predict_batch = measured
+        settings = get_settings()
+        assert Path(settings.cache.documents_dir) == cache_path
         started = time.perf_counter()
         result = convert_document(args.pdf.name, content)
         cold = time.perf_counter() - started
@@ -97,7 +115,7 @@ def main():
                 "python": platform.python_version(),
                 "packages": {name: importlib.metadata.version(name) for name in ["docling", "torch", "pypdfium2", "pypdf"]},
                 "configuration": get_ocr_configuration(),
-                "ocr_threads": os.environ.get("COURSE_GRAPH_OCR_THREADS", "4"),
+                "ocr_threads": settings.ocr.threads,
             },
             "report": result["report"],
         }

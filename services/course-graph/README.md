@@ -359,7 +359,11 @@ backend с `TEST_DATABASE_URL` (HTTP-фикстура S3, изолированн
 uv run --locked --extra cpu --extra ocr python scripts/benchmark_ocr.py '../../documents/materials/Tutorial 4. Prolog.pdf' --pages 21 --output /tmp/ocr-benchmark/prolog.json
 ```
 
-Скрипт использует отдельный временный кеш и сохраняет Markdown, SHA-256 исходника,
+Скрипт создаёт временный снимок `config/dev.yaml`: сохраняет OCR-настройки и
+каталог кеша весов из YAML, но направляет кеш документов во временный каталог.
+Переменные OMP_NUM_THREADS и MKL_NUM_THREADS переопределяют число потоков из YAML,
+если заданы непустыми; пустые значения используют YAML. Метрики потоков отражают
+фактическую настройку YAML. Скрипт сохраняет Markdown, SHA-256 исходника,
 версии пакетов, время, peak RSS и число inference-пакетов. Повторный запуск —
 новый холодный document cache; кеш весов остаётся прежним. Результаты и ограничения
 проверки 18.10 — в [отчёте](../../documents/ocr-performance-2026-10-18.md).

@@ -136,7 +136,8 @@ def get_settings() -> Settings:
 
 def configure_library_environment(settings: Settings) -> None:
     """Set third-party defaults before torch, BLAS, transformers, or Docling imports."""
-    os.environ.setdefault("OMP_NUM_THREADS", str(settings.ocr.threads))
-    os.environ.setdefault("MKL_NUM_THREADS", str(settings.ocr.threads))
+    for name in ("OMP_NUM_THREADS", "MKL_NUM_THREADS"):
+        if not os.environ.get(name):
+            os.environ[name] = str(settings.ocr.threads)
     os.environ.setdefault("HF_HUB_DISABLE_XET", "1")
     os.environ.setdefault("HF_HUB_DOWNLOAD_TIMEOUT", "30")

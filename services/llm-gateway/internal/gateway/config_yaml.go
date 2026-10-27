@@ -46,18 +46,18 @@ type yamlInstance struct {
 type yamlGateway struct {
 	ListenAddress            string              `yaml:"listen_address"`
 	GRPCListenAddress        string              `yaml:"grpc_listen_address"`
-	GRPCMaxReceiveBytes      int                 `yaml:"grpc_max_receive_bytes"`
-	GRPCMaxSendBytes         int                 `yaml:"grpc_max_send_bytes"`
-	GRPCMaxConcurrentStreams int                 `yaml:"grpc_max_concurrent_streams"`
+	GRPCMaxReceiveBytes      *int                `yaml:"grpc_max_receive_bytes"`
+	GRPCMaxSendBytes         *int                `yaml:"grpc_max_send_bytes"`
+	GRPCMaxConcurrentStreams *int                `yaml:"grpc_max_concurrent_streams"`
 	KafkaBrokers             []string            `yaml:"kafka_brokers"`
 	RequestsTopic            string              `yaml:"requests_topic"`
 	StateTopic               string              `yaml:"state_topic"`
 	ConsumerGroup            string              `yaml:"consumer_group"`
 	TransactionalID          string              `yaml:"transactional_id"`
-	MaxBodyBytes             int64               `yaml:"max_body_bytes"`
-	MaxPending               int                 `yaml:"max_pending"`
-	MaxPendingBytes          int64               `yaml:"max_pending_bytes"`
-	MaxConnections           int                 `yaml:"max_connections"`
+	MaxBodyBytes             *int64              `yaml:"max_body_bytes"`
+	MaxPending               *int                `yaml:"max_pending"`
+	MaxPendingBytes          *int64              `yaml:"max_pending_bytes"`
+	MaxConnections           *int                `yaml:"max_connections"`
 	RequestDeadline          yamlDuration        `yaml:"request_deadline"`
 	UpstreamTimeout          yamlDuration        `yaml:"upstream_timeout"`
 	Retention                yamlDuration        `yaml:"retention"`
@@ -113,7 +113,7 @@ func loadYAMLConfig(path string) (Config, error) {
 		}
 		return Config{}, fmt.Errorf("decode trailing gateway config: %w", err)
 	}
-	c := Config{ListenAddress: doc.ListenAddress, GRPCListenAddress: doc.GRPCListenAddress, GRPCMaxReceiveBytes: doc.GRPCMaxReceiveBytes, GRPCMaxSendBytes: doc.GRPCMaxSendBytes, GRPCMaxConcurrentStreams: doc.GRPCMaxConcurrentStreams, KafkaBrokers: doc.KafkaBrokers, RequestsTopic: doc.RequestsTopic, StateTopic: doc.StateTopic, ConsumerGroup: doc.ConsumerGroup, TransactionalID: doc.TransactionalID, MaxBodyBytes: doc.MaxBodyBytes, MaxPending: doc.MaxPending, MaxPendingBytes: doc.MaxPendingBytes, MaxConnections: doc.MaxConnections, Pools: doc.Pools, RoutingProfiles: doc.RoutingProfiles, RequiredRoutingProfiles: doc.RequiredRoutingProfiles}
+	c := Config{ListenAddress: doc.ListenAddress, GRPCListenAddress: doc.GRPCListenAddress, KafkaBrokers: doc.KafkaBrokers, RequestsTopic: doc.RequestsTopic, StateTopic: doc.StateTopic, ConsumerGroup: doc.ConsumerGroup, TransactionalID: doc.TransactionalID, Pools: doc.Pools, RoutingProfiles: doc.RoutingProfiles, RequiredRoutingProfiles: doc.RequiredRoutingProfiles}
 	if doc.RequestDeadline.Set {
 		c.RequestDeadline = doc.RequestDeadline.Value
 	}
@@ -173,10 +173,28 @@ func loadYAMLConfig(path string) (Config, error) {
 	if doc.GracePeriod.Set {
 		c.GracePeriod = doc.GracePeriod.Value
 	}
+	if doc.GRPCMaxReceiveBytes != nil {
+		c.GRPCMaxReceiveBytes = *doc.GRPCMaxReceiveBytes
+	}
+	if doc.GRPCMaxSendBytes != nil {
+		c.GRPCMaxSendBytes = *doc.GRPCMaxSendBytes
+	}
+	if doc.GRPCMaxConcurrentStreams != nil {
+		c.GRPCMaxConcurrentStreams = *doc.GRPCMaxConcurrentStreams
+	}
+	if doc.MaxBodyBytes != nil {
+		c.MaxBodyBytes = *doc.MaxBodyBytes
+	}
+	if doc.MaxPending != nil {
+		c.MaxPending = *doc.MaxPending
+	}
+	if doc.MaxPendingBytes != nil {
+		c.MaxPendingBytes = *doc.MaxPendingBytes
+	}
+	if doc.MaxConnections != nil {
+		c.MaxConnections = *doc.MaxConnections
+	}
 	for i, in := range doc.Instances {
-		if in.Timeout.Set {
-			c.Instances[i].Timeout = in.Timeout.Value
-		}
 		if in.ServerExecutionLimit.Set {
 			c.Instances[i].ServerExecutionLimit = in.ServerExecutionLimit.Value
 		}

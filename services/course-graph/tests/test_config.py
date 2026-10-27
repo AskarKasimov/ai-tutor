@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from course_graph.config import load_config
+from course_graph.config import configure_library_environment, load_config
 
 
 def valid_yaml():
@@ -54,3 +54,18 @@ def test_load_config_checks_ranges_and_new_settings(tmp_path):
     assert settings.cache.rapidocr_dir == "/var/cache/rapid"
     with pytest.raises(ValueError):
         load_config(write_config(tmp_path, valid_yaml().replace("attempts: 3", "attempts: 0")))
+
+
+def test_library_threads_use_yaml_when_environment_is_missing_or_empty(tmp_path, monkeypatch):
+    settings = load_config(write_config(tmp_path, valid_yaml().replace("ocr: {threads: 4", "ocr: {threads: 7", 1)))
+    monkeypatch.delenv("OMP_NUM_THREADS", raising=False)
+    monkeypatch.setenv("MKL_NUM_THREADS", "")
+    configure_library_environment(settings)
+    assert __import__("os").environ["OMP_NUM_THREADS"] == "7"
+    assert __import__("os").environ["MKL_NUM_THREADS"] == "7"
+
+    monkeypatch.setenv("OMP_NUM_THREADS", "3")
+    monkeypatch.setenv("MKL_NUM_THREADS", "5")
+    configure_library_environment(settings)
+    assert __import__("os").environ["OMP_NUM_THREADS"] == "3"
+    assert __import__("os").environ["MKL_NUM_THREADS"] == "5"

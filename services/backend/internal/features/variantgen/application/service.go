@@ -14,7 +14,7 @@ import (
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/fault"
 )
 
-const AlgorithmVersion = "competency-map-v4"
+const AlgorithmVersion = "constituent-map-v1"
 
 var bloomRanks = map[string]int{"knowledge": 1, "understanding": 2, "application": 3, "analysis": 4}
 
@@ -57,9 +57,10 @@ func (s *Service) build(ownerID, subjectID, subjectName string, revision int64, 
 		return variant.Variant{}, noEligible([]variant.SkippedCompetency{{Code: "EMPTY_MAP"}})
 	}
 	type compPool struct {
-		profile  variant.CompetencyProfile
-		order    int64
-		outcomes map[string]*taskPool
+		profile     variant.CompetencyProfile
+		order       int64
+		constituent variant.ConstituentProfile
+		outcomes    map[string]*taskPool
 	}
 	competencies := map[string]*compPool{}
 	for _, candidate := range candidates {
@@ -67,12 +68,13 @@ func (s *Service) build(ownerID, subjectID, subjectName string, revision int64, 
 		if p.Competency.ID == "" {
 			continue
 		}
-		comp := competencies[p.Competency.ID]
+		key := p.Competency.ID + "\x00" + p.Constituent.ID
+		comp := competencies[key]
 		if comp == nil {
-			comp = &compPool{profile: p.Competency, order: candidate.CompetencySourceOrder, outcomes: map[string]*taskPool{}}
-			competencies[p.Competency.ID] = comp
-		} else if candidate.CompetencySourceOrder < comp.order {
-			comp.order = candidate.CompetencySourceOrder
+			comp = &compPool{profile: p.Competency, constituent: p.Constituent, order: candidate.SourceOrder, outcomes: map[string]*taskPool{}}
+			competencies[key] = comp
+		} else if candidate.SourceOrder < comp.order {
+			comp.order = candidate.SourceOrder
 		}
 		if !candidate.HasTask || p.Outcome.ID == "" || p.Outcome.IncludeInTest == nil || !*p.Outcome.IncludeInTest || p.Outcome.TaxonomyCode == nil || p.Outcome.Importance == nil || *p.Outcome.Importance < 1 || *p.Outcome.Importance > 5 {
 			continue
@@ -101,7 +103,13 @@ func (s *Service) build(ownerID, subjectID, subjectName string, revision int64, 
 		if ordered[i].profile.Name != ordered[j].profile.Name {
 			return ordered[i].profile.Name < ordered[j].profile.Name
 		}
-		return ordered[i].profile.ID < ordered[j].profile.ID
+		if ordered[i].profile.ID != ordered[j].profile.ID {
+			return ordered[i].profile.ID < ordered[j].profile.ID
+		}
+		if ordered[i].constituent.Name != ordered[j].constituent.Name {
+			return ordered[i].constituent.Name < ordered[j].constituent.Name
+		}
+		return ordered[i].constituent.ID < ordered[j].constituent.ID
 	})
 	result := variant.Variant{OwnerID: ownerID, SubjectID: subjectID, SubjectNameSnapshot: subjectName, MapRevision: revision, AlgorithmVersion: AlgorithmVersion,
 		SkippedCompetencies: []variant.SkippedCompetency{}, Competencies: []variant.CompetencySelection{}, CreatedAt: s.now().Unix()}
@@ -120,13 +128,13 @@ func (s *Service) build(ownerID, subjectID, subjectName string, revision int64, 
 			return outcomes[i].outcome.ID < outcomes[j].outcome.ID
 		})
 		if len(outcomes) == 0 {
-			result.SkippedCompetencies = append(result.SkippedCompetencies, variant.SkippedCompetency{CompetencyID: comp.profile.ID, CompetencyName: comp.profile.Name, Code: "NO_READY_OUTCOMES", EligibleOutcomes: len(outcomes)})
+			result.SkippedCompetencies = append(result.SkippedCompetencies, variant.SkippedCompetency{CompetencyID: comp.profile.ID, CompetencyName: comp.profile.Name + " / " + comp.constituent.Name, Code: "NO_READY_OUTCOMES", EligibleOutcomes: len(outcomes)})
 			continue
 		}
 		// A main always comes with two basics from other outcomes, so a
-		// competency needs three of them.
+		// constituent needs three of them.
 		if len(outcomes) < 3 {
-			result.SkippedCompetencies = append(result.SkippedCompetencies, variant.SkippedCompetency{CompetencyID: comp.profile.ID, CompetencyName: comp.profile.Name, Code: "INSUFFICIENT_DISTINCT_OUTCOMES", EligibleOutcomes: len(outcomes)})
+			result.SkippedCompetencies = append(result.SkippedCompetencies, variant.SkippedCompetency{CompetencyID: comp.profile.ID, CompetencyName: comp.profile.Name + " / " + comp.constituent.Name, Code: "INSUFFICIENT_DISTINCT_OUTCOMES", EligibleOutcomes: len(outcomes)})
 			continue
 		}
 		main := outcomes[0]
@@ -205,13 +213,13 @@ func ready(p variant.TaskProfile) bool {
 }
 
 func noEligible(skipped []variant.SkippedCompetency) *fault.Error {
-	e := fault.New(fault.Conflict, "NO_ELIGIBLE_COMPETENCIES", "Не удалось собрать вариант: нет компетенций, подходящих по карте.")
+	e := fault.New(fault.Conflict, "NO_ELIGIBLE_COMPETENCIES", "Не удалось собрать вариант: нет составляющих, подходящих по карте.")
 	for _, item := range skipped {
 		if item.Code == "EMPTY_MAP" {
 			e.Details = append(e.Details, fault.Detail{Code: "EMPTY_MAP", Message: "Активная карта компетенций пуста."})
 			continue
 		}
-		message := fmt.Sprintf("Компетенция «%s»: подходящих ОР — %d", item.CompetencyName, item.EligibleOutcomes)
+		message := fmt.Sprintf("Составляющая «%s»: подходящих ОР — %d", item.CompetencyName, item.EligibleOutcomes)
 		e.Details = append(e.Details, fault.Detail{Path: "competencies/" + item.CompetencyID, Code: item.Code, Message: message})
 	}
 	return e

@@ -45,7 +45,7 @@ func TestLearningBloomNormalizationAndTiesMatchLegacy(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.MapRevision != 7 || got.SubjectID != "subject:test" || got.SubjectNameSnapshot != "Тест" || got.IncludedCompetencyCount != 1 || got.CreatedAt != 100 || got.AlgorithmVersion != "competency-map-v4" {
+	if got.MapRevision != 7 || got.SubjectID != "subject:test" || got.SubjectNameSnapshot != "Тест" || got.IncludedCompetencyCount != 1 || got.CreatedAt != 100 || got.AlgorithmVersion != AlgorithmVersion {
 		t.Fatalf("variant metadata: %+v", got)
 	}
 	learning_tasks := got.Competencies[0].Tasks
@@ -144,7 +144,49 @@ func candidate(compID, compName, outcomeID, outcomeName, taxonomy string, import
 	importanceValue := importance
 	return variant.CandidateOutcome{CompetencySourceOrder: 1, SourceOrder: order, HasTask: true, Profile: variant.TaskProfile{
 		ID: taskID, Question: "Вопрос?", Options: []string{}, VoiceInstruction: &voice, ReferenceAnswer: &answer, Origin: "authored", SourceRowIndex: &taskOrder,
-		Competency: variant.CompetencyProfile{ID: compID, Name: compName},
-		Outcome:    variant.OutcomeProfile{ID: outcomeID, Name: outcomeName, IncludeInTest: &include, TaxonomyCode: &taxonomy, Importance: &importanceValue},
+		Competency:  variant.CompetencyProfile{ID: compID, Name: compName},
+		Constituent: variant.ConstituentProfile{ID: compID + "-s", Name: "Составляющая"},
+		Outcome:     variant.OutcomeProfile{ID: outcomeID, Name: outcomeName, IncludeInTest: &include, TaxonomyCode: &taxonomy, Importance: &importanceValue},
 	}}
+}
+
+func TestBuildGroupsOutcomesByConstituent(t *testing.T) {
+	var candidates []variant.CandidateOutcome
+	for _, constituent := range []string{"s1", "s2"} {
+		for i, bloom := range []string{"knowledge", "understanding", "application"} {
+			id := constituent + string(rune('1'+i))
+			c := candidate("c1", "Comp", id, id, bloom, 3, int64(len(candidates)+1), id, int32(i+1))
+			c.Profile.Constituent = variant.ConstituentProfile{ID: constituent, Name: constituent}
+			candidates = append(candidates, c)
+		}
+	}
+	got, err := New(nil, &fixedChooser{}, &fixedIDs{}, time.Now).build("owner", "subject", "Subject", 1, candidates)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Competencies) != 2 {
+		t.Fatalf("got %d blocks, want 2", len(got.Competencies))
+	}
+	for _, block := range got.Competencies {
+		for _, task := range block.Tasks {
+			if task.Task.Constituent.ID != block.Tasks[0].Task.Constituent.ID {
+				t.Fatal("mixed constituents")
+			}
+		}
+	}
+}
+
+func TestBuildSkipsShortConstituentsWithinOneCompetency(t *testing.T) {
+	var candidates []variant.CandidateOutcome
+	for i, constituent := range []string{"s1", "s1", "s2", "s2"} {
+		id := string(rune('a' + i))
+		c := candidate("c1", "Comp", id, id, "knowledge", 3, int64(i+1), id, int32(i+1))
+		c.Profile.Constituent = variant.ConstituentProfile{ID: constituent, Name: constituent}
+		candidates = append(candidates, c)
+	}
+	_, err := New(nil, &fixedChooser{}, &fixedIDs{}, time.Now).build("owner", "subject", "Subject", 1, candidates)
+	failure, ok := err.(*fault.Error)
+	if !ok || failure.Code != "NO_ELIGIBLE_COMPETENCIES" || len(failure.Details) != 2 {
+		t.Fatalf("error = %v", err)
+	}
 }

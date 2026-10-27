@@ -2,23 +2,23 @@
 
 Контракт: [openapi.yaml](openapi.yaml), OpenAPI 3.1. Все пути относительны к `/api/v1`.
 
-- `x-implementation: implemented` — подключённая операция: auth, предметы, voice, материалы и диагностика Geek, граф курса и health. Операции прежней модели удалены 16.10.2026 вместе с кодом.
+- `x-implementation: implemented` — подключённая операция: общие auth и voice, обучение (`/learn`), экзамен Geek (`/exam`) и health.
 - `x-implementation: planned` — проект до реализации; наличие planned-операции не означает наличие handler.
 
-Материалы реализованы: `GET /admin/material-kinds`, загрузка `POST` и список `GET /admin/subjects/{subject_id}/materials`, правка недели/вида `PATCH .../materials/{material_id}`,
+Материалы реализованы: `GET /exam/admin/material-kinds`, загрузка `POST` и список `GET /exam/admin/subjects/{subject_id}/materials`, правка недели/вида `PATCH .../materials/{material_id}`,
 замена PDF `PUT .../materials/{material_id}/raw`, скачивание и удаление. Загрузка
 принимает до 48 файлов; manifest `items` задаёт `client_id`, неделю и вид каждого
 файла, а `results` связывает ответ с записью очереди. Старый multipart без manifest
 сохраняет совместимость. Метаданные не запускают OCR; замена файла ставит новое
 фоновое задание и отменяет устаревшие результаты предыдущего исходника.
 
-Граф master: `GET /admin/subjects/{subject_id}/graph` возвращает snapshot со статусом,
-сохранённым графом, `stale`, `inputs_ready` и `progress` идущей сборки (этап и шаги); `POST .../graph/build` запускает сборку.
+Граф master: `GET /exam/admin/subjects/{subject_id}/graph` возвращает snapshot со статусом,
+сохранённым графом, `stale`, `inputs_ready` и `progress` идущей сборки (этап и шаги); `POST /exam/admin/subjects/{subject_id}/graph/build` запускает сборку.
 Отдельный GET статуса по `/graph/build` не используется интерфейсом.
-Диагностика реализована: `POST`/`GET /diagnostic-sessions`, чтение сессии,
+Диагностика реализована: `POST`/`GET /exam/diagnostic-sessions`, чтение сессии,
 `/{id}/answers`, `/{id}/result`, `/{id}/turns/{turn_id}/audio`. Ограничение «ровно одно
 из `transcription_id`, `text`, `dont_know`» проверяет код: генератор не выражает `oneOf`.
-Пакет для преподавателя остаётся planned: список диагностик курса и отчёт.
+Учебный поток включает импорт карты, варианты, диагностику, план и тренировку на маршрутах `/learn`. Пакет Geek для преподавателя остаётся planned: список диагностик курса и отчёт.
 
 Внутренний API Python-сервиса course-graph — отдельный контракт [course-graph.yaml](course-graph.yaml): OCR, задание на сборку графа и его статус. Он не публикуется через Caddy.
 

@@ -93,7 +93,7 @@ func TestMapGraphSkipsACompetencyWithoutThreeOutcomes(t *testing.T) {
 		mapRow("", "Д", "Понимать", "3", "FALSE", "Задание Д"),
 	}
 	g, _ := buildShape(t, rows)
-	if g.Topics != 3 || len(g.Skipped) != 1 || g.Skipped[0].Name != "К2. Логика" || !strings.Contains(g.Skipped[0].Reason, "— 1,") {
+	if g.Topics != 3 || len(g.Skipped) != 1 || g.Skipped[0].Name != "1.1 Составляющая" || !strings.Contains(g.Skipped[0].Reason, "— 1,") {
 		t.Fatalf("graph = %+v", g)
 	}
 	_, err := BuildMapGraph([]MapSheet{{Name: "Карта", Rows: rows[3:]}})
@@ -196,5 +196,37 @@ func TestMapGraphNeedsTheCriteriaOfEveryTask(t *testing.T) {
 	_, err := BuildMapGraph([]MapSheet{{Name: "Карта", Rows: rows}})
 	if !errors.As(err, &mapErr) || len(mapErr.Issues) != 1 || mapErr.Issues[0].Row != 2 || mapErr.Issues[0].Column != "Критерии оценивания" {
 		t.Fatalf("task without criteria: %v %+v", err, mapErr)
+	}
+}
+
+func TestMapGraphGroupsOutcomesByConstituent(t *testing.T) {
+	rows := [][]string{mapHeaderRow}
+	for _, c := range []string{"С1", "С2"} {
+		for i, bloom := range []string{"Помнить", "Понимать", "Применять"} {
+			row := mapRow("К1", c+string(rune('1'+i)), bloom, "3", "TRUE", "Вопрос")
+			row[3] = c
+			rows = append(rows, row)
+		}
+	}
+	_, shape := buildShape(t, rows)
+	if len(shape.Topics) != 6 {
+		t.Fatalf("got %d topics, want 6", len(shape.Topics))
+	}
+	if shape.Topics[2].Title != "С13" || shape.Topics[5].Title != "С23" {
+		t.Fatalf("wrong main topics: %+v", shape.Topics)
+	}
+}
+
+func TestMapGraphSkipsShortConstituentEvenWhenCompetencyHasEnoughOutcomes(t *testing.T) {
+	rows := [][]string{mapHeaderRow}
+	for i, c := range []string{"С1", "С1", "С2", "С2"} {
+		row := mapRow("К1", string(rune('А'+i)), "Помнить", "3", "TRUE", "Вопрос")
+		row[3] = c
+		rows = append(rows, row)
+	}
+	_, err := BuildMapGraph([]MapSheet{{Name: "Карта", Rows: rows}})
+	var failure *MapError
+	if !errors.As(err, &failure) || failure.Code != "COMPETENCY_MAP_EMPTY" || len(failure.Issues) != 2 {
+		t.Fatalf("error = %v", err)
 	}
 }

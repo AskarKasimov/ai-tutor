@@ -93,7 +93,7 @@ UPDATE users SET role = 'admin' WHERE email = 'teacher@example.edu';
 
 `protect` в app получает user через auth.Me и передаёт principal в request context. Handler извлекает principal и передаёт его application; проверка admin выполняется также внутри application соответствующего модуля. Владельца ресурса берут из principal, не из клиентского user_id. Доступ к расшифровкам проверяет владельца.
 
-Диагностики Geek (`/diagnostic-sessions/*`) требуют access-cookie и доступны только владельцу: чужой ID возвращает 404 `SESSION_NOT_FOUND`. Auth-сессия и диагностика — разные сущности; диагностики хранятся в PostgreSQL. Подтверждение email, сброс пароля, MFA, CORS и проверка Origin/CSRF-token не реализованы; ограничения по IP/числу попыток входа также отсутствуют.
+Диагностики Geek (`/api/v1/exam/diagnostic-sessions/*`) требуют access-cookie и доступны только владельцу: чужой ID возвращает 404 `SESSION_NOT_FOUND`. Auth-сессия и диагностика — разные сущности; диагностики хранятся в PostgreSQL. Подтверждение email, сброс пароля, MFA и проверка Origin/CSRF-token для auth не реализованы; отдельные CORS-правила Caddy предназначены для gateway и API в VS Code webview; ограничения по IP/числу попыток входа также отсутствуют.
 
 ## Карта кода для изменений
 

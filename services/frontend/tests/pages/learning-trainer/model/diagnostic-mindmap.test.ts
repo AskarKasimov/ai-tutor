@@ -1,8 +1,54 @@
 import { describe, expect, it } from 'vitest'
 import {
+  cleanCompetencyTitle,
+  cleanTopicTitle,
   layoutDiagnosticMindmap,
   SIRIUS_BRANCH_COLORS,
 } from '@/pages/learning-trainer/model/diagnostic-mindmap'
+
+describe('cleanCompetencyTitle', () => {
+  it('strips "К1:", "К-1", "К1.", "К1 " and "Компетенция X:" prefixes', () => {
+    expect(cleanCompetencyTitle('К1: Линейная алгебра')).toBe(
+      'Линейная алгебра',
+    )
+    expect(cleanCompetencyTitle('К1. Математический анализ')).toBe(
+      'Математический анализ',
+    )
+    expect(cleanCompetencyTitle('К-2 Дискретные структуры')).toBe(
+      'Дискретные структуры',
+    )
+    expect(cleanCompetencyTitle('К 3: Теория вероятностей')).toBe(
+      'Теория вероятностей',
+    )
+    expect(cleanCompetencyTitle('Компетенция 1: Алгоритмы')).toBe('Алгоритмы')
+    expect(cleanCompetencyTitle('1. Основы ML')).toBe('Основы ML')
+  })
+
+  it('preserves clean title without prefixes or when only code is given', () => {
+    expect(cleanCompetencyTitle('Машинное обучение')).toBe('Машинное обучение')
+    expect(cleanCompetencyTitle('К1')).toBe('К1')
+  })
+})
+
+describe('cleanTopicTitle', () => {
+  it('strips numeric prefixes like "1.1.", "1.1", "1.", "1)", and "Тема X" prefixes', () => {
+    expect(cleanTopicTitle('1.1. Линейная регрессия')).toBe(
+      'Линейная регрессия',
+    )
+    expect(cleanTopicTitle('1.1 Градиентный спуск')).toBe('Градиентный спуск')
+    expect(cleanTopicTitle('1. Решающие деревья')).toBe('Решающие деревья')
+    expect(cleanTopicTitle('2) Случайный лес')).toBe('Случайный лес')
+    expect(cleanTopicTitle('Тема 3. Бустинг над деревьями')).toBe(
+      'Бустинг над деревьями',
+    )
+    expect(cleanTopicTitle('Тема 4: Нейронные сети')).toBe('Нейронные сети')
+  })
+
+  it('preserves titles without numeric prefixes', () => {
+    expect(cleanTopicTitle('Линейная регрессия')).toBe('Линейная регрессия')
+    expect(cleanTopicTitle('1.1')).toBe('1.1')
+  })
+})
 
 describe('layoutDiagnosticMindmap', () => {
   it('places the subject root node in the center when outline has no competencies', () => {

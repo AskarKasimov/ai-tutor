@@ -70,6 +70,7 @@ export type CompetencyNodeData = {
   kind: 'competency'
   id: string
   title: string
+  cleanTitle: string
   side: 'left' | 'right'
   branchIndex: number
   color: string
@@ -84,6 +85,7 @@ export type ConstituentNodeData = {
   kind: 'constituent'
   id: string
   title: string
+  cleanTitle: string
   competencyId: string
   competencyTitle: string
   side: 'left' | 'right'
@@ -112,15 +114,39 @@ export type DiagnosticMindmap = {
 }
 
 export const SUBJECT_WIDTH = 260
-export const SUBJECT_HEIGHT = 68
-export const COMPETENCY_WIDTH = 260
-export const COMPETENCY_HEIGHT = 64
-export const CONSTITUENT_WIDTH = 280
-export const CONSTITUENT_HEIGHT = 74
-export const CONSTITUENT_GAP = 18
-export const COMPETENCY_GAP = 36
-export const HORIZ_COMPETENCY = 280
-export const HORIZ_CONSTITUENT = 640
+export const SUBJECT_HEIGHT = 60
+export const COMPETENCY_WIDTH = 240
+export const COMPETENCY_HEIGHT = 48
+export const CONSTITUENT_WIDTH = 260
+export const CONSTITUENT_HEIGHT = 48
+export const CONSTITUENT_GAP = 14
+export const COMPETENCY_GAP = 28
+export const HORIZ_COMPETENCY = 250
+export const HORIZ_CONSTITUENT = 560
+
+export function cleanCompetencyTitle(title: string): string {
+  if (!title) return ''
+  const cleaned = title
+    // "Компетенция 1: ...", "Компетенция 1. ...", "Компетенция 1 ..."
+    .replace(/^Компетенция\s*\d+(?:[.:\-—\s]+\s+|\s+)(?=\S)/i, '')
+    // "К1: ...", "К1. ...", "К-1 ...", "К 1: ...", "К.1: ..."
+    .replace(/^К\s*[-.]?\s*\d+(?:[.:\-—\s]+\s+|\s+)(?=\S)/i, '')
+    // Leading numbers: "1. ...", "1: ...", "1.1. ..."
+    .replace(/^\d+(?:\.\d+)*(?:[.:\-—\s]+\s+|\s+)(?=\S)/, '')
+    .trim()
+  return cleaned || title
+}
+
+export function cleanTopicTitle(title: string): string {
+  if (!title) return ''
+  const cleaned = title
+    // "Тема 1. ", "Тема 1: ", "Тема 1 ", "Раздел 1. ", "§ 1. "
+    .replace(/^(?:Тема|Раздел|§)\s*\d+(?:[.:\-—\s]+\s+|\s+)(?=\S)/i, '')
+    // "1.1. ", "1.1 ", "1. ", "1) ", "1.1) "
+    .replace(/^\d+(?:\.\d+)*(?:[.)\s:\-—]+\s+|\s+)(?=\S)/, '')
+    .trim()
+  return cleaned || title
+}
 
 function layoutSide(
   competencyItems: Array<{
@@ -161,6 +187,7 @@ function layoutSide(
 
     const compY = curY + (blockH - COMPETENCY_HEIGHT) / 2
     const compNodeId = `competency:${comp.id}`
+    const compClean = cleanCompetencyTitle(comp.name)
 
     nodes.push({
       id: compNodeId,
@@ -170,6 +197,7 @@ function layoutSide(
         kind: 'competency',
         id: comp.id,
         title: comp.name,
+        cleanTitle: compClean,
         side,
         branchIndex,
         color: palette.color,
@@ -198,6 +226,7 @@ function layoutSide(
       const constY = curY + cIdx * (CONSTITUENT_HEIGHT + CONSTITUENT_GAP)
       const constNodeId = `constituent:${constituent.id}`
       const isSelected = selectedConstituentId === constituent.id
+      const constClean = cleanTopicTitle(constituent.name)
 
       nodes.push({
         id: constNodeId,
@@ -207,6 +236,7 @@ function layoutSide(
           kind: 'constituent',
           id: constituent.id,
           title: constituent.name,
+          cleanTitle: constClean,
           competencyId: comp.id,
           competencyTitle: comp.name,
           side,

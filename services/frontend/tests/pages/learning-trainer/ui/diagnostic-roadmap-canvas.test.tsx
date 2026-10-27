@@ -8,11 +8,11 @@ describe('DiagnosticRoadmapCanvas', () => {
     competencies: [
       {
         id: 'c1',
-        name: 'Линейные модели',
+        name: 'К1: Линейные модели',
         constituents: [
           {
             id: 't1',
-            name: 'Метод наименьших квадратов',
+            name: '1.1. Метод наименьших квадратов',
             outcomes: [
               {
                 id: 'o1',
@@ -30,11 +30,11 @@ describe('DiagnosticRoadmapCanvas', () => {
       },
       {
         id: 'c2',
-        name: 'Деревья решений',
+        name: 'Компетенция 2: Деревья решений',
         constituents: [
           {
             id: 't2',
-            name: 'Критерии ветвления',
+            name: '2.1. Критерии ветвления',
             outcomes: [
               {
                 id: 'o3',
@@ -48,7 +48,7 @@ describe('DiagnosticRoadmapCanvas', () => {
     ],
   }
 
-  it('renders central subject node and branches for competencies and constituents', async () => {
+  it('renders central subject node and branches with clean titles only (no К1, no ОР or count badges)', async () => {
     render(
       <DiagnosticRoadmapCanvas
         outline={sampleOutline}
@@ -60,19 +60,24 @@ describe('DiagnosticRoadmapCanvas', () => {
     expect(
       await screen.findByLabelText('Машинное обучение'),
     ).toBeInTheDocument()
-    expect(screen.getByText('Предмет')).toBeInTheDocument()
 
-    // Competencies
+    // Competencies stripped of "К1:" and "Компетенция 2:"
     expect(await screen.findByLabelText('Линейные модели')).toBeInTheDocument()
     expect(await screen.findByLabelText('Деревья решений')).toBeInTheDocument()
+    expect(screen.queryByText('К1:')).not.toBeInTheDocument()
 
-    // Constituents
+    // Constituents stripped of "1.1." and "2.1."
     expect(
       await screen.findByLabelText('Метод наименьших квадратов'),
     ).toBeInTheDocument()
     expect(
       await screen.findByLabelText('Критерии ветвления'),
     ).toBeInTheDocument()
+
+    // No badges for "Компетенция", "Тем: X" or "X ОР" inside nodes
+    expect(screen.queryByText('Компетенция')).not.toBeInTheDocument()
+    expect(screen.queryByText(/2 ОР/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/1 ОР/)).not.toBeInTheDocument()
 
     // Outcomes are not shown before selection
     expect(
@@ -95,7 +100,7 @@ describe('DiagnosticRoadmapCanvas', () => {
 
     // Details panel appears
     const inspector = await screen.findByRole('complementary', {
-      name: 'Метод наименьших квадратов',
+      name: '1.1. Метод наименьших квадратов',
     })
     expect(inspector).toBeVisible()
     expect(screen.getByText('Оценивать коэффициенты МНК')).toBeVisible()
@@ -112,7 +117,7 @@ describe('DiagnosticRoadmapCanvas', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Закрыть' }))
     expect(
       screen.queryByRole('complementary', {
-        name: 'Метод наименьших квадратов',
+        name: '1.1. Метод наименьших квадратов',
       }),
     ).not.toBeInTheDocument()
   })
@@ -137,5 +142,23 @@ describe('DiagnosticRoadmapCanvas', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Свернуть' }))
     expect(wrapper).toHaveAttribute('data-fullscreen', 'false')
+  })
+
+  it('handles mouse wheel zoom smoothly on the canvas container', async () => {
+    const { container } = render(
+      <DiagnosticRoadmapCanvas
+        outline={sampleOutline}
+        subjectTitle="Машинное обучение"
+      />,
+    )
+
+    const wrapper =
+      container.querySelector('[data-fullscreen]') ||
+      container.firstElementChild
+    expect(wrapper).toBeInTheDocument()
+
+    expect(() => {
+      fireEvent.wheel(wrapper!, { deltaY: -100, clientX: 200, clientY: 200 })
+    }).not.toThrow()
   })
 })

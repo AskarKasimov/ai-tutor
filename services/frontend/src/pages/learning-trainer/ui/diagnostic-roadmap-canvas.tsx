@@ -14,7 +14,6 @@ import {
 import '@xyflow/react/dist/style.css'
 import {
   Compass,
-  Layers,
   Maximize2,
   Minimize2,
   Sparkles,
@@ -54,7 +53,6 @@ const SelectionContext = createContext<SelectionContextType>({
 })
 
 function SubjectNodeCard({ data }: NodeProps<DiagnosticMindmapNode>) {
-  const { t } = useTranslation()
   const subject = data as SubjectNodeData
   return (
     <div
@@ -77,20 +75,14 @@ function SubjectNodeCard({ data }: NodeProps<DiagnosticMindmapNode>) {
       <span className={styles.subjectIconWrap} aria-hidden="true">
         <Compass size={20} />
       </span>
-      <div className={styles.subjectContent}>
-        <span className={styles.subjectTag}>
-          {t('learningRoadmap.subjectRoot', 'Предмет')}
-        </span>
-        <span className={styles.subjectTitle} title={subject.title}>
-          {subject.title}
-        </span>
-      </div>
+      <span className={styles.subjectTitle} title={subject.title}>
+        {subject.title}
+      </span>
     </div>
   )
 }
 
 function CompetencyNodeCard({ data }: NodeProps<DiagnosticMindmapNode>) {
-  const { t } = useTranslation()
   const comp = data as CompetencyNodeData
   const isRight = comp.side === 'right'
 
@@ -101,12 +93,14 @@ function CompetencyNodeCard({ data }: NodeProps<DiagnosticMindmapNode>) {
     '--branch-bg': comp.lightBg,
   } as CSSProperties
 
+  const displayTitle = comp.cleanTitle || comp.title
+
   return (
     <div
       className={styles.competencyNode}
       style={cssVars}
       role="region"
-      aria-label={comp.title}
+      aria-label={displayTitle}
     >
       {isRight ? (
         <>
@@ -139,17 +133,8 @@ function CompetencyNodeCard({ data }: NodeProps<DiagnosticMindmapNode>) {
           />
         </>
       )}
-      <div className={styles.competencyHeader}>
-        <span className={styles.competencyBadge}>
-          <Layers size={13} aria-hidden="true" />
-          {t('learningRoadmap.competencyLabel', 'Компетенция')}
-        </span>
-        <Badge size="1" variant="soft" style={{ color: comp.color }}>
-          {t('learningRoadmap.topicCount', { count: comp.constituentCount })}
-        </Badge>
-      </div>
       <span className={styles.competencyTitle} title={comp.title}>
-        {comp.title}
+        {displayTitle}
       </span>
     </div>
   )
@@ -182,6 +167,8 @@ function ConstituentNodeCard({ data }: NodeProps<DiagnosticMindmapNode>) {
     [handleClick],
   )
 
+  const displayTitle = item.cleanTitle || item.title
+
   return (
     <div
       className={styles.constituentNode}
@@ -190,7 +177,7 @@ function ConstituentNodeCard({ data }: NodeProps<DiagnosticMindmapNode>) {
       data-selected={isSelected}
       role="button"
       tabIndex={0}
-      aria-label={item.title}
+      aria-label={displayTitle}
       onClick={handleClick}
       onKeyDown={handleKeyDown}
     >
@@ -209,14 +196,9 @@ function ConstituentNodeCard({ data }: NodeProps<DiagnosticMindmapNode>) {
           className={styles.handle}
         />
       )}
-      <div className={styles.constituentHeader}>
-        <span className={styles.constituentTitle} title={item.title}>
-          {item.title}
-        </span>
-        <Badge size="1" variant={isSelected ? 'solid' : 'soft'}>
-          {item.outcomes.length} ОР
-        </Badge>
-      </div>
+      <span className={styles.constituentTitle} title={item.title}>
+        {displayTitle}
+      </span>
     </div>
   )
 }
@@ -283,6 +265,61 @@ function DiagnosticMindmapExplorer({
   useEffect(() => {
     fit()
   }, [outline, fit])
+
+  useEffect(() => {
+    const container = containerRef.current
+    if (!container) return
+
+    const handleWheel = (e: WheelEvent) => {
+      const target = e.target as HTMLElement | null
+      if (target?.closest(`.${styles.detailsOutcomes}`)) {
+        return
+      }
+
+      e.preventDefault()
+
+      try {
+        const { x, y, zoom } = flow.getViewport()
+
+        let delta = e.deltaY
+        if (e.deltaMode === 1) {
+          delta *= 33
+        } else if (e.deltaMode === 2) {
+          delta *= 500
+        }
+
+        // Snappy, accelerated zoom factor
+        const zoomMultiplier = Math.min(
+          2.0,
+          Math.max(0.5, Math.exp(-delta * 0.0035)),
+        )
+        const minZoom = 0.15
+        const maxZoom = 3.0
+        const nextZoom = Math.min(
+          Math.max(zoom * zoomMultiplier, minZoom),
+          maxZoom,
+        )
+
+        if (Math.abs(nextZoom - zoom) < 0.001) return
+
+        const rect = container.getBoundingClientRect()
+        const mouseX = e.clientX - rect.left
+        const mouseY = e.clientY - rect.top
+
+        const nextX = mouseX - (mouseX - x) * (nextZoom / zoom)
+        const nextY = mouseY - (mouseY - y) * (nextZoom / zoom)
+
+        flow.setViewport({ x: nextX, y: nextY, zoom: nextZoom })
+      } catch {
+        // Safe fallback in test or detached DOM environments
+      }
+    }
+
+    container.addEventListener('wheel', handleWheel, { passive: false })
+    return () => {
+      container.removeEventListener('wheel', handleWheel)
+    }
+  }, [flow])
 
   const selectedConstituent = useMemo(() => {
     if (!selectedId) return null
@@ -370,8 +407,9 @@ function DiagnosticMindmapExplorer({
             onEdgesChange={onEdgesChange}
             onPaneClick={() => setSelectedId(null)}
             fitView
-            minZoom={0.2}
-            maxZoom={1.8}
+            zoomOnScroll={false}
+            minZoom={0.15}
+            maxZoom={3.0}
             proOptions={{ hideAttribution: true }}
           >
             <Background

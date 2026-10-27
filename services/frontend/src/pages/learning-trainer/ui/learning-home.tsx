@@ -20,6 +20,7 @@ import {
 import { subjectQueryKeys, type Subject } from '@/entities/learning-subject'
 import { LearningPlanEntry } from './learning-plan'
 import { DiagnosticTrainer } from './diagnostic-trainer'
+import { LearningRoadmap } from './learning-roadmap'
 import { AccountMenu } from '@/features/auth'
 import styles from './learning-home.module.scss'
 import { StudentCourseShell } from '@/widgets/student-course-shell'
@@ -303,6 +304,13 @@ export function LearningHome({
                   </li>
                 ))}
               </ol>
+              {selected.learning_ready && stage !== 'training' && (
+                <LearningRoadmap
+                  key={selected.id}
+                  userId={userId}
+                  subjectId={selected.id}
+                />
+              )}
               {learning.isPending ? (
                 <Text role="status">{t('learningHome.learningLoading')}</Text>
               ) : learning.isError ? (

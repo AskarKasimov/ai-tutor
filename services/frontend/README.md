@@ -289,3 +289,13 @@ student selects that course again. Historical learning state can be restored by
 the shared course ID or learning intent, with loading and retryable error states.
 Lesson mutations belong to the current auth session epoch, so late responses
 cannot replace progress after logout and login.
+
+Перед диагностикой на главной `/learn` показывается «Ваш путь обучения»:
+компетенции → темы → образовательные результаты из текущей карты выбранного курса.
+Компетенции расположены в порядке карты; их можно раскрывать, первая раскрыта сразу.
+Показываются только ОР с `include_in_test: true`, пустые темы и компетенции скрыты.
+Это предварительный обзор содержания, а не перечень выявленных пробелов или
+обещание проверить все ОР: правила сборки диагностического варианта не меняются.
+Персональный план по результатам диагностики создаётся прежним механизмом.
+Чтение использует существующий student endpoint карты; новая диагностика при
+просмотре плана не создаётся. Ошибку загрузки можно повторить, она не блокирует старт.

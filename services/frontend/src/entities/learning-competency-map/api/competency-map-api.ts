@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { i18n } from '@/shared/i18n'
 import type {
+  CompetencyMapOutline,
   CompetencyMapImport,
   CompetencyMapSummary,
 } from '@/entities/learning-competency-map'
@@ -140,5 +141,61 @@ export async function importCompetencyMap(
       column: item.column,
       code: item.code,
     })),
+  }
+}
+
+// The student outline retains only names and IDs, never questions or answer data.
+const outlineSchema = z.object({
+  competencies: z.array(
+    z.object({
+      id: z.string(),
+      name: z.string(),
+      constituents: z.array(
+        z.object({
+          id: z.string(),
+          name: z.string(),
+          outcomes: z.array(
+            z.object({
+              id: z.string(),
+              name: z.string(),
+              include_in_test: z.boolean().nullable(),
+            }),
+          ),
+        }),
+      ),
+    }),
+  ),
+})
+
+export async function readCompetencyMapOutline(
+  subjectId: string,
+  signal: AbortSignal,
+): Promise<CompetencyMapOutline> {
+  const response = await apiFetch(
+    `${apiBase}/subjects/${encodeURIComponent(subjectId)}/competency-map`,
+    {
+      credentials: 'include',
+      signal: AbortSignal.any([signal, AbortSignal.timeout(30_000)]),
+    },
+  )
+  const parsed = outlineSchema.safeParse(await readResponse(response))
+  if (!parsed.success)
+    throw new Error(i18n.t('learningCompetencyMap.invalidResponse'))
+  return {
+    competencies: parsed.data.competencies
+      .map((competency) => ({
+        id: competency.id,
+        name: competency.name,
+        constituents: competency.constituents
+          .map((topic) => ({
+            id: topic.id,
+            name: topic.name,
+            outcomes: topic.outcomes
+              .filter((outcome) => outcome.include_in_test === true)
+              .map(({ id, name }) => ({ id, name })),
+          }))
+          .filter((topic) => topic.outcomes.length > 0),
+      }))
+      .filter((competency) => competency.constituents.length > 0),
   }
 }

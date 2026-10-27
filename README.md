@@ -546,7 +546,7 @@ LLM gateway — отдельный HTTP/gRPC-сервис `services/llm-gateway`
 
 | Тема | Решение |
 | --- | --- |
-| Конфигурация сервисов | Backend, course-graph и gateway читают один полный YAML в своём каталоге config; значения приложения из env больше не переопределяют YAML. |
+| Конфигурация сервисов | Backend, course-graph и gateway читают один полный YAML в своём каталоге config; значения приложения из env больше не переопределяют YAML; typed-поля принимают только корректные YAML scalar-типы. |
 | Секреты | Пароль БД и S3 credentials остаются в локальном env. По согласованному исключению токены upstream-моделей пока хранятся в YAML gateway. |
 | Перезапуск | Atomic-save YAML вызывает автоматический restart процесса watcher-ом в том же dev-контейнере. Это не hot reload состояния процесса. |
 | Запуск | Поддерживается локальная dev-конфигурация и dev.sh. Отдельные prod.sh и .env.prod.example удалены; Docker runtime stages и полезные build/smoke/E2E проверки сохранены. |

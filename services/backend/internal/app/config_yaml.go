@@ -1,11 +1,13 @@
 package app
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
 	"net"
 	"os"
+	"reflect"
 	"strings"
 	"time"
 
@@ -84,18 +86,22 @@ type backendYAML struct {
 
 func parseBackendYAML(path string) (backendYAML, error) {
 	var cfg backendYAML
-	file, err := os.Open(path)
+	data, err := os.ReadFile(path)
 	if err != nil {
 		return cfg, fmt.Errorf("read config %q: %w", path, err)
 	}
-	defer file.Close()
-	decoder := yaml.NewDecoder(file)
+	decoder := yaml.NewDecoder(bytes.NewReader(data))
 	decoder.KnownFields(true)
 	if err := decoder.Decode(&cfg); err != nil {
 		if errors.Is(err, io.EOF) {
 			return cfg, fmt.Errorf("config document is empty")
 		}
 		return cfg, fmt.Errorf("decode config: %w", err)
+	}
+	// yaml.v3 accepts some scalar coercions (for example, a float for an int).
+	// Validate the YAML tags before decoding so typed settings cannot silently change.
+	if err := validateTypedYAML(data); err != nil {
+		return cfg, err
 	}
 	var extra any
 	if err := decoder.Decode(&extra); !errors.Is(err, io.EOF) {
@@ -105,6 +111,99 @@ func parseBackendYAML(path string) (backendYAML, error) {
 		return cfg, fmt.Errorf("decode trailing config document: %w", err)
 	}
 	return cfg, nil
+}
+
+func validateTypedYAML(data []byte) error {
+	var root yaml.Node
+	if err := yaml.Unmarshal(data, &root); err != nil {
+		return fmt.Errorf("decode config: %w", err)
+	}
+	return validateYAMLNode(root.Content[0], reflect.TypeOf(backendYAML{}), "config")
+}
+
+func validateYAMLNode(node *yaml.Node, typ reflect.Type, path string) error {
+	pointer := false
+	for typ.Kind() == reflect.Pointer {
+		pointer = true
+		typ = typ.Elem()
+	}
+	if typ == reflect.TypeOf(yamlDuration{}) {
+		if node.Kind != yaml.ScalarNode || node.Tag != "!!str" {
+			return fmt.Errorf("%s must be a duration string", path)
+		}
+		if _, err := time.ParseDuration(node.Value); err != nil {
+			return fmt.Errorf("%s: %w", path, err)
+		}
+		return nil
+	}
+	if node.Tag == "!!null" {
+		if pointer {
+			return nil
+		}
+		return fmt.Errorf("%s cannot be null", path)
+	}
+	switch typ.Kind() {
+	case reflect.Struct:
+		if node.Kind != yaml.MappingNode {
+			return fmt.Errorf("%s must be a mapping", path)
+		}
+		fields := map[string]reflect.Type{}
+		for i := 0; i < typ.NumField(); i++ {
+			f := typ.Field(i)
+			name := strings.Split(f.Tag.Get("yaml"), ",")[0]
+			if name != "" && name != "-" {
+				fields[name] = f.Type
+			}
+		}
+		for i := 0; i < len(node.Content); i += 2 {
+			key := node.Content[i]
+			field, ok := fields[key.Value]
+			if !ok {
+				continue
+			}
+			if err := validateYAMLNode(node.Content[i+1], field, path+"."+key.Value); err != nil {
+				return err
+			}
+		}
+	case reflect.Slice, reflect.Array:
+		if node.Kind != yaml.SequenceNode {
+			return fmt.Errorf("%s must be a sequence", path)
+		}
+		for i, child := range node.Content {
+			if err := validateYAMLNode(child, typ.Elem(), fmt.Sprintf("%s[%d]", path, i)); err != nil {
+				return err
+			}
+		}
+	case reflect.Map:
+		if node.Kind != yaml.MappingNode {
+			return fmt.Errorf("%s must be a mapping", path)
+		}
+		if typ.Elem().Kind() == reflect.Interface {
+			return nil
+		} // Free-form JSON body values.
+		for i := 0; i < len(node.Content); i += 2 {
+			if err := validateYAMLNode(node.Content[i+1], typ.Elem(), path+"."+node.Content[i].Value); err != nil {
+				return err
+			}
+		}
+	case reflect.String:
+		if node.Kind != yaml.ScalarNode || node.Tag != "!!str" {
+			return fmt.Errorf("%s must be a string", path)
+		}
+	case reflect.Bool:
+		if node.Kind != yaml.ScalarNode || node.Tag != "!!bool" {
+			return fmt.Errorf("%s must be a boolean", path)
+		}
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		if node.Kind != yaml.ScalarNode || node.Tag != "!!int" {
+			return fmt.Errorf("%s must be an integer", path)
+		}
+	case reflect.Float32, reflect.Float64:
+		if node.Kind != yaml.ScalarNode || (node.Tag != "!!int" && node.Tag != "!!float") {
+			return fmt.Errorf("%s must be numeric", path)
+		}
+	}
+	return nil
 }
 
 func requireBackendYAML(c backendYAML) error {

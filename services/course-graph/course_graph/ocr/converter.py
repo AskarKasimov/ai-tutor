@@ -84,7 +84,7 @@ def get_ocr_configuration() -> dict:
         "audit_version": "formula-audit-v5",
         "with_docling": os.environ.get("COURSE_GRAPH_WITH_DOCLING", "true"),
         "picture_text": str(get_settings().ocr.picture_text).lower(),
-        "document_timeout": get_settings().ocr.document_timeout,
+        "document_timeout_seconds": get_settings().ocr.document_timeout_seconds,
         "enrich_code": str(get_settings().ocr.enrich_code).lower(),
         "enrich_formula": str(get_settings().ocr.enrich_formula).lower(),
         "full_page_ocr": str(get_settings().ocr.full_page).lower(),

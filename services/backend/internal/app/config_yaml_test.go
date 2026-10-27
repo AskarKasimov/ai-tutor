@@ -56,6 +56,9 @@ func TestLoadConfigRejectsInvalidYAML(t *testing.T) {
 		{"duplicate", strings.Replace(validBackendYAML, "server:\n", "server:\nserver:\n", 1)},
 		{"multiple documents", validBackendYAML + "---\n" + validBackendYAML},
 		{"wrong type", strings.Replace(validBackendYAML, "count: 1", "count: many", 1)},
+		{"fractional integer", strings.Replace(validBackendYAML, "count: 1", "count: 1.9", 1)},
+		{"string boolean", strings.Replace(validBackendYAML, "enabled: false", "enabled: yes", 1)},
+		{"boolean string", strings.Replace(validBackendYAML, "bucket: audio", "bucket: false", 1)},
 		{"bad duration", strings.Replace(validBackendYAML, "timeout: 120s", "timeout: 0", 1)},
 	}
 	for _, tc := range cases {
@@ -67,6 +70,16 @@ func TestLoadConfigRejectsInvalidYAML(t *testing.T) {
 				t.Fatal("expected YAML error")
 			}
 		})
+	}
+}
+
+func TestLoadConfigAllowsIntegerForFloatField(t *testing.T) {
+	t.Setenv("BACKEND_DATABASE_URL", "postgres://example/db")
+	t.Setenv("BACKEND_S3_ACCESS_KEY", "a")
+	t.Setenv("BACKEND_S3_SECRET_KEY", "s")
+	cfg, err := LoadConfig(writeYAML(t, validBackendYAML))
+	if err != nil || cfg.TTSCFGValue != 2 {
+		t.Fatalf("cfg_value integer: got %v, %v", cfg.TTSCFGValue, err)
 	}
 }
 

@@ -31,6 +31,25 @@ def prepare_benchmark_config(config_path: Path, cache_dir: Path) -> Path:
     return benchmark_config
 
 
+def configure_benchmark_environment():
+    """Load the benchmark snapshot and apply thread defaults before OCR imports."""
+    from course_graph.config import configure_library_environment, get_settings
+
+    get_settings.cache_clear()
+    settings = get_settings()
+    configure_library_environment(settings)
+    return settings
+
+
+def load_benchmark_ocr():
+    """Configure process-level library defaults before loading OCR modules."""
+    settings = configure_benchmark_environment()
+    from course_graph.ocr.converter import convert_document, get_ocr_configuration
+    from course_graph.ocr.enrichment import AuditedEngine
+
+    return settings, convert_document, get_ocr_configuration, AuditedEngine
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("pdf", type=Path)
@@ -76,10 +95,7 @@ def main():
         cache_path = Path(cache)
         config_path = Path(os.environ.get("COURSE_GRAPH_CONFIG", "config/dev.yaml"))
         prepare_benchmark_config(config_path, cache_path)
-        from course_graph.config import get_settings
-        get_settings.cache_clear()
-        from course_graph.ocr.converter import convert_document, get_ocr_configuration
-        from course_graph.ocr.enrichment import AuditedEngine
+        settings, convert_document, get_ocr_configuration, AuditedEngine = load_benchmark_ocr()
         calls = []
         predict = AuditedEngine.predict_batch
 
@@ -88,7 +104,6 @@ def main():
             return predict(self, inputs)
 
         AuditedEngine.predict_batch = measured
-        settings = get_settings()
         assert Path(settings.cache.documents_dir) == cache_path
         started = time.perf_counter()
         result = convert_document(args.pdf.name, content)

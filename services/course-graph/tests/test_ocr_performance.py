@@ -21,6 +21,16 @@ def test_cache_separates_parsers_and_preserves_literal_titles(monkeypatch, tmp_p
     assert converter.get_cached_document("different.pdf", content) is None
 
 
+def test_document_cache_uses_effective_timeout(monkeypatch, tmp_path):
+    configure_settings(monkeypatch, tmp_path, ocr__document_timeout="60s")
+    content = b"same PDF"
+    seconds_key = converter.document_key(content)
+    configure_settings(monkeypatch, tmp_path, ocr__document_timeout="1m")
+    assert converter.document_key(content) == seconds_key
+    configure_settings(monkeypatch, tmp_path, ocr__document_timeout="61s")
+    assert converter.document_key(content) != seconds_key
+
+
 @pytest.mark.parametrize("damage", ["json", "report", "digest", "configuration", "unfinished"])
 def test_invalid_cache_is_a_miss(monkeypatch, tmp_path, damage):
     configure_settings(monkeypatch, tmp_path, cache__documents_dir=str(tmp_path))

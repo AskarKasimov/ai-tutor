@@ -57,6 +57,32 @@ func TestLoadConfigRejectsInvalidDurations(t *testing.T) {
 	}
 }
 
+func TestLoadConfigRejectsCoercedScalarTypes(t *testing.T) {
+	base, err := os.ReadFile(filepath.Join("..", "..", "config", "dev.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct{ name, from, to string }{
+		{"fractional integer", "max_in_flight: 1", "max_in_flight: 1.9"},
+		{"string boolean", "abort_on_disconnect: true", "abort_on_disconnect: yes"},
+		{"boolean string", "listen_address: \":8010\"", "listen_address: false"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			body := strings.Replace(string(base), tc.from, tc.to, 1)
+			if body == string(base) {
+				t.Fatalf("fixture did not contain %q", tc.from)
+			}
+			path := filepath.Join(t.TempDir(), "config.yaml")
+			if err := os.WriteFile(path, []byte(body), 0600); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := LoadConfig(path); err == nil {
+				t.Fatal("coerced scalar type accepted")
+			}
+		})
+	}
+}
+
 func TestConfigValidationRejectsUnknownPoolInstance(t *testing.T) {
 	c := Config{
 		KafkaBrokers: []string{"localhost:9092"},

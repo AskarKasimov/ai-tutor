@@ -26,34 +26,14 @@ import (
 )
 
 func main() {
-	configPath := os.Getenv("GATEWAY_CONFIG")
+	configPath := strings.TrimSpace(os.Getenv("GATEWAY_CONFIG"))
 	if configPath == "" {
-		configPath = "/etc/llm-gateway/config.json"
+		configPath = "config/dev.yaml"
 	}
-	// Model rules (models.json) are baked into the image next to config.json;
-	// GATEWAY_MODELS points elsewhere and then the file must exist.
-	rulesPath := os.Getenv("GATEWAY_MODELS")
-	rulesRequired := rulesPath != ""
-	if !rulesRequired {
-		rulesPath = "/etc/llm-gateway/models.json"
-	}
-	cfg, err := gateway.Load(configPath, rulesPath, rulesRequired)
+	cfg, err := gateway.LoadConfig(configPath)
 	if err != nil {
 		slog.Error("invalid gateway configuration", "error", err)
 		os.Exit(1)
-	}
-	if raw := os.Getenv("GATEWAY_REQUIRED_ROUTING_PROFILES"); raw != "" {
-		var required []string
-		for _, name := range strings.Split(raw, ",") {
-			name = strings.TrimSpace(name)
-			if name != "" {
-				required = append(required, name)
-			}
-		}
-		if err := gateway.ValidateRequiredRoutingProfiles(cfg, required); err != nil {
-			slog.Error("gateway deployment requirements are not met", "error", err)
-			os.Exit(1)
-		}
 	}
 	service, err := gateway.NewService(cfg)
 	if err != nil {

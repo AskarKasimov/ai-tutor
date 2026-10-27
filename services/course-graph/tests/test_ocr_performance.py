@@ -1,3 +1,4 @@
+from config_helpers import configure_settings
 """Regression checks for shared work and faithful cache reuse."""
 import asyncio
 import hashlib
@@ -11,7 +12,7 @@ from course_graph.ocr import converter
 
 
 def test_cache_separates_parsers_and_preserves_literal_titles(monkeypatch, tmp_path):
-    monkeypatch.setenv("COURSE_GRAPH_OCR_CACHE_DIR", str(tmp_path))
+    configure_settings(monkeypatch, tmp_path, cache__documents_dir=str(tmp_path))
     content = b"# Literal title\n\n$x_1 + 2$\n```prolog\np(X) :- q(X).\n```"
     first = converter.convert_document("first.md", content)
     second = converter.convert_document("renamed.txt", content)
@@ -22,7 +23,7 @@ def test_cache_separates_parsers_and_preserves_literal_titles(monkeypatch, tmp_p
 
 @pytest.mark.parametrize("damage", ["json", "report", "digest", "configuration", "unfinished"])
 def test_invalid_cache_is_a_miss(monkeypatch, tmp_path, damage):
-    monkeypatch.setenv("COURSE_GRAPH_OCR_CACHE_DIR", str(tmp_path))
+    configure_settings(monkeypatch, tmp_path, cache__documents_dir=str(tmp_path))
     content = b"exact source"
     converter.convert_document("source.md", content)
     path = converter.get_document_cache_path(content, "source.md")
@@ -42,10 +43,10 @@ def test_invalid_cache_is_a_miss(monkeypatch, tmp_path, damage):
     assert converter.get_cached_document("source.md", content) is None
 
 
-def test_different_jobs_share_inference_without_disk_cache(monkeypatch):
+def test_different_jobs_share_inference_without_disk_cache(monkeypatch, tmp_path):
     import course_graph.api as api
     from course_graph.ocr.jobs import OcrJobs
-    monkeypatch.delenv("COURSE_GRAPH_OCR_CACHE_DIR", raising=False)
+    configure_settings(monkeypatch, tmp_path, cache__documents_dir=str(tmp_path))
     monkeypatch.setattr(api, "ocr_jobs", OcrJobs())
     started, release = threading.Event(), threading.Event()
     calls = []
@@ -129,11 +130,11 @@ def test_native_reader_reuses_pages_and_closes_evicted_resources(monkeypatch):
     assert events[-1] == "close_pdf"
 
 
-def test_plain_text_does_not_wait_for_docling_slot(monkeypatch):
+def test_plain_text_does_not_wait_for_docling_slot(monkeypatch, tmp_path):
     import course_graph.api as api
     from course_graph.ocr.jobs import OcrJobs
     monkeypatch.setattr(api, "ocr_jobs", OcrJobs())
-    monkeypatch.delenv("COURSE_GRAPH_OCR_CACHE_DIR", raising=False)
+    configure_settings(monkeypatch, tmp_path, cache__documents_dir=str(tmp_path))
 
     async def run():
         monkeypatch.setattr(api, "ocr_slots", asyncio.Semaphore(1))
@@ -201,7 +202,7 @@ def test_visual_retry_uses_same_rectangle_and_releases_resources(monkeypatch, or
 def test_transient_fallback_is_not_a_permanent_cache(monkeypatch, tmp_path):
     from pypdf import PdfWriter
     import io
-    monkeypatch.setenv("COURSE_GRAPH_OCR_CACHE_DIR", str(tmp_path))
+    configure_settings(monkeypatch, tmp_path, cache__documents_dir=str(tmp_path))
     monkeypatch.setenv("COURSE_GRAPH_WITH_DOCLING", "true")
     writer = PdfWriter()
     writer.add_blank_page(width=100, height=100)
@@ -246,7 +247,7 @@ def test_generated_code_disagreement_with_native_is_visible():
     assert CODE_MISMATCH_WARNING in guard.warnings
 
 
-def test_converter_attaches_reader_when_initialize_pipeline_returns_none(monkeypatch):
+def test_converter_attaches_reader_when_initialize_pipeline_returns_none(monkeypatch, tmp_path):
     import io
     from pypdf import PdfWriter
     from pypdf.generic import DictionaryObject, NameObject, DecodedStreamObject
@@ -282,7 +283,7 @@ def test_converter_attaches_reader_when_initialize_pipeline_returns_none(monkeyp
             return S(document=document, status="success")
 
     monkeypatch.setenv("COURSE_GRAPH_WITH_DOCLING", "true")
-    monkeypatch.delenv("COURSE_GRAPH_OCR_CACHE_DIR", raising=False)
+    configure_settings(monkeypatch, tmp_path, cache__documents_dir=str(tmp_path))
     monkeypatch.setattr(converter, "get_converter", Converter)
     result = converter.convert_document("native.pdf", content.getvalue())
     assert result["report"]["engine"] == "docling"
@@ -331,7 +332,7 @@ def test_incomplete_job_allows_retry_with_same_job_id():
 def test_failed_picture_ocr_marks_work_incomplete_and_prevents_cache(monkeypatch, tmp_path):
     from pypdf import PdfWriter
     import io
-    monkeypatch.setenv("COURSE_GRAPH_OCR_CACHE_DIR", str(tmp_path))
+    configure_settings(monkeypatch, tmp_path, cache__documents_dir=str(tmp_path))
     monkeypatch.setenv("COURSE_GRAPH_WITH_DOCLING", "true")
 
     writer = PdfWriter()
@@ -420,7 +421,7 @@ def test_legacy_cache_prior_to_formula_audit_fix_is_a_cache_miss(monkeypatch, tm
     3. The updated system must NOT serve this stale entry (get_cached_document returns None).
     4. Old cache files are safely ignored without needing deletion.
     """
-    monkeypatch.setenv("COURSE_GRAPH_OCR_CACHE_DIR", str(tmp_path))
+    configure_settings(monkeypatch, tmp_path, cache__documents_dir=str(tmp_path))
     content = b"# Document\n\n$$\\left. x \\right)$$"
     source_sha = hashlib.sha256(content).hexdigest()
 
@@ -477,7 +478,7 @@ def test_deterministic_crop_retry_failure_is_unresolved_and_allows_caching(monke
     from course_graph.ocr.enrichment import audit_and_retry_formulas, AuditedEngine
     import course_graph.ocr.converter as converter
 
-    monkeypatch.setenv("COURSE_GRAPH_OCR_CACHE_DIR", str(tmp_path))
+    configure_settings(monkeypatch, tmp_path, cache__documents_dir=str(tmp_path))
 
     class Bitmap:
         def to_pil(self): return Image.new("RGB", (20, 20))
@@ -558,7 +559,7 @@ def test_main_pass_token_limit_caches_document_and_second_call_hits_cache(monkey
     from course_graph.ocr.enrichment import NativeSyntaxGuard
     import course_graph.ocr.converter as converter
 
-    monkeypatch.setenv("COURSE_GRAPH_OCR_CACHE_DIR", str(tmp_path))
+    configure_settings(monkeypatch, tmp_path, cache__documents_dir=str(tmp_path))
     monkeypatch.setenv("COURSE_GRAPH_WITH_DOCLING", "true")
 
     inference_calls = 0
@@ -634,7 +635,7 @@ def test_cache_of_the_previous_audit_version_is_not_reused(monkeypatch, tmp_path
     """Results cached by formula-audit-v4 may miss contradictions with the text layer."""
     import course_graph.ocr.converter as converter
 
-    monkeypatch.setenv("COURSE_GRAPH_OCR_CACHE_DIR", str(tmp_path))
+    configure_settings(monkeypatch, tmp_path, cache__documents_dir=str(tmp_path))
     content = "# Document\n\nprint(42)".encode()
     current = converter.get_ocr_configuration
     monkeypatch.setattr(converter, "get_ocr_configuration", lambda: {**current(), "audit_version": "formula-audit-v4"})

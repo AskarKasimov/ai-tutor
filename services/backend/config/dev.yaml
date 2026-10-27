@@ -1,0 +1,39 @@
+server:
+  listen_address: ":8002"
+voice:
+  stt:
+    url: "http://10.100.30.83:8000/transcribe"
+  tts:
+    url: "http://10.100.30.83:8001/synthesize"
+    seed: 510
+    cfg_value: 2.0
+    inference_timesteps: 20
+  timeout: 120s
+uploads:
+  max_bytes: 26214400
+storage:
+  s3:
+    endpoint: "http://s3:9000"
+    region: us-east-1
+    bucket: task-audio
+    path_style: true
+    timeout: 30s
+    create_bucket: true
+workers:
+  audio:
+    count: 1
+    poll_interval: 1s
+tutor:
+  enabled: true
+  context:
+    task_max_chars: 16000
+    history_max_chars: 16000
+    summary_max_chars: 4000
+course_graph:
+  url: "http://course-graph:8000"
+  timeout: 0s
+llm_gateway:
+  address: "llm-gateway:8011"
+  timeout: 120s
+geek:
+  question_limit: 8

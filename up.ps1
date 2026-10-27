@@ -1,4 +1,4 @@
-﻿<#
+<#
 .SYNOPSIS
     Поднимает dev-стек AI Tutor на Windows одной командой (аналог dev.sh).
 .EXAMPLE
@@ -14,11 +14,10 @@ param(
 # Native tools report failures via exit codes, checked explicitly below.
 $ErrorActionPreference = 'Continue'
 Set-Location -LiteralPath $PSScriptRoot
-$compose = @('compose', '--env-file', '.env', '-f', 'docker-compose.yaml')
-$appUrl = 'https://localhost:8443'
-# The admin panel is a separate site on the same address with its own session.
-$adminUrl = "$appUrl/admin"
-# Grafana runs with the gateway profile (COMPOSE_PROFILES from the environment, else .env).
+$compose = @('compose', '--env-file', '.env', '-f', 'docker-compose.yaml', '-f', 'docker-compose.dev.yaml')
+$appUrl = ''
+$adminUrl = ''
+# Grafana runs with observability (COMPOSE_PROFILES from the environment, else .env).
 $grafanaUrl = 'http://localhost:3000/d/llm-gateway-routing'
 
 function Step($text) { Write-Host "==> $text" -ForegroundColor Cyan }
@@ -35,14 +34,14 @@ if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
 if ($Down) { Invoke-Docker @compose down; exit 0 }
 if ($Logs) { & docker @compose logs -f api frontend; exit 0 }
 
-$gatewayConfig = 'services\llm-gateway\config.json'
-$gatewayConfigExample = 'services\llm-gateway\config.example.json'
-if (Test-Path -LiteralPath $gatewayConfig -PathType Container) {
-    Fail "$gatewayConfig существует как папка. Удалите её или переместите, затем запустите скрипт снова."
-}
-if (-not (Test-Path -LiteralPath $gatewayConfig -PathType Leaf)) {
-    Step 'Создаём конфигурацию LLM Gateway из примера'
-    Copy-Item -LiteralPath $gatewayConfigExample -Destination $gatewayConfig
+foreach ($configPath in @(
+    'services\backend\config\dev.yaml',
+    'services\course-graph\config\dev.yaml',
+    'services\llm-gateway\config\dev.yaml'
+)) {
+    if (-not (Test-Path -LiteralPath $configPath -PathType Leaf)) {
+        Fail "Не найдена конфигурация $configPath."
+    }
 }
 
 Step 'Проверяем Docker'
@@ -73,6 +72,14 @@ if (-not (Test-Path .env)) {
     [IO.File]::WriteAllText((Join-Path $PWD '.env'), $text, (New-Object Text.UTF8Encoding $false))
 }
 
+$portLine = Get-Content .env -Encoding UTF8 | Where-Object { $_ -match '^PROXY_HTTPS_PORT=' } | Select-Object -Last 1
+if (-not $portLine) {
+    $portLine = Get-Content .env.example -Encoding UTF8 | Where-Object { $_ -match '^PROXY_HTTPS_PORT=' } | Select-Object -Last 1
+}
+$httpsPort = if ($portLine) { $portLine.Substring('PROXY_HTTPS_PORT='.Length) } else { '8443' }
+$appUrl = "https://localhost:$httpsPort"
+$adminUrl = "$appUrl/admin/courses"
+
 if (-not (Test-Path certs\server.pem) -or -not (Test-Path certs\server-key.pem)) {
     Step 'Создаём локальные HTTPS-сертификаты'
     if (-not (Get-Command mkcert -ErrorAction SilentlyContinue)) {
@@ -102,7 +109,7 @@ if ($null -eq $profiles) {
     $line = Get-Content .env -Encoding UTF8 | Where-Object { $_ -match '^COMPOSE_PROFILES=' } | Select-Object -Last 1
     $profiles = if ($line) { $line.Substring('COMPOSE_PROFILES='.Length) } else { '' }
 }
-$withGrafana = ($profiles -split ',' | ForEach-Object { $_.Trim() }) -contains 'gateway'
+$withGrafana = ($profiles -split ',' | ForEach-Object { $_.Trim() }) -contains 'observability'
 
 Write-Host "Готово. Ученик: $appUrl" -ForegroundColor Green
 Write-Host "       Админка: $adminUrl" -ForegroundColor Green

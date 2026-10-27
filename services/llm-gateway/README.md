@@ -2,22 +2,23 @@
 
 Отдельный Go-сервис для серверных Chat Completions. Он принимает запросы по HTTP и gRPC, ставит их в долговечную очередь Redpanda и балансирует доступные слоты. Инстанс обслуживает запросы своего и более низких уровней сложности; обычные запросы более высокого уровня имеют приоритет на его слотах. `urgent` имеет приоритет над обычными запросами сквозь все уровни. Полный ответ отдаётся после сохранения результата.
 
-## Локальный запуск
+## Локальный запуск и конфигурация
 
-1. `./dev.sh` и `./prod.sh` копируют `config.example.json` в `config.json`, если локального файла ещё нет. При запуске Compose напрямую скопируйте его вручную. Уже существующий `config.json` скрипты сохраняют; он исключён из Git.
-2. Укажите проверенные `base_url`, upstream `model`, контекстное окно и поддерживаемые параметры для каждого инстанса. Пулы сложности можно разделять; количество инстансов не ограничено.
-   Для единого приложения также задайте в существующем `config.json` три профиля `learning-assessment`, `learning-tutor` и `learning-taskgen` в `routing_profiles`. Значениями должны быть проверенные ID инстансов, допустимые для `pools.high`; оставьте текущие токены, маршруты и остальные настройки без изменений. Корневой Compose проверяет эти профили до запуска gateway и не стартует приложение при пропуске или маршруте без high-complexity инстанса. Standalone gateway без `GATEWAY_REQUIRED_ROUTING_PROFILES` сохраняет прежнее поведение.
-3. При необходимости укажите upstream токены непосредственно в локальном `config.json` (пустое значение отключает upstream Bearer auth). Этот файл исключён из Git и не должен попадать в репозиторий.
-4. `models.json` (в Git, зашит в образ как `/etc/llm-gateway/models.json`; другой путь — `GATEWAY_MODELS`) хранит правила по имени upstream-модели: какие поля добавить в тело запроса для уровня `reasoning_effort`. Для Qwen3.6 thinking отключён на `low` и `medium` через `{"chat_template_kwargs": {"enable_thinking": false}}`, поскольку Qwen игнорирует `reasoning_effort`. Правило действует после пересборки образа, `config.json` трогать не нужно. При необходимости инстанс в `config.json` может задать своё поле `reasoning_effort_body` — оно главнее правила модели для того же уровня. Задать `model`, `messages`, `stream`, `complexity`, `urgent` или клиентский параметр нельзя ни там, ни там: gateway не стартует.
-5. Запустите `COMPOSE_PROFILES=gateway docker compose up --build` из корня репозитория. Одноброкерная Redpanda нужна только для разработки и не защищает от потери диска.
+Основной запуск — ./dev.sh -d из корня после настройки .env с секретами БД и S3. Gateway всегда входит в общий dev stack и читает полный YAML из config/dev.yaml; в Docker Compose указатель GATEWAY_CONFIG указывает на смонтированный файл. Изменение YAML через atomic-save вызывает Air restart gateway-процесса в том же контейнере. Очередь Redpanda сохраняется, незавершённые запросы обрабатываются штатным механизмом восстановления gateway.
 
-В production разверните три Redpanda broker с replication factor 3. Создайте `llm.requests.v1` с одной partition, replication factor 3, retention не меньше 7 суток и `max.message.bytes` не меньше 2 MiB; `llm.state.v1` — с одной partition, replication factor 3, `cleanup.policy=compact`, без time retention актуальных записей и `max.message.bytes` не меньше 40 MiB. Топиковые пределы должны вместить payload запроса и полный ответ; Redpanda допускает задать `max.message.bytes` отдельно для topic. В каждый момент времени должен работать только один активный процесс gateway.
+Файл содержит routes, pools, routing_profiles, instances и model_rules. Для общего приложения обязательны профили learning-assessment, learning-tutor и learning-taskgen; каждый должен иметь маршрут на инстанс из pools.high. У standalone-конфигурации required_routing_profiles: [] сохраняет необязательность этих требований.
+
+По согласованному решению владельца upstream model tokens пока допустимы в YAML и предназначены для Git. Пустая строка отключает Bearer auth. Не печатайте содержимое токенов в логах, тестовых выводах и отчётах. Настройки gateway из прежних JSON файлов больше не загружаются.
+
+Правила модели находятся в model_rules.models.<model>.reasoning_effort_body того же YAML. Для Qwen3.6 reasoning отключён на low и medium через chat_template_kwargs.enable_thinking: false, поскольку Qwen игнорирует reasoning_effort. Правило инстанса имеет приоритет над правилом модели для того же уровня. Поля model, messages, stream, complexity, urgent и разрешённые клиентские параметры запрещены в extra body.
+
+Runtime image остаётся для сборки и smoke-проверок. При запуске бинарника или runtime image смонтируйте YAML явно и передайте GATEWAY_CONFIG=/path/to/dev.yaml; YAML не встраивается в образ.
 
 ## Контракт
 
 `POST /v1/chat/completions` требует `messages` и `complexity` (`low`, `medium`, `high`). Gateway не проверяет клиентский bearer-токен: в Compose он доступен сервисам внутренней сети, а опубликованный порт привязан к `127.0.0.1`. Необязательные поля и ошибки описаны в [openapi.yaml](openapi.yaml). `model` и streaming запрещены. `urgent` по умолчанию `false`; `Idempotency-Key` дедуплицируется в пределах внутреннего клиента gateway.
 
-Upstream-токены читаются из локального JSON-конфига; клиентских секретов нет. Gateway не пишет содержимое диалогов в логи. Внутренние адреса и секреты не возвращаются клиенту.
+Upstream-токены читаются из runtime YAML; клиентских секретов нет. Gateway не пишет содержимое диалогов в логи. Внутренние адреса и секреты не возвращаются клиенту.
 
 ## Состояние v1
 
@@ -38,20 +39,20 @@ Consumer транзакционно сохраняет `queued` вместе с 
 
 ### Контракт и проверки
 
-`openapi.yaml` генерируется из аннотаций и типов Go командой `bash scripts/generate-openapi.sh`. CI повторяет генерацию и проверяет, что файл уже актуален. Локальный конфиг upstream — `config.json`; он игнорируется Git.
+`openapi.yaml` генерируется из аннотаций и типов Go командой `bash scripts/generate-openapi.sh`. CI повторяет генерацию и проверяет, что файл уже актуален. Runtime-конфиг upstream — `config/dev.yaml` и хранится в Git.
 
 
 ### Dev Compose и VS Code preview
 
-В `.env` задано `COMPOSE_PROFILES=swagger,gateway`, поэтому обычный `./dev.sh` запускает gateway вместе с Redpanda. API опубликован только на `127.0.0.1:8010`. `openapi.yaml` использует `https://localhost:8443/llm-gateway`; Caddy проксирует этот путь к gateway и разрешает CORS только для VS Code webview origins, чтобы работали preview и Try it.
+Gateway и Redpanda входят в dev stack; `COMPOSE_PROFILES` включает только дополнительные Swagger и observability сервисы. API опубликован только на `127.0.0.1:8010`. `openapi.yaml` использует `https://localhost:8443/llm-gateway`; Caddy проксирует этот путь к gateway и разрешает CORS только для VS Code webview origins, чтобы работали preview и Try it.
 
 ## gRPC
 
 `llmgateway.v1.Gateway/Complete` слушает `llm-gateway:8011` внутри Docker; protobuf-контракт — в [shared](../shared/README.md), HTTP-эндпоинт и OpenAPI остаются доступны. Через Caddy используется тот же HTTPS-хост и порт, что у сайта (например, `localhost:8443`) с доверенным CA проекта; путь — `/llmgateway.v1.Gateway/Complete`, префикс к адресу клиента не добавляется. Начальная metadata `idempotency-key` делит пространство ключей с HTTP, `x-request-id` возвращается в metadata ответа. Отмена последнего ожидающего клиента останавливает задание в очереди или у модели; повтор с тем же ключом возвращает сохранённую отмену.
 
-`COMPOSE_PROFILES=gateway docker compose up --build` включает оба маршрута gateway в Caddy, `COMPOSE_PROFILES= docker compose up --build` — отключает; после смены значения пересоздайте proxy. `COMPOSE_PROFILES=swagger,gateway` дополнительно включает документацию. У gRPC-порта нет проброса на хост; gRPC health доступен внутри Docker, Caddy публикует только путь сервиса Gateway.
+Gateway всегда входит в корневой Compose stack. `COMPOSE_PROFILES` включает Swagger и observability сервисы. У gRPC-порта нет проброса на хост; gRPC health доступен внутри Docker, Caddy публикует только путь сервиса Gateway.
 
-Backend (Geek, перевод OCR) ходит в gateway по gRPC (`BACKEND_LLM_GATEWAY_ADDR`), `services/course-graph` — тоже по gRPC (`COURSE_GRAPH_LLM_GATEWAY_ADDR`).
+Backend (Geek, перевод OCR) и `services/course-graph` ходят в gateway по gRPC; адреса задаются в их `config/dev.yaml`.
 
 
-`routing_profiles` в `config.json` связывает client profile IDs с разрешёнными instance IDs. Профиль фильтрует complexity pools, включая urgent; неизвестное имя отклоняется. Пустой профиль сохраняет прежнюю маршрутизацию и idempotency fingerprint. В корневом Compose обязательны `learning-assessment`, `learning-tutor` и `learning-taskgen`; после добавления mapping пересоздайте `llm-gateway` обычным запуском `./dev.sh` или `./prod.sh`. Файл `config.json` и провайдерские секреты скрипт не заменяет.
+`routing_profiles` в `config/dev.yaml` связывает client profile IDs с разрешёнными instance IDs. Профиль фильтрует complexity pools, включая urgent; неизвестное имя отклоняется. Пустой профиль сохраняет прежнюю маршрутизацию и idempotency fingerprint. В корневом Compose обязательны `learning-assessment`, `learning-tutor` и `learning-taskgen`; после добавления mapping пересоздайте `llm-gateway` обычным запуском `./dev.sh`. Файл `config/dev.yaml` содержит все runtime-настройки.

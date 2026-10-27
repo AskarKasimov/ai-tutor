@@ -12,30 +12,20 @@ services:
     build:
       context: ../..
       dockerfile: services/course-graph/Dockerfile
+      target: dev
       args:
         PYTHON_BASE_IMAGE: ${COURSE_GRAPH_BASE_IMAGE:-python:3.11-slim}
         INSTALL_DOCLING: ${COURSE_GRAPH_INSTALL_DOCLING:-true}
         TORCH_BACKEND: cpu
     environment:
-      PORT: 8000
+      COURSE_GRAPH_CONFIG: ${COURSE_GRAPH_CONFIG:-/app/config/dev.yaml}
       COURSE_GRAPH_DEVICE: cpu
-      COURSE_GRAPH_LLM_GATEWAY_ADDR: ${COURSE_GRAPH_LLM_GATEWAY_ADDR:-llm-gateway:8011}
-      COURSE_GRAPH_LLM_TIMEOUT: ${COURSE_GRAPH_LLM_TIMEOUT:-300}
-      COURSE_GRAPH_EMBEDDING_MODEL: ${COURSE_GRAPH_EMBEDDING_MODEL:-intfloat/multilingual-e5-small}
-      COURSE_GRAPH_EMBEDDING_THREADS: ${COURSE_GRAPH_EMBEDDING_THREADS:-4}
-      COURSE_GRAPH_TOPIC_MAX_CHARS: ${COURSE_GRAPH_TOPIC_MAX_CHARS:-6000}
-      COURSE_GRAPH_MODEL_BOOTSTRAP: ${COURSE_GRAPH_MODEL_BOOTSTRAP:-true}
-      COURSE_GRAPH_OCR_THREADS: ${COURSE_GRAPH_OCR_THREADS:-4}
-      OMP_NUM_THREADS: ${OMP_NUM_THREADS:-4}
-      MKL_NUM_THREADS: ${MKL_NUM_THREADS:-4}
       HF_HUB_DISABLE_XET: ${HF_HUB_DISABLE_XET:-1}
       HF_HUB_DOWNLOAD_TIMEOUT: ${HF_HUB_DOWNLOAD_TIMEOUT:-30}
-      COURSE_GRAPH_OCR_CACHE_DIR: /var/lib/course-graph/ocr
-      COURSE_GRAPH_OCR_DOCUMENT_TIMEOUT: ${COURSE_GRAPH_OCR_DOCUMENT_TIMEOUT:-0}
-      COURSE_GRAPH_OCR_ENRICH_CODE: ${COURSE_GRAPH_OCR_ENRICH_CODE:-true}
-      COURSE_GRAPH_OCR_ENRICH_FORMULA: ${COURSE_GRAPH_OCR_ENRICH_FORMULA:-true}
-      COURSE_GRAPH_OCR_FULL_PAGE: ${COURSE_GRAPH_OCR_FULL_PAGE:-false}
     volumes:
+      - ./course_graph:/app/course_graph
+      - ./config:/app/config:ro
+      - ../shared/gen/python/llmgateway:/app/llmgateway:ro
       - course_graph_models:/root/.cache/huggingface
       - course_graph_data:/var/lib/course-graph
     ports:

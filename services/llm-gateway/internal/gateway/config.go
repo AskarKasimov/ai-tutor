@@ -4,9 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/fs"
 	"net/url"
-	"os"
 	"time"
 )
 
@@ -32,6 +30,7 @@ type Config struct {
 	GracePeriod              time.Duration       `json:"grace_period"`
 	Pools                    map[string][]string `json:"pools"`
 	RoutingProfiles          map[string][]string `json:"routing_profiles,omitempty"`
+	RequiredRoutingProfiles  []string            `json:"required_routing_profiles,omitempty"`
 	Instances                []InstanceConfig    `json:"instances"`
 }
 
@@ -87,36 +86,12 @@ func (i *InstanceConfig) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// ModelRules are upstream behaviours of a model, kept in Git (models.json) and
-// baked into the image: how a model turns its reasoning off is a property of
-// the model, not of one deployment's config.json. They apply to every
-// instance serving the model; the instance's own config wins per level.
+// ModelRules describe upstream behavior by served model. Instance-specific
+// values override model defaults at the same reasoning-effort level.
 type ModelRules struct {
 	Models map[string]struct {
 		ReasoningEffortBody map[string]map[string]json.RawMessage `json:"reasoning_effort_body"`
 	} `json:"models"`
-}
-
-// Load reads config.json and the model rules and checks the result. A rules
-// file that is missing is no error unless its path was given explicitly.
-func Load(configPath, rulesPath string, rulesRequired bool) (Config, error) {
-	c, err := readConfig(configPath)
-	if err != nil {
-		return c, err
-	}
-	var rules ModelRules
-	b, err := os.ReadFile(rulesPath)
-	switch {
-	case errors.Is(err, fs.ErrNotExist) && !rulesRequired:
-	case err != nil:
-		return c, fmt.Errorf("read model rules: %w", err)
-	default:
-		if err := json.Unmarshal(b, &rules); err != nil {
-			return c, fmt.Errorf("decode model rules: %w", err)
-		}
-	}
-	c.applyModelRules(rules)
-	return c, c.Validate()
 }
 
 func (c *Config) applyModelRules(rules ModelRules) {
@@ -134,26 +109,7 @@ func (c *Config) applyModelRules(rules ModelRules) {
 	}
 }
 
-func LoadConfig(path string) (Config, error) {
-	c, err := readConfig(path)
-	if err != nil {
-		return c, err
-	}
-	return c, c.Validate()
-}
-
-func readConfig(path string) (Config, error) {
-	var c Config
-	b, err := os.ReadFile(path)
-	if err != nil {
-		return c, fmt.Errorf("read gateway config: %w", err)
-	}
-	if err := json.Unmarshal(b, &c); err != nil {
-		return c, fmt.Errorf("decode gateway config: %w", err)
-	}
-	c.defaults()
-	return c, nil
-}
+func LoadConfig(path string) (Config, error) { return loadYAMLConfig(path) }
 
 func (c *Config) UnmarshalJSON(data []byte) error {
 	type plain Config
@@ -255,6 +211,9 @@ func (c Config) Validate() error {
 	}
 	if len(c.KafkaBrokers) == 0 {
 		return errors.New("kafka_brokers must not be empty")
+	}
+	if err := ValidateRequiredRoutingProfiles(c, c.RequiredRoutingProfiles); err != nil {
+		return err
 	}
 	if c.RequestDeadline <= 0 || c.UpstreamTimeout <= 0 || c.UpstreamTimeout > 120*time.Second || c.Retention <= 0 || c.MaxInputLag <= 0 || c.GracePeriod <= 0 {
 		return errors.New("request_deadline and upstream_timeout must be positive; upstream_timeout cannot exceed 120s")

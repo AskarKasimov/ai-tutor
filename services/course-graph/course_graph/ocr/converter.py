@@ -6,21 +6,15 @@ import json
 import time
 import re
 from pathlib import Path
+
+from course_graph.config import get_settings
 from typing import Optional
 
 _converter = None
 
 
 def configured_document_timeout():
-    raw = os.environ.get("COURSE_GRAPH_OCR_DOCUMENT_TIMEOUT", "0")
-    try:
-        value = float(raw)
-    except ValueError as error:
-        raise ValueError("COURSE_GRAPH_OCR_DOCUMENT_TIMEOUT must be a non-negative number") from error
-    if value < 0:
-        raise ValueError("COURSE_GRAPH_OCR_DOCUMENT_TIMEOUT must be a non-negative number")
-    # Docling treats None as no document-wide deadline; zero can mean immediate timeout.
-    return value or None
+    return get_settings().ocr.document_timeout_seconds or None
 
 
 def get_converter():
@@ -38,9 +32,9 @@ def get_converter():
         # Layout, RapidOCR and the formula/code model all follow this device.
         options.accelerator_options.device = (AcceleratorDevice.CUDA if configured_ocr_device() == "gpu"
                                               else AcceleratorDevice.CPU)
-        options.do_code_enrichment = os.environ.get("COURSE_GRAPH_OCR_ENRICH_CODE", "true").lower() == "true"
-        options.do_formula_enrichment = os.environ.get("COURSE_GRAPH_OCR_ENRICH_FORMULA", "true").lower() == "true"
-        options.generate_picture_images = os.environ.get("COURSE_GRAPH_OCR_PICTURE_TEXT", "true").lower() == "true"
+        options.do_code_enrichment = get_settings().ocr.enrich_code
+        options.do_formula_enrichment = get_settings().ocr.enrich_formula
+        options.generate_picture_images = get_settings().ocr.picture_text
         # The model preset requests bfloat16. On AVX2-only CPUs this is emulated
         # and a small code region took minutes. Use native CPU float32 explicitly.
         from docling.datamodel.vlm_engine_options import TransformersVlmEngineOptions
@@ -48,8 +42,8 @@ def get_converter():
             torch_dtype="float32", load_in_8bit=False, use_kv_cache=True, compile_model=False)
         options.document_timeout = configured_document_timeout()
         from docling.datamodel.pipeline_options import RapidOcrOptions
-        ocr = RapidOcrOptions(backend="torch", force_full_page_ocr=os.environ.get("COURSE_GRAPH_OCR_FULL_PAGE", "false").lower() == "true")
-        model_dir = Path(os.environ.get("COURSE_GRAPH_RAPID_CACHE_DIR", "/var/lib/course-graph/rapidocr"))
+        ocr = RapidOcrOptions(backend="torch", force_full_page_ocr=get_settings().ocr.full_page)
+        model_dir = Path(get_settings().cache.rapidocr_dir)
         paths = {"det_model_path": "PP-OCRv6_det_small.pth", "cls_model_path": "ch_ppocr_mobile_v2.0_cls_mobile.pth",
                  "rec_model_path": "PP-OCRv6_rec_small.pth", "rec_keys_path": "ppocrv6_dict.txt"}
         for field, name in paths.items():
@@ -89,11 +83,11 @@ def get_ocr_configuration() -> dict:
         "version": "ocr-v9-content-cache",
         "audit_version": "formula-audit-v5",
         "with_docling": os.environ.get("COURSE_GRAPH_WITH_DOCLING", "true"),
-        "picture_text": os.environ.get("COURSE_GRAPH_OCR_PICTURE_TEXT", "true"),
-        "document_timeout": os.environ.get("COURSE_GRAPH_OCR_DOCUMENT_TIMEOUT", "0"),
-        "enrich_code": os.environ.get("COURSE_GRAPH_OCR_ENRICH_CODE", "true"),
-        "enrich_formula": os.environ.get("COURSE_GRAPH_OCR_ENRICH_FORMULA", "true"),
-        "full_page_ocr": os.environ.get("COURSE_GRAPH_OCR_FULL_PAGE", "false"),
+        "picture_text": str(get_settings().ocr.picture_text).lower(),
+        "document_timeout": get_settings().ocr.document_timeout,
+        "enrich_code": str(get_settings().ocr.enrich_code).lower(),
+        "enrich_formula": str(get_settings().ocr.enrich_formula).lower(),
+        "full_page_ocr": str(get_settings().ocr.full_page).lower(),
     }
 
 
@@ -118,7 +112,7 @@ def document_key(content: bytes, filename: str = "document.pdf") -> str:
 
 
 def get_document_cache_path(content: bytes, filename: str = "document.pdf") -> Optional[Path]:
-    cache_dir = os.environ.get("COURSE_GRAPH_OCR_CACHE_DIR")
+    cache_dir = get_settings().cache.documents_dir
     if not cache_dir:
         return None
     return Path(cache_dir) / f"{document_key(content, filename)}.json"

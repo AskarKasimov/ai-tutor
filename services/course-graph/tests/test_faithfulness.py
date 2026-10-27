@@ -1,3 +1,4 @@
+from config_helpers import configure_settings
 """Tests for OCR source faithfulness, formula regions, caching, and absence of LLM guessing."""
 import asyncio
 import io
@@ -79,7 +80,7 @@ def test_ocr_never_invokes_llm_completer_and_preserves_markers(monkeypatch, tmp_
             raise AssertionError("CRITICAL: OCR must NEVER instantiate or call external LLM ModelClient!")
 
     monkeypatch.setattr(api, "ModelClient", ForbiddenModelClient)
-    monkeypatch.setenv("COURSE_GRAPH_OCR_CACHE_DIR", str(tmp_path))
+    configure_settings(monkeypatch, tmp_path, cache__documents_dir=str(tmp_path))
 
     md_content = (
         "# Лекция 1\n\n"
@@ -114,7 +115,7 @@ def test_ocr_never_invokes_llm_completer_and_preserves_markers(monkeypatch, tmp_
 
 def test_stable_incomplete_result_is_cached_and_served_fast(monkeypatch, tmp_path):
     """F05 & G01: Stable incomplete results are cached and second request is a 0-inference hit."""
-    monkeypatch.setenv("COURSE_GRAPH_OCR_CACHE_DIR", str(tmp_path))
+    configure_settings(monkeypatch, tmp_path, cache__documents_dir=str(tmp_path))
 
     content = (
         "# Лекция по ML\n\n"
@@ -722,7 +723,7 @@ def test_lost_code_is_cached_as_incomplete_content(monkeypatch, tmp_path):
     import course_graph.ocr.converter as converter
     from pypdf import PdfWriter
 
-    monkeypatch.setenv("COURSE_GRAPH_OCR_CACHE_DIR", str(tmp_path))
+    configure_settings(monkeypatch, tmp_path, cache__documents_dir=str(tmp_path))
     monkeypatch.setenv("COURSE_GRAPH_WITH_DOCLING", "true")
     guard = _real_code_stage(["", "print(42)"])
     calls = []
@@ -763,7 +764,7 @@ def test_failed_engine_initialization_is_not_cached_and_recovers(monkeypatch, tm
     import course_graph.ocr.converter as converter
     from pypdf import PdfWriter
 
-    monkeypatch.setenv("COURSE_GRAPH_OCR_CACHE_DIR", str(tmp_path))
+    configure_settings(monkeypatch, tmp_path, cache__documents_dir=str(tmp_path))
     monkeypatch.setenv("COURSE_GRAPH_WITH_DOCLING", "true")
     inference = []
 

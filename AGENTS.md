@@ -14,7 +14,7 @@
 | `services/shared` | [AGENTS.md](services/shared/AGENTS.md), [README](services/shared/README.md) | Из корня: `services/shared/tools/generate.sh --check`, `services/shared/tools/check-compat.sh <base-sha>` |
 | `services/course-graph` | [AGENTS.md](services/course-graph/AGENTS.md), [README](services/course-graph/README.md), [api/course-graph.yaml](api/course-graph.yaml) | `uv run --locked --extra cpu --extra ocr python -m pytest tests` |
 | `api` | [api/README](api/README.md) | Из `services/backend`: `bash scripts/generate-openapi.sh` без лишних изменений |
-| Compose, `prod.sh`, `dev.sh`, `.env*.example` | [README, «Запуск»](README.md#запуск), README сервиса | Из корня: `sh -n prod.sh`, `docker compose --env-file .env.example config --quiet`, `config --quiet` каждого изменённого `services/*/docker-compose.yaml` с `.env.example` и `.env.prod.example` |
+| Compose, `dev.sh`, `.env.example` | [README, «Запуск»](README.md#запуск), README сервиса | Из корня: `sh -n dev.sh`, root Compose с .env.example с dev override и без него, external-S3 override; `config --quiet` каждого изменённого service Compose с .env.example |
 
 ## Источники истины
 
@@ -35,11 +35,11 @@
 
 - LLM вызывайте только через LLM gateway: без поля `model`, с обязательным `complexity`. Backend ходит в gateway по gRPC через `services/shared`; прямые вызовы моделей запрещены.
 - Озвучка — только TTS backend; браузерный синтез речи не используйте.
-- Адреса моделей и секреты храните только в env backend и `services/llm-gateway/config.json`; в `VITE_*` — только то, что можно отдать браузеру. Не коммитьте `.env` и `config.json`.
+- Настройки приложения backend, gateway и course-graph храните в их коммитных `config/dev.yaml`; переменные env не переопределяют YAML. Секреты backend/БД/S3 остаются в локальном env. По решению владельца upstream model tokens пока допустимы в gateway YAML. В `VITE_*` — только то, что можно отдать браузеру.
 - Сгенерированные файлы (SQLC, `services/shared/gen`, `routeTree.gen.ts`, `openapi.yaml` gateway) вручную не правьте — меняйте источник и перегенерируйте. Сгенерированную часть `api/openapi.yaml` обновляйте только генератором backend.
 - Применённые миграции не меняйте (подробности — в [backend](services/backend/AGENTS.md)). Переработка начальной схемы — только при согласованном сбросе dev-БД.
 - Изменили контракт между сервисами (`api/*.yaml`, `.proto`) — обновите обе стороны и проверьте обе их командами.
-- Поведение или статус реализации изменились — обновите README («Текущая реализация», «План работ»), README затронутого сервиса и [checklist.html](checklist.html).
+- Поведение или статус реализации изменились — обновите README («Текущая реализация», «План работ»), README затронутого сервиса и [checklist.html](checklist.html). Новые config fields требуют loader, tests, dev YAML и README update; prod templates и gateway example больше не используются.
 
 ## Требует согласования
 

@@ -20,7 +20,7 @@ COPY services/backend/cmd ./cmd
 COPY services/backend/internal ./internal
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /api ./cmd/api
 
-FROM alpine:3.24
+FROM alpine:3.24 AS runtime
 RUN apk add --no-cache ca-certificates tzdata \
     && addgroup -S -g 65532 nonroot \
     && adduser -S -D -H -u 65532 -G nonroot nonroot

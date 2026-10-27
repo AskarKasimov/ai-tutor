@@ -4,11 +4,12 @@ set -eu
 repo_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 cd "$repo_dir"
 
-gateway_config=services/llm-gateway/config.json
-if [ ! -f "$gateway_config" ]; then
-    cp services/llm-gateway/config.example.json "$gateway_config"
-fi
-
+for config in services/backend/config/dev.yaml services/course-graph/config/dev.yaml services/llm-gateway/config/dev.yaml; do
+    if [ ! -f "$config" ]; then
+        printf '%s\n' "Missing $config; restore the service YAML configuration." >&2
+        exit 1
+    fi
+done
 if [ ! -f .env ]; then
     printf '%s\n' '.env is missing. Copy and configure it: cp .env.example .env' >&2
     exit 1
@@ -21,7 +22,17 @@ mkcert -install
 mkdir -p certs
 mkcert -cert-file certs/server.pem -key-file certs/server-key.pem localhost 127.0.0.1 ::1
 
-app_url=https://localhost:8443
+https_port=$(printenv PROXY_HTTPS_PORT 2>/dev/null || true)
+if [ -z "$https_port" ]; then
+    https_port=$(sed -n 's/^PROXY_HTTPS_PORT=//p' .env | tail -n 1)
+fi
+if [ -z "$https_port" ]; then
+    https_port=$(sed -n 's/^PROXY_HTTPS_PORT=//p' .env.example | tail -n 1)
+fi
+case "$https_port" in
+    ''|*[!0-9]*) printf '%s\n' 'PROXY_HTTPS_PORT must be numeric.' >&2; exit 1 ;;
+esac
+app_url=https://localhost:$https_port
 admin_url="$app_url/admin/courses"
 printf '%s\n' "Start page: $app_url" "Course admin: $admin_url"
 

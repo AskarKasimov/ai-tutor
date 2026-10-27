@@ -4,7 +4,6 @@ __pycache__/
 .venv/
 *.egg-info/
 .env
-services/llm-gateway/config.json
 certs/
 bin/
 /api-server

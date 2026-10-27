@@ -1,3 +1,4 @@
+from config_helpers import configure_settings
 """The OCR cache key, its entries and their writes stay consistent with the pipeline."""
 import io
 import json
@@ -21,7 +22,7 @@ def blank_pdf():
 @pytest.fixture
 def docling(monkeypatch, tmp_path):
     """A controlled Docling result and a recorder of the PDF-only steps."""
-    monkeypatch.setenv("COURSE_GRAPH_OCR_CACHE_DIR", str(tmp_path))
+    configure_settings(monkeypatch, tmp_path, cache__documents_dir=str(tmp_path))
     monkeypatch.setenv("COURSE_GRAPH_WITH_DOCLING", "true")
     steps = []
 
@@ -77,7 +78,7 @@ def test_name_without_extension_shares_the_pdf_parser():
     lambda report: report.update(formula_regions="none"),
 ])
 def test_cache_entry_that_breaks_the_report_contract_is_a_miss(monkeypatch, tmp_path, damage):
-    monkeypatch.setenv("COURSE_GRAPH_OCR_CACHE_DIR", str(tmp_path))
+    configure_settings(monkeypatch, tmp_path, cache__documents_dir=str(tmp_path))
     first = converter.convert_document("a.txt", b"exact source")
     assert not first["report"]["cache_hit"]
     assert converter.get_cached_document("a.txt", b"exact source")["report"]["cache_hit"]
@@ -93,7 +94,7 @@ def test_cache_entry_that_breaks_the_report_contract_is_a_miss(monkeypatch, tmp_
 
 
 def test_unknown_report_fields_are_kept(monkeypatch, tmp_path):
-    monkeypatch.setenv("COURSE_GRAPH_OCR_CACHE_DIR", str(tmp_path))
+    configure_settings(monkeypatch, tmp_path, cache__documents_dir=str(tmp_path))
     converter.convert_document("a.txt", b"exact source")
     path = converter.get_document_cache_path(b"exact source", "a.txt")
     entry = json.loads(path.read_text(encoding="utf-8"))
@@ -107,7 +108,7 @@ def leftovers(directory):
 
 
 def test_failed_replace_leaves_no_temporary_file_and_keeps_the_old_entry(monkeypatch, tmp_path):
-    monkeypatch.setenv("COURSE_GRAPH_OCR_CACHE_DIR", str(tmp_path))
+    configure_settings(monkeypatch, tmp_path, cache__documents_dir=str(tmp_path))
     data = {"markdown": "old", "report": {}}
     converter.cache_document_result(b"source", data, "a.txt")
     path = converter.get_document_cache_path(b"source", "a.txt")
@@ -124,13 +125,13 @@ def test_failed_replace_leaves_no_temporary_file_and_keeps_the_old_entry(monkeyp
 
 
 def test_failed_serialization_leaves_no_temporary_file(monkeypatch, tmp_path):
-    monkeypatch.setenv("COURSE_GRAPH_OCR_CACHE_DIR", str(tmp_path))
+    configure_settings(monkeypatch, tmp_path, cache__documents_dir=str(tmp_path))
     converter.cache_document_result(b"source", {"markdown": "x", "report": {"bad": object()}}, "a.txt")
     assert list(Path(tmp_path).iterdir()) == []
 
 
 def test_failing_cache_write_does_not_break_the_result(monkeypatch, tmp_path):
-    monkeypatch.setenv("COURSE_GRAPH_OCR_CACHE_DIR", str(tmp_path))
+    configure_settings(monkeypatch, tmp_path, cache__documents_dir=str(tmp_path))
     monkeypatch.setattr(Path, "replace", lambda self, target: (_ for _ in ()).throw(OSError("disk full")))
     result = converter.convert_document("a.txt", b"exact source")
     assert result["markdown"].endswith("exact source")

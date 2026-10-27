@@ -267,7 +267,7 @@ gRPC health и reflection не добавляются в маршрут серв
 
 Build context gateway — корень проекта `ai-tutor`, Dockerfile — `services/llm-gateway/Dockerfile`. COPY используют пути относительно корня; это относится к сервисному Compose и корневому extends.
 
-В builder сохраняется структура соседних модулей: `/src/services/llm-gateway` и `/src/services/shared`. Сначала копируются go.mod/go.sum обоих модулей, затем загружаются зависимости, затем исходники и сгенерированные файлы. Сборка выполняется с `GOWORK=off` и локальным replace. Protoc не требуется в runtime или при обычной сборке образа. Runtime получает бинарник и реестр правил моделей `models.json`. Корневой `.dockerignore` исключает секретный `config.json`, `.env`, сертификаты и прочие файлы вне необходимых исходников из build context.
+В builder сохраняется структура соседних модулей: `/src/services/llm-gateway` и `/src/services/shared`. Сначала копируются go.mod/go.sum обоих модулей, затем загружаются зависимости, затем исходники и сгенерированные файлы. Сборка выполняется с `GOWORK=off` и локальным replace. Protoc не требуется в runtime или при обычной сборке образа. Runtime получает бинарник; конфигурация и правила моделей передаются в YAML через `GATEWAY_CONFIG`. Корневой `.dockerignore` исключает `.env`, сертификаты и прочие файлы вне необходимых исходников из build context.
 
 Backend Dockerfile и dev mounts включают shared. Shared README описывает обязательное присутствие соседнего модуля при standalone-сборке потребителя. Отдельная публикация shared во внешний registry сейчас не нужна.
 

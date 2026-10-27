@@ -15,7 +15,7 @@ func TestLearningAudioContractThroughHTTP(t *testing.T) {
 	f := newFixture(t)
 	student, _, _ := f.register(t, "parent-audio@example.invalid")
 	admin := f.admin(t)
-	data, err := os.ReadFile("../features/competency/infrastructure/csvparser/testdata/ml_map.csv")
+	data, err := os.ReadFile("testdata/learning-ready-map.csv")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -301,19 +301,44 @@ func TestImportMapKeepsTheExactNameOfTheFirstSheet(t *testing.T) {
 }
 
 func TestBuildOfAMapPublishesItsGraphWithPreparedQuestions(t *testing.T) {
-	graph, err := coursegraph.BuildMapGraph([]coursegraph.MapSheet{{Name: "Карта", Rows: mapRows("К1. Агенты")}})
-	if err != nil {
-		t.Fatal(err)
+	for _, explicit := range []bool{false, true} {
+		name := "legacy"
+		rows := mapRows("К1. Агенты")
+		if explicit {
+			name = "explicit"
+			rows[0] = append([]string{"ID темы", "Пререквизиты"}, rows[0]...)
+			for i, id := range []string{"a", "b", "c"} {
+				requires := ""
+				if i > 0 {
+					requires = "a"
+				}
+				rows[i+1] = append([]string{id, requires}, rows[i+1]...)
+			}
+		}
+		t.Run(name, func(t *testing.T) {
+			graph, err := coursegraph.BuildMapGraph([]coursegraph.MapSheet{{Name: "Карта", Rows: rows}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			repo := &publishingRepo{requestRepo: requestRepo{mapGraph: graph.Graph}}
+			questions := &stubQuestions{}
+			w := New(repo, nil, nil, nil, nil, nil)
+			w.SetQuestions(questions)
+			if err := w.process(context.Background(), coursegraph.Job{SubjectID: "subject", Source: coursegraph.SourceMap, Attempts: 1}); err != nil {
+				t.Fatal(err)
+			}
+			if string(questions.seen) != string(graph.Graph) || len(repo.finished) != 1 {
+				t.Fatalf("prepared %s, published %d graphs", questions.seen, len(repo.finished))
+			}
+		})
 	}
-	repo := &publishingRepo{requestRepo: requestRepo{mapGraph: graph.Graph}}
-	questions := &stubQuestions{}
+}
+
+func TestMapBuildRejectsUnknownGraphVersion(t *testing.T) {
+	repo := &publishingRepo{requestRepo: requestRepo{mapGraph: json.RawMessage(`{"version":"unknown","topics":[{}]}`)}}
 	w := New(repo, nil, nil, nil, nil, nil)
-	w.SetQuestions(questions)
-	if err := w.process(context.Background(), coursegraph.Job{SubjectID: "subject", Source: coursegraph.SourceMap, Attempts: 1}); err != nil {
-		t.Fatal(err)
-	}
-	if string(questions.seen) != string(graph.Graph) || len(repo.finished) != 1 {
-		t.Fatalf("prepared %s, published %d graphs", questions.seen, len(repo.finished))
+	if err := w.process(context.Background(), coursegraph.Job{Source: coursegraph.SourceMap, Attempts: 1}); err == nil || len(repo.finished) != 0 {
+		t.Fatalf("unknown map version: error %v, published %d", err, len(repo.finished))
 	}
 }
 

@@ -9,10 +9,8 @@ export type TurnAudioState = {
 }
 
 // Plays the voice of Geek turns, one at a time; fetched WAVs are kept for
-// replays while the dialogue is open. A turn is voiced in two parts: the short
-// reply to the previous answer plays first, while the question after it is
-// still being synthesized. The question is requested only once the reply has
-// arrived, because the speech service works through requests one by one.
+// replays while the dialogue is open. A cached intro can play while the first
+// reply block is synthesized; each block prefetches only its immediate successor.
 export function useTurnAudio(sessionId: string) {
   const { diagnostic } = useDiagnosticDependencies()
   const [state, setState] = useState<TurnAudioState>({
@@ -32,7 +30,10 @@ export function useTurnAudio(sessionId: string) {
   // cannot be voiced (a failure, a blocked autoplay, a stop), so a caller
   // waiting for the voice is never left waiting.
   const play = useCallback(
-    async (turn: Pick<Turn, 'id' | 'reply'>, onStart?: () => void) => {
+    async (
+      turn: Pick<Turn, 'id' | 'reply' | 'audioIntro' | 'replyAudioParts'>,
+      onStart?: () => void,
+    ) => {
       current.current?.abort()
       const controller = new AbortController()
       current.current = controller
@@ -46,8 +47,8 @@ export function useTurnAudio(sessionId: string) {
       }
       setState({ turnId: turn.id, status: 'loading' })
 
-      const load = async (part: TurnAudioPart) => {
-        const key = `${turn.id}:${part}`
+      const load = async (part: TurnAudioPart, chunk?: number) => {
+        const key = `${turn.id}:${part}:${chunk ?? 'whole'}`
         let audio = cache.current.get(key)
         if (!audio) {
           audio = await diagnostic.fetchTurnAudio(
@@ -55,6 +56,7 @@ export function useTurnAudio(sessionId: string) {
             turn.id,
             signal,
             part,
+            chunk,
           )
           cache.current.set(key, audio)
         }
@@ -62,25 +64,45 @@ export function useTurnAudio(sessionId: string) {
       }
 
       try {
-        const reply = turn.reply.trim() ? await load('reply') : null
-        const question = load('question')
-        // The question is awaited after the reply has played; until then its
-        // failure must not surface as an unhandled rejection.
-        question.catch(() => undefined)
-        if (reply) {
+        const count = turn.replyAudioParts ?? 0
+        const indices: Array<number | undefined> =
+          count > 0
+            ? Array.from({ length: count }, (_, i) => i)
+            : turn.reply.trim()
+              ? [undefined]
+              : []
+        // Only one block ahead: stopping/answering does not enqueue all speech.
+        let reply = indices.length ? load('reply', indices[0]) : null
+        reply?.catch(() => undefined)
+        const playAudio = async (blob: Blob) => {
           signal.throwIfAborted()
-          await playToEnd(reply, signal, () => {
+          await playToEnd(blob, signal, () => {
             start()
             if (mine()) setState({ turnId: turn.id, status: 'playing' })
           })
           if (mine()) setState({ turnId: turn.id, status: 'loading' })
         }
-        const audio = await question
-        signal.throwIfAborted()
-        await playToEnd(audio, signal, () => {
-          start()
-          if (mine()) setState({ turnId: turn.id, status: 'playing' })
-        })
+        if (turn.audioIntro) {
+          // A missing intro must never hide or prevent the actual feedback.
+          const intro = await load('intro').catch(() => {
+            signal.throwIfAborted()
+            return null
+          })
+          if (intro) await playAudio(intro)
+        }
+        let question: Promise<Blob> | null = null
+        for (let i = 0; i < indices.length; i++) {
+          const audio = await reply!
+          signal.throwIfAborted()
+          reply = i + 1 < indices.length ? load('reply', indices[i + 1]) : null
+          reply?.catch(() => undefined)
+          if (i === indices.length - 1) {
+            question = load('question')
+            question.catch(() => undefined)
+          }
+          await playAudio(audio)
+        }
+        await playAudio(await (question ?? load('question')))
         if (mine()) {
           current.current = null
           setState({ turnId: null, status: 'idle' })

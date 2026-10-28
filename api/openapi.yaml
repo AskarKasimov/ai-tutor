@@ -1455,6 +1455,16 @@ components:
     geek.Turn:
       additionalProperties: false
       properties:
+        meta:
+          description: Служебная реплика, которая не расходует попытку и не участвует в оценке знаний.
+          type: boolean
+        audio_intro:
+          description: Предозвученная вводная перед фидбеком; запрашивается как part=intro.
+          type: string
+        reply_audio_parts:
+          description: Число блоков фидбека; part=reply и chunk с нуля возвращают отдельный блок.
+          type: integer
+          minimum: 0
         created_at:
           type: integer
         id:
@@ -4552,6 +4562,12 @@ paths:
             maxLength: 128
             minLength: 1
             type: string
+        - description: Неотрицательный номер блока фидбека, только с part=reply; без номера возвращается весь фидбек.
+          in: query
+          name: chunk
+          schema:
+            type: integer
+            minimum: 0
         - description: Часть реплики
           in: query
           name: part
@@ -4559,6 +4575,7 @@ paths:
             enum:
               - reply
               - question
+              - intro
             type: string
       responses:
         "200":

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -57,7 +58,11 @@ func (g *Gateway) Question(ctx context.Context, r application.QuestionRequest) (
 		level = llmgatewayv1.Complexity_COMPLEXITY_MEDIUM
 	}
 	var text string
-	err := g.complete(ctx, "question:"+string(r.Kind), level, !r.Ahead, questionPrompt(r), func(content []byte) error {
+	operation := "question:" + string(r.Kind)
+	if r.Hint {
+		operation = "hint_context"
+	}
+	err := g.complete(ctx, operation, level, !r.Ahead, questionPrompt(r), func(content []byte) error {
 		var out struct {
 			Text string `json:"text"`
 		}
@@ -67,12 +72,31 @@ func (g *Gateway) Question(ctx context.Context, r application.QuestionRequest) (
 		if text = strings.TrimSpace(out.Text); text == "" {
 			return errors.New("empty text")
 		}
+		if r.Hint && strings.Contains(text, "?") {
+			return errors.New("context must not generate a leading question")
+		}
 		return nil
 	})
+	if err == nil && r.Hint {
+		question := r.Node.MainQuestion()
+		if question == "" {
+			question, _ = lastSupportInput(application.EvaluationRequest{Node: r.Node, Dialogue: r.Dialogue})
+		}
+		if question != "" {
+			text += "\n\n" + question
+		}
+	}
 	return text, err
 }
 
 func (g *Gateway) Evaluate(ctx context.Context, r application.EvaluationRequest) (application.Assessment, error) {
+	spec, specErr := exam.ParseRubric(r.Node.AssessmentGuidance)
+	if specErr != nil {
+		return application.Assessment{}, specErr
+	}
+	if len(spec) > 0 {
+		return g.evaluateRubric(ctx, r, spec)
+	}
 	var result application.Assessment
 	// The student waits for the evaluation, so it uses the fast low pool too.
 	err := g.complete(ctx, "evaluate:"+string(r.Kind), llmgatewayv1.Complexity_COMPLEXITY_LOW, true, evaluationPrompt(r), func(content []byte) error {
@@ -85,12 +109,22 @@ func (g *Gateway) Evaluate(ctx context.Context, r application.EvaluationRequest)
 				K3 json.RawMessage `json:"k3"`
 				K4 json.RawMessage `json:"k4"`
 			} `json:"criteria"`
-			Evidence []int `json:"evidence_lines"`
+			Evidence          []json.Number          `json:"evidence_lines"`
+			AddressPreference exam.AddressPreference `json:"address_preference"`
 		}
 		if err := json.Unmarshal(content, &out); err != nil {
 			return err
 		}
-		e := exam.Evaluation{Verdict: out.Verdict, Evidence: out.Evidence}
+		// Models sometimes quote line numbers. Accept the same integer value,
+		// while rejecting fractions, non-numeric strings and overflow.
+		e := exam.Evaluation{Verdict: out.Verdict}
+		for _, number := range out.Evidence {
+			line, err := strconv.Atoi(number.String())
+			if err != nil {
+				return fmt.Errorf("invalid evidence line: %w", err)
+			}
+			e.Evidence = append(e.Evidence, line)
+		}
 		switch out.Verdict {
 		case exam.VerdictAnswered:
 			if out.AnswerComplete == nil {
@@ -119,14 +153,26 @@ func (g *Gateway) Evaluate(ctx context.Context, r application.EvaluationRequest)
 			if !e.Criteria.Valid() {
 				return fmt.Errorf("criteria out of range: %+v", e.Criteria)
 			}
-		case exam.VerdictDontKnow, exam.VerdictInsufficient:
+		case exam.VerdictDontKnow, exam.VerdictInsufficient, exam.VerdictHintRequested, exam.VerdictAddressCorrection, exam.VerdictClarifyQuestion, exam.VerdictPause:
 		default:
 			return fmt.Errorf("unknown verdict %q", out.Verdict)
 		}
-		result = application.Assessment{Evaluation: e}
+		if !out.AddressPreference.Valid() || (out.Verdict == exam.VerdictAddressCorrection && out.AddressPreference == "") {
+			return errors.New("invalid address preference")
+		}
+		// Never show grading-model prose to a student, even if the model emits it.
+		result = application.Assessment{Evaluation: e, AddressPreference: out.AddressPreference}
 		return nil
 	})
 	if err != nil {
+		return application.Assessment{}, err
+	}
+	if result.Verdict == exam.VerdictClarifyQuestion {
+		if err := g.clarifySupport(ctx, r, &result); err != nil {
+			return application.Assessment{}, err
+		}
+	}
+	if err := g.checkIndependence(ctx, r, &result); err != nil {
 		return application.Assessment{}, err
 	}
 	return result, nil
@@ -137,12 +183,21 @@ func (g *Gateway) Feedback(ctx context.Context, r application.FeedbackRequest) (
 	// A rephrase needs a transition, not another model-generated question or
 	// hints. Keep this branch deterministic, including the speaker's agency.
 	if !r.Closed && r.Next == exam.KindRephrase {
+		if r.Verdict == exam.VerdictHintRequested {
+			return transition(r, hintTransitions), nil
+		}
 		if r.Verdict == exam.VerdictInsufficient {
 			return transition(r, offTopicTransitions), nil
 		}
 		return transition(r, rephraseTransitions), nil
 	}
 	if !r.Closed {
+		if r.Result.Rubric != nil {
+			if r.Result.Rubric.Complete() {
+				return transition(r, soundFollowupTransitions), nil
+			}
+			return transition(r, partialFollowupTransitions), nil
+		}
 		// Only the actual followup asks for the missing knowledge. Generating
 		// a second reaction with the same model repeatedly leaked that answer.
 		if k := r.Result.Criteria; k != nil && k.K1 == 2 && k.K2 == 2 {
@@ -177,8 +232,26 @@ func (g *Gateway) Feedback(ctx context.Context, r application.FeedbackRequest) (
 func (g *Gateway) complete(ctx context.Context, operation string, level llmgatewayv1.Complexity, urgent bool, prompt string, parse func([]byte) error) error {
 	logger := httpx.LoggerFromContext(ctx).With(zap.String("llm_operation", operation), zap.String("complexity", level.String()), zap.Bool("urgent", urgent))
 	system := systemPrompt
+	if operation == "route_rubric" {
+		system = rubricRouterSystemPrompt
+	}
+	if operation == "review_rubric" {
+		system = rubricReviewSystemPrompt
+	}
+	if strings.HasPrefix(operation, "evaluate_rubric:") {
+		system = rubricSystemPrompt
+	}
 	if operation == "feedback" {
 		system = feedbackSystemPrompt
+	}
+	if operation == "support" {
+		system = supportSystemPrompt
+	}
+	if operation == "independence" {
+		system = independenceSystemPrompt
+	}
+	if operation == "hint_context" {
+		system = contextSystemPrompt
 	}
 	request := &llmgatewayv1.CompleteRequest{
 		Messages: []*llmgatewayv1.Message{
@@ -206,6 +279,12 @@ func (g *Gateway) complete(ctx context.Context, operation string, level llmgatew
 			return nil
 		}
 		last = fmt.Errorf("invalid model answer: %w", err)
+		if attempt == 1 && (strings.HasPrefix(operation, "evaluate_rubric:") || operation == "review_rubric") {
+			request.Messages = append(request.Messages,
+				&llmgatewayv1.Message{Role: llmgatewayv1.Role_ROLE_ASSISTANT, Content: proto.String(content)},
+				&llmgatewayv1.Message{Role: llmgatewayv1.Role_ROLE_USER, Content: proto.String("Исправь предыдущий JSON: " + err.Error() + ". Верни весь результат по исходной схеме, включая answer_complete и все пункты marks для answered. Не меняй шкалу, используй реальные строки студента. Для служебного verdict marks должны быть пустыми.")},
+			)
+		}
 		if operation == "feedback" && attempt == 1 {
 			request.Messages = append(request.Messages,
 				&llmgatewayv1.Message{Role: llmgatewayv1.Role_ROLE_ASSISTANT, Content: proto.String(content)},

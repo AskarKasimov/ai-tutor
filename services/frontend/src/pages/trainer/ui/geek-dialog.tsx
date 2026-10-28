@@ -34,9 +34,6 @@ import { LiveWaveform } from './trainer-answer'
 import { TrainerProgress, TrainerShell } from './trainer-shared'
 import styles from './geek.module.scss'
 
-// The longest a reply to an answer stays hidden while its voice is coming.
-const REVEAL_TIMEOUT_MS = 20_000
-
 type Props = {
   userId: string
   sessionId: string
@@ -139,45 +136,15 @@ function Dialogue({
   const closeNotice = useCallback(() => setCourseUpdated(false), [])
   const currentTurnId = session.currentTurnId
   const lastTurn = session.turns[session.turns.length - 1]
-  // spoken is the last Geek turn whose voice ended, failed or was stopped.
-  // The result card waits for it, so it never cuts off Geek's last reply; a
-  // diagnostic completed before the dialogue opened has nothing to wait for.
-  const [spoken, setSpoken] = useState<string | null>(() =>
-    session.status === 'completed' ? (lastTurn?.id ?? null) : null,
-  )
-
-  // The Geek turn that replies to an answer stays hidden behind the thinking
-  // animation until its voice starts, so the text and the reaction arrive
-  // together instead of the text waiting seconds for synthesis. answered is
-  // the turn the student replied to; the turn after it is the hidden one.
-  // revealed is the last turn shown: a reveal names its turn, so a late
-  // callback of an older turn cannot show the next one before its voice.
-  const [answered, setAnswered] = useState<string | null>(null)
-  const [revealed, setRevealed] = useState<string | null>(null)
+  // Text is available as soon as the answer arrives. Speech loads independently.
   const [transcribing, setTranscribing] = useState(false)
-  const hiddenId =
-    answered &&
-    lastTurn?.speaker === 'geek' &&
-    lastTurn.id !== answered &&
-    lastTurn.id !== revealed
-      ? lastTurn.id
-      : null
-  const stopVoice = audio.stop
-  useEffect(() => {
-    if (!hiddenId) return
-    // The voice may never come (a slow or failing speech service). The turn
-    // is then shown without it, and a voice arriving later must not start
-    // over the text the student is already reading.
-    const timer = setTimeout(() => {
-      stopVoice()
-      setRevealed(hiddenId)
-    }, REVEAL_TIMEOUT_MS)
-    return () => clearTimeout(timer)
-  }, [hiddenId, stopVoice])
 
   // A new Geek turn is voiced at once; the first one after loading too, since
   // the student has just pressed start or continue.
-  const voiced = useRef('')
+  // Opening the transcript of a completed exam must not replay its last turn.
+  const voiced = useRef(
+    session.status === 'completed' ? (lastTurn?.id ?? '') : '',
+  )
   const play = audio.play
   useEffect(() => {
     if (
@@ -186,17 +153,10 @@ function Dialogue({
       !capturing
     ) {
       voiced.current = lastTurn.id
-      const id = lastTurn.id
-      void play(
-        lastTurn,
-        id === hiddenId ? () => setRevealed(id) : undefined,
-      ).finally(() => setSpoken(id))
+      void play(lastTurn)
     }
-  }, [lastTurn, play, capturing, hiddenId])
-  const resultReady =
-    session.status === 'completed' &&
-    !hiddenId &&
-    (lastTurn?.speaker !== 'geek' || spoken === lastTurn.id)
+  }, [lastTurn, play, capturing])
+  const resultReady = session.status === 'completed'
   useEffect(() => {
     // On mobile the card grows with its contents and the document scrolls.
     const trackPageScroll = () => {
@@ -241,16 +201,9 @@ function Dialogue({
     autoScrolling.current = behavior === 'smooth'
     end.current?.scrollIntoView({ block: 'end', behavior })
     scrollInitialized.current = true
-  }, [
-    session.turns.length,
-    answer.isPending,
-    hiddenId,
-    resultReady,
-    transcribing,
-  ])
+  }, [session.turns.length, answer.isPending, resultReady, transcribing])
 
   const submit = (variables: NonNullable<typeof answer.variables>) => {
-    setAnswered(variables.turnId)
     answer.mutate(variables)
   }
   const send = (reply: DiagnosticAnswer, display: string) => {
@@ -298,16 +251,9 @@ function Dialogue({
         {t('geek.title')}
       </Heading>
       <ol className={styles.turns}>
-        {session.turns
-          .filter((turn) => turn.id !== hiddenId)
-          .map((turn) => (
-            <TurnItem
-              key={turn.id}
-              turn={turn}
-              audio={audio}
-              muted={capturing}
-            />
-          ))}
+        {session.turns.map((turn) => (
+          <TurnItem key={turn.id} turn={turn} audio={audio} muted={capturing} />
+        ))}
         {pending && (
           <li className={styles.student}>
             <Text as="p" className={styles.bubble}>
@@ -320,7 +266,7 @@ function Dialogue({
             <Thinking label={t('geek.transcribing')} student />
           </li>
         )}
-        {(pending || hiddenId) && (
+        {pending && (
           <li className={styles.geek}>
             <Thinking label={t('geek.thinking')} />
           </li>
@@ -355,7 +301,7 @@ function Dialogue({
         <Composer
           key={currentTurnId}
           turnId={currentTurnId ?? ''}
-          busy={answer.isPending || !!hiddenId}
+          busy={answer.isPending}
           error={failed}
           onSend={send}
           // The retry repeats the failed request exactly: its turn and key.
@@ -457,7 +403,7 @@ function TurnItem({
     <li className={styles.geek}>
       <div className={styles.geekHead}>
         <Text weight="bold">{t('geek.speaker')}</Text>
-        {turn.kind !== 'closing' && turn.kind !== 'answer' && (
+        {!turn.meta && turn.kind !== 'closing' && turn.kind !== 'answer' && (
           <Text size="2" className={styles.kind}>
             {t(`geek.kind.${turn.kind}`)}
           </Text>

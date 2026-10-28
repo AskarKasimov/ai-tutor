@@ -514,6 +514,7 @@ void i18n.init({
             unchecked: 'Не проверялась',
           },
           again: 'Пройти заново',
+          openChat: 'Вернуться к переписке',
         },
         session: {
           percent: '{{value}}%',

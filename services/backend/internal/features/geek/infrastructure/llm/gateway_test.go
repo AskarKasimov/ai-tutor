@@ -144,6 +144,25 @@ func TestGatewayEvaluatesAndRetriesAnInvalidAnswerOnce(t *testing.T) {
 	}
 }
 
+func TestGatewayEvidenceAcceptsOnlyIntegerLineNumbers(t *testing.T) {
+	for _, evidence := range []string{`[2]`, `["2"]`, `["2.5"]`, `[2.5]`, `["wrong"]`, `[null]`, `["999999999999999999999999999999"]`} {
+		t.Run(evidence, func(t *testing.T) {
+			answer := `{"verdict":"answered","answer_complete":true,"criteria":{"k1":2,"k2":2,"k3":null,"k4":null},"evidence_lines":` + evidence + `}`
+			f := &fakeGateway{answers: []string{answer, answer}}
+			g := serve(t, f, time.Second)
+			got, err := g.Evaluate(context.Background(), application.EvaluationRequest{Kind: exam.KindQuestion, Node: node, Dialogue: turns})
+			valid := evidence == `[2]` || evidence == `["2"]`
+			if valid {
+				if err != nil || len(got.Evidence) != 1 || got.Evidence[0] != 2 {
+					t.Fatalf("evaluation = %+v, %v", got, err)
+				}
+			} else if err == nil {
+				t.Fatal("invalid evidence accepted")
+			}
+		})
+	}
+}
+
 func TestGatewayReturnsTheReplyAndLeavesTheRecapOutOfTheDialogue(t *testing.T) {
 	f := &fakeGateway{answers: []string{
 		`{"verdict":"answered","answer_complete":true,"criteria":{"k1":1,"k2":1,"k3":0,"k4":0},"evidence_lines":[2],"reaction":" Близко. ","explanation":"Близко. На самом деле f = g + h."}`,

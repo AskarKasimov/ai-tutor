@@ -35,6 +35,45 @@ var (
 	vague   = Evaluation{Verdict: VerdictInsufficient}
 )
 
+func TestRequestedHintLeavesTopicOpenAndCapsSuccessfulAnswer(t *testing.T) {
+	for _, followup := range []bool{false, true} {
+		e, first := NewExam(fixture(t), 0, nil)
+		if followup {
+			e.Apply(partial)
+		}
+		next := e.Apply(Evaluation{Verdict: VerdictHintRequested})
+		state := e.Nodes[first.NodeID]
+		if next.NodeID != first.NodeID || next.Kind != KindRephrase || !next.Hint || state.Grade != nil || !state.HintUsed {
+			t.Fatalf("hint closed topic or lost context: %+v, %+v", next, state)
+		}
+		data, err := json.Marshal(e)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var restored Exam
+		if err := json.Unmarshal(data, &restored); err != nil {
+			t.Fatal(err)
+		}
+		if !restored.Current.Hint || !restored.Nodes[first.NodeID].HintUsed {
+			t.Fatal("hint did not survive persistence")
+		}
+		restored.Apply(strong)
+		state = restored.Nodes[first.NodeID]
+		if state.Grade == nil || *state.Grade != GradeB || state.Status != StatusAssisted {
+			t.Fatalf("answer after hint = %+v", state)
+		}
+	}
+}
+
+func TestRepeatedHintRequestCannotLoop(t *testing.T) {
+	e, first := NewExam(fixture(t), 0, nil)
+	e.Apply(Evaluation{Verdict: VerdictHintRequested})
+	next := e.Apply(Evaluation{Verdict: VerdictHintRequested})
+	if next.NodeID == first.NodeID || e.Nodes[first.NodeID].Status != StatusInsufficient {
+		t.Fatalf("repeat hint kept topic open: %+v", next)
+	}
+}
+
 // run answers every step with answer(step) and returns the asked steps.
 func run(t *testing.T, e *Exam, first Step, answer func(Step) Evaluation) []Step {
 	t.Helper()

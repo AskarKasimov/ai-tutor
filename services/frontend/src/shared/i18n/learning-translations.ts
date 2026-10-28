@@ -186,6 +186,7 @@ export const learningTranslations = {
       },
       exam: {
         title: 'Подготовьтесь по плану',
+        text: 'Подтяните слабые места',
       },
     },
     loading: 'Загружаем предмет…',

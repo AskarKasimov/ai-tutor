@@ -545,6 +545,15 @@ it('shows one shared course in student shell without direction tabs', async () =
   )
 })
 
+it('returns to mode selection through the router', async () => {
+  geekBackend()
+  renderApp()
+  fireEvent.click(await screen.findByRole('link', { name: 'К выбору режима' }))
+  expect(
+    await screen.findByRole('heading', { name: 'Выберите режим' }),
+  ).toBeVisible()
+})
+
 it('keeps the active exam open and offers mode selection in the account menu', async () => {
   geekBackend()
   renderApp()

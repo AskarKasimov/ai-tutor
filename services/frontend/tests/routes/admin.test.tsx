@@ -575,8 +575,8 @@ it('does not mount the lesson while the current session is being checked', async
       ),
   )
   renderApp()
-  expect(await screen.findByRole('status')).toHaveTextContent(
-    'Проверяем сессию',
+  expect(await screen.findByRole('status')).toHaveAccessibleName(
+    'Проверяем сессию…',
   )
   expect(screen.queryByText('Машинное обучение')).not.toBeInTheDocument()
   await act(async () => finish(new Response('{}', { status: 401 })))

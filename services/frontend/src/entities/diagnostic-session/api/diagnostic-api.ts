@@ -60,6 +60,9 @@ const sessionSchema = z
         text: z.string(),
         // Older backends send no reply; the whole text is then the question.
         reply: z.string().default(''),
+        meta: z.boolean().default(false),
+        audio_intro: z.string().default(''),
+        reply_audio_parts: z.number().int().min(0).max(100).default(0),
         created_at: unix,
       }),
     ),
@@ -81,6 +84,9 @@ const sessionSchema = z
       source: t.source,
       text: t.text,
       reply: t.reply,
+      meta: t.meta,
+      audioIntro: t.audio_intro,
+      replyAudioParts: t.reply_audio_parts,
       createdAt: t.created_at,
     })),
   }))
@@ -365,8 +371,11 @@ export async function fetchTurnAudio(
   turnId: string,
   signal: AbortSignal,
   part?: TurnAudioPart,
+  chunk?: number,
 ): Promise<Blob> {
-  const query = part ? `?part=${part}` : ''
+  const query = part
+    ? `?part=${part}${chunk === undefined ? '' : `&chunk=${chunk}`}`
+    : ''
   const response = await request(
     `${session(sessionId)}/turns/${encodeURIComponent(turnId)}/audio${query}`,
     signal,

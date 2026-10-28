@@ -5,6 +5,9 @@ import (
 	"fmt"
 )
 
+// ExplicitMapVersion preserves the author's topic IDs and prerequisites.
+const ExplicitMapVersion = "competency-map-explicit-v1"
+
 // explicitMapGraph retains every included outcome and the author's dependency
 // graph. It is enabled only by both explicit graph headers in the workbook.
 func explicitMapGraph(outcomes []mapOutcome) (json.RawMessage, int, error) {
@@ -64,7 +67,7 @@ func explicitMapGraph(outcomes []mapOutcome) (json.RawMessage, int, error) {
 		}
 	}
 	data, err := json.Marshal(map[string]any{
-		"version": "competency-map-explicit-v1", "source": SourceMap, "topics": topics,
+		"version": ExplicitMapVersion, "source": SourceMap, "topics": topics,
 		"prerequisites": prerequisites, "hierarchy": hierarchy, "skipped": []SkippedCompetency{},
 		"quality": map[string]any{"acyclic": true, "topics": len(topics)},
 	})

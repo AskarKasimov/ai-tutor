@@ -18,7 +18,7 @@ func TestImportedMapRubricAndSelectedReferenceReachGradingAndFeedback(t *testing
 		{"ИИ", "Называет область", "Помнить", "3", "TRUE", "Назови область ИИ", "Эталон: машинное обучение."},
 		{"", "Различает подходы", "Понимать", "3", "TRUE", "Сравни подходы", "Эталон: два разных подхода."},
 		{"", "Обосновывает применение", "Применять", "5", "TRUE", "Приведи пример робота", "Эталон: ЧУЖОЙ_ВАРИАНТ.\nБалл (макс. 1): 1 — верно.",
-			"Назови задачу обработки языка и объясни полезность ИИ", "Эталон: классификация спама; разнообразие писем.\nАналитическая рубрика (макс. 2):\nК1 «Задача»: 1 — назван подходящий пример.\nК2 «Причина»: 1 — объяснена полезность."},
+			"Назови задачу обработки языка и объясни полезность ИИ", "Эталон: классификация спама; разнообразие писем.\nАналитическая рубрика (макс. 2):\nК1 «Задача»: 1 — назван подходящий пример; 0 — нет примера.\nК2 «Причина»: 1 — объяснена полезность; 0 — нет объяснения."},
 	}
 	built, err := coursegraph.BuildMapGraph([]coursegraph.MapSheet{{Name: "Карта", Rows: rows}})
 	if err != nil {
@@ -45,7 +45,9 @@ func TestImportedMapRubricAndSelectedReferenceReachGradingAndFeedback(t *testing
 		{Line: 2, Speaker: exam.SpeakerStudent, Text: "Классификация спама: письма разнообразны, учиться на примерах полезнее жёстких правил."},
 	}}
 	f := &fakeGateway{answers: []string{
-		`{"verdict":"answered","answer_complete":true,"criteria":{"k1":2,"k2":2,"k3":null,"k4":2},"evidence_lines":[2]}`,
+		`{"verdict":"answered","address_preference":""}`,
+		`{"verdict":"answered","answer_complete":true,"marks":[{"id":"r1","score":1,"evidence_lines":[2],"quote":"Классификация спама","reason":"Пример спама"},{"id":"r2","score":1,"evidence_lines":[2],"quote":"письма разнообразны","reason":"Разнообразие писем"}]}`,
+		`{"answer_complete":true,"marks":[{"id":"r1","score":1,"evidence_lines":[2],"quote":"Классификация спама","reason":"Пример спама"},{"id":"r2","score":1,"evidence_lines":[2],"quote":"письма разнообразны","reason":"Разнообразие писем"}]}`,
 		`{"text":"Ты связал фильтрацию спама с разнообразием писем и обучением на примерах."}`,
 	}}
 	g := serve(t, f, time.Second)
@@ -61,8 +63,14 @@ func TestImportedMapRubricAndSelectedReferenceReachGradingAndFeedback(t *testing
 	if *e.Nodes[n.ID].Grade != exam.GradeA {
 		t.Fatal("fully demonstrated imported task not mastered")
 	}
-	for _, r := range f.requests {
+	for i, r := range f.requests {
 		prompt := r.Messages[1].GetContent()
+		if i == 0 {
+			if strings.Contains(prompt, "ЧУЖОЙ_ВАРИАНТ") {
+				t.Fatal("wrong question routed")
+			}
+			continue
+		}
 		for _, want := range []string{"классификация спама", "Пункт рубрики 1", "Пункт рубрики 2"} {
 			if !strings.Contains(prompt, want) {
 				t.Fatalf("missing %q in %s", want, prompt)

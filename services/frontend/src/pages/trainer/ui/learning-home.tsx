@@ -124,6 +124,7 @@ export function LearningHome({
         subjectName={selected.name}
         onBack={back}
         onAgain={begin}
+        onChat={() => open(view.sessionId, 'dialog')}
         starting={start.isPending}
         startError={startError}
       />

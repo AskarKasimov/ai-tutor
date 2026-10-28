@@ -9,6 +9,12 @@ import (
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/features/geek/application"
 )
 
+var hintTransitions = []string{
+	"Давай сначала проясню ситуацию, а затем попробуй сформулировать вывод.",
+	"Конечно, дам немного контекста. Затем попробуй ответить своими словами.",
+	"Начнём с короткого пояснения к вопросу, после него вернёмся к твоему рассуждению.",
+}
+
 var rephraseTransitions = []string{
 	"По этому ответу пока не могу убедиться в понимании. Попробую спросить проще.",
 	"Пока не хватает ясности в ответе. Давай я задам тот же вопрос другими словами.",
@@ -29,11 +35,11 @@ var offTopicTransitions = []string{
 
 var soundFollowupTransitions = []string{
 	"Основа ответа верная. Осталось уточнить отдельный момент, чтобы я мог уверенно оценить ответ.",
-	"Основную мысль ты объяснил верно. Давай проясним ещё один момент перед итогом.",
+	"Основная мысль верная. Давай проясним ещё один момент перед итогом.",
 	"С основой всё хорошо. Для уверенной оценки осталось небольшое уточнение.",
 	"В главном ты рассуждаешь верно. Уточню один момент, который пока остался открытым.",
 	"Верная основа в ответе есть. Давай уточним оставшуюся часть, чтобы картина была полной.",
-	"Основное ты раскрыл верно. Осталось прояснить один момент — задам дополнительный вопрос.",
+	"Основное в ответе верно. Осталось прояснить один момент — задам дополнительный вопрос.",
 }
 
 var partialFollowupTransitions = []string{
@@ -43,6 +49,17 @@ var partialFollowupTransitions = []string{
 	"Есть момент, который пока остаётся открытым. Задам уточняющий вопрос.",
 	"Чтобы уверенно оценить ответ, мне нужно кое-что прояснить. Давай уточним один момент.",
 	"Пока рано подводить итог. Уточню одну часть твоего ответа.",
+}
+
+// PreparedSpeech warms the exact parts requested by the conversation player.
+func PreparedSpeech() []string {
+	texts := application.ConversationSpeech()
+	for _, group := range [][]string{hintTransitions, rephraseTransitions, offTopicTransitions, soundFollowupTransitions, partialFollowupTransitions} {
+		for _, text := range group {
+			texts = append(texts, application.ReplySpeechParts(text)...)
+		}
+	}
+	return texts
 }
 
 // Vary wording without another model call or hints. Selection is stable for

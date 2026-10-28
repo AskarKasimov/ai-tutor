@@ -174,6 +174,15 @@ func (e *examiner) Evaluate(_ context.Context, r EvaluationRequest) (Assessment,
 	last := r.Dialogue[len(r.Dialogue)-1]
 	a := Assessment{}
 	switch {
+	case strings.Contains(last.Text, "поправка обращения"):
+		a.Evaluation.Verdict = exam.VerdictAddressCorrection
+	case strings.Contains(last.Text, "поясни формулировку"):
+		a.Evaluation.Verdict = exam.VerdictClarifyQuestion
+		a.Clarification = "Объясни смысл исходного вопроса своими словами; условия остаются прежними."
+	case strings.Contains(last.Text, "пауза"):
+		a.Evaluation.Verdict = exam.VerdictPause
+	case strings.Contains(last.Text, "подсказка"):
+		a.Evaluation = exam.Evaluation{Verdict: exam.VerdictHintRequested, Evidence: []int{last.Line}}
 	case strings.Contains(last.Text, "не знаю"):
 		a.Evaluation = exam.Evaluation{Verdict: exam.VerdictDontKnow}
 	case strings.Contains(last.Text, "сильно"):
@@ -184,6 +193,9 @@ func (e *examiner) Evaluate(_ context.Context, r EvaluationRequest) (Assessment,
 		a.Evaluation = exam.Evaluation{Verdict: exam.VerdictAnswered, Criteria: exam.Criteria{K1: 2, K2: 2, K3: 1, K4: 1}, Evidence: []int{last.Line}}
 	default:
 		a.Evaluation = exam.Evaluation{Verdict: exam.VerdictAnswered, Criteria: exam.Criteria{K2: 1}, Evidence: []int{last.Line}}
+	}
+	if strings.Contains(last.Text, "женский род") {
+		a.AddressPreference = exam.AddressFeminine
 	}
 	return a, nil
 }
@@ -791,6 +803,33 @@ func TestRawMaterialRequiresOwnerAndMatchingDiagnosticSourceRevision(t *testing.
 	f.service.SetRawMaterials(rawMaterialsFake{RawMaterial{Filename: filename, Revision: "revision-2", Found: true}})
 	if _, err = f.service.RawMaterial(context.Background(), "student", session.ID, "material"); code(err) != "SOURCE_UNAVAILABLE" {
 		t.Fatalf("replaced material: %v", err)
+	}
+}
+
+func TestRequestedHintBypassesPreparedRephraseAndKeepsTopicOpen(t *testing.T) {
+	f := newFixture(t)
+	for i := range f.graphs.graph.Nodes {
+		f.graphs.graph.Nodes[i].Rephrase = "Заранее подготовленная переформулировка?"
+	}
+	s, _, err := f.service.Start(context.Background(), "student", "subject", "start")
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := *s.Turns[0].NodeID
+	s = f.answer(t, s, Answer{Text: "Не знаю этот пример, нужна подсказка, а затем попробую ответить"})
+	last := s.Turns[len(s.Turns)-1]
+	if last.NodeID == nil || *last.NodeID != id || last.Kind != exam.KindRephrase || strings.Contains(last.Text, "Заранее подготовленная") {
+		t.Fatalf("hint turn = %+v", last)
+	}
+	if len(f.examiner.questions) == 0 || !f.examiner.questions[len(f.examiner.questions)-1].Hint {
+		t.Fatal("context hint was not generated")
+	}
+	s = f.answer(t, s, Answer{Text: "сильно"})
+	if state := s.Exam.Nodes[id]; state.Grade == nil || *state.Grade != exam.GradeB || state.Status != exam.StatusAssisted {
+		t.Fatalf("hint result = %+v", state)
+	}
+	if !f.examiner.evaluated[len(f.examiner.evaluated)-1].HintUsed {
+		t.Fatal("grader did not receive hint context")
 	}
 }
 

@@ -1,4 +1,4 @@
-# Single production stack. Development adds source mounts in docker-compose.dev.yaml.
+# Local application stack. The dev override enables source watchers in the same containers.
 services:
   db:
     extends:
@@ -24,13 +24,16 @@ services:
         condition: service_healthy
 
   llm-gateway:
+    build:
+      target: runtime
     extends:
       file: ./services/llm-gateway/docker-compose.yaml
       service: llm-gateway
-    volumes:
-      - ./services/llm-gateway/config.json:/etc/llm-gateway/config.json:ro
+    volumes: !override
+      - ./services/llm-gateway:/work/llm-gateway
+      - ./services/shared:/work/shared:ro
     environment:
-      GATEWAY_REQUIRED_ROUTING_PROFILES: learning-assessment,learning-tutor,learning-taskgen
+      GATEWAY_CONFIG: ${GATEWAY_CONFIG:-/work/llm-gateway/config/dev.yaml}
     depends_on:
       redpanda:
         condition: service_healthy
@@ -61,17 +64,28 @@ services:
         condition: service_started
 
   course-graph:
+    build:
+      target: runtime
     extends:
       file: ./services/course-graph/docker-compose.yaml
       service: course-graph
+    volumes: !override
+      - ./services/course-graph/config:/app/config:ro
+      - ./services/shared/gen/python/llmgateway:/app/llmgateway:ro
+      - course_graph_models:/root/.cache/huggingface
+      - course_graph_data:/var/lib/course-graph
     depends_on:
       llm-gateway:
         condition: service_healthy
 
   api:
+    build:
+      target: runtime
     extends:
       file: ./services/backend/docker-compose.yaml
       service: api
+    healthcheck:
+      test: ["CMD", "/api", "healthcheck"]
     depends_on:
       db:
         condition: service_healthy

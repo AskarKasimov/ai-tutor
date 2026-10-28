@@ -3,9 +3,11 @@ package main
 import (
 	"context"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -52,8 +54,16 @@ func loggerConfig() zap.Config {
 
 func run(logger *zap.Logger) error {
 	if len(os.Args) > 1 && os.Args[1] == "healthcheck" {
+		address, err := app.LoadListenAddress(backendConfigPath())
+		if err != nil {
+			return err
+		}
+		target, err := healthcheckURL(address)
+		if err != nil {
+			return err
+		}
 		c := &http.Client{Timeout: 3 * time.Second}
-		resp, err := c.Get("http://127.0.0.1:8002/health")
+		resp, err := c.Get(target)
 		if err != nil {
 			return err
 		}
@@ -71,7 +81,7 @@ func run(logger *zap.Logger) error {
 	if len(os.Args) > 1 && os.Args[1] != "migrate" {
 		return fmt.Errorf("usage: api [migrate|healthcheck|prepare-questions <graph.json> <out.json>]")
 	}
-	cfg, err := app.ConfigFromEnv()
+	cfg, err := app.LoadConfig(backendConfigPath())
 	if err != nil {
 		return err
 	}
@@ -106,4 +116,22 @@ func run(logger *zap.Logger) error {
 	logger.Info("API listening", zap.String("address", cfg.ListenAddress))
 	defer a.Close()
 	return serveWithBackground(ctx, server, a.RunBackground)
+}
+
+func backendConfigPath() string {
+	if path := strings.TrimSpace(os.Getenv("BACKEND_CONFIG")); path != "" {
+		return path
+	}
+	return "config/dev.yaml"
+}
+
+func healthcheckURL(address string) (string, error) {
+	host, port, err := net.SplitHostPort(address)
+	if err != nil {
+		return "", err
+	}
+	if host == "" || host == "0.0.0.0" || host == "::" {
+		host = "127.0.0.1"
+	}
+	return "http://" + net.JoinHostPort(host, port) + "/health", nil
 }

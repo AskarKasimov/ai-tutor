@@ -7,6 +7,8 @@ import json
 import logging
 import os
 
+from course_graph.config import get_settings
+
 import grpc
 from llmgateway.v1 import gateway_pb2, gateway_pb2_grpc
 
@@ -30,8 +32,9 @@ RETRIED = {grpc.StatusCode.DEADLINE_EXCEEDED, grpc.StatusCode.UNAVAILABLE}
 
 class ModelClient:
     def __init__(self, address: str | None = None, timeout: float | None = None):
-        self.address = address or os.environ.get("COURSE_GRAPH_LLM_GATEWAY_ADDR", "llm-gateway:8011")
-        self.timeout = timeout if timeout is not None else float(os.environ.get("COURSE_GRAPH_LLM_TIMEOUT", "300"))
+        settings = get_settings().llm_gateway
+        self.address = address or settings.address
+        self.timeout = timeout if timeout is not None else settings.timeout_seconds
         self.channel = grpc.aio.insecure_channel(
             self.address, options=[("grpc.max_receive_message_length", 40 * 1024 * 1024)],
         )

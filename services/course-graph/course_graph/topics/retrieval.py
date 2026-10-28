@@ -1,5 +1,5 @@
 """Course-local hybrid retrieval: each requirement searches all provided skills."""
-import os
+from course_graph.config import get_settings
 import re
 import threading
 from functools import lru_cache
@@ -11,8 +11,8 @@ class SkillEncoder:
     def __init__(self, model_name=None):
         from sentence_transformers import SentenceTransformer
         import torch
-        torch.set_num_threads(max(1, int(os.environ.get("COURSE_GRAPH_EMBEDDING_THREADS", "4"))))
-        self.model_name = model_name or os.environ.get("COURSE_GRAPH_EMBEDDING_MODEL", "intfloat/multilingual-e5-small")
+        torch.set_num_threads(get_settings().embedding.threads)
+        self.model_name = model_name or get_settings().embedding.model
         self.model = SentenceTransformer(self.model_name, device="cpu", trust_remote_code=False)
         self.lock = threading.Lock()
         self.cache = {}

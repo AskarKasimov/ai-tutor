@@ -6,10 +6,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"strings"
 	"time"
 
 	"go.uber.org/zap"
+
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/app"
 
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/exam"
 	geekapp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/geek/application"
@@ -25,16 +26,9 @@ func prepareQuestions(ctx context.Context, logger *zap.Logger, args []string) er
 	if len(args) != 2 {
 		return fmt.Errorf("usage: api prepare-questions <graph.json> <out.json>")
 	}
-	address := strings.TrimSpace(os.Getenv("BACKEND_LLM_GATEWAY_ADDR"))
-	if address == "" {
-		return fmt.Errorf("BACKEND_LLM_GATEWAY_ADDR is required")
-	}
-	timeout := 120 * time.Second
-	if value := strings.TrimSpace(os.Getenv("BACKEND_LLM_TIMEOUT")); value != "" {
-		var err error
-		if timeout, err = time.ParseDuration(value); err != nil {
-			return fmt.Errorf("BACKEND_LLM_TIMEOUT: %w", err)
-		}
+	address, timeout, err := app.LoadLLMGatewayConfig(backendConfigPath())
+	if err != nil {
+		return err
 	}
 	data, err := os.ReadFile(args[0])
 	if err != nil {

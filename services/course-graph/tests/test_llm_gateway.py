@@ -1,3 +1,4 @@
+from config_helpers import configure_settings
 """The real Python→gateway boundary: a gRPC server with the llmgateway.v1
 contract from services/shared, no stubbed complete()."""
 import asyncio
@@ -107,7 +108,7 @@ def test_client_rejects_unknown_complexity():
     asyncio.run(run())
 
 
-def test_clean_endpoint_reaches_gateway(monkeypatch):
+def test_clean_endpoint_reaches_gateway(monkeypatch, tmp_path):
     from fastapi.testclient import TestClient
     import course_graph.api as api
 
@@ -121,7 +122,7 @@ def test_clean_endpoint_reaches_gateway(monkeypatch):
     thread = threading.Thread(target=loop.run_forever, daemon=True)
     thread.start()
     try:
-        monkeypatch.setenv("COURSE_GRAPH_LLM_GATEWAY_ADDR", address)
+        configure_settings(monkeypatch, tmp_path, llm_gateway__address=address)
         response = TestClient(api.app).post("/clean", json={"markdown": "# Теория\n\nМатрица — таблица чисел."})
         assert response.status_code == 200
         assert response.json()["markdown"] == "# Теория\n\nМатрица — таблица чисел."
@@ -146,7 +147,7 @@ def test_client_counts_its_repeats():
     assert asyncio.run(run(FailingGateway([grpc.StatusCode.DEADLINE_EXCEEDED]))) == 1
 
 
-def test_extraction_report_shows_repeats_next_to_logical_requests(monkeypatch):
+def test_extraction_report_shows_repeats_next_to_logical_requests(monkeypatch, tmp_path):
     # Review of #132: a repeat inside complete was invisible to the stage
     # counter. requests stays the number of logical calls; retried_requests
     # shows the repeats the gateway received on top of them.
@@ -166,7 +167,7 @@ def test_extraction_report_shows_repeats_next_to_logical_requests(monkeypatch):
     thread = threading.Thread(target=loop.run_forever, daemon=True)
     thread.start()
     try:
-        monkeypatch.setenv("COURSE_GRAPH_LLM_GATEWAY_ADDR", address)
+        configure_settings(monkeypatch, tmp_path, llm_gateway__address=address)
         text = "Матрица — прямоугольная таблица чисел, которую складывают и умножают по своим правилам. " * 3
         response = TestClient(api.app).post("/topics/extract", json={"markdown": text, "material_id": "m"})
         assert response.status_code == 200, response.text

@@ -4,7 +4,6 @@ __pycache__/
 .venv/
 *.egg-info/
 .env
-services/llm-gateway/config.json
 certs/
 bin/
 /api-server
@@ -16,3 +15,5 @@ docs/superpowers/
 services/backend/.air/
 lectures/
 notebooks/
+
+services/llm-gateway/.air/

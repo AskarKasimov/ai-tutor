@@ -10,18 +10,16 @@ import time
 import traceback
 from datetime import datetime, timezone
 
+from course_graph.config import configure_library_environment, get_settings
+
+SETTINGS = get_settings()
+configure_library_environment(SETTINGS)
+
 logger = logging.getLogger(__name__)
 
 
 def configured_ocr_threads() -> int:
-    raw = os.environ.get("COURSE_GRAPH_OCR_THREADS", "4")
-    try:
-        value = int(raw)
-    except ValueError as error:
-        raise ValueError("COURSE_GRAPH_OCR_THREADS must be an integer from 1 to 64") from error
-    if not 1 <= value <= 64:
-        raise ValueError("COURSE_GRAPH_OCR_THREADS must be an integer from 1 to 64")
-    return value
+    return SETTINGS.ocr.threads
 
 
 def configured_ocr_device() -> str:
@@ -42,10 +40,6 @@ def require_ocr_device() -> None:
                            "the gpu service and give the container a GPU")
 
 
-# These variables are read when torch / BLAS libraries are imported. Set the
-# defaults before any Docling imports; operators can still provide overrides.
-os.environ.setdefault("OMP_NUM_THREADS", os.environ.get("COURSE_GRAPH_OCR_THREADS", "4"))
-os.environ.setdefault("MKL_NUM_THREADS", os.environ.get("COURSE_GRAPH_OCR_THREADS", "4"))
 
 
 class RedactRemoteURLs(logging.Filter):
@@ -96,7 +90,7 @@ class ModelRuntime:
             self._started = True
 
             with_docling = os.environ.get("COURSE_GRAPH_WITH_DOCLING", "true").lower() != "false"
-            enabled = os.environ.get("COURSE_GRAPH_MODEL_BOOTSTRAP", "true").lower() == "true"
+            enabled = SETTINGS.models.bootstrap.enabled
             if not with_docling:
                 self._state = "ready"
                 self._stage = "ready"
@@ -162,10 +156,7 @@ class ModelRuntime:
         )
         progress_thread.start()
         try:
-            try:
-                attempts = max(1, min(5, int(os.environ.get("COURSE_GRAPH_MODEL_BOOTSTRAP_ATTEMPTS", "3"))))
-            except ValueError:
-                attempts = 3
+            attempts = SETTINGS.models.bootstrap.attempts
             last_error: Exception | None = None
             for attempt in range(1, attempts + 1):
                 try:
@@ -238,8 +229,7 @@ class ModelRuntime:
         # initialize_pipeline returns None in Docling 2.139; the pipeline is kept
         # in initialized_pipelines.
         converter.initialize_pipeline(InputFormat.PDF)
-        if (os.environ.get("COURSE_GRAPH_OCR_ENRICH_CODE", "true").lower() == "true"
-                or os.environ.get("COURSE_GRAPH_OCR_ENRICH_FORMULA", "true").lower() == "true"):
+        if SETTINGS.ocr.enrich_code or SETTINGS.ocr.enrich_formula:
             for pipeline in converter.initialized_pipelines.values():
                 for stage in getattr(pipeline, "enrichment_pipe", []):
                     if isinstance(stage, NativeSyntaxGuard):

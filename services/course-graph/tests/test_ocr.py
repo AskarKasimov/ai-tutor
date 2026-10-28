@@ -1,3 +1,5 @@
+from pathlib import Path
+from config_helpers import configure_settings
 from fastapi.testclient import TestClient
 from course_graph.api import app
 from course_graph.ocr.converter import convert_document_to_markdown
@@ -70,7 +72,7 @@ def test_light_build_reports_pdf_without_extractable_text(monkeypatch):
 def test_text_ocr_cache_records_exact_source_digest(monkeypatch, tmp_path):
     import hashlib
     from course_graph.ocr.converter import convert_document
-    monkeypatch.setenv("COURSE_GRAPH_OCR_CACHE_DIR", str(tmp_path))
+    configure_settings(monkeypatch, tmp_path, cache__documents_dir=str(tmp_path))
     content = b"# Source\n\nA definition."
     first = convert_document("lecture.md", content)
     second = convert_document("lecture.md", content)
@@ -83,7 +85,7 @@ def test_docling_ocr_caches_result_with_undecoded_formulas(monkeypatch, tmp_path
     import course_graph.ocr.converter as converter
     from types import SimpleNamespace as S
 
-    monkeypatch.setenv("COURSE_GRAPH_OCR_CACHE_DIR", str(tmp_path))
+    configure_settings(monkeypatch, tmp_path, cache__documents_dir=str(tmp_path))
     monkeypatch.setenv("COURSE_GRAPH_WITH_DOCLING", "true")
 
     class DummyDoc:
@@ -175,14 +177,16 @@ def test_gpu_without_cuda_fails_instead_of_falling_back_to_cpu(monkeypatch):
         require_ocr_device()
 
 
-def test_zero_document_timeout_means_unlimited_and_negative_is_invalid(monkeypatch):
+def test_zero_document_timeout_means_unlimited_and_negative_is_invalid(monkeypatch, tmp_path):
     import pytest
     from course_graph.ocr.converter import configured_document_timeout
-    monkeypatch.setenv("COURSE_GRAPH_OCR_DOCUMENT_TIMEOUT", "0")
+    configure_settings(monkeypatch, tmp_path, ocr__document_timeout="0s")
     assert configured_document_timeout() is None
-    monkeypatch.setenv("COURSE_GRAPH_OCR_DOCUMENT_TIMEOUT", "-1")
-    with pytest.raises(ValueError, match="non-negative"):
-        configured_document_timeout()
+    from course_graph.config import load_config
+    path = Path(__import__("os").environ["COURSE_GRAPH_CONFIG"])
+    path.write_text(path.read_text().replace("document_timeout: 0s", "document_timeout: -1s"))
+    with pytest.raises(ValueError, match="document_timeout"):
+        load_config(path)
 
 
 def test_slow_ocr_keeps_health_responsive(monkeypatch):
@@ -243,11 +247,11 @@ def test_oversized_ocr_result_is_not_counted_in_cache_budget():
     assert retained <= 40
 
 
-def test_model_bootstrap_runs_once_and_readiness_does_not_reinitialize(monkeypatch):
+def test_model_bootstrap_runs_once_and_readiness_does_not_reinitialize(monkeypatch, tmp_path):
     from course_graph.model_runtime import ModelRuntime
 
     monkeypatch.setenv("COURSE_GRAPH_WITH_DOCLING", "true")
-    monkeypatch.setenv("COURSE_GRAPH_MODEL_BOOTSTRAP", "true")
+    configure_settings(monkeypatch, tmp_path, models__bootstrap__enabled=True)
     runtime = ModelRuntime()
     calls = []
     runtime._prepare_models = lambda: calls.append("prepared")
@@ -259,12 +263,12 @@ def test_model_bootstrap_runs_once_and_readiness_does_not_reinitialize(monkeypat
     assert calls == ["prepared"]
 
 
-def test_model_bootstrap_failure_records_error_and_unblocks_wait(monkeypatch):
+def test_model_bootstrap_failure_records_error_and_unblocks_wait(monkeypatch, tmp_path):
     from course_graph.model_runtime import ModelRuntime
 
     monkeypatch.setenv("COURSE_GRAPH_WITH_DOCLING", "true")
-    monkeypatch.setenv("COURSE_GRAPH_MODEL_BOOTSTRAP", "true")
-    monkeypatch.setenv("COURSE_GRAPH_MODEL_BOOTSTRAP_ATTEMPTS", "1")
+    configure_settings(monkeypatch, tmp_path, models__bootstrap__enabled=True)
+    configure_settings(monkeypatch, tmp_path, models__bootstrap__attempts=1)
     runtime = ModelRuntime()
     def fail():
         raise RuntimeError("download failed")
@@ -594,7 +598,7 @@ def test_run_ocr_job_caches_result_without_llm_completer(monkeypatch, tmp_path):
     from course_graph.api import run_ocr_job, ocr_jobs
     import course_graph.ocr.converter as converter
 
-    monkeypatch.setenv("COURSE_GRAPH_OCR_CACHE_DIR", str(tmp_path))
+    configure_settings(monkeypatch, tmp_path, cache__documents_dir=str(tmp_path))
     content = "## Слайд 1\n\nMSE: <!-- formula-not-decoded -->".encode("utf-8")
 
     class ForbiddenClient:

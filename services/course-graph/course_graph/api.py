@@ -1,8 +1,9 @@
 import os
 
-# Set before importing any Hugging Face or Docling modules.
-os.environ.setdefault("HF_HUB_DISABLE_XET", "1")
-os.environ.setdefault("HF_HUB_DOWNLOAD_TIMEOUT", "30")
+from course_graph.config import configure_library_environment, get_settings
+
+SETTINGS = get_settings()
+configure_library_environment(SETTINGS)
 
 from fastapi import FastAPI, File, Header, HTTPException, UploadFile
 from pydantic import BaseModel, Field
@@ -315,5 +316,5 @@ async def build_course(request: BuildRequest,
 if __name__ == "__main__":
     import uvicorn
 
-    port = int(os.environ.get("PORT", 8000))
+    port = SETTINGS.server.port
     uvicorn.run("course_graph.api:app", host="0.0.0.0", port=port, reload=False)

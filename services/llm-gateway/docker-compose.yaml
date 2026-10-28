@@ -24,10 +24,15 @@ services:
     build:
       context: ../..
       dockerfile: services/llm-gateway/Dockerfile
+      target: dev
     environment:
-      GATEWAY_CONFIG: /etc/llm-gateway/config.json
+      GATEWAY_CONFIG: ${GATEWAY_CONFIG:-/work/llm-gateway/config/dev.yaml}
     volumes:
-      - ./config.json:/etc/llm-gateway/config.json:ro
+      - .:/work/llm-gateway
+      - ../shared:/work/shared:ro
+      - gateway_go_modules:/go/pkg/mod
+      - gateway_go_build:/root/.cache/go-build
+      - gateway_dev_bin:/work/llm-gateway/.air
     ports:
       - "127.0.0.1:8010:8010"
     depends_on:
@@ -75,5 +80,8 @@ networks:
     name: ai-tutor_default
 
 volumes:
+  gateway_go_modules:
+  gateway_go_build:
+  gateway_dev_bin:
   redpanda_data:
     name: ai-tutor_redpanda_data

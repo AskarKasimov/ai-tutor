@@ -15,11 +15,39 @@ import resource
 import tempfile
 import time
 from types import SimpleNamespace
+import yaml
 
 from pypdf import PdfReader, PdfWriter
 
-from course_graph.ocr.converter import convert_document, get_ocr_configuration
-from course_graph.ocr.enrichment import AuditedEngine, NativePdfTextReader
+
+
+def prepare_benchmark_config(config_path: Path, cache_dir: Path) -> Path:
+    """Snapshot service settings with only the document cache redirected."""
+    config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+    config["cache"]["documents_dir"] = str(cache_dir)
+    benchmark_config = cache_dir / "course-graph-benchmark.yaml"
+    benchmark_config.write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
+    os.environ["COURSE_GRAPH_CONFIG"] = str(benchmark_config)
+    return benchmark_config
+
+
+def configure_benchmark_environment():
+    """Load the benchmark snapshot and apply thread defaults before OCR imports."""
+    from course_graph.config import configure_library_environment, get_settings
+
+    get_settings.cache_clear()
+    settings = get_settings()
+    configure_library_environment(settings)
+    return settings
+
+
+def load_benchmark_ocr():
+    """Configure process-level library defaults before loading OCR modules."""
+    settings = configure_benchmark_environment()
+    from course_graph.ocr.converter import convert_document, get_ocr_configuration
+    from course_graph.ocr.enrichment import AuditedEngine
+
+    return settings, convert_document, get_ocr_configuration, AuditedEngine
 
 
 def main():
@@ -41,6 +69,7 @@ def main():
     writer.write(stream)
     content = stream.getvalue()
     if args.native_only:
+        from course_graph.ocr.enrichment import NativePdfTextReader
         from docling_core.types.doc import BoundingBox, CoordOrigin
         native = NativePdfTextReader(content)
         started = time.perf_counter()
@@ -62,16 +91,20 @@ def main():
         args.output.write_text(json.dumps(report, indent=2))
         print(json.dumps(report), flush=True)
         return
-    calls = []
-    predict = AuditedEngine.predict_batch
-
-    def measured(self, inputs):
-        calls.append(len(inputs))
-        return predict(self, inputs)
-
-    AuditedEngine.predict_batch = measured
     with tempfile.TemporaryDirectory(prefix="ocr-benchmark-") as cache:
-        os.environ["COURSE_GRAPH_OCR_CACHE_DIR"] = cache
+        cache_path = Path(cache)
+        config_path = Path(os.environ.get("COURSE_GRAPH_CONFIG", "config/dev.yaml"))
+        prepare_benchmark_config(config_path, cache_path)
+        settings, convert_document, get_ocr_configuration, AuditedEngine = load_benchmark_ocr()
+        calls = []
+        predict = AuditedEngine.predict_batch
+
+        def measured(self, inputs):
+            calls.append(len(inputs))
+            return predict(self, inputs)
+
+        AuditedEngine.predict_batch = measured
+        assert Path(settings.cache.documents_dir) == cache_path
         started = time.perf_counter()
         result = convert_document(args.pdf.name, content)
         cold = time.perf_counter() - started
@@ -97,7 +130,7 @@ def main():
                 "python": platform.python_version(),
                 "packages": {name: importlib.metadata.version(name) for name in ["docling", "torch", "pypdfium2", "pypdf"]},
                 "configuration": get_ocr_configuration(),
-                "ocr_threads": os.environ.get("COURSE_GRAPH_OCR_THREADS", "4"),
+                "ocr_threads": settings.ocr.threads,
             },
             "report": result["report"],
         }

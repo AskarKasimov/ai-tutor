@@ -474,7 +474,7 @@ it('runs a diagnostic from the home page to the result and back to the history',
   ).toHaveAttribute('aria-valuenow', '100')
 
   const toResult = screen.getByRole('button', { name: 'Посмотреть итог' })
-  expect(toResult).toHaveFocus()
+  await waitFor(() => expect(toResult).toHaveFocus())
   fireEvent.click(toResult)
   expect(
     await screen.findByRole('heading', { name: 'Итог диагностики', level: 1 }),

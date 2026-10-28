@@ -2,7 +2,7 @@
 import asyncio
 import hashlib
 import json
-import os
+from course_graph.config import get_settings
 import re
 from dataclasses import dataclass
 
@@ -100,7 +100,7 @@ grading (правила оценки студентов), contacts, greeting, th
 
 @dataclass(frozen=True)
 class ExtractionSettings:
-    max_chars: int = int(os.environ.get("COURSE_GRAPH_TOPIC_MAX_CHARS", "6000"))
+    max_chars: int = get_settings().topics.max_chars
     max_blocks: int = 45
     # A topic with less explaining text than this is merged into its nearest
     # neighbour: there is nothing to examine on it.

@@ -25,7 +25,7 @@
 
 ## Конфигурация
 
-Новую переменную env добавьте во все эти места сразу: `internal/app/config.go` и `config_test.go`, корневые `.env.example` и `.env.prod.example`, `docker-compose.yaml`, список env в README.
+Новые настройки приложения добавляйте в YAML loader, его tests, `config/dev.yaml` и README. Env остаётся для секретов/инфраструктуры; prod template не используется.
 
 ## Тесты
 

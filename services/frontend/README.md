@@ -174,10 +174,7 @@ Vite читает env из корня монорепозитория, в том 
 После изменения env перезапустите `npm run dev`.
 Для проверки сессии с Secure cookies используйте HTTPS через Compose.
 В Compose запросы идут на тот же origin через Caddy. Значение `/api/v1`
-используется по умолчанию. Корневой dev Compose передаёт `VITE_API_BASE_URL`
-как env Vite; после изменения `.env` пересоздайте frontend через `docker compose up -d frontend`.
-Локальный Compose сервиса для production передаёт адрес API как аргумент сборки;
-после их изменения пересоберите frontend.
+используется по умолчанию. Корневой dev Compose передаёт `VITE_API_BASE_URL` как env Vite; после изменения `.env` пересоздайте dev frontend. Для runtime image `VITE_API_BASE_URL` встраивается при сборке, поэтому изменение адреса требует пересборки образа.
 Прямой `docker build` поддерживает `--build-arg VITE_API_BASE_URL=...`.
 
 Frontend использует один API base (`VITE_API_BASE_URL`, по умолчанию
@@ -238,8 +235,7 @@ docker run --rm -p 8080:80 ai-tutor-frontend
 Сборка обслуживается nginx на http://localhost:8080 с fallback для SPA-маршрутов.
 Фронтенд включён в общий Docker Compose. Для общего dev-стека выполните
 `./dev.sh -d` из корня после настройки `.env` и установки mkcert
-по корневому README. Скрипт подготовит localhost-сертификаты и dev-сеть. Серверный `./prod.sh` запускает локальные Compose с готовыми
-TLS-сертификатами. Адрес определяется HTTPS bind/port и именем сервера; Caddy
+по корневому README. Скрипт подготовит localhost-сертификаты и dev-сеть. Адрес определяется HTTPS bind/port и именем сервера; Caddy
 направляет `/api/v1` и `/api/v1/*` в backend, удаляя префикс `/api/v1`.
 Проверка backend доступна на `/api/v1/health`; остальные пути идут во frontend.
 Порт nginx доступен только внутри Docker-сети.
@@ -263,7 +259,7 @@ Polling включён только в контейнерном dev-стеке �
 Настройки `VITE_*` передаются как env; изменение `.env` требует пересоздания контейнера.
 При изменении npm-зависимостей выполните `docker compose restart frontend` из корня:
 при старте контейнер выполняет `npm ci`.
-Локальный Compose этого сервиса использует production-сборку с nginx.
+Runtime image с nginx сохраняется для сборки и проверки собранного frontend.
 
 ## Загрузка материалов курса
 

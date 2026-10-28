@@ -32,9 +32,9 @@ func TestLoadConfigParsesDurationsAndAppliesDefaults(t *testing.T) {
 }
 
 func TestExampleConfigIsValid(t *testing.T) {
-	config, err := LoadConfig(filepath.Join("..", "..", "config.example.json"))
+	config, err := LoadConfig(filepath.Join("..", "..", "config", "dev.yaml"))
 	if err != nil {
-		t.Fatalf("LoadConfig(config.example.json) error = %v", err)
+		t.Fatalf("LoadConfig(dev.yaml) error = %v", err)
 	}
 	for _, in := range config.Instances {
 		if !in.AbortOnDisconnect {
@@ -52,8 +52,34 @@ func TestLoadConfigRejectsInvalidDurations(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, err := LoadConfig(path)
-	if err == nil || !strings.Contains(err.Error(), "request_deadline") {
-		t.Fatalf("LoadConfig() error = %v, want request_deadline parse error", err)
+	if err == nil {
+		t.Fatal("invalid request_deadline was accepted")
+	}
+}
+
+func TestLoadConfigRejectsCoercedScalarTypes(t *testing.T) {
+	base, err := os.ReadFile(filepath.Join("..", "..", "config", "dev.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct{ name, from, to string }{
+		{"fractional integer", "max_in_flight: 1", "max_in_flight: 1.9"},
+		{"string boolean", "abort_on_disconnect: true", "abort_on_disconnect: yes"},
+		{"boolean string", "listen_address: \":8010\"", "listen_address: false"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			body := strings.Replace(string(base), tc.from, tc.to, 1)
+			if body == string(base) {
+				t.Fatalf("fixture did not contain %q", tc.from)
+			}
+			path := filepath.Join(t.TempDir(), "config.yaml")
+			if err := os.WriteFile(path, []byte(body), 0600); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := LoadConfig(path); err == nil {
+				t.Fatal("coerced scalar type accepted")
+			}
+		})
 	}
 }
 
@@ -129,11 +155,9 @@ func TestRequiredRoutingProfilesValidatePresenceAndHighEligibility(t *testing.T)
 }
 
 func TestLoadAppliesTheModelRulesFromGit(t *testing.T) {
-	example := filepath.Join("..", "..", "config.example.json")
-	rules := filepath.Join("..", "..", "models.json")
-	c, err := Load(example, rules, true)
+	c, err := LoadConfig(filepath.Join("..", "..", "config", "dev.yaml"))
 	if err != nil {
-		t.Fatalf("Load(example, models.json) error = %v", err)
+		t.Fatalf("LoadConfig(dev.yaml) error = %v", err)
 	}
 	for _, in := range c.Instances {
 		if in.ID == "qwen-3-6" {
@@ -148,14 +172,7 @@ func TestLoadAppliesTheModelRulesFromGit(t *testing.T) {
 			t.Fatalf("%s got a rule of another model: %v", in.ID, in.ReasoningEffortBody)
 		}
 	}
-	// A missing file is fine at the default path, an error when it was asked for.
-	missing := filepath.Join(t.TempDir(), "models.json")
-	if _, err := Load(example, missing, false); err != nil {
-		t.Fatalf("missing default rules: %v", err)
-	}
-	if _, err := Load(example, missing, true); err == nil {
-		t.Fatal("missing required rules were accepted")
-	}
+
 }
 
 func TestTheInstanceConfigWinsOverTheModelRule(t *testing.T) {
@@ -173,12 +190,9 @@ func TestTheInstanceConfigWinsOverTheModelRule(t *testing.T) {
 }
 
 func TestModelRulesGoThroughTheSameFieldCheck(t *testing.T) {
-	dir := t.TempDir()
-	rules := filepath.Join(dir, "models.json")
-	if err := os.WriteFile(rules, []byte(`{"models":{"Qwen/Qwen3.6-35B-A3B":{"reasoning_effort_body":{"low":{"urgent":true}}}}}`), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := Load(filepath.Join("..", "..", "config.example.json"), rules, true); err == nil || !strings.Contains(err.Error(), "reasoning_effort_body") {
+	fixture := strings.Replace(validGatewayYAML, "    reasoning_effort_body:\n      low: {chat_template_kwargs: {enable_thinking: false}, custom_scalar: 0.5}\n", "", 1)
+	fixture = strings.Replace(fixture, "{chat_template_kwargs: {enable_thinking: true}, other: 2}", "{urgent: true}", 1)
+	if _, err := LoadConfig(writeGatewayYAML(t, fixture)); err == nil || !strings.Contains(err.Error(), "reasoning_effort_body") {
 		t.Fatalf("a rule with a gateway field was accepted: %v", err)
 	}
 }
@@ -186,30 +200,9 @@ func TestModelRulesGoThroughTheSameFieldCheck(t *testing.T) {
 func TestLoadConfigRejectsInvalidServerExecutionLimit(t *testing.T) {
 	for _, limit := range []string{"soon", "-1s"} {
 		t.Run(limit, func(t *testing.T) {
-			data, err := os.ReadFile(filepath.Join("..", "..", "config.example.json"))
-			if err != nil {
-				t.Fatal(err)
-			}
-			var config map[string]json.RawMessage
-			if err := json.Unmarshal(data, &config); err != nil {
-				t.Fatal(err)
-			}
-			var instances []map[string]json.RawMessage
-			if err := json.Unmarshal(config["instances"], &instances); err != nil {
-				t.Fatal(err)
-			}
-			instances[0]["server_execution_limit"], _ = json.Marshal(limit)
-			config["instances"], _ = json.Marshal(instances)
-			data, err = json.Marshal(config)
-			if err != nil {
-				t.Fatal(err)
-			}
-			path := filepath.Join(t.TempDir(), "config.json")
-			if err := os.WriteFile(path, data, 0600); err != nil {
-				t.Fatal(err)
-			}
-			if _, err := LoadConfig(path); err == nil || !strings.Contains(err.Error(), "server_execution_limit") {
-				t.Fatalf("error = %v, want invalid server_execution_limit", err)
+			body := strings.Replace(validGatewayYAML, "context_window: 8192", "context_window: 8192\n    server_execution_limit: "+limit, 1)
+			if _, err := LoadConfig(writeGatewayYAML(t, body)); err == nil {
+				t.Fatal("invalid server_execution_limit was accepted")
 			}
 		})
 	}

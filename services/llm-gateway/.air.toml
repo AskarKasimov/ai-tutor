@@ -1,0 +1,17 @@
+root = ".."
+tmp_dir = "llm-gateway/.air"
+
+[build]
+cmd = "cd llm-gateway && GOWORK=off go build -o ./.air/llm-gateway ./cmd/llm-gateway"
+entrypoint = ["llm-gateway/.air/llm-gateway"]
+include_dir = ["llm-gateway", "shared"]
+include_ext = ["go", "mod", "sum", "proto", "yaml", "yml"]
+exclude_dir = ["llm-gateway/.air", ".git"]
+exclude_regex = ["_test\\.go"]
+exclude_unchanged = true
+poll = true
+poll_interval = 500
+delay = 300
+send_interrupt = true
+kill_delay = "2s"
+stop_on_error = true

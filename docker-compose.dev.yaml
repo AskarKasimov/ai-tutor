@@ -8,9 +8,34 @@ services:
       - backend_go_modules:/go/pkg/mod
       - backend_go_build:/root/.cache/go-build
       - backend_dev_bin:/work/backend/.air
+    environment:
+      BACKEND_CONFIG: ${BACKEND_CONFIG:-/work/backend/config/dev.yaml}
     healthcheck:
       test: ["CMD", "/work/backend/.air/api", "healthcheck"]
       start_period: 180s
+
+
+  llm-gateway:
+    build:
+      target: dev
+    environment:
+      GATEWAY_CONFIG: ${GATEWAY_CONFIG:-/work/llm-gateway/config/dev.yaml}
+    volumes:
+      - ./services/llm-gateway:/work/llm-gateway
+      - ./services/shared:/work/shared:ro
+      - gateway_go_modules:/go/pkg/mod
+      - gateway_go_build:/root/.cache/go-build
+      - gateway_dev_bin:/work/llm-gateway/.air
+
+  course-graph:
+    build:
+      target: dev
+    environment:
+      COURSE_GRAPH_CONFIG: ${COURSE_GRAPH_CONFIG:-/app/config/dev.yaml}
+    volumes:
+      - ./services/course-graph/course_graph:/app/course_graph
+      - ./services/course-graph/config:/app/config:ro
+      - ./services/shared/gen/python/llmgateway:/app/llmgateway:ro
 
   frontend:
     build:
@@ -27,4 +52,7 @@ volumes:
   backend_go_modules:
   backend_go_build:
   backend_dev_bin:
+  gateway_go_modules:
+  gateway_go_build:
+  gateway_dev_bin:
   frontend_node_modules:

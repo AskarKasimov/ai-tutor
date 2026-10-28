@@ -8,6 +8,73 @@ import (
 	"testing"
 )
 
+func TestLearningReadinessRequiresThreeOutcomesInOneConstituent(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	student, _, _ := f.register(t, "constituent-readiness@example.edu")
+	admin := f.admin(t)
+	ctx := context.Background()
+	if _, err := f.pool.Exec(ctx, `
+INSERT INTO learning_map_imports(revision,imported_at,imported_by,competency_count,constituent_count,outcome_count,task_count,source_format,source_headers,subject_id)
+VALUES (1,1,(SELECT id FROM users WHERE role='admin' LIMIT 1),1,2,4,5,'paired','[]','subject:test');
+`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.pool.Exec(ctx, `
+INSERT INTO learning_subject_state(subject_id,active_revision) VALUES ('subject:test',1);
+INSERT INTO learning_competencies(id,name,revision) VALUES ('c1','Компетенция',1);
+INSERT INTO learning_constituents(id,competency_id,name) VALUES ('s1','c1','Первая'),('s2','c1','Вторая');
+INSERT INTO learning_outcomes(id,constituent_id,name,include_in_test,taxonomy_id,importance)
+VALUES ('o1','s1','Первый',true,'taxonomy:knowledge',3),
+       ('o2','s1','Второй',true,'taxonomy:understanding',3),
+       ('o3','s2','Третий',true,'taxonomy:application',3),
+       ('o4','s2','Четвёртый',true,'taxonomy:analysis',3);
+INSERT INTO learning_tasks(id,outcome_id,question,voice_instruction,reference_answer,created_at)
+SELECT 'task-' || id,id,'Вопрос','Ответьте','Эталон',1 FROM learning_outcomes;
+INSERT INTO learning_tasks(id,outcome_id,question,voice_instruction,reference_answer,created_at)
+VALUES ('another-task','o1','Другой вопрос','Ответьте','Эталон',1);
+`); err != nil {
+		t.Fatal(err)
+	}
+	check := func(want bool) {
+		t.Helper()
+		response := f.request(http.MethodGet, "/learn/subjects", "", admin)
+		var items []struct {
+			Ready         bool `json:"ready"`
+			LearningReady bool `json:"learning_ready"`
+		}
+		if response.Code != http.StatusOK || json.Unmarshal(response.Body.Bytes(), &items) != nil || len(items) != 1 || items[0].Ready != want || items[0].LearningReady != want {
+			t.Fatalf("want learning_ready=%t: %d %s", want, response.Code, response.Body.String())
+		}
+		response = f.request(http.MethodGet, "/learn/subjects", "", student)
+		var visible []json.RawMessage
+		wantVisible := 0
+		if want {
+			wantVisible = 1
+		}
+		if response.Code != http.StatusOK || json.Unmarshal(response.Body.Bytes(), &visible) != nil || len(visible) != wantVisible {
+			t.Fatalf("student catalog want ready=%t: %d %s", want, response.Code, response.Body.String())
+		}
+	}
+	// Four outcomes and five tasks across two constituents cannot form a block.
+	check(false)
+	requireCode(t, f.keyed(http.MethodPost, "/learn/variants", "short-constituents", `{"subject_id":"subject:test"}`, student), http.StatusConflict, "NO_ELIGIBLE_COMPETENCIES")
+	// Moving one outcome makes a complete block; the short constituent is skipped.
+	if _, err := f.pool.Exec(ctx, `UPDATE learning_outcomes SET constituent_id='s1' WHERE id='o3'`); err != nil {
+		t.Fatal(err)
+	}
+	check(true)
+	response := f.keyed(http.MethodPost, "/learn/variants", "complete-constituent", `{"subject_id":"subject:test"}`, student)
+	if response.Code != http.StatusCreated {
+		t.Fatalf("create variant for ready course: %d %s", response.Code, response.Body.String())
+	}
+	// A third outcome without a usable task must not make the course ready.
+	if _, err := f.pool.Exec(ctx, `UPDATE learning_tasks SET reference_answer='' WHERE outcome_id='o3'`); err != nil {
+		t.Fatal(err)
+	}
+	check(false)
+}
+
 func TestSubjectCatalogPermissionsAndEmptySubjects(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
@@ -112,7 +179,7 @@ VALUES ($1,'exam.xlsx','Экзамен','exam-v1','{"marker":"exam-before-learni
 	if items := readCatalog("/learn/subjects", student); len(items) != 0 {
 		t.Fatalf("empty course must not appear in learning catalog: %+v", items)
 	}
-	mapCSV, err := os.ReadFile("../features/competency/infrastructure/csvparser/testdata/ml_map.csv")
+	mapCSV, err := os.ReadFile("testdata/learning-ready-map.csv")
 	if err != nil {
 		t.Fatal(err)
 	}

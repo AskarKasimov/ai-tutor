@@ -19,3 +19,15 @@ func TestTrainingTargetsIncludeUserSkippedAnswersAsZero(t *testing.T) {
 		t.Fatalf("skipped main should be a zero-score target: %+v", got)
 	}
 }
+
+func TestTrainingTargetsKeepConstituentsSeparate(t *testing.T) {
+	answers := []Answer{
+		{CompetencyID: "c", Role: "main", Score: 0, Task: TaskSnapshot{ConstituentID: "s1", OutcomeID: "a"}},
+		{CompetencyID: "c", Role: "basic", Score: 0, Task: TaskSnapshot{ConstituentID: "s1", OutcomeID: "b"}},
+		{CompetencyID: "c", Role: "main", Score: 3, Task: TaskSnapshot{ConstituentID: "s2", OutcomeID: "c"}},
+	}
+	got := TrainingTargetsByConstituent(answers)
+	if len(got) != 1 || got[0].Answer.Task.OutcomeID != "b" {
+		t.Fatalf("targets = %+v", got)
+	}
+}

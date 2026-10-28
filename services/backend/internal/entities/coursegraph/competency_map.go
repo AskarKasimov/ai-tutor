@@ -17,8 +17,7 @@ import (
 // The book serves both modes: the first sheet is the simulation's, the
 // second the diagnostic's (decision of 19.10.2026, map «Введение в ИИ4»).
 //
-// The graph follows the variant of v0.0.2 (competency-map-v4): for every
-// competency with at least three outcomes marked TRUE that have a task, the
+// For every constituent with at least three outcomes marked TRUE that have a task, the
 // outcome with the highest Bloom level (then importance, then map order) is
 // a top-level topic and the two simplest of the others (Bloom ascending,
 // importance descending, map order) are its prerequisites. An outcome with
@@ -183,18 +182,18 @@ func BuildMapGraph(sheets []MapSheet) (MapGraph, error) {
 		return MapGraph{}, &MapError{Code: "COMPETENCY_MAP_INVALID",
 			Message: fmt.Sprintf("На первом листе «%s» нет колонок карты: Субкомпетенция (или Компетенция), Составляющая, Образовательный результат, Уровень по Блуму (или Таксономия), Важность, Что должно войти в тест, Задание, Критерии оценивания.", sheet)}
 	}
-	outcomes, competencies, issues := readMapOutcomes(rows)
+	outcomes, constituents, issues := readMapOutcomes(rows)
 	if len(issues) > 0 {
 		return MapGraph{}, &MapError{Code: "COMPETENCY_MAP_INVALID",
 			Message: fmt.Sprintf("Карта на листе «%s» содержит ошибки.", sheet), Issues: issues}
 	}
-	graph, topics, skipped, err := mapGraph(competencies, outcomes)
+	graph, topics, skipped, err := mapGraph(constituents, outcomes)
 	if err != nil {
 		return MapGraph{}, err
 	}
 	if topics == 0 {
 		return MapGraph{}, &MapError{Code: "COMPETENCY_MAP_EMPTY",
-			Message: "Ни одна субкомпетенция не набрала трёх ОР с TRUE и заданием; граф не из чего собрать.", Issues: skippedIssues(skipped)}
+			Message: "Ни одна составляющая не набрала трёх ОР с TRUE и заданием; граф не из чего собрать.", Issues: skippedIssues(skipped)}
 	}
 	return MapGraph{Graph: graph, Sheet: sheet, Topics: topics, Skipped: skipped}, nil
 }
@@ -202,15 +201,17 @@ func BuildMapGraph(sheets []MapSheet) (MapGraph, error) {
 func skippedIssues(skipped []SkippedCompetency) []MapIssue {
 	out := make([]MapIssue, len(skipped))
 	for i, s := range skipped {
-		out[i] = MapIssue{Column: columnTitle("competency"), Message: s.Name + ": " + s.Reason}
+		out[i] = MapIssue{Column: columnTitle("constituent"), Message: s.Name + ": " + s.Reason}
 	}
 	return out
 }
 
 // readMapOutcomes reads the outcomes that may enter the graph and every
-// competency of the map in its order; the competency and constituent are
+// constituent of the map in its order; the competency and constituent are
 // filled on the first row of their group only.
-func readMapOutcomes(rows [][]string) ([]mapOutcome, []string, []MapIssue) {
+type mapGroup struct{ competency, constituent string }
+
+func readMapOutcomes(rows [][]string) ([]mapOutcome, []mapGroup, []MapIssue) {
 	layout, _ := mapHeader(rows)
 	header := layout.header
 	at := func(row []string, i int) string {
@@ -228,7 +229,7 @@ func readMapOutcomes(rows [][]string) ([]mapOutcome, []string, []MapIssue) {
 	}
 	var (
 		out                     []mapOutcome
-		competencies            []string
+		constituents            []mapGroup
 		issues                  []MapIssue
 		competency, constituent string
 	)
@@ -241,6 +242,9 @@ func readMapOutcomes(rows [][]string) ([]mapOutcome, []string, []MapIssue) {
 			continue
 		}
 		if v := cell(row, "competency"); v != "" {
+			if v != competency {
+				constituent = ""
+			}
 			competency = v
 		}
 		if v := cell(row, "constituent"); v != "" {
@@ -254,8 +258,13 @@ func readMapOutcomes(rows [][]string) ([]mapOutcome, []string, []MapIssue) {
 			issue(line, "competency", "У ОР нет субкомпетенции выше.")
 			continue
 		}
-		if !slices.Contains(competencies, competency) {
-			competencies = append(competencies, competency)
+		if constituent == "" {
+			issue(line, "constituent", "У ОР нет составляющей выше.")
+			continue
+		}
+		group := mapGroup{competency, constituent}
+		if !slices.Contains(constituents, group) {
+			constituents = append(constituents, group)
 		}
 		include := strings.ToUpper(cell(row, "include"))
 		switch include {
@@ -299,7 +308,7 @@ func readMapOutcomes(rows [][]string) ([]mapOutcome, []string, []MapIssue) {
 		out = append(out, mapOutcome{row: line, competency: competency, constituent: constituent, outcome: outcome,
 			evidence: cell(row, "evidence"), tasks: tasks, bloom: bloom, importance: importance, order: len(out)})
 	}
-	return out, competencies, issues
+	return out, constituents, issues
 }
 
 func importanceValue(value string) (int, bool) {
@@ -348,16 +357,18 @@ type mapEdge struct {
 	Reason string `json:"reason,omitempty"`
 }
 
-func mapGraph(order []string, outcomes []mapOutcome) (json.RawMessage, int, []SkippedCompetency, error) {
-	byCompetency := map[string][]mapOutcome{}
+func mapGraph(order []mapGroup, outcomes []mapOutcome) (json.RawMessage, int, []SkippedCompetency, error) {
+	byConstituent := map[mapGroup][]mapOutcome{}
 	for _, o := range outcomes {
-		byCompetency[o.competency] = append(byCompetency[o.competency], o)
+		key := mapGroup{o.competency, o.constituent}
+		byConstituent[key] = append(byConstituent[key], o)
 	}
 	topics := []mapTopic{}
 	prerequisites, hierarchy := []mapEdge{}, []mapEdge{}
 	skipped := []SkippedCompetency{}
-	for _, name := range order {
-		pool := byCompetency[name]
+	for _, group := range order {
+		name := group.constituent
+		pool := byConstituent[group]
 		if len(pool) < 3 {
 			skipped = append(skipped, SkippedCompetency{Name: name,
 				Reason: fmt.Sprintf("ОР с TRUE и заданием — %d, нужно не меньше трёх: основное и два базовых.", len(pool))})
@@ -374,7 +385,7 @@ func mapGraph(order []string, outcomes []mapOutcome) (json.RawMessage, int, []Sk
 		// Study order: the basic tasks come before the main one.
 		for _, basic := range rest[:2] {
 			topics = append(topics, newMapTopic(basic, "basic", nil))
-			prerequisites = append(prerequisites, mapEdge{Source: topicID(basic), Target: mainID, Reason: "Базовое задание субкомпетенции «" + name + "»."})
+			prerequisites = append(prerequisites, mapEdge{Source: topicID(basic), Target: mainID, Reason: "Базовое задание составляющей «" + name + "»."})
 			hierarchy = append(hierarchy, mapEdge{Source: mainID, Target: topicID(basic)})
 		}
 		topics = append(topics, newMapTopic(main, "main", []string{topicID(rest[0]), topicID(rest[1])}))

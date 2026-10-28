@@ -85,7 +85,11 @@ func (s *Service) plan(ctx context.Context, owner, id string) (training.Session,
 		return training.Session{}, fault.New(fault.Conflict, "DIAGNOSTIC_SESSION_ACTIVE", "Сначала завершите диагностику.")
 	}
 	state := training.Session{OwnerID: owner, DiagnosticID: id, SubjectID: d.Variant.SubjectID, SubjectName: d.Variant.SubjectNameSnapshot, Mode: "focused", PlanRevision: d.Variant.MapRevision, Round: 1, Targets: []training.Target{}}
-	for _, target := range diagnostic.TrainingTargets(d.Answers) {
+	targets := diagnostic.TrainingTargets(d.Answers)
+	if d.Variant.AlgorithmVersion == "constituent-map-v1" {
+		targets = diagnostic.TrainingTargetsByConstituent(d.Answers)
+	}
+	for _, target := range targets {
 		raw, err := json.Marshal(target.Answer.Task)
 		if err != nil {
 			return state, err

@@ -41,7 +41,7 @@ SELECT subject.id, subject.name,
                      )
                    ELSE false
                  END
-           GROUP BY competency.id
+           GROUP BY constituent.id
            HAVING count(DISTINCT outcome.id) >= 3
        ) AS learning_ready
 FROM subjects subject

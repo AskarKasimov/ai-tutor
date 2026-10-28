@@ -7,28 +7,38 @@ type TrainingTarget struct {
 
 // TrainingTargets uses only accepted answers, retaining diagnostic position order.
 func TrainingTargets(answers []Answer) []TrainingTarget {
+	return trainingTargets(answers, false)
+}
+
+func trainingTargets(answers []Answer, byConstituent bool) []TrainingTarget {
+	key := func(a Answer) string {
+		if byConstituent {
+			return a.CompetencyID + "\x00" + a.Task.ConstituentID
+		}
+		return a.CompetencyID
+	}
 	main := map[string]Answer{}
 	failed := map[string]bool{}
 	for _, a := range answers {
 		if a.Role == "main" {
-			main[a.CompetencyID] = a
+			main[key(a)] = a
 		}
 		if a.Role == "basic" && a.Score == 0 {
-			failed[a.CompetencyID] = true
+			failed[key(a)] = true
 		}
 	}
 	result := []TrainingTarget{}
 	seen := map[string]bool{}
 	for _, a := range answers {
-		m, exists := main[a.CompetencyID]
+		m, exists := main[key(a)]
 		if !exists || m.Score >= 2 {
 			continue
 		}
 		kind := ""
-		if failed[a.CompetencyID] && a.Role == "basic" && a.Score == 0 {
+		if failed[key(a)] && a.Role == "basic" && a.Score == 0 {
 			kind = "confirmed_gap"
 		}
-		if !failed[a.CompetencyID] && a.Role == "main" {
+		if !failed[key(a)] && a.Role == "main" {
 			kind = "partial_competency"
 		}
 		outcomeID := a.OutcomeID
@@ -41,4 +51,8 @@ func TrainingTargets(answers []Answer) []TrainingTarget {
 		}
 	}
 	return result
+}
+
+func TrainingTargetsByConstituent(answers []Answer) []TrainingTarget {
+	return trainingTargets(answers, true)
 }

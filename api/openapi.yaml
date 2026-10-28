@@ -2912,6 +2912,8 @@ components:
             $ref: '#/components/schemas/variantgenhttp.OutlineConstituent'
           type: array
           uniqueItems: false
+        display_name:
+          type: string
         id:
           type: string
         name:
@@ -2924,6 +2926,8 @@ components:
     variantgenhttp.OutlineConstituent:
       additionalProperties: false
       properties:
+        display_name:
+          type: string
         id:
           type: string
         name:
@@ -6270,7 +6274,7 @@ paths:
       x-implementation: implemented
   /learn/subjects/{subject_id}/diagnostic-outline:
     get:
-      description: Применяет отбор constituent-map-v1 к текущей карте без сохранения варианта и запуска диагностики. Возвращает только названия и ID выбранных компетенций, составляющих и ОР с ролью main/basic. Вопросы, эталоны, criteria и ОС не выдаются. Пустой отбор возвращается пустым списком.
+      description: Применяет отбор constituent-map-v1 к текущей карте без сохранения варианта и запуска диагностики. Возвращает только названия и ID выбранных компетенций, составляющих и ОР с ролью main/basic. Короткие display_name компетенций и составляющих готовятся через LLM gateway и кэшируются; исходные name сохранены. Вопросы, эталоны, criteria и ОС не выдаются. Пустой отбор возвращается пустым списком.
       operationId: previewDiagnosticOutline
       parameters:
         - description: ID предмета

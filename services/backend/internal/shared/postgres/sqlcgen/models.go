@@ -226,6 +226,11 @@ type LearningGenerationRunExample struct {
 	TaskID          string
 }
 
+type LearningGraphLabel struct {
+	CacheKey    string
+	DisplayName string
+}
+
 type LearningMapImport struct {
 	Revision              int64
 	Singleton             bool

@@ -173,3 +173,38 @@ describe('layoutDiagnosticMindmap', () => {
     )
   })
 })
+
+it('uses generated short labels while keeping source titles and IDs', () => {
+  const map = layoutDiagnosticMindmap(
+    {
+      competencies: [
+        {
+          id: 'comp',
+          name: 'Способен применять методы машинного обучения',
+          display_name: 'Машинное обучение',
+          constituents: [
+            {
+              id: 'topic',
+              name: 'Уметь строить и обучать нейронные сети',
+              display_name: 'Нейронные сети',
+              outcomes: [],
+            },
+          ],
+        },
+      ],
+    },
+    'Курс',
+  )
+  expect(
+    map.nodes.find((node) => node.id === 'competency:comp')?.data,
+  ).toMatchObject({
+    title: 'Способен применять методы машинного обучения',
+    cleanTitle: 'Машинное обучение',
+  })
+  expect(
+    map.nodes.find((node) => node.id === 'constituent:topic')?.data,
+  ).toMatchObject({
+    title: 'Уметь строить и обучать нейронные сети',
+    cleanTitle: 'Нейронные сети',
+  })
+})

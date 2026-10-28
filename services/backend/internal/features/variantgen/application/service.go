@@ -20,6 +20,7 @@ var bloomRanks = map[string]int{"knowledge": 1, "understanding": 2, "application
 
 type Service struct {
 	repo    Repository
+	labels  GraphLabeler
 	chooser TaskChooser
 	ids     IDGenerator
 	now     func() time.Time

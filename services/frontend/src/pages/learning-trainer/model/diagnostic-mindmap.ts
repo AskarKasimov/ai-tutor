@@ -187,7 +187,7 @@ function layoutSide(
 
     const compY = curY + (blockH - COMPETENCY_HEIGHT) / 2
     const compNodeId = `competency:${comp.id}`
-    const compClean = cleanCompetencyTitle(comp.name)
+    const compClean = comp.display_name || cleanCompetencyTitle(comp.name)
 
     nodes.push({
       id: compNodeId,
@@ -232,7 +232,8 @@ function layoutSide(
       const constY = curY + cIdx * (CONSTITUENT_HEIGHT + CONSTITUENT_GAP)
       const constNodeId = `constituent:${constituent.id}`
       const isSelected = selectedConstituentId === constituent.id
-      const constClean = cleanTopicTitle(constituent.name)
+      const constClean =
+        constituent.display_name || cleanTopicTitle(constituent.name)
 
       nodes.push({
         id: constNodeId,

@@ -150,10 +150,12 @@ const outlineSchema = z.object({
     z.object({
       id: z.string(),
       name: z.string(),
+      display_name: z.string().optional(),
       constituents: z.array(
         z.object({
           id: z.string(),
           name: z.string(),
+          display_name: z.string().optional(),
           outcomes: z.array(z.object({ id: z.string(), name: z.string() })),
         }),
       ),

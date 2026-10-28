@@ -24,7 +24,7 @@ func TestDiagnosticOutlineMatchesVariantWithoutCreatingSessions(t *testing.T) {
 	if empty.Code != http.StatusOK || !strings.Contains(empty.Body.String(), `"competencies":[]`) {
 		t.Fatalf("empty: %d %s", empty.Code, empty.Body.String())
 	}
-	data, err := os.ReadFile("../features/competency/infrastructure/csvparser/testdata/ml_map.csv")
+	data, err := os.ReadFile("testdata/learning-ready-map.csv")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -36,6 +36,24 @@ func TestDiagnosticOutlineMatchesVariantWithoutCreatingSessions(t *testing.T) {
 	var outline variantgenhttp.DiagnosticOutline
 	if preview.Code != http.StatusOK || json.Unmarshal(preview.Body.Bytes(), &outline) != nil || len(outline.Competencies) == 0 {
 		t.Fatalf("outline: %d %s", preview.Code, preview.Body.String())
+	}
+	for _, competency := range outline.Competencies {
+		if competency.DisplayName != "Короткая тема" {
+			t.Fatalf("missing competency caption: %+v", competency)
+		}
+		for _, topic := range competency.Constituents {
+			if topic.DisplayName != "Короткая тема" {
+				t.Fatalf("missing constituent caption: %+v", topic)
+			}
+		}
+	}
+	var cacheCount int
+	if err := f.pool.QueryRow(context.Background(), `SELECT count(*) FROM learning_graph_labels`).Scan(&cacheCount); err != nil || cacheCount == 0 {
+		t.Fatalf("labels not cached: %d %v", cacheCount, err)
+	}
+	again := f.request(http.MethodGet, path, "", student)
+	if again.Code != http.StatusOK || again.Body.String() != preview.Body.String() {
+		t.Fatalf("cached outline changed: %s", again.Body.String())
 	}
 	for _, forbidden := range []string{`"question"`, `"reference_answer"`, `"criteria"`, `"educational_content"`, `"tasks"`} {
 		if strings.Contains(preview.Body.String(), forbidden) {

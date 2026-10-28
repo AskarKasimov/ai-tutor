@@ -14,12 +14,14 @@ type DiagnosticOutline struct {
 type OutlineCompetency struct {
 	ID           string               `json:"id"`
 	Name         string               `json:"name"`
+	DisplayName  string               `json:"display_name,omitempty" binding:"optional"`
 	Constituents []OutlineConstituent `json:"constituents"`
 }
 type OutlineConstituent struct {
-	ID       string           `json:"id"`
-	Name     string           `json:"name"`
-	Outcomes []OutlineOutcome `json:"outcomes"`
+	ID          string           `json:"id"`
+	Name        string           `json:"name"`
+	DisplayName string           `json:"display_name,omitempty" binding:"optional"`
+	Outcomes    []OutlineOutcome `json:"outcomes"`
 }
 type OutlineOutcome struct {
 	ID   string `json:"id"`
@@ -29,7 +31,7 @@ type OutlineOutcome struct {
 
 // Preview returns only the blocks and outcomes selected for diagnostics.
 // @Summary Предпросмотр блоков диагностики
-// @Description Применяет отбор constituent-map-v1 к текущей карте без сохранения варианта и запуска диагностики. Возвращает только названия и ID выбранных компетенций, составляющих и ОР с ролью main/basic. Вопросы, эталоны, criteria и ОС не выдаются. Пустой отбор возвращается пустым списком.
+// @Description Применяет отбор constituent-map-v1 к текущей карте без сохранения варианта и запуска диагностики. Возвращает только названия и ID выбранных компетенций, составляющих и ОР с ролью main/basic. Короткие display_name компетенций и составляющих готовятся через LLM gateway и кэшируются; исходные name сохранены. Вопросы, эталоны, criteria и ОС не выдаются. Пустой отбор возвращается пустым списком.
 // @ID previewDiagnosticOutline
 // @Tags Варианты
 // @Security accessCookie
@@ -46,7 +48,28 @@ func (h *Handler) Preview(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(r.Context(), w, err)
 		return
 	}
-	httpx.JSON(w, http.StatusOK, outlineDTO(value))
+	outline := outlineDTO(value)
+	names := []string{}
+	for _, competency := range outline.Competencies {
+		names = append(names, competency.Name)
+		for _, topic := range competency.Constituents {
+			names = append(names, topic.Name)
+		}
+	}
+	labels, err := h.service.GraphLabels(r.Context(), names)
+	if err != nil {
+		httpx.Error(r.Context(), w, err)
+		return
+	}
+	for i := range outline.Competencies {
+		competency := &outline.Competencies[i]
+		competency.DisplayName = labels[competency.Name]
+		for j := range competency.Constituents {
+			topic := &competency.Constituents[j]
+			topic.DisplayName = labels[topic.Name]
+		}
+	}
+	httpx.JSON(w, http.StatusOK, outline)
 }
 
 func outlineDTO(value variant.Variant) DiagnosticOutline {

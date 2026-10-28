@@ -56,10 +56,12 @@ it('reads the server-selected diagnostic blocks without exposing task content', 
           {
             id: 'c1',
             name: 'Первая',
+            display_name: 'Машинное обучение',
             constituents: [
               {
                 id: 't1',
                 name: 'Выбранная тема',
+                display_name: 'Нейронные сети',
                 outcomes: [
                   {
                     id: 'o1',
@@ -83,10 +85,12 @@ it('reads the server-selected diagnostic blocks without exposing task content', 
       {
         id: 'c1',
         name: 'Первая',
+        display_name: 'Машинное обучение',
         constituents: [
           {
             id: 't1',
             name: 'Выбранная тема',
+            display_name: 'Нейронные сети',
             outcomes: [
               { id: 'o1', name: 'Основной результат' },
               { id: 'o2', name: 'Базовый результат' },

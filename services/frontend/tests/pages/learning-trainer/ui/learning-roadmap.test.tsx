@@ -80,8 +80,11 @@ it('replaces the outline when switching courses and preserves map order', async 
   expect(await screen.findByText('Результат one')).toBeVisible()
   expect(screen.queryByText('Следующий результат')).not.toBeInTheDocument()
   expect(
-    screen.getByText('Компетенций: 2 · Тем: 2 · Результатов: 2'),
-  ).toBeVisible()
+    screen.queryByText(/Компетенций:.*Тем:.*Результатов:/),
+  ).not.toBeInTheDocument()
+  expect(
+    screen.queryByText(/Блоки карты, выбранные для диагностики/),
+  ).not.toBeInTheDocument()
   view.rerender(<LearningRoadmap userId="student" subjectId="two" />)
   fireEvent.click(await screen.findByLabelText('Тема two'))
   expect(await screen.findByText('Результат two')).toBeVisible()

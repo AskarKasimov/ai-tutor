@@ -21,8 +21,6 @@ export function LearningRoadmap({
   const { t } = useTranslation()
   const query = useCompetencyMapOutlineQuery(userId, subjectId)
   const competencies = query.data?.competencies ?? []
-  const topics = competencies.flatMap((item) => item.constituents)
-  const outcomes = topics.flatMap((item) => item.outcomes)
 
   return (
     <section
@@ -60,13 +58,6 @@ export function LearningRoadmap({
         </Text>
       ) : (
         <>
-          <Text as="p" size="2" className={styles.counts}>
-            {t('learningRoadmap.counts', {
-              competencies: competencies.length,
-              topics: topics.length,
-              outcomes: outcomes.length,
-            })}
-          </Text>
           <Suspense
             fallback={<Text role="status">{t('learningRoadmap.loading')}</Text>}
           >

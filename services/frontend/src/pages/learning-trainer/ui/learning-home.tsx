@@ -298,9 +298,11 @@ export function LearningHome({
                     <Text as="p" className={styles.stepTitle}>
                       {t(`learningHome.steps.${step.key}.title`)}
                     </Text>
-                    <Text as="p" className={styles.stepText}>
-                      {t(`learningHome.steps.${step.key}.text`)}
-                    </Text>
+                    {step.key !== 'exam' && (
+                      <Text as="p" className={styles.stepText}>
+                        {t(`learningHome.steps.${step.key}.text`)}
+                      </Text>
+                    )}
                   </li>
                 ))}
               </ol>

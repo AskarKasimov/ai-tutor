@@ -168,6 +168,7 @@ it('loads subjects without creating a variant, then starts only the chosen subje
   expect(steps).toHaveTextContent('Найдите пробелы')
   expect(steps).toHaveTextContent('Персонализированный под вас')
   expect(steps).toHaveTextContent('Подготовьтесь по плану')
+  expect(steps).not.toHaveTextContent('Только нужное к экзамену')
   expect(
     screen.queryByRole('button', { name: /тренировк/i }),
   ).not.toBeInTheDocument()

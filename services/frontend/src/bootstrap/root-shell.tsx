@@ -2,6 +2,7 @@ import { Button, Text } from '@radix-ui/themes'
 import { useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Navigate, Outlet, useRouterState } from '@tanstack/react-router'
+import { LoaderCircle } from 'lucide-react'
 import type { QueryClient } from '@tanstack/react-query'
 import { useAuth } from '@/features/auth'
 import { AppProviders } from './providers'
@@ -39,7 +40,13 @@ function SessionGate() {
   }, [entering, authenticate])
   const loading = (
     <main className={styles.screen}>
-      <Text role="status">{t('auth.checkingSession')}</Text>
+      <div
+        className={styles.loading}
+        role="status"
+        aria-label={t('auth.checkingSession')}
+      >
+        <LoaderCircle className={styles.spinner} size={36} aria-hidden="true" />
+      </div>
     </main>
   )
   if (checkingSession) return loading

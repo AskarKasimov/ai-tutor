@@ -1,4 +1,10 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import {
+  createMemoryHistory,
+  createRootRoute,
+  createRouter,
+  RouterProvider,
+} from '@tanstack/react-router'
 import { afterEach, expect, it, vi } from 'vitest'
 import { AppProviders, createQueryClient } from '@/bootstrap/providers'
 import { createAppDependencies } from '@/bootstrap/dependencies'
@@ -165,16 +171,23 @@ async function setup(
     role: 'student',
   })
   configure?.(api)
-  const { container } = render(
-    <AppProviders queryClient={queryClient} dependencies={dependencies}>
-      <LearningPlanEntry
-        userId="u1"
-        diagnosticId="d1"
-        subjectName="ML"
-        onBack={() => {}}
-      />
-    </AppProviders>,
-  )
+  const routeTree = createRootRoute({
+    component: () => (
+      <AppProviders queryClient={queryClient} dependencies={dependencies}>
+        <LearningPlanEntry
+          userId="u1"
+          diagnosticId="d1"
+          subjectName="ML"
+          onBack={() => {}}
+        />
+      </AppProviders>
+    ),
+  })
+  const router = createRouter({
+    routeTree,
+    history: createMemoryHistory({ initialEntries: ['/'] }),
+  })
+  const { container } = render(<RouterProvider router={router} />)
   return { create, open, answer, container }
 }
 

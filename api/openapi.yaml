@@ -6270,7 +6270,7 @@ paths:
       x-implementation: implemented
   /learn/subjects/{subject_id}/diagnostic-outline:
     get:
-      description: Применяет отбор competency-map-v4 к текущей карте без сохранения варианта и запуска диагностики. Возвращает только названия и ID выбранных компетенций, составляющих и ОР с ролью main/basic. Вопросы, эталоны, criteria и ОС не выдаются. Пустой отбор возвращается пустым списком.
+      description: Применяет отбор constituent-map-v1 к текущей карте без сохранения варианта и запуска диагностики. Возвращает только названия и ID выбранных компетенций, составляющих и ОР с ролью main/basic. Вопросы, эталоны, criteria и ОС не выдаются. Пустой отбор возвращается пустым списком.
       operationId: previewDiagnosticOutline
       parameters:
         - description: ID предмета

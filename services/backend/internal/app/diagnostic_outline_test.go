@@ -56,7 +56,7 @@ func TestDiagnosticOutlineMatchesVariantWithoutCreatingSessions(t *testing.T) {
 	if w.Code != http.StatusCreated || json.Unmarshal(w.Body.Bytes(), &saved) != nil {
 		t.Fatalf("create: %d %s", w.Code, w.Body.String())
 	}
-	if outline.Revision != saved.MapRevision || outline.AlgorithmVersion != saved.AlgorithmVersion || len(outline.Competencies) != len(saved.Competencies) {
+	if outline.Revision != saved.MapRevision || outline.AlgorithmVersion != saved.AlgorithmVersion {
 		t.Fatalf("preview metadata differs from variant")
 	}
 	selected := map[string]string{}

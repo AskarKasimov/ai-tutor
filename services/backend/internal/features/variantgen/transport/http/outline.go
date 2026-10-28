@@ -29,7 +29,7 @@ type OutlineOutcome struct {
 
 // Preview returns only the blocks and outcomes selected for diagnostics.
 // @Summary Предпросмотр блоков диагностики
-// @Description Применяет отбор competency-map-v4 к текущей карте без сохранения варианта и запуска диагностики. Возвращает только названия и ID выбранных компетенций, составляющих и ОР с ролью main/basic. Вопросы, эталоны, criteria и ОС не выдаются. Пустой отбор возвращается пустым списком.
+// @Description Применяет отбор constituent-map-v1 к текущей карте без сохранения варианта и запуска диагностики. Возвращает только названия и ID выбранных компетенций, составляющих и ОР с ролью main/basic. Вопросы, эталоны, criteria и ОС не выдаются. Пустой отбор возвращается пустым списком.
 // @ID previewDiagnosticOutline
 // @Tags Варианты
 // @Security accessCookie
@@ -51,9 +51,19 @@ func (h *Handler) Preview(w http.ResponseWriter, r *http.Request) {
 
 func outlineDTO(value variant.Variant) DiagnosticOutline {
 	result := DiagnosticOutline{Revision: value.MapRevision, AlgorithmVersion: value.AlgorithmVersion, Competencies: make([]OutlineCompetency, 0, len(value.Competencies))}
+	competencyPositions := map[string]int{}
 	for _, selection := range value.Competencies {
-		competency := OutlineCompetency{ID: selection.Competency.ID, Name: selection.Competency.Name, Constituents: []OutlineConstituent{}}
+		index, found := competencyPositions[selection.Competency.ID]
+		if !found {
+			index = len(result.Competencies)
+			competencyPositions[selection.Competency.ID] = index
+			result.Competencies = append(result.Competencies, OutlineCompetency{ID: selection.Competency.ID, Name: selection.Competency.Name, Constituents: []OutlineConstituent{}})
+		}
+		competency := &result.Competencies[index]
 		positions := map[string]int{}
+		for i, topic := range competency.Constituents {
+			positions[topic.ID] = i
+		}
 		for _, task := range selection.Tasks {
 			topic := task.Task.Constituent
 			position, found := positions[topic.ID]
@@ -64,7 +74,6 @@ func outlineDTO(value variant.Variant) DiagnosticOutline {
 			}
 			competency.Constituents[position].Outcomes = append(competency.Constituents[position].Outcomes, OutlineOutcome{ID: task.Task.Outcome.ID, Name: task.Task.Outcome.Name, Role: task.Role})
 		}
-		result.Competencies = append(result.Competencies, competency)
 	}
 	return result
 }

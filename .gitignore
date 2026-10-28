@@ -15,3 +15,5 @@ docs/superpowers/
 services/backend/.air/
 lectures/
 notebooks/
+
+services/llm-gateway/.air/

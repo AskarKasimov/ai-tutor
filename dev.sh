@@ -16,7 +16,7 @@ if [ ! -f .env ]; then
 fi
 
 docker compose version >/dev/null
-docker compose --env-file .env -f docker-compose.yaml config --quiet
+docker compose --env-file .env -f docker-compose.yaml -f docker-compose.dev.yaml config --quiet
 
 mkcert -install
 mkdir -p certs

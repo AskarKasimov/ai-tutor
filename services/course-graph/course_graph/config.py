@@ -73,8 +73,7 @@ class OCRSettings(SettingsModel):
     @field_validator("document_timeout")
     @classmethod
     def valid_document_timeout(cls, value: str) -> str:
-        if _duration_seconds(value) < 0:
-            raise ValueError("document_timeout must not be negative")
+        _duration_seconds(value)
         return value
 
     @property

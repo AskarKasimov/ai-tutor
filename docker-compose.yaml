@@ -29,7 +29,7 @@ services:
     extends:
       file: ./services/llm-gateway/docker-compose.yaml
       service: llm-gateway
-    volumes:
+    volumes: !override
       - ./services/llm-gateway:/work/llm-gateway
       - ./services/shared:/work/shared:ro
     environment:
@@ -127,9 +127,6 @@ volumes:
     name: ai-tutor_postgres_data
   task_audio_data:
     name: ai-tutor_task_audio_data
-  gateway_go_modules:
-  gateway_go_build:
-  gateway_dev_bin:
   caddy_data:
     name: ai-tutor_caddy_data
   caddy_config:

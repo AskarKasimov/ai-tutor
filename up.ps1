@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Поднимает dev-стек AI Tutor на Windows одной командой (аналог dev.sh).
 .EXAMPLE

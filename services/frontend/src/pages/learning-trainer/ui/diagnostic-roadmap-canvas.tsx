@@ -13,6 +13,7 @@ import {
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import {
+  CircleDot,
   Compass,
   Maximize2,
   Minimize2,
@@ -60,24 +61,24 @@ function SubjectNodeCard({ data }: NodeProps<DiagnosticMindmapNode>) {
       role="region"
       aria-label={subject.title}
     >
-      <Handle
-        type="source"
-        position={Position.Left}
-        id="source-left"
-        className={styles.handle}
-      />
-      <Handle
-        type="source"
-        position={Position.Right}
-        id="source-right"
-        className={styles.handle}
-      />
-      <span className={styles.subjectIconWrap} aria-hidden="true">
-        <Compass size={20} />
-      </span>
       <span className={styles.subjectTitle} title={subject.title}>
         {subject.title}
       </span>
+      <div className={styles.subjectCircle}>
+        <Handle
+          type="source"
+          position={Position.Left}
+          id="source-left"
+          className={styles.handle}
+        />
+        <Handle
+          type="source"
+          position={Position.Right}
+          id="source-right"
+          className={styles.handle}
+        />
+        <Compass size={28} className={styles.subjectIcon} aria-hidden="true" />
+      </div>
     </div>
   )
 }
@@ -91,6 +92,7 @@ function CompetencyNodeCard({ data }: NodeProps<DiagnosticMindmapNode>) {
     '--branch-border': comp.border,
     '--branch-glow': comp.glow,
     '--branch-bg': comp.lightBg,
+    '--branch-accent': comp.accent,
   } as CSSProperties
 
   const displayTitle = comp.cleanTitle || comp.title
@@ -102,40 +104,47 @@ function CompetencyNodeCard({ data }: NodeProps<DiagnosticMindmapNode>) {
       role="region"
       aria-label={displayTitle}
     >
-      {isRight ? (
-        <>
-          <Handle
-            type="target"
-            position={Position.Left}
-            id="target-left"
-            className={styles.handle}
-          />
-          <Handle
-            type="source"
-            position={Position.Right}
-            id="source-right"
-            className={styles.handle}
-          />
-        </>
-      ) : (
-        <>
-          <Handle
-            type="target"
-            position={Position.Right}
-            id="target-right"
-            className={styles.handle}
-          />
-          <Handle
-            type="source"
-            position={Position.Left}
-            id="source-left"
-            className={styles.handle}
-          />
-        </>
-      )}
       <span className={styles.competencyTitle} title={comp.title}>
         {displayTitle}
       </span>
+      <div className={styles.competencyCircle}>
+        {isRight ? (
+          <>
+            <Handle
+              type="target"
+              position={Position.Left}
+              id="target-left"
+              className={styles.handle}
+            />
+            <Handle
+              type="source"
+              position={Position.Right}
+              id="source-right"
+              className={styles.handle}
+            />
+          </>
+        ) : (
+          <>
+            <Handle
+              type="target"
+              position={Position.Right}
+              id="target-right"
+              className={styles.handle}
+            />
+            <Handle
+              type="source"
+              position={Position.Left}
+              id="source-left"
+              className={styles.handle}
+            />
+          </>
+        )}
+        <Sparkles
+          size={22}
+          className={styles.competencyIcon}
+          aria-hidden="true"
+        />
+      </div>
     </div>
   )
 }
@@ -151,6 +160,7 @@ function ConstituentNodeCard({ data }: NodeProps<DiagnosticMindmapNode>) {
     '--branch-border': item.border,
     '--branch-glow': item.glow,
     '--branch-bg': item.lightBg,
+    '--branch-accent': item.accent,
   } as CSSProperties
 
   const handleClick = useCallback(() => {
@@ -181,24 +191,31 @@ function ConstituentNodeCard({ data }: NodeProps<DiagnosticMindmapNode>) {
       onClick={handleClick}
       onKeyDown={handleKeyDown}
     >
-      {isRight ? (
-        <Handle
-          type="target"
-          position={Position.Left}
-          id="target-left"
-          className={styles.handle}
-        />
-      ) : (
-        <Handle
-          type="target"
-          position={Position.Right}
-          id="target-right"
-          className={styles.handle}
-        />
-      )}
       <span className={styles.constituentTitle} title={item.title}>
         {displayTitle}
       </span>
+      <div className={styles.constituentCircle}>
+        {isRight ? (
+          <Handle
+            type="target"
+            position={Position.Left}
+            id="target-left"
+            className={styles.handle}
+          />
+        ) : (
+          <Handle
+            type="target"
+            position={Position.Right}
+            id="target-right"
+            className={styles.handle}
+          />
+        )}
+        <CircleDot
+          size={20}
+          className={styles.constituentIcon}
+          aria-hidden="true"
+        />
+      </div>
     </div>
   )
 }

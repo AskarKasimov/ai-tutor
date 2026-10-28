@@ -161,4 +161,25 @@ describe('DiagnosticRoadmapCanvas', () => {
       fireEvent.wheel(wrapper!, { deltaY: -100, clientX: 200, clientY: 200 })
     }).not.toThrow()
   })
+
+  it('renders nodes with circular icon hubs and titles positioned on top', async () => {
+    render(
+      <DiagnosticRoadmapCanvas
+        outline={sampleOutline}
+        subjectTitle="Машинное обучение"
+      />,
+    )
+
+    const subjectNode = await screen.findByLabelText('Машинное обучение')
+    expect(subjectNode).toBeInTheDocument()
+    expect(subjectNode.querySelector('svg')).toBeInTheDocument()
+
+    const topicNode = await screen.findByLabelText('Метод наименьших квадратов')
+    expect(topicNode).toBeInTheDocument()
+    expect(topicNode.querySelector('svg')).toBeInTheDocument()
+    expect(topicNode).toHaveAttribute('data-selected', 'false')
+
+    fireEvent.click(topicNode)
+    expect(topicNode).toHaveAttribute('data-selected', 'true')
+  })
 })

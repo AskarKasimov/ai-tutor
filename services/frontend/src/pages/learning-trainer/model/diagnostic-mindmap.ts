@@ -113,16 +113,16 @@ export type DiagnosticMindmap = {
   edges: Edge[]
 }
 
-export const SUBJECT_WIDTH = 260
-export const SUBJECT_HEIGHT = 60
-export const COMPETENCY_WIDTH = 240
-export const COMPETENCY_HEIGHT = 48
-export const CONSTITUENT_WIDTH = 260
-export const CONSTITUENT_HEIGHT = 48
-export const CONSTITUENT_GAP = 14
-export const COMPETENCY_GAP = 28
-export const HORIZ_COMPETENCY = 250
-export const HORIZ_CONSTITUENT = 560
+export const SUBJECT_WIDTH = 220
+export const SUBJECT_HEIGHT = 106
+export const COMPETENCY_WIDTH = 200
+export const COMPETENCY_HEIGHT = 94
+export const CONSTITUENT_WIDTH = 200
+export const CONSTITUENT_HEIGHT = 88
+export const CONSTITUENT_GAP = 28
+export const COMPETENCY_GAP = 42
+export const HORIZ_COMPETENCY = 280
+export const HORIZ_CONSTITUENT = 600
 
 export function cleanCompetencyTitle(title: string): string {
   if (!title) return ''
@@ -209,6 +209,10 @@ function layoutSide(
       },
     })
 
+    const isCompActive = comp.constituents.some(
+      (c) => c.id === selectedConstituentId,
+    )
+
     edges.push({
       id: `edge-subject-${comp.id}`,
       source: 'subject-root',
@@ -216,9 +220,11 @@ function layoutSide(
       target: compNodeId,
       targetHandle: side === 'right' ? 'target-left' : 'target-right',
       type: 'bezier',
+      animated: isCompActive,
       style: {
         stroke: palette.color,
-        strokeWidth: 2.5,
+        strokeWidth: isCompActive ? 3.5 : 2.5,
+        opacity: isCompActive ? 1 : 0.8,
       },
     })
 
@@ -258,9 +264,11 @@ function layoutSide(
         target: constNodeId,
         targetHandle: side === 'right' ? 'target-left' : 'target-right',
         type: 'bezier',
+        animated: isSelected,
         style: {
           stroke: palette.color,
-          strokeWidth: isSelected ? 2.5 : 2,
+          strokeWidth: isSelected ? 3.5 : 2,
+          opacity: isSelected ? 1 : 0.75,
         },
       })
     })

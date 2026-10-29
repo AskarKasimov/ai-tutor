@@ -324,6 +324,47 @@ func code(err error) string {
 	return ""
 }
 
+func TestMalformedRubricRejectsEveryAnswerSourceWithoutSaving(t *testing.T) {
+	for _, a := range []Answer{{DontKnow: true}, {Text: "сильно"}, {TranscriptionID: "tr"}} {
+		t.Run(fmt.Sprintf("button=%t/voice=%t", a.DontKnow, a.TranscriptionID != ""), func(t *testing.T) {
+			f := newFixture(t)
+			ctx := context.Background()
+			s, _, err := f.service.Start(ctx, "student", "subject", "start")
+			if err != nil {
+				t.Fatal(err)
+			}
+			turn, _ := s.CurrentTurn()
+			a.TurnID = turn.ID
+			id := s.Exam.Current.NodeID
+			for i := range s.Exam.Graph.Nodes {
+				if s.Exam.Graph.Nodes[i].ID == id {
+					s.Exam.Graph.Nodes[i].AssessmentGuidance = "0 баллов — неверно; 1 балл — верно"
+				}
+			}
+			before, _ := json.Marshal(s)
+			f.store.sessions[s.ID] = before
+			requests := len(f.store.requests)
+			key := f.nextKey()
+			if _, err := f.service.Answer(ctx, "student", s.ID, key, a); code(err) != "MODEL_UNAVAILABLE" {
+				t.Fatalf("malformed rubric accepted: %v", err)
+			}
+			if string(f.store.sessions[s.ID]) != string(before) || len(f.store.requests) != requests || f.examiner.evals != 0 || len(f.examiner.feedbacks) != 0 {
+				t.Fatal("invalid rubric consumed an attempt, called the model or changed persisted state")
+			}
+			// Once the configuration is repaired, the same request key remains usable.
+			for i := range s.Exam.Graph.Nodes {
+				if s.Exam.Graph.Nodes[i].ID == id {
+					s.Exam.Graph.Nodes[i].AssessmentGuidance = "Оцени по смыслу."
+				}
+			}
+			f.store.sessions[s.ID], _ = json.Marshal(s)
+			if _, err := f.service.Answer(ctx, "student", s.ID, key, a); err != nil {
+				t.Fatalf("retry after repairing rubric: %v", err)
+			}
+		})
+	}
+}
+
 func TestStartIsIdempotentAndReturnsTheActiveSession(t *testing.T) {
 	f := newFixture(t)
 	ctx := context.Background()

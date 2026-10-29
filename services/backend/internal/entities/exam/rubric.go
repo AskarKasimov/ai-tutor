@@ -30,16 +30,14 @@ type RubricResult struct {
 var rubricStart = regexp.MustCompile(`(?m)^[\t ]*(?:Пункт рубрики\s+|[КK])(\d+)\s`)
 var rubricLevel = regexp.MustCompile(`(?:^|[:;\n])\s*(\d+)\s*[—–−-]`)
 var rubricMaximum = regexp.MustCompile(`(?i)макс\.?(?:имум)?\s*[:=]?\s*(\d+)`)
+var rubricPoints = regexp.MustCompile(`(?i)\d+\s*балл`)
 
 // ParseRubric reads only explicit numeric levels; it never invents criteria or
 // uses the model to determine maxima. Non-numeric authored guidance stays legacy.
 func ParseRubric(text string) ([]RubricItem, error) {
 	text = strings.ReplaceAll(text, "\r\n", "\n")
 	starts := rubricStart.FindAllStringSubmatchIndex(text, -1)
-	if len(starts) == 0 && !rubricMaximum.MatchString(text) && !rubricLevel.MatchString(text) {
-		return nil, nil
-	}
-	if len(starts) == 0 && !strings.Contains(text, "Балл") && !strings.Contains(text, "Аналитическая рубрика") {
+	if len(starts) == 0 && !rubricMaximum.MatchString(text) && !rubricLevel.MatchString(text) && !rubricPoints.MatchString(text) {
 		return nil, nil
 	}
 	var items []RubricItem

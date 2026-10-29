@@ -35,10 +35,23 @@ func TestParseRubricPreservesIndividualScales(t *testing.T) {
 			t.Fatalf("legacy=%+v %v", items, err)
 		}
 	}
-	for _, s := range []string{"Аналитическая рубрика (макс. 3):\nК1 «Суть»: 1 — верно; 0 — нет.", "Балл (макс. 2): оценить по смыслу"} {
+	for _, s := range []string{
+		"Аналитическая рубрика (макс. 3):\nК1 «Суть»: 1 — верно; 0 — нет.",
+		"Балл (макс. 2): оценить по смыслу",
+		"0 баллов — неверно; 1 балл — верно",
+		"Рубрика: 0 БАЛЛОВ — неверно; 1 БАЛЛ — верно",
+		"макс. 2: оценить по смыслу",
+	} {
 		if _, err := ParseRubric(s); err == nil {
 			t.Fatal("accepted ambiguous scale")
 		}
+	}
+}
+
+func TestParseRubricAcceptsUnlabelledExplicitScale(t *testing.T) {
+	items, err := ParseRubric("0 — неверно; 1 — верно")
+	if err != nil || len(items) != 1 || !reflect.DeepEqual(items[0].Levels, []int{0, 1}) {
+		t.Fatalf("explicit numeric scale lost: %+v, %v", items, err)
 	}
 }
 

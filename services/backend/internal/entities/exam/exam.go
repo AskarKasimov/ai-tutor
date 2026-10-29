@@ -264,7 +264,13 @@ func (e *Exam) Apply(ev Evaluation) Step {
 		if !state.HintUsed && !e.limitReached() {
 			state.HintUsed, state.Assisted = true, true
 			e.Asked++
-			next := e.step(KindRephrase, cur.NodeID)
+			kind := KindRephrase
+			// A hint does not turn an existing clarification into a new
+			// first attempt: failure must retain the observed partial result.
+			if cur.Kind == KindFollowup {
+				kind = KindFollowup
+			}
+			next := e.step(kind, cur.NodeID)
 			next.Hint = true
 			e.Current = &next
 			return next

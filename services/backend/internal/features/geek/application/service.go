@@ -256,13 +256,18 @@ func (s *Service) Answer(ctx context.Context, ownerID, id, key string, a Answer)
 	if current.ID != a.TurnID {
 		return exam.Session{}, fault.New(fault.Conflict, "TURN_NOT_CURRENT", "Ответ относится не к текущему вопросу.")
 	}
+	step := *session.Exam.Current
+	node, _ := session.Exam.Graph.Node(step.NodeID)
+	// Invalid instructor scoring must fail before any answer is applied,
+	// including the "don't know" button, which deliberately skips the model.
+	if _, err := exam.ParseRubric(node.AssessmentGuidance); err != nil {
+		return exam.Session{}, modelError(err)
+	}
 	text, source, err := s.answerText(ctx, ownerID, a)
 	if err != nil {
 		return exam.Session{}, err
 	}
 	previous := session.Version
-	step := *session.Exam.Current
-	node, _ := session.Exam.Graph.Node(step.NodeID)
 	if err := s.append(&session, exam.SpeakerStudent, exam.KindAnswer, &step.NodeID, &source, text); err != nil {
 		return exam.Session{}, err
 	}

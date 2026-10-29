@@ -966,9 +966,35 @@ it('voices the reply to the answer first and the question after it in one turn',
       '/api/v1/exam/diagnostic-sessions/d1/turns/t3/audio?part=question',
     ]),
   )
-  // The question plays once the reply has ended.
-  act(() => FakeAudio.last?.onended?.())
-  await waitFor(() => expect(FakeAudio.played).toHaveLength(3))
+  // The prefetched question waits until the feedback pause ends.
+  vi.useFakeTimers()
+  try {
+    await act(async () => FakeAudio.last?.onended?.())
+    await act(async () => vi.advanceTimersByTimeAsync(699))
+    expect(FakeAudio.played).toHaveLength(2)
+    await act(async () => vi.advanceTimersByTimeAsync(1))
+    expect(FakeAudio.played).toHaveLength(3)
+  } finally {
+    vi.useRealTimers()
+  }
+})
+
+it('stops during the feedback pause without playing the next question', async () => {
+  geekBackend()
+  renderApp()
+  await start()
+  await waitFor(() => expect(FakeAudio.played).toHaveLength(1))
+  await answerByText('Перестанет быть оптимальным')
+  await waitFor(() => expect(FakeAudio.played).toHaveLength(2))
+  vi.useFakeTimers()
+  try {
+    await act(async () => FakeAudio.last!.onended!())
+    fireEvent.click(screen.getByRole('button', { name: 'Остановить озвучку' }))
+    await act(async () => vi.advanceTimersByTimeAsync(2000))
+    expect(FakeAudio.played).toHaveLength(2)
+  } finally {
+    vi.useRealTimers()
+  }
 })
 
 it('pops up that the course was updated when the diagnostic is cancelled', async () => {
@@ -1113,8 +1139,16 @@ it('plays the cached intro while reply blocks load and prefetches one block ahea
       fetch.mock.calls.some(([url]) => url.endsWith('/t3/audio?part=question')),
     ).toBe(true),
   )
-  act(() => FakeAudio.last!.onended!())
-  await waitFor(() => expect(FakeAudio.played).toHaveLength(5))
+  vi.useFakeTimers()
+  try {
+    await act(async () => FakeAudio.last!.onended!())
+    await act(async () => vi.advanceTimersByTimeAsync(699))
+    expect(FakeAudio.played).toHaveLength(4)
+    await act(async () => vi.advanceTimersByTimeAsync(1))
+    expect(FakeAudio.played).toHaveLength(5)
+  } finally {
+    vi.useRealTimers()
+  }
 })
 
 it('falls back to feedback if the optional intro fails', async () => {

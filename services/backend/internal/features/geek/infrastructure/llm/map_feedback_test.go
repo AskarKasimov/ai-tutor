@@ -2,6 +2,7 @@ package llm
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -11,6 +12,30 @@ import (
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/features/geek/application"
 	geekgraph "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/geek/infrastructure/graph"
 )
+
+func TestImportedColonCriteriaRemainIndependentRubricItems(t *testing.T) {
+	for _, label := range []string{"К", "K", "к"} {
+		criteria := fmt.Sprintf("Эталон: ответ.\n%s1: 0 — нет; 2 — да\n%s2: 0 — нет; 2 — да", label, label)
+		header := []string{"Компетенция", "Составляющая", "Образовательный результат", "Таксономия", "Важность", "Что должно войти в тест", "Задание 1", "Критерии оценивания 1", "ID темы", "Пререквизиты"}
+		rows := [][]string{header, {"ИИ", "Агенты", "Выбор агента", "Понимать", "3", "TRUE", "Какой агент и почему?", criteria, "agent", ""}}
+		built, err := coursegraph.BuildMapGraph([]coursegraph.MapSheet{{Name: "Карта", Rows: rows}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		graph, ok, err := geekgraph.Decode(built.Graph)
+		if err != nil || !ok || len(graph.Nodes) != 1 {
+			t.Fatalf("decode: %v, %v", ok, err)
+		}
+		spec, err := exam.ParseRubric(graph.Nodes[0].AssessmentGuidance)
+		if err != nil || len(spec) != 2 {
+			t.Fatalf("import merged %s1:/%s2: into one item: %+v, %v", label, label, spec, err)
+		}
+		result := exam.RubricResult{Items: []exam.RubricMark{{RubricItem: spec[0], Score: 2}, {RubricItem: spec[1], Score: 0}}}
+		if score, maximum := result.Totals(); score != 2 || maximum != 4 || result.Grade(false, false) != exam.GradeC {
+			t.Fatalf("independent points changed: %d/%d", score, maximum)
+		}
+	}
+}
 
 func TestImportedMapRubricAndSelectedReferenceReachGradingAndFeedback(t *testing.T) {
 	header := []string{"Субкомпетенция", "Образовательный результат", "Уровень по Блуму", "Важность", "Что должно войти в тест", "Задание 1", "Критерии оценивания 1", "Задание 2", "Критерии оценивания 2", "Составляющая"}

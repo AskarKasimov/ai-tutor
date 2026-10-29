@@ -79,7 +79,7 @@ func (g *Gateway) Question(ctx context.Context, r application.QuestionRequest) (
 	})
 	if err == nil && r.Hint {
 		question := r.Node.MainQuestion()
-		if question == "" {
+		if r.Kind == exam.KindFollowup || question == "" {
 			question, _ = lastSupportInput(application.EvaluationRequest{Node: r.Node, Dialogue: r.Dialogue})
 		}
 		if question != "" {

@@ -28,7 +28,7 @@ type RubricResult struct {
 	Items []RubricMark `json:"items"`
 }
 
-var rubricStart = regexp.MustCompile(`(?mi)^[\t ]*(?:Пункт рубрики\s+|[КK])(\d+)\s`)
+var rubricStart = regexp.MustCompile(`(?mi)^[\t ]*(?:Пункт рубрики\s+|[КK])(\d+)(?:\s|:)`)
 
 // Recognize unsupported numeric tokens too, so a mixed scale cannot silently
 // lose a fractional, negative or unit-suffixed level and change its maximum.

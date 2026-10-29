@@ -111,6 +111,38 @@ func TestHintContextCannotReplaceTheOriginalQuestion(t *testing.T) {
 	}
 }
 
+func TestFollowupHintRepeatsCurrentQuestionWithoutItsFeedbackOrMeta(t *testing.T) {
+	const main = "Какой агент подходит и почему?"
+	const followup = "Какое свойство среды объясняет твой выбор?"
+	for _, history := range []bool{false, true} {
+		dialogue := []exam.Turn{}
+		want := main
+		if history {
+			dialogue = []exam.Turn{
+				{Speaker: exam.SpeakerGeek, Text: main},
+				{Speaker: exam.SpeakerStudent, Text: "Агент с моделью."},
+				{Speaker: exam.SpeakerGeek, Text: "Верная основа.\n\n" + followup, Reply: "Верная основа."},
+				{Speaker: exam.SpeakerGeek, Meta: true, Text: "Хорошо, подожду."},
+				{Speaker: exam.SpeakerStudent, Text: "Дай подсказку."},
+			}
+			want = followup
+		}
+		f := &fakeGateway{answers: []string{`{"text":"Робот видит только ближайшие участки комнаты."}`}}
+		g := serve(t, f, time.Second)
+		got, err := g.Question(context.Background(), application.QuestionRequest{
+			Node: exam.Node{Questions: []string{main}}, Kind: exam.KindFollowup,
+			Hint: true, Dialogue: dialogue, Rubric: &exam.RubricResult{},
+		})
+		if err != nil || got != "Робот видит только ближайшие участки комнаты.\n\n"+want {
+			t.Fatalf("hint lost current question (history=%v): %q, %v", history, got, err)
+		}
+		prompt := f.requests[0].Messages[1].GetContent()
+		if strings.Contains(prompt, "Невыполненные пункты рубрики") || !strings.Contains(prompt, "объясни только необходимый контекст") {
+			t.Fatal("followup instructions overwrote the hint context prompt")
+		}
+	}
+}
+
 func TestSceneHintDoesNotTriggerLeakedMetaAnswerAudit(t *testing.T) {
 	f := &fakeGateway{answers: []string{`{"verdict":"answered","answer_complete":true,"criteria":{"k1":2,"k2":2,"k3":null,"k4":null},"evidence_lines":[4]}`}}
 	g := serve(t, f, time.Second)

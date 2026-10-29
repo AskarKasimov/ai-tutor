@@ -180,12 +180,12 @@ func (g *Gateway) Evaluate(ctx context.Context, r application.EvaluationRequest)
 
 // Feedback is generated only after the engine has chosen the next step.
 func (g *Gateway) Feedback(ctx context.Context, r application.FeedbackRequest) (string, error) {
+	if !r.Closed && r.Verdict == exam.VerdictHintRequested {
+		return transition(r, hintTransitions), nil
+	}
 	// A rephrase needs a transition, not another model-generated question or
 	// hints. Keep this branch deterministic, including the speaker's agency.
 	if !r.Closed && r.Next == exam.KindRephrase {
-		if r.Verdict == exam.VerdictHintRequested {
-			return transition(r, hintTransitions), nil
-		}
 		if r.Verdict == exam.VerdictInsufficient {
 			return transition(r, offTopicTransitions), nil
 		}

@@ -345,7 +345,7 @@ func TestMalformedRubricRejectsEveryAnswerSourceWithoutSaving(t *testing.T) {
 			f.store.sessions[s.ID] = before
 			requests := len(f.store.requests)
 			key := f.nextKey()
-			if _, err := f.service.Answer(ctx, "student", s.ID, key, a); code(err) != "MODEL_UNAVAILABLE" {
+			if _, err := f.service.Answer(ctx, "student", s.ID, key, a); code(err) != "RUBRIC_INVALID" {
 				t.Fatalf("malformed rubric accepted: %v", err)
 			}
 			if string(f.store.sessions[s.ID]) != string(before) || len(f.store.requests) != requests || f.examiner.evals != 0 || len(f.examiner.feedbacks) != 0 {
@@ -362,6 +362,15 @@ func TestMalformedRubricRejectsEveryAnswerSourceWithoutSaving(t *testing.T) {
 				t.Fatalf("retry after repairing rubric: %v", err)
 			}
 		})
+	}
+}
+
+func TestStartRejectsMalformedRubricBeforeCreatingSession(t *testing.T) {
+	f := newFixture(t)
+	f.graphs.graph.Nodes[0].AssessmentGuidance = "Балл (макс. 2): оценить по смыслу"
+	_, _, err := f.service.Start(context.Background(), "student", "subject", "start")
+	if code(err) != "RUBRIC_INVALID" || len(f.store.sessions) != 0 || len(f.store.requests) != 0 || len(f.examiner.questions) != 0 {
+		t.Fatalf("started exam with an unusable rubric: %v", err)
 	}
 }
 

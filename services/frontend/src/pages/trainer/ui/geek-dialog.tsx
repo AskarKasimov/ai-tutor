@@ -471,6 +471,7 @@ function ListenButton({
 function errorText(error: Error | null, t: (key: string) => string) {
   if (!error) return ''
   if (error instanceof DiagnosticApiError) {
+    if (error.code === 'RUBRIC_INVALID') return t('geek.rubricInvalid')
     if (error.status === 409) return t('geek.staleTurn')
     if (error.status === 503 || error.code === 'TIMEOUT')
       return t('geek.modelUnavailable')
@@ -522,7 +523,10 @@ function Composer({
       submittedText.current = null
     }
   }, [error])
-  const stale = error instanceof DiagnosticApiError && error.status === 409
+  const stale =
+    error instanceof DiagnosticApiError &&
+    error.status === 409 &&
+    error.code !== 'RUBRIC_INVALID'
   const seconds = `${Math.floor(voice.elapsedSeconds / 60)}:${String(voice.elapsedSeconds % 60).padStart(2, '0')}`
   const sendText = () => {
     const value = text.trim()

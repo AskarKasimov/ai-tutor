@@ -87,6 +87,7 @@ function geekBackend(
   const control = {
     failReads: 0,
     failStarts: 0,
+    rubricInvalid: false,
     cancelled: false,
     readGate: null as Promise<void> | null,
     answerGate: null as Promise<void> | null,
@@ -199,6 +200,8 @@ function geekBackend(
           : [],
       })
     if (url.endsWith('/diagnostic-sessions') && method === 'POST') {
+      if (control.rubricInvalid)
+        return Response.json({ code: 'RUBRIC_INVALID' }, { status: 409 })
       if (control.failStarts > 0) {
         control.failStarts--
         return Response.json(
@@ -238,6 +241,8 @@ function geekBackend(
       return Response.json(snapshot)
     }
     if (url.endsWith('/diagnostic-sessions/d1/answers') && session) {
+      if (control.rubricInvalid)
+        return Response.json({ code: 'RUBRIC_INVALID' }, { status: 409 })
       if (control.answerGate) await control.answerGate
       if (session.status === 'cancelled')
         return Response.json(
@@ -618,6 +623,36 @@ it('keeps the answer after a model failure and resends it with the same key', as
   ).toBeVisible()
   expect(answers).toHaveLength(2)
   expect(answers[1].key).toBe(answers[0].key)
+})
+
+it('distinguishes an invalid rubric from a stale turn and retains the draft', async () => {
+  const { control } = geekBackend()
+  renderApp()
+  await start()
+  control.rubricInvalid = true
+  await answerByText('Перестанет быть оптимальным')
+  expect(await screen.findByRole('alert')).toHaveTextContent(
+    'Преподавателю нужно исправить карту; попытка не потрачена.',
+  )
+  expect(
+    screen.queryByText(/Диагностика продолжилась в другом окне/),
+  ).toBeNull()
+  expect(await answerField()).toHaveValue('Перестанет быть оптимальным')
+  control.rubricInvalid = false
+  fireEvent.click(screen.getByRole('button', { name: 'Отправить ещё раз' }))
+  expect(
+    await screen.findByText('А где допустимая эвристика не поможет?'),
+  ).toBeVisible()
+})
+
+it('explains invalid rubric configuration before starting the exam', async () => {
+  const { control } = geekBackend()
+  control.rubricInvalid = true
+  renderApp()
+  await start()
+  expect(await screen.findByRole('alert')).toHaveTextContent(
+    'Преподавателю нужно исправить карту; попытка не потрачена.',
+  )
 })
 
 it('says the course is not ready when its graph is not built', async () => {

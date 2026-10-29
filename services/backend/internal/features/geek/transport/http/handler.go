@@ -164,7 +164,7 @@ func principal(w http.ResponseWriter, r *http.Request) (user.User, bool) {
 
 // Start handles POST /diagnostic-sessions.
 // @Summary Начать или продолжить диагностику
-// @Description Устный экзамен Geek по графу курса. У студента одна активная диагностика на курс: если она есть, возвращается она (200), иначе создаётся новая с первым вопросом (201). 409 GRAPH_NOT_READY — граф курса не собран или его вопросы ещё готовятся.
+// @Description Устный экзамен Geek по графу курса. У студента одна активная диагностика на курс: если она есть, возвращается она (200), иначе создаётся новая с первым вопросом (201). 409 GRAPH_NOT_READY — граф курса не собран или его вопросы ещё готовятся; RUBRIC_INVALID — некорректная шкала карты, новая попытка не создаётся.
 // @ID startDiagnosticSession
 // @Tags Диагностика
 // @Security accessCookie
@@ -268,7 +268,7 @@ func (h *Handler) Read(w http.ResponseWriter, r *http.Request) {
 
 // Answer handles POST /diagnostic-sessions/{id}/answers.
 // @Summary Ответить на реплику Geek
-// @Description Синхронно: ответ содержит реплику студента и следующую реплику Geek либо завершённую сессию. Повтор с тем же ключом возвращает тот же результат. 409 — turn_id не текущий или сессия не active.
+// @Description Синхронно: ответ содержит реплику студента и следующую реплику Geek либо завершённую сессию. Повтор с тем же ключом возвращает тот же результат. 409 — turn_id не текущий, сессия не active или RUBRIC_INVALID (некорректная шкала карты, ответ не сохраняется).
 // @ID answerDiagnosticSession
 // @Tags Диагностика
 // @Security accessCookie

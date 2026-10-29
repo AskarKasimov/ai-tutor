@@ -52,6 +52,15 @@ const build = `{"version":"course-graph-v1","quality":{"acyclic":true},"hierarch
 ],
 "prerequisites":[{"source":"a","target":"b"}]}`
 
+func TestBuildRejectsInvalidRubricBeforePreparingQuestions(t *testing.T) {
+	examiner := &buildExaminer{}
+	data := json.RawMessage(`{"topics":[{"id":"a","title":"Тема","text":"Текст","question":"Вопрос?","rephrase":"Проще?","assessment_guidance":"Балл (макс. 2): оценить по смыслу"}]}`)
+	_, err := (builtQuestions{examiner: examiner, logger: zap.NewNop()}).Prepare(context.Background(), data)
+	if err == nil || !strings.Contains(err.Error(), "topic a") || examiner.asked.Load() != 0 {
+		t.Fatalf("bad rubric published or treated as a model failure: %v, calls=%d", err, examiner.asked.Load())
+	}
+}
+
 func TestBuiltQuestionsArePreparedIntoTheTopics(t *testing.T) {
 	examiner := &buildExaminer{}
 	// The first round loses two calls; the next round prepares the rest.

@@ -2,6 +2,8 @@ package exam
 
 import (
 	"encoding/json"
+	"fmt"
+	"math"
 	"reflect"
 	"testing"
 )
@@ -16,6 +18,7 @@ func TestParseRubricPreservesIndividualScales(t *testing.T) {
 		{agentRubric, 2, 2},
 		{"Аналитическая рубрика (макс. 6):\nК1 «Суть»: 2 — верно; 1 — частично; 0 — нет.\nК2 «Связь»: 2 — верно; 1 — частично; 0 — нет.\nК3 «Пример»: 2 — верно; 1 — частично; 0 — нет.", 6, 3},
 		{"Балл (макс. 1): 1 — все четыре; 0 — иначе.", 1, 1},
+		{"к1 Суть (макс. 1): 1 — верно; 0 — нет.\nк2 Пример (макс. 2): 2 — верно; 0 — нет.", 3, 2},
 	} {
 		items, err := ParseRubric(tc.text)
 		if err != nil || len(items) != tc.items {
@@ -41,6 +44,7 @@ func TestParseRubricPreservesIndividualScales(t *testing.T) {
 		"0 баллов — неверно; 1 балл — верно",
 		"Рубрика: 0 БАЛЛОВ — неверно; 1 БАЛЛ — верно",
 		"макс. 2: оценить по смыслу",
+		"Аналитическая рубрика (макс. 2):\nК1 Суть (макс. 2): 1 — верно; 0 — нет.\nК2 Пример: 1 — верно; 0 — нет.",
 	} {
 		if _, err := ParseRubric(s); err == nil {
 			t.Fatal("accepted ambiguous scale")
@@ -52,6 +56,38 @@ func TestParseRubricAcceptsUnlabelledExplicitScale(t *testing.T) {
 	items, err := ParseRubric("0 — неверно; 1 — верно")
 	if err != nil || len(items) != 1 || !reflect.DeepEqual(items[0].Levels, []int{0, 1}) {
 		t.Fatalf("explicit numeric scale lost: %+v, %v", items, err)
+	}
+}
+
+func TestParseRubricRejectsPartiallySupportedScalesAndOverflow(t *testing.T) {
+	for _, text := range []string{
+		"Балл: 0 — нет; 1 балл — частично; 2 — верно",
+		"Балл: 0 — нет; 0,5 — частично; 1 — верно",
+		"Балл: 0 — нет; 0.5 — частично; 1 — верно",
+		"Балл: -1 — ошибка; 0 — нет; 1 — верно",
+		"Балл: −1 — ошибка; 0 — нет; 1 — верно",
+		"Балл: 0 — нет; 999999999999999999999999999999 — верно",
+		"Балл (макс. 999999999999999999999999999999): 0 — нет; 1 — верно",
+		fmt.Sprintf("Балл: 0 — нет; %d — верно", math.MaxInt/4+1),
+		fmt.Sprintf("К1 Суть: 0 — нет; %d — верно\nК2 Пример: 0 — нет; 1 — верно", math.MaxInt/4),
+	} {
+		if spec, err := ParseRubric(text); err == nil {
+			t.Fatalf("partially parsed invalid scale %q: %+v", text, spec)
+		}
+	}
+}
+
+func TestGraphValidatesEveryRubricVariant(t *testing.T) {
+	g := Graph{Nodes: []Node{{ID: "a", Variants: []Variant{
+		{AssessmentGuidance: agentRubric},
+		{AssessmentGuidance: "Балл (макс. 2): оценить по смыслу"},
+	}}}}
+	if err := g.ValidateRubrics(); err == nil {
+		t.Fatal("invalid non-first variant accepted")
+	}
+	g.Nodes[0].Variants[1].AssessmentGuidance = "Верный ответ своими словами."
+	if err := g.ValidateRubrics(); err != nil {
+		t.Fatal(err)
 	}
 }
 

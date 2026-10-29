@@ -325,6 +325,17 @@ func TestRephraseTransitionDoesNotCallTheModelOrGiveHints(t *testing.T) {
 	}
 }
 
+func TestHintTransitionAlsoAppliesToFollowups(t *testing.T) {
+	f := &fakeGateway{}
+	g := serve(t, f, time.Second)
+	for _, next := range []exam.TurnKind{exam.KindRephrase, exam.KindFollowup} {
+		text, err := g.Feedback(context.Background(), application.FeedbackRequest{Next: next, Verdict: exam.VerdictHintRequested})
+		if err != nil || !slices.Contains(hintTransitions, text) || f.count() != 0 {
+			t.Fatalf("hint transition = %q, %v, calls=%d", text, err, f.count())
+		}
+	}
+}
+
 func TestFollowupTransitionDoesNotCallTheModelOrOverpraiseWeakKnowledge(t *testing.T) {
 	f := &fakeGateway{}
 	g := serve(t, f, time.Second)

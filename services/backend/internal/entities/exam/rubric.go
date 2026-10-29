@@ -2,6 +2,7 @@ package exam
 
 import (
 	"fmt"
+	"math"
 	"regexp"
 	"slices"
 	"strconv"
@@ -27,8 +28,11 @@ type RubricResult struct {
 	Items []RubricMark `json:"items"`
 }
 
-var rubricStart = regexp.MustCompile(`(?m)^[\t ]*(?:Пункт рубрики\s+|[КK])(\d+)\s`)
-var rubricLevel = regexp.MustCompile(`(?:^|[:;\n])\s*(\d+)\s*[—–−-]`)
+var rubricStart = regexp.MustCompile(`(?mi)^[\t ]*(?:Пункт рубрики\s+|[КK])(\d+)\s`)
+
+// Recognize unsupported numeric tokens too, so a mixed scale cannot silently
+// lose a fractional, negative or unit-suffixed level and change its maximum.
+var rubricLevel = regexp.MustCompile(`(?i)(?:^|[:;\n])\s*([+−-]?\d+(?:[.,]\d+)?)\s*(балл[а-я]*)?\s*[—–−-]`)
 var rubricMaximum = regexp.MustCompile(`(?i)макс\.?(?:имум)?\s*[:=]?\s*(\d+)`)
 var rubricPoints = regexp.MustCompile(`(?i)\d+\s*балл`)
 
@@ -44,7 +48,10 @@ func ParseRubric(text string) ([]RubricItem, error) {
 	add := func(id, rule string) error {
 		levels := []int{}
 		for _, m := range rubricLevel.FindAllStringSubmatch(rule, -1) {
-			v, _ := strconv.Atoi(m[1])
+			v, err := strconv.Atoi(m[1])
+			if err != nil || v < 0 || strings.HasPrefix(m[1], "+") || m[2] != "" {
+				return fmt.Errorf("rubric %s has unsupported scoring level %q", id, m[1]+m[2])
+			}
 			if !slices.Contains(levels, v) {
 				levels = append(levels, v)
 			}
@@ -52,6 +59,9 @@ func ParseRubric(text string) ([]RubricItem, error) {
 		slices.Sort(levels)
 		if len(levels) < 2 || levels[0] != 0 || levels[len(levels)-1] <= 0 {
 			return fmt.Errorf("rubric %s needs explicit zero and positive scoring levels", id)
+		}
+		if err := checkRubricMaximum(rule, levels[len(levels)-1]); err != nil {
+			return fmt.Errorf("rubric %s: %w", id, err)
 		}
 		for _, item := range items {
 			if item.ID == id {
@@ -78,15 +88,55 @@ func ParseRubric(text string) ([]RubricItem, error) {
 	}
 	total := 0
 	for _, item := range items {
-		total += item.Levels[len(item.Levels)-1]
-	}
-	if m := rubricMaximum.FindStringSubmatch(text); m != nil {
-		declared, _ := strconv.Atoi(m[1])
-		if total != declared {
-			return nil, fmt.Errorf("rubric maximum %d differs from item total %d", declared, total)
+		maximum := item.Levels[len(item.Levels)-1]
+		// Grade compares score*4 with maximum*3. Keep those operations safe.
+		if maximum > math.MaxInt/4-total {
+			return nil, fmt.Errorf("rubric total is too large")
 		}
+		total += maximum
+	}
+	header := text
+	if len(starts) > 0 {
+		header = text[:starts[0][0]]
+	}
+	if err := checkRubricMaximum(header, total); err != nil {
+		return nil, err
 	}
 	return items, nil
+}
+
+// A maximum in the heading applies to the total; one inside an item applies
+// only to that item. Check every declaration instead of trusting the first.
+func checkRubricMaximum(text string, total int) error {
+	for _, m := range rubricMaximum.FindAllStringSubmatch(text, -1) {
+		declared, err := strconv.Atoi(m[1])
+		if err != nil {
+			return fmt.Errorf("invalid rubric maximum: %w", err)
+		}
+		if total != declared {
+			return fmt.Errorf("rubric maximum %d differs from scoring total %d", declared, total)
+		}
+	}
+	return nil
+}
+
+// ValidateRubrics checks every task before preparing or starting an exam,
+// including variants that a particular student may not be randomly assigned.
+func (g Graph) ValidateRubrics() error {
+	for _, n := range g.Nodes {
+		if len(n.Variants) == 0 {
+			if _, err := ParseRubric(n.AssessmentGuidance); err != nil {
+				return fmt.Errorf("topic %s: %w", n.ID, err)
+			}
+			continue
+		}
+		for i, v := range n.Variants {
+			if _, err := ParseRubric(v.AssessmentGuidance); err != nil {
+				return fmt.Errorf("topic %s variant %d: %w", n.ID, i+1, err)
+			}
+		}
+	}
+	return nil
 }
 
 func (r RubricResult) Totals() (score, maximum int) {

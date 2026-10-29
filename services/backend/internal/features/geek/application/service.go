@@ -160,6 +160,9 @@ func (s *Service) Start(ctx context.Context, ownerID, subjectID, key string) (ex
 	if !ok {
 		return exam.Session{}, false, fault.New(fault.Conflict, "GRAPH_NOT_READY", "Граф курса ещё не собран или готовится.")
 	}
+	if err := graph.ValidateRubrics(); err != nil {
+		return exam.Session{}, false, rubricError(err)
+	}
 	id, err := s.ids.New("diagnostic")
 	if err != nil {
 		return exam.Session{}, false, err
@@ -261,7 +264,7 @@ func (s *Service) Answer(ctx context.Context, ownerID, id, key string, a Answer)
 	// Invalid instructor scoring must fail before any answer is applied,
 	// including the "don't know" button, which deliberately skips the model.
 	if _, err := exam.ParseRubric(node.AssessmentGuidance); err != nil {
-		return exam.Session{}, modelError(err)
+		return exam.Session{}, rubricError(err)
 	}
 	text, source, err := s.answerText(ctx, ownerID, a)
 	if err != nil {
@@ -568,6 +571,10 @@ func checkEvaluation(e exam.Evaluation, session exam.Session) error {
 		}
 	}
 	return nil
+}
+
+func rubricError(err error) error {
+	return errors.Join(fault.New(fault.Conflict, "RUBRIC_INVALID", "В карте курса некорректная шкала оценивания. Преподавателю нужно исправить карту; попытка не потрачена."), err)
 }
 
 func modelError(err error) error {

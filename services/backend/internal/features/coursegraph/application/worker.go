@@ -473,7 +473,7 @@ func (w *Worker) process(ctx context.Context, job coursegraph.Job) error {
 		var shape struct {
 			Version string `json:"version"`
 		}
-		if json.Unmarshal(graph, &shape) != nil || shape.Version != coursegraph.MapVersion {
+		if json.Unmarshal(graph, &shape) != nil || (shape.Version != coursegraph.MapVersion && shape.Version != coursegraph.ExplicitMapVersion) {
 			return fmt.Errorf("invalid competency map graph")
 		}
 	} else if graph, err = w.buildMaterials(ctx, job); err != nil {

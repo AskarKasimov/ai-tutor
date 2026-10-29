@@ -7,6 +7,9 @@ export type AnswerSource = 'voice' | 'text' | 'dont_know'
 
 // One line of the transcript.
 export type Turn = {
+  meta?: boolean
+  audioIntro?: string
+  replyAudioParts?: number
   id: string
   line: number
   speaker: Speaker
@@ -20,7 +23,7 @@ export type Turn = {
   createdAt: number
 }
 
-export type TurnAudioPart = 'reply' | 'question'
+export type TurnAudioPart = 'intro' | 'reply' | 'question'
 
 export type SessionStatus = 'active' | 'completed' | 'cancelled'
 

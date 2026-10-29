@@ -42,6 +42,11 @@ var mapColumns = map[string][]string{
 	"importance":  {"Важность"},
 	"include":     {"Что должно войти в тест"},
 	"evidence":    {"Свидетельство"},
+	// Both graph columns opt in to an explicit graph, without the legacy
+	// selection of three outcomes per constituent. Other books are unchanged.
+	"topic_id":      {"ID темы"},
+	"prerequisites": {"Пререквизиты"},
+	"content":       {"Текст темы"},
 }
 
 // The tasks and their criteria are every column with these prefixes, paired
@@ -169,6 +174,8 @@ type mapOutcome struct {
 	tasks                 []mapTask
 	bloom, importance     int
 	order                 int
+	id, content           string
+	requires              []string
 }
 
 // BuildMapGraph builds the course graph from the first sheet of the book, the
@@ -178,20 +185,37 @@ func BuildMapGraph(sheets []MapSheet) (MapGraph, error) {
 		return MapGraph{}, &MapError{Code: "COMPETENCY_MAP_INVALID", Message: "В книге нет листов."}
 	}
 	sheet, rows := sheets[0].Name, sheets[0].Rows
-	if _, ok := mapHeader(rows); !ok {
+	layout, valid := mapHeader(rows)
+	if !valid {
 		return MapGraph{}, &MapError{Code: "COMPETENCY_MAP_INVALID",
 			Message: fmt.Sprintf("На первом листе «%s» нет колонок карты: Субкомпетенция (или Компетенция), Составляющая, Образовательный результат, Уровень по Блуму (или Таксономия), Важность, Что должно войти в тест, Задание, Критерии оценивания.", sheet)}
+	}
+	_, explicit := layout.columns["topic_id"]
+	_, dependencies := layout.columns["prerequisites"]
+	if explicit != dependencies {
+		return MapGraph{}, &MapError{Code: "COMPETENCY_MAP_INVALID", Message: "Для явного графа нужны обе колонки: «ID темы» и «Пререквизиты»."}
 	}
 	outcomes, constituents, issues := readMapOutcomes(rows)
 	if len(issues) > 0 {
 		return MapGraph{}, &MapError{Code: "COMPETENCY_MAP_INVALID",
 			Message: fmt.Sprintf("Карта на листе «%s» содержит ошибки.", sheet), Issues: issues}
 	}
-	graph, topics, skipped, err := mapGraph(constituents, outcomes)
+	var graph json.RawMessage
+	var topics int
+	var skipped []SkippedCompetency
+	var err error
+	if explicit {
+		graph, topics, err = explicitMapGraph(outcomes)
+	} else {
+		graph, topics, skipped, err = mapGraph(constituents, outcomes)
+	}
 	if err != nil {
 		return MapGraph{}, err
 	}
 	if topics == 0 {
+		if explicit {
+			return MapGraph{}, &MapError{Code: "COMPETENCY_MAP_EMPTY", Message: "В явной карте нет включённых тем с заданием."}
+		}
 		return MapGraph{}, &MapError{Code: "COMPETENCY_MAP_EMPTY",
 			Message: "Ни одна составляющая не набрала трёх ОР с TRUE и заданием; граф не из чего собрать.", Issues: skippedIssues(skipped)}
 	}
@@ -252,6 +276,9 @@ func readMapOutcomes(rows [][]string) ([]mapOutcome, []mapGroup, []MapIssue) {
 		}
 		outcome := cell(row, "outcome")
 		if outcome == "" {
+			if _, explicit := layout.columns["topic_id"]; explicit && strings.EqualFold(cell(row, "include"), "TRUE") {
+				issue(line, "outcome", "У включённой темы нет образовательного результата (названия темы).")
+			}
 			continue
 		}
 		if competency == "" {
@@ -289,6 +316,9 @@ func readMapOutcomes(rows [][]string) ([]mapOutcome, []mapGroup, []MapIssue) {
 		}
 		// Only outcomes for the test with a task can be asked.
 		if include != "TRUE" || len(tasks) == 0 {
+			if _, explicit := layout.columns["topic_id"]; explicit && include == "TRUE" && len(tasks) == 0 {
+				issue(line, "task", "У включённой темы нет задания.")
+			}
 			continue
 		}
 		bloom, ok := bloomRanks[strings.ToLower(cell(row, "bloom"))]
@@ -305,8 +335,22 @@ func readMapOutcomes(rows [][]string) ([]mapOutcome, []mapGroup, []MapIssue) {
 			issue(line, "criteria", "У задания нет критериев оценивания: критерии берутся из колонки «Критерии оценивания…» того же номера по порядку.")
 			continue
 		}
-		out = append(out, mapOutcome{row: line, competency: competency, constituent: constituent, outcome: outcome,
-			evidence: cell(row, "evidence"), tasks: tasks, bloom: bloom, importance: importance, order: len(out)})
+		o := mapOutcome{row: line, competency: competency, constituent: constituent, outcome: outcome,
+			evidence: cell(row, "evidence"), tasks: tasks, bloom: bloom, importance: importance, order: len(out)}
+		if _, explicit := layout.columns["topic_id"]; explicit {
+			o.id = cell(row, "topic_id")
+			o.content = cell(row, "content")
+			if o.id == "" {
+				issue(line, "topic_id", "У включённой темы нет ID.")
+				continue
+			}
+			for _, id := range strings.FieldsFunc(cell(row, "prerequisites"), func(r rune) bool { return r == ';' || r == ',' || r == '\n' || r == '\r' }) {
+				if id = strings.TrimSpace(id); id != "" && !slices.Contains(o.requires, id) {
+					o.requires = append(o.requires, id)
+				}
+			}
+		}
+		out = append(out, o)
 	}
 	return out, constituents, issues
 }
@@ -409,14 +453,22 @@ func mapGraph(order []mapGroup, outcomes []mapOutcome) (json.RawMessage, int, []
 	return data, len(topics), skipped, err
 }
 
-func topicID(o mapOutcome) string { return "map-row-" + strconv.Itoa(o.row) }
+func topicID(o mapOutcome) string {
+	if o.id != "" {
+		return o.id
+	}
+	return "map-row-" + strconv.Itoa(o.row)
+}
 
 func newMapTopic(o mapOutcome, role string, requires []string) mapTopic {
 	variants := make([]mapVariant, len(o.tasks))
 	for i, t := range o.tasks {
 		reference, guidance := splitCriteria(t.criteria)
-		text := "Образовательный результат: " + o.outcome
-		if o.evidence != "" {
+		text := o.content
+		if text == "" {
+			text = "Образовательный результат: " + o.outcome
+		}
+		if o.content == "" && o.evidence != "" {
 			text += "\nСвидетельство: " + o.evidence
 		}
 		if reference != "" {
@@ -434,9 +486,9 @@ func newMapTopic(o mapOutcome, role string, requires []string) mapTopic {
 
 // scoringLine starts the scoring part of the criteria: «Балл (макс. 1)» or an
 // analytic rubric with its own К1, К2…, which are not Geek's К1–К4.
-var scoringLine = regexp.MustCompile(`^(Балл|Аналитическая рубрика|К\d+\s)`)
+var scoringLine = regexp.MustCompile(`(?i)^(Балл|Аналитическая рубрика|[КK]\d+(?:\s|:)|[+−-]?\d+(?:[.,]\d+)?\s*(?:балл|[—–−-]))`)
 
-var rubricCriterion = regexp.MustCompile(`^К(\d+)\s`)
+var rubricCriterion = regexp.MustCompile(`(?i)^[КK](\d+)(\s|:)`)
 
 // splitCriteria keeps the reference answer (Эталон, Допустимо) as the text of
 // the topic and turns the scoring of the map into the teacher's rule for the
@@ -449,7 +501,7 @@ func splitCriteria(criteria string) (string, string) {
 		switch {
 		case line == "":
 		case len(scoring) > 0 || scoringLine.MatchString(line):
-			scoring = append(scoring, rubricCriterion.ReplaceAllString(line, "Пункт рубрики $1 "))
+			scoring = append(scoring, rubricCriterion.ReplaceAllString(line, "Пункт рубрики $1$2"))
 		default:
 			reference = append(reference, line)
 		}

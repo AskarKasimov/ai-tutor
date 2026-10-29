@@ -34,6 +34,7 @@ const (
 	AudioWhole    AudioPart = ""
 	AudioReply    AudioPart = "reply"
 	AudioQuestion AudioPart = "question"
+	AudioIntro    AudioPart = "intro"
 )
 
 type Service struct {
@@ -159,6 +160,9 @@ func (s *Service) Start(ctx context.Context, ownerID, subjectID, key string) (ex
 	if !ok {
 		return exam.Session{}, false, fault.New(fault.Conflict, "GRAPH_NOT_READY", "Граф курса ещё не собран или готовится.")
 	}
+	if err := graph.ValidateRubrics(); err != nil {
+		return exam.Session{}, false, rubricError(err)
+	}
 	id, err := s.ids.New("diagnostic")
 	if err != nil {
 		return exam.Session{}, false, err
@@ -255,17 +259,22 @@ func (s *Service) Answer(ctx context.Context, ownerID, id, key string, a Answer)
 	if current.ID != a.TurnID {
 		return exam.Session{}, fault.New(fault.Conflict, "TURN_NOT_CURRENT", "Ответ относится не к текущему вопросу.")
 	}
+	step := *session.Exam.Current
+	node, _ := session.Exam.Graph.Node(step.NodeID)
+	// Invalid instructor scoring must fail before any answer is applied,
+	// including the "don't know" button, which deliberately skips the model.
+	if _, err := exam.ParseRubric(node.AssessmentGuidance); err != nil {
+		return exam.Session{}, rubricError(err)
+	}
 	text, source, err := s.answerText(ctx, ownerID, a)
 	if err != nil {
 		return exam.Session{}, err
 	}
 	previous := session.Version
-	step := *session.Exam.Current
-	node, _ := session.Exam.Graph.Node(step.NodeID)
 	if err := s.append(&session, exam.SpeakerStudent, exam.KindAnswer, &step.NodeID, &source, text); err != nil {
 		return exam.Session{}, err
 	}
-	evaluate := EvaluationRequest{Kind: step.Kind, Node: node, Prerequisites: unaskedPrerequisites(session.Exam, node.ID), Dialogue: session.Dialogue(node.ID)}
+	evaluate := EvaluationRequest{AddressPreference: session.AddressPreference, HintUsed: session.Exam.Nodes[node.ID].HintUsed, Kind: step.Kind, Node: node, Prerequisites: unaskedPrerequisites(session.Exam, node.ID), Dialogue: session.Dialogue(node.ID)}
 	assessment := Assessment{Evaluation: exam.Evaluation{Verdict: exam.VerdictDontKnow}}
 	if source != exam.SourceDontKnow {
 		if assessment, err = s.examiner.Evaluate(ctx, evaluate); err != nil {
@@ -275,14 +284,45 @@ func (s *Service) Answer(ctx context.Context, ownerID, id, key string, a Answer)
 			return exam.Session{}, modelError(err)
 		}
 	}
-	next := session.Exam.Apply(assessment.Evaluation)
-	closed := next.NodeID != step.NodeID
-	reply, err := s.reply(ctx, evaluate, assessment, source, closed)
-	if err != nil {
-		return exam.Session{}, err
+	if !assessment.AddressPreference.Valid() || (assessment.Verdict == exam.VerdictAddressCorrection && assessment.AddressPreference == "") {
+		return exam.Session{}, modelError(errors.New("invalid address preference"))
 	}
-	if err := s.say(ctx, &session, next, reply, closed); err != nil {
-		return exam.Session{}, err
+	if assessment.AddressPreference != "" {
+		session.AddressPreference = assessment.AddressPreference
+		evaluate.AddressPreference = session.AddressPreference
+	}
+	if assessment.Verdict.Conversational() {
+		// Keep the actual exam step, scores, hint allowance and question count.
+		session.Turns[len(session.Turns)-1].Meta = true
+		message := assessment.Clarification
+		switch assessment.Verdict {
+		case exam.VerdictAddressCorrection:
+			message = addressAcknowledgement(session.AddressPreference)
+		case exam.VerdictPause:
+			message = pauseAcknowledgement
+		}
+		if strings.TrimSpace(message) == "" || utf8.RuneCountInString(message) > 600 {
+			return exam.Session{}, modelError(errors.New("invalid conversational reply"))
+		}
+		if err := s.append(&session, exam.SpeakerGeek, step.Kind, &step.NodeID, nil, message); err != nil {
+			return exam.Session{}, err
+		}
+		session.Turns[len(session.Turns)-1].Meta = true
+	} else {
+		next := session.Exam.Apply(assessment.Evaluation)
+		closed := next.NodeID != step.NodeID
+		feedback := FeedbackRequest{EvaluationRequest: evaluate, Verdict: assessment.Verdict,
+			Closed: closed, Next: next.Kind, Result: *session.Exam.Nodes[node.ID]}
+		// Apply may have credited prerequisites or closed the topic. Only protect
+		// prerequisites that can still be asked after that decision.
+		feedback.Prerequisites = unaskedPrerequisites(session.Exam, node.ID)
+		reply, err := s.examiner.Feedback(ctx, feedback)
+		if err != nil {
+			return exam.Session{}, modelError(err)
+		}
+		if err := s.say(ctx, &session, next, reply, closed); err != nil {
+			return exam.Session{}, err
+		}
 	}
 	session.Version++
 	request := Request{OwnerID: ownerID, Key: key, Fingerprint: fingerprint, SessionID: id, Response: session, CreatedAt: s.now().Unix()}
@@ -314,7 +354,7 @@ func (s *Service) Result(ctx context.Context, ownerID, id string) (exam.Result, 
 // previous answer or only the question after it. The whole turn is cached per
 // turn; a part is cached by its text, so a prepared question that every
 // student hears is synthesized once.
-func (s *Service) TurnAudio(ctx context.Context, ownerID, id, turnID string, part AudioPart) ([]byte, error) {
+func (s *Service) TurnAudio(ctx context.Context, ownerID, id, turnID string, part AudioPart, chunk ...int) ([]byte, error) {
 	session, err := s.load(ctx, ownerID, id)
 	if err != nil {
 		return nil, err
@@ -323,7 +363,15 @@ func (s *Service) TurnAudio(ctx context.Context, ownerID, id, turnID string, par
 	if !ok || turn.Speaker != exam.SpeakerGeek {
 		return nil, fault.New(fault.NotFound, "TURN_NOT_FOUND", "Реплика Geek не найдена.")
 	}
+	if len(chunk) > 1 || (len(chunk) == 1 && part != AudioReply) {
+		return nil, fault.Validation("chunk", "Номер блока допустим только для reply.")
+	}
 	switch part {
+	case AudioIntro:
+		if turn.AudioIntro == "" {
+			return nil, fault.New(fault.NotFound, "TURN_PART_NOT_FOUND", "У реплики Geek нет вводной.")
+		}
+		return s.speech.Part(ctx, turn.AudioIntro)
 	case AudioWhole:
 		return s.speech.Get(ctx, "geek/"+session.ID+"/"+turn.ID+".wav", turn.Text)
 	case AudioReply, AudioQuestion:
@@ -331,13 +379,20 @@ func (s *Service) TurnAudio(ctx context.Context, ownerID, id, turnID string, par
 		text := question
 		if part == AudioReply {
 			text = reply
+			if len(chunk) == 1 {
+				parts := ReplySpeechParts(reply)
+				if chunk[0] < 0 || chunk[0] >= len(parts) {
+					return nil, fault.Validation("chunk", "Блок озвучки не найден.")
+				}
+				text = parts[chunk[0]]
+			}
 		}
 		if strings.TrimSpace(text) == "" {
 			return nil, fault.New(fault.NotFound, "TURN_PART_NOT_FOUND", "У реплики Geek нет этой части.")
 		}
 		return s.speech.Part(ctx, text)
 	}
-	return nil, fault.Validation("part", "Часть реплики: reply или question.")
+	return nil, fault.Validation("part", "Часть реплики: intro, reply или question.")
 }
 
 func (s *Service) load(ctx context.Context, ownerID, id string) (exam.Session, error) {
@@ -378,24 +433,6 @@ func (s *Service) refresh(ctx context.Context, session exam.Session) (exam.Sessi
 	return s.store.Session(ctx, session.OwnerID, session.ID)
 }
 
-// reply is what Geek says about the answer before the next turn: a short
-// reaction while the topic goes on, followed by the correct answer once it is
-// closed. The "don't know" button is not evaluated, so its explanation is a
-// call of its own.
-func (s *Service) reply(ctx context.Context, r EvaluationRequest, a Assessment, source exam.Source, closed bool) (string, error) {
-	if !closed {
-		return strings.TrimSpace(a.Reaction), nil
-	}
-	if source == exam.SourceDontKnow {
-		text, err := s.examiner.Explain(ctx, r)
-		if err != nil {
-			return "", modelError(err)
-		}
-		return strings.TrimSpace(text), nil
-	}
-	return strings.TrimSpace(strings.TrimSpace(a.Reaction) + " " + strings.TrimSpace(a.Explanation)), nil
-}
-
 // unaskedPrerequisites are the titles of the direct and transitive
 // prerequisites of a topic that are still unchecked: the descent may reach
 // any of them.
@@ -422,11 +459,11 @@ func (s *Service) say(ctx context.Context, session *exam.Session, step exam.Step
 	var text string
 	if step.Kind == exam.KindQuestion && node.MainQuestion() != "" {
 		text = node.Questions[0]
-	} else if step.Kind == exam.KindRephrase && node.PreparedRephrase() != "" {
+	} else if step.Kind == exam.KindRephrase && !step.Hint && node.PreparedRephrase() != "" {
 		text = node.PreparedRephrase()
 	} else {
 		var err error
-		text, err = s.examiner.Question(ctx, QuestionRequest{Kind: step.Kind, Node: node, Dialogue: session.Dialogue(node.ID)})
+		text, err = s.examiner.Question(ctx, QuestionRequest{Rubric: session.Exam.Nodes[node.ID].Rubric, AddressPreference: session.AddressPreference, Hint: step.Hint, Kind: step.Kind, Node: node, Dialogue: session.Dialogue(node.ID)})
 		if err != nil {
 			return modelError(err)
 		}
@@ -449,6 +486,7 @@ func (s *Service) appendLed(session *exam.Session, kind exam.TurnKind, nodeID *s
 	session.Turns[len(session.Turns)-1].Reply = reply
 	if recap && reply != "" {
 		session.Turns[len(session.Turns)-1].Recap = reply + "\n\n"
+		session.Turns[len(session.Turns)-1].AudioIntro = feedbackLeadIn
 	}
 	return nil
 }
@@ -502,8 +540,25 @@ func answerFingerprint(sessionID string, a Answer) (string, error) {
 }
 
 func checkEvaluation(e exam.Evaluation, session exam.Session) error {
+	if session.Exam.Current != nil {
+		node, _ := session.Exam.Graph.Node(session.Exam.Current.NodeID)
+		spec, err := exam.ParseRubric(node.AssessmentGuidance)
+		if err != nil {
+			return err
+		}
+		if e.Verdict == exam.VerdictAnswered && len(spec) > 0 {
+			if e.Rubric == nil {
+				return errors.New("missing rubric result")
+			}
+			if err := e.Rubric.Validate(spec, session.Dialogue(node.ID)); err != nil {
+				return err
+			}
+		} else if e.Rubric != nil {
+			return errors.New("unexpected rubric result")
+		}
+	}
 	switch e.Verdict {
-	case exam.VerdictAnswered, exam.VerdictDontKnow, exam.VerdictInsufficient:
+	case exam.VerdictAnswered, exam.VerdictDontKnow, exam.VerdictInsufficient, exam.VerdictHintRequested, exam.VerdictAddressCorrection, exam.VerdictClarifyQuestion, exam.VerdictPause:
 	default:
 		return fmt.Errorf("unknown verdict %q", e.Verdict)
 	}
@@ -516,6 +571,10 @@ func checkEvaluation(e exam.Evaluation, session exam.Session) error {
 		}
 	}
 	return nil
+}
+
+func rubricError(err error) error {
+	return errors.Join(fault.New(fault.Conflict, "RUBRIC_INVALID", "В карте курса некорректная шкала оценивания. Преподавателю нужно исправить карту; попытка не потрачена."), err)
 }
 
 func modelError(err error) error {

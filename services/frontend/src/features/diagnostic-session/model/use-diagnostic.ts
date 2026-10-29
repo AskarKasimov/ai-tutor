@@ -191,7 +191,11 @@ export function useAnswerMutation(userId: string, sessionId: string) {
     onSuccess: (session) => remember(client, userId, session),
     onError: (error) => {
       // A stale turn means the session moved on, for example in another tab.
-      if (error instanceof DiagnosticApiError && error.status === 409)
+      if (
+        error instanceof DiagnosticApiError &&
+        error.status === 409 &&
+        error.code !== 'RUBRIC_INVALID'
+      )
         void client.invalidateQueries({
           queryKey: diagnosticSessionQueryKeys.session(userId, sessionId),
         })

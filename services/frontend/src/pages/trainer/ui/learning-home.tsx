@@ -101,11 +101,14 @@ export function LearningHome({
   const active = history.data?.find((item) => item.status === 'active')
   const startError =
     start.error instanceof DiagnosticApiError &&
-    start.error.code === 'GRAPH_NOT_READY'
-      ? t('home.graphNotReady')
-      : start.error
-        ? t('home.startError')
-        : ''
+    start.error.code === 'RUBRIC_INVALID'
+      ? t('geek.rubricInvalid')
+      : start.error instanceof DiagnosticApiError &&
+          start.error.code === 'GRAPH_NOT_READY'
+        ? t('home.graphNotReady')
+        : start.error
+          ? t('home.startError')
+          : ''
   if (view && selected && view.subjectId === selected.id)
     return view.screen === 'dialog' ? (
       <GeekDialog
@@ -124,6 +127,7 @@ export function LearningHome({
         subjectName={selected.name}
         onBack={back}
         onAgain={begin}
+        onChat={() => open(view.sessionId, 'dialog')}
         starting={start.isPending}
         startError={startError}
       />

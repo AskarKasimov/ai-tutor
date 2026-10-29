@@ -45,6 +45,11 @@ func (b builtQuestions) Prepare(ctx context.Context, data json.RawMessage) (json
 	if !ok {
 		return nil, fmt.Errorf("graph has no topics")
 	}
+	// A malformed instructor rubric is not a transient model failure. Reject
+	// it before preparation, even when every question already has a rephrase.
+	if err := g.ValidateRubrics(); err != nil {
+		return nil, err
+	}
 	pause := b.pause
 	if pause == 0 {
 		pause = builtQuestionPause

@@ -292,7 +292,9 @@ it('keeps the competency map import inside the selected course graph card', asyn
     name: 'Граф тем курса',
   })
   expect(
-    within(graphSection).getByText(/Вместо материалов граф можно собрать/),
+    within(graphSection).getByText(
+      /Вместо материалов загрузите карту компетенций/,
+    ),
   ).toBeVisible()
   expect(
     within(graphSection).getByRole('button', {

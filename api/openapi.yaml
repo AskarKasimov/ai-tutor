@@ -1455,6 +1455,9 @@ components:
     geek.Turn:
       additionalProperties: false
       properties:
+        audio_intro:
+          description: Предозвученная вводная перед фидбеком; запрашивается как part=intro.
+          type: string
         created_at:
           type: integer
         id:
@@ -1472,6 +1475,9 @@ components:
           description: Номер строки транскрипта
           minimum: 1
           type: integer
+        meta:
+          description: Служебная реплика, которая не расходует попытку и не участвует в оценке знаний.
+          type: boolean
         node_id:
           description: Вершина графа, к которой относится реплика; null у closing
           type:
@@ -1480,6 +1486,10 @@ components:
         reply:
           description: 'Начало text у реплики Geek — реакция на прошлый ответ студента; пусто, если реакции нет. Озвучивается отдельно: GET .../audio?part=reply, остальное — part=question'
           type: string
+        reply_audio_parts:
+          description: Число блоков фидбека; part=reply и chunk с нуля возвращают отдельный блок.
+          minimum: 0
+          type: integer
         source:
           description: 'Только у реплик студента: голос после подтверждения, текст или кнопка «Не знаю»'
           enum:
@@ -4340,7 +4350,7 @@ paths:
         - Диагностика
       x-implementation: implemented
     post:
-      description: 'Устный экзамен Geek по графу курса. У студента одна активная диагностика на курс: если она есть, возвращается она (200), иначе создаётся новая с первым вопросом (201). 409 GRAPH_NOT_READY — граф курса не собран или его вопросы ещё готовятся.'
+      description: 'Устный экзамен Geek по графу курса. У студента одна активная диагностика на курс: если она есть, возвращается она (200), иначе создаётся новая с первым вопросом (201). 409 GRAPH_NOT_READY — граф курса не собран или его вопросы ещё готовятся; RUBRIC_INVALID — некорректная шкала карты, новая попытка не создаётся.'
       operationId: startDiagnosticSession
       parameters:
         - description: Ключ повтора запроса
@@ -4447,7 +4457,7 @@ paths:
       x-implementation: implemented
   /exam/diagnostic-sessions/{id}/answers:
     post:
-      description: 'Синхронно: ответ содержит реплику студента и следующую реплику Geek либо завершённую сессию. Повтор с тем же ключом возвращает тот же результат. 409 — turn_id не текущий или сессия не active.'
+      description: 'Синхронно: ответ содержит реплику студента и следующую реплику Geek либо завершённую сессию. Повтор с тем же ключом возвращает тот же результат. 409 — turn_id не текущий, сессия не active или RUBRIC_INVALID (некорректная шкала карты, ответ не сохраняется).'
       operationId: answerDiagnosticSession
       parameters:
         - description: ID диагностики
@@ -4629,9 +4639,16 @@ paths:
           name: part
           schema:
             enum:
+              - intro
               - reply
               - question
             type: string
+        - description: Номер блока фидбека с нуля, только part=reply
+          in: query
+          name: chunk
+          schema:
+            minimum: 0
+            type: integer
       responses:
         "200":
           content:

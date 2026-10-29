@@ -32,6 +32,7 @@ export function GeekResult({
   subjectName,
   onBack,
   onAgain,
+  onChat,
   starting = false,
   startError = '',
 }: {
@@ -40,6 +41,7 @@ export function GeekResult({
   subjectName: string
   onBack: () => void
   onAgain: () => void
+  onChat: () => void
   // The state of "start again", which runs from this screen.
   starting?: boolean
   startError?: string
@@ -203,6 +205,9 @@ export function GeekResult({
           </Text>
         )}
         <div className={styles.actions}>
+          <Button size="3" variant="soft" onClick={onChat}>
+            {t('geek.openChat')}
+          </Button>
           <Button
             size="3"
             className={styles.primary}

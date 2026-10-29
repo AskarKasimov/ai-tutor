@@ -1,0 +1,145 @@
+package llm
+
+import (
+	"context"
+	"fmt"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/coursegraph"
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/exam"
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/features/geek/application"
+	geekgraph "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/geek/infrastructure/graph"
+)
+
+func TestRubricQuestionsPreserveAuthoredCalculation(t *testing.T) {
+	n := exam.Node{ID: "calculation", Questions: []string{"Сравни штраф 50 с выигрышем 10 и объясни выбор."}, AssessmentGuidance: "Балл: 0 — нет; 1 — показано сравнение"}
+	spec, err := exam.ParseRubric(n.AssessmentGuidance)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := &exam.RubricResult{Items: []exam.RubricMark{{RubricItem: spec[0], Score: 0, Reason: "Сравнение отсутствует"}}}
+	for _, kind := range []exam.TurnKind{exam.KindRephrase, exam.KindFollowup} {
+		p := questionPrompt(application.QuestionRequest{Kind: kind, Node: n, Rubric: result, Dialogue: []exam.Turn{{Speaker: exam.SpeakerGeek, Text: n.MainQuestion()}}})
+		if strings.Contains(p, "Не проси решить или посчитать задачу") || strings.Contains(p, "а не решением задачи") {
+			t.Errorf("%s prohibits the calculation required by the rubric", kind)
+		}
+		if !strings.Contains(p, n.MainQuestion()) || !strings.Contains(p, "Экзамен устный") {
+			t.Errorf("%s lost the original question or spoken format", kind)
+		}
+	}
+}
+
+func TestImportDoesNotHideUnsupportedLeadingScoringLevels(t *testing.T) {
+	for _, level := range []string{"-1", "−1", "0.5", "0,5", "+1"} {
+		criteria := "Эталон: ответ.\n" + level + " — частичный ответ\n0 — нет; 1 — да"
+		header := []string{"Компетенция", "Составляющая", "Образовательный результат", "Таксономия", "Важность", "Что должно войти в тест", "Задание 1", "Критерии оценивания 1", "ID темы", "Пререквизиты"}
+		rows := [][]string{header, {"ИИ", "Агенты", "Выбор агента", "Понимать", "3", "TRUE", "Какой агент и почему?", criteria, "agent", ""}}
+		built, err := coursegraph.BuildMapGraph([]coursegraph.MapSheet{{Name: "Карта", Rows: rows}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		graph, ok, err := geekgraph.Decode(built.Graph)
+		if err != nil || !ok {
+			t.Fatalf("decode: %v, %v", ok, err)
+		}
+		if err := graph.ValidateRubrics(); err == nil {
+			t.Errorf("unsupported leading level %q escaped rubric validation", level)
+		}
+	}
+}
+
+func TestImportedColonCriteriaRemainIndependentRubricItems(t *testing.T) {
+	for _, label := range []string{"К", "K", "к"} {
+		criteria := fmt.Sprintf("Эталон: ответ.\n%s1: 0 — нет; 2 — да\n%s2: 0 — нет; 2 — да", label, label)
+		header := []string{"Компетенция", "Составляющая", "Образовательный результат", "Таксономия", "Важность", "Что должно войти в тест", "Задание 1", "Критерии оценивания 1", "ID темы", "Пререквизиты"}
+		rows := [][]string{header, {"ИИ", "Агенты", "Выбор агента", "Понимать", "3", "TRUE", "Какой агент и почему?", criteria, "agent", ""}}
+		built, err := coursegraph.BuildMapGraph([]coursegraph.MapSheet{{Name: "Карта", Rows: rows}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		graph, ok, err := geekgraph.Decode(built.Graph)
+		if err != nil || !ok || len(graph.Nodes) != 1 {
+			t.Fatalf("decode: %v, %v", ok, err)
+		}
+		spec, err := exam.ParseRubric(graph.Nodes[0].AssessmentGuidance)
+		if err != nil || len(spec) != 2 {
+			t.Fatalf("import merged %s1:/%s2: into one item: %+v, %v", label, label, spec, err)
+		}
+		result := exam.RubricResult{Items: []exam.RubricMark{{RubricItem: spec[0], Score: 2}, {RubricItem: spec[1], Score: 0}}}
+		if score, maximum := result.Totals(); score != 2 || maximum != 4 || result.Grade(false, false) != exam.GradeC {
+			t.Fatalf("independent points changed: %d/%d", score, maximum)
+		}
+	}
+}
+
+func TestImportedMapRubricAndSelectedReferenceReachGradingAndFeedback(t *testing.T) {
+	header := []string{"Субкомпетенция", "Образовательный результат", "Уровень по Блуму", "Важность", "Что должно войти в тест", "Задание 1", "Критерии оценивания 1", "Задание 2", "Критерии оценивания 2", "Составляющая"}
+	rows := [][]string{header,
+		{"ИИ", "Называет область", "Помнить", "3", "TRUE", "Назови область ИИ", "Эталон: машинное обучение.", "", "", "1.1 Применение ИИ"},
+		{"", "Различает подходы", "Понимать", "3", "TRUE", "Сравни подходы", "Эталон: два разных подхода."},
+		{"", "Обосновывает применение", "Применять", "5", "TRUE", "Приведи пример робота", "Эталон: ЧУЖОЙ_ВАРИАНТ.\nБалл (макс. 1): 1 — верно.",
+			"Назови задачу обработки языка и объясни полезность ИИ", "Эталон: классификация спама; разнообразие писем.\nАналитическая рубрика (макс. 2):\nК1 «Задача»: 1 — назван подходящий пример; 0 — нет примера.\nК2 «Причина»: 1 — объяснена полезность; 0 — нет объяснения."},
+	}
+	built, err := coursegraph.BuildMapGraph([]coursegraph.MapSheet{{Name: "Карта", Rows: rows}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	graph, ok, err := geekgraph.Decode(built.Graph)
+	if err != nil || !ok {
+		t.Fatalf("decode: %v, %v", ok, err)
+	}
+	main := graph.TopLevel()[0]
+	for i, n := range graph.Nodes {
+		if n.ID == main {
+			if len(n.Variants) != 2 {
+				t.Fatalf("variants=%d", len(n.Variants))
+			}
+			graph.Nodes[i] = n.WithVariant(n.Variants[1])
+		}
+	}
+	e, step := exam.NewExam(graph, 0, nil)
+	n, _ := e.Graph.Node(step.NodeID)
+	n.Outcomes = []string{"UNRELATED_OUTCOME"}
+	request := application.EvaluationRequest{Kind: step.Kind, Node: n, Dialogue: []exam.Turn{
+		{Line: 1, Speaker: exam.SpeakerGeek, Text: n.MainQuestion()},
+		{Line: 2, Speaker: exam.SpeakerStudent, Text: "Классификация спама: письма разнообразны, учиться на примерах полезнее жёстких правил."},
+	}}
+	f := &fakeGateway{answers: []string{
+		`{"verdict":"answered","address_preference":""}`,
+		`{"verdict":"answered","answer_complete":true,"marks":[{"id":"r1","score":1,"evidence_lines":[2],"quote":"Классификация спама","reason":"Пример спама"},{"id":"r2","score":1,"evidence_lines":[2],"quote":"письма разнообразны","reason":"Разнообразие писем"}]}`,
+		`{"answer_complete":true,"marks":[{"id":"r1","score":1,"evidence_lines":[2],"quote":"Классификация спама","reason":"Пример спама"},{"id":"r2","score":1,"evidence_lines":[2],"quote":"письма разнообразны","reason":"Разнообразие писем"}]}`,
+		`{"text":"Ты связал фильтрацию спама с разнообразием писем и обучением на примерах."}`,
+	}}
+	g := serve(t, f, time.Second)
+	a, err := g.Evaluate(context.Background(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	next := e.Apply(a.Evaluation)
+	_, err = g.Feedback(context.Background(), application.FeedbackRequest{EvaluationRequest: request, Verdict: a.Verdict, Closed: next.NodeID != n.ID, Next: next.Kind, Result: *e.Nodes[n.ID]})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if *e.Nodes[n.ID].Grade != exam.GradeA {
+		t.Fatal("fully demonstrated imported task not mastered")
+	}
+	for i, r := range f.requests {
+		prompt := r.Messages[1].GetContent()
+		if i == 0 {
+			if strings.Contains(prompt, "ЧУЖОЙ_ВАРИАНТ") {
+				t.Fatal("wrong question routed")
+			}
+			continue
+		}
+		for _, want := range []string{"классификация спама", "Пункт рубрики 1", "Пункт рубрики 2"} {
+			if !strings.Contains(prompt, want) {
+				t.Fatalf("missing %q in %s", want, prompt)
+			}
+		}
+		if strings.Contains(prompt, "ЧУЖОЙ_ВАРИАНТ") || strings.Contains(prompt, "UNRELATED_OUTCOME") {
+			t.Fatal("wrong variant or unrelated outcome leaked into prompts")
+		}
+	}
+}

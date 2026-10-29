@@ -86,6 +86,9 @@ it('starts a diagnostic with the idempotency key and maps the session', async ()
     source: 'text',
     text: 'Поиск',
     reply: '',
+    meta: false,
+    audioIntro: '',
+    replyAudioParts: 0,
     createdAt: 2,
   })
 })

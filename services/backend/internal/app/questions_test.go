@@ -41,7 +41,7 @@ func (e *buildExaminer) Evaluate(context.Context, geekapp.EvaluationRequest) (ge
 	return geekapp.Assessment{}, errors.New("not used")
 }
 
-func (e *buildExaminer) Explain(context.Context, geekapp.EvaluationRequest) (string, error) {
+func (e *buildExaminer) Feedback(context.Context, geekapp.FeedbackRequest) (string, error) {
 	return "", errors.New("not used")
 }
 
@@ -51,6 +51,15 @@ const build = `{"version":"course-graph-v1","quality":{"acyclic":true},"hierarch
  {"id":"b","title":"Эвристика","text":"Текст эвристики","question":"","provides":["эвристика"],"requires":["поиск"]}
 ],
 "prerequisites":[{"source":"a","target":"b"}]}`
+
+func TestBuildRejectsInvalidRubricBeforePreparingQuestions(t *testing.T) {
+	examiner := &buildExaminer{}
+	data := json.RawMessage(`{"topics":[{"id":"a","title":"Тема","text":"Текст","question":"Вопрос?","rephrase":"Проще?","assessment_guidance":"Балл (макс. 2): оценить по смыслу"}]}`)
+	_, err := (builtQuestions{examiner: examiner, logger: zap.NewNop()}).Prepare(context.Background(), data)
+	if err == nil || !strings.Contains(err.Error(), "topic a") || examiner.asked.Load() != 0 {
+		t.Fatalf("bad rubric published or treated as a model failure: %v, calls=%d", err, examiner.asked.Load())
+	}
+}
 
 func TestBuiltQuestionsArePreparedIntoTheTopics(t *testing.T) {
 	examiner := &buildExaminer{}

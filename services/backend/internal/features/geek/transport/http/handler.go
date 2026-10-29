@@ -34,8 +34,14 @@ type AnswerRequest struct {
 }
 
 type Turn struct {
-	CreatedAt int64  `json:"created_at"`
-	ID        string `json:"id"`
+	// Служебная реплика, которая не расходует попытку и не участвует в оценке знаний.
+	Meta bool `json:"meta,omitempty" binding:"optional"`
+	// Предозвученная вводная перед фидбеком; запрашивается как part=intro.
+	AudioIntro string `json:"audio_intro,omitempty" binding:"optional"`
+	// Число блоков фидбека; part=reply и chunk с нуля возвращают отдельный блок.
+	ReplyAudioParts int    `json:"reply_audio_parts,omitempty" binding:"optional" minimum:"0"`
+	CreatedAt       int64  `json:"created_at"`
+	ID              string `json:"id"`
 	// question — основной вопрос, followup — дополнительный, rephrase — переформулировка, closing — завершение, answer — ответ студента
 	Kind string `json:"kind" enums:"question,followup,rephrase,closing,answer"`
 	// Номер строки транскрипта
@@ -158,7 +164,7 @@ func principal(w http.ResponseWriter, r *http.Request) (user.User, bool) {
 
 // Start handles POST /diagnostic-sessions.
 // @Summary Начать или продолжить диагностику
-// @Description Устный экзамен Geek по графу курса. У студента одна активная диагностика на курс: если она есть, возвращается она (200), иначе создаётся новая с первым вопросом (201). 409 GRAPH_NOT_READY — граф курса не собран или его вопросы ещё готовятся.
+// @Description Устный экзамен Geek по графу курса. У студента одна активная диагностика на курс: если она есть, возвращается она (200), иначе создаётся новая с первым вопросом (201). 409 GRAPH_NOT_READY — граф курса не собран или его вопросы ещё готовятся; RUBRIC_INVALID — некорректная шкала карты, новая попытка не создаётся.
 // @ID startDiagnosticSession
 // @Tags Диагностика
 // @Security accessCookie
@@ -262,7 +268,7 @@ func (h *Handler) Read(w http.ResponseWriter, r *http.Request) {
 
 // Answer handles POST /diagnostic-sessions/{id}/answers.
 // @Summary Ответить на реплику Geek
-// @Description Синхронно: ответ содержит реплику студента и следующую реплику Geek либо завершённую сессию. Повтор с тем же ключом возвращает тот же результат. 409 — turn_id не текущий или сессия не active.
+// @Description Синхронно: ответ содержит реплику студента и следующую реплику Geek либо завершённую сессию. Повтор с тем же ключом возвращает тот же результат. 409 — turn_id не текущий, сессия не active или RUBRIC_INVALID (некорректная шкала карты, ответ не сохраняется).
 // @ID answerDiagnosticSession
 // @Tags Диагностика
 // @Security accessCookie
@@ -363,7 +369,8 @@ func (h *Handler) RawMaterial(w http.ResponseWriter, r *http.Request) {
 // @Produce audio/wav
 // @Param id path string true "ID диагностики" minlength(1) maxlength(128)
 // @Param turn_id path string true "ID реплики Geek" minlength(1) maxlength(128)
-// @Param part query string false "Часть реплики" Enums(reply, question)
+// @Param part query string false "Часть реплики" Enums(intro, reply, question)
+// @Param chunk query int false "Номер блока фидбека с нуля, только part=reply" minimum(0)
 // @Success 200 {file} file "WAV реплики"
 // @Failure 401 {object} fault.Error
 // @Failure 404 {object} fault.Error
@@ -376,8 +383,21 @@ func (h *Handler) TurnAudio(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	part := application.AudioPart(r.URL.Query().Get("part"))
+	var chunks []int
+	if values, present := r.URL.Query()["chunk"]; present {
+		if len(values) != 1 {
+			httpx.Error(r.Context(), w, fault.Validation("chunk", "Укажи один номер блока."))
+			return
+		}
+		n, err := strconv.Atoi(values[0])
+		if err != nil || n < 0 {
+			httpx.Error(r.Context(), w, fault.Validation("chunk", "Номер блока должен быть целым неотрицательным числом."))
+			return
+		}
+		chunks = []int{n}
+	}
 	started := time.Now()
-	data, err := h.service.TurnAudio(r.Context(), u.ID, r.PathValue("id"), r.PathValue("turn_id"), part)
+	data, err := h.service.TurnAudio(r.Context(), u.ID, r.PathValue("id"), r.PathValue("turn_id"), part, chunks...)
 	if err != nil {
 		httpx.Error(r.Context(), w, err)
 		return
@@ -400,7 +420,7 @@ func toSession(s domain.Session) Session {
 			v := string(*t.Source)
 			source = &v
 		}
-		out.Turns = append(out.Turns, Turn{CreatedAt: t.CreatedAt, ID: t.ID, Kind: string(t.Kind), Line: t.Line, NodeID: t.NodeID, Source: source, Speaker: string(t.Speaker), Text: t.Text, Reply: t.Reply})
+		out.Turns = append(out.Turns, Turn{Meta: t.Meta, AudioIntro: t.AudioIntro, ReplyAudioParts: len(application.ReplySpeechParts(t.Reply)), CreatedAt: t.CreatedAt, ID: t.ID, Kind: string(t.Kind), Line: t.Line, NodeID: t.NodeID, Source: source, Speaker: string(t.Speaker), Text: t.Text, Reply: t.Reply})
 	}
 	return out
 }

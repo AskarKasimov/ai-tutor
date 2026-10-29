@@ -65,9 +65,12 @@ type Transcriptions interface {
 }
 
 type QuestionRequest struct {
-	Kind     exam.TurnKind // question, followup or rephrase
-	Node     exam.Node
-	Dialogue []exam.Turn
+	Rubric            *exam.RubricResult
+	AddressPreference exam.AddressPreference
+	Hint              bool          // requested context, not a ready-made answer
+	Kind              exam.TurnKind // question, followup or rephrase
+	Node              exam.Node
+	Dialogue          []exam.Turn
 	// Ahead marks a main question or its rephrase prepared before any
 	// session (decision of 18.10.2026); nobody waits for it, while a question
 	// asked during a session keeps the student waiting.
@@ -75,8 +78,10 @@ type QuestionRequest struct {
 }
 
 type EvaluationRequest struct {
-	Kind exam.TurnKind // the step that was answered
-	Node exam.Node
+	AddressPreference exam.AddressPreference
+	HintUsed          bool          // distinguish the student's reasoning from supplied context
+	Kind              exam.TurnKind // the step that was answered
+	Node              exam.Node
 	// Prerequisites are the titles of the topic's direct and transitive
 	// prerequisites that are still unchecked. Geek may ask them later, so the
 	// explanation must not give them away.
@@ -84,22 +89,29 @@ type EvaluationRequest struct {
 	Dialogue      []exam.Turn // turns on the topic, ending with the answer
 }
 
-// Assessment is the evaluation of an answer with Geek's reply to it. The
-// reaction says what is right or missing without the correct answer; the
-// explanation adds the correct answer and is said once the topic is closed.
+// Assessment contains only grading; feedback follows the exam engine's decision.
 type Assessment struct {
+	AddressPreference exam.AddressPreference
+	Clarification     string // from the separate support dialogue, never grading prose
 	exam.Evaluation
-	Reaction    string
-	Explanation string
+}
+
+// FeedbackRequest describes the actual outcome, not a model's prediction of it.
+// Next is meaningful while the topic stays open; Result contains accumulated
+// knowledge, including earlier answers when the last reply was "don't know".
+type FeedbackRequest struct {
+	EvaluationRequest
+	Verdict exam.Verdict
+	Closed  bool
+	Next    exam.TurnKind
+	Result  exam.NodeState
 }
 
 // Examiner is the language model behind Geek.
 type Examiner interface {
 	Question(ctx context.Context, r QuestionRequest) (string, error)
 	Evaluate(ctx context.Context, r EvaluationRequest) (Assessment, error)
-	// Explain gives the correct answer on a topic the student gave up on with
-	// the "don't know" button, which is not evaluated.
-	Explain(ctx context.Context, r EvaluationRequest) (string, error)
+	Feedback(ctx context.Context, r FeedbackRequest) (string, error)
 }
 
 type Synthesizer interface {

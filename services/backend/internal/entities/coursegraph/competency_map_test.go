@@ -12,6 +12,15 @@ var mapHeaderRow = []string{"№", "Субкомпетенция (Proficiency)",
 	"Образовательный результат (Observe Behaviour)", "Свидетельство (продукт работы)", "Уровень по Блуму", "Важность (1–5)",
 	"Что должно войти в тест", "Задание (устная инструкция + визуальная опора)", "Критерии оценивания"}
 
+func TestSplitCriteriaKeepsUnlabelledNumericScalesForValidation(t *testing.T) {
+	for _, scale := range []string{"0 баллов — неверно; 1 балл — верно", "0 — неверно; 1 — верно", "балл (макс. 1): 0 — неверно; 1 — верно"} {
+		reference, guidance := splitCriteria("Эталон: ответ.\n" + scale)
+		if reference != "Эталон: ответ." || !strings.Contains(guidance, scale) {
+			t.Fatalf("numeric scoring disappeared into theory: reference=%q guidance=%q", reference, guidance)
+		}
+	}
+}
+
 func mapRow(competency, outcome, bloom, importance, include, task string) []string {
 	return []string{"", competency, "", "1.1 Составляющая", outcome, "Устный ответ", bloom, importance, include, task,
 		"Эталон: " + outcome + ".\nБалл (макс. 1): 1 — верно; 0 — иначе."}

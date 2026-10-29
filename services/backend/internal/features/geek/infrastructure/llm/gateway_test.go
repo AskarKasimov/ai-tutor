@@ -3,7 +3,9 @@ package llm
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -142,6 +144,25 @@ func TestGatewayEvaluatesAndRetriesAnInvalidAnswerOnce(t *testing.T) {
 	}
 }
 
+func TestGatewayEvidenceAcceptsOnlyIntegerLineNumbers(t *testing.T) {
+	for _, evidence := range []string{`[2]`, `["2"]`, `["2.5"]`, `[2.5]`, `["wrong"]`, `[null]`, `["999999999999999999999999999999"]`} {
+		t.Run(evidence, func(t *testing.T) {
+			answer := `{"verdict":"answered","answer_complete":true,"criteria":{"k1":2,"k2":2,"k3":null,"k4":null},"evidence_lines":` + evidence + `}`
+			f := &fakeGateway{answers: []string{answer, answer}}
+			g := serve(t, f, time.Second)
+			got, err := g.Evaluate(context.Background(), application.EvaluationRequest{Kind: exam.KindQuestion, Node: node, Dialogue: turns})
+			valid := evidence == `[2]` || evidence == `["2"]`
+			if valid {
+				if err != nil || len(got.Evidence) != 1 || got.Evidence[0] != 2 {
+					t.Fatalf("evaluation = %+v, %v", got, err)
+				}
+			} else if err == nil {
+				t.Fatal("invalid evidence accepted")
+			}
+		})
+	}
+}
+
 func TestGatewayReturnsTheReplyAndLeavesTheRecapOutOfTheDialogue(t *testing.T) {
 	f := &fakeGateway{answers: []string{
 		`{"verdict":"answered","answer_complete":true,"criteria":{"k1":1,"k2":1,"k3":0,"k4":0},"evidence_lines":[2],"reaction":" Близко. ","explanation":"Близко. На самом деле f = g + h."}`,
@@ -155,15 +176,15 @@ func TestGatewayReturnsTheReplyAndLeavesTheRecapOutOfTheDialogue(t *testing.T) {
 	}
 	request := application.EvaluationRequest{Kind: exam.KindQuestion, Node: node, Prerequisites: []string{"Эвристика"}, Dialogue: dialogue}
 	a, err := g.Evaluate(context.Background(), request)
-	if err != nil || a.Reaction != "Близко." || a.Explanation != "Близко. На самом деле f = g + h." || a.Verdict != exam.VerdictAnswered {
+	if err != nil || a.Verdict != exam.VerdictAnswered {
 		t.Fatalf("assessment = %+v, %v", a, err)
 	}
 	prompt := f.requests[0].GetMessages()[1].GetContent()
-	if strings.Contains(prompt, "Разбор прошлой темы") || !strings.Contains(prompt, "[1] Geek: Вопрос?") || !strings.Contains(prompt, "Эвристика") {
+	if strings.Contains(prompt, "Разбор прошлой темы") || !strings.Contains(prompt, "[1] Geek: Вопрос?") {
 		t.Fatalf("prompt = %s", prompt)
 	}
-	// A reply is optional: without it Geek just asks on.
-	if a, err := g.Evaluate(context.Background(), request); err != nil || a.Reaction != "" || a.Explanation != "" {
+	// Feedback is a separate operation; grading does not require reply fields.
+	if _, err := g.Evaluate(context.Background(), request); err != nil {
 		t.Fatalf("assessment without a reply = %+v, %v", a, err)
 	}
 }
@@ -186,7 +207,6 @@ func TestEvaluationGradesTheQuestionNotAllOutcomes(t *testing.T) {
 		"в том числе ошибочная, неполная или тавтологичная",
 		"не требуй конкретных примеров",
 		"выбирай более высокий",
-		"одно предложение до 15 слов",
 	} {
 		if !strings.Contains(prompt, want) {
 			t.Errorf("evaluation prompt lacks %q", want)
@@ -197,9 +217,6 @@ func TestEvaluationGradesTheQuestionNotAllOutcomes(t *testing.T) {
 	}
 	if strings.Contains(prompt, `Верни JSON: {"verdict":"answered"`) {
 		t.Fatal("output instructions force the answered verdict")
-	}
-	if p := explanationPrompt(application.EvaluationRequest{Node: n, Dialogue: turns}); !strings.Contains(p, "одно предложение до 15 слов") {
-		t.Errorf("explanation prompt = %s", p)
 	}
 }
 
@@ -229,7 +246,7 @@ func TestOralExamPromptsAskForReasoningAndStayNeutral(t *testing.T) {
 		t.Error("follow-up prompt still asks to change the conditions of a problem")
 	}
 	p := evaluationPrompt(application.EvaluationRequest{Kind: exam.KindQuestion, Node: node, Dialogue: turns})
-	for _, want := range []string{"не требуй вычислений, формул, кода, схем", "ошибки распознавания", "К3 — возражения и контрпримеры", "нейтральное", "Без упрёков"} {
+	for _, want := range []string{"не требуй вычислений, формул, кода, схем", "ошибки распознавания", "К3 — возражения и контрпримеры"} {
 		if !strings.Contains(p, want) {
 			t.Errorf("evaluation prompt lacks %q", want)
 		}
@@ -239,10 +256,10 @@ func TestOralExamPromptsAskForReasoningAndStayNeutral(t *testing.T) {
 	}
 }
 
-func TestGatewayExplainsOnTheLowPool(t *testing.T) {
+func TestGatewayFeedbackOnTheLowPool(t *testing.T) {
 	f := &fakeGateway{answers: []string{`{"text": "A* складывает g и h."}`}}
 	g := serve(t, f, time.Second)
-	text, err := g.Explain(context.Background(), application.EvaluationRequest{Node: node, Prerequisites: []string{"Эвристика"}, Dialogue: turns})
+	text, err := g.Feedback(context.Background(), application.FeedbackRequest{Closed: true, EvaluationRequest: application.EvaluationRequest{Node: node, Prerequisites: []string{"Эвристика"}, Dialogue: turns}})
 	if err != nil || text != "A* складывает g и h." {
 		t.Fatalf("explanation = %q, %v", text, err)
 	}
@@ -255,6 +272,104 @@ func TestGatewayExplainsOnTheLowPool(t *testing.T) {
 	}
 }
 
+func TestGatewayRejectsEmptyOrExcessiveFeedbackAndRetries(t *testing.T) {
+	for _, closed := range []bool{true} {
+		for _, invalid := range []string{"", strings.Repeat("слово ", 81)} {
+			bad, _ := json.Marshal(map[string]string{"text": invalid})
+			f := &fakeGateway{answers: []string{string(bad), `{"text":"Разберём тот же вопрос проще."}`}}
+			g := serve(t, f, time.Second)
+			text, err := g.Feedback(context.Background(), application.FeedbackRequest{Closed: closed})
+			if err != nil || text != "Разберём тот же вопрос проще." || f.count() != 2 {
+				t.Fatalf("feedback = %q, %v, calls=%d", text, err, f.count())
+			}
+		}
+	}
+}
+
+func TestFeedbackUsesDifferentInstructionsForActualDecisions(t *testing.T) {
+	a := exam.GradeA
+	for _, tc := range []struct {
+		r    application.FeedbackRequest
+		want string
+	}{
+		{application.FeedbackRequest{Closed: true, Result: exam.NodeState{Grade: &a}}, "не ищи недостатков"},
+		{application.FeedbackRequest{Closed: true}, "сам восполни существенный пробел"},
+	} {
+		tc.r.Node = node
+		tc.r.Dialogue = turns
+		p := feedbackPrompt(tc.r)
+		if !strings.Contains(p, tc.want) || !strings.Contains(p, "не придирайся к длине") {
+			t.Fatalf("wrong feedback instructions: %s", p)
+		}
+		if strings.Contains(evaluationPrompt(tc.r.EvaluationRequest), "reaction;") {
+			t.Fatal("grading still generates feedback before the engine decision")
+		}
+	}
+}
+
+func TestRephraseTransitionDoesNotCallTheModelOrGiveHints(t *testing.T) {
+	f := &fakeGateway{}
+	g := serve(t, f, time.Second)
+	for _, verdict := range []exam.Verdict{exam.VerdictInsufficient, exam.VerdictAnswered} {
+		text, err := g.Feedback(context.Background(), application.FeedbackRequest{Next: exam.KindRephrase, Verdict: verdict})
+		variants := rephraseTransitions
+		if verdict == exam.VerdictInsufficient {
+			variants = offTopicTransitions
+		}
+		if err != nil || !slices.Contains(variants, text) || f.count() != 0 {
+			t.Fatalf("transition = %q, %v, calls=%d", text, err, f.count())
+		}
+		if verdict == exam.VerdictAnswered && strings.Contains(text, "не связан") {
+			t.Fatal("weak answer called off-topic")
+		}
+	}
+}
+
+func TestHintTransitionAlsoAppliesToFollowups(t *testing.T) {
+	f := &fakeGateway{}
+	g := serve(t, f, time.Second)
+	for _, next := range []exam.TurnKind{exam.KindRephrase, exam.KindFollowup} {
+		text, err := g.Feedback(context.Background(), application.FeedbackRequest{Next: next, Verdict: exam.VerdictHintRequested})
+		if err != nil || !slices.Contains(hintTransitions, text) || f.count() != 0 {
+			t.Fatalf("hint transition = %q, %v, calls=%d", text, err, f.count())
+		}
+	}
+}
+
+func TestFollowupTransitionDoesNotCallTheModelOrOverpraiseWeakKnowledge(t *testing.T) {
+	f := &fakeGateway{}
+	g := serve(t, f, time.Second)
+	for _, k := range []exam.Criteria{{K1: 2, K2: 2}, {K1: 1, K2: 1}} {
+		text, err := g.Feedback(context.Background(), application.FeedbackRequest{Next: exam.KindFollowup, Result: exam.NodeState{Criteria: &k}})
+		if err != nil || f.count() != 0 || strings.Contains(text, "?") {
+			t.Fatalf("transition=%q, %v", text, err)
+		}
+		if slices.Contains(soundFollowupTransitions, text) != (k.K1 == 2 && k.K2 == 2) {
+			t.Fatalf("unsupported praise: %q", text)
+		}
+	}
+}
+
+func TestTransitionVariesAndDoesNotRepeatThePreviousIntroduction(t *testing.T) {
+	r := application.FeedbackRequest{Next: exam.KindRephrase}
+	seen := map[string]bool{}
+	for i := 0; i < 30; i++ {
+		r.Node.ID = fmt.Sprint(i)
+		text := transition(r, rephraseTransitions)
+		if text != transition(r, rephraseTransitions) {
+			t.Fatal("retry changed wording")
+		}
+		seen[text] = true
+		if len(r.Dialogue) > 0 && text == r.Dialogue[0].Text {
+			t.Fatal("repeated the previous introduction")
+		}
+		r.Dialogue = []exam.Turn{{Speaker: exam.SpeakerGeek, Text: text}}
+	}
+	if len(seen) < 3 {
+		t.Fatalf("only %d variants observed", len(seen))
+	}
+}
+
 func TestExaminerPromptsLeaveOutOutcomes(t *testing.T) {
 	n := node
 	n.Outcomes = []string{"UNRELATED_OUTCOME_SHOULD_NOT_BE_SENT"}
@@ -264,7 +379,7 @@ func TestExaminerPromptsLeaveOutOutcomes(t *testing.T) {
 			t.Fatalf("question prompt has the wrong source: %s", p)
 		}
 	}
-	if p := explanationPrompt(application.EvaluationRequest{Node: n, Dialogue: turns}); strings.Contains(p, n.Outcomes[0]) {
+	if p := feedbackPrompt(application.FeedbackRequest{EvaluationRequest: application.EvaluationRequest{Node: n, Dialogue: turns}}); strings.Contains(p, n.Outcomes[0]) {
 		t.Fatal("explanation contains outcomes")
 	}
 }

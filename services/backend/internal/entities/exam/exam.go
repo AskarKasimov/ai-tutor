@@ -56,14 +56,16 @@ const (
 
 // Turn is one line of the transcript.
 type Turn struct {
-	ID        string   `json:"id"`
-	Line      int      `json:"line"`
-	Speaker   Speaker  `json:"speaker"`
-	Kind      TurnKind `json:"kind"`
-	NodeID    *string  `json:"node_id"`
-	Source    *Source  `json:"source"`
-	Text      string   `json:"text"`
-	CreatedAt int64    `json:"created_at"`
+	Meta       bool     `json:"meta,omitempty"`
+	AudioIntro string   `json:"audio_intro,omitempty"`
+	ID         string   `json:"id"`
+	Line       int      `json:"line"`
+	Speaker    Speaker  `json:"speaker"`
+	Kind       TurnKind `json:"kind"`
+	NodeID     *string  `json:"node_id"`
+	Source     *Source  `json:"source"`
+	Text       string   `json:"text"`
+	CreatedAt  int64    `json:"created_at"`
 	// Recap is the start of Text that explains the previous, closed topic
 	// before this turn's question; prompts on this turn's topic leave it out.
 	Recap string `json:"recap,omitempty"`
@@ -76,6 +78,10 @@ type Turn struct {
 // NodeState is what the exam has concluded about one topic. Criteria and
 // evidence lines are kept for the teacher package.
 type NodeState struct {
+	// Rubric is authoritative when present; Criteria is then a legacy
+	// compatibility field, not an additional set of failed skills.
+	Rubric   *RubricResult `json:"rubric,omitempty"`
+	HintUsed bool          `json:"hint_used,omitempty"`
 	// nil is a legacy session; new model evaluations always state completeness.
 	AnswerComplete *bool              `json:"answer_complete,omitempty"`
 	Unassessed     UnassessedCriteria `json:"unassessed,omitempty"`
@@ -91,13 +97,22 @@ type NodeState struct {
 type Verdict string
 
 const (
-	VerdictAnswered     Verdict = "answered"
-	VerdictDontKnow     Verdict = "dont_know"
-	VerdictInsufficient Verdict = "insufficient"
+	VerdictAnswered          Verdict = "answered"
+	VerdictDontKnow          Verdict = "dont_know"
+	VerdictInsufficient      Verdict = "insufficient"
+	VerdictHintRequested     Verdict = "hint_requested"
+	VerdictAddressCorrection Verdict = "address_correction"
+	VerdictClarifyQuestion   Verdict = "clarify_question"
+	VerdictPause             Verdict = "pause"
 )
+
+func (v Verdict) Conversational() bool {
+	return v == VerdictAddressCorrection || v == VerdictClarifyQuestion || v == VerdictPause
+}
 
 // Evaluation is the model's assessment of the dialogue on the current topic.
 type Evaluation struct {
+	Rubric         *RubricResult
 	AnswerComplete *bool
 	Unassessed     UnassessedCriteria
 	Verdict        Verdict
@@ -107,6 +122,7 @@ type Evaluation struct {
 
 // Step is what Geek asks next.
 type Step struct {
+	Hint   bool     `json:"hint,omitempty"` // explain the setup, then let the student answer
 	Kind   TurnKind // question, followup, rephrase or closing
 	NodeID string   // empty for closing
 }
@@ -238,12 +254,33 @@ func (e *Exam) finishTop() {
 // mastered topic credits all of its unchecked prerequisites.
 func (e *Exam) Apply(ev Evaluation) Step {
 	cur := *e.Current
+	if ev.Verdict.Conversational() {
+		return cur
+	}
 	state := e.Nodes[cur.NodeID]
 	state.Asked = true
 	state.Evidence = mergeLines(state.Evidence, ev.Evidence)
+	if ev.Verdict == VerdictHintRequested {
+		if !state.HintUsed && !e.limitReached() {
+			state.HintUsed, state.Assisted = true, true
+			e.Asked++
+			kind := KindRephrase
+			// A hint does not turn an existing clarification into a new
+			// first attempt: failure must retain the observed partial result.
+			if cur.Kind == KindFollowup {
+				kind = KindFollowup
+			}
+			next := e.step(kind, cur.NodeID)
+			next.Hint = true
+			e.Current = &next
+			return next
+		}
+		// One hint per topic; repeated requests cannot keep the exam open.
+		ev.Verdict = VerdictInsufficient
+	}
 	switch cur.Kind {
 	case KindQuestion, KindRephrase:
-		assisted := cur.Kind == KindRephrase
+		assisted := cur.Kind == KindRephrase || state.HintUsed
 		switch ev.Verdict {
 		case VerdictDontKnow:
 			return e.gap(cur.NodeID, Criteria{}, assisted)
@@ -258,6 +295,7 @@ func (e *Exam) Apply(ev Evaluation) Step {
 		}
 		c := ev.Criteria
 		state.Criteria = &c
+		state.Rubric = ev.Rubric
 		state.AnswerComplete = ev.AnswerComplete
 		state.Unassessed = ev.Unassessed
 		state.Assisted = assisted
@@ -270,7 +308,7 @@ func (e *Exam) Apply(ev Evaluation) Step {
 		}
 		// A good answer to the selected concept is enough; untested skills
 		// do not force another question. The question limit remains strict.
-		if state.Unassessed.Complete(c) && state.complete() || e.limitReached() {
+		if state.skillsComplete(c) && state.complete() || e.limitReached() {
 			return e.conclude(cur.NodeID, c)
 		}
 		e.Asked++
@@ -280,6 +318,7 @@ func (e *Exam) Apply(ev Evaluation) Step {
 		if ev.Verdict != VerdictAnswered {
 			c = *state.Criteria
 		} else {
+			state.Rubric = ev.Rubric
 			state.AnswerComplete = ev.AnswerComplete
 			// A skill observed earlier cannot become untested on a followup.
 			if ev.Unassessed.K3 && !state.Unassessed.K3 {
@@ -331,11 +370,21 @@ func (s NodeState) complete() bool {
 }
 
 func (s NodeState) topicGrade() Grade {
+	if s.Rubric != nil {
+		return s.Rubric.Grade(s.Assisted, s.complete())
+	}
 	grade := TopicGrade(*s.Criteria, s.Assisted, s.Unassessed)
 	if grade == GradeA && !s.complete() {
 		return GradeB
 	}
 	return grade
+}
+
+func (s NodeState) skillsComplete(c Criteria) bool {
+	if s.Rubric != nil {
+		return s.Rubric.Complete()
+	}
+	return s.Unassessed.Complete(c)
 }
 
 func (e *Exam) step(kind TurnKind, id string) Step {

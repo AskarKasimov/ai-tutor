@@ -1,6 +1,11 @@
 -- name: LearningLockSubjectForImport :one
 SELECT id FROM subjects WHERE id = $1 FOR UPDATE;
 
+-- name: LearningGetSubjectActiveRevision :one
+SELECT COALESCE(state.active_revision, 0)::bigint AS revision
+FROM subjects subject LEFT JOIN learning_subject_state state ON state.subject_id = subject.id
+WHERE subject.id = $1;
+
 -- name: LearningLockCompetencyMapRevision :one
 SELECT revision FROM learning_map_state WHERE singleton = true FOR UPDATE;
 

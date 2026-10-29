@@ -90,6 +90,17 @@ function CompetencyMapAdmin({
   const [confirmedRevision, setConfirmedRevision] = useState<number | null>(
     null,
   )
+  const [revisionChanged, setRevisionChanged] = useState(false)
+  useEffect(() => {
+    if (
+      confirmedRevision !== null &&
+      query.isSuccess &&
+      query.data.revision !== confirmedRevision
+    ) {
+      setConfirmedRevision(null)
+      setRevisionChanged(true)
+    }
+  }, [confirmedRevision, query.isSuccess, query.data])
   const submitRef = useRef<HTMLButtonElement>(null)
   const [file, setFile] = useState<File | null>(null)
   const [fileError, setFileError] = useState<string | null>(null)
@@ -109,6 +120,7 @@ function CompetencyMapAdmin({
 
   function selectFile(selected: File | undefined) {
     upload.reset()
+    setRevisionChanged(false)
     setFile(null)
     setFileError(null)
     if (!selected) return
@@ -200,6 +212,11 @@ function CompetencyMapAdmin({
               {t('learningCompetencyMap.edit')}
             </Heading>
             <MapFileZone file={file} disabled={busy} onSelect={selectFile} />
+            {revisionChanged && (
+              <Text as="p" role="alert" color="red" size="2">
+                {t('learningCompetencyMap.revisionChanged')}
+              </Text>
+            )}
             {fileError && (
               <Text as="p" role="alert" color="red" size="2">
                 {fileError}
@@ -250,6 +267,7 @@ function CompetencyMapAdmin({
                     disabled={mapUnavailable}
                     onClick={() => {
                       if (!query.data) return
+                      setRevisionChanged(false)
                       if (query.data.importedAt !== null) {
                         setConfirmedRevision(query.data.revision)
                       } else submitMap(query.data.revision)

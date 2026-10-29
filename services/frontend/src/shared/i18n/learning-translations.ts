@@ -34,6 +34,7 @@ export const learningTranslations = {
     invalidType: 'Выберите файл CSV или XLSX.',
     tooLarge: 'Размер файла не должен превышать 25 МиБ.',
     emptyFile: 'Выбранный файл пуст.',
+    revisionChanged: 'Карта изменилась. Подтвердите замену ещё раз.',
     confirmTitle: 'Перезаписать карту?',
     confirmHelp:
       'Текущая карта и задания предмета будут заменены. Это действие нельзя отменить.',

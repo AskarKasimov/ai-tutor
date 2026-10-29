@@ -676,6 +676,45 @@ it('blocks confirmation while the map state is refreshing', async () => {
   ).toBe(false)
 })
 
+it('requires a new confirmation when the map changes while the dialog is open', async () => {
+  const fetch = backend({ learningMapExists: true })
+  const router = renderApp('/admin/courses/subject-b')
+  await screen.findByText('Карта компетенций успешно загружена')
+  fireEvent.change(screen.getByLabelText('Файл карты компетенций'), {
+    target: { files: [new File(['map'], 'map.csv', { type: 'text/csv' })] },
+  })
+  fireEvent.click(screen.getByRole('button', { name: 'Подтвердить изменения' }))
+  const originalFetch = fetch.getMockImplementation()!
+  fetch.mockImplementation((url, init) => {
+    if (url.includes('/learn/subjects/') && url.endsWith('/competency-map'))
+      return Promise.resolve(
+        Response.json({ revision: 2, imported_at: 3, competencies: [] }),
+      )
+    return originalFetch(url, init)
+  })
+  await act(async () => {
+    await router.options.context.queryClient.invalidateQueries()
+  })
+  expect(
+    await screen.findByText('Карта изменилась. Подтвердите замену ещё раз.'),
+  ).toBeVisible()
+  expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+  expect(
+    fetch.mock.calls.some(([url]) => url.endsWith('/competency-map/import')),
+  ).toBe(false)
+  fireEvent.click(screen.getByRole('button', { name: 'Подтвердить изменения' }))
+  fireEvent.click(await screen.findByRole('button', { name: 'Перезаписать' }))
+  await waitFor(() =>
+    expect(
+      fetch.mock.calls.some(
+        ([url, init]) =>
+          url.endsWith('/competency-map/import') &&
+          new Headers(init?.headers).get('X-Expected-Map-Revision') === '2',
+      ),
+    ).toBe(true),
+  )
+})
+
 it('returns focus to the submit button after cancelling replacement', async () => {
   backend({ learningMapExists: true })
   renderApp('/admin/courses/subject-b')

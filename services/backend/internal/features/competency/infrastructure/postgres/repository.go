@@ -39,11 +39,11 @@ func (r *Repository) Replace(ctx context.Context, subjectID, actorID string, par
 		return competencymap.ImportResult{}, err
 	}
 	if expectedRevision != nil {
-		rows, readErr := queries.LearningReadSubjectCompetencyMap(ctx, subjectID)
+		revision, readErr := queries.LearningGetSubjectActiveRevision(ctx, subjectID)
 		if readErr != nil {
 			return competencymap.ImportResult{}, readErr
 		}
-		if len(rows) == 0 || rows[0].Revision != *expectedRevision {
+		if revision != *expectedRevision {
 			return competencymap.ImportResult{}, fault.New(fault.Conflict, "COMPETENCY_MAP_CHANGED", "Карта изменилась. Проверьте её состояние и повторите загрузку.")
 		}
 	}

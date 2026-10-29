@@ -158,6 +158,19 @@ func (q *Queries) LearningGetOutcomeForGeneration(ctx context.Context, arg Learn
 	return i, err
 }
 
+const learningGetSubjectActiveRevision = `-- name: LearningGetSubjectActiveRevision :one
+SELECT COALESCE(state.active_revision, 0)::bigint AS revision
+FROM subjects subject LEFT JOIN learning_subject_state state ON state.subject_id = subject.id
+WHERE subject.id = $1
+`
+
+func (q *Queries) LearningGetSubjectActiveRevision(ctx context.Context, id string) (int64, error) {
+	row := q.db.QueryRow(ctx, learningGetSubjectActiveRevision, id)
+	var revision int64
+	err := row.Scan(&revision)
+	return revision, err
+}
+
 const learningGetTaskProfile = `-- name: LearningGetTaskProfile :one
 SELECT
     task.id AS task_id, task.question, task.options, task.voice_instruction, task.audio_asset_id,

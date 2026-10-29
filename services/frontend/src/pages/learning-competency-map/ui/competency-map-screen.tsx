@@ -87,7 +87,6 @@ function CompetencyMapAdmin({
         void navigate({ to: '/', replace: true })
     })
   }, [missingMapCourse, navigate, refetchSubjects, selectedSubjectId])
-  const [confirming, setConfirming] = useState(false)
   const [confirmedRevision, setConfirmedRevision] = useState<number | null>(
     null,
   )
@@ -128,7 +127,12 @@ function CompetencyMapAdmin({
     setFile(selected)
   }
 
+  function submitMap(expectedRevision: number) {
+    if (file) upload.mutate({ file, subjectId, expectedRevision }, settleFile)
+  }
+
   const busy = upload.isPending
+  const mapUnavailable = busy || query.isFetching || !query.isSuccess
   const warningGroups = groupWarnings(upload.data?.warnings ?? [])
   const error = upload.error
   return (
@@ -233,34 +237,22 @@ function CompetencyMapAdmin({
             {file && (
               <div className={styles.actions}>
                 <AlertDialog.Root
-                  open={confirming}
-                  onOpenChange={setConfirming}
+                  open={confirmedRevision !== null}
+                  onOpenChange={(open) => {
+                    if (!open) setConfirmedRevision(null)
+                  }}
                 >
                   <Button
                     ref={submitRef}
                     size="3"
                     color="green"
                     className={styles.submit}
-                    disabled={
-                      busy ||
-                      query.isFetching ||
-                      !query.isSuccess ||
-                      query.isError
-                    }
+                    disabled={mapUnavailable}
                     onClick={() => {
                       if (!query.data) return
                       if (query.data.importedAt !== null) {
                         setConfirmedRevision(query.data.revision)
-                        setConfirming(true)
-                      } else
-                        upload.mutate(
-                          {
-                            file,
-                            subjectId,
-                            expectedRevision: query.data.revision,
-                          },
-                          settleFile,
-                        )
+                      } else submitMap(query.data.revision)
                     }}
                   >
                     <Check size={18} aria-hidden="true" />
@@ -289,28 +281,17 @@ function CompetencyMapAdmin({
                         <Button
                           color="red"
                           disabled={
-                            busy ||
-                            query.isFetching ||
-                            !query.isSuccess ||
+                            mapUnavailable ||
                             query.data?.revision !== confirmedRevision
                           }
                           onClick={() => {
                             if (
                               file &&
-                              !busy &&
-                              !query.isFetching &&
-                              query.isSuccess &&
+                              !mapUnavailable &&
                               confirmedRevision !== null &&
-                              query.data.revision === confirmedRevision
+                              query.data?.revision === confirmedRevision
                             )
-                              upload.mutate(
-                                {
-                                  file,
-                                  subjectId,
-                                  expectedRevision: confirmedRevision,
-                                },
-                                settleFile,
-                              )
+                              submitMap(confirmedRevision)
                           }}
                         >
                           {t('learningCompetencyMap.confirm')}

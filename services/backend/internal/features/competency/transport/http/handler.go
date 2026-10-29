@@ -2,6 +2,7 @@ package competencyhttp
 
 import (
 	"net/http"
+	"strconv"
 
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/competencymap"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/user"
@@ -46,11 +47,13 @@ func New(service *application.Service, maxUploadBytes int64) *Handler {
 // @Accept mpfd
 // @Produce json
 // @Param subject_id path string true "ID предмета"
+// @Param X-Expected-Map-Revision header integer false "Ожидаемая ревизия карты"
 // @Param file formData file true "Карта компетенций CSV или XLSX, до 25 МиБ"
 // @Success 200 {object} ImportResult
 // @Failure 401 {object} fault.Error
 // @Failure 403 {object} fault.Error
 // @Failure 404 {object} fault.Error
+// @Failure 409 {object} fault.Error
 // @Failure 413 {object} fault.Error
 // @Failure 415 {object} fault.Error
 // @Failure 422 {object} fault.Error
@@ -70,12 +73,21 @@ func (h *Handler) importForSubject(w http.ResponseWriter, r *http.Request, subje
 		httpx.Error(r.Context(), w, err)
 		return
 	}
+	var expectedRevision *int64
+	if raw := r.Header.Get("X-Expected-Map-Revision"); raw != "" {
+		revision, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil || revision < 0 {
+			httpx.Error(r.Context(), w, fault.Validation("X-Expected-Map-Revision", "Ожидается неотрицательная ревизия."))
+			return
+		}
+		expectedRevision = &revision
+	}
 	data, media, err := httpx.Upload(r, "file", h.maxUploadBytes)
 	if err != nil {
 		httpx.Error(r.Context(), w, err)
 		return
 	}
-	result, err := h.service.ImportForSubject(r.Context(), actor, subjectID, data, media)
+	result, err := h.service.ImportForSubject(r.Context(), actor, subjectID, data, media, expectedRevision)
 	if err != nil {
 		httpx.Error(r.Context(), w, err)
 		return

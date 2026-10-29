@@ -105,6 +105,7 @@ export async function readCompetencyMap(
 export async function importCompetencyMap(
   subjectId: string,
   file: File,
+  expectedRevision: number,
   signal?: AbortSignal,
 ): Promise<CompetencyMapImport> {
   // Browsers may supply an empty or generic MIME type. The backend expects CSV/XLSX media types.
@@ -119,6 +120,7 @@ export async function importCompetencyMap(
     {
       method: 'POST',
       credentials: 'include',
+      headers: { 'X-Expected-Map-Revision': String(expectedRevision) },
       body,
       signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
     },

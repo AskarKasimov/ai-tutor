@@ -25,7 +25,7 @@ func New(pool *pgxpool.Pool) *Repository {
 	return &Repository{pool: pool, queries: db.New(pool)}
 }
 
-func (r *Repository) Replace(ctx context.Context, subjectID, actorID string, parsed competencymap.Map, importedAt int64) (competencymap.ImportResult, error) {
+func (r *Repository) Replace(ctx context.Context, subjectID, actorID string, parsed competencymap.Map, importedAt int64, expectedRevision *int64) (competencymap.ImportResult, error) {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
 		return competencymap.ImportResult{}, err
@@ -37,6 +37,15 @@ func (r *Repository) Replace(ctx context.Context, subjectID, actorID string, par
 		return competencymap.ImportResult{}, fault.New(fault.NotFound, "SUBJECT_NOT_FOUND", "Предмет не найден.")
 	} else if err != nil {
 		return competencymap.ImportResult{}, err
+	}
+	if expectedRevision != nil {
+		revision, readErr := queries.LearningGetSubjectActiveRevision(ctx, subjectID)
+		if readErr != nil {
+			return competencymap.ImportResult{}, readErr
+		}
+		if revision != *expectedRevision {
+			return competencymap.ImportResult{}, fault.New(fault.Conflict, "COMPETENCY_MAP_CHANGED", "Карта изменилась. Проверьте её состояние и повторите загрузку.")
+		}
 	}
 	previousRevision, err := queries.LearningLockCompetencyMapRevision(ctx)
 	if err != nil {

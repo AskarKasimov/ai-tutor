@@ -409,3 +409,28 @@ func TestHTTPSCookieLifecycle(t *testing.T) {
 		}
 	}
 }
+
+func TestCompetencyImportRevisionContract(t *testing.T) {
+	data, err := os.ReadFile("../../../../api/openapi.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var spec map[string]any
+	if err := yaml.Unmarshal(data, &spec); err != nil {
+		t.Fatal(err)
+	}
+	op := spec["paths"].(map[string]any)["/learn/admin/subjects/{subject_id}/competency-map/import"].(map[string]any)["post"].(map[string]any)
+	found := false
+	for _, item := range op["parameters"].([]any) {
+		param := item.(map[string]any)
+		if param["name"] == "X-Expected-Map-Revision" && param["in"] == "header" && param["required"] != true && param["schema"].(map[string]any)["type"] == "integer" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("optional revision header missing from contract")
+	}
+	if _, ok := op["responses"].(map[string]any)["409"]; !ok {
+		t.Fatal("409 response missing from contract")
+	}
+}

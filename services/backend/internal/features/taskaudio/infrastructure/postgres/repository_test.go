@@ -453,13 +453,13 @@ func TestAudioQueueUsesEachSubjectsActiveRevisionAcrossImportAndRepair(t *testin
 		t.Fatal(err)
 	}
 	maps := competencypostgres.New(pool)
-	if _, err := maps.Replace(ctx, "subject:test", ownerID, audioMap("A", 2), 1); err != nil {
+	if _, err := maps.Replace(ctx, "subject:test", ownerID, audioMap("A", 2), 1, nil); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := pool.Exec(ctx, `INSERT INTO subjects(id,name,created_at) VALUES ('subject:b','Subject B',1)`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := maps.Replace(ctx, "subject:b", ownerID, audioMap("B", 1), 2); err != nil {
+	if _, err := maps.Replace(ctx, "subject:b", ownerID, audioMap("B", 1), 2, nil); err != nil {
 		t.Fatal(err)
 	}
 	assets := map[string][]string{}
@@ -524,7 +524,7 @@ JOIN learning_subject_state state ON state.subject_id=subject.id AND state.activ
 	if _, err := pool.Exec(ctx, `INSERT INTO learning_variant_tasks(id,variant_id,live_task_id,source_task_id_snapshot,audio_asset_id,competency_position,slot,role,task_snapshot,profile_snapshot) VALUES ('historical-audio-task','historical-audio',$1,$1,$2,1,0,'main','{"question":"Old A task"}','{}')`, taskByAsset[claimAProcessing.Asset.ID], claimAProcessing.Asset.ID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := maps.Replace(ctx, "subject:test", ownerID, audioMap("A replacement", 1), 3); err != nil {
+	if _, err := maps.Replace(ctx, "subject:test", ownerID, audioMap("A replacement", 1), 3, nil); err != nil {
 		t.Fatal(err)
 	}
 	var staleAStatus, bStatus string

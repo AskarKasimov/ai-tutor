@@ -21,7 +21,7 @@ import {
   Upload,
   X,
 } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { CompetencyMapApiError } from '@/entities/learning-competency-map'
 import { useAuth } from '@/features/auth'
@@ -87,6 +87,21 @@ function CompetencyMapAdmin({
         void navigate({ to: '/', replace: true })
     })
   }, [missingMapCourse, navigate, refetchSubjects, selectedSubjectId])
+  const [confirmedRevision, setConfirmedRevision] = useState<number | null>(
+    null,
+  )
+  const [revisionChanged, setRevisionChanged] = useState(false)
+  useEffect(() => {
+    if (
+      confirmedRevision !== null &&
+      query.isSuccess &&
+      query.data.revision !== confirmedRevision
+    ) {
+      setConfirmedRevision(null)
+      setRevisionChanged(true)
+    }
+  }, [confirmedRevision, query.isSuccess, query.data])
+  const submitRef = useRef<HTMLButtonElement>(null)
   const [file, setFile] = useState<File | null>(null)
   const [fileError, setFileError] = useState<string | null>(null)
 
@@ -105,6 +120,7 @@ function CompetencyMapAdmin({
 
   function selectFile(selected: File | undefined) {
     upload.reset()
+    setRevisionChanged(false)
     setFile(null)
     setFileError(null)
     if (!selected) return
@@ -123,7 +139,12 @@ function CompetencyMapAdmin({
     setFile(selected)
   }
 
+  function submitMap(expectedRevision: number) {
+    if (file) upload.mutate({ file, subjectId, expectedRevision }, settleFile)
+  }
+
   const busy = upload.isPending
+  const mapUnavailable = busy || query.isFetching || !query.isSuccess
   const warningGroups = groupWarnings(upload.data?.warnings ?? [])
   const error = upload.error
   return (
@@ -191,6 +212,11 @@ function CompetencyMapAdmin({
               {t('learningCompetencyMap.edit')}
             </Heading>
             <MapFileZone file={file} disabled={busy} onSelect={selectFile} />
+            {revisionChanged && (
+              <Text as="p" role="alert" color="red" size="2">
+                {t('learningCompetencyMap.revisionChanged')}
+              </Text>
+            )}
             {fileError && (
               <Text as="p" role="alert" color="red" size="2">
                 {fileError}
@@ -227,19 +253,36 @@ function CompetencyMapAdmin({
             )}
             {file && (
               <div className={styles.actions}>
-                <AlertDialog.Root>
-                  <AlertDialog.Trigger>
-                    <Button
-                      size="3"
-                      color="green"
-                      className={styles.submit}
-                      disabled={!file || busy}
-                    >
-                      <Check size={18} aria-hidden="true" />
-                      {t('learningCompetencyMap.submitEdit')}
-                    </Button>
-                  </AlertDialog.Trigger>
-                  <AlertDialog.Content maxWidth="440px">
+                <AlertDialog.Root
+                  open={confirmedRevision !== null}
+                  onOpenChange={(open) => {
+                    if (!open) setConfirmedRevision(null)
+                  }}
+                >
+                  <Button
+                    ref={submitRef}
+                    size="3"
+                    color="green"
+                    className={styles.submit}
+                    disabled={mapUnavailable}
+                    onClick={() => {
+                      if (!query.data) return
+                      setRevisionChanged(false)
+                      if (query.data.importedAt !== null) {
+                        setConfirmedRevision(query.data.revision)
+                      } else submitMap(query.data.revision)
+                    }}
+                  >
+                    <Check size={18} aria-hidden="true" />
+                    {t('learningCompetencyMap.submitEdit')}
+                  </Button>
+                  <AlertDialog.Content
+                    maxWidth="440px"
+                    onCloseAutoFocus={(event) => {
+                      event.preventDefault()
+                      submitRef.current?.focus()
+                    }}
+                  >
                     <AlertDialog.Title>
                       {t('learningCompetencyMap.confirmTitle')}
                     </AlertDialog.Title>
@@ -255,9 +298,18 @@ function CompetencyMapAdmin({
                       <AlertDialog.Action>
                         <Button
                           color="red"
+                          disabled={
+                            mapUnavailable ||
+                            query.data?.revision !== confirmedRevision
+                          }
                           onClick={() => {
-                            if (file && !busy)
-                              upload.mutate({ file, subjectId }, settleFile)
+                            if (
+                              file &&
+                              !mapUnavailable &&
+                              confirmedRevision !== null &&
+                              query.data?.revision === confirmedRevision
+                            )
+                              submitMap(confirmedRevision)
                           }}
                         >
                           {t('learningCompetencyMap.confirm')}

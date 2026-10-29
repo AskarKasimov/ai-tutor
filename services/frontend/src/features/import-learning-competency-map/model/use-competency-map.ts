@@ -101,9 +101,11 @@ export function useImportCompetencyMapMutation(
     },
     mutationFn: async ({
       file,
+      expectedRevision,
       subjectId: targetSubjectId,
     }: {
       file: File
+      expectedRevision: number
       subjectId: string
     }) => {
       const controller = new AbortController()
@@ -117,6 +119,7 @@ export function useImportCompetencyMapMutation(
         return await competencyMap.import(
           targetSubjectId,
           file,
+          expectedRevision,
           controller.signal,
         )
       } finally {

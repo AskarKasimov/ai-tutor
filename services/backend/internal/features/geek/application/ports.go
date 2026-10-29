@@ -65,7 +65,6 @@ type Transcriptions interface {
 }
 
 type QuestionRequest struct {
-	Rubric            *exam.RubricResult
 	AddressPreference exam.AddressPreference
 	Hint              bool          // requested context, not a ready-made answer
 	Kind              exam.TurnKind // question, followup or rephrase

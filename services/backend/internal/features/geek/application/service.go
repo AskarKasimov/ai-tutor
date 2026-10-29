@@ -455,7 +455,7 @@ func (s *Service) say(ctx context.Context, session *exam.Session, step exam.Step
 		text = node.PreparedRephrase()
 	} else {
 		var err error
-		text, err = s.examiner.Question(ctx, QuestionRequest{Rubric: session.Exam.Nodes[node.ID].Rubric, AddressPreference: session.AddressPreference, Hint: step.Hint, Kind: step.Kind, Node: node, Dialogue: session.Dialogue(node.ID)})
+		text, err = s.examiner.Question(ctx, QuestionRequest{AddressPreference: session.AddressPreference, Hint: step.Hint, Kind: step.Kind, Node: node, Dialogue: session.Dialogue(node.ID)})
 		if err != nil {
 			return modelError(err)
 		}
@@ -532,23 +532,6 @@ func answerFingerprint(sessionID string, a Answer) (string, error) {
 }
 
 func checkEvaluation(e exam.Evaluation, session exam.Session) error {
-	if session.Exam.Current != nil {
-		node, _ := session.Exam.Graph.Node(session.Exam.Current.NodeID)
-		spec, err := exam.ParseRubric(node.AssessmentGuidance)
-		if err != nil {
-			return err
-		}
-		if e.Verdict == exam.VerdictAnswered && len(spec) > 0 {
-			if e.Rubric == nil {
-				return errors.New("missing rubric result")
-			}
-			if err := e.Rubric.Validate(spec, session.Dialogue(node.ID)); err != nil {
-				return err
-			}
-		} else if e.Rubric != nil {
-			return errors.New("unexpected rubric result")
-		}
-	}
 	switch e.Verdict {
 	case exam.VerdictAnswered, exam.VerdictDontKnow, exam.VerdictInsufficient, exam.VerdictHintRequested, exam.VerdictAddressCorrection, exam.VerdictClarifyQuestion, exam.VerdictPause:
 	default:

@@ -90,13 +90,6 @@ func (g *Gateway) Question(ctx context.Context, r application.QuestionRequest) (
 }
 
 func (g *Gateway) Evaluate(ctx context.Context, r application.EvaluationRequest) (application.Assessment, error) {
-	spec, specErr := exam.ParseRubric(r.Node.AssessmentGuidance)
-	if specErr != nil {
-		return application.Assessment{}, specErr
-	}
-	if len(spec) > 0 {
-		return g.evaluateRubric(ctx, r, spec)
-	}
 	var result application.Assessment
 	// The student waits for the evaluation, so it uses the fast low pool too.
 	err := g.complete(ctx, "evaluate:"+string(r.Kind), llmgatewayv1.Complexity_COMPLEXITY_LOW, true, evaluationPrompt(r), func(content []byte) error {
@@ -192,12 +185,6 @@ func (g *Gateway) Feedback(ctx context.Context, r application.FeedbackRequest) (
 		return transition(r, rephraseTransitions), nil
 	}
 	if !r.Closed {
-		if r.Result.Rubric != nil {
-			if r.Result.Rubric.Complete() {
-				return transition(r, soundFollowupTransitions), nil
-			}
-			return transition(r, partialFollowupTransitions), nil
-		}
 		// Only the actual followup asks for the missing knowledge. Generating
 		// a second reaction with the same model repeatedly leaked that answer.
 		if k := r.Result.Criteria; k != nil && k.K1 == 2 && k.K2 == 2 {
@@ -232,15 +219,6 @@ func (g *Gateway) Feedback(ctx context.Context, r application.FeedbackRequest) (
 func (g *Gateway) complete(ctx context.Context, operation string, level llmgatewayv1.Complexity, urgent bool, prompt string, parse func([]byte) error) error {
 	logger := httpx.LoggerFromContext(ctx).With(zap.String("llm_operation", operation), zap.String("complexity", level.String()), zap.Bool("urgent", urgent))
 	system := systemPrompt
-	if operation == "route_rubric" {
-		system = rubricRouterSystemPrompt
-	}
-	if operation == "review_rubric" {
-		system = rubricReviewSystemPrompt
-	}
-	if strings.HasPrefix(operation, "evaluate_rubric:") {
-		system = rubricSystemPrompt
-	}
 	if operation == "feedback" {
 		system = feedbackSystemPrompt
 	}
@@ -279,12 +257,6 @@ func (g *Gateway) complete(ctx context.Context, operation string, level llmgatew
 			return nil
 		}
 		last = fmt.Errorf("invalid model answer: %w", err)
-		if attempt == 1 && (strings.HasPrefix(operation, "evaluate_rubric:") || operation == "review_rubric") {
-			request.Messages = append(request.Messages,
-				&llmgatewayv1.Message{Role: llmgatewayv1.Role_ROLE_ASSISTANT, Content: proto.String(content)},
-				&llmgatewayv1.Message{Role: llmgatewayv1.Role_ROLE_USER, Content: proto.String("Исправь предыдущий JSON: " + err.Error() + ". Верни весь результат по исходной схеме, включая answer_complete и все пункты marks для answered. Не меняй шкалу, используй реальные строки студента. Для служебного verdict marks должны быть пустыми.")},
-			)
-		}
 		if operation == "feedback" && attempt == 1 {
 			request.Messages = append(request.Messages,
 				&llmgatewayv1.Message{Role: llmgatewayv1.Role_ROLE_ASSISTANT, Content: proto.String(content)},

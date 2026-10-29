@@ -12,7 +12,7 @@ import (
 )
 
 type Repository interface {
-	Replace(ctx context.Context, subjectID, actorID string, parsed competencymap.Map, importedAt int64) (competencymap.ImportResult, error)
+	Replace(ctx context.Context, subjectID, actorID string, parsed competencymap.Map, importedAt int64, expectedRevision *int64) (competencymap.ImportResult, error)
 	Read(ctx context.Context, subjectID string) (competencymap.Snapshot, error)
 }
 
@@ -42,7 +42,7 @@ func (s *Service) Authorize(actor user.User) error {
 	return nil
 }
 
-func (s *Service) ImportForSubject(ctx context.Context, actor user.User, subjectID string, data []byte, media string) (competencymap.ImportResult, error) {
+func (s *Service) ImportForSubject(ctx context.Context, actor user.User, subjectID string, data []byte, media string, expectedRevision *int64) (competencymap.ImportResult, error) {
 	if err := s.Authorize(actor); err != nil {
 		return competencymap.ImportResult{}, err
 	}
@@ -55,5 +55,5 @@ func (s *Service) ImportForSubject(ctx context.Context, actor user.User, subject
 	if err != nil {
 		return competencymap.ImportResult{}, err
 	}
-	return s.repo.Replace(ctx, subjectID, actor.ID, parsed, s.now().Unix())
+	return s.repo.Replace(ctx, subjectID, actor.ID, parsed, s.now().Unix(), expectedRevision)
 }

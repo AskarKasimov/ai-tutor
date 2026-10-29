@@ -88,6 +88,9 @@ function CompetencyMapAdmin({
     })
   }, [missingMapCourse, navigate, refetchSubjects, selectedSubjectId])
   const [confirming, setConfirming] = useState(false)
+  const [confirmedRevision, setConfirmedRevision] = useState<number | null>(
+    null,
+  )
   const submitRef = useRef<HTMLButtonElement>(null)
   const [file, setFile] = useState<File | null>(null)
   const [fileError, setFileError] = useState<string | null>(null)
@@ -245,8 +248,19 @@ function CompetencyMapAdmin({
                       query.isError
                     }
                     onClick={() => {
-                      if (query.data?.importedAt !== null) setConfirming(true)
-                      else upload.mutate({ file, subjectId }, settleFile)
+                      if (!query.data) return
+                      if (query.data.importedAt !== null) {
+                        setConfirmedRevision(query.data.revision)
+                        setConfirming(true)
+                      } else
+                        upload.mutate(
+                          {
+                            file,
+                            subjectId,
+                            expectedRevision: query.data.revision,
+                          },
+                          settleFile,
+                        )
                     }}
                   >
                     <Check size={18} aria-hidden="true" />
@@ -274,9 +288,29 @@ function CompetencyMapAdmin({
                       <AlertDialog.Action>
                         <Button
                           color="red"
+                          disabled={
+                            busy ||
+                            query.isFetching ||
+                            !query.isSuccess ||
+                            query.data?.revision !== confirmedRevision
+                          }
                           onClick={() => {
-                            if (file && !busy)
-                              upload.mutate({ file, subjectId }, settleFile)
+                            if (
+                              file &&
+                              !busy &&
+                              !query.isFetching &&
+                              query.isSuccess &&
+                              confirmedRevision !== null &&
+                              query.data.revision === confirmedRevision
+                            )
+                              upload.mutate(
+                                {
+                                  file,
+                                  subjectId,
+                                  expectedRevision: confirmedRevision,
+                                },
+                                settleFile,
+                              )
                           }}
                         >
                           {t('learningCompetencyMap.confirm')}

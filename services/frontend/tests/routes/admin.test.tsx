@@ -616,6 +616,66 @@ it('waits for a fresh map state before submitting a cached empty map', async () 
   expect(await screen.findByRole('alertdialog')).toBeVisible()
 })
 
+it('refreshes a stale empty map after an import conflict and asks before retrying', async () => {
+  const fetch = backend()
+  renderApp('/admin/courses/subject-b')
+  await screen.findByText('Карта ещё не загружена.')
+  const originalFetch = fetch.getMockImplementation()!
+  let conflict = false
+  fetch.mockImplementation((url, init) => {
+    if (url.endsWith('/competency-map/import')) {
+      conflict = true
+      return Promise.resolve(
+        Response.json({ message: 'Карта изменилась.' }, { status: 409 }),
+      )
+    }
+    if (
+      conflict &&
+      url.includes('/learn/subjects/') &&
+      url.endsWith('/competency-map')
+    )
+      return Promise.resolve(
+        Response.json({ revision: 1, imported_at: 2, competencies: [] }),
+      )
+    return originalFetch(url, init)
+  })
+  fireEvent.change(screen.getByLabelText('Файл карты компетенций'), {
+    target: { files: [new File(['map'], 'map.csv', { type: 'text/csv' })] },
+  })
+  fireEvent.click(screen.getByRole('button', { name: 'Подтвердить изменения' }))
+  await screen.findByText('Карта изменилась.')
+  await screen.findByText('Карта компетенций успешно загружена')
+  const submit = screen.getByRole('button', { name: 'Подтвердить изменения' })
+  await waitFor(() => expect(submit).toBeEnabled())
+  fireEvent.click(submit)
+  expect(await screen.findByRole('alertdialog')).toBeVisible()
+})
+
+it('blocks confirmation while the map state is refreshing', async () => {
+  const fetch = backend({ learningMapExists: true })
+  const router = renderApp('/admin/courses/subject-b')
+  await screen.findByText('Карта компетенций успешно загружена')
+  fireEvent.change(screen.getByLabelText('Файл карты компетенций'), {
+    target: { files: [new File(['map'], 'map.csv', { type: 'text/csv' })] },
+  })
+  fireEvent.click(screen.getByRole('button', { name: 'Подтвердить изменения' }))
+  const originalFetch = fetch.getMockImplementation()!
+  fetch.mockImplementation((url, init) => {
+    if (url.includes('/learn/subjects/') && url.endsWith('/competency-map'))
+      return new Promise<Response>(() => {})
+    return originalFetch(url, init)
+  })
+  act(() => {
+    void router.options.context.queryClient.invalidateQueries()
+  })
+  await waitFor(() =>
+    expect(screen.getByRole('button', { name: 'Перезаписать' })).toBeDisabled(),
+  )
+  expect(
+    fetch.mock.calls.some(([url]) => url.endsWith('/competency-map/import')),
+  ).toBe(false)
+})
+
 it('returns focus to the submit button after cancelling replacement', async () => {
   backend({ learningMapExists: true })
   renderApp('/admin/courses/subject-b')

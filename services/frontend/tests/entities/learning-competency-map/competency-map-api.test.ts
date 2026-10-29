@@ -37,11 +37,14 @@ it('imports into the explicit encoded subject and preserves multipart file data'
   )
   vi.stubGlobal('fetch', fetchMock)
   const file = new File(['map'], 'x.csv')
-  await importCompetencyMap('subject:a/b', file)
+  await importCompetencyMap('subject:a/b', file, 7)
   expect(fetchMock.mock.calls[0][0]).toBe(
     '/api/v1/learn/admin/subjects/subject%3Aa%2Fb/competency-map/import',
   )
   expect(fetchMock.mock.calls[0][1].method).toBe('POST')
+  expect(fetchMock.mock.calls[0][1].headers).toEqual({
+    'X-Expected-Map-Revision': '7',
+  })
   expect(
     (fetchMock.mock.calls[0][1].body as FormData).get('file'),
   ).toMatchObject({ name: 'x.csv', type: 'text/csv' })

@@ -15,6 +15,7 @@ export type CompetencyMapDependencies = {
     import(
       subjectId: string,
       file: File,
+      expectedRevision: number,
       signal: AbortSignal,
     ): Promise<CompetencyMapImport>
   }

@@ -33,7 +33,7 @@ var rubricStart = regexp.MustCompile(`(?mi)^[\t ]*(?:Пункт рубрики\s
 // Recognize unsupported numeric tokens too, so a mixed scale cannot silently
 // lose a fractional, negative or unit-suffixed level and change its maximum.
 var rubricLevel = regexp.MustCompile(`(?i)(?:^|[:;\n])\s*([+−-]?\d+(?:[.,]\d+)?)\s*(балл[а-я]*)?\s*[—–−-]`)
-var rubricMaximum = regexp.MustCompile(`(?i)макс\.?(?:имум)?\s*[:=]?\s*(\d+)`)
+var rubricMaximum = regexp.MustCompile(`(?i)макс\.?(?:имум)?\s*[:=]?\s*([+−-]?\d+(?:[.,]\d+)?)`)
 var rubricPoints = regexp.MustCompile(`(?i)\d+\s*балл`)
 
 // ParseRubric reads only explicit numeric levels; it never invents criteria or
@@ -41,7 +41,9 @@ var rubricPoints = regexp.MustCompile(`(?i)\d+\s*балл`)
 func ParseRubric(text string) ([]RubricItem, error) {
 	text = strings.ReplaceAll(text, "\r\n", "\n")
 	starts := rubricStart.FindAllStringSubmatchIndex(text, -1)
-	if len(starts) == 0 && !rubricMaximum.MatchString(text) && !rubricLevel.MatchString(text) && !rubricPoints.MatchString(text) {
+	// Criterion labels alone do not declare a numeric scale. Keep qualitative
+	// K1/K2 guidance on the legacy evaluator, but reject incomplete numeric items.
+	if !rubricMaximum.MatchString(text) && !rubricLevel.MatchString(text) && !rubricPoints.MatchString(text) {
 		return nil, nil
 	}
 	var items []RubricItem
@@ -110,8 +112,8 @@ func ParseRubric(text string) ([]RubricItem, error) {
 func checkRubricMaximum(text string, total int) error {
 	for _, m := range rubricMaximum.FindAllStringSubmatch(text, -1) {
 		declared, err := strconv.Atoi(m[1])
-		if err != nil {
-			return fmt.Errorf("invalid rubric maximum: %w", err)
+		if err != nil || declared < 0 || strings.HasPrefix(m[1], "+") {
+			return fmt.Errorf("unsupported rubric maximum %q", m[1])
 		}
 		if total != declared {
 			return fmt.Errorf("rubric maximum %d differs from scoring total %d", declared, total)

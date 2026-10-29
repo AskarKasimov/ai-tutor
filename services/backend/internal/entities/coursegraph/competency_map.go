@@ -486,7 +486,7 @@ func newMapTopic(o mapOutcome, role string, requires []string) mapTopic {
 
 // scoringLine starts the scoring part of the criteria: «Балл (макс. 1)» or an
 // analytic rubric with its own К1, К2…, which are not Geek's К1–К4.
-var scoringLine = regexp.MustCompile(`(?i)^(Балл|Аналитическая рубрика|[КK]\d+(?:\s|:)|\d+\s*(?:балл|[—–−-]))`)
+var scoringLine = regexp.MustCompile(`(?i)^(Балл|Аналитическая рубрика|[КK]\d+(?:\s|:)|[+−-]?\d+(?:[.,]\d+)?\s*(?:балл|[—–−-]))`)
 
 var rubricCriterion = regexp.MustCompile(`(?i)^[КK](\d+)(\s|:)`)
 

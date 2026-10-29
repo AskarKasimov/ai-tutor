@@ -13,6 +13,43 @@ import (
 	geekgraph "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/geek/infrastructure/graph"
 )
 
+func TestRubricQuestionsPreserveAuthoredCalculation(t *testing.T) {
+	n := exam.Node{ID: "calculation", Questions: []string{"Сравни штраф 50 с выигрышем 10 и объясни выбор."}, AssessmentGuidance: "Балл: 0 — нет; 1 — показано сравнение"}
+	spec, err := exam.ParseRubric(n.AssessmentGuidance)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := &exam.RubricResult{Items: []exam.RubricMark{{RubricItem: spec[0], Score: 0, Reason: "Сравнение отсутствует"}}}
+	for _, kind := range []exam.TurnKind{exam.KindRephrase, exam.KindFollowup} {
+		p := questionPrompt(application.QuestionRequest{Kind: kind, Node: n, Rubric: result, Dialogue: []exam.Turn{{Speaker: exam.SpeakerGeek, Text: n.MainQuestion()}}})
+		if strings.Contains(p, "Не проси решить или посчитать задачу") || strings.Contains(p, "а не решением задачи") {
+			t.Errorf("%s prohibits the calculation required by the rubric", kind)
+		}
+		if !strings.Contains(p, n.MainQuestion()) || !strings.Contains(p, "Экзамен устный") {
+			t.Errorf("%s lost the original question or spoken format", kind)
+		}
+	}
+}
+
+func TestImportDoesNotHideUnsupportedLeadingScoringLevels(t *testing.T) {
+	for _, level := range []string{"-1", "−1", "0.5", "0,5", "+1"} {
+		criteria := "Эталон: ответ.\n" + level + " — частичный ответ\n0 — нет; 1 — да"
+		header := []string{"Компетенция", "Составляющая", "Образовательный результат", "Таксономия", "Важность", "Что должно войти в тест", "Задание 1", "Критерии оценивания 1", "ID темы", "Пререквизиты"}
+		rows := [][]string{header, {"ИИ", "Агенты", "Выбор агента", "Понимать", "3", "TRUE", "Какой агент и почему?", criteria, "agent", ""}}
+		built, err := coursegraph.BuildMapGraph([]coursegraph.MapSheet{{Name: "Карта", Rows: rows}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		graph, ok, err := geekgraph.Decode(built.Graph)
+		if err != nil || !ok {
+			t.Fatalf("decode: %v, %v", ok, err)
+		}
+		if err := graph.ValidateRubrics(); err == nil {
+			t.Errorf("unsupported leading level %q escaped rubric validation", level)
+		}
+	}
+}
+
 func TestImportedColonCriteriaRemainIndependentRubricItems(t *testing.T) {
 	for _, label := range []string{"К", "K", "к"} {
 		criteria := fmt.Sprintf("Эталон: ответ.\n%s1: 0 — нет; 2 — да\n%s2: 0 — нет; 2 — да", label, label)

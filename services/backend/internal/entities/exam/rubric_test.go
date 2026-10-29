@@ -62,6 +62,29 @@ func TestParseRubricAcceptsUnlabelledExplicitScale(t *testing.T) {
 	}
 }
 
+func TestParseRubricKeepsLabelledNonNumericGuidanceLegacy(t *testing.T) {
+	for _, text := range []string{
+		"К1: корректность объяснения\nК2: обоснование своими словами",
+		"Пункт рубрики 1 Полнота ответа\nПункт рубрики 2 Уместный пример",
+	} {
+		if items, err := ParseRubric(text); err != nil || len(items) != 0 {
+			t.Fatalf("non-numeric guidance rejected: %+v, %v", items, err)
+		}
+	}
+	if _, err := ParseRubric("К1: 0 — нет; 1 — да\nК2: обоснование своими словами"); err == nil {
+		t.Fatal("partially numeric rubric must not fall back to legacy grading")
+	}
+}
+
+func TestParseRubricRejectsUnsupportedMaximum(t *testing.T) {
+	for _, maximum := range []string{"1.5", "1,5", "-1", "−1", "+1"} {
+		text := "Балл (макс. " + maximum + "): 0 — нет; 1 — да"
+		if items, err := ParseRubric(text); err == nil {
+			t.Errorf("invalid maximum %q accepted: %+v", maximum, items)
+		}
+	}
+}
+
 func TestParseRubricRejectsPartiallySupportedScalesAndOverflow(t *testing.T) {
 	for _, text := range []string{
 		"Балл: 0 — нет; 1 балл — частично; 2 — верно",

@@ -543,7 +543,7 @@ test('one browser context switches modes while student and admin sessions stay s
   await expect(page.getByLabel('Файл карты компетенций')).toHaveCount(0)
   const graphCard = page.locator('section[aria-labelledby="graph-title"]')
   await expect(graphCard).toContainText(
-    'Вместо материалов граф можно собрать по карте компетенций',
+    'Вместо материалов загрузите карту компетенций',
   )
   await expect(graphCard).toContainText('Курс готов для студентов.')
   await expect(graphCard).toContainText('Искусственный интеллект')

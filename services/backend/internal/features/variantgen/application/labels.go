@@ -2,6 +2,7 @@ package application
 
 import (
 	"context"
+	"time"
 
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/fault"
 )
@@ -9,6 +10,14 @@ import (
 // GraphLabeler generates display names without changing the source map.
 type GraphLabeler interface {
 	Labels(context.Context, []string) (map[string]string, error)
+	RequestBudget(int) time.Duration
+}
+
+func (s *Service) GraphLabelsBudget(titleCount int) time.Duration {
+	if s.labels == nil || titleCount == 0 {
+		return 0
+	}
+	return s.labels.RequestBudget(titleCount)
 }
 
 func (s *Service) WithGraphLabels(labels GraphLabeler) *Service {

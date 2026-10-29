@@ -397,3 +397,46 @@ it('returns to subject selection after refresh during a pending start and reuses
   expect(variantRequests).toHaveLength(2)
   expect(variantRequests[1].key).toBe(variantRequests[0].key)
 })
+
+it('previews the current map before restarting a diagnostic from training', async () => {
+  const requests: string[] = []
+  vi.mocked(fetch).mockImplementation(async (url, init) => {
+    const path = String(url)
+    requests.push(`${init?.method ?? 'GET'} ${path}`)
+    if (path.endsWith('/learning-state'))
+      return Response.json({
+        subject_id: 'subject-1',
+        subject_name: 'Предмет A',
+        diagnostic_status: 'completed',
+        diagnostic_completed: true,
+        training_available: true,
+        diagnostic_session_id: 'previous-diagnostic',
+      })
+    return backendResponse(path, init)
+  })
+  const router = createRouter({
+    context: { queryClient: createQueryClient() },
+    history: createMemoryHistory({ initialEntries: ['/learn'] }),
+    routeTree,
+  })
+  render(<RouterProvider router={router} />)
+  expect(
+    await screen.findByRole('button', { name: 'Продолжить обучение' }),
+  ).toBeEnabled()
+  expect(
+    await screen.findByRole('heading', { name: 'Ваш путь обучения' }),
+  ).toBeVisible()
+  expect(await screen.findByLabelText('Выбор модели')).toBeInTheDocument()
+  expect(
+    requests.some((r) => r.startsWith('POST ') && r.endsWith('/variants')),
+  ).toBe(false)
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Пройти проверку заново' }),
+  )
+  expect(
+    await screen.findByRole('heading', { name: 'Вопрос о классификации' }),
+  ).toBeVisible()
+  expect(
+    requests.filter((r) => r.startsWith('POST ') && r.endsWith('/variants')),
+  ).toHaveLength(1)
+})

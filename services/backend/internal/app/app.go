@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"time"
 
-	db "github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/postgres/sqlcgen"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
@@ -265,7 +264,7 @@ func (a *App) Handler() http.Handler {
 	learningSubjects := subjecthttp.New(subjectapp.New(subjectpg.New(a.pool), security.IDGenerator{}, a.now))
 	competencyHandlers := competencyhttp.New(competencyapp.New(competencypg.New(a.pool), &csvparser.Parser{}, a.now), a.cfg.MaxUploadBytes)
 	variantHandlers := variantgenhttp.New(variantgenapp.New(a.variantRepository, variantgenrandom.Chooser{}, security.IDGenerator{}, a.now).
-		WithGraphLabels(variantgenlabels.New(db.New(a.pool), a.gatewayClient, a.cfg.LLMTimeout)))
+		WithGraphLabels(variantgenlabels.New(variantgenlabels.NewPostgresStore(a.pool), a.gatewayClient, a.cfg.LLMTimeout)))
 
 	mux := http.NewServeMux()
 	examMux := http.NewServeMux()

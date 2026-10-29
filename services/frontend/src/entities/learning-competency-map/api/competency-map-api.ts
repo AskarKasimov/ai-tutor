@@ -171,7 +171,9 @@ export async function readCompetencyMapOutline(
     `${apiBase}/subjects/${encodeURIComponent(subjectId)}/diagnostic-outline`,
     {
       credentials: 'include',
-      signal: AbortSignal.any([signal, AbortSignal.timeout(30_000)]),
+      // The server budgets queue time and each LLM batch separately.
+      // Keep navigation/logout cancellation, without a shorter browser deadline.
+      signal,
     },
   )
   const parsed = outlineSchema.safeParse(await readResponse(response))

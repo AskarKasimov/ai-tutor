@@ -4,11 +4,14 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/fault"
 )
 
 type failingLabels struct{}
+
+func (failingLabels) RequestBudget(int) time.Duration { return time.Minute }
 
 func (failingLabels) Labels(context.Context, []string) (map[string]string, error) {
 	return nil, errors.New("gateway is down")

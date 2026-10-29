@@ -20,6 +20,8 @@ import (
 
 // Bump the version whenever the prompt or output validation changes.
 const version = "short-topic-v1"
+const batchSize = 24
+const storeTimeout = 10 * time.Second
 const systemPrompt = `Сократи названия узлов учебного графа до понятных студенту названий тем на русском языке.
 Каждое название: обычно 2–5 слов, максимум 6 слов и 80 символов. Например: «Нейронные сети», «Линейная регрессия», «Обучение без учителя».
 Сохраняй предметный смысл и различия между темами. Не добавляй тем, которых нет в исходном названии. Уже понятные короткие названия оставляй без изменений.
@@ -29,7 +31,7 @@ const systemPrompt = `Сократи названия узлов учебног�
 
 type Store interface {
 	LearningReadGraphLabels(context.Context, []string) ([]db.LearningGraphLabel, error)
-	LearningSaveGraphLabel(context.Context, db.LearningSaveGraphLabelParams) error
+	SaveGraphLabels(context.Context, []db.LearningSaveGraphLabelParams) error
 }
 
 type Client struct {
@@ -40,7 +42,17 @@ type Client struct {
 }
 
 func New(store Store, gateway pb.GatewayClient, timeout time.Duration) *Client {
-	return &Client{store: store, gateway: gateway, timeout: min(timeout, 25*time.Second), gate: make(chan struct{}, 1)}
+	if timeout <= 0 {
+		timeout = 120 * time.Second
+	}
+	return &Client{store: store, gateway: gateway, timeout: timeout, gate: make(chan struct{}, 1)}
+}
+
+// RequestBudget covers one queue wait, a full timeout per batch, three bounded
+// database operations, and time to write the HTTP response. Names may include
+// duplicates or cache hits, so this is a conservative upper bound.
+func (c *Client) RequestBudget(titleCount int) time.Duration {
+	return time.Duration(1+(titleCount+batchSize-1)/batchSize)*c.timeout + 3*storeTimeout + 5*time.Second
 }
 
 func cacheKey(title string) string {
@@ -49,11 +61,6 @@ func cacheKey(title string) string {
 }
 
 func (c *Client) Labels(ctx context.Context, titles []string) (map[string]string, error) {
-	if c.timeout > 0 {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, c.timeout)
-		defer cancel()
-	}
 	unique, keys := []string{}, []string{}
 	seen := map[string]bool{}
 	for _, title := range titles {
@@ -71,35 +78,47 @@ func (c *Client) Labels(ctx context.Context, titles []string) (map[string]string
 		return result, nil
 	}
 	// Serialize cache misses; cache hits do not wait for other model requests.
+	waitCtx, cancelWait := context.WithTimeout(ctx, c.timeout)
 	select {
 	case c.gate <- struct{}{}:
+		cancelWait()
 		defer func() { <-c.gate }()
-	case <-ctx.Done():
-		return nil, ctx.Err()
+	case <-waitCtx.Done():
+		err := waitCtx.Err()
+		cancelWait()
+		return nil, err
 	}
 	// Another request may have filled the cache while this one was waiting.
 	result, missing, err = c.readCache(ctx, unique, keys)
 	if err != nil {
 		return nil, err
 	}
-	for start := 0; start < len(missing); start += 24 {
-		batch := missing[start:min(start+24, len(missing))]
+	pending := make([]db.LearningSaveGraphLabelParams, 0, len(missing))
+	for start := 0; start < len(missing); start += batchSize {
+		batch := missing[start:min(start+batchSize, len(missing))]
 		labels, err := c.generate(ctx, batch)
 		if err != nil {
 			return nil, err
 		}
-		// Validate the complete batch before saving any of its labels.
 		for i, title := range batch {
-			if err := c.store.LearningSaveGraphLabel(ctx, db.LearningSaveGraphLabelParams{CacheKey: cacheKey(title), DisplayName: labels[i]}); err != nil {
-				return nil, err
-			}
+			pending = append(pending, db.LearningSaveGraphLabelParams{CacheKey: cacheKey(title), DisplayName: labels[i]})
 			result[title] = labels[i]
+		}
+	}
+	// No batch is persisted until every model call and validation has succeeded.
+	if len(pending) > 0 {
+		saveCtx, cancel := context.WithTimeout(ctx, storeTimeout)
+		defer cancel()
+		if err := c.store.SaveGraphLabels(saveCtx, pending); err != nil {
+			return nil, err
 		}
 	}
 	return result, nil
 }
 
 func (c *Client) readCache(ctx context.Context, titles, keys []string) (map[string]string, []string, error) {
+	ctx, cancel := context.WithTimeout(ctx, storeTimeout)
+	defer cancel()
 	rows, err := c.store.LearningReadGraphLabels(ctx, keys)
 	if err != nil {
 		return nil, nil, err
@@ -120,6 +139,8 @@ func (c *Client) readCache(ctx context.Context, titles, keys []string) (map[stri
 }
 
 func (c *Client) generate(ctx context.Context, titles []string) ([]string, error) {
+	ctx, cancel := context.WithTimeout(ctx, c.timeout)
+	defer cancel()
 	prompt, err := json.Marshal(struct {
 		Titles []string `json:"titles"`
 	}{titles})

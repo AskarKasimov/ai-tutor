@@ -305,7 +305,9 @@ export function LearningHome({
                 ))}
               </ol>
               {selected.learning_ready &&
-                (stage === 'start' || stage === 'completed') && (
+                (stage === 'start' ||
+                  stage === 'completed' ||
+                  stage === 'training') && (
                   <LearningRoadmap
                     key={selected.id}
                     userId={userId}

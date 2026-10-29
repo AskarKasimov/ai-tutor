@@ -1,9 +1,13 @@
 package variantgenhttp
 
 import (
+	"errors"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/variant"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/httpx"
 	"net/http"
+	"time"
+
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/fault"
 )
 
 type DiagnosticOutline struct {
@@ -54,6 +58,15 @@ func (h *Handler) Preview(w http.ResponseWriter, r *http.Request) {
 		names = append(names, competency.Name)
 		for _, topic := range competency.Constituents {
 			names = append(names, topic.Name)
+		}
+	}
+	if budget := h.service.GraphLabelsBudget(len(names)); budget > 0 {
+		// A large map may require more model batches than the default server
+		// write timeout allows. The labeler bounds each phase independently.
+		err := http.NewResponseController(w).SetWriteDeadline(time.Now().Add(budget))
+		if err != nil && !errors.Is(err, http.ErrNotSupported) {
+			httpx.Error(r.Context(), w, fault.New(fault.Unavailable, "GRAPH_LABELS_UNAVAILABLE", "Не удалось подготовить короткие названия тем. Попробуйте ещё раз."))
+			return
 		}
 	}
 	labels, err := h.service.GraphLabels(r.Context(), names)

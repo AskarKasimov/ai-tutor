@@ -43,7 +43,7 @@ var mapColumns = map[string][]string{
 	"include":     {"Что должно войти в тест"},
 	"evidence":    {"Свидетельство"},
 	// Both graph columns opt in to an explicit graph, without the legacy
-	// selection of three outcomes per competency. Other books are unchanged.
+	// selection of three outcomes per constituent. Other books are unchanged.
 	"topic_id":      {"ID темы"},
 	"prerequisites": {"Пререквизиты"},
 	"content":       {"Текст темы"},

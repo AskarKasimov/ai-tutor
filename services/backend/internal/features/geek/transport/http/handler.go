@@ -34,9 +34,12 @@ type AnswerRequest struct {
 }
 
 type Turn struct {
-	Meta            bool   `json:"meta,omitempty"`
-	AudioIntro      string `json:"audio_intro,omitempty"`
-	ReplyAudioParts int    `json:"reply_audio_parts,omitempty"`
+	// Служебная реплика, которая не расходует попытку и не участвует в оценке знаний.
+	Meta bool `json:"meta,omitempty" binding:"optional"`
+	// Предозвученная вводная перед фидбеком; запрашивается как part=intro.
+	AudioIntro string `json:"audio_intro,omitempty" binding:"optional"`
+	// Число блоков фидбека; part=reply и chunk с нуля возвращают отдельный блок.
+	ReplyAudioParts int    `json:"reply_audio_parts,omitempty" binding:"optional" minimum:"0"`
 	CreatedAt       int64  `json:"created_at"`
 	ID              string `json:"id"`
 	// question — основной вопрос, followup — дополнительный, rephrase — переформулировка, closing — завершение, answer — ответ студента

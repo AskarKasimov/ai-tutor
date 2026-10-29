@@ -87,6 +87,7 @@ function CompetencyMapAdmin({
         void navigate({ to: '/', replace: true })
     })
   }, [missingMapCourse, navigate, refetchSubjects, selectedSubjectId])
+  const [confirming, setConfirming] = useState(false)
   const [file, setFile] = useState<File | null>(null)
   const [fileError, setFileError] = useState<string | null>(null)
 
@@ -227,18 +228,23 @@ function CompetencyMapAdmin({
             )}
             {file && (
               <div className={styles.actions}>
-                <AlertDialog.Root>
-                  <AlertDialog.Trigger>
-                    <Button
-                      size="3"
-                      color="green"
-                      className={styles.submit}
-                      disabled={!file || busy}
-                    >
-                      <Check size={18} aria-hidden="true" />
-                      {t('learningCompetencyMap.submitEdit')}
-                    </Button>
-                  </AlertDialog.Trigger>
+                <AlertDialog.Root
+                  open={confirming}
+                  onOpenChange={setConfirming}
+                >
+                  <Button
+                    size="3"
+                    color="green"
+                    className={styles.submit}
+                    disabled={busy || !query.isSuccess || query.isError}
+                    onClick={() => {
+                      if (query.data?.importedAt !== null) setConfirming(true)
+                      else upload.mutate({ file, subjectId }, settleFile)
+                    }}
+                  >
+                    <Check size={18} aria-hidden="true" />
+                    {t('learningCompetencyMap.submitEdit')}
+                  </Button>
                   <AlertDialog.Content maxWidth="440px">
                     <AlertDialog.Title>
                       {t('learningCompetencyMap.confirmTitle')}

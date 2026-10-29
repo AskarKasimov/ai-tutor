@@ -91,6 +91,7 @@ function backend(
     materials404?: boolean
     removeCourseOnMaterials404?: boolean
     learningMap404?: boolean
+    learningMapExists?: boolean
     teacherFails?: boolean
     materials?: typeof sampleMaterials
     partialUpload?: boolean
@@ -162,7 +163,11 @@ function backend(
     if (url.includes('/learn/subjects/') && url.endsWith('/competency-map')) {
       if (options.learningMap404)
         return Response.json({ message: 'Карта не найдена.' }, { status: 404 })
-      return Response.json({ revision: 0, imported_at: null, competencies: [] })
+      return Response.json({
+        revision: options.learningMapExists ? 1 : 0,
+        imported_at: options.learningMapExists ? 2 : null,
+        competencies: [],
+      })
     }
     if (
       url.includes('/learn/admin/subjects/') &&
@@ -542,7 +547,7 @@ it('imports a learning map only into the course selected in its route', async ()
   fireEvent.click(
     await screen.findByRole('button', { name: 'Подтвердить изменения' }),
   )
-  fireEvent.click(await screen.findByRole('button', { name: 'Перезаписать' }))
+  expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
   await waitFor(() =>
     expect(
       fetch.mock.calls.some(
@@ -558,6 +563,27 @@ it('imports a learning map only into the course selected in its route', async ()
       url.endsWith('/learn/admin/subjects/subject-a/competency-map/import'),
     ),
   ).toBe(false)
+})
+
+it('asks for confirmation before replacing an existing learning map', async () => {
+  const fetch = backend({ learningMapExists: true })
+  renderApp('/admin/courses/subject-b')
+  await screen.findByText('Карта компетенций успешно загружена')
+  const file = new File(['competency map'], 'map.csv', { type: 'text/csv' })
+  fireEvent.change(screen.getByLabelText('Файл карты компетенций'), {
+    target: { files: [file] },
+  })
+  fireEvent.click(screen.getByRole('button', { name: 'Подтвердить изменения' }))
+  expect(await screen.findByRole('alertdialog')).toBeVisible()
+  expect(
+    fetch.mock.calls.some(([url]) => url.endsWith('/competency-map/import')),
+  ).toBe(false)
+  fireEvent.click(screen.getByRole('button', { name: 'Перезаписать' }))
+  await waitFor(() =>
+    expect(
+      fetch.mock.calls.some(([url]) => url.endsWith('/competency-map/import')),
+    ).toBe(true),
+  )
 })
 
 it('does not mount the lesson while the current session is being checked', async () => {

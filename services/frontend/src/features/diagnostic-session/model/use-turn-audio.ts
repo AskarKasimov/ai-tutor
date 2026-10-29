@@ -3,6 +3,8 @@ import type { Turn, TurnAudioPart } from '@/entities/diagnostic-session'
 import { playQuestion } from '@/shared/lib'
 import { useDiagnosticDependencies } from './dependencies-context'
 
+const FEEDBACK_PAUSE_MS = 700
+
 export type TurnAudioState = {
   turnId: string | null
   status: 'idle' | 'loading' | 'playing' | 'error'
@@ -31,7 +33,10 @@ export function useTurnAudio(sessionId: string) {
   // waiting for the voice is never left waiting.
   const play = useCallback(
     async (
-      turn: Pick<Turn, 'id' | 'reply' | 'audioIntro' | 'replyAudioParts'>,
+      turn: Pick<
+        Turn,
+        'id' | 'kind' | 'reply' | 'audioIntro' | 'replyAudioParts'
+      >,
       onStart?: () => void,
     ) => {
       current.current?.abort()
@@ -102,6 +107,11 @@ export function useTurnAudio(sessionId: string) {
           }
           await playAudio(audio)
         }
+        if (indices.length && turn.kind !== 'closing') {
+          // Keep the question prefetched, but let the feedback sink in.
+          if (mine()) setState({ turnId: turn.id, status: 'playing' })
+          await pauseAfterFeedback(signal)
+        }
         await playAudio(await (question ?? load('question')))
         if (mine()) {
           current.current = null
@@ -143,5 +153,20 @@ function playToEnd(audio: Blob, signal: AbortSignal, onStart: () => void) {
       (error) => settle(() => reject(error))(),
       signal,
     ).then(onStart, (error: unknown) => settle(() => reject(error))())
+  })
+}
+
+function pauseAfterFeedback(signal: AbortSignal) {
+  signal.throwIfAborted()
+  return new Promise<void>((resolve, reject) => {
+    const abort = () => {
+      clearTimeout(timer)
+      reject(signal.reason)
+    }
+    const timer = setTimeout(() => {
+      signal.removeEventListener('abort', abort)
+      resolve()
+    }, FEEDBACK_PAUSE_MS)
+    signal.addEventListener('abort', abort, { once: true })
   })
 }

@@ -4,7 +4,7 @@
 
 ## Локальный запуск и конфигурация
 
-Основной запуск — ./dev.sh -d из корня после настройки .env с секретами БД и S3. Gateway всегда входит в общий dev stack и читает полный YAML из config/dev.yaml; в Docker Compose указатель GATEWAY_CONFIG указывает на смонтированный файл. Изменение YAML через atomic-save вызывает Air restart gateway-процесса в том же контейнере. Очередь Redpanda сохраняется, незавершённые запросы обрабатываются штатным механизмом восстановления gateway.
+Основной запуск — ./dev.sh -d из корня после настройки .env с секретами БД и S3. Gateway всегда входит в общий dev stack и читает полный YAML из config/dev.yaml; в Docker Compose указатель GATEWAY_CONFIG указывает на смонтированный файл. Изменение YAML через atomic-save вызывает Air restart gateway-процесса в том же контейнере. Команда сборки Air выполняется из `services/llm-gateway`; `root = ".."` задаёт область наблюдения, а не рабочий каталог команды. Очередь Redpanda сохраняется, незавершённые запросы обрабатываются штатным механизмом восстановления gateway.
 
 Файл содержит routes, pools, routing_profiles, instances и model_rules. Для общего приложения обязательны профили learning-assessment, learning-tutor и learning-taskgen; каждый должен иметь маршрут на инстанс из pools.high. У standalone-конфигурации required_routing_profiles: [] сохраняет необязательность этих требований.
 

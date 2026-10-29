@@ -8,3 +8,5 @@ export {
   useCompetencyMapDependencies,
 } from './model/dependencies-context'
 export type { CompetencyMapDependencies } from './model/dependencies-context'
+
+export { competencyMapQueryKeys } from './model/query-keys'

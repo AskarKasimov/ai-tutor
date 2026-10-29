@@ -1,10 +1,22 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import { expect, it, vi } from 'vitest'
 import { createQueryClient } from '@/bootstrap/providers'
 import { createAppDependencies } from '@/bootstrap/dependencies'
 import { replaceSession } from '@/entities/user'
 import { LearningRoadmap } from '@/pages/learning-trainer/ui/learning-roadmap'
+import { useCompetencyMapOutlineQuery } from '@/features/import-learning-competency-map'
 import { createQueryWrapper } from '../../../support/query-wrapper'
+
+function TestRoadmap({
+  userId,
+  subjectId,
+}: {
+  userId: string
+  subjectId: string
+}) {
+  const query = useCompetencyMapOutlineQuery(userId, subjectId)
+  return <LearningRoadmap query={query} subjectId={subjectId} />
+}
 
 async function setup() {
   const client = createQueryClient()
@@ -16,7 +28,7 @@ async function setup() {
   })
   const dependencies = createAppDependencies()
   const read = vi.spyOn(dependencies.learningMap, 'readOutline')
-  return { read, wrapper: createQueryWrapper(client, dependencies) }
+  return { client, read, wrapper: createQueryWrapper(client, dependencies) }
 }
 
 it('shows a loading state, then allows retrying a failed outline without starting a diagnostic', async () => {
@@ -30,7 +42,7 @@ it('shows a loading state, then allows retrying a failed outline without startin
         }),
     )
     .mockResolvedValue({ competencies: [] })
-  render(<LearningRoadmap userId="student" subjectId="course" />, { wrapper })
+  render(<TestRoadmap userId="student" subjectId="course" />, { wrapper })
   expect(screen.getByRole('status')).toHaveTextContent('Загружаем план')
   reject(new Error('Unavailable'))
   expect(await screen.findByRole('alert')).toHaveTextContent(
@@ -73,7 +85,7 @@ it('replaces the outline when switching courses and preserves map order', async 
       },
     ],
   }))
-  const view = render(<LearningRoadmap userId="student" subjectId="one" />, {
+  const view = render(<TestRoadmap userId="student" subjectId="one" />, {
     wrapper,
   })
   fireEvent.click(await screen.findByLabelText('Тема one'))
@@ -85,9 +97,57 @@ it('replaces the outline when switching courses and preserves map order', async 
   expect(
     screen.queryByText(/Блоки карты, выбранные для диагностики/),
   ).not.toBeInTheDocument()
-  view.rerender(<LearningRoadmap userId="student" subjectId="two" />)
+  view.rerender(<TestRoadmap userId="student" subjectId="two" />)
   fireEvent.click(await screen.findByLabelText('Тема two'))
   expect(await screen.findByText('Результат two')).toBeVisible()
   expect(screen.queryByText('Результат one')).not.toBeInTheDocument()
   expect(read).toHaveBeenLastCalledWith('two', expect.any(AbortSignal))
+})
+
+it('preserves wire roles through parsing, the query and the topic card', async () => {
+  const { wrapper } = await setup()
+  vi.stubGlobal(
+    'fetch',
+    vi.fn().mockResolvedValue(
+      Response.json({
+        competencies: [
+          {
+            id: 'c',
+            name: 'Компетенция',
+            constituents: [
+              {
+                id: 'topic',
+                name: 'Тема с ролями',
+                outcomes: [
+                  {
+                    id: 'main',
+                    name: 'Основной результат из API',
+                    role: 'main',
+                  },
+                  {
+                    id: 'basic',
+                    name: 'Базовый результат из API',
+                    role: 'basic',
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      }),
+    ),
+  )
+  try {
+    render(<TestRoadmap userId="student" subjectId="course" />, { wrapper })
+    fireEvent.click(await screen.findByLabelText('Тема с ролями'))
+    const card = await screen.findByRole('complementary', {
+      name: 'Тема с ролями',
+    })
+    expect(within(card).getByText('Основной', { exact: true })).toBeVisible()
+    expect(within(card).getByText('Основной результат из API')).toBeVisible()
+    expect(within(card).getByText('Базовый', { exact: true })).toBeVisible()
+    expect(within(card).getByText('Базовый результат из API')).toBeVisible()
+  } finally {
+    vi.unstubAllGlobals()
+  }
 })

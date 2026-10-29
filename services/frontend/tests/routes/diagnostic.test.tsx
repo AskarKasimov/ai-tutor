@@ -104,13 +104,14 @@ async function home({ start = true }: { start?: boolean } = {}) {
   })
   const view = render(<RouterProvider router={router} />)
   if (start) {
-    fireEvent.click(
-      await screen.findByRole(
-        'button',
-        { name: 'Начать обучение' },
-        { timeout: 5000 },
-      ),
+    await waitFor(
+      () =>
+        expect(
+          screen.getByRole('button', { name: 'Начать обучение' }),
+        ).toBeEnabled(),
+      { timeout: 5000 },
     )
+    fireEvent.click(screen.getByRole('button', { name: 'Начать обучение' }))
   }
   return view
 }
@@ -166,6 +167,26 @@ function server(
   const sessionProgress = { ...progress, total_tasks: totalTasks }
   let answered = false
   const requests = vi.fn(async (url: string, init?: RequestInit) => {
+    if (url.endsWith('/diagnostic-outline'))
+      return Response.json({
+        competencies: [
+          {
+            id: main.competency_id,
+            name: main.competency_name,
+            constituents: [
+              {
+                id: main.constituent_id,
+                name: main.constituent_name,
+                outcomes: [main, basic, basic2].map((task) => ({
+                  id: task.outcome_id,
+                  name: task.outcome_name,
+                  role: task.role,
+                })),
+              },
+            ],
+          },
+        ],
+      })
     if (url.endsWith('/subjects'))
       return Response.json([
         {

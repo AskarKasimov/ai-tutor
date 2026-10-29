@@ -156,7 +156,13 @@ const outlineSchema = z.object({
           id: z.string(),
           name: z.string(),
           display_name: z.string().optional(),
-          outcomes: z.array(z.object({ id: z.string(), name: z.string() })),
+          outcomes: z.array(
+            z.object({
+              id: z.string(),
+              name: z.string(),
+              role: z.enum(['main', 'basic']),
+            }),
+          ),
         }),
       ),
     }),

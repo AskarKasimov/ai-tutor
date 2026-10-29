@@ -2,7 +2,7 @@ import { Badge, Button, Heading, Text } from '@radix-ui/themes'
 import { Flag, Route } from 'lucide-react'
 import { lazy, Suspense } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useCompetencyMapOutlineQuery } from '@/features/import-learning-competency-map'
+import type { useCompetencyMapOutlineQuery } from '@/features/import-learning-competency-map'
 import styles from './learning-roadmap.module.scss'
 
 const DiagnosticRoadmapCanvas = lazy(
@@ -10,16 +10,15 @@ const DiagnosticRoadmapCanvas = lazy(
 )
 
 export function LearningRoadmap({
-  userId,
+  query,
   subjectId,
   subjectName,
 }: {
-  userId: string
+  query: ReturnType<typeof useCompetencyMapOutlineQuery>
   subjectId: string
   subjectName?: string
 }) {
   const { t } = useTranslation()
-  const query = useCompetencyMapOutlineQuery(userId, subjectId)
   const competencies = query.data?.competencies ?? []
 
   return (
@@ -43,7 +42,7 @@ export function LearningRoadmap({
           {t('learningRoadmap.preview')}
         </Badge>
       </div>
-      {query.isPending ? (
+      {query.isPending || query.fetchStatus !== 'idle' ? (
         <Text role="status">{t('learningRoadmap.loading')}</Text>
       ) : query.isError ? (
         <div className={styles.notice}>

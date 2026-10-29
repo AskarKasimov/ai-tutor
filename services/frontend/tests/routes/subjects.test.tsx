@@ -8,6 +8,7 @@ import {
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { createQueryClient } from '@/bootstrap/providers'
 import { routeTree } from '@/routeTree.gen'
+import { competencyMapQueryKeys } from '@/features/import-learning-competency-map'
 
 function backendResponse(url: string, init?: RequestInit): Promise<Response> {
   const current = {
@@ -68,7 +69,7 @@ function backendResponse(url: string, init?: RequestInit): Promise<Response> {
                   {
                     id: 'o1',
                     name: 'Различать классификацию и регрессию',
-                    include_in_test: true,
+                    role: 'main',
                   },
                 ],
               },
@@ -173,9 +174,11 @@ it('loads subjects without creating a variant, then starts only the chosen subje
   expect(
     screen.queryByRole('button', { name: /тренировк/i }),
   ).not.toBeInTheDocument()
-  expect(
-    await screen.findByRole('button', { name: 'Начать обучение' }),
-  ).toBeEnabled()
+  await waitFor(() =>
+    expect(
+      screen.getByRole('button', { name: 'Начать обучение' }),
+    ).toBeEnabled(),
+  )
   expect(requests.some((r) => r.includes('/learning-state'))).toBe(true)
   expect(requests.some((r) => r.endsWith('POST /api/v1/learn/variants'))).toBe(
     false,
@@ -196,7 +199,9 @@ it('loads subjects without creating a variant, then starts only the chosen subje
   expect(startButton).toHaveAccessibleDescription(
     'Проверка знаний, затем подготовка',
   )
+  await waitFor(() => expect(startButton).toBeEnabled())
   fireEvent.click(startButton)
+  await waitFor(() => expect(startButton).toBeEnabled())
   fireEvent.click(startButton)
   expect(
     await screen.findByRole('heading', {
@@ -252,6 +257,7 @@ it('starts the diagnostic when saving the page intent to sessionStorage fails', 
     throw new DOMException('Storage disabled', 'SecurityError')
   })
 
+  await waitFor(() => expect(startButton).toBeEnabled())
   fireEvent.click(startButton)
 
   expect(
@@ -358,9 +364,12 @@ it('returns to subject selection after refresh during a pending start and reuses
     routeTree,
   })
   const first = render(<RouterProvider router={firstRouter} />)
-  fireEvent.click(
-    await screen.findByRole('button', { name: 'Начать обучение' }),
+  await waitFor(() =>
+    expect(
+      screen.getByRole('button', { name: 'Начать обучение' }),
+    ).toBeEnabled(),
   )
+  fireEvent.click(screen.getByRole('button', { name: 'Начать обучение' }))
   await waitFor(() =>
     expect(requests.filter((r) => r.path.endsWith('/variants'))).toHaveLength(
       1,
@@ -385,9 +394,12 @@ it('returns to subject selection after refresh during a pending start and reuses
   await new Promise((resolve) => setTimeout(resolve, 150))
   expect(requests.filter((r) => r.path.endsWith('/variants'))).toHaveLength(1)
 
-  fireEvent.click(
-    await screen.findByRole('button', { name: 'Начать обучение' }),
+  await waitFor(() =>
+    expect(
+      screen.getByRole('button', { name: 'Начать обучение' }),
+    ).toBeEnabled(),
   )
+  fireEvent.click(screen.getByRole('button', { name: 'Начать обучение' }))
   expect(
     await screen.findByRole('heading', {
       name: 'Вопрос о классификации',
@@ -440,3 +452,120 @@ it('previews the current map before restarting a diagnostic from training', asyn
     requests.filter((r) => r.startsWith('POST ') && r.endsWith('/variants')),
   ).toHaveLength(1)
 })
+
+it.each(['start', 'training', 'completed'] as const)(
+  'hides a cached outline and gates a new diagnostic during refresh and retry at %s',
+  async (stage) => {
+    const startName =
+      stage === 'start' ? 'Начать обучение' : 'Пройти проверку заново'
+    const response = (url: string, init?: RequestInit) => {
+      if (url.endsWith('/learning-state'))
+        return Promise.resolve(
+          Response.json({
+            subject_id: 'subject-1',
+            subject_name: 'Предмет A',
+            diagnostic_status: stage === 'start' ? 'not_started' : 'completed',
+            diagnostic_completed: stage !== 'start',
+            training_available: stage === 'training',
+            ...(stage === 'training'
+              ? { diagnostic_session_id: 'previous-diagnostic' }
+              : {}),
+          }),
+        )
+      return backendResponse(url, init)
+    }
+    vi.mocked(fetch).mockImplementation((url, init) =>
+      response(String(url), init),
+    )
+    const client = createQueryClient()
+    const router = createRouter({
+      context: { queryClient: client },
+      history: createMemoryHistory({ initialEntries: ['/learn'] }),
+      routeTree,
+    })
+    render(<RouterProvider router={router} />)
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: startName })).toBeEnabled(),
+    )
+    expect(await screen.findByLabelText('Выбор модели')).toBeInTheDocument()
+
+    let finish!: (response: Response) => void
+    vi.mocked(fetch).mockImplementation(async (url, init) => {
+      if (String(url).endsWith('/diagnostic-outline'))
+        return new Promise<Response>((resolve) => {
+          finish = resolve
+        })
+      return response(String(url), init)
+    })
+    const refresh = client.invalidateQueries({
+      queryKey: competencyMapQueryKeys.outline('student-1', 'subject-1'),
+    })
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: startName })).toBeDisabled(),
+    )
+    expect(screen.queryByLabelText('Выбор модели')).not.toBeInTheDocument()
+    if (stage === 'training')
+      expect(
+        screen.getByRole('button', { name: 'Продолжить обучение' }),
+      ).toBeEnabled()
+    expect(screen.getByRole('status')).toHaveTextContent('Загружаем план')
+    fireEvent.click(screen.getByRole('button', { name: startName }))
+    expect(
+      vi
+        .mocked(fetch)
+        .mock.calls.some(
+          ([url, init]) =>
+            String(url).endsWith('/variants') && init?.method === 'POST',
+        ),
+    ).toBe(false)
+
+    finish(new Response(null, { status: 503 }))
+    await refresh
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Повторите загрузку',
+    )
+    expect(screen.getByRole('button', { name: startName })).toBeDisabled()
+    expect(screen.queryByLabelText('Выбор модели')).not.toBeInTheDocument()
+    if (stage === 'training')
+      expect(
+        screen.getByRole('button', { name: 'Продолжить обучение' }),
+      ).toBeEnabled()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Попробовать снова' }))
+    await waitFor(() =>
+      expect(screen.getByRole('status')).toHaveTextContent('Загружаем план'),
+    )
+    finish(
+      Response.json({
+        competencies: [
+          {
+            id: 'new',
+            name: 'Новая компетенция',
+            constituents: [
+              {
+                id: 'new-topic',
+                name: 'Актуальная тема',
+                outcomes: [
+                  { id: 'new-outcome', name: 'Новый результат', role: 'main' },
+                ],
+              },
+            ],
+          },
+        ],
+      }),
+    )
+    expect(await screen.findByLabelText('Актуальная тема')).toBeInTheDocument()
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: startName })).toBeEnabled(),
+    )
+    expect(screen.queryByLabelText('Выбор модели')).not.toBeInTheDocument()
+    if (stage === 'training')
+      expect(
+        screen.getByRole('button', { name: 'Продолжить обучение' }),
+      ).toBeEnabled()
+    fireEvent.click(screen.getByRole('button', { name: startName }))
+    expect(
+      await screen.findByRole('heading', { name: 'Вопрос о классификации' }),
+    ).toBeVisible()
+  },
+)

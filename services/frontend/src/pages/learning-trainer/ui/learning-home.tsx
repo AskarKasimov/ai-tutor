@@ -7,7 +7,7 @@ import {
   Target,
   Zap,
 } from 'lucide-react'
-import { useEffect, useId, useState } from 'react'
+import { useCallback, useEffect, useId, useState } from 'react'
 import type { ReactNode } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
@@ -87,6 +87,21 @@ export function LearningHome({
   // A persisted intent is only request metadata for the current visit. On a
   // fresh visit, show course progress first and resume only after an explicit click.
   const [intent, setIntent] = useState<Intent | null>(null)
+  const [renderedRoadmap, setRenderedRoadmap] = useState<{
+    subjectId: string
+    outline: CompetencyMapOutline
+  } | null>(null)
+  const handleRoadmapReady = useCallback(
+    (subjectId: string, outline: CompetencyMapOutline, ready: boolean) => {
+      setRenderedRoadmap((previous) => {
+        const matches =
+          previous?.subjectId === subjectId && previous.outline === outline
+        if (!ready) return matches ? null : previous
+        return matches ? previous : { subjectId, outline }
+      })
+    },
+    [],
+  )
   const subjects = subjectsQuery.data ?? []
   // A direct course URL wins; otherwise reuse the shared selection across modes.
   const catalogSelection = requestedSubjectId
@@ -144,7 +159,9 @@ export function LearningHome({
     showRoadmap &&
     outline.isSuccess &&
     outline.fetchStatus === 'idle' &&
-    outline.data.competencies.length > 0
+    outline.data.competencies.length > 0 &&
+    renderedRoadmap?.subjectId === selected?.id &&
+    renderedRoadmap?.outline === outline.data
 
   useEffect(() => {
     if (selected) {
@@ -340,6 +357,7 @@ export function LearningHome({
                 <LearningRoadmap
                   key={selected.id}
                   query={outline}
+                  onReady={handleRoadmapReady}
                   subjectId={selected.id}
                   subjectName={selected.name}
                 />

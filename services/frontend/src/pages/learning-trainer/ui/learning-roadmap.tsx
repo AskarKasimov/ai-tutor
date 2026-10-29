@@ -1,6 +1,7 @@
 import { Badge, Button, Heading, Text } from '@radix-ui/themes'
 import { Flag, Route } from 'lucide-react'
-import { lazy, Suspense } from 'react'
+import { lazy, Suspense, useCallback } from 'react'
+import type { CompetencyMapOutline } from '@/entities/learning-competency-map'
 import { useTranslation } from 'react-i18next'
 import type { useCompetencyMapOutlineQuery } from '@/features/import-learning-competency-map'
 import styles from './learning-roadmap.module.scss'
@@ -13,13 +14,25 @@ export function LearningRoadmap({
   query,
   subjectId,
   subjectName,
+  onReady,
 }: {
   query: ReturnType<typeof useCompetencyMapOutlineQuery>
   subjectId: string
   subjectName?: string
+  onReady?: (
+    subjectId: string,
+    outline: CompetencyMapOutline,
+    ready: boolean,
+  ) => void
 }) {
   const { t } = useTranslation()
   const competencies = query.data?.competencies ?? []
+  const reportReady = useCallback(
+    (ready: boolean) => {
+      if (query.data) onReady?.(subjectId, query.data, ready)
+    },
+    [onReady, subjectId, query.data],
+  )
 
   return (
     <section
@@ -64,6 +77,7 @@ export function LearningRoadmap({
               <DiagnosticRoadmapCanvas
                 key={subjectId}
                 outline={query.data}
+                onReady={reportReady}
                 subjectTitle={subjectName || subjectId}
               />
             )}

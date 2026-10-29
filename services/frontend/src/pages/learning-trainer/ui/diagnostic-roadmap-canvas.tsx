@@ -229,10 +229,17 @@ const nodeTypes = {
 export default function DiagnosticRoadmapCanvas({
   outline,
   subjectTitle,
+  onReady,
 }: {
   outline: CompetencyMapOutline
   subjectTitle: string
+  onReady?: (ready: boolean) => void
 }) {
+  // This effect runs only after the lazy module and its graph subtree commit.
+  useEffect(() => {
+    onReady?.(true)
+    return () => onReady?.(false)
+  }, [onReady])
   return (
     <ReactFlowProvider>
       <DiagnosticMindmapExplorer

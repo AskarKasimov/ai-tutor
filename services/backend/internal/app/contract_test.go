@@ -342,6 +342,11 @@ func TestOpenAPIResponses(t *testing.T) {
 			checked[path] = true
 		}
 	}
+	outline := f.request("GET", "/learn/subjects/subject:test/diagnostic-outline", "", access)
+	if outline.Code != http.StatusOK {
+		t.Fatalf("outline: %d %s", outline.Code, outline.Body.String())
+	}
+	check("GET", "/learn/subjects/{subject_id}/diagnostic-outline", outline)
 	check("POST", "/auth/refresh", f.request("POST", "/auth/refresh", "", refresh))
 	check("POST", "/auth/logout", f.request("POST", "/auth/logout", "", refresh))
 	check("GET", "/health", f.request("GET", "/health", ""))

@@ -3,7 +3,7 @@ import { fireEvent, render, screen, within } from '@testing-library/react'
 import { expect, it } from 'vitest'
 import type { CourseGraphView as CourseGraph } from '@/entities/course-graph'
 import '@/shared/i18n'
-import CourseGraphCanvas from '@/pages/competency-map/ui/course-graph-canvas'
+import CourseGraphCanvas from '@/widgets/course-graph'
 
 const graph: CourseGraph = {
   topics: [

@@ -7,7 +7,7 @@ import {
   Target,
   Zap,
 } from 'lucide-react'
-import { useEffect, useId, useState } from 'react'
+import { useCallback, useEffect, useId, useState } from 'react'
 import type { ReactNode } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
@@ -20,6 +20,12 @@ import {
 import { subjectQueryKeys, type Subject } from '@/entities/learning-subject'
 import { LearningPlanEntry } from './learning-plan'
 import { DiagnosticTrainer } from './diagnostic-trainer'
+import { LearningRoadmap } from './learning-roadmap'
+import {
+  competencyMapQueryKeys,
+  useCompetencyMapOutlineQuery,
+} from '@/features/import-learning-competency-map'
+import type { CompetencyMapOutline } from '@/entities/learning-competency-map'
 import { AccountMenu } from '@/features/auth'
 import styles from './learning-home.module.scss'
 import { StudentCourseShell } from '@/widgets/student-course-shell'
@@ -81,6 +87,21 @@ export function LearningHome({
   // A persisted intent is only request metadata for the current visit. On a
   // fresh visit, show course progress first and resume only after an explicit click.
   const [intent, setIntent] = useState<Intent | null>(null)
+  const [renderedRoadmap, setRenderedRoadmap] = useState<{
+    subjectId: string
+    outline: CompetencyMapOutline
+  } | null>(null)
+  const handleRoadmapReady = useCallback(
+    (subjectId: string, outline: CompetencyMapOutline, ready: boolean) => {
+      setRenderedRoadmap((previous) => {
+        const matches =
+          previous?.subjectId === subjectId && previous.outline === outline
+        if (!ready) return matches ? null : previous
+        return matches ? previous : { subjectId, outline }
+      })
+    },
+    [],
+  )
   const subjects = subjectsQuery.data ?? []
   // A direct course URL wins; otherwise reuse the shared selection across modes.
   const catalogSelection = requestedSubjectId
@@ -113,6 +134,35 @@ export function LearningHome({
       : undefined
   const selected = catalogSelection ?? historicalSubject
 
+  const data = learning.data
+  // Diagnostic and training are one process for the student: the course
+  // offers a single action that resumes where they stopped.
+  const stage = !data
+    ? undefined
+    : data.active_session_id
+      ? 'diagnostic'
+      : data.training_available && data.diagnostic_session_id
+        ? 'training'
+        : data.diagnostic_completed
+          ? 'completed'
+          : 'start'
+  const showRoadmap = Boolean(
+    selected?.learning_ready &&
+    intent?.subjectId !== selected.id &&
+    (stage === 'start' || stage === 'completed' || stage === 'training'),
+  )
+  const outline = useCompetencyMapOutlineQuery(
+    userId,
+    showRoadmap ? (selected?.id ?? '') : '',
+  )
+  const canStartDiagnostic =
+    showRoadmap &&
+    outline.isSuccess &&
+    outline.fetchStatus === 'idle' &&
+    outline.data.competencies.length > 0 &&
+    renderedRoadmap?.subjectId === selected?.id &&
+    renderedRoadmap?.outline === outline.data
+
   useEffect(() => {
     if (selected) {
       setSavedSubjectId(selected.id)
@@ -126,6 +176,18 @@ export function LearningHome({
     startNew: boolean,
   ) {
     if (!userId) return
+    if (startNew) {
+      const current = queryClient.getQueryState<CompetencyMapOutline>(
+        competencyMapQueryKeys.outline(userId, subject.id),
+      )
+      if (
+        !canStartDiagnostic ||
+        current?.status !== 'success' ||
+        current.fetchStatus !== 'idle' ||
+        !current.data?.competencies.length
+      )
+        return
+    }
     const next: Intent = {
       apiBase,
       userId,
@@ -198,18 +260,6 @@ export function LearningHome({
       />
     )
 
-  const data = learning.data
-  // Diagnostic and training are one process for the student: the course
-  // offers a single action that resumes where they stopped.
-  const stage = !data
-    ? undefined
-    : data.active_session_id
-      ? 'diagnostic'
-      : data.training_available && data.diagnostic_session_id
-        ? 'training'
-        : data.diagnostic_completed
-          ? 'completed'
-          : 'start'
   function resume() {
     if (!selected || !data) return
     if (stage === 'diagnostic')
@@ -303,6 +353,15 @@ export function LearningHome({
                   </li>
                 ))}
               </ol>
+              {showRoadmap && selected && (
+                <LearningRoadmap
+                  key={selected.id}
+                  query={outline}
+                  onReady={handleRoadmapReady}
+                  subjectId={selected.id}
+                  subjectName={selected.name}
+                />
+              )}
               {learning.isPending ? (
                 <Text role="status">{t('learningHome.learningLoading')}</Text>
               ) : learning.isError ? (
@@ -346,6 +405,10 @@ export function LearningHome({
                                 ? 'learningHome.restartHint'
                                 : 'learningHome.continueTrainingHint',
                         )}
+                        disabled={
+                          (stage === 'start' || stage === 'completed') &&
+                          !canStartDiagnostic
+                        }
                         onClick={resume}
                       />
                     )}
@@ -355,6 +418,7 @@ export function LearningHome({
                         icon={<RotateCcw size={22} />}
                         title={t('learningHome.restart')}
                         hint={t('learningHome.restartHint')}
+                        disabled={!canStartDiagnostic}
                         onClick={() =>
                           openDiagnostic(selected, undefined, true)
                         }
@@ -379,12 +443,14 @@ function CourseAction({
   title,
   hint,
   onClick,
+  disabled = false,
 }: {
   kind: 'primary' | 'secondary'
   icon: ReactNode
   title: string
   hint: string
   onClick: () => void
+  disabled?: boolean
 }) {
   const hintId = useId()
   return (
@@ -395,6 +461,7 @@ function CourseAction({
       aria-label={title}
       aria-describedby={hintId}
       onClick={onClick}
+      disabled={disabled}
     >
       <span className={styles.courseActionIcon} aria-hidden="true">
         {icon}

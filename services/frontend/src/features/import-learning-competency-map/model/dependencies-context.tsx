@@ -1,11 +1,16 @@
 import { createContext, useContext } from 'react'
 import type { PropsWithChildren } from 'react'
 import type {
+  CompetencyMapOutline,
   CompetencyMapImport,
   CompetencyMapSummary,
 } from '@/entities/learning-competency-map'
 export type CompetencyMapDependencies = {
   competencyMap: {
+    readOutline(
+      subjectId: string,
+      signal: AbortSignal,
+    ): Promise<CompetencyMapOutline>
     read(subjectId: string, signal: AbortSignal): Promise<CompetencyMapSummary>
     import(
       subjectId: string,

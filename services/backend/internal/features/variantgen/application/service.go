@@ -20,6 +20,7 @@ var bloomRanks = map[string]int{"knowledge": 1, "understanding": 2, "application
 
 type Service struct {
 	repo    Repository
+	labels  GraphLabeler
 	chooser TaskChooser
 	ids     IDGenerator
 	now     func() time.Time
@@ -52,7 +53,23 @@ func (s *Service) Create(ctx context.Context, ownerID, subjectID, key string) (v
 	})
 }
 
+// Preview uses the same eligibility, ordering and outcome selection as Create,
+// without saving a variant or starting a diagnostic session.
+func (s *Service) Preview(ctx context.Context, subjectID string) (variant.Variant, error) {
+	return s.repo.Preview(ctx, subjectID, func(id, name string, revision int64, candidates []variant.CandidateOutcome) (variant.Variant, error) {
+		result, err := s.buildSelected("", id, name, revision, candidates, true)
+		if f, ok := err.(*fault.Error); ok && f.Code == "NO_ELIGIBLE_COMPETENCIES" {
+			return variant.Variant{SubjectID: id, SubjectNameSnapshot: name, MapRevision: revision, AlgorithmVersion: AlgorithmVersion, Competencies: []variant.CompetencySelection{}}, nil
+		}
+		return result, err
+	})
+}
+
 func (s *Service) build(ownerID, subjectID, subjectName string, revision int64, candidates []variant.CandidateOutcome) (variant.Variant, error) {
+	return s.buildSelected(ownerID, subjectID, subjectName, revision, candidates, false)
+}
+
+func (s *Service) buildSelected(ownerID, subjectID, subjectName string, revision int64, candidates []variant.CandidateOutcome, preview bool) (variant.Variant, error) {
 	if len(candidates) == 0 {
 		return variant.Variant{}, noEligible([]variant.SkippedCompetency{{Code: "EMPTY_MAP"}})
 	}
@@ -173,7 +190,7 @@ func (s *Service) build(ownerID, subjectID, subjectName string, revision int64, 
 		selection := variant.CompetencySelection{Position: len(result.Competencies) + 1, Competency: comp.profile, Tasks: make([]variant.VariantTask, 0, 3)}
 		for i, pick := range picks {
 			idx := 0
-			if len(pick.tasks) > 1 {
+			if !preview && len(pick.tasks) > 1 {
 				var err error
 				idx, err = s.chooser.Choose(len(pick.tasks))
 				if err != nil {
@@ -183,9 +200,13 @@ func (s *Service) build(ownerID, subjectID, subjectName string, revision int64, 
 					return variant.Variant{}, fmt.Errorf("task chooser returned invalid index %d", idx)
 				}
 			}
-			taskID, err := s.ids.New("variant-task")
-			if err != nil {
-				return variant.Variant{}, err
+			taskID := pick.outcome.ID
+			if !preview {
+				var err error
+				taskID, err = s.ids.New("variant-task")
+				if err != nil {
+					return variant.Variant{}, err
+				}
 			}
 			role := "basic"
 			if i == 0 {
@@ -199,6 +220,9 @@ func (s *Service) build(ownerID, subjectID, subjectName string, revision int64, 
 	result.IncludedCompetencyCount = len(result.Competencies)
 	if result.IncludedCompetencyCount == 0 {
 		return variant.Variant{}, noEligible(result.SkippedCompetencies)
+	}
+	if preview {
+		return result, nil
 	}
 	variantID, err := s.ids.New("variant")
 	if err != nil {

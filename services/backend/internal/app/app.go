@@ -48,6 +48,7 @@ import (
 	taskaudiopg "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/taskaudio/infrastructure/postgres"
 	taskaudios3 "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/taskaudio/infrastructure/s3"
 	variantgenapp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/variantgen/application"
+	variantgenlabels "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/variantgen/infrastructure/labels"
 	variantgenpg "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/variantgen/infrastructure/postgres"
 	variantgenrandom "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/variantgen/infrastructure/random"
 	variantgenhttp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/variantgen/transport/http"
@@ -262,7 +263,8 @@ func (a *App) Handler() http.Handler {
 	geekHandlers := geekhttp.New(geekService)
 	learningSubjects := subjecthttp.New(subjectapp.New(subjectpg.New(a.pool), security.IDGenerator{}, a.now))
 	competencyHandlers := competencyhttp.New(competencyapp.New(competencypg.New(a.pool), &csvparser.Parser{}, a.now), a.cfg.MaxUploadBytes)
-	variantHandlers := variantgenhttp.New(variantgenapp.New(a.variantRepository, variantgenrandom.Chooser{}, security.IDGenerator{}, a.now))
+	variantHandlers := variantgenhttp.New(variantgenapp.New(a.variantRepository, variantgenrandom.Chooser{}, security.IDGenerator{}, a.now).
+		WithGraphLabels(variantgenlabels.New(variantgenlabels.NewPostgresStore(a.pool), a.gatewayClient, a.cfg.LLMTimeout)))
 
 	mux := http.NewServeMux()
 	examMux := http.NewServeMux()

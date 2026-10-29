@@ -50,13 +50,9 @@ func (r *Repository) Create(ctx context.Context, ownerID, subjectID, key string,
 	if err != nil {
 		return variant.Variant{}, err
 	}
-	candidates := make([]variant.CandidateOutcome, 0, len(rows))
-	for _, row := range rows {
-		var profile variant.TaskProfile
-		if err := json.Unmarshal(row.ProfileJson, &profile); err != nil {
-			return variant.Variant{}, err
-		}
-		candidates = append(candidates, variant.CandidateOutcome{Profile: profile, CompetencySourceOrder: row.CompetencySourceOrder, SourceOrder: row.OutcomeSourceOrder, HasTask: row.TaskID != nil})
+	candidates, err := decodeCandidates(rows)
+	if err != nil {
+		return variant.Variant{}, err
 	}
 	result, err := build(subjectInfo.ID, subjectInfo.Name, revision, candidates)
 	if err != nil {
@@ -249,4 +245,42 @@ func variantNotFound() *fault.Error {
 
 func idempotencySubjectConflict() *fault.Error {
 	return fault.New(fault.Conflict, "IDEMPOTENCY_KEY_SUBJECT_CONFLICT", "Ключ повтора уже использован для другого предмета.")
+}
+
+func decodeCandidates(rows []db.LearningReadVariantCandidatesRow) ([]variant.CandidateOutcome, error) {
+	candidates := make([]variant.CandidateOutcome, 0, len(rows))
+	for _, row := range rows {
+		var profile variant.TaskProfile
+		if err := json.Unmarshal(row.ProfileJson, &profile); err != nil {
+			return nil, err
+		}
+		candidates = append(candidates, variant.CandidateOutcome{Profile: profile, CompetencySourceOrder: row.CompetencySourceOrder, SourceOrder: row.OutcomeSourceOrder, HasTask: row.TaskID != nil})
+	}
+	return candidates, nil
+}
+
+func (r *Repository) Preview(ctx context.Context, subjectID string, build application.BuildFunc) (variant.Variant, error) {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return variant.Variant{}, err
+	}
+	defer tx.Rollback(ctx)
+	q := db.New(tx)
+	// The shared subject lock keeps an import from replacing the map mid-read.
+	subject, err := q.LearningLockSubjectForVariant(ctx, subjectID)
+	if err == pgx.ErrNoRows {
+		return variant.Variant{}, fault.New(fault.NotFound, "SUBJECT_NOT_FOUND", "Предмет не найден.")
+	}
+	if err != nil {
+		return variant.Variant{}, err
+	}
+	rows, err := q.LearningReadVariantCandidates(ctx, subject.ActiveRevision)
+	if err != nil {
+		return variant.Variant{}, err
+	}
+	candidates, err := decodeCandidates(rows)
+	if err != nil {
+		return variant.Variant{}, err
+	}
+	return build(subject.ID, subject.Name, subject.ActiveRevision, candidates)
 }

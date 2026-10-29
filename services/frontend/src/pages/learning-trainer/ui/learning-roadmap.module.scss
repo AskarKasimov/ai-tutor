@@ -1,0 +1,60 @@
+.roadmap {
+  display: grid;
+  gap: var(--space-4);
+  min-width: 0;
+  padding: var(--space-5);
+  border: 1px solid var(--app-border);
+  border-radius: var(--radius-5);
+  background: linear-gradient(
+    145deg,
+    var(--accent-2),
+    var(--color-panel-solid) 55%
+  );
+  p {
+    margin: 0;
+  }
+}
+.header {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  > div {
+    flex: 1;
+  }
+}
+.icon {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-3);
+  background: var(--accent-3);
+  color: var(--accent-11);
+}
+.destination {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  color: var(--accent-11);
+  svg {
+    flex-shrink: 0;
+  }
+}
+.notice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+@media (max-width: 600px) {
+  .roadmap {
+    padding: var(--space-3);
+  }
+  .header {
+    flex-wrap: wrap;
+    > div {
+      flex-basis: calc(100% - 60px);
+    }
+  }
+}

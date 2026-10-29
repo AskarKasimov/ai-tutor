@@ -116,6 +116,7 @@ func (a *App) registerLearningRoutes(mux *http.ServeMux, auth *authapp.Service, 
 	protectRoute("GET /subjects", subjects.ListLearning)
 	protectRoute("POST /admin/subjects/{subject_id}/competency-map/import", competency.ImportSubject)
 	protectRoute("GET /subjects/{subject_id}/competency-map", competency.ReadSubject)
+	protectRoute("GET /subjects/{subject_id}/diagnostic-outline", variants.Preview)
 	protectRoute("POST /variants", variants.Create)
 	protectRoute("GET /variants", variants.List)
 	protectRoute("GET /variants/{id}", variants.Read)

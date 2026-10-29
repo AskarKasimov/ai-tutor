@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { i18n } from '@/shared/i18n'
 import type {
+  CompetencyMapOutline,
   CompetencyMapImport,
   CompetencyMapSummary,
 } from '@/entities/learning-competency-map'
@@ -141,4 +142,48 @@ export async function importCompetencyMap(
       code: item.code,
     })),
   }
+}
+
+// The server applies the exact diagnostic selection and returns no task content.
+const outlineSchema = z.object({
+  competencies: z.array(
+    z.object({
+      id: z.string(),
+      name: z.string(),
+      display_name: z.string().optional(),
+      constituents: z.array(
+        z.object({
+          id: z.string(),
+          name: z.string(),
+          display_name: z.string().optional(),
+          outcomes: z.array(
+            z.object({
+              id: z.string(),
+              name: z.string(),
+              role: z.enum(['main', 'basic']),
+            }),
+          ),
+        }),
+      ),
+    }),
+  ),
+})
+
+export async function readCompetencyMapOutline(
+  subjectId: string,
+  signal: AbortSignal,
+): Promise<CompetencyMapOutline> {
+  const response = await apiFetch(
+    `${apiBase}/subjects/${encodeURIComponent(subjectId)}/diagnostic-outline`,
+    {
+      credentials: 'include',
+      // The server budgets queue time and each LLM batch separately.
+      // Keep navigation/logout cancellation, without a shorter browser deadline.
+      signal,
+    },
+  )
+  const parsed = outlineSchema.safeParse(await readResponse(response))
+  if (!parsed.success)
+    throw new Error(i18n.t('learningCompetencyMap.invalidResponse'))
+  return parsed.data
 }

@@ -73,7 +73,19 @@ var (
 func (fixtureGateway) Complete(_ context.Context, r *llmgatewayv1.CompleteRequest) (*llmgatewayv1.CompleteResponse, error) {
 	prompt := r.GetMessages()[len(r.GetMessages())-1].GetContent()
 	var answer any
-	if !strings.Contains(prompt, "Оцени ответ на заданный вопрос") {
+	if strings.Contains(r.GetMessages()[0].GetContent(), "Сократи названия узлов учебного графа") {
+		var input struct {
+			Titles []string `json:"titles"`
+		}
+		if err := json.Unmarshal([]byte(prompt), &input); err != nil {
+			return nil, err
+		}
+		labels := make([]string, len(input.Titles))
+		for i := range labels {
+			labels[i] = "Короткая тема"
+		}
+		answer = map[string]any{"labels": labels}
+	} else if !strings.Contains(prompt, "Оцени ответ на заданный вопрос") {
 		topic := topicLine.FindStringSubmatch(prompt)
 		answer = map[string]string{"text": "Расскажите про тему «" + topic[1] + "»?"}
 	} else {

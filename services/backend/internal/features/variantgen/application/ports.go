@@ -14,6 +14,7 @@ type Cursor struct {
 }
 
 type Repository interface {
+	Preview(context.Context, string, BuildFunc) (variant.Variant, error)
 	Create(context.Context, string, string, string, BuildFunc) (variant.Variant, error)
 	Get(context.Context, string, string) (variant.Variant, error)
 	List(context.Context, string, string, int, *Cursor) ([]variant.Variant, *Cursor, error)

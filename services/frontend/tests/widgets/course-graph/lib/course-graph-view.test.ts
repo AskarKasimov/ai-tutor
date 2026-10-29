@@ -7,7 +7,7 @@ import {
   layoutCourseGraph,
   neighbourhood,
   searchTopics,
-} from '@/pages/competency-map/lib/course-graph-view'
+} from '@/widgets/course-graph/lib/course-graph-view'
 
 const topic = (id: string, title: string) => ({ id, title })
 

@@ -2887,6 +2887,78 @@ components:
       required:
         - subject_id
       type: object
+    variantgenhttp.DiagnosticOutline:
+      additionalProperties: false
+      properties:
+        algorithm_version:
+          type: string
+        competencies:
+          items:
+            $ref: '#/components/schemas/variantgenhttp.OutlineCompetency'
+          type: array
+          uniqueItems: false
+        revision:
+          type: integer
+      required:
+        - algorithm_version
+        - competencies
+        - revision
+      type: object
+    variantgenhttp.OutlineCompetency:
+      additionalProperties: false
+      properties:
+        constituents:
+          items:
+            $ref: '#/components/schemas/variantgenhttp.OutlineConstituent'
+          type: array
+          uniqueItems: false
+        display_name:
+          type: string
+        id:
+          type: string
+        name:
+          type: string
+      required:
+        - constituents
+        - id
+        - name
+      type: object
+    variantgenhttp.OutlineConstituent:
+      additionalProperties: false
+      properties:
+        display_name:
+          type: string
+        id:
+          type: string
+        name:
+          type: string
+        outcomes:
+          items:
+            $ref: '#/components/schemas/variantgenhttp.OutlineOutcome'
+          type: array
+          uniqueItems: false
+      required:
+        - id
+        - name
+        - outcomes
+      type: object
+    variantgenhttp.OutlineOutcome:
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        role:
+          enum:
+            - main
+            - basic
+          type: string
+      required:
+        - id
+        - name
+        - role
+      type: object
     variantgenhttp.SkippedCompetency:
       additionalProperties: false
       properties:
@@ -6200,6 +6272,49 @@ paths:
       tags:
         - Учебная база
       x-implementation: implemented
+  /learn/subjects/{subject_id}/diagnostic-outline:
+    get:
+      description: Применяет отбор constituent-map-v1 к текущей карте без сохранения варианта и запуска диагностики. Возвращает только названия и ID выбранных компетенций, составляющих и ОР с ролью main/basic. Короткие display_name компетенций и составляющих готовятся через LLM gateway и кэшируются; исходные name сохранены. Вопросы, эталоны, criteria и ОС не выдаются. Пустой отбор возвращается пустым списком.
+      operationId: previewDiagnosticOutline
+      parameters:
+        - description: ID предмета
+          in: path
+          name: subject_id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/variantgenhttp.DiagnosticOutline'
+          description: OK
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unauthorized
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Not Found
+        "503":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Service Unavailable
+      security:
+        - accessCookie: []
+      summary: Предпросмотр блоков диагностики
+      tags:
+        - Варианты
+      x-implementation: implemented
+      x-mode: learn
   /learn/subjects/{subject_id}/learning-state:
     get:
       parameters:

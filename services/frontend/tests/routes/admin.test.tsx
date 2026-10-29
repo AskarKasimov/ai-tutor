@@ -586,6 +586,50 @@ it('asks for confirmation before replacing an existing learning map', async () =
   )
 })
 
+it('waits for a fresh map state before submitting a cached empty map', async () => {
+  const fetch = backend()
+  const router = renderApp('/admin/courses/subject-b')
+  await screen.findByText('Карта ещё не загружена.')
+  let finish!: (response: Response) => void
+  const originalFetch = fetch.getMockImplementation()!
+  fetch.mockImplementation((url, init) => {
+    if (url.includes('/learn/subjects/') && url.endsWith('/competency-map'))
+      return new Promise<Response>((resolve) => {
+        finish = resolve
+      })
+    return originalFetch(url, init)
+  })
+  fireEvent.change(screen.getByLabelText('Файл карты компетенций'), {
+    target: { files: [new File(['map'], 'map.csv', { type: 'text/csv' })] },
+  })
+  act(() => {
+    void router.options.context.queryClient.invalidateQueries()
+  })
+  await waitFor(() => expect(finish).toBeDefined())
+  const submit = screen.getByRole('button', { name: 'Подтвердить изменения' })
+  expect(submit).toBeDisabled()
+  await act(async () =>
+    finish(Response.json({ revision: 1, imported_at: 2, competencies: [] })),
+  )
+  await waitFor(() => expect(submit).toBeEnabled())
+  fireEvent.click(submit)
+  expect(await screen.findByRole('alertdialog')).toBeVisible()
+})
+
+it('returns focus to the submit button after cancelling replacement', async () => {
+  backend({ learningMapExists: true })
+  renderApp('/admin/courses/subject-b')
+  await screen.findByText('Карта компетенций успешно загружена')
+  fireEvent.change(screen.getByLabelText('Файл карты компетенций'), {
+    target: { files: [new File(['map'], 'map.csv', { type: 'text/csv' })] },
+  })
+  const submit = screen.getByRole('button', { name: 'Подтвердить изменения' })
+  submit.focus()
+  fireEvent.click(submit)
+  fireEvent.click(await screen.findByRole('button', { name: 'Отмена' }))
+  await waitFor(() => expect(submit).toHaveFocus())
+})
+
 it('does not mount the lesson while the current session is being checked', async () => {
   let finish!: (response: Response) => void
   vi.stubGlobal(

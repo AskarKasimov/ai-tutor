@@ -21,7 +21,7 @@ import {
   Upload,
   X,
 } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { CompetencyMapApiError } from '@/entities/learning-competency-map'
 import { useAuth } from '@/features/auth'
@@ -88,6 +88,7 @@ function CompetencyMapAdmin({
     })
   }, [missingMapCourse, navigate, refetchSubjects, selectedSubjectId])
   const [confirming, setConfirming] = useState(false)
+  const submitRef = useRef<HTMLButtonElement>(null)
   const [file, setFile] = useState<File | null>(null)
   const [fileError, setFileError] = useState<string | null>(null)
 
@@ -233,10 +234,16 @@ function CompetencyMapAdmin({
                   onOpenChange={setConfirming}
                 >
                   <Button
+                    ref={submitRef}
                     size="3"
                     color="green"
                     className={styles.submit}
-                    disabled={busy || !query.isSuccess || query.isError}
+                    disabled={
+                      busy ||
+                      query.isFetching ||
+                      !query.isSuccess ||
+                      query.isError
+                    }
                     onClick={() => {
                       if (query.data?.importedAt !== null) setConfirming(true)
                       else upload.mutate({ file, subjectId }, settleFile)
@@ -245,7 +252,13 @@ function CompetencyMapAdmin({
                     <Check size={18} aria-hidden="true" />
                     {t('learningCompetencyMap.submitEdit')}
                   </Button>
-                  <AlertDialog.Content maxWidth="440px">
+                  <AlertDialog.Content
+                    maxWidth="440px"
+                    onCloseAutoFocus={(event) => {
+                      event.preventDefault()
+                      submitRef.current?.focus()
+                    }}
+                  >
                     <AlertDialog.Title>
                       {t('learningCompetencyMap.confirmTitle')}
                     </AlertDialog.Title>

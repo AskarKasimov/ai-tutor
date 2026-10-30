@@ -238,12 +238,22 @@ func (w *Worker) ImportMap(ctx context.Context, actor user.User, subjectID, file
 	if err != nil {
 		return coursegraph.Snapshot{}, err
 	}
+	var assessment struct {
+		Warnings []coursegraph.MapIssue `json:"assessment_warnings"`
+	}
+	if err := json.Unmarshal(built.Graph, &assessment); err != nil {
+		return coursegraph.Snapshot{}, err
+	}
 	queued, err := w.repo.SaveMap(ctx, subjectID, filename, built.Sheet, built.Graph, time.Now())
 	if err != nil {
 		return coursegraph.Snapshot{}, err
 	}
 	if !queued {
 		return coursegraph.Snapshot{}, fault.New(fault.Conflict, "GRAPH_BUILD_IN_PROGRESS", "Граф курса уже собирается.")
+	}
+	for _, warning := range assessment.Warnings {
+		log.Printf("WARN course graph: default assessment criteria subject_id=%q filename=%q sheet=%q row=%d column=%q message=%q",
+			subjectID, filename, built.Sheet, warning.Row, warning.Column, warning.Message)
 	}
 	return w.snapshot(ctx, subjectID)
 }

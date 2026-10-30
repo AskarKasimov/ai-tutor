@@ -53,6 +53,17 @@ function respond(value: unknown, status = 200) {
   return fetchMock
 }
 
+it('preserves per-task warnings about default assessment criteria', async () => {
+  const warnings = [
+    { row: 3, column: 'Задание 2', message: 'Используются общие критерии.' },
+  ]
+  respond(
+    snapshot('ready', { graph: { ...graph, assessment_warnings: warnings } }),
+  )
+  const result = await readCourseGraph('subject:one', signal())
+  expect(result?.view?.assessment_warnings).toEqual(warnings)
+})
+
 it.each([
   ['not_requested', null],
   ['pending', 'queued'],

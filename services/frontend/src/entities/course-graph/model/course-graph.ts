@@ -74,6 +74,7 @@ export type CourseGraph = {
 
 // Native graph payload supplied by the course-graph service.
 export type CourseGraphView = {
+  assessment_warnings?: { row: number; column: string; message: string }[]
   topics: {
     id: string
     title: string

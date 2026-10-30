@@ -13,7 +13,7 @@ import (
 // A competency map is the second source of a course graph besides the
 // materials (decision of 19.10.2026). Its template is the course map of
 // competencies: Субкомпетенция → Составляющая → ОР with Bloom level,
-// importance, «Что должно войти в тест», Задание and Критерии оценивания.
+// importance, «Что должно войти в тест», Задание and optional criteria.
 // The book serves both modes: the first sheet is the simulation's, the
 // second the diagnostic's (decision of 19.10.2026, map «Введение в ИИ4»).
 //
@@ -22,8 +22,8 @@ import (
 // a top-level topic and the two simplest of the others (Bloom ascending,
 // importance descending, map order) are its prerequisites. An outcome with
 // several tasks («Задание 1», «Задание 2»…) keeps them all as variants, each
-// with the criteria column of the same position, and the exam picks one of
-// them when it starts.
+// with the criteria column of the same position (or the default rubric if
+// absent), and the exam picks one of them when it starts.
 
 // MapVersion is the version of a graph built from a competency map.
 const MapVersion = "competency-map-v1"
@@ -157,7 +157,7 @@ func mapHeader(rows [][]string) (mapLayout, bool) {
 				return layout, false
 			}
 		}
-		return layout, len(layout.tasks) > 0 && len(layout.criteria) > 0
+		return layout, len(layout.tasks) > 0
 	}
 	return mapLayout{}, false
 }
@@ -165,6 +165,7 @@ func mapHeader(rows [][]string) (mapLayout, bool) {
 // mapTask is a task of an outcome with the criteria of its position.
 type mapTask struct {
 	task, criteria string
+	position       int
 }
 
 type mapOutcome struct {
@@ -188,7 +189,7 @@ func BuildMapGraph(sheets []MapSheet) (MapGraph, error) {
 	layout, valid := mapHeader(rows)
 	if !valid {
 		return MapGraph{}, &MapError{Code: "COMPETENCY_MAP_INVALID",
-			Message: fmt.Sprintf("На первом листе «%s» нет колонок карты: Субкомпетенция (или Компетенция), Составляющая, Образовательный результат, Уровень по Блуму (или Таксономия), Важность, Что должно войти в тест, Задание, Критерии оценивания.", sheet)}
+			Message: fmt.Sprintf("На первом листе «%s» нет обязательных колонок карты: Субкомпетенция (или Компетенция), Составляющая, Образовательный результат, Уровень по Блуму (или Таксономия), Важность, Что должно войти в тест, Задание.", sheet)}
 	}
 	_, explicit := layout.columns["topic_id"]
 	_, dependencies := layout.columns["prerequisites"]
@@ -218,6 +219,10 @@ func BuildMapGraph(sheets []MapSheet) (MapGraph, error) {
 		}
 		return MapGraph{}, &MapError{Code: "COMPETENCY_MAP_EMPTY",
 			Message: "Ни одна составляющая не набрала трёх ОР с TRUE и заданием; граф не из чего собрать.", Issues: skippedIssues(skipped)}
+	}
+	graph, err = withAssessmentWarnings(graph, outcomes)
+	if err != nil {
+		return MapGraph{}, err
 	}
 	return MapGraph{Graph: graph, Sheet: sheet, Topics: topics, Skipped: skipped}, nil
 }
@@ -303,15 +308,13 @@ func readMapOutcomes(rows [][]string) ([]mapOutcome, []mapGroup, []MapIssue) {
 			continue
 		}
 		var tasks []mapTask
-		missing := false
 		for k, i := range layout.tasks {
 			task, criteria := at(row, i), ""
 			if k < len(layout.criteria) {
 				criteria = at(row, layout.criteria[k])
 			}
 			if task != "" {
-				tasks = append(tasks, mapTask{task: task, criteria: criteria})
-				missing = missing || criteria == ""
+				tasks = append(tasks, mapTask{task: task, criteria: criteria, position: k + 1})
 			}
 		}
 		// Only outcomes for the test with a task can be asked.
@@ -329,10 +332,6 @@ func readMapOutcomes(rows [][]string) ([]mapOutcome, []mapGroup, []MapIssue) {
 		importance, ok := importanceValue(cell(row, "importance"))
 		if !ok {
 			issue(line, "importance", "Ожидается целое число от 1 до 5.")
-			continue
-		}
-		if missing {
-			issue(line, "criteria", "У задания нет критериев оценивания: критерии берутся из колонки «Критерии оценивания…» того же номера по порядку.")
 			continue
 		}
 		o := mapOutcome{row: line, competency: competency, constituent: constituent, outcome: outcome,
@@ -464,6 +463,9 @@ func newMapTopic(o mapOutcome, role string, requires []string) mapTopic {
 	variants := make([]mapVariant, len(o.tasks))
 	for i, t := range o.tasks {
 		reference, guidance := splitCriteria(t.criteria)
+		if t.criteria == "" {
+			guidance = DefaultAssessmentGuidance
+		}
 		text := o.content
 		if text == "" {
 			text = "Образовательный результат: " + o.outcome

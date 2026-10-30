@@ -40,6 +40,15 @@ const snapshotSchema = z.object({
     .optional(),
   graph: z
     .object({
+      assessment_warnings: z
+        .array(
+          z.object({
+            row: z.number().int().positive(),
+            column: z.string(),
+            message: z.string(),
+          }),
+        )
+        .optional(),
       topics: z.array(
         z.object({
           id: z.string(),

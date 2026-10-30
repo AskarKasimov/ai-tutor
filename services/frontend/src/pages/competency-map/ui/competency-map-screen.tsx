@@ -726,6 +726,22 @@ function CompetencyMapAdmin({
               fromMap={courseGraph.data?.source === 'competency_map'}
               materials={materials}
             />
+            {!!courseGraph.data?.view?.assessment_warnings?.length && (
+              <div role="status">
+                <Text as="p" color="amber">
+                  {t('courseGraph.defaultAssessmentCriteria')}
+                </Text>
+                <ul>
+                  {courseGraph.data.view.assessment_warnings.map(
+                    (warning, index) => (
+                      <li key={`${warning.row}:${warning.column}:${index}`}>
+                        {t('courseGraph.defaultAssessmentCriteriaRow', warning)}
+                      </li>
+                    ),
+                  )}
+                </ul>
+              </div>
+            )}
           </section>
         </>
       )}

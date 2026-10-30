@@ -284,6 +284,10 @@ void i18n.init({
           leaveCourse: 'Уйти со страницы',
         },
         courseGraph: {
+          defaultAssessmentCriteria:
+            'Для части заданий критерии в карте не заполнены. При оценивании будут использованы общие критерии корректности и покрытия вопроса.',
+          defaultAssessmentCriteriaRow:
+            'Строка {{row}}, {{column}}: {{message}}',
           title: 'Материалы для экзамена',
           backToCourses: 'К списку курсов',
           subtitle:

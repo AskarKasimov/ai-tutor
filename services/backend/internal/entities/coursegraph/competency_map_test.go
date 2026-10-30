@@ -27,9 +27,10 @@ func mapRow(competency, outcome, bloom, importance, include, task string) []stri
 }
 
 type mapShape struct {
-	Version string `json:"version"`
-	Source  string `json:"source"`
-	Topics  []struct {
+	Warnings []MapIssue `json:"assessment_warnings"`
+	Version  string     `json:"version"`
+	Source   string     `json:"source"`
+	Topics   []struct {
 		ID, Title, Text, Question, Role string
 		ParentTitle                     string   `json:"parent_title"`
 		Guidance                        string   `json:"assessment_guidance"`
@@ -197,14 +198,44 @@ func TestMapGraphReadsTheTasksOfEveryColumnAsVariants(t *testing.T) {
 	}
 }
 
-func TestMapGraphNeedsTheCriteriaOfEveryTask(t *testing.T) {
+func TestMapGraphUsesDefaultsOnlyForMissingTaskCriteria(t *testing.T) {
 	header := []string{"Субкомпетенция", "Составляющая", "Образовательный результат", "Уровень по Блуму", "Важность",
-		"Что должно войти в тест", "Задание 1", "Задание 2", "Критерии оценивания"}
-	rows := [][]string{header, {"К1", "С", "А", "Помнить", "3", "TRUE", "Задание А", "Второе задание без критериев", "Эталон: а."}}
-	var mapErr *MapError
-	_, err := BuildMapGraph([]MapSheet{{Name: "Карта", Rows: rows}})
-	if !errors.As(err, &mapErr) || len(mapErr.Issues) != 1 || mapErr.Issues[0].Row != 2 || mapErr.Issues[0].Column != "Критерии оценивания" {
-		t.Fatalf("task without criteria: %v %+v", err, mapErr)
+		"Что должно войти в тест", "Задание 1", "Задание 2", "Критерии оценивания", "ID темы", "Пререквизиты"}
+	rows := [][]string{header, {"К1", "С", "А", "Помнить", "3", "TRUE", "Задание А", "Второе задание без критериев", "Эталон: а.", "a", ""}}
+	_, shape := buildShape(t, rows)
+	variants := shape.Topics[0].Variants
+	if len(variants) != 2 || variants[0].Guidance == DefaultAssessmentGuidance || !strings.Contains(variants[0].Content, "Эталон: а.") || variants[1].Guidance != DefaultAssessmentGuidance || strings.Contains(variants[1].Content, "Эталон: а.") {
+		t.Fatalf("default replaced authored guidance or borrowed another task's reference: %+v", variants)
+	}
+	if len(shape.Warnings) != 1 || shape.Warnings[0].Row != 2 || shape.Warnings[0].Column != "Задание 2" {
+		t.Fatalf("incorrect fallback warning: %+v", shape.Warnings)
+	}
+}
+
+func TestMapGraphDefaultsWithoutAnyCriteriaColumn(t *testing.T) {
+	for _, explicit := range []bool{false, true} {
+		header := append([]string{}, mapHeaderRow[:len(mapHeaderRow)-1]...)
+		if explicit {
+			header = append(header, "ID темы", "Пререквизиты")
+		}
+		rows := [][]string{header}
+		for i, bloom := range []string{"Помнить", "Понимать", "Применять"} {
+			row := mapRow("К1", string(rune('А'+i)), bloom, "3", "TRUE", "Вопрос?")
+			row = row[:len(row)-1]
+			if explicit {
+				row = append(row, string(rune('a'+i)), "")
+			}
+			rows = append(rows, row)
+		}
+		_, shape := buildShape(t, rows)
+		if len(shape.Topics) != 3 || len(shape.Warnings) != 3 {
+			t.Fatalf("defaults lost topics: %+v", shape)
+		}
+		for _, topic := range shape.Topics {
+			if topic.Guidance != DefaultAssessmentGuidance {
+				t.Fatal("missing default guidance")
+			}
+		}
 	}
 }
 

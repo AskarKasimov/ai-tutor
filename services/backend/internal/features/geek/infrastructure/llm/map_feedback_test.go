@@ -13,6 +13,50 @@ import (
 	geekgraph "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/geek/infrastructure/graph"
 )
 
+func TestMissingMapCriteriaUseAValidDefaultRubricWithoutHidingBadScales(t *testing.T) {
+	for _, authored := range []string{"", "Аналитическая рубрика (макс. 2): без уровней"} {
+		header := []string{"Компетенция", "Составляющая", "Образовательный результат", "Таксономия", "Важность", "Что должно войти в тест", "Задание 1", "Критерии оценивания 1", "ID темы", "Пререквизиты"}
+		rows := [][]string{header, {"ИИ", "Агенты", "Агент", "Понимать", "3", "TRUE", "Назови агента и объясни выбор", authored, "agent", ""}}
+		built, err := coursegraph.BuildMapGraph([]coursegraph.MapSheet{{Name: "Карта", Rows: rows}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		graph, ok, err := geekgraph.Decode(built.Graph)
+		if err != nil || !ok {
+			t.Fatalf("decode: %v", err)
+		}
+		err = graph.ValidateRubrics()
+		if authored != "" {
+			if err == nil {
+				t.Fatal("bad authored rubric silently replaced")
+			}
+			continue
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		spec, err := exam.ParseRubric(graph.Nodes[0].AssessmentGuidance)
+		if err != nil || len(spec) != 2 {
+			t.Fatalf("invalid default rubric: %+v, %v", spec, err)
+		}
+		no, yes := false, true
+		e, _ := exam.NewExam(graph, 0, nil)
+		partial := &exam.RubricResult{Items: []exam.RubricMark{{RubricItem: spec[0], Score: 2}, {RubricItem: spec[1], Score: 1}}}
+		if next := e.Apply(exam.Evaluation{Verdict: exam.VerdictAnswered, AnswerComplete: &no, Rubric: partial}); next.Kind != exam.KindFollowup {
+			t.Fatalf("partial default bypassed clarification: %+v", next)
+		}
+		full := &exam.RubricResult{Items: []exam.RubricMark{{RubricItem: spec[0], Score: 2}, {RubricItem: spec[1], Score: 2}}}
+		e.Apply(exam.Evaluation{Verdict: exam.VerdictAnswered, AnswerComplete: &yes, Rubric: full})
+		if grade := e.Nodes["agent"].Grade; grade == nil || *grade != exam.GradeA {
+			t.Fatalf("complete independent answer not A: %v", grade)
+		}
+		prompt := rubricPrompt(application.EvaluationRequest{Node: graph.Nodes[0]}, spec)
+		if !strings.Contains(prompt, "Обоснование и пример не добавляй как требования") {
+			t.Fatal("default added an unconditional example/explanation requirement")
+		}
+	}
+}
+
 func TestRubricQuestionsPreserveAuthoredCalculation(t *testing.T) {
 	n := exam.Node{ID: "calculation", Questions: []string{"Сравни штраф 50 с выигрышем 10 и объясни выбор."}, AssessmentGuidance: "Балл: 0 — нет; 1 — показано сравнение"}
 	spec, err := exam.ParseRubric(n.AssessmentGuidance)

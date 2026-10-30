@@ -47,6 +47,7 @@ function setup({
   competencyMap,
   materials,
   uploadGate,
+  assessmentWarnings = [],
 }: {
   processing?: boolean
   pending?: boolean
@@ -58,6 +59,7 @@ function setup({
   // built from its first sheet and the build publishes the graph of the map.
   competencyMap?: 'valid' | 'invalid'
   uploadGate?: Promise<void>
+  assessmentWarnings?: { row: number; column: string; message: string }[]
 } = {}) {
   let graphRequested = false
   let mapImported = false
@@ -180,6 +182,7 @@ function setup({
         attempts: 0,
         error_message: '',
         graph: {
+          assessment_warnings: assessmentWarnings,
           topics: [
             { id: 'basic', title: 'Называет части агента' },
             { id: 'main', title: 'Выбирает тип агента' },
@@ -206,6 +209,7 @@ function setup({
         error_message: '',
         graph: graphReady
           ? {
+              assessment_warnings: assessmentWarnings,
               topics: [
                 {
                   id: 'topic-1',
@@ -242,6 +246,22 @@ function open(path = '/admin/courses/subject-b?direction=exam') {
   return router
 }
 afterEach(() => vi.unstubAllGlobals())
+
+it('shows which imported tasks will use default assessment criteria', async () => {
+  setup({
+    graphReady: true,
+    assessmentWarnings: [
+      { row: 3, column: 'Задание 2', message: 'Используются общие критерии.' },
+    ],
+  })
+  open()
+  expect(
+    await screen.findByText(/Для части заданий критерии в карте не заполнены/),
+  ).toBeVisible()
+  expect(
+    screen.getByText('Строка 3, Задание 2: Используются общие критерии.'),
+  ).toBeVisible()
+})
 
 it('opens the selected course with original metadata controls and master graph API', async () => {
   const calls = setup()

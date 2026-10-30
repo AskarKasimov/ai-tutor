@@ -2,7 +2,14 @@ export type CourseGraphBuildStatus =
   'queued' | 'running' | 'succeeded' | 'failed'
 
 export type CourseGraphBuildStage =
-  'topics' | 'synonyms' | 'prerequisites' | 'attach' | 'questions'
+  | 'topics'
+  | 'synonyms'
+  | 'prerequisites'
+  | 'attach'
+  | 'questions'
+  | 'prepare_questions'
+  | 'retry_questions'
+  | 'publish'
 
 // Where a running build is: stage stageIndex of stageCount and the model
 // batches of that stage finished so far; a stage without work has total 0.
@@ -12,6 +19,7 @@ export type CourseGraphBuildProgress = {
   stageCount: number
   done: number
   total: number
+  remainingSeconds?: number
 }
 
 // The share of a build done: finished stages plus the finished part of the
@@ -74,6 +82,7 @@ export type CourseGraph = {
 
 // Native graph payload supplied by the course-graph service.
 export type CourseGraphView = {
+  assessment_skipped?: number
   assessment_warnings?: { row: number; column: string; message: string }[]
   topics: {
     id: string

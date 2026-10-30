@@ -63,9 +63,10 @@ type MapFile struct {
 // model batches of that stage finished so far; a stage without work has
 // Total 0.
 type BuildProgress struct {
-	Stage      string `json:"stage" enums:"topics,synonyms,prerequisites,attach,questions"`
-	StageIndex int    `json:"stage_index"`
-	StageCount int    `json:"stage_count"`
-	Done       int    `json:"done"`
-	Total      int    `json:"total"`
+	Stage            string `json:"stage" enums:"topics,synonyms,prerequisites,attach,questions,prepare_questions,retry_questions,publish"`
+	StageIndex       int    `json:"stage_index"`
+	StageCount       int    `json:"stage_count"`
+	Done             int    `json:"done"`
+	Total            int    `json:"total"`
+	RemainingSeconds *int   `json:"remaining_seconds,omitempty" binding:"optional"`
 }

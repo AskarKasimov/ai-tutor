@@ -6,6 +6,7 @@ import {
   readCourseGraph,
   readLatestCourseGraphBuild,
   startCourseGraphBuild,
+  skipMissingCriteria,
 } from '@/entities/course-graph'
 
 afterEach(() => vi.unstubAllGlobals())
@@ -52,6 +53,33 @@ function respond(value: unknown, status = 200) {
   vi.stubGlobal('fetch', fetchMock)
   return fetchMock
 }
+
+it('posts the confirmed exclusion and reads preparation progress', async () => {
+  const fetch = respond(
+    snapshot('processing', {
+      build_source: 'competency_map',
+      progress: {
+        stage: 'prepare_questions',
+        stage_index: 1,
+        stage_count: 2,
+        done: 3,
+        total: 15,
+        remaining_seconds: 42,
+      },
+    }),
+  )
+  const build = await skipMissingCriteria('subject:one', signal())
+  expect(fetch.mock.calls[0][0]).toBe(
+    '/api/v1/exam/admin/subjects/subject%3Aone/graph/competency-map/skip-missing-criteria',
+  )
+  expect(fetch.mock.calls[0][1]).toMatchObject({ method: 'POST' })
+  expect(build.progress).toMatchObject({
+    stage: 'prepare_questions',
+    done: 3,
+    total: 15,
+    remainingSeconds: 42,
+  })
+})
 
 it('preserves per-task warnings about default assessment criteria', async () => {
   const warnings = [

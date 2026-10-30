@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/coursegraph"
 	"go.uber.org/zap"
 
 	geekapp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/geek/application"
@@ -35,6 +36,10 @@ type builtQuestions struct {
 }
 
 func (b builtQuestions) Prepare(ctx context.Context, data json.RawMessage) (json.RawMessage, error) {
+	return b.PrepareWithProgress(ctx, data, nil)
+}
+
+func (b builtQuestions) PrepareWithProgress(ctx context.Context, data json.RawMessage, report func(coursegraph.BuildProgress)) (json.RawMessage, error) {
 	// The model calls are logged under the worker, as Geek's are.
 	ctx = httpx.WithLogger(ctx, b.logger)
 	// The graph is read as Geek reads it, so the prompts get the same topics.
@@ -55,9 +60,20 @@ func (b builtQuestions) Prepare(ctx context.Context, data json.RawMessage) (json
 		pause = builtQuestionPause
 	}
 	started := time.Now()
+	initial := len(g.Nodes) - len(geekapp.Unprepared(g))
 	for round := 1; ; round++ {
 		var failures error
-		g, _, failures = geekapp.PrepareQuestions(ctx, b.examiner, g, 4)
+		g, _, failures = geekapp.PrepareQuestionsWithProgress(ctx, b.examiner, g, 4, func(done, total int) {
+			if report != nil {
+				p := coursegraph.BuildProgress{Stage: "prepare_questions", Done: done, Total: total}
+				if done-initial >= 2 && done < total && round == 1 {
+					seconds := max(1, int(time.Since(started).Seconds()*float64(total-done)/float64(done-initial)))
+					p.RemainingSeconds = &seconds
+				}
+				report(p)
+				b.logger.Info("build question preparation progress", zap.Int("done", done), zap.Int("total", total), zap.Int("round", round))
+			}
+		})
 		left := geekapp.Unprepared(g)
 		if len(left) == 0 {
 			break
@@ -66,6 +82,9 @@ func (b builtQuestions) Prepare(ctx context.Context, data json.RawMessage) (json
 			return nil, fmt.Errorf("%d topics without prepared questions (%s): %w", len(left), strings.Join(left, ", "), failures)
 		}
 		b.logger.Warn("build questions are not all prepared; retrying", zap.Error(failures), zap.Strings("nodes", left), zap.Int("round", round))
+		if report != nil {
+			report(coursegraph.BuildProgress{Stage: "retry_questions", Done: len(g.Nodes) - len(left), Total: len(g.Nodes)})
+		}
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()

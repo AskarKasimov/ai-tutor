@@ -59,7 +59,9 @@ export function useLatestCourseGraphBuildQuery(
     },
     refetchInterval: (current) =>
       materialsBusy ||
-      (!metadataIncomplete && current.state.data?.inputsReady === false) ||
+      (!metadataIncomplete &&
+        current.state.data?.inputsReady === false &&
+        current.state.data.source !== 'competency_map') ||
       current.state.data?.status === 'running' ||
       (current.state.data?.status === 'queued' &&
         // A map does not wait for the materials.
@@ -103,7 +105,9 @@ export function useCourseGraphQuery(
     queryKey: courseGraphQueryKeys.graph(userId, subjectId),
     refetchInterval: (current) =>
       materialsBusy ||
-      (!metadataIncomplete && current.state.data?.inputsReady === false)
+      (!metadataIncomplete &&
+        current.state.data?.inputsReady === false &&
+        current.state.data.source !== 'competency_map')
         ? 2000
         : false,
     enabled: !!userId && !!subjectId,
@@ -137,12 +141,13 @@ export function useCourseGraphQuery(
 export function useStartCourseGraphBuildMutation(
   userId: string,
   subjectId: string,
+  operation: 'materials' | 'skipMissingCriteria' = 'materials',
 ) {
   const { courseGraph } = useCourseGraphBuildDependencies()
   const cache = useQueryClient()
   const tokenRef = useRef(captureSession(cache))
   return useMutation({
-    mutationKey: ['course-graph-build', 'start', userId, subjectId],
+    mutationKey: ['course-graph-build', operation, userId, subjectId],
     gcTime: 0,
     onMutate: () => {
       tokenRef.current = captureSession(cache)
@@ -155,10 +160,11 @@ export function useStartCourseGraphBuildMutation(
         controller,
       )
       try {
-        return await courseGraph.startCourseGraphBuild(
-          targetSubjectId,
-          controller.signal,
-        )
+        return await (
+          operation === 'skipMissingCriteria'
+            ? courseGraph.skipMissingCriteria
+            : courseGraph.startCourseGraphBuild
+        )(targetSubjectId, controller.signal)
       } finally {
         unregister()
       }

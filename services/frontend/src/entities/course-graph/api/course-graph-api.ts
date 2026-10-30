@@ -30,11 +30,15 @@ const snapshotSchema = z.object({
         'prerequisites',
         'attach',
         'questions',
+        'prepare_questions',
+        'retry_questions',
+        'publish',
       ]),
       stage_index: z.number().int().positive(),
       stage_count: z.number().int().positive(),
       done: z.number().int().nonnegative(),
       total: z.number().int().nonnegative(),
+      remaining_seconds: z.number().int().nonnegative().optional(),
     })
     .nullable()
     .optional(),
@@ -49,6 +53,7 @@ const snapshotSchema = z.object({
           }),
         )
         .optional(),
+      assessment_skipped: z.number().int().nonnegative().optional(),
       topics: z.array(
         z.object({
           id: z.string(),
@@ -205,6 +210,7 @@ function toBuild(
           stageCount: snapshot.progress.stage_count,
           done: snapshot.progress.done,
           total: snapshot.progress.total,
+          remainingSeconds: snapshot.progress.remaining_seconds,
         }
       : null,
     startedAt: null,
@@ -232,6 +238,24 @@ export async function readLatestCourseGraphBuild(
       ),
     ),
   )
+}
+
+export async function skipMissingCriteria(
+  subjectId: string,
+  signal: AbortSignal,
+): Promise<CourseGraphBuild> {
+  const result = toBuild(
+    subjectId,
+    parseSnapshot(
+      await fetchJSON(
+        `/admin/subjects/${encodeURIComponent(subjectId)}/graph/competency-map/skip-missing-criteria`,
+        signal,
+        { method: 'POST' },
+      ),
+    ),
+  )
+  if (!result) throw new Error(i18n.t('courseGraph.invalidResponse'))
+  return result
 }
 
 export async function startCourseGraphBuild(

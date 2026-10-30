@@ -19,6 +19,12 @@ import (
 // prepared counts the nodes completed by this call. parallel bounds the
 // concurrent nodes.
 func PrepareQuestions(ctx context.Context, examiner Examiner, g exam.Graph, parallel int) (exam.Graph, int, error) {
+	return PrepareQuestionsWithProgress(ctx, examiner, g, parallel, nil)
+}
+
+// PrepareQuestionsWithProgress reports completed topics, including cached ones.
+// Reports are serialized and finish before this function returns.
+func PrepareQuestionsWithProgress(ctx context.Context, examiner Examiner, g exam.Graph, parallel int, report func(done, total int)) (exam.Graph, int, error) {
 	out := g
 	out.Nodes = make([]exam.Node, len(g.Nodes))
 	copy(out.Nodes, g.Nodes)
@@ -31,6 +37,16 @@ func PrepareQuestions(ctx context.Context, examiner Examiner, g exam.Graph, para
 		failures []error
 		prepared int
 	)
+	initial := len(g.Nodes) - len(Unprepared(g))
+	if report != nil {
+		report(initial, len(g.Nodes))
+	}
+	completed := func() {
+		prepared++
+		if report != nil {
+			report(initial+prepared, len(g.Nodes))
+		}
+	}
 	fail := func(id string, err error) {
 		mu.Lock()
 		defer mu.Unlock()
@@ -72,7 +88,7 @@ func PrepareQuestions(ctx context.Context, examiner Examiner, g exam.Graph, para
 					mu.Unlock()
 				}
 				mu.Lock()
-				prepared++
+				completed()
 				mu.Unlock()
 				return
 			}
@@ -104,7 +120,7 @@ func PrepareQuestions(ctx context.Context, examiner Examiner, g exam.Graph, para
 			mu.Lock()
 			defer mu.Unlock()
 			out.Nodes[i].Rephrase = rephrase
-			prepared++
+			completed()
 		}()
 	}
 	wg.Wait()

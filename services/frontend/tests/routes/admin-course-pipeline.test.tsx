@@ -48,6 +48,7 @@ function setup({
   materials,
   uploadGate,
   assessmentWarnings = [],
+  buildProgress,
 }: {
   processing?: boolean
   pending?: boolean
@@ -60,6 +61,14 @@ function setup({
   competencyMap?: 'valid' | 'invalid'
   uploadGate?: Promise<void>
   assessmentWarnings?: { row: number; column: string; message: string }[]
+  buildProgress?: {
+    stage: string
+    stage_index: number
+    stage_count: number
+    done: number
+    total: number
+    remaining_seconds?: number
+  }
 } = {}) {
   let graphRequested = false
   let mapImported = false
@@ -142,6 +151,22 @@ function setup({
                       : material,
             ],
       )
+    if (url.endsWith('/graph/competency-map/skip-missing-criteria')) {
+      graphRequested = true
+      return Response.json(
+        {
+          status: 'pending',
+          attempts: 1,
+          error_message: '',
+          graph: null,
+          stale: false,
+          inputs_ready: true,
+          updated_at: 3,
+          build_source: 'competency_map',
+        },
+        { status: 202 },
+      )
+    }
     if (url.endsWith('/graph/competency-map')) {
       if (competencyMap === 'invalid')
         return Response.json(
@@ -200,11 +225,15 @@ function setup({
     if (url.endsWith('/graph') || url.endsWith('/graph/build')) {
       if (init?.method === 'POST') graphRequested = true
       return Response.json({
-        status: graphRequested
-          ? 'pending'
-          : graphReady
-            ? 'ready'
-            : 'not_requested',
+        progress: buildProgress,
+        build_source: buildProgress ? 'competency_map' : 'materials',
+        status: buildProgress
+          ? 'processing'
+          : graphRequested
+            ? 'pending'
+            : graphReady
+              ? 'ready'
+              : 'not_requested',
         attempts: 0,
         error_message: '',
         graph: graphReady
@@ -284,6 +313,60 @@ it('opens the selected course with original metadata controls and master graph A
   expect(calls.mock.calls.some(([url]) => /graph-builds/.test(url))).toBe(false)
   expect(screen.getByRole('combobox', { name: 'Тип материала' })).toBeVisible()
   expect(screen.getByRole('spinbutton', { name: 'Неделя' })).toHaveValue(1)
+})
+
+it('requires confirmation before excluding tasks without criteria', async () => {
+  const calls = setup({
+    graphReady: true,
+    assessmentWarnings: [
+      { row: 3, column: 'Задание 2', message: 'Критерии не заданы.' },
+    ],
+  })
+  open()
+  fireEvent.click(
+    await screen.findByRole('button', {
+      name: 'Пропустить задания без критериев',
+    }),
+  )
+  expect(
+    calls.mock.calls.some(([url]) => url.endsWith('/skip-missing-criteria')),
+  ).toBe(false)
+  const dialog = await screen.findByRole('alertdialog')
+  expect(
+    within(dialog).getByText(/активные диагностики отменятся/),
+  ).toBeVisible()
+  fireEvent.click(
+    within(dialog).getByRole('button', { name: 'Исключить и пересобрать' }),
+  )
+  await waitFor(() =>
+    expect(
+      calls.mock.calls.some(([url]) => url.endsWith('/skip-missing-criteria')),
+    ).toBe(true),
+  )
+})
+
+it('shows actual question preparation and estimate without PDF blockers for a map', async () => {
+  setup({
+    materials: [],
+    buildProgress: {
+      stage: 'prepare_questions',
+      stage_index: 1,
+      stage_count: 2,
+      done: 5,
+      total: 15,
+      remaining_seconds: 25,
+    },
+  })
+  open()
+  expect(
+    await screen.findByText(
+      /Подготовка вопросов и переформулировок · этап 1 из 2 · шаг 5 из 15/,
+    ),
+  ).toBeVisible()
+  expect(screen.getByText(/осталось примерно 25 с/)).toBeVisible()
+  expect(
+    screen.queryByText('Загрузите хотя бы один материал курса.'),
+  ).not.toBeInTheDocument()
 })
 
 it('shows the master pipeline stage while translation is running and blocks graph builds', async () => {

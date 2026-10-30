@@ -17,6 +17,36 @@ const MaxMapBytes = 25 << 20
 
 type Handler struct{ service *application.Worker }
 
+// SkipMissingCriteria excludes fallback-graded tasks after admin confirmation.
+// @Summary Исключить задания карты без критериев
+// @Description Доступно только admin. Исключает задания с общей рубрикой, пустые темы и связанные с ними рёбра из сохранённой карты и ставит пересборку в очередь. Исходный XLSX не меняется. Повтор без новых исключений не запускает сборку. Активные диагностики отменяются при публикации изменённого графа. Если вопросов не останется, операция отклоняется без изменения карты.
+// @ID skipCourseGraphMissingCriteria
+// @Tags Материалы
+// @Security accessCookie
+// @Produce json
+// @Param subject_id path string true "ID предмета"
+// @Success 202 {object} coursegraph.Snapshot
+// @Failure 401 {object} fault.Error
+// @Failure 403 {object} fault.Error
+// @Failure 404 {object} fault.Error
+// @Failure 409 {object} fault.Error
+// @Failure 422 {object} fault.Error
+// @Failure 503 {object} fault.Error
+// @Router /exam/admin/subjects/{subject_id}/graph/competency-map/skip-missing-criteria [post]
+func (h *Handler) SkipMissingCriteria(w http.ResponseWriter, r *http.Request) {
+	actor, ok := httpx.Principal[user.User](r)
+	if !ok {
+		httpx.Error(r.Context(), w, fault.New(fault.Unauthorized, "UNAUTHORIZED", "Требуется сессия."))
+		return
+	}
+	result, err := h.service.SkipMissingCriteria(r.Context(), actor, r.PathValue("subject_id"))
+	if err != nil {
+		httpx.Error(r.Context(), w, err)
+		return
+	}
+	httpx.JSON(w, http.StatusAccepted, result)
+}
+
 func New(service *application.Worker) *Handler { return &Handler{service} }
 
 // Read returns the latest successful graph and current build status.

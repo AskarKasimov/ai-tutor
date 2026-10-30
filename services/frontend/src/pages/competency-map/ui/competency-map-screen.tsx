@@ -178,6 +178,11 @@ function CompetencyMapAdmin({
     }
   }, [materialsBusy, materialsQuery.dataUpdatedAt, refetchBuild, refetchGraph])
   const startBuild = useStartCourseGraphBuildMutation(userId, subjectId)
+  const skipCriteria = useStartCourseGraphBuildMutation(
+    userId,
+    subjectId,
+    'skipMissingCriteria',
+  )
   const [previewId, setPreviewId] = useState<string | null>(null)
   const [materialOrder, setMaterialOrder] = useState<string[]>([])
   const [draggingMaterialId, setDraggingMaterialId] = useState<string | null>(
@@ -192,6 +197,7 @@ function CompetencyMapAdmin({
     useCourseMaterialsChanging(userId, subjectId) || queue.isPending
   const busy = materialsChanging
   const graphBuilding =
+    skipCriteria.isPending ||
     startBuild.isPending ||
     latestBuild.data?.status === 'queued' ||
     latestBuild.data?.status === 'running'
@@ -581,22 +587,23 @@ function CompetencyMapAdmin({
                 failed: failedCount,
               })}
             </Text>
-            {graphBlockers.length > 0 && (
-              <div className={styles.warning} role="status">
-                <Text weight="bold">
-                  {t(
-                    hasGraph
-                      ? 'courseGraph.rebuildBlockedTitle'
-                      : 'courseGraph.blockedTitle',
-                  )}
-                </Text>
-                <ul>
-                  {graphBlockers.map((reason) => (
-                    <li key={reason}>{reason}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
+            {graphBlockers.length > 0 &&
+              latestBuild.data?.source !== 'competency_map' && (
+                <div className={styles.warning} role="status">
+                  <Text weight="bold">
+                    {t(
+                      hasGraph
+                        ? 'courseGraph.rebuildBlockedTitle'
+                        : 'courseGraph.blockedTitle',
+                    )}
+                  </Text>
+                  <ul>
+                    {graphBlockers.map((reason) => (
+                      <li key={reason}>{reason}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             {latestBuild.isError && (
               <div>
                 <Text as="p" role="alert" color="red">
@@ -726,6 +733,13 @@ function CompetencyMapAdmin({
               fromMap={courseGraph.data?.source === 'competency_map'}
               materials={materials}
             />
+            {!!courseGraph.data?.view?.assessment_skipped && (
+              <Text as="p" role="status">
+                {t('courseGraph.criteriaSkipped', {
+                  count: courseGraph.data.view.assessment_skipped,
+                })}
+              </Text>
+            )}
             {!!courseGraph.data?.view?.assessment_warnings?.length && (
               <div role="status">
                 <Text as="p" color="amber">
@@ -750,6 +764,53 @@ function CompetencyMapAdmin({
                 <Text as="p">
                   {t('courseGraph.defaultAssessmentRequirements')}
                 </Text>
+                <AlertDialog.Root>
+                  <AlertDialog.Trigger>
+                    <Button color="amber" disabled={graphBuilding}>
+                      {t('courseGraph.skipCriteria')}
+                    </Button>
+                  </AlertDialog.Trigger>
+                  <AlertDialog.Content maxWidth="520px">
+                    <AlertDialog.Title>
+                      {t('courseGraph.skipCriteria')}
+                    </AlertDialog.Title>
+                    <AlertDialog.Description>
+                      {t('courseGraph.skipCriteriaConfirm')}
+                    </AlertDialog.Description>
+                    <ul>
+                      {courseGraph.data.view.assessment_warnings.map(
+                        (warning, index) => (
+                          <li key={index}>
+                            {t(
+                              'courseGraph.defaultAssessmentCriteriaRow',
+                              warning,
+                            )}
+                          </li>
+                        ),
+                      )}
+                    </ul>
+                    <Flex justify="end" gap="3" mt="4">
+                      <AlertDialog.Cancel>
+                        <Button variant="soft">
+                          {t('competencyMap.cancel')}
+                        </Button>
+                      </AlertDialog.Cancel>
+                      <AlertDialog.Action>
+                        <Button
+                          color="amber"
+                          onClick={() => skipCriteria.mutate(subjectId)}
+                        >
+                          {t('courseGraph.skipCriteriaConfirmButton')}
+                        </Button>
+                      </AlertDialog.Action>
+                    </Flex>
+                  </AlertDialog.Content>
+                </AlertDialog.Root>
+                {skipCriteria.isError && (
+                  <Text as="p" role="alert" color="red">
+                    {skipCriteria.error.message}
+                  </Text>
+                )}
               </div>
             )}
           </section>
@@ -1166,6 +1227,19 @@ function BuildProgressCard({ build }: { build: CourseGraphBuild }) {
               .join(' · ')
           : t('courseGraph.stagePreparing')}
       </Text>
+      {progress?.stage === 'prepare_questions' && (
+        <Text as="p" size="2">
+          {t('courseGraph.questionPreparationHint')}
+        </Text>
+      )}
+      {progress?.remainingSeconds !== undefined &&
+        progress.remainingSeconds > 0 && (
+          <Text as="p" size="2" color="gray">
+            {t('courseGraph.estimatedRemaining', {
+              seconds: progress.remainingSeconds,
+            })}
+          </Text>
+        )}
       <CosmicProgress
         value={percent}
         label={t('courseGraph.status.running')}

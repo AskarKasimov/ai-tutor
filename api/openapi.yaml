@@ -361,6 +361,8 @@ components:
       properties:
         done:
           type: integer
+        remaining_seconds:
+          type: integer
         stage:
           enum:
             - topics
@@ -368,6 +370,9 @@ components:
             - prerequisites
             - attach
             - questions
+            - prepare_questions
+            - retry_questions
+            - publish
           type: string
         stage_count:
           type: integer
@@ -3899,6 +3904,66 @@ paths:
       security:
         - accessCookie: []
       summary: Импортировать карту компетенций
+      tags:
+        - Материалы
+      x-implementation: implemented
+  /exam/admin/subjects/{subject_id}/graph/competency-map/skip-missing-criteria:
+    post:
+      description: Доступно только admin. Исключает задания с общей рубрикой, пустые темы и связанные с ними рёбра из сохранённой карты и ставит пересборку в очередь. Исходный XLSX не меняется. Повтор без новых исключений не запускает сборку. Активные диагностики отменяются при публикации изменённого графа. Если вопросов не останется, операция отклоняется без изменения карты.
+      operationId: skipCourseGraphMissingCriteria
+      parameters:
+        - description: ID предмета
+          in: path
+          name: subject_id
+          required: true
+          schema:
+            type: string
+      responses:
+        "202":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/coursegraph.Snapshot'
+          description: Accepted
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Forbidden
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Not Found
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Conflict
+        "422":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unprocessable Entity
+        "503":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Service Unavailable
+      security:
+        - accessCookie: []
+      summary: Исключить задания карты без критериев
       tags:
         - Материалы
       x-implementation: implemented

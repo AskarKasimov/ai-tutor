@@ -4,6 +4,10 @@ import type { CourseGraph, CourseGraphBuild } from '@/entities/course-graph'
 
 export type CourseGraphBuildDependencies = {
   courseGraph: {
+    skipMissingCriteria(
+      subjectId: string,
+      signal: AbortSignal,
+    ): Promise<CourseGraphBuild>
     readLatestCourseGraphBuild(
       subjectId: string,
       signal: AbortSignal,

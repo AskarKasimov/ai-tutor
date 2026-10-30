@@ -214,6 +214,12 @@ func TestOpenAPIResponses(t *testing.T) {
 	}
 	mapPath := "/admin/subjects/" + contractSubject.ID + "/graph/competency-map"
 	const mapContract = "/admin/subjects/{subject_id}/graph/competency-map"
+	const skipContract = "/admin/subjects/{subject_id}/graph/competency-map/skip-missing-criteria"
+	beforeImport := f.request("POST", mapPath+"/skip-missing-criteria", "", admin)
+	if beforeImport.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("skip before import: %d %s", beforeImport.Code, beforeImport.Body.String())
+	}
+	check("POST", skipContract, beforeImport)
 	notABook := upload(f, mapPath, "file", "map.pdf", "application/pdf", []byte("%PDF-1.7"), admin)
 	if notABook.Code != http.StatusUnprocessableEntity {
 		t.Fatalf("map that is not a book: %d %s", notABook.Code, notABook.Body.String())
@@ -224,7 +230,25 @@ func TestOpenAPIResponses(t *testing.T) {
 		t.Fatalf("map import: %d %s", imported.Code, imported.Body.String())
 	}
 	check("POST", mapContract, imported)
+	whileBuilding := f.request("POST", mapPath+"/skip-missing-criteria", "", admin)
+	if whileBuilding.Code != http.StatusConflict {
+		t.Fatalf("skip while building: %d %s", whileBuilding.Code, whileBuilding.Body.String())
+	}
+	check("POST", skipContract, whileBuilding)
 	check("POST", mapContract, upload(f, mapPath, "file", "map.xlsx", "application/octet-stream", mapBook(t), admin))
+	// Publish the imported graph as the worker would, then validate the 202
+	// response of the actual skip endpoint against the OpenAPI snapshot schema.
+	if _, err := f.pool.Exec(t.Context(), `INSERT INTO course_graphs(subject_id, source, fingerprint, graph, updated_at) SELECT subject_id, 'competency_map', fingerprint, graph, 1 FROM course_graph_maps WHERE subject_id=$1`, contractSubject.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.pool.Exec(t.Context(), `UPDATE course_graph_jobs SET status='ready' WHERE subject_id=$1`, contractSubject.ID); err != nil {
+		t.Fatal(err)
+	}
+	skipped := f.request("POST", mapPath+"/skip-missing-criteria", "", admin)
+	if skipped.Code != http.StatusAccepted {
+		t.Fatalf("skip published map: %d %s", skipped.Code, skipped.Body.String())
+	}
+	check("POST", skipContract, skipped)
 	check("GET", "/subjects", f.request("GET", "/subjects", "", admin))
 	materialData := []byte("%PDF-1.7 lecture")
 	materialsUpload := upload(f, "/admin/subjects/subject:test/materials", "file", "lecture.pdf", "application/pdf", materialData, admin)

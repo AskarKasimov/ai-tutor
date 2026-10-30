@@ -60,6 +60,7 @@ export function createAppDependencies(): AppDependencies {
       readLatestCourseGraphBuild: courseGraph.readLatestCourseGraphBuild,
       startCourseGraphBuild: courseGraph.startCourseGraphBuild,
       importCompetencyMap: courseGraph.importCompetencyMap,
+      skipMissingCriteria: courseGraph.skipMissingCriteria,
       readCourseGraph: courseGraph.readCourseGraph,
     },
     subjects: {

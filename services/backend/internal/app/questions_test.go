@@ -91,6 +91,31 @@ func TestMapDefaultsAndWarningsSurviveQuestionPreparation(t *testing.T) {
 	}
 }
 
+func TestBuildReportsProgressAndRetryWithoutCountingFailedTopics(t *testing.T) {
+	examiner := &buildExaminer{}
+	examiner.fails.Store(1)
+	var updates []coursegraph.BuildProgress
+	_, err := (builtQuestions{examiner: examiner, logger: zap.NewNop(), pause: time.Millisecond}).PrepareWithProgress(context.Background(), json.RawMessage(build), func(p coursegraph.BuildProgress) { updates = append(updates, p) })
+	if err != nil {
+		t.Fatal(err)
+	}
+	retry := false
+	for _, p := range updates {
+		if p.Done > p.Total || p.Total != 2 {
+			t.Fatalf("invalid progress: %+v", p)
+		}
+		if p.Stage == "retry_questions" {
+			retry = true
+			if p.RemainingSeconds != nil {
+				t.Fatal("retry has misleading estimate")
+			}
+		}
+	}
+	if !retry || updates[len(updates)-1].Done != 2 {
+		t.Fatalf("missing retry or completion: %+v", updates)
+	}
+}
+
 func TestBuildRejectsInvalidRubricBeforePreparingQuestions(t *testing.T) {
 	examiner := &buildExaminer{}
 	data := json.RawMessage(`{"topics":[{"id":"a","title":"Тема","text":"Текст","question":"Вопрос?","rephrase":"Проще?","assessment_guidance":"Балл (макс. 2): оценить по смыслу"}]}`)

@@ -146,6 +146,7 @@ SELECT s.id, coalesce(j.status,'not_requested')::text AS status,
            CASE g.source WHEN 'competency_map' THEN m.fingerprint ELSE i.fingerprint END)::boolean AS stale,
        (i.subject_id IS NOT NULL)::boolean AS inputs_ready,
        coalesce(j.source,'')::text AS job_source,
+       coalesce(m.fingerprint,'')::text AS map_fingerprint,
        coalesce(m.filename,'')::text AS map_filename, coalesce(m.sheet,'')::text AS map_sheet
 FROM subjects s LEFT JOIN course_graph_jobs j ON j.subject_id=s.id
 LEFT JOIN course_graphs g ON g.subject_id=s.id
@@ -154,18 +155,19 @@ LEFT JOIN course_graph_maps m ON m.subject_id=s.id WHERE s.id=$1
 `
 
 type ReadCourseGraphRow struct {
-	ID           string
-	Status       string
-	Attempts     int32
-	ErrorMessage string
-	Graph        []byte
-	UpdatedAt    int64
-	GraphSource  string
-	Stale        bool
-	InputsReady  bool
-	JobSource    string
-	MapFilename  string
-	MapSheet     string
+	ID             string
+	Status         string
+	Attempts       int32
+	ErrorMessage   string
+	Graph          []byte
+	UpdatedAt      int64
+	GraphSource    string
+	Stale          bool
+	InputsReady    bool
+	JobSource      string
+	MapFingerprint string
+	MapFilename    string
+	MapSheet       string
 }
 
 func (q *Queries) ReadCourseGraph(ctx context.Context, id string) (ReadCourseGraphRow, error) {
@@ -182,6 +184,7 @@ func (q *Queries) ReadCourseGraph(ctx context.Context, id string) (ReadCourseGra
 		&i.Stale,
 		&i.InputsReady,
 		&i.JobSource,
+		&i.MapFingerprint,
 		&i.MapFilename,
 		&i.MapSheet,
 	)
@@ -247,6 +250,44 @@ type RenewCourseGraphParams struct {
 
 func (q *Queries) RenewCourseGraph(ctx context.Context, arg RenewCourseGraphParams) (int64, error) {
 	result, err := q.db.Exec(ctx, renewCourseGraph, arg.Now, arg.SubjectID, arg.Token)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const replaceCurrentCourseGraphMap = `-- name: ReplaceCurrentCourseGraphMap :execrows
+UPDATE course_graph_maps m
+SET filename=$1, sheet=$2,
+    fingerprint=$3, graph=$4::jsonb, uploaded_at=$5::bigint
+WHERE m.subject_id=$6 AND m.fingerprint=$7
+  AND EXISTS (SELECT 1 FROM course_graphs g WHERE g.subject_id=m.subject_id
+              AND g.source='competency_map' AND g.fingerprint=m.fingerprint)
+  AND EXISTS (SELECT 1 FROM course_graph_jobs j WHERE j.subject_id=m.subject_id AND j.status='ready')
+`
+
+type ReplaceCurrentCourseGraphMapParams struct {
+	Filename            string
+	Sheet               string
+	Fingerprint         string
+	Graph               []byte
+	Now                 int64
+	SubjectID           string
+	ExpectedFingerprint string
+}
+
+// Compare-and-swap the confirmed, published map. Re-evaluation after a
+// concurrent map update checks its fingerprint before changing any data.
+func (q *Queries) ReplaceCurrentCourseGraphMap(ctx context.Context, arg ReplaceCurrentCourseGraphMapParams) (int64, error) {
+	result, err := q.db.Exec(ctx, replaceCurrentCourseGraphMap,
+		arg.Filename,
+		arg.Sheet,
+		arg.Fingerprint,
+		arg.Graph,
+		arg.Now,
+		arg.SubjectID,
+		arg.ExpectedFingerprint,
+	)
 	if err != nil {
 		return 0, err
 	}

@@ -68,11 +68,14 @@ it('posts the confirmed exclusion and reads preparation progress', async () => {
       },
     }),
   )
-  const build = await skipMissingCriteria('subject:one', signal())
+  const build = await skipMissingCriteria('subject:one', signal(), 'map-a')
   expect(fetch.mock.calls[0][0]).toBe(
     '/api/v1/exam/admin/subjects/subject%3Aone/graph/competency-map/skip-missing-criteria',
   )
-  expect(fetch.mock.calls[0][1]).toMatchObject({ method: 'POST' })
+  expect(fetch.mock.calls[0][1]).toMatchObject({
+    method: 'POST',
+    headers: { 'X-Expected-Map-Fingerprint': 'map-a' },
+  })
   expect(build.progress).toMatchObject({
     stage: 'prepare_questions',
     done: 3,

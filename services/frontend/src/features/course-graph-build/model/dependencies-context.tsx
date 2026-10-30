@@ -7,6 +7,7 @@ export type CourseGraphBuildDependencies = {
     skipMissingCriteria(
       subjectId: string,
       signal: AbortSignal,
+      expectedFingerprint: string,
     ): Promise<CourseGraphBuild>
     readLatestCourseGraphBuild(
       subjectId: string,

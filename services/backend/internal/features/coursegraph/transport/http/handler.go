@@ -20,6 +20,7 @@ type Handler struct{ service *application.Worker }
 // SkipMissingCriteria excludes fallback-graded tasks after admin confirmation.
 // @Summary Исключить задания карты без критериев
 // @Description Доступно только admin. Исключает задания с общей рубрикой, пустые темы и связанные с ними рёбра из сохранённой карты и ставит пересборку в очередь. Исходный XLSX не меняется. Повтор без новых исключений не запускает сборку. Активные диагностики отменяются при публикации изменённого графа. Если вопросов не останется, операция отклоняется без изменения карты.
+// @Param X-Expected-Map-Fingerprint header string true "Fingerprint карты из подтверждённого snapshot; несовпадение или неопубликованная карта — 409"
 // @ID skipCourseGraphMissingCriteria
 // @Tags Материалы
 // @Security accessCookie
@@ -39,7 +40,7 @@ func (h *Handler) SkipMissingCriteria(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(r.Context(), w, fault.New(fault.Unauthorized, "UNAUTHORIZED", "Требуется сессия."))
 		return
 	}
-	result, err := h.service.SkipMissingCriteria(r.Context(), actor, r.PathValue("subject_id"))
+	result, err := h.service.SkipMissingCriteria(r.Context(), actor, r.PathValue("subject_id"), r.Header.Get("X-Expected-Map-Fingerprint"))
 	if err != nil {
 		httpx.Error(r.Context(), w, err)
 		return

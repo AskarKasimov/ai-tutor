@@ -19,7 +19,11 @@ const snapshotSchema = z.object({
   graph_source: z.enum(['built', 'competency_map', 'none']).optional(),
   build_source: z.enum(['materials', 'competency_map']).nullable().optional(),
   map: z
-    .object({ filename: z.string(), sheet: z.string() })
+    .object({
+      filename: z.string(),
+      sheet: z.string(),
+      fingerprint: z.string().optional(),
+    })
     .nullable()
     .optional(),
   progress: z
@@ -243,6 +247,7 @@ export async function readLatestCourseGraphBuild(
 export async function skipMissingCriteria(
   subjectId: string,
   signal: AbortSignal,
+  expectedFingerprint: string,
 ): Promise<CourseGraphBuild> {
   const result = toBuild(
     subjectId,
@@ -250,7 +255,10 @@ export async function skipMissingCriteria(
       await fetchJSON(
         `/admin/subjects/${encodeURIComponent(subjectId)}/graph/competency-map/skip-missing-criteria`,
         signal,
-        { method: 'POST' },
+        {
+          method: 'POST',
+          headers: { 'X-Expected-Map-Fingerprint': expectedFingerprint },
+        },
       ),
     ),
   )

@@ -49,7 +49,9 @@ function setup({
   uploadGate,
   assessmentWarnings = [],
   buildProgress,
+  mapState = { fingerprint: 'map-a', stale: false, failed: false },
 }: {
+  mapState?: { fingerprint: string; stale: boolean; failed: boolean }
   processing?: boolean
   pending?: boolean
   cleaning?: boolean
@@ -152,6 +154,18 @@ function setup({
             ],
       )
     if (url.endsWith('/graph/competency-map/skip-missing-criteria')) {
+      if (
+        new Headers(init?.headers).get('X-Expected-Map-Fingerprint') !==
+        mapState.fingerprint
+      ) {
+        return Response.json(
+          {
+            code: 'COMPETENCY_MAP_CHANGED',
+            message: 'Карта изменилась. Подтвердите исключение заново.',
+          },
+          { status: 409 },
+        )
+      }
       graphRequested = true
       return Response.json(
         {
@@ -159,7 +173,7 @@ function setup({
           attempts: 1,
           error_message: '',
           graph: null,
-          stale: false,
+          stale: mapState.stale,
           inputs_ready: true,
           updated_at: 3,
           build_source: 'competency_map',
@@ -193,8 +207,12 @@ function setup({
           graph: null,
           graph_source: 'none',
           build_source: 'competency_map',
-          map: { filename: 'map.xlsx', sheet: 'Карта компетенций v2' },
-          stale: false,
+          map: {
+            filename: 'map.xlsx',
+            sheet: 'Карта компетенций v2',
+            fingerprint: mapState.fingerprint,
+          },
+          stale: mapState.stale,
           inputs_ready: true,
           updated_at: 0,
         },
@@ -217,23 +235,37 @@ function setup({
         },
         graph_source: 'competency_map',
         build_source: 'competency_map',
-        map: { filename: 'map.xlsx', sheet: 'Карта компетенций v2' },
-        stale: false,
+        map: {
+          filename: 'map.xlsx',
+          sheet: 'Карта компетенций v2',
+          fingerprint: mapState.fingerprint,
+        },
+        stale: mapState.stale,
         inputs_ready: true,
         updated_at: 2,
       })
     if (url.endsWith('/graph') || url.endsWith('/graph/build')) {
       if (init?.method === 'POST') graphRequested = true
       return Response.json({
+        graph_source: assessmentWarnings.length ? 'competency_map' : 'built',
+        map: assessmentWarnings.length
+          ? {
+              filename: 'map.xlsx',
+              sheet: 'Карта',
+              fingerprint: mapState.fingerprint,
+            }
+          : null,
         progress: buildProgress,
         build_source: buildProgress ? 'competency_map' : 'materials',
-        status: buildProgress
-          ? 'processing'
-          : graphRequested
-            ? 'pending'
-            : graphReady
-              ? 'ready'
-              : 'not_requested',
+        status: mapState.failed
+          ? 'failed'
+          : buildProgress
+            ? 'processing'
+            : graphRequested
+              ? 'pending'
+              : graphReady
+                ? 'ready'
+                : 'not_requested',
         attempts: 0,
         error_message: '',
         graph: graphReady
@@ -251,7 +283,7 @@ function setup({
               hierarchy: [],
             }
           : null,
-        stale: false,
+        stale: mapState.stale,
         inputs_ready: !processing && !cleaningFailed,
         updated_at: 1,
       })
@@ -774,4 +806,65 @@ it('marks completed materials ready for the graph', async () => {
       'Материалов: 1 · готово к графу: 1 · в обработке: 0 · с ошибкой: 0',
     ),
   ).toBeVisible()
+})
+
+it('blocks exclusion of a stale map after replacement preparation fails', async () => {
+  const calls = setup({
+    graphReady: true,
+    assessmentWarnings: [
+      { row: 3, column: 'Задание 2', message: 'Критерии не заданы.' },
+    ],
+    mapState: { fingerprint: 'map-b', stale: true, failed: true },
+  })
+  open()
+  expect(
+    await screen.findByRole('button', {
+      name: 'Пропустить задания без критериев',
+    }),
+  ).toBeDisabled()
+  expect(
+    screen.getByText(
+      'Исключение доступно после успешной публикации актуальной карты.',
+    ),
+  ).toBeVisible()
+  expect(
+    calls.mock.calls.some(([url]) => url.endsWith('/skip-missing-criteria')),
+  ).toBe(false)
+})
+
+it('keeps the confirmed fingerprint when another tab changes the map', async () => {
+  const mapState = { fingerprint: 'map-a', stale: false, failed: false }
+  const calls = setup({
+    graphReady: true,
+    mapState,
+    assessmentWarnings: [
+      { row: 3, column: 'Задание 2', message: 'Критерии не заданы.' },
+    ],
+  })
+  const router = open()
+  fireEvent.click(
+    await screen.findByRole('button', {
+      name: 'Пропустить задания без критериев',
+    }),
+  )
+  const dialog = await screen.findByRole('alertdialog')
+  mapState.fingerprint = 'map-b'
+  await act(async () => {
+    await router.options.context.queryClient.invalidateQueries()
+  })
+  expect(
+    within(dialog).getByText('Строка 3, Задание 2: Критерии не заданы.'),
+  ).toBeVisible()
+  fireEvent.click(
+    within(dialog).getByRole('button', { name: 'Исключить и пересобрать' }),
+  )
+  expect(
+    await screen.findByText('Карта изменилась. Подтвердите исключение заново.'),
+  ).toBeVisible()
+  const request = calls.mock.calls.find(([url]) =>
+    url.endsWith('/skip-missing-criteria'),
+  )
+  expect(
+    new Headers(request?.[1]?.headers).get('X-Expected-Map-Fingerprint'),
+  ).toBe('map-a')
 })

@@ -244,7 +244,33 @@ func TestOpenAPIResponses(t *testing.T) {
 	if _, err := f.pool.Exec(t.Context(), `UPDATE course_graph_jobs SET status='ready' WHERE subject_id=$1`, contractSubject.ID); err != nil {
 		t.Fatal(err)
 	}
-	skipped := f.request("POST", mapPath+"/skip-missing-criteria", "", admin)
+	missingConfirmation := f.request("POST", mapPath+"/skip-missing-criteria", "", admin)
+	if missingConfirmation.Code != http.StatusConflict || !strings.Contains(missingConfirmation.Body.String(), "COMPETENCY_MAP_CHANGED") {
+		t.Fatalf("skip without confirmation: %d %s", missingConfirmation.Code, missingConfirmation.Body.String())
+	}
+	check("POST", skipContract, missingConfirmation)
+	var importedSnapshot struct {
+		Map struct {
+			Fingerprint string `json:"fingerprint"`
+		} `json:"map"`
+	}
+	if err := json.Unmarshal(imported.Body.Bytes(), &importedSnapshot); err != nil || importedSnapshot.Map.Fingerprint == "" {
+		t.Fatalf("missing imported map fingerprint: %s (%v)", imported.Body.String(), err)
+	}
+	confirmedRequest := func(fingerprint string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest("POST", "https://api.example"+examTestPath(mapPath+"/skip-missing-criteria"), nil)
+		req.AddCookie(admin)
+		req.Header.Set("X-Expected-Map-Fingerprint", fingerprint)
+		w := httptest.NewRecorder()
+		f.app.Handler().ServeHTTP(w, req)
+		return w
+	}
+	changedConfirmation := confirmedRequest("another-map")
+	if changedConfirmation.Code != http.StatusConflict || !strings.Contains(changedConfirmation.Body.String(), "COMPETENCY_MAP_CHANGED") {
+		t.Fatalf("skip with changed confirmation: %d %s", changedConfirmation.Code, changedConfirmation.Body.String())
+	}
+	check("POST", skipContract, changedConfirmation)
+	skipped := confirmedRequest(importedSnapshot.Map.Fingerprint)
 	if skipped.Code != http.StatusAccepted {
 		t.Fatalf("skip published map: %d %s", skipped.Code, skipped.Body.String())
 	}

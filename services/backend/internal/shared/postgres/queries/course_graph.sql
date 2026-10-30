@@ -86,6 +86,7 @@ SELECT s.id, coalesce(j.status,'not_requested')::text AS status,
            CASE g.source WHEN 'competency_map' THEN m.fingerprint ELSE i.fingerprint END)::boolean AS stale,
        (i.subject_id IS NOT NULL)::boolean AS inputs_ready,
        coalesce(j.source,'')::text AS job_source,
+       coalesce(m.fingerprint,'')::text AS map_fingerprint,
        coalesce(m.filename,'')::text AS map_filename, coalesce(m.sheet,'')::text AS map_sheet
 FROM subjects s LEFT JOIN course_graph_jobs j ON j.subject_id=s.id
 LEFT JOIN course_graphs g ON g.subject_id=s.id
@@ -105,3 +106,14 @@ WHERE g.subject_id=$1 AND (g.source='competency_map' OR EXISTS(SELECT 1 FROM sub
 SELECT g.graph FROM course_graphs g JOIN subjects s ON s.id=g.subject_id
 WHERE g.source='competency_map' OR EXISTS(SELECT 1 FROM subject_materials m WHERE m.subject_id=g.subject_id)
 ORDER BY g.updated_at DESC, g.subject_id;
+
+-- name: ReplaceCurrentCourseGraphMap :execrows
+-- Compare-and-swap the confirmed, published map. Re-evaluation after a
+-- concurrent map update checks its fingerprint before changing any data.
+UPDATE course_graph_maps m
+SET filename=sqlc.arg(filename), sheet=sqlc.arg(sheet),
+    fingerprint=sqlc.arg(fingerprint), graph=sqlc.arg(graph)::jsonb, uploaded_at=sqlc.arg(now)::bigint
+WHERE m.subject_id=sqlc.arg(subject_id) AND m.fingerprint=sqlc.arg(expected_fingerprint)
+  AND EXISTS (SELECT 1 FROM course_graphs g WHERE g.subject_id=m.subject_id
+              AND g.source='competency_map' AND g.fingerprint=m.fingerprint)
+  AND EXISTS (SELECT 1 FROM course_graph_jobs j WHERE j.subject_id=m.subject_id AND j.status='ready');

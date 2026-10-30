@@ -55,8 +55,9 @@ type Snapshot struct {
 
 // MapFile is the competency map imported last and the sheet it was read from.
 type MapFile struct {
-	Filename string `json:"filename"`
-	Sheet    string `json:"sheet"`
+	Fingerprint string `json:"fingerprint"`
+	Filename    string `json:"filename"`
+	Sheet       string `json:"sheet"`
 }
 
 // BuildProgress is stage StageIndex of StageCount of a running build and the

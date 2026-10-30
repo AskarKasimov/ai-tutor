@@ -53,6 +53,7 @@ export type CourseGraphSource = 'materials' | 'competency_map'
 
 // The competency map imported last and the sheet it was read from.
 export type CourseGraphMapFile = {
+  fingerprint?: string
   filename: string
   sheet: string
 }

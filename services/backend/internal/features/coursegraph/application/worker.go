@@ -31,6 +31,8 @@ type Repository interface {
 	// SaveMap stores an imported competency map and queues its build; false
 	// when a build is already queued or running.
 	SaveMap(ctx context.Context, subjectID, filename, sheet string, graph json.RawMessage, now time.Time) (bool, error)
+	// SaveMapIfCurrent rejects a changed fingerprint or an unpublished map atomically.
+	SaveMapIfCurrent(ctx context.Context, subjectID, filename, sheet string, graph json.RawMessage, expectedFingerprint string, now time.Time) (bool, error)
 	// MapGraph is the graph of the imported competency map.
 	MapGraph(context.Context, string) (json.RawMessage, error)
 }
@@ -247,7 +249,7 @@ func (w *Worker) ImportMap(ctx context.Context, actor user.User, subjectID, file
 }
 
 // SkipMissingCriteria queues a replacement map after the admin's confirmation.
-func (w *Worker) SkipMissingCriteria(ctx context.Context, actor user.User, subjectID string) (coursegraph.Snapshot, error) {
+func (w *Worker) SkipMissingCriteria(ctx context.Context, actor user.User, subjectID, expectedFingerprint string) (coursegraph.Snapshot, error) {
 	if actor.Role != user.Admin {
 		return coursegraph.Snapshot{}, fault.New(fault.Forbidden, "FORBIDDEN", "Доступно только admin.")
 	}
@@ -260,6 +262,9 @@ func (w *Worker) SkipMissingCriteria(ctx context.Context, actor user.User, subje
 	}
 	if current.Map == nil || current.GraphSource != coursegraph.SourceMap {
 		return coursegraph.Snapshot{}, fault.New(fault.Invalid, "COMPETENCY_MAP_INVALID", "Сначала импортируйте карту для экзамена.")
+	}
+	if current.Stale || current.Status != "ready" || expectedFingerprint == "" || current.Map.Fingerprint != expectedFingerprint {
+		return coursegraph.Snapshot{}, fault.New(fault.Conflict, "COMPETENCY_MAP_CHANGED", "Карта изменилась или ещё не опубликована. Обновите граф и подтвердите исключение заново.")
 	}
 	source, err := w.repo.MapGraph(ctx, subjectID)
 	if err != nil {
@@ -276,7 +281,7 @@ func (w *Worker) SkipMissingCriteria(ctx context.Context, actor user.User, subje
 	if string(graph) == string(source) {
 		return w.snapshot(ctx, subjectID)
 	}
-	queued, err := w.repo.SaveMap(ctx, subjectID, current.Map.Filename, current.Map.Sheet, graph, time.Now())
+	queued, err := w.repo.SaveMapIfCurrent(ctx, subjectID, current.Map.Filename, current.Map.Sheet, graph, expectedFingerprint, time.Now())
 	if err != nil {
 		return coursegraph.Snapshot{}, err
 	}

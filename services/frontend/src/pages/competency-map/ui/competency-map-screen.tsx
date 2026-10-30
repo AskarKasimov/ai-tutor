@@ -178,6 +178,10 @@ function CompetencyMapAdmin({
     }
   }, [materialsBusy, materialsQuery.dataUpdatedAt, refetchBuild, refetchGraph])
   const startBuild = useStartCourseGraphBuildMutation(userId, subjectId)
+  const [criteriaConfirmation, setCriteriaConfirmation] = useState<{
+    fingerprint: string
+    warnings: { row: number; column: string; message: string }[]
+  } | null>(null)
   const skipCriteria = useStartCourseGraphBuildMutation(
     userId,
     subjectId,
@@ -201,6 +205,12 @@ function CompetencyMapAdmin({
     startBuild.isPending ||
     latestBuild.data?.status === 'queued' ||
     latestBuild.data?.status === 'running'
+  const canSkipCriteria =
+    !graphBuilding &&
+    !courseGraph.data?.stale &&
+    latestBuild.data?.status === 'succeeded' &&
+    courseGraph.data?.source === 'competency_map' &&
+    !!courseGraph.data.map?.fingerprint
   const shouldWarnBeforeExit =
     queue.items.length > 0 ||
     queue.preparing ||
@@ -764,9 +774,26 @@ function CompetencyMapAdmin({
                 <Text as="p">
                   {t('courseGraph.defaultAssessmentRequirements')}
                 </Text>
-                <AlertDialog.Root>
+                {!canSkipCriteria && (
+                  <Text as="p">
+                    {t('courseGraph.skipCriteriaNeedsPublishedMap')}
+                  </Text>
+                )}
+                <AlertDialog.Root
+                  onOpenChange={(open) => {
+                    setCriteriaConfirmation(
+                      open && courseGraph.data?.map?.fingerprint
+                        ? {
+                            fingerprint: courseGraph.data.map.fingerprint,
+                            warnings:
+                              courseGraph.data.view?.assessment_warnings ?? [],
+                          }
+                        : null,
+                    )
+                  }}
+                >
                   <AlertDialog.Trigger>
-                    <Button color="amber" disabled={graphBuilding}>
+                    <Button color="amber" disabled={!canSkipCriteria}>
                       {t('courseGraph.skipCriteria')}
                     </Button>
                   </AlertDialog.Trigger>
@@ -778,7 +805,7 @@ function CompetencyMapAdmin({
                       {t('courseGraph.skipCriteriaConfirm')}
                     </AlertDialog.Description>
                     <ul>
-                      {courseGraph.data.view.assessment_warnings.map(
+                      {(criteriaConfirmation?.warnings ?? []).map(
                         (warning, index) => (
                           <li key={index}>
                             {t(
@@ -798,7 +825,13 @@ function CompetencyMapAdmin({
                       <AlertDialog.Action>
                         <Button
                           color="amber"
-                          onClick={() => skipCriteria.mutate(subjectId)}
+                          onClick={() =>
+                            skipCriteria.mutate({
+                              subjectId,
+                              expectedFingerprint:
+                                criteriaConfirmation?.fingerprint ?? '',
+                            })
+                          }
                         >
                           {t('courseGraph.skipCriteriaConfirmButton')}
                         </Button>

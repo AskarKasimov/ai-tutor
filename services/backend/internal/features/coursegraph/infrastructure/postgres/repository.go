@@ -60,7 +60,7 @@ func (r *Repository) Read(ctx context.Context, subjectID string) (coursegraph.Sn
 		snapshot.BuildSource = &row.JobSource
 	}
 	if row.MapFilename != "" {
-		snapshot.Map = &coursegraph.MapFile{Filename: row.MapFilename, Sheet: row.MapSheet}
+		snapshot.Map = &coursegraph.MapFile{Filename: row.MapFilename, Sheet: row.MapSheet, Fingerprint: row.MapFingerprint}
 	}
 	return snapshot, nil
 }
@@ -69,6 +69,22 @@ func (r *Repository) Read(ctx context.Context, subjectID string) (coursegraph.Sn
 // transaction; false, with nothing stored, when a build is already queued or
 // running.
 func (r *Repository) SaveMap(ctx context.Context, subjectID, filename, sheet string, graph json.RawMessage, now time.Time) (bool, error) {
+	return r.saveMap(ctx, subjectID, filename, sheet, graph, "", now)
+}
+
+// SaveMapIfCurrent atomically replaces only the confirmed, published map.
+func (r *Repository) SaveMapIfCurrent(ctx context.Context, subjectID, filename, sheet string, graph json.RawMessage, expectedFingerprint string, now time.Time) (bool, error) {
+	if expectedFingerprint == "" {
+		return false, mapChanged()
+	}
+	return r.saveMap(ctx, subjectID, filename, sheet, graph, expectedFingerprint, now)
+}
+
+func mapChanged() error {
+	return fault.New(fault.Conflict, "COMPETENCY_MAP_CHANGED", "Карта изменилась или ещё не опубликована. Обновите граф и подтвердите исключение заново.")
+}
+
+func (r *Repository) saveMap(ctx context.Context, subjectID, filename, sheet string, graph json.RawMessage, expectedFingerprint string, now time.Time) (bool, error) {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
 		return false, err
@@ -76,7 +92,18 @@ func (r *Repository) SaveMap(ctx context.Context, subjectID, filename, sheet str
 	defer func() { _ = tx.Rollback(ctx) }()
 	sum := sha256.Sum256(graph)
 	q := db.New(tx)
-	if err = q.SaveCourseGraphMap(ctx, db.SaveCourseGraphMapParams{SubjectID: subjectID, Filename: filename, Sheet: sheet,
+	if expectedFingerprint != "" {
+		n, err := q.ReplaceCurrentCourseGraphMap(ctx, db.ReplaceCurrentCourseGraphMapParams{
+			SubjectID: subjectID, Filename: filename, Sheet: sheet, Graph: graph,
+			Fingerprint: hex.EncodeToString(sum[:]), ExpectedFingerprint: expectedFingerprint, Now: now.Unix(),
+		})
+		if err != nil {
+			return false, err
+		}
+		if n != 1 {
+			return false, mapChanged()
+		}
+	} else if err = q.SaveCourseGraphMap(ctx, db.SaveCourseGraphMapParams{SubjectID: subjectID, Filename: filename, Sheet: sheet,
 		Fingerprint: hex.EncodeToString(sum[:]), Graph: graph, Now: now.Unix()}); err != nil {
 		return false, err
 	}

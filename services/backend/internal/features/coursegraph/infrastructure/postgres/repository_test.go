@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"os"
 	"strings"
 	"testing"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/fault"
 	shared "github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/postgres"
 )
 
@@ -197,5 +199,109 @@ func TestAMapIsBuiltWithoutMaterialsAndReplacesTheGraph(t *testing.T) {
 	published, err := repo.Published(ctx)
 	if err != nil || len(published) != 1 {
 		t.Fatalf("published: %d %v", len(published), err)
+	}
+}
+
+func TestConfirmedMapReplacementChecksPublicationAndConcurrentImport(t *testing.T) {
+	for _, scenario := range []string{"current", "stale failed replacement", "published replacement", "concurrent import"} {
+		t.Run(scenario, func(t *testing.T) {
+			pool := repositoryPool(t)
+			repo := New(pool)
+			ctx, now := context.Background(), time.Unix(100, 0)
+			graphA := json.RawMessage(`{"topics":[{"id":"a"}]}`)
+			graphB := json.RawMessage(`{"topics":[{"id":"b"}]}`)
+			excluded := json.RawMessage(`{"topics":[{"id":"kept"}],"assessment_skipped":1}`)
+			if ok, err := repo.SaveMap(ctx, "s", "a.xlsx", "sheet", graphA, now); err != nil || !ok {
+				t.Fatalf("save A: %v %v", ok, err)
+			}
+			job, err := repo.Claim(ctx, "a", now)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if ok, err := repo.Finish(ctx, job, graphA, now); err != nil || !ok {
+				t.Fatalf("publish A: %v %v", ok, err)
+			}
+			snapshot, err := repo.Read(ctx, "s")
+			if err != nil || snapshot.Map == nil || snapshot.Map.Fingerprint == "" {
+				t.Fatalf("missing fingerprint: %+v %v", snapshot, err)
+			}
+			confirmed := snapshot.Map.Fingerprint
+			if scenario == "stale failed replacement" || scenario == "published replacement" {
+				if ok, err := repo.SaveMap(ctx, "s", "b.xlsx", "sheet", graphB, now); err != nil || !ok {
+					t.Fatalf("save B: %v %v", ok, err)
+				}
+				job, err = repo.Claim(ctx, "b", now)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if scenario == "published replacement" {
+					if ok, err := repo.Finish(ctx, job, graphB, now); err != nil || !ok {
+						t.Fatalf("publish B: %v %v", ok, err)
+					}
+				} else {
+					exec(t, pool, `UPDATE course_graph_jobs SET status='failed' WHERE subject_id='s'`)
+					// Even a token read from the latest imported B cannot authorize changes
+					// to B while the admin sees published A.
+					snapshot, err = repo.Read(ctx, "s")
+					if err != nil || !snapshot.Stale {
+						t.Fatalf("expected stale A: %+v %v", snapshot, err)
+					}
+					confirmed = snapshot.Map.Fingerprint
+				}
+			}
+			var ok bool
+			if scenario == "concurrent import" {
+				tx, beginErr := pool.Begin(ctx)
+				if beginErr != nil {
+					t.Fatal(beginErr)
+				}
+				defer tx.Rollback(ctx)
+				// Hold the map row while another transaction attempts its guarded write.
+				if _, err := tx.Exec(ctx, `UPDATE course_graph_maps SET fingerprint='b', graph=$1::jsonb, filename='b.xlsx' WHERE subject_id='s'`, graphB); err != nil {
+					t.Fatal(err)
+				}
+				done := make(chan struct{})
+				go func() {
+					ok, err = repo.SaveMapIfCurrent(ctx, "s", "a.xlsx", "sheet", excluded, confirmed, now)
+					close(done)
+				}()
+				select {
+				case <-done:
+					t.Fatalf("write did not wait for concurrent import: %v %v", ok, err)
+				case <-time.After(100 * time.Millisecond):
+				}
+				if commitErr := tx.Commit(ctx); commitErr != nil {
+					t.Fatal(commitErr)
+				}
+				select {
+				case <-done:
+				case <-time.After(5 * time.Second):
+					t.Fatal("replacement blocked")
+				}
+			} else {
+				ok, err = repo.SaveMapIfCurrent(ctx, "s", "a.xlsx", "sheet", excluded, confirmed, now)
+			}
+			if scenario == "current" {
+				if err != nil || !ok {
+					t.Fatalf("current map rejected: %v %v", ok, err)
+				}
+			} else {
+				var f *fault.Error
+				if ok || !errors.As(err, &f) || f.Kind != fault.Conflict || f.Code != "COMPETENCY_MAP_CHANGED" {
+					t.Fatalf("expected 409: %v %v", ok, err)
+				}
+			}
+			stored, err := repo.MapGraph(ctx, "s")
+			if err != nil {
+				t.Fatal(err)
+			}
+			expected := `"id": "b"`
+			if scenario == "current" {
+				expected = `"id": "kept"`
+			}
+			if !strings.Contains(string(stored), expected) {
+				t.Fatalf("unexpected stored map: %s", stored)
+			}
+		})
 	}
 }

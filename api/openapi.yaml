@@ -392,10 +392,13 @@ components:
       properties:
         filename:
           type: string
+        fingerprint:
+          type: string
         sheet:
           type: string
       required:
         - filename
+        - fingerprint
         - sheet
       type: object
     coursegraph.Snapshot:
@@ -3912,6 +3915,12 @@ paths:
       description: Доступно только admin. Исключает задания с общей рубрикой, пустые темы и связанные с ними рёбра из сохранённой карты и ставит пересборку в очередь. Исходный XLSX не меняется. Повтор без новых исключений не запускает сборку. Активные диагностики отменяются при публикации изменённого графа. Если вопросов не останется, операция отклоняется без изменения карты.
       operationId: skipCourseGraphMissingCriteria
       parameters:
+        - description: Fingerprint карты из подтверждённого snapshot; несовпадение или неопубликованная карта — 409
+          in: header
+          name: X-Expected-Map-Fingerprint
+          required: true
+          schema:
+            type: string
         - description: ID предмета
           in: path
           name: subject_id

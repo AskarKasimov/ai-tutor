@@ -152,7 +152,13 @@ export function useStartCourseGraphBuildMutation(
     onMutate: () => {
       tokenRef.current = captureSession(cache)
     },
-    mutationFn: async (targetSubjectId: string) => {
+    mutationFn: async (
+      input: string | { subjectId: string; expectedFingerprint: string },
+    ) => {
+      const targetSubjectId =
+        typeof input === 'string' ? input : input.subjectId
+      const expectedFingerprint =
+        typeof input === 'string' ? '' : input.expectedFingerprint
       const controller = new AbortController()
       const unregister = registerSessionRequest(
         cache,
@@ -160,16 +166,23 @@ export function useStartCourseGraphBuildMutation(
         controller,
       )
       try {
-        return await (
-          operation === 'skipMissingCriteria'
-            ? courseGraph.skipMissingCriteria
-            : courseGraph.startCourseGraphBuild
-        )(targetSubjectId, controller.signal)
+        return await (operation === 'skipMissingCriteria'
+          ? courseGraph.skipMissingCriteria(
+              targetSubjectId,
+              controller.signal,
+              expectedFingerprint,
+            )
+          : courseGraph.startCourseGraphBuild(
+              targetSubjectId,
+              controller.signal,
+            ))
       } finally {
         unregister()
       }
     },
-    onSuccess: async (_data, targetSubjectId) => {
+    onSuccess: async (_data, input) => {
+      const targetSubjectId =
+        typeof input === 'string' ? input : input.subjectId
       if (!isCurrentSession(cache, tokenRef.current)) return
       await Promise.all([
         cache.invalidateQueries({
@@ -180,7 +193,9 @@ export function useStartCourseGraphBuildMutation(
         }),
       ])
     },
-    onError: async (error, targetSubjectId) => {
+    onError: async (error, input) => {
+      const targetSubjectId =
+        typeof input === 'string' ? input : input.subjectId
       if (!isCurrentSession(cache, tokenRef.current)) return
       if (error instanceof CourseGraphApiError && error.status === 401)
         await replaceSession(cache, null)

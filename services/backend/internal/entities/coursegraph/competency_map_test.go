@@ -239,6 +239,32 @@ func TestMapGraphDefaultsWithoutAnyCriteriaColumn(t *testing.T) {
 	}
 }
 
+func TestDefaultCriteriaWarningRetainsTaskPositionAcrossEmptyVariants(t *testing.T) {
+	header := []string{"Компетенция", "Составляющая", "Образовательный результат", "Таксономия", "Важность", "Что должно войти в тест", "Задание 1", "Задание 2", "ID темы", "Пререквизиты"}
+	_, shape := buildShape(t, [][]string{header, {"ИИ", "Агенты", "Агент", "Понимать", "3", "TRUE", "", "Вопрос второго задания", "agent", ""}})
+	if len(shape.Topics[0].Variants) != 1 || shape.Topics[0].Variants[0].Question != "Вопрос второго задания" || len(shape.Warnings) != 1 || shape.Warnings[0].Column != "Задание 2" {
+		t.Fatalf("warning attributed to an empty variant: %+v", shape)
+	}
+}
+
+func TestDefaultCriteriaWarningsExcludeUnusedAndDisabledOutcomes(t *testing.T) {
+	rows := [][]string{mapHeaderRow}
+	for i, bloom := range []string{"Помнить", "Понимать", "Анализировать", "Применять"} {
+		row := mapRow("ИИ", string(rune('А'+i)), bloom, "3", "TRUE", "Вопрос?")
+		if i == 3 {
+			row[len(row)-1] = ""
+		}
+		rows = append(rows, row)
+	}
+	disabled := mapRow("ИИ", "Отключённый ОР", "Создавать", "5", "FALSE", "Вопрос?")
+	disabled[len(disabled)-1] = ""
+	rows = append(rows, disabled)
+	_, shape := buildShape(t, rows)
+	if len(shape.Topics) != 3 || len(shape.Warnings) != 0 {
+		t.Fatalf("unused rows affected published graph: %+v", shape)
+	}
+}
+
 func TestMapGraphGroupsOutcomesByConstituent(t *testing.T) {
 	rows := [][]string{mapHeaderRow}
 	for _, c := range []string{"С1", "С2"} {

@@ -275,6 +275,53 @@ func TestOpenAPIResponses(t *testing.T) {
 		t.Fatalf("skip published map: %d %s", skipped.Code, skipped.Body.String())
 	}
 	check("POST", skipContract, skipped)
+	const retryContract = "/admin/subjects/{subject_id}/graph/competency-map/retry"
+	retryRequest := func(fingerprint string, cookie *http.Cookie) *httptest.ResponseRecorder {
+		req := httptest.NewRequest("POST", "https://api.example"+examTestPath(mapPath+"/retry"), nil)
+		if cookie != nil {
+			req.AddCookie(cookie)
+		}
+		req.Header.Set("X-Expected-Map-Fingerprint", fingerprint)
+		w := httptest.NewRecorder()
+		f.app.Handler().ServeHTTP(w, req)
+		return w
+	}
+	for _, tc := range []struct {
+		cookie      *http.Cookie
+		fingerprint string
+		status      int
+	}{
+		{nil, importedSnapshot.Map.Fingerprint, http.StatusUnauthorized},
+		{access, importedSnapshot.Map.Fingerprint, http.StatusForbidden},
+		{admin, importedSnapshot.Map.Fingerprint, http.StatusConflict},
+	} {
+		response := retryRequest(tc.fingerprint, tc.cookie)
+		if response.Code != tc.status {
+			t.Fatalf("retry map: %d %s", response.Code, response.Body.String())
+		}
+		check("POST", retryContract, response)
+	}
+	if _, err := f.pool.Exec(t.Context(), `UPDATE course_graph_jobs SET status='failed',attempts=3 WHERE subject_id=$1`, contractSubject.ID); err != nil {
+		t.Fatal(err)
+	}
+	for _, fingerprint := range []string{"", "changed-map"} {
+		response := retryRequest(fingerprint, admin)
+		if response.Code != http.StatusConflict || !strings.Contains(response.Body.String(), "COMPETENCY_MAP_CHANGED") {
+			t.Fatalf("retry changed map: %d %s", response.Code, response.Body.String())
+		}
+		check("POST", retryContract, response)
+	}
+	retried := retryRequest(importedSnapshot.Map.Fingerprint, admin)
+	if retried.Code != http.StatusAccepted || !strings.Contains(retried.Body.String(), `"status":"pending"`) || !strings.Contains(retried.Body.String(), `"attempts":0`) {
+		t.Fatalf("retry saved map: %d %s", retried.Code, retried.Body.String())
+	}
+	check("POST", retryContract, retried)
+	repeated := retryRequest(importedSnapshot.Map.Fingerprint, admin)
+	if repeated.Code != http.StatusConflict {
+		t.Fatalf("duplicate retry: %d %s", repeated.Code, repeated.Body.String())
+	}
+	check("POST", retryContract, repeated)
+
 	check("GET", "/subjects", f.request("GET", "/subjects", "", admin))
 	materialData := []byte("%PDF-1.7 lecture")
 	materialsUpload := upload(f, "/admin/subjects/subject:test/materials", "file", "lecture.pdf", "application/pdf", materialData, admin)

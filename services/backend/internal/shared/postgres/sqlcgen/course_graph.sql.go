@@ -135,6 +135,18 @@ func (q *Queries) ListPublishedCourseGraphs(ctx context.Context) ([][]byte, erro
 	return items, nil
 }
 
+const lockCourseGraphMapFingerprint = `-- name: LockCourseGraphMapFingerprint :one
+SELECT fingerprint FROM course_graph_maps WHERE subject_id=$1 FOR UPDATE
+`
+
+// Serialize retries with map imports and exclusions (map row before job row).
+func (q *Queries) LockCourseGraphMapFingerprint(ctx context.Context, subjectID string) (string, error) {
+	row := q.db.QueryRow(ctx, lockCourseGraphMapFingerprint, subjectID)
+	var fingerprint string
+	err := row.Scan(&fingerprint)
+	return fingerprint, err
+}
+
 const readCourseGraph = `-- name: ReadCourseGraph :one
 SELECT s.id, coalesce(j.status,'not_requested')::text AS status,
        coalesce(j.attempts,0)::integer AS attempts, coalesce(j.error_message,'')::text AS error_message,
@@ -342,6 +354,27 @@ func (q *Queries) RequestCourseGraphMapBuild(ctx context.Context, arg RequestCou
 	var subject_id string
 	err := row.Scan(&subject_id)
 	return subject_id, err
+}
+
+const retryFailedCourseGraphMapBuild = `-- name: RetryFailedCourseGraphMapBuild :execrows
+UPDATE course_graph_jobs SET status='pending', attempts=0, available_at=0,
+    lease_until=0, lease_token='', error_message='', updated_at=$1::bigint
+WHERE subject_id=$2 AND source='competency_map' AND status='failed'
+  AND fingerprint=$3
+`
+
+type RetryFailedCourseGraphMapBuildParams struct {
+	Now                 int64
+	SubjectID           string
+	ExpectedFingerprint string
+}
+
+func (q *Queries) RetryFailedCourseGraphMapBuild(ctx context.Context, arg RetryFailedCourseGraphMapBuildParams) (int64, error) {
+	result, err := q.db.Exec(ctx, retryFailedCourseGraphMapBuild, arg.Now, arg.SubjectID, arg.ExpectedFingerprint)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const saveCourseGraphMap = `-- name: SaveCourseGraphMap :exec

@@ -47,6 +47,7 @@ export type CourseGraphBuild = {
   inputsReady?: boolean
   // What the build reads: the course materials or an imported competency map.
   source?: CourseGraphSource | null
+  map?: CourseGraphMapFile | null
 }
 
 export type CourseGraphSource = 'materials' | 'competency_map'

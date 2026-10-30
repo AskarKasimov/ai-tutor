@@ -26,6 +26,7 @@ type Repository interface {
 	Fail(context.Context, coursegraph.Job, string, time.Time) error
 	Read(context.Context, string) (coursegraph.Snapshot, error)
 	Request(context.Context, string, time.Time) (bool, error)
+	RetryMap(ctx context.Context, subjectID, expectedFingerprint string, now time.Time) (bool, error)
 	// Published lists the graphs Geek examines by.
 	Published(context.Context) ([]json.RawMessage, error)
 	// SaveMap stores an imported competency map and queues its build; false
@@ -254,6 +255,31 @@ func (w *Worker) ImportMap(ctx context.Context, actor user.User, subjectID, file
 	for _, warning := range assessment.Warnings {
 		log.Printf("WARN course graph: default assessment criteria subject_id=%q filename=%q sheet=%q row=%d column=%q message=%q",
 			subjectID, filename, built.Sheet, warning.Row, warning.Column, warning.Message)
+	}
+	return w.snapshot(ctx, subjectID)
+}
+
+// RetryMap restarts preparation of the saved map without importing or filtering it.
+func (w *Worker) RetryMap(ctx context.Context, actor user.User, subjectID, expectedFingerprint string) (coursegraph.Snapshot, error) {
+	if actor.Role != user.Admin {
+		return coursegraph.Snapshot{}, fault.New(fault.Forbidden, "FORBIDDEN", "Доступно только admin.")
+	}
+	current, err := w.repo.Read(ctx, subjectID)
+	if err != nil {
+		return coursegraph.Snapshot{}, err
+	}
+	if current.Map == nil || expectedFingerprint == "" || current.Map.Fingerprint != expectedFingerprint {
+		return coursegraph.Snapshot{}, fault.New(fault.Conflict, "COMPETENCY_MAP_CHANGED", "Карта изменилась. Обновите страницу и повторите подготовку.")
+	}
+	if current.Status != "failed" || current.BuildSource == nil || *current.BuildSource != coursegraph.SourceMap {
+		return coursegraph.Snapshot{}, fault.New(fault.Conflict, "GRAPH_RETRY_NOT_AVAILABLE", "Повтор доступен только после ошибки подготовки карты.")
+	}
+	queued, err := w.repo.RetryMap(ctx, subjectID, expectedFingerprint, time.Now())
+	if err != nil {
+		return coursegraph.Snapshot{}, err
+	}
+	if !queued {
+		return coursegraph.Snapshot{}, fault.New(fault.Conflict, "GRAPH_RETRY_NOT_AVAILABLE", "Состояние подготовки изменилось. Обновите страницу.")
 	}
 	return w.snapshot(ctx, subjectID)
 }

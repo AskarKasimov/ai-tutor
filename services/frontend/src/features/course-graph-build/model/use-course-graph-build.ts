@@ -141,7 +141,8 @@ export function useCourseGraphQuery(
 export function useStartCourseGraphBuildMutation(
   userId: string,
   subjectId: string,
-  operation: 'materials' | 'skipMissingCriteria' = 'materials',
+  operation:
+    'materials' | 'skipMissingCriteria' | 'retryCompetencyMap' = 'materials',
 ) {
   const { courseGraph } = useCourseGraphBuildDependencies()
   const cache = useQueryClient()
@@ -166,16 +167,17 @@ export function useStartCourseGraphBuildMutation(
         controller,
       )
       try {
-        return await (operation === 'skipMissingCriteria'
-          ? courseGraph.skipMissingCriteria(
-              targetSubjectId,
-              controller.signal,
-              expectedFingerprint,
-            )
-          : courseGraph.startCourseGraphBuild(
-              targetSubjectId,
-              controller.signal,
-            ))
+        if (operation === 'materials') {
+          return await courseGraph.startCourseGraphBuild(
+            targetSubjectId,
+            controller.signal,
+          )
+        }
+        return await courseGraph[operation](
+          targetSubjectId,
+          controller.signal,
+          expectedFingerprint,
+        )
       } finally {
         unregister()
       }

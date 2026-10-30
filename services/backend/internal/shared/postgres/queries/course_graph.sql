@@ -117,3 +117,13 @@ WHERE m.subject_id=sqlc.arg(subject_id) AND m.fingerprint=sqlc.arg(expected_fing
   AND EXISTS (SELECT 1 FROM course_graphs g WHERE g.subject_id=m.subject_id
               AND g.source='competency_map' AND g.fingerprint=m.fingerprint)
   AND EXISTS (SELECT 1 FROM course_graph_jobs j WHERE j.subject_id=m.subject_id AND j.status='ready');
+
+-- name: LockCourseGraphMapFingerprint :one
+-- Serialize retries with map imports and exclusions (map row before job row).
+SELECT fingerprint FROM course_graph_maps WHERE subject_id=$1 FOR UPDATE;
+
+-- name: RetryFailedCourseGraphMapBuild :execrows
+UPDATE course_graph_jobs SET status='pending', attempts=0, available_at=0,
+    lease_until=0, lease_token='', error_message='', updated_at=sqlc.arg(now)::bigint
+WHERE subject_id=sqlc.arg(subject_id) AND source='competency_map' AND status='failed'
+  AND fingerprint=sqlc.arg(expected_fingerprint);

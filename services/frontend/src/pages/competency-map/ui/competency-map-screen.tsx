@@ -178,6 +178,11 @@ function CompetencyMapAdmin({
     }
   }, [materialsBusy, materialsQuery.dataUpdatedAt, refetchBuild, refetchGraph])
   const startBuild = useStartCourseGraphBuildMutation(userId, subjectId)
+  const retryMap = useStartCourseGraphBuildMutation(
+    userId,
+    subjectId,
+    'retryCompetencyMap',
+  )
   const [criteriaConfirmation, setCriteriaConfirmation] = useState<{
     fingerprint: string
     warnings: { row: number; column: string; message: string }[]
@@ -201,6 +206,7 @@ function CompetencyMapAdmin({
     useCourseMaterialsChanging(userId, subjectId) || queue.isPending
   const busy = materialsChanging
   const graphBuilding =
+    retryMap.isPending ||
     skipCriteria.isPending ||
     startBuild.isPending ||
     latestBuild.data?.status === 'queued' ||
@@ -638,7 +644,30 @@ function CompetencyMapAdmin({
                   {latestBuild.data.error?.message ??
                     t('courseGraph.buildFailedHint')}
                 </Text>
+                {latestBuild.data.source === 'competency_map' &&
+                  latestBuild.data.map?.fingerprint && (
+                    <>
+                      <Text as="p">{t('courseGraph.retryMapHint')}</Text>
+                      <Button
+                        disabled={graphBuilding || latestBuild.isFetching}
+                        onClick={() =>
+                          retryMap.mutate({
+                            subjectId,
+                            expectedFingerprint:
+                              latestBuild.data?.map?.fingerprint ?? '',
+                          })
+                        }
+                      >
+                        {t('courseGraph.retryMap')}
+                      </Button>
+                    </>
+                  )}
               </div>
+            )}
+            {retryMap.isError && (
+              <Text as="p" role="alert" color="red">
+                {retryMap.error.message}
+              </Text>
             )}
             {courseGraph.isError &&
               courseGraph.error instanceof CourseGraphApiError &&
@@ -691,7 +720,7 @@ function CompetencyMapAdmin({
                     graphBlockers.length > 0 ||
                     latestBuild.data?.status === 'queued' ||
                     latestBuild.data?.status === 'running' ||
-                    startBuild.isPending
+                    graphBuilding
                   }
                 >
                   <Sparkles size={17} aria-hidden="true" />

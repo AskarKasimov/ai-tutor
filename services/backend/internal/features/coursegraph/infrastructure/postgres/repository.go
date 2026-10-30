@@ -148,3 +148,26 @@ func (r *Repository) Request(ctx context.Context, subjectID string, now time.Tim
 	}
 	return err == nil, err
 }
+
+// RetryMap holds the map lock until the failed build has been requeued, so a
+// concurrent import cannot change the source between confirmation and retry.
+func (r *Repository) RetryMap(ctx context.Context, subjectID, expectedFingerprint string, now time.Time) (bool, error) {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return false, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	q := db.New(tx)
+	fingerprint, err := q.LockCourseGraphMapFingerprint(ctx, subjectID)
+	if errors.Is(err, pgx.ErrNoRows) || (err == nil && (expectedFingerprint == "" || fingerprint != expectedFingerprint)) {
+		return false, fault.New(fault.Conflict, "COMPETENCY_MAP_CHANGED", "Карта изменилась. Обновите страницу и повторите подготовку.")
+	}
+	if err != nil {
+		return false, err
+	}
+	n, err := q.RetryFailedCourseGraphMapBuild(ctx, db.RetryFailedCourseGraphMapBuildParams{SubjectID: subjectID, ExpectedFingerprint: expectedFingerprint, Now: now.Unix()})
+	if err != nil || n != 1 {
+		return false, err
+	}
+	return true, tx.Commit(ctx)
+}

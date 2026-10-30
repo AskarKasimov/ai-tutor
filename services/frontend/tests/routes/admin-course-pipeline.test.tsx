@@ -74,6 +74,7 @@ function setup({
 } = {}) {
   let graphRequested = false
   let mapImported = false
+  const hasSavedMap = assessmentWarnings.length > 0 || mapState.failed
   const courseMaterials = materials ?? [material]
   const calls = vi.fn(async (url: string, init?: RequestInit) => {
     if (url.endsWith('/auth/me')) return Response.json(admin)
@@ -153,6 +154,36 @@ function setup({
                       : material,
             ],
       )
+    if (url.endsWith('/graph/competency-map/retry')) {
+      if (
+        new Headers(init?.headers).get('X-Expected-Map-Fingerprint') !==
+        mapState.fingerprint
+      ) {
+        return Response.json(
+          {
+            code: 'COMPETENCY_MAP_CHANGED',
+            message:
+              'Карта изменилась. Обновите страницу и повторите подготовку.',
+          },
+          { status: 409 },
+        )
+      }
+      mapState.failed = false
+      graphRequested = true
+      return Response.json(
+        {
+          status: 'pending',
+          attempts: 0,
+          error_message: '',
+          graph: null,
+          stale: mapState.stale,
+          inputs_ready: false,
+          updated_at: 1,
+          build_source: 'competency_map',
+        },
+        { status: 202 },
+      )
+    }
     if (url.endsWith('/graph/competency-map/skip-missing-criteria')) {
       if (
         new Headers(init?.headers).get('X-Expected-Map-Fingerprint') !==
@@ -247,8 +278,8 @@ function setup({
     if (url.endsWith('/graph') || url.endsWith('/graph/build')) {
       if (init?.method === 'POST') graphRequested = true
       return Response.json({
-        graph_source: assessmentWarnings.length ? 'competency_map' : 'built',
-        map: assessmentWarnings.length
+        graph_source: hasSavedMap ? 'competency_map' : 'built',
+        map: hasSavedMap
           ? {
               filename: 'map.xlsx',
               sheet: 'Карта',
@@ -256,7 +287,8 @@ function setup({
             }
           : null,
         progress: buildProgress,
-        build_source: buildProgress ? 'competency_map' : 'materials',
+        build_source:
+          buildProgress || hasSavedMap ? 'competency_map' : 'materials',
         status: mapState.failed
           ? 'failed'
           : buildProgress
@@ -867,4 +899,71 @@ it('keeps the confirmed fingerprint when another tab changes the map', async () 
   expect(
     new Headers(request?.[1]?.headers).get('X-Expected-Map-Fingerprint'),
   ).toBe('map-a')
+})
+
+it.each([true, false])(
+  'retries the saved failed map without PDFs (published graph: %s)',
+  async (graphReady) => {
+    const mapState = {
+      fingerprint: 'filtered-b',
+      stale: graphReady,
+      failed: true,
+    }
+    const calls = setup({
+      graphReady,
+      materials: [],
+      mapState,
+      assessmentWarnings: graphReady
+        ? [{ row: 3, column: 'Задание 2', message: 'Критерии не заданы.' }]
+        : [],
+    })
+    open()
+    const retry = await screen.findByRole('button', {
+      name: 'Повторить подготовку карты',
+    })
+    await waitFor(() => expect(retry).toBeEnabled())
+    expect(
+      screen.getByText(/исключённые задания останутся исключёнными/),
+    ).toBeVisible()
+    fireEvent.click(retry)
+    await waitFor(() =>
+      expect(
+        calls.mock.calls.some(([url]) => url.endsWith('/competency-map/retry')),
+      ).toBe(true),
+    )
+    const request = calls.mock.calls.find(([url]) =>
+      url.endsWith('/competency-map/retry'),
+    )
+    expect(
+      new Headers(request?.[1]?.headers).get('X-Expected-Map-Fingerprint'),
+    ).toBe('filtered-b')
+    expect(
+      calls.mock.calls.some(
+        ([url, init]) =>
+          init?.method === 'POST' && !url.endsWith('/competency-map/retry'),
+      ),
+    ).toBe(false)
+    await waitFor(() =>
+      expect(
+        screen.queryByRole('button', { name: 'Повторить подготовку карты' }),
+      ).not.toBeInTheDocument(),
+    )
+  },
+)
+
+it('shows a retry conflict if the saved map changes in another tab', async () => {
+  const mapState = { fingerprint: 'filtered-b', stale: true, failed: true }
+  setup({ graphReady: true, materials: [], mapState })
+  open()
+  const retry = await screen.findByRole('button', {
+    name: 'Повторить подготовку карты',
+  })
+  await waitFor(() => expect(retry).toBeEnabled())
+  mapState.fingerprint = 'map-c'
+  fireEvent.click(retry)
+  expect(
+    await screen.findByText(
+      'Карта изменилась. Обновите страницу и повторите подготовку.',
+    ),
+  ).toBeVisible()
 })

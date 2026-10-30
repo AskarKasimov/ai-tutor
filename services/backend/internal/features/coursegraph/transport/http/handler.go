@@ -17,6 +17,36 @@ const MaxMapBytes = 25 << 20
 
 type Handler struct{ service *application.Worker }
 
+// RetryMap resumes preparation of the saved competency map after failure.
+// @Summary Повторить подготовку сохранённой карты
+// @Description Доступно только admin после окончательного сбоя подготовки карты. Ставит сохранённую карту в очередь без повторного импорта и без изменения заданий. Fingerprint проверяется атомарно. Материалы PDF не требуются; опубликованный граф сохраняется до успешной подготовки.
+// @ID retryCourseGraphMap
+// @Tags Материалы
+// @Security accessCookie
+// @Produce json
+// @Param subject_id path string true "ID предмета"
+// @Param X-Expected-Map-Fingerprint header string true "Fingerprint сохранённой карты из последнего snapshot"
+// @Success 202 {object} coursegraph.Snapshot
+// @Failure 401 {object} fault.Error
+// @Failure 403 {object} fault.Error
+// @Failure 404 {object} fault.Error
+// @Failure 409 {object} fault.Error
+// @Failure 503 {object} fault.Error
+// @Router /exam/admin/subjects/{subject_id}/graph/competency-map/retry [post]
+func (h *Handler) RetryMap(w http.ResponseWriter, r *http.Request) {
+	actor, ok := httpx.Principal[user.User](r)
+	if !ok {
+		httpx.Error(r.Context(), w, fault.New(fault.Unauthorized, "UNAUTHORIZED", "Требуется сессия."))
+		return
+	}
+	result, err := h.service.RetryMap(r.Context(), actor, r.PathValue("subject_id"), r.Header.Get("X-Expected-Map-Fingerprint"))
+	if err != nil {
+		httpx.Error(r.Context(), w, err)
+		return
+	}
+	httpx.JSON(w, http.StatusAccepted, result)
+}
+
 // SkipMissingCriteria excludes fallback-graded tasks after admin confirmation.
 // @Summary Исключить задания карты без критериев
 // @Description Доступно только admin. Исключает задания с общей рубрикой, пустые темы и связанные с ними рёбра из сохранённой карты и ставит пересборку в очередь. Исходный XLSX не меняется. Повтор без новых исключений не запускает сборку. Активные диагностики отменяются при публикации изменённого графа. Если вопросов не останется, операция отклоняется без изменения карты.

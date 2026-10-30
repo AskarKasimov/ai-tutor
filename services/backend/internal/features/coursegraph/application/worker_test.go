@@ -38,6 +38,9 @@ func (r requestRepo) Read(context.Context, string) (coursegraph.Snapshot, error)
 	return r.snapshot, nil
 }
 func (r requestRepo) Request(context.Context, string, time.Time) (bool, error) { return r.queued, nil }
+func (r requestRepo) RetryMap(context.Context, string, string, time.Time) (bool, error) {
+	return r.queued, nil
+}
 func (r requestRepo) SaveMap(context.Context, string, string, string, json.RawMessage, time.Time) (bool, error) {
 	return r.queued, nil
 }

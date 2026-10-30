@@ -226,6 +226,7 @@ function toBuild(
     stale: snapshot.stale,
     inputsReady: snapshot.inputs_ready,
     source: snapshot.build_source ?? null,
+    map: snapshot.map ?? null,
   }
 }
 
@@ -254,6 +255,28 @@ export async function skipMissingCriteria(
     parseSnapshot(
       await fetchJSON(
         `/admin/subjects/${encodeURIComponent(subjectId)}/graph/competency-map/skip-missing-criteria`,
+        signal,
+        {
+          method: 'POST',
+          headers: { 'X-Expected-Map-Fingerprint': expectedFingerprint },
+        },
+      ),
+    ),
+  )
+  if (!result) throw new Error(i18n.t('courseGraph.invalidResponse'))
+  return result
+}
+
+export async function retryCompetencyMap(
+  subjectId: string,
+  signal: AbortSignal,
+  expectedFingerprint: string,
+): Promise<CourseGraphBuild> {
+  const result = toBuild(
+    subjectId,
+    parseSnapshot(
+      await fetchJSON(
+        `/admin/subjects/${encodeURIComponent(subjectId)}/graph/competency-map/retry`,
         signal,
         {
           method: 'POST',

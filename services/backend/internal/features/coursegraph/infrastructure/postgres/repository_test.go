@@ -13,6 +13,9 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/coursegraph"
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/user"
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/features/coursegraph/application"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/fault"
 	shared "github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/postgres"
 )
@@ -303,5 +306,131 @@ func TestConfirmedMapReplacementChecksPublicationAndConcurrentImport(t *testing.
 				t.Fatalf("unexpected stored map: %s", stored)
 			}
 		})
+	}
+}
+
+type retryQuestions struct {
+	fail bool
+	seen json.RawMessage
+}
+
+func (q *retryQuestions) Prepare(_ context.Context, graph json.RawMessage) (json.RawMessage, error) {
+	q.seen = append(json.RawMessage(nil), graph...)
+	if q.fail {
+		return nil, errors.New("gateway unavailable")
+	}
+	return graph, nil
+}
+
+func TestFailedFilteredMapCanBePreparedAgainWithoutRestoringExcludedTasks(t *testing.T) {
+	pool := repositoryPool(t)
+	exec(t, pool, `DELETE FROM subject_materials`)
+	repo := New(pool)
+	ctx := context.Background()
+	fallback, _ := json.Marshal(coursegraph.DefaultAssessmentGuidance)
+	graphA := json.RawMessage(`{"version":"competency-map-v1","topics":[{"id":"a","title":"Тема","variants":[{"question":"skip","content":"","assessment_guidance":` + string(fallback) + `},{"question":"keep","content":"Эталон","assessment_guidance":"author"}]}],"prerequisites":[],"hierarchy":[]}`)
+	if ok, err := repo.SaveMap(ctx, "s", "map.xlsx", "Карта", graphA, time.Now()); err != nil || !ok {
+		t.Fatalf("save A: %v %v", ok, err)
+	}
+	questions := &retryQuestions{}
+	worker := application.New(repo, nil, nil, nil, nil, nil)
+	worker.SetQuestions(questions)
+	if ok, err := worker.ProcessOne(ctx); err != nil || !ok {
+		t.Fatalf("publish A: %v %v", ok, err)
+	}
+	a, err := repo.Read(ctx, "s")
+	if err != nil {
+		t.Fatal(err)
+	}
+	admin := user.User{Role: user.Admin}
+	if _, err := worker.SkipMissingCriteria(ctx, admin, "s", a.Map.Fingerprint); err != nil {
+		t.Fatal(err)
+	}
+	savedB, err := repo.MapGraph(ctx, "s")
+	if err != nil {
+		t.Fatal(err)
+	}
+	questions.fail = true
+	for attempt := 0; attempt < 3; attempt++ {
+		exec(t, pool, `UPDATE course_graph_jobs SET available_at=0`)
+		if ok, err := worker.ProcessOne(ctx); err == nil || !ok {
+			t.Fatalf("expected preparation failure: %v %v", ok, err)
+		}
+	}
+	failed, err := repo.Read(ctx, "s")
+	if err != nil || failed.Status != "failed" || !failed.Stale || failed.Attempts != 3 || string(failed.Graph) != string(a.Graph) {
+		t.Fatalf("expected failed B and published A: %+v %v", failed, err)
+	}
+	retry, err := worker.RetryMap(ctx, admin, "s", failed.Map.Fingerprint)
+	if err != nil || retry.Status != "pending" || retry.Attempts != 0 {
+		t.Fatalf("retry: %+v %v", retry, err)
+	}
+	questions.fail = false
+	if ok, err := worker.ProcessOne(ctx); err != nil || !ok {
+		t.Fatalf("publish B: %v %v", ok, err)
+	}
+	published, err := repo.Read(ctx, "s")
+	if err != nil || published.Status != "ready" || published.Stale || string(published.Graph) != string(savedB) || string(questions.seen) != string(savedB) {
+		t.Fatalf("expected prepared B: %+v %v", published, err)
+	}
+	var shape struct {
+		Skipped int `json:"assessment_skipped"`
+		Topics  []struct{ Variants []struct{ Question string } }
+	}
+	if err := json.Unmarshal(published.Graph, &shape); err != nil {
+		t.Fatal(err)
+	}
+	if shape.Skipped != 1 || len(shape.Topics) != 1 || len(shape.Topics[0].Variants) != 1 || shape.Topics[0].Variants[0].Question != "keep" {
+		t.Fatalf("excluded task restored: %s", published.Graph)
+	}
+	if ok, err := repo.RetryMap(ctx, "s", published.Map.Fingerprint, time.Now()); err != nil || ok {
+		t.Fatalf("ready map restarted: %v %v", ok, err)
+	}
+}
+
+func TestMapRetryRejectsImportThatCommitsWhileWaitingForMapLock(t *testing.T) {
+	pool := repositoryPool(t)
+	repo := New(pool)
+	ctx := context.Background()
+	if ok, err := repo.SaveMap(ctx, "s", "a.xlsx", "Карта", json.RawMessage(`{"topics":[]}`), time.Now()); err != nil || !ok {
+		t.Fatalf("save A: %v %v", ok, err)
+	}
+	exec(t, pool, `UPDATE course_graph_jobs SET status='failed',attempts=3,error_message='failure'`)
+	a, err := repo.Read(ctx, "s")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback(ctx)
+	if _, err := tx.Exec(ctx, `UPDATE course_graph_maps SET fingerprint='b',filename='b.xlsx' WHERE subject_id='s'`); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan struct{})
+	var ok bool
+	var retryErr error
+	go func() { ok, retryErr = repo.RetryMap(ctx, "s", a.Map.Fingerprint, time.Now()); close(done) }()
+	select {
+	case <-done:
+		t.Fatal("retry did not wait for map lock")
+	case <-time.After(100 * time.Millisecond):
+	}
+	if err := tx.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("retry blocked")
+	}
+	var f *fault.Error
+	if ok || !errors.As(retryErr, &f) || f.Code != "COMPETENCY_MAP_CHANGED" {
+		t.Fatalf("expected conflict: %v %v", ok, retryErr)
+	}
+	b, err := repo.Read(ctx, "s")
+	if err != nil || b.Status != "failed" || b.Attempts != 3 || b.ErrorMessage != "failure" || b.Map.Fingerprint != "b" {
+		t.Fatalf("retry changed state: %+v %v", b, err)
 	}
 }

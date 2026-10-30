@@ -7,6 +7,7 @@ import {
   readLatestCourseGraphBuild,
   startCourseGraphBuild,
   skipMissingCriteria,
+  retryCompetencyMap,
 } from '@/entities/course-graph'
 
 afterEach(() => vi.unstubAllGlobals())
@@ -365,4 +366,43 @@ it('keeps the details of a rejected competency map', async () => {
       message: 'Строка 3, «Важность»: Ожидается целое число от 1 до 5.',
     },
   ])
+})
+
+it('reads saved map metadata after preparation fails before first publication', async () => {
+  const map = {
+    filename: 'map.xlsx',
+    sheet: 'Карта',
+    fingerprint: 'filtered-b',
+  }
+  respond(
+    snapshot('failed', {
+      graph: null,
+      map,
+      build_source: 'competency_map',
+      stale: true,
+    }),
+  )
+  expect(await readLatestCourseGraphBuild('s', signal())).toMatchObject({
+    status: 'failed',
+    source: 'competency_map',
+    map,
+  })
+})
+
+it('retries the saved map using its fingerprint without importing a file', async () => {
+  const fetch = respond(
+    snapshot('pending', { build_source: 'competency_map' }),
+    202,
+  )
+  expect(
+    await retryCompetencyMap('subject:one', signal(), 'filtered-b'),
+  ).toMatchObject({ status: 'queued', source: 'competency_map' })
+  expect(fetch.mock.calls[0][0]).toBe(
+    '/api/v1/exam/admin/subjects/subject%3Aone/graph/competency-map/retry',
+  )
+  expect(fetch.mock.calls[0][1]).toMatchObject({
+    method: 'POST',
+    headers: { 'X-Expected-Map-Fingerprint': 'filtered-b' },
+  })
+  expect(fetch.mock.calls[0][1].body).toBeUndefined()
 })

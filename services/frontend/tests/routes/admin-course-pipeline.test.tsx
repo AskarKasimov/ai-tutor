@@ -261,6 +261,12 @@ it('shows which imported tasks will use default assessment criteria', async () =
   expect(
     screen.getByText('Строка 3, Задание 2: Используются общие критерии.'),
   ).toBeVisible()
+  expect(screen.getByText('Общие критерии — максимум 4 балла:')).toBeVisible()
+  expect(screen.getByText(/Предметная корректность \(0–2\): 2 —/)).toBeVisible()
+  expect(screen.getByText(/Покрытие вопроса \(0–2\): 2 —/)).toBeVisible()
+  expect(
+    screen.getByText(/Объяснение, пример, расчёт или сравнение обязательны/),
+  ).toBeVisible()
 })
 
 it('opens the selected course with original metadata controls and master graph API', async () => {
@@ -303,6 +309,9 @@ it('keeps the master graph viewer for a published graph', async () => {
   })
   expect(within(canvas).getByText('Линейная регрессия')).toBeInTheDocument()
   expect(screen.queryByText('По карте компетенций')).not.toBeInTheDocument()
+  expect(
+    screen.queryByText('Общие критерии — максимум 4 балла:'),
+  ).not.toBeInTheDocument()
 })
 
 it('keeps the competency map import inside the selected course graph card', async () => {

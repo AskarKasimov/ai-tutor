@@ -740,6 +740,16 @@ function CompetencyMapAdmin({
                     ),
                   )}
                 </ul>
+                <Text as="p" weight="bold">
+                  {t('courseGraph.defaultAssessmentScale')}
+                </Text>
+                <ul>
+                  <li>{t('courseGraph.defaultAssessmentCorrectness')}</li>
+                  <li>{t('courseGraph.defaultAssessmentCoverage')}</li>
+                </ul>
+                <Text as="p">
+                  {t('courseGraph.defaultAssessmentRequirements')}
+                </Text>
               </div>
             )}
           </section>

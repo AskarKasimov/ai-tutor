@@ -296,17 +296,14 @@ Runtime image с nginx сохраняется для сборки и прове�
 
 ## Student course shell
 
-Student routes `/learn` and `/exam` share a course header with a selector when
-the active direction has multiple available courses and a «К выбору режима»
-link to `/`. The selected course is user-scoped and shared across both modes;
-an explicit `subject_id` URL takes precedence. Explicit selection updates that
-URL, so reload and browser Back/Forward restore the matching course and scoped
-history/state. Ready task audio uses `/learn/task-audio/{id}/file` through the
+Student routes `/learn` and `/exam` do not display a course selection panel.
+The profile menu links back to mode selection. The selected course is user-scoped
+and shared across both modes; an explicit `subject_id` URL takes precedence.
+Ready task audio uses `/learn/task-audio/{id}/file` through the
 shared authenticated audio adapter. The student screens have no direction tabs.
-Mode-specific title, intro, history and session content stay below the shared
-header. Returning to mode selection leaves active Geek and learning intents in
+Mode-specific title, intro, history and session content remain on each page. Returning to mode selection leaves active Geek and learning intents in
 `sessionStorage`, so reopening a mode resumes its session.
-An explicit shared course selection or `subject_id` URL takes precedence over
+A saved course selection or `subject_id` URL takes precedence over
 an older resumable session view; the session intent remains available when the
 student selects that course again. Historical learning state can be restored by
 the shared course ID or learning intent, with loading and retryable error states.

@@ -152,18 +152,15 @@ it('loads subjects without creating a variant, then starts only the chosen subje
   expect(
     await screen.findByRole('heading', { name: 'Обучение', level: 1 }),
   ).toBeVisible()
-  await waitFor(() =>
-    expect(screen.getByRole('region', { name: 'Курс' })).toHaveTextContent(
-      'Предмет A',
-    ),
-  )
-  expect(screen.getAllByText('Предмет A', { exact: true })).toHaveLength(1)
+  expect(screen.queryByRole('region', { name: 'Курс' })).not.toBeInTheDocument()
   expect(
     screen.queryByRole('navigation', { name: 'Направления' }),
   ).not.toBeInTheDocument()
   // Diagnostic and training are one process: a single action, no training tile.
   // Four steps say what the student does, starting with a voice check.
-  const steps = screen.getByRole('list', { name: 'Как проходит обучение' })
+  const steps = await screen.findByRole('list', {
+    name: 'Как проходит обучение',
+  })
   expect(steps).toHaveTextContent('Пройдите проверку')
   expect(steps).toHaveTextContent('Голосом, без клавиатуры')
   expect(steps).toHaveTextContent('Найдите пробелы')
@@ -386,11 +383,7 @@ it('returns to subject selection after refresh during a pending start and reuses
   expect(
     await screen.findByRole('heading', { name: 'Обучение', level: 1 }),
   ).toBeVisible()
-  await waitFor(() =>
-    expect(screen.getByRole('region', { name: 'Курс' })).toHaveTextContent(
-      'Предмет A',
-    ),
-  )
+  expect(screen.queryByRole('region', { name: 'Курс' })).not.toBeInTheDocument()
   await new Promise((resolve) => setTimeout(resolve, 150))
   expect(requests.filter((r) => r.path.endsWith('/variants'))).toHaveLength(1)
 

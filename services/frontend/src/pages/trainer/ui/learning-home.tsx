@@ -1,10 +1,8 @@
 import { Badge, Button, Card, Heading, Text } from '@radix-ui/themes'
 import { GraduationCap, Mic, Play, Sparkles, Target, Zap } from 'lucide-react'
 import { useEffect, useId, useState } from 'react'
-import { useNavigate } from '@tanstack/react-router'
 import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
-import { StudentCourseShell } from '@/widgets/student-course-shell'
 import { AccountMenu, useAuth } from '@/features/auth'
 import { useSubjectsQuery } from '@/features/subject-selection'
 import {
@@ -48,7 +46,6 @@ export function LearningHome({
   requestedSubjectId?: string
 }) {
   const { t } = useTranslation()
-  const navigate = useNavigate({ from: '/exam' })
   const { user } = useAuth()
   const userId = user?.id ?? ''
   const subjectsQuery = useSubjectsQuery(userId)
@@ -145,18 +142,6 @@ export function LearningHome({
         <AccountMenu />
       </header>
       <main className={styles.content}>
-        <StudentCourseShell
-          courseName={selected?.name}
-          courses={subjects}
-          selectedCourseId={selected?.id}
-          onCourseChange={(subjectId) => {
-            setSavedSubjectId(subjectId)
-            saveSelectedSubject(userId, subjectId)
-            void navigate({
-              search: (previous) => ({ ...previous, subject_id: subjectId }),
-            })
-          }}
-        />
         <Heading as="h1" size="8" id="courses-title">
           {t('home.title')}
         </Heading>

@@ -287,85 +287,26 @@ test('one browser context switches modes while student and admin sessions stay s
   await expect(
     page.getByRole('navigation', { name: 'Направления' }),
   ).toHaveCount(0)
-  await expect(page.getByRole('region', { name: 'Курс' })).toContainText(
-    subject.name,
-  )
-  await expect(page.getByText(subject.name, { exact: true })).toHaveCount(1)
-  await expect(
-    page.getByRole('link', { name: 'К выбору режима' }),
-  ).toBeVisible()
-  await expect(
-    page.getByRole('combobox', { name: 'Выберите курс' }),
-  ).toBeVisible()
+  await expect(page.getByRole('region', { name: 'Курс' })).toHaveCount(0)
   await page.reload()
-  await expect(page.getByRole('region', { name: 'Курс' })).toContainText(
-    subject.name,
-  )
   await page.screenshot({ path: testInfo.outputPath('learn-home.png') })
-  await page.getByRole('link', { name: 'К выбору режима' }).click()
-  await expect(
-    page.getByRole('heading', { name: 'Выберите режим' }),
-  ).toBeVisible()
+  await page.getByRole('button', { name: /Меню профиля/ }).click()
+  await page.getByRole('menuitem', { name: 'К выбору режима' }).click()
   await page.getByRole('link', { name: /Симуляция экзамена/ }).click()
-  await expect(page).toHaveURL(/\/exam$/)
   await expect(
     page.getByRole('heading', { name: 'Симуляция экзамена' }),
   ).toBeVisible()
-  await expect(
-    page.getByRole('navigation', { name: 'Направления' }),
-  ).toHaveCount(0)
-  await expect(page.getByText(subject.name, { exact: true })).toHaveCount(1)
-  await expect(page.getByRole('region', { name: 'Курс' })).toContainText(
-    subject.name,
-  )
-  await page.reload()
-  await expect(page.getByRole('region', { name: 'Курс' })).toContainText(
-    subject.name,
-  )
-  await expect(page.getByText(subject.name, { exact: true })).toHaveCount(1)
+  await expect(page.getByRole('region', { name: 'Курс' })).toHaveCount(0)
   await page.screenshot({ path: testInfo.outputPath('exam-home.png') })
-  await page.getByRole('combobox', { name: 'Выберите курс' }).click()
-  await expect(
-    page.getByRole('option', { name: otherSubject.name }),
-  ).toBeVisible()
-  await page.getByRole('option', { name: otherSubject.name }).click()
-  await expect(page.getByRole('region', { name: 'Курс' })).toContainText(
-    otherSubject.name,
-  )
-  await page.screenshot({
-    path: testInfo.outputPath('exam-home-second-course.png'),
-  })
-  await page.reload()
-  await expect(page.getByRole('region', { name: 'Курс' })).toContainText(
-    otherSubject.name,
-  )
-  await page.getByRole('link', { name: 'К выбору режима' }).click()
-  await page.getByRole('link', { name: /Симуляция экзамена/ }).click()
-  await expect(page).toHaveURL(/\/exam$/)
-  await expect(page.getByRole('region', { name: 'Курс' })).toContainText(
-    otherSubject.name,
-  )
-  await expect(
-    page.getByRole('navigation', { name: 'Направления' }),
-  ).toHaveCount(0)
-  await page.reload()
-  await expect(page.getByRole('region', { name: 'Курс' })).toContainText(
-    otherSubject.name,
-  )
-  await page.screenshot({
-    path: testInfo.outputPath('exam-home-second-course.png'),
-  })
 
   await page.setViewportSize({ width: 390, height: 844 })
   await page.goto('/learn?subject_id=subject-1')
-  await expect(page.getByRole('region', { name: 'Курс' })).toContainText(
-    subject.name,
-  )
+  await expect(page.getByRole('heading', { name: 'Обучение' })).toBeVisible()
   await page.screenshot({ path: testInfo.outputPath('learn-home-narrow.png') })
   await page.goto('/exam?subject_id=subject-1')
-  await expect(page.getByRole('region', { name: 'Курс' })).toContainText(
-    subject.name,
-  )
+  await expect(
+    page.getByRole('heading', { name: 'Симуляция экзамена' }),
+  ).toBeVisible()
   await page.screenshot({ path: testInfo.outputPath('exam-home-narrow.png') })
   expect(
     await page.evaluate(
@@ -393,9 +334,6 @@ test('one browser context switches modes while student and admin sessions stay s
   ).toBeVisible()
   await expect(page.getByRole('button', { name: /Меню профиля/ })).toBeVisible()
   await page.goto('/exam?subject_id=subject-2')
-  await expect(page.getByRole('region', { name: 'Курс' })).toContainText(
-    otherSubject.name,
-  )
   await expect(
     page.getByText('Расскажите, как работает этот курс?'),
   ).toHaveCount(0)
@@ -403,15 +341,7 @@ test('one browser context switches modes while student and admin sessions stay s
   await expect(
     page.getByText('Расскажите, как работает этот курс?'),
   ).toHaveCount(0)
-  await expect(page.getByRole('region', { name: 'Курс' })).toContainText(
-    otherSubject.name,
-  )
-  await page.getByRole('combobox', { name: 'Выберите курс' }).click()
-  await page.getByRole('option', { name: subject.name }).click()
-  await expect(page).toHaveURL(/\/exam\?subject_id=subject-1$/)
-  await expect(
-    page.getByRole('combobox', { name: 'Выберите курс' }),
-  ).toContainText(subject.name)
+  await page.goto('/exam?subject_id=subject-1')
   await expect(
     page.getByText('Расскажите, как работает этот курс?'),
   ).toHaveCount(0)

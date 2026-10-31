@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from 'vitest'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import {
   createMemoryHistory,
   createRouter,
@@ -48,7 +48,6 @@ async function mount(
   path: '/learn' | '/exam',
   initialSearch = '?subject_id=course-1',
   setupStorage?: () => void,
-  waitForSelection = true,
 ) {
   installStorage()
   setupStorage?.()
@@ -87,121 +86,45 @@ async function mount(
     routeTree,
   })
   const renderResult = render(<RouterProvider router={router} />)
-  const select = waitForSelection
-    ? await screen.findByRole('combobox', { name: 'Выберите курс' })
-    : screen.queryByRole('combobox', { name: 'Выберите курс' })
-  return { calls, history, router, select, unmount: renderResult.unmount }
+  return { calls, history, router, unmount: renderResult.unmount }
 }
 
 it.each(['/learn', '/exam'] as const)(
-  '%s keeps an explicitly saved course ahead of a resumable session course',
+  '%s preserves the saved course ahead of a resumable session without a course panel',
   async (path) => {
-    const savedIntent = JSON.stringify({
+    const key =
+      path === '/learn' ? 'ai-tutor:learning-home' : 'ai-tutor:geek-view'
+    const intent = JSON.stringify({
       apiBase: '/api/v1/learn',
       userId: 'u1',
       subjectId: 'course-1',
       sessionId: 'session-1',
       mode: 'diagnostic',
-    })
-    const savedView = JSON.stringify({
-      userId: 'u1',
-      subjectId: 'course-1',
-      sessionId: 'session-1',
       screen: 'dialog',
     })
-    const { calls, select } = await mount(
-      path,
-      '',
-      () => {
-        localStorage.setItem('ai-tutor:selected-subject:u1', 'course-2')
-        sessionStorage.setItem(
-          path === '/learn' ? 'ai-tutor:learning-home' : 'ai-tutor:geek-view',
-          path === '/learn' ? savedIntent : savedView,
-        )
-      },
-      false,
+    const { calls } = await mount(path, '', () => {
+      localStorage.setItem('ai-tutor:selected-subject:u1', 'course-2')
+      sessionStorage.setItem(key, intent)
+    })
+    await waitFor(() =>
+      expect(calls.some((url) => url.includes('course-2'))).toBe(true),
     )
-    const courseSelect =
-      select ?? (await screen.findByRole('combobox', { name: 'Выберите курс' }))
-    expect(courseSelect).toHaveTextContent('Курс два')
-    expect(localStorage.getItem('ai-tutor:selected-subject:u1')).toBe(
-      'course-2',
-    )
-    expect(calls.some((url) => url.includes('course-2'))).toBe(true)
+    expect(sessionStorage.getItem(key)).toBe(intent)
     expect(
-      sessionStorage.getItem(
-        path === '/learn' ? 'ai-tutor:learning-home' : 'ai-tutor:geek-view',
-      ),
-    ).toBe(path === '/learn' ? savedIntent : savedView)
-    fireEvent.click(courseSelect)
-    fireEvent.click(await screen.findByRole('option', { name: 'Курс один' }))
-    await waitFor(() =>
-      expect(
-        screen.getByRole('combobox', { name: 'Выберите курс' }),
-      ).toHaveTextContent('Курс один'),
-    )
-    expect(localStorage.getItem('ai-tutor:selected-subject:u1')).toBe(
-      'course-1',
-    )
+      screen.queryByRole('region', { name: 'Курс' }),
+    ).not.toBeInTheDocument()
     expect(
-      sessionStorage.getItem(
-        path === '/learn' ? 'ai-tutor:learning-home' : 'ai-tutor:geek-view',
-      ),
-    ).toBe(path === '/learn' ? savedIntent : savedView)
+      screen.queryByRole('combobox', { name: 'Выберите курс' }),
+    ).not.toBeInTheDocument()
   },
 )
 
 it.each(['/learn', '/exam'] as const)(
-  '%s honors direct course URL, explicit selection, reload URL, Back and Forward',
+  '%s loads the course specified in the URL',
   async (path) => {
-    const { calls, history, router, select, unmount } = await mount(path)
-    expect(select).toHaveTextContent('Курс один')
-    fireEvent.click(select!)
-    fireEvent.click(await screen.findByRole('option', { name: 'Курс два' }))
+    const { calls } = await mount(path, '?subject_id=course-2')
     await waitFor(() =>
-      expect(router.state.location.search.subject_id).toBe('course-2'),
+      expect(calls.some((url) => url.includes('course-2'))).toBe(true),
     )
-    await waitFor(() => expect(select).toHaveTextContent('Курс два'))
-    expect(calls.some((url) => url.includes('course-2'))).toBe(true)
-
-    history.back()
-    await waitFor(() =>
-      expect(router.state.location.search.subject_id).toBe('course-1'),
-    )
-    await waitFor(() => expect(select).toHaveTextContent('Курс один'))
-    history.forward()
-    await waitFor(() =>
-      expect(router.state.location.search.subject_id).toBe('course-2'),
-    )
-    await waitFor(() => expect(select).toHaveTextContent('Курс два'))
-    unmount()
-    const reloaded = await mount(path, '?subject_id=course-2')
-    expect(reloaded.select).toHaveTextContent('Курс два')
-    expect(reloaded.calls.some((url) => url.includes('course-2'))).toBe(true)
-    reloaded.unmount()
-  },
-)
-
-it.each(['/learn', '/exam'] as const)(
-  '%s selection works without an initial subject_id',
-  async (path) => {
-    const { router, select } = await mount(path, '')
-    expect(select).toHaveTextContent('Курс один')
-    fireEvent.click(select!)
-    fireEvent.click(await screen.findByRole('option', { name: 'Курс два' }))
-    await waitFor(() =>
-      expect(router.state.location.search.subject_id).toBe('course-2'),
-    )
-    await waitFor(() => expect(select).toHaveTextContent('Курс два'))
-  },
-)
-
-it.each(['/learn', '/exam'] as const)(
-  '%s does not fall back when a direct subject_id is unknown',
-  async (path) => {
-    const { select, unmount } = await mount(path, '?subject_id=missing-course')
-    expect(select).not.toHaveTextContent('Курс один')
-    expect(select).not.toHaveTextContent('Курс два')
-    unmount()
   },
 )

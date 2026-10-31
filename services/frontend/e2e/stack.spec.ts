@@ -29,9 +29,12 @@ test('real production stack keeps student and admin sessions isolated', async ({
   await page.getByRole('link', { name: /Обучение/ }).click()
   await expect(page).toHaveURL(/\/learn$/)
   await expect(page.getByRole('heading', { name: 'Обучение' })).toBeVisible()
+  await expect(page.getByRole('region', { name: 'Курс' })).toHaveCount(0)
+  await page.getByRole('button', { name: /Меню профиля/ }).click()
   await expect(
-    page.getByRole('link', { name: 'К выбору режима' }),
+    page.getByRole('menuitem', { name: 'К выбору режима' }),
   ).toBeVisible()
+  await page.keyboard.press('Escape')
   await page.screenshot({ path: testInfo.outputPath('real-learn-home.png') })
   await page.reload()
   await expect(page.getByRole('heading', { name: 'Обучение' })).toBeVisible()
@@ -42,9 +45,12 @@ test('real production stack keeps student and admin sessions isolated', async ({
   await expect(
     page.getByRole('heading', { name: 'Симуляция экзамена' }),
   ).toBeVisible()
+  await expect(page.getByRole('region', { name: 'Курс' })).toHaveCount(0)
+  await page.getByRole('button', { name: /Меню профиля/ }).click()
   await expect(
-    page.getByRole('link', { name: 'К выбору режима' }),
+    page.getByRole('menuitem', { name: 'К выбору режима' }),
   ).toBeVisible()
+  await page.keyboard.press('Escape')
   await page.screenshot({ path: testInfo.outputPath('real-exam-home.png') })
   await page.reload()
   await expect(

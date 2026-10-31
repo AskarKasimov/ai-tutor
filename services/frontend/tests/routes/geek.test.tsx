@@ -547,34 +547,16 @@ it('runs a diagnostic from the home page to the result and back to the history',
   expect(await screen.findByText('81% от максимума')).toBeVisible()
 })
 
-it('shows one shared course in student shell without direction tabs', async () => {
+it('does not show the course selection panel on the exam home', async () => {
   geekBackend()
   renderApp()
   expect(
     await screen.findByRole('heading', { name: 'Симуляция экзамена' }),
   ).toBeVisible()
-  await waitFor(() =>
-    expect(screen.getByRole('region', { name: 'Курс' })).toHaveTextContent(
-      'Введение в ИИ',
-    ),
-  )
-  expect(screen.getAllByText('Введение в ИИ', { exact: true })).toHaveLength(1)
+  expect(screen.queryByRole('region', { name: 'Курс' })).not.toBeInTheDocument()
   expect(
-    screen.queryByRole('navigation', { name: 'Направления' }),
+    screen.queryByRole('link', { name: 'К выбору режима' }),
   ).not.toBeInTheDocument()
-  expect(screen.getByRole('link', { name: 'К выбору режима' })).toHaveAttribute(
-    'href',
-    '/',
-  )
-})
-
-it('returns to mode selection through the router', async () => {
-  geekBackend()
-  renderApp()
-  fireEvent.click(await screen.findByRole('link', { name: 'К выбору режима' }))
-  expect(
-    await screen.findByRole('heading', { name: 'Выберите режим' }),
-  ).toBeVisible()
 })
 
 it('keeps the active exam open and offers mode selection in the account menu', async () => {

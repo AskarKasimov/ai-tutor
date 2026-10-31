@@ -47,7 +47,11 @@ function setup({
   competencyMap,
   materials,
   uploadGate,
+  assessmentWarnings = [],
+  buildProgress,
+  mapState = { fingerprint: 'map-a', stale: false, failed: false },
 }: {
+  mapState?: { fingerprint: string; stale: boolean; failed: boolean }
   processing?: boolean
   pending?: boolean
   cleaning?: boolean
@@ -58,9 +62,19 @@ function setup({
   // built from its first sheet and the build publishes the graph of the map.
   competencyMap?: 'valid' | 'invalid'
   uploadGate?: Promise<void>
+  assessmentWarnings?: { row: number; column: string; message: string }[]
+  buildProgress?: {
+    stage: string
+    stage_index: number
+    stage_count: number
+    done: number
+    total: number
+    remaining_seconds?: number
+  }
 } = {}) {
   let graphRequested = false
   let mapImported = false
+  const hasSavedMap = assessmentWarnings.length > 0 || mapState.failed
   const courseMaterials = materials ?? [material]
   const calls = vi.fn(async (url: string, init?: RequestInit) => {
     if (url.endsWith('/auth/me')) return Response.json(admin)
@@ -140,6 +154,64 @@ function setup({
                       : material,
             ],
       )
+    if (url.endsWith('/graph/competency-map/retry')) {
+      if (
+        new Headers(init?.headers).get('X-Expected-Map-Fingerprint') !==
+        mapState.fingerprint
+      ) {
+        return Response.json(
+          {
+            code: 'COMPETENCY_MAP_CHANGED',
+            message:
+              'Карта изменилась. Обновите страницу и повторите подготовку.',
+          },
+          { status: 409 },
+        )
+      }
+      mapState.failed = false
+      graphRequested = true
+      return Response.json(
+        {
+          status: 'pending',
+          attempts: 0,
+          error_message: '',
+          graph: null,
+          stale: mapState.stale,
+          inputs_ready: false,
+          updated_at: 1,
+          build_source: 'competency_map',
+        },
+        { status: 202 },
+      )
+    }
+    if (url.endsWith('/graph/competency-map/skip-missing-criteria')) {
+      if (
+        new Headers(init?.headers).get('X-Expected-Map-Fingerprint') !==
+        mapState.fingerprint
+      ) {
+        return Response.json(
+          {
+            code: 'COMPETENCY_MAP_CHANGED',
+            message: 'Карта изменилась. Подтвердите исключение заново.',
+          },
+          { status: 409 },
+        )
+      }
+      graphRequested = true
+      return Response.json(
+        {
+          status: 'pending',
+          attempts: 1,
+          error_message: '',
+          graph: null,
+          stale: mapState.stale,
+          inputs_ready: true,
+          updated_at: 3,
+          build_source: 'competency_map',
+        },
+        { status: 202 },
+      )
+    }
     if (url.endsWith('/graph/competency-map')) {
       if (competencyMap === 'invalid')
         return Response.json(
@@ -166,8 +238,12 @@ function setup({
           graph: null,
           graph_source: 'none',
           build_source: 'competency_map',
-          map: { filename: 'map.xlsx', sheet: 'Карта компетенций v2' },
-          stale: false,
+          map: {
+            filename: 'map.xlsx',
+            sheet: 'Карта компетенций v2',
+            fingerprint: mapState.fingerprint,
+          },
+          stale: mapState.stale,
           inputs_ready: true,
           updated_at: 0,
         },
@@ -180,6 +256,7 @@ function setup({
         attempts: 0,
         error_message: '',
         graph: {
+          assessment_warnings: assessmentWarnings,
           topics: [
             { id: 'basic', title: 'Называет части агента' },
             { id: 'main', title: 'Выбирает тип агента' },
@@ -189,23 +266,43 @@ function setup({
         },
         graph_source: 'competency_map',
         build_source: 'competency_map',
-        map: { filename: 'map.xlsx', sheet: 'Карта компетенций v2' },
-        stale: false,
+        map: {
+          filename: 'map.xlsx',
+          sheet: 'Карта компетенций v2',
+          fingerprint: mapState.fingerprint,
+        },
+        stale: mapState.stale,
         inputs_ready: true,
         updated_at: 2,
       })
     if (url.endsWith('/graph') || url.endsWith('/graph/build')) {
       if (init?.method === 'POST') graphRequested = true
       return Response.json({
-        status: graphRequested
-          ? 'pending'
-          : graphReady
-            ? 'ready'
-            : 'not_requested',
+        graph_source: hasSavedMap ? 'competency_map' : 'built',
+        map: hasSavedMap
+          ? {
+              filename: 'map.xlsx',
+              sheet: 'Карта',
+              fingerprint: mapState.fingerprint,
+            }
+          : null,
+        progress: buildProgress,
+        build_source:
+          buildProgress || hasSavedMap ? 'competency_map' : 'materials',
+        status: mapState.failed
+          ? 'failed'
+          : buildProgress
+            ? 'processing'
+            : graphRequested
+              ? 'pending'
+              : graphReady
+                ? 'ready'
+                : 'not_requested',
         attempts: 0,
         error_message: '',
         graph: graphReady
           ? {
+              assessment_warnings: assessmentWarnings,
               topics: [
                 {
                   id: 'topic-1',
@@ -218,7 +315,7 @@ function setup({
               hierarchy: [],
             }
           : null,
-        stale: false,
+        stale: mapState.stale,
         inputs_ready: !processing && !cleaningFailed,
         updated_at: 1,
       })
@@ -243,6 +340,28 @@ function open(path = '/admin/courses/subject-b?direction=exam') {
 }
 afterEach(() => vi.unstubAllGlobals())
 
+it('shows which imported tasks will use default assessment criteria', async () => {
+  setup({
+    graphReady: true,
+    assessmentWarnings: [
+      { row: 3, column: 'Задание 2', message: 'Используются общие критерии.' },
+    ],
+  })
+  open()
+  expect(
+    await screen.findByText(/Для части заданий критерии в карте не заполнены/),
+  ).toBeVisible()
+  expect(
+    screen.getByText('Строка 3, Задание 2: Используются общие критерии.'),
+  ).toBeVisible()
+  expect(screen.getByText('Общие критерии — максимум 4 балла:')).toBeVisible()
+  expect(screen.getByText(/Предметная корректность \(0–2\): 2 —/)).toBeVisible()
+  expect(screen.getByText(/Покрытие вопроса \(0–2\): 2 —/)).toBeVisible()
+  expect(
+    screen.getByText(/Объяснение, пример, расчёт или сравнение обязательны/),
+  ).toBeVisible()
+})
+
 it('opens the selected course with original metadata controls and master graph API', async () => {
   const calls = setup()
   open()
@@ -258,6 +377,60 @@ it('opens the selected course with original metadata controls and master graph A
   expect(calls.mock.calls.some(([url]) => /graph-builds/.test(url))).toBe(false)
   expect(screen.getByRole('combobox', { name: 'Тип материала' })).toBeVisible()
   expect(screen.getByRole('spinbutton', { name: 'Неделя' })).toHaveValue(1)
+})
+
+it('requires confirmation before excluding tasks without criteria', async () => {
+  const calls = setup({
+    graphReady: true,
+    assessmentWarnings: [
+      { row: 3, column: 'Задание 2', message: 'Критерии не заданы.' },
+    ],
+  })
+  open()
+  fireEvent.click(
+    await screen.findByRole('button', {
+      name: 'Пропустить задания без критериев',
+    }),
+  )
+  expect(
+    calls.mock.calls.some(([url]) => url.endsWith('/skip-missing-criteria')),
+  ).toBe(false)
+  const dialog = await screen.findByRole('alertdialog')
+  expect(
+    within(dialog).getByText(/активные диагностики отменятся/),
+  ).toBeVisible()
+  fireEvent.click(
+    within(dialog).getByRole('button', { name: 'Исключить и пересобрать' }),
+  )
+  await waitFor(() =>
+    expect(
+      calls.mock.calls.some(([url]) => url.endsWith('/skip-missing-criteria')),
+    ).toBe(true),
+  )
+})
+
+it('shows actual question preparation and estimate without PDF blockers for a map', async () => {
+  setup({
+    materials: [],
+    buildProgress: {
+      stage: 'prepare_questions',
+      stage_index: 1,
+      stage_count: 2,
+      done: 5,
+      total: 15,
+      remaining_seconds: 25,
+    },
+  })
+  open()
+  expect(
+    await screen.findByText(
+      /Подготовка вопросов и переформулировок · этап 1 из 2 · шаг 5 из 15/,
+    ),
+  ).toBeVisible()
+  expect(screen.getByText(/осталось примерно 25 с/)).toBeVisible()
+  expect(
+    screen.queryByText('Загрузите хотя бы один материал курса.'),
+  ).not.toBeInTheDocument()
 })
 
 it('shows the master pipeline stage while translation is running and blocks graph builds', async () => {
@@ -283,6 +456,9 @@ it('keeps the master graph viewer for a published graph', async () => {
   })
   expect(within(canvas).getByText('Линейная регрессия')).toBeInTheDocument()
   expect(screen.queryByText('По карте компетенций')).not.toBeInTheDocument()
+  expect(
+    screen.queryByText('Общие критерии — максимум 4 балла:'),
+  ).not.toBeInTheDocument()
 })
 
 it('keeps the competency map import inside the selected course graph card', async () => {
@@ -660,6 +836,134 @@ it('marks completed materials ready for the graph', async () => {
   expect(
     screen.getByText(
       'Материалов: 1 · готово к графу: 1 · в обработке: 0 · с ошибкой: 0',
+    ),
+  ).toBeVisible()
+})
+
+it('blocks exclusion of a stale map after replacement preparation fails', async () => {
+  const calls = setup({
+    graphReady: true,
+    assessmentWarnings: [
+      { row: 3, column: 'Задание 2', message: 'Критерии не заданы.' },
+    ],
+    mapState: { fingerprint: 'map-b', stale: true, failed: true },
+  })
+  open()
+  expect(
+    await screen.findByRole('button', {
+      name: 'Пропустить задания без критериев',
+    }),
+  ).toBeDisabled()
+  expect(
+    screen.getByText(
+      'Исключение доступно после успешной публикации актуальной карты.',
+    ),
+  ).toBeVisible()
+  expect(
+    calls.mock.calls.some(([url]) => url.endsWith('/skip-missing-criteria')),
+  ).toBe(false)
+})
+
+it('keeps the confirmed fingerprint when another tab changes the map', async () => {
+  const mapState = { fingerprint: 'map-a', stale: false, failed: false }
+  const calls = setup({
+    graphReady: true,
+    mapState,
+    assessmentWarnings: [
+      { row: 3, column: 'Задание 2', message: 'Критерии не заданы.' },
+    ],
+  })
+  const router = open()
+  fireEvent.click(
+    await screen.findByRole('button', {
+      name: 'Пропустить задания без критериев',
+    }),
+  )
+  const dialog = await screen.findByRole('alertdialog')
+  mapState.fingerprint = 'map-b'
+  await act(async () => {
+    await router.options.context.queryClient.invalidateQueries()
+  })
+  expect(
+    within(dialog).getByText('Строка 3, Задание 2: Критерии не заданы.'),
+  ).toBeVisible()
+  fireEvent.click(
+    within(dialog).getByRole('button', { name: 'Исключить и пересобрать' }),
+  )
+  expect(
+    await screen.findByText('Карта изменилась. Подтвердите исключение заново.'),
+  ).toBeVisible()
+  const request = calls.mock.calls.find(([url]) =>
+    url.endsWith('/skip-missing-criteria'),
+  )
+  expect(
+    new Headers(request?.[1]?.headers).get('X-Expected-Map-Fingerprint'),
+  ).toBe('map-a')
+})
+
+it.each([true, false])(
+  'retries the saved failed map without PDFs (published graph: %s)',
+  async (graphReady) => {
+    const mapState = {
+      fingerprint: 'filtered-b',
+      stale: graphReady,
+      failed: true,
+    }
+    const calls = setup({
+      graphReady,
+      materials: [],
+      mapState,
+      assessmentWarnings: graphReady
+        ? [{ row: 3, column: 'Задание 2', message: 'Критерии не заданы.' }]
+        : [],
+    })
+    open()
+    const retry = await screen.findByRole('button', {
+      name: 'Повторить подготовку карты',
+    })
+    await waitFor(() => expect(retry).toBeEnabled())
+    expect(
+      screen.getByText(/исключённые задания останутся исключёнными/),
+    ).toBeVisible()
+    fireEvent.click(retry)
+    await waitFor(() =>
+      expect(
+        calls.mock.calls.some(([url]) => url.endsWith('/competency-map/retry')),
+      ).toBe(true),
+    )
+    const request = calls.mock.calls.find(([url]) =>
+      url.endsWith('/competency-map/retry'),
+    )
+    expect(
+      new Headers(request?.[1]?.headers).get('X-Expected-Map-Fingerprint'),
+    ).toBe('filtered-b')
+    expect(
+      calls.mock.calls.some(
+        ([url, init]) =>
+          init?.method === 'POST' && !url.endsWith('/competency-map/retry'),
+      ),
+    ).toBe(false)
+    await waitFor(() =>
+      expect(
+        screen.queryByRole('button', { name: 'Повторить подготовку карты' }),
+      ).not.toBeInTheDocument(),
+    )
+  },
+)
+
+it('shows a retry conflict if the saved map changes in another tab', async () => {
+  const mapState = { fingerprint: 'filtered-b', stale: true, failed: true }
+  setup({ graphReady: true, materials: [], mapState })
+  open()
+  const retry = await screen.findByRole('button', {
+    name: 'Повторить подготовку карты',
+  })
+  await waitFor(() => expect(retry).toBeEnabled())
+  mapState.fingerprint = 'map-c'
+  fireEvent.click(retry)
+  expect(
+    await screen.findByText(
+      'Карта изменилась. Обновите страницу и повторите подготовку.',
     ),
   ).toBeVisible()
 })

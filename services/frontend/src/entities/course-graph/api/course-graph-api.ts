@@ -19,7 +19,11 @@ const snapshotSchema = z.object({
   graph_source: z.enum(['built', 'competency_map', 'none']).optional(),
   build_source: z.enum(['materials', 'competency_map']).nullable().optional(),
   map: z
-    .object({ filename: z.string(), sheet: z.string() })
+    .object({
+      filename: z.string(),
+      sheet: z.string(),
+      fingerprint: z.string().optional(),
+    })
     .nullable()
     .optional(),
   progress: z
@@ -30,16 +34,30 @@ const snapshotSchema = z.object({
         'prerequisites',
         'attach',
         'questions',
+        'prepare_questions',
+        'retry_questions',
+        'publish',
       ]),
       stage_index: z.number().int().positive(),
       stage_count: z.number().int().positive(),
       done: z.number().int().nonnegative(),
       total: z.number().int().nonnegative(),
+      remaining_seconds: z.number().int().nonnegative().optional(),
     })
     .nullable()
     .optional(),
   graph: z
     .object({
+      assessment_warnings: z
+        .array(
+          z.object({
+            row: z.number().int().positive(),
+            column: z.string(),
+            message: z.string(),
+          }),
+        )
+        .optional(),
+      assessment_skipped: z.number().int().nonnegative().optional(),
       topics: z.array(
         z.object({
           id: z.string(),
@@ -196,6 +214,7 @@ function toBuild(
           stageCount: snapshot.progress.stage_count,
           done: snapshot.progress.done,
           total: snapshot.progress.total,
+          remainingSeconds: snapshot.progress.remaining_seconds,
         }
       : null,
     startedAt: null,
@@ -207,6 +226,7 @@ function toBuild(
     stale: snapshot.stale,
     inputsReady: snapshot.inputs_ready,
     source: snapshot.build_source ?? null,
+    map: snapshot.map ?? null,
   }
 }
 
@@ -223,6 +243,50 @@ export async function readLatestCourseGraphBuild(
       ),
     ),
   )
+}
+
+export async function skipMissingCriteria(
+  subjectId: string,
+  signal: AbortSignal,
+  expectedFingerprint: string,
+): Promise<CourseGraphBuild> {
+  const result = toBuild(
+    subjectId,
+    parseSnapshot(
+      await fetchJSON(
+        `/admin/subjects/${encodeURIComponent(subjectId)}/graph/competency-map/skip-missing-criteria`,
+        signal,
+        {
+          method: 'POST',
+          headers: { 'X-Expected-Map-Fingerprint': expectedFingerprint },
+        },
+      ),
+    ),
+  )
+  if (!result) throw new Error(i18n.t('courseGraph.invalidResponse'))
+  return result
+}
+
+export async function retryCompetencyMap(
+  subjectId: string,
+  signal: AbortSignal,
+  expectedFingerprint: string,
+): Promise<CourseGraphBuild> {
+  const result = toBuild(
+    subjectId,
+    parseSnapshot(
+      await fetchJSON(
+        `/admin/subjects/${encodeURIComponent(subjectId)}/graph/competency-map/retry`,
+        signal,
+        {
+          method: 'POST',
+          headers: { 'X-Expected-Map-Fingerprint': expectedFingerprint },
+        },
+      ),
+    ),
+  )
+  if (!result) throw new Error(i18n.t('courseGraph.invalidResponse'))
+  return result
 }
 
 export async function startCourseGraphBuild(

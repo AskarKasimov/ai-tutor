@@ -284,6 +284,8 @@ func (a *App) Handler() http.Handler {
 	examMux.Handle("GET /admin/subjects/{subject_id}/graph", protect(auth, subjectpg.RequireSubject(a.pool, http.HandlerFunc(graphHandlers.Read))))
 	examMux.Handle("POST /admin/subjects/{subject_id}/graph/build", protect(auth, subjectpg.RequireSubject(a.pool, http.HandlerFunc(graphHandlers.Build))))
 	examMux.Handle("POST /admin/subjects/{subject_id}/graph/competency-map", protect(auth, subjectpg.RequireSubject(a.pool, http.HandlerFunc(graphHandlers.ImportMap))))
+	examMux.Handle("POST /admin/subjects/{subject_id}/graph/competency-map/skip-missing-criteria", protect(auth, subjectpg.RequireSubject(a.pool, http.HandlerFunc(graphHandlers.SkipMissingCriteria))))
+	examMux.Handle("POST /admin/subjects/{subject_id}/graph/competency-map/retry", protect(auth, subjectpg.RequireSubject(a.pool, http.HandlerFunc(graphHandlers.RetryMap))))
 	examMux.Handle("DELETE /admin/subjects/{subject_id}/materials/{material_id}", protect(auth, subjectpg.RequireSubject(a.pool, http.HandlerFunc(materialsHandlers.DeleteMaterial))))
 	examMux.Handle("GET /admin/subjects/{subject_id}/materials/{material_id}/raw", protect(auth, subjectpg.RequireSubject(a.pool, http.HandlerFunc(materialsHandlers.DownloadRaw))))
 	examMux.Handle("POST /admin/subjects", protect(auth, http.HandlerFunc(subjectHandlers.Create)))

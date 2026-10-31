@@ -4,6 +4,16 @@ import type { CourseGraph, CourseGraphBuild } from '@/entities/course-graph'
 
 export type CourseGraphBuildDependencies = {
   courseGraph: {
+    retryCompetencyMap(
+      subjectId: string,
+      signal: AbortSignal,
+      expectedFingerprint: string,
+    ): Promise<CourseGraphBuild>
+    skipMissingCriteria(
+      subjectId: string,
+      signal: AbortSignal,
+      expectedFingerprint: string,
+    ): Promise<CourseGraphBuild>
     readLatestCourseGraphBuild(
       subjectId: string,
       signal: AbortSignal,

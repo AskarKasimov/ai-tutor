@@ -2,7 +2,14 @@ export type CourseGraphBuildStatus =
   'queued' | 'running' | 'succeeded' | 'failed'
 
 export type CourseGraphBuildStage =
-  'topics' | 'synonyms' | 'prerequisites' | 'attach' | 'questions'
+  | 'topics'
+  | 'synonyms'
+  | 'prerequisites'
+  | 'attach'
+  | 'questions'
+  | 'prepare_questions'
+  | 'retry_questions'
+  | 'publish'
 
 // Where a running build is: stage stageIndex of stageCount and the model
 // batches of that stage finished so far; a stage without work has total 0.
@@ -12,6 +19,7 @@ export type CourseGraphBuildProgress = {
   stageCount: number
   done: number
   total: number
+  remainingSeconds?: number
 }
 
 // The share of a build done: finished stages plus the finished part of the
@@ -39,12 +47,14 @@ export type CourseGraphBuild = {
   inputsReady?: boolean
   // What the build reads: the course materials or an imported competency map.
   source?: CourseGraphSource | null
+  map?: CourseGraphMapFile | null
 }
 
 export type CourseGraphSource = 'materials' | 'competency_map'
 
 // The competency map imported last and the sheet it was read from.
 export type CourseGraphMapFile = {
+  fingerprint?: string
   filename: string
   sheet: string
 }
@@ -74,6 +84,8 @@ export type CourseGraph = {
 
 // Native graph payload supplied by the course-graph service.
 export type CourseGraphView = {
+  assessment_skipped?: number
+  assessment_warnings?: { row: number; column: string; message: string }[]
   topics: {
     id: string
     title: string

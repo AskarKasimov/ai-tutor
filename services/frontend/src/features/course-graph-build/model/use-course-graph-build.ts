@@ -59,7 +59,9 @@ export function useLatestCourseGraphBuildQuery(
     },
     refetchInterval: (current) =>
       materialsBusy ||
-      (!metadataIncomplete && current.state.data?.inputsReady === false) ||
+      (!metadataIncomplete &&
+        current.state.data?.inputsReady === false &&
+        current.state.data.source !== 'competency_map') ||
       current.state.data?.status === 'running' ||
       (current.state.data?.status === 'queued' &&
         // A map does not wait for the materials.
@@ -103,7 +105,9 @@ export function useCourseGraphQuery(
     queryKey: courseGraphQueryKeys.graph(userId, subjectId),
     refetchInterval: (current) =>
       materialsBusy ||
-      (!metadataIncomplete && current.state.data?.inputsReady === false)
+      (!metadataIncomplete &&
+        current.state.data?.inputsReady === false &&
+        current.state.data.source !== 'competency_map')
         ? 2000
         : false,
     enabled: !!userId && !!subjectId,
@@ -137,17 +141,25 @@ export function useCourseGraphQuery(
 export function useStartCourseGraphBuildMutation(
   userId: string,
   subjectId: string,
+  operation:
+    'materials' | 'skipMissingCriteria' | 'retryCompetencyMap' = 'materials',
 ) {
   const { courseGraph } = useCourseGraphBuildDependencies()
   const cache = useQueryClient()
   const tokenRef = useRef(captureSession(cache))
   return useMutation({
-    mutationKey: ['course-graph-build', 'start', userId, subjectId],
+    mutationKey: ['course-graph-build', operation, userId, subjectId],
     gcTime: 0,
     onMutate: () => {
       tokenRef.current = captureSession(cache)
     },
-    mutationFn: async (targetSubjectId: string) => {
+    mutationFn: async (
+      input: string | { subjectId: string; expectedFingerprint: string },
+    ) => {
+      const targetSubjectId =
+        typeof input === 'string' ? input : input.subjectId
+      const expectedFingerprint =
+        typeof input === 'string' ? '' : input.expectedFingerprint
       const controller = new AbortController()
       const unregister = registerSessionRequest(
         cache,
@@ -155,15 +167,24 @@ export function useStartCourseGraphBuildMutation(
         controller,
       )
       try {
-        return await courseGraph.startCourseGraphBuild(
+        if (operation === 'materials') {
+          return await courseGraph.startCourseGraphBuild(
+            targetSubjectId,
+            controller.signal,
+          )
+        }
+        return await courseGraph[operation](
           targetSubjectId,
           controller.signal,
+          expectedFingerprint,
         )
       } finally {
         unregister()
       }
     },
-    onSuccess: async (_data, targetSubjectId) => {
+    onSuccess: async (_data, input) => {
+      const targetSubjectId =
+        typeof input === 'string' ? input : input.subjectId
       if (!isCurrentSession(cache, tokenRef.current)) return
       await Promise.all([
         cache.invalidateQueries({
@@ -174,7 +195,9 @@ export function useStartCourseGraphBuildMutation(
         }),
       ])
     },
-    onError: async (error, targetSubjectId) => {
+    onError: async (error, input) => {
+      const targetSubjectId =
+        typeof input === 'string' ? input : input.subjectId
       if (!isCurrentSession(cache, tokenRef.current)) return
       if (error instanceof CourseGraphApiError && error.status === 401)
         await replaceSession(cache, null)

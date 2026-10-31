@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"reflect"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -11,6 +12,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/coursegraph"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/exam"
 	geekapp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/geek/application"
 	geekgraph "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/geek/infrastructure/graph"
@@ -51,6 +53,68 @@ const build = `{"version":"course-graph-v1","quality":{"acyclic":true},"hierarch
  {"id":"b","title":"Эвристика","text":"Текст эвристики","question":"","provides":["эвристика"],"requires":["поиск"]}
 ],
 "prerequisites":[{"source":"a","target":"b"}]}`
+
+func TestMapDefaultsAndWarningsSurviveQuestionPreparation(t *testing.T) {
+	header := []string{"Компетенция", "Составляющая", "Образовательный результат", "Таксономия", "Важность", "Что должно войти в тест", "Задание 1", "Задание 2", "Критерии оценивания 1", "ID темы", "Пререквизиты"}
+	rows := [][]string{header, {"ИИ", "Агенты", "Агент", "Понимать", "3", "TRUE", "Назови агента", "Назови агента и объясни выбор", "Балл (макс. 1): 0 — нет; 1 — верно", "agent", ""}}
+	built, err := coursegraph.BuildMapGraph([]coursegraph.MapSheet{{Name: "Карта", Rows: rows}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	examiner := &buildExaminer{}
+	out, err := (builtQuestions{examiner: examiner, logger: zap.NewNop()}).Prepare(context.Background(), built.Graph)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var before, after struct {
+		Warnings []coursegraph.MapIssue `json:"assessment_warnings"`
+	}
+	if err := json.Unmarshal(built.Graph, &before); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(out, &after); err != nil {
+		t.Fatal(err)
+	}
+	if len(before.Warnings) != 1 || !reflect.DeepEqual(before.Warnings, after.Warnings) {
+		t.Fatalf("preparation lost warning metadata: before=%+v after=%+v", before, after)
+	}
+	g, ok, err := geekgraph.Decode(out)
+	if err != nil || !ok {
+		t.Fatalf("decode: %v, %v", ok, err)
+	}
+	n := g.Nodes[0]
+	if len(n.Variants) != 2 || n.Variants[0].Question != rows[1][6] || n.Variants[1].Question != rows[1][7] || n.Variants[1].AssessmentGuidance != coursegraph.DefaultAssessmentGuidance || n.Variants[0].AssessmentGuidance == coursegraph.DefaultAssessmentGuidance || !n.Prepared() {
+		t.Fatalf("preparation changed task criteria or questions: %+v", n)
+	}
+	if err := g.ValidateRubrics(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestBuildReportsProgressAndRetryWithoutCountingFailedTopics(t *testing.T) {
+	examiner := &buildExaminer{}
+	examiner.fails.Store(1)
+	var updates []coursegraph.BuildProgress
+	_, err := (builtQuestions{examiner: examiner, logger: zap.NewNop(), pause: time.Millisecond}).PrepareWithProgress(context.Background(), json.RawMessage(build), func(p coursegraph.BuildProgress) { updates = append(updates, p) })
+	if err != nil {
+		t.Fatal(err)
+	}
+	retry := false
+	for _, p := range updates {
+		if p.Done > p.Total || p.Total != 2 {
+			t.Fatalf("invalid progress: %+v", p)
+		}
+		if p.Stage == "retry_questions" {
+			retry = true
+			if p.RemainingSeconds != nil {
+				t.Fatal("retry has misleading estimate")
+			}
+		}
+	}
+	if !retry || updates[len(updates)-1].Done != 2 {
+		t.Fatalf("missing retry or completion: %+v", updates)
+	}
+}
 
 func TestBuildRejectsInvalidRubricBeforePreparingQuestions(t *testing.T) {
 	examiner := &buildExaminer{}

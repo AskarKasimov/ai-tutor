@@ -214,6 +214,12 @@ func TestOpenAPIResponses(t *testing.T) {
 	}
 	mapPath := "/admin/subjects/" + contractSubject.ID + "/graph/competency-map"
 	const mapContract = "/admin/subjects/{subject_id}/graph/competency-map"
+	const skipContract = "/admin/subjects/{subject_id}/graph/competency-map/skip-missing-criteria"
+	beforeImport := f.request("POST", mapPath+"/skip-missing-criteria", "", admin)
+	if beforeImport.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("skip before import: %d %s", beforeImport.Code, beforeImport.Body.String())
+	}
+	check("POST", skipContract, beforeImport)
 	notABook := upload(f, mapPath, "file", "map.pdf", "application/pdf", []byte("%PDF-1.7"), admin)
 	if notABook.Code != http.StatusUnprocessableEntity {
 		t.Fatalf("map that is not a book: %d %s", notABook.Code, notABook.Body.String())
@@ -224,7 +230,98 @@ func TestOpenAPIResponses(t *testing.T) {
 		t.Fatalf("map import: %d %s", imported.Code, imported.Body.String())
 	}
 	check("POST", mapContract, imported)
+	whileBuilding := f.request("POST", mapPath+"/skip-missing-criteria", "", admin)
+	if whileBuilding.Code != http.StatusConflict {
+		t.Fatalf("skip while building: %d %s", whileBuilding.Code, whileBuilding.Body.String())
+	}
+	check("POST", skipContract, whileBuilding)
 	check("POST", mapContract, upload(f, mapPath, "file", "map.xlsx", "application/octet-stream", mapBook(t), admin))
+	// Publish the imported graph as the worker would, then validate the 202
+	// response of the actual skip endpoint against the OpenAPI snapshot schema.
+	if _, err := f.pool.Exec(t.Context(), `INSERT INTO course_graphs(subject_id, source, fingerprint, graph, updated_at) SELECT subject_id, 'competency_map', fingerprint, graph, 1 FROM course_graph_maps WHERE subject_id=$1`, contractSubject.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.pool.Exec(t.Context(), `UPDATE course_graph_jobs SET status='ready' WHERE subject_id=$1`, contractSubject.ID); err != nil {
+		t.Fatal(err)
+	}
+	missingConfirmation := f.request("POST", mapPath+"/skip-missing-criteria", "", admin)
+	if missingConfirmation.Code != http.StatusConflict || !strings.Contains(missingConfirmation.Body.String(), "COMPETENCY_MAP_CHANGED") {
+		t.Fatalf("skip without confirmation: %d %s", missingConfirmation.Code, missingConfirmation.Body.String())
+	}
+	check("POST", skipContract, missingConfirmation)
+	var importedSnapshot struct {
+		Map struct {
+			Fingerprint string `json:"fingerprint"`
+		} `json:"map"`
+	}
+	if err := json.Unmarshal(imported.Body.Bytes(), &importedSnapshot); err != nil || importedSnapshot.Map.Fingerprint == "" {
+		t.Fatalf("missing imported map fingerprint: %s (%v)", imported.Body.String(), err)
+	}
+	confirmedRequest := func(fingerprint string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest("POST", "https://api.example"+examTestPath(mapPath+"/skip-missing-criteria"), nil)
+		req.AddCookie(admin)
+		req.Header.Set("X-Expected-Map-Fingerprint", fingerprint)
+		w := httptest.NewRecorder()
+		f.app.Handler().ServeHTTP(w, req)
+		return w
+	}
+	changedConfirmation := confirmedRequest("another-map")
+	if changedConfirmation.Code != http.StatusConflict || !strings.Contains(changedConfirmation.Body.String(), "COMPETENCY_MAP_CHANGED") {
+		t.Fatalf("skip with changed confirmation: %d %s", changedConfirmation.Code, changedConfirmation.Body.String())
+	}
+	check("POST", skipContract, changedConfirmation)
+	skipped := confirmedRequest(importedSnapshot.Map.Fingerprint)
+	if skipped.Code != http.StatusAccepted {
+		t.Fatalf("skip published map: %d %s", skipped.Code, skipped.Body.String())
+	}
+	check("POST", skipContract, skipped)
+	const retryContract = "/admin/subjects/{subject_id}/graph/competency-map/retry"
+	retryRequest := func(fingerprint string, cookie *http.Cookie) *httptest.ResponseRecorder {
+		req := httptest.NewRequest("POST", "https://api.example"+examTestPath(mapPath+"/retry"), nil)
+		if cookie != nil {
+			req.AddCookie(cookie)
+		}
+		req.Header.Set("X-Expected-Map-Fingerprint", fingerprint)
+		w := httptest.NewRecorder()
+		f.app.Handler().ServeHTTP(w, req)
+		return w
+	}
+	for _, tc := range []struct {
+		cookie      *http.Cookie
+		fingerprint string
+		status      int
+	}{
+		{nil, importedSnapshot.Map.Fingerprint, http.StatusUnauthorized},
+		{access, importedSnapshot.Map.Fingerprint, http.StatusForbidden},
+		{admin, importedSnapshot.Map.Fingerprint, http.StatusConflict},
+	} {
+		response := retryRequest(tc.fingerprint, tc.cookie)
+		if response.Code != tc.status {
+			t.Fatalf("retry map: %d %s", response.Code, response.Body.String())
+		}
+		check("POST", retryContract, response)
+	}
+	if _, err := f.pool.Exec(t.Context(), `UPDATE course_graph_jobs SET status='failed',attempts=3 WHERE subject_id=$1`, contractSubject.ID); err != nil {
+		t.Fatal(err)
+	}
+	for _, fingerprint := range []string{"", "changed-map"} {
+		response := retryRequest(fingerprint, admin)
+		if response.Code != http.StatusConflict || !strings.Contains(response.Body.String(), "COMPETENCY_MAP_CHANGED") {
+			t.Fatalf("retry changed map: %d %s", response.Code, response.Body.String())
+		}
+		check("POST", retryContract, response)
+	}
+	retried := retryRequest(importedSnapshot.Map.Fingerprint, admin)
+	if retried.Code != http.StatusAccepted || !strings.Contains(retried.Body.String(), `"status":"pending"`) || !strings.Contains(retried.Body.String(), `"attempts":0`) {
+		t.Fatalf("retry saved map: %d %s", retried.Code, retried.Body.String())
+	}
+	check("POST", retryContract, retried)
+	repeated := retryRequest(importedSnapshot.Map.Fingerprint, admin)
+	if repeated.Code != http.StatusConflict {
+		t.Fatalf("duplicate retry: %d %s", repeated.Code, repeated.Body.String())
+	}
+	check("POST", retryContract, repeated)
+
 	check("GET", "/subjects", f.request("GET", "/subjects", "", admin))
 	materialData := []byte("%PDF-1.7 lecture")
 	materialsUpload := upload(f, "/admin/subjects/subject:test/materials", "file", "lecture.pdf", "application/pdf", materialData, admin)

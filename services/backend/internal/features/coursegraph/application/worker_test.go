@@ -1,9 +1,11 @@
 package application
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"log"
 	"strings"
 	"testing"
 	"time"
@@ -36,7 +38,13 @@ func (r requestRepo) Read(context.Context, string) (coursegraph.Snapshot, error)
 	return r.snapshot, nil
 }
 func (r requestRepo) Request(context.Context, string, time.Time) (bool, error) { return r.queued, nil }
+func (r requestRepo) RetryMap(context.Context, string, string, time.Time) (bool, error) {
+	return r.queued, nil
+}
 func (r requestRepo) SaveMap(context.Context, string, string, string, json.RawMessage, time.Time) (bool, error) {
+	return r.queued, nil
+}
+func (r requestRepo) SaveMapIfCurrent(context.Context, string, string, string, json.RawMessage, string, time.Time) (bool, error) {
 	return r.queued, nil
 }
 func (r requestRepo) MapGraph(context.Context, string) (json.RawMessage, error) {
@@ -456,5 +464,58 @@ func TestAFailureToPrepareQuestionsIsReportedAsSuch(t *testing.T) {
 	}
 	if len(repo.failed) != 1 || !strings.Contains(repo.failed[0], "вопросы к темам не подготовлены") || len(repo.finished) != 0 {
 		t.Fatalf("failed=%q published=%d", repo.failed, len(repo.finished))
+	}
+}
+
+func TestImportMapLogsFallbackCriteriaOnlyAfterSaving(t *testing.T) {
+	for _, tc := range []struct {
+		name            string
+		missing, queued bool
+	}{
+		{"saved map with missing criteria", true, true},
+		{"saved map with authored criteria", false, true},
+		{"rejected concurrent import", true, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var output bytes.Buffer
+			previous := log.Writer()
+			log.SetOutput(&output)
+			t.Cleanup(func() { log.SetOutput(previous) })
+			rows := mapRows("К1. Агенты")
+			if tc.missing {
+				rows[1][8] = ""
+				rows[3][8] = ""
+			}
+			read := func([]byte) ([]coursegraph.MapSheet, error) {
+				return []coursegraph.MapSheet{{Name: "Карта", Rows: rows}}, nil
+			}
+			var saved json.RawMessage
+			var sheet string
+			repo := mapRepo{requestRepo: requestRepo{snapshot: coursegraph.Snapshot{Status: "ready"}}, saved: &saved, sheet: &sheet, queued: tc.queued}
+			_, err := New(repo, nil, nil, nil, nil, read).ImportMap(context.Background(), admin, "subject", "map.xlsx", nil)
+			if tc.queued && err != nil {
+				t.Fatal(err)
+			}
+			if !tc.queued && !isFault(err, "GRAPH_BUILD_IN_PROGRESS") {
+				t.Fatalf("expected rejected import, got %v", err)
+			}
+			if !tc.missing || !tc.queued {
+				if output.Len() != 0 {
+					t.Fatalf("unexpected warning: %s", output.String())
+				}
+				return
+			}
+			lines := strings.Split(strings.TrimSpace(output.String()), "\n")
+			if len(lines) != 2 {
+				t.Fatalf("expected one warning per affected task: %s", output.String())
+			}
+			for i, row := range []string{"row=2", "row=4"} {
+				for _, field := range []string{"WARN", `subject_id="subject"`, `filename="map.xlsx"`, `sheet="Карта"`, row, `column="Задание 1"`, `message="Критерии не заданы: используются общие критерии корректности и покрытия вопроса."`} {
+					if !strings.Contains(lines[i], field) {
+						t.Errorf("missing %s in warning: %s", field, lines[i])
+					}
+				}
+			}
+		})
 	}
 }

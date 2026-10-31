@@ -26,11 +26,14 @@ type Repository interface {
 	Fail(context.Context, coursegraph.Job, string, time.Time) error
 	Read(context.Context, string) (coursegraph.Snapshot, error)
 	Request(context.Context, string, time.Time) (bool, error)
+	RetryMap(ctx context.Context, subjectID, expectedFingerprint string, now time.Time) (bool, error)
 	// Published lists the graphs Geek examines by.
 	Published(context.Context) ([]json.RawMessage, error)
 	// SaveMap stores an imported competency map and queues its build; false
 	// when a build is already queued or running.
 	SaveMap(ctx context.Context, subjectID, filename, sheet string, graph json.RawMessage, now time.Time) (bool, error)
+	// SaveMapIfCurrent rejects a changed fingerprint or an unpublished map atomically.
+	SaveMapIfCurrent(ctx context.Context, subjectID, filename, sheet string, graph json.RawMessage, expectedFingerprint string, now time.Time) (bool, error)
 	// MapGraph is the graph of the imported competency map.
 	MapGraph(context.Context, string) (json.RawMessage, error)
 }
@@ -236,7 +239,85 @@ func (w *Worker) ImportMap(ctx context.Context, actor user.User, subjectID, file
 	if err != nil {
 		return coursegraph.Snapshot{}, err
 	}
+	var assessment struct {
+		Warnings []coursegraph.MapIssue `json:"assessment_warnings"`
+	}
+	if err := json.Unmarshal(built.Graph, &assessment); err != nil {
+		return coursegraph.Snapshot{}, err
+	}
 	queued, err := w.repo.SaveMap(ctx, subjectID, filename, built.Sheet, built.Graph, time.Now())
+	if err != nil {
+		return coursegraph.Snapshot{}, err
+	}
+	if !queued {
+		return coursegraph.Snapshot{}, fault.New(fault.Conflict, "GRAPH_BUILD_IN_PROGRESS", "Граф курса уже собирается.")
+	}
+	for _, warning := range assessment.Warnings {
+		log.Printf("WARN course graph: default assessment criteria subject_id=%q filename=%q sheet=%q row=%d column=%q message=%q",
+			subjectID, filename, built.Sheet, warning.Row, warning.Column, warning.Message)
+	}
+	return w.snapshot(ctx, subjectID)
+}
+
+// RetryMap restarts preparation of the saved map without importing or filtering it.
+func (w *Worker) RetryMap(ctx context.Context, actor user.User, subjectID, expectedFingerprint string) (coursegraph.Snapshot, error) {
+	if actor.Role != user.Admin {
+		return coursegraph.Snapshot{}, fault.New(fault.Forbidden, "FORBIDDEN", "Доступно только admin.")
+	}
+	current, err := w.repo.Read(ctx, subjectID)
+	if err != nil {
+		return coursegraph.Snapshot{}, err
+	}
+	if current.Map == nil || expectedFingerprint == "" || current.Map.Fingerprint != expectedFingerprint {
+		return coursegraph.Snapshot{}, fault.New(fault.Conflict, "COMPETENCY_MAP_CHANGED", "Карта изменилась. Обновите страницу и повторите подготовку.")
+	}
+	if current.Status != "failed" || current.BuildSource == nil || *current.BuildSource != coursegraph.SourceMap {
+		return coursegraph.Snapshot{}, fault.New(fault.Conflict, "GRAPH_RETRY_NOT_AVAILABLE", "Повтор доступен только после ошибки подготовки карты.")
+	}
+	queued, err := w.repo.RetryMap(ctx, subjectID, expectedFingerprint, time.Now())
+	if err != nil {
+		return coursegraph.Snapshot{}, err
+	}
+	if !queued {
+		return coursegraph.Snapshot{}, fault.New(fault.Conflict, "GRAPH_RETRY_NOT_AVAILABLE", "Состояние подготовки изменилось. Обновите страницу.")
+	}
+	return w.snapshot(ctx, subjectID)
+}
+
+// SkipMissingCriteria queues a replacement map after the admin's confirmation.
+func (w *Worker) SkipMissingCriteria(ctx context.Context, actor user.User, subjectID, expectedFingerprint string) (coursegraph.Snapshot, error) {
+	if actor.Role != user.Admin {
+		return coursegraph.Snapshot{}, fault.New(fault.Forbidden, "FORBIDDEN", "Доступно только admin.")
+	}
+	current, err := w.repo.Read(ctx, subjectID)
+	if err != nil {
+		return coursegraph.Snapshot{}, err
+	}
+	if current.Status == "pending" || current.Status == "processing" {
+		return coursegraph.Snapshot{}, fault.New(fault.Conflict, "GRAPH_BUILD_IN_PROGRESS", "Граф курса уже собирается.")
+	}
+	if current.Map == nil || current.GraphSource != coursegraph.SourceMap {
+		return coursegraph.Snapshot{}, fault.New(fault.Invalid, "COMPETENCY_MAP_INVALID", "Сначала импортируйте карту для экзамена.")
+	}
+	if current.Stale || current.Status != "ready" || expectedFingerprint == "" || current.Map.Fingerprint != expectedFingerprint {
+		return coursegraph.Snapshot{}, fault.New(fault.Conflict, "COMPETENCY_MAP_CHANGED", "Карта изменилась или ещё не опубликована. Обновите граф и подтвердите исключение заново.")
+	}
+	source, err := w.repo.MapGraph(ctx, subjectID)
+	if err != nil {
+		return coursegraph.Snapshot{}, err
+	}
+	graph, err := coursegraph.SkipMissingCriteria(source)
+	var mapErr *coursegraph.MapError
+	if errors.As(err, &mapErr) {
+		return coursegraph.Snapshot{}, mapFault(mapErr)
+	}
+	if err != nil {
+		return coursegraph.Snapshot{}, err
+	}
+	if string(graph) == string(source) {
+		return w.snapshot(ctx, subjectID)
+	}
+	queued, err := w.repo.SaveMapIfCurrent(ctx, subjectID, current.Map.Filename, current.Map.Sheet, graph, expectedFingerprint, time.Now())
 	if err != nil {
 		return coursegraph.Snapshot{}, err
 	}
@@ -458,6 +539,7 @@ func runWithLease(ctx context.Context, job coursegraph.Job,
 }
 
 func (w *Worker) process(ctx context.Context, job coursegraph.Job) error {
+	defer w.setProgress(job.SubjectID, nil)
 	if job.Attempts > 3 {
 		return fmt.Errorf("graph attempt limit reached")
 	}
@@ -535,8 +617,7 @@ func (w *Worker) buildMaterials(ctx context.Context, job coursegraph.Job) (json.
 		return nil, err
 	}
 	buildID := job.SubjectID + "#" + random
-	defer w.setProgress(job.SubjectID, nil)
-	graph, err := w.builder.Build(ctx, buildID, inputs, func(p coursegraph.BuildProgress) { w.setProgress(job.SubjectID, &p) })
+	graph, err := w.builder.Build(ctx, buildID, inputs, func(p coursegraph.BuildProgress) { p.StageCount += 2; w.setProgress(job.SubjectID, &p) })
 	if err != nil {
 		return nil, err
 	}
@@ -558,12 +639,32 @@ func (w *Worker) buildMaterials(ctx context.Context, job coursegraph.Job) (json.
 // it unless its source changed meanwhile.
 func (w *Worker) publish(ctx context.Context, job coursegraph.Job, graph json.RawMessage) error {
 	var err error
+	stage, count := 1, 2
+	if job.Source != coursegraph.SourceMap {
+		stage, count = 6, 7
+	}
+	report := func(p coursegraph.BuildProgress) {
+		p.StageIndex = stage
+		p.StageCount = count
+		w.setProgress(job.SubjectID, &p)
+	}
+	report(coursegraph.BuildProgress{Stage: "prepare_questions"})
 	if w.questions != nil {
-		if graph, err = w.questions.Prepare(ctx, graph); err != nil {
+		if q, ok := w.questions.(interface {
+			PrepareWithProgress(context.Context, json.RawMessage, func(coursegraph.BuildProgress)) (json.RawMessage, error)
+		}); ok {
+			graph, err = q.PrepareWithProgress(ctx, graph, report)
+		} else {
+			graph, err = w.questions.Prepare(ctx, graph)
+		}
+		if err != nil {
 			return fmt.Errorf("%w: %w", errQuestionsNotPrepared, err)
 		}
 	}
 	// The questions are voiced in the background before the graph is
+	stage++
+	report(coursegraph.BuildProgress{Stage: "publish"})
+	// Queueing speech does not wait for synthesis.
 	// published, so the first students already hear them from the cache.
 	if w.voices != nil {
 		questions := TopicQuestions(graph)

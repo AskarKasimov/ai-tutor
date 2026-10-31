@@ -6,6 +6,8 @@ import {
   readCourseGraph,
   readLatestCourseGraphBuild,
   startCourseGraphBuild,
+  skipMissingCriteria,
+  retryCompetencyMap,
 } from '@/entities/course-graph'
 
 afterEach(() => vi.unstubAllGlobals())
@@ -52,6 +54,47 @@ function respond(value: unknown, status = 200) {
   vi.stubGlobal('fetch', fetchMock)
   return fetchMock
 }
+
+it('posts the confirmed exclusion and reads preparation progress', async () => {
+  const fetch = respond(
+    snapshot('processing', {
+      build_source: 'competency_map',
+      progress: {
+        stage: 'prepare_questions',
+        stage_index: 1,
+        stage_count: 2,
+        done: 3,
+        total: 15,
+        remaining_seconds: 42,
+      },
+    }),
+  )
+  const build = await skipMissingCriteria('subject:one', signal(), 'map-a')
+  expect(fetch.mock.calls[0][0]).toBe(
+    '/api/v1/exam/admin/subjects/subject%3Aone/graph/competency-map/skip-missing-criteria',
+  )
+  expect(fetch.mock.calls[0][1]).toMatchObject({
+    method: 'POST',
+    headers: { 'X-Expected-Map-Fingerprint': 'map-a' },
+  })
+  expect(build.progress).toMatchObject({
+    stage: 'prepare_questions',
+    done: 3,
+    total: 15,
+    remainingSeconds: 42,
+  })
+})
+
+it('preserves per-task warnings about default assessment criteria', async () => {
+  const warnings = [
+    { row: 3, column: 'Задание 2', message: 'Используются общие критерии.' },
+  ]
+  respond(
+    snapshot('ready', { graph: { ...graph, assessment_warnings: warnings } }),
+  )
+  const result = await readCourseGraph('subject:one', signal())
+  expect(result?.view?.assessment_warnings).toEqual(warnings)
+})
 
 it.each([
   ['not_requested', null],
@@ -323,4 +366,43 @@ it('keeps the details of a rejected competency map', async () => {
       message: 'Строка 3, «Важность»: Ожидается целое число от 1 до 5.',
     },
   ])
+})
+
+it('reads saved map metadata after preparation fails before first publication', async () => {
+  const map = {
+    filename: 'map.xlsx',
+    sheet: 'Карта',
+    fingerprint: 'filtered-b',
+  }
+  respond(
+    snapshot('failed', {
+      graph: null,
+      map,
+      build_source: 'competency_map',
+      stale: true,
+    }),
+  )
+  expect(await readLatestCourseGraphBuild('s', signal())).toMatchObject({
+    status: 'failed',
+    source: 'competency_map',
+    map,
+  })
+})
+
+it('retries the saved map using its fingerprint without importing a file', async () => {
+  const fetch = respond(
+    snapshot('pending', { build_source: 'competency_map' }),
+    202,
+  )
+  expect(
+    await retryCompetencyMap('subject:one', signal(), 'filtered-b'),
+  ).toMatchObject({ status: 'queued', source: 'competency_map' })
+  expect(fetch.mock.calls[0][0]).toBe(
+    '/api/v1/exam/admin/subjects/subject%3Aone/graph/competency-map/retry',
+  )
+  expect(fetch.mock.calls[0][1]).toMatchObject({
+    method: 'POST',
+    headers: { 'X-Expected-Map-Fingerprint': 'filtered-b' },
+  })
+  expect(fetch.mock.calls[0][1].body).toBeUndefined()
 })

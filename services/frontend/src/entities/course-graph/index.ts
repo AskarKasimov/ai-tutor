@@ -15,6 +15,8 @@ export { CourseGraphApiError } from './model/course-graph-api-error'
 export type { CourseGraphApiErrorDetail } from './model/course-graph-api-error'
 export {
   importCompetencyMap,
+  skipMissingCriteria,
+  retryCompetencyMap,
   readCourseGraph,
   readLatestCourseGraphBuild,
   startCourseGraphBuild,

@@ -693,12 +693,30 @@ components:
           type: integer
         diagnostic_score:
           type: integer
+        grade:
+          description: Предварительная оценка A–D по проценту баллов (от 90 — A, от 70 — B, от 60 — C); null — нет максимума
+          enum:
+            - A
+            - B
+            - C
+            - D
+            - null
+          type:
+            - string
+            - "null"
         included_competency_count:
           type: integer
         map_revision:
           type: integer
         maximum_score:
           type: integer
+        score_percent:
+          description: Процент набранных баллов от максимума
+          maximum: 100
+          minimum: 0
+          type:
+            - integer
+            - "null"
         session_id:
           type: string
         skipped_competencies:
@@ -723,9 +741,11 @@ components:
         - answers
         - completed_tasks
         - diagnostic_score
+        - grade
         - included_competency_count
         - map_revision
         - maximum_score
+        - score_percent
         - session_id
         - skipped_competencies
         - status
@@ -1145,6 +1165,9 @@ components:
     geek.NodeResult:
       additionalProperties: false
       properties:
+        assisted:
+          description: Ответ дан после переформулировки или подсказки
+          type: boolean
         grade:
           description: Оценка A–D; null — оценки нет (тема не проверялась или недостаточно данных)
           enum:
@@ -1156,7 +1179,21 @@ components:
           type:
             - string
             - "null"
+        marks:
+          description: Результаты по пунктам рубрики или критериям К1–К4
+          items:
+            $ref: '#/components/schemas/geek.TopicMark'
+          type: array
+          uniqueItems: false
+        max_score:
+          minimum: 1
+          type:
+            - integer
+            - "null"
         node_id:
+          type: string
+        reply:
+          description: Реплика Geek при закрытии темы; пустая, если её нет
           type: string
         requires:
           description: 'Прямые пререквизиты вершины (node_id) в графе диагностики: из них строится подграф на странице итога'
@@ -1164,6 +1201,12 @@ components:
             type: string
           type: array
           uniqueItems: false
+        score:
+          description: Баллы темы; null — тема не спрашивалась, засчитана или данных недостаточно
+          minimum: 0
+          type:
+            - integer
+            - "null"
         status:
           description: independent — самостоятельный ответ, assisted — ответ с помощью, gap — пробел, insufficient — недостаточно данных, credited_by_parent — засчитано по вышестоящей вершине (для неё это пререквизит), unchecked — не спрашивалась
           enum:
@@ -1177,12 +1220,17 @@ components:
         title:
           type: string
         top_level:
-          description: 'Вершина верхнего уровня: не пререквизит ни одной другой; по ним считается оценка курса'
+          description: 'Вершина верхнего уровня: не пререквизит ни одной другой'
           type: boolean
       required:
+        - assisted
         - grade
+        - marks
+        - max_score
         - node_id
+        - reply
         - requires
+        - score
         - status
         - title
         - top_level
@@ -1259,7 +1307,7 @@ components:
           type: array
           uniqueItems: false
         grade:
-          description: Предварительная оценка курса A–D по среднему баллу вершин верхнего уровня (от 3,5 — A, от 2,5 — B, от 1,5 — C); null — ни одной такой вершины с оценкой
+          description: Предварительная оценка курса A–D по проценту баллов всех спрошенных тем (от 90 — A, от 70 — B, от 60 — C); null — нет ни одной темы с баллами
           enum:
             - A
             - B
@@ -1269,13 +1317,21 @@ components:
           type:
             - string
             - "null"
+        max_score:
+          description: Максимум баллов всех спрошенных тем
+          minimum: 0
+          type: integer
         nodes:
           items:
             $ref: '#/components/schemas/geek.NodeResult'
           type: array
           uniqueItems: false
+        score:
+          description: Сумма баллов всех спрошенных тем
+          minimum: 0
+          type: integer
         score_percent:
-          description: Средний балл вершин верхнего уровня (A=4…D=1) в процентах от 4; вершины «недостаточно данных» исключены
+          description: Процент набранных баллов от максимума спрошенных тем; темы «недостаточно данных» и засчитанные исключены
           maximum: 100
           minimum: 0
           type:
@@ -1292,10 +1348,24 @@ components:
       required:
         - gaps
         - grade
+        - max_score
         - nodes
+        - score
         - score_percent
         - session_id
         - weak_spots
+      type: object
+    geek.ResultSummary:
+      additionalProperties: false
+      properties:
+        session_id:
+          type: string
+        summary:
+          description: Абзац общего вывода в Markdown; пустой, если ни одна тема не получила результата
+          type: string
+      required:
+        - session_id
+        - summary
       type: object
     geek.Session:
       additionalProperties: false
@@ -1459,6 +1529,34 @@ components:
       required:
         - display_name
         - id
+      type: object
+    geek.TopicMark:
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+        max_score:
+          minimum: 1
+          type: integer
+        quote:
+          description: Дословная цитата из ответа студента; пустая, если её нет
+          type: string
+        reason:
+          description: Основание балла; пустое, если модель его не сохранила
+          type: string
+        score:
+          minimum: 0
+          type: integer
+        title:
+          description: Короткое название пункта из карты; пустое у К1–К4 и пунктов без названия
+          type: string
+      required:
+        - id
+        - max_score
+        - quote
+        - reason
+        - score
+        - title
       type: object
     geek.Turn:
       additionalProperties: false
@@ -4660,6 +4758,56 @@ paths:
       tags:
         - Диагностика
       x-implementation: implemented
+  /exam/diagnostic-sessions/{id}/feedback:
+    get:
+      description: Абзац общего вывода от модели; пишется один раз при первом открытии итога и сохраняется. 409 — диагностика не completed. 503 — модель недоступна, запрос можно повторить.
+      operationId: getDiagnosticResultSummary
+      parameters:
+        - description: ID диагностики
+          in: path
+          name: id
+          required: true
+          schema:
+            maxLength: 128
+            minLength: 1
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/geek.ResultSummary'
+          description: OK
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unauthorized
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Not Found
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Conflict
+        "503":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Service Unavailable
+      security:
+        - accessCookie: []
+      summary: Общий вывод по итогу диагностики
+      tags:
+        - Диагностика
+      x-implementation: implemented
   /exam/diagnostic-sessions/{id}/materials/{material_id}/raw:
     get:
       description: Выдаёт исходный PDF только если он связан со snapshot диагностики и не заменён.
@@ -4705,7 +4853,7 @@ paths:
       x-implementation: implemented
   /exam/diagnostic-sessions/{id}/result:
     get:
-      description: Предварительная оценка A–D, статусы тем и список пробелов. 409 — диагностика не completed.
+      description: Предварительная оценка A–D, статусы и баллы тем, основания и список пробелов. 409 — диагностика не completed.
       operationId: getDiagnosticResult
       parameters:
         - description: ID диагностики

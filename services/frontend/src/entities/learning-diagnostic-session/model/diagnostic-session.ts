@@ -77,6 +77,9 @@ export type DiagnosticResult = {
   total_tasks: number
   diagnostic_score: number
   maximum_score: number
+  // The overall grade translated from the points.
+  grade: 'A' | 'B' | 'C' | 'D' | null
+  score_percent: number | null
   answers: DiagnosticAnswer[]
   untested_basics: DiagnosticTask[]
 }

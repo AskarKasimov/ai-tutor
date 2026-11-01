@@ -1,22 +1,27 @@
 import { expect, it } from 'vitest'
-import type { TopicResult, TopicStatus } from '@/entities/diagnostic-session'
-import { layoutResultGraph } from '@/pages/trainer/lib/result-graph'
+import { layoutResultGraph } from '@/widgets/result-report/lib/result-graph'
+import type { ReportStatus, ReportTopic } from '@/widgets/result-report'
 
 const topic = (
-  nodeId: string,
+  id: string,
   requires: string[] = [],
-  status: TopicStatus = 'independent',
-): TopicResult => ({
-  nodeId,
-  title: nodeId,
+  status: ReportStatus = 'full',
+): ReportTopic => ({
+  id,
+  title: id,
   status,
-  grade: null,
-  topLevel: false,
+  score: 1,
+  maxScore: 1,
+  assisted: false,
+  skipped: false,
   requires,
+  main: false,
+  marks: [],
+  note: '',
 })
 
 const columns = (graph: ReturnType<typeof layoutResultGraph>) =>
-  Object.fromEntries(graph.nodes.map((n) => [n.topic.nodeId, n.column]))
+  Object.fromEntries(graph.nodes.map((n) => [n.topic.id, n.column]))
 
 it('places prerequisites in columns left of the topics relying on them', () => {
   const graph = layoutResultGraph([
@@ -40,7 +45,7 @@ it('hides unchecked topics but keeps the relations through them', () => {
     topic('base'),
     topic('alone', [], 'unchecked'),
   ])
-  expect(graph.nodes.map((n) => n.topic.nodeId)).toEqual(['top', 'base'])
+  expect(graph.nodes.map((n) => n.topic.id)).toEqual(['top', 'base'])
   expect(graph.edges).toEqual([{ from: 'base', to: 'top', via: [] }])
 })
 
@@ -61,7 +66,7 @@ it('centres shorter columns and gives every node its own row', () => {
     topic('z'),
   ])
   expect(graph.rows).toBe(3)
-  const top = graph.nodes.find((n) => n.topic.nodeId === 'top')!
+  const top = graph.nodes.find((n) => n.topic.id === 'top')!
   expect(top.row).toBe(1)
   const base = graph.nodes.filter((n) => n.column === 0).map((n) => n.row)
   expect(new Set(base).size).toBe(3)

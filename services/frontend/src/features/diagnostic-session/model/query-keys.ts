@@ -5,6 +5,8 @@ export const diagnosticSessionQueryKeys = {
     ['diagnostic-session', userId, sessionId] as const,
   result: (userId: string, sessionId: string) =>
     ['diagnostic-result', userId, sessionId] as const,
+  resultSummary: (userId: string, sessionId: string) =>
+    ['diagnostic-result-summary', userId, sessionId] as const,
   start: (userId: string, subjectId: string) =>
     ['diagnostic', 'start', userId, subjectId] as const,
   answer: (userId: string, sessionId: string) =>

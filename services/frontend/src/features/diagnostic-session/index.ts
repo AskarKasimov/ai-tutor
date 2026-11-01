@@ -8,6 +8,7 @@ export {
   useDiagnosticHistoryQuery,
   useDiagnosticQuery,
   useDiagnosticResultQuery,
+  useDiagnosticResultSummaryQuery,
   useStartDiagnosticMutation,
 } from './model/use-diagnostic'
 export { useVoiceAnswer } from './model/use-voice-answer'

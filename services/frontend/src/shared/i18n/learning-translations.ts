@@ -289,7 +289,6 @@ export const learningTranslations = {
   learningDiagnostic: {
     title: 'Диагностика',
     toTraining: 'Подтянуть слабые темы',
-    nextStep: 'Следующий шаг — персональная подготовка',
     noGaps:
       'По проверенным заданиям пробелов не выявлено. Дополнительная подготовка не требуется.',
     answerHelp: 'Следуйте голосовой инструкции задания.',
@@ -309,20 +308,10 @@ export const learningTranslations = {
     unavailable:
       'Не удалось создать вариант. Проверьте, что карта содержит подходящие задания.',
     invalidResponse: 'Сервер вернул некорректные данные. Повторите запрос.',
-    totalScore: 'Диагностический балл',
     resultLoading: 'Загружаем результаты…',
     resultError: 'Не удалось загрузить результат. Повторите запрос.',
     history: 'Ответы и обратная связь',
     reviewToggle: 'Посмотреть мои ответы ({{count}})',
-    overallFeedback: 'Общий фидбэк',
-    feedbackLoading: 'Готовим ваш персональный разбор',
-    feedbackLoadingHelp:
-      'Анализируем ответы: что уже получается, где пробелы и что стоит потренировать. Обычно это занимает до минуты — разбор каждого задания появится вместе с ним.',
-    feedbackError: 'Не удалось загрузить общий фидбэк.',
-    feedbackRetry: 'Повторить загрузку фидбэка',
-    feedbackGood: 'Что хорошо',
-    feedbackWork: 'Что доработать',
-    feedbackSkillsToImprove: 'Что нужно подтянуть:',
     feedbackStudyTopic: 'Изучите тему: {{topic}}.',
     feedbackReviewTopic: 'Повторите тему: {{topic}}.',
     feedbackSkippedTopic: 'Вы пропустили вопрос. Разберите тему: {{topic}}.',

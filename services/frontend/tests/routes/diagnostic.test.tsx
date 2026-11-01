@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react'
 import {
   createMemoryHistory,
   createRouter,
@@ -75,6 +81,8 @@ const resultBody = {
   total_tasks: 3,
   diagnostic_score: 3,
   maximum_score: 3,
+  grade: 'A',
+  score_percent: 100,
   answers: [
     {
       variant_task_id: 'v-main',
@@ -456,11 +464,9 @@ it('runs real diagnostic audio, obeys skipped basics and displays the server tot
     await screen.findByRole('button', { name: 'Посмотреть итог' }),
   )
   expect(
-    await screen.findByRole('heading', { name: 'Сессия завершена' }),
+    await screen.findByRole('heading', { name: 'Итог диагностики' }),
   ).toBeVisible()
-  expect(
-    screen.getByText('Диагностический балл').parentElement,
-  ).toHaveTextContent('3 / 3')
+  expect(screen.getByText('3 из 3 баллов')).toBeVisible()
   expect(
     screen.queryByRole('button', { name: 'Подтянуть слабые темы' }),
   ).not.toBeInTheDocument()
@@ -470,25 +476,25 @@ it('runs real diagnostic audio, obeys skipped basics and displays the server tot
     await screen.findByRole('button', { name: /Посмотреть мои ответы/ }),
   )
   expect(screen.getByText('Настоящая расшифровка')).toBeVisible()
-  expect(screen.getByText(feedback.join(' '))).toBeVisible()
+  // The review repeats the task's own review from the "went well" card.
+  expect(screen.getAllByText(feedback.join(' '))).toHaveLength(2)
   expect(screen.queryByText('Модель названа.')).not.toBeInTheDocument()
   expect(
     await screen.findByText('Итоговое педагогическое резюме.'),
   ).toBeVisible()
-  expect(screen.getByText('Вы уверенно различаете модели.')).toBeVisible()
-  // The cards come from the stored per-answer reviews only: mastered
-  // competencies, then every gap with the advice from its review.
+  // The cards come from the task reviews, not from the overall report.
   const good = screen
-    .getByRole('heading', { name: 'Что хорошо' })
+    .getByRole('heading', { name: 'Что получилось' })
     .closest('section')!
-  expect(good).toHaveTextContent('Вы уверенно различаете модели.')
-  const work = screen
-    .getByRole('heading', { name: 'Что доработать' })
-    .closest('section')!
-  expect(work.querySelectorAll('strong')).toHaveLength(1)
-  expect(work.querySelector('strong')).toHaveTextContent('Модели.')
-  expect(work).toHaveTextContent('Повторный совет к рекомендации.')
-  expect(work).toHaveTextContent('Сравните метрики на двух задачах.')
+  expect(good).toHaveTextContent(feedback.join(' '))
+  expect(screen.queryByText('Вы уверенно различаете модели.')).toBeNull()
+  // A full main answer leaves nothing to work on and credits its basics.
+  expect(
+    screen.queryByRole('heading', { name: 'Что доработать' }),
+  ).not.toBeInTheDocument()
+  const topics = screen.getByRole('region', { name: 'Проверенные темы' })
+  expect(within(topics).getByText('3 из 3')).toBeVisible()
+  expect(within(topics).getAllByText('Засчитано')).toHaveLength(2)
   expect(screen.queryByText(/Критических пробелов нет/)).not.toBeInTheDocument()
   expect(
     screen.queryByRole('heading', { name: 'Рекомендации' }),
@@ -541,14 +547,10 @@ it('keeps the diagnostic result visible and retries failed overall feedback', as
     await screen.findByRole('button', { name: 'Посмотреть итог' }),
   )
   expect(
-    await screen.findByText('Не удалось загрузить общий фидбэк.'),
+    await screen.findByText('Не удалось подготовить общий вывод.'),
   ).toBeVisible()
-  expect(
-    screen.getByText('Диагностический балл').parentElement,
-  ).toHaveTextContent('3 / 3')
-  fireEvent.click(
-    screen.getByRole('button', { name: 'Повторить загрузку фидбэка' }),
-  )
+  expect(screen.getByText('3 из 3 баллов')).toBeVisible()
+  fireEvent.click(screen.getByRole('button', { name: 'Повторить' }))
   expect(
     await screen.findByText('Итоговое педагогическое резюме.'),
   ).toBeVisible()
@@ -580,11 +582,7 @@ it('shows the task review only together with the overall feedback', async () => 
   fireEvent.click(
     await screen.findByRole('button', { name: 'Посмотреть итог' }),
   )
-  expect(
-    await screen.findByRole('heading', {
-      name: 'Готовим ваш персональный разбор',
-    }),
-  ).toBeVisible()
+  expect(await screen.findByText('Готовим общий вывод…')).toBeVisible()
   expect(screen.queryByText('Настоящая расшифровка')).not.toBeInTheDocument()
   finish()
   expect(
@@ -594,9 +592,7 @@ it('shows the task review only together with the overall feedback', async () => 
     await screen.findByRole('button', { name: /Посмотреть мои ответы/ }),
   )
   expect(screen.getByText('Настоящая расшифровка')).toBeVisible()
-  expect(
-    screen.queryByRole('heading', { name: 'Готовим ваш персональный разбор' }),
-  ).not.toBeInTheDocument()
+  expect(screen.queryByText('Готовим общий вывод…')).not.toBeInTheDocument()
 })
 
 it('allows listening to task instruction from the review list', async () => {
@@ -646,12 +642,10 @@ it('shows overall feedback when the backend sends null strengths', async () => {
     await screen.findByText('Итоговое педагогическое резюме.'),
   ).toBeVisible()
   expect(
-    screen.queryByText('Не удалось загрузить общий фидбэк.'),
+    screen.queryByText('Не удалось подготовить общий вывод.'),
   ).not.toBeInTheDocument()
-  // No strengths and no "what is good" part: no invented praise.
-  expect(
-    screen.queryByRole('heading', { name: 'Что хорошо' }),
-  ).not.toBeInTheDocument()
+  // The "went well" card follows the answers, not the report's strengths.
+  expect(screen.getByRole('heading', { name: 'Что получилось' })).toBeVisible()
 })
 it('renders Markdown in the overall feedback without rewriting code escapes', async () => {
   server(
@@ -699,10 +693,9 @@ it('fills the cards from the reviews, not from the model text', async () => {
   // Only the general paragraph comes from the model; parts it adds under
   // headings are not shown, the cards keep the reviewed facts.
   expect(await screen.findByText('Общая оценка по регрессии.')).toBeVisible()
-  const good = screen
-    .getByRole('heading', { name: 'Что хорошо' })
-    .closest('section')!
-  expect(good).toHaveTextContent('Вы уверенно различаете модели.')
+  expect(
+    screen.getByRole('heading', { name: 'Что получилось' }).closest('section'),
+  ).toHaveTextContent(feedback.join(' '))
   expect(screen.queryByText(/Различает классификацию/)).not.toBeInTheDocument()
   expect(screen.queryByText(/Путает MAE/)).not.toBeInTheDocument()
 })
@@ -1008,6 +1001,8 @@ it('uses backend basic tasks with a 0/1 scale and includes them in the diagnosti
         return Response.json({
           ...resultBody,
           diagnostic_score: 2,
+          grade: 'C',
+          score_percent: 66,
           completed_tasks: 3,
           untested_basics: [],
           answers: tasks.map((task, index) => ({
@@ -1054,10 +1049,7 @@ it('uses backend basic tasks with a 0/1 scale and includes them in the diagnosti
       }),
     )
   }
-  expect(await screen.findByText('Диагностический балл')).toBeVisible()
-  expect(
-    screen.getByText('Диагностический балл').parentElement,
-  ).toHaveTextContent('2 / 3')
+  expect(await screen.findByText('2 из 3 баллов')).toBeVisible()
   expect(screen.queryByText(/Не проверено/)).not.toBeInTheDocument()
 })
 
@@ -1270,11 +1262,9 @@ it.each([1, 2])(
       await screen.findByRole('button', { name: 'Посмотреть итог' }),
     )
     expect(
-      await screen.findByRole('heading', { name: 'Сессия завершена' }),
+      await screen.findByRole('heading', { name: 'Итог диагностики' }),
     ).toBeVisible()
-    expect(
-      screen.getByText('Диагностический балл').parentElement,
-    ).toHaveTextContent('3 / 3')
+    expect(screen.getByText('3 из 3 баллов')).toBeVisible()
     fireEvent.click(
       await screen.findByRole('button', { name: /Посмотреть мои ответы/ }),
     )

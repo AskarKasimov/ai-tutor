@@ -498,13 +498,92 @@ func (e *Exam) WeakSpots() []string {
 	return out
 }
 
-// CourseGrade grades the course by its top-level topics.
-func (e *Exam) CourseGrade() (*Grade, *int) {
-	grades := []Grade{}
-	for _, t := range e.Graph.TopLevel() {
-		if g := e.Nodes[t].Grade; g != nil {
-			grades = append(grades, *g)
-		}
+// CourseScore sums the points of every topic that was asked.
+func (e *Exam) CourseScore() (score, maximum int) {
+	for _, n := range e.Graph.Nodes {
+		s, m, _ := e.TopicPoints(n.ID)
+		score += s
+		maximum += m
 	}
-	return CourseGrade(grades)
+	return score, maximum
+}
+
+// CourseGrade grades the course by the points of the asked topics.
+func (e *Exam) CourseGrade() (*Grade, *int) {
+	return CourseGrade(e.CourseScore())
+}
+
+// TopicMark is the result of one criterion of a topic: a rubric item or one of
+// К1–К4, whose ID is k1…k4. Title and Reason are empty where none is known.
+type TopicMark struct {
+	ID      string
+	Title   string
+	Score   int
+	Maximum int
+	Reason  string
+	Quote   string
+}
+
+// TopicMarks are the criteria results of an asked topic. A topic that was
+// credited, unclear or never reached has none.
+func (e *Exam) TopicMarks(id string) []TopicMark {
+	state, ok := e.Nodes[id]
+	if !ok || (state.Status != StatusIndependent && state.Status != StatusAssisted && state.Status != StatusGap) {
+		return nil
+	}
+	if state.Rubric != nil {
+		return rubricMarks(state.Rubric.Items)
+	}
+	c := Criteria{}
+	if state.Criteria != nil {
+		c = *state.Criteria
+	}
+	marks := []TopicMark{{ID: "k1", Score: c.K1, Maximum: 2}, {ID: "k2", Score: c.K2, Maximum: 2}}
+	// A topic with no points has no observed skills, so K3 and K4 do not widen
+	// its maximum; "don't know" stores zeros without marking them untested.
+	if c == (Criteria{}) {
+		n, _ := e.Graph.Node(id)
+		// "Don't know" keeps no rubric marks: the scale still comes from the task.
+		if spec, err := ParseRubric(n.AssessmentGuidance); err == nil && len(spec) > 0 {
+			items := make([]RubricMark, len(spec))
+			for i, item := range spec {
+				items[i].RubricItem = item
+			}
+			return rubricMarks(items)
+		}
+		return marks
+	}
+	// Criteria without a rubric result were graded on K1-K4, even if the task
+	// has a rubric: a session completed before rubrics keeps its points.
+	if !state.Unassessed.K3 {
+		marks = append(marks, TopicMark{ID: "k3", Score: c.K3, Maximum: 2})
+	}
+	if !state.Unassessed.K4 {
+		marks = append(marks, TopicMark{ID: "k4", Score: c.K4, Maximum: 2})
+	}
+	return marks
+}
+
+func rubricMarks(items []RubricMark) []TopicMark {
+	out := make([]TopicMark, len(items))
+	for i, m := range items {
+		out[i] = TopicMark{ID: m.ID, Title: m.Title(), Score: m.Score, Maximum: m.Levels[len(m.Levels)-1], Reason: m.Reason, Quote: m.Quote}
+	}
+	return out
+}
+
+// TopicPoints are the earned and maximum points of a topic; ok is false for a
+// topic that has no points: credited, unclear or never reached.
+func (e *Exam) TopicPoints(id string) (score, maximum int, ok bool) {
+	marks := e.TopicMarks(id)
+	score, maximum = markPoints(marks)
+	return score, maximum, len(marks) > 0
+}
+
+func markPoints(marks []TopicMark) (score, maximum int) {
+	for _, m := range marks {
+		score += m.Score
+		maximum += m.Maximum
+	}
+	return score, maximum
 }

@@ -1,6 +1,9 @@
 package diagnostichttp
 
-import "github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/diagnostic"
+import (
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/diagnostic"
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/exam"
+)
 
 type AudioMetadataResponse struct {
 	VariantTaskID string  `json:"variant_task_id"`
@@ -89,8 +92,12 @@ type ResultResponse struct {
 	TotalTasks              int                         `json:"total_tasks"`
 	DiagnosticScore         int                         `json:"diagnostic_score"`
 	MaximumScore            int                         `json:"maximum_score"`
-	Answers                 []AnswerResponse            `json:"answers"`
-	UntestedBasics          []TaskResponse              `json:"untested_basics"`
+	// Предварительная оценка A–D по проценту баллов (от 90 — A, от 70 — B, от 60 — C); null — нет максимума
+	Grade *string `json:"grade" enums:"A,B,C,D" extensions:"x-nullable"`
+	// Процент набранных баллов от максимума
+	ScorePercent   *int             `json:"score_percent" minimum:"0" maximum:"100" extensions:"x-nullable"`
+	Answers        []AnswerResponse `json:"answers"`
+	UntestedBasics []TaskResponse   `json:"untested_basics"`
 }
 
 func progressResponse(value diagnostic.Progress) ProgressResponse {
@@ -120,6 +127,13 @@ func resultResponse(value diagnostic.Result) ResultResponse {
 		SkippedCompetencies: make([]SkippedCompetencyResponse, 0, len(value.SkippedCompetencies)),
 		Answers:             make([]AnswerResponse, 0, len(value.Answers)),
 		UntestedBasics:      make([]TaskResponse, 0, len(value.UntestedBasics)),
+	}
+	// The translation of points into a letter is shared with the exam.
+	courseGrade, percent := exam.CourseGrade(value.DiagnosticScore, value.MaximumScore)
+	result.ScorePercent = percent
+	if courseGrade != nil {
+		letter := string(*courseGrade)
+		result.Grade = &letter
 	}
 	for _, skipped := range value.SkippedCompetencies {
 		result.SkippedCompetencies = append(result.SkippedCompetencies, SkippedCompetencyResponse{ID: skipped.ID, Name: skipped.Name, Code: skipped.Code})

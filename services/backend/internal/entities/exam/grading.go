@@ -1,7 +1,5 @@
 package exam
 
-import "math"
-
 // Criteria are the four exam criteria, each 0 (not shown), 1 (partly) or 2 (fully):
 // K1 correctness and terminology, K2 logic and justification, K3 objections and
 // counterexamples, K4 changed conditions and limits of the answer.
@@ -61,18 +59,6 @@ const (
 	GradeD Grade = "D"
 )
 
-func (g Grade) points() int {
-	switch g {
-	case GradeA:
-		return 4
-	case GradeB:
-		return 3
-	case GradeC:
-		return 2
-	}
-	return 1
-}
-
 // TopicGrade applies the README table to the assessed criteria. An assisted
 // answer is capped at B; help never raises identical observed scores.
 func TopicGrade(c Criteria, assisted bool, unassessed UnassessedCriteria) Grade {
@@ -101,31 +87,22 @@ func TopicGrade(c Criteria, assisted bool, unassessed UnassessedCriteria) Grade 
 	return grade
 }
 
-// CourseGrade averages the graded top-level topics (A = 4 … D = 1) and rounds
-// the mean to the nearest grade: at least 3.5 is A, 2.5 B, 1.5 C, otherwise D,
-// so topics all on one grade give that grade (decision of 20.10.2026). The
-// percent is the mean as a share of the maximum 4. Topics without a grade
-// ("insufficient data" or unchecked) are excluded; with none left both
-// results are nil.
-func CourseGrade(grades []Grade) (*Grade, *int) {
-	if len(grades) == 0 {
+// CourseGrade translates earned points into the overall grade, the same way in
+// the exam and the learning diagnostic: at least 90% is A, 70% B, 60% C,
+// otherwise D (decision of 01.11.2026). The percent is rounded down, so 89.9%
+// stays B. With nothing to grade both results are nil.
+func CourseGrade(score, maximum int) (*Grade, *int) {
+	if maximum <= 0 {
 		return nil, nil
 	}
-	sum := 0
-	for _, g := range grades {
-		sum += g.points()
-	}
-	// Twice the mean compared with whole thresholds keeps the halves exact.
-	twice := 2 * sum
-	n := len(grades)
-	percent := int(math.Floor(float64(sum)/float64(4*n)*100 + 1e-9))
+	percent := score * 100 / maximum
 	grade := GradeD
 	switch {
-	case twice >= 7*n:
+	case percent >= 90:
 		grade = GradeA
-	case twice >= 5*n:
+	case percent >= 70:
 		grade = GradeB
-	case twice >= 3*n:
+	case percent >= 60:
 		grade = GradeC
 	}
 	return &grade, &percent

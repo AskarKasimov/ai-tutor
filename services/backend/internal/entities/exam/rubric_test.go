@@ -94,8 +94,8 @@ func TestParseRubricRejectsPartiallySupportedScalesAndOverflow(t *testing.T) {
 		"Балл: −1 — ошибка; 0 — нет; 1 — верно",
 		"Балл: 0 — нет; 999999999999999999999999999999 — верно",
 		"Балл (макс. 999999999999999999999999999999): 0 — нет; 1 — верно",
-		fmt.Sprintf("Балл: 0 — нет; %d — верно", math.MaxInt/4+1),
-		fmt.Sprintf("К1 Суть: 0 — нет; %d — верно\nК2 Пример: 0 — нет; 1 — верно", math.MaxInt/4),
+		fmt.Sprintf("Балл: 0 — нет; %d — верно", math.MaxInt/100+1),
+		fmt.Sprintf("К1 Суть: 0 — нет; %d — верно\nК2 Пример: 0 — нет; 1 — верно", math.MaxInt/100),
 	} {
 		if spec, err := ParseRubric(text); err == nil {
 			t.Fatalf("partially parsed invalid scale %q: %+v", text, spec)
@@ -202,5 +202,18 @@ func TestRubricFollowupAccumulatesAndSurvivesPersistence(t *testing.T) {
 	e.Apply(Evaluation{Verdict: VerdictAnswered, AnswerComplete: &yes, Rubric: rubricResult(t, 1, 1)})
 	if e.Nodes["a"].Grade == nil || *e.Nodes["a"].Grade != GradeB || !e.Nodes["a"].Rubric.Complete() {
 		t.Fatal("help must cap the letter without changing rubric points")
+	}
+}
+
+func TestRubricItemTitle(t *testing.T) {
+	for rule, want := range map[string]string{
+		"Пункт рубрики 1 «Предметная корректность»: 2 — верно; 0 — нет": "Предметная корректность",
+		"К1 Суть (макс. 1): 1 — верно; 0 — нет":                         "Суть",
+		"Балл (макс. 1): 1 — все четыре; 0 — иначе":                     "Балл",
+		"К1: 0 — нет; 2 — да":                                           "",
+	} {
+		if got := (RubricItem{Rule: rule}).Title(); got != want {
+			t.Errorf("Title(%q) = %q, want %q", rule, got, want)
+		}
 	}
 }

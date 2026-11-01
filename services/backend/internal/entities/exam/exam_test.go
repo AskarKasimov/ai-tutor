@@ -246,9 +246,9 @@ func TestGapDescendsToTheDeepestUnmasteredTopic(t *testing.T) {
 	if got := e.Gaps(); !slices.Equal(got, []string{"heuristic-admissibility"}) {
 		t.Fatalf("gaps = %v", got)
 	}
-	// Top level: D, A, A, A -> 13/16 = 81%.
+	// The gaps on a-star and its prerequisite keep the sum at 78%.
 	grade, percent := e.CourseGrade()
-	if *grade != GradeB || *percent != 81 {
+	if *grade != GradeB || *percent != 78 {
 		t.Fatalf("grade=%s percent=%d", *grade, *percent)
 	}
 }
@@ -609,39 +609,41 @@ func TestTopicGradeTable(t *testing.T) {
 
 func TestCourseGradeThresholds(t *testing.T) {
 	for _, tc := range []struct {
-		grades  []Grade
-		want    Grade
-		percent int
+		score, maximum int
+		want           Grade
+		percent        int
 	}{
-		{[]Grade{GradeA, GradeA, GradeA, GradeB}, GradeA, 93},
-		{[]Grade{GradeA, GradeB}, GradeA, 87},
-		{[]Grade{GradeA, GradeB, GradeB}, GradeB, 83},
-		{[]Grade{GradeB, GradeB}, GradeB, 75},
-		{[]Grade{GradeB, GradeC}, GradeB, 62},
-		{[]Grade{GradeB, GradeC, GradeC}, GradeC, 58},
-		// Five topics on C and one on B: 13/6 ≈ 2.17 is C, not D.
-		{[]Grade{GradeC, GradeC, GradeC, GradeC, GradeC, GradeB}, GradeC, 54},
-		{[]Grade{GradeC, GradeC}, GradeC, 50},
-		{[]Grade{GradeC, GradeD}, GradeC, 37},
-		{[]Grade{GradeC, GradeD, GradeD}, GradeD, 33},
+		{10, 10, GradeA, 100},
+		{9, 10, GradeA, 90},
+		// 89.9% is rounded down: only a full 90% is A.
+		{899, 1000, GradeB, 89},
+		{7, 10, GradeB, 70},
+		{699, 1000, GradeC, 69},
+		{6, 10, GradeC, 60},
+		{599, 1000, GradeD, 59},
+		// Five topics on 2/4 and one on 3/4 stay below the C threshold.
+		{13, 24, GradeD, 54},
+		{0, 4, GradeD, 0},
 	} {
-		grade, percent := CourseGrade(tc.grades)
+		grade, percent := CourseGrade(tc.score, tc.maximum)
 		if *grade != tc.want || *percent != tc.percent {
-			t.Errorf("CourseGrade(%v) = %s %d, want %s %d", tc.grades, *grade, *percent, tc.want, tc.percent)
+			t.Errorf("CourseGrade(%d, %d) = %s %d, want %s %d", tc.score, tc.maximum, *grade, *percent, tc.want, tc.percent)
 		}
 	}
-	if grade, percent := CourseGrade(nil); grade != nil || percent != nil {
-		t.Fatal("no graded topics give no grade")
+	if grade, percent := CourseGrade(0, 0); grade != nil || percent != nil {
+		t.Fatal("no points give no grade")
 	}
 }
 
-// The course grade is not stored: a diagnostic completed under the earlier
-// thresholds is graded by the current rule when read (decision of
-// 20.10.2026). A and B on the top level were B (87%) and are A now.
+// The course grade is not stored: a completed diagnostic is graded by the
+// current rule when read, here 2/4 + 8/8 = 10/12 = 83%.
 func TestCompletedSessionIsGradedByTheCurrentRule(t *testing.T) {
 	e, _ := NewExam(Graph{Nodes: []Node{{ID: "a", Title: "А"}, {ID: "b", Title: "Б"}}}, 0, nil)
-	for id, g := range map[string]Grade{"a": GradeA, "b": GradeB} {
-		e.Nodes[id].Status, e.Nodes[id].Grade = StatusIndependent, &g
+	for id, c := range map[string]Criteria{"a": {1, 1, 0, 0}, "b": {2, 2, 2, 2}} {
+		c := c
+		g := TopicGrade(c, false, UnassessedCriteria{K3: id == "a", K4: id == "a"})
+		e.Nodes[id].Status, e.Nodes[id].Grade, e.Nodes[id].Criteria = StatusIndependent, &g, &c
+		e.Nodes[id].Unassessed = UnassessedCriteria{K3: id == "a", K4: id == "a"}
 	}
 	completed := int64(1792400000)
 	stored, err := json.Marshal(Session{ID: "s", Status: SessionCompleted, CompletedAt: &completed, Exam: e})
@@ -652,8 +654,125 @@ func TestCompletedSessionIsGradedByTheCurrentRule(t *testing.T) {
 	if err := json.Unmarshal(stored, &read); err != nil {
 		t.Fatal(err)
 	}
-	if r := read.Result(); r.Grade == nil || *r.Grade != GradeA || *r.ScorePercent != 87 {
+	r := read.Result()
+	if r.Grade == nil || *r.Grade != GradeB || *r.ScorePercent != 83 || r.Score != 10 || r.Maximum != 12 {
 		t.Fatalf("result = %+v", r)
+	}
+}
+
+// A partly answered topic must not score below a failed one with the same
+// prerequisites, so the points of every asked topic count (decision of 01.11.2026).
+func TestCourseScoreCountsEveryAskedTopic(t *testing.T) {
+	graph := func() Graph {
+		return Graph{Nodes: []Node{
+			{ID: "b1", Title: "Б1"},
+			{ID: "b2", Title: "Б2"},
+			{ID: "main", Title: "Главная", Prerequisites: []string{"b1", "b2"}},
+		}}
+	}
+	strongK := Evaluation{Verdict: VerdictAnswered, Criteria: Criteria{2, 2, 0, 0}, Unassessed: UnassessedCriteria{K3: true, K4: true}, AnswerComplete: ptr(true)}
+	grade := func(main Evaluation) (*Grade, *int, int, int) {
+		e, first := NewExam(graph(), 0, nil)
+		run(t, e, first, func(s Step) Evaluation {
+			if s.NodeID == "main" {
+				return main
+			}
+			return strongK
+		})
+		g, p := e.CourseGrade()
+		score, maximum := e.CourseScore()
+		return g, p, score, maximum
+	}
+	failed := Evaluation{Verdict: VerdictDontKnow}
+	g, p, score, maximum := grade(failed)
+	if *g != GradeC || *p != 66 || score != 8 || maximum != 12 {
+		t.Fatalf("failed main: %s %d%% %d/%d", *g, *p, score, maximum)
+	}
+	partly := Evaluation{Verdict: VerdictAnswered, Criteria: Criteria{1, 1, 0, 0}, Unassessed: UnassessedCriteria{K3: true, K4: true}, AnswerComplete: ptr(true)}
+	g, p, score, maximum = grade(partly)
+	if *g != GradeB || *p != 83 || score != 10 || maximum != 12 {
+		t.Fatalf("partial main: %s %d%% %d/%d", *g, *p, score, maximum)
+	}
+	// A full answer credits the prerequisites: they add neither points nor maximum.
+	g, p, score, maximum = grade(strongK)
+	if *g != GradeA || *p != 100 || score != 4 || maximum != 4 {
+		t.Fatalf("full main: %s %d%% %d/%d", *g, *p, score, maximum)
+	}
+}
+
+func TestTopicMarksFollowTheGradingScale(t *testing.T) {
+	const rubric = "Аналитическая рубрика (макс. 4):\nПункт рубрики 1 «Суть»: 2 — верно; 1 — частично; 0 — нет.\nК2: 2 — верно; 0 — нет."
+	e, _ := NewExam(Graph{Nodes: []Node{
+		{ID: "rubric", Title: "Р", AssessmentGuidance: rubric},
+		{ID: "dont-know", Title: "Н", AssessmentGuidance: rubric},
+		{ID: "k", Title: "К"},
+		{ID: "k-zero", Title: "Н2"},
+		{ID: "credited", Title: "З"},
+		{ID: "unclear", Title: "Д"},
+		{ID: "legacy", Title: "Л", AssessmentGuidance: rubric},
+	}}, 0, nil)
+	spec, err := ParseRubric(rubric)
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.Nodes["rubric"].Status = StatusIndependent
+	e.Nodes["rubric"].Rubric = &RubricResult{Items: []RubricMark{
+		{RubricItem: spec[0], Score: 1, Reason: "неполно", Quote: "цитата"},
+		{RubricItem: spec[1], Score: 2, Reason: "верно"},
+	}}
+	e.Nodes["dont-know"].Status = StatusGap
+	e.Nodes["k"].Status = StatusAssisted
+	e.Nodes["k"].Criteria = &Criteria{2, 1, 2, 0}
+	e.Nodes["k"].Unassessed = UnassessedCriteria{K4: true}
+	e.Nodes["k-zero"].Status, e.Nodes["k-zero"].Criteria = StatusGap, &Criteria{}
+	e.Nodes["credited"].Status = StatusCredited
+	e.Nodes["unclear"].Status = StatusInsufficient
+	// Completed before rubrics: graded on K1-K4 although the task has a rubric.
+	e.Nodes["legacy"].Status, e.Nodes["legacy"].Criteria = StatusIndependent, &Criteria{2, 1, 0, 0}
+	e.Nodes["legacy"].Unassessed = UnassessedCriteria{K3: true, K4: true}
+
+	marks := e.TopicMarks("rubric")
+	if len(marks) != 2 || marks[0].Title != "Суть" || marks[0].Score != 1 || marks[0].Maximum != 2 || marks[0].Quote != "цитата" || marks[1].Title != "" {
+		t.Fatalf("rubric marks = %+v", marks)
+	}
+	for _, tc := range []struct {
+		id             string
+		score, maximum int
+		ok             bool
+	}{
+		{"rubric", 3, 4, true},
+		{"dont-know", 0, 4, true},
+		{"k", 5, 6, true},
+		{"k-zero", 0, 4, true},
+		{"credited", 0, 0, false},
+		{"unclear", 0, 0, false},
+		{"legacy", 3, 4, true},
+	} {
+		score, maximum, ok := e.TopicPoints(tc.id)
+		if score != tc.score || maximum != tc.maximum || ok != tc.ok {
+			t.Errorf("%s = %d/%d %v, want %d/%d %v", tc.id, score, maximum, ok, tc.score, tc.maximum, tc.ok)
+		}
+	}
+}
+
+func TestResultCarriesTheReplyThatClosedATopic(t *testing.T) {
+	e, _ := NewExam(pair(), 0, nil)
+	top, base := "top", "base"
+	r := Session{ID: "s", Exam: e, Turns: []Turn{
+		{Speaker: SpeakerGeek, NodeID: &top, Text: "Вопрос?"},
+		{Speaker: SpeakerStudent, NodeID: &top, Text: "Ответ"},
+		{Speaker: SpeakerGeek, NodeID: &base, Text: "Разбор.\n\nВопрос?", Recap: "Разбор.\n\n"},
+		{Speaker: SpeakerStudent, NodeID: &base, Text: "Ответ"},
+		{Speaker: SpeakerGeek, Text: "Спасибо"},
+	}}.Result()
+	for _, n := range r.Nodes {
+		want := ""
+		if n.NodeID == top {
+			want = "Разбор."
+		}
+		if n.Reply != want {
+			t.Fatalf("%s reply = %q", n.NodeID, n.Reply)
+		}
 	}
 }
 

@@ -11,6 +11,7 @@ export type {
   Grade,
   SessionStatus,
   Speaker,
+  TopicMark,
   TopicResult,
   TopicStatus,
   Turn,
@@ -24,6 +25,7 @@ export {
   listDiagnostics,
   readDiagnostic,
   readDiagnosticResult,
+  readDiagnosticResultSummary,
   fetchDiagnosticMaterialRaw,
   startDiagnostic,
 } from './api/diagnostic-api'

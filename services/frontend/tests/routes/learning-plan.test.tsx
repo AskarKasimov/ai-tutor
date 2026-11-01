@@ -89,6 +89,8 @@ async function setup(
     variant_id: 'v1',
     map_revision: 1,
     included_competency_count: 1,
+    grade: 'C',
+    score_percent: 66,
     skipped_competencies: [],
     completed_tasks: 1,
     total_tasks: 3,

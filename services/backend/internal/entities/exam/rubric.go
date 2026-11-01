@@ -16,6 +16,22 @@ type RubricItem struct {
 	Levels []int  `json:"levels"`
 }
 
+var rubricLimit = regexp.MustCompile(`(?i)\(\s*макс[^)]*\)`)
+
+// Title is the short name of the item as written in the map, such as
+// «Предметная корректность»; empty when the item starts with its scale.
+func (i RubricItem) Title() string {
+	rule := i.Rule
+	if m := rubricStart.FindStringIndex(rule); m != nil {
+		rule = rule[m[1]:]
+	}
+	if m := rubricLevel.FindStringIndex(rule); m != nil {
+		rule = rule[:m[0]]
+	}
+	rule = rubricLimit.ReplaceAllString(rule, "")
+	return strings.Trim(strings.TrimSpace(rule), "«»:. ")
+}
+
 type RubricMark struct {
 	RubricItem
 	Score    int    `json:"score"`
@@ -91,8 +107,9 @@ func ParseRubric(text string) ([]RubricItem, error) {
 	total := 0
 	for _, item := range items {
 		maximum := item.Levels[len(item.Levels)-1]
-		// Grade compares score*4 with maximum*3. Keep those operations safe.
-		if maximum > math.MaxInt/4-total {
+		// Grade compares score*4 with maximum*3 and CourseGrade computes
+		// score*100. Keep those operations safe.
+		if maximum > math.MaxInt/100-total {
 			return nil, fmt.Errorf("rubric total is too large")
 		}
 		total += maximum

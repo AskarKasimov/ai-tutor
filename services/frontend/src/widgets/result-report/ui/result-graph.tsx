@@ -1,9 +1,9 @@
 import { Heading, Text } from '@radix-ui/themes'
 import { type CSSProperties, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
-import type { TopicResult, TopicStatus } from '@/entities/diagnostic-session'
 import { layoutResultGraph } from '../lib/result-graph'
-import styles from './geek-result.module.scss'
+import type { ReportStatus, ReportTopic } from '../model/report'
+import styles from './result-report.module.scss'
 
 // Card and spacing sizes of the map, in pixels.
 const NODE_WIDTH = 208
@@ -12,17 +12,17 @@ const COLUMN_GAP = 64
 const ROW_GAP = 20
 const PADDING = 28
 
-const legendOrder: TopicStatus[] = [
-  'independent',
-  'credited_by_parent',
-  'assisted',
+const legendOrder: ReportStatus[] = [
+  'full',
+  'partial',
   'gap',
+  'credited',
   'insufficient',
 ]
 
-// The checked part of the course graph: which topic relies on which, with
-// the result of every topic. Prerequisites stand left of the topics on them.
-export function ResultGraph({ topics }: { topics: TopicResult[] }) {
+// The checked topics and tasks: which relies on which, with the points of
+// every one. Prerequisites stand left of the topics on them.
+export function ResultGraph({ topics }: { topics: ReportTopic[] }) {
   const { t } = useTranslation()
   const graph = useMemo(() => layoutResultGraph(topics), [topics])
   if (graph.nodes.length === 0) return null
@@ -31,7 +31,7 @@ export function ResultGraph({ topics }: { topics: TopicResult[] }) {
   const y = (row: number) => PADDING + row * (NODE_HEIGHT + ROW_GAP)
   const width = x(graph.columns) - COLUMN_GAP + PADDING
   const height = y(graph.rows) - ROW_GAP + PADDING
-  const place = new Map(graph.nodes.map((node) => [node.topic.nodeId, node]))
+  const place = new Map(graph.nodes.map((node) => [node.topic.id, node]))
   const statuses = legendOrder.filter((status) =>
     graph.nodes.some((node) => node.topic.status === status),
   )
@@ -39,15 +39,15 @@ export function ResultGraph({ topics }: { topics: TopicResult[] }) {
   return (
     <section aria-labelledby="graph-title" className={styles.panel}>
       <Heading as="h2" size="5" id="graph-title">
-        {t('geek.graphTitle')}
+        {t('resultReport.graphTitle')}
       </Heading>
       <Text as="p" className={styles.lead}>
-        {t('geek.graphHint')}
+        {t('resultReport.graphHint')}
       </Text>
-      <ul className={styles.legend} aria-label={t('geek.graphLegend')}>
+      <ul className={styles.legend} aria-label={t('resultReport.graphLegend')}>
         {statuses.map((status) => (
           <li key={status} data-status={status}>
-            {t(`geek.status.${status}`)}
+            {t(`resultReport.status.${status}`)}
           </li>
         ))}
       </ul>
@@ -55,7 +55,7 @@ export function ResultGraph({ topics }: { topics: TopicResult[] }) {
       <div
         className={styles.graphScroll}
         role="region"
-        aria-label={t('geek.graphScroll')}
+        aria-label={t('resultReport.graphScroll')}
         tabIndex={0}
       >
         <div
@@ -136,17 +136,20 @@ export function ResultGraph({ topics }: { topics: TopicResult[] }) {
               )
             })}
           </svg>
-          <ol className={styles.graphNodes} aria-label={t('geek.graphNodes')}>
+          <ol
+            className={styles.graphNodes}
+            aria-label={t('resultReport.graphNodes')}
+          >
             {graph.nodes.map(({ topic, column, row }) => {
               const requires = graph.edges
-                .filter((edge) => edge.to === topic.nodeId)
+                .filter((edge) => edge.to === topic.id)
                 .map((edge) => place.get(edge.from)!.topic.title)
               return (
                 <li
-                  key={topic.nodeId}
+                  key={topic.id}
                   className={styles.graphNode}
                   data-status={topic.status}
-                  data-top={topic.topLevel || undefined}
+                  data-top={topic.main || undefined}
                   style={
                     {
                       left: x(column),
@@ -162,17 +165,24 @@ export function ResultGraph({ topics }: { topics: TopicResult[] }) {
                   <span className={styles.graphNodeMeta}>
                     <span
                       className={styles.status}
-                      title={t(`geek.status.${topic.status}`)}
+                      title={t(`resultReport.status.${topic.status}`)}
                     >
-                      {t(`geek.statusShort.${topic.status}`)}
+                      {t(`resultReport.statusShort.${topic.status}`)}
                     </span>
-                    <span className={styles.graphGrade}>
-                      {topic.grade ?? '—'}
-                    </span>
+                    {topic.score !== null && (
+                      <span className={styles.graphGrade}>
+                        {t('resultReport.points', {
+                          score: topic.score,
+                          max: topic.maxScore,
+                        })}
+                      </span>
+                    )}
                   </span>
                   {requires.length > 0 && (
                     <span className={styles.visuallyHidden}>
-                      {t('geek.graphRequires', { titles: requires.join(', ') })}
+                      {t('resultReport.graphRequires', {
+                        titles: requires.join(', '),
+                      })}
                     </span>
                   )}
                 </li>

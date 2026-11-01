@@ -44,6 +44,27 @@ func (s *Store) Session(ctx context.Context, ownerID, id string) (exam.Session, 
 	return decode(state)
 }
 
+// ResultSummary reads the saved overall conclusion of a session.
+func (s *Store) ResultSummary(ctx context.Context, ownerID, sessionID string) (string, bool, error) {
+	summary, err := db.New(s.pool).GetGeekResultSummary(ctx, db.GetGeekResultSummaryParams{OwnerID: ownerID, SessionID: sessionID})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, fmt.Errorf("get result summary %s: %w", sessionID, err)
+	}
+	return summary, true, nil
+}
+
+// SaveResultSummary keeps the first saved text of a session.
+func (s *Store) SaveResultSummary(ctx context.Context, ownerID, sessionID, summary string) error {
+	err := db.New(s.pool).SaveGeekResultSummary(ctx, db.SaveGeekResultSummaryParams{SessionID: sessionID, OwnerID: ownerID, Summary: summary, CreatedAt: s.now().Unix()})
+	if err != nil {
+		return fmt.Errorf("save result summary %s: %w", sessionID, err)
+	}
+	return nil
+}
+
 func (s *Store) ActiveSession(ctx context.Context, ownerID, subjectID string) (exam.Session, bool, error) {
 	state, err := db.New(s.pool).GetActiveGeekSession(ctx, db.GetActiveGeekSessionParams{OwnerID: ownerID, SubjectID: subjectID})
 	if errors.Is(err, pgx.ErrNoRows) {

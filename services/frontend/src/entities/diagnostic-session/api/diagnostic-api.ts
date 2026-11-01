@@ -106,11 +106,28 @@ const gapSchema = z.object({
     .default({ theory: [], practice: [], additional: [] }),
 })
 
+const points = z.number().int().min(0)
+
+const markSchema = z.object({
+  id,
+  title: z.string(),
+  score: points,
+  max_score: points,
+  reason: z.string(),
+  quote: z.string(),
+})
+
+const resultSummarySchema = z
+  .object({ session_id: id, summary: z.string() })
+  .transform((r) => r.summary)
+
 const resultSchema = z
   .object({
     session_id: id,
     grade,
     score_percent: z.number().int().min(0).max(100).nullable(),
+    score: points.optional().default(0),
+    max_score: points.optional().default(0),
     nodes: z.array(
       z.object({
         node_id: id,
@@ -127,6 +144,11 @@ const resultSchema = z
         top_level: z.boolean(),
         // Older backends do not send prerequisites; the graph then has no edges.
         requires: z.array(id).optional().default([]),
+        assisted: z.boolean().optional().default(false),
+        score: points.nullable().optional().default(null),
+        max_score: points.nullable().optional().default(null),
+        marks: z.array(markSchema).optional().default([]),
+        reply: z.string().optional().default(''),
       }),
     ),
     gaps: z.array(gapSchema),
@@ -137,6 +159,8 @@ const resultSchema = z
     sessionId: r.session_id,
     grade: r.grade,
     scorePercent: r.score_percent,
+    score: r.score,
+    maxScore: r.max_score,
     topics: r.nodes.map((n) => ({
       nodeId: n.node_id,
       title: n.title,
@@ -144,6 +168,18 @@ const resultSchema = z
       grade: n.grade,
       topLevel: n.top_level,
       requires: n.requires,
+      assisted: n.assisted,
+      score: n.score,
+      maxScore: n.max_score,
+      marks: n.marks.map((m) => ({
+        id: m.id,
+        title: m.title,
+        score: m.score,
+        maxScore: m.max_score,
+        reason: m.reason,
+        quote: m.quote,
+      })),
+      reply: n.reply,
     })),
     gaps: r.gaps.map(toGap),
     weakSpots: r.weak_spots.map(toGap),
@@ -351,6 +387,18 @@ export async function readDiagnosticResult(
   )
 }
 
+// The model writes the conclusion once, so the first read may take a while.
+export async function readDiagnosticResultSummary(
+  sessionId: string,
+  signal: AbortSignal,
+): Promise<string> {
+  return parse(
+    await request(`${session(sessionId)}/feedback`, signal, ANSWER_TIMEOUT),
+    resultSummarySchema,
+    signal,
+  )
+}
+
 export async function fetchDiagnosticMaterialRaw(
   sessionId: string,
   materialId: string,
@@ -394,5 +442,6 @@ export type DiagnosticApi = {
   listDiagnostics: typeof listDiagnostics
   answerDiagnostic: typeof answerDiagnostic
   readDiagnosticResult: typeof readDiagnosticResult
+  readDiagnosticResultSummary: typeof readDiagnosticResultSummary
   fetchTurnAudio: typeof fetchTurnAudio
 }

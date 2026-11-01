@@ -179,6 +179,8 @@ it('reads the session, history and result by encoded URLs', async () => {
     sessionId: 'd1',
     grade: null,
     scorePercent: null,
+    score: 0,
+    maxScore: 0,
     topics: [
       {
         nodeId: 'a',
@@ -186,8 +188,13 @@ it('reads the session, history and result by encoded URLs', async () => {
         status: 'insufficient',
         grade: null,
         topLevel: true,
-        // An older backend sends no prerequisites.
+        // An older backend sends no prerequisites or points.
         requires: [],
+        assisted: false,
+        score: null,
+        maxScore: null,
+        marks: [],
+        reply: '',
       },
       {
         nodeId: 'b',
@@ -196,6 +203,11 @@ it('reads the session, history and result by encoded URLs', async () => {
         grade: 'D',
         topLevel: false,
         requires: ['c'],
+        assisted: false,
+        score: null,
+        maxScore: null,
+        marks: [],
+        reply: '',
       },
     ],
     gaps: [

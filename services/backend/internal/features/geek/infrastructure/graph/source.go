@@ -15,6 +15,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/coursegraph"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/exam"
 	db "github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/postgres/sqlcgen"
 )
@@ -83,6 +84,7 @@ func Decode(data []byte) (exam.Graph, bool, error) {
 			Provides []string              `json:"provides"`
 			Requires []string              `json:"requires"`
 			Sources  []exam.SourceCitation `json:"sources"`
+			Parent   string                `json:"parent_title"`
 		} `json:"topics"`
 		Prerequisites []struct {
 			Source string `json:"source"`
@@ -124,6 +126,9 @@ func Decode(data []byte) (exam.Graph, bool, error) {
 				Sources:            t.Sources,
 				// Its tasks, one of which the exam asks.
 				Variants: t.Variants,
+			}
+			if raw.Source == coursegraph.SourceMap {
+				g.Nodes[i].Competency = strings.TrimSpace(t.Parent)
 			}
 		}
 	} else {

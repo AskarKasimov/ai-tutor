@@ -89,7 +89,12 @@ func (s *Service) plan(ctx context.Context, owner, id string) (training.Session,
 	if d.Variant.AlgorithmVersion == "constituent-map-v1" {
 		targets = diagnostic.TrainingTargetsByConstituent(d.Answers)
 	}
+	// A competency closed at 90% and above does not go into training.
+	open := diagnostic.OpenCompetencies(d.Answers)
 	for _, target := range targets {
+		if !open[target.Answer.CompetencyID] {
+			continue
+		}
 		raw, err := json.Marshal(target.Answer.Task)
 		if err != nil {
 			return state, err
@@ -105,15 +110,11 @@ func (s *Service) plan(ctx context.Context, owner, id string) (training.Session,
 		}
 		state.Targets = append(state.Targets, training.Target{Kind: target.Kind, Source: task, OriginalScore: target.Answer.Score, OriginalMaxScore: max, OriginalFeedback: append([]string{}, target.Answer.Feedback...), OriginalCriteria: criteria})
 	}
-	perfectMains := 0
 	for _, a := range d.Answers {
 		state.DiagnosticScore += a.Score
-		if a.Role == "main" && a.Score >= 2 {
-			perfectMains++
-		}
 	}
 	state.MaximumScore = 3 * d.Variant.IncludedCompetencyCount
-	if len(state.Targets) == 0 && d.Variant.IncludedCompetencyCount > 0 && perfectMains == d.Variant.IncludedCompetencyCount {
+	if len(state.Targets) == 0 && d.Variant.IncludedCompetencyCount > 0 {
 		state.Mode = "free_practice"
 		revision, tasks, err := s.repo.Practice(ctx, state.SubjectID)
 		if err != nil {

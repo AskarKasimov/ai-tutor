@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"math/rand/v2"
 	"strings"
+
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/scoring"
 )
 
 // Node is a topic of the course graph. Prerequisites reference other nodes;
@@ -29,6 +31,8 @@ type Node struct {
 	// The question, rephrase, content and guidance of the node are those of
 	// the first variant.
 	Variants []Variant `json:"variants,omitempty"`
+	// Competency groups the topics of a competency map; other graphs have none.
+	Competency string `json:"competency,omitempty"`
 }
 
 // Variant is one task of a topic with what grading it needs.
@@ -193,6 +197,53 @@ func (g Graph) Node(id string) (Node, bool) {
 
 // TopLevel returns, in study order, the nodes that are not a prerequisite of
 // any other node. The exam starts from them and the course grade averages them.
+// competencyShares normalizes the shares of the scored topics: a top-level topic
+// with its prerequisites is one constituent, the mean of its topics; a competency
+// is the mean of its constituents. A graph without competencies treats every
+// top-level topic as one. A prerequisite of two topics counts in both.
+func (g Graph) competencyShares(topics map[string]float64) []float64 {
+	nodes := make(map[string]Node, len(g.Nodes))
+	for _, n := range g.Nodes {
+		nodes[n.ID] = n
+	}
+	order := []string{}
+	constituents := map[string][]float64{}
+	for _, top := range g.TopLevel() {
+		shares := []float64{}
+		seen := map[string]bool{}
+		var walk func(id string)
+		walk = func(id string) {
+			if seen[id] {
+				return
+			}
+			seen[id] = true
+			if share, ok := topics[id]; ok {
+				shares = append(shares, share)
+			}
+			for _, p := range nodes[id].Prerequisites {
+				walk(p)
+			}
+		}
+		walk(top)
+		if len(shares) == 0 {
+			continue
+		}
+		key := nodes[top].Competency
+		if key == "" {
+			key = "\x00" + top
+		}
+		if _, ok := constituents[key]; !ok {
+			order = append(order, key)
+		}
+		constituents[key] = append(constituents[key], scoring.Mean(shares))
+	}
+	out := make([]float64, len(order))
+	for i, key := range order {
+		out[i] = scoring.Mean(constituents[key])
+	}
+	return out
+}
+
 func (g Graph) TopLevel() []string {
 	required := map[string]bool{}
 	for _, n := range g.Nodes {

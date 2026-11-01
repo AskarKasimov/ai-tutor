@@ -526,9 +526,6 @@ function DiagnosticSummary({
       </main>
     )
   const value = result.data
-  const hasGaps = value.answers.some(
-    (answer) => answer.score < (answer.role === 'basic' ? 1 : 2),
-  )
   // The model writes only the general paragraph; headings of older texts are
   // cut off.
   const summary = reportSummary(
@@ -543,7 +540,7 @@ function DiagnosticSummary({
         report={toResultReport(value)}
         summary={summary}
         highlight={
-          hasGaps ? (
+          value.training_needed ? (
             <div className={diagnosticStyles.nextStep}>
               <Text as="p" className={diagnosticStyles.nextStepText}>
                 {t('learningDiagnostic.nextStep')}

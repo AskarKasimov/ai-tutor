@@ -95,8 +95,6 @@ const answerSchema = z
     grader_score: score,
     grader_max_score: count.min(1).max(3),
     score,
-    report_score: score,
-    report_max_score: count.min(1).max(3),
     verdict,
     criterion_results: criteria,
     feedback,
@@ -126,17 +124,11 @@ const resultSchema: z.ZodType<DiagnosticResult> = z
     total_tasks: count.min(1),
     diagnostic_score: count,
     maximum_score: count.min(1),
-    report_score: count,
+    report_score: z.number().nonnegative(),
     report_max_score: count,
-    grade: z.enum(['A', 'B', 'C', 'D']).nullable().optional().default(null),
-    score_percent: z
-      .number()
-      .int()
-      .min(0)
-      .max(100)
-      .nullable()
-      .optional()
-      .default(null),
+    training_needed: z.boolean(),
+    grade: z.enum(['A', 'B', 'C', 'D']).nullable(),
+    score_percent: z.number().int().min(0).max(100).nullable(),
     answers: z.array(answerSchema),
     untested_basics: z.array(task),
   })

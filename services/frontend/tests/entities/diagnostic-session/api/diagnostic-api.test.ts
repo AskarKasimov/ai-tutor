@@ -155,6 +155,8 @@ it('reads the session, history and result by encoded URLs', async () => {
       session_id: 'd1',
       grade: null,
       score_percent: null,
+      score: 0,
+      max_score: 0,
       nodes: [
         {
           node_id: 'a',
@@ -162,6 +164,11 @@ it('reads the session, history and result by encoded URLs', async () => {
           status: 'insufficient',
           grade: null,
           top_level: true,
+          assisted: false,
+          score: null,
+          max_score: null,
+          marks: [],
+          reply: '',
         },
         {
           node_id: 'b',
@@ -170,6 +177,11 @@ it('reads the session, history and result by encoded URLs', async () => {
           grade: 'D',
           top_level: false,
           requires: ['c'],
+          assisted: false,
+          score: null,
+          max_score: null,
+          marks: [],
+          reply: '',
         },
       ],
       gaps: [{ node_id: 'b', title: 'Эвристика' }],
@@ -188,7 +200,7 @@ it('reads the session, history and result by encoded URLs', async () => {
         status: 'insufficient',
         grade: null,
         topLevel: true,
-        // An older backend sends no prerequisites or points.
+        // An older backend sends no prerequisites.
         requires: [],
         assisted: false,
         score: null,
@@ -238,6 +250,8 @@ it('maps provenance snapshots and downloads only through the diagnostic route', 
       session_id: 'd1',
       grade: null,
       score_percent: null,
+      score: 0,
+      max_score: 0,
       nodes: [],
       gaps: [
         {

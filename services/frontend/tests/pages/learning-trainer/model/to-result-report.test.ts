@@ -42,8 +42,6 @@ const answer = (
   grader_score: score,
   grader_max_score: value.role === 'main' ? 3 : 1,
   score,
-  report_score: value.role === 'main' ? score : score * 3,
-  report_max_score: 3,
   verdict: score === 0 ? 'incorrect' : 'correct',
   criterion_results: [],
   feedback: ['Первое.', 'Второе.'],
@@ -64,8 +62,9 @@ const result = (
   total_tasks: answers.length + untested.length,
   diagnostic_score: 3,
   maximum_score: 3,
-  report_score: 7,
-  report_max_score: 9,
+  report_score: 3.9,
+  report_max_score: 5,
+  training_needed: true,
   grade: 'B',
   score_percent: 77,
   answers,
@@ -83,8 +82,8 @@ it('shows a task in points and links a main task to the basics of its constituen
   )
   expect(report).toMatchObject({
     grade: 'B',
-    score: 7,
-    maxScore: 9,
+    score: 3.9,
+    maxScore: 5,
     percent: 77,
   })
   const [main, full, gap] = report.topics
@@ -98,8 +97,8 @@ it('shows a task in points and links a main task to the basics of its constituen
   })
   expect(full).toMatchObject({
     status: 'full',
-    score: 3,
-    maxScore: 3,
+    score: 1,
+    maxScore: 1,
     main: false,
     requires: [],
   })

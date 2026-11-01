@@ -127,16 +127,6 @@ type Answer struct {
 	CreatedAt        int64
 }
 
-// ReportPoints are the task's points on the result screen, where every asked
-// task weighs the same, as exam topics do (decision of 01.11.2026): a right
-// basic task counts as 3 of 3. The answer's own score does not change.
-func (a Answer) ReportPoints() (score, maximum int) {
-	if a.Role == "basic" {
-		return a.Score * 3, 3
-	}
-	return a.Score, a.GraderMaxScore
-}
-
 type CriterionResult struct {
 	Key         string
 	Satisfied   bool
@@ -205,14 +195,4 @@ type Result struct {
 	MaximumScore            int
 	Answers                 []Answer
 	UntestedBasics          []TaskSnapshot
-}
-
-// ReportPoints sum the points of all asked tasks on the result screen.
-func (r Result) ReportPoints() (score, maximum int) {
-	for _, answer := range r.Answers {
-		s, m := answer.ReportPoints()
-		score += s
-		maximum += m
-	}
-	return score, maximum
 }

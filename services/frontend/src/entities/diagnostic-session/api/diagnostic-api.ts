@@ -126,8 +126,8 @@ const resultSchema = z
     session_id: id,
     grade,
     score_percent: z.number().int().min(0).max(100).nullable(),
-    score: points.optional().default(0),
-    max_score: points.optional().default(0),
+    score: z.number().min(0),
+    max_score: points,
     nodes: z.array(
       z.object({
         node_id: id,
@@ -144,11 +144,11 @@ const resultSchema = z
         top_level: z.boolean(),
         // Older backends do not send prerequisites; the graph then has no edges.
         requires: z.array(id).optional().default([]),
-        assisted: z.boolean().optional().default(false),
-        score: points.nullable().optional().default(null),
-        max_score: points.nullable().optional().default(null),
-        marks: z.array(markSchema).optional().default([]),
-        reply: z.string().optional().default(''),
+        assisted: z.boolean(),
+        score: points.nullable(),
+        max_score: points.nullable(),
+        marks: z.array(markSchema),
+        reply: z.string(),
       }),
     ),
     gaps: z.array(gapSchema),

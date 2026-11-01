@@ -3,6 +3,8 @@ package exam
 import (
 	"slices"
 	"strings"
+
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/scoring"
 )
 
 // Session is one diagnostic of a student on a course. Version guards
@@ -143,31 +145,13 @@ func (s Session) closingReplies() map[string]string {
 	return replies
 }
 
-// restoreDontKnow marks the topics of a session saved before NodeState.DontKnow:
-// a topic that closed with zeros right after the "don't know" button had no
-// answer to score, whatever an earlier attempt left in its state.
-func (s Session) restoreDontKnow() {
-	last := map[string]*Source{}
-	for _, t := range s.Turns {
-		if t.Speaker == SpeakerStudent && t.NodeID != nil {
-			last[*t.NodeID] = t.Source
-		}
-	}
-	for id, source := range last {
-		state, ok := s.Exam.Nodes[id]
-		if ok && source != nil && *source == SourceDontKnow && state.Status == StatusGap && state.Criteria != nil && *state.Criteria == (Criteria{}) {
-			state.DontKnow = true
-		}
-	}
-}
-
 // Result is the student's outcome of a completed diagnostic.
 type Result struct {
 	SessionID    string
 	Grade        *Grade
 	ScorePercent *int
-	// Score and Maximum are the points of all asked topics.
-	Score   int
+	// Score and Maximum are the normalized points of all competencies.
+	Score   float64
 	Maximum int
 	Nodes   []NodeResult
 	Gaps    []Gap
@@ -176,11 +160,11 @@ type Result struct {
 }
 
 func (s Session) Result() Result {
-	s.restoreDontKnow()
 	e := s.Exam
 	top := e.Graph.TopLevel()
 	r := Result{SessionID: s.ID, Nodes: []NodeResult{}, Gaps: []Gap{}, WeakSpots: []Gap{}}
 	replies := s.closingReplies()
+	shares := map[string]float64{}
 	for _, n := range e.Graph.Nodes {
 		state := e.Nodes[n.ID]
 		marks := e.TopicMarks(n.ID)
@@ -193,12 +177,14 @@ func (s Session) Result() Result {
 				maximum += m.Maximum
 			}
 			node.Score, node.Maximum = &score, &maximum
-			r.Score += score
-			r.Maximum += maximum
+			if maximum > 0 {
+				shares[n.ID] = float64(score) / float64(maximum)
+			}
 		}
 		r.Nodes = append(r.Nodes, node)
 	}
-	r.Grade, r.ScorePercent = CourseGrade(r.Score, r.Maximum)
+	r.Score, r.Maximum, r.ScorePercent = scoring.Overall(e.Graph.competencyShares(shares))
+	r.Grade = CourseGrade(r.ScorePercent)
 	for _, id := range e.Gaps() {
 		n, _ := e.Graph.Node(id)
 		r.Gaps = append(r.Gaps, NewGap(id, n.Title, n.Sources))

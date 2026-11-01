@@ -56,10 +56,6 @@ export type DiagnosticAnswer = {
   grader_score: number
   grader_max_score: number
   score: number
-  // The task's points on the result screen, where every asked task weighs the
-  // same; the backend counts them.
-  report_score: number
-  report_max_score: number
   verdict: AssessmentVerdict
   criterion_results: { key: string; satisfied: boolean; explanation: string }[]
   feedback: string[]
@@ -81,10 +77,12 @@ export type DiagnosticResult = {
   total_tasks: number
   diagnostic_score: number
   maximum_score: number
-  // Points of all asked tasks on the result screen and the overall grade
-  // translated from them.
+  // The normalized points of the result screen, 5 per competency, and the
+  // overall grade translated from them.
   report_score: number
   report_max_score: number
+  // A competency is below 90%: only such competencies go into training.
+  training_needed: boolean
   grade: 'A' | 'B' | 'C' | 'D' | null
   score_percent: number | null
   answers: DiagnosticAnswer[]

@@ -2,6 +2,7 @@ package application
 
 import (
 	"context"
+	"slices"
 	"testing"
 
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/diagnostic"
@@ -31,9 +32,13 @@ func TestPreviewUsesDiagnosticScoreAndStartsFreePracticeAfterPerfectMain(t *test
 		{"legacy perfect", 2, -1, 2, "free_practice"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			answers := []diagnostic.Answer{{Role: "main", CompetencyID: "c", OutcomeID: "main", Score: tc.main, Task: diagnostic.TaskSnapshot{ID: "main", OutcomeID: "main"}}}
+			maximum := max(tc.main, 3)
+			if tc.main == 2 {
+				maximum = 2
+			}
+			answers := []diagnostic.Answer{{Role: "main", CompetencyID: "c", OutcomeID: "main", Score: tc.main, GraderMaxScore: maximum, Task: diagnostic.TaskSnapshot{ID: "main", OutcomeID: "main"}}}
 			if tc.basic >= 0 {
-				answers = append(answers, diagnostic.Answer{Role: "basic", CompetencyID: "c", OutcomeID: "basic", Score: tc.basic})
+				answers = append(answers, diagnostic.Answer{Role: "basic", CompetencyID: "c", OutcomeID: "basic", Score: tc.basic, GraderMaxScore: 1})
 			}
 			session := diagnostic.Session{Status: diagnostic.StatusCompleted, Answers: answers, Variant: diagnostic.VariantSnapshot{IncludedCompetencyCount: 1}}
 			got, err := New(scorePracticeRepo{}, scoreDiagnostics{session}, nil, nil, nil, nil, nil).Preview(context.Background(), "owner", "diagnostic")
@@ -44,5 +49,32 @@ func TestPreviewUsesDiagnosticScoreAndStartsFreePracticeAfterPerfectMain(t *test
 				t.Fatalf("original scale: %+v", got.Topics[0])
 			}
 		})
+	}
+}
+
+func TestPreviewLeavesOutACompetencyClosedAtNinetyPercent(t *testing.T) {
+	answer := func(competency, constituent, role string, score, maximum int) diagnostic.Answer {
+		outcome := competency + constituent + role
+		return diagnostic.Answer{Role: role, CompetencyID: competency, OutcomeID: outcome, Score: score, GraderMaxScore: maximum,
+			Task: diagnostic.TaskSnapshot{ID: outcome, OutcomeID: outcome, ConstituentID: constituent}}
+	}
+	// Four full constituents and a partial one: 95%, closed despite the partial main.
+	closed := []diagnostic.Answer{answer("closed", "1", "main", 3, 3), answer("closed", "2", "main", 3, 3), answer("closed", "3", "main", 3, 3), answer("closed", "4", "main", 3, 3),
+		answer("closed", "5", "main", 1, 3), answer("closed", "5", "basic", 1, 1)}
+	preview := func(answers []diagnostic.Answer) training.Preview {
+		t.Helper()
+		session := diagnostic.Session{Status: diagnostic.StatusCompleted, Answers: answers, Variant: diagnostic.VariantSnapshot{IncludedCompetencyCount: 2, AlgorithmVersion: "constituent-map-v1"}}
+		got, err := New(scorePracticeRepo{}, scoreDiagnostics{session}, nil, nil, nil, nil, nil).Preview(context.Background(), "owner", "diagnostic")
+		if err != nil {
+			t.Fatal(err)
+		}
+		return got
+	}
+	got := preview(append(slices.Clone(closed), answer("open", "1", "main", 1, 3)))
+	if got.Mode != "focused" || len(got.Topics) != 1 || got.Topics[0].OutcomeID != "open1main" {
+		t.Fatalf("with an open competency: %+v", got)
+	}
+	if got := preview(closed); got.Mode != "free_practice" {
+		t.Fatalf("all closed: %+v", got)
 	}
 }

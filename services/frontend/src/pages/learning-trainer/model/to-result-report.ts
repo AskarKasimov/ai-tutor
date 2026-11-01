@@ -26,8 +26,8 @@ export function toResultReport(result: DiagnosticResult): ResultReportData {
     status: answer.skipped
       ? 'gap'
       : statusByPoints(answer.score, answer.grader_max_score),
-    score: answer.report_score,
-    maxScore: answer.report_max_score,
+    score: answer.score,
+    maxScore: answer.grader_max_score,
     assisted: false,
     skipped: answer.skipped ?? false,
     requires: requires(answer.task),

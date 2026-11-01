@@ -38,6 +38,7 @@ export type ReportTopic = {
 
 export type ResultReportData = {
   grade: ReportGrade | null
+  // The normalized points of the whole result, 5 per competency.
   score: number
   maxScore: number
   percent: number | null

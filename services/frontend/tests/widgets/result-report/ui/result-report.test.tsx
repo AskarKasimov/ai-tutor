@@ -50,6 +50,11 @@ it('shows the overall grade as a letter with its points, without a percent', () 
   expect(screen.queryByText(/77/)).not.toBeInTheDocument()
 })
 
+it('shows the normalized total with one decimal', () => {
+  show({ ...report([topic({})]), score: 3.9, maxScore: 5, percent: 77 })
+  expect(screen.getByText('3,9 из 5 баллов')).toBeVisible()
+})
+
 it('shows topics only in points, with no letters of their own', () => {
   show(report([topic({ score: 2, maxScore: 3, status: 'partial' })]))
   const topics = screen.getByRole('region', { name: 'Граф тем' })

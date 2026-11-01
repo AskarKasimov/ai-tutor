@@ -273,8 +273,8 @@ function geekBackend(
         session_id: 'd1',
         grade: 'B',
         score_percent: 81,
-        score: 13,
-        max_score: 16,
+        score: 4.1,
+        max_score: 5,
         nodes: [
           {
             node_id: 'search-space',
@@ -282,6 +282,11 @@ function geekBackend(
             status: 'credited_by_parent',
             grade: null,
             top_level: false,
+            assisted: false,
+            score: null,
+            max_score: null,
+            marks: [],
+            reply: '',
           },
           {
             node_id: 'heuristic',
@@ -290,8 +295,10 @@ function geekBackend(
             grade: 'D',
             top_level: false,
             requires: ['search-space'],
+            assisted: false,
             score: 0,
             max_score: 4,
+            marks: [],
             reply: 'Эвристика оценивает путь до цели.',
           },
           {
@@ -322,6 +329,7 @@ function geekBackend(
                 quote: '',
               },
             ],
+            reply: '',
           },
           {
             node_id: 'annealing',
@@ -329,6 +337,11 @@ function geekBackend(
             status: 'unchecked',
             grade: null,
             top_level: true,
+            assisted: false,
+            score: null,
+            max_score: null,
+            marks: [],
+            reply: '',
           },
         ],
         gaps: [{ node_id: 'heuristic', title: 'Эвристическая функция' }],
@@ -535,7 +548,7 @@ it('runs a diagnostic from the home page to the result and back to the history',
     name: 'Предварительная оценка',
   })
   expect(within(grade).getByText('B')).toBeVisible()
-  expect(within(grade).getByText('13 из 16 баллов')).toBeVisible()
+  expect(within(grade).getByText('4,1 из 5 баллов')).toBeVisible()
   expect(await screen.findByText('Общий вывод модели.')).toBeVisible()
   // The summary counts topics by result and skips results with no topics.
   const summary = within(grade).getByRole('list', {
@@ -584,7 +597,7 @@ it('runs a diagnostic from the home page to the result and back to the history',
   fireEvent.click(screen.getAllByRole('button', { name: 'На главную' })[0])
   expect(await screen.findByText('Оценка B · 81%')).toBeVisible()
   fireEvent.click(screen.getByRole('button', { name: 'Открыть итог' }))
-  expect(await screen.findByText('13 из 16 баллов')).toBeVisible()
+  expect(await screen.findByText('4,1 из 5 баллов')).toBeVisible()
 })
 
 it('does not show the course selection panel on the exam home', async () => {
@@ -852,7 +865,7 @@ it('reports a failed start again on the result screen', async () => {
   fireEvent.click(
     await screen.findByRole('button', { name: 'Посмотреть итог' }),
   )
-  await screen.findByText('13 из 16 баллов')
+  await screen.findByText('4,1 из 5 баллов')
   control.failStarts = 1
   fireEvent.click(screen.getByRole('button', { name: 'Пройти заново' }))
   expect(await screen.findByRole('alert')).toHaveTextContent(

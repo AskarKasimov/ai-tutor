@@ -81,8 +81,9 @@ const resultBody = {
   total_tasks: 3,
   diagnostic_score: 3,
   maximum_score: 3,
-  report_score: 3,
-  report_max_score: 3,
+  report_score: 5,
+  report_max_score: 5,
+  training_needed: false,
   grade: 'A',
   score_percent: 100,
   answers: [
@@ -98,8 +99,6 @@ const resultBody = {
       grader_score: 3,
       grader_max_score: 3,
       score: 3,
-      report_score: 3,
-      report_max_score: 3,
       verdict: 'correct',
       criterion_results: criteria,
       feedback,
@@ -295,12 +294,11 @@ function server(
         ...resultBody,
         total_tasks: totalTasks,
         diagnostic_score: mainScore,
-        report_score: mainScore,
+        training_needed: mainScore < 3,
         answers: resultBody.answers.map((answer) => ({
           ...answer,
           score: mainScore,
           grader_score: mainScore,
-          report_score: mainScore,
         })),
         untested_basics: resultBody.untested_basics.slice(0, totalTasks - 1),
       })
@@ -479,7 +477,7 @@ it('runs real diagnostic audio, obeys skipped basics and displays the server tot
   expect(
     await screen.findByRole('heading', { name: 'Итог диагностики' }),
   ).toBeVisible()
-  expect(screen.getByText('3 из 3 баллов')).toBeVisible()
+  expect(screen.getByText('5 из 5 баллов')).toBeVisible()
   expect(
     screen.queryByRole('button', { name: 'Подтянуть слабые темы' }),
   ).not.toBeInTheDocument()
@@ -562,7 +560,7 @@ it('keeps the diagnostic result visible and retries failed overall feedback', as
   expect(
     await screen.findByText('Не удалось подготовить общий вывод.'),
   ).toBeVisible()
-  expect(screen.getByText('3 из 3 баллов')).toBeVisible()
+  expect(screen.getByText('5 из 5 баллов')).toBeVisible()
   fireEvent.click(screen.getByRole('button', { name: 'Повторить' }))
   expect(
     await screen.findByText('Итоговое педагогическое резюме.'),
@@ -1049,8 +1047,9 @@ it('uses backend basic tasks with a 0/1 scale and includes them in the diagnosti
         return Response.json({
           ...resultBody,
           diagnostic_score: 2,
-          report_score: 4,
-          report_max_score: 9,
+          report_score: 2.2,
+          report_max_score: 5,
+          training_needed: true,
           grade: 'D',
           score_percent: 44,
           completed_tasks: 3,
@@ -1064,8 +1063,6 @@ it('uses backend basic tasks with a 0/1 scale and includes them in the diagnosti
             score: scores[index],
             grader_score: scores[index],
             grader_max_score: index === 0 ? 3 : 1,
-            report_score: index === 0 ? scores[index] : scores[index] * 3,
-            report_max_score: 3,
             verdict:
               index === 2 ? 'incorrect' : index === 1 ? 'correct' : 'partial',
           })),
@@ -1101,7 +1098,7 @@ it('uses backend basic tasks with a 0/1 scale and includes them in the diagnosti
       }),
     )
   }
-  expect(await screen.findByText('4 из 9 баллов')).toBeVisible()
+  expect(await screen.findByText('2,2 из 5 баллов')).toBeVisible()
   expect(screen.queryByText(/Не проверено/)).not.toBeInTheDocument()
 })
 
@@ -1316,7 +1313,7 @@ it.each([1, 2])(
     expect(
       await screen.findByRole('heading', { name: 'Итог диагностики' }),
     ).toBeVisible()
-    expect(screen.getByText('3 из 3 баллов')).toBeVisible()
+    expect(screen.getByText('5 из 5 баллов')).toBeVisible()
     fireEvent.click(
       await screen.findByRole('button', { name: /Посмотреть мои ответы/ }),
     )

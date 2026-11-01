@@ -87,23 +87,22 @@ func TopicGrade(c Criteria, assisted bool, unassessed UnassessedCriteria) Grade 
 	return grade
 }
 
-// CourseGrade translates earned points into the overall grade, the same way in
-// the exam and the learning diagnostic: at least 90% is A, 70% B, 60% C,
-// otherwise D (decision of 01.11.2026). The percent is rounded down, so 89.9%
-// stays B. With nothing to grade both results are nil.
-func CourseGrade(score, maximum int) (*Grade, *int) {
-	if maximum <= 0 {
-		return nil, nil
+// CourseGrade translates the percent of the overall score into the overall
+// grade, the same way in the exam and the learning diagnostic: at least 90% is
+// A, 70% B, 60% C, otherwise D (decision of 01.11.2026). With nothing to grade
+// there is no grade.
+func CourseGrade(percent *int) *Grade {
+	if percent == nil {
+		return nil
 	}
-	percent := score * 100 / maximum
 	grade := GradeD
 	switch {
-	case percent >= 90:
+	case *percent >= 90:
 		grade = GradeA
-	case percent >= 70:
+	case *percent >= 70:
 		grade = GradeB
-	case percent >= 60:
+	case *percent >= 60:
 		grade = GradeC
 	}
-	return &grade, &percent
+	return &grade
 }

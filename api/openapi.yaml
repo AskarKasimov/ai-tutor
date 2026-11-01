@@ -495,16 +495,6 @@ components:
           type: integer
         outcome_id:
           type: string
-        report_max_score:
-          description: Максимум задания на итоговом экране
-          maximum: 3
-          minimum: 1
-          type: integer
-        report_score:
-          description: 'Баллы задания на итоговом экране: каждое заданное задание весит одинаково, верное базовое — 3 из 3'
-          maximum: 3
-          minimum: 0
-          type: integer
         role:
           enum:
             - main
@@ -540,8 +530,6 @@ components:
         - grader_max_score
         - grader_score
         - outcome_id
-        - report_max_score
-        - report_score
         - role
         - score
         - source_task_id
@@ -706,7 +694,7 @@ components:
         diagnostic_score:
           type: integer
         grade:
-          description: Предварительная оценка A–D по проценту баллов итогового экрана (от 90 — A, от 70 — B, от 60 — C); null — нет заданных заданий
+          description: Предварительная оценка A–D по проценту нормализованных баллов (от 90 — A, от 70 — B, от 60 — C); null — нет заданных заданий
           enum:
             - A
             - B
@@ -723,15 +711,15 @@ components:
         maximum_score:
           type: integer
         report_max_score:
-          description: Максимум заданных заданий на итоговом экране
+          description: 'Максимум нормализованных баллов: 5 на компетенцию'
           minimum: 0
           type: integer
         report_score:
-          description: Сумма баллов заданных заданий на итоговом экране
+          description: 'Сумма нормализованных баллов итогового экрана: каждая компетенция весит 5 баллов, с одним знаком после запятой'
           minimum: 0
-          type: integer
+          type: number
         score_percent:
-          description: Процент баллов итогового экрана от их максимума
+          description: Процент нормализованных баллов от максимума
           maximum: 100
           minimum: 0
           type:
@@ -750,6 +738,9 @@ components:
           type: string
         total_tasks:
           type: integer
+        training_needed:
+          description: 'Есть компетенция ниже 90%: только такие идут в обучение'
+          type: boolean
         untested_basics:
           items:
             $ref: '#/components/schemas/diagnostichttp.TaskResponse'
@@ -772,6 +763,7 @@ components:
         - skipped_competencies
         - status
         - total_tasks
+        - training_needed
         - untested_basics
         - variant_id
       type: object
@@ -1329,7 +1321,7 @@ components:
           type: array
           uniqueItems: false
         grade:
-          description: Предварительная оценка курса A–D по проценту баллов всех спрошенных тем (от 90 — A, от 70 — B, от 60 — C); null — нет ни одной темы с баллами
+          description: Предварительная оценка курса A–D по проценту нормализованных баллов (от 90 — A, от 70 — B, от 60 — C); null — нет ни одной темы с баллами
           enum:
             - A
             - B
@@ -1340,7 +1332,7 @@ components:
             - string
             - "null"
         max_score:
-          description: Максимум баллов всех спрошенных тем
+          description: 'Максимум нормализованных баллов: 5 на компетенцию'
           minimum: 0
           type: integer
         nodes:
@@ -1349,11 +1341,11 @@ components:
           type: array
           uniqueItems: false
         score:
-          description: Сумма баллов всех спрошенных тем
+          description: 'Сумма нормализованных баллов: каждая компетенция весит 5 баллов, с одним знаком после запятой'
           minimum: 0
-          type: integer
+          type: number
         score_percent:
-          description: Процент набранных баллов от максимума спрошенных тем; темы «недостаточно данных» и засчитанные исключены
+          description: Процент нормализованных баллов от максимума; темы «недостаточно данных» и засчитанные исключены
           maximum: 100
           minimum: 0
           type:

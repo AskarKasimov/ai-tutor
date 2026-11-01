@@ -12,6 +12,11 @@ import {
 import { ResultGraph } from './result-graph'
 import styles from './result-report.module.scss'
 
+// The overall score is normalized and may have one decimal.
+const pointsFormat = new Intl.NumberFormat('ru-RU', {
+  maximumFractionDigits: 1,
+})
+
 // The one result screen of the learning diagnostic and the exam: the overall
 // grade, the conclusion, what went well and what to work on, and the graph of
 // the topics in points.
@@ -77,7 +82,7 @@ export function ResultReport({
           {report.grade && (
             <Text as="p" className={styles.points}>
               {t('resultReport.totalPoints', {
-                score: report.score,
+                score: pointsFormat.format(report.score),
                 max: report.maxScore,
                 count: report.maxScore,
               })}

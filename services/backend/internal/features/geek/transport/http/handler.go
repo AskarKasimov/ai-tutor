@@ -146,16 +146,16 @@ type TopicMark struct {
 // Result is the student's outcome with the points and reasons of every asked topic.
 type Result struct {
 	Gaps []Gap `json:"gaps"`
-	// Предварительная оценка курса A–D по проценту баллов всех спрошенных тем (от 90 — A, от 70 — B, от 60 — C); null — нет ни одной темы с баллами
+	// Предварительная оценка курса A–D по проценту нормализованных баллов (от 90 — A, от 70 — B, от 60 — C); null — нет ни одной темы с баллами
 	Grade *string      `json:"grade" enums:"A,B,C,D" extensions:"x-nullable"`
 	Nodes []NodeResult `json:"nodes"`
 	// Слабые места — темы на C: засчитаны, но ответ неполный; источники и материалы — как у пробела
 	WeakSpots []Gap `json:"weak_spots"`
-	// Процент набранных баллов от максимума спрошенных тем; темы «недостаточно данных» и засчитанные исключены
+	// Процент нормализованных баллов от максимума; темы «недостаточно данных» и засчитанные исключены
 	ScorePercent *int `json:"score_percent" minimum:"0" maximum:"100" extensions:"x-nullable"`
-	// Сумма баллов всех спрошенных тем
-	Score int `json:"score" minimum:"0"`
-	// Максимум баллов всех спрошенных тем
+	// Сумма нормализованных баллов: каждая компетенция весит 5 баллов, с одним знаком после запятой
+	Score float64 `json:"score" minimum:"0"`
+	// Максимум нормализованных баллов: 5 на компетенцию
 	MaxScore  int    `json:"max_score" minimum:"0"`
 	SessionID string `json:"session_id"`
 }

@@ -1,9 +1,9 @@
-import { Heading, Text } from '@radix-ui/themes'
-import { type CSSProperties, useMemo } from 'react'
+import { Heading, Popover, Text } from '@radix-ui/themes'
+import { type CSSProperties, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import type { TopicResult, TopicStatus } from '@/entities/diagnostic-session'
 import { layoutResultGraph } from '../lib/result-graph'
-import styles from './geek-result.module.scss'
+import { type ReportMark, type ReportTopic, statusOrder } from '../model/report'
+import styles from './result-report.module.scss'
 
 // Card and spacing sizes of the map, in pixels.
 const NODE_WIDTH = 208
@@ -12,42 +12,41 @@ const COLUMN_GAP = 64
 const ROW_GAP = 20
 const PADDING = 28
 
-const legendOrder: TopicStatus[] = [
-  'independent',
-  'credited_by_parent',
-  'assisted',
-  'gap',
-  'insufficient',
-]
-
-// The checked part of the course graph: which topic relies on which, with
-// the result of every topic. Prerequisites stand left of the topics on them.
-export function ResultGraph({ topics }: { topics: TopicResult[] }) {
+// The checked topics and tasks: which relies on which, with the points of
+// every one. Prerequisites stand left of the topics on them. A card with marks
+// or a remark opens them.
+export function ResultGraph({ topics }: { topics: ReportTopic[] }) {
   const { t } = useTranslation()
   const graph = useMemo(() => layoutResultGraph(topics), [topics])
+  // The details open inside the screen, where its palette is defined.
+  const [panel, setPanel] = useState<HTMLElement | null>(null)
   if (graph.nodes.length === 0) return null
 
   const x = (column: number) => PADDING + column * (NODE_WIDTH + COLUMN_GAP)
   const y = (row: number) => PADDING + row * (NODE_HEIGHT + ROW_GAP)
   const width = x(graph.columns) - COLUMN_GAP + PADDING
   const height = y(graph.rows) - ROW_GAP + PADDING
-  const place = new Map(graph.nodes.map((node) => [node.topic.nodeId, node]))
-  const statuses = legendOrder.filter((status) =>
+  const place = new Map(graph.nodes.map((node) => [node.topic.id, node]))
+  const statuses = statusOrder.filter((status) =>
     graph.nodes.some((node) => node.topic.status === status),
   )
 
   return (
-    <section aria-labelledby="graph-title" className={styles.panel}>
+    <section
+      ref={setPanel}
+      aria-labelledby="graph-title"
+      className={styles.panel}
+    >
       <Heading as="h2" size="5" id="graph-title">
-        {t('geek.graphTitle')}
+        {t('resultReport.graphTitle')}
       </Heading>
       <Text as="p" className={styles.lead}>
-        {t('geek.graphHint')}
+        {t('resultReport.graphHint')}
       </Text>
-      <ul className={styles.legend} aria-label={t('geek.graphLegend')}>
+      <ul className={styles.legend} aria-label={t('resultReport.graphLegend')}>
         {statuses.map((status) => (
           <li key={status} data-status={status}>
-            {t(`geek.status.${status}`)}
+            {t(`resultReport.status.${status}`)}
           </li>
         ))}
       </ul>
@@ -55,7 +54,7 @@ export function ResultGraph({ topics }: { topics: TopicResult[] }) {
       <div
         className={styles.graphScroll}
         role="region"
-        aria-label={t('geek.graphScroll')}
+        aria-label={t('resultReport.graphScroll')}
         tabIndex={0}
       >
         <div
@@ -136,17 +135,20 @@ export function ResultGraph({ topics }: { topics: TopicResult[] }) {
               )
             })}
           </svg>
-          <ol className={styles.graphNodes} aria-label={t('geek.graphNodes')}>
+          <ol
+            className={styles.graphNodes}
+            aria-label={t('resultReport.graphNodes')}
+          >
             {graph.nodes.map(({ topic, column, row }) => {
               const requires = graph.edges
-                .filter((edge) => edge.to === topic.nodeId)
+                .filter((edge) => edge.to === topic.id)
                 .map((edge) => place.get(edge.from)!.topic.title)
               return (
                 <li
-                  key={topic.nodeId}
+                  key={topic.id}
                   className={styles.graphNode}
                   data-status={topic.status}
-                  data-top={topic.topLevel || undefined}
+                  data-top={topic.main || undefined}
                   style={
                     {
                       left: x(column),
@@ -156,23 +158,12 @@ export function ResultGraph({ topics }: { topics: TopicResult[] }) {
                     } as CSSProperties
                   }
                 >
-                  <span className={styles.graphNodeTitle} title={topic.title}>
-                    {topic.title}
-                  </span>
-                  <span className={styles.graphNodeMeta}>
-                    <span
-                      className={styles.status}
-                      title={t(`geek.status.${topic.status}`)}
-                    >
-                      {t(`geek.statusShort.${topic.status}`)}
-                    </span>
-                    <span className={styles.graphGrade}>
-                      {topic.grade ?? '—'}
-                    </span>
-                  </span>
+                  <GraphNodeCard topic={topic} container={panel} />
                   {requires.length > 0 && (
                     <span className={styles.visuallyHidden}>
-                      {t('geek.graphRequires', { titles: requires.join(', ') })}
+                      {t('resultReport.graphRequires', {
+                        titles: requires.join(', '),
+                      })}
                     </span>
                   )}
                 </li>
@@ -182,5 +173,103 @@ export function ResultGraph({ topics }: { topics: TopicResult[] }) {
         </div>
       </div>
     </section>
+  )
+}
+
+function GraphNodeCard({
+  topic,
+  container,
+}: {
+  topic: ReportTopic
+  container: HTMLElement | null
+}) {
+  const { t } = useTranslation()
+  const points = topic.score !== null && (
+    <span className={styles.graphGrade}>
+      {t('resultReport.points', { score: topic.score, max: topic.maxScore })}
+    </span>
+  )
+  const card = (
+    <>
+      <span className={styles.graphNodeTitle} title={topic.title}>
+        {topic.title}
+      </span>
+      <span className={styles.graphNodeMeta}>
+        <span
+          className={styles.status}
+          title={t(`resultReport.status.${topic.status}`)}
+        >
+          {t(`resultReport.statusShort.${topic.status}`)}
+        </span>
+        {points}
+      </span>
+    </>
+  )
+  if (topic.marks.length === 0 && !topic.skipped && !topic.assisted) {
+    return <div className={styles.graphNodeBody}>{card}</div>
+  }
+  return (
+    <Popover.Root>
+      <Popover.Trigger>
+        <button type="button" className={styles.graphNodeBody}>
+          {card}
+        </button>
+      </Popover.Trigger>
+      <Popover.Content
+        container={container}
+        className={styles.graphDetails}
+        data-status={topic.status}
+        size="2"
+        maxWidth="400px"
+      >
+        <Heading as="h3" size="3" className={styles.graphDetailsTitle}>
+          {topic.title}
+        </Heading>
+        <div className={styles.graphDetailsMeta}>
+          <span className={styles.status}>
+            {t(`resultReport.status.${topic.status}`)}
+          </span>
+          {topic.skipped && (
+            <Text className={styles.flag}>{t('resultReport.skipped')}</Text>
+          )}
+          {topic.assisted && (
+            <Text className={styles.flag}>{t('resultReport.assisted')}</Text>
+          )}
+          {points}
+        </div>
+        {topic.marks.length > 0 && (
+          <ul className={styles.marks}>
+            {topic.marks.map((mark, index) => (
+              <MarkRow key={mark.id} mark={mark} index={index} />
+            ))}
+          </ul>
+        )}
+      </Popover.Content>
+    </Popover.Root>
+  )
+}
+
+function MarkRow({ mark, index }: { mark: ReportMark; index: number }) {
+  const { t } = useTranslation()
+  const title =
+    mark.title ||
+    (/^k[1-4]$/.test(mark.id)
+      ? t(`resultReport.criteria.${mark.id}`)
+      : t('resultReport.markFallback', { number: index + 1 }))
+  return (
+    <li className={styles.mark}>
+      <span className={styles.markPoints}>
+        {mark.score !== undefined
+          ? t('resultReport.points', { score: mark.score, max: mark.maxScore })
+          : t(mark.met ? 'resultReport.markMet' : 'resultReport.markNotMet')}
+      </span>
+      <span className={styles.markBody}>
+        <Text className={styles.markTitle}>{title}</Text>
+        {mark.reason && (
+          <Text className={styles.markReason}>{mark.reason}</Text>
+        )}
+        {mark.quote && <Text className={styles.markQuote}>«{mark.quote}»</Text>}
+      </span>
+    </li>
   )
 }

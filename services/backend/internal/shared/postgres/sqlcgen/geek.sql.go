@@ -68,6 +68,22 @@ func (q *Queries) GetGeekRequest(ctx context.Context, arg GetGeekRequestParams) 
 	return i, err
 }
 
+const getGeekResultSummary = `-- name: GetGeekResultSummary :one
+SELECT summary FROM geek_result_summaries WHERE owner_id = $1 AND session_id = $2
+`
+
+type GetGeekResultSummaryParams struct {
+	OwnerID   string
+	SessionID string
+}
+
+func (q *Queries) GetGeekResultSummary(ctx context.Context, arg GetGeekResultSummaryParams) (string, error) {
+	row := q.db.QueryRow(ctx, getGeekResultSummary, arg.OwnerID, arg.SessionID)
+	var summary string
+	err := row.Scan(&summary)
+	return summary, err
+}
+
 const getGeekSession = `-- name: GetGeekSession :one
 SELECT state FROM geek_sessions WHERE id = $1 AND owner_id = $2
 `
@@ -191,6 +207,28 @@ func (q *Queries) ListOwnGeekSessions(ctx context.Context, arg ListOwnGeekSessio
 		return nil, err
 	}
 	return items, nil
+}
+
+const saveGeekResultSummary = `-- name: SaveGeekResultSummary :exec
+INSERT INTO geek_result_summaries(session_id, owner_id, summary, created_at) VALUES ($1, $2, $3, $4)
+ON CONFLICT (session_id) DO NOTHING
+`
+
+type SaveGeekResultSummaryParams struct {
+	SessionID string
+	OwnerID   string
+	Summary   string
+	CreatedAt int64
+}
+
+func (q *Queries) SaveGeekResultSummary(ctx context.Context, arg SaveGeekResultSummaryParams) error {
+	_, err := q.db.Exec(ctx, saveGeekResultSummary,
+		arg.SessionID,
+		arg.OwnerID,
+		arg.Summary,
+		arg.CreatedAt,
+	)
+	return err
 }
 
 const updateGeekSession = `-- name: UpdateGeekSession :execrows

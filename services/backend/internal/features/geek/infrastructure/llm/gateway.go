@@ -20,6 +20,7 @@ import (
 	llmgatewayv1 "github.com/AskarKasimov/ai-tutor/services/shared/gen/go/llmgateway/v1"
 
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/exam"
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/resultsummary"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/features/geek/application"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/httpx"
 )
@@ -47,6 +48,29 @@ func Dial(address string, timeout time.Duration) (*Gateway, *grpc.ClientConn, er
 		return nil, nil, fmt.Errorf("connect LLM gateway %s: %w", address, err)
 	}
 	return NewGateway(llmgatewayv1.NewGatewayClient(conn), timeout), conn, nil
+}
+
+// Summarize writes the result's overall conclusion. The student is waiting for
+// it on the opened result, so the call is urgent.
+func (g *Gateway) Summarize(ctx context.Context, report resultsummary.Report) (string, error) {
+	data, err := json.Marshal(report)
+	if err != nil {
+		return "", err
+	}
+	var summary string
+	err = g.complete(ctx, "result_summary", llmgatewayv1.Complexity_COMPLEXITY_LOW, true, string(data), func(content []byte) error {
+		var out struct {
+			Summary string `json:"summary"`
+		}
+		if err := json.Unmarshal(content, &out); err != nil {
+			return err
+		}
+		if summary = strings.TrimSpace(out.Summary); summary == "" {
+			return errors.New("empty summary")
+		}
+		return nil
+	})
+	return summary, err
 }
 
 func (g *Gateway) Question(ctx context.Context, r application.QuestionRequest) (string, error) {
@@ -243,6 +267,9 @@ func (g *Gateway) complete(ctx context.Context, operation string, level llmgatew
 	}
 	if operation == "feedback" {
 		system = feedbackSystemPrompt
+	}
+	if operation == "result_summary" {
+		system = resultsummary.SystemPrompt
 	}
 	if operation == "support" {
 		system = supportSystemPrompt

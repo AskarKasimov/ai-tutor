@@ -16,6 +16,22 @@ type RubricItem struct {
 	Levels []int  `json:"levels"`
 }
 
+var rubricLimit = regexp.MustCompile(`(?i)\(\s*макс[^)]*\)`)
+
+// Title is the short name of the item as written in the map, such as
+// «Предметная корректность»; empty when the item starts with its scale.
+func (i RubricItem) Title() string {
+	rule := i.Rule
+	if m := rubricStart.FindStringIndex(rule); m != nil {
+		rule = rule[m[1]:]
+	}
+	if m := rubricLevel.FindStringIndex(rule); m != nil {
+		rule = rule[:m[0]]
+	}
+	rule = rubricLimit.ReplaceAllString(rule, "")
+	return strings.Trim(strings.TrimSpace(rule), "«»:. ")
+}
+
 type RubricMark struct {
 	RubricItem
 	Score    int    `json:"score"`
@@ -91,8 +107,9 @@ func ParseRubric(text string) ([]RubricItem, error) {
 	total := 0
 	for _, item := range items {
 		maximum := item.Levels[len(item.Levels)-1]
-		// Grade compares score*4 with maximum*3. Keep those operations safe.
-		if maximum > math.MaxInt/4-total {
+		// Grade compares score*4 with maximum*3 and CourseGrade computes
+		// score*100. Keep those operations safe.
+		if maximum > math.MaxInt/100-total {
 			return nil, fmt.Errorf("rubric total is too large")
 		}
 		total += maximum
@@ -164,6 +181,67 @@ func (r RubricResult) Grade(assisted, complete bool) Grade {
 	}
 }
 
+var (
+	quoteGap         = regexp.MustCompile(`\.{3,}|…`)
+	quoteSentenceEnd = regexp.MustCompile(`([.!?])\s+`)
+)
+
+// quotedIn tells that the quote is the student's own words. A rubric item may
+// rest on separate parts of an answer, so the model may join them, with or
+// without an ellipsis: every part must then be in the text unchanged and in the
+// same order. A quote starting mid-sentence may differ in letter case.
+func quotedIn(text, quote string) bool {
+	text = strings.ToLower(strings.Join(strings.Fields(text), " "))
+	quote = strings.ToLower(strings.Join(strings.Fields(quote), " "))
+	if quote == "" {
+		return false
+	}
+	if strings.Contains(text, quote) {
+		return true
+	}
+	parts := quoteSentenceEnd.ReplaceAllString(quoteGap.ReplaceAllString(quote, "\x00"), "$1\x00")
+	found := false
+	for _, part := range strings.Split(parts, "\x00") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		at := strings.Index(text, part)
+		if at < 0 {
+			return false
+		}
+		text = text[at+len(part):]
+		found = true
+	}
+	return found
+}
+
+// DropUnverifiedQuotes clears the quotes that are not in the student's cited
+// replies, so the result never shows invented words, and returns their item IDs.
+// A wrong quote does not stop the exam or change the score (decision of
+// 01.11.2026).
+func (r *RubricResult) DropUnverifiedQuotes(turns []Turn) []string {
+	dropped := []string{}
+	for i := range r.Items {
+		m := &r.Items[i]
+		if strings.TrimSpace(m.Quote) == "" {
+			continue
+		}
+		quoted := false
+		for _, t := range turns {
+			if t.Speaker == SpeakerStudent && !t.Meta && slices.Contains(m.Evidence, t.Line) && quotedIn(t.Text, m.Quote) {
+				quoted = true
+				break
+			}
+		}
+		if !quoted {
+			m.Quote = ""
+			dropped = append(dropped, m.ID)
+		}
+	}
+	return dropped
+}
+
 // Validate ties each awarded mark to a real student answer, not the reference,
 // a conversational control message or a teacher-provided solution.
 func (r RubricResult) Validate(spec []RubricItem, turns []Turn) error {
@@ -178,27 +256,17 @@ func (r RubricResult) Validate(spec []RubricItem, turns []Turn) error {
 		if strings.TrimSpace(m.Reason) == "" || m.Score > 0 && len(m.Evidence) == 0 {
 			return fmt.Errorf("rubric %s missing reason or evidence", m.ID)
 		}
-		quoted := false
-		actual := []string{}
 		for _, line := range m.Evidence {
 			found := false
 			for _, t := range turns {
 				if t.Line == line && t.Speaker == SpeakerStudent && !t.Meta {
 					found = true
-					actual = append(actual, t.Text)
-					quote := strings.Join(strings.Fields(m.Quote), " ")
-					if quote != "" && strings.Contains(strings.Join(strings.Fields(t.Text), " "), quote) {
-						quoted = true
-					}
 					break
 				}
 			}
 			if !found {
 				return fmt.Errorf("rubric %s has invalid student evidence %d", m.ID, line)
 			}
-		}
-		if m.Score > 0 && !quoted {
-			return fmt.Errorf("rubric %s: quote %q is not an exact substring. Copy a SHORT unchanged fragment from these actual student texts (do not change person, verbs or punctuation): %q", m.ID, m.Quote, actual)
 		}
 	}
 	return nil

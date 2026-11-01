@@ -76,8 +76,9 @@ type App struct {
 	graphWorker      *graphapp.Worker
 	// examiner is the LLM gateway over gRPC; the app owns its connection and
 	// closes it in Close.
-	examiner geekapp.Examiner
-	gateway  io.Closer
+	examiner   geekapp.Examiner
+	summarizer geekapp.Summarizer
+	gateway    io.Closer
 	// speech voices Geek turns; one instance serves students and the warmer,
 	// so concurrent misses of one question are synthesized once.
 	speech *geekapp.SpeechCache
@@ -147,7 +148,7 @@ func New(cfg Config, pool *pgxpool.Pool, logger *zap.Logger) (*App, error) {
 	if err != nil {
 		return nil, err
 	}
-	a.examiner, a.gateway = examiner, conn
+	a.examiner, a.summarizer, a.gateway = examiner, examiner, conn
 	a.gatewayClient = llmgatewayv1.NewGatewayClient(conn)
 
 	materialRepository := materialspg.New(pool)
@@ -261,6 +262,7 @@ func (a *App) Handler() http.Handler {
 	geekService := geekapp.New(geekgraph.NewStored(a.pool), geekpg.New(a.pool), geekpg.NewTranscriptions(a.pool), a.examiner, a.speech,
 		security.IDGenerator{}, a.now, geekapp.Config{MaxQuestions: a.cfg.GeekMaxQuestions})
 	geekService.SetRawMaterials(geekgraph.NewRaw(a.pool, a.materialsStorage))
+	geekService.SetSummaries(a.summarizer, geekpg.New(a.pool))
 	geekHandlers := geekhttp.New(geekService)
 	learningSubjects := subjecthttp.New(subjectapp.New(subjectpg.New(a.pool), security.IDGenerator{}, a.now))
 	competencyHandlers := competencyhttp.New(competencyapp.New(competencypg.New(a.pool), &csvparser.Parser{}, a.now), a.cfg.MaxUploadBytes)
@@ -297,6 +299,7 @@ func (a *App) Handler() http.Handler {
 	examMux.Handle("GET /diagnostic-sessions/{id}", protect(auth, http.HandlerFunc(geekHandlers.Read)))
 	examMux.Handle("POST /diagnostic-sessions/{id}/answers", protect(auth, http.HandlerFunc(geekHandlers.Answer)))
 	examMux.Handle("GET /diagnostic-sessions/{id}/result", protect(auth, http.HandlerFunc(geekHandlers.Result)))
+	examMux.Handle("GET /diagnostic-sessions/{id}/feedback", protect(auth, http.HandlerFunc(geekHandlers.ResultSummary)))
 	examMux.Handle("GET /diagnostic-sessions/{id}/materials/{material_id}/raw", protect(auth, http.HandlerFunc(geekHandlers.RawMaterial)))
 	examMux.Handle("GET /diagnostic-sessions/{id}/turns/{turn_id}/audio", protect(auth, http.HandlerFunc(geekHandlers.TurnAudio)))
 	mux.Handle("/exam/", http.StripPrefix("/exam", examMux))

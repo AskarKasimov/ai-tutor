@@ -266,11 +266,15 @@ function geekBackend(
       if (control.replyGate) await control.replyGate
       return Response.json(accepted)
     }
+    if (url.endsWith('/diagnostic-sessions/d1/feedback'))
+      return Response.json({ session_id: 'd1', summary: 'Общий вывод модели.' })
     if (url.endsWith('/diagnostic-sessions/d1/result'))
       return Response.json({
         session_id: 'd1',
         grade: 'B',
         score_percent: 81,
+        score: 4.1,
+        max_score: 5,
         nodes: [
           {
             node_id: 'search-space',
@@ -278,6 +282,11 @@ function geekBackend(
             status: 'credited_by_parent',
             grade: null,
             top_level: false,
+            assisted: false,
+            score: null,
+            max_score: null,
+            marks: [],
+            reply: '',
           },
           {
             node_id: 'heuristic',
@@ -286,6 +295,11 @@ function geekBackend(
             grade: 'D',
             top_level: false,
             requires: ['search-space'],
+            assisted: false,
+            score: 0,
+            max_score: 4,
+            marks: [],
+            reply: 'Эвристика оценивает путь до цели.',
           },
           {
             node_id: 'a-star',
@@ -294,6 +308,28 @@ function geekBackend(
             grade: 'B',
             top_level: true,
             requires: ['heuristic', 'annealing'],
+            assisted: true,
+            score: 3,
+            max_score: 4,
+            marks: [
+              {
+                id: 'r1',
+                title: 'Роль эвристики',
+                score: 1,
+                max_score: 2,
+                reason: 'Связь названа не полностью',
+                quote: 'оценка расстояния',
+              },
+              {
+                id: 'r2',
+                title: '',
+                score: 2,
+                max_score: 2,
+                reason: '',
+                quote: '',
+              },
+            ],
+            reply: '',
           },
           {
             node_id: 'annealing',
@@ -301,6 +337,11 @@ function geekBackend(
             status: 'unchecked',
             grade: null,
             top_level: true,
+            assisted: false,
+            score: null,
+            max_score: null,
+            marks: [],
+            reply: '',
           },
         ],
         gaps: [{ node_id: 'heuristic', title: 'Эвристическая функция' }],
@@ -507,32 +548,44 @@ it('runs a diagnostic from the home page to the result and back to the history',
     name: 'Предварительная оценка',
   })
   expect(within(grade).getByText('B')).toBeVisible()
-  expect(screen.getByText('81% от максимума')).toBeVisible()
-  // The summary counts topics by status and skips statuses with no topics.
-  const summary = within(grade).getByRole('list', { name: 'Темы по статусам' })
+  expect(within(grade).getByText('4,1 из 5 баллов')).toBeVisible()
+  expect(await screen.findByText('Общий вывод модели.')).toBeVisible()
+  // The summary counts topics by result and skips results with no topics.
+  const summary = within(grade).getByRole('list', {
+    name: 'Темы по результату',
+  })
   expect(
     within(summary)
       .getAllByRole('listitem')
       .map((item) => item.textContent),
-  ).toEqual(['1Засчитано по основной теме', '1С помощью', '1Пробел'])
-  const gaps = screen.getByRole('region', { name: 'Что подтянуть' })
-  expect(within(gaps).getByText('Эвристическая функция')).toBeVisible()
-  // Topics on C are listed apart from the gaps.
-  const weak = within(gaps).getByRole('region', { name: 'Слабые места' })
-  expect(within(weak).getByText('Слабая тема')).toBeVisible()
-  expect(within(weak).queryByText('Эвристическая функция')).toBeNull()
-  const topics = screen.getByRole('region', { name: 'Все темы' })
-  expect(within(topics).getByText('С помощью')).toBeVisible()
-  expect(within(topics).getByText('Засчитано по основной теме')).toBeVisible()
+  ).toEqual(['1Частично', '1Пробел', '1Засчитано'])
+  const work = screen.getByRole('region', { name: 'Что доработать' })
+  expect(within(work).getByText('Эвристическая функция')).toBeVisible()
+  expect(
+    within(work).getByText('Эвристика оценивает путь до цели.'),
+  ).toBeVisible()
+  // Topics are shown in points only, with no letter of their own.
+  const topics = screen.getByRole('list', { name: 'Темы на графе' })
+  expect(within(topics).getByText('3 из 4')).toBeVisible()
+  expect(within(topics).getByText('Засчитано')).toBeVisible()
+  expect(within(topics).queryByText(/^[A-D]$/)).not.toBeInTheDocument()
   // Topics the diagnostic never reached are not part of the feedback.
   expect(within(topics).queryByText('Имитация отжига')).not.toBeInTheDocument()
   expect(screen.queryByText('Не проверялась')).not.toBeInTheDocument()
-  // The map shows the checked subgraph and says what each topic relies on.
-  const map = screen.getByRole('list', { name: 'Темы на карте' })
+  // The points and reasons of a topic open from its graph card.
+  fireEvent.click(within(topics).getByRole('button', { name: /3 из 4/ }))
+  const details = within(screen.getByRole('dialog'))
+  expect(details.getByText('С помощью')).toBeVisible()
+  expect(details.getByText('Связь названа не полностью')).toBeVisible()
+  expect(details.getByText('«оценка расстояния»')).toBeVisible()
+  expect(details.getByText('Пункт 2')).toBeVisible()
+  fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' })
+  // The graph shows the checked subgraph and says what each topic relies on.
+  const map = screen.getByRole('list', { name: 'Темы на графе' })
   expect(
     within(map)
       .getAllByRole('listitem')
-      .map((item) => item.firstChild?.textContent),
+      .map((item) => item.querySelector('span')?.textContent),
   ).toEqual(['Пространство состояний', 'Эвристическая функция', 'Алгоритм A*'])
   expect(
     within(map).getByText('Опирается на: Эвристическая функция'),
@@ -544,7 +597,7 @@ it('runs a diagnostic from the home page to the result and back to the history',
   fireEvent.click(screen.getAllByRole('button', { name: 'На главную' })[0])
   expect(await screen.findByText('Оценка B · 81%')).toBeVisible()
   fireEvent.click(screen.getByRole('button', { name: 'Открыть итог' }))
-  expect(await screen.findByText('81% от максимума')).toBeVisible()
+  expect(await screen.findByText('4,1 из 5 баллов')).toBeVisible()
 })
 
 it('does not show the course selection panel on the exam home', async () => {
@@ -812,7 +865,7 @@ it('reports a failed start again on the result screen', async () => {
   fireEvent.click(
     await screen.findByRole('button', { name: 'Посмотреть итог' }),
   )
-  await screen.findByText('81% от максимума')
+  await screen.findByText('4,1 из 5 баллов')
   control.failStarts = 1
   fireEvent.click(screen.getByRole('button', { name: 'Пройти заново' }))
   expect(await screen.findByRole('alert')).toHaveTextContent(

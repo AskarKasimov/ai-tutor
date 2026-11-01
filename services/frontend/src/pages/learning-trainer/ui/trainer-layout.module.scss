@@ -762,20 +762,6 @@
   gap: 12px;
   margin-bottom: 20px;
 }
-.feedbackHeaderTitle {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  color: var(--app-accent-strong);
-  h2 {
-    font-size: 20px;
-    font-weight: 700;
-    margin: 0;
-  }
-}
-.sparkleIcon {
-  color: var(--app-accent);
-}
 .feedbackModeToggle {
   display: inline-flex;
   background: var(--app-soft, #f1f5f9);
@@ -815,100 +801,10 @@
   font-size: 15px;
   padding: 16px 0;
 }
-.feedbackContent {
-  display: grid;
-  gap: 20px;
-}
-.feedbackSummaryText {
-  background: var(--app-soft);
-  padding: 16px 20px;
-  border-radius: 12px;
-  line-height: 24px;
-  font-size: 15px;
-  color: var(--app-ink);
-}
 .feedbackParagraph {
   margin: 0 0 10px 0;
   &:last-child {
     margin-bottom: 0;
-  }
-}
-.summaryCardsGrid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: 16px;
-  margin-top: 4px;
-}
-.summaryCard {
-  border-radius: 12px;
-  padding: 16px 18px;
-  display: grid;
-  gap: 10px;
-  border: 1px solid transparent;
-}
-.summaryCardGood {
-  background: #f0fdf4;
-  border-color: #bbf7d0;
-  border-left: 4px solid #16a34a;
-}
-.summaryCardWarning,
-.summaryCardBad {
-  background: #fffbeb;
-  border-color: #fde68a;
-  border-left: 4px solid #f59e0b;
-}
-.summaryCardHeader {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 0;
-}
-.summaryCardTitleGood {
-  font-size: 14px;
-  font-weight: 700;
-  color: #15803d;
-  letter-spacing: 0.01em;
-}
-.summaryCardTitleWarning,
-.summaryCardTitleBad {
-  font-size: 14px;
-  font-weight: 700;
-  color: #b45309;
-  letter-spacing: 0.01em;
-}
-.summaryCardBody {
-  font-size: 14px;
-  line-height: 21px;
-  color: var(--app-ink);
-}
-.summaryCardList {
-  list-style: none;
-  padding-left: 0;
-  margin: 0;
-  display: grid;
-  gap: 6px;
-  li {
-    display: flex;
-    align-items: flex-start;
-    gap: 8px;
-    line-height: 20px;
-    &::before {
-      content: '•';
-      color: var(--app-muted);
-      flex-shrink: 0;
-    }
-  }
-}
-.feedbackGroups {
-  li {
-    display: list-item;
-    &::before {
-      content: none;
-    }
-  }
-  > li {
-    display: grid;
-    gap: 6px;
   }
 }
 .feedbackGroup {
@@ -922,14 +818,10 @@
   font-size: 15px;
   font-weight: 600;
 }
-.iconSuccess {
-  color: #16a34a;
-}
 .iconGap {
   color: #dc2626;
 }
-.iconPartial,
-.iconWarning {
+.iconPartial {
   color: #d97706;
 }
 .feedbackList {

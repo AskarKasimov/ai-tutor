@@ -552,25 +552,27 @@ it('runs a diagnostic from the home page to the result and back to the history',
     within(work).getByText('Эвристика оценивает путь до цели.'),
   ).toBeVisible()
   // Topics are shown in points only, with no letter of their own.
-  const topics = screen.getByRole('region', { name: 'Проверенные темы' })
+  const topics = screen.getByRole('list', { name: 'Темы на графе' })
   expect(within(topics).getByText('3 из 4')).toBeVisible()
-  expect(within(topics).getByText('С помощью')).toBeVisible()
   expect(within(topics).getByText('Засчитано')).toBeVisible()
   expect(within(topics).queryByText(/^[A-D]$/)).not.toBeInTheDocument()
-  // The points and reasons of a topic open from its row.
-  fireEvent.click(within(topics).getByText('3 из 4'))
-  expect(within(topics).getByText('Связь названа не полностью')).toBeVisible()
-  expect(within(topics).getByText('«оценка расстояния»')).toBeVisible()
-  expect(within(topics).getByText('Пункт 2')).toBeVisible()
   // Topics the diagnostic never reached are not part of the feedback.
   expect(within(topics).queryByText('Имитация отжига')).not.toBeInTheDocument()
   expect(screen.queryByText('Не проверялась')).not.toBeInTheDocument()
+  // The points and reasons of a topic open from its graph card.
+  fireEvent.click(within(topics).getByRole('button', { name: /3 из 4/ }))
+  const details = within(screen.getByRole('dialog'))
+  expect(details.getByText('С помощью')).toBeVisible()
+  expect(details.getByText('Связь названа не полностью')).toBeVisible()
+  expect(details.getByText('«оценка расстояния»')).toBeVisible()
+  expect(details.getByText('Пункт 2')).toBeVisible()
+  fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' })
   // The graph shows the checked subgraph and says what each topic relies on.
   const map = screen.getByRole('list', { name: 'Темы на графе' })
   expect(
     within(map)
       .getAllByRole('listitem')
-      .map((item) => item.firstChild?.textContent),
+      .map((item) => item.querySelector('span')?.textContent),
   ).toEqual(['Пространство состояний', 'Эвристическая функция', 'Алгоритм A*'])
   expect(
     within(map).getByText('Опирается на: Эвристическая функция'),

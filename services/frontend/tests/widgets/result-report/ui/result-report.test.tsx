@@ -52,7 +52,7 @@ it('shows the overall grade as a letter with its points, without a percent', () 
 
 it('shows topics only in points, with no letters of their own', () => {
   show(report([topic({ score: 2, maxScore: 3, status: 'partial' })]))
-  const topics = screen.getByRole('region', { name: 'Проверенные темы' })
+  const topics = screen.getByRole('region', { name: 'Граф тем' })
   expect(within(topics).getByText('2 из 3')).toBeVisible()
   expect(within(topics).queryByText(/^[A-D]$/)).not.toBeInTheDocument()
 })
@@ -95,7 +95,36 @@ it('hides empty cards and unchecked topics', () => {
   expect(screen.queryByText('Не дошли')).not.toBeInTheDocument()
 })
 
-it('opens the points and reasons of a topic', () => {
+it('removes the separate list of checked topics', () => {
+  show(report([topic({})]))
+  expect(
+    screen.queryByRole('region', { name: 'Проверенные темы' }),
+  ).not.toBeInTheDocument()
+})
+
+it('keeps a card without a breakdown from opening', () => {
+  show(report([topic({ title: 'Без разбора' })]))
+  const graph = screen.getByRole('region', { name: 'Граф тем' })
+  expect(within(graph).getByText('Без разбора')).toBeVisible()
+  expect(
+    screen.queryByRole('button', { name: /Без разбора/ }),
+  ).not.toBeInTheDocument()
+})
+
+it('renders what the mode puts under the grade', () => {
+  render(
+    <Theme>
+      <ResultReport
+        report={report([topic({})])}
+        summary={{ state: 'ready', text: 'Вывод.' }}
+        highlight={<button type="button">Дальше</button>}
+      />
+    </Theme>,
+  )
+  expect(screen.getByRole('button', { name: 'Дальше' })).toBeVisible()
+})
+
+it('opens the points and reasons of a topic from its graph card', () => {
   show(
     report([
       topic({
@@ -116,12 +145,12 @@ it('opens the points and reasons of a topic', () => {
       }),
     ]),
   )
-  const topics = screen.getByRole('region', { name: 'Проверенные темы' })
-  fireEvent.click(within(topics).getByText('3 из 4'))
-  expect(screen.getByText('Суть')).toBeVisible()
-  expect(screen.getByText('Неполно')).toBeVisible()
-  expect(screen.getByText('«мой ответ»')).toBeVisible()
-  expect(screen.getByText('Логика и обоснование')).toBeVisible()
+  fireEvent.click(screen.getByRole('button', { name: /3 из 4/ }))
+  const details = within(screen.getByRole('dialog'))
+  expect(details.getByText('Суть')).toBeVisible()
+  expect(details.getByText('Неполно')).toBeVisible()
+  expect(details.getByText('«мой ответ»')).toBeVisible()
+  expect(details.getByText('Логика и обоснование')).toBeVisible()
 })
 
 it('lets the student retry a failed conclusion and keeps the result visible', () => {

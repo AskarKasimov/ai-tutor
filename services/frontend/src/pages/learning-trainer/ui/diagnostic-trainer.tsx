@@ -550,12 +550,17 @@ function DiagnosticSummary({
       <ResultReport
         report={toResultReport(value)}
         summary={summary}
-        actions={
+        highlight={
           hasGaps ? (
-            <Button size="3" onClick={() => onTraining(sessionId)}>
-              <Zap size={18} aria-hidden="true" />
-              {t('learningDiagnostic.toTraining')}
-            </Button>
+            <section className={diagnosticStyles.nextStep}>
+              <Text as="p" className={diagnosticStyles.nextStepText}>
+                {t('learningDiagnostic.nextStep')}
+              </Text>
+              <Button size="3" onClick={() => onTraining(sessionId)}>
+                <Zap size={18} aria-hidden="true" />
+                {t('learningDiagnostic.toTraining')}
+              </Button>
+            </section>
           ) : undefined
         }
       >

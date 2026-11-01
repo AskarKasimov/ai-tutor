@@ -1,10 +1,9 @@
 import { Button, Heading, Text } from '@radix-ui/themes'
-import { CheckCircle2, AlertTriangle, ChevronRight } from 'lucide-react'
+import { CheckCircle2, AlertTriangle } from 'lucide-react'
 import type { CSSProperties, ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { MarkdownContent } from '@/shared/ui'
 import type {
-  ReportMark,
   ReportStatus,
   ReportSummary,
   ReportTopic,
@@ -22,17 +21,20 @@ const statusOrder: ReportStatus[] = [
 ]
 
 // The one result screen of the learning diagnostic and the exam: the overall
-// grade, the conclusion, what went well and what to work on, the topics in
-// points and their graph.
+// grade, the conclusion, what went well and what to work on, and the graph of
+// the topics in points.
 export function ResultReport({
   report,
   summary,
+  highlight,
   actions,
   topicExtra,
   children,
 }: {
   report: ResultReportData
   summary: ReportSummary
+  // Right under the grade: the next step this mode offers.
+  highlight?: ReactNode
   actions?: ReactNode
   // What the mode can add to a topic to work on, such as its materials.
   topicExtra?: (topic: ReportTopic) => ReactNode
@@ -109,6 +111,7 @@ export function ResultReport({
           </ul>
         )}
       </section>
+      {highlight}
       <Summary summary={summary} />
       {(good.length > 0 || work.length > 0) && (
         <div className={styles.cards}>
@@ -150,22 +153,11 @@ export function ResultReport({
           )}
         </div>
       )}
-      <section aria-labelledby="topics-title" className={styles.panel}>
-        <Heading as="h2" size="5" id="topics-title">
-          {t('resultReport.topicsTitle')}
-        </Heading>
-        {checked.length === 0 ? (
-          <Text as="p" className={styles.lead}>
-            {t('resultReport.topicsEmpty')}
-          </Text>
-        ) : (
-          <ul className={styles.topics}>
-            {checked.map((topic) => (
-              <TopicRow key={topic.id} topic={topic} />
-            ))}
-          </ul>
-        )}
-      </section>
+      {checked.length === 0 && (
+        <Text as="p" className={styles.lead}>
+          {t('resultReport.topicsEmpty')}
+        </Text>
+      )}
       <ResultGraph topics={report.topics} />
       {children}
       {actions && <div className={styles.actions}>{actions}</div>}
@@ -224,87 +216,5 @@ function FindingList({
         </li>
       ))}
     </ul>
-  )
-}
-
-function TopicRow({ topic }: { topic: ReportTopic }) {
-  const { t } = useTranslation()
-  const line = (
-    <>
-      <span className={styles.topicTitle}>
-        <Text className={styles.topicName}>{topic.title}</Text>
-        <span className={styles.topicMeta}>
-          <span className={styles.status}>
-            {t(`resultReport.status.${topic.status}`)}
-          </span>
-          {topic.skipped && (
-            <Text className={styles.topLevel}>{t('resultReport.skipped')}</Text>
-          )}
-          {topic.assisted && (
-            <Text className={styles.topLevel}>
-              {t('resultReport.assisted')}
-            </Text>
-          )}
-        </span>
-      </span>
-      {topic.score !== null && (
-        <span className={styles.topicPoints}>
-          {t('resultReport.points', {
-            score: topic.score,
-            max: topic.maxScore,
-          })}
-        </span>
-      )}
-    </>
-  )
-  return (
-    <li
-      className={styles.topic}
-      data-status={topic.status}
-      data-top={topic.main || undefined}
-    >
-      {topic.marks.length === 0 ? (
-        <div className={styles.topicLine}>{line}</div>
-      ) : (
-        <details className={styles.topicDetails}>
-          <summary className={styles.topicLine}>
-            <ChevronRight
-              size={16}
-              className={styles.topicChevron}
-              aria-hidden="true"
-            />
-            {line}
-          </summary>
-          <ul className={styles.marks}>
-            {topic.marks.map((mark, index) => (
-              <MarkRow key={mark.id} mark={mark} index={index} />
-            ))}
-          </ul>
-        </details>
-      )}
-    </li>
-  )
-}
-
-function MarkRow({ mark, index }: { mark: ReportMark; index: number }) {
-  const { t } = useTranslation()
-  const title =
-    mark.title ||
-    (/^k[1-4]$/.test(mark.id)
-      ? t(`resultReport.criteria.${mark.id}`)
-      : t('resultReport.markFallback', { number: index + 1 }))
-  return (
-    <li className={styles.mark}>
-      <span className={styles.markPoints}>
-        {t('resultReport.points', { score: mark.score, max: mark.maxScore })}
-      </span>
-      <span className={styles.markBody}>
-        <Text className={styles.markTitle}>{title}</Text>
-        {mark.reason && (
-          <Text className={styles.markReason}>{mark.reason}</Text>
-        )}
-        {mark.quote && <Text className={styles.markQuote}>«{mark.quote}»</Text>}
-      </span>
-    </li>
   )
 }

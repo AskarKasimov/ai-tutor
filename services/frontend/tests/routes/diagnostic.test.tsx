@@ -492,7 +492,7 @@ it('runs real diagnostic audio, obeys skipped basics and displays the server tot
   expect(
     screen.queryByRole('heading', { name: 'Что доработать' }),
   ).not.toBeInTheDocument()
-  const topics = screen.getByRole('region', { name: 'Проверенные темы' })
+  const topics = screen.getByRole('list', { name: 'Темы на графе' })
   expect(within(topics).getByText('3 из 3')).toBeVisible()
   expect(within(topics).getAllByText('Засчитано')).toHaveLength(2)
   expect(screen.queryByText(/Критических пробелов нет/)).not.toBeInTheDocument()

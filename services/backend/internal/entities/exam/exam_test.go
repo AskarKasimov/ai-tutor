@@ -706,6 +706,8 @@ func TestTopicMarksFollowTheGradingScale(t *testing.T) {
 		{ID: "dont-know", Title: "Н", AssessmentGuidance: rubric},
 		{ID: "k", Title: "К"},
 		{ID: "k-zero", Title: "Н2"},
+		{ID: "k-dont-know", Title: "Н3"},
+		{ID: "legacy-zero", Title: "Л0", AssessmentGuidance: rubric},
 		{ID: "credited", Title: "З"},
 		{ID: "unclear", Title: "Д"},
 		{ID: "legacy", Title: "Л", AssessmentGuidance: rubric},
@@ -724,6 +726,9 @@ func TestTopicMarksFollowTheGradingScale(t *testing.T) {
 	e.Nodes["k"].Criteria = &Criteria{2, 1, 2, 0}
 	e.Nodes["k"].Unassessed = UnassessedCriteria{K4: true}
 	e.Nodes["k-zero"].Status, e.Nodes["k-zero"].Criteria = StatusGap, &Criteria{}
+	e.Nodes["k-dont-know"].Status, e.Nodes["k-dont-know"].Criteria, e.Nodes["k-dont-know"].DontKnow = StatusGap, &Criteria{}, true
+	e.Nodes["legacy-zero"].Status, e.Nodes["legacy-zero"].Criteria = StatusGap, &Criteria{}
+	e.Nodes["legacy-zero"].Unassessed = UnassessedCriteria{K3: true, K4: true}
 	e.Nodes["credited"].Status = StatusCredited
 	e.Nodes["unclear"].Status = StatusInsufficient
 	// Completed before rubrics: graded on K1-K4 although the task has a rubric.
@@ -743,7 +748,9 @@ func TestTopicMarksFollowTheGradingScale(t *testing.T) {
 		{"rubric", 3, 4, true},
 		{"dont-know", 0, 4, true},
 		{"k", 5, 6, true},
-		{"k-zero", 0, 4, true},
+		{"k-zero", 0, 8, true},
+		{"k-dont-know", 0, 4, true},
+		{"legacy-zero", 0, 4, true},
 		{"credited", 0, 0, false},
 		{"unclear", 0, 0, false},
 		{"legacy", 3, 4, true},
@@ -757,6 +764,44 @@ func TestTopicMarksFollowTheGradingScale(t *testing.T) {
 		if score != tc.score || maximum != tc.maximum || ok != tc.ok {
 			t.Errorf("%s = %d/%d %v, want %d/%d %v", tc.id, score, maximum, ok, tc.score, tc.maximum, tc.ok)
 		}
+	}
+}
+
+func TestAssessedZerosStayInTheMaximum(t *testing.T) {
+	e, first := NewExam(Graph{Nodes: []Node{
+		{ID: "a", Title: "А"}, {ID: "b", Title: "Б"}, {ID: "c", Title: "В"}, {ID: "zero", Title: "Н"},
+	}}, 0, nil)
+	strong := Evaluation{Verdict: VerdictAnswered, Criteria: Criteria{2, 2, 0, 0}, Unassessed: UnassessedCriteria{K3: true, K4: true}, AnswerComplete: ptr(true)}
+	zero := Evaluation{Verdict: VerdictAnswered, AnswerComplete: ptr(false)}
+	run(t, e, first, func(s Step) Evaluation {
+		if s.NodeID == "zero" {
+			return zero
+		}
+		return strong
+	})
+	r := Session{Exam: e}.Result()
+	if r.Score != 12 || r.Maximum != 20 || *r.ScorePercent != 60 || *r.Grade != GradeC {
+		t.Fatalf("result = %d/%d %d%% %s", r.Score, r.Maximum, *r.ScorePercent, *r.Grade)
+	}
+}
+
+func TestDontKnowDropsTheMarksOfAnEarlierAttempt(t *testing.T) {
+	const rubric = "Аналитическая рубрика (макс. 4):\nПункт рубрики 1 «Суть»: 4 — верно; 2 — частично; 0 — нет."
+	spec, err := ParseRubric(rubric)
+	if err != nil {
+		t.Fatal(err)
+	}
+	e, first := NewExam(Graph{Nodes: []Node{{ID: "a", Title: "А", AssessmentGuidance: rubric}}}, 0, nil)
+	weak := Evaluation{Verdict: VerdictAnswered, AnswerComplete: ptr(false), Rubric: &RubricResult{Items: []RubricMark{{RubricItem: spec[0], Score: 0, Reason: "слабо"}}}}
+	run(t, e, first, func(s Step) Evaluation {
+		if s.Kind == KindRephrase {
+			return Evaluation{Verdict: VerdictDontKnow}
+		}
+		return weak
+	})
+	marks := e.TopicMarks("a")
+	if e.Nodes["a"].Status != StatusGap || len(marks) != 1 || marks[0].Score != 0 || marks[0].Maximum != 4 || marks[0].Reason != "" {
+		t.Fatalf("status %s, marks = %+v", e.Nodes["a"].Status, marks)
 	}
 }
 

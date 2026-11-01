@@ -26,13 +26,20 @@ export function toResultReport(result: DiagnosticResult): ResultReportData {
     status: answer.skipped
       ? 'gap'
       : statusByPoints(answer.score, answer.grader_max_score),
-    score: answer.score,
-    maxScore: answer.grader_max_score,
+    score: answer.report_score,
+    maxScore: answer.report_max_score,
     assisted: false,
     skipped: answer.skipped ?? false,
     requires: requires(answer.task),
     main: answer.role === 'main',
-    marks: [],
+    // The criteria of a task have no points of their own.
+    marks: answer.criterion_results.map((criterion) => ({
+      id: criterion.key,
+      title: '',
+      met: criterion.satisfied,
+      reason: criterion.explanation,
+      quote: '',
+    })),
     // A line sending the student on to the next task has no place in the
     // result; the backend report leaves it out the same way.
     note: answer.feedback
@@ -55,8 +62,8 @@ export function toResultReport(result: DiagnosticResult): ResultReportData {
   }))
   return {
     grade: result.grade,
-    score: result.diagnostic_score,
-    maxScore: result.maximum_score,
+    score: result.report_score,
+    maxScore: result.report_max_score,
     percent: result.score_percent,
     topics: [...asked, ...credited],
   }

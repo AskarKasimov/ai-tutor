@@ -82,6 +82,9 @@ type NodeState struct {
 	// compatibility field, not an additional set of failed skills.
 	Rubric   *RubricResult `json:"rubric,omitempty"`
 	HintUsed bool          `json:"hint_used,omitempty"`
+	// DontKnow tells that the topic closed on "don't know": it has no answer to
+	// score, unlike an answer the model scored with zeros.
+	DontKnow bool `json:"dont_know,omitempty"`
 	// nil is a legacy session; new model evaluations always state completeness.
 	AnswerComplete *bool              `json:"answer_complete,omitempty"`
 	Unassessed     UnassessedCriteria `json:"unassessed,omitempty"`
@@ -283,6 +286,7 @@ func (e *Exam) Apply(ev Evaluation) Step {
 		assisted := cur.Kind == KindRephrase || state.HintUsed
 		switch ev.Verdict {
 		case VerdictDontKnow:
+			state.DontKnow = true
 			return e.gap(cur.NodeID, Criteria{}, assisted)
 		case VerdictInsufficient:
 			if !assisted && !e.limitReached() {
@@ -516,19 +520,10 @@ func (e *Exam) TopicMarks(id string) []TopicMark {
 	if !ok || (state.Status != StatusIndependent && state.Status != StatusAssisted && state.Status != StatusGap) {
 		return nil
 	}
-	if state.Rubric != nil {
-		return rubricMarks(state.Rubric.Items)
-	}
-	c := Criteria{}
-	if state.Criteria != nil {
-		c = *state.Criteria
-	}
-	marks := []TopicMark{{ID: "k1", Score: c.K1, Maximum: 2}, {ID: "k2", Score: c.K2, Maximum: 2}}
-	// A topic with no points has no observed skills, so K3 and K4 do not widen
-	// its maximum; "don't know" stores zeros without marking them untested.
-	if c == (Criteria{}) {
+	// "Don't know" keeps no marks, even of an earlier attempt: the scale comes
+	// from the task, and K3 and K4 were never observed.
+	if state.DontKnow || (state.Rubric == nil && state.Criteria == nil) {
 		n, _ := e.Graph.Node(id)
-		// "Don't know" keeps no rubric marks: the scale still comes from the task.
 		if spec, err := ParseRubric(n.AssessmentGuidance); err == nil && len(spec) > 0 {
 			items := make([]RubricMark, len(spec))
 			for i, item := range spec {
@@ -536,10 +531,16 @@ func (e *Exam) TopicMarks(id string) []TopicMark {
 			}
 			return rubricMarks(items)
 		}
-		return marks
+		return []TopicMark{{ID: "k1", Maximum: 2}, {ID: "k2", Maximum: 2}}
+	}
+	if state.Rubric != nil {
+		return rubricMarks(state.Rubric.Items)
 	}
 	// Criteria without a rubric result were graded on K1-K4, even if the task
-	// has a rubric: a session completed before rubrics keeps its points.
+	// has a rubric: a session completed before rubrics keeps its points. Zeros
+	// are scored too: what was assessed stays in the maximum.
+	c := *state.Criteria
+	marks := []TopicMark{{ID: "k1", Score: c.K1, Maximum: 2}, {ID: "k2", Score: c.K2, Maximum: 2}}
 	if !state.Unassessed.K3 {
 		marks = append(marks, TopicMark{ID: "k3", Score: c.K3, Maximum: 2})
 	}

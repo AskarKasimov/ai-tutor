@@ -507,6 +507,8 @@ void i18n.init({
           workTitle: 'Что доработать',
           topicsEmpty: 'Ни одна тема не была проверена.',
           markFallback: 'Пункт {{number}}',
+          markMet: 'Выполнено',
+          markNotMet: 'Не выполнено',
           criteria: {
             k1: 'Корректность и терминология',
             k2: 'Логика и обоснование',

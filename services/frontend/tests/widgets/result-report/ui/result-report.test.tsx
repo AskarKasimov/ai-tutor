@@ -161,6 +161,27 @@ it('opens the points and reasons of a topic from its graph card', () => {
   expect(details.getByText('Логика и обоснование')).toBeVisible()
 })
 
+it('shows a criterion without points as met or not', () => {
+  show(
+    report([
+      topic({
+        score: 1,
+        maxScore: 3,
+        status: 'partial',
+        marks: [
+          { id: 'a', title: '', met: false, reason: 'Нет причины', quote: '' },
+          { id: 'b', title: '', met: true, reason: 'Верно', quote: '' },
+        ],
+      }),
+    ]),
+  )
+  fireEvent.click(screen.getByRole('button', { name: /1 из 3/ }))
+  const details = within(screen.getByRole('dialog'))
+  expect(details.getByText('Не выполнено')).toBeVisible()
+  expect(details.getByText('Нет причины')).toBeVisible()
+  expect(details.getByText('Выполнено')).toBeVisible()
+})
+
 it('lets the student retry a failed conclusion and keeps the result visible', () => {
   const onRetry = vi.fn()
   show(report([topic({})]), {

@@ -81,6 +81,8 @@ const resultBody = {
   total_tasks: 3,
   diagnostic_score: 3,
   maximum_score: 3,
+  report_score: 3,
+  report_max_score: 3,
   grade: 'A',
   score_percent: 100,
   answers: [
@@ -96,6 +98,8 @@ const resultBody = {
       grader_score: 3,
       grader_max_score: 3,
       score: 3,
+      report_score: 3,
+      report_max_score: 3,
       verdict: 'correct',
       criterion_results: criteria,
       feedback,
@@ -291,10 +295,12 @@ function server(
         ...resultBody,
         total_tasks: totalTasks,
         diagnostic_score: mainScore,
+        report_score: mainScore,
         answers: resultBody.answers.map((answer) => ({
           ...answer,
           score: mainScore,
           grader_score: mainScore,
+          report_score: mainScore,
         })),
         untested_basics: resultBody.untested_basics.slice(0, totalTasks - 1),
       })
@@ -1043,8 +1049,10 @@ it('uses backend basic tasks with a 0/1 scale and includes them in the diagnosti
         return Response.json({
           ...resultBody,
           diagnostic_score: 2,
-          grade: 'C',
-          score_percent: 66,
+          report_score: 4,
+          report_max_score: 9,
+          grade: 'D',
+          score_percent: 44,
           completed_tasks: 3,
           untested_basics: [],
           answers: tasks.map((task, index) => ({
@@ -1056,6 +1064,8 @@ it('uses backend basic tasks with a 0/1 scale and includes them in the diagnosti
             score: scores[index],
             grader_score: scores[index],
             grader_max_score: index === 0 ? 3 : 1,
+            report_score: index === 0 ? scores[index] : scores[index] * 3,
+            report_max_score: 3,
             verdict:
               index === 2 ? 'incorrect' : index === 1 ? 'correct' : 'partial',
           })),
@@ -1091,7 +1101,7 @@ it('uses backend basic tasks with a 0/1 scale and includes them in the diagnosti
       }),
     )
   }
-  expect(await screen.findByText('2 из 3 баллов')).toBeVisible()
+  expect(await screen.findByText('4 из 9 баллов')).toBeVisible()
   expect(screen.queryByText(/Не проверено/)).not.toBeInTheDocument()
 })
 

@@ -96,6 +96,8 @@ async function setup(
     total_tasks: 3,
     diagnostic_score: noGaps ? 2 : 1,
     maximum_score: 2,
+    report_score: noGaps ? 2 : 1,
+    report_max_score: 2,
     untested_basics: [],
     answers: [
       {
@@ -123,6 +125,8 @@ async function setup(
         grader_score: noGaps ? 2 : 1,
         grader_max_score: 2,
         score: noGaps ? 2 : 1,
+        report_score: noGaps ? 2 : 1,
+        report_max_score: 2,
         verdict: noGaps ? 'correct' : 'partial',
         criterion_results: [],
         feedback: [],

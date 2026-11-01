@@ -57,18 +57,22 @@ type ProgressResponse struct {
 }
 
 type AnswerResponse struct {
-	Skipped          bool                      `json:"skipped,omitempty" binding:"optional"`
-	VariantTaskID    string                    `json:"variant_task_id"`
-	SourceTaskID     string                    `json:"source_task_id"`
-	CompetencyID     string                    `json:"competency_id"`
-	OutcomeID        string                    `json:"outcome_id"`
-	Role             string                    `json:"role" enums:"main,basic"`
-	Task             TaskResponse              `json:"task"`
-	TranscriptionID  string                    `json:"transcription_id"`
-	Text             string                    `json:"text"`
-	GraderScore      int                       `json:"grader_score" minimum:"0" maximum:"3"`
-	GraderMaxScore   int                       `json:"grader_max_score" minimum:"1" maximum:"3"`
-	Score            int                       `json:"score" minimum:"0" maximum:"3"`
+	Skipped         bool         `json:"skipped,omitempty" binding:"optional"`
+	VariantTaskID   string       `json:"variant_task_id"`
+	SourceTaskID    string       `json:"source_task_id"`
+	CompetencyID    string       `json:"competency_id"`
+	OutcomeID       string       `json:"outcome_id"`
+	Role            string       `json:"role" enums:"main,basic"`
+	Task            TaskResponse `json:"task"`
+	TranscriptionID string       `json:"transcription_id"`
+	Text            string       `json:"text"`
+	GraderScore     int          `json:"grader_score" minimum:"0" maximum:"3"`
+	GraderMaxScore  int          `json:"grader_max_score" minimum:"1" maximum:"3"`
+	Score           int          `json:"score" minimum:"0" maximum:"3"`
+	// Баллы задания на итоговом экране: каждое заданное задание весит одинаково, верное базовое — 3 из 3
+	ReportScore int `json:"report_score" minimum:"0" maximum:"3"`
+	// Максимум задания на итоговом экране
+	ReportMaxScore   int                       `json:"report_max_score" minimum:"1" maximum:"3"`
 	Verdict          string                    `json:"verdict" enums:"correct,partial,incorrect"`
 	CriterionResults []CriterionResultResponse `json:"criterion_results" minItems:"1"`
 	Feedback         []string                  `json:"feedback" minItems:"3" maxItems:"3"`
@@ -92,9 +96,13 @@ type ResultResponse struct {
 	TotalTasks              int                         `json:"total_tasks"`
 	DiagnosticScore         int                         `json:"diagnostic_score"`
 	MaximumScore            int                         `json:"maximum_score"`
-	// Предварительная оценка A–D по проценту баллов (от 90 — A, от 70 — B, от 60 — C); null — нет максимума
+	// Сумма баллов заданных заданий на итоговом экране
+	ReportScore int `json:"report_score" minimum:"0"`
+	// Максимум заданных заданий на итоговом экране
+	ReportMaxScore int `json:"report_max_score" minimum:"0"`
+	// Предварительная оценка A–D по проценту баллов итогового экрана (от 90 — A, от 70 — B, от 60 — C); null — нет заданных заданий
 	Grade *string `json:"grade" enums:"A,B,C,D" extensions:"x-nullable"`
-	// Процент набранных баллов от максимума
+	// Процент баллов итогового экрана от их максимума
 	ScorePercent   *int             `json:"score_percent" minimum:"0" maximum:"100" extensions:"x-nullable"`
 	Answers        []AnswerResponse `json:"answers"`
 	UntestedBasics []TaskResponse   `json:"untested_basics"`
@@ -129,7 +137,8 @@ func resultResponse(value diagnostic.Result) ResultResponse {
 		UntestedBasics:      make([]TaskResponse, 0, len(value.UntestedBasics)),
 	}
 	// The translation of points into a letter is shared with the exam.
-	courseGrade, percent := exam.CourseGrade(value.DiagnosticScore, value.MaximumScore)
+	result.ReportScore, result.ReportMaxScore = value.ReportPoints()
+	courseGrade, percent := exam.CourseGrade(result.ReportScore, result.ReportMaxScore)
 	result.ScorePercent = percent
 	if courseGrade != nil {
 		letter := string(*courseGrade)
@@ -139,7 +148,9 @@ func resultResponse(value diagnostic.Result) ResultResponse {
 		result.SkippedCompetencies = append(result.SkippedCompetencies, SkippedCompetencyResponse{ID: skipped.ID, Name: skipped.Name, Code: skipped.Code})
 	}
 	for _, answer := range value.Answers {
+		reportScore, reportMaxScore := answer.ReportPoints()
 		result.Answers = append(result.Answers, AnswerResponse{
+			ReportScore: reportScore, ReportMaxScore: reportMaxScore,
 			Skipped:       answer.Skipped,
 			VariantTaskID: answer.VariantTaskID, SourceTaskID: answer.SourceTaskID,
 			CompetencyID: answer.CompetencyID, OutcomeID: answer.OutcomeID,

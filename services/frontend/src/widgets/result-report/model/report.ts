@@ -6,12 +6,14 @@ export type ReportGrade = 'A' | 'B' | 'C' | 'D'
 export type ReportStatus =
   'full' | 'partial' | 'gap' | 'credited' | 'insufficient' | 'unchecked'
 
-// One criterion of a topic: a rubric item or one of К1–К4 (id k1…k4).
+// One criterion of a topic: a rubric item or one of К1–К4 (id k1…k4) in points,
+// or a criterion that is only met or not, without points of its own.
 export type ReportMark = {
   id: string
   title: string
-  score: number
-  maxScore: number
+  score?: number
+  maxScore?: number
+  met?: boolean
   reason: string
   quote: string
 }

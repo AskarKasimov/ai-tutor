@@ -495,6 +495,16 @@ components:
           type: integer
         outcome_id:
           type: string
+        report_max_score:
+          description: Максимум задания на итоговом экране
+          maximum: 3
+          minimum: 1
+          type: integer
+        report_score:
+          description: 'Баллы задания на итоговом экране: каждое заданное задание весит одинаково, верное базовое — 3 из 3'
+          maximum: 3
+          minimum: 0
+          type: integer
         role:
           enum:
             - main
@@ -530,6 +540,8 @@ components:
         - grader_max_score
         - grader_score
         - outcome_id
+        - report_max_score
+        - report_score
         - role
         - score
         - source_task_id
@@ -694,7 +706,7 @@ components:
         diagnostic_score:
           type: integer
         grade:
-          description: Предварительная оценка A–D по проценту баллов (от 90 — A, от 70 — B, от 60 — C); null — нет максимума
+          description: Предварительная оценка A–D по проценту баллов итогового экрана (от 90 — A, от 70 — B, от 60 — C); null — нет заданных заданий
           enum:
             - A
             - B
@@ -710,8 +722,16 @@ components:
           type: integer
         maximum_score:
           type: integer
+        report_max_score:
+          description: Максимум заданных заданий на итоговом экране
+          minimum: 0
+          type: integer
+        report_score:
+          description: Сумма баллов заданных заданий на итоговом экране
+          minimum: 0
+          type: integer
         score_percent:
-          description: Процент набранных баллов от максимума
+          description: Процент баллов итогового экрана от их максимума
           maximum: 100
           minimum: 0
           type:
@@ -745,6 +765,8 @@ components:
         - included_competency_count
         - map_revision
         - maximum_score
+        - report_max_score
+        - report_score
         - score_percent
         - session_id
         - skipped_competencies

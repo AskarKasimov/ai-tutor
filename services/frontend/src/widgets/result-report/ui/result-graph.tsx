@@ -259,7 +259,9 @@ function MarkRow({ mark, index }: { mark: ReportMark; index: number }) {
   return (
     <li className={styles.mark}>
       <span className={styles.markPoints}>
-        {t('resultReport.points', { score: mark.score, max: mark.maxScore })}
+        {mark.score !== undefined
+          ? t('resultReport.points', { score: mark.score, max: mark.maxScore })
+          : t(mark.met ? 'resultReport.markMet' : 'resultReport.markNotMet')}
       </span>
       <span className={styles.markBody}>
         <Text className={styles.markTitle}>{title}</Text>

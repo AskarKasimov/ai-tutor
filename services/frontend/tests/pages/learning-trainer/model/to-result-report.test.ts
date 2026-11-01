@@ -42,6 +42,8 @@ const answer = (
   grader_score: score,
   grader_max_score: value.role === 'main' ? 3 : 1,
   score,
+  report_score: value.role === 'main' ? score : score * 3,
+  report_max_score: 3,
   verdict: score === 0 ? 'incorrect' : 'correct',
   criterion_results: [],
   feedback: ['Первое.', 'Второе.'],
@@ -62,8 +64,10 @@ const result = (
   total_tasks: answers.length + untested.length,
   diagnostic_score: 3,
   maximum_score: 3,
-  grade: 'A',
-  score_percent: 100,
+  report_score: 7,
+  report_max_score: 9,
+  grade: 'B',
+  score_percent: 77,
   answers,
   untested_basics: untested,
 })
@@ -78,10 +82,10 @@ it('shows a task in points and links a main task to the basics of its constituen
     ]),
   )
   expect(report).toMatchObject({
-    grade: 'A',
-    score: 3,
-    maxScore: 3,
-    percent: 100,
+    grade: 'B',
+    score: 7,
+    maxScore: 9,
+    percent: 77,
   })
   const [main, full, gap] = report.topics
   expect(main).toMatchObject({
@@ -92,7 +96,13 @@ it('shows a task in points and links a main task to the basics of its constituen
     requires: ['b1', 'b2'],
     note: 'Первое. Второе.',
   })
-  expect(full).toMatchObject({ status: 'full', main: false, requires: [] })
+  expect(full).toMatchObject({
+    status: 'full',
+    score: 3,
+    maxScore: 3,
+    main: false,
+    requires: [],
+  })
   expect(gap).toMatchObject({ status: 'gap', score: 0 })
 })
 
@@ -129,4 +139,28 @@ it('leaves out the line sending the student on to the next task', () => {
     ]),
   ).topics
   expect(topic.note).toBe('Вопрос пропущен. Ответ оценён в 0 баллов.')
+})
+
+it('keeps the reasons of the criteria without inventing points', () => {
+  const asked = answer(task('m', 'main'), 1)
+  const { topics } = toResultReport({
+    ...result([asked]),
+    answers: [
+      {
+        ...asked,
+        criterion_results: [
+          { key: 'cause', satisfied: false, explanation: 'Нет причины.' },
+        ],
+      },
+    ],
+  })
+  expect(topics[0].marks).toEqual([
+    {
+      id: 'cause',
+      title: '',
+      met: false,
+      reason: 'Нет причины.',
+      quote: '',
+    },
+  ])
 })

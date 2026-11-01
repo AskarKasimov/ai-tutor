@@ -725,7 +725,7 @@ func TestTopicMarksFollowTheGradingScale(t *testing.T) {
 	e.Nodes["k"].Status = StatusAssisted
 	e.Nodes["k"].Criteria = &Criteria{2, 1, 2, 0}
 	e.Nodes["k"].Unassessed = UnassessedCriteria{K4: true}
-	e.Nodes["k-zero"].Status, e.Nodes["k-zero"].Criteria = StatusGap, &Criteria{}
+	e.Nodes["k-zero"].Status, e.Nodes["k-zero"].Criteria, e.Nodes["k-zero"].AnswerComplete = StatusGap, &Criteria{}, ptr(false)
 	e.Nodes["k-dont-know"].Status, e.Nodes["k-dont-know"].Criteria, e.Nodes["k-dont-know"].DontKnow = StatusGap, &Criteria{}, true
 	e.Nodes["legacy-zero"].Status, e.Nodes["legacy-zero"].Criteria = StatusGap, &Criteria{}
 	e.Nodes["legacy-zero"].Unassessed = UnassessedCriteria{K3: true, K4: true}
@@ -782,6 +782,42 @@ func TestAssessedZerosStayInTheMaximum(t *testing.T) {
 	r := Session{Exam: e}.Result()
 	if r.Score != 12 || r.Maximum != 20 || *r.ScorePercent != 60 || *r.Grade != GradeC {
 		t.Fatalf("result = %d/%d %d%% %s", r.Score, r.Maximum, *r.ScorePercent, *r.Grade)
+	}
+}
+
+func TestSavedSessionWithoutTheFlagKeepsTheScaleOfDontKnow(t *testing.T) {
+	const rubric = "Аналитическая рубрика (макс. 4):\nПункт рубрики 1 «Суть»: 4 — верно; 2 — частично; 0 — нет."
+	e, first := NewExam(Graph{Nodes: []Node{
+		{ID: "a", Title: "А"}, {ID: "b", Title: "Б"}, {ID: "c", Title: "В"}, {ID: "unknown", Title: "Н", AssessmentGuidance: rubric}, {ID: "zero", Title: "Ноль"},
+	}}, 0, nil)
+	strong := Evaluation{Verdict: VerdictAnswered, Criteria: Criteria{2, 2, 0, 0}, Unassessed: UnassessedCriteria{K3: true, K4: true}, AnswerComplete: ptr(true)}
+	run(t, e, first, func(s Step) Evaluation {
+		switch s.NodeID {
+		case "unknown":
+			return Evaluation{Verdict: VerdictDontKnow}
+		case "zero":
+			return Evaluation{Verdict: VerdictAnswered, AnswerComplete: ptr(false)}
+		}
+		return strong
+	})
+	saved, err := json.Marshal(Session{Exam: e})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(saved), `"dont_know":true`) {
+		t.Fatalf("no flag to remove: %s", saved)
+	}
+	var old Session
+	if err := json.Unmarshal([]byte(strings.ReplaceAll(string(saved), `"dont_know":true,`, "")), &old); err != nil {
+		t.Fatal(err)
+	}
+	if old.Exam.Nodes["unknown"].DontKnow {
+		t.Fatal("the flag is still in the old session")
+	}
+	// 4/4 three times, "don't know" on 0/4 and assessed zeros on 0/8.
+	r := old.Result()
+	if r.Score != 12 || r.Maximum != 24 || *r.Grade != GradeD {
+		t.Fatalf("result = %d/%d %s", r.Score, r.Maximum, *r.Grade)
 	}
 }
 

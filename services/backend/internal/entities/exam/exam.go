@@ -373,6 +373,19 @@ func (s NodeState) complete() bool {
 	return s.AnswerComplete == nil || *s.AnswerComplete
 }
 
+// noAnswer tells that the topic closed with no answer to score. Sessions saved
+// before DontKnow have no such flag, but every scored answer states its
+// completeness, so zeros without it are "don't know" too.
+func (s NodeState) noAnswer() bool {
+	if s.DontKnow {
+		return true
+	}
+	if s.Rubric != nil {
+		return false
+	}
+	return s.Criteria == nil || (*s.Criteria == Criteria{} && s.AnswerComplete == nil && s.Unassessed == UnassessedCriteria{})
+}
+
 func (s NodeState) topicGrade() Grade {
 	if s.Rubric != nil {
 		return s.Rubric.Grade(s.Assisted, s.complete())
@@ -522,7 +535,7 @@ func (e *Exam) TopicMarks(id string) []TopicMark {
 	}
 	// "Don't know" keeps no marks, even of an earlier attempt: the scale comes
 	// from the task, and K3 and K4 were never observed.
-	if state.DontKnow || (state.Rubric == nil && state.Criteria == nil) {
+	if state.noAnswer() {
 		n, _ := e.Graph.Node(id)
 		if spec, err := ParseRubric(n.AssessmentGuidance); err == nil && len(spec) > 0 {
 			items := make([]RubricMark, len(spec))

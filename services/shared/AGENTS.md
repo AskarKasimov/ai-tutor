@@ -7,4 +7,5 @@
 - Совместимость: номера и имена удалённых полей резервируйте; смысл существующих полей не меняйте. Несовместимое изменение — новый package `llmgateway.v2`.
 - В shared только контракты и сгенерированный код: без планировщика, конфигурации моделей, доступа к Redpanda и типов backend. Shared не импортирует backend и gateway.
 - Не копируйте `.proto` в сервисы-потребители: Go-сервисы подключают модуль через `replace ../shared`, `services/course-graph` — каталог `gen/python` (pytest `pythonpath`, в образ — из корневого контекста сборки).
-- Проверки из корня: `services/shared/tools/generate.sh --check`, `services/shared/tools/check-compat.sh <base-sha>`, `cd services/shared && GOWORK=off go test ./...`. После изменения контракта проверьте backend и gateway их командами.
+- Для документации проверки генерации и тесты не нужны; объём проверок определяют [корневые правила](../../AGENTS.md#локальные-проверки-и-нагрузка).
+- Проверки контракта из корня, последовательно: `services/shared/tools/generate.sh --check`, `services/shared/tools/check-compat.sh <base-sha>`, затем из `services/shared` — `GOWORK=off GOMAXPROCS=2 go test -p 1 -parallel 2 ./...`. После изменения контракта проверьте backend и gateway их командами, по одному сервису за раз.

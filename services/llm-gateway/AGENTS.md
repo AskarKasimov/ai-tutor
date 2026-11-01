@@ -18,5 +18,6 @@
 ## Сборка и проверки
 
 - Собирайте с `GOWORK=off`: зависимость от `services/shared` подключается через `replace ../shared`.
-- Проверки: `GOWORK=off go test -race ./... -count=1`, `GOWORK=off go vet ./...`, `GOWORK=off go build ./cmd/llm-gateway`, `bash scripts/generate-openapi.sh` без изменений в `openapi.yaml`.
+- Объём проверок выбирайте по [корневым правилам](../../AGENTS.md#локальные-проверки-и-нагрузка). Для документации тесты не нужны. Для Go-кода проверьте затронутые пакеты и потребителей; общий код, очередь, восстановление, контракты и конфигурация требуют полного набора. Команды запускайте последовательно.
+- Полный локальный набор: `GOWORK=off GOMAXPROCS=2 go test -p 1 -parallel 2 -race ./... -count=1`, `GOWORK=off GOMAXPROCS=2 go vet -p 1 ./...`, `GOWORK=off GOMAXPROCS=2 go build -p 1 ./cmd/llm-gateway`, `bash scripts/generate-openapi.sh` без изменений в `openapi.yaml`. В целевом прогоне заменяйте `./...` у тестов на затронутые пакеты; `-race` и лимиты сохраняйте.
 - Integration-тест очереди запускается только с Redpanda: из корня `docker compose --env-file .env.example up -d --wait redpanda`, затем тесты с `TEST_KAFKA_BROKERS=localhost:19092`. Если не запускали, назовите пропуск в отчёте.

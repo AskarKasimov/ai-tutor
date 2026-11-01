@@ -821,6 +821,48 @@ func TestSavedSessionWithoutTheFlagKeepsTheScaleOfDontKnow(t *testing.T) {
 	}
 }
 
+func TestSavedSessionRestoresDontKnowAfterARephrase(t *testing.T) {
+	e, first := NewExam(Graph{Nodes: []Node{
+		{ID: "a", Title: "А"}, {ID: "b", Title: "Б"}, {ID: "c", Title: "В"}, {ID: "unknown", Title: "Н"}, {ID: "zero", Title: "Ноль"},
+	}}, 0, nil)
+	strong := Evaluation{Verdict: VerdictAnswered, Criteria: Criteria{2, 2, 0, 0}, Unassessed: UnassessedCriteria{K3: true, K4: true}, AnswerComplete: ptr(true)}
+	zero := Evaluation{Verdict: VerdictAnswered, AnswerComplete: ptr(false)}
+	run(t, e, first, func(s Step) Evaluation {
+		switch {
+		case s.NodeID == "unknown" && s.Kind == KindRephrase:
+			return Evaluation{Verdict: VerdictDontKnow}
+		case s.NodeID == "unknown" || s.NodeID == "zero":
+			return zero
+		}
+		return strong
+	})
+	voice, button := SourceVoice, SourceDontKnow
+	unknown, assessed := "unknown", "zero"
+	saved, err := json.Marshal(Session{Exam: e, Turns: []Turn{
+		{Speaker: SpeakerStudent, NodeID: &unknown, Source: &voice},
+		{Speaker: SpeakerGeek, NodeID: &unknown},
+		{Speaker: SpeakerStudent, NodeID: &unknown, Source: &button},
+		{Speaker: SpeakerStudent, NodeID: &assessed, Source: &voice},
+		{Speaker: SpeakerGeek, NodeID: &assessed},
+		{Speaker: SpeakerStudent, NodeID: &assessed, Source: &voice},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var old Session
+	if err := json.Unmarshal([]byte(strings.ReplaceAll(string(saved), `"dont_know":true,`, "")), &old); err != nil {
+		t.Fatal(err)
+	}
+	if old.Exam.Nodes["unknown"].DontKnow || old.Exam.Nodes["unknown"].AnswerComplete == nil {
+		t.Fatalf("not an old state: %+v", old.Exam.Nodes["unknown"])
+	}
+	// 4/4 three times, "don't know" on 0/4 and assessed zeros on 0/8.
+	r := old.Result()
+	if r.Score != 12 || r.Maximum != 24 || *r.Grade != GradeD {
+		t.Fatalf("result = %d/%d %s", r.Score, r.Maximum, *r.Grade)
+	}
+}
+
 func TestDontKnowDropsTheMarksOfAnEarlierAttempt(t *testing.T) {
 	const rubric = "Аналитическая рубрика (макс. 4):\nПункт рубрики 1 «Суть»: 4 — верно; 2 — частично; 0 — нет."
 	spec, err := ParseRubric(rubric)

@@ -143,6 +143,24 @@ func (s Session) closingReplies() map[string]string {
 	return replies
 }
 
+// restoreDontKnow marks the topics of a session saved before NodeState.DontKnow:
+// a topic that closed with zeros right after the "don't know" button had no
+// answer to score, whatever an earlier attempt left in its state.
+func (s Session) restoreDontKnow() {
+	last := map[string]*Source{}
+	for _, t := range s.Turns {
+		if t.Speaker == SpeakerStudent && t.NodeID != nil {
+			last[*t.NodeID] = t.Source
+		}
+	}
+	for id, source := range last {
+		state, ok := s.Exam.Nodes[id]
+		if ok && source != nil && *source == SourceDontKnow && state.Status == StatusGap && state.Criteria != nil && *state.Criteria == (Criteria{}) {
+			state.DontKnow = true
+		}
+	}
+}
+
 // Result is the student's outcome of a completed diagnostic.
 type Result struct {
 	SessionID    string
@@ -158,6 +176,7 @@ type Result struct {
 }
 
 func (s Session) Result() Result {
+	s.restoreDontKnow()
 	e := s.Exam
 	top := e.Graph.TopLevel()
 	r := Result{SessionID: s.ID, Nodes: []NodeResult{}, Gaps: []Gap{}, WeakSpots: []Gap{}}

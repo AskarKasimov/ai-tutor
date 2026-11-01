@@ -136,6 +136,7 @@ function Dialogue({
   const closeNotice = useCallback(() => setCourseUpdated(false), [])
   const currentTurnId = session.currentTurnId
   const lastTurn = session.turns[session.turns.length - 1]
+  const initialCompleted = useRef(session.status === 'completed')
   // Text is available as soon as the answer arrives. Speech loads independently.
   const [transcribing, setTranscribing] = useState(false)
 
@@ -201,7 +202,13 @@ function Dialogue({
     autoScrolling.current = behavior === 'smooth'
     end.current?.scrollIntoView({ block: 'end', behavior })
     scrollInitialized.current = true
-  }, [session.turns.length, answer.isPending, resultReady, transcribing])
+  }, [
+    session.turns.length,
+    answer.isPending,
+    resultReady,
+    transcribing,
+    audio.progress,
+  ])
 
   const submit = (variables: NonNullable<typeof answer.variables>) => {
     answer.mutate(variables)
@@ -252,7 +259,13 @@ function Dialogue({
       </Heading>
       <ol className={styles.turns}>
         {session.turns.map((turn) => (
-          <TurnItem key={turn.id} turn={turn} audio={audio} muted={capturing} />
+          <TurnItem
+            key={turn.id}
+            turn={turn}
+            audio={audio}
+            muted={capturing}
+            live={!initialCompleted.current && turn.id === lastTurn?.id}
+          />
         ))}
         {pending && (
           <li className={styles.student}>
@@ -268,7 +281,7 @@ function Dialogue({
         )}
         {pending && (
           <li className={styles.geek}>
-            <Thinking label={t('geek.thinking')} />
+            <Text role="status">{t('geek.audioFormulating')}</Text>
           </li>
         )}
       </ol>
@@ -301,7 +314,12 @@ function Dialogue({
         <Composer
           key={currentTurnId}
           turnId={currentTurnId ?? ''}
-          busy={answer.isPending}
+          busy={
+            answer.isPending ||
+            (lastTurn?.speaker === 'geek' &&
+              !audio.progress[lastTurn.id]?.question &&
+              !audio.progress[lastTurn.id]?.revealed)
+          }
           error={failed}
           onSend={send}
           // The retry repeats the failed request exactly: its turn and key.
@@ -385,10 +403,12 @@ function TurnItem({
   turn,
   audio,
   muted,
+  live,
 }: {
   turn: Turn
   audio: ReturnType<typeof useTurnAudio>
   muted: boolean
+  live: boolean
 }) {
   const { t } = useTranslation()
   if (turn.speaker === 'student')
@@ -399,6 +419,38 @@ function TurnItem({
         </Text>
       </li>
     )
+  const progress = audio.progress[turn.id]
+  const partial = live && !progress?.revealed
+  const replies = turn.replySpeechTexts?.length
+    ? turn.replySpeechTexts
+    : (turn.replyAudioParts ?? 0) > 1
+      ? Array.from({ length: turn.replyAudioParts! }, (_, i) =>
+          i === turn.replyAudioParts! - 1 ? turn.reply : '',
+        )
+      : [turn.reply]
+  const question =
+    turn.reply && turn.text.trimStart().startsWith(turn.reply)
+      ? turn.text.trimStart().slice(turn.reply.length).trim()
+      : turn.text
+  const shown = partial
+    ? [
+        progress?.intro ? turn.audioIntro : '',
+        ...replies.slice(0, progress?.replies ?? 0),
+        progress?.question ? question : '',
+      ]
+        .filter(Boolean)
+        .join('\n\n')
+    : [
+        progress?.intro || progress?.revealed || !live ? turn.audioIntro : '',
+        turn.text,
+      ]
+        .filter(Boolean)
+        .join('\n\n')
+  const waiting = partial && !progress?.question
+  const failed =
+    audio.state.turnId === turn.id && audio.state.status === 'error'
+  const paused =
+    audio.state.turnId === turn.id && audio.state.status === 'paused'
   return (
     <li className={styles.geek}>
       <div className={styles.geekHead}>
@@ -415,7 +467,33 @@ function TurnItem({
           disabled={muted}
         />
       </div>
-      <MarkdownContent text={turn.text} className={styles.geekText} />
+      {shown && <MarkdownContent text={shown} className={styles.geekText} />}
+      {waiting &&
+        !failed &&
+        !paused &&
+        (audio.state.turnId !== turn.id ||
+          audio.state.status !== 'playing') && (
+          <Text role="status">
+            {t(shown ? 'geek.audioContinuing' : 'geek.audioFormulating')}
+          </Text>
+        )}
+      {partial && (failed || (waiting && paused)) && (
+        <div className={styles.error} role="alert">
+          <Text as="p">
+            {t(failed ? 'geek.audioError' : 'geek.audioPaused')}
+          </Text>
+          <Button size="2" variant="soft" onClick={() => void audio.play(turn)}>
+            {t('trainer.retry')}
+          </Button>
+          <Button
+            size="2"
+            variant="soft"
+            onClick={() => audio.revealAll(turn.id)}
+          >
+            {t('geek.audioShowText')}
+          </Button>
+        </div>
+      )}
     </li>
   )
 }

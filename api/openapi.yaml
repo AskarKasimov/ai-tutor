@@ -1498,6 +1498,12 @@ components:
           description: Число блоков фидбека; part=reply и chunk с нуля возвращают отдельный блок.
           minimum: 0
           type: integer
+        reply_speech_texts:
+          description: Тексты отдельных озвучиваемых блоков ответа, в порядке воспроизведения.
+          items:
+            type: string
+          type: array
+          uniqueItems: false
         source:
           description: 'Только у реплик студента: голос после подтверждения, текст или кнопка «Не знаю»'
           enum:

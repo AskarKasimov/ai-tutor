@@ -39,9 +39,11 @@ type Turn struct {
 	// Предозвученная вводная перед фидбеком; запрашивается как part=intro.
 	AudioIntro string `json:"audio_intro,omitempty" binding:"optional"`
 	// Число блоков фидбека; part=reply и chunk с нуля возвращают отдельный блок.
-	ReplyAudioParts int    `json:"reply_audio_parts,omitempty" binding:"optional" minimum:"0"`
-	CreatedAt       int64  `json:"created_at"`
-	ID              string `json:"id"`
+	ReplyAudioParts int `json:"reply_audio_parts,omitempty" binding:"optional" minimum:"0"`
+	// Тексты отдельных озвучиваемых блоков ответа, в порядке воспроизведения.
+	ReplySpeechTexts []string `json:"reply_speech_texts,omitempty" binding:"optional"`
+	CreatedAt        int64    `json:"created_at"`
+	ID               string   `json:"id"`
 	// question — основной вопрос, followup — дополнительный, rephrase — переформулировка, closing — завершение, answer — ответ студента
 	Kind string `json:"kind" enums:"question,followup,rephrase,closing,answer"`
 	// Номер строки транскрипта
@@ -420,7 +422,9 @@ func toSession(s domain.Session) Session {
 			v := string(*t.Source)
 			source = &v
 		}
-		out.Turns = append(out.Turns, Turn{Meta: t.Meta, AudioIntro: t.AudioIntro, ReplyAudioParts: len(application.ReplySpeechParts(t.Reply)), CreatedAt: t.CreatedAt, ID: t.ID, Kind: string(t.Kind), Line: t.Line, NodeID: t.NodeID, Source: source, Speaker: string(t.Speaker), Text: t.Text, Reply: t.Reply})
+		reply, _ := t.Parts()
+		parts := application.ReplySpeechParts(reply)
+		out.Turns = append(out.Turns, Turn{Meta: t.Meta, AudioIntro: t.AudioIntro, ReplyAudioParts: len(parts), ReplySpeechTexts: parts, CreatedAt: t.CreatedAt, ID: t.ID, Kind: string(t.Kind), Line: t.Line, NodeID: t.NodeID, Source: source, Speaker: string(t.Speaker), Text: t.Text, Reply: reply})
 	}
 	return out
 }

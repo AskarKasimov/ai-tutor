@@ -63,6 +63,7 @@ const sessionSchema = z
         meta: z.boolean().default(false),
         audio_intro: z.string().default(''),
         reply_audio_parts: z.number().int().min(0).max(100).default(0),
+        reply_speech_texts: z.array(z.string()).default([]),
         created_at: unix,
       }),
     ),
@@ -87,6 +88,7 @@ const sessionSchema = z
       meta: t.meta,
       audioIntro: t.audio_intro,
       replyAudioParts: t.reply_audio_parts,
+      replySpeechTexts: t.reply_speech_texts,
       createdAt: t.created_at,
     })),
   }))

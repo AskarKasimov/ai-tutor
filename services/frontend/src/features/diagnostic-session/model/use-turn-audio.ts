@@ -7,7 +7,14 @@ const FEEDBACK_PAUSE_MS = 700
 
 export type TurnAudioState = {
   turnId: string | null
-  status: 'idle' | 'loading' | 'playing' | 'error'
+  status: 'idle' | 'loading' | 'playing' | 'error' | 'paused'
+}
+
+type Progress = {
+  intro: boolean
+  replies: number
+  question: boolean
+  revealed: boolean
 }
 
 // Plays the voice of Geek turns, one at a time; fetched WAVs are kept for
@@ -21,11 +28,26 @@ export function useTurnAudio(sessionId: string) {
   })
   const cache = useRef(new Map<string, Blob>())
   const current = useRef<AbortController | null>(null)
+  const [progress, setProgress] = useState<Record<string, Progress>>({})
+
+  const revealAll = useCallback((turnId: string) => {
+    current.current?.abort()
+    current.current = null
+    setState({ turnId: null, status: 'idle' })
+    setProgress((old) => ({
+      ...old,
+      [turnId]: { intro: false, replies: 0, question: false, revealed: true },
+    }))
+  }, [])
 
   const stop = useCallback(() => {
     current.current?.abort()
     current.current = null
-    setState({ turnId: null, status: 'idle' })
+    setState((previous) =>
+      previous.turnId
+        ? { ...previous, status: 'paused' }
+        : { turnId: null, status: 'idle' },
+    )
   }, [])
 
   // onStart runs once, when the first part starts to play or when the turn
@@ -35,7 +57,13 @@ export function useTurnAudio(sessionId: string) {
     async (
       turn: Pick<
         Turn,
-        'id' | 'kind' | 'reply' | 'audioIntro' | 'replyAudioParts'
+        | 'id'
+        | 'kind'
+        | 'reply'
+        | 'audioIntro'
+        | 'replyAudioParts'
+        | 'replySpeechTexts'
+        | 'text'
       >,
       onStart?: () => void,
     ) => {
@@ -70,6 +98,8 @@ export function useTurnAudio(sessionId: string) {
 
       try {
         const count = turn.replyAudioParts ?? 0
+        if (count > 1 && turn.replySpeechTexts?.length !== count)
+          throw new Error('Missing speech fragment texts')
         const indices: Array<number | undefined> =
           count > 0
             ? Array.from({ length: count }, (_, i) => i)
@@ -79,55 +109,88 @@ export function useTurnAudio(sessionId: string) {
         // Only one block ahead: stopping/answering does not enqueue all speech.
         let reply = indices.length ? load('reply', indices[0]) : null
         reply?.catch(() => undefined)
-        const playAudio = async (blob: Blob) => {
+        const playAudio = async (
+          blob: Blob,
+          part: 'intro' | 'reply' | 'question',
+          index = 0,
+        ) => {
           signal.throwIfAborted()
           await playToEnd(blob, signal, () => {
             start()
+            if (mine())
+              setProgress((old) => {
+                const prior = old[turn.id] ?? {
+                  intro: false,
+                  replies: 0,
+                  question: false,
+                  revealed: false,
+                }
+                return {
+                  ...old,
+                  [turn.id]: {
+                    ...prior,
+                    intro: prior.intro || part === 'intro',
+                    replies:
+                      part === 'reply'
+                        ? Math.max(prior.replies, index + 1)
+                        : prior.replies,
+                    question: prior.question || part === 'question',
+                  },
+                }
+              })
             if (mine()) setState({ turnId: turn.id, status: 'playing' })
           })
           if (mine()) setState({ turnId: turn.id, status: 'loading' })
         }
         if (turn.audioIntro) {
-          // A missing intro must never hide or prevent the actual feedback.
-          const intro = await load('intro').catch(() => {
-            signal.throwIfAborted()
-            return null
-          })
-          if (intro) await playAudio(intro)
+          await playAudio(await load('intro'), 'intro')
         }
+        const questionText =
+          turn.reply && turn.text.trimStart().startsWith(turn.reply)
+            ? turn.text.trimStart().slice(turn.reply.length).trim()
+            : turn.text.trim()
         let question: Promise<Blob> | null = null
         for (let i = 0; i < indices.length; i++) {
           const audio = await reply!
           signal.throwIfAborted()
           reply = i + 1 < indices.length ? load('reply', indices[i + 1]) : null
           reply?.catch(() => undefined)
-          if (i === indices.length - 1) {
+          if (i === indices.length - 1 && questionText) {
             question = load('question')
             question.catch(() => undefined)
           }
-          await playAudio(audio)
+          await playAudio(audio, 'reply', i)
         }
         if (indices.length && turn.kind !== 'closing') {
           // Keep the question prefetched, but let the feedback sink in.
-          if (mine()) setState({ turnId: turn.id, status: 'playing' })
+          if (mine()) setState({ turnId: turn.id, status: 'loading' })
           await pauseAfterFeedback(signal)
         }
-        await playAudio(await (question ?? load('question')))
+        if (questionText)
+          await playAudio(await (question ?? load('question')), 'question')
+        else if (mine())
+          setProgress((old) => ({
+            ...old,
+            [turn.id]: {
+              ...(old[turn.id] ?? {
+                intro: false,
+                replies: 0,
+                revealed: false,
+              }),
+              question: true,
+            },
+          }))
         if (mine()) {
           current.current = null
           setState({ turnId: null, status: 'idle' })
         }
-      } catch (error) {
+      } catch {
         start()
         if (signal.aborted) return
-        // A browser that blocks autoplay is not an error: the student can
-        // press play.
-        const blocked =
-          error instanceof DOMException && error.name === 'NotAllowedError'
         if (mine())
           setState({
-            turnId: blocked ? null : turn.id,
-            status: blocked ? 'idle' : 'error',
+            turnId: turn.id,
+            status: 'error',
           })
       }
     },
@@ -135,7 +198,7 @@ export function useTurnAudio(sessionId: string) {
   )
 
   useEffect(() => () => current.current?.abort(), [])
-  return { state, play, stop }
+  return { state, play, stop, progress, revealAll }
 }
 
 // Plays one WAV and settles when it ends, fails or is aborted.

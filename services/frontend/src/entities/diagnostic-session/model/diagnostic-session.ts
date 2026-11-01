@@ -10,6 +10,7 @@ export type Turn = {
   meta?: boolean
   audioIntro?: string
   replyAudioParts?: number
+  replySpeechTexts?: string[]
   id: string
   line: number
   speaker: Speaker

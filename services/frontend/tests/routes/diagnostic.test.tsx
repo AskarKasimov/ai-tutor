@@ -171,6 +171,7 @@ function server(
   feedbackStatus = 200,
   strengths: string[] | null = ['Вы уверенно различаете модели.'],
   summary = 'Итоговое педагогическое резюме.',
+  mainScore = 3,
 ) {
   const sessionProgress = { ...progress, total_tasks: totalTasks }
   let answered = false
@@ -289,6 +290,12 @@ function server(
       return Response.json({
         ...resultBody,
         total_tasks: totalTasks,
+        diagnostic_score: mainScore,
+        answers: resultBody.answers.map((answer) => ({
+          ...answer,
+          score: mainScore,
+          grader_score: mainScore,
+        })),
         untested_basics: resultBody.untested_basics.slice(0, totalTasks - 1),
       })
     if (url.endsWith('/feedback')) {
@@ -624,6 +631,41 @@ it('allows listening to task instruction from the review list', async () => {
   fireEvent.click(listenBtn)
   await waitFor(() => expect(play).toHaveBeenCalled())
 }, 15000)
+
+it('offers training under the grade when the diagnostic found gaps', async () => {
+  server(200, 3, 200, [], 'Итоговое педагогическое резюме.', 1)
+  await home()
+  fireEvent.click(await screen.findByRole('button', { name: 'Начать запись' }))
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Завершить запись' }),
+  )
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Отправить ответ' }),
+  )
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Посмотреть итог' }),
+  )
+  expect(
+    await screen.findByText('Следующий шаг — персональная подготовка'),
+  ).toBeVisible()
+  const button = screen.getByRole('button', { name: 'Подтянуть слабые темы' })
+  // It stands right under the grade, before the conclusion and the cards.
+  const grade = screen.getByRole('region', { name: 'Предварительная оценка' })
+  expect(
+    grade.compareDocumentPosition(button) & Node.DOCUMENT_POSITION_FOLLOWING,
+  ).toBeTruthy()
+  expect(
+    button.compareDocumentPosition(
+      screen.getByRole('region', { name: 'Граф тем' }),
+    ) & Node.DOCUMENT_POSITION_FOLLOWING,
+  ).toBeTruthy()
+  fireEvent.click(button)
+  await waitFor(() =>
+    expect(
+      screen.queryByText('Следующий шаг — персональная подготовка'),
+    ).not.toBeInTheDocument(),
+  )
+})
 
 it('shows overall feedback when the backend sends null strengths', async () => {
   server(200, 3, 200, null)

@@ -15,6 +15,7 @@
   // Darker than --app-muted: 6.3:1 on white and at least 5.3:1 on the hero
   // gradient and its tiles, so small explanatory text stays readable.
   --result-muted: #536175;
+  --result-sky: linear-gradient(135deg, #f4fbf6 0%, #f1f6ff 55%, #f6f3ff 100%);
 
   display: grid;
   align-content: start;
@@ -40,10 +41,6 @@
   margin: 0;
   color: var(--cosmos-ink);
   letter-spacing: -0.02em;
-}
-.muted {
-  margin: 0;
-  color: var(--result-muted);
 }
 .lead {
   margin: 0;
@@ -71,7 +68,7 @@
       rgb(58 111 242 / 0.12),
       transparent 45%
     ),
-    linear-gradient(135deg, #f4fbf6 0%, #f1f6ff 55%, #f6f3ff 100%);
+    var(--result-sky);
 
   // Stars: a few fixed points of light.
   &::before {

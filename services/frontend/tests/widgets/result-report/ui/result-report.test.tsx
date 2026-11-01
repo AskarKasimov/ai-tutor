@@ -95,6 +95,14 @@ it('hides empty cards and unchecked topics', () => {
   expect(screen.queryByText('Не дошли')).not.toBeInTheDocument()
 })
 
+it('says so when no topic was checked', () => {
+  show(report([topic({ status: 'unchecked', score: null })]))
+  expect(screen.getByText('Ни одна тема не была проверена.')).toBeVisible()
+  expect(
+    screen.queryByRole('region', { name: 'Граф тем' }),
+  ).not.toBeInTheDocument()
+})
+
 it('removes the separate list of checked topics', () => {
   show(report([topic({})]))
   expect(

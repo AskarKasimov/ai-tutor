@@ -498,21 +498,6 @@ func (e *Exam) WeakSpots() []string {
 	return out
 }
 
-// CourseScore sums the points of every topic that was asked.
-func (e *Exam) CourseScore() (score, maximum int) {
-	for _, n := range e.Graph.Nodes {
-		s, m, _ := e.TopicPoints(n.ID)
-		score += s
-		maximum += m
-	}
-	return score, maximum
-}
-
-// CourseGrade grades the course by the points of the asked topics.
-func (e *Exam) CourseGrade() (*Grade, *int) {
-	return CourseGrade(e.CourseScore())
-}
-
 // TopicMark is the result of one criterion of a topic: a rubric item or one of
 // К1–К4, whose ID is k1…k4. Title and Reason are empty where none is known.
 type TopicMark struct {
@@ -570,20 +555,4 @@ func rubricMarks(items []RubricMark) []TopicMark {
 		out[i] = TopicMark{ID: m.ID, Title: m.Title(), Score: m.Score, Maximum: m.Levels[len(m.Levels)-1], Reason: m.Reason, Quote: m.Quote}
 	}
 	return out
-}
-
-// TopicPoints are the earned and maximum points of a topic; ok is false for a
-// topic that has no points: credited, unclear or never reached.
-func (e *Exam) TopicPoints(id string) (score, maximum int, ok bool) {
-	marks := e.TopicMarks(id)
-	score, maximum = markPoints(marks)
-	return score, maximum, len(marks) > 0
-}
-
-func markPoints(marks []TopicMark) (score, maximum int) {
-	for _, m := range marks {
-		score += m.Score
-		maximum += m.Maximum
-	}
-	return score, maximum
 }

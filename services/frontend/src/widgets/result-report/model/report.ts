@@ -47,6 +47,35 @@ export type ReportSummary =
   | { state: 'error'; retrying: boolean; onRetry: () => void }
   | { state: 'ready'; text: string }
 
+// The order of the statuses in the summary tiles and the graph legend.
+export const statusOrder: ReportStatus[] = [
+  'full',
+  'partial',
+  'gap',
+  'credited',
+  'insufficient',
+]
+
+// The state of the conclusion from the query that loads it.
+export function reportSummary<T>(
+  query: {
+    data: T | undefined
+    isError: boolean
+    isFetching: boolean
+    refetch: () => unknown
+  },
+  text: (data: T) => string,
+): ReportSummary {
+  if (query.isError)
+    return {
+      state: 'error',
+      retrying: query.isFetching,
+      onRetry: () => void query.refetch(),
+    }
+  if (query.data === undefined) return { state: 'loading' }
+  return { state: 'ready', text: text(query.data) }
+}
+
 // The status of an asked topic follows only from its points.
 export function statusByPoints(score: number, maxScore: number): ReportStatus {
   if (score <= 0) return 'gap'

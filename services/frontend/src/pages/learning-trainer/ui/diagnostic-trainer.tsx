@@ -1,5 +1,5 @@
 import { MarkdownContent } from '@/shared/ui'
-import { ResultReport, type ReportSummary } from '@/widgets/result-report'
+import { ResultReport, reportSummary } from '@/widgets/result-report'
 import { Button, Heading, Text } from '@radix-ui/themes'
 import { ChevronRight, Mic, RotateCcw, Zap } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
@@ -531,20 +531,12 @@ function DiagnosticSummary({
   )
   // The model writes only the general paragraph; headings of older texts are
   // cut off.
-  const summary: ReportSummary = overall.isPending
-    ? { state: 'loading' }
-    : overall.isError
-      ? {
-          state: 'error',
-          retrying: overall.isFetching,
-          onRetry: () => void overall.refetch(),
-        }
-      : {
-          state: 'ready',
-          text:
-            parseStructuredSummary(overall.data.summary || '').generalText ||
-            normalizeText(overall.data.summary || ''),
-        }
+  const summary = reportSummary(
+    overall,
+    (data) =>
+      parseStructuredSummary(data.summary || '').generalText ||
+      normalizeText(data.summary || ''),
+  )
   return (
     <main className={styles.summary}>
       <ResultReport
@@ -552,7 +544,7 @@ function DiagnosticSummary({
         summary={summary}
         highlight={
           hasGaps ? (
-            <section className={diagnosticStyles.nextStep}>
+            <div className={diagnosticStyles.nextStep}>
               <Text as="p" className={diagnosticStyles.nextStepText}>
                 {t('learningDiagnostic.nextStep')}
               </Text>
@@ -560,7 +552,7 @@ function DiagnosticSummary({
                 <Zap size={18} aria-hidden="true" />
                 {t('learningDiagnostic.toTraining')}
               </Button>
-            </section>
+            </div>
           ) : undefined
         }
       >

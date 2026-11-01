@@ -12,7 +12,7 @@ import {
   useDiagnosticResultQuery,
   useDiagnosticResultSummaryQuery,
 } from '@/features/diagnostic-session'
-import { ResultReport, type ReportSummary } from '@/widgets/result-report'
+import { ResultReport, reportSummary } from '@/widgets/result-report'
 import { toResultReport } from '../lib/to-result-report'
 import { TrainerShell } from './trainer-shared'
 import styles from './geek-result.module.scss'
@@ -54,15 +54,7 @@ export function GeekResult({
       ),
     [result],
   )
-  const summary: ReportSummary = summaryQuery.isPending
-    ? { state: 'loading' }
-    : summaryQuery.isError
-      ? {
-          state: 'error',
-          retrying: summaryQuery.isFetching,
-          onRetry: () => void summaryQuery.refetch(),
-        }
-      : { state: 'ready', text: summaryQuery.data }
+  const summary = reportSummary(summaryQuery, (text) => text)
   const actions = (
     <>
       <Button size="3" disabled={starting} onClick={onAgain}>

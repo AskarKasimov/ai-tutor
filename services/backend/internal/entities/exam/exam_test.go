@@ -183,7 +183,7 @@ func TestStrongStudentIsAskedOnlyTopLevelTopics(t *testing.T) {
 			t.Fatalf("%s status = %s", id, e.Nodes[id].Status)
 		}
 	}
-	grade, percent := e.CourseGrade()
+	grade, percent := courseGrade(e)
 	if *grade != GradeA || *percent != 100 || len(e.Gaps()) != 0 {
 		t.Fatalf("grade=%s percent=%d gaps=%v", *grade, *percent, e.Gaps())
 	}
@@ -247,7 +247,7 @@ func TestGapDescendsToTheDeepestUnmasteredTopic(t *testing.T) {
 		t.Fatalf("gaps = %v", got)
 	}
 	// The gaps on a-star and its prerequisite keep the sum at 78%.
-	grade, percent := e.CourseGrade()
+	grade, percent := courseGrade(e)
 	if *grade != GradeB || *percent != 78 {
 		t.Fatalf("grade=%s percent=%d", *grade, *percent)
 	}
@@ -368,7 +368,7 @@ func TestInsufficientAfterRephraseIsExcludedFromTheGrade(t *testing.T) {
 	if e.Nodes["exploration-exploitation"].Status != StatusCredited {
 		t.Fatalf("exploration credited by simulated-annealing: %s", e.Nodes["exploration-exploitation"].Status)
 	}
-	grade, percent := e.CourseGrade()
+	grade, percent := courseGrade(e)
 	if *grade != GradeA || *percent != 100 {
 		t.Fatalf("grade=%s percent=%d", *grade, *percent)
 	}
@@ -679,9 +679,8 @@ func TestCourseScoreCountsEveryAskedTopic(t *testing.T) {
 			}
 			return strongK
 		})
-		g, p := e.CourseGrade()
-		score, maximum := e.CourseScore()
-		return g, p, score, maximum
+		r := Session{Exam: e}.Result()
+		return r.Grade, r.ScorePercent, r.Score, r.Maximum
 	}
 	failed := Evaluation{Verdict: VerdictDontKnow}
 	g, p, score, maximum := grade(failed)
@@ -735,6 +734,7 @@ func TestTopicMarksFollowTheGradingScale(t *testing.T) {
 	if len(marks) != 2 || marks[0].Title != "Суть" || marks[0].Score != 1 || marks[0].Maximum != 2 || marks[0].Quote != "цитата" || marks[1].Title != "" {
 		t.Fatalf("rubric marks = %+v", marks)
 	}
+	result := Session{Exam: e}.Result()
 	for _, tc := range []struct {
 		id             string
 		score, maximum int
@@ -748,7 +748,12 @@ func TestTopicMarksFollowTheGradingScale(t *testing.T) {
 		{"unclear", 0, 0, false},
 		{"legacy", 3, 4, true},
 	} {
-		score, maximum, ok := e.TopicPoints(tc.id)
+		score, maximum, ok := 0, 0, false
+		for _, n := range result.Nodes {
+			if n.NodeID == tc.id && n.Score != nil {
+				score, maximum, ok = *n.Score, *n.Maximum, true
+			}
+		}
 		if score != tc.score || maximum != tc.maximum || ok != tc.ok {
 			t.Errorf("%s = %d/%d %v, want %d/%d %v", tc.id, score, maximum, ok, tc.score, tc.maximum, tc.ok)
 		}
@@ -1040,4 +1045,9 @@ func TestExamPicksOneVariantOfEveryTopic(t *testing.T) {
 	if len(g.Nodes[0].Variants) != 2 {
 		t.Fatal("the course graph keeps its variants")
 	}
+}
+
+func courseGrade(e *Exam) (*Grade, *int) {
+	r := Session{Exam: e}.Result()
+	return r.Grade, r.ScorePercent
 }

@@ -49,7 +49,7 @@
   padding: 20px 28px;
   border-radius: var(--result-radius);
   border: 1px solid var(--result-line);
-  background: linear-gradient(135deg, #f4fbf6 0%, #f1f6ff 55%, #f6f3ff 100%);
+  background: var(--result-sky);
 }
 .nextStepText {
   margin: 0;

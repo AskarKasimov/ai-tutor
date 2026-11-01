@@ -11,7 +11,6 @@ export type {
   Grade,
   SessionStatus,
   Speaker,
-  TopicMark,
   TopicResult,
   TopicStatus,
   Turn,

@@ -2,7 +2,7 @@ import { Heading, Popover, Text } from '@radix-ui/themes'
 import { type CSSProperties, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { layoutResultGraph } from '../lib/result-graph'
-import type { ReportMark, ReportStatus, ReportTopic } from '../model/report'
+import { type ReportMark, type ReportTopic, statusOrder } from '../model/report'
 import styles from './result-report.module.scss'
 
 // Card and spacing sizes of the map, in pixels.
@@ -11,14 +11,6 @@ const NODE_HEIGHT = 92
 const COLUMN_GAP = 64
 const ROW_GAP = 20
 const PADDING = 28
-
-const legendOrder: ReportStatus[] = [
-  'full',
-  'partial',
-  'gap',
-  'credited',
-  'insufficient',
-]
 
 // The checked topics and tasks: which relies on which, with the points of
 // every one. Prerequisites stand left of the topics on them. A card with marks
@@ -35,7 +27,7 @@ export function ResultGraph({ topics }: { topics: ReportTopic[] }) {
   const width = x(graph.columns) - COLUMN_GAP + PADDING
   const height = y(graph.rows) - ROW_GAP + PADDING
   const place = new Map(graph.nodes.map((node) => [node.topic.id, node]))
-  const statuses = legendOrder.filter((status) =>
+  const statuses = statusOrder.filter((status) =>
     graph.nodes.some((node) => node.topic.status === status),
   )
 
@@ -192,6 +184,11 @@ function GraphNodeCard({
   container: HTMLElement | null
 }) {
   const { t } = useTranslation()
+  const points = topic.score !== null && (
+    <span className={styles.graphGrade}>
+      {t('resultReport.points', { score: topic.score, max: topic.maxScore })}
+    </span>
+  )
   const card = (
     <>
       <span className={styles.graphNodeTitle} title={topic.title}>
@@ -204,14 +201,7 @@ function GraphNodeCard({
         >
           {t(`resultReport.statusShort.${topic.status}`)}
         </span>
-        {topic.score !== null && (
-          <span className={styles.graphGrade}>
-            {t('resultReport.points', {
-              score: topic.score,
-              max: topic.maxScore,
-            })}
-          </span>
-        )}
+        {points}
       </span>
     </>
   )
@@ -245,14 +235,7 @@ function GraphNodeCard({
           {topic.assisted && (
             <Text className={styles.flag}>{t('resultReport.assisted')}</Text>
           )}
-          {topic.score !== null && (
-            <span className={styles.graphGrade}>
-              {t('resultReport.points', {
-                score: topic.score,
-                max: topic.maxScore,
-              })}
-            </span>
-          )}
+          {points}
         </div>
         {topic.marks.length > 0 && (
           <ul className={styles.marks}>

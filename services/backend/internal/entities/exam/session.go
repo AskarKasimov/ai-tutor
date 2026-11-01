@@ -168,7 +168,11 @@ func (s Session) Result() Result {
 		node := NodeResult{NodeID: n.ID, Title: n.Title, Status: state.Status, Grade: state.Grade, TopLevel: slices.Contains(top, n.ID),
 			Requires: append([]string{}, n.Prerequisites...), Assisted: state.Assisted, Marks: marks, Reply: replies[n.ID]}
 		if len(marks) > 0 {
-			score, maximum := markPoints(marks)
+			score, maximum := 0, 0
+			for _, m := range marks {
+				score += m.Score
+				maximum += m.Maximum
+			}
 			node.Score, node.Maximum = &score, &maximum
 			r.Score += score
 			r.Maximum += maximum

@@ -3,22 +3,14 @@ import { CheckCircle2, AlertTriangle } from 'lucide-react'
 import type { CSSProperties, ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { MarkdownContent } from '@/shared/ui'
-import type {
-  ReportStatus,
-  ReportSummary,
-  ReportTopic,
-  ResultReportData,
+import {
+  type ReportSummary,
+  type ReportTopic,
+  type ResultReportData,
+  statusOrder,
 } from '../model/report'
 import { ResultGraph } from './result-graph'
 import styles from './result-report.module.scss'
-
-const statusOrder: ReportStatus[] = [
-  'full',
-  'partial',
-  'gap',
-  'credited',
-  'insufficient',
-]
 
 // The one result screen of the learning diagnostic and the exam: the overall
 // grade, the conclusion, what went well and what to work on, and the graph of

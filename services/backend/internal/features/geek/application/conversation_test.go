@@ -118,3 +118,46 @@ func TestChunkAudioAndIntroUseTextCacheAndValidateBounds(t *testing.T) {
 		t.Fatal("chunk accepted for question")
 	}
 }
+
+func TestNextQuestionTransitionOnlyAfterClosedTopic(t *testing.T) {
+	turn := exam.Turn{Speaker: exam.SpeakerGeek, Kind: exam.KindQuestion, Recap: "фидбек", Line: 3}
+	first := NextQuestionTransition(turn)
+	if first == "" || first != NextQuestionTransition(turn) {
+		t.Fatal("transition must be stable and non-empty")
+	}
+	turn.Line = 5
+	if NextQuestionTransition(turn) == first {
+		t.Fatal("consecutive transitions repeated")
+	}
+	turn.Kind = exam.KindFollowup
+	if NextQuestionTransition(turn) != "" {
+		t.Fatal("followup must not announce a new topic")
+	}
+	turn.Kind = exam.KindQuestion
+	turn.Recap = ""
+	if NextQuestionTransition(turn) != "" {
+		t.Fatal("first question must not have a transition")
+	}
+}
+
+func TestTransitionAudioUsesTheSamePreparedText(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	s, _, _ := f.service.Start(ctx, "student", "subject", "start")
+	s = f.answer(t, s, Answer{Text: "сильно"})
+	last := &s.Turns[len(s.Turns)-1]
+	last.Kind = exam.KindQuestion
+	last.Recap = "Ответ.\n\n"
+	want := NextQuestionTransition(*last)
+	data, _ := json.Marshal(s)
+	f.store.sessions[s.ID] = data
+	if _, err := f.service.TurnAudio(ctx, "student", s.ID, last.ID, AudioTransition); err != nil {
+		t.Fatal(err)
+	}
+	if got := f.voice.calls[len(f.voice.calls)-1]; got != want {
+		t.Fatalf("transition mismatch: %q != %q", got, want)
+	}
+	if !strings.Contains(strings.Join(ConversationSpeech(), "\n"), want) {
+		t.Fatal("transition is not queued for prewarming")
+	}
+}

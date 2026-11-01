@@ -31,10 +31,11 @@ type Config struct {
 type AudioPart string
 
 const (
-	AudioWhole    AudioPart = ""
-	AudioReply    AudioPart = "reply"
-	AudioQuestion AudioPart = "question"
-	AudioIntro    AudioPart = "intro"
+	AudioWhole      AudioPart = ""
+	AudioReply      AudioPart = "reply"
+	AudioQuestion   AudioPart = "question"
+	AudioIntro      AudioPart = "intro"
+	AudioTransition AudioPart = "transition"
 )
 
 type Service struct {
@@ -372,6 +373,12 @@ func (s *Service) TurnAudio(ctx context.Context, ownerID, id, turnID string, par
 			return nil, fault.New(fault.NotFound, "TURN_PART_NOT_FOUND", "У реплики Geek нет вводной.")
 		}
 		return s.speech.Part(ctx, turn.AudioIntro)
+	case AudioTransition:
+		text := NextQuestionTransition(turn)
+		if text == "" {
+			return nil, fault.New(fault.NotFound, "TURN_PART_NOT_FOUND", "У реплики Geek нет перехода.")
+		}
+		return s.speech.Part(ctx, text)
 	case AudioWhole:
 		return s.speech.Get(ctx, "geek/"+session.ID+"/"+turn.ID+".wav", turn.Text)
 	case AudioReply, AudioQuestion:
@@ -392,7 +399,7 @@ func (s *Service) TurnAudio(ctx context.Context, ownerID, id, turnID string, par
 		}
 		return s.speech.Part(ctx, text)
 	}
-	return nil, fault.Validation("part", "Часть реплики: intro, reply или question.")
+	return nil, fault.Validation("part", "Часть реплики: intro, reply, transition или question.")
 }
 
 func (s *Service) load(ctx context.Context, ownerID, id string) (exam.Session, error) {
@@ -486,7 +493,17 @@ func (s *Service) appendLed(session *exam.Session, kind exam.TurnKind, nodeID *s
 	session.Turns[len(session.Turns)-1].Reply = reply
 	if recap && reply != "" {
 		session.Turns[len(session.Turns)-1].Recap = reply + "\n\n"
-		session.Turns[len(session.Turns)-1].AudioIntro = feedbackLeadIn
+		index := (len(session.Turns) / 2) % len(feedbackLeadIns)
+		for i := len(session.Turns) - 2; i >= 0; i-- {
+			if session.Turns[i].AudioIntro == feedbackLeadIns[index] {
+				index = (index + 1) % len(feedbackLeadIns)
+				break
+			}
+			if session.Turns[i].AudioIntro != "" {
+				break
+			}
+		}
+		session.Turns[len(session.Turns)-1].AudioIntro = feedbackLeadIns[index]
 	}
 	return nil
 }

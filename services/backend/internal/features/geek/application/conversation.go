@@ -3,6 +3,19 @@ package application
 import "github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/exam"
 
 const feedbackLeadIn = "Давай разберём ответ."
+
+var feedbackLeadIns = []string{feedbackLeadIn, "Давай посмотрим на твой ответ.", "Подведём итог твоему ответу.", "Посмотрим, что получилось."}
+var nextQuestionTransitions = []string{"Давай перейдём к следующему вопросу.", "Теперь перейдём к следующей теме.", "Продолжим: следующий вопрос.", "Хорошо, перейдём дальше."}
+
+// NextQuestionTransition is deterministic for existing turns and is only used
+// when feedback closes a topic and a new main question follows it.
+func NextQuestionTransition(turn exam.Turn) string {
+	if turn.Speaker != exam.SpeakerGeek || turn.Kind != exam.KindQuestion || turn.Recap == "" {
+		return ""
+	}
+	return nextQuestionTransitions[(turn.Line/2)%len(nextQuestionTransitions)]
+}
+
 const pauseAcknowledgement = "Хорошо, подожду. Продолжай, когда будет удобно."
 
 func addressAcknowledgement(preference exam.AddressPreference) string {
@@ -17,6 +30,8 @@ func addressAcknowledgement(preference exam.AddressPreference) string {
 }
 
 func ConversationSpeech() []string {
-	return []string{feedbackLeadIn, pauseAcknowledgement,
-		addressAcknowledgement(exam.AddressFeminine), addressAcknowledgement(exam.AddressMasculine), addressAcknowledgement(exam.AddressNeutral)}
+	texts := append([]string{}, feedbackLeadIns...)
+	texts = append(texts, nextQuestionTransitions...)
+	return append(texts, pauseAcknowledgement,
+		addressAcknowledgement(exam.AddressFeminine), addressAcknowledgement(exam.AddressMasculine), addressAcknowledgement(exam.AddressNeutral))
 }

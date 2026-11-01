@@ -37,13 +37,12 @@ type Turn struct {
 	// Служебная реплика, которая не расходует попытку и не участвует в оценке знаний.
 	Meta bool `json:"meta,omitempty" binding:"optional"`
 	// Предозвученная вводная перед фидбеком; запрашивается как part=intro.
-	AudioIntro string `json:"audio_intro,omitempty" binding:"optional"`
+	AudioIntro      string `json:"audio_intro,omitempty" binding:"optional"`
+	AudioTransition string `json:"audio_transition,omitempty" binding:"optional"`
 	// Число блоков фидбека; part=reply и chunk с нуля возвращают отдельный блок.
-	ReplyAudioParts int `json:"reply_audio_parts,omitempty" binding:"optional" minimum:"0"`
-	// Тексты отдельных озвучиваемых блоков ответа, в порядке воспроизведения.
-	ReplySpeechTexts []string `json:"reply_speech_texts,omitempty" binding:"optional"`
-	CreatedAt        int64    `json:"created_at"`
-	ID               string   `json:"id"`
+	ReplyAudioParts int    `json:"reply_audio_parts,omitempty" binding:"optional" minimum:"0"`
+	CreatedAt       int64  `json:"created_at"`
+	ID              string `json:"id"`
 	// question — основной вопрос, followup — дополнительный, rephrase — переформулировка, closing — завершение, answer — ответ студента
 	Kind string `json:"kind" enums:"question,followup,rephrase,closing,answer"`
 	// Номер строки транскрипта
@@ -371,7 +370,7 @@ func (h *Handler) RawMaterial(w http.ResponseWriter, r *http.Request) {
 // @Produce audio/wav
 // @Param id path string true "ID диагностики" minlength(1) maxlength(128)
 // @Param turn_id path string true "ID реплики Geek" minlength(1) maxlength(128)
-// @Param part query string false "Часть реплики" Enums(intro, reply, question)
+// @Param part query string false "Часть реплики" Enums(intro, reply, transition, question)
 // @Param chunk query int false "Номер блока фидбека с нуля, только part=reply" minimum(0)
 // @Success 200 {file} file "WAV реплики"
 // @Failure 401 {object} fault.Error
@@ -424,7 +423,7 @@ func toSession(s domain.Session) Session {
 		}
 		reply, _ := t.Parts()
 		parts := application.ReplySpeechParts(reply)
-		out.Turns = append(out.Turns, Turn{Meta: t.Meta, AudioIntro: t.AudioIntro, ReplyAudioParts: len(parts), ReplySpeechTexts: parts, CreatedAt: t.CreatedAt, ID: t.ID, Kind: string(t.Kind), Line: t.Line, NodeID: t.NodeID, Source: source, Speaker: string(t.Speaker), Text: t.Text, Reply: reply})
+		out.Turns = append(out.Turns, Turn{Meta: t.Meta, AudioIntro: t.AudioIntro, AudioTransition: application.NextQuestionTransition(t), ReplyAudioParts: len(parts), CreatedAt: t.CreatedAt, ID: t.ID, Kind: string(t.Kind), Line: t.Line, NodeID: t.NodeID, Source: source, Speaker: string(t.Speaker), Text: t.Text, Reply: reply})
 	}
 	return out
 }

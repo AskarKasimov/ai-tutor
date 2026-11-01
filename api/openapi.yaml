@@ -1466,6 +1466,8 @@ components:
         audio_intro:
           description: Предозвученная вводная перед фидбеком; запрашивается как part=intro.
           type: string
+        audio_transition:
+          type: string
         created_at:
           type: integer
         id:
@@ -1498,12 +1500,6 @@ components:
           description: Число блоков фидбека; part=reply и chunk с нуля возвращают отдельный блок.
           minimum: 0
           type: integer
-        reply_speech_texts:
-          description: Тексты отдельных озвучиваемых блоков ответа, в порядке воспроизведения.
-          items:
-            type: string
-          type: array
-          uniqueItems: false
         source:
           description: 'Только у реплик студента: голос после подтверждения, текст или кнопка «Не знаю»'
           enum:
@@ -4781,6 +4777,7 @@ paths:
             enum:
               - intro
               - reply
+              - transition
               - question
             type: string
         - description: Номер блока фидбека с нуля, только part=reply

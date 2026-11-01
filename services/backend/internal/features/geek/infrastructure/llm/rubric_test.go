@@ -103,3 +103,19 @@ func TestPureRubricControlNeverConsumesSubjectContent(t *testing.T) {
 		}
 	}
 }
+
+func TestIncompleteAcknowledgementDoesNotSpendAnAttempt(t *testing.T) {
+	for _, rubric := range []string{"", "Балл (макс. 1): 1 — верно; 0 — нет."} {
+		f := &fakeGateway{}
+		g := serve(t, f, time.Second)
+		got, err := g.Evaluate(context.Background(), application.EvaluationRequest{Node: exam.Node{AssessmentGuidance: rubric}, Dialogue: []exam.Turn{{Line: 1, Speaker: exam.SpeakerGeek, Text: "Назови элементы"}, {Line: 2, Speaker: exam.SpeakerStudent, Text: "Я вижу."}}})
+		if err != nil || got.Verdict != exam.VerdictClarifyQuestion || got.Clarification == "" || len(f.requests) != 0 {
+			t.Fatalf("result=%+v err=%v calls=%d", got, err, len(f.requests))
+		}
+	}
+	for _, text := range []string{"Я вижу сенсор", "Я вижу, подожди", "Я понял, камера — датчик", "Дайте подумать"} {
+		if incompleteAcknowledgement(text) {
+			t.Fatalf("subject content or explicit pause intercepted: %q", text)
+		}
+	}
+}

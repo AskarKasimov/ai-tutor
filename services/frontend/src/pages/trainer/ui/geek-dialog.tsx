@@ -137,7 +137,7 @@ function Dialogue({
   const currentTurnId = session.currentTurnId
   const lastTurn = session.turns[session.turns.length - 1]
   const initialCompleted = useRef(session.status === 'completed')
-  // Text is available as soon as the answer arrives. Speech loads independently.
+  // Voice transcription has its own pending state in the conversation.
   const [transcribing, setTranscribing] = useState(false)
 
   // A new Geek turn is voiced at once; the first one after loading too, since
@@ -281,7 +281,7 @@ function Dialogue({
         )}
         {pending && (
           <li className={styles.geek}>
-            <Text role="status">{t('geek.audioFormulating')}</Text>
+            <Thinking label={t('geek.audioFormulating')} visibleLabel />
           </li>
         )}
       </ol>
@@ -421,13 +421,6 @@ function TurnItem({
     )
   const progress = audio.progress[turn.id]
   const partial = live && !progress?.revealed
-  const replies = turn.replySpeechTexts?.length
-    ? turn.replySpeechTexts
-    : (turn.replyAudioParts ?? 0) > 1
-      ? Array.from({ length: turn.replyAudioParts! }, (_, i) =>
-          i === turn.replyAudioParts! - 1 ? turn.reply : '',
-        )
-      : [turn.reply]
   const question =
     turn.reply && turn.text.trimStart().startsWith(turn.reply)
       ? turn.text.trimStart().slice(turn.reply.length).trim()
@@ -435,14 +428,17 @@ function TurnItem({
   const shown = partial
     ? [
         progress?.intro ? turn.audioIntro : '',
-        ...replies.slice(0, progress?.replies ?? 0),
+        progress?.replies ? turn.reply : '',
+        progress?.transition ? turn.audioTransition : '',
         progress?.question ? question : '',
       ]
         .filter(Boolean)
         .join('\n\n')
     : [
         progress?.intro || progress?.revealed || !live ? turn.audioIntro : '',
-        turn.text,
+        turn.reply,
+        turn.audioTransition,
+        question,
       ]
         .filter(Boolean)
         .join('\n\n')
@@ -450,7 +446,8 @@ function TurnItem({
   const failed =
     audio.state.turnId === turn.id && audio.state.status === 'error'
   const paused =
-    audio.state.turnId === turn.id && audio.state.status === 'paused'
+    (audio.state.turnId === turn.id && audio.state.status === 'paused') ||
+    progress?.interrupted
   return (
     <li className={styles.geek}>
       <div className={styles.geekHead}>
@@ -473,9 +470,16 @@ function TurnItem({
         !paused &&
         (audio.state.turnId !== turn.id ||
           audio.state.status !== 'playing') && (
-          <Text role="status">
-            {t(shown ? 'geek.audioContinuing' : 'geek.audioFormulating')}
-          </Text>
+          <Thinking
+            visibleLabel
+            label={t(
+              shown
+                ? 'geek.audioContinuing'
+                : turn.reply
+                  ? 'geek.audioFormulating'
+                  : 'geek.audioQuestion',
+            )}
+          />
         )}
       {partial && (failed || (waiting && paused)) && (
         <div className={styles.error} role="alert">
@@ -727,9 +731,11 @@ function Composer({
 function Thinking({
   label,
   student = false,
+  visibleLabel = false,
 }: {
   label: string
   student?: boolean
+  visibleLabel?: boolean
 }) {
   return (
     <Text
@@ -745,7 +751,9 @@ function Thinking({
         <span />
         <span />
       </span>
-      <span className={styles.visuallyHidden}>{label}</span>
+      <span className={visibleLabel ? undefined : styles.visuallyHidden}>
+        {label}
+      </span>
     </Text>
   )
 }

@@ -15,11 +15,13 @@ type Progress = {
   replies: number
   question: boolean
   revealed: boolean
+  transition?: boolean
+  interrupted?: boolean
 }
 
 // Plays the voice of Geek turns, one at a time; fetched WAVs are kept for
-// replays while the dialogue is open. A cached intro can play while the first
-// reply block is synthesized; each block prefetches only its immediate successor.
+// replays while the dialogue is open. The cached intro can play while the
+// complete feedback is synthesized; the question is prefetched afterwards.
 export function useTurnAudio(sessionId: string) {
   const { diagnostic } = useDiagnosticDependencies()
   const [state, setState] = useState<TurnAudioState>({
@@ -28,11 +30,13 @@ export function useTurnAudio(sessionId: string) {
   })
   const cache = useRef(new Map<string, Blob>())
   const current = useRef<AbortController | null>(null)
+  const activeTurn = useRef<string | null>(null)
   const [progress, setProgress] = useState<Record<string, Progress>>({})
 
   const revealAll = useCallback((turnId: string) => {
     current.current?.abort()
     current.current = null
+    activeTurn.current = null
     setState({ turnId: null, status: 'idle' })
     setProgress((old) => ({
       ...old,
@@ -43,6 +47,7 @@ export function useTurnAudio(sessionId: string) {
   const stop = useCallback(() => {
     current.current?.abort()
     current.current = null
+    activeTurn.current = null
     setState((previous) =>
       previous.turnId
         ? { ...previous, status: 'paused' }
@@ -61,15 +66,43 @@ export function useTurnAudio(sessionId: string) {
         | 'kind'
         | 'reply'
         | 'audioIntro'
+        | 'audioTransition'
         | 'replyAudioParts'
-        | 'replySpeechTexts'
         | 'text'
       >,
       onStart?: () => void,
     ) => {
+      const interruptedId = activeTurn.current
+      if (interruptedId && interruptedId !== turn.id) {
+        setProgress((old) => ({
+          ...old,
+          [interruptedId]: {
+            ...(old[interruptedId] ?? {
+              intro: false,
+              replies: 0,
+              question: false,
+              revealed: false,
+            }),
+            interrupted: true,
+          },
+        }))
+      }
       current.current?.abort()
       const controller = new AbortController()
       current.current = controller
+      activeTurn.current = turn.id
+      setProgress((old) => ({
+        ...old,
+        [turn.id]: {
+          ...(old[turn.id] ?? {
+            intro: false,
+            replies: 0,
+            question: false,
+            revealed: false,
+          }),
+          interrupted: false,
+        },
+      }))
       const { signal } = controller
       const mine = () => current.current === controller
       let started = false
@@ -97,21 +130,12 @@ export function useTurnAudio(sessionId: string) {
       }
 
       try {
-        const count = turn.replyAudioParts ?? 0
-        if (count > 1 && turn.replySpeechTexts?.length !== count)
-          throw new Error('Missing speech fragment texts')
-        const indices: Array<number | undefined> =
-          count > 0
-            ? Array.from({ length: count }, (_, i) => i)
-            : turn.reply.trim()
-              ? [undefined]
-              : []
-        // Only one block ahead: stopping/answering does not enqueue all speech.
-        let reply = indices.length ? load('reply', indices[0]) : null
+        const hasReply = Boolean(turn.reply.trim())
+        const reply = hasReply ? load('reply') : null
         reply?.catch(() => undefined)
         const playAudio = async (
           blob: Blob,
-          part: 'intro' | 'reply' | 'question',
+          part: 'intro' | 'reply' | 'transition' | 'question',
           index = 0,
         ) => {
           signal.throwIfAborted()
@@ -135,6 +159,7 @@ export function useTurnAudio(sessionId: string) {
                         ? Math.max(prior.replies, index + 1)
                         : prior.replies,
                     question: prior.question || part === 'question',
+                    transition: prior.transition || part === 'transition',
                   },
                 }
               })
@@ -150,22 +175,22 @@ export function useTurnAudio(sessionId: string) {
             ? turn.text.trimStart().slice(turn.reply.length).trim()
             : turn.text.trim()
         let question: Promise<Blob> | null = null
-        for (let i = 0; i < indices.length; i++) {
+        if (reply) {
           const audio = await reply!
           signal.throwIfAborted()
-          reply = i + 1 < indices.length ? load('reply', indices[i + 1]) : null
-          reply?.catch(() => undefined)
-          if (i === indices.length - 1 && questionText) {
+          if (questionText) {
             question = load('question')
             question.catch(() => undefined)
           }
-          await playAudio(audio, 'reply', i)
+          await playAudio(audio, 'reply')
         }
-        if (indices.length && turn.kind !== 'closing') {
+        if (hasReply && turn.kind !== 'closing') {
           // Keep the question prefetched, but let the feedback sink in.
           if (mine()) setState({ turnId: turn.id, status: 'loading' })
           await pauseAfterFeedback(signal)
         }
+        if (turn.audioTransition)
+          await playAudio(await load('transition'), 'transition')
         if (questionText)
           await playAudio(await (question ?? load('question')), 'question')
         else if (mine())
@@ -182,6 +207,7 @@ export function useTurnAudio(sessionId: string) {
           }))
         if (mine()) {
           current.current = null
+          activeTurn.current = null
           setState({ turnId: null, status: 'idle' })
         }
       } catch {

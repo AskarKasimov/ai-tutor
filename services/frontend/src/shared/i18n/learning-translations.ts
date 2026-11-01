@@ -175,7 +175,7 @@ export const learningTranslations = {
     steps: {
       check: {
         title: 'Пройдите проверку',
-        text: 'Голосом, без клавиатуры',
+        text: 'Ответьте на вопросы по темам курса',
       },
       gaps: {
         title: 'Найдите пробелы',

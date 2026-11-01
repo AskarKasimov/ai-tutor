@@ -157,12 +157,12 @@ it('loads subjects without creating a variant, then starts only the chosen subje
     screen.queryByRole('navigation', { name: 'Направления' }),
   ).not.toBeInTheDocument()
   // Diagnostic and training are one process: a single action, no training tile.
-  // Four steps say what the student does, starting with a voice check.
+  // Four steps say what the student does, starting with a knowledge check.
   const steps = await screen.findByRole('list', {
     name: 'Как проходит обучение',
   })
   expect(steps).toHaveTextContent('Пройдите проверку')
-  expect(steps).toHaveTextContent('Голосом, без клавиатуры')
+  expect(steps).toHaveTextContent('Ответьте на вопросы по темам курса')
   expect(steps).toHaveTextContent('Найдите пробелы')
   expect(steps).toHaveTextContent('Персонализированный под вас')
   expect(steps).toHaveTextContent('Подготовьтесь по плану')

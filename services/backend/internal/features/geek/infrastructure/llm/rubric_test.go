@@ -16,7 +16,6 @@ func TestRubricEvaluationValidatesMarksAndRetries(t *testing.T) {
 		strings.Replace(valid, `"score":1`, `"score":2`, 1),
 		strings.Replace(valid, `"evidence_lines":[2]`, `"evidence_lines":[1]`, 1),
 		strings.Replace(valid, `"id":"r1"`, `"id":"invented"`, 1),
-		strings.Replace(valid, `"quote":"Элементы"`, `"quote":"Вычисление, которого студент не произносил"`, 1),
 	} {
 		f := &fakeGateway{answers: []string{`{"verdict":"answered","address_preference":""}`, bad, valid, valid}}
 		g := serve(t, f, time.Second)
@@ -31,6 +30,28 @@ func TestRubricEvaluationValidatesMarksAndRetries(t *testing.T) {
 		if f.requests[1].Messages[0].GetContent() != rubricSystemPrompt {
 			t.Fatal("rubric evaluated by the universal examiner role")
 		}
+	}
+}
+
+func TestRubricWrongQuoteDoesNotStopTheExam(t *testing.T) {
+	const quote = "Вычисление, которого студент не произносил"
+	mark := `{"id":"r1","score":1,"evidence_lines":[2],"quote":"` + quote + `","reason":"Все элементы"}`
+	f := &fakeGateway{answers: []string{
+		`{"verdict":"answered","address_preference":""}`,
+		`{"address_preference":"","verdict":"answered","answer_complete":true,"marks":[` + mark + `]}`,
+		`{"answer_complete":true,"marks":[` + mark + `]}`,
+	}}
+	g := serve(t, f, time.Second)
+	n := exam.Node{ID: "a", Title: "Тема", Questions: []string{"Назови элементы"}, AssessmentGuidance: "Балл (макс. 1): 1 — все элементы; 0 — нет."}
+	got, err := g.Evaluate(context.Background(), application.EvaluationRequest{Node: n, Kind: exam.KindQuestion, Dialogue: []exam.Turn{
+		{Line: 1, Speaker: exam.SpeakerGeek, Text: "Назови элементы"},
+		{Line: 2, Speaker: exam.SpeakerStudent, Text: "Элементы названы"},
+	}})
+	if err != nil || got.Rubric == nil || len(f.requests) != 3 {
+		t.Fatalf("result=%+v err=%v requests=%d", got, err, len(f.requests))
+	}
+	if m := got.Rubric.Items[0]; m.Score != 1 || m.Quote != "" {
+		t.Fatalf("mark = %+v", m)
 	}
 }
 

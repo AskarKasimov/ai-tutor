@@ -1,5 +1,11 @@
 package exam
 
+import (
+	"math"
+
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/stats"
+)
+
 // Criteria are the four exam criteria, each 0 (not shown), 1 (partly) or 2 (fully):
 // K1 correctness and terminology, K2 logic and justification, K3 objections and
 // counterexamples, K4 changed conditions and limits of the answer.
@@ -85,6 +91,23 @@ func TopicGrade(c Criteria, assisted bool, unassessed UnassessedCriteria) Grade 
 		grade = GradeC
 	}
 	return grade
+}
+
+// CompetencyPoints is what a competency weighs in the overall score, in the exam
+// and the learning diagnostic alike, however many constituents and tasks it took
+// (decision of 01.11.2026).
+const CompetencyPoints = 5
+
+// OverallScore is the score of all competencies by their shares, rounded to one
+// decimal, its maximum and the percent. Without competencies there is no percent.
+func OverallScore(competencies []float64) (score float64, maximum int, percent *int) {
+	if len(competencies) == 0 {
+		return 0, 0, nil
+	}
+	share := stats.Mean(competencies)
+	maximum = CompetencyPoints * len(competencies)
+	p := stats.Percent(share)
+	return math.Round(share*float64(maximum)*10) / 10, maximum, &p
 }
 
 // CourseGrade translates the percent of the overall score into the overall

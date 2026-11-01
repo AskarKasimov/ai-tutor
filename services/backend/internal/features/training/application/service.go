@@ -110,11 +110,15 @@ func (s *Service) plan(ctx context.Context, owner, id string) (training.Session,
 		}
 		state.Targets = append(state.Targets, training.Target{Kind: target.Kind, Source: task, OriginalScore: target.Answer.Score, OriginalMaxScore: max, OriginalFeedback: append([]string{}, target.Answer.Feedback...), OriginalCriteria: criteria})
 	}
+	perfectMains := 0
 	for _, a := range d.Answers {
 		state.DiagnosticScore += a.Score
+		if a.Role == "main" && a.Score >= 2 {
+			perfectMains++
+		}
 	}
 	state.MaximumScore = 3 * d.Variant.IncludedCompetencyCount
-	if len(state.Targets) == 0 && d.Variant.IncludedCompetencyCount > 0 {
+	if len(state.Targets) == 0 && d.Variant.IncludedCompetencyCount > 0 && perfectMains == d.Variant.IncludedCompetencyCount {
 		state.Mode = "free_practice"
 		revision, tasks, err := s.repo.Practice(ctx, state.SubjectID)
 		if err != nil {

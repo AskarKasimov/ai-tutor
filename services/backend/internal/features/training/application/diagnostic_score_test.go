@@ -74,7 +74,7 @@ func TestPreviewLeavesOutACompetencyClosedAtNinetyPercent(t *testing.T) {
 	if got.Mode != "focused" || len(got.Topics) != 1 || got.Topics[0].OutcomeID != "open1main" {
 		t.Fatalf("with an open competency: %+v", got)
 	}
-	if got := preview(closed); got.Mode != "free_practice" {
+	if got := preview(closed); got.Mode != "focused" || len(got.Topics) != 0 {
 		t.Fatalf("all closed: %+v", got)
 	}
 }

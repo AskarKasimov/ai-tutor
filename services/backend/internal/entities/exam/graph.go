@@ -8,7 +8,7 @@ import (
 	"math/rand/v2"
 	"strings"
 
-	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/scoring"
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/stats"
 )
 
 // Node is a topic of the course graph. Prerequisites reference other nodes;
@@ -200,7 +200,9 @@ func (g Graph) Node(id string) (Node, bool) {
 // competencyShares normalizes the shares of the scored topics: a top-level topic
 // with its prerequisites is one constituent, the mean of its topics; a competency
 // is the mean of its constituents. A graph without competencies treats every
-// top-level topic as one. A prerequisite of two topics counts in both.
+// top-level topic as one. A top-level topic without its own result is no
+// constituent, even if a prerequisite it shares was scored; a prerequisite of two
+// scored topics counts in both.
 func (g Graph) competencyShares(topics map[string]float64) []float64 {
 	nodes := make(map[string]Node, len(g.Nodes))
 	for _, n := range g.Nodes {
@@ -209,6 +211,9 @@ func (g Graph) competencyShares(topics map[string]float64) []float64 {
 	order := []string{}
 	constituents := map[string][]float64{}
 	for _, top := range g.TopLevel() {
+		if _, scored := topics[top]; !scored {
+			continue
+		}
 		shares := []float64{}
 		seen := map[string]bool{}
 		var walk func(id string)
@@ -225,9 +230,6 @@ func (g Graph) competencyShares(topics map[string]float64) []float64 {
 			}
 		}
 		walk(top)
-		if len(shares) == 0 {
-			continue
-		}
 		key := nodes[top].Competency
 		if key == "" {
 			key = "\x00" + top
@@ -235,11 +237,11 @@ func (g Graph) competencyShares(topics map[string]float64) []float64 {
 		if _, ok := constituents[key]; !ok {
 			order = append(order, key)
 		}
-		constituents[key] = append(constituents[key], scoring.Mean(shares))
+		constituents[key] = append(constituents[key], stats.Mean(shares))
 	}
 	out := make([]float64, len(order))
 	for i, key := range order {
-		out[i] = scoring.Mean(constituents[key])
+		out[i] = stats.Mean(constituents[key])
 	}
 	return out
 }

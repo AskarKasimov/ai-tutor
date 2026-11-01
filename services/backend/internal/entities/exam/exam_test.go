@@ -768,6 +768,34 @@ func TestDontKnowAndAssessedZerosWeighTheSame(t *testing.T) {
 	}
 }
 
+func TestAnUnaskedTopLevelTopicIsNoConstituent(t *testing.T) {
+	e, first := NewExam(Graph{Nodes: []Node{
+		{ID: "base", Title: "Основа"},
+		{ID: "a", Title: "А", Prerequisites: []string{"base"}},
+		{ID: "b", Title: "Б", Prerequisites: []string{"base"}},
+	}}, 2, nil)
+	strong := Evaluation{Verdict: VerdictAnswered, Criteria: Criteria{2, 2, 0, 0}, Unassessed: UnassessedCriteria{K3: true, K4: true}, AnswerComplete: ptr(true)}
+	var asked string
+	run(t, e, first, func(s Step) Evaluation {
+		if s.NodeID != "base" {
+			asked = s.NodeID
+			return Evaluation{Verdict: VerdictDontKnow}
+		}
+		return strong
+	})
+	unasked := "a"
+	if asked == "a" {
+		unasked = "b"
+	}
+	if e.Nodes[unasked].Status != StatusUnchecked {
+		t.Fatalf("%s status = %s", unasked, e.Nodes[unasked].Status)
+	}
+	r := Session{Exam: e}.Result()
+	if r.Score != 2.5 || r.Maximum != 5 || *r.ScorePercent != 50 || *r.Grade != GradeD {
+		t.Fatalf("result = %v/%d %d%% %s", r.Score, r.Maximum, *r.ScorePercent, *r.Grade)
+	}
+}
+
 func TestACompetencyWeighsTheSameWithMoreConstituents(t *testing.T) {
 	e, first := NewExam(Graph{Nodes: []Node{
 		{ID: "a1", Title: "А1", Competency: "А"},

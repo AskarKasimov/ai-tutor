@@ -1,19 +1,22 @@
 package diagnostichttp
 
 import (
+	"strconv"
 	"testing"
 
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/diagnostic"
 )
 
 func TestResultNormalizesEveryCompetency(t *testing.T) {
+	asked := 0
 	task := func(competency, constituent, role string, score int) diagnostic.Answer {
+		asked++
 		maximum := 1
 		if role == "main" {
 			maximum = 3
 		}
 		return diagnostic.Answer{CompetencyID: competency, Role: role, Score: score, GraderMaxScore: maximum,
-			Task: diagnostic.TaskSnapshot{ConstituentID: constituent}}
+			Task: diagnostic.TaskSnapshot{OutcomeID: strconv.Itoa(asked), ConstituentID: constituent}}
 	}
 	main, basic := "main", "basic"
 	for _, tc := range []struct {

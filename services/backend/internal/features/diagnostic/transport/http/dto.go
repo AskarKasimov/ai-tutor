@@ -135,8 +135,8 @@ func resultResponse(value diagnostic.Result) ResultResponse {
 		UntestedBasics:      make([]TaskResponse, 0, len(value.UntestedBasics)),
 	}
 	// The translation of points into a letter is shared with the exam.
-	result.ReportScore, result.ReportMaxScore, result.ScorePercent = value.ReportPoints()
-	result.TrainingNeeded = len(diagnostic.OpenCompetencies(value.Answers)) > 0
+	result.ReportScore, result.ReportMaxScore, result.ScorePercent = exam.OverallScore(value.CompetencyShares())
+	result.TrainingNeeded = diagnostic.HasLearningGaps(value.Answers)
 	courseGrade := exam.CourseGrade(result.ScorePercent)
 	if courseGrade != nil {
 		letter := string(*courseGrade)

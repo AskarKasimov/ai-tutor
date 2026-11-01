@@ -1,6 +1,6 @@
 package diagnostic
 
-import "github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/scoring"
+import "github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/stats"
 
 // ClosedCompetencyPercent is where a competency needs no more training.
 const ClosedCompetencyPercent = 90
@@ -35,9 +35,9 @@ func competencyShares(answers []Answer) []competencyShare {
 	for _, id := range order {
 		shares := make([]float64, 0, len(constituentOrder[id]))
 		for _, constituent := range constituentOrder[id] {
-			shares = append(shares, scoring.Mean(tasks[id][constituent]))
+			shares = append(shares, stats.Mean(tasks[id][constituent]))
 		}
-		out = append(out, competencyShare{id: id, share: scoring.Mean(shares)})
+		out = append(out, competencyShare{id: id, share: stats.Mean(shares)})
 	}
 	return out
 }
@@ -47,19 +47,32 @@ func competencyShares(answers []Answer) []competencyShare {
 func OpenCompetencies(answers []Answer) map[string]bool {
 	open := map[string]bool{}
 	for _, c := range competencyShares(answers) {
-		if scoring.Percent(c.share) < ClosedCompetencyPercent {
+		if stats.Percent(c.share) < ClosedCompetencyPercent {
 			open[c.id] = true
 		}
 	}
 	return open
 }
 
-// ReportPoints are the normalized points of the result: 5 per competency.
-func (r Result) ReportPoints() (score float64, maximum int, percent *int) {
+// CompetencyShares are the normalized results of the competencies.
+func (r Result) CompetencyShares() []float64 {
 	competencies := competencyShares(r.Answers)
 	shares := make([]float64, len(competencies))
 	for i, c := range competencies {
 		shares[i] = c.share
 	}
-	return scoring.Overall(shares)
+	return shares
+}
+
+// OpenFindings are the outcomes to study: not mastered, in a competency that is
+// still open. A plan and training pick their tasks from them.
+func OpenFindings(answers []Answer) []OutcomeFinding {
+	open := OpenCompetencies(answers)
+	out := []OutcomeFinding{}
+	for _, f := range OutcomeFindings(answers) {
+		if !f.Mastered && open[f.Answer.CompetencyID] {
+			out = append(out, f)
+		}
+	}
+	return out
 }

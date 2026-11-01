@@ -3,8 +3,6 @@ package exam
 import (
 	"slices"
 	"strings"
-
-	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/scoring"
 )
 
 // Session is one diagnostic of a student on a course. Version guards
@@ -183,7 +181,7 @@ func (s Session) Result() Result {
 		}
 		r.Nodes = append(r.Nodes, node)
 	}
-	r.Score, r.Maximum, r.ScorePercent = scoring.Overall(e.Graph.competencyShares(shares))
+	r.Score, r.Maximum, r.ScorePercent = OverallScore(e.Graph.competencyShares(shares))
 	r.Grade = CourseGrade(r.ScorePercent)
 	for _, id := range e.Gaps() {
 		n, _ := e.Graph.Node(id)

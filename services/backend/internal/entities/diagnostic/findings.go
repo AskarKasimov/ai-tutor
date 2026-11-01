@@ -12,12 +12,7 @@ type OutcomeFinding struct {
 }
 
 func HasLearningGaps(answers []Answer) bool {
-	for _, finding := range OutcomeFindings(answers) {
-		if !finding.Mastered {
-			return true
-		}
-	}
-	return false
+	return len(OpenFindings(answers)) > 0
 }
 
 func OutcomeFindings(answers []Answer) []OutcomeFinding {

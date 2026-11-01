@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"reflect"
+	"slices"
 	"testing"
 )
 
@@ -157,11 +158,20 @@ func TestRubricGradesAndEvidence(t *testing.T) {
 	if err := r.Validate(spec, []Turn{{Line: 2, Speaker: SpeakerStudent, Text: "Содержание ответа"}}); err != nil {
 		t.Fatal(err)
 	}
+	// A wrong quote neither stops the exam nor changes the score: it is dropped.
+	turns := []Turn{{Line: 2, Speaker: SpeakerStudent, Text: "Содержание ответа"}}
+	score := r.Items[0].Score
 	r.Items[0].Quote = "Расчёт, которого в ответе нет"
-	if err := r.Validate(spec, []Turn{{Line: 2, Speaker: SpeakerStudent, Text: "Содержание ответа"}}); err == nil {
-		t.Fatal("invented quote accepted")
+	if err := r.Validate(spec, turns); err != nil {
+		t.Fatal(err)
+	}
+	if dropped := r.DropUnverifiedQuotes(turns); !slices.Contains(dropped, r.Items[0].ID) || r.Items[0].Quote != "" || r.Items[0].Score != score {
+		t.Fatalf("dropped %v, mark %+v", dropped, r.Items[0])
 	}
 	r.Items[0].Quote = "Содержание ответа"
+	if dropped := r.DropUnverifiedQuotes(turns); slices.Contains(dropped, r.Items[0].ID) || r.Items[0].Quote == "" {
+		t.Fatalf("a real quote was dropped: %v", dropped)
+	}
 	r.Items[0].Score = 2
 	if err := r.Validate(spec, []Turn{{Line: 2, Speaker: SpeakerStudent}}); err == nil {
 		t.Fatal("invented scoring level")
@@ -202,5 +212,34 @@ func TestRubricFollowupAccumulatesAndSurvivesPersistence(t *testing.T) {
 	e.Apply(Evaluation{Verdict: VerdictAnswered, AnswerComplete: &yes, Rubric: rubricResult(t, 1, 1)})
 	if e.Nodes["a"].Grade == nil || *e.Nodes["a"].Grade != GradeB || !e.Nodes["a"].Rubric.Complete() {
 		t.Fatal("help must cap the letter without changing rubric points")
+	}
+}
+
+func TestQuoteMayJoinPartsOfAnAnswer(t *testing.T) {
+	const answer = "Задача 1. Классический ИИ. Метод поиска. Задача 2. Генеративный."
+	for _, tc := range []struct {
+		quote string
+		want  bool
+	}{
+		{"Классический ИИ", true},
+		{"Задача 1. Классический ИИ. ... Задача 2. Генеративный.", true},
+		{"Задача 1. Классический ИИ... Задача 2.", true},
+		{"Задача 1 … Генеративный.", true},
+		{"задача 1. классический ИИ", true},
+		{"Задача 1. Классический ИИ. Задача 2. Генеративный.", true},
+		// A fragment that is not there, or stands in another order, is no quote.
+		{"Задача 1. ... Задача 3.", false},
+		{"Генеративный. ... Задача 1.", false},
+		{"Задача 1. Классический ИИ. Задача 2. Классический ИИ.", false},
+		{"Задача 1. Глубокий поиск.", false},
+		{"...", false},
+		{"", false},
+	} {
+		if got := quotedIn(answer, tc.quote); got != tc.want {
+			t.Errorf("quotedIn(%q) = %v, want %v", tc.quote, got, tc.want)
+		}
+	}
+	if !quotedIn("Ну... не уверен", "Ну... не уверен") {
+		t.Error("the student's own ellipsis is an exact quote")
 	}
 }

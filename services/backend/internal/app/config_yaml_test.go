@@ -21,7 +21,7 @@ const validBackendYAML = `server:
   listen_address: ":18002"
 voice:
   stt: {url: "http://stt.test/transcribe"}
-  tts: {url: "http://tts.test/synthesize", seed: 0, cfg_value: 2, inference_timesteps: 20}
+  tts: {url: "http://tts.test/synthesize", seed: 0, cfg_value: 2, inference_timesteps: 20, use_prompt: false}
   timeout: 120s
 uploads: {max_bytes: 1024}
 storage:
@@ -112,5 +112,37 @@ func TestLoadLLMGatewayConfigDoesNotRequireBackendSecrets(t *testing.T) {
 	address, timeout, err := LoadLLMGatewayConfig(writeYAML(t, validBackendYAML))
 	if err != nil || address != "gateway.test:8011" || timeout != 120*time.Second {
 		t.Fatalf("got %q %s %v", address, timeout, err)
+	}
+}
+
+func TestLoadConfigTTSPrompt(t *testing.T) {
+	t.Setenv("BACKEND_DATABASE_URL", "postgres://example/db")
+	t.Setenv("BACKEND_S3_ACCESS_KEY", "a")
+	t.Setenv("BACKEND_S3_SECRET_KEY", "s")
+	for _, want := range []bool{false, true} {
+		value := "false"
+		if want {
+			value = "true"
+		}
+		body := strings.Replace(validBackendYAML, "use_prompt: false", "use_prompt: "+value, 1)
+		cfg, err := LoadConfig(writeYAML(t, body))
+		if err != nil || cfg.TTSUsePrompt != want {
+			t.Fatalf("use_prompt %v: got %+v, %v", want, cfg, err)
+		}
+	}
+	for _, value := range []string{"", ", use_prompt: yes"} {
+		body := strings.Replace(validBackendYAML, ", use_prompt: false", value, 1)
+		if _, err := LoadConfig(writeYAML(t, body)); err == nil {
+			t.Fatalf("invalid use_prompt %q accepted", value)
+		}
+	}
+}
+
+func TestVoiceCacheKeyDistinguishesPromptMode(t *testing.T) {
+	a := &App{cfg: Config{TTSUsePrompt: false}}
+	without := a.voiceName()
+	a.cfg.TTSUsePrompt = true
+	if without == a.voiceName() {
+		t.Fatal("prompt mode must affect voice cache key")
 	}
 }

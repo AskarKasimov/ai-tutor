@@ -8,6 +8,7 @@ voice:
     seed: 607
     cfg_value: 2.0
     inference_timesteps: 20
+    use_prompt: false
   timeout: 120s
 uploads:
   max_bytes: 26214400

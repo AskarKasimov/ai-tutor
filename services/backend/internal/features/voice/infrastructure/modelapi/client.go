@@ -26,6 +26,7 @@ type TTSOptions struct {
 	Seed               int64   `json:"seed"`
 	CFGValue           float64 `json:"cfg_value"`
 	InferenceTimesteps int     `json:"inference_timesteps"`
+	UsePrompt          bool    `json:"use_prompt"`
 }
 
 type Client struct {

@@ -41,6 +41,7 @@ type backendYAML struct {
 			Seed               *int64   `yaml:"seed"`
 			CFGValue           *float64 `yaml:"cfg_value"`
 			InferenceTimesteps *int     `yaml:"inference_timesteps"`
+			UsePrompt          *bool    `yaml:"use_prompt"`
 		} `yaml:"tts"`
 		Timeout *yamlDuration `yaml:"timeout"`
 	} `yaml:"voice"`
@@ -249,6 +250,9 @@ func requireBackendYAML(c backendYAML) error {
 		if c.Voice.TTS.InferenceTimesteps == nil {
 			missing = append(missing, "voice.tts.inference_timesteps")
 		}
+		if c.Voice.TTS.UsePrompt == nil {
+			missing = append(missing, "voice.tts.use_prompt")
+		}
 	}
 	if c.Voice == nil || c.Voice.Timeout == nil {
 		missing = append(missing, "voice.timeout")
@@ -315,7 +319,7 @@ func LoadConfig(path string) (Config, error) {
 	if err := requireBackendYAML(y); err != nil {
 		return Config{}, err
 	}
-	c := Config{ListenAddress: *y.Server.ListenAddress, STTURL: *y.Voice.STT.URL, TTSURL: *y.Voice.TTS.URL, TTSSeed: *y.Voice.TTS.Seed, TTSCFGValue: *y.Voice.TTS.CFGValue, TTSInferenceTimesteps: *y.Voice.TTS.InferenceTimesteps, VoiceTimeout: y.Voice.Timeout.Duration, MaxUploadBytes: *y.Uploads.MaxBytes,
+	c := Config{ListenAddress: *y.Server.ListenAddress, STTURL: *y.Voice.STT.URL, TTSURL: *y.Voice.TTS.URL, TTSSeed: *y.Voice.TTS.Seed, TTSCFGValue: *y.Voice.TTS.CFGValue, TTSInferenceTimesteps: *y.Voice.TTS.InferenceTimesteps, TTSUsePrompt: *y.Voice.TTS.UsePrompt, VoiceTimeout: y.Voice.Timeout.Duration, MaxUploadBytes: *y.Uploads.MaxBytes,
 		S3Endpoint: *y.Storage.S3.Endpoint, S3Region: *y.Storage.S3.Region, S3Bucket: *y.Storage.S3.Bucket, S3PathStyle: *y.Storage.S3.PathStyle, S3Timeout: y.Storage.S3.Timeout.Duration, S3CreateBucket: *y.Storage.S3.CreateBucket, S3AccessKey: strings.TrimSpace(os.Getenv("BACKEND_S3_ACCESS_KEY")), S3SecretKey: strings.TrimSpace(os.Getenv("BACKEND_S3_SECRET_KEY")),
 		AudioWorkers: *y.Workers.Audio.Count, AudioPollInterval: y.Workers.Audio.PollInterval.Duration, LearningTutorEnabled: *y.Tutor.Enabled, TutorTaskMaxChars: *y.Tutor.Context.TaskMaxChars, TutorHistoryMaxChars: *y.Tutor.Context.HistoryMaxChars, TutorSummaryMaxChars: *y.Tutor.Context.SummaryMaxChars,
 		CourseGraphURL: *y.CourseGraph.URL, CourseGraphTimeout: y.CourseGraph.Timeout.Duration, LLMGatewayAddress: *y.LLMGateway.Address, LLMTimeout: y.LLMGateway.Timeout.Duration, GeekMaxQuestions: *y.Geek.QuestionLimit}

@@ -17,7 +17,7 @@ import (
 func TestSynthesizeSendsConfiguredVoiceSettings(t *testing.T) {
 	wav := testWAV()
 	for _, options := range []TTSOptions{
-		{Seed: 17, CFGValue: 2, InferenceTimesteps: 50},
+		{Seed: 17, CFGValue: 2, InferenceTimesteps: 50, UsePrompt: true},
 		{Seed: 0, CFGValue: 0, InferenceTimesteps: 1},
 		{Seed: 91, CFGValue: 1.5, InferenceTimesteps: 20},
 	} {
@@ -29,7 +29,7 @@ func TestSynthesizeSendsConfiguredVoiceSettings(t *testing.T) {
 			if err := json.NewDecoder(r.Body).Decode(&got); err != nil {
 				t.Error(err)
 			}
-			want := map[string]any{"text": "(calm, composed, friendly tone; speak evenly, without irritation or anger) Привет.!!!", "seed": float64(options.Seed), "cfg_value": options.CFGValue, "inference_timesteps": float64(options.InferenceTimesteps)}
+			want := map[string]any{"text": "(calm, composed, friendly tone; speak evenly, without irritation or anger) Привет.!!!", "seed": float64(options.Seed), "cfg_value": options.CFGValue, "inference_timesteps": float64(options.InferenceTimesteps), "use_prompt": options.UsePrompt}
 			if !reflect.DeepEqual(got, want) {
 				t.Errorf("payload = %v, want %v", got, want)
 			}

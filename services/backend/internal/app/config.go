@@ -19,6 +19,7 @@ type Config struct {
 	TTSSeed               int64
 	TTSCFGValue           float64
 	TTSInferenceTimesteps int
+	TTSUsePrompt          bool
 	VoiceTimeout          time.Duration
 	MaxUploadBytes        int64
 	S3Endpoint            string

@@ -1,10 +1,10 @@
-# Правила работы в репозитории
+# AGENTS.md — правила работы в репозитории
 
-Правила для агентов и разработчиков во всём репозитории. Описание продукта, статус, запуск и решения — в [README](README.md); здесь только то, что нужно выполнять. Локальный AGENTS.md сервиса дополняет эти правила для своего каталога: [backend](services/backend/AGENTS.md), [frontend](services/frontend/AGENTS.md), [llm-gateway](services/llm-gateway/AGENTS.md), [shared](services/shared/AGENTS.md), [course-graph](services/course-graph/AGENTS.md). Перед изменением сервиса прочитайте его.
+Правила для агентов и разработчиков во всём репозитории. Описание продукта, статус, запуск и решения — в [README](README.md); здесь только то, что нужно выполнять. Вложенный AGENTS.md дополняет правила для своего каталога; при противоречии действует ближайший к изменяемому файлу. Явные инструкции пользователя имеют приоритет. Правила сервисов: [backend](services/backend/AGENTS.md), [frontend](services/frontend/AGENTS.md), [llm-gateway](services/llm-gateway/AGENTS.md), [shared](services/shared/AGENTS.md), [course-graph](services/course-graph/AGENTS.md). Перед изменением сервиса прочитайте его.
 
 ## Перед изменением
 
-Определите затронутый слой, прочитайте его документацию и выберите объём локальных проверок по правилам ниже. Таблица перечисляет полный набор проверок слоя; он не обязателен локально для каждой мелкой правки.
+Определите затронутый слой, прочитайте его документацию и выберите объём локальных проверок по правилам ниже. Команды полного набора и дополнительные требования сервисов указаны в их AGENTS.md; таблица ниже помогает найти их и нужную документацию.
 
 ### Локальные проверки и нагрузка
 
@@ -14,16 +14,16 @@
 - Текст, переводы и локальные стили без изменения поведения: проверьте форматирование затронутых файлов, для TS/TSX — линтер этих файлов, и связанные существующие тесты, если они проверяют изменённый экран. Для стилей дополнительно осмотрите экран. Полный прогон, проверка типов и сборка локально не обязательны.
 - Изменения логики: проверьте затронутые сценарии и использующие их модули. Для frontend выполните форматирование, линтер, проверку типов и связанные тесты; сборку — при изменении маршрутов, импортов, зависимостей или настроек сборки. Для Go выполните тесты с `-race`, vet и сборку затронутого сервиса с указанными лимитами. Если область влияния неясна или затронут общий код, выполните полный набор слоя.
 - Контракты, миграции, auth, правила оценивания и конфигурация требуют полного набора затронутых слоёв, включая соответствующие интеграционные проверки при наличии окружения. Если ресурсов не хватает, выполните доступные целевые проверки, а оставшиеся явно перечислите в PR и проверьте их результат в CI; не выдавайте неполный прогон за полный.
-- Для обычного запуска уже собранного проекта с настроенными `.env` и сертификатами используйте `docker compose --env-file .env -f docker-compose.yaml -f docker-compose.dev.yaml up -d --no-build`. `./dev.sh -d` включает сборку; она нужна при первом запуске и изменении Dockerfile/зависимостей. Изменения исходников в dev подхватывают watchers. Не сбрасывайте volumes или кеши ради ускорения проверок.
+- Для обычного запуска уже собранного проекта с настроенными `.env` и сертификатами используйте `docker compose --env-file .env -f docker-compose.yaml -f docker-compose.dev.yaml up -d --no-build`. `./dev.sh -d` включает сборку; используйте её, когда изменения требуют пересборки образов. Возможности автоматической перезагрузки описаны в README сервисов. Не сбрасывайте volumes или кеши ради ускорения проверок.
 - После успешной проверки не повторяйте её без новых изменений или выявленной проблемы. В отчёте указывайте фактический объём локальных проверок и что оставлено CI.
 
 | Слой | Документация | Проверки (из каталога слоя) |
 | --- | --- | --- |
-| `services/backend` | [AGENTS.md](services/backend/AGENTS.md), [README](services/backend/README.md), [архитектура](documents/backend-architecture.md), [auth](documents/auth.md) | `GOMAXPROCS=2 go test -p 1 -parallel 2 -race ./... -count=1`, `GOMAXPROCS=2 go vet -p 1 ./...`, `GOMAXPROCS=2 go build -p 1 -o bin/api ./cmd/api` |
-| `services/frontend` | [AGENTS.md](services/frontend/AGENTS.md), [README](services/frontend/README.md) | `npm run format:check`, `npm run lint`, `npm run typecheck`, `npm test -- --run --maxWorkers=1`, `npm run build`; E2E в CI, локально по затронутым сценариям с `--workers=1` |
-| `services/llm-gateway` | [AGENTS.md](services/llm-gateway/AGENTS.md), [README](services/llm-gateway/README.md), спецификации [HTTP](documents/llm-gateway-spec.md) и [gRPC](documents/llm-gateway-grpc-spec.md) | `GOWORK=off GOMAXPROCS=2 go test -p 1 -parallel 2 -race ./... -count=1`, `GOWORK=off GOMAXPROCS=2 go vet -p 1 ./...`, `GOWORK=off GOMAXPROCS=2 go build -p 1 ./cmd/llm-gateway`, `bash scripts/generate-openapi.sh` без изменений |
-| `services/shared` | [AGENTS.md](services/shared/AGENTS.md), [README](services/shared/README.md) | Из корня: `services/shared/tools/generate.sh --check`, `services/shared/tools/check-compat.sh <base-sha>`; из `services/shared`: `GOWORK=off GOMAXPROCS=2 go test -p 1 -parallel 2 ./...` |
-| `services/course-graph` | [AGENTS.md](services/course-graph/AGENTS.md), [README](services/course-graph/README.md), [api/course-graph.yaml](api/course-graph.yaml) | `uv lock --check`, `uv run --locked --extra cpu --extra ocr python -m pytest tests`, `docker compose --env-file ../../.env.example config --quiet` |
+| `services/backend` | [AGENTS.md](services/backend/AGENTS.md), [README](services/backend/README.md), [архитектура](documents/backend-architecture.md), [auth](documents/auth.md) | См. AGENTS.md backend |
+| `services/frontend` | [AGENTS.md](services/frontend/AGENTS.md), [README](services/frontend/README.md) | См. AGENTS.md frontend |
+| `services/llm-gateway` | [AGENTS.md](services/llm-gateway/AGENTS.md), [README](services/llm-gateway/README.md), спецификации [HTTP](documents/llm-gateway-spec.md) и [gRPC](documents/llm-gateway-grpc-spec.md) | См. AGENTS.md gateway |
+| `services/shared` | [AGENTS.md](services/shared/AGENTS.md), [README](services/shared/README.md) | См. AGENTS.md shared |
+| `services/course-graph` | [AGENTS.md](services/course-graph/AGENTS.md), [README](services/course-graph/README.md), [api/course-graph.yaml](api/course-graph.yaml) | См. AGENTS.md course-graph |
 | `api` | [api/README](api/README.md) | Из `services/backend`: `bash scripts/generate-openapi.sh` без лишних изменений |
 | Compose, `dev.sh`, `.env.example` | [README, «Запуск»](README.md#запуск), README сервиса | Из корня: `sh -n dev.sh`, root Compose с .env.example с dev override и без него, external-S3 override; `config --quiet` каждого изменённого service Compose с .env.example |
 

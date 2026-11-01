@@ -1,5 +1,10 @@
 import { MarkdownContent } from '@/shared/ui'
-import { ResultReport, reportSummary } from '@/widgets/result-report'
+import {
+  BannerPrimaryButton,
+  ResultBanner,
+  ResultReport,
+  reportSummary,
+} from '@/widgets/result-report'
 import { Button, Heading, Text } from '@radix-ui/themes'
 import { ChevronRight, Mic, RotateCcw, Zap } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
@@ -541,15 +546,14 @@ function DiagnosticSummary({
         summary={summary}
         highlight={
           value.training_needed ? (
-            <div className={diagnosticStyles.nextStep}>
-              <Text as="p" className={diagnosticStyles.nextStepText}>
-                {t('learningDiagnostic.nextStep')}
-              </Text>
-              <Button size="3" onClick={() => onTraining(sessionId)}>
-                <Zap size={18} aria-hidden="true" />
+            <ResultBanner title={t('learningDiagnostic.nextStep')}>
+              <BannerPrimaryButton
+                icon={<Zap size={20} fill="currentColor" />}
+                onClick={() => onTraining(sessionId)}
+              >
                 {t('learningDiagnostic.toTraining')}
-              </Button>
-            </div>
+              </BannerPrimaryButton>
+            </ResultBanner>
           ) : undefined
         }
       >

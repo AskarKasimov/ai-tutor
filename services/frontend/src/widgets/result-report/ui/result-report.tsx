@@ -18,8 +18,8 @@ const pointsFormat = new Intl.NumberFormat('ru-RU', {
 })
 
 // The one result screen of the learning diagnostic and the exam: the overall
-// grade, the conclusion, what went well and what to work on, and the graph of
-// the topics in points.
+// grade, the conclusion, the graph of the topics in points, what went well and
+// what to work on.
 export function ResultReport({
   report,
   summary,
@@ -110,6 +110,7 @@ export function ResultReport({
       </section>
       {highlight}
       <Summary summary={summary} />
+      <ResultGraph topics={report.topics} />
       {(good.length > 0 || work.length > 0) && (
         <div className={styles.cards}>
           {good.length > 0 && (
@@ -155,9 +156,8 @@ export function ResultReport({
           {t('resultReport.topicsEmpty')}
         </Text>
       )}
-      <ResultGraph topics={report.topics} />
       {children}
-      {actions && <div className={styles.actions}>{actions}</div>}
+      {actions}
     </div>
   )
 }

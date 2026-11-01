@@ -1,5 +1,5 @@
 import { Button, Heading, Text } from '@radix-ui/themes'
-import { FileText } from 'lucide-react'
+import { FileText, RotateCcw } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
@@ -12,7 +12,13 @@ import {
   useDiagnosticResultQuery,
   useDiagnosticResultSummaryQuery,
 } from '@/features/diagnostic-session'
-import { ResultReport, reportSummary } from '@/widgets/result-report'
+import {
+  BannerPrimaryButton,
+  BannerSecondaryButton,
+  ResultBanner,
+  ResultReport,
+  reportSummary,
+} from '@/widgets/result-report'
 import { toResultReport } from '../lib/to-result-report'
 import { TrainerShell } from './trainer-shared'
 import styles from './geek-result.module.scss'
@@ -56,17 +62,21 @@ export function GeekResult({
   )
   const summary = reportSummary(summaryQuery, (text) => text)
   const actions = (
-    <>
-      <Button size="3" disabled={starting} onClick={onAgain}>
+    <ResultBanner title={t('geek.nextTitle')} text={t('geek.nextText')}>
+      <BannerPrimaryButton
+        icon={<RotateCcw size={20} />}
+        disabled={starting}
+        onClick={onAgain}
+      >
         {t(starting ? 'home.starting' : 'geek.again')}
-      </Button>
-      <Button size="3" variant="soft" onClick={onChat}>
+      </BannerPrimaryButton>
+      <BannerSecondaryButton onClick={onChat}>
         {t('geek.openChat')}
-      </Button>
-      <Button size="3" variant="soft" color="gray" onClick={onBack}>
+      </BannerSecondaryButton>
+      <BannerSecondaryButton onClick={onBack}>
         {t('home.back')}
-      </Button>
-    </>
+      </BannerSecondaryButton>
+    </ResultBanner>
   )
   return (
     <TrainerShell

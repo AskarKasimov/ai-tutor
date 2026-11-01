@@ -590,6 +590,8 @@ void i18n.init({
           materialUnavailable: 'Исходный файл больше недоступен.',
           materialDownloadError: 'Не удалось открыть материал.',
           again: 'Пройти заново',
+          nextTitle: 'Что дальше?',
+          nextText: 'Пройдите диагностику ещё раз или вернитесь к переписке.',
           openChat: 'Вернуться к переписке',
         },
         session: {

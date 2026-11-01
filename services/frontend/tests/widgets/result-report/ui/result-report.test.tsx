@@ -3,6 +3,9 @@ import { fireEvent, render, screen, within } from '@testing-library/react'
 import { expect, it, vi } from 'vitest'
 import '@/shared/i18n'
 import {
+  BannerPrimaryButton,
+  BannerSecondaryButton,
+  ResultBanner,
   ResultReport,
   type ReportTopic,
   type ResultReportData,
@@ -185,6 +188,25 @@ it('shows a criterion without points as met or not', () => {
   expect(details.getByText('Не выполнено')).toBeVisible()
   expect(details.getByText('Нет причины')).toBeVisible()
   expect(details.getByText('Выполнено')).toBeVisible()
+})
+
+it('shows the next step as a banner with its actions', () => {
+  const onClick = vi.fn()
+  render(
+    <Theme>
+      <ResultBanner title="Что дальше?" text="Подсказка">
+        <BannerPrimaryButton icon={<span />} onClick={onClick}>
+          Заново
+        </BannerPrimaryButton>
+        <BannerSecondaryButton disabled>Назад</BannerSecondaryButton>
+      </ResultBanner>
+    </Theme>,
+  )
+  expect(screen.getByText('Что дальше?')).toBeVisible()
+  expect(screen.getByText('Подсказка')).toBeVisible()
+  fireEvent.click(screen.getByRole('button', { name: 'Заново' }))
+  expect(onClick).toHaveBeenCalled()
+  expect(screen.getByRole('button', { name: 'Назад' })).toBeDisabled()
 })
 
 it('lets the student retry a failed conclusion and keeps the result visible', () => {

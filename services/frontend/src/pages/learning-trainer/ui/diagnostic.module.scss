@@ -39,24 +39,6 @@
   margin-top: 10px;
 }
 // The answers review is a quiet link under the feedback.
-// The way on to training, right under the grade.
-.nextStep {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px 24px;
-  padding: 20px 28px;
-  border-radius: var(--result-radius);
-  border: 1px solid var(--result-line);
-  background: var(--result-sky);
-}
-.nextStepText {
-  margin: 0;
-  color: var(--cosmos-ink);
-  font-size: 17px;
-  font-weight: 700;
-}
 .reviewToggle {
   display: inline-flex;
   align-items: center;

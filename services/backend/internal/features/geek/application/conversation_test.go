@@ -33,7 +33,7 @@ func TestConversationDoesNotSpendAttemptOrHintOrChangeScores(t *testing.T) {
 			if !last.Meta || !s.Turns[len(s.Turns)-2].Meta || last.ID == previous {
 				t.Fatalf("invalid conversational transcript: %+v", last)
 			}
-			if s.AddressPreference != exam.AddressFeminine {
+			if s.AddressPreference != exam.AddressNeutral {
 				t.Fatal("address preference lost on persistence")
 			}
 		}
@@ -48,7 +48,7 @@ func TestConversationDoesNotSpendAttemptOrHintOrChangeScores(t *testing.T) {
 		if state := s.Exam.Nodes[nodeID]; state.Grade == nil || *state.Grade != want {
 			t.Fatalf("answer after conversation: %+v", state)
 		}
-		if f.examiner.feedbacks[len(f.examiner.feedbacks)-1].AddressPreference != exam.AddressFeminine {
+		if f.examiner.feedbacks[len(f.examiner.feedbacks)-1].AddressPreference != exam.AddressNeutral {
 			t.Fatal("feedback did not receive address preference")
 		}
 	}
@@ -59,8 +59,83 @@ func TestMixedAnswerAndAddressCorrectionStillGradesTheAnswer(t *testing.T) {
 	s, _, _ := f.service.Start(context.Background(), "student", "subject", "start")
 	id := s.Exam.Current.NodeID
 	s = f.answer(t, s, Answer{Text: "сильно; женский род"})
-	if s.AddressPreference != exam.AddressFeminine || *s.Exam.Nodes[id].Grade != exam.GradeA {
+	if s.AddressPreference != exam.AddressNeutral || *s.Exam.Nodes[id].Grade != exam.GradeA {
 		t.Fatal("mixed answer lost either knowledge or preference")
+	}
+}
+
+func TestNameRequestDoesNotSpendAttemptAndPersistsForFeedback(t *testing.T) {
+	f := newFixture(t)
+	s, _, _ := f.service.Start(context.Background(), "student", "subject", "start")
+	before, _ := json.Marshal(s.Exam)
+	s = f.answer(t, s, Answer{Text: "Обращайся ко мне, Андрюха. Андрюха."})
+	after, _ := json.Marshal(s.Exam)
+	if string(before) != string(after) || s.PreferredName != "Андрюха" || !s.Turns[len(s.Turns)-1].Meta {
+		t.Fatalf("name request changed attempt: %+v", s)
+	}
+	s = f.answer(t, s, Answer{Text: "сильно"})
+	if f.examiner.feedbacks[len(f.examiner.feedbacks)-1].PreferredName != "Андрюха" {
+		t.Fatal("name missing from feedback")
+	}
+}
+
+func TestNameWithAnswerDoesNotHideAnswer(t *testing.T) {
+	f := newFixture(t)
+	s, _, _ := f.service.Start(context.Background(), "student", "subject", "start")
+	id := s.Exam.Current.NodeID
+	s = f.answer(t, s, Answer{Text: "Меня зовут Кирилл, сильно"})
+	if s.PreferredName != "Кирилл" || s.Exam.Nodes[id].Grade == nil || *s.Exam.Nodes[id].Grade != exam.GradeA {
+		t.Fatal("name or answer lost")
+	}
+}
+
+func TestUnrelatedConversationDoesNotSpendAttempt(t *testing.T) {
+	f := newFixture(t)
+	s, _, _ := f.service.Start(context.Background(), "student", "subject", "start")
+	before, _ := json.Marshal(s.Exam)
+	s = f.answer(t, s, Answer{Text: "ПОСТОРОННИЙ РАЗГОВОР"})
+	after, _ := json.Marshal(s.Exam)
+	last := s.Turns[len(s.Turns)-1]
+	if string(before) != string(after) || !last.Meta || !strings.Contains(last.Text, "я не знаю") {
+		t.Fatalf("unrelated utterance spent an attempt: %+v", last)
+	}
+}
+
+func TestQuestionExplanationDoesNotReduceGrade(t *testing.T) {
+	f := newFixture(t)
+	s, _, _ := f.service.Start(context.Background(), "student", "subject", "start")
+	id := s.Exam.Current.NodeID
+	before, _ := json.Marshal(s.Exam)
+	s = f.answer(t, s, Answer{Text: "НЕПОНЯТНО"})
+	if !s.ClarificationPending {
+		t.Fatal("missing clarification state")
+	}
+	s = f.answer(t, s, Answer{Text: "условия задачи"})
+	after, _ := json.Marshal(s.Exam)
+	if s.ClarificationPending || string(before) != string(after) {
+		t.Fatal("explanation changed the attempt")
+	}
+	s = f.answer(t, s, Answer{Text: "сильно"})
+	if s.Exam.Nodes[id].Grade == nil || *s.Exam.Nodes[id].Grade != exam.GradeA {
+		t.Fatal("explanation reduced the grade")
+	}
+}
+
+func TestPreferredNameParsing(t *testing.T) {
+	for _, tc := range []struct {
+		input, name string
+		only        bool
+	}{
+		{"меня зовут Андюха", "Андюха", true},
+		{"обращайся ко мне Кирилл", "Кирилл", true},
+		{"меня зовут Андрей, обращайся ко мне Кирилл", "Кирилл", true},
+		{"меня зовут Кирилл, а ответ: это сенсор", "Кирилл", false},
+		{"обращайся ко мне в женском роде", "", false},
+	} {
+		name, only := preferredName(tc.input)
+		if name != tc.name || only != tc.only {
+			t.Fatalf("%q: %q %v", tc.input, name, only)
+		}
 	}
 }
 

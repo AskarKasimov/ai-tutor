@@ -46,6 +46,26 @@ func TestConversationVerdictsAndTypedAddressPreference(t *testing.T) {
 	}
 }
 
+func TestUnknownQuestionAsksWhichPartWithoutConsumingAttempt(t *testing.T) {
+	f := &fakeGateway{}
+	g := serve(t, f, time.Second)
+	r := application.EvaluationRequest{Dialogue: []exam.Turn{{Line: 1, Speaker: exam.SpeakerGeek, Text: "Почему?"}, {Line: 2, Speaker: exam.SpeakerStudent, Text: "Я ничего не понял."}}}
+	a, err := g.Evaluate(context.Background(), r)
+	if err != nil || a.Verdict != exam.VerdictClarifyQuestion || !a.ClarificationPending || a.Clarification != "Какая часть вопроса непонятна?" || len(f.requests) != 0 {
+		t.Fatalf("assessment=%+v error=%v", a, err)
+	}
+}
+
+func TestClarificationDetailIsExplainedWithoutHintPenalty(t *testing.T) {
+	f := &fakeGateway{answers: []string{`{"kind":"wording","text":"Здесь речь о времени доставки. Объясни, как оно влияет на оценку."}`}}
+	g := serve(t, f, time.Second)
+	r := application.EvaluationRequest{ClarificationPending: true, Dialogue: []exam.Turn{{Line: 1, Speaker: exam.SpeakerGeek, Text: "Как время влияет на оценку?"}, {Line: 2, Speaker: exam.SpeakerStudent, Text: "Не понял слово время"}}}
+	a, err := g.Evaluate(context.Background(), r)
+	if err != nil || a.Verdict != exam.VerdictClarifyQuestion || a.ClarificationPending || a.Clarification == "" {
+		t.Fatalf("assessment=%+v error=%v", a, err)
+	}
+}
+
 func TestPastConversationManagementIsNotGradingEvidence(t *testing.T) {
 	d := append([]exam.Turn{}, turns...)
 	d = append(d, exam.Turn{Line: 3, Speaker: exam.SpeakerStudent, Meta: true, Text: "CONTROL_ONLY_IGNORE_FOR_KNOWLEDGE"})

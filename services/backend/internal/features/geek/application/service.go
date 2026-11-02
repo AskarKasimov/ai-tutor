@@ -275,9 +275,15 @@ func (s *Service) Answer(ctx context.Context, ownerID, id, key string, a Answer)
 	if err := s.append(&session, exam.SpeakerStudent, exam.KindAnswer, &step.NodeID, &source, text); err != nil {
 		return exam.Session{}, err
 	}
-	evaluate := EvaluationRequest{AddressPreference: session.AddressPreference, HintUsed: session.Exam.Nodes[node.ID].HintUsed, Kind: step.Kind, Node: node, Prerequisites: unaskedPrerequisites(session.Exam, node.ID), Dialogue: session.Dialogue(node.ID)}
+	name, nameOnly := preferredName(text)
+	if name != "" {
+		session.PreferredName = name
+	}
+	evaluate := EvaluationRequest{PreferredName: session.PreferredName, ClarificationPending: session.ClarificationPending, AddressPreference: exam.AddressNeutral, HintUsed: session.Exam.Nodes[node.ID].HintUsed, Kind: step.Kind, Node: node, Prerequisites: unaskedPrerequisites(session.Exam, node.ID), Dialogue: session.Dialogue(node.ID)}
 	assessment := Assessment{Evaluation: exam.Evaluation{Verdict: exam.VerdictDontKnow}}
-	if source != exam.SourceDontKnow {
+	if source != exam.SourceDontKnow && nameOnly {
+		assessment = Assessment{Evaluation: exam.Evaluation{Verdict: exam.VerdictClarifyQuestion}, Clarification: "Хорошо, буду обращаться к тебе по имени " + name + ". Можем продолжить с того же вопроса.", ClarificationPending: session.ClarificationPending}
+	} else if source != exam.SourceDontKnow {
 		if assessment, err = s.examiner.Evaluate(ctx, evaluate); err != nil {
 			return exam.Session{}, modelError(err)
 		}
@@ -285,12 +291,15 @@ func (s *Service) Answer(ctx context.Context, ownerID, id, key string, a Answer)
 			return exam.Session{}, modelError(err)
 		}
 	}
+	session.ClarificationPending = assessment.ClarificationPending
 	if !assessment.AddressPreference.Valid() || (assessment.Verdict == exam.VerdictAddressCorrection && assessment.AddressPreference == "") {
 		return exam.Session{}, modelError(errors.New("invalid address preference"))
 	}
-	if assessment.AddressPreference != "" {
-		session.AddressPreference = assessment.AddressPreference
-		evaluate.AddressPreference = session.AddressPreference
+	session.AddressPreference = exam.AddressNeutral
+	evaluate.AddressPreference = exam.AddressNeutral
+	if assessment.Verdict == exam.VerdictInsufficient || assessment.Verdict == exam.VerdictPause || assessment.Verdict == exam.VerdictAddressCorrection {
+		assessment.Verdict = exam.VerdictClarifyQuestion
+		assessment.Clarification = "Возможно, запись оборвалась или распознался посторонний разговор. Повтори ответ или скажи «я не знаю»."
 	}
 	if assessment.Verdict.Conversational() {
 		// Keep the actual exam step, scores, hint allowance and question count.
@@ -470,7 +479,7 @@ func (s *Service) say(ctx context.Context, session *exam.Session, step exam.Step
 		text = node.PreparedRephrase()
 	} else {
 		var err error
-		text, err = s.examiner.Question(ctx, QuestionRequest{Rubric: session.Exam.Nodes[node.ID].Rubric, AddressPreference: session.AddressPreference, Hint: step.Hint, Kind: step.Kind, Node: node, Dialogue: session.Dialogue(node.ID)})
+		text, err = s.examiner.Question(ctx, QuestionRequest{PreferredName: session.PreferredName, Rubric: session.Exam.Nodes[node.ID].Rubric, AddressPreference: session.AddressPreference, Hint: step.Hint, Kind: step.Kind, Node: node, Dialogue: session.Dialogue(node.ID)})
 		if err != nil {
 			return modelError(err)
 		}

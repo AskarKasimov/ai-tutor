@@ -65,6 +65,7 @@ type Transcriptions interface {
 }
 
 type QuestionRequest struct {
+	PreferredName     string
 	Rubric            *exam.RubricResult
 	AddressPreference exam.AddressPreference
 	Hint              bool          // requested context, not a ready-made answer
@@ -78,10 +79,12 @@ type QuestionRequest struct {
 }
 
 type EvaluationRequest struct {
-	AddressPreference exam.AddressPreference
-	HintUsed          bool          // distinguish the student's reasoning from supplied context
-	Kind              exam.TurnKind // the step that was answered
-	Node              exam.Node
+	PreferredName        string
+	ClarificationPending bool
+	AddressPreference    exam.AddressPreference
+	HintUsed             bool          // distinguish the student's reasoning from supplied context
+	Kind                 exam.TurnKind // the step that was answered
+	Node                 exam.Node
 	// Prerequisites are the titles of the topic's direct and transitive
 	// prerequisites that are still unchecked. Geek may ask them later, so the
 	// explanation must not give them away.
@@ -91,8 +94,9 @@ type EvaluationRequest struct {
 
 // Assessment contains only grading; feedback follows the exam engine's decision.
 type Assessment struct {
-	AddressPreference exam.AddressPreference
-	Clarification     string // from the separate support dialogue, never grading prose
+	ClarificationPending bool
+	AddressPreference    exam.AddressPreference
+	Clarification        string // from the separate support dialogue, never grading prose
 	exam.Evaluation
 }
 

@@ -100,6 +100,16 @@ type Assessment struct {
 	exam.Evaluation
 }
 
+// NameInterpreter identifies explicit name changes independently of grading.
+type NameInterpreter interface {
+	InterpretName(context.Context, string, string) (NameIntent, error)
+}
+
+type NameIntent struct {
+	Name      string
+	HasAnswer bool
+}
+
 // FeedbackRequest describes the actual outcome, not a model's prediction of it.
 // Next is meaningful while the topic stays open; Result contains accumulated
 // knowledge, including earlier answers when the last reply was "don't know".

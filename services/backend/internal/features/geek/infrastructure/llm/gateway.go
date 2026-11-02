@@ -253,6 +253,9 @@ func (g *Gateway) Feedback(ctx context.Context, r application.FeedbackRequest) (
 func (g *Gateway) complete(ctx context.Context, operation string, level llmgatewayv1.Complexity, urgent bool, prompt string, parse func([]byte) error) error {
 	logger := httpx.LoggerFromContext(ctx).With(zap.String("llm_operation", operation), zap.String("complexity", level.String()), zap.Bool("urgent", urgent))
 	system := systemPrompt
+	if operation == "name_intent" {
+		system = nameIntentPrompt
+	}
 	if operation == "route_rubric" {
 		system = rubricRouterSystemPrompt
 	}

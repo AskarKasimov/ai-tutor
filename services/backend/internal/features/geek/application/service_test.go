@@ -153,6 +153,19 @@ type examiner struct {
 	feedbackFail error
 }
 
+func (e *examiner) InterpretName(_ context.Context, _, text string) (NameIntent, error) {
+	switch text {
+	case "Обращайся ко мне, Андрюха. Андрюха.":
+		return NameIntent{Name: "Андрюха"}, nil
+	case "Меня зовут Кирилл, сильно":
+		return NameIntent{Name: "Кирилл", HasAnswer: true}, nil
+	case "Меня зовут философ Ягон Дон":
+		return NameIntent{Name: "философ Ягон Дон"}, nil
+	default:
+		return NameIntent{}, nil
+	}
+}
+
 func (e *examiner) Question(_ context.Context, r QuestionRequest) (string, error) {
 	e.mu.Lock()
 	defer e.mu.Unlock()

@@ -275,7 +275,24 @@ func (s *Service) Answer(ctx context.Context, ownerID, id, key string, a Answer)
 	if err := s.append(&session, exam.SpeakerStudent, exam.KindAnswer, &step.NodeID, &source, text); err != nil {
 		return exam.Session{}, err
 	}
-	name, nameOnly := preferredName(text)
+	name, nameOnly := "", false
+	if source != exam.SourceDontKnow {
+		if interpreter, ok := s.examiner.(NameInterpreter); ok {
+			question := ""
+			for i := len(session.Turns) - 1; i >= 0; i-- {
+				t := session.Turns[i]
+				if t.Speaker == exam.SpeakerGeek && !t.Meta && t.NodeID != nil && *t.NodeID == node.ID {
+					_, question = t.Parts()
+					break
+				}
+			}
+			intent, err := interpreter.InterpretName(ctx, question, text)
+			if err != nil {
+				return exam.Session{}, modelError(err)
+			}
+			name, nameOnly = intent.Name, intent.Name != "" && !intent.HasAnswer
+		}
+	}
 	if name != "" {
 		session.PreferredName = name
 	}

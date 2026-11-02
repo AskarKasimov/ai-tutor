@@ -89,6 +89,17 @@ func TestNameWithAnswerDoesNotHideAnswer(t *testing.T) {
 	}
 }
 
+func TestMultiwordNameIsAcknowledgedAndKept(t *testing.T) {
+	f := newFixture(t)
+	s, _, _ := f.service.Start(context.Background(), "student", "subject", "start")
+	before, _ := json.Marshal(s.Exam)
+	s = f.answer(t, s, Answer{Text: "Меня зовут философ Ягон Дон"})
+	after, _ := json.Marshal(s.Exam)
+	if string(before) != string(after) || s.PreferredName != "философ Ягон Дон" || !strings.Contains(s.Turns[len(s.Turns)-1].Text, "философ Ягон Дон") {
+		t.Fatal("multiword name changed the attempt or was not acknowledged")
+	}
+}
+
 func TestUnrelatedConversationDoesNotSpendAttempt(t *testing.T) {
 	f := newFixture(t)
 	s, _, _ := f.service.Start(context.Background(), "student", "subject", "start")
@@ -118,24 +129,6 @@ func TestQuestionExplanationDoesNotReduceGrade(t *testing.T) {
 	s = f.answer(t, s, Answer{Text: "сильно"})
 	if s.Exam.Nodes[id].Grade == nil || *s.Exam.Nodes[id].Grade != exam.GradeA {
 		t.Fatal("explanation reduced the grade")
-	}
-}
-
-func TestPreferredNameParsing(t *testing.T) {
-	for _, tc := range []struct {
-		input, name string
-		only        bool
-	}{
-		{"меня зовут Андюха", "Андюха", true},
-		{"обращайся ко мне Кирилл", "Кирилл", true},
-		{"меня зовут Андрей, обращайся ко мне Кирилл", "Кирилл", true},
-		{"меня зовут Кирилл, а ответ: это сенсор", "Кирилл", false},
-		{"обращайся ко мне в женском роде", "", false},
-	} {
-		name, only := preferredName(tc.input)
-		if name != tc.name || only != tc.only {
-			t.Fatalf("%q: %q %v", tc.input, name, only)
-		}
 	}
 }
 

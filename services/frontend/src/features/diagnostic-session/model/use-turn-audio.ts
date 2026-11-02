@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { Turn } from '@/entities/diagnostic-session'
+import type { Turn, TurnAudioPart } from '@/entities/diagnostic-session'
 import { playQuestion } from '@/shared/lib'
 import { useDiagnosticDependencies } from './dependencies-context'
 
@@ -18,7 +18,7 @@ type Progress = {
 }
 
 // Plays the voice of Geek turns, one at a time; fetched WAVs are kept for
-// replays while the dialogue is open. Each turn is voiced as a whole.
+// replays while the dialogue is open. Feedback and question play in order.
 export function useTurnAudio(sessionId: string) {
   const { diagnostic } = useDiagnosticDependencies()
   const [state, setState] = useState<TurnAudioState>({
@@ -110,34 +110,64 @@ export function useTurnAudio(sessionId: string) {
       }
       setState({ turnId: turn.id, status: 'loading' })
 
-      const load = async () => {
-        const key = `${turn.id}:whole`
+      const load = async (part?: TurnAudioPart) => {
+        const key = `${turn.id}:${part ?? 'whole'}`
         let audio = cache.current.get(key)
         if (!audio) {
-          audio = await diagnostic.fetchTurnAudio(sessionId, turn.id, signal)
+          audio = await diagnostic.fetchTurnAudio(
+            sessionId,
+            turn.id,
+            signal,
+            part,
+          )
           cache.current.set(key, audio)
         }
         return audio
       }
 
       try {
-        const audio = await load()
-        signal.throwIfAborted()
-        await playToEnd(audio, signal, () => {
-          start()
-          if (mine()) {
-            setProgress((old) => ({
-              ...old,
-              [turn.id]: {
-                intro: false,
-                replies: 0,
-                question: true,
-                revealed: true,
-              },
-            }))
-            setState({ turnId: turn.id, status: 'playing' })
-          }
-        })
+        const text = turn.text.trimStart()
+        const split = Boolean(
+          turn.reply &&
+          text.startsWith(turn.reply) &&
+          text.slice(turn.reply.length).trim(),
+        )
+        const playPart = async (
+          audio: Blob,
+          part: 'reply' | 'question' | 'whole',
+        ) => {
+          signal.throwIfAborted()
+          await playToEnd(audio, signal, () => {
+            start()
+            if (mine()) {
+              setProgress((old) => ({
+                ...old,
+                [turn.id]: {
+                  ...(old[turn.id] ?? {
+                    intro: false,
+                    replies: 0,
+                    question: false,
+                    revealed: false,
+                  }),
+                  replies: part === 'reply' ? 1 : (old[turn.id]?.replies ?? 0),
+                  question: part !== 'reply' || Boolean(old[turn.id]?.question),
+                  revealed: part === 'whole' || Boolean(old[turn.id]?.revealed),
+                },
+              }))
+              setState({ turnId: turn.id, status: 'playing' })
+            }
+          })
+          if (mine()) setState({ turnId: turn.id, status: 'loading' })
+        }
+        if (split) {
+          const reply = load('reply')
+          const question = load('question')
+          question.catch(() => undefined)
+          await playPart(await reply, 'reply')
+          await playPart(await question, 'question')
+        } else {
+          await playPart(await load(), 'whole')
+        }
         if (mine()) {
           current.current = null
           activeTurn.current = null

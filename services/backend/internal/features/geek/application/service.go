@@ -299,7 +299,7 @@ func (s *Service) Answer(ctx context.Context, ownerID, id, key string, a Answer)
 	evaluate := EvaluationRequest{PreferredName: session.PreferredName, ClarificationPending: session.ClarificationPending, AddressPreference: exam.AddressNeutral, HintUsed: session.Exam.Nodes[node.ID].HintUsed, Kind: step.Kind, Node: node, Prerequisites: unaskedPrerequisites(session.Exam, node.ID), Dialogue: session.Dialogue(node.ID)}
 	assessment := Assessment{Evaluation: exam.Evaluation{Verdict: exam.VerdictDontKnow}}
 	if source != exam.SourceDontKnow && nameOnly {
-		assessment = Assessment{Evaluation: exam.Evaluation{Verdict: exam.VerdictClarifyQuestion}, Clarification: "Хорошо, буду обращаться к тебе по имени " + name + ". Можем продолжить с того же вопроса.", ClarificationPending: session.ClarificationPending}
+		assessment = Assessment{Evaluation: exam.Evaluation{Verdict: exam.VerdictClarifyQuestion}, Clarification: "Хорошо, буду звать тебя " + name + ". Можем продолжить с того же вопроса.", ClarificationPending: session.ClarificationPending}
 	} else if source != exam.SourceDontKnow {
 		if assessment, err = s.examiner.Evaluate(ctx, evaluate); err != nil {
 			return exam.Session{}, modelError(err)
@@ -328,6 +328,9 @@ func (s *Service) Answer(ctx context.Context, ownerID, id, key string, a Answer)
 		case exam.VerdictPause:
 			message = pauseAcknowledgement
 		}
+		if name != "" && !nameOnly {
+			message = "Хорошо, буду звать тебя " + name + ".\n\n" + message
+		}
 		if strings.TrimSpace(message) == "" || utf8.RuneCountInString(message) > 600 {
 			return exam.Session{}, modelError(errors.New("invalid conversational reply"))
 		}
@@ -346,6 +349,9 @@ func (s *Service) Answer(ctx context.Context, ownerID, id, key string, a Answer)
 		reply, err := s.examiner.Feedback(ctx, feedback)
 		if err != nil {
 			return exam.Session{}, modelError(err)
+		}
+		if name != "" {
+			reply = "Хорошо, буду звать тебя " + name + ".\n\n" + reply
 		}
 		if err := s.say(ctx, &session, next, reply, closed); err != nil {
 			return exam.Session{}, err

@@ -87,6 +87,20 @@ func TestNameWithAnswerDoesNotHideAnswer(t *testing.T) {
 	if s.PreferredName != "Кирилл" || s.Exam.Nodes[id].Grade == nil || *s.Exam.Nodes[id].Grade != exam.GradeA {
 		t.Fatal("name or answer lost")
 	}
+	last := s.Turns[len(s.Turns)-1]
+	if !strings.HasPrefix(last.Reply, "Хорошо, буду звать тебя Кирилл.") {
+		t.Fatalf("name was not confirmed before feedback: %+v", last)
+	}
+}
+
+func TestNameWithPartialAnswerKeepsFollowup(t *testing.T) {
+	f := newFixture(t)
+	s, _, _ := f.service.Start(context.Background(), "student", "subject", "start")
+	s = f.answer(t, s, Answer{Text: "Меня зовут Никита Зайгайнов, частично"})
+	last := s.Turns[len(s.Turns)-1]
+	if last.Kind != exam.KindFollowup || !strings.HasPrefix(last.Reply, "Хорошо, буду звать тебя Никита Зайгайнов.") || s.PreferredName != "Никита Зайгайнов" {
+		t.Fatalf("name confirmation or followup missing: %+v", last)
+	}
 }
 
 func TestWholeAudioUsesPreparedQuestionAndFixedSpeechCache(t *testing.T) {

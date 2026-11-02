@@ -159,6 +159,8 @@ func (e *examiner) InterpretName(_ context.Context, _, text string) (NameIntent,
 		return NameIntent{Name: "Андрюха"}, nil
 	case "Меня зовут Кирилл, сильно":
 		return NameIntent{Name: "Кирилл", HasAnswer: true}, nil
+	case "Меня зовут Никита Зайгайнов, частично":
+		return NameIntent{Name: "Никита Зайгайнов", HasAnswer: true}, nil
 	case "Меня зовут философ Ягон Дон":
 		return NameIntent{Name: "философ Ягон Дон"}, nil
 	default:

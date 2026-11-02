@@ -158,6 +158,6 @@ LLM gateway централизует обращения к моделям и р�
 
 ## Документы
 
-- [Архитектура backend](documents/backend-architecture.md) и [концепция продукта](documents/Концепция_Репетитор_устного_экзамена.md). Общая архитектура подготовлена в [PR #184](https://github.com/AskarKasimov/ai-tutor/pull/184); после его слияния будет доступен `architecture.md`.
+- [Общая архитектура](architecture.md), [архитектура backend](documents/backend-architecture.md) и [концепция продукта](documents/Концепция_Репетитор_устного_экзамена.md).
 - [HTTP API](api/README.md) и [контракт course-graph](api/course-graph.yaml).
 - [Backend](services/backend/README.md), [frontend](services/frontend/README.md), [course-graph](services/course-graph/README.md) и [LLM gateway](services/llm-gateway/README.md).

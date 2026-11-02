@@ -122,6 +122,26 @@ Caddy направляет `/api/v1` в backend, `/llm-gateway` и gRPC gateway 
 
 **Провайдер:** конкретное облако не зафиксировано. В репозитории описан локальный Docker Compose, а не отдельный production deployment. Основной стек включает Caddy, frontend, API, PostgreSQL, RustFS, course-graph, gateway и Redpanda; отдельные Compose-файлы сервисов и внешнего S3 позволяют менять окружение. `docker-compose.dev.yaml` добавляет watchers и монтирование исходников. Caddy использует локально подготовленные TLS-сертификаты; Swagger и observability включаются профилями.
 
+### Локальное развёртывание
+
+Поддерживается локальный dev-стек на Docker Compose; отдельного production deployment flow в репозитории нет. Для запуска нужны Docker с Compose, mkcert и доступ к настроенным upstream LLM и голосовым сервисам. Из корня репозитория:
+
+1. Скопируйте `.env.example` в `.env`, замените `DB_PASSWORD`, `S3_ACCESS_KEY` и `S3_SECRET_KEY` уникальными значениями. При необходимости задайте `PROXY_HTTPS_PORT` и `COURSE_GRAPH_DEVICE`; профили Swagger и observability управляются `COMPOSE_PROFILES`.
+2. Проверьте `services/backend/config/dev.yaml`, `services/course-graph/config/dev.yaml` и `services/llm-gateway/config/dev.yaml`: настройте доступные из контейнеров адреса STT/TTS и upstream LLM, маршрутизацию моделей и параметры обработки. Секреты БД и S3 хранятся в `.env`. Сервисы читают настройки приложения из YAML.
+3. Выполните `./dev.sh -d`. Скрипт проверит конфигурацию Compose, создаст локальный сертификат через mkcert и соберёт dev-стек. Первый запуск и загрузка моделей могут занять несколько минут. Приложение доступно по `https://localhost:8443` при порте по умолчанию; административная страница — `/admin/courses`.
+4. Проверьте `docker compose --env-file .env -f docker-compose.yaml -f docker-compose.dev.yaml ps` и `curl --fail https://localhost:8443/api/v1/health` (подставьте свой порт). Health подтверждает работу API и PostgreSQL, но не доступность S3, моделей или голосовых сервисов. Готовность gateway можно проверить запросом `curl --fail https://localhost:8443/llm-gateway/health/ready`; готовность весов course-graph — запросом `curl --fail http://localhost:8005/ready/models` (поле `ready`). Для проверки интеграций нужны фактические запросы к настроенным моделям и STT/TTS; успешный health их не подтверждает. При ошибках смотрите `docker compose --env-file .env -f docker-compose.yaml -f docker-compose.dev.yaml logs`.
+
+Для внешнего S3 подготовьте bucket, укажите endpoint, region и bucket в backend YAML, `storage.s3.create_bucket: false` и credentials в `.env`; добавьте `-f docker-compose.external-s3.yaml` к команде Compose. Подробности — в [README S3](services/s3/README.md). `dev.sh` не добавляет этот override, поэтому для такого стека подготовьте сертификат и запустите Compose вручную:
+
+```sh
+mkcert -install
+mkdir -p certs
+mkcert -cert-file certs/server.pem -key-file certs/server-key.pem localhost 127.0.0.1 ::1
+docker compose --env-file .env -f docker-compose.yaml -f docker-compose.dev.yaml -f docker-compose.external-s3.yaml up -d --build
+```
+
+Для `ps` и `logs` в этом сценарии используйте тот же набор файлов Compose. PostgreSQL и хранилища используют volumes; остановка стека не требует их удаления.
+
 **CI/CD:** GitHub Actions проверяет изменённые сервисы, генерацию контрактов, Compose, тесты, сборку образов и HTTPS stack smoke/E2E. Автоматическое развёртывание в workflow не описано. **Наблюдаемость:** структурированные логи backend, метрики gateway; Prometheus и Grafana с готовым dashboard доступны через профиль observability. `/health` backend проверяет сам API и PostgreSQL, но не все внешние зависимости.
 
 ## 7. Security Considerations
@@ -136,20 +156,12 @@ Caddy направляет `/api/v1` в backend, `/llm-gateway` и gRPC gateway 
 
 Локальный запуск и требования — [README: запуск](README.md#запуск): `.env` на основе `.env.example`, Docker Compose, mkcert и `./dev.sh -d`. Настройки сервисов находятся в `services/*/config/dev.yaml`; значения подключения и секреты инфраструктуры — в env. Не удаляйте volumes без явного согласования.
 
-| Слой | Проверки и инструменты |
-| --- | --- |
-| Backend | `go test -race ./... -count=1`, `go vet ./...`, `go build -o bin/api ./cmd/api`; DB-тестам нужен `TEST_DATABASE_URL`. |
-| Frontend | `npm run format:check`, `npm run lint`, `npm run typecheck`, `npm test -- --run`, `npm run build`; Vitest, Testing Library, Playwright. |
-| Course-graph | `uv run --locked --extra cpu --extra ocr python -m pytest tests`; pytest, CPU/GPU extras. |
-| Gateway | `GOWORK=off go test -race ./... -count=1`, `go vet`, `go build`, проверка генерации OpenAPI; интеграционные тесты очереди требуют Redpanda. |
-| Shared | `services/shared/tools/generate.sh --check` и `check-compat.sh <base-sha>` из корня. |
-
-Команды сервисов выполняются из соответствующего каталога; полный перечень, генерация и дополнительные проверки приведены в корневом и локальных `AGENTS.md`. Контракты и сгенерированный код вручную не редактируются.
+Команды проверок для каждого слоя и ограничения локального запуска определены в [AGENTS.md](AGENTS.md) и локальных `AGENTS.md` сервисов. Backend DB-тестам нужен `TEST_DATABASE_URL`; интеграционным тестам очереди gateway — Redpanda. Контракты и сгенерированный код вручную не редактируются.
 
 ## 9. Future Considerations / Roadmap
 
 - В экзаменационном контуре диалог тренировки остаётся будущим этапом; не путать с реализованными маршрутами тренировок `/learn`. Пакет преподавателя для Geek в HTTP-контракте обозначен как `planned`.
-- В README зафиксировано отклонение интерфейса Geek от целевой синхронизации текста и итоговой карточки с озвучкой. Требуется сверить реализацию при исправлении.
+- На 2026-11-01 интерфейс Geek показывает текст и поле ответа сразу, а итог — при `completed`, не дожидаясь озвучки. Целевой сценарий предусматривает показ текста с началом озвучки (или при ошибке, запрете автозапуска либо после 20 секунд ожидания) и показ итога после окончания, ошибки или остановки последней озвучки. Для уже завершённой при открытии диагностики итог показывается сразу. Сверьте это ограничение с реализацией при изменении интерфейса.
 - Для неизвестных видов материалов настраиваемые учебные роли остаются открытым продуктовым вопросом. Новые правила нельзя молча выбирать в коде.
 - Качество и производительность полного конвейера на реальных материалах и доступность внешних моделей требуют отдельных фактических проверок; unit-тесты и health их не подтверждают.
 - Исторические планы и результаты аудитов датированы; актуальные решения и состояние смотрите в README и контрактах, проверяя их по коду.

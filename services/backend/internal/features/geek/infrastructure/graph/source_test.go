@@ -34,3 +34,16 @@ func TestDecodeReadsAGraphOfACompetencyMap(t *testing.T) {
 		t.Fatalf("nodes = %+v", g.Nodes)
 	}
 }
+
+func TestDecodeGivesTopicsOfAMapTheirCompetency(t *testing.T) {
+	const topics = `"topics":[{"id":"a","title":"А","text":"т","question":"в","parent_title":" Компетенция "}],"prerequisites":[]`
+	g, ok, err := Decode([]byte(`{"version":"competency-map-v1","source":"competency_map",` + topics + `}`))
+	if err != nil || !ok || g.Nodes[0].Competency != "Компетенция" {
+		t.Fatalf("map graph = %+v %v %v", g, ok, err)
+	}
+	// The parent of a topic built from materials is a section, not a competency.
+	g, ok, err = Decode([]byte(`{"version":"v1",` + topics + `}`))
+	if err != nil || !ok || g.Nodes[0].Competency != "" {
+		t.Fatalf("materials graph = %+v %v %v", g, ok, err)
+	}
+}

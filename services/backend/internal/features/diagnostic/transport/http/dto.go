@@ -1,6 +1,9 @@
 package diagnostichttp
 
-import "github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/diagnostic"
+import (
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/diagnostic"
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/exam"
+)
 
 type AudioMetadataResponse struct {
 	VariantTaskID string  `json:"variant_task_id"`
@@ -89,8 +92,18 @@ type ResultResponse struct {
 	TotalTasks              int                         `json:"total_tasks"`
 	DiagnosticScore         int                         `json:"diagnostic_score"`
 	MaximumScore            int                         `json:"maximum_score"`
-	Answers                 []AnswerResponse            `json:"answers"`
-	UntestedBasics          []TaskResponse              `json:"untested_basics"`
+	// Сумма нормализованных баллов итогового экрана: каждая компетенция весит 5 баллов, с одним знаком после запятой
+	ReportScore float64 `json:"report_score" minimum:"0"`
+	// Максимум нормализованных баллов: 5 на компетенцию
+	ReportMaxScore int `json:"report_max_score" minimum:"0"`
+	// Есть компетенция ниже 90%: только такие идут в обучение
+	TrainingNeeded bool `json:"training_needed"`
+	// Предварительная оценка A–D по проценту нормализованных баллов (от 90 — A, от 70 — B, от 60 — C); null — нет заданных заданий
+	Grade *string `json:"grade" enums:"A,B,C,D" extensions:"x-nullable"`
+	// Процент нормализованных баллов от максимума
+	ScorePercent   *int             `json:"score_percent" minimum:"0" maximum:"100" extensions:"x-nullable"`
+	Answers        []AnswerResponse `json:"answers"`
+	UntestedBasics []TaskResponse   `json:"untested_basics"`
 }
 
 func progressResponse(value diagnostic.Progress) ProgressResponse {
@@ -120,6 +133,14 @@ func resultResponse(value diagnostic.Result) ResultResponse {
 		SkippedCompetencies: make([]SkippedCompetencyResponse, 0, len(value.SkippedCompetencies)),
 		Answers:             make([]AnswerResponse, 0, len(value.Answers)),
 		UntestedBasics:      make([]TaskResponse, 0, len(value.UntestedBasics)),
+	}
+	// The translation of points into a letter is shared with the exam.
+	result.ReportScore, result.ReportMaxScore, result.ScorePercent = exam.OverallScore(value.CompetencyShares())
+	result.TrainingNeeded = diagnostic.HasLearningGaps(value.Answers)
+	courseGrade := exam.CourseGrade(result.ScorePercent)
+	if courseGrade != nil {
+		letter := string(*courseGrade)
+		result.Grade = &letter
 	}
 	for _, skipped := range value.SkippedCompetencies {
 		result.SkippedCompetencies = append(result.SkippedCompetencies, SkippedCompetencyResponse{ID: skipped.ID, Name: skipped.Name, Code: skipped.Code})

@@ -1,14 +1,12 @@
 import { MarkdownContent } from '@/shared/ui'
-import { Button, Heading, Text } from '@radix-ui/themes'
 import {
-  AlertTriangle,
-  CheckCircle2,
-  ChevronRight,
-  Mic,
-  RotateCcw,
-  Sparkles,
-  Zap,
-} from 'lucide-react'
+  BannerPrimaryButton,
+  ResultBanner,
+  ResultReport,
+  reportSummary,
+} from '@/widgets/result-report'
+import { Button, Heading, Text } from '@radix-ui/themes'
+import { ChevronRight, Mic, RotateCcw, Zap } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -39,7 +37,7 @@ import {
 } from './trainer-shared'
 import { normalizeText, parseStructuredSummary } from '@/entities/assessment'
 import { diagnosticPercent } from '../model/diagnostic-percent'
-import { groupFeedbackDetails } from '../model/group-feedback-details'
+import { toResultReport } from '../model/to-result-report'
 import { ConfirmVoiceAnswer } from './trainer-answer'
 import styles from '@/pages/learning-trainer/ui/trainer-layout.module.scss'
 import diagnosticStyles from '@/pages/learning-trainer/ui/diagnostic.module.scss'
@@ -533,361 +531,143 @@ function DiagnosticSummary({
       </main>
     )
   const value = result.data
-  const hasGaps = value.answers.some(
-    (answer) => answer.score < (answer.role === 'basic' ? 1 : 2),
+  // The model writes only the general paragraph; headings of older texts are
+  // cut off.
+  const summary = reportSummary(
+    overall,
+    (data) =>
+      parseStructuredSummary(data.summary || '').generalText ||
+      normalizeText(data.summary || ''),
   )
   return (
     <main className={styles.summary}>
-      <Text as="p" className={styles.eyebrow}>
-        {t('learningSession.summary')}
-      </Text>
-      <Heading as="h1">{t('learningSession.completed')}</Heading>
-      {/* The result leads straight on: a bright card whose main action is
-          to work through the weak topics. */}
-      <div className={diagnosticStyles.scoreHero}>
-        <div className={diagnosticStyles.scoreText}>
-          <div>
-            <Text className={diagnosticStyles.scoreNumber}>
-              {value.diagnostic_score} / {value.maximum_score}
-            </Text>{' '}
-            <Text className={diagnosticStyles.scoreLabel}>
-              {t('learningDiagnostic.totalScore')}
-            </Text>
-          </div>
-          <Text as="p" className={diagnosticStyles.scoreNext}>
-            {t(
-              hasGaps
-                ? 'learningDiagnostic.nextStep'
-                : 'learningDiagnostic.noGaps',
-            )}
-          </Text>
-        </div>
-        {hasGaps && (
-          <button
-            type="button"
-            className={diagnosticStyles.toTraining}
-            onClick={() => onTraining(sessionId)}
-          >
-            <span
-              className={diagnosticStyles.toTrainingIcon}
-              aria-hidden="true"
+      <ResultReport
+        report={toResultReport(value)}
+        summary={summary}
+        highlight={
+          value.training_needed ? (
+            <ResultBanner title={t('learningDiagnostic.nextStep')}>
+              <BannerPrimaryButton
+                icon={<Zap size={20} fill="currentColor" />}
+                onClick={() => onTraining(sessionId)}
+              >
+                {t('learningDiagnostic.toTraining')}
+              </BannerPrimaryButton>
+            </ResultBanner>
+          ) : undefined
+        }
+      >
+        {!overall.isPending && (
+          <>
+            <button
+              type="button"
+              className={diagnosticStyles.reviewToggle}
+              aria-expanded={reviewOpen}
+              aria-controls="task-review"
+              onClick={() =>
+                setReviewOpen((open) => {
+                  if (open) reviewAudio.stop()
+                  return !open
+                })
+              }
             >
-              <Zap size={20} fill="currentColor" />
-            </span>
-            {t('learningDiagnostic.toTraining')}
-          </button>
-        )}
-      </div>
-      {overall.isPending ? (
-        <FeedbackPreparing />
-      ) : (
-        <DiagnosticOverallFeedback feedback={overall} />
-      )}
-      {!overall.isPending && (
-        <>
-          <button
-            type="button"
-            className={diagnosticStyles.reviewToggle}
-            aria-expanded={reviewOpen}
-            aria-controls="task-review"
-            onClick={() =>
-              setReviewOpen((open) => {
-                if (open) reviewAudio.stop()
-                return !open
-              })
-            }
-          >
-            <ChevronRight
-              size={20}
-              className={diagnosticStyles.reviewChevron}
-              aria-hidden="true"
-            />
-            {t('learningDiagnostic.reviewToggle', {
-              count: value.answers.length,
-            })}
-          </button>
-          {reviewOpen && (
-            <div id="task-review">
-              <Heading as="h2" className={diagnosticStyles.visuallyHidden}>
-                {t('learningDiagnostic.history')}
-              </Heading>
-              <ol className={diagnosticStyles.answers}>
-                {value.answers.map((answer) => (
-                  <li
-                    key={answer.variant_task_id}
-                    className={diagnosticStyles.answer}
-                  >
-                    <FormattedQuestionContent
-                      question={answer.task.question}
-                      headingLevel="h3"
-                    />
-                    {answer.task.source_task_id && (
-                      <div className={diagnosticStyles.reviewAudio}>
-                        <ListenButton
-                          state={
-                            reviewAudio.loadingId === answer.task.source_task_id
-                              ? 'loading'
-                              : reviewAudio.playingId ===
-                                  answer.task.source_task_id
-                                ? 'playing'
-                                : 'idle'
-                          }
-                          onClick={() =>
-                            void reviewAudio.play(answer.task.source_task_id)
-                          }
-                        />
-                        {reviewAudio.notice?.taskId ===
-                          answer.task.source_task_id && (
-                          <>
-                            <Text as="p" className={sessionStyles.hint}>
-                              {answer.task.voice_instruction}
-                            </Text>
-                            <Text
-                              as="p"
-                              role={
-                                reviewAudio.notice.key ===
-                                'learningTrainer.speechError'
-                                  ? 'alert'
-                                  : 'status'
-                              }
-                              className={sessionStyles.hint}
-                            >
-                              {t(reviewAudio.notice.key)}
-                            </Text>
-                          </>
-                        )}
+              <ChevronRight
+                size={20}
+                className={diagnosticStyles.reviewChevron}
+                aria-hidden="true"
+              />
+              {t('learningDiagnostic.reviewToggle', {
+                count: value.answers.length,
+              })}
+            </button>
+            {reviewOpen && (
+              <div id="task-review">
+                <Heading as="h2" className={diagnosticStyles.visuallyHidden}>
+                  {t('learningDiagnostic.history')}
+                </Heading>
+                <ol className={diagnosticStyles.answers}>
+                  {value.answers.map((answer) => (
+                    <li
+                      key={answer.variant_task_id}
+                      className={diagnosticStyles.answer}
+                    >
+                      <FormattedQuestionContent
+                        question={answer.task.question}
+                        headingLevel="h3"
+                      />
+                      {answer.task.source_task_id && (
+                        <div className={diagnosticStyles.reviewAudio}>
+                          <ListenButton
+                            state={
+                              reviewAudio.loadingId ===
+                              answer.task.source_task_id
+                                ? 'loading'
+                                : reviewAudio.playingId ===
+                                    answer.task.source_task_id
+                                  ? 'playing'
+                                  : 'idle'
+                            }
+                            onClick={() =>
+                              void reviewAudio.play(answer.task.source_task_id)
+                            }
+                          />
+                          {reviewAudio.notice?.taskId ===
+                            answer.task.source_task_id && (
+                            <>
+                              <Text as="p" className={sessionStyles.hint}>
+                                {answer.task.voice_instruction}
+                              </Text>
+                              <Text
+                                as="p"
+                                role={
+                                  reviewAudio.notice.key ===
+                                  'learningTrainer.speechError'
+                                    ? 'alert'
+                                    : 'status'
+                                }
+                                className={sessionStyles.hint}
+                              >
+                                {t(reviewAudio.notice.key)}
+                              </Text>
+                            </>
+                          )}
+                        </div>
+                      )}
+                      <div className={diagnosticStyles.reviewAnswerSection}>
+                        <Text as="p" className={styles.eyebrow}>
+                          {t('learningTrainer.yourAnswer')}
+                        </Text>
+                        <Text
+                          as="p"
+                          className={diagnosticStyles.reviewAnswerText}
+                        >
+                          {answer.text}
+                        </Text>
                       </div>
-                    )}
-                    <div className={diagnosticStyles.reviewAnswerSection}>
-                      <Text as="p" className={styles.eyebrow}>
-                        {t('learningTrainer.yourAnswer')}
-                      </Text>
-                      <Text
-                        as="p"
-                        className={diagnosticStyles.reviewAnswerText}
-                      >
-                        {answer.text}
-                      </Text>
-                    </div>
-                    <Feedback
-                      heading="h4"
-                      score={answer.score}
-                      maxScore={answer.grader_max_score}
-                      verdict={answer.verdict}
-                      skipped={answer.skipped}
-                      feedback={answer.feedback}
-                    />
-                  </li>
-                ))}
-              </ol>
-              {/* Basics left out after a full main answer and competencies
+                      <Feedback
+                        heading="h4"
+                        score={answer.score}
+                        maxScore={answer.grader_max_score}
+                        verdict={answer.verdict}
+                        skipped={answer.skipped}
+                        feedback={answer.feedback}
+                      />
+                    </li>
+                  ))}
+                </ol>
+                {/* Basics left out after a full main answer and competencies
                   outside the variant stay in the API: the review shows only
                   the tasks that were asked. */}
-            </div>
-          )}
-        </>
-      )}
+              </div>
+            )}
+          </>
+        )}
+      </ResultReport>
       {training.restart.isError && (
         <Text as="p" role="alert">
           {t('learningSession.loadError')}
         </Text>
       )}
     </main>
-  )
-}
-
-// Shown while the model writes the overall feedback; the task review waits too.
-function FeedbackPreparing() {
-  const { t } = useTranslation()
-  return (
-    <section className={diagnosticStyles.preparing} role="status">
-      <span className={diagnosticStyles.preparingIcon} aria-hidden="true">
-        <Sparkles size={28} />
-      </span>
-      <div className={diagnosticStyles.preparingText}>
-        <Heading as="h2">{t('learningDiagnostic.feedbackLoading')}</Heading>
-        <Text as="p">{t('learningDiagnostic.feedbackLoadingHelp')}</Text>
-      </div>
-      <div className={diagnosticStyles.skeleton} aria-hidden="true">
-        <span />
-        <span />
-        <span />
-      </div>
-    </section>
-  )
-}
-
-function DiagnosticOverallFeedback({
-  feedback,
-}: {
-  feedback: ReturnType<typeof useDiagnosticFeedbackQuery>
-}) {
-  const { t } = useTranslation()
-  const value = feedback.data
-  return (
-    <section
-      className={diagnosticStyles.overallFeedback}
-      aria-label={t('learningDiagnostic.overallFeedback')}
-    >
-      <div className={styles.feedbackHeaderTitle}>
-        <Sparkles size={20} className={styles.sparkleIcon} aria-hidden="true" />
-        <Heading as="h2">{t('learningDiagnostic.overallFeedback')}</Heading>
-      </div>
-
-      {feedback.isPending ? (
-        <Text as="p" role="status">
-          {t('learningDiagnostic.feedbackLoading')}
-        </Text>
-      ) : feedback.isError ? (
-        <div>
-          <Text as="p" role="alert">
-            {t('learningDiagnostic.feedbackError')}
-          </Text>
-          <Button
-            onClick={() => void feedback.refetch()}
-            disabled={feedback.isFetching}
-          >
-            {t('learningDiagnostic.feedbackRetry')}
-          </Button>
-        </div>
-      ) : value ? (
-        <OverallFeedbackContent value={value} />
-      ) : null}
-    </section>
-  )
-}
-
-type OverallFeedback = NonNullable<
-  ReturnType<typeof useDiagnosticFeedbackQuery>['data']
->
-
-// The model summary splits into a general paragraph, "what is good" and "what
-// to work on". Cards are filled from the report when the model leaves a part
-// out and are hidden when there is nothing to say: no invented praise.
-function OverallFeedbackContent({ value }: { value: OverallFeedback }) {
-  const { t } = useTranslation()
-  // The model writes only the general paragraph; headings of older texts
-  // are cut off.
-  const generalText =
-    parseStructuredSummary(value.summary || '').generalText ||
-    normalizeText(value.summary || '')
-  // The cards come only from the stored per-answer reviews: no invented
-  // praise. An empty card is not shown.
-  const priority = new Map(
-    value.training_recommendations.map((item) => [
-      item.outcome_id,
-      item.priority,
-    ]),
-  )
-  const gaps = [...value.confirmed_gaps].sort(
-    (a, b) =>
-      (priority.get(a.outcome_id) ?? Infinity) -
-      (priority.get(b.outcome_id) ?? Infinity),
-  )
-  const workGroups = new Map<string, { name: string; details: string[] }>()
-  for (const item of [
-    ...gaps.map((gap) => ({
-      id: gap.competency_id,
-      name: gap.competency_name,
-      text: gap.advice,
-    })),
-    ...value.partial_competencies.map((part) => ({
-      id: part.competency_id,
-      name: part.competency_name,
-      text: part.details,
-    })),
-  ]) {
-    const group = workGroups.get(item.id)
-    if (group) {
-      group.details.push(item.text)
-    } else {
-      workGroups.set(item.id, { name: item.name, details: [item.text] })
-    }
-  }
-  const good =
-    value.strengths.length > 0 ? (
-      <ul className={styles.summaryCardList}>
-        {value.strengths.map((item, index) => (
-          <li key={index}>
-            <MarkdownContent text={item} />
-          </li>
-        ))}
-      </ul>
-    ) : null
-  const work =
-    gaps.length + value.partial_competencies.length > 0 ? (
-      <ul className={`${styles.summaryCardList} ${styles.feedbackGroups}`}>
-        {[...workGroups].map(([id, group]) => (
-          <li key={id}>
-            <strong>{group.name}.</strong>
-            {groupFeedbackDetails(group.details).map((detail, index) => (
-              <div key={index}>
-                {detail.heading && <MarkdownContent text={detail.heading} />}
-                {detail.heading && (
-                  <p>{t('learningDiagnostic.feedbackSkillsToImprove')}</p>
-                )}
-                {detail.items.length === 1 ? (
-                  <MarkdownContent text={detail.items[0]} />
-                ) : (
-                  <ul>
-                    {detail.items.map((text, itemIndex) => (
-                      <li key={itemIndex}>
-                        <MarkdownContent text={text} />
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            ))}
-          </li>
-        ))}
-      </ul>
-    ) : null
-  return (
-    <div className={styles.feedbackContent}>
-      {generalText && (
-        <div className={styles.feedbackSummaryText}>
-          <MarkdownContent text={generalText} />
-        </div>
-      )}
-      {(good || work) && (
-        <div className={styles.summaryCardsGrid}>
-          {good && (
-            <section
-              className={`${styles.summaryCard} ${styles.summaryCardGood}`}
-            >
-              <h3 className={styles.summaryCardHeader}>
-                <CheckCircle2
-                  size={18}
-                  className={styles.iconSuccess}
-                  aria-hidden="true"
-                />
-                <span className={styles.summaryCardTitleGood}>
-                  {t('learningDiagnostic.feedbackGood')}
-                </span>
-              </h3>
-              <div className={styles.summaryCardBody}>{good}</div>
-            </section>
-          )}
-          {work && (
-            <section
-              className={`${styles.summaryCard} ${styles.summaryCardWarning}`}
-            >
-              <h3 className={styles.summaryCardHeader}>
-                <AlertTriangle
-                  size={18}
-                  className={styles.iconWarning}
-                  aria-hidden="true"
-                />
-                <span className={styles.summaryCardTitleWarning}>
-                  {t('learningDiagnostic.feedbackWork')}
-                </span>
-              </h3>
-              <div className={styles.summaryCardBody}>{work}</div>
-            </section>
-          )}
-        </div>
-      )}
-    </div>
   )
 }

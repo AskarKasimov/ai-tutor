@@ -124,6 +124,11 @@ const resultSchema: z.ZodType<DiagnosticResult> = z
     total_tasks: count.min(1),
     diagnostic_score: count,
     maximum_score: count.min(1),
+    report_score: z.number().nonnegative(),
+    report_max_score: count,
+    training_needed: z.boolean(),
+    grade: z.enum(['A', 'B', 'C', 'D']).nullable(),
+    score_percent: z.number().int().min(0).max(100).nullable(),
     answers: z.array(answerSchema),
     untested_basics: z.array(task),
   })

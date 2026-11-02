@@ -89,7 +89,12 @@ func (s *Service) plan(ctx context.Context, owner, id string) (training.Session,
 	if d.Variant.AlgorithmVersion == "constituent-map-v1" {
 		targets = diagnostic.TrainingTargetsByConstituent(d.Answers)
 	}
+	// A competency closed at 90% and above does not go into training.
+	open := diagnostic.OpenCompetencies(d.Answers)
 	for _, target := range targets {
+		if !open[target.Answer.CompetencyID] {
+			continue
+		}
 		raw, err := json.Marshal(target.Answer.Task)
 		if err != nil {
 			return state, err

@@ -117,21 +117,54 @@ type NodeResult struct {
 	Title  string `json:"title"`
 	// Прямые пререквизиты вершины (node_id) в графе диагностики: из них строится подграф на странице итога
 	Requires []string `json:"requires"`
-	// Вершина верхнего уровня: не пререквизит ни одной другой; по ним считается оценка курса
+	// Вершина верхнего уровня: не пререквизит ни одной другой
 	TopLevel bool `json:"top_level"`
+	// Ответ дан после переформулировки или подсказки
+	Assisted bool `json:"assisted"`
+	// Баллы темы; null — тема не спрашивалась, засчитана или данных недостаточно
+	Score    *int `json:"score" minimum:"0" extensions:"x-nullable"`
+	MaxScore *int `json:"max_score" minimum:"1" extensions:"x-nullable"`
+	// Результаты по пунктам рубрики или критериям К1–К4
+	Marks []TopicMark `json:"marks"`
+	// Реплика Geek при закрытии темы; пустая, если её нет
+	Reply string `json:"reply"`
 }
 
-// Result is the student's outcome; criteria and evidence stay in the teacher package.
+// TopicMark is one rubric item or one of К1–К4 (id k1…k4).
+type TopicMark struct {
+	ID string `json:"id"`
+	// Короткое название пункта из карты; пустое у К1–К4 и пунктов без названия
+	Title    string `json:"title"`
+	Score    int    `json:"score" minimum:"0"`
+	MaxScore int    `json:"max_score" minimum:"1"`
+	// Основание балла; пустое, если модель его не сохранила
+	Reason string `json:"reason"`
+	// Дословная цитата из ответа студента; пустая, если её нет
+	Quote string `json:"quote"`
+}
+
+// Result is the student's outcome with the points and reasons of every asked topic.
 type Result struct {
 	Gaps []Gap `json:"gaps"`
-	// Предварительная оценка курса A–D по среднему баллу вершин верхнего уровня (от 3,5 — A, от 2,5 — B, от 1,5 — C); null — ни одной такой вершины с оценкой
+	// Предварительная оценка курса A–D по проценту нормализованных баллов (от 90 — A, от 70 — B, от 60 — C); null — нет ни одной темы с баллами
 	Grade *string      `json:"grade" enums:"A,B,C,D" extensions:"x-nullable"`
 	Nodes []NodeResult `json:"nodes"`
 	// Слабые места — темы на C: засчитаны, но ответ неполный; источники и материалы — как у пробела
 	WeakSpots []Gap `json:"weak_spots"`
-	// Средний балл вершин верхнего уровня (A=4…D=1) в процентах от 4; вершины «недостаточно данных» исключены
-	ScorePercent *int   `json:"score_percent" minimum:"0" maximum:"100" extensions:"x-nullable"`
-	SessionID    string `json:"session_id"`
+	// Процент нормализованных баллов от максимума; темы «недостаточно данных» и засчитанные исключены
+	ScorePercent *int `json:"score_percent" minimum:"0" maximum:"100" extensions:"x-nullable"`
+	// Сумма нормализованных баллов: каждая компетенция весит 5 баллов, с одним знаком после запятой
+	Score float64 `json:"score" minimum:"0"`
+	// Максимум нормализованных баллов: 5 на компетенцию
+	MaxScore  int    `json:"max_score" minimum:"0"`
+	SessionID string `json:"session_id"`
+}
+
+// ResultSummary is the model's overall conclusion of a completed diagnostic.
+type ResultSummary struct {
+	SessionID string `json:"session_id"`
+	// Абзац общего вывода в Markdown; пустой, если ни одна тема не получила результата
+	Summary string `json:"summary"`
 }
 
 // HistoryItem is one of the student's diagnostics on the course.
@@ -304,9 +337,37 @@ func (h *Handler) Answer(w http.ResponseWriter, r *http.Request) {
 	httpx.JSON(w, http.StatusOK, toSession(session))
 }
 
+// ResultSummary handles GET /diagnostic-sessions/{id}/feedback.
+// @Summary Общий вывод по итогу диагностики
+// @Description Абзац общего вывода от модели; пишется один раз при первом открытии итога и сохраняется. 409 — диагностика не completed. 503 — модель недоступна, запрос можно повторить.
+// @ID getDiagnosticResultSummary
+// @Tags Диагностика
+// @Security accessCookie
+// @Produce json
+// @Param id path string true "ID диагностики" minlength(1) maxlength(128)
+// @Success 200 {object} ResultSummary
+// @Failure 401 {object} fault.Error
+// @Failure 404 {object} fault.Error
+// @Failure 409 {object} fault.Error
+// @Failure 503 {object} fault.Error
+// @Router /exam/diagnostic-sessions/{id}/feedback [get]
+func (h *Handler) ResultSummary(w http.ResponseWriter, r *http.Request) {
+	u, ok := principal(w, r)
+	if !ok {
+		return
+	}
+	id := r.PathValue("id")
+	summary, err := h.service.ResultSummary(r.Context(), u.ID, id)
+	if err != nil {
+		httpx.Error(r.Context(), w, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, ResultSummary{SessionID: id, Summary: summary})
+}
+
 // Result handles GET /diagnostic-sessions/{id}/result.
 // @Summary Итог диагностики
-// @Description Предварительная оценка A–D, статусы тем и список пробелов. 409 — диагностика не completed.
+// @Description Предварительная оценка A–D, статусы и баллы тем, основания и список пробелов. 409 — диагностика не completed.
 // @ID getDiagnosticResult
 // @Tags Диагностика
 // @Security accessCookie
@@ -434,14 +495,19 @@ func grade(g *domain.Grade) *string {
 }
 
 func toResult(r domain.Result) Result {
-	out := Result{Gaps: gapDTOs(r.Gaps), Grade: grade(r.Grade), Nodes: []NodeResult{}, ScorePercent: r.ScorePercent, SessionID: r.SessionID,
+	out := Result{Gaps: gapDTOs(r.Gaps), Grade: grade(r.Grade), Nodes: []NodeResult{}, ScorePercent: r.ScorePercent, Score: r.Score, MaxScore: r.Maximum, SessionID: r.SessionID,
 		WeakSpots: gapDTOs(r.WeakSpots)}
 	for _, n := range r.Nodes {
 		requires := n.Requires
 		if requires == nil {
 			requires = []string{}
 		}
-		out.Nodes = append(out.Nodes, NodeResult{Grade: grade(n.Grade), NodeID: n.NodeID, Requires: requires, Status: string(n.Status), Title: n.Title, TopLevel: n.TopLevel})
+		marks := make([]TopicMark, 0, len(n.Marks))
+		for _, m := range n.Marks {
+			marks = append(marks, TopicMark{ID: m.ID, Title: m.Title, Score: m.Score, MaxScore: m.Maximum, Reason: m.Reason, Quote: m.Quote})
+		}
+		out.Nodes = append(out.Nodes, NodeResult{Grade: grade(n.Grade), NodeID: n.NodeID, Requires: requires, Status: string(n.Status), Title: n.Title, TopLevel: n.TopLevel,
+			Assisted: n.Assisted, Score: n.Score, MaxScore: n.Maximum, Marks: marks, Reply: n.Reply})
 	}
 	return out
 }

@@ -1,6 +1,10 @@
 package exam
 
-import "math"
+import (
+	"math"
+
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/stats"
+)
 
 // Criteria are the four exam criteria, each 0 (not shown), 1 (partly) or 2 (fully):
 // K1 correctness and terminology, K2 logic and justification, K3 objections and
@@ -61,18 +65,6 @@ const (
 	GradeD Grade = "D"
 )
 
-func (g Grade) points() int {
-	switch g {
-	case GradeA:
-		return 4
-	case GradeB:
-		return 3
-	case GradeC:
-		return 2
-	}
-	return 1
-}
-
 // TopicGrade applies the README table to the assessed criteria. An assisted
 // answer is capped at B; help never raises identical observed scores.
 func TopicGrade(c Criteria, assisted bool, unassessed UnassessedCriteria) Grade {
@@ -101,32 +93,39 @@ func TopicGrade(c Criteria, assisted bool, unassessed UnassessedCriteria) Grade 
 	return grade
 }
 
-// CourseGrade averages the graded top-level topics (A = 4 … D = 1) and rounds
-// the mean to the nearest grade: at least 3.5 is A, 2.5 B, 1.5 C, otherwise D,
-// so topics all on one grade give that grade (decision of 20.10.2026). The
-// percent is the mean as a share of the maximum 4. Topics without a grade
-// ("insufficient data" or unchecked) are excluded; with none left both
-// results are nil.
-func CourseGrade(grades []Grade) (*Grade, *int) {
-	if len(grades) == 0 {
-		return nil, nil
+// CompetencyPoints is what a competency weighs in the overall score, in the exam
+// and the learning diagnostic alike, however many constituents and tasks it took
+// (decision of 01.11.2026).
+const CompetencyPoints = 5
+
+// OverallScore is the score of all competencies by their shares, rounded to one
+// decimal, its maximum and the percent. Without competencies there is no percent.
+func OverallScore(competencies []float64) (score float64, maximum int, percent *int) {
+	if len(competencies) == 0 {
+		return 0, 0, nil
 	}
-	sum := 0
-	for _, g := range grades {
-		sum += g.points()
+	share := stats.Mean(competencies)
+	maximum = CompetencyPoints * len(competencies)
+	p := stats.Percent(share)
+	return math.Round(share*float64(maximum)*10) / 10, maximum, &p
+}
+
+// CourseGrade translates the percent of the overall score into the overall
+// grade, the same way in the exam and the learning diagnostic: at least 90% is
+// A, 70% B, 60% C, otherwise D (decision of 01.11.2026). With nothing to grade
+// there is no grade.
+func CourseGrade(percent *int) *Grade {
+	if percent == nil {
+		return nil
 	}
-	// Twice the mean compared with whole thresholds keeps the halves exact.
-	twice := 2 * sum
-	n := len(grades)
-	percent := int(math.Floor(float64(sum)/float64(4*n)*100 + 1e-9))
 	grade := GradeD
 	switch {
-	case twice >= 7*n:
+	case *percent >= 90:
 		grade = GradeA
-	case twice >= 5*n:
+	case *percent >= 70:
 		grade = GradeB
-	case twice >= 3*n:
+	case *percent >= 60:
 		grade = GradeC
 	}
-	return &grade, &percent
+	return &grade
 }

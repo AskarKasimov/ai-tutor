@@ -109,6 +109,7 @@ export function createAppDependencies(): AppDependencies {
       listDiagnostics: diagnostic.listDiagnostics,
       answerDiagnostic: diagnostic.answerDiagnostic,
       readDiagnosticResult: diagnostic.readDiagnosticResult,
+      readDiagnosticResultSummary: diagnostic.readDiagnosticResultSummary,
       fetchTurnAudio: diagnostic.fetchTurnAudio,
     },
   }

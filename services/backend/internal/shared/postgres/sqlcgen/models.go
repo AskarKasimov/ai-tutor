@@ -72,6 +72,13 @@ type GeekRequest struct {
 	CreatedAt   int64
 }
 
+type GeekResultSummary struct {
+	SessionID string
+	OwnerID   string
+	Summary   string
+	CreatedAt int64
+}
+
 type GeekSession struct {
 	ID          string
 	OwnerID     string

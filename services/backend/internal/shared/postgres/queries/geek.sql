@@ -35,3 +35,10 @@ SELECT state FROM geek_sessions
 WHERE owner_id = $1 AND subject_id = $2
 ORDER BY started_at DESC, id DESC
 LIMIT 50;
+
+-- name: GetGeekResultSummary :one
+SELECT summary FROM geek_result_summaries WHERE owner_id = $1 AND session_id = $2;
+
+-- name: SaveGeekResultSummary :exec
+INSERT INTO geek_result_summaries(session_id, owner_id, summary, created_at) VALUES ($1, $2, $3, $4)
+ON CONFLICT (session_id) DO NOTHING;

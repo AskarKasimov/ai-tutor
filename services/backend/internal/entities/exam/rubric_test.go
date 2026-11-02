@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"reflect"
+	"slices"
 	"testing"
 )
 
@@ -94,8 +95,8 @@ func TestParseRubricRejectsPartiallySupportedScalesAndOverflow(t *testing.T) {
 		"Балл: −1 — ошибка; 0 — нет; 1 — верно",
 		"Балл: 0 — нет; 999999999999999999999999999999 — верно",
 		"Балл (макс. 999999999999999999999999999999): 0 — нет; 1 — верно",
-		fmt.Sprintf("Балл: 0 — нет; %d — верно", math.MaxInt/4+1),
-		fmt.Sprintf("К1 Суть: 0 — нет; %d — верно\nК2 Пример: 0 — нет; 1 — верно", math.MaxInt/4),
+		fmt.Sprintf("Балл: 0 — нет; %d — верно", math.MaxInt/100+1),
+		fmt.Sprintf("К1 Суть: 0 — нет; %d — верно\nК2 Пример: 0 — нет; 1 — верно", math.MaxInt/100),
 	} {
 		if spec, err := ParseRubric(text); err == nil {
 			t.Fatalf("partially parsed invalid scale %q: %+v", text, spec)
@@ -157,11 +158,20 @@ func TestRubricGradesAndEvidence(t *testing.T) {
 	if err := r.Validate(spec, []Turn{{Line: 2, Speaker: SpeakerStudent, Text: "Содержание ответа"}}); err != nil {
 		t.Fatal(err)
 	}
+	// A wrong quote neither stops the exam nor changes the score: it is dropped.
+	turns := []Turn{{Line: 2, Speaker: SpeakerStudent, Text: "Содержание ответа"}}
+	score := r.Items[0].Score
 	r.Items[0].Quote = "Расчёт, которого в ответе нет"
-	if err := r.Validate(spec, []Turn{{Line: 2, Speaker: SpeakerStudent, Text: "Содержание ответа"}}); err == nil {
-		t.Fatal("invented quote accepted")
+	if err := r.Validate(spec, turns); err != nil {
+		t.Fatal(err)
+	}
+	if dropped := r.DropUnverifiedQuotes(turns); !slices.Contains(dropped, r.Items[0].ID) || r.Items[0].Quote != "" || r.Items[0].Score != score {
+		t.Fatalf("dropped %v, mark %+v", dropped, r.Items[0])
 	}
 	r.Items[0].Quote = "Содержание ответа"
+	if dropped := r.DropUnverifiedQuotes(turns); slices.Contains(dropped, r.Items[0].ID) || r.Items[0].Quote == "" {
+		t.Fatalf("a real quote was dropped: %v", dropped)
+	}
 	r.Items[0].Score = 2
 	if err := r.Validate(spec, []Turn{{Line: 2, Speaker: SpeakerStudent}}); err == nil {
 		t.Fatal("invented scoring level")
@@ -202,5 +212,47 @@ func TestRubricFollowupAccumulatesAndSurvivesPersistence(t *testing.T) {
 	e.Apply(Evaluation{Verdict: VerdictAnswered, AnswerComplete: &yes, Rubric: rubricResult(t, 1, 1)})
 	if e.Nodes["a"].Grade == nil || *e.Nodes["a"].Grade != GradeB || !e.Nodes["a"].Rubric.Complete() {
 		t.Fatal("help must cap the letter without changing rubric points")
+	}
+}
+
+func TestRubricItemTitle(t *testing.T) {
+	for rule, want := range map[string]string{
+		"Пункт рубрики 1 «Предметная корректность»: 2 — верно; 0 — нет": "Предметная корректность",
+		"К1 Суть (макс. 1): 1 — верно; 0 — нет":                         "Суть",
+		"Балл (макс. 1): 1 — все четыре; 0 — иначе":                     "Балл",
+		"К1: 0 — нет; 2 — да":                                           "",
+	} {
+		if got := (RubricItem{Rule: rule}).Title(); got != want {
+			t.Errorf("Title(%q) = %q, want %q", rule, got, want)
+		}
+	}
+}
+
+func TestQuoteMayJoinPartsOfAnAnswer(t *testing.T) {
+	const answer = "Задача 1. Классический ИИ. Метод поиска. Задача 2. Генеративный."
+	for _, tc := range []struct {
+		quote string
+		want  bool
+	}{
+		{"Классический ИИ", true},
+		{"Задача 1. Классический ИИ. ... Задача 2. Генеративный.", true},
+		{"Задача 1. Классический ИИ... Задача 2.", true},
+		{"Задача 1 … Генеративный.", true},
+		{"задача 1. классический ИИ", true},
+		{"Задача 1. Классический ИИ. Задача 2. Генеративный.", true},
+		// A fragment that is not there, or stands in another order, is no quote.
+		{"Задача 1. ... Задача 3.", false},
+		{"Генеративный. ... Задача 1.", false},
+		{"Задача 1. Классический ИИ. Задача 2. Классический ИИ.", false},
+		{"Задача 1. Глубокий поиск.", false},
+		{"...", false},
+		{"", false},
+	} {
+		if got := quotedIn(answer, tc.quote); got != tc.want {
+			t.Errorf("quotedIn(%q) = %v, want %v", tc.quote, got, tc.want)
+		}
+	}
+	if !quotedIn("Ну... не уверен", "Ну... не уверен") {
+		t.Error("the student's own ellipsis is an exact quote")
 	}
 }

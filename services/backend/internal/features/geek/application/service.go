@@ -45,10 +45,13 @@ type Service struct {
 	store    Store
 	texts    Transcriptions
 	examiner Examiner
-	ids      IDGenerator
-	now      func() time.Time
-	cfg      Config
-	speech   *SpeechCache
+	// summarizer and summaries write and keep the result's overall conclusion.
+	summarizer Summarizer
+	summaries  SummaryStore
+	ids        IDGenerator
+	now        func() time.Time
+	cfg        Config
+	speech     *SpeechCache
 	// rng shuffles top-level topics of equal coverage for each new diagnostic.
 	rng func() *rand.Rand
 }

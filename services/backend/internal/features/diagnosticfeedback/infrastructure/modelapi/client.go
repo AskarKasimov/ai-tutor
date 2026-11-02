@@ -12,31 +12,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/diagnostic"
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/resultsummary"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/features/diagnosticfeedback/application"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/fault"
 )
-
-const systemPrompt = `Ты преподаватель курса по машинному обучению. По JSON-отчёту диагностики напиши для студента один связный абзац общего вывода (3–4 предложения).
-
-Отчёт — единственный источник фактов:
-- strengths — проверенные образовательные результаты, на которые дан полный ответ; это не доказательство освоения всей компетенции;
-- confirmed_gaps — неосвоенные образовательные результаты с разбором ответа и советом;
-- partial_competencies — частично выполненные основные задания; details указывает составляющую и проверенный результат.
-- advice и rationale различают «дополнительно изучить» и «необходимо изучить полностью»; сохраняй эту границу, не расширяй вывод на другие составляющие.
-
-Правила:
-- Называй только темы из отчёта. Не добавляй темы, методы, формулы и примеры, которых в отчёте нет.
-- Если strengths пуст, не утверждай, что что-то получилось, понято или освоено: честно скажи, что по проверенным темам пока есть пробелы, и что персональный план поможет их закрыть.
-- Если confirmed_gaps и partial_competencies пусты, не придумывай пробелы.
-- Не перечисляй все темы и не дублируй карточки: «Что хорошо» и «Что доработать» студент видит отдельно, собранными из разборов его ответов. Дай общую картину и главный следующий шаг.
-- Не называй пробелами unverified_competencies: они не проверялись.
-- Без заголовков, списков, баллов, процентов, приветствий и похвалы ради похвалы. Обращайся на «вы».
-
-Поле summary оформляй в Markdown, используя выделение и inline-код по необходимости; соблюдай заданную структуру резюме. Не оборачивай весь JSON в Markdown-блок.
-Верни строго JSON-объект с одним полем:
-{"summary": "Абзац общего вывода"}
-Не добавляй никакого текста вне JSON.`
 
 type Client struct {
 	client  *http.Client
@@ -66,25 +45,7 @@ func providerError(err error) error {
 }
 
 func (c *Client) Synthesize(ctx context.Context, report application.DeterministicReport) (string, error) {
-	data, err := json.Marshal(struct {
-		DiagnosticScore         int                                 `json:"diagnostic_score"`
-		MaximumScore            int                                 `json:"maximum_score"`
-		ScorePercentage         int                                 `json:"score_percentage"`
-		Strengths               []string                            `json:"strengths"`
-		ConfirmedGaps           []applicationConfirmedGap           `json:"confirmed_gaps"`
-		PartialCompetencies     []applicationPartial                `json:"partial_competencies"`
-		UnverifiedCompetencies  []string                            `json:"unverified_competencies"`
-		TrainingRecommendations []applicationTrainingRecommendation `json:"training_recommendations"`
-	}{
-		DiagnosticScore:         report.DiagnosticScore,
-		MaximumScore:            report.MaximumScore,
-		ScorePercentage:         report.ScorePercentage,
-		Strengths:               report.Strengths,
-		ConfirmedGaps:           mapGaps(report.ConfirmedGaps),
-		PartialCompetencies:     mapPartials(report.PartialCompetencies),
-		UnverifiedCompetencies:  mapUnverified(report.UnverifiedCompetencies),
-		TrainingRecommendations: mapRecs(report.TrainingRecommendations),
-	})
+	data, err := json.Marshal(summaryReport(report))
 	if err != nil {
 		return "", err
 	}
@@ -107,7 +68,7 @@ func (c *Client) Synthesize(ctx context.Context, report application.Deterministi
 			Role    string `json:"role"`
 			Content string `json:"content"`
 		}{
-			{Role: "system", Content: systemPrompt},
+			{Role: "system", Content: resultsummary.SystemPrompt},
 			{Role: "user", Content: string(data)},
 		},
 		ResponseFormat: struct {
@@ -341,66 +302,21 @@ func formatSummary(s string) string {
 	return s
 }
 
-type applicationConfirmedGap struct {
-	Competency     string   `json:"competency"`
-	Outcome        string   `json:"outcome"`
-	FailedCriteria []string `json:"failed_criteria"`
-	Advice         string   `json:"advice"`
-}
-
-type applicationPartial struct {
-	Competency string `json:"competency"`
-	Details    string `json:"details"`
-}
-
-type applicationTrainingRecommendation struct {
-	Competency string `json:"competency"`
-	Outcome    string `json:"outcome"`
-	Priority   int    `json:"priority"`
-	Rationale  string `json:"rationale"`
-}
-
-func mapGaps(gaps []diagnostic.ConfirmedGap) []applicationConfirmedGap {
-	res := make([]applicationConfirmedGap, 0, len(gaps))
-	for _, g := range gaps {
-		res = append(res, applicationConfirmedGap{
-			Competency:     g.CompetencyName,
-			Outcome:        g.OutcomeName,
-			FailedCriteria: g.FailedCriteria,
-			Advice:         g.Advice,
-		})
+// summaryReport gives the model the report shared with the exam: only topics,
+// with what the code knows about them.
+func summaryReport(report application.DeterministicReport) resultsummary.Report {
+	out := resultsummary.Report{Strengths: []resultsummary.Finding{}, Partial: []resultsummary.Finding{}, Gaps: []resultsummary.Finding{}, Unverified: []string{}}
+	for _, strength := range report.Strengths {
+		out.Strengths = append(out.Strengths, resultsummary.Finding{Topic: strength})
 	}
-	return res
-}
-
-func mapPartials(partials []diagnostic.PartialCompetency) []applicationPartial {
-	res := make([]applicationPartial, 0, len(partials))
-	for _, p := range partials {
-		res = append(res, applicationPartial{
-			Competency: p.CompetencyName,
-			Details:    p.Details,
-		})
+	for _, p := range report.PartialCompetencies {
+		out.Partial = append(out.Partial, resultsummary.Finding{Topic: p.CompetencyName, Note: p.Details})
 	}
-	return res
-}
-
-func mapUnverified(unverified []diagnostic.SkippedCompetency) []string {
-	res := make([]string, 0, len(unverified))
-	for _, u := range unverified {
-		res = append(res, u.Name)
+	for _, g := range report.ConfirmedGaps {
+		out.Gaps = append(out.Gaps, resultsummary.Finding{Topic: g.CompetencyName + ": " + g.OutcomeName, Note: g.Advice})
 	}
-	return res
-}
-
-func mapRecs(recs []diagnostic.TrainingRecommendation) []applicationTrainingRecommendation {
-	res := make([]applicationTrainingRecommendation, 0, len(recs))
-	for _, r := range recs {
-		res = append(res, applicationTrainingRecommendation{
-			Competency: r.CompetencyName,
-			Outcome:    r.OutcomeName,
-			Priority:   r.Priority,
-			Rationale:  r.Rationale,
-		})
+	for _, u := range report.UnverifiedCompetencies {
+		out.Unverified = append(out.Unverified, u.Name)
 	}
-	return res
+	return out
 }

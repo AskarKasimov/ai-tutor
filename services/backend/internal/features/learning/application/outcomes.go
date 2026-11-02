@@ -11,14 +11,13 @@ import (
 // study is limited to a fully unstudied constituent in the same map revision.
 // Saved plans are not rebuilt; reimported maps cannot alter historical evidence.
 func (s *Service) outcomes(ctx context.Context, session diagnostic.Session) ([]learning.Outcome, error) {
+	// A competency closed at 90% and above stays out of the plan.
+	findings := diagnostic.OpenFindings(session.Answers)
 	failed := map[string]diagnostic.Answer{}
 	full := map[string]bool{}
 	competencies := []string{}
 	seenComp := map[string]bool{}
-	for _, f := range diagnostic.OutcomeFindings(session.Answers) {
-		if f.Mastered {
-			continue
-		}
+	for _, f := range findings {
 		a := f.Answer
 		id := a.Task.OutcomeID
 		if id == "" {
@@ -63,10 +62,7 @@ func (s *Service) outcomes(ctx context.Context, session diagnostic.Session) ([]l
 	}
 	// Missing map rows (including historical maps) fall back to the immutable
 	// checked task, never to every outcome of its parent competency.
-	for _, f := range diagnostic.OutcomeFindings(session.Answers) {
-		if f.Mastered {
-			continue
-		}
+	for _, f := range findings {
 		a := f.Answer
 		id := a.Task.OutcomeID
 		if id == "" {

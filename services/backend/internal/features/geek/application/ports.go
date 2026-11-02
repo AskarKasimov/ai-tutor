@@ -7,6 +7,7 @@ import (
 	"errors"
 
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/exam"
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/resultsummary"
 )
 
 var (
@@ -57,6 +58,18 @@ type Store interface {
 	// SaveRequest records a request that did not change a session; a request
 	// already stored under the key is kept.
 	SaveRequest(ctx context.Context, r Request) error
+}
+
+// Summarizer writes the overall conclusion of a completed exam.
+type Summarizer interface {
+	Summarize(ctx context.Context, report resultsummary.Report) (string, error)
+}
+
+// SummaryStore keeps the conclusion once it is written, so the student always
+// reads the same text. The first saved text of a session stays.
+type SummaryStore interface {
+	ResultSummary(ctx context.Context, ownerID, sessionID string) (string, bool, error)
+	SaveResultSummary(ctx context.Context, ownerID, sessionID, summary string) error
 }
 
 // Transcriptions reads a transcription owned by the student.

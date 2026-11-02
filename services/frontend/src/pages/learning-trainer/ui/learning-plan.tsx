@@ -130,11 +130,7 @@ function EligibleHoursForm({
   const { t } = useTranslation()
   const result = useDiagnosticResultQuery(userId, diagnosticId)
   if (result.data) {
-    const gaps = result.data.answers.some(
-      (answer) =>
-        answer.skipped || answer.score < (answer.role === 'basic' ? 1 : 2),
-    )
-    if (gaps) return <HoursForm {...props} />
+    if (result.data.training_needed) return <HoursForm {...props} />
     return (
       <TrainerShell
         title={t('learningSession.completed')}

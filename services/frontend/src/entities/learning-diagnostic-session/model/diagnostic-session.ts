@@ -77,6 +77,14 @@ export type DiagnosticResult = {
   total_tasks: number
   diagnostic_score: number
   maximum_score: number
+  // The normalized points of the result screen, 5 per competency, and the
+  // overall grade translated from them.
+  report_score: number
+  report_max_score: number
+  // A competency is below 90%: only such competencies go into training.
+  training_needed: boolean
+  grade: 'A' | 'B' | 'C' | 'D' | null
+  score_percent: number | null
   answers: DiagnosticAnswer[]
   untested_basics: DiagnosticTask[]
 }

@@ -89,11 +89,16 @@ async function setup(
     variant_id: 'v1',
     map_revision: 1,
     included_competency_count: 1,
+    grade: 'C',
+    score_percent: 66,
     skipped_competencies: [],
     completed_tasks: 1,
     total_tasks: 3,
     diagnostic_score: noGaps ? 2 : 1,
     maximum_score: 2,
+    report_score: noGaps ? 5 : 2.5,
+    report_max_score: 5,
+    training_needed: !noGaps,
     untested_basics: [],
     answers: [
       {

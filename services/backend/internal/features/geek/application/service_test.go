@@ -516,7 +516,7 @@ func TestDiagnosticRunsToTheResult(t *testing.T) {
 		t.Fatal(err)
 	}
 	// a-star is a gap; its prerequisites are mastered, so it is the gap itself.
-	if *r.Grade != exam.GradeB || *r.ScorePercent != 81 || len(r.Gaps) != 1 || r.Gaps[0].NodeID != "a-star" {
+	if *r.Grade != exam.GradeA || *r.ScorePercent != 91 || r.Score != 18.3 || r.Maximum != 20 || len(r.Gaps) != 1 || r.Gaps[0].NodeID != "a-star" {
 		t.Fatalf("result = %+v gaps=%+v", r, r.Gaps)
 	}
 	if _, err := f.service.Answer(ctx, "student", s.ID, "late", Answer{TurnID: last.ID, Text: "ещё"}); code(err) != "SESSION_NOT_ACTIVE" {

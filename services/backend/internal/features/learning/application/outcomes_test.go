@@ -35,7 +35,7 @@ func TestPlanUsesCheckedGapsAndOnlyFullyUnstudiedConstituent(t *testing.T) {
 				if tc.mixed && i == 2 {
 					part = "other"
 				}
-				session.Answers = append(session.Answers, diagnostic.Answer{CompetencyID: "c1", Role: role, Score: tc.scores[i], Skipped: tc.skipped && i == 2,
+				session.Answers = append(session.Answers, diagnostic.Answer{CompetencyID: "c1", Role: role, Score: tc.scores[i], GraderMaxScore: map[string]int{"main": 3, "basic": 1}[role], Skipped: tc.skipped && i == 2,
 					Task: diagnostic.TaskSnapshot{OutcomeID: id, OutcomeName: "snapshot " + id, ConstituentID: part, ConstituentName: part}})
 			}
 			repo.learning_outcomes = nil
@@ -65,5 +65,30 @@ func TestPlanUsesCheckedGapsAndOnlyFullyUnstudiedConstituent(t *testing.T) {
 				t.Fatalf("got %v want %v", got, tc.want)
 			}
 		})
+	}
+}
+
+func TestPlanLeavesOutACompetencyClosedAtNinetyPercent(t *testing.T) {
+	s, repo, _, _ := newService(t, 1)
+	repo.learning_outcomes = nil
+	answer := func(competency, constituent, role string, score, maximum int) diagnostic.Answer {
+		return diagnostic.Answer{CompetencyID: competency, Role: role, Score: score, GraderMaxScore: maximum,
+			Task: diagnostic.TaskSnapshot{OutcomeID: competency + constituent + role, ConstituentID: constituent}}
+	}
+	session := diagnostic.Session{Answers: []diagnostic.Answer{
+		answer("closed", "1", "main", 3, 3), answer("closed", "2", "main", 3, 3), answer("closed", "3", "main", 3, 3), answer("closed", "4", "main", 3, 3),
+		answer("closed", "5", "main", 1, 3), answer("closed", "5", "basic", 1, 1), answer("closed", "5", "basic", 1, 1),
+		answer("open", "1", "main", 0, 3), answer("open", "1", "basic", 0, 1),
+	}}
+	got, err := s.outcomes(t.Context(), session)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ids := []string{}
+	for _, o := range got {
+		ids = append(ids, o.OutcomeID)
+	}
+	if !reflect.DeepEqual(ids, []string{"open1main", "open1basic"}) {
+		t.Fatalf("outcomes = %v", ids)
 	}
 }

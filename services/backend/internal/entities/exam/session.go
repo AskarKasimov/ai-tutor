@@ -81,6 +81,14 @@ type NodeResult struct {
 	TopLevel bool
 	// Requires lists the node's direct prerequisites in this graph snapshot.
 	Requires []string
+	// Assisted tells that the student answered after a rephrase or a hint.
+	Assisted bool
+	// Score and Maximum are the topic's points; nil when it has none.
+	Score   *int
+	Maximum *int
+	Marks   []TopicMark
+	// Reply is what Geek said when the topic closed; empty when unknown.
+	Reply string
 }
 
 type Gap struct {
@@ -121,13 +129,32 @@ func NewGap(id, title string, sources []SourceCitation) Gap {
 	return Gap{NodeID: id, Title: title, Weeks: weeks, Sources: append([]SourceCitation{}, sources...), LearningMaterials: materials}
 }
 
+// closingReplies are Geek's replies that closed a topic. Such a reply opens the
+// turn after the topic, so it belongs to the topic of the last student answer.
+func (s Session) closingReplies() map[string]string {
+	replies := map[string]string{}
+	last := ""
+	for _, t := range s.Turns {
+		switch {
+		case t.Speaker == SpeakerStudent && t.NodeID != nil:
+			last = *t.NodeID
+		case t.Speaker == SpeakerGeek && t.Recap != "" && last != "":
+			replies[last] = strings.TrimSpace(t.Recap)
+		}
+	}
+	return replies
+}
+
 // Result is the student's outcome of a completed diagnostic.
 type Result struct {
 	SessionID    string
 	Grade        *Grade
 	ScorePercent *int
-	Nodes        []NodeResult
-	Gaps         []Gap
+	// Score and Maximum are the normalized points of all competencies.
+	Score   float64
+	Maximum int
+	Nodes   []NodeResult
+	Gaps    []Gap
 	// WeakSpots are the topics on C, with the same sources as a gap.
 	WeakSpots []Gap
 }
@@ -136,12 +163,35 @@ func (s Session) Result() Result {
 	e := s.Exam
 	top := e.Graph.TopLevel()
 	r := Result{SessionID: s.ID, Nodes: []NodeResult{}, Gaps: []Gap{}, WeakSpots: []Gap{}}
-	r.Grade, r.ScorePercent = e.CourseGrade()
+	replies := s.closingReplies()
+	shares := map[string]float64{}
 	for _, n := range e.Graph.Nodes {
 		state := e.Nodes[n.ID]
-		r.Nodes = append(r.Nodes, NodeResult{NodeID: n.ID, Title: n.Title, Status: state.Status, Grade: state.Grade, TopLevel: slices.Contains(top, n.ID),
-			Requires: append([]string{}, n.Prerequisites...)})
+		marks := e.TopicMarks(n.ID)
+		node := NodeResult{NodeID: n.ID, Title: n.Title, Status: state.Status, Grade: state.Grade, TopLevel: slices.Contains(top, n.ID),
+			Requires: append([]string{}, n.Prerequisites...), Assisted: state.Assisted, Marks: marks, Reply: replies[n.ID]}
+		if len(marks) > 0 {
+			score, maximum := 0, 0
+			for _, m := range marks {
+				score += m.Score
+				maximum += m.Maximum
+			}
+			node.Score, node.Maximum = &score, &maximum
+			if maximum > 0 {
+				share := float64(score) / float64(maximum)
+				// Preserve the raw rubric marks above, but cap the contribution
+				// to the overall result when assistance was used or the answer
+				// did not cover the whole question.
+				if (state.Assisted || !state.complete()) && share > 0.8 {
+					share = 0.8
+				}
+				shares[n.ID] = share
+			}
+		}
+		r.Nodes = append(r.Nodes, node)
 	}
+	r.Score, r.Maximum, r.ScorePercent = OverallScore(e.Graph.competencyShares(shares))
+	r.Grade = CourseGrade(r.ScorePercent)
 	for _, id := range e.Gaps() {
 		n, _ := e.Graph.Node(id)
 		r.Gaps = append(r.Gaps, NewGap(id, n.Title, n.Sources))

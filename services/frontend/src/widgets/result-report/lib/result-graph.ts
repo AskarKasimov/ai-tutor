@@ -1,7 +1,7 @@
-import type { TopicResult } from '@/entities/diagnostic-session'
+import type { ReportTopic } from '../model/report'
 
 export type GraphNode = {
-  topic: TopicResult
+  topic: ReportTopic
   column: number
   row: number
 }
@@ -24,10 +24,10 @@ export type ResultGraph = {
 
 // The subgraph of the topics the diagnostic checked, laid out in columns from
 // the basic topics on the left to the topics relying on them on the right.
-export function layoutResultGraph(topics: TopicResult[]): ResultGraph {
-  const byId = new Map(topics.map((topic) => [topic.nodeId, topic]))
+export function layoutResultGraph(topics: ReportTopic[]): ResultGraph {
+  const byId = new Map(topics.map((topic) => [topic.id, topic]))
   const shown = topics.filter((topic) => topic.status !== 'unchecked')
-  const visible = new Set(shown.map((topic) => topic.nodeId))
+  const visible = new Set(shown.map((topic) => topic.id))
 
   // A hidden topic between two shown ones keeps their relation: walk through
   // hidden prerequisites to the nearest shown ones.
@@ -38,12 +38,12 @@ export function layoutResultGraph(topics: TopicResult[]): ResultGraph {
     const stack = [...topic.requires]
     while (stack.length > 0) {
       const id = stack.pop()!
-      if (seen.has(id) || id === topic.nodeId) continue
+      if (seen.has(id) || id === topic.id) continue
       seen.add(id)
       if (visible.has(id)) found.add(id)
       else stack.push(...(byId.get(id)?.requires ?? []))
     }
-    requires.set(topic.nodeId, [...found])
+    requires.set(topic.id, [...found])
   }
   // Keep only direct steps: an edge already implied by a longer path is noise.
   for (const [id, list] of requires) {
@@ -71,7 +71,7 @@ export function layoutResultGraph(topics: TopicResult[]): ResultGraph {
     column.set(id, value)
     return value
   }
-  shown.forEach((topic) => place(topic.nodeId, new Set()))
+  shown.forEach((topic) => place(topic.id, new Set()))
   const columns = Math.max(0, ...column.values()) + 1
 
   // An edge longer than one column gets a lane slot in every column it
@@ -83,7 +83,7 @@ export function layoutResultGraph(topics: TopicResult[]): ResultGraph {
     right.set(from, [...(right.get(from) ?? []), to])
   }
   const layers: string[][] = Array.from({ length: columns }, () => [])
-  shown.forEach((topic) => layers[column.get(topic.nodeId)!].push(topic.nodeId))
+  shown.forEach((topic) => layers[column.get(topic.id)!].push(topic.id))
   const chains: { from: string; to: string; lanes: string[] }[] = []
   for (const [to, list] of requires) {
     for (const from of list) {
@@ -135,8 +135,8 @@ export function layoutResultGraph(topics: TopicResult[]): ResultGraph {
   return {
     nodes: shown.map((topic) => ({
       topic,
-      column: column.get(topic.nodeId)!,
-      row: slot(topic.nodeId, column.get(topic.nodeId)!),
+      column: column.get(topic.id)!,
+      row: slot(topic.id, column.get(topic.id)!),
     })),
     edges: chains.map(({ from, to, lanes }) => ({
       from,

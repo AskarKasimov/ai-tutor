@@ -485,6 +485,7 @@ void i18n.init({
           audioLoading: 'Готовим озвучку…',
           audioError: 'Не удалось озвучить реплику',
           audioPaused: 'Озвучка остановлена',
+          audioPreparing: 'Geek готовит озвучку…',
           audioFormulating: 'Geek формулирует ответ…',
           audioQuestion: 'Geek готовит вопрос…',
           audioContinuing: 'Geek размышляет…',

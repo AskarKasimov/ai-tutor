@@ -453,11 +453,13 @@ function TurnItem({
           <Thinking
             visibleLabel
             label={t(
-              shown
-                ? 'geek.audioContinuing'
-                : turn.reply
-                  ? 'geek.audioFormulating'
-                  : 'geek.audioQuestion',
+              turn.meta
+                ? 'geek.audioPreparing'
+                : shown
+                  ? 'geek.audioContinuing'
+                  : turn.reply || turn.kind === 'closing'
+                    ? 'geek.audioFormulating'
+                    : 'geek.audioQuestion',
             )}
           />
         )}

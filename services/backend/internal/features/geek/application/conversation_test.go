@@ -89,6 +89,32 @@ func TestNameWithAnswerDoesNotHideAnswer(t *testing.T) {
 	}
 }
 
+func TestWholeAudioUsesPreparedQuestionAndFixedSpeechCache(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	s, _, _ := f.service.Start(ctx, "student", "subject", "start")
+	question := s.Turns[len(s.Turns)-1]
+	if _, err := f.service.speech.Part(ctx, question.Text); err != nil {
+		t.Fatal(err)
+	}
+	calls := len(f.voice.calls)
+	if _, err := f.service.TurnAudio(ctx, "student", s.ID, question.ID, AudioWhole); err != nil || len(f.voice.calls) != calls {
+		t.Fatalf("prepared question cache missed: %v", err)
+	}
+	if !strings.Contains(strings.Join(ConversationSpeech(), "\n"), RepeatUnclearSpeech) || !strings.Contains(strings.Join(ConversationSpeech(), "\n"), AskUnclearPart) {
+		t.Fatal("fixed speech not queued for warming")
+	}
+	if _, err := f.service.speech.Part(ctx, RepeatUnclearSpeech); err != nil {
+		t.Fatal(err)
+	}
+	s = f.answer(t, s, Answer{Text: "пауза"})
+	reply := s.Turns[len(s.Turns)-1]
+	calls = len(f.voice.calls)
+	if _, err := f.service.TurnAudio(ctx, "student", s.ID, reply.ID, AudioWhole); err != nil || len(f.voice.calls) != calls {
+		t.Fatalf("prepared reply cache missed: %v", err)
+	}
+}
+
 func TestMultiwordNameIsAcknowledgedAndKept(t *testing.T) {
 	f := newFixture(t)
 	s, _, _ := f.service.Start(context.Background(), "student", "subject", "start")

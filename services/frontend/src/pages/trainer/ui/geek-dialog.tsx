@@ -281,7 +281,7 @@ function Dialogue({
         )}
         {pending && (
           <li className={styles.geek}>
-            <Thinking label={t('geek.audioFormulating')} visibleLabel />
+            <ThinkingWhileProcessing />
           </li>
         )}
       </ol>
@@ -450,18 +450,7 @@ function TurnItem({
         !paused &&
         (audio.state.turnId !== turn.id ||
           audio.state.status !== 'playing') && (
-          <Thinking
-            visibleLabel
-            label={t(
-              turn.meta
-                ? 'geek.audioPreparing'
-                : shown
-                  ? 'geek.audioContinuing'
-                  : turn.reply || turn.kind === 'closing'
-                    ? 'geek.audioFormulating'
-                    : 'geek.audioQuestion',
-            )}
-          />
+          <Thinking visibleLabel label={t('geek.audioPreparing')} />
         )}
       {partial && (failed || (waiting && paused)) && (
         <div className={styles.error} role="alert">
@@ -707,6 +696,21 @@ function Composer({
       )}
     </div>
   )
+}
+
+function ThinkingWhileProcessing() {
+  const { t } = useTranslation()
+  const [index, setIndex] = useState(0)
+  useEffect(() => {
+    const timer = window.setInterval(() => setIndex((i) => (i + 1) % 3), 5000)
+    return () => window.clearInterval(timer)
+  }, [])
+  const labels = [
+    'geek.audioFormulating',
+    'geek.thinking',
+    'geek.audioContinuing',
+  ]
+  return <Thinking visibleLabel label={t(labels[index])} />
 }
 
 // Geek's typing: three dots in a bubble. Keep the status label for screen readers.

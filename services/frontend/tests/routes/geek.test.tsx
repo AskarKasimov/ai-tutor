@@ -477,9 +477,7 @@ it('runs a diagnostic from the home page to the result and back to the history',
     await screen.findByRole('button', { name: 'Остановить озвучку' }),
   ).toBeVisible()
   expect(
-    fetch.mock.calls.some(([url]) =>
-      url.endsWith('/turns/t1/audio'),
-    ),
+    fetch.mock.calls.some(([url]) => url.endsWith('/turns/t1/audio')),
   ).toBe(true)
   // The first question replies to nothing, so it has no reply part.
   expect(
@@ -1085,7 +1083,7 @@ it('lets the student recover the current turn after replaying an older one', asy
   const gateReply = gate()
   control.replyAudioGate = gateReply.closed
   await answerByText('Перестанет быть оптимальным')
-  await screen.findByText('Geek формулирует ответ…')
+  await screen.findByText('Geek готовит озвучку…')
   await waitFor(() =>
     expect(fetch.mock.calls.some(([url]) => url.endsWith('/t3/audio'))).toBe(
       true,
@@ -1120,7 +1118,7 @@ it('hides the reply and waits for its voice', async () => {
       true,
     ),
   )
-  expect(screen.getByText('Geek формулирует ответ…')).toBeVisible()
+  expect(screen.getByText('Geek готовит озвучку…')).toBeVisible()
   expect(screen.queryByText('Верно про оптимальность.')).toBeNull()
   expect(screen.getByRole('textbox', { name: 'Ваш ответ' })).toBeDisabled()
 
@@ -1380,4 +1378,3 @@ it('shows an accepted answer once while its submission is still pending', async 
   await waitFor(() => expect(queryClient.isMutating()).toBe(0))
   expect(within(screen.getByRole('list')).getAllByText(text)).toHaveLength(1)
 })
-

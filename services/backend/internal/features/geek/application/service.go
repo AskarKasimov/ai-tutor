@@ -316,7 +316,7 @@ func (s *Service) Answer(ctx context.Context, ownerID, id, key string, a Answer)
 	evaluate.AddressPreference = exam.AddressNeutral
 	if assessment.Verdict == exam.VerdictInsufficient || assessment.Verdict == exam.VerdictPause || assessment.Verdict == exam.VerdictAddressCorrection {
 		assessment.Verdict = exam.VerdictClarifyQuestion
-		assessment.Clarification = "Возможно, запись оборвалась или распознался посторонний разговор. Повтори ответ или скажи «я не знаю»."
+		assessment.Clarification = RepeatUnclearSpeech
 	}
 	if assessment.Verdict.Conversational() {
 		// Keep the actual exam step, scores, hint allowance and question count.
@@ -406,6 +406,19 @@ func (s *Service) TurnAudio(ctx context.Context, ownerID, id, turnID string, par
 		}
 		return s.speech.Part(ctx, text)
 	case AudioWhole:
+		// Prepared questions and fixed conversational replies use the same
+		// content-keyed cache as the background warmer. Personalized replies
+		// and feedback-plus-question turns remain private to the session.
+		if turn.Reply == "" && !turn.Meta && turn.Kind != exam.KindClosing {
+			return s.speech.Part(ctx, turn.Text)
+		}
+		if turn.Meta {
+			for _, text := range ConversationSpeech() {
+				if turn.Text == text {
+					return s.speech.Part(ctx, turn.Text)
+				}
+			}
+		}
 		return s.speech.Get(ctx, "geek/"+session.ID+"/"+turn.ID+".wav", turn.Text)
 	case AudioReply, AudioQuestion:
 		reply, question := turn.Parts()

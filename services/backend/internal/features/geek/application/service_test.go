@@ -151,9 +151,13 @@ type examiner struct {
 	explained    []EvaluationRequest
 	feedbacks    []FeedbackRequest
 	feedbackFail error
+	nameFail     error
 }
 
 func (e *examiner) InterpretName(_ context.Context, _, text string) (NameIntent, error) {
+	if e.nameFail != nil {
+		return NameIntent{}, e.nameFail
+	}
 	switch text {
 	case "Обращайся ко мне, Андрюха. Андрюха.":
 		return NameIntent{Name: "Андрюха"}, nil

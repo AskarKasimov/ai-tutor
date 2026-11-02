@@ -15,12 +15,30 @@ func TestInterpretName(t *testing.T) {
 		{"Называй меня Вачи Организм, а камера — сенсор", `{"name":"Вачи Организм","has_answer":true}`, "Вачи Организм", true},
 		{"Дождя нет", `{"name":"","has_answer":true}`, "", true},
 	} {
-		f := &fakeGateway{answers: []string{tc.response}}
+		f := &fakeGateway{answers: []string{tc.response, `{"has_answer":false}`}}
 		g := serve(t, f, time.Second)
 		got, err := g.InterpretName(context.Background(), "Назови сенсор", tc.request)
 		if err != nil || got.Name != tc.name || got.HasAnswer != tc.answer {
 			t.Fatalf("%q: %+v %v", tc.request, got, err)
 		}
+	}
+}
+
+func TestNameOnlyDecisionIsIndependentlyChecked(t *testing.T) {
+	f := &fakeGateway{answers: []string{`{"name":"Вачи","has_answer":false}`, `{"has_answer":true}`}}
+	g := serve(t, f, time.Second)
+	got, err := g.InterpretName(context.Background(), "Назови сенсор", "Меня зовут Вачи, камера — сенсор")
+	if err != nil || got.Name != "Вачи" || !got.HasAnswer || len(f.requests) != 2 {
+		t.Fatalf("lost answer: %+v %v", got, err)
+	}
+}
+
+func TestNameVerifierFailureFallsBackToGrading(t *testing.T) {
+	f := &fakeGateway{answers: []string{`{"name":"Вачи","has_answer":false}`, `{}`, `{}`}}
+	g := serve(t, f, time.Second)
+	got, err := g.InterpretName(context.Background(), "Назови сенсор", "Меня зовут Вачи, камера — сенсор")
+	if err != nil || !got.HasAnswer {
+		t.Fatalf("unsafe fallback: %+v %v", got, err)
 	}
 }
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"math/rand/v2"
 	"strings"
 	"time"
@@ -276,7 +277,8 @@ func (s *Service) Answer(ctx context.Context, ownerID, id, key string, a Answer)
 		return exam.Session{}, err
 	}
 	name, nameOnly := "", false
-	if source != exam.SourceDontKnow {
+	plain := strings.ToLower(strings.Trim(strings.TrimSpace(text), ".!?… "))
+	if source != exam.SourceDontKnow && plain != "не знаю" && plain != "я не знаю" {
 		if interpreter, ok := s.examiner.(NameInterpreter); ok {
 			question := ""
 			for i := len(session.Turns) - 1; i >= 0; i-- {
@@ -288,9 +290,13 @@ func (s *Service) Answer(ctx context.Context, ownerID, id, key string, a Answer)
 			}
 			intent, err := interpreter.InterpretName(ctx, question, text)
 			if err != nil {
-				return exam.Session{}, modelError(err)
+				if ctx.Err() != nil {
+					return exam.Session{}, ctx.Err()
+				}
+				log.Printf("WARN geek: name recognition failed; evaluating answer without a name change: %v", err)
+			} else {
+				name, nameOnly = intent.Name, intent.Name != "" && !intent.HasAnswer
 			}
-			name, nameOnly = intent.Name, intent.Name != "" && !intent.HasAnswer
 		}
 	}
 	if name != "" {

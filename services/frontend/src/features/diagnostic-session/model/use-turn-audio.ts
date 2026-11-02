@@ -135,10 +135,12 @@ export function useTurnAudio(sessionId: string) {
         const playPart = async (
           audio: Blob,
           part: 'reply' | 'question' | 'whole',
+          onPlaying?: () => void,
         ) => {
           signal.throwIfAborted()
           await playToEnd(audio, signal, () => {
             start()
+            onPlaying?.()
             if (mine()) {
               setProgress((old) => ({
                 ...old,
@@ -160,11 +162,15 @@ export function useTurnAudio(sessionId: string) {
           if (mine()) setState({ turnId: turn.id, status: 'loading' })
         }
         if (split) {
-          const reply = load('reply')
-          const question = load('question')
-          question.catch(() => undefined)
-          await playPart(await reply, 'reply')
-          await playPart(await question, 'question')
+          const reply = await load('reply')
+          let question: Promise<Blob> | undefined
+          const prefetch = () => {
+            question ??= load('question')
+            question.catch(() => undefined)
+          }
+          await playPart(reply, 'reply', prefetch)
+          prefetch()
+          await playPart(await question!, 'question')
         } else {
           await playPart(await load(), 'whole')
         }

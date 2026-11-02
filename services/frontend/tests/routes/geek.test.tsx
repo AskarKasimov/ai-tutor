@@ -1131,10 +1131,18 @@ it('hides the reply and waits for its voice', async () => {
   )
   expect(screen.getByText('Geek готовит озвучку…')).toBeVisible()
   expect(screen.queryByText('Верно про оптимальность.')).toBeNull()
+  expect(
+    fetch.mock.calls.some(([url]) => url.endsWith('/t3/audio?part=question')),
+  ).toBe(false)
   expect(screen.getByRole('textbox', { name: 'Ваш ответ' })).toBeDisabled()
 
   voice.open()
   expect(await screen.findByText('Верно про оптимальность.')).toBeVisible()
+  await waitFor(() =>
+    expect(
+      fetch.mock.calls.some(([url]) => url.endsWith('/t3/audio?part=question')),
+    ).toBe(true),
+  )
   expect(
     await screen.findByText('А где допустимая эвристика не поможет?'),
   ).toBeVisible()

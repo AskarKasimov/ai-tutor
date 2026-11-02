@@ -100,11 +100,21 @@ func (g *Gateway) Evaluate(ctx context.Context, r application.EvaluationRequest)
 		return application.Assessment{Evaluation: exam.Evaluation{Verdict: exam.VerdictDontKnow}}, nil
 	}
 	if r.ClarificationPending {
-		a := application.Assessment{Evaluation: exam.Evaluation{Verdict: exam.VerdictClarifyQuestion}}
-		if err := g.clarifySupport(ctx, r, &a); err != nil {
+		route, err := g.routeRubric(ctx, r)
+		if err != nil {
 			return application.Assessment{}, err
 		}
-		return a, nil
+		if route.Verdict == exam.VerdictClarifyQuestion {
+			if err := g.clarifySupport(ctx, r, &route); err != nil {
+				return application.Assessment{}, err
+			}
+			return route, nil
+		}
+		if route.Verdict != exam.VerdictAnswered {
+			return route, nil
+		}
+		// A real answer must reach the ordinary grader, not the support model.
+		r.ClarificationPending = false
 	}
 	if normalized == "не понял" || normalized == "не поняла" || normalized == "я не понял" || normalized == "я не поняла" || normalized == "не понял вопрос" || normalized == "не поняла вопрос" || normalized == "я ничего не понял" || normalized == "я ничего не поняла" || normalized == "я не понимаю вопрос" {
 		return application.Assessment{Evaluation: exam.Evaluation{Verdict: exam.VerdictClarifyQuestion}, Clarification: application.AskUnclearPart, ClarificationPending: true}, nil
@@ -255,6 +265,9 @@ func (g *Gateway) complete(ctx context.Context, operation string, level llmgatew
 	system := systemPrompt
 	if operation == "name_intent" {
 		system = nameIntentPrompt
+	}
+	if operation == "name_verify" {
+		system = nameVerifyPrompt
 	}
 	if operation == "route_rubric" {
 		system = rubricRouterSystemPrompt

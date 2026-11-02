@@ -57,12 +57,32 @@ func TestUnknownQuestionAsksWhichPartWithoutConsumingAttempt(t *testing.T) {
 }
 
 func TestClarificationDetailIsExplainedWithoutHintPenalty(t *testing.T) {
-	f := &fakeGateway{answers: []string{`{"kind":"wording","text":"Здесь речь о времени доставки. Объясни, как оно влияет на оценку."}`}}
+	f := &fakeGateway{answers: []string{`{"verdict":"clarify_question","address_preference":""}`, `{"kind":"wording","text":"Здесь речь о времени доставки. Объясни, как оно влияет на оценку."}`}}
 	g := serve(t, f, time.Second)
 	r := application.EvaluationRequest{ClarificationPending: true, Dialogue: []exam.Turn{{Line: 1, Speaker: exam.SpeakerGeek, Text: "Как время влияет на оценку?"}, {Line: 2, Speaker: exam.SpeakerStudent, Text: "Не понял слово время"}}}
 	a, err := g.Evaluate(context.Background(), r)
 	if err != nil || a.Verdict != exam.VerdictClarifyQuestion || a.ClarificationPending || a.Clarification == "" {
 		t.Fatalf("assessment=%+v error=%v", a, err)
+	}
+}
+
+func TestAnswerAfterUnclearQuestionIsGraded(t *testing.T) {
+	f := &fakeGateway{answers: []string{`{"verdict":"answered","address_preference":""}`, `{"verdict":"answered","address_preference":"","answer_complete":true,"criteria":{"k1":2,"k2":2,"k3":null,"k4":null},"evidence_lines":[2]}`}}
+	g := serve(t, f, time.Second)
+	r := application.EvaluationRequest{ClarificationPending: true, Node: node, Dialogue: []exam.Turn{{Line: 1, Speaker: exam.SpeakerGeek, Text: "Что делает сенсор?"}, {Line: 2, Speaker: exam.SpeakerStudent, Text: "Сенсор воспринимает данные о среде"}}}
+	a, err := g.Evaluate(context.Background(), r)
+	if err != nil || a.Verdict != exam.VerdictAnswered || a.ClarificationPending {
+		t.Fatalf("answer lost: %+v %v", a, err)
+	}
+}
+
+func TestHintAfterUnclearQuestionStillCountsAsHint(t *testing.T) {
+	f := &fakeGateway{answers: []string{`{"verdict":"hint_requested","address_preference":""}`}}
+	g := serve(t, f, time.Second)
+	r := application.EvaluationRequest{ClarificationPending: true, Node: node, Dialogue: []exam.Turn{{Line: 1, Speaker: exam.SpeakerGeek, Text: "Что делает сенсор?"}, {Line: 2, Speaker: exam.SpeakerStudent, Text: "Дай подсказку"}}}
+	a, err := g.Evaluate(context.Background(), r)
+	if err != nil || a.Verdict != exam.VerdictHintRequested {
+		t.Fatalf("hint not counted: %+v %v", a, err)
 	}
 }
 

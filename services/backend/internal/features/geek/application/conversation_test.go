@@ -3,6 +3,7 @@ package application
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 
@@ -51,6 +52,17 @@ func TestConversationDoesNotSpendAttemptOrHintOrChangeScores(t *testing.T) {
 		if f.examiner.feedbacks[len(f.examiner.feedbacks)-1].AddressPreference != exam.AddressNeutral {
 			t.Fatal("feedback did not receive address preference")
 		}
+	}
+}
+
+func TestNameRecognitionFailureDoesNotBlockAnswer(t *testing.T) {
+	f := newFixture(t)
+	f.examiner.nameFail = errors.New("name service failed")
+	s, _, _ := f.service.Start(context.Background(), "student", "subject", "start")
+	id := s.Exam.Current.NodeID
+	s = f.answer(t, s, Answer{Text: "сильно"})
+	if s.Exam.Nodes[id].Grade == nil || *s.Exam.Nodes[id].Grade != exam.GradeA {
+		t.Fatal("name recognition failure blocked grading")
 	}
 }
 

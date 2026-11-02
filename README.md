@@ -143,14 +143,14 @@ LLM gateway централизует обращения к моделям и р�
 
 ## Запуск
 
-Нужны Docker Compose и mkcert. Создайте `.env`, настройте доступ к БД и сервисам согласно документации и запустите dev-стенд:
+Нужны Docker Compose и mkcert.
 
-```bash
-cp .env.example .env
-./dev.sh -d
-```
+1. Создайте `.env` командой `cp .env.example .env` и замените значения `DB_PASSWORD`, `S3_ACCESS_KEY` и `S3_SECRET_KEY` на собственные.
+2. В `services/llm-gateway/config/dev.yaml` настройте доступные адреса и токены моделей. Для голосового ввода и озвучки укажите доступные STT/TTS-сервисы в `services/backend/config/dev.yaml`. Настройки course-graph находятся в `services/course-graph/config/dev.yaml`.
+3. Запустите `./dev.sh -d`. По умолчанию приложение доступно на `https://localhost:8443`, админка — на `https://localhost:8443/admin/courses`; порт задаётся в `.env`.
+4. Проверьте backend и БД: `curl -k https://localhost:8443/api/v1/health` (при другом порте замените `8443`). Доступность моделей и S3 эта проверка не подтверждает.
 
-Настройки компонентов и дополнительные инструкции: [backend](services/backend/README.md), [frontend](services/frontend/README.md), [course-graph](services/course-graph/README.md), [LLM gateway](services/llm-gateway/README.md).
+Подробности настройки и запуска: [backend](services/backend/README.md), [frontend](services/frontend/README.md), [course-graph](services/course-graph/README.md), [LLM gateway](services/llm-gateway/README.md).
 
 ## Проверки перед PR
 
@@ -158,6 +158,6 @@ cp .env.example .env
 
 ## Документы
 
-- [Архитектура backend](documents/backend-architecture.md) и [концепция продукта](documents/Концепция_Репетитор_устного_экзамена.md).
+- [Архитектура backend](documents/backend-architecture.md) и [концепция продукта](documents/Концепция_Репетитор_устного_экзамена.md). Общая архитектура подготовлена в [PR #184](https://github.com/AskarKasimov/ai-tutor/pull/184); после его слияния будет доступен `architecture.md`.
 - [HTTP API](api/README.md) и [контракт course-graph](api/course-graph.yaml).
 - [Backend](services/backend/README.md), [frontend](services/frontend/README.md), [course-graph](services/course-graph/README.md) и [LLM gateway](services/llm-gateway/README.md).

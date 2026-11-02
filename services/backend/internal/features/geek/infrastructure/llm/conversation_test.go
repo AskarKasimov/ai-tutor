@@ -180,3 +180,13 @@ func TestCopiedExplanationIsNotCreditedAsIndependentReasoning(t *testing.T) {
 		}
 	}
 }
+
+func TestRepeatDoesNotLeakAddressInstruction(t *testing.T) {
+	f := &fakeGateway{answers: []string{`{"kind":"repeat","text":"Используй нейтральные обращения без предположений о роде: например, «в твоём ответе верно…», «основная мысль верная». Сколько будет два плюс два?"}`}}
+	g := serve(t, f, time.Second)
+	a := application.Assessment{Evaluation: exam.Evaluation{Verdict: exam.VerdictClarifyQuestion}}
+	r := application.EvaluationRequest{Dialogue: []exam.Turn{{Line: 1, Speaker: exam.SpeakerGeek, Text: "Сколько будет два плюс два?"}, {Line: 2, Speaker: exam.SpeakerStudent, Text: "Повтори вопрос. Я ничего не понял."}}}
+	if err := g.clarifySupport(context.Background(), r, &a); err != nil || a.Clarification != "Сколько будет два плюс два?" {
+		t.Fatalf("clarification=%q err=%v", a.Clarification, err)
+	}
+}

@@ -64,6 +64,14 @@ func (g *Gateway) clarifySupport(ctx context.Context, r application.EvaluationRe
 			return errors.New("invalid support kind")
 		}
 		text := strings.TrimSpace(out.Text)
+		instruction := addressRules(preference)
+		if strings.Contains(strings.ToLower(text), strings.ToLower(instruction)) && !strings.Contains(strings.ToLower(question), strings.ToLower(instruction)) {
+			if out.Kind == "repeat" && a.AddressPreference == "" && !pureControl(request, "address") {
+				a.Clarification = question
+				return nil
+			}
+			return errors.New("support text contains an internal instruction")
+		}
 		if text == "" || len([]rune(text)) > 600 {
 			return errors.New("invalid support text")
 		}

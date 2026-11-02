@@ -1168,6 +1168,42 @@ it('lets the student recover the current turn after replaying an older one', asy
   gateReply.open()
 })
 
+it('keeps recovery available after stopping a turn and replaying an older one', async () => {
+  FakeAudio.manual = true
+  const { control, fetch } = geekBackend()
+  renderApp()
+  await start()
+  await screen.findByText(
+    'Что изменится в A*, если эвристика переоценивает путь?',
+  )
+  const voice = gate()
+  control.replyAudioGate = voice.closed
+  await answerByText('Перестанет быть оптимальным')
+  await waitFor(() =>
+    expect(
+      fetch.mock.calls.some(([url]) => url.endsWith('/t3/audio?part=reply')),
+    ).toBe(true),
+  )
+  fireEvent.click(screen.getByRole('button', { name: 'Готовим озвучку…' }))
+  expect(await screen.findByText('Озвучка остановлена')).toBeVisible()
+  fireEvent.click(
+    screen.getAllByRole('button', { name: 'Прослушать реплику' })[0],
+  )
+  await waitFor(() => expect(FakeAudio.played.length).toBeGreaterThan(1))
+  act(() => FakeAudio.last?.onended?.())
+  expect(
+    await screen.findByRole('button', { name: 'Показать текст без озвучки' }),
+  ).toBeVisible()
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Показать текст без озвучки' }),
+  )
+  expect(
+    screen.getByText('А где допустимая эвристика не поможет?'),
+  ).toBeVisible()
+  expect(screen.getByRole('textbox', { name: 'Ваш ответ' })).toBeEnabled()
+  voice.open()
+})
+
 it('hides the reply and waits for its voice', async () => {
   const { control, fetch } = geekBackend()
   renderApp()

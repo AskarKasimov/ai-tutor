@@ -42,6 +42,21 @@ export function useTurnAudio(sessionId: string) {
   }, [])
 
   const stop = useCallback(() => {
+    const stoppedId = activeTurn.current
+    if (stoppedId) {
+      setProgress((old) => ({
+        ...old,
+        [stoppedId]: {
+          ...(old[stoppedId] ?? {
+            intro: false,
+            replies: 0,
+            question: false,
+            revealed: false,
+          }),
+          interrupted: true,
+        },
+      }))
+    }
     current.current?.abort()
     current.current = null
     activeTurn.current = null

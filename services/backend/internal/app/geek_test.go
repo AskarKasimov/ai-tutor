@@ -73,6 +73,7 @@ func geekFlow(t *testing.T, f *fixture, access *http.Cookie, graph []byte, check
 	check("GET", "/diagnostic-sessions/{id}", f.request("GET", path, "", access))
 	check("GET", "/diagnostic-sessions/{id}", f.request("GET", "/diagnostic-sessions/unknown", "", access))
 	check("GET", "/diagnostic-sessions/{id}/result", f.request("GET", path+"/result", "", access))
+	check("GET", "/diagnostic-sessions/{id}/feedback", f.request("GET", path+"/feedback", "", access))
 	audio := f.request("GET", path+"/turns/"+*session.CurrentTurnID+"/audio", "", access)
 	if audio.Code != http.StatusOK {
 		t.Fatalf("turn audio: %d %s", audio.Code, audio.Body.String())
@@ -101,6 +102,7 @@ func geekFlow(t *testing.T, f *fixture, access *http.Cookie, graph []byte, check
 	}
 	result := f.request("GET", path+"/result", "", access)
 	check("GET", "/diagnostic-sessions/{id}/result", result)
+	check("GET", "/diagnostic-sessions/{id}/feedback", f.request("GET", path+"/feedback", "", access))
 	var r struct {
 		Grade *string `json:"grade"`
 		Gaps  []struct {

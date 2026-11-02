@@ -104,6 +104,29 @@ export function useDiagnosticQuery(userId: string, sessionId: string) {
   })
 }
 
+export function useDiagnosticResultSummaryQuery(
+  userId: string,
+  sessionId: string,
+) {
+  const { diagnostic } = useDiagnosticDependencies()
+  const client = useQueryClient()
+  // eslint-disable-next-line @tanstack/query/exhaustive-deps -- the API port and auth epoch are stable dependencies outside the resource key.
+  return useQuery({
+    queryKey: diagnosticSessionQueryKeys.resultSummary(userId, sessionId),
+    enabled: !!userId && !!sessionId,
+    // A failed model call is repeated by the student, not behind their back:
+    // a query without data is stale whatever its staleTime.
+    retry: false,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+    staleTime: Infinity,
+    queryFn: ({ signal }) =>
+      scoped(client, userId, signal, (s) =>
+        diagnostic.readDiagnosticResultSummary(sessionId, s),
+      ),
+  })
+}
+
 export function useDiagnosticResultQuery(
   userId: string,
   sessionId: string,

@@ -24,6 +24,7 @@ export {
   listDiagnostics,
   readDiagnostic,
   readDiagnosticResult,
+  readDiagnosticResultSummary,
   fetchDiagnosticMaterialRaw,
   startDiagnostic,
 } from './api/diagnostic-api'

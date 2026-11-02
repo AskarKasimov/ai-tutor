@@ -82,6 +82,9 @@ type NodeState struct {
 	// compatibility field, not an additional set of failed skills.
 	Rubric   *RubricResult `json:"rubric,omitempty"`
 	HintUsed bool          `json:"hint_used,omitempty"`
+	// DontKnow tells that the topic closed on "don't know": it has no answer to
+	// score, unlike an answer the model scored with zeros.
+	DontKnow bool `json:"dont_know,omitempty"`
 	// nil is a legacy session; new model evaluations always state completeness.
 	AnswerComplete *bool              `json:"answer_complete,omitempty"`
 	Unassessed     UnassessedCriteria `json:"unassessed,omitempty"`
@@ -283,6 +286,7 @@ func (e *Exam) Apply(ev Evaluation) Step {
 		assisted := cur.Kind == KindRephrase || state.HintUsed
 		switch ev.Verdict {
 		case VerdictDontKnow:
+			state.DontKnow = true
 			return e.gap(cur.NodeID, Criteria{}, assisted)
 		case VerdictInsufficient:
 			if !assisted && !e.limitReached() {
@@ -498,13 +502,56 @@ func (e *Exam) WeakSpots() []string {
 	return out
 }
 
-// CourseGrade grades the course by its top-level topics.
-func (e *Exam) CourseGrade() (*Grade, *int) {
-	grades := []Grade{}
-	for _, t := range e.Graph.TopLevel() {
-		if g := e.Nodes[t].Grade; g != nil {
-			grades = append(grades, *g)
-		}
+// TopicMark is the result of one criterion of a topic: a rubric item or one of
+// К1–К4, whose ID is k1…k4. Title and Reason are empty where none is known.
+type TopicMark struct {
+	ID      string
+	Title   string
+	Score   int
+	Maximum int
+	Reason  string
+	Quote   string
+}
+
+// TopicMarks are the criteria results of an asked topic. A topic that was
+// credited, unclear or never reached has none.
+func (e *Exam) TopicMarks(id string) []TopicMark {
+	state, ok := e.Nodes[id]
+	if !ok || (state.Status != StatusIndependent && state.Status != StatusAssisted && state.Status != StatusGap) {
+		return nil
 	}
-	return CourseGrade(grades)
+	// "Don't know" keeps no marks, even of an earlier attempt: the scale comes
+	// from the task, and K3 and K4 were never observed.
+	if state.DontKnow || (state.Rubric == nil && state.Criteria == nil) {
+		n, _ := e.Graph.Node(id)
+		if spec, err := ParseRubric(n.AssessmentGuidance); err == nil && len(spec) > 0 {
+			items := make([]RubricMark, len(spec))
+			for i, item := range spec {
+				items[i].RubricItem = item
+			}
+			return rubricMarks(items)
+		}
+		return []TopicMark{{ID: "k1", Maximum: 2}, {ID: "k2", Maximum: 2}}
+	}
+	if state.Rubric != nil {
+		return rubricMarks(state.Rubric.Items)
+	}
+	// Zeros are scored too: what was assessed stays in the maximum.
+	c := *state.Criteria
+	marks := []TopicMark{{ID: "k1", Score: c.K1, Maximum: 2}, {ID: "k2", Score: c.K2, Maximum: 2}}
+	if !state.Unassessed.K3 {
+		marks = append(marks, TopicMark{ID: "k3", Score: c.K3, Maximum: 2})
+	}
+	if !state.Unassessed.K4 {
+		marks = append(marks, TopicMark{ID: "k4", Score: c.K4, Maximum: 2})
+	}
+	return marks
+}
+
+func rubricMarks(items []RubricMark) []TopicMark {
+	out := make([]TopicMark, len(items))
+	for i, m := range items {
+		out[i] = TopicMark{ID: m.ID, Title: m.Title(), Score: m.Score, Maximum: m.Levels[len(m.Levels)-1], Reason: m.Reason, Quote: m.Quote}
+	}
+	return out
 }

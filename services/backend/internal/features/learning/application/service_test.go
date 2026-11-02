@@ -139,12 +139,12 @@ func newService(t *testing.T, main int) (*Service, *memoryRepo, *voice, *teacher
 	session := diagnostic.Session{ID: "d", Status: diagnostic.StatusCompleted,
 		Variant: diagnostic.VariantSnapshot{SubjectID: "s", SubjectNameSnapshot: "ML", Competencies: []diagnostic.Competency{{ID: "c1", Name: "К1"}, {ID: "c2", Name: "К2"}}},
 		Answers: []diagnostic.Answer{
-			{CompetencyID: "c1", Role: "main", Score: main, Task: diagnostic.TaskSnapshot{OutcomeID: "o1"}},
-			{CompetencyID: "c2", Role: "main", Score: 2},
+			{CompetencyID: "c1", Role: "main", Score: main, GraderMaxScore: 3, Task: diagnostic.TaskSnapshot{OutcomeID: "o1"}},
+			{CompetencyID: "c2", Role: "main", Score: 2, GraderMaxScore: 2},
 		},
 	}
 	if main < 2 {
-		session.Answers = append(session.Answers, diagnostic.Answer{CompetencyID: "c1", Role: "basic", Score: 0, Task: diagnostic.TaskSnapshot{OutcomeID: "o2"}})
+		session.Answers = append(session.Answers, diagnostic.Answer{CompetencyID: "c1", Role: "basic", Score: 0, GraderMaxScore: 1, Task: diagnostic.TaskSnapshot{OutcomeID: "o2"}})
 	}
 	repo := &memoryRepo{learning_outcomes: []learning.Outcome{
 		{CompetencyID: "c1", CompetencyName: "К1", OutcomeID: "o1", Importance: 3},

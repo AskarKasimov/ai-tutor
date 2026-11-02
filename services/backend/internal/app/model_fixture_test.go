@@ -85,6 +85,8 @@ func (fixtureGateway) Complete(_ context.Context, r *llmgatewayv1.CompleteReques
 			labels[i] = "Короткая тема"
 		}
 		answer = map[string]any{"labels": labels}
+	} else if strings.Contains(r.GetMessages()[0].GetContent(), "абзац общего вывода") {
+		answer = map[string]string{"summary": "Общая картина и главный следующий шаг."}
 	} else if !strings.Contains(prompt, "Оцени ответ на заданный вопрос") {
 		topic := topicLine.FindStringSubmatch(prompt)
 		answer = map[string]string{"text": "Расскажите про тему «" + topic[1] + "»?"}

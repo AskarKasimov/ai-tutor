@@ -9,8 +9,12 @@
 | [LLM gateway: HTTP](llm-gateway-spec.md) | HTTP API, очередь, конфигурация, балансировка и OpenAPI. |
 | [LLM gateway: gRPC](llm-gateway-grpc-spec.md) | gRPC-транспорт, общий protobuf-модуль `services/shared`, отмена и восстановление. |
 | [Авторизация](auth.md) | Cookies, роли и доступ к данным владельца. |
-| [План объединения](unified-application-plan-2026-10-25.md) | Согласованный перенос двух режимов в один React/Go/PostgreSQL stack. |
+| [План объединения](unified-application-plan-2026-10-25.md) | Исторический план; текущие правила — в README сервисов. |
+| [План перехода на YAML](runtime-config-migration-plan.md) | Исторический план конфигурации; текущая настройка — в README сервисов. |
+| [Метаданные материалов](material-metadata-learning-spec.md) | Историческая спецификация; текущее поведение — в README backend и course-graph. |
 | [Интеграционный baseline](integration-parity.md) | Эталонные backend/frontend проверки, browser screenshots и API manifest. |
 | [Backend: БД](../services/backend/README.md#бд-и-импорт) | Схема, миграции, админ-аккаунт и материалы курса. |
 | [Формат учебного текста](markdown-content.md) | Markdown и формулы в учебном тексте и ответах модели. |
 | [Материалы демокурса](materials/) | PDF лекций, лаб и туториалов Introduction to AI за недели 1–14. |
+
+Решение о границах документации от 02.11.2026: корневой README описывает продукт и основные принципы, сервисные README — действующие правила и техническое устройство; исторические планы не являются инструкциями к реализации.

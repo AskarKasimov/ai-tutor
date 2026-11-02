@@ -1,5 +1,7 @@
 # Dev YAML configuration — Implementation Plan
 
+> **Исторический документ.** План и описанное в нём состояние отражают момент составления и не являются инструкцией к исполнению или источником текущих правил. Актуальные сведения: [корневой README](../README.md), [backend](../services/backend/README.md), [course-graph](../services/course-graph/README.md) и [LLM gateway](../services/llm-gateway/README.md).
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Исполнитель:** `gpt-6-luna`, reasoning effort `high`; последовательно, без делегирования. Это план на оценку, реализацию начинать после одобрения владельца.

@@ -119,3 +119,27 @@ func TestIncompleteAcknowledgementDoesNotSpendAnAttempt(t *testing.T) {
 		}
 	}
 }
+
+func TestSkipControlDoesNotSwallowAnswers(t *testing.T) {
+	for _, text := range []string{"Типа согласился. Давай следующий вопрос.", "Пропусти этот вопрос", "Давай дальше"} {
+		if !pureControl(text, "skip") {
+			t.Errorf("skip not detected: %q", text)
+		}
+	}
+	for _, text := range []string{"Дай подумать", "Агент с моделью, давай следующий вопрос", "Не переходи к следующему вопросу"} {
+		if pureControl(text, "skip") {
+			t.Errorf("must not skip: %q", text)
+		}
+	}
+}
+
+func TestSkipDoesNotRouteAsPause(t *testing.T) {
+	for _, rubric := range []string{"", "Балл (макс. 1): 1 — верно; 0 — нет."} {
+		f := &fakeGateway{}
+		g := serve(t, f, time.Second)
+		got, err := g.Evaluate(context.Background(), application.EvaluationRequest{Node: exam.Node{AssessmentGuidance: rubric}, Dialogue: []exam.Turn{{Line: 1, Speaker: exam.SpeakerGeek, Text: "Назови элементы"}, {Line: 2, Speaker: exam.SpeakerStudent, Text: "Типа согласился. Давай следующий вопрос."}}})
+		if err != nil || got.Verdict != exam.VerdictDontKnow || len(f.requests) != 0 {
+			t.Fatalf("result=%+v err=%v calls=%d", got, err, len(f.requests))
+		}
+	}
+}

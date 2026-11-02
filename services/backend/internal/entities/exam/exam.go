@@ -283,6 +283,11 @@ func (e *Exam) Apply(ev Evaluation) Step {
 		assisted := cur.Kind == KindRephrase || state.HintUsed
 		switch ev.Verdict {
 		case VerdictDontKnow:
+			// Preserve evidence from the original answer when the student gives up
+			// on a rephrased question.
+			if cur.Kind == KindRephrase && state.Criteria != nil {
+				return e.gap(cur.NodeID, *state.Criteria, assisted)
+			}
 			return e.gap(cur.NodeID, Criteria{}, assisted)
 		case VerdictInsufficient:
 			if !assisted && !e.limitReached() {

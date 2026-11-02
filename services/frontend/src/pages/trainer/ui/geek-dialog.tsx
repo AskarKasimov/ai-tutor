@@ -421,27 +421,7 @@ function TurnItem({
     )
   const progress = audio.progress[turn.id]
   const partial = live && !progress?.revealed
-  const question =
-    turn.reply && turn.text.trimStart().startsWith(turn.reply)
-      ? turn.text.trimStart().slice(turn.reply.length).trim()
-      : turn.text
-  const shown = partial
-    ? [
-        progress?.intro ? turn.audioIntro : '',
-        progress?.replies ? turn.reply : '',
-        progress?.transition ? turn.audioTransition : '',
-        progress?.question ? question : '',
-      ]
-        .filter(Boolean)
-        .join('\n\n')
-    : [
-        progress?.intro || progress?.revealed || !live ? turn.audioIntro : '',
-        turn.reply,
-        turn.audioTransition,
-        question,
-      ]
-        .filter(Boolean)
-        .join('\n\n')
+  const shown = partial ? '' : turn.text
   const waiting = partial && !progress?.question
   const failed =
     audio.state.turnId === turn.id && audio.state.status === 'error'

@@ -96,7 +96,10 @@ func (g *Gateway) Evaluate(ctx context.Context, r application.EvaluationRequest)
 	}
 	_, request := lastSupportInput(r)
 	if incompleteAcknowledgement(request) {
-		return application.Assessment{Evaluation: exam.Evaluation{Verdict: exam.VerdictClarifyQuestion}, Clarification: "Похоже, реплика могла записаться не полностью. Продолжи или повтори ответ, пожалуйста."}, nil
+		return application.Assessment{Evaluation: exam.Evaluation{Verdict: exam.VerdictClarifyQuestion}, Clarification: "Хорошо, можно ответить на вопрос."}, nil
+	}
+	if pureControl(request, "skip") {
+		return application.Assessment{Evaluation: exam.Evaluation{Verdict: exam.VerdictDontKnow}}, nil
 	}
 	if len(spec) > 0 {
 		return g.evaluateRubric(ctx, r, spec)

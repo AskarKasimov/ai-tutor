@@ -1,9 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { Turn, TurnAudioPart } from '@/entities/diagnostic-session'
+import type { Turn } from '@/entities/diagnostic-session'
 import { playQuestion } from '@/shared/lib'
 import { useDiagnosticDependencies } from './dependencies-context'
-
-const FEEDBACK_PAUSE_MS = 700
 
 export type TurnAudioState = {
   turnId: string | null
@@ -20,8 +18,7 @@ type Progress = {
 }
 
 // Plays the voice of Geek turns, one at a time; fetched WAVs are kept for
-// replays while the dialogue is open. The cached intro can play while the
-// complete feedback is synthesized; the question is prefetched afterwards.
+// replays while the dialogue is open. Each turn is voiced as a whole.
 export function useTurnAudio(sessionId: string) {
   const { diagnostic } = useDiagnosticDependencies()
   const [state, setState] = useState<TurnAudioState>({
@@ -113,98 +110,34 @@ export function useTurnAudio(sessionId: string) {
       }
       setState({ turnId: turn.id, status: 'loading' })
 
-      const load = async (part: TurnAudioPart, chunk?: number) => {
-        const key = `${turn.id}:${part}:${chunk ?? 'whole'}`
+      const load = async () => {
+        const key = `${turn.id}:whole`
         let audio = cache.current.get(key)
         if (!audio) {
-          audio = await diagnostic.fetchTurnAudio(
-            sessionId,
-            turn.id,
-            signal,
-            part,
-            chunk,
-          )
+          audio = await diagnostic.fetchTurnAudio(sessionId, turn.id, signal)
           cache.current.set(key, audio)
         }
         return audio
       }
 
       try {
-        const hasReply = Boolean(turn.reply.trim())
-        const reply = hasReply ? load('reply') : null
-        reply?.catch(() => undefined)
-        const playAudio = async (
-          blob: Blob,
-          part: 'intro' | 'reply' | 'transition' | 'question',
-          index = 0,
-        ) => {
-          signal.throwIfAborted()
-          await playToEnd(blob, signal, () => {
-            start()
-            if (mine())
-              setProgress((old) => {
-                const prior = old[turn.id] ?? {
-                  intro: false,
-                  replies: 0,
-                  question: false,
-                  revealed: false,
-                }
-                return {
-                  ...old,
-                  [turn.id]: {
-                    ...prior,
-                    intro: prior.intro || part === 'intro',
-                    replies:
-                      part === 'reply'
-                        ? Math.max(prior.replies, index + 1)
-                        : prior.replies,
-                    question: prior.question || part === 'question',
-                    transition: prior.transition || part === 'transition',
-                  },
-                }
-              })
-            if (mine()) setState({ turnId: turn.id, status: 'playing' })
-          })
-          if (mine()) setState({ turnId: turn.id, status: 'loading' })
-        }
-        if (turn.audioIntro) {
-          await playAudio(await load('intro'), 'intro')
-        }
-        const questionText =
-          turn.reply && turn.text.trimStart().startsWith(turn.reply)
-            ? turn.text.trimStart().slice(turn.reply.length).trim()
-            : turn.text.trim()
-        let question: Promise<Blob> | null = null
-        if (reply) {
-          const audio = await reply!
-          signal.throwIfAborted()
-          if (questionText) {
-            question = load('question')
-            question.catch(() => undefined)
-          }
-          await playAudio(audio, 'reply')
-        }
-        if (hasReply && turn.kind !== 'closing') {
-          // Keep the question prefetched, but let the feedback sink in.
-          if (mine()) setState({ turnId: turn.id, status: 'loading' })
-          await pauseAfterFeedback(signal)
-        }
-        if (turn.audioTransition)
-          await playAudio(await load('transition'), 'transition')
-        if (questionText)
-          await playAudio(await (question ?? load('question')), 'question')
-        else if (mine())
-          setProgress((old) => ({
-            ...old,
-            [turn.id]: {
-              ...(old[turn.id] ?? {
+        const audio = await load()
+        signal.throwIfAborted()
+        await playToEnd(audio, signal, () => {
+          start()
+          if (mine()) {
+            setProgress((old) => ({
+              ...old,
+              [turn.id]: {
                 intro: false,
                 replies: 0,
-                revealed: false,
-              }),
-              question: true,
-            },
-          }))
+                question: true,
+                revealed: true,
+              },
+            }))
+            setState({ turnId: turn.id, status: 'playing' })
+          }
+        })
         if (mine()) {
           current.current = null
           activeTurn.current = null
@@ -242,20 +175,5 @@ function playToEnd(audio: Blob, signal: AbortSignal, onStart: () => void) {
       (error) => settle(() => reject(error))(),
       signal,
     ).then(onStart, (error: unknown) => settle(() => reject(error))())
-  })
-}
-
-function pauseAfterFeedback(signal: AbortSignal) {
-  signal.throwIfAborted()
-  return new Promise<void>((resolve, reject) => {
-    const abort = () => {
-      clearTimeout(timer)
-      reject(signal.reason)
-    }
-    const timer = setTimeout(() => {
-      signal.removeEventListener('abort', abort)
-      resolve()
-    }, FEEDBACK_PAUSE_MS)
-    signal.addEventListener('abort', abort, { once: true })
   })
 }

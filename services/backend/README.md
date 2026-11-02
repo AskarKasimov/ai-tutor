@@ -159,11 +159,10 @@ Geek возвращает источники в пробелах завершё�
 
 ## Проверки
 
+Объём и команды локальных проверок — в [правилах backend](AGENTS.md#тесты). Для DB-тестов задайте `TEST_DATABASE_URL`, например:
+
 ```bash
 export TEST_DATABASE_URL='postgres://ai_tutor:YOUR_PASSWORD@localhost:5432/ai_tutor?sslmode=disable'
-go test -race ./... -count=1
-go vet ./...
-go build -o bin/api ./cmd/api
 ```
 
 Интеграционные тесты создают отдельную PostgreSQL schema, модели и S3 заменяются локальными HTTP-серверами. Без TEST_DATABASE_URL DB-тесты пропускаются; CI поднимает PostgreSQL. Общая HTTP-фикстура использует быстрый тестовый хешер паролей; тесты регистрации и входа используют настоящий Argon2id с рабочими параметрами. Независимые HTTP DB-тесты выполняются параллельно, каждый в своей схеме и с пулом до четырёх соединений; рабочий migrator с блокировкой проверяется отдельно в `shared/postgres`. Тесты, меняющие окружение процесса, и внешний S3 smoke (`TEST_S3_ENDPOINT`) остаются последовательными. SQLC: `bash scripts/generate-sql.sh`. Архитектура: [backend-architecture.md](../../documents/backend-architecture.md).

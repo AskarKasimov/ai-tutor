@@ -27,7 +27,9 @@ type ApiTurn = {
   text: string
   reply?: string
   audio_intro?: string
+  audio_transition?: string
   reply_audio_parts?: number
+  reply_speech_texts?: string[]
   created_at: number
 }
 
@@ -96,8 +98,12 @@ function geekBackend(
     // Holds Geek's voice; failVoice answers it with 503.
     voiceGate: null as Promise<void> | null,
     failVoice: false,
+    failQuestionVoice: false,
     segmentedSpeech: false,
+    transition: false,
+    omitSpeechTexts: false,
     replyAudioGate: null as Promise<void> | null,
+    questionAudioGate: null as Promise<void> | null,
     failIntro: false,
   }
   let session: {
@@ -140,6 +146,8 @@ function geekBackend(
       created_at: n + 1,
     }
     const next = { ...script[(n + 1) / 2] }
+    if (control.transition && next.reply)
+      next.audio_transition = 'Перейдём к следующему вопросу.'
     if (control.segmentedSpeech && next.reply) {
       const question = next.text.slice(next.reply.length).trim()
       next.reply =
@@ -147,6 +155,11 @@ function geekBackend(
       next.text = `${next.reply}\n\n${question}`
       next.audio_intro = 'Давай разберём ответ.'
       next.reply_audio_parts = 2
+      next.reply_speech_texts = [
+        'Верно про оптимальность.',
+        'Связь с условиями задачи тоже показана.',
+      ]
+      if (control.omitSpeechTexts) delete next.reply_speech_texts
     }
     const done = next.kind === 'closing'
     session = {
@@ -348,15 +361,17 @@ function geekBackend(
         weak_spots: [{ node_id: 'search-space', title: 'Слабая тема' }],
       })
     if (
-      /\/diagnostic-sessions\/d1\/turns\/t\d+\/audio\?part=(intro|reply|question)(&chunk=\d+)?$/.test(
+      /\/diagnostic-sessions\/d1\/turns\/t\d+\/audio(\?part=(intro|reply|transition|question)(&chunk=\d+)?)?$/.test(
         url,
       )
     ) {
       if (control.failIntro && url.endsWith('part=intro'))
         return new Response(null, { status: 503 })
-      const voiceGate = url.includes('part=reply')
-        ? (control.replyAudioGate ?? control.voiceGate)
-        : control.voiceGate
+      const voiceGate = url.includes('part=question')
+        ? (control.questionAudioGate ?? control.voiceGate)
+        : url.includes('part=reply') || url.endsWith('/t3/audio')
+          ? (control.replyAudioGate ?? control.voiceGate)
+          : control.voiceGate
       if (voiceGate)
         await new Promise<void>((resolve, reject) => {
           // Like a browser, an aborted request rejects at once.
@@ -365,7 +380,10 @@ function geekBackend(
           )
           void voiceGate.then(resolve)
         })
-      if (control.failVoice)
+      if (
+        control.failVoice ||
+        (control.failQuestionVoice && url.endsWith('/t3/audio?part=question'))
+      )
         return Response.json(
           { code: 'PROCESSING_UNAVAILABLE', message: 'Недоступно.' },
           { status: 503 },
@@ -390,6 +408,9 @@ class FakeAudio {
   static played: string[] = []
   static paused = 0
   static last: FakeAudio | null = null
+  static autoEnd = false
+  static manual = false
+  static previousField: HTMLElement | null = null
   onended: (() => void) | null = null
   onerror: (() => void) | null = null
   error = null
@@ -398,6 +419,7 @@ class FakeAudio {
   }
   play() {
     FakeAudio.played.push(this.src)
+    if (FakeAudio.autoEnd) setTimeout(() => this.onended?.(), 0)
     return Promise.resolve()
   }
   pause() {
@@ -416,6 +438,9 @@ beforeEach(() => {
   FakeAudio.played = []
   FakeAudio.paused = 0
   FakeAudio.last = null
+  FakeAudio.autoEnd = false
+  FakeAudio.manual = false
+  FakeAudio.previousField = null
   vi.stubGlobal('Audio', FakeAudio)
   vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:turn')
   vi.spyOn(URL, 'revokeObjectURL').mockReturnValue(undefined)
@@ -453,7 +478,14 @@ async function start() {
 const answerField = () => screen.findByRole('textbox', { name: 'Ваш ответ' })
 
 async function answerByText(text: string) {
-  const field = await answerField()
+  if (!FakeAudio.manual) FakeAudio.autoEnd = true
+  const field = await waitFor(() => {
+    const current = screen.getByRole('textbox', { name: 'Ваш ответ' })
+    expect(current).not.toBe(FakeAudio.previousField)
+    expect(current).toBeEnabled()
+    return current
+  })
+  FakeAudio.previousField = field
   fireEvent.change(field, { target: { value: text } })
   fireEvent.click(screen.getByRole('button', { name: 'Отправить ответ' }))
 }
@@ -464,7 +496,7 @@ async function finishDiagnostic(text: string) {
   const played = FakeAudio.played.length
   await answerByText(text)
   await waitFor(() => expect(FakeAudio.played).toHaveLength(played + 1))
-  act(() => FakeAudio.last!.onended!())
+  act(() => FakeAudio.last?.onended?.())
 }
 
 it('runs a diagnostic from the home page to the result and back to the history', async () => {
@@ -492,9 +524,7 @@ it('runs a diagnostic from the home page to the result and back to the history',
     await screen.findByRole('button', { name: 'Остановить озвучку' }),
   ).toBeVisible()
   expect(
-    fetch.mock.calls.some(([url]) =>
-      url.endsWith('/turns/t1/audio?part=question'),
-    ),
+    fetch.mock.calls.some(([url]) => url.endsWith('/turns/t1/audio')),
   ).toBe(true)
   // The first question replies to nothing, so it has no reply part.
   expect(
@@ -739,6 +769,12 @@ it('sends a spoken answer as soon as it is transcribed', async () => {
   })
   renderApp()
   await start()
+  await waitFor(() =>
+    expect(
+      screen.getByRole('button', { name: 'Ответить голосом' }),
+    ).toBeEnabled(),
+  )
+  FakeAudio.autoEnd = true
   fireEvent.click(
     await screen.findByRole('button', { name: 'Ответить голосом' }),
   )
@@ -913,7 +949,7 @@ it('offers the result without waiting for the closing voice', async () => {
   await waitFor(() => expect(FakeAudio.played).toHaveLength(played + 1))
   // Reading and result navigation are independent of speech playback.
   expect(screen.getByRole('button', { name: 'Посмотреть итог' })).toBeVisible()
-  act(() => FakeAudio.last!.onended!())
+  act(() => FakeAudio.last?.onended?.())
   expect(
     await screen.findByRole('button', { name: 'Посмотреть итог' }),
   ).toBeVisible()
@@ -928,9 +964,10 @@ it('offers the result when the closing reply cannot be voiced', async () => {
   await screen.findByText('эвристическая функция')
   control.failVoice = true
   await answerByText('Оценка расстояния до цели')
+  expect(await screen.findByText('Не удалось озвучить реплику')).toBeVisible()
   expect(
-    await screen.findByText('Спасибо! Диагностика завершена, итог уже готов.'),
-  ).toBeVisible()
+    screen.queryByText('Спасибо! Диагностика завершена, итог уже готов.'),
+  ).toBeNull()
   expect(
     await screen.findByRole('button', { name: 'Посмотреть итог' }),
   ).toBeVisible()
@@ -979,57 +1016,39 @@ it.each(['mediaDevices', 'MediaRecorder', 'permission'])(
   },
 )
 
-it('voices the reply to the answer first and the question after it in one turn', async () => {
-  const { fetch } = geekBackend()
+it('waits for all audio, then reveals the whole turn when feedback starts', async () => {
+  FakeAudio.manual = true
+  const { control, fetch } = geekBackend()
   renderApp()
   await start()
-  await waitFor(() => expect(FakeAudio.played).toHaveLength(1))
+  const question = gate()
+  control.questionAudioGate = question.closed
   await answerByText('Перестанет быть оптимальным')
-  // One Geek message holds both parts.
+  await waitFor(() =>
+    expect(
+      fetch.mock.calls.some(([url]) => url.endsWith('/t3/audio?part=question')),
+    ).toBe(true),
+  )
+  expect(screen.queryByText('Верно про оптимальность.')).toBeNull()
+  expect(
+    screen.queryByText('А где допустимая эвристика не поможет?'),
+  ).toBeNull()
+  question.open()
   expect(await screen.findByText('Верно про оптимальность.')).toBeVisible()
   expect(
     screen.getByText('А где допустимая эвристика не поможет?'),
   ).toBeVisible()
-  const audioUrls = () =>
-    fetch.mock.calls
-      .map(([url]) => url)
-      .filter((url) => url.includes('/turns/t3/audio'))
-  await waitFor(() => expect(FakeAudio.played).toHaveLength(2))
-  await waitFor(() =>
-    expect(audioUrls()).toEqual([
-      '/api/v1/exam/diagnostic-sessions/d1/turns/t3/audio?part=reply',
-      '/api/v1/exam/diagnostic-sessions/d1/turns/t3/audio?part=question',
-    ]),
-  )
-  // The prefetched question waits until the feedback pause ends.
-  vi.useFakeTimers()
-  try {
-    await act(async () => FakeAudio.last?.onended?.())
-    await act(async () => vi.advanceTimersByTimeAsync(699))
-    expect(FakeAudio.played).toHaveLength(2)
-    await act(async () => vi.advanceTimersByTimeAsync(1))
-    expect(FakeAudio.played).toHaveLength(3)
-  } finally {
-    vi.useRealTimers()
-  }
-})
-
-it('stops during the feedback pause without playing the next question', async () => {
-  geekBackend()
-  renderApp()
-  await start()
-  await waitFor(() => expect(FakeAudio.played).toHaveLength(1))
-  await answerByText('Перестанет быть оптимальным')
-  await waitFor(() => expect(FakeAudio.played).toHaveLength(2))
-  vi.useFakeTimers()
-  try {
-    await act(async () => FakeAudio.last!.onended!())
-    fireEvent.click(screen.getByRole('button', { name: 'Остановить озвучку' }))
-    await act(async () => vi.advanceTimersByTimeAsync(2000))
-    expect(FakeAudio.played).toHaveLength(2)
-  } finally {
-    vi.useRealTimers()
-  }
+  const urls = fetch.mock.calls
+    .map(([url]) => url)
+    .filter((url) => url.includes('/turns/t3/audio'))
+  expect(urls).toEqual([
+    '/api/v1/exam/diagnostic-sessions/d1/turns/t3/audio?part=reply',
+    '/api/v1/exam/diagnostic-sessions/d1/turns/t3/audio?part=question',
+  ])
+  await act(async () => FakeAudio.last?.onended?.())
+  expect(
+    await screen.findByText('А где допустимая эвристика не поможет?'),
+  ).toBeVisible()
 })
 
 it('pops up that the course was updated when the diagnostic is cancelled', async () => {
@@ -1131,97 +1150,72 @@ it('keeps a diagnostic cancelled when the response of an earlier answer lands la
   ).toBeVisible()
 })
 
-it('plays the cached intro while reply blocks load and prefetches one block ahead', async () => {
+it('lets the student recover the current turn after replaying an older one', async () => {
+  FakeAudio.manual = true
   const { control, fetch } = geekBackend()
   renderApp()
   await start()
-  await waitFor(() => expect(FakeAudio.played).toHaveLength(1))
-  const reply = gate()
-  control.segmentedSpeech = true
-  control.replyAudioGate = reply.closed
+  await screen.findByText(
+    'Что изменится в A*, если эвристика переоценивает путь?',
+  )
+  const gateReply = gate()
+  control.replyAudioGate = gateReply.closed
   await answerByText('Перестанет быть оптимальным')
-  await waitFor(() => expect(FakeAudio.played).toHaveLength(2))
-  expect(
-    screen.getByText(/Связь с условиями задачи тоже показана/),
-  ).toBeVisible()
-  expect(
-    fetch.mock.calls.some(([url]) =>
-      url.endsWith('/t3/audio?part=reply&chunk=0'),
-    ),
-  ).toBe(true)
-  expect(
-    fetch.mock.calls.some(([url]) =>
-      url.endsWith('/t3/audio?part=reply&chunk=1'),
-    ),
-  ).toBe(false)
-  act(() => FakeAudio.last!.onended!())
-  reply.open()
-  await waitFor(() => expect(FakeAudio.played).toHaveLength(3))
+  await screen.findByText('Geek готовит озвучку…')
   await waitFor(() =>
     expect(
-      fetch.mock.calls.some(([url]) =>
-        url.endsWith('/t3/audio?part=reply&chunk=1'),
-      ),
+      fetch.mock.calls.some(([url]) => url.endsWith('/t3/audio?part=reply')),
     ).toBe(true),
   )
-  expect(
-    fetch.mock.calls.some(([url]) => url.endsWith('/t3/audio?part=question')),
-  ).toBe(false)
-  act(() => FakeAudio.last!.onended!())
-  await waitFor(() => expect(FakeAudio.played).toHaveLength(4))
-  await waitFor(() =>
-    expect(
-      fetch.mock.calls.some(([url]) => url.endsWith('/t3/audio?part=question')),
-    ).toBe(true),
+  const previous = screen.getAllByRole('button', {
+    name: 'Прослушать реплику',
+  })[0]
+  fireEvent.click(previous)
+  expect(await screen.findByText('Озвучка остановлена')).toBeVisible()
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Показать текст без озвучки' }),
   )
-  vi.useFakeTimers()
-  try {
-    await act(async () => FakeAudio.last!.onended!())
-    await act(async () => vi.advanceTimersByTimeAsync(699))
-    expect(FakeAudio.played).toHaveLength(4)
-    await act(async () => vi.advanceTimersByTimeAsync(1))
-    expect(FakeAudio.played).toHaveLength(5)
-  } finally {
-    vi.useRealTimers()
-  }
-})
-
-it('falls back to feedback if the optional intro fails', async () => {
-  const { control } = geekBackend()
-  renderApp()
-  await start()
-  await waitFor(() => expect(FakeAudio.played).toHaveLength(1))
-  control.segmentedSpeech = true
-  control.failIntro = true
-  await answerByText('Перестанет быть оптимальным')
-  await waitFor(() => expect(FakeAudio.played).toHaveLength(2))
   expect(
-    screen.getByText(/Связь с условиями задачи тоже показана/),
+    screen.getByText('А где допустимая эвристика не поможет?'),
   ).toBeVisible()
+  expect(screen.getByRole('textbox', { name: 'Ваш ответ' })).toBeEnabled()
+  gateReply.open()
 })
 
-it('cancels old segmented speech without queuing its remaining blocks', async () => {
+it('reveals the current turn when stopped and keeps it visible after replaying history', async () => {
+  FakeAudio.manual = true
   const { control, fetch } = geekBackend()
   renderApp()
   await start()
-  await waitFor(() => expect(FakeAudio.played).toHaveLength(1))
-  control.segmentedSpeech = true
-  const reply = gate()
-  control.replyAudioGate = reply.closed
+  await screen.findByText(
+    'Что изменится в A*, если эвристика переоценивает путь?',
+  )
+  const voice = gate()
+  control.replyAudioGate = voice.closed
   await answerByText('Перестанет быть оптимальным')
-  await waitFor(() => expect(FakeAudio.played).toHaveLength(2))
-  await answerByText('Оценка расстояния')
-  await screen.findByText('эвристическая функция')
-  reply.open()
-  await waitFor(() => expect(FakeAudio.played.length).toBeGreaterThan(2))
+  await waitFor(() =>
+    expect(
+      fetch.mock.calls.some(([url]) => url.endsWith('/t3/audio?part=reply')),
+    ).toBe(true),
+  )
+  fireEvent.click(screen.getByRole('button', { name: 'Готовим озвучку…' }))
+  expect(await screen.findByText('Верно про оптимальность.')).toBeVisible()
   expect(
-    fetch.mock.calls.some(([url]) =>
-      url.endsWith('/t3/audio?part=reply&chunk=1'),
-    ),
-  ).toBe(false)
+    screen.getByText('А где допустимая эвристика не поможет?'),
+  ).toBeVisible()
+  fireEvent.click(
+    screen.getAllByRole('button', { name: 'Прослушать реплику' })[0],
+  )
+  await waitFor(() => expect(FakeAudio.played.length).toBeGreaterThan(1))
+  act(() => FakeAudio.last?.onended?.())
+  expect(
+    screen.getByText('А где допустимая эвристика не поможет?'),
+  ).toBeVisible()
+  expect(screen.getByRole('textbox', { name: 'Ваш ответ' })).toBeEnabled()
+  voice.open()
 })
 
-it('shows the reply and enables answers while its voice is still loading', async () => {
+it('hides the reply and waits for its voice', async () => {
   const { control, fetch } = geekBackend()
   renderApp()
   await start()
@@ -1235,31 +1229,79 @@ it('shows the reply and enables answers while its voice is still loading', async
       fetch.mock.calls.some(([url]) => url.endsWith('/t3/audio?part=reply')),
     ).toBe(true),
   )
-  expect(screen.queryByText('Geek думает…')).toBeNull()
-  expect(screen.getByText('Верно про оптимальность.')).toBeVisible()
-  expect(screen.getByRole('textbox', { name: 'Ваш ответ' })).toBeEnabled()
+  expect(screen.getByText('Geek готовит озвучку…')).toBeVisible()
+  expect(screen.queryByText('Верно про оптимальность.')).toBeNull()
+  expect(
+    fetch.mock.calls.some(([url]) => url.endsWith('/t3/audio?part=question')),
+  ).toBe(false)
+  expect(screen.getByRole('textbox', { name: 'Ваш ответ' })).toBeDisabled()
 
   voice.open()
   expect(await screen.findByText('Верно про оптимальность.')).toBeVisible()
+  await waitFor(() =>
+    expect(
+      fetch.mock.calls.some(([url]) => url.endsWith('/t3/audio?part=question')),
+    ).toBe(true),
+  )
   expect(
-    screen.getByText('А где допустимая эвристика не поможет?'),
+    await screen.findByText('А где допустимая эвристика не поможет?'),
   ).toBeVisible()
-  expect(screen.queryByText('Geek думает…')).toBeNull()
   expect(screen.getByRole('textbox', { name: 'Ваш ответ' })).toBeEnabled()
 })
 
-it('shows the reply when its voice fails instead of thinking forever', async () => {
+it('offers text without speech when voice fails', async () => {
   const { control } = geekBackend()
   renderApp()
   await start()
   await waitFor(() => expect(FakeAudio.played).toHaveLength(1))
   control.failVoice = true
   await answerByText('Перестанет быть оптимальным')
-  expect(await screen.findByText('Верно про оптимальность.')).toBeVisible()
-  expect(screen.queryByText('Geek думает…')).toBeNull()
+  expect(await screen.findByText('Не удалось озвучить реплику')).toBeVisible()
+  expect(screen.queryByText('Верно про оптимальность.')).toBeNull()
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Показать текст без озвучки' }),
+  )
+  expect(screen.getByText('Верно про оптимальность.')).toBeVisible()
 })
 
-it('still plays late speech after the text has been shown for twenty seconds', async () => {
+it('keeps the whole turn hidden when the question audio fails', async () => {
+  const { control } = geekBackend()
+  renderApp()
+  await start()
+  await waitFor(() => expect(FakeAudio.played).toHaveLength(1))
+  control.failQuestionVoice = true
+  await answerByText('Перестанет быть оптимальным')
+  expect(await screen.findByText('Не удалось озвучить реплику')).toBeVisible()
+  expect(screen.queryByText('Верно про оптимальность.')).toBeNull()
+  expect(
+    screen.queryByText('А где допустимая эвристика не поможет?'),
+  ).toBeNull()
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Показать текст без озвучки' }),
+  )
+  expect(
+    screen.getByText('А где допустимая эвристика не поможет?'),
+  ).toBeVisible()
+})
+
+it('retries a failed audio fragment before revealing its text', async () => {
+  const { control } = geekBackend()
+  renderApp()
+  await start()
+  await waitFor(() => expect(FakeAudio.played).toHaveLength(1))
+  control.failVoice = true
+  await answerByText('Перестанет быть оптимальным')
+  expect(await screen.findByText('Не удалось озвучить реплику')).toBeVisible()
+  expect(screen.queryByText('Верно про оптимальность.')).toBeNull()
+  control.failVoice = false
+  fireEvent.click(screen.getByRole('button', { name: 'Попробовать снова' }))
+  expect(await screen.findByText('Верно про оптимальность.')).toBeVisible()
+  expect(
+    await screen.findByText('А где допустимая эвристика не поможет?'),
+  ).toBeVisible()
+})
+
+it('keeps text hidden while speech is delayed for twenty seconds', async () => {
   vi.useFakeTimers({ shouldAdvanceTime: true })
   try {
     const { control, fetch } = geekBackend()
@@ -1275,18 +1317,18 @@ it('still plays late speech after the text has been shown for twenty seconds', a
       ).toBe(true),
     )
     await act(() => vi.advanceTimersByTimeAsync(20_000))
-    expect(screen.getByText('Верно про оптимальность.')).toBeVisible()
-    expect(screen.getByRole('textbox', { name: 'Ваш ответ' })).toBeEnabled()
+    expect(screen.queryByText('Верно про оптимальность.')).toBeNull()
+    expect(screen.getByRole('textbox', { name: 'Ваш ответ' })).toBeDisabled()
 
     voice.open()
     await act(() => vi.advanceTimersByTimeAsync(100))
-    expect(FakeAudio.played).toHaveLength(2)
+    expect(FakeAudio.played).toHaveLength(3)
   } finally {
     vi.useRealTimers()
   }
 })
 
-it('does not let a stopped voice of an older reply show the next one', async () => {
+it('does not play a stopped delayed voice after choosing text', async () => {
   vi.useFakeTimers({ shouldAdvanceTime: true })
   try {
     const { control, fetch } = geekBackend()
@@ -1301,17 +1343,9 @@ it('does not let a stopped voice of an older reply show the next one', async () 
       ).toBe(true),
     )
     await act(() => vi.advanceTimersByTimeAsync(20_000))
+    expect(screen.queryByText('Верно про оптимальность.')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Готовим озвучку…' }))
     expect(screen.getByText('Верно про оптимальность.')).toBeVisible()
-
-    // Sending another answer stops old speech; the next text is immediate.
-    await answerByText('Оценка расстояния')
-    await waitFor(() =>
-      expect(fetch.mock.calls.some(([url]) => url.includes('/t5/audio'))).toBe(
-        true,
-      ),
-    )
-    expect(screen.getByText('эвристическая функция')).toBeVisible()
-    expect(screen.queryByText('Geek думает…')).toBeNull()
   } finally {
     vi.useRealTimers()
   }

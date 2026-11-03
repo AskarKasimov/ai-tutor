@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"math/rand/v2"
 	"strings"
 	"time"
@@ -31,10 +32,11 @@ type Config struct {
 type AudioPart string
 
 const (
-	AudioWhole    AudioPart = ""
-	AudioReply    AudioPart = "reply"
-	AudioQuestion AudioPart = "question"
-	AudioIntro    AudioPart = "intro"
+	AudioWhole      AudioPart = ""
+	AudioReply      AudioPart = "reply"
+	AudioQuestion   AudioPart = "question"
+	AudioIntro      AudioPart = "intro"
+	AudioTransition AudioPart = "transition"
 )
 
 type Service struct {
@@ -277,9 +279,37 @@ func (s *Service) Answer(ctx context.Context, ownerID, id, key string, a Answer)
 	if err := s.append(&session, exam.SpeakerStudent, exam.KindAnswer, &step.NodeID, &source, text); err != nil {
 		return exam.Session{}, err
 	}
-	evaluate := EvaluationRequest{AddressPreference: session.AddressPreference, HintUsed: session.Exam.Nodes[node.ID].HintUsed, Kind: step.Kind, Node: node, Prerequisites: unaskedPrerequisites(session.Exam, node.ID), Dialogue: session.Dialogue(node.ID)}
+	name, nameOnly := "", false
+	plain := strings.ToLower(strings.Trim(strings.TrimSpace(text), ".!?… "))
+	if source != exam.SourceDontKnow && plain != "не знаю" && plain != "я не знаю" {
+		if interpreter, ok := s.examiner.(NameInterpreter); ok {
+			question := ""
+			for i := len(session.Turns) - 1; i >= 0; i-- {
+				t := session.Turns[i]
+				if t.Speaker == exam.SpeakerGeek && !t.Meta && t.NodeID != nil && *t.NodeID == node.ID {
+					_, question = t.Parts()
+					break
+				}
+			}
+			intent, err := interpreter.InterpretName(ctx, question, text)
+			if err != nil {
+				if ctx.Err() != nil {
+					return exam.Session{}, ctx.Err()
+				}
+				log.Printf("WARN geek: name recognition failed; evaluating answer without a name change: %v", err)
+			} else {
+				name, nameOnly = intent.Name, intent.Name != "" && !intent.HasAnswer
+			}
+		}
+	}
+	if name != "" {
+		session.PreferredName = name
+	}
+	evaluate := EvaluationRequest{PreferredName: session.PreferredName, ClarificationPending: session.ClarificationPending, AddressPreference: exam.AddressNeutral, HintUsed: session.Exam.Nodes[node.ID].HintUsed, Kind: step.Kind, Node: node, Prerequisites: unaskedPrerequisites(session.Exam, node.ID), Dialogue: session.Dialogue(node.ID)}
 	assessment := Assessment{Evaluation: exam.Evaluation{Verdict: exam.VerdictDontKnow}}
-	if source != exam.SourceDontKnow {
+	if source != exam.SourceDontKnow && nameOnly {
+		assessment = Assessment{Evaluation: exam.Evaluation{Verdict: exam.VerdictClarifyQuestion}, Clarification: "Хорошо, буду звать тебя " + name + ". Можем продолжить с того же вопроса.", ClarificationPending: session.ClarificationPending}
+	} else if source != exam.SourceDontKnow {
 		if assessment, err = s.examiner.Evaluate(ctx, evaluate); err != nil {
 			return exam.Session{}, modelError(err)
 		}
@@ -287,12 +317,15 @@ func (s *Service) Answer(ctx context.Context, ownerID, id, key string, a Answer)
 			return exam.Session{}, modelError(err)
 		}
 	}
+	session.ClarificationPending = assessment.ClarificationPending
 	if !assessment.AddressPreference.Valid() || (assessment.Verdict == exam.VerdictAddressCorrection && assessment.AddressPreference == "") {
 		return exam.Session{}, modelError(errors.New("invalid address preference"))
 	}
-	if assessment.AddressPreference != "" {
-		session.AddressPreference = assessment.AddressPreference
-		evaluate.AddressPreference = session.AddressPreference
+	session.AddressPreference = exam.AddressNeutral
+	evaluate.AddressPreference = exam.AddressNeutral
+	if assessment.Verdict == exam.VerdictInsufficient || assessment.Verdict == exam.VerdictPause || assessment.Verdict == exam.VerdictAddressCorrection {
+		assessment.Verdict = exam.VerdictClarifyQuestion
+		assessment.Clarification = RepeatUnclearSpeech
 	}
 	if assessment.Verdict.Conversational() {
 		// Keep the actual exam step, scores, hint allowance and question count.
@@ -303,6 +336,9 @@ func (s *Service) Answer(ctx context.Context, ownerID, id, key string, a Answer)
 			message = addressAcknowledgement(session.AddressPreference)
 		case exam.VerdictPause:
 			message = pauseAcknowledgement
+		}
+		if name != "" && !nameOnly {
+			message = "Хорошо, буду звать тебя " + name + ".\n\n" + message
 		}
 		if strings.TrimSpace(message) == "" || utf8.RuneCountInString(message) > 600 {
 			return exam.Session{}, modelError(errors.New("invalid conversational reply"))
@@ -322,6 +358,9 @@ func (s *Service) Answer(ctx context.Context, ownerID, id, key string, a Answer)
 		reply, err := s.examiner.Feedback(ctx, feedback)
 		if err != nil {
 			return exam.Session{}, modelError(err)
+		}
+		if name != "" {
+			reply = "Хорошо, буду звать тебя " + name + ".\n\n" + reply
 		}
 		if err := s.say(ctx, &session, next, reply, closed); err != nil {
 			return exam.Session{}, err
@@ -375,7 +414,26 @@ func (s *Service) TurnAudio(ctx context.Context, ownerID, id, turnID string, par
 			return nil, fault.New(fault.NotFound, "TURN_PART_NOT_FOUND", "У реплики Geek нет вводной.")
 		}
 		return s.speech.Part(ctx, turn.AudioIntro)
+	case AudioTransition:
+		text := NextQuestionTransition(turn)
+		if text == "" {
+			return nil, fault.New(fault.NotFound, "TURN_PART_NOT_FOUND", "У реплики Geek нет перехода.")
+		}
+		return s.speech.Part(ctx, text)
 	case AudioWhole:
+		// Prepared questions and fixed conversational replies use the same
+		// content-keyed cache as the background warmer. Personalized replies
+		// and feedback-plus-question turns remain private to the session.
+		if turn.Reply == "" && !turn.Meta && turn.Kind != exam.KindClosing {
+			return s.speech.Part(ctx, turn.Text)
+		}
+		if turn.Meta {
+			for _, text := range ConversationSpeech() {
+				if turn.Text == text {
+					return s.speech.Part(ctx, turn.Text)
+				}
+			}
+		}
 		return s.speech.Get(ctx, "geek/"+session.ID+"/"+turn.ID+".wav", turn.Text)
 	case AudioReply, AudioQuestion:
 		reply, question := turn.Parts()
@@ -395,7 +453,7 @@ func (s *Service) TurnAudio(ctx context.Context, ownerID, id, turnID string, par
 		}
 		return s.speech.Part(ctx, text)
 	}
-	return nil, fault.Validation("part", "Часть реплики: intro, reply или question.")
+	return nil, fault.Validation("part", "Часть реплики: intro, reply, transition или question.")
 }
 
 func (s *Service) load(ctx context.Context, ownerID, id string) (exam.Session, error) {
@@ -466,7 +524,7 @@ func (s *Service) say(ctx context.Context, session *exam.Session, step exam.Step
 		text = node.PreparedRephrase()
 	} else {
 		var err error
-		text, err = s.examiner.Question(ctx, QuestionRequest{Rubric: session.Exam.Nodes[node.ID].Rubric, AddressPreference: session.AddressPreference, Hint: step.Hint, Kind: step.Kind, Node: node, Dialogue: session.Dialogue(node.ID)})
+		text, err = s.examiner.Question(ctx, QuestionRequest{PreferredName: session.PreferredName, Rubric: session.Exam.Nodes[node.ID].Rubric, AddressPreference: session.AddressPreference, Hint: step.Hint, Kind: step.Kind, Node: node, Dialogue: session.Dialogue(node.ID)})
 		if err != nil {
 			return modelError(err)
 		}
@@ -489,7 +547,17 @@ func (s *Service) appendLed(session *exam.Session, kind exam.TurnKind, nodeID *s
 	session.Turns[len(session.Turns)-1].Reply = reply
 	if recap && reply != "" {
 		session.Turns[len(session.Turns)-1].Recap = reply + "\n\n"
-		session.Turns[len(session.Turns)-1].AudioIntro = feedbackLeadIn
+		index := (len(session.Turns) / 2) % len(feedbackLeadIns)
+		for i := len(session.Turns) - 2; i >= 0; i-- {
+			if session.Turns[i].AudioIntro == feedbackLeadIns[index] {
+				index = (index + 1) % len(feedbackLeadIns)
+				break
+			}
+			if session.Turns[i].AudioIntro != "" {
+				break
+			}
+		}
+		session.Turns[len(session.Turns)-1].AudioIntro = feedbackLeadIns[index]
 	}
 	return nil
 }

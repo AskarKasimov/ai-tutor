@@ -37,7 +37,8 @@ type Turn struct {
 	// Служебная реплика, которая не расходует попытку и не участвует в оценке знаний.
 	Meta bool `json:"meta,omitempty" binding:"optional"`
 	// Предозвученная вводная перед фидбеком; запрашивается как part=intro.
-	AudioIntro string `json:"audio_intro,omitempty" binding:"optional"`
+	AudioIntro      string `json:"audio_intro,omitempty" binding:"optional"`
+	AudioTransition string `json:"audio_transition,omitempty" binding:"optional"`
 	// Число блоков фидбека; part=reply и chunk с нуля возвращают отдельный блок.
 	ReplyAudioParts int    `json:"reply_audio_parts,omitempty" binding:"optional" minimum:"0"`
 	CreatedAt       int64  `json:"created_at"`
@@ -430,7 +431,7 @@ func (h *Handler) RawMaterial(w http.ResponseWriter, r *http.Request) {
 // @Produce audio/wav
 // @Param id path string true "ID диагностики" minlength(1) maxlength(128)
 // @Param turn_id path string true "ID реплики Geek" minlength(1) maxlength(128)
-// @Param part query string false "Часть реплики" Enums(intro, reply, question)
+// @Param part query string false "Часть реплики" Enums(intro, reply, transition, question)
 // @Param chunk query int false "Номер блока фидбека с нуля, только part=reply" minimum(0)
 // @Success 200 {file} file "WAV реплики"
 // @Failure 401 {object} fault.Error
@@ -481,7 +482,9 @@ func toSession(s domain.Session) Session {
 			v := string(*t.Source)
 			source = &v
 		}
-		out.Turns = append(out.Turns, Turn{Meta: t.Meta, AudioIntro: t.AudioIntro, ReplyAudioParts: len(application.ReplySpeechParts(t.Reply)), CreatedAt: t.CreatedAt, ID: t.ID, Kind: string(t.Kind), Line: t.Line, NodeID: t.NodeID, Source: source, Speaker: string(t.Speaker), Text: t.Text, Reply: t.Reply})
+		reply, _ := t.Parts()
+		parts := application.ReplySpeechParts(reply)
+		out.Turns = append(out.Turns, Turn{Meta: t.Meta, AudioIntro: t.AudioIntro, AudioTransition: application.NextQuestionTransition(t), ReplyAudioParts: len(parts), CreatedAt: t.CreatedAt, ID: t.ID, Kind: string(t.Kind), Line: t.Line, NodeID: t.NodeID, Source: source, Speaker: string(t.Speaker), Text: t.Text, Reply: reply})
 	}
 	return out
 }

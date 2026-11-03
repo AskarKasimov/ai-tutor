@@ -73,7 +73,11 @@ var (
 func (fixtureGateway) Complete(_ context.Context, r *llmgatewayv1.CompleteRequest) (*llmgatewayv1.CompleteResponse, error) {
 	prompt := r.GetMessages()[len(r.GetMessages())-1].GetContent()
 	var answer any
-	if strings.Contains(r.GetMessages()[0].GetContent(), "Сократи названия узлов учебного графа") {
+	if strings.Contains(r.GetMessages()[0].GetContent(), `"name"`) && strings.Contains(r.GetMessages()[0].GetContent(), `"has_answer"`) {
+		answer = map[string]any{"name": "", "has_answer": true}
+	} else if strings.Contains(r.GetMessages()[0].GetContent(), "Проверь, есть ли в реплике кроме представления") {
+		answer = map[string]any{"has_answer": true}
+	} else if strings.Contains(r.GetMessages()[0].GetContent(), "Сократи названия узлов учебного графа") {
 		var input struct {
 			Titles []string `json:"titles"`
 		}

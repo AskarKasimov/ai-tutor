@@ -8,16 +8,18 @@ import (
 // Session is one diagnostic of a student on a course. Version guards
 // concurrent updates.
 type Session struct {
-	AddressPreference AddressPreference `json:"address_preference,omitempty"`
-	ID                string            `json:"id"`
-	OwnerID           string            `json:"owner_id"`
-	SubjectID         string            `json:"subject_id"`
-	Status            SessionStatus     `json:"status"`
-	StartedAt         int64             `json:"started_at"`
-	CompletedAt       *int64            `json:"completed_at"`
-	Version           int               `json:"version"`
-	Exam              *Exam             `json:"exam"`
-	Turns             []Turn            `json:"turns"`
+	PreferredName        string            `json:"preferred_name,omitempty"`
+	ClarificationPending bool              `json:"clarification_pending,omitempty"`
+	AddressPreference    AddressPreference `json:"address_preference,omitempty"`
+	ID                   string            `json:"id"`
+	OwnerID              string            `json:"owner_id"`
+	SubjectID            string            `json:"subject_id"`
+	Status               SessionStatus     `json:"status"`
+	StartedAt            int64             `json:"started_at"`
+	CompletedAt          *int64            `json:"completed_at"`
+	Version              int               `json:"version"`
+	Exam                 *Exam             `json:"exam"`
+	Turns                []Turn            `json:"turns"`
 }
 
 // AddressPreference records only an explicitly requested grammatical form.
@@ -176,7 +178,14 @@ func (s Session) Result() Result {
 			}
 			node.Score, node.Maximum = &score, &maximum
 			if maximum > 0 {
-				shares[n.ID] = float64(score) / float64(maximum)
+				share := float64(score) / float64(maximum)
+				// Preserve the raw rubric marks above, but cap the contribution
+				// to the overall result when assistance was used or the answer
+				// did not cover the whole question.
+				if (state.Assisted || !state.complete()) && share > 0.8 {
+					share = 0.8
+				}
+				shares[n.ID] = share
 			}
 		}
 		r.Nodes = append(r.Nodes, node)

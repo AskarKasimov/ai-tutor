@@ -118,6 +118,37 @@ func (g *Gateway) Evaluate(ctx context.Context, r application.EvaluationRequest)
 	if specErr != nil {
 		return application.Assessment{}, specErr
 	}
+	_, request := lastSupportInput(r)
+	normalized := strings.ToLower(strings.Trim(strings.TrimSpace(request), ".!?… "))
+	if normalized == "я не знаю" || normalized == "не знаю" {
+		return application.Assessment{Evaluation: exam.Evaluation{Verdict: exam.VerdictDontKnow}}, nil
+	}
+	if r.ClarificationPending {
+		route, err := g.routeRubric(ctx, r)
+		if err != nil {
+			return application.Assessment{}, err
+		}
+		if route.Verdict == exam.VerdictClarifyQuestion {
+			if err := g.clarifySupport(ctx, r, &route); err != nil {
+				return application.Assessment{}, err
+			}
+			return route, nil
+		}
+		if route.Verdict != exam.VerdictAnswered {
+			return route, nil
+		}
+		// A real answer must reach the ordinary grader, not the support model.
+		r.ClarificationPending = false
+	}
+	if normalized == "не понял" || normalized == "не поняла" || normalized == "я не понял" || normalized == "я не поняла" || normalized == "не понял вопрос" || normalized == "не поняла вопрос" || normalized == "я ничего не понял" || normalized == "я ничего не поняла" || normalized == "я не понимаю вопрос" {
+		return application.Assessment{Evaluation: exam.Evaluation{Verdict: exam.VerdictClarifyQuestion}, Clarification: application.AskUnclearPart, ClarificationPending: true}, nil
+	}
+	if incompleteAcknowledgement(request) {
+		return application.Assessment{Evaluation: exam.Evaluation{Verdict: exam.VerdictClarifyQuestion}, Clarification: application.RepeatUnclearSpeech}, nil
+	}
+	if pureControl(request, "skip") {
+		return application.Assessment{Evaluation: exam.Evaluation{Verdict: exam.VerdictDontKnow}}, nil
+	}
 	if len(spec) > 0 {
 		return g.evaluateRubric(ctx, r, spec)
 	}
@@ -256,6 +287,12 @@ func (g *Gateway) Feedback(ctx context.Context, r application.FeedbackRequest) (
 func (g *Gateway) complete(ctx context.Context, operation string, level llmgatewayv1.Complexity, urgent bool, prompt string, parse func([]byte) error) error {
 	logger := httpx.LoggerFromContext(ctx).With(zap.String("llm_operation", operation), zap.String("complexity", level.String()), zap.Bool("urgent", urgent))
 	system := systemPrompt
+	if operation == "name_intent" {
+		system = nameIntentPrompt
+	}
+	if operation == "name_verify" {
+		system = nameVerifyPrompt
+	}
 	if operation == "route_rubric" {
 		system = rubricRouterSystemPrompt
 	}

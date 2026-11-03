@@ -15,8 +15,9 @@ const supportSystemPrompt = `Ты — Geek, собеседник студент�
 Выбери kind:
 - context: студент не знает, что такое понятие, пример или мысленный эксперимент, и просит рассказать его содержание, чтобы потом ответить. Это содержательная подсказка. Если студент говорит «я могу рассуждать о разнице, но не знаю, что такое китайская комната, расскажи её», это context, а не пояснение формулировки. Также context — просьба дать ответ или объяснить сам предмет;
 - repeat: просит снова задать тот же вопрос, в том числе с правильным обращением;
-- wording: неясно, что требуется сделать или какая фраза имеется в виду.
+- wording: неясно, что требуется сделать или какая фраза имеется в виду. Если студент не сказал, какая именно часть непонятна, сначала спроси об этом. Если он указал часть, поясни её формулировку, не выдавая ответа.
 Для context верни пустой text: сюжет объяснит отдельная ветка. Для repeat и wording напиши в text реплику, обращённую прямо к студенту на «ты», с указанной формой обращения. При repeat повтори именно question, изменив только форму обращения при необходимости. При wording задай тот же вопрос понятнее, сохраняя все условия и части; если ссылка неясна, спроси о конкретной фразе.
+Если clarification_pending=true, студент уже указал непонятную часть. Не переспрашивай, что непонятно: выбери wording и коротко объясни именно указанное выражение простыми словами, не выдавая решение. Затем попроси ответить на исходный вопрос. Например, «не понимаю, что значит сокращение времени доставки» — «Это значит, что доставка занимает меньше минут. Как такое изменение влияет на оценку?». Это пояснение формулировки, не готовый расчёт.
 Не сообщай ответ, определение, сопоставление понятий, пример решения или правильный вывод. Не добавляй требований и терминов, которых нет в question. Не описывай студента со стороны и не комментируй факт отсутствия ответа. Запрещены вводные «вопрос просит», «нужно содержательно различить», «студентка не ответила». Не употребляй пункты рубрики, оценки и названия проверяемых навыков.
 Верни один JSON: {"kind":"context|repeat|wording","text":"реплика или пустая строка"}.`
 
@@ -42,11 +43,7 @@ func lastSupportInput(r application.EvaluationRequest) (question, request string
 // It may correct the grading model's routing, but cannot supply subject context.
 func (g *Gateway) clarifySupport(ctx context.Context, r application.EvaluationRequest, a *application.Assessment) error {
 	question, request := lastSupportInput(r)
-	preference := r.AddressPreference
-	if a.AddressPreference != "" {
-		preference = a.AddressPreference
-	}
-	data, _ := json.Marshal(map[string]string{"question": question, "request": request, "address": addressRules(preference)})
+	data, _ := json.Marshal(map[string]any{"question": question, "request": request, "address": addressRules(exam.AddressNeutral) + nameRule(r.PreferredName), "clarification_pending": r.ClarificationPending})
 	return g.complete(ctx, "support", pb.Complexity_COMPLEXITY_LOW, true, string(data), func(content []byte) error {
 		var out struct {
 			Kind string `json:"kind"`
@@ -56,6 +53,9 @@ func (g *Gateway) clarifySupport(ctx context.Context, r application.EvaluationRe
 			return err
 		}
 		if out.Kind == "context" {
+			if r.ClarificationPending {
+				return errors.New("expected wording clarification")
+			}
 			a.Verdict = exam.VerdictHintRequested
 			a.Clarification = ""
 			return nil
@@ -64,6 +64,14 @@ func (g *Gateway) clarifySupport(ctx context.Context, r application.EvaluationRe
 			return errors.New("invalid support kind")
 		}
 		text := strings.TrimSpace(out.Text)
+		instruction := addressRules(exam.AddressNeutral)
+		if strings.Contains(strings.ToLower(text), strings.ToLower(instruction)) && !strings.Contains(strings.ToLower(question), strings.ToLower(instruction)) {
+			if out.Kind == "repeat" && a.AddressPreference == "" && !pureControl(request, "address") {
+				a.Clarification = question
+				return nil
+			}
+			return errors.New("support text contains an internal instruction")
+		}
 		if text == "" || len([]rune(text)) > 600 {
 			return errors.New("invalid support text")
 		}
@@ -76,6 +84,10 @@ func (g *Gateway) clarifySupport(ctx context.Context, r application.EvaluationRe
 			}
 		}
 		a.Clarification = text
+		lower := strings.ToLower(text)
+		if out.Kind == "wording" && !r.ClarificationPending && (strings.Contains(lower, "какая часть") || strings.Contains(lower, "что именно") || strings.Contains(lower, "какое место")) {
+			a.ClarificationPending = true
+		}
 		return nil
 	})
 }

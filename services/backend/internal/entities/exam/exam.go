@@ -286,6 +286,15 @@ func (e *Exam) Apply(ev Evaluation) Step {
 		assisted := cur.Kind == KindRephrase || state.HintUsed
 		switch ev.Verdict {
 		case VerdictDontKnow:
+			// Keep any marks already observed before a rephrase. A first-turn
+			// "don't know" has no evidence and receives zero marks.
+			if state.Criteria != nil || state.Rubric != nil {
+				state.DontKnow = false
+				if state.Criteria != nil {
+					return e.gap(cur.NodeID, *state.Criteria, assisted)
+				}
+				return e.gap(cur.NodeID, Criteria{}, assisted)
+			}
 			state.DontKnow = true
 			return e.gap(cur.NodeID, Criteria{}, assisted)
 		case VerdictInsufficient:

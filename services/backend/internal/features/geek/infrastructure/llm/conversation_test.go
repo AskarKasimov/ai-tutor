@@ -46,6 +46,46 @@ func TestConversationVerdictsAndTypedAddressPreference(t *testing.T) {
 	}
 }
 
+func TestUnknownQuestionAsksWhichPartWithoutConsumingAttempt(t *testing.T) {
+	f := &fakeGateway{}
+	g := serve(t, f, time.Second)
+	r := application.EvaluationRequest{Dialogue: []exam.Turn{{Line: 1, Speaker: exam.SpeakerGeek, Text: "Почему?"}, {Line: 2, Speaker: exam.SpeakerStudent, Text: "Я ничего не понял."}}}
+	a, err := g.Evaluate(context.Background(), r)
+	if err != nil || a.Verdict != exam.VerdictClarifyQuestion || !a.ClarificationPending || a.Clarification != "Какая часть вопроса непонятна?" || len(f.requests) != 0 {
+		t.Fatalf("assessment=%+v error=%v", a, err)
+	}
+}
+
+func TestClarificationDetailIsExplainedWithoutHintPenalty(t *testing.T) {
+	f := &fakeGateway{answers: []string{`{"verdict":"clarify_question","address_preference":""}`, `{"kind":"wording","text":"Здесь речь о времени доставки. Объясни, как оно влияет на оценку."}`}}
+	g := serve(t, f, time.Second)
+	r := application.EvaluationRequest{ClarificationPending: true, Dialogue: []exam.Turn{{Line: 1, Speaker: exam.SpeakerGeek, Text: "Как время влияет на оценку?"}, {Line: 2, Speaker: exam.SpeakerStudent, Text: "Не понял слово время"}}}
+	a, err := g.Evaluate(context.Background(), r)
+	if err != nil || a.Verdict != exam.VerdictClarifyQuestion || a.ClarificationPending || a.Clarification == "" {
+		t.Fatalf("assessment=%+v error=%v", a, err)
+	}
+}
+
+func TestAnswerAfterUnclearQuestionIsGraded(t *testing.T) {
+	f := &fakeGateway{answers: []string{`{"verdict":"answered","address_preference":""}`, `{"verdict":"answered","address_preference":"","answer_complete":true,"criteria":{"k1":2,"k2":2,"k3":null,"k4":null},"evidence_lines":[2]}`}}
+	g := serve(t, f, time.Second)
+	r := application.EvaluationRequest{ClarificationPending: true, Node: node, Dialogue: []exam.Turn{{Line: 1, Speaker: exam.SpeakerGeek, Text: "Что делает сенсор?"}, {Line: 2, Speaker: exam.SpeakerStudent, Text: "Сенсор воспринимает данные о среде"}}}
+	a, err := g.Evaluate(context.Background(), r)
+	if err != nil || a.Verdict != exam.VerdictAnswered || a.ClarificationPending {
+		t.Fatalf("answer lost: %+v %v", a, err)
+	}
+}
+
+func TestHintAfterUnclearQuestionStillCountsAsHint(t *testing.T) {
+	f := &fakeGateway{answers: []string{`{"verdict":"hint_requested","address_preference":""}`}}
+	g := serve(t, f, time.Second)
+	r := application.EvaluationRequest{ClarificationPending: true, Node: node, Dialogue: []exam.Turn{{Line: 1, Speaker: exam.SpeakerGeek, Text: "Что делает сенсор?"}, {Line: 2, Speaker: exam.SpeakerStudent, Text: "Дай подсказку"}}}
+	a, err := g.Evaluate(context.Background(), r)
+	if err != nil || a.Verdict != exam.VerdictHintRequested {
+		t.Fatalf("hint not counted: %+v %v", a, err)
+	}
+}
+
 func TestPastConversationManagementIsNotGradingEvidence(t *testing.T) {
 	d := append([]exam.Turn{}, turns...)
 	d = append(d, exam.Turn{Line: 3, Speaker: exam.SpeakerStudent, Meta: true, Text: "CONTROL_ONLY_IGNORE_FOR_KNOWLEDGE"})
@@ -178,5 +218,15 @@ func TestCopiedExplanationIsNotCreditedAsIndependentReasoning(t *testing.T) {
 		if !strings.Contains(input, "Предоставленное определение") || strings.Contains(input, node.Content) && node.Content != "" {
 			t.Fatal("independence check hid help or included the reference")
 		}
+	}
+}
+
+func TestRepeatDoesNotLeakAddressInstruction(t *testing.T) {
+	f := &fakeGateway{answers: []string{`{"kind":"repeat","text":"Используй нейтральные обращения без предположений о роде: например, «в твоём ответе верно…», «основная мысль верная». Сколько будет два плюс два?"}`}}
+	g := serve(t, f, time.Second)
+	a := application.Assessment{Evaluation: exam.Evaluation{Verdict: exam.VerdictClarifyQuestion}}
+	r := application.EvaluationRequest{Dialogue: []exam.Turn{{Line: 1, Speaker: exam.SpeakerGeek, Text: "Сколько будет два плюс два?"}, {Line: 2, Speaker: exam.SpeakerStudent, Text: "Повтори вопрос. Я ничего не понял."}}}
+	if err := g.clarifySupport(context.Background(), r, &a); err != nil || a.Clarification != "Сколько будет два плюс два?" {
+		t.Fatalf("clarification=%q err=%v", a.Clarification, err)
 	}
 }

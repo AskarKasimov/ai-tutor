@@ -151,6 +151,25 @@ type examiner struct {
 	explained    []EvaluationRequest
 	feedbacks    []FeedbackRequest
 	feedbackFail error
+	nameFail     error
+}
+
+func (e *examiner) InterpretName(_ context.Context, _, text string) (NameIntent, error) {
+	if e.nameFail != nil {
+		return NameIntent{}, e.nameFail
+	}
+	switch text {
+	case "Обращайся ко мне, Андрюха. Андрюха.":
+		return NameIntent{Name: "Андрюха"}, nil
+	case "Меня зовут Кирилл, сильно":
+		return NameIntent{Name: "Кирилл", HasAnswer: true}, nil
+	case "Меня зовут Никита Зайгайнов, частично":
+		return NameIntent{Name: "Никита Зайгайнов", HasAnswer: true}, nil
+	case "Меня зовут философ Ягон Дон":
+		return NameIntent{Name: "философ Ягон Дон"}, nil
+	default:
+		return NameIntent{}, nil
+	}
 }
 
 func (e *examiner) Question(_ context.Context, r QuestionRequest) (string, error) {
@@ -174,6 +193,15 @@ func (e *examiner) Evaluate(_ context.Context, r EvaluationRequest) (Assessment,
 	last := r.Dialogue[len(r.Dialogue)-1]
 	a := Assessment{}
 	switch {
+	case strings.Contains(last.Text, "НЕПОНЯТНО"):
+		a.Evaluation.Verdict = exam.VerdictClarifyQuestion
+		a.Clarification = "Какая часть вопроса непонятна?"
+		a.ClarificationPending = true
+	case r.ClarificationPending:
+		a.Evaluation.Verdict = exam.VerdictClarifyQuestion
+		a.Clarification = "Это про условия задачи. Теперь ответь на вопрос."
+	case strings.Contains(last.Text, "ПОСТОРОННИЙ РАЗГОВОР"):
+		a.Evaluation.Verdict = exam.VerdictInsufficient
 	case strings.Contains(last.Text, "поправка обращения"):
 		a.Evaluation.Verdict = exam.VerdictAddressCorrection
 	case strings.Contains(last.Text, "поясни формулировку"):

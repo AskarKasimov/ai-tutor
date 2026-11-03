@@ -136,7 +136,8 @@ function Dialogue({
   const closeNotice = useCallback(() => setCourseUpdated(false), [])
   const currentTurnId = session.currentTurnId
   const lastTurn = session.turns[session.turns.length - 1]
-  // Text is available as soon as the answer arrives. Speech loads independently.
+  const initialCompleted = useRef(session.status === 'completed')
+  // Voice transcription has its own pending state in the conversation.
   const [transcribing, setTranscribing] = useState(false)
 
   // A new Geek turn is voiced at once; the first one after loading too, since
@@ -201,7 +202,13 @@ function Dialogue({
     autoScrolling.current = behavior === 'smooth'
     end.current?.scrollIntoView({ block: 'end', behavior })
     scrollInitialized.current = true
-  }, [session.turns.length, answer.isPending, resultReady, transcribing])
+  }, [
+    session.turns.length,
+    answer.isPending,
+    resultReady,
+    transcribing,
+    audio.progress,
+  ])
 
   const submit = (variables: NonNullable<typeof answer.variables>) => {
     answer.mutate(variables)
@@ -252,7 +259,13 @@ function Dialogue({
       </Heading>
       <ol className={styles.turns}>
         {session.turns.map((turn) => (
-          <TurnItem key={turn.id} turn={turn} audio={audio} muted={capturing} />
+          <TurnItem
+            key={turn.id}
+            turn={turn}
+            audio={audio}
+            muted={capturing}
+            live={!initialCompleted.current && turn.id === lastTurn?.id}
+          />
         ))}
         {pending && (
           <li className={styles.student}>
@@ -268,7 +281,7 @@ function Dialogue({
         )}
         {pending && (
           <li className={styles.geek}>
-            <Thinking label={t('geek.thinking')} />
+            <ThinkingWhileProcessing />
           </li>
         )}
       </ol>
@@ -301,7 +314,12 @@ function Dialogue({
         <Composer
           key={currentTurnId}
           turnId={currentTurnId ?? ''}
-          busy={answer.isPending}
+          busy={
+            answer.isPending ||
+            (lastTurn?.speaker === 'geek' &&
+              !audio.progress[lastTurn.id]?.question &&
+              !audio.progress[lastTurn.id]?.revealed)
+          }
           error={failed}
           onSend={send}
           // The retry repeats the failed request exactly: its turn and key.
@@ -385,10 +403,12 @@ function TurnItem({
   turn,
   audio,
   muted,
+  live,
 }: {
   turn: Turn
   audio: ReturnType<typeof useTurnAudio>
   muted: boolean
+  live: boolean
 }) {
   const { t } = useTranslation()
   if (turn.speaker === 'student')
@@ -399,6 +419,23 @@ function TurnItem({
         </Text>
       </li>
     )
+  const progress = audio.progress[turn.id]
+  const partial = live && !progress?.revealed
+  const question =
+    turn.reply && turn.text.trimStart().startsWith(turn.reply)
+      ? turn.text.trimStart().slice(turn.reply.length).trim()
+      : turn.text
+  const shown = partial
+    ? [progress?.replies ? turn.reply : '', progress?.question ? question : '']
+        .filter(Boolean)
+        .join('\n\n')
+    : turn.text
+  const waiting = partial && !progress?.question
+  const failed =
+    audio.state.turnId === turn.id && audio.state.status === 'error'
+  const paused =
+    (audio.state.turnId === turn.id && audio.state.status === 'paused') ||
+    progress?.interrupted
   return (
     <li className={styles.geek}>
       <div className={styles.geekHead}>
@@ -415,7 +452,31 @@ function TurnItem({
           disabled={muted}
         />
       </div>
-      <MarkdownContent text={turn.text} className={styles.geekText} />
+      {shown && <MarkdownContent text={shown} className={styles.geekText} />}
+      {waiting &&
+        !failed &&
+        !paused &&
+        (audio.state.turnId !== turn.id ||
+          audio.state.status !== 'playing') && (
+          <Thinking visibleLabel label={t('geek.audioPreparing')} />
+        )}
+      {partial && (failed || (waiting && paused)) && (
+        <div className={styles.error} role="alert">
+          <Text as="p">
+            {t(failed ? 'geek.audioError' : 'geek.audioPaused')}
+          </Text>
+          <Button size="2" variant="soft" onClick={() => void audio.play(turn)}>
+            {t('trainer.retry')}
+          </Button>
+          <Button
+            size="2"
+            variant="soft"
+            onClick={() => audio.revealAll(turn.id)}
+          >
+            {t('geek.audioShowText')}
+          </Button>
+        </div>
+      )}
     </li>
   )
 }
@@ -451,7 +512,7 @@ function ListenButton({
       disabled={disabled}
       onClick={() =>
         mine === 'playing' || mine === 'loading'
-          ? audio.stop()
+          ? audio.revealAll(turn.id)
           : void audio.play(turn)
       }
     >
@@ -645,13 +706,30 @@ function Composer({
   )
 }
 
+function ThinkingWhileProcessing() {
+  const { t } = useTranslation()
+  const [index, setIndex] = useState(0)
+  useEffect(() => {
+    const timer = window.setInterval(() => setIndex((i) => (i + 1) % 3), 5000)
+    return () => window.clearInterval(timer)
+  }, [])
+  const labels = [
+    'geek.audioFormulating',
+    'geek.thinking',
+    'geek.audioContinuing',
+  ]
+  return <Thinking visibleLabel label={t(labels[index])} />
+}
+
 // Geek's typing: three dots in a bubble. Keep the status label for screen readers.
 function Thinking({
   label,
   student = false,
+  visibleLabel = false,
 }: {
   label: string
   student?: boolean
+  visibleLabel?: boolean
 }) {
   return (
     <Text
@@ -667,7 +745,9 @@ function Thinking({
         <span />
         <span />
       </span>
-      <span className={styles.visuallyHidden}>{label}</span>
+      <span className={visibleLabel ? undefined : styles.visuallyHidden}>
+        {label}
+      </span>
     </Text>
   )
 }

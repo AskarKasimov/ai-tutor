@@ -817,7 +817,7 @@ func TestACompetencyWeighsTheSameWithMoreConstituents(t *testing.T) {
 	}
 }
 
-func TestDontKnowDropsTheMarksOfAnEarlierAttempt(t *testing.T) {
+func TestDontKnowPreservesTheMarksOfAnEarlierAttempt(t *testing.T) {
 	const rubric = "Аналитическая рубрика (макс. 4):\nПункт рубрики 1 «Суть»: 4 — верно; 2 — частично; 0 — нет."
 	spec, err := ParseRubric(rubric)
 	if err != nil {
@@ -832,7 +832,7 @@ func TestDontKnowDropsTheMarksOfAnEarlierAttempt(t *testing.T) {
 		return weak
 	})
 	marks := e.TopicMarks("a")
-	if e.Nodes["a"].Status != StatusGap || len(marks) != 1 || marks[0].Score != 0 || marks[0].Maximum != 4 || marks[0].Reason != "" {
+	if e.Nodes["a"].Status != StatusGap || len(marks) != 1 || marks[0].Score != 0 || marks[0].Maximum != 4 || marks[0].Reason != "слабо" {
 		t.Fatalf("status %s, marks = %+v", e.Nodes["a"].Status, marks)
 	}
 }
@@ -1127,4 +1127,54 @@ func TestExamPicksOneVariantOfEveryTopic(t *testing.T) {
 func courseGrade(e *Exam) (*Grade, *int) {
 	r := Session{Exam: e}.Result()
 	return r.Grade, r.ScorePercent
+}
+
+func TestOverallScoreCapsAssistedAndIncompleteAnswersWithoutChangingMarks(t *testing.T) {
+	for _, tc := range []struct {
+		name               string
+		assisted, complete bool
+		want               float64
+	}{
+		{"independent complete", false, true, 5},
+		{"assisted complete", true, true, 4},
+		{"independent incomplete", false, false, 4},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			e, _ := NewExam(Graph{Nodes: []Node{{ID: "a", Title: "A"}}}, 0, nil)
+			state := e.Nodes["a"]
+			state.Status = StatusIndependent
+			state.Criteria = &Criteria{K1: 2, K2: 2}
+			state.Unassessed = UnassessedCriteria{K3: true, K4: true}
+			state.Assisted = tc.assisted
+			state.AnswerComplete = &tc.complete
+			result := (Session{Exam: e}).Result()
+			if result.Score != tc.want || result.Maximum != 5 {
+				t.Fatalf("score = %v/%d, want %v/5", result.Score, result.Maximum, tc.want)
+			}
+			if *result.Nodes[0].Score != 4 || *result.Nodes[0].Maximum != 4 {
+				t.Fatalf("raw marks changed: %+v", result.Nodes[0])
+			}
+		})
+	}
+}
+
+func TestDontKnowAfterRephrasePreservesNonzeroRubricMarks(t *testing.T) {
+	const rubric = "Аналитическая рубрика (макс. 4):\nПункт рубрики 1 «Суть»: 4 — верно; 2 — частично; 0 — нет."
+	spec, err := ParseRubric(rubric)
+	if err != nil {
+		t.Fatal(err)
+	}
+	e, _ := NewExam(Graph{Nodes: []Node{{ID: "a", Title: "A", AssessmentGuidance: rubric}}}, 0, nil)
+	e.Apply(Evaluation{Verdict: VerdictAnswered, AnswerComplete: ptr(false), Rubric: &RubricResult{Items: []RubricMark{{RubricItem: spec[0], Score: 2, Reason: "частично"}}}})
+	// Force a rephrase, as for a weak original answer.
+	e.Current.Kind = KindRephrase
+	e.Apply(Evaluation{Verdict: VerdictDontKnow})
+	marks := e.TopicMarks("a")
+	if len(marks) != 1 || marks[0].Score != 2 || marks[0].Reason != "частично" {
+		t.Fatalf("marks = %+v", marks)
+	}
+	result := (Session{Exam: e}).Result()
+	if result.Score != 2.5 {
+		t.Fatalf("score = %v, want 2.5", result.Score)
+	}
 }

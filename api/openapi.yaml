@@ -1578,6 +1578,8 @@ components:
         audio_intro:
           description: Предозвученная вводная перед фидбеком; запрашивается как part=intro.
           type: string
+        audio_transition:
+          type: string
         created_at:
           type: integer
         id:
@@ -4937,6 +4939,7 @@ paths:
             enum:
               - intro
               - reply
+              - transition
               - question
             type: string
         - description: Номер блока фидбека с нуля, только part=reply

@@ -316,6 +316,10 @@ test('one browser context switches modes while student and admin sessions stay s
 
   await page.setViewportSize({ width: 1440, height: 1000 })
   await page.getByRole('button', { name: 'Начать проверку знаний' }).click()
+  // This test deliberately makes TTS unavailable. The question stays hidden
+  // until the student explicitly chooses the text-only fallback.
+  await expect(page.getByText('Не удалось озвучить реплику')).toBeVisible()
+  await page.getByRole('button', { name: 'Показать текст без озвучки' }).click()
   await expect(
     page.getByText('Расскажите, как работает этот курс?'),
   ).toBeVisible()
@@ -329,6 +333,7 @@ test('one browser context switches modes while student and admin sessions stay s
     page.getByRole('heading', { name: 'Симуляция экзамена' }),
   ).toBeVisible()
   await page.getByRole('button', { name: 'Продолжить проверку знаний' }).click()
+  await page.getByRole('button', { name: 'Показать текст без озвучки' }).click()
   await expect(
     page.getByText('Расскажите, как работает этот курс?'),
   ).toBeVisible()
@@ -346,6 +351,7 @@ test('one browser context switches modes while student and admin sessions stay s
     page.getByText('Расскажите, как работает этот курс?'),
   ).toHaveCount(0)
   await page.getByRole('button', { name: 'Продолжить проверку знаний' }).click()
+  await page.getByRole('button', { name: 'Показать текст без озвучки' }).click()
   await expect(
     page.getByText('Расскажите, как работает этот курс?'),
   ).toBeVisible()

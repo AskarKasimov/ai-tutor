@@ -1,5 +1,4 @@
-import { useEffect, useRef } from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useSubjectSelectionDependencies } from './dependencies-context'
 import { subjectSelectionQueryKeys } from './query-keys'
 import { SubjectApiError } from '@/entities/learning-subject'
@@ -62,30 +61,5 @@ export function useLearningStateQuery(userId: string, subjectId: string) {
         (requestSignal) => subjects.readLearningState(subjectId, requestSignal),
         client,
       ),
-  })
-}
-export function useCreateSubjectMutation(userId: string) {
-  const { subjects } = useSubjectSelectionDependencies()
-  const client = useQueryClient()
-  const controllerRef = useRef<AbortController | null>(null)
-  useEffect(() => () => controllerRef.current?.abort(), [])
-  return useMutation({
-    mutationKey: subjectSelectionQueryKeys.createSubject(userId),
-    mutationFn: (name: string) => {
-      controllerRef.current?.abort()
-      const controller = new AbortController()
-      controllerRef.current = controller
-      return fetchScoped(
-        userId,
-        controller.signal,
-        (signal) => subjects.createSubject(name, signal),
-        client,
-      )
-    },
-    onSuccess: () =>
-      client.invalidateQueries({
-        queryKey: subjectSelectionQueryKeys.subjects(userId),
-      }),
-    retry: false,
   })
 }

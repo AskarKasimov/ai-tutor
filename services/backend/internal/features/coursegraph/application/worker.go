@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/coursegraph"
-	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/exam"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/material"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/user"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/fault"
@@ -338,47 +337,6 @@ func mapFault(e *coursegraph.MapError) *fault.Error {
 		f.Details = append(f.Details, fault.Detail{Path: "file", Code: "COMPETENCY_MAP_CELL", Message: message})
 	}
 	return f
-}
-
-// BuildShape writes an examined graph as course-graph writes a build:
-// topics, prerequisite edges from the prerequisite to the topic, and an empty
-// hierarchy, since the examined graph has no sections.
-func BuildShape(g exam.Graph) (json.RawMessage, error) {
-	type topic struct {
-		ID       string         `json:"id"`
-		Title    string         `json:"title"`
-		Question string         `json:"question,omitempty"`
-		Rephrase string         `json:"rephrase,omitempty"`
-		Text     string         `json:"text,omitempty"`
-		Variants []exam.Variant `json:"variants,omitempty"`
-		Provides []string       `json:"provides"`
-		Requires []string       `json:"requires"`
-	}
-	type edge struct {
-		Source string `json:"source"`
-		Target string `json:"target"`
-	}
-	shape := struct {
-		Version       string  `json:"version"`
-		Topics        []topic `json:"topics"`
-		Prerequisites []edge  `json:"prerequisites"`
-		Hierarchy     []edge  `json:"hierarchy"`
-	}{Version: g.Version, Topics: []topic{}, Prerequisites: []edge{}, Hierarchy: []edge{}}
-	for _, n := range g.Nodes {
-		t := topic{ID: n.ID, Title: n.Title, Text: n.Content, Variants: n.Variants, Provides: n.Outcomes, Requires: []string{}}
-		if len(n.Questions) > 0 {
-			t.Question = n.Questions[0]
-		}
-		t.Rephrase = n.PreparedRephrase()
-		if t.Provides == nil {
-			t.Provides = []string{}
-		}
-		shape.Topics = append(shape.Topics, t)
-		for _, p := range n.Prerequisites {
-			shape.Prerequisites = append(shape.Prerequisites, edge{Source: p, Target: n.ID})
-		}
-	}
-	return json.Marshal(shape)
 }
 
 // Request starts a build of the course graph from the current materials (the

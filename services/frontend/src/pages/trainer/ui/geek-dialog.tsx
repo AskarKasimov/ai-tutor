@@ -311,18 +311,33 @@ function Dialogue({
           </div>
           <ComposerSpacer />
         </>
-      ) : session.unclearAnswerTurnId && retryUnclearId !== session.unclearAnswerTurnId ? (
+      ) : session.unclearAnswerTurnId &&
+        retryUnclearId !== session.unclearAnswerTurnId ? (
         <div className={styles.footer}>
-          <Button disabled={answer.isPending} onClick={() => setRetryUnclearId(session.unclearAnswerTurnId ?? '')}>
+          <Button
+            disabled={answer.isPending}
+            onClick={() => setRetryUnclearId(session.unclearAnswerTurnId ?? '')}
+          >
             {t('geek.unclearRetry')}
           </Button>
-          <Button disabled={answer.isPending} onClick={() => send({ kind: 'confirm_unclear' }, t('geek.unclearConfirm'))}>
+          <Button
+            disabled={answer.isPending}
+            onClick={() =>
+              send({ kind: 'confirm_unclear' }, t('geek.unclearConfirm'))
+            }
+          >
             {t('geek.unclearConfirm')}
           </Button>
           {failed && (
             <div role="alert">
               <Text as="p">{errorText(failed, t)}</Text>
-              <Button onClick={() => { if (answer.variables) submit(answer.variables) }}>{t('trainer.retry')}</Button>
+              <Button
+                onClick={() => {
+                  if (answer.variables) submit(answer.variables)
+                }}
+              >
+                {t('trainer.retry')}
+              </Button>
             </div>
           )}
         </div>

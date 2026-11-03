@@ -367,8 +367,7 @@ uv run --locked --extra cpu --extra ocr python scripts/benchmark_ocr.py '../../d
 если заданы непустыми; пустые значения используют YAML. Метрики потоков отражают
 фактическую настройку YAML. Скрипт сохраняет Markdown, SHA-256 исходника,
 версии пакетов, время, peak RSS и число inference-пакетов. Повторный запуск —
-новый холодный document cache; кеш весов остаётся прежним. Результаты и ограничения
-проверки 18.10 — в [отчёте](../../documents/ocr-performance-2026-10-18.md).
+новый холодный document cache; кеш весов остаётся прежним.
 
 ### Лёгкая dev-сборка
 
@@ -397,8 +396,7 @@ uv run --locked --extra cpu --extra ocr python scripts/benchmark_ocr.py '../../d
 Embeddings поиска остаются на CPU в обоих вариантах. Кеш OCR от устройства не зависит:
 на цифровых PDF результат CPU и GPU совпадает побайтно, на рукописных сканах
 RapidOCR может отличаться отдельными словами. На RTX 5060 Laptop целые PDF
-распознаются в 5–8 раз быстрее CPU, пик памяти CUDA — 3,5 ГБ
-([замеры](../../documents/ocr-performance-2026-10-18.md#cpu-и-gpu)).
+распознаются в 5–8 раз быстрее CPU, пик памяти CUDA — 3,5 ГБ.
 
 Загрузки uv хранятся в кеше BuildKit
 (`--mount=type=cache`): при изменении `uv.lock` пакеты берутся из кеша,

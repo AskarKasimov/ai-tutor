@@ -225,15 +225,7 @@ Regular/Bold и их лицензия. Фоны, рамки, кнопки, пр�
 Prettier использует одинарные кавычки и не добавляет точки с запятой в TS/JS.
 Сгенерированный `src/routeTree.gen.ts`, lock-файл и статические ассеты исключены.
 
-```bash
-npm run format:check
-npm run lint
-npm run typecheck
-npm test -- --run
-npm run build
-```
-
-Эти же проверки выполняются в Frontend CI. `npm run preview` запускает
+Объём и команды локальных проверок — в [правилах frontend](AGENTS.md#тесты-и-проверка). Frontend CI также выполняет проверки и сборку. `npm run preview` запускает
 предпросмотр готовой сборки.
 
 ## Docker

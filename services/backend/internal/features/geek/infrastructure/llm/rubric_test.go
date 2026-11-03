@@ -33,6 +33,20 @@ func TestRubricEvaluationValidatesMarksAndRetries(t *testing.T) {
 	}
 }
 
+func TestConfirmedUnclearAnswerBypassesRubricRouter(t *testing.T) {
+	mark := `{"answer_complete":false,"marks":[{"id":"r1","score":0,"evidence_lines":[2],"quote":"Неясно","reason":"Нет ответа"}]}`
+	f := &fakeGateway{answers: []string{mark, mark}}
+	g := serve(t, f, time.Second)
+	n := exam.Node{Questions: []string{"Назови элементы"}, AssessmentGuidance: "Балл (макс. 1): 1 — все элементы; 0 — иначе."}
+	got, err := g.Evaluate(context.Background(), application.EvaluationRequest{Node: n, Kind: exam.KindQuestion, ForceAnswer: true, Dialogue: []exam.Turn{{Line: 1, Speaker: exam.SpeakerGeek, Text: "Назови элементы"}, {Line: 2, Speaker: exam.SpeakerStudent, Text: "Неясно"}}})
+	if err != nil || got.Rubric == nil || got.Verdict != exam.VerdictAnswered || len(f.requests) != 2 {
+		t.Fatalf("result=%+v err=%v calls=%d", got, err, len(f.requests))
+	}
+	if f.requests[0].Messages[0].GetContent() != rubricSystemPrompt {
+		t.Fatal("confirmed response was routed instead of graded")
+	}
+}
+
 func TestRubricWrongQuoteDoesNotStopTheExam(t *testing.T) {
 	const quote = "Вычисление, которого студент не произносил"
 	mark := `{"id":"r1","score":1,"evidence_lines":[2],"quote":"` + quote + `","reason":"Все элементы"}`

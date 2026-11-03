@@ -47,6 +47,7 @@ const sessionSchema = z
     status,
     progress_percent: z.number().int().min(0).max(100),
     current_turn_id: id.nullable(),
+    unclear_answer_turn_id: z.string().default(''),
     started_at: unix,
     completed_at: unix.nullable(),
     turns: z.array(
@@ -74,6 +75,7 @@ const sessionSchema = z
     status: s.status,
     progressPercent: s.progress_percent,
     currentTurnId: s.current_turn_id,
+    unclearAnswerTurnId: s.unclear_answer_turn_id,
     startedAt: s.started_at,
     completedAt: s.completed_at,
     turns: s.turns.map((t) => ({
@@ -365,7 +367,9 @@ export async function answerDiagnostic(
       ? { turn_id: turnId, text: answer.text }
       : answer.kind === 'voice'
         ? { turn_id: turnId, transcription_id: answer.transcriptionId }
-        : { turn_id: turnId, dont_know: true }
+        : answer.kind === 'confirm_unclear'
+          ? { turn_id: turnId, confirm_unclear: true }
+          : { turn_id: turnId, dont_know: true }
   return parse(
     await request(
       `${session(sessionId)}/answers`,

@@ -191,6 +191,14 @@ func (e *examiner) Evaluate(_ context.Context, r EvaluationRequest) (Assessment,
 	e.evals++
 	e.evaluated = append(e.evaluated, r)
 	last := r.Dialogue[len(r.Dialogue)-1]
+	if r.ForceAnswer {
+		for i := len(r.Dialogue) - 1; i >= 0; i-- {
+			if r.Dialogue[i].Speaker == exam.SpeakerStudent && !r.Dialogue[i].Meta {
+				last = r.Dialogue[i]
+				break
+			}
+		}
+	}
 	a := Assessment{}
 	switch {
 	case strings.Contains(last.Text, "НЕПОНЯТНО"):
@@ -200,7 +208,7 @@ func (e *examiner) Evaluate(_ context.Context, r EvaluationRequest) (Assessment,
 	case r.ClarificationPending:
 		a.Evaluation.Verdict = exam.VerdictClarifyQuestion
 		a.Clarification = "Это про условия задачи. Теперь ответь на вопрос."
-	case strings.Contains(last.Text, "ПОСТОРОННИЙ РАЗГОВОР"):
+	case strings.Contains(last.Text, "ПОСТОРОННИЙ РАЗГОВОР") && !r.ForceAnswer:
 		a.Evaluation.Verdict = exam.VerdictInsufficient
 	case strings.Contains(last.Text, "поправка обращения"):
 		a.Evaluation.Verdict = exam.VerdictAddressCorrection

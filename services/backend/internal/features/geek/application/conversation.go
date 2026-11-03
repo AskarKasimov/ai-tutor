@@ -18,6 +18,7 @@ func NextQuestionTransition(turn exam.Turn) string {
 
 const pauseAcknowledgement = "Хорошо, подожду. Продолжай, когда будет удобно."
 const RepeatUnclearSpeech = "Возможно, запись оборвалась или распознался посторонний разговор. Повтори ответ или скажи «я не знаю»."
+const ConfirmUnclearSpeech = "Возможно, запись оборвалась или распознался посторонний разговор. Перезаписать ответ?"
 const AskUnclearPart = "Какая часть вопроса непонятна?"
 
 func addressAcknowledgement(preference exam.AddressPreference) string {
@@ -34,6 +35,6 @@ func addressAcknowledgement(preference exam.AddressPreference) string {
 func ConversationSpeech() []string {
 	texts := append([]string{}, feedbackLeadIns...)
 	texts = append(texts, nextQuestionTransitions...)
-	return append(texts, pauseAcknowledgement, RepeatUnclearSpeech, AskUnclearPart,
+	return append(texts, pauseAcknowledgement, RepeatUnclearSpeech, ConfirmUnclearSpeech, AskUnclearPart,
 		addressAcknowledgement(exam.AddressFeminine), addressAcknowledgement(exam.AddressMasculine), addressAcknowledgement(exam.AddressNeutral))
 }

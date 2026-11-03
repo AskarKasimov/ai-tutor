@@ -58,6 +58,7 @@ function geekBackend(
     graphReady?: boolean
     active?: boolean
     failAnswers?: number
+    unclear?: boolean
   } = {},
 ) {
   const script = [
@@ -112,6 +113,7 @@ function geekBackend(
     status: string
     progress_percent: number
     current_turn_id: string | null
+    unclear_answer_turn_id?: string
     started_at: number
     completed_at: number | null
     turns: ApiTurn[]
@@ -121,10 +123,13 @@ function geekBackend(
         subject_id: 'subject-1',
         status: 'active',
         progress_percent: 0,
-        current_turn_id: 't1',
+        current_turn_id: options.unclear ? 't3' : 't1',
+        unclear_answer_turn_id: options.unclear ? 't2' : '',
         started_at: 1791158400,
         completed_at: null,
-        turns: [script[0]],
+        turns: options.unclear
+          ? [script[0], { id: 't2', line: 2, speaker: 'student', kind: 'answer', node_id: 'a-star', source: 'voice', text: 'Мой ответ', created_at: 2 }, geekTurn('t3', 3, 'question', 'Возможно, запись оборвалась. Перезаписать ответ?')]
+          : [script[0]],
       }
     : null
   const answers: { key: string; body: Record<string, unknown> }[] = []
@@ -164,11 +169,12 @@ function geekBackend(
     const done = next.kind === 'closing'
     session = {
       ...session,
+      unclear_answer_turn_id: '',
       status: done ? 'completed' : 'active',
       progress_percent: done ? 100 : session.progress_percent + 30,
       current_turn_id: done ? null : next.id,
       completed_at: done ? 1791160000 : null,
-      turns: [...session.turns, student, next],
+      turns: body.confirm_unclear ? [...session.turns, next] : [...session.turns, student, next],
     }
     return session
   }
@@ -674,6 +680,25 @@ it('resumes the active diagnostic from the history', async () => {
     ),
   ).toBeVisible()
   expect(await answerField()).toBeEnabled()
+})
+
+it('restores an unclear answer choice and sends the original answer for grading', async () => {
+  const { answers } = geekBackend({ active: true, unclear: true })
+  renderApp()
+  fireEvent.click(await screen.findByRole('button', { name: 'Продолжить проверку знаний' }))
+  fireEvent.click(await screen.findByRole('button', { name: 'Отправить на оценивание' }))
+  await waitFor(() => expect(answers).toHaveLength(1))
+  expect(answers[0].body).toEqual({ turn_id: 't3', confirm_unclear: true })
+  expect(await screen.findByText('эвристическая функция')).toBeVisible()
+})
+
+it('allows recording another answer without sending the unclear one', async () => {
+  const { answers } = geekBackend({ active: true, unclear: true })
+  renderApp()
+  fireEvent.click(await screen.findByRole('button', { name: 'Продолжить проверку знаний' }))
+  fireEvent.click(await screen.findByRole('button', { name: 'Перезаписать ответ' }))
+  expect(await answerField()).toBeEnabled()
+  expect(answers).toHaveLength(0)
 })
 
 it('keeps the answer after a model failure and resends it with the same key', async () => {

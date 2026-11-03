@@ -29,6 +29,7 @@ export type TurnAudioPart = 'intro' | 'reply' | 'transition' | 'question'
 export type SessionStatus = 'active' | 'completed' | 'cancelled'
 
 export type DiagnosticSession = {
+  unclearAnswerTurnId?: string
   id: string
   subjectId: string
   status: SessionStatus
@@ -136,3 +137,4 @@ export type DiagnosticAnswer =
   | { kind: 'text'; text: string }
   | { kind: 'voice'; transcriptionId: string }
   | { kind: 'dont_know' }
+  | { kind: 'confirm_unclear' }

@@ -545,6 +545,8 @@ void i18n.init({
           audioError: 'Не удалось озвучить реплику',
           audioPaused: 'Озвучка остановлена',
           audioPreparing: 'Geek готовит озвучку…',
+          unclearRetry: 'Перезаписать ответ',
+          unclearConfirm: 'Отправить на оценивание',
           audioFormulating: 'Geek формулирует ответ…',
           audioQuestion: 'Geek готовит вопрос…',
           audioContinuing: 'Geek размышляет…',

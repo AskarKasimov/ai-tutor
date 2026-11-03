@@ -139,6 +139,7 @@ function Dialogue({
   const initialCompleted = useRef(session.status === 'completed')
   // Voice transcription has its own pending state in the conversation.
   const [transcribing, setTranscribing] = useState(false)
+  const [retryUnclearId, setRetryUnclearId] = useState('')
 
   // A new Geek turn is voiced at once; the first one after loading too, since
   // the student has just pressed start or continue.
@@ -267,7 +268,7 @@ function Dialogue({
             live={!initialCompleted.current && turn.id === lastTurn?.id}
           />
         ))}
-        {pending && (
+        {pending && pending.answer.kind !== 'confirm_unclear' && (
           <li className={styles.student}>
             <Text as="p" className={styles.bubble}>
               {pending.display}
@@ -310,6 +311,21 @@ function Dialogue({
           </div>
           <ComposerSpacer />
         </>
+      ) : session.unclearAnswerTurnId && retryUnclearId !== session.unclearAnswerTurnId ? (
+        <div className={styles.footer}>
+          <Button disabled={answer.isPending} onClick={() => setRetryUnclearId(session.unclearAnswerTurnId ?? '')}>
+            {t('geek.unclearRetry')}
+          </Button>
+          <Button disabled={answer.isPending} onClick={() => send({ kind: 'confirm_unclear' }, t('geek.unclearConfirm'))}>
+            {t('geek.unclearConfirm')}
+          </Button>
+          {failed && (
+            <div role="alert">
+              <Text as="p">{errorText(failed, t)}</Text>
+              <Button onClick={() => { if (answer.variables) submit(answer.variables) }}>{t('trainer.retry')}</Button>
+            </div>
+          )}
+        </div>
       ) : (
         <Composer
           key={currentTurnId}

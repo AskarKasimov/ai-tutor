@@ -115,6 +115,7 @@ func New(graphs GraphSource, store Store, texts Transcriptions, examiner Examine
 // Answer is the student's reply: exactly one of a confirmed transcription, a
 // text or the "don't know" button.
 type Answer struct {
+	ConfirmUnclear  bool
 	TurnID          string
 	TranscriptionID string
 	Text            string
@@ -271,17 +272,37 @@ func (s *Service) Answer(ctx context.Context, ownerID, id, key string, a Answer)
 	if _, err := exam.ParseRubric(node.AssessmentGuidance); err != nil {
 		return exam.Session{}, rubricError(err)
 	}
-	text, source, err := s.answerText(ctx, ownerID, a)
-	if err != nil {
-		return exam.Session{}, err
-	}
 	previous := session.Version
-	if err := s.append(&session, exam.SpeakerStudent, exam.KindAnswer, &step.NodeID, &source, text); err != nil {
-		return exam.Session{}, err
+	var text string
+	var source exam.Source
+	if a.ConfirmUnclear {
+		if session.UnclearAnswerTurnID == "" {
+			return exam.Session{}, fault.New(fault.Conflict, "NO_UNCLEAR_ANSWER", "Нет ответа для подтверждения.")
+		}
+		found := false
+		for i := range session.Turns {
+			turn := &session.Turns[i]
+			if turn.ID == session.UnclearAnswerTurnID && turn.Speaker == exam.SpeakerStudent && turn.Source != nil {
+				text, source, turn.Meta, found = turn.Text, *turn.Source, false, true
+				break
+			}
+		}
+		if !found {
+			return exam.Session{}, fault.New(fault.Conflict, "NO_UNCLEAR_ANSWER", "Ответ для подтверждения не найден.")
+		}
+	} else {
+		text, source, err = s.answerText(ctx, ownerID, a)
+		if err != nil {
+			return exam.Session{}, err
+		}
+		if err := s.append(&session, exam.SpeakerStudent, exam.KindAnswer, &step.NodeID, &source, text); err != nil {
+			return exam.Session{}, err
+		}
 	}
+	session.UnclearAnswerTurnID = ""
 	name, nameOnly := "", false
 	plain := strings.ToLower(strings.Trim(strings.TrimSpace(text), ".!?… "))
-	if source != exam.SourceDontKnow && plain != "не знаю" && plain != "я не знаю" {
+	if !a.ConfirmUnclear && source != exam.SourceDontKnow && plain != "не знаю" && plain != "я не знаю" {
 		if interpreter, ok := s.examiner.(NameInterpreter); ok {
 			question := ""
 			for i := len(session.Turns) - 1; i >= 0; i-- {
@@ -305,13 +326,16 @@ func (s *Service) Answer(ctx context.Context, ownerID, id, key string, a Answer)
 	if name != "" {
 		session.PreferredName = name
 	}
-	evaluate := EvaluationRequest{PreferredName: session.PreferredName, ClarificationPending: session.ClarificationPending, AddressPreference: exam.AddressNeutral, HintUsed: session.Exam.Nodes[node.ID].HintUsed, Kind: step.Kind, Node: node, Prerequisites: unaskedPrerequisites(session.Exam, node.ID), Dialogue: session.Dialogue(node.ID)}
+	evaluate := EvaluationRequest{ForceAnswer: a.ConfirmUnclear, PreferredName: session.PreferredName, ClarificationPending: session.ClarificationPending, AddressPreference: exam.AddressNeutral, HintUsed: session.Exam.Nodes[node.ID].HintUsed, Kind: step.Kind, Node: node, Prerequisites: unaskedPrerequisites(session.Exam, node.ID), Dialogue: session.Dialogue(node.ID)}
 	assessment := Assessment{Evaluation: exam.Evaluation{Verdict: exam.VerdictDontKnow}}
 	if source != exam.SourceDontKnow && nameOnly {
 		assessment = Assessment{Evaluation: exam.Evaluation{Verdict: exam.VerdictClarifyQuestion}, Clarification: "Хорошо, буду звать тебя " + name + ". Можем продолжить с того же вопроса.", ClarificationPending: session.ClarificationPending}
 	} else if source != exam.SourceDontKnow {
 		if assessment, err = s.examiner.Evaluate(ctx, evaluate); err != nil {
 			return exam.Session{}, modelError(err)
+		}
+		if a.ConfirmUnclear && assessment.Verdict != exam.VerdictAnswered {
+			return exam.Session{}, modelError(errors.New("confirmed answer was not graded"))
 		}
 		if err := checkEvaluation(assessment.Evaluation, session); err != nil {
 			return exam.Session{}, modelError(err)
@@ -323,7 +347,12 @@ func (s *Service) Answer(ctx context.Context, ownerID, id, key string, a Answer)
 	}
 	session.AddressPreference = exam.AddressNeutral
 	evaluate.AddressPreference = exam.AddressNeutral
-	if assessment.Verdict == exam.VerdictInsufficient || assessment.Verdict == exam.VerdictPause || assessment.Verdict == exam.VerdictAddressCorrection {
+	if assessment.Verdict == exam.VerdictInsufficient {
+		session.UnclearAnswerTurnID = session.Turns[len(session.Turns)-1].ID
+		assessment.Verdict = exam.VerdictClarifyQuestion
+		assessment.Clarification = ConfirmUnclearSpeech
+	}
+	if assessment.Verdict == exam.VerdictPause || assessment.Verdict == exam.VerdictAddressCorrection {
 		assessment.Verdict = exam.VerdictClarifyQuestion
 		assessment.Clarification = RepeatUnclearSpeech
 	}
@@ -599,6 +628,9 @@ func answerFingerprint(sessionID string, a Answer) (string, error) {
 	if a.DontKnow {
 		set++
 	}
+	if a.ConfirmUnclear {
+		set++
+	}
 	switch {
 	case strings.TrimSpace(a.TurnID) == "":
 		return "", fault.Validation("turn_id", "Укажите текущую реплику.")
@@ -606,6 +638,9 @@ func answerFingerprint(sessionID string, a Answer) (string, error) {
 		return "", fault.Validation("body", "Нужно ровно одно из transcription_id, text или dont_know.")
 	case a.Text != "" && (strings.TrimSpace(a.Text) == "" || utf8.RuneCountInString(a.Text) > maxTextLen || strings.IndexByte(a.Text, 0) >= 0):
 		return "", fault.Validation("text", "Ответ должен содержать 1–4000 символов.")
+	}
+	if a.ConfirmUnclear {
+		return fmt.Sprintf("answer:%s:%s:confirm_unclear", sessionID, a.TurnID), nil
 	}
 	return fmt.Sprintf("answer:%s:%s:%s:%s:%t", sessionID, a.TurnID, a.TranscriptionID, a.Text, a.DontKnow), nil
 }

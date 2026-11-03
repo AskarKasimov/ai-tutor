@@ -92,6 +92,7 @@ type QuestionRequest struct {
 }
 
 type EvaluationRequest struct {
+	ForceAnswer          bool
 	PreferredName        string
 	ClarificationPending bool
 	AddressPreference    exam.AddressPreference

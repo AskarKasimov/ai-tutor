@@ -66,6 +66,51 @@ func TestNameRecognitionFailureDoesNotBlockAnswer(t *testing.T) {
 	}
 }
 
+func TestUnclearAnswerConfirmationGradesOriginalWithoutDuplicate(t *testing.T) {
+	f := newFixture(t)
+	s, _, err := f.service.Start(context.Background(), "student", "subject", "start")
+	if err != nil {
+		t.Fatal(err)
+	}
+	before, _ := json.Marshal(s.Exam)
+	s = f.answer(t, s, Answer{Text: "ПОСТОРОННИЙ РАЗГОВОР сильно"})
+	if s.UnclearAnswerTurnID == "" {
+		t.Fatal("missing pending confirmation")
+	}
+	after, _ := json.Marshal(s.Exam)
+	if string(before) != string(after) {
+		t.Fatal("unclear answer spent an attempt")
+	}
+	count := len(s.Turns)
+	s = f.answer(t, s, Answer{ConfirmUnclear: true})
+	if s.UnclearAnswerTurnID != "" || len(s.Turns) != count+1 {
+		t.Fatalf("unexpected confirmation state: %+v", s)
+	}
+	if !f.examiner.evaluated[len(f.examiner.evaluated)-1].ForceAnswer {
+		t.Fatal("confirmation was not sent for grading")
+	}
+}
+
+func TestUnclearAnswerCanBeReplaced(t *testing.T) {
+	f := newFixture(t)
+	s, _, err := f.service.Start(context.Background(), "student", "subject", "start")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s = f.answer(t, s, Answer{Text: "ПОСТОРОННИЙ РАЗГОВОР"})
+	oldID := s.UnclearAnswerTurnID
+	nodeID := s.Exam.Current.NodeID
+	s = f.answer(t, s, Answer{Text: "сильно"})
+	if s.UnclearAnswerTurnID != "" || s.Exam.Nodes[nodeID].Grade == nil {
+		t.Fatal("replacement was not graded")
+	}
+	for _, turn := range s.Turns {
+		if turn.ID == oldID && !turn.Meta {
+			t.Fatal("discarded answer was included in grading")
+		}
+	}
+}
+
 func TestMixedAnswerAndAddressCorrectionStillGradesTheAnswer(t *testing.T) {
 	f := newFixture(t)
 	s, _, _ := f.service.Start(context.Background(), "student", "subject", "start")
@@ -159,7 +204,7 @@ func TestUnrelatedConversationDoesNotSpendAttempt(t *testing.T) {
 	s = f.answer(t, s, Answer{Text: "ПОСТОРОННИЙ РАЗГОВОР"})
 	after, _ := json.Marshal(s.Exam)
 	last := s.Turns[len(s.Turns)-1]
-	if string(before) != string(after) || !last.Meta || !strings.Contains(last.Text, "я не знаю") {
+	if string(before) != string(after) || !last.Meta || last.Text != ConfirmUnclearSpeech || s.UnclearAnswerTurnID == "" {
 		t.Fatalf("unrelated utterance spent an attempt: %+v", last)
 	}
 }

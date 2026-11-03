@@ -908,6 +908,9 @@ components:
     geek.AnswerRequest:
       additionalProperties: false
       properties:
+        confirm_unclear:
+          description: Студент подтвердил, что ранее распознанная как сомнительная реплика является ответом.
+          type: boolean
         dont_know:
           description: 'Кнопка «Не знаю» без оценки моделью: на основной вопрос или переформулировку — пробел, на дополнительный — К3 и К4 на 0'
           type: boolean
@@ -1416,6 +1419,9 @@ components:
             $ref: '#/components/schemas/geek.Turn'
           type: array
           uniqueItems: false
+        unclear_answer_turn_id:
+          description: ID ответа, для которого ожидается решение студента о повторной записи или оценивании.
+          type: string
       required:
         - completed_at
         - current_turn_id

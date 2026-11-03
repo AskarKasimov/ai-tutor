@@ -8,6 +8,7 @@ import (
 // Session is one diagnostic of a student on a course. Version guards
 // concurrent updates.
 type Session struct {
+	UnclearAnswerTurnID  string            `json:"unclear_answer_turn_id,omitempty"`
 	PreferredName        string            `json:"preferred_name,omitempty"`
 	ClarificationPending bool              `json:"clarification_pending,omitempty"`
 	AddressPreference    AddressPreference `json:"address_preference,omitempty"`

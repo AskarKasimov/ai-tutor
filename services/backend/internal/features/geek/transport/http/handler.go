@@ -21,8 +21,10 @@ type StartRequest struct {
 	SubjectID string `json:"subject_id" minLength:"1"`
 }
 
-// AnswerRequest carries exactly one of transcription_id, text and dont_know.
+// AnswerRequest carries exactly one of transcription_id, text, dont_know and confirm_unclear.
 type AnswerRequest struct {
+	// Студент подтвердил, что ранее распознанная как сомнительная реплика является ответом.
+	ConfirmUnclear bool `json:"confirm_unclear,omitempty" binding:"optional"`
 	// current_turn_id сессии
 	TurnID string `json:"turn_id" minLength:"1"`
 	// Расшифровка из POST /voice/transcriptions, подтверждённая студентом
@@ -58,7 +60,9 @@ type Turn struct {
 }
 
 type Session struct {
-	CompletedAt *int64 `json:"completed_at" extensions:"x-nullable"`
+	// ID ответа, для которого ожидается решение студента о повторной записи или оценивании.
+	UnclearAnswerTurnID string `json:"unclear_answer_turn_id,omitempty" binding:"optional"`
+	CompletedAt         *int64 `json:"completed_at" extensions:"x-nullable"`
 	// Реплика Geek, на которую ждут ответ; null, если сессия не active
 	CurrentTurnID *string `json:"current_turn_id" extensions:"x-nullable"`
 	ID            string  `json:"id"`
@@ -329,7 +333,7 @@ func (h *Handler) Answer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	session, err := h.service.Answer(r.Context(), u.ID, r.PathValue("id"), r.Header.Get("Idempotency-Key"), application.Answer{
-		TurnID: req.TurnID, TranscriptionID: req.TranscriptionID, Text: req.Text, DontKnow: req.DontKnow,
+		TurnID: req.TurnID, TranscriptionID: req.TranscriptionID, Text: req.Text, DontKnow: req.DontKnow, ConfirmUnclear: req.ConfirmUnclear,
 	})
 	if err != nil {
 		httpx.Error(r.Context(), w, err)
@@ -472,7 +476,7 @@ func (h *Handler) TurnAudio(w http.ResponseWriter, r *http.Request) {
 }
 
 func toSession(s domain.Session) Session {
-	out := Session{CompletedAt: s.CompletedAt, ID: s.ID, ProgressPercent: s.Exam.Progress(), StartedAt: s.StartedAt, Status: string(s.Status), SubjectID: s.SubjectID, Turns: []Turn{}}
+	out := Session{UnclearAnswerTurnID: s.UnclearAnswerTurnID, CompletedAt: s.CompletedAt, ID: s.ID, ProgressPercent: s.Exam.Progress(), StartedAt: s.StartedAt, Status: string(s.Status), SubjectID: s.SubjectID, Turns: []Turn{}}
 	if current, ok := s.CurrentTurn(); ok {
 		out.CurrentTurnID = &current.ID
 	}

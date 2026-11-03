@@ -120,10 +120,10 @@ func (g *Gateway) Evaluate(ctx context.Context, r application.EvaluationRequest)
 	}
 	_, request := lastSupportInput(r)
 	normalized := strings.ToLower(strings.Trim(strings.TrimSpace(request), ".!?… "))
-	if normalized == "я не знаю" || normalized == "не знаю" {
+	if !r.ForceAnswer && (normalized == "я не знаю" || normalized == "не знаю") {
 		return application.Assessment{Evaluation: exam.Evaluation{Verdict: exam.VerdictDontKnow}}, nil
 	}
-	if r.ClarificationPending {
+	if r.ClarificationPending && !r.ForceAnswer {
 		route, err := g.routeRubric(ctx, r)
 		if err != nil {
 			return application.Assessment{}, err
@@ -140,13 +140,13 @@ func (g *Gateway) Evaluate(ctx context.Context, r application.EvaluationRequest)
 		// A real answer must reach the ordinary grader, not the support model.
 		r.ClarificationPending = false
 	}
-	if normalized == "не понял" || normalized == "не поняла" || normalized == "я не понял" || normalized == "я не поняла" || normalized == "не понял вопрос" || normalized == "не поняла вопрос" || normalized == "я ничего не понял" || normalized == "я ничего не поняла" || normalized == "я не понимаю вопрос" {
+	if !r.ForceAnswer && (normalized == "не понял" || normalized == "не поняла" || normalized == "я не понял" || normalized == "я не поняла" || normalized == "не понял вопрос" || normalized == "не поняла вопрос" || normalized == "я ничего не понял" || normalized == "я ничего не поняла" || normalized == "я не понимаю вопрос") {
 		return application.Assessment{Evaluation: exam.Evaluation{Verdict: exam.VerdictClarifyQuestion}, Clarification: application.AskUnclearPart, ClarificationPending: true}, nil
 	}
-	if incompleteAcknowledgement(request) {
+	if !r.ForceAnswer && incompleteAcknowledgement(request) {
 		return application.Assessment{Evaluation: exam.Evaluation{Verdict: exam.VerdictClarifyQuestion}, Clarification: application.RepeatUnclearSpeech}, nil
 	}
-	if pureControl(request, "skip") {
+	if !r.ForceAnswer && pureControl(request, "skip") {
 		return application.Assessment{Evaluation: exam.Evaluation{Verdict: exam.VerdictDontKnow}}, nil
 	}
 	if len(spec) > 0 {
@@ -154,7 +154,11 @@ func (g *Gateway) Evaluate(ctx context.Context, r application.EvaluationRequest)
 	}
 	var result application.Assessment
 	// The student waits for the evaluation, so it uses the fast low pool too.
-	err := g.complete(ctx, "evaluate:"+string(r.Kind), llmgatewayv1.Complexity_COMPLEXITY_LOW, true, evaluationPrompt(r), func(content []byte) error {
+	prompt := evaluationPrompt(r)
+	if r.ForceAnswer {
+		prompt += "\nСтудент подтвердил, что реплика является ответом. Обязательно верни verdict=answered и оцени только реально присутствующее содержание; если верного содержания нет, поставь нули."
+	}
+	err := g.complete(ctx, "evaluate:"+string(r.Kind), llmgatewayv1.Complexity_COMPLEXITY_LOW, true, prompt, func(content []byte) error {
 		var out struct {
 			AnswerComplete *bool        `json:"answer_complete"`
 			Verdict        exam.Verdict `json:"verdict"`
@@ -169,6 +173,9 @@ func (g *Gateway) Evaluate(ctx context.Context, r application.EvaluationRequest)
 		}
 		if err := json.Unmarshal(content, &out); err != nil {
 			return err
+		}
+		if r.ForceAnswer && out.Verdict != exam.VerdictAnswered {
+			return errors.New("confirmed answer must be graded")
 		}
 		// Models sometimes quote line numbers. Accept the same integer value,
 		// while rejecting fractions, non-numeric strings and overflow.

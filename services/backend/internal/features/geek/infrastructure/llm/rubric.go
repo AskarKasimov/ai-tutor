@@ -88,9 +88,13 @@ func readRubricMarks(ctx context.Context, spec []exam.RubricItem, marks []rubric
 }
 
 func (g *Gateway) evaluateRubric(ctx context.Context, r application.EvaluationRequest, spec []exam.RubricItem) (application.Assessment, error) {
-	route, err := g.routeRubric(ctx, r)
-	if err != nil {
-		return application.Assessment{}, err
+	route := application.Assessment{Evaluation: exam.Evaluation{Verdict: exam.VerdictAnswered}}
+	if !r.ForceAnswer {
+		var err error
+		route, err = g.routeRubric(ctx, r)
+		if err != nil {
+			return application.Assessment{}, err
+		}
 	}
 	if route.Verdict != exam.VerdictAnswered {
 		if route.Verdict == exam.VerdictClarifyQuestion {
@@ -101,7 +105,7 @@ func (g *Gateway) evaluateRubric(ctx context.Context, r application.EvaluationRe
 		return route, nil
 	}
 	var result application.Assessment
-	err = g.complete(ctx, "evaluate_rubric:"+string(r.Kind), pb.Complexity_COMPLEXITY_LOW, true, rubricPrompt(r, spec), func(content []byte) error {
+	err := g.complete(ctx, "evaluate_rubric:"+string(r.Kind), pb.Complexity_COMPLEXITY_LOW, true, rubricPrompt(r, spec), func(content []byte) error {
 		var out struct {
 			Complete *bool            `json:"answer_complete"`
 			Marks    []rubricMarkJSON `json:"marks"`

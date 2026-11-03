@@ -512,7 +512,7 @@ function ListenButton({
       disabled={disabled}
       onClick={() =>
         mine === 'playing' || mine === 'loading'
-          ? audio.stop()
+          ? audio.revealAll(turn.id)
           : void audio.play(turn)
       }
     >

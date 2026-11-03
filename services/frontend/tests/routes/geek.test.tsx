@@ -1182,7 +1182,7 @@ it('lets the student recover the current turn after replaying an older one', asy
   gateReply.open()
 })
 
-it('keeps recovery available after stopping a turn and replaying an older one', async () => {
+it('reveals the current turn when stopped and keeps it visible after replaying history', async () => {
   FakeAudio.manual = true
   const { control, fetch } = geekBackend()
   renderApp()
@@ -1199,18 +1199,15 @@ it('keeps recovery available after stopping a turn and replaying an older one', 
     ).toBe(true),
   )
   fireEvent.click(screen.getByRole('button', { name: 'Готовим озвучку…' }))
-  expect(await screen.findByText('Озвучка остановлена')).toBeVisible()
+  expect(await screen.findByText('Верно про оптимальность.')).toBeVisible()
+  expect(
+    screen.getByText('А где допустимая эвристика не поможет?'),
+  ).toBeVisible()
   fireEvent.click(
     screen.getAllByRole('button', { name: 'Прослушать реплику' })[0],
   )
   await waitFor(() => expect(FakeAudio.played.length).toBeGreaterThan(1))
   act(() => FakeAudio.last?.onended?.())
-  expect(
-    await screen.findByRole('button', { name: 'Показать текст без озвучки' }),
-  ).toBeVisible()
-  fireEvent.click(
-    screen.getByRole('button', { name: 'Показать текст без озвучки' }),
-  )
   expect(
     screen.getByText('А где допустимая эвристика не поможет?'),
   ).toBeVisible()
@@ -1348,9 +1345,6 @@ it('does not play a stopped delayed voice after choosing text', async () => {
     await act(() => vi.advanceTimersByTimeAsync(20_000))
     expect(screen.queryByText('Верно про оптимальность.')).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: 'Готовим озвучку…' }))
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Показать текст без озвучки' }),
-    )
     expect(screen.getByText('Верно про оптимальность.')).toBeVisible()
   } finally {
     vi.useRealTimers()

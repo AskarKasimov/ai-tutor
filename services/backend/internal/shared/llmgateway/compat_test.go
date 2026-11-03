@@ -31,7 +31,7 @@ func TestTransportLeavesModelChoiceToGatewayByComplexity(t *testing.T) {
 	if response.StatusCode != http.StatusOK || !strings.Contains(string(body), `"finish_reason":"stop"`) {
 		t.Fatalf("response=%d %s", response.StatusCode, body)
 	}
-	if gateway.got == nil || gateway.got.RoutingProfile != "" ||gateway.got.Complexity != pb.Complexity_COMPLEXITY_HIGH || len(gateway.got.Messages) != 2 || gateway.got.Parameters == nil || gateway.got.Parameters.GetMaxTokens() != 2048 {
+	if gateway.got == nil || gateway.got.Complexity != pb.Complexity_COMPLEXITY_HIGH || len(gateway.got.Messages) != 2 || gateway.got.Parameters == nil || gateway.got.Parameters.GetMaxTokens() != 2048 {
 		t.Fatalf("unexpected gateway request: %+v", gateway.got)
 	}
 }

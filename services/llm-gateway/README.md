@@ -6,7 +6,9 @@
 
 Основной запуск — ./dev.sh -d из корня после настройки .env с секретами БД и S3. Gateway всегда входит в общий dev stack и читает полный YAML из config/dev.yaml; в Docker Compose указатель GATEWAY_CONFIG указывает на смонтированный файл. Изменение YAML через atomic-save вызывает Air restart gateway-процесса в том же контейнере. Команда сборки Air выполняется из `services/llm-gateway`; `root = ".."` задаёт область наблюдения, а не рабочий каталог команды. Очередь Redpanda сохраняется, незавершённые запросы обрабатываются штатным механизмом восстановления gateway.
 
-Файл содержит routes, pools, routing_profiles, instances и model_rules. Для общего приложения обязательны профили learning-assessment, learning-tutor и learning-taskgen; каждый должен иметь маршрут на инстанс из pools.high. У standalone-конфигурации required_routing_profiles: [] сохраняет необязательность этих требований.
+Файл содержит routes, pools, instances и model_rules, а при необходимости — routing_profiles. Приложение указывает только сложность, поэтому профили ему не нужны: в `config/dev.yaml` стоит `required_routing_profiles: []`. Профиль из этого списка должен иметь маршрут на инстанс из pools.high.
+
+Запросы получают только инстансы из pools, и каждый уровень должен содержать хотя бы один инстанс. Сейчас `qwen-3-6` и `qwen3-coder-next` отключены: их описания остаются в instances, но в pools они не входят, а `gpt-oss-120b` обслуживает medium и high. Чтобы вернуть инстанс, добавьте его ID в нужный уровень pools.
 
 По согласованному решению владельца upstream model tokens пока допустимы в YAML и предназначены для Git. Пустая строка отключает Bearer auth. Не печатайте содержимое токенов в логах, тестовых выводах и отчётах. Настройки gateway из прежних JSON файлов больше не загружаются. Loader проверяет типы YAML-скаляров: целые числа, строки и булевы значения не принимаются с coercion; свободные JSON body сохраняют свои типы. YAML merge keys (`<<`) не поддерживаются.
 
@@ -59,4 +61,4 @@ Gateway всегда входит в корневой Compose stack. `COMPOSE_PR
 Backend (Geek, перевод OCR) и `services/course-graph` ходят в gateway по gRPC; адреса задаются в их `config/dev.yaml`.
 
 
-`routing_profiles` в `config/dev.yaml` связывает client profile IDs с разрешёнными instance IDs. Профиль фильтрует complexity pools, включая urgent; неизвестное имя отклоняется. Пустой профиль сохраняет прежнюю маршрутизацию и idempotency fingerprint. В корневом Compose обязательны `learning-assessment`, `learning-tutor` и `learning-taskgen`; после изменения mapping сохраните YAML: Air перезапустит gateway-процесс в том же контейнере. Файл `config/dev.yaml` содержит все runtime-настройки.
+Необязательный `routing_profiles` связывает client profile IDs с разрешёнными instance IDs. Профиль фильтрует complexity pools, включая urgent; неизвестное имя отклоняется. Пустой профиль сохраняет прежнюю маршрутизацию и idempotency fingerprint. Сейчас профили в `config/dev.yaml` не заданы, и приложение их не передаёт; после изменения mapping сохраните YAML: Air перезапустит gateway-процесс в том же контейнере. Файл `config/dev.yaml` содержит все runtime-настройки.

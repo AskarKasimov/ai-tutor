@@ -51,7 +51,7 @@ Gateway доступен только из доверенной локально
     {"role": "user", "content": "Объясни разницу между BFS и DFS."}
   ],
   "complexity": "medium",
-  "routing_profile": "learning-assessment",
+  "routing_profile": "example-profile",
   "urgent": true,
   "temperature": 0.3,
   "max_tokens": 2048,
@@ -212,7 +212,7 @@ Graceful shutdown: снять readiness, прекратить приём и но
 
 ## 9. Связь с текущим репозиторием
 
-Gateway поддерживает HTTP и gRPC по [отдельной спецификации](llm-gateway-grpc-spec.md). Backend и course-graph обращаются к gateway по gRPC; учебные вызовы используют настроенные `routing_profile`. OpenAPI gateway описывает HTTP, protobuf в `services/shared` — gRPC. `reasoning_effort` управляет генерацией, а не выбором пула.
+Gateway поддерживает HTTP и gRPC по [отдельной спецификации](llm-gateway-grpc-spec.md). Backend и course-graph обращаются к gateway по gRPC и указывают только сложность, `routing_profile` они не передают. OpenAPI gateway описывает HTTP, protobuf в `services/shared` — gRPC. `reasoning_effort` управляет генерацией, а не выбором пула.
 
 ## 10. Критерии приёмки
 

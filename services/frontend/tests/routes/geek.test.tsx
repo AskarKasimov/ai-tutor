@@ -723,7 +723,7 @@ it('allows recording another answer without sending the unclear one', async () =
     await screen.findByRole('button', { name: 'Продолжить проверку знаний' }),
   )
   fireEvent.click(
-    await screen.findByRole('button', { name: 'Перезаписать ответ' }),
+    await screen.findByRole('button', { name: 'Да, перезаписать' }),
   )
   expect(await answerField()).toBeEnabled()
   expect(answers).toHaveLength(0)

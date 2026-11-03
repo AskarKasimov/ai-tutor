@@ -176,6 +176,15 @@
 .footer {
   justify-items: start;
 }
+.unclearChoices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+  padding: var(--space-2);
+  border-radius: 24px;
+  background: var(--gray-3);
+}
 
 // The result card appears once Geek's last reply has been voiced: it rises in,
 // a comet in the colours of the progress bars runs once around its border and

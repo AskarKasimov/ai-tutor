@@ -313,25 +313,13 @@ function Dialogue({
         </>
       ) : session.unclearAnswerTurnId &&
         retryUnclearId !== session.unclearAnswerTurnId ? (
-        <div className={styles.footer}>
-          <Button
-            disabled={answer.isPending}
-            onClick={() => setRetryUnclearId(session.unclearAnswerTurnId ?? '')}
-          >
-            {t('geek.unclearRetry')}
-          </Button>
-          <Button
-            disabled={answer.isPending}
-            onClick={() =>
-              send({ kind: 'confirm_unclear' }, t('geek.unclearConfirm'))
-            }
-          >
-            {t('geek.unclearConfirm')}
-          </Button>
+        <div className={styles.composer}>
           {failed && (
-            <div role="alert">
+            <div className={styles.error} role="alert">
               <Text as="p">{errorText(failed, t)}</Text>
               <Button
+                size="2"
+                variant="soft"
                 onClick={() => {
                   if (answer.variables) submit(answer.variables)
                 }}
@@ -340,6 +328,27 @@ function Dialogue({
               </Button>
             </div>
           )}
+          <div className={styles.unclearChoices}>
+            <Button
+              size="3"
+              variant="soft"
+              disabled={answer.isPending}
+              onClick={() =>
+                setRetryUnclearId(session.unclearAnswerTurnId ?? '')
+              }
+            >
+              {t('geek.unclearRetry')}
+            </Button>
+            <Button
+              size="3"
+              disabled={answer.isPending}
+              onClick={() =>
+                send({ kind: 'confirm_unclear' }, t('geek.unclearConfirm'))
+              }
+            >
+              {t('geek.unclearConfirm')}
+            </Button>
+          </div>
         </div>
       ) : (
         <Composer

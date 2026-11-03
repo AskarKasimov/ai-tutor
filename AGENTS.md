@@ -1,27 +1,38 @@
-# Правила работы в репозитории
+# AGENTS.md — правила работы в репозитории
 
-Правила для агентов и разработчиков во всём репозитории. Описание продукта, статус, запуск и решения — в [README](README.md); здесь только то, что нужно выполнять. Локальный AGENTS.md сервиса дополняет эти правила для своего каталога: [backend](services/backend/AGENTS.md), [frontend](services/frontend/AGENTS.md), [llm-gateway](services/llm-gateway/AGENTS.md), [shared](services/shared/AGENTS.md), [course-graph](services/course-graph/AGENTS.md). Перед изменением сервиса прочитайте его.
+Для работы над экспериментом единого маршрутизатора Geek сначала прочитайте [описание эксперимента](documents/geek-unified-router-experiment.md). Схема в нём описывает запланированное поведение и не подтверждает реализацию. Соблюдайте остальные правила этого файла и AGENTS.md затронутых сервисов.
+
+Правила для агентов и разработчиков во всём репозитории. Описание продукта, статус, запуск и решения — в [README](README.md); здесь только то, что нужно выполнять. Вложенный AGENTS.md дополняет правила для своего каталога; при противоречии действует ближайший к изменяемому файлу. Явные инструкции пользователя имеют приоритет. Правила сервисов: [backend](services/backend/AGENTS.md), [frontend](services/frontend/AGENTS.md), [llm-gateway](services/llm-gateway/AGENTS.md), [shared](services/shared/AGENTS.md), [course-graph](services/course-graph/AGENTS.md). Перед изменением сервиса прочитайте его.
 
 ## Перед изменением
 
-Определите затронутый слой, прочитайте его документацию и после изменения выполните его проверки.
+Определите затронутый слой, прочитайте его документацию и выберите проверки по характеру изменения. Команды и дополнительные требования сервисов указаны в их AGENTS.md; таблица ниже помогает найти их и нужную документацию.
+
+### Локальные проверки и нагрузка
+
+- Выполняйте тяжёлые команды последовательно: тесты, линтер, проверку типов, сборку и Docker build. Не запускайте одновременно несколько таких команд или проверки нескольких сервисов. Независимое чтение файлов можно выполнять параллельно.
+- Локально Vitest запускайте с `--maxWorkers=1`, Playwright — с `--workers=1`. Для Go используйте `GOMAXPROCS=2` и `-p 1` в `go test`, `go vet` и `go build`; у тестов дополнительно `-parallel 2`. `-race` сохраняйте при проверке Go-кода. Эти ограничения относятся к локальному запуску; полный набор CI сохраняется.
+- Для документации проверьте diff и изменённые ссылки. Для пользовательского текста и локальных стилей выполните целевые проверки затронутых сценариев и форматирования. Для общего кода, контрактов, миграций, auth и правил оценивания выполните полный набор проверок затронутых слоёв. При изменении контрактов проверьте обе стороны; при наличии окружения выполните соответствующие интеграционные проверки. Для остальных изменений выберите проверки по риску и области воздействия; в отчёте обоснуйте пропуски.
+- Недостаток ресурсов не отменяет проверки: запускайте их последовательно с указанными ограничениями. Если проверку невозможно выполнить из-за отсутствующего окружения или другой конкретной причины, укажите причину и фактический результат в отчёте; не выдавайте неполный прогон за полный.
+- Для обычного запуска уже собранного проекта с настроенными `.env` и сертификатами используйте `docker compose --env-file .env -f docker-compose.yaml -f docker-compose.dev.yaml up -d --no-build`. `./dev.sh -d` включает сборку; используйте её, когда изменения требуют пересборки образов. Возможности автоматической перезагрузки описаны в README сервисов. Не сбрасывайте volumes или кеши ради ускорения проверок.
+- После успешной проверки не повторяйте её без новых изменений или выявленной проблемы. В отчёте указывайте фактические результаты локальных проверок и результат CI, если он доступен.
 
 | Слой | Документация | Проверки (из каталога слоя) |
 | --- | --- | --- |
-| `services/backend` | [AGENTS.md](services/backend/AGENTS.md), [README](services/backend/README.md), [архитектура](documents/backend-architecture.md), [auth](documents/auth.md) | `go test -race ./... -count=1`, `go vet ./...`, `go build -o bin/api ./cmd/api` |
-| `services/frontend` | [AGENTS.md](services/frontend/AGENTS.md), [README](services/frontend/README.md) | `npm run format:check`, `npm run lint`, `npm run typecheck`, `npm test -- --run`, `npm run build` |
-| `services/llm-gateway` | [AGENTS.md](services/llm-gateway/AGENTS.md), [README](services/llm-gateway/README.md), спецификации [HTTP](documents/llm-gateway-spec.md) и [gRPC](documents/llm-gateway-grpc-spec.md) | `GOWORK=off go test -race ./... -count=1`, `GOWORK=off go vet ./...`, `GOWORK=off go build ./cmd/llm-gateway`, `bash scripts/generate-openapi.sh` без изменений |
-| `services/shared` | [AGENTS.md](services/shared/AGENTS.md), [README](services/shared/README.md) | Из корня: `services/shared/tools/generate.sh --check`, `services/shared/tools/check-compat.sh <base-sha>` |
-| `services/course-graph` | [AGENTS.md](services/course-graph/AGENTS.md), [README](services/course-graph/README.md), [api/course-graph.yaml](api/course-graph.yaml) | `uv run --locked --extra cpu --extra ocr python -m pytest tests` |
+| `services/backend` | [AGENTS.md](services/backend/AGENTS.md), [README](services/backend/README.md), [архитектура](documents/backend-architecture.md), [auth](documents/auth.md) | См. AGENTS.md backend |
+| `services/frontend` | [AGENTS.md](services/frontend/AGENTS.md), [README](services/frontend/README.md) | См. AGENTS.md frontend |
+| `services/llm-gateway` | [AGENTS.md](services/llm-gateway/AGENTS.md), [README](services/llm-gateway/README.md), спецификации [HTTP](documents/llm-gateway-spec.md) и [gRPC](documents/llm-gateway-grpc-spec.md) | См. AGENTS.md gateway |
+| `services/shared` | [AGENTS.md](services/shared/AGENTS.md), [README](services/shared/README.md) | См. AGENTS.md shared |
+| `services/course-graph` | [AGENTS.md](services/course-graph/AGENTS.md), [README](services/course-graph/README.md), [api/course-graph.yaml](api/course-graph.yaml) | См. AGENTS.md course-graph |
 | `api` | [api/README](api/README.md) | Из `services/backend`: `bash scripts/generate-openapi.sh` без лишних изменений |
 | Compose, `dev.sh`, `.env.example` | [README, «Запуск»](README.md#запуск), README сервиса | Из корня: `sh -n dev.sh`, root Compose с .env.example с dev override и без него, external-S3 override; `config --quiet` каждого изменённого service Compose с .env.example |
 
 ## Источники истины
 
-- Учебная логика (граф, экзамен, оценки, тренировка) — README: «Курс», «course-graph», «Geek» и таблицы решений. [Концепция проректора](documents/Концепция_Репетитор_устного_экзамена.md) — исходник; при расхождении действует README.
+- Учебная логика (граф, экзамен, оценки, тренировка) — README: «Курс», «course-graph», «Geek» и актуальные продуктовые решения. [Концепция проректора](documents/Концепция_Репетитор_устного_экзамена.md) — исходник; при расхождении действует README.
 - HTTP — [api/openapi.yaml](api/openapi.yaml): `implemented` — подключённая операция, `planned` — проект без handler. Внутренний API course-graph — [api/course-graph.yaml](api/course-graph.yaml), gRPC — [gateway.proto](services/shared/proto/llmgateway/v1/gateway.proto).
 - Схема БД — [backend README, «БД и импорт»](services/backend/README.md#бд-и-импорт).
-- Код расходится с документацией или требованием — не выбирайте молча: назовите расхождение в отчёте. Если нужно решение, спросите владельца продукта и запишите ответ с датой в таблицу решений README.
+- Код расходится с документацией или требованием — не выбирайте молча: назовите расхождение в отчёте. Если нужно решение, спросите владельца продукта и зафиксируйте действующее решение в соответствующем разделе README, обновив устаревшие формулировки без добавления датированного журнала.
 - Открытые вопросы — в [README](README.md#открытые-вопросы); не закрывайте их в коде без записанного решения.
 
 ## Продукт
@@ -45,6 +56,14 @@
 
 - Удаление модулей, таблиц, миграций, ручек, экранов и документов — сначала спросите владельца продукта.
 - `docker compose down -v` и удаление volumes — только по явной просьбе: это удаляет данные PostgreSQL и S3.
+
+## Ревью pull request
+
+- По просьбе провести ревью изучите изменения в контексте окружающего кода, контрактов и требований; проверьте корректность, регрессии, крайние случаи и достаточность тестов. Выполните подходящие проверки, а недоступные укажите в отчёте.
+- Подтверждённые ошибки и существенные риски оформляйте отдельными тредами ревью в pull request у соответствующих строк. Укажите конкретный сценарий, последствия и, по возможности, способ воспроизведения или исправления. Не создавайте замечания только о предпочтениях стиля и не выдавайте предположения за установленные ошибки.
+- Разработчик, исправляющий замечание, вносит исправление и сообщает о нём в треде, но не закрывает его. Открытый тред означает, что исправление ещё ожидает проверки автором замечания.
+- Ревьюер, открывший тред, повторно проверяет исправление и закрывает тред только после того, как убедится, что проблема устранена. Если проблема осталась, ревьюер описывает её в треде и оставляет его открытым. Если автор треда недоступен, не закрывайте тред за него.
+- В итоговом отчёте укажите найденные проблемы, выполненные и пропущенные проверки. Если не удалось опубликовать замечание в PR, сообщите об этом и приведите его в отчёте.
 
 ## Отчёт о работе
 

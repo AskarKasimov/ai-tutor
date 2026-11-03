@@ -96,15 +96,18 @@ Router вне FSD layers, а сгенерированный `src/routeTree.gen.t
   `createQueryClient`.
 - Не отключайте TypeScript, ESLint или тесты ради прохождения сборки. Исправьте
   причину или кратко зафиксируйте блокирующее внешнее ограничение в PR.
-- Перед передачей изменений выполните из `services/frontend/`:
+- Выбирайте объём проверок по [корневым правилам](../../AGENTS.md#локальные-проверки-и-нагрузка).
+- Полный локальный набор из `services/frontend/`:
 
   ```bash
   npm run format:check
   npm run lint
   npm run typecheck
-  npm test -- --run
+  npm test -- --run --maxWorkers=1
   npm run build
   ```
+
+- Полный frontend CI дополнительно выполняет Playwright E2E и сборку Docker-образа. Локально запускайте нужные E2E с `npm run test:e2e -- <файл> --workers=1`, когда изменение затрагивает соответствующий сквозной сценарий. Не запускайте E2E одновременно с другими проверками или сборкой.
 
 ## Правила работы агентов
 

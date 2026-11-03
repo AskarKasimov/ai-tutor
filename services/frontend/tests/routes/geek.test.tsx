@@ -103,6 +103,7 @@ function geekBackend(
     transition: false,
     omitSpeechTexts: false,
     replyAudioGate: null as Promise<void> | null,
+    questionAudioGate: null as Promise<void> | null,
     failIntro: false,
   }
   let session: {
@@ -366,8 +367,9 @@ function geekBackend(
     ) {
       if (control.failIntro && url.endsWith('part=intro'))
         return new Response(null, { status: 503 })
-      const voiceGate =
-        url.includes('part=reply') || url.endsWith('/t3/audio')
+      const voiceGate = url.includes('part=question')
+        ? (control.questionAudioGate ?? control.voiceGate)
+        : url.includes('part=reply') || url.endsWith('/t3/audio')
           ? (control.replyAudioGate ?? control.voiceGate)
           : control.voiceGate
       if (voiceGate)
@@ -1014,16 +1016,28 @@ it.each(['mediaDevices', 'MediaRecorder', 'permission'])(
   },
 )
 
-it('plays and reveals complete feedback before the question', async () => {
+it('waits for all audio, then reveals the whole turn when feedback starts', async () => {
   FakeAudio.manual = true
-  const { fetch } = geekBackend()
+  const { control, fetch } = geekBackend()
   renderApp()
   await start()
+  const question = gate()
+  control.questionAudioGate = question.closed
   await answerByText('Перестанет быть оптимальным')
-  expect(await screen.findByText('Верно про оптимальность.')).toBeVisible()
+  await waitFor(() =>
+    expect(
+      fetch.mock.calls.some(([url]) => url.endsWith('/t3/audio?part=question')),
+    ).toBe(true),
+  )
+  expect(screen.queryByText('Верно про оптимальность.')).toBeNull()
   expect(
     screen.queryByText('А где допустимая эвристика не поможет?'),
   ).toBeNull()
+  question.open()
+  expect(await screen.findByText('Верно про оптимальность.')).toBeVisible()
+  expect(
+    screen.getByText('А где допустимая эвристика не поможет?'),
+  ).toBeVisible()
   const urls = fetch.mock.calls
     .map(([url]) => url)
     .filter((url) => url.includes('/turns/t3/audio'))
@@ -1253,7 +1267,7 @@ it('offers text without speech when voice fails', async () => {
   expect(screen.getByText('Верно про оптимальность.')).toBeVisible()
 })
 
-it('keeps spoken feedback visible when the question audio fails', async () => {
+it('keeps the whole turn hidden when the question audio fails', async () => {
   const { control } = geekBackend()
   renderApp()
   await start()
@@ -1261,7 +1275,7 @@ it('keeps spoken feedback visible when the question audio fails', async () => {
   control.failQuestionVoice = true
   await answerByText('Перестанет быть оптимальным')
   expect(await screen.findByText('Не удалось озвучить реплику')).toBeVisible()
-  expect(screen.getByText('Верно про оптимальность.')).toBeVisible()
+  expect(screen.queryByText('Верно про оптимальность.')).toBeNull()
   expect(
     screen.queryByText('А где допустимая эвристика не поможет?'),
   ).toBeNull()

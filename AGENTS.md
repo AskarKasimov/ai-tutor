@@ -48,7 +48,7 @@
 - Сгенерированные файлы (SQLC, `services/shared/gen`, `routeTree.gen.ts`, `openapi.yaml` gateway) вручную не правьте — меняйте источник и перегенерируйте. Сгенерированную часть `api/openapi.yaml` обновляйте только генератором backend.
 - Применённые миграции не меняйте (подробности — в [backend](services/backend/AGENTS.md)). Переработка начальной схемы — только при согласованном сбросе dev-БД.
 - Изменили контракт между сервисами (`api/*.yaml`, `.proto`) — обновите обе стороны и проверьте обе их командами.
-- Поведение или статус реализации изменились — обновите README («Текущая реализация», «План работ»), README затронутого сервиса и [checklist.html](checklist.html). Новые config fields требуют loader, tests, dev YAML и README update; prod templates и gateway example больше не используются.
+- Поведение или статус реализации изменились — обновите README («Режимы», «Текущая реализация»), README затронутого сервиса и [checklist.html](checklist.html). Новые config fields требуют loader, tests, dev YAML и README update; prod templates и gateway example больше не используются.
 
 ## Требует согласования
 

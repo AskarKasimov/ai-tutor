@@ -16,7 +16,7 @@ import (
 
 func TestGradeDoesNotQuoteAnUnknownFieldInTheCause(t *testing.T) {
 	const invented = "PRIVATE_STUDENT_ANSWER"
-	answer, err := json.Marshal(map[string]any{"score": 0, "verdict": "incorrect", "criterion_results": []any{}, "feedback": []string{}, invented: "value"})
+	answer, err := json.Marshal(map[string]any{"score": 0, "verdict": "incorrect", "criterion_results": []any{}, "feedback": "Отзыв.", invented: "value"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -39,7 +39,7 @@ func TestGradeDoesNotQuoteAnUnknownFieldInTheCause(t *testing.T) {
 // that reason must not repeat what the model wrote.
 func TestGradeExplainsARejectedAnswerWithoutQuotingIt(t *testing.T) {
 	const feedback = "Текст отзыва модели"
-	answer, err := json.Marshal(map[string]any{"score": 0, "verdict": "incorrect", "criterion_results": []any{}, "feedback": feedback})
+	answer, err := json.Marshal(map[string]any{"score": 0, "verdict": "incorrect", "criterion_results": []any{}, "feedback": []string{feedback}})
 	if err != nil {
 		t.Fatal(err)
 	}

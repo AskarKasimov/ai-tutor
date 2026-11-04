@@ -130,13 +130,11 @@ func (s *Service) Upload(ctx context.Context, actor user.User, subjectID string,
 	if err := s.Authorize(actor); err != nil {
 		return material.Material{}, err
 	}
-	if input.Week != 0 || input.Kind != "" {
-		if err := s.ValidateMetadata(ctx, input.Week, input.Kind); err != nil {
-			return material.Material{}, err
-		}
-		if err := ValidatePDF(input.Filename, input.Data); err != nil {
-			return material.Material{}, err
-		}
+	if err := s.ValidateMetadata(ctx, input.Week, input.Kind); err != nil {
+		return material.Material{}, err
+	}
+	if err := ValidatePDF(input.Filename, input.Data); err != nil {
+		return material.Material{}, err
 	}
 	if strings.TrimSpace(subjectID) == "" {
 		return material.Material{}, fault.New(fault.Invalid, "BAD_REQUEST", "ID предмета обязателен.")

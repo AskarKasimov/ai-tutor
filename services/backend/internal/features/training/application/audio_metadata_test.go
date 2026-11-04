@@ -51,9 +51,9 @@ func (r audioMetadataRegenerator) Regenerate(context.Context, string) (audioasse
 	return r.asset, nil
 }
 
-func TestTrainingAudioMetadataCanonicalizesLegacyURLAndRegeneration(t *testing.T) {
+func TestTrainingAudioMetadataAcceptsOnlyTheURLOfTheAsset(t *testing.T) {
 	assetID := "asset-1"
-	legacy := "/task-audio/asset-1/file"
+	legacy := audioasset.FileURL(assetID)
 	asset := audioasset.Asset{ID: assetID, Status: audioasset.Ready, AudioURL: &legacy}
 	repo := &audioMetadataRepo{session: training.Session{ID: "s", OwnerID: "u", Current: training.Exercise{ID: "e", Task: training.Task{AudioAssetID: &assetID}}}}
 	service := New(repo, nil, nil, nil, nil, nil, nil).WithAudio(audioMetadataReader{asset})

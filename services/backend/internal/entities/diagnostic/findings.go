@@ -36,9 +36,6 @@ func OutcomeFindings(answers []Answer) []OutcomeFinding {
 			g.allZero = false
 		}
 		id := a.Task.OutcomeID
-		if id == "" {
-			id = a.OutcomeID
-		}
 		if a.Role == "main" {
 			g.main = id
 		} else if id != "" {
@@ -52,9 +49,6 @@ func OutcomeFindings(answers []Answer) []OutcomeFinding {
 			continue
 		}
 		id := a.Task.OutcomeID
-		if id == "" {
-			id = a.OutcomeID
-		}
 		key := a.CompetencyID + "\x00" + id
 		if seen[key] {
 			continue

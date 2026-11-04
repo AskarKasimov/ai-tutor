@@ -41,10 +41,7 @@ func trainingTargets(answers []Answer, byConstituent bool) []TrainingTarget {
 		if !failed[key(a)] && a.Role == "main" {
 			kind = "partial_competency"
 		}
-		outcomeID := a.OutcomeID
-		if outcomeID == "" {
-			outcomeID = a.Task.OutcomeID
-		}
+		outcomeID := a.Task.OutcomeID
 		if kind != "" && !seen[outcomeID] {
 			result = append(result, TrainingTarget{Kind: kind, Answer: a})
 			seen[outcomeID] = true

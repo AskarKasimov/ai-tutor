@@ -44,7 +44,7 @@ func TestCurrentAudioReturnsStoredMetadataWithoutSynthesis(t *testing.T) {
 	for _, status := range []audioasset.Status{audioasset.Ready, audioasset.Pending, audioasset.Processing, audioasset.Failed, audioasset.Cancelled} {
 		t.Run(string(status), func(t *testing.T) {
 			service, voice, _, learning_variants := newTestService()
-			assetID, audioURL := "audio-1", "/task-audio/audio-1/file"
+			assetID, audioURL := "audio-1", "/learn/task-audio/audio-1/file"
 			learning_variants.value.Competencies[0].Tasks[0].Task.AudioAssetID = &assetID
 			reader := &audioReaderStub{asset: audioasset.Asset{ID: assetID, Status: status}}
 			if status == audioasset.Ready {
@@ -127,7 +127,7 @@ func TestCurrentAudioPreservesCompletedSessionConflict(t *testing.T) {
 
 func TestRegenerateCurrentAudioChecksSessionPositionAndReturnsReadyMetadata(t *testing.T) {
 	service, _, _, learning_variants := newTestService()
-	assetID, audioURL := "audio-1", "/task-audio/audio-1/file"
+	assetID, audioURL := "audio-1", "/learn/task-audio/audio-1/file"
 	learning_variants.value.Competencies[0].Tasks[0].Task.AudioAssetID = &assetID
 	regenerator := &audioRegeneratorStub{asset: audioasset.Asset{ID: assetID, Status: audioasset.Ready, AudioURL: &audioURL}}
 	service.WithAudioRegenerator(regenerator)

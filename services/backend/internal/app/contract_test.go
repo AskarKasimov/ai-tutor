@@ -324,7 +324,7 @@ func TestOpenAPIResponses(t *testing.T) {
 
 	check("GET", "/subjects", f.request("GET", "/subjects", "", admin))
 	materialData := []byte("%PDF-1.7 lecture")
-	materialsUpload := upload(f, "/admin/subjects/subject:test/materials", "file", "lecture.pdf", "application/pdf", materialData, admin)
+	materialsUpload := uploadMaterial(f, "/admin/subjects/subject:test/materials", "lecture.pdf", materialData, admin)
 	check("POST", "/admin/subjects/{subject_id}/materials", materialsUpload)
 	check("GET", "/admin/material-kinds", f.request("GET", "/admin/material-kinds", "", admin))
 	check("GET", "/admin/subjects/{subject_id}/materials", f.request("GET", "/admin/subjects/subject:test/materials", "", admin))

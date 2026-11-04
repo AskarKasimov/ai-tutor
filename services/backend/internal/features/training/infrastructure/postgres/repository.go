@@ -314,15 +314,7 @@ func (r *Repository) Accept(ctx context.Context, owner string, reserved training
 	if err = json.Unmarshal(row.ReservationData, &current); err != nil {
 		return training.Progress{}, err
 	}
-	currentOperation := current.Operation
-	if currentOperation == "" {
-		currentOperation = "answer" // Legacy reservations predate the operation discriminator.
-	}
-	reservedOperation := reserved.Operation
-	if reservedOperation == "" {
-		reservedOperation = "answer"
-	}
-	if !row.Leased || currentOperation != "answer" || reservedOperation != "answer" || current.Token != reserved.Token || current.Key != reserved.Key || current.Fingerprint != reserved.Fingerprint || current.ExerciseID != attempt.ExerciseID {
+	if !row.Leased || current.Operation != "answer" || reserved.Operation != "answer" || current.Token != reserved.Token || current.Key != reserved.Key || current.Fingerprint != reserved.Fingerprint || current.ExerciseID != attempt.ExerciseID {
 		return training.Progress{}, conflict("TRAINING_ANSWER_STALE", "Обработка устарела.")
 	}
 	previous, err := decode(row.StateData)

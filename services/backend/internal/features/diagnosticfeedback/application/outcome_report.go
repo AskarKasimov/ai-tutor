@@ -60,9 +60,6 @@ func AnalyzeResult(result diagnostic.Result) DeterministicReport {
 			explained = WithReasons(advice, failed)
 		}
 		id := a.Task.OutcomeID
-		if id == "" {
-			id = a.OutcomeID
-		}
 		// Keep the existing wire shape: partial main answers use details;
 		// zero answers use gaps. Both carry an explicit result and constituent.
 		if a.Role == "main" && a.Score == 1 && !a.Skipped {
@@ -78,13 +75,9 @@ func AnalyzeResult(result diagnostic.Result) DeterministicReport {
 			CompetencyID: a.CompetencyID, CompetencyName: a.Task.CompetencyName,
 			OutcomeID: id, OutcomeName: a.Task.OutcomeName, Rationale: explained})
 	}
-	// Legacy snapshots keep the outcome ID on the answer, as the items above.
 	importance := map[string]int16{}
 	for _, a := range result.Answers {
 		id := a.Task.OutcomeID
-		if id == "" {
-			id = a.OutcomeID
-		}
 		importance[id] = a.Task.Importance
 	}
 	sort.SliceStable(report.TrainingRecommendations, func(i, j int) bool {

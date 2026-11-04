@@ -236,9 +236,6 @@ func (r Request) CanonicalHash() string {
 			params[key] = value
 		}
 	}
-	if stop, ok := params["stop"].(string); ok {
-		params["stop"] = []string{stop}
-	}
 	for key, value := range map[string]float64{"temperature": 1, "top_p": 1, "presence_penalty": 0, "frequency_penalty": 0} {
 		if _, ok := params[key]; !ok {
 			params[key] = value
@@ -268,48 +265,3 @@ type statusError struct {
 }
 
 func (e statusError) Error() string { return e.body.Error.Message }
-
-// legacyHashes recognizes v1 records whose Request JSON omitted Parameters.
-// Those records retained the pre-normalization hash but cannot recover their parameters.
-func (r Request) legacyHashes() []string {
-	hashes := []string{r.legacyHash(false)}
-	if raw, ok := r.Parameters["stop"]; ok {
-		var values []string
-		if json.Unmarshal(raw, &values) == nil && len(values) == 1 {
-			hashes = append(hashes, r.legacyHash(true))
-		}
-	}
-	return hashes
-}
-func (r Request) legacyHash(stopAsString bool) string {
-	params := map[string]any{}
-	for key, raw := range r.Parameters {
-		var value any
-		if json.Unmarshal(raw, &value) == nil {
-			params[key] = value
-		}
-	}
-	if stopAsString {
-		if values, ok := params["stop"].([]any); ok && len(values) == 1 {
-			params["stop"] = values[0]
-		}
-	}
-	for key, value := range map[string]float64{"temperature": 1, "top_p": 1, "presence_penalty": 0, "frequency_penalty": 0} {
-		if _, ok := params[key]; !ok {
-			params[key] = value
-		}
-	}
-	if _, ok := params["response_format"]; !ok {
-		params["response_format"] = map[string]string{"type": "text"}
-	}
-	raw, _ := json.Marshal(struct {
-		Messages   []Message      `json:"messages"`
-		Complexity string         `json:"complexity"`
-		Urgent     bool           `json:"urgent"`
-		Parameters map[string]any `json:"parameters"`
-	}{r.Messages, r.Complexity, r.IsUrgent(), params})
-	var compact bytes.Buffer
-	_ = json.Compact(&compact, raw)
-	sum := sha256.Sum256(compact.Bytes())
-	return hex.EncodeToString(sum[:])
-}

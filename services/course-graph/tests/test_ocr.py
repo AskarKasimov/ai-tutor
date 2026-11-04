@@ -2,7 +2,7 @@ from pathlib import Path
 from config_helpers import configure_settings
 from fastapi.testclient import TestClient
 from course_graph.api import app
-from course_graph.ocr.converter import convert_document_to_markdown
+from course_graph.ocr.converter import convert_document
 
 
 def test_health():
@@ -14,7 +14,7 @@ def test_health():
 
 def test_convert_markdown_text():
     content = b"# Test Lecture\n\nFormula: $E = mc^2$"
-    md = convert_document_to_markdown("lecture.md", content)
+    md = convert_document("lecture.md", content)["markdown"]
     assert "# Test Lecture" in md
     assert "$E = mc^2$" in md
 
@@ -50,7 +50,7 @@ def test_light_build_extracts_text_pdf_without_docling(monkeypatch):
     def unexpected_docling():
         raise AssertionError("Light build must not initialize Docling")
     monkeypatch.setattr(converter, "get_converter", unexpected_docling)
-    markdown = converter.convert_document_to_markdown("lecture.pdf", content.getvalue())
+    markdown = convert_document("lecture.pdf", content.getvalue())["markdown"]
     assert "A star search" in markdown
     assert "## Слайд 1" in markdown
 
@@ -66,7 +66,7 @@ def test_light_build_reports_pdf_without_extractable_text(monkeypatch):
     writer.write(content)
     monkeypatch.setenv("COURSE_GRAPH_WITH_DOCLING", "false")
     with pytest.raises(RuntimeError, match="для сканов нужна полная сборка"):
-        convert_document_to_markdown("scan.pdf", content.getvalue())
+        convert_document("scan.pdf", content.getvalue())["markdown"]
 
 
 def test_text_ocr_cache_records_exact_source_digest(monkeypatch, tmp_path):

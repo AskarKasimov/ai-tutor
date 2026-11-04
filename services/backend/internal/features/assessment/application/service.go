@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"strings"
-	"unicode"
 	"unicode/utf8"
 
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/assessment"
@@ -82,51 +81,6 @@ func expectedVerdict(score, maxScore int) string {
 	}
 }
 
-// shortenFeedback fits the feedback into the limit. The model ends it with the main
-// clarification, so a long observation must not push the last sentence out.
-func shortenFeedback(text string) string {
-	const maxRunes = 228
-	runes := []rune(text)
-	if len(runes) <= maxRunes {
-		return text
-	}
-	start := lastSentenceStart(runes)
-	if start == 0 {
-		return cutFeedback(runes, maxRunes)
-	}
-	head, tail := []rune(strings.TrimSpace(string(runes[:start]))), runes[start:]
-	budget := maxRunes - 1 // One rune for the space between the parts.
-	half := budget / 2
-	headBudget := half
-	if len(tail) <= budget-half {
-		headBudget = budget - len(tail)
-	} else if len(head) <= half {
-		headBudget = len(head)
-	}
-	return cutFeedback(head, headBudget) + " " + cutFeedback(tail, budget-headBudget)
-}
-
-// lastSentenceStart returns where the last sentence begins, 0 for a single sentence.
-func lastSentenceStart(runes []rune) int {
-	for i := len(runes) - 2; i > 0; i-- {
-		if unicode.IsSpace(runes[i]) && strings.ContainsRune(".!?…", runes[i-1]) {
-			return i + 1
-		}
-	}
-	return 0
-}
-
-func cutFeedback(runes []rune, limit int) string {
-	if len(runes) <= limit {
-		return string(runes)
-	}
-	prefix := string(runes[:limit-1]) // Reserve one rune for the ellipsis.
-	if cut := strings.LastIndexFunc(prefix, unicode.IsSpace); cut >= 0 && utf8.RuneCountInString(prefix[:cut]) >= limit/2 {
-		prefix = prefix[:cut]
-	}
-	return strings.TrimRight(prefix, " \t,;:.!?—–-") + "…"
-}
-
 func validateEvaluation(result *Evaluation, gradingContext GradingContext) error {
 	maxScore, err := gradingMaxScore(gradingContext)
 	if err != nil {
@@ -189,7 +143,7 @@ func validateEvaluation(result *Evaluation, gradingContext GradingContext) error
 	if feedback == "" || !utf8.ValidString(feedback) || strings.ContainsRune(feedback, 0) {
 		return fault.New(fault.Upstream, "INVALID_MODEL_RESPONSE", "Модель вернула некорректный фидбэк.")
 	}
-	result.Feedback = shortenFeedback(feedback)
+	result.Feedback = feedback
 	return nil
 }
 

@@ -5,7 +5,6 @@ import (
 	"errors"
 	"strings"
 	"testing"
-	"unicode/utf8"
 
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/variant"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/fault"
@@ -294,82 +293,17 @@ func TestEvaluateVariantRejectsPartialWhenMandatoryCriterionFailed(t *testing.T)
 	}
 }
 
-func TestEvaluateVariantFeedbackTotalLength(t *testing.T) {
-	tests := []struct {
-		name      string
-		feedback  string
-		shortened bool
-	}{
-		{name: "brief feedback", feedback: "Названы два класса. Но тип задачи не указан."},
-		{name: "exactly 228 runes stays untouched", feedback: strings.Repeat("а", 228)},
-		{name: "229 runes gets shortened", feedback: strings.Repeat("а", 229), shortened: true},
-		{name: "emoji unicode count", feedback: strings.Repeat("🙂", 229), shortened: true},
-		{name: "oversized sentences", feedback: strings.Repeat("Ответ охватывает несколько признаков. ", 12), shortened: true},
-	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			result := validMainEvaluation()
-			result.Feedback = tc.feedback
-			got, err := New(
-				&transcriptionStub{text: "классификация, потому что два класса"},
-				&variantTaskStub{result: validVariantTask("main")},
-				&graderStub{result: result},
-			).EvaluateVariant(context.Background(), "student-1", "tr-1", "variant-1", "variant-task-1")
-			if err != nil {
-				t.Fatalf("valid grading must not fail solely due to feedback length: %v", err)
-			}
-			if got.Score != result.Score || got.MaxScore != 3 || got.Verdict != result.Verdict {
-				t.Fatalf("feedback shortening changed grading: %+v", got)
-			}
-			if utf8.RuneCountInString(got.Feedback) > 228 || !utf8.ValidString(got.Feedback) {
-				t.Fatalf("expected valid feedback within 228 runes, got %q", got.Feedback)
-			}
-			if tc.shortened && !strings.Contains(got.Feedback, "…") {
-				t.Fatalf("expected shortened feedback, got %q", got.Feedback)
-			}
-			if !tc.shortened && got.Feedback != tc.feedback {
-				t.Fatalf("feedback under the hard cap was modified: %q", got.Feedback)
-			}
-		})
-	}
-}
-
-func TestShortenFeedbackUsesWordBoundaries(t *testing.T) {
-	original := strings.Repeat("Правильно названа классификация и причина ", 12)
-	prefix := strings.TrimSuffix(shortenFeedback(strings.TrimSpace(original)), "…")
-	if !strings.HasPrefix(original, prefix+" ") {
-		t.Fatalf("feedback was cut inside a word: %q", prefix)
-	}
-}
-
-func TestShortenFeedbackKeepsTheClarification(t *testing.T) {
-	long := strings.TrimSpace(strings.Repeat("Верно названы признаки и классы задачи ", 8)) + "."
-	clarification := "Не хватает объяснения, почему это классификация."
-	for name, tc := range map[string]struct{ text, wantPrefix, wantSuffix string }{
-		"long observation":   {long + " " + clarification, "Верно названы", "… " + clarification},
-		"long clarification": {"Верно. " + long, "Верно. Верно названы", "…"},
-		"both long":          {long + " " + long, "Верно названы", "…"},
-	} {
-		t.Run(name, func(t *testing.T) {
-			got := shortenFeedback(tc.text)
-			if utf8.RuneCountInString(got) > 228 || !strings.HasPrefix(got, tc.wantPrefix) || !strings.HasSuffix(got, tc.wantSuffix) {
-				t.Fatalf("got %d runes: %q", utf8.RuneCountInString(got), got)
-			}
-		})
-	}
-}
-
-func TestEvaluateTrustedTrainingOversizedFeedback(t *testing.T) {
-	result := validEvaluation()
-	result.Feedback = strings.Repeat("Правильный пример приведён. ", 45)
+func TestEvaluateKeepsLongFeedbackWhole(t *testing.T) {
+	feedback := strings.Repeat("Верно названы признаки, т. е. классы задачи. ", 12) + "Не хватает объяснения причины."
+	result := validMainEvaluation()
+	result.Feedback = feedback
 	got, err := New(
-		&transcriptionStub{text: "Пример ответа"}, nil, &graderStub{result: result},
-	).EvaluateTrusted(context.Background(), "student-1", "tr-1", validVariantTask("training"))
-	if err != nil || got.Score != 2 || got.MaxScore != 2 {
-		t.Fatalf("training grade changed during feedback shortening: %+v %v", got, err)
-	}
-	if utf8.RuneCountInString(got.Feedback) > 228 {
-		t.Fatalf("training feedback exceeds 228 runes: %q", got.Feedback)
+		&transcriptionStub{text: "классификация, потому что два класса"},
+		&variantTaskStub{result: validVariantTask("main")},
+		&graderStub{result: result},
+	).EvaluateVariant(context.Background(), "student-1", "tr-1", "variant-1", "variant-task-1")
+	if err != nil || got.Score != result.Score || got.Feedback != feedback {
+		t.Fatalf("long feedback must stay whole: %+v, %v", got, err)
 	}
 }
 

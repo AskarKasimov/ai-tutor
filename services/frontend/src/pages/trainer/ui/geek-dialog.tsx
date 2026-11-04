@@ -6,6 +6,7 @@ import {
   Mic,
   Send,
   Square,
+  X,
   Volume2,
 } from 'lucide-react'
 import {
@@ -574,6 +575,16 @@ function Composer({
   )
   const recording = voice.recording || voice.requesting
   const capturing = recording || voice.preparing || voice.transcribing
+  const recordButton = useRef<HTMLButtonElement>(null)
+  const cancelButton = useRef<HTMLButtonElement>(null)
+  const wasRecording = useRef(false)
+  useEffect(() => {
+    if (recording === wasRecording.current) return
+    wasRecording.current = recording
+    if (recording) cancelButton.current?.focus()
+    else if (!voice.preparing && !voice.transcribing)
+      recordButton.current?.focus()
+  }, [recording, voice.preparing, voice.transcribing])
   useEffect(() => {
     onCapture(capturing)
   }, [capturing, onCapture])
@@ -639,6 +650,17 @@ function Composer({
       )}
       {recording ? (
         <div className={styles.recording}>
+          <button
+            ref={cancelButton}
+            type="button"
+            className={styles.round}
+            data-tone="stop"
+            aria-label={t('geek.cancelRecording')}
+            title={t('geek.cancelRecording')}
+            onClick={voice.cancel}
+          >
+            <X size={18} aria-hidden="true" />
+          </button>
           <Text role="timer" className={styles.timer}>
             {seconds}
           </Text>
@@ -651,11 +673,12 @@ function Composer({
           <button
             type="button"
             className={styles.round}
-            data-tone="stop"
-            aria-label={t('geek.stopRecording')}
+            aria-label={t('geek.sendRecording')}
+            title={t('geek.sendRecording')}
+            disabled={voice.requesting}
             onClick={voice.stop}
           >
-            <Square size={16} fill="currentColor" aria-hidden="true" />
+            <Send size={18} aria-hidden="true" />
           </button>
         </div>
       ) : (
@@ -683,6 +706,7 @@ function Composer({
             }}
           />
           <button
+            ref={recordButton}
             type={text.trim() ? 'submit' : 'button'}
             className={styles.round}
             aria-label={text.trim() ? t('geek.send') : t('geek.record')}

@@ -515,8 +515,9 @@ it('runs a diagnostic from the home page to the result and back to the history',
     ),
   ).toBeVisible()
   expect(screen.getAllByText('Введение в ИИ', { exact: true })).toHaveLength(1)
+  expect(screen.getAllByText('Симуляция экзамена')).toHaveLength(2)
   expect(
-    screen.getByRole('progressbar', { name: 'Диагностика' }),
+    screen.getByRole('progressbar', { name: 'Симуляция экзамена' }),
   ).toHaveAttribute('aria-valuenow', '0')
   // The new Geek turn is voiced at once and can be stopped.
   await waitFor(() => expect(FakeAudio.played).toHaveLength(1))
@@ -564,7 +565,7 @@ it('runs a diagnostic from the home page to the result and back to the history',
     screen.queryByRole('textbox', { name: 'Ваш ответ' }),
   ).not.toBeInTheDocument()
   expect(
-    screen.getByRole('progressbar', { name: 'Диагностика' }),
+    screen.getByRole('progressbar', { name: 'Симуляция экзамена' }),
   ).toHaveAttribute('aria-valuenow', '100')
 
   const toResult = screen.getByRole('button', { name: 'Посмотреть итог' })

@@ -125,19 +125,52 @@ func TestPureRubricControlNeverConsumesSubjectContent(t *testing.T) {
 	}
 }
 
-func TestIncompleteAcknowledgementDoesNotSpendAnAttempt(t *testing.T) {
-	for _, rubric := range []string{"", "Балл (макс. 1): 1 — верно; 0 — нет."} {
-		f := &fakeGateway{}
-		g := serve(t, f, time.Second)
-		got, err := g.Evaluate(context.Background(), application.EvaluationRequest{Node: exam.Node{AssessmentGuidance: rubric}, Dialogue: []exam.Turn{{Line: 1, Speaker: exam.SpeakerGeek, Text: "Назови элементы"}, {Line: 2, Speaker: exam.SpeakerStudent, Text: "Я вижу."}}})
-		if err != nil || got.Verdict != exam.VerdictClarifyQuestion || got.Clarification == "" || len(f.requests) != 0 {
-			t.Fatalf("result=%+v err=%v calls=%d", got, err, len(f.requests))
+func TestAcknowledgementReachesEvaluation(t *testing.T) {
+	for _, numeric := range []bool{false, true} {
+		for _, reply := range []string{"Я вижу.", "Понятно", "Ясно"} {
+			answers := []string{`{"verdict":"answered","answer_complete":false,"criteria":{"k1":0,"k2":0,"k3":null,"k4":null},"evidence_lines":[2]}`}
+			n := exam.Node{Questions: []string{"Назови элементы"}}
+			if numeric {
+				n.AssessmentGuidance = "Балл (макс. 1): 1 — верно; 0 — нет."
+				answers = []string{`{"verdict":"answered","address_preference":""}`, `{"answer_complete":false,"marks":[{"id":"r1","score":0,"evidence_lines":[2],"reason":"Нет ответа"}]}`, `{"answer_complete":false,"marks":[{"id":"r1","score":0,"evidence_lines":[2],"reason":"Нет ответа"}]}`}
+			}
+			f := &fakeGateway{answers: answers}
+			g := serve(t, f, time.Second)
+			got, err := g.Evaluate(context.Background(), application.EvaluationRequest{Node: n, Dialogue: []exam.Turn{{Line: 1, Speaker: exam.SpeakerGeek, Text: "Назови элементы"}, {Line: 2, Speaker: exam.SpeakerStudent, Text: reply}}})
+			if err != nil || got.Verdict != exam.VerdictAnswered || len(f.requests) == 0 {
+				t.Fatalf("numeric=%t reply=%q result=%+v err=%v calls=%d", numeric, reply, got, err, len(f.requests))
+			}
 		}
 	}
-	for _, text := range []string{"Я вижу сенсор", "Я вижу, подожди", "Я понял, камера — датчик", "Дайте подумать"} {
-		if incompleteAcknowledgement(text) {
-			t.Fatalf("subject content or explicit pause intercepted: %q", text)
-		}
+}
+
+func TestFollowupOffTopicKeepsPriorAnswerInEvaluation(t *testing.T) {
+	n := exam.Node{ID: "a", Title: "Тема", Questions: []string{"Назови сенсор"}}
+	dialogue := []exam.Turn{
+		{Line: 1, Speaker: exam.SpeakerGeek, Text: "Назови сенсор"},
+		{Line: 2, Speaker: exam.SpeakerStudent, Text: "Камера — сенсор"},
+		{Line: 3, Speaker: exam.SpeakerGeek, Text: "Как он работает?"},
+		{Line: 4, Speaker: exam.SpeakerStudent, Text: "На улице дождь"},
+	}
+	f := &fakeGateway{answers: []string{`{"verdict":"answered","answer_complete":false,"criteria":{"k1":1,"k2":1,"k3":null,"k4":null},"evidence_lines":[2]}`}}
+	g := serve(t, f, time.Second)
+	result, err := g.Evaluate(context.Background(), application.EvaluationRequest{Node: n, Kind: exam.KindFollowup, Dialogue: dialogue})
+	if err != nil || result.Criteria.K1 != 1 || result.Criteria.K2 != 1 {
+		t.Fatalf("prior answer lost: %+v, %v", result, err)
+	}
+	prompt := f.requests[0].Messages[1].GetContent()
+	if !strings.Contains(prompt, "Камера — сенсор") || !strings.Contains(prompt, "На улице дождь") || !strings.Contains(prompt, "посторонняя реплика не обнуляет ранее показанные знания") {
+		t.Fatal("evaluation did not receive both answers and the preservation rule")
+	}
+	no := false
+	e, _ := exam.NewExam(exam.Graph{Nodes: []exam.Node{n}}, 0, nil)
+	e.Apply(exam.Evaluation{Verdict: exam.VerdictAnswered, Criteria: exam.Criteria{K1: 1, K2: 1}, AnswerComplete: &no})
+	e.Apply(result.Evaluation)
+	if state := e.Nodes[n.ID]; state.Criteria == nil || state.Criteria.K1 != 1 || state.Criteria.K2 != 1 {
+		t.Fatalf("prior result lost after followup: %+v", state)
+	}
+	if !strings.Contains(rubricPrompt(application.EvaluationRequest{Node: n, Kind: exam.KindFollowup, Dialogue: dialogue}, nil), "посторонняя или бессвязная последняя реплика сама по себе не отменяет предыдущие баллы") {
+		t.Fatal("rubric evaluation is missing the preservation rule")
 	}
 }
 

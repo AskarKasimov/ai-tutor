@@ -1,4 +1,4 @@
-export { apiFetch, fetchStaticAsset, isAdminPortal } from './api-fetch'
+export { apiFetch, isAdminPortal } from './api-fetch'
 export {
   VoiceApiError,
   StoredAudioError,

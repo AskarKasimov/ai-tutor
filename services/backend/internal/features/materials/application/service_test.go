@@ -259,7 +259,7 @@ func TestUploadMaterialWithTranslation(t *testing.T) {
 		},
 	}
 
-	svc := application.New(repo, s3, ocr, func() time.Time { return fixedTime }).WithTranslator(trans)
+	svc := application.New(repo, s3, ocr, func() time.Time { return fixedTime })
 
 	mat, err := svc.Upload(context.Background(), admin, "sub-cs", application.UploadInput{
 		Filename:    "ai-lecture.pdf",
@@ -313,7 +313,7 @@ func TestUploadMaterialTranslationFailureFallback(t *testing.T) {
 		},
 	}
 
-	svc := application.New(repo, s3, ocr, func() time.Time { return fixedTime }).WithTranslator(trans)
+	svc := application.New(repo, s3, ocr, func() time.Time { return fixedTime })
 
 	mat, err := svc.Upload(context.Background(), admin, "sub-cs", application.UploadInput{
 		Filename:    "ai-lecture.pdf",

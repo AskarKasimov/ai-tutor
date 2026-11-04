@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"net/url"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
 
@@ -94,16 +93,14 @@ func NewHandler(service *application.Service, maxUploadBytes int64) *Handler {
 
 // UploadMaterials handles POST /admin/subjects/{subject_id}/materials.
 // @Summary Загрузить материалы курса
-// @Description Доступно только admin. Для новых клиентов передайте items (JSON-манифест с client_id, week и kind для каждого файла), затем повторяющиеся file в том же порядке. Legacy week/kind остаются совместимы.
+// @Description Доступно только admin. Передайте items (JSON-манифест с client_id, week и kind для каждого файла), затем повторяющиеся file в том же порядке.
 // @ID uploadSubjectMaterials
 // @Tags Материалы
 // @Security accessCookie
 // @Accept multipart/form-data
 // @Produce json
 // @Param subject_id path string true "ID предмета"
-// @Param items formData string false "JSON-манифест файлов"
-// @Param week formData int false "Неделя для legacy-клиентов"
-// @Param kind formData string false "Тип для legacy-клиентов"
+// @Param items formData string true "JSON-манифест файлов"
 // @Param file formData []file true "PDF-файлы в порядке манифеста"
 // @Success 200 {object} UploadResult
 // @Failure 400 {object} fault.Error
@@ -148,66 +145,36 @@ func (h *Handler) UploadMaterials(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(r.Context(), w, fault.New(fault.Invalid, "BAD_REQUEST", "Не предоставлены файлы для загрузки."))
 		return
 	}
-	manifestValues := form.Value["items"]
-	hasManifest := len(manifestValues) > 0
-	if len(form.File) > 1 || (len(form.File) == 1 && len(form.File["file"]) == 0 && len(form.File["files"]) == 0) {
+	if len(form.File) > 1 || (len(form.File) == 1 && len(form.File["file"]) == 0) {
 		httpx.Error(r.Context(), w, fault.Validation("file", "Используйте только поле file."))
 		return
 	}
 	files := form.File["file"]
-
-	if len(form.File["files"]) > 0 {
-		if len(files) > 0 {
-			httpx.Error(r.Context(), w, fault.Validation("file", "Используйте одно имя поля file."))
-			return
-		}
-		files = form.File["files"]
-
+	manifestValues := form.Value["items"]
+	if len(manifestValues) != 1 {
+		httpx.Error(r.Context(), w, fault.Validation("items", "Передайте один манифест файлов."))
+		return
 	}
 	var manifest []uploadManifestItem
-	var week int32
-	var kind material.Kind
-	if hasManifest {
-		if len(manifestValues) != 1 || len(form.Value["week"]) > 0 || len(form.Value["kind"]) > 0 {
-			httpx.Error(r.Context(), w, fault.Validation("items", "Манифест должен быть единственным полем метаданных."))
+	if err := json.Unmarshal([]byte(manifestValues[0]), &manifest); err != nil || len(manifest) == 0 {
+		httpx.Error(r.Context(), w, fault.Validation("items", "Некорректный манифест файлов."))
+		return
+	}
+	ids := map[string]bool{}
+	for _, item := range manifest {
+		if strings.TrimSpace(item.ClientID) == "" || ids[item.ClientID] {
+			httpx.Error(r.Context(), w, fault.Validation("items", "client_id должен быть уникальным и непустым."))
 			return
 		}
-		if err := json.Unmarshal([]byte(manifestValues[0]), &manifest); err != nil || len(manifest) == 0 {
-			httpx.Error(r.Context(), w, fault.Validation("items", "Некорректный манифест файлов."))
-			return
-		}
-		ids := map[string]bool{}
-		for _, item := range manifest {
-			if strings.TrimSpace(item.ClientID) == "" || ids[item.ClientID] {
-				httpx.Error(r.Context(), w, fault.Validation("items", "client_id должен быть уникальным и непустым."))
-				return
-			}
-			ids[item.ClientID] = true
-			if err := h.service.ValidateMetadata(r.Context(), item.Week, item.Kind); err != nil {
-				httpx.Error(r.Context(), w, err)
-				return
-			}
-		}
-		if len(files) != len(manifest) {
-			httpx.Error(r.Context(), w, fault.Validation("file", "Число файлов не совпадает с манифестом."))
-			return
-		}
-	} else if len(form.Value["week"]) > 0 || len(form.Value["kind"]) > 0 {
-		if len(form.Value["week"]) != 1 || len(form.Value["kind"]) != 1 {
-			httpx.Error(r.Context(), w, fault.Validation("week", "Укажите неделю и тип перед файлами."))
-			return
-		}
-		parsed, err := strconv.ParseInt(strings.TrimSpace(form.Value["week"][0]), 10, 32)
-		if err != nil {
-			httpx.Error(r.Context(), w, fault.Validation("week", "Укажите положительный номер недели."))
-			return
-		}
-		week = int32(parsed)
-		kind = material.Kind(strings.TrimSpace(form.Value["kind"][0]))
-		if err := h.service.ValidateMetadata(r.Context(), week, kind); err != nil {
+		ids[item.ClientID] = true
+		if err := h.service.ValidateMetadata(r.Context(), item.Week, item.Kind); err != nil {
 			httpx.Error(r.Context(), w, err)
 			return
 		}
+	}
+	if len(files) != len(manifest) {
+		httpx.Error(r.Context(), w, fault.Validation("file", "Число файлов не совпадает с манифестом."))
+		return
 	}
 	if len(files) == 0 {
 		httpx.Error(r.Context(), w, fault.New(fault.Invalid, "BAD_REQUEST", "Не предоставлены файлы для загрузки."))
@@ -219,13 +186,7 @@ func (h *Handler) UploadMaterials(w http.ResponseWriter, r *http.Request) {
 	_ = rc.SetReadDeadline(time.Now().Add(15 * time.Minute))
 	for i, header := range files {
 		_ = rc.SetReadDeadline(time.Now().Add(15 * time.Minute))
-		clientID := fmt.Sprintf("legacy-%d", i)
-		fileWeek, fileKind := week, kind
-		if hasManifest {
-			clientID = manifest[i].ClientID
-			fileWeek = manifest[i].Week
-			fileKind = manifest[i].Kind
-		}
+		clientID, fileWeek, fileKind := manifest[i].ClientID, manifest[i].Week, manifest[i].Kind
 		filename := filepath.Base(header.Filename)
 		if i >= MaxFilesPerRequest {
 			failure := UploadFailedItem{Filename: filename, Code: "TOO_MANY_FILES", Message: fmt.Sprintf("За один запрос можно загрузить не больше %d файлов.", MaxFilesPerRequest)}
@@ -261,24 +222,11 @@ func (h *Handler) UploadMaterials(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 			failed = append(failed, itemErr)
-			if hasManifest {
-				results = append(results, UploadItemResult{ClientID: clientID, Error: &itemErr})
-			}
+			results = append(results, UploadItemResult{ClientID: clientID, Error: &itemErr})
 			continue
 		}
 		uploaded = append(uploaded, mat)
 		results = append(results, UploadItemResult{ClientID: clientID, Material: &mat})
-	}
-	if len(uploaded) == 0 && !hasManifest {
-		first := failed[0]
-		kind := fault.Invalid
-		if first.Code == "PAYLOAD_TOO_LARGE" {
-			kind = fault.TooLarge
-		} else if first.Code == "S3_UPLOAD_ERROR" || first.Code == "DATABASE_ERROR" {
-			kind = fault.Unavailable
-		}
-		httpx.Error(r.Context(), w, fault.New(kind, first.Code, first.Message))
-		return
 	}
 	_ = rc.SetWriteDeadline(time.Now().Add(30 * time.Second))
 	httpx.JSON(w, http.StatusOK, UploadResult{Uploaded: uploaded, Failed: failed, Results: results})

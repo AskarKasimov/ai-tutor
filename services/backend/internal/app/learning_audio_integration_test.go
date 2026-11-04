@@ -58,7 +58,7 @@ func TestLearningAudioContractThroughHTTP(t *testing.T) {
 	f.s3Objects[objectKey] = fixtureS3Object{data: wavBytes(), contentType: "audio/wav", assetID: assetID}
 	f.s3Mu.Unlock()
 	canonical := "/learn/task-audio/" + assetID + "/file"
-	for _, prefix := range []string{"/task-audio/", "/learn/task-audio/"} {
+	for _, prefix := range []string{"/learn/task-audio/"} {
 		if _, err := f.pool.Exec(context.Background(), `UPDATE learning_audio_assets SET status='ready',bucket=$2,storage_uri=$3,audio_url=$4 WHERE id=$1`, assetID, f.app.cfg.S3Bucket, "s3://"+f.app.cfg.S3Bucket+"/"+objectKey, prefix+assetID+"/file"); err != nil {
 			t.Fatal(err)
 		}

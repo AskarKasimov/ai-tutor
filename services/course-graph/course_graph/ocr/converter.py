@@ -390,11 +390,6 @@ def convert_document(filename: str, content: bytes) -> dict:
                 pass
 
 
-def convert_document_to_markdown(filename: str, content: bytes) -> str:
-    """Compatibility wrapper for existing consumers expecting a string."""
-    return convert_document(filename, content)["markdown"]
-
-
 def protect_prolog_literals(markdown: str) -> str:
     """Fence literal rules/queries so translation cannot rename predicates."""
     if not re.search(r"prolog|:-", markdown, re.I):

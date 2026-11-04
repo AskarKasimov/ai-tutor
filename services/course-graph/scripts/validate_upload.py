@@ -12,6 +12,7 @@ import time
 import urllib.parse
 import urllib.request
 import uuid
+from email.utils import quote
 from pathlib import Path
 
 
@@ -21,7 +22,7 @@ def upload_body(paths, boundary):
     body = (f'--{boundary}\r\nContent-Disposition: form-data; name="items"\r\n\r\n'
             f'{json.dumps(items)}\r\n').encode()
     for path in paths:
-        body += (f'--{boundary}\r\nContent-Disposition: form-data; name="file"; filename="{Path(path).name}"\r\n'
+        body += (f'--{boundary}\r\nContent-Disposition: form-data; name="file"; filename="{quote(Path(path).name)}"\r\n'
                  'Content-Type: application/pdf\r\n\r\n').encode() + Path(path).read_bytes() + b"\r\n"
     return body + f"--{boundary}--\r\n".encode()
 

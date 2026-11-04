@@ -34,6 +34,13 @@ def test_upload_body_sends_the_manifest_and_the_pdfs_in_its_order(tmp_path):
     assert files[0].get_payload().startswith("%PDF-")
 
 
+def test_upload_body_escapes_the_filename(tmp_path):
+    pdf = tmp_path / 'lecture "1".pdf'
+    pdf.write_bytes(b"%PDF-1.7")
+    body = load_script().upload_body([pdf], "boundary")
+    assert b'filename="lecture \\"1\\".pdf"' in body
+
+
 GRAPH = {
     "topics": [{"sources": [{"material_id": "m1"}, {"material_id": "m2"}]}],
     "quality": {"acyclic": True},

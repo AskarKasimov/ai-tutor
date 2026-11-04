@@ -7,6 +7,7 @@ import {
   Send,
   Square,
   Volume2,
+  X,
 } from 'lucide-react'
 import {
   useCallback,
@@ -328,27 +329,38 @@ function Dialogue({
               </Button>
             </div>
           )}
-          <div className={styles.unclearChoices}>
-            <Button
-              size="3"
-              variant="soft"
+          <form
+            className={styles.field}
+            onSubmit={(event) => {
+              event.preventDefault()
+              send({ kind: 'confirm_unclear' }, t('geek.unclearConfirm'))
+            }}
+          >
+            <span className={styles.unclearText}>
+              {t('geek.unclearConfirm')}
+            </span>
+            <button
+              type="button"
+              className={styles.clearUnclear}
+              aria-label={t('geek.unclearRetry')}
+              title={t('geek.unclearRetry')}
               disabled={answer.isPending}
               onClick={() =>
                 setRetryUnclearId(session.unclearAnswerTurnId ?? '')
               }
             >
-              {t('geek.unclearRetry')}
-            </Button>
-            <Button
-              size="3"
+              <X size={20} aria-hidden="true" />
+            </button>
+            <button
+              type="submit"
+              className={styles.round}
+              aria-label={t('geek.send')}
+              title={t('geek.send')}
               disabled={answer.isPending}
-              onClick={() =>
-                send({ kind: 'confirm_unclear' }, t('geek.unclearConfirm'))
-              }
             >
-              {t('geek.unclearConfirm')}
-            </Button>
-          </div>
+              <Send size={18} aria-hidden="true" />
+            </button>
+          </form>
         </div>
       ) : (
         <Composer

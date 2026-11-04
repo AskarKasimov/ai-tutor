@@ -176,14 +176,21 @@
 .footer {
   justify-items: start;
 }
-.unclearChoices {
+.unclearText {
+  flex: 1;
+  min-width: 0;
+  padding-block: var(--space-2);
+}
+.clearUnclear {
   display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
   align-items: center;
+  justify-content: center;
+  flex: none;
+  border: 0;
+  background: transparent;
+  color: var(--gray-11);
+  cursor: pointer;
   padding: var(--space-2);
-  border-radius: 24px;
-  background: var(--gray-3);
 }
 
 // The result card appears once Geek's last reply has been voiced: it rises in,

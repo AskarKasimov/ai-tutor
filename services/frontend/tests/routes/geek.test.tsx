@@ -709,7 +709,7 @@ it('restores an unclear answer choice and sends the original answer for grading'
     await screen.findByRole('button', { name: 'Продолжить проверку знаний' }),
   )
   fireEvent.click(
-    await screen.findByRole('button', { name: 'Отправить на оценивание' }),
+    await screen.findByRole('button', { name: 'Отправить ответ' }),
   )
   await waitFor(() => expect(answers).toHaveLength(1))
   expect(answers[0].body).toEqual({ turn_id: 't3', confirm_unclear: true })
@@ -723,7 +723,7 @@ it('allows recording another answer without sending the unclear one', async () =
     await screen.findByRole('button', { name: 'Продолжить проверку знаний' }),
   )
   fireEvent.click(
-    await screen.findByRole('button', { name: 'Да, перезаписать' }),
+    await screen.findByRole('button', { name: 'Очистить и ответить заново' }),
   )
   expect(await answerField()).toBeEnabled()
   expect(answers).toHaveLength(0)

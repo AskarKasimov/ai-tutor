@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"go.uber.org/zap/zapcore"
 )
 
 func writeYAML(t *testing.T, body string) string {
@@ -19,6 +21,7 @@ func writeYAML(t *testing.T, body string) string {
 
 const validBackendYAML = `server:
   listen_address: ":18002"
+logging: {level: warn}
 voice:
   stt: {url: "http://stt.test/transcribe"}
   tts: {url: "http://tts.test/synthesize", seed: 0, cfg_value: 2, inference_timesteps: 20}
@@ -112,5 +115,24 @@ func TestLoadLLMGatewayConfigDoesNotRequireBackendSecrets(t *testing.T) {
 	address, timeout, err := LoadLLMGatewayConfig(writeYAML(t, validBackendYAML))
 	if err != nil || address != "gateway.test:8011" || timeout != 120*time.Second {
 		t.Fatalf("got %q %s %v", address, timeout, err)
+	}
+}
+
+func TestLoadConfigRequiresAKnownLogLevel(t *testing.T) {
+	t.Setenv("BACKEND_DATABASE_URL", "postgres://example/db")
+	t.Setenv("BACKEND_S3_ACCESS_KEY", "access")
+	t.Setenv("BACKEND_S3_SECRET_KEY", "secret")
+	cfg, err := LoadConfig(writeYAML(t, validBackendYAML))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.LogLevel != zapcore.WarnLevel {
+		t.Fatalf("log level = %s", cfg.LogLevel)
+	}
+	if _, err := LoadConfig(writeYAML(t, strings.Replace(validBackendYAML, "logging: {level: warn}\n", "", 1))); err == nil || !strings.Contains(err.Error(), "logging.level") {
+		t.Fatalf("missing level error = %v", err)
+	}
+	if _, err := LoadConfig(writeYAML(t, strings.Replace(validBackendYAML, "level: warn", "level: loud", 1))); err == nil || !strings.Contains(err.Error(), "logging.level") {
+		t.Fatalf("unknown level error = %v", err)
 	}
 }

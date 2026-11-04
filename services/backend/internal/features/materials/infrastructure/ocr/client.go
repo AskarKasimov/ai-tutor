@@ -11,6 +11,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/httpx"
 )
 
 type Client struct {
@@ -125,6 +127,7 @@ func (c *Client) convertViaCourseGraph(ctx context.Context, jobID, filename stri
 	if jobID != "" {
 		req.Header.Set("X-Job-ID", jobID)
 	}
+	httpx.PropagateTrace(req)
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {

@@ -5,10 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"time"
 
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/material"
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/logx"
+	"go.uber.org/zap"
 )
 
 type CleaningResult struct {
@@ -41,9 +42,10 @@ func (w *CleaningWorker) Run(ctx context.Context) error {
 		if ctx.Err() != nil {
 			return nil
 		}
-		worked, err := w.ProcessOne(ctx)
+		jobCtx := logx.StartTrace(ctx)
+		worked, err := w.ProcessOne(jobCtx)
 		if err != nil && ctx.Err() == nil {
-			log.Printf("Material cleaning: %v", err)
+			logx.From(jobCtx).Error("material cleaning failed", zap.Error(err))
 		}
 		if worked && err == nil {
 			continue

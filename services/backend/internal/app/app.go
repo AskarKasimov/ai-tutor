@@ -200,16 +200,19 @@ func (a *App) RunStorageSetup(ctx context.Context) error {
 func (a *App) RunBackground(ctx context.Context) error {
 	group, ctx := errgroup.WithContext(ctx)
 	group.Go(func() error { return a.RunStorageSetup(ctx) })
+	ocrCtx := httpx.WithLogger(ctx, a.logger.With(zap.String("worker", "material_ocr")))
+	cleaningCtx := httpx.WithLogger(ctx, a.logger.With(zap.String("worker", "material_cleaning")))
+	graphCtx := httpx.WithLogger(ctx, a.logger.With(zap.String("worker", "course_graph")))
 	// Several materials move through OCR (and its translation) and cleaning at
 	// once, so the LLM gateway gets enough parallel calls to use every model.
 	// Jobs are claimed with FOR UPDATE SKIP LOCKED and a lease, so each goes to
 	// one worker; course-graph still converts one document at a time and
 	// extracts topics of two, so extra workers wait there instead of piling up.
 	for i := 0; i < materialWorkers; i++ {
-		group.Go(func() error { return a.ocrWorker.Run(ctx) })
-		group.Go(func() error { return a.cleaningWorker.Run(ctx) })
+		group.Go(func() error { return a.ocrWorker.Run(ocrCtx) })
+		group.Go(func() error { return a.cleaningWorker.Run(cleaningCtx) })
 	}
-	group.Go(func() error { return a.graphWorker.Run(ctx) })
+	group.Go(func() error { return a.graphWorker.Run(graphCtx) })
 	group.Go(func() error { return a.audioWorker.Run(ctx) })
 	warmCtx := httpx.WithLogger(ctx, a.logger.With(zap.String("worker", "speech_warmer")))
 	group.Go(func() error { return a.warmer.Run(warmCtx) })

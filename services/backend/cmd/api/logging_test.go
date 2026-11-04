@@ -25,7 +25,7 @@ func TestProductionLoggerPreservesEveryRequestInBurst(t *testing.T) {
 				w.WriteHeader(status)
 			}))
 			for range 500 {
-				handler.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("GET", "/health", nil))
+				handler.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("GET", "/auth/me", nil))
 			}
 			if err := logger.Sync(); err != nil {
 				t.Fatal(err)

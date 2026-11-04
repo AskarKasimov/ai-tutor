@@ -24,13 +24,20 @@ type GRPCServer struct {
 
 func NewGRPCServer(s *Service) *GRPCServer { return &GRPCServer{service: s} }
 func (g *GRPCServer) Complete(ctx context.Context, in *pb.CompleteRequest) (*pb.CompleteResponse, error) {
+	started := time.Now()
+	response, id, err := g.complete(ctx, in)
+	logGRPCCall(ctx, in, id, err, started)
+	return response, err
+}
+
+func (g *GRPCServer) complete(ctx context.Context, in *pb.CompleteRequest) (*pb.CompleteResponse, string, error) {
 	attemptID := newID()
 	md, _ := metadata.FromIncomingContext(ctx)
 	keys := md.Get("idempotency-key")
 	if len(keys) > 1 {
 		g.service.recordCall("grpc", 400)
 		_ = grpc.SendHeader(ctx, metadata.Pairs("x-request-id", attemptID))
-		return nil, grpcError(apiErr(400, "invalid_request_error", "invalid_idempotency_key", "Only one idempotency-key is allowed."), attemptID)
+		return nil, attemptID, grpcError(apiErr(400, "invalid_request_error", "invalid_idempotency_key", "Only one idempotency-key is allowed."), attemptID)
 	}
 	key := ""
 	if len(keys) == 1 {
@@ -40,28 +47,28 @@ func (g *GRPCServer) Complete(ctx context.Context, in *pb.CompleteRequest) (*pb.
 	if err != nil {
 		g.service.recordCall("grpc", 400)
 		_ = grpc.SendHeader(ctx, metadata.Pairs("x-request-id", attemptID))
-		return nil, grpcError(err, attemptID)
+		return nil, attemptID, grpcError(err, attemptID)
 	}
 	if int64(len(canonicalRequestJSON(req))) > g.service.cfg.MaxBodyBytes {
 		g.service.recordCall("grpc", 413)
 		_ = grpc.SendHeader(ctx, metadata.Pairs("x-request-id", attemptID))
-		return nil, grpcError(apiErr(413, "invalid_request_error", "request_too_large", "Request body is too large."), attemptID)
+		return nil, attemptID, grpcError(apiErr(413, "invalid_request_error", "request_too_large", "Request body is too large."), attemptID)
 	}
 	result, id, err := g.service.Complete(ctx, req, key, "grpc", false, func(id string) { _ = grpc.SendHeader(ctx, metadata.Pairs("x-request-id", id)) })
 	if err != nil {
-		return nil, grpcError(err, id)
+		return nil, id, grpcError(err, id)
 	}
 	if result.status != 200 {
 		var e ErrorEnvelope
 		_ = json.Unmarshal(result.body, &e)
-		return nil, grpcErrorWithRetry(statusError{status: result.status, body: e}, id, result.retryAfter)
+		return nil, id, grpcErrorWithRetry(statusError{status: result.status, body: e}, id, result.retryAfter)
 	}
 	response := &pb.CompleteResponse{RequestId: id, CompletionJson: result.body}
 	if proto.Size(response) > g.service.cfg.GRPCMaxSendBytes {
 		g.service.correctCall("grpc", 200, 413)
-		return nil, grpcError(apiErr(413, "invalid_request_error", "response_too_large", "The saved response exceeds the gRPC send limit."), id)
+		return nil, id, grpcError(apiErr(413, "invalid_request_error", "response_too_large", "The saved response exceeds the gRPC send limit."), id)
 	}
-	return response, nil
+	return response, id, nil
 }
 func requestFromProto(in *pb.CompleteRequest) (Request, error) {
 	if in == nil || len(in.Messages) == 0 {

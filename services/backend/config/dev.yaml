@@ -1,5 +1,7 @@
 server:
   listen_address: ":8002"
+logging:
+  level: info
 voice:
   stt:
     url: "http://10.100.30.83:8000/transcribe"

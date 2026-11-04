@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/coursegraph"
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/httpx"
 )
 
 type Client struct {
@@ -36,6 +37,7 @@ func (c *Client) Build(ctx context.Context, buildID string, materials []coursegr
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Build-ID", buildID)
+	httpx.PropagateTrace(req)
 	// The build call is synchronous: progress is read beside it and stops
 	// before Build returns, so report is never called after that.
 	pollCtx, stop := context.WithCancel(ctx)

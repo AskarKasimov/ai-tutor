@@ -1,11 +1,9 @@
 package application
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
-	"log"
 	"strings"
 	"testing"
 	"time"
@@ -14,6 +12,9 @@ import (
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/material"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/user"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/fault"
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/logx"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zaptest/observer"
 )
 
 type requestRepo struct {
@@ -477,10 +478,8 @@ func TestImportMapLogsFallbackCriteriaOnlyAfterSaving(t *testing.T) {
 		{"rejected concurrent import", true, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			var output bytes.Buffer
-			previous := log.Writer()
-			log.SetOutput(&output)
-			t.Cleanup(func() { log.SetOutput(previous) })
+			core, logs := observer.New(zap.WarnLevel)
+			ctx := logx.With(context.Background(), zap.New(core))
 			rows := mapRows("К1. Агенты")
 			if tc.missing {
 				rows[1][8] = ""
@@ -492,7 +491,7 @@ func TestImportMapLogsFallbackCriteriaOnlyAfterSaving(t *testing.T) {
 			var saved json.RawMessage
 			var sheet string
 			repo := mapRepo{requestRepo: requestRepo{snapshot: coursegraph.Snapshot{Status: "ready"}}, saved: &saved, sheet: &sheet, queued: tc.queued}
-			_, err := New(repo, nil, nil, nil, nil, read).ImportMap(context.Background(), admin, "subject", "map.xlsx", nil)
+			_, err := New(repo, nil, nil, nil, nil, read).ImportMap(ctx, admin, "subject", "map.xlsx", nil)
 			if tc.queued && err != nil {
 				t.Fatal(err)
 			}
@@ -500,19 +499,22 @@ func TestImportMapLogsFallbackCriteriaOnlyAfterSaving(t *testing.T) {
 				t.Fatalf("expected rejected import, got %v", err)
 			}
 			if !tc.missing || !tc.queued {
-				if output.Len() != 0 {
-					t.Fatalf("unexpected warning: %s", output.String())
+				if logs.Len() != 0 {
+					t.Fatalf("unexpected warning: %v", logs.All())
 				}
 				return
 			}
-			lines := strings.Split(strings.TrimSpace(output.String()), "\n")
-			if len(lines) != 2 {
-				t.Fatalf("expected one warning per affected task: %s", output.String())
+			if logs.Len() != 2 {
+				t.Fatalf("expected one warning per affected task: %v", logs.All())
 			}
-			for i, row := range []string{"row=2", "row=4"} {
-				for _, field := range []string{"WARN", `subject_id="subject"`, `filename="map.xlsx"`, `sheet="Карта"`, row, `column="Задание 1"`, `message="Критерии не заданы: используются общие критерии корректности и покрытия вопроса."`} {
-					if !strings.Contains(lines[i], field) {
-						t.Errorf("missing %s in warning: %s", field, lines[i])
+			for i, row := range []int64{2, 4} {
+				fields := logs.All()[i].ContextMap()
+				for key, want := range map[string]any{
+					"subject_id": "subject", "filename": "map.xlsx", "sheet": "Карта", "row": row, "column": "Задание 1",
+					"warning": "Критерии не заданы: используются общие критерии корректности и покрытия вопроса.",
+				} {
+					if fields[key] != want {
+						t.Errorf("%s = %v, want %v", key, fields[key], want)
 					}
 				}
 			}

@@ -10,11 +10,9 @@ import (
 	"time"
 
 	"go.uber.org/zap"
-	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
-	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 
 	llmgatewayv1 "github.com/AskarKasimov/ai-tutor/services/shared/gen/go/llmgateway/v1"
@@ -23,6 +21,7 @@ import (
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/resultsummary"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/features/geek/application"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/httpx"
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/llmgateway"
 )
 
 // Gateway calls the LLM gateway over gRPC (llmgateway.v1.Gateway/Complete):
@@ -42,6 +41,7 @@ func NewGateway(client llmgatewayv1.GatewayClient, timeout time.Duration) *Gatew
 func Dial(address string, timeout time.Duration) (*Gateway, *grpc.ClientConn, error) {
 	conn, err := grpc.NewClient(address,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithUnaryInterceptor(llmgateway.ClientInterceptor),
 		grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(40<<20)),
 	)
 	if err != nil {
@@ -282,7 +282,7 @@ func (g *Gateway) Feedback(ctx context.Context, r application.FeedbackRequest) (
 // A call the student waits for is urgent: the gateway runs it before queued
 // background work (graph building, translation) on any free compatible instance.
 func (g *Gateway) complete(ctx context.Context, operation string, level llmgatewayv1.Complexity, urgent bool, prompt string, parse func([]byte) error) error {
-	logger := httpx.LoggerFromContext(ctx).With(zap.String("llm_operation", operation), zap.String("complexity", level.String()), zap.Bool("urgent", urgent))
+	logger := httpx.LoggerFromContext(ctx).With(zap.String("llm_operation", operation))
 	system := systemPrompt
 	if operation == "name_intent" {
 		system = nameIntentPrompt
@@ -329,16 +329,16 @@ func (g *Gateway) complete(ctx context.Context, operation string, level llmgatew
 	}
 	var last error
 	for attempt := 1; attempt <= 2; attempt++ {
-		started := time.Now()
-		content, requestID, err := g.call(ctx, request)
-		logger.Info("llm call", zap.Int("attempt", attempt), zap.String("gateway_request_id", requestID),
-			zap.Duration("duration", time.Since(started)), zap.String("prompt", prompt), zap.String("response", content), zap.Error(err))
+		attemptLogger := logger.With(zap.Int("attempt", attempt))
+		content, requestID, err := g.call(httpx.WithLogger(ctx, attemptLogger), request)
 		if err != nil {
+			attemptLogger.Warn("llm answer rejected", zap.String("gateway_request_id", requestID), zap.Error(err))
 			return err
 		}
 		if err = parse([]byte(stripFence(content))); err == nil {
 			return nil
 		}
+		attemptLogger.Warn("llm answer rejected", zap.String("gateway_request_id", requestID), zap.Error(err))
 		last = fmt.Errorf("invalid model answer: %w", err)
 		if attempt == 1 && (strings.HasPrefix(operation, "evaluate_rubric:") || operation == "review_rubric") {
 			request.Messages = append(request.Messages,
@@ -362,7 +362,7 @@ func (g *Gateway) call(ctx context.Context, request *llmgatewayv1.CompleteReques
 	var header metadata.MD
 	response, err := g.client.Complete(ctx, request, grpc.Header(&header))
 	if err != nil {
-		return "", failedRequestID(header, err), fmt.Errorf("call LLM gateway: %w", err)
+		return "", llmgateway.RequestID(header, err), fmt.Errorf("call LLM gateway: %w", err)
 	}
 	var completion struct {
 		Choices []struct {
@@ -380,23 +380,6 @@ func (g *Gateway) call(ctx context.Context, request *llmgatewayv1.CompleteReques
 		return choice.Message.Content, response.GetRequestId(), errors.New("LLM answer was cut by the token limit")
 	}
 	return choice.Message.Content, response.GetRequestId(), nil
-}
-
-// failedRequestID is the gateway request of a failed call: from the
-// x-request-id header, else from the request_id of the error's ErrorInfo.
-// A transport failure before the gateway answered has none.
-func failedRequestID(header metadata.MD, err error) string {
-	if ids := header.Get("x-request-id"); len(ids) > 0 {
-		return ids[0]
-	}
-	if s, ok := status.FromError(err); ok {
-		for _, detail := range s.Details() {
-			if info, ok := detail.(*errdetails.ErrorInfo); ok && info.GetMetadata()["request_id"] != "" {
-				return info.GetMetadata()["request_id"]
-			}
-		}
-	}
-	return ""
 }
 
 // stripFence removes a Markdown code fence some models put around JSON.

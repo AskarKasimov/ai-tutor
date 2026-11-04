@@ -1,5 +1,7 @@
 server:
   port: 8000
+logging:
+  level: info
 llm_gateway:
   address: "llm-gateway:8011"
   timeout: 300s

@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -55,12 +56,18 @@ func providerError(err error) error {
 	return fault.New(fault.Unavailable, "MODEL_UNAVAILABLE", "Сервис оценивания недоступен.")
 }
 
-func invalidModelResponse(message string) error {
-	return fault.New(fault.Upstream, "INVALID_MODEL_RESPONSE", message)
+// The cause is logged and never reaches the client. It names the format problem
+// without the model's text: JSON decoding errors quote field names and types.
+func invalidModelResponse(message string, cause error) error {
+	return fault.New(fault.Upstream, "INVALID_MODEL_RESPONSE", message).WithCause(cause)
 }
 
 func invalidGradingContext() error {
 	return fault.New(fault.Invalid, "INVALID_GRADING_CONTEXT", "Контекст оценивания содержит некорректную роль или шкалу.")
+}
+
+func incompleteCompletion[T any](content []byte, choices []T) error {
+	return fmt.Errorf("completion of %d bytes with %d choices is too large, malformed, empty or unfinished", len(content), len(choices))
 }
 
 func (c *Client) Grade(ctx context.Context, gradingContext application.GradingContext, answer string) (application.Evaluation, error) {
@@ -154,7 +161,7 @@ func (c *Client) Grade(ctx context.Context, gradingContext application.GradingCo
 		} `json:"choices"`
 	}
 	if len(content) > 64*1024 || json.Unmarshal(content, &completion) != nil || len(completion.Choices) != 1 || completion.Choices[0].Message.Content == nil || completion.Choices[0].FinishReason != "stop" {
-		return application.Evaluation{}, invalidModelResponse("Модель вернула неполный ответ.")
+		return application.Evaluation{}, invalidModelResponse("Модель вернула неполный ответ.", incompleteCompletion(content, completion.Choices))
 	}
 	type criterionResultDTO struct {
 		Key         *string `json:"key"`
@@ -169,13 +176,19 @@ func (c *Client) Grade(ctx context.Context, gradingContext application.GradingCo
 	}
 	decoder := json.NewDecoder(strings.NewReader(*completion.Choices[0].Message.Content))
 	decoder.DisallowUnknownFields()
-	if decoder.Decode(&result) != nil || decoder.Decode(new(any)) != io.EOF || result.Score == nil || result.Verdict == nil {
-		return application.Evaluation{}, invalidModelResponse("Модель вернула некорректный JSON.")
+	if err := decoder.Decode(&result); err != nil {
+		return application.Evaluation{}, invalidModelResponse("Модель вернула некорректный JSON.", err)
+	}
+	if decoder.Decode(new(any)) != io.EOF {
+		return application.Evaluation{}, invalidModelResponse("Модель вернула некорректный JSON.", errors.New("content after the JSON object"))
+	}
+	if result.Score == nil || result.Verdict == nil {
+		return application.Evaluation{}, invalidModelResponse("Модель вернула некорректный JSON.", errors.New("score or verdict is missing"))
 	}
 	criterionResults := make([]application.CriterionResult, len(result.CriterionResults))
 	for i, item := range result.CriterionResults {
 		if item.Key == nil || item.Satisfied == nil || item.Explanation == nil {
-			return application.Evaluation{}, invalidModelResponse("Модель не указала обязательные поля результата критерия.")
+			return application.Evaluation{}, invalidModelResponse("Модель не указала обязательные поля результата критерия.", fmt.Errorf("criterion_results[%d] lacks a required field", i))
 		}
 		criterionResults[i] = application.CriterionResult{
 			Key:         *item.Key,

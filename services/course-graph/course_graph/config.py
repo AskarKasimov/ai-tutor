@@ -6,7 +6,7 @@ import os
 import re
 from functools import lru_cache
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Literal
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt, StrictStr, field_validator
@@ -26,6 +26,10 @@ class SettingsModel(BaseModel):
 
 class ServerSettings(SettingsModel):
     port: Annotated[StrictInt, Field(ge=1, le=65535)]
+
+
+class LoggingSettings(SettingsModel):
+    level: Literal["debug", "info", "warn", "error"]
 
 
 class GatewaySettings(SettingsModel):
@@ -88,6 +92,7 @@ class CacheSettings(SettingsModel):
 
 class Settings(SettingsModel):
     server: ServerSettings
+    logging: LoggingSettings
     llm_gateway: GatewaySettings
     embedding: EmbeddingSettings
     topics: TopicSettings

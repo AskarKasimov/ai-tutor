@@ -152,7 +152,7 @@ LLM gateway централизует обращения к моделям и р�
 Нужны Docker Compose и mkcert.
 
 1. Создайте `.env` командой `cp .env.example .env` и замените значения `DB_PASSWORD`, `S3_ACCESS_KEY` и `S3_SECRET_KEY` на собственные.
-2. В `services/llm-gateway/config/dev.yaml` настройте доступные адреса и токены моделей. Для голосового ввода и озвучки укажите доступные STT/TTS-сервисы в `services/backend/config/dev.yaml`. Настройки course-graph находятся в `services/course-graph/config/dev.yaml`.
+2. В `services/llm-gateway/config/dev.yaml` настройте доступные адреса и токены моделей. Для голосового ввода и озвучки укажите доступные STT/TTS-сервисы в `services/backend/config/dev.yaml`. Там же выбираются модель STT, обработка длинных записей и режим референса и промпта TTS; требования к VAD и кэшу описаны в README backend. Настройки course-graph находятся в `services/course-graph/config/dev.yaml`.
 3. Запустите `./dev.sh -d`. По умолчанию приложение доступно на `https://localhost:8443`, админка — на `https://localhost:8443/admin/courses`; порт задаётся в `.env`.
 4. Проверьте backend и БД: `curl -k https://localhost:8443/api/v1/health` (при другом порте замените `8443`). Доступность моделей и S3 эта проверка не подтверждает.
 

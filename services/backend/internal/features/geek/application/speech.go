@@ -52,8 +52,7 @@ func SplitSpeech(text string, limit int) []string {
 type SpeechCache struct {
 	voice Synthesizer
 	audio AudioStore
-	// name identifies the TTS settings; a part's key depends on it, so new
-	// settings never return audio made with the old ones.
+	// name identifies the TTS settings used to namespace all cached audio.
 	name string
 	// flights joins concurrent misses of one key into one synthesis: the
 	// speech service works through requests one by one, so a duplicate costs
@@ -70,7 +69,7 @@ func NewSpeechCache(voice Synthesizer, audio AudioStore, name string) *SpeechCac
 func (c *SpeechCache) Part(ctx context.Context, text string) ([]byte, error) {
 	text = strings.TrimSpace(text)
 	sum := sha256.Sum256([]byte(c.name + "\n" + text))
-	return c.Get(ctx, "geek/speech/"+hex.EncodeToString(sum[:])+".wav", text)
+	return c.get(ctx, "geek/speech/"+hex.EncodeToString(sum[:])+".wav", text)
 }
 
 // Get returns the WAV cached under key or synthesizes text by parts within
@@ -79,6 +78,12 @@ func (c *SpeechCache) Part(ctx context.Context, text string) ([]byte, error) {
 // so a listener who leaves does not fail the others; each caller still stops
 // waiting when its own context ends.
 func (c *SpeechCache) Get(ctx context.Context, key, text string) ([]byte, error) {
+	sum := sha256.Sum256([]byte(c.name))
+	key = "geek/voice/" + hex.EncodeToString(sum[:]) + "/" + key
+	return c.get(ctx, key, text)
+}
+
+func (c *SpeechCache) get(ctx context.Context, key, text string) ([]byte, error) {
 	result := c.flights.DoChan(key, func() (any, error) {
 		return c.load(context.WithoutCancel(ctx), key, text)
 	})

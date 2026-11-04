@@ -3,7 +3,6 @@ package application
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"strings"
 	"testing"
 
@@ -55,14 +54,13 @@ func TestConversationDoesNotSpendAttemptOrHintOrChangeScores(t *testing.T) {
 	}
 }
 
-func TestNameRecognitionFailureDoesNotBlockAnswer(t *testing.T) {
+func TestNameInAnswerIsNotRecognized(t *testing.T) {
 	f := newFixture(t)
-	f.examiner.nameFail = errors.New("name service failed")
 	s, _, _ := f.service.Start(context.Background(), "student", "subject", "start")
 	id := s.Exam.Current.NodeID
-	s = f.answer(t, s, Answer{Text: "сильно"})
-	if s.Exam.Nodes[id].Grade == nil || *s.Exam.Nodes[id].Grade != exam.GradeA {
-		t.Fatal("name recognition failure blocked grading")
+	s = f.answer(t, s, Answer{Text: "Меня зовут Кирилл, сильно"})
+	if s.PreferredName != "" || s.Exam.Nodes[id].Grade == nil || *s.Exam.Nodes[id].Grade != exam.GradeA {
+		t.Fatal("name was stored or answer was not graded")
 	}
 }
 
@@ -73,45 +71,6 @@ func TestMixedAnswerAndAddressCorrectionStillGradesTheAnswer(t *testing.T) {
 	s = f.answer(t, s, Answer{Text: "сильно; женский род"})
 	if s.AddressPreference != exam.AddressNeutral || *s.Exam.Nodes[id].Grade != exam.GradeA {
 		t.Fatal("mixed answer lost either knowledge or preference")
-	}
-}
-
-func TestNameRequestDoesNotSpendAttemptAndPersistsForFeedback(t *testing.T) {
-	f := newFixture(t)
-	s, _, _ := f.service.Start(context.Background(), "student", "subject", "start")
-	before, _ := json.Marshal(s.Exam)
-	s = f.answer(t, s, Answer{Text: "Обращайся ко мне, Андрюха. Андрюха."})
-	after, _ := json.Marshal(s.Exam)
-	if string(before) != string(after) || s.PreferredName != "Андрюха" || !s.Turns[len(s.Turns)-1].Meta {
-		t.Fatalf("name request changed attempt: %+v", s)
-	}
-	s = f.answer(t, s, Answer{Text: "сильно"})
-	if f.examiner.feedbacks[len(f.examiner.feedbacks)-1].PreferredName != "Андрюха" {
-		t.Fatal("name missing from feedback")
-	}
-}
-
-func TestNameWithAnswerDoesNotHideAnswer(t *testing.T) {
-	f := newFixture(t)
-	s, _, _ := f.service.Start(context.Background(), "student", "subject", "start")
-	id := s.Exam.Current.NodeID
-	s = f.answer(t, s, Answer{Text: "Меня зовут Кирилл, сильно"})
-	if s.PreferredName != "Кирилл" || s.Exam.Nodes[id].Grade == nil || *s.Exam.Nodes[id].Grade != exam.GradeA {
-		t.Fatal("name or answer lost")
-	}
-	last := s.Turns[len(s.Turns)-1]
-	if !strings.HasPrefix(last.Reply, "Хорошо, буду звать тебя Кирилл.") {
-		t.Fatalf("name was not confirmed before feedback: %+v", last)
-	}
-}
-
-func TestNameWithPartialAnswerKeepsFollowup(t *testing.T) {
-	f := newFixture(t)
-	s, _, _ := f.service.Start(context.Background(), "student", "subject", "start")
-	s = f.answer(t, s, Answer{Text: "Меня зовут Никита Зайгайнов, частично"})
-	last := s.Turns[len(s.Turns)-1]
-	if last.Kind != exam.KindFollowup || !strings.HasPrefix(last.Reply, "Хорошо, буду звать тебя Никита Зайгайнов.") || s.PreferredName != "Никита Зайгайнов" {
-		t.Fatalf("name confirmation or followup missing: %+v", last)
 	}
 }
 
@@ -138,17 +97,6 @@ func TestWholeAudioUsesPreparedQuestionAndFixedSpeechCache(t *testing.T) {
 	calls = len(f.voice.calls)
 	if _, err := f.service.TurnAudio(ctx, "student", s.ID, reply.ID, AudioWhole); err != nil || len(f.voice.calls) != calls {
 		t.Fatalf("prepared reply cache missed: %v", err)
-	}
-}
-
-func TestMultiwordNameIsAcknowledgedAndKept(t *testing.T) {
-	f := newFixture(t)
-	s, _, _ := f.service.Start(context.Background(), "student", "subject", "start")
-	before, _ := json.Marshal(s.Exam)
-	s = f.answer(t, s, Answer{Text: "Меня зовут философ Ягон Дон"})
-	after, _ := json.Marshal(s.Exam)
-	if string(before) != string(after) || s.PreferredName != "философ Ягон Дон" || !strings.Contains(s.Turns[len(s.Turns)-1].Text, "философ Ягон Дон") {
-		t.Fatal("multiword name changed the attempt or was not acknowledged")
 	}
 }
 

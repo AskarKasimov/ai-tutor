@@ -208,7 +208,7 @@ func (g *Gateway) Evaluate(ctx context.Context, r application.EvaluationRequest)
 			if !e.Criteria.Valid() {
 				return fmt.Errorf("criteria out of range: %+v", e.Criteria)
 			}
-		case exam.VerdictDontKnow, exam.VerdictInsufficient, exam.VerdictHintRequested, exam.VerdictAddressCorrection, exam.VerdictClarifyQuestion, exam.VerdictPause:
+		case exam.VerdictDontKnow, exam.VerdictHintRequested, exam.VerdictAddressCorrection, exam.VerdictClarifyQuestion, exam.VerdictPause:
 		default:
 			return fmt.Errorf("unknown verdict %q", out.Verdict)
 		}

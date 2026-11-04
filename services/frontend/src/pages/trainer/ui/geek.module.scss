@@ -401,8 +401,8 @@
     background: var(--app-error);
   }
   &[data-tone='clear'] {
-    background: #000;
-    color: var(--app-error);
+    background: var(--app-error);
+    color: white;
   }
 }
 .timer {

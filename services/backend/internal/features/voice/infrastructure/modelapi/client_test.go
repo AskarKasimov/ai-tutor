@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -12,6 +13,8 @@ import (
 	"reflect"
 	"testing"
 	"time"
+
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/fault"
 )
 
 func TestSynthesizeSendsConfiguredVoiceSettings(t *testing.T) {
@@ -202,5 +205,25 @@ func TestSynthesizeSendsVoiceMode(t *testing.T) {
 	_, err := New(server.Client(), "", server.URL, time.Second, TTSOptions{UseReference: &disabled, UsePrompt: &enabled}).Synthesize(context.Background(), "Привет")
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestRecognizeDistinguishesInvalidModelFromInvalidAudio(t *testing.T) {
+	for _, tc := range []struct{ body, code string }{
+		{`{"detail":"Unsupported ASR model: invalid_model"}`, "PROCESSING_UNAVAILABLE"},
+		{`{"detail":"Unsupported or invalid audio"}`, "INVALID_AUDIO"},
+	} {
+		t.Run(tc.code, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusUnprocessableEntity)
+				_, _ = w.Write([]byte(tc.body))
+			}))
+			defer server.Close()
+			_, err := New(server.Client(), server.URL, "", time.Second, TTSOptions{}).WithSTTOptions("invalid_model", false).Recognize(context.Background(), testWAV(), "audio/wav")
+			var got *fault.Error
+			if !errors.As(err, &got) || got.Code != tc.code {
+				t.Fatalf("error = %v, want %s", err, tc.code)
+			}
+		})
 	}
 }

@@ -66,6 +66,14 @@ func providerError(err error) error {
 // statusError is the fault for a provider status with the start of its body.
 func statusError(resp *http.Response, failureCode string, stt bool) error {
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+	if stt && resp.StatusCode == http.StatusUnprocessableEntity {
+		var detail struct {
+			Detail string `json:"detail"`
+		}
+		if json.Unmarshal(body, &detail) == nil && strings.HasPrefix(detail.Detail, "Unsupported ASR model:") {
+			return errors.Join(fault.New(fault.Unavailable, "PROCESSING_UNAVAILABLE", "Голосовой сервис временно недоступен."), fmt.Errorf("provider answered %d: %s", resp.StatusCode, strings.TrimSpace(string(body))))
+		}
+	}
 	return errors.Join(providerStatus(resp.StatusCode, failureCode, stt),
 		fmt.Errorf("provider answered %d: %s", resp.StatusCode, strings.TrimSpace(string(body))))
 }

@@ -94,7 +94,7 @@ func TestVoiceSynthesisWAVAndUnicodeValidation(t *testing.T) {
 		}
 		var req map[string]any
 		_ = json.NewDecoder(r.Body).Decode(&req)
-		if len(req) != 6 || req["use_reference"] != true || req["use_prompt"] != false || req["text"] != "(calm, composed, friendly tone; speak evenly, without irritation or anger) "+strings.Repeat("я", 500)+"!!!" || req["seed"] != float64(17) || req["cfg_value"] != float64(2) || req["inference_timesteps"] != float64(50) {
+		if len(req) != 6 || req["use_reference"] != true || req["use_prompt"] != false || req["text"] != strings.Repeat("я", 500)+"!!!" || req["seed"] != float64(17) || req["cfg_value"] != float64(2) || req["inference_timesteps"] != float64(50) {
 			t.Error("provider payload does not match configured TTS settings")
 			w.WriteHeader(500)
 			return

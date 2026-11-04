@@ -325,13 +325,15 @@ const learningFindReadyTaskAudioByInstruction = `-- name: LearningFindReadyTaskA
 SELECT id, instruction, object_key, bucket, storage_uri, audio_url, status, attempts
 FROM learning_audio_assets
 WHERE instruction = $1 AND id <> $2 AND status = 'ready'
+  AND starts_with(object_key, $3::text)
 ORDER BY updated_at DESC, id
 LIMIT 1
 `
 
 type LearningFindReadyTaskAudioByInstructionParams struct {
-	Instruction string
-	ID          string
+	Instruction  string
+	ID           string
+	ObjectPrefix string
 }
 
 type LearningFindReadyTaskAudioByInstructionRow struct {
@@ -347,7 +349,7 @@ type LearningFindReadyTaskAudioByInstructionRow struct {
 
 // A ready recording of the same instruction can be copied instead of synthesized.
 func (q *Queries) LearningFindReadyTaskAudioByInstruction(ctx context.Context, arg LearningFindReadyTaskAudioByInstructionParams) (LearningFindReadyTaskAudioByInstructionRow, error) {
-	row := q.db.QueryRow(ctx, learningFindReadyTaskAudioByInstruction, arg.Instruction, arg.ID)
+	row := q.db.QueryRow(ctx, learningFindReadyTaskAudioByInstruction, arg.Instruction, arg.ID, arg.ObjectPrefix)
 	var i LearningFindReadyTaskAudioByInstructionRow
 	err := row.Scan(
 		&i.ID,

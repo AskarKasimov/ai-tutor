@@ -241,6 +241,7 @@ WHERE learning_audio_assets.id = sqlc.arg(id) AND status = 'processing' AND clai
 SELECT id, instruction, object_key, bucket, storage_uri, audio_url, status, attempts
 FROM learning_audio_assets
 WHERE instruction = $1 AND id <> $2 AND status = 'ready'
+  AND starts_with(object_key, sqlc.arg(object_prefix)::text)
 ORDER BY updated_at DESC, id
 LIMIT 1;
 

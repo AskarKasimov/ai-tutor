@@ -197,3 +197,49 @@ func TestSkipDoesNotRouteAsPause(t *testing.T) {
 		}
 	}
 }
+
+func TestRubricAcceptsNumbersInModelForms(t *testing.T) {
+	review := `{"answer_complete":true,"marks":[{"id":"r1","score":1,"evidence_lines":[2],"reason":"Все элементы"}]}`
+	n := exam.Node{ID: "a", Title: "Тема", Questions: []string{"Назови элементы"}, AssessmentGuidance: "Балл (макс. 1): 1 — все элементы; 0 — нет."}
+	dialog := []exam.Turn{{Line: 1, Speaker: exam.SpeakerGeek, Text: "Назови элементы"}, {Line: 2, Speaker: exam.SpeakerStudent, Text: "Элементы"}}
+	mark := func(score, lines string) string {
+		return `{"address_preference":"","verdict":"answered","answer_complete":true,"marks":[{"id":"r1","score":` + score + `,"evidence_lines":` + lines + `,"quote":"Элементы","reason":"Все элементы"}]}`
+	}
+	for _, c := range []struct{ name, score, lines string }{
+		{"quoted line", `1`, `["2"]`},
+		{"quoted score", `"1"`, `[2]`},
+		{"float score", `1.0`, `[2]`},
+		{"quoted float line", `1`, `["2.0"]`},
+		{"lone number", `1`, `2`},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			f := &fakeGateway{answers: []string{`{"verdict":"answered","address_preference":""}`, mark(c.score, c.lines), review}}
+			g := serve(t, f, time.Second)
+			got, err := g.Evaluate(context.Background(), application.EvaluationRequest{Node: n, Kind: exam.KindQuestion, Dialogue: dialog})
+			if err != nil || got.Rubric == nil || len(f.requests) != 3 {
+				t.Fatalf("result=%+v err=%v requests=%d", got, err, len(f.requests))
+			}
+			m := got.Rubric.Items[0]
+			if m.Score != 1 || len(m.Evidence) != 1 || m.Evidence[0] != 2 {
+				t.Fatalf("mark = %+v", m)
+			}
+		})
+	}
+	for _, c := range []struct{ name, score, lines string }{
+		{"fraction line", `1`, `[2.5]`},
+		{"word line", `1`, `["два"]`},
+		{"null line", `1`, `[null]`},
+		{"fraction score", `1.5`, `[2]`},
+		{"word score", `"один"`, `[2]`},
+		{"bool score", `true`, `[2]`},
+	} {
+		t.Run("rejects "+c.name, func(t *testing.T) {
+			bad := mark(c.score, c.lines)
+			f := &fakeGateway{answers: []string{`{"verdict":"answered","address_preference":""}`, bad, bad}}
+			g := serve(t, f, time.Second)
+			if _, err := g.Evaluate(context.Background(), application.EvaluationRequest{Node: n, Kind: exam.KindQuestion, Dialogue: dialog}); err == nil {
+				t.Fatal("invalid number accepted")
+			}
+		})
+	}
+}

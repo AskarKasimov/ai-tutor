@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"slices"
+	"strconv"
 
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/exam"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/features/geek/application"
@@ -37,11 +39,61 @@ answer_complete=true только если все явно запрошенны�
 }
 
 type rubricMarkJSON struct {
-	ID       string `json:"id"`
-	Score    *int   `json:"score"`
-	Evidence []int  `json:"evidence_lines"`
-	Reason   string `json:"reason"`
-	Quote    string `json:"quote"`
+	ID       string    `json:"id"`
+	Score    *wholeInt `json:"score"`
+	Evidence wholeInts `json:"evidence_lines"`
+	Reason   string    `json:"reason"`
+	Quote    string    `json:"quote"`
+}
+
+// wholeInt accepts an integer written as 1, 1.0 or "1": models quote numbers
+// the prompt template shows without a type. Fractions, words, booleans and
+// overflow stay invalid.
+type wholeInt int
+
+func (w *wholeInt) UnmarshalJSON(data []byte) error {
+	// A null inside a list reaches this method; json.Number would turn it into 0.
+	if string(data) == "null" {
+		return errors.New("not an integer: null")
+	}
+	var n json.Number
+	if err := json.Unmarshal(data, &n); err != nil {
+		return err
+	}
+	if v, err := strconv.Atoi(n.String()); err == nil {
+		*w = wholeInt(v)
+		return nil
+	}
+	f, err := strconv.ParseFloat(n.String(), 64)
+	if err != nil || f != math.Trunc(f) || math.Abs(f) > 1<<31 {
+		return fmt.Errorf("not an integer: %s", data)
+	}
+	*w = wholeInt(f)
+	return nil
+}
+
+// wholeInts is a list of line numbers; a lone number counts as a list of one.
+type wholeInts []int
+
+func (w *wholeInts) UnmarshalJSON(data []byte) error {
+	if string(data) == "null" {
+		*w = nil
+		return nil
+	}
+	var list []wholeInt
+	if err := json.Unmarshal(data, &list); err != nil {
+		var one wholeInt
+		if json.Unmarshal(data, &one) != nil {
+			return err
+		}
+		list = []wholeInt{one}
+	}
+	out := make([]int, len(list))
+	for i, v := range list {
+		out[i] = int(v)
+	}
+	*w = out
+	return nil
 }
 
 func rubricTemplate(spec []exam.RubricItem) map[string]any {
@@ -66,7 +118,7 @@ func readRubricMarks(ctx context.Context, spec []exam.RubricItem, marks []rubric
 					return nil, nil, errors.New("duplicate rubric id or missing score")
 				}
 				found = true
-				result.Items = append(result.Items, exam.RubricMark{RubricItem: item, Score: *m.Score, Evidence: m.Evidence, Reason: m.Reason, Quote: m.Quote})
+				result.Items = append(result.Items, exam.RubricMark{RubricItem: item, Score: int(*m.Score), Evidence: m.Evidence, Reason: m.Reason, Quote: m.Quote})
 				for _, line := range m.Evidence {
 					if !slices.Contains(evidence, line) {
 						evidence = append(evidence, line)

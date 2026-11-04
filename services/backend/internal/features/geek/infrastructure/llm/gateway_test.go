@@ -144,6 +144,24 @@ func TestGatewayEvaluatesAndRetriesAnInvalidAnswerOnce(t *testing.T) {
 	}
 }
 
+func TestGatewayCriteriaAcceptIntegerForms(t *testing.T) {
+	for _, k1 := range []string{`"2"`, `2.0`, `2.5`} {
+		t.Run(k1, func(t *testing.T) {
+			answer := `{"verdict":"answered","answer_complete":true,"criteria":{"k1":` + k1 + `,"k2":2,"k3":null,"k4":null},"evidence_lines":[2]}`
+			f := &fakeGateway{answers: []string{answer, answer}}
+			g := serve(t, f, time.Second)
+			got, err := g.Evaluate(context.Background(), application.EvaluationRequest{Kind: exam.KindQuestion, Node: node, Dialogue: turns})
+			if k1 == `2.5` {
+				if err == nil {
+					t.Fatal("fractional k1 accepted")
+				}
+			} else if err != nil || got.Criteria.K1 != 2 {
+				t.Fatalf("evaluation = %+v, %v", got, err)
+			}
+		})
+	}
+}
+
 func TestGatewayEvidenceAcceptsOnlyIntegerLineNumbers(t *testing.T) {
 	for _, evidence := range []string{`[2]`, `["2"]`, `["2.5"]`, `[2.5]`, `["wrong"]`, `[null]`, `["999999999999999999999999999999"]`} {
 		t.Run(evidence, func(t *testing.T) {

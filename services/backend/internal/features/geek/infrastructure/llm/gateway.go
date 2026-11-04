@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"strconv"
 	"strings"
 	"time"
 
@@ -156,27 +155,20 @@ func (g *Gateway) Evaluate(ctx context.Context, r application.EvaluationRequest)
 			AnswerComplete *bool        `json:"answer_complete"`
 			Verdict        exam.Verdict `json:"verdict"`
 			Criteria       *struct {
-				K1 *int            `json:"k1"`
-				K2 *int            `json:"k2"`
+				K1 *wholeInt       `json:"k1"`
+				K2 *wholeInt       `json:"k2"`
 				K3 json.RawMessage `json:"k3"`
 				K4 json.RawMessage `json:"k4"`
 			} `json:"criteria"`
-			Evidence          []json.Number          `json:"evidence_lines"`
+			Evidence          wholeInts              `json:"evidence_lines"`
 			AddressPreference exam.AddressPreference `json:"address_preference"`
 		}
 		if err := json.Unmarshal(content, &out); err != nil {
 			return err
 		}
-		// Models sometimes quote line numbers. Accept the same integer value,
-		// while rejecting fractions, non-numeric strings and overflow.
-		e := exam.Evaluation{Verdict: out.Verdict}
-		for _, number := range out.Evidence {
-			line, err := strconv.Atoi(number.String())
-			if err != nil {
-				return fmt.Errorf("invalid evidence line: %w", err)
-			}
-			e.Evidence = append(e.Evidence, line)
-		}
+		// Models sometimes quote line numbers. wholeInts accepts the same
+		// integer value, while rejecting fractions, non-numeric strings and overflow.
+		e := exam.Evaluation{Verdict: out.Verdict, Evidence: out.Evidence}
 		switch out.Verdict {
 		case exam.VerdictAnswered:
 			if out.AnswerComplete == nil {
@@ -187,7 +179,7 @@ func (g *Gateway) Evaluate(ctx context.Context, r application.EvaluationRequest)
 			if k == nil || k.K1 == nil || k.K2 == nil || len(k.K3) == 0 || len(k.K4) == 0 {
 				return errors.New("missing criteria")
 			}
-			e.Criteria = exam.Criteria{K1: *k.K1, K2: *k.K2}
+			e.Criteria = exam.Criteria{K1: int(*k.K1), K2: int(*k.K2)}
 			for _, field := range []struct {
 				raw        json.RawMessage
 				value      *int

@@ -399,7 +399,7 @@ func (s *Service) TurnAudio(ctx context.Context, ownerID, id, turnID string, par
 				}
 			}
 		}
-		return s.speech.Get(ctx, "geek/"+session.ID+"/"+turn.ID+".wav", turn.Text)
+		return s.speech.Get(ctx, "geek/v2/"+session.ID+"/"+turn.ID+".wav", turn.Text)
 	case AudioReply, AudioQuestion:
 		reply, question := turn.Parts()
 		text := question

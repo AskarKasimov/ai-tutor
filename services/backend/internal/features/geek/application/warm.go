@@ -7,8 +7,6 @@ import (
 	"time"
 
 	"go.uber.org/zap"
-
-	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/exam"
 )
 
 // Retry pauses of a text that failed: they grow from warmRetryMin to
@@ -135,25 +133,4 @@ func (w *Warmer) retry(text string) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	w.queue = append(w.queue[1:], text)
-}
-
-// PreparedQuestions are the prepared texts of a graph that Geek asks as is:
-// the main question of each topic and its rephrase, or those of each variant.
-func PreparedQuestions(g exam.Graph) []string {
-	out := []string{}
-	for _, n := range g.Nodes {
-		if len(n.Variants) > 0 {
-			for _, v := range n.Variants {
-				out = append(out, PreparedQuestions(exam.Graph{Nodes: []exam.Node{n.WithVariant(v)}})...)
-			}
-			continue
-		}
-		if q := n.MainQuestion(); q != "" {
-			out = append(out, q)
-		}
-		if r := n.PreparedRephrase(); r != "" {
-			out = append(out, r)
-		}
-	}
-	return out
 }

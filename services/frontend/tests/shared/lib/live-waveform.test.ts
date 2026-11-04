@@ -1,11 +1,11 @@
 import { afterEach, expect, it, vi } from 'vitest'
 import WaveSurfer from 'wavesurfer.js'
-import RecordPlugin from 'wavesurfer.js/dist/plugins/record.esm.js'
 import { createVoiceWaveform } from '@/shared/lib'
+import { monitorVoiceStream } from '@/shared/lib/monitor-voice-stream'
 
 vi.mock('wavesurfer.js', () => ({ default: { create: vi.fn() } }))
-vi.mock('wavesurfer.js/dist/plugins/record.esm.js', () => ({
-  default: { create: vi.fn() },
+vi.mock('@/shared/lib/monitor-voice-stream', () => ({
+  monitorVoiceStream: vi.fn(),
 }))
 afterEach(() => vi.resetAllMocks())
 
@@ -14,18 +14,12 @@ function setup() {
   const loadBlob = vi.fn().mockResolvedValue(undefined)
   const setOptions = vi.fn()
   const destroy = vi.fn()
-  const onDestroy = vi.fn()
-  const pluginDestroy = vi.fn()
-  const renderMicStream = vi.fn().mockReturnValue({ onDestroy })
-  const plugin = { renderMicStream, destroy: pluginDestroy }
-  vi.mocked(RecordPlugin.create).mockReturnValue(
-    plugin as unknown as RecordPlugin,
-  )
+  const stopMonitor = vi.fn()
+  vi.mocked(monitorVoiceStream).mockReturnValue(stopMonitor)
   vi.mocked(WaveSurfer.create).mockReturnValue({
     load,
     loadBlob,
     setOptions,
-    registerPlugin: () => plugin,
     destroy,
   } as unknown as WaveSurfer)
   return {
@@ -33,14 +27,12 @@ function setup() {
     loadBlob,
     setOptions,
     destroy,
-    onDestroy,
-    pluginDestroy,
-    renderMicStream,
+    stopMonitor,
   }
 }
 
 it('keeps the same renderer when recording starts, stops and starts again', () => {
-  const { destroy, onDestroy, renderMicStream } = setup()
+  const { destroy, stopMonitor } = setup()
   const stream = {} as MediaStream
   const waveform = createVoiceWaveform(document.createElement('div'))
   waveform.setStream(stream)
@@ -48,11 +40,19 @@ it('keeps the same renderer when recording starts, stops and starts again', () =
   waveform.setStream(stream)
   expect(WaveSurfer.create).toHaveBeenCalledTimes(1)
   expect(destroy).not.toHaveBeenCalled()
-  expect(renderMicStream).toHaveBeenNthCalledWith(1, stream)
-  expect(renderMicStream).toHaveBeenNthCalledWith(2, stream)
-  expect(onDestroy).toHaveBeenCalledTimes(1)
+  expect(monitorVoiceStream).toHaveBeenNthCalledWith(
+    1,
+    stream,
+    expect.any(Function),
+  )
+  expect(monitorVoiceStream).toHaveBeenNthCalledWith(
+    2,
+    stream,
+    expect.any(Function),
+  )
+  expect(stopMonitor).toHaveBeenCalledTimes(1)
   waveform.dispose()
-  expect(onDestroy).toHaveBeenCalledTimes(2)
+  expect(stopMonitor).toHaveBeenCalledTimes(2)
   expect(destroy).toHaveBeenCalledTimes(1)
 })
 
@@ -61,27 +61,26 @@ it('renders a silent signal without starting microphone monitoring', () => {
   const waveform = createVoiceWaveform(document.createElement('div'))
   expect(load).toHaveBeenCalledWith('', [expect.any(Float32Array)], 3)
   expect(Array.from(load.mock.calls[0][1][0])).toEqual(Array(300).fill(0))
-  expect(RecordPlugin.create).not.toHaveBeenCalled()
+  expect(monitorVoiceStream).not.toHaveBeenCalled()
   waveform.dispose()
   expect(destroy).toHaveBeenCalledTimes(1)
 })
 
-it('releases visualization resources when microphone monitoring fails', () => {
-  const { destroy, renderMicStream, pluginDestroy } = setup()
-  renderMicStream.mockImplementation(() => {
+it('keeps disposal safe when microphone monitoring fails', () => {
+  const { destroy } = setup()
+  vi.mocked(monitorVoiceStream).mockImplementation(() => {
     throw new Error('audio context unavailable')
   })
   const waveform = createVoiceWaveform(document.createElement('div'))
   expect(() => waveform.setStream({} as MediaStream)).toThrow(
     'audio context unavailable',
   )
-  expect(pluginDestroy).toHaveBeenCalledTimes(1)
   waveform.dispose()
   expect(destroy).toHaveBeenCalledTimes(1)
 })
 
 it('amplifies live microphone bars and stretches a finished recording', () => {
-  const { loadBlob, setOptions } = setup()
+  const { load, loadBlob, setOptions } = setup()
   const waveform = createVoiceWaveform(document.createElement('div'), 48, 2.5)
   expect(WaveSurfer.create).toHaveBeenCalledWith(
     expect.objectContaining({ height: 48, barHeight: 2.5 }),
@@ -91,6 +90,9 @@ it('amplifies live microphone bars and stretches a finished recording', () => {
     normalize: false,
     barHeight: 2.5,
   })
+  const peaks = new Float32Array([0, 0.1, 0.25])
+  vi.mocked(monitorVoiceStream).mock.calls[0][1](peaks)
+  expect(load).toHaveBeenLastCalledWith('', [peaks], 3)
   // A recording is not redrawn while the microphone is still live.
   const audio = new Blob(['voice'])
   waveform.setAudio(audio)

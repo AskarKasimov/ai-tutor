@@ -665,7 +665,7 @@ function Composer({
             {seconds}
           </Text>
           <div className={styles.wave} aria-hidden="true">
-            <LiveWaveform stream={voice.stream} height={32} />
+            <LiveWaveform stream={voice.stream} height={32} gain={2.5} />
           </div>
           <Text className={styles.visuallyHidden} role="status">
             {t('geek.recording')}

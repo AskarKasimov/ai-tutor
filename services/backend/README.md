@@ -8,7 +8,7 @@ Go API и PostgreSQL. Команды выполняются из `services/backe
 
 Реализована диагностика Geek — устный экзамен по графу курса (раздел ниже).
 
-Учебные audio upload endpoints (`diagnostic-sessions/{id}/answers`, `training-sessions/{id}/answers`, `learning-plans/{id}/answers` и `training-sessions/{id}/exercises/{exercise_id}/chat/turns`) допускают `uploads.max_bytes` в `config/dev.yaml` плюс multipart overhead. Остальные JSON маршруты сохраняют лимит 32 KiB. Импорт `POST /learn/admin/materials` принимает до 100,000 Unicode-символов, включая корректно экранированный JSON. Готовое task audio публикует `/learn/task-audio/{id}/file`; legacy persisted `/task-audio/{same_id}/file` нормализуется в canonical URL в ответе metadata.
+Учебные audio upload endpoints (`diagnostic-sessions/{id}/answers`, `training-sessions/{id}/answers`, `learning-plans/{id}/answers` и `training-sessions/{id}/exercises/{exercise_id}/chat/turns`) допускают `uploads.max_bytes` в `config/dev.yaml` плюс multipart overhead. Остальные JSON маршруты сохраняют лимит 32 KiB. Импорт `POST /learn/admin/materials` принимает до 100,000 Unicode-символов, включая корректно экранированный JSON. Готовое task audio публикует `/learn/task-audio/{id}/file`; другой сохранённый URL не принимается.
 
 Запланированы (planned в [OpenAPI](../../api/openapi.yaml)):
 

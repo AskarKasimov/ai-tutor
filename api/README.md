@@ -8,8 +8,8 @@
 Материалы реализованы: `GET /exam/admin/material-kinds`, загрузка `POST` и список `GET /exam/admin/subjects/{subject_id}/materials`, правка недели/вида `PATCH .../materials/{material_id}`,
 замена PDF `PUT .../materials/{material_id}/raw`, скачивание и удаление. Загрузка
 принимает до 48 файлов; manifest `items` задаёт `client_id`, неделю и вид каждого
-файла, а `results` связывает ответ с записью очереди. Старый multipart без manifest
-сохраняет совместимость. Метаданные не запускают OCR; замена файла ставит новое
+файла, а `results` связывает ответ с записью очереди. Запрос без manifest отклоняется,
+принимаются только PDF. Метаданные не запускают OCR; замена файла ставит новое
 фоновое задание и отменяет устаревшие результаты предыдущего исходника.
 
 Граф master: `GET /exam/admin/subjects/{subject_id}/graph` возвращает snapshot со статусом,

@@ -554,7 +554,8 @@ void i18n.init({
           answerPlaceholder: 'Ответить на вопрос',
           send: 'Отправить ответ',
           record: 'Ответить голосом',
-          stopRecording: 'Остановить запись',
+          cancelRecording: 'Отменить запись',
+          sendRecording: 'Отправить запись',
           recording: 'Идёт запись',
           transcribing: 'Распознаём речь…',
           micDenied:

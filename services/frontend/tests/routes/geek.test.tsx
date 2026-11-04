@@ -779,7 +779,7 @@ it('sends a spoken answer as soon as it is transcribed', async () => {
     await screen.findByRole('button', { name: 'Ответить голосом' }),
   )
   fireEvent.click(
-    await screen.findByRole('button', { name: 'Остановить запись' }),
+    await screen.findByRole('button', { name: 'Отправить запись' }),
   )
   expect(recorder).toBeDefined()
   // The transcript is sent at once: no check or re-recording step.
@@ -882,7 +882,7 @@ it('stops Geek audio before opening the microphone and keeps it silent while rec
   const pausedBefore = FakeAudio.paused
   fireEvent.click(screen.getByRole('button', { name: 'Ответить голосом' }))
   expect(
-    await screen.findByRole('button', { name: 'Остановить запись' }),
+    await screen.findByRole('button', { name: 'Отправить запись' }),
   ).toBeVisible()
   expect(FakeAudio.paused).toBeGreaterThan(pausedBefore)
   expect(

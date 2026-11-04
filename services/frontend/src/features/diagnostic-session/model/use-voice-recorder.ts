@@ -28,6 +28,25 @@ export function useVoiceRecorder(
     if (recorder.current?.state === 'recording') recorder.current.stop()
   }, [])
 
+  const cancel = useCallback(() => {
+    generation.current += 1
+    requestingLock.current = false
+    if (timer.current) clearInterval(timer.current)
+    timer.current = null
+    const currentRecorder = recorder.current
+    const currentStream = stream.current
+    recorder.current = null
+    stream.current = null
+    currentStream?.getTracks().forEach((track) => track.stop())
+    if (currentRecorder?.state === 'recording') currentRecorder.stop()
+    setStreamState(undefined)
+    setRecording(false)
+    setRequesting(false)
+    setPreparing(false)
+    setElapsedSeconds(0)
+    setError(null)
+  }, [])
+
   const start = useCallback(async () => {
     if (
       recorder.current ||
@@ -163,5 +182,6 @@ export function useVoiceRecorder(
     error,
     start,
     stop,
+    cancel,
   }
 }

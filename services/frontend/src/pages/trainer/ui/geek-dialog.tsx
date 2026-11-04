@@ -6,6 +6,7 @@ import {
   Mic,
   Send,
   Square,
+  X,
   Volume2,
 } from 'lucide-react'
 import {
@@ -652,10 +653,21 @@ function Composer({
             type="button"
             className={styles.round}
             data-tone="stop"
-            aria-label={t('geek.stopRecording')}
+            aria-label={t('geek.cancelRecording')}
+            title={t('geek.cancelRecording')}
+            onClick={voice.cancel}
+          >
+            <X size={18} aria-hidden="true" />
+          </button>
+          <button
+            type="button"
+            className={styles.round}
+            aria-label={t('geek.sendRecording')}
+            title={t('geek.sendRecording')}
+            disabled={voice.requesting}
             onClick={voice.stop}
           >
-            <Square size={16} fill="currentColor" aria-hidden="true" />
+            <Send size={18} aria-hidden="true" />
           </button>
         </div>
       ) : (

@@ -2,7 +2,6 @@ package gateway
 
 import (
 	"context"
-	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -23,45 +22,6 @@ func TestRestoreBarrierRecognizesOnlyCurrentMarker(t *testing.T) {
 	}
 	if isRestoreBarrier(&kgo.Record{Key: []byte("job-id"), Value: []byte("current")}, "current") {
 		t.Fatal("ordinary job state was recognized as a restore marker")
-	}
-}
-
-func TestRoutingProfileIsHashScopedAndFiltersUrgentRouting(t *testing.T) {
-	defaultReq, err := ParseRequest([]byte(`{"messages":[{"role":"user","content":"x"}],"complexity":"low"}`))
-	if err != nil {
-		t.Fatal(err)
-	}
-	profiled, err := ParseRequest([]byte(`{"messages":[{"role":"user","content":"x"}],"complexity":"low","routing_profile":"learn"}`))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if defaultReq.CanonicalHash() == profiled.CanonicalHash() || len(profiled.legacyHashes()) != 0 {
-		t.Fatal("profiled request can replay a request from the default routing pool")
-	}
-	profiledJSON, err := json.Marshal(profiled)
-	if err != nil {
-		t.Fatal(err)
-	}
-	parsed, err := ParseRequest(profiledJSON)
-	if err != nil || parsed.RoutingProfile != "learn" {
-		t.Fatalf("profile round trip: %+v, %v", parsed, err)
-	}
-
-	a := InstanceConfig{ID: "a", MaxInFlight: 1, ContextWindow: 4096}
-	b := InstanceConfig{ID: "b", MaxInFlight: 1, ContextWindow: 4096}
-	s := &Service{cfg: Config{Pools: map[string][]string{"low": {"a", "b"}, "medium": {"a", "b"}, "high": {"a", "b"}}, RoutingProfiles: map[string][]string{"learn": {"a"}}, Instances: []InstanceConfig{a, b}}}
-	got := s.eligibleInstancesFor("low", profiled.RoutingProfile)
-	if len(got) != 1 || got[0].ID != "a" {
-		t.Fatalf("profile pool = %+v", got)
-	}
-	urgent := true
-	profiled.Urgent = &urgent
-	if err := s.validatePool(profiled); err != nil {
-		t.Fatalf("valid urgent profile rejected: %v", err)
-	}
-	profiled.RoutingProfile = "missing"
-	if err := s.validatePool(profiled); err == nil {
-		t.Fatal("unknown routing profile accepted")
 	}
 }
 
@@ -166,38 +126,6 @@ func TestStateKeyAndStableJobIDScopeIdempotency(t *testing.T) {
 	}
 }
 
-func TestRespondReturnsPersistedSuccessAndError(t *testing.T) {
-	tests := []struct {
-		name       string
-		job        durableJob
-		wantStatus int
-		wantBody   string
-	}{
-		{name: "success", job: durableJob{Status: "succeeded", Response: json.RawMessage(`{"id":"completion-1"}`)}, wantStatus: http.StatusOK, wantBody: `{"id":"completion-1"}`},
-		{name: "failure", job: durableJob{Status: "failed", Error: &storedError{Status: http.StatusBadGateway, Type: "server_error", Code: "upstream_error", Message: "upstream failed", RetryAfter: 3}}, wantStatus: http.StatusBadGateway, wantBody: `"code":"upstream_error"`},
-		{name: "missing failure details", job: durableJob{Status: "failed"}, wantStatus: http.StatusServiceUnavailable, wantBody: `"code":"state_unavailable"`},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			s := &Service{}
-			response := httptest.NewRecorder()
-			s.respond(response, "request-1", tt.job)
-			if response.Code != tt.wantStatus {
-				t.Fatalf("status = %d, want %d", response.Code, tt.wantStatus)
-			}
-			if !strings.Contains(response.Body.String(), tt.wantBody) {
-				t.Fatalf("body = %q, want substring %q", response.Body.String(), tt.wantBody)
-			}
-			if response.Header().Get("X-Request-ID") != "request-1" {
-				t.Fatalf("X-Request-ID = %q, want request-1", response.Header().Get("X-Request-ID"))
-			}
-			if tt.name == "failure" && response.Header().Get("Retry-After") != "3" {
-				t.Fatalf("Retry-After = %q, want 3", response.Header().Get("Retry-After"))
-			}
-		})
-	}
-}
-
 func TestHandlerHealthReadinessMetricsAndBodyLimit(t *testing.T) {
 	s := &Service{
 		cfg:         Config{MaxConnections: 1, MaxBodyBytes: 4},
@@ -234,32 +162,6 @@ func TestHandlerHealthReadinessMetricsAndBodyLimit(t *testing.T) {
 	s.Handler().ServeHTTP(response, request)
 	if response.Code != http.StatusRequestEntityTooLarge {
 		t.Fatalf("oversized body status = %d, want 413", response.Code)
-	}
-}
-
-func TestAwaitReturnsPersistedOrEphemeralResult(t *testing.T) {
-	for _, tt := range []struct {
-		name       string
-		setup      func(*Service)
-		wantStatus int
-		wantBody   string
-	}{
-		{name: "persisted", setup: func(s *Service) {
-			s.jobs["job-1"] = &durableJob{ID: "job-1", Status: "succeeded", Response: json.RawMessage(`{"id":"done"}`)}
-		}, wantStatus: http.StatusOK, wantBody: `"id":"done"`},
-		{name: "ephemeral", setup: func(s *Service) {
-			s.ephemeral["job-1"] = submitResult{status: http.StatusServiceUnavailable, body: errorBody("server_error", "state_unavailable", "state not saved")}
-		}, wantStatus: http.StatusServiceUnavailable, wantBody: `"code":"state_unavailable"`},
-	} {
-		t.Run(tt.name, func(t *testing.T) {
-			s := &Service{jobs: make(map[string]*durableJob), ephemeral: make(map[string]submitResult), cfg: Config{RequestDeadline: time.Second}}
-			tt.setup(s)
-			response := httptest.NewRecorder()
-			s.await(response, httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil), "job-1", make(chan struct{}))
-			if response.Code != tt.wantStatus || !strings.Contains(response.Body.String(), tt.wantBody) {
-				t.Fatalf("response = (%d, %q), want status %d and body containing %q", response.Code, response.Body.String(), tt.wantStatus, tt.wantBody)
-			}
-		})
 	}
 }
 

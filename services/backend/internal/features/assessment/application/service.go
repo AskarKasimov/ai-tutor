@@ -9,6 +9,8 @@ import (
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/assessment"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/variant"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/fault"
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/logx"
+	"go.uber.org/zap"
 )
 
 type Evaluation = assessment.Evaluation
@@ -173,6 +175,8 @@ func (s *Service) gradeAndValidate(ctx context.Context, gradingContext GradingCo
 		if attempt == 1 || !errors.As(err, &modelErr) || modelErr.Code != "INVALID_MODEL_RESPONSE" {
 			return Evaluation{}, err
 		}
+		logx.From(ctx).Warn("model evaluation rejected; retrying", zap.String("error_code", modelErr.Code),
+			zap.String("error_message", modelErr.Message), zap.Error(modelErr.Cause))
 	}
 }
 

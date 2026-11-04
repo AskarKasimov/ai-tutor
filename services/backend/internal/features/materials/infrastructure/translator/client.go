@@ -3,6 +3,7 @@ package translator
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -189,9 +190,5 @@ func parseTranslationResponse(raw string) (string, error) {
 		return trimmed, nil
 	}
 
-	maxLen := len(raw)
-	if maxLen > 200 {
-		maxLen = 200
-	}
-	return "", fmt.Errorf("could not extract translation from JSON: %s", raw[:maxLen])
+	return "", errors.New("could not extract translation from JSON")
 }

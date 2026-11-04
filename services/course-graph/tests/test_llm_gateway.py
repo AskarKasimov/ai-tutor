@@ -3,6 +3,7 @@ from config_helpers import configure_settings
 contract from services/shared, no stubbed complete()."""
 import asyncio
 import json
+import logging
 
 import grpc
 import pytest
@@ -18,6 +19,7 @@ class Gateway(gateway_pb2_grpc.GatewayServicer):
 
     async def Complete(self, request, context):
         self.requests.append(request)
+        self.metadata = dict(context.invocation_metadata())
         completion = {"choices": [{"index": 0, "message": {"role": "assistant", "content": self.content},
                                    "finish_reason": self.finish_reason}]}
         return gateway_pb2.CompleteResponse(request_id="req-1", completion_json=json.dumps(completion).encode())
@@ -178,3 +180,19 @@ def test_extraction_report_shows_repeats_next_to_logical_requests(monkeypatch, t
         asyncio.run_coroutine_threadsafe(server.stop(None), loop).result(5)
         loop.call_soon_threadsafe(loop.stop)
         thread.join(5)
+
+
+def test_complete_continues_the_trace_and_keeps_content_out_of_info_logs(caplog):
+    from course_graph import logs
+
+    gateway = Gateway()
+    token = logs.trace_id.set("0123456789abcdef0123456789abcdef")
+    try:
+        with caplog.at_level(logging.INFO, logger="course_graph.llm.client"):
+            call(gateway, "low")
+    finally:
+        logs.trace_id.reset(token)
+    assert gateway.metadata["traceparent"].startswith("00-0123456789abcdef0123456789abcdef-")
+    calls = [record for record in caplog.records if record.getMessage() == "llm call"]
+    assert len(calls) == 1 and calls[0].gateway_request_id == "req-1"
+    assert "Системный промпт" not in caplog.text and not hasattr(calls[0], "prompt")

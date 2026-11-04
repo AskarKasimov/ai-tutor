@@ -5,8 +5,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
-	"log"
 	"net"
 	"net/http"
 	"strings"
@@ -15,6 +15,9 @@ import (
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/resultsummary"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/features/diagnosticfeedback/application"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/fault"
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/llmgateway"
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/logx"
+	"go.uber.org/zap"
 )
 
 type Client struct {
@@ -113,7 +116,7 @@ func (c *Client) Synthesize(ctx context.Context, report application.Deterministi
 		return "", providerError(err)
 	}
 
-	return parseCompletionSummary(content)
+	return parseCompletionSummary(ctx, content)
 }
 
 const sessionSystemPrompt = `Ты преподаватель курса по машинному обучению (ML). Твоя задача — составить итоговое резюме серии выполненных заданий (summary).
@@ -207,13 +210,17 @@ func (c *Client) SynthesizeAnswers(ctx context.Context, report application.Sessi
 		return "", providerError(err)
 	}
 
-	return parseCompletionSummary(content)
+	return parseCompletionSummary(ctx, content)
 }
 
-func parseCompletionSummary(content []byte) (string, error) {
+func invalidFeedback(cause error) error {
+	return fault.New(fault.Upstream, "INVALID_MODEL_RESPONSE", "Модель вернула некорректный ответ.").WithCause(cause)
+}
+
+func parseCompletionSummary(ctx context.Context, content []byte) (string, error) {
+	logger := logx.From(ctx)
 	if len(content) > 128*1024 {
-		log.Printf("[FEEDBACK_MODEL] response body too large: %d bytes", len(content))
-		return "", fault.New(fault.Upstream, "INVALID_MODEL_RESPONSE", "Модель вернула некорректный ответ.")
+		return "", invalidFeedback(fmt.Errorf("response body of %d bytes is too large", len(content)))
 	}
 
 	var completion struct {
@@ -225,23 +232,22 @@ func parseCompletionSummary(content []byte) (string, error) {
 		} `json:"choices"`
 	}
 	if err := json.Unmarshal(content, &completion); err != nil {
-		log.Printf("[FEEDBACK_MODEL] failed to unmarshal response json: %v, raw=%s", err, string(content))
-		return "", fault.New(fault.Upstream, "INVALID_MODEL_RESPONSE", "Модель вернула некорректный ответ.")
+		logger.Debug("feedback model response", zap.ByteString("response", content))
+		return "", invalidFeedback(fmt.Errorf("decode response: %s", llmgateway.SafeReason(err)))
 	}
 	if len(completion.Choices) != 1 {
-		log.Printf("[FEEDBACK_MODEL] unexpected choices count: len=%d", len(completion.Choices))
-		return "", fault.New(fault.Upstream, "INVALID_MODEL_RESPONSE", "Модель вернула некорректный ответ.")
+		return "", invalidFeedback(fmt.Errorf("unexpected choices count %d", len(completion.Choices)))
 	}
 	if completion.Choices[0].Message.Content == nil {
-		log.Printf("[FEEDBACK_MODEL] choice message content is nil: finish_reason=%s", completion.Choices[0].FinishReason)
-		return "", fault.New(fault.Upstream, "INVALID_MODEL_RESPONSE", "Модель вернула некорректный ответ.")
+		return "", invalidFeedback(fmt.Errorf("message content is empty, finish_reason=%s", llmgateway.SafeFinishReason(completion.Choices[0].FinishReason)))
 	}
 
 	raw := strings.TrimSpace(*completion.Choices[0].Message.Content)
 	summary, err := cleanAndExtractSummary(raw)
 	if err != nil {
-		log.Printf("[FEEDBACK_MODEL] failed to extract summary: %v, finish_reason=%s, raw=%s", err, completion.Choices[0].FinishReason, raw)
-		return "", fault.New(fault.Upstream, "INVALID_MODEL_RESPONSE", "Модель не сформировала текст резюме.")
+		logger.Debug("feedback model answer", zap.String("response", raw))
+		return "", fault.New(fault.Upstream, "INVALID_MODEL_RESPONSE", "Модель не сформировала текст резюме.").
+			WithCause(fmt.Errorf("extract summary: %w, finish_reason=%s", err, llmgateway.SafeFinishReason(completion.Choices[0].FinishReason)))
 	}
 
 	return summary, nil

@@ -16,6 +16,7 @@ import (
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/app"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/postgres"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 )
 
 // @title AI Tutor Backend API
@@ -33,12 +34,17 @@ import (
 // @in cookie
 // @name refresh_token
 func main() {
-	logger, err := loggerConfig().Build()
+	config := loggerConfig()
+	logger, err := config.Build()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "initialize logger:", err)
 		os.Exit(1)
 	}
-	if err := run(logger); err != nil {
+	// Failures outside a request and messages of the standard library, such as
+	// net/http recovering a panic, stay in the same JSON stream.
+	zap.ReplaceGlobals(logger)
+	zap.RedirectStdLogAt(logger, zap.ErrorLevel)
+	if err := run(logger, config.Level); err != nil {
 		logger.Error("API stopped", zap.Error(err))
 		_ = logger.Sync()
 		os.Exit(1)
@@ -49,10 +55,14 @@ func loggerConfig() zap.Config {
 	cfg := zap.NewProductionConfig()
 	// Access logs must retain one entry per request, including bursts of errors.
 	cfg.Sampling = nil
+	// The request log already names the failure; a stack is written only for a panic.
+	cfg.DisableStacktrace = true
+	cfg.OutputPaths = []string{"stdout"}
+	cfg.EncoderConfig.EncodeTime = zapcore.RFC3339NanoTimeEncoder
 	return cfg
 }
 
-func run(logger *zap.Logger) error {
+func run(logger *zap.Logger, level zap.AtomicLevel) error {
 	if len(os.Args) > 1 && os.Args[1] == "healthcheck" {
 		address, err := app.LoadListenAddress(backendConfigPath())
 		if err != nil {
@@ -85,6 +95,7 @@ func run(logger *zap.Logger) error {
 	if err != nil {
 		return err
 	}
+	level.SetLevel(cfg.LogLevel)
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 	pool, err := pgxpool.New(ctx, cfg.DatabaseURL)

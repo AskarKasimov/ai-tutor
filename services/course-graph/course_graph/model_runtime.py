@@ -103,7 +103,7 @@ class ModelRuntime:
                 self._detail = "OCR model bootstrap is disabled"
                 self._updated_at = self._now()
                 self._done.set()
-                logger.error("model_bootstrap_disabled")
+                logger.error("model bootstrap disabled")
                 return
 
             threading.Thread(target=self._bootstrap, name="course-graph-model-bootstrap", daemon=True).start()
@@ -112,7 +112,7 @@ class ModelRuntime:
         install_url_redaction()
         started = time.monotonic()
         cache_root = os.environ.get("HF_HOME", "/root/.cache/huggingface")
-        logger.info("model_bootstrap_started cache=%s", cache_root)
+        logger.info("model bootstrap started", extra={"cache": cache_root})
         with self._lock:
             self._stage = "loading_models"
             self._updated_at = self._now()
@@ -146,10 +146,8 @@ class ModelRuntime:
                         "cached_models_seen": sorted(model_dirs),
                     }
                     self._updated_at = self._now()
-                logger.info(
-                    "model_bootstrap_progress cached_bytes=%d models=%s elapsed_seconds=%.1f",
-                    total_bytes, ",".join(sorted(model_dirs)), time.monotonic() - started,
-                )
+                logger.info("model bootstrap progress", extra={"cached_bytes": total_bytes, "models": sorted(model_dirs),
+                                                               "duration": round(time.monotonic() - started, 1)})
 
         progress_thread = threading.Thread(
             target=report_cache_progress, name="model-bootstrap-progress", daemon=True,
@@ -165,10 +163,8 @@ class ModelRuntime:
                     break
                 except Exception as error:
                     last_error = error
-                    logger.error(
-                        "model_bootstrap_attempt_failed attempt=%d attempts=%d error_type=%s",
-                        attempt, attempts, type(error).__name__,
-                    )
+                    logger.error("model bootstrap attempt failed",
+                                 extra={"attempt": attempt, "attempts": attempts, "error_type": type(error).__name__})
                     if attempt < attempts:
                         with self._lock:
                             self._stage = "retry_wait"
@@ -187,10 +183,8 @@ class ModelRuntime:
                     self._detail = detail
                     self._updated_at = self._now()
                     self._done.set()
-                logger.error(
-                    "model_bootstrap_failed error_type=%s elapsed_seconds=%.1f",
-                    type(last_error).__name__, time.monotonic() - started,
-                )
+                logger.error("model bootstrap failed", extra={"error_type": type(last_error).__name__,
+                                                              "duration": round(time.monotonic() - started, 1)})
                 return
 
             with self._lock:
@@ -199,7 +193,7 @@ class ModelRuntime:
                 self._detail = None
                 self._updated_at = self._now()
                 self._done.set()
-            logger.info("model_bootstrap_completed elapsed_seconds=%.1f", time.monotonic() - started)
+            logger.info("model bootstrap completed", extra={"duration": round(time.monotonic() - started, 1)})
         except Exception as exc:
             with self._lock:
                 self._state = "failed"
@@ -207,7 +201,7 @@ class ModelRuntime:
                 self._detail = f"OCR model bootstrap crashed ({type(exc).__name__})"
                 self._updated_at = self._now()
                 self._done.set()
-            logger.exception("model_bootstrap_crashed elapsed_seconds=%.1f", time.monotonic() - started)
+            logger.exception("model bootstrap crashed", extra={"duration": round(time.monotonic() - started, 1)})
         finally:
             stop_progress.set()
             self._done.set()

@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"strings"
 	"sync"
 	"time"
@@ -16,7 +15,9 @@ import (
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/material"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/user"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/fault"
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/logx"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/security"
+	"go.uber.org/zap"
 )
 
 type Repository interface {
@@ -126,7 +127,7 @@ func (w *Worker) PrepareVoices(ctx context.Context) error {
 		total += len(questions)
 		queued += w.voices.Prepare(questions)
 	}
-	log.Printf("course graphs: queued %d of %d questions of %d published graphs for synthesis", queued, total, len(graphs))
+	logx.From(ctx).Info("published graph questions queued for synthesis", zap.Int("queued", queued), zap.Int("total", total), zap.Int("graphs", len(graphs)))
 	return nil
 }
 
@@ -252,8 +253,8 @@ func (w *Worker) ImportMap(ctx context.Context, actor user.User, subjectID, file
 		return coursegraph.Snapshot{}, fault.New(fault.Conflict, "GRAPH_BUILD_IN_PROGRESS", "Граф курса уже собирается.")
 	}
 	for _, warning := range assessment.Warnings {
-		log.Printf("WARN course graph: default assessment criteria subject_id=%q filename=%q sheet=%q row=%d column=%q message=%q",
-			subjectID, filename, built.Sheet, warning.Row, warning.Column, warning.Message)
+		logx.From(ctx).Warn("course graph uses default assessment criteria", zap.String("subject_id", subjectID), zap.String("filename", filename),
+			zap.String("sheet", built.Sheet), zap.Int("row", warning.Row), zap.String("column", warning.Column), zap.String("warning", warning.Message))
 	}
 	return w.snapshot(ctx, subjectID)
 }
@@ -398,9 +399,10 @@ func (w *Worker) Run(ctx context.Context) error {
 		if ctx.Err() != nil {
 			return nil
 		}
-		worked, err := w.ProcessOne(ctx)
+		jobCtx := logx.StartTrace(ctx)
+		worked, err := w.ProcessOne(jobCtx)
 		if err != nil && ctx.Err() == nil {
-			log.Printf("Course graph: %v", err)
+			logx.From(jobCtx).Error("course graph job failed", zap.Error(err))
 		}
 		if worked && err == nil {
 			continue
@@ -626,7 +628,7 @@ func (w *Worker) publish(ctx context.Context, job coursegraph.Job, graph json.Ra
 	// published, so the first students already hear them from the cache.
 	if w.voices != nil {
 		questions := TopicQuestions(graph)
-		log.Printf("course graph %s: queued %d of %d questions for synthesis", job.SubjectID, w.voices.Prepare(questions), len(questions))
+		logx.From(ctx).Info("course graph questions queued for synthesis", zap.String("subject_id", job.SubjectID), zap.Int("queued", w.voices.Prepare(questions)), zap.Int("total", len(questions)))
 	}
 	accepted, err := w.repo.Finish(ctx, job, graph, time.Now())
 	if err != nil || accepted {

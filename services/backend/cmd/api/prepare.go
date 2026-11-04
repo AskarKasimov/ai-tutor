@@ -15,7 +15,7 @@ import (
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/exam"
 	geekapp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/geek/application"
 	geekllm "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/geek/infrastructure/llm"
-	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/httpx"
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/logx"
 )
 
 // prepareQuestions fills the missing main questions and rephrases of a graph
@@ -50,7 +50,7 @@ func prepareQuestions(ctx context.Context, logger *zap.Logger, args []string) er
 	}
 	defer conn.Close()
 	started := time.Now()
-	prepared, count, failures := geekapp.PrepareQuestions(httpx.WithLogger(ctx, logger), examiner, graph, 4)
+	prepared, count, failures := geekapp.PrepareQuestions(logx.With(ctx, logger), examiner, graph, 4)
 	file.Nodes = prepared.Nodes
 	var out bytes.Buffer
 	encoder := json.NewEncoder(&out)

@@ -9,7 +9,7 @@ import (
 
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/exam"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/features/geek/application"
-	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/httpx"
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/logx"
 	pb "github.com/AskarKasimov/ai-tutor/services/shared/gen/go/llmgateway/v1"
 	"go.uber.org/zap"
 )
@@ -82,7 +82,7 @@ func readRubricMarks(ctx context.Context, spec []exam.RubricItem, marks []rubric
 		return nil, nil, err
 	}
 	if dropped := result.DropUnverifiedQuotes(turns); len(dropped) > 0 {
-		httpx.LoggerFromContext(ctx).Warn("rubric quote not in the answer", zap.Strings("items", dropped))
+		logx.From(ctx).Warn("rubric quote not in the answer", zap.Strings("items", dropped))
 	}
 	return result, evidence, nil
 }

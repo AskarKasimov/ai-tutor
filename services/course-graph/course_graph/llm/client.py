@@ -6,11 +6,15 @@ gateway picks the pool. Generated stubs come from services/shared/gen/python.
 import json
 import logging
 import os
+import time
 
 from course_graph.config import get_settings
+from course_graph.logs import traceparent
 
 import grpc
 from llmgateway.v1 import gateway_pb2, gateway_pb2_grpc
+
+logger = logging.getLogger(__name__)
 
 COMPLEXITY = {
     "low": gateway_pb2.COMPLEXITY_LOW,
@@ -59,14 +63,28 @@ class ModelClient:
             complexity=COMPLEXITY[complexity],
             parameters=parameters,
         )
+        current = traceparent()
+        metadata = (("traceparent", current),) if current else None
+        started = time.monotonic()
         try:
-            response = await self.stub.Complete(request, timeout=self.timeout)
+            try:
+                response = await self.stub.Complete(request, timeout=self.timeout, metadata=metadata)
+            except grpc.aio.AioRpcError as error:
+                if error.code() not in RETRIED:
+                    raise
+                self.retries += 1
+                logger.warning("llm call failed; repeating it once", extra={"grpc_code": error.code().name, "complexity": complexity,
+                                                                            "duration": round(time.monotonic() - started, 3)})
+                response = await self.stub.Complete(request, timeout=self.timeout, metadata=metadata)
         except grpc.aio.AioRpcError as error:
-            if error.code() not in RETRIED:
-                raise
-            self.retries += 1
-            logging.warning("LLM gateway call ended with %s; repeating it once", error.code().name)
-            response = await self.stub.Complete(request, timeout=self.timeout)
+            logger.warning("llm call failed", extra={"grpc_code": error.code().name, "complexity": complexity,
+                                                     "duration": round(time.monotonic() - started, 3)})
+            raise
+        logger.info("llm call", extra={"gateway_request_id": response.request_id, "complexity": complexity,
+                                       "response_bytes": len(response.completion_json),
+                                       "duration": round(time.monotonic() - started, 3)})
+        logger.debug("llm call content", extra={"gateway_request_id": response.request_id, "prompt": f"{system}\n{text}",
+                                                "response": response.completion_json.decode("utf-8", "replace")})
         try:
             choice = json.loads(response.completion_json)["choices"][0]
             content = choice["message"]["content"]

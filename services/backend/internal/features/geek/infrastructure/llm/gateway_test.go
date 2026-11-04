@@ -21,6 +21,9 @@ import (
 
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/exam"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/features/geek/application"
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/logx"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zaptest/observer"
 )
 
 // fakeGateway answers Complete with scripted message contents in order; the
@@ -141,6 +144,27 @@ func TestGatewayEvaluatesAndRetriesAnInvalidAnswerOnce(t *testing.T) {
 	}
 	if !strings.Contains(f.requests[0].GetMessages()[1].GetContent(), "[2] Студент: Ответ.") {
 		t.Fatal("prompt lacks the numbered dialogue")
+	}
+}
+
+func TestGatewayKeepsARejectedAnswerOutOfInfoLogsAndErrors(t *testing.T) {
+	const invented = "PRIVATE_STUDENT_ANSWER"
+	answer := `{"verdict":"` + invented + `"}`
+	g := serve(t, &fakeGateway{answers: []string{answer, answer}}, time.Second)
+	core, logs := observer.New(zap.InfoLevel)
+	_, err := g.Evaluate(logx.With(context.Background(), zap.New(core)), application.EvaluationRequest{Kind: exam.KindQuestion, Node: node, Dialogue: turns})
+	if err == nil {
+		t.Fatal("an invalid verdict was accepted")
+	}
+	if strings.Contains(err.Error(), invented) {
+		t.Fatalf("the error quotes the model: %v", err)
+	}
+	for _, entry := range logs.All() {
+		for key, value := range entry.ContextMap() {
+			if text, ok := value.(string); ok && strings.Contains(text, invented) {
+				t.Fatalf("log field %s quotes the model: %s", key, text)
+			}
+		}
 	}
 }
 

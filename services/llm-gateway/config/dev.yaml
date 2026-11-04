@@ -1,4 +1,5 @@
 ---
+log_level: info
 listen_address: ":8010"
 kafka_brokers:
 - redpanda:9092

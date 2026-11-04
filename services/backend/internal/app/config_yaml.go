@@ -34,13 +34,17 @@ type backendYAML struct {
 	} `yaml:"server"`
 	Voice *struct {
 		STT *struct {
-			URL *string `yaml:"url"`
+			URL      *string `yaml:"url"`
+			Model    *string `yaml:"model"`
+			Longform *bool   `yaml:"longform"`
 		} `yaml:"stt"`
 		TTS *struct {
 			URL                *string  `yaml:"url"`
 			Seed               *int64   `yaml:"seed"`
 			CFGValue           *float64 `yaml:"cfg_value"`
 			InferenceTimesteps *int     `yaml:"inference_timesteps"`
+			UseReference       *bool    `yaml:"use_reference"`
+			UsePrompt          *bool    `yaml:"use_prompt"`
 		} `yaml:"tts"`
 		Timeout *yamlDuration `yaml:"timeout"`
 	} `yaml:"voice"`
@@ -319,6 +323,19 @@ func LoadConfig(path string) (Config, error) {
 		S3Endpoint: *y.Storage.S3.Endpoint, S3Region: *y.Storage.S3.Region, S3Bucket: *y.Storage.S3.Bucket, S3PathStyle: *y.Storage.S3.PathStyle, S3Timeout: y.Storage.S3.Timeout.Duration, S3CreateBucket: *y.Storage.S3.CreateBucket, S3AccessKey: strings.TrimSpace(os.Getenv("BACKEND_S3_ACCESS_KEY")), S3SecretKey: strings.TrimSpace(os.Getenv("BACKEND_S3_SECRET_KEY")),
 		AudioWorkers: *y.Workers.Audio.Count, AudioPollInterval: y.Workers.Audio.PollInterval.Duration, LearningTutorEnabled: *y.Tutor.Enabled, TutorTaskMaxChars: *y.Tutor.Context.TaskMaxChars, TutorHistoryMaxChars: *y.Tutor.Context.HistoryMaxChars, TutorSummaryMaxChars: *y.Tutor.Context.SummaryMaxChars,
 		CourseGraphURL: *y.CourseGraph.URL, CourseGraphTimeout: y.CourseGraph.Timeout.Duration, LLMGatewayAddress: *y.LLMGateway.Address, LLMTimeout: y.LLMGateway.Timeout.Duration, GeekMaxQuestions: *y.Geek.QuestionLimit}
+	c.TTSUseReference, c.TTSUsePrompt = true, true
+	if y.Voice.STT.Model != nil {
+		c.STTModel = *y.Voice.STT.Model
+	}
+	if y.Voice.STT.Longform != nil {
+		c.STTLongform = *y.Voice.STT.Longform
+	}
+	if y.Voice.TTS.UseReference != nil {
+		c.TTSUseReference = *y.Voice.TTS.UseReference
+	}
+	if y.Voice.TTS.UsePrompt != nil {
+		c.TTSUsePrompt = *y.Voice.TTS.UsePrompt
+	}
 	var missing []string
 	c.DatabaseURL = strings.TrimSpace(os.Getenv("BACKEND_DATABASE_URL"))
 	if c.DatabaseURL == "" {

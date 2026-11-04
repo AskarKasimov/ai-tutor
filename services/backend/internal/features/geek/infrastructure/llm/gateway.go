@@ -143,9 +143,6 @@ func (g *Gateway) Evaluate(ctx context.Context, r application.EvaluationRequest)
 	if normalized == "не понял" || normalized == "не поняла" || normalized == "я не понял" || normalized == "я не поняла" || normalized == "не понял вопрос" || normalized == "не поняла вопрос" || normalized == "я ничего не понял" || normalized == "я ничего не поняла" || normalized == "я не понимаю вопрос" {
 		return application.Assessment{Evaluation: exam.Evaluation{Verdict: exam.VerdictClarifyQuestion}, Clarification: application.AskUnclearPart, ClarificationPending: true}, nil
 	}
-	if incompleteAcknowledgement(request) {
-		return application.Assessment{Evaluation: exam.Evaluation{Verdict: exam.VerdictClarifyQuestion}, Clarification: application.RepeatUnclearSpeech}, nil
-	}
 	if pureControl(request, "skip") {
 		return application.Assessment{Evaluation: exam.Evaluation{Verdict: exam.VerdictDontKnow}}, nil
 	}
@@ -208,7 +205,7 @@ func (g *Gateway) Evaluate(ctx context.Context, r application.EvaluationRequest)
 			if !e.Criteria.Valid() {
 				return fmt.Errorf("criteria out of range: %+v", e.Criteria)
 			}
-		case exam.VerdictDontKnow, exam.VerdictInsufficient, exam.VerdictHintRequested, exam.VerdictAddressCorrection, exam.VerdictClarifyQuestion, exam.VerdictPause:
+		case exam.VerdictDontKnow, exam.VerdictHintRequested, exam.VerdictAddressCorrection, exam.VerdictClarifyQuestion, exam.VerdictPause:
 		default:
 			return fmt.Errorf("unknown verdict %q", out.Verdict)
 		}

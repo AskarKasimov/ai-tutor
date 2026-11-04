@@ -256,6 +256,31 @@ func TestOralExamPromptsAskForReasoningAndStayNeutral(t *testing.T) {
 	}
 }
 
+func TestExamSpeechDoesNotUseStudentName(t *testing.T) {
+	const name = "Андрей"
+	q := application.QuestionRequest{PreferredName: name, Kind: exam.KindFollowup, Node: node}
+	f := application.FeedbackRequest{EvaluationRequest: application.EvaluationRequest{PreferredName: name, Node: node}}
+	for _, prompt := range []string{questionPrompt(q), feedbackPrompt(f)} {
+		if strings.Contains(prompt, name) || strings.Contains(prompt, "Студент попросил обращаться к нему по имени") {
+			t.Fatalf("stored student name leaked into speech instructions: %s", prompt)
+		}
+	}
+	for _, prompt := range []string{systemPrompt, feedbackSystemPrompt, supportSystemPrompt, contextSystemPrompt} {
+		if !strings.Contains(prompt, "имени или прозвищу") && !strings.Contains(prompt, "без имени или прозвища") {
+			t.Fatalf("speech system prompt does not forbid addressing by name: %s", prompt)
+		}
+	}
+	fake := &fakeGateway{answers: []string{`{"kind":"repeat","text":"Повтори ответ"}`}}
+	g := serve(t, fake, time.Second)
+	a := application.Assessment{}
+	if err := g.clarifySupport(context.Background(), application.EvaluationRequest{PreferredName: name, Dialogue: turns}, &a); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(fake.requests[0].Messages[1].GetContent(), name) {
+		t.Fatal("support received the stored name")
+	}
+}
+
 func TestGatewayFeedbackOnTheLowPool(t *testing.T) {
 	f := &fakeGateway{answers: []string{`{"text": "A* складывает g и h."}`}}
 	g := serve(t, f, time.Second)

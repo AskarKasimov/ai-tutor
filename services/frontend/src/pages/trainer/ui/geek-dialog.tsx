@@ -640,15 +640,6 @@ function Composer({
       )}
       {recording ? (
         <div className={styles.recording}>
-          <Text role="timer" className={styles.timer}>
-            {seconds}
-          </Text>
-          <div className={styles.wave} aria-hidden="true">
-            <LiveWaveform stream={voice.stream} height={32} />
-          </div>
-          <Text className={styles.visuallyHidden} role="status">
-            {t('geek.recording')}
-          </Text>
           <button
             type="button"
             className={styles.round}
@@ -659,6 +650,15 @@ function Composer({
           >
             <X size={18} aria-hidden="true" />
           </button>
+          <Text role="timer" className={styles.timer}>
+            {seconds}
+          </Text>
+          <div className={styles.wave} aria-hidden="true">
+            <LiveWaveform stream={voice.stream} height={32} />
+          </div>
+          <Text className={styles.visuallyHidden} role="status">
+            {t('geek.recording')}
+          </Text>
           <button
             type="button"
             className={styles.round}

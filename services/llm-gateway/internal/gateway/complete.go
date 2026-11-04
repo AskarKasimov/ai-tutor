@@ -89,24 +89,12 @@ func (s *Service) complete(ctx context.Context, req Request, key string, admitte
 			s.idempotentReplays++
 			old := s.jobs[oldID]
 			var oldReq Request
-			oldHash := ""
 			if old != nil {
 				oldReq = old.Request
-				oldHash = old.Hash
 			} else if accepted := s.accepted[oldID]; accepted != nil {
 				oldReq = accepted.Request
-				oldHash = accepted.Hash
 			}
-			matches := oldReq.CanonicalHash() == hash
-			if !matches && len(oldReq.Parameters) == 0 && oldHash != "" {
-				for _, candidate := range req.legacyHashes() {
-					if candidate == oldHash {
-						matches = true
-						break
-					}
-				}
-			}
-			if !matches {
+			if oldReq.CanonicalHash() != hash {
 				s.mu.Unlock()
 				announce(oldID)
 				return Completion{}, oldID, apiErr(409, "idempotency_error", "idempotency_conflict", "Idempotency-Key was already used with a different request.")

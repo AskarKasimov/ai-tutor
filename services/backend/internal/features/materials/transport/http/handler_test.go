@@ -132,12 +132,13 @@ func TestUploadQueuesMultipleFilesWithoutRunningOCRInRequest(t *testing.T) {
 	handler := materialshttp.NewHandler(svc, 1024)
 	var body bytes.Buffer
 	writer := multipart.NewWriter(&body)
+	_ = writer.WriteField("items", `[{"client_id":"first","week":1,"kind":"lecture"},{"client_id":"second","week":1,"kind":"lecture"}]`)
 	for _, filename := range []string{"first.pdf", "second.pdf"} {
 		part, err := writer.CreateFormFile("file", filename)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, err = part.Write([]byte("PDF")); err != nil {
+		if _, err = part.Write([]byte("%PDF-1.7")); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -166,12 +167,17 @@ func TestUploadMaterialsCapsBatchAt48Files(t *testing.T) {
 	handler := materialshttp.NewHandler(svc, 1024)
 	var body bytes.Buffer
 	writer := multipart.NewWriter(&body)
+	items := make([]string, 0, materialshttp.MaxFilesPerRequest+1)
+	for i := 0; i < materialshttp.MaxFilesPerRequest+1; i++ {
+		items = append(items, fmt.Sprintf(`{"client_id":"c%d","week":1,"kind":"lecture"}`, i))
+	}
+	_ = writer.WriteField("items", "["+strings.Join(items, ",")+"]")
 	for i := 0; i < materialshttp.MaxFilesPerRequest+1; i++ {
 		part, err := writer.CreateFormFile("file", fmt.Sprintf("lecture-%02d.pdf", i))
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, err := part.Write([]byte("PDF")); err != nil {
+		if _, err := part.Write([]byte("%PDF-1.7")); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -209,11 +215,12 @@ func TestHandlerUploadAndList(t *testing.T) {
 	makeUploadReq := func() (*http.Request, *httptest.ResponseRecorder) {
 		var body bytes.Buffer
 		writer := multipart.NewWriter(&body)
+		_ = writer.WriteField("items", `[{"client_id":"lecture1","week":1,"kind":"lecture"}]`)
 		part, err := writer.CreateFormFile("file", "lecture1.pdf")
 		if err != nil {
 			t.Fatalf("create form file: %v", err)
 		}
-		part.Write([]byte("fake-pdf-content"))
+		part.Write([]byte("%PDF-1.7 fake content"))
 		writer.Close()
 
 		req := httptest.NewRequest(http.MethodPost, "/admin/subjects/sub-1/materials", &body)
@@ -417,5 +424,31 @@ func TestReplacementExtendsDeadlinesBeforeReadingPDF(t *testing.T) {
 	}
 	if remaining := time.Until(recorder.writeDeadline); remaining <= 0 || remaining > 30*time.Second {
 		t.Fatalf("replacement response deadline not bounded after processing: %v", remaining)
+	}
+}
+
+func TestUploadRequiresAManifest(t *testing.T) {
+	svc := application.New(&memoryRepo{}, &memoryS3{}, nil, time.Now)
+	handler := materialshttp.NewHandler(svc, 1024)
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	_ = writer.WriteField("week", "1")
+	_ = writer.WriteField("kind", "lecture")
+	part, err := writer.CreateFormFile("file", "lecture1.pdf")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = part.Write([]byte("%PDF-1.7"))
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/admin/subjects/subject/materials", &body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	req.SetPathValue("subject_id", "subject")
+	req = httpx.WithPrincipal(req, user.User{ID: "admin", Role: user.Admin})
+	recorder := httptest.NewRecorder()
+	handler.UploadMaterials(recorder, req)
+	if recorder.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("status = %d, body = %s", recorder.Code, recorder.Body.String())
 	}
 }

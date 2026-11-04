@@ -64,7 +64,10 @@ func NormalizeFileURL(assetID string, stored *string) (*string, bool) {
 
 func IDForTask(taskID string) string { return "taskaudio_" + taskID }
 
-func ObjectKey(assetID string) string { return "task-audio/v1/" + assetID + ".wav" }
+// ObjectPrefix separates recordings made with different synthesis settings.
+const ObjectPrefix = "task-audio/v2/"
+
+func ObjectKey(assetID string) string { return ObjectPrefix + assetID + ".wav" }
 
 // CanSynthesize validates instruction text without changing the text sent to TTS.
 func CanSynthesize(instruction string) bool {

@@ -72,7 +72,7 @@ func (r *Repository) ClaimRepair(ctx context.Context, assetID, token string, lea
 }
 
 func (r *Repository) FindReady(ctx context.Context, instruction, excludeID string) (audioasset.Asset, bool, error) {
-	row, err := r.q.LearningFindReadyTaskAudioByInstruction(ctx, db.LearningFindReadyTaskAudioByInstructionParams{Instruction: instruction, ID: excludeID})
+	row, err := r.q.LearningFindReadyTaskAudioByInstruction(ctx, db.LearningFindReadyTaskAudioByInstructionParams{Instruction: instruction, ID: excludeID, ObjectPrefix: audioasset.ObjectPrefix})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return audioasset.Asset{}, false, nil
 	}

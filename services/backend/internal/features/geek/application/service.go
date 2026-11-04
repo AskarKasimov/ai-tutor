@@ -377,6 +377,13 @@ func (s *Service) Answer(ctx context.Context, ownerID, id, key string, a Answer)
 		}
 		session.Turns[len(session.Turns)-1].Meta = true
 	} else {
+		if a.ConfirmUnclear {
+			confirmationSource := exam.SourceText
+			if err := s.append(&session, exam.SpeakerStudent, exam.KindAnswer, &step.NodeID, &confirmationSource, "Нет, всё хорошо, отправить на проверку"); err != nil {
+				return exam.Session{}, err
+			}
+			session.Turns[len(session.Turns)-1].Meta = true
+		}
 		next := session.Exam.Apply(assessment.Evaluation)
 		closed := next.NodeID != step.NodeID
 		feedback := FeedbackRequest{EvaluationRequest: evaluate, Verdict: assessment.Verdict,

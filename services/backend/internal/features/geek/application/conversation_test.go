@@ -83,8 +83,12 @@ func TestUnclearAnswerConfirmationGradesOriginalWithoutDuplicate(t *testing.T) {
 	}
 	count := len(s.Turns)
 	s = f.answer(t, s, Answer{ConfirmUnclear: true})
-	if s.UnclearAnswerTurnID != "" || len(s.Turns) != count+1 {
+	if s.UnclearAnswerTurnID != "" || len(s.Turns) != count+2 {
 		t.Fatalf("unexpected confirmation state: %+v", s)
+	}
+	confirmation := s.Turns[count]
+	if !confirmation.Meta || confirmation.Text != "Нет, всё хорошо, отправить на проверку" {
+		t.Fatalf("missing confirmation message: %+v", confirmation)
 	}
 	if !f.examiner.evaluated[len(f.examiner.evaluated)-1].ForceAnswer {
 		t.Fatal("confirmation was not sent for grading")

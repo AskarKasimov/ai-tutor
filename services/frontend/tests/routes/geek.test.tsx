@@ -165,7 +165,11 @@ function geekBackend(
       kind: 'answer',
       node_id: 'a-star',
       source: body.dont_know ? 'dont_know' : body.text ? 'text' : 'voice',
-      text: body.dont_know ? 'Не знаю.' : String(body.text ?? 'Ответ голосом'),
+      text: body.confirm_unclear
+        ? 'Нет, всё хорошо, отправить на проверку'
+        : body.dont_know
+          ? 'Не знаю.'
+          : String(body.text ?? 'Ответ голосом'),
       created_at: n + 1,
     }
     const next = { ...script[(n + 1) / 2] }
@@ -192,9 +196,7 @@ function geekBackend(
       progress_percent: done ? 100 : session.progress_percent + 30,
       current_turn_id: done ? null : next.id,
       completed_at: done ? 1791160000 : null,
-      turns: body.confirm_unclear
-        ? [...session.turns, next]
-        : [...session.turns, student, next],
+      turns: [...session.turns, student, next],
     }
     return session
   }
@@ -714,6 +716,9 @@ it('restores an unclear answer choice and sends the original answer for grading'
   await waitFor(() => expect(answers).toHaveLength(1))
   expect(answers[0].body).toEqual({ turn_id: 't3', confirm_unclear: true })
   expect(await screen.findByText('эвристическая функция')).toBeVisible()
+  expect(
+    screen.getByText('Нет, всё хорошо, отправить на проверку'),
+  ).toBeVisible()
 })
 
 it('allows recording another answer without sending the unclear one', async () => {

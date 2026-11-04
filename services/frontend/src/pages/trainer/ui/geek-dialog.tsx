@@ -269,7 +269,7 @@ function Dialogue({
             live={!initialCompleted.current && turn.id === lastTurn?.id}
           />
         ))}
-        {pending && pending.answer.kind !== 'confirm_unclear' && (
+        {pending && (
           <li className={styles.student}>
             <Text as="p" className={styles.bubble}>
               {pending.display}
@@ -329,39 +329,41 @@ function Dialogue({
               </Button>
             </div>
           )}
-          <form
-            className={styles.field}
-            onSubmit={(event) => {
-              event.preventDefault()
-              send({ kind: 'confirm_unclear' }, t('geek.unclearConfirm'))
-            }}
-          >
-            <span className={styles.unclearText}>
-              {t('geek.unclearConfirm')}
-            </span>
-            <button
-              type="button"
-              className={styles.round}
-              data-tone="clear"
-              aria-label={t('geek.unclearRetry')}
-              title={t('geek.unclearRetry')}
-              disabled={answer.isPending}
-              onClick={() =>
-                setRetryUnclearId(session.unclearAnswerTurnId ?? '')
-              }
+          {!answer.isPending && (
+            <form
+              className={styles.field}
+              onSubmit={(event) => {
+                event.preventDefault()
+                send({ kind: 'confirm_unclear' }, t('geek.unclearConfirm'))
+              }}
             >
-              <X size={20} aria-hidden="true" />
-            </button>
-            <button
-              type="submit"
-              className={styles.round}
-              aria-label={t('geek.send')}
-              title={t('geek.send')}
-              disabled={answer.isPending}
-            >
-              <Send size={18} aria-hidden="true" />
-            </button>
-          </form>
+              <span className={styles.unclearText}>
+                {t('geek.unclearConfirm')}
+              </span>
+              <button
+                type="button"
+                className={styles.round}
+                data-tone="clear"
+                aria-label={t('geek.unclearRetry')}
+                title={t('geek.unclearRetry')}
+                disabled={answer.isPending}
+                onClick={() =>
+                  setRetryUnclearId(session.unclearAnswerTurnId ?? '')
+                }
+              >
+                <X size={20} aria-hidden="true" />
+              </button>
+              <button
+                type="submit"
+                className={styles.round}
+                aria-label={t('geek.send')}
+                title={t('geek.send')}
+                disabled={answer.isPending}
+              >
+                <Send size={18} aria-hidden="true" />
+              </button>
+            </form>
+          )}
         </div>
       ) : (
         <Composer

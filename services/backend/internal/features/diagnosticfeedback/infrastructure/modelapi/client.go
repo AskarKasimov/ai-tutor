@@ -239,7 +239,7 @@ func parseCompletionSummary(ctx context.Context, content []byte) (string, error)
 		return "", invalidFeedback(fmt.Errorf("unexpected choices count %d", len(completion.Choices)))
 	}
 	if completion.Choices[0].Message.Content == nil {
-		return "", invalidFeedback(fmt.Errorf("message content is empty, finish_reason=%s", completion.Choices[0].FinishReason))
+		return "", invalidFeedback(fmt.Errorf("message content is empty, finish_reason=%s", llmgateway.SafeFinishReason(completion.Choices[0].FinishReason)))
 	}
 
 	raw := strings.TrimSpace(*completion.Choices[0].Message.Content)
@@ -247,7 +247,7 @@ func parseCompletionSummary(ctx context.Context, content []byte) (string, error)
 	if err != nil {
 		logger.Debug("feedback model answer", zap.String("response", raw))
 		return "", fault.New(fault.Upstream, "INVALID_MODEL_RESPONSE", "Модель не сформировала текст резюме.").
-			WithCause(fmt.Errorf("extract summary: %w, finish_reason=%s", err, completion.Choices[0].FinishReason))
+			WithCause(fmt.Errorf("extract summary: %w, finish_reason=%s", err, llmgateway.SafeFinishReason(completion.Choices[0].FinishReason)))
 	}
 
 	return summary, nil

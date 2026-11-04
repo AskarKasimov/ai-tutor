@@ -213,3 +213,20 @@ func TestGatewayFailureCanBeRetriedAndCancelledRequestDoesNotCallModel(t *testin
 		t.Fatal("cancelled request called model")
 	}
 }
+
+type finishReasonGateway struct {
+	pb.GatewayClient
+	reason string
+}
+
+func (g finishReasonGateway) Complete(context.Context, *pb.CompleteRequest, ...grpc.CallOption) (*pb.CompleteResponse, error) {
+	return &pb.CompleteResponse{CompletionJson: []byte(`{"choices":[{"message":{"content":"{}"},"finish_reason":"` + g.reason + `"}]}`)}, nil
+}
+
+func TestArbitraryFinishReasonStaysOutOfTheLabelError(t *testing.T) {
+	const invented = "PRIVATE_TEXT"
+	_, err := New(&memoryStore{values: map[string]string{}}, finishReasonGateway{reason: invented}, time.Second).generate(context.Background(), []string{"Тема"})
+	if err == nil || strings.Contains(err.Error(), invented) {
+		t.Fatalf("error = %v", err)
+	}
+}

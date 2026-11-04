@@ -13,6 +13,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/llmgateway"
 	db "github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/postgres/sqlcgen"
 	pb "github.com/AskarKasimov/ai-tutor/services/shared/gen/go/llmgateway/v1"
 	"google.golang.org/protobuf/proto"
@@ -175,7 +176,7 @@ func (c *Client) generate(ctx context.Context, titles []string) ([]string, error
 	}
 	choice := completion.Choices[0]
 	if choice.FinishReason != "stop" {
-		return nil, fmt.Errorf("incomplete graph label completion: %s", choice.FinishReason)
+		return nil, fmt.Errorf("incomplete graph label completion: %s", llmgateway.SafeFinishReason(choice.FinishReason))
 	}
 	var output struct {
 		Labels []string `json:"labels"`

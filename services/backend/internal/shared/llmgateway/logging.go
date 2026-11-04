@@ -72,6 +72,16 @@ func SafeReason(err error) string {
 	return "answer failed validation"
 }
 
+// SafeFinishReason returns a known finish_reason. The gateway does not limit this
+// field, so any other value is arbitrary text and stays out of logs and errors.
+func SafeFinishReason(reason string) string {
+	switch reason {
+	case "stop", "length", "content_filter", "tool_calls", "function_call":
+		return reason
+	}
+	return "unknown"
+}
+
 // RequestID is the gateway request of a call: from the x-request-id header, else
 // from the request_id of the error's ErrorInfo. A transport failure before the
 // gateway answered has none.

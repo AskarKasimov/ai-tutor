@@ -91,11 +91,22 @@ func TestSafeReasonDescribesTheShapeWithoutTheModelText(t *testing.T) {
 	}{
 		{unknown, "answer failed validation"},
 		{mismatch, "field feedback has type string, want []string"},
-		{syntax, "malformed JSON at offset 1"},
 		{fmt.Errorf("unknown verdict %q", secretAnswer), "answer failed validation"},
 	} {
 		if got := SafeReason(tc.err); got != tc.want {
 			t.Errorf("SafeReason(%v) = %q, want %q", tc.err, got, tc.want)
+		}
+	}
+	// The offset of a multibyte character depends on the Go version.
+	if got := SafeReason(syntax); !strings.HasPrefix(got, "malformed JSON at offset ") || strings.Contains(got, secretAnswer) {
+		t.Errorf("SafeReason(%v) = %q", syntax, got)
+	}
+}
+
+func TestSafeFinishReasonKeepsOnlyKnownValues(t *testing.T) {
+	for reason, want := range map[string]string{"stop": "stop", "length": "length", "": "unknown", secretAnswer: "unknown"} {
+		if got := SafeFinishReason(reason); got != want {
+			t.Errorf("SafeFinishReason(%q) = %q, want %q", reason, got, want)
 		}
 	}
 }

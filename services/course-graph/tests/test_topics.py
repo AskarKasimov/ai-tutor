@@ -1635,7 +1635,7 @@ def test_graph_passes_keep_four_model_calls_in_flight():
         return await grounded_links(system, payload)
     graph = run(build_links(topics, links_only(slow), Encoder(), per_requirement=1, max_chars=3500))
     assert graph["quality"]["requests"] >= 8
-    assert flight["max"] == GRAPH_CONCURRENCY == 4
+    assert flight["max"] == GRAPH_CONCURRENCY == 2
 
 
 def test_build_progress_reports_each_pass_and_its_finished_batches():

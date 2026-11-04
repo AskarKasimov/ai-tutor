@@ -88,10 +88,11 @@ HTTP-контракт и сценарии проверяются тестами.
 `Idempotency-Key` выводится из реплики и содержимого ответа, поэтому «Отправить
 ещё раз» после сбоя (например, 503 — модель недоступна) повторяет тот же запрос
 и не создаёт второй ответ. 409 означает, что диагностика ушла вперёд в другой
-вкладке: экран перечитывает её. После завершения появляется карточка итога
-с кнопкой «Посмотреть итог» — сразу при статусе `completed`,
-без ожидания озвучки последней реплики, в том числе при открытии уже завершённой
-диагностики. Карточка выезжает снизу, по рамке один раз пробегает
+вкладке: экран перечитывает её. После завершения карточка итога с кнопкой
+«Посмотреть итог» появляется, когда показан текст последней реплики Geek,
+не дожидаясь окончания озвучки. При ошибке озвучки можно повторить её или
+показать текст вручную; при открытии уже завершённой диагностики карточка
+доступна сразу. Карточка выезжает снизу, по рамке один раз пробегает
 «комета», галочка рисуется; при `prefers-reduced-motion` — только проявление;
 прерванная из-за пересборки графа диагностика предлагает вернуться на главную.
 
@@ -244,7 +245,7 @@ OCR, перевод и очистку; после завершения или о
 - `src/bootstrap/` — app-layer alias и composition root: entrypoint, providers, HTTP DI и router shell. Имя `bootstrap` выбрано вместо стандартного `app`; `src/app/` и `src/application/` не создаются.
 - `src/routes/` — тонкий технический реестр TanStack Router с неизменными URL; `src/routeTree.gen.ts` генерируется автоматически.
 - `src/pages/trainer/`, `src/pages/learning-trainer/`, `src/pages/mode-selection/`, `src/pages/admin-courses/`, `src/pages/competency-map/`, `src/pages/learning-competency-map/` — уникальные экраны и их композиция. Trainer page содержит главную с историей, диалог Geek и итог без импорта другого page slice.
-- `src/widgets/` — переиспользуемые блоки экранов: `admin-course-detail-shell`, `course-graph`, `direction-nav`, `result-report` и `student-course-shell`.
+- `src/widgets/` — переиспользуемые блоки экранов: `admin-course-detail-shell`, `course-graph` и `result-report`.
 - `src/features/` — сценарии `auth`, `diagnostic-session` (данные диагностики, ответ голосом, озвучка реплик), `subject-selection`, `import-competency-map` (сейчас — только материалы курса), `course-graph-build` (граф курса и его сборка), а также учебные `import-learning-competency-map`, `learning-diagnostic-session`, `learning-plan` и `learning-subject-selection`, включая локальные hooks, порты и UI действий.
 - `src/entities/` — общие `user` и раздельные Geek/learning subjects, assessment, competency map, diagnostic session, plan and training models; exam и learning query keys namespaced.
 - `src/shared/api/` — HTTP transport и auth refresh; `src/shared/lib/` — браузерные audio/waveform adapters; `src/shared/i18n/` — локализация.

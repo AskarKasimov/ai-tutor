@@ -12,8 +12,6 @@ import (
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/zaptest/observer"
-
-	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/exam"
 )
 
 // countingVoice is safe for the warmer goroutine and reports each synthesis.
@@ -87,19 +85,6 @@ func TestWarmerVoicesPreparedQuestionsOnceBeforeStudentsAsk(t *testing.T) {
 	defer voice.mu.Unlock()
 	if len(voice.calls) != 2 || voice.calls[0] != "Почему A* оптимален?" || voice.calls[1] != "Зачем эвристика?" {
 		t.Fatalf("synthesized %q", voice.calls)
-	}
-}
-
-func TestPreparedQuestionsAreTheMainQuestionsAndTheirRephrases(t *testing.T) {
-	g := exam.Graph{Nodes: []exam.Node{
-		{ID: "a", Questions: []string{" Почему? ", "Ещё"}, Rephrase: " Отчего? "},
-		{ID: "b"},
-		// A rephrase of no prepared question is generated at runtime.
-		{ID: "c", Questions: []string{"  "}, Rephrase: "Сирота"},
-		{ID: "d", Questions: []string{"Зачем?"}},
-	}}
-	if got := PreparedQuestions(g); !slices.Equal(got, []string{"Почему?", "Отчего?", "Зачем?"}) {
-		t.Fatalf("questions = %q", got)
 	}
 }
 

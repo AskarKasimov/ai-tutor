@@ -26,6 +26,11 @@ def upload_body(paths, boundary):
     return body + f"--{boundary}--\r\n".encode()
 
 
+def needs_build(snapshot):
+    """A build is requested when the materials are ready and no build is running."""
+    return snapshot["inputs_ready"] and snapshot["status"] not in {"pending", "processing"}
+
+
 def main(args):
     if urllib.parse.urlsplit(args.url).hostname not in {"localhost", "127.0.0.1"}:
         raise ValueError("This smoke runner is restricted to localhost")
@@ -53,6 +58,7 @@ def main(args):
             raise RuntimeError(str(uploaded))
     output = Path(args.output)
     output.mkdir(parents=True, exist_ok=True)
+    build_requested = False
     while time.monotonic()-started < args.timeout:
         materials = request("GET", f"/exam/admin/subjects/{subject_id}/materials")
         snapshot = request("GET", f"/exam/admin/subjects/{subject_id}/graph")
@@ -75,6 +81,9 @@ def main(args):
             return
         if snapshot["status"] == "failed" or any(m.get("cleaning", {}).get("status") == "failed" for m in materials):
             raise RuntimeError(json.dumps(progress, ensure_ascii=False))
+        if not build_requested and needs_build(snapshot):
+            request("POST", f"/exam/admin/subjects/{subject_id}/graph/build")
+            build_requested = True
         time.sleep(3)
     raise TimeoutError("Graph did not finish; see upload_progress.json")
 

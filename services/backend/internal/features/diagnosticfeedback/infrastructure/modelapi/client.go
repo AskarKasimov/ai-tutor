@@ -319,7 +319,7 @@ func summaryReport(report application.DeterministicReport) resultsummary.Report 
 		out.Partial = append(out.Partial, resultsummary.Finding{Topic: p.CompetencyName, Note: p.Details})
 	}
 	for _, g := range report.ConfirmedGaps {
-		out.Gaps = append(out.Gaps, resultsummary.Finding{Topic: g.CompetencyName + ": " + g.OutcomeName, Note: g.Advice})
+		out.Gaps = append(out.Gaps, resultsummary.Finding{Topic: g.CompetencyName + ": " + g.OutcomeName, Note: application.WithReasons(g.Advice, g.FailedCriteria)})
 	}
 	for _, u := range report.UnverifiedCompetencies {
 		out.Unverified = append(out.Unverified, u.Name)

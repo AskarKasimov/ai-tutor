@@ -15,6 +15,17 @@ func outcomeLabel(task diagnostic.TaskSnapshot) string {
 	return fmt.Sprintf("Проверенный результат «%s»", task.OutcomeName)
 }
 
+// WithReasons adds what the criteria found wrong to the advice, which alone names
+// only the topic.
+func WithReasons(advice string, reasons []string) string {
+	for _, reason := range reasons {
+		if reason = cleanSentence(reason); reason != "" {
+			advice += " " + reason + "."
+		}
+	}
+	return advice
+}
+
 func AnalyzeResult(result diagnostic.Result) DeterministicReport {
 	report := DeterministicReport{SessionID: result.SessionID, DiagnosticScore: result.DiagnosticScore,
 		MaximumScore: result.MaximumScore, Strengths: []string{}, ConfirmedGaps: []diagnostic.ConfirmedGap{},
@@ -44,6 +55,10 @@ func AnalyzeResult(result diagnostic.Result) DeterministicReport {
 				failed = append(failed, cr.Explanation)
 			}
 		}
+		explained := advice
+		if !a.Skipped {
+			explained = WithReasons(advice, failed)
+		}
 		id := a.Task.OutcomeID
 		if id == "" {
 			id = a.OutcomeID
@@ -52,7 +67,7 @@ func AnalyzeResult(result diagnostic.Result) DeterministicReport {
 		// zero answers use gaps. Both carry an explicit result and constituent.
 		if a.Role == "main" && a.Score == 1 && !a.Skipped {
 			report.PartialCompetencies = append(report.PartialCompetencies, diagnostic.PartialCompetency{
-				CompetencyID: a.CompetencyID, CompetencyName: a.Task.CompetencyName, Details: advice})
+				CompetencyID: a.CompetencyID, CompetencyName: a.Task.CompetencyName, Details: explained})
 		} else {
 			report.ConfirmedGaps = append(report.ConfirmedGaps, diagnostic.ConfirmedGap{
 				CompetencyID: a.CompetencyID, CompetencyName: a.Task.CompetencyName, OutcomeID: id,
@@ -61,7 +76,7 @@ func AnalyzeResult(result diagnostic.Result) DeterministicReport {
 		}
 		report.TrainingRecommendations = append(report.TrainingRecommendations, diagnostic.TrainingRecommendation{
 			CompetencyID: a.CompetencyID, CompetencyName: a.Task.CompetencyName,
-			OutcomeID: id, OutcomeName: a.Task.OutcomeName, Rationale: advice})
+			OutcomeID: id, OutcomeName: a.Task.OutcomeName, Rationale: explained})
 	}
 	// Legacy snapshots keep the outcome ID on the answer, as the items above.
 	importance := map[string]int16{}

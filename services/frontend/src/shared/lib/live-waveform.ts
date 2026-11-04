@@ -1,5 +1,5 @@
 import WaveSurfer from 'wavesurfer.js'
-import RecordPlugin from 'wavesurfer.js/dist/plugins/record.esm.js'
+import { monitorVoiceStream } from './monitor-voice-stream'
 
 // Gain scales live microphone bars so ordinary speech is clearly visible.
 export function createVoiceWaveform(
@@ -41,24 +41,17 @@ export function createVoiceWaveform(
         return
       }
       waveform.setOptions({ normalize: false, barHeight: gain })
-      const plugin = waveform.registerPlugin(
-        RecordPlugin.create({
-          scrollingWaveform: true,
-          scrollingWaveformWindow: 3,
-          renderRecordedAudio: false,
-        }),
-      )
-      try {
-        const monitor = plugin.renderMicStream(stream)
-        stopMonitor = () => {
-          monitor.onDestroy()
-          plugin.destroy()
-        }
-        activeStream = stream
-      } catch (error) {
-        plugin.destroy()
-        throw error
+      const stopStream = monitorVoiceStream(stream, (peaks) => {
+        void waveform.load('', [peaks], 3).catch((error: unknown) => {
+          if (error instanceof DOMException && error.name === 'AbortError')
+            return
+          console.error('Error rendering microphone waveform:', error)
+        })
+      })
+      stopMonitor = () => {
+        stopStream()
       }
+      activeStream = stream
     },
     // Draws a finished recording; the silent line stays if it cannot be decoded.
     setAudio(audio?: Blob) {

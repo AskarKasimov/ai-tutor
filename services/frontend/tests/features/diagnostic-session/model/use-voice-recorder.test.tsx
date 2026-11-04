@@ -94,3 +94,44 @@ it('ignores a delayed recorder stop callback from the previous exercise', async 
   expect(view.result.current.recording).toBe(false)
   expect(recorded).not.toHaveBeenCalled()
 })
+
+it('discards a cancelled recording and allows a new one', async () => {
+  const media = fakeStream()
+  installMedia(async () => media.value)
+  const recorded = vi.fn()
+  const view = renderHook(() => useVoiceRecorder('turn', recorded))
+  await act(async () => view.result.current.start())
+  const oldRecorder = DeferredRecorder.last
+  act(() => view.result.current.cancel())
+  oldRecorder?.ondataavailable?.({ data: new Blob(['discarded']) } as BlobEvent)
+  act(() => oldRecorder?.onstop?.(new Event('stop')))
+  expect(media.track.stop).toHaveBeenCalled()
+  expect(recorded).not.toHaveBeenCalled()
+  expect(view.result.current.recording).toBe(false)
+  await act(async () => view.result.current.start())
+  expect(view.result.current.recording).toBe(true)
+})
+
+it('cancels a pending microphone permission request', async () => {
+  let resolveMedia!: (stream: MediaStream) => void
+  installMedia(
+    () =>
+      new Promise((resolve) => {
+        resolveMedia = resolve
+      }),
+  )
+  const view = renderHook(() => useVoiceRecorder('turn', vi.fn()))
+  let request!: Promise<void>
+  act(() => {
+    request = view.result.current.start()
+  })
+  act(() => view.result.current.cancel())
+  const media = fakeStream()
+  await act(async () => {
+    resolveMedia(media.value)
+    await request
+  })
+  expect(media.track.stop).toHaveBeenCalledOnce()
+  expect(view.result.current.recording).toBe(false)
+  expect(view.result.current.requesting).toBe(false)
+})

@@ -45,8 +45,8 @@ import (
 	pb "github.com/AskarKasimov/ai-tutor/services/shared/gen/go/llmgateway/v1"
 )
 
-func (a *App) learningModelHTTP(profile string) *http.Client {
-	return &http.Client{Transport: llmgateway.Transport{Gateway: a.gatewayClient, Profile: profile, Complexity: pb.Complexity_COMPLEXITY_HIGH}}
+func (a *App) learningModelHTTP() *http.Client {
+	return &http.Client{Transport: llmgateway.Transport{Gateway: a.gatewayClient, Complexity: pb.Complexity_COMPLEXITY_HIGH}}
 }
 
 func learningTaskItem(task training.Task) variant.VariantTask {
@@ -75,7 +75,7 @@ func (g trainingFinalAssessment) GradeFinal(ctx context.Context, exercise traini
 }
 
 func (a *App) registerLearningRoutes(mux *http.ServeMux, auth *authapp.Service, voice *voiceapp.Service, subjects *subjecthttp.Handler, competency *competencyhttp.Handler, variants *variantgenhttp.Handler) {
-	grader := assessmentmodel.New(a.learningModelHTTP("learning-assessment"), "http://gateway.invalid/v1", "", a.cfg.LLMTimeout)
+	grader := assessmentmodel.New(a.learningModelHTTP(), "http://gateway.invalid/v1", "", a.cfg.LLMTimeout)
 	assessment := assessmentapp.New(assessmentpg.New(a.pool), a.variantRepository, grader)
 	assessmentHandlers := assessmenthttp.New(assessment)
 	transcriptions := assessmentpg.New(a.pool)
@@ -84,12 +84,12 @@ func (a *App) registerLearningRoutes(mux *http.ServeMux, auth *authapp.Service, 
 	diagnostic := diagnosticapp.New(a.diagnosticStore, a.variantRepository, voice, assessment, security.IDGenerator{}, a.now).
 		WithAudioReader(taskAudio).WithAudioRegenerator(a.audioWorker).WithTranscriptions(transcriptions)
 	diagnosticHandlers := diagnostichttp.New(diagnostic, a.cfg.MaxUploadBytes)
-	feedbackModel := diagnosticfeedbackmodel.New(a.learningModelHTTP("learning-assessment"), "http://gateway.invalid/v1", "", a.cfg.LLMTimeout)
+	feedbackModel := diagnosticfeedbackmodel.New(a.learningModelHTTP(), "http://gateway.invalid/v1", "", a.cfg.LLMTimeout)
 	feedback := diagnosticfeedbackapp.New(diagnostic, feedbackModel, diagnosticfeedbackpg.NewStore(a.pool), a.now).WithTaskFinder(diagnosticfeedbackpg.NewTaskFinder(a.pool))
 	feedbackHandlers := diagnosticfeedbackhttp.New(feedback)
 	taskBank := taskbankhttp.New(taskbankapp.New(taskbankpg.New(a.pool)))
 	taskGenRepository := taskgenpg.New(a.pool)
-	taskGenerator := taskgenmodel.New(a.learningModelHTTP("learning-taskgen"), "http://gateway.invalid/v1", "", a.cfg.LLMTimeout)
+	taskGenerator := taskgenmodel.New(a.learningModelHTTP(), "http://gateway.invalid/v1", "", a.cfg.LLMTimeout)
 	taskGen := taskgenhttp.New(taskgenapp.New(taskGenRepository, taskGenerator, "learning-taskgen", func() int64 { return a.now().Unix() }), taskgenapp.NewMaterialService(taskGenRepository, func() int64 { return a.now().Unix() }))
 	trainingRepository := trainingpg.New(a.pool).WithLease(a.cfg.HTTPWriteTimeout())
 	trainingService := trainingapp.New(trainingRepository, a.diagnosticStore, voice, trainingAssessment{assessment}, trainingsnapshot.Provider{}, security.IDGenerator{}, a.now).
@@ -98,7 +98,7 @@ func (a *App) registerLearningRoutes(mux *http.ServeMux, auth *authapp.Service, 
 	trainingService = trainingService.WithCheckedNext(chatRepository)
 	var tutor trainingapp.Tutor
 	if a.cfg.LearningTutorEnabled {
-		tutor = trainingmodel.NewTutor(a.learningModelHTTP("learning-tutor"), "http://gateway.invalid/v1", "", a.cfg.LLMTimeout)
+		tutor = trainingmodel.NewTutor(a.learningModelHTTP(), "http://gateway.invalid/v1", "", a.cfg.LLMTimeout)
 	}
 	chatService := trainingapp.NewChatService(chatRepository, voice, tutor, trainingFinalAssessment{assessment}, security.IDGenerator{}, a.now).
 		WithContextLimits(training.ContextLimits{TaskMaxChars: a.cfg.TutorTaskMaxChars, HistoryMaxChars: a.cfg.TutorHistoryMaxChars, SummaryMaxChars: a.cfg.TutorSummaryMaxChars})
@@ -106,7 +106,7 @@ func (a *App) registerLearningRoutes(mux *http.ServeMux, auth *authapp.Service, 
 	trainingHandlers := traininghttp.New(trainingService, a.cfg.MaxUploadBytes)
 	var teacher learningapp.Teacher
 	if a.cfg.LearningTutorEnabled {
-		teacher = learningmodel.New(a.learningModelHTTP("learning-tutor"), "http://gateway.invalid/v1", "", a.cfg.LLMTimeout)
+		teacher = learningmodel.New(a.learningModelHTTP(), "http://gateway.invalid/v1", "", a.cfg.LLMTimeout)
 	}
 	planService := learningapp.New(learningpg.New(a.pool), a.diagnosticStore, voice, teacher, security.IDGenerator{}, a.now).WithTranscriptions(transcriptions)
 	planHandlers := learninghttp.New(planService, a.cfg.MaxUploadBytes)

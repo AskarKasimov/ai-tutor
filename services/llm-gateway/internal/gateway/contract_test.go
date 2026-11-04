@@ -4,8 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"os"
-	"strings"
 	"testing"
 	"time"
 )
@@ -23,30 +21,6 @@ func TestParseRequestAcceptsSupportedCompletion(t *testing.T) {
 	}
 	if _, ok := got.Parameters["temperature"]; !ok {
 		t.Fatal("temperature was not preserved")
-	}
-}
-
-func TestGeneratedOpenAPIRequestDocumentsRoutingProfile(t *testing.T) {
-	openapi, err := os.ReadFile("../../openapi.yaml")
-	if err != nil {
-		t.Fatal(err)
-	}
-	contents := string(openapi)
-	const schema = "    gateway.OpenAPIRequest:\n"
-	start := strings.Index(contents, schema)
-	if start < 0 {
-		t.Fatalf("generated OpenAPI is missing schema %q", strings.TrimSpace(schema))
-	}
-	requestSchema := contents[start+len(schema):]
-	end := len(requestSchema)
-	for _, boundary := range []string{"\n    gateway.", "\ninfo:"} {
-		if index := strings.Index(requestSchema, boundary); index >= 0 && index < end {
-			end = index
-		}
-	}
-	requestSchema = requestSchema[:end]
-	if !strings.Contains(requestSchema, "\n        routing_profile:\n          type: string") {
-		t.Fatal("generated OpenAPI request schema does not document routing_profile")
 	}
 }
 
@@ -171,5 +145,23 @@ func TestLegacyHashReplayWithLostParameters(t *testing.T) {
 				t.Fatalf("legacy replay: id=%s result=%+v err=%v", gotID, result, err)
 			}
 		})
+	}
+}
+
+func TestRoutingProfileIsRejectedFromClientsButIgnoredInDurableRecords(t *testing.T) {
+	body := []byte(`{"messages":[{"role":"user","content":"x"}],"complexity":"low","routing_profile":"learn"}`)
+	if _, err := ParseRequest(body); err == nil {
+		t.Fatal("client request with routing_profile was accepted")
+	}
+	var restored Request
+	if err := json.Unmarshal(body, &restored); err != nil {
+		t.Fatalf("durable record with routing_profile: %v", err)
+	}
+	plain, err := ParseRequest([]byte(`{"messages":[{"role":"user","content":"x"}],"complexity":"low"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if restored.CanonicalHash() != plain.CanonicalHash() {
+		t.Fatal("durable record kept a separate routing hash")
 	}
 }

@@ -341,8 +341,7 @@ func LoadConfig(path string) (Config, error) {
 	return c, nil
 }
 
-// YAML-backed application settings use YAML paths in diagnostics. ConfigFromEnv
-// retains the legacy environment-variable diagnostics for existing callers.
+// YAML-backed application settings use YAML paths in diagnostics.
 func yamlConfigValidationError(err error) error {
 	message := err.Error()
 	for _, field := range []struct{ env, path string }{

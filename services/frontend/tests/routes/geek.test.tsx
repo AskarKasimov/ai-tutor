@@ -515,8 +515,9 @@ it('runs a diagnostic from the home page to the result and back to the history',
     ),
   ).toBeVisible()
   expect(screen.getAllByText('Введение в ИИ', { exact: true })).toHaveLength(1)
+  expect(screen.getAllByText('Симуляция экзамена')).toHaveLength(2)
   expect(
-    screen.getByRole('progressbar', { name: 'Диагностика' }),
+    screen.getByRole('progressbar', { name: 'Симуляция экзамена' }),
   ).toHaveAttribute('aria-valuenow', '0')
   // The new Geek turn is voiced at once and can be stopped.
   await waitFor(() => expect(FakeAudio.played).toHaveLength(1))
@@ -564,7 +565,7 @@ it('runs a diagnostic from the home page to the result and back to the history',
     screen.queryByRole('textbox', { name: 'Ваш ответ' }),
   ).not.toBeInTheDocument()
   expect(
-    screen.getByRole('progressbar', { name: 'Диагностика' }),
+    screen.getByRole('progressbar', { name: 'Симуляция экзамена' }),
   ).toHaveAttribute('aria-valuenow', '100')
 
   const toResult = screen.getByRole('button', { name: 'Посмотреть итог' })
@@ -779,7 +780,7 @@ it('sends a spoken answer as soon as it is transcribed', async () => {
     await screen.findByRole('button', { name: 'Ответить голосом' }),
   )
   fireEvent.click(
-    await screen.findByRole('button', { name: 'Остановить запись' }),
+    await screen.findByRole('button', { name: 'Отправить запись' }),
   )
   expect(recorder).toBeDefined()
   // The transcript is sent at once: no check or re-recording step.
@@ -787,6 +788,60 @@ it('sends a spoken answer as soon as it is transcribed', async () => {
     await screen.findByText('А где допустимая эвристика не поможет?'),
   ).toBeVisible()
   expect(screen.queryByRole('button', { name: 'Записать заново' })).toBeNull()
+  expect(answers[0].body).toEqual({ turn_id: 't1', transcription_id: 'tr-1' })
+})
+
+it('keeps recording controls reachable and restores focus after cancellation', async () => {
+  const { answers, fetch } = geekBackend()
+  const stopTrack = vi.fn()
+  class FakeRecorder {
+    static isTypeSupported() {
+      return true
+    }
+    state = 'inactive'
+    mimeType = 'audio/webm'
+    ondataavailable: ((event: { data: Blob }) => void) | null = null
+    onstop: (() => void) | null = null
+    start() {
+      this.state = 'recording'
+    }
+    stop() {
+      this.state = 'inactive'
+      this.ondataavailable?.({ data: new Blob(['voice']) })
+      this.onstop?.()
+    }
+  }
+  vi.stubGlobal('MediaRecorder', FakeRecorder)
+  Object.defineProperty(navigator, 'mediaDevices', {
+    configurable: true,
+    value: {
+      getUserMedia: () =>
+        Promise.resolve({ getTracks: () => [{ stop: stopTrack }] }),
+    },
+  })
+  renderApp()
+  await start()
+  const mic = await screen.findByRole('button', { name: 'Ответить голосом' })
+  await waitFor(() => expect(mic).toBeEnabled())
+  mic.focus()
+  fireEvent.click(mic)
+  const cancel = await screen.findByRole('button', { name: 'Отменить запись' })
+  expect(cancel).toHaveFocus()
+  fireEvent.click(cancel)
+  const restart = await screen.findByRole('button', {
+    name: 'Ответить голосом',
+  })
+  expect(restart).toHaveFocus()
+  expect(stopTrack).toHaveBeenCalled()
+  expect(answers).toHaveLength(0)
+  expect(
+    fetch.mock.calls.some(([url]) => url.endsWith('/voice/transcriptions')),
+  ).toBe(false)
+  fireEvent.click(restart)
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Отправить запись' }),
+  )
+  await waitFor(() => expect(answers).toHaveLength(1))
   expect(answers[0].body).toEqual({ turn_id: 't1', transcription_id: 'tr-1' })
 })
 
@@ -882,7 +937,7 @@ it('stops Geek audio before opening the microphone and keeps it silent while rec
   const pausedBefore = FakeAudio.paused
   fireEvent.click(screen.getByRole('button', { name: 'Ответить голосом' }))
   expect(
-    await screen.findByRole('button', { name: 'Остановить запись' }),
+    await screen.findByRole('button', { name: 'Отправить запись' }),
   ).toBeVisible()
   expect(FakeAudio.paused).toBeGreaterThan(pausedBefore)
   expect(

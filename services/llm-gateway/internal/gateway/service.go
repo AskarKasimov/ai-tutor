@@ -620,7 +620,7 @@ func (s *Service) next() (*durableJob, InstanceConfig, bool) {
 			if (pass == 0) != job.Request.IsUrgent() {
 				continue
 			}
-			pool := s.eligibleInstancesFor(job.Request.Complexity, job.Request.RoutingProfile)
+			pool := s.eligibleInstances(job.Request.Complexity)
 			var candidates []InstanceConfig
 			for _, in := range pool {
 				if s.inFlight[in.ID] >= in.MaxInFlight || !supports(in, job.Request) || !s.caller.circuit(in.ID).available(time.Now()) {
@@ -747,10 +747,6 @@ func (s *Service) instanceTier(id string) int {
 }
 
 func (s *Service) eligibleInstances(complexity string) []InstanceConfig {
-	return s.eligibleInstancesFor(complexity, "")
-}
-
-func (s *Service) eligibleInstancesFor(complexity, profile string) []InstanceConfig {
 	rank := complexityRank(complexity)
 	if rank < 0 {
 		return nil
@@ -770,19 +766,6 @@ func (s *Service) eligibleInstancesFor(complexity, profile string) []InstanceCon
 				instances = append(instances, instance)
 			}
 		}
-	}
-	if profile != "" {
-		allowed := make(map[string]bool, len(s.cfg.RoutingProfiles[profile]))
-		for _, id := range s.cfg.RoutingProfiles[profile] {
-			allowed[id] = true
-		}
-		filtered := instances[:0]
-		for _, instance := range instances {
-			if allowed[instance.ID] {
-				filtered = append(filtered, instance)
-			}
-		}
-		instances = filtered
 	}
 	return instances
 }
@@ -1362,13 +1345,8 @@ func (s *Service) retryPublish(payload durableRequest, raw []byte, size int64) {
 }
 
 func (s *Service) validatePool(r Request) error {
-	if r.RoutingProfile != "" {
-		if _, ok := s.cfg.RoutingProfiles[r.RoutingProfile]; !ok {
-			return apiErr(400, "invalid_request_error", "unknown_routing_profile", "routing_profile is not configured")
-		}
-	}
 	parametersSupported := false
-	for _, in := range s.eligibleInstancesFor(r.Complexity, r.RoutingProfile) {
+	for _, in := range s.eligibleInstances(r.Complexity) {
 		if supportsParameters(in, r) {
 			parametersSupported = true
 		}
@@ -1380,99 +1358,6 @@ func (s *Service) validatePool(r Request) error {
 		return apiErr(400, "invalid_request_error", "unsupported_parameter", "No instance in the compatible complexity pools supports all requested parameters.")
 	}
 	return apiErr(400, "invalid_request_error", "context_length_exceeded", "The request exceeds the context window of every compatible instance.")
-}
-func (s *Service) await(w http.ResponseWriter, r *http.Request, id string, ch chan struct{}) {
-	s.mu.Lock()
-	j := s.jobs[id]
-	if ephemeral, ok := s.ephemeral[id]; ok {
-		s.mu.Unlock()
-		w.Header().Set("X-Request-ID", id)
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(ephemeral.status)
-		_, _ = w.Write(ephemeral.body)
-		return
-	}
-	if j != nil && (j.Status == "succeeded" || j.Status == "failed" || j.Status == "expired") {
-		saved := *j
-		s.mu.Unlock()
-		s.respond(w, id, saved)
-		return
-	}
-	deadline := time.Now().Add(s.cfg.RequestDeadline)
-	if j != nil {
-		deadline = j.Deadline
-	} else if accepted := s.accepted[id]; accepted != nil {
-		deadline = accepted.Deadline
-	}
-	s.mu.Unlock()
-	timer := time.NewTimer(time.Until(deadline))
-	defer timer.Stop()
-	select {
-	case <-r.Context().Done():
-		return
-	case <-ch:
-	case <-timer.C:
-		s.mu.Lock()
-		j = s.jobs[id]
-		if j != nil && (j.Status == "succeeded" || j.Status == "failed" || j.Status == "expired") {
-			saved := *j
-			s.mu.Unlock()
-			s.respond(w, id, saved)
-			return
-		}
-		queued := j != nil && j.Status == "queued" && !time.Now().Before(j.Deadline)
-		s.mu.Unlock()
-		if queued {
-			s.expireQueued(time.Now())
-			s.mu.Lock()
-			j = s.jobs[id]
-			if j != nil && (j.Status == "succeeded" || j.Status == "failed" || j.Status == "expired") {
-				saved := *j
-				s.mu.Unlock()
-				s.respond(w, id, saved)
-				return
-			}
-			s.mu.Unlock()
-		}
-		w.Header().Set("X-Request-ID", id)
-		writeError(w, 503, "server_error", "state_unavailable", "Gateway did not persist a result before the request deadline.")
-		return
-	}
-	s.mu.Lock()
-	j = s.jobs[id]
-	if j == nil {
-		s.mu.Unlock()
-		writeError(w, 503, "server_error", "state_unavailable", "Gateway result is unavailable.")
-		return
-	}
-	saved := *j
-	ephemeral, hasEphemeral := s.ephemeral[id]
-	s.mu.Unlock()
-	if hasEphemeral {
-		w.Header().Set("X-Request-ID", id)
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(ephemeral.status)
-		_, _ = w.Write(ephemeral.body)
-		return
-	}
-	s.respond(w, id, saved)
-}
-func (s *Service) respond(w http.ResponseWriter, id string, j durableJob) {
-	w.Header().Set("X-Request-ID", id)
-	if j.Status == "succeeded" {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(200)
-		_, _ = w.Write(j.Response)
-		return
-	}
-	if j.Error == nil {
-		writeError(w, 503, "server_error", "state_unavailable", "Gateway result is unavailable.")
-		return
-	}
-	if j.Error.RetryAfter > 0 {
-		w.Header().Set("Retry-After", strconv.Itoa(j.Error.RetryAfter))
-	}
-	writeError(w, j.Error.Status, j.Error.Type, j.Error.Code, j.Error.Message)
 }
 
 func (s *Service) writeMetrics(w http.ResponseWriter) {

@@ -20,7 +20,7 @@ import (
 
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/audio"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/fault"
-	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/httpx"
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/logx"
 	"go.uber.org/zap"
 )
 
@@ -86,7 +86,7 @@ func statusError(resp *http.Response, failureCode string, stt bool) error {
 // turn is voiced late.
 func logCall(ctx context.Context, operation string, started time.Time, fields []zap.Field, err error) {
 	fields = append(fields, zap.String("voice_operation", operation), zap.Duration("duration", time.Since(started)))
-	logger := httpx.LoggerFromContext(ctx)
+	logger := logx.From(ctx)
 	switch {
 	case err == nil:
 		logger.Info("voice call", fields...)

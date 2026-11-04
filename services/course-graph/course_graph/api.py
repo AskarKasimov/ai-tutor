@@ -1,9 +1,11 @@
 import os
 
 from course_graph.config import configure_library_environment, get_settings
+from course_graph.logs import TraceMiddleware, configure_logging
 
 SETTINGS = get_settings()
 configure_library_environment(SETTINGS)
+configure_logging(SETTINGS.logging.level)
 
 from fastapi import FastAPI, File, Header, HTTPException, UploadFile
 from pydantic import BaseModel, Field
@@ -26,6 +28,15 @@ from course_graph.topics.graph import build_links
 from course_graph.topics.models import Material, StrictModel, Topic
 from course_graph.topics.retrieval import get_encoder
 
+logger = logging.getLogger(__name__)
+
+
+def log_stage_failure(message: str, error: Exception) -> None:
+    # Validation errors of a stage quote what the model wrote, so the text of the
+    # exception and its traceback stay at the debug level.
+    logger.error(message, extra={"error_type": type(error).__name__})
+    logger.debug(message, exc_info=error)
+
 # Every stage asks for the low complexity (decision of 18.10.2026): every
 # instance can serve low, and the gateway gives a low request to the free
 # instance expected to answer soonest. Each pass still limits concurrency;
@@ -44,6 +55,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Course Graph Service", version="1.0.0", lifespan=lifespan)
+app.add_middleware(TraceMiddleware)
 ocr_slots = asyncio.Semaphore(1)
 # In-flight computations only: results remain in the bounded job store/disk
 # cache. Each HTTP job keeps its own ID, status and filename.
@@ -91,7 +103,7 @@ async def run_ocr_job(job: OcrJob, future, filename: str, content: bytes, requir
         cached = await run_in_threadpool(get_cached_document, filename, content)
         if cached is not None:
             ocr_jobs.finish(job, future, cached)
-            logging.info("ocr_job_cache_hit job_id=%s request_sha256=%s", job.job_id, job.request_sha256)
+            logger.info("ocr job cache hit", extra={"job_id": job.job_id, "request_sha256": job.request_sha256})
             return
 
         key = document_key(content, filename)
@@ -105,9 +117,9 @@ async def run_ocr_job(job: OcrJob, future, filename: str, content: bytes, requir
         # One cancelled waiter must not cancel computation for other jobs.
         result = document_for_filename(await asyncio.shield(task), filename)
         ocr_jobs.finish(job, future, result)
-        logging.info("ocr_job_completed job_id=%s request_sha256=%s", job.job_id, job.request_sha256)
+        logger.info("ocr job completed", extra={"job_id": job.job_id, "request_sha256": job.request_sha256})
     except Exception as error:
-        logging.error("ocr_job_failed job_id=%s error_type=%s", job.job_id, type(error).__name__)
+        logger.error("ocr job failed", extra={"job_id": job.job_id, "error_type": type(error).__name__})
         ocr_jobs.fail(job, future, safe_error)
     finally:
         heartbeat_task.cancel()
@@ -194,7 +206,8 @@ async def clean_document(request: CleanRequest):
         client = ModelClient()
         try:
             return await clean_markdown(request.markdown, client.completer(STAGE_COMPLEXITY))
-        except Exception:
+        except Exception as error:
+            log_stage_failure("Cleaning failed", error)
             raise HTTPException(status_code=503, detail="Очистка временно недоступна")
         finally:
             await client.close()
@@ -213,8 +226,8 @@ async def extract_document(request: ExtractRequest):
                                   material_revision=request.material_revision)
             result["report"]["retried_requests"] = client.retries
             return result
-        except Exception:
-            logging.exception("Topic extraction failed")
+        except Exception as error:
+            log_stage_failure("Topic extraction failed", error)
             raise HTTPException(status_code=503, detail="Выделение тем не завершено; исходный текст сохранён")
         finally:
             await client.close()
@@ -242,8 +255,8 @@ async def link_topics(request: LinkRequest):
                                       light_complete=client.completer(STAGE_COMPLEXITY))
             graph["quality"]["retried_requests"] = client.retries
             return graph
-        except Exception:
-            logging.exception("Prerequisite generation failed")
+        except Exception as error:
+            log_stage_failure("Prerequisite generation failed", error)
             raise HTTPException(status_code=503, detail="Построение связей не завершено")
         finally:
             await client.close()
@@ -305,8 +318,8 @@ async def build_course(request: BuildRequest,
             # Repeats of every call this build made, extraction of old reports included.
             graph["quality"]["retried_requests"] = client.retries
             return graph
-        except Exception:
-            logging.exception("Course build failed")
+        except Exception as error:
+            log_stage_failure("Course build failed", error)
             raise HTTPException(status_code=503, detail="Граф не опубликован: этап не завершён")
         finally:
             build_progress.current = None
@@ -317,4 +330,5 @@ if __name__ == "__main__":
     import uvicorn
 
     port = SETTINGS.server.port
-    uvicorn.run("course_graph.api:app", host="0.0.0.0", port=port, reload=False)
+    # configure_logging owns the handlers; the request log is TraceMiddleware's.
+    uvicorn.run("course_graph.api:app", host="0.0.0.0", port=port, reload=False, log_config=None, access_log=False)

@@ -9,6 +9,7 @@ import (
 
 	"google.golang.org/protobuf/proto"
 
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/llmgateway"
 	llmgatewayv1 "github.com/AskarKasimov/ai-tutor/services/shared/gen/go/llmgateway/v1"
 )
 
@@ -59,7 +60,7 @@ func (g *Gateway) Complete(ctx context.Context, system, prompt string) (string, 
 		return "", errors.New("LLM gateway returned no choices")
 	}
 	if reason := completion.Choices[0].FinishReason; reason != "" && reason != "stop" {
-		return "", fmt.Errorf("incomplete translation response: %s", reason)
+		return "", fmt.Errorf("incomplete translation response: %s", llmgateway.SafeFinishReason(reason))
 	}
 	return completion.Choices[0].Message.Content, nil
 }

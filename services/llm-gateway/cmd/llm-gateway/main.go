@@ -26,6 +26,8 @@ import (
 )
 
 func main() {
+	logLevel := new(slog.LevelVar)
+	slog.SetDefault(gateway.NewLogger(os.Stdout, logLevel))
 	configPath := strings.TrimSpace(os.Getenv("GATEWAY_CONFIG"))
 	if configPath == "" {
 		configPath = "config/dev.yaml"
@@ -35,6 +37,9 @@ func main() {
 		slog.Error("invalid gateway configuration", "error", err)
 		os.Exit(1)
 	}
+	// Validate has accepted the value.
+	level, _ := gateway.ParseLogLevel(cfg.LogLevel)
+	logLevel.Set(level)
 	service, err := gateway.NewService(cfg)
 	if err != nil {
 		slog.Error("initialize gateway", "error", err)

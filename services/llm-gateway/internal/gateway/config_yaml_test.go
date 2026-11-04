@@ -10,6 +10,7 @@ import (
 
 const validGatewayYAML = `listen_address: ":8010"
 grpc_listen_address: ":8011"
+log_level: info
 kafka_brokers: ["localhost:9092"]
 request_deadline: 90s
 upstream_timeout: 45s

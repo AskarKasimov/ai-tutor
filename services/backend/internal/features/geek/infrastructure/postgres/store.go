@@ -10,7 +10,7 @@ import (
 
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/exam"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/features/geek/application"
-	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/httpx"
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/logx"
 	db "github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/postgres/sqlcgen"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -135,7 +135,7 @@ func (s *Store) Update(ctx context.Context, session exam.Session, previous int, 
 	if err == nil && session.Status != exam.SessionActive {
 		// Only a rebuilt course graph cancels a diagnostic; the version tells
 		// which graph the student was examined on.
-		httpx.LoggerFromContext(ctx).Info("geek session "+string(session.Status), zap.String("session_id", session.ID),
+		logx.From(ctx).Info("geek session "+string(session.Status), zap.String("session_id", session.ID),
 			zap.String("subject_id", session.SubjectID), zap.String("graph_version", session.Exam.Graph.Version), zap.Int("turns", len(session.Turns)))
 	}
 	return err

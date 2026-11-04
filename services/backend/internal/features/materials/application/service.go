@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"path/filepath"
 	"strings"
 	"time"
@@ -15,6 +14,8 @@ import (
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/material"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/user"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/fault"
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/logx"
+	"go.uber.org/zap"
 )
 
 type Repository interface {
@@ -160,7 +161,7 @@ func (s *Service) Upload(ctx context.Context, actor user.User, subjectID string,
 		contentType = "application/octet-stream"
 	}
 	if err := s.s3.Put(ctx, s3RawKey, contentType, input.Data); err != nil {
-		log.Printf("Failed to upload raw file to S3 for %s: %v", cleanFilename, err)
+		logx.From(ctx).Error("upload raw material to S3 failed", zap.String("filename", cleanFilename), zap.Error(err))
 		return material.Material{}, fault.New(fault.Unavailable, "S3_UPLOAD_ERROR", "Хранилище недоступно, попробуйте позже.")
 	}
 
@@ -188,11 +189,11 @@ func (s *Service) Upload(ctx context.Context, actor user.User, subjectID string,
 	}
 	created, err := s.repo.Insert(ctx, matRecord)
 	if err != nil {
-		log.Printf("Failed to save material %s to database: %v", cleanFilename, err)
+		logx.From(ctx).Error("save material to database failed", zap.String("filename", cleanFilename), zap.Error(err))
 		cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
 		defer cancel()
 		if delErr := s.s3.Delete(cleanupCtx, s3RawKey); delErr != nil {
-			log.Printf("Failed to cleanup raw S3 object %s after DB error: %v", s3RawKey, delErr)
+			logx.From(ctx).Error("delete raw S3 object after database error failed", zap.String("key", s3RawKey), zap.Error(delErr))
 		}
 		return material.Material{}, fault.New(fault.Unavailable, "DATABASE_ERROR", "Не удалось сохранить материал в базу данных, попробуйте позже.")
 	}
@@ -258,7 +259,7 @@ func (s *Service) Replace(ctx context.Context, actor user.User, subjectID, mater
 	for _, key := range keys {
 		if key != "" {
 			if err := s.s3.Delete(cctx, key); err != nil {
-				log.Printf("Failed to clean replaced material object for %s: %v", materialID, err)
+				logx.From(ctx).Error("delete replaced material object failed", zap.String("material_id", materialID), zap.String("key", key), zap.Error(err))
 			}
 		}
 	}
@@ -334,7 +335,7 @@ func (s *Service) Get(ctx context.Context, actor user.User, subjectID, materialI
 		if errors.Is(err, material.ErrNotFound) {
 			return material.Material{}, fault.New(fault.NotFound, "NOT_FOUND", "Материал не найден.")
 		}
-		log.Printf("Failed to get material %s from repository: %v", materialID, err)
+		logx.From(ctx).Error("get material from database failed", zap.String("material_id", materialID), zap.Error(err))
 		return material.Material{}, fault.New(fault.Unavailable, "DATABASE_ERROR", "База данных временно недоступна, попробуйте позже.")
 	}
 	if mat.SubjectID != subjectID {
@@ -354,7 +355,7 @@ func (s *Service) Delete(ctx context.Context, actor user.User, subjectID, materi
 
 	deleted, err := s.repo.Delete(ctx, subjectID, materialID)
 	if err != nil {
-		log.Printf("Failed to delete material %s from repository: %v", materialID, err)
+		logx.From(ctx).Error("delete material from database failed", zap.String("material_id", materialID), zap.Error(err))
 		return fault.New(fault.Unavailable, "DATABASE_ERROR", "Не удалось удалить материал из базы данных.")
 	}
 
@@ -362,14 +363,14 @@ func (s *Service) Delete(ctx context.Context, actor user.User, subjectID, materi
 	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
 	defer cancel()
 	if delErr := s.s3.Delete(cleanupCtx, mat.S3RawKey); delErr != nil {
-		log.Printf("Failed to delete raw S3 object %s for material %s: %v", mat.S3RawKey, materialID, delErr)
+		logx.From(ctx).Error("delete material object failed", zap.String("material_id", materialID), zap.String("key", mat.S3RawKey), zap.Error(delErr))
 	}
 	if delErr := s.s3.Delete(cleanupCtx, mat.S3ParsedKey); delErr != nil {
-		log.Printf("Failed to delete parsed S3 object %s for material %s: %v", mat.S3ParsedKey, materialID, delErr)
+		logx.From(ctx).Error("delete material object failed", zap.String("material_id", materialID), zap.String("key", mat.S3ParsedKey), zap.Error(delErr))
 	}
 	if mat.S3OCRKey != "" {
 		if delErr := s.s3.Delete(cleanupCtx, mat.S3OCRKey); delErr != nil {
-			log.Printf("Failed to delete OCR S3 object for material %s: %v", materialID, delErr)
+			logx.From(ctx).Error("delete material object failed", zap.String("material_id", materialID), zap.String("key", mat.S3OCRKey), zap.Error(delErr))
 		}
 	}
 	parsedKey := fmt.Sprintf("subjects/%s/parsed/%s_%s.md", mat.SubjectID, mat.ID, mat.Filename)
@@ -384,7 +385,7 @@ func (s *Service) Delete(ctx context.Context, actor user.User, subjectID, materi
 		for _, key := range []string{mat.Cleaning.S3CleanedKey, mat.Cleaning.S3ReportKey} {
 			if key != "" {
 				if err := s.s3.Delete(cleanupCtx, key); err != nil {
-					log.Printf("Failed to delete cleaning object for %s: %v", materialID, err)
+					logx.From(ctx).Error("delete material object failed", zap.String("material_id", materialID), zap.String("key", key), zap.Error(err))
 				}
 			}
 		}

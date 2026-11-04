@@ -72,7 +72,7 @@ func (graderStub) Grade(_ context.Context, _ application.GradingContext, _ strin
 			{Key: "answer_correctness", Satisfied: true, Explanation: "Ответ соответствует эталону."},
 			{Key: "instruction_following", Satisfied: true, Explanation: "Инструкция выполнена."},
 		},
-		Feedback: []string{"Верно.", "Оба критерия выполнены.", "Закрепите тему."},
+		Feedback: "Верно. Оба критерия выполнены. Закрепите тему.",
 	}, nil
 }
 

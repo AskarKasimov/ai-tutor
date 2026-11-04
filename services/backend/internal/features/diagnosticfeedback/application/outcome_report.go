@@ -38,12 +38,6 @@ func AnalyzeResult(result diagnostic.Result) DeterministicReport {
 		if a.Skipped {
 			advice = "Вопрос пропущен: необходимо проверить и отработать результат. " + label + "."
 		}
-		if len(a.Feedback) >= 3 && !a.Skipped {
-			next := cleanSentence(a.Feedback[2])
-			if next != "" && !strings.Contains(strings.ToLower(next), "следующ") {
-				advice += " " + next + "."
-			}
-		}
 		failed := []string{}
 		for _, cr := range a.CriterionResults {
 			if !cr.Satisfied && strings.TrimSpace(cr.Explanation) != "" {

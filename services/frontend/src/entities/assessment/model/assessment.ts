@@ -17,7 +17,7 @@ export type CriterionResult = {
 export type Assessment = {
   score: 0 | 1 | 2 | 3
   maxScore?: 1 | 2 | 3
-  feedback: [string, string, string]
+  feedback: string
   verdict?: AssessmentVerdict
   criterionResults?: CriterionResult[]
 }

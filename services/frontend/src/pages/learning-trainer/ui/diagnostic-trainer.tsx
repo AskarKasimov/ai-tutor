@@ -442,7 +442,7 @@ function Feedback({
   maxScore: number
   verdict: string
   skipped?: boolean
-  feedback: string[]
+  feedback: string
   heading?: 'h2' | 'h4'
 }) {
   const { t } = useTranslation()
@@ -464,10 +464,7 @@ function Feedback({
       <Heading as={heading} className={styles.feedbackTitle}>
         {t('learningTrainer.feedback')}
       </Heading>
-      <MarkdownContent
-        text={feedback.join(' ')}
-        className={styles.feedbackLine}
-      />
+      <MarkdownContent text={feedback} className={styles.feedbackLine} />
     </>
   )
 }

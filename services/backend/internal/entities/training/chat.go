@@ -56,7 +56,7 @@ type Check struct {
 	MaxScore         int
 	Verdict          string
 	CriterionResults []CriterionResult
-	Feedback         []string
+	Feedback         string
 }
 
 func (c Check) IsCurrent(revision int64) bool { return c.Revision == revision }

@@ -21,7 +21,7 @@ type EvaluateResponse struct {
 	MaxScore         int                           `json:"max_score" minimum:"1" maximum:"3"`
 	Verdict          string                        `json:"verdict" enums:"correct,partial,incorrect"`
 	CriterionResults []application.CriterionResult `json:"criterion_results"`
-	Feedback         []string                      `json:"feedback" minItems:"3" maxItems:"3"`
+	Feedback         string                        `json:"feedback"`
 }
 
 type Handler struct{ service *application.Service }

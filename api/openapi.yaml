@@ -53,10 +53,7 @@ components:
           type: array
           uniqueItems: false
         feedback:
-          items:
-            type: string
-          type: array
-          uniqueItems: false
+          type: string
         max_score:
           maximum: 3
           minimum: 1
@@ -481,10 +478,7 @@ components:
           type: array
           uniqueItems: false
         feedback:
-          items:
-            type: string
-          type: array
-          uniqueItems: false
+          type: string
         grader_max_score:
           maximum: 3
           minimum: 1
@@ -634,10 +628,7 @@ components:
           minimum: 0
           type: integer
         feedback:
-          items:
-            type: string
-          type: array
-          uniqueItems: false
+          type: string
         grader_max_score:
           maximum: 3
           minimum: 1
@@ -1644,10 +1635,7 @@ components:
       additionalProperties: false
       properties:
         feedback:
-          items:
-            type: string
-          type: array
-          uniqueItems: false
+          type: string
         max_score:
           type: integer
         question:
@@ -2524,10 +2512,7 @@ components:
         exercise_id:
           type: string
         feedback:
-          items:
-            type: string
-          type: array
-          uniqueItems: false
+          type: string
         max_score:
           type: integer
         round:

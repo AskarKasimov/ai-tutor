@@ -88,7 +88,7 @@ func (h *Handler) SynthesizeAnswersFeedback(w http.ResponseWriter, r *http.Reque
 			Transcript: a.Transcript,
 			Score:      a.Score,
 			MaxScore:   a.MaxScore,
-			Feedback:   append([]string(nil), a.Feedback...),
+			Feedback:   a.Feedback,
 		})
 	}
 

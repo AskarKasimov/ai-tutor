@@ -118,7 +118,7 @@ func TestSendMessageDoesNotGradeOrAdvanceTraining(t *testing.T) {
 func TestCheckGradesOnlyTheFinalStudentTextAndKeepsFeedbackPrivate(t *testing.T) {
 	repo := &chatRepoFake{}
 	tutor := &chatTutorFake{reply: training.TutorReply{AssistantText: "Вы связали вывод с нужным признаком.", Pedagogy: training.PedagogyConfirmation}}
-	grader := &finalGraderFake{result: assessment.Evaluation{Score: 2, MaxScore: 2, Verdict: "correct", Feedback: []string{"Служебный отзыв.", "Вторая строка.", "Третья строка."}, CriterionResults: []assessment.CriterionResult{{Key: "x", Satisfied: true}}}}
+	grader := &finalGraderFake{result: assessment.Evaluation{Score: 2, MaxScore: 2, Verdict: "correct", Feedback: "Служебный отзыв. Вторая строка. Третья строка.", CriterionResults: []assessment.CriterionResult{{Key: "x", Satisfied: true}}}}
 	service := NewChatService(repo, nil, tutor, grader, &chatIDsFake{}, time.Now)
 	result, err := service.Send(context.Background(), "owner-1", "session-1", training.TurnInput{ExerciseID: "exercise-1", Key: "key-2", Revision: 0, Kind: training.ChatKindCheck, Source: training.AnswerSourceText, Text: "Регрессия, потому что прогнозируем цену."})
 	if err != nil {
@@ -127,7 +127,7 @@ func TestCheckGradesOnlyTheFinalStudentTextAndKeepsFeedbackPrivate(t *testing.T)
 	if grader.calls != 1 || grader.answer != "Регрессия, потому что прогнозируем цену." || repo.check == nil || repo.check.Source != training.AnswerSourceText {
 		t.Fatalf("final answer was not checked as submitted: grader=%+v check=%+v", grader, repo.check)
 	}
-	if tutor.context.Check == nil || tutor.context.Check.Score != 2 || tutor.context.Check.Feedback != nil {
+	if tutor.context.Check == nil || tutor.context.Check.Score != 2 || tutor.context.Check.Feedback != "" {
 		t.Fatalf("tutor context leaked grader feedback or missed score: %+v", tutor.context.Check)
 	}
 	if result.Response.LatestCheck == nil || result.Response.LatestCheck.Score != 2 {
@@ -175,7 +175,7 @@ func TestTutorReadinessAutomaticallyGradesStudentDialogue(t *testing.T) {
 		{Role: training.ChatRoleAssistant, Text: "Закрытая подсказка репетитора."},
 	}}}
 	tutor := &chatTutorFake{reply: training.TutorReply{AnswerReady: true, AssistantText: "Уточним результат.", Pedagogy: training.PedagogyConfirmation}}
-	grader := &finalGraderFake{result: assessment.Evaluation{Score: 2, MaxScore: 2, Verdict: "correct", Feedback: []string{"one", "two", "three"}, CriterionResults: []assessment.CriterionResult{{Key: "x", Satisfied: true}}}}
+	grader := &finalGraderFake{result: assessment.Evaluation{Score: 2, MaxScore: 2, Verdict: "correct", Feedback: "one two three", CriterionResults: []assessment.CriterionResult{{Key: "x", Satisfied: true}}}}
 	service := NewChatService(repo, nil, tutor, grader, &chatIDsFake{}, time.Now)
 	result, err := service.Send(t.Context(), "owner-1", "session-1", training.TurnInput{ExerciseID: "exercise-1", Key: "auto-check", Kind: training.ChatKindMessage, Source: training.AnswerSourceText, Text: "Потому что результат — один из классов."})
 	if err != nil {
@@ -187,7 +187,7 @@ func TestTutorReadinessAutomaticallyGradesStudentDialogue(t *testing.T) {
 	if grader.answer != "Это классификация.\n\nПотому что результат — один из классов." {
 		t.Fatalf("grader did not receive only the student dialogue: %q", grader.answer)
 	}
-	if tutor.context.Check == nil || tutor.context.Check.Feedback != nil || result.Response.Messages[0].Kind != training.ChatKindMessage {
+	if tutor.context.Check == nil || tutor.context.Check.Feedback != "" || result.Response.Messages[0].Kind != training.ChatKindMessage {
 		t.Fatalf("unified turn lost trusted feedback or changed its kind: context=%+v result=%+v", tutor.context, result)
 	}
 }

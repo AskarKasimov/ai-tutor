@@ -47,12 +47,12 @@ func TestGradeSendsTrustedScaleCriteriaMaterialsAndParsesStructuredResult(t *tes
 		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 			t.Error(err)
 		}
-		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"{\"score\":3,\"verdict\":\"correct\",\"criterion_results\":[{\"key\":\"task_type\",\"satisfied\":true,\"explanation\":\"Названа классификация.\"},{\"key\":\"justification\",\"satisfied\":true,\"explanation\":\"Указаны два класса.\"}],\"feedback\":[\"Верно.\",\"Оба критерия выполнены.\",\"Закрепите различия типов задач.\"]}"},"finish_reason":"stop"}]}`))
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"{\"score\":3,\"verdict\":\"correct\",\"criterion_results\":[{\"key\":\"task_type\",\"satisfied\":true,\"explanation\":\"Названа классификация.\"},{\"key\":\"justification\",\"satisfied\":true,\"explanation\":\"Указаны два класса.\"}],\"feedback\":\"Верно. Оба критерия выполнены. Закрепите различия типов задач.\"}"},"finish_reason":"stop"}]}`))
 	}))
 	defer server.Close()
 
 	result, err := New(server.Client(), server.URL+"/v1", "gpt-oss-120b", time.Second).Grade(context.Background(), testContext(), "классификация, потому что два класса")
-	if err != nil || result.Score != 3 || result.Verdict != "correct" || len(result.CriterionResults) != 2 || len(result.Feedback) != 3 {
+	if err != nil || result.Score != 3 || result.Verdict != "correct" || len(result.CriterionResults) != 2 || result.Feedback == "" {
 		t.Fatalf("unexpected model result: %#v, %v", result, err)
 	}
 	if request.Model != "gpt-oss-120b" || request.Temperature == nil || *request.Temperature != 0 || request.ReasoningEffort != "medium" || request.MaxTokens != 4096 {
@@ -66,8 +66,8 @@ func TestGradeSendsTrustedScaleCriteriaMaterialsAndParsesStructuredResult(t *tes
 	}
 	if !strings.Contains(request.Messages[0].Content, "mandatory=true") ||
 		!strings.Contains(request.Messages[0].Content, "criterion_results — массив") ||
-		!strings.Contains(request.Messages[0].Content, "feedback — массив") ||
-		!strings.Contains(request.Messages[0].Content, "один связный мини-отзыв") ||
+		!strings.Contains(request.Messages[0].Content, "feedback — одна строка") ||
+		!strings.Contains(request.Messages[0].Content, "связный мини-отзыв") ||
 		!strings.Contains(request.Messages[0].Content, "180 символов") {
 		t.Fatalf("system prompt omitted grading or concise feedback rule: %s", request.Messages[0].Content)
 	}
@@ -92,10 +92,10 @@ func TestGradeRejectsMalformedStructuredResult(t *testing.T) {
 		name    string
 		content string
 	}{
-		{"missing verdict", `{"score":2,"feedback":[]}`},
-		{"missing satisfied", `{"score":2,"verdict":"correct","criterion_results":[{"key":"task_type","explanation":"Верно"}],"feedback":["Верно"]}`},
-		{"null satisfied", `{"score":2,"verdict":"correct","criterion_results":[{"key":"task_type","satisfied":null,"explanation":"Верно"}],"feedback":["Верно"]}`},
-		{"missing explanation", `{"score":2,"verdict":"correct","criterion_results":[{"key":"task_type","satisfied":true}],"feedback":["Верно"]}`},
+		{"missing verdict", `{"score":2,"feedback":""}`},
+		{"missing satisfied", `{"score":2,"verdict":"correct","criterion_results":[{"key":"task_type","explanation":"Верно"}],"feedback":"Верно"}`},
+		{"null satisfied", `{"score":2,"verdict":"correct","criterion_results":[{"key":"task_type","satisfied":null,"explanation":"Верно"}],"feedback":"Верно"}`},
+		{"missing explanation", `{"score":2,"verdict":"correct","criterion_results":[{"key":"task_type","satisfied":true}],"feedback":"Верно"}`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -168,7 +168,7 @@ func TestGradeMapsRequestDeadline(t *testing.T) {
 
 func TestGradeRejectsMissingSatisfied(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"{\"score\":0,\"verdict\":\"incorrect\",\"criterion_results\":[{\"key\":\"task_type\",\"explanation\":\"Тип не назван.\"},{\"key\":\"justification\",\"satisfied\":false,\"explanation\":\"Объяснения нет.\"}],\"feedback\":[\"Ответ неверен.\",\"Не выполнены критерии.\",\"Назовите тип и объясните выбор.\"]}"},"finish_reason":"stop"}]}`))
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"{\"score\":0,\"verdict\":\"incorrect\",\"criterion_results\":[{\"key\":\"task_type\",\"explanation\":\"Тип не назван.\"},{\"key\":\"justification\",\"satisfied\":false,\"explanation\":\"Объяснения нет.\"}],\"feedback\":\"Ответ неверен. Не выполнены критерии. Назовите тип и объясните выбор.\"}"},"finish_reason":"stop"}]}`))
 	}))
 	defer server.Close()
 
@@ -181,7 +181,7 @@ func TestGradeRejectsMissingSatisfied(t *testing.T) {
 
 func TestGradeRejectsNullSatisfied(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"{\"score\":0,\"verdict\":\"incorrect\",\"criterion_results\":[{\"key\":\"task_type\",\"satisfied\":null,\"explanation\":\"Тип не назван.\"},{\"key\":\"justification\",\"satisfied\":false,\"explanation\":\"Объяснения нет.\"}],\"feedback\":[\"Ответ неверен.\",\"Не выполнены критерии.\",\"Назовите тип и объясните выбор.\"]}"},"finish_reason":"stop"}]}`))
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"{\"score\":0,\"verdict\":\"incorrect\",\"criterion_results\":[{\"key\":\"task_type\",\"satisfied\":null,\"explanation\":\"Тип не назван.\"},{\"key\":\"justification\",\"satisfied\":false,\"explanation\":\"Объяснения нет.\"}],\"feedback\":\"Ответ неверен. Не выполнены критерии. Назовите тип и объясните выбор.\"}"},"finish_reason":"stop"}]}`))
 	}))
 	defer server.Close()
 

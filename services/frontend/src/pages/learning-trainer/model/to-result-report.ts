@@ -40,11 +40,7 @@ export function toResultReport(result: DiagnosticResult): ResultReportData {
       reason: criterion.explanation,
       quote: '',
     })),
-    // A line sending the student on to the next task has no place in the
-    // result; the backend report leaves it out the same way.
-    note: answer.feedback
-      .filter((line) => !line.toLowerCase().includes('следующ'))
-      .join(' '),
+    note: answer.feedback,
   }))
   // Basics are not asked after a full main answer: it credits them.
   const credited: ReportTopic[] = result.untested_basics.map((task) => ({

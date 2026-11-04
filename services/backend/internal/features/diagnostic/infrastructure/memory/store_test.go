@@ -76,18 +76,17 @@ func TestStoreOwnsAcceptedAnswersAndReplayResponses(t *testing.T) {
 		VariantTaskID: "main", Task: session.Variant.Competencies[0].Tasks[0], Score: 1,
 		GraderScore: 1, GraderMaxScore: 2, Verdict: "partial",
 		CriterionResults: []diagnostic.CriterionResult{{Key: "accuracy", Explanation: "Explanation"}},
-		Feedback:         []string{"Feedback"},
+		Feedback:         "Feedback",
 	}
 	response, err := store.Accept(ctx, "owner", "session", "token", "answer", "fingerprint", answer,
 		diagnostic.Transition{CurrentTask: 1, Status: diagnostic.StatusActive})
 	if err != nil {
 		t.Fatal(err)
 	}
-	answer.Task.Options[0], answer.CriterionResults[0].Key, answer.Feedback[0] = "changed", "changed", "changed"
+	answer.Task.Options[0], answer.CriterionResults[0].Key = "changed", "changed"
 	mutate := func(value diagnostic.Progress) {
 		value.Current.Options[0] = "changed"
 		value.CriterionResults[0].Key = "changed"
-		value.Feedback[0] = "changed"
 		*value.Score, *value.GraderScore, *value.GraderMaxScore = 0, 0, 0
 	}
 	mutate(response)
@@ -97,7 +96,7 @@ func TestStoreOwnsAcceptedAnswersAndReplayResponses(t *testing.T) {
 			t.Fatalf("replay: %v / %v", replay, err)
 		}
 		value := replay.Response
-		if value.Current.Options[0] != "basic option" || value.CriterionResults[0].Key != "accuracy" || value.Feedback[0] != "Feedback" || *value.Score != 1 || *value.GraderScore != 1 || *value.GraderMaxScore != 2 {
+		if value.Current.Options[0] != "basic option" || value.CriterionResults[0].Key != "accuracy" || value.Feedback != "Feedback" || *value.Score != 1 || *value.GraderScore != 1 || *value.GraderMaxScore != 2 {
 			t.Fatalf("caller mutation changed an idempotent response: %+v", value)
 		}
 		mutate(value)
@@ -106,7 +105,7 @@ func TestStoreOwnsAcceptedAnswersAndReplayResponses(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if stored.Current().Options[0] != "basic option" || stored.Answers[0].Task.Options[0] != "main option" || stored.Answers[0].CriterionResults[0].Key != "accuracy" || stored.Answers[0].Feedback[0] != "Feedback" {
+	if stored.Current().Options[0] != "basic option" || stored.Answers[0].Task.Options[0] != "main option" || stored.Answers[0].CriterionResults[0].Key != "accuracy" || stored.Answers[0].Feedback != "Feedback" {
 		t.Fatalf("caller mutation changed stored session data: %+v", stored)
 	}
 }

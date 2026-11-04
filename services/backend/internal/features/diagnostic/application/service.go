@@ -275,7 +275,7 @@ func (s *Service) answerRequest(ctx context.Context, ownerID, sessionID, taskID,
 			Task: *current, TranscriptionID: id, Text: "Я не знаю. Пропустить",
 			GraderMaxScore: maxScore, Verdict: "incorrect",
 			CriterionResults: []diagnostic.CriterionResult{{Key: "skipped", Satisfied: false, Explanation: "Вопрос пропущен."}},
-			Feedback:         []string{"Вопрос пропущен.", "Ответ оценён в 0 баллов.", "Продолжите со следующим вопросом."},
+			Feedback:         "Вопрос пропущен. Ответ оценён в 0 баллов.",
 			CreatedAt:        s.now().Unix(),
 		}
 		return s.store.Accept(ctx, ownerID, sessionID, token, key, fingerprint, answer, nextTransition(value, answer))
@@ -370,7 +370,7 @@ func validateEvaluation(value assessment.Evaluation, role string) error {
 	} else if maxScore == 3 && value.Score == 1 {
 		want = "partial"
 	}
-	if value.Verdict != want || len(value.CriterionResults) == 0 || len(value.Feedback) != 3 {
+	if value.Verdict != want || len(value.CriterionResults) == 0 {
 		return fault.New(fault.Upstream, "ASSESSMENT_INVALID_RESPONSE", "Грейдер вернул некорректную структуру оценки.")
 	}
 	for _, item := range value.CriterionResults {
@@ -378,10 +378,8 @@ func validateEvaluation(value assessment.Evaluation, role string) error {
 			return fault.New(fault.Upstream, "ASSESSMENT_INVALID_RESPONSE", "Грейдер вернул некорректные результаты критериев.")
 		}
 	}
-	for _, item := range value.Feedback {
-		if strings.TrimSpace(item) == "" || strings.ContainsAny(item, "\r\n") {
-			return fault.New(fault.Upstream, "ASSESSMENT_INVALID_RESPONSE", "Грейдер вернул некорректный фидбэк.")
-		}
+	if strings.TrimSpace(value.Feedback) == "" || strings.ContainsAny(value.Feedback, "\r\n") {
+		return fault.New(fault.Upstream, "ASSESSMENT_INVALID_RESPONSE", "Грейдер вернул некорректный фидбэк.")
 	}
 	return nil
 }

@@ -19,7 +19,7 @@ type Evaluation struct {
 	MaxScore         int               `json:"max_score"`
 	Verdict          string            `json:"verdict"`
 	CriterionResults []CriterionResult `json:"criterion_results"`
-	Feedback         []string          `json:"feedback"`
+	Feedback         string            `json:"feedback"`
 }
 
 // UnmarshalJSON keeps omitted or null contract fields distinct from valid zero values.
@@ -29,7 +29,7 @@ func (e *Evaluation) UnmarshalJSON(data []byte) error {
 		MaxScore         *int               `json:"max_score"`
 		Verdict          *string            `json:"verdict"`
 		CriterionResults *[]CriterionResult `json:"criterion_results"`
-		Feedback         *[]string          `json:"feedback"`
+		Feedback         *string            `json:"feedback"`
 	}
 	if err := decodeStrict(data, &wire); err != nil {
 		return err

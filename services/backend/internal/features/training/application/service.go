@@ -108,7 +108,7 @@ func (s *Service) plan(ctx context.Context, owner, id string) (training.Session,
 		for _, c := range target.Answer.CriterionResults {
 			criteria = append(criteria, training.CriterionResult{Key: c.Key, Satisfied: c.Satisfied, Explanation: c.Explanation})
 		}
-		state.Targets = append(state.Targets, training.Target{Kind: target.Kind, Source: task, OriginalScore: target.Answer.Score, OriginalMaxScore: max, OriginalFeedback: append([]string{}, target.Answer.Feedback...), OriginalCriteria: criteria})
+		state.Targets = append(state.Targets, training.Target{Kind: target.Kind, Source: task, OriginalScore: target.Answer.Score, OriginalMaxScore: max, OriginalFeedback: target.Answer.Feedback, OriginalCriteria: criteria})
 	}
 	perfectMains := 0
 	for _, a := range d.Answers {
@@ -273,7 +273,7 @@ func (s *Service) NextChecked(ctx context.Context, owner, id, exerciseID, key st
 		Sequence: state.AnswerCount + 1, ExerciseID: exerciseID, Round: state.Current.Round,
 		TargetIndex: state.Current.TargetIndex, Text: check.FinalAnswer, Score: check.Score,
 		MaxScore: 2, Verdict: check.Verdict, CriterionResults: append([]training.CriterionResult(nil), check.CriterionResults...),
-		Feedback: append([]string(nil), check.Feedback...), CreatedAt: s.now().Unix(), AnswerSource: check.Source,
+		Feedback: check.Feedback, CreatedAt: s.now().Unix(), AnswerSource: check.Source,
 	}
 	if check.TranscriptionID != nil {
 		attempt.TranscriptionID = *check.TranscriptionID
@@ -345,7 +345,7 @@ func (s *Service) answerRequest(ctx context.Context, owner, id, exerciseID, key 
 	}
 	evaluation := assessment.Evaluation{}
 	if skip {
-		evaluation = assessment.Evaluation{Score: 0, MaxScore: 2, Verdict: "incorrect", Feedback: []string{"Вопрос пропущен.", "Ответ оценён в 0 баллов.", "Продолжите со следующим вопросом."}}
+		evaluation = assessment.Evaluation{Score: 0, MaxScore: 2, Verdict: "incorrect", Feedback: "Вопрос пропущен. Ответ оценён в 0 баллов."}
 	} else {
 		evaluation, err = s.grader.EvaluateTraining(ctx, owner, reserved.TranscriptionID, state.Current)
 		if err != nil {

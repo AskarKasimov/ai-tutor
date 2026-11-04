@@ -53,7 +53,7 @@ type ProgressResponse struct {
 	GraderMaxScore    *int                      `json:"grader_max_score,omitempty" minimum:"1" maximum:"3" binding:"optional"`
 	Verdict           string                    `json:"verdict,omitempty" enums:"correct,partial,incorrect" binding:"optional"`
 	CriterionResults  []CriterionResultResponse `json:"criterion_results,omitempty" binding:"optional"`
-	Feedback          []string                  `json:"feedback,omitempty" minItems:"3" maxItems:"3" binding:"optional"`
+	Feedback          string                    `json:"feedback,omitempty" binding:"optional"`
 }
 
 type AnswerResponse struct {
@@ -71,7 +71,7 @@ type AnswerResponse struct {
 	Score            int                       `json:"score" minimum:"0" maximum:"3"`
 	Verdict          string                    `json:"verdict" enums:"correct,partial,incorrect"`
 	CriterionResults []CriterionResultResponse `json:"criterion_results" minItems:"1"`
-	Feedback         []string                  `json:"feedback" minItems:"3" maxItems:"3"`
+	Feedback         string                    `json:"feedback"`
 	CreatedAt        int64                     `json:"created_at"`
 }
 
@@ -115,7 +115,7 @@ func progressResponse(value diagnostic.Progress) ProgressResponse {
 		CompetencyCount: value.CompetencyCount, CurrentCompetency: value.CurrentCompetency, CurrentStep: value.CurrentStep,
 		GraderScore: value.GraderScore, GraderMaxScore: value.GraderMaxScore, Verdict: value.Verdict,
 		CriterionResults: criterionResults(value.CriterionResults),
-		Feedback:         append([]string(nil), value.Feedback...),
+		Feedback:         value.Feedback,
 	}
 	if value.Current != nil {
 		current := taskResponse(*value.Current)
@@ -154,7 +154,7 @@ func resultResponse(value diagnostic.Result) ResultResponse {
 			TranscriptionID: answer.TranscriptionID, Text: answer.Text,
 			GraderScore: answer.GraderScore, GraderMaxScore: answer.GraderMaxScore, Score: answer.Score, Verdict: answer.Verdict,
 			CriterionResults: criterionResults(answer.CriterionResults),
-			Feedback:         append([]string(nil), answer.Feedback...), CreatedAt: answer.CreatedAt,
+			Feedback:         answer.Feedback, CreatedAt: answer.CreatedAt,
 		})
 	}
 	for _, task := range value.UntestedBasics {

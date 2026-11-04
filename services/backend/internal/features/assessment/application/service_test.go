@@ -3,7 +3,6 @@ package application
 import (
 	"context"
 	"errors"
-	"reflect"
 	"strings"
 	"testing"
 	"unicode/utf8"
@@ -69,7 +68,7 @@ func validEvaluation() Evaluation {
 			{Key: "answer_correctness", Satisfied: true, Explanation: "Ответ соответствует эталону."},
 			{Key: "instruction_following", Satisfied: true, Explanation: "Тип назван и выбор объяснён."},
 		},
-		Feedback: []string{"Верно.", "Оба критерия выполнены.", "Закрепите тему."},
+		Feedback: "Верно. Оба критерия выполнены. Закрепите тему.",
 	}
 }
 func TestTrustedTrainingSnapshotUsesTwoPointScale(t *testing.T) {
@@ -218,7 +217,7 @@ func TestEvaluateVariantRejectsInconsistentModelOutput(t *testing.T) {
 		{"inconsistent verdict", func(e *Evaluation) { e.Verdict = "partial" }},
 		{"wrong criterion key", func(e *Evaluation) { e.CriterionResults[0].Key = "other" }},
 		{"missing criterion", func(e *Evaluation) { e.CriterionResults = e.CriterionResults[:1] }},
-		{"missing feedback", func(e *Evaluation) { e.Feedback = e.Feedback[:2] }},
+		{"missing feedback", func(e *Evaluation) { e.Feedback = "" }},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			result := validMainEvaluation()
@@ -298,23 +297,19 @@ func TestEvaluateVariantRejectsPartialWhenMandatoryCriterionFailed(t *testing.T)
 func TestEvaluateVariantFeedbackTotalLength(t *testing.T) {
 	tests := []struct {
 		name      string
-		feedback  []string
+		feedback  string
 		shortened bool
 	}{
-		{name: "brief feedback", feedback: []string{"Названы два класса.", "Но тип задачи не указан.", "Добавьте слово «классификация»."}},
-		{name: "exactly 180 runes", feedback: []string{strings.Repeat("а", 174), "б.", "в."}},
-		{name: "181 runes stays untouched", feedback: []string{strings.Repeat("а", 175), "б.", "в."}},
-		{name: "exactly 228 runes stays untouched", feedback: []string{strings.Repeat("а", 222), "б.", "в."}},
-		{name: "229 runes gets shortened", feedback: []string{strings.Repeat("а", 223), "б.", "в."}, shortened: true},
-		{name: "emoji unicode count", feedback: []string{strings.Repeat("🙂", 223), "б.", "в."}, shortened: true},
-		{name: "500 unicode runes", feedback: []string{strings.Repeat("я🙂", 247), "б.", "в."}, shortened: true},
-		{name: "single oversized sentence", feedback: []string{strings.Repeat("Ответ охватывает несколько деталей задания. ", 10), "Есть неточность.", "Уточните правило."}, shortened: true},
-		{name: "three oversized sentences", feedback: []string{strings.Repeat("Назван правильный механизм. ", 12), strings.Repeat("Причина оценки подробно разобрана. ", 12), strings.Repeat("Проверьте отдельные примеры. ", 12)}, shortened: true},
+		{name: "brief feedback", feedback: "Названы два класса. Но тип задачи не указан."},
+		{name: "exactly 228 runes stays untouched", feedback: strings.Repeat("а", 228)},
+		{name: "229 runes gets shortened", feedback: strings.Repeat("а", 229), shortened: true},
+		{name: "emoji unicode count", feedback: strings.Repeat("🙂", 229), shortened: true},
+		{name: "oversized sentences", feedback: strings.Repeat("Ответ охватывает несколько признаков. ", 12), shortened: true},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			result := validMainEvaluation()
-			result.Feedback = append([]string(nil), tc.feedback...)
+			result.Feedback = tc.feedback
 			got, err := New(
 				&transcriptionStub{text: "классификация, потому что два класса"},
 				&variantTaskStub{result: validVariantTask("main")},
@@ -323,63 +318,46 @@ func TestEvaluateVariantFeedbackTotalLength(t *testing.T) {
 			if err != nil {
 				t.Fatalf("valid grading must not fail solely due to feedback length: %v", err)
 			}
-			if got.Score != result.Score || got.MaxScore != 3 || got.Verdict != result.Verdict || !reflect.DeepEqual(got.CriterionResults, result.CriterionResults) {
+			if got.Score != result.Score || got.MaxScore != 3 || got.Verdict != result.Verdict {
 				t.Fatalf("feedback shortening changed grading: %+v", got)
 			}
-			joined := strings.Join(got.Feedback, " ")
-			if len(got.Feedback) != 3 || utf8.RuneCountInString(joined) > 228 || !utf8.ValidString(joined) {
-				t.Fatalf("expected valid three-part feedback within 228 runes, got %q", joined)
+			if utf8.RuneCountInString(got.Feedback) > 228 || !utf8.ValidString(got.Feedback) {
+				t.Fatalf("expected valid feedback within 228 runes, got %q", got.Feedback)
 			}
-			for _, part := range got.Feedback {
-				if strings.TrimSpace(part) == "" {
-					t.Fatalf("feedback contains an empty part: %#v", got.Feedback)
-				}
+			if tc.shortened && !strings.HasSuffix(got.Feedback, "…") {
+				t.Fatalf("expected shortened feedback, got %q", got.Feedback)
 			}
-			original := strings.Join(tc.feedback, " ")
-			if tc.shortened && (joined == original || !strings.Contains(joined, "…")) {
-				t.Fatalf("expected shortened feedback, got %q", joined)
-			}
-			if !tc.shortened && joined != original {
-				t.Fatalf("feedback under the hard cap was modified: %q", joined)
+			if !tc.shortened && got.Feedback != tc.feedback {
+				t.Fatalf("feedback under the hard cap was modified: %q", got.Feedback)
 			}
 		})
 	}
 }
 
 func TestShortenFeedbackUsesWordBoundaries(t *testing.T) {
-	feedback := []string{strings.Repeat("Правильно названа классификация. ", 12), "Причина верна.", "Повторите определение."}
-	original := feedback[0]
-	shortenFeedback(feedback)
-	prefix := strings.TrimSuffix(feedback[0], "…")
+	original := strings.Repeat("Правильно названа классификация. ", 12)
+	prefix := strings.TrimSuffix(shortenFeedback(original), "…")
 	if !strings.HasPrefix(original, prefix+" ") && !strings.HasPrefix(original, prefix+". ") {
-		t.Fatalf("feedback was cut inside a word: %q", feedback[0])
+		t.Fatalf("feedback was cut inside a word: %q", prefix)
 	}
 }
 
 func TestEvaluateTrustedTrainingOversizedFeedback(t *testing.T) {
 	result := validEvaluation()
-	result.Feedback = []string{
-		strings.Repeat("Правильный пример приведён. ", 15),
-		strings.Repeat("Уточните формулировку. ", 15),
-		strings.Repeat("Сравните с эталоном. ", 15),
-	}
+	result.Feedback = strings.Repeat("Правильный пример приведён. ", 45)
 	got, err := New(
 		&transcriptionStub{text: "Пример ответа"}, nil, &graderStub{result: result},
 	).EvaluateTrusted(context.Background(), "student-1", "tr-1", validVariantTask("training"))
 	if err != nil || got.Score != 2 || got.MaxScore != 2 {
 		t.Fatalf("training grade changed during feedback shortening: %+v %v", got, err)
 	}
-	if len(got.Feedback) != 3 || utf8.RuneCountInString(strings.Join(got.Feedback, " ")) > 228 {
-		t.Fatalf("training feedback exceeds 228 runes: %#v", got.Feedback)
+	if utf8.RuneCountInString(got.Feedback) > 228 {
+		t.Fatalf("training feedback exceeds 228 runes: %q", got.Feedback)
 	}
 }
 
 func TestEvaluateVariantRejectsMalformedFeedback(t *testing.T) {
-	for _, feedback := range [][]string{
-		{"", "Причина.", "Совет."},
-		{"Наблюдение.\x00Пробел", "Причина.", "Совет."},
-		{string([]byte{0xff}), "Причина.", "Совет."},
-	} {
+	for _, feedback := range []string{"", "  \n ", "Наблюдение.\x00Пробел", string([]byte{0xff})} {
 		result := validMainEvaluation()
 		result.Feedback = feedback
 		_, err := New(
@@ -462,35 +440,12 @@ func TestEvaluateTrustedTextAllowsNumberOnlyWhenMandatoryInstructionIsMet(t *tes
 
 func TestEvaluateVariantNormalizesFeedbackLineBreaks(t *testing.T) {
 	result := validMainEvaluation()
-	result.Feedback = []string{" Верно.\r\nОба критерия выполнены. ", "\n Причина.\rУточнение.\n", " Совет. "}
-	got, err := New(&transcriptionStub{text: "ответ"}, &variantTaskStub{result: validVariantTask("main")}, &graderStub{result: result}).EvaluateVariant(context.Background(), "owner", "tr", "variant", "task")
-	want := []string{"Верно. Оба критерия выполнены.", "Причина. Уточнение.", "Совет."}
-	if err != nil || !reflect.DeepEqual(got.Feedback, want) || got.Score != 3 {
+	result.Feedback = " Верно.\r\nОба критерия выполнены. \n Причина.\rУточнение. "
+	got, err := New(&transcriptionStub{text: "ответ"}, &variantTaskStub{result: validVariantTask("main")}, &graderStub{result: result}).EvaluateVariant(context.Background(), "student-1", "tr-1", "variant-1", "variant-task-1")
+	if want := "Верно. Оба критерия выполнены. Причина. Уточнение."; err != nil || got.Feedback != want || got.Score != 3 {
 		t.Fatalf("expected normalized feedback and preserved grade, got %+v, %v", got, err)
 	}
 }
-
-func TestEvaluateVariantSplitsPackedFeedback(t *testing.T) {
-	for _, feedback := range [][]string{
-		{"Ответ не содержит признака. Назовите признак с утечкой! Почему он недоступен?"},
-		{"Ответ не содержит признака. Назовите признак с утечкой!", "Почему он недоступен?"},
-	} {
-		calls := 0
-		grader := gradingFunc(func(context.Context, GradingContext, string) (Evaluation, error) {
-			calls++
-			result := validMainEvaluation()
-			result.Feedback = append([]string(nil), feedback...)
-			return result, nil
-		})
-		got, err := New(&transcriptionStub{text: "ответ"}, &variantTaskStub{result: validVariantTask("main")}, grader).EvaluateVariant(context.Background(), "owner", "tr", "variant", "task")
-		want := []string{"Ответ не содержит признака.", "Назовите признак с утечкой!", "Почему он недоступен?"}
-		if err != nil || !reflect.DeepEqual(got.Feedback, want) || calls != 1 {
-			t.Fatalf("expected packed feedback to be split without retry, got %+v, %v (%d calls)", got, err, calls)
-		}
-	}
-}
-
-type gradingFunc func(context.Context, GradingContext, string) (Evaluation, error)
 
 func (f gradingFunc) Grade(ctx context.Context, gc GradingContext, answer string) (Evaluation, error) {
 	return f(ctx, gc, answer)
@@ -509,7 +464,7 @@ func TestEvaluateVariantRetriesInvalidModelResponse(t *testing.T) {
 				if calls == 1 {
 					switch kind {
 					case "feedback":
-						result.Feedback = []string{"Верно."}
+						result.Feedback = ""
 					case "JSON":
 						return Evaluation{}, fault.New(fault.Upstream, "INVALID_MODEL_RESPONSE", "Некорректный JSON")
 					case "score":
@@ -519,7 +474,7 @@ func TestEvaluateVariantRetriesInvalidModelResponse(t *testing.T) {
 				return result, nil
 			})
 			got, err := New(&transcriptionStub{text: "ответ"}, &variantTaskStub{result: validVariantTask("main")}, grader).EvaluateVariant(context.Background(), "owner", "tr", "variant", "task")
-			if err != nil || got.Score != 3 || got.MaxScore != 3 || len(got.Feedback) != 3 || calls != 2 {
+			if err != nil || got.Score != 3 || got.MaxScore != 3 || got.Feedback == "" || calls != 2 {
 				t.Fatalf("expected recovery after invalid %s, got %+v, %v (%d calls)", kind, got, err, calls)
 			}
 		})
@@ -531,7 +486,7 @@ func TestEvaluateVariantRetryIsBounded(t *testing.T) {
 	grader := gradingFunc(func(context.Context, GradingContext, string) (Evaluation, error) {
 		calls++
 		result := validMainEvaluation()
-		result.Feedback = nil
+		result.Feedback = ""
 		return result, nil
 	})
 	got, err := New(&transcriptionStub{text: "ответ"}, &variantTaskStub{result: validVariantTask("main")}, grader).EvaluateVariant(context.Background(), "owner", "tr", "variant", "task")
@@ -600,3 +555,5 @@ func TestMainUsesThreePointsAndRejectsTwo(t *testing.T) {
 }
 
 func validMainEvaluation() Evaluation { result := validEvaluation(); result.Score = 3; return result }
+
+type gradingFunc func(context.Context, GradingContext, string) (Evaluation, error)

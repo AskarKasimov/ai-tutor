@@ -123,7 +123,7 @@ type Answer struct {
 	Score            int
 	Verdict          string
 	CriterionResults []CriterionResult
-	Feedback         []string
+	Feedback         string
 	CreatedAt        int64
 }
 
@@ -179,7 +179,7 @@ type Progress struct {
 	GraderMaxScore    *int
 	Verdict           string
 	CriterionResults  []CriterionResult
-	Feedback          []string
+	Feedback          string
 }
 
 type Result struct {

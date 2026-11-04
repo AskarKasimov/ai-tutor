@@ -33,7 +33,7 @@ export type DiagnosticProgress = {
   grader_max_score?: number
   verdict?: AssessmentVerdict
   criterion_results?: { key: string; satisfied: boolean; explanation: string }[]
-  feedback?: string[]
+  feedback?: string
 }
 
 export type DiagnosticAudioMetadata = {
@@ -58,7 +58,7 @@ export type DiagnosticAnswer = {
   score: number
   verdict: AssessmentVerdict
   criterion_results: { key: string; satisfied: boolean; explanation: string }[]
-  feedback: string[]
+  feedback: string
   created_at: number
 }
 

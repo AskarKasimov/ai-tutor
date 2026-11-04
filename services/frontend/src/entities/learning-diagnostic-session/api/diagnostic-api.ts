@@ -18,7 +18,7 @@ const verdict = z.enum(['correct', 'partial', 'incorrect'])
 const criteria = z.array(
   z.object({ key: id, satisfied: z.boolean(), explanation: id }),
 )
-const feedback = z.array(id).length(3)
+const feedback = id
 const task = z.object({
   variant_task_id: id,
   source_task_id: id,

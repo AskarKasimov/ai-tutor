@@ -100,14 +100,14 @@ func TestSkipAdvancesWithoutSpeechOrGrading(t *testing.T) {
 func TestNextCheckedAdvancesFromTrustedChatCheck(t *testing.T) {
 	task := training.Task{OutcomeID: "outcome-1", OutcomeName: "Topic", Question: "Question", VoiceInstruction: "Answer"}
 	state := training.Session{ID: "session-1", OwnerID: "owner-1", Round: 1, Targets: []training.Target{{Source: task}}, Current: training.Exercise{ID: "exercise-1", Task: task}}
-	check := training.Check{Revision: 3, FinalAnswer: "student text", Source: training.AnswerSourceText, Score: 1, MaxScore: 2, Verdict: "partial", CriterionResults: []training.CriterionResult{{Key: "reason", Satisfied: true}}, Feedback: []string{"a", "b", "c"}}
+	check := training.Check{Revision: 3, FinalAnswer: "student text", Source: training.AnswerSourceText, Score: 1, MaxScore: 2, Verdict: "partial", CriterionResults: []training.CriterionResult{{Key: "reason", Satisfied: true}}, Feedback: "a b c"}
 	repository := &checkedNextFake{reservation: training.NextReservation{OwnerID: "owner-1", SessionID: state.ID, ExerciseID: state.Current.ID, Token: "token", Key: "next-key", Fingerprint: "fingerprint", Session: state, Check: check}}
 	service := New(&skipRepository{}, nil, nil, nil, skipProvider{}, &skipIDs{}, func() time.Time { return time.Unix(10, 0) }).WithCheckedNext(repository)
 	progress, err := service.NextChecked(context.Background(), "owner-1", state.ID, state.Current.ID, "next-key", 3)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !repository.accepted || repository.failures != 0 || progress.Answer == nil || progress.Answer.AnswerSource != training.AnswerSourceText || progress.Answer.TranscriptionID != "" || progress.Answer.Text != "student text" || progress.Answer.Score != 1 || len(progress.Answer.Feedback) != 3 || progress.AnswerCount != 1 {
+	if !repository.accepted || repository.failures != 0 || progress.Answer == nil || progress.Answer.AnswerSource != training.AnswerSourceText || progress.Answer.TranscriptionID != "" || progress.Answer.Text != "student text" || progress.Answer.Score != 1 || progress.Answer.Feedback == "" || progress.AnswerCount != 1 {
 		t.Fatalf("checked Next did not preserve the trusted check: %+v, repository=%+v", progress, repository)
 	}
 }

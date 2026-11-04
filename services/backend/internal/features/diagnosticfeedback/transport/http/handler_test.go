@@ -80,7 +80,7 @@ func TestSynthesizeAnswersFeedbackHandler(t *testing.T) {
 	svc := application.New(nil, &stubSynthesizer{}, nil, func() time.Time { return time.Unix(100, 0) })
 	handler := New(svc)
 
-	body := `{"answers":[{"task_id":"1","question":"Q1","transcript":"ans1","score":2,"max_score":2,"feedback":["good"]}]}`
+	body := `{"answers":[{"task_id":"1","question":"Q1","transcript":"ans1","score":2,"max_score":2,"feedback":"good"}]}`
 	req := httptest.NewRequest(http.MethodPost, "/assessments/overall-feedback", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req = httpx.WithPrincipal(req, user.User{ID: "usr-1"})

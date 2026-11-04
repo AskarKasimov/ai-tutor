@@ -103,3 +103,13 @@ func TestArbitraryFinishReasonStaysOutOfTheCause(t *testing.T) {
 		})
 	}
 }
+
+func TestSummaryReportGivesTheModelTheReasonOfAGap(t *testing.T) {
+	const reason = "Не объяснено зануление весов"
+	out := summaryReport(application.DeterministicReport{ConfirmedGaps: []diagnostic.ConfirmedGap{
+		{CompetencyName: "Регуляризация", OutcomeName: "L1 и L2", Advice: "Дополнительно изучить.", FailedCriteria: []string{reason}},
+	}})
+	if len(out.Gaps) != 1 || !strings.Contains(out.Gaps[0].Note, reason) {
+		t.Fatalf("gaps = %+v", out.Gaps)
+	}
+}

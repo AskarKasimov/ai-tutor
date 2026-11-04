@@ -210,7 +210,7 @@ func (s *Store) Accept(ctx context.Context, ownerID, id, token, key, digest stri
 	progress.GraderMaxScore = &gm
 	progress.Verdict = answer.Verdict
 	progress.CriterionResults = append([]diagnostic.CriterionResult(nil), answer.CriterionResults...)
-	progress.Feedback = append([]string(nil), answer.Feedback...)
+	progress.Feedback = answer.Feedback
 	if value.AcceptedRequests == nil {
 		value.AcceptedRequests = map[string]diagnostic.AcceptedRequest{}
 	}

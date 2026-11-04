@@ -51,7 +51,7 @@ func cloneCheck(value *training.Check) *training.Check {
 	for i := range cloned.CriterionResults {
 		cloned.CriterionResults[i].Explanation = ""
 	}
-	cloned.Feedback = nil
+	cloned.Feedback = ""
 	if value.TranscriptionID != nil {
 		id := *value.TranscriptionID
 		cloned.TranscriptionID = &id

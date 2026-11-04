@@ -23,7 +23,7 @@ const accepted = {
   criterion_results: [
     { key: 'choice', satisfied: true, explanation: 'Верно.' },
   ],
-  feedback: ['Верно.', 'Причина.', 'Совет.'],
+  feedback: 'Верно. Причина. Совет.',
 }
 afterEach(() => {
   vi.useRealTimers()

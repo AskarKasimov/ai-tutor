@@ -77,9 +77,8 @@ export async function evaluateAnswer(
     data.criterion_results.length === 0 ||
     !data.criterion_results.every(isCriterionResult) ||
     !('feedback' in data) ||
-    !Array.isArray(data.feedback) ||
-    data.feedback.length !== 3 ||
-    !data.feedback.every((line) => typeof line === 'string' && line.trim())
+    typeof data.feedback !== 'string' ||
+    !data.feedback.trim()
   ) {
     throw new Error('Invalid assessment response')
   }
@@ -89,6 +88,6 @@ export async function evaluateAnswer(
     maxScore: data.max_score,
     verdict: data.verdict,
     criterionResults: data.criterion_results,
-    feedback: data.feedback as [string, string, string],
+    feedback: data.feedback,
   }
 }

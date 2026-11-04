@@ -14,6 +14,10 @@ type Config struct {
 	ListenAddress         string
 	DatabaseURL           string
 	STTURL                string
+	STTModel              string
+	STTLongform           bool
+	TTSUseReference       bool
+	TTSUsePrompt          bool
 	TTSURL                string
 	TTSSeed               int64
 	TTSCFGValue           float64

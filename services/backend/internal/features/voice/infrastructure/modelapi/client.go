@@ -12,6 +12,7 @@ import (
 	"net"
 	"net/http"
 	"net/textproto"
+	"net/url"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -26,6 +27,8 @@ type TTSOptions struct {
 	Seed               int64   `json:"seed"`
 	CFGValue           float64 `json:"cfg_value"`
 	InferenceTimesteps int     `json:"inference_timesteps"`
+	UseReference       *bool   `json:"use_reference,omitempty"`
+	UsePrompt          *bool   `json:"use_prompt,omitempty"`
 }
 
 type Client struct {
@@ -33,6 +36,8 @@ type Client struct {
 	sttURL, ttsURL string
 	timeout        time.Duration
 	ttsOptions     TTSOptions
+	sttModel       string
+	sttLongform    bool
 }
 
 func New(client *http.Client, sttURL, ttsURL string, timeout time.Duration, ttsOptions TTSOptions) *Client {
@@ -40,6 +45,12 @@ func New(client *http.Client, sttURL, ttsURL string, timeout time.Duration, ttsO
 		client = http.DefaultClient
 	}
 	return &Client{client: client, sttURL: sttURL, ttsURL: ttsURL, timeout: timeout, ttsOptions: ttsOptions}
+}
+
+func (c *Client) WithSTTOptions(model string, longform bool) *Client {
+	c.sttModel = model
+	c.sttLongform = longform
+	return c
 }
 
 // providerError keeps the transport cause next to the fault, so the request
@@ -95,9 +106,12 @@ func providerStatus(status int, failureCode string, stt bool) error {
 // without its long-form VAD weights the model rejects audio over ~25 s.
 const sttPartSeconds = 20
 
-// Recognize transcribes the audio. A long 16-bit PCM WAV is sent in parts cut
-// at pauses, and their texts are joined.
+// Recognize transcribes audio, optionally sending long WAVs whole to the server.
+// Otherwise it splits 16-bit PCM WAVs at quiet points and joins the texts.
 func (c *Client) Recognize(ctx context.Context, data []byte, media string) (string, error) {
+	if c.sttLongform {
+		return c.recognize(ctx, data, media)
+	}
 	base, _, _ := mime.ParseMediaType(media)
 	if base != "audio/wav" && base != "audio/x-wav" && base != "audio/wave" {
 		return c.recognize(ctx, data, media)
@@ -146,7 +160,16 @@ func (c *Client) recognizeOnce(ctx context.Context, data []byte, media string) (
 	}
 	ctx, cancel := context.WithTimeout(ctx, c.timeout)
 	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, "POST", c.sttURL, &body)
+	target, err := url.Parse(c.sttURL)
+	if err != nil {
+		return "", err
+	}
+	if c.sttModel != "" {
+		q := target.Query()
+		q.Set("model", c.sttModel)
+		target.RawQuery = q.Encode()
+	}
+	req, err := http.NewRequestWithContext(ctx, "POST", target.String(), &body)
 	if err != nil {
 		return "", err
 	}

@@ -114,3 +114,18 @@ func TestLoadLLMGatewayConfigDoesNotRequireBackendSecrets(t *testing.T) {
 		t.Fatalf("got %q %s %v", address, timeout, err)
 	}
 }
+
+func TestLoadSpeechAPIOptions(t *testing.T) {
+	t.Setenv("BACKEND_DATABASE_URL", "postgres://example/db")
+	t.Setenv("BACKEND_S3_ACCESS_KEY", "a")
+	t.Setenv("BACKEND_S3_SECRET_KEY", "s")
+	body := strings.Replace(validBackendYAML, `stt: {url: "http://stt.test/transcribe"}`, `stt: {url: "http://stt.test/transcribe", model: multilingual_large_ctc, longform: true}`, 1)
+	body = strings.Replace(body, "inference_timesteps: 20}", "inference_timesteps: 20, use_reference: false, use_prompt: false}", 1)
+	cfg, err := LoadConfig(writeYAML(t, body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.STTModel != "multilingual_large_ctc" || !cfg.STTLongform || cfg.TTSUseReference || cfg.TTSUsePrompt {
+		t.Fatalf("speech options ignored: %+v", cfg)
+	}
+}

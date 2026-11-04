@@ -102,11 +102,11 @@ const materialWorkers = 2
 
 // voiceName identifies the TTS settings in the keys of cached speech.
 func (a *App) voiceName() string {
-	return fmt.Sprintf("seed=%d cfg=%g steps=%d style=calm-v1", a.cfg.TTSSeed, a.cfg.TTSCFGValue, a.cfg.TTSInferenceTimesteps)
+	return fmt.Sprintf("seed=%d cfg=%g steps=%d style=calm-v1 reference=%t prompt=%t", a.cfg.TTSSeed, a.cfg.TTSCFGValue, a.cfg.TTSInferenceTimesteps, a.cfg.TTSUseReference, a.cfg.TTSUsePrompt)
 }
 
 func (a *App) models() *modelapi.Client {
-	return modelapi.New(a.client, a.cfg.STTURL, a.cfg.TTSURL, a.cfg.VoiceTimeout, modelapi.TTSOptions{Seed: a.cfg.TTSSeed, CFGValue: a.cfg.TTSCFGValue, InferenceTimesteps: a.cfg.TTSInferenceTimesteps})
+	return modelapi.New(a.client, a.cfg.STTURL, a.cfg.TTSURL, a.cfg.VoiceTimeout, modelapi.TTSOptions{Seed: a.cfg.TTSSeed, CFGValue: a.cfg.TTSCFGValue, InferenceTimesteps: a.cfg.TTSInferenceTimesteps, UseReference: &a.cfg.TTSUseReference, UsePrompt: &a.cfg.TTSUsePrompt}).WithSTTOptions(a.cfg.STTModel, a.cfg.STTLongform)
 }
 
 func New(cfg Config, pool *pgxpool.Pool, logger *zap.Logger) (*App, error) {

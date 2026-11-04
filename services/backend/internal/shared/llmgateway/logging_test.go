@@ -2,7 +2,9 @@ package llmgateway
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -71,6 +73,30 @@ func TestClientInterceptorWritesContentOnlyAtDebug(t *testing.T) {
 	fields := content[0].ContextMap()
 	if !strings.Contains(fields["prompt"].(string), secretAnswer) || !strings.Contains(fields["response"].(string), secretAnswer) {
 		t.Fatalf("fields = %v", fields)
+	}
+}
+
+func TestSafeReasonDescribesTheShapeWithoutTheModelText(t *testing.T) {
+	var strict struct {
+		Feedback []string `json:"feedback"`
+	}
+	decoder := json.NewDecoder(strings.NewReader(`{"` + secretAnswer + `":1}`))
+	decoder.DisallowUnknownFields()
+	unknown := decoder.Decode(&strict)
+	mismatch := json.Unmarshal([]byte(`{"feedback":"`+secretAnswer+`"}`), &strict)
+	syntax := json.Unmarshal([]byte(secretAnswer), &strict)
+	for _, tc := range []struct {
+		err  error
+		want string
+	}{
+		{unknown, "answer failed validation"},
+		{mismatch, "field feedback has type string, want []string"},
+		{syntax, "malformed JSON at offset 1"},
+		{fmt.Errorf("unknown verdict %q", secretAnswer), "answer failed validation"},
+	} {
+		if got := SafeReason(tc.err); got != tc.want {
+			t.Errorf("SafeReason(%v) = %q, want %q", tc.err, got, tc.want)
+		}
 	}
 }
 

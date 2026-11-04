@@ -20,8 +20,8 @@ import (
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/exam"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/resultsummary"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/features/geek/application"
-	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/httpx"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/llmgateway"
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/logx"
 )
 
 // Gateway calls the LLM gateway over gRPC (llmgateway.v1.Gateway/Complete):
@@ -282,7 +282,7 @@ func (g *Gateway) Feedback(ctx context.Context, r application.FeedbackRequest) (
 // A call the student waits for is urgent: the gateway runs it before queued
 // background work (graph building, translation) on any free compatible instance.
 func (g *Gateway) complete(ctx context.Context, operation string, level llmgatewayv1.Complexity, urgent bool, prompt string, parse func([]byte) error) error {
-	logger := httpx.LoggerFromContext(ctx).With(zap.String("llm_operation", operation))
+	logger := logx.From(ctx).With(zap.String("llm_operation", operation))
 	system := systemPrompt
 	if operation == "name_intent" {
 		system = nameIntentPrompt
@@ -330,7 +330,7 @@ func (g *Gateway) complete(ctx context.Context, operation string, level llmgatew
 	var last error
 	for attempt := 1; attempt <= 2; attempt++ {
 		attemptLogger := logger.With(zap.Int("attempt", attempt))
-		content, requestID, err := g.call(httpx.WithLogger(ctx, attemptLogger), request)
+		content, requestID, err := g.call(logx.With(ctx, attemptLogger), request)
 		if err != nil {
 			attemptLogger.Warn("llm answer rejected", zap.String("gateway_request_id", requestID), zap.Error(err))
 			return err
@@ -338,8 +338,11 @@ func (g *Gateway) complete(ctx context.Context, operation string, level llmgatew
 		if err = parse([]byte(stripFence(content))); err == nil {
 			return nil
 		}
-		attemptLogger.Warn("llm answer rejected", zap.String("gateway_request_id", requestID), zap.Error(err))
-		last = fmt.Errorf("invalid model answer: %w", err)
+		// The raw error may repeat what the model wrote; it stays for the retry prompt.
+		reason := llmgateway.SafeReason(err)
+		attemptLogger.Debug("llm answer rejected", zap.Error(err))
+		attemptLogger.Warn("llm answer rejected", zap.String("gateway_request_id", requestID), zap.String("reason", reason))
+		last = fmt.Errorf("invalid model answer: %s", reason)
 		if attempt == 1 && (strings.HasPrefix(operation, "evaluate_rubric:") || operation == "review_rubric") {
 			request.Messages = append(request.Messages,
 				&llmgatewayv1.Message{Role: llmgatewayv1.Role_ROLE_ASSISTANT, Content: proto.String(content)},

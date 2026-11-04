@@ -117,6 +117,9 @@ func loadYAMLConfig(path string) (Config, error) {
 		}
 		return Config{}, fmt.Errorf("decode trailing gateway config: %w", err)
 	}
+	if doc.LogLevel == "" {
+		return Config{}, errors.New("gateway config requires log_level")
+	}
 	c := Config{LogLevel: doc.LogLevel, ListenAddress: doc.ListenAddress, GRPCListenAddress: doc.GRPCListenAddress, KafkaBrokers: doc.KafkaBrokers, RequestsTopic: doc.RequestsTopic, StateTopic: doc.StateTopic, ConsumerGroup: doc.ConsumerGroup, TransactionalID: doc.TransactionalID, Pools: doc.Pools}
 	if doc.RequestDeadline.Set {
 		c.RequestDeadline = doc.RequestDeadline.Value

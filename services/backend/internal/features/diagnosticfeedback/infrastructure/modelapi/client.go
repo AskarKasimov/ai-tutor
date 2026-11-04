@@ -15,6 +15,7 @@ import (
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/resultsummary"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/features/diagnosticfeedback/application"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/fault"
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/llmgateway"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/logx"
 	"go.uber.org/zap"
 )
@@ -232,7 +233,7 @@ func parseCompletionSummary(ctx context.Context, content []byte) (string, error)
 	}
 	if err := json.Unmarshal(content, &completion); err != nil {
 		logger.Debug("feedback model response", zap.ByteString("response", content))
-		return "", invalidFeedback(fmt.Errorf("decode response: %w", err))
+		return "", invalidFeedback(fmt.Errorf("decode response: %s", llmgateway.SafeReason(err)))
 	}
 	if len(completion.Choices) != 1 {
 		return "", invalidFeedback(fmt.Errorf("unexpected choices count %d", len(completion.Choices)))

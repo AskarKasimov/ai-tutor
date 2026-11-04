@@ -155,9 +155,6 @@ func (c *Config) defaults() {
 	if c.GRPCMaxConcurrentStreams == 0 {
 		c.GRPCMaxConcurrentStreams = 128
 	}
-	if c.LogLevel == "" {
-		c.LogLevel = "info"
-	}
 	if c.ListenAddress == "" {
 		c.ListenAddress = ":8010"
 	}
@@ -208,8 +205,10 @@ func (c *Config) defaults() {
 }
 
 func (c Config) Validate() error {
-	if _, err := ParseLogLevel(c.LogLevel); err != nil {
-		return err
+	if c.LogLevel != "" {
+		if _, err := ParseLogLevel(c.LogLevel); err != nil {
+			return err
+		}
 	}
 	if c.GRPCListenAddress == c.ListenAddress || c.GRPCMaxReceiveBytes <= 0 || c.GRPCMaxSendBytes <= 0 || c.GRPCMaxConcurrentStreams <= 0 {
 		return errors.New("invalid gRPC listener or limits")

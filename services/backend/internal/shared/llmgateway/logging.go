@@ -2,6 +2,9 @@ package llmgateway
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -51,6 +54,22 @@ func ClientInterceptor(ctx context.Context, method string, req, reply any, cc *g
 		entry.Write(content...)
 	}
 	return err
+}
+
+// SafeReason says why a model answer was rejected without quoting it. Decoding
+// and validation errors can repeat keys and values the model invented, for
+// example `unknown field "<text>"`, so only their shape reaches logs above debug.
+func SafeReason(err error) string {
+	var typeErr *json.UnmarshalTypeError
+	if errors.As(err, &typeErr) {
+		kind, _, _ := strings.Cut(typeErr.Value, " ")
+		return fmt.Sprintf("field %s has type %s, want %s", typeErr.Field, kind, typeErr.Type)
+	}
+	var syntaxErr *json.SyntaxError
+	if errors.As(err, &syntaxErr) {
+		return fmt.Sprintf("malformed JSON at offset %d", syntaxErr.Offset)
+	}
+	return "answer failed validation"
 }
 
 // RequestID is the gateway request of a call: from the x-request-id header, else

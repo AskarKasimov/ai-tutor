@@ -24,7 +24,7 @@ Runtime image остаётся для сборки и smoke-проверок. П
 
 `POST /v1/chat/completions` требует `messages` и `complexity` (`low`, `medium`, `high`). Gateway не проверяет клиентский bearer-токен: в Compose он доступен сервисам внутренней сети, локальный HTTP-порт привязан к `127.0.0.1`, а Caddy проксирует HTTP и gRPC на настроенном HTTPS-порту. Необязательные поля и ошибки описаны в [openapi.yaml](openapi.yaml). `model` и streaming запрещены. `urgent` по умолчанию `false`; `Idempotency-Key` дедуплицируется в пределах внутреннего клиента gateway.
 
-Upstream-токены читаются из runtime YAML; клиентских секретов нет. Gateway не пишет содержимое диалогов в логи на любом уровне. Логи — JSON в stdout, уровень задаёт `log_level` в `config/dev.yaml` (по умолчанию `info`). Запрос пишется как `gateway request` с `trace_id` из `traceparent` и `gateway_request_id`, вызов модели — как `upstream call` с инстансом и попыткой, сбой — как `upstream call failed`. Проверки `/health` и `/metrics` пишутся на уровне `debug`. Внутренние адреса и секреты не возвращаются клиенту.
+Upstream-токены читаются из runtime YAML; клиентских секретов нет. Gateway не пишет содержимое диалогов в логи на любом уровне. Логи — JSON в stdout, уровень задаёт обязательное поле `log_level` в `config/dev.yaml`. Запрос пишется как `gateway request` с `trace_id` из `traceparent` и `gateway_request_id`, вызов модели — как `upstream call` с инстансом и попыткой, сбой — как `upstream call failed`. Проверки `/health` и `/metrics` пишутся на уровне `debug`. Внутренние адреса и секреты не возвращаются клиенту.
 
 ## Состояние v1
 

@@ -12,7 +12,7 @@ import (
 
 	geekapp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/geek/application"
 	geekgraph "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/geek/infrastructure/graph"
-	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/httpx"
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/logx"
 )
 
 // builtQuestionRounds bounds the rounds of preparing a build: a failed node is
@@ -41,7 +41,7 @@ func (b builtQuestions) Prepare(ctx context.Context, data json.RawMessage) (json
 
 func (b builtQuestions) PrepareWithProgress(ctx context.Context, data json.RawMessage, report func(coursegraph.BuildProgress)) (json.RawMessage, error) {
 	// The model calls are logged under the worker, as Geek's are.
-	ctx = httpx.WithLogger(ctx, b.logger)
+	ctx = logx.With(ctx, b.logger)
 	// The graph is read as Geek reads it, so the prompts get the same topics.
 	g, ok, err := geekgraph.Decode(data)
 	if err != nil {

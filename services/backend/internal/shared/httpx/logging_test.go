@@ -13,6 +13,7 @@ import (
 	"go.uber.org/zap/zapcore"
 
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/fault"
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/logx"
 	"go.uber.org/zap/zaptest/observer"
 )
 
@@ -20,7 +21,7 @@ func TestRequestLoggerCarriesIDsAndLogsRequestAndFailure(t *testing.T) {
 	var output bytes.Buffer
 	logger := zap.New(zapcore.NewCore(zapcore.NewJSONEncoder(zap.NewProductionEncoderConfig()), zapcore.AddSync(&output), zapcore.DebugLevel))
 	handler := RequestLogger(logger, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if LoggerFromContext(r.Context()) == nil {
+		if logx.From(r.Context()) == nil {
 			t.Fatal("request logger missing from context")
 		}
 		Error(r.Context(), w, errors.New("database unavailable"))

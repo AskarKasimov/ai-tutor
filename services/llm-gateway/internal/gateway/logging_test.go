@@ -91,9 +91,7 @@ func TestConfigValidationRejectsAnUnknownLogLevel(t *testing.T) {
 		Instances:    []InstanceConfig{{ID: "model-a", BaseURL: "http://localhost:8000/v1", Model: "served-model", MaxInFlight: 1, ContextWindow: 8192}},
 	}
 	config.defaults()
-	if config.LogLevel != "info" {
-		t.Fatalf("default log level = %q", config.LogLevel)
-	}
+	config.LogLevel = "info"
 	if err := config.Validate(); err != nil {
 		t.Fatalf("valid config: %v", err)
 	}

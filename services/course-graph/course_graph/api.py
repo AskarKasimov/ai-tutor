@@ -30,6 +30,13 @@ from course_graph.topics.retrieval import get_encoder
 
 logger = logging.getLogger(__name__)
 
+
+def log_stage_failure(message: str, error: Exception) -> None:
+    # Validation errors of a stage quote what the model wrote, so the text of the
+    # exception and its traceback stay at the debug level.
+    logger.error(message, extra={"error_type": type(error).__name__})
+    logger.debug(message, exc_info=error)
+
 # Every stage asks for the low complexity (decision of 18.10.2026): every
 # instance can serve low, and the gateway gives a low request to the free
 # instance expected to answer soonest. Each pass still limits concurrency;
@@ -199,8 +206,8 @@ async def clean_document(request: CleanRequest):
         client = ModelClient()
         try:
             return await clean_markdown(request.markdown, client.completer(STAGE_COMPLEXITY))
-        except Exception:
-            logger.exception("Cleaning failed")
+        except Exception as error:
+            log_stage_failure("Cleaning failed", error)
             raise HTTPException(status_code=503, detail="Очистка временно недоступна")
         finally:
             await client.close()
@@ -219,8 +226,8 @@ async def extract_document(request: ExtractRequest):
                                   material_revision=request.material_revision)
             result["report"]["retried_requests"] = client.retries
             return result
-        except Exception:
-            logger.exception("Topic extraction failed")
+        except Exception as error:
+            log_stage_failure("Topic extraction failed", error)
             raise HTTPException(status_code=503, detail="Выделение тем не завершено; исходный текст сохранён")
         finally:
             await client.close()
@@ -248,8 +255,8 @@ async def link_topics(request: LinkRequest):
                                       light_complete=client.completer(STAGE_COMPLEXITY))
             graph["quality"]["retried_requests"] = client.retries
             return graph
-        except Exception:
-            logger.exception("Prerequisite generation failed")
+        except Exception as error:
+            log_stage_failure("Prerequisite generation failed", error)
             raise HTTPException(status_code=503, detail="Построение связей не завершено")
         finally:
             await client.close()
@@ -311,8 +318,8 @@ async def build_course(request: BuildRequest,
             # Repeats of every call this build made, extraction of old reports included.
             graph["quality"]["retried_requests"] = client.retries
             return graph
-        except Exception:
-            logger.exception("Course build failed")
+        except Exception as error:
+            log_stage_failure("Course build failed", error)
             raise HTTPException(status_code=503, detail="Граф не опубликован: этап не завершён")
         finally:
             build_progress.current = None

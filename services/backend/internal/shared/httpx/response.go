@@ -7,6 +7,7 @@ import (
 	"net/http"
 
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/fault"
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/logx"
 	"go.uber.org/zap"
 )
 
@@ -42,7 +43,7 @@ func Error(ctx context.Context, w http.ResponseWriter, err error) {
 		internalErr = e.Cause
 	}
 	if !recordFailure(ctx, e.Code, e.Message, internalErr) && internalErr != nil {
-		LoggerFromContext(ctx).Error("request failed", zap.Error(internalErr))
+		logx.From(ctx).Error("request failed", zap.Error(internalErr))
 	}
 	status := http.StatusInternalServerError
 	switch e.Kind {

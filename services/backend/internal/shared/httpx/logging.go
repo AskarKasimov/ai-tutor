@@ -42,14 +42,6 @@ func recordFailure(ctx context.Context, code, message string, err error) bool {
 	return ok
 }
 
-func WithLogger(ctx context.Context, logger *zap.Logger) context.Context {
-	return logx.With(ctx, logger)
-}
-
-func LoggerFromContext(ctx context.Context) *zap.Logger {
-	return logx.From(ctx)
-}
-
 // PropagateTrace makes an internal service continue the trace of the request.
 func PropagateTrace(req *http.Request) {
 	if traceparent := logx.Traceparent(req.Context()); traceparent != "" {
@@ -72,7 +64,7 @@ func RequestLogger(logger *zap.Logger, next http.Handler) http.Handler {
 
 		requestLogger := logger.With(zap.String("request_id", requestID), zap.String("trace_id", traceID))
 		state := &requestState{}
-		ctx := logx.WithTrace(WithLogger(context.WithValue(r.Context(), requestStateKey{}, state), requestLogger), traceID)
+		ctx := logx.WithTrace(logx.With(context.WithValue(r.Context(), requestStateKey{}, state), requestLogger), traceID)
 		r = r.WithContext(ctx)
 		started := time.Now()
 		response := &statusWriter{ResponseWriter: w}

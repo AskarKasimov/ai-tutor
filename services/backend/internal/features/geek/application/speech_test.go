@@ -1,7 +1,10 @@
 package application
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"strings"
 	"testing"
 	"unicode/utf8"
@@ -42,5 +45,19 @@ func TestWholeSpeechCacheChangesWithVoice(t *testing.T) {
 	}
 	if len(voice.calls) != 2 {
 		t.Fatalf("syntheses = %d, want 2", len(voice.calls))
+	}
+}
+
+func TestPartReusesLegacyCacheKey(t *testing.T) {
+	const name = "seed=607 cfg=2 steps=20 style=calm-v1"
+	const text = "Подготовленный вопрос?"
+	sum := sha256.Sum256([]byte(name + "\n" + text))
+	oldKey := "geek/speech/" + hex.EncodeToString(sum[:]) + ".wav"
+	stored := wav(10)
+	store := &syncAudio{data: map[string][]byte{oldKey: stored}}
+	voice := &countingVoice{called: make(chan struct{}, 1)}
+	got, err := NewSpeechCache(voice, store, name).Part(context.Background(), text)
+	if err != nil || !bytes.Equal(got, stored) || len(voice.calls) != 0 {
+		t.Fatalf("legacy cache not reused: calls=%d error=%v", len(voice.calls), err)
 	}
 }

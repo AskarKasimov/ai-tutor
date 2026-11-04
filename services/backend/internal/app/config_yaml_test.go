@@ -129,3 +129,14 @@ func TestLoadSpeechAPIOptions(t *testing.T) {
 		t.Fatalf("speech options ignored: %+v", cfg)
 	}
 }
+
+func TestDefaultVoiceNamePreservesLegacyCache(t *testing.T) {
+	a := &App{cfg: Config{TTSSeed: 607, TTSCFGValue: 2, TTSInferenceTimesteps: 20, TTSUseReference: true, TTSUsePrompt: true}}
+	if got := a.voiceName(); got != "seed=607 cfg=2 steps=20 style=calm-v1" {
+		t.Fatalf("legacy voice name = %q", got)
+	}
+	a.cfg.TTSUsePrompt = false
+	if a.voiceName() == "seed=607 cfg=2 steps=20 style=calm-v1" {
+		t.Fatal("different mode shares legacy voice name")
+	}
+}

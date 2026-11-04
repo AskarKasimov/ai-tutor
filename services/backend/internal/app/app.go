@@ -102,7 +102,11 @@ const materialWorkers = 2
 
 // voiceName identifies the TTS settings in the keys of cached speech.
 func (a *App) voiceName() string {
-	return fmt.Sprintf("seed=%d cfg=%g steps=%d style=calm-v1 reference=%t prompt=%t", a.cfg.TTSSeed, a.cfg.TTSCFGValue, a.cfg.TTSInferenceTimesteps, a.cfg.TTSUseReference, a.cfg.TTSUsePrompt)
+	name := fmt.Sprintf("seed=%d cfg=%g steps=%d style=calm-v1", a.cfg.TTSSeed, a.cfg.TTSCFGValue, a.cfg.TTSInferenceTimesteps)
+	if a.cfg.TTSUseReference && a.cfg.TTSUsePrompt {
+		return name
+	}
+	return fmt.Sprintf("%s reference=%t prompt=%t", name, a.cfg.TTSUseReference, a.cfg.TTSUsePrompt)
 }
 
 func (a *App) models() *modelapi.Client {

@@ -341,7 +341,8 @@ function Dialogue({
             </span>
             <button
               type="button"
-              className={styles.clearUnclear}
+              className={styles.round}
+              data-tone="clear"
               aria-label={t('geek.unclearRetry')}
               title={t('geek.unclearRetry')}
               disabled={answer.isPending}

@@ -181,17 +181,6 @@
   min-width: 0;
   padding-block: var(--space-2);
 }
-.clearUnclear {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex: none;
-  border: 0;
-  background: transparent;
-  color: var(--gray-11);
-  cursor: pointer;
-  padding: var(--space-2);
-}
 
 // The result card appears once Geek's last reply has been voiced: it rises in,
 // a comet in the colours of the progress bars runs once around its border and
@@ -410,6 +399,10 @@
   }
   &[data-tone='stop'] {
     background: var(--app-error);
+  }
+  &[data-tone='clear'] {
+    background: var(--app-error);
+    color: #000;
   }
 }
 .timer {

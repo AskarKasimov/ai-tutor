@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -211,6 +212,7 @@ func TestSynthesizeSendsVoiceMode(t *testing.T) {
 func TestRecognizeDistinguishesInvalidModelFromInvalidAudio(t *testing.T) {
 	for _, tc := range []struct{ body, code string }{
 		{`{"detail":"Unsupported ASR model: invalid_model"}`, "PROCESSING_UNAVAILABLE"},
+		{`{"detail":"Unsupported ASR model: ` + strings.Repeat("x", 600) + `"}`, "PROCESSING_UNAVAILABLE"},
 		{`{"detail":"Unsupported or invalid audio"}`, "INVALID_AUDIO"},
 	} {
 		t.Run(tc.code, func(t *testing.T) {

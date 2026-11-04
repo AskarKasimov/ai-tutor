@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"net/textproto"
 	"net/url"
+	"regexp"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -63,6 +64,8 @@ func providerError(err error) error {
 	return errors.Join(fault.New(fault.Unavailable, "PROCESSING_UNAVAILABLE", "Голосовой сервис недоступен."), err)
 }
 
+var unsupportedASRModelPrefix = regexp.MustCompile(`^\s*\{\s*"detail"\s*:\s*"Unsupported ASR model:`)
+
 // statusError is the fault for a provider status with the start of its body.
 func statusError(resp *http.Response, failureCode string, stt bool) error {
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
@@ -70,7 +73,7 @@ func statusError(resp *http.Response, failureCode string, stt bool) error {
 		var detail struct {
 			Detail string `json:"detail"`
 		}
-		if json.Unmarshal(body, &detail) == nil && strings.HasPrefix(detail.Detail, "Unsupported ASR model:") {
+		if unsupportedASRModelPrefix.Match(body) || (json.Unmarshal(body, &detail) == nil && strings.HasPrefix(detail.Detail, "Unsupported ASR model:")) {
 			return errors.Join(fault.New(fault.Unavailable, "PROCESSING_UNAVAILABLE", "Голосовой сервис временно недоступен."), fmt.Errorf("provider answered %d: %s", resp.StatusCode, strings.TrimSpace(string(body))))
 		}
 	}

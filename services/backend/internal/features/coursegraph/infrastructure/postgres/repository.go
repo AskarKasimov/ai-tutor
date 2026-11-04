@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/coursegraph"
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/features/coursegraph/application"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/fault"
 	db "github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/postgres/sqlcgen"
 	"github.com/jackc/pgx/v5"
@@ -127,14 +128,14 @@ func (r *Repository) MapGraph(ctx context.Context, subjectID string) (json.RawMe
 }
 
 // Published lists the graphs Geek examines by, newest first.
-func (r *Repository) Published(ctx context.Context) ([]json.RawMessage, error) {
-	rows, err := db.New(r.pool).ListPublishedCourseGraphs(ctx)
+func (r *Repository) Published(ctx context.Context) ([]application.PublishedGraph, error) {
+	rows, err := db.New(r.pool).ListPublishedCourseGraphsForAudio(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("list published course graphs: %w", err)
 	}
-	graphs := make([]json.RawMessage, len(rows))
+	graphs := make([]application.PublishedGraph, len(rows))
 	for i, row := range rows {
-		graphs[i] = row
+		graphs[i] = application.PublishedGraph{SubjectID: row.SubjectID, Graph: row.Graph}
 	}
 	return graphs, nil
 }

@@ -20,11 +20,11 @@ import (
 type requestRepo struct {
 	snapshot  coursegraph.Snapshot
 	queued    bool
-	published []json.RawMessage
+	published []PublishedGraph
 	mapGraph  json.RawMessage
 }
 
-func (r requestRepo) Published(context.Context) ([]json.RawMessage, error) {
+func (r requestRepo) Published(context.Context) ([]PublishedGraph, error) {
 	return r.published, nil
 }
 
@@ -356,18 +356,33 @@ func isFault(err error, code string) bool {
 	return errors.As(err, &f) && f.Code == code
 }
 
-type queuedVoices struct{ texts []string }
+type queuedVoices struct {
+	texts []string
+	seen  map[string]bool
+}
 
 func (v *queuedVoices) Prepare(texts []string) int {
-	v.texts = append(v.texts, texts...)
-	return len(texts)
+	queued := 0
+	if v.seen == nil {
+		v.seen = map[string]bool{}
+	}
+	for _, text := range texts {
+		if !v.seen[text] {
+			v.seen[text] = true
+			v.texts = append(v.texts, text)
+			queued++
+		}
+	}
+	return queued
 }
+
+func (*queuedVoices) TrackPublished(_, _ string, _ []string) {}
 
 func TestPrepareVoicesQueuesTheQuestionsOfEveryPublishedGraph(t *testing.T) {
 	voices := &queuedVoices{}
-	repo := requestRepo{published: []json.RawMessage{
-		json.RawMessage(`{"topics":[{"question":"Почему A?"},{"question":"Почему B?"}]}`),
-		json.RawMessage(`{"topics":[{"question":"Почему C?"}]}`),
+	repo := requestRepo{published: []PublishedGraph{
+		{SubjectID: "s1", Graph: json.RawMessage(`{"topics":[{"question":"Почему A?"},{"question":"Почему B?"}]}`)},
+		{SubjectID: "s2", Graph: json.RawMessage(`{"topics":[{"question":"Почему C?"}]}`)},
 	}}
 	if err := New(repo, nil, nil, nil, voices, nil).PrepareVoices(context.Background()); err != nil {
 		t.Fatal(err)

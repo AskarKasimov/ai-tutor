@@ -163,8 +163,8 @@ func TestPublishedListsTheGraphsGeekExaminesBy(t *testing.T) {
 		t.Fatalf("published graphs = %d", len(graphs))
 	}
 	var g struct{ Topics []struct{ Question string } }
-	if err := json.Unmarshal(graphs[0], &g); err != nil || len(g.Topics) != 1 || g.Topics[0].Question != "Почему?" {
-		t.Fatalf("graph = %s, %v", graphs[0], err)
+	if graphs[0].SubjectID != "s" || json.Unmarshal(graphs[0].Graph, &g) != nil || len(g.Topics) != 1 || g.Topics[0].Question != "Почему?" {
+		t.Fatalf("graph = %+v", graphs[0])
 	}
 }
 

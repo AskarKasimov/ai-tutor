@@ -2,6 +2,7 @@ import { afterEach, expect, it, vi } from 'vitest'
 import {
   createSubject,
   listSubjects,
+  readAudioPreparation,
   SubjectApiError,
 } from '@/entities/subject'
 
@@ -149,4 +150,52 @@ it('requires a complete consistent preparation snapshot for admin catalogs', asy
   await expect(
     listSubjects(new AbortController().signal, true),
   ).resolves.toHaveLength(1)
+})
+
+it('reads both audio snapshots and rejects mismatched counter totals', async () => {
+  const direction = {
+    version: 'revision:3',
+    state: 'queued',
+    total: 2,
+    unchecked: 0,
+    queued: 1,
+    processing: 0,
+    retry_wait: 0,
+    ready: 1,
+    failed: 0,
+    unavailable: 0,
+    observed_at: '2026-11-04T10:00:00Z',
+  }
+  const fetchMock = vi.fn().mockResolvedValue(
+    Response.json({
+      subject_id: 's1',
+      exam: { ...direction, version: 'graph|voice', published: true },
+      learn: { ...direction, revision: 3 },
+    }),
+  )
+  vi.stubGlobal('fetch', fetchMock)
+  await expect(
+    readAudioPreparation('s1', new AbortController().signal),
+  ).resolves.toMatchObject({
+    subject_id: 's1',
+    exam: { published: true, total: 2, ready: 1 },
+    learn: { revision: 3, total: 2, queued: 1 },
+  })
+  expect(fetchMock.mock.calls[0][0]).toBe(
+    '/api/v1/exam/admin/subjects/s1/audio-preparation',
+  )
+  expect(fetchMock.mock.calls[0][1].credentials).toBe('include')
+  vi.stubGlobal(
+    'fetch',
+    vi.fn().mockResolvedValue(
+      Response.json({
+        subject_id: 's1',
+        exam: { ...direction, total: 3, published: true },
+        learn: { ...direction, revision: 3 },
+      }),
+    ),
+  )
+  await expect(
+    readAudioPreparation('s1', new AbortController().signal),
+  ).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
 })

@@ -5,10 +5,11 @@ import { useNavigate } from '@tanstack/react-router'
 import { LoaderCircle, ShieldCheck } from 'lucide-react'
 import { useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
-import { AccountMenu } from '@/features/auth'
+import { AccountMenu, useAuth } from '@/features/auth'
 import type { Subject } from '@/entities/subject'
 import { preparationBadge } from '@/entities/subject'
 import styles from './admin-course-detail-shell.module.scss'
+import { AudioPreparationPanel } from './audio-preparation-panel'
 
 type Direction = 'learn' | 'exam'
 
@@ -39,6 +40,7 @@ export function AdminCourseDetailShell({
   children,
 }: Props) {
   const { t } = useTranslation()
+  const { user } = useAuth()
   const navigate = useNavigate()
   const status = course && preparationBadge(course, active)
 
@@ -138,6 +140,14 @@ export function AdminCourseDetailShell({
             </Badge>
           )}
         </section>
+        {user?.role === 'admin' && (
+          <AudioPreparationPanel
+            userId={user.id}
+            subjectId={subjectId}
+            direction={active}
+            stale={course?.preparation?.exam.stale}
+          />
+        )}
         {children}
       </main>
     </div>

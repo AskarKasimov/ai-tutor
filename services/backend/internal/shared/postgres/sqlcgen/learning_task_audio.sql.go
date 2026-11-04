@@ -7,7 +7,65 @@ package db
 
 import (
 	"context"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
+
+const learningAudioPreparationForSubject = `-- name: LearningAudioPreparationForSubject :many
+SELECT COALESCE(state.active_revision, 0)::bigint AS revision,
+       task.id AS task_id, task.voice_instruction, task.audio_asset_id,
+       asset.status, asset.attempts, asset.next_attempt_at, asset.lease_until
+FROM subjects subject
+LEFT JOIN learning_subject_state state ON state.subject_id = subject.id
+LEFT JOIN learning_competencies competency ON competency.revision = state.active_revision
+LEFT JOIN learning_constituents constituent ON constituent.competency_id = competency.id
+LEFT JOIN learning_outcomes outcome ON outcome.constituent_id = constituent.id
+LEFT JOIN learning_tasks task ON task.outcome_id = outcome.id
+LEFT JOIN learning_audio_assets asset ON asset.id = task.audio_asset_id
+WHERE subject.id = $1::text
+ORDER BY task.id
+`
+
+type LearningAudioPreparationForSubjectRow struct {
+	Revision         int64
+	TaskID           *string
+	VoiceInstruction *string
+	AudioAssetID     *string
+	Status           *string
+	Attempts         *int32
+	NextAttemptAt    pgtype.Timestamptz
+	LeaseUntil       pgtype.Timestamptz
+}
+
+// One statement snapshot keeps the active revision, expected tasks, and asset statuses coherent.
+func (q *Queries) LearningAudioPreparationForSubject(ctx context.Context, subjectID string) ([]LearningAudioPreparationForSubjectRow, error) {
+	rows, err := q.db.Query(ctx, learningAudioPreparationForSubject, subjectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []LearningAudioPreparationForSubjectRow{}
+	for rows.Next() {
+		var i LearningAudioPreparationForSubjectRow
+		if err := rows.Scan(
+			&i.Revision,
+			&i.TaskID,
+			&i.VoiceInstruction,
+			&i.AudioAssetID,
+			&i.Status,
+			&i.Attempts,
+			&i.NextAttemptAt,
+			&i.LeaseUntil,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
 
 const learningCancelClaimedTaskAudio = `-- name: LearningCancelClaimedTaskAudio :execrows
 UPDATE learning_audio_assets

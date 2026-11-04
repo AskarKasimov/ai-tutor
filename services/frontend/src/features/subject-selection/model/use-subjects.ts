@@ -56,6 +56,31 @@ export function useSubjectsQuery(userId: string, admin = false) {
       ),
   })
 }
+
+export function useAudioPreparationQuery(userId: string, subjectId: string) {
+  const { subjects } = useSubjectSelectionDependencies()
+  const client = useQueryClient()
+  // eslint-disable-next-line @tanstack/query/exhaustive-deps -- API and auth epoch are stable dependencies outside the resource key.
+  return useQuery({
+    queryKey: subjectSelectionQueryKeys.audioPreparation(userId, subjectId),
+    enabled: !!userId && !!subjectId,
+    queryFn: ({ signal }) =>
+      fetchScoped(
+        userId,
+        signal,
+        (requestSignal) =>
+          subjects.readAudioPreparation(subjectId, requestSignal),
+        client,
+      ),
+    refetchInterval:
+      typeof document !== 'undefined' && document.visibilityState === 'visible'
+        ? 5_000
+        : false,
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: true,
+    retry: false,
+  })
+}
 export function useCreateSubjectMutation(userId: string) {
   const { subjects } = useSubjectSelectionDependencies()
   const client = useQueryClient()

@@ -67,6 +67,7 @@ export function createAppDependencies(): AppDependencies {
     subjects: {
       listSubjects: subjects.listSubjects,
       createSubject: subjects.createSubject,
+      readAudioPreparation: subjects.readAudioPreparation,
     },
     learningMap: {
       readOutline: learningMap.readCompetencyMapOutline,

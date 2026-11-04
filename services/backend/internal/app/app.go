@@ -268,7 +268,9 @@ func (a *App) Handler() http.Handler {
 	authHandlers := authhttp.New(auth, a.now)
 	voice := voiceapp.New(voicepg.New(a.pool), a.recognizer(), a.synthesizer(), a.now)
 	voiceHandlers := voicehttp.New(voice, a.cfg.MaxUploadBytes)
-	subjectHandlers := subjecthttp.New(subjectapp.New(subjectpg.New(a.pool), security.IDGenerator{}, a.now))
+	subjectService := subjectapp.New(subjectpg.New(a.pool), security.IDGenerator{}, a.now)
+	subjectService.SetAudioProgress(a.warmer, subjectpg.NewLearningAudioProgress(a.pool))
+	subjectHandlers := subjecthttp.New(subjectService)
 
 	materialsOCR := materialsocr.New(a.cfg.CourseGraphURL, a.cfg.CourseGraphTimeout)
 	materialsService := materialsapp.New(materialspg.New(a.pool), a.materialsStorage, materialsOCR, a.now)
@@ -301,6 +303,7 @@ func (a *App) Handler() http.Handler {
 	examMux.Handle("GET /admin/subjects/{subject_id}/materials", protect(auth, subjectpg.RequireSubject(a.pool, http.HandlerFunc(materialsHandlers.ListMaterials))))
 	graphHandlers := graphhttp.New(a.graphWorker)
 	examMux.Handle("GET /admin/subjects/{subject_id}/graph", protect(auth, subjectpg.RequireSubject(a.pool, http.HandlerFunc(graphHandlers.Read))))
+	examMux.Handle("GET /admin/subjects/{subject_id}/audio-preparation", protect(auth, subjectpg.RequireSubject(a.pool, http.HandlerFunc(subjectHandlers.AudioPreparation))))
 	examMux.Handle("POST /admin/subjects/{subject_id}/graph/build", protect(auth, subjectpg.RequireSubject(a.pool, http.HandlerFunc(graphHandlers.Build))))
 	examMux.Handle("POST /admin/subjects/{subject_id}/graph/competency-map", protect(auth, subjectpg.RequireSubject(a.pool, http.HandlerFunc(graphHandlers.ImportMap))))
 	examMux.Handle("POST /admin/subjects/{subject_id}/graph/competency-map/skip-missing-criteria", protect(auth, subjectpg.RequireSubject(a.pool, http.HandlerFunc(graphHandlers.SkipMissingCriteria))))

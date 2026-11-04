@@ -211,6 +211,9 @@ export function useStartCourseGraphBuildMutation(
         cache.invalidateQueries({
           queryKey: subjectQueryKeys.subjects(userId),
         }),
+        cache.invalidateQueries({
+          queryKey: subjectQueryKeys.audioPreparation(userId, targetSubjectId),
+        }),
       ])
     },
     onError: async (error, input) => {
@@ -226,6 +229,9 @@ export function useStartCourseGraphBuildMutation(
         cache.invalidateQueries({
           queryKey: subjectQueryKeys.subjects(userId),
           exact: false,
+        }),
+        cache.invalidateQueries({
+          queryKey: subjectQueryKeys.audioPreparation(userId, targetSubjectId),
         }),
       ])
     },
@@ -277,6 +283,9 @@ export function useImportCompetencyMapMutation(
         cache.invalidateQueries({
           queryKey: subjectQueryKeys.subjects(userId),
         }),
+        cache.invalidateQueries({
+          queryKey: subjectQueryKeys.audioPreparation(userId, subjectId),
+        }),
       ])
     },
     onError: async (error) => {
@@ -286,6 +295,9 @@ export function useImportCompetencyMapMutation(
       await cache.invalidateQueries({
         queryKey: subjectQueryKeys.subjects(userId),
         exact: false,
+      })
+      await cache.invalidateQueries({
+        queryKey: subjectQueryKeys.audioPreparation(userId, subjectId),
       })
     },
     retry: false,

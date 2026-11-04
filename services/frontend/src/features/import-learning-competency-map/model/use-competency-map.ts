@@ -158,6 +158,12 @@ export function useImportCompetencyMapMutation(
       cache.invalidateQueries({
         queryKey: subjectQueryKeys.learningState(userId, targetSubjectId),
       }),
+      cache.invalidateQueries({
+        queryKey: examSubjectQueryKeys.audioPreparation(
+          userId,
+          targetSubjectId,
+        ),
+      }),
     ])
   }
 }

@@ -107,6 +107,11 @@ SELECT g.graph FROM course_graphs g JOIN subjects s ON s.id=g.subject_id
 WHERE g.source='competency_map' OR EXISTS(SELECT 1 FROM subject_materials m WHERE m.subject_id=g.subject_id)
 ORDER BY g.updated_at DESC, g.subject_id;
 
+-- name: ListPublishedCourseGraphsForAudio :many
+SELECT g.subject_id, g.graph FROM course_graphs g JOIN subjects s ON s.id=g.subject_id
+WHERE g.source='competency_map' OR EXISTS(SELECT 1 FROM subject_materials m WHERE m.subject_id=g.subject_id)
+ORDER BY g.updated_at DESC, g.subject_id;
+
 -- name: ReplaceCurrentCourseGraphMap :execrows
 -- Compare-and-swap the confirmed, published map. Re-evaluation after a
 -- concurrent map update checks its fingerprint before changing any data.

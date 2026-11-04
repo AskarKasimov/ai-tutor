@@ -1,0 +1,89 @@
+package application
+
+import (
+	"context"
+	"testing"
+	"time"
+
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/audiopreparation"
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/subject"
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/user"
+)
+
+type audioProgressRepo struct {
+	revision int64
+	assets   []audiopreparation.LearningAsset
+	err      error
+	calls    int
+}
+
+func (r *audioProgressRepo) Snapshot(context.Context, string) (int64, []audiopreparation.LearningAsset, error) {
+	r.calls++
+	return r.revision, r.assets, r.err
+}
+
+type examProgressFake struct {
+	snapshot audiopreparation.ExamSnapshot
+	ok       bool
+}
+
+func (r examProgressFake) Snapshot(string) (audiopreparation.ExamSnapshot, bool) {
+	return r.snapshot, r.ok
+}
+
+type subjectRepoStub struct{}
+
+func (subjectRepoStub) Create(context.Context, string, string, int64) (subject.Subject, error) {
+	return subject.Subject{}, nil
+}
+func (subjectRepoStub) List(context.Context) ([]subject.Subject, error) { return nil, nil }
+
+type subjectIDsStub struct{}
+
+func (subjectIDsStub) New(string) (string, error) { return "id", nil }
+
+func TestAudioPreparationAggregatesCurrentLearningAssets(t *testing.T) {
+	now := time.Date(2026, 11, 4, 10, 0, 0, 0, time.UTC)
+	future, past := now.Add(time.Minute), now.Add(-time.Minute)
+	status := func(value string) *string { return &value }
+	asset := func(task, id, instruction, state string, attempts int, next, lease *time.Time) audiopreparation.LearningAsset {
+		return audiopreparation.LearningAsset{TaskID: task, AssetID: &id, Instruction: instruction, Status: status(state), Attempts: attempts, NextAttemptAt: next, LeaseUntil: lease}
+	}
+	missing := audiopreparation.LearningAsset{TaskID: "task-missing", Instruction: "Speak this"}
+	assets := []audiopreparation.LearningAsset{
+		asset("t1", "a1", "Ready", "ready", 1, nil, nil),
+		asset("t2", "a1", "Ready", "ready", 1, nil, nil), // duplicate asset counts once
+		asset("t3", "a2", "Failed", "failed", 5, nil, nil),
+		asset("t4", "a3", "Working", "processing", 1, nil, &future),
+		asset("t5", "a4", "Expired", "processing", 1, nil, &past),
+		asset("t6", "a5", "Retry", "pending", 2, &future, nil),
+		asset("t7", "a6", "Queued", "pending", 0, &past, nil),
+		asset("t8", "a7", "Cancelled", "cancelled", 5, nil, nil),
+		missing,
+		{TaskID: "ignored", Instruction: "  "},
+	}
+	learning := &audioProgressRepo{revision: 42, assets: assets}
+	svc := New(subjectRepoStub{}, subjectIDsStub{}, func() time.Time { return now })
+	svc.SetAudioProgress(examProgressFake{snapshot: audiopreparation.ExamSnapshot{Version: "graph|voice", Total: 1, Counts: audiopreparation.Counts{Ready: 1}, ObservedAt: now}, ok: true}, learning)
+	result, err := svc.AudioPreparation(context.Background(), user.User{Role: user.Admin}, "course-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if learning.calls != 1 || result.SubjectID != "course-1" || result.Exam.State != audiopreparation.Ready || result.Learn.Revision != 42 {
+		t.Fatalf("response=%+v calls=%d", result, learning.calls)
+	}
+	counts := result.Learn.Counts
+	if result.Learn.Total != 8 || counts.Ready != 1 || counts.Failed != 1 || counts.Processing != 1 || counts.Queued != 2 || counts.RetryWait != 1 || counts.Unavailable != 2 || counts.Sum() != result.Learn.Total {
+		t.Fatalf("learning total=%d counts=%+v", result.Learn.Total, counts)
+	}
+}
+
+func TestAudioPreparationChecksAdminBeforeReading(t *testing.T) {
+	learning := &audioProgressRepo{}
+	svc := New(subjectRepoStub{}, subjectIDsStub{}, time.Now)
+	svc.SetAudioProgress(examProgressFake{}, learning)
+	_, err := svc.AudioPreparation(context.Background(), user.User{Role: user.Student}, "course-1")
+	if err == nil || learning.calls != 0 {
+		t.Fatalf("error=%v learning reads=%d", err, learning.calls)
+	}
+}

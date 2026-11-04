@@ -216,6 +216,10 @@ Geek возвращает источники в пробелах завершё�
 
 Восстановление упавших заданий: `bash scripts/recover-failed-jobs.sh [--dry-run] [--stage all|ocr|cleaning|graph] [--material-id ID] [--subject-id ID] [--stalled --token T]` (из корня — `scripts/recover-failed-jobs.sh`). `--material-id` ограничивает и граф — курсом этого материала. Каждое действие пишется JSON-строкой аудита в stdout. `GET` на тот же путь возвращает список, `DELETE .../materials/{material_id}` удаляет материал, `GET .../materials/{material_id}/raw` отдаёт исходный файл.
 
+### Прогресс фоновой озвучки
+
+`GET /api/v1/exam/admin/subjects/{subject_id}/audio-preparation` (admin) отдаёт per-course snapshots экзаменационных вопросов и учебных инструкций. Exam использует in-memory наборы уникальных SpeechCache ключей опубликованного графа; после рестарта штатная фоновая очередь проверяет S3 cache и не синтезирует уже сохранённые WAV повторно. Learning агрегирует read-only одним запросом assets задач активной ревизии и их queue/lease/retry статусы. GET не запускает S3/TTS, не меняет приоритет и не влияет на `exam_ready`/`learning_ready`. Счётчики взаимоисключающие; `state` следует их задокументированному precedence в OpenAPI.
+
 ## Проверки
 
 Объём и команды локальных проверок — в [правилах backend](AGENTS.md#тесты). Для DB-тестов задайте `TEST_DATABASE_URL`, например:

@@ -100,6 +100,44 @@
   gap: var(--space-3);
 }
 
+.audioCard {
+  display: grid;
+  gap: var(--space-3);
+  min-width: 0;
+  padding: var(--space-4);
+  border: 1px solid var(--app-border);
+  border-radius: var(--radius-3);
+  background: var(--color-panel-solid);
+}
+
+.audioContent {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.audioContent p {
+  margin: 0;
+}
+
+.audioContent > [role='progressbar'] {
+  width: 100%;
+}
+
+.audioCounters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-4);
+  margin: 0;
+  padding: 0;
+  color: var(--app-ink);
+  list-style: none;
+}
+
+.audioCounters li {
+  overflow-wrap: anywhere;
+}
+
 .statusError {
   display: flex;
   align-items: center;

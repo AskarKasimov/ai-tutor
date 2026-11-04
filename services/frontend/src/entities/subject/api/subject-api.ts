@@ -6,6 +6,7 @@ import {
   isPreparationConsistent,
 } from '../model/preparation'
 import type { Subject } from '../model/subject'
+import type { AudioPreparation } from '../model/audio-preparation'
 
 const apiBase = `${(import.meta.env.VITE_API_BASE_URL || '/api/v1').replace(
   /\/$/,
@@ -24,6 +25,53 @@ const subjectSchema: z.ZodType<Subject> = z.object({
     .refine((value) => value === undefined || isCoursePreparation(value)),
 })
 const adminSubjectSchema = subjectSchema.refine(isPreparationConsistent)
+const audioDirectionSchema = z.object({
+  version: z.string(),
+  state: z.enum([
+    'no_graph',
+    'checking',
+    'queued',
+    'processing',
+    'retry_wait',
+    'partial',
+    'ready',
+    'empty',
+  ]),
+  total: z.number().int().nonnegative(),
+  unchecked: z.number().int().nonnegative(),
+  queued: z.number().int().nonnegative(),
+  processing: z.number().int().nonnegative(),
+  retry_wait: z.number().int().nonnegative(),
+  ready: z.number().int().nonnegative(),
+  failed: z.number().int().nonnegative(),
+  unavailable: z.number().int().nonnegative(),
+  observed_at: z.string().datetime({ offset: true }),
+})
+const audioPreparationSchema: z.ZodType<AudioPreparation> = z
+  .object({
+    subject_id: id,
+    exam: audioDirectionSchema.extend({ published: z.boolean() }),
+    learn: audioDirectionSchema.extend({
+      revision: z.number().int().nonnegative(),
+    }),
+  })
+  .superRefine((value, context) => {
+    for (const direction of [value.exam, value.learn]) {
+      const sum =
+        direction.unchecked +
+        direction.queued +
+        direction.processing +
+        direction.retry_wait +
+        direction.ready +
+        direction.failed +
+        direction.unavailable
+      if (sum !== direction.total)
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Invalid audio progress counts',
+        })
+    }
+  })
 async function request(
   path: string,
   signal: AbortSignal,
@@ -95,10 +143,25 @@ export async function createSubject(
   )
 }
 
+export async function readAudioPreparation(
+  subjectId: string,
+  signal: AbortSignal,
+): Promise<AudioPreparation> {
+  const response = await request(
+    `/admin/subjects/${encodeURIComponent(subjectId)}/audio-preparation`,
+    signal,
+  )
+  const value = await parse(response, audioPreparationSchema, signal)
+  if (value.subject_id !== subjectId)
+    throw new SubjectApiError(0, 'INVALID_RESPONSE')
+  return value
+}
+
 export type SubjectApi = {
   listSubjects: (
     signal: AbortSignal,
     requirePreparation?: boolean,
   ) => Promise<Subject[]>
   createSubject: typeof createSubject
+  readAudioPreparation: typeof readAudioPreparation
 }

@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"go.uber.org/zap"
+
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/audiopreparation"
 )
 
 // Retry pauses of a text that failed: they grow from warmRetryMin to
@@ -28,6 +30,7 @@ const (
 type Warmer struct {
 	speech             *SpeechCache
 	logger             *zap.Logger
+	progress           *ExamAudioProgress
 	retryMin, retryMax time.Duration
 
 	mu sync.Mutex
@@ -43,8 +46,17 @@ func NewWarmer(speech *SpeechCache, logger *zap.Logger) *Warmer {
 	if logger == nil {
 		logger = zap.NewNop()
 	}
-	return &Warmer{speech: speech, logger: logger, retryMin: warmRetryMin, retryMax: warmRetryMax,
+	return &Warmer{speech: speech, logger: logger, progress: NewExamAudioProgress(speech.name), retryMin: warmRetryMin, retryMax: warmRetryMax,
 		pending: map[string]bool{}, wake: make(chan struct{}, 1)}
+}
+
+// TrackPublished replaces the observed set for a course only after its graph is published.
+func (w *Warmer) TrackPublished(subjectID, graphVersion string, texts []string) {
+	w.progress.TrackPublished(subjectID, graphVersion, texts, w.speech.Key)
+}
+
+func (w *Warmer) Snapshot(subjectID string) (audiopreparation.ExamSnapshot, bool) {
+	return w.progress.Snapshot(subjectID)
 }
 
 // Prepare queues texts for synthesis without waiting; it reports how many
@@ -92,15 +104,18 @@ func (w *Warmer) Run(ctx context.Context) error {
 				continue
 			}
 		}
+		w.progress.Transition(w.speech.Key(text), audiopreparation.StatusProcessing)
 		_, err := w.speech.Part(ctx, text)
 		if ctx.Err() != nil {
 			return nil
 		}
 		if err == nil {
+			w.progress.Transition(w.speech.Key(text), audiopreparation.StatusReady)
 			w.done(text)
 			pause = w.retryMin
 			continue
 		}
+		w.progress.Transition(w.speech.Key(text), audiopreparation.StatusRetryWait)
 		w.retry(text)
 		w.logger.Warn("prepared question not voiced; retrying", zap.Error(err), zap.Int("text_chars", len([]rune(text))), zap.Duration("retry_in", pause), zap.Int("pending", w.Pending()))
 		select {

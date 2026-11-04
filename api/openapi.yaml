@@ -2236,6 +2236,73 @@ components:
         - StatusPending
         - StatusParsed
         - StatusFailed
+    subject.CoursePreparation:
+      additionalProperties: false
+      properties:
+        exam:
+          $ref: '#/components/schemas/subject.ExamPreparation'
+        learn:
+          $ref: '#/components/schemas/subject.LearningPreparation'
+      required:
+        - exam
+        - learn
+      type: object
+    subject.ExamPreparation:
+      additionalProperties: false
+      properties:
+        source:
+          enum:
+            - materials
+            - competency_map
+            - null
+          type:
+            - string
+            - "null"
+        stale:
+          type: boolean
+        state:
+          $ref: '#/components/schemas/subject.ExamPreparationState'
+      required:
+        - source
+        - stale
+        - state
+      type: object
+    subject.ExamPreparationState:
+      enum:
+        - empty
+        - queued
+        - processing
+        - failed
+        - needs_metadata
+        - needs_build
+        - ready
+      type: string
+      x-enum-varnames:
+        - ExamEmpty
+        - ExamQueued
+        - ExamProcessing
+        - ExamFailed
+        - ExamNeedsMetadata
+        - ExamNeedsBuild
+        - ExamReady
+    subject.LearningPreparation:
+      additionalProperties: false
+      properties:
+        state:
+          $ref: '#/components/schemas/subject.LearningPreparationState'
+      required:
+        - state
+      type: object
+    subject.LearningPreparationState:
+      enum:
+        - empty
+        - needs_tasks
+        - ready
+      type: string
+      x-enum-varnames:
+        - LearningEmpty
+        - LearningNeedsTasks
+        - LearningReady
     subject.Subject:
       additionalProperties: false
       properties:
@@ -2247,6 +2314,8 @@ components:
           type: boolean
         name:
           type: string
+        preparation:
+          $ref: '#/components/schemas/subject.CoursePreparation'
         ready:
           type: boolean
       required:
@@ -3681,7 +3750,7 @@ paths:
       x-implementation: implemented
   /exam/admin/subjects:
     post:
-      description: Создать предмет без карты компетенций. Доступно только admin.
+      description: Создать общий курс. Admin получает начальный снимок статусов подготовки; студентам preparation не возвращается.
       operationId: createSubject
       requestBody:
         content:
@@ -4968,7 +5037,7 @@ paths:
       x-implementation: implemented
   /exam/subjects:
     get:
-      description: 'Студентам возвращаются только готовые курсы: с фикстурой графа — сразу после создания, без неё — с опубликованным графом курса. Admin видит все предметы и признак готовности.'
+      description: Студентам возвращаются только готовые курсы с прежними флагами и без preparation. Admin видит все курсы и пакетный снимок состояний подготовки.
       operationId: listSubjects
       responses:
         "200":
@@ -5076,7 +5145,7 @@ paths:
       x-implementation: implemented
   /learn/admin/subjects:
     post:
-      description: Совместимый адрес создания общей сущности курса. Новый интерфейс использует POST /exam/admin/subjects.
+      description: Совместимый адрес создания общей сущности курса с начальным снимком статусов подготовки.
       operationId: createLearningSubject
       requestBody:
         content:
@@ -6508,7 +6577,7 @@ paths:
       x-implementation: implemented
   /learn/subjects:
     get:
-      description: Прочитать каталог предметов режима обучения.
+      description: Прочитать каталог обучения; admin получает тот же снимок подготовки, что и в экзаменационном каталоге.
       operationId: listLearningSubjects
       responses:
         "200":

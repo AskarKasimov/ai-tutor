@@ -37,15 +37,23 @@ async function fetchScoped<T>(
   }
 }
 
-export function useSubjectsQuery(userId: string) {
+export function useSubjectsQuery(userId: string, admin = false) {
   const { subjects } = useSubjectSelectionDependencies()
   const client = useQueryClient()
   // eslint-disable-next-line @tanstack/query/exhaustive-deps -- the API port and auth epoch are stable dependencies outside the resource key.
   return useQuery({
     queryKey: subjectSelectionQueryKeys.subjects(userId),
     enabled: !!userId,
+    refetchInterval: admin ? 5_000 : false,
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: true,
     queryFn: ({ signal }) =>
-      fetchScoped(userId, signal, subjects.listSubjects, client),
+      fetchScoped(
+        userId,
+        signal,
+        (requestSignal) => subjects.listSubjects(requestSignal, admin),
+        client,
+      ),
   })
 }
 export function useCreateSubjectMutation(userId: string) {

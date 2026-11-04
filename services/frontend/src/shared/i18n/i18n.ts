@@ -397,6 +397,7 @@ void i18n.init({
           loading: 'Загружаем курсы…',
           loadError: 'Не удалось загрузить курсы.',
           createError: 'Не удалось создать курс. Попробуйте ещё раз.',
+          statusRefreshError: 'Не удалось обновить статусы.',
           learnReady: 'Обучение готово',
           learnPreparing: 'Обучение готовится',
           examReady: 'Экзамен готов',

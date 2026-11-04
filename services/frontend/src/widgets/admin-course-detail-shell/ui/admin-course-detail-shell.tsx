@@ -2,10 +2,12 @@ import type { PropsWithChildren } from 'react'
 import { Badge, Button, Heading, Text } from '@radix-ui/themes'
 import { Link } from '@tanstack/react-router'
 import { useNavigate } from '@tanstack/react-router'
-import { ShieldCheck } from 'lucide-react'
+import { LoaderCircle, ShieldCheck } from 'lucide-react'
 import { useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { AccountMenu } from '@/features/auth'
+import type { Subject } from '@/entities/subject'
+import { preparationBadge } from '@/entities/subject'
 import styles from './admin-course-detail-shell.module.scss'
 
 type Direction = 'learn' | 'exam'
@@ -15,7 +17,10 @@ type Props = PropsWithChildren<{
   subjectId: string
   subjectName?: string
   courseMissing?: boolean
-  ready?: boolean
+  course?: Subject
+  localImporting?: boolean
+  statusRefreshError?: boolean
+  onRetryStatus?: () => void
   title: string
   description: string
 }>
@@ -25,13 +30,17 @@ export function AdminCourseDetailShell({
   subjectId,
   subjectName,
   courseMissing = false,
-  ready,
+  course,
+  localImporting = false,
+  statusRefreshError = false,
+  onRetryStatus,
   title,
   description,
   children,
 }: Props) {
   const { t } = useTranslation()
   const navigate = useNavigate()
+  const status = course && preparationBadge(course, active)
 
   useEffect(() => {
     if (courseMissing) void navigate({ to: '/', replace: true })
@@ -97,6 +106,16 @@ export function AdminCourseDetailShell({
             </nav>
           </div>
         </section>
+        {statusRefreshError && (
+          <section className={styles.statusError}>
+            <Text as="p" role="status">
+              {t('adminCourses.statusRefreshError')}
+            </Text>
+            <Button variant="soft" onClick={onRetryStatus}>
+              {t('trainer.retry')}
+            </Button>
+          </section>
+        )}
         <section className={styles.directionHeader}>
           <div className={styles.directionIntro}>
             <Heading as="h2" size="6">
@@ -106,19 +125,18 @@ export function AdminCourseDetailShell({
               {description}
             </Text>
           </div>
-          <Badge color={ready ? 'green' : 'gray'}>
-            {ready
-              ? t(
-                  active === 'learn'
-                    ? 'adminCourses.learnReady'
-                    : 'adminCourses.examReady',
-                )
-              : t(
-                  active === 'learn'
-                    ? 'adminCourses.learnPreparing'
-                    : 'adminCourses.examPreparing',
-                )}
-          </Badge>
+          {status && (
+            <Badge color={status.color} className={styles.status}>
+              {(status.spinning || localImporting) && (
+                <LoaderCircle
+                  size={12}
+                  className={styles.spinner}
+                  aria-hidden="true"
+                />
+              )}
+              {t(localImporting ? 'sharedCourse.learn.importing' : status.key)}
+            </Badge>
+          )}
         </section>
         {children}
       </main>

@@ -91,6 +91,10 @@ function setup({
           ready: false,
           learning_ready: false,
           exam_ready: false,
+          preparation: {
+            exam: { state: 'empty', source: null, stale: false },
+            learn: { state: 'empty' },
+          },
         },
         {
           id: 'subject-b',
@@ -98,6 +102,17 @@ function setup({
           ready: graphReady || mapImported,
           learning_ready: false,
           exam_ready: graphReady || mapImported,
+          preparation: {
+            exam:
+              graphReady || mapImported
+                ? {
+                    state: 'ready',
+                    source: mapImported ? 'competency_map' : 'materials',
+                    stale: false,
+                  }
+                : { state: 'empty', source: null, stale: false },
+            learn: { state: 'empty' },
+          },
         },
       ])
     if (url.endsWith('/materials') && init?.method === 'POST') {
@@ -534,7 +549,7 @@ it('imports a map through the shared course ID and makes a map-only course ready
   const dialog = await screen.findByRole('alertdialog')
   fireEvent.click(within(dialog).getByRole('button', { name: 'Импортировать' }))
   await screen.findByText('По карте компетенций', undefined, { timeout: 8000 })
-  expect(await screen.findByText('Экзамен готов')).toBeVisible()
+  expect(await screen.findByText('Экзамен: готов')).toBeVisible()
   expect(router.state.location.pathname).toBe('/admin/courses/subject-b')
   expect(router.state.location.search).toEqual({ direction: 'exam' })
   expect(

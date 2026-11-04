@@ -5,6 +5,11 @@ import {
   SubjectApiError,
 } from '@/entities/subject'
 
+const emptyPreparation = {
+  exam: { state: 'empty', source: null, stale: false },
+  learn: { state: 'empty' },
+} as const
+
 afterEach(() => vi.unstubAllGlobals())
 
 it('maps invalid JSON success bodies to INVALID_RESPONSE', async () => {
@@ -42,6 +47,10 @@ it('lists subjects with cookie credentials and rejects malformed success bodies'
         ready: true,
         learning_ready: true,
         exam_ready: true,
+        preparation: {
+          exam: { state: 'ready', source: 'materials', stale: false },
+          learn: { state: 'ready' },
+        },
       },
     ]),
   )
@@ -53,6 +62,10 @@ it('lists subjects with cookie credentials and rejects malformed success bodies'
       ready: true,
       learning_ready: true,
       exam_ready: true,
+      preparation: {
+        exam: { state: 'ready', source: 'materials', stale: false },
+        learn: { state: 'ready' },
+      },
     },
   ])
   expect(fetchMock.mock.calls[0][0]).toBe('/api/v1/exam/subjects')
@@ -72,6 +85,7 @@ it('creates a subject as JSON and carries backend error codes', async () => {
         ready: false,
         learning_ready: false,
         exam_ready: false,
+        preparation: emptyPreparation,
       },
       { status: 201 },
     ),
@@ -97,4 +111,42 @@ it('creates a subject as JSON and carries backend error codes', async () => {
   await expect(
     createSubject('Физика', new AbortController().signal),
   ).rejects.toMatchObject({ status: 409, code: 'CONFLICT' })
+})
+
+it('requires a complete consistent preparation snapshot for admin catalogs', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn().mockResolvedValue(
+      Response.json([
+        {
+          id: 's1',
+          name: 'Курс',
+          ready: false,
+          learning_ready: false,
+          exam_ready: false,
+        },
+      ]),
+    ),
+  )
+  await expect(
+    listSubjects(new AbortController().signal, true),
+  ).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
+  vi.stubGlobal(
+    'fetch',
+    vi.fn().mockResolvedValue(
+      Response.json([
+        {
+          id: 's1',
+          name: 'Курс',
+          ready: false,
+          learning_ready: false,
+          exam_ready: false,
+          preparation: emptyPreparation,
+        },
+      ]),
+    ),
+  )
+  await expect(
+    listSubjects(new AbortController().signal, true),
+  ).resolves.toHaveLength(1)
 })

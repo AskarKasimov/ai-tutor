@@ -73,16 +73,68 @@ SELECT subject.id, subject.name,
                  END
            GROUP BY constituent.id
            HAVING count(DISTINCT outcome.id) >= 3
-       ) AS learning_ready
+       ) AS learning_ready,
+       EXISTS (SELECT 1 FROM subject_materials m WHERE m.subject_id=subject.id) AS has_materials,
+       EXISTS (SELECT 1 FROM course_graph_maps m WHERE m.subject_id=subject.id) AS has_map,
+       coalesce(job.source,'')::text AS job_source,
+       coalesce(job.status,'')::text AS job_status,
+       coalesce(job.fingerprint IS NOT NULL AND job.fingerprint IS NOT DISTINCT FROM
+           (SELECT input.fingerprint FROM course_graph_job_inputs input
+            WHERE input.subject_id=subject.id AND input.source=job.source),false)::boolean AS job_fingerprint_current,
+       coalesce(graph.subject_id IS NOT NULL,false)::boolean AS graph_exists,
+       coalesce(graph.source,'')::text AS graph_source,
+       coalesce(graph.fingerprint IS NOT NULL AND graph.fingerprint IS NOT DISTINCT FROM
+           CASE graph.source
+             WHEN 'competency_map' THEN (SELECT map.fingerprint FROM course_graph_maps map WHERE map.subject_id=subject.id)
+             ELSE (SELECT input.fingerprint FROM course_graph_inputs input WHERE input.subject_id=subject.id)
+           END,false)::boolean AS graph_fingerprint_current,
+       coalesce(graph.fingerprint IS NOT NULL AND graph.fingerprint IS DISTINCT FROM
+           CASE graph.source
+             WHEN 'competency_map' THEN (SELECT map.fingerprint FROM course_graph_maps map WHERE map.subject_id=subject.id)
+             ELSE (SELECT input.fingerprint FROM course_graph_inputs input WHERE input.subject_id=subject.id)
+           END,false)::boolean AS graph_stale,
+       EXISTS (SELECT 1 FROM subject_materials m
+               LEFT JOIN material_ocr_jobs o ON o.material_id=m.id
+               LEFT JOIN material_cleaning_jobs c ON c.material_id=m.id
+               WHERE m.subject_id=subject.id AND (o.status='processing' OR c.status='processing')) AS materials_processing,
+       EXISTS (SELECT 1 FROM subject_materials m
+               LEFT JOIN material_ocr_jobs o ON o.material_id=m.id
+               LEFT JOIN material_cleaning_jobs c ON c.material_id=m.id
+               WHERE m.subject_id=subject.id AND (o.status='pending' OR c.status='pending')) AS materials_queued,
+       EXISTS (SELECT 1 FROM subject_materials m
+               LEFT JOIN material_ocr_jobs o ON o.material_id=m.id
+               LEFT JOIN material_cleaning_jobs c ON c.material_id=m.id
+               WHERE m.subject_id=subject.id AND (m.status='failed' OR o.status='failed' OR c.status='failed')) AS materials_failed,
+       EXISTS (SELECT 1 FROM subject_materials m
+               LEFT JOIN material_kinds kind ON kind.code=m.kind
+               WHERE m.subject_id=subject.id AND (m.week IS NULL OR m.kind IS NULL OR kind.code IS NULL)) AS materials_need_metadata,
+       EXISTS (SELECT 1 FROM learning_subject_state state
+               WHERE state.subject_id=subject.id AND state.active_revision > 0) AS learning_map_active
 FROM subjects subject
+LEFT JOIN course_graph_jobs job ON job.subject_id=subject.id
+LEFT JOIN course_graphs graph ON graph.subject_id=subject.id
 ORDER BY lower(subject.name), subject.id
 `
 
 type ListSubjectsRow struct {
-	ID            string
-	Name          string
-	ExamReady     bool
-	LearningReady bool
+	ID                      string
+	Name                    string
+	ExamReady               bool
+	LearningReady           bool
+	HasMaterials            bool
+	HasMap                  bool
+	JobSource               string
+	JobStatus               string
+	JobFingerprintCurrent   bool
+	GraphExists             bool
+	GraphSource             string
+	GraphFingerprintCurrent bool
+	GraphStale              bool
+	MaterialsProcessing     bool
+	MaterialsQueued         bool
+	MaterialsFailed         bool
+	MaterialsNeedMetadata   bool
+	LearningMapActive       bool
 }
 
 func (q *Queries) ListSubjects(ctx context.Context) ([]ListSubjectsRow, error) {
@@ -99,6 +151,20 @@ func (q *Queries) ListSubjects(ctx context.Context) ([]ListSubjectsRow, error) {
 			&i.Name,
 			&i.ExamReady,
 			&i.LearningReady,
+			&i.HasMaterials,
+			&i.HasMap,
+			&i.JobSource,
+			&i.JobStatus,
+			&i.JobFingerprintCurrent,
+			&i.GraphExists,
+			&i.GraphSource,
+			&i.GraphFingerprintCurrent,
+			&i.GraphStale,
+			&i.MaterialsProcessing,
+			&i.MaterialsQueued,
+			&i.MaterialsFailed,
+			&i.MaterialsNeedMetadata,
+			&i.LearningMapActive,
 		); err != nil {
 			return nil, err
 		}

@@ -49,6 +49,7 @@ func (s *Service) Create(ctx context.Context, actor user.User, name string) (sub
 	if err != nil {
 		return subject.Subject{}, err
 	}
+	created.Preparation = subject.EmptyPreparation()
 	return created, nil
 }
 
@@ -71,7 +72,10 @@ func (s *Service) catalog(ctx context.Context, actor user.User, learning bool) (
 		if learning {
 			item.Ready = item.LearningReady
 		}
-		if actor.Role == user.Admin || item.Ready {
+		if actor.Role == user.Admin {
+			ready = append(ready, item)
+		} else if item.Ready {
+			item.Preparation = nil
 			ready = append(ready, item)
 		}
 	}

@@ -3,9 +3,42 @@ export const learningTranslations = {
     ready: 'Материалы готовы',
     preparing: 'Материалы не готовы',
     examReady: 'Экзамен: готов',
-    examPreparing: 'Экзамен: подготовка',
+    examPreparing: 'Экзамен: материалы не загружены',
     learningReady: 'Обучение: готово',
-    learningPreparing: 'Обучение: подготовка',
+    learningPreparing: 'Обучение: материалы не загружены',
+    exam: {
+      empty: {
+        unavailable: 'Экзамен: материалы не загружены',
+        available: 'Экзамен: готов · материалы обновления не загружены',
+      },
+      queued: {
+        unavailable: 'Экзамен: подготовка в очереди',
+        available: 'Экзамен: готов · обновление в очереди',
+      },
+      processing: {
+        unavailable: 'Экзамен: идёт подготовка',
+        available: 'Экзамен: готов · идёт обновление',
+      },
+      failed: {
+        unavailable: 'Экзамен: ошибка подготовки',
+        available: 'Экзамен: готов · ошибка обновления',
+      },
+      needs_metadata: {
+        unavailable: 'Экзамен: заполните данные материалов',
+        available: 'Экзамен: готов · заполните данные новых материалов',
+      },
+      needs_build: {
+        unavailable: 'Экзамен: требуется сборка графа',
+        available: 'Экзамен: готов · требуется обновление',
+      },
+      ready: { available: 'Экзамен: готов' },
+    },
+    learn: {
+      empty: 'Обучение: материалы не загружены',
+      needs_tasks: 'Обучение: недостаточно заданий для диагностики',
+      ready: 'Обучение: готово',
+      importing: 'Обучение: идёт импорт карты',
+    },
   },
   learningCompetencyMap: {
     currentMap: 'Текущее состояние карты',

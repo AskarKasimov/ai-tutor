@@ -8,6 +8,11 @@ import {
 
 afterEach(() => vi.unstubAllGlobals())
 
+const emptyPreparation = {
+  exam: { state: 'empty', source: null, stale: false },
+  learn: { state: 'empty' },
+} as const
+
 it('maps invalid JSON success bodies to INVALID_RESPONSE', async () => {
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('not json')))
   await expect(
@@ -73,6 +78,7 @@ it('creates a subject as JSON and carries backend error codes', async () => {
         ready: false,
         learning_ready: false,
         exam_ready: false,
+        preparation: emptyPreparation,
       },
       { status: 201 },
     ),
@@ -98,6 +104,30 @@ it('creates a subject as JSON and carries backend error codes', async () => {
   await expect(
     createSubject('Физика', new AbortController().signal),
   ).rejects.toMatchObject({ status: 409, code: 'CONFLICT' })
+})
+
+it('rejects admin course creation without a valid preparation snapshot', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn().mockResolvedValue(
+      Response.json(
+        {
+          id: 's1',
+          name: 'Физика',
+          ready: false,
+          learning_ready: false,
+          exam_ready: false,
+        },
+        { status: 201 },
+      ),
+    ),
+  )
+  await expect(
+    createSubject('Физика', new AbortController().signal),
+  ).rejects.toMatchObject({
+    status: 0,
+    code: 'INVALID_RESPONSE',
+  })
 })
 
 it('reads encoded learning state and checks the requested subject ID', async () => {

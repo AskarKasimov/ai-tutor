@@ -9,55 +9,49 @@ import (
 	"sync"
 	"time"
 
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/logx"
 	"go.uber.org/zap"
 )
 
-type loggerKey struct{}
 type requestStateKey struct{}
 
 type requestState struct {
-	mu   sync.Mutex
-	code string
-	err  error
+	mu      sync.Mutex
+	code    string
+	message string
+	err     error
 }
 
-func (s *requestState) record(code string, err error) {
+func (s *requestState) record(code, message string, err error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.code, s.err = code, err
+	s.code, s.message, s.err = code, message, err
 }
 
-func (s *requestState) snapshot() (string, error) {
+func (s *requestState) snapshot() (string, string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.code, s.err
+	return s.code, s.message, s.err
 }
 
-func recordFailure(ctx context.Context, code string, err error) bool {
+func recordFailure(ctx context.Context, code, message string, err error) bool {
 	state, ok := ctx.Value(requestStateKey{}).(*requestState)
 	if ok {
-		state.record(code, err)
+		state.record(code, message, err)
 	}
 	return ok
 }
 
-var noopLogger = zap.NewNop()
-
-func WithLogger(ctx context.Context, logger *zap.Logger) context.Context {
-	return context.WithValue(ctx, loggerKey{}, logger)
-}
-
-func LoggerFromContext(ctx context.Context) *zap.Logger {
-	logger, ok := ctx.Value(loggerKey{}).(*zap.Logger)
-	if !ok || logger == nil {
-		return noopLogger
+// PropagateTrace makes an internal service continue the trace of the request.
+func PropagateTrace(req *http.Request) {
+	if traceparent := logx.Traceparent(req.Context()); traceparent != "" {
+		req.Header.Set("traceparent", traceparent)
 	}
-	return logger
 }
 
 func RequestLogger(logger *zap.Logger, next http.Handler) http.Handler {
 	if logger == nil {
-		logger = noopLogger
+		logger = zap.NewNop()
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requestID := headerID(r.Header.Get("X-Request-ID"))
@@ -70,7 +64,7 @@ func RequestLogger(logger *zap.Logger, next http.Handler) http.Handler {
 
 		requestLogger := logger.With(zap.String("request_id", requestID), zap.String("trace_id", traceID))
 		state := &requestState{}
-		ctx := WithLogger(context.WithValue(r.Context(), requestStateKey{}, state), requestLogger)
+		ctx := logx.WithTrace(logx.With(context.WithValue(r.Context(), requestStateKey{}, state), requestLogger), traceID)
 		r = r.WithContext(ctx)
 		started := time.Now()
 		response := &statusWriter{ResponseWriter: w}
@@ -88,17 +82,23 @@ func RequestLogger(logger *zap.Logger, next http.Handler) http.Handler {
 				zap.Int("status", response.status),
 				zap.Duration("duration", time.Since(started)),
 			}
-			if code, err := state.snapshot(); code != "" {
+			if code, message, err := state.snapshot(); code != "" {
 				fields = append(fields, zap.String("error_code", code))
+				if message != "" {
+					fields = append(fields, zap.String("error_message", message))
+				}
 				if err != nil {
 					fields = append(fields, zap.Error(err))
 				}
 			}
 			if panicked != nil {
-				fields = append(fields, zap.Bool("panicked", true))
+				fields = append(fields, zap.Bool("panicked", true), zap.Any("panic", panicked), zap.Stack("stacktrace"))
 			}
 			if response.status >= http.StatusInternalServerError || panicked != nil {
 				requestLogger.Error("http request", fields...)
+			} else if r.URL.Path == "/health" {
+				// Container probes run every few seconds and bury the real requests.
+				requestLogger.Debug("http request", fields...)
 			} else {
 				requestLogger.Info("http request", fields...)
 			}

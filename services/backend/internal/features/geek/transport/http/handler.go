@@ -15,6 +15,7 @@ import (
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/features/geek/application"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/fault"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/httpx"
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/logx"
 )
 
 type StartRequest struct {
@@ -464,7 +465,7 @@ func (h *Handler) TurnAudio(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(r.Context(), w, err)
 		return
 	}
-	httpx.LoggerFromContext(r.Context()).Info("geek turn audio", zap.String("session_id", r.PathValue("id")), zap.String("turn_id", r.PathValue("turn_id")),
+	logx.From(r.Context()).Info("geek turn audio", zap.String("session_id", r.PathValue("id")), zap.String("turn_id", r.PathValue("turn_id")),
 		zap.String("part", string(part)), zap.Int("bytes", len(data)), zap.Duration("duration", time.Since(started)))
 	w.Header().Set("Content-Type", "audio/wav")
 	w.WriteHeader(http.StatusOK)

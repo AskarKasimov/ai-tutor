@@ -11,7 +11,7 @@ import (
 
 func TestLoadConfigParsesDurationsAndAppliesDefaults(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "gateway.json")
-	config := `{"kafka_brokers":["localhost:9092"],"request_deadline":"90s","upstream_timeout":"45s","pools":{"low":["model-a"],"medium":["model-a"],"high":["model-a"]},"instances":[{"id":"model-a","base_url":"http://localhost:8000/v1","model":"served-model","max_in_flight":1,"context_window":8192}]}`
+	config := `{"log_level":"info","kafka_brokers":["localhost:9092"],"request_deadline":"90s","upstream_timeout":"45s","pools":{"low":["model-a"],"medium":["model-a"],"high":["model-a"]},"instances":[{"id":"model-a","base_url":"http://localhost:8000/v1","model":"served-model","max_in_flight":1,"context_window":8192}]}`
 	if err := os.WriteFile(path, []byte(config), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -48,7 +48,7 @@ func TestExampleConfigIsValid(t *testing.T) {
 
 func TestLoadConfigRejectsInvalidDurations(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "gateway.json")
-	if err := os.WriteFile(path, []byte(`{"kafka_brokers":["localhost:9092"],"request_deadline":"soon"}`), 0o600); err != nil {
+	if err := os.WriteFile(path, []byte(`{"log_level":"info","kafka_brokers":["localhost:9092"],"request_deadline":"soon"}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	_, err := LoadConfig(path)

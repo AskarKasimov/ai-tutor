@@ -58,6 +58,7 @@ import (
 	voicehttp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/voice/transport/http"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/fault"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/httpx"
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/logx"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/s3"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/security"
 )
@@ -204,18 +205,21 @@ func (a *App) RunStorageSetup(ctx context.Context) error {
 func (a *App) RunBackground(ctx context.Context) error {
 	group, ctx := errgroup.WithContext(ctx)
 	group.Go(func() error { return a.RunStorageSetup(ctx) })
+	ocrCtx := logx.With(ctx, a.logger.With(zap.String("worker", "material_ocr")))
+	cleaningCtx := logx.With(ctx, a.logger.With(zap.String("worker", "material_cleaning")))
+	graphCtx := logx.With(ctx, a.logger.With(zap.String("worker", "course_graph")))
 	// Several materials move through OCR (and its translation) and cleaning at
 	// once, so the LLM gateway gets enough parallel calls to use every model.
 	// Jobs are claimed with FOR UPDATE SKIP LOCKED and a lease, so each goes to
 	// one worker; course-graph still converts one document at a time and
 	// extracts topics of two, so extra workers wait there instead of piling up.
 	for i := 0; i < materialWorkers; i++ {
-		group.Go(func() error { return a.ocrWorker.Run(ctx) })
-		group.Go(func() error { return a.cleaningWorker.Run(ctx) })
+		group.Go(func() error { return a.ocrWorker.Run(ocrCtx) })
+		group.Go(func() error { return a.cleaningWorker.Run(cleaningCtx) })
 	}
-	group.Go(func() error { return a.graphWorker.Run(ctx) })
+	group.Go(func() error { return a.graphWorker.Run(graphCtx) })
 	group.Go(func() error { return a.audioWorker.Run(ctx) })
-	warmCtx := httpx.WithLogger(ctx, a.logger.With(zap.String("worker", "speech_warmer")))
+	warmCtx := logx.With(ctx, a.logger.With(zap.String("worker", "speech_warmer")))
 	group.Go(func() error { return a.warmer.Run(warmCtx) })
 	group.Go(func() error {
 		// The queue does not survive a restart: the questions of published

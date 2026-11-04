@@ -8,9 +8,12 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"go.uber.org/zap/zapcore"
 )
 
 type Config struct {
+	LogLevel              zapcore.Level
 	ListenAddress         string
 	DatabaseURL           string
 	STTURL                string

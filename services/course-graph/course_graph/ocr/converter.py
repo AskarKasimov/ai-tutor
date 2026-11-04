@@ -206,7 +206,7 @@ def cache_document_result(content: bytes, data: dict, filename: str = "document.
         temporary.replace(cache_path)
         temporary = None
     except Exception as err:
-        logger.warning("Failed to write document cache: %s", err)
+        logger.warning("Failed to write document cache", extra={"error": str(err)})
     finally:
         if temporary is not None:
             temporary.unlink(missing_ok=True)

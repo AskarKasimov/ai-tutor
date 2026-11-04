@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"go.uber.org/zap/zapcore"
 	"gopkg.in/yaml.v3"
 )
 
@@ -32,6 +33,9 @@ type backendYAML struct {
 	Server *struct {
 		ListenAddress *string `yaml:"listen_address"`
 	} `yaml:"server"`
+	Logging *struct {
+		Level *string `yaml:"level"`
+	} `yaml:"logging"`
 	Voice *struct {
 		STT *struct {
 			URL      *string `yaml:"url"`
@@ -235,6 +239,9 @@ func requireBackendYAML(c backendYAML) error {
 	if c.Server == nil || c.Server.ListenAddress == nil {
 		missing = append(missing, "server.listen_address")
 	}
+	if c.Logging == nil || c.Logging.Level == nil {
+		missing = append(missing, "logging.level")
+	}
 	if c.Voice == nil || c.Voice.STT == nil || c.Voice.STT.URL == nil {
 		missing = append(missing, "voice.stt.url")
 	}
@@ -319,7 +326,11 @@ func LoadConfig(path string) (Config, error) {
 	if err := requireBackendYAML(y); err != nil {
 		return Config{}, err
 	}
-	c := Config{ListenAddress: *y.Server.ListenAddress, STTURL: *y.Voice.STT.URL, TTSURL: *y.Voice.TTS.URL, TTSSeed: *y.Voice.TTS.Seed, TTSCFGValue: *y.Voice.TTS.CFGValue, TTSInferenceTimesteps: *y.Voice.TTS.InferenceTimesteps, VoiceTimeout: y.Voice.Timeout.Duration, MaxUploadBytes: *y.Uploads.MaxBytes,
+	logLevel, err := parseLogLevel(*y.Logging.Level)
+	if err != nil {
+		return Config{}, err
+	}
+	c := Config{LogLevel: logLevel, ListenAddress: *y.Server.ListenAddress, STTURL: *y.Voice.STT.URL, TTSURL: *y.Voice.TTS.URL, TTSSeed: *y.Voice.TTS.Seed, TTSCFGValue: *y.Voice.TTS.CFGValue, TTSInferenceTimesteps: *y.Voice.TTS.InferenceTimesteps, VoiceTimeout: y.Voice.Timeout.Duration, MaxUploadBytes: *y.Uploads.MaxBytes,
 		S3Endpoint: *y.Storage.S3.Endpoint, S3Region: *y.Storage.S3.Region, S3Bucket: *y.Storage.S3.Bucket, S3PathStyle: *y.Storage.S3.PathStyle, S3Timeout: y.Storage.S3.Timeout.Duration, S3CreateBucket: *y.Storage.S3.CreateBucket, S3AccessKey: strings.TrimSpace(os.Getenv("BACKEND_S3_ACCESS_KEY")), S3SecretKey: strings.TrimSpace(os.Getenv("BACKEND_S3_SECRET_KEY")),
 		AudioWorkers: *y.Workers.Audio.Count, AudioPollInterval: y.Workers.Audio.PollInterval.Duration, LearningTutorEnabled: *y.Tutor.Enabled, TutorTaskMaxChars: *y.Tutor.Context.TaskMaxChars, TutorHistoryMaxChars: *y.Tutor.Context.HistoryMaxChars, TutorSummaryMaxChars: *y.Tutor.Context.SummaryMaxChars,
 		CourseGraphURL: *y.CourseGraph.URL, CourseGraphTimeout: y.CourseGraph.Timeout.Duration, LLMGatewayAddress: *y.LLMGateway.Address, LLMTimeout: y.LLMGateway.Timeout.Duration, GeekMaxQuestions: *y.Geek.QuestionLimit}
@@ -356,6 +367,20 @@ func LoadConfig(path string) (Config, error) {
 	c.OCRURL = c.CourseGraphURL
 	c.OCRTimeout = c.CourseGraphTimeout
 	return c, nil
+}
+
+func parseLogLevel(value string) (zapcore.Level, error) {
+	switch value {
+	case "debug":
+		return zapcore.DebugLevel, nil
+	case "info":
+		return zapcore.InfoLevel, nil
+	case "warn":
+		return zapcore.WarnLevel, nil
+	case "error":
+		return zapcore.ErrorLevel, nil
+	}
+	return zapcore.InfoLevel, fmt.Errorf("logging.level must be debug, info, warn or error")
 }
 
 // YAML-backed application settings use YAML paths in diagnostics.

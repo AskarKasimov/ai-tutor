@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"math"
 	"net/http"
 	"sort"
@@ -842,6 +843,7 @@ func (s *Service) execute(ctx context.Context, j *durableJob, in InstanceConfig)
 	result, failure := s.caller.call(callCtx, in, j.Request, j.ID, j.ProbeReserved)
 	cancel()
 	s.observeCall(j, in, failure, time.Since(started))
+	logUpstreamCall(j, in, failure, time.Since(started))
 	if failure != nil {
 		if s.isCanceled(j.ID) {
 			s.releaseSlot(j)
@@ -859,6 +861,7 @@ func (s *Service) execute(ctx context.Context, j *durableJob, in InstanceConfig)
 			} else if !errors.Is(err, errCanceledJob) {
 				// The durable state is still "running". Do not dispatch more work
 				// while local state claims this retry is queued.
+				slog.Error("reschedule request failed", "gateway_request_id", j.ID, "error", err)
 				s.markStateUncertain()
 				s.notifyEphemeral(j.ID, submitResult{503, errorBody("server_error", "state_unavailable", "Gateway could not durably reschedule the LLM request.")})
 			}
@@ -906,6 +909,20 @@ func (s *Service) execute(ctx context.Context, j *durableJob, in InstanceConfig)
 	if err := s.persistResult(ctx, j, 200, result.Body, "succeeded"); err == nil || errors.Is(err, errCanceledJob) {
 		s.releaseSlot(j)
 	}
+}
+
+func logUpstreamCall(j *durableJob, in InstanceConfig, failure *UpstreamFailure, elapsed time.Duration) {
+	attrs := []any{"gateway_request_id", j.ID, "instance", in.ID, "attempt", j.Attempt, "duration", elapsed.Seconds()}
+	if failure == nil {
+		slog.Info("upstream call", attrs...)
+		return
+	}
+	attrs = append(attrs, "error_code", failure.Code, "upstream_status", failure.Status, "error", failure.Error())
+	if failure.Code == "request_canceled" {
+		slog.Info("upstream call canceled", attrs...)
+		return
+	}
+	slog.Warn("upstream call failed", attrs...)
 }
 
 // expectedAlpha weighs the newest call in an instance's expected duration.
@@ -1522,4 +1539,4 @@ func newID() string {
 }
 func ioReadAll(r io.Reader) ([]byte, error) { return io.ReadAll(r) }
 
-func (s *Service) Handler() http.Handler { return http.HandlerFunc(s.handler) }
+func (s *Service) Handler() http.Handler { return logHTTP(http.HandlerFunc(s.handler)) }

@@ -324,7 +324,7 @@ func TestEvaluateVariantFeedbackTotalLength(t *testing.T) {
 			if utf8.RuneCountInString(got.Feedback) > 228 || !utf8.ValidString(got.Feedback) {
 				t.Fatalf("expected valid feedback within 228 runes, got %q", got.Feedback)
 			}
-			if tc.shortened && !strings.HasSuffix(got.Feedback, "…") {
+			if tc.shortened && !strings.Contains(got.Feedback, "…") {
 				t.Fatalf("expected shortened feedback, got %q", got.Feedback)
 			}
 			if !tc.shortened && got.Feedback != tc.feedback {
@@ -335,10 +335,27 @@ func TestEvaluateVariantFeedbackTotalLength(t *testing.T) {
 }
 
 func TestShortenFeedbackUsesWordBoundaries(t *testing.T) {
-	original := strings.Repeat("Правильно названа классификация. ", 12)
-	prefix := strings.TrimSuffix(shortenFeedback(original), "…")
-	if !strings.HasPrefix(original, prefix+" ") && !strings.HasPrefix(original, prefix+". ") {
+	original := strings.Repeat("Правильно названа классификация и причина ", 12)
+	prefix := strings.TrimSuffix(shortenFeedback(strings.TrimSpace(original)), "…")
+	if !strings.HasPrefix(original, prefix+" ") {
 		t.Fatalf("feedback was cut inside a word: %q", prefix)
+	}
+}
+
+func TestShortenFeedbackKeepsTheClarification(t *testing.T) {
+	long := strings.TrimSpace(strings.Repeat("Верно названы признаки и классы задачи ", 8)) + "."
+	clarification := "Не хватает объяснения, почему это классификация."
+	for name, tc := range map[string]struct{ text, wantPrefix, wantSuffix string }{
+		"long observation":   {long + " " + clarification, "Верно названы", "… " + clarification},
+		"long clarification": {"Верно. " + long, "Верно. Верно названы", "…"},
+		"both long":          {long + " " + long, "Верно названы", "…"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			got := shortenFeedback(tc.text)
+			if utf8.RuneCountInString(got) > 228 || !strings.HasPrefix(got, tc.wantPrefix) || !strings.HasSuffix(got, tc.wantSuffix) {
+				t.Fatalf("got %d runes: %q", utf8.RuneCountInString(got), got)
+			}
+		})
 	}
 }
 

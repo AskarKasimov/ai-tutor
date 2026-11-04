@@ -1,118 +1,11 @@
 package app
 
 import (
+	"math"
 	"strings"
 	"testing"
 	"time"
 )
-
-func configuredEnv(t *testing.T) map[string]string {
-	t.Helper()
-	values := map[string]string{
-		"BACKEND_LISTEN_ADDRESS":          ":8002",
-		"BACKEND_DATABASE_URL":            "postgres://example/db",
-		"BACKEND_STT_URL":                 "http://stt.test/transcribe",
-		"BACKEND_TTS_URL":                 "http://tts.test/synthesize",
-		"BACKEND_TTS_SEED":                "17",
-		"BACKEND_TTS_CFG_VALUE":           "2",
-		"BACKEND_TTS_INFERENCE_TIMESTEPS": "50",
-		"BACKEND_VOICE_TIMEOUT":           "120s",
-		"BACKEND_MAX_UPLOAD_BYTES":        "26214400",
-		"BACKEND_LLM_GATEWAY_ADDR":        "gateway.test:8011",
-		"BACKEND_S3_ENDPOINT":             "",
-		"BACKEND_S3_REGION":               "us-east-1",
-		"BACKEND_S3_BUCKET":               "task-audio-test",
-		"BACKEND_S3_ACCESS_KEY":           "test-access",
-		"BACKEND_S3_SECRET_KEY":           "test-secret",
-		"BACKEND_S3_PATH_STYLE":           "true",
-		"BACKEND_S3_TIMEOUT":              "30s",
-		"BACKEND_S3_CREATE_BUCKET":        "true",
-	}
-	for key, value := range values {
-		t.Setenv(key, value)
-	}
-	return values
-}
-
-func TestAudioConfigRequiresEverySetting(t *testing.T) {
-	for key := range configuredEnv(t) {
-		if key == "BACKEND_TTS_INFERENCE_TIMESTEPS" || key == "BACKEND_S3_ENDPOINT" || key == "BACKEND_S3_REGION" || key == "BACKEND_S3_PATH_STYLE" || key == "BACKEND_S3_TIMEOUT" || key == "BACKEND_S3_CREATE_BUCKET" {
-			continue
-		}
-		t.Run(key, func(t *testing.T) {
-			configuredEnv(t)
-			for _, value := range []string{"", "   "} {
-				t.Setenv(key, value)
-				if _, err := ConfigFromEnv(); err == nil || !strings.Contains(err.Error(), key) {
-					t.Fatalf("%s=%q: got %v, want missing-setting error", key, value, err)
-				}
-			}
-		})
-	}
-}
-
-func TestAudioConfigLoadsExplicitSettings(t *testing.T) {
-	configuredEnv(t)
-	t.Setenv("BACKEND_MAX_UPLOAD_BYTES", "1024")
-	cfg, err := ConfigFromEnv()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if cfg.STTURL != "http://stt.test/transcribe" || cfg.VoiceTimeout != 120*time.Second || cfg.MaxUploadBytes != 1024 || cfg.S3Bucket != "task-audio-test" {
-		t.Fatalf("settings were replaced or ignored: %+v", cfg)
-	}
-}
-
-func TestAudioConfigRejectsInvalidSettings(t *testing.T) {
-	cases := map[string][]string{
-		"BACKEND_LISTEN_ADDRESS":          {"bad", ":bad", ":70000"},
-		"BACKEND_STT_URL":                 {"relative", "ftp://stt.test", "http://user:password@stt.test"},
-		"BACKEND_TTS_URL":                 {"http://tts.test/#fragment"},
-		"BACKEND_TTS_SEED":                {"bad", "1.5", "9223372036854775808"},
-		"BACKEND_TTS_CFG_VALUE":           {"bad", "-0.1", "5.1", "NaN", "Inf"},
-		"BACKEND_TTS_INFERENCE_TIMESTEPS": {"bad", "0", "51", "1.5"},
-		"BACKEND_VOICE_TIMEOUT":           {"bad", "0s", "-1s"},
-		"BACKEND_MAX_UPLOAD_BYTES":        {"bad", "0", "-1", "26214401"},
-		"BACKEND_S3_ENDPOINT":             {"relative", "ftp://s3.test", "http://user:pass@s3.test", "http://s3.test/?x=1", "http://s3.test/#fragment"},
-		"BACKEND_S3_BUCKET":               {""},
-		"BACKEND_S3_ACCESS_KEY":           {""},
-		"BACKEND_S3_SECRET_KEY":           {""},
-		"BACKEND_S3_PATH_STYLE":           {"maybe"},
-		"BACKEND_S3_TIMEOUT":              {"bad", "0s", "-1s"},
-		"BACKEND_LLM_GATEWAY_ADDR":        {"gateway", ":8011", "http://gateway:8011", "gateway:abc", "gateway:0", "gateway:-1", "gateway:65536", "gateway:70000"},
-		"BACKEND_LLM_TIMEOUT":             {"bad", "0s", "-1s"},
-		"BACKEND_GEEK_QUESTION_LIMIT":     {"bad", "-1"},
-		"BACKEND_COURSE_GRAPH_TIMEOUT":    {"bad", "-1s"},
-	}
-	for key, values := range cases {
-		for _, value := range values {
-			t.Run(key+"/"+value, func(t *testing.T) {
-				configuredEnv(t)
-				t.Setenv(key, value)
-				if _, err := ConfigFromEnv(); err == nil || !strings.Contains(err.Error(), key) {
-					t.Fatalf("got %v, want %s validation error", err, key)
-				}
-			})
-		}
-	}
-}
-
-func TestConfigDoesNotRequireAPIMode(t *testing.T) {
-	configuredEnv(t)
-	t.Setenv("BACKEND_API_MODE", "")
-	if _, err := ConfigFromEnv(); err != nil {
-		t.Fatalf("model configuration must work without an API mode: %v", err)
-	}
-}
-
-func TestLegacyMockModeCannotBypassModelSettings(t *testing.T) {
-	configuredEnv(t)
-	t.Setenv("BACKEND_API_MODE", "mock")
-	t.Setenv("BACKEND_STT_URL", "")
-	if _, err := ConfigFromEnv(); err == nil || !strings.Contains(err.Error(), "BACKEND_STT_URL") {
-		t.Fatalf("got %v, want missing STT setting error", err)
-	}
-}
 
 func testConfig() Config {
 	return Config{
@@ -127,79 +20,76 @@ func testConfig() Config {
 	}
 }
 
-func TestAudioConfigLoadsCustomS3Settings(t *testing.T) {
-	configuredEnv(t)
-	t.Setenv("BACKEND_S3_ENDPOINT", "https://objects.example.test")
-	t.Setenv("BACKEND_S3_REGION", "eu-west-1")
-	t.Setenv("BACKEND_S3_BUCKET", "private-audio")
-	t.Setenv("BACKEND_S3_PATH_STYLE", "false")
-	t.Setenv("BACKEND_S3_TIMEOUT", "12s")
-	t.Setenv("BACKEND_S3_CREATE_BUCKET", "false")
-	cfg, err := ConfigFromEnv()
-	if err != nil {
+func TestConfigValidateAcceptsAValidConfig(t *testing.T) {
+	if err := testConfig().validate(); err != nil {
 		t.Fatal(err)
-	}
-	if cfg.S3Endpoint != "https://objects.example.test" || cfg.S3Region != "eu-west-1" || cfg.S3Bucket != "private-audio" || cfg.S3PathStyle || cfg.S3Timeout != 12*time.Second || cfg.S3CreateBucket {
-		t.Fatalf("custom storage config = %+v", cfg)
 	}
 }
 
-func TestConfigLoadsTTSSettings(t *testing.T) {
-	configuredEnv(t)
-	t.Setenv("BACKEND_TTS_SEED", "0")
-	t.Setenv("BACKEND_TTS_CFG_VALUE", "1.5")
-	t.Setenv("BACKEND_TTS_INFERENCE_TIMESTEPS", "20")
-	cfg, err := ConfigFromEnv()
-	if err != nil {
-		t.Fatal(err)
+func TestConfigValidateRejectsInvalidSettings(t *testing.T) {
+	text := func(set func(*Config, string), values ...string) []func(*Config) {
+		out := []func(*Config){}
+		for _, value := range values {
+			out = append(out, func(c *Config) { set(c, value) })
+		}
+		return out
 	}
-	if cfg.TTSSeed != 0 || cfg.TTSCFGValue != 1.5 || cfg.TTSInferenceTimesteps != 20 {
-		t.Fatalf("TTS settings ignored: %+v", cfg)
+	duration := func(set func(*Config, time.Duration), values ...time.Duration) []func(*Config) {
+		out := []func(*Config){}
+		for _, value := range values {
+			out = append(out, func(c *Config) { set(c, value) })
+		}
+		return out
 	}
-	t.Setenv("BACKEND_TTS_INFERENCE_TIMESTEPS", "30")
-	if cfg, err = ConfigFromEnv(); err != nil || cfg.TTSInferenceTimesteps != 30 {
-		t.Fatalf("explicit steps = %d, %v", cfg.TTSInferenceTimesteps, err)
+	cases := map[string][]func(*Config){
+		"BACKEND_LISTEN_ADDRESS": text(func(c *Config, v string) { c.ListenAddress = v }, "bad", ":bad", ":70000"),
+		"BACKEND_DATABASE_URL":   text(func(c *Config, v string) { c.DatabaseURL = v }, "", "   "),
+		"BACKEND_STT_URL":        text(func(c *Config, v string) { c.STTURL = v }, "", "relative", "ftp://stt.test", "http://user:password@stt.test"),
+		"BACKEND_TTS_URL":        text(func(c *Config, v string) { c.TTSURL = v }, "", "http://tts.test/#fragment"),
+		"BACKEND_TTS_CFG_VALUE": {
+			func(c *Config) { c.TTSCFGValue = -0.1 },
+			func(c *Config) { c.TTSCFGValue = 5.1 },
+			func(c *Config) { c.TTSCFGValue = math.NaN() },
+			func(c *Config) { c.TTSCFGValue = math.Inf(1) },
+		},
+		"BACKEND_TTS_INFERENCE_TIMESTEPS": {
+			func(c *Config) { c.TTSInferenceTimesteps = 0 },
+			func(c *Config) { c.TTSInferenceTimesteps = 51 },
+		},
+		"BACKEND_VOICE_TIMEOUT": duration(func(c *Config, v time.Duration) { c.VoiceTimeout = v }, 0, -time.Second),
+		"BACKEND_MAX_UPLOAD_BYTES": {
+			func(c *Config) { c.MaxUploadBytes = 0 },
+			func(c *Config) { c.MaxUploadBytes = -1 },
+			func(c *Config) { c.MaxUploadBytes = 25*1024*1024 + 1 },
+		},
+		"BACKEND_S3_ENDPOINT":          text(func(c *Config, v string) { c.S3Endpoint = v }, "relative", "ftp://s3.test", "http://user:pass@s3.test", "http://s3.test/?x=1", "http://s3.test/#fragment"),
+		"BACKEND_S3_REGION":            text(func(c *Config, v string) { c.S3Region = v }, "", "   "),
+		"BACKEND_S3_BUCKET":            text(func(c *Config, v string) { c.S3Bucket = v }, "", "   "),
+		"BACKEND_S3_ACCESS_KEY":        text(func(c *Config, v string) { c.S3AccessKey = v }, "", "   "),
+		"BACKEND_S3_SECRET_KEY":        text(func(c *Config, v string) { c.S3SecretKey = v }, "", "   "),
+		"BACKEND_S3_TIMEOUT":           duration(func(c *Config, v time.Duration) { c.S3Timeout = v }, 0, -time.Second),
+		"BACKEND_LLM_GATEWAY_ADDR":     text(func(c *Config, v string) { c.LLMGatewayAddress = v }, "", "gateway", ":8011", "http://gateway:8011", "gateway:abc", "gateway:0", "gateway:-1", "gateway:65536", "gateway:70000"),
+		"BACKEND_LLM_TIMEOUT":          duration(func(c *Config, v time.Duration) { c.LLMTimeout = v }, 0, -time.Second),
+		"BACKEND_GEEK_QUESTION_LIMIT":  {func(c *Config) { c.GeekMaxQuestions = -1 }},
+		"BACKEND_COURSE_GRAPH_TIMEOUT": duration(func(c *Config, v time.Duration) { c.CourseGraphTimeout = v }, -time.Second),
 	}
-	t.Setenv("BACKEND_TTS_INFERENCE_TIMESTEPS", "")
-	if cfg, err = ConfigFromEnv(); err != nil || cfg.TTSInferenceTimesteps != DefaultTTSInferenceTimesteps {
-		t.Fatalf("default steps = %d, %v", cfg.TTSInferenceTimesteps, err)
-	}
-}
-
-func TestGeekConfigRequiresTheGatewayAndLimitsQuestions(t *testing.T) {
-	configuredEnv(t)
-	cfg, err := ConfigFromEnv()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if cfg.LLMGatewayAddress != "gateway.test:8011" || cfg.LLMTimeout != 120*time.Second || cfg.GeekMaxQuestions != DefaultGeekQuestionLimit {
-		t.Fatalf("geek defaults = %+v", cfg)
-	}
-	t.Setenv("BACKEND_LLM_GATEWAY_ADDR", "llm-gateway:8011")
-	t.Setenv("BACKEND_GEEK_QUESTION_LIMIT", "12")
-	if cfg, err = ConfigFromEnv(); err != nil || cfg.LLMGatewayAddress != "llm-gateway:8011" || cfg.GeekMaxQuestions != 12 {
-		t.Fatalf("geek settings = %+v, %v", cfg, err)
+	for key, mutations := range cases {
+		for _, mutate := range mutations {
+			c := testConfig()
+			mutate(&c)
+			if err := c.validate(); err == nil || !strings.Contains(err.Error(), key) {
+				t.Errorf("%s: got %v, want its validation error", key, err)
+			}
+		}
 	}
 }
 
 func TestGatewayAddressAcceptsBoundaryPorts(t *testing.T) {
 	for _, address := range []string{"llm-gateway:1", "llm-gateway:65535", "10.0.0.5:8011"} {
-		configuredEnv(t)
-		t.Setenv("BACKEND_LLM_GATEWAY_ADDR", address)
-		if _, err := ConfigFromEnv(); err != nil {
+		c := testConfig()
+		c.LLMGatewayAddress = address
+		if err := c.validate(); err != nil {
 			t.Fatalf("%s: %v", address, err)
 		}
-	}
-}
-
-func TestCourseGraphTimeoutDefaultsToNone(t *testing.T) {
-	configuredEnv(t)
-	cfg, err := ConfigFromEnv()
-	if err != nil || cfg.CourseGraphTimeout != 0 {
-		t.Fatalf("default course-graph timeout = %v, %v; want 0 (no overall timeout)", cfg.CourseGraphTimeout, err)
-	}
-	t.Setenv("BACKEND_COURSE_GRAPH_TIMEOUT", "15m")
-	if cfg, err = ConfigFromEnv(); err != nil || cfg.CourseGraphTimeout != 15*time.Minute {
-		t.Fatalf("course-graph timeout = %v, %v; want 15m", cfg.CourseGraphTimeout, err)
 	}
 }

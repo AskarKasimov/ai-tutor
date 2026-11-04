@@ -159,7 +159,11 @@ function Dialogue({
       void play(lastTurn)
     }
   }, [lastTurn, play, capturing])
-  const resultReady = session.status === 'completed'
+  const resultReady =
+    session.status === 'completed' &&
+    (initialCompleted.current ||
+      lastTurn?.speaker !== 'geek' ||
+      Boolean(audio.progress[lastTurn.id]?.revealed))
   useEffect(() => {
     // On mobile the card grows with its contents and the document scrolls.
     const trackPageScroll = () => {

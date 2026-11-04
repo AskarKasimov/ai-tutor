@@ -1013,7 +1013,7 @@ it('offers the result without waiting for the closing voice', async () => {
   ).toBeVisible()
 })
 
-it('offers the result when the closing reply cannot be voiced', async () => {
+it('offers the result after the closing reply is shown when voice fails', async () => {
   const { control } = geekBackend()
   renderApp()
   await start()
@@ -1026,8 +1026,33 @@ it('offers the result when the closing reply cannot be voiced', async () => {
   expect(
     screen.queryByText('Спасибо! Диагностика завершена, итог уже готов.'),
   ).toBeNull()
+  expect(screen.queryByRole('button', { name: 'Посмотреть итог' })).toBeNull()
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Показать текст без озвучки' }),
+  )
   expect(
     await screen.findByRole('button', { name: 'Посмотреть итог' }),
+  ).toBeVisible()
+})
+
+it('waits to show the result until the final feedback is visible', async () => {
+  const { control } = geekBackend()
+  renderApp()
+  await start()
+  await answerByText('Перестанет быть оптимальным')
+  await answerByText('Эвристическая функция')
+  await screen.findByText('эвристическая функция')
+  const voice = gate()
+  control.voiceGate = voice.closed
+  await answerByText('Оценка расстояния до цели')
+  await screen.findByText('Geek готовит озвучку…')
+  expect(screen.queryByRole('button', { name: 'Посмотреть итог' })).toBeNull()
+  voice.open()
+  expect(
+    await screen.findByRole('button', { name: 'Посмотреть итог' }),
+  ).toBeVisible()
+  expect(
+    screen.getByText('Спасибо! Диагностика завершена, итог уже готов.'),
   ).toBeVisible()
 })
 

@@ -67,8 +67,6 @@ type yamlGateway struct {
 	MaxInputLag              yamlDuration        `yaml:"max_input_lag"`
 	GracePeriod              yamlDuration        `yaml:"grace_period"`
 	Pools                    map[string][]string `yaml:"pools"`
-	RoutingProfiles          map[string][]string `yaml:"routing_profiles"`
-	RequiredRoutingProfiles  []string            `yaml:"required_routing_profiles"`
 	Instances                []yamlInstance      `yaml:"instances"`
 	ModelRules               struct {
 		Models map[string]struct {
@@ -118,7 +116,7 @@ func loadYAMLConfig(path string) (Config, error) {
 		}
 		return Config{}, fmt.Errorf("decode trailing gateway config: %w", err)
 	}
-	c := Config{ListenAddress: doc.ListenAddress, GRPCListenAddress: doc.GRPCListenAddress, KafkaBrokers: doc.KafkaBrokers, RequestsTopic: doc.RequestsTopic, StateTopic: doc.StateTopic, ConsumerGroup: doc.ConsumerGroup, TransactionalID: doc.TransactionalID, Pools: doc.Pools, RoutingProfiles: doc.RoutingProfiles, RequiredRoutingProfiles: doc.RequiredRoutingProfiles}
+	c := Config{ListenAddress: doc.ListenAddress, GRPCListenAddress: doc.GRPCListenAddress, KafkaBrokers: doc.KafkaBrokers, RequestsTopic: doc.RequestsTopic, StateTopic: doc.StateTopic, ConsumerGroup: doc.ConsumerGroup, TransactionalID: doc.TransactionalID, Pools: doc.Pools}
 	if doc.RequestDeadline.Set {
 		c.RequestDeadline = doc.RequestDeadline.Value
 	}

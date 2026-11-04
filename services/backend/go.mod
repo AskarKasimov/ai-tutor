@@ -10,6 +10,8 @@ require (
 	github.com/jackc/pgx/v5 v5.11.0
 	github.com/pressly/goose/v3 v3.28.0
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.3
+	github.com/xuri/excelize/v2 v2.11.0
+	github.com/yuin/goldmark v1.7.13
 	go.uber.org/zap v1.27.1
 	golang.org/x/crypto v0.57.0
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260831171406-18b4a7587f8a
@@ -23,9 +25,7 @@ require (
 	github.com/richardlehane/msoleps v1.0.6 // indirect
 	github.com/tiendc/go-deepcopy v1.7.2 // indirect
 	github.com/xuri/efp v0.0.1 // indirect
-	github.com/xuri/excelize/v2 v2.11.0 // indirect
 	github.com/xuri/nfp v0.0.2-0.20250530014748-2ddeb826f9a9 // indirect
-	github.com/yuin/goldmark v1.7.13 // indirect
 	golang.org/x/net v0.58.0 // indirect
 )
 

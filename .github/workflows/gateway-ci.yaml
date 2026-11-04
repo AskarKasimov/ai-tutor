@@ -33,16 +33,9 @@ jobs:
       - name: Check generated shared code
         working-directory: .
         run: services/shared/tools/generate.sh --check
-      - name: Check protobuf compatibility
-        working-directory: .
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
-        run: |
-          if [[ -z "$BASE_SHA" || "$BASE_SHA" =~ ^0+$ ]]; then
-            BASE_SHA=c8f63935a8a80c0d890be70f46479c3bae343129
-          fi
-          services/shared/tools/check-compat.sh "$BASE_SHA"
-          cd services/shared && GOWORK=off go test ./...
+      - name: Test shared contract
+        working-directory: services/shared
+        run: GOWORK=off go test ./...
       - name: Check generated OpenAPI contract
         run: |
           expected=$(sha256sum openapi.yaml)

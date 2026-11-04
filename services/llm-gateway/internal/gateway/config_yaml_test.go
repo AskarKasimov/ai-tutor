@@ -17,8 +17,6 @@ retention: 24h
 max_input_lag: 24h
 grace_period: 30s
 pools: {low: [a], medium: [a], high: [a]}
-routing_profiles: {learning-assessment: [a]}
-required_routing_profiles: [learning-assessment]
 instances:
   - id: a
     base_url: "http://localhost:8000/v1"
@@ -78,20 +76,6 @@ func TestLoadConfigYAMLRejectsUnknownDuplicateMultipleAndBadDuration(t *testing.
 				t.Fatal("expected error")
 			}
 		})
-	}
-}
-
-func TestLoadConfigYAMLRequiredProfilesIncludesStandaloneEmptyList(t *testing.T) {
-	c, err := LoadConfig(writeGatewayYAML(t, strings.Replace(validGatewayYAML, "required_routing_profiles: [learning-assessment]", "required_routing_profiles: []", 1)))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(c.RequiredRoutingProfiles) != 0 {
-		t.Fatalf("required profiles = %v", c.RequiredRoutingProfiles)
-	}
-	bad := strings.Replace(validGatewayYAML, "routing_profiles: {learning-assessment: [a]}", "routing_profiles: {}", 1)
-	if _, err := LoadConfig(writeGatewayYAML(t, bad)); err == nil || !strings.Contains(err.Error(), "learning-assessment") {
-		t.Fatalf("missing profile error = %v", err)
 	}
 }
 

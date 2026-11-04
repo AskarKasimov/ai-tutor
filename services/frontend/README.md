@@ -77,7 +77,8 @@ HTTP-контракт и сценарии проверяются тестами.
 - внизу поле «Ответить на вопрос» (Enter отправляет, Shift+Enter — перенос
   строки) и кнопка микрофона. Голосовой ответ записывается (до 90 с),
   может быть отменён и записан заново; по кнопке отправки распознаётся через
-  `POST /voice/transcriptions` и отправляется без шага проверки;
+  `POST /voice/transcriptions` и отправляется без шага проверки. При начале
+  записи фокус переходит на отмену (Tab — отправка), после отмены — на микрофон;
 - пока ответ обрабатывается, показано «Geek формулирует ответ…» и другие сменяющиеся статусы.
   Пока готовится аудио, показано «Geek готовит озвучку…». При остановке текст показывается сразу;
   при ошибке можно повторить озвучку либо показать текст без неё. Поле ответа доступно после появления вопроса.
@@ -245,7 +246,7 @@ OCR, перевод и очистку; после завершения или о
 - `src/bootstrap/` — app-layer alias и composition root: entrypoint, providers, HTTP DI и router shell. Имя `bootstrap` выбрано вместо стандартного `app`; `src/app/` и `src/application/` не создаются.
 - `src/routes/` — тонкий технический реестр TanStack Router с неизменными URL; `src/routeTree.gen.ts` генерируется автоматически.
 - `src/pages/trainer/`, `src/pages/learning-trainer/`, `src/pages/mode-selection/`, `src/pages/admin-courses/`, `src/pages/competency-map/`, `src/pages/learning-competency-map/` — уникальные экраны и их композиция. Trainer page содержит главную с историей, диалог Geek и итог без импорта другого page slice.
-- `src/widgets/` — переиспользуемые блоки экранов: `admin-course-detail-shell`, `course-graph`, `direction-nav`, `result-report` и `student-course-shell`.
+- `src/widgets/` — переиспользуемые блоки экранов: `admin-course-detail-shell`, `course-graph` и `result-report`.
 - `src/features/` — сценарии `auth`, `diagnostic-session` (данные диагностики, ответ голосом, озвучка реплик), `subject-selection`, `import-competency-map` (сейчас — только материалы курса), `course-graph-build` (граф курса и его сборка), а также учебные `import-learning-competency-map`, `learning-diagnostic-session`, `learning-plan` и `learning-subject-selection`, включая локальные hooks, порты и UI действий.
 - `src/entities/` — общие `user` и раздельные Geek/learning subjects, assessment, competency map, diagnostic session, plan and training models; exam и learning query keys namespaced.
 - `src/shared/api/` — HTTP transport и auth refresh; `src/shared/lib/` — браузерные audio/waveform adapters; `src/shared/i18n/` — локализация.

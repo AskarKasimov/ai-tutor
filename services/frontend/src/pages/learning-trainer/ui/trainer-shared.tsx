@@ -1,9 +1,7 @@
 import { Heading, Text } from '@radix-ui/themes'
 import {
   Check,
-  ChevronDown,
   ChevronRight,
-  ChevronUp,
   CircleAlert,
   GraduationCap,
   LoaderCircle,
@@ -13,14 +11,7 @@ import {
   SkipForward,
   Square,
 } from 'lucide-react'
-import {
-  createElement,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from 'react'
+import { createElement, useEffect, useMemo, useRef } from 'react'
 import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { AccountMenu } from '@/features/auth'
@@ -30,23 +21,6 @@ import { LiveWaveform } from './trainer-answer'
 import styles from './session.module.scss'
 
 export const sessionStyles = styles
-
-export type NavigatorState =
-  | 'correct'
-  | 'partial'
-  | 'incorrect'
-  | 'skipped'
-  | 'current'
-  | 'locked'
-  | 'done'
-
-// In topic mode `number` is the topic and `basics` lists the clarifying
-// questions that were actually asked (they appear only when needed).
-export type NavigatorItem = {
-  number: number
-  state: NavigatorState
-  basics?: NavigatorState[]
-}
 
 // The progress bar under the header: a label on the left, whole percent on
 // the right and a continuous bar.
@@ -162,119 +136,6 @@ export function TrainerWorkspace({
     <main className={styles.workspace} data-variant={variant}>
       {children}
     </main>
-  )
-}
-
-// Numbers of the session questions; arrows scroll the list, it is not
-// interactive because the diagnostic order is fixed.
-export function QuestionNavigator({
-  label,
-  items,
-  progress,
-  kind = 'question',
-}: {
-  label: string
-  items: NavigatorItem[]
-  progress?: { current: number; total: number }
-  kind?: 'question' | 'topic'
-}) {
-  const { t } = useTranslation()
-  const list = useRef<HTMLOListElement>(null)
-  const [edges, setEdges] = useState({ start: true, end: true })
-  const measure = useCallback(() => {
-    const node = list.current
-    if (!node) return
-    const vertical = node.scrollHeight > node.clientHeight + 1
-    const scrolled = vertical ? node.scrollTop : node.scrollLeft
-    const extent = vertical
-      ? node.scrollHeight - node.clientHeight
-      : node.scrollWidth - node.clientWidth
-    setEdges({ start: scrolled <= 1, end: scrolled >= extent - 1 })
-  }, [])
-  const current = items.find((item) => item.state === 'current')?.number
-  useEffect(() => {
-    const node = list.current
-    node
-      ?.querySelector('[aria-current="step"]')
-      ?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' })
-    measure()
-  }, [current, items.length, measure])
-  useEffect(() => {
-    window.addEventListener('resize', measure)
-    return () => window.removeEventListener('resize', measure)
-  }, [measure])
-  const scroll = (direction: 1 | -1) => {
-    const node = list.current
-    if (!node) return
-    const vertical = node.scrollHeight > node.clientHeight + 1
-    node.scrollBy?.(
-      vertical ? { top: direction * 120 } : { left: direction * 120 },
-    )
-  }
-  return (
-    <nav className={styles.navigator} aria-label={label}>
-      <button
-        type="button"
-        className={styles.navArrow}
-        aria-label={t('learningSession.scrollBack')}
-        disabled={edges.start}
-        onClick={() => scroll(-1)}
-      >
-        <ChevronUp size={20} aria-hidden="true" />
-      </button>
-      <ol ref={list} className={styles.navList} onScroll={measure}>
-        {items.map((item) => (
-          <li key={item.number} className={styles.navGroup}>
-            <span
-              className={styles.navItem}
-              data-state={item.state}
-              aria-current={item.state === 'current' ? 'step' : undefined}
-              aria-label={t(
-                `learningSession.${kind === 'topic' ? 'topicNavigator' : 'navigator'}.${item.state}`,
-                { number: item.number },
-              )}
-            >
-              {item.number}
-            </span>
-            {item.basics && item.basics.length > 0 && (
-              <span className={styles.navBasics}>
-                {item.basics.map((state, index) => (
-                  <span
-                    key={index}
-                    className={styles.navBasic}
-                    data-state={state}
-                    aria-current={state === 'current' ? 'step' : undefined}
-                    aria-label={t(`learningSession.basicNavigator.${state}`, {
-                      number: item.number,
-                      basic: index + 1,
-                    })}
-                  />
-                ))}
-              </span>
-            )}
-          </li>
-        ))}
-      </ol>
-      <button
-        type="button"
-        className={styles.navArrow}
-        aria-label={t('learningSession.scrollForward')}
-        disabled={edges.end}
-        onClick={() => scroll(1)}
-      >
-        <ChevronDown size={20} aria-hidden="true" />
-      </button>
-      {progress && (
-        <div
-          className={styles.visuallyHidden}
-          role="progressbar"
-          aria-label={t('learningSession.progressLabel')}
-          aria-valuemin={0}
-          aria-valuemax={progress.total}
-          aria-valuenow={progress.current}
-        />
-      )}
-    </nav>
   )
 }
 

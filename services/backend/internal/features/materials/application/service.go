@@ -43,11 +43,10 @@ type Translator interface {
 }
 
 type Service struct {
-	repo       Repository
-	s3         S3Storage
-	ocr        OCRParser
-	translator Translator
-	now        func() time.Time
+	repo Repository
+	s3   S3Storage
+	ocr  OCRParser
+	now  func() time.Time
 }
 
 func New(repo Repository, s3 S3Storage, ocr OCRParser, now func() time.Time) *Service {
@@ -60,11 +59,6 @@ func New(repo Repository, s3 S3Storage, ocr OCRParser, now func() time.Time) *Se
 		ocr:  ocr,
 		now:  now,
 	}
-}
-
-func (s *Service) WithTranslator(translator Translator) *Service {
-	s.translator = translator
-	return s
 }
 
 // Authorize ensures only admin users can access materials operations.

@@ -16,7 +16,6 @@ import (
 
 type Transport struct {
 	Gateway    pb.GatewayClient
-	Profile    string
 	Complexity pb.Complexity
 }
 
@@ -77,7 +76,7 @@ func (t Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 		}
 		parameters.ReasoningEffort = &e
 	}
-	result, err := t.Gateway.Complete(req.Context(), &pb.CompleteRequest{Messages: messages, Complexity: t.Complexity, Urgent: wire.Urgent, Parameters: parameters, RoutingProfile: t.Profile})
+	result, err := t.Gateway.Complete(req.Context(), &pb.CompleteRequest{Messages: messages, Complexity: t.Complexity, Urgent: wire.Urgent, Parameters: parameters})
 	if err != nil {
 		code := http.StatusServiceUnavailable
 		if s, ok := status.FromError(err); ok {

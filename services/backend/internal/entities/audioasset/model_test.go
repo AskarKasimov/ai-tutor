@@ -10,7 +10,7 @@ func TestTaskAudioIdentity(t *testing.T) {
 	if id != "taskaudio_task_1" {
 		t.Fatalf("asset ID: %s", id)
 	}
-	if got := ObjectKey(id); got != "task-audio/v1/taskaudio_task_1.wav" {
+	if got := ObjectKey(id); got != "task-audio/v2/taskaudio_task_1.wav" {
 		t.Fatalf("object key: %s", got)
 	}
 }

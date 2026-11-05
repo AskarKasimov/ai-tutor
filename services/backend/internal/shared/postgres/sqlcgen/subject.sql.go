@@ -175,3 +175,25 @@ func (q *Queries) ListSubjects(ctx context.Context) ([]ListSubjectsRow, error) {
 	}
 	return items, nil
 }
+
+const subjectAudioPreparationState = `-- name: SubjectAudioPreparationState :one
+SELECT EXISTS (SELECT 1 FROM subjects WHERE id = $1::text) AS subject_exists,
+       EXISTS (
+           SELECT 1 FROM course_graphs graph
+           WHERE graph.subject_id = $1::text
+             AND (graph.source = 'competency_map'
+                  OR EXISTS (SELECT 1 FROM subject_materials material WHERE material.subject_id = graph.subject_id))
+       ) AS graph_published
+`
+
+type SubjectAudioPreparationStateRow struct {
+	SubjectExists  bool
+	GraphPublished bool
+}
+
+func (q *Queries) SubjectAudioPreparationState(ctx context.Context, subjectID string) (SubjectAudioPreparationStateRow, error) {
+	row := q.db.QueryRow(ctx, subjectAudioPreparationState, subjectID)
+	var i SubjectAudioPreparationStateRow
+	err := row.Scan(&i.SubjectExists, &i.GraphPublished)
+	return i, err
+}

@@ -288,6 +288,7 @@ func (a *App) Handler() http.Handler {
 	voiceHandlers := voicehttp.New(voice, a.cfg.MaxUploadBytes)
 	subjectService := subjectapp.New(subjectpg.New(a.pool), security.IDGenerator{}, a.now)
 	subjectService.SetAudioProgress(a.warmer, subjectpg.NewLearningAudioProgress(a.pool))
+	subjectService.SetExamAudioRefresh(a.graphWorker.RefreshPublishedAudio)
 	subjectHandlers := subjecthttp.New(subjectService)
 
 	materialsOCR := materialsocr.New(a.cfg.CourseGraphURL, a.cfg.CourseGraphTimeout)

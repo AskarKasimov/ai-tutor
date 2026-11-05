@@ -37,7 +37,7 @@ export function AudioPreparationPanel({
         <Text as="p" role="status" color="gray">
           {t('audioPreparation.loading')}
         </Text>
-      ) : query.isError ? (
+      ) : query.isError && !audio ? (
         <Flex gap="3" align="center" wrap="wrap">
           <Text as="p" role="status" color="red">
             {t('audioPreparation.error')}
@@ -51,14 +51,33 @@ export function AudioPreparationPanel({
             {t('trainer.retry')}
           </Button>
         </Flex>
-      ) : audio ? (
-        <AudioProgress
-          direction={direction}
-          audio={audio}
-          title={title}
-          stale={direction === 'exam' && stale}
-        />
-      ) : null}
+      ) : (
+        <>
+          {query.isError && (
+            <Flex gap="3" align="center" wrap="wrap">
+              <Text as="p" role="status" color="red">
+                {t('audioPreparation.error')}
+              </Text>
+              <Button
+                variant="soft"
+                size="1"
+                aria-label={t('audioPreparation.retry')}
+                onClick={() => void query.refetch()}
+              >
+                {t('trainer.retry')}
+              </Button>
+            </Flex>
+          )}
+          {audio && (
+            <AudioProgress
+              direction={direction}
+              audio={audio}
+              title={title}
+              stale={direction === 'exam' && stale}
+            />
+          )}
+        </>
+      )}
     </section>
   )
 }

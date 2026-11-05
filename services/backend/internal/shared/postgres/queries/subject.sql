@@ -3,6 +3,15 @@ INSERT INTO subjects(id, name, created_at)
 VALUES ($1, $2, $3)
 RETURNING id, name;
 
+-- name: SubjectAudioPreparationState :one
+SELECT EXISTS (SELECT 1 FROM subjects WHERE id = sqlc.arg(subject_id)::text) AS subject_exists,
+       EXISTS (
+           SELECT 1 FROM course_graphs graph
+           WHERE graph.subject_id = sqlc.arg(subject_id)::text
+             AND (graph.source = 'competency_map'
+                  OR EXISTS (SELECT 1 FROM subject_materials material WHERE material.subject_id = graph.subject_id))
+       ) AS graph_published;
+
 -- name: ListSubjects :many
 SELECT subject.id, subject.name,
        EXISTS (

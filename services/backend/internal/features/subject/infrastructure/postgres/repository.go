@@ -21,6 +21,14 @@ func (r *Repository) Create(ctx context.Context, id, name string, createdAt int6
 	return subject.Subject{ID: created.ID, Name: created.Name}, nil
 }
 
+func (r *Repository) AudioPreparationState(ctx context.Context, subjectID string) (bool, bool, error) {
+	state, err := r.queries.SubjectAudioPreparationState(ctx, subjectID)
+	if err != nil {
+		return false, false, err
+	}
+	return state.SubjectExists, state.GraphPublished, nil
+}
+
 func (r *Repository) List(ctx context.Context) ([]subject.Subject, error) {
 	rows, err := r.queries.ListSubjects(ctx)
 	if err != nil {

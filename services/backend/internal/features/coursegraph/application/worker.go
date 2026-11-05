@@ -141,6 +141,28 @@ func (w *Worker) PrepareVoices(ctx context.Context) error {
 	return nil
 }
 
+// RefreshPublishedAudio restores a course omitted by startup recovery after
+// it becomes published again while the backend is running.
+func (w *Worker) RefreshPublishedAudio(ctx context.Context, subjectID string) error {
+	if w.voices == nil {
+		return nil
+	}
+	graphs, err := w.repo.Published(ctx)
+	if err != nil {
+		return err
+	}
+	for _, graph := range graphs {
+		if graph.SubjectID != subjectID {
+			continue
+		}
+		questions := TopicQuestions(graph.Graph)
+		w.voices.TrackRestored(subjectID, GraphVersion(graph.Graph), questions)
+		w.voices.Prepare(questions)
+		break
+	}
+	return nil
+}
+
 // GraphVersion follows the hash used by Geek for a stored graph.
 func GraphVersion(graph json.RawMessage) string {
 	sum := sha256.Sum256(graph)

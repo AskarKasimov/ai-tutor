@@ -18,6 +18,7 @@ import (
 type Repository interface {
 	Create(context.Context, string, string, int64) (subject.Subject, error)
 	List(context.Context) ([]subject.Subject, error)
+	AudioPreparationState(context.Context, string) (subjectExists, graphPublished bool, err error)
 }
 
 type IDGenerator interface {
@@ -32,6 +33,9 @@ type Service struct {
 	learnAudio        LearningProgressReader
 	learningMu        sync.Mutex
 	learningSnapshots map[string]audiopreparation.Learning
+	examNoGraphMu     sync.Mutex
+	examNoGraphAt     map[string]time.Time
+	refreshExamAudio  func(context.Context, string) error
 }
 
 type ExamProgressReader interface {
@@ -47,6 +51,10 @@ func (s *Service) SetAudioProgress(exam ExamProgressReader, learning LearningPro
 	s.examAudio, s.learnAudio = exam, learning
 }
 
+func (s *Service) SetExamAudioRefresh(refresh func(context.Context, string) error) {
+	s.refreshExamAudio = refresh
+}
+
 func (s *Service) AudioPreparation(ctx context.Context, actor user.User, subjectID string) (audiopreparation.Response, error) {
 	if actor.Role != user.Admin {
 		return audiopreparation.Response{}, fault.New(fault.Forbidden, "FORBIDDEN", "Операция доступна только admin.")
@@ -54,10 +62,26 @@ func (s *Service) AudioPreparation(ctx context.Context, actor user.User, subject
 	if s.examAudio == nil || s.learnAudio == nil {
 		return audiopreparation.Response{}, fmt.Errorf("audio preparation readers are not configured")
 	}
+	subjectExists, graphPublished, err := s.repo.AudioPreparationState(ctx, subjectID)
+	if err != nil {
+		return audiopreparation.Response{}, err
+	}
+	if !subjectExists {
+		return audiopreparation.Response{}, fault.New(fault.NotFound, "SUBJECT_NOT_FOUND", "Курс не найден.")
+	}
 	result := audiopreparation.Response{SubjectID: subjectID}
 	snapshot, ok := s.examAudio.Snapshot(subjectID)
 	recovered := s.examAudio.RecoveryComplete()
-	if !ok && recovered {
+	if !graphPublished {
+		ok = false
+	}
+	if graphPublished && !ok && recovered && s.refreshExamAudio != nil {
+		if err := s.refreshExamAudio(ctx, subjectID); err != nil {
+			return audiopreparation.Response{}, err
+		}
+		snapshot, ok = s.examAudio.Snapshot(subjectID)
+	}
+	if !ok && recovered && graphPublished {
 		// Recovery may have registered this subject after the first read.
 		snapshot, ok = s.examAudio.Snapshot(subjectID)
 	}
@@ -65,10 +89,25 @@ func (s *Service) AudioPreparation(ctx context.Context, actor user.User, subject
 		result.Exam = audiopreparation.Exam{Direction: audiopreparation.Direction{Version: snapshot.Version, Total: snapshot.Total, Counts: snapshot.Counts, ObservedAt: snapshot.ObservedAt}, Published: true}
 		result.Exam.State = snapshot.Counts.State(true, snapshot.Total)
 	} else {
-		if !recovered {
+		if !recovered || graphPublished {
 			return audiopreparation.Response{}, fault.New(fault.Upstream, "AUDIO_RECOVERY_IN_PROGRESS", "Прогресс озвучки ещё восстанавливается.")
 		}
-		result.Exam = audiopreparation.Exam{Published: false, Direction: audiopreparation.Direction{State: audiopreparation.NoGraph, ObservedAt: s.now()}}
+		s.examNoGraphMu.Lock()
+		if s.examNoGraphAt == nil {
+			s.examNoGraphAt = make(map[string]time.Time)
+		}
+		observedAt, exists := s.examNoGraphAt[subjectID]
+		if !exists {
+			observedAt = s.now()
+			s.examNoGraphAt[subjectID] = observedAt
+		}
+		s.examNoGraphMu.Unlock()
+		result.Exam = audiopreparation.Exam{Published: false, Direction: audiopreparation.Direction{State: audiopreparation.NoGraph, ObservedAt: observedAt}}
+	}
+	if ok {
+		s.examNoGraphMu.Lock()
+		delete(s.examNoGraphAt, subjectID)
+		s.examNoGraphMu.Unlock()
 	}
 	s.learningMu.Lock()
 	defer s.learningMu.Unlock()

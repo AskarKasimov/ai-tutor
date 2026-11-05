@@ -28,18 +28,24 @@ type examProgressFake struct {
 	ok         bool
 }
 
-func (r examProgressFake) Snapshot(string) (audiopreparation.ExamSnapshot, bool) {
+func (r *examProgressFake) Snapshot(string) (audiopreparation.ExamSnapshot, bool) {
 	return r.snapshot, r.ok
 }
 
-func (r examProgressFake) RecoveryComplete() bool { return !r.recovering }
+func (r *examProgressFake) RecoveryComplete() bool { return !r.recovering }
 
-type subjectRepoStub struct{}
+type subjectRepoStub struct {
+	exists    bool
+	published bool
+}
 
 func (subjectRepoStub) Create(context.Context, string, string, int64) (subject.Subject, error) {
 	return subject.Subject{}, nil
 }
 func (subjectRepoStub) List(context.Context) ([]subject.Subject, error) { return nil, nil }
+func (r subjectRepoStub) AudioPreparationState(context.Context, string) (bool, bool, error) {
+	return r.exists, r.published, nil
+}
 
 type subjectIDsStub struct{}
 
@@ -66,8 +72,8 @@ func TestAudioPreparationAggregatesCurrentLearningAssets(t *testing.T) {
 		{TaskID: "ignored", Instruction: "  "},
 	}
 	learning := &audioProgressRepo{revision: 42, assets: assets}
-	svc := New(subjectRepoStub{}, subjectIDsStub{}, func() time.Time { return now })
-	svc.SetAudioProgress(examProgressFake{snapshot: audiopreparation.ExamSnapshot{Version: "graph|voice", Total: 1, Counts: audiopreparation.Counts{Ready: 1}, ObservedAt: now}, ok: true}, learning)
+	svc := New(subjectRepoStub{exists: true, published: true}, subjectIDsStub{}, func() time.Time { return now })
+	svc.SetAudioProgress(&examProgressFake{snapshot: audiopreparation.ExamSnapshot{Version: "graph|voice", Total: 1, Counts: audiopreparation.Counts{Ready: 1}, ObservedAt: now}, ok: true}, learning)
 	result, err := svc.AudioPreparation(context.Background(), user.User{Role: user.Admin}, "course-1")
 	if err != nil {
 		t.Fatal(err)
@@ -83,8 +89,8 @@ func TestAudioPreparationAggregatesCurrentLearningAssets(t *testing.T) {
 
 func TestAudioPreparationChecksAdminBeforeReading(t *testing.T) {
 	learning := &audioProgressRepo{}
-	svc := New(subjectRepoStub{}, subjectIDsStub{}, time.Now)
-	svc.SetAudioProgress(examProgressFake{}, learning)
+	svc := New(subjectRepoStub{exists: true}, subjectIDsStub{}, time.Now)
+	svc.SetAudioProgress(&examProgressFake{}, learning)
 	_, err := svc.AudioPreparation(context.Background(), user.User{Role: user.Student}, "course-1")
 	if err == nil || learning.calls != 0 {
 		t.Fatalf("error=%v learning reads=%d", err, learning.calls)
@@ -94,8 +100,8 @@ func TestAudioPreparationChecksAdminBeforeReading(t *testing.T) {
 func TestLearningAudioObservedAtChangesOnlyWithSnapshot(t *testing.T) {
 	now := time.Date(2026, 11, 4, 10, 0, 0, 0, time.UTC)
 	learning := &audioProgressRepo{revision: 1}
-	svc := New(subjectRepoStub{}, subjectIDsStub{}, func() time.Time { return now })
-	svc.SetAudioProgress(examProgressFake{}, learning)
+	svc := New(subjectRepoStub{exists: true}, subjectIDsStub{}, func() time.Time { return now })
+	svc.SetAudioProgress(&examProgressFake{}, learning)
 	actor := user.User{Role: user.Admin}
 	first, err := svc.AudioPreparation(context.Background(), actor, "course")
 	if err != nil {
@@ -130,10 +136,75 @@ func TestLearningAudioObservedAtChangesOnlyWithSnapshot(t *testing.T) {
 }
 
 func TestAudioPreparationDoesNotReportNoGraphDuringRecovery(t *testing.T) {
-	svc := New(subjectRepoStub{}, subjectIDsStub{}, time.Now)
-	svc.SetAudioProgress(examProgressFake{recovering: true}, &audioProgressRepo{})
+	svc := New(subjectRepoStub{exists: true}, subjectIDsStub{}, time.Now)
+	svc.SetAudioProgress(&examProgressFake{recovering: true}, &audioProgressRepo{})
 	_, err := svc.AudioPreparation(context.Background(), user.User{Role: user.Admin}, "course")
 	if err == nil {
 		t.Fatal("expected an unavailable result while published graphs are being recovered")
+	}
+}
+
+func TestNoGraphObservedAtChangesOnlyWhenAvailabilityChanges(t *testing.T) {
+	now := time.Date(2026, 11, 4, 10, 0, 0, 0, time.UTC)
+	repo := subjectRepoStub{exists: true}
+	svc := New(repo, subjectIDsStub{}, func() time.Time { return now })
+	svc.SetAudioProgress(&examProgressFake{}, &audioProgressRepo{})
+	actor := user.User{Role: user.Admin}
+	first, err := svc.AudioPreparation(context.Background(), actor, "course")
+	if err != nil {
+		t.Fatal(err)
+	}
+	now = now.Add(time.Minute)
+	second, err := svc.AudioPreparation(context.Background(), actor, "course")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !first.Exam.ObservedAt.Equal(second.Exam.ObservedAt) {
+		t.Fatalf("unchanged no_graph snapshot changed timestamp: %v -> %v", first.Exam.ObservedAt, second.Exam.ObservedAt)
+	}
+}
+
+func TestAudioPreparationReturnsNotFoundForMissingSubject(t *testing.T) {
+	svc := New(subjectRepoStub{}, subjectIDsStub{}, time.Now)
+	svc.SetAudioProgress(&examProgressFake{}, &audioProgressRepo{})
+	_, err := svc.AudioPreparation(context.Background(), user.User{Role: user.Admin}, "missing")
+	if err == nil || err.Error() != "SUBJECT_NOT_FOUND" {
+		t.Fatalf("error = %v, want SUBJECT_NOT_FOUND", err)
+	}
+}
+
+func TestAudioPreparationHidesCachedExamProgressWhenGraphIsUnavailable(t *testing.T) {
+	now := time.Date(2026, 11, 4, 10, 0, 0, 0, time.UTC)
+	svc := New(subjectRepoStub{exists: true, published: false}, subjectIDsStub{}, func() time.Time { return now })
+	svc.SetAudioProgress(&examProgressFake{snapshot: audiopreparation.ExamSnapshot{
+		Version: "old-graph", Total: 3, Counts: audiopreparation.Counts{Ready: 3}, ObservedAt: now,
+	}, ok: true}, &audioProgressRepo{})
+	result, err := svc.AudioPreparation(context.Background(), user.User{Role: user.Admin}, "course")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Exam.Published || result.Exam.State != audiopreparation.NoGraph || result.Exam.Total != 0 {
+		t.Fatalf("stale exam progress was exposed: %+v", result.Exam)
+	}
+}
+
+func TestAudioPreparationRefreshesGraphPublishedAfterStartupRecovery(t *testing.T) {
+	now := time.Date(2026, 11, 4, 10, 0, 0, 0, time.UTC)
+	exam := &examProgressFake{}
+	svc := New(subjectRepoStub{exists: true, published: true}, subjectIDsStub{}, func() time.Time { return now })
+	svc.SetAudioProgress(exam, &audioProgressRepo{})
+	refreshes := 0
+	svc.SetExamAudioRefresh(func(context.Context, string) error {
+		refreshes++
+		exam.ok = true
+		exam.snapshot = audiopreparation.ExamSnapshot{Version: "restored", Total: 1, Counts: audiopreparation.Counts{Queued: 1}, ObservedAt: now}
+		return nil
+	})
+	result, err := svc.AudioPreparation(context.Background(), user.User{Role: user.Admin}, "course")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if refreshes != 1 || result.Exam.State != audiopreparation.Queued || !result.Exam.Published {
+		t.Fatalf("refreshes=%d exam=%+v", refreshes, result.Exam)
 	}
 }

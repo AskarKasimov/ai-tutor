@@ -52,6 +52,8 @@ func NewWarmer(speech *SpeechCache, logger *zap.Logger) *Warmer {
 
 // TrackPublished replaces the observed set for a course only after its graph is published.
 func (w *Warmer) TrackPublished(subjectID, graphVersion string, texts []string) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
 	w.progress.TrackPublished(subjectID, graphVersion, texts, w.speech.Key)
 }
 
@@ -110,7 +112,6 @@ func (w *Warmer) Run(ctx context.Context) error {
 			return nil
 		}
 		if err == nil {
-			w.progress.Transition(w.speech.Key(text), audiopreparation.StatusReady)
 			w.done(text)
 			pause = w.retryMin
 			continue
@@ -139,6 +140,7 @@ func (w *Warmer) next() (string, bool) {
 func (w *Warmer) done(text string) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
+	w.progress.Transition(w.speech.Key(text), audiopreparation.StatusReady)
 	w.queue = w.queue[1:]
 	delete(w.pending, text)
 }

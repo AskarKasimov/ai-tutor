@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/audiopreparation"
+
 	"go.uber.org/zap"
 	"go.uber.org/zap/zaptest/observer"
 )
@@ -231,5 +233,21 @@ func TestConcurrentMissesOfOneQuestionSynthesizeOnce(t *testing.T) {
 	defer voice.mu.Unlock()
 	if len(voice.calls) != 1 {
 		t.Fatalf("the same question was synthesized %d times", len(voice.calls))
+	}
+}
+
+func TestWarmerCompletionUpdatesNewlyPublishedGraphWhileTextPending(t *testing.T) {
+	warmer := NewWarmer(NewSpeechCache(&countingVoice{called: make(chan struct{}, 1)}, &syncAudio{data: map[string][]byte{}}, "voice"), nil)
+	text := "Общий вопрос?"
+	warmer.TrackPublished("course", "old", []string{text})
+	warmer.Prepare([]string{text})
+	// The cache operation has completed, but the pending entry has not yet been removed.
+	warmer.progress.Transition(warmer.speech.Key(text), audiopreparation.StatusReady)
+	warmer.TrackPublished("course", "new", []string{text})
+	warmer.Prepare([]string{text})
+	warmer.done(text)
+	snapshot, _ := warmer.Snapshot("course")
+	if snapshot.Ready != 1 || snapshot.Unchecked != 0 {
+		t.Fatalf("new graph lost completed audio: %+v", snapshot)
 	}
 }

@@ -1,7 +1,10 @@
 import { z } from 'zod'
 import { apiFetch } from '@/shared/api'
+import {
+  isCoursePreparation,
+  isPreparationConsistent,
+} from '@/entities/subject/@x/learning-subject'
 import { SubjectApiError } from '../model/subject-api-error'
-import { isCoursePreparation, isPreparationConsistent } from '@/shared/api'
 import type { LearningState, Subject } from '../model/subject'
 
 const apiBase =

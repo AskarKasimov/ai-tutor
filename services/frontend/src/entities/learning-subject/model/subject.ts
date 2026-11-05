@@ -1,4 +1,4 @@
-import type { CoursePreparation } from '@/shared/api'
+import type { CoursePreparation } from '@/entities/subject/@x/learning-subject'
 
 export type Subject = {
   id: string

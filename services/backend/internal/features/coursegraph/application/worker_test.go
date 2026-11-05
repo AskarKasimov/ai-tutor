@@ -378,6 +378,7 @@ func (v *queuedVoices) Prepare(texts []string) int {
 }
 
 func (*queuedVoices) TrackPublished(_, _ string, _ []string) {}
+func (*queuedVoices) TrackRestored(_, _ string, _ []string)  {}
 
 func TestPrepareVoicesQueuesTheQuestionsOfEveryPublishedGraph(t *testing.T) {
 	voices := &queuedVoices{}
@@ -557,6 +558,9 @@ type recoveryRaceVoices struct {
 }
 
 func (v *recoveryRaceVoices) Prepare([]string) int { return 0 }
+func (v *recoveryRaceVoices) TrackRestored(subject, version string, texts []string) {
+	v.TrackPublished(subject, version, texts)
+}
 func (v *recoveryRaceVoices) TrackPublished(_, version string, _ []string) {
 	if version == v.oldVersion {
 		close(v.oldEntered)

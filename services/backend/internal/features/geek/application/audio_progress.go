@@ -25,16 +25,31 @@ func NewExamAudioProgress(voice string) *ExamAudioProgress {
 	return &ExamAudioProgress{voice: voice, sets: map[string]examAudioSet{}, now: time.Now}
 }
 
-func (p *ExamAudioProgress) TrackPublished(subjectID, graphVersion string, texts []string, key func(string) string) {
+func (p *ExamAudioProgress) TrackPublished(subjectID, graphVersion string, texts []string, key func(string) string, initial audiopreparation.Status) {
 	keys := make(map[string]audiopreparation.Status, len(texts))
 	for _, text := range texts {
 		if normalized := key(text); normalized != "" {
-			keys[normalized] = audiopreparation.StatusUnchecked
+			keys[normalized] = initial
 		}
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.sets[subjectID] = examAudioSet{version: graphVersion + "|" + p.voice, keys: keys, observedAt: p.now()}
+}
+
+func (p *ExamAudioProgress) TransitionSubject(subjectID, key string, state audiopreparation.Status) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	set, ok := p.sets[subjectID]
+	if !ok {
+		return
+	}
+	if _, ok := set.keys[key]; !ok {
+		return
+	}
+	set.keys[key] = state
+	set.observedAt = p.now()
+	p.sets[subjectID] = set
 }
 
 func (p *ExamAudioProgress) Transition(key string, state audiopreparation.Status) {

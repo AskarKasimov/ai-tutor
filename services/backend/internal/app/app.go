@@ -234,12 +234,30 @@ func (a *App) RunBackground(ctx context.Context) error {
 	group.Go(func() error {
 		// The queue does not survive a restart: the questions of published
 		// graphs are queued again.
-		if err := a.graphWorker.PrepareVoices(warmCtx); err != nil {
-			a.logger.Warn("questions of published graphs are not voiced ahead", zap.Error(err))
-		}
-		return nil
+		return recoverPublishedAudio(warmCtx, a.graphWorker.PrepareVoices, a.warmer.MarkRecoveryComplete, time.Second, a.logger)
 	})
 	return group.Wait()
+}
+
+func recoverPublishedAudio(ctx context.Context, prepare func(context.Context) error, complete func(), delay time.Duration, logger *zap.Logger) error {
+	for {
+		if err := prepare(ctx); err == nil {
+			complete()
+			return nil
+		} else if ctx.Err() != nil {
+			return nil
+		} else {
+			logger.Warn("questions of published graphs are not voiced ahead", zap.Error(err), zap.Duration("retry_in", delay))
+		}
+		timer := time.NewTimer(delay)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return nil
+		case <-timer.C:
+		}
+		delay = min(2*delay, 30*time.Second)
+	}
 }
 
 type materialsStorageAdapter struct {

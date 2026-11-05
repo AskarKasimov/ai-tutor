@@ -59,6 +59,7 @@ type Builder interface {
 type Voices interface {
 	Prepare(texts []string) int
 	TrackPublished(subjectID, graphVersion string, texts []string)
+	TrackRestored(subjectID, graphVersion string, texts []string)
 }
 
 // Questions prepares the main question and its rephrase of every topic of a
@@ -133,7 +134,7 @@ func (w *Worker) PrepareVoices(ctx context.Context) error {
 	for _, graph := range graphs {
 		questions := TopicQuestions(graph.Graph)
 		total += len(questions)
-		w.voices.TrackPublished(graph.SubjectID, GraphVersion(graph.Graph), questions)
+		w.voices.TrackRestored(graph.SubjectID, GraphVersion(graph.Graph), questions)
 		queued += w.voices.Prepare(questions)
 	}
 	logx.From(ctx).Info("published graph questions queued for synthesis", zap.Int("queued", queued), zap.Int("total", total), zap.Int("graphs", len(graphs)))

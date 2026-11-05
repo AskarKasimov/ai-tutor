@@ -251,3 +251,47 @@ func TestWarmerCompletionUpdatesNewlyPublishedGraphWhileTextPending(t *testing.T
 		t.Fatalf("new graph lost completed audio: %+v", snapshot)
 	}
 }
+
+func TestWarmerCountsNewlyPublishedWaitingTextsAsQueued(t *testing.T) {
+	warmer := NewWarmer(NewSpeechCache(&countingVoice{called: make(chan struct{}, 1)}, &syncAudio{data: map[string][]byte{}}, "voice"), nil)
+	warmer.TrackPublished("course", "graph", []string{"Первый?", "Второй?"})
+	warmer.Prepare([]string{"Первый?", "Второй?"})
+	snapshot, _ := warmer.Snapshot("course")
+	if snapshot.Queued != 2 || snapshot.Unchecked != 0 {
+		t.Fatalf("snapshot = %+v", snapshot)
+	}
+}
+
+func TestWarmerRecoveryCompletionAndRestoredKeys(t *testing.T) {
+	warmer := NewWarmer(NewSpeechCache(&countingVoice{called: make(chan struct{}, 1)}, &syncAudio{data: map[string][]byte{}}, "voice"), nil)
+	if warmer.RecoveryComplete() {
+		t.Fatal("recovery must start incomplete")
+	}
+	warmer.TrackRestored("course", "graph", []string{"Вопрос?"})
+	warmer.Prepare([]string{"Вопрос?"})
+	snapshot, _ := warmer.Snapshot("course")
+	if snapshot.Unchecked != 1 {
+		t.Fatalf("restored key should await cache check: %+v", snapshot)
+	}
+	warmer.MarkRecoveryComplete()
+	if !warmer.RecoveryComplete() {
+		t.Fatal("recovery should be complete")
+	}
+}
+
+func TestPublishedGraphInheritsPendingTextState(t *testing.T) {
+	warmer := NewWarmer(NewSpeechCache(&countingVoice{called: make(chan struct{}, 1)}, &syncAudio{data: map[string][]byte{}}, "voice"), nil)
+	warmer.Prepare([]string{"Вопрос?"})
+	warmer.transition("Вопрос?", audiopreparation.StatusProcessing)
+	warmer.TrackPublished("course", "graph", []string{"Вопрос?"})
+	snapshot, _ := warmer.Snapshot("course")
+	if snapshot.Processing != 1 || snapshot.Queued != 0 {
+		t.Fatalf("snapshot = %+v", snapshot)
+	}
+	warmer.transition("Вопрос?", audiopreparation.StatusRetryWait)
+	warmer.TrackPublished("course", "graph2", []string{"Вопрос?"})
+	snapshot, _ = warmer.Snapshot("course")
+	if snapshot.RetryWait != 1 || snapshot.Queued != 0 {
+		t.Fatalf("snapshot = %+v", snapshot)
+	}
+}

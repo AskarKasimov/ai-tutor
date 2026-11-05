@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -24,15 +25,18 @@ type IDGenerator interface {
 }
 
 type Service struct {
-	repo       Repository
-	ids        IDGenerator
-	now        func() time.Time
-	examAudio  ExamProgressReader
-	learnAudio LearningProgressReader
+	repo              Repository
+	ids               IDGenerator
+	now               func() time.Time
+	examAudio         ExamProgressReader
+	learnAudio        LearningProgressReader
+	learningMu        sync.Mutex
+	learningSnapshots map[string]audiopreparation.Learning
 }
 
 type ExamProgressReader interface {
 	Snapshot(string) (audiopreparation.ExamSnapshot, bool)
+	RecoveryComplete() bool
 }
 
 type LearningProgressReader interface {
@@ -51,12 +55,23 @@ func (s *Service) AudioPreparation(ctx context.Context, actor user.User, subject
 		return audiopreparation.Response{}, fmt.Errorf("audio preparation readers are not configured")
 	}
 	result := audiopreparation.Response{SubjectID: subjectID}
-	if snapshot, ok := s.examAudio.Snapshot(subjectID); ok {
+	snapshot, ok := s.examAudio.Snapshot(subjectID)
+	recovered := s.examAudio.RecoveryComplete()
+	if !ok && recovered {
+		// Recovery may have registered this subject after the first read.
+		snapshot, ok = s.examAudio.Snapshot(subjectID)
+	}
+	if ok {
 		result.Exam = audiopreparation.Exam{Direction: audiopreparation.Direction{Version: snapshot.Version, Total: snapshot.Total, Counts: snapshot.Counts, ObservedAt: snapshot.ObservedAt}, Published: true}
 		result.Exam.State = snapshot.Counts.State(true, snapshot.Total)
 	} else {
+		if !recovered {
+			return audiopreparation.Response{}, fault.New(fault.Upstream, "AUDIO_RECOVERY_IN_PROGRESS", "Прогресс озвучки ещё восстанавливается.")
+		}
 		result.Exam = audiopreparation.Exam{Published: false, Direction: audiopreparation.Direction{State: audiopreparation.NoGraph, ObservedAt: s.now()}}
 	}
+	s.learningMu.Lock()
+	defer s.learningMu.Unlock()
 	revision, assets, err := s.learnAudio.Snapshot(ctx, subjectID)
 	if err != nil {
 		return audiopreparation.Response{}, err
@@ -105,6 +120,13 @@ func (s *Service) AudioPreparation(ctx context.Context, actor user.User, subject
 		return audiopreparation.Response{}, fmt.Errorf("learning audio progress invariant violated: %d counts for %d assets", counts.Sum(), len(seen))
 	}
 	result.Learn = audiopreparation.Learning{Revision: revision, Direction: audiopreparation.Direction{Version: fmt.Sprintf("revision:%d", revision), State: counts.State(true, len(seen)), Total: len(seen), Counts: counts, ObservedAt: observedAt}}
+	if previous, ok := s.learningSnapshots[subjectID]; ok && previous.Revision == revision && previous.Total == result.Learn.Total && previous.Counts == counts {
+		result.Learn.ObservedAt = previous.ObservedAt
+	}
+	if s.learningSnapshots == nil {
+		s.learningSnapshots = make(map[string]audiopreparation.Learning)
+	}
+	s.learningSnapshots[subjectID] = result.Learn
 	return result, nil
 }
 

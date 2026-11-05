@@ -36,9 +36,11 @@ type Warmer struct {
 	mu sync.Mutex
 	// queue holds texts in order; pending is the same set, so a text queued
 	// again before it is voiced is not voiced twice.
-	queue   []string
-	pending map[string]bool
-	wake    chan struct{}
+	queue     []string
+	pending   map[string]bool
+	states    map[string]audiopreparation.Status
+	recovered bool
+	wake      chan struct{}
 }
 
 // NewWarmer builds the warmer; logger may be nil.
@@ -47,14 +49,39 @@ func NewWarmer(speech *SpeechCache, logger *zap.Logger) *Warmer {
 		logger = zap.NewNop()
 	}
 	return &Warmer{speech: speech, logger: logger, progress: NewExamAudioProgress(speech.name), retryMin: warmRetryMin, retryMax: warmRetryMax,
-		pending: map[string]bool{}, wake: make(chan struct{}, 1)}
+		pending: map[string]bool{}, states: map[string]audiopreparation.Status{}, wake: make(chan struct{}, 1)}
 }
 
 // TrackPublished replaces the observed set for a course only after its graph is published.
 func (w *Warmer) TrackPublished(subjectID, graphVersion string, texts []string) {
+	w.track(subjectID, graphVersion, texts, audiopreparation.StatusQueued)
+}
+
+func (w *Warmer) TrackRestored(subjectID, graphVersion string, texts []string) {
+	w.track(subjectID, graphVersion, texts, audiopreparation.StatusUnchecked)
+}
+
+func (w *Warmer) track(subjectID, graphVersion string, texts []string, initial audiopreparation.Status) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	w.progress.TrackPublished(subjectID, graphVersion, texts, w.speech.Key)
+	w.progress.TrackPublished(subjectID, graphVersion, texts, w.speech.Key, initial)
+	for _, text := range texts {
+		if state, ok := w.states[strings.TrimSpace(text)]; ok && state != audiopreparation.StatusQueued {
+			w.progress.TransitionSubject(subjectID, w.speech.Key(text), state)
+		}
+	}
+}
+
+func (w *Warmer) MarkRecoveryComplete() {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.recovered = true
+}
+
+func (w *Warmer) RecoveryComplete() bool {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.recovered
 }
 
 func (w *Warmer) Snapshot(subjectID string) (audiopreparation.ExamSnapshot, bool) {
@@ -72,6 +99,7 @@ func (w *Warmer) Prepare(texts []string) int {
 			continue
 		}
 		w.pending[text] = true
+		w.states[text] = audiopreparation.StatusQueued
 		w.queue = append(w.queue, text)
 		queued++
 	}
@@ -106,7 +134,7 @@ func (w *Warmer) Run(ctx context.Context) error {
 				continue
 			}
 		}
-		w.progress.Transition(w.speech.Key(text), audiopreparation.StatusProcessing)
+		w.transition(text, audiopreparation.StatusProcessing)
 		_, err := w.speech.Part(ctx, text)
 		if ctx.Err() != nil {
 			return nil
@@ -116,7 +144,7 @@ func (w *Warmer) Run(ctx context.Context) error {
 			pause = w.retryMin
 			continue
 		}
-		w.progress.Transition(w.speech.Key(text), audiopreparation.StatusRetryWait)
+		w.transition(text, audiopreparation.StatusRetryWait)
 		w.retry(text)
 		w.logger.Warn("prepared question not voiced; retrying", zap.Error(err), zap.Int("text_chars", len([]rune(text))), zap.Duration("retry_in", pause), zap.Int("pending", w.Pending()))
 		select {
@@ -143,6 +171,14 @@ func (w *Warmer) done(text string) {
 	w.progress.Transition(w.speech.Key(text), audiopreparation.StatusReady)
 	w.queue = w.queue[1:]
 	delete(w.pending, text)
+	delete(w.states, text)
+}
+
+func (w *Warmer) transition(text string, state audiopreparation.Status) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.states[text] = state
+	w.progress.Transition(w.speech.Key(text), state)
 }
 
 // retry moves the failed head text to the end of the queue.

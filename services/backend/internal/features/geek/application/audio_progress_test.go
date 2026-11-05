@@ -9,7 +9,7 @@ import (
 func TestExamAudioProgressTracksUniquePublishedKeysAndReplacesVersion(t *testing.T) {
 	progress := NewExamAudioProgress("voice-v1")
 	key := func(text string) string { return text }
-	progress.TrackPublished("course-a", "graph-1", []string{"q1", "q1", "q2"}, key)
+	progress.TrackPublished("course-a", "graph-1", []string{"q1", "q1", "q2"}, key, audiopreparation.StatusUnchecked)
 	progress.Transition("q1", audiopreparation.StatusQueued)
 	progress.Transition("q1", audiopreparation.StatusProcessing)
 	progress.Transition("q1", audiopreparation.StatusReady)
@@ -21,7 +21,7 @@ func TestExamAudioProgressTracksUniquePublishedKeysAndReplacesVersion(t *testing
 		t.Fatalf("counts=%+v total=%d", snapshot.Counts, snapshot.Total)
 	}
 
-	progress.TrackPublished("course-a", "graph-2", []string{"q3"}, key)
+	progress.TrackPublished("course-a", "graph-2", []string{"q3"}, key, audiopreparation.StatusUnchecked)
 	snapshot, _ = progress.Snapshot("course-a")
 	if snapshot.Version != "graph-2|voice-v1" || snapshot.Total != 1 || snapshot.Ready != 0 || snapshot.Unchecked != 1 {
 		t.Fatalf("replacement snapshot = %+v", snapshot)

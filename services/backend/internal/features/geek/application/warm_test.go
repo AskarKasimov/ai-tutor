@@ -90,6 +90,20 @@ func TestWarmerVoicesPreparedQuestionsOnceBeforeStudentsAsk(t *testing.T) {
 	}
 }
 
+func TestRepeatedTrackRestoredPreservesProgressForTheSameGraph(t *testing.T) {
+	warmer := NewWarmer(NewSpeechCache(nil, nil, "voice-v1"), nil)
+	warmer.TrackRestored("course", "graph-v1", []string{"Вопрос?"})
+	key := warmer.speech.Key("Вопрос?")
+	warmer.progress.TransitionSubject("course", key, audiopreparation.StatusReady)
+	before, _ := warmer.Snapshot("course")
+
+	warmer.TrackRestored("course", "graph-v1", []string{"Вопрос?"})
+	after, _ := warmer.Snapshot("course")
+	if after.Ready != 1 || after.ObservedAt != before.ObservedAt {
+		t.Fatalf("repeat restore changed progress: before=%+v after=%+v", before, after)
+	}
+}
+
 // flakyAudio fails reads until healthy is set, like a bucket that is not
 // created yet.
 type flakyAudio struct {

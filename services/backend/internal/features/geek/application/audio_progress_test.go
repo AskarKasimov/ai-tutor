@@ -31,6 +31,23 @@ func TestExamAudioProgressTracksUniquePublishedKeysAndReplacesVersion(t *testing
 	}
 }
 
+func TestTrackRestoredIsIdempotentForTheSameGraphVersion(t *testing.T) {
+	progress := NewExamAudioProgress("voice-v1")
+	key := func(text string) string { return text }
+	if !progress.TrackRestored("course", "graph", []string{"question"}, key) {
+		t.Fatal("initial graph registration was not recorded")
+	}
+	progress.TransitionSubject("course", "question", audiopreparation.StatusReady)
+	before, _ := progress.Snapshot("course")
+	if progress.TrackRestored("course", "graph", []string{"question"}, key) {
+		t.Fatal("same graph version was registered again")
+	}
+	after, _ := progress.Snapshot("course")
+	if after.Ready != 1 || after.ObservedAt != before.ObservedAt {
+		t.Fatalf("duplicate restore changed progress: before=%+v after=%+v", before, after)
+	}
+}
+
 func TestAudioProgressStatePrecedence(t *testing.T) {
 	cases := []struct {
 		name      string

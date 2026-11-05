@@ -147,6 +147,8 @@ func (w *Worker) RefreshPublishedAudio(ctx context.Context, subjectID string) er
 	if w.voices == nil {
 		return nil
 	}
+	w.publicationMu.Lock()
+	defer w.publicationMu.Unlock()
 	graphs, err := w.repo.Published(ctx)
 	if err != nil {
 		return err

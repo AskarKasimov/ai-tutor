@@ -34,7 +34,25 @@ func (p *ExamAudioProgress) TrackPublished(subjectID, graphVersion string, texts
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	p.sets[subjectID] = examAudioSet{version: graphVersion + "|" + p.voice, keys: keys, observedAt: p.now()}
+	version := graphVersion + "|" + p.voice
+	p.sets[subjectID] = examAudioSet{version: version, keys: keys, observedAt: p.now()}
+}
+
+func (p *ExamAudioProgress) TrackRestored(subjectID, graphVersion string, texts []string, key func(string) string) bool {
+	keys := make(map[string]audiopreparation.Status, len(texts))
+	for _, text := range texts {
+		if normalized := key(text); normalized != "" {
+			keys[normalized] = audiopreparation.StatusUnchecked
+		}
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	version := graphVersion + "|" + p.voice
+	if current, ok := p.sets[subjectID]; ok && current.version == version {
+		return false
+	}
+	p.sets[subjectID] = examAudioSet{version: version, keys: keys, observedAt: p.now()}
+	return true
 }
 
 func (p *ExamAudioProgress) TransitionSubject(subjectID, key string, state audiopreparation.Status) {

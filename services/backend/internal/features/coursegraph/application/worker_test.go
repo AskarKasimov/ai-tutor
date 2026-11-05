@@ -607,3 +607,40 @@ func TestPrepareVoicesDoesNotOverwriteConcurrentPublication(t *testing.T) {
 		t.Fatalf("registered version = %s; want new published graph", voices.version)
 	}
 }
+
+func TestRefreshPublishedAudioDoesNotOverwriteConcurrentPublication(t *testing.T) {
+	oldGraph := json.RawMessage(`{"topics":[{"question":"Старый?"}]}`)
+	newGraph := json.RawMessage(`{"topics":[{"question":"Новый?"}]}`)
+	repo := &recoveryRaceRepo{requestRepo: requestRepo{published: []PublishedGraph{{SubjectID: "s", Graph: oldGraph}}}, finished: make(chan struct{})}
+	voices := &recoveryRaceVoices{oldEntered: make(chan struct{}), releaseOld: make(chan struct{}), oldVersion: GraphVersion(oldGraph)}
+	worker := New(repo, nil, nil, nil, voices, nil)
+	refreshDone := make(chan error, 1)
+	go func() { refreshDone <- worker.RefreshPublishedAudio(context.Background(), "s") }()
+	<-voices.oldEntered
+	publishDone := make(chan error, 1)
+	go func() { publishDone <- worker.publish(context.Background(), coursegraph.Job{SubjectID: "s"}, newGraph) }()
+
+	var publishErr error
+	finishedEarly := false
+	select {
+	case <-repo.finished:
+		publishErr = <-publishDone
+		finishedEarly = true
+	case <-time.After(100 * time.Millisecond):
+	}
+	close(voices.releaseOld)
+	if err := <-refreshDone; err != nil {
+		t.Fatal(err)
+	}
+	if !finishedEarly {
+		publishErr = <-publishDone
+	}
+	if publishErr != nil {
+		t.Fatal(publishErr)
+	}
+	voices.mu.Lock()
+	defer voices.mu.Unlock()
+	if voices.version != GraphVersion(newGraph) {
+		t.Fatalf("registered version = %s; want new published graph", voices.version)
+	}
+}

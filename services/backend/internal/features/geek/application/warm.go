@@ -64,7 +64,13 @@ func (w *Warmer) TrackRestored(subjectID, graphVersion string, texts []string) {
 func (w *Warmer) track(subjectID, graphVersion string, texts []string, initial audiopreparation.Status) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	w.progress.TrackPublished(subjectID, graphVersion, texts, w.speech.Key, initial)
+	if initial == audiopreparation.StatusUnchecked {
+		if !w.progress.TrackRestored(subjectID, graphVersion, texts, w.speech.Key) {
+			return
+		}
+	} else {
+		w.progress.TrackPublished(subjectID, graphVersion, texts, w.speech.Key, initial)
+	}
 	for _, text := range texts {
 		if state, ok := w.states[strings.TrimSpace(text)]; ok && state != audiopreparation.StatusQueued {
 			w.progress.TransitionSubject(subjectID, w.speech.Key(text), state)

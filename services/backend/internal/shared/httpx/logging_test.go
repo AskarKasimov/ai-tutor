@@ -13,13 +13,15 @@ import (
 	"go.uber.org/zap/zapcore"
 
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/fault"
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/logx"
+	"go.uber.org/zap/zaptest/observer"
 )
 
 func TestRequestLoggerCarriesIDsAndLogsRequestAndFailure(t *testing.T) {
 	var output bytes.Buffer
 	logger := zap.New(zapcore.NewCore(zapcore.NewJSONEncoder(zap.NewProductionEncoderConfig()), zapcore.AddSync(&output), zapcore.DebugLevel))
 	handler := RequestLogger(logger, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if LoggerFromContext(r.Context()) == nil {
+		if logx.From(r.Context()) == nil {
 			t.Fatal("request logger missing from context")
 		}
 		Error(r.Context(), w, errors.New("database unavailable"))
@@ -105,5 +107,53 @@ func TestErrorTreatsAClosedRequestAsTheClientsChoice(t *testing.T) {
 	if response.Code != StatusClientClosedRequest || !strings.Contains(logs, `"error_code":"CLIENT_CLOSED_REQUEST"`) ||
 		!strings.Contains(logs, `"level":"info"`) {
 		t.Fatalf("response = %d, logs = %s", response.Code, logs)
+	}
+}
+
+func TestErrorLogsTheCauseOfAFaultWithoutSendingItToTheClient(t *testing.T) {
+	var output bytes.Buffer
+	logger := zap.New(zapcore.NewCore(zapcore.NewJSONEncoder(zap.NewProductionEncoderConfig()), zapcore.AddSync(&output), zapcore.DebugLevel))
+	response := httptest.NewRecorder()
+	RequestLogger(logger, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		Error(r.Context(), w, fault.New(fault.Upstream, "INVALID_MODEL_RESPONSE", "Модель вернула некорректный JSON.").WithCause(errors.New("feedback is a string")))
+	})).ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/answers", nil))
+	logs := output.String()
+	for _, want := range []string{`"error_code":"INVALID_MODEL_RESPONSE"`, `"error_message":"Модель вернула некорректный JSON."`, `"error":"feedback is a string"`} {
+		if !strings.Contains(logs, want) {
+			t.Errorf("missing %s in %s", want, logs)
+		}
+	}
+	if strings.Contains(response.Body.String(), "feedback is a string") {
+		t.Fatalf("the cause reached the client: %s", response.Body.String())
+	}
+}
+
+func TestRequestLoggerKeepsHealthProbesAtDebugUnlessTheyFail(t *testing.T) {
+	for _, tc := range []struct {
+		status int
+		level  zapcore.Level
+	}{{http.StatusOK, zapcore.DebugLevel}, {http.StatusServiceUnavailable, zapcore.ErrorLevel}} {
+		core, logs := observer.New(zapcore.DebugLevel)
+		RequestLogger(zap.New(core), http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(tc.status)
+		})).ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/health", nil))
+		if logs.Len() != 1 || logs.All()[0].Level != tc.level {
+			t.Fatalf("status %d logs = %v", tc.status, logs.All())
+		}
+	}
+}
+
+func TestPropagateTraceContinuesTheTraceOfTheRequest(t *testing.T) {
+	var outgoing *http.Request
+	RequestLogger(zap.NewNop(), http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		outgoing = httptest.NewRequest(http.MethodPost, "/graph/build", nil).WithContext(r.Context())
+		PropagateTrace(outgoing)
+	})).ServeHTTP(httptest.NewRecorder(), func() *http.Request {
+		r := httptest.NewRequest(http.MethodGet, "/", nil)
+		r.Header.Set("X-Trace-ID", "0123456789abcdef0123456789abcdef")
+		return r
+	}())
+	if !strings.HasPrefix(outgoing.Header.Get("traceparent"), "00-0123456789abcdef0123456789abcdef-") {
+		t.Fatalf("traceparent = %q", outgoing.Header.Get("traceparent"))
 	}
 }

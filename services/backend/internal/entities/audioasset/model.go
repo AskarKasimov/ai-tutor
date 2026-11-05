@@ -52,19 +52,20 @@ type Metadata struct {
 // FileURL is the canonical frontend resource URL for a task audio asset.
 func FileURL(assetID string) string { return "/learn/task-audio/" + assetID + "/file" }
 
-// NormalizeFileURL accepts current metadata and the exact legacy URL for the
-// same asset. It never accepts a URL for another asset or another route.
+// NormalizeFileURL accepts only the URL of this asset, never one of another asset or route.
 func NormalizeFileURL(assetID string, stored *string) (*string, bool) {
-	if stored == nil || (*stored != FileURL(assetID) && *stored != "/task-audio/"+assetID+"/file") {
+	if stored == nil || *stored != FileURL(assetID) {
 		return nil, false
 	}
-	canonical := FileURL(assetID)
-	return &canonical, true
+	return stored, true
 }
 
 func IDForTask(taskID string) string { return "taskaudio_" + taskID }
 
-func ObjectKey(assetID string) string { return "task-audio/v1/" + assetID + ".wav" }
+// ObjectPrefix separates recordings made with different synthesis settings.
+const ObjectPrefix = "task-audio/v2/"
+
+func ObjectKey(assetID string) string { return ObjectPrefix + assetID + ".wav" }
 
 // CanSynthesize validates instruction text without changing the text sent to TTS.
 func CanSynthesize(instruction string) bool {

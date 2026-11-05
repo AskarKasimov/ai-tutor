@@ -167,7 +167,7 @@ func (s *ChatService) runReserved(ctx context.Context, reservation training.Turn
 		if err = validateFinalEvaluation(evaluation); err != nil {
 			return err
 		}
-		check = &training.Check{Revision: reservation.Turn.ExpectedRevision + 1, FinalAnswer: answer, Source: reservation.Turn.Source, TranscriptionID: transcriptionID, Score: evaluation.Score, MaxScore: evaluation.MaxScore, Verdict: evaluation.Verdict, CriterionResults: criterionResults(evaluation.CriterionResults), Feedback: append([]string(nil), evaluation.Feedback...)}
+		check = &training.Check{Revision: reservation.Turn.ExpectedRevision + 1, FinalAnswer: answer, Source: reservation.Turn.Source, TranscriptionID: transcriptionID, Score: evaluation.Score, MaxScore: evaluation.MaxScore, Verdict: evaluation.Verdict, CriterionResults: criterionResults(evaluation.CriterionResults), Feedback: evaluation.Feedback}
 		return nil
 	}
 	// Keep explicit checks compatible with historical clients. The current UI sends one kind of turn.
@@ -224,7 +224,7 @@ func (s *ChatService) runReserved(ctx context.Context, reservation training.Turn
 
 func validateFinalEvaluation(evaluation assessment.Evaluation) error {
 	verdicts := map[int]string{0: "incorrect", 1: "partial", 2: "correct"}
-	if evaluation.MaxScore != 2 || evaluation.Score < 0 || evaluation.Score > 2 || evaluation.Verdict != verdicts[evaluation.Score] || len(evaluation.CriterionResults) == 0 || len(evaluation.Feedback) != 3 {
+	if evaluation.MaxScore != 2 || evaluation.Score < 0 || evaluation.Score > 2 || evaluation.Verdict != verdicts[evaluation.Score] || len(evaluation.CriterionResults) == 0 || strings.TrimSpace(evaluation.Feedback) == "" {
 		return fault.New(fault.Upstream, "INVALID_MODEL_RESPONSE", "Проверка вернула некорректный результат.")
 	}
 	return nil

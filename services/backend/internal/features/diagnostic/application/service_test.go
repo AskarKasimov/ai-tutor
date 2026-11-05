@@ -131,7 +131,7 @@ func grade(score int) gradeResult {
 	}
 	return gradeResult{evaluation: assessment.Evaluation{Score: score, MaxScore: 3, Verdict: verdict,
 		CriterionResults: []assessment.CriterionResult{{Key: "c1", Satisfied: score == 3, Explanation: "Объяснение"}},
-		Feedback:         []string{"Статус", "Причина", "Совет"}}}
+		Feedback:         "Статус Причина Совет"}}
 }
 
 func gradeBasic(score int) gradeResult {
@@ -141,7 +141,7 @@ func gradeBasic(score int) gradeResult {
 	}
 	return gradeResult{evaluation: assessment.Evaluation{Score: score, MaxScore: 1, Verdict: verdict,
 		CriterionResults: []assessment.CriterionResult{{Key: "c1", Satisfied: score == 1, Explanation: "Объяснение"}},
-		Feedback:         []string{"Статус", "Причина", "Совет"}}}
+		Feedback:         "Статус Причина Совет"}}
 }
 
 func (s *Service) start(t *testing.T) diagnostic.Progress {

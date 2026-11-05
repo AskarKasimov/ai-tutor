@@ -186,7 +186,7 @@ func (s *Store) Accept(ctx context.Context, ownerID, id, token, key, digest stri
 	score, graderScore, graderMaxScore, verdict := answer.Score, answer.GraderScore, answer.GraderMaxScore, answer.Verdict
 	progress.Score, progress.GraderScore, progress.GraderMaxScore, progress.Verdict = &score, &graderScore, &graderMaxScore, verdict
 	progress.CriterionResults = append([]diagnostic.CriterionResult(nil), answer.CriterionResults...)
-	progress.Feedback = append([]string(nil), answer.Feedback...)
+	progress.Feedback = answer.Feedback
 	value.AcceptedRequests[key] = diagnostic.AcceptedRequest{Fingerprint: digest, Response: progress}
 	s.sessions[id] = value
 	return cloneProgress(progress), nil
@@ -248,7 +248,6 @@ func cloneTasks(tasks []diagnostic.TaskSnapshot) []diagnostic.TaskSnapshot {
 func cloneAnswer(answer diagnostic.Answer) diagnostic.Answer {
 	answer.Task.Options = append([]string{}, answer.Task.Options...)
 	answer.CriterionResults = append([]diagnostic.CriterionResult(nil), answer.CriterionResults...)
-	answer.Feedback = append([]string(nil), answer.Feedback...)
 	return answer
 }
 
@@ -259,7 +258,6 @@ func cloneProgress(value diagnostic.Progress) diagnostic.Progress {
 		value.Current = &current
 	}
 	value.CriterionResults = append([]diagnostic.CriterionResult(nil), value.CriterionResults...)
-	value.Feedback = append([]string(nil), value.Feedback...)
 	if value.Score != nil {
 		currentScore := *value.Score
 		value.Score = &currentScore

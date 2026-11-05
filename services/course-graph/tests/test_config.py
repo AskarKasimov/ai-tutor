@@ -7,6 +7,7 @@ from course_graph.config import configure_library_environment, load_config
 
 def valid_yaml():
     return '''server: {port: 8000}
+logging: {level: info}
 llm_gateway: {address: "llm-gateway:8011", timeout: 300s}
 embedding: {model: "intfloat/multilingual-e5-small", threads: 4}
 topics: {max_chars: 6000}

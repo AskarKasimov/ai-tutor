@@ -1,7 +1,7 @@
 """Local live smoke test: HTTP upload -> S3 -> both workers -> graph snapshot.
 
-Uses only source fragments from the repository dataset. Creates a separate
-reviewable course; it does not replace existing course data. TLS verification
+Uploads two PDF files given on the command line. Creates a separate reviewable
+course; it does not replace existing course data. TLS verification
 is disabled only for the explicitly selected localhost development endpoint.
 """
 import argparse
@@ -12,7 +12,24 @@ import time
 import urllib.parse
 import urllib.request
 import uuid
+from email.utils import quote
 from pathlib import Path
+
+
+def upload_body(paths, boundary):
+    """Multipart body of the materials upload: the manifest, then the files in its order."""
+    items = [{"client_id": f"file-{i}", "week": i, "kind": "lecture"} for i in range(1, len(paths) + 1)]
+    body = (f'--{boundary}\r\nContent-Disposition: form-data; name="items"\r\n\r\n'
+            f'{json.dumps(items)}\r\n').encode()
+    for path in paths:
+        body += (f'--{boundary}\r\nContent-Disposition: form-data; name="file"; filename="{quote(Path(path).name)}"\r\n'
+                 'Content-Type: application/pdf\r\n\r\n').encode() + Path(path).read_bytes() + b"\r\n"
+    return body + f"--{boundary}--\r\n".encode()
+
+
+def needs_build(snapshot):
+    """A build is requested when the materials are ready and no build is running."""
+    return snapshot["inputs_ready"] and snapshot["status"] not in {"pending", "processing"}
 
 
 def main(args):
@@ -31,38 +48,27 @@ def main(args):
             return json.load(response)
 
     request("POST", "/auth/teacher")
-    course = {"id": args.subject_id} if args.subject_id else request("POST", "/admin/subjects", {"name": "Проверка optimized_Michael " + time.strftime("%H:%M:%S")})
+    course = {"id": args.subject_id} if args.subject_id else request("POST", "/exam/admin/subjects", {"name": "Проверка optimized_Michael " + time.strftime("%H:%M:%S")})
     subject_id = course["id"]
-    data = json.loads(Path(args.dataset).read_text())
-    cards = {t["id"]: t for t in data["topics"]}
     started = time.monotonic()
-    for number, ids in enumerate([["AI-04-06", "AI-04-07"], ["AI-04-08"]], 1):
-        if args.subject_id:
-            break
-        parts = []
-        for id in ids:
-            for f in cards[id]["clean_core_fragments"]:
-                if f["text"].strip():
-                    parts.append(f"## Слайд {f['page']}\n\n{f['text']}")
-        text = "\n\n".join(parts) + "\n\nСпасибо за внимание!\n"
+    if not args.subject_id:
         boundary = uuid.uuid4().hex
-        body = (f'--{boundary}\r\nContent-Disposition: form-data; name="file"; filename="heuristics_{number}.md"\r\n'
-                f'Content-Type: text/markdown\r\n\r\n{text}\r\n--{boundary}--\r\n').encode()
-        uploaded = request("POST", f"/admin/subjects/{subject_id}/materials", body, f"multipart/form-data; boundary={boundary}")
+        uploaded = request("POST", f"/exam/admin/subjects/{subject_id}/materials", upload_body(args.pdf, boundary),
+                           f"multipart/form-data; boundary={boundary}")
         if uploaded["failed"] or not uploaded["uploaded"]:
             raise RuntimeError(str(uploaded))
     output = Path(args.output)
     output.mkdir(parents=True, exist_ok=True)
+    build_requested = False
     while time.monotonic()-started < args.timeout:
-        materials = request("GET", f"/admin/subjects/{subject_id}/materials")
-        snapshot = request("GET", f"/admin/subjects/{subject_id}/graph")
+        materials = request("GET", f"/exam/admin/subjects/{subject_id}/materials")
+        snapshot = request("GET", f"/exam/admin/subjects/{subject_id}/graph")
         progress = {"subject_id": subject_id, "seconds": round(time.monotonic()-started, 2),
                     "materials": [{"id": m["id"], "status": m.get("cleaning", {}).get("status")} for m in materials],
                     "graph_status": snapshot["status"], "stale": snapshot["stale"]}
         (output/"upload_progress.json").write_text(json.dumps(progress, ensure_ascii=False, indent=2))
         if snapshot["status"] == "ready" and not snapshot["stale"]:
             assert len(materials) == 2 and all(m["cleaning"]["status"] == "ready" for m in materials)
-            assert all("Спасибо за внимание" not in m["cleaning"]["cleaned_text"] for m in materials)
             graph = snapshot["graph"]
             assert graph["topics"] and graph["quality"]["acyclic"]
             assert graph["prerequisites"], "No prerequisite found"
@@ -76,6 +82,9 @@ def main(args):
             return
         if snapshot["status"] == "failed" or any(m.get("cleaning", {}).get("status") == "failed" for m in materials):
             raise RuntimeError(json.dumps(progress, ensure_ascii=False))
+        if not build_requested and needs_build(snapshot):
+            request("POST", f"/exam/admin/subjects/{subject_id}/graph/build")
+            build_requested = True
         time.sleep(3)
     raise TimeoutError("Graph did not finish; see upload_progress.json")
 
@@ -83,8 +92,11 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--url", default="https://localhost:8443/api/v1")
-    parser.add_argument("--dataset", required=True)
+    parser.add_argument("--pdf", action="append", default=[], help="PDF to upload; pass exactly two related files")
     parser.add_argument("--output", required=True)
     parser.add_argument("--timeout", type=int, default=600)
     parser.add_argument("--subject-id", default="", help="Validate an existing smoke course without uploading again")
-    main(parser.parse_args())
+    arguments = parser.parse_args()
+    if not arguments.subject_id and len(arguments.pdf) != 2:
+        parser.error("pass --pdf twice, or --subject-id to check an existing course")
+    main(arguments)

@@ -47,6 +47,7 @@ type yamlInstance struct {
 	ReasoningEffortBody      map[string]map[string]any `yaml:"reasoning_effort_body"`
 }
 type yamlGateway struct {
+	LogLevel                 string              `yaml:"log_level"`
 	ListenAddress            string              `yaml:"listen_address"`
 	GRPCListenAddress        string              `yaml:"grpc_listen_address"`
 	GRPCMaxReceiveBytes      *int                `yaml:"grpc_max_receive_bytes"`
@@ -116,7 +117,10 @@ func loadYAMLConfig(path string) (Config, error) {
 		}
 		return Config{}, fmt.Errorf("decode trailing gateway config: %w", err)
 	}
-	c := Config{ListenAddress: doc.ListenAddress, GRPCListenAddress: doc.GRPCListenAddress, KafkaBrokers: doc.KafkaBrokers, RequestsTopic: doc.RequestsTopic, StateTopic: doc.StateTopic, ConsumerGroup: doc.ConsumerGroup, TransactionalID: doc.TransactionalID, Pools: doc.Pools}
+	if doc.LogLevel == "" {
+		return Config{}, errors.New("gateway config requires log_level")
+	}
+	c := Config{LogLevel: doc.LogLevel, ListenAddress: doc.ListenAddress, GRPCListenAddress: doc.GRPCListenAddress, KafkaBrokers: doc.KafkaBrokers, RequestsTopic: doc.RequestsTopic, StateTopic: doc.StateTopic, ConsumerGroup: doc.ConsumerGroup, TransactionalID: doc.TransactionalID, Pools: doc.Pools}
 	if doc.RequestDeadline.Set {
 		c.RequestDeadline = doc.RequestDeadline.Value
 	}

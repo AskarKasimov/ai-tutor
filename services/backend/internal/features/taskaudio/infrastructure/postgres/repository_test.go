@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/audioasset"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/competencymap"
 	competencypostgres "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/competency/infrastructure/postgres"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/features/taskaudio/application"
@@ -56,6 +57,27 @@ func setupAudioRepository(t *testing.T) (*Repository, *pgxpool.Pool, context.Con
 		admin.Close()
 	})
 	return New(pool), pool, ctx
+}
+
+func TestFindReadyExcludesPreviousSynthesisVersion(t *testing.T) {
+	repository, pool, ctx := setupAudioRepository(t)
+	_, err := pool.Exec(ctx, `INSERT INTO learning_audio_assets(id, instruction, object_key, status, bucket, storage_uri, audio_url)
+		VALUES ('old', 'Повторная инструкция', 'task-audio/v1/old.wav', 'ready', 'test', 's3://test/old', '/old')`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, found, err := repository.FindReady(ctx, "Повторная инструкция", "new"); err != nil || found {
+		t.Fatalf("old synthesis must not be reused: found=%v err=%v", found, err)
+	}
+	_, err = pool.Exec(ctx, `INSERT INTO learning_audio_assets(id, instruction, object_key, status, bucket, storage_uri, audio_url)
+		VALUES ('current', 'Повторная инструкция', $1, 'ready', 'test', 's3://test/current', '/current')`, audioasset.ObjectKey("current"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	asset, found, err := repository.FindReady(ctx, "Повторная инструкция", "new")
+	if err != nil || !found || asset.ID != "current" {
+		t.Fatalf("current synthesis must be reused: asset=%+v found=%v err=%v", asset, found, err)
+	}
 }
 
 func seedCurrentTaskAudio(t *testing.T, pool *pgxpool.Pool, ctx context.Context, assetID, taskID string) {

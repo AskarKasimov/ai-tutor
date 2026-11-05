@@ -31,15 +31,15 @@ var bloomOrder = map[string]int{
 }
 
 type AnswerFeedbackItem struct {
-	TaskID             string   `json:"task_id"`
-	Topic              string   `json:"topic,omitempty"`
-	OutcomeName        string   `json:"outcome_name,omitempty"`
-	EducationalContent string   `json:"educational_content,omitempty"`
-	Question           string   `json:"question"`
-	Transcript         string   `json:"transcript"`
-	Score              int      `json:"score"`
-	MaxScore           int      `json:"max_score"`
-	Feedback           []string `json:"feedback"`
+	TaskID             string `json:"task_id"`
+	Topic              string `json:"topic,omitempty"`
+	OutcomeName        string `json:"outcome_name,omitempty"`
+	EducationalContent string `json:"educational_content,omitempty"`
+	Question           string `json:"question"`
+	Transcript         string `json:"transcript"`
+	Score              int    `json:"score"`
+	MaxScore           int    `json:"max_score"`
+	Feedback           string `json:"feedback"`
 }
 
 type SessionFeedbackReport struct {
@@ -217,13 +217,8 @@ func parseEducationalContent(content string) []string {
 	return parts
 }
 
-func formatGap(topic string, maxScore int, feedback []string, educationalContent string) (string, string) {
-	cleaned := make([]string, 0, len(feedback))
-	for _, f := range feedback {
-		if c := cleanSentence(f); c != "" {
-			cleaned = append(cleaned, c)
-		}
-	}
+func formatGap(topic string, maxScore int, feedback string, educationalContent string) (string, string) {
+	mistake := cleanSentence(feedback)
 
 	subtopics := parseEducationalContent(educationalContent)
 	if len(subtopics) == 0 {
@@ -239,45 +234,13 @@ func formatGap(topic string, maxScore int, feedback []string, educationalContent
 	limit := min(2, len(subtopics))
 	recSummary := strings.Join(subtopics[:limit], ", ")
 
-	if len(cleaned) == 0 {
+	if mistake == "" {
 		gap := fmt.Sprintf("Тема «%s» — выявлен пробел (0/%d).\n• В чём ошибка: неверный выбор ответа или отсутствие аргументации.\n• Что повторить по теме:\n%s",
 			topic, maxScore, repeatBlock)
 		rec := fmt.Sprintf("Закрепить тему «%s»: %s.", topic, recSummary)
 		return gap, rec
 	}
 
-	verdict := cleaned[0]
-	var reason string
-	if len(cleaned) >= 2 {
-		reason = cleaned[1]
-	}
-
-	var mistake string
-	lowVerdict := strings.ToLower(verdict)
-	if strings.Contains(lowVerdict, ":") {
-		parts := strings.SplitN(verdict, ":", 2)
-		detail := strings.TrimSpace(parts[1])
-		if len(detail) > 0 {
-			detail = strings.ToUpper(string([]rune(detail)[:1])) + string([]rune(detail)[1:])
-		}
-		if reason != "" {
-			mistake = fmt.Sprintf("%s. %s", detail, reason)
-		} else {
-			mistake = detail
-		}
-	} else if strings.EqualFold(lowVerdict, "ответ неверный") || strings.EqualFold(lowVerdict, "неверно") {
-		if reason != "" {
-			mistake = reason
-		} else {
-			mistake = "выбран неверный вариант ответа без достаточного объяснения"
-		}
-	} else {
-		if reason != "" {
-			mistake = fmt.Sprintf("%s (%s)", reason, strings.ToLower(verdict))
-		} else {
-			mistake = verdict
-		}
-	}
 	mistake = strings.TrimRight(mistake, ".")
 
 	gap := fmt.Sprintf("Тема «%s» — выявлен пробел (0/%d).\n• В чём ошибка: %s.\n• Что повторить по теме:\n%s",
@@ -309,15 +272,11 @@ func AnalyzeAnswers(items []AnswerFeedbackItem) SessionFeedbackReport {
 			report.Recommendations = append(report.Recommendations, rec)
 		} else {
 			detail := ""
-			if len(it.Feedback) >= 2 && strings.TrimSpace(it.Feedback[1]) != "" {
-				detail = fmt.Sprintf("\n• Замечание: %s.", cleanSentence(it.Feedback[1]))
+			if strings.TrimSpace(it.Feedback) != "" {
+				detail = fmt.Sprintf("\n• Замечание: %s.", cleanSentence(it.Feedback))
 			}
 			report.Partials = append(report.Partials, fmt.Sprintf("Тема «%s» — частично освоена (%d/%d).%s", topic, it.Score, it.MaxScore, detail))
-			if len(it.Feedback) >= 3 && strings.TrimSpace(it.Feedback[2]) != "" {
-				report.Recommendations = append(report.Recommendations, fmt.Sprintf("По теме «%s»: %s.", topic, cleanSentence(it.Feedback[2])))
-			} else {
-				report.Recommendations = append(report.Recommendations, fmt.Sprintf("Закрепить практическое применение и обоснование в теме «%s».", topic))
-			}
+			report.Recommendations = append(report.Recommendations, fmt.Sprintf("Закрепить практическое применение и обоснование в теме «%s».", topic))
 		}
 	}
 

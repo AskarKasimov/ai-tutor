@@ -4,12 +4,13 @@ import (
 	"context"
 	"errors"
 	"strings"
-	"unicode"
 	"unicode/utf8"
 
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/assessment"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/variant"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/fault"
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/logx"
+	"go.uber.org/zap"
 )
 
 type Evaluation = assessment.Evaluation
@@ -82,62 +83,6 @@ func expectedVerdict(score, maxScore int) string {
 	}
 }
 
-func shortenFeedback(feedback []string) {
-	const maxRunes = 228
-	lengths := make([]int, len(feedback))
-	total := len(feedback) - 1 // Spaces joining the three sentences.
-	for i, line := range feedback {
-		lengths[i] = utf8.RuneCountInString(line)
-		total += lengths[i]
-	}
-	if total <= maxRunes {
-		return
-	}
-	for total > maxRunes {
-		longest := 0
-		for i := 1; i < len(lengths); i++ {
-			if lengths[i] > lengths[longest] {
-				longest = i
-			}
-		}
-		lengths[longest]--
-		total--
-	}
-	for i, line := range feedback {
-		if utf8.RuneCountInString(line) <= lengths[i] {
-			continue
-		}
-		runes := []rune(line)
-		prefix := string(runes[:lengths[i]-1]) // Reserve one rune for the ellipsis.
-		if cut := strings.LastIndexFunc(prefix, unicode.IsSpace); cut >= 0 &&
-			utf8.RuneCountInString(prefix[:cut]) >= lengths[i]/2 {
-			prefix = prefix[:cut]
-		}
-		cleaned := strings.TrimRight(prefix, " \t,;:.!?—–-")
-		if cleaned == "" {
-			cleaned = strings.TrimRight(prefix, " \t")
-		}
-		feedback[i] = cleaned + "…"
-	}
-}
-
-// splitSentences splits text after terminal punctuation that is followed by whitespace.
-func splitSentences(text string) []string {
-	var sentences []string
-	runes := []rune(strings.TrimSpace(text))
-	start := 0
-	for i, r := range runes {
-		if strings.ContainsRune(".!?…", r) && i+1 < len(runes) && unicode.IsSpace(runes[i+1]) {
-			sentences = append(sentences, strings.TrimSpace(string(runes[start:i+1])))
-			start = i + 1
-		}
-	}
-	if rest := strings.TrimSpace(string(runes[start:])); rest != "" {
-		sentences = append(sentences, rest)
-	}
-	return sentences
-}
-
 func validateEvaluation(result *Evaluation, gradingContext GradingContext) error {
 	maxScore, err := gradingMaxScore(gradingContext)
 	if err != nil {
@@ -195,26 +140,12 @@ func validateEvaluation(result *Evaluation, gradingContext GradingContext) error
 		return fault.New(fault.Upstream, "INVALID_MODEL_RESPONSE", "Оценка модели не согласуется с результатами по критериям.")
 	}
 
-	// The model sometimes packs the three sentences into fewer array items; a
-	// temperature-0 retry tends to repeat that shape, so recover it here.
-	if len(result.Feedback) != 3 {
-		result.Feedback = splitSentences(strings.Join(result.Feedback, " "))
-	}
-	if len(result.Feedback) != 3 {
+	// Formatting from the model must not discard an otherwise valid grade.
+	feedback := strings.Join(strings.Fields(result.Feedback), " ")
+	if feedback == "" || !utf8.ValidString(feedback) || strings.ContainsRune(feedback, 0) {
 		return fault.New(fault.Upstream, "INVALID_MODEL_RESPONSE", "Модель вернула некорректный фидбэк.")
 	}
-	for i, line := range result.Feedback {
-		if !utf8.ValidString(line) || strings.ContainsRune(line, 0) {
-			return fault.New(fault.Upstream, "INVALID_MODEL_RESPONSE", "Модель вернула некорректный фидбэк.")
-		}
-		// Formatting from the model must not discard an otherwise valid grade.
-		line = strings.Join(strings.Fields(line), " ")
-		if line == "" {
-			return fault.New(fault.Upstream, "INVALID_MODEL_RESPONSE", "Модель вернула некорректный фидбэк.")
-		}
-		result.Feedback[i] = line
-	}
-	shortenFeedback(result.Feedback)
+	result.Feedback = feedback
 	return nil
 }
 
@@ -244,6 +175,8 @@ func (s *Service) gradeAndValidate(ctx context.Context, gradingContext GradingCo
 		if attempt == 1 || !errors.As(err, &modelErr) || modelErr.Code != "INVALID_MODEL_RESPONSE" {
 			return Evaluation{}, err
 		}
+		logx.From(ctx).Warn("model evaluation rejected; retrying", zap.String("error_code", modelErr.Code),
+			zap.String("error_message", modelErr.Message), zap.Error(modelErr.Cause))
 	}
 }
 

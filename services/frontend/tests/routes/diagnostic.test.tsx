@@ -65,11 +65,7 @@ const progress = {
 const criteria = [
   { key: 'choice', satisfied: true, explanation: 'Модель названа.' },
 ]
-const feedback = [
-  'Серверная оценка.',
-  'Серверное объяснение.',
-  'Серверный совет.',
-]
+const feedback = 'Серверная оценка. Серверное объяснение. Серверный совет.'
 const resultBody = {
   session_id: 'session-real',
   status: 'completed',
@@ -256,11 +252,8 @@ function server(
         criterion_results: [
           { key: 'skipped', satisfied: false, explanation: 'Вопрос пропущен.' },
         ],
-        feedback: [
-          'Вопрос пропущен.',
-          'Ответ оценён в 0 баллов.',
-          'Продолжите со следующим вопросом.',
-        ],
+        feedback:
+          'Вопрос пропущен. Ответ оценён в 0 баллов. Продолжите со следующим вопросом.',
       })
     }
     if (url.endsWith('/voice/transcriptions'))
@@ -457,7 +450,7 @@ it('runs real diagnostic audio, obeys skipped basics and displays the server tot
   fireEvent.click(screen.getByRole('button', { name: 'Отправить ответ' }))
   // The answer is only confirmed: no score, verdict or feedback per task.
   expect(await screen.findByText('Ответ принят')).toBeVisible()
-  expect(screen.queryByText(feedback.join(' '))).not.toBeInTheDocument()
+  expect(screen.queryByText(feedback)).not.toBeInTheDocument()
   expect(screen.queryByText('3 / 3')).not.toBeInTheDocument()
   expect(screen.queryByText('Верно')).not.toBeInTheDocument()
   expect(screen.queryByText('Модель названа.')).not.toBeInTheDocument()
@@ -488,7 +481,7 @@ it('runs real diagnostic audio, obeys skipped basics and displays the server tot
   )
   expect(screen.getByText('Настоящая расшифровка')).toBeVisible()
   // The review repeats the task's own review from the "went well" card.
-  expect(screen.getAllByText(feedback.join(' '))).toHaveLength(2)
+  expect(screen.getAllByText(feedback)).toHaveLength(2)
   expect(screen.queryByText('Модель названа.')).not.toBeInTheDocument()
   expect(
     await screen.findByText('Итоговое педагогическое резюме.'),
@@ -497,7 +490,7 @@ it('runs real diagnostic audio, obeys skipped basics and displays the server tot
   const good = screen
     .getByRole('heading', { name: 'Что получилось' })
     .closest('section')!
-  expect(good).toHaveTextContent(feedback.join(' '))
+  expect(good).toHaveTextContent(feedback)
   expect(screen.queryByText('Вы уверенно различаете модели.')).toBeNull()
   // A full main answer leaves nothing to work on and credits its basics.
   expect(
@@ -741,7 +734,7 @@ it('fills the cards from the reviews, not from the model text', async () => {
   expect(await screen.findByText('Общая оценка по регрессии.')).toBeVisible()
   expect(
     screen.getByRole('heading', { name: 'Что получилось' }).closest('section'),
-  ).toHaveTextContent(feedback.join(' '))
+  ).toHaveTextContent(feedback)
   expect(screen.queryByText(/Различает классификацию/)).not.toBeInTheDocument()
   expect(screen.queryByText(/Путает MAE/)).not.toBeInTheDocument()
 })

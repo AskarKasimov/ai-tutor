@@ -5,11 +5,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"strings"
 	"time"
 
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/material"
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/logx"
+	"go.uber.org/zap"
 )
 
 type OCRJob struct {
@@ -48,9 +49,10 @@ func (w *OCRWorker) Run(ctx context.Context) error {
 		if ctx.Err() != nil {
 			return nil
 		}
-		worked, err := w.ProcessOne(ctx)
+		jobCtx := logx.StartTrace(ctx)
+		worked, err := w.ProcessOne(jobCtx)
 		if err != nil && ctx.Err() == nil {
-			log.Printf("Material OCR: %v", err)
+			logx.From(jobCtx).Error("material OCR failed", zap.Error(err))
 		}
 		if worked && err == nil {
 			continue

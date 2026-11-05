@@ -9,6 +9,7 @@ import (
 )
 
 type Config struct {
+	LogLevel                 string              `json:"log_level"`
 	ListenAddress            string              `json:"listen_address"`
 	GRPCListenAddress        string              `json:"grpc_listen_address"`
 	GRPCMaxReceiveBytes      int                 `json:"grpc_max_receive_bytes"`
@@ -204,6 +205,11 @@ func (c *Config) defaults() {
 }
 
 func (c Config) Validate() error {
+	if c.LogLevel != "" {
+		if _, err := ParseLogLevel(c.LogLevel); err != nil {
+			return err
+		}
+	}
 	if c.GRPCListenAddress == c.ListenAddress || c.GRPCMaxReceiveBytes <= 0 || c.GRPCMaxSendBytes <= 0 || c.GRPCMaxConcurrentStreams <= 0 {
 		return errors.New("invalid gRPC listener or limits")
 	}

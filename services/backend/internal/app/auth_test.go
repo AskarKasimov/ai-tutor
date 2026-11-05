@@ -486,6 +486,26 @@ func upload(f *fixture, path, field, filename, media string, data []byte, cookie
 	return w
 }
 
+func uploadMaterial(f *fixture, path, filename string, data []byte, cookie *http.Cookie) *httptest.ResponseRecorder {
+	var body bytes.Buffer
+	mw := multipart.NewWriter(&body)
+	_ = mw.WriteField("items", `[{"client_id":"lecture","week":1,"kind":"lecture"}]`)
+	h := make(textproto.MIMEHeader)
+	h.Set("Content-Disposition", `form-data; name="file"; filename="`+filename+`"`)
+	h.Set("Content-Type", "application/pdf")
+	p, _ := mw.CreatePart(h)
+	_, _ = p.Write(data)
+	_ = mw.Close()
+	r := httptest.NewRequest("POST", "https://api.example"+examTestPath(path), &body)
+	r.Header.Set("Content-Type", mw.FormDataContentType())
+	if cookie != nil {
+		r.AddCookie(cookie)
+	}
+	w := httptest.NewRecorder()
+	f.app.Handler().ServeHTTP(w, r)
+	return w
+}
+
 func (f *fixture) admin(t *testing.T) *http.Cookie {
 	t.Helper()
 	access, _, id := f.register(t, "admin@example.edu")

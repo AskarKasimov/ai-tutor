@@ -6,11 +6,18 @@ import (
 	"errors"
 	"reflect"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/llmgateway"
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/logx"
+	pb "github.com/AskarKasimov/ai-tutor/services/shared/gen/go/llmgateway/v1"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zaptest/observer"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/metadata"
 
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/coursegraph"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/exam"
@@ -113,6 +120,51 @@ func TestBuildReportsProgressAndRetryWithoutCountingFailedTopics(t *testing.T) {
 	}
 	if !retry || updates[len(updates)-1].Done != 2 {
 		t.Fatalf("missing retry or completion: %+v", updates)
+	}
+}
+
+// tracedExaminer asks through the real gateway interceptor, as Geek's examiner does.
+type tracedExaminer struct {
+	*buildExaminer
+	mu       sync.Mutex
+	outgoing []string
+}
+
+func (e *tracedExaminer) Question(ctx context.Context, r geekapp.QuestionRequest) (string, error) {
+	err := llmgateway.ClientInterceptor(ctx, "/Complete", &pb.CompleteRequest{}, &pb.CompleteResponse{}, nil,
+		func(ctx context.Context, _ string, _, _ any, _ *grpc.ClientConn, _ ...grpc.CallOption) error {
+			md, _ := metadata.FromOutgoingContext(ctx)
+			e.mu.Lock()
+			defer e.mu.Unlock()
+			e.outgoing = append(e.outgoing, md.Get("traceparent")...)
+			return nil
+		})
+	if err != nil {
+		return "", err
+	}
+	return e.buildExaminer.Question(ctx, r)
+}
+
+func TestBuiltQuestionsKeepTheTraceOfTheJobInLogsAndCalls(t *testing.T) {
+	core, logs := observer.New(zap.InfoLevel)
+	examiner := &tracedExaminer{buildExaminer: &buildExaminer{}}
+	ctx := logx.StartTrace(context.Background())
+	data := json.RawMessage(`{"topics":[{"id":"a","title":"Тема","text":"Текст"}]}`)
+	if _, err := (builtQuestions{examiner: examiner, logger: zap.New(core), pause: time.Millisecond}).Prepare(ctx, data); err != nil {
+		t.Fatal(err)
+	}
+	traceID := logx.TraceID(ctx)
+	if len(examiner.outgoing) == 0 || !strings.HasPrefix(examiner.outgoing[0], "00-"+traceID+"-") {
+		t.Fatalf("outgoing traceparent = %v, trace = %s", examiner.outgoing, traceID)
+	}
+	calls := logs.FilterMessage("llm call").All()
+	if len(calls) == 0 {
+		t.Fatalf("no llm call in the logs: %v", logs.All())
+	}
+	for _, entry := range logs.All() {
+		if entry.ContextMap()["trace_id"] != traceID {
+			t.Errorf("%q has no trace of the job: %v", entry.Message, entry.ContextMap())
+		}
 	}
 }
 

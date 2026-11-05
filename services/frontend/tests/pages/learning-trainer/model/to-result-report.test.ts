@@ -44,7 +44,7 @@ const answer = (
   score,
   verdict: score === 0 ? 'incorrect' : 'correct',
   criterion_results: [],
-  feedback: ['Первое.', 'Второе.'],
+  feedback: 'Первое. Второе.',
   created_at: 1,
 })
 
@@ -122,22 +122,6 @@ it('marks a skipped task as a gap', () => {
     result([answer(task('m', 'main'), 0, true)]),
   ).topics
   expect(topic).toMatchObject({ status: 'gap', skipped: true })
-})
-
-it('leaves out the line sending the student on to the next task', () => {
-  const [topic] = toResultReport(
-    result([
-      {
-        ...answer(task('m', 'main'), 0, true),
-        feedback: [
-          'Вопрос пропущен.',
-          'Ответ оценён в 0 баллов.',
-          'Продолжите со следующим вопросом.',
-        ],
-      },
-    ]),
-  ).topics
-  expect(topic.note).toBe('Вопрос пропущен. Ответ оценён в 0 баллов.')
 })
 
 it('keeps the reasons of the criteria without inventing points', () => {

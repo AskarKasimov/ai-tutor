@@ -140,7 +140,7 @@ func TestUploadMaterial(t *testing.T) {
 
 	// Test student authorization failure
 	_, err := svc.Upload(context.Background(), student, "sub-123", application.UploadInput{
-		Filename:    "lecture-1.pdf",
+		Week: 1, Kind: "lecture", Filename: "lecture-1.pdf",
 		ContentType: "application/pdf",
 		Data:        []byte("%PDF-fake-content"),
 	})
@@ -149,7 +149,7 @@ func TestUploadMaterial(t *testing.T) {
 	}
 
 	mat, err := svc.Upload(context.Background(), admin, "sub-123", application.UploadInput{
-		Filename:    "lecture-1.pdf",
+		Week: 1, Kind: "lecture", Filename: "lecture-1.pdf",
 		ContentType: "application/pdf",
 		Data:        []byte("%PDF-fake-content"),
 	})
@@ -220,7 +220,7 @@ func TestFailedParsedStorageRetriesBackgroundOCR(t *testing.T) {
 	repo := &memoryRepo{}
 	storage := &failingParsedS3{}
 	svc := application.New(repo, storage, &stubOCR{}, nil)
-	mat, err := svc.Upload(context.Background(), user.User{Role: user.Admin}, "sub", application.UploadInput{Filename: "lecture.md", Data: []byte("Теория")})
+	mat, err := svc.Upload(context.Background(), user.User{Role: user.Admin}, "sub", application.UploadInput{Week: 1, Kind: "lecture", Filename: "lecture.pdf", Data: []byte("%PDF-1.7")})
 	if err != nil {
 		t.Fatalf("raw upload failed: %v", err)
 	}
@@ -262,7 +262,7 @@ func TestUploadMaterialWithTranslation(t *testing.T) {
 	svc := application.New(repo, s3, ocr, func() time.Time { return fixedTime })
 
 	mat, err := svc.Upload(context.Background(), admin, "sub-cs", application.UploadInput{
-		Filename:    "ai-lecture.pdf",
+		Week: 1, Kind: "lecture", Filename: "ai-lecture.pdf",
 		ContentType: "application/pdf",
 		Data:        []byte("%PDF-dummy"),
 	})
@@ -316,7 +316,7 @@ func TestUploadMaterialTranslationFailureFallback(t *testing.T) {
 	svc := application.New(repo, s3, ocr, func() time.Time { return fixedTime })
 
 	mat, err := svc.Upload(context.Background(), admin, "sub-cs", application.UploadInput{
-		Filename:    "ai-lecture.pdf",
+		Week: 1, Kind: "lecture", Filename: "ai-lecture.pdf",
 		ContentType: "application/pdf",
 		Data:        []byte("%PDF-dummy"),
 	})
@@ -353,7 +353,7 @@ func TestUntranslatedOCRKeepsSourceWithWarning(t *testing.T) {
 	admin := user.User{ID: "usr-admin", Role: user.Admin}
 	svc := application.New(repo, s3, ocr, func() time.Time { return time.Unix(1700000000, 0) })
 	mat, err := svc.Upload(context.Background(), admin, "sub-cs", application.UploadInput{
-		Filename: "lecture.pdf", ContentType: "application/pdf", Data: []byte("%PDF-dummy"),
+		Week: 1, Kind: "lecture", Filename: "lecture.pdf", ContentType: "application/pdf", Data: []byte("%PDF-dummy"),
 	})
 	if err != nil {
 		t.Fatal(err)

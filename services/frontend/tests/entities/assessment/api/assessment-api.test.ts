@@ -18,7 +18,7 @@ const validResult = {
   criterion_results: [
     { key: 'instruction_following', satisfied: true, explanation: 'Верно.' },
   ],
-  feedback: ['Верно.', 'Причина.', 'Совет.'],
+  feedback: 'Верно. Причина. Совет.',
 }
 
 it('preserves the basic scale without clamping', async () => {
@@ -93,7 +93,7 @@ it('sends saved variant IDs and transcription id and preserves structured gradin
           explanation: 'Выбор объяснён.',
         },
       ],
-      feedback: ['Верно.', 'Оба критерия выполнены.', 'Закрепите тему.'],
+      feedback: 'Верно. Оба критерия выполнены. Закрепите тему.',
     }),
   })
   vi.stubGlobal('fetch', fetchMock)
@@ -132,7 +132,7 @@ it('rejects malformed structured grading response', async () => {
         max_score: 2,
         verdict: 'correct',
         criterion_results: [],
-        feedback: ['Верно.', 'Причина.', 'Совет.'],
+        feedback: 'Верно. Причина. Совет.',
       }),
     }),
   )

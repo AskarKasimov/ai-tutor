@@ -109,13 +109,13 @@ func feedbackResponse(fb diagnostic.OverallFeedback) OverallFeedbackResponse {
 }
 
 type AnswerItemDTO struct {
-	TaskID     string   `json:"task_id"`
-	Topic      string   `json:"topic,omitempty"`
-	Question   string   `json:"question"`
-	Transcript string   `json:"transcript"`
-	Score      int      `json:"score"`
-	MaxScore   int      `json:"max_score"`
-	Feedback   []string `json:"feedback"`
+	TaskID     string `json:"task_id"`
+	Topic      string `json:"topic,omitempty"`
+	Question   string `json:"question"`
+	Transcript string `json:"transcript"`
+	Score      int    `json:"score"`
+	MaxScore   int    `json:"max_score"`
+	Feedback   string `json:"feedback"`
 }
 
 type AnswersFeedbackRequest struct {

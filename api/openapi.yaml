@@ -53,10 +53,7 @@ components:
           type: array
           uniqueItems: false
         feedback:
-          items:
-            type: string
-          type: array
-          uniqueItems: false
+          type: string
         max_score:
           maximum: 3
           minimum: 1
@@ -481,10 +478,7 @@ components:
           type: array
           uniqueItems: false
         feedback:
-          items:
-            type: string
-          type: array
-          uniqueItems: false
+          type: string
         grader_max_score:
           maximum: 3
           minimum: 1
@@ -634,10 +628,7 @@ components:
           minimum: 0
           type: integer
         feedback:
-          items:
-            type: string
-          type: array
-          uniqueItems: false
+          type: string
         grader_max_score:
           maximum: 3
           minimum: 1
@@ -1644,10 +1635,7 @@ components:
       additionalProperties: false
       properties:
         feedback:
-          items:
-            type: string
-          type: array
-          uniqueItems: false
+          type: string
         max_score:
           type: integer
         question:
@@ -2524,10 +2512,7 @@ components:
         exercise_id:
           type: string
         feedback:
-          items:
-            type: string
-          type: array
-          uniqueItems: false
+          type: string
         max_score:
           type: integer
         round:
@@ -4201,7 +4186,7 @@ paths:
         - Материалы
       x-implementation: implemented
     post:
-      description: Доступно только admin. Для новых клиентов передайте items (JSON-манифест с client_id, week и kind для каждого файла), затем повторяющиеся file в том же порядке. Legacy week/kind остаются совместимы.
+      description: Доступно только admin. Передайте items (JSON-манифест с client_id, week и kind для каждого файла), затем повторяющиеся file в том же порядке.
       operationId: uploadSubjectMaterials
       parameters:
         - description: ID предмета
@@ -4225,13 +4210,8 @@ paths:
                 items:
                   description: JSON-манифест файлов
                   type: string
-                kind:
-                  description: Тип для legacy-клиентов
-                  type: string
-                week:
-                  description: Неделя для legacy-клиентов
-                  type: integer
               required:
+                - items
                 - file
               type: object
         description: JSON-манифест файлов

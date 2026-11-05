@@ -86,7 +86,7 @@ func TestAnalyzeResultDeterministicRules(t *testing.T) {
 				Role:         "main",
 				CompetencyID: "c-2",
 				Score:        1,
-				Feedback:     []string{"Ответ частично верен.", "Не указана целевая переменная.", "Закрепите классификацию."},
+				Feedback:     "Ответ частично верен. Не указана целевая переменная. Закрепите классификацию.",
 				Task: diagnostic.TaskSnapshot{
 					CompetencyID:   "c-2",
 					CompetencyName: "Постановки задач ML",
@@ -136,7 +136,7 @@ func TestAnalyzeResultDeterministicRules(t *testing.T) {
 				Role:         "basic",
 				CompetencyID: "c-3",
 				Score:        0,
-				Feedback:     []string{"Неверно.", "Перепутаны точность и полнота.", "Повторите формулу Precision."},
+				Feedback:     "Неверно. Перепутаны точность и полнота. Повторите формулу Precision.",
 				CriterionResults: []diagnostic.CriterionResult{
 					{Key: "formula", Satisfied: false, Explanation: "Студент не помнит формулу точности"},
 				},
@@ -280,11 +280,7 @@ func TestAnalyzeAnswersFormatting(t *testing.T) {
 			Transcript: "Регрессия, потому что...",
 			Score:      0,
 			MaxScore:   2,
-			Feedback: []string{
-				"Ответ не соответствует требуемому типу задачи.",
-				"Выбран неверный вариант и не дано объяснение.",
-				"Укажите «кластеризация» и объясните, что группы нужно находить без заранее известных классов.",
-			},
+			Feedback:   "Ответ не соответствует требуемому типу задачи. Выбран неверный вариант и не дано объяснение. Укажите «кластеризация» и объясните, что группы нужно находить без заранее известных классов.",
 		},
 		{
 			TaskID:     "snapshot-task-016",
@@ -293,11 +289,7 @@ func TestAnalyzeAnswersFormatting(t *testing.T) {
 			Transcript: "Недообучение",
 			Score:      0,
 			MaxScore:   2,
-			Feedback: []string{
-				"Ответ неверный: модель переобучена, а не недообучена.",
-				"Не указана связь между высоким качеством на обучении и плохим на новых данных.",
-				"Укажите правильный диагноз и объясните, почему он соответствует описанному поведению.",
-			},
+			Feedback:   "Ответ неверный: модель переобучена, а не недообучена. Не указана связь между высоким качеством на обучении и плохим на новых данных. Укажите правильный диагноз и объясните, почему он соответствует описанному поведению.",
 		},
 		{
 			TaskID:     "snapshot-task-001",
@@ -306,11 +298,7 @@ func TestAnalyzeAnswersFormatting(t *testing.T) {
 			Transcript: "Классификация",
 			Score:      1,
 			MaxScore:   2,
-			Feedback: []string{
-				"Ответ частично верен.",
-				"Не приведено объяснение критериев деления на классы.",
-				"Приведите обоснование деления целевой переменной.",
-			},
+			Feedback:   "Ответ частично верен. Не приведено объяснение критериев деления на классы. Приведите обоснование деления целевой переменной.",
 		},
 		{
 			TaskID:     "snapshot-task-002",
@@ -319,7 +307,7 @@ func TestAnalyzeAnswersFormatting(t *testing.T) {
 			Transcript: "Регрессия",
 			Score:      2,
 			MaxScore:   2,
-			Feedback:   []string{"Верно.", "Всё правильно.", "Продолжайте."},
+			Feedback:   "Верно. Всё правильно. Продолжайте.",
 		},
 	}
 
@@ -349,7 +337,7 @@ func TestAnalyzeAnswersFormatting(t *testing.T) {
 	if !strings.Contains(gap0, "Тема «Кластеризация (типы задач ML)» — выявлен пробел (0/2)") {
 		t.Errorf("Gap0 header missing: %s", gap0)
 	}
-	if !strings.Contains(gap0, "В чём ошибка: Выбран неверный вариант и не дано объяснение") {
+	if !strings.Contains(gap0, "Выбран неверный вариант и не дано объяснение") {
 		t.Errorf("Gap0 mistake missing: %s", gap0)
 	}
 	if !strings.Contains(gap0, "Что повторить по теме:") {
@@ -360,7 +348,7 @@ func TestAnalyzeAnswersFormatting(t *testing.T) {
 	}
 
 	gap1 := report.Gaps[1]
-	if !strings.Contains(gap1, "Модель переобучена, а не недообучена") {
+	if !strings.Contains(gap1, "модель переобучена, а не недообучена") {
 		t.Errorf("Gap1 mistake missing: %s", gap1)
 	}
 	if !strings.Contains(gap1, "Анализ кривых обучения") {

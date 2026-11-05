@@ -12,7 +12,7 @@ import (
 
 	geekapp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/geek/application"
 	geekgraph "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/geek/infrastructure/graph"
-	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/httpx"
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/logx"
 )
 
 // builtQuestionRounds bounds the rounds of preparing a build: a failed node is
@@ -40,8 +40,12 @@ func (b builtQuestions) Prepare(ctx context.Context, data json.RawMessage) (json
 }
 
 func (b builtQuestions) PrepareWithProgress(ctx context.Context, data json.RawMessage, report func(coursegraph.BuildProgress)) (json.RawMessage, error) {
-	// The model calls are logged under the worker, as Geek's are.
-	ctx = httpx.WithLogger(ctx, b.logger)
+	// The model calls are logged under the worker, as Geek's are, within the job's trace.
+	logger := b.logger
+	if traceID := logx.TraceID(ctx); traceID != "" {
+		logger = logger.With(zap.String("trace_id", traceID))
+	}
+	ctx = logx.With(ctx, logger)
 	// The graph is read as Geek reads it, so the prompts get the same topics.
 	g, ok, err := geekgraph.Decode(data)
 	if err != nil {
@@ -71,7 +75,7 @@ func (b builtQuestions) PrepareWithProgress(ctx context.Context, data json.RawMe
 					p.RemainingSeconds = &seconds
 				}
 				report(p)
-				b.logger.Info("build question preparation progress", zap.Int("done", done), zap.Int("total", total), zap.Int("round", round))
+				logger.Info("build question preparation progress", zap.Int("done", done), zap.Int("total", total), zap.Int("round", round))
 			}
 		})
 		left := geekapp.Unprepared(g)
@@ -81,7 +85,7 @@ func (b builtQuestions) PrepareWithProgress(ctx context.Context, data json.RawMe
 		if round == builtQuestionRounds || ctx.Err() != nil {
 			return nil, fmt.Errorf("%d topics without prepared questions (%s): %w", len(left), strings.Join(left, ", "), failures)
 		}
-		b.logger.Warn("build questions are not all prepared; retrying", zap.Error(failures), zap.Strings("nodes", left), zap.Int("round", round))
+		logger.Warn("build questions are not all prepared; retrying", zap.Error(failures), zap.Strings("nodes", left), zap.Int("round", round))
 		if report != nil {
 			report(coursegraph.BuildProgress{Stage: "retry_questions", Done: len(g.Nodes) - len(left), Total: len(g.Nodes)})
 		}
@@ -126,6 +130,6 @@ func (b builtQuestions) PrepareWithProgress(ctx context.Context, data json.RawMe
 	if err != nil {
 		return nil, err
 	}
-	b.logger.Info("build questions prepared", zap.Int("topics", len(topics)), zap.Duration("duration", time.Since(started)))
+	logger.Info("build questions prepared", zap.Int("topics", len(topics)), zap.Duration("duration", time.Since(started)))
 	return out, nil
 }

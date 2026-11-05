@@ -128,7 +128,7 @@ async function setup(
         score: noGaps ? 2 : 1,
         verdict: noGaps ? 'correct' : 'partial',
         criterion_results: [],
-        feedback: [],
+        feedback: '',
         created_at: 1,
       },
     ],

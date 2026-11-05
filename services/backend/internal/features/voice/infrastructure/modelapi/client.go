@@ -12,13 +12,15 @@ import (
 	"net"
 	"net/http"
 	"net/textproto"
+	"net/url"
+	"regexp"
 	"strings"
 	"time"
 	"unicode/utf8"
 
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/audio"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/fault"
-	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/httpx"
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/logx"
 	"go.uber.org/zap"
 )
 
@@ -26,6 +28,8 @@ type TTSOptions struct {
 	Seed               int64   `json:"seed"`
 	CFGValue           float64 `json:"cfg_value"`
 	InferenceTimesteps int     `json:"inference_timesteps"`
+	UseReference       *bool   `json:"use_reference,omitempty"`
+	UsePrompt          *bool   `json:"use_prompt,omitempty"`
 }
 
 type Client struct {
@@ -33,6 +37,8 @@ type Client struct {
 	sttURL, ttsURL string
 	timeout        time.Duration
 	ttsOptions     TTSOptions
+	sttModel       string
+	sttLongform    bool
 }
 
 func New(client *http.Client, sttURL, ttsURL string, timeout time.Duration, ttsOptions TTSOptions) *Client {
@@ -40,6 +46,12 @@ func New(client *http.Client, sttURL, ttsURL string, timeout time.Duration, ttsO
 		client = http.DefaultClient
 	}
 	return &Client{client: client, sttURL: sttURL, ttsURL: ttsURL, timeout: timeout, ttsOptions: ttsOptions}
+}
+
+func (c *Client) WithSTTOptions(model string, longform bool) *Client {
+	c.sttModel = model
+	c.sttLongform = longform
+	return c
 }
 
 // providerError keeps the transport cause next to the fault, so the request
@@ -52,9 +64,19 @@ func providerError(err error) error {
 	return errors.Join(fault.New(fault.Unavailable, "PROCESSING_UNAVAILABLE", "Голосовой сервис недоступен."), err)
 }
 
+var unsupportedASRModelPrefix = regexp.MustCompile(`^\s*\{\s*"detail"\s*:\s*"Unsupported ASR model:`)
+
 // statusError is the fault for a provider status with the start of its body.
 func statusError(resp *http.Response, failureCode string, stt bool) error {
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+	if stt && resp.StatusCode == http.StatusUnprocessableEntity {
+		var detail struct {
+			Detail string `json:"detail"`
+		}
+		if unsupportedASRModelPrefix.Match(body) || (json.Unmarshal(body, &detail) == nil && strings.HasPrefix(detail.Detail, "Unsupported ASR model:")) {
+			return errors.Join(fault.New(fault.Unavailable, "PROCESSING_UNAVAILABLE", "Голосовой сервис временно недоступен."), fmt.Errorf("provider answered %d: %s", resp.StatusCode, strings.TrimSpace(string(body))))
+		}
+	}
 	return errors.Join(providerStatus(resp.StatusCode, failureCode, stt),
 		fmt.Errorf("provider answered %d: %s", resp.StatusCode, strings.TrimSpace(string(body))))
 }
@@ -64,7 +86,7 @@ func statusError(resp *http.Response, failureCode string, stt bool) error {
 // turn is voiced late.
 func logCall(ctx context.Context, operation string, started time.Time, fields []zap.Field, err error) {
 	fields = append(fields, zap.String("voice_operation", operation), zap.Duration("duration", time.Since(started)))
-	logger := httpx.LoggerFromContext(ctx)
+	logger := logx.From(ctx)
 	switch {
 	case err == nil:
 		logger.Info("voice call", fields...)
@@ -95,9 +117,12 @@ func providerStatus(status int, failureCode string, stt bool) error {
 // without its long-form VAD weights the model rejects audio over ~25 s.
 const sttPartSeconds = 20
 
-// Recognize transcribes the audio. A long 16-bit PCM WAV is sent in parts cut
-// at pauses, and their texts are joined.
+// Recognize transcribes audio, optionally sending long WAVs whole to the server.
+// Otherwise it splits 16-bit PCM WAVs at quiet points and joins the texts.
 func (c *Client) Recognize(ctx context.Context, data []byte, media string) (string, error) {
+	if c.sttLongform {
+		return c.recognize(ctx, data, media)
+	}
 	base, _, _ := mime.ParseMediaType(media)
 	if base != "audio/wav" && base != "audio/x-wav" && base != "audio/wave" {
 		return c.recognize(ctx, data, media)
@@ -146,7 +171,16 @@ func (c *Client) recognizeOnce(ctx context.Context, data []byte, media string) (
 	}
 	ctx, cancel := context.WithTimeout(ctx, c.timeout)
 	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, "POST", c.sttURL, &body)
+	target, err := url.Parse(c.sttURL)
+	if err != nil {
+		return "", err
+	}
+	if c.sttModel != "" {
+		q := target.Query()
+		q.Set("model", c.sttModel)
+		target.RawQuery = q.Encode()
+	}
+	req, err := http.NewRequestWithContext(ctx, "POST", target.String(), &body)
 	if err != nil {
 		return "", err
 	}
@@ -181,9 +215,7 @@ func (c *Client) Synthesize(ctx context.Context, text string) (data []byte, err 
 }
 
 func (c *Client) synthesize(ctx context.Context, text string) ([]byte, error) {
-	const calmnessPrefix = "(calm, composed, friendly tone; speak evenly, without irritation or anger) "
 	const completionSuffix = "!!!"
-	text = calmnessPrefix + text
 	if !strings.HasSuffix(text, completionSuffix) {
 		text += completionSuffix
 	}

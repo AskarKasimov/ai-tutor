@@ -83,3 +83,33 @@ func TestModelAPIClientErrors(t *testing.T) {
 		}
 	})
 }
+
+func TestArbitraryFinishReasonStaysOutOfTheCause(t *testing.T) {
+	const invented = "PRIVATE_STUDENT_ANSWER"
+	for name, content := range map[string]string{"empty content": `null`, "unparsable summary": `"   "`} {
+		t.Run(name, func(t *testing.T) {
+			ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				_, _ = w.Write([]byte(`{"choices":[{"message":{"content":` + content + `},"finish_reason":"` + invented + `"}]}`))
+			}))
+			defer ts.Close()
+			_, err := New(ts.Client(), ts.URL+"/v1", "", 2*time.Second).Synthesize(context.Background(), application.DeterministicReport{})
+			var fe *fault.Error
+			if !errors.As(err, &fe) || fe.Code != "INVALID_MODEL_RESPONSE" || fe.Cause == nil {
+				t.Fatalf("error = %#v", err)
+			}
+			if strings.Contains(fe.Cause.Error(), invented) {
+				t.Fatalf("the cause quotes the model: %q", fe.Cause)
+			}
+		})
+	}
+}
+
+func TestSummaryReportGivesTheModelTheReasonOfAGap(t *testing.T) {
+	const reason = "Не объяснено зануление весов"
+	out := summaryReport(application.DeterministicReport{ConfirmedGaps: []diagnostic.ConfirmedGap{
+		{CompetencyName: "Регуляризация", OutcomeName: "L1 и L2", Advice: "Дополнительно изучить.", FailedCriteria: []string{reason}},
+	}})
+	if len(out.Gaps) != 1 || !strings.Contains(out.Gaps[0].Note, reason) {
+		t.Fatalf("gaps = %+v", out.Gaps)
+	}
+}

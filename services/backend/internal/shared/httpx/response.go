@@ -7,6 +7,7 @@ import (
 	"net/http"
 
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/fault"
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/logx"
 	"go.uber.org/zap"
 )
 
@@ -25,7 +26,7 @@ func Error(ctx context.Context, w http.ResponseWriter, err error) {
 	if errors.Is(ctx.Err(), context.Canceled) {
 		// The browser aborted the request, for example a voice request when
 		// the student starts recording: not an unavailable provider.
-		recordFailure(ctx, "CLIENT_CLOSED_REQUEST", err)
+		recordFailure(ctx, "CLIENT_CLOSED_REQUEST", "", err)
 		w.WriteHeader(StatusClientClosedRequest)
 		return
 	}
@@ -38,8 +39,11 @@ func Error(ctx context.Context, w http.ResponseWriter, err error) {
 	} else if err == error(e) {
 		internalErr = nil
 	}
-	if !recordFailure(ctx, e.Code, internalErr) && internalErr != nil {
-		LoggerFromContext(ctx).Error("request failed", zap.Error(internalErr))
+	if e.Cause != nil {
+		internalErr = e.Cause
+	}
+	if !recordFailure(ctx, e.Code, e.Message, internalErr) && internalErr != nil {
+		logx.From(ctx).Error("request failed", zap.Error(internalErr))
 	}
 	status := http.StatusInternalServerError
 	switch e.Kind {

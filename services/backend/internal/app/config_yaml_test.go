@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"go.uber.org/zap/zapcore"
 )
 
 func writeYAML(t *testing.T, body string) string {
@@ -19,6 +21,7 @@ func writeYAML(t *testing.T, body string) string {
 
 const validBackendYAML = `server:
   listen_address: ":18002"
+logging: {level: warn}
 voice:
   stt: {url: "http://stt.test/transcribe"}
   tts: {url: "http://tts.test/synthesize", seed: 0, cfg_value: 2, inference_timesteps: 20}
@@ -112,5 +115,50 @@ func TestLoadLLMGatewayConfigDoesNotRequireBackendSecrets(t *testing.T) {
 	address, timeout, err := LoadLLMGatewayConfig(writeYAML(t, validBackendYAML))
 	if err != nil || address != "gateway.test:8011" || timeout != 120*time.Second {
 		t.Fatalf("got %q %s %v", address, timeout, err)
+	}
+}
+
+func TestLoadConfigRequiresAKnownLogLevel(t *testing.T) {
+	t.Setenv("BACKEND_DATABASE_URL", "postgres://example/db")
+	t.Setenv("BACKEND_S3_ACCESS_KEY", "access")
+	t.Setenv("BACKEND_S3_SECRET_KEY", "secret")
+	cfg, err := LoadConfig(writeYAML(t, validBackendYAML))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.LogLevel != zapcore.WarnLevel {
+		t.Fatalf("log level = %s", cfg.LogLevel)
+	}
+	if _, err := LoadConfig(writeYAML(t, strings.Replace(validBackendYAML, "logging: {level: warn}\n", "", 1))); err == nil || !strings.Contains(err.Error(), "logging.level") {
+		t.Fatalf("missing level error = %v", err)
+	}
+	if _, err := LoadConfig(writeYAML(t, strings.Replace(validBackendYAML, "level: warn", "level: loud", 1))); err == nil || !strings.Contains(err.Error(), "logging.level") {
+		t.Fatalf("unknown level error = %v", err)
+	}
+}
+
+func TestLoadSpeechAPIOptions(t *testing.T) {
+	t.Setenv("BACKEND_DATABASE_URL", "postgres://example/db")
+	t.Setenv("BACKEND_S3_ACCESS_KEY", "a")
+	t.Setenv("BACKEND_S3_SECRET_KEY", "s")
+	body := strings.Replace(validBackendYAML, `stt: {url: "http://stt.test/transcribe"}`, `stt: {url: "http://stt.test/transcribe", model: multilingual_large_ctc, longform: true}`, 1)
+	body = strings.Replace(body, "inference_timesteps: 20}", "inference_timesteps: 20, use_reference: false, use_prompt: false}", 1)
+	cfg, err := LoadConfig(writeYAML(t, body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.STTModel != "multilingual_large_ctc" || !cfg.STTLongform || cfg.TTSUseReference || cfg.TTSUsePrompt {
+		t.Fatalf("speech options ignored: %+v", cfg)
+	}
+}
+
+func TestVoiceNameSeparatesStyleAndModes(t *testing.T) {
+	a := &App{cfg: Config{TTSSeed: 607, TTSCFGValue: 2, TTSInferenceTimesteps: 20, TTSUseReference: true, TTSUsePrompt: true}}
+	if got := a.voiceName(); got != "seed=607 cfg=2 steps=20 style=none-v1" {
+		t.Fatalf("voice name = %q", got)
+	}
+	a.cfg.TTSUsePrompt = false
+	if a.voiceName() == "seed=607 cfg=2 steps=20 style=none-v1" {
+		t.Fatal("different mode shares voice name")
 	}
 }

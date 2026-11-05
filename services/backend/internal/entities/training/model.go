@@ -28,7 +28,7 @@ type Target struct {
 	OriginalScore    int
 	OriginalMaxScore int
 	LastScore        *int
-	OriginalFeedback []string
+	OriginalFeedback string
 	OriginalCriteria []CriterionResult
 }
 type Exercise struct {
@@ -83,7 +83,7 @@ type Attempt struct {
 	MaxScore         int               `json:"max_score"`
 	Verdict          string            `json:"verdict"`
 	CriterionResults []CriterionResult `json:"criterion_results"`
-	Feedback         []string          `json:"feedback"`
+	Feedback         string            `json:"feedback"`
 	CreatedAt        int64             `json:"created_at"`
 }
 

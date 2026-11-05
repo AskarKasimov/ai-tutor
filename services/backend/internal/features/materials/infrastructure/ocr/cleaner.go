@@ -9,6 +9,7 @@ import (
 	"net/http"
 
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/features/materials/application"
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/httpx"
 )
 
 func (c *Client) Clean(ctx context.Context, markdown, materialID string) (application.CleaningResult, error) {
@@ -22,6 +23,7 @@ func (c *Client) Clean(ctx context.Context, markdown, materialID string) (applic
 		return result, err
 	}
 	req.Header.Set("Content-Type", "application/json")
+	httpx.PropagateTrace(req)
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return result, fmt.Errorf("course-graph cleaning: %w", err)

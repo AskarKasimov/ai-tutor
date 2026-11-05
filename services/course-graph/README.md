@@ -112,6 +112,11 @@ bootstrap один раз инициализирует PDF pipeline и lazy Code
 одного скачивания, а не общий лимит времени OCR). Ход bootstrap логирует кешированные
 байты/модели и время, а URL с подписанными параметрами редактируются.
 
+Логи — JSON в stdout, уровень кода сервиса задаёт `logging.level` в `config/dev.yaml`; библиотеки
+пишут не ниже `info`. Сервис продолжает `trace_id` из заголовка `traceparent` и передаёт его в
+gateway. Запрос пишется как `http request` (проверки готовности и прогресса — на уровне `debug`),
+вызов модели — как `llm call`; текст запроса и ответа (`llm call content`) — только на уровне `debug`.
+
 После успешного сохранения OCR-текста в S3 backend атомарно сохраняет материал
 и задачу в `material_cleaning_jobs`. Фоновый обработчик читает текст из S3 и
 вызывает внутренний `POST /topics/extract` (`{"markdown":"...","material_id":"..."}`). Загрузка не ждёт очистку.
@@ -419,12 +424,12 @@ COURSE_GRAPH_BASE_IMAGE=ai_tutor-ocr:latest docker compose build course-graph
 корень репозитория (`Dockerfile.dockerignore` пропускает только нужные каталоги). По умолчанию базовый образ —
 `python:3.11-slim`; повторное использование локального образа необязательно.
 
-Сквозной smoke-тест на фрагментах датасета создаёт отдельный курс. Датасет не хранится в репозитории (`notebooks/` указан в `.gitignore`), поэтому укажите путь к своей копии:
+Сквозной smoke-тест загружает два связанных PDF в отдельный новый курс, дожидается их обработки и запускает сборку графа. Файлы не хранятся в репозитории, поэтому укажите пути к своим:
 
 ```bash
-uv run --project services/course-graph --locked --extra cpu python services/course-graph/scripts/validate_upload.py --dataset /path/topics_reviewed_v2.json --output /tmp/course-graph-upload
+uv run --project services/course-graph --locked --extra cpu python services/course-graph/scripts/validate_upload.py --pdf /path/first.pdf --pdf /path/second.pdf --output /tmp/course-graph-upload
 ```
 
 Команда выполняется из корня, обращается только к localhost, использует dev TLS
-и проверяет очистку благодарности, источники, связь между разными файлами и готовый
+и проверяет очистку, источники, связь между разными файлами и готовый
 снимок графа. Идентификатор созданного курса сохраняется в отчёте для просмотра.

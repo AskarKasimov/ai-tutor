@@ -51,8 +51,15 @@ func progressPool(t *testing.T) (*pgxpool.Pool, context.Context) {
 
 func TestLearningAudioPreparationReadsOnlyOneActiveRevision(t *testing.T) {
 	pool, ctx := progressPool(t)
+	if _, err := pool.Exec(ctx, `INSERT INTO users(id,email,password_hash,role,created_at) VALUES ('admin','admin@example.test','test','admin',1)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO subjects(id,name,created_at) VALUES ('subject:other','Другой курс',1)`); err != nil {
+		t.Fatal(err)
+	}
 	for revision, competency := range map[int]string{1: "old-competency", 2: "current-competency"} {
-		if _, err := pool.Exec(ctx, `INSERT INTO learning_map_imports(revision,subject_id,imported_at,imported_by,competency_count,constituent_count,outcome_count,task_count,source_format,source_headers) VALUES ($1,'subject:test',1,'admin',1,1,1,1,'paired','[]')`, revision); err != nil {
+		subjectID := map[int]string{1: "subject:other", 2: "subject:test"}[revision]
+		if _, err := pool.Exec(ctx, `INSERT INTO learning_map_imports(revision,subject_id,imported_at,imported_by,competency_count,constituent_count,outcome_count,task_count,source_format,source_headers) VALUES ($1,$2,1,'admin',1,1,1,1,'paired','[]')`, revision, subjectID); err != nil {
 			t.Fatal(err)
 		}
 		if _, err := pool.Exec(ctx, `INSERT INTO learning_competencies(id,name,revision) VALUES ($1,$2,$3)`, competency, competency, revision); err != nil {
@@ -67,7 +74,7 @@ func TestLearningAudioPreparationReadsOnlyOneActiveRevision(t *testing.T) {
 			t.Fatal(err)
 		}
 		assetID := competency + "-asset"
-		if _, err := pool.Exec(ctx, `INSERT INTO learning_audio_assets(id,instruction,object_key,status,bucket,storage_uri,audio_url) VALUES ($1,'Speak this','key',$2,CASE WHEN $2='ready' THEN 'bucket' END,CASE WHEN $2='ready' THEN 's3://bucket/key' END,CASE WHEN $2='ready' THEN '/learn/task-audio/'||$1||'/file' END)`, assetID, map[int]string{1: "pending", 2: "ready"}[revision]); err != nil {
+		if _, err := pool.Exec(ctx, `INSERT INTO learning_audio_assets(id,instruction,object_key,status,bucket,storage_uri,audio_url) VALUES ($1,'Speak this',$1,$2,CASE WHEN $2='ready' THEN 'bucket' END,CASE WHEN $2='ready' THEN 's3://bucket/'||$1 END,CASE WHEN $2='ready' THEN '/learn/task-audio/'||$1||'/file' END)`, assetID, map[int]string{1: "pending", 2: "ready"}[revision]); err != nil {
 			t.Fatal(err)
 		}
 		if _, err := pool.Exec(ctx, `INSERT INTO learning_tasks(id,outcome_id,question,voice_instruction,created_at,audio_asset_id) VALUES ($1,$2,'Question','Speak this',1,$3)`, competency+"-task", outcome, assetID); err != nil {

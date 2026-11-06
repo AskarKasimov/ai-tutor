@@ -18,7 +18,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/audio"
+	"github.com/AskarKasimov/ai-tutor/services/audio"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/fault"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/logx"
 	"go.uber.org/zap"
@@ -127,7 +127,7 @@ func (c *Client) Recognize(ctx context.Context, data []byte, media string) (stri
 	if base != "audio/wav" && base != "audio/x-wav" && base != "audio/wave" {
 		return c.recognize(ctx, data, media)
 	}
-	parts, ok := audio.SplitWAV(data, sttPartSeconds)
+	parts, ok := audio.SplitWAV(data, sttPartSeconds, 100)
 	if !ok || len(parts) == 1 {
 		return c.recognize(ctx, data, media)
 	}

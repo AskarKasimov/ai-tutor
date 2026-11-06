@@ -307,6 +307,34 @@
         },
         "overrides": []
       }
+    },
+    {
+      "id": 11,
+      "title": "Входные запросы и отказы / с",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 0,
+        "y": 40,
+        "w": 24,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (operation, code, reason) (rate(voice_requests_total[5m]))",
+          "legendFormat": "{{operation}} / {{code}} / {{reason}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps"
+        },
+        "overrides": []
+      }
     }
   ]
 }

@@ -152,6 +152,7 @@ STT и TTS вызываются backend через два gRPC-адаптера 
 | `services/frontend/` | Веб-интерфейс. |
 | `services/course-graph/` | Обработка материалов и построение графа. |
 | `services/llm-gateway/` | Доступ к языковым моделям. |
+| `services/audio/` | Общая библиотека WAV: разбор, разбиение и склейка для backend и voice gateway. |
 | `services/voice-gateway/` | Распознавание и синтез речи, очереди и маршрутизация. |
 | `api/` | Контракты API. |
 | `documents/` | Архитектура, концепция и материалы курса. |

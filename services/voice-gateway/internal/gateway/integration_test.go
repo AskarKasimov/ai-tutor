@@ -118,7 +118,7 @@ func TestRedpandaGRPCModelProtocolsAndRestart(t *testing.T) {
 	}
 	engine := makeEngine(blobs)
 	p := &provider.HTTP{Client: model.Client(), STT: map[string]provider.STT{"stt-1": {URL: model.URL + "/stt", Timeout: time.Second}}, TTS: map[string]provider.TTS{"tts-1": {URL: model.URL + "/tts", Timeout: time.Second, Profiles: map[string]provider.Options{"voice": {Seed: 1, CFGValue: 2, InferenceTimesteps: 20}}}}}
-	server := grpc.NewServer(grpc.MaxRecvMsgSize(26<<20), grpc.MaxSendMsgSize(65<<20))
+	server := grpc.NewServer(grpc.MaxRecvMsgSize(26<<20), grpc.MaxSendMsgSize(65<<20), grpc.UnaryInterceptor(Interceptor(16, engine, slog.New(slog.NewTextHandler(io.Discard, nil)))))
 	pb.RegisterVoiceGatewayServer(server, New(engine, p, map[string]string{"voice": "revision"}, 10*time.Second))
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -154,6 +154,9 @@ func TestRedpandaGRPCModelProtocolsAndRestart(t *testing.T) {
 	recorder := httptest.NewRecorder()
 	engine.Metrics(recorder, httptest.NewRequest("GET", "/metrics", nil))
 	if !strings.Contains(recorder.Body.String(), "voice_route_selections_total{operation=\"stt\",model_instance=\"stt-1\"} 2") {
+		t.Fatal(recorder.Body.String())
+	}
+	if !strings.Contains(recorder.Body.String(), `voice_requests_total{operation="stt",code="OK",reason="ok"} 2`) {
 		t.Fatal(recorder.Body.String())
 	}
 	server.Stop()

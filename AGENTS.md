@@ -21,6 +21,7 @@
 | `services/frontend` | [AGENTS.md](services/frontend/AGENTS.md), [README](services/frontend/README.md) | См. AGENTS.md frontend |
 | `services/llm-gateway` | [AGENTS.md](services/llm-gateway/AGENTS.md), [README](services/llm-gateway/README.md), спецификации [HTTP](documents/llm-gateway-spec.md) и [gRPC](documents/llm-gateway-grpc-spec.md) | См. AGENTS.md gateway |
 | `services/voice-gateway` | [README](services/voice-gateway/README.md) | Последовательно из сервиса: `GOWORK=off GOMAXPROCS=2 go test -p 1 -parallel 2 -race ./... -count=1`, `GOWORK=off GOMAXPROCS=2 go vet -p 1 ./...`, `GOWORK=off GOMAXPROCS=2 go build -p 1 -o /tmp/voice-gateway ./cmd/voice-gateway`; интеграция с Redpanda — `TEST_KAFKA_BROKERS` |
+| `services/audio` | [README](services/audio/README.md) | `GOMAXPROCS=2 go test -p 1 -parallel 2 -race ./...`, затем `GOMAXPROCS=2 go vet -p 1 ./...`; проверить backend и voice gateway |
 | `services/shared` | [AGENTS.md](services/shared/AGENTS.md), [README](services/shared/README.md) | См. AGENTS.md shared |
 | `services/course-graph` | [AGENTS.md](services/course-graph/AGENTS.md), [README](services/course-graph/README.md), [api/course-graph.yaml](api/course-graph.yaml) | См. AGENTS.md course-graph |
 | `api` | [api/README](api/README.md) | Из `services/backend`: `bash scripts/generate-openapi.sh` без лишних изменений |

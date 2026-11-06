@@ -152,7 +152,9 @@ CI проверяет повторяемость генерации и вали�
 
 Общий dev-стек запускается из корня через `./dev.sh -d` после настройки локального `.env` с DB/S3 секретами. Нужны Docker Compose и mkcert. Backend читает настройки приложения из `config/dev.yaml`; для локального CLI по умолчанию используется этот путь, а `BACKEND_CONFIG` выбирает другой полный YAML.
 
-Backend импортирует сгенерированный клиент gateway из соседнего модуля `services/shared` (`replace ../shared` в `go.mod`), поэтому Docker собирает его из корня репозитория (`Dockerfile.dockerignore` пропускает только `services/backend` и `services/shared`). Dev-контейнер монтирует оба модуля в `/work/backend` и `/work/shared`, и Air следит за обоими: изменение контракта в `services/shared` тоже пересобирает API. LLM gateway, voice gateway и course-graph входят в общий dev stack; Air следит также за YAML в сервисном каталоге. При изменении YAML процесс автоматически перезапускается внутри контейнера.
+Общий разбор WAV, разбиение и склейка находятся в `services/audio`; backend задаёт правила допустимого входа, а voice gateway использует тот же парсер. Интеграционные фикстуры backend используют настоящий handler/provider voice gateway через его `testkit` с локальными HTTP-моделями и журналом в памяти.
+
+Backend импортирует сгенерированный клиент gateway из соседнего модуля `services/shared` (`replace ../shared` в `go.mod`), поэтому Docker собирает его из корня репозитория (`Dockerfile.dockerignore` пропускает только `services/backend`, `services/shared`, `services/audio` и тестовый модуль voice gateway). Dev-контейнер монтирует backend, shared и audio в `/work/backend`, `/work/shared` и `/work/audio`, а модуль voice gateway — для интеграционных тестов. Air следит за backend, shared и audio: изменение контракта в `services/shared` тоже пересобирает API. LLM gateway, voice gateway и course-graph входят в общий dev stack; Air следит также за YAML в сервисном каталоге. При изменении YAML процесс автоматически перезапускается внутри контейнера.
 
 Для отдельного backend Compose из этой папки:
 

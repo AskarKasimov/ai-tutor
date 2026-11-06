@@ -20,16 +20,10 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/AskarKasimov/ai-tutor/services/voice-gateway/internal/audio"
+	"github.com/AskarKasimov/ai-tutor/services/audio"
+	"github.com/AskarKasimov/ai-tutor/services/voice-gateway/internal/diagnostic"
 )
 
-// Failure contains a safe category, never an upstream response body or URL.
-type Failure struct {
-	Code      codes.Code
-	Uncertain bool
-}
-
-func (e *Failure) Error() string { return "voice upstream failure: " + e.Code.String() }
 func transportFailure(err error, beforeSend bool) error {
 	code := codes.Unavailable
 	if errors.Is(err, context.DeadlineExceeded) {
@@ -42,7 +36,11 @@ func transportFailure(err error, beforeSend bool) error {
 	if errors.Is(err, context.Canceled) {
 		code = codes.Canceled
 	}
-	return &Failure{Code: code, Uncertain: !beforeSend}
+	stage, reason := "upstream", "transport_failure"
+	if beforeSend {
+		stage, reason = "connect", "connection_failed"
+	}
+	return &diagnostic.Error{Code: code, Uncertain: !beforeSend, Stage: stage, Reason: reason}
 }
 func statusCode(err error) codes.Code {
 	if errors.Is(err, context.DeadlineExceeded) {
@@ -77,7 +75,7 @@ func responseFailure(resp *http.Response, stt bool) error {
 			}
 		}
 	}
-	return &Failure{Code: code, Uncertain: resp.StatusCode == http.StatusGatewayTimeout || resp.StatusCode == http.StatusRequestTimeout}
+	return &diagnostic.Error{Code: code, Uncertain: resp.StatusCode == http.StatusGatewayTimeout || resp.StatusCode == http.StatusRequestTimeout, Stage: "upstream", Reason: "http_response", HTTPStatus: resp.StatusCode}
 }
 
 type STT struct {
@@ -141,10 +139,10 @@ func (p *HTTP) Transcribe(ctx context.Context, instance string, data []byte, med
 	parts := [][]byte{data}
 	base, _, _ := mime.ParseMediaType(media)
 	if !cfg.Longform && (base == "audio/wav" || base == "audio/x-wav" || base == "audio/wave") {
-		if audio.TooManyParts(data, 20) {
-			return "", &Failure{Code: codes.InvalidArgument}
+		if audio.TooManyParts(data, 20, 100) {
+			return "", &diagnostic.Error{Code: codes.InvalidArgument, Stage: "validation", Reason: "too_many_audio_parts"}
 		}
-		if split, ok := audio.SplitWAV(data, 20); ok {
+		if split, ok := audio.SplitWAV(data, 20, 100); ok {
 			parts = split
 		}
 	}
@@ -191,7 +189,7 @@ func (p *HTTP) transcribeOnce(ctx context.Context, cfg STT, data []byte, media s
 	}
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 	if err := ctx.Err(); err != nil {
-		return "", &Failure{Code: statusCode(err)}
+		return "", &diagnostic.Error{Code: statusCode(err), Stage: "connect", Reason: "cancelled_before_send"}
 	}
 	response, err := p.do(req)
 	if err != nil {
@@ -203,13 +201,13 @@ func (p *HTTP) transcribeOnce(ctx context.Context, cfg STT, data []byte, media s
 	}
 	payload, err := io.ReadAll(io.LimitReader(response.Body, 8*1024*1024+1))
 	if err != nil {
-		return "", err
+		return "", responseReadFailure(err)
 	}
 	var parsed struct {
 		Text *string `json:"text"`
 	}
 	if len(payload) > 8*1024*1024 || !utf8.Valid(payload) || json.Unmarshal(payload, &parsed) != nil || parsed.Text == nil || strings.ContainsRune(*parsed.Text, 0) {
-		return "", &Failure{Code: codes.Internal}
+		return "", &diagnostic.Error{Code: codes.Internal, Stage: "upstream", Reason: "invalid_response"}
 	}
 	return *parsed.Text, nil
 }
@@ -240,7 +238,7 @@ func (p *HTTP) Synthesize(ctx context.Context, instance, profile, text string) (
 	}
 	req.Header.Set("Content-Type", "application/json")
 	if err := ctx.Err(); err != nil {
-		return nil, &Failure{Code: statusCode(err)}
+		return nil, &diagnostic.Error{Code: statusCode(err), Stage: "connect", Reason: "cancelled_before_send"}
 	}
 	response, err := p.do(req)
 	if err != nil {
@@ -252,10 +250,19 @@ func (p *HTTP) Synthesize(ctx context.Context, instance, profile, text string) (
 	}
 	data, err := io.ReadAll(io.LimitReader(response.Body, 64*1024*1024+1))
 	if err != nil {
-		return nil, err
+		return nil, responseReadFailure(err)
 	}
 	if len(data) > 64*1024*1024 || !audio.ValidWAV(data) {
-		return nil, &Failure{Code: codes.Internal}
+		return nil, &diagnostic.Error{Code: codes.Internal, Stage: "upstream", Reason: "invalid_response"}
 	}
 	return data, nil
+}
+
+func responseReadFailure(err error) error {
+	d := diagnostic.Info(transportFailure(err, false))
+	d.Uncertain = true
+	d.Stage = "upstream_read"
+	d.Reason = "response_body_interrupted"
+	d.HTTPStatus = 200
+	return &d
 }

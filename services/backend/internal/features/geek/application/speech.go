@@ -7,7 +7,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/audio"
+	"github.com/AskarKasimov/ai-tutor/services/audio"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/fault"
 	"golang.org/x/sync/singleflight"
 )

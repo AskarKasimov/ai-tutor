@@ -4,6 +4,7 @@ package scheduler
 import (
 	"context"
 	"errors"
+	"slices"
 	"sync"
 )
 
@@ -111,7 +112,7 @@ func (q *Queue) Submit(ctx context.Context, profile string, call func(context.Co
 		q.mu.Lock()
 		for i, pending := range q.waiting {
 			if pending == j {
-				q.waiting = append(q.waiting[:i], q.waiting[i+1:]...)
+				q.waiting = slices.Delete(q.waiting, i, i+1)
 				break
 			}
 		}
@@ -125,7 +126,7 @@ func (q *Queue) dispatchLocked() {
 	for j := 0; j < len(q.waiting); {
 		pending := q.waiting[j]
 		if pending.ctx.Err() != nil {
-			q.waiting = append(q.waiting[:j], q.waiting[j+1:]...)
+			q.waiting = slices.Delete(q.waiting, j, j+1)
 			continue
 		}
 		chosen := -1
@@ -143,7 +144,7 @@ func (q *Queue) dispatchLocked() {
 			j++
 			continue
 		}
-		q.waiting = append(q.waiting[:j], q.waiting[j+1:]...)
+		q.waiting = slices.Delete(q.waiting, j, j+1)
 		q.instances[chosen].busy++
 		q.next = (chosen + 1) % len(q.instances)
 		id := q.instances[chosen].ID

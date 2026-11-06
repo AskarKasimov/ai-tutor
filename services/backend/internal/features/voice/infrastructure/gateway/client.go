@@ -18,7 +18,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/audio"
+	"github.com/AskarKasimov/ai-tutor/services/audio"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/fault"
 	pb "github.com/AskarKasimov/ai-tutor/services/shared/gen/go/voicegateway/v1"
 	"google.golang.org/grpc/codes"

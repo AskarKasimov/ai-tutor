@@ -2,6 +2,7 @@ FROM golang:1.26-alpine AS dev
 WORKDIR /work/voice-gateway
 RUN GOMAXPROCS=2 go install -p 1 github.com/air-verse/air@v1.67.4
 COPY services/shared /work/shared
+COPY services/audio /work/audio
 COPY services/voice-gateway/go.mod services/voice-gateway/go.sum ./
 RUN GOWORK=off go mod download
 COPY services/voice-gateway/.air.toml ./
@@ -16,6 +17,7 @@ CMD ["air", "-c", ".air.toml"]
 FROM golang:1.26-alpine AS build
 WORKDIR /src/services/voice-gateway
 COPY services/shared /src/services/shared
+COPY services/audio /src/services/audio
 COPY services/voice-gateway/go.mod services/voice-gateway/go.sum ./
 RUN GOWORK=off go mod download
 COPY services/voice-gateway ./

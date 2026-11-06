@@ -11,6 +11,8 @@ import (
 	"syscall"
 )
 
+var ErrPayloadQuota = errors.New("voice payload storage limit exceeded")
+
 var blobName = regexp.MustCompile(`^[a-f0-9]{32}\.(in|out)$`)
 
 type Blobs struct {
@@ -71,7 +73,7 @@ func (b *Blobs) Put(name string, data []byte) error {
 		return err
 	}
 	if b.bytes+int64(len(data)) > b.limit {
-		return errors.New("voice payload storage limit exceeded")
+		return ErrPayloadQuota
 	}
 	file, err := os.CreateTemp(b.dir, ".tmp-")
 	if err != nil {

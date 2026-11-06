@@ -19,7 +19,7 @@ import (
 	"github.com/santhosh-tekuri/jsonschema/v6"
 	"gopkg.in/yaml.v3"
 
-	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/audio"
+	"github.com/AskarKasimov/ai-tutor/services/audio"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/exam"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/httpx"
 )
@@ -188,8 +188,8 @@ func TestOpenAPIResponses(t *testing.T) {
 		}
 	}))
 	defer provider.Close()
-	f.voice.setSTTURL(provider.URL + "/transcribe")
-	f.voice.setTTSURL(provider.URL + "/synthesize")
+	f.voice.SetSTTURL(provider.URL + "/transcribe")
+	f.voice.SetTTSURL(provider.URL + "/synthesize")
 	transcription := upload(f, "/voice/transcriptions", "audio", "answer.wav", "audio/wav", wavBytes(), access)
 	check("POST", "/voice/transcriptions", transcription)
 	var saved struct {

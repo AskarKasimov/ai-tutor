@@ -17,6 +17,9 @@ jobs:
           go-version-file: services/voice-gateway/go.mod
           cache: true
           cache-dependency-path: services/voice-gateway/go.sum
+      - name: Check common audio library
+        working-directory: services/audio
+        run: go test -race ./... && go vet ./...
       - name: Start Redpanda
         working-directory: .
         run: docker compose --env-file .env.example up -d --wait --wait-timeout 120 redpanda

@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/AskarKasimov/ai-tutor/services/voice-gateway/internal/diagnostic"
 	"log/slog"
 	"sync"
 	"time"
@@ -20,19 +21,24 @@ import (
 )
 
 type Job struct {
-	ID        string    `json:"id"`
-	Operation string    `json:"operation"`
-	Hash      string    `json:"hash"`
-	Key       string    `json:"key,omitempty"`
-	Profile   string    `json:"profile,omitempty"`
-	State     string    `json:"state"`
-	Instance  string    `json:"instance,omitempty"`
-	Held      bool      `json:"held,omitempty"`
-	Code      int32     `json:"code,omitempty"`
-	Submitted time.Time `json:"submitted"`
-	Finished  time.Time `json:"finished,omitempty"`
+	ID         string    `json:"id"`
+	Operation  string    `json:"operation"`
+	Hash       string    `json:"hash"`
+	Key        string    `json:"key,omitempty"`
+	Profile    string    `json:"profile,omitempty"`
+	State      string    `json:"state"`
+	Instance   string    `json:"instance,omitempty"`
+	Held       bool      `json:"held,omitempty"`
+	Reason     string    `json:"reason,omitempty"`
+	Stage      string    `json:"stage,omitempty"`
+	HTTPStatus int       `json:"http_status,omitempty"`
+	Code       int32     `json:"code,omitempty"`
+	Submitted  time.Time `json:"submitted"`
+	Finished   time.Time `json:"finished,omitempty"`
 }
 type Engine struct {
+	requestMu sync.Mutex
+	requests  map[string]uint64
 	failed    chan struct{}
 	failOnce  sync.Once
 	workers   sync.WaitGroup
@@ -53,7 +59,7 @@ type Engine struct {
 }
 
 func New(store journal.Store, blobs *journal.Blobs, queues map[string]*scheduler.Queue, retention time.Duration, abort func(string) bool, logger *slog.Logger) *Engine {
-	return &Engine{failed: make(chan struct{}), store: store, blobs: blobs, queues: queues, retention: retention, abort: abort, logger: logger, jobs: map[string]*Job{}, keys: map[string]string{}, done: map[string]chan struct{}{}, selected: map[string]uint64{}, completed: map[string]uint64{}, durations: map[string]*histogram{}}
+	return &Engine{requests: map[string]uint64{}, failed: make(chan struct{}), store: store, blobs: blobs, queues: queues, retention: retention, abort: abort, logger: logger, jobs: map[string]*Job{}, keys: map[string]string{}, done: map[string]chan struct{}{}, selected: map[string]uint64{}, completed: map[string]uint64{}, durations: map[string]*histogram{}}
 }
 func (e *Engine) save(j *Job) error {
 	return e.saveContext(context.Background(), j)
@@ -96,6 +102,7 @@ func (e *Engine) Restore(ctx context.Context) error {
 			changed = true
 			j.State = "failed"
 			j.Code = int32(codes.Aborted)
+			j.Reason, j.Stage = "restored_interrupted", "restore"
 			j.Held = !e.abort(j.Instance)
 			j.Finished = time.Now()
 		}
@@ -103,6 +110,7 @@ func (e *Engine) Restore(ctx context.Context) error {
 			changed = true
 			j.State = "failed"
 			j.Code = int32(codes.Canceled)
+			j.Reason, j.Stage = "restored_cancelled", "restore"
 			j.Finished = time.Now()
 		}
 		if j.Held && e.abort(j.Instance) {
@@ -151,10 +159,10 @@ func (e *Engine) Ready() bool { e.mu.Lock(); defer e.mu.Unlock(); return e.ready
 func (e *Engine) Stop()       { e.mu.Lock(); e.ready = false; e.mu.Unlock() }
 func (e *Engine) resultLocked(j *Job) scheduler.Result {
 	if j == nil {
-		return scheduler.Result{Err: status.Error(codes.NotFound, "voice result expired")}
+		return scheduler.Result{Err: diagnostic.New(codes.NotFound, "storage", "result_expired")}
 	}
 	if j.State != "succeeded" {
-		return scheduler.Result{Err: status.Error(codes.Code(j.Code), "voice task failed")}
+		return scheduler.Result{Err: &diagnostic.Error{Code: codes.Code(j.Code), Stage: j.Stage, Reason: j.Reason, HTTPStatus: j.HTTPStatus}}
 	}
 	data, err := e.blobs.Get(j.ID+".out", 65<<20)
 	if err != nil {
@@ -176,10 +184,11 @@ func (e *Engine) Submit(ctx context.Context, op, profile, key string, input []by
 	e.mu.Lock()
 	if !e.ready {
 		e.mu.Unlock()
-		return scheduler.Result{Err: status.Error(codes.Unavailable, "voice gateway not ready")}, ""
+		return scheduler.Result{Err: diagnostic.New(codes.Unavailable, "admission", "gateway_not_ready")}, ""
 	}
 	if id, ok := e.keys[op+"/"+keyHash]; keyHash != "" && ok {
 		j := e.jobs[id]
+		diagnostic.SetID(ctx, id)
 		if j.Hash != hashString {
 			e.mu.Unlock()
 			return scheduler.Result{Err: status.Error(codes.AlreadyExists, "idempotency key conflict")}, id
@@ -208,15 +217,19 @@ func (e *Engine) Submit(ctx context.Context, op, profile, key string, input []by
 		e.mu.Unlock()
 		return scheduler.Result{Err: err}, ""
 	}
-	id := hex.EncodeToString(idBytes)
+	id := diagnostic.ID(ctx)
+	if id == "" {
+		id = hex.EncodeToString(idBytes)
+	}
+	diagnostic.SetID(ctx, id)
 	j := &Job{ID: id, Operation: op, Profile: profile, Hash: hashString, Key: keyHash, State: "queued", Submitted: time.Now()}
 	if err := e.blobs.Put(id+".in", input); err != nil {
 		e.mu.Unlock()
-		return scheduler.Result{Err: status.Error(codes.ResourceExhausted, "voice payload storage unavailable")}, id
+		return scheduler.Result{Err: payloadError(err)}, id
 	}
 	if err := e.save(j); err != nil {
 		e.mu.Unlock()
-		return scheduler.Result{Err: status.Error(codes.Unavailable, "voice queue unavailable")}, id
+		return scheduler.Result{Err: diagnostic.New(codes.Unavailable, "journal", "queue_write")}, id
 	}
 	e.jobs[id] = j
 	e.done[id] = make(chan struct{})
@@ -229,7 +242,7 @@ func (e *Engine) Submit(ctx context.Context, op, profile, key string, input []by
 		e.mu.Lock()
 		if !e.ready {
 			e.mu.Unlock()
-			return scheduler.Result{Err: status.Error(codes.Unavailable, "voice gateway not ready")}
+			return scheduler.Result{Err: diagnostic.New(codes.Unavailable, "admission", "gateway_not_ready")}
 		}
 		e.workers.Add(1)
 		defer e.workers.Done()
@@ -238,7 +251,7 @@ func (e *Engine) Submit(ctx context.Context, op, profile, key string, input []by
 		j.Held = true
 		if err := e.save(j); err != nil {
 			e.mu.Unlock()
-			return scheduler.Result{Err: status.Error(codes.Unavailable, "voice state unavailable"), HoldSlot: true}
+			return scheduler.Result{Err: diagnostic.New(codes.Unavailable, "journal", "running_write"), HoldSlot: true}
 		}
 		e.selected[op+"/"+instance]++
 		e.observe(op, "queue_wait", time.Since(j.Submitted).Seconds())
@@ -260,7 +273,7 @@ func (e *Engine) Submit(ctx context.Context, op, profile, key string, input []by
 			if !ok {
 				r.Err = status.Error(codes.Internal, "invalid voice result")
 			} else if err := e.blobs.Put(id+".out", bytes); err != nil {
-				r.Err = status.Error(codes.Unavailable, "voice result storage unavailable")
+				r.Err = diagnostic.New(codes.Unavailable, "storage", "result_write")
 			}
 		}
 		if r.Err == nil {
@@ -270,8 +283,10 @@ func (e *Engine) Submit(ctx context.Context, op, profile, key string, input []by
 			j.State = "failed"
 			j.Code = int32(errorCode(r.Err))
 		}
+		detail := diagnostic.Info(r.Err)
+		j.Reason, j.Stage, j.HTTPStatus = detail.Reason, detail.Stage, detail.HTTPStatus
 		if err := e.save(j); err != nil {
-			r.Err = status.Error(codes.Unavailable, "voice result not committed")
+			r.Err = diagnostic.New(codes.Unavailable, "journal", "result_commit")
 			r.HoldSlot = true
 		} else {
 			e.finishLocked(j)
@@ -279,13 +294,23 @@ func (e *Engine) Submit(ctx context.Context, op, profile, key string, input []by
 		}
 		e.observe(op, "upstream", elapsed.Seconds())
 		e.completed[op+"/"+errorCode(r.Err).String()]++
-		e.logger.Log(context.Background(), logLevel(r.Err), "voice upstream call", slog.String("gateway_request_id", id), slog.String("operation", op), slog.String("instance", instance), slog.String("code", errorCode(r.Err).String()), slog.Duration("duration", elapsed), slog.Bool("slot_held", j.Held))
+		attrs := []slog.Attr{slog.String("gateway_request_id", id), slog.String("trace_id", diagnostic.TraceID(callCtx)), slog.String("operation", op), slog.String("instance", instance), slog.Duration("duration", elapsed), slog.Bool("slot_held", r.HoldSlot)}
+		attrs = append(attrs, diagnostic.Fields(r.Err)...)
+		e.logger.LogAttrs(callCtx, logLevel(r.Err), "voice upstream call", attrs...)
 		return r
 	})
+	if errors.Is(result.Err, scheduler.ErrQueueFull) {
+		result.Err = diagnostic.New(codes.ResourceExhausted, "queue", "queue_full")
+	}
+	if errors.Is(result.Err, scheduler.ErrNoCompatibleInstance) {
+		result.Err = diagnostic.New(codes.Unavailable, "queue", "no_compatible_model")
+	}
 	e.mu.Lock()
 	if j.State == "queued" {
 		j.State = "failed"
 		j.Code = int32(errorCode(result.Err))
+		detail := diagnostic.Info(result.Err)
+		j.Reason, j.Stage, j.HTTPStatus = detail.Reason, detail.Stage, detail.HTTPStatus
 		j.Finished = time.Now()
 		if err := e.save(j); err == nil {
 			e.finishLocked(j)
@@ -403,3 +428,11 @@ func (e *Engine) ReleaseHeld(instance string) error {
 
 func (e *Engine) failLocked()             { e.ready = false; e.failOnce.Do(func() { close(e.failed) }) }
 func (e *Engine) Failed() <-chan struct{} { return e.failed }
+
+func payloadError(err error) error {
+	reason := "payload_write"
+	if errors.Is(err, journal.ErrPayloadQuota) {
+		reason = "payload_quota"
+	}
+	return diagnostic.New(codes.ResourceExhausted, "storage", reason)
+}

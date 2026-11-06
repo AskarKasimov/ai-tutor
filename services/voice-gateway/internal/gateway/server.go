@@ -4,15 +4,15 @@ package gateway
 import (
 	"context"
 	"errors"
+	"github.com/AskarKasimov/ai-tutor/services/voice-gateway/internal/diagnostic"
 	"mime"
 	"strings"
 	"time"
 	"unicode/utf8"
 
+	"github.com/AskarKasimov/ai-tutor/services/audio"
 	pb "github.com/AskarKasimov/ai-tutor/services/shared/gen/go/voicegateway/v1"
-	"github.com/AskarKasimov/ai-tutor/services/voice-gateway/internal/audio"
 	"github.com/AskarKasimov/ai-tutor/services/voice-gateway/internal/execution"
-	"github.com/AskarKasimov/ai-tutor/services/voice-gateway/internal/provider"
 	"github.com/AskarKasimov/ai-tutor/services/voice-gateway/internal/scheduler"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -73,7 +73,8 @@ func (s *Server) Transcribe(ctx context.Context, req *pb.TranscribeRequest) (*pb
 	}
 	switch media {
 	case "audio/wav", "audio/x-wav", "audio/wave":
-		if !audio.ValidWAV(req.Audio) {
+		info, valid := audio.InspectWAV(req.Audio)
+		if !valid || info.SampleRate < 8000 || info.SampleRate > 192000 {
 			return nil, status.Error(codes.InvalidArgument, "invalid WAV")
 		}
 	case "audio/ogg", "application/ogg", "audio/webm", "video/webm":
@@ -149,7 +150,7 @@ func (s *Server) Synthesize(ctx context.Context, req *pb.SynthesizeRequest) (*pb
 }
 func failure(err error) scheduler.Result {
 	held := errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
-	var upstream *provider.Failure
+	var upstream *diagnostic.Error
 	if errors.As(err, &upstream) {
 		held = upstream.Uncertain
 	}
@@ -171,7 +172,7 @@ func mapError(err error) error {
 	if status.Code(err) != codes.Unknown {
 		return err
 	}
-	var upstream *provider.Failure
+	var upstream *diagnostic.Error
 	if errors.As(err, &upstream) {
 		return status.Error(upstream.Code, "voice model failed")
 	}

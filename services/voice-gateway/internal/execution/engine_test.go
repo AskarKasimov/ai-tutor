@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/AskarKasimov/ai-tutor/services/voice-gateway/internal/diagnostic"
 	"io"
 	"log/slog"
 	"net/http/httptest"
@@ -271,7 +272,7 @@ func TestCancelAfterAssignmentReleasesSlot(t *testing.T) {
 	p := provider.HTTP{STT: map[string]provider.STT{"one": {URL: "http://127.0.0.1:1", Timeout: time.Second}}}
 	e.Submit(ctx, "stt", "", "", []byte("audio"), func(string) {}, func(ctx context.Context, id string) scheduler.Result {
 		_, err := p.Transcribe(ctx, id, []byte("audio"), "audio/ogg")
-		f, ok := err.(*provider.Failure)
+		f, ok := err.(*diagnostic.Error)
 		if !ok {
 			return scheduler.Result{Err: err, HoldSlot: true}
 		}

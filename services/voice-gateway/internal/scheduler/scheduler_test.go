@@ -151,3 +151,46 @@ func TestParallelModelsAndQueueLimit(t *testing.T) {
 		}
 	}
 }
+
+func TestCancelledQueueClearsBackingArrayReferences(t *testing.T) {
+	q, _ := New([]Instance{{ID: "model", Slots: 1}}, 8)
+	if err := q.RestoreHeld("model", 1); err != nil {
+		t.Fatal(err)
+	}
+	cancels := []context.CancelFunc{}
+	done := make(chan struct{}, 4)
+	for i := 0; i < 4; i++ {
+		ctx, cancel := context.WithCancel(context.Background())
+		cancels = append(cancels, cancel)
+		data := make([]byte, 8<<20)
+		go func() {
+			q.Submit(ctx, "", func(context.Context, string) Result { return Result{Value: data} })
+			done <- struct{}{}
+		}()
+		deadline := time.Now().Add(time.Second)
+		for q.Stats().Waiting != i+1 && time.Now().Before(deadline) {
+			time.Sleep(time.Millisecond)
+		}
+		if q.Stats().Waiting != i+1 {
+			t.Fatal("request did not queue")
+		}
+	}
+	for i := len(cancels) - 1; i >= 0; i-- {
+		cancels[i]()
+		select {
+		case <-done:
+		case <-time.After(time.Second):
+			t.Fatal("cancel did not return")
+		}
+	}
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	if len(q.waiting) != 0 {
+		t.Fatal("queue not empty")
+	}
+	for _, pending := range q.waiting[:cap(q.waiting)] {
+		if pending != nil {
+			t.Fatal("removed callback retained in backing array")
+		}
+	}
+}

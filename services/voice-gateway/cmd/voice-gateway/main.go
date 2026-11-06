@@ -11,8 +11,6 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
-	"regexp"
-	"strings"
 	"syscall"
 	"time"
 
@@ -22,9 +20,6 @@ import (
 	"github.com/AskarKasimov/ai-tutor/services/voice-gateway/internal/gateway"
 	"github.com/AskarKasimov/ai-tutor/services/voice-gateway/internal/journal"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/metadata"
-	"google.golang.org/grpc/status"
 )
 
 func main() {
@@ -123,20 +118,7 @@ func run() error {
 	for id, v := range cfg.Voices {
 		voices[id] = v.Revision()
 	}
-	tokens := make(chan struct{}, cfg.MaxConnections)
-	rpc := grpc.NewServer(grpc.MaxRecvMsgSize(26<<20), grpc.MaxSendMsgSize(65<<20), grpc.UnaryInterceptor(func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
-		select {
-		case tokens <- struct{}{}:
-			defer func() { <-tokens }()
-		default:
-			return nil, status.Error(codes.ResourceExhausted, "voice connection limit")
-		}
-		started := time.Now()
-		response, err := handler(ctx, req)
-		op := strings.TrimPrefix(info.FullMethod, "/voicegateway.v1.VoiceGateway/")
-		logger.Log(ctx, requestLevel(err), "voice gateway request", slog.String("operation", op), slog.String("trace_id", traceID(ctx)), slog.String("code", status.Code(err).String()), slog.Duration("duration", time.Since(started)))
-		return response, err
-	}))
+	rpc := grpc.NewServer(grpc.MaxRecvMsgSize(26<<20), grpc.MaxSendMsgSize(65<<20), grpc.UnaryInterceptor(gateway.Interceptor(cfg.MaxConnections, engine, logger)))
 	pb.RegisterVoiceGatewayServer(rpc, gateway.New(engine, provider, voices, cfg.RequestTimeout.Duration))
 	listener, err := net.Listen("tcp", cfg.GRPCAddress)
 	if err != nil {
@@ -222,25 +204,4 @@ func run() error {
 		return nil
 	}
 	return err
-}
-
-var trace = regexp.MustCompile(`^00-([0-9a-f]{32})-[0-9a-f]{16}-0[01]$`)
-
-func traceID(ctx context.Context) string {
-	md, _ := metadata.FromIncomingContext(ctx)
-	values := md.Get("traceparent")
-	if len(values) != 1 {
-		return ""
-	}
-	parts := trace.FindStringSubmatch(values[0])
-	if len(parts) != 2 {
-		return ""
-	}
-	return parts[1]
-}
-func requestLevel(err error) slog.Level {
-	if err == nil || status.Code(err) == codes.Canceled {
-		return slog.LevelInfo
-	}
-	return slog.LevelWarn
 }

@@ -2,6 +2,7 @@ package execution
 
 import (
 	"fmt"
+	"github.com/AskarKasimov/ai-tutor/services/voice-gateway/internal/diagnostic"
 	"net/http"
 	"sort"
 	"strings"
@@ -30,6 +31,12 @@ func (e *Engine) observe(op, kind string, value float64) {
 		}
 	}
 }
+func (e *Engine) RecordRequest(op string, err error) {
+	d := diagnostic.Info(err)
+	e.requestMu.Lock()
+	defer e.requestMu.Unlock()
+	e.requests[op+"/"+d.Code.String()+"/"+d.Reason]++
+}
 func (e *Engine) Metrics(w http.ResponseWriter, r *http.Request) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -50,6 +57,18 @@ func (e *Engine) Metrics(w http.ResponseWriter, r *http.Request) {
 			fmt.Fprintf(w, "voice_instance_busy{operation=%q,model_instance=%q} %d\nvoice_instance_slots{operation=%q,model_instance=%q} %d\nvoice_instance_held{operation=%q,model_instance=%q} %d\n", op, in.ID, in.Busy, op, in.ID, in.Slots, op, in.ID, held)
 		}
 	}
+	e.requestMu.Lock()
+	fmt.Fprintln(w, "# TYPE voice_requests_total counter")
+	requestKeys := make([]string, 0, len(e.requests))
+	for key := range e.requests {
+		requestKeys = append(requestKeys, key)
+	}
+	sort.Strings(requestKeys)
+	for _, key := range requestKeys {
+		parts := strings.SplitN(key, "/", 3)
+		fmt.Fprintf(w, "voice_requests_total{operation=%q,code=%q,reason=%q} %d\n", parts[0], parts[1], parts[2], e.requests[key])
+	}
+	e.requestMu.Unlock()
 	fmt.Fprintln(w, "# TYPE voice_route_selections_total counter")
 	selections := make([]string, 0, len(e.selected))
 	for key := range e.selected {

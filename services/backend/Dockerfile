@@ -6,6 +6,8 @@ FROM golang:1.26-alpine AS dev
 WORKDIR /work/backend
 RUN go install github.com/air-verse/air@v1.67.4
 COPY services/shared /work/shared
+COPY services/audio /work/audio
+COPY services/voice-gateway /work/voice-gateway
 COPY services/backend/go.mod services/backend/go.sum ./
 RUN go mod download
 COPY services/backend/.air.toml ./
@@ -14,6 +16,8 @@ CMD ["air", "-c", ".air.toml"]
 FROM golang:1.26-alpine AS build
 WORKDIR /src
 COPY services/shared /shared
+COPY services/audio /audio
+COPY services/voice-gateway/go.mod services/voice-gateway/go.sum /voice-gateway/
 COPY services/backend/go.mod services/backend/go.sum ./
 RUN go mod download
 COPY services/backend/cmd ./cmd

@@ -24,3 +24,7 @@ require (
 )
 
 replace github.com/AskarKasimov/ai-tutor/services/shared => ../shared
+
+require github.com/AskarKasimov/ai-tutor/services/audio v0.0.0
+
+replace github.com/AskarKasimov/ai-tutor/services/audio => ../audio

@@ -63,7 +63,7 @@ func TestVoiceTranscriptionPersistsOwnerAndUsesLongform(t *testing.T) {
 		httpx.JSON(w, 200, map[string]any{"text": "Ответ ученика.", "model": "v3_e2e_rnnt", "segments": []any{}})
 	}))
 	defer provider.Close()
-	f.voice.setSTTURL(provider.URL + "/transcribe")
+	f.voice.SetSTTURL(provider.URL + "/transcribe")
 	w := upload(f, "/voice/transcriptions", "audio", "voice.wav", "audio/wav", wav, access)
 	if w.Code != 200 {
 		t.Fatalf("STT: %d %s", w.Code, w.Body.String())
@@ -103,8 +103,8 @@ func TestVoiceSynthesisWAVAndUnicodeValidation(t *testing.T) {
 		_, _ = w.Write(wav)
 	}))
 	defer provider.Close()
-	f.voice.setTTSURL(provider.URL + "/synthesize")
-	f.voice.setModes(true, false)
+	f.voice.SetTTSURL(provider.URL + "/synthesize")
+	f.voice.SetModes(true, false)
 	w := f.request("POST", "/voice/syntheses", `{"text":"`+strings.Repeat("я", 500)+`"}`, access)
 	if w.Code != 200 || w.Header().Get("Content-Type") != "audio/wav" || !bytes.Equal(w.Body.Bytes(), wav) {
 		t.Fatalf("TTS: %d %s", w.Code, w.Body.String())
@@ -154,7 +154,7 @@ func TestVoiceProviderFailuresNeverPersist(t *testing.T) {
 			w.WriteHeader(tc.status)
 			_, _ = io.WriteString(w, tc.body)
 		}))
-		f.voice.setSTTURL(server.URL + "/transcribe")
+		f.voice.SetSTTURL(server.URL + "/transcribe")
 		w := upload(f, "/voice/transcriptions", "audio", "voice.wav", "audio/wav", wavBytes(), access)
 		requireCode(t, w, tc.want, tc.code)
 		if strings.Contains(w.Body.String(), "private model") {
@@ -171,8 +171,8 @@ func TestVoiceProviderFailuresNeverPersist(t *testing.T) {
 		_, _ = io.Copy(io.Discard, r.Body)
 		<-r.Context().Done()
 	}))
-	f.voice.setSTTURL(server.URL + "/transcribe")
-	f.voice.setTTSURL(server.URL + "/synthesize")
+	f.voice.SetSTTURL(server.URL + "/transcribe")
+	f.voice.SetTTSURL(server.URL + "/synthesize")
 	voiceTimeout := f.app.cfg.VoiceTimeout
 	f.app.cfg.VoiceTimeout = 20 * time.Millisecond
 	requireCode(t, upload(f, "/voice/transcriptions", "audio", "voice.wav", "audio/wav", wavBytes(), access), 504, "PROCESSING_TIMEOUT")
@@ -208,7 +208,7 @@ func TestVoiceRejectsInvalidTTSOutput(t *testing.T) {
 			w.WriteHeader(tc.status)
 			_, _ = w.Write(tc.body)
 		}))
-		f.voice.setTTSURL(server.URL + "/synthesize")
+		f.voice.SetTTSURL(server.URL + "/synthesize")
 		requireCode(t, f.request("POST", "/voice/syntheses", `{"text":"Вопрос"}`, access), tc.want, tc.code)
 		server.Close()
 	}

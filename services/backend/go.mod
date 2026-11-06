@@ -21,9 +21,13 @@ require (
 )
 
 require (
+	github.com/klauspost/compress v1.20.3 // indirect
+	github.com/pierrec/lz4/v4 v4.1.33 // indirect
 	github.com/richardlehane/mscfb v1.0.7 // indirect
 	github.com/richardlehane/msoleps v1.0.6 // indirect
 	github.com/tiendc/go-deepcopy v1.7.2 // indirect
+	github.com/twmb/franz-go v1.22.2 // indirect
+	github.com/twmb/franz-go/pkg/kmsg v1.15.0 // indirect
 	github.com/xuri/efp v0.0.1 // indirect
 	github.com/xuri/nfp v0.0.2-0.20250530014748-2ddeb826f9a9 // indirect
 	golang.org/x/net v0.58.0 // indirect
@@ -52,3 +56,11 @@ require (
 )
 
 replace github.com/AskarKasimov/ai-tutor/services/shared => ../shared
+
+require github.com/AskarKasimov/ai-tutor/services/audio v0.0.0
+
+replace github.com/AskarKasimov/ai-tutor/services/audio => ../audio
+
+require github.com/AskarKasimov/ai-tutor/services/voice-gateway v0.0.0
+
+replace github.com/AskarKasimov/ai-tutor/services/voice-gateway => ../voice-gateway

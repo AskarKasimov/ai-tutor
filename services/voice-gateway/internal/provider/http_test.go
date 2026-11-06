@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/json"
+	"github.com/AskarKasimov/ai-tutor/services/voice-gateway/internal/diagnostic"
 	"google.golang.org/grpc/codes"
 	"net"
 	"net/http"
@@ -69,11 +70,11 @@ func TestExistingModelProtocols(t *testing.T) {
 }
 
 func TestProxyTimeoutDoesNotProveExecutionStopped(t *testing.T) {
-	failure := responseFailure(&http.Response{StatusCode: http.StatusGatewayTimeout}, false).(*Failure)
+	failure := responseFailure(&http.Response{StatusCode: http.StatusGatewayTimeout}, false).(*diagnostic.Error)
 	if !failure.Uncertain {
 		t.Fatal("proxy timeout incorrectly released model slot")
 	}
-	unavailable := responseFailure(&http.Response{StatusCode: http.StatusServiceUnavailable}, false).(*Failure)
+	unavailable := responseFailure(&http.Response{StatusCode: http.StatusServiceUnavailable}, false).(*diagnostic.Error)
 	if unavailable.Uncertain {
 		t.Fatal("explicit unavailable response held slot")
 	}
@@ -84,11 +85,11 @@ func TestCancelledBeforeSendDoesNotHoldSlot(t *testing.T) {
 	cancel()
 	p := HTTP{STT: map[string]STT{"stt": {URL: "http://localhost/stt", Timeout: time.Second}}, TTS: map[string]TTS{"tts": {URL: "http://localhost/tts", Timeout: time.Second, Profiles: map[string]Options{"voice": {}}}}}
 	_, err := p.Transcribe(ctx, "stt", []byte("audio"), "audio/ogg")
-	if f, ok := err.(*Failure); !ok || f.Uncertain || f.Code != codes.Canceled {
+	if f, ok := err.(*diagnostic.Error); !ok || f.Uncertain || f.Code != codes.Canceled {
 		t.Fatalf("STT: %v", err)
 	}
 	_, err = p.Synthesize(ctx, "tts", "voice", "text")
-	if f, ok := err.(*Failure); !ok || f.Uncertain || f.Code != codes.Canceled {
+	if f, ok := err.(*diagnostic.Error); !ok || f.Uncertain || f.Code != codes.Canceled {
 		t.Fatalf("TTS: %v", err)
 	}
 }
@@ -117,7 +118,7 @@ func TestCancellationDuringDialDoesNotHoldSlot(t *testing.T) {
 			cancel()
 			select {
 			case err := <-done:
-				if f, ok := err.(*Failure); !ok || f.Uncertain || f.Code != codes.Canceled {
+				if f, ok := err.(*diagnostic.Error); !ok || f.Uncertain || f.Code != codes.Canceled {
 					t.Fatalf("cancellation during dial: %v", err)
 				}
 			case <-time.After(time.Second):
@@ -150,7 +151,7 @@ func TestCancellationAfterSendKeepsSlot(t *testing.T) {
 			cancel()
 			select {
 			case err := <-done:
-				if f, ok := err.(*Failure); !ok || !f.Uncertain || f.Code != codes.Canceled {
+				if f, ok := err.(*diagnostic.Error); !ok || !f.Uncertain || f.Code != codes.Canceled {
 					t.Fatalf("cancellation after sending request: %v", err)
 				}
 			case <-time.After(time.Second):

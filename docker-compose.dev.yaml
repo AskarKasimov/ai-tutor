@@ -4,7 +4,9 @@ services:
       target: dev
     volumes:
       - ./services/backend:/work/backend
+      - ./services/voice-gateway:/work/voice-gateway:ro
       - ./services/shared:/work/shared:ro
+      - ./services/audio:/work/audio:ro
       - backend_go_modules:/go/pkg/mod
       - backend_go_build:/root/.cache/go-build
       - backend_dev_bin:/work/backend/.air
@@ -34,6 +36,7 @@ services:
     command: ["air", "-c", ".air.toml"]
     volumes: !override
       - ./services/voice-gateway:/work/voice-gateway
+      - ./services/audio:/work/audio:ro
       - ./services/shared:/work/shared:ro
       - voice_gateway_data:/var/lib/voice-gateway
       - voice_go_modules:/go/pkg/mod

@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"github.com/AskarKasimov/ai-tutor/services/voice-gateway/testkit"
 	"io"
 	"mime/multipart"
 	"net/http"
@@ -53,7 +54,7 @@ func newFixtureWithRealPasswords(t *testing.T) *fixture {
 }
 
 type fixture struct {
-	voice        *fixtureVoice
+	voice        *testkit.Fixture
 	app          *App
 	pool         *pgxpool.Pool
 	handler      http.Handler

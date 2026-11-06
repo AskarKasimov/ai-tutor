@@ -58,7 +58,8 @@ jobs:
                 services/s3/*) backend=true ;;
                 services/course-graph/*) backend=true ;;
                 services/shared/*) gateway=true; backend=true; voice=true ;;
-                services/voice-gateway/*|.github/workflows/voice-gateway-ci.yaml) voice=true ;;
+                services/audio/*) backend=true; voice=true ;;
+                services/voice-gateway/*|.github/workflows/voice-gateway-ci.yaml) voice=true; backend=true ;;
                 services/llm-gateway/*|.github/workflows/gateway-ci.yaml) gateway=true ;;
                 .dockerignore) gateway=true; voice=true ;;
                 .github/*|api/*|docker-compose*.yaml|services/postgresql/*|services/caddy/*|dev.sh|.env.example)

@@ -1,6 +1,7 @@
 package gateway
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -157,7 +158,7 @@ func repairCases() []repairCase {
 		{name: "finish", status: "expired", trigger: func(t *testing.T, s *Service) (string, int) {
 			j := runningJob(s, "j", time.Now().Add(-time.Second))
 			j.SlotHeld = false
-			if s.finish(j, submitResult{504, errorBody("gateway_timeout", "request_deadline_exceeded", "LLM request deadline exceeded.")}, "expired") {
+			if s.finish(j, submitResult{504, errorBody("gateway_timeout", "request_deadline_exceeded", "LLM request deadline exceeded.")}, "expired") != finishFailed {
 				t.Fatal("finish succeeded while the write fails")
 			}
 			s.releaseSlot(j) // dispatch and execute release it unconditionally
@@ -371,5 +372,132 @@ func TestFailedRepairKeepsReadinessOffAcrossTicks(t *testing.T) {
 	s.readinessTick(context.Background(), nil)
 	if !s.Ready() {
 		t.Fatal("gateway did not recover once the broker answered and the write worked")
+	}
+}
+
+// queuedPastDeadline is a waiting job whose deadline has passed and whose only
+// client is gone.
+func queuedPastDeadline(s *Service, id string) {
+	q := schedulerJob(id, 50, false)
+	q.SubmittedAt, q.Deadline = time.Now().Add(-time.Minute), time.Now().Add(-time.Second)
+	q.ClientID, q.IdempotencyKey = "internal", "key-"+id
+	s.mu.Lock()
+	s.jobs[id] = q
+	s.keys[identity("internal", "key-"+id)] = id
+	s.cancelled[id] = true
+	s.mu.Unlock()
+}
+
+func expiredOutcome(j durableJob) durableJob {
+	j.Status, j.FinishedAt = "expired", time.Now()
+	j.Error = &storedError{Status: 504, Type: "gateway_timeout", Code: "request_deadline_exceeded", Message: "LLM request deadline exceeded."}
+	return j
+}
+
+// The deadline and the cancellation of a waiting job fail to be stored in the
+// same moment. Whatever the order of the two repairs, the cancellation is what
+// ends up stored, and the gateway stays ready afterwards.
+func TestCancellationRepairSurvivesARepairOfTheDeadline(t *testing.T) {
+	for _, order := range []string{"cancellation first", "deadline first"} {
+		t.Run(order, func(t *testing.T) {
+			s, stub := repairFixture(t)
+			stub.setFail(true)
+			queuedPastDeadline(s, "j")
+			j := s.job("j")
+			expired := expiredOutcome(j)
+			if order == "cancellation first" {
+				s.persistCancellation("j", "request_canceled")
+				s.registerStateRepair("finish", &expired, false, false, errors.New("broker unavailable"))
+			} else {
+				s.registerStateRepair("finish", &expired, false, false, errors.New("broker unavailable"))
+				s.persistCancellation("j", "request_canceled")
+			}
+			s.mu.Lock()
+			n := len(s.repairs)
+			s.mu.Unlock()
+			if n != 1 {
+				t.Fatalf("repairs = %d, want one", n)
+			}
+			stub.setFail(false)
+			for i := 0; i < 4; i++ {
+				s.readinessTick(context.Background(), nil)
+				s.expireQueued(time.Now())
+				if !s.Ready() {
+					t.Fatalf("tick %d: gateway is not ready; the repair must end once the write works", i)
+				}
+			}
+			written := stub.written("j")
+			if len(written) != 1 || written[0].Status != "failed" || written[0].Error == nil || written[0].Error.Code != "request_canceled" {
+				t.Fatalf("written states = %+v, want only the cancellation", written)
+			}
+			stored := s.job("j")
+			if stored.Status != "failed" || stored.Error == nil || stored.Error.Code != "request_canceled" {
+				t.Fatalf("job = %+v, want the cancellation", stored)
+			}
+			if c := completionFromJob(stored); c.status != 409 || !bytes.Contains(c.body, []byte("request_canceled")) {
+				t.Fatalf("retry of the key = (%d, %s), want 409 request_canceled", c.status, c.body)
+			}
+			if got := s.slots(); got != 1 {
+				t.Fatalf("slots = %d, want 1", got)
+			}
+		})
+	}
+}
+
+// A terminal write refused because the job is cancelled is not a failed write:
+// the cancellation (its own path or its repair) stores the outcome.
+func TestFinishRefusedByACancellationRegistersNoRepair(t *testing.T) {
+	s, stub := repairFixture(t)
+	stub.setFail(true)
+	queuedPastDeadline(s, "j")
+	expired := s.job("j")
+	if got := s.finish(&expired, submitResult{504, errorBody("gateway_timeout", "request_deadline_exceeded", "x")}, "expired"); got != finishSuperseded {
+		t.Fatalf("finish = %v, want finishSuperseded", got)
+	}
+	s.mu.Lock()
+	n, uncertain := len(s.repairs), s.stateUncertain
+	_, hasEphemeral := s.ephemeral["j"]
+	s.mu.Unlock()
+	if n != 0 || uncertain || hasEphemeral || !s.Ready() {
+		t.Fatalf("repairs=%d uncertain=%v ephemeral=%v ready=%v, want none and ready", n, uncertain, hasEphemeral, s.Ready())
+	}
+	// expireQueued leaves the job to its cancellation instead of looping on it.
+	s.expireQueued(time.Now())
+	if st := s.job("j").Status; st != "queued" {
+		t.Fatalf("status = %s, want queued until the cancellation is stored", st)
+	}
+	if !s.Ready() {
+		t.Fatal("expireQueued made the gateway unready")
+	}
+}
+
+// A repair refused because of a cancellation that is not stored yet turns into
+// the cancellation instead of being dropped.
+func TestSupersededRepairKeepsAnUnstoredCancellation(t *testing.T) {
+	s, stub := repairFixture(t)
+	stub.setFail(true)
+	q := schedulerJob("j", 50, false)
+	q.SubmittedAt, q.Deadline = time.Now(), time.Now().Add(time.Hour)
+	s.mu.Lock()
+	s.jobs["j"] = q
+	s.mu.Unlock()
+	queuedCopy := *q
+	expired := expiredOutcome(queuedCopy)
+	s.registerStateRepair("finish", &expired, false, false, errors.New("broker unavailable"))
+	s.mu.Lock()
+	s.cancelled["j"] = true // decided, its own goroutine has not stored it yet
+	s.mu.Unlock()
+	stub.setFail(false)
+	s.readinessTick(context.Background(), nil)
+	if s.Ready() {
+		t.Fatal("gateway became ready before the cancellation was stored")
+	}
+	s.readinessTick(context.Background(), nil)
+	if !s.Ready() {
+		t.Fatal("gateway did not become ready after the cancellation was stored")
+	}
+	stored := s.job("j")
+	if stored.Status != "failed" || stored.Error == nil || stored.Error.Code != "request_canceled" {
+		t.Fatalf("job = %+v, want the cancellation", stored)
 	}
 }

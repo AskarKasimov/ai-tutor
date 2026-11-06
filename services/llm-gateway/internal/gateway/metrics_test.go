@@ -1,6 +1,7 @@
 package gateway
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -109,5 +110,46 @@ func TestMetricsContent(t *testing.T) {
 	}
 	if !strings.Contains(body, "gateway_queue_oldest_seconds{complexity=\"low\",urgent=\"true\"} 3600.") {
 		t.Errorf("oldest queued age not ~3600s:\n%s", body)
+	}
+}
+
+func TestMetricsCountUpstreamTimeoutsByReason(t *testing.T) {
+	s, _ := repairFixture(t)
+	s.cfg.UpstreamTimeout = 5 * time.Second
+	s.caller = NewCaller(s.cfg)
+	server := slowUpstream(t, 300*time.Millisecond)
+	in := s.cfg.Instances[0]
+	in.BaseURL = server.URL + "/v1"
+	in.Timeout = 5 * time.Second
+
+	rec := httptest.NewRecorder()
+	s.writeMetrics(rec)
+	for _, want := range []string{
+		"# TYPE gateway_upstream_timeouts_total counter\n",
+		"gateway_upstream_timeouts_total{reason=\"request_deadline\"} 0\n",
+		"gateway_upstream_timeouts_total{reason=\"instance_timeout\"} 0\n",
+	} {
+		if !strings.Contains(rec.Body.String(), want) {
+			t.Fatalf("metrics before any timeout lack %q", want)
+		}
+	}
+
+	// The request deadline (50 ms) ends the call; the instance would wait 5 s.
+	s.execute(context.Background(), runningJob(s, "cut", time.Now().Add(50*time.Millisecond)), in)
+	// The instance timeout (30 ms) ends the call; the request deadline is an hour away.
+	slow := in
+	slow.Timeout = 30 * time.Millisecond
+	s.execute(context.Background(), runningJob(s, "slow", time.Now().Add(time.Hour)), slow)
+
+	rec = httptest.NewRecorder()
+	s.writeMetrics(rec)
+	body := rec.Body.String()
+	for _, want := range []string{
+		"gateway_upstream_timeouts_total{reason=\"request_deadline\"} 1\n",
+		"gateway_upstream_timeouts_total{reason=\"instance_timeout\"} 1\n",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("metrics lack %q:\n%s", want, body)
+		}
 	}
 }

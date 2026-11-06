@@ -86,6 +86,7 @@ type Service struct {
 	waiters           map[string]chan struct{}
 	activeWaiters     map[string]int
 	transportCalls    map[string]map[int]uint64
+	upstreamTimeouts  map[string]uint64
 	routeSelections   map[routeSelection]uint64
 	cancelled         map[string]bool
 	jobCancels        map[string]context.CancelFunc
@@ -1028,6 +1029,7 @@ func (s *Service) execute(ctx context.Context, j *durableJob, in InstanceConfig)
 	result, failure := s.caller.call(callCtx, in, j.Request, j.ID, j.ProbeReserved)
 	cancel()
 	s.observeCall(j, in, failure, time.Since(started))
+	s.recordUpstreamTimeout(failure)
 	logUpstreamCall(j, in, failure, time.Since(started))
 	if failure != nil {
 		if s.isCanceled(j.ID) {
@@ -1078,6 +1080,29 @@ func (s *Service) execute(ctx context.Context, j *durableJob, in InstanceConfig)
 	if err := s.persistResult(ctx, j, 200, result.Body, "succeeded"); err == nil || errors.Is(err, errCanceledJob) {
 		s.releaseSlot(j)
 	}
+}
+
+// recordUpstreamTimeout counts a call ended by a timeout, by what ended it: the
+// request deadline or the instance's own timeout. Every call counts, retries
+// included. A request that expired in the queue made no call and is not counted.
+func (s *Service) recordUpstreamTimeout(failure *UpstreamFailure) {
+	reason := ""
+	switch {
+	case failure == nil || failure.Code == "request_canceled":
+		return
+	case failure.JobDeadline:
+		reason = "request_deadline"
+	case errors.Is(failure.Err, context.DeadlineExceeded):
+		reason = "instance_timeout"
+	default:
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.upstreamTimeouts == nil {
+		s.upstreamTimeouts = make(map[string]uint64)
+	}
+	s.upstreamTimeouts[reason]++
 }
 
 // upstreamFailureResponse maps a failed call to the stored error. The job
@@ -1663,6 +1688,10 @@ func (s *Service) writeMetrics(rw http.ResponseWriter) {
 		}
 		transportCalls[transport] = copied
 	}
+	upstreamTimeouts := make(map[string]uint64, len(s.upstreamTimeouts))
+	for reason, n := range s.upstreamTimeouts {
+		upstreamTimeouts[reason] = n
+	}
 	idempotentReplays := s.idempotentReplays
 	connections := len(s.connections)
 	s.mu.Unlock()
@@ -1712,6 +1741,11 @@ func (s *Service) writeMetrics(rw http.ResponseWriter) {
 		for status, count := range transportCalls[transport] {
 			fmt.Fprintf(&w, "gateway_calls_total{transport=%q,status=%q} %d\n", transport, strconv.Itoa(status), count)
 		}
+	}
+	fmt.Fprintln(&w, "# HELP gateway_upstream_timeouts_total Upstream calls ended by a timeout, by reason: the request deadline or the instance timeout. Retries count; a request that expired in the queue does not.")
+	fmt.Fprintln(&w, "# TYPE gateway_upstream_timeouts_total counter")
+	for _, reason := range []string{"request_deadline", "instance_timeout"} {
+		fmt.Fprintf(&w, "gateway_upstream_timeouts_total{reason=%q} %d\n", reason, upstreamTimeouts[reason])
 	}
 	fmt.Fprintln(&w, "# TYPE gateway_requests_total counter")
 	for status, count := range results {

@@ -24,6 +24,15 @@ import (
 	"github.com/AskarKasimov/ai-tutor/services/voice-gateway/internal/diagnostic"
 )
 
+const (
+	// Short-form GigaAM receives chunks of at most 20 seconds. Longform
+	// instances bypass splitting and receive the original recording.
+	gigaAMChunkSeconds = 20
+	// Bound splitting allocations and sequential upstream calls per request;
+	// the preflight check and the splitter must enforce the same budget.
+	gigaAMMaxParts = 100
+)
+
 func transportFailure(err error, beforeSend bool) error {
 	code := codes.Unavailable
 	if errors.Is(err, context.DeadlineExceeded) {
@@ -139,10 +148,10 @@ func (p *HTTP) Transcribe(ctx context.Context, instance string, data []byte, med
 	parts := [][]byte{data}
 	base, _, _ := mime.ParseMediaType(media)
 	if !cfg.Longform && (base == "audio/wav" || base == "audio/x-wav" || base == "audio/wave") {
-		if audio.TooManyParts(data, 20, 100) {
+		if audio.TooManyParts(data, gigaAMChunkSeconds, gigaAMMaxParts) {
 			return "", &diagnostic.Error{Code: codes.InvalidArgument, Stage: "validation", Reason: "too_many_audio_parts"}
 		}
-		if split, ok := audio.SplitWAV(data, 20, 100); ok {
+		if split, ok := audio.SplitWAV(data, gigaAMChunkSeconds, gigaAMMaxParts); ok {
 			parts = split
 		}
 	}

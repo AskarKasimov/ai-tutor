@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"sync"
-	"syscall"
 )
 
 var ErrPayloadQuota = errors.New("voice payload storage limit exceeded")
@@ -33,7 +32,7 @@ func OpenBlobs(dir string, limit int64) (*Blobs, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err = syscall.Flock(int(file.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+	if err = lockVolume(file); err != nil {
 		file.Close()
 		return nil, errors.New("voice data volume already locked")
 	}
@@ -60,7 +59,7 @@ func OpenBlobs(dir string, limit int64) (*Blobs, error) {
 	}
 	return b, nil
 }
-func (b *Blobs) Close() { _ = syscall.Flock(int(b.lock.Fd()), syscall.LOCK_UN); _ = b.lock.Close() }
+func (b *Blobs) Close() { _ = b.lock.Close() }
 func (b *Blobs) Put(name string, data []byte) error {
 	if !blobName.MatchString(name) {
 		return errors.New("invalid blob name")
@@ -137,14 +136,7 @@ func (b *Blobs) Remove(name string) error {
 	return b.sync()
 }
 func (b *Blobs) Usage() int64 { b.mu.Lock(); defer b.mu.Unlock(); return b.bytes }
-func (b *Blobs) sync() error {
-	dir, err := os.Open(b.dir)
-	if err != nil {
-		return err
-	}
-	defer dir.Close()
-	return dir.Sync()
-}
+func (b *Blobs) sync() error  { return syncDirectory(b.dir) }
 func (b *Blobs) Names() ([]string, error) {
 	entries, err := os.ReadDir(b.dir)
 	if err != nil {

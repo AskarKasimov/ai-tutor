@@ -40,3 +40,17 @@ func TestPayloadBoundsAndVolumeLock(t *testing.T) {
 		t.Fatal("blob not removed")
 	}
 }
+
+func TestClosingBlobsReleasesVolumeLock(t *testing.T) {
+	dir := t.TempDir()
+	first, err := OpenBlobs(dir, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	first.Close()
+	second, err := OpenBlobs(dir, 10)
+	if err != nil {
+		t.Fatalf("lock retained after close: %v", err)
+	}
+	second.Close()
+}

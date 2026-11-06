@@ -1,11 +1,15 @@
 package execution
 
 import (
+	"bytes"
 	"fmt"
-	"github.com/AskarKasimov/ai-tutor/services/voice-gateway/internal/diagnostic"
+	"io"
+	"maps"
 	"net/http"
 	"sort"
 	"strings"
+
+	"github.com/AskarKasimov/ai-tutor/services/voice-gateway/internal/diagnostic"
 )
 
 var buckets = []float64{.01, .05, .1, .5, 1, 2, 5, 10, 30, 60, 120, 300}
@@ -38,9 +42,17 @@ func (e *Engine) RecordRequest(op string, err error) {
 	e.requests[op+"/"+d.Code.String()+"/"+d.Reason]++
 }
 func (e *Engine) Metrics(w http.ResponseWriter, r *http.Request) {
+	var snapshot bytes.Buffer
+	e.writeMetrics(&snapshot)
+	w.Header().Set("Content-Type", "text/plain; version=0.0.4")
+	_, _ = w.Write(snapshot.Bytes())
+}
+
+// Render to memory before writing to the client: a slow scrape must not hold
+// either the engine lock or the request counter lock during network I/O.
+func (e *Engine) writeMetrics(w io.Writer) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	w.Header().Set("Content-Type", "text/plain; version=0.0.4")
 	fmt.Fprintf(w, "# TYPE voice_gateway_ready gauge\nvoice_gateway_ready %d\n", boolInt(e.ready))
 	fmt.Fprintf(w, "# TYPE voice_payload_bytes gauge\nvoice_payload_bytes %d\n", e.blobs.Usage())
 	fmt.Fprintln(w, "# TYPE voice_queue_depth gauge\n# TYPE voice_instance_busy gauge\n# TYPE voice_instance_slots gauge\n# TYPE voice_instance_held gauge")
@@ -58,17 +70,18 @@ func (e *Engine) Metrics(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	e.requestMu.Lock()
+	requests := maps.Clone(e.requests)
+	e.requestMu.Unlock()
 	fmt.Fprintln(w, "# TYPE voice_requests_total counter")
-	requestKeys := make([]string, 0, len(e.requests))
-	for key := range e.requests {
+	requestKeys := make([]string, 0, len(requests))
+	for key := range requests {
 		requestKeys = append(requestKeys, key)
 	}
 	sort.Strings(requestKeys)
 	for _, key := range requestKeys {
 		parts := strings.SplitN(key, "/", 3)
-		fmt.Fprintf(w, "voice_requests_total{operation=%q,code=%q,reason=%q} %d\n", parts[0], parts[1], parts[2], e.requests[key])
+		fmt.Fprintf(w, "voice_requests_total{operation=%q,code=%q,reason=%q} %d\n", parts[0], parts[1], parts[2], requests[key])
 	}
-	e.requestMu.Unlock()
 	fmt.Fprintln(w, "# TYPE voice_route_selections_total counter")
 	selections := make([]string, 0, len(e.selected))
 	for key := range e.selected {

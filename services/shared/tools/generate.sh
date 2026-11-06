@@ -11,7 +11,9 @@ generate() {
   out="$1"
   mkdir -p "$out/go" "$out/python"
   protoc -I services/shared/proto --go_out="$out/go" --go_opt=module=github.com/AskarKasimov/ai-tutor/services/shared/gen/go --go-grpc_out="$out/go" --go-grpc_opt=module=github.com/AskarKasimov/ai-tutor/services/shared/gen/go services/shared/proto/llmgateway/v1/gateway.proto
+  protoc -I services/shared/proto --go_out="$out/go" --go_opt=module=github.com/AskarKasimov/ai-tutor/services/shared/gen/go --go-grpc_out="$out/go" --go-grpc_opt=module=github.com/AskarKasimov/ai-tutor/services/shared/gen/go services/shared/proto/voicegateway/v1/gateway.proto
   "$PYTHON" -m grpc_tools.protoc -I services/shared/proto --python_out="$out/python" --grpc_python_out="$out/python" services/shared/proto/llmgateway/v1/gateway.proto
+  "$PYTHON" -m grpc_tools.protoc -I services/shared/proto --python_out="$out/python" --grpc_python_out="$out/python" services/shared/proto/voicegateway/v1/gateway.proto
 }
 case "${1:-}" in
   --check)

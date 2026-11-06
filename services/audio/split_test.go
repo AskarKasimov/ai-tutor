@@ -37,7 +37,7 @@ func TestSplitWAVCutsLongSpeechAtPauses(t *testing.T) {
 		}
 		return 8000
 	})
-	parts, ok := SplitWAV(data, 20)
+	parts, ok := SplitWAV(data, 20, 100)
 	if !ok || len(parts) != 3 {
 		t.Fatalf("parts: %d %v", len(parts), ok)
 	}
@@ -58,10 +58,10 @@ func TestSplitWAVCutsLongSpeechAtPauses(t *testing.T) {
 
 func TestSplitWAVKeepsShortAudioAndRejectsOtherFormats(t *testing.T) {
 	short := wav16(8000, 5, func(float64) int16 { return 100 })
-	if parts, ok := SplitWAV(short, 20); !ok || len(parts) != 1 || seconds(parts[0]) != 5 {
+	if parts, ok := SplitWAV(short, 20, 100); !ok || len(parts) != 1 || seconds(parts[0]) != 5 {
 		t.Fatal("short audio must stay whole")
 	}
-	if _, ok := SplitWAV([]byte("OggS not a wav"), 20); ok {
+	if _, ok := SplitWAV([]byte("OggS not a wav"), 20, 100); ok {
 		t.Fatal("non-WAV audio cannot be split")
 	}
 }
@@ -77,5 +77,18 @@ func TestJoinWAVConcatenatesPartsOfOneFormat(t *testing.T) {
 	}
 	if _, ok := JoinWAV(nil); ok {
 		t.Fatal("no parts were joined")
+	}
+}
+
+func TestPartLimitPreventsLowRateExpansion(t *testing.T) {
+	data := wav16(1, 1201, func(float64) int16 { return 0 })
+	if !ValidWAV(data) {
+		t.Fatal("structural parser must not impose application sample-rate policy")
+	}
+	if !TooManyParts(data, 20, 100) {
+		t.Fatal("fragment bound missed")
+	}
+	if parts, ok := SplitWAV(data, 20, 100); ok || parts != nil {
+		t.Fatal("unbounded fragments allocated")
 	}
 }

@@ -3,6 +3,8 @@ package app
 import (
 	"context"
 	"encoding/json"
+	voicepb "github.com/AskarKasimov/ai-tutor/services/shared/gen/go/voicegateway/v1"
+	"github.com/AskarKasimov/ai-tutor/services/voice-gateway/testkit"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -19,7 +21,7 @@ import (
 // Exercise production model adapters through HTTP and gRPC, with
 // deterministic responses owned by the tests rather than an offline
 // application mode.
-func configureFixtureModels(t *testing.T, cfg *Config) {
+func configureFixtureModels(t *testing.T, cfg *Config) *testkit.Fixture {
 	t.Helper()
 	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
@@ -34,15 +36,17 @@ func configureFixtureModels(t *testing.T, cfg *Config) {
 		}
 	}))
 	t.Cleanup(provider.Close)
-	for _, setting := range []struct {
-		value  *string
-		suffix string
-	}{
-		{&cfg.STTURL, "/transcribe"}, {&cfg.TTSURL, "/synthesize"},
-	} {
-		if strings.Contains(*setting.value, ".test") {
-			*setting.value = provider.URL + setting.suffix
+	state := testkit.New(t, provider.URL+"/transcribe", provider.URL+"/synthesize", cfg.VoiceProfile)
+	if strings.Contains(cfg.VoiceGatewayAddress, ".test") {
+		listener, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			t.Fatal(err)
 		}
+		server := grpc.NewServer(grpc.MaxRecvMsgSize(26<<20), grpc.MaxSendMsgSize(65<<20))
+		voicepb.RegisterVoiceGatewayServer(server, state)
+		go func() { _ = server.Serve(listener) }()
+		t.Cleanup(server.Stop)
+		cfg.VoiceGatewayAddress = listener.Addr().String()
 	}
 	if strings.Contains(cfg.LLMGatewayAddress, ".test") {
 		listener, err := net.Listen("tcp", "127.0.0.1:0")
@@ -55,6 +59,7 @@ func configureFixtureModels(t *testing.T, cfg *Config) {
 		t.Cleanup(server.Stop)
 		cfg.LLMGatewayAddress = listener.Addr().String()
 	}
+	return state
 }
 
 // fixtureGateway answers Geek prompts deterministically: a question prompt

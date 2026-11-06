@@ -4,14 +4,17 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"time"
 
+	voicegatewayv1 "github.com/AskarKasimov/ai-tutor/services/shared/gen/go/voicegateway/v1"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
+	"google.golang.org/grpc"
 
 	llmgatewayv1 "github.com/AskarKasimov/ai-tutor/services/shared/gen/go/llmgateway/v1"
 
@@ -53,7 +56,7 @@ import (
 	variantgenrandom "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/variantgen/infrastructure/random"
 	variantgenhttp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/variantgen/transport/http"
 	voiceapp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/voice/application"
-	"github.com/AskarKasimov/ai-tutor/services/backend/internal/features/voice/infrastructure/modelapi"
+	voicegateway "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/voice/infrastructure/gateway"
 	voicepg "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/voice/infrastructure/postgres"
 	voicehttp "github.com/AskarKasimov/ai-tutor/services/backend/internal/features/voice/transport/http"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/fault"
@@ -64,6 +67,9 @@ import (
 )
 
 type App struct {
+	voiceClient      voicegatewayv1.VoiceGatewayClient
+	voiceConn        *grpc.ClientConn
+	voiceSynth       *voicegateway.Synthesizer
 	cfg              Config
 	pool             *pgxpool.Pool
 	client           *http.Client
@@ -101,17 +107,11 @@ type App struct {
 // once; it matches the two topic extractions course-graph runs at a time.
 const materialWorkers = 2
 
-// voiceName identifies the TTS settings in the keys of cached speech.
-func (a *App) voiceName() string {
-	name := fmt.Sprintf("seed=%d cfg=%g steps=%d style=none-v1", a.cfg.TTSSeed, a.cfg.TTSCFGValue, a.cfg.TTSInferenceTimesteps)
-	if a.cfg.TTSUseReference && a.cfg.TTSUsePrompt {
-		return name
-	}
-	return fmt.Sprintf("%s reference=%t prompt=%t", name, a.cfg.TTSUseReference, a.cfg.TTSUsePrompt)
+func (a *App) recognizer() *voicegateway.Recognizer {
+	return voicegateway.NewRecognizer(a.voiceClient, a.cfg.VoiceTimeout)
 }
-
-func (a *App) models() *modelapi.Client {
-	return modelapi.New(a.client, a.cfg.STTURL, a.cfg.TTSURL, a.cfg.VoiceTimeout, modelapi.TTSOptions{Seed: a.cfg.TTSSeed, CFGValue: a.cfg.TTSCFGValue, InferenceTimesteps: a.cfg.TTSInferenceTimesteps, UseReference: &a.cfg.TTSUseReference, UsePrompt: &a.cfg.TTSUsePrompt}).WithSTTOptions(a.cfg.STTModel, a.cfg.STTLongform)
+func (a *App) synthesizer() *voicegateway.Synthesizer {
+	return a.voiceSynth
 }
 
 func New(cfg Config, pool *pgxpool.Pool, logger *zap.Logger) (*App, error) {
@@ -148,9 +148,15 @@ func New(cfg Config, pool *pgxpool.Pool, logger *zap.Logger) (*App, error) {
 	a.materialsStorage = &materialsStorageAdapter{storage: storage, bucket: cfg.S3Bucket}
 	audioStorage := taskaudios3.New(storage)
 	a.audioStorage = audioStorage
-	a.audioWorker = taskaudioapp.NewWorker(taskaudiopg.New(pool), audioStorage, a.models(), taskaudioapp.WorkerConfig{Concurrency: cfg.AudioWorkers, PollInterval: cfg.AudioPollInterval, VoiceTimeout: cfg.VoiceTimeout, S3Timeout: cfg.S3Timeout, Bucket: cfg.S3Bucket})
+	a.voiceClient, a.voiceConn, err = voicegateway.Dial(cfg.VoiceGatewayAddress)
+	if err != nil {
+		return nil, err
+	}
+	a.voiceSynth = voicegateway.NewSynthesizer(a.voiceClient, cfg.VoiceTimeout, cfg.VoiceProfile)
+	a.audioWorker = taskaudioapp.NewWorker(taskaudiopg.New(pool), audioStorage, a.synthesizer(), taskaudioapp.WorkerConfig{Concurrency: cfg.AudioWorkers, PollInterval: cfg.AudioPollInterval, VoiceTimeout: cfg.VoiceTimeout, S3Timeout: cfg.S3Timeout, Bucket: cfg.S3Bucket})
 	examiner, conn, err := geekllm.Dial(cfg.LLMGatewayAddress, cfg.LLMTimeout)
 	if err != nil {
+		_ = a.voiceConn.Close()
 		return nil, err
 	}
 	a.examiner, a.summarizer, a.gateway = examiner, examiner, conn
@@ -162,7 +168,7 @@ func New(cfg Config, pool *pgxpool.Pool, logger *zap.Logger) (*App, error) {
 	translator := materialstranslator.NewWithCompleter(materialstranslator.NewGateway(llmgatewayv1.NewGatewayClient(conn), cfg.LLMTimeout), 4)
 	a.ocrWorker = materialsapp.NewOCRWorker(materialRepository, a.materialsStorage, materialsOCR, translator)
 	a.cleaningWorker = materialsapp.NewCleaningWorker(materialRepository, a.materialsStorage, materialsOCR)
-	a.speech = geekapp.NewSpeechCache(a.models(), geekstorage.NewAudio(storage, cfg.S3Bucket), a.voiceName())
+	a.speech = geekapp.NewSpeechCache(a.synthesizer(), geekstorage.NewAudio(storage, cfg.S3Bucket), a.voiceSynth.VoiceName)
 	a.warmer = geekapp.NewWarmer(a.speech, logger.With(zap.String("worker", "speech_warmer")))
 	a.warmer.Prepare(geekllm.PreparedSpeech())
 	// A course graph is built from the materials or from a competency map.
@@ -174,10 +180,14 @@ func New(cfg Config, pool *pgxpool.Pool, logger *zap.Logger) (*App, error) {
 
 // Close releases the app's connections once requests have finished.
 func (a *App) Close() error {
-	if a.gateway == nil {
-		return nil
+	var errs []error
+	if a.gateway != nil {
+		errs = append(errs, a.gateway.Close())
 	}
-	return a.gateway.Close()
+	if a.voiceConn != nil {
+		errs = append(errs, a.voiceConn.Close())
+	}
+	return errors.Join(errs...)
 }
 
 // RunStorageSetup provisions the S3 bucket in the background, retrying until it
@@ -256,8 +266,7 @@ func (m *materialsStorageAdapter) Delete(ctx context.Context, key string) error 
 func (a *App) Handler() http.Handler {
 	auth := authapp.New(authpg.New(a.pool), a.hasher, a.now)
 	authHandlers := authhttp.New(auth, a.now)
-	models := a.models()
-	voice := voiceapp.New(voicepg.New(a.pool), models, models, a.now)
+	voice := voiceapp.New(voicepg.New(a.pool), a.recognizer(), a.synthesizer(), a.now)
 	voiceHandlers := voicehttp.New(voice, a.cfg.MaxUploadBytes)
 	subjectHandlers := subjecthttp.New(subjectapp.New(subjectpg.New(a.pool), security.IDGenerator{}, a.now))
 

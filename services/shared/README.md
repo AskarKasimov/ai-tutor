@@ -1,4 +1,6 @@
-# protobuf-контракты LLM gateway
+# protobuf-контракты gateway
+
+`proto/voicegateway/v1/gateway.proto` — контракт STT/TTS gateway: распознавание, синтез и версия голосового профиля для кэша. Backend и voice gateway используют сгенерированные Go-клиент и сервер; общий генератор также выпускает Python-код. Реализация и конфигурация — в [voice gateway](../voice-gateway/README.md).
 
 `proto/llmgateway/v1/gateway.proto` — источник сгенерированных Go client и server stubs в `gen/go` и Python stubs в `gen/python` (их использует `services/course-graph`). Путь Go-модуля: `github.com/AskarKasimov/ai-tutor/services/shared`. Gateway и backend подключают его локальным `replace` на соседний модуль `../shared` (gateway собирается с `GOWORK=off`); пока модуль не опубликован, для отдельной сборки потребителя нужны оба каталога.
 

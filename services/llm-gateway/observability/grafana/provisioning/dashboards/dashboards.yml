@@ -9,3 +9,12 @@ providers:
     editable: true
     options:
       path: /var/lib/grafana/dashboards
+
+  - name: Voice Gateway
+    orgId: 1
+    folder: Voice Gateway
+    type: file
+    disableDeletion: true
+    editable: true
+    options:
+      path: /var/lib/grafana/voice-dashboards

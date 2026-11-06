@@ -1,0 +1,34 @@
+syntax = "proto3";
+package voicegateway.v1;
+option go_package = "github.com/AskarKasimov/ai-tutor/services/shared/gen/go/voicegateway/v1;voicegatewayv1";
+
+service VoiceGateway {
+  rpc Transcribe(TranscribeRequest) returns (TranscribeResponse);
+  rpc Synthesize(SynthesizeRequest) returns (SynthesizeResponse);
+  rpc DescribeVoice(DescribeVoiceRequest) returns (DescribeVoiceResponse);
+}
+
+message TranscribeRequest {
+  bytes audio = 1;
+  string media_type = 2;
+}
+
+message TranscribeResponse {
+  string text = 1;
+  string request_id = 2;
+}
+
+message SynthesizeRequest {
+  string text = 1;
+  string voice_profile = 2;
+  string voice_revision = 3;
+}
+
+message DescribeVoiceRequest { string voice_profile = 1; }
+message DescribeVoiceResponse { string revision = 1; }
+
+message SynthesizeResponse {
+  bytes audio = 1;
+  string media_type = 2;
+  string request_id = 3;
+}

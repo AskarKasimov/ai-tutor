@@ -868,22 +868,7 @@ func (s *Service) execute(ctx context.Context, j *durableJob, in InstanceConfig)
 			}
 			return
 		}
-		status := 502
-		typ := "server_error"
-		code := failure.Code
-		msg := "The upstream LLM request failed."
-		if failure.Status == 429 {
-			status = 429
-			typ = "rate_limit_error"
-			code = "upstream_rate_limit"
-			msg = "The upstream LLM rate limit was reached."
-		}
-		if errors.Is(failure.Err, context.DeadlineExceeded) {
-			status = 504
-			typ = "gateway_timeout"
-			code = "upstream_timeout"
-			msg = "The upstream LLM request timed out."
-		}
+		status, typ, code, msg := upstreamFailureResponse(failure)
 		body := errorBody(typ, code, msg)
 		uncertain := uncertainUpstreamOutcomeForInstance(in, failure)
 		if !uncertain {
@@ -912,6 +897,21 @@ func (s *Service) execute(ctx context.Context, j *durableJob, in InstanceConfig)
 	}
 }
 
+// upstreamFailureResponse maps a failed call to the stored error. The job
+// deadline (which includes the queue wait) and the instance's own timeout are
+// both 504, but only the second is a verdict on the instance.
+func upstreamFailureResponse(failure *UpstreamFailure) (int, string, string, string) {
+	switch {
+	case failure.Code == "request_deadline_exceeded":
+		return 504, "gateway_timeout", "request_deadline_exceeded", "LLM request deadline exceeded."
+	case errors.Is(failure.Err, context.DeadlineExceeded):
+		return 504, "gateway_timeout", "upstream_timeout", "The upstream LLM request timed out."
+	case failure.Status == 429:
+		return 429, "rate_limit_error", "upstream_rate_limit", "The upstream LLM rate limit was reached."
+	}
+	return 502, "server_error", failure.Code, "The upstream LLM request failed."
+}
+
 func logUpstreamCall(j *durableJob, in InstanceConfig, failure *UpstreamFailure, elapsed time.Duration) {
 	attrs := []any{"gateway_request_id", j.ID, "instance", in.ID, "attempt", j.Attempt, "duration", elapsed.Seconds()}
 	if failure == nil {
@@ -921,6 +921,10 @@ func logUpstreamCall(j *durableJob, in InstanceConfig, failure *UpstreamFailure,
 	attrs = append(attrs, "error_code", failure.Code, "upstream_status", failure.Status, "error", failure.Error())
 	if failure.Code == "request_canceled" {
 		slog.Info("upstream call canceled", attrs...)
+		return
+	}
+	if failure.Code == "request_deadline_exceeded" {
+		slog.Info("upstream call cut by the request deadline", attrs...)
 		return
 	}
 	slog.Warn("upstream call failed", attrs...)
@@ -937,9 +941,11 @@ const failureCooldown = 15 * time.Second
 // are duration samples (a timeout marks a slow instance). A 429, a 5xx or a
 // transport failure puts the instance on cooldown instead: they say nothing
 // about speed, but without it an unmeasured instance that keeps failing would
-// keep the first place. A cancelled request and an open breaker change nothing.
+// keep the first place. A cancelled request, a call cut by the request deadline
+// (it includes the queue wait, not only the instance) and an open breaker
+// change nothing.
 func (s *Service) observeCall(j *durableJob, in InstanceConfig, failure *UpstreamFailure, elapsed time.Duration) {
-	if s.isCanceled(j.ID) || failure != nil && (failure.Code == "request_canceled" || failure.Code == "upstream_circuit_open") {
+	if s.isCanceled(j.ID) || failure != nil && (failure.Code == "request_canceled" || failure.Code == "request_deadline_exceeded" || failure.Code == "upstream_circuit_open") {
 		return
 	}
 	s.mu.Lock()

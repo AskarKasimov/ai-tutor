@@ -271,3 +271,63 @@ func TestJobDeadlineReleasesTheHalfOpenProbe(t *testing.T) {
 		t.Fatal("the probe stayed reserved after the job deadline; next probe is blocked")
 	}
 }
+
+// lateFailTransport fails a call only some time after its context is done, the
+// way a transport may report a timeout late. With body it fails the read of the
+// response body instead of the request.
+type lateFailTransport struct {
+	after time.Duration
+	body  bool
+}
+
+type lateFailBody struct {
+	ctx   context.Context
+	after time.Duration
+}
+
+func (b lateFailBody) Read([]byte) (int, error) {
+	<-b.ctx.Done()
+	time.Sleep(b.after)
+	return 0, b.ctx.Err()
+}
+func (lateFailBody) Close() error { return nil }
+
+func (lt lateFailTransport) RoundTrip(r *http.Request) (*http.Response, error) {
+	if lt.body {
+		return &http.Response{StatusCode: http.StatusOK, Header: http.Header{}, Body: lateFailBody{ctx: r.Context(), after: lt.after}, Request: r}, nil
+	}
+	<-r.Context().Done()
+	time.Sleep(lt.after)
+	return nil, r.Context().Err()
+}
+
+func TestInstanceTimeoutReportedAfterTheJobDeadlineStillCountsAsAFailure(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		body bool
+		code string
+	}{{"request", false, "upstream_transport_error"}, {"response body", true, "upstream_response_error"}} {
+		t.Run(tc.name, func(t *testing.T) {
+			caller := NewCaller(Config{UpstreamTimeout: 5 * time.Second})
+			caller.client.Transport = lateFailTransport{after: 60 * time.Millisecond, body: tc.body}
+			in := InstanceConfig{ID: "model-a", BaseURL: "http://upstream.invalid/v1", Model: "m", Timeout: 20 * time.Millisecond}
+			request, err := ParseRequest([]byte(`{"messages":[{"role":"user","content":"hi"}],"complexity":"low"}`))
+			if err != nil {
+				t.Fatal(err)
+			}
+			for i := range 3 {
+				// The instance timeout (20 ms) fires first; the job deadline (40 ms)
+				// has passed too by the time the transport reports the failure.
+				ctx, cancel := context.WithTimeout(context.Background(), 40*time.Millisecond)
+				_, failure := caller.call(ctx, in, request, "r", false)
+				cancel()
+				if failure == nil || failure.Code != tc.code || !errors.Is(failure.Err, context.DeadlineExceeded) {
+					t.Fatalf("call %d failure = %+v, want %s with DeadlineExceeded", i, failure, tc.code)
+				}
+			}
+			if caller.circuit("model-a").available(time.Now()) {
+				t.Fatal("instance timeouts reported after the job deadline did not open the breaker")
+			}
+		})
+	}
+}

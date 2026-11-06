@@ -89,6 +89,10 @@ func (c *Caller) circuit(id string) *Circuit {
 	return c.circuits[id]
 }
 
+// errInstanceTimeout is the cause of a call context ended by the instance's own
+// timeout. It wraps context.DeadlineExceeded like any other timeout.
+var errInstanceTimeout = fmt.Errorf("upstream instance timeout: %w", context.DeadlineExceeded)
+
 func (c *Caller) call(ctx context.Context, in InstanceConfig, req Request, requestID string, probeReserved bool) (UpstreamResult, *UpstreamFailure) {
 	cb := c.circuit(in.ID)
 	if !probeReserved && !cb.acquire(time.Now()) {
@@ -124,8 +128,13 @@ func (c *Caller) call(ctx context.Context, in InstanceConfig, req Request, reque
 	if strings.HasSuffix(strings.TrimRight(in.BaseURL, "/"), "/v1") {
 		endpoint = strings.TrimRight(in.BaseURL, "/") + "/chat/completions"
 	}
-	callCtx, cancel := context.WithTimeout(ctx, minDuration(c.cfg.UpstreamTimeout, in.Timeout))
+	callCtx, cancel := context.WithTimeoutCause(ctx, minDuration(c.cfg.UpstreamTimeout, in.Timeout), errInstanceTimeout)
 	defer cancel()
+	// The job deadline cut the call only if it, not the instance timeout, ended
+	// the call context: the transport may report the error after both passed.
+	jobDeadline := func() bool {
+		return errors.Is(ctx.Err(), context.DeadlineExceeded) && !errors.Is(context.Cause(callCtx), errInstanceTimeout)
+	}
 	httpReq, err := http.NewRequestWithContext(callCtx, http.MethodPost, endpoint, bytes.NewReader(body))
 	if err != nil {
 		cb.release(false, time.Now())
@@ -142,7 +151,7 @@ func (c *Caller) call(ctx context.Context, in InstanceConfig, req Request, reque
 			cb.releaseReservation()
 			return UpstreamResult{}, &UpstreamFailure{Code: "request_canceled", Err: err}
 		}
-		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		if jobDeadline() {
 			cb.releaseReservation()
 			return UpstreamResult{}, &UpstreamFailure{Code: "request_deadline_exceeded", Err: err}
 		}
@@ -161,7 +170,7 @@ func (c *Caller) call(ctx context.Context, in InstanceConfig, req Request, reque
 			cb.releaseReservation()
 			return UpstreamResult{}, &UpstreamFailure{Code: "request_canceled", Err: err}
 		}
-		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		if jobDeadline() {
 			cb.releaseReservation()
 			return UpstreamResult{}, &UpstreamFailure{Code: "request_deadline_exceeded", Err: err}
 		}

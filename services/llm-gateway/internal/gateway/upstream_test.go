@@ -119,27 +119,32 @@ func TestCallerReturnsRetryAfterForUpstreamRateLimit(t *testing.T) {
 	}
 }
 
+func reserved(c *Circuit, now time.Time) bool {
+	ok, _ := c.reserve(now)
+	return ok
+}
+
 func TestCircuitBreakerOpensAndAllowsOneHalfOpenProbe(t *testing.T) {
 	var circuit Circuit
 	now := time.Now()
 	for range 3 {
-		if !circuit.acquire(now) {
-			t.Fatal("closed circuit rejected request")
+		if ok, probe := circuit.reserve(now); !ok || probe {
+			t.Fatal("closed circuit rejected request or handed out a probe")
 		}
-		circuit.release(false, now)
+		circuit.release(false, false, now)
 	}
-	if circuit.acquire(now.Add(14 * time.Second)) {
+	if reserved(&circuit, now.Add(14*time.Second)) {
 		t.Fatal("open circuit allowed request before reset timeout")
 	}
 	probeTime := now.Add(15 * time.Second)
-	if !circuit.acquire(probeTime) {
+	if !reserved(&circuit, probeTime) {
 		t.Fatal("circuit did not allow half-open probe after reset timeout")
 	}
-	if circuit.acquire(probeTime) {
+	if reserved(&circuit, probeTime) {
 		t.Fatal("circuit allowed more than one half-open probe")
 	}
-	circuit.release(true, probeTime)
-	if !circuit.acquire(probeTime) {
+	circuit.release(true, true, probeTime)
+	if !reserved(&circuit, probeTime) {
 		t.Fatal("successful probe did not close circuit")
 	}
 }
@@ -256,9 +261,9 @@ func TestJobDeadlineReleasesTheHalfOpenProbe(t *testing.T) {
 	cb := caller.circuit("model-a")
 	past := time.Now().Add(-time.Minute)
 	for range 3 {
-		cb.release(false, past)
+		cb.release(false, false, past)
 	}
-	if !cb.acquire(time.Now()) {
+	if !reserved(cb, time.Now()) {
 		t.Fatal("half-open probe was not granted")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
@@ -267,7 +272,7 @@ func TestJobDeadlineReleasesTheHalfOpenProbe(t *testing.T) {
 	if failure == nil || failure.Code != "request_deadline_exceeded" {
 		t.Fatalf("failure = %+v, want request_deadline_exceeded", failure)
 	}
-	if !cb.acquire(time.Now()) {
+	if !reserved(cb, time.Now()) {
 		t.Fatal("the probe stayed reserved after the job deadline; next probe is blocked")
 	}
 }
@@ -329,5 +334,111 @@ func TestInstanceTimeoutReportedAfterTheJobDeadlineStillCountsAsAFailure(t *test
 				t.Fatal("instance timeouts reported after the job deadline did not open the breaker")
 			}
 		})
+	}
+}
+
+// takeOverBreaker simulates three other failures that open the breaker and a
+// later call that takes the half-open probe while a non-probe call is in flight.
+func takeOverBreaker(t *testing.T, cb *Circuit) {
+	t.Helper()
+	past := time.Now().Add(-time.Minute)
+	cb.mu.Lock()
+	cb.failures = 3
+	cb.openUntil = past
+	cb.mu.Unlock()
+	if ok, probe := cb.reserve(time.Now()); !ok || !probe {
+		t.Fatalf("reserve = (%v, %v), want the half-open probe", ok, probe)
+	}
+}
+
+func TestNonProbeCallEndedByTheJobDeadlineKeepsTheProbeOfAnotherCall(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		body bool
+	}{{"request", false}, {"response body", true}} {
+		t.Run(tc.name, func(t *testing.T) {
+			caller := NewCaller(Config{UpstreamTimeout: 5 * time.Second})
+			caller.client.Transport = lateFailTransport{body: tc.body}
+			in := InstanceConfig{ID: "model-a", BaseURL: "http://upstream.invalid/v1", Model: "m", Timeout: 5 * time.Second}
+			request, err := ParseRequest([]byte(`{"messages":[{"role":"user","content":"hi"}],"complexity":"low"}`))
+			if err != nil {
+				t.Fatal(err)
+			}
+			cb := caller.circuit("model-a")
+			ctx, cancel := context.WithTimeout(context.Background(), 150*time.Millisecond)
+			defer cancel()
+			done := make(chan *UpstreamFailure, 1)
+			go func() { _, f := caller.call(ctx, in, request, "r", false); done <- f }()
+			time.Sleep(30 * time.Millisecond)
+			takeOverBreaker(t, cb)
+			if failure := <-done; failure == nil {
+				t.Fatal("call succeeded, want the job deadline")
+			}
+			if ok, _ := cb.reserve(time.Now()); ok {
+				t.Fatal("a non-probe call cut by the job deadline released the probe of another call: second probe granted")
+			}
+		})
+	}
+}
+
+func TestNonProbeCallCanceledKeepsTheProbeOfAnotherCall(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		body bool
+	}{{"request", false}, {"response body", true}} {
+		t.Run(tc.name, func(t *testing.T) {
+			caller := NewCaller(Config{UpstreamTimeout: 5 * time.Second})
+			caller.client.Transport = lateFailTransport{body: tc.body}
+			in := InstanceConfig{ID: "model-a", BaseURL: "http://upstream.invalid/v1", Model: "m", Timeout: 5 * time.Second}
+			request, err := ParseRequest([]byte(`{"messages":[{"role":"user","content":"hi"}],"complexity":"low"}`))
+			if err != nil {
+				t.Fatal(err)
+			}
+			cb := caller.circuit("model-a")
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			done := make(chan *UpstreamFailure, 1)
+			go func() { _, f := caller.call(ctx, in, request, "r", false); done <- f }()
+			time.Sleep(30 * time.Millisecond)
+			takeOverBreaker(t, cb)
+			cancel()
+			if failure := <-done; failure == nil || failure.Code != "request_canceled" {
+				t.Fatalf("failure = %+v, want request_canceled", failure)
+			}
+			if ok, _ := cb.reserve(time.Now()); ok {
+				t.Fatal("a canceled non-probe call released the probe of another call: second probe granted")
+			}
+		})
+	}
+}
+
+func TestNonProbeFailureKeepsTheProbeOfAnotherCall(t *testing.T) {
+	proceed := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		<-proceed
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer server.Close()
+	caller := NewCaller(Config{UpstreamTimeout: 5 * time.Second})
+	defer caller.client.CloseIdleConnections()
+	in := InstanceConfig{ID: "model-a", BaseURL: server.URL + "/v1", Model: "m", Timeout: 5 * time.Second}
+	request, err := ParseRequest([]byte(`{"messages":[{"role":"user","content":"hi"}],"complexity":"low"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cb := caller.circuit("model-a")
+	done := make(chan *UpstreamFailure, 1)
+	go func() { _, f := caller.call(context.Background(), in, request, "r", false); done <- f }()
+	time.Sleep(30 * time.Millisecond)
+	takeOverBreaker(t, cb)
+	close(proceed)
+	if failure := <-done; failure == nil || failure.Status != http.StatusInternalServerError {
+		t.Fatalf("failure = %+v, want HTTP 500", failure)
+	}
+	cb.mu.Lock()
+	cb.openUntil = time.Time{}
+	cb.mu.Unlock()
+	if ok, _ := cb.reserve(time.Now()); ok {
+		t.Fatal("a failed non-probe call cleared the probe of another call: second probe granted")
 	}
 }

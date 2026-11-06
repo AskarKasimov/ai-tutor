@@ -22,29 +22,21 @@ type Circuit struct {
 	probing   bool
 }
 
-func (c *Circuit) acquire(now time.Time) bool {
+// release records the outcome of a finished call. probe says whether the call
+// holds the half-open probe: only then does it give the probe back, so a call
+// that started earlier cannot free the probe of another one.
+func (c *Circuit) release(ok, probe bool, now time.Time) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if c.failures < 3 {
-		return true
+	if probe {
+		c.probing = false
 	}
-	if now.Before(c.openUntil) || c.probing {
-		return false
-	}
-	c.probing = true
-	return true
-}
-func (c *Circuit) release(ok bool, now time.Time) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
 	if ok {
 		c.failures = 0
-		c.probing = false
 		c.openUntil = time.Time{}
 		return
 	}
 	c.failures++
-	c.probing = false
 	if c.failures >= 3 {
 		c.openUntil = now.Add(15 * time.Second)
 	}
@@ -95,8 +87,12 @@ var errInstanceTimeout = fmt.Errorf("upstream instance timeout: %w", context.Dea
 
 func (c *Caller) call(ctx context.Context, in InstanceConfig, req Request, requestID string, probeReserved bool) (UpstreamResult, *UpstreamFailure) {
 	cb := c.circuit(in.ID)
-	if !probeReserved && !cb.acquire(time.Now()) {
-		return UpstreamResult{}, &UpstreamFailure{Code: "upstream_circuit_open", Err: fmt.Errorf("instance temporarily unavailable"), BeforeSend: true}
+	probe := probeReserved
+	if !probeReserved {
+		var ok bool
+		if ok, probe = cb.reserve(time.Now()); !ok {
+			return UpstreamResult{}, &UpstreamFailure{Code: "upstream_circuit_open", Err: fmt.Errorf("instance temporarily unavailable"), BeforeSend: true}
+		}
 	}
 	params := make(map[string]json.RawMessage, len(req.Parameters))
 	for k, v := range req.Parameters {
@@ -121,7 +117,7 @@ func (c *Caller) call(ctx context.Context, in InstanceConfig, req Request, reque
 	fields["messages"] = messages
 	body, err := json.Marshal(fields)
 	if err != nil {
-		cb.release(false, time.Now())
+		cb.release(false, probe, time.Now())
 		return UpstreamResult{}, &UpstreamFailure{Code: "invalid_upstream_request", Err: err, BeforeSend: true}
 	}
 	endpoint := strings.TrimRight(in.BaseURL, "/") + "/v1/chat/completions"
@@ -137,7 +133,7 @@ func (c *Caller) call(ctx context.Context, in InstanceConfig, req Request, reque
 	}
 	httpReq, err := http.NewRequestWithContext(callCtx, http.MethodPost, endpoint, bytes.NewReader(body))
 	if err != nil {
-		cb.release(false, time.Now())
+		cb.release(false, probe, time.Now())
 		return UpstreamResult{}, &UpstreamFailure{Code: "invalid_upstream_url", Err: err, BeforeSend: true}
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
@@ -148,11 +144,15 @@ func (c *Caller) call(ctx context.Context, in InstanceConfig, req Request, reque
 	resp, err := c.client.Do(httpReq)
 	if err != nil {
 		if errors.Is(ctx.Err(), context.Canceled) {
-			cb.releaseReservation()
+			if probe {
+				cb.releaseReservation()
+			}
 			return UpstreamResult{}, &UpstreamFailure{Code: "request_canceled", Err: err}
 		}
 		if jobDeadline() {
-			cb.releaseReservation()
+			if probe {
+				cb.releaseReservation()
+			}
 			return UpstreamResult{}, &UpstreamFailure{Code: "request_deadline_exceeded", Err: err}
 		}
 		var ne net.Error
@@ -160,27 +160,31 @@ func (c *Caller) call(ctx context.Context, in InstanceConfig, req Request, reque
 		if errorsAs(err, &ne) && !ne.Timeout() {
 			before = before || strings.Contains(err.Error(), "dial")
 		}
-		cb.release(false, time.Now())
+		cb.release(false, probe, time.Now())
 		return UpstreamResult{}, &UpstreamFailure{Code: "upstream_transport_error", Err: err, BeforeSend: before}
 	}
 	defer resp.Body.Close()
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, (32<<20)+1))
 	if err != nil {
 		if errors.Is(ctx.Err(), context.Canceled) {
-			cb.releaseReservation()
+			if probe {
+				cb.releaseReservation()
+			}
 			return UpstreamResult{}, &UpstreamFailure{Code: "request_canceled", Err: err}
 		}
 		if jobDeadline() {
-			cb.releaseReservation()
+			if probe {
+				cb.releaseReservation()
+			}
 			return UpstreamResult{}, &UpstreamFailure{Code: "request_deadline_exceeded", Err: err}
 		}
-		cb.release(false, time.Now())
+		cb.release(false, probe, time.Now())
 		return UpstreamResult{}, &UpstreamFailure{Code: "upstream_response_error", Err: err}
 	}
 	if resp.StatusCode >= 500 {
-		cb.release(false, time.Now())
+		cb.release(false, probe, time.Now())
 	} else if resp.StatusCode < 500 {
-		cb.release(true, time.Now())
+		cb.release(true, probe, time.Now())
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		d := parseRetryAfter(resp.Header.Get("Retry-After"))

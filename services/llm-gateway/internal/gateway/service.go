@@ -692,9 +692,7 @@ func (s *Service) dispatch(ctx, workCtx context.Context) {
 				break
 			}
 			if time.Now().After(j.Deadline) {
-				j.SlotHeld = false
-				s.finish(j, submitResult{504, errorBody("gateway_timeout", "request_deadline_exceeded", "LLM request deadline exceeded.")}, "expired")
-				s.releaseSlot(j)
+				s.expireDispatched(j)
 				continue
 			}
 			j.Status = "running"
@@ -709,9 +707,7 @@ func (s *Service) dispatch(ctx, workCtx context.Context) {
 				break
 			}
 			if time.Now().After(j.Deadline) {
-				j.SlotHeld = false
-				s.finish(j, submitResult{504, errorBody("gateway_timeout", "request_deadline_exceeded", "LLM request deadline exceeded.")}, "expired")
-				s.releaseSlot(j)
+				s.expireDispatched(j)
 				continue
 			}
 			jobCtx, jobCancel := context.WithCancel(workCtx)
@@ -730,6 +726,19 @@ func (s *Service) dispatch(ctx, workCtx context.Context) {
 			}()
 		}
 	}
+}
+
+// expireDispatched ends a job whose deadline passed after next() assigned it an
+// instance and before its call started. The call never runs, so nothing else
+// settles the half-open probe it may hold: release it here, with the slot.
+func (s *Service) expireDispatched(j *durableJob) {
+	if j.ProbeReserved {
+		s.caller.circuit(j.Instance).releaseReservation()
+		j.ProbeReserved = false
+	}
+	j.SlotHeld = false
+	s.finish(j, submitResult{504, errorBody("gateway_timeout", "request_deadline_exceeded", "LLM request deadline exceeded.")}, "expired")
+	s.releaseSlot(j)
 }
 
 func (s *Service) rollbackDispatch(j *durableJob) {
@@ -1016,12 +1025,7 @@ func supportsParameters(in InstanceConfig, r Request) bool {
 
 func (s *Service) execute(ctx context.Context, j *durableJob, in InstanceConfig) {
 	if time.Now().After(j.Deadline) {
-		if j.ProbeReserved {
-			s.caller.circuit(in.ID).releaseReservation()
-		}
-		j.SlotHeld = false
-		s.finish(j, submitResult{504, errorBody("gateway_timeout", "request_deadline_exceeded", "LLM request deadline exceeded.")}, "expired")
-		s.releaseSlot(j)
+		s.expireDispatched(j)
 		return
 	}
 	callCtx, cancel := context.WithDeadline(ctx, j.Deadline)

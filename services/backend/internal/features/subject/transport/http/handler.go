@@ -133,7 +133,7 @@ func (h *Handler) ListLearning(w http.ResponseWriter, r *http.Request) {
 // @Param subject_id path string true "ID курса"
 // @Param direction query string true "Направление" Enums(exam, learn)
 // @Success 200 {object} audiopreparation.Response
-// @Failure 400 {object} fault.Error
+// @Failure 422 {object} fault.Error
 // @Failure 401 {object} fault.Error
 // @Failure 403 {object} fault.Error
 // @Failure 404 {object} fault.Error

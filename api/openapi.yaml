@@ -3945,12 +3945,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/audiopreparation.Response'
           description: OK
-        "400":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/fault.Error'
-          description: Bad Request
         "401":
           content:
             application/json:
@@ -3969,6 +3963,12 @@ paths:
               schema:
                 $ref: '#/components/schemas/fault.Error'
           description: Not Found
+        "422":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unprocessable Entity
         "503":
           content:
             application/json:

@@ -225,7 +225,7 @@ func TestOpenAPIResponses(t *testing.T) {
 	}
 	check("GET", "/admin/subjects/{subject_id}/audio-preparation", examAudio)
 	invalidAudio := f.request("GET", "/admin/subjects/"+contractSubject.ID+"/audio-preparation", "", admin)
-	if invalidAudio.Code != http.StatusBadRequest {
+	if invalidAudio.Code != http.StatusUnprocessableEntity {
 		t.Fatalf("missing audio direction: %d %s", invalidAudio.Code, invalidAudio.Body.String())
 	}
 	check("GET", "/admin/subjects/{subject_id}/audio-preparation", invalidAudio)

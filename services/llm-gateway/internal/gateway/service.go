@@ -1085,7 +1085,7 @@ func (s *Service) execute(ctx context.Context, j *durableJob, in InstanceConfig)
 // both 504, but only the second is a verdict on the instance.
 func upstreamFailureResponse(failure *UpstreamFailure) (int, string, string, string) {
 	switch {
-	case failure.Code == "request_deadline_exceeded":
+	case failure.JobDeadline:
 		return 504, "gateway_timeout", "request_deadline_exceeded", "LLM request deadline exceeded."
 	case errors.Is(failure.Err, context.DeadlineExceeded):
 		return 504, "gateway_timeout", "upstream_timeout", "The upstream LLM request timed out."
@@ -1106,7 +1106,7 @@ func logUpstreamCall(j *durableJob, in InstanceConfig, failure *UpstreamFailure,
 		slog.Info("upstream call canceled", attrs...)
 		return
 	}
-	if failure.Code == "request_deadline_exceeded" {
+	if failure.JobDeadline {
 		slog.Info("upstream call cut by the request deadline", attrs...)
 		return
 	}
@@ -1128,7 +1128,7 @@ const failureCooldown = 15 * time.Second
 // (it includes the queue wait, not only the instance) and an open breaker
 // change nothing.
 func (s *Service) observeCall(j *durableJob, in InstanceConfig, failure *UpstreamFailure, elapsed time.Duration) {
-	if s.isCanceled(j.ID) || failure != nil && (failure.Code == "request_canceled" || failure.Code == "request_deadline_exceeded" || failure.Code == "upstream_circuit_open") {
+	if s.isCanceled(j.ID) || failure != nil && (failure.Code == "request_canceled" || failure.JobDeadline || failure.Code == "upstream_circuit_open") {
 		return
 	}
 	s.mu.Lock()

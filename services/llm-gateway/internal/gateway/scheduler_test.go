@@ -413,7 +413,7 @@ func TestObserveCallIgnoresTheJobDeadlineButLearnsFromTheInstanceTimeout(t *test
 	in := schedulerInstance("fast")
 	job := schedulerJob("j", 1, false)
 	s.observeCall(job, in, nil, 10*time.Second)
-	s.observeCall(job, in, &UpstreamFailure{Code: "request_deadline_exceeded", Err: context.DeadlineExceeded}, 120*time.Second)
+	s.observeCall(job, in, &UpstreamFailure{Code: "upstream_transport_error", Err: context.DeadlineExceeded, JobDeadline: true}, 120*time.Second)
 	if got := s.expected["fast"]; got != 10 {
 		t.Fatalf("the job deadline changed the expected duration: %v", got)
 	}
@@ -427,7 +427,7 @@ func TestObserveCallIgnoresTheJobDeadlineButLearnsFromTheInstanceTimeout(t *test
 }
 
 func TestUpstreamFailureResponseKeepsTheJobDeadlineApartFromTheInstanceTimeout(t *testing.T) {
-	status, _, code, _ := upstreamFailureResponse(&UpstreamFailure{Code: "request_deadline_exceeded", Err: context.DeadlineExceeded})
+	status, _, code, _ := upstreamFailureResponse(&UpstreamFailure{Code: "upstream_transport_error", Err: context.DeadlineExceeded, JobDeadline: true})
 	if status != 504 || code != "request_deadline_exceeded" {
 		t.Fatalf("job deadline = %d %s, want 504 request_deadline_exceeded", status, code)
 	}
@@ -436,7 +436,7 @@ func TestUpstreamFailureResponseKeepsTheJobDeadlineApartFromTheInstanceTimeout(t
 		t.Fatalf("instance timeout = %d %s, want 504 upstream_timeout", status, code)
 	}
 	// The slot stays uncertain for both: upstream may still be generating.
-	for _, f := range []*UpstreamFailure{{Code: "request_deadline_exceeded", Err: context.DeadlineExceeded}, {Code: "upstream_transport_error", Err: context.DeadlineExceeded}} {
+	for _, f := range []*UpstreamFailure{{Code: "upstream_transport_error", Err: context.DeadlineExceeded, JobDeadline: true}, {Code: "upstream_transport_error", Err: context.DeadlineExceeded}} {
 		if !uncertainUpstreamOutcomeForInstance(InstanceConfig{}, f) {
 			t.Fatalf("%s must leave the slot uncertain", f.Code)
 		}

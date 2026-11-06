@@ -53,6 +53,10 @@ type UpstreamFailure struct {
 	Err        error
 	BeforeSend bool
 	RetryAfter time.Duration
+	// JobDeadline marks a call cut by the request deadline (it includes the queue
+	// wait) rather than by the instance. Code and Err still say what happened on
+	// the wire, so the outcome stays uncertain when the request had been sent.
+	JobDeadline bool
 }
 
 func (e *UpstreamFailure) Error() string {
@@ -149,16 +153,16 @@ func (c *Caller) call(ctx context.Context, in InstanceConfig, req Request, reque
 			}
 			return UpstreamResult{}, &UpstreamFailure{Code: "request_canceled", Err: err}
 		}
-		if jobDeadline() {
-			if probe {
-				cb.releaseReservation()
-			}
-			return UpstreamResult{}, &UpstreamFailure{Code: "request_deadline_exceeded", Err: err}
-		}
 		var ne net.Error
 		before := strings.Contains(err.Error(), "connect: ") || strings.Contains(err.Error(), "no such host") || strings.Contains(err.Error(), "connection refused") || strings.Contains(err.Error(), "network is unreachable")
 		if errorsAs(err, &ne) && !ne.Timeout() {
 			before = before || strings.Contains(err.Error(), "dial")
+		}
+		if jobDeadline() {
+			if probe {
+				cb.releaseReservation()
+			}
+			return UpstreamResult{}, &UpstreamFailure{Code: "upstream_transport_error", Err: err, BeforeSend: before, JobDeadline: true}
 		}
 		cb.release(false, probe, time.Now())
 		return UpstreamResult{}, &UpstreamFailure{Code: "upstream_transport_error", Err: err, BeforeSend: before}
@@ -176,7 +180,7 @@ func (c *Caller) call(ctx context.Context, in InstanceConfig, req Request, reque
 			if probe {
 				cb.releaseReservation()
 			}
-			return UpstreamResult{}, &UpstreamFailure{Code: "request_deadline_exceeded", Err: err}
+			return UpstreamResult{}, &UpstreamFailure{Code: "upstream_response_error", Err: err, JobDeadline: true}
 		}
 		cb.release(false, probe, time.Now())
 		return UpstreamResult{}, &UpstreamFailure{Code: "upstream_response_error", Err: err}

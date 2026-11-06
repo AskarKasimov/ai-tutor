@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -217,8 +218,8 @@ func TestCallerDoesNotCountTheJobDeadlineAsAnUpstreamFailure(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
 		_, failure := caller.call(ctx, in, request, "r", false)
 		cancel()
-		if failure == nil || failure.Code != "request_deadline_exceeded" {
-			t.Fatalf("call %d failure = %+v, want request_deadline_exceeded", i, failure)
+		if failure == nil || !failure.JobDeadline {
+			t.Fatalf("call %d failure = %+v, want JobDeadline", i, failure)
 		}
 		if !errors.Is(failure.Err, context.DeadlineExceeded) {
 			t.Fatalf("call %d: the error lost context.DeadlineExceeded: %v", i, failure.Err)
@@ -269,8 +270,8 @@ func TestJobDeadlineReleasesTheHalfOpenProbe(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
 	defer cancel()
 	_, failure := caller.call(ctx, in, request, "r", true)
-	if failure == nil || failure.Code != "request_deadline_exceeded" {
-		t.Fatalf("failure = %+v, want request_deadline_exceeded", failure)
+	if failure == nil || !failure.JobDeadline {
+		t.Fatalf("failure = %+v, want JobDeadline", failure)
 	}
 	if !reserved(cb, time.Now()) {
 		t.Fatal("the probe stayed reserved after the job deadline; next probe is blocked")
@@ -440,5 +441,71 @@ func TestNonProbeFailureKeepsTheProbeOfAnotherCall(t *testing.T) {
 	cb.mu.Unlock()
 	if ok, _ := cb.reserve(time.Now()); ok {
 		t.Fatal("a failed non-probe call cleared the probe of another call: second probe granted")
+	}
+}
+
+// deadlineErrTransport reports a wire error (not the context error) once the
+// call context is done, the way a connection may fail exactly at the deadline.
+type deadlineErrTransport struct {
+	body bool
+	err  error
+}
+
+type deadlineErrBody struct {
+	ctx context.Context
+	err error
+}
+
+func (b deadlineErrBody) Read([]byte) (int, error) { <-b.ctx.Done(); return 0, b.err }
+func (deadlineErrBody) Close() error               { return nil }
+
+func (dt deadlineErrTransport) RoundTrip(r *http.Request) (*http.Response, error) {
+	if dt.body {
+		return &http.Response{StatusCode: http.StatusOK, Header: http.Header{}, Body: deadlineErrBody{ctx: r.Context(), err: dt.err}, Request: r}, nil
+	}
+	<-r.Context().Done()
+	return nil, dt.err
+}
+
+func TestJobDeadlineKeepsWhatHappenedOnTheWire(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		tr   deadlineErrTransport
+		code string
+	}{
+		{"body cut short", deadlineErrTransport{body: true, err: io.ErrUnexpectedEOF}, "upstream_response_error"},
+		{"transport error after send", deadlineErrTransport{err: errors.New("read tcp: connection reset by peer")}, "upstream_transport_error"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			caller := NewCaller(Config{UpstreamTimeout: 5 * time.Second})
+			caller.client.Transport = tc.tr
+			in := InstanceConfig{ID: "model-a", BaseURL: "http://upstream.invalid/v1", Model: "m", Timeout: 5 * time.Second}
+			request, err := ParseRequest([]byte(`{"messages":[{"role":"user","content":"hi"}],"complexity":"low"}`))
+			if err != nil {
+				t.Fatal(err)
+			}
+			for i := range 3 {
+				ctx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
+				_, failure := caller.call(ctx, in, request, "r", false)
+				cancel()
+				if failure == nil || !failure.JobDeadline || failure.Code != tc.code || failure.BeforeSend {
+					t.Fatalf("call %d failure = %+v, want JobDeadline with %s sent", i, failure, tc.code)
+				}
+				if !uncertainUpstreamOutcomeForInstance(in, failure) {
+					t.Fatalf("call %d: the outcome must stay uncertain with abort_on_disconnect: false", i)
+				}
+				if status, _, code, _ := upstreamFailureResponse(failure); status != 504 || code != "request_deadline_exceeded" {
+					t.Fatalf("call %d response = %d %s, want 504 request_deadline_exceeded", i, status, code)
+				}
+				s := tieredFixture()
+				s.observeCall(schedulerJob("j", 1, false), schedulerInstance("fast"), failure, time.Second)
+				if _, cooling := s.cooling["fast"]; cooling || len(s.expected) != 0 {
+					t.Fatalf("call %d: observeCall learned from a call cut by the job deadline", i)
+				}
+			}
+			if !caller.circuit("model-a").available(time.Now()) {
+				t.Fatal("the job deadline opened the breaker")
+			}
+		})
 	}
 }

@@ -3,6 +3,7 @@ package audio
 import (
 	"bytes"
 	"encoding/binary"
+	wav "github.com/AskarKasimov/ai-tutor/services/audio"
 	"testing"
 )
 
@@ -35,7 +36,7 @@ func wavFixture(extensible bool) []byte {
 func TestValidWAVPreservesFormatAndFrameInvariants(t *testing.T) {
 	for _, extensible := range []bool{false, true} {
 		data := wavFixture(extensible)
-		if !ValidWAV(data) {
+		if !wav.ValidWAV(data) {
 			t.Fatal("valid WAV rejected")
 		}
 		for _, tc := range []struct {
@@ -52,7 +53,7 @@ func TestValidWAVPreservesFormatAndFrameInvariants(t *testing.T) {
 			t.Run(tc.name, func(t *testing.T) {
 				bad := bytes.Clone(data)
 				tc.mutate(bad)
-				if ValidWAV(bad) {
+				if wav.ValidWAV(bad) {
 					t.Fatal("invalid WAV accepted")
 				}
 			})
@@ -62,19 +63,19 @@ func TestValidWAVPreservesFormatAndFrameInvariants(t *testing.T) {
 	for _, offset := range []int{38, 46, 50} {
 		bad := bytes.Clone(ext)
 		bad[offset] = 0xff
-		if ValidWAV(bad) {
+		if wav.ValidWAV(bad) {
 			t.Fatalf("invalid extensible field at %d accepted", offset)
 		}
 	}
 	badExtension := bytes.Clone(ext)
 	binary.LittleEndian.PutUint16(badExtension[36:38], 21)
-	if ValidWAV(badExtension) {
+	if wav.ValidWAV(badExtension) {
 		t.Fatal("short extensible format extension accepted")
 	}
 	// One byte of data cannot form a 16-bit frame, even with valid chunk padding.
 	bad := wavFixture(false)
 	binary.LittleEndian.PutUint32(bad[40:44], 1)
-	if ValidWAV(bad) {
+	if wav.ValidWAV(bad) {
 		t.Fatal("partial audio frame accepted")
 	}
 }
@@ -86,5 +87,17 @@ func TestCheckPreservesCodecMetadata(t *testing.T) {
 	}
 	if err := Check(ogg, "audio/ogg; codecs=vorbis"); err == nil {
 		t.Fatal("unsupported codec accepted")
+	}
+}
+
+func TestCheckAppliesInputSampleRatePolicy(t *testing.T) {
+	data := wavFixture(false)
+	binary.LittleEndian.PutUint32(data[24:28], 1)
+	binary.LittleEndian.PutUint32(data[28:32], 2)
+	if !wav.ValidWAV(data) {
+		t.Fatal("structural fixture invalid")
+	}
+	if err := Check(data, "audio/wav"); err == nil {
+		t.Fatal("1 Hz input accepted")
 	}
 }

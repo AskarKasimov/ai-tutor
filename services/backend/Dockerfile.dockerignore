@@ -1,5 +1,5 @@
 # The backend builds from the repository root; only its own sources and the
-# shared gRPC contracts are sent to the builder.
+# shared contracts, common audio and voice test fixture sources are sent.
 *
 !services/backend/go.mod
 !services/backend/go.sum
@@ -7,4 +7,10 @@
 !services/backend/cmd
 !services/backend/internal
 !services/shared
+
+!services/audio
+!services/voice-gateway/go.mod
+!services/voice-gateway/go.sum
+!services/voice-gateway/internal
+!services/voice-gateway/testkit
 **/*_test.go

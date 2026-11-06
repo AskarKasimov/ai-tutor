@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/audio"
+	"github.com/AskarKasimov/ai-tutor/services/audio"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/audioasset"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/security"
 )

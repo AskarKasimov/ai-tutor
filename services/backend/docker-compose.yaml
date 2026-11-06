@@ -12,6 +12,8 @@ services:
     volumes:
       - .:/work/backend
       - ../shared:/work/shared:ro
+      - ../audio:/work/audio:ro
+      - ../voice-gateway:/work/voice-gateway:ro
     ports:
       - "127.0.0.1:8002:8002"
     healthcheck:

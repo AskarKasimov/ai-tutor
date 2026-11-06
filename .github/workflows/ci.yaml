@@ -17,6 +17,7 @@ jobs:
       backend: ${{ steps.detect.outputs.backend }}
       frontend: ${{ steps.detect.outputs.frontend }}
       gateway: ${{ steps.detect.outputs.gateway }}
+      voice: ${{ steps.detect.outputs.voice }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -32,6 +33,7 @@ jobs:
           backend=false
           frontend=false
           gateway=false
+          voice=false
           case "$GITHUB_EVENT_NAME" in
             pull_request) comparison="$BASE_SHA...$HEAD_SHA" ;;
             push) comparison="$BASE_SHA..$HEAD_SHA" ;;
@@ -43,6 +45,7 @@ jobs:
             backend=true
             frontend=true
             gateway=true
+            voice=true
           else
             changed_files=$(mktemp)
             trap 'rm -f "$changed_files"' EXIT
@@ -54,18 +57,22 @@ jobs:
                 services/frontend/*) frontend=true ;;
                 services/s3/*) backend=true ;;
                 services/course-graph/*) backend=true ;;
-                services/shared/*) gateway=true; backend=true ;;
-                services/llm-gateway/*|.dockerignore|.github/workflows/gateway-ci.yaml) gateway=true ;;
+                services/shared/*) gateway=true; backend=true; voice=true ;;
+                services/audio/*) backend=true; voice=true ;;
+                services/voice-gateway/*|.github/workflows/voice-gateway-ci.yaml) voice=true; backend=true ;;
+                services/llm-gateway/*|.github/workflows/gateway-ci.yaml) gateway=true ;;
+                .dockerignore) gateway=true; voice=true ;;
                 .github/*|api/*|docker-compose*.yaml|services/postgresql/*|services/caddy/*|dev.sh|.env.example)
                   backend=true
                   frontend=true
+                  voice=true
                   ;;
               esac
             done < "$changed_files"
           fi
 
-          printf 'backend=%s\nfrontend=%s\ngateway=%s\n' "$backend" "$frontend" "$gateway" >> "$GITHUB_OUTPUT"
-          echo "Selected services: backend=$backend frontend=$frontend gateway=$gateway"
+          printf 'backend=%s\nfrontend=%s\ngateway=%s\nvoice=%s\n' "$backend" "$frontend" "$gateway" "$voice" >> "$GITHUB_OUTPUT"
+          echo "Selected services: backend=$backend frontend=$frontend gateway=$gateway voice=$voice"
 
   compose:
     name: Compose configuration
@@ -79,7 +86,7 @@ jobs:
           docker compose --env-file .env.example -f docker-compose.yaml config --quiet
           docker compose --env-file .env.example -f docker-compose.yaml -f docker-compose.dev.yaml config --quiet
           docker compose --env-file .env.example -f docker-compose.yaml -f docker-compose.external-s3.yaml config --quiet
-          for file in services/postgresql/docker-compose.yaml services/s3/docker-compose.yaml services/backend/docker-compose.yaml services/frontend/docker-compose.yaml services/caddy/docker-compose.yaml services/course-graph/docker-compose.yaml services/llm-gateway/docker-compose.yaml; do
+          for file in services/postgresql/docker-compose.yaml services/s3/docker-compose.yaml services/backend/docker-compose.yaml services/frontend/docker-compose.yaml services/caddy/docker-compose.yaml services/course-graph/docker-compose.yaml services/llm-gateway/docker-compose.yaml services/voice-gateway/docker-compose.yaml; do
             docker compose --env-file .env.example -f "$file" config --quiet
           done
 
@@ -100,6 +107,12 @@ jobs:
     needs: detect-changes
     if: ${{ needs.detect-changes.outputs.gateway == 'true' }}
     uses: ./.github/workflows/gateway-ci.yaml
+
+  voice:
+    name: Voice Gateway CI
+    needs: detect-changes
+    if: ${{ needs.detect-changes.outputs.voice == 'true' }}
+    uses: ./.github/workflows/voice-gateway-ci.yaml
 
   course-graph:
     name: Course graph CPU tests and image
@@ -170,6 +183,8 @@ jobs:
         run: |
           npx playwright install --with-deps chromium
           npm run test:e2e -- e2e/stack.spec.ts
+      - name: Verify API startup with unavailable voice gateway
+        run: APP_BASE_URL=https://localhost:18443 sh ./tests/integration/voice-unavailable.sh --project-name ai-tutor-stack-smoke --env-file .env.smoke
       - name: Stop smoke stack and remove generated local inputs
         if: ${{ always() }}
         run: |
@@ -179,7 +194,7 @@ jobs:
 
   ci-passed:
     name: CI passed
-    needs: [detect-changes, compose, backend, frontend, gateway, course-graph, stack-smoke]
+    needs: [detect-changes, compose, backend, frontend, gateway, voice, course-graph, stack-smoke]
     if: ${{ always() }}
     runs-on: ubuntu-latest
     steps:
@@ -193,6 +208,8 @@ jobs:
           FRONTEND_RESULT: ${{ needs.frontend.result }}
           GATEWAY_SELECTED: ${{ needs.detect-changes.outputs.gateway }}
           GATEWAY_RESULT: ${{ needs.gateway.result }}
+          VOICE_SELECTED: ${{ needs.detect-changes.outputs.voice }}
+          VOICE_RESULT: ${{ needs.voice.result }}
           COURSE_GRAPH_RESULT: ${{ needs.course-graph.result }}
           STACK_SMOKE_RESULT: ${{ needs.stack-smoke.result }}
         run: |
@@ -230,4 +247,5 @@ jobs:
           check_service backend "$BACKEND_SELECTED" "$BACKEND_RESULT"
           check_service frontend "$FRONTEND_SELECTED" "$FRONTEND_RESULT"
           check_service gateway "$GATEWAY_SELECTED" "$GATEWAY_RESULT"
+          check_service voice "$VOICE_SELECTED" "$VOICE_RESULT"
           echo "All required service checks passed."

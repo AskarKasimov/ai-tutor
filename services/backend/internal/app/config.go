@@ -2,7 +2,6 @@ package app
 
 import (
 	"fmt"
-	"math"
 	"net"
 	"net/url"
 	"strconv"
@@ -13,38 +12,31 @@ import (
 )
 
 type Config struct {
-	LogLevel              zapcore.Level
-	ListenAddress         string
-	DatabaseURL           string
-	STTURL                string
-	STTModel              string
-	STTLongform           bool
-	TTSUseReference       bool
-	TTSUsePrompt          bool
-	TTSURL                string
-	TTSSeed               int64
-	TTSCFGValue           float64
-	TTSInferenceTimesteps int
-	VoiceTimeout          time.Duration
-	MaxUploadBytes        int64
-	S3Endpoint            string
-	S3Region              string
-	S3Bucket              string
-	S3AccessKey           string
-	S3SecretKey           string
-	S3PathStyle           bool
-	S3Timeout             time.Duration
-	S3CreateBucket        bool
-	AudioWorkers          int
-	AudioPollInterval     time.Duration
-	LearningTutorEnabled  bool
-	TutorTaskMaxChars     int
-	TutorHistoryMaxChars  int
-	TutorSummaryMaxChars  int
-	CourseGraphURL        string
-	CourseGraphTimeout    time.Duration
-	OCRURL                string
-	OCRTimeout            time.Duration
+	LogLevel             zapcore.Level
+	ListenAddress        string
+	DatabaseURL          string
+	VoiceGatewayAddress  string
+	VoiceProfile         string
+	VoiceTimeout         time.Duration
+	MaxUploadBytes       int64
+	S3Endpoint           string
+	S3Region             string
+	S3Bucket             string
+	S3AccessKey          string
+	S3SecretKey          string
+	S3PathStyle          bool
+	S3Timeout            time.Duration
+	S3CreateBucket       bool
+	AudioWorkers         int
+	AudioPollInterval    time.Duration
+	LearningTutorEnabled bool
+	TutorTaskMaxChars    int
+	TutorHistoryMaxChars int
+	TutorSummaryMaxChars int
+	CourseGraphURL       string
+	CourseGraphTimeout   time.Duration
+	OCRURL               string
+	OCRTimeout           time.Duration
 	// LLMGatewayAddress is the gRPC address (host:port) of the LLM gateway.
 	LLMGatewayAddress string
 	LLMTimeout        time.Duration
@@ -76,19 +68,11 @@ func (c Config) validate() error {
 	if strings.TrimSpace(c.DatabaseURL) == "" {
 		return fmt.Errorf("BACKEND_DATABASE_URL is required")
 	}
-	for _, setting := range []struct{ key, value string }{
-		{"BACKEND_STT_URL", c.STTURL}, {"BACKEND_TTS_URL", c.TTSURL},
-	} {
-		u, err := url.Parse(setting.value)
-		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.User != nil || u.Fragment != "" {
-			return fmt.Errorf("%s must be an absolute HTTP(S) URL without credentials", setting.key)
-		}
+	if host, port, err := net.SplitHostPort(c.VoiceGatewayAddress); err != nil || host == "" || !validPort(port) {
+		return fmt.Errorf("voice.address must be a host:port gRPC address")
 	}
-	if math.IsNaN(c.TTSCFGValue) || math.IsInf(c.TTSCFGValue, 0) || c.TTSCFGValue < 0 || c.TTSCFGValue > 5 {
-		return fmt.Errorf("BACKEND_TTS_CFG_VALUE must be a finite number from 0 to 5")
-	}
-	if c.TTSInferenceTimesteps < 1 || c.TTSInferenceTimesteps > 50 {
-		return fmt.Errorf("BACKEND_TTS_INFERENCE_TIMESTEPS must be from 1 to 50")
+	if strings.TrimSpace(c.VoiceProfile) == "" {
+		return fmt.Errorf("voice.profile is required")
 	}
 	if c.VoiceTimeout <= 0 {
 		return fmt.Errorf("BACKEND_VOICE_TIMEOUT must be positive")

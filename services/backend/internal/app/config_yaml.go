@@ -37,19 +37,8 @@ type backendYAML struct {
 		Level *string `yaml:"level"`
 	} `yaml:"logging"`
 	Voice *struct {
-		STT *struct {
-			URL      *string `yaml:"url"`
-			Model    *string `yaml:"model"`
-			Longform *bool   `yaml:"longform"`
-		} `yaml:"stt"`
-		TTS *struct {
-			URL                *string  `yaml:"url"`
-			Seed               *int64   `yaml:"seed"`
-			CFGValue           *float64 `yaml:"cfg_value"`
-			InferenceTimesteps *int     `yaml:"inference_timesteps"`
-			UseReference       *bool    `yaml:"use_reference"`
-			UsePrompt          *bool    `yaml:"use_prompt"`
-		} `yaml:"tts"`
+		Address *string       `yaml:"address"`
+		Profile *string       `yaml:"profile"`
 		Timeout *yamlDuration `yaml:"timeout"`
 	} `yaml:"voice"`
 	Uploads *struct {
@@ -242,24 +231,11 @@ func requireBackendYAML(c backendYAML) error {
 	if c.Logging == nil || c.Logging.Level == nil {
 		missing = append(missing, "logging.level")
 	}
-	if c.Voice == nil || c.Voice.STT == nil || c.Voice.STT.URL == nil {
-		missing = append(missing, "voice.stt.url")
+	if c.Voice == nil || c.Voice.Address == nil {
+		missing = append(missing, "voice.address")
 	}
-	if c.Voice == nil || c.Voice.TTS == nil {
-		missing = append(missing, "voice.tts")
-	} else {
-		if c.Voice.TTS.URL == nil {
-			missing = append(missing, "voice.tts.url")
-		}
-		if c.Voice.TTS.Seed == nil {
-			missing = append(missing, "voice.tts.seed")
-		}
-		if c.Voice.TTS.CFGValue == nil {
-			missing = append(missing, "voice.tts.cfg_value")
-		}
-		if c.Voice.TTS.InferenceTimesteps == nil {
-			missing = append(missing, "voice.tts.inference_timesteps")
-		}
+	if c.Voice == nil || c.Voice.Profile == nil {
+		missing = append(missing, "voice.profile")
 	}
 	if c.Voice == nil || c.Voice.Timeout == nil {
 		missing = append(missing, "voice.timeout")
@@ -330,23 +306,10 @@ func LoadConfig(path string) (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
-	c := Config{LogLevel: logLevel, ListenAddress: *y.Server.ListenAddress, STTURL: *y.Voice.STT.URL, TTSURL: *y.Voice.TTS.URL, TTSSeed: *y.Voice.TTS.Seed, TTSCFGValue: *y.Voice.TTS.CFGValue, TTSInferenceTimesteps: *y.Voice.TTS.InferenceTimesteps, VoiceTimeout: y.Voice.Timeout.Duration, MaxUploadBytes: *y.Uploads.MaxBytes,
+	c := Config{LogLevel: logLevel, ListenAddress: *y.Server.ListenAddress, VoiceGatewayAddress: *y.Voice.Address, VoiceProfile: *y.Voice.Profile, VoiceTimeout: y.Voice.Timeout.Duration, MaxUploadBytes: *y.Uploads.MaxBytes,
 		S3Endpoint: *y.Storage.S3.Endpoint, S3Region: *y.Storage.S3.Region, S3Bucket: *y.Storage.S3.Bucket, S3PathStyle: *y.Storage.S3.PathStyle, S3Timeout: y.Storage.S3.Timeout.Duration, S3CreateBucket: *y.Storage.S3.CreateBucket, S3AccessKey: strings.TrimSpace(os.Getenv("BACKEND_S3_ACCESS_KEY")), S3SecretKey: strings.TrimSpace(os.Getenv("BACKEND_S3_SECRET_KEY")),
 		AudioWorkers: *y.Workers.Audio.Count, AudioPollInterval: y.Workers.Audio.PollInterval.Duration, LearningTutorEnabled: *y.Tutor.Enabled, TutorTaskMaxChars: *y.Tutor.Context.TaskMaxChars, TutorHistoryMaxChars: *y.Tutor.Context.HistoryMaxChars, TutorSummaryMaxChars: *y.Tutor.Context.SummaryMaxChars,
 		CourseGraphURL: *y.CourseGraph.URL, CourseGraphTimeout: y.CourseGraph.Timeout.Duration, LLMGatewayAddress: *y.LLMGateway.Address, LLMTimeout: y.LLMGateway.Timeout.Duration, GeekMaxQuestions: *y.Geek.QuestionLimit}
-	c.TTSUseReference, c.TTSUsePrompt = true, true
-	if y.Voice.STT.Model != nil {
-		c.STTModel = *y.Voice.STT.Model
-	}
-	if y.Voice.STT.Longform != nil {
-		c.STTLongform = *y.Voice.STT.Longform
-	}
-	if y.Voice.TTS.UseReference != nil {
-		c.TTSUseReference = *y.Voice.TTS.UseReference
-	}
-	if y.Voice.TTS.UsePrompt != nil {
-		c.TTSUsePrompt = *y.Voice.TTS.UsePrompt
-	}
 	var missing []string
 	c.DatabaseURL = strings.TrimSpace(os.Getenv("BACKEND_DATABASE_URL"))
 	if c.DatabaseURL == "" {
@@ -388,10 +351,6 @@ func yamlConfigValidationError(err error) error {
 	message := err.Error()
 	for _, field := range []struct{ env, path string }{
 		{"BACKEND_LISTEN_ADDRESS", "server.listen_address"},
-		{"BACKEND_STT_URL", "voice.stt.url"},
-		{"BACKEND_TTS_URL", "voice.tts.url"},
-		{"BACKEND_TTS_CFG_VALUE", "voice.tts.cfg_value"},
-		{"BACKEND_TTS_INFERENCE_TIMESTEPS", "voice.tts.inference_timesteps"},
 		{"BACKEND_VOICE_TIMEOUT", "voice.timeout"},
 		{"BACKEND_S3_BUCKET", "storage.s3.bucket"},
 		{"BACKEND_S3_REGION", "storage.s3.region"},

@@ -33,9 +33,10 @@ printf '%s\n' "Start page: $app_url" "Course admin: $admin_url"
 
 # Grafana is optional; the LLM gateway itself is always part of the app stack.
 grafana_url=http://localhost:3000/d/llm-gateway-routing
+voice_grafana_url=http://localhost:3000/d/voice-gateway
 profiles=${COMPOSE_PROFILES-$(sed -n 's/^COMPOSE_PROFILES=//p' .env | tail -n 1)}
 case ",$profiles," in
-*,observability,*) printf '%s\n' "Grafana:      $grafana_url" ;;
+*,observability,*) printf '%s\n' "Grafana LLM:   $grafana_url" "Grafana voice: $voice_grafana_url" ;;
 *) grafana_url= ;;
 esac
 
@@ -65,12 +66,13 @@ if [ "${DEV_OPEN_BROWSER:-true}" != false ] && [ -n "$opener" ]; then
             until curl -fs -o /dev/null http://localhost:3000/api/health; do
                 attempts=$((attempts - 1))
                 if [ "$attempts" -le 0 ]; then
-                    printf '%s\n' "Grafana did not answer; open $grafana_url manually." >&2
+                    printf '%s\n' "Grafana did not answer; open $grafana_url and $voice_grafana_url manually." >&2
                     exit 0
                 fi
                 sleep 5
             done
             "$opener" "$grafana_url" >/dev/null 2>&1
+            "$opener" "$voice_grafana_url" >/dev/null 2>&1
         fi
     ) &
 fi

@@ -9,7 +9,7 @@
 | `cmd/api` | Запуск, миграции, healthcheck, фоновая проверка S3-бакета, shutdown. |
 | `internal/app` | Конфигурация, зависимости, router, auth middleware и HTTP logging. |
 | `features/auth` | Регистрация/вход, refresh/logout/me, общий аккаунт админки, PostgreSQL и Argon2id. |
-| `features/voice` | STT/TTS, проверка входа, сохранение расшифровки владельца. |
+| `features/voice` | STT/TTS, проверка входа, сохранение расшифровки владельца; gRPC-адаптеры к voice gateway. |
 | `features/subject` | Каталог предметов (курсов) и создание предмета admin. |
 | `features/{diagnostic,assessment,diagnosticfeedback,learning,training}` | Legacy диагностика, старые шкалы оценивания, feedback, план и тренировка обучения; изолированные SQL объекты и snapshots. |
 | `features/{competency,variantgen,taskbank,taskgen,taskaudio}` | Импорт учебной CSV/XLSX карты (второй лист XLSX), генерация/выдача вариантов по составляющим, банк заданий, подготовка задач через gateway и audio worker поверх общего S3 клиента. |
@@ -30,4 +30,4 @@ SQL находится в `shared/postgres/queries`; PostgreSQL-адаптеры
 
 Единственный контракт — [api/openapi.yaml](../api/openapi.yaml). `x-implementation` отличает работающие операции от планируемых; наличие planned в Swagger не означает наличие handler. Внутренний API Python-сервиса — [api/course-graph.yaml](../api/course-graph.yaml).
 
-Frontend вызывает общий HTTPS API `/api/v1`; Caddy удаляет префикс. Learning operations находятся под `/learn`, Geek под `/exam`, auth и voice общие. STT/TTS вызываются backend через HTTP-адаптеры, OCR — через сервис course-graph; настройки моделей находятся только на сервере. `/health` проверяет backend/БД, не модели.
+Frontend вызывает общий HTTPS API `/api/v1`; Caddy удаляет префикс. Learning operations находятся под `/learn`, Geek под `/exam`, auth и voice общие. STT/TTS вызываются backend через два gRPC-адаптера к отдельному `services/voice-gateway`; тот ведёт независимые STT/TTS-очереди и вызывает HTTP API моделей, OCR — через сервис course-graph; настройки моделей находятся только на сервере. `/health` проверяет backend/БД, не модели.

@@ -57,7 +57,7 @@ func (a *syncAudio) Put(_ context.Context, key string, data []byte) error {
 func TestWarmerVoicesPreparedQuestionsOnceBeforeStudentsAsk(t *testing.T) {
 	voice := &countingVoice{called: make(chan struct{}, 8)}
 	store := &syncAudio{data: map[string][]byte{}}
-	warmer := NewWarmer(NewSpeechCache(voice, store, "steps=20"), nil)
+	warmer := NewWarmer(NewSpeechCache(voice, store, staticVoiceName("steps=20")), nil)
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
 	go func() { _ = warmer.Run(ctx); close(done) }()
@@ -75,7 +75,7 @@ func TestWarmerVoicesPreparedQuestionsOnceBeforeStudentsAsk(t *testing.T) {
 	}
 	// A question already in the cache is not synthesized again.
 	warmer.Prepare([]string{"Почему A* оптимален?"})
-	speech := NewSpeechCache(voice, store, "steps=20")
+	speech := NewSpeechCache(voice, store, staticVoiceName("steps=20"))
 	if _, err := speech.Part(context.Background(), "Зачем эвристика?"); err != nil {
 		t.Fatal(err)
 	}
@@ -126,7 +126,7 @@ func TestWarmerRetriesStoreFailuresUntilVoiced(t *testing.T) {
 	// The bucket is not created yet when the warmer starts.
 	store := &flakyAudio{syncAudio: syncAudio{data: map[string][]byte{}}}
 	core, logs := observer.New(zap.WarnLevel)
-	warmer := NewWarmer(NewSpeechCache(voice, store, "steps=20"), zap.New(core))
+	warmer := NewWarmer(NewSpeechCache(voice, store, staticVoiceName("steps=20")), zap.New(core))
 	warmer.retryMin, warmer.retryMax = time.Millisecond, 2*time.Millisecond
 	runWarmer(t, warmer)
 
@@ -161,7 +161,7 @@ func TestWarmerRetriesAFailedSynthesisBehindTheOtherTexts(t *testing.T) {
 	voice := &failingVoice{countingVoice: countingVoice{called: make(chan struct{}, 8)}}
 	voice.fail.Store(1)
 	store := &syncAudio{data: map[string][]byte{}}
-	warmer := NewWarmer(NewSpeechCache(voice, store, "steps=20"), nil)
+	warmer := NewWarmer(NewSpeechCache(voice, store, staticVoiceName("steps=20")), nil)
 	warmer.retryMin, warmer.retryMax = time.Millisecond, time.Millisecond
 	runWarmer(t, warmer)
 
@@ -178,7 +178,7 @@ func TestWarmerRetriesAFailedSynthesisBehindTheOtherTexts(t *testing.T) {
 func TestWarmerQueuesAWaitingTextOnceAndHasNoQueueLimit(t *testing.T) {
 	store := &syncAudio{data: map[string][]byte{}}
 	// Not running: everything stays queued.
-	warmer := NewWarmer(NewSpeechCache(&countingVoice{called: make(chan struct{}, 1)}, store, "steps=20"), nil)
+	warmer := NewWarmer(NewSpeechCache(&countingVoice{called: make(chan struct{}, 1)}, store, staticVoiceName("steps=20")), nil)
 	texts := make([]string, 5000)
 	for i := range texts {
 		texts[i] = fmt.Sprintf("Вопрос %d?", i)
@@ -205,7 +205,7 @@ func (v *gatedVoice) Synthesize(ctx context.Context, text string) ([]byte, error
 
 func TestConcurrentMissesOfOneQuestionSynthesizeOnce(t *testing.T) {
 	voice := &gatedVoice{countingVoice: countingVoice{called: make(chan struct{}, 8)}, release: make(chan struct{})}
-	speech := NewSpeechCache(voice, &syncAudio{data: map[string][]byte{}}, "steps=20")
+	speech := NewSpeechCache(voice, &syncAudio{data: map[string][]byte{}}, staticVoiceName("steps=20"))
 	// The warmer starts the synthesis, then a student leaves while waiting
 	// and another one asks for the same question.
 	warmer := make(chan error, 1)

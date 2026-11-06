@@ -303,8 +303,7 @@ func (s *Service) persistCancellation(id, code string) {
 		if errors.Is(err, errCanceledJob) {
 			return
 		}
-		s.registerStateRepair("cancellation", &copy, false, false, err)
-		s.notifyEphemeral(id, submitResult{503, errorBody("server_error", "state_unavailable", "Gateway could not durably save cancellation.")})
+		s.registerStateRepair("cancellation", &copy, false, false, &submitResult{503, errorBody("server_error", "state_unavailable", "Gateway could not durably save cancellation.")}, err)
 		return
 	}
 	s.mu.Lock()

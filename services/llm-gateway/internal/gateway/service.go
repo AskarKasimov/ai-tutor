@@ -236,8 +236,11 @@ type stateRepair struct {
 }
 
 // registerStateRepair blocks readiness and assignments until the intended
-// state of the job is written again by reconcileState.
-func (s *Service) registerStateRepair(place string, j *durableJob, releaseOnSaved, releaseOnSuperseded bool, cause error) {
+// state of the job is written again by reconcileState. notice, when set, is the
+// temporary answer for the waiting clients; it is published under the same lock
+// as the repair, so a repair that completes right away cannot be followed by a
+// stale notice.
+func (s *Service) registerStateRepair(place string, j *durableJob, releaseOnSaved, releaseOnSuperseded bool, notice *submitResult, cause error) {
 	r := &stateRepair{place: place, job: *j, releaseOnSaved: releaseOnSaved, releaseOnSuperseded: releaseOnSuperseded}
 	r.job.ProbeReserved = false
 	s.mu.Lock()
@@ -264,6 +267,13 @@ func (s *Service) registerStateRepair(place string, j *durableJob, releaseOnSave
 		r.releaseOnSuperseded = r.releaseOnSuperseded || old.releaseOnSuperseded
 	}
 	s.repairs[j.ID] = r
+	if notice != nil {
+		s.ephemeral[j.ID] = *notice
+		if ch := s.waiters[j.ID]; ch != nil {
+			close(ch)
+			delete(s.waiters, j.ID)
+		}
+	}
 	s.ready = false
 	s.brokerAvailable = false
 	s.stateUncertain = true
@@ -1036,8 +1046,7 @@ func (s *Service) execute(ctx context.Context, j *durableJob, in InstanceConfig)
 			} else if !errors.Is(err, errCanceledJob) {
 				// The durable state is still "running". Do not dispatch more work
 				// while local state claims this retry is queued.
-				s.registerStateRepair("reschedule", j, false, false, err)
-				s.notifyEphemeral(j.ID, submitResult{503, errorBody("server_error", "state_unavailable", "Gateway could not durably reschedule the LLM request.")})
+				s.registerStateRepair("reschedule", j, false, false, &submitResult{503, errorBody("server_error", "state_unavailable", "Gateway could not durably reschedule the LLM request.")}, err)
 			}
 			return
 		}
@@ -1193,8 +1202,7 @@ func (s *Service) persistResult(ctx context.Context, j *durableJob, status int, 
 				// execute releases the slot after a result that was saved; the
 				// repair does it after this one is. A slot kept on purpose for an
 				// uncertain upstream outcome stays kept.
-				s.registerStateRepair("result", j, !j.SlotHeld, true, err)
-				s.notifyEphemeral(j.ID, submitResult{503, errorBody("server_error", "state_unavailable", "Gateway could not durably save the LLM result.")})
+				s.registerStateRepair("result", j, !j.SlotHeld, true, &submitResult{503, errorBody("server_error", "state_unavailable", "Gateway could not durably save the LLM result.")}, err)
 				return err
 			}
 			timer := time.NewTimer(250 * time.Millisecond)
@@ -1215,16 +1223,6 @@ func (s *Service) persistResult(ctx context.Context, j *durableJob, status int, 
 	}
 	s.mu.Unlock()
 	return nil
-}
-
-func (s *Service) notifyEphemeral(id string, result submitResult) {
-	s.mu.Lock()
-	s.ephemeral[id] = result
-	if ch := s.waiters[id]; ch != nil {
-		close(ch)
-		delete(s.waiters, id)
-	}
-	s.mu.Unlock()
 }
 
 func (s *Service) compactLoop(ctx context.Context) {
@@ -1308,8 +1306,7 @@ func (s *Service) finish(j *durableJob, result submitResult, state string) finis
 	}
 	// Every caller releases the slot itself, or holds none.
 	j.SlotHeld = false
-	s.registerStateRepair("finish", j, false, false, err)
-	s.notifyEphemeral(j.ID, submitResult{503, errorBody("server_error", "state_unavailable", "Gateway could not durably save the request state.")})
+	s.registerStateRepair("finish", j, false, false, &submitResult{503, errorBody("server_error", "state_unavailable", "Gateway could not durably save the request state.")}, err)
 	return finishFailed
 }
 func (s *Service) releaseSlot(j *durableJob) {
@@ -1372,7 +1369,7 @@ func (s *Service) releaseExpiredUncertainSlots(now time.Time) {
 		cancel()
 		if err != nil {
 			if !errors.Is(err, errCanceledJob) {
-				s.registerStateRepair("slot_release", job, true, true, err)
+				s.registerStateRepair("slot_release", job, true, true, nil, err)
 			}
 			continue
 		}

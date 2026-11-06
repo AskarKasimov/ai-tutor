@@ -5,8 +5,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -407,9 +410,9 @@ func TestCancellationRepairSurvivesARepairOfTheDeadline(t *testing.T) {
 			expired := expiredOutcome(j)
 			if order == "cancellation first" {
 				s.persistCancellation("j", "request_canceled")
-				s.registerStateRepair("finish", &expired, false, false, errors.New("broker unavailable"))
+				s.registerStateRepair("finish", &expired, false, false, nil, errors.New("broker unavailable"))
 			} else {
-				s.registerStateRepair("finish", &expired, false, false, errors.New("broker unavailable"))
+				s.registerStateRepair("finish", &expired, false, false, nil, errors.New("broker unavailable"))
 				s.persistCancellation("j", "request_canceled")
 			}
 			s.mu.Lock()
@@ -483,7 +486,7 @@ func TestSupersededRepairKeepsAnUnstoredCancellation(t *testing.T) {
 	s.mu.Unlock()
 	queuedCopy := *q
 	expired := expiredOutcome(queuedCopy)
-	s.registerStateRepair("finish", &expired, false, false, errors.New("broker unavailable"))
+	s.registerStateRepair("finish", &expired, false, false, nil, errors.New("broker unavailable"))
 	s.mu.Lock()
 	s.cancelled["j"] = true // decided, its own goroutine has not stored it yet
 	s.mu.Unlock()
@@ -499,5 +502,48 @@ func TestSupersededRepairKeepsAnUnstoredCancellation(t *testing.T) {
 	stored := s.job("j")
 	if stored.Status != "failed" || stored.Error == nil || stored.Error.Code != "request_canceled" {
 		t.Fatalf("job = %+v, want the cancellation", stored)
+	}
+}
+
+// repairOnLog runs reconcileState the moment a repair is logged, that is right
+// after registerStateRepair returns and before its caller continues.
+type repairOnLog struct {
+	slog.Handler
+	once   sync.Once
+	repair func()
+}
+
+func (h *repairOnLog) Handle(ctx context.Context, r slog.Record) error {
+	if strings.HasPrefix(r.Message, "state write failed") {
+		h.once.Do(h.repair)
+	}
+	return h.Handler.Handle(ctx, r)
+}
+
+func TestRepairFinishedBeforeTheCallerContinuesLeavesNoStale503(t *testing.T) {
+	for _, tc := range repairCases() {
+		if tc.name == "slot_release" {
+			continue // no client is waiting for a slot release
+		}
+		t.Run(tc.name, func(t *testing.T) {
+			s, stub := repairFixture(t)
+			stub.setFail(true)
+			previous := slog.Default()
+			slog.SetDefault(slog.New(&repairOnLog{Handler: slog.NewTextHandler(io.Discard, nil), repair: func() {
+				stub.setFail(false)
+				s.readinessTick(context.Background(), nil)
+			}}))
+			t.Cleanup(func() { slog.SetDefault(previous) })
+			id, _ := tc.trigger(t, s)
+			if !s.Ready() {
+				t.Fatal("gateway is not ready although the repair was written")
+			}
+			s.mu.Lock()
+			stale, ok := s.ephemeral[id]
+			s.mu.Unlock()
+			if ok {
+				t.Fatalf("a retry of %s after the recovery gets the stale %d instead of the stored outcome", id, stale.status)
+			}
+		})
 	}
 }

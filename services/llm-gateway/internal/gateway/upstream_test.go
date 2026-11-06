@@ -3,6 +3,7 @@ package gateway
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -180,5 +181,93 @@ func TestCallerAddsTheInstanceBodyForTheRequestedReasoningEffort(t *testing.T) {
 		if _, ok := body["chat_template_kwargs"]; ok {
 			t.Fatalf("request %d without low effort got the low body", i+1)
 		}
+	}
+}
+
+func slowUpstream(t *testing.T, delay time.Duration) *httptest.Server {
+	t.Helper()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case <-time.After(delay):
+		case <-r.Context().Done():
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"id":"c","object":"chat.completion","created":1,"model":"m","choices":[{"index":0,"message":{"role":"assistant","content":"x"}}]}`))
+	}))
+	t.Cleanup(server.Close)
+	return server
+}
+
+func TestCallerDoesNotCountTheJobDeadlineAsAnUpstreamFailure(t *testing.T) {
+	server := slowUpstream(t, 300*time.Millisecond)
+	caller := NewCaller(Config{UpstreamTimeout: 5 * time.Second})
+	defer caller.client.CloseIdleConnections()
+	in := InstanceConfig{ID: "model-a", BaseURL: server.URL + "/v1", Model: "m", Timeout: 5 * time.Second}
+	request, err := ParseRequest([]byte(`{"messages":[{"role":"user","content":"hi"}],"complexity":"low"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := range 3 {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
+		_, failure := caller.call(ctx, in, request, "r", false)
+		cancel()
+		if failure == nil || failure.Code != "request_deadline_exceeded" {
+			t.Fatalf("call %d failure = %+v, want request_deadline_exceeded", i, failure)
+		}
+		if !errors.Is(failure.Err, context.DeadlineExceeded) {
+			t.Fatalf("call %d: the error lost context.DeadlineExceeded: %v", i, failure.Err)
+		}
+	}
+	if !caller.circuit("model-a").available(time.Now()) {
+		t.Fatal("the job deadline opened the breaker of a healthy instance")
+	}
+}
+
+func TestCallerStillCountsTheInstanceTimeoutAsAFailure(t *testing.T) {
+	server := slowUpstream(t, 300*time.Millisecond)
+	caller := NewCaller(Config{UpstreamTimeout: 5 * time.Second})
+	defer caller.client.CloseIdleConnections()
+	in := InstanceConfig{ID: "model-a", BaseURL: server.URL + "/v1", Model: "m", Timeout: 30 * time.Millisecond}
+	request, err := ParseRequest([]byte(`{"messages":[{"role":"user","content":"hi"}],"complexity":"low"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := range 3 {
+		_, failure := caller.call(context.Background(), in, request, "r", false)
+		if failure == nil || failure.Code != "upstream_transport_error" || !errors.Is(failure.Err, context.DeadlineExceeded) {
+			t.Fatalf("call %d failure = %+v, want upstream_transport_error with DeadlineExceeded", i, failure)
+		}
+	}
+	if caller.circuit("model-a").available(time.Now()) {
+		t.Fatal("three instance timeouts must open the breaker")
+	}
+}
+
+func TestJobDeadlineReleasesTheHalfOpenProbe(t *testing.T) {
+	server := slowUpstream(t, 300*time.Millisecond)
+	caller := NewCaller(Config{UpstreamTimeout: 5 * time.Second})
+	defer caller.client.CloseIdleConnections()
+	in := InstanceConfig{ID: "model-a", BaseURL: server.URL + "/v1", Model: "m", Timeout: 5 * time.Second}
+	request, err := ParseRequest([]byte(`{"messages":[{"role":"user","content":"hi"}],"complexity":"low"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cb := caller.circuit("model-a")
+	past := time.Now().Add(-time.Minute)
+	for range 3 {
+		cb.release(false, past)
+	}
+	if !cb.acquire(time.Now()) {
+		t.Fatal("half-open probe was not granted")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
+	defer cancel()
+	_, failure := caller.call(ctx, in, request, "r", true)
+	if failure == nil || failure.Code != "request_deadline_exceeded" {
+		t.Fatalf("failure = %+v, want request_deadline_exceeded", failure)
+	}
+	if !cb.acquire(time.Now()) {
+		t.Fatal("the probe stayed reserved after the job deadline; next probe is blocked")
 	}
 }

@@ -142,6 +142,10 @@ func (c *Caller) call(ctx context.Context, in InstanceConfig, req Request, reque
 			cb.releaseReservation()
 			return UpstreamResult{}, &UpstreamFailure{Code: "request_canceled", Err: err}
 		}
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			cb.releaseReservation()
+			return UpstreamResult{}, &UpstreamFailure{Code: "request_deadline_exceeded", Err: err}
+		}
 		var ne net.Error
 		before := strings.Contains(err.Error(), "connect: ") || strings.Contains(err.Error(), "no such host") || strings.Contains(err.Error(), "connection refused") || strings.Contains(err.Error(), "network is unreachable")
 		if errorsAs(err, &ne) && !ne.Timeout() {
@@ -156,6 +160,10 @@ func (c *Caller) call(ctx context.Context, in InstanceConfig, req Request, reque
 		if errors.Is(ctx.Err(), context.Canceled) {
 			cb.releaseReservation()
 			return UpstreamResult{}, &UpstreamFailure{Code: "request_canceled", Err: err}
+		}
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			cb.releaseReservation()
+			return UpstreamResult{}, &UpstreamFailure{Code: "request_deadline_exceeded", Err: err}
 		}
 		cb.release(false, time.Now())
 		return UpstreamResult{}, &UpstreamFailure{Code: "upstream_response_error", Err: err}

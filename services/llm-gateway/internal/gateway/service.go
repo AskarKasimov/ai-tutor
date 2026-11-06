@@ -102,6 +102,8 @@ type Service struct {
 	ready             bool
 	brokerAvailable   bool
 	stateUncertain    bool
+	repairs           map[string]*stateRepair
+	writeStateFn      func(ctx context.Context, key, value []byte) error
 	stopping          bool
 	started           time.Time
 	idempotentReplays uint64
@@ -188,24 +190,150 @@ func (s *Service) monitorReadiness(ctx context.Context) {
 			pingCtx, cancel := context.WithTimeout(ctx, 1500*time.Millisecond)
 			err := s.submitter.Ping(pingCtx)
 			cancel()
-			s.mu.Lock()
-			s.brokerAvailable = err == nil
-			lagged := false
-			for _, request := range s.accepted {
-				if time.Since(request.SubmittedAt) > s.cfg.MaxInputLag {
-					lagged = true
-					break
-				}
-			}
-			if !s.stopping {
-				s.ready = err == nil && !lagged && !s.stateUncertain
-			}
-			s.mu.Unlock()
-			if err == nil {
-				s.signal()
-			}
+			s.readinessTick(ctx, err)
 		}
 	}
+}
+
+// readinessTick applies one broker check. A reachable broker only lets the
+// gateway try to re-save the state it could not write; readiness returns when
+// those writes have succeeded, not when the broker answers a ping.
+func (s *Service) readinessTick(ctx context.Context, pingErr error) {
+	if pingErr == nil {
+		s.reconcileState(ctx)
+	}
+	s.mu.Lock()
+	s.brokerAvailable = pingErr == nil
+	lagged := false
+	for _, request := range s.accepted {
+		if time.Since(request.SubmittedAt) > s.cfg.MaxInputLag {
+			lagged = true
+			break
+		}
+	}
+	if !s.stopping {
+		s.ready = pingErr == nil && !lagged && !s.stateUncertain
+	}
+	s.mu.Unlock()
+	if pingErr == nil {
+		s.signal()
+	}
+}
+
+// stateRepair is a state write that failed, so that the durable value of its
+// key is either the previous one or the intended one. The gateway stays
+// unassigned until every repair is written again, which settles the key on the
+// intended value; a newer outcome already stored for the job wins (save refuses
+// to overwrite it).
+type stateRepair struct {
+	place string
+	job   durableJob
+	// The slot of the job is released once, when the repair is resolved: after
+	// the write succeeded, or after another outcome of the job turned out to be
+	// stored. False where the failed path had already released it.
+	releaseOnSaved      bool
+	releaseOnSuperseded bool
+}
+
+// registerStateRepair blocks readiness and assignments until the intended
+// state of the job is written again by reconcileState.
+func (s *Service) registerStateRepair(place string, j *durableJob, releaseOnSaved, releaseOnSuperseded bool, cause error) {
+	r := &stateRepair{place: place, job: *j, releaseOnSaved: releaseOnSaved, releaseOnSuperseded: releaseOnSuperseded}
+	r.job.ProbeReserved = false
+	s.mu.Lock()
+	if s.repairs == nil {
+		s.repairs = map[string]*stateRepair{}
+	}
+	if old := s.repairs[j.ID]; old != nil {
+		// A later failure for the same job replaces the intended state but keeps
+		// the slot obligation of the earlier one.
+		r.releaseOnSaved = r.releaseOnSaved || old.releaseOnSaved || old.releaseOnSuperseded && !r.job.SlotHeld
+		r.releaseOnSuperseded = r.releaseOnSuperseded || old.releaseOnSuperseded
+	}
+	s.repairs[j.ID] = r
+	s.ready = false
+	s.brokerAvailable = false
+	s.stateUncertain = true
+	pending := len(s.repairs)
+	s.mu.Unlock()
+	slog.Error("state write failed, assignments stay blocked until it is saved again", "place", place, "gateway_request_id", j.ID, "pending_repairs", pending, "error", cause)
+}
+
+// reconcileState writes the intended state of every failed write again. It
+// stops at the first failure: the broker is then most likely still unusable.
+// The uncertainty ends only when no repair is left; a failure that registered
+// itself meanwhile keeps it.
+func (s *Service) reconcileState(ctx context.Context) {
+	s.mu.Lock()
+	pending := make([]*stateRepair, 0, len(s.repairs))
+	for _, r := range s.repairs {
+		pending = append(pending, r)
+	}
+	s.mu.Unlock()
+	if len(pending) == 0 {
+		return
+	}
+	sort.Slice(pending, func(a, b int) bool { return pending[a].job.ID < pending[b].job.ID })
+	repaired := 0
+	for _, r := range pending {
+		if ctx.Err() != nil {
+			return
+		}
+		job := r.job
+		saveCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		err := s.save(saveCtx, &job)
+		cancel()
+		switch {
+		case err == nil:
+			s.completeStateRepair(r, true)
+		case errors.Is(err, errCanceledJob):
+			s.completeStateRepair(r, false)
+		default:
+			slog.Warn("state repair failed, will retry", "place", r.place, "gateway_request_id", r.job.ID, "error", err)
+			return
+		}
+		repaired++
+	}
+	s.mu.Lock()
+	cleared := len(s.repairs) == 0 && s.stateUncertain
+	if cleared {
+		s.stateUncertain = false
+	}
+	s.mu.Unlock()
+	if cleared {
+		slog.Info("state is consistent again, assignments resume", "repaired", repaired)
+	}
+}
+
+// completeStateRepair finishes a repair whose write landed (saved) or was
+// refused because another outcome of the job is stored.
+func (s *Service) completeStateRepair(r *stateRepair, saved bool) {
+	id := r.job.ID
+	s.mu.Lock()
+	if s.repairs[id] != r {
+		// Replaced meanwhile: the newer repair carries the obligations.
+		s.mu.Unlock()
+		return
+	}
+	delete(s.repairs, id)
+	// The 503 given to the clients that were waiting is no longer the outcome:
+	// a retry with the same key reads the stored one.
+	delete(s.ephemeral, id)
+	if ch := s.waiters[id]; ch != nil {
+		close(ch)
+		delete(s.waiters, id)
+	}
+	s.mu.Unlock()
+	release := r.releaseOnSuperseded
+	if saved {
+		release = r.releaseOnSaved
+	}
+	if release {
+		job := r.job
+		s.releaseSlot(&job)
+		return
+	}
+	s.signal()
 }
 
 func (s *Service) restore(ctx context.Context) error {
@@ -525,6 +653,7 @@ func (s *Service) dispatch(ctx, workCtx context.Context) {
 				break
 			}
 			if time.Now().After(j.Deadline) {
+				j.SlotHeld = false
 				s.finish(j, submitResult{504, errorBody("gateway_timeout", "request_deadline_exceeded", "LLM request deadline exceeded.")}, "expired")
 				s.releaseSlot(j)
 				continue
@@ -568,7 +697,7 @@ func (s *Service) expireQueued(now time.Time) {
 	s.mu.Lock()
 	var expired []*durableJob
 	for _, job := range s.jobs {
-		if job.Status == "queued" && !now.Before(job.Deadline) {
+		if job.Status == "queued" && !now.Before(job.Deadline) && s.repairs[job.ID] == nil {
 			job.Status = "expiring"
 			copy := *job
 			expired = append(expired, &copy)
@@ -862,8 +991,7 @@ func (s *Service) execute(ctx context.Context, j *durableJob, in InstanceConfig)
 			} else if !errors.Is(err, errCanceledJob) {
 				// The durable state is still "running". Do not dispatch more work
 				// while local state claims this retry is queued.
-				slog.Error("reschedule request failed", "gateway_request_id", j.ID, "error", err)
-				s.markStateUncertain()
+				s.registerStateRepair("reschedule", j, false, false, err)
 				s.notifyEphemeral(j.ID, submitResult{503, errorBody("server_error", "state_unavailable", "Gateway could not durably reschedule the LLM request.")})
 			}
 			return
@@ -887,8 +1015,9 @@ func (s *Service) execute(ctx context.Context, j *durableJob, in InstanceConfig)
 	}
 	if int64(len(result.Body)) > 32<<20 {
 		j.SlotHeld = false
-		_ = s.persistResult(ctx, j, 502, errorBody("server_error", "upstream_response_too_large", "The upstream response exceeded the gateway limit."), "failed")
-		s.releaseSlot(j)
+		if err := s.persistResult(ctx, j, 502, errorBody("server_error", "upstream_response_too_large", "The upstream response exceeded the gateway limit."), "failed"); err == nil || errors.Is(err, errCanceledJob) {
+			s.releaseSlot(j)
+		}
 		return
 	}
 	j.SlotHeld = false
@@ -1016,7 +1145,10 @@ func (s *Service) persistResult(ctx context.Context, j *durableJob, status int, 
 				return err
 			}
 			if time.Now().After(j.Deadline) || ctx.Err() != nil {
-				s.markStateUncertain()
+				// execute releases the slot after a result that was saved; the
+				// repair does it after this one is. A slot kept on purpose for an
+				// uncertain upstream outcome stays kept.
+				s.registerStateRepair("result", j, !j.SlotHeld, true, err)
 				s.notifyEphemeral(j.ID, submitResult{503, errorBody("server_error", "state_unavailable", "Gateway could not durably save the LLM result.")})
 				return err
 			}
@@ -1083,17 +1215,7 @@ func (s *Service) compactExpired(ctx context.Context, now time.Time) {
 			s.stateMu.Unlock()
 			continue
 		}
-		if err := s.stateWriter.BeginTransaction(); err != nil {
-			s.stateMu.Unlock()
-			continue
-		}
-		result := s.stateWriter.ProduceSync(ctx, &kgo.Record{Topic: s.cfg.StateTopic, Key: stateKey(j), Value: nil})
-		if result.FirstErr() != nil {
-			_ = s.stateWriter.EndTransaction(context.Background(), kgo.TryAbort)
-			s.stateMu.Unlock()
-			continue
-		}
-		if err := s.stateWriter.EndTransaction(ctx, kgo.TryCommit); err != nil {
+		if err := s.writeState(ctx, stateKey(j), nil); err != nil {
 			s.stateMu.Unlock()
 			continue
 		}
@@ -1113,7 +1235,7 @@ func (s *Service) finish(j *durableJob, result submitResult, state string) bool 
 	j.Error = &storedError{Status: result.status, Type: e.Error.Type, Code: e.Error.Code, Message: e.Error.Message}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
-	if s.save(ctx, j) == nil {
+	if err := s.save(ctx, j); err == nil {
 		s.mu.Lock()
 		if ch := s.waiters[j.ID]; ch != nil {
 			close(ch)
@@ -1122,7 +1244,9 @@ func (s *Service) finish(j *durableJob, result submitResult, state string) bool 
 		s.mu.Unlock()
 		return true
 	} else {
-		s.markStateUncertain()
+		// Every caller releases the slot itself, or holds none.
+		j.SlotHeld = false
+		s.registerStateRepair("finish", j, false, false, err)
 		s.notifyEphemeral(j.ID, submitResult{503, errorBody("server_error", "state_unavailable", "Gateway could not durably save the request state.")})
 		return false
 	}
@@ -1173,7 +1297,7 @@ func (s *Service) releaseExpiredUncertainSlots(now time.Time) {
 	s.mu.Lock()
 	var expired []*durableJob
 	for _, job := range s.jobs {
-		if !isPending(job.Status) && s.uncertainSlotExpired(job, now) {
+		if !isPending(job.Status) && s.uncertainSlotExpired(job, now) && s.repairs[job.ID] == nil {
 			copy := *job
 			copy.SlotHeld = false
 			expired = append(expired, &copy)
@@ -1187,12 +1311,60 @@ func (s *Service) releaseExpiredUncertainSlots(now time.Time) {
 		cancel()
 		if err != nil {
 			if !errors.Is(err, errCanceledJob) {
-				s.markStateUncertain()
+				s.registerStateRepair("slot_release", job, true, true, err)
 			}
 			continue
 		}
 		s.releaseSlot(job)
 	}
+}
+
+// writeState puts one record into the state topic in its own transaction. The
+// caller holds stateMu: the gateway is the only writer of the topic.
+func (s *Service) writeState(ctx context.Context, key, value []byte) error {
+	if s.writeStateFn != nil {
+		return s.writeStateFn(ctx, key, value)
+	}
+	return s.transactState(ctx, key, value)
+}
+
+// transactState is the Redpanda write behind writeState. franz-go leaves the
+// producer inside the transaction when EndTransaction fails (the outcome is
+// unconfirmed) and refuses BeginTransaction until that transaction is aborted;
+// without the abort every later write would fail even after the broker is back.
+func (s *Service) transactState(ctx context.Context, key, value []byte) error {
+	if err := s.stateWriter.BeginTransaction(); err != nil {
+		if abortErr := s.abortStateTransaction(); abortErr != nil {
+			return fmt.Errorf("begin state transaction: %w (abort of the previous one: %v)", err, abortErr)
+		}
+		if err = s.stateWriter.BeginTransaction(); err != nil {
+			return err
+		}
+	}
+	res := s.stateWriter.ProduceSync(ctx, &kgo.Record{Topic: s.cfg.StateTopic, Key: key, Value: value})
+	if err := res.FirstErr(); err != nil {
+		_ = s.abortStateTransaction()
+		return err
+	}
+	if err := s.stateWriter.EndTransaction(ctx, kgo.TryCommit); err != nil {
+		// The commit may or may not have happened. The abort retry reloads the
+		// producer ID, which fences whatever is left ongoing in the broker.
+		_ = s.abortStateTransaction()
+		return err
+	}
+	return nil
+}
+
+// abortStateTransaction brings the state producer back outside a transaction.
+// It is a no-op when none is open and fails, leaving the producer as it was,
+// when the broker is unreachable; the next write tries again.
+func (s *Service) abortStateTransaction() error {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	if err := s.stateWriter.AbortBufferedRecords(ctx); err != nil {
+		return err
+	}
+	return s.stateWriter.EndTransaction(ctx, kgo.TryAbort)
 }
 
 func (s *Service) save(ctx context.Context, j *durableJob) error {
@@ -1223,17 +1395,7 @@ func (s *Service) save(ctx context.Context, j *durableJob) error {
 	if err != nil {
 		return err
 	}
-	if err = s.stateWriter.BeginTransaction(); err != nil {
-		return err
-	}
-	res := s.stateWriter.ProduceSync(ctx, &kgo.Record{Topic: s.cfg.StateTopic, Key: stateKey(j), Value: raw})
-	if err = res.FirstErr(); err != nil {
-		abortCtx, stopAbort := context.WithTimeout(context.Background(), 2*time.Second)
-		_ = s.stateWriter.EndTransaction(abortCtx, kgo.TryAbort)
-		stopAbort()
-		return err
-	}
-	if err = s.stateWriter.EndTransaction(ctx, kgo.TryCommit); err != nil {
+	if err = s.writeState(ctx, stateKey(j), raw); err != nil {
 		return err
 	}
 	s.mu.Lock()

@@ -305,7 +305,7 @@ func (s *Service) persistCancellation(id, code string) {
 		if errors.Is(err, errCanceledJob) {
 			return
 		}
-		s.markStateUncertain()
+		s.registerStateRepair("cancellation", &copy, false, false, err)
 		s.notifyEphemeral(id, submitResult{503, errorBody("server_error", "state_unavailable", "Gateway could not durably save cancellation.")})
 		return
 	}
@@ -325,14 +325,6 @@ func (s *Service) isCanceled(id string) bool {
 	return s.cancelled[id]
 }
 func (s *Service) Ready() bool { s.mu.Lock(); defer s.mu.Unlock(); return s.ready && !s.stopping }
-
-func (s *Service) markStateUncertain() {
-	s.mu.Lock()
-	s.ready = false
-	s.brokerAvailable = false
-	s.stateUncertain = true
-	s.mu.Unlock()
-}
 
 func canonicalRequestJSON(req Request) []byte {
 	fields := map[string]any{"messages": req.Messages, "complexity": req.Complexity, "urgent": req.IsUrgent()}

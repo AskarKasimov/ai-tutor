@@ -389,9 +389,18 @@ func deleteIntegrationTopic(t *testing.T, client *kgo.Client, topics ...string) 
 
 func startIntegrationGateway(t *testing.T, cfg Config) (string, string, *Service, func()) {
 	t.Helper()
+	return startIntegrationGatewayWith(t, cfg, nil)
+}
+
+// startIntegrationGatewayWith lets the test adjust the service before it runs.
+func startIntegrationGatewayWith(t *testing.T, cfg Config, prepare func(*Service)) (string, string, *Service, func()) {
+	t.Helper()
 	service, err := NewService(cfg)
 	if err != nil {
 		t.Fatalf("NewService() error = %v", err)
+	}
+	if prepare != nil {
+		prepare(service)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	runDone := make(chan error, 1)

@@ -121,7 +121,7 @@ func TestCallerReturnsRetryAfterForUpstreamRateLimit(t *testing.T) {
 }
 
 func reserved(c *Circuit, now time.Time) bool {
-	ok, _ := c.reserve(now)
+	_, ok := c.reserve(now)
 	return ok
 }
 
@@ -129,22 +129,24 @@ func TestCircuitBreakerOpensAndAllowsOneHalfOpenProbe(t *testing.T) {
 	var circuit Circuit
 	now := time.Now()
 	for range 3 {
-		if ok, probe := circuit.reserve(now); !ok || probe {
+		ticket, ok := circuit.reserve(now)
+		if !ok || ticket.probe {
 			t.Fatal("closed circuit rejected request or handed out a probe")
 		}
-		circuit.release(false, false, now)
+		circuit.release(false, ticket, now)
 	}
 	if reserved(&circuit, now.Add(14*time.Second)) {
 		t.Fatal("open circuit allowed request before reset timeout")
 	}
 	probeTime := now.Add(15 * time.Second)
-	if !reserved(&circuit, probeTime) {
+	probeTicket, ok := circuit.reserve(probeTime)
+	if !ok || !probeTicket.probe {
 		t.Fatal("circuit did not allow half-open probe after reset timeout")
 	}
 	if reserved(&circuit, probeTime) {
 		t.Fatal("circuit allowed more than one half-open probe")
 	}
-	circuit.release(true, true, probeTime)
+	circuit.release(true, probeTicket, probeTime)
 	if !reserved(&circuit, probeTime) {
 		t.Fatal("successful probe did not close circuit")
 	}
@@ -262,7 +264,7 @@ func TestJobDeadlineReleasesTheHalfOpenProbe(t *testing.T) {
 	cb := caller.circuit("model-a")
 	past := time.Now().Add(-time.Minute)
 	for range 3 {
-		cb.release(false, false, past)
+		cb.release(false, circuitTicket{}, past)
 	}
 	if !reserved(cb, time.Now()) {
 		t.Fatal("half-open probe was not granted")
@@ -347,8 +349,10 @@ func takeOverBreaker(t *testing.T, cb *Circuit) {
 	cb.failures = 3
 	cb.openUntil = past
 	cb.mu.Unlock()
-	if ok, probe := cb.reserve(time.Now()); !ok || !probe {
-		t.Fatalf("reserve = (%v, %v), want the half-open probe", ok, probe)
+	// The breaker opened and moved to a new generation.
+	cb.generation++
+	if ticket, ok := cb.reserve(time.Now()); !ok || !ticket.probe {
+		t.Fatalf("reserve = (%v, %v), want the half-open probe", ok, ticket.probe)
 	}
 }
 
@@ -375,7 +379,7 @@ func TestNonProbeCallEndedByTheJobDeadlineKeepsTheProbeOfAnotherCall(t *testing.
 			if failure := <-done; failure == nil {
 				t.Fatal("call succeeded, want the job deadline")
 			}
-			if ok, _ := cb.reserve(time.Now()); ok {
+			if _, ok := cb.reserve(time.Now()); ok {
 				t.Fatal("a non-probe call cut by the job deadline released the probe of another call: second probe granted")
 			}
 		})
@@ -406,7 +410,7 @@ func TestNonProbeCallCanceledKeepsTheProbeOfAnotherCall(t *testing.T) {
 			if failure := <-done; failure == nil || failure.Code != "request_canceled" {
 				t.Fatalf("failure = %+v, want request_canceled", failure)
 			}
-			if ok, _ := cb.reserve(time.Now()); ok {
+			if _, ok := cb.reserve(time.Now()); ok {
 				t.Fatal("a canceled non-probe call released the probe of another call: second probe granted")
 			}
 		})
@@ -439,7 +443,7 @@ func TestNonProbeFailureKeepsTheProbeOfAnotherCall(t *testing.T) {
 	cb.mu.Lock()
 	cb.openUntil = time.Time{}
 	cb.mu.Unlock()
-	if ok, _ := cb.reserve(time.Now()); ok {
+	if _, ok := cb.reserve(time.Now()); ok {
 		t.Fatal("a failed non-probe call cleared the probe of another call: second probe granted")
 	}
 }

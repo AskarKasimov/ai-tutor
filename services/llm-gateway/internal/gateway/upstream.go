@@ -20,18 +20,44 @@ type Circuit struct {
 	failures  int
 	openUntil time.Time
 	probing   bool
+	// generation grows on every state change (closed -> open, outcome of the
+	// half-open probe). A call counts only if it started in the current
+	// generation: the result of a call sent before the breaker opened says
+	// nothing about the instance now.
+	generation uint64
 }
 
-// release records the outcome of a finished call. probe says whether the call
-// holds the half-open probe: only then does it give the probe back, so a call
-// that started earlier cannot free the probe of another one.
-func (c *Circuit) release(ok, probe bool, now time.Time) {
+// circuitTicket is what a call holds from reserve to release.
+type circuitTicket struct {
+	generation uint64
+	probe      bool
+}
+
+// probeTicket is the ticket of a call that already holds the half-open probe.
+// While the probe is held, only the probe itself changes the generation.
+func (c *Circuit) probeTicket() circuitTicket {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if probe {
+	return circuitTicket{generation: c.generation, probe: true}
+}
+
+// release records the outcome of a finished call. A ticket with probe gives
+// the probe back, so a call that started earlier cannot free the probe of
+// another one. A call of an older generation is ignored: it neither resets the
+// failure count, nor adds to it, nor extends the pause.
+func (c *Circuit) release(ok bool, ticket circuitTicket, now time.Time) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if ticket.probe {
 		c.probing = false
 	}
+	if ticket.generation != c.generation {
+		return
+	}
 	if ok {
+		if c.failures >= 3 {
+			c.generation++
+		}
 		c.failures = 0
 		c.openUntil = time.Time{}
 		return
@@ -39,6 +65,7 @@ func (c *Circuit) release(ok, probe bool, now time.Time) {
 	c.failures++
 	if c.failures >= 3 {
 		c.openUntil = now.Add(15 * time.Second)
+		c.generation++
 	}
 }
 
@@ -91,10 +118,12 @@ var errInstanceTimeout = fmt.Errorf("upstream instance timeout: %w", context.Dea
 
 func (c *Caller) call(ctx context.Context, in InstanceConfig, req Request, requestID string, probeReserved bool) (UpstreamResult, *UpstreamFailure) {
 	cb := c.circuit(in.ID)
-	probe := probeReserved
-	if !probeReserved {
+	var ticket circuitTicket
+	if probeReserved {
+		ticket = cb.probeTicket()
+	} else {
 		var ok bool
-		if ok, probe = cb.reserve(time.Now()); !ok {
+		if ticket, ok = cb.reserve(time.Now()); !ok {
 			return UpstreamResult{}, &UpstreamFailure{Code: "upstream_circuit_open", Err: fmt.Errorf("instance temporarily unavailable"), BeforeSend: true}
 		}
 	}
@@ -121,7 +150,7 @@ func (c *Caller) call(ctx context.Context, in InstanceConfig, req Request, reque
 	fields["messages"] = messages
 	body, err := json.Marshal(fields)
 	if err != nil {
-		cb.release(false, probe, time.Now())
+		cb.release(false, ticket, time.Now())
 		return UpstreamResult{}, &UpstreamFailure{Code: "invalid_upstream_request", Err: err, BeforeSend: true}
 	}
 	endpoint := strings.TrimRight(in.BaseURL, "/") + "/v1/chat/completions"
@@ -137,7 +166,7 @@ func (c *Caller) call(ctx context.Context, in InstanceConfig, req Request, reque
 	}
 	httpReq, err := http.NewRequestWithContext(callCtx, http.MethodPost, endpoint, bytes.NewReader(body))
 	if err != nil {
-		cb.release(false, probe, time.Now())
+		cb.release(false, ticket, time.Now())
 		return UpstreamResult{}, &UpstreamFailure{Code: "invalid_upstream_url", Err: err, BeforeSend: true}
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
@@ -148,7 +177,7 @@ func (c *Caller) call(ctx context.Context, in InstanceConfig, req Request, reque
 	resp, err := c.client.Do(httpReq)
 	if err != nil {
 		if errors.Is(ctx.Err(), context.Canceled) {
-			if probe {
+			if ticket.probe {
 				cb.releaseReservation()
 			}
 			return UpstreamResult{}, &UpstreamFailure{Code: "request_canceled", Err: err}
@@ -159,36 +188,36 @@ func (c *Caller) call(ctx context.Context, in InstanceConfig, req Request, reque
 			before = before || strings.Contains(err.Error(), "dial")
 		}
 		if jobDeadline() {
-			if probe {
+			if ticket.probe {
 				cb.releaseReservation()
 			}
 			return UpstreamResult{}, &UpstreamFailure{Code: "upstream_transport_error", Err: err, BeforeSend: before, JobDeadline: true}
 		}
-		cb.release(false, probe, time.Now())
+		cb.release(false, ticket, time.Now())
 		return UpstreamResult{}, &UpstreamFailure{Code: "upstream_transport_error", Err: err, BeforeSend: before}
 	}
 	defer resp.Body.Close()
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, (32<<20)+1))
 	if err != nil {
 		if errors.Is(ctx.Err(), context.Canceled) {
-			if probe {
+			if ticket.probe {
 				cb.releaseReservation()
 			}
 			return UpstreamResult{}, &UpstreamFailure{Code: "request_canceled", Err: err}
 		}
 		if jobDeadline() {
-			if probe {
+			if ticket.probe {
 				cb.releaseReservation()
 			}
 			return UpstreamResult{}, &UpstreamFailure{Code: "upstream_response_error", Err: err, JobDeadline: true}
 		}
-		cb.release(false, probe, time.Now())
+		cb.release(false, ticket, time.Now())
 		return UpstreamResult{}, &UpstreamFailure{Code: "upstream_response_error", Err: err}
 	}
 	if resp.StatusCode >= 500 {
-		cb.release(false, probe, time.Now())
+		cb.release(false, ticket, time.Now())
 	} else if resp.StatusCode < 500 {
-		cb.release(true, probe, time.Now())
+		cb.release(true, ticket, time.Now())
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		d := parseRetryAfter(resp.Header.Get("Retry-After"))

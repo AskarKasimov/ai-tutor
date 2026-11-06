@@ -854,10 +854,10 @@ func (s *Service) next() (*durableJob, InstanceConfig, bool) {
 			probeReserved := false
 			for n := 0; n < len(ties); n++ {
 				candidate := ties[(cursor+n)%len(ties)]
-				ok, probe := s.caller.circuit(candidate.ID).reserve(time.Now())
+				ticket, ok := s.caller.circuit(candidate.ID).reserve(time.Now())
 				if ok {
 					selected = candidate
-					probeReserved = probe
+					probeReserved = ticket.probe
 					s.roundRobin[job.Request.Complexity] = (cursor + n + 1) % len(ties)
 					break
 				}
@@ -888,17 +888,17 @@ func (c *Circuit) available(now time.Time) bool {
 	defer c.mu.Unlock()
 	return c.failures < 3 || !now.Before(c.openUntil) && !c.probing
 }
-func (c *Circuit) reserve(now time.Time) (bool, bool) {
+func (c *Circuit) reserve(now time.Time) (circuitTicket, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.failures < 3 {
-		return true, false
+		return circuitTicket{generation: c.generation}, true
 	}
 	if now.Before(c.openUntil) || c.probing {
-		return false, false
+		return circuitTicket{}, false
 	}
 	c.probing = true
-	return true, true
+	return circuitTicket{generation: c.generation, probe: true}, true
 }
 func (c *Circuit) releaseReservation() { c.mu.Lock(); c.probing = false; c.mu.Unlock() }
 func (s *Service) instance(id string) InstanceConfig {

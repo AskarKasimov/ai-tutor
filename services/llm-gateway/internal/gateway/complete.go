@@ -295,10 +295,8 @@ func (s *Service) persistCancellation(id, code string) {
 	}
 	copy := *j
 	s.mu.Unlock()
-	copy.Status = "failed"
-	copy.SlotHeld = false
-	copy.FinishedAt = time.Now()
-	copy.Error = &storedError{Status: 409, Type: "request_cancelled", Code: code, Message: "The request was canceled because no clients are waiting."}
+	copy = cancellationJob(copy)
+	copy.Error.Code = code
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if err := s.save(ctx, &copy); err != nil {

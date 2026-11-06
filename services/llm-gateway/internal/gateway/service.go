@@ -244,7 +244,20 @@ func (s *Service) registerStateRepair(place string, j *durableJob, releaseOnSave
 	if s.repairs == nil {
 		s.repairs = map[string]*stateRepair{}
 	}
-	if old := s.repairs[j.ID]; old != nil {
+	old := s.repairs[j.ID]
+	// A decided cancellation is the outcome of the job: a repair of another
+	// outcome (for instance the deadline, which failed in the same moment) must
+	// not replace it.
+	if !isCancellationJob(&r.job) && (old != nil && isCancellationJob(&old.job) || s.cancelDecidedLocked(j.ID)) {
+		if old != nil && isCancellationJob(&old.job) {
+			r.job = old.job
+		} else {
+			r.job = cancellationJob(r.job)
+		}
+		r.place = "cancellation"
+		r.releaseOnSaved = r.releaseOnSaved || releaseOnSuperseded && !r.job.SlotHeld
+	}
+	if old != nil {
 		// A later failure for the same job replaces the intended state but keeps
 		// the slot obligation of the earlier one.
 		r.releaseOnSaved = r.releaseOnSaved || old.releaseOnSaved || old.releaseOnSuperseded && !r.job.SlotHeld
@@ -257,6 +270,30 @@ func (s *Service) registerStateRepair(place string, j *durableJob, releaseOnSave
 	pending := len(s.repairs)
 	s.mu.Unlock()
 	slog.Error("state write failed, assignments stay blocked until it is saved again", "place", place, "gateway_request_id", j.ID, "pending_repairs", pending, "error", cause)
+}
+
+func isCancellationJob(j *durableJob) bool {
+	return j.Status == "failed" && j.Error != nil && j.Error.Code == "request_canceled"
+}
+
+// cancellationJob is the stored outcome of a canceled request.
+func cancellationJob(j durableJob) durableJob {
+	j.Status = "failed"
+	j.SlotHeld = false
+	j.FinishedAt = time.Now()
+	j.Response = nil
+	j.Error = &storedError{Status: 409, Type: "request_cancelled", Code: "request_canceled", Message: "The request was canceled because no clients are waiting."}
+	return j
+}
+
+// cancelDecidedLocked reports a cancellation of a job that is still pending (or
+// not yet known), so that its outcome is not stored yet. s.mu is held.
+func (s *Service) cancelDecidedLocked(id string) bool {
+	if !s.cancelled[id] {
+		return false
+	}
+	j := s.jobs[id]
+	return j == nil || isPending(j.Status)
 }
 
 // reconcileState writes the intended state of every failed write again. It
@@ -312,6 +349,14 @@ func (s *Service) completeStateRepair(r *stateRepair, saved bool) {
 	s.mu.Lock()
 	if s.repairs[id] != r {
 		// Replaced meanwhile: the newer repair carries the obligations.
+		s.mu.Unlock()
+		return
+	}
+	if !saved && !isCancellationJob(&r.job) && s.cancelDecidedLocked(id) {
+		// Another outcome was refused because of a cancellation that is not
+		// stored yet: keep the cancellation as the thing to write.
+		c := &stateRepair{place: "cancellation", job: cancellationJob(r.job), releaseOnSaved: r.releaseOnSuperseded, releaseOnSuperseded: r.releaseOnSuperseded}
+		s.repairs[id] = c
 		s.mu.Unlock()
 		return
 	}
@@ -697,7 +742,7 @@ func (s *Service) expireQueued(now time.Time) {
 	s.mu.Lock()
 	var expired []*durableJob
 	for _, job := range s.jobs {
-		if job.Status == "queued" && !now.Before(job.Deadline) && s.repairs[job.ID] == nil {
+		if job.Status == "queued" && !now.Before(job.Deadline) && s.repairs[job.ID] == nil && !s.cancelled[job.ID] {
 			job.Status = "expiring"
 			copy := *job
 			expired = append(expired, &copy)
@@ -705,7 +750,7 @@ func (s *Service) expireQueued(now time.Time) {
 	}
 	s.mu.Unlock()
 	for _, job := range expired {
-		if !s.finish(job, submitResult{504, errorBody("gateway_timeout", "request_deadline_exceeded", "LLM request deadline exceeded.")}, "expired") {
+		if s.finish(job, submitResult{504, errorBody("gateway_timeout", "request_deadline_exceeded", "LLM request deadline exceeded.")}, "expired") == finishFailed {
 			s.mu.Lock()
 			if current := s.jobs[job.ID]; current != nil && current.Status == "expiring" {
 				current.Status = "queued"
@@ -1227,7 +1272,20 @@ func (s *Service) compactExpired(ctx context.Context, now time.Time) {
 		s.stateMu.Unlock()
 	}
 }
-func (s *Service) finish(j *durableJob, result submitResult, state string) bool {
+
+// finishOutcome tells what became of the terminal state finish tried to store.
+type finishOutcome int
+
+const (
+	finishSaved finishOutcome = iota
+	// finishSuperseded: another outcome (a cancellation, stored by its own path
+	// or its repair, or a terminal state already stored) decides the job.
+	finishSuperseded
+	// finishFailed: the write failed and a repair is registered.
+	finishFailed
+)
+
+func (s *Service) finish(j *durableJob, result submitResult, state string) finishOutcome {
 	j.Status = state
 	j.FinishedAt = time.Now()
 	var e ErrorEnvelope
@@ -1235,21 +1293,24 @@ func (s *Service) finish(j *durableJob, result submitResult, state string) bool 
 	j.Error = &storedError{Status: result.status, Type: e.Error.Type, Code: e.Error.Code, Message: e.Error.Message}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
-	if err := s.save(ctx, j); err == nil {
+	err := s.save(ctx, j)
+	switch {
+	case err == nil:
 		s.mu.Lock()
 		if ch := s.waiters[j.ID]; ch != nil {
 			close(ch)
 			delete(s.waiters, j.ID)
 		}
 		s.mu.Unlock()
-		return true
-	} else {
-		// Every caller releases the slot itself, or holds none.
-		j.SlotHeld = false
-		s.registerStateRepair("finish", j, false, false, err)
-		s.notifyEphemeral(j.ID, submitResult{503, errorBody("server_error", "state_unavailable", "Gateway could not durably save the request state.")})
-		return false
+		return finishSaved
+	case errors.Is(err, errCanceledJob):
+		return finishSuperseded
 	}
+	// Every caller releases the slot itself, or holds none.
+	j.SlotHeld = false
+	s.registerStateRepair("finish", j, false, false, err)
+	s.notifyEphemeral(j.ID, submitResult{503, errorBody("server_error", "state_unavailable", "Gateway could not durably save the request state.")})
+	return finishFailed
 }
 func (s *Service) releaseSlot(j *durableJob) {
 	if j.Instance == "" {

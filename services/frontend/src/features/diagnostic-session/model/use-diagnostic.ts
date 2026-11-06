@@ -159,22 +159,27 @@ function remember(
   })
 }
 
-// Starts a diagnostic or resumes the active one. A failed attempt keeps its
-// key, so pressing the button again repeats the same request.
+// Starts a diagnostic or resumes the active one. The key belongs to the start
+// of one course: a failed attempt keeps its key, so pressing the button again
+// repeats the same request, while another course gets a key of its own.
 export function useStartDiagnosticMutation(userId: string, subjectId: string) {
   const { diagnostic } = useDiagnosticDependencies()
   const client = useQueryClient()
-  const key = useRef('')
+  const keys = useRef(new Map<string, string>())
   return useMutation({
     mutationKey: diagnosticSessionQueryKeys.start(userId, subjectId),
     mutationFn: () => {
-      key.current ||= `start:${crypto.randomUUID()}`
+      let key = keys.current.get(subjectId)
+      if (!key) {
+        key = `start:${crypto.randomUUID()}`
+        keys.current.set(subjectId, key)
+      }
       return scoped(client, userId, new AbortController().signal, (s) =>
-        diagnostic.startDiagnostic(subjectId, key.current, s),
+        diagnostic.startDiagnostic(subjectId, key, s),
       )
     },
     onSuccess: async (session) => {
-      key.current = ''
+      keys.current.delete(session.subjectId)
       await remember(client, userId, session)
     },
   })

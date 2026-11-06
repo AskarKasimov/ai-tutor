@@ -2,6 +2,8 @@ package application
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"strings"
 	"sync"
 	"time"
@@ -48,9 +50,22 @@ func NewWarmer(speech *SpeechCache, logger *zap.Logger) *Warmer {
 	if logger == nil {
 		logger = zap.NewNop()
 	}
-	return &Warmer{speech: speech, logger: logger, progress: NewExamAudioProgress(speech.name), retryMin: warmRetryMin, retryMax: warmRetryMax,
+	return &Warmer{speech: speech, logger: logger, progress: NewExamAudioProgress(""), retryMin: warmRetryMin, retryMax: warmRetryMax,
 		pending: map[string]bool{}, states: map[string]audiopreparation.Status{}, wake: make(chan struct{}, 1)}
 }
+
+// progressKey identifies a text within this process. The gateway pins one voice revision per process.
+func progressKey(text string) string {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return ""
+	}
+	sum := sha256.Sum256([]byte(text))
+	return hex.EncodeToString(sum[:])
+}
+
+// VoiceName resolves the gateway's immutable voice identity for API snapshots.
+func (w *Warmer) VoiceName(ctx context.Context) (string, error) { return w.speech.name(ctx) }
 
 // TrackPublished replaces the observed set for a course only after its graph is published.
 func (w *Warmer) TrackPublished(subjectID, graphVersion string, texts []string) {
@@ -65,15 +80,15 @@ func (w *Warmer) track(subjectID, graphVersion string, texts []string, initial a
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	if initial == audiopreparation.StatusUnchecked {
-		if !w.progress.TrackRestored(subjectID, graphVersion, texts, w.speech.Key) {
+		if !w.progress.TrackRestored(subjectID, graphVersion, texts, progressKey) {
 			return
 		}
 	} else {
-		w.progress.TrackPublished(subjectID, graphVersion, texts, w.speech.Key, initial)
+		w.progress.TrackPublished(subjectID, graphVersion, texts, progressKey, initial)
 	}
 	for _, text := range texts {
 		if state, ok := w.states[strings.TrimSpace(text)]; ok && state != audiopreparation.StatusQueued {
-			w.progress.TransitionSubject(subjectID, w.speech.Key(text), state)
+			w.progress.TransitionSubject(subjectID, progressKey(text), state)
 		}
 	}
 }
@@ -174,7 +189,7 @@ func (w *Warmer) next() (string, bool) {
 func (w *Warmer) done(text string) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	w.progress.Transition(w.speech.Key(text), audiopreparation.StatusReady)
+	w.progress.Transition(progressKey(text), audiopreparation.StatusReady)
 	w.queue = w.queue[1:]
 	delete(w.pending, text)
 	delete(w.states, text)
@@ -184,7 +199,7 @@ func (w *Warmer) transition(text string, state audiopreparation.Status) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	w.states[text] = state
-	w.progress.Transition(w.speech.Key(text), state)
+	w.progress.Transition(progressKey(text), state)
 }
 
 // retry moves the failed head text to the end of the queue.

@@ -91,9 +91,9 @@ func TestWarmerVoicesPreparedQuestionsOnceBeforeStudentsAsk(t *testing.T) {
 }
 
 func TestRepeatedTrackRestoredPreservesProgressForTheSameGraph(t *testing.T) {
-	warmer := NewWarmer(NewSpeechCache(nil, nil, "voice-v1"), nil)
+	warmer := NewWarmer(NewSpeechCache(nil, nil, staticVoiceName("voice-v1")), nil)
 	warmer.TrackRestored("course", "graph-v1", []string{"Вопрос?"})
-	key := warmer.speech.Key("Вопрос?")
+	key := progressKey("Вопрос?")
 	warmer.progress.TransitionSubject("course", key, audiopreparation.StatusReady)
 	before, _ := warmer.Snapshot("course")
 
@@ -251,12 +251,12 @@ func TestConcurrentMissesOfOneQuestionSynthesizeOnce(t *testing.T) {
 }
 
 func TestWarmerCompletionUpdatesNewlyPublishedGraphWhileTextPending(t *testing.T) {
-	warmer := NewWarmer(NewSpeechCache(&countingVoice{called: make(chan struct{}, 1)}, &syncAudio{data: map[string][]byte{}}, "voice"), nil)
+	warmer := NewWarmer(NewSpeechCache(&countingVoice{called: make(chan struct{}, 1)}, &syncAudio{data: map[string][]byte{}}, staticVoiceName("voice")), nil)
 	text := "Общий вопрос?"
 	warmer.TrackPublished("course", "old", []string{text})
 	warmer.Prepare([]string{text})
 	// The cache operation has completed, but the pending entry has not yet been removed.
-	warmer.progress.Transition(warmer.speech.Key(text), audiopreparation.StatusReady)
+	warmer.progress.Transition(progressKey(text), audiopreparation.StatusReady)
 	warmer.TrackPublished("course", "new", []string{text})
 	warmer.Prepare([]string{text})
 	warmer.done(text)
@@ -267,7 +267,7 @@ func TestWarmerCompletionUpdatesNewlyPublishedGraphWhileTextPending(t *testing.T
 }
 
 func TestWarmerCountsNewlyPublishedWaitingTextsAsQueued(t *testing.T) {
-	warmer := NewWarmer(NewSpeechCache(&countingVoice{called: make(chan struct{}, 1)}, &syncAudio{data: map[string][]byte{}}, "voice"), nil)
+	warmer := NewWarmer(NewSpeechCache(&countingVoice{called: make(chan struct{}, 1)}, &syncAudio{data: map[string][]byte{}}, staticVoiceName("voice")), nil)
 	warmer.TrackPublished("course", "graph", []string{"Первый?", "Второй?"})
 	warmer.Prepare([]string{"Первый?", "Второй?"})
 	snapshot, _ := warmer.Snapshot("course")
@@ -277,7 +277,7 @@ func TestWarmerCountsNewlyPublishedWaitingTextsAsQueued(t *testing.T) {
 }
 
 func TestWarmerRecoveryCompletionAndRestoredKeys(t *testing.T) {
-	warmer := NewWarmer(NewSpeechCache(&countingVoice{called: make(chan struct{}, 1)}, &syncAudio{data: map[string][]byte{}}, "voice"), nil)
+	warmer := NewWarmer(NewSpeechCache(&countingVoice{called: make(chan struct{}, 1)}, &syncAudio{data: map[string][]byte{}}, staticVoiceName("voice")), nil)
 	if warmer.RecoveryComplete() {
 		t.Fatal("recovery must start incomplete")
 	}
@@ -294,7 +294,7 @@ func TestWarmerRecoveryCompletionAndRestoredKeys(t *testing.T) {
 }
 
 func TestPublishedGraphInheritsPendingTextState(t *testing.T) {
-	warmer := NewWarmer(NewSpeechCache(&countingVoice{called: make(chan struct{}, 1)}, &syncAudio{data: map[string][]byte{}}, "voice"), nil)
+	warmer := NewWarmer(NewSpeechCache(&countingVoice{called: make(chan struct{}, 1)}, &syncAudio{data: map[string][]byte{}}, staticVoiceName("voice")), nil)
 	warmer.Prepare([]string{"Вопрос?"})
 	warmer.transition("Вопрос?", audiopreparation.StatusProcessing)
 	warmer.TrackPublished("course", "graph", []string{"Вопрос?"})
@@ -307,5 +307,24 @@ func TestPublishedGraphInheritsPendingTextState(t *testing.T) {
 	snapshot, _ = warmer.Snapshot("course")
 	if snapshot.RetryWait != 1 || snapshot.Queued != 0 {
 		t.Fatalf("snapshot = %+v", snapshot)
+	}
+}
+
+func TestWarmerVoiceIdentityRetriesLookup(t *testing.T) {
+	calls := 0
+	name := func(context.Context) (string, error) {
+		calls++
+		if calls == 1 {
+			return "", errors.New("voice unavailable")
+		}
+		return "profile:revision", nil
+	}
+	warmer := NewWarmer(NewSpeechCache(&countingVoice{called: make(chan struct{}, 1)}, &syncAudio{data: map[string][]byte{}}, name), nil)
+	if _, err := warmer.VoiceName(context.Background()); err == nil {
+		t.Fatal("expected voice lookup error")
+	}
+	got, err := warmer.VoiceName(context.Background())
+	if err != nil || got != "profile:revision" {
+		t.Fatalf("voice=%q err=%v", got, err)
 	}
 }

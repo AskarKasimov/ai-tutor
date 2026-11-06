@@ -42,6 +42,7 @@ type Service struct {
 
 type ExamProgressReader interface {
 	Snapshot(string) (audiopreparation.ExamSnapshot, bool)
+	VoiceName(context.Context) (string, error)
 	RecoveryComplete() bool
 }
 
@@ -88,6 +89,11 @@ func (s *Service) AudioPreparation(ctx context.Context, actor user.User, subject
 		snapshot, ok = s.examAudio.Snapshot(subjectID)
 	}
 	if ok {
+		voice, err := s.examAudio.VoiceName(ctx)
+		if err != nil {
+			return audiopreparation.Response{}, err
+		}
+		snapshot.Version += voice
 		result.Exam = audiopreparation.Exam{Direction: audiopreparation.Direction{Version: snapshot.Version, Total: snapshot.Total, Counts: snapshot.Counts, ObservedAt: snapshot.ObservedAt}, Published: true}
 		result.Exam.State = snapshot.Counts.State(true, snapshot.Total)
 	} else {

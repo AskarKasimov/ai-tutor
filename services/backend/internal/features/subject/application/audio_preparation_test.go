@@ -2,6 +2,7 @@ package application
 
 import (
 	"context"
+	"errors"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -25,6 +26,8 @@ func (r *audioProgressRepo) Snapshot(context.Context, string) (int64, []audiopre
 
 type examProgressFake struct {
 	recovering bool
+	voice      string
+	voiceErr   error
 	snapshot   audiopreparation.ExamSnapshot
 	ok         bool
 }
@@ -32,6 +35,8 @@ type examProgressFake struct {
 func (r *examProgressFake) Snapshot(string) (audiopreparation.ExamSnapshot, bool) {
 	return r.snapshot, r.ok
 }
+
+func (r *examProgressFake) VoiceName(context.Context) (string, error) { return r.voice, r.voiceErr }
 
 func (r *examProgressFake) RecoveryComplete() bool { return !r.recovering }
 
@@ -288,5 +293,19 @@ func TestLearningProgressOlderReadDoesNotOverwriteNewerSnapshot(t *testing.T) {
 	}
 	if newer.Learn.Revision != 2 || !after.Learn.ObservedAt.Equal(newer.Learn.ObservedAt) {
 		t.Fatalf("newer=%+v after=%+v", newer.Learn, after.Learn)
+	}
+}
+
+func TestAudioPreparationUsesGatewayVoiceIdentity(t *testing.T) {
+	exam := &examProgressFake{snapshot: audiopreparation.ExamSnapshot{Version: "graph|"}, ok: true, voice: "profile:revision"}
+	svc := New(subjectRepoStub{exists: true, published: true}, subjectIDsStub{}, time.Now)
+	svc.SetAudioProgress(exam, &audioProgressRepo{})
+	response, err := svc.AudioPreparation(context.Background(), user.User{Role: user.Admin}, "course")
+	if err != nil || response.Exam.Version != "graph|profile:revision" {
+		t.Fatalf("version=%q err=%v", response.Exam.Version, err)
+	}
+	exam.voiceErr = errors.New("gateway unavailable")
+	if _, err := svc.AudioPreparation(context.Background(), user.User{Role: user.Admin}, "course"); err == nil {
+		t.Fatal("expected voice identity error")
 	}
 }

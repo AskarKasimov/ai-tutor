@@ -84,6 +84,11 @@ type UpstreamFailure struct {
 	// wait) rather than by the instance. Code and Err still say what happened on
 	// the wire, so the outcome stays uncertain when the request had been sent.
 	JobDeadline bool
+	// InstanceTimeout marks a call whose context was ended by the instance's own
+	// timeout, even if the transport reported a broken connection (unexpected
+	// EOF, connection reset) instead of the context error. It excludes
+	// JobDeadline. Code and Err still say what happened on the wire.
+	InstanceTimeout bool
 }
 
 func (e *UpstreamFailure) Error() string {
@@ -164,6 +169,11 @@ func (c *Caller) call(ctx context.Context, in InstanceConfig, req Request, reque
 	jobDeadline := func() bool {
 		return errors.Is(ctx.Err(), context.DeadlineExceeded) && !errors.Is(context.Cause(callCtx), errInstanceTimeout)
 	}
+	// The instance timeout ended the call if it, not the job deadline, is the
+	// cause of the call context, whatever error the transport reported.
+	instanceTimeout := func() bool {
+		return !jobDeadline() && errors.Is(context.Cause(callCtx), errInstanceTimeout)
+	}
 	httpReq, err := http.NewRequestWithContext(callCtx, http.MethodPost, endpoint, bytes.NewReader(body))
 	if err != nil {
 		cb.release(false, ticket, time.Now())
@@ -194,7 +204,7 @@ func (c *Caller) call(ctx context.Context, in InstanceConfig, req Request, reque
 			return UpstreamResult{}, &UpstreamFailure{Code: "upstream_transport_error", Err: err, BeforeSend: before, JobDeadline: true}
 		}
 		cb.release(false, ticket, time.Now())
-		return UpstreamResult{}, &UpstreamFailure{Code: "upstream_transport_error", Err: err, BeforeSend: before}
+		return UpstreamResult{}, &UpstreamFailure{Code: "upstream_transport_error", Err: err, BeforeSend: before, InstanceTimeout: instanceTimeout()}
 	}
 	defer resp.Body.Close()
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, (32<<20)+1))
@@ -212,7 +222,7 @@ func (c *Caller) call(ctx context.Context, in InstanceConfig, req Request, reque
 			return UpstreamResult{}, &UpstreamFailure{Code: "upstream_response_error", Err: err, JobDeadline: true}
 		}
 		cb.release(false, ticket, time.Now())
-		return UpstreamResult{}, &UpstreamFailure{Code: "upstream_response_error", Err: err}
+		return UpstreamResult{}, &UpstreamFailure{Code: "upstream_response_error", Err: err, InstanceTimeout: instanceTimeout()}
 	}
 	if resp.StatusCode >= 500 {
 		cb.release(false, ticket, time.Now())

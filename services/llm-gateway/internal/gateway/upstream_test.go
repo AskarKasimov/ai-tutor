@@ -492,7 +492,7 @@ func TestJobDeadlineKeepsWhatHappenedOnTheWire(t *testing.T) {
 				ctx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
 				_, failure := caller.call(ctx, in, request, "r", false)
 				cancel()
-				if failure == nil || !failure.JobDeadline || failure.Code != tc.code || failure.BeforeSend {
+				if failure == nil || !failure.JobDeadline || failure.InstanceTimeout || failure.Code != tc.code || failure.BeforeSend {
 					t.Fatalf("call %d failure = %+v, want JobDeadline with %s sent", i, failure, tc.code)
 				}
 				if !uncertainUpstreamOutcomeForInstance(in, failure) {

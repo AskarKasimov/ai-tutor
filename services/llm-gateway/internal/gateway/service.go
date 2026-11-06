@@ -1096,7 +1096,7 @@ func (s *Service) recordUpstreamTimeout(failure *UpstreamFailure) {
 		return
 	case failure.JobDeadline:
 		reason = "request_deadline"
-	case errors.Is(failure.Err, context.DeadlineExceeded):
+	case instanceTimedOut(failure):
 		reason = "instance_timeout"
 	default:
 		return
@@ -1116,7 +1116,7 @@ func upstreamFailureResponse(failure *UpstreamFailure) (int, string, string, str
 	switch {
 	case failure.JobDeadline:
 		return 504, "gateway_timeout", "request_deadline_exceeded", "LLM request deadline exceeded."
-	case errors.Is(failure.Err, context.DeadlineExceeded):
+	case instanceTimedOut(failure):
 		return 504, "gateway_timeout", "upstream_timeout", "The upstream LLM request timed out."
 	case failure.Status == 429:
 		return 429, "rate_limit_error", "upstream_rate_limit", "The upstream LLM rate limit was reached."
@@ -1175,7 +1175,7 @@ func (s *Service) observeCall(j *durableJob, in InstanceConfig, failure *Upstrea
 		}
 		s.expected[in.ID] = seconds
 	}
-	timedOut := failure != nil && errors.Is(failure.Err, context.DeadlineExceeded)
+	timedOut := instanceTimedOut(failure)
 	switch {
 	case failure == nil:
 		sample()
@@ -1191,6 +1191,16 @@ func (s *Service) observeCall(j *durableJob, in InstanceConfig, failure *Upstrea
 	}
 }
 
+// instanceTimedOut tells that the instance's own timeout ended the call: either
+// the call recorded it as the cause, or the error is the context deadline. A
+// call cut by the request deadline is not one, whatever its error says.
+func instanceTimedOut(failure *UpstreamFailure) bool {
+	if failure == nil || failure.JobDeadline {
+		return false
+	}
+	return failure.InstanceTimeout || errors.Is(failure.Err, context.DeadlineExceeded)
+}
+
 func uncertainUpstreamOutcome(failure *UpstreamFailure) bool {
 	if failure == nil {
 		return false
@@ -1202,9 +1212,10 @@ func uncertainUpstreamOutcomeForInstance(in InstanceConfig, failure *UpstreamFai
 	if !uncertainUpstreamOutcome(failure) {
 		return false
 	}
-	// The HTTP transport closes its request when its deadline fires. Only trust
-	// this as a completed upstream cancellation for explicitly verified models.
-	return !(in.AbortOnDisconnect && errors.Is(failure.Err, context.DeadlineExceeded))
+	// The HTTP transport closes its request when its deadline fires, also when
+	// it reports a broken connection instead of the deadline. Only trust this as
+	// a completed upstream cancellation for explicitly verified models.
+	return !(in.AbortOnDisconnect && (failure.InstanceTimeout || errors.Is(failure.Err, context.DeadlineExceeded)))
 }
 
 func (s *Service) persistResult(ctx context.Context, j *durableJob, status int, body []byte, state string, retryAfter ...time.Duration) error {

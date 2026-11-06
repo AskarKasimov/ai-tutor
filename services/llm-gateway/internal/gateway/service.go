@@ -1212,10 +1212,18 @@ func uncertainUpstreamOutcomeForInstance(in InstanceConfig, failure *UpstreamFai
 	if !uncertainUpstreamOutcome(failure) {
 		return false
 	}
-	// The HTTP transport closes its request when its deadline fires, also when
-	// it reports a broken connection instead of the deadline. Only trust this as
-	// a completed upstream cancellation for explicitly verified models.
-	return !(in.AbortOnDisconnect && (failure.InstanceTimeout || errors.Is(failure.Err, context.DeadlineExceeded)))
+	// The gateway closes the upstream HTTP request itself when the instance
+	// timeout or the job deadline fires, also when the transport reports a
+	// broken connection or a cut body instead of the deadline error. Only trust
+	// this as a completed upstream cancellation for explicitly verified models.
+	return !(in.AbortOnDisconnect && gatewayClosedCall(failure))
+}
+
+// gatewayClosedCall reports that the gateway ended the call itself: by the
+// job deadline, by the instance timeout, or by a client timeout whose error is
+// the context deadline.
+func gatewayClosedCall(failure *UpstreamFailure) bool {
+	return failure.JobDeadline || failure.InstanceTimeout || errors.Is(failure.Err, context.DeadlineExceeded)
 }
 
 func (s *Service) persistResult(ctx context.Context, j *durableJob, status int, body []byte, state string, retryAfter ...time.Duration) error {

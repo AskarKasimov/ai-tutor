@@ -152,7 +152,7 @@ it('requires a complete consistent preparation snapshot for admin catalogs', asy
   ).resolves.toHaveLength(1)
 })
 
-it('reads both audio snapshots and rejects mismatched counter totals', async () => {
+it('reads the requested audio snapshot and rejects mismatched counter totals', async () => {
   const direction = {
     version: 'revision:3',
     state: 'queued',
@@ -170,19 +170,19 @@ it('reads both audio snapshots and rejects mismatched counter totals', async () 
     Response.json({
       subject_id: 's1',
       exam: { ...direction, version: 'graph|voice', published: true },
-      learn: { ...direction, revision: 3 },
+      learn: null,
     }),
   )
   vi.stubGlobal('fetch', fetchMock)
   await expect(
-    readAudioPreparation('s1', new AbortController().signal),
+    readAudioPreparation('s1', 'exam', new AbortController().signal),
   ).resolves.toMatchObject({
     subject_id: 's1',
     exam: { published: true, total: 2, ready: 1 },
-    learn: { revision: 3, total: 2, queued: 1 },
+    learn: null,
   })
   expect(fetchMock.mock.calls[0][0]).toBe(
-    '/api/v1/exam/admin/subjects/s1/audio-preparation',
+    '/api/v1/exam/admin/subjects/s1/audio-preparation?direction=exam',
   )
   expect(fetchMock.mock.calls[0][1].credentials).toBe('include')
   vi.stubGlobal(
@@ -191,11 +191,11 @@ it('reads both audio snapshots and rejects mismatched counter totals', async () 
       Response.json({
         subject_id: 's1',
         exam: { ...direction, total: 3, published: true },
-        learn: { ...direction, revision: 3 },
+        learn: null,
       }),
     ),
   )
   await expect(
-    readAudioPreparation('s1', new AbortController().signal),
+    readAudioPreparation('s1', 'exam', new AbortController().signal),
   ).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
 })

@@ -24,6 +24,6 @@ export type AudioPreparationDirection = {
 
 export type AudioPreparation = {
   subject_id: string
-  exam: AudioPreparationDirection & { published: boolean }
-  learn: AudioPreparationDirection & { revision: number }
+  exam: (AudioPreparationDirection & { published: boolean }) | null
+  learn: (AudioPreparationDirection & { revision: number }) | null
 }

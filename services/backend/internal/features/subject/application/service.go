@@ -13,6 +13,8 @@ import (
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/subject"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/user"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/fault"
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/logx"
+	"go.uber.org/zap"
 )
 
 type Repository interface {
@@ -58,7 +60,7 @@ func (s *Service) SetExamAudioRefresh(refresh func(context.Context, string) erro
 	s.refreshExamAudio = refresh
 }
 
-func (s *Service) AudioPreparation(ctx context.Context, actor user.User, subjectID string) (audiopreparation.Response, error) {
+func (s *Service) AudioPreparation(ctx context.Context, actor user.User, subjectID, direction string) (audiopreparation.Response, error) {
 	if actor.Role != user.Admin {
 		return audiopreparation.Response{}, fault.New(fault.Forbidden, "FORBIDDEN", "Операция доступна только admin.")
 	}
@@ -73,6 +75,27 @@ func (s *Service) AudioPreparation(ctx context.Context, actor user.User, subject
 		return audiopreparation.Response{}, fault.New(fault.NotFound, "SUBJECT_NOT_FOUND", "Курс не найден.")
 	}
 	result := audiopreparation.Response{SubjectID: subjectID}
+	if direction != "learn" {
+		result.Exam, err = s.examAudioPreparation(ctx, subjectID, graphPublished)
+		if err != nil {
+			logx.From(ctx).Warn("exam audio progress unavailable", zap.String("subject_id", subjectID), zap.Error(err))
+		}
+	}
+	if direction != "exam" {
+		result.Learn, err = s.learningAudioPreparation(ctx, subjectID)
+		if err != nil {
+			logx.From(ctx).Warn("learning audio progress unavailable", zap.String("subject_id", subjectID), zap.Error(err))
+		}
+	}
+
+	if ctx.Err() != nil {
+		return audiopreparation.Response{}, ctx.Err()
+	}
+	return result, nil
+}
+
+func (s *Service) examAudioPreparation(ctx context.Context, subjectID string, graphPublished bool) (*audiopreparation.Exam, error) {
+	var exam *audiopreparation.Exam
 	snapshot, ok := s.examAudio.Snapshot(subjectID)
 	recovered := s.examAudio.RecoveryComplete()
 	if !graphPublished {
@@ -80,7 +103,7 @@ func (s *Service) AudioPreparation(ctx context.Context, actor user.User, subject
 	}
 	if graphPublished && !ok && recovered && s.refreshExamAudio != nil {
 		if err := s.refreshExamAudio(ctx, subjectID); err != nil {
-			return audiopreparation.Response{}, err
+			return nil, err
 		}
 		snapshot, ok = s.examAudio.Snapshot(subjectID)
 	}
@@ -91,14 +114,14 @@ func (s *Service) AudioPreparation(ctx context.Context, actor user.User, subject
 	if ok {
 		voice, err := s.examAudio.VoiceName(ctx)
 		if err != nil {
-			return audiopreparation.Response{}, err
+			return nil, err
 		}
 		snapshot.Version += voice
-		result.Exam = audiopreparation.Exam{Direction: audiopreparation.Direction{Version: snapshot.Version, Total: snapshot.Total, Counts: snapshot.Counts, ObservedAt: snapshot.ObservedAt}, Published: true}
-		result.Exam.State = snapshot.Counts.State(true, snapshot.Total)
+		exam = &audiopreparation.Exam{Direction: audiopreparation.Direction{Version: snapshot.Version, Total: snapshot.Total, Counts: snapshot.Counts, ObservedAt: snapshot.ObservedAt}, Published: true}
+		exam.State = snapshot.Counts.State(true, snapshot.Total)
 	} else {
 		if !recovered || graphPublished {
-			return audiopreparation.Response{}, fault.New(fault.Upstream, "AUDIO_RECOVERY_IN_PROGRESS", "Прогресс озвучки ещё восстанавливается.")
+			return nil, fault.New(fault.Upstream, "AUDIO_RECOVERY_IN_PROGRESS", "Прогресс озвучки ещё восстанавливается.")
 		}
 		s.examNoGraphMu.Lock()
 		if s.examNoGraphAt == nil {
@@ -110,20 +133,24 @@ func (s *Service) AudioPreparation(ctx context.Context, actor user.User, subject
 			s.examNoGraphAt[subjectID] = observedAt
 		}
 		s.examNoGraphMu.Unlock()
-		result.Exam = audiopreparation.Exam{Published: false, Direction: audiopreparation.Direction{State: audiopreparation.NoGraph, ObservedAt: observedAt}}
+		exam = &audiopreparation.Exam{Published: false, Direction: audiopreparation.Direction{State: audiopreparation.NoGraph, ObservedAt: observedAt}}
 	}
 	if ok {
 		s.examNoGraphMu.Lock()
 		delete(s.examNoGraphAt, subjectID)
 		s.examNoGraphMu.Unlock()
 	}
+	return exam, nil
+}
+
+func (s *Service) learningAudioPreparation(ctx context.Context, subjectID string) (*audiopreparation.Learning, error) {
 	s.learningMu.Lock()
 	s.learningSequence++
 	sequence := s.learningSequence
 	s.learningMu.Unlock()
 	revision, assets, err := s.learnAudio.Snapshot(ctx, subjectID)
 	if err != nil {
-		return audiopreparation.Response{}, err
+		return nil, err
 	}
 	observedAt := s.now()
 	counts := audiopreparation.Counts{}
@@ -166,13 +193,13 @@ func (s *Service) AudioPreparation(ctx context.Context, actor user.User, subject
 		}
 	}
 	if counts.Sum() != len(seen) {
-		return audiopreparation.Response{}, fmt.Errorf("learning audio progress invariant violated: %d counts for %d assets", counts.Sum(), len(seen))
+		return nil, fmt.Errorf("learning audio progress invariant violated: %d counts for %d assets", counts.Sum(), len(seen))
 	}
-	result.Learn = audiopreparation.Learning{Revision: revision, Direction: audiopreparation.Direction{Version: fmt.Sprintf("revision:%d", revision), State: counts.State(true, len(seen)), Total: len(seen), Counts: counts, ObservedAt: observedAt}}
+	learning := &audiopreparation.Learning{Revision: revision, Direction: audiopreparation.Direction{Version: fmt.Sprintf("revision:%d", revision), State: counts.State(true, len(seen)), Total: len(seen), Counts: counts, ObservedAt: observedAt}}
 	s.learningMu.Lock()
 	defer s.learningMu.Unlock()
-	if previous, ok := s.learningSnapshots[subjectID]; ok && previous.Revision == revision && previous.Total == result.Learn.Total && previous.Counts == counts {
-		result.Learn.ObservedAt = previous.ObservedAt
+	if previous, ok := s.learningSnapshots[subjectID]; ok && previous.Revision == revision && previous.Total == learning.Total && previous.Counts == counts {
+		learning.ObservedAt = previous.ObservedAt
 	}
 	if s.learningSnapshots == nil {
 		s.learningSnapshots = make(map[string]audiopreparation.Learning)
@@ -181,10 +208,10 @@ func (s *Service) AudioPreparation(ctx context.Context, actor user.User, subject
 		s.learningCompleted = make(map[string]uint64)
 	}
 	if sequence > s.learningCompleted[subjectID] {
-		s.learningSnapshots[subjectID] = result.Learn
+		s.learningSnapshots[subjectID] = *learning
 		s.learningCompleted[subjectID] = sequence
 	}
-	return result, nil
+	return learning, nil
 }
 
 func New(repo Repository, ids IDGenerator, now func() time.Time) *Service {

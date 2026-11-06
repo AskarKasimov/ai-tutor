@@ -161,9 +161,13 @@ components:
       additionalProperties: false
       properties:
         exam:
-          $ref: '#/components/schemas/audiopreparation.Exam'
+          anyOf:
+            - $ref: '#/components/schemas/audiopreparation.Exam'
+            - type: "null"
         learn:
-          $ref: '#/components/schemas/audiopreparation.Learning'
+          anyOf:
+            - $ref: '#/components/schemas/audiopreparation.Learning'
+            - type: "null"
         subject_id:
           type: string
       required:
@@ -3916,7 +3920,7 @@ paths:
       x-implementation: implemented
   /exam/admin/subjects/{subject_id}/audio-preparation:
     get:
-      description: 'Возвращает текущие per-course snapshots экзамена и обучения. Счётчики направлений взаимоисключающие и в сумме равны total; версия защищает от смешивания ревизий. State precedence для экзамена: no_graph, empty, checking, processing, queued, retry_wait, partial, ready; для обучения то же, кроме no_graph.'
+      description: 'Возвращает снимок выбранного направления; остальные поля направления равны null. Если запрошенный снимок временно недоступен, его поле тоже равно null. Счётчики направлений взаимоисключающие и в сумме равны total; версия защищает от смешивания ревизий. State precedence для экзамена: no_graph, empty, checking, processing, queued, retry_wait, partial, ready; для обучения то же, кроме no_graph.'
       operationId: getSubjectAudioPreparation
       parameters:
         - description: ID курса
@@ -3925,6 +3929,15 @@ paths:
           required: true
           schema:
             type: string
+        - description: Направление
+          in: query
+          name: direction
+          required: true
+          schema:
+            enum:
+              - exam
+              - learn
+            type: string
       responses:
         "200":
           content:
@@ -3932,6 +3945,12 @@ paths:
               schema:
                 $ref: '#/components/schemas/audiopreparation.Response'
           description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Bad Request
         "401":
           content:
             application/json:

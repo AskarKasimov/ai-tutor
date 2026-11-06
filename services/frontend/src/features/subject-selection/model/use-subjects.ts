@@ -57,21 +57,32 @@ export function useSubjectsQuery(userId: string, admin = false) {
   })
 }
 
-export function useAudioPreparationQuery(userId: string, subjectId: string) {
+export function useAudioPreparationQuery(
+  userId: string,
+  subjectId: string,
+  direction: 'exam' | 'learn',
+) {
   const { subjects } = useSubjectSelectionDependencies()
   const client = useQueryClient()
   // eslint-disable-next-line @tanstack/query/exhaustive-deps -- API and auth epoch are stable dependencies outside the resource key.
   return useQuery({
-    queryKey: subjectSelectionQueryKeys.audioPreparation(userId, subjectId),
+    queryKey: [
+      ...subjectSelectionQueryKeys.audioPreparation(userId, subjectId),
+      direction,
+    ],
     enabled: !!userId && !!subjectId,
-    queryFn: ({ signal }) =>
-      fetchScoped(
+    queryFn: async ({ signal }) => {
+      const result = await fetchScoped(
         userId,
         signal,
         (requestSignal) =>
-          subjects.readAudioPreparation(subjectId, requestSignal),
+          subjects.readAudioPreparation(subjectId, direction, requestSignal),
         client,
-      ),
+      )
+      if (!result[direction])
+        throw new SubjectApiError(503, 'AUDIO_PROGRESS_UNAVAILABLE')
+      return result
+    },
     refetchInterval: 5_000,
     refetchIntervalInBackground: false,
     refetchOnWindowFocus: true,

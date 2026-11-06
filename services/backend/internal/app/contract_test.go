@@ -214,11 +214,21 @@ func TestOpenAPIResponses(t *testing.T) {
 	}
 	// This fixture does not start background workers, including audio recovery.
 	f.app.warmer.MarkRecoveryComplete()
-	audioPreparation := f.request("GET", "/admin/subjects/"+contractSubject.ID+"/audio-preparation", "", admin)
+	audioPreparation := f.request("GET", "/admin/subjects/"+contractSubject.ID+"/audio-preparation?direction=learn", "", admin)
 	if audioPreparation.Code != http.StatusOK {
 		t.Fatalf("audio preparation: %d %s", audioPreparation.Code, audioPreparation.Body.String())
 	}
 	check("GET", "/admin/subjects/{subject_id}/audio-preparation", audioPreparation)
+	examAudio := f.request("GET", "/admin/subjects/"+contractSubject.ID+"/audio-preparation?direction=exam", "", admin)
+	if examAudio.Code != http.StatusOK {
+		t.Fatalf("exam audio preparation: %d %s", examAudio.Code, examAudio.Body.String())
+	}
+	check("GET", "/admin/subjects/{subject_id}/audio-preparation", examAudio)
+	invalidAudio := f.request("GET", "/admin/subjects/"+contractSubject.ID+"/audio-preparation", "", admin)
+	if invalidAudio.Code != http.StatusBadRequest {
+		t.Fatalf("missing audio direction: %d %s", invalidAudio.Code, invalidAudio.Body.String())
+	}
+	check("GET", "/admin/subjects/{subject_id}/audio-preparation", invalidAudio)
 	mapPath := "/admin/subjects/" + contractSubject.ID + "/graph/competency-map"
 	const mapContract = "/admin/subjects/{subject_id}/graph/competency-map"
 	const skipContract = "/admin/subjects/{subject_id}/graph/competency-map/skip-missing-criteria"

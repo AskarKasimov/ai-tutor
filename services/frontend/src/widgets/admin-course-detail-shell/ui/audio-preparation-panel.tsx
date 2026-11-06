@@ -18,7 +18,7 @@ export function AudioPreparationPanel({
   stale = false,
 }: Props) {
   const { t } = useTranslation()
-  const query = useAudioPreparationQuery(userId, subjectId)
+  const query = useAudioPreparationQuery(userId, subjectId, direction)
   const audio = query.data?.[direction]
   const title =
     direction === 'exam'
@@ -37,7 +37,7 @@ export function AudioPreparationPanel({
         <Text as="p" role="status" color="gray">
           {t('audioPreparation.loading')}
         </Text>
-      ) : query.isError && !audio ? (
+      ) : !audio ? (
         <Flex gap="3" align="center" wrap="wrap">
           <Text as="p" role="status" color="red">
             {t('audioPreparation.error')}

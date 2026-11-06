@@ -95,9 +95,9 @@ type Learning struct {
 }
 
 type Response struct {
-	SubjectID string   `json:"subject_id"`
-	Exam      Exam     `json:"exam"`
-	Learn     Learning `json:"learn"`
+	SubjectID string    `json:"subject_id"`
+	Exam      *Exam     `json:"exam" extensions:"x-nullable"`
+	Learn     *Learning `json:"learn" extensions:"x-nullable"`
 }
 
 type LearningAsset struct {

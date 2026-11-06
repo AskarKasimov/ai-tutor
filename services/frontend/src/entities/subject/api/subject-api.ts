@@ -50,13 +50,16 @@ const audioDirectionSchema = z.object({
 const audioPreparationSchema: z.ZodType<AudioPreparation> = z
   .object({
     subject_id: id,
-    exam: audioDirectionSchema.extend({ published: z.boolean() }),
-    learn: audioDirectionSchema.extend({
-      revision: z.number().int().nonnegative(),
-    }),
+    exam: audioDirectionSchema.extend({ published: z.boolean() }).nullable(),
+    learn: audioDirectionSchema
+      .extend({
+        revision: z.number().int().nonnegative(),
+      })
+      .nullable(),
   })
   .superRefine((value, context) => {
     for (const direction of [value.exam, value.learn]) {
+      if (!direction) continue
       const sum =
         direction.unchecked +
         direction.queued +
@@ -145,10 +148,11 @@ export async function createSubject(
 
 export async function readAudioPreparation(
   subjectId: string,
+  direction: 'exam' | 'learn',
   signal: AbortSignal,
 ): Promise<AudioPreparation> {
   const response = await request(
-    `/admin/subjects/${encodeURIComponent(subjectId)}/audio-preparation`,
+    `/admin/subjects/${encodeURIComponent(subjectId)}/audio-preparation?direction=${direction}`,
     signal,
   )
   const value = await parse(response, audioPreparationSchema, signal)

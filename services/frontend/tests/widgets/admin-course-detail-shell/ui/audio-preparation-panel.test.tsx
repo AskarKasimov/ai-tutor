@@ -138,7 +138,7 @@ it('explains why exam and learning audio are not counted before publication or m
   expect(screen.queryByRole('progressbar')).not.toBeInTheDocument()
 })
 
-it('keeps the last audio snapshot visible when a refresh fails', async () => {
+it('keeps the last audio snapshot visible when the direction becomes unavailable', async () => {
   window.history.pushState({}, '', '/admin/courses/s3')
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -156,7 +156,7 @@ it('keeps the last audio snapshot visible when a refresh fails', async () => {
     },
     readAudioPreparation: async () => {
       calls += 1
-      if (calls > 1) throw new Error('temporary network failure')
+      if (calls > 1) return { subject_id: 's3', exam: null, learn: null }
       return {
         subject_id: 's3',
         exam: {
@@ -279,3 +279,70 @@ it('resumes polling when a hidden tab becomes visible with unchanged data', asyn
     visibilitySpy.mockRestore()
   }
 }, 9000)
+
+it('shows learning progress when exam progress is unavailable', async () => {
+  window.history.pushState({}, '', '/admin/courses/s1')
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  })
+  await replaceSession(
+    client,
+    { id: 'admin-user', role: 'admin', email: '', display_name: null },
+    'admin',
+  )
+  const subjects: SubjectApi = {
+    listSubjects: async () => [],
+    createSubject: async () => {
+      throw new Error('unused')
+    },
+    readAudioPreparation: async () => ({
+      subject_id: 's1',
+      exam: null,
+      learn: {
+        version: 'revision:1',
+        revision: 1,
+        state: 'ready',
+        total: 1,
+        unchecked: 0,
+        queued: 0,
+        processing: 0,
+        retry_wait: 0,
+        ready: 1,
+        failed: 0,
+        unavailable: 0,
+        observed_at: '2026-11-04T10:00:00Z',
+      },
+    }),
+  }
+  const view = render(
+    <QueryClientProvider client={client}>
+      <SubjectSelectionDependenciesProvider value={{ subjects }}>
+        <AudioPreparationPanel
+          userId="admin-user"
+          subjectId="s1"
+          direction="learn"
+        />
+      </SubjectSelectionDependenciesProvider>
+    </QueryClientProvider>,
+  )
+  expect(await screen.findByText('Готово 1 из 1 (100%)')).toBeInTheDocument()
+  view.rerender(
+    <QueryClientProvider client={client}>
+      <SubjectSelectionDependenciesProvider value={{ subjects }}>
+        <AudioPreparationPanel
+          userId="admin-user"
+          subjectId="s1"
+          direction="exam"
+        />
+      </SubjectSelectionDependenciesProvider>
+    </QueryClientProvider>,
+  )
+  expect(
+    await screen.findByText('Не удалось загрузить прогресс озвучки.'),
+  ).toBeInTheDocument()
+  expect(
+    screen.getByRole('button', {
+      name: 'Повторить загрузку прогресса озвучки',
+    }),
+  ).toBeInTheDocument()
+})

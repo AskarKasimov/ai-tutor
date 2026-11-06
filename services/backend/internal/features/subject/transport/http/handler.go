@@ -125,13 +125,15 @@ func (h *Handler) ListLearning(w http.ResponseWriter, r *http.Request) {
 
 // AudioPreparation returns the independent exam and learning audio snapshots.
 // @Summary Прочитать прогресс фоновой озвучки курса
-// @Description Возвращает текущие per-course snapshots экзамена и обучения. Счётчики направлений взаимоисключающие и в сумме равны total; версия защищает от смешивания ревизий. State precedence для экзамена: no_graph, empty, checking, processing, queued, retry_wait, partial, ready; для обучения то же, кроме no_graph.
+// @Description Возвращает снимок выбранного направления; остальные поля направления равны null. Если запрошенный снимок временно недоступен, его поле тоже равно null. Счётчики направлений взаимоисключающие и в сумме равны total; версия защищает от смешивания ревизий. State precedence для экзамена: no_graph, empty, checking, processing, queued, retry_wait, partial, ready; для обучения то же, кроме no_graph.
 // @ID getSubjectAudioPreparation
 // @Tags Предметы
 // @Security accessCookie
 // @Produce json
 // @Param subject_id path string true "ID курса"
+// @Param direction query string true "Направление" Enums(exam, learn)
 // @Success 200 {object} audiopreparation.Response
+// @Failure 400 {object} fault.Error
 // @Failure 401 {object} fault.Error
 // @Failure 403 {object} fault.Error
 // @Failure 404 {object} fault.Error
@@ -143,7 +145,12 @@ func (h *Handler) AudioPreparation(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(r.Context(), w, fault.New(fault.Unauthorized, "UNAUTHORIZED", "Требуется действующая сессия."))
 		return
 	}
-	result, err := h.service.AudioPreparation(r.Context(), actor, r.PathValue("subject_id"))
+	direction := r.URL.Query().Get("direction")
+	if direction != "exam" && direction != "learn" {
+		httpx.Error(r.Context(), w, fault.Validation("direction", "Укажите направление exam или learn."))
+		return
+	}
+	result, err := h.service.AudioPreparation(r.Context(), actor, r.PathValue("subject_id"), direction)
 	if err != nil {
 		httpx.Error(r.Context(), w, err)
 		return

@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"google.golang.org/grpc/codes"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -90,4 +91,87 @@ func TestCancelledBeforeSendDoesNotHoldSlot(t *testing.T) {
 	if f, ok := err.(*Failure); !ok || f.Uncertain || f.Code != codes.Canceled {
 		t.Fatalf("TTS: %v", err)
 	}
+}
+
+func TestCancellationDuringDialDoesNotHoldSlot(t *testing.T) {
+	for _, op := range []string{"stt", "tts"} {
+		t.Run(op, func(t *testing.T) {
+			started, release := make(chan struct{}), make(chan struct{})
+			defer close(release)
+			transport := &http.Transport{DialContext: func(context.Context, string, string) (net.Conn, error) {
+				close(started)
+				<-release
+				return nil, context.Canceled
+			}}
+			defer transport.CloseIdleConnections()
+			p := testProvider(&http.Client{Transport: transport}, "http://model.invalid")
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			done := make(chan error, 1)
+			go func() { done <- invokeProvider(p, op, ctx) }()
+			select {
+			case <-started:
+			case <-time.After(time.Second):
+				t.Fatal("dial did not start")
+			}
+			cancel()
+			select {
+			case err := <-done:
+				if f, ok := err.(*Failure); !ok || f.Uncertain || f.Code != codes.Canceled {
+					t.Fatalf("cancellation during dial: %v", err)
+				}
+			case <-time.After(time.Second):
+				t.Fatal("cancelled request did not return")
+			}
+		})
+	}
+}
+
+func TestCancellationAfterSendKeepsSlot(t *testing.T) {
+	for _, op := range []string{"stt", "tts"} {
+		t.Run(op, func(t *testing.T) {
+			started, release := make(chan struct{}), make(chan struct{})
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				close(started)
+				<-release
+			}))
+			defer server.Close()
+			defer close(release)
+			p := testProvider(server.Client(), server.URL)
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			done := make(chan error, 1)
+			go func() { done <- invokeProvider(p, op, ctx) }()
+			select {
+			case <-started:
+			case <-time.After(time.Second):
+				t.Fatal("request did not reach model")
+			}
+			cancel()
+			select {
+			case err := <-done:
+				if f, ok := err.(*Failure); !ok || !f.Uncertain || f.Code != codes.Canceled {
+					t.Fatalf("cancellation after sending request: %v", err)
+				}
+			case <-time.After(time.Second):
+				t.Fatal("cancelled request did not return")
+			}
+		})
+	}
+}
+
+func testProvider(client *http.Client, target string) *HTTP {
+	return &HTTP{Client: client,
+		STT: map[string]STT{"stt": {URL: target, Timeout: time.Second}},
+		TTS: map[string]TTS{"tts": {URL: target, Timeout: time.Second, Profiles: map[string]Options{"voice": {}}}},
+	}
+}
+
+func invokeProvider(p *HTTP, op string, ctx context.Context) error {
+	if op == "stt" {
+		_, err := p.Transcribe(ctx, "stt", []byte("audio"), "audio/ogg")
+		return err
+	}
+	_, err := p.Synthesize(ctx, "tts", "voice", "текст")
+	return err
 }

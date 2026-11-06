@@ -3,6 +3,8 @@ package gateway
 import (
 	"context"
 	"encoding/binary"
+	"errors"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -93,4 +95,64 @@ func TestDialDoesNotContactGateway(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer conn.Close()
+}
+
+type delayedGateway struct {
+	fakeGateway
+	started chan struct{}
+	release chan struct{}
+	calls   atomic.Int32
+}
+
+func (f *delayedGateway) DescribeVoice(ctx context.Context, _ *pb.DescribeVoiceRequest, _ ...grpc.CallOption) (*pb.DescribeVoiceResponse, error) {
+	if f.calls.Add(1) == 1 {
+		close(f.started)
+	}
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case <-f.release:
+		return &pb.DescribeVoiceResponse{Revision: "revision"}, nil
+	}
+}
+
+func TestVoiceLookupWaitersRespectCancellationAndDeadline(t *testing.T) {
+	fake := &delayedGateway{started: make(chan struct{}), release: make(chan struct{})}
+	synth := NewSynthesizer(fake, 5*time.Second, "geek-v1")
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	first := make(chan error, 1)
+	go func() { _, err := synth.VoiceName(ctx); first <- err }()
+	select {
+	case <-fake.started:
+	case <-time.After(time.Second):
+		t.Fatal("lookup did not start")
+	}
+	short, cancelShort := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancelShort()
+	second := make(chan error, 1)
+	go func() { _, err := synth.VoiceName(short); second <- err }()
+	select {
+	case err := <-second:
+		if err == nil {
+			t.Fatal("expired waiter succeeded")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("waiter ignored its deadline while first lookup was blocked")
+	}
+	cancel()
+	select {
+	case err := <-first:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("cancelled initiator: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("initiator ignored cancellation")
+	}
+	// The same RPC must survive both waiters leaving and populate the cache.
+	close(fake.release)
+	name, err := synth.VoiceName(context.Background())
+	if err != nil || name != "geek-v1:revision" || fake.calls.Load() != 1 {
+		t.Fatalf("lookup not shared: name=%q err=%v calls=%d", name, err, fake.calls.Load())
+	}
 }

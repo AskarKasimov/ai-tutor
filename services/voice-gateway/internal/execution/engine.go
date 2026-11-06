@@ -150,6 +150,9 @@ func validID(id string) bool {
 func (e *Engine) Ready() bool { e.mu.Lock(); defer e.mu.Unlock(); return e.ready }
 func (e *Engine) Stop()       { e.mu.Lock(); e.ready = false; e.mu.Unlock() }
 func (e *Engine) resultLocked(j *Job) scheduler.Result {
+	if j == nil {
+		return scheduler.Result{Err: status.Error(codes.NotFound, "voice result expired")}
+	}
 	if j.State != "succeeded" {
 		return scheduler.Result{Err: status.Error(codes.Code(j.Code), "voice task failed")}
 	}

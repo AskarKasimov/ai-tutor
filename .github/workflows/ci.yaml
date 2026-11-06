@@ -182,6 +182,8 @@ jobs:
         run: |
           npx playwright install --with-deps chromium
           npm run test:e2e -- e2e/stack.spec.ts
+      - name: Verify API startup with unavailable voice gateway
+        run: APP_BASE_URL=https://localhost:18443 sh ./tests/integration/voice-unavailable.sh --project-name ai-tutor-stack-smoke --env-file .env.smoke
       - name: Stop smoke stack and remove generated local inputs
         if: ${{ always() }}
         run: |

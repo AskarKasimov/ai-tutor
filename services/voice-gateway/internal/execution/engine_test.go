@@ -70,6 +70,78 @@ func TestDurableResultAndIdempotentReplay(t *testing.T) {
 		t.Fatal("restart lost result")
 	}
 }
+
+func TestWaitingReplayReturnsExpiredResultAfterCleanup(t *testing.T) {
+	e := setup(t, &testutil.Memory{}, t.TempDir())
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	finish := make(chan struct{})
+	original := make(chan scheduler.Result, 1)
+	idReady := make(chan string, 1)
+	go func() {
+		r, _ := e.Submit(ctx, "stt", "", "same", []byte("request"), func(id string) { idReady <- id }, func(context.Context, string) scheduler.Result {
+			select {
+			case <-finish:
+				return scheduler.Result{Value: []byte("result")}
+			case <-ctx.Done():
+				return scheduler.Result{Err: ctx.Err()}
+			}
+		})
+		original <- r
+	}()
+	var id string
+	select {
+	case id = <-idReady:
+	case <-ctx.Done():
+		t.Fatal("original request did not start")
+	}
+	announced, resume := make(chan struct{}), make(chan struct{}, 1)
+	defer close(resume)
+	replay := make(chan scheduler.Result, 1)
+	go func() {
+		r, _ := e.Submit(ctx, "stt", "", "same", []byte("request"), func(string) {
+			close(announced)
+			select {
+			case <-resume:
+			case <-ctx.Done():
+			}
+		}, func(context.Context, string) scheduler.Result {
+			return scheduler.Result{Err: errors.New("unexpected second model call")}
+		})
+		replay <- r
+	}()
+	select {
+	case <-announced:
+	case <-ctx.Done():
+		t.Fatal("replay did not enter announce")
+	}
+	close(finish)
+	select {
+	case r := <-original:
+		if r.Err != nil {
+			t.Fatal(r.Err)
+		}
+	case <-ctx.Done():
+		t.Fatal("original request did not finish")
+	}
+	e.mu.Lock()
+	err := e.cleanLocked(ctx, time.Now().Add(2*time.Hour))
+	removed := e.jobs[id] == nil
+	e.mu.Unlock()
+	if err != nil || !removed {
+		t.Fatalf("cleanup: removed=%v err=%v", removed, err)
+	}
+	// Resume announce without closing resume twice in the deferred cleanup.
+	resume <- struct{}{}
+	select {
+	case r := <-replay:
+		if status.Code(r.Err) != codes.NotFound {
+			t.Fatalf("expired replay: %v", r.Err)
+		}
+	case <-ctx.Done():
+		t.Fatal("replay did not finish")
+	}
+}
 func TestFailedPersistenceDoesNotCallModel(t *testing.T) {
 	store := &testutil.Memory{}
 	e := setup(t, store, t.TempDir())

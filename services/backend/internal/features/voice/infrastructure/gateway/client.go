@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/logx"
 	"go.uber.org/zap"
+	"golang.org/x/sync/singleflight"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
@@ -52,6 +53,7 @@ type Synthesizer struct {
 	profile  string
 	revision string
 	mu       sync.Mutex
+	lookup   singleflight.Group
 }
 
 func NewSynthesizer(client pb.VoiceGatewayClient, timeout time.Duration, profile string) *Synthesizer {
@@ -60,10 +62,25 @@ func NewSynthesizer(client pb.VoiceGatewayClient, timeout time.Duration, profile
 
 // VoiceName resolves the cache identity lazily and retains it for this process.
 func (s *Synthesizer) VoiceName(ctx context.Context) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", gatewayError(err, false)
+	}
 	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.revision == "" {
-		ctx, cancel := context.WithTimeout(ctx, s.timeout)
+	revision := s.revision
+	s.mu.Unlock()
+	if revision != "" {
+		return s.profile + ":" + revision, nil
+	}
+	result := s.lookup.DoChan("revision", func() (any, error) {
+		// A previous lookup can complete between the cache read and DoChan.
+		s.mu.Lock()
+		revision := s.revision
+		s.mu.Unlock()
+		if revision != "" {
+			return s.profile + ":" + revision, nil
+		}
+		// One caller leaving must not cancel the lookup for other waiters.
+		ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), s.timeout)
 		defer cancel()
 		description, err := s.client.DescribeVoice(ctx, &pb.DescribeVoiceRequest{VoiceProfile: s.profile})
 		if err != nil {
@@ -72,9 +89,20 @@ func (s *Synthesizer) VoiceName(ctx context.Context) (string, error) {
 		if description.GetRevision() == "" {
 			return "", fault.New(fault.Unavailable, "PROCESSING_UNAVAILABLE", "Голосовой сервис временно недоступен.")
 		}
+		s.mu.Lock()
 		s.revision = description.Revision
+		s.mu.Unlock()
+		return s.profile + ":" + description.Revision, nil
+	})
+	select {
+	case <-ctx.Done():
+		return "", gatewayError(ctx.Err(), false)
+	case r := <-result:
+		if r.Err != nil {
+			return "", r.Err
+		}
+		return r.Val.(string), nil
 	}
-	return s.profile + ":" + s.revision, nil
 }
 
 func (s *Synthesizer) Synthesize(ctx context.Context, text string) ([]byte, error) {

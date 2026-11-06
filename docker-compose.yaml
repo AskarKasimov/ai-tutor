@@ -106,8 +106,6 @@ services:
     healthcheck:
       test: ["CMD", "/api", "healthcheck"]
     depends_on:
-      voice-gateway:
-        condition: service_healthy
       db:
         condition: service_healthy
       s3:

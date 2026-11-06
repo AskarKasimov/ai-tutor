@@ -12,9 +12,11 @@ import (
 	"mime/multipart"
 	"net"
 	"net/http"
+	"net/http/httptrace"
 	"net/textproto"
 	"net/url"
 	"strings"
+	"sync/atomic"
 	"time"
 	"unicode/utf8"
 
@@ -28,9 +30,7 @@ type Failure struct {
 }
 
 func (e *Failure) Error() string { return "voice upstream failure: " + e.Code.String() }
-func transportFailure(err error) error {
-	var op *net.OpError
-	beforeSend := errors.As(err, &op) && op.Op == "dial"
+func transportFailure(err error, beforeSend bool) error {
 	code := codes.Unavailable
 	if errors.Is(err, context.DeadlineExceeded) {
 		code = codes.DeadlineExceeded
@@ -111,6 +111,26 @@ func (p *HTTP) client() *http.Client {
 	return http.DefaultClient
 }
 
+// A connection assigned by the standard transport may already be sending the
+// request when cancellation arrives. Before GotConn, no HTTP bytes can reach
+// the model. Custom transports without this trace contract stay conservative.
+func (p *HTTP) do(req *http.Request) (*http.Response, error) {
+	client := p.client()
+	transport := client.Transport
+	if transport == nil {
+		transport = http.DefaultTransport
+	}
+	_, tracked := transport.(*http.Transport)
+	var connected atomic.Bool
+	trace := &httptrace.ClientTrace{GotConn: func(httptrace.GotConnInfo) { connected.Store(true) }}
+	req = req.WithContext(httptrace.WithClientTrace(req.Context(), trace))
+	response, err := client.Do(req)
+	if err != nil {
+		return nil, transportFailure(err, tracked && !connected.Load())
+	}
+	return response, nil
+}
+
 func (p *HTTP) Transcribe(ctx context.Context, instance string, data []byte, media string) (string, error) {
 	cfg, ok := p.STT[instance]
 	if !ok {
@@ -173,9 +193,9 @@ func (p *HTTP) transcribeOnce(ctx context.Context, cfg STT, data []byte, media s
 	if err := ctx.Err(); err != nil {
 		return "", &Failure{Code: statusCode(err)}
 	}
-	response, err := p.client().Do(req)
+	response, err := p.do(req)
 	if err != nil {
-		return "", transportFailure(err)
+		return "", err
 	}
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {
@@ -222,9 +242,9 @@ func (p *HTTP) Synthesize(ctx context.Context, instance, profile, text string) (
 	if err := ctx.Err(); err != nil {
 		return nil, &Failure{Code: statusCode(err)}
 	}
-	response, err := p.client().Do(req)
+	response, err := p.do(req)
 	if err != nil {
-		return nil, transportFailure(err)
+		return nil, err
 	}
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {

@@ -56,11 +56,14 @@ func New(store journal.Store, blobs *journal.Blobs, queues map[string]*scheduler
 	return &Engine{failed: make(chan struct{}), store: store, blobs: blobs, queues: queues, retention: retention, abort: abort, logger: logger, jobs: map[string]*Job{}, keys: map[string]string{}, done: map[string]chan struct{}{}, selected: map[string]uint64{}, completed: map[string]uint64{}, durations: map[string]*histogram{}}
 }
 func (e *Engine) save(j *Job) error {
+	return e.saveContext(context.Background(), j)
+}
+func (e *Engine) saveContext(parent context.Context, j *Job) error {
 	payload, err := json.Marshal(j)
 	if err != nil {
 		return err
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 6*time.Second)
+	ctx, cancel := context.WithTimeout(parent, 6*time.Second)
 	defer cancel()
 	if err = e.store.Append(ctx, journal.Record{Operation: j.Operation, ID: j.ID, Value: payload}); err != nil {
 		e.failLocked()
@@ -88,18 +91,22 @@ func (e *Engine) Restore(ctx context.Context) error {
 		default:
 			return errors.New("invalid voice task status")
 		}
+		changed := false
 		if j.State == "running" {
+			changed = true
 			j.State = "failed"
 			j.Code = int32(codes.Aborted)
 			j.Held = !e.abort(j.Instance)
 			j.Finished = time.Now()
 		}
 		if j.State == "queued" {
+			changed = true
 			j.State = "failed"
 			j.Code = int32(codes.Canceled)
 			j.Finished = time.Now()
 		}
 		if j.Held && e.abort(j.Instance) {
+			changed = true
 			j.Held = false
 		}
 		if j.Held {
@@ -107,8 +114,10 @@ func (e *Engine) Restore(ctx context.Context) error {
 				return err
 			}
 		}
-		if err = e.save(&j); err != nil {
-			return err
+		if changed {
+			if err = e.saveContext(ctx, &j); err != nil {
+				return err
+			}
 		}
 		copy := j
 		e.jobs[j.ID] = &copy
@@ -129,7 +138,7 @@ func (e *Engine) Restore(ctx context.Context) error {
 		}
 	}
 	e.ready = true
-	return e.cleanLocked(time.Now())
+	return e.cleanLocked(ctx, time.Now())
 }
 func validID(id string) bool {
 	if len(id) != 32 {
@@ -316,12 +325,12 @@ func (e *Engine) finishLocked(j *Job) {
 		delete(e.done, j.ID)
 	}
 }
-func (e *Engine) cleanLocked(now time.Time) error {
+func (e *Engine) cleanLocked(parent context.Context, now time.Time) error {
 	for id, j := range e.jobs {
 		if j.Held || j.Finished.IsZero() || now.Sub(j.Finished) < e.retention {
 			continue
 		}
-		ctx, cancel := context.WithTimeout(context.Background(), 6*time.Second)
+		ctx, cancel := context.WithTimeout(parent, 6*time.Second)
 		err := e.store.Append(ctx, journal.Record{Operation: j.Operation, ID: id})
 		cancel()
 		if err != nil {
@@ -350,7 +359,7 @@ func (e *Engine) Maintain(ctx context.Context) {
 			return
 		case now := <-ticker.C:
 			e.mu.Lock()
-			err := e.cleanLocked(now)
+			err := e.cleanLocked(ctx, now)
 			e.mu.Unlock()
 			if err != nil {
 				e.logger.Error("voice cleanup failed", slog.String("reason", "storage unavailable"))

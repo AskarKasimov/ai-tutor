@@ -60,6 +60,16 @@ func (p pcm16) energy(from, to int) float64 {
 	return sum / math.Max(1, float64(to-from))
 }
 
+// TooManyParts bounds work before allocating fragments or contacting a model.
+func TooManyParts(data []byte, maxSeconds int) bool {
+	p, ok := parsePCM16(data)
+	if !ok || maxSeconds <= 0 {
+		return false
+	}
+	total := len(p.frames) / p.align
+	return int64(total) > int64(p.rate)*int64(maxSeconds)*6/10*100
+}
+
 // SplitWAV cuts a 16-bit PCM WAV longer than maxSeconds into WAV parts of at
 // most maxSeconds, each cut at the quietest 100 ms in the last 40% of the part
 // (the latest of equally quiet ones) so that words are not split. ok is false
@@ -71,6 +81,10 @@ func SplitWAV(data []byte, maxSeconds int) (parts [][]byte, ok bool) {
 	}
 	total := len(p.frames) / p.align
 	limit := p.rate * maxSeconds
+	// Each cut advances at least 60% of the configured part length.
+	if int64(total) > int64(limit)*6/10*100 {
+		return nil, false
+	}
 	window := max(1, p.rate/10)
 	for start := 0; start < total; {
 		end := total

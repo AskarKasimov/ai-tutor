@@ -44,6 +44,12 @@ func transportFailure(err error) error {
 	}
 	return &Failure{Code: code, Uncertain: !beforeSend}
 }
+func statusCode(err error) codes.Code {
+	if errors.Is(err, context.DeadlineExceeded) {
+		return codes.DeadlineExceeded
+	}
+	return codes.Canceled
+}
 func responseFailure(resp *http.Response, stt bool) error {
 	code := codes.Internal
 	switch resp.StatusCode {
@@ -115,6 +121,9 @@ func (p *HTTP) Transcribe(ctx context.Context, instance string, data []byte, med
 	parts := [][]byte{data}
 	base, _, _ := mime.ParseMediaType(media)
 	if !cfg.Longform && (base == "audio/wav" || base == "audio/x-wav" || base == "audio/wave") {
+		if audio.TooManyParts(data, 20) {
+			return "", &Failure{Code: codes.InvalidArgument}
+		}
 		if split, ok := audio.SplitWAV(data, 20); ok {
 			parts = split
 		}
@@ -161,6 +170,9 @@ func (p *HTTP) transcribeOnce(ctx context.Context, cfg STT, data []byte, media s
 		return "", err
 	}
 	req.Header.Set("Content-Type", writer.FormDataContentType())
+	if err := ctx.Err(); err != nil {
+		return "", &Failure{Code: statusCode(err)}
+	}
 	response, err := p.client().Do(req)
 	if err != nil {
 		return "", transportFailure(err)
@@ -207,6 +219,9 @@ func (p *HTTP) Synthesize(ctx context.Context, instance, profile, text string) (
 		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
+	if err := ctx.Err(); err != nil {
+		return nil, &Failure{Code: statusCode(err)}
+	}
 	response, err := p.client().Do(req)
 	if err != nil {
 		return nil, transportFailure(err)

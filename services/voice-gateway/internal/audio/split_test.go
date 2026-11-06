@@ -66,15 +66,16 @@ func TestSplitWAVKeepsShortAudioAndRejectsOtherFormats(t *testing.T) {
 	}
 }
 
-func TestSplitWAVLowRateMakesProgress(t *testing.T) {
+func TestRejectLowRateAndExcessiveFragments(t *testing.T) {
 	data := wav16(1, 25, func(float64) int16 { return 0 })
-	parts, ok := SplitWAV(data, 20)
-	if !ok || len(parts) < 2 {
-		t.Fatal("low-rate WAV was not split")
+	if ValidWAV(data) {
+		t.Fatal("1 Hz WAV accepted")
 	}
-	for _, part := range parts {
-		if !ValidWAV(part) {
-			t.Fatal("invalid split WAV")
-		}
+	data = wav16(8000, 1201, func(float64) int16 { return 0 })
+	if !TooManyParts(data, 20) {
+		t.Fatal("excessive duration accepted")
+	}
+	if parts, ok := SplitWAV(data, 20); ok || parts != nil {
+		t.Fatal("excessive fragments allocated")
 	}
 }

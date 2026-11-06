@@ -69,7 +69,7 @@ import (
 type App struct {
 	voiceClient      voicegatewayv1.VoiceGatewayClient
 	voiceConn        *grpc.ClientConn
-	voiceRevision    string
+	voiceSynth       *voicegateway.Synthesizer
 	cfg              Config
 	pool             *pgxpool.Pool
 	client           *http.Client
@@ -107,13 +107,11 @@ type App struct {
 // once; it matches the two topic extractions course-graph runs at a time.
 const materialWorkers = 2
 
-// voiceName identifies the TTS settings in the keys of cached speech.
-func (a *App) voiceName() string { return a.cfg.VoiceProfile + ":" + a.voiceRevision }
 func (a *App) recognizer() *voicegateway.Recognizer {
 	return voicegateway.NewRecognizer(a.voiceClient, a.cfg.VoiceTimeout)
 }
 func (a *App) synthesizer() *voicegateway.Synthesizer {
-	return voicegateway.NewSynthesizer(a.voiceClient, a.cfg.VoiceTimeout, a.cfg.VoiceProfile, a.voiceRevision)
+	return a.voiceSynth
 }
 
 func New(cfg Config, pool *pgxpool.Pool, logger *zap.Logger) (*App, error) {
@@ -150,12 +148,11 @@ func New(cfg Config, pool *pgxpool.Pool, logger *zap.Logger) (*App, error) {
 	a.materialsStorage = &materialsStorageAdapter{storage: storage, bucket: cfg.S3Bucket}
 	audioStorage := taskaudios3.New(storage)
 	a.audioStorage = audioStorage
-	voiceCtx, cancelVoice := context.WithTimeout(context.Background(), cfg.VoiceTimeout)
-	a.voiceClient, a.voiceConn, a.voiceRevision, err = voicegateway.Dial(voiceCtx, cfg.VoiceGatewayAddress, cfg.VoiceProfile)
-	cancelVoice()
+	a.voiceClient, a.voiceConn, err = voicegateway.Dial(cfg.VoiceGatewayAddress)
 	if err != nil {
 		return nil, err
 	}
+	a.voiceSynth = voicegateway.NewSynthesizer(a.voiceClient, cfg.VoiceTimeout, cfg.VoiceProfile)
 	a.audioWorker = taskaudioapp.NewWorker(taskaudiopg.New(pool), audioStorage, a.synthesizer(), taskaudioapp.WorkerConfig{Concurrency: cfg.AudioWorkers, PollInterval: cfg.AudioPollInterval, VoiceTimeout: cfg.VoiceTimeout, S3Timeout: cfg.S3Timeout, Bucket: cfg.S3Bucket})
 	examiner, conn, err := geekllm.Dial(cfg.LLMGatewayAddress, cfg.LLMTimeout)
 	if err != nil {
@@ -171,7 +168,7 @@ func New(cfg Config, pool *pgxpool.Pool, logger *zap.Logger) (*App, error) {
 	translator := materialstranslator.NewWithCompleter(materialstranslator.NewGateway(llmgatewayv1.NewGatewayClient(conn), cfg.LLMTimeout), 4)
 	a.ocrWorker = materialsapp.NewOCRWorker(materialRepository, a.materialsStorage, materialsOCR, translator)
 	a.cleaningWorker = materialsapp.NewCleaningWorker(materialRepository, a.materialsStorage, materialsOCR)
-	a.speech = geekapp.NewSpeechCache(a.synthesizer(), geekstorage.NewAudio(storage, cfg.S3Bucket), a.voiceName())
+	a.speech = geekapp.NewSpeechCache(a.synthesizer(), geekstorage.NewAudio(storage, cfg.S3Bucket), a.voiceSynth.VoiceName)
 	a.warmer = geekapp.NewWarmer(a.speech, logger.With(zap.String("worker", "speech_warmer")))
 	a.warmer.Prepare(geekllm.PreparedSpeech())
 	// A course graph is built from the materials or from a competency map.

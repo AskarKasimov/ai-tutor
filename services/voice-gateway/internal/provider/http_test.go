@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/json"
+	"google.golang.org/grpc/codes"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -74,5 +75,19 @@ func TestProxyTimeoutDoesNotProveExecutionStopped(t *testing.T) {
 	unavailable := responseFailure(&http.Response{StatusCode: http.StatusServiceUnavailable}, false).(*Failure)
 	if unavailable.Uncertain {
 		t.Fatal("explicit unavailable response held slot")
+	}
+}
+
+func TestCancelledBeforeSendDoesNotHoldSlot(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	p := HTTP{STT: map[string]STT{"stt": {URL: "http://localhost/stt", Timeout: time.Second}}, TTS: map[string]TTS{"tts": {URL: "http://localhost/tts", Timeout: time.Second, Profiles: map[string]Options{"voice": {}}}}}
+	_, err := p.Transcribe(ctx, "stt", []byte("audio"), "audio/ogg")
+	if f, ok := err.(*Failure); !ok || f.Uncertain || f.Code != codes.Canceled {
+		t.Fatalf("STT: %v", err)
+	}
+	_, err = p.Synthesize(ctx, "tts", "voice", "text")
+	if f, ok := err.(*Failure); !ok || f.Uncertain || f.Code != codes.Canceled {
+		t.Fatalf("TTS: %v", err)
 	}
 }

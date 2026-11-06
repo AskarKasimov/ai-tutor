@@ -51,12 +51,12 @@ func TestAdaptersUseVoiceGatewayContract(t *testing.T) {
 	if err != nil || text != "ответ" || string(fake.stt.Audio) != "sound" || fake.stt.MediaType != "audio/ogg" {
 		t.Fatalf("recognize: %q, %v, %+v", text, err, fake.stt)
 	}
-	audio, err := NewSynthesizer(fake, time.Second, "geek-v1", "revision").Synthesize(context.Background(), "Привет")
+	audio, err := NewSynthesizer(fake, time.Second, "geek-v1").Synthesize(context.Background(), "Привет")
 	if err != nil || len(audio) != len(fake.audio) || fake.tts.Text != "Привет" || fake.tts.VoiceProfile != "geek-v1" || fake.tts.VoiceRevision != "revision" {
 		t.Fatalf("synthesize: %d bytes, %v, %+v", len(audio), err, fake.tts)
 	}
 	fake.audio = []byte("not a WAV")
-	if _, err := NewSynthesizer(fake, time.Second, "geek-v1", "revision").Synthesize(context.Background(), "test"); err == nil {
+	if _, err := NewSynthesizer(fake, time.Second, "geek-v1").Synthesize(context.Background(), "test"); err == nil {
 		t.Fatal("invalid audio accepted")
 	}
 }
@@ -71,4 +71,26 @@ func TestAdaptersReturnGatewayFailure(t *testing.T) {
 
 func (f *fakeGateway) DescribeVoice(context.Context, *pb.DescribeVoiceRequest, ...grpc.CallOption) (*pb.DescribeVoiceResponse, error) {
 	return &pb.DescribeVoiceResponse{Revision: "revision"}, f.err
+}
+
+func TestLazyVoiceResolutionRetriesAfterGatewayRecovers(t *testing.T) {
+	fake := &fakeGateway{err: status.Error(codes.Unavailable, "unavailable"), audio: testWAV()}
+	synth := NewSynthesizer(fake, time.Second, "geek-v1")
+	if _, err := synth.VoiceName(context.Background()); err == nil {
+		t.Fatal("unavailable gateway accepted")
+	}
+	fake.err = nil
+	if name, err := synth.VoiceName(context.Background()); err != nil || name != "geek-v1:revision" {
+		t.Fatalf("name %q: %v", name, err)
+	}
+	if _, err := synth.Synthesize(context.Background(), "test"); err != nil || fake.tts.VoiceRevision != "revision" {
+		t.Fatalf("synthesis: %v", err)
+	}
+}
+func TestDialDoesNotContactGateway(t *testing.T) {
+	_, conn, err := Dial("127.0.0.1:1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
 }

@@ -13,6 +13,7 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
 	"strings"
+	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -50,16 +51,41 @@ type Synthesizer struct {
 	timeout  time.Duration
 	profile  string
 	revision string
+	mu       sync.Mutex
 }
 
-func NewSynthesizer(client pb.VoiceGatewayClient, timeout time.Duration, profile, revision string) *Synthesizer {
-	return &Synthesizer{client: client, timeout: timeout, profile: profile, revision: revision}
+func NewSynthesizer(client pb.VoiceGatewayClient, timeout time.Duration, profile string) *Synthesizer {
+	return &Synthesizer{client: client, timeout: timeout, profile: profile}
+}
+
+// VoiceName resolves the cache identity lazily and retains it for this process.
+func (s *Synthesizer) VoiceName(ctx context.Context) (string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.revision == "" {
+		ctx, cancel := context.WithTimeout(ctx, s.timeout)
+		defer cancel()
+		description, err := s.client.DescribeVoice(ctx, &pb.DescribeVoiceRequest{VoiceProfile: s.profile})
+		if err != nil {
+			return "", gatewayError(err, false)
+		}
+		if description.GetRevision() == "" {
+			return "", fault.New(fault.Unavailable, "PROCESSING_UNAVAILABLE", "Голосовой сервис временно недоступен.")
+		}
+		s.revision = description.Revision
+	}
+	return s.profile + ":" + s.revision, nil
 }
 
 func (s *Synthesizer) Synthesize(ctx context.Context, text string) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(ctx, s.timeout)
 	defer cancel()
-	response, err := s.client.Synthesize(ctx, &pb.SynthesizeRequest{Text: text, VoiceProfile: s.profile, VoiceRevision: s.revision})
+	name, err := s.VoiceName(ctx)
+	if err != nil {
+		return nil, err
+	}
+	revision := strings.TrimPrefix(name, s.profile+":")
+	response, err := s.client.Synthesize(ctx, &pb.SynthesizeRequest{Text: text, VoiceProfile: s.profile, VoiceRevision: revision})
 	if err != nil {
 		return nil, gatewayError(err, false)
 	}
@@ -99,20 +125,13 @@ func gatewayError(err error, stt bool) error {
 	}
 }
 
-// Dial resolves the voice revision once at startup. A changed revision is
-// rejected by synthesis until backend refreshes its cache identity on restart.
-func Dial(ctx context.Context, address, profile string) (pb.VoiceGatewayClient, *grpc.ClientConn, string, error) {
+// Dial creates a connection without requiring the gateway to be available at startup.
+func Dial(address string) (pb.VoiceGatewayClient, *grpc.ClientConn, error) {
 	conn, err := grpc.NewClient(address, grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithUnaryInterceptor(interceptor), grpc.WithDefaultCallOptions(grpc.MaxCallSendMsgSize(26<<20), grpc.MaxCallRecvMsgSize(65<<20)))
 	if err != nil {
-		return nil, nil, "", fmt.Errorf("configure voice gateway: %w", err)
+		return nil, nil, fmt.Errorf("configure voice gateway: %w", err)
 	}
-	client := pb.NewVoiceGatewayClient(conn)
-	description, err := client.DescribeVoice(ctx, &pb.DescribeVoiceRequest{VoiceProfile: profile})
-	if err != nil || description.GetRevision() == "" {
-		_ = conn.Close()
-		return nil, nil, "", fmt.Errorf("resolve voice profile: %s", status.Code(err))
-	}
-	return client, conn, description.Revision, nil
+	return pb.NewVoiceGatewayClient(conn), conn, nil
 }
 func interceptor(ctx context.Context, method string, req, reply any, conn *grpc.ClientConn, invoke grpc.UnaryInvoker, opts ...grpc.CallOption) error {
 	if traceparent := logx.Traceparent(ctx); traceparent != "" {

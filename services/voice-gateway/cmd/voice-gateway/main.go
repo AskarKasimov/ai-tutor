@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"syscall"
@@ -72,13 +73,17 @@ func run() error {
 		if len(os.Args) != 4 || os.Args[3] != "--upstream-stopped" {
 			return errors.New("usage: voice-gateway release-held INSTANCE --upstream-stopped")
 		}
-		_, port, _ := net.SplitHostPort(cfg.HTTPAddress)
+		socket := filepath.Join(cfg.DataDir, "admin.sock")
 		payload, _ := json.Marshal(map[string]any{"instance": os.Args[2], "upstream_stopped": true})
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
-		req, _ := http.NewRequestWithContext(ctx, "POST", "http://127.0.0.1:"+port+"/admin/release-held", bytes.NewReader(payload))
+		req, _ := http.NewRequestWithContext(ctx, "POST", "http://unix/admin/release-held", bytes.NewReader(payload))
 		req.Header.Set("Content-Type", "application/json")
-		response, err := http.DefaultClient.Do(req)
+		client := &http.Client{Transport: &http.Transport{DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+			return (&net.Dialer{}).DialContext(ctx, "unix", socket)
+		}}}
+		defer client.CloseIdleConnections()
+		response, err := client.Do(req)
 		if err != nil {
 			return errors.New("voice gateway unavailable")
 		}
@@ -150,7 +155,8 @@ func run() error {
 		}
 		w.WriteHeader(200)
 	})
-	mux.HandleFunc("POST /admin/release-held", func(w http.ResponseWriter, r *http.Request) {
+	adminMux := http.NewServeMux()
+	adminMux.HandleFunc("POST /admin/release-held", func(w http.ResponseWriter, r *http.Request) {
 		var input struct {
 			Instance string `json:"instance"`
 			Stopped  bool   `json:"upstream_stopped"`
@@ -168,13 +174,27 @@ func run() error {
 		logger.Warn("voice held slots released by operator", slog.String("instance", input.Instance))
 		w.WriteHeader(204)
 	})
+	socket := filepath.Join(cfg.DataDir, "admin.sock")
+	if err := os.Remove(socket); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	adminListener, err := net.Listen("unix", socket)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = adminListener.Close(); _ = os.Remove(socket) }()
+	if err = os.Chmod(socket, 0600); err != nil {
+		return err
+	}
+	adminServer := &http.Server{Handler: adminMux, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 5 * time.Second, WriteTimeout: 10 * time.Second}
 	httpServer := &http.Server{Addr: cfg.HTTPAddress, Handler: mux, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 5 * time.Second, WriteTimeout: 10 * time.Second, IdleTimeout: 30 * time.Second, MaxHeaderBytes: 16 << 10}
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer cancel()
 	go engine.Maintain(ctx)
-	failures := make(chan error, 2)
+	failures := make(chan error, 3)
 	go func() { failures <- rpc.Serve(listener) }()
 	go func() { failures <- httpServer.ListenAndServe() }()
+	go func() { failures <- adminServer.Serve(adminListener) }()
 	logger.Info("voice gateway started", slog.String("grpc_address", cfg.GRPCAddress), slog.String("http_address", cfg.HTTPAddress))
 	select {
 	case <-ctx.Done():
@@ -197,6 +217,7 @@ func run() error {
 	shutdown, cancelShutdown := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancelShutdown()
 	_ = httpServer.Shutdown(shutdown)
+	_ = adminServer.Shutdown(shutdown)
 	if errors.Is(err, http.ErrServerClosed) || errors.Is(err, grpc.ErrServerStopped) {
 		return nil
 	}

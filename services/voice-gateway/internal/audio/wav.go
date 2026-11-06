@@ -52,7 +52,7 @@ func ValidWAV(data []byte) bool {
 				format = binary.LittleEndian.Uint16(guid[:2])
 			}
 			validBits := (format == 1 && (bits == 8 || bits == 16 || bits == 24 || bits == 32)) || (format == 3 && (bits == 32 || bits == 64))
-			if !validBits || channels == 0 || rate == 0 || uint64(blockAlign) != uint64(channels)*uint64(bits)/8 || uint64(byteRate) != uint64(rate)*uint64(blockAlign) {
+			if !validBits || channels == 0 || (rate < 8000 || rate > 192000) || uint64(blockAlign) != uint64(channels)*uint64(bits)/8 || uint64(byteRate) != uint64(rate)*uint64(blockAlign) {
 				return false
 			}
 			haveFmt = true

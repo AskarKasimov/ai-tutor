@@ -126,16 +126,3 @@ func TestLoadConfigRequiresAKnownLogLevel(t *testing.T) {
 		t.Fatalf("unknown level error = %v", err)
 	}
 }
-
-func TestVoiceNameIncludesProfileRevision(t *testing.T) {
-	a := &App{cfg: Config{VoiceProfile: "geek-default"}, voiceRevision: "one"}
-	first := a.voiceName()
-	a.voiceRevision = "two"
-	if first == a.voiceName() {
-		t.Fatal("changed revision shares cache key")
-	}
-	a.cfg.VoiceProfile = "other"
-	if a.voiceName() == "geek-default:two" {
-		t.Fatal("profile ignored")
-	}
-}

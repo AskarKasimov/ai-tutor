@@ -1,6 +1,7 @@
 package gateway
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
@@ -1377,10 +1378,11 @@ func (s *Service) validatePool(r Request) error {
 	return apiErr(400, "invalid_request_error", "context_length_exceeded", "The request exceeds the context window of every compatible instance.")
 }
 
-func (s *Service) writeMetrics(w http.ResponseWriter) {
-	w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
+func (s *Service) writeMetrics(rw http.ResponseWriter) {
+	rw.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
+	// Под s.mu только копируем значения; запись клиенту идёт после разблокировки,
+	// чтобы медленный читатель не останавливал приём и планировщик.
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	queued := map[string]int{}
 	oldest := map[string]float64{}
 	results := map[string]int{"succeeded": 0, "failed": 0, "expired": 0}
@@ -1415,61 +1417,87 @@ func (s *Service) writeMetrics(w http.ResponseWriter) {
 			}
 		}
 	}
-	fmt.Fprintln(w, "# HELP gateway_queue_depth Requests waiting for an LLM slot.")
-	fmt.Fprintln(w, "# TYPE gateway_queue_depth gauge")
+	inFlight := make(map[string]int, len(s.inFlight))
+	for id, n := range s.inFlight {
+		inFlight[id] = n
+	}
+	expected := make(map[string]float64, len(s.expected))
+	for id, seconds := range s.expected {
+		expected[id] = seconds
+	}
+	routeSelections := make(map[routeSelection]uint64, len(s.routeSelections))
+	for key, n := range s.routeSelections {
+		routeSelections[key] = n
+	}
+	transportCalls := make(map[string]map[int]uint64, len(s.transportCalls))
+	for transport, calls := range s.transportCalls {
+		copied := make(map[int]uint64, len(calls))
+		for status, n := range calls {
+			copied[status] = n
+		}
+		transportCalls[transport] = copied
+	}
+	idempotentReplays := s.idempotentReplays
+	connections := len(s.connections)
+	s.mu.Unlock()
+
+	var w bytes.Buffer
+	fmt.Fprintln(&w, "# HELP gateway_queue_depth Requests waiting for an LLM slot.")
+	fmt.Fprintln(&w, "# TYPE gateway_queue_depth gauge")
 	for _, complexity := range []string{"low", "medium", "high"} {
 		for _, urgent := range []string{"false", "true"} {
 			key := complexity + "/" + urgent
-			fmt.Fprintf(w, "gateway_queue_depth{complexity=%q,urgent=%q} %d\n", complexity, urgent, queued[key])
-			fmt.Fprintf(w, "gateway_queue_oldest_seconds{complexity=%q,urgent=%q} %.3f\n", complexity, urgent, oldest[key])
+			fmt.Fprintf(&w, "gateway_queue_depth{complexity=%q,urgent=%q} %d\n", complexity, urgent, queued[key])
+			fmt.Fprintf(&w, "gateway_queue_oldest_seconds{complexity=%q,urgent=%q} %.3f\n", complexity, urgent, oldest[key])
 		}
 	}
-	fmt.Fprintln(w, "# TYPE gateway_instance_in_flight gauge")
+	fmt.Fprintln(&w, "# TYPE gateway_instance_in_flight gauge")
 	for _, in := range s.cfg.Instances {
 		open := 0
 		if !s.caller.circuit(in.ID).available(time.Now()) {
 			open = 1
 		}
-		fmt.Fprintf(w, "gateway_instance_in_flight{instance=%q} %d\ngateway_instance_capacity{instance=%q} %d\ngateway_circuit_open{instance=%q} %d\n", in.ID, s.inFlight[in.ID], in.ID, in.MaxInFlight, in.ID, open)
+		fmt.Fprintf(&w, "gateway_instance_in_flight{instance=%q} %d\ngateway_instance_capacity{instance=%q} %d\ngateway_circuit_open{instance=%q} %d\n", in.ID, inFlight[in.ID], in.ID, in.MaxInFlight, in.ID, open)
 	}
-	fmt.Fprintln(w, "# HELP gateway_instance_expected_seconds Moving average of an instance's upstream call time; the scheduler prefers the free instance that answers sooner.")
-	fmt.Fprintln(w, "# TYPE gateway_instance_expected_seconds gauge")
+	fmt.Fprintln(&w, "# HELP gateway_instance_expected_seconds Moving average of an instance's upstream call time; the scheduler prefers the free instance that answers sooner.")
+	fmt.Fprintln(&w, "# TYPE gateway_instance_expected_seconds gauge")
 	for _, in := range s.cfg.Instances {
-		if seconds, ok := s.expected[in.ID]; ok {
-			fmt.Fprintf(w, "gateway_instance_expected_seconds{instance=%q} %.3f\n", in.ID, seconds)
+		if seconds, ok := expected[in.ID]; ok {
+			fmt.Fprintf(&w, "gateway_instance_expected_seconds{instance=%q} %.3f\n", in.ID, seconds)
 		}
 	}
-	fmt.Fprintln(w, "# HELP gateway_route_eligible Whether an instance can serve requests at the given complexity under the configured pools.")
-	fmt.Fprintln(w, "# TYPE gateway_route_eligible gauge")
+	fmt.Fprintln(&w, "# HELP gateway_route_eligible Whether an instance can serve requests at the given complexity under the configured pools.")
+	fmt.Fprintln(&w, "# TYPE gateway_route_eligible gauge")
 	for _, complexity := range complexityLevels {
 		for _, in := range s.eligibleInstances(complexity) {
-			fmt.Fprintf(w, "gateway_route_eligible{complexity=%q,instance=%q,model=%q,tier=%q} 1\n", complexity, in.ID, in.Model, complexityLevels[s.instanceTier(in.ID)])
+			fmt.Fprintf(&w, "gateway_route_eligible{complexity=%q,instance=%q,model=%q,tier=%q} 1\n", complexity, in.ID, in.Model, complexityLevels[s.instanceTier(in.ID)])
 		}
 	}
-	fmt.Fprintln(w, "# HELP gateway_route_selections_total Requests assigned by the scheduler to an upstream instance, including retries.")
-	fmt.Fprintln(w, "# TYPE gateway_route_selections_total counter")
+	fmt.Fprintln(&w, "# HELP gateway_route_selections_total Requests assigned by the scheduler to an upstream instance, including retries.")
+	fmt.Fprintln(&w, "# TYPE gateway_route_selections_total counter")
 	for _, complexity := range complexityLevels {
 		for _, in := range s.eligibleInstances(complexity) {
 			key := routeSelection{complexity: complexity, instance: in.ID}
-			fmt.Fprintf(w, "gateway_route_selections_total{complexity=%q,instance=%q,model=%q,tier=%q} %d\n", complexity, in.ID, in.Model, complexityLevels[s.instanceTier(in.ID)], s.routeSelections[key])
+			fmt.Fprintf(&w, "gateway_route_selections_total{complexity=%q,instance=%q,model=%q,tier=%q} %d\n", complexity, in.ID, in.Model, complexityLevels[s.instanceTier(in.ID)], routeSelections[key])
 		}
 	}
-	fmt.Fprintln(w, "# TYPE gateway_calls_total counter")
+	fmt.Fprintln(&w, "# TYPE gateway_calls_total counter")
 	for _, transport := range []string{"http", "grpc"} {
-		for status, count := range s.transportCalls[transport] {
-			fmt.Fprintf(w, "gateway_calls_total{transport=%q,status=%q} %d\n", transport, strconv.Itoa(status), count)
+		for status, count := range transportCalls[transport] {
+			fmt.Fprintf(&w, "gateway_calls_total{transport=%q,status=%q} %d\n", transport, strconv.Itoa(status), count)
 		}
 	}
-	fmt.Fprintln(w, "# TYPE gateway_requests_total counter")
+	fmt.Fprintln(&w, "# TYPE gateway_requests_total counter")
 	for status, count := range results {
-		fmt.Fprintf(w, "gateway_requests_total{status=%q} %d\n", status, count)
+		fmt.Fprintf(&w, "gateway_requests_total{status=%q} %d\n", status, count)
 	}
-	fmt.Fprintf(w, "gateway_idempotent_replays_total %d\ngateway_retries_total %d\ngateway_connections_in_flight %d\ngateway_unregistered_requests %d\ngateway_input_lag_seconds %.3f\ngateway_uptime_seconds %.0f\n", s.idempotentReplays, retries, len(s.connections), inputBacklog, oldestInput, time.Since(s.started).Seconds())
-	writeHistogram(w, "gateway_queue_wait_seconds", waits)
-	writeHistogram(w, "gateway_execution_seconds", executions)
+	fmt.Fprintf(&w, "gateway_idempotent_replays_total %d\ngateway_retries_total %d\ngateway_connections_in_flight %d\ngateway_unregistered_requests %d\ngateway_input_lag_seconds %.3f\ngateway_uptime_seconds %.0f\n", idempotentReplays, retries, connections, inputBacklog, oldestInput, time.Since(s.started).Seconds())
+	writeHistogram(&w, "gateway_queue_wait_seconds", waits)
+	writeHistogram(&w, "gateway_execution_seconds", executions)
+	_, _ = w.WriteTo(rw)
 }
 
-func writeHistogram(w http.ResponseWriter, name string, samples []float64) {
+func writeHistogram(w io.Writer, name string, samples []float64) {
 	buckets := []float64{1, 5, 10, 30, 60, 120, 180}
 	sum := 0.0
 	for _, sample := range samples {

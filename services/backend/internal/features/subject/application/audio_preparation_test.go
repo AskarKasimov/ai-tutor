@@ -2,6 +2,7 @@ package application
 
 import (
 	"context"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -206,5 +207,86 @@ func TestAudioPreparationRefreshesGraphPublishedAfterStartupRecovery(t *testing.
 	}
 	if refreshes != 1 || result.Exam.State != audiopreparation.Queued || !result.Exam.Published {
 		t.Fatalf("refreshes=%d exam=%+v", refreshes, result.Exam)
+	}
+}
+
+type blockingLearningProgress struct {
+	started chan struct{}
+	release chan struct{}
+}
+
+func (r *blockingLearningProgress) Snapshot(ctx context.Context, id string) (int64, []audiopreparation.LearningAsset, error) {
+	if id == "slow" {
+		close(r.started)
+		select {
+		case <-r.release:
+		case <-ctx.Done():
+			return 0, nil, ctx.Err()
+		}
+	}
+	return 1, nil, nil
+}
+
+func TestLearningProgressSlowCourseDoesNotBlockOtherCourses(t *testing.T) {
+	repo := &blockingLearningProgress{started: make(chan struct{}), release: make(chan struct{})}
+	svc := New(subjectRepoStub{exists: true}, subjectIDsStub{}, time.Now)
+	svc.SetAudioProgress(&examProgressFake{}, repo)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		_, _ = svc.AudioPreparation(context.Background(), user.User{Role: user.Admin}, "slow")
+	}()
+	<-repo.started
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	fast := make(chan error, 1)
+	go func() { _, err := svc.AudioPreparation(ctx, user.User{Role: user.Admin}, "fast"); fast <- err }()
+	select {
+	case err := <-fast:
+		if err != nil {
+			t.Errorf("fast course: %v", err)
+		}
+	case <-ctx.Done():
+		t.Error("slow course blocked another course")
+	}
+	close(repo.release)
+	<-done
+}
+
+type orderedLearningProgress struct {
+	started chan struct{}
+	release chan struct{}
+	calls   atomic.Int32
+}
+
+func (r *orderedLearningProgress) Snapshot(context.Context, string) (int64, []audiopreparation.LearningAsset, error) {
+	if r.calls.Add(1) == 1 {
+		close(r.started)
+		<-r.release
+		return 1, nil, nil
+	}
+	return 2, nil, nil
+}
+func TestLearningProgressOlderReadDoesNotOverwriteNewerSnapshot(t *testing.T) {
+	repo := &orderedLearningProgress{started: make(chan struct{}), release: make(chan struct{})}
+	var clock atomic.Int64
+	svc := New(subjectRepoStub{exists: true}, subjectIDsStub{}, func() time.Time { return time.Unix(clock.Add(1), 0) })
+	svc.SetAudioProgress(&examProgressFake{}, repo)
+	actor := user.User{Role: user.Admin}
+	done := make(chan struct{})
+	go func() { defer close(done); _, _ = svc.AudioPreparation(context.Background(), actor, "course") }()
+	<-repo.started
+	newer, err := svc.AudioPreparation(context.Background(), actor, "course")
+	if err != nil {
+		t.Fatal(err)
+	}
+	close(repo.release)
+	<-done
+	after, err := svc.AudioPreparation(context.Background(), actor, "course")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if newer.Learn.Revision != 2 || !after.Learn.ObservedAt.Equal(newer.Learn.ObservedAt) {
+		t.Fatalf("newer=%+v after=%+v", newer.Learn, after.Learn)
 	}
 }

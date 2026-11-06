@@ -72,10 +72,7 @@ export function useAudioPreparationQuery(userId: string, subjectId: string) {
           subjects.readAudioPreparation(subjectId, requestSignal),
         client,
       ),
-    refetchInterval:
-      typeof document !== 'undefined' && document.visibilityState === 'visible'
-        ? 5_000
-        : false,
+    refetchInterval: 5_000,
     refetchIntervalInBackground: false,
     refetchOnWindowFocus: true,
     retry: false,

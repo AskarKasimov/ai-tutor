@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen } from '@testing-library/react'
-import { expect, it } from 'vitest'
+import { render, screen, waitFor } from '@testing-library/react'
+import { expect, it, vi } from 'vitest'
 import { replaceSession } from '@/entities/user'
 import { SubjectSelectionDependenciesProvider } from '@/features/subject-selection'
 import { AudioPreparationPanel } from '@/widgets/admin-course-detail-shell/ui/audio-preparation-panel'
@@ -213,3 +213,69 @@ it('keeps the last audio snapshot visible when a refresh fails', async () => {
     }),
   ).toBeInTheDocument()
 })
+
+it('resumes polling when a hidden tab becomes visible with unchanged data', async () => {
+  window.history.pushState({}, '', '/admin/courses/s1')
+  let visibility: DocumentVisibilityState = 'hidden'
+  const visibilitySpy = vi
+    .spyOn(document, 'visibilityState', 'get')
+    .mockImplementation(() => visibility)
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  })
+  await replaceSession(
+    client,
+    { id: 'admin-user', role: 'admin', email: '', display_name: null },
+    'admin',
+  )
+  const direction = {
+    version: 'v',
+    state: 'ready' as const,
+    total: 1,
+    unchecked: 0,
+    queued: 0,
+    processing: 0,
+    retry_wait: 0,
+    ready: 1,
+    failed: 0,
+    unavailable: 0,
+    observed_at: '2026-11-04T10:00:00Z',
+  }
+  const read = vi.fn(async () => ({
+    subject_id: 's1',
+    exam: { ...direction, published: true },
+    learn: { ...direction, revision: 1 },
+  }))
+  const subjects: SubjectApi = {
+    listSubjects: async () => [],
+    createSubject: async () => {
+      throw new Error('unused')
+    },
+    readAudioPreparation: read,
+  }
+  const view = render(
+    <QueryClientProvider client={client}>
+      <SubjectSelectionDependenciesProvider value={{ subjects }}>
+        <AudioPreparationPanel
+          userId="admin-user"
+          subjectId="s1"
+          direction="exam"
+        />
+      </SubjectSelectionDependenciesProvider>
+    </QueryClientProvider>,
+  )
+  try {
+    await screen.findByText('Готово 1 из 1 (100%)')
+    visibility = 'visible'
+    window.dispatchEvent(new Event('visibilitychange'))
+    await waitFor(() => expect(read).toHaveBeenCalledTimes(2))
+    await waitFor(
+      () => expect(read.mock.calls.length).toBeGreaterThanOrEqual(3),
+      { timeout: 6500 },
+    )
+  } finally {
+    view.unmount()
+    client.clear()
+    visibilitySpy.mockRestore()
+  }
+}, 9000)

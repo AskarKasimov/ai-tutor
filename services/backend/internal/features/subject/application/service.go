@@ -33,6 +33,8 @@ type Service struct {
 	learnAudio        LearningProgressReader
 	learningMu        sync.Mutex
 	learningSnapshots map[string]audiopreparation.Learning
+	learningSequence  uint64
+	learningCompleted map[string]uint64
 	examNoGraphMu     sync.Mutex
 	examNoGraphAt     map[string]time.Time
 	refreshExamAudio  func(context.Context, string) error
@@ -110,7 +112,9 @@ func (s *Service) AudioPreparation(ctx context.Context, actor user.User, subject
 		s.examNoGraphMu.Unlock()
 	}
 	s.learningMu.Lock()
-	defer s.learningMu.Unlock()
+	s.learningSequence++
+	sequence := s.learningSequence
+	s.learningMu.Unlock()
 	revision, assets, err := s.learnAudio.Snapshot(ctx, subjectID)
 	if err != nil {
 		return audiopreparation.Response{}, err
@@ -159,13 +163,21 @@ func (s *Service) AudioPreparation(ctx context.Context, actor user.User, subject
 		return audiopreparation.Response{}, fmt.Errorf("learning audio progress invariant violated: %d counts for %d assets", counts.Sum(), len(seen))
 	}
 	result.Learn = audiopreparation.Learning{Revision: revision, Direction: audiopreparation.Direction{Version: fmt.Sprintf("revision:%d", revision), State: counts.State(true, len(seen)), Total: len(seen), Counts: counts, ObservedAt: observedAt}}
+	s.learningMu.Lock()
+	defer s.learningMu.Unlock()
 	if previous, ok := s.learningSnapshots[subjectID]; ok && previous.Revision == revision && previous.Total == result.Learn.Total && previous.Counts == counts {
 		result.Learn.ObservedAt = previous.ObservedAt
 	}
 	if s.learningSnapshots == nil {
 		s.learningSnapshots = make(map[string]audiopreparation.Learning)
 	}
-	s.learningSnapshots[subjectID] = result.Learn
+	if s.learningCompleted == nil {
+		s.learningCompleted = make(map[string]uint64)
+	}
+	if sequence > s.learningCompleted[subjectID] {
+		s.learningSnapshots[subjectID] = result.Learn
+		s.learningCompleted[subjectID] = sequence
+	}
 	return result, nil
 }
 

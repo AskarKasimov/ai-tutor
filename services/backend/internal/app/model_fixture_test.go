@@ -3,12 +3,20 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/features/voice/infrastructure/modelapi"
+	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/fault"
+	voicepb "github.com/AskarKasimov/ai-tutor/services/shared/gen/go/voicegateway/v1"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"regexp"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 	"unicode"
 
 	"google.golang.org/grpc"
@@ -19,7 +27,7 @@ import (
 // Exercise production model adapters through HTTP and gRPC, with
 // deterministic responses owned by the tests rather than an offline
 // application mode.
-func configureFixtureModels(t *testing.T, cfg *Config) {
+func configureFixtureModels(t *testing.T, cfg *Config) *fixtureVoice {
 	t.Helper()
 	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
@@ -34,15 +42,17 @@ func configureFixtureModels(t *testing.T, cfg *Config) {
 		}
 	}))
 	t.Cleanup(provider.Close)
-	for _, setting := range []struct {
-		value  *string
-		suffix string
-	}{
-		{&cfg.STTURL, "/transcribe"}, {&cfg.TTSURL, "/synthesize"},
-	} {
-		if strings.Contains(*setting.value, ".test") {
-			*setting.value = provider.URL + setting.suffix
+	state := &fixtureVoice{sttURL: provider.URL + "/transcribe", ttsURL: provider.URL + "/synthesize", opts: modelapi.TTSOptions{Seed: 17, CFGValue: 2, InferenceTimesteps: 50}}
+	if strings.Contains(cfg.VoiceGatewayAddress, ".test") {
+		listener, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			t.Fatal(err)
 		}
+		server := grpc.NewServer(grpc.MaxRecvMsgSize(26<<20), grpc.MaxSendMsgSize(65<<20))
+		voicepb.RegisterVoiceGatewayServer(server, state)
+		go func() { _ = server.Serve(listener) }()
+		t.Cleanup(server.Stop)
+		cfg.VoiceGatewayAddress = listener.Addr().String()
 	}
 	if strings.Contains(cfg.LLMGatewayAddress, ".test") {
 		listener, err := net.Listen("tcp", "127.0.0.1:0")
@@ -55,6 +65,7 @@ func configureFixtureModels(t *testing.T, cfg *Config) {
 		t.Cleanup(server.Stop)
 		cfg.LLMGatewayAddress = listener.Addr().String()
 	}
+	return state
 }
 
 // fixtureGateway answers Geek prompts deterministically: a question prompt
@@ -130,4 +141,62 @@ func byLength(text string) [4]int {
 		return [4]int{2, 2, 1, 1}
 	}
 	return [4]int{2, 2, 2, 2}
+}
+
+type fixtureVoice struct {
+	voicepb.UnimplementedVoiceGatewayServer
+	mu             sync.Mutex
+	sttURL, ttsURL string
+	opts           modelapi.TTSOptions
+}
+
+func (f *fixtureVoice) setSTTURL(url string) { f.mu.Lock(); f.sttURL = url; f.mu.Unlock() }
+func (f *fixtureVoice) setTTSURL(url string) { f.mu.Lock(); f.ttsURL = url; f.mu.Unlock() }
+func (f *fixtureVoice) setModes(reference, prompt bool) {
+	f.mu.Lock()
+	f.opts.UseReference = &reference
+	f.opts.UsePrompt = &prompt
+	f.mu.Unlock()
+}
+func (f *fixtureVoice) client() *modelapi.Client {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return modelapi.New(nil, f.sttURL, f.ttsURL, 10*time.Second, f.opts)
+}
+func (f *fixtureVoice) DescribeVoice(context.Context, *voicepb.DescribeVoiceRequest) (*voicepb.DescribeVoiceResponse, error) {
+	return &voicepb.DescribeVoiceResponse{Revision: "fixture-v1"}, nil
+}
+func (f *fixtureVoice) Transcribe(ctx context.Context, req *voicepb.TranscribeRequest) (*voicepb.TranscribeResponse, error) {
+	text, err := f.client().Recognize(ctx, req.Audio, req.MediaType)
+	return &voicepb.TranscribeResponse{Text: text}, fixtureVoiceError(err)
+}
+func (f *fixtureVoice) Synthesize(ctx context.Context, req *voicepb.SynthesizeRequest) (*voicepb.SynthesizeResponse, error) {
+	audio, err := f.client().Synthesize(ctx, req.Text)
+	return &voicepb.SynthesizeResponse{Audio: audio, MediaType: "audio/wav"}, fixtureVoiceError(err)
+}
+func fixtureVoiceError(err error) error {
+	if err == nil {
+		return nil
+	}
+	if errors.Is(err, context.Canceled) {
+		return status.Error(codes.Canceled, "cancelled")
+	}
+	var f *fault.Error
+	if errors.As(err, &f) {
+		code := codes.Internal
+		switch f.Kind {
+		case fault.Invalid:
+			code = codes.InvalidArgument
+		case fault.Unavailable:
+			code = codes.Unavailable
+		case fault.Timeout:
+			code = codes.DeadlineExceeded
+		case fault.TooLarge:
+			code = codes.OutOfRange
+		case fault.Unsupported:
+			code = codes.Unimplemented
+		}
+		return status.Error(code, "test voice failure")
+	}
+	return status.Error(codes.Unavailable, "test voice failure")
 }

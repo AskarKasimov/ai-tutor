@@ -20,6 +20,7 @@
 | `services/backend` | [AGENTS.md](services/backend/AGENTS.md), [README](services/backend/README.md), [архитектура](documents/backend-architecture.md), [auth](documents/auth.md) | См. AGENTS.md backend |
 | `services/frontend` | [AGENTS.md](services/frontend/AGENTS.md), [README](services/frontend/README.md) | См. AGENTS.md frontend |
 | `services/llm-gateway` | [AGENTS.md](services/llm-gateway/AGENTS.md), [README](services/llm-gateway/README.md), спецификации [HTTP](documents/llm-gateway-spec.md) и [gRPC](documents/llm-gateway-grpc-spec.md) | См. AGENTS.md gateway |
+| `services/voice-gateway` | [README](services/voice-gateway/README.md) | Последовательно из сервиса: `GOWORK=off GOMAXPROCS=2 go test -p 1 -parallel 2 -race ./... -count=1`, `GOWORK=off GOMAXPROCS=2 go vet -p 1 ./...`, `GOWORK=off GOMAXPROCS=2 go build -p 1 -o /tmp/voice-gateway ./cmd/voice-gateway`; интеграция с Redpanda — `TEST_KAFKA_BROKERS` |
 | `services/shared` | [AGENTS.md](services/shared/AGENTS.md), [README](services/shared/README.md) | См. AGENTS.md shared |
 | `services/course-graph` | [AGENTS.md](services/course-graph/AGENTS.md), [README](services/course-graph/README.md), [api/course-graph.yaml](api/course-graph.yaml) | См. AGENTS.md course-graph |
 | `api` | [api/README](api/README.md) | Из `services/backend`: `bash scripts/generate-openapi.sh` без лишних изменений |
@@ -28,7 +29,7 @@
 ## Источники истины
 
 - Учебная логика (граф, экзамен, оценки, тренировка) — README: «Курс», «course-graph», «Geek» и актуальные продуктовые решения. [Концепция проректора](documents/Концепция_Репетитор_устного_экзамена.md) — исходник; при расхождении действует README.
-- HTTP — [api/openapi.yaml](api/openapi.yaml): `implemented` — подключённая операция, `planned` — проект без handler. Внутренний API course-graph — [api/course-graph.yaml](api/course-graph.yaml), gRPC — [gateway.proto](services/shared/proto/llmgateway/v1/gateway.proto).
+- HTTP — [api/openapi.yaml](api/openapi.yaml): `implemented` — подключённая операция, `planned` — проект без handler. Внутренний API course-graph — [api/course-graph.yaml](api/course-graph.yaml), gRPC — [LLM gateway.proto](services/shared/proto/llmgateway/v1/gateway.proto) и [voice gateway.proto](services/shared/proto/voicegateway/v1/gateway.proto).
 - Схема БД — [backend README, «БД и импорт»](services/backend/README.md#бд-и-импорт).
 - Код расходится с документацией или требованием — не выбирайте молча: назовите расхождение в отчёте. Если нужно решение, спросите владельца продукта и зафиксируйте действующее решение в соответствующем разделе README, обновив устаревшие формулировки без добавления датированного журнала.
 - Открытые вопросы — в [README](README.md#открытые-вопросы); не закрывайте их в коде без записанного решения.

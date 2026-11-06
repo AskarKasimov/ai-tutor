@@ -1,0 +1,39 @@
+services:
+  voice-queue-init:
+    image: docker.redpanda.com/redpandadata/redpanda:v26.2.4
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - |
+        for topic in voice.stt.v1 voice.tts.v1; do
+          rpk topic create "$$topic" --partitions 1 --replicas 1 --brokers redpanda:9092 || rpk topic describe "$$topic" --brokers redpanda:9092
+          rpk topic alter-config "$$topic" --set cleanup.policy=compact --set retention.ms=-1 --set max.message.bytes=65536 --brokers redpanda:9092
+        done
+  voice-gateway:
+    build:
+      context: ../..
+      dockerfile: services/voice-gateway/Dockerfile
+      target: runtime
+    environment:
+      VOICE_GATEWAY_CONFIG: ${VOICE_GATEWAY_CONFIG:-/work/voice-gateway/config/dev.yaml}
+    volumes:
+      - ./config:/work/voice-gateway/config:ro
+      - voice_gateway_data:/var/lib/voice-gateway
+    ports: ["127.0.0.1:8020:8020"]
+    expose: [8021]
+    depends_on:
+      voice-queue-init:
+        condition: service_completed_successfully
+    stop_grace_period: 30s
+    healthcheck:
+      test: ["CMD", "/voice-gateway", "healthcheck"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+      start_period: 30s
+    restart: unless-stopped
+volumes:
+  voice_gateway_data:
+networks:
+  default:
+    external: true
+    name: ai-tutor_default

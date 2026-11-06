@@ -1,0 +1,40 @@
+grpc_address: ":8021"
+http_address: ":8020"
+log_level: info
+data_dir: "/var/lib/voice-gateway"
+request_timeout: 120s
+retention: 24h
+max_connections: 16
+max_payload_bytes: 2147483648
+brokers: ["redpanda:9092"]
+stt_topic: "voice.stt.v1"
+tts_topic: "voice.tts.v1"
+stt:
+  max_waiting: 32
+  instances:
+    - id: gigaam-1
+      api: gigaam
+      url: "http://10.100.30.83:8000/transcribe"
+      slots: 1
+      timeout: 120s
+      model: ""
+      longform: false
+      abort_on_disconnect: false
+tts:
+  max_waiting: 32
+  instances:
+    - id: voxcpm-1
+      api: voxcpm
+      url: "http://10.100.30.83:8001/synthesize"
+      slots: 1
+      timeout: 120s
+      profiles: [geek-default]
+      abort_on_disconnect: false
+voices:
+  geek-default:
+    identity: "geek-reference-v1"
+    seed: 607
+    cfg_value: 2.0
+    inference_timesteps: 20
+    use_reference: true
+    use_prompt: true

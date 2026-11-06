@@ -1,7 +1,6 @@
 package app
 
 import (
-	"math"
 	"strings"
 	"testing"
 	"time"
@@ -10,8 +9,7 @@ import (
 func testConfig() Config {
 	return Config{
 		ListenAddress: ":8002", DatabaseURL: "postgres://example/db",
-		STTURL: "http://stt.test/transcribe", TTSURL: "http://tts.test/synthesize",
-		TTSSeed: 17, TTSCFGValue: 2, TTSInferenceTimesteps: 50,
+		VoiceGatewayAddress: "voice.test:8021", VoiceProfile: "geek-default",
 		VoiceTimeout: 120 * time.Second, LLMTimeout: 120 * time.Second, LLMGatewayAddress: "gateway.test:8011",
 		MaxUploadBytes: 25 * 1024 * 1024,
 		S3Region:       "us-east-1", S3Bucket: "task-audio-test", S3AccessKey: "test-access", S3SecretKey: "test-secret",
@@ -44,19 +42,9 @@ func TestConfigValidateRejectsInvalidSettings(t *testing.T) {
 	cases := map[string][]func(*Config){
 		"BACKEND_LISTEN_ADDRESS": text(func(c *Config, v string) { c.ListenAddress = v }, "bad", ":bad", ":70000"),
 		"BACKEND_DATABASE_URL":   text(func(c *Config, v string) { c.DatabaseURL = v }, "", "   "),
-		"BACKEND_STT_URL":        text(func(c *Config, v string) { c.STTURL = v }, "", "relative", "ftp://stt.test", "http://user:password@stt.test"),
-		"BACKEND_TTS_URL":        text(func(c *Config, v string) { c.TTSURL = v }, "", "http://tts.test/#fragment"),
-		"BACKEND_TTS_CFG_VALUE": {
-			func(c *Config) { c.TTSCFGValue = -0.1 },
-			func(c *Config) { c.TTSCFGValue = 5.1 },
-			func(c *Config) { c.TTSCFGValue = math.NaN() },
-			func(c *Config) { c.TTSCFGValue = math.Inf(1) },
-		},
-		"BACKEND_TTS_INFERENCE_TIMESTEPS": {
-			func(c *Config) { c.TTSInferenceTimesteps = 0 },
-			func(c *Config) { c.TTSInferenceTimesteps = 51 },
-		},
-		"BACKEND_VOICE_TIMEOUT": duration(func(c *Config, v time.Duration) { c.VoiceTimeout = v }, 0, -time.Second),
+		"voice.address":          text(func(c *Config, v string) { c.VoiceGatewayAddress = v }, "", "relative", ":8021", "http://gateway:8021"),
+		"voice.profile":          text(func(c *Config, v string) { c.VoiceProfile = v }, "", " "),
+		"BACKEND_VOICE_TIMEOUT":  duration(func(c *Config, v time.Duration) { c.VoiceTimeout = v }, 0, -time.Second),
 		"BACKEND_MAX_UPLOAD_BYTES": {
 			func(c *Config) { c.MaxUploadBytes = 0 },
 			func(c *Config) { c.MaxUploadBytes = -1 },

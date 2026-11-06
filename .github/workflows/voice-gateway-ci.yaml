@@ -1,0 +1,35 @@
+name: Voice Gateway CI
+on:
+  workflow_call:
+permissions:
+  contents: read
+jobs:
+  test:
+    name: Voice gateway tests, vet and build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/voice-gateway
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: services/voice-gateway/go.mod
+          cache: true
+          cache-dependency-path: services/voice-gateway/go.sum
+      - name: Start Redpanda
+        working-directory: .
+        run: docker compose --env-file .env.example up -d --wait --wait-timeout 120 redpanda
+      - name: Run tests including durable queue integration
+        run: GOWORK=off go test -race ./... -count=1
+        env:
+          TEST_KAFKA_BROKERS: localhost:19092
+      - run: GOWORK=off go vet ./...
+      - run: GOWORK=off go build -o /tmp/voice-gateway ./cmd/voice-gateway
+      - name: Build runtime image
+        working-directory: .
+        run: docker build -f services/voice-gateway/Dockerfile -t voice-gateway-ci .
+      - name: Stop Redpanda
+        if: ${{ always() }}
+        working-directory: .
+        run: docker compose --env-file .env.example stop redpanda

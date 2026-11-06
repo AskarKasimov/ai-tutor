@@ -1,5 +1,5 @@
 # Build context: the repository root. The backend imports the generated LLM
-# gateway client from the sibling module services/shared (go.mod replace
+# and voice gateway clients from services/shared (go.mod replace
 # ../shared), so the shared module always sits next to the backend.
 # In dev both live under /work, so Air watches them together.
 FROM golang:1.26-alpine AS dev
@@ -18,7 +18,7 @@ COPY services/backend/go.mod services/backend/go.sum ./
 RUN go mod download
 COPY services/backend/cmd ./cmd
 COPY services/backend/internal ./internal
-RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /api ./cmd/api
+RUN CGO_ENABLED=0 GOMAXPROCS=2 go build -p 1 -trimpath -ldflags="-s -w" -o /api ./cmd/api
 
 FROM alpine:3.24 AS runtime
 RUN apk add --no-cache ca-certificates tzdata \

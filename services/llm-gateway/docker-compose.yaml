@@ -68,6 +68,7 @@ services:
     volumes:
       - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
       - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - ../voice-gateway/observability/grafana/dashboards:/var/lib/grafana/voice-dashboards:ro
     ports:
       - "3000:3000"
     depends_on:

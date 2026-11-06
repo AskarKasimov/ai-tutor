@@ -53,6 +53,7 @@ func newFixtureWithRealPasswords(t *testing.T) *fixture {
 }
 
 type fixture struct {
+	voice        *fixtureVoice
 	app          *App
 	pool         *pgxpool.Pool
 	handler      http.Handler
@@ -184,7 +185,7 @@ func newFixtureWithPasswordHasher(t *testing.T, cfg Config, hasher authapp.Passw
 		}
 	}))
 	t.Cleanup(f.s3.Close)
-	configureFixtureModels(t, &cfg)
+	f.voice = configureFixtureModels(t, &cfg)
 	cfg.S3Endpoint = f.s3.URL
 	cfg.S3CreateBucket = false
 	a, err := New(cfg, pool, zap.NewNop())

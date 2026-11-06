@@ -59,3 +59,5 @@ Gateway и Redpanda входят в dev stack; `COMPOSE_PROFILES` включае
 Gateway всегда входит в корневой Compose stack. `COMPOSE_PROFILES` включает Swagger и observability сервисы. У gRPC-порта нет проброса на хост; gRPC health доступен внутри Docker, Caddy публикует только путь сервиса Gateway.
 
 Backend (Geek, перевод OCR) и `services/course-graph` ходят в gateway по gRPC; адреса задаются в их `config/dev.yaml`.
+
+Мониторинг также собирает метрики отдельного [voice gateway](../voice-gateway/README.md): target `voice-gateway:8020`, папка Grafana `Voice Gateway`. Процесс Grafana и Prometheus общие для обоих gateway.

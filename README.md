@@ -107,6 +107,10 @@ Geek принимает ответы текстом или голосом и п�
 
 LLM gateway централизует обращения к моделям и распределяет запросы между доступными исполнителями. Его используют Geek, обучение и course-graph; подробности — в [документации gateway](services/llm-gateway/README.md).
 
+## Voice gateway
+
+STT и TTS вызываются backend через два gRPC-адаптера к отдельному voice gateway. Сервис ведёт две очереди в Redpanda, хранит аудио на постоянном volume и распределяет запросы по совместимым экземплярам моделей. Его метрики отображаются в существующей Grafana на отдельном dashboard. Конфигурация, ограничения и восстановление описаны в [README voice gateway](services/voice-gateway/README.md).
+
 ## Итоговые решения
 
 | Тема | Действующее правило |
@@ -121,7 +125,7 @@ LLM gateway централизует обращения к моделям и р�
 | Отзыв по ответу | Оценщик учебной диагностики и тренировки возвращает `feedback` одной строкой. Отчёты не разбирают её на части: что не так, показывают объяснения невыполненных критериев и общий совет. Код не обрезает отзыв: длину задаёт только цель в промпте. |
 | Совместимость | Пока у продукта нет пользователей, старые форматы, версии и адреса не поддерживаются: формат один, а контракт меняется сразу с обеих сторон. Старые данные dev-БД при таком изменении сбрасываются. Проверка совместимости gRPC (`check-compat.sh`) сохранена, но не запускается в CI; с появлением пользователей её нужно вернуть. |
 | Чат | Чат с репетитором есть только в обучении после диагностики; в самой диагностике он не планируется. Ручки чата тренировки остаются, хотя frontend их пока не вызывает. |
-| Логи | Backend, LLM gateway и course-graph пишут JSON-строки в stdout с общими полями `ts`, `level`, `msg`, `trace_id`, `gateway_request_id`, `error_code`, `error`, `duration`. `trace_id` передаётся между сервисами заголовком и gRPC-метаданными `traceparent`, поэтому один запрос ищется по всем трём сервисам. Уровень задаётся в `config/dev.yaml` сервиса. Тексты промптов и ответов модели backend и course-graph пишут только на уровне `debug`, а gateway не пишет никогда. |
+| Логи | Backend, LLM gateway, voice gateway и course-graph пишут JSON-строки в stdout с общими полями `ts`, `level`, `msg`, `trace_id`, `gateway_request_id`, `error_code`, `error`, `duration`. `trace_id` передаётся между сервисами заголовком и gRPC-метаданными `traceparent`, поэтому один запрос ищется по всем сервисам. Уровень задаётся в `config/dev.yaml` сервиса. Тексты промптов и ответов модели backend и course-graph пишут только на уровне `debug`, а gateway не пишет никогда. |
 
 ## Открытые вопросы
 
@@ -136,6 +140,7 @@ LLM gateway централизует обращения к моделям и р�
 | course-graph | Обрабатывает материалы и строит граф тем и пререквизитов. |
 | Frontend | Поддерживает оба режима, историю диагностик, диалог с визуализацией голоса и админку курсов. |
 | LLM gateway | Обслуживает обращения приложения к языковым моделям. |
+| Voice gateway | Обслуживает STT/TTS через независимые очереди и пулы; подключён к общему мониторингу. |
 
 Полный сквозной прогон от реальных PDF до экзамена по полученному графу пока не подтверждён. Тренировка Geek и пакет преподавателя пока не реализованы.
 
@@ -147,6 +152,7 @@ LLM gateway централизует обращения к моделям и р�
 | `services/frontend/` | Веб-интерфейс. |
 | `services/course-graph/` | Обработка материалов и построение графа. |
 | `services/llm-gateway/` | Доступ к языковым моделям. |
+| `services/voice-gateway/` | Распознавание и синтез речи, очереди и маршрутизация. |
 | `api/` | Контракты API. |
 | `documents/` | Архитектура, концепция и материалы курса. |
 
@@ -155,11 +161,11 @@ LLM gateway централизует обращения к моделям и р�
 Нужны Docker Compose и mkcert.
 
 1. Создайте `.env` командой `cp .env.example .env` и замените значения `DB_PASSWORD`, `S3_ACCESS_KEY` и `S3_SECRET_KEY` на собственные.
-2. В `services/llm-gateway/config/dev.yaml` настройте доступные адреса и токены моделей. Для голосового ввода и озвучки укажите доступные STT/TTS-сервисы в `services/backend/config/dev.yaml`. Там же выбираются модель STT, обработка длинных записей и режим референса и промпта TTS; требования к VAD и кэшу описаны в README backend. Настройки course-graph находятся в `services/course-graph/config/dev.yaml`.
+2. В `services/llm-gateway/config/dev.yaml` настройте доступные адреса и токены моделей. Для голосового ввода и озвучки настройте экземпляры STT/TTS и голоса в `services/voice-gateway/config/dev.yaml`; в `services/backend/config/dev.yaml` задаются адрес gateway, голосовой профиль и timeout. После изменения голоса перезапустите gateway, затем backend для обновления версии кэша. Настройки course-graph находятся в `services/course-graph/config/dev.yaml`.
 3. Запустите `./dev.sh -d`. По умолчанию приложение доступно на `https://localhost:8443`, админка — на `https://localhost:8443/admin/courses`; порт задаётся в `.env`.
 4. Проверьте backend и БД: `curl -k https://localhost:8443/api/v1/health` (при другом порте замените `8443`). Доступность моделей и S3 эта проверка не подтверждает.
 
-Подробности настройки и запуска: [backend](services/backend/README.md), [frontend](services/frontend/README.md), [course-graph](services/course-graph/README.md), [LLM gateway](services/llm-gateway/README.md).
+Подробности настройки и запуска: [backend](services/backend/README.md), [frontend](services/frontend/README.md), [course-graph](services/course-graph/README.md), [LLM gateway](services/llm-gateway/README.md), [voice gateway](services/voice-gateway/README.md).
 
 ## Проверки перед PR
 
@@ -169,4 +175,4 @@ LLM gateway централизует обращения к моделям и р�
 
 - [Общая архитектура](architecture.md), [архитектура backend](documents/backend-architecture.md) и [концепция продукта](documents/Концепция_Репетитор_устного_экзамена.md).
 - [HTTP API](api/README.md) и [контракт course-graph](api/course-graph.yaml).
-- [Backend](services/backend/README.md), [frontend](services/frontend/README.md), [course-graph](services/course-graph/README.md) и [LLM gateway](services/llm-gateway/README.md).
+- [Backend](services/backend/README.md), [frontend](services/frontend/README.md), [course-graph](services/course-graph/README.md) и [LLM gateway](services/llm-gateway/README.md), [voice gateway](services/voice-gateway/README.md).

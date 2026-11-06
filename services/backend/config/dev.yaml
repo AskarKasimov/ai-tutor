@@ -3,17 +3,8 @@ server:
 logging:
   level: info
 voice:
-  stt:
-    url: "http://10.100.30.83:8000/transcribe"
-    model: "" # пустая строка — модель сервиса по умолчанию
-    longform: false # true требует установленных зависимостей и весов VAD
-  tts:
-    url: "http://10.100.30.83:8001/synthesize"
-    seed: 607
-    cfg_value: 2.0
-    inference_timesteps: 20
-    use_reference: true
-    use_prompt: true
+  address: "voice-gateway:8021"
+  profile: "geek-default"
   timeout: 120s
 uploads:
   max_bytes: 26214400

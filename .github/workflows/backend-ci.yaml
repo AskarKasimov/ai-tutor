@@ -58,6 +58,8 @@ jobs:
           exit 1
       - run: go test -race ./... -count=1
       - run: go vet ./...
+      - name: Check backend test compilation for Windows
+        run: GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go test -c -o /tmp/backend-app.test.exe ./internal/app
       - run: go build -o bin/api ./cmd/api
       - name: Build production backend image
         working-directory: .

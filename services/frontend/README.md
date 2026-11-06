@@ -44,8 +44,7 @@ Vite читает env из корня монорепозитория, в том 
 Frontend использует один API base (`VITE_API_BASE_URL`, по умолчанию
 `/api/v1`). Режимы маршрутизируются внутри SPA: `/learn`, `/exam`,
 `/admin/courses` и вложенный `/admin/courses/{subject_id}`; отдельного host bridge нет.
-HTTP-контракт и сценарии проверяются тестами. Backend использует API моделей
-для STT/TTS; их настройки обязательны и задаются в `services/backend/config/dev.yaml`.
+HTTP-контракт и сценарии проверяются тестами. Backend вызывает voice gateway по gRPC; адрес и профиль задаются в `services/backend/config/dev.yaml`, а STT/TTS-модели — в `services/voice-gateway/config/dev.yaml`.
 
 ## Geek: устный экзамен
 

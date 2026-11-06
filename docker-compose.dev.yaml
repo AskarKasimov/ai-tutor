@@ -4,7 +4,9 @@ services:
       target: dev
     volumes:
       - ./services/backend:/work/backend
+      - ./services/voice-gateway:/work/voice-gateway:ro
       - ./services/shared:/work/shared:ro
+      - ./services/audio:/work/audio:ro
       - backend_go_modules:/go/pkg/mod
       - backend_go_build:/root/.cache/go-build
       - backend_dev_bin:/work/backend/.air
@@ -26,6 +28,22 @@ services:
       - gateway_go_modules:/go/pkg/mod
       - gateway_go_build:/root/.cache/go-build
       - gateway_dev_bin:/work/llm-gateway/.air
+
+  voice-gateway:
+    build:
+      target: dev
+    entrypoint: []
+    command: ["air", "-c", ".air.toml"]
+    volumes: !override
+      - ./services/voice-gateway:/work/voice-gateway
+      - ./services/audio:/work/audio:ro
+      - ./services/shared:/work/shared:ro
+      - voice_gateway_data:/var/lib/voice-gateway
+      - voice_go_modules:/go/pkg/mod
+      - voice_go_build:/go/cache
+      - voice_dev_bin:/work/voice-gateway/.air
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8020/health/ready"]
 
   course-graph:
     build:

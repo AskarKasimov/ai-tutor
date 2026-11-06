@@ -7,7 +7,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/AskarKasimov/ai-tutor/services/backend/internal/entities/audio"
+	"github.com/AskarKasimov/ai-tutor/services/audio"
 	"github.com/AskarKasimov/ai-tutor/services/backend/internal/shared/fault"
 	"golang.org/x/sync/singleflight"
 )
@@ -53,14 +53,14 @@ type SpeechCache struct {
 	voice Synthesizer
 	audio AudioStore
 	// name identifies the TTS settings used to namespace all cached audio.
-	name string
+	name func(context.Context) (string, error)
 	// flights joins concurrent misses of one key into one synthesis: the
 	// speech service works through requests one by one, so a duplicate costs
 	// a whole request in its queue.
 	flights singleflight.Group
 }
 
-func NewSpeechCache(voice Synthesizer, audio AudioStore, name string) *SpeechCache {
+func NewSpeechCache(voice Synthesizer, audio AudioStore, name func(context.Context) (string, error)) *SpeechCache {
 	return &SpeechCache{voice: voice, audio: audio, name: name}
 }
 
@@ -68,7 +68,11 @@ func NewSpeechCache(voice Synthesizer, audio AudioStore, name string) *SpeechCac
 // is synthesized once for every student.
 func (c *SpeechCache) Part(ctx context.Context, text string) ([]byte, error) {
 	text = strings.TrimSpace(text)
-	sum := sha256.Sum256([]byte(c.name + "\n" + text))
+	name, err := c.name(ctx)
+	if err != nil {
+		return nil, err
+	}
+	sum := sha256.Sum256([]byte(name + "\n" + text))
 	return c.get(ctx, "geek/speech/"+hex.EncodeToString(sum[:])+".wav", text)
 }
 
@@ -78,7 +82,11 @@ func (c *SpeechCache) Part(ctx context.Context, text string) ([]byte, error) {
 // so a listener who leaves does not fail the others; each caller still stops
 // waiting when its own context ends.
 func (c *SpeechCache) Get(ctx context.Context, key, text string) ([]byte, error) {
-	sum := sha256.Sum256([]byte(c.name))
+	name, err := c.name(ctx)
+	if err != nil {
+		return nil, err
+	}
+	sum := sha256.Sum256([]byte(name))
 	key = "geek/voice/" + hex.EncodeToString(sum[:]) + "/" + key
 	return c.get(ctx, key, text)
 }

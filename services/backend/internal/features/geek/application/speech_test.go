@@ -38,7 +38,7 @@ func TestWholeSpeechCacheChangesWithVoice(t *testing.T) {
 	voice := &countingVoice{called: make(chan struct{}, 3)}
 	ctx := context.Background()
 	for _, name := range []string{"prompt=true", "prompt=true", "prompt=false"} {
-		cache := NewSpeechCache(voice, store, name)
+		cache := NewSpeechCache(voice, store, staticVoiceName(name))
 		if _, err := cache.Get(ctx, "geek/session/turn.wav", "Персональная реплика"); err != nil {
 			t.Fatal(err)
 		}
@@ -56,8 +56,12 @@ func TestPartReusesLegacyCacheKey(t *testing.T) {
 	stored := wav(10)
 	store := &syncAudio{data: map[string][]byte{oldKey: stored}}
 	voice := &countingVoice{called: make(chan struct{}, 1)}
-	got, err := NewSpeechCache(voice, store, name).Part(context.Background(), text)
+	got, err := NewSpeechCache(voice, store, staticVoiceName(name)).Part(context.Background(), text)
 	if err != nil || !bytes.Equal(got, stored) || len(voice.calls) != 0 {
 		t.Fatalf("legacy cache not reused: calls=%d error=%v", len(voice.calls), err)
 	}
+}
+
+func staticVoiceName(name string) func(context.Context) (string, error) {
+	return func(context.Context) (string, error) { return name, nil }
 }

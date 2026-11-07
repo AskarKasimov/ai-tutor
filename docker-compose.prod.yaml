@@ -1,0 +1,23 @@
+# Provision YAML and TLS certificates outside Git; existing .env is unchanged.
+services:
+  voice-gateway:
+    command: ["--config", "/work/voice-gateway/config/prod.yaml"]
+    volumes:
+      - ./deployment/voice-gateway/prod.yaml:/work/voice-gateway/config/prod.yaml:ro
+    healthcheck:
+      test: ["CMD", "/voice-gateway", "--config", "/work/voice-gateway/config/prod.yaml", "healthcheck"]
+  api:
+    environment:
+      BACKEND_CONFIG: /work/backend/config/prod.yaml
+    volumes:
+      - ./deployment/backend/prod.yaml:/work/backend/config/prod.yaml:ro
+  llm-gateway:
+    environment:
+      GATEWAY_CONFIG: /work/llm-gateway/config/prod.yaml
+    volumes:
+      - ./deployment/llm-gateway/prod.yaml:/work/llm-gateway/config/prod.yaml:ro
+  course-graph:
+    environment:
+      COURSE_GRAPH_CONFIG: /app/config/prod.yaml
+    volumes:
+      - ./deployment/course-graph/prod.yaml:/app/config/prod.yaml:ro

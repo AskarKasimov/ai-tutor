@@ -135,6 +135,37 @@ func (q *Queries) ListPublishedCourseGraphs(ctx context.Context) ([][]byte, erro
 	return items, nil
 }
 
+const listPublishedCourseGraphsForAudio = `-- name: ListPublishedCourseGraphsForAudio :many
+SELECT g.subject_id, g.graph FROM course_graphs g JOIN subjects s ON s.id=g.subject_id
+WHERE g.source='competency_map' OR EXISTS(SELECT 1 FROM subject_materials m WHERE m.subject_id=g.subject_id)
+ORDER BY g.updated_at DESC, g.subject_id
+`
+
+type ListPublishedCourseGraphsForAudioRow struct {
+	SubjectID string
+	Graph     []byte
+}
+
+func (q *Queries) ListPublishedCourseGraphsForAudio(ctx context.Context) ([]ListPublishedCourseGraphsForAudioRow, error) {
+	rows, err := q.db.Query(ctx, listPublishedCourseGraphsForAudio)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListPublishedCourseGraphsForAudioRow{}
+	for rows.Next() {
+		var i ListPublishedCourseGraphsForAudioRow
+		if err := rows.Scan(&i.SubjectID, &i.Graph); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const lockCourseGraphMapFingerprint = `-- name: LockCourseGraphMapFingerprint :one
 SELECT fingerprint FROM course_graph_maps WHERE subject_id=$1 FOR UPDATE
 `

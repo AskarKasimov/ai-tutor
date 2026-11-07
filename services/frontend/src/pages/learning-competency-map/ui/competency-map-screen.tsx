@@ -63,7 +63,7 @@ function CompetencyMapAdmin({
 }) {
   const { t } = useTranslation()
   const navigate = useNavigate()
-  const subjects = useSubjectsQuery(userId)
+  const subjects = useSubjectsQuery(userId, true)
   const subject = subjects.data?.find(
     (candidate) => candidate.id === selectedSubjectId,
   )
@@ -153,7 +153,10 @@ function CompetencyMapAdmin({
       subjectId={subjectId}
       subjectName={subject?.name}
       courseMissing={subjects.isSuccess && !subjects.isError && !subject}
-      ready={subject?.learning_ready}
+      course={subject}
+      localImporting={upload.isPending}
+      statusRefreshError={subjects.isRefetchError}
+      onRetryStatus={() => void subjects.refetch()}
       title={t('learningCompetencyMap.title')}
       description={`${t('learningCompetencyMap.importTitle')}. ${t('learningCompetencyMap.editSubtitle')}`}
     >
@@ -161,7 +164,7 @@ function CompetencyMapAdmin({
         <Text as="p" role="status">
           {t('learningCompetencyMap.subjectsLoading')}
         </Text>
-      ) : subjects.isError ? (
+      ) : subjects.isError && !subjects.data ? (
         <div className={styles.card}>
           <Text as="p" role="alert">
             {t('learningCompetencyMap.subjectsError')}

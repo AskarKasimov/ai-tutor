@@ -7,6 +7,21 @@ ON CONFLICT (id) DO NOTHING;
 SELECT id, instruction, object_key, bucket, storage_uri, audio_url, status, attempts
 FROM learning_audio_assets WHERE id = $1;
 
+-- name: LearningAudioPreparationForSubject :many
+-- One statement snapshot keeps the active revision, expected tasks, and asset statuses coherent.
+SELECT COALESCE(state.active_revision, 0)::bigint AS revision,
+       task.id AS task_id, task.voice_instruction, task.audio_asset_id,
+       asset.status, asset.attempts, asset.next_attempt_at, asset.lease_until
+FROM subjects subject
+LEFT JOIN learning_subject_state state ON state.subject_id = subject.id
+LEFT JOIN learning_competencies competency ON competency.revision = state.active_revision
+LEFT JOIN learning_constituents constituent ON constituent.competency_id = competency.id
+LEFT JOIN learning_outcomes outcome ON outcome.constituent_id = constituent.id
+LEFT JOIN learning_tasks task ON task.outcome_id = outcome.id
+LEFT JOIN learning_audio_assets asset ON asset.id = task.audio_asset_id
+WHERE subject.id = sqlc.arg(subject_id)::text
+ORDER BY task.id;
+
 -- name: LearningGetAccessibleTaskAudio :one
 SELECT asset.id, asset.instruction, asset.object_key, asset.bucket, asset.storage_uri,
        asset.audio_url, asset.status, asset.attempts

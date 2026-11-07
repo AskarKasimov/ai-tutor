@@ -75,6 +75,126 @@ components:
         - score
         - verdict
       type: object
+    audiopreparation.Exam:
+      additionalProperties: false
+      properties:
+        failed:
+          type: integer
+        observed_at:
+          type: string
+        processing:
+          type: integer
+        published:
+          type: boolean
+        queued:
+          type: integer
+        ready:
+          type: integer
+        retry_wait:
+          type: integer
+        state:
+          $ref: '#/components/schemas/audiopreparation.State'
+        total:
+          type: integer
+        unavailable:
+          type: integer
+        unchecked:
+          type: integer
+        version:
+          type: string
+      required:
+        - failed
+        - observed_at
+        - processing
+        - published
+        - queued
+        - ready
+        - retry_wait
+        - state
+        - total
+        - unavailable
+        - unchecked
+        - version
+      type: object
+    audiopreparation.Learning:
+      additionalProperties: false
+      properties:
+        failed:
+          type: integer
+        observed_at:
+          type: string
+        processing:
+          type: integer
+        queued:
+          type: integer
+        ready:
+          type: integer
+        retry_wait:
+          type: integer
+        revision:
+          type: integer
+        state:
+          $ref: '#/components/schemas/audiopreparation.State'
+        total:
+          type: integer
+        unavailable:
+          type: integer
+        unchecked:
+          type: integer
+        version:
+          type: string
+      required:
+        - failed
+        - observed_at
+        - processing
+        - queued
+        - ready
+        - retry_wait
+        - revision
+        - state
+        - total
+        - unavailable
+        - unchecked
+        - version
+      type: object
+    audiopreparation.Response:
+      additionalProperties: false
+      properties:
+        exam:
+          anyOf:
+            - $ref: '#/components/schemas/audiopreparation.Exam'
+            - type: "null"
+        learn:
+          anyOf:
+            - $ref: '#/components/schemas/audiopreparation.Learning'
+            - type: "null"
+        subject_id:
+          type: string
+      required:
+        - exam
+        - learn
+        - subject_id
+      type: object
+    audiopreparation.State:
+      enum:
+        - no_graph
+        - checking
+        - queued
+        - processing
+        - retry_wait
+        - partial
+        - ready
+        - empty
+      type: string
+      x-enum-varnames:
+        - NoGraph
+        - Checking
+        - Queued
+        - Processing
+        - RetryWait
+        - Partial
+        - Ready
+        - Empty
     authhttp.LoginRequest:
       additionalProperties: false
       properties:
@@ -2236,6 +2356,73 @@ components:
         - StatusPending
         - StatusParsed
         - StatusFailed
+    subject.CoursePreparation:
+      additionalProperties: false
+      properties:
+        exam:
+          $ref: '#/components/schemas/subject.ExamPreparation'
+        learn:
+          $ref: '#/components/schemas/subject.LearningPreparation'
+      required:
+        - exam
+        - learn
+      type: object
+    subject.ExamPreparation:
+      additionalProperties: false
+      properties:
+        source:
+          enum:
+            - materials
+            - competency_map
+            - null
+          type:
+            - string
+            - "null"
+        stale:
+          type: boolean
+        state:
+          $ref: '#/components/schemas/subject.ExamPreparationState'
+      required:
+        - source
+        - stale
+        - state
+      type: object
+    subject.ExamPreparationState:
+      enum:
+        - empty
+        - queued
+        - processing
+        - failed
+        - needs_metadata
+        - needs_build
+        - ready
+      type: string
+      x-enum-varnames:
+        - ExamEmpty
+        - ExamQueued
+        - ExamProcessing
+        - ExamFailed
+        - ExamNeedsMetadata
+        - ExamNeedsBuild
+        - ExamReady
+    subject.LearningPreparation:
+      additionalProperties: false
+      properties:
+        state:
+          $ref: '#/components/schemas/subject.LearningPreparationState'
+      required:
+        - state
+      type: object
+    subject.LearningPreparationState:
+      enum:
+        - empty
+        - needs_tasks
+        - ready
+      type: string
+      x-enum-varnames:
+        - LearningEmpty
+        - LearningNeedsTasks
+        - LearningReady
     subject.Subject:
       additionalProperties: false
       properties:
@@ -2247,6 +2434,8 @@ components:
           type: boolean
         name:
           type: string
+        preparation:
+          $ref: '#/components/schemas/subject.CoursePreparation'
         ready:
           type: boolean
       required:
@@ -3681,7 +3870,7 @@ paths:
       x-implementation: implemented
   /exam/admin/subjects:
     post:
-      description: Создать предмет без карты компетенций. Доступно только admin.
+      description: Создать общий курс. Admin получает начальный снимок статусов подготовки; студентам preparation не возвращается.
       operationId: createSubject
       requestBody:
         content:
@@ -3726,6 +3915,69 @@ paths:
       security:
         - accessCookie: []
       summary: Создать предмет
+      tags:
+        - Предметы
+      x-implementation: implemented
+  /exam/admin/subjects/{subject_id}/audio-preparation:
+    get:
+      description: 'Возвращает снимок выбранного направления; остальные поля направления равны null. Если запрошенный снимок временно недоступен, его поле тоже равно null. Счётчики направлений взаимоисключающие и в сумме равны total; версия защищает от смешивания ревизий. State precedence для экзамена: no_graph, empty, checking, processing, queued, retry_wait, partial, ready; для обучения то же, кроме no_graph.'
+      operationId: getSubjectAudioPreparation
+      parameters:
+        - description: ID курса
+          in: path
+          name: subject_id
+          required: true
+          schema:
+            type: string
+        - description: Направление
+          in: query
+          name: direction
+          required: true
+          schema:
+            enum:
+              - exam
+              - learn
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/audiopreparation.Response'
+          description: OK
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Forbidden
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Not Found
+        "422":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Unprocessable Entity
+        "503":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fault.Error'
+          description: Service Unavailable
+      security:
+        - accessCookie: []
+      summary: Прочитать прогресс фоновой озвучки курса
       tags:
         - Предметы
       x-implementation: implemented
@@ -4968,7 +5220,7 @@ paths:
       x-implementation: implemented
   /exam/subjects:
     get:
-      description: 'Студентам возвращаются только готовые курсы: с фикстурой графа — сразу после создания, без неё — с опубликованным графом курса. Admin видит все предметы и признак готовности.'
+      description: Студентам возвращаются только готовые курсы с прежними флагами и без preparation. Admin видит все курсы и пакетный снимок состояний подготовки.
       operationId: listSubjects
       responses:
         "200":
@@ -5076,7 +5328,7 @@ paths:
       x-implementation: implemented
   /learn/admin/subjects:
     post:
-      description: Совместимый адрес создания общей сущности курса. Новый интерфейс использует POST /exam/admin/subjects.
+      description: Совместимый адрес создания общей сущности курса с начальным снимком статусов подготовки.
       operationId: createLearningSubject
       requestBody:
         content:
@@ -6508,7 +6760,7 @@ paths:
       x-implementation: implemented
   /learn/subjects:
     get:
-      description: Прочитать каталог предметов режима обучения.
+      description: Прочитать каталог обучения; admin получает тот же снимок подготовки, что и в экзаменационном каталоге.
       operationId: listLearningSubjects
       responses:
         "200":

@@ -70,6 +70,7 @@ export function CompetencyMapImport({
       />
       <Flex gap="3" align="center" wrap="wrap">
         <Button
+          className={styles.mapImportButton}
           size="3"
           variant="soft"
           disabled={disabled || importMap.isPending}

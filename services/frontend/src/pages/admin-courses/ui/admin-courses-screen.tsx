@@ -4,6 +4,7 @@ import { Link } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 import { BookOpen, Plus, ShieldCheck } from 'lucide-react'
 import { AccountMenu, useAuth } from '@/features/auth'
+import { preparationBadge } from '@/entities/subject'
 import {
   useCreateSubjectMutation,
   useSubjectsQuery,
@@ -16,7 +17,7 @@ export function AdminCoursesScreen() {
   const [showForm, setShowForm] = useState(false)
   const [courseName, setCourseName] = useState('')
   const userId = user?.id ?? ''
-  const courses = useSubjectsQuery(userId)
+  const courses = useSubjectsQuery(userId, true)
   const createCourse = useCreateSubjectMutation(userId)
 
   if (user?.role !== 'admin')
@@ -97,7 +98,7 @@ export function AdminCoursesScreen() {
           <Text as="p" role="status">
             {t('adminCourses.loading')}
           </Text>
-        ) : courses.isError ? (
+        ) : courses.isError && !courses.data ? (
           <section className={styles.card}>
             <Text as="p" role="alert" color="red">
               {t('adminCourses.loadError')}
@@ -106,47 +107,63 @@ export function AdminCoursesScreen() {
               {t('trainer.retry')}
             </Button>
           </section>
-        ) : courses.data.length === 0 ? (
+        ) : courses.data.length === 0 && !courses.isRefetchError ? (
           <section className={styles.card}>
             <Text color="gray">{t('adminCourses.empty')}</Text>
           </section>
         ) : (
-          <section
-            className={styles.list}
-            aria-label={t('adminCourses.coursesTitle')}
-          >
-            {courses.data.map((course) => (
-              <Link
-                className={styles.course}
-                key={course.id}
-                to="/admin/courses/$subjectId"
-                params={{ subjectId: course.id }}
-              >
-                <div className={styles.courseName}>
-                  <BookOpen size={20} aria-hidden="true" />
-                  <Heading as="h2" size="4">
-                    {course.name}
-                  </Heading>
-                </div>
-                <div className={styles.statuses}>
-                  <Badge color={course.exam_ready ? 'green' : 'gray'}>
-                    {t(
-                      course.exam_ready
-                        ? 'sharedCourse.examReady'
-                        : 'sharedCourse.examPreparing',
-                    )}
-                  </Badge>
-                  <Badge color={course.learning_ready ? 'green' : 'gray'}>
-                    {t(
-                      course.learning_ready
-                        ? 'sharedCourse.learningReady'
-                        : 'sharedCourse.learningPreparing',
-                    )}
-                  </Badge>
-                </div>
-              </Link>
-            ))}
-          </section>
+          <>
+            {courses.isRefetchError && (
+              <section className={styles.card}>
+                <Text as="p" role="status" color="red">
+                  {t('adminCourses.statusRefreshError')}
+                </Text>
+                <Button variant="soft" onClick={() => void courses.refetch()}>
+                  {t('trainer.retry')}
+                </Button>
+              </section>
+            )}
+            <section
+              className={styles.list}
+              aria-label={t('adminCourses.coursesTitle')}
+            >
+              {courses.data.length === 0 ? (
+                <section className={styles.card}>
+                  <Text color="gray">{t('adminCourses.empty')}</Text>
+                </section>
+              ) : (
+                courses.data.map((course) => (
+                  <Link
+                    className={styles.course}
+                    key={course.id}
+                    to="/admin/courses/$subjectId"
+                    params={{ subjectId: course.id }}
+                  >
+                    <div className={styles.courseName}>
+                      <BookOpen size={20} aria-hidden="true" />
+                      <Heading as="h2" size="4">
+                        {course.name}
+                      </Heading>
+                    </div>
+                    <div className={styles.statuses}>
+                      {(['exam', 'learn'] as const).map((direction) => {
+                        const status = preparationBadge(course, direction)
+                        return status ? (
+                          <Badge
+                            key={direction}
+                            color={status.color}
+                            className={styles.status}
+                          >
+                            {t(status.key)}
+                          </Badge>
+                        ) : null
+                      })}
+                    </div>
+                  </Link>
+                ))
+              )}
+            </section>
+          </>
         )}
       </main>
     </div>

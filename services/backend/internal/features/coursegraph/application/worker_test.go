@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -20,11 +21,11 @@ import (
 type requestRepo struct {
 	snapshot  coursegraph.Snapshot
 	queued    bool
-	published []json.RawMessage
+	published []PublishedGraph
 	mapGraph  json.RawMessage
 }
 
-func (r requestRepo) Published(context.Context) ([]json.RawMessage, error) {
+func (r requestRepo) Published(context.Context) ([]PublishedGraph, error) {
 	return r.published, nil
 }
 
@@ -356,18 +357,34 @@ func isFault(err error, code string) bool {
 	return errors.As(err, &f) && f.Code == code
 }
 
-type queuedVoices struct{ texts []string }
+type queuedVoices struct {
+	texts []string
+	seen  map[string]bool
+}
 
 func (v *queuedVoices) Prepare(texts []string) int {
-	v.texts = append(v.texts, texts...)
-	return len(texts)
+	queued := 0
+	if v.seen == nil {
+		v.seen = map[string]bool{}
+	}
+	for _, text := range texts {
+		if !v.seen[text] {
+			v.seen[text] = true
+			v.texts = append(v.texts, text)
+			queued++
+		}
+	}
+	return queued
 }
+
+func (*queuedVoices) TrackPublished(_, _ string, _ []string) {}
+func (*queuedVoices) TrackRestored(_, _ string, _ []string)  {}
 
 func TestPrepareVoicesQueuesTheQuestionsOfEveryPublishedGraph(t *testing.T) {
 	voices := &queuedVoices{}
-	repo := requestRepo{published: []json.RawMessage{
-		json.RawMessage(`{"topics":[{"question":"Почему A?"},{"question":"Почему B?"}]}`),
-		json.RawMessage(`{"topics":[{"question":"Почему C?"}]}`),
+	repo := requestRepo{published: []PublishedGraph{
+		{SubjectID: "s1", Graph: json.RawMessage(`{"topics":[{"question":"Почему A?"},{"question":"Почему B?"}]}`)},
+		{SubjectID: "s2", Graph: json.RawMessage(`{"topics":[{"question":"Почему C?"}]}`)},
 	}}
 	if err := New(repo, nil, nil, nil, voices, nil).PrepareVoices(context.Background()); err != nil {
 		t.Fatal(err)
@@ -519,5 +536,111 @@ func TestImportMapLogsFallbackCriteriaOnlyAfterSaving(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+type recoveryRaceRepo struct {
+	requestRepo
+	finished chan struct{}
+}
+
+func (r *recoveryRaceRepo) Finish(_ context.Context, _ coursegraph.Job, _ json.RawMessage, _ time.Time) (bool, error) {
+	close(r.finished)
+	return true, nil
+}
+
+type recoveryRaceVoices struct {
+	mu         sync.Mutex
+	oldEntered chan struct{}
+	releaseOld chan struct{}
+	version    string
+	oldVersion string
+}
+
+func (v *recoveryRaceVoices) Prepare([]string) int { return 0 }
+func (v *recoveryRaceVoices) TrackRestored(subject, version string, texts []string) {
+	v.TrackPublished(subject, version, texts)
+}
+func (v *recoveryRaceVoices) TrackPublished(_, version string, _ []string) {
+	if version == v.oldVersion {
+		close(v.oldEntered)
+		<-v.releaseOld
+	}
+	v.mu.Lock()
+	v.version = version
+	v.mu.Unlock()
+}
+
+func TestPrepareVoicesDoesNotOverwriteConcurrentPublication(t *testing.T) {
+	oldGraph := json.RawMessage(`{"topics":[{"question":"Старый?"}]}`)
+	newGraph := json.RawMessage(`{"topics":[{"question":"Новый?"}]}`)
+	repo := &recoveryRaceRepo{requestRepo: requestRepo{published: []PublishedGraph{{SubjectID: "s", Graph: oldGraph}}}, finished: make(chan struct{})}
+	voices := &recoveryRaceVoices{oldEntered: make(chan struct{}), releaseOld: make(chan struct{}), oldVersion: GraphVersion(oldGraph)}
+	worker := New(repo, nil, nil, nil, voices, nil)
+	recoveryDone := make(chan error, 1)
+	go func() { recoveryDone <- worker.PrepareVoices(context.Background()) }()
+	<-voices.oldEntered
+	publishDone := make(chan error, 1)
+	go func() { publishDone <- worker.publish(context.Background(), coursegraph.Job{SubjectID: "s"}, newGraph) }()
+	// Without synchronization publication finishes before the blocked old snapshot is installed.
+	var publishErr error
+	finishedEarly := false
+	select {
+	case <-repo.finished:
+		publishErr = <-publishDone
+		finishedEarly = true
+	case <-time.After(100 * time.Millisecond):
+	}
+	close(voices.releaseOld)
+	if err := <-recoveryDone; err != nil {
+		t.Fatal(err)
+	}
+	if !finishedEarly {
+		publishErr = <-publishDone
+	}
+	if publishErr != nil {
+		t.Fatal(publishErr)
+	}
+	voices.mu.Lock()
+	defer voices.mu.Unlock()
+	if voices.version != GraphVersion(newGraph) {
+		t.Fatalf("registered version = %s; want new published graph", voices.version)
+	}
+}
+
+func TestRefreshPublishedAudioDoesNotOverwriteConcurrentPublication(t *testing.T) {
+	oldGraph := json.RawMessage(`{"topics":[{"question":"Старый?"}]}`)
+	newGraph := json.RawMessage(`{"topics":[{"question":"Новый?"}]}`)
+	repo := &recoveryRaceRepo{requestRepo: requestRepo{published: []PublishedGraph{{SubjectID: "s", Graph: oldGraph}}}, finished: make(chan struct{})}
+	voices := &recoveryRaceVoices{oldEntered: make(chan struct{}), releaseOld: make(chan struct{}), oldVersion: GraphVersion(oldGraph)}
+	worker := New(repo, nil, nil, nil, voices, nil)
+	refreshDone := make(chan error, 1)
+	go func() { refreshDone <- worker.RefreshPublishedAudio(context.Background(), "s") }()
+	<-voices.oldEntered
+	publishDone := make(chan error, 1)
+	go func() { publishDone <- worker.publish(context.Background(), coursegraph.Job{SubjectID: "s"}, newGraph) }()
+
+	var publishErr error
+	finishedEarly := false
+	select {
+	case <-repo.finished:
+		publishErr = <-publishDone
+		finishedEarly = true
+	case <-time.After(100 * time.Millisecond):
+	}
+	close(voices.releaseOld)
+	if err := <-refreshDone; err != nil {
+		t.Fatal(err)
+	}
+	if !finishedEarly {
+		publishErr = <-publishDone
+	}
+	if publishErr != nil {
+		t.Fatal(publishErr)
+	}
+	voices.mu.Lock()
+	defer voices.mu.Unlock()
+	if voices.version != GraphVersion(newGraph) {
+		t.Fatalf("registered version = %s; want new published graph", voices.version)
 	}
 }

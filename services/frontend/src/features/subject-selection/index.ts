@@ -2,5 +2,6 @@ export { SubjectSelectionDependenciesProvider } from './model/dependencies-conte
 export type { SubjectSelectionDependencies } from './model/dependencies-context'
 export {
   useSubjectsQuery,
+  useAudioPreparationQuery,
   useCreateSubjectMutation,
 } from './model/use-subjects'

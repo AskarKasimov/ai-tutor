@@ -407,3 +407,38 @@ func TestCooldownFollowsRetryAfterAndASuccessEndsIt(t *testing.T) {
 		t.Fatalf("a connect timeout is a failure, not a fast call: cooling=%v expected=%v", s.cooling["fast"], s.expected["fast"])
 	}
 }
+
+func TestObserveCallIgnoresTheJobDeadlineButLearnsFromTheInstanceTimeout(t *testing.T) {
+	s := tieredFixture()
+	in := schedulerInstance("fast")
+	job := schedulerJob("j", 1, false)
+	s.observeCall(job, in, nil, 10*time.Second)
+	s.observeCall(job, in, &UpstreamFailure{Code: "upstream_transport_error", Err: context.DeadlineExceeded, JobDeadline: true}, 120*time.Second)
+	if got := s.expected["fast"]; got != 10 {
+		t.Fatalf("the job deadline changed the expected duration: %v", got)
+	}
+	if _, cooling := s.cooling["fast"]; cooling {
+		t.Fatal("the job deadline must not put the instance on cooldown")
+	}
+	s.observeCall(job, in, &UpstreamFailure{Code: "upstream_transport_error", Err: context.DeadlineExceeded}, 120*time.Second)
+	if got := s.expected["fast"]; got < 42.9 || got > 43.1 {
+		t.Fatalf("an instance timeout counts as a slow call: %v, want 43", got)
+	}
+}
+
+func TestUpstreamFailureResponseKeepsTheJobDeadlineApartFromTheInstanceTimeout(t *testing.T) {
+	status, _, code, _ := upstreamFailureResponse(&UpstreamFailure{Code: "upstream_transport_error", Err: context.DeadlineExceeded, JobDeadline: true})
+	if status != 504 || code != "request_deadline_exceeded" {
+		t.Fatalf("job deadline = %d %s, want 504 request_deadline_exceeded", status, code)
+	}
+	status, _, code, _ = upstreamFailureResponse(&UpstreamFailure{Code: "upstream_transport_error", Err: context.DeadlineExceeded})
+	if status != 504 || code != "upstream_timeout" {
+		t.Fatalf("instance timeout = %d %s, want 504 upstream_timeout", status, code)
+	}
+	// The slot stays uncertain for both: upstream may still be generating.
+	for _, f := range []*UpstreamFailure{{Code: "upstream_transport_error", Err: context.DeadlineExceeded, JobDeadline: true}, {Code: "upstream_transport_error", Err: context.DeadlineExceeded}} {
+		if !uncertainUpstreamOutcomeForInstance(InstanceConfig{}, f) {
+			t.Fatalf("%s must leave the slot uncertain", f.Code)
+		}
+	}
+}

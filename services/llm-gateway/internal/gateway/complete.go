@@ -295,18 +295,15 @@ func (s *Service) persistCancellation(id, code string) {
 	}
 	copy := *j
 	s.mu.Unlock()
-	copy.Status = "failed"
-	copy.SlotHeld = false
-	copy.FinishedAt = time.Now()
-	copy.Error = &storedError{Status: 409, Type: "request_cancelled", Code: code, Message: "The request was canceled because no clients are waiting."}
+	copy = cancellationJob(copy)
+	copy.Error.Code = code
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if err := s.save(ctx, &copy); err != nil {
 		if errors.Is(err, errCanceledJob) {
 			return
 		}
-		s.markStateUncertain()
-		s.notifyEphemeral(id, submitResult{503, errorBody("server_error", "state_unavailable", "Gateway could not durably save cancellation.")})
+		s.registerStateRepair("cancellation", &copy, false, false, &submitResult{503, errorBody("server_error", "state_unavailable", "Gateway could not durably save cancellation.")}, err)
 		return
 	}
 	s.mu.Lock()
@@ -325,14 +322,6 @@ func (s *Service) isCanceled(id string) bool {
 	return s.cancelled[id]
 }
 func (s *Service) Ready() bool { s.mu.Lock(); defer s.mu.Unlock(); return s.ready && !s.stopping }
-
-func (s *Service) markStateUncertain() {
-	s.mu.Lock()
-	s.ready = false
-	s.brokerAvailable = false
-	s.stateUncertain = true
-	s.mu.Unlock()
-}
 
 func canonicalRequestJSON(req Request) []byte {
 	fields := map[string]any{"messages": req.Messages, "complexity": req.Complexity, "urgent": req.IsUrgent()}

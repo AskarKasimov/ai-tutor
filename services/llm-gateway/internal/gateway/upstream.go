@@ -20,33 +20,52 @@ type Circuit struct {
 	failures  int
 	openUntil time.Time
 	probing   bool
+	// generation grows on every state change (closed -> open, outcome of the
+	// half-open probe). A call counts only if it started in the current
+	// generation: the result of a call sent before the breaker opened says
+	// nothing about the instance now.
+	generation uint64
 }
 
-func (c *Circuit) acquire(now time.Time) bool {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.failures < 3 {
-		return true
-	}
-	if now.Before(c.openUntil) || c.probing {
-		return false
-	}
-	c.probing = true
-	return true
+// circuitTicket is what a call holds from reserve to release.
+type circuitTicket struct {
+	generation uint64
+	probe      bool
 }
-func (c *Circuit) release(ok bool, now time.Time) {
+
+// probeTicket is the ticket of a call that already holds the half-open probe.
+// While the probe is held, only the probe itself changes the generation.
+func (c *Circuit) probeTicket() circuitTicket {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if ok {
-		c.failures = 0
+	return circuitTicket{generation: c.generation, probe: true}
+}
+
+// release records the outcome of a finished call. A ticket with probe gives
+// the probe back, so a call that started earlier cannot free the probe of
+// another one. A call of an older generation is ignored: it neither resets the
+// failure count, nor adds to it, nor extends the pause.
+func (c *Circuit) release(ok bool, ticket circuitTicket, now time.Time) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if ticket.probe {
 		c.probing = false
+	}
+	if ticket.generation != c.generation {
+		return
+	}
+	if ok {
+		if c.failures >= 3 {
+			c.generation++
+		}
+		c.failures = 0
 		c.openUntil = time.Time{}
 		return
 	}
 	c.failures++
-	c.probing = false
 	if c.failures >= 3 {
 		c.openUntil = now.Add(15 * time.Second)
+		c.generation++
 	}
 }
 
@@ -61,6 +80,15 @@ type UpstreamFailure struct {
 	Err        error
 	BeforeSend bool
 	RetryAfter time.Duration
+	// JobDeadline marks a call cut by the request deadline (it includes the queue
+	// wait) rather than by the instance. Code and Err still say what happened on
+	// the wire, so the outcome stays uncertain when the request had been sent.
+	JobDeadline bool
+	// InstanceTimeout marks a call whose context was ended by the instance's own
+	// timeout, even if the transport reported a broken connection (unexpected
+	// EOF, connection reset) instead of the context error. It excludes
+	// JobDeadline. Code and Err still say what happened on the wire.
+	InstanceTimeout bool
 }
 
 func (e *UpstreamFailure) Error() string {
@@ -89,10 +117,20 @@ func (c *Caller) circuit(id string) *Circuit {
 	return c.circuits[id]
 }
 
+// errInstanceTimeout is the cause of a call context ended by the instance's own
+// timeout. It wraps context.DeadlineExceeded like any other timeout.
+var errInstanceTimeout = fmt.Errorf("upstream instance timeout: %w", context.DeadlineExceeded)
+
 func (c *Caller) call(ctx context.Context, in InstanceConfig, req Request, requestID string, probeReserved bool) (UpstreamResult, *UpstreamFailure) {
 	cb := c.circuit(in.ID)
-	if !probeReserved && !cb.acquire(time.Now()) {
-		return UpstreamResult{}, &UpstreamFailure{Code: "upstream_circuit_open", Err: fmt.Errorf("instance temporarily unavailable"), BeforeSend: true}
+	var ticket circuitTicket
+	if probeReserved {
+		ticket = cb.probeTicket()
+	} else {
+		var ok bool
+		if ticket, ok = cb.reserve(time.Now()); !ok {
+			return UpstreamResult{}, &UpstreamFailure{Code: "upstream_circuit_open", Err: fmt.Errorf("instance temporarily unavailable"), BeforeSend: true}
+		}
 	}
 	params := make(map[string]json.RawMessage, len(req.Parameters))
 	for k, v := range req.Parameters {
@@ -117,18 +155,28 @@ func (c *Caller) call(ctx context.Context, in InstanceConfig, req Request, reque
 	fields["messages"] = messages
 	body, err := json.Marshal(fields)
 	if err != nil {
-		cb.release(false, time.Now())
+		cb.release(false, ticket, time.Now())
 		return UpstreamResult{}, &UpstreamFailure{Code: "invalid_upstream_request", Err: err, BeforeSend: true}
 	}
 	endpoint := strings.TrimRight(in.BaseURL, "/") + "/v1/chat/completions"
 	if strings.HasSuffix(strings.TrimRight(in.BaseURL, "/"), "/v1") {
 		endpoint = strings.TrimRight(in.BaseURL, "/") + "/chat/completions"
 	}
-	callCtx, cancel := context.WithTimeout(ctx, minDuration(c.cfg.UpstreamTimeout, in.Timeout))
+	callCtx, cancel := context.WithTimeoutCause(ctx, minDuration(c.cfg.UpstreamTimeout, in.Timeout), errInstanceTimeout)
 	defer cancel()
+	// The job deadline cut the call only if it, not the instance timeout, ended
+	// the call context: the transport may report the error after both passed.
+	jobDeadline := func() bool {
+		return errors.Is(ctx.Err(), context.DeadlineExceeded) && !errors.Is(context.Cause(callCtx), errInstanceTimeout)
+	}
+	// The instance timeout ended the call if it, not the job deadline, is the
+	// cause of the call context, whatever error the transport reported.
+	instanceTimeout := func() bool {
+		return !jobDeadline() && errors.Is(context.Cause(callCtx), errInstanceTimeout)
+	}
 	httpReq, err := http.NewRequestWithContext(callCtx, http.MethodPost, endpoint, bytes.NewReader(body))
 	if err != nil {
-		cb.release(false, time.Now())
+		cb.release(false, ticket, time.Now())
 		return UpstreamResult{}, &UpstreamFailure{Code: "invalid_upstream_url", Err: err, BeforeSend: true}
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
@@ -139,7 +187,9 @@ func (c *Caller) call(ctx context.Context, in InstanceConfig, req Request, reque
 	resp, err := c.client.Do(httpReq)
 	if err != nil {
 		if errors.Is(ctx.Err(), context.Canceled) {
-			cb.releaseReservation()
+			if ticket.probe {
+				cb.releaseReservation()
+			}
 			return UpstreamResult{}, &UpstreamFailure{Code: "request_canceled", Err: err}
 		}
 		var ne net.Error
@@ -147,23 +197,37 @@ func (c *Caller) call(ctx context.Context, in InstanceConfig, req Request, reque
 		if errorsAs(err, &ne) && !ne.Timeout() {
 			before = before || strings.Contains(err.Error(), "dial")
 		}
-		cb.release(false, time.Now())
-		return UpstreamResult{}, &UpstreamFailure{Code: "upstream_transport_error", Err: err, BeforeSend: before}
+		if jobDeadline() {
+			if ticket.probe {
+				cb.releaseReservation()
+			}
+			return UpstreamResult{}, &UpstreamFailure{Code: "upstream_transport_error", Err: err, BeforeSend: before, JobDeadline: true}
+		}
+		cb.release(false, ticket, time.Now())
+		return UpstreamResult{}, &UpstreamFailure{Code: "upstream_transport_error", Err: err, BeforeSend: before, InstanceTimeout: instanceTimeout()}
 	}
 	defer resp.Body.Close()
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, (32<<20)+1))
 	if err != nil {
 		if errors.Is(ctx.Err(), context.Canceled) {
-			cb.releaseReservation()
+			if ticket.probe {
+				cb.releaseReservation()
+			}
 			return UpstreamResult{}, &UpstreamFailure{Code: "request_canceled", Err: err}
 		}
-		cb.release(false, time.Now())
-		return UpstreamResult{}, &UpstreamFailure{Code: "upstream_response_error", Err: err}
+		if jobDeadline() {
+			if ticket.probe {
+				cb.releaseReservation()
+			}
+			return UpstreamResult{}, &UpstreamFailure{Code: "upstream_response_error", Err: err, JobDeadline: true}
+		}
+		cb.release(false, ticket, time.Now())
+		return UpstreamResult{}, &UpstreamFailure{Code: "upstream_response_error", Err: err, InstanceTimeout: instanceTimeout()}
 	}
 	if resp.StatusCode >= 500 {
-		cb.release(false, time.Now())
+		cb.release(false, ticket, time.Now())
 	} else if resp.StatusCode < 500 {
-		cb.release(true, time.Now())
+		cb.release(true, ticket, time.Now())
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		d := parseRetryAfter(resp.Header.Get("Retry-After"))

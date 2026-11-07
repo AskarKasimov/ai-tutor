@@ -1,6 +1,7 @@
 package gateway
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
@@ -85,6 +86,7 @@ type Service struct {
 	waiters           map[string]chan struct{}
 	activeWaiters     map[string]int
 	transportCalls    map[string]map[int]uint64
+	upstreamTimeouts  map[string]uint64
 	routeSelections   map[routeSelection]uint64
 	cancelled         map[string]bool
 	jobCancels        map[string]context.CancelFunc
@@ -101,6 +103,8 @@ type Service struct {
 	ready             bool
 	brokerAvailable   bool
 	stateUncertain    bool
+	repairs           map[string]*stateRepair
+	writeStateFn      func(ctx context.Context, key, value []byte) error
 	stopping          bool
 	started           time.Time
 	idempotentReplays uint64
@@ -187,24 +191,205 @@ func (s *Service) monitorReadiness(ctx context.Context) {
 			pingCtx, cancel := context.WithTimeout(ctx, 1500*time.Millisecond)
 			err := s.submitter.Ping(pingCtx)
 			cancel()
-			s.mu.Lock()
-			s.brokerAvailable = err == nil
-			lagged := false
-			for _, request := range s.accepted {
-				if time.Since(request.SubmittedAt) > s.cfg.MaxInputLag {
-					lagged = true
-					break
-				}
-			}
-			if !s.stopping {
-				s.ready = err == nil && !lagged && !s.stateUncertain
-			}
-			s.mu.Unlock()
-			if err == nil {
-				s.signal()
-			}
+			s.readinessTick(ctx, err)
 		}
 	}
+}
+
+// readinessTick applies one broker check. A reachable broker only lets the
+// gateway try to re-save the state it could not write; readiness returns when
+// those writes have succeeded, not when the broker answers a ping.
+func (s *Service) readinessTick(ctx context.Context, pingErr error) {
+	if pingErr == nil {
+		s.reconcileState(ctx)
+	}
+	s.mu.Lock()
+	s.brokerAvailable = pingErr == nil
+	lagged := false
+	for _, request := range s.accepted {
+		if time.Since(request.SubmittedAt) > s.cfg.MaxInputLag {
+			lagged = true
+			break
+		}
+	}
+	if !s.stopping {
+		s.ready = pingErr == nil && !lagged && !s.stateUncertain
+	}
+	s.mu.Unlock()
+	if pingErr == nil {
+		s.signal()
+	}
+}
+
+// stateRepair is a state write that failed, so that the durable value of its
+// key is either the previous one or the intended one. The gateway stays
+// unassigned until every repair is written again, which settles the key on the
+// intended value; a newer outcome already stored for the job wins (save refuses
+// to overwrite it).
+type stateRepair struct {
+	place string
+	job   durableJob
+	// The slot of the job is released once, when the repair is resolved: after
+	// the write succeeded, or after another outcome of the job turned out to be
+	// stored. False where the failed path had already released it.
+	releaseOnSaved      bool
+	releaseOnSuperseded bool
+}
+
+// registerStateRepair blocks readiness and assignments until the intended
+// state of the job is written again by reconcileState. notice, when set, is the
+// temporary answer for the waiting clients; it is published under the same lock
+// as the repair, so a repair that completes right away cannot be followed by a
+// stale notice.
+func (s *Service) registerStateRepair(place string, j *durableJob, releaseOnSaved, releaseOnSuperseded bool, notice *submitResult, cause error) {
+	r := &stateRepair{place: place, job: *j, releaseOnSaved: releaseOnSaved, releaseOnSuperseded: releaseOnSuperseded}
+	r.job.ProbeReserved = false
+	s.mu.Lock()
+	if s.repairs == nil {
+		s.repairs = map[string]*stateRepair{}
+	}
+	old := s.repairs[j.ID]
+	// A decided cancellation is the outcome of the job: a repair of another
+	// outcome (for instance the deadline, which failed in the same moment) must
+	// not replace it.
+	if !isCancellationJob(&r.job) && (old != nil && isCancellationJob(&old.job) || s.cancelDecidedLocked(j.ID)) {
+		if old != nil && isCancellationJob(&old.job) {
+			r.job = old.job
+		} else {
+			r.job = cancellationJob(r.job)
+		}
+		r.place = "cancellation"
+		r.releaseOnSaved = r.releaseOnSaved || releaseOnSuperseded && !r.job.SlotHeld
+	}
+	if old != nil {
+		// A later failure for the same job replaces the intended state but keeps
+		// the slot obligation of the earlier one.
+		r.releaseOnSaved = r.releaseOnSaved || old.releaseOnSaved || old.releaseOnSuperseded && !r.job.SlotHeld
+		r.releaseOnSuperseded = r.releaseOnSuperseded || old.releaseOnSuperseded
+	}
+	s.repairs[j.ID] = r
+	if notice != nil {
+		s.ephemeral[j.ID] = *notice
+		if ch := s.waiters[j.ID]; ch != nil {
+			close(ch)
+			delete(s.waiters, j.ID)
+		}
+	}
+	s.ready = false
+	s.brokerAvailable = false
+	s.stateUncertain = true
+	pending := len(s.repairs)
+	s.mu.Unlock()
+	slog.Error("state write failed, assignments stay blocked until it is saved again", "place", place, "gateway_request_id", j.ID, "pending_repairs", pending, "error", cause)
+}
+
+func isCancellationJob(j *durableJob) bool {
+	return j.Status == "failed" && j.Error != nil && j.Error.Code == "request_canceled"
+}
+
+// cancellationJob is the stored outcome of a canceled request.
+func cancellationJob(j durableJob) durableJob {
+	j.Status = "failed"
+	j.SlotHeld = false
+	j.FinishedAt = time.Now()
+	j.Response = nil
+	j.Error = &storedError{Status: 409, Type: "request_cancelled", Code: "request_canceled", Message: "The request was canceled because no clients are waiting."}
+	return j
+}
+
+// cancelDecidedLocked reports a cancellation of a job that is still pending (or
+// not yet known), so that its outcome is not stored yet. s.mu is held.
+func (s *Service) cancelDecidedLocked(id string) bool {
+	if !s.cancelled[id] {
+		return false
+	}
+	j := s.jobs[id]
+	return j == nil || isPending(j.Status)
+}
+
+// reconcileState writes the intended state of every failed write again. It
+// stops at the first failure: the broker is then most likely still unusable.
+// The uncertainty ends only when no repair is left; a failure that registered
+// itself meanwhile keeps it.
+func (s *Service) reconcileState(ctx context.Context) {
+	s.mu.Lock()
+	pending := make([]*stateRepair, 0, len(s.repairs))
+	for _, r := range s.repairs {
+		pending = append(pending, r)
+	}
+	s.mu.Unlock()
+	if len(pending) == 0 {
+		return
+	}
+	sort.Slice(pending, func(a, b int) bool { return pending[a].job.ID < pending[b].job.ID })
+	repaired := 0
+	for _, r := range pending {
+		if ctx.Err() != nil {
+			return
+		}
+		job := r.job
+		saveCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		err := s.save(saveCtx, &job)
+		cancel()
+		switch {
+		case err == nil:
+			s.completeStateRepair(r, true)
+		case errors.Is(err, errCanceledJob):
+			s.completeStateRepair(r, false)
+		default:
+			slog.Warn("state repair failed, will retry", "place", r.place, "gateway_request_id", r.job.ID, "error", err)
+			return
+		}
+		repaired++
+	}
+	s.mu.Lock()
+	cleared := len(s.repairs) == 0 && s.stateUncertain
+	if cleared {
+		s.stateUncertain = false
+	}
+	s.mu.Unlock()
+	if cleared {
+		slog.Info("state is consistent again, assignments resume", "repaired", repaired)
+	}
+}
+
+// completeStateRepair finishes a repair whose write landed (saved) or was
+// refused because another outcome of the job is stored.
+func (s *Service) completeStateRepair(r *stateRepair, saved bool) {
+	id := r.job.ID
+	s.mu.Lock()
+	if s.repairs[id] != r {
+		// Replaced meanwhile: the newer repair carries the obligations.
+		s.mu.Unlock()
+		return
+	}
+	if !saved && !isCancellationJob(&r.job) && s.cancelDecidedLocked(id) {
+		// Another outcome was refused because of a cancellation that is not
+		// stored yet: keep the cancellation as the thing to write.
+		c := &stateRepair{place: "cancellation", job: cancellationJob(r.job), releaseOnSaved: r.releaseOnSuperseded, releaseOnSuperseded: r.releaseOnSuperseded}
+		s.repairs[id] = c
+		s.mu.Unlock()
+		return
+	}
+	delete(s.repairs, id)
+	// The 503 given to the clients that were waiting is no longer the outcome:
+	// a retry with the same key reads the stored one.
+	delete(s.ephemeral, id)
+	if ch := s.waiters[id]; ch != nil {
+		close(ch)
+		delete(s.waiters, id)
+	}
+	s.mu.Unlock()
+	release := r.releaseOnSuperseded
+	if saved {
+		release = r.releaseOnSaved
+	}
+	if release {
+		job := r.job
+		s.releaseSlot(&job)
+		return
+	}
+	s.signal()
 }
 
 func (s *Service) restore(ctx context.Context) error {
@@ -507,9 +692,7 @@ func (s *Service) dispatch(ctx, workCtx context.Context) {
 				break
 			}
 			if time.Now().After(j.Deadline) {
-				j.SlotHeld = false
-				s.finish(j, submitResult{504, errorBody("gateway_timeout", "request_deadline_exceeded", "LLM request deadline exceeded.")}, "expired")
-				s.releaseSlot(j)
+				s.expireDispatched(j)
 				continue
 			}
 			j.Status = "running"
@@ -524,8 +707,7 @@ func (s *Service) dispatch(ctx, workCtx context.Context) {
 				break
 			}
 			if time.Now().After(j.Deadline) {
-				s.finish(j, submitResult{504, errorBody("gateway_timeout", "request_deadline_exceeded", "LLM request deadline exceeded.")}, "expired")
-				s.releaseSlot(j)
+				s.expireDispatched(j)
 				continue
 			}
 			jobCtx, jobCancel := context.WithCancel(workCtx)
@@ -544,6 +726,19 @@ func (s *Service) dispatch(ctx, workCtx context.Context) {
 			}()
 		}
 	}
+}
+
+// expireDispatched ends a job whose deadline passed after next() assigned it an
+// instance and before its call started. The call never runs, so nothing else
+// settles the half-open probe it may hold: release it here, with the slot.
+func (s *Service) expireDispatched(j *durableJob) {
+	if j.ProbeReserved {
+		s.caller.circuit(j.Instance).releaseReservation()
+		j.ProbeReserved = false
+	}
+	j.SlotHeld = false
+	s.finish(j, submitResult{504, errorBody("gateway_timeout", "request_deadline_exceeded", "LLM request deadline exceeded.")}, "expired")
+	s.releaseSlot(j)
 }
 
 func (s *Service) rollbackDispatch(j *durableJob) {
@@ -567,7 +762,7 @@ func (s *Service) expireQueued(now time.Time) {
 	s.mu.Lock()
 	var expired []*durableJob
 	for _, job := range s.jobs {
-		if job.Status == "queued" && !now.Before(job.Deadline) {
+		if job.Status == "queued" && !now.Before(job.Deadline) && s.repairs[job.ID] == nil && !s.cancelled[job.ID] {
 			job.Status = "expiring"
 			copy := *job
 			expired = append(expired, &copy)
@@ -575,7 +770,7 @@ func (s *Service) expireQueued(now time.Time) {
 	}
 	s.mu.Unlock()
 	for _, job := range expired {
-		if !s.finish(job, submitResult{504, errorBody("gateway_timeout", "request_deadline_exceeded", "LLM request deadline exceeded.")}, "expired") {
+		if s.finish(job, submitResult{504, errorBody("gateway_timeout", "request_deadline_exceeded", "LLM request deadline exceeded.")}, "expired") == finishFailed {
 			s.mu.Lock()
 			if current := s.jobs[job.ID]; current != nil && current.Status == "expiring" {
 				current.Status = "queued"
@@ -668,10 +863,10 @@ func (s *Service) next() (*durableJob, InstanceConfig, bool) {
 			probeReserved := false
 			for n := 0; n < len(ties); n++ {
 				candidate := ties[(cursor+n)%len(ties)]
-				ok, probe := s.caller.circuit(candidate.ID).reserve(time.Now())
+				ticket, ok := s.caller.circuit(candidate.ID).reserve(time.Now())
 				if ok {
 					selected = candidate
-					probeReserved = probe
+					probeReserved = ticket.probe
 					s.roundRobin[job.Request.Complexity] = (cursor + n + 1) % len(ties)
 					break
 				}
@@ -702,17 +897,17 @@ func (c *Circuit) available(now time.Time) bool {
 	defer c.mu.Unlock()
 	return c.failures < 3 || !now.Before(c.openUntil) && !c.probing
 }
-func (c *Circuit) reserve(now time.Time) (bool, bool) {
+func (c *Circuit) reserve(now time.Time) (circuitTicket, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.failures < 3 {
-		return true, false
+		return circuitTicket{generation: c.generation}, true
 	}
 	if now.Before(c.openUntil) || c.probing {
-		return false, false
+		return circuitTicket{}, false
 	}
 	c.probing = true
-	return true, true
+	return circuitTicket{generation: c.generation, probe: true}, true
 }
 func (c *Circuit) releaseReservation() { c.mu.Lock(); c.probing = false; c.mu.Unlock() }
 func (s *Service) instance(id string) InstanceConfig {
@@ -830,12 +1025,7 @@ func supportsParameters(in InstanceConfig, r Request) bool {
 
 func (s *Service) execute(ctx context.Context, j *durableJob, in InstanceConfig) {
 	if time.Now().After(j.Deadline) {
-		if j.ProbeReserved {
-			s.caller.circuit(in.ID).releaseReservation()
-		}
-		j.SlotHeld = false
-		s.finish(j, submitResult{504, errorBody("gateway_timeout", "request_deadline_exceeded", "LLM request deadline exceeded.")}, "expired")
-		s.releaseSlot(j)
+		s.expireDispatched(j)
 		return
 	}
 	callCtx, cancel := context.WithDeadline(ctx, j.Deadline)
@@ -843,6 +1033,7 @@ func (s *Service) execute(ctx context.Context, j *durableJob, in InstanceConfig)
 	result, failure := s.caller.call(callCtx, in, j.Request, j.ID, j.ProbeReserved)
 	cancel()
 	s.observeCall(j, in, failure, time.Since(started))
+	s.recordUpstreamTimeout(failure)
 	logUpstreamCall(j, in, failure, time.Since(started))
 	if failure != nil {
 		if s.isCanceled(j.ID) {
@@ -861,28 +1052,11 @@ func (s *Service) execute(ctx context.Context, j *durableJob, in InstanceConfig)
 			} else if !errors.Is(err, errCanceledJob) {
 				// The durable state is still "running". Do not dispatch more work
 				// while local state claims this retry is queued.
-				slog.Error("reschedule request failed", "gateway_request_id", j.ID, "error", err)
-				s.markStateUncertain()
-				s.notifyEphemeral(j.ID, submitResult{503, errorBody("server_error", "state_unavailable", "Gateway could not durably reschedule the LLM request.")})
+				s.registerStateRepair("reschedule", j, false, false, &submitResult{503, errorBody("server_error", "state_unavailable", "Gateway could not durably reschedule the LLM request.")}, err)
 			}
 			return
 		}
-		status := 502
-		typ := "server_error"
-		code := failure.Code
-		msg := "The upstream LLM request failed."
-		if failure.Status == 429 {
-			status = 429
-			typ = "rate_limit_error"
-			code = "upstream_rate_limit"
-			msg = "The upstream LLM rate limit was reached."
-		}
-		if errors.Is(failure.Err, context.DeadlineExceeded) {
-			status = 504
-			typ = "gateway_timeout"
-			code = "upstream_timeout"
-			msg = "The upstream LLM request timed out."
-		}
+		status, typ, code, msg := upstreamFailureResponse(failure)
 		body := errorBody(typ, code, msg)
 		uncertain := uncertainUpstreamOutcomeForInstance(in, failure)
 		if !uncertain {
@@ -901,14 +1075,53 @@ func (s *Service) execute(ctx context.Context, j *durableJob, in InstanceConfig)
 	}
 	if int64(len(result.Body)) > 32<<20 {
 		j.SlotHeld = false
-		_ = s.persistResult(ctx, j, 502, errorBody("server_error", "upstream_response_too_large", "The upstream response exceeded the gateway limit."), "failed")
-		s.releaseSlot(j)
+		if err := s.persistResult(ctx, j, 502, errorBody("server_error", "upstream_response_too_large", "The upstream response exceeded the gateway limit."), "failed"); err == nil || errors.Is(err, errCanceledJob) {
+			s.releaseSlot(j)
+		}
 		return
 	}
 	j.SlotHeld = false
 	if err := s.persistResult(ctx, j, 200, result.Body, "succeeded"); err == nil || errors.Is(err, errCanceledJob) {
 		s.releaseSlot(j)
 	}
+}
+
+// recordUpstreamTimeout counts a call ended by a timeout, by what ended it: the
+// request deadline or the instance's own timeout. Every call counts, retries
+// included. A request that expired in the queue made no call and is not counted.
+func (s *Service) recordUpstreamTimeout(failure *UpstreamFailure) {
+	reason := ""
+	switch {
+	case failure == nil || failure.Code == "request_canceled":
+		return
+	case failure.JobDeadline:
+		reason = "request_deadline"
+	case instanceTimedOut(failure):
+		reason = "instance_timeout"
+	default:
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.upstreamTimeouts == nil {
+		s.upstreamTimeouts = make(map[string]uint64)
+	}
+	s.upstreamTimeouts[reason]++
+}
+
+// upstreamFailureResponse maps a failed call to the stored error. The job
+// deadline (which includes the queue wait) and the instance's own timeout are
+// both 504, but only the second is a verdict on the instance.
+func upstreamFailureResponse(failure *UpstreamFailure) (int, string, string, string) {
+	switch {
+	case failure.JobDeadline:
+		return 504, "gateway_timeout", "request_deadline_exceeded", "LLM request deadline exceeded."
+	case instanceTimedOut(failure):
+		return 504, "gateway_timeout", "upstream_timeout", "The upstream LLM request timed out."
+	case failure.Status == 429:
+		return 429, "rate_limit_error", "upstream_rate_limit", "The upstream LLM rate limit was reached."
+	}
+	return 502, "server_error", failure.Code, "The upstream LLM request failed."
 }
 
 func logUpstreamCall(j *durableJob, in InstanceConfig, failure *UpstreamFailure, elapsed time.Duration) {
@@ -920,6 +1133,10 @@ func logUpstreamCall(j *durableJob, in InstanceConfig, failure *UpstreamFailure,
 	attrs = append(attrs, "error_code", failure.Code, "upstream_status", failure.Status, "error", failure.Error())
 	if failure.Code == "request_canceled" {
 		slog.Info("upstream call canceled", attrs...)
+		return
+	}
+	if failure.JobDeadline {
+		slog.Info("upstream call cut by the request deadline", attrs...)
 		return
 	}
 	slog.Warn("upstream call failed", attrs...)
@@ -936,9 +1153,11 @@ const failureCooldown = 15 * time.Second
 // are duration samples (a timeout marks a slow instance). A 429, a 5xx or a
 // transport failure puts the instance on cooldown instead: they say nothing
 // about speed, but without it an unmeasured instance that keeps failing would
-// keep the first place. A cancelled request and an open breaker change nothing.
+// keep the first place. A cancelled request, a call cut by the request deadline
+// (it includes the queue wait, not only the instance) and an open breaker
+// change nothing.
 func (s *Service) observeCall(j *durableJob, in InstanceConfig, failure *UpstreamFailure, elapsed time.Duration) {
-	if s.isCanceled(j.ID) || failure != nil && (failure.Code == "request_canceled" || failure.Code == "upstream_circuit_open") {
+	if s.isCanceled(j.ID) || failure != nil && (failure.Code == "request_canceled" || failure.JobDeadline || failure.Code == "upstream_circuit_open") {
 		return
 	}
 	s.mu.Lock()
@@ -956,7 +1175,7 @@ func (s *Service) observeCall(j *durableJob, in InstanceConfig, failure *Upstrea
 		}
 		s.expected[in.ID] = seconds
 	}
-	timedOut := failure != nil && errors.Is(failure.Err, context.DeadlineExceeded)
+	timedOut := instanceTimedOut(failure)
 	switch {
 	case failure == nil:
 		sample()
@@ -972,6 +1191,16 @@ func (s *Service) observeCall(j *durableJob, in InstanceConfig, failure *Upstrea
 	}
 }
 
+// instanceTimedOut tells that the instance's own timeout ended the call: either
+// the call recorded it as the cause, or the error is the context deadline. A
+// call cut by the request deadline is not one, whatever its error says.
+func instanceTimedOut(failure *UpstreamFailure) bool {
+	if failure == nil || failure.JobDeadline {
+		return false
+	}
+	return failure.InstanceTimeout || errors.Is(failure.Err, context.DeadlineExceeded)
+}
+
 func uncertainUpstreamOutcome(failure *UpstreamFailure) bool {
 	if failure == nil {
 		return false
@@ -983,9 +1212,18 @@ func uncertainUpstreamOutcomeForInstance(in InstanceConfig, failure *UpstreamFai
 	if !uncertainUpstreamOutcome(failure) {
 		return false
 	}
-	// The HTTP transport closes its request when its deadline fires. Only trust
+	// The gateway closes the upstream HTTP request itself when the instance
+	// timeout or the job deadline fires, also when the transport reports a
+	// broken connection or a cut body instead of the deadline error. Only trust
 	// this as a completed upstream cancellation for explicitly verified models.
-	return !(in.AbortOnDisconnect && errors.Is(failure.Err, context.DeadlineExceeded))
+	return !(in.AbortOnDisconnect && gatewayClosedCall(failure))
+}
+
+// gatewayClosedCall reports that the gateway ended the call itself: by the
+// job deadline, by the instance timeout, or by a client timeout whose error is
+// the context deadline.
+func gatewayClosedCall(failure *UpstreamFailure) bool {
+	return failure.JobDeadline || failure.InstanceTimeout || errors.Is(failure.Err, context.DeadlineExceeded)
 }
 
 func (s *Service) persistResult(ctx context.Context, j *durableJob, status int, body []byte, state string, retryAfter ...time.Duration) error {
@@ -1009,8 +1247,10 @@ func (s *Service) persistResult(ctx context.Context, j *durableJob, status int, 
 				return err
 			}
 			if time.Now().After(j.Deadline) || ctx.Err() != nil {
-				s.markStateUncertain()
-				s.notifyEphemeral(j.ID, submitResult{503, errorBody("server_error", "state_unavailable", "Gateway could not durably save the LLM result.")})
+				// execute releases the slot after a result that was saved; the
+				// repair does it after this one is. A slot kept on purpose for an
+				// uncertain upstream outcome stays kept.
+				s.registerStateRepair("result", j, !j.SlotHeld, true, &submitResult{503, errorBody("server_error", "state_unavailable", "Gateway could not durably save the LLM result.")}, err)
 				return err
 			}
 			timer := time.NewTimer(250 * time.Millisecond)
@@ -1031,16 +1271,6 @@ func (s *Service) persistResult(ctx context.Context, j *durableJob, status int, 
 	}
 	s.mu.Unlock()
 	return nil
-}
-
-func (s *Service) notifyEphemeral(id string, result submitResult) {
-	s.mu.Lock()
-	s.ephemeral[id] = result
-	if ch := s.waiters[id]; ch != nil {
-		close(ch)
-		delete(s.waiters, id)
-	}
-	s.mu.Unlock()
 }
 
 func (s *Service) compactLoop(ctx context.Context) {
@@ -1076,17 +1306,7 @@ func (s *Service) compactExpired(ctx context.Context, now time.Time) {
 			s.stateMu.Unlock()
 			continue
 		}
-		if err := s.stateWriter.BeginTransaction(); err != nil {
-			s.stateMu.Unlock()
-			continue
-		}
-		result := s.stateWriter.ProduceSync(ctx, &kgo.Record{Topic: s.cfg.StateTopic, Key: stateKey(j), Value: nil})
-		if result.FirstErr() != nil {
-			_ = s.stateWriter.EndTransaction(context.Background(), kgo.TryAbort)
-			s.stateMu.Unlock()
-			continue
-		}
-		if err := s.stateWriter.EndTransaction(ctx, kgo.TryCommit); err != nil {
+		if err := s.writeState(ctx, stateKey(j), nil); err != nil {
 			s.stateMu.Unlock()
 			continue
 		}
@@ -1098,7 +1318,20 @@ func (s *Service) compactExpired(ctx context.Context, now time.Time) {
 		s.stateMu.Unlock()
 	}
 }
-func (s *Service) finish(j *durableJob, result submitResult, state string) bool {
+
+// finishOutcome tells what became of the terminal state finish tried to store.
+type finishOutcome int
+
+const (
+	finishSaved finishOutcome = iota
+	// finishSuperseded: another outcome (a cancellation, stored by its own path
+	// or its repair, or a terminal state already stored) decides the job.
+	finishSuperseded
+	// finishFailed: the write failed and a repair is registered.
+	finishFailed
+)
+
+func (s *Service) finish(j *durableJob, result submitResult, state string) finishOutcome {
 	j.Status = state
 	j.FinishedAt = time.Now()
 	var e ErrorEnvelope
@@ -1106,19 +1339,23 @@ func (s *Service) finish(j *durableJob, result submitResult, state string) bool 
 	j.Error = &storedError{Status: result.status, Type: e.Error.Type, Code: e.Error.Code, Message: e.Error.Message}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
-	if s.save(ctx, j) == nil {
+	err := s.save(ctx, j)
+	switch {
+	case err == nil:
 		s.mu.Lock()
 		if ch := s.waiters[j.ID]; ch != nil {
 			close(ch)
 			delete(s.waiters, j.ID)
 		}
 		s.mu.Unlock()
-		return true
-	} else {
-		s.markStateUncertain()
-		s.notifyEphemeral(j.ID, submitResult{503, errorBody("server_error", "state_unavailable", "Gateway could not durably save the request state.")})
-		return false
+		return finishSaved
+	case errors.Is(err, errCanceledJob):
+		return finishSuperseded
 	}
+	// Every caller releases the slot itself, or holds none.
+	j.SlotHeld = false
+	s.registerStateRepair("finish", j, false, false, &submitResult{503, errorBody("server_error", "state_unavailable", "Gateway could not durably save the request state.")}, err)
+	return finishFailed
 }
 func (s *Service) releaseSlot(j *durableJob) {
 	if j.Instance == "" {
@@ -1166,7 +1403,7 @@ func (s *Service) releaseExpiredUncertainSlots(now time.Time) {
 	s.mu.Lock()
 	var expired []*durableJob
 	for _, job := range s.jobs {
-		if !isPending(job.Status) && s.uncertainSlotExpired(job, now) {
+		if !isPending(job.Status) && s.uncertainSlotExpired(job, now) && s.repairs[job.ID] == nil {
 			copy := *job
 			copy.SlotHeld = false
 			expired = append(expired, &copy)
@@ -1180,12 +1417,60 @@ func (s *Service) releaseExpiredUncertainSlots(now time.Time) {
 		cancel()
 		if err != nil {
 			if !errors.Is(err, errCanceledJob) {
-				s.markStateUncertain()
+				s.registerStateRepair("slot_release", job, true, true, nil, err)
 			}
 			continue
 		}
 		s.releaseSlot(job)
 	}
+}
+
+// writeState puts one record into the state topic in its own transaction. The
+// caller holds stateMu: the gateway is the only writer of the topic.
+func (s *Service) writeState(ctx context.Context, key, value []byte) error {
+	if s.writeStateFn != nil {
+		return s.writeStateFn(ctx, key, value)
+	}
+	return s.transactState(ctx, key, value)
+}
+
+// transactState is the Redpanda write behind writeState. franz-go leaves the
+// producer inside the transaction when EndTransaction fails (the outcome is
+// unconfirmed) and refuses BeginTransaction until that transaction is aborted;
+// without the abort every later write would fail even after the broker is back.
+func (s *Service) transactState(ctx context.Context, key, value []byte) error {
+	if err := s.stateWriter.BeginTransaction(); err != nil {
+		if abortErr := s.abortStateTransaction(); abortErr != nil {
+			return fmt.Errorf("begin state transaction: %w (abort of the previous one: %v)", err, abortErr)
+		}
+		if err = s.stateWriter.BeginTransaction(); err != nil {
+			return err
+		}
+	}
+	res := s.stateWriter.ProduceSync(ctx, &kgo.Record{Topic: s.cfg.StateTopic, Key: key, Value: value})
+	if err := res.FirstErr(); err != nil {
+		_ = s.abortStateTransaction()
+		return err
+	}
+	if err := s.stateWriter.EndTransaction(ctx, kgo.TryCommit); err != nil {
+		// The commit may or may not have happened. The abort retry reloads the
+		// producer ID, which fences whatever is left ongoing in the broker.
+		_ = s.abortStateTransaction()
+		return err
+	}
+	return nil
+}
+
+// abortStateTransaction brings the state producer back outside a transaction.
+// It is a no-op when none is open and fails, leaving the producer as it was,
+// when the broker is unreachable; the next write tries again.
+func (s *Service) abortStateTransaction() error {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	if err := s.stateWriter.AbortBufferedRecords(ctx); err != nil {
+		return err
+	}
+	return s.stateWriter.EndTransaction(ctx, kgo.TryAbort)
 }
 
 func (s *Service) save(ctx context.Context, j *durableJob) error {
@@ -1216,17 +1501,7 @@ func (s *Service) save(ctx context.Context, j *durableJob) error {
 	if err != nil {
 		return err
 	}
-	if err = s.stateWriter.BeginTransaction(); err != nil {
-		return err
-	}
-	res := s.stateWriter.ProduceSync(ctx, &kgo.Record{Topic: s.cfg.StateTopic, Key: stateKey(j), Value: raw})
-	if err = res.FirstErr(); err != nil {
-		abortCtx, stopAbort := context.WithTimeout(context.Background(), 2*time.Second)
-		_ = s.stateWriter.EndTransaction(abortCtx, kgo.TryAbort)
-		stopAbort()
-		return err
-	}
-	if err = s.stateWriter.EndTransaction(ctx, kgo.TryCommit); err != nil {
+	if err = s.writeState(ctx, stateKey(j), raw); err != nil {
 		return err
 	}
 	s.mu.Lock()
@@ -1377,10 +1652,11 @@ func (s *Service) validatePool(r Request) error {
 	return apiErr(400, "invalid_request_error", "context_length_exceeded", "The request exceeds the context window of every compatible instance.")
 }
 
-func (s *Service) writeMetrics(w http.ResponseWriter) {
-	w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
+func (s *Service) writeMetrics(rw http.ResponseWriter) {
+	rw.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
+	// Под s.mu только копируем значения; запись клиенту идёт после разблокировки,
+	// чтобы медленный читатель не останавливал приём и планировщик.
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	queued := map[string]int{}
 	oldest := map[string]float64{}
 	results := map[string]int{"succeeded": 0, "failed": 0, "expired": 0}
@@ -1415,61 +1691,96 @@ func (s *Service) writeMetrics(w http.ResponseWriter) {
 			}
 		}
 	}
-	fmt.Fprintln(w, "# HELP gateway_queue_depth Requests waiting for an LLM slot.")
-	fmt.Fprintln(w, "# TYPE gateway_queue_depth gauge")
+	inFlight := make(map[string]int, len(s.inFlight))
+	for id, n := range s.inFlight {
+		inFlight[id] = n
+	}
+	expected := make(map[string]float64, len(s.expected))
+	for id, seconds := range s.expected {
+		expected[id] = seconds
+	}
+	routeSelections := make(map[routeSelection]uint64, len(s.routeSelections))
+	for key, n := range s.routeSelections {
+		routeSelections[key] = n
+	}
+	transportCalls := make(map[string]map[int]uint64, len(s.transportCalls))
+	for transport, calls := range s.transportCalls {
+		copied := make(map[int]uint64, len(calls))
+		for status, n := range calls {
+			copied[status] = n
+		}
+		transportCalls[transport] = copied
+	}
+	upstreamTimeouts := make(map[string]uint64, len(s.upstreamTimeouts))
+	for reason, n := range s.upstreamTimeouts {
+		upstreamTimeouts[reason] = n
+	}
+	idempotentReplays := s.idempotentReplays
+	connections := len(s.connections)
+	s.mu.Unlock()
+
+	var w bytes.Buffer
+	fmt.Fprintln(&w, "# HELP gateway_queue_depth Requests waiting for an LLM slot.")
+	fmt.Fprintln(&w, "# TYPE gateway_queue_depth gauge")
 	for _, complexity := range []string{"low", "medium", "high"} {
 		for _, urgent := range []string{"false", "true"} {
 			key := complexity + "/" + urgent
-			fmt.Fprintf(w, "gateway_queue_depth{complexity=%q,urgent=%q} %d\n", complexity, urgent, queued[key])
-			fmt.Fprintf(w, "gateway_queue_oldest_seconds{complexity=%q,urgent=%q} %.3f\n", complexity, urgent, oldest[key])
+			fmt.Fprintf(&w, "gateway_queue_depth{complexity=%q,urgent=%q} %d\n", complexity, urgent, queued[key])
+			fmt.Fprintf(&w, "gateway_queue_oldest_seconds{complexity=%q,urgent=%q} %.3f\n", complexity, urgent, oldest[key])
 		}
 	}
-	fmt.Fprintln(w, "# TYPE gateway_instance_in_flight gauge")
+	fmt.Fprintln(&w, "# TYPE gateway_instance_in_flight gauge")
 	for _, in := range s.cfg.Instances {
 		open := 0
 		if !s.caller.circuit(in.ID).available(time.Now()) {
 			open = 1
 		}
-		fmt.Fprintf(w, "gateway_instance_in_flight{instance=%q} %d\ngateway_instance_capacity{instance=%q} %d\ngateway_circuit_open{instance=%q} %d\n", in.ID, s.inFlight[in.ID], in.ID, in.MaxInFlight, in.ID, open)
+		fmt.Fprintf(&w, "gateway_instance_in_flight{instance=%q} %d\ngateway_instance_capacity{instance=%q} %d\ngateway_circuit_open{instance=%q} %d\n", in.ID, inFlight[in.ID], in.ID, in.MaxInFlight, in.ID, open)
 	}
-	fmt.Fprintln(w, "# HELP gateway_instance_expected_seconds Moving average of an instance's upstream call time; the scheduler prefers the free instance that answers sooner.")
-	fmt.Fprintln(w, "# TYPE gateway_instance_expected_seconds gauge")
+	fmt.Fprintln(&w, "# HELP gateway_instance_expected_seconds Moving average of an instance's upstream call time; the scheduler prefers the free instance that answers sooner.")
+	fmt.Fprintln(&w, "# TYPE gateway_instance_expected_seconds gauge")
 	for _, in := range s.cfg.Instances {
-		if seconds, ok := s.expected[in.ID]; ok {
-			fmt.Fprintf(w, "gateway_instance_expected_seconds{instance=%q} %.3f\n", in.ID, seconds)
+		if seconds, ok := expected[in.ID]; ok {
+			fmt.Fprintf(&w, "gateway_instance_expected_seconds{instance=%q} %.3f\n", in.ID, seconds)
 		}
 	}
-	fmt.Fprintln(w, "# HELP gateway_route_eligible Whether an instance can serve requests at the given complexity under the configured pools.")
-	fmt.Fprintln(w, "# TYPE gateway_route_eligible gauge")
+	fmt.Fprintln(&w, "# HELP gateway_route_eligible Whether an instance can serve requests at the given complexity under the configured pools.")
+	fmt.Fprintln(&w, "# TYPE gateway_route_eligible gauge")
 	for _, complexity := range complexityLevels {
 		for _, in := range s.eligibleInstances(complexity) {
-			fmt.Fprintf(w, "gateway_route_eligible{complexity=%q,instance=%q,model=%q,tier=%q} 1\n", complexity, in.ID, in.Model, complexityLevels[s.instanceTier(in.ID)])
+			fmt.Fprintf(&w, "gateway_route_eligible{complexity=%q,instance=%q,model=%q,tier=%q} 1\n", complexity, in.ID, in.Model, complexityLevels[s.instanceTier(in.ID)])
 		}
 	}
-	fmt.Fprintln(w, "# HELP gateway_route_selections_total Requests assigned by the scheduler to an upstream instance, including retries.")
-	fmt.Fprintln(w, "# TYPE gateway_route_selections_total counter")
+	fmt.Fprintln(&w, "# HELP gateway_route_selections_total Requests assigned by the scheduler to an upstream instance, including retries.")
+	fmt.Fprintln(&w, "# TYPE gateway_route_selections_total counter")
 	for _, complexity := range complexityLevels {
 		for _, in := range s.eligibleInstances(complexity) {
 			key := routeSelection{complexity: complexity, instance: in.ID}
-			fmt.Fprintf(w, "gateway_route_selections_total{complexity=%q,instance=%q,model=%q,tier=%q} %d\n", complexity, in.ID, in.Model, complexityLevels[s.instanceTier(in.ID)], s.routeSelections[key])
+			fmt.Fprintf(&w, "gateway_route_selections_total{complexity=%q,instance=%q,model=%q,tier=%q} %d\n", complexity, in.ID, in.Model, complexityLevels[s.instanceTier(in.ID)], routeSelections[key])
 		}
 	}
-	fmt.Fprintln(w, "# TYPE gateway_calls_total counter")
+	fmt.Fprintln(&w, "# TYPE gateway_calls_total counter")
 	for _, transport := range []string{"http", "grpc"} {
-		for status, count := range s.transportCalls[transport] {
-			fmt.Fprintf(w, "gateway_calls_total{transport=%q,status=%q} %d\n", transport, strconv.Itoa(status), count)
+		for status, count := range transportCalls[transport] {
+			fmt.Fprintf(&w, "gateway_calls_total{transport=%q,status=%q} %d\n", transport, strconv.Itoa(status), count)
 		}
 	}
-	fmt.Fprintln(w, "# TYPE gateway_requests_total counter")
-	for status, count := range results {
-		fmt.Fprintf(w, "gateway_requests_total{status=%q} %d\n", status, count)
+	fmt.Fprintln(&w, "# HELP gateway_upstream_timeouts_total Upstream calls ended by a timeout, by reason: the request deadline or the instance timeout. Retries count; a request that expired in the queue does not.")
+	fmt.Fprintln(&w, "# TYPE gateway_upstream_timeouts_total counter")
+	for _, reason := range []string{"request_deadline", "instance_timeout"} {
+		fmt.Fprintf(&w, "gateway_upstream_timeouts_total{reason=%q} %d\n", reason, upstreamTimeouts[reason])
 	}
-	fmt.Fprintf(w, "gateway_idempotent_replays_total %d\ngateway_retries_total %d\ngateway_connections_in_flight %d\ngateway_unregistered_requests %d\ngateway_input_lag_seconds %.3f\ngateway_uptime_seconds %.0f\n", s.idempotentReplays, retries, len(s.connections), inputBacklog, oldestInput, time.Since(s.started).Seconds())
-	writeHistogram(w, "gateway_queue_wait_seconds", waits)
-	writeHistogram(w, "gateway_execution_seconds", executions)
+	fmt.Fprintln(&w, "# TYPE gateway_requests_total counter")
+	for status, count := range results {
+		fmt.Fprintf(&w, "gateway_requests_total{status=%q} %d\n", status, count)
+	}
+	fmt.Fprintf(&w, "gateway_idempotent_replays_total %d\ngateway_retries_total %d\ngateway_connections_in_flight %d\ngateway_unregistered_requests %d\ngateway_input_lag_seconds %.3f\ngateway_uptime_seconds %.0f\n", idempotentReplays, retries, connections, inputBacklog, oldestInput, time.Since(s.started).Seconds())
+	writeHistogram(&w, "gateway_queue_wait_seconds", waits)
+	writeHistogram(&w, "gateway_execution_seconds", executions)
+	_, _ = w.WriteTo(rw)
 }
 
-func writeHistogram(w http.ResponseWriter, name string, samples []float64) {
+func writeHistogram(w io.Writer, name string, samples []float64) {
 	buckets := []float64{1, 5, 10, 30, 60, 120, 180}
 	sum := 0.0
 	for _, sample := range samples {
